@@ -105,7 +105,7 @@ const enable_test = computed(() => {
       <span aria-live="polite">{{ copy_status }}</span>
       <n-card
         content-scrollable
-        style="max-height: 230px; min-width: 320px; max-width: 100%; flex: 1"
+        class="skland-test-result"
         segmented
         :content-style="{
           whiteSpace: 'pre-wrap',
@@ -121,6 +121,13 @@ const enable_test = computed(() => {
 </template>
 
 <style>
+.skland-test-result {
+  max-height: 230px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 320px;
+}
+
 .misc-container {
   margin-top: 12px;
   display: flex;

@@ -66,7 +66,7 @@ jobs:
 
             if [ "${health}" = "healthy" ]; then
               docker exec "${container_id}" \
-                curl --fail --silent http://127.0.0.1:58000/status \
+                curl --fail --silent --header 'token: runtime-smoke' http://127.0.0.1:58000/status \
                 | grep --quiet '"status"'
               exit 0
             fi

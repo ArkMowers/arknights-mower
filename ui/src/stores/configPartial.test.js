@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, ref } from 'vue'
+import { createApp, createSSRApp, nextTick, ref } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { setup as setupCssRenderSsr } from '@css-render/vue3-ssr'
 import { createPinia } from 'pinia'
 import axios from 'axios'
 import { useConfigStore } from './config'
 import { startPhysicalPreparation } from '@/utils/deviceSettings'
+import Email from '@/components/Email.vue'
+import ChatBotSetting from '@/components/ChatBotSetting.vue'
 
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
 let store
@@ -16,7 +20,8 @@ afterEach(() => {
 async function setup(overrides = {}) {
   const loaded = ref(false)
   const app = createApp({})
-  app.use(createPinia())
+  const pinia = createPinia()
+  app.use(pinia)
   app.provide('loaded', loaded)
   store = app.runWithContext(() => useConfigStore())
   const data = {
@@ -56,7 +61,26 @@ async function setup(overrides = {}) {
   loaded.value = true
   await nextTick()
   await store.flush_config_saves()
-  return { loaded, data }
+  return { loaded, data, pinia }
+}
+
+async function renderSettings(component, { loaded, pinia }) {
+  const app = createSSRApp(component)
+  setupCssRenderSsr(app)
+  app.use(pinia)
+  app.provide('loaded', loaded)
+  app.provide('mobile', false)
+  app.provide('axios', axios)
+  return renderToString(app)
+}
+
+function selectedLabels(html) {
+  return Array.from(
+    html.matchAll(
+      /<div[^>]*class="[^"]*n-base-selection-(?:label__render-label|input__content)[^"]*"[^>]*>([\s\S]*?)<\/div>/g
+    ),
+    ([, content]) => content.replace(/<!--[\s\S]*?-->|<[^>]*>/g, '').trim()
+  )
 }
 
 describe('partial configuration saves', () => {
@@ -84,6 +108,64 @@ describe('partial configuration saves', () => {
       await store.flush_config_saves()
       expect(store[list]).toEqual([{ value: '新资源', label: '新资源' }])
       expect(store.maa_mall_buy).toEqual(['招聘许可'])
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    ['INFO', 'INFO - 基建任务、刷理智、公招汇总、基报、活动签到等'],
+    ['WARNING', 'WARNING - 版本过旧、组内心情差过大、漏单、公招稀有标签等'],
+    ['ERROR', 'ERROR - 无法排班、专精失败、MAA调用出错、森空岛签到失败、活动签到超时、OF-1失败等']
+  ])(
+    'shows the original complete notification label for %s without changing its value',
+    async (level, label) => {
+      const context = await setup({
+        custom_smtp_server: { enable: false },
+        notification_level: level
+      })
+      const html = await renderSettings(Email, context)
+      expect(selectedLabels(html)).toEqual(['QQ邮箱', label])
+      expect(html).toContain('settings-select-wrap')
+      expect(html).not.toContain('email-level-description')
+      expect(store.notification_level).toBe(level)
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    ['deepseek-flash', 'DeepSeek Flash（deepseek-flash）'],
+    ['deepseek-v4-pro', 'DeepSeek V4 Pro（deepseek-v4-pro）'],
+    [
+      'custom-model-with-a-long-provider-name-and-complete-version-id',
+      'custom-model-with-a-long-provider-name-and-complete-version-id'
+    ]
+  ])(
+    'shows the original complete model label without replacing saved ID %s',
+    async (model, label) => {
+      const context = await setup({ ai_type: 'deepseek', ai_deepseek_model: model })
+      const html = await renderSettings(ChatBotSetting, context)
+      expect(selectedLabels(html)).toEqual(['DeepSeek', label])
+      expect(html).toContain('settings-select-wrap')
+      expect(html).not.toContain('deepseek-model-description')
+      expect(store.ai_deepseek_model).toBe(model)
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    ['custom-local', '本地模型（OpenAI 兼容）'],
+    ['custom-online', '在线模型 / 中转商（OpenAI 兼容）']
+  ])(
+    'shows the original complete %s service label and retains the custom model ID',
+    async (service, label) => {
+      const model = 'provider/model-with-a-long-name-and-complete-version-id'
+      const context = await setup({ ai_type: service, ai_model: model })
+      const html = await renderSettings(ChatBotSetting, context)
+      expect(selectedLabels(html)).toEqual([label])
+      expect(html).toContain(`value="${model}"`)
+      expect(html).not.toContain('custom-model-description')
+      expect(store.ai_type).toBe(service)
+      expect(store.ai_model).toBe(model)
       expect(axios.patch).not.toHaveBeenCalled()
     }
   )

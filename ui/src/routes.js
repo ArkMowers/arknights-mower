@@ -15,6 +15,12 @@ export const routes = [
         name: 'log'
       },
       {
+        path: 'task-settings',
+        component: () => import('@/pages/TaskSettings.vue'),
+        meta: { title: '任务配置' },
+        name: 'task-settings'
+      },
+      {
         path: 'plan-editor',
         component: () => import('@/pages/Plan.vue'),
         meta: { title: '排班' },
@@ -29,15 +35,25 @@ export const routes = [
       {
         path: 'mowersettings',
         component: () => import('@/pages/Settings.vue'),
-        meta: { title: 'mower设置' },
+        meta: { title: 'Mower 设置', settings: true, settingsSidebar: true },
         name: 'mowersettings'
       },
       {
         path: 'maasettings',
-        component: () => import('@/pages/maasettings.vue'),
-        meta: { title: '日常设置' },
+        redirect: (to) => ({ name: 'task-settings', query: to.query, hash: to.hash }),
         name: 'maasettings'
       },
+      // PROTOTYPE：任务编排原型，选定方案后删除
+      ...(import.meta.env.DEV
+        ? [
+            {
+              path: 'taskflow-prototype',
+              component: () => import('@/pages/taskflow-prototype/TaskflowPrototype.vue'),
+              meta: { title: '任务编排原型' },
+              name: 'taskflow-prototype'
+            }
+          ]
+        : []),
       {
         path: 'doc',
         component: () => import('@/pages/Doc.vue'),

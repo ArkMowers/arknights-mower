@@ -12,10 +12,30 @@ export default defineConfig(
   globalIgnores(['**/.*']),
   {
     files: ['**/*.{vue,js,jsx,cjs,mjs}'],
-    extends: [js.configs.recommended, vue.configs['flat/essential'], skipFormatting]
+    extends: [js.configs.recommended, vue.configs['flat/essential'], skipFormatting],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@vicons/*/*', '!@vicons/*/es'],
+              message:
+                'Import icons from @vicons/<pkg>/es/<Icon>: files outside es/ are CommonJS and the Vite 8 dev server renders them blank.'
+            }
+          ]
+        }
+      ]
+    }
   },
   {
-    files: ['src/**/*.{vue,js,jsx,cjs,mjs}', 'manager/**/*.{vue,js,jsx,cjs,mjs}', 'test/**/*.js'],
+    files: [
+      'src/**/*.{vue,js,jsx,cjs,mjs}',
+      'manager/**/*.{vue,js,jsx,cjs,mjs}',
+      'test/**/*.js',
+      'preview/main.js',
+      'preview/mock.js'
+    ],
     languageOptions: { globals: globals.browser }
   },
   {
@@ -28,7 +48,14 @@ export default defineConfig(
     }
   },
   {
-    files: ['copy.js', 'vite.config.js', 'eslint.config.js'],
+    files: [
+      'copy.js',
+      'vite.config.js',
+      'eslint.config.js',
+      'changelog-module.test.js',
+      'preview/vite-plugin.js',
+      'preview/*.test.js'
+    ],
     languageOptions: { globals: globals.nodeBuiltin }
   }
 )

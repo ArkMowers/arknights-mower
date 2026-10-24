@@ -68,6 +68,48 @@ describe('worker status', () => {
     }
   )
 
+  it('starts with unknown deployment and reads actual source or release deployment from status', async () => {
+    expect(store.deployment).toBeNull()
+    for (const deployment of ['source', 'release']) {
+      axios.get.mockResolvedValueOnce({
+        data: { status: 'stopped', plan_condition: [], deployment }
+      })
+      await store.get_running()
+      expect(store.deployment).toBe(deployment)
+    }
+    expect(axios.get).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each([null, '', 'nightly', 'Source', 'frozen', true, {}, 1])(
+    'clears previous source deployment when the next status contains invalid deployment %j',
+    async (deployment) => {
+      axios.get
+        .mockResolvedValueOnce({
+          data: { status: 'stopped', plan_condition: [], deployment: 'source' }
+        })
+        .mockResolvedValueOnce({ data: { status: 'stopped', plan_condition: [], deployment } })
+      await store.get_running()
+      expect(store.deployment).toBe('source')
+      await store.get_running()
+      expect(store.deployment).toBeNull()
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
+
+  it('clears previous deployment when an older backend omits it from a new status snapshot', async () => {
+    axios.get
+      .mockResolvedValueOnce({
+        data: { status: 'stopped', plan_condition: [], deployment: 'source' }
+      })
+      .mockResolvedValueOnce({ data: { status: 'stopped', plan_condition: [] } })
+    await store.get_running()
+    expect(store.deployment).toBe('source')
+    await store.get_running()
+    expect(store.deployment).toBeNull()
+    expect(axios.get).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps task polling through startup and recovery and clears it only after exit', async () => {
     store.start_task_polling()
     for (const value of ['starting', 'recovering', 'working', 'sleeping']) {

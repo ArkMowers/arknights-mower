@@ -11,9 +11,11 @@ import {
   provide,
   ref,
   shallowRef,
+  useId,
   watch
 } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
+import { routeLocationKey, routerKey } from 'vue-router'
 
 import { useMowerStore } from '@/stores/mower'
 import {
@@ -24,40 +26,61 @@ import {
 } from '@/utils/logLayout'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
 import StartSchedule from '@/components/StartSchedule.vue'
+import { useResolvedTheme } from '@/composables/theme'
 const mower_store = useMowerStore()
-const { log, log_mobile, running, status_label, plan_condition, log_lines, task_list, waiting } =
+const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting } =
   storeToRefs(mower_store)
 const { get_tasks, get_running, start_task_polling, stop_task_polling } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
+const route = inject(routeLocationKey, null)
+const router = inject(routerKey, null)
 
 const auto_scroll = ref(true)
 const sc_preview = ref(true)
 const sc_blob = ref('')
+const has_screenshot = computed(() => sc_preview.value && Boolean(sc_blob.value))
+const show_task_table = ref(true)
+const task_table_visible = computed(
+  () => task_list.value.length > 0 && (!mobile.value || show_task_table.value)
+)
 const log_layout = ref(null)
+const action_bar = ref(null)
+const show_display_options = ref(false)
+const toolbar_id = useId()
+const task_queue = ref(null)
 const layout_preference = {
   screenshot_height: null,
   task_height: null
 }
 let layoutObserver
+let screenshot_aspect = 16 / 9
+let mobile_screenshot_height = null
 
 function layout_bottom_reserve(container) {
   const conditionHeight =
     container.querySelector('.plan-condition')?.getBoundingClientRect().height ?? 0
-  const actionHeight =
-    container.querySelector('.action-container')?.getBoundingClientRect().height ?? 0
-  return LOG_MIN_HEIGHT + RESIZER_HEIGHT + conditionHeight + actionHeight
+  return LOG_MIN_HEIGHT + RESIZER_HEIGHT + conditionHeight
 }
 
 function apply_log_layout() {
+  if (
+    show_display_options.value &&
+    action_bar.value?.querySelector('.display-options-trigger')?.getClientRects().length === 0
+  )
+    show_display_options.value = false
   const container = log_layout.value
   if (!container) return
   const bounds = container.getBoundingClientRect()
   const bottomReserve = layout_bottom_reserve(container)
-
-  if (sc_preview.value) {
-    const preferred = layout_preference.screenshot_height ?? 270
-    const height = clampScreenshotHeight(preferred, bounds.height, bottomReserve)
+  if (has_screenshot.value) {
+    const fitMobile = mobile.value && mobile_screenshot_height === null && container.clientWidth > 0
+    const preferred = mobile.value
+      ? (mobile_screenshot_height ?? 270)
+      : (layout_preference.screenshot_height ?? 270)
+    const height = fitMobile
+      ? Math.round(container.clientWidth / screenshot_aspect)
+      : clampScreenshotHeight(preferred, bounds.height, bottomReserve)
     container.style.setProperty('--log-sc-h', `${height}px`)
   } else {
     container.style.removeProperty('--log-sc-h')
@@ -68,13 +91,23 @@ function apply_log_layout() {
     return
   }
   const task = container.querySelector('.task-table-scroll')?.getBoundingClientRect()
-  if (!task) return
+  if (!task) {
+    container.style.removeProperty('--log-task-h')
+    return
+  }
   const height = clampTaskHeight(
     layout_preference.task_height,
     bounds.bottom - task.top,
     bottomReserve
   )
   container.style.setProperty('--log-task-h', `${height}px`)
+}
+
+function screenshot_loaded(event) {
+  const image = event.target
+  if (image?.naturalWidth > 0 && image?.naturalHeight > 0)
+    screenshot_aspect = image.naturalWidth / image.naturalHeight
+  apply_log_layout()
 }
 
 async function restore_log_layout() {
@@ -101,13 +134,16 @@ function resize_log_pane(event, pane) {
     const bottomReserve = layout_bottom_reserve(container)
     let size
     if (pane === 'screenshot') {
-      size = clampScreenshotHeight(moveEvent.clientY - bounds.top, bounds.height, bottomReserve)
+      const screenshotTop =
+        container.querySelector('.log-screenshot')?.getBoundingClientRect().top ?? bounds.top
+      size = clampScreenshotHeight(moveEvent.clientY - screenshotTop, bounds.height, bottomReserve)
     } else {
       const task = container.querySelector('.task-table-scroll')?.getBoundingClientRect()
       if (!task) return
       size = clampTaskHeight(moveEvent.clientY - task.top, bounds.bottom - task.top, bottomReserve)
     }
     savedSize = size
+    if (pane === 'screenshot' && mobile.value) mobile_screenshot_height = size
     layout_preference[stateKey] = size
     container.style.setProperty(variable, `${size}px`)
   }
@@ -142,6 +178,10 @@ watch(sc_preview, (enabled) => {
   nextTick(apply_log_layout)
 })
 
+watch(sc_blob, () => {
+  nextTick(apply_log_layout)
+})
+
 watch(
   plan_condition,
   () => {
@@ -149,6 +189,10 @@ watch(
   },
   { deep: true }
 )
+
+watch(task_list, () => nextTick(apply_log_layout), { deep: true })
+watch(show_task_table, () => nextTick(apply_log_layout))
+watch(mobile, () => nextTick(apply_log_layout))
 
 function scroll_last_line() {
   nextTick(() => {
@@ -193,6 +237,7 @@ onMounted(() => {
   updatePageVisibility()
   layoutObserver = new ResizeObserver(apply_log_layout)
   if (log_layout.value) layoutObserver.observe(log_layout.value)
+  if (action_bar.value) layoutObserver.observe(action_bar.value)
   restore_log_layout()
   db_load_stats()
 })
@@ -224,16 +269,26 @@ function stop() {
   })
 }
 
-const show_feedback = ref(false)
+import StopIcon from '@vicons/ionicons5/es/Stop'
+import AddIcon from '@vicons/ionicons5/es/Add'
+import ServerOutlineIcon from '@vicons/ionicons5/es/ServerOutline'
+import CollapseIcon from '@vicons/fluent/es/PanelTopContract20Regular'
+import ExpandIcon from '@vicons/fluent/es/PanelTopExpand20Regular'
+import MoreIcon from '@vicons/fluent/es/MoreHorizontal20Regular'
 
-import StopIcon from '@vicons/ionicons5/Stop'
-import AddIcon from '@vicons/ionicons5/Add'
-import ServerOutlineIcon from '@vicons/ionicons5/ServerOutline'
-import ChatbubbleIcon from '@vicons/ionicons5/ChatbubbleEllipsesOutline'
-import CollapseIcon from '@vicons/fluent/PanelTopContract20Regular'
-import ExpandIcon from '@vicons/fluent/PanelTopExpand20Regular'
+const task_help = [
+  '目前只糊了一个勉强能用的版本，其他功能敬请期待',
+  '支持空任务、专精、加工材料、分解所有重复家具、仓库扫描和线索任务',
+  '只能增，不能删！！写错了可以【载入心情数据】启动',
+  '新增加工材料或分解家具任务会唤醒调度器，按任务时间执行',
+  '其他新增任务不会主动唤醒调度器，休眠期间添加的任务可能延后执行',
+  '添加完任务可以【载入心情任务】启动',
+  '空任务，请确保任务房间名字，干员数量正确（没有判定）',
+  '专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈',
+  '线索任务，到点跑一次完整的会客室流程（信息板、领线索、摆线索、送线索）',
+  '在Q群或者频道提以上问题，看心情踢人'
+]
 
-const show_task_table = ref(true)
 const show_task = ref(false)
 const TaskDialog = shallowRef(null)
 const task_dialog_loading = ref(false)
@@ -258,11 +313,27 @@ async function openTaskDialog() {
 }
 const add_task = ref(true)
 provide('show_task', show_task)
-provide('show_feedback', show_feedback)
 provide('add_task', add_task)
 import { useConfigStore } from '@/stores/config'
 const config_store = useConfigStore()
-const { theme } = storeToRefs(config_store)
+const { theme: themePreference } = storeToRefs(config_store)
+const theme = useResolvedTheme(themePreference)
+function revealTaskQueue() {
+  show_task_table.value = true
+  nextTick(() => {
+    apply_log_layout()
+    task_queue.value?.scrollIntoView?.({ block: 'nearest' })
+  })
+}
+watch(
+  () => route?.hash,
+  (hash) => {
+    if (/^#task-(devices|runtime|base|daily|long|accounts|maa)$/.test(hash || ''))
+      router?.replace({ name: 'task-settings', query: route?.query, hash })
+    else if (hash === '#task-queue') revealTaskQueue()
+  },
+  { immediate: true }
+)
 
 const bg_opacity = computed(() => {
   return theme.value == 'light' ? 0.2 : 0.3
@@ -381,6 +452,7 @@ function db_load_stats() {
     .catch(() => {}) // 后端未启动/接口不可用时静默（卡片仍显示 0 条）
 }
 function db_toggle_panel() {
+  show_display_options.value = false
   show_db_admin.value = !show_db_admin.value
   if (show_db_admin.value) db_load_stats() // 打开时刷新条数
 }
@@ -422,171 +494,233 @@ async function db_delete(keys) {
 </script>
 
 <template>
-  <div
-    ref="log_layout"
-    class="home-container"
-    :class="{ 'with-screenshot': sc_preview, 'has-tasks': task_list.length > 0 }"
-  >
-    <div class="log-bg"></div>
-    <n-image
-      v-if="sc_preview"
-      width="100%"
-      class="sc"
-      :src="sc_blob == '' ? '/bg2.webp' : sc_blob"
-      object-fit="scale-down"
-    />
-    <div
-      v-if="sc_preview"
-      class="log-resizer log-resizer-sc"
-      @pointerdown="(event) => resize_log_pane(event, 'screenshot')"
-    ></div>
+  <div class="home-container" :class="{ 'home-container--mobile': mobile }">
+    <div class="log-bg" aria-hidden="true"></div>
+    <section
+      ref="log_layout"
+      class="log-pane"
+      :class="{ 'with-screenshot': has_screenshot, 'has-tasks': task_table_visible }"
+      aria-label="运行日志"
+    >
+      <n-image
+        v-if="has_screenshot"
+        width="100%"
+        class="log-screenshot"
+        :src="sc_blob"
+        object-fit="contain"
+        @load="screenshot_loaded"
+      />
+      <n-button
+        v-if="mobile && task_list.length > 0"
+        class="toggle-table-collapse-btn"
+        :aria-label="show_task_table ? '收起任务列表' : '展开任务列表'"
+        :aria-expanded="show_task_table"
+        :aria-controls="`${toolbar_id}-queue`"
+        :title="show_task_table ? '收起任务列表' : '展开任务列表'"
+        @click="show_task_table = !show_task_table"
+      >
+        <template #icon>
+          <n-icon>
+            <collapse-icon v-if="show_task_table" />
+            <expand-icon v-else />
+          </n-icon>
+        </template>
+      </n-button>
+      <div
+        v-if="has_screenshot"
+        class="log-resizer log-resizer-sc"
+        @pointerdown="(event) => resize_log_pane(event, 'screenshot')"
+      ></div>
 
-    <div v-if="task_list.length > 0" class="task-table-scroll">
-      <n-table class="task-table" size="small" :single-line="false">
-        <thead>
-          <tr>
-            <th>时间</th>
-            <th :colspan="2">任务</th>
-          </tr>
-        </thead>
-        <tbody v-show="!mobile || show_task_table">
-          <template v-for="(task, task_index) in task_list" :key="task_index">
-            <template v-if="Object.keys(task.plan).length">
-              <tr v-for="(value, key, idx) in task.plan" :key="key">
-                <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
-                  {{ task.time.split('T')[1].split('.')[0] }}
-                  <div v-if="task.emergency_recovery_release">自动救急</div>
-                  <div v-else-if="task.emergency_staffing">自动救急换班</div>
-                  <div v-else-if="task.emergency_dorm">自动救急宿舍安排</div>
-                </td>
-                <td>{{ key }}</td>
-                <td>
-                  {{ value.map((x) => x || '_').join(', ') }}
+      <div
+        v-if="task_list.length > 0"
+        v-show="task_table_visible"
+        :id="`${toolbar_id}-queue`"
+        ref="task_queue"
+        class="task-table-scroll"
+        role="region"
+        aria-label="任务列表"
+      >
+        <n-table class="task-table" size="small" :single-line="false">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th :colspan="2">任务</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="(task, task_index) in task_list" :key="task_index">
+              <template v-if="Object.keys(task.plan).length">
+                <tr v-for="(value, key, idx) in task.plan" :key="key">
+                  <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
+                    {{ task.time.split('T')[1].split('.')[0] }}
+                    <div v-if="task.emergency_recovery_release">自动救急</div>
+                    <div v-else-if="task.emergency_staffing">自动救急换班</div>
+                    <div v-else-if="task.emergency_dorm">自动救急宿舍安排</div>
+                  </td>
+                  <td>{{ key }}</td>
+                  <td>{{ value.map((x) => x || '_').join(', ') }}</td>
+                </tr>
+              </template>
+              <tr v-else>
+                <td>{{ task.time.split('T')[1].split('.')[0] }}</td>
+                <td :colspan="2">
+                  {{ task.display_name || task.type.display_value
+                  }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
                 </td>
               </tr>
             </template>
-            <tr v-else>
-              <td>
-                {{ task.time.split('T')[1].split('.')[0] }}
-              </td>
-              <td :colspan="2">
-                {{ task.display_name || task.type.display_value
-                }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </n-table>
-    </div>
-    <div v-if="plan_condition.length > 0" class="plan-condition" style="display: flex; gap: 10px">
-      <span>当前激活的副表为： </span>
-      <span v-for="(x, index) in plan_condition" :key="index" style="color: green">
-        {{ x }}
-      </span>
-    </div>
-    <div
-      v-if="task_list.length > 0"
-      class="log-resizer log-resizer-task"
-      @pointerdown="(event) => resize_log_pane(event, 'task')"
-    ></div>
-    <n-log
-      class="log"
-      :log="mobile ? log_mobile : log"
-      language="mower"
-      style="user-select: text"
-    />
-    <div class="action-container">
-      <drop-down
-        v-if="running"
-        :select="select_stop_action"
-        :options="stop_options"
-        type="error"
-        :up="true"
-      >
-        <n-button type="error" @click="stop" :loading="waiting" :disabled="waiting">
+          </tbody>
+        </n-table>
+      </div>
+      <div v-if="plan_condition.length > 0" class="plan-condition" style="display: flex; gap: 10px">
+        <span>当前激活的副表为： </span>
+        <span v-for="(x, index) in plan_condition" :key="index" style="color: green">
+          {{ x }}
+        </span>
+      </div>
+      <div
+        v-if="task_list.length > 0"
+        v-show="task_table_visible"
+        class="log-resizer log-resizer-task"
+        @pointerdown="(event) => resize_log_pane(event, 'task')"
+      ></div>
+      <n-log
+        class="log"
+        :log="mobile ? log_mobile : log"
+        language="mower"
+        style="user-select: text"
+      />
+    </section>
+    <div ref="action_bar" class="action-container">
+      <div class="action-buttons" role="group" aria-label="运行操作">
+        <div class="execution-control">
+          <drop-down
+            v-if="running"
+            :select="select_stop_action"
+            :options="stop_options"
+            type="error"
+            :up="true"
+            menu-label="停止选项"
+            :disabled="waiting"
+          >
+            <n-button type="error" @click="stop" :loading="waiting" :disabled="waiting">
+              <template #icon>
+                <n-icon>
+                  <stop-icon />
+                </n-icon>
+              </template>
+              <span class="btn-text">立即停止</span>
+            </n-button>
+          </drop-down>
+          <start-schedule
+            v-if="!running"
+            :start="start"
+            :start-options="start_options"
+            :waiting="waiting"
+          />
+        </div>
+        <div class="task-action">
+          <n-button
+            class="add-task-action"
+            type="warning"
+            aria-label="新增任务"
+            title="新增任务"
+            :loading="task_dialog_loading"
+            @click="openTaskDialog"
+          >
+            <template #icon>
+              <n-icon>
+                <add-icon />
+              </n-icon>
+            </template>
+            <span class="btn-text">新增任务</span>
+          </n-button>
+          <help-text v-if="!mobile" label="新增任务说明">
+            <div v-for="line in task_help" :key="line">{{ line }}</div>
+          </help-text>
+        </div>
+        <n-button class="database-action" type="info" @click="db_toggle_panel">
           <template #icon>
             <n-icon>
-              <stop-icon />
+              <server-outline-icon />
             </n-icon>
           </template>
-          <span class="btn-text">立即停止</span>
+          <span class="btn-text">数据库管理</span>
         </n-button>
-      </drop-down>
-      <n-text v-if="running" depth="3">{{ status_label }}</n-text>
-      <start-schedule
-        v-if="!running"
-        :start="start"
-        :start-options="start_options"
-        :waiting="waiting"
-      />
-      <ProcessControl ref="process_control" compact :running="running" />
-      <component :is="TaskDialog" v-if="TaskDialog" />
-      <n-button type="warning" :loading="task_dialog_loading" @click="openTaskDialog">
-        <template #icon>
-          <n-icon>
-            <add-icon />
-          </n-icon>
-        </template>
-        <span class="btn-text">新增任务</span>
-      </n-button>
-      <help-text class="help-btn">
-        <div>目前只糊了一个勉强能用的版本，其他功能敬请期待</div>
-        <div>支持空任务、专精、加工材料、分解所有重复家具、仓库扫描和线索任务</div>
-        <div>只能增，不能删！！写错了可以【载入心情数据】启动</div>
-        <div>新增加工材料或分解家具任务会唤醒调度器，按任务时间执行</div>
-        <div>其他新增任务不会主动唤醒调度器，休眠期间添加的任务可能延后执行</div>
-        <div>添加完任务可以【载入心情任务】启动</div>
-        <div>空任务，请确保任务房间名字，干员数量正确（没有判定）</div>
-        <div>专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈</div>
-        <div>线索任务，到点跑一次完整的会客室流程（信息板、领线索、摆线索、送线索）</div>
-        <div>在Q群或者频道提以上问题，看心情踢人</div>
-      </help-text>
-      <n-button type="error" @click="show_feedback = true">
-        <template #icon>
-          <n-icon>
-            <chatbubble-icon />
-          </n-icon>
-        </template>
-        <span class="btn-text">反馈问题</span>
-      </n-button>
-      <feedback />
-      <n-button type="info" @click="db_toggle_panel">
-        <template #icon>
-          <n-icon>
-            <server-outline-icon />
-          </n-icon>
-        </template>
-        <span class="btn-text">数据库管理</span>
-      </n-button>
-      <div class="expand"></div>
-      <div class="scroll-container">
-        <n-checkbox v-model:checked="sc_preview">
-          <span class="btn-text">预览截图</span>
-          <span class="btn-text-short">截图</span>
-        </n-checkbox>
-        <n-switch v-model:value="auto_scroll" />
-        <span class="scroll-label">自动滚动</span>
+      </div>
+      <div class="toolbar-options">
+        <div class="view-options" role="group" aria-label="日志显示选项">
+          <div class="view-option">
+            <span>预览截图</span>
+            <n-switch v-model:value="sc_preview" aria-label="预览截图" />
+          </div>
+          <div class="view-option">
+            <span>自动滚动</span>
+            <n-switch v-model:value="auto_scroll" aria-label="自动滚动" />
+          </div>
+        </div>
+        <n-popover
+          v-model:show="show_display_options"
+          trigger="click"
+          placement="top-end"
+          :show-arrow="false"
+          :internal-trap-focus="true"
+        >
+          <template #trigger>
+            <n-button
+              class="display-options-trigger"
+              :aria-label="mobile ? '日志更多操作' : '日志显示选项'"
+              :title="mobile ? '更多操作' : '日志显示选项'"
+              aria-haspopup="dialog"
+              :aria-expanded="show_display_options"
+              :aria-controls="`${toolbar_id}-display`"
+            >
+              <template v-if="mobile" #icon><n-icon :component="MoreIcon" /></template>
+              <span v-if="!mobile">显示</span>
+            </n-button>
+          </template>
+          <div
+            :id="`${toolbar_id}-display`"
+            class="log-display-panel"
+            :class="{ 'log-display-panel--mobile': mobile }"
+            role="dialog"
+            :aria-label="mobile ? '日志更多操作' : '日志显示选项'"
+          >
+            <n-button
+              v-if="mobile"
+              class="database-menu-action"
+              type="info"
+              @click="db_toggle_panel"
+            >
+              <template #icon><n-icon :component="ServerOutlineIcon" /></template>
+              数据库管理
+            </n-button>
+            <div class="view-option">
+              <span>预览截图</span>
+              <n-switch v-model:value="sc_preview" aria-label="预览截图" />
+            </div>
+            <div class="view-option">
+              <span>自动滚动</span>
+              <n-switch v-model:value="auto_scroll" aria-label="自动滚动" />
+            </div>
+            <details v-if="mobile" class="log-task-help">
+              <summary>新增任务说明</summary>
+              <div v-for="line in task_help" :key="line">{{ line }}</div>
+            </details>
+          </div>
+        </n-popover>
+      </div>
+      <div class="process-status" aria-live="polite">
+        <ProcessControl ref="process_control" compact :running="running" />
       </div>
     </div>
-    <n-button
-      class="toggle-table-collapse-btn"
-      size="small"
-      @click="show_task_table = !show_task_table"
-      :focusable="false"
-      v-if="mobile"
-    >
-      <template #icon>
-        <n-icon>
-          <collapse-icon v-if="show_task_table" />
-          <expand-icon v-else />
-        </n-icon>
-      </template>
-    </n-button>
+    <component :is="TaskDialog" v-if="TaskDialog" />
     <n-modal
       v-model:show="show_db_admin"
       preset="card"
       transform-origin="center"
-      style="width: 480px"
+      style="width: min(480px, calc(100vw - 32px))"
     >
       <template #header>
         <div>数据库管理</div>
@@ -637,34 +771,52 @@ async function db_delete(keys) {
 .home-container {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 0 0 0 auto 0 minmax(120px, 1fr) auto;
+  grid-template-rows: minmax(120px, 1fr) auto;
   gap: 0;
   min-height: 0;
   overflow: hidden;
   position: relative;
+  isolation: isolate;
+}
+
+.log-pane {
+  grid-row: 1;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 0 0 0 auto 0 minmax(120px, 1fr);
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  position: relative;
 
   &.with-screenshot {
-    grid-template-rows: var(--log-sc-h, 270px) 8px 0 auto 0 minmax(120px, 1fr) auto;
+    grid-template-rows: var(--log-sc-h, 270px) 8px 0 auto 0 minmax(120px, 1fr);
   }
 
   &.has-tasks {
-    grid-template-rows: 0 0 auto auto 8px minmax(120px, 1fr) auto;
+    grid-template-rows: 0 0 auto auto 8px minmax(120px, 1fr);
 
     &.with-screenshot {
-      grid-template-rows: var(--log-sc-h, 270px) 8px auto auto 8px minmax(120px, 1fr) auto;
+      grid-template-rows: var(--log-sc-h, 270px) 8px auto auto 8px minmax(120px, 1fr);
     }
   }
 }
 
-.sc {
+.log-screenshot {
   grid-row: 1;
+  width: 100%;
+  max-width: 480px;
   justify-self: start;
   align-self: start;
   height: 100%;
   min-height: 0;
   max-height: min(45vh, 500px);
+  border-radius: 6px;
+  z-index: 15;
 
   :deep(img) {
+    height: 100%;
     object-position: left top !important;
   }
 }
@@ -702,7 +854,7 @@ async function db_delete(keys) {
   grid-row: 3;
   width: 100%;
   max-width: 600px;
-  height: auto;
+  min-width: 0;
   min-height: 0;
   max-height: var(--log-task-h, min(600px, 36vh));
   overflow: auto;
@@ -712,8 +864,10 @@ async function db_delete(keys) {
 
 .task-table {
   width: 100%;
+  background: transparent;
 
-  :deep(thead th) {
+  :deep(th),
+  :deep(td) {
     background: transparent !important;
   }
 
@@ -748,78 +902,188 @@ async function db_delete(keys) {
 }
 
 .action-container {
-  grid-row: 7;
+  grid-row: 2;
+  z-index: 1;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
   min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid rgb(128 128 128 / 16%);
+  position: relative;
 
   :deep(.n-button) {
     white-space: nowrap;
     flex-shrink: 0;
   }
-
-  :deep(.n-checkbox) {
-    white-space: nowrap;
-  }
 }
 
-.expand {
-  flex-grow: 1;
-  flex-basis: 0;
+.action-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   min-width: 0;
 }
 
-.scroll-container {
+.execution-control,
+.task-action {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
+}
+
+.execution-control :deep(.start-label) {
+  display: inline;
+}
+
+.toolbar-options {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  white-space: nowrap;
-  flex-shrink: 0;
   margin-left: auto;
+  flex: none;
 }
 
-.scroll-label {
+.view-options {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-right: 8px;
+}
+
+.view-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
   white-space: nowrap;
 }
 
-.btn-text-short {
+.display-options-trigger {
   display: none;
 }
 
-@container main-content (max-width: 500px) {
-  .btn-text {
+.log-display-panel {
+  display: grid;
+  gap: 8px;
+  min-width: min(200px, calc(100dvw / var(--mower-zoom, 1) - 48px));
+  max-width: min(300px, calc(100dvw / var(--mower-zoom, 1) - 48px));
+  max-height: min(420px, calc(100dvh / var(--mower-zoom, 1) - 140px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.log-display-panel .view-option {
+  justify-content: space-between;
+}
+
+.log-display-panel--mobile .view-option,
+.database-menu-action {
+  min-height: 44px;
+}
+
+.log-task-help summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.log-task-help > div {
+  margin-block: 8px;
+  max-width: 260px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.home-container--mobile {
+  width: 100%;
+  height: 100%;
+  padding: 0 0 8px;
+  box-sizing: border-box;
+
+  .log-screenshot {
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .action-container {
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-inline: 8px;
+    padding-top: 8px;
+  }
+
+  .action-buttons {
+    flex-wrap: nowrap;
+  }
+
+  .action-container :deep(.n-button) {
+    min-height: 44px;
+  }
+
+  .database-action,
+  .view-options,
+  .add-task-action .btn-text {
     display: none;
   }
-  .btn-text-short {
-    display: inline;
+
+  .add-task-action,
+  .display-options-trigger {
+    display: inline-flex;
+    width: 44px;
+    padding-inline: 0;
+
+    :deep(.n-button__icon) {
+      margin: 0;
+    }
   }
-  .scroll-label,
-  .help-btn {
+}
+
+.process-status {
+  position: absolute;
+  z-index: 5;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-height: min(50vh, 240px);
+  overflow: auto;
+  overflow-wrap: anywhere;
+
+  &:empty {
     display: none;
+  }
+
+  &:not(:empty) {
+    padding: 10px 12px;
+    border: 1px solid var(--mower-border);
+    border-radius: 8px;
+    color: var(--mower-text);
+    background: var(--mower-surface);
+  }
+}
+
+@container main-content (max-width: 760px) {
+  .view-options {
+    display: none;
+  }
+  .display-options-trigger {
+    display: inline-flex;
   }
 }
 
 @supports not (container-type: inline-size) {
-  @media (max-width: 500px) {
-    .btn-text {
+  @media (max-width: 760px) {
+    .view-options {
       display: none;
     }
-    .btn-text-short {
-      display: inline;
-    }
-    .scroll-label,
-    .help-btn {
-      display: none;
+    .display-options-trigger {
+      display: inline-flex;
     }
   }
-}
-
-.toggle-table-collapse-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
 }
 
 .log-bg {
@@ -827,6 +1091,7 @@ async function db_delete(keys) {
   width: 100%;
   height: 100%;
   position: absolute;
+  z-index: 0;
   top: 0;
   left: 0;
   opacity: v-bind(bg_opacity);
@@ -871,6 +1136,18 @@ async function db_delete(keys) {
   align-items: center;
   justify-content: space-between;
 }
+
+.toggle-table-collapse-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 30;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mower-surface) 94%, transparent);
+}
 </style>
 
 <style>
@@ -909,11 +1186,5 @@ async function db_delete(keys) {
 
 .hljs-scene {
   font-style: italic;
-}
-.sc {
-  max-width: 480px;
-  max-height: 270px;
-  border-radius: 6px;
-  z-index: 15;
 }
 </style>

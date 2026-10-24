@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSSRApp, effectScope, nextTick } from 'vue'
+import { createSSRApp, effectScope, nextTick, ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SoftwareUpdate from './SoftwareUpdate.vue'
+import ResourceUpdate from './ResourceUpdate.vue'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 
-const state = vi.hoisted(() => ({ mounted: [], unmounted: [], client: null, warning: vi.fn() }))
+const state = vi.hoisted(() => ({
+  mounted: [],
+  unmounted: [],
+  switches: new Map(),
+  client: null,
+  config: null,
+  resource: null,
+  warning: vi.fn()
+}))
 
 // Exercise the component's setup and lifecycle without launching a browser.
 vi.mock('vue', async (original) => ({
@@ -15,25 +24,60 @@ vi.mock('vue', async (original) => ({
   onUnmounted: (callback) => state.unmounted.push(callback)
 }))
 vi.mock('naive-ui', async (original) => {
-  const exports = await original()
-  const { defineComponent, h } = await import('vue')
-  const container = defineComponent({
+  const actual = await original()
+  const { h } = await import('vue')
+  const Switch = {
+    props: ['value', 'disabled'],
+    emits: ['update:value'],
+    setup:
+      (props, { attrs, emit }) =>
+      () => {
+        const buttonProps = {
+          role: 'switch',
+          'aria-label': attrs['aria-label'],
+          'aria-checked': props.value,
+          disabled: props.disabled,
+          onClick: () => {
+            if (!props.disabled) emit('update:value', !props.value)
+          }
+        }
+        state.switches.set(attrs['aria-label'], { props: buttonProps })
+        return h('button', buttonProps)
+      }
+  }
+  const container = {
     setup:
       (_, { slots }) =>
       () =>
-        h('div', slots.default?.())
-  })
+        h('section', slots.default?.())
+  }
   return {
-    ...exports,
+    ...actual,
     ...Object.fromEntries(
-      Object.keys(exports)
+      Object.keys(actual)
         .filter((name) => /^N[A-Z]/.test(name))
         .map((name) => [name, container])
     ),
+    NSwitch: Switch,
     useDialog: () => ({ warning: state.warning }),
     useMessage: () => ({ error: vi.fn(), info: vi.fn() })
   }
 })
+vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
+vi.mock('@/stores/plan', () => ({ usePlanStore: () => ({ load_operators: vi.fn() }) }))
+vi.mock('@/stores/resourceVersion', () => ({ useResourceVersionStore: () => state.resource }))
+
+function mountSwitches(componentType, scope) {
+  let exposed
+  const setupState = scope.run(() =>
+    componentType.setup({}, { expose: (value) => (exposed = value) })
+  )
+  return {
+    flushSettings: () => exposed.flushSettings(),
+    render: () => renderToString(createSSRApp({ ...componentType, setup: () => setupState })),
+    switch: (label) => state.switches.get(label)
+  }
+}
 
 describe('offline software package installation', () => {
   let scope
@@ -44,6 +88,7 @@ describe('offline software package installation', () => {
     vi.stubGlobal('sessionStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
     state.mounted = []
     state.unmounted = []
+    state.switches.clear()
     state.warning.mockClear()
     state.client = {
       defaults: { headers: { common: {} } },
@@ -132,6 +177,85 @@ describe('offline software package installation', () => {
       })
     }
   )
+  it('renders saved software switch values and persists changes through update:value', async () => {
+    state.client.post.mockResolvedValue({ data: { ok: true } })
+    const view = mountSwitches(SoftwareUpdate, scope)
+    await Promise.all(state.mounted.map((callback) => callback()))
+    await view.render()
+    const labels = ['自动检查更新', '自动更新', '更新后后台静默重启']
+    for (const label of labels) expect(view.switch(label).props['aria-checked']).toBe(true)
+    state.client.post.mockClear()
+
+    view.switch('自动检查更新').props.onClick()
+    await view.flushSettings()
+    await view.render()
+    expect(view.switch('自动检查更新').props['aria-checked']).toBe(false)
+    expect(view.switch('自动更新').props['aria-checked']).toBe(false)
+    expect(state.client.post.mock.calls.find(([url]) => url.endsWith('/settings'))[1]).toEqual({
+      channel: 'beta',
+      auto_check: false,
+      auto_update: false,
+      background: true
+    })
+
+    state.client.post.mockClear()
+    view.switch('自动更新').props.onClick()
+    await view.flushSettings()
+    await view.render()
+    expect(view.switch('自动检查更新').props['aria-checked']).toBe(true)
+    expect(view.switch('自动更新').props['aria-checked']).toBe(true)
+    expect(state.client.post.mock.calls.find(([url]) => url.endsWith('/settings'))[1]).toEqual({
+      channel: 'beta',
+      auto_check: true,
+      auto_update: true,
+      background: true
+    })
+
+    state.client.post.mockClear()
+    view.switch('更新后后台静默重启').props.onClick()
+    await view.flushSettings()
+    await view.render()
+    expect(view.switch('更新后后台静默重启').props['aria-checked']).toBe(false)
+    expect(
+      state.client.post.mock.calls.find(([url]) => url.endsWith('/settings'))[1].background
+    ).toBe(false)
+  })
+
+  it('renders resource switch values and updates both dependent settings through update:value', async () => {
+    state.config = {
+      resource_update_enable: ref(true),
+      resource_update_auto_update: ref(true),
+      load_item: vi.fn(),
+      load_shop: vi.fn()
+    }
+    state.resource = {
+      canInstall: ref(false),
+      info: ref({}),
+      loading: ref(false),
+      installing: ref(false),
+      install_message: ref(''),
+      job: ref({ status: 'idle' }),
+      progress_error: ref('')
+    }
+    const view = mountSwitches(ResourceUpdate, scope)
+    await view.render()
+    expect(view.switch('自动检查更新').props['aria-checked']).toBe(true)
+    expect(view.switch('自动更新').props['aria-checked']).toBe(true)
+
+    view.switch('自动检查更新').props.onClick()
+    await view.render()
+    expect(state.config.resource_update_enable.value).toBe(false)
+    expect(state.config.resource_update_auto_update.value).toBe(false)
+    expect(view.switch('自动检查更新').props['aria-checked']).toBe(false)
+    expect(view.switch('自动更新').props['aria-checked']).toBe(false)
+
+    view.switch('自动更新').props.onClick()
+    await view.render()
+    expect(state.config.resource_update_enable.value).toBe(true)
+    expect(state.config.resource_update_auto_update.value).toBe(true)
+    expect(view.switch('自动检查更新').props['aria-checked']).toBe(true)
+    expect(view.switch('自动更新').props['aria-checked']).toBe(true)
+  })
 
   it.each([
     { silentRestart: false, restarted: false, reload: false },
@@ -176,6 +300,7 @@ describe('offline software package installation', () => {
     await Promise.all(state.mounted.map((callback) => callback()))
     expect(pendingSoftwarePackage.value).toBeNull()
     expect(component.packageFiles.value[0].file).toBe(file)
+    expect(component.expandedDetails.value).toContain('manual')
     expect(state.client.post).not.toHaveBeenCalled()
     expect(state.warning).not.toHaveBeenCalled()
     const replacement = new File(['replacement'], 'new.zip')
@@ -183,6 +308,31 @@ describe('offline software package installation', () => {
     await nextTick()
     expect(component.packageFiles.value[0].file).toBe(replacement)
     expect(pendingSoftwarePackage.value).toBeNull()
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('reveals a dropped package after update information finishes loading', async () => {
+    let finishInfo
+    const initialGet = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation((url) =>
+      url.endsWith('/info')
+        ? new Promise((resolve) => {
+            finishInfo = resolve
+          })
+        : initialGet(url)
+    )
+    pendingSoftwarePackage.value = new File(['offline'], 'package.zip')
+    component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))
+    const scrollIntoView = vi.fn()
+    component.card.value = { $el: { querySelector: () => ({ scrollIntoView }) } }
+    const mounting = Promise.all(state.mounted.map((callback) => callback()))
+    await nextTick()
+    expect(component.expandedDetails.value).toContain('manual')
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    finishInfo(await initialGet('/software-update/info'))
+    await mounting
+    await nextTick()
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
     expect(state.client.post).not.toHaveBeenCalled()
   })
 

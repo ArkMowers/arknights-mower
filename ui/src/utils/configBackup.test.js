@@ -41,4 +41,14 @@ describe('configuration import reload', () => {
     )
     expect(location.reload).not.toHaveBeenCalled()
   })
+
+  it('reloads an uncertain result without preserving a success notice', () => {
+    const session = storage()
+    session.setItem('mower-config-import-result', '{"message":"earlier import"}')
+    const location = { reload: vi.fn() }
+    reloadImportedConfiguration(null, { session, location })
+    expect(session.getItem('mower-config-imported')).toBe('1')
+    expect(consumeImportResult(session)).toBeNull()
+    expect(location.reload).toHaveBeenCalledOnce()
+  })
 })

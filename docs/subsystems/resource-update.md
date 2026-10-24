@@ -18,6 +18,10 @@ Bundled files declared in `RES_PACKAGE_DATA` can contain CRLF from a Windows che
 
 OTA reconstruction writes only staging files. The resource installer validates the target package against the running Mower version, rejects older resources, publishes an immutable version directory under the process and cross-process install locks, and updates the package index atomically. Cache loading retains task-boundary ownership and restores the previous index and selection on failure. Old generation directories remain available to instances that still use them.
 
+### Installed Resource Metadata
+
+The authenticated `/resource-version` response includes `current_metadata` from the installed `data/version.json`: `activity` and `gacha` retain their names, opening timestamps (`time`) and ending timestamps (`endTime`), while `last_updated` identifies the upstream source snapshot. Activity and gacha timestamps use Unix seconds; neither the resource build date nor `last_updated` defines an expiry date. Missing activity or gacha metadata returns an empty object, and a missing source snapshot returns an empty string. Local-only reads and every remote-check result, including failures, preserve this installed metadata; remote or cached metadata never substitutes for it.
+
 ## 3. Subsystem Invariants
 
 - <a id="operator-avatar-completeness"></a>**Operator Avatar Completeness**: Generation and publication reject missing or unreadable obtainable-operator avatars; section 4 owns conversion and source rules.

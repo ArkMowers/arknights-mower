@@ -11,6 +11,7 @@
       }
     ]"
     data-window-shell
+    :aria-label="title"
   >
     <div
       v-if="nativeControls"
@@ -25,9 +26,43 @@
       @mousedown.left="onDragStart"
       @dblclick.stop="onTitlebarDoubleClick"
     >
-      <img class="window-titlebar__brand-mark" :src="'/favicon.ico'" alt="" />
+      <img class="window-titlebar__brand-mark" :src="'/favicon.ico'" alt="" draggable="false" />
     </div>
-
+    <button
+      v-if="showSidebarToggle"
+      type="button"
+      class="window-titlebar__control window-titlebar__sidebar-toggle"
+      :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+      :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+      :aria-expanded="!sidebarCollapsed"
+      aria-controls="sidebar-navigation"
+      @mousedown.stop
+      @dblclick.stop
+      @click="$emit('toggle-sidebar')"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="3.5" />
+        <path :d="sidebarCollapsed ? 'M7.5 8v8' : 'M9 4v16'" />
+      </svg>
+    </button>
+    <AppMenuBar
+      :active="active"
+      :instance-name="instanceName"
+      :theme="theme"
+      :show-instance-menu="showInstanceMenu"
+      :mower-port="mowerPort"
+      :emulator-name="emulatorName"
+      :adb-port="adbPort"
+      :connection-test-disabled="connectionTestDisabled"
+      :profile-state="profileState"
+      :profile-write-disabled="profileWriteDisabled"
+      :profile-read-disabled="profileReadDisabled"
+      :sidebar-visible="sidebarVisible"
+      @connection-action="$emit('connection-action', $event)"
+      @profile-action="(action, profileId) => $emit('profile-action', action, profileId)"
+      @help-action="$emit('help-action', $event)"
+      @view-action="$emit('view-action', $event)"
+    />
     <div
       class="window-titlebar__drag-region"
       data-window-drag-region
@@ -35,9 +70,6 @@
       @dblclick.stop="onTitlebarDoubleClick"
     >
       <span class="window-titlebar__identity" :title="title">
-        <span class="window-titlebar__product">Mower</span>
-        <span v-if="version" class="window-titlebar__version">{{ version }}</span>
-        <span class="window-titlebar__separator" aria-hidden="true">·</span>
         <span class="window-titlebar__instance"
           >{{ instanceName }}{{ mowerPort ? `@${mowerPort}` : '' }}</span
         >
@@ -93,23 +125,30 @@
 
 <script setup>
 import { onBeforeUnmount } from 'vue'
+import AppMenuBar from './AppMenuBar.vue'
 import { WINDOW_RESIZE_EDGES } from '@/window-shell/adapter.js'
 
 const resizeEdges = WINDOW_RESIZE_EDGES
-
 const props = defineProps({
   active: { type: Boolean, required: true },
   title: { type: String, required: true },
-  version: { type: String, required: true },
   instanceName: { type: String, required: true },
   theme: { type: String, required: true },
+  showInstanceMenu: { type: Boolean, default: true },
   controlSide: { type: String, required: true },
   maximized: { type: Boolean, required: true },
   controls: { type: Array, required: true },
   busy: { type: Object, required: true },
+  sidebarCollapsed: { type: Boolean, default: false },
+  showSidebarToggle: { type: Boolean, default: false },
   mowerPort: { type: String, default: '' },
   emulatorName: { type: String, default: '' },
   adbPort: { type: String, default: '' },
+  connectionTestDisabled: { type: Boolean, default: false },
+  profileState: { type: Object, default: null },
+  profileWriteDisabled: { type: Boolean, default: true },
+  profileReadDisabled: { type: Boolean, default: true },
+  sidebarVisible: { type: Boolean, default: true },
   onControl: { type: Function, required: true },
   onToggleMaximize: { type: Function, required: true },
   resizable: { type: Boolean, required: true },
@@ -118,6 +157,7 @@ const props = defineProps({
   nativeInteractions: { type: Boolean, default: false },
   nativeControls: { type: Boolean, default: false }
 })
+defineEmits(['toggle-sidebar', 'connection-action', 'profile-action', 'view-action', 'help-action'])
 
 // A press on the title bar is handed to the shell only once the pointer actually
 // moves. The shell's move loop then owns the mouse until the button comes up, so
@@ -179,14 +219,18 @@ onBeforeUnmount(stopWatchingDrag)
   --window-titlebar-control: #242220;
   --window-titlebar-hover: rgba(40, 37, 35, 0.07);
   --window-titlebar-pressed: rgba(40, 37, 35, 0.12);
+  --window-titlebar-divider: rgba(40, 37, 35, 0.1);
   --window-titlebar-focus: #18a058;
   display: flex;
   flex: 0 0 36px;
-  align-items: stretch;
+  align-items: flex-start;
   width: 100%;
   height: 36px;
   min-width: 0;
   color: var(--window-titlebar-text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 22px;
   background: transparent;
   border: 0;
   box-sizing: border-box;
@@ -204,51 +248,37 @@ onBeforeUnmount(stopWatchingDrag)
   --window-titlebar-control: rgba(255, 255, 255, 0.9);
   --window-titlebar-hover: rgba(255, 255, 255, 0.08);
   --window-titlebar-pressed: rgba(255, 255, 255, 0.13);
+  --window-titlebar-divider: rgba(255, 255, 255, 0.12);
   --window-titlebar-focus: #63c38a;
 }
 
 .window-titlebar__drag-region {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
-  align-items: center;
+  align-items: flex-start;
   min-width: 0;
   height: 100%;
-  padding: 0 18px 0 4px;
+  padding: 7px 18px 0 11px;
   box-sizing: border-box;
 }
 
 .window-titlebar__identity {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   min-width: 0;
-  gap: 7px;
-  line-height: 1;
-}
-
-.window-titlebar__product {
-  flex: 0 0 auto;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--window-titlebar-text);
-}
-
-.window-titlebar__version {
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--window-titlebar-muted);
+  height: 22px;
 }
 
 .window-titlebar__separator {
-  flex: 0 0 auto;
+  flex: 0 0 24px;
   color: var(--window-titlebar-muted);
+  text-align: center;
 }
 
 .window-titlebar__instance {
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
-  font-weight: 400;
   color: var(--window-titlebar-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -257,7 +287,7 @@ onBeforeUnmount(stopWatchingDrag)
 .window-titlebar__controls {
   display: flex;
   flex: 0 0 auto;
-  height: 100%;
+  height: 36px;
 }
 
 .window-titlebar__native-controls {
@@ -269,7 +299,6 @@ onBeforeUnmount(stopWatchingDrag)
   order: -1;
 }
 
-.window-titlebar__brand,
 .window-titlebar__control {
   position: relative;
   display: inline-grid;
@@ -285,10 +314,42 @@ onBeforeUnmount(stopWatchingDrag)
 }
 
 .window-titlebar__brand {
-  flex: 0 0 44px;
-  width: 44px;
+  position: relative;
   display: inline-grid;
   place-items: center;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 24px;
+  margin-top: 6px;
+  padding: 0 16px 0 12px;
+  box-sizing: border-box;
+}
+
+.window-titlebar__brand::after,
+.window-titlebar__drag-region::before {
+  content: '';
+  position: absolute;
+  width: 1px;
+  height: 14px;
+  background: var(--window-titlebar-divider);
+  pointer-events: none;
+}
+
+.window-titlebar__brand::after {
+  top: 5px;
+  right: 4px;
+}
+
+.window-titlebar__drag-region::before {
+  top: 11px;
+  left: 1px;
+}
+
+.window-titlebar__brand-mark {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .window-titlebar__control:hover:not(:disabled) {
@@ -332,11 +393,57 @@ onBeforeUnmount(stopWatchingDrag)
   vector-effect: non-scaling-stroke;
 }
 
-.window-titlebar__brand-mark {
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
+.window-titlebar__sidebar-toggle {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 24px;
+  margin: 6px 0 0;
+  color: var(--window-titlebar-muted);
+}
+
+.window-titlebar__sidebar-toggle::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: 9px;
+  transform: translate(-50%, -50%);
   pointer-events: none;
+}
+
+.window-titlebar__sidebar-toggle:hover:not(:disabled),
+.window-titlebar__sidebar-toggle:active:not(:disabled) {
+  background: transparent;
+}
+
+.window-titlebar__sidebar-toggle:hover:not(:disabled)::before {
+  background: var(--window-titlebar-hover);
+}
+
+.window-titlebar__sidebar-toggle:active:not(:disabled)::before {
+  background: var(--window-titlebar-pressed);
+}
+
+.window-titlebar__sidebar-toggle:focus-visible {
+  outline: none;
+}
+
+.window-titlebar__sidebar-toggle:focus-visible::before {
+  outline: 2px solid var(--window-titlebar-focus);
+  outline-offset: -2px;
+}
+
+.window-titlebar__sidebar-toggle svg {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
 }
 
 .window-titlebar__resize-grip {

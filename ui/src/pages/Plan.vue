@@ -2,6 +2,7 @@
 defineOptions({ name: 'MowerPlanPage' })
 
 import { useConfigStore } from '@/stores/config'
+import { useResolvedTheme } from '@/composables/theme'
 import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
 import PlanFacilityLevels from '@/components/PlanFacilityLevels.vue'
@@ -17,10 +18,12 @@ import {
   collect_plan_operators
 } from '@/utils/plan_edit'
 import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPersistence'
+import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 
 const router = useRouter()
 const config_store = useConfigStore()
-const { free_blacklist: normal_free_blacklist, theme } = storeToRefs(config_store)
+const { free_blacklist: normal_free_blacklist, theme: themePreference } = storeToRefs(config_store)
+const theme = useResolvedTheme(themePreference)
 
 const { rescue = false } = defineProps({ rescue: Boolean })
 const plan_store = rescue ? useRescuePlanStore() : usePlanStore()
@@ -154,7 +157,7 @@ async function returnToSettings() {
   if (!requireEditing()) return
   try {
     await drainConfigurationSaves(config_store, plan_store)
-    await router.push('/mowersettings')
+    await router.push('/maasettings')
   } catch (error) {
     message.error(error.message || '保存排班失败，请重试')
   }
@@ -251,15 +254,17 @@ async function save() {
   if (browser.getEngine().name == 'WebKit') {
     await toBlob(plan_editor.value.outer)
   }
+  const imageTheme = theme.value
   const blob = await toBlob(plan_editor.value.outer, {
     pixelRatio: 3,
-    backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000',
+    backgroundColor: imageTheme == 'light' ? '#ffffff' : '#000000',
     style: { margin: 0, padding: '8px 0' }
   })
   generating_image.value = false
   loading_bar.finish()
   const form_data = new FormData()
   form_data.append('img', blob)
+  form_data.append('theme', imageTheme)
   const { data } = await axios.post(
     `${import.meta.env.VITE_HTTP_URL}/dialog/save/img${rescue ? '?rescue=1' : ''}`,
     form_data,
@@ -537,18 +542,18 @@ function apply_replace() {
   do_replace()
 }
 
-import DocumentExport from '@vicons/carbon/DocumentExport'
-import DocumentImport from '@vicons/carbon/DocumentImport'
-import IosArrowBack from '@vicons/ionicons4/IosArrowBack'
-import IosArrowForward from '@vicons/ionicons4/IosArrowForward'
-import CodeSlash from '@vicons/ionicons5/CodeSlash'
-import Help from '@vicons/ionicons5/Help'
-import TrashOutline from '@vicons/ionicons5/TrashOutline'
-import AddTaskRound from '@vicons/material/AddTaskRound'
-import RefreshRound from '@vicons/material/RefreshRound'
-import PlusRound from '@vicons/material/PlusRound'
-import Pencil from '@vicons/tabler/Pencil'
-import UndoRound from '@vicons/material/UndoRound'
+import DocumentExport from '@vicons/carbon/es/DocumentExport'
+import DocumentImport from '@vicons/carbon/es/DocumentImport'
+import IosArrowBack from '@vicons/ionicons4/es/IosArrowBack'
+import IosArrowForward from '@vicons/ionicons4/es/IosArrowForward'
+import CodeSlash from '@vicons/ionicons5/es/CodeSlash'
+import Help from '@vicons/ionicons5/es/Help'
+import TrashOutline from '@vicons/ionicons5/es/TrashOutline'
+import AddTaskRound from '@vicons/material/es/AddTaskRound'
+import RefreshRound from '@vicons/material/es/RefreshRound'
+import PlusRound from '@vicons/material/es/PlusRound'
+import Pencil from '@vicons/tabler/es/Pencil'
+import UndoRound from '@vicons/material/es/UndoRound'
 
 async function import_plan({ event }) {
   try {
@@ -718,7 +723,7 @@ function movePlanForward() {
             <template #trigger>
               <n-button
                 class="plan-restore-button"
-                :aria-label="rescue ? '返回' : '还原为当前运行排班表及高级设置'"
+                :aria-label="rescue ? '返回任务配置' : '还原为当前运行排班表及高级设置'"
                 :disabled="edit_locked || (!rescue && !running)"
                 :loading="restoring_running_plan"
                 @click="rescue ? returnToSettings() : restoreRunningPlan()"
@@ -730,7 +735,7 @@ function movePlanForward() {
             </template>
             {{
               rescue
-                ? '返回'
+                ? '返回任务配置'
                 : running
                   ? '还原为当前运行排班表及高级设置'
                   : 'Mower 运行时可还原排班表及高级设置'
@@ -851,7 +856,12 @@ function movePlanForward() {
             :on-before-upload="beforeImport"
             style="width: auto"
             :action="import_url"
-            :headers="{ token: token }"
+            :headers="
+              () => ({
+                token,
+                [CONFIG_GENERATION_HEADER]: axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
+              })
+            "
             :show-file-list="false"
             name="img"
             @finish="import_plan"

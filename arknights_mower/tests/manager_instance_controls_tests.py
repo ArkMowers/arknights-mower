@@ -11,7 +11,7 @@ from yamlcore import CoreLoader
 
 from arknights_mower.utils import manager_instances as controls
 from arknights_mower.utils import update_runtime as runtime
-from manager import Api
+from manager import Api, attach_instance_controls
 from webview_ui import desktop_port
 
 
@@ -161,6 +161,87 @@ def test_single_settings_matching_target_still_rejects_running_process(
     assert not Path(target["path"]).exists()
 
 
+@pytest.mark.parametrize("action", ["remove", "rename", "start", "stop", "select_path"])
+@pytest.mark.parametrize("changed", [False, True])
+def test_row_actions_validate_captured_target_before_side_effects(
+    manager, monkeypatch, action, changed
+):
+    target = dict(manager.instances[0])
+    manager.update_settings(0, {"token": "first", "port": None})
+    manager.add("second", str(manager._storage_path.parent / "second"))
+    manager.update_settings(1, {"token": "second", "port": None})
+    files = [Path(item["path"]) / "config/conf.yml" for item in manager.instances]
+    before_configs = {path: path.read_bytes() for path in files}
+    other = Api(manager._storage_path)
+    if changed:
+        other.remove(0)
+    else:
+        other.add("unrelated", "")
+    before_list = manager._storage_path.read_bytes()
+    current = other.instances[0]
+    if action == "stop":
+        live = dict(record(manager), space=current["path"])
+        monkeypatch.setattr(runtime, "instances", lambda **kwargs: [live])
+    send = Mock()
+    monkeypatch.setattr(runtime, "send_instance_command", send)
+    choose = Mock(return_value=str(manager._storage_path.parent / "selected"))
+    monkeypatch.setattr("manager.choose_instance_directory", choose)
+    monkeypatch.setattr("manager.webview.active_window", lambda: None)
+
+    def apply():
+        if action == "rename":
+            return manager.rename(0, "renamed", target)
+        return getattr(manager, action)(0, target)
+
+    if changed:
+        if action in ("start", "stop"):
+            result = apply()
+            assert result["ok"] is False
+            assert "实例已变化" in result["message"]
+        else:
+            with pytest.raises(ValueError, match="实例已变化"):
+                apply()
+        controls.subprocess.Popen.assert_not_called()
+        send.assert_not_called()
+        choose.assert_not_called()
+        assert manager._storage_path.read_bytes() == before_list
+    else:
+        result = apply()
+        if action == "start":
+            assert result["ok"] is True
+            controls.subprocess.Popen.assert_called_once()
+        elif action == "stop":
+            assert result["ok"] is True
+            send.assert_called_once_with(live, "exit")
+        elif action == "remove":
+            assert all(item["path"] != target["path"] for item in manager.instances)
+        elif action == "rename":
+            assert manager.instances[0]["name"] == "renamed"
+        else:
+            choose.assert_called_once_with(None, target["path"])
+            assert manager.instances[0]["path"] == result
+    assert {path: path.read_bytes() for path in files} == before_configs
+
+
+def test_folder_dialog_rejects_target_replaced_while_choosing(manager, monkeypatch):
+    target = dict(manager.instances[0])
+    manager.add("second", str(manager._storage_path.parent / "second"))
+    other = Api(manager._storage_path)
+    saved = []
+
+    def choose(*args):
+        other.remove(0)
+        saved.append(manager._storage_path.read_bytes())
+        return str(manager._storage_path.parent / "selected")
+
+    monkeypatch.setattr("manager.choose_instance_directory", choose)
+    monkeypatch.setattr("manager.webview.active_window", lambda: None)
+    with pytest.raises(ValueError, match="实例已变化"):
+        manager.select_path(0, target)
+    assert manager._storage_path.read_bytes() == saved[0]
+    assert manager.instances[0] == other.instances[0]
+
+
 def test_duplicate_launch_is_blocked_before_registration_and_after_window_reopen(
     manager,
 ):
@@ -179,6 +260,106 @@ def test_bridge_does_not_expose_filesystem_objects(manager):
         for name, value in inspect.getmembers(manager)
         if not name.startswith("_")
     )
+
+
+def test_attached_controls_share_storage_and_keep_folder_dialog_on_their_window(
+    manager, monkeypatch
+):
+    import manager as manager_module
+
+    monkeypatch.setattr(
+        controls, "get_path", lambda *args, **kwargs: manager._storage_path
+    )
+    window = Mock()
+    other_window = Mock()
+    monkeypatch.setattr(manager_module.webview, "active_window", other_window)
+    choose = Mock(return_value=(str(manager._storage_path.parent / "selected"),))
+    monkeypatch.setattr(manager_module, "choose_instance_directory", choose)
+
+    attached = attach_instance_controls(window)
+    methods = {method.__name__: method for method in window.expose.call_args.args}
+    assert set(methods) == {
+        "get_instances",
+        "mark_ready",
+        "add",
+        "remove",
+        "rename",
+        "select_path",
+        "update_settings",
+        "update_all_settings",
+        "start",
+        "stop",
+        "start_all",
+        "stop_all",
+    }
+    assert all(method.__self__ is attached for method in methods.values())
+    assert methods["mark_ready"]() is None
+    original = manager.instances[0]["path"]
+    methods["rename"](0, "renamed in titlebar")
+    assert manager.get_instances()[0]["name"] == "renamed in titlebar"
+    selected = methods["select_path"](0)
+    choose.assert_called_once_with(window, original)
+    other_window.assert_not_called()
+    assert manager.get_instances()[0]["path"] == selected
+
+
+def test_titlebar_launch_does_not_inherit_parent_instance_recovery(
+    manager, monkeypatch
+):
+    inherited = {
+        "MOWER_SUPERVISOR_DIRECTORY": "parent-supervision",
+        "MOWER_SUPERVISOR_CHILD_REPORT": "parent-report",
+        "MOWER_SUPERVISOR_GENERATION": "parent-generation",
+        "MOWER_SUPERVISOR_INTENT": "parent-intent",
+        "MOWER_RECOVERY_RUN": "1",
+        "MOWER_RESUME_MODE": "1",
+        "MOWER_RESTART_JOB": "parent-update",
+        "MOWER_RESTART_PORT": "58011",
+        "MOWER_RESUME_RUN": "1",
+        "MOWER_LAUNCH_ID": "parent-launch",
+        "MOWER_MANAGER_PORT": "58012",
+        "MOWER_BACKGROUND": "1",
+        "MOWER_DATA_DIR": str(manager._storage_path.parent / "shared-data"),
+        "HTTP_PROXY": "http://proxy.invalid:8080",
+    }
+    for name, value in inherited.items():
+        monkeypatch.setenv(name, value)
+
+    assert manager.start(0) == {"ok": True}
+    environment = controls.subprocess.Popen.call_args.kwargs["env"]
+    assert not any(name.startswith("MOWER_SUPERVISOR_") for name in environment)
+    assert "MOWER_RECOVERY_RUN" not in environment
+    assert "MOWER_RESUME_MODE" not in environment
+    assert environment["MOWER_RESTART_JOB"] == ""
+    assert environment["MOWER_RESTART_PORT"] == ""
+    assert environment["MOWER_RESUME_RUN"] == "0"
+    assert environment["MOWER_LAUNCH_ID"] != "parent-launch"
+    assert len(environment["MOWER_LAUNCH_ID"]) == 32
+    assert environment["MOWER_MANAGER_PORT"] == "0"
+    assert environment["MOWER_BACKGROUND"] == "0"
+    assert environment["MOWER_MANAGED"] == "1"
+    assert environment["MOWER_DATA_DIR"] == inherited["MOWER_DATA_DIR"]
+    assert environment["http_proxy"] == inherited["HTTP_PROXY"]
+    assert {name: controls.os.environ[name] for name in inherited} == inherited
+
+
+def test_corrupt_manager_list_does_not_prevent_attaching_main_window_controls(
+    manager, monkeypatch
+):
+    manager._storage_path.write_text("invalid list", encoding="utf-8")
+    before = manager._storage_path.read_bytes()
+    monkeypatch.setattr(
+        controls, "get_path", lambda *args, **kwargs: manager._storage_path
+    )
+    window = Mock()
+    attach_instance_controls(window)
+    methods = {method.__name__: method for method in window.expose.call_args.args}
+
+    with pytest.raises(ValueError):
+        methods["get_instances"]()
+    with pytest.raises(ValueError):
+        methods["add"]("cannot overwrite", "")
+    assert manager._storage_path.read_bytes() == before
 
 
 def test_separate_api_objects_cannot_admit_concurrent_operations(manager):
@@ -811,6 +992,49 @@ def test_bulk_stop_only_targets_configured_managed_instances(manager, monkeypatc
         "registered",
         "second",
     }
+    assert all(call.args[1] == "exit" for call in send.call_args_list)
+
+
+@pytest.mark.parametrize("attached", [False, True])
+def test_bulk_stop_from_main_window_dispatches_current_instance_last(
+    manager, monkeypatch, attached
+):
+    import manager as manager_module
+
+    current_directory = Path(manager.instances[0]["path"])
+    manager.add("second", str(current_directory.parent / "second"))
+    manager.add("third", str(current_directory.parent / "third"))
+    live = record(manager)
+    second = dict(live, id="second", space=manager.instances[1]["path"])
+    third = dict(live, id="third", space=manager.instances[2]["path"])
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [live, second, third])
+    send = Mock()
+    monkeypatch.setattr(runtime, "send_instance_command", send)
+    original_path = controls.get_path
+    monkeypatch.setattr(
+        controls,
+        "get_path",
+        lambda value, **kwargs: (
+            manager._storage_path
+            if value == "@app/instances.json"
+            else original_path(value, **kwargs)
+        ),
+    )
+    monkeypatch.setattr(
+        manager_module,
+        "get_path",
+        lambda value: current_directory / ".." / current_directory.name,
+    )
+    controller = (
+        attach_instance_controls(Mock()) if attached else Api(manager._storage_path)
+    )
+
+    assert controller.stop_all() == {"ok": True, "message": ""}
+    assert [call.args[0]["id"] for call in send.call_args_list] == (
+        ["second", "third", "registered"]
+        if attached
+        else ["registered", "second", "third"]
+    )
     assert all(call.args[1] == "exit" for call in send.call_args_list)
 
 

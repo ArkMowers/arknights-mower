@@ -374,13 +374,21 @@ const find_playtime_options = [
 <template>
   <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
     <n-form-item label="肉鸽主题">
-      <n-select v-model:value="maa_rg_theme" :options="rogue_themes" />
+      <n-select
+        v-model:value="maa_rg_theme"
+        :options="rogue_themes"
+        :consistent-menu-width="false"
+      />
     </n-form-item>
     <n-form-item label="开局分队">
-      <n-select v-model:value="rogue.squad" :options="squad[maa_rg_theme]" />
+      <n-select
+        v-model:value="rogue.squad"
+        :options="squad[maa_rg_theme]"
+        :consistent-menu-width="false"
+      />
     </n-form-item>
     <n-form-item label="开局职业组">
-      <n-select v-model:value="rogue.roles" :options="roles" />
+      <n-select v-model:value="rogue.roles" :options="roles" :consistent-menu-width="false" />
     </n-form-item>
     <n-form-item>
       <template #label>
@@ -390,6 +398,7 @@ const find_playtime_options = [
         </HelpText>
       </template>
       <n-select
+        :consistent-menu-width="false"
         filterable
         clearable
         :options="operators"
@@ -422,7 +431,7 @@ const find_playtime_options = [
       <n-checkbox v-model:checked="rogue.use_nonfriend_support">开局干员使用非好友助战</n-checkbox>
     </n-form-item>
     <n-form-item label="策略">
-      <n-select :options="mode_options" v-model:value="rogue.mode" />
+      <n-select :options="mode_options" v-model:value="rogue.mode" :consistent-menu-width="false" />
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('monthly_squad_auto_iterate', maa_rg_theme, rogue.mode)"
@@ -462,10 +471,19 @@ const find_playtime_options = [
       label="坍缩范式"
       v-if="is_field_enabled('expected_collapsal_paradigms', maa_rg_theme, rogue.mode)"
     >
-      <n-select multiple :options="col_list" v-model:value="rogue.expected_collapsal_paradigms" />
+      <n-select
+        multiple
+        :options="col_list"
+        v-model:value="rogue.expected_collapsal_paradigms"
+        :consistent-menu-width="false"
+      />
     </n-form-item>
     <n-form-item label="难度">
-      <n-select v-model:value="rogue.difficulty" :options="difficulty_options(maa_rg_theme)" />
+      <n-select
+        v-model:value="rogue.difficulty"
+        :options="difficulty_options(maa_rg_theme)"
+        :consistent-menu-width="false"
+      />
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('stop_at_final_boss', maa_rg_theme, rogue.mode)"
@@ -508,7 +526,11 @@ const find_playtime_options = [
       v-if="is_field_enabled('collectible_mode_squad', maa_rg_theme, rogue.mode)"
       label="烧水分队"
     >
-      <n-select v-model:value="rogue.collectible_mode_squad" :options="collectible_squad_options" />
+      <n-select
+        v-model:value="rogue.collectible_mode_squad"
+        :options="collectible_squad_options"
+        :consistent-menu-width="false"
+      />
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('first_floor_foldartal', maa_rg_theme, rogue.mode)"
@@ -542,13 +564,19 @@ const find_playtime_options = [
       "
       label="刷开局期望奖励"
     >
-      <n-select multiple :options="start_reward_options" v-model:value="start_reward_values" />
+      <n-select
+        multiple
+        :options="start_reward_options"
+        v-model:value="start_reward_values"
+        :consistent-menu-width="false"
+      />
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('blackflow_cultivation_target', maa_rg_theme, rogue.mode)"
       label="目标襁褓动物"
     >
       <n-select
+        :consistent-menu-width="false"
         v-model:value="rogue.blackflow_cultivation_target"
         :options="blackflow_target_options"
       />
@@ -557,7 +585,11 @@ const find_playtime_options = [
       v-if="is_field_enabled('find_playtime_target', maa_rg_theme, rogue.mode)"
       label="目标常乐节点"
     >
-      <n-select v-model:value="rogue.find_playtime_target" :options="find_playtime_options" />
+      <n-select
+        v-model:value="rogue.find_playtime_target"
+        :options="find_playtime_options"
+        :consistent-menu-width="false"
+      />
     </n-form-item>
   </n-form>
 </template>

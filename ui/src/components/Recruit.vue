@@ -1,5 +1,9 @@
 <script setup>
 defineOptions({ name: 'RecruitSettings' })
+defineProps({
+  showEnable: { type: Boolean, default: true },
+  showInterval: { type: Boolean, default: true }
+})
 
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
@@ -19,8 +23,8 @@ const mobile = inject('mobile')
 
 <template>
   <n-card>
-    <template #header>
-      <n-checkbox v-model:checked="recruit_enable">
+    <template v-if="showEnable" #header>
+      <n-checkbox v-model:checked="recruit_enable" aria-label="启用公开招募">
         <div class="card-title">公开招募</div>
       </n-checkbox>
     </template>
@@ -30,7 +34,7 @@ const mobile = inject('mobile')
       label-width="140"
       label-align="left"
     >
-      <n-form-item>
+      <n-form-item v-if="showInterval">
         <template #label>
           <span>启动间隔</span>
           <help-text>可填小数</help-text>

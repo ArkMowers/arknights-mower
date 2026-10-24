@@ -499,7 +499,7 @@
       v-model:show="showSettings"
       preset="card"
       title="通用专精路线预览"
-      style="width: min(900px, 95vw); max-height: 90vh"
+      style="width: min(900px, 95vw)"
       content-style="overflow-y: auto; min-height: 0"
       :mask-closable="false"
       :closable="!routeCalculating"
@@ -651,7 +651,7 @@
       v-model:show="showWorkshopSettings"
       preset="card"
       title="加工站干员设置"
-      style="width: min(600px, 95vw); max-height: 90vh"
+      style="width: min(600px, 95vw)"
       content-style="overflow-y: auto; min-height: 0"
       :mask-closable="false"
       :closable="!workshopDefaultsLoading"
@@ -810,9 +810,9 @@ import {
   useMessage,
   useThemeVars
 } from 'naive-ui'
-import Settings from '@vicons/carbon/Settings'
-import Build from '@vicons/ionicons5/Build'
-import Refresh from '@vicons/ionicons5/Refresh'
+import Settings from '@vicons/carbon/es/Settings'
+import Build from '@vicons/ionicons5/es/Build'
+import Refresh from '@vicons/ionicons5/es/Refresh'
 import axios from 'axios'
 import { useMasteryStore } from '@/stores/mastery'
 import MasterySupports from '@/components/MasterySupports.vue'

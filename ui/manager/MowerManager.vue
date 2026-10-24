@@ -1,14 +1,20 @@
 <script setup>
-import PlusIcon from '@vicons/ionicons5/Add'
-import FolderIcon from '@vicons/ionicons5/FolderOpenOutline'
-import PencilIcon from '@vicons/ionicons5/Pencil'
-import PlayIcon from '@vicons/ionicons5/Play'
-import StopIcon from '@vicons/ionicons5/Stop'
-import SettingsIcon from '@vicons/ionicons5/SettingsOutline'
-import TrashIcon from '@vicons/ionicons5/TrashOutline'
-import WarningIcon from '@vicons/ionicons5/WarningOutline'
+import PlusIcon from '@vicons/ionicons5/es/Add'
+import FolderIcon from '@vicons/ionicons5/es/FolderOpenOutline'
+import PencilIcon from '@vicons/ionicons5/es/Pencil'
+import PlayIcon from '@vicons/ionicons5/es/Play'
+import StopIcon from '@vicons/ionicons5/es/Stop'
+import SettingsIcon from '@vicons/ionicons5/es/SettingsOutline'
+import TrashIcon from '@vicons/ionicons5/es/TrashOutline'
+import WarningIcon from '@vicons/ionicons5/es/WarningOutline'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { initializeManager, managerCall } from './bridge.js'
+import { managerCall } from './bridge.js'
+import { createInstanceManagement } from '../src/utils/instanceManagement.js'
+
+const props = defineProps({
+  embedded: { type: Boolean, default: false },
+  active: { type: Boolean, default: true }
+})
 
 const instances = ref([])
 const loading = ref(true)
@@ -51,7 +57,10 @@ const batchSummary = computed(() => {
 const assistantConfirmation = ref(null)
 const riskAcknowledged = ref(false)
 const riskSeconds = ref(5)
-const unavailable = computed(() => !ready.value || !connected.value || busy.value)
+const unavailable = computed(() => loading.value || !ready.value || !connected.value || busy.value)
+const hasDialog = computed(() =>
+  Boolean(editing.value || deleting.value || confirmation.value || assistantConfirmation.value)
+)
 const riskReady = computed(
   () =>
     Boolean(assistantConfirmation.value) &&
@@ -64,7 +73,8 @@ let riskTimer
 let riskStartedAt = 0
 let disposed = false
 let refreshVersion = 0
-const api = () => window.pywebview.api
+const transport = createInstanceManagement()
+const api = () => transport.api
 const statuses = { stopped: '已停止', starting: '启动中', running: '运行中', stopping: '停止中' }
 
 async function refresh() {
@@ -72,6 +82,10 @@ async function refresh() {
   const loaded = await managerCall(() => api().get_instances())
   if (!Array.isArray(loaded)) throw new Error('实例列表格式不正确')
   if (disposed || version !== refreshVersion) return
+  acceptInstances(loaded)
+}
+
+function acceptInstances(loaded) {
   instances.value = loaded
   connected.value = true
   if (editing.value?.kind === 'batch') {
@@ -123,26 +137,29 @@ async function refresh() {
 }
 
 async function initialize() {
+  const version = ++refreshVersion
   loading.value = true
   initializationError.value = ''
+  error.value = ''
   try {
-    await initializeManager(async (loaded) => {
-      instances.value = loaded
+    await transport.initialize(async (loaded) => {
+      if (disposed || version !== refreshVersion) return
+      acceptInstances(loaded)
       ready.value = true
-      connected.value = true
       await nextTick()
     })
   } catch (failure) {
+    if (disposed || version !== refreshVersion) return
     connected.value = false
     initializationError.value = failure?.message || '无法加载实例列表，请重试'
   } finally {
-    loading.value = false
+    if (!disposed && version === refreshVersion) loading.value = false
   }
 }
 
 async function poll() {
   try {
-    if (ready.value && !busy.value) await refresh()
+    if (props.active !== false && ready.value && !busy.value && !loading.value) await refresh()
   } catch (failure) {
     connected.value = false
     error.value = failure?.message || '无法读取实例状态，请稍后重试'
@@ -223,7 +240,9 @@ function editBatch() {
 }
 
 function selectPath(idx) {
-  return execute(() => api().select_path(idx), { waitForUser: true })
+  if (unavailable.value || !instances.value[idx]?.editable) return
+  const { name, path } = instances.value[idx]
+  return execute(() => api().select_path(idx, { name, path }), { waitForUser: true })
 }
 
 async function save() {
@@ -246,7 +265,7 @@ async function save() {
     return
   }
   if (kind === 'name') {
-    const succeeded = await execute(() => api().rename(idx, draft.value.name))
+    const succeeded = await execute(() => api().rename(idx, draft.value.name, target))
     if (succeeded) editing.value = null
     return
   }
@@ -355,13 +374,14 @@ function confirmBulk(action) {
 async function applyBulk() {
   const action = confirmation.value
   confirmation.value = null
-  await execute(() => window.pywebview.api[action === 'start' ? 'start_all' : 'stop_all']())
+  await execute(() => api()[action === 'start' ? 'start_all' : 'stop_all']())
 }
 
 function lifecycle(idx) {
   const instance = instances.value[idx]
   if (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop) return
-  execute(() => window.pywebview.api[instance.state === 'stopped' ? 'start' : 'stop'](idx))
+  const target = { name: instance.name, path: instance.path }
+  execute(() => api()[instance.state === 'stopped' ? 'start' : 'stop'](idx, target))
 }
 
 function confirmDelete(idx) {
@@ -374,147 +394,174 @@ async function applyDelete() {
   const target = deleting.value
   deleting.value = null
   if (!target) return
-  await execute(() => api().remove(target.idx))
+  await execute(() => api().remove(target.idx, { name: target.name, path: target.path }))
 }
+
+function addInstance() {
+  return execute(() => api().add('新实例', ''))
+}
+
+defineExpose({
+  instances,
+  loading,
+  ready,
+  unavailable,
+  hasDialog,
+  initializationError,
+  initialize,
+  addInstance,
+  edit,
+  editBatch,
+  selectPath,
+  confirmBulk,
+  lifecycle,
+  confirmDelete
+})
 </script>
 
 <template>
-  <div class="mower-list" :data-manager-ready="ready">
-    <n-alert v-if="initializationError" type="error">
-      {{ initializationError }}
-      <template #action><n-button @click="initialize">重新加载</n-button></template>
-    </n-alert>
-    <n-alert v-if="error" type="warning" closable @close="error = ''">{{ error }}</n-alert>
-    <n-alert
-      v-if="batchResult"
-      :title="batchSummary"
-      :type="
-        batchResult.results.some((item) => item.status === 'failed')
-          ? 'error'
-          : batchResult.results.some((item) => item.status === 'skipped')
-            ? 'warning'
-            : 'success'
-      "
-      closable
-      @close="batchResult = null"
-    >
-      <ul
-        v-if="batchResult.results.some((item) => item.status !== 'updated')"
-        class="batch-results"
-      >
-        <li
-          v-for="item in batchResult.results.filter((item) => item.status !== 'updated')"
-          :key="item.idx"
+  <div class="mower-list" :class="{ 'mower-list--embedded': embedded }" :data-manager-ready="ready">
+    <div v-if="initializationError || error || batchResult" class="manager-feedback">
+      <n-alert v-if="initializationError" type="error">
+        {{ initializationError }}
+        <template #action><n-button @click="initialize">重新加载</n-button></template>
+      </n-alert>
+      <n-alert v-if="error" type="warning" closable @close="error = ''">
+        {{ error }}
+        <template #action
+          ><n-button :disabled="loading || busy" @click="initialize">刷新状态</n-button></template
         >
-          {{ item.name }}：{{ item.message }}
-        </li>
-      </ul>
-    </n-alert>
-    <div class="bulk-actions">
-      <n-button
-        :disabled="unavailable || !instances.some((i) => i.can_start)"
-        @click="confirmBulk('start')"
+      </n-alert>
+      <n-alert
+        v-if="batchResult"
+        :title="batchSummary"
+        :type="
+          batchResult.results.some((item) => item.status === 'failed')
+            ? 'error'
+            : batchResult.results.some((item) => item.status === 'skipped')
+              ? 'warning'
+              : 'success'
+        "
+        closable
+        @close="batchResult = null"
       >
-        <template #icon
-          ><n-icon><play-icon /></n-icon></template
-        >全部打开
-      </n-button>
-      <n-button
-        :disabled="unavailable || !instances.some((i) => i.can_stop)"
-        @click="confirmBulk('stop')"
-      >
-        <template #icon
-          ><n-icon><stop-icon /></n-icon></template
-        >全部关闭
-      </n-button>
-      <n-button
-        :disabled="unavailable || !instances.some((item) => item.editable && item.path)"
-        @click="editBatch"
-      >
-        <template #icon
-          ><n-icon><settings-icon /></n-icon></template
-        >批量配置
-      </n-button>
+        <ul
+          v-if="batchResult.results.some((item) => item.status !== 'updated')"
+          class="batch-results"
+        >
+          <li
+            v-for="item in batchResult.results.filter((item) => item.status !== 'updated')"
+            :key="item.idx"
+          >
+            {{ item.name }}：{{ item.message }}
+          </li>
+        </ul>
+      </n-alert>
     </div>
-    <n-skeleton v-if="loading" :height="140" />
-    <n-card v-for="(instance, idx) in instances" :key="idx" size="small">
-      <div class="instance-heading">
-        <strong class="instance-name">{{ instance.name }}</strong>
-        <n-tag size="small" :type="instance.state === 'running' ? 'success' : 'default'">{{
-          statuses[instance.state]
-        }}</n-tag>
+    <template v-if="!embedded">
+      <div class="bulk-actions">
         <n-button
-          :type="instance.state === 'stopped' ? 'primary' : 'error'"
-          size="small"
-          :disabled="
-            unavailable || (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop)
-          "
-          @click="lifecycle(idx)"
+          :disabled="unavailable || !instances.some((i) => i.can_start)"
+          @click="confirmBulk('start')"
         >
           <template #icon
-            ><n-icon><play-icon v-if="instance.state === 'stopped'" /><stop-icon v-else /></n-icon
-          ></template>
-          {{ instance.state === 'stopped' ? '启动' : '停止' }}
+            ><n-icon><play-icon /></n-icon></template
+          >全部打开
+        </n-button>
+        <n-button
+          :disabled="unavailable || !instances.some((i) => i.can_stop)"
+          @click="confirmBulk('stop')"
+        >
+          <template #icon
+            ><n-icon><stop-icon /></n-icon></template
+          >全部关闭
+        </n-button>
+        <n-button
+          :disabled="unavailable || !instances.some((item) => item.editable && item.path)"
+          @click="editBatch"
+        >
+          <template #icon
+            ><n-icon><settings-icon /></n-icon></template
+          >批量配置
         </n-button>
       </div>
-      <div class="instance-tools">
-        <n-button
-          size="tiny"
-          title="修改实例名称"
-          aria-label="修改实例名称"
-          :disabled="unavailable || !instance.editable"
-          @click="edit(idx, 'name')"
-          ><template #icon
-            ><n-icon><pencil-icon /></n-icon></template
-        ></n-button>
-        <n-button
-          size="tiny"
-          title="实例配置"
-          aria-label="实例配置"
-          :disabled="unavailable || !instance.editable || !instance.path"
-          @click="edit(idx, 'settings')"
-          ><template #icon
-            ><n-icon><settings-icon /></n-icon></template
-        ></n-button>
-        <n-button
-          size="tiny"
-          title="选择保存目录"
-          aria-label="选择保存目录"
-          :disabled="unavailable || !instance.editable"
-          @click="selectPath(idx)"
-          ><template #icon
-            ><n-icon><folder-icon /></n-icon></template
-        ></n-button>
-        <n-button
-          size="tiny"
-          type="error"
-          ghost
-          title="删除实例"
-          aria-label="删除实例"
-          :disabled="unavailable || !instance.editable"
-          @click="confirmDelete(idx)"
-          ><template #icon
-            ><n-icon><trash-icon /></n-icon></template
-        ></n-button>
-      </div>
-      <code class="folder-content">{{ instance.path || '未选择保存目录' }}</code>
-      <div class="connection-info">
-        <span>端口：{{ instance.port || '随机' }}</span
-        ><span>Token：{{ instance.token ? '已设置' : '未设置' }}</span>
-      </div>
-      <div v-if="instance.reason && instance.state === 'stopped'" class="reason">
-        {{ instance.reason }}
-      </div>
-    </n-card>
-    <n-button
-      v-if="ready"
-      dashed
-      :disabled="unavailable"
-      @click="execute(() => api().add('新实例', ''))"
-      ><template #icon
-        ><n-icon><plus-icon /></n-icon></template
-      >添加实例</n-button
-    >
+      <n-skeleton v-if="loading" :height="140" />
+      <n-card v-for="(instance, idx) in instances" :key="idx" size="small">
+        <div class="instance-heading">
+          <strong class="instance-name">{{ instance.name }}</strong>
+          <n-tag size="small" :type="instance.state === 'running' ? 'success' : 'default'">{{
+            statuses[instance.state]
+          }}</n-tag>
+          <n-button
+            :type="instance.state === 'stopped' ? 'primary' : 'error'"
+            size="small"
+            :disabled="
+              unavailable ||
+              (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop)
+            "
+            @click="lifecycle(idx)"
+          >
+            <template #icon
+              ><n-icon><play-icon v-if="instance.state === 'stopped'" /><stop-icon v-else /></n-icon
+            ></template>
+            {{ instance.state === 'stopped' ? '启动' : '停止' }}
+          </n-button>
+        </div>
+        <div class="instance-tools">
+          <n-button
+            size="tiny"
+            title="修改实例名称"
+            aria-label="修改实例名称"
+            :disabled="unavailable || !instance.editable"
+            @click="edit(idx, 'name')"
+            ><template #icon
+              ><n-icon><pencil-icon /></n-icon></template
+          ></n-button>
+          <n-button
+            size="tiny"
+            title="实例配置"
+            aria-label="实例配置"
+            :disabled="unavailable || !instance.editable || !instance.path"
+            @click="edit(idx, 'settings')"
+            ><template #icon
+              ><n-icon><settings-icon /></n-icon></template
+          ></n-button>
+          <n-button
+            size="tiny"
+            title="选择保存目录"
+            aria-label="选择保存目录"
+            :disabled="unavailable || !instance.editable"
+            @click="selectPath(idx)"
+            ><template #icon
+              ><n-icon><folder-icon /></n-icon></template
+          ></n-button>
+          <n-button
+            size="tiny"
+            type="error"
+            ghost
+            title="删除实例"
+            aria-label="删除实例"
+            :disabled="unavailable || !instance.editable"
+            @click="confirmDelete(idx)"
+            ><template #icon
+              ><n-icon><trash-icon /></n-icon></template
+          ></n-button>
+        </div>
+        <code class="folder-content">{{ instance.path || '未选择保存目录' }}</code>
+        <div class="connection-info">
+          <span>端口：{{ instance.port || '随机' }}</span
+          ><span>Token：{{ instance.token ? '已设置' : '未设置' }}</span>
+        </div>
+        <div v-if="instance.reason && instance.state === 'stopped'" class="reason">
+          {{ instance.reason }}
+        </div>
+      </n-card>
+      <n-button v-if="ready" dashed :disabled="unavailable" @click="addInstance"
+        ><template #icon
+          ><n-icon><plus-icon /></n-icon></template
+        >添加实例</n-button
+      >
+    </template>
     <n-modal
       :show="!!confirmation"
       preset="dialog"
@@ -565,7 +612,7 @@ async function applyDelete() {
             ? '批量实例配置'
             : '实例配置'
       "
-      class="settings-dialog"
+      class="instance-settings-dialog"
       :style="{
         width:
           displayedEditing?.kind === 'batch'
@@ -801,6 +848,22 @@ async function applyDelete() {
   flex-direction: column;
   gap: 10px;
 }
+.manager-feedback {
+  display: grid;
+  gap: 10px;
+}
+.mower-list--embedded {
+  display: contents;
+}
+.mower-list--embedded .manager-feedback {
+  position: fixed;
+  z-index: 2100;
+  top: 48px;
+  right: 16px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 72px);
+  overflow: auto;
+}
 .bulk-actions,
 .instance-heading,
 .instance-tools,
@@ -828,13 +891,15 @@ async function applyDelete() {
 .folder-content {
   display: block;
   overflow-wrap: anywhere;
-  color: #555;
+  color: inherit;
+  opacity: 0.7;
   font-size: 12px;
 }
 .connection-info {
   flex-wrap: wrap;
   margin-top: 8px;
-  color: #666;
+  color: inherit;
+  opacity: 0.65;
   font-size: 12px;
 }
 .reason {
@@ -868,12 +933,13 @@ async function applyDelete() {
 .batch-change-count {
   margin-right: auto;
   font-size: 13px;
-  color: #666;
+  color: inherit;
+  opacity: 0.65;
 }
 .batch-table-scroll {
   max-height: min(440px, calc(100dvh - 260px));
   overflow: auto;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--n-border-color, #e5e7eb);
 }
 .batch-table {
   width: 100%;
@@ -901,21 +967,21 @@ async function applyDelete() {
 .batch-table td {
   padding: 10px;
   text-align: left;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
+  border-bottom: 1px solid var(--n-border-color, #e5e7eb);
+  background: var(--n-color, #fff);
 }
 .batch-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #f5f6f8;
+  background: var(--n-action-color, #f5f6f8);
   font-weight: 500;
 }
 .batch-table th:first-child {
   position: sticky;
   left: 0;
   z-index: 1;
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid var(--n-border-color, #e5e7eb);
 }
 .batch-table thead th:first-child {
   z-index: 3;

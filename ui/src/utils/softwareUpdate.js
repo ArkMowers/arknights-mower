@@ -1,3 +1,14 @@
+export async function requestSoftwareUpdateCheck(axios, channel) {
+  const base = `${import.meta.env.VITE_HTTP_URL || ''}/software-update`
+  const { data } = await axios.post(
+    `${base}/check`,
+    { channel },
+    { headers: { 'X-Mower-Update': '1' } }
+  )
+  if (!data.ok) throw new Error(data.message || '软件检查未完成')
+  return data
+}
+
 export function confirmSoftwareInstall(
   dialogs,
   currentVersion,

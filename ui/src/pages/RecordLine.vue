@@ -357,13 +357,17 @@ const chartOptions = {
 <style scoped>
 .mood-page {
   min-width: 0;
-  padding: 4px 12px 20px;
+  padding: var(--page-padding);
+  padding-bottom: 20px;
 }
+
 .page-title {
   text-align: center;
   font-size: 24px;
+  font-weight: 600;
   margin: 6px 0 12px;
 }
+
 .mood-page-tools {
   display: flex;
   justify-content: center;
@@ -374,12 +378,14 @@ const chartOptions = {
   opacity: 0.86;
   margin: 0 auto 14px;
 }
+
 .history-note {
   text-align: center;
   font-size: 12px;
   color: #b07b18;
   padding: 5px;
 }
+
 .group-head {
   display: flex;
   align-items: center;
@@ -388,6 +394,7 @@ const chartOptions = {
   padding-left: 28px;
   min-height: 33px;
 }
+
 .group-head h2 {
   font-size: 18px;
   text-align: center;
@@ -398,10 +405,12 @@ const chartOptions = {
   flex: 1;
   margin: 0;
 }
+
 .group-head-actions {
   display: flex;
   flex: 0 0 auto;
 }
+
 .observation-description {
   text-align: center;
   font-size: 11px;
@@ -410,9 +419,11 @@ const chartOptions = {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .observation-missing {
   color: #b77a26;
 }
+
 .card-controls {
   display: flex;
   flex-wrap: wrap;
@@ -422,9 +433,11 @@ const chartOptions = {
   font-size: 10px;
   padding: 3px 0 2px;
 }
+
 .card-controls span {
   opacity: 0.7;
 }
+
 .line-outer-container {
   flex: 1;
   min-height: 130px;
@@ -433,22 +446,26 @@ const chartOptions = {
   min-height: 0;
   margin-top: 4px;
 }
+
 .line-inner-container {
   box-sizing: border-box;
   height: 100%;
   padding: 0 3px 12px;
   min-width: 100%;
 }
+
 .fullscreen-chart {
   flex: 1;
   min-height: 0;
   height: 100%;
   overflow: hidden;
 }
+
 .fullscreen-chart :deep(canvas),
 .line-inner-container :deep(canvas) {
   max-height: 100%;
 }
+
 .no-history {
   display: flex;
   align-items: center;
@@ -459,10 +476,13 @@ const chartOptions = {
   font-size: 12px;
   opacity: 0.66;
 }
-@media (max-width: 450px) {
+
+@media (max-width: 640px) {
   .mood-page {
-    padding: 3px 5px 12px;
+    padding: var(--page-padding-mobile);
+    padding-bottom: 12px;
   }
+
   .group-head h2 {
     font-size: 16px;
   }

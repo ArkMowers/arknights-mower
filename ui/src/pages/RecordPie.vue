@@ -243,19 +243,24 @@ const pieOptions = {
 <style scoped>
 .mood-page {
   min-width: 0;
-  padding: 4px 12px 18px;
+  padding: var(--page-padding);
+  padding-bottom: 18px;
 }
+
 .page-title {
   text-align: center;
   font-size: 24px;
+  font-weight: 600;
   margin: 6px 0 9px;
 }
+
 .order-note {
   text-align: center;
   margin: 0 auto 12px;
   font-size: 12px;
   opacity: 0.75;
 }
+
 .cleanup-toolbar {
   display: flex;
   align-items: center;
@@ -264,6 +269,7 @@ const pieOptions = {
   gap: 8px;
   margin-bottom: 16px;
 }
+
 .group-head {
   display: flex;
   justify-content: center;
@@ -271,11 +277,13 @@ const pieOptions = {
   gap: 6px;
   padding: 27px 5px 3px;
 }
+
 .group-title {
   min-width: 100px;
   max-width: calc(100% - 48px);
   font-size: 16px;
 }
+
 .pie-area {
   width: 100%;
   flex: 1;
@@ -283,11 +291,13 @@ const pieOptions = {
   padding: 3px 18px;
   box-sizing: border-box;
 }
+
 .agent-details {
   overflow: auto;
   flex: 1;
   margin-top: 9px;
 }
+
 .agent-detail {
   display: flex;
   justify-content: space-between;
@@ -311,6 +321,7 @@ const pieOptions = {
   outline: 2px solid #358f78;
   outline-offset: -2px;
 }
+
 .no-history {
   flex: 1;
   display: flex;
@@ -318,19 +329,23 @@ const pieOptions = {
   justify-content: center;
   opacity: 0.66;
 }
+
 .card-hint {
   font-size: 10px;
   text-align: center;
   opacity: 0.6;
   padding-top: 3px;
 }
+
 .load-error {
   color: #b67424;
   text-align: center;
 }
-@media (max-width: 450px) {
+
+@media (max-width: 640px) {
   .mood-page {
-    padding: 2px 5px 10px;
+    padding: var(--page-padding-mobile);
+    padding-bottom: 10px;
   }
 }
 </style>

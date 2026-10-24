@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mower 离线预览</title>
+    <script>
+      window.WebSocket = class extends EventTarget {
+        static CONNECTING = 0
+        static OPEN = 1
+        static CLOSING = 2
+        static CLOSED = 3
+        constructor(url) {
+          super()
+          this.url = url
+          this.readyState = 0
+          setTimeout(() => {
+            this.readyState = 1
+            this.dispatchEvent(new Event('open'))
+          }, 0)
+        }
+        send() {}
+        close() {
+          this.readyState = 3
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/preview/main.js"></script>
+  </body>
+</html>

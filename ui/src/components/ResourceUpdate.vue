@@ -7,6 +7,7 @@ import { usePlanStore } from '@/stores/plan'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 import { getDroppedFile, postManualUpdate } from '@/utils/manualUpdate'
+import '@/styles/updates.css'
 
 const manual_url = `${import.meta.env.VITE_HTTP_URL}/resource-update/manual`
 
@@ -64,7 +65,7 @@ async function install_resource() {
 }
 
 async function upload_manual_file(file, onProgress) {
-  if (!file || manual_installing.value) return false
+  if (!file || manual_installing.value || installing.value) return false
   manual_installing.value = true
   manual_result.value = '正在应用更新包…'
   try {
@@ -112,108 +113,124 @@ function set_auto_update(checked) {
 </script>
 
 <template>
-  <n-card title="资源更新">
-    <n-form :show-feedback="false" label-placement="left" label-width="72">
-      <n-form-item :show-label="false">
-        <n-checkbox :checked="resource_update_enable" @update:checked="set_auto_check">
-          自动检查更新
-        </n-checkbox>
-        <span class="hint">打开 Mower 时自动检查资源包</span>
-      </n-form-item>
-      <n-form-item :show-label="false">
-        <n-checkbox :checked="resource_update_auto_update" @update:checked="set_auto_update">
-          自动更新
-        </n-checkbox>
-        <span class="hint">发现新资源包后自动安装</span>
-      </n-form-item>
-      <n-form-item label="当前版本">
-        <span>{{ info.current_display || '未安装' }}</span>
-        <span v-if="info.current_version" class="hint">（{{ info.current_version }}）</span>
-      </n-form-item>
-      <n-form-item label="最新版本">
-        <span>{{ info.remote_display || '—' }}</span>
-        <span v-if="info.remote_version" class="hint">（{{ info.remote_version }}）</span>
-        <n-tag v-if="info.update_available === true" type="warning">可更新</n-tag>
-        <n-tag v-else-if="info.update_available === false" type="success">已是最新</n-tag>
-        <n-tag v-else-if="info.error" type="error">{{ info.error }}</n-tag>
-      </n-form-item>
-      <n-form-item :show-label="false">
-        <n-space>
-          <n-button size="small" :loading="loading" @click="loadResourceVersion(true)">
-            检查更新
-          </n-button>
-          <n-button
-            size="small"
-            type="primary"
-            :loading="installing"
-            :disabled="!canInstall"
-            @click="install_resource"
-          >
-            下载并安装
-          </n-button>
-        </n-space>
-      </n-form-item>
-      <n-form-item v-if="showProgress" :show-label="false">
-        <div class="resource-progress" aria-live="polite">
-          <n-progress
-            type="line"
-            :percentage="job.progress ?? 100"
-            :show-indicator="job.progress != null"
-            :processing="installing"
-            :status="
-              job.status === 'error' ? 'error' : job.status === 'success' ? 'success' : 'default'
-            "
-          />
-          <p>{{ job.message }}</p>
-          <p v-if="job.current">
-            已下载 {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
-              / {{ (job.total / 1048576).toFixed(1) }} MiB</span
-            >
-          </p>
-          <p v-if="progress_error">{{ progress_error }}</p>
-        </div>
-      </n-form-item>
-      <n-form-item v-if="install_message && showProgress && !job.message" :show-label="false">
-        <span>{{ install_message }}</span>
-      </n-form-item>
-      <n-form-item :show-label="false">
-        <span class="hint">
-          优先下载 OTA 增量包，不可用时自动下载整包。同一套 mower
-          的所有实例共用资源包，空闲实例自动加载；仅软件更新需要重启 Mower
-        </span>
-      </n-form-item>
-      <n-form-item label="手动应用">
-        <n-upload
-          style="width: 100%"
-          accept=".zip"
-          :custom-request="request_manual_update"
-          :disabled="manual_installing"
-          :show-file-list="false"
+  <n-card title="资源更新" class="update-card">
+    <div class="update-overview">
+      <div class="update-installed">
+        <span class="update-caption" data-settings-label="当前版本">当前版本</span>
+        <strong class="update-version">{{ info.current_display || '未安装' }}</strong>
+        <span v-if="info.current_version" class="update-caption update-version-value">{{
+          info.current_version
+        }}</span>
+      </div>
+      <div class="update-actions">
+        <n-button
+          :loading="loading"
+          :disabled="installing || manual_installing"
+          @click="loadResourceVersion(true)"
+          >检查更新</n-button
         >
-          <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="drop_manual_update">
-            <div>点击或拖入更新包</div>
-            <div class="hint">支持资源整包和对应当前版本的 OTA 包，用于网络不稳时手动更新</div>
-          </n-upload-dragger>
-        </n-upload>
+        <n-button
+          v-if="info.update_available === true"
+          type="primary"
+          :loading="installing"
+          :disabled="!canInstall || manual_installing"
+          @click="install_resource"
+          >下载并安装</n-button
+        >
+      </div>
+    </div>
+    <div class="update-status" role="status" data-settings-label="最新版本">
+      <template v-if="loading">正在检查最新资源版本…</template>
+      <template v-else-if="info.update_available != null">
+        <n-tag v-if="info.update_available" size="small" :bordered="false" type="warning"
+          >可更新</n-tag
+        >
+        <n-tag v-else size="small" :bordered="false" type="success">已是最新</n-tag>
+        <span v-if="info.remote_display">最新版本 {{ info.remote_display }}</span>
+        <span v-if="info.remote_version" class="update-caption update-version-value">{{
+          info.remote_version
+        }}</span>
+      </template>
+      <span v-else class="update-caption">检查更新以获取最新资源包。</span>
+    </div>
+    <n-alert v-if="info.error" type="error" title="资源检查未完成" role="alert">{{
+      info.error
+    }}</n-alert>
+
+    <div v-if="showProgress" class="update-progress" aria-live="polite">
+      <n-progress
+        type="line"
+        :percentage="job.progress ?? 100"
+        :show-indicator="job.progress != null"
+        :processing="installing"
+        :status="
+          job.status === 'error' ? 'error' : job.status === 'success' ? 'success' : 'default'
+        "
+      />
+      <p>{{ job.message || install_message }}</p>
+      <p v-if="job.current" class="update-caption">
+        已下载 {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
+          / {{ (job.total / 1048576).toFixed(1) }} MiB</span
+        >
+      </p>
+      <p v-if="progress_error">{{ progress_error }}</p>
+    </div>
+
+    <n-form class="update-preferences" :show-feedback="false" label-placement="left">
+      <n-form-item>
+        <template #label>
+          <span class="settings-row-copy">
+            <span>自动检查更新</span>
+            <span class="settings-row-description">打开 Mower 时自动检查资源包</span>
+          </span>
+        </template>
+        <n-switch
+          :value="resource_update_enable"
+          aria-label="自动检查更新"
+          @update:value="set_auto_check"
+        />
       </n-form-item>
-      <n-form-item v-if="manual_result" :show-label="false">
-        <span>{{ manual_result }}</span>
+      <n-form-item>
+        <template #label>
+          <span class="settings-row-copy">
+            <span>自动更新</span>
+            <span class="settings-row-description">发现新资源包后自动安装</span>
+          </span>
+        </template>
+        <n-switch
+          :value="resource_update_auto_update"
+          aria-label="自动更新"
+          @update:value="set_auto_update"
+        />
       </n-form-item>
     </n-form>
+    <p class="update-footnote">
+      优先下载 OTA 增量包，不可用时自动下载整包。同一套 Mower
+      的全部实例共用资源包，空闲时自动加载，无需重启 Mower。
+    </p>
+    <n-collapse class="update-details">
+      <n-collapse-item
+        title="从本地资源包更新"
+        name="manual"
+        data-settings-label="从本地资源包更新"
+      >
+        <div class="update-manual">
+          <n-upload
+            accept=".zip"
+            :custom-request="request_manual_update"
+            :disabled="manual_installing || installing"
+            :show-file-list="false"
+          >
+            <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="drop_manual_update">
+              <div>点击或拖入资源更新包</div>
+              <p class="update-caption">
+                支持资源整包和对应当前版本的 OTA 包，用于网络不稳时手动更新
+              </p>
+            </n-upload-dragger>
+          </n-upload>
+        </div>
+      </n-collapse-item>
+    </n-collapse>
+    <p v-if="manual_result" class="update-result" role="status">{{ manual_result }}</p>
   </n-card>
 </template>
-
-<style scoped>
-.resource-progress {
-  width: 100%;
-  font-variant-numeric: tabular-nums;
-}
-.resource-progress p {
-  margin: 8px 0 0;
-}
-.hint {
-  margin-left: 8px;
-  font-size: 12px;
-  opacity: 0.6;
-}
-</style>

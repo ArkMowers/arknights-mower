@@ -1,11 +1,17 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import axios from 'axios'
-import List from '@vicons/carbon/List'
+import List from '@vicons/carbon/es/List'
 import draggable from 'vuedraggable'
 import { interleaveMasteryPlans } from '@/utils/masteryPlanOrder'
 import { pinyin_match } from '@/utils/common'
+import { normalizeSortablePreview } from '@/utils/sortablePreview'
+import '@/styles/drag.css'
 
+const dragAnimation =
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 0
+    : 180
 const props = defineProps({
   revision: { type: String, default: '' },
   recommendations: { type: Array, default: () => [] },
@@ -171,6 +177,11 @@ async function finishDrag() {
   await refreshIfPending()
 }
 
+function startDrag(event) {
+  normalizeSortablePreview(event)
+  dragging.value = true
+}
+
 function keyboardMove(index, direction) {
   if (
     !canDrag({
@@ -307,7 +318,7 @@ watch([show, () => props.revision], ([opened], [wasOpened]) => {
     preset="card"
     title="养成计划"
     size="small"
-    :style="{ width: 'min(620px, calc(100vw - 32px))', maxHeight: 'calc(100dvh - 48px)' }"
+    :style="{ width: 'min(620px, calc(100vw - 32px))' }"
     :content-style="{ minHeight: 0, overflowY: 'auto' }"
   >
     <div class="order-content">
@@ -375,13 +386,21 @@ watch([show, () => props.revision], ([opened], [wasOpened]) => {
             :model-value="sortableItems"
             item-key="key"
             handle=".order-drag-handle"
+            :animation="dragAnimation"
+            easing="cubic-bezier(0.2, 0, 0, 1)"
+            :force-fallback="true"
+            :fallback-on-body="true"
+            :fallback-tolerance="5"
+            ghost-class="mower-drag-ghost"
+            chosen-class="mower-drag-chosen"
+            fallback-class="mower-drag-fallback"
             :disabled="!editable || !!search.trim()"
             :move="canDrag"
             class="crafting-order"
             role="list"
             aria-label="养成计划顺序"
             @update:model-value="commitDrag"
-            @start="dragging = true"
+            @start="startDrag"
             @end="finishDrag"
           >
             <template #item="{ element: item, index }">
@@ -543,6 +562,7 @@ watch([show, () => props.revision], ([opened], [wasOpened]) => {
   opacity: 0.5;
   padding: 8px;
   touch-action: none;
+  user-select: none;
 }
 .order-drag-handle {
   cursor: grab;
@@ -553,6 +573,11 @@ watch([show, () => props.revision], ([opened], [wasOpened]) => {
 .order-drag-locked {
   cursor: not-allowed;
   opacity: 0.2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .crafting-order > * {
+    transition-duration: 0ms !important;
+  }
 }
 @media (max-width: 480px) {
   .crafting-order-row {

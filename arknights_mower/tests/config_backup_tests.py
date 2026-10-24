@@ -3,14 +3,15 @@ import sqlite3
 from contextlib import closing
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from zipfile import ZipFile
 
 import pytest
-from flask import Flask
+from flask import Flask, Request
 
 from arknights_mower.utils import config
 from arknights_mower.utils import config_backup as backup
+from arknights_mower.utils import config_profiles as profiles
 from arknights_mower.views.config_backup import config_backup_bp
 
 
@@ -20,6 +21,7 @@ def storage(tmp_path, monkeypatch):
         return tmp_path / "instance" / name.removeprefix("@app/")
 
     monkeypatch.setattr(backup, "get_path", get_path)
+    monkeypatch.setattr(profiles, "get_path", get_path)
     for attr, name in (
         ("conf_path", "conf.yml"),
         ("plan_path", "plan.json"),
@@ -89,6 +91,28 @@ def test_config_only_legacy_archive_preserves_moved_local_settings(storage):
         assert storage("@app/config/" + name).read_text() == "[]"
 
 
+@pytest.mark.parametrize(
+    "name,legacy_name",
+    [
+        ("growth_plan.json", "tmp/growth_plan.json"),
+        ("workshop_preset.json", "tmp/workshop_preset.json"),
+        ("weekly_plans.yml", "weekly_plans.yml"),
+    ],
+)
+def test_ordinary_backup_import_retains_obsolete_configuration_paths(
+    storage, monkeypatch, name, legacy_name
+):
+    canonical = storage("@app/config/" + name)
+    legacy = storage("@app/" + legacy_name)
+    current = b"plans:\n  current: []\n" if name.endswith(".yml") else b"[]"
+    canonical.write_bytes(current)
+    legacy.write_bytes(b"obsolete configuration")
+    monkeypatch.setattr(config, "_CONFIG_PATH_PAIRS", ((legacy, canonical),))
+    backup.import_configuration(backup.export_archive(include_tmp=False))
+    assert canonical.read_bytes() == current
+    assert legacy.read_bytes() == b"obsolete configuration"
+
+
 @pytest.mark.parametrize("content", ["{", "{}"])
 def test_invalid_growth_archive_rejected_before_writes(storage, content):
     before = config.conf_path.read_bytes()
@@ -115,7 +139,7 @@ def test_rescue_backup_import_migrates_and_reloads(storage, source):
         files["rescue_plan.json"] = json.dumps(separate)
     files["conf.yml"] = json.dumps(conf)
     backup.import_configuration(archive(files))
-    assert "automatic_rescue_plan" not in config.conf_path.read_text()
+    assert "automatic_rescue_plan" not in config.conf_path.read_text(encoding="utf-8")
     assert config.conf.automatic_rescue_enable is True
     config.load_conf()
     if source == "absent":
@@ -128,7 +152,7 @@ def test_rescue_backup_import_migrates_and_reloads(storage, source):
     assert "automatic_rescue_plan" not in backup._object_file(exported, "conf.yml")
     assert (
         json.loads(exported["rescue_plan.json"])["plan1"]
-        == json.loads(config.rescue_plan_path.read_text())["plan1"]
+        == json.loads(config.rescue_plan_path.read_text(encoding="utf-8"))["plan1"]
     )
 
 
@@ -257,6 +281,135 @@ def test_export_preserves_original_bytes_and_includes_persistent_tmp_data(storag
     }
     _, tables = backup.read_archive(backup.export_archive(), include_tmp=True)
     assert set(tables) == {"data.db"}
+
+
+def test_config_only_export_does_not_read_or_include_tmp_data(storage, monkeypatch):
+    def unexpected_snapshot(total):
+        pytest.fail("config-only export must not inspect persistent data")
+
+    monkeypatch.setattr(backup, "_tmp_snapshot", unexpected_snapshot)
+    files, tmp_files = backup.read_archive(
+        backup.export_archive(include_tmp=False), include_tmp=True
+    )
+    assert files["conf.yml"] == config.conf_path.read_bytes()
+    assert files["plan.json"] == config.plan_path.read_bytes()
+    assert tmp_files == {}
+
+
+def test_exact_restore_removes_missing_tmp_data_and_keeps_unrelated_files(storage):
+    for name in backup.TMP_DATA_FILES - {"data.db"}:
+        storage(f"@app/tmp/{name}").write_bytes(b"old data")
+    storage("@app/tmp/unrelated.json").write_bytes(b"unrelated")
+    files = backup.read_archive(backup.export_archive(include_tmp=False))
+
+    backup.import_configuration(
+        archive(files, {"report.csv": b"new report"}), replace_tmp=True
+    )
+
+    assert storage("@app/tmp/report.csv").read_bytes() == b"new report"
+    for name in backup.TMP_DATA_FILES - {"data.db", "report.csv"}:
+        assert not storage(f"@app/tmp/{name}").exists()
+    assert storage("@app/tmp/unrelated.json").read_bytes() == b"unrelated"
+    with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn:
+        assert conn.execute("PRAGMA quick_check").fetchone() == ("ok",)
+        assert conn.execute("SELECT name FROM sqlite_master").fetchall() == []
+
+
+def test_exact_restore_to_missing_database_does_not_create_one(storage):
+    storage("@app/tmp/data.db").unlink()
+    backup.import_configuration(
+        backup.export_archive(include_tmp=False), replace_tmp=True
+    )
+    assert not storage("@app/tmp/data.db").exists()
+
+
+@pytest.mark.parametrize("include_database", [False, True])
+def test_commit_failure_restores_files_runtime_and_original_saved_state(
+    storage, include_database
+):
+    report = storage("@app/tmp/report.csv")
+    report.write_bytes(b"local report")
+    before = backup.export_archive()
+    files, tmp_files = backup.read_archive(before, include_tmp=True)
+    files["conf.yml"] = b"account: imported\n"
+    previous_conf, previous_plan = config.conf, config.plan
+    if not include_database:
+        tmp_files.pop("data.db")
+
+    def fail_commit():
+        assert config.conf_path.read_text(encoding="utf-8").startswith(
+            "account: imported"
+        )
+        assert not report.exists()
+        with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn:
+            if include_database:
+                assert conn.execute("SELECT COUNT(*) FROM saved_state").fetchone() == (
+                    0,
+                )
+            else:
+                assert conn.execute("SELECT name FROM sqlite_master").fetchall() == []
+        assert config.conf is previous_conf and config.plan is previous_plan
+        raise OSError("metadata commit failed")
+
+    tmp_files.pop("report.csv")
+    with pytest.raises(OSError, match="metadata commit failed"):
+        backup.import_configuration(
+            archive(files, tmp_files), replace_tmp=True, commit=fail_commit
+        )
+
+    assert config.conf is previous_conf and config.plan is previous_plan
+    assert backup.read_archive(
+        backup.export_archive(), include_tmp=True
+    ) == backup.read_archive(before, include_tmp=True)
+    with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM saved_state").fetchone() == (1,)
+    assert len(list(storage("@app/config-backups").glob("*.zip"))) == 1
+
+
+def test_exact_restore_invalidates_table_caches_for_real_database_readers(
+    storage, monkeypatch
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import mastery_db
+
+    monkeypatch.setattr(record, "get_path", storage)
+    monkeypatch.setattr(mastery_db, "get_path", storage)
+    monkeypatch.setattr(record, "_tables_created", False)
+    monkeypatch.setattr(mastery_db, "_tables_created", set())
+    with record._conn(), mastery_db._conn():
+        pass
+    assert record._tables_created
+    assert mastery_db._tables_created
+
+    backup.import_configuration(
+        backup.export_archive(include_tmp=False), replace_tmp=True
+    )
+
+    assert not record._tables_created
+    assert not mastery_db._tables_created
+    with record._conn() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM agent_action").fetchone() == (0,)
+    with mastery_db._conn() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM mastery_plan").fetchone()[0] == 0
+
+
+def test_import_commits_metadata_before_publishing_runtime_configuration(storage):
+    previous_conf, previous_plan = config.conf, config.plan
+    calls = []
+
+    def commit():
+        assert config.conf is previous_conf and config.plan is previous_plan
+        with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM saved_state").fetchone() == (0,)
+        calls.append("committed")
+
+    recovery = backup.import_configuration(
+        incoming(**{"conf.yml": "account: changed\n"}), commit=commit
+    )
+    assert calls == ["committed"]
+    assert config.conf.account == "changed"
+    assert config.conf is not previous_conf and config.plan is not previous_plan
+    assert Path(recovery).is_file()
 
 
 def test_tmp_data_and_all_database_tables_round_trip(storage):
@@ -572,6 +725,7 @@ def test_preserves_access_gui_and_state(storage, local_exists, in_archive):
     config.save_conf()
     for name in backup.IMPORT_PRESERVED_FILES:
         if local_exists:
+            (config.conf_path.parent / name).parent.mkdir(parents=True, exist_ok=True)
             (config.conf_path.parent / name).write_bytes(b"local bytes")
     files = {
         "conf.yml": "account: restored\nwebview: {port: invalid, token: other, tray: invalid}\n"
@@ -590,6 +744,31 @@ def test_preserves_access_gui_and_state(storage, local_exists, in_archive):
         assert path.exists() == local_exists
         if local_exists:
             assert path.read_bytes() == b"local bytes"
+
+
+@pytest.mark.parametrize("incoming_lock", [False, True])
+def test_active_gui_process_lock_is_not_exported_or_replaced_by_import(
+    storage, monkeypatch, incoming_lock
+):
+    from arknights_mower.utils.config import gui
+
+    monkeypatch.setattr(gui, "gui_path", config.gui_path)
+    gui.save_window_mode("maximized")
+    files = backup.read_archive(backup.export_archive())
+    if incoming_lock:
+        files["gui.yml.lock"] = b"obsolete lock from an older backup"
+    raw = archive(files)
+    lock_path = config.gui_path.with_suffix(".yml.lock")
+    before_gui = config.gui_path.read_bytes()
+    with gui._gui_file_lock():
+        original_inode = lock_path.stat().st_ino
+        exported = backup.read_archive(backup.export_archive())
+        assert "gui.yml.lock" not in exported
+        backup.import_configuration(raw)
+        assert lock_path.stat().st_ino == original_inode
+        assert config.gui_path.read_bytes() == before_gui
+    gui.save_window_mode("normal")
+    assert gui.load_window_mode() == "normal"
 
 
 @pytest.mark.parametrize(
@@ -683,6 +862,33 @@ def client(storage):
     app.token = "old-token"
     app.config["CONFIG_BACKUP_BUSY"] = lambda: False
     return app.test_client()
+
+
+@pytest.mark.parametrize("token", [None, "different-token"])
+@pytest.mark.parametrize(
+    "method,path,multipart",
+    [
+        ("GET", "/config-backup/export", False),
+        ("HEAD", "/config-backup/export", False),
+        ("POST", "/config-backup/import", False),
+        ("POST", "/config-backup/import", True),
+    ],
+)
+def test_backup_credentials_precede_upload_parsing_and_filesystem_access(
+    client, monkeypatch, token, method, path, multipart
+):
+    forbidden = Mock(side_effect=AssertionError("Unauthorized backup access"))
+    monkeypatch.setattr(Request, "stream", property(forbidden))
+    monkeypatch.setattr(Request, "files", property(forbidden))
+    monkeypatch.setattr(profiles, "import_backup", forbidden)
+    monkeypatch.setattr("arknights_mower.views.config_backup.export_archive", forbidden)
+    headers = {"X-Mower-Settings": "1"}
+    if token is not None:
+        headers["token"] = token
+    data = {"backup": (BytesIO(b"unread"), "backup.zip")} if multipart else b"unread"
+    response = client.open(path, method=method, headers=headers, data=data)
+    assert response.status_code == 403
+    forbidden.assert_not_called()
 
 
 def test_routes_validate_auth_busy_format_and_download(client):

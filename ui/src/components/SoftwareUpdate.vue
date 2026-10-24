@@ -3,10 +3,15 @@ import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from '
 import { useDialog, useMessage } from 'naive-ui'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
-import { confirmForceUpdate, confirmSoftwareInstall } from '@/utils/softwareUpdate'
+import {
+  confirmForceUpdate,
+  confirmSoftwareInstall,
+  requestSoftwareUpdateCheck
+} from '@/utils/softwareUpdate'
 import SourceVersionManager from './SourceVersionManager.vue'
 import SoftwareComponentUpdates from './SoftwareComponentUpdates.vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
+import '@/styles/updates.css'
 
 const axios = inject('axios')
 const messages = useMessage()
@@ -35,6 +40,7 @@ const progressUrl = computed(() => {
   return `${base}/progress#${new URLSearchParams({ token }).toString()}`
 })
 const packageFiles = ref([])
+const expandedDetails = ref([])
 const uploadPercent = ref(0)
 const uploading = ref(false)
 const source = computed(() => info.value?.deployment === 'source')
@@ -118,12 +124,12 @@ function errorMessage(err) {
 }
 
 function selectSoftwarePackage(file) {
-  nextTick(() => card.value?.$el?.scrollIntoView({ block: 'center' }))
   if (running.value) {
     error.value = '正在更新，请等待当前任务完成'
     return
   }
   packageFiles.value = [{ id: 'release-upload', name: file.name, status: 'pending', file }]
+  if (!expandedDetails.value.includes('manual')) expandedDetails.value.push('manual')
 }
 
 function dropSoftwarePackage(event) {
@@ -191,8 +197,7 @@ async function checkUpdate() {
   try {
     await settingsRequest
     await loadInfo()
-    const { data } = await axios.post(`${base}/check`, { channel: channel.value }, { headers })
-    if (!data.ok) throw new Error(data.message)
+    const data = await requestSoftwareUpdateCheck(axios, channel.value)
     checked.value = data
     lastCheckAt = data.checked_at || Date.now() / 1000
   } catch (err) {
@@ -383,6 +388,15 @@ watch(channel, () => {
   lastCheckAt = 0
 })
 watch(
+  [info, () => packageFiles.value[0]?.file],
+  async ([currentInfo, file]) => {
+    if (!currentInfo || !file) return
+    await nextTick()
+    card.value?.$el?.querySelector('.update-manual')?.scrollIntoView({ block: 'nearest' })
+  },
+  { flush: 'post' }
+)
+watch(
   pendingSoftwarePackage,
   (file) => {
     if (!file) return
@@ -409,53 +423,104 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <n-card id="software-update" ref="card" title="软件更新">
-    <n-form :show-feedback="false" label-placement="left" label-width="72">
-      <n-form-item :show-label="false">
-        <n-checkbox :checked="autoCheck" :disabled="!info || running" @update:checked="setAutoCheck"
-          >自动检查更新</n-checkbox
+  <n-card id="software-update" ref="card" title="软件更新" class="update-card">
+    <div class="update-overview">
+      <div class="update-installed">
+        <span class="update-caption" data-settings-label="当前版本">当前版本</span>
+        <strong class="update-version">{{ info?.version || '正在读取…' }}</strong>
+        <span v-if="info" class="update-caption">{{ source ? '源码部署' : 'Release 独立包' }}</span>
+      </div>
+      <div class="update-actions">
+        <n-button :loading="checking" :disabled="running" @click="checkUpdate"> 检查更新 </n-button>
+        <n-button
+          v-if="checked?.available"
+          type="primary"
+          :disabled="blocked || running || checking"
+          :loading="busy"
+          @click="requestInstall(false)"
         >
-        <span class="hint">打开 Mower 时检查所选渠道的软件更新</span>
-      </n-form-item>
-      <n-form-item v-if="info?.capabilities?.auto_update !== false" :show-label="false">
-        <n-checkbox
-          :checked="autoUpdate"
-          :disabled="!info || running"
-          @update:checked="setAutoUpdate"
-          >自动更新</n-checkbox
+          下载并安装
+        </n-button>
+      </div>
+    </div>
+    <div class="update-status" role="status" data-settings-label="最新版本">
+      <template v-if="checking">正在检查所选渠道的最新版本…</template>
+      <template v-else-if="checked">
+        <n-tag v-if="checked.available" size="small" :bordered="false" type="warning">
+          可更新
+        </n-tag>
+        <n-tag v-else size="small" :bordered="false" type="success">已与渠道一致</n-tag>
+        <span v-if="checked.version"
+          >最新版本 <span class="update-version-value">{{ checked.version }}</span></span
         >
-        <span class="hint">升级自动安装并重启全部实例；回退需点击安装并确认</span>
-      </n-form-item>
-      <n-form-item v-if="info?.capabilities?.silent_restart !== false" :show-label="false">
-        <div class="restart-option">
-          <n-checkbox
-            v-model:checked="background"
-            :disabled="running || !info"
-            @update:checked="saveSettings"
-          >
-            更新后后台静默重启
-          </n-checkbox>
-          <span class="hint">{{
-            background ? '不打开窗口，在后台运行' : '重启后正常打开窗口'
-          }}</span>
-        </div>
-      </n-form-item>
-      <n-form-item label="当前版本">
-        <div class="version-row">
-          <span class="version">{{ info?.version || '—' }}</span>
-          <span v-if="info" class="hint">（{{ source ? '源码部署' : 'Release 独立包' }}）</span>
-        </div>
-      </n-form-item>
-      <n-form-item label="最新版本">
-        <div class="version-row">
-          <span class="version">{{ checked?.version || '—' }}</span>
-          <n-tag v-if="checked?.available === true" type="warning">可更新</n-tag>
-          <n-tag v-else-if="checked?.available === false" type="success">已与渠道一致</n-tag>
-        </div>
-      </n-form-item>
-      <n-form-item label="更新渠道">
+        <span v-if="checked.message" class="update-caption">{{ checked.message }}</span>
+      </template>
+      <span v-else class="update-caption">检查更新以获取所选渠道的最新版本。</span>
+    </div>
+
+    <n-alert v-if="error" type="error" title="操作未完成" role="alert">{{ error }}</n-alert>
+    <n-alert v-if="info?.blockers.length" type="warning" title="当前安装需要先处理">
+      <p v-for="message in info.blockers" :key="message">{{ message }}</p>
+    </n-alert>
+
+    <div v-if="showProgress || disconnected" class="update-progress" aria-live="polite">
+      <n-progress
+        v-if="showProgress"
+        type="line"
+        :percentage="job.progress ?? 100"
+        :show-indicator="job.progress != null"
+        :processing="job.status === 'running' && !disconnected"
+        :status="
+          job.status === 'failed'
+            ? 'error'
+            : job.status === 'cancelled'
+              ? 'warning'
+              : job.status === 'succeeded'
+                ? 'success'
+                : 'default'
+        "
+      />
+      <p v-if="showProgress">{{ job.message }}</p>
+      <p v-if="showProgress && job.current" class="update-caption">
+        已下载 {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
+          / {{ (job.total / 1048576).toFixed(1) }} MiB</span
+        >
+      </p>
+      <p v-if="disconnected">更新服务正在交接，稍后自动重试。</p>
+      <div v-if="showProgress" class="update-actions">
+        <n-button size="small" tag="a" :href="progressUrl" target="_blank" rel="noopener noreferrer"
+          >独立更新进度</n-button
+        >
+        <n-button
+          v-if="job.status === 'running'"
+          size="small"
+          :disabled="!job.cancellable || cancelling"
+          :loading="cancelling"
+          @click="cancelUpdate"
+          >取消更新</n-button
+        >
+      </div>
+      <n-collapse v-if="showProgress && (job.log || job.log_path)">
+        <n-collapse-item title="安装日志" name="log">
+          <p v-if="job.log_path" class="update-caption">日志：{{ job.log_path }}</p>
+          <pre v-if="job.log" class="update-notes">{{ job.log }}</pre>
+        </n-collapse-item>
+      </n-collapse>
+    </div>
+
+    <n-form class="update-preferences" :show-feedback="false" label-placement="left">
+      <n-form-item class="update-channel">
+        <template #label>
+          <span class="settings-row-copy">
+            <span>更新渠道</span>
+            <span v-if="selectedChannel" class="settings-row-description">{{
+              selectedChannel.description
+            }}</span>
+          </span>
+        </template>
         <n-select
           v-model:value="channel"
+          :consistent-menu-width="false"
           size="small"
           :options="channelOptions"
           :disabled="running || checking || !info"
@@ -463,106 +528,87 @@ onUnmounted(() => {
           @update:value="saveSettings"
         />
       </n-form-item>
-      <n-form-item v-if="selectedChannel" :show-label="false">
-        <span class="hint">{{ selectedChannel.description }}</span>
-      </n-form-item>
-      <n-form-item :show-label="false">
-        <n-space>
-          <n-button size="small" :loading="checking" :disabled="running" @click="checkUpdate">
-            检查更新
-          </n-button>
-          <n-button
-            size="small"
-            type="primary"
-            :disabled="blocked || running || checking || !checked?.available"
-            :loading="busy"
-            @click="requestInstall(false)"
-          >
-            下载并安装
-          </n-button>
-          <n-button
-            v-if="source"
-            size="small"
-            type="warning"
-            :disabled="!info?.force_supported || running || checking || !checked"
-            :loading="busy"
-            @click="requestForceUpdate"
-          >
-            强制更新
-          </n-button>
-        </n-space>
-      </n-form-item>
-      <n-form-item v-if="info?.rollback_supported" label="版本回退">
-        <n-space align="center">
-          <n-button
-            size="small"
-            :loading="rollbackLoading"
-            :disabled="running || checking"
-            @click="loadRollbackOptions"
-          >
-            查看可回退版本
-          </n-button>
-          <n-select
-            v-model:value="rollbackVersion"
-            size="small"
-            class="rollback-select"
-            placeholder="选择旧版本"
-            :options="rollbackOptions"
-            :disabled="running || rollbackLoading || !rollbackOptions.length"
-            :input-props="{ 'aria-label': '回退目标版本' }"
-          />
-          <n-button
-            size="small"
-            type="warning"
-            :disabled="blocked || running || rollbackLoading || !rollbackVersion"
-            @click="requestRollback"
-          >
-            回退并安装
-          </n-button>
-        </n-space>
-      </n-form-item>
-      <n-form-item v-if="info?.rollback_supported" :show-label="false">
-        <span class="hint">可选择当前版本之前同渠道最近 3 个兼容的 Release；回退需确认。</span>
-      </n-form-item>
-      <n-form-item v-if="checked?.message" :show-label="false">
-        <span>{{ checked.message }}</span>
-      </n-form-item>
-      <n-form-item v-if="error" :show-label="false">
-        <n-alert type="error" title="操作未完成" role="alert">{{ error }}</n-alert>
-      </n-form-item>
-      <n-form-item v-if="info?.blockers.length" :show-label="false">
-        <n-alert type="warning" title="当前安装需要先处理">
-          <p v-for="message in info.blockers" :key="message">{{ message }}</p>
-        </n-alert>
-      </n-form-item>
-      <n-form-item v-if="info?.capabilities?.silent_restart !== false" :show-label="false">
-        <span class="hint"
-          >更新后重启同一安装目录下所有运行实例；原本运行中的实例保留已保存的心情、位置和任务队列（包括跑单与专精任务）继续运行。在线更新与上传安装均使用上方的重启方式。</span
-        >
-      </n-form-item>
-      <n-form-item v-if="source" :show-label="false">
-        <SourceVersionManager
-          :initial-branch="info.settings.source_branch"
-          :initial-remote="info.settings.source_remote"
-          :remotes="info.source_remotes"
-          :running="running || checking"
-          :blocked="blocked"
-          :force-supported="info.force_supported"
-          :instance-count="info.instances.length"
-          @install="(target) => install(target.force, target)"
+      <n-form-item>
+        <template #label>
+          <span class="settings-row-copy">
+            <span>自动检查更新</span>
+            <span class="settings-row-description">打开 Mower 时检查所选渠道的软件更新</span>
+          </span>
+        </template>
+        <n-switch
+          :value="autoCheck"
+          :disabled="!info || running"
+          aria-label="自动检查更新"
+          @update:value="setAutoCheck"
         />
       </n-form-item>
-      <SoftwareComponentUpdates
-        v-for="component in info?.component_updates || []"
-        :key="component.endpoint"
-        :component="component"
-        :disabled="running"
-      />
-      <n-form-item label="手动应用">
-        <span v-if="source" class="hint"
-          >Release 安装包用于独立包部署，源码部署请使用上方在线更新。</span
-        >
-        <n-space v-else-if="info" vertical class="manual-upload" :size="8">
+      <n-form-item v-if="info?.capabilities?.auto_update !== false">
+        <template #label>
+          <span class="settings-row-copy">
+            <span>自动更新</span>
+            <span class="settings-row-description">自动安装所选渠道的不同版本，并重启全部实例</span>
+          </span>
+        </template>
+        <n-switch
+          :value="autoUpdate"
+          :disabled="!info || running"
+          aria-label="自动更新"
+          @update:value="setAutoUpdate"
+        />
+      </n-form-item>
+      <n-form-item v-if="info?.capabilities?.silent_restart !== false">
+        <template #label>
+          <span class="settings-row-copy">
+            <span>更新后后台静默重启</span>
+            <span class="settings-row-description">{{
+              background ? '不打开窗口，在后台运行' : '重启后正常打开窗口'
+            }}</span>
+          </span>
+        </template>
+        <n-switch
+          v-model:value="background"
+          :disabled="running || !info"
+          aria-label="更新后后台静默重启"
+          @update:value="saveSettings"
+        />
+      </n-form-item>
+    </n-form>
+    <p v-if="info?.capabilities?.silent_restart !== false" class="update-footnote">
+      软件更新会重启同一安装目录下的全部运行实例，并按已保存的心情、位置和任务队列继续运行，包括跑单与专精任务。在线更新和手动安装均使用上方的重启方式。
+    </p>
+
+    <n-collapse
+      class="update-details"
+      :expanded-names="expandedDetails"
+      @update:expanded-names="expandedDetails = $event"
+    >
+      <n-collapse-item title="更新渠道与发布说明" name="channels">
+        <p v-for="item in info?.channels || []" :key="item.value">
+          <strong>{{ item.label }}</strong
+          >：{{ item.description }}
+        </p>
+        <p>
+          <a
+            :href="
+              checked?.url ||
+              info?.releases_url ||
+              'https://github.com/ArkMowers/arknights-mower/releases'
+            "
+            target="_blank"
+            rel="noopener noreferrer"
+            >查看发布记录</a
+          >
+        </p>
+        <pre v-if="checked?.notes" class="update-notes">{{ checked.notes }}</pre>
+      </n-collapse-item>
+      <n-collapse-item
+        v-if="!source"
+        id="software-update-manual"
+        title="从本地安装包更新"
+        name="manual"
+        data-settings-label="从本地安装包更新"
+      >
+        <div v-if="info" class="update-manual">
           <n-upload
             v-model:file-list="packageFiles"
             :default-upload="false"
@@ -578,14 +624,14 @@ onUnmounted(() => {
                     : '点击或拖入 Release 安装包')
                 }}
               </div>
-              <div class="hint">
+              <p class="update-caption">
                 {{
                   info.manual_hint ||
                   (info.manual_ota_supported
                     ? 'OTA 包须从当前版本出发；读取包内版本信息，文件名可任意修改'
                     : '读取包内版本信息，文件名可任意修改')
                 }}
-              </div>
+              </p>
             </n-upload-dragger>
           </n-upload>
           <template v-if="uploading">
@@ -594,7 +640,7 @@ onUnmounted(() => {
               :percentage="uploadPercent < 100 ? uploadPercent : undefined"
               processing
             />
-            <span class="hint">{{
+            <span class="update-caption">{{
               uploadPercent < 100 ? '正在上传安装包' : '正在读取包内版本信息'
             }}</span>
           </template>
@@ -605,142 +651,74 @@ onUnmounted(() => {
             :disabled="blocked || running"
             :loading="busy"
             @click="requestInstall(true)"
+            >{{ info.install_label || '安装并重启' }}</n-button
           >
-            {{ info.install_label || '安装并重启' }}
-          </n-button>
-        </n-space>
-        <span v-else>—</span>
-      </n-form-item>
-      <n-form-item v-if="!source && info?.platform === 'darwin'" :show-label="false">
-        <span class="hint">若 macOS 拦截更新后启动，请在“隐私与安全性”中允许打开。</span>
-      </n-form-item>
-      <n-form-item :show-label="false">
-        <n-collapse>
-          <n-collapse-item title="更新渠道与发布说明" name="channels">
-            <p v-for="item in info?.channels || []" :key="item.value">
-              <strong>{{ item.label }}</strong
-              >：{{ item.description }}
-            </p>
-            <p>
-              <a
-                :href="
-                  checked?.url ||
-                  info?.releases_url ||
-                  'https://github.com/ArkMowers/arknights-mower/releases'
-                "
-                target="_blank"
-                rel="noopener noreferrer"
-                >查看发布记录</a
-              >
-            </p>
-            <pre v-if="checked?.notes" class="notes">{{ checked.notes }}</pre>
-          </n-collapse-item>
-        </n-collapse>
-      </n-form-item>
-      <n-form-item v-if="showProgress || disconnected" :show-label="false">
-        <div class="update-progress" aria-live="polite">
-          <n-progress
-            v-if="showProgress"
-            type="line"
-            :percentage="job.progress ?? 100"
-            :show-indicator="job.progress != null"
-            :processing="job.status === 'running' && !disconnected"
-            :status="
-              job.status === 'failed'
-                ? 'error'
-                : job.status === 'cancelled'
-                  ? 'warning'
-                  : job.status === 'succeeded'
-                    ? 'success'
-                    : 'default'
-            "
-          />
-          <p v-if="showProgress">{{ job.message }}</p>
-          <p v-if="showProgress && job.current">
-            已下载 {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
-              / {{ (job.total / 1048576).toFixed(1) }} MiB</span
-            >
+          <p v-if="info.platform === 'darwin'" class="update-caption">
+            若 macOS 拦截更新后启动，请在“隐私与安全性”中允许打开。
           </p>
-          <p v-if="disconnected">更新服务正在交接，稍后自动重试。</p>
         </div>
-      </n-form-item>
-      <n-form-item v-if="showProgress" :show-label="false">
-        <n-space>
+      </n-collapse-item>
+      <n-collapse-item
+        v-if="info?.rollback_supported"
+        title="回退到旧版本"
+        name="rollback"
+        data-settings-label="版本回退"
+      >
+        <p class="update-caption">可选择当前版本之前同渠道最近 3 个兼容的 Release；回退需确认。</p>
+        <div class="update-rollback">
           <n-button
             size="small"
-            tag="a"
-            :href="progressUrl"
-            target="_blank"
-            rel="noopener noreferrer"
+            :loading="rollbackLoading"
+            :disabled="running || checking"
+            @click="loadRollbackOptions"
+            >查看可回退版本</n-button
           >
-            独立更新进度
-          </n-button>
-          <n-button
-            v-if="job.status === 'running'"
+          <n-select
+            v-model:value="rollbackVersion"
+            :consistent-menu-width="false"
             size="small"
-            :disabled="!job.cancellable || cancelling"
-            :loading="cancelling"
-            @click="cancelUpdate"
-            >取消更新</n-button
+            placeholder="选择旧版本"
+            :options="rollbackOptions"
+            :disabled="running || rollbackLoading || !rollbackOptions.length"
+            :input-props="{ 'aria-label': '回退目标版本' }"
+          />
+          <n-button
+            size="small"
+            type="warning"
+            :disabled="blocked || running || rollbackLoading || !rollbackVersion"
+            @click="requestRollback"
+            >回退并安装</n-button
           >
-        </n-space>
-      </n-form-item>
-      <n-form-item v-if="showProgress && (job.log || job.log_path)" :show-label="false">
-        <n-collapse>
-          <n-collapse-item title="安装日志" name="log">
-            <p v-if="job.log_path" class="log-path">日志：{{ job.log_path }}</p>
-            <pre v-if="job.log" class="notes">{{ job.log }}</pre>
-          </n-collapse-item>
-        </n-collapse>
-      </n-form-item>
-    </n-form>
+        </div>
+      </n-collapse-item>
+      <n-collapse-item v-if="source" title="强制更新" name="force">
+        <p class="update-caption">强制更新会覆盖本地源码改动；请先检查更新，再确认目标版本。</p>
+        <n-button
+          size="small"
+          type="warning"
+          :disabled="!info?.force_supported || running || checking || !checked"
+          :loading="busy"
+          @click="requestForceUpdate"
+          >强制更新</n-button
+        >
+      </n-collapse-item>
+    </n-collapse>
+    <SourceVersionManager
+      v-if="source"
+      :initial-branch="info.settings.source_branch"
+      :initial-remote="info.settings.source_remote"
+      :remotes="info.source_remotes"
+      :running="running || checking"
+      :blocked="blocked"
+      :force-supported="info.force_supported"
+      :instance-count="info.instances.length"
+      @install="(target) => install(target.force, target)"
+    />
+    <SoftwareComponentUpdates
+      v-for="component in info?.component_updates || []"
+      :key="component.endpoint"
+      :component="component"
+      :disabled="running"
+    />
   </n-card>
 </template>
-
-<style scoped>
-.update-progress {
-  width: 100%;
-  min-width: 0;
-  font-variant-numeric: tabular-nums;
-}
-.hint {
-  margin-left: 8px;
-  font-size: 12px;
-  opacity: 0.6;
-}
-.restart-option,
-.version-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.version-row {
-  gap: 8px;
-}
-.version {
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-.rollback-select {
-  width: 180px;
-}
-.manual-upload {
-  width: 100%;
-  min-width: 0;
-}
-.notes {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 280px;
-  overflow: auto;
-  margin: 8px 0 0;
-  font: inherit;
-}
-.log-path {
-  overflow-wrap: anywhere;
-}
-p {
-  margin: 8px 0 0;
-  text-wrap: pretty;
-}
-</style>

@@ -167,7 +167,9 @@ def test_http_recovery_status_is_read_only_and_has_no_manual_resume(
     assert client.get("/crash-recovery/status").status_code == 403
     response = client.get("/crash-recovery/status", headers={"token": "crash-test"})
     assert response.status_code == 200 and response.json["automatic"]
-    assert client.post("/crash-recovery/resume", json={}).status_code in (404, 405)
+    assert client.post(
+        "/crash-recovery/resume", headers={"token": "crash-test"}, json={}
+    ).status_code in (404, 405)
     assert (
         "resume_allowed" not in response.json and "uncertain_tasks" not in response.json
     )

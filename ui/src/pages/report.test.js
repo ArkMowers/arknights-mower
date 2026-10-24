@@ -1,19 +1,40 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSSRApp, effectScope, ref } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import { THEME_KEY } from 'vue-echarts'
 import Report from './report.vue'
-const state = vi.hoisted(() => ({ client: null, mounted: null }))
-vi.mock('vue', async (original) => ({
-  ...(await original()),
-  useSSRContext: () => ({ modules: new Set() }),
-  inject: () => state.client,
-  onMounted: (callback) => {
-    state.mounted = callback
-  }
+import TradingAnalysis from './trading_analysis.vue'
+const state = vi.hoisted(() => ({
+  client: null,
+  mounted: null,
+  theme: null,
+  provided: new Map(),
+  media: null
 }))
-vi.mock('@/stores/config', async () => {
-  const { ref } = await import('vue')
-  return { useConfigStore: () => ({ theme: ref('light') }) }
+vi.mock('vue', async (original) => {
+  const library = await original()
+  return {
+    ...library,
+    useSSRContext: () => ({ modules: new Set() }),
+    inject: (key, ...args) => (key === 'axios' ? state.client : library.inject(key, ...args)),
+    provide: (key, value) => state.provided.set(key, value),
+    onMounted: (callback) => {
+      state.mounted = callback
+    }
+  }
 })
+vi.mock('naive-ui', async (original) => {
+  const library = await original()
+  const wrapper = {
+    setup:
+      (_, { slots }) =>
+      () =>
+        slots.default?.()
+  }
+  return { ...library, NDropdown: wrapper, NTooltip: wrapper, NGrid: wrapper }
+})
+vi.mock('@/stores/config', () => ({ useConfigStore: () => ({ theme: state.theme }) }))
 vi.mock('@/stores/report', () => ({
   useReportStore: () => ({
     getReportData: async () => [
@@ -25,6 +46,19 @@ vi.mock('@/stores/report', () => ({
 }))
 describe('基报读取 Mower 收益设置', () => {
   beforeEach(() => {
+    state.theme = ref('system')
+    state.provided.clear()
+    const listeners = new Set()
+    state.media = {
+      matches: false,
+      addEventListener: (_type, listener) => listeners.add(listener),
+      removeEventListener: (_type, listener) => listeners.delete(listener),
+      change(matches) {
+        this.matches = matches
+        for (const listener of listeners) listener({ matches })
+      }
+    }
+    vi.stubGlobal('window', { matchMedia: () => state.media })
     state.client = {
       put: vi.fn().mockImplementation(async (_url, data) => ({ data })),
       get: vi.fn().mockResolvedValue({
@@ -34,6 +68,49 @@ describe('基报读取 Mower 收益设置', () => {
           ratios: { gold: 0.4, order: 0.6, experience: 2, efficiency: 1 }
         }
       })
+    }
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('收益设置入口保留会话凭证并定位任务配置的账号面板', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: ['/', '/task-settings'].map((path) => ({
+        path,
+        component: { render: () => null }
+      }))
+    })
+    await router.push('/?token=session-token')
+    const app = createSSRApp(Report)
+    app.use(router)
+    const html = await renderToString(app)
+    expect(html).toContain('href="/task-settings?token=session-token#task-accounts"')
+    expect(html).toContain('管理收益设置')
+  })
+
+  it.each([
+    ['基建报表', Report],
+    ['贸易订单分析', TradingAnalysis]
+  ])('%s 的图表跟随系统变化，显式主题保留用户选择', (_name, component) => {
+    const scope = effectScope()
+    try {
+      state.media.matches = true
+      scope.run(() => component.setup({}, { expose: vi.fn() }))
+      const chartTheme = state.provided.get(THEME_KEY)
+      expect(chartTheme.value).toBe('dark')
+      expect(state.theme.value).toBe('system')
+      state.media.change(false)
+      expect(chartTheme.value).toBe('roma')
+      expect(state.theme.value).toBe('system')
+      state.theme.value = 'dark'
+      state.media.change(false)
+      expect(chartTheme.value).toBe('dark')
+      state.theme.value = 'light'
+      state.media.change(true)
+      expect(chartTheme.value).toBe('roma')
+      expect(state.theme.value).toBe('light')
+    } finally {
+      scope.stop()
     }
   })
   it('使用服务器确认的系数计算包含特殊赤金的收益', async () => {

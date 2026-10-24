@@ -99,7 +99,12 @@ def test_status_uses_launch_snapshot_not_later_configuration_or_environment(
     monkeypatch.setattr(server, "mower_thread", None)
     monkeypatch.setattr(config, "conf", Conf(ai_assistant_enabled=True))
     monkeypatch.setenv("MOWER_MANAGED", "0")
-    assert server.app.test_client().get("/status").json["ai_assistant_enabled"] is False
+    monkeypatch.setattr(server.app, "token", "assistant-status-test", raising=False)
+    response = server.app.test_client().get(
+        "/status", headers={"token": "assistant-status-test"}
+    )
+    assert response.status_code == 200
+    assert response.json["ai_assistant_enabled"] is False
 
 
 @pytest.mark.parametrize("method", ["post", "patch"])
