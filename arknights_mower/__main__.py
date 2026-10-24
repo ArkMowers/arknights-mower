@@ -207,15 +207,19 @@ def _handle_maintenance(info: MaintenanceInfo, scheduler, now=None):
         _stop_for_major_update(info)
         return True
 
-    flash_probe_at = min(info.end, info.start + timedelta(minutes=5))
-    if info.is_flash_update and info.announcement_id not in _flash_probe_ids:
+    flash_probe_at = min(info.end, info.start + timedelta(minutes=2))
+    flash_probe_pending = False
+    if info.is_flash_update:
+        if info.announcement_id in _flash_probe_ids:
+            return False
         probe_reference = max(now, flash_probe_at)
         if _has_recent_task(scheduler, probe_reference):
-            _flash_probe_ids.add(info.announcement_id)
             if now >= flash_probe_at:
-                logger.info("闪断更新已进行 5 分钟且有近期任务，尝试进入游戏一次")
+                _flash_probe_ids.add(info.announcement_id)
+                logger.info("闪断更新已进行 2 分钟且有近期任务，尝试进入游戏一次")
                 return False
             resume_at = flash_probe_at
+            flash_probe_pending = True
         else:
             resume_at = info.end
     else:
@@ -236,12 +240,14 @@ def _handle_maintenance(info: MaintenanceInfo, scheduler, now=None):
     scheduler.handle_idle_action(remaining_time)
     # 服务器维护期间 mower 完全空闲，同样走休眠收口点，让 /status 显示休眠
     scheduler._idle_sleep(remaining_time, allow_wakeup=False)
+    if flash_probe_pending:
+        _flash_probe_ids.add(info.announcement_id)
     logger.info("时间开始流动了……DIO大人贴心为你重启时间！")
     return False
 
 
 def _wait_before_early_login_retry(now=None):
-    """Retry early entry every five minutes until the announced maintenance end."""
+    """Wait out a failed flash probe or retry early downtime entry in five minutes."""
     now = now or datetime.now()
     info = NewsChecker.get_maintenance()
     if (
@@ -251,7 +257,7 @@ def _wait_before_early_login_retry(now=None):
         and now < info.end
     ):
         delay = (info.end - now).total_seconds()
-        logger.warning("闪断更新第 5 分钟试探未成功，等待公告结束后恢复")
+        logger.warning("闪断更新提前尝试未成功，等待公告结束后恢复")
         try:
             csleep(delay)
         except MowerExit:
