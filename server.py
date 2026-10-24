@@ -108,6 +108,7 @@ if token := config.conf.webview.token:
 
 mower_thread = None
 chat_active_requests = 0
+configuration_test_active_requests = 0
 log_stream = LogStream()
 scheduled_start_lock = RLock()
 scheduled_start_timer = None
@@ -3712,6 +3713,21 @@ def get_orundum_data():
         logger.info("report.csv正在被占用")
 
 
+@contextmanager
+def configuration_test_request():
+    global configuration_test_active_requests
+
+    with backup_lock:
+        configuration_test_active_requests += 1
+    if g.pop("configuration_locked", False):
+        backup_lock.release()
+    try:
+        yield
+    finally:
+        with backup_lock:
+            configuration_test_active_requests -= 1
+
+
 @app.route("/test-email")
 @require_token
 def test_email():
@@ -3730,30 +3746,30 @@ def test_email():
 @app.route("/test-custom-screenshot")
 @require_token
 def test_custom_screenshot():
-    import base64
-    import subprocess
-
-    import cv2
-    import numpy as np
-
     command = config.conf.custom_screenshot.command
+    with configuration_test_request():
+        import base64
+        import subprocess
 
-    start = time.time()
-    data = subprocess.check_output(
-        command,
-        shell=True,
-        creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
-    )
-    end = time.time()
-    elapsed = int((end - start) * 1000)
+        import cv2
+        import numpy as np
 
-    data = np.frombuffer(data, np.uint8)
-    data = cv2.imdecode(data, cv2.IMREAD_COLOR)
-    _, data = cv2.imencode(".jpg", data, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
-    data = base64.b64encode(data)
-    data = data.decode("ascii")
+        start = time.time()
+        data = subprocess.check_output(
+            command,
+            shell=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
+        )
+        end = time.time()
+        elapsed = int((end - start) * 1000)
 
-    return {"elapsed": elapsed, "screenshot": data}
+        data = np.frombuffer(data, np.uint8)
+        data = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        _, data = cv2.imencode(".jpg", data, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+        data = base64.b64encode(data)
+        data = data.decode("ascii")
+
+        return {"elapsed": elapsed, "screenshot": data}
 
 
 @app.route("/check-skland")
@@ -3769,7 +3785,8 @@ def test_skland():
 def test_skland_sign():
     from arknights_mower.solvers.skland import SKLand
 
-    return SKLand().test_sign()
+    with configuration_test_request():
+        return SKLand().test_sign()
 
 
 @app.route("/mastery-recommendation-debug")
@@ -4400,6 +4417,7 @@ app.config["CONFIGURATION_ACTIVATED"] = lambda: _stop_mower()
 app.config["CONFIG_BACKUP_BUSY"] = lambda: bool(
     (mower_thread and mower_thread.is_alive())
     or chat_active_requests > 0
+    or configuration_test_active_requests > 0
     or _recycling_reports_running()
     or _configuration_recovery_pending()
     or active_job()

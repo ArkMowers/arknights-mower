@@ -1,7 +1,8 @@
 """Profile generation admission through the real server request hooks."""
 
 import json
-from threading import Event, RLock
+import sys
+from threading import Event, Lock, RLock, Thread
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -670,3 +671,177 @@ def test_renaming_configuration_preserves_pending_run_intent(profile_run_intent)
     assert api.runtime.read_json(api.report)["desired_running"] is True
     assert not api.recovery.cancelled()
     assert not api.config.stop_mower.is_set()
+
+
+@pytest.fixture
+def screenshot_requests(profile_run_intent, monkeypatch):
+    api = profile_run_intent
+    monkeypatch.setattr(api.server, "configuration_test_active_requests", 0)
+    monkeypatch.setattr(api.config.conf.custom_screenshot, "command", "saved capture")
+    monkeypatch.setitem(
+        sys.modules,
+        "numpy",
+        SimpleNamespace(frombuffer=lambda data, dtype: data, uint8=object()),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "cv2",
+        SimpleNamespace(
+            IMREAD_COLOR=1,
+            IMWRITE_JPEG_QUALITY=1,
+            imdecode=lambda data, mode: data,
+            imencode=lambda extension, data, options: (True, b"encoded image"),
+        ),
+    )
+    api.headers = {
+        "token": "intent-test-token",
+        "X-Mower-Settings": "1",
+        "X-Mower-Config-Generation": api.profiles.current_generation(),
+    }
+    return api
+
+
+def _request_worker(api, path, outcome, key, **kwargs):
+    def request():
+        with api.server.app.test_client() as client:
+            outcome[key] = client.open(path, headers=api.headers, **kwargs)
+
+    worker = Thread(target=request)
+    worker.start()
+    return worker
+
+
+@pytest.mark.parametrize("operation", ["profile", "backup"])
+def test_custom_screenshot_releases_configuration_lock_before_external_work(
+    screenshot_requests, monkeypatch, operation
+):
+    api = screenshot_requests
+    entered, release = Event(), Event()
+    outcome = {}
+
+    def capture(command, **kwargs):
+        assert command == "saved capture"
+        entered.set()
+        assert release.wait(5)
+        return b"captured image"
+
+    monkeypatch.setattr(api.server.subprocess, "check_output", capture)
+    screenshot = _request_worker(
+        api, "/test-custom-screenshot", outcome, "screenshot", method="GET"
+    )
+    workers = [screenshot]
+    try:
+        assert entered.wait(2)
+        stopped = _request_worker(api, "/stop", outcome, "stop", method="GET")
+        workers.append(stopped)
+        stopped.join(0.5)
+        stopped_during_capture = not stopped.is_alive()
+        path = "/config-profiles" if operation == "profile" else "/config-backup/import"
+        replacement = _request_worker(
+            api,
+            path,
+            outcome,
+            "replacement",
+            method="POST",
+            **(
+                {"json": {"name": "blocked", "inherit": []}}
+                if operation == "profile"
+                else {"data": b"not parsed while capturing"}
+            ),
+        )
+        workers.append(replacement)
+        replacement.join(0.5)
+        refused_during_capture = not replacement.is_alive()
+        busy_during_capture = api.server.configuration_profiles_busy()
+    finally:
+        release.set()
+        for worker in workers:
+            worker.join(3)
+            assert not worker.is_alive()
+    assert stopped_during_capture
+    assert outcome["stop"].data == b"true"
+    assert refused_during_capture
+    assert outcome["replacement"].status_code == 409
+    assert busy_during_capture
+    assert outcome["screenshot"].status_code == 200
+    assert api.server.configuration_test_active_requests == 0
+    assert not api.server.configuration_profiles_busy()
+    assert _replace_configuration(api, "create").status_code == 200
+
+
+def test_parallel_custom_screenshots_remain_busy_until_the_last_request_finishes(
+    screenshot_requests, monkeypatch
+):
+    api = screenshot_requests
+    entered, release = [Event(), Event()], [Event(), Event()]
+    assignment = Lock()
+    commands = []
+    outcome = {}
+
+    def capture(command, **kwargs):
+        with assignment:
+            index = len(commands)
+            commands.append(command)
+        entered[index].set()
+        assert release[index].wait(5)
+        return b"captured image"
+
+    monkeypatch.setattr(api.server.subprocess, "check_output", capture)
+    first = _request_worker(
+        api, "/test-custom-screenshot", outcome, "first", method="GET"
+    )
+    workers = [first]
+    try:
+        assert entered[0].wait(2)
+        second = _request_worker(
+            api, "/test-custom-screenshot", outcome, "second", method="GET"
+        )
+        workers.append(second)
+        assert entered[1].wait(2)
+        assert api.server.configuration_test_active_requests == 2
+        release[0].set()
+        first.join(2)
+        assert not first.is_alive()
+        assert api.server.configuration_test_active_requests == 1
+        assert api.server.configuration_profiles_busy()
+        response = api.client.post(
+            "/config-profiles",
+            headers=api.headers,
+            json={"name": "blocked", "inherit": []},
+        )
+        assert response.status_code == 409
+    finally:
+        for signal in release:
+            signal.set()
+        for worker in workers:
+            worker.join(3)
+            assert not worker.is_alive()
+    assert commands == ["saved capture", "saved capture"]
+    assert outcome["first"].status_code == 200
+    assert outcome["second"].status_code == 200
+    assert api.server.configuration_test_active_requests == 0
+    assert not api.server.configuration_profiles_busy()
+
+
+@pytest.mark.parametrize("failure", ["command", "encoding"])
+def test_custom_screenshot_failure_releases_profile_admission(
+    screenshot_requests, monkeypatch, failure
+):
+    api = screenshot_requests
+    monkeypatch.setattr(
+        api.server.subprocess, "check_output", Mock(return_value=b"captured image")
+    )
+
+    def fail(*args, **kwargs):
+        assert api.server.configuration_profiles_busy()
+        raise OSError("capture failed")
+
+    if failure == "command":
+        monkeypatch.setattr(api.server.subprocess, "check_output", fail)
+    else:
+        monkeypatch.setattr(sys.modules["cv2"], "imencode", fail)
+    response = api.client.get("/test-custom-screenshot", headers=api.headers)
+    assert response.status_code == 500
+    assert api.server.configuration_test_active_requests == 0
+    assert not api.server.configuration_profiles_busy()
+    assert _replace_configuration(api, "create").status_code == 200
