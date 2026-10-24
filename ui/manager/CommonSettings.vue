@@ -3,6 +3,7 @@ import FolderIcon from '@vicons/ionicons5/es/FolderOpenOutline'
 import { computed, ref } from 'vue'
 import HelpText from '../src/components/HelpText.vue'
 import WaitingSceneEditor from './WaitingSceneEditor.vue'
+import { connectionFields, idleAction, idleActionPatch, idleOptions } from './connectionSettings.js'
 import { editDeviceDraft, presetLabels } from '../src/utils/deviceSettings'
 
 const props = defineProps({
@@ -25,8 +26,8 @@ const groupName = (field) => (connectionSections.includes(field.group) ? '连接
 const groups = computed(() => [...new Set(visibleFields.value.map(groupName))])
 const search = ref('')
 const visibleFields = computed(() =>
-  props.fields.filter((field) =>
-    `${groupName(field)} ${field.group} ${field.label} ${field.kind === 'waiting_scene' ? (field.scenes ?? []).flat().join(' ') + ' 截图间隔 等待次数' : ''}`
+  connectionFields(props.fields, props.values).filter((field) =>
+    `${groupName(field)} ${field.group} ${field.label} ${field.searchKeywords || ''} ${field.kind === 'waiting_scene' ? (field.scenes ?? []).flat().join(' ') + ' 截图间隔 等待次数' : ''}`
       .toLowerCase()
       .includes(search.value.trim().toLowerCase())
   )
@@ -67,7 +68,10 @@ function toggle(field, checked) {
 
 function change(field, value) {
   if (props.disabled || field.read_only || !enabled(field.key)) return
-  const next = { ...props.values, [field.key]: value }
+  const next = {
+    ...props.values,
+    ...(field.kind === 'idle_action' ? idleActionPatch(value) : { [field.key]: value })
+  }
   if (backendKeys.includes(field.key)) {
     const device = Object.fromEntries(
       backendKeys.map((key) => [key.split('.')[1], props.values[key]])
@@ -109,7 +113,7 @@ function change(field, value) {
           >{{
             fields.filter((field) => groupName(field) === group && enabled(field.key)).length
           }}
-          项已启用</span
+          项统一配置</span
         >
       </summary>
       <div v-for="section in sections(group)" :key="section.name" class="common-section">
@@ -122,7 +126,9 @@ function change(field, value) {
             :class="{ 'common-field-wide': field.kind === 'waiting_scene' }"
           >
             <div class="field-label">
+              <span v-if="field.shared_connection">{{ field.label }}</span>
               <n-checkbox
+                v-else
                 :checked="enabled(field.key)"
                 :disabled="disabled || field.read_only || field.shared_connection"
                 :aria-label="`统一设置${field.label}`"
@@ -134,8 +140,17 @@ function change(field, value) {
               }}</help-text>
             </div>
             <div class="field-control">
+              <n-select
+                v-if="field.kind === 'idle_action'"
+                :value="idleAction(values)"
+                :options="idleOptions(values)"
+                :consistent-menu-width="false"
+                :disabled="disabled || field.read_only || !enabled(field.key)"
+                :aria-label="field.label"
+                @update:value="(value) => change(field, value)"
+              />
               <WaitingSceneEditor
-                v-if="field.kind === 'waiting_scene'"
+                v-else-if="field.kind === 'waiting_scene'"
                 :field="field"
                 :value="values[field.key] ?? field.default"
                 :disabled="disabled || field.read_only || !enabled(field.key)"

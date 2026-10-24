@@ -267,7 +267,8 @@ FIELDS.extend(
             group="连接方式",
             label="自定义截图命令",
             kind="text",
-            default="adb -s 127.0.0.1:5555 shell screencap -p 2>/dev/null",
+            default="adb exec-out screencap -p",
+            help="仅选择自定义截图时生效。ADB 命令省略 -s 时自动使用所选实例；显式指定的设备地址必须与所选实例一致。",
         ),
         dict(
             key="droidcast.rotate",

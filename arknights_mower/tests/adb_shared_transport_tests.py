@@ -279,9 +279,16 @@ def test_droidcast_cleanup_preserves_argv_and_environment(args, monkeypatch):
     assert_child_options(execute.call_args.kwargs)
 
 
-@pytest.mark.parametrize("adb_capture", [False, True], ids=["external", "adb"])
-def test_custom_capture_guards_only_adb_commands(adb_capture, monkeypatch):
-    command = "adb exec-out screencap -p" if adb_capture else "capture --png"
+@pytest.mark.parametrize("capture_mode", ["external", "adb", "default"])
+def test_custom_capture_guards_only_adb_commands(capture_mode, monkeypatch):
+    adb_capture = capture_mode != "external"
+    command = (
+        config.Conf().custom_screenshot.command
+        if capture_mode == "default"
+        else "adb exec-out screencap -p"
+        if adb_capture
+        else "capture --png"
+    )
     configuration = SimpleNamespace(custom_screenshot=SimpleNamespace(command=command))
     monkeypatch.setattr(config, "conf", configuration)
     target = object.__new__(device.Device)

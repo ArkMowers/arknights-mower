@@ -363,10 +363,12 @@ function toggleSidebar() {
     return
   }
   userToggledSidebar.value = true
+  if (allSettingsOpen.value) settingsSidebarManuallyToggled = true
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
 function expandSidebar() {
   userToggledSidebar.value = true
+  if (allSettingsOpen.value) settingsSidebarManuallyToggled = true
   sidebarHidden.value = false
   sidebarCollapsed.value = false
 }
@@ -788,6 +790,7 @@ const mobile = ref(false)
 provide('mobile', mobile)
 const allSettingsOpen = computed(() => route.name === 'task-settings')
 let sidebarBeforeSettings = null
+let settingsSidebarManuallyToggled = false
 watch(
   allSettingsOpen,
   (open) => {
@@ -796,7 +799,8 @@ watch(
         collapsed: sidebarCollapsed.value,
         userToggled: userToggledSidebar.value
       }
-      sidebarCollapsed.value = true
+      settingsSidebarManuallyToggled = false
+      actions_on_resize()
     } else if (!open && sidebarBeforeSettings) {
       sidebarCollapsed.value = sidebarBeforeSettings.collapsed
       userToggledSidebar.value = sidebarBeforeSettings.userToggled
@@ -817,8 +821,10 @@ function actions_on_resize() {
   const width = (window.innerWidth || document.documentElement.clientWidth) / zoom
   isMobileNav.value = width < 680
   mobile.value = width < 850
-  if (!userToggledSidebar.value) {
-    sidebarCollapsed.value = width < 850 || allSettingsOpen.value
+  if (allSettingsOpen.value && sidebarBeforeSettings && !settingsSidebarManuallyToggled) {
+    sidebarCollapsed.value = sidebarBeforeSettings.collapsed || width < 1400
+  } else if (!userToggledSidebar.value) {
+    sidebarCollapsed.value = width < 850
   }
 }
 

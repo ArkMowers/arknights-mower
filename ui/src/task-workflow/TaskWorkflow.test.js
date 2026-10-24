@@ -276,9 +276,6 @@ async function check(id, value) {
   checkbox(id).props.onChange({ target: { checked: value } })
   await flush()
 }
-function batch(label) {
-  return find((node) => node.tag === 'button' && text(node) === label)
-}
 
 const switches = {
   clue: 'enable_party',
@@ -564,28 +561,15 @@ describe('production task checklist interactions', () => {
     expect(searchInput().props.value).toBe('公招')
   })
 
-  it('selects and clears task and reward switches while preserving automatic tasks and parameters', async () => {
+  it('omits global select and clear actions while keeping individual task controls', async () => {
     await mount()
-    await click(task('recruit'))
-    const before = JSON.parse(JSON.stringify(state.config))
-    await click(batch('全选'))
-    expect(state.config).toEqual({
-      ...before,
-      ...Object.fromEntries(
-        Object.values(switches).map((key) => [key, key === 'maa_rg_enable' ? 1 : true])
-      ),
-      maa_mail: true,
-      maa_recruit: true,
-      maa_orundum: true,
-      maa_mining: true,
-      maa_specialaccess: true
-    })
-    expect(selected()).toBe('recruit')
-    await click(batch('清空'))
-    expect(state.config).toEqual({ ...before, maa_recruit: false })
-    expect(state.config.maa_recruit).toBe(false)
+    expect(nodes().some((node) => node.props['aria-label'] === '批量启用任务')).toBe(false)
+    expect(
+      nodes().some((node) => node.tag === 'button' && ['全选', '清空'].includes(text(node)))
+    ).toBe(false)
+    await check('recruit', false)
+    expect(state.config.recruit_enable).toBe(false)
     expect(state.config.workshop_manual_settings[0].enabled).toBe(true)
-    expect(selected()).toBe('recruit')
   })
 
   it('uses noninteractive group headings and a separate interval editor while retaining legacy destinations', async () => {

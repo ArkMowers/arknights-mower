@@ -213,7 +213,3 @@ export function setTaskEnabled(config, id, value) {
   config[taskSwitches[id]] = id === 'long' ? (value ? 1 : 0) : Boolean(value)
   return true
 }
-
-export function setAllTasksEnabled(config, value) {
-  for (const id of [...Object.keys(taskSwitches), 'rewards']) setTaskEnabled(config, id, value)
-}

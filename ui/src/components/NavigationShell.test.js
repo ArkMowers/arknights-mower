@@ -96,23 +96,14 @@ const internalPaths = sidebarNavigationItems.filter((item) => item.to).map((item
 
 it.each([
   ['sidebar', AppSidebar, internalPaths],
-  [
-    'mobile tabs',
-    MobileTabBar,
-    mobileTabs.filter((item) => !item.tabGroup && !item.items).map((item) => item.to)
-  ],
-  [
-    'mobile plan picker',
-    MobileTabBar,
-    ['/', '/task-settings', '/plan-editor', '/rescue-plan-editor', '/mastery-recommendation'],
-    'plan'
-  ],
+  ['mobile tabs', MobileTabBar, mobileTabs.filter((item) => !item.items).map((item) => item.to)],
   [
     'mobile report picker',
     MobileTabBar,
     [
       '/',
       '/task-settings',
+      '/plan-editor',
       '/mastery-recommendation',
       '/record/line',
       '/record/pie',
@@ -247,7 +238,6 @@ describe('[INV-UI-04] AppSidebar', () => {
 
 describe('[INV-UI-04] MobileTabBar', () => {
   it.each([
-    ['plan', '/rescue-plan-editor', ['/plan-editor', '/rescue-plan-editor']],
     [
       'reports',
       '/record/depot',
@@ -276,14 +266,34 @@ describe('[INV-UI-04] MobileTabBar', () => {
     }
   )
 
+  it.each(['/plan-editor', '/RESCUE-plan-editor/'])(
+    'highlights the direct plan tab for %s without a picker',
+    async (path) => {
+      const html = await render(MobileTabBar, {}, path)
+      const plan = links(html).find((link) => link.href === '/plan-editor')
+      expect(isActive(plan.tag)).toBe(true)
+      expect(isActive(moreButton(html))).toBe(false)
+    }
+  )
+
+  it('opens the ordinary plan directly and omits the rescue-plan picker', async () => {
+    const html = await render(MobileTabBar, {}, '/rescue-plan-editor', 'plan')
+    expect(links(html).find((link) => link.href === '/plan-editor').tag).toContain(
+      'mobile-tab-bar__item'
+    )
+    expect(html).not.toContain('救急排班编辑')
+    expect(html).not.toContain('排班，选择页面')
+    expect(html).not.toContain('排班页面')
+  })
+
   it('links direct tabs, exposes page pickers and opens the page drawer from more', async () => {
     const html = await render(MobileTabBar, { moreOpen: true })
     expect(links(html).map((link) => link.href)).toEqual(
-      mobileTabs.filter((item) => !item.tabGroup && !item.items).map((item) => item.to)
+      mobileTabs.filter((item) => !item.items).map((item) => item.to)
     )
     for (const item of mobileTabs) expect(html).toContain(item.shortLabel)
     const pickers = [...html.matchAll(/<button\b[^>]*\baria-controls="([^"]+)"[^>]*>/g)]
-    expect(pickers).toHaveLength(2)
+    expect(pickers).toHaveLength(1)
     for (const [tag] of pickers) {
       expect(tag).toContain('aria-expanded="false"')
       expect(tag).toContain('aria-haspopup="dialog"')
@@ -296,7 +306,7 @@ describe('[INV-UI-04] MobileTabBar', () => {
 
   it('draws an svg for every icon', async () => {
     const bodies = iconBodies(await render(MobileTabBar))
-    expect(bodies).toHaveLength(8)
+    expect(bodies).toHaveLength(7)
     for (const body of bodies) expect(body).toMatch(/^<svg\b/)
   })
 
@@ -306,17 +316,16 @@ describe('[INV-UI-04] MobileTabBar', () => {
     expect(isActive(moreButton(await render(MobileTabBar, {}, path)))).toBe(!hasTab)
   })
 
-  it.each([
-    ['/plan-editor', '排班'],
-    ['/RESCUE-plan-editor/', '排班'],
-    ['/RECORD/depot/', '报表']
-  ])('highlights the %s page picker as %s', async (path, label) => {
-    const html = await render(MobileTabBar, {}, path)
-    const pickers = [...html.matchAll(/(<button\b[^>]*>)([\s\S]*?)<\/button>/g)]
-    const active = pickers.filter(([, tag]) => isActive(tag))
-    expect(active).toHaveLength(1)
-    expect(active[0][2]).toContain(label)
-  })
+  it.each([['/RECORD/depot/', '报表']])(
+    'highlights the %s page picker as %s',
+    async (path, label) => {
+      const html = await render(MobileTabBar, {}, path)
+      const pickers = [...html.matchAll(/(<button\b[^>]*>)([\s\S]*?)<\/button>/g)]
+      const active = pickers.filter(([, tag]) => isActive(tag))
+      expect(active).toHaveLength(1)
+      expect(active[0][2]).toContain(label)
+    }
+  )
 
   it('links the settings tab straight to all settings', async () => {
     const html = await render(MobileTabBar, {}, '/task-settings')

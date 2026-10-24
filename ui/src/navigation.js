@@ -21,7 +21,7 @@ import MowerAIIcon from './components/MowerAIIcon.vue'
 
 // Entries carry either `to` (a registered route path) or `href` (an external https URL).
 // `tab` sets an entry or section's mobile tab order under its `shortLabel`.
-// Entries with the same `tabGroup` share that tab's page picker.
+// Entries with the same `tabGroup` highlight that tab; sections with `items` open a page picker.
 export const navigationSections = [
   {
     key: 'daily',

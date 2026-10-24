@@ -715,7 +715,7 @@ class SimulatorPart(ConfModel):
         "老板键延迟"
 
     class CustomScreenshotConf(ConfModel):
-        command: str = "adb -s 127.0.0.1:5555 shell screencap -p 2>/dev/null"
+        command: str = "adb exec-out screencap -p"
         "截图命令"
         enable: bool = False
         "是否启用自定义截图"

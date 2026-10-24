@@ -231,9 +231,9 @@ const scene_name = {
 
 const idleAction = computed({
   get: () => {
-    if (return_home_when_idle.value) return 'home'
+    if (close_simulator_when_idle.value) return 'close'
     if (exit_game_when_idle.value) return 'exit'
-    return close_simulator_when_idle.value ? 'close' : 'idle'
+    return return_home_when_idle.value ? 'home' : 'idle'
   },
   set: (value) => {
     return_home_when_idle.value = value === 'home'
@@ -1008,8 +1008,7 @@ const idleOptions = computed(() => [
   align-items: start;
   gap: 10px;
   width: 100%;
-  max-width: 1000px;
-  margin: 0 auto;
+  margin: 0;
 }
 
 .task-settings-panels--continuous > section {
@@ -1067,6 +1066,33 @@ const idleOptions = computed(() => [
   padding: 0 20px 20px;
   border: 0;
   background: transparent;
+}
+
+@container task-settings-content (min-width: 900px) {
+  .task-settings-panels :deep(.task-panel-form:not(.task-panel-form-stacked)) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+    align-items: center;
+  }
+
+  .task-settings-panels :deep(.task-panel-form:not(.task-panel-form-stacked) > .n-form-item) {
+    margin: 0;
+  }
+
+  .task-settings-panels :deep(.task-panel-form > .n-form-item.task-panel-field-wide),
+  .task-settings-panels :deep(.task-panel-form > :not(.n-form-item)) {
+    grid-column: 1 / -1;
+  }
+
+  .task-settings-panels
+    :deep(
+      .task-panel-form:not(.task-panel-form-stacked)
+        > .n-form-item:not(.task-panel-field-wide):has(> .n-form-item-label)
+    ) {
+    grid-template-columns: 148px minmax(0, 1fr);
+    column-gap: 16px;
+  }
 }
 
 .task-settings-panels :deep(.settings-section) {

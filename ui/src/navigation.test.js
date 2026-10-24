@@ -96,9 +96,11 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
     })
   })
 
-  it('offers both scheduling pages while settings opens all settings', () => {
+  it('groups scheduling routes for highlighting while the plan tab opens its direct route', () => {
     const plan = mobileTabs.find((tab) => tab.key === 'plan')
     const settings = mobileTabs.find((tab) => tab.key === 'task-settings')
+    expect(plan.to).toBe('/plan-editor')
+    expect(plan.items).toBeUndefined()
     expect(mobileTabItems(plan).map((item) => item.to)).toEqual([
       '/plan-editor',
       '/rescue-plan-editor'

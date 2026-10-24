@@ -813,7 +813,7 @@ describe('desktop page startup', () => {
   }
 
   it.each(['/task-settings', '/mowersettings?token=existing#interface'])(
-    'collapses the main sidebar for a direct visit to %s and keeps it collapsed on resize',
+    'collapses the main sidebar for a direct visit to %s and expands it when space allows',
     async (path) => {
       const router = await useAllSettingsRouter(path)
       const component = await mount()
@@ -823,10 +823,35 @@ describe('desktop page startup', () => {
       expect(component.mobileMenuOpen.value).toBe(false)
       window.innerWidth = 1440
       component.actions_on_resize()
-      expect(component.sidebarCollapsed.value).toBe(true)
+      expect(component.sidebarCollapsed.value).toBe(false)
       const html = await renderShell(component)
-      expect(html).toContain('data-collapsed="true"')
+      expect(html).toContain('data-collapsed="false"')
       expect(html).toContain('data-sidebar="main"')
+    }
+  )
+
+  it.each([
+    [1600, 1, false],
+    [1600, 1.25, true],
+    [1399, 1, true],
+    [1400, 1, false]
+  ])(
+    'uses available width when opening settings at %spx and zoom %s',
+    async (width, zoom, collapsed) => {
+      window.innerWidth = width
+      const router = await useAllSettingsRouter()
+      const component = await mount()
+      document.documentElement.style.zoom = String(zoom)
+      component.expandSidebar()
+      await router.push('/task-settings')
+      expect(component.sidebarCollapsed.value).toBe(collapsed)
+      window.innerWidth = 1800
+      document.documentElement.style.zoom = '1'
+      component.actions_on_resize()
+      expect(component.sidebarCollapsed.value).toBe(false)
+      await router.push('/')
+      expect(component.sidebarCollapsed.value).toBe(false)
+      expect(component.userToggledSidebar.value).toBe(true)
     }
   )
 
