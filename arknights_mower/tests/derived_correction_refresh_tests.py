@@ -1,6 +1,7 @@
 """未执行的普通纠错只在相关观测变化后重算派生安排。"""
 
 import copy
+import pickle
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -209,10 +210,8 @@ def test_actual_arrangement_boundary_marks_started_before_failure(solver):
 
 
 def test_pending_derived_origin_survives_snapshot_serialization(solver):
-    import jsonpickle
-
     task = retain(solver)
-    restored = jsonpickle.decode(jsonpickle.encode(task))
+    restored = pickle.loads(pickle.dumps(task))
     solver.tasks = [restored]
     original_time = restored.time
     change_binding(solver)

@@ -35,9 +35,6 @@ networkx==3.3
 # 副表条件
 evalidate==2.0.2
 
-# 任务列表
-jsonpickle==3.0.4
-
 # 时区
 tzlocal==5.2
 pytz==2024.1

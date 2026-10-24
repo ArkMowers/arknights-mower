@@ -1,6 +1,7 @@
 """用尽任务协调被占用的替班，不拆休息组、不提前改变实际床位。"""
 
 import ctypes
+import pickle
 import sys
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -713,13 +714,11 @@ def test_rescue_projection_checks_occupied_cover_coordination(solver, coordinata
 @pytest.mark.parametrize("recall", [False, True])
 @pytest.mark.parametrize("restored", [False, True])
 def test_exhaust_support_dispatch_preserves_recovery_capacity(solver, recall, restored):
-    import jsonpickle
-
     if recall:
         solver.op_data.operators["苍苔"].replacement = ["槐琥"]
     solver.overtake_room()
     if restored:
-        solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+        solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
     support, retry = solver.tasks
     expected = (
         {"room_2_2": ["苍苔"], "contact": ["絮雨"]}

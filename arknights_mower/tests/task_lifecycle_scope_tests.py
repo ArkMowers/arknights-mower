@@ -1,10 +1,10 @@
 """任务保留跨派发、重规划、预约及持久化的生产入口回归。"""
 
 import copy
+import pickle
 from datetime import timedelta
 from unittest.mock import Mock
 
-import jsonpickle
 import pytest
 
 from arknights_mower.tests.emergency_group_return_tests import (
@@ -43,7 +43,7 @@ def retain(solver, task, reopened, restored):
         solver._resume_failed_tasks()
         assert not getattr(task, "execution_failure", None)
     if restored:
-        solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+        solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
         task = solver.tasks[-1]
     solver.task = None
     return task
@@ -78,7 +78,7 @@ def test_failed_fill_survives_primary_preflight(
         solver.op_data.room_observations["dormitory_1"] = 1
         solver._resume_failed_tasks()
     if restored:
-        solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+        solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
         fill = next(t for t in solver.tasks if t.type == TaskTypes.FILL_DORM)
     original = snapshot(fill)
     for _ in range(3):

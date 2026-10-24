@@ -1,11 +1,11 @@
 """失败不生成计时重试；原任务由新实测或相关安排更新重新准入。"""
 
 import copy
+import pickle
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import jsonpickle
 import pytest
 
 from arknights_mower.tests import mass_mood_recovery_tests as native
@@ -119,7 +119,7 @@ def test_reopened_arrangement_yields_after_navigation(
     solver.op_data.operators["陈"].time_stamp += timedelta(seconds=1)
     solver._resume_failed_tasks()
     if persisted:
-        task = jsonpickle.decode(jsonpickle.encode(task))
+        task = pickle.loads(pickle.dumps(task))
     critical = SchedulerTask(
         scheduler.clock.now() + timedelta(seconds=90),
         task_type=TaskTypes.RUN_ORDER,
@@ -233,7 +233,7 @@ def test_failed_restoration_keeps_shared_insertion_waiting_without_starving_work
     solver.tasks = [restore, insertion]
     solver._retain_failed_task(restore, "原班恢复失败", [ROOM])
     if persisted:
-        restore = jsonpickle.decode(jsonpickle.encode(restore))
+        restore = pickle.loads(pickle.dumps(restore))
     solver.tasks = [restore, insertion]
     original = copy.deepcopy([vars(restore), vars(insertion)])
     solver.agent_arrange = Mock()
@@ -357,7 +357,7 @@ def test_failure_survives_serialization_and_stale_cleanup(
     scheduler, failed_arrangement
 ):
     solver, task, _ = failed_arrangement
-    restored = jsonpickle.decode(jsonpickle.encode(task))
+    restored = pickle.loads(pickle.dumps(task))
     solver.tasks = [restored]
     scheduler.clock.current += timedelta(hours=1)
     solver.handle_error(True)
@@ -379,7 +379,7 @@ def test_rearmed_old_task_survives_repeated_cleanup(
     solver._resume_failed_tasks()
     assert not hasattr(task, "execution_failure")
     if persisted:
-        task = jsonpickle.decode(jsonpickle.encode(task))
+        task = pickle.loads(pickle.dumps(task))
         solver.tasks = [task]
     for _ in range(3):
         stale = SchedulerTask(
@@ -530,7 +530,7 @@ def test_native_replanning_preserves_retained_execution(native_solver, kind, sta
         solver._resume_failed_tasks()
         assert not getattr(task, "execution_failure", None)
     if status == "persisted":
-        solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+        solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
         task = next(t for t in solver.tasks if t.type == kind)
     original = copy.deepcopy((task.time, task.plan, task.meta_data))
     failure = copy.deepcopy(getattr(task, "execution_failure", None))
@@ -677,7 +677,7 @@ def test_unrelated_empty_room_read_does_not_reopen_failure(empty_room_solver):
 def test_legacy_failure_without_room_revision_stays_retained(empty_room_solver):
     solver, task = empty_room_solver
     del task.execution_failure["snapshot"]["room_observations"]
-    solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+    solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
     task = solver.tasks[0]
     solver._resume_failed_tasks()
     assert task.execution_failure
@@ -885,7 +885,7 @@ def test_failed_order_before_roster_capture_is_not_regenerated(
     assert task.execution_failure
     assert not getattr(task, "run_order_original_roster", None)
     if persisted:
-        solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+        solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
         task = solver.tasks[0]
     original = copy.deepcopy((task.time, task.plan, task.meta_data))
     for _ in range(4):
@@ -1121,7 +1121,7 @@ def test_unrelated_shift_cycle_preserves_retained_execution(
         failed.execution_failure = None
         failed.execution_retained = True
     if serialized:
-        failed = jsonpickle.decode(jsonpickle.encode(failed))
+        failed = pickle.loads(pickle.dumps(failed))
         solver.tasks = [failed]
     original = copy.deepcopy((failed.time, failed.plan, failed.meta_data))
     for _ in range(3):
@@ -1318,7 +1318,7 @@ def test_rescue_readback_updates_compensation_only_after_confirmed_takeover(
     assert restore.run_order_original_roster == expected
     assert restore.emergency_original_roster == expected
     assert restore.time == original_time
-    restored = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+    restored = pickle.loads(pickle.dumps(solver.tasks))
     assert restored[1].run_order_original_roster == expected
 
 
