@@ -90,7 +90,11 @@ def crafting(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(workshop_automation, "restore_if_no_plans", lambda: None)
     monkeypatch.setattr(workshop_limits, "blocked_workshop_recipes", lambda _: set())
-    monkeypatch.setattr(workshop_mood, "operator_mood_rules", lambda _: ([], True))
+    monkeypatch.setattr(
+        workshop_mood,
+        "operator_mood_rules",
+        lambda _, *, assume_maximum=False: ([], True),
+    )
     monkeypatch.setattr(
         "arknights_mower.utils.workshop_recommendation.scope_workshop_items",
         lambda _, items, __: items,

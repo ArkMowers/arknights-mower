@@ -540,6 +540,7 @@ class MasteryRestartTests(unittest.TestCase):
         solver.tasks = []
         solver.last_train_mood_read = None
         solver.last_train_mood_attempt = None
+        solver.op_data.mood_calculation_enabled = False
         self.room.slots_read = self.room.slots_reliable = True
         names = ["协助干员", "测试干员"][: count or 0]
         solver.op_data.plan = (

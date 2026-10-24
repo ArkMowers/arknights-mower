@@ -228,6 +228,35 @@ def test_real_card_scan_keeps_full_fixed_occupants_in_temporary_roster(
     assert data.operators["银灰"].dorm_recovery_index == 3
 
 
+@pytest.mark.parametrize("calculated", [5, 24])
+def test_calculated_mood_controls_single_recovery_target(
+    solver, monkeypatch, calculated
+):
+    from arknights_mower.utils import config
+    from arknights_mower.utils.calculated_mood import sync_model
+
+    monkeypatch.setattr(config.conf, "test_mood_calculation", True)
+    monkeypatch.setattr(
+        "arknights_mower.utils.mastery_recommendation.get_cultivate_snapshot",
+        lambda: None,
+    )
+    data = solver.op_data
+    target = data.operators["银灰"]
+    measured = 24 if calculated == 5 else 5
+    target.mood = measured
+    now = datetime.now()
+    for op in data.operators.values():
+        data.mood_model.observe(op.name, calculated if op is target else op.mood, now)
+    sync_model(data, now)
+
+    arrange(solver)
+
+    assert len(solver.confirms) == (2 if calculated == 5 else 1)
+    assert solver.confirms[-1] == FINAL
+    assert bool(target.dorm_recovery_room) is (calculated == 5)
+    assert target.mood == measured
+
+
 @pytest.mark.parametrize("observed", [False, True])
 def test_unregistered_padding_never_blocks_normal_roster(solver, observed):
     from arknights_mower.data import agent_list

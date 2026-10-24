@@ -83,6 +83,7 @@ def test_retained_selection_after_submission_completes_order_and_restoration(
 def test_submission_feedback_preserves_a_new_secondary_confirmation():
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.task = SchedulerTask()
+    solver.op_data = SimpleNamespace(mood_calculation_enabled=False)
     solver.recog = SimpleNamespace(w=1920, h=1080, update=MagicMock())
     state = {"page": "selection"}
     confirmed = []

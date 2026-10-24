@@ -489,6 +489,8 @@ def main_runtime(monkeypatch):
     runtime = MagicMock()
     runtime.initialize_operators.return_value = None
     runtime.op_data.validate_backup_plans.return_value = {"success": True}
+    runtime.op_data.mood_calculation_enabled = False
+    runtime.op_data.mood_model = None
     runtime.op_data.operators = {}
     runtime.op_data.backup_plans = []
     runtime.op_data.all_dorms.return_value = []

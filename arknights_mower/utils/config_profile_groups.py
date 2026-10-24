@@ -42,7 +42,7 @@ CONF_GROUPS = {
     ),
     "rescue_plan": {"automatic_rescue_enable"},
     "base": set(
-        "assistant_follows_schedule dorm_isolation enable_mastery favorite fia_fool fia_threshold free_blacklist free_room group_mood_gap_exclusions group_mood_gap_max_extra_wait_hours group_mood_gap_threshold_minutes group_rest_in_full_on_mood_gap merge_interval product_switching rescue_threshold resting_threshold right_side_room_order swap_contact_train version_update_resting_threshold version_update_threshold_advance_hours".split()
+        "assistant_follows_schedule dorm_isolation enable_mastery favorite fia_fool fia_threshold free_blacklist free_room group_mood_gap_exclusions group_mood_gap_max_extra_wait_hours group_mood_gap_threshold_minutes group_rest_in_full_on_mood_gap merge_interval product_switching rescue_threshold resting_threshold right_side_room_order swap_contact_train test_mood_calculation version_update_resting_threshold version_update_threshold_advance_hours".split()
     ),
     "runorder": {"run_order_delay", "run_order_grandet_mode"},
     "drone": {"drone_count_limit", "drone_interval", "drone_room"},

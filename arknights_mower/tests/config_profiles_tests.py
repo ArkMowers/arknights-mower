@@ -666,6 +666,20 @@ def test_conf_fields_have_one_group_and_no_unmapped_current_fields():
     assert set(selection.TMP_GROUPS.values()) <= keys
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("inherit", [[], ["base"]])
+def test_mood_calculation_follows_base_profile_group(storage, enabled, inherit):
+    config.conf.test_mood_calculation = enabled
+    config.save_conf()
+
+    _create("心情计算配置", inherit)
+
+    expected = enabled if "base" in inherit else False
+    assert config.conf.test_mood_calculation is expected
+    saved = config.Conf(**yaml.safe_load(config.conf_path.read_text(encoding="utf-8")))
+    assert saved.test_mood_calculation is expected
+
+
 @pytest.mark.parametrize(
     "current,incoming,keep,expected",
     [

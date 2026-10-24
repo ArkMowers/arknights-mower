@@ -12800,7 +12800,12 @@ class BaseSchedulerSolver(
             target.clear_dorm_recovery()
             logger.info(f"{room} 单回垫位者未确认满心情，恢复阵容后重新确认")
             return True
-        if target.mood < 24:
+        target_mood = (
+            self.op_data.calculated_mood(target.name)
+            if getattr(self.op_data, "mood_calculation_enabled", False)
+            else target.mood
+        )
+        if target_mood is not None and target_mood < 24:
             target.dorm_recovery_room = room
             target.dorm_recovery_index = vip_index
             target.dorm_recovery_fixed = recovery_managers(self.op_data, room, agents)

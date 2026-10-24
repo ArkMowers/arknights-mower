@@ -3160,6 +3160,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         )
         solver.tasks = [solver.task]
         solver.op_data = MagicMock()
+        solver.op_data.mood_calculation_enabled = False
         solver.op_data.run_order_rooms = {room: ["但书"]}
         solver.op_data.get_current_room.return_value = ["旧干员"]
         solver.recog = MagicMock()
