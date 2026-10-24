@@ -705,6 +705,62 @@ describe('自定义侧边栏', () => {
     expect(groupItems('daily').some((item) => item.key === 'log')).toBe(true)
   })
 
+  it('unpins every page through the group action, saves preserved originals and repeats without edits', async () => {
+    const transport = {
+      get: vi.fn().mockResolvedValue({ data: { sidebar: null } }),
+      put: vi.fn().mockResolvedValue({})
+    }
+    preferences = createSidebarPreferences({ transport, storage: null })
+    await preferences.initialize()
+    const originalLog = groupItems('daily').find((item) => item.key === 'log')
+    const originalDepot = groupItems('reports').find((item) => item.key === 'record-depot')
+    preferences.addEntry('log', 'pinned')
+    preferences.setPinned(originalDepot.id, true)
+    const pinnedLog = preferences.pinnedItems.value.find((item) => item.key === 'log')
+    await preferences.flush()
+    transport.put.mockClear()
+    const component = mount()
+
+    component.selectGroupAction('unpin-all', 'pinned')
+    await preferences.flush()
+
+    expect(preferences.pinnedItems.value).toEqual([])
+    expect(groupItems('daily').filter((item) => item.key === 'log')).toEqual([originalLog])
+    expect(groupItems('reports').filter((item) => item.key === 'record-depot')).toEqual([
+      originalDepot
+    ])
+    const saved = transport.put.mock.calls.at(-1)[1].sidebar
+    expect(saved.placements).toContainEqual({
+      id: originalLog.id,
+      key: 'log',
+      group: 'daily',
+      visible: true,
+      pinned: false
+    })
+    expect(saved.placements).toContainEqual({
+      id: originalDepot.id,
+      key: 'record-depot',
+      group: 'reports',
+      visible: true,
+      pinned: false
+    })
+    expect(saved.placements.some((item) => item.id === pinnedLog.id)).toBe(false)
+    const savedState = JSON.parse(JSON.stringify(preferences.state.value))
+    const saveCount = transport.put.mock.calls.length
+
+    component.selectGroupAction('unpin-all', 'pinned')
+    await preferences.flush()
+
+    expect(preferences.state.value).toEqual(savedState)
+    expect(transport.put).toHaveBeenCalledTimes(saveCount)
+    const reloaded = createSidebarPreferences({
+      transport: { get: vi.fn().mockResolvedValue({ data: { sidebar: saved } }) },
+      storage: null
+    })
+    await reloaded.initialize()
+    expect(reloaded.state.value).toEqual(savedState)
+  })
+
   it('sorts independent pages and moves them into groups without moving other copies', () => {
     preferences.moveItem('log', 'ungrouped')
     preferences.addEntry('log', 'reports')

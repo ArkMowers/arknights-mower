@@ -498,7 +498,9 @@ function selectGroupAction(action, groupKey) {
     return
   }
   if (action === 'unpin-all') {
-    pinnedItems.value.forEach((item) => preferences.setPinned(item.id, false))
+    pinnedItems.value.forEach((item) => {
+      if (!preferences.setPinned(item.id, false)) preferences.removeEntry(item.id)
+    })
     return
   }
   if (!state.value.groups.some((entry) => entry.key === groupKey)) return
