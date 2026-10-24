@@ -7,9 +7,10 @@ from pathlib import Path
 
 import webview
 
+from arknights_mower.utils import manager_common
 from arknights_mower.utils.folder_dialog import choose_directory
 from arknights_mower.utils.manager_instances import InstanceController
-from arknights_mower.utils.path import get_path
+from arknights_mower.utils.path import get_path, resolve_config_path
 
 
 def choose_instance_directory(window, directory=""):
@@ -53,6 +54,26 @@ def choose_instance_directory(window, directory=""):
 
 
 class Api(InstanceController):
+    def select_common_path(self, key, current=""):
+        field = next(
+            (item for item in manager_common.FIELDS if item["key"] == key), None
+        )
+        if field is None or field["kind"] not in {"directory", "file"}:
+            raise ValueError("不支持的公共路径配置")
+        if not isinstance(current, str):
+            raise ValueError("路径必须是文本")
+        current = resolve_config_path(current)
+        window = webview.active_window()
+        if field["kind"] == "directory":
+            result = choose_directory(window, current, title=field["label"])
+        else:
+            result = window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                directory=str(Path(current).parent) if current else "",
+            )
+        return result if isinstance(result, str) else result[0] if result else None
+
     def select_path(self, idx):
         with self._operation():
             original = self.instances[idx].copy()

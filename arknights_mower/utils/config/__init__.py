@@ -22,6 +22,7 @@ from arknights_mower.utils.config.plan import (
     retire_rescue_backups,
 )
 from arknights_mower.utils.log import frontend_log_queue, logger
+from arknights_mower.utils.manager_common import for_launch
 from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
 
@@ -235,6 +236,8 @@ def load_conf():
 
 conf: Conf
 load_conf()
+# Public manager values are a launch snapshot, never a live configuration watch.
+conf = for_launch(conf, managed=os.environ.get("MOWER_MANAGED") == "1")
 # Managed update permission stays fixed across configuration reloads.
 updates_enabled = conf.updates_enabled_for_launch(
     managed=os.environ.get("MOWER_MANAGED") == "1"

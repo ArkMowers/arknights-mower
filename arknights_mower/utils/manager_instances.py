@@ -17,6 +17,7 @@ from uuid import uuid4
 import yaml
 from yamlcore import CoreDumper, CoreLoader
 
+from . import manager_common
 from . import update_runtime as runtime
 from .path import get_path
 
@@ -227,6 +228,7 @@ class InstanceController:
                     editable=False,
                     can_start=False,
                     can_stop=False,
+                    can_open_browser=False,
                     state="stopped",
                     reason="",
                 )
@@ -245,6 +247,9 @@ class InstanceController:
                     item["can_stop"] = (
                         all(r.get("managed") for r in matches)
                         and item["state"] != "stopping"
+                    )
+                    item["can_open_browser"] = item["state"] == "running" and all(
+                        r.get("managed") for r in matches
                     )
                 try:
                     self._editable(instance, records)
@@ -265,6 +270,17 @@ class InstanceController:
     def mark_ready(self):
         if self._ready is not None:
             self._ready.set()
+
+    @property
+    def _common_path(self):
+        return self._storage_path.parent / "config/manager-common.json"
+
+    def get_common_settings(self):
+        with self._operation():
+            return {
+                "values": manager_common.read_settings(self._common_path),
+                "fields": copy.deepcopy(manager_common.FIELDS),
+            }
 
     def add(self, name, path):
         if not isinstance(name, str) or not name.strip() or not isinstance(path, str):
@@ -343,9 +359,13 @@ class InstanceController:
             Path(temporary).unlink(missing_ok=True)
         return True
 
-    def update_all_settings(self, changes, targets):
-        if not isinstance(changes, list) or not changes:
+    def update_all_settings(self, changes, targets, common=None):
+        if not isinstance(changes, list) or (not changes and common is None):
             raise ValueError("请选择需要保存的实例配置")
+        if common is not None:
+            if not isinstance(common, dict) or set(common) != {"values", "original"}:
+                raise ValueError("公共配置格式不正确")
+            common_values = manager_common.validate_settings(common["values"])
         selected = {}
         for change in changes:
             if (
@@ -367,9 +387,19 @@ class InstanceController:
                 raise ValueError("实例列表已变化，请重新打开批量配置")
             if any(idx >= len(current) for idx in selected):
                 raise ValueError("批量配置包含无效实例")
+            if common is not None:
+                if runtime.active_job():
+                    raise ValueError("软件更新或进程操作期间不能修改公共配置")
+                if (
+                    manager_common.read_settings(self._common_path)
+                    != common["original"]
+                ):
+                    raise ValueError("公共配置已变化，请重新打开批量配置")
             results, seen = [], set()
             deadline = monotonic() + 10
             records = self._records()
+            if common is not None:
+                runtime.write_json(self._common_path, common_values, sync=True)
             blocked = ""
             for position, (idx, settings) in enumerate(sorted(selected.items())):
                 instance = self.instances[idx]
@@ -415,7 +445,7 @@ class InstanceController:
                     item.update(
                         status="updated", message="已更新" if changed else "已符合设置"
                     )
-            return {"ok": True, "results": results}
+            return {"ok": True, "results": results, "common_saved": common is not None}
 
     def start(self, idx):
         try:
@@ -436,8 +466,10 @@ class InstanceController:
                 )
                 command += [instance["path"], instance["name"]]
                 launch_id = uuid4().hex
+                common_settings = manager_common.read_settings(self._common_path)
                 env = runtime.launch_environment(
-                    {"data_dir": os.environ.get("MOWER_DATA_DIR", ""), "managed": True}
+                    {"data_dir": os.environ.get("MOWER_DATA_DIR", ""), "managed": True},
+                    background=common_settings.get("startup_mode") == "background",
                 )
                 env.update(
                     MOWER_LAUNCH_ID=launch_id,
@@ -495,6 +527,32 @@ class InstanceController:
                     raise ValueError("该实例不是由多开管理器启动，请在实例中退出程序")
                 for record in matches:
                     runtime.send_instance_command(record, "exit")
+            return {"ok": True}
+        except (OSError, ValueError, runtime.InstanceScanError) as error:
+            return {"ok": False, "message": str(error)}
+
+    def open_browser(self, idx, target):
+        try:
+            with self._operation():
+                if (
+                    type(idx) is not int
+                    or not 0 <= idx < len(self.instances)
+                    or target
+                    != {key: self.instances[idx][key] for key in ("name", "path")}
+                ):
+                    raise ValueError("实例已变化，请刷新后重试")
+                matches = self._matching(self.instances[idx], self._records())
+                if not matches or any(not r.get("managed") for r in matches):
+                    raise ValueError("请先通过多开管理器启动此实例")
+                if any(
+                    (runtime.state_dir() / "shutdown" / f"{r['id']}.json").exists()
+                    for r in matches
+                ):
+                    raise ValueError("实例正在停止，无法打开网页")
+                ready = next((r for r in matches if r.get("ready")), None)
+                if ready is None:
+                    raise ValueError("实例尚未就绪，请稍后重试")
+                runtime.send_instance_command(ready, "browser")
             return {"ok": True}
         except (OSError, ValueError, runtime.InstanceScanError) as error:
             return {"ok": False, "message": str(error)}
