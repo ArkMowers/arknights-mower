@@ -13,7 +13,11 @@ from arknights_mower.utils import config, scheduler_task
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device import recovery
 from arknights_mower.utils.operators import Operators
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+from arknights_mower.utils.scheduler_task import (
+    MANUAL_TASK_TYPES,
+    SchedulerTask,
+    TaskTypes,
+)
 
 CRITICAL_TYPES = {
     TaskTypes.SKILL_UPGRADE,
@@ -28,7 +32,7 @@ FUTURE_TYPES = {
     TaskTypes.DEPOT,
     TaskTypes.CLUE,
     TaskTypes.WORKSHOP,
-}
+} | MANUAL_TASK_TYPES
 MANUAL_TYPES = (
     TaskTypes.FURNITURE,
     TaskTypes.DEPOT,

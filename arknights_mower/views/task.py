@@ -16,6 +16,7 @@ from tzlocal import get_localzone
 
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scheduler_task import (
+    MANUAL_TASK_TYPES,
     SchedulerTask,
     TaskTypes,
     next_workshop_task_time,
@@ -67,7 +68,7 @@ def add_task():
                         task_type=task["task_type"],
                         meta_data=task["meta_data"],
                     )
-                    if new_task.type == TaskTypes.FURNITURE:
+                    if new_task.type in MANUAL_TASK_TYPES | {TaskTypes.FURNITURE}:
                         new_task.plan = {}
                         new_task.meta_data = ""
                     if new_task.type == TaskTypes.WORKSHOP:
@@ -99,7 +100,10 @@ def add_task():
                             "系统会自动调度训练"
                         )
                     base_scheduler.tasks.append(new_task)
-                    if new_task.type in (TaskTypes.WORKSHOP, TaskTypes.FURNITURE):
+                    if new_task.type in MANUAL_TASK_TYPES | {
+                        TaskTypes.WORKSHOP,
+                        TaskTypes.FURNITURE,
+                    }:
                         from arknights_mower.utils import config
 
                         config.wake_scheduler.set()

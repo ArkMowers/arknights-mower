@@ -142,6 +142,7 @@ from arknights_mower.utils.resting_priority import (
     resting_tier,
 )
 from arknights_mower.utils.scheduler_task import (
+    MANUAL_TASK_TYPES,
     SchedulerTask,
     TaskScope,
     TaskTypes,
@@ -522,6 +523,10 @@ class BaseSchedulerSolver(
 
     def _task_failure_snapshot(self, task, rooms):
         """失败任务仅由新观测或相关安排变化重新准入，不使用时钟计时。"""
+        if task.type in MANUAL_TASK_TYPES:
+            from arknights_mower.solvers.manual_tasks import manual_task_snapshot
+
+            return manual_task_snapshot(self, task)
         data = self.op_data
         names = {name for row in task.plan.values() for name in row}
         from arknights_mower.utils.replacement_coordination import (
@@ -1620,7 +1625,7 @@ class BaseSchedulerSolver(
                 TaskTypes.DEPOT,
                 TaskTypes.CLUE,
                 TaskTypes.WORKSHOP,
-            }
+            } | MANUAL_TASK_TYPES
             if any(
                 t.time < now - timedelta(minutes=15)
                 and t.type not in preserved
@@ -2673,6 +2678,11 @@ class BaseSchedulerSolver(
                     self.skip(["todo_task", "collect_notification"])
                 elif self.task.type == TaskTypes.DEPOT:
                     self.仓库扫描()
+                elif self.task.type in MANUAL_TASK_TYPES:
+                    from arknights_mower.solvers.manual_tasks import run_manual_task
+
+                    remove_current_task = run_manual_task(self, self.task)
+                    self.skip()
                 elif self.task.type == TaskTypes.NOT_SPECIFIC:
                     pass
                 if getattr(self.task, "execution_failure", None):
@@ -2786,7 +2796,9 @@ class BaseSchedulerSolver(
                                 task, str(e), [task.replacement_check["room"]]
                             )
                         elif (
-                            task.plan or task.type == TaskTypes.SWITCH_PRODUCT
+                            task.plan
+                            or task.type == TaskTypes.SWITCH_PRODUCT
+                            or task.type in MANUAL_TASK_TYPES
                         ) and any(queued is task for queued in self.tasks):
                             rooms = task.plan or (
                                 [task.meta_data.split(",", 1)[0]]
@@ -13895,7 +13907,7 @@ class BaseSchedulerSolver(
             logger.info("MAA 连接失败")
             raise Exception("MAA 连接失败")
 
-    def append_maa_task(self, type):
+    def append_maa_task(self, type, *, mall_action=None):
         if type == "StartUp":
             self.MAA.append_task(
                 "StartUp",
@@ -13956,7 +13968,9 @@ class BaseSchedulerSolver(
             self.MAA.append_task(
                 "Mall",
                 {
-                    "shopping": getattr(
+                    "shopping": mall_action == "shopping"
+                    if mall_action
+                    else getattr(
                         conf,
                         "should_run_maa_mall",
                         getattr(conf, "maa_mall_enable", True)
@@ -13964,12 +13978,15 @@ class BaseSchedulerSolver(
                     ),
                     "buy_first": conf.maa_mall_buy.split(","),
                     "blacklist": conf.maa_mall_blacklist.split(","),
-                    "credit_fight": conf.maa_credit_fight
+                    "credit_fight": not mall_action
+                    and conf.maa_credit_fight
                     and "" not in self.stages
                     and self.credit_fight is None,
                     "formation_index": max(0, min(4, conf.credit_fight.squad)),
                     "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
-                    "visit_friends": getattr(
+                    "visit_friends": mall_action == "visit_friends"
+                    if mall_action
+                    else getattr(
                         conf,
                         "should_run_maa_visit_friend",
                         getattr(conf, "visit_friend_enable", False)
@@ -14043,6 +14060,13 @@ class BaseSchedulerSolver(
         if config.stop_maa.is_set() or config.stop_mower.is_set():
             return
 
+        def next_task_time():
+            if getattr(getattr(self, "task", None), "type", None) in MANUAL_TASK_TYPES:
+                from arknights_mower.solvers.manual_tasks import manual_task_deadline
+
+                return manual_task_deadline(self)
+            return self.tasks[0].time
+
         queued = False
         try:
             version = self.MAA.get_version()
@@ -14058,7 +14082,7 @@ class BaseSchedulerSolver(
 
             deadline = min(
                 datetime.now() + timedelta(seconds=120),
-                self.tasks[0].time - timedelta(seconds=5),
+                next_task_time() - timedelta(seconds=5),
             )
             if (deadline - datetime.now()).total_seconds() < 10:
                 logger.info("距离下次调度时间过近，跳过恢复主题")
@@ -14083,7 +14107,7 @@ class BaseSchedulerSolver(
                     return
                 if (
                     datetime.now() >= deadline
-                    or (self.tasks[0].time - datetime.now()).total_seconds() <= 5
+                    or (next_task_time() - datetime.now()).total_seconds() <= 5
                 ):
                     logger.warning("恢复主题超时或即将开始下次调度，停止恢复")
                     return
@@ -14138,21 +14162,39 @@ class BaseSchedulerSolver(
             or getattr(conf, "RCL", False)
         )
 
-    def maa_plan_solver(self, tasks="All", one_time=False):
+    def maa_plan_solver(
+        self,
+        tasks="All",
+        one_time=False,
+        *,
+        manual=False,
+        long_task=None,
+        mall_action=None,
+    ):
         """清日常"""
         try:
+            from arknights_mower.solvers.manual_tasks import manual_task_deadline
+
+            def deadline():
+                return manual_task_deadline(self) if manual else self.tasks[0].time
+
+            record_execution = not one_time and (
+                not manual or tasks == "All" or "Fight" in tasks
+            )
             self.drop_send = False
             restore_theme = False
             conf = config.conf
             if (
                 not one_time
+                and not manual
                 and len(self.tasks) > 0
-                and (self.tasks[0].time - datetime.now()).total_seconds() < 300
+                and (deadline() - datetime.now()).total_seconds() < 300
             ):
                 logger.info("距离下次基建任务不足5分钟，跳过MAA日常任务")
                 return
             if (
                 not one_time
+                and not manual
                 and self.last_execution["maa"] is not None
                 and (
                     delta := (
@@ -14164,7 +14206,7 @@ class BaseSchedulerSolver(
                 > timedelta()
             ):
                 logger.info(f"{format_time(delta.total_seconds())}后开始做日常任务")
-            elif tasks == "All" and not self.has_maa_daily_tasks():
+            elif not tasks or tasks == "All" and not self.has_maa_daily_tasks():
                 logger.info("没有启用的 MAA 日常任务，跳过日常")
             else:
                 send_message("启动MAA")
@@ -14196,7 +14238,10 @@ class BaseSchedulerSolver(
                         tasks.append("Mall")
                     tasks.append("Award")
                 for maa_task in tasks:
-                    self.append_maa_task(maa_task)
+                    if mall_action:
+                        self.append_maa_task(maa_task, mall_action=mall_action)
+                    else:
+                        self.append_maa_task(maa_task)
                 self.MAA.start()
                 stop_time = None
                 if one_time:
@@ -14217,11 +14262,11 @@ class BaseSchedulerSolver(
                     # 5分钟之前就停止
                     elif (
                         not one_time
-                        and (self.tasks[0].time - datetime.now()).total_seconds() < 300
+                        and (deadline() - datetime.now()).total_seconds() < 300
                     ):
                         self.maa_stop()
                         hard_stop = True
-                    elif config.stop_maa.is_set():
+                    elif config.stop_maa.is_set() or config.stop_mower.is_set():
                         self.maa_stop()
                         hard_stop = True
                     else:
@@ -14229,6 +14274,8 @@ class BaseSchedulerSolver(
                 # MAA 运行期间只保存截图，没有连续执行 Mower 场景识别。
                 self.recog.reset_after_external_control()
                 restore_theme = not hard_stop
+                if hard_stop and manual:
+                    return False
                 if hard_stop:
                     hard_stop_msg = "MAA任务未完成，等待3分钟"
                     logger.info(hard_stop_msg)
@@ -14237,7 +14284,7 @@ class BaseSchedulerSolver(
                     self.device.exit()
                     if self.device.check_current_focus():
                         self.recog.update()
-                elif not one_time:
+                elif record_execution:
                     logger.info("记录MAA 本次执行时间")
                     self.last_execution["maa"] = datetime.now()
                     logger.info(self.last_execution["maa"])
@@ -14245,7 +14292,7 @@ class BaseSchedulerSolver(
                         self.credit_fight = get_server_weekday()
                         logger.info("记录首次信用作战")
                         self.maa_stop(False)
-                else:
+                elif not manual:
                     send_message("MAA单次任务停止")
                     if (
                         self.find_next_task(datetime.now() + timedelta(minutes=15))
@@ -14256,6 +14303,24 @@ class BaseSchedulerSolver(
                         )
                         self.tasks.insert(0, SchedulerTask(time=datetime.now()))
             conf = config.conf
+            selected_long = (
+                long_task
+                if manual
+                else next(
+                    (
+                        name
+                        for flag, name in (
+                            ("RG", "rogue"),
+                            ("SSS", "sss"),
+                            ("RCL", "rcl"),
+                            ("RA", "ra"),
+                            ("SF", "sf"),
+                        )
+                        if getattr(conf, flag, False)
+                    ),
+                    None,
+                )
+            )
             now_time = datetime.now().time()
             try:
                 min_time = datetime.strptime(conf.maa_rg_sleep_min, "%H:%M").time()
@@ -14266,7 +14331,7 @@ class BaseSchedulerSolver(
                     rg_sleep = min_time < now_time < max_time
             except ValueError:
                 rg_sleep = False
-            if (conf.RG or conf.SSS or conf.RCL) and not rg_sleep:
+            if selected_long in ("rogue", "sss", "rcl") and (manual or not rg_sleep):
                 logger.info("准备开始：肉鸽/保全/盐酸")
                 send_message("启动 肉鸽/保全/盐酸")
                 while True:
@@ -14275,7 +14340,7 @@ class BaseSchedulerSolver(
                     self.initialize_maa()
                     self.recog.reset_after_external_control()
                     self.back_to_index()
-                    if conf.RG:
+                    if selected_long == "rogue":
                         # Roguelike 通用字段按协议条件下发（#264）：投资类字段仅在
                         # investment_enabled 时下发（值内联各自的策略/主题限制，与 MAA 一致），
                         # stop_at_final_boss 除 Phantom 外可用且仅策略 0 下发，
@@ -14407,7 +14472,7 @@ class BaseSchedulerSolver(
                                 conf.rogue.find_playtime_target
                             )
                         self.MAA.append_task("Roguelike", rogue_params)
-                    elif conf.SSS:
+                    elif selected_long == "sss":
                         copilot = get_path("@app/sss.json")
                         if (
                             not copilot.is_file()
@@ -14421,7 +14486,7 @@ class BaseSchedulerSolver(
                             "SSSCopilot",
                             {"filename": str(copilot), "loop_times": 9999999},
                         )
-                    elif conf.RCL:
+                    elif selected_long == "rcl":
                         self.to_reclamation(conf.maa_rcl_theme, conf.rcl.mode)
                         self.MAA.append_task(
                             "Reclamation",
@@ -14441,8 +14506,9 @@ class BaseSchedulerSolver(
                         self.recog.update()
                         self.recog.save_screencap(None)
                         if (
-                            self.tasks[0].time - datetime.now() < timedelta(seconds=30)
+                            deadline() - datetime.now() < timedelta(seconds=30)
                             or config.stop_maa.is_set()
+                            or config.stop_mower.is_set()
                         ):
                             self.maa_stop()
                             restore_theme = True
@@ -14450,15 +14516,15 @@ class BaseSchedulerSolver(
                     self.recog.reset_after_external_control()
                     break
 
-            elif not rg_sleep:
-                if conf.RA:
+            elif manual or not rg_sleep:
+                if selected_long == "ra":
                     self.back_to_index()
                     ra_solver = ReclamationAlgorithm(self.device, self.recog)
-                    ra_solver.run(self.tasks[0].time - datetime.now())
-                elif conf.SF:
+                    ra_solver.run(deadline() - datetime.now())
+                elif selected_long == "sf":
                     self.back_to_index()
                     sf_solver = SecretFront(self.device, self.recog)
-                    sf_solver.run(self.tasks[0].time - datetime.now())
+                    sf_solver.run(deadline() - datetime.now())
 
             if restore_theme:
                 self.restore_maa_theme()
@@ -14484,22 +14550,26 @@ class BaseSchedulerSolver(
             self.release_maa()
             battle_inventory_active.clear()
             send_message(str(e), "MAA调用出错！", level="ERROR")
-            remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
+            if manual:
+                raise
+            remaining_time = (deadline() - datetime.now()).total_seconds()
             if remaining_time > 0:
                 # 参照 rest_until_next_task：休眠前重置场景计时，避免 check_freeze
                 # 把这段休眠当成「同一场景超时」而再次调用 device.exit() 关闭游戏。
                 self.recog.last_scene = None
                 logger.info(
-                    f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
+                    f"休息 {format_time(remaining_time)}，到{deadline().strftime('%H:%M:%S')}开始工作"
                 )
                 self._idle_sleep(remaining_time)
         else:
             # 空闲唤醒故障交回设备恢复，不能作为 MAA 任务故障报告。
             battle_inventory_active.clear()
-            self.rest_until_next_task()
+            if not manual:
+                self.rest_until_next_task()
         finally:
             self.release_maa()
             battle_inventory_active.clear()
+        return True
 
     def skland_plan_solver(self):
         solver = None
@@ -14798,8 +14868,10 @@ class BaseSchedulerSolver(
                 simulated_current_ap,
             )
 
-    def mower_plan_solver(self, one_time=False):
+    def mower_plan_solver(self, one_time=False, *, manual=False):
         try:
+            from arknights_mower.solvers.manual_tasks import manual_task_deadline
+
             conf = config.conf
             followup_due = (
                 self.local_operation_followup_time is not None
@@ -14816,6 +14888,7 @@ class BaseSchedulerSolver(
             )
             if (
                 not one_time
+                and not manual
                 and not followup_due
                 and self.last_execution["maa"] is not None
                 and (
@@ -14836,6 +14909,8 @@ class BaseSchedulerSolver(
                 next_task_time = (
                     datetime.now() + timedelta(days=1)
                     if one_time
+                    else manual_task_deadline(self)
+                    if manual
                     else self.tasks[0].time
                 )
                 logger.info(
@@ -14931,6 +15006,8 @@ class BaseSchedulerSolver(
                             break
                         stage = stages[0]
                         attempted_stages.add(stage)
+                        if manual:
+                            next_task_time = manual_task_deadline(self)
                         if next_task_time - datetime.now() < timedelta(minutes=5):
                             logger.info(
                                 "skip local operation because time is not enough"
@@ -15025,6 +15102,7 @@ class BaseSchedulerSolver(
                         and not inventory_unconfirmed
                         and not threshold_control_failed
                         and not one_time
+                        and not manual
                         and simulated_current_ap is not None
                     ):
                         projection = build_sanity_projection(
@@ -15066,13 +15144,15 @@ class BaseSchedulerSolver(
 
             self._refresh_workshop_inventory()
             scheduling(self.tasks, op_data=getattr(self, "op_data", None))
-        except (MowerExit, DeviceRecoveryError):
+        except (MowerExit, DeviceRecoveryError, SharedADBError):
             raise
         except Exception as e:
             save_exception(e)
             logger.exception(e)
             self.device.exit()
             send_message(str(e), "mower local operation error", level="ERROR")
+            if manual:
+                raise
             self.check_current_focus()
 
     def mail_plan_solver(self):
