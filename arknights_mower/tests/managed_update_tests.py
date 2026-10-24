@@ -58,8 +58,9 @@ def test_fresh_launch_captures_permission_once(tmp_path, managed, choice, expect
         "config.conf.updates_enabled = not before\n"
         "os.environ['MOWER_MANAGED'] = '0'\n"
         "config.load_conf()\n"
+        "server.app.token = 'update-status-test'\n"
         "print(json.dumps([before, config.updates_enabled, "
-        "server.app.test_client().get('/status').json['updates_enabled']]))\n"
+        "server.app.test_client().get('/status', headers={'token': 'update-status-test'}).json['updates_enabled']]))\n"
     )
     process = subprocess.run(
         [sys.executable, "-c", script],

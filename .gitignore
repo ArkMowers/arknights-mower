@@ -208,6 +208,9 @@ dmypy.json
 # 运行期配置文件（@app/config/，2026-08-21 由 @app/ 迁移而来）
 /config/
 
+# 运行期已保存配置档案（@app/config-profiles/，含档案 ZIP 与索引）
+/config-profiles/
+
 # Shared persistent runtime resource packages (never bundled or tracked)
 /resources/
 

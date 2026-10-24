@@ -73,6 +73,13 @@ it('displays resources without recommending a hardware-derived mode', () => {
   expect(state.config).toEqual({ ...before, performance_mode: 'high' })
 })
 
+it('leaves the managed performance mode under manager control', () => {
+  const { component } = setup()
+  state.config.manager_owned_device = true
+  component.applyMode('low')
+  expect(state.config.performance_mode).toBe('auto')
+})
+
 it('keeps manual choices when information is unavailable or changes', () => {
   const { component, props } = setup({ observation: { status: 'unavailable' } })
   state.config.performance_mode = 'xhigh'

@@ -1,78 +1,89 @@
 <template>
-  <div>
-    <h1 class="page-title">
-      基建报表
-      <help-text>
+  <PageLayout>
+    <template #header>
+      <PageHeader>
+        基建报表
+        <help-text>
+          <p>若没有数据显示，请查看tmp文件夹中的report.csv文件</p>
+          <p>若存在空数据删掉对应行或自行填补一个数据</p>
+          <p>report.csv不存在建议先让mower看看你的基报</p>
+        </help-text>
+        <template #actions>
+          <n-dropdown
+            :options="algorithmOptions"
+            placement="bottom-start"
+            trigger="click"
+            :disabled="!valuation || algorithmBusy"
+            @select="selectAlgorithm"
+          >
+            <n-button secondary size="small" :disabled="!valuation" :loading="algorithmBusy">
+              选择收益算法（当前：{{ incomeAlgorithmLabel(valuation?.base_algorithm) }}）
+            </n-button>
+          </n-dropdown>
+          <SessionLink to="/task-settings#task-accounts">管理收益设置</SessionLink>
+        </template>
+      </PageHeader>
+    </template>
+
+    <div class="report-section">
+      <n-card v-if="showCustomAlgorithm" title="自定义收益系数">
+        <n-space align="center" wrap>
+          <label v-for="field in customFields" :key="field.key">
+            {{ field.label }}
+            <n-input-number
+              v-model:value="customRatios[field.key]"
+              :min="field.key === 'experience' ? 0.000001 : 0"
+              :max="1000"
+              :disabled="algorithmBusy"
+              :show-button="false"
+            />
+          </label>
+          <n-button :disabled="algorithmBusy" @click="showCustomAlgorithm = false">取消</n-button>
+          <n-button
+            type="primary"
+            :loading="algorithmBusy"
+            @click="saveAlgorithm(-1, customRatios)"
+          >
+            保存为自定义
+          </n-button>
+        </n-space>
+      </n-card>
+
+      <n-alert v-if="algorithmError" type="error">{{ algorithmError }}</n-alert>
+      <n-alert v-if="show_alert" title="数据错误" type="error">
         <p>若没有数据显示，请查看tmp文件夹中的report.csv文件</p>
         <p>若存在空数据删掉对应行或自行填补一个数据</p>
         <p>report.csv不存在建议先让mower看看你的基报</p>
-      </help-text>
-    </h1>
-  </div>
-  <n-space align="center" style="margin-bottom: 16px">
-    <n-dropdown
-      :options="algorithmOptions"
-      placement="bottom-start"
-      trigger="click"
-      :disabled="!valuation || algorithmBusy"
-      @select="selectAlgorithm"
-    >
-      <n-button :disabled="!valuation" :loading="algorithmBusy">
-        选择收益算法（当前：{{ incomeAlgorithmLabel(valuation?.base_algorithm) }}）
-      </n-button>
-    </n-dropdown>
-    <SessionLink to="/mowersettings">管理收益设置</SessionLink>
-  </n-space>
-  <n-card v-if="showCustomAlgorithm" title="自定义收益系数" style="margin-bottom: 16px">
-    <n-space align="center" wrap>
-      <label v-for="field in customFields" :key="field.key">
-        {{ field.label }}
-        <n-input-number
-          v-model:value="customRatios[field.key]"
-          :min="field.key === 'experience' ? 0.000001 : 0"
-          :max="1000"
-          :disabled="algorithmBusy"
-          :show-button="false"
-        />
-      </label>
-      <n-button :disabled="algorithmBusy" @click="showCustomAlgorithm = false">取消</n-button>
-      <n-button type="primary" :loading="algorithmBusy" @click="saveAlgorithm(-1, customRatios)">
-        保存为自定义
-      </n-button>
-    </n-space>
-  </n-card>
-  <n-alert v-if="algorithmError" type="error" style="margin-bottom: 16px">{{
-    algorithmError
-  }}</n-alert>
-  <n-alert title="数据错误" type="error" v-if="show_alert">
-    <p>若没有数据显示，请查看tmp文件夹中的report.csv文件</p>
-    <p>若存在空数据删掉对应行或自行填补一个数据</p>
-    <p>report.csv不存在建议先让mower看看你的基报</p>
-  </n-alert>
-  <div>
-    <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center" autoresize>
-      <n-gi v-if="show_iron_chart">
-        <div class="report-card_1">
-          <v-chart class="chart" :option="option_manufactor" />
-        </div>
-      </n-gi>
-      <n-gi v-if="show_earnings_chart">
-        <div class="report-card_1">
-          <v-chart class="chart" :option="option_earnings" />
-        </div>
-      </n-gi>
-      <n-gi v-if="show_orundum_chart">
-        <div class="report-card_1">
-          <v-chart class="chart" :option="option_orundum" />
-        </div>
-      </n-gi>
-    </n-grid>
-  </div>
+      </n-alert>
+
+      <div class="charts-container">
+        <n-grid x-gap="12" y-gap="12" cols="1 1000:2" style="text-align: center" autoresize>
+          <n-gi v-if="show_iron_chart">
+            <div class="report-card">
+              <v-chart class="chart" :option="option_manufactor" />
+            </div>
+          </n-gi>
+          <n-gi v-if="show_earnings_chart">
+            <div class="report-card">
+              <v-chart class="chart" :option="option_earnings" />
+            </div>
+          </n-gi>
+          <n-gi v-if="show_orundum_chart">
+            <div class="report-card">
+              <v-chart class="chart" :option="option_orundum" />
+            </div>
+          </n-gi>
+        </n-grid>
+      </div>
+    </div>
+  </PageLayout>
 </template>
 
 <script setup>
 defineOptions({ name: 'BaseReportPage' })
 
+import PageLayout from '@/components/PageLayout.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { registerTheme, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
@@ -101,10 +112,11 @@ use([
   CanvasRenderer
 ])
 import { useConfigStore } from '@/stores/config'
+import { useResolvedTheme } from '@/composables/theme'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'
-const { theme } = storeToRefs(store)
-
+const { theme: themePreference } = storeToRefs(store)
+const theme = useResolvedTheme(themePreference)
 import roma from './theme/roma.json'
 import dark from './theme/dark.json'
 import {
@@ -187,12 +199,11 @@ function formatEarning(earning, accurate = false) {
 }
 
 registerTheme('dark', dark)
-if (theme.value == 'dark') {
-  provide(THEME_KEY, 'dark')
-} else {
-  registerTheme('roma', roma)
-  provide(THEME_KEY, 'roma')
-}
+registerTheme('roma', roma)
+provide(
+  THEME_KEY,
+  computed(() => (theme.value === 'dark' ? 'dark' : 'roma'))
+)
 
 import { useReportStore } from '@/stores/report'
 
@@ -581,22 +592,33 @@ const option_orundum = computed(() => {
 </script>
 
 <style scoped>
+.report-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.charts-container {
+  width: 100%;
+}
+
 .chart {
   height: 400px;
 }
 
-.report-card_1 {
-  display: gird;
+.report-card {
+  display: flex;
   flex-direction: column;
   align-items: center;
-  /* 让内容在水平方向上居中 */
   justify-content: center;
-  /* 让内容在垂直方向上居中 */
-
-  width: 800px;
-  height: 400px;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
   padding: 20px 20px 80px 20px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--mower-divider);
+  border-radius: 8px;
+  background: var(--mower-surface);
+  box-shadow: var(--mower-shadow-surface);
 }
 
 .n-card {
@@ -608,5 +630,15 @@ const option_orundum = computed(() => {
   display: flex;
   justify-content: center;
   gap: 30px;
+}
+
+@media (max-width: 640px) {
+  .report-card {
+    padding: 12px 12px 60px 12px;
+  }
+
+  .chart {
+    height: 320px;
+  }
 }
 </style>

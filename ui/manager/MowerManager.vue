@@ -1,21 +1,27 @@
 <script setup>
-import {
-  Add as PlusIcon,
-  FolderOpenOutline as FolderIcon,
-  GlobeOutline as BrowserIcon,
-  Pencil as PencilIcon,
-  Play as PlayIcon,
-  Stop as StopIcon,
-  SettingsOutline as SettingsIcon,
-  TrashOutline as TrashIcon,
-  WarningOutline as WarningIcon
-} from '@vicons/ionicons5'
+import PlusIcon from '@vicons/ionicons5/es/Add'
+import FolderIcon from '@vicons/ionicons5/es/FolderOpenOutline'
+import PencilIcon from '@vicons/ionicons5/es/Pencil'
+import PlayIcon from '@vicons/ionicons5/es/Play'
+import StopIcon from '@vicons/ionicons5/es/Stop'
+import SettingsIcon from '@vicons/ionicons5/es/SettingsOutline'
+import TrashIcon from '@vicons/ionicons5/es/TrashOutline'
+import WarningIcon from '@vicons/ionicons5/es/WarningOutline'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { initializeManager, managerCall } from './bridge.js'
+import { managerCall } from './bridge.js'
+import { createInstanceManagement } from '../src/utils/instanceManagement.js'
+
+const props = defineProps({
+  embedded: { type: Boolean, default: false },
+  active: { type: Boolean, default: true }
+})
+import BrowserIcon from '@vicons/ionicons5/es/GlobeOutline'
 import CommonSettings from './CommonSettings.vue'
 import ManagerTools from './ManagerTools.vue'
+import DeviceSettingsEditor from './DeviceSettingsEditor.vue'
 
 const toolsOpen = ref(false)
+const deviceEditor = ref(null)
 const preview = ref(null)
 const previewLoading = ref(false)
 const previewRevision = ref(0)
@@ -79,7 +85,10 @@ const batchSummary = computed(() => {
 const assistantConfirmation = ref(null)
 const riskAcknowledged = ref(false)
 const riskSeconds = ref(5)
-const unavailable = computed(() => !ready.value || !connected.value || busy.value)
+const unavailable = computed(() => loading.value || !ready.value || !connected.value || busy.value)
+const hasDialog = computed(() =>
+  Boolean(editing.value || deleting.value || confirmation.value || assistantConfirmation.value)
+)
 const riskReady = computed(
   () =>
     Boolean(assistantConfirmation.value) &&
@@ -92,7 +101,8 @@ let riskTimer
 let riskStartedAt = 0
 let disposed = false
 let refreshVersion = 0
-const api = () => window.pywebview.api
+const transport = createInstanceManagement()
+const api = () => transport.api
 const statuses = { stopped: '已停止', starting: '启动中', running: '运行中', stopping: '停止中' }
 
 async function refresh() {
@@ -100,8 +110,29 @@ async function refresh() {
   const loaded = await managerCall(() => api().get_instances())
   if (!Array.isArray(loaded)) throw new Error('实例列表格式不正确')
   if (disposed || version !== refreshVersion) return
+  acceptInstances(loaded)
+}
+
+function editDevice(idx) {
+  if (props.embedded || unavailable.value || !instances.value[idx]?.editable) return
+  const { name, path } = instances.value[idx]
+  deviceEditor.value = { idx, target: { name, path } }
+}
+
+function deviceSaved() {
+  deviceEditor.value = null
+  void initialize()
+}
+
+function acceptInstances(loaded) {
   instances.value = loaded
   connected.value = true
+  if (deviceEditor.value) {
+    const { idx, target } = deviceEditor.value
+    const current = loaded[idx]
+    if (!current?.editable || current.name !== target.name || current.path !== target.path)
+      deviceEditor.value = null
+  }
   if (editing.value?.kind === 'batch') {
     if (
       loaded.length !== editing.value.targets.length ||
@@ -151,28 +182,29 @@ async function refresh() {
 }
 
 async function initialize() {
+  const version = ++refreshVersion
   loading.value = true
   initializationError.value = ''
+  error.value = ''
   try {
-    await initializeManager(async (loaded) => {
-      instances.value = loaded
+    await transport.initialize(async (loaded) => {
+      if (disposed || version !== refreshVersion) return
+      acceptInstances(loaded)
       ready.value = true
-      connected.value = true
       await nextTick()
     })
   } catch (failure) {
+    if (disposed || version !== refreshVersion) return
     connected.value = false
     initializationError.value = failure?.message || '无法加载实例列表，请重试'
   } finally {
-    loading.value = false
+    if (!disposed && version === refreshVersion) loading.value = false
   }
 }
 
 async function poll() {
   try {
-    if (ready.value && !busy.value) {
-      await refresh()
-    }
+    if (props.active !== false && ready.value && !busy.value && !loading.value) await refresh()
   } catch (failure) {
     connected.value = false
     error.value = failure?.message || '无法读取实例状态，请稍后重试'
@@ -255,7 +287,10 @@ async function editBatch() {
     targets: instances.value.map(({ name, path }) => ({ name, path }))
   }
   preview.value = null
-  await loadCommon()
+  commonDraft.value = {}
+  commonOriginal.value = {}
+  commonError.value = ''
+  if (!props.embedded) await loadCommon()
 }
 
 async function previewCommon() {
@@ -308,7 +343,9 @@ function browseCommon(key) {
 }
 
 function selectPath(idx) {
-  return execute(() => api().select_path(idx), { waitForUser: true })
+  if (unavailable.value || !instances.value[idx]?.editable) return
+  const { name, path } = instances.value[idx]
+  return execute(() => api().select_path(idx, { name, path }), { waitForUser: true })
 }
 
 async function save() {
@@ -341,7 +378,7 @@ async function save() {
     return
   }
   if (kind === 'name') {
-    const succeeded = await execute(() => api().rename(idx, draft.value.name))
+    const succeeded = await execute(() => api().rename(idx, draft.value.name, target))
     if (succeeded) editing.value = null
     return
   }
@@ -452,13 +489,14 @@ function confirmBulk(action) {
 async function applyBulk() {
   const action = confirmation.value
   confirmation.value = null
-  await execute(() => window.pywebview.api[action === 'start' ? 'start_all' : 'stop_all']())
+  await execute(() => api()[action === 'start' ? 'start_all' : 'stop_all']())
 }
 
 function lifecycle(idx) {
   const instance = instances.value[idx]
   if (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop) return
-  execute(() => window.pywebview.api[instance.state === 'stopped' ? 'start' : 'stop'](idx))
+  const target = { name: instance.name, path: instance.path }
+  execute(() => api()[instance.state === 'stopped' ? 'start' : 'stop'](idx, target))
 }
 
 function openBrowser(idx) {
@@ -478,174 +516,222 @@ async function applyDelete() {
   const target = deleting.value
   deleting.value = null
   if (!target) return
-  await execute(() => api().remove(target.idx))
+  await execute(() => api().remove(target.idx, { name: target.name, path: target.path }))
 }
+
+function addInstance() {
+  return execute(() => api().add('新实例', ''))
+}
+
+defineExpose({
+  instances,
+  loading,
+  ready,
+  unavailable,
+  hasDialog,
+  initializationError,
+  initialize,
+  addInstance,
+  edit,
+  editBatch,
+  selectPath,
+  confirmBulk,
+  lifecycle,
+  confirmDelete
+})
 </script>
 
 <template>
-  <div class="mower-list" :data-manager-ready="ready">
-    <n-alert v-if="initializationError" type="error">
-      {{ initializationError }}
-      <template #action><n-button @click="initialize">重新加载</n-button></template>
-    </n-alert>
-    <n-alert v-if="error" type="warning" closable @close="error = ''">{{ error }}</n-alert>
-    <n-alert
-      v-if="batchResult"
-      :title="batchSummary"
-      :type="
-        batchResult.results.some((item) => item.status === 'failed')
-          ? 'error'
-          : batchResult.results.some((item) => item.status === 'skipped')
-            ? 'warning'
-            : 'success'
-      "
-      closable
-      @close="batchResult = null"
-    >
-      <ul
-        v-if="batchResult.results.some((item) => item.status !== 'updated')"
-        class="batch-results"
+  <div class="mower-list" :class="{ 'mower-list--embedded': embedded }" :data-manager-ready="ready">
+    <div v-if="initializationError || error || batchResult" class="manager-feedback">
+      <n-alert v-if="initializationError" type="error">
+        {{ initializationError }}
+        <template #action><n-button @click="initialize">重新加载</n-button></template>
+      </n-alert>
+      <n-alert v-if="error" type="warning" closable @close="error = ''">{{ error }}</n-alert>
+      <n-alert
+        v-if="batchResult"
+        :title="batchSummary"
+        :type="
+          batchResult.results.some((item) => item.status === 'failed')
+            ? 'error'
+            : batchResult.results.some((item) => item.status === 'skipped')
+              ? 'warning'
+              : 'success'
+        "
+        closable
+        @close="batchResult = null"
       >
-        <li
-          v-for="item in batchResult.results.filter((item) => item.status !== 'updated')"
-          :key="item.idx"
+        <ul
+          v-if="batchResult.results.some((item) => item.status !== 'updated')"
+          class="batch-results"
         >
-          {{ item.name }}：{{ item.message }}
-        </li>
-      </ul>
-    </n-alert>
-    <div class="manager-heading">
-      <div>
-        <h1>多开管理器</h1>
-        <p>
-          {{ instances.length }} 个实例 ·
-          {{ instances.filter((item) => item.state === 'running').length }} 个运行中
-        </p>
-      </div>
+          <li
+            v-for="item in batchResult.results.filter((item) => item.status !== 'updated')"
+            :key="item.idx"
+          >
+            {{ item.name }}：{{ item.message }}
+          </li>
+        </ul>
+      </n-alert>
     </div>
-    <div class="bulk-actions">
-      <n-button
-        :disabled="unavailable || !instances.some((i) => i.can_start)"
-        @click="confirmBulk('start')"
-      >
-        <template #icon
-          ><n-icon><play-icon /></n-icon></template
-        >全部打开
-      </n-button>
-      <n-button
-        :disabled="unavailable || !instances.some((i) => i.can_stop)"
-        @click="confirmBulk('stop')"
-      >
-        <template #icon
-          ><n-icon><stop-icon /></n-icon></template
-        >全部关闭
-      </n-button>
-      <n-button :disabled="unavailable" @click="editBatch">
-        <template #icon
-          ><n-icon><settings-icon /></n-icon></template
-        >批量配置
-      </n-button>
-      <n-button :disabled="unavailable" @click="toolsOpen = true">维护工具</n-button>
-    </div>
-    <n-empty
-      v-if="ready && !instances.length"
-      description="添加实例，或先在批量配置中设置公共参数"
-    />
-    <n-skeleton v-if="loading" :height="140" />
-    <n-card v-for="(instance, idx) in instances" :key="idx" size="small">
-      <div class="instance-heading">
-        <strong class="instance-name">{{ instance.name }}</strong>
-        <n-tag size="small" :type="instance.state === 'running' ? 'success' : 'default'">{{
-          statuses[instance.state]
-        }}</n-tag>
-        <n-button
-          :type="instance.state === 'stopped' ? 'primary' : 'error'"
-          size="small"
-          :disabled="
-            unavailable || (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop)
-          "
-          @click="lifecycle(idx)"
-        >
-          <template #icon
-            ><n-icon><play-icon v-if="instance.state === 'stopped'" /><stop-icon v-else /></n-icon
-          ></template>
-          {{ instance.state === 'stopped' ? '启动' : '停止' }}
-        </n-button>
-      </div>
-      <div class="instance-toolbar">
-        <div class="instance-tools">
-          <n-button
-            size="tiny"
-            title="修改实例名称"
-            aria-label="修改实例名称"
-            :disabled="unavailable || !instance.editable"
-            @click="edit(idx, 'name')"
-            ><template #icon
-              ><n-icon><pencil-icon /></n-icon></template
-          ></n-button>
-          <n-button
-            size="tiny"
-            title="实例配置"
-            aria-label="实例配置"
-            :disabled="unavailable || !instance.editable || !instance.path"
-            @click="edit(idx, 'settings')"
-            ><template #icon
-              ><n-icon><settings-icon /></n-icon></template
-          ></n-button>
-          <n-button
-            size="tiny"
-            title="选择保存目录"
-            aria-label="选择保存目录"
-            :disabled="unavailable || !instance.editable"
-            @click="selectPath(idx)"
-            ><template #icon
-              ><n-icon><folder-icon /></n-icon></template
-          ></n-button>
-          <n-button
-            size="tiny"
-            type="error"
-            ghost
-            title="删除实例"
-            aria-label="删除实例"
-            :disabled="unavailable || !instance.editable"
-            @click="confirmDelete(idx)"
-            ><template #icon
-              ><n-icon><trash-icon /></n-icon></template
-          ></n-button>
+    <template v-if="!embedded">
+      <div class="manager-heading">
+        <div>
+          <h1>多开管理器</h1>
+          <p>
+            {{ instances.length }} 个实例 ·
+            {{ instances.filter((item) => item.state === 'running').length }} 个运行中
+          </p>
         </div>
+      </div>
+      <div class="bulk-actions">
         <n-button
-          text
-          size="small"
-          class="browser-action"
-          :disabled="unavailable || !instance.can_open_browser"
-          :aria-label="`${instance.name} 在浏览器中打开`"
-          @click="openBrowser(idx)"
+          :disabled="unavailable || !instances.some((i) => i.can_start)"
+          @click="confirmBulk('start')"
         >
           <template #icon
-            ><n-icon><browser-icon /></n-icon
-          ></template>
-          在浏览器中打开
+            ><n-icon><play-icon /></n-icon></template
+          >全部打开
         </n-button>
+        <n-button
+          :disabled="unavailable || !instances.some((i) => i.can_stop)"
+          @click="confirmBulk('stop')"
+        >
+          <template #icon
+            ><n-icon><stop-icon /></n-icon></template
+          >全部关闭
+        </n-button>
+        <n-button :disabled="unavailable" @click="editBatch">
+          <template #icon
+            ><n-icon><settings-icon /></n-icon></template
+          >批量配置
+        </n-button>
+        <n-button :disabled="unavailable" @click="toolsOpen = true">维护工具</n-button>
       </div>
-      <code class="folder-content">{{ instance.path || '未选择保存目录' }}</code>
-      <div class="connection-info">
-        <span>端口：{{ instance.port || '随机' }}</span
-        ><span>Token：{{ instance.token ? '已设置' : '未设置' }}</span
-        ><span>自动开始任务：{{ instance.start_automatically ? '开' : '关' }}</span>
-      </div>
-      <div v-if="instance.reason && instance.state === 'stopped'" class="reason">
-        {{ instance.reason }}
-      </div>
-    </n-card>
-    <n-button
-      v-if="ready"
-      dashed
-      :disabled="unavailable"
-      @click="execute(() => api().add('新实例', ''))"
-      ><template #icon
-        ><n-icon><plus-icon /></n-icon></template
-      >添加实例</n-button
+      <n-empty
+        v-if="ready && !instances.length"
+        description="添加实例，或先在批量配置中设置公共参数"
+      />
+      <n-skeleton v-if="loading" :height="140" />
+      <n-card v-for="(instance, idx) in instances" :key="idx" size="small">
+        <div class="instance-heading">
+          <strong class="instance-name">{{ instance.name }}</strong>
+          <n-tag size="small" :type="instance.state === 'running' ? 'success' : 'default'">{{
+            statuses[instance.state]
+          }}</n-tag>
+          <n-button
+            :type="instance.state === 'stopped' ? 'primary' : 'error'"
+            size="small"
+            :disabled="
+              unavailable ||
+              (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop)
+            "
+            @click="lifecycle(idx)"
+          >
+            <template #icon
+              ><n-icon><play-icon v-if="instance.state === 'stopped'" /><stop-icon v-else /></n-icon
+            ></template>
+            {{ instance.state === 'stopped' ? '启动' : '停止' }}
+          </n-button>
+        </div>
+        <div class="instance-toolbar">
+          <div class="instance-tools">
+            <n-button
+              size="tiny"
+              :disabled="unavailable || !instance.editable || !instance.path"
+              @click="editDevice(idx)"
+              >连接与启动</n-button
+            >
+            <n-button
+              size="tiny"
+              title="修改实例名称"
+              aria-label="修改实例名称"
+              :disabled="unavailable || !instance.editable"
+              @click="edit(idx, 'name')"
+              ><template #icon
+                ><n-icon><pencil-icon /></n-icon></template
+            ></n-button>
+            <n-button
+              size="tiny"
+              title="实例配置"
+              aria-label="实例配置"
+              :disabled="unavailable || !instance.editable || !instance.path"
+              @click="edit(idx, 'settings')"
+              ><template #icon
+                ><n-icon><settings-icon /></n-icon></template
+            ></n-button>
+            <n-button
+              size="tiny"
+              title="选择保存目录"
+              aria-label="选择保存目录"
+              :disabled="unavailable || !instance.editable"
+              @click="selectPath(idx)"
+              ><template #icon
+                ><n-icon><folder-icon /></n-icon></template
+            ></n-button>
+            <n-button
+              size="tiny"
+              type="error"
+              ghost
+              title="删除实例"
+              aria-label="删除实例"
+              :disabled="unavailable || !instance.editable"
+              @click="confirmDelete(idx)"
+              ><template #icon
+                ><n-icon><trash-icon /></n-icon></template
+            ></n-button>
+          </div>
+          <n-button
+            text
+            size="small"
+            class="browser-action"
+            :disabled="unavailable || !instance.can_open_browser"
+            :aria-label="`${instance.name} 在浏览器中打开`"
+            @click="openBrowser(idx)"
+          >
+            <template #icon
+              ><n-icon><browser-icon /></n-icon
+            ></template>
+            在浏览器中打开
+          </n-button>
+        </div>
+        <code class="folder-content">{{ instance.path || '未选择保存目录' }}</code>
+        <div class="connection-info">
+          <span>端口：{{ instance.port || '随机' }}</span
+          ><span>Token：{{ instance.token ? '已设置' : '未设置' }}</span
+          ><span>自动开始任务：{{ instance.start_automatically ? '开' : '关' }}</span>
+        </div>
+        <div v-if="instance.reason && instance.state === 'stopped'" class="reason">
+          {{ instance.reason }}
+        </div>
+      </n-card>
+      <n-button v-if="ready" dashed :disabled="unavailable" @click="addInstance"
+        ><template #icon
+          ><n-icon><plus-icon /></n-icon></template
+        >添加实例</n-button
+      >
+    </template>
+    <n-modal
+      :show="!!deviceEditor"
+      preset="card"
+      :title="`${deviceEditor?.target.name || ''} · 连接与启动`"
+      :style="{ width: 'min(800px, calc(100vw - 24px))' }"
+      @update:show="
+        (show) => {
+          if (!show) deviceEditor = null
+        }
+      "
     >
+      <device-settings-editor
+        v-if="deviceEditor"
+        :key="`${deviceEditor.target.name}:${deviceEditor.target.path}`"
+        :api="api()"
+        :idx="deviceEditor.idx"
+        :target="deviceEditor.target"
+        @saved="deviceSaved"
+      />
+    </n-modal>
     <n-modal
       :show="toolsOpen"
       preset="card"
@@ -735,13 +821,13 @@ async function applyDelete() {
               <template #action><n-button @click="loadCommon">重新加载</n-button></template>
             </n-alert>
             <common-settings
-              v-else
+              v-if="!embedded && !commonLoading && !commonError"
               v-model:values="commonDraft"
               :fields="commonFields"
               :disabled="unavailable || !!assistantConfirmation"
               @browse="browseCommon"
             />
-            <div class="preview-section">
+            <div v-if="!embedded" class="preview-section">
               <n-button
                 :disabled="unavailable || commonLoading || !!commonError || previewLoading"
                 :loading="previewLoading"
@@ -1015,6 +1101,22 @@ async function applyDelete() {
   flex-direction: column;
   gap: 10px;
 }
+.manager-feedback {
+  display: grid;
+  gap: 10px;
+}
+.mower-list--embedded {
+  display: contents;
+}
+.mower-list--embedded .manager-feedback {
+  position: fixed;
+  z-index: 2100;
+  top: 48px;
+  right: 16px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 72px);
+  overflow: auto;
+}
 .bulk-actions,
 .instance-heading,
 .instance-toolbar,
@@ -1095,13 +1197,15 @@ async function applyDelete() {
 .folder-content {
   display: block;
   overflow-wrap: anywhere;
-  color: #555;
+  color: inherit;
+  opacity: 0.7;
   font-size: 12px;
 }
 .connection-info {
   flex-wrap: wrap;
   margin-top: 8px;
-  color: #666;
+  color: inherit;
+  opacity: 0.65;
   font-size: 12px;
 }
 .reason {
@@ -1135,12 +1239,13 @@ async function applyDelete() {
 .batch-change-count {
   margin-right: auto;
   font-size: 13px;
-  color: #666;
+  color: inherit;
+  opacity: 0.65;
 }
 .batch-table-scroll {
   max-height: min(440px, calc(100dvh - 260px));
   overflow: auto;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--n-border-color, #e5e7eb);
 }
 .settings-content {
   max-height: calc(100dvh - 200px);
@@ -1175,21 +1280,21 @@ async function applyDelete() {
 .batch-table td {
   padding: 10px;
   text-align: left;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
+  border-bottom: 1px solid var(--n-border-color, #e5e7eb);
+  background: var(--n-color, #fff);
 }
 .batch-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #f5f6f8;
+  background: var(--n-action-color, #f5f6f8);
   font-weight: 500;
 }
 .batch-table th:first-child {
   position: sticky;
   left: 0;
   z-index: 1;
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid var(--n-border-color, #e5e7eb);
 }
 .batch-table thead th:first-child {
   z-index: 3;

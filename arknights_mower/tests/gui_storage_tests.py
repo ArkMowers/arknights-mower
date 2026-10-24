@@ -9,7 +9,7 @@ import pytest
 import yaml
 from flask import Flask
 
-from arknights_mower.utils import config, ui_state
+from arknights_mower.utils import ui_state
 from arknights_mower.utils.config import gui
 from arknights_mower.views.ui_state import ui_state_bp
 
@@ -152,30 +152,25 @@ Path(sys.argv[2]).touch()
 gui.save_window_mode('maximized')
 """
     process = None
+
+    def save_preferences(data):
+        nonlocal process
+        process = subprocess.Popen(
+            [sys.executable, "-c", code, str(gui.gui_path), str(attempted)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + 10
+        while not attempted.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert attempted.exists()
+        with pytest.raises(subprocess.TimeoutExpired):
+            process.communicate(timeout=0.15)
+        data["mood_board"] = {"hiddenGroups": ["保留"]}
+
     try:
-        with ui_state.runtime.supervision_lock(
-            gui.gui_path.parent.parent / "tmp/gui-config", timeout=5
-        ):
-            process = subprocess.Popen(
-                [sys.executable, "-c", code, str(gui.gui_path), str(attempted)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            deadline = time.monotonic() + 10
-            while not attempted.exists() and time.monotonic() < deadline:
-                time.sleep(0.01)
-            assert attempted.exists()
-            with pytest.raises(subprocess.TimeoutExpired):
-                process.communicate(timeout=0.15)
-            config.atomic_write(
-                gui.gui_path,
-                lambda stream: yaml.safe_dump(
-                    {"window_mode": "normal", "mood_board": {"hiddenGroups": ["保留"]}},
-                    stream,
-                    allow_unicode=True,
-                ),
-            )
+        gui.update_gui_data(save_preferences)
         _, error = process.communicate(timeout=10)
         assert process.returncode == 0, error
         data = yaml.safe_load(gui.gui_path.read_text())

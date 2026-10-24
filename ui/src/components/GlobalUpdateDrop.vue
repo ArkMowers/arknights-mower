@@ -87,7 +87,7 @@ async function drop(event) {
     if (kind === 'software') {
       pendingSoftwarePackage.value = file
       show.value = false
-      await router.push('/mowersettings')
+      await router.push('/mowersettings#software-update-manual')
     } else {
       selected.value = file
       result.value = null

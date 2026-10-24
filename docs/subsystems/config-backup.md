@@ -3,7 +3,8 @@
 ## 1. Scope
 
 The configuration ZIP contains the current instance's `config/` originals except
-`state.json`, together with the persistent data files listed in `TMP_DATA_FILES`
+`state.json` and the local `gui.yml.lock` and `recycling_report/submission.lock`
+files, together with the persistent data files listed in `TMP_DATA_FILES`
 in [config_backup.py](../../arknights_mower/utils/config_backup.py).
 SQLite snapshots contain committed database tables, including data in WAL files.
 Resource overlays, downloaded updates, logs and unrelated tmp files stay outside
@@ -27,6 +28,17 @@ retains the current process's access settings and protected configuration files.
 Database backup operations have a ten-second deadline. Archive byte and entry
 limits cover configuration and tmp data together.
 
+Full backup import retains the active saved-profile identifier and name, replaces
+its snapshot with the imported content, and advances the configuration generation
+within the same file and database transaction. Metadata failure restores the
+previous files, database, snapshot and generation. Requests from pages opened
+before import are rejected according to the
+[saved-configuration request boundary](config-profiles.md#api-and-verification).
+Before submission, the frontend pauses and drains configuration, normal-plan and
+initialized rescue-plan saves. Success or an uncertain response keeps those
+stores paused until the page reloads; an explicit validation or busy rejection
+can resume saving when the configuration has not changed.
+
 Legacy ZIP entries `tmp/growth_plan.json` and `tmp/workshop_preset.json`
 restore into the current instance's `config/` directory. Canonical config entries
 win when both forms exist. Growth goals must decode as a JSON list before any
@@ -37,6 +49,8 @@ config file. Exports omit obsolete tmp copies once canonical files exist.
 Local `gui.yml` is exported but protected during import, including its window
 settings, mood curve preferences and log layout. Shared installation settings
 outside the current instance directory remain outside the archive.
+Import preserves both local lock files, even when an older archive includes
+them, so an active OS lock continues to protect the same file.
 
 ## 3. Subsystem Invariants
 

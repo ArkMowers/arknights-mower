@@ -9,7 +9,7 @@ export function sameDeviceProfile(left, right) {
   )
 }
 
-const presetLabels = {
+export const presetLabels = {
   'windows.mumu12': 'MuMu 12',
   'windows.ldplayer9': '雷电模拟器 9',
   'windows.ldplayer14': '雷电模拟器 14',

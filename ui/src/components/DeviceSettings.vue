@@ -2,6 +2,7 @@
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
+import { deviceConnectionNavigationKey } from '@/composables/deviceConnectionNavigation'
 import PerformanceSettings from './PerformanceSettings.vue'
 import {
   deviceSettingsState,
@@ -21,17 +22,21 @@ import {
 
 import { file_dialog, folder_dialog } from '@/utils/dialog'
 
+const props = defineProps({ expanded: { type: Boolean, default: false } })
 const config = useConfigStore()
 const axios = inject('axios')
+const connectionNavigation = inject(deviceConnectionNavigationKey, null)
 const dialog = useDialog()
 const message = useMessage()
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/device`
 const draft = ref({ ...config.device_profile })
 const metadata = ref({})
+const managerOwned = computed(() => config.manager_owned_device || metadata.value.manager_owned)
 const result = ref(null)
 const performanceObservation = ref(null)
 const busy = ref(false)
 const advanced = ref(false)
+const showAdvanced = computed(() => props.expanded || advanced.value)
 const manual = ref(false)
 const selectedKey = ref(null)
 const dirty = ref(false)
@@ -45,7 +50,7 @@ const state = computed(() =>
     metadata: metadata.value,
     result: result.value,
     busy: busy.value,
-    advanced: advanced.value,
+    advanced: showAdvanced.value,
     manual: manual.value,
     selectedKey: selectedKey.value,
     confirmedPackage: confirmedPackage.value
@@ -119,7 +124,7 @@ function flashSaved() {
 }
 
 function edit(key, value) {
-  if (state.value.locked) return
+  if (state.value.locked || managerOwned.value) return
   if (key === 'game_package') confirmedPackage.value = value
   else if (
     isImmediateDeviceField(key) &&
@@ -218,6 +223,10 @@ async function readStatus() {
 
 async function acceptPreflight(data) {
   result.value = data
+  if (managerOwned.value) {
+    performanceObservation.value = data.observations?.performance || null
+    return
+  }
   if (data.host_platform) metadata.value.host_platform = data.host_platform
   if (data.preset_id && data.preset_id !== draft.value.preset_id) dirty.value = true
   draft.value = deviceDetectionDraft(draft.value, data)
@@ -251,6 +260,11 @@ async function acceptOrStart(data, autoStart) {
 }
 
 async function preflight(autoStart = false) {
+  if (managerOwned.value) {
+    const response = await axios.post(`${base}/preflight`, { device: {} })
+    await acceptPreflight(response.data)
+    return
+  }
   const response = await axios.post(`${base}/preflight`, {
     ...devicePreflightRequest(config.device_profile || {}, draft.value, confirmedPackage.value),
     ...(autoStart &&
@@ -294,6 +308,10 @@ async function detect(
   requestError.value = ''
   try {
     await config.flush_config_saves()
+    if (managerOwned.value) {
+      await preflight(false)
+      return
+    }
     if (key) await bindInstance(key, autoStart)
     else if (endpoint === 'discover') {
       const response = await axios.post(`${base}/discover`, {
@@ -405,12 +423,33 @@ function updateStatusPolling() {
   timer = setInterval(readStatus, 3000)
 }
 
+if (connectionNavigation) {
+  watch(
+    () => state.value.locked,
+    (locked) => {
+      connectionNavigation.locked.value = locked
+    },
+    { immediate: true, flush: 'sync' }
+  )
+  watch(
+    connectionNavigation.request,
+    (request) => {
+      if (!request || !connectionNavigation.consume(request)) return
+      if (request.action === 'settings') advanced.value = true
+      else if (request.action === 'select') advanced.value = false
+      else if (request.action === 'test') void selectDetect('preflight')
+    },
+    { immediate: true, flush: 'post' }
+  )
+}
+
 onMounted(() => {
   updateStatusPolling()
   document.addEventListener('visibilitychange', updateStatusPolling)
 })
 onUnmounted(() => {
   disposed = true
+  if (connectionNavigation) connectionNavigation.locked.value = false
   document.removeEventListener('visibilitychange', updateStatusPolling)
   clearInterval(timer)
   clearTimeout(savedHintTimer)
@@ -419,49 +458,86 @@ onUnmounted(() => {
 
 <template>
   <section class="device-settings" aria-label="设备连接">
-    <div class="device-card">
-      <div class="device-card-header">
-        <div class="device-title-row">
-          <span class="device-title">{{ state.presetTitle || '尚未绑定设备' }}</span>
-          <n-tag :type="state.statusTagType" size="small" round :bordered="false">
-            {{ state.statusDisplayLabel }}
-          </n-tag>
-          <help-text>{{ state.connectionHelp }}</help-text>
-        </div>
-        <div class="device-sub-row">
-          <span
-            v-if="
-              (draft.instance_name || draft.instance_id) &&
-              (draft.preset_id !== 'macos.mumu_pro' || draft.topology_fingerprint)
-            "
-            class="sub-item"
-          >
-            实例：{{ draft.instance_name || draft.instance_id }}
-          </span>
-          <span v-if="draft.last_serial" class="sub-item"> ADB 地址：{{ draft.last_serial }} </span>
-          <span class="sub-item">{{ state.hostLabel }}</span>
-          <span v-if="dirty" class="sub-dirty">（已修改，测试连接后保存）</span>
-          <span v-else-if="savedHint" class="sub-saved">（设置已保存）</span>
+    <template v-if="managerOwned">
+      <n-alert type="info" :show-icon="false"
+        >设备连接、截图命令、游戏启动与性能设置由多开管理器配置。请退出当前实例后，在多开管理器的“设备与性能”中修改。</n-alert
+      >
+      <p>
+        {{ config.device_profile?.preset_id }} ·
+        {{ config.device_profile?.instance_name || config.device_profile?.instance_id }} ·
+        {{ config.device_profile?.last_serial || '尚无连接地址' }}
+      </p>
+      <n-space align="center"
+        ><n-tag>{{ state.statusDisplayLabel }}</n-tag
+        ><n-button
+          :disabled="busy || state.locked"
+          :loading="busy"
+          @click="detect('preflight', null, false)"
+          >测试已配置连接</n-button
+        ></n-space
+      >
+      <n-alert v-if="requestError || statusError" type="error">{{
+        requestError || statusError
+      }}</n-alert>
+      <n-alert v-if="result?.error" type="warning">{{ result.error.message }}</n-alert>
+      <PerformanceSettings :observation="performanceObservation" :test-enabled="!state.locked" />
+    </template>
+    <template v-else>
+      <div class="device-card">
+        <div class="device-card-header">
+          <div class="device-title-row">
+            <span class="device-title">{{ state.presetTitle || '尚未绑定设备' }}</span>
+            <n-tag :type="state.statusTagType" size="small" round :bordered="false">
+              {{ state.statusDisplayLabel }}
+            </n-tag>
+            <help-text>{{ state.connectionHelp }}</help-text>
+          </div>
+          <div class="device-sub-row">
+            <span
+              v-if="
+                (draft.instance_name || draft.instance_id) &&
+                (draft.preset_id !== 'macos.mumu_pro' || draft.topology_fingerprint)
+              "
+              class="sub-item"
+            >
+              实例：{{ draft.instance_name || draft.instance_id }}
+            </span>
+            <span v-if="draft.last_serial" class="sub-item">
+              ADB 地址：{{ draft.last_serial }}
+            </span>
+            <span class="sub-item">{{ state.hostLabel }}</span>
+            <span v-if="dirty" class="sub-dirty">（已修改，测试连接后保存）</span>
+            <span v-else-if="savedHint" class="sub-saved">（设置已保存）</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <n-form-item :label-width="158" v-if="state.compatibilityLabel" label="兼容层级">
-      {{ state.compatibilityLabel }}
-    </n-form-item>
-    <n-form-item :label-width="158" v-if="state.discoveryLabel" label="发现能力">
-      {{ state.discoveryLabel }}
-    </n-form-item>
-    <n-text v-if="state.compatibilityNote" depth="3">{{ state.compatibilityNote }}</n-text>
+      <n-form-item :label-width="158" v-if="state.compatibilityLabel" label="兼容层级">
+        {{ state.compatibilityLabel }}
+      </n-form-item>
+      <n-form-item :label-width="158" v-if="state.discoveryLabel" label="发现能力">
+        {{ state.discoveryLabel }}
+      </n-form-item>
+      <n-text v-if="state.compatibilityNote" depth="3">{{ state.compatibilityNote }}</n-text>
 
-    <n-space class="device-actions" align="center">
-      <drop-down
-        v-if="state.actions.detect.options.length > 1"
-        :select="selectDetect"
-        :options="state.actions.detect.options"
-        type="primary"
-      >
+      <n-space class="device-actions" align="center">
+        <drop-down
+          v-if="state.actions.detect.options.length > 1"
+          :select="selectDetect"
+          :options="state.actions.detect.options"
+          type="primary"
+        >
+          <n-button
+            type="primary"
+            :loading="busy"
+            :disabled="state.actions.detect.disabled"
+            @click="detect()"
+          >
+            {{ state.actions.detect.label }}
+          </n-button>
+        </drop-down>
         <n-button
+          v-else
           type="primary"
           :loading="busy"
           :disabled="state.actions.detect.disabled"
@@ -469,172 +545,115 @@ onUnmounted(() => {
         >
           {{ state.actions.detect.label }}
         </n-button>
-      </drop-down>
-      <n-button
-        v-else
-        type="primary"
-        :loading="busy"
-        :disabled="state.actions.detect.disabled"
-        @click="detect()"
-      >
-        {{ state.actions.detect.label }}
-      </n-button>
-      <n-button
-        v-if="state.actions.discover.visible && state.actions.detect.endpoint !== 'discover'"
-        :disabled="state.actions.discover.disabled"
-        @click="detect('discover')"
-      >
-        {{ state.actions.discover.label }}
-      </n-button>
+        <n-button
+          v-if="state.actions.discover.visible && state.actions.detect.endpoint !== 'discover'"
+          :disabled="state.actions.discover.disabled"
+          @click="detect('discover')"
+        >
+          {{ state.actions.discover.label }}
+        </n-button>
 
-      <n-button quaternary @click="advanced = !advanced">
-        {{ advanced ? '收起高级设置' : '高级设置' }}
-      </n-button>
-    </n-space>
-
-    <n-alert v-if="state.bindingHelp" type="info" :show-icon="false" class="device-notice">
-      {{ state.bindingHelp }}
-    </n-alert>
-
-    <n-alert v-if="metadata.active" :show-icon="false" class="device-notice">
-      设备会话运行中，目标与后端设置已锁定。其他设置仍可保存。
-    </n-alert>
-    <n-alert v-if="state.message" type="warning" class="device-notice" :show-icon="false">
-      {{ state.message }}
-    </n-alert>
-    <n-alert
-      v-if="state.screenshotAlternativeMessage"
-      type="info"
-      class="device-notice"
-      :show-icon="false"
-    >
-      {{ state.screenshotAlternativeMessage }}
-    </n-alert>
-    <n-alert
-      v-if="state.touchAlternativeMessage"
-      type="info"
-      class="device-notice"
-      :show-icon="false"
-    >
-      {{ state.touchAlternativeMessage }}
-    </n-alert>
-    <n-button
-      v-if="state.actions.manualFallback.visible"
-      :disabled="state.actions.manualFallback.disabled"
-      @click="enterManual(state.actions.manualFallback.preset, true)"
-    >
-      {{ state.actions.manualFallback.label }}
-    </n-button>
-    <n-alert v-if="state.guidance" type="info" class="device-notice" :show-icon="false">
-      {{ state.guidance }}
-    </n-alert>
-
-    <n-alert
-      v-if="state.actions.prepare.visible"
-      type="info"
-      class="device-notice"
-      :show-icon="false"
-    >
-      <n-space vertical>
-        <n-text>
-          默认只检查显示尺寸。临时整备只授权本次运行，结束时确认尺寸仍为 mower 写入值后还原。
-          请先将设备手动切到横屏；mower 不修改旋转、密度或导航栏。
-        </n-text>
-        <n-button :disabled="state.actions.prepare.disabled" @click="prepare">
-          {{ state.actions.prepare.label }}
+        <n-button v-if="!expanded" quaternary @click="advanced = !advanced">
+          {{ advanced ? '收起高级设置' : '高级设置' }}
         </n-button>
       </n-space>
-    </n-alert>
-    <n-alert
-      v-if="state.preparationMessage"
-      type="warning"
-      class="device-notice"
-      :show-icon="false"
-    >
-      {{ state.preparationMessage }}
-    </n-alert>
-    <n-text v-if="preparationNotice" role="status">{{ preparationNotice }}</n-text>
-    <n-text v-if="manual" depth="3">
-      当前截图：{{ draft.screenshot_backend }}；触控：{{
-        draft.touch_backend
-      }}。可在下方“连接与恢复”修改。
-    </n-text>
-    <n-alert v-if="requestError" type="error" class="device-notice" :show-icon="false">
-      {{ requestError }}
-    </n-alert>
-    <n-alert v-if="statusError" type="error" class="device-notice" :show-icon="false">
-      {{ statusError }}
-    </n-alert>
 
-    <div
-      v-if="state.instances?.options.length || state.fields.length || state.connectionVisible"
-      class="device-fields"
-    >
-      <n-grid cols="1 s:2 m:2" :x-gap="14" :y-gap="6">
-        <n-gi v-if="state.instances?.options.length" :span="2">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>选择实例</span>
-              <help-text>从当前主机上检测到的模拟器列表中，选择要绑定的目标实例。</help-text>
-            </template>
-            <n-select
-              :value="state.instances.value"
-              :options="state.instances.options"
-              :disabled="state.instances.disabled"
-              placeholder="请选择要绑定的模拟器实例"
-              @update:value="(key) => detect('preflight', key)"
-            />
-          </n-form-item>
-        </n-gi>
+      <n-alert v-if="state.bindingHelp" type="info" :show-icon="false" class="device-notice">
+        {{ state.bindingHelp }}
+      </n-alert>
 
-        <n-gi v-for="field in state.fields" :key="field.key" :span="field.span || 1">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>{{ field.label }}</span>
-              <help-text v-if="field.help">
-                <div style="white-space: pre-line">{{ field.help }}</div>
-              </help-text>
-            </template>
-            <n-select
-              v-if="field.kind === 'select'"
-              :value="field.value || null"
-              :options="field.options"
-              :disabled="field.disabled"
-              :tag="field.tag"
-              :filterable="field.tag"
-              :placeholder="field.placeholder || '请选择明确目标'"
-              @update:value="(value) => edit(field.key, value)"
-            />
-            <template v-else-if="pathFields.includes(field.key)">
-              <n-input
-                :value="field.value"
-                :disabled="field.disabled"
-                :placeholder="field.placeholder"
-                @update:value="(value) => edit(field.key, value)"
+      <n-alert v-if="metadata.active" :show-icon="false" class="device-notice">
+        设备会话运行中，目标与后端设置已锁定。其他设置仍可保存。
+      </n-alert>
+      <n-alert v-if="state.message" type="warning" class="device-notice" :show-icon="false">
+        {{ state.message }}
+      </n-alert>
+      <n-alert
+        v-if="state.screenshotAlternativeMessage"
+        type="info"
+        class="device-notice"
+        :show-icon="false"
+      >
+        {{ state.screenshotAlternativeMessage }}
+      </n-alert>
+      <n-alert
+        v-if="state.touchAlternativeMessage"
+        type="info"
+        class="device-notice"
+        :show-icon="false"
+      >
+        {{ state.touchAlternativeMessage }}
+      </n-alert>
+      <n-button
+        v-if="state.actions.manualFallback.visible"
+        :disabled="state.actions.manualFallback.disabled"
+        @click="enterManual(state.actions.manualFallback.preset, true)"
+      >
+        {{ state.actions.manualFallback.label }}
+      </n-button>
+      <n-alert v-if="state.guidance" type="info" class="device-notice" :show-icon="false">
+        {{ state.guidance }}
+      </n-alert>
+
+      <n-alert
+        v-if="state.actions.prepare.visible"
+        type="info"
+        class="device-notice"
+        :show-icon="false"
+      >
+        <n-space vertical>
+          <n-text>
+            默认只检查显示尺寸。临时整备只授权本次运行，结束时确认尺寸仍为 mower 写入值后还原。
+            请先将设备手动切到横屏；mower 不修改旋转、密度或导航栏。
+          </n-text>
+          <n-button :disabled="state.actions.prepare.disabled" @click="prepare">
+            {{ state.actions.prepare.label }}
+          </n-button>
+        </n-space>
+      </n-alert>
+      <n-alert
+        v-if="state.preparationMessage"
+        type="warning"
+        class="device-notice"
+        :show-icon="false"
+      >
+        {{ state.preparationMessage }}
+      </n-alert>
+      <n-text v-if="preparationNotice" role="status">{{ preparationNotice }}</n-text>
+      <n-text v-if="manual" depth="3">
+        当前截图：{{ draft.screenshot_backend }}；触控：{{
+          draft.touch_backend
+        }}。可在下方“连接与恢复”修改。
+      </n-text>
+      <n-alert v-if="requestError" type="error" class="device-notice" :show-icon="false">
+        {{ requestError }}
+      </n-alert>
+      <n-alert v-if="statusError" type="error" class="device-notice" :show-icon="false">
+        {{ statusError }}
+      </n-alert>
+
+      <div
+        v-if="state.instances?.options.length || state.fields.length || state.connectionVisible"
+        class="device-fields"
+      >
+        <n-grid cols="1 s:2 m:2" :x-gap="14" :y-gap="6">
+          <n-gi v-if="state.instances?.options.length" :span="2">
+            <n-form-item :label-width="158">
+              <template #label>
+                <span>选择实例</span>
+                <help-text>从当前主机上检测到的模拟器列表中，选择要绑定的目标实例。</help-text>
+              </template>
+              <n-select
+                :value="state.instances.value"
+                :options="state.instances.options"
+                :disabled="state.instances.disabled"
+                placeholder="请选择要绑定的模拟器实例"
+                @update:value="(key) => detect('preflight', key)"
               />
-              <n-button
-                :disabled="field.disabled"
-                class="dialog-btn"
-                @click="browsePath(field.key)"
-              >
-                ...
-              </n-button>
-            </template>
-            <n-input
-              v-else
-              :value="field.value"
-              :disabled="field.disabled"
-              :placeholder="field.placeholder"
-              @update:value="(value) => edit(field.key, value)"
-            />
-          </n-form-item>
-        </n-gi>
+            </n-form-item>
+          </n-gi>
 
-        <!-- 截图后端与触控后端是日常会换的选择项，且在“高级设置”之外修改即保存；
-             超时、重试与老板键属于调参，仍随“高级设置”折叠。三行同处一个网格，
-             行距才一致：拆成两个网格时“旋转截图”的上边距会比上面两行小。 -->
-        <template v-if="state.connectionVisible">
-          <n-gi v-for="field in state.connectionFields" :key="field.key" :span="field.span || 1">
+          <n-gi v-for="field in state.fields" :key="field.key" :span="field.span || 1">
             <n-form-item :label-width="158">
               <template #label>
                 <span>{{ field.label }}</span>
@@ -643,198 +662,246 @@ onUnmounted(() => {
                 </help-text>
               </template>
               <n-select
+                v-if="field.kind === 'select'"
                 :value="field.value || null"
                 :options="field.options"
                 :disabled="field.disabled"
+                :tag="field.tag"
+                :filterable="field.tag"
                 :placeholder="field.placeholder || '请选择明确目标'"
+                @update:value="(value) => edit(field.key, value)"
+              />
+              <template v-else-if="pathFields.includes(field.key)">
+                <n-input
+                  :value="field.value"
+                  :disabled="field.disabled"
+                  :placeholder="field.placeholder"
+                  @update:value="(value) => edit(field.key, value)"
+                />
+                <n-button
+                  :disabled="field.disabled"
+                  class="dialog-btn"
+                  @click="browsePath(field.key)"
+                >
+                  ...
+                </n-button>
+              </template>
+              <n-input
+                v-else
+                :value="field.value"
+                :disabled="field.disabled"
+                :placeholder="field.placeholder"
                 @update:value="(value) => edit(field.key, value)"
               />
             </n-form-item>
           </n-gi>
-          <n-gi v-if="draft.screenshot_backend === 'droidcast'" :span="2">
+
+          <!-- 截图后端与触控后端是日常会换的选择项，且在“高级设置”之外修改即保存；
+             超时、重试与老板键属于调参，仍随“高级设置”折叠。三行同处一个网格，
+             行距才一致：拆成两个网格时“旋转截图”的上边距会比上面两行小。 -->
+          <template v-if="state.connectionVisible">
+            <n-gi v-for="field in state.connectionFields" :key="field.key" :span="field.span || 1">
+              <n-form-item :label-width="158">
+                <template #label>
+                  <span>{{ field.label }}</span>
+                  <help-text v-if="field.help">
+                    <div style="white-space: pre-line">{{ field.help }}</div>
+                  </help-text>
+                </template>
+                <n-select
+                  :value="field.value || null"
+                  :options="field.options"
+                  :disabled="field.disabled"
+                  :placeholder="field.placeholder || '请选择明确目标'"
+                  @update:value="(value) => edit(field.key, value)"
+                />
+              </n-form-item>
+            </n-gi>
+            <n-gi v-if="draft.screenshot_backend === 'droidcast'" :span="2">
+              <n-form-item :label-width="158">
+                <template #label>
+                  <span>旋转截图</span>
+                  <help-text>部分模拟器横屏画面可能出现 180 度颠倒，开启后自动纠正旋转。</help-text>
+                </template>
+                <n-switch v-model:value="config.droidcast.rotate" :disabled="state.locked" />
+              </n-form-item>
+            </n-gi>
+            <n-gi v-if="draft.screenshot_backend === 'custom'" :span="2">
+              <n-form-item :label-width="158">
+                <template #label>
+                  <span>截图命令</span>
+                  <help-text>向 STDOUT 打印图像原始数据的自定义命令行。</help-text>
+                </template>
+                <n-input
+                  v-model:value="config.custom_screenshot.command"
+                  type="textarea"
+                  :disabled="state.locked"
+                  :autosize="true"
+                />
+              </n-form-item>
+            </n-gi>
+          </template>
+        </n-grid>
+      </div>
+
+      <PerformanceSettings
+        :observation="performanceObservation"
+        :disabled="busy"
+        :test-enabled="!dirty && !state.locked"
+      />
+
+      <template v-if="showAdvanced">
+        <div class="advanced-divider">
+          <n-divider dashed title-placement="left">超时保护与高级控制</n-divider>
+        </div>
+        <n-grid cols="1 s:2 m:3" :x-gap="14" :y-gap="6">
+          <n-gi v-if="draft.preset_id !== 'manual.physical'" :span="1">
             <n-form-item :label-width="158">
               <template #label>
-                <span>旋转截图</span>
-                <help-text>部分模拟器横屏画面可能出现 180 度颠倒，开启后自动纠正旋转。</help-text>
+                <span>启动保护时间 (秒)</span>
+                <help-text>
+                  模拟器启动后，在这段时间内等待设备就绪，不再次自动重启。设备提前就绪即可继续；等待仍受连接超时限制。保留原“模拟器启动时间”设置的值。
+                </help-text>
               </template>
-              <n-switch v-model:value="config.droidcast.rotate" :disabled="state.locked" />
-            </n-form-item>
-          </n-gi>
-          <n-gi v-if="draft.screenshot_backend === 'custom'" :span="2">
-            <n-form-item :label-width="158">
-              <template #label>
-                <span>截图命令</span>
-                <help-text>向 STDOUT 打印图像原始数据的自定义命令行。</help-text>
-              </template>
-              <n-input
-                v-model:value="config.custom_screenshot.command"
-                type="textarea"
+              <n-input-number
+                v-model:value="startupWait"
+                :min="0"
+                :precision="0"
                 :disabled="state.locked"
-                :autosize="true"
               />
             </n-form-item>
           </n-gi>
-        </template>
-      </n-grid>
-    </div>
-
-    <PerformanceSettings
-      :observation="performanceObservation"
-      :disabled="busy"
-      :test-enabled="!dirty && !state.locked"
-    />
-
-    <template v-if="advanced">
-      <div class="advanced-divider">
-        <n-divider dashed title-placement="left">超时保护与高级控制</n-divider>
-      </div>
-      <n-grid cols="1 s:2 m:3" :x-gap="14" :y-gap="6">
-        <n-gi v-if="draft.preset_id !== 'manual.physical'" :span="1">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>启动保护时间 (秒)</span>
-              <help-text>
-                模拟器启动后，在这段时间内等待设备就绪，不再次自动重启。设备提前就绪即可继续；等待仍受连接超时限制。保留原“模拟器启动时间”设置的值。
-              </help-text>
-            </template>
-            <n-input-number
-              v-model:value="startupWait"
-              :min="0"
-              :precision="0"
-              :disabled="state.locked"
-            />
-          </n-form-item>
-        </n-gi>
-        <n-gi :span="1">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>连接超时 (秒)</span>
-              <help-text>
-                开始连接设备（或中途掉线尝试恢复）时，从模拟器启动、建立连接到异常重试全过程允许的最大总等待时间（超时后终止本次连接流程，避免无限等待）。
-              </help-text>
-            </template>
-            <n-input-number
-              :value="draft.recovery_timeout ?? 180"
-              :min="10"
-              :max="600"
-              :step="10"
-              :disabled="state.locked"
-              @update:value="(v) => edit('recovery_timeout', v)"
-            />
-          </n-form-item>
-        </n-gi>
-        <n-gi :span="1">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>最大重试次数</span>
-              <help-text> ADB 断连或设备异常时的最大重试轮次。 </help-text>
-            </template>
-            <n-input-number
-              :value="draft.recovery_attempts ?? 3"
-              :min="1"
-              :max="10"
-              :disabled="state.locked"
-              @update:value="(v) => edit('recovery_attempts', v)"
-            />
-          </n-form-item>
-        </n-gi>
-        <n-gi :span="1">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>重试间隔 (秒)</span>
-              <help-text> 每次发送重连指令后等待设备重新响应的时间。 </help-text>
-            </template>
-            <n-input-number
-              :value="draft.recovery_local_wait ?? 10"
-              :min="1"
-              :max="60"
-              :disabled="state.locked"
-              @update:value="(v) => edit('recovery_local_wait', v)"
-            />
-          </n-form-item>
-        </n-gi>
-        <n-gi :span="1">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>关停上限 (秒)</span>
-              <help-text>
-                执行模拟器完整重启时，等待模拟器进程及多开实例完全退出停止的最长时间。若超过该时间仍未退出，则取消本次重启以保护环境。
-              </help-text>
-            </template>
-            <n-input-number
-              :value="draft.recovery_shutdown_wait ?? 30"
-              :min="5"
-              :max="120"
-              :step="5"
-              :disabled="state.locked"
-              @update:value="(v) => edit('recovery_shutdown_wait', v)"
-            />
-          </n-form-item>
-        </n-gi>
-        <n-gi :span="1">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>状态检测超时 (秒)</span>
-              <help-text>
-                检测多开实例运行状态（如是否已启动/已停止）时的单次最大等待时间。若多开较多或模拟器卡顿导致频繁误报未响应，可适当调大。
-              </help-text>
-            </template>
-            <n-input-number
-              :value="draft.manager_query_timeout ?? 10"
-              :min="1"
-              :max="30"
-              :step="0.5"
-              :disabled="state.locked"
-              @update:value="(v) => edit('manager_query_timeout', v)"
-            />
-          </n-form-item>
-        </n-gi>
-        <n-gi :span="1">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>老板键延迟 (秒)</span>
-              <help-text>
-                启动模拟器后，等待窗口完全显示再按下老板键的延时时间。电脑性能较好或冷启动较快可设为
-                1~2 秒；若启动较慢导致老板键未生效，可适当调大。
-              </help-text>
-            </template>
-            <n-input-number
-              :value="draft.simulator_hotkey_delay ?? 3"
-              :min="0.5"
-              :max="30"
-              :step="0.5"
-              :disabled="state.locked"
-              @update:value="(v) => edit('simulator_hotkey_delay', v)"
-            />
-          </n-form-item>
-        </n-gi>
-        <n-gi :span="1">
-          <n-form-item :label-width="158">
-            <template #label>
-              <span>模拟器老板键</span>
-              <help-text>
-                <div>启动模拟器后自动触发此快捷键以隐藏窗口。</div>
-                <div>请先在模拟器自身设置中配置相同的老板键（如 alt+q、ctrl+alt+w）。</div>
-                <div>若不需要此功能，请留空；组合键用“+”连接，不要空格。</div>
-              </help-text>
-            </template>
-            <n-input
-              :value="draft.simulator_hotkey ?? ''"
-              placeholder="留空表示不启用（如 alt+q、ctrl+alt+w）"
-              :disabled="state.locked"
-              @update:value="(v) => edit('simulator_hotkey', v)"
-            />
-            <n-button
-              class="dialog-btn"
-              :disabled="state.locked || !draft.simulator_hotkey"
-              :loading="testingBossKey"
-              @click="testBossKey"
-            >
-              测试老板键
-            </n-button>
-          </n-form-item>
-        </n-gi>
-      </n-grid>
+          <n-gi :span="1">
+            <n-form-item :label-width="158">
+              <template #label>
+                <span>连接超时 (秒)</span>
+                <help-text>
+                  开始连接设备（或中途掉线尝试恢复）时，从模拟器启动、建立连接到异常重试全过程允许的最大总等待时间（超时后终止本次连接流程，避免无限等待）。
+                </help-text>
+              </template>
+              <n-input-number
+                :value="draft.recovery_timeout ?? 180"
+                :min="10"
+                :max="600"
+                :step="10"
+                :disabled="state.locked"
+                @update:value="(v) => edit('recovery_timeout', v)"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="1">
+            <n-form-item :label-width="158">
+              <template #label>
+                <span>最大重试次数</span>
+                <help-text> ADB 断连或设备异常时的最大重试轮次。 </help-text>
+              </template>
+              <n-input-number
+                :value="draft.recovery_attempts ?? 3"
+                :min="1"
+                :max="10"
+                :disabled="state.locked"
+                @update:value="(v) => edit('recovery_attempts', v)"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="1">
+            <n-form-item :label-width="158">
+              <template #label>
+                <span>重试间隔 (秒)</span>
+                <help-text> 每次发送重连指令后等待设备重新响应的时间。 </help-text>
+              </template>
+              <n-input-number
+                :value="draft.recovery_local_wait ?? 10"
+                :min="1"
+                :max="60"
+                :disabled="state.locked"
+                @update:value="(v) => edit('recovery_local_wait', v)"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="1">
+            <n-form-item :label-width="158">
+              <template #label>
+                <span>关停上限 (秒)</span>
+                <help-text>
+                  执行模拟器完整重启时，等待模拟器进程及多开实例完全退出停止的最长时间。若超过该时间仍未退出，则取消本次重启以保护环境。
+                </help-text>
+              </template>
+              <n-input-number
+                :value="draft.recovery_shutdown_wait ?? 30"
+                :min="5"
+                :max="120"
+                :step="5"
+                :disabled="state.locked"
+                @update:value="(v) => edit('recovery_shutdown_wait', v)"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="1">
+            <n-form-item :label-width="158">
+              <template #label>
+                <span>状态检测超时 (秒)</span>
+                <help-text>
+                  检测多开实例运行状态（如是否已启动/已停止）时的单次最大等待时间。若多开较多或模拟器卡顿导致频繁误报未响应，可适当调大。
+                </help-text>
+              </template>
+              <n-input-number
+                :value="draft.manager_query_timeout ?? 10"
+                :min="1"
+                :max="30"
+                :step="0.5"
+                :disabled="state.locked"
+                @update:value="(v) => edit('manager_query_timeout', v)"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="1">
+            <n-form-item :label-width="158">
+              <template #label>
+                <span>老板键延迟 (秒)</span>
+                <help-text>
+                  启动模拟器后，等待窗口完全显示再按下老板键的延时时间。电脑性能较好或冷启动较快可设为
+                  1~2 秒；若启动较慢导致老板键未生效，可适当调大。
+                </help-text>
+              </template>
+              <n-input-number
+                :value="draft.simulator_hotkey_delay ?? 3"
+                :min="0.5"
+                :max="30"
+                :step="0.5"
+                :disabled="state.locked"
+                @update:value="(v) => edit('simulator_hotkey_delay', v)"
+              />
+            </n-form-item>
+          </n-gi>
+          <n-gi :span="1">
+            <n-form-item :label-width="158">
+              <template #label>
+                <span>模拟器老板键</span>
+                <help-text>
+                  <div>启动模拟器后自动触发此快捷键以隐藏窗口。</div>
+                  <div>请先在模拟器自身设置中配置相同的老板键（如 alt+q、ctrl+alt+w）。</div>
+                  <div>若不需要此功能，请留空；组合键用“+”连接，不要空格。</div>
+                </help-text>
+              </template>
+              <n-input
+                :value="draft.simulator_hotkey ?? ''"
+                placeholder="例如 alt+q，留空禁用"
+                :disabled="state.locked"
+                @update:value="(v) => edit('simulator_hotkey', v)"
+              />
+              <n-button
+                class="dialog-btn"
+                :disabled="state.locked || !draft.simulator_hotkey"
+                :loading="testingBossKey"
+                @click="testBossKey"
+              >
+                测试老板键
+              </n-button>
+            </n-form-item>
+          </n-gi>
+        </n-grid>
+      </template>
     </template>
   </section>
 </template>

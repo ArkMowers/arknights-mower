@@ -2,12 +2,17 @@
   <slick-list
     v-model:list="operatorValue"
     axis="xy"
-    appendTo=".n-select"
+    append-to="body"
     :distance="5"
+    :transition-duration="dragAnimation"
+    :dragged-settling-duration="dragAnimation"
+    helper-class="mower-drag-fallback"
     class="width100"
     group="operator"
     :accept="!props.disabled"
     @update:list="deleteRepeat"
+    @sort-start="({ node }) => normalizeSortablePreview({ item: node })"
+    @dragstart.prevent
   >
     <n-select
       :disabled="props.disabled"
@@ -31,7 +36,13 @@ import { usePlanStore } from '@/stores/plan'
 import { render_op_option, render_op_label, render_op_tag } from '@/utils/op_select'
 import { computed, h } from 'vue'
 import { SlickList, SlickItem } from 'vue-slicksort'
+import '@/styles/drag.css'
+import { normalizeSortablePreview } from '@/utils/sortablePreview'
 
+const dragAnimation =
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 0
+    : 180
 const { operators } = storeToRefs(usePlanStore())
 
 const operatorValue = defineModel()
@@ -59,6 +70,8 @@ const render_op_slick_tag = ({ option, handleClose }) => {
       key: option.value,
       index: operatorValue.value.findIndex((value) => value == option.value),
       disabled: props.disabled,
+      class: 'mower-drag-tag',
+      'aria-disabled': props.disabled,
       style: 'z-index: 999;display: inline;'
     },
     () => render_op_tag({ option, handleClose })

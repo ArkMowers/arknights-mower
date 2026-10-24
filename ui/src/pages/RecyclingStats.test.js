@@ -4,7 +4,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RecyclingStats from './RecyclingStats.vue'
 
-vi.mock('@/stores/config', () => ({ useConfigStore: () => ({ theme: ref('light') }) }))
+const state = vi.hoisted(() => ({ theme: null, page: null, media: null }))
+vi.mock('@/stores/config', () => ({ useConfigStore: () => ({ theme: state.theme }) }))
 vi.mock('pinia', () => ({ storeToRefs: (store) => store }))
 vi.mock('vue-echarts', () => ({ default: { render: () => null } }))
 vi.mock('naive-ui', () => {
@@ -60,6 +61,7 @@ async function render(calculator, { records = [], client = {}, act } = {}) {
     ...RecyclingStats,
     async setup(props, context) {
       const page = RecyclingStats.setup(props, context)
+      state.page = page
       await page.load()
       await act?.(page, axios)
       return page
@@ -67,7 +69,7 @@ async function render(calculator, { records = [], client = {}, act } = {}) {
   })
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: ['/', '/mowersettings'].map((path) => ({ path, component: { render: () => null } }))
+    routes: ['/', '/task-settings'].map((path) => ({ path, component: { render: () => null } }))
   })
   await router.push('/?token=session-token')
   app.use(router)
@@ -76,6 +78,22 @@ async function render(calculator, { records = [], client = {}, act } = {}) {
 }
 
 describe('回收站两种机制对照', () => {
+  beforeEach(() => {
+    state.theme = ref('light')
+    const listeners = new Set()
+    state.media = {
+      matches: false,
+      addEventListener: (_type, listener) => listeners.add(listener),
+      removeEventListener: (_type, listener) => listeners.delete(listener),
+      change(matches) {
+        this.matches = matches
+        for (const listener of listeners) listener({ matches })
+      }
+    }
+    vi.stubGlobal('window', { matchMedia: () => state.media })
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
   const calculator = {
     daily_sanity: 11.972960143201481,
     configured_daily_sanity: 11.972960143201481,
@@ -83,6 +101,23 @@ describe('回收站两种机制对照', () => {
     elite0_equivalent: 0.08689962014006092,
     elite2_equivalent: 0.13034943021009138
   }
+  it('页面和环图跟随系统主题变化且保留主题偏好', async () => {
+    state.theme.value = 'system'
+    state.media.matches = true
+    const html = await render(calculator)
+    expect(html).toContain('recycling-page dark')
+    expect(state.page.chart.value.series[0].itemStyle.borderColor).toBe('#252a2f')
+    state.media.change(false)
+    expect(state.page.theme.value).toBe('light')
+    expect(state.page.chart.value.series[0].itemStyle.borderColor).toBe('#ffffff')
+    expect(state.theme.value).toBe('system')
+    state.theme.value = 'dark'
+    expect(state.page.chart.value.series[0].itemStyle.borderColor).toBe('#252a2f')
+    state.theme.value = 'light'
+    state.media.change(true)
+    expect(state.page.chart.value.series[0].itemStyle.borderColor).toBe('#ffffff')
+    expect(state.theme.value).toBe('light')
+  })
   it('渲染默认和顶替假设各自的日产与旅骨效率', async () => {
     const html = await render({
       ...calculator,
@@ -100,7 +135,7 @@ describe('回收站两种机制对照', () => {
       expect(html).toContain(value)
     }
     expect(html).toContain('实际机制尚未确认')
-    expect(html).toContain('href="/mowersettings?token=session-token"')
+    expect(html).toContain('href="/task-settings?token=session-token#task-accounts"')
   })
   it('旧接口没有对照数据时保留默认结果并隐藏对照区域', async () => {
     const html = await render(calculator)

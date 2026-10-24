@@ -144,6 +144,37 @@ describe('embedded guide theme', () => {
     vi.unstubAllGlobals()
   })
 
+  it('follows system changes without rewriting the preference or reloading the iframe', async () => {
+    state.config = { refs: { theme: ref('system') } }
+    state.colors = ref(palettes.dark)
+    const media = { matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    vi.stubGlobal('window', {
+      location: { origin: 'https://mower.local' },
+      matchMedia: vi.fn(() => media)
+    })
+    scope = effectScope()
+    const component = scope.run(() => DocPage.setup({}, { expose: vi.fn() }))
+    const source = component.docSrc
+    expect(source).toBe('/docs/Mower入门指北.html?theme=dark')
+    const frame = { postMessage: vi.fn() }
+    component.guideFrame.value = { contentWindow: frame }
+    component.syncTheme()
+    expect(frame.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ theme: 'dark' }),
+      'https://mower.local'
+    )
+    media.matches = false
+    media.addEventListener.mock.calls.find(([event]) => event === 'change')[1]({ matches: false })
+    state.colors.value = palettes.light
+    await nextTick()
+    expect(frame.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ theme: 'light' }),
+      'https://mower.local'
+    )
+    expect(component.docSrc).toBe(source)
+    expect(state.config.refs.theme.value).toBe('system')
+  })
+
   it.each(['light', 'dark'])(
     'loads %s and switches without reloading the iframe',
     async (theme) => {

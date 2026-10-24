@@ -62,6 +62,18 @@ class TaskTypes(Enum):
     DEPOT = ("仓库扫描", "仓库扫描", 2)
     WORKSHOP = ("加工材料", "加工材料", 2)
     FURNITURE = ("分解所有重复家具", "分解所有重复家具", 2)
+    DAILY = ("daily", "日常任务", 2)
+    MAIL = ("mail", "领取邮件", 2)
+    REPORT = ("report", "读取基报", 2)
+    VISIT_FRIEND = ("visit_friend", "访问好友", 2)
+    CREDIT_SHOP = ("credit_shop", "信用购物", 2)
+    MISSION = ("mission", "领取任务奖励", 2)
+    STAGE_PLAN = ("stage_plan", "作战计划", 2)
+    ROGUELIKE = ("roguelike", "集成战略 (MAA)", 2)
+    SSS = ("sss", "保全派驻 (MAA)", 2)
+    RECLAMATION = ("reclamation", "生息演算 (MAA)", 2)
+    RA = ("ra", "生息演算", 2)
+    SECRET_FRONT = ("secret_front", "隐秘战线", 2)
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
@@ -69,6 +81,26 @@ class TaskTypes(Enum):
         obj.display_value = display_value
         obj.priority = priority
         return obj
+
+
+MANUAL_TASK_TYPES = frozenset(
+    {
+        TaskTypes.DAILY,
+        TaskTypes.RECRUIT,
+        TaskTypes.SKLAND,
+        TaskTypes.MAIL,
+        TaskTypes.REPORT,
+        TaskTypes.VISIT_FRIEND,
+        TaskTypes.CREDIT_SHOP,
+        TaskTypes.MISSION,
+        TaskTypes.STAGE_PLAN,
+        TaskTypes.ROGUELIKE,
+        TaskTypes.SSS,
+        TaskTypes.RECLAMATION,
+        TaskTypes.RA,
+        TaskTypes.SECRET_FRONT,
+    }
+)
 
 
 class TaskScope(Enum):

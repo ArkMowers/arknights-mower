@@ -54,16 +54,50 @@ def choose_instance_directory(window, directory=""):
 
 
 class Api(InstanceController):
+    def __init__(
+        self,
+        storage_path=None,
+        ready=None,
+        window=None,
+        *,
+        defer_load=False,
+        current_instance_path=None,
+    ):
+        super().__init__(storage_path, ready, defer_load=defer_load)
+        self._window = window
+        self._current_instance_path = current_instance_path
+
+    def stop_all(self, targets=None):
+        return self._bulk(
+            "stop", targets=targets, last_directory=self._current_instance_path
+        )
+
+    def update_all_settings(self, changes, targets, common=None):
+        if common is not None and self._current_instance_path is not None:
+            raise ValueError("公共配置只能在多开管理器中修改")
+        return super().update_all_settings(changes, targets, common)
+
+    def select_device_path(self, key, current=""):
+        from arknights_mower.utils.managed_device import fields
+
+        field = next((item for item in fields() if item["key"] == key), None)
+        if field is None or field["kind"] not in {"directory", "file"}:
+            raise ValueError("不支持的设备路径配置")
+        return self._choose_path(field, current)
+
     def select_common_path(self, key, current=""):
         field = next(
             (item for item in manager_common.FIELDS if item["key"] == key), None
         )
         if field is None or field["kind"] not in {"directory", "file"}:
             raise ValueError("不支持的公共路径配置")
+        return self._choose_path(field, current)
+
+    def _choose_path(self, field, current):
         if not isinstance(current, str):
             raise ValueError("路径必须是文本")
         current = resolve_config_path(current)
-        window = webview.active_window()
+        window = self._window if self._window is not None else webview.active_window()
         if field["kind"] == "directory":
             result = choose_directory(window, current, title=field["label"])
         else:
@@ -74,21 +108,39 @@ class Api(InstanceController):
             )
         return result if isinstance(result, str) else result[0] if result else None
 
-    def select_path(self, idx):
+    def select_path(self, idx, target=None):
         with self._operation():
-            original = self.instances[idx].copy()
+            original = self._target_instance(idx, target).copy()
             self._editable(original, self._records())
-        window = webview.active_window()
+        window = self._window if self._window is not None else webview.active_window()
         folder = choose_instance_directory(window, original["path"])
         if not folder:
             return None
         if not isinstance(folder, str):
             folder = folder[0]
-        with self._operation():
-            if self.instances[idx] != original:
-                raise ValueError("实例已发生变化，请重新选择保存目录")
-            self._update(idx, {"path": folder})
+        self._update(
+            idx, {"path": folder}, {key: original[key] for key in ("name", "path")}
+        )
         return folder
+
+
+def attach_instance_controls(window):
+    api = Api(window=window, defer_load=True, current_instance_path=get_path("@app"))
+    window.expose(
+        api.get_instances,
+        api.mark_ready,
+        api.add,
+        api.remove,
+        api.rename,
+        api.select_path,
+        api.update_settings,
+        api.update_all_settings,
+        api.start,
+        api.stop,
+        api.start_all,
+        api.stop_all,
+    )
+    return api
 
 
 def manager_app():
@@ -121,6 +173,7 @@ def manager_window(connection, ready, closed):
         width=800,
         height=500,
     )
+    api._window = window
 
     def receive():
         try:

@@ -6,10 +6,7 @@
     :theme="theme == 'dark' ? darkTheme : undefined"
     :theme-overrides="theme == 'dark' ? mowerDarkThemeOverrides : mowerLightThemeOverrides"
     :hljs="hljs"
-    :style="{
-      userSelect: 'none',
-      ...(theme === 'dark' ? mowerDarkCssVariables : mowerLightCssVariables)
-    }"
+    :style="{ userSelect: 'none', ...mowerCssVariables }"
     :class="{
       'provider--dark': theme === 'dark',
       'provider--window-shell': windowShellActive
@@ -19,16 +16,24 @@
     <WindowTitlebar
       :active="windowShellActive"
       :title="windowShellTitle"
-      :version="windowTitleVersion"
       :instance-name="windowShell.metadata.instanceName || '默认实例'"
       :theme="theme"
       :control-side="windowShellControlSide"
       :maximized="windowShellState.maximized"
       :controls="windowShellControls"
       :busy="windowShellBusy"
+      :sidebar-collapsed="sidebarCollapsed || sidebarHidden"
+      :sidebar-visible="sidebarVisible"
+      :show-sidebar-toggle="!isMobileNav"
       :mower-port="mowerPort"
       :emulator-name="emulatorName"
       :adb-port="adbPort"
+      :manager-owned-device="config_store.manager_owned_device"
+      :connection-test-disabled="running || deviceConnectionNavigation.locked.value"
+      :profile-state="configProfiles.state.value"
+      :profile-write-disabled="configProfiles.writeDisabled.value"
+      :profile-read-disabled="configProfiles.readDisabled.value"
+      :show-instance-menu="nativeInstanceManagementAvailable"
       :on-control="handleWindowControl"
       :on-toggle-maximize="windowShell.toggleMaximize"
       :resizable="windowShellCapabilities.resize === 'html' && !windowShellState.maximized"
@@ -36,6 +41,11 @@
       :native-controls="windowShellCapabilities.controls === 'native'"
       :on-resize="windowShell.startResize"
       :on-move="windowShell.startMove"
+      @toggle-sidebar="toggleSidebar"
+      @connection-action="openDeviceConnection"
+      @profile-action="configProfiles.open"
+      @help-action="openHelp"
+      @view-action="handleViewAction"
     />
     <n-notification-provider
       placement="top-right"
@@ -59,7 +69,7 @@
               </n-space>
             </n-radio-group>
             <n-checkbox v-model:checked="closeRemember" :disabled="closeBusy">
-              记住我的选择（可在「界面缩放」中更改）
+              记住我的选择（可在「Mower 设置 → 界面与窗口」中更改）
             </n-checkbox>
             <n-alert v-if="closeError" type="error">{{ closeError }}</n-alert>
             <n-text v-if="closeStatus" depth="3">{{ closeStatus }}</n-text>
@@ -75,45 +85,88 @@
           </n-space>
         </n-modal>
         <n-message-provider>
+          <ConfigProfilesController :controller="configProfiles" />
+          <SidebarEditor v-model:show="sidebarEditorOpen" :request="sidebarEditorRequest" />
+          <HelpDialog
+            v-model:section="helpSection"
+            :version="softwareVersion"
+            :resource-version="resourceVersion"
+          />
           <n-loading-bar-provider>
-            <n-watermark
-              :content="watermarkData"
-              cross
-              fullscreen
-              :font-size="16"
-              :line-height="32"
-              :width="400"
-              :height="384"
-              :x-offset="12"
-              :y-offset="60"
-              :rotate="-15"
-            />
-            <n-layout
-              :has-sider="!isMobileNav"
-              class="outer-layout"
-              :class="{ 'outer-layout--collapsed': sidebarCollapsed }"
+            <header
+              v-if="!windowShellActive"
+              v-show="fallbackAppMenu && appMenuVisible"
+              class="app-menu-header"
             >
+              <div id="header-app-menu" />
+            </header>
+            <n-layout :has-sider="!isMobileNav" class="outer-layout">
               <n-layout-sider
                 v-if="!isMobileNav"
+                v-show="!sidebarHidden"
                 :bordered="!windowShellActive"
                 collapse-mode="width"
                 :collapsed-width="64"
                 :width="210"
-                v-model:collapsed="sidebarCollapsed"
-                :show-trigger="!windowShellActive"
+                :collapsed="sidebarCollapsed"
+                content-style="display: flex; flex-direction: column; overflow: hidden"
               >
-                <n-menu
-                  :indent="24"
-                  :collapsed-width="64"
-                  :collapsed-icon-size="22"
-                  :options="menuOptions"
-                  @update:value="handleMenuClick"
-                />
+                <SidebarUpdateChecks
+                  v-if="!windowShellActive || !sidebarCollapsed"
+                  :collapsed="sidebarCollapsed"
+                  :collapsible="!windowShellActive"
+                  :show-logo="sidebarCollapsed"
+                  :version="softwareVersion"
+                  :deployment="deployment"
+                  :display-mode="softwareVersionDisplay"
+                  :enabled="updates_enabled === true"
+                  :resource-version="resourceVersion"
+                  :resource-metadata="resource_version_store.info.current_metadata"
+                  @toggle="toggleSidebar"
+                >
+                  <template v-if="!windowShellActive && !sidebarCollapsed" #home>
+                    <div id="sidebar-app-menu" />
+                  </template>
+                </SidebarUpdateChecks>
+                <div id="sidebar-navigation" class="sidebar-navigation">
+                  <AppSidebar
+                    :collapsed="sidebarCollapsed"
+                    @open-chat="openChatBot"
+                    @expand-sidebar="expandSidebar"
+                    @customize="openSidebarEditor"
+                  />
+                </div>
               </n-layout-sider>
               <n-layout-content class="layout-content-container">
+                <n-watermark
+                  class="content-watermark"
+                  :content="watermarkData"
+                  cross
+                  :font-size="16"
+                  :line-height="32"
+                  :width="400"
+                  :height="384"
+                  :x-offset="12"
+                  :y-offset="60"
+                  :rotate="-15"
+                />
                 <ConfigSaveNotice />
                 <CrashRecoveryNotice v-if="loaded" />
-                <router-view v-if="loaded" />
+                <router-view
+                  v-if="loaded && contentRoute"
+                  v-slot="{ Component }"
+                  :route="contentRoute"
+                >
+                  <keep-alive include="TaskSettings">
+                    <component :is="Component" />
+                  </keep-alive>
+                </router-view>
+                <SettingsDialog
+                  v-if="loaded"
+                  :show="settingsDirectoryMode"
+                  :style="mowerCssVariables"
+                  @close="leaveSettings"
+                />
                 <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
                 <Feedback />
                 <GlobalUpdateDrop v-if="loaded && updates_enabled === true" />
@@ -145,152 +198,50 @@
                   </div>
                 </n-modal>
               </n-layout-content>
-              <template v-if="windowShellActive && !isMobileNav">
-                <div class="sider-fade-zone" @mousedown.stop @click="toggleSidebar">
-                  <div
-                    class="sider-fade-btn"
-                    :class="{ 'sider-fade-btn--collapsed': sidebarCollapsed }"
-                    aria-hidden="true"
-                  >
-                    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path
-                        d="M5.64645 3.14645C5.45118 3.34171 5.45118 3.65829 5.64645 3.85355L9.79289 8L5.64645 12.1464C5.45118 12.3417 5.45118 12.6583 5.64645 12.8536C5.84171 13.0488 6.15829 13.0488 6.35355 12.8536L10.8536 8.35355C11.0488 8.15829 11.0488 7.84171 10.8536 7.64645L6.35355 3.14645C6.15829 2.95118 5.84171 2.95118 5.64645 3.14645Z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  </div>
-                </div>
-              </template>
-              <n-layout-footer v-if="isMobileNav">
-                <n-tabs type="line" justify-content="space-evenly" size="small">
-                  <n-tab name="日志" @click="$router.push('/')">
-                    <div style="display: flex; flex-direction: column; align-items: center">
-                      <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
-                      日志
-                    </div>
-                  </n-tab>
-                  <n-tab name="设置" @click="showModal2 = true">
-                    <div style="display: flex; flex-direction: column; align-items: center">
-                      <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
-                      设置
-                    </div>
-                    <n-modal v-model:show="showModal2">
-                      <n-card
-                        style="width: 300px"
-                        title="全部设置"
-                        :bordered="false"
-                        size="huge"
-                        role="dialog"
-                        aria-modal="true"
-                      >
-                        <div>
-                          <n-button
-                            @click=";((showModal2 = false), $router.push('/mowersettings'))"
-                          >
-                            mower设置
-                          </n-button>
-                        </div>
-                        <div>
-                          <n-button @click=";((showModal2 = false), $router.push('/maasettings'))">
-                            日常设置
-                          </n-button>
-                        </div>
-                      </n-card>
-                    </n-modal>
-                  </n-tab>
-                  <n-tab name="排班" @click="$router.push('/plan-editor')">
-                    <div style="display: flex; flex-direction: column; align-items: center">
-                      <n-icon size="20" style="margin-bottom: -1px" :component="Home" />
-                      排班
-                    </div>
-                  </n-tab>
-                  <n-tab name="养成规划" @click="$router.push('/mastery-recommendation')">
-                    <div style="display: flex; flex-direction: column; align-items: center">
-                      <n-icon size="20" style="margin-bottom: -1px" :component="TrendingUp" />
-                      养成
-                    </div>
-                  </n-tab>
-                  <n-tab name="数据图表" @click="showModal = true">
-                    <div style="display: flex; flex-direction: column; align-items: center">
-                      <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
-                      图表
-                    </div>
-                    <n-modal v-model:show="showModal">
-                      <n-card
-                        style="width: 300px"
-                        title="数据图表"
-                        :bordered="false"
-                        size="huge"
-                        role="dialog"
-                        aria-modal="true"
-                      >
-                        <div>
-                          <n-button @click=";((showModal = false), $router.push('/record/line'))">
-                            心情曲线
-                          </n-button>
-                        </div>
-                        <div>
-                          <n-button @click=";((showModal = false), $router.push('/record/pie'))">
-                            心情饼图
-                          </n-button>
-                        </div>
-                        <div>
-                          <n-button @click=";((showModal = false), $router.push('/record/depot'))">
-                            仓库
-                          </n-button>
-                        </div>
-                        <div>
-                          <n-button @click=";((showModal = false), $router.push('/record/report'))">
-                            基建报告
-                          </n-button>
-                        </div>
-                        <div>
-                          <n-button
-                            @click="
-                              ;((showModal = false), $router.push('/record/trading_analysis'))
-                            "
-                          >
-                            贸易订单分析
-                          </n-button>
-                        </div>
-                        <div>
-                          <n-button
-                            @click=";((showModal = false), $router.push('/record/recycling'))"
-                          >
-                            回收站材料统计
-                          </n-button>
-                        </div>
-                        <div>
-                          <n-button
-                            @click=";((showModal = false), $router.push('/record/log-schedule'))"
-                          >
-                            日志调度
-                          </n-button>
-                        </div>
-                      </n-card>
-                    </n-modal>
-                  </n-tab>
-                  <n-tab name="帮助" @click="$router.push('/doc')">
-                    <div style="display: flex; flex-direction: column; align-items: center">
-                      <n-icon size="20" style="margin-bottom: -1px" :component="HelpCircle" />
-                      帮助
-                    </div>
-                  </n-tab>
-                  <n-tab name="资源" @click="$router.push('/readme')">
-                    <div style="display: flex; flex-direction: column; align-items: center">
-                      <n-icon size="20" style="margin-bottom: -1px" :component="Bag" />
-                      资源
-                    </div>
-                  </n-tab>
-                  <n-tab name="Mower AI 助手" @click="handleMenuClick('chatbot')">
-                    <div style="display: flex; flex-direction: column; align-items: center">
-                      <n-icon size="20" style="margin-bottom: -1px" :component="MowerAIIcon" />
-                      AI助手
-                    </div>
-                  </n-tab>
-                </n-tabs>
+              <n-layout-footer v-if="isMobileNav" class="navigation-footer">
+                <MobileTabBar :more-open="mobileMenuOpen" @more="mobileMenuOpen = true" />
               </n-layout-footer>
             </n-layout>
+            <n-drawer
+              v-if="isMobileNav"
+              v-model:show="mobileMenuOpen"
+              placement="left"
+              :width="280"
+              aria-label="全部页面"
+              :style="mowerCssVariables"
+            >
+              <div class="sidebar-drawer">
+                <SidebarUpdateChecks
+                  :collapsible="false"
+                  :version="softwareVersion"
+                  :deployment="deployment"
+                  :display-mode="softwareVersionDisplay"
+                  :enabled="updates_enabled === true"
+                  :resource-version="resourceVersion"
+                  :resource-metadata="resource_version_store.info.current_metadata"
+                />
+                <div class="sidebar-navigation">
+                  <AppSidebar
+                    mobile
+                    @navigate="mobileMenuOpen = false"
+                    @open-chat="openChatBot"
+                    @customize="openSidebarEditor"
+                  />
+                </div>
+              </div>
+            </n-drawer>
+            <Teleport
+              v-if="!windowShellActive"
+              :to="fallbackAppMenu ? '#header-app-menu' : '#sidebar-app-menu'"
+              defer
+            >
+              <AppMenuBar
+                mode="brand"
+                :active="appMenuVisible"
+                v-bind="appMenuProps"
+                v-on="appMenuListeners"
+              />
+            </Teleport>
           </n-loading-bar-provider>
         </n-message-provider>
       </n-dialog-provider>
@@ -299,44 +250,35 @@
 </template>
 
 <script setup>
-import SkillLevelAdvanced from '@vicons/carbon/SkillLevelAdvanced'
-import WikipediaW from '@vicons/fa/WikipediaW'
-import MowerAIIcon from '@/components/MowerAIIcon.vue'
-import Wrench from '@vicons/fa/Wrench'
-import Bag from '@vicons/ionicons5/Bag'
-import BarChart from '@vicons/ionicons5/BarChart'
-import BookOutline from '@vicons/ionicons5/BookOutline'
-import HelpCircle from '@vicons/ionicons5/HelpCircle'
-import Home from '@vicons/ionicons5/Home'
-import PieChart from '@vicons/ionicons5/PieChart'
-import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
-import TimeOutline from '@vicons/ionicons5/TimeOutline'
-import Newspaper from '@vicons/ionicons5/Newspaper'
-import Settings from '@vicons/ionicons5/Settings'
-import StatsChart from '@vicons/ionicons5/StatsChart'
-import Storefront from '@vicons/ionicons5/Storefront'
-import RoseOutline from '@vicons/ionicons5/RoseOutline'
-import Coffee from '@vicons/tabler/Coffee'
-import TrendingUp from '@vicons/tabler/TrendingUp'
-import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import {
   computed,
   defineAsyncComponent,
-  h,
   inject,
   nextTick,
   onBeforeUnmount,
   onMounted,
   provide,
   ref,
-  watch
+  shallowRef,
+  watch,
+  watchPostEffect
 } from 'vue'
+import AppSidebar from '@/components/AppSidebar.vue'
+import SettingsDialog from '@/components/SettingsDialog.vue'
 import Feedback from '@/components/Feedback.vue'
 import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 import CrashRecoveryNotice from '@/components/CrashRecoveryNotice.vue'
 import ConfigSaveNotice from '@/components/ConfigSaveNotice.vue'
+import MobileTabBar from '@/components/MobileTabBar.vue'
 import WindowTitlebar from '@/components/WindowTitlebar.vue'
+import AppMenuBar from '@/components/AppMenuBar.vue'
+import HelpDialog from '@/components/HelpDialog.vue'
+import ConfigProfilesController from '@/components/ConfigProfilesController.vue'
+import SidebarUpdateChecks from '@/components/SidebarUpdateChecks.vue'
+import SidebarEditor from '@/components/SidebarEditor.vue'
+import { useSidebarPreferences } from '@/composables/sidebarPreferences'
+import { useResolvedTheme } from '@/composables/theme'
 import {
   mowerDarkCssVariables,
   mowerDarkThemeOverrides,
@@ -344,14 +286,28 @@ import {
   mowerLightThemeOverrides
 } from '@/theme/mower'
 import '@/theme/mower.css'
+import '@/styles/breakpoints.css'
 import {
   createWindowShellAdapter,
   formatWindowTitle,
   formatEmulatorLabel
 } from '@/window-shell/adapter.js'
 import { createSaveCoordinator } from '@/utils/configPersistence'
+import { createConfigProfiles } from '@/composables/configProfiles'
 import { readProcessActionStatus, submitProcessAction } from '@/utils/processAction'
 import { resolveCloseIntent } from '@/utils/closePreference'
+import {
+  isNavigationFailure,
+  loadRouteLocation,
+  NavigationFailureType,
+  useRoute,
+  useRouter
+} from 'vue-router'
+import { createSettingsNavigation, settingsNavigationKey } from '@/composables/settingsNavigation'
+import {
+  createDeviceConnectionNavigation,
+  deviceConnectionNavigationKey
+} from '@/composables/deviceConnectionNavigation'
 import { installModalDragging } from '@/utils/modal-drag.js'
 
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
@@ -368,6 +324,7 @@ const closeStatus = ref('')
 let closePollTimer = null
 const {
   active: windowShellActive,
+  connected: windowShellConnected,
   busy: windowShellBusy,
   controls: windowShellControls,
   controlSide: windowShellControlSide,
@@ -375,172 +332,118 @@ const {
   state: windowShellState
 } = windowShell
 
+const nativeInstanceManagementAvailable = ref(false)
+function syncNativeInstanceManagement() {
+  nativeInstanceManagementAvailable.value =
+    typeof window.pywebview?.api?.get_instances === 'function'
+}
+watch(windowShellConnected, syncNativeInstanceManagement, { immediate: true })
+
 let disposeModalDrag = null
 
-const showModal = ref(false)
-const showModal2 = ref(false)
 const showFeedback = ref(false)
-const sidebarCollapsed = ref(false)
-const userToggledSidebar = ref(false)
 provide('show_feedback', showFeedback)
-provide('sidebar_collapsed', sidebarCollapsed)
+const helpSection = ref('')
+function openHelp(action) {
+  if (action === 'feedback') showFeedback.value = true
+  else if (action === 'documentation') void router.push({ name: 'doc' })
+  else if (action === 'about' || action === 'changelog') helpSection.value = action
+}
+// Desktop sider state. Narrow windows collapse it until the user toggles it by hand.
+const sidebarCollapsed = ref(false)
+const sidebarHidden = ref(false)
+const sidebarPreferences = useSidebarPreferences()
+const sidebarEditorOpen = ref(false)
+const sidebarEditorRequest = ref({})
+function openSidebarEditor(request = {}) {
+  sidebarEditorRequest.value = request
+  sidebarEditorOpen.value = true
+}
+const userToggledSidebar = ref(false)
 function toggleSidebar() {
+  if (sidebarHidden.value) {
+    expandSidebar()
+    return
+  }
   userToggledSidebar.value = true
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
-function renderIcon(icon) {
-  return () => h(NIcon, null, { default: () => h(icon) })
+function expandSidebar() {
+  userToggledSidebar.value = true
+  sidebarHidden.value = false
+  sidebarCollapsed.value = false
+}
+// Mobile page drawer holding the full sidebar.
+const mobileMenuOpen = ref(false)
+const sidebarVisible = computed(() =>
+  isMobileNav.value ? mobileMenuOpen.value : !sidebarHidden.value
+)
+const fallbackAppMenu = computed(
+  () => isMobileNav.value || sidebarHidden.value || sidebarCollapsed.value
+)
+const appMenuVisible = computed(
+  () => isMobileNav.value || sidebarHidden.value || !sidebarCollapsed.value
+)
+function handleViewAction(action) {
+  if (action === 'toggle-sidebar') {
+    if (isMobileNav.value) mobileMenuOpen.value = !mobileMenuOpen.value
+    else sidebarHidden.value = !sidebarHidden.value
+  } else if (action === 'edit-sidebar') {
+    openSidebarEditor()
+  }
+}
+const route = useRoute()
+const router = useRouter()
+const settingsDirectoryMode = computed(() => route.meta.settingsSidebar === true)
+const settingsReturnTo = ref('/')
+const settingsBackgroundRoute = shallowRef(null)
+const contentRoute = computed(() =>
+  settingsDirectoryMode.value ? settingsBackgroundRoute.value : route
+)
+watch(
+  settingsDirectoryMode,
+  async (open) => {
+    if (!open || settingsBackgroundRoute.value) return
+    try {
+      const background = await loadRouteLocation(router.resolve('/'))
+      if (!settingsBackgroundRoute.value) settingsBackgroundRoute.value = background
+    } catch (error) {
+      console.error('设置背景页加载失败', error)
+    }
+  },
+  { immediate: true }
+)
+const settingsNavigation = createSettingsNavigation()
+provide(settingsNavigationKey, settingsNavigation)
+const deviceConnectionNavigation = createDeviceConnectionNavigation()
+provide(deviceConnectionNavigationKey, deviceConnectionNavigation)
+async function openDeviceConnection(action) {
+  if (config_store.manager_owned_device) return
+  if (configProfiles.busy.value || configProfiles.stale.value || configProfiles.pendingReload.value)
+    return
+  if (action === 'test' && (running.value || deviceConnectionNavigation.locked.value)) return
+  const failure = await router.push({ name: 'task-settings', hash: '#task-devices' })
+  if (failure && !isNavigationFailure(failure, NavigationFailureType.duplicated)) return
+  deviceConnectionNavigation.open(action)
+}
+const removeSettingsHook = router.afterEach((to, from, failure) => {
+  if (failure) return
+  if (to.meta.settings && !from.meta.settings && from.matched.length) {
+    settingsReturnTo.value = from.fullPath
+    settingsBackgroundRoute.value = from
+  }
+})
+onBeforeUnmount(removeSettingsHook)
+function leaveSettings() {
+  void router.push(settingsReturnTo.value)
 }
 const showChatBot = ref(false)
 const chatBotMounted = ref(false)
-function handleMenuClick(key) {
-  if (key === 'chatbot') {
-    chatBotMounted.value = true
-    showChatBot.value = true
-  }
+function openChatBot() {
+  mobileMenuOpen.value = false
+  chatBotMounted.value = true
+  showChatBot.value = true
 }
-import SessionLink from '@/components/SessionLink.vue'
-const menuOptions = [
-  {
-    label: () => h(SessionLink, { to: { path: '/' } }, { default: () => '运行日志' }),
-    icon: renderIcon(BookOutline),
-    key: 'go-to-log'
-  },
-  {
-    label: () => '全部设置',
-    icon: renderIcon(Settings),
-    key: 'allsetting',
-    children: [
-      {
-        label: () =>
-          h(SessionLink, { to: { path: '/mowersettings' } }, { default: () => 'mower设置' }),
-        icon: renderIcon(Coffee),
-        key: 'go-to-mowersetting'
-      },
-      {
-        label: () =>
-          h(SessionLink, { to: { path: '/maasettings' } }, { default: () => '日常设置' }),
-        icon: renderIcon(RoseOutline),
-        key: 'go-to-maasetting'
-      }
-    ]
-  },
-  {
-    label: () => h(SessionLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
-    icon: renderIcon(Home),
-    key: 'go-to-plan'
-  },
-  {
-    label: () =>
-      h(SessionLink, { to: { path: '/mastery-recommendation' } }, { default: () => '养成规划' }),
-    icon: renderIcon(TrendingUp),
-    key: 'go-to-mastery-recommendation'
-  },
-  {
-    label: () => '数据图表',
-    key: 'building-report',
-    icon: renderIcon(StatsChart),
-    children: [
-      {
-        label: () =>
-          h(SessionLink, { to: { path: '/record/line' } }, { default: () => '干员心情报表' }),
-        icon: renderIcon(BarChart),
-        key: 'go-to-record-line'
-      },
-      {
-        label: () =>
-          h(SessionLink, { to: { path: '/record/pie' } }, { default: () => '工休比报表' }),
-        icon: renderIcon(PieChart),
-        key: 'go-to-record-pie'
-      },
-      {
-        label: () => h(SessionLink, { to: { path: '/record/depot' } }, { default: () => '仓库' }),
-        icon: renderIcon(Storefront),
-        key: 'go-to-record-depot'
-      },
-      {
-        label: () =>
-          h(SessionLink, { to: { path: '/record/report' } }, { default: () => '基建报表' }),
-        icon: renderIcon(ReaderOutline),
-        key: 'go-to-record-report'
-      },
-      {
-        label: () =>
-          h(
-            SessionLink,
-            { to: { path: '/record/trading_analysis' } },
-            { default: () => '贸易订单分析' }
-          ),
-        icon: renderIcon(Newspaper),
-        key: 'go-to-trading-analysis'
-      },
-      {
-        label: () =>
-          h(
-            SessionLink,
-            { to: { path: '/record/recycling' } },
-            { default: () => '回收站材料统计' }
-          ),
-        icon: renderIcon(PieChart),
-        key: 'go-to-recycling'
-      },
-      {
-        label: () =>
-          h(SessionLink, { to: { path: '/record/log-schedule' } }, { default: () => '日志调度' }),
-        icon: renderIcon(TimeOutline),
-        key: 'go-to-log-schedule'
-      }
-    ]
-  },
-  {
-    label: () => h(SessionLink, { to: { path: '/doc' } }, { default: () => '帮助文档' }),
-    icon: renderIcon(HelpCircle),
-    key: 'go-to-doc'
-  },
-  {
-    label: () => h(SessionLink, { to: { path: '/readme' } }, { default: () => '其他资源' }),
-    icon: renderIcon(Bag),
-    key: 'readme'
-  },
-  {
-    label: () => h(SessionLink, { to: { path: '/BasementSkill' } }, { default: () => '基建技能' }),
-    icon: renderIcon(SkillLevelAdvanced),
-    key: 'BasementSkill'
-  },
-  {
-    label: () =>
-      h(
-        'a',
-        {
-          href: 'https://arkntools.app/ ',
-          target: '_blank',
-          rel: 'noopenner noreferrer'
-        },
-        '明日方舟工具箱'
-      ),
-    key: 'toolbox',
-    icon: renderIcon(Wrench)
-  },
-  {
-    label: () =>
-      h(
-        'a',
-        {
-          href: 'https://prts.wiki/w/%E9%A6%96%E9%A1%B5',
-          target: '_blank',
-          rel: 'noopenner noreferrer'
-        },
-        '明日方舟PRTS'
-      ),
-    key: 'wiki',
-    icon: renderIcon(WikipediaW)
-  },
-  {
-    label: () => 'Mower AI 助手',
-    icon: renderIcon(MowerAIIcon),
-    key: 'chatbot'
-  }
-]
 
 import { darkTheme, dateZhCN, zhCN } from 'naive-ui'
 
@@ -551,7 +454,8 @@ hljs.registerLanguage('json', json)
 
 import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
-import { usePlanStore } from '@/stores/plan'
+import { useGuiStore } from '@/stores/gui'
+import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
 import { useUpdateNoticeStore } from '@/stores/updateNotice'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
 
@@ -569,58 +473,78 @@ const {
   resource_update_auto_update,
   simulator,
   start_automatically,
-  theme,
+  theme: themePreference,
   webview,
   adb
 } = storeToRefs(config_store)
-let activeThemeTransition = null
+const theme = useResolvedTheme(themePreference)
+// Also applied to the page drawer, which teleports out of the provider element.
+const mowerCssVariables = computed(() =>
+  theme.value === 'dark' ? mowerDarkCssVariables : mowerLightCssVariables
+)
+let activeThemeColours = null
+let themeControlWrite = false
+watch(
+  theme,
+  () => {
+    if (themeControlWrite) return
+    if (activeThemeColours) {
+      activeThemeColours = null
+      document.documentElement.classList.remove('mower-theme-colours')
+    }
+    document.documentElement.classList.add('mower-theme-changing')
+  },
+  { flush: 'sync' }
+)
+watchPostEffect(() => {
+  // Track every edit, including a switch back to the initial theme in one frame.
+  void theme.value
+  const root = document.documentElement
+  if (!root.classList.contains('mower-theme-changing')) return
+  // Vue must commit component styles before the browser restores transitions.
+  void root.offsetWidth
+  root.classList.remove('mower-theme-changing')
+})
 
 async function setThemeWithTransition(nextTheme) {
-  if (nextTheme === theme.value) return
-
   const root = document.documentElement
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  root.classList.add('mower-theme-changing')
-
-  if (!reduceMotion && typeof document.startViewTransition === 'function') {
-    activeThemeTransition?.skipTransition?.()
-    const transition = document.startViewTransition(async () => {
-      theme.value = nextTheme
-      await nextTick()
-    })
-    activeThemeTransition = transition
-    try {
-      await transition.ready.catch(() => {})
-    } finally {
-      if (activeThemeTransition === transition) {
-        root.classList.remove('mower-theme-changing')
-      }
-    }
-    void transition.finished
-      .catch(() => {})
-      .finally(() => {
-        if (activeThemeTransition === transition) activeThemeTransition = null
-      })
+  if (reduceMotion) {
+    activeThemeColours = null
+    root.classList.remove('mower-theme-colours')
+    root.classList.add('mower-theme-changing')
+    themePreference.value = nextTheme
+    await nextTick()
+    void root.offsetWidth
+    root.classList.remove('mower-theme-changing')
     return
   }
+  if (nextTheme === themePreference.value) return
 
-  const provider = document.querySelector('.provider')
-  if (!reduceMotion && provider?.animate) {
-    const fadeOut = provider.animate([{ opacity: 1 }, { opacity: 0.84 }], {
-      duration: 90,
-      easing: 'ease-out',
-      fill: 'forwards'
-    })
-    await fadeOut.finished.catch(() => {})
-    fadeOut.cancel()
+  const change = {}
+  activeThemeColours = change
+  root.classList.add('mower-theme-colours')
+  void root.offsetWidth
+  try {
+    themeControlWrite = true
+    try {
+      themePreference.value = nextTheme
+    } finally {
+      themeControlWrite = false
+    }
+    await nextTick()
+    if (activeThemeColours !== change) return
+    void root.offsetWidth
+    const transitions = document
+      .getAnimations()
+      .filter((animation) => typeof animation.transitionProperty === 'string')
+    await Promise.allSettled(transitions.map((animation) => animation.finished))
+  } finally {
+    if (activeThemeColours === change) {
+      activeThemeColours = null
+      root.classList.remove('mower-theme-colours')
+    }
   }
-  theme.value = nextTheme
-  await nextTick()
-  root.classList.remove('mower-theme-changing')
-  provider?.animate?.([{ opacity: 0.84 }, { opacity: 1 }], {
-    duration: 130,
-    easing: 'ease-out'
-  })
 }
 
 provide('set_theme_with_transition', setThemeWithTransition)
@@ -655,9 +579,18 @@ const { operators } = storeToRefs(plan_store)
 const { load_plan, load_operators } = plan_store
 
 const mower_store = useMowerStore()
-const { ws, running, log_lines, auto_start_handled, desktop_startup_handled, updates_enabled } =
-  storeToRefs(mower_store)
+const {
+  ws,
+  running,
+  log_lines,
+  auto_start_handled,
+  desktop_startup_handled,
+  updates_enabled,
+  deployment
+} = storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
+const guiStore = useGuiStore()
+const { softwareVersionDisplay } = storeToRefs(guiStore)
 
 const update_notice_store = useUpdateNoticeStore()
 const { notice: updateNotice } = storeToRefs(update_notice_store)
@@ -667,17 +600,64 @@ const showUpdateNoticeModal = ref(false)
 const resource_version_store = useResourceVersionStore()
 const { installResource, loadResourceVersion, loadResourceVersionLocal, loadResourceJob } =
   resource_version_store
-// 标题栏版本：软件版固定（取启动快照的前半段），资源版实时取当前生效的资源包展示版本；
-// 资源包在别处更新时后端广播 resource_updated → loadResourceVersionLocal 刷新这里。
-const windowTitleVersion = computed(() => {
-  const snapshot = windowShell.metadata.version
+const softwareVersion = computed(() => {
+  const snapshot =
+    windowShell.metadata.version || (watermarkData.value === 'mower' ? '' : watermarkData.value)
   const sep = snapshot.lastIndexOf(' - ')
-  const softVer = sep === -1 ? snapshot : snapshot.slice(0, sep)
-  const liveRes = resource_version_store.info.current_display
-  return liveRes ? `${softVer} - ${liveRes}` : softVer
+  return sep === -1 ? snapshot : snapshot.slice(0, sep)
 })
+const resourceVersion = computed(() => resource_version_store.info.current_display || '')
+const windowTitleVersion = computed(() =>
+  resourceVersion.value
+    ? `${softwareVersion.value} - ${resourceVersion.value}`
+    : softwareVersion.value
+)
 
 const axios = inject('axios')
+const configProfiles = createConfigProfiles({
+  axios,
+  config: config_store,
+  plan: plan_store,
+  rescuePlan: useRescuePlanStore(),
+  beforeChange: async () => {
+    await sidebarPreferences.flush()
+    if (sidebarPreferences.initialized.value && sidebarPreferences.persistenceError.value) {
+      throw new Error('侧边栏布局尚未保存，请在编辑侧边栏窗口中重试后再切换档案。')
+    }
+  },
+  blocked: () => !loaded.value || running.value || deviceConnectionNavigation.locked.value
+})
+const appMenuProps = computed(() => ({
+  theme: theme.value,
+  showInstanceMenu: nativeInstanceManagementAvailable.value,
+  instanceName: windowShell.metadata.instanceName || '默认实例',
+  mowerPort: mowerPort.value,
+  emulatorName: emulatorName.value,
+  adbPort: adbPort.value,
+  managerOwnedDevice: config_store.manager_owned_device,
+  connectionTestDisabled: running.value || deviceConnectionNavigation.locked.value,
+  profileState: configProfiles.state.value,
+  profileWriteDisabled: configProfiles.writeDisabled.value,
+  profileReadDisabled: configProfiles.readDisabled.value,
+  sidebarVisible: sidebarVisible.value
+}))
+const appMenuListeners = {
+  'connection-action': openDeviceConnection,
+  'profile-action': configProfiles.open,
+  'help-action': openHelp,
+  'view-action': handleViewAction
+}
+const profileResponseInterceptor = axios.interceptors?.response?.use(
+  (response) => response,
+  async (failure) => {
+    await configProfiles.observeFailure(failure)
+    throw failure
+  }
+)
+onBeforeUnmount(() => {
+  if (profileResponseInterceptor !== undefined)
+    axios.interceptors.response.eject(profileResponseInterceptor)
+})
 
 function finishClosePolling(pendingKey) {
   clearTimeout(closePollTimer)
@@ -810,9 +790,16 @@ function apply_zoom(scale) {
 const isMobileNav = ref(false)
 const mobile = ref(false)
 provide('mobile', mobile)
+// The page drawer belongs to the mobile layout; widening the window closes it.
+watch(isMobileNav, (mobileNav) => {
+  if (!mobileNav) {
+    mobileMenuOpen.value = false
+  }
+})
 
 function actions_on_resize() {
-  const width = document.documentElement.clientWidth || window.innerWidth
+  const zoom = Number.parseFloat(document.documentElement.style.zoom) || 1
+  const width = (window.innerWidth || document.documentElement.clientWidth) / zoom
   isMobileNav.value = width < 680
   mobile.value = width < 850
   if (!userToggledSidebar.value) {
@@ -870,6 +857,8 @@ const operators_with_free_current = computed(() => {
 })
 
 onMounted(async () => {
+  window.addEventListener('pywebviewready', syncNativeInstanceManagement)
+  syncNativeInstanceManagement()
   void windowShell.initialize()
   disposeModalDrag = installModalDragging()
   actions_on_resize()
@@ -882,6 +871,9 @@ onMounted(async () => {
   const instanceName = params.get('instance_name')
   provide('token', token)
   axios.defaults.headers.common['token'] = token
+  void guiStore.load()
+  if (!(await configProfiles.bootstrap())) return
+  void sidebarPreferences.initialize()
   // getwatermarkinfo 独立并行，失败不影响主流程（watermark 仅装饰用途）
   getwatermarkinfo()
     .then((info) => {
@@ -998,9 +990,13 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pywebviewready', syncNativeInstanceManagement)
   clearTimeout(closePollTimer)
   disposeModalDrag?.()
   windowShell.dispose()
+  activeThemeColours = null
+  document.documentElement.classList.remove('mower-theme-colours')
+  document.documentElement.classList.remove('mower-theme-changing')
   delete document.documentElement.dataset.windowShellTheme
   delete document.documentElement.dataset.mowerTheme
 })
@@ -1014,7 +1010,7 @@ watch(
       window.scrollTo(0, 0)
     }
   },
-  { immediate: true }
+  { immediate: true, flush: 'sync' }
 )
 
 watch(
@@ -1042,7 +1038,26 @@ watch(
 }
 
 .provider {
+  --shell-rail-size: 64px;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.provider > .outer-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.app-menu-header {
+  display: flex;
+  flex: 0 0 36px;
+  min-width: 0;
+  align-items: center;
+  padding-left: 16px;
+  background: var(--mower-surface);
+  border-bottom: 1px solid var(--mower-divider);
 }
 
 .layout-container {
@@ -1098,6 +1113,19 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
   background: var(--window-shell-frame-surface);
 }
 
+.sidebar-navigation {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-drawer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .provider--window-shell .n-layout-sider {
   background: var(--window-shell-frame-surface);
 }
@@ -1109,6 +1137,14 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
 .layout-content-container {
   container-type: inline-size;
   container-name: main-content;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.navigation-footer {
+  flex: none;
+  z-index: 10;
 }
 
 .provider--window-shell .layout-content-container {
@@ -1116,6 +1152,7 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
   z-index: 1;
   overflow: hidden;
   background: var(--window-shell-content-surface);
+  box-sizing: border-box;
   border-radius: 10px 0 0 0;
   box-shadow:
     -7px 0 18px -14px var(--window-shell-content-shadow-left),
@@ -1127,7 +1164,7 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
    聚焦时直接高亮边框并添加 2px 贴身高亮环，杜绝过大外扩（4px）被子窗口边框/overflow 裁剪 */
 .n-input {
   --n-height: 36px !important;
-  --n-border-radius: 6px !important;
+  --n-border-radius: 8px !important;
   --n-border: 1px solid #e4e4e7 !important;
   --n-border-hover: 1px solid #36ad6a !important;
   --n-border-focus: 1px solid #18a058 !important;
@@ -1153,10 +1190,10 @@ html[data-mower-theme='dark'] .n-input {
   --n-box-shadow-focus: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
 }
 
-/* 下拉选择框（n-select）：触发器 = 同款输入框盒子 + 菜单 = 圆角浮层/option 高亮 */
+/* 下拉选择框（n-select）的触发器沿用输入框外观。 */
 .n-base-selection {
   --n-height: 36px !important;
-  --n-border-radius: 6px !important;
+  --n-border-radius: 8px !important;
   --n-border: 1px solid #e4e4e7 !important;
   --n-border-hover: 1px solid #36ad6a !important;
   --n-border-focus: 1px solid #18a058 !important;
@@ -1170,14 +1207,6 @@ html[data-mower-theme='dark'] .n-input {
   --n-padding-single: 0 12px !important;
   --n-font-size: 14px !important;
 }
-.n-base-select-menu {
-  --n-color: #ffffff !important;
-  --n-border-radius: 6px !important;
-  --n-option-font-size: 14px !important;
-  --n-option-color-pending: rgba(24, 160, 88, 0.08) !important;
-  --n-option-color-active: rgba(24, 160, 88, 0.1) !important;
-  --n-option-color-active-pending: rgba(24, 160, 88, 0.14) !important;
-}
 html[data-mower-theme='dark'] .n-base-selection {
   --n-border: 1px solid #27272a !important;
   --n-border-hover: 1px solid #7fe7c4 !important;
@@ -1189,12 +1218,6 @@ html[data-mower-theme='dark'] .n-base-selection {
   --n-placeholder-color: #71717a !important;
   --n-box-shadow-focus: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
   --n-box-shadow-active: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
-}
-html[data-mower-theme='dark'] .n-base-select-menu {
-  --n-color: #101014 !important;
-  --n-option-color-pending: rgba(99, 226, 183, 0.12) !important;
-  --n-option-color-active: rgba(99, 226, 183, 0.16) !important;
-  --n-option-color-active-pending: rgba(99, 226, 183, 0.2) !important;
 }
 
 /* 提升处于聚焦/激活状态输入框的层叠层级，避免被相邻单元格、边框或相邻按钮遮挡 */
@@ -1221,31 +1244,14 @@ html.mower-theme-changing *::after {
   transition: none !important;
 }
 
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 220ms;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-  mix-blend-mode: normal;
-}
-
-::view-transition-old(root) {
-  animation-name: mower-theme-fade-out;
-}
-
-::view-transition-new(root) {
-  animation-name: mower-theme-fade-in;
-}
-
-@keyframes mower-theme-fade-out {
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes mower-theme-fade-in {
-  from {
-    opacity: 0;
-  }
+html.mower-theme-colours,
+html.mower-theme-colours *,
+html.mower-theme-colours *::before,
+html.mower-theme-colours *::after {
+  transition-property: color, background-color, border-color, box-shadow, fill, stroke !important;
+  transition-duration: 180ms !important;
+  transition-timing-function: ease-out !important;
+  transition-delay: 0s !important;
 }
 
 /* naive-ui 弹窗 teleport 到 <body>，不在 .provider--window-shell 内，
@@ -1422,63 +1428,17 @@ td {
   height: 100%;
 }
 
-/* 无边框窗口：侧栏折叠触发器，悬挂在侧栏/内容交界线上，鼠标滑到才浮现。图标为 naive 原生
-   ChevronRight（arrow-circle 触发器同款）；展开时朝左(旋转180°)、折叠时朝右。 */
-.provider--window-shell .sider-fade-zone {
+/* 水印只覆盖内容区，并固定在内容区上，不随页面滚动；侧栏和底部导航保持清晰。 */
+.n-watermark-container.content-watermark {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 210px;
-  width: 22px;
-  transform: translateX(-50%);
-  cursor: pointer;
-  z-index: 2;
+  inset: 0;
+  pointer-events: none;
 }
-.outer-layout--collapsed .sider-fade-zone {
-  left: 64px;
-}
-.sider-fade-btn {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.07);
-  background: #fff;
-  color: #808080;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
-  display: grid;
-  place-items: center;
-  opacity: 0;
-  transition:
-    opacity 0.15s ease,
-    color 0.15s ease;
-}
-.sider-fade-zone:hover .sider-fade-btn,
-.sider-fade-btn:focus-visible {
-  opacity: 1;
-  color: #18a058;
-}
-.sider-fade-btn svg {
-  display: block;
-  width: 15px;
-  height: 15px;
-  fill: currentcolor;
-  transform: rotate(180deg);
-  transition: transform 0.2s ease;
-}
-.sider-fade-btn--collapsed svg {
-  transform: rotate(0deg);
-}
-html[data-mower-theme='dark'] .sider-fade-btn {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgb(44, 44, 50);
-  color: rgba(255, 255, 255, 0.68);
-}
-html[data-mower-theme='dark'] .sider-fade-zone:hover .sider-fade-btn {
-  color: #63e2b7;
+
+@media (prefers-reduced-motion: reduce) {
+  .outer-layout .n-layout-sider {
+    transition: none;
+  }
 }
 
 .outer-layout > .n-layout-scroll-container {

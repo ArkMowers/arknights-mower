@@ -4,7 +4,9 @@ import SoftwareComponentUpdates from './SoftwareComponentUpdates.vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 const axios = inject('axios')
 
-const mobile = inject('mobile')
+defineProps({
+  showTitle: { type: Boolean, default: true }
+})
 
 import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
@@ -945,12 +947,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <n-card title="日常设置">
-    <template #header>日常设置<help-text>刷理智、信用相关、领奖励、肉鸽保全等</help-text></template>
+  <n-card class="maa-basic" content-class="maa-basic-content">
+    <template v-if="showTitle" #header
+      >MAA 核心<help-text>连接、触控、游戏主题恢复和 MAA 更新</help-text></template
+    >
     <n-form
-      :label-placement="mobile ? 'top' : 'left'"
+      class="maa-basic-form"
+      label-placement="left"
       :show-feedback="false"
-      label-width="96"
+      label-width="128"
       label-align="left"
     >
       <n-alert v-if="runtime_platform === 'android'" :show-icon="false"
@@ -970,12 +975,16 @@ onUnmounted(() => {
               时保留。也可以选择自定义目录。</help-text
             >
           </template>
-          <n-input v-model:value="maa_path" />
-          <n-button @click="select_maa_dir" class="dialog-btn">...</n-button>
+          <div class="maa-field-with-action">
+            <n-input v-model:value="maa_path" :input-props="{ 'aria-label': 'MAA目录' }" />
+            <n-button @click="select_maa_dir">浏览</n-button>
+          </div>
         </n-form-item>
         <n-form-item label="连接配置">
-          <n-select :options="maa_conn_presets" v-model:value="maa_conn_preset" />
-          <n-button @click="get_maa_conn_presets" class="dialog-btn">刷新</n-button>
+          <div class="maa-field-with-action">
+            <n-select :options="maa_conn_presets" v-model:value="maa_conn_preset" />
+            <n-button @click="get_maa_conn_presets">刷新</n-button>
+          </div>
         </n-form-item>
         <n-form-item label="触控模式">
           <n-select v-model:value="maa_touch_option" :options="maa_touch_options" />
@@ -1005,11 +1014,11 @@ onUnmounted(() => {
       </n-form-item>
     </n-form>
     <n-divider />
-    <div class="misc-container">
+    <div class="maa-connection-test">
       <n-button :loading="maa_testing" :disabled="maa_testing" @click="test_maa">
         测试连接
       </n-button>
-      <div>{{ maa_msg }}</div>
+      <p v-if="maa_msg" class="maa-connection-result" role="status">{{ maa_msg }}</p>
     </div>
     <template v-if="updatesAllowed && maa_update_supported">
       <n-divider />
@@ -1134,8 +1143,9 @@ onUnmounted(() => {
           {{ maa_backup_path }}。
         </div>
         <div v-else-if="maa_backup_path" class="update-hint">
-          更新成功后原目录保存在 {{ maa_backup_path }}；下一次成功更新时替换该备份，更新失败时保留。
-          cache 与 config 会复制到新目录继续使用。
+          更新成功后原目录保存在
+          {{ maa_backup_path }}；下一次成功更新时替换该备份，更新失败时保留。 cache 与 config
+          会复制到新目录继续使用。
         </div>
         <n-progress
           v-if="show_maa_update_progress && maa_update_job.progress !== null"
@@ -1301,16 +1311,85 @@ onUnmounted(() => {
   </n-card>
 </template>
 
-<style scoped lang="scss">
-p {
-  margin: 0 0 10px 0;
+<style scoped>
+.maa-basic {
+  min-width: 0;
+  container: maa-basic / inline-size;
 }
 
-.misc-container {
-  margin-top: 12px;
+.maa-basic :deep(> .maa-basic-content) {
+  min-width: 0;
+  max-width: 760px;
+}
+
+.maa-basic .maa-basic-form :deep(> .n-form-item) {
+  margin: 0;
+  padding: 12px 0;
+  grid-template-columns: 128px minmax(0, 480px);
+  grid-template-areas: 'label blank' 'label feedback';
+  grid-template-rows: auto auto;
+  gap: 0 16px;
+  align-items: center;
+}
+
+.maa-basic .maa-basic-form :deep(> .n-form-item:first-child) {
+  padding-top: 0;
+}
+
+.maa-basic .maa-basic-form :deep(> .n-form-item:last-child) {
+  padding-bottom: 0;
+}
+
+.maa-basic .maa-basic-form :deep(> .n-form-item > .n-form-item-label) {
+  min-width: 0;
+  min-height: 0;
+  width: auto;
+  padding: 0;
+  justify-content: flex-start;
+}
+
+.maa-basic .maa-basic-form :deep(> .n-form-item > .n-form-item-blank) {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.maa-basic .maa-basic-form :deep(.n-form-item-blank > .n-select) {
+  max-width: none;
+}
+
+.maa-field-with-action {
   display: flex;
   align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.maa-field-with-action :deep(> .n-input),
+.maa-field-with-action :deep(> .n-select) {
+  flex: 1;
+  min-width: 0;
+}
+
+.maa-field-with-action :deep(> .n-button) {
+  flex: none;
+}
+
+.maa-connection-test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
+}
+
+.maa-connection-result {
+  flex-basis: 100%;
+  margin: 0;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .maa-updater {
@@ -1362,5 +1441,13 @@ p {
 
 .update-success {
   color: var(--n-color-success);
+}
+
+@container maa-basic (max-width: 480px) {
+  .maa-basic .maa-basic-form :deep(> .n-form-item) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'label' 'blank' 'feedback';
+    gap: 8px 0;
+  }
 }
 </style>

@@ -221,6 +221,59 @@ class WebRoutingTests(unittest.TestCase):
                         self.assertEqual(response.status_code, 403)
                         read_status.assert_not_called()
 
+    def test_cors_preflight_does_not_authorize_protected_api_requests(self):
+        from arknights_mower.__main__ import device_control
+
+        origin = "https://client.example"
+        with (
+            patch.object(server.app, "token", "fixture-secret", create=True),
+            patch.object(server, "mower_thread", None),
+            patch.object(
+                device_control, "settings_status", return_value={"active": False}
+            ) as read_status,
+            self.client.options(
+                "/device/status",
+                headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": "GET",
+                    "Access-Control-Request-Headers": "token, X-Mower-Settings",
+                    "Access-Control-Request-Private-Network": "true",
+                },
+            ) as preflight,
+        ):
+            self.assertEqual(preflight.status_code, 200)
+            self.assertEqual(preflight.headers["Access-Control-Allow-Origin"], origin)
+            self.assertIn("GET", preflight.headers["Access-Control-Allow-Methods"])
+            allowed_headers = {
+                value.strip().lower()
+                for value in preflight.headers["Access-Control-Allow-Headers"].split(
+                    ","
+                )
+            }
+            self.assertTrue({"token", "x-mower-settings"} <= allowed_headers)
+            self.assertNotEqual(
+                preflight.headers.get("Access-Control-Allow-Private-Network"), "true"
+            )
+            read_status.assert_not_called()
+
+            for token in (None, "invalid", "fixture-secret"):
+                headers = {"Origin": origin}
+                if token is not None:
+                    headers["token"] = token
+                with self.subTest(token=token):
+                    response = self.get(
+                        "/device/status",
+                        headers=headers,
+                        environ_base={"REMOTE_ADDR": "192.0.2.1"},
+                    )
+                    if token == "fixture-secret":
+                        self.assertEqual(response.status_code, 200)
+                        self.assertEqual(response.get_json(), {"active": False})
+                        read_status.assert_called_once_with()
+                    else:
+                        self.assertEqual(response.status_code, 403)
+                        read_status.assert_not_called()
+
     def test_unversioned_files_and_html_keep_revalidation(self):
         paths = (
             "/assets/main.js",

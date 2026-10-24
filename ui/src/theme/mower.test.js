@@ -62,7 +62,6 @@ const requiredThemeSections = [
   'Select',
   'AutoComplete',
   'Tag',
-  'Menu',
   'Popover',
   'Dropdown',
   'Tooltip',
@@ -136,11 +135,11 @@ describe.each(themes)('Mower %s theme', (_mode, naiveTheme, mowerTheme, cssVaria
 
   it('uses progressively larger radii for larger components', () => {
     expect(mowerTheme.Checkbox.borderRadius).toBe('3px')
-    expect(mowerTheme.Button.borderRadiusSmall).toBe('4px')
-    expect(mowerTheme.Input.borderRadius).toBe('6px')
+    expect(mowerTheme.Button.borderRadiusSmall).toBe('6px')
+    expect(mowerTheme.Input.borderRadius).toBe('8px')
     expect(mowerTheme.Alert.borderRadius).toBe('8px')
-    expect(mowerTheme.Popover.borderRadius).toBe('10px')
-    expect(mowerTheme.Card.borderRadius).toBe('12px')
+    expect(mowerTheme.Popover.borderRadius).toBe('16px')
+    expect(mowerTheme.Card.borderRadius).toBe('16px')
   })
 
   it('keeps tooltip text legible against its floating surface', () => {
@@ -159,6 +158,8 @@ describe.each(themes)('Mower %s theme', (_mode, naiveTheme, mowerTheme, cssVaria
 
   it('derives custom-page semantic colors from the same theme source', () => {
     expect(cssVariables).toMatchObject({
+      '--mower-text': naiveTheme.common.textColorBase,
+      '--mower-text-muted': naiveTheme.common.textColor3,
       '--mower-surface': mowerTheme.common.cardColor,
       '--mower-shadow-surface': 'none',
       '--mower-shadow-control': 'none',

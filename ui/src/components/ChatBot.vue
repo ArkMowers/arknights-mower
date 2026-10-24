@@ -3,17 +3,18 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDialog, useMessage } from 'naive-ui'
 import { useMowerStore } from '@/stores/mower'
-import AddOutline from '@vicons/ionicons5/AddOutline'
-import ArrowDownOutline from '@vicons/ionicons5/ArrowDownOutline'
-import ArrowUpOutline from '@vicons/ionicons5/ArrowUpOutline'
-import CheckmarkOutline from '@vicons/ionicons5/CheckmarkOutline'
-import CloseOutline from '@vicons/ionicons5/CloseOutline'
-import CopyOutline from '@vicons/ionicons5/CopyOutline'
-import DocumentTextOutline from '@vicons/ionicons5/DocumentTextOutline'
-import GridOutline from '@vicons/ionicons5/GridOutline'
-import MailOutline from '@vicons/ionicons5/MailOutline'
-import SchoolOutline from '@vicons/ionicons5/SchoolOutline'
-import SettingsOutline from '@vicons/ionicons5/SettingsOutline'
+import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
+import AddOutline from '@vicons/ionicons5/es/AddOutline'
+import ArrowDownOutline from '@vicons/ionicons5/es/ArrowDownOutline'
+import ArrowUpOutline from '@vicons/ionicons5/es/ArrowUpOutline'
+import CheckmarkOutline from '@vicons/ionicons5/es/CheckmarkOutline'
+import CloseOutline from '@vicons/ionicons5/es/CloseOutline'
+import CopyOutline from '@vicons/ionicons5/es/CopyOutline'
+import DocumentTextOutline from '@vicons/ionicons5/es/DocumentTextOutline'
+import GridOutline from '@vicons/ionicons5/es/GridOutline'
+import MailOutline from '@vicons/ionicons5/es/MailOutline'
+import SchoolOutline from '@vicons/ionicons5/es/SchoolOutline'
+import SettingsOutline from '@vicons/ionicons5/es/SettingsOutline'
 import markdownit from 'markdown-it'
 import MowerAIIcon from './MowerAIIcon.vue'
 
@@ -24,6 +25,7 @@ const router = useRouter()
 const notice = useMessage()
 const dialog = useDialog()
 const mower = useMowerStore()
+const axios = inject('axios')
 const showFeedback = inject('show_feedback', null)
 const feedbackAvailable = showFeedback !== null
 const md = markdownit({ html: false, breaks: true })
@@ -99,6 +101,13 @@ let ws = null
 let activeReply = null
 let connectTimer = null
 
+function messageFrame(text) {
+  return JSON.stringify({
+    message: text,
+    generation: axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
+  })
+}
+
 function scrollToLatest() {
   atBottom.value = true
   if (historyRef.value) historyRef.value.scrollTop = historyRef.value.scrollHeight
@@ -147,7 +156,7 @@ function connectWS(text) {
     clearTimeout(connectTimer)
     connecting.value = false
     ws.send(JSON.stringify({ token }))
-    ws.send(JSON.stringify({ message: text }))
+    ws.send(messageFrame(text))
   }
   ws.onmessage = (event) => {
     let data
@@ -201,7 +210,7 @@ function sendMessage() {
   atBottom.value = true
   userInput.value = ''
   if (!ws || ws.readyState !== WebSocket.OPEN) connectWS(text)
-  else ws.send(JSON.stringify({ message: text }))
+  else ws.send(messageFrame(text))
   nextTick(scrollToLatest)
 }
 function onInputKeydown(event) {

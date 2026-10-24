@@ -25,7 +25,7 @@ function onHandlePointerDown(event) {
 
   // Only drag the main modal panel, never something nested inside it.
   const panel = handle.closest('.n-modal')
-  if (!panel) return
+  if (!panel || panel.getAttribute('data-modal-draggable') === 'false') return
 
   const rect = panel.getBoundingClientRect()
   const startX = event.clientX

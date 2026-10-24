@@ -63,6 +63,40 @@ describe('session links', () => {
   })
 
   it.each([
+    [{}, ['router-link-active', 'router-link-exact-active']],
+    [
+      { activeClass: 'active-parent', exactActiveClass: 'is-active' },
+      ['active-parent', 'is-active']
+    ]
+  ])('preserves active classes and the current-page marker with %j', async (classes, expected) => {
+    await state.router.push('/mowersettings?token=session-token&window_shell=1')
+    const app = createSSRApp(SessionLink, {
+      to: '/mowersettings',
+      class: 'sidebar-link',
+      ...classes
+    })
+    app.use(state.router)
+    const html = await renderToString(app)
+    const renderedClasses = html.match(/class="([^"]*)"/)[1].split(' ')
+    expect(renderedClasses).toEqual(expect.arrayContaining(['sidebar-link', ...expected]))
+    expect(html).toContain('aria-current="page"')
+    expect(html).not.toContain('exactactiveclass=')
+  })
+
+  it('omits active classes and the current-page marker for a different page', async () => {
+    const app = createSSRApp(SessionLink, {
+      to: '/mowersettings',
+      activeClass: 'active-parent',
+      exactActiveClass: 'is-active'
+    })
+    app.use(state.router)
+    const html = await renderToString(app)
+    expect(html).not.toContain('active-parent')
+    expect(html).not.toContain('is-active')
+    expect(html).not.toContain('aria-current=')
+  })
+
+  it.each([
     ['/mowersettings', {}],
     ['/maasettings', { ctrlKey: true }],
     ['/plan-editor', { metaKey: true }],

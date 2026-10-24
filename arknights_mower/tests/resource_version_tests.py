@@ -177,6 +177,49 @@ class TestCheckResourceUpdate(unittest.TestCase):
         self.assertEqual(got["update_available"], None)
         self.assertEqual(got["error"], None)
 
+    def test_all_responses_keep_installed_activity_timestamps(self):
+        local = _version("2026.08.22-aaaaaaa", "已安装活动", 1724068800)
+        local["gacha"] = {
+            "name": "已安装卡池",
+            "time": 1724155200,
+            "endTime": 1726747200,
+        }
+        remote = _version("2026.08.23-bbbbbbb", "远程活动", 1726747200)
+        expected = {
+            "activity": {
+                "name": "已安装活动",
+                "time": 1724068800,
+                "endTime": 1724155200,
+            },
+            "gacha": {
+                "name": "已安装卡池",
+                "time": 1724155200,
+                "endTime": 1726747200,
+            },
+            "last_updated": "2026-08-23",
+        }
+        for label, fetched, cache, local_only in [
+            ("local", remote, None, True),
+            ("remote", remote, None, False),
+            ("cache", None, remote, False),
+            ("offline", None, None, False),
+            ("missing remote version", {"activity": remote["activity"]}, None, False),
+        ]:
+            with self.subTest(response=label):
+                with self._patch(remote=fetched, local=local, cache=cache):
+                    got = rv.check_resource_update(local_only=local_only)
+                self.assertEqual(got["current_metadata"], expected)
+
+    def test_missing_installed_metadata_does_not_use_remote_timestamps(self):
+        for local in [None, {"res_version": "2026.08.22-aaaaaaa"}]:
+            with self.subTest(local=local):
+                with self._patch(remote=_version(), local=local):
+                    got = rv.check_resource_update()
+                self.assertEqual(
+                    got["current_metadata"],
+                    {"activity": {}, "gacha": {}, "last_updated": ""},
+                )
+
 
 class TestReadLocalVersion(unittest.TestCase):
     def test_builtin_version_is_available_without_overlay(self):
@@ -195,6 +238,8 @@ class TestReadLocalVersion(unittest.TestCase):
         self.assertTrue(got["current_display"])
         self.assertEqual(got["current_version"], marker["res_version"])
         self.assertEqual(got["current_display"], display_version(marker))
+        self.assertEqual(got["current_metadata"]["activity"], marker["activity"])
+        self.assertEqual(got["current_metadata"]["gacha"], marker["gacha"])
 
     def test_overlay_version_replaces_builtin_version(self):
         from arknights_mower.tests.resource_pkg_tests import resource_zip
@@ -230,6 +275,10 @@ class TestReadLocalVersion(unittest.TestCase):
 
         self.assertEqual(got["current_version"], "2026.09.04-bbbbbbb")
         self.assertEqual(got["current_display"], "墟·复刻#0904")
+        self.assertEqual(
+            got["current_metadata"]["activity"],
+            {"name": "墟·复刻", "time": 1787342400, "endTime": 1787428800},
+        )
 
     def test_builtin_version_hash_matches_bundled_resources(self):
         project_root = Path(__rootdir__).parent

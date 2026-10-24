@@ -2,6 +2,8 @@
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
+import '@/styles/drag.css'
+import { normalizeSortablePreview } from '@/utils/sortablePreview'
 import { useConfigStore } from '@/stores/config'
 import {
   WEEKDAYS,
@@ -15,6 +17,10 @@ import {
   splitStageInventoryLabel
 } from '@/utils/maa_weekly_plan'
 
+const dragAnimation =
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 0
+    : 180
 const props = defineProps({
   stageOrder: {
     type: Array,
@@ -30,6 +36,20 @@ const props = defineProps({
   }
 })
 const emit = defineEmits(['update:stageOrder'])
+
+function preserveDragRowLayout({ item }) {
+  const normalized = normalizeSortablePreview({ item })
+  if (!normalized) return
+  const { content: floating, scale } = normalized
+  const sourceStyle = getComputedStyle(item)
+  floating.style.font = sourceStyle.font
+  floating.style.height = `${item.getBoundingClientRect().height / scale}px`
+  Array.from(item.cells).forEach((cell, index) => {
+    const target = floating.cells[index]
+    target.style.width = `${cell.getBoundingClientRect().width / scale}px`
+    target.style.boxSizing = 'border-box'
+  })
+}
 
 const store = useConfigStore()
 const { maa_weekly_plan } = storeToRefs(store)
@@ -187,6 +207,15 @@ async function applyStageOrder() {
           tag="tbody"
           item-key="value"
           handle=".stage-drag-handle"
+          :animation="dragAnimation"
+          easing="cubic-bezier(0.2, 0, 0, 1)"
+          :force-fallback="true"
+          :fallback-on-body="true"
+          :fallback-tolerance="5"
+          ghost-class="mower-drag-ghost"
+          chosen-class="mower-drag-chosen"
+          fallback-class="mower-drag-fallback"
+          @start="preserveDragRowLayout"
           @end="applyStageOrder"
         >
           <template #item="{ element: option }">
@@ -288,13 +317,6 @@ async function applyStageOrder() {
   border-spacing: 0;
   table-layout: fixed;
 
-  th,
-  td {
-    padding: 0;
-    text-align: center;
-    box-shadow: inset -1px -1px 0 rgba(0, 0, 0, 0.06);
-  }
-
   thead {
     position: sticky;
     top: 0;
@@ -310,6 +332,15 @@ async function applyStageOrder() {
   tbody tr:last-child td {
     box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.06);
   }
+}
+
+.task-table th,
+.task-table td,
+.mower-drag-fallback > td {
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+  box-shadow: inset -1px -1px 0 rgba(0, 0, 0, 0.06);
 }
 
 .select-all-column {
@@ -377,6 +408,7 @@ th.stage-column {
   background: transparent;
   cursor: grab;
   touch-action: none;
+  user-select: none;
   transition-property: color, background-color, transform;
   transition-duration: 120ms;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
@@ -389,6 +421,12 @@ th.stage-column {
   &:active {
     transform: scale(0.96);
     cursor: grabbing;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-table tbody > tr {
+    transition-duration: 0ms !important;
   }
 }
 

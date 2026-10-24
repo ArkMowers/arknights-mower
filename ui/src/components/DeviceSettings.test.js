@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { effectScope, nextTick } from 'vue'
+import { createDeviceConnectionNavigation } from '@/composables/deviceConnectionNavigation'
 import DeviceSettings from './DeviceSettings.vue'
 
-const state = vi.hoisted(() => ({ mounted: [], unmounted: [], client: null, config: null }))
+const state = vi.hoisted(() => ({
+  mounted: [],
+  unmounted: [],
+  client: null,
+  config: null,
+  connectionNavigation: null
+}))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
-  inject: () => state.client,
+  inject: (key, fallback) =>
+    key === 'axios' ? state.client : state.connectionNavigation || fallback,
   onMounted: (callback) => state.mounted.push(callback),
   onUnmounted: (callback) => state.unmounted.push(callback)
 }))
@@ -22,6 +30,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   state.mounted = []
   state.unmounted = []
+  state.connectionNavigation = null
   state.client = { get: vi.fn(async () => ({ data: {} })) }
   state.config = {
     simulator: { wait_time: 75 },
@@ -43,6 +52,160 @@ beforeEach(() => {
   scope.run(() => {
     component = DeviceSettings.setup({}, { expose: () => {} })
   })
+})
+
+function mountConnectionNavigation(pending = null, props = {}) {
+  scope.stop()
+  state.mounted = []
+  state.unmounted = []
+  const navigation = createDeviceConnectionNavigation()
+  if (pending) navigation.open(pending.action)
+  vi.spyOn(navigation, 'consume')
+  state.connectionNavigation = navigation
+  scope = effectScope()
+  scope.run(() => {
+    component = DeviceSettings.setup(props, { expose: () => {} })
+  })
+  return navigation
+}
+
+it('opens connection selection and advanced settings without inspecting or changing the target', async () => {
+  const navigation = mountConnectionNavigation({ action: 'settings' })
+  const original = { ...component.draft.value }
+  state.client.post = vi.fn()
+  expect(component.advanced.value).toBe(true)
+  expect(navigation.request.value).toBe(null)
+
+  navigation.open('select')
+  await nextTick()
+  expect(component.advanced.value).toBe(false)
+  expect(component.draft.value).toEqual(original)
+  expect(state.client.get).not.toHaveBeenCalled()
+  expect(state.client.post).not.toHaveBeenCalled()
+  expect(state.config.save_config).not.toHaveBeenCalled()
+  expect(navigation.consume).toHaveBeenCalledTimes(2)
+})
+
+it('tests the saved managed target without writing configuration or accepting a draft command', async () => {
+  state.config.manager_owned_device = true
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.client.post = vi.fn(async () => ({
+    data: { ok: true, serial: 'verified', preset_id: 'manual.other' }
+  }))
+  const before = structuredClone(state.config.device_profile)
+  component.edit('adb_path', 'untrusted')
+  await component.detect('preflight', null, false)
+  expect(state.client.post).toHaveBeenCalledExactlyOnceWith(
+    expect.stringMatching(/\/device\/preflight$/),
+    { device: {} }
+  )
+  expect(component.draft.value).toEqual(before)
+  expect(state.config.device_profile).toEqual(before)
+  expect(state.config.save_config).not.toHaveBeenCalled()
+})
+
+it('keeps advanced fields visible in the task checklist without changing connection selection', async () => {
+  state.client.post = vi.fn()
+  const navigation = mountConnectionNavigation({ action: 'select' }, { expanded: true })
+  const original = { ...component.draft.value }
+  expect(component.advanced.value).toBe(false)
+  expect(component.showAdvanced.value).toBe(true)
+  navigation.open('settings')
+  await nextTick()
+  navigation.open('select')
+  await nextTick()
+  expect(component.showAdvanced.value).toBe(true)
+  expect(component.draft.value).toEqual(original)
+  expect(state.client.post).not.toHaveBeenCalled()
+  expect(state.config.save_config).not.toHaveBeenCalled()
+})
+
+it('consumes a pending titlebar test once and checks a stopped target without starting it', async () => {
+  state.config.device_profile = {
+    preset_id: 'macos.mumu_pro',
+    instance_id: '1',
+    topology_fingerprint: 'a'.repeat(64)
+  }
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.client.post = vi.fn(async () => ({
+    data: { ok: false, error: { code: 'instance_stopped', message: '所选实例已停止' } }
+  }))
+  const navigation = mountConnectionNavigation({ action: 'test' })
+  component.metadata.value = { host_platform: 'macos' }
+  await vi.advanceTimersByTimeAsync(0)
+
+  expect(navigation.request.value).toBe(null)
+  expect(navigation.consume).toHaveBeenCalledOnce()
+  expect(state.client.post).toHaveBeenCalledExactlyOnceWith(
+    expect.stringMatching(/\/device\/preflight$/),
+    { device: { last_serial: '' } }
+  )
+  expect(component.result.value.error.code).toBe('instance_stopped')
+  expect(state.config.save_config).not.toHaveBeenCalled()
+  expect(navigation.locked.value).toBe(false)
+
+  await component.readStatus()
+  await nextTick()
+  expect(state.client.post).toHaveBeenCalledOnce()
+  expect(navigation.consume).toHaveBeenCalledOnce()
+})
+
+it('consumes tests rejected during an active session and clears the shared lock when unmounted', async () => {
+  const navigation = mountConnectionNavigation()
+  component.metadata.value = { active: true }
+  expect(navigation.locked.value).toBe(true)
+  state.client.post = vi.fn()
+  navigation.open('test')
+  await nextTick()
+  expect(navigation.request.value).toBe(null)
+  expect(state.client.post).not.toHaveBeenCalled()
+  expect(state.config.save_config).not.toHaveBeenCalled()
+
+  navigation.open('settings')
+  await nextTick()
+  expect(component.advanced.value).toBe(true)
+  expect(navigation.locked.value).toBe(true)
+  state.unmounted.forEach((callback) => callback())
+  scope.stop()
+  expect(navigation.locked.value).toBe(false)
+})
+
+it('rejects overlapping titlebar tests and accepts a fresh request after the first finishes', async () => {
+  let finishSave
+  state.config.flush_config_saves = vi.fn(() => new Promise((resolve) => (finishSave = resolve)))
+  state.client.post = vi.fn(async () => ({
+    data: { ok: false, error: { code: 'target_absent' } }
+  }))
+  const navigation = mountConnectionNavigation()
+  navigation.open('test')
+  await nextTick()
+  expect(component.busy.value).toBe(true)
+  expect(navigation.locked.value).toBe(true)
+
+  navigation.open('test')
+  await nextTick()
+  expect(navigation.consume).toHaveBeenCalledTimes(2)
+  expect(navigation.request.value).toBe(null)
+  expect(state.config.flush_config_saves).toHaveBeenCalledOnce()
+
+  finishSave()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(state.client.post).toHaveBeenCalledOnce()
+  expect(navigation.locked.value).toBe(false)
+
+  state.config.flush_config_saves.mockResolvedValueOnce()
+  navigation.open('test')
+  await vi.advanceTimersByTimeAsync(0)
+  expect(navigation.consume).toHaveBeenCalledTimes(3)
+  expect(state.client.post).toHaveBeenCalledTimes(2)
+})
+
+it('ignores a request that another consumer has already handled', async () => {
+  const navigation = mountConnectionNavigation()
+  navigation.consume.mockReturnValueOnce(false)
+  navigation.open('settings')
+  await nextTick()
+  expect(component.advanced.value).toBe(false)
 })
 
 it('preserves the stored startup protection and edits it without pending identity', () => {

@@ -59,6 +59,7 @@ function changed() {
   clearTimeout(timer)
   error.value = ''
   results.value = []
+  copyStatus.value = ''
   saved.value = false
   timer = setTimeout(save, 600)
 }
@@ -101,6 +102,7 @@ async function save() {
 async function testConnection() {
   testing.value = true
   results.value = []
+  copyStatus.value = ''
   let testedRevision = revision
   try {
     if (!(await save())) return
@@ -142,70 +144,283 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <n-card title="网络与下载代理">
-    <n-space vertical :size="16">
-      <n-form-item label="全局网络代理" :show-feedback="false">
+  <n-card id="network-settings" title="网络与下载代理" class="network-settings">
+    <div class="network-summary">
+      <p>全部实例共享，用于后续连接。</p>
+      <span class="network-save-status" role="status">
+        <template v-if="loading">正在读取…</template>
+        <template v-else-if="saving">正在保存…</template>
+        <template v-else-if="dirty && !error">等待保存…</template>
+        <span v-else-if="saved && !dirty && !error" class="network-saved">已应用到后续连接</span>
+        <template v-else>修改后自动保存</template>
+      </span>
+    </div>
+    <n-alert v-if="error" type="error" class="network-error" role="alert">{{ error }}</n-alert>
+    <n-form class="network-form" label-placement="top" :show-feedback="false">
+      <n-form-item label="全局网络代理">
         <n-input
           v-model:value="httpProxy"
-          :input-props="{ 'aria-label': '全局网络代理' }"
-          placeholder="HTTP(S) / SOCKS5，例如 socks5h://127.0.0.1:7897；留空沿用启动环境"
+          :input-props="{
+            'aria-label': '全局网络代理',
+            'aria-describedby': 'network-http-proxy-description',
+            spellcheck: false
+          }"
+          placeholder="例如 socks5h://127.0.0.1:7897"
           :disabled="loading || !ready"
           clearable
           @update:value="changed"
           @blur="save"
         />
+        <p id="network-http-proxy-description" class="network-description">
+          用于全局网络连接。支持 HTTP(S) 和 SOCKS5；留空沿用启动环境。
+        </p>
       </n-form-item>
-      <n-text depth="3">用于全局网络连接。</n-text>
-      <n-form-item label="GitHub 下载代理站点" :show-feedback="false">
+      <n-form-item label="GitHub 下载代理站点">
         <n-input
           v-model:value="githubProxy"
-          :input-props="{ 'aria-label': 'GitHub 下载代理站点' }"
-          placeholder="留空时直连失败自动尝试 https://ghfast.top/"
+          :input-props="{
+            'aria-label': 'GitHub 下载代理站点',
+            'aria-describedby': 'network-github-proxy-description',
+            spellcheck: false
+          }"
+          placeholder="留空时自动选择下载方式"
           :disabled="loading || !ready"
           clearable
           @update:value="changed"
           @blur="save"
         />
+        <p id="network-github-proxy-description" class="network-description">
+          用于 Mower、MAA 的 GitHub 文件下载。留空时先直连，失败后尝试 ghfast.top。
+        </p>
       </n-form-item>
-      <n-text depth="3">
-        用于 Mower 和 MAA 的 GitHub 安装包、资源包及原始文件。留空时先直连，连接失败后自动尝试
-        ghfast.top；填写后优先使用指定站点。支持“站点地址/原始下载链接”格式；GitHub API 和 Git / Git
-        LFS 使用上方网络代理。
-      </n-text>
-      <n-text depth="3">填写后自动保存，所有实例共享，后续连接使用新的设置。</n-text>
-      <n-space align="center">
+    </n-form>
+    <n-collapse class="network-help">
+      <n-collapse-item title="代理填写说明" name="proxy-help" data-settings-label="代理填写说明">
+        <dl class="network-help-list">
+          <div>
+            <dt>全局网络代理</dt>
+            <dd>
+              支持 http://、https://、socks5:// 和 socks5h://。SOCKS 代理需要填写端口；GitHub
+              API、Git 和 Git LFS 使用此设置。
+            </dd>
+          </div>
+          <div>
+            <dt>GitHub 下载代理站点</dt>
+            <dd>
+              用于安装包、资源包及原始文件。只填写代理站点地址，例如
+              https://ghfast.top/，程序会在其后拼接原始下载链接。填写后优先使用指定站点。
+            </dd>
+          </div>
+        </dl>
+      </n-collapse-item>
+    </n-collapse>
+    <div class="network-test" data-settings-label="测试连接">
+      <div class="network-test-heading">
+        <span>连接测试</span>
+        <p class="network-description">测试当前设置的 GitHub 文件下载路径。</p>
+      </div>
+      <div class="network-actions">
         <n-button
+          type="primary"
           :loading="testing"
           :disabled="loading || !ready || testing"
           @click="testConnection"
+          >测试连接</n-button
         >
-          测试连接
-        </n-button>
-        <n-button :disabled="!error && !results.length" @click="copyResult">复制结果</n-button>
-        <n-text v-if="copyStatus" aria-live="polite">{{ copyStatus }}</n-text>
         <n-button v-if="!ready && !loading" @click="load">重新加载</n-button>
-        <n-text v-if="saving" depth="3" aria-live="polite">正在应用…</n-text>
-        <n-text v-else-if="saved && !dirty && !error" type="success" aria-live="polite">
-          已应用到后续连接
-        </n-text>
-      </n-space>
-      <n-text depth="3">测试 GitHub 文件下载路径；留空时也会测试自动回退。</n-text>
-      <n-alert v-if="error" type="error" aria-live="polite">{{ error }}</n-alert>
-      <n-alert
-        v-for="result in results"
-        :key="result.label"
-        :type="result.ok ? 'success' : 'error'"
-        :title="result.label"
-        aria-live="polite"
-      >
-        {{ result.message }} · <span class="latency">{{ result.elapsed_ms }} ms</span>
-      </n-alert>
-    </n-space>
+        <n-button v-if="error || results.length" :disabled="testing" @click="copyResult"
+          >复制结果</n-button
+        >
+        <span v-if="copyStatus" class="network-description" role="status">{{ copyStatus }}</span>
+      </div>
+    </div>
+    <p v-if="testing" class="network-description network-testing" role="status">
+      正在测试 GitHub 文件下载路径…
+    </p>
+    <section
+      v-if="results.length"
+      class="network-results"
+      aria-label="连接测试结果"
+      aria-live="polite"
+    >
+      <div v-for="result in results" :key="result.label" class="network-result">
+        <div class="network-result-heading">
+          <strong>{{ result.label }}</strong>
+          <n-tag size="small" :bordered="false" :type="result.ok ? 'success' : 'error'">{{
+            result.ok ? '连接成功' : '连接失败'
+          }}</n-tag>
+          <span class="network-latency">{{ result.elapsed_ms }} ms</span>
+        </div>
+        <p>{{ result.message }}</p>
+      </div>
+    </section>
   </n-card>
 </template>
 
-<style scoped>
-.latency {
+<style>
+.network-settings {
+  container: network-settings / inline-size;
+}
+
+.network-summary,
+.network-test,
+.network-actions,
+.network-result-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.network-summary {
+  justify-content: space-between;
+  margin-bottom: 20px;
+  color: var(--mower-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.network-summary p,
+.network-description,
+.network-result p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.network-save-status {
+  flex: none;
+}
+
+.network-saved {
+  color: var(--mower-primary);
+}
+
+.network-error {
+  margin-bottom: 18px;
+}
+
+.settings-page .network-settings .network-form > .n-form-item:has(> .n-form-item-label) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'label' 'blank' 'feedback';
+  row-gap: 8px;
+  padding: 0 0 20px;
+  border-top: 0;
+}
+
+.settings-page .network-settings .network-form > .n-form-item > .n-form-item-label {
+  min-height: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+.settings-page .network-settings .network-form > .n-form-item > .n-form-item-blank {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  justify-self: stretch;
+  width: 100%;
+  max-width: none;
+}
+
+.settings-page .network-settings .network-form > .n-form-item > .n-form-item-blank > .n-input {
+  width: 100%;
+  max-width: none;
+}
+
+.network-description,
+.network-result p,
+.network-help-list dd {
+  color: var(--mower-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.network-settings .network-help > .n-collapse-item {
+  padding: 0;
+  background: transparent;
+}
+
+.network-help-list {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 8px;
+}
+
+.network-help-list dt {
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.network-help-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.network-test {
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--settings-card-border);
+}
+
+.network-test-heading {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.network-test-heading > span {
+  font-size: 14px;
+}
+
+.network-test-heading > p {
+  margin-top: 4px;
+}
+
+.network-actions {
+  gap: 8px;
+}
+
+.network-testing,
+.network-results {
+  margin-top: 16px;
+}
+
+.network-results {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--mower-control-surface);
+}
+
+.network-result-heading {
+  gap: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.network-result-heading strong {
+  font-weight: 500;
+}
+
+.network-latency {
+  margin-left: auto;
+  color: var(--mower-text-muted);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+@container network-settings (max-width: 400px) {
+  .network-test {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .network-test-heading {
+    flex-basis: auto;
+  }
 }
 </style>

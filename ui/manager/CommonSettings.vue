@@ -1,5 +1,5 @@
 <script setup>
-import { FolderOpenOutline as FolderIcon } from '@vicons/ionicons5'
+import FolderIcon from '@vicons/ionicons5/es/FolderOpenOutline'
 import { computed, ref } from 'vue'
 import HelpText from '../src/components/HelpText.vue'
 import { editDeviceDraft } from '../src/utils/deviceSettings'

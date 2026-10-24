@@ -59,7 +59,7 @@ def test_initial_requests_and_shutdown_retain_the_existing_device_owner(tmp_path
             response = client.get("/conf", headers={"token": server.app.token})
             assert response.status_code == 200
             assert response.json["device"]
-            response = client.get("/status")
+            response = client.get("/status", headers={"token": server.app.token})
             assert response.status_code == 200
             assert response.json["status"] == "stopped"
             assert mower.device_control is control

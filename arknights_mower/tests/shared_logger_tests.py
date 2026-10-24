@@ -360,7 +360,7 @@ while True:
 contents = Path(log.fhlr.baseFilename).read_text(encoding='utf-8')
 entries = [line for line in contents.splitlines() if re.match(r'\d{4}-\d{2}-\d{2} ', line)]
 for message in (
-    '配置导入写入失败',
+    '档案导入写入失败',
     'Desktop window command failed: maximize',
     'Failed to install Windows frameless resize support',
     'MAA 任务已完成，旧备份暂无法清理',

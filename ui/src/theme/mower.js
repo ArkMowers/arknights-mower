@@ -1,9 +1,14 @@
+import { darkTheme, lightTheme } from 'naive-ui'
+
 const transparentBorder = '1px solid transparent'
 
 const sharedCommon = {
-  borderRadius: '6px',
-  borderRadiusSmall: '4px',
-  fontWeightStrong: '600'
+  borderRadius: '8px',
+  borderRadiusSmall: '6px',
+  fontWeightStrong: '600',
+  // 明暗两套色板的大投影相同，只在这里写一次
+  boxShadow3:
+    '0 6px 16px -9px rgba(0, 0, 0, .08), 0 9px 28px 0 rgba(0, 0, 0, .05), 0 12px 48px 16px rgba(0, 0, 0, .03)'
 }
 
 function createMowerTheme(palette) {
@@ -48,8 +53,7 @@ function createMowerTheme(palette) {
       tableColorStriped: palette.tableStriped,
       tabColor: palette.tab,
       boxShadow1: palette.shadowSmall,
-      boxShadow2: palette.shadowMedium,
-      boxShadow3: palette.shadowLarge
+      boxShadow2: palette.shadowMedium
     },
     Layout: {
       color: palette.page,
@@ -62,10 +66,10 @@ function createMowerTheme(palette) {
       footerBorderColor: 'transparent'
     },
     Button: {
-      borderRadiusTiny: '3px',
-      borderRadiusSmall: '4px',
-      borderRadiusMedium: '6px',
-      borderRadiusLarge: '8px',
+      borderRadiusTiny: '4px',
+      borderRadiusSmall: '6px',
+      borderRadiusMedium: '8px',
+      borderRadiusLarge: '10px',
       border: defaultBorder,
       borderFocus: defaultBorder,
       borderHover: defaultBorder,
@@ -94,30 +98,30 @@ function createMowerTheme(palette) {
       colorEmbedded: palette.control,
       actionColor: palette.control,
       borderColor: 'transparent',
-      borderRadius: '12px',
+      borderRadius: '16px',
       closeBorderRadius: '6px',
       boxShadow: 'none'
     },
     Dialog: {
       border: transparentBorder,
-      borderRadius: '12px',
+      borderRadius: '16px',
       closeBorderRadius: '6px',
       color: palette.surfaceRaised
     },
     Modal: {
-      boxShadow: palette.shadowLarge
+      boxShadow: sharedCommon.boxShadow3
     },
     Drawer: {
-      borderRadius: '12px',
+      borderRadius: '16px',
       closeBorderRadius: '6px',
-      boxShadow: palette.shadowLarge
+      boxShadow: sharedCommon.boxShadow3
     },
     Input: {
       border: transparentBorder,
       borderDisabled: transparentBorder,
       borderFocus: transparentBorder,
       borderHover: transparentBorder,
-      borderRadius: '6px',
+      borderRadius: '8px',
       boxShadowFocus: palette.focusShadow,
       color: palette.control,
       colorDisabled: palette.controlDisabled,
@@ -166,7 +170,16 @@ function createMowerTheme(palette) {
       textColor: palette.accentText
     },
     Select: {
-      menuBoxShadow: palette.shadowMedium
+      menuBoxShadow: palette.shadowMedium,
+      peers: {
+        InternalSelectMenu: {
+          borderRadius: '12px',
+          color: palette.popover,
+          optionColorPending: palette.controlHover,
+          optionColorActive: 'transparent',
+          optionColorActivePending: palette.controlHover
+        }
+      }
     },
     AutoComplete: {
       menuBoxShadow: palette.shadowMedium
@@ -198,19 +211,13 @@ function createMowerTheme(palette) {
       textColorError: palette.errorText,
       textColorInfo: palette.infoText
     },
-    Menu: {
-      borderRadius: '6px',
-      itemColorActive: palette.primaryBlock,
-      itemColorActiveCollapsed: palette.primaryBlock,
-      itemColorActiveHover: palette.primaryBlock
-    },
     Popover: {
       color: palette.popover,
-      borderRadius: '10px',
+      borderRadius: '16px',
       boxShadow: palette.shadowMedium
     },
     Dropdown: {
-      borderRadius: '8px',
+      borderRadius: '12px',
       color: palette.popover,
       dividerColor: palette.divider
     },
@@ -239,7 +246,7 @@ function createMowerTheme(palette) {
       boxShadowLoading: palette.shadowMedium
     },
     Notification: {
-      borderRadius: '10px',
+      borderRadius: '14px',
       closeBorderRadius: '5px',
       boxShadow: palette.shadowMedium
     },
@@ -307,7 +314,7 @@ function createMowerTheme(palette) {
       tdColorStriped: palette.tableStriped
     },
     Tabs: {
-      tabBorderRadius: '6px',
+      tabBorderRadius: '8px',
       closeBorderRadius: '4px',
       tabColor: palette.control,
       tabColorSegment: palette.surfaceRaised,
@@ -397,9 +404,7 @@ export const mowerLightThemeOverrides = createMowerTheme({
   shadowSmall:
     '0 1px 2px -2px rgba(0, 0, 0, .08), 0 3px 6px 0 rgba(0, 0, 0, .06), 0 5px 12px 4px rgba(0, 0, 0, .04)',
   shadowMedium:
-    '0 3px 6px -4px rgba(0, 0, 0, .12), 0 6px 16px 0 rgba(0, 0, 0, .08), 0 9px 28px 8px rgba(0, 0, 0, .05)',
-  shadowLarge:
-    '0 6px 16px -9px rgba(0, 0, 0, .08), 0 9px 28px 0 rgba(0, 0, 0, .05), 0 12px 48px 16px rgba(0, 0, 0, .03)'
+    '0 3px 6px -4px rgba(0, 0, 0, .12), 0 6px 16px 0 rgba(0, 0, 0, .08), 0 9px 28px 8px rgba(0, 0, 0, .05)'
 })
 
 export const mowerDarkThemeOverrides = createMowerTheme({
@@ -469,17 +474,16 @@ export const mowerDarkThemeOverrides = createMowerTheme({
   shadowSmall:
     '0 1px 2px -2px rgba(0, 0, 0, .24), 0 3px 6px 0 rgba(0, 0, 0, .18), 0 5px 12px 4px rgba(0, 0, 0, .12)',
   shadowMedium:
-    '0 3px 6px -4px rgba(0, 0, 0, .24), 0 6px 12px 0 rgba(0, 0, 0, .16), 0 9px 18px 8px rgba(0, 0, 0, .10)',
-  shadowLarge:
-    '0 6px 16px -9px rgba(0, 0, 0, .08), 0 9px 28px 0 rgba(0, 0, 0, .05), 0 12px 48px 16px rgba(0, 0, 0, .03)'
+    '0 3px 6px -4px rgba(0, 0, 0, .24), 0 6px 12px 0 rgba(0, 0, 0, .16), 0 9px 18px 8px rgba(0, 0, 0, .10)'
 })
 
-function createMowerCssVariables(theme) {
+function createMowerCssVariables(theme, defaults) {
   return {
-    '--mower-text': theme.common.textColorBase,
-    '--mower-text-muted': theme.common.textColor3,
+    '--mower-text': theme.common.textColorBase ?? defaults.textColorBase,
+    '--mower-text-muted': theme.common.textColor3 ?? defaults.textColor3,
     '--mower-border': theme.common.borderColor,
     '--mower-surface': theme.common.cardColor,
+    '--mower-sidebar-surface': theme.Layout.siderColor,
     '--mower-shadow-surface': 'none',
     '--mower-shadow-control': 'none',
     '--mower-control-surface': theme.common.actionColor,
@@ -505,5 +509,11 @@ function createMowerCssVariables(theme) {
   }
 }
 
-export const mowerLightCssVariables = createMowerCssVariables(mowerLightThemeOverrides)
-export const mowerDarkCssVariables = createMowerCssVariables(mowerDarkThemeOverrides)
+export const mowerLightCssVariables = createMowerCssVariables(
+  mowerLightThemeOverrides,
+  lightTheme.common
+)
+export const mowerDarkCssVariables = createMowerCssVariables(
+  mowerDarkThemeOverrides,
+  darkTheme.common
+)

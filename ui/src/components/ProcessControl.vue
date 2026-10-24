@@ -145,52 +145,64 @@ onUnmounted(() => {
       <n-button v-if="savesPaused" size="small" @click="reload">刷新页面</n-button>
     </n-space>
   </template>
-  <n-card v-else title="进程操作">
-    <n-space vertical>
-      <n-text depth="3">
+  <n-card v-else title="进程操作" class="process-control">
+    <n-space vertical :size="16">
+      <p class="process-control-summary">
         仅操作当前实例{{ info?.name ? `（${info.name}）` : '' }}，其他实例和多开管理器不受影响。
-      </n-text>
-      <n-space>
-        <n-popconfirm
-          v-if="info?.running"
-          style="max-width: min(360px, calc(100vw - 32px))"
-          @positive-click="submit('restart_resume')"
-        >
-          <template #trigger>
-            <n-button size="small" type="info" :disabled="busy || savesPaused || !info?.supported">
-              重启续接
-            </n-button>
-          </template>
-          保存当前配置后重启当前实例，并保留任务队列继续运行。
-        </n-popconfirm>
-        <n-popconfirm
-          style="max-width: min(360px, calc(100vw - 32px))"
-          @positive-click="submit('restart')"
-        >
-          <template #trigger>
-            <n-button size="small" :disabled="busy || savesPaused || !info?.supported">
-              重启 Mower 进程
-            </n-button>
-          </template>
-          重启当前实例，保留名称、数据目录、端口和启动参数；原本运行中的任务将重置运行缓存后重新开始。
-        </n-popconfirm>
-        <n-popconfirm
-          style="max-width: min(360px, calc(100vw - 32px))"
-          @positive-click="submit('stop')"
-        >
-          <template #trigger>
-            <n-button
-              size="small"
-              type="error"
-              secondary
-              :disabled="busy || savesPaused || !info?.supported"
-            >
-              结束 Mower 进程
-            </n-button>
-          </template>
-          正常停止当前任务并结束此实例，网页连接将断开。
-        </n-popconfirm>
-      </n-space>
+      </p>
+      <div class="process-control-actions">
+        <div v-if="info?.running" class="process-control-row" data-settings-label="重启续接">
+          <div class="process-control-copy">
+            <span>重启续接</span>
+            <p>保存当前配置后重启当前实例，并保留任务队列继续运行。</p>
+          </div>
+          <n-popconfirm
+            style="max-width: min(360px, calc(100vw - 32px))"
+            @positive-click="submit('restart_resume')"
+          >
+            <template #trigger>
+              <n-button type="primary" :disabled="busy || savesPaused || !info?.supported">
+                重启续接
+              </n-button>
+            </template>
+            保存当前配置后重启当前实例，并保留任务队列继续运行。
+          </n-popconfirm>
+        </div>
+        <div class="process-control-row" data-settings-label="重启 Mower 进程">
+          <div class="process-control-copy">
+            <span>重启 Mower 进程</span>
+            <p>保留名称、数据目录、端口和启动参数。原本运行中的任务将重置运行缓存后重新开始。</p>
+          </div>
+          <n-popconfirm
+            style="max-width: min(360px, calc(100vw - 32px))"
+            @positive-click="submit('restart')"
+          >
+            <template #trigger>
+              <n-button :disabled="busy || savesPaused || !info?.supported">
+                重启 Mower 进程
+              </n-button>
+            </template>
+            重启当前实例，保留名称、数据目录、端口和启动参数；原本运行中的任务将重置运行缓存后重新开始。
+          </n-popconfirm>
+        </div>
+        <div class="process-control-row" data-settings-label="结束 Mower 进程">
+          <div class="process-control-copy">
+            <span>结束 Mower 进程</span>
+            <p>正常停止当前任务并结束此实例，网页连接将断开。</p>
+          </div>
+          <n-popconfirm
+            style="max-width: min(360px, calc(100vw - 32px))"
+            @positive-click="submit('stop')"
+          >
+            <template #trigger>
+              <n-button type="error" secondary :disabled="busy || savesPaused || !info?.supported">
+                结束 Mower 进程
+              </n-button>
+            </template>
+            正常停止当前任务并结束此实例，网页连接将断开。
+          </n-popconfirm>
+        </div>
+      </div>
       <n-alert v-if="savesPaused" type="info">
         配置自动保存已暂停。配置导入或进程操作结束后，请刷新页面重新读取配置再编辑。
         <n-button v-if="!busy" size="small" @click="reload">刷新页面</n-button>
@@ -201,3 +213,67 @@ onUnmounted(() => {
     </n-space>
   </n-card>
 </template>
+
+<style>
+.process-control {
+  container: process-control / inline-size;
+}
+
+.process-control-summary {
+  margin: 0;
+  color: var(--mower-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.process-control-actions {
+  display: grid;
+}
+
+.process-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+}
+
+.process-control-row:first-child {
+  padding-top: 0;
+}
+
+.process-control-row:last-child {
+  padding-bottom: 0;
+}
+
+.process-control-row + .process-control-row {
+  border-top: 1px solid var(--settings-card-border);
+}
+
+.process-control-copy {
+  min-width: 0;
+  font-size: 14px;
+}
+
+.process-control-copy p {
+  margin: 4px 0 0;
+  color: var(--mower-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.process-control-row > .n-button {
+  flex: none;
+}
+
+@container process-control (max-width: 400px) {
+  .process-control-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+</style>

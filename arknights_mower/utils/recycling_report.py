@@ -50,25 +50,35 @@ def _operator_ids(names):
     return result
 
 
+def running():
+    with _lock:
+        return _running
+
+
+def _start_locked(directory):
+    global _running
+    try:
+        worker = Thread(
+            target=_drain,
+            args=(directory,),
+            name="recycling-report",
+            daemon=True,
+        )
+        worker.start()
+        _running = True
+        return True
+    except RuntimeError:
+        logger.warning("回收站上报线程未启动，待发送记录已保留")
+        return False
+
+
 def _wake(directory):
-    global _running, _dirty
+    global _dirty
     with _lock:
         if _running:
             _dirty = True
             return True
-        try:
-            worker = Thread(
-                target=_drain,
-                args=(directory,),
-                name="recycling-report",
-                daemon=True,
-            )
-            worker.start()
-            _running = True
-            return True
-        except RuntimeError:
-            logger.warning("回收站上报线程未启动，待发送记录已保留")
-            return False
+        return _start_locked(directory)
 
 
 def start_recycling_reports():
@@ -308,8 +318,8 @@ def _drain(directory):
             restart = _dirty and not failed
             _dirty = False
             _running = False
-        if restart:
-            _wake(directory)
+            if restart:
+                _start_locked(directory)
 
 
 def _submit(directory, batch):

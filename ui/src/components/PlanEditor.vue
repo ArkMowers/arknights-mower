@@ -2,6 +2,7 @@
 import PlanFacilityLevels from './PlanFacilityLevels.vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
+import { useResolvedTheme } from '@/composables/theme'
 import { usePlanStore } from '@/stores/plan'
 import {
   planBindings,
@@ -11,17 +12,42 @@ import {
 } from '@/utils/plan_bindings'
 import { swapPlanFacilities } from '@/utils/plan_edit'
 import { plan_facility_type_options } from '@/utils/base_facilities'
-import { ref, computed, h, watch, inject } from 'vue'
+import { createDragPreview } from '@/utils/dragPreview'
+import { ref, computed, h, watch, inject, onBeforeUnmount } from 'vue'
 const config_store = useConfigStore()
 const plan_store = inject('planStore', null) || usePlanStore()
 const { operators, group_colors, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
-const { theme, right_side_room_order } = storeToRefs(config_store)
+const { theme: themePreference, right_side_room_order } = storeToRefs(config_store)
+const theme = useResolvedTheme(themePreference)
 const right_room_names = { contact: '办公室', train: '训练室', recycle: '回收站' }
 const right_room_drag_type = 'application/x-mower-right-room'
 
 const outer = ref(null)
+const dragged_facility = ref('')
+const hovered_facility = ref('')
+const drag_preview = createDragPreview()
+
+function finish_drag() {
+  dragged_facility.value = ''
+  hovered_facility.value = ''
+  drag_preview.clear()
+}
+
+function hover_facility(room, event) {
+  const source = dragged_facility.value
+  if (!source || source === room || source.startsWith('room_') !== room.startsWith('room_')) return
+  event.dataTransfer.dropEffect = 'move'
+  hovered_facility.value = room
+}
+
+function leave_facility(room, event) {
+  if (event.currentTarget.contains(event.relatedTarget)) return
+  if (hovered_facility.value === room) hovered_facility.value = ''
+}
+
+onBeforeUnmount(finish_drag)
 
 const facility_types = plan_facility_type_options
 
@@ -138,17 +164,24 @@ function drag_facility(room, event) {
     event.preventDefault()
     return
   }
+  drag_preview.start(event, event.currentTarget.parentElement)
+  dragged_facility.value = room
   event.dataTransfer.setData('text/plain', room)
+  event.dataTransfer.effectAllowed = 'move'
   event.dataTransfer.dropEffect = 'move'
 }
 
 function drop_facility(target, event) {
   event.preventDefault()
-  if (edit_locked.value) return
-  const source = event.dataTransfer.getData('text/plain')
-  if (!/^room_[1-3]_[1-3]$/.test(source)) return
+  try {
+    if (edit_locked.value) return
+    const source = event.dataTransfer.getData('text/plain')
+    if (!/^room_[1-3]_[1-3]$/.test(source)) return
 
-  swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
+    swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
+  } finally {
+    finish_drag()
+  }
 }
 
 function drag_right_facility(room, event) {
@@ -156,14 +189,23 @@ function drag_right_facility(room, event) {
     event.preventDefault()
     return
   }
+  drag_preview.start(event)
+  dragged_facility.value = room
   event.dataTransfer.setData(right_room_drag_type, room)
   event.dataTransfer.effectAllowed = 'move'
 }
 
 function drop_right_facility(target, event) {
   event.preventDefault()
-  if (edit_locked.value) return
-  config_store.swap_right_side_facilities(event.dataTransfer.getData(right_room_drag_type), target)
+  try {
+    if (edit_locked.value) return
+    config_store.swap_right_side_facilities(
+      event.dataTransfer.getData(right_room_drag_type),
+      target
+    )
+  } finally {
+    finish_drag()
+  }
 }
 
 const avatar_bg = computed(() => {
@@ -253,7 +295,14 @@ function set_facility(e) {
             :key="r"
             :data-income-room="r"
             @click="set_facility(r)"
-            :class="[button_type[current_plan[r].name], r === facility ? 'true' : 'false']"
+            :class="[
+              button_type[current_plan[r].name],
+              r === facility ? 'true' : 'false',
+              {
+                'facility-drag-source': dragged_facility === r,
+                'facility-drag-target': hovered_facility === r
+              }
+            ]"
           >
             <div
               class="product-bg"
@@ -266,9 +315,11 @@ function set_facility(e) {
               v-show="current_plan[r].name"
               :draggable="!edit_locked"
               @dragstart="drag_facility(r, $event)"
-              @dragover.prevent
-              @dragenter.prevent
+              @dragover.prevent="hover_facility(r, $event)"
+              @dragenter.prevent="hover_facility(r, $event)"
+              @dragleave="leave_facility(r, $event)"
               @drop="drop_facility(r, $event)"
+              @dragend="finish_drag"
               class="draggable"
             >
               <div class="facility-name">
@@ -454,13 +505,19 @@ function set_facility(e) {
           class="right_contain right-room-draggable"
           v-for="r in right_side_room_order"
           :key="r"
+          :class="{
+            'facility-drag-source': dragged_facility === r,
+            'facility-drag-target': hovered_facility === r
+          }"
           :draggable="!edit_locked"
           :aria-label="`${right_room_names[r]}，拖动交换设施位置`"
           title="拖动交换办公室、训练室与回收站位置；仅保存在本机，不随排班导出"
           @dragstart="drag_right_facility(r, $event)"
-          @dragover.prevent="$event.dataTransfer.dropEffect = 'move'"
-          @dragenter.prevent
+          @dragover.prevent="hover_facility(r, $event)"
+          @dragenter.prevent="hover_facility(r, $event)"
+          @dragleave="leave_facility(r, $event)"
           @drop="drop_right_facility(r, $event)"
+          @dragend="finish_drag"
         >
           <n-button
             :secondary="facility != r"
@@ -985,6 +1042,29 @@ function set_facility(e) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+
+  &[draggable='true'] {
+    user-select: none;
+  }
+
+  &[draggable='true']:active {
+    cursor: grabbing;
+  }
+}
+
+.right-room-draggable[draggable='true'] {
+  user-select: none;
+}
+
+.facility-drag-source {
+  opacity: 0.32;
+}
+
+.facility-drag-target {
+  outline: 2px solid var(--mower-primary, #18a058);
+  outline-offset: 2px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--mower-primary, #18a058) 12%, transparent);
 }
 
 .product-bg {

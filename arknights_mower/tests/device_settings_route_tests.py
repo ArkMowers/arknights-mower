@@ -86,6 +86,132 @@ class DeviceSettingsRouteTests(unittest.TestCase):
         self.assertEqual(response.json["serial"], "USB-123")
         self.assertEqual(self.client.get("/device/status").status_code, 403)
 
+    def test_managed_device_and_performance_edits_fail_before_saving(self):
+        with patch.dict("os.environ", {"MOWER_MANAGED": "1"}):
+            before = self.path.read_bytes()
+            for method in ("POST", "PATCH"):
+                for payload in (
+                    {"device": {"adb_path": "untrusted-program"}},
+                    {"device": {"instance_id": "different"}},
+                    {"simulator": {"simulator_folder": "/different"}},
+                    {"maa_adb_path": "untrusted-adb"},
+                    {"custom_screenshot": {"command": "different-capture"}},
+                    {"tap_to_launch_game": {"command": "different-launch"}},
+                    {"performance_mode": "low"},
+                    {"screenshot_interval": 987},
+                    {"selection_poll_interval": 1.5},
+                    {"start_automatically": True},
+                ):
+                    with self.subTest(method=method, payload=payload):
+                        response = self.client.open(
+                            "/conf", method=method, headers=self.headers, json=payload
+                        )
+                        self.assertEqual(response.status_code, 403, response.json)
+                        self.assertEqual(
+                            response.json["error"], "manager_owned_setting"
+                        )
+                        self.assertEqual(self.path.read_bytes(), before)
+            self.assertTrue(
+                self.client.get("/conf", headers=self.headers).json[
+                    "manager_owned_device"
+                ]
+            )
+            self.assertTrue(
+                self.client.get("/device/status", headers=self.headers).json[
+                    "manager_owned"
+                ]
+            )
+            response = self.client.patch(
+                "/conf",
+                headers=self.headers,
+                json={**config.conf.model_dump(), "theme": "dark"},
+            )
+            self.assertEqual(response.status_code, 200, response.json)
+            self.assertEqual(config.conf.theme, "dark")
+
+    def test_managed_detection_refuses_overrides_before_device_actions(self):
+        with (
+            patch.dict("os.environ", {"MOWER_MANAGED": "1"}),
+            patch.object(self.control, "preflight") as preflight,
+        ):
+            for route in (
+                "preflight",
+                "discover",
+                "start",
+                "avd/start",
+                "redroid/start",
+                "genymotion/start",
+            ):
+                payload = {"device": {"adb_path": "untrusted-adb"}}
+                if "/" in route:
+                    payload["confirmed_instance"] = "chosen"
+                response = self.client.post(
+                    "/device/" + route, headers=self.headers, json=payload
+                )
+                self.assertEqual(response.status_code, 403, response.json)
+            preflight.assert_not_called()
+
+    def test_managed_preflight_uses_saved_profile_without_saving(self):
+        io = PreflightIO()
+        self.main.device_control = DeviceControl(
+            lambda: config.conf, ManualAdapter(), preflight=PreflightService(io)
+        )
+        before = self.path.read_bytes()
+        with patch.dict("os.environ", {"MOWER_MANAGED": "1"}):
+            response = self.client.post(
+                "/device/preflight", headers=self.headers, json={"device": {}}
+            )
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertTrue(response.json["ok"], response.json)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_managed_boss_key_only_tests_the_saved_hotkey(self):
+        config.conf = config.conf.updated({"device": {"simulator_hotkey": "ctrl+f9"}})
+        with (
+            patch.dict("os.environ", {"MOWER_MANAGED": "1"}),
+            patch(
+                "arknights_mower.utils.device.window.trigger_simulator_boss_key",
+                return_value={"ok": True},
+            ) as trigger,
+        ):
+            rejected = self.client.post(
+                "/device/boss_key", headers=self.headers, json={"hotkey": "ctrl+f10"}
+            )
+            self.assertEqual(rejected.status_code, 403)
+            trigger.assert_not_called()
+            accepted = self.client.post(
+                "/device/boss_key", headers=self.headers, json={}
+            )
+            self.assertEqual(accepted.status_code, 200, accepted.json)
+            trigger.assert_called_once_with("ctrl+f9", delay=0.0)
+
+    def test_manager_restrictions_preserve_token_rejection_before_body_parsing(self):
+        with (
+            patch.dict("os.environ", {"MOWER_MANAGED": "1"}),
+            patch(
+                "flask.Request.get_json",
+                side_effect=AssertionError("parsed unauthorized body"),
+            ),
+        ):
+            for route, method in (
+                ("/conf", "POST"),
+                ("/conf", "PATCH"),
+                ("/device/preflight", "POST"),
+                ("/device/discover", "POST"),
+                ("/device/start", "POST"),
+                ("/device/avd/start", "POST"),
+                ("/device/redroid/start", "POST"),
+                ("/device/genymotion/start", "POST"),
+                ("/device/boss_key", "POST"),
+            ):
+                for headers in ({}, {"token": "wrong"}):
+                    self.assertEqual(
+                        self.client.open(
+                            route, method=method, headers=headers
+                        ).status_code,
+                        403,
+                    )
+
     def test_screenshot_failure_exposes_native_reason_and_peers_without_saving(self):
         io = PreflightIO()
         self.main.device_control = DeviceControl(

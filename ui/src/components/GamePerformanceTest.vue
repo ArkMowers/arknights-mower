@@ -108,7 +108,8 @@ async function cancel() {
 }
 
 function adopt() {
-  if (props.disabled || running.value || !recommendation.value) return
+  if (config.manager_owned_device || props.disabled || running.value || !recommendation.value)
+    return
   config.performance_mode = recommendation.value
 }
 
@@ -160,7 +161,11 @@ onUnmounted(() => {
         >实测建议：{{ labels[recommendation] }}</n-tag
       >
       <n-button
-        v-if="recommendation && config.performance_mode !== recommendation"
+        v-if="
+          !config.manager_owned_device &&
+          recommendation &&
+          config.performance_mode !== recommendation
+        "
         size="small"
         secondary
         :disabled="disabled || pending"
@@ -168,6 +173,9 @@ onUnmounted(() => {
       >
         采用建议
       </n-button>
+      <n-text v-if="config.manager_owned_device && recommendation" depth="3"
+        >请在多开管理器中设置建议档位。</n-text
+      >
     </n-space>
     <n-text v-if="progress" depth="3" role="status" aria-live="polite">{{ progress }}</n-text>
     <div v-if="running" class="performance-test-preview">

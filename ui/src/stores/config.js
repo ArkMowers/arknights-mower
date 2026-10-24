@@ -174,6 +174,7 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_auto_5 = ref('hand')
   const webview = ref({ scale: 1.0 })
   const runtime_platform = ref('')
+  const manager_owned_device = ref(false)
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
   const fix_mumu12_adb_disconnect = ref(false)
@@ -474,6 +475,7 @@ export const useConfigStore = defineStore('config', () => {
       const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
       device_profile.value = response.data.device ?? null
       runtime_platform.value = response.data.runtime_platform || ''
+      manager_owned_device.value = response.data.manager_owned_device === true
       performance_mode.value = normalizePerformanceMode(
         response.data.performance_mode,
         response.data.low_frame_rate_mode
@@ -1171,6 +1173,7 @@ export const useConfigStore = defineStore('config', () => {
     recruit_auto_5,
     webview,
     runtime_platform,
+    manager_owned_device,
     shop_collect_enable,
     meeting_level,
     fix_mumu12_adb_disconnect,

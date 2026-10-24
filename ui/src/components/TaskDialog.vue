@@ -33,6 +33,20 @@ const workshop_operator = ref('')
 const msg = ref('')
 const error = ref(false)
 const taskTypeOptions = [
+  { label: '日常任务', value: '日常任务' },
+  { label: '公招', value: '公招' },
+  { label: '森空岛签到', value: '森空岛签到' },
+  { label: '信用购物', value: '信用购物' },
+  { label: '领取邮件', value: '领取邮件' },
+  { label: '读取基报', value: '读取基报' },
+  { label: '访问好友', value: '访问好友' },
+  { label: '领取任务奖励', value: '领取任务奖励' },
+  { label: '作战计划', value: '作战计划' },
+  { label: '集成战略 (MAA)', value: '集成战略 (MAA)' },
+  { label: '保全派驻 (MAA)', value: '保全派驻 (MAA)' },
+  { label: '生息演算 (MAA)', value: '生息演算 (MAA)' },
+  { label: '生息演算', value: '生息演算' },
+  { label: '隐秘战线', value: '隐秘战线' },
   { label: '专精任务', value: '技能专精' },
   { label: '加工任务', value: '加工材料' },
   { label: '【实验性功能】分解所有重复家具', value: '分解所有重复家具' },
@@ -151,7 +165,7 @@ async function saveTasks() {
     }
     task.meta_data = workshop_operator.value
     task.plan = {}
-  } else if (['仓库扫描', '分解所有重复家具', '线索任务'].includes(task_type.value)) {
+  } else if (task_type.value !== '空任务') {
     // 独立任务不携带房间排班。
     task.plan = {}
   }
@@ -219,6 +233,8 @@ const level_list = [
         <n-select
           v-model:value="task_type"
           :options="taskTypeOptions"
+          filterable
+          :filter="(p, o) => pinyin_match(o.label, p)"
           :consistent-menu-width="false"
           placeholder="任务类别"
           class="dropdown-select"
@@ -337,6 +353,19 @@ const level_list = [
       </n-card>
     </n-scrollbar>
     <template v-if="isLogPage">
+      <n-text v-if="task_type === '日常任务'" depth="3">
+        按当前配置执行已启用的日常项目和作战计划，不包含长任务。
+      </n-text>
+      <n-text
+        v-else-if="
+          !['空任务', '技能专精', '加工材料', '仓库扫描', '线索任务', '分解所有重复家具'].includes(
+            task_type
+          )
+        "
+        depth="3"
+      >
+        按当前设置执行一次所选任务，无需开启自动执行；作战和长任务会为其他排队任务预留时间。
+      </n-text>
       <n-text v-if="task_type == '分解所有重复家具'" depth="3">
         进入加工站家具页，只分解超出一整套所需数量的家具；无法确认套装数量时跳过。无需选择干员，不消耗心情。
       </n-text>

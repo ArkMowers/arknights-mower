@@ -6,6 +6,8 @@ windows_frameless 在导入时就要 ctypes.wintypes，Linux 上不存在这个�
 
 import os
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 
 @unittest.skipUnless(os.name == "nt", "WinForms 窗口样式只在 Windows 上组合")
@@ -145,6 +147,134 @@ class TestPressHandover(unittest.TestCase):
 
         self.assertEqual(len(fake.SendMessageW.calls), 1)
         self.assertEqual(fake.SendMessageW.calls[0][2], self.module._HTCAPTION)
+
+
+@unittest.skipUnless(os.name == "nt", "Native window hit tests require Windows")
+class TestTitlebarHitTest(unittest.TestCase):
+    def test_native_caption_bounds_and_resize_edges_at_supported_dpi_scales(self):
+        from arknights_mower.utils import windows_frameless
+
+        window = SimpleNamespace(uid="offline-titlebar-hit-test")
+        user32 = Mock()
+        user32.GetDpiForWindow = None
+        user32.GetWindowLongPtrW.return_value = 1
+        user32.SetWindowLongPtrW.return_value = 1
+        user32.CallWindowProcW.return_value = 1
+        user32.IsZoomed.return_value = False
+        user32.GetSystemMetrics.side_effect = lambda metric: {32: 8, 33: 8, 92: 0}[
+            metric
+        ]
+        user32.SetWindowPos.return_value = True
+
+        def get_window_rect(hwnd, pointer):
+            rect = pointer._obj
+            rect.left, rect.top, rect.right, rect.bottom = 100, 100, 1300, 900
+            return True
+
+        user32.GetWindowRect.side_effect = get_window_rect
+        with (
+            patch.object(windows_frameless, "_winforms_hwnd", return_value=0x1234),
+            patch.object(windows_frameless, "_user32", return_value=user32),
+            patch.object(windows_frameless, "_apply_dwm_window_chrome"),
+            patch.dict(windows_frameless._hooks, clear=True),
+        ):
+            for scale, last_row, content_row, control_last_x, caption_first_x in (
+                (1.0, 35, 36, 79, 80),
+                (1.25, 44, 45, 99, 100),
+                (1.5, 53, 54, 119, 120),
+                (2.0, 71, 72, 159, 160),
+            ):
+                with (
+                    self.subTest(scale=scale),
+                    patch.object(
+                        windows_frameless, "window_dpi_scale", return_value=scale
+                    ),
+                ):
+                    windows_frameless._install_hook(
+                        window,
+                        windows_frameless.WindowSize(1200, 800),
+                        windows_frameless.WindowSize(600, 400),
+                    )
+                    callback = windows_frameless._hooks[window.uid][0]
+                    for x, y, expected in (
+                        (400, last_row, 2),
+                        (400, content_row, 1),
+                        (400, content_row + 8, 1),
+                        (control_last_x, 20, 1),
+                        (caption_first_x, 20, 2),
+                        (1, 1, 13),
+                        (1199, 1, 14),
+                        (1, 799, 16),
+                        (1199, 799, 17),
+                        (1, 100, 10),
+                        (1199, 100, 11),
+                        (400, 1, 12),
+                        (400, 799, 15),
+                    ):
+                        position = ((100 + y) << 16) | (100 + x)
+                        self.assertEqual(
+                            callback(0x1234, 0x0084, 0, position),
+                            expected,
+                            f"scale={scale}, relative point=({x}, {y})",
+                        )
+
+
+@unittest.skipUnless(os.name == "nt", "DWM window attributes require Windows")
+class TestDwmWindowChrome(unittest.TestCase):
+    def setUp(self):
+        from arknights_mower.utils import windows_frameless
+
+        self.module = windows_frameless
+
+    def test_requests_native_rounded_corners_and_system_border_color(self):
+        set_attribute = Mock(return_value=0)
+        dwmapi = SimpleNamespace(DwmSetWindowAttribute=set_attribute)
+
+        with patch.object(self.module.ctypes, "WinDLL", return_value=dwmapi):
+            self.module._apply_dwm_window_chrome(0x1234)
+
+        self.assertEqual(
+            [
+                (call.args[0], call.args[1], call.args[2]._obj.value, call.args[3])
+                for call in set_attribute.call_args_list
+            ],
+            [(0x1234, 33, 2, 4), (0x1234, 34, 0xFFFFFFFF, 4)],
+        )
+
+    def test_rejected_corner_preference_does_not_prevent_border_request(self):
+        set_attribute = Mock(side_effect=[-2147024809, 0])
+        dwmapi = SimpleNamespace(DwmSetWindowAttribute=set_attribute)
+
+        with patch.object(self.module.ctypes, "WinDLL", return_value=dwmapi):
+            self.module._apply_dwm_window_chrome(0x1234)
+
+        self.assertEqual(set_attribute.call_count, 2)
+        border_request = set_attribute.call_args
+        self.assertEqual(border_request.args[1], 34)
+        self.assertEqual(border_request.args[2]._obj.value, 0xFFFFFFFF)
+
+    def test_unsupported_attributes_leave_window_setup_available(self):
+        set_attribute = Mock(return_value=-2147024809)
+        dwmapi = SimpleNamespace(DwmSetWindowAttribute=set_attribute)
+
+        with patch.object(self.module.ctypes, "WinDLL", return_value=dwmapi):
+            self.assertIsNone(self.module._apply_dwm_window_chrome(0x1234))
+
+        self.assertEqual(set_attribute.call_count, 2)
+
+    def test_missing_library_or_entrypoint_leave_window_setup_available(self):
+        for library_result in (OSError("unavailable"), SimpleNamespace()):
+            with self.subTest(library_result=library_result):
+                if isinstance(library_result, OSError):
+                    library = patch.object(
+                        self.module.ctypes, "WinDLL", side_effect=library_result
+                    )
+                else:
+                    library = patch.object(
+                        self.module.ctypes, "WinDLL", return_value=library_result
+                    )
+                with library:
+                    self.assertIsNone(self.module._apply_dwm_window_chrome(0x1234))
 
 
 class TestDesktopWindowMinSize(unittest.TestCase):

@@ -46,7 +46,9 @@ class ScheduledStartTests(unittest.TestCase):
                     headers=self.headers,
                 )
                 self.assertEqual(response.status_code, 400)
-        self.assertIsNone(self.client.get("/status").json["scheduled_start_at"])
+        self.assertIsNone(
+            self.client.get("/status", headers=self.headers).json["scheduled_start_at"]
+        )
 
     def test_replace_cancel_and_status(self):
         with patch.object(self.server, "mower_thread", None):
@@ -55,7 +57,9 @@ class ScheduledStartTests(unittest.TestCase):
             )
             self.assertEqual(first.status_code, 200)
             self.assertEqual(
-                self.client.get("/status").json["scheduled_start_at"],
+                self.client.get("/status", headers=self.headers).json[
+                    "scheduled_start_at"
+                ],
                 first.json["scheduled_start_at"],
             )
             second = self.client.put(
@@ -66,7 +70,11 @@ class ScheduledStartTests(unittest.TestCase):
             self.assertNotEqual(first.json, second.json)
             self.client.delete("/scheduled-start", headers=self.headers)
             self.assertTrue(FakeTimer.instances[1].cancelled)
-            self.assertIsNone(self.client.get("/status").json["scheduled_start_at"])
+            self.assertIsNone(
+                self.client.get("/status", headers=self.headers).json[
+                    "scheduled_start_at"
+                ]
+            )
 
     def test_only_current_timer_starts_mower(self):
         with (
@@ -83,7 +91,11 @@ class ScheduledStartTests(unittest.TestCase):
             start.assert_not_called()
             FakeTimer.instances[1].callback()
             start.assert_called_once_with("2")
-            self.assertIsNone(self.client.get("/status").json["scheduled_start_at"])
+            self.assertIsNone(
+                self.client.get("/status", headers=self.headers).json[
+                    "scheduled_start_at"
+                ]
+            )
 
     def test_manual_start_cancels_reservation(self):
         with (
@@ -103,7 +115,11 @@ class ScheduledStartTests(unittest.TestCase):
             response = self.client.get("/start/0", headers=self.headers)
             self.assertEqual(response.get_data(as_text=True), "true")
             self.assertTrue(FakeTimer.instances[0].cancelled)
-            self.assertIsNone(self.client.get("/status").json["scheduled_start_at"])
+            self.assertIsNone(
+                self.client.get("/status", headers=self.headers).json[
+                    "scheduled_start_at"
+                ]
+            )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 <script setup>
 import { onBeforeUnmount, ref } from 'vue'
+import { createDragPreview } from '@/utils/dragPreview'
 
 defineProps({
   groups: { type: Array, required: true }
@@ -9,6 +10,7 @@ const root = ref(null)
 const dragged = ref('')
 const hovered = ref('')
 let touchId = null
+const dragPreview = createDragPreview()
 
 const keyOf = (group) => group.boardKey || group.groupName
 
@@ -16,9 +18,11 @@ function drop(source, target) {
   if (source && target && source !== target) emit('reorder', source, target)
   dragged.value = ''
   hovered.value = ''
+  dragPreview.clear()
 }
 
 function dragStart(group, event) {
+  dragPreview.start(event)
   dragged.value = keyOf(group)
   event.dataTransfer.effectAllowed = 'move'
   event.dataTransfer.setData('text/plain', dragged.value)
@@ -34,6 +38,11 @@ function dragOver(group, event) {
 function onDrop(group, event) {
   event.preventDefault()
   drop(dragged.value || event.dataTransfer.getData('text/plain'), keyOf(group))
+}
+
+function dragLeave(group, event) {
+  if (event.currentTarget.contains(event.relatedTarget)) return
+  if (hovered.value === keyOf(group)) hovered.value = ''
 }
 
 function removePointerListeners() {
@@ -79,6 +88,7 @@ function pointerCancel() {
   dragged.value = ''
   hovered.value = ''
   touchId = null
+  dragPreview.clear()
   removePointerListeners()
 }
 
@@ -93,7 +103,7 @@ function keyboardMove(group, index, event) {
   emit('reorder', keyOf(group), neighbor.dataset.moodCardKey)
 }
 
-onBeforeUnmount(removePointerListeners)
+onBeforeUnmount(pointerCancel)
 </script>
 
 <template>
@@ -112,6 +122,7 @@ onBeforeUnmount(removePointerListeners)
         @dragstart="dragStart(group, $event)"
         @dragover.prevent="dragOver(group, $event)"
         @dragenter.prevent="dragOver(group, $event)"
+        @dragleave="dragLeave(group, $event)"
         @drop.prevent="onDrop(group, $event)"
         @dragend="pointerCancel"
       >
@@ -160,17 +171,27 @@ onBeforeUnmount(removePointerListeners)
   flex-direction: column;
   box-sizing: border-box;
   overflow: hidden;
+  user-select: none;
   transition:
     border-color 0.16s,
     box-shadow 0.16s,
     opacity 0.16s;
 }
 .mood-card-dragging {
-  opacity: 0.52;
+  opacity: 0.32;
 }
 .mood-card-target {
-  border: 2px dashed #449f86;
-  box-shadow: 0 0 0 4px rgba(68, 159, 134, 0.13);
+  border-color: var(--mower-primary, #18a058);
+  outline: 2px solid var(--mower-primary, #18a058);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--mower-primary, #18a058) 12%, transparent);
+}
+.mood-grid-card:active {
+  cursor: grabbing;
+}
+.mood-grid-card :deep(img),
+.mood-grid-card :deep(a) {
+  -webkit-user-drag: none;
 }
 .mood-move-move {
   transition: transform 0.23s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -197,5 +218,11 @@ onBeforeUnmount(removePointerListeners)
 .mood-drag-handle:focus-visible {
   outline: 2px solid #358f78;
   outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mood-grid-card,
+  .mood-move-move {
+    transition: none;
+  }
 }
 </style>

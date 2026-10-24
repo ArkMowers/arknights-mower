@@ -689,6 +689,7 @@
       :width="drawerPlacement === 'right' ? drawerWidth : undefined"
       :height="drawerPlacement === 'bottom' ? drawerHeight : undefined"
       class="depot-detail-drawer"
+      :style="detailThemeStyle"
     >
       <n-drawer-content v-if="detailItem" closable :title="detailItem.name">
         <div class="detail-hero-box">
@@ -1005,6 +1006,8 @@ import { sleep } from '@/utils/sleep'
 
 import { usedepotStore } from '@/stores/depot'
 import { useConfigStore } from '@/stores/config'
+import { useResolvedTheme } from '@/composables/theme'
+import { mowerDarkCssVariables, mowerLightCssVariables } from '@/theme/mower'
 import HelpText from '@/components/HelpText.vue'
 import DepotBaselinePicker from '@/components/DepotBaselinePicker.vue'
 import {
@@ -1052,7 +1055,11 @@ use([
 
 const depotStore = usedepotStore()
 const configStore = useConfigStore()
-const { theme } = storeToRefs(configStore)
+const { theme: themePreference } = storeToRefs(configStore)
+const theme = useResolvedTheme(themePreference)
+const detailThemeStyle = computed(() =>
+  theme.value === 'dark' ? mowerDarkCssVariables : mowerLightCssVariables
+)
 const message = useMessage()
 
 // 详情曲线跟随应用主题：响应式 computed 注入
@@ -1899,10 +1906,8 @@ onUnmounted(() => {
 </script>
 
 <style>
-/* 卡片/分隔线的统一 1px 描边；之前这行字面量在样式里出现 14 次，换主题要一处一处改。
-   必须放在非 scoped 的 :root 上：详情抽屉里的 .detail-hero-box / .kpi-card 由 n-drawer
-   传送到 body，不走 .depot-page 的继承链，挂在 .depot-page 上它们会取不到值。 */
-:root {
+.depot-page,
+.depot-detail-drawer {
   --depot-hairline: 1px solid var(--mower-divider);
 }
 

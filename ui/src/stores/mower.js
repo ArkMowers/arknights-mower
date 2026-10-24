@@ -38,6 +38,7 @@ export const useMowerStore = defineStore('mower', () => {
   const desktop_startup_handled = ref(false)
   const ai_assistant_enabled = ref(null)
   const updates_enabled = ref(null)
+  const deployment = ref(null)
   const plan_condition = ref([])
   const waiting = ref(false)
 
@@ -90,6 +91,9 @@ export const useMowerStore = defineStore('mower', () => {
         scheduled_start_at.value = response.data.scheduled_start_at ?? null
         auto_start_handled.value = response.data.auto_start_handled === true
         desktop_startup_handled.value = response.data.desktop_startup_handled === true
+        deployment.value = ['source', 'release'].includes(response.data.deployment)
+          ? response.data.deployment
+          : null
         updates_enabled.value =
           typeof response.data.updates_enabled === 'boolean' ? response.data.updates_enabled : null
         ai_assistant_enabled.value =
@@ -179,6 +183,7 @@ export const useMowerStore = defineStore('mower', () => {
     desktop_startup_handled,
     ai_assistant_enabled,
     updates_enabled,
+    deployment,
     plan_condition,
     waiting,
     listen_ws,

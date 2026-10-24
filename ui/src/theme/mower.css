@@ -1,7 +1,12 @@
-.provider,
+/* 缩放变量只挂在根节点：.provider 若重复声明会把 1 覆盖进应用树，
+   使 calc(100dvh / var(--mower-zoom)) 等补偿在非 100% 缩放下失效。 */
 :root {
   --mower-zoom: 1;
   --mower-zoom-inverse: 1;
+}
+
+.provider,
+:root {
   --mower-segment-rail: #efefed;
   --mower-segment-active: #ffffff;
   --mower-segment-muted: rgba(31, 30, 28, 0.5);
@@ -91,7 +96,7 @@ html[data-mower-theme='dark'] .n-checkbox-box {
 }
 
 .provider .mower-surface-panel {
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--mower-surface);
 }
 
@@ -103,7 +108,7 @@ html[data-mower-theme='dark'] .n-checkbox-box {
 
 #app .n-tabs.n-tabs--segment-type .n-tabs-rail {
   padding: 3px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--mower-segment-rail);
   box-shadow: var(--mower-segment-rail-shadow);
 }
@@ -119,8 +124,62 @@ html[data-mower-theme='dark'] .n-checkbox-box {
    keeps its height cap; content scrolls inside `.n-card-content`/`.n-dialog__content`
    below, which is a separate node, so popovers still fly above it. */
 .n-modal {
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 48px);
+  max-width: calc(100dvw / var(--mower-zoom, 1) - 32px);
+  max-height: calc(100dvh / var(--mower-zoom, 1) - 32px);
+}
+
+.n-base-select-menu {
+  border: 1px solid color-mix(in srgb, var(--n-option-text-color) 14%, transparent);
+}
+
+.n-base-select-menu .n-base-select-option::before {
+  top: 2px;
+  bottom: 2px;
+  border-radius: 6px;
+}
+
+.settings-select-menu {
+  max-width: calc(100vw / var(--mower-zoom, 1) - 32px);
+}
+
+.settings-select-menu.n-base-select-menu .n-base-select-option .n-base-select-option__content {
+  max-width: min(380px, calc(100vw / var(--mower-zoom, 1) - 88px));
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.settings-select-menu.n-base-select-menu .n-base-select-option {
+  height: auto;
+  padding-block: 8px;
+}
+
+.settings-select-wrap.n-select .n-base-selection-label {
+  height: auto;
+  min-height: var(--n-height);
+}
+
+.settings-select-wrap.n-select .n-base-selection .n-base-selection-input__content,
+.settings-select-wrap.n-select .n-base-selection .n-base-selection-overlay__wrapper {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+.settings-select-wrap.n-select .n-base-selection-label__render-label {
+  position: static;
+  box-sizing: border-box;
+  min-height: var(--n-height);
+  width: 100%;
+}
+
+.settings-select-wrap.n-select
+  .n-base-selection-label:has(.n-base-selection-label__render-label)
+  > input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
 }
 
 .n-modal.n-card,
@@ -173,4 +232,21 @@ html[data-mower-theme='dark'] .n-checkbox-box {
 
 .provider .n-input.mower-input--underline.n-input--focus {
   border-bottom-color: var(--n-caret-color);
+}
+
+/* 减弱动效：Drawer 的滑入滑出、遮罩淡入淡出和 Tooltip 的缩放淡入不播放中间过程。
+   去掉 transition 后 Vue 的 <Transition> 测不到时长，立即落到结束状态并照常触发
+   after-enter / after-leave。naive-ui 的样式在运行时插到本文件之后，同等优先级会被它
+   盖掉：Drawer 和 Tooltip 的过渡规则不带 !important，这里加 !important 即可；遮罩的
+   fade-in 过渡本身带 !important，所以再多挂一层 .n-drawer-container 提高优先级。
+   选择器不带 .provider 前缀：Drawer 和 Tooltip 都 teleport 到 body。 */
+@media (prefers-reduced-motion: reduce) {
+  .n-drawer[class*='-transition-enter-active'],
+  .n-drawer[class*='-transition-leave-active'],
+  .n-drawer-container > .n-drawer-mask.fade-in-transition-enter-active,
+  .n-drawer-container > .n-drawer-mask.fade-in-transition-leave-active,
+  .n-tooltip.popover-transition-enter-active,
+  .n-tooltip.popover-transition-leave-active {
+    transition: none !important;
+  }
 }

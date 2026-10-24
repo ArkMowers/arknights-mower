@@ -184,3 +184,44 @@ class TestResourceProgressRoutes(unittest.TestCase):
         self.assertTrue(response.json["ok"])
         self.assertEqual(response.json["job"]["status"], "success")
         self.assertFalse(response.json["restart_required"])
+
+    def test_synchronous_result_stays_with_its_job_when_another_install_starts(self):
+        submitted = []
+        start = self.job.start
+
+        def submit(after_install):
+            result = start(after_install)
+            submitted.append(result["id"])
+            if len(submitted) == 1:
+                thread = self.job.thread
+                join = thread.join
+
+                def finish_then_submit_next():
+                    join(5)
+                    self.assertFalse(thread.is_alive())
+                    response = self.client.post(
+                        "/resource/install",
+                        headers=self.headers,
+                        json={"background": True},
+                    )
+                    self.assertEqual(response.status_code, 200)
+                    self.job.thread.join(5)
+
+                thread.join = finish_then_submit_next
+            return result
+
+        with (
+            patch.object(server, "active_job", return_value=None),
+            patch.object(server, "_request_title_refresh"),
+            patch.object(self.job, "start", side_effect=submit),
+            patch.object(rp, "download_resource_pkg", return_value=b"fixture"),
+            patch.object(rp, "install_resource_pkg", side_effect=[True, False]),
+            patch.object(rp, "resource_ota_full_asset", return_value=None),
+        ):
+            response = self.client.post("/resource/install", headers=self.headers)
+        self.assertEqual(len(submitted), 2)
+        self.assertTrue(response.json["ok"])
+        self.assertEqual(response.json["job"]["id"], submitted[0])
+        self.assertEqual(response.json["job"]["status"], "success")
+        self.assertEqual(self.job.snapshot()["id"], submitted[1])
+        self.assertEqual(self.job.snapshot()["status"], "error")

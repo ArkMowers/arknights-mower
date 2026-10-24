@@ -8,7 +8,10 @@
   },
   "scripts": {
     "dev": "vite  --profile --open",
+    "preview:mock": "vite --mode mock-preview --host 127.0.0.1 --port 5179 --strictPort",
+    "prototype:tasks": "vite --mode mock-preview --host 127.0.0.1 --port 5191 --strictPort",
     "build": "vite build && node copy.js",
+    "build:mock": "vite build --mode mock-preview",
     "preview": "vite preview",
     "lint": "eslint . --fix",
     "lint:check": "eslint .",

@@ -1,6 +1,7 @@
 <script setup>
 import { inject, nextTick, onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
+import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 
 const mobile = inject('mobile')
 const axios = inject('axios')
@@ -111,7 +112,12 @@ async function download_maa_copilot() {
             style="width: auto; flex-grow: 1"
             trigger-style="width: 100%"
             :action="sss_url"
-            :headers="{ token: token }"
+            :headers="
+              () => ({
+                token,
+                [CONFIG_GENERATION_HEADER]: axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
+              })
+            "
             :show-file-list="false"
             name="copilot"
             @finish="import_sss"
