@@ -545,7 +545,7 @@ class RIICPart(ConfModel):
     )
     "选人界面稳定帧采样间隔（秒）"
     selection_transition_timeout: float = Field(default=2.5, ge=1, le=20)
-    "选人界面操作反馈超时（秒）"
+    "基建操作反馈超时（秒）"
     low_frame_rate_mode: bool = False
     "旧版低帧率适配兼容字段；档位决定实际选人策略"
     drone_count_limit: int = 100

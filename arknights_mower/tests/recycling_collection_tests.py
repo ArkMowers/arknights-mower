@@ -205,6 +205,8 @@ def collection_solver(monkeypatch=None):
     solver.tap = Mock()
     solver.sleep = Mock()
     if monkeypatch is not None:
+        monkeypatch.setattr(base_mixin.config.conf, "screenshot_interval", 100)
+        monkeypatch.setattr(base_mixin.config.conf, "selection_transition_timeout", 2.5)
         monkeypatch.setattr(
             base_mixin,
             "perf_counter",

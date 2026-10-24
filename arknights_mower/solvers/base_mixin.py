@@ -1484,6 +1484,8 @@ class BaseMixin:
     def enter_room(self, room, *, max_attempts=3):
         """从基建首页进入房间"""
 
+        profile = self.performance_profile
+        poll_interval = profile.screenshot_interval / 1000
         for enter_times in range(max_attempts):
             actions = 0
             for retry_times in range(9):
@@ -1511,17 +1513,17 @@ class BaseMixin:
                     if visible_room is None:
                         continue
                     self.tap(visible_room, interval=0.2)
-                    room_deadline = perf_counter() + 2
+                    room_deadline = perf_counter() + profile.transition_timeout
                     while True:
                         # 点击后的地图、连接中和未知画面共用同一确认期限。
                         if not self.find("connecting"):
                             self._handle_room_entry_reward(room)
                             if self.detect_room() == room:
                                 return
-                        # 先识别再检查期限，保留两秒后的首帧；截图耗时计入等待。
+                        # 先识别再检查期限，保留超时后的首帧；截图耗时计入等待。
                         if perf_counter() >= room_deadline:
                             break
-                        self.sleep(0.1)
+                        self.sleep(poll_interval)
                     if self.find("connecting"):
                         break
                     if self.scene() in (

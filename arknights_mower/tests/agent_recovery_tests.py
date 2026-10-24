@@ -15,6 +15,7 @@ from arknights_mower.solvers.base_mixin import (  # noqa: E402
     BaseMixin,
 )
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
 
@@ -53,6 +54,8 @@ def test_room_recovery_is_bounded_and_user_stop_is_not_retried(monkeypatch, stop
 
 
 def room_solver(monkeypatch, *, enter_on=None, enter_after_reset=False):
+    monkeypatch.setattr(config.conf, "screenshot_interval", 100)
+    monkeypatch.setattr(config.conf, "selection_transition_timeout", 2.0)
     solver = BaseMixin()
     solver.recog = SimpleNamespace(img=None)
     state = {"room": "main", "taps": 0}
