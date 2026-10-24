@@ -113,13 +113,13 @@ def test_insufficient_beds_keeps_original_task_and_actual_state(solver):
         op.mood = 5
     task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan={})
     solver.task, solver.tasks = task, [task]
-    before = positions(data), copy.deepcopy(data.group_shift_state), task.time
+    before = fixtures.projection_source_state(data), task.time
     for _ in range(2):
         with pytest.raises(GroupShiftBlocked):
             solver._prepare_shift_backup(task)
         assert task.plan == {}
         assert solver.tasks == [task]
-        assert (positions(data), data.group_shift_state, task.time) == before
+        assert (fixtures.projection_source_state(data), task.time) == before
 
 
 def test_explicit_relocation_does_not_admit_working_primary(solver):

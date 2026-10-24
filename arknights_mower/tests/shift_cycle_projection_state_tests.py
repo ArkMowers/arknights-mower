@@ -97,6 +97,27 @@ def positions(data):
     }
 
 
+def projection_source_state(data):
+    return copy.deepcopy(
+        {
+            "operators": {name: vars(op) for name, op in data.operators.items()},
+            "dorms": [vars(bed) for bed in data.all_dorms()],
+            "groups": data.groups,
+            "group_shift_state": data.group_shift_state,
+            "group_recovery_full_members": data.group_recovery_full_members,
+            "group_recovery_return_time": data.group_recovery_return_time,
+            "urgent_recovery_supporters": data.urgent_recovery_supporters,
+            "recall_recovery_rates": data.recall_recovery_rates,
+            "plan_condition": data.plan_condition,
+            "plan": {
+                room: [vars(slot) for slot in slots]
+                for room, slots in data.plan.items()
+            },
+            "config": vars(data.config),
+        }
+    )
+
+
 @pytest.mark.parametrize("unknown", [False, True], ids=["stale", "unknown"])
 def test_same_post_check_preserves_resting_group_and_requested_read(solver, unknown):
     data = solver.op_data
@@ -116,7 +137,7 @@ def test_same_post_check_preserves_resting_group_and_requested_read(solver, unkn
 def test_covered_departure_converges_without_recalling_primary(solver):
     task = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan={"meeting": ["跃跃"]})
     solver.task, solver.tasks = task, [task]
-    before = positions(solver.op_data), copy.deepcopy(solver.op_data.group_shift_state)
+    before = projection_source_state(solver.op_data)
     solver._prepare_shift_cycle(task)
     assert task.plan["meeting"] == ["跃跃"]
     assert "central" not in task.plan
@@ -124,7 +145,7 @@ def test_covered_departure_converges_without_recalling_primary(solver):
     assert not task.backup_explicit_slots
     assert "歌蕾蒂娅" in task.plan["dormitory_1"]
     assert "深海" not in task.group_shift_transitions
-    assert (positions(solver.op_data), solver.op_data.group_shift_state) == before
+    assert projection_source_state(solver.op_data) == before
     assert solver.tasks == [task]
     solver.enter_room.assert_not_called()
 
@@ -160,7 +181,7 @@ def test_explicit_departure_survives_its_own_condition_deactivation(solver):
         task_plan={"central": ["歌蕾蒂娅"], "dormitory_1": ["撷英调香师"]},
     )
     solver.task, solver.tasks = task, [task]
-    before = positions(solver.op_data), dict(solver.op_data.group_shift_state)
+    before = projection_source_state(solver.op_data)
     solver._prepare_shift_backup(task)
     assert task.plan["central"] == ["夕"]
     assert task.plan["dormitory_1"][0] == "Current"
@@ -168,6 +189,6 @@ def test_explicit_departure_survives_its_own_condition_deactivation(solver):
     assert task.plan["dormitory_1"][2] == "歌蕾蒂娅"
     assert getattr(task, "backup_shift_conditions", [False]) == [False]
     assert solver.op_data.plan_condition == [False]
-    assert (positions(solver.op_data), solver.op_data.group_shift_state) == before
+    assert projection_source_state(solver.op_data) == before
     assert solver.tasks == [task]
     solver.enter_room.assert_not_called()

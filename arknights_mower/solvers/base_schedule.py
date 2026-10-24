@@ -7498,7 +7498,7 @@ class BaseSchedulerSolver(
                 ).items()
                 if not resting and simulation.op_data.group_is_resting(group)
             )
-            simulation.op_data = simulation.op_data.project_arrangements([step.plan])
+            simulation.op_data._apply_projected_arrangements([step.plan])
             for room, names in step.plan.items():
                 for index, name in enumerate(names):
                     if name in previous_positions:
@@ -7844,7 +7844,7 @@ class BaseSchedulerSolver(
                 conditions, refresh=True, backup_group=selection.group_id
             ):
                 raise ValueError(f"上下班副表推演失败：{error}")
-            projected = projected.project_arrangements([merged])
+            projected._apply_projected_arrangements([merged])
             next_selection = projected.evaluate_backup_selection()
             next_conditions = next_selection.conditions
             if (
