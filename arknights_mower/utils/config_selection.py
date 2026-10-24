@@ -33,6 +33,7 @@ TABLE_GROUPS = {
     "trading_history": "trading_history",
     "operation_history": "operation_history",
     "recycling_collection": "recycling_history",
+    "recycling_report_progress": "recycling_history",
     "recycling_valuation": "recycling",
     "log": "other_history",
 }
@@ -51,6 +52,7 @@ _SAFE_FUNCTIONS = {
     "ifnull",
     "julianday",
     "length",
+    "like",
     "lower",
     "max",
     "min",

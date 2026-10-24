@@ -3,7 +3,8 @@
 ## 1. Scope
 
 The configuration ZIP contains the current instance's `config/` originals except
-`state.json`, together with the persistent data files listed in `TMP_DATA_FILES`
+`state.json` and the local `gui.yml.lock` and `recycling_report/submission.lock`
+files, together with the persistent data files listed in `TMP_DATA_FILES`
 in [config_backup.py](../../arknights_mower/utils/config_backup.py).
 SQLite snapshots contain committed database tables, including data in WAL files.
 Resource overlays, downloaded updates, logs and unrelated tmp files stay outside
@@ -37,6 +38,8 @@ config file. Exports omit obsolete tmp copies once canonical files exist.
 Local `gui.yml` is exported but protected during import, including its window
 settings, mood curve preferences and log layout. Shared installation settings
 outside the current instance directory remain outside the archive.
+Import preserves both local lock files, even when an older archive includes
+them, so an active OS lock continues to protect the same file.
 
 ## 3. Subsystem Invariants
 

@@ -701,6 +701,7 @@ def test_preserves_access_gui_and_state(storage, local_exists, in_archive):
     config.save_conf()
     for name in backup.IMPORT_PRESERVED_FILES:
         if local_exists:
+            (config.conf_path.parent / name).parent.mkdir(parents=True, exist_ok=True)
             (config.conf_path.parent / name).write_bytes(b"local bytes")
     files = {
         "conf.yml": "account: restored\nwebview: {port: invalid, token: other, tray: invalid}\n"

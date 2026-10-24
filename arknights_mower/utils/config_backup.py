@@ -32,7 +32,13 @@ from arknights_mower.utils.workshop_config import workshop_lock
 MAX_BACKUP_BYTES = 16 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 1024
 backup_lock = RLock()
-IMPORT_PRESERVED_FILES = {"network.json", "gui.yml", "gui.yml.lock", "state.json"}
+IMPORT_PRESERVED_FILES = {
+    "network.json",
+    "gui.yml",
+    "gui.yml.lock",
+    "state.json",
+    "recycling_report/submission.lock",
+}
 TMP_DATA_FILES = {
     "data.db",
     "cultivate.json",
@@ -51,7 +57,11 @@ class LocalConfigError(ValueError):
     """The destination directory cannot be backed up safely."""
 
 
-EXPORT_EXCLUDED_FILES = {"state.json", "gui.yml.lock"}
+EXPORT_EXCLUDED_FILES = {
+    "state.json",
+    "gui.yml.lock",
+    "recycling_report/submission.lock",
+}
 
 
 def _local_snapshot():
@@ -197,6 +207,7 @@ def read_archive(raw, *, include_tmp=False):
             for info in infos:
                 name = info.filename
                 parts = name.rstrip("/").split("/")
+                relative_name = "/".join(parts[1:]).casefold()
                 mode = info.external_attr >> 16
                 if (
                     name.rstrip("/").casefold() in seen
@@ -230,7 +241,10 @@ def read_archive(raw, *, include_tmp=False):
                     or (
                         parts[0] == "config"
                         and len(parts) > 2
-                        and parts[1].casefold() in IMPORT_PRESERVED_FILES
+                        and any(
+                            relative_name.startswith(f"{preserved}/")
+                            for preserved in IMPORT_PRESERVED_FILES
+                        )
                     )
                     or info.flag_bits & 1
                     or (stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR))
@@ -481,8 +495,9 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
         try:
             for target in sorted(set(targets) | removed):
                 if (
-                    target.parent == root
-                    and target.name.casefold() in IMPORT_PRESERVED_FILES
+                    target.is_relative_to(root)
+                    and target.relative_to(root).as_posix().casefold()
+                    in IMPORT_PRESERVED_FILES
                 ):
                     continue
                 if target in targets:

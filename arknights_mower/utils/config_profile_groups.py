@@ -58,6 +58,7 @@ CONFIG_FILE_GROUPS = {
     "workshop_preset.json": "workshop",
     "weekly_plans.yml": "weekly_plan",
     "yituliu_sync.json": "accounts",
+    "recycling_report/state.json": "recycling_history",
 }
 
 _DEFINITIONS = (
@@ -117,7 +118,12 @@ _DEFINITIONS = (
     ("历史记录", "mood_history", "心情历史", "干员心情与换班记录"),
     ("历史记录", "trading_history", "贸易历史", "贸易站订单收益记录"),
     ("历史记录", "operation_history", "作战历史", "关卡作战、掉落与耗时记录"),
-    ("历史记录", "recycling_history", "回收历史", "回收站收取记录"),
+    (
+        "历史记录",
+        "recycling_history",
+        "回收历史",
+        "回收站收取记录、上报标识与上传进度",
+    ),
     ("历史记录", "report_history", "基报历史", "已保存的基建报告"),
     ("历史记录", "skland_history", "签到历史", "森空岛签到记录"),
     ("历史记录", "growth_history", "养成历史", "养成计划完成统计"),

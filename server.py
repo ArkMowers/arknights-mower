@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from contextlib import contextmanager
 from functools import wraps
@@ -876,6 +877,7 @@ def serialize_configuration_requests():
             "/check-skland",
             "/check-skland-sign",
             "/cultivate-fetch",
+            "/depot/readdepot",
         }
     )
     if (
@@ -1679,6 +1681,7 @@ def item_list():
 
 
 @app.route("/depot/readdepot")
+@require_token
 def read_depot():
     from datetime import datetime as _dt
 
@@ -4365,11 +4368,19 @@ app.register_blueprint(task_bp)
 app.register_blueprint(db_admin_bp)
 app.register_blueprint(software_update_bp)
 app.register_blueprint(network_bp)
+
+
+def _recycling_reports_running():
+    module = sys.modules.get("arknights_mower.utils.recycling_report")
+    return bool(module and module.running())
+
+
 app.register_blueprint(config_backup_bp)
 app.config["CONFIG_BACKUP_MAINTENANCE_LOCK"] = maa_maintenance_lock
 app.config["CONFIG_BACKUP_BUSY"] = lambda: bool(
     (mower_thread and mower_thread.is_alive())
     or chat_active_requests > 0
+    or _recycling_reports_running()
     or active_job()
     or _job_running(maa_update_job)
     or _job_running(maa_resource_update_job)

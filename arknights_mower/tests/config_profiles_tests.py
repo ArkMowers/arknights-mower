@@ -626,17 +626,20 @@ def test_corrupt_registry_blocks_generation_checks(storage):
         profiles.check_generation(None)
 
 
-def test_actual_application_table_definitions_survive_selected_copy(storage):
-    from arknights_mower.solvers.record import _DB_TABLE_STMTS
+def test_actual_application_table_definitions_survive_selected_copy(
+    storage, monkeypatch
+):
+    from arknights_mower.solvers import record
     from arknights_mower.utils.mastery_db import (
         _NOTIFY_SCHEMA,
         _PLAN_SCHEMA,
         _ROUTE_SCHEMA,
     )
 
+    monkeypatch.setattr(record, "_tables_created", False)
     with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn, conn:
+        record._ensure_tables(conn)
         for statement in (
-            *_DB_TABLE_STMTS,
             _PLAN_SCHEMA,
             _ROUTE_SCHEMA,
             _NOTIFY_SCHEMA,
@@ -667,6 +670,10 @@ def test_actual_application_table_definitions_survive_selected_copy(storage):
         assert conn.execute(
             "SELECT char_id,skill_index,target_level FROM mastery_plan"
         ).fetchall() == [("char_002_amiya", 0, 3)]
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name='agent_action_working_time'"
+        ).fetchone() == ("agent_action_working_time",)
 
 
 def test_profile_zip_import_clears_missing_data_instead_of_reusing_local(storage):

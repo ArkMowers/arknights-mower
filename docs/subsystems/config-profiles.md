@@ -20,6 +20,8 @@ notifications, appearance, remaining Mower settings, normal staffing, rescue
 staffing, weekly plans, inventory, growth plans and history. The backend owns
 group membership and supplies labels and descriptions to the frontend. Unknown
 configuration fields and database tables have an explicit fallback group.
+Recycling history keeps collection records, upload progress and the reporting
+identity together, so activation preserves submitted prefixes and retry state.
 
 Process access settings, the manager-owned assistant switch, network settings,
 window state and saved scheduling state are not selectable. Local access settings
@@ -42,8 +44,10 @@ identifiers, bounded names and a bounded configuration count; user input never
 forms a filesystem path.
 
 Activation and creation require idle scheduling, device operations, performance
-tests, update jobs, assistant messages and shutdown state. Their locks use the
-existing configuration and maintenance order. The generation is checked inside
+tests, update jobs, assistant messages, recycling reports and shutdown state.
+An active recycling report also blocks ordinary backup import until its upload
+and progress commit finish. These operations use the existing configuration and
+maintenance lock order. The generation is checked inside
 the same serialization boundary as saves and activation. Requests from a previous generation are
 rejected before changing files or starting work.
 

@@ -1,5 +1,6 @@
 """Profile generation admission through the real server request hooks."""
 
+import json
 from threading import RLock
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -342,3 +343,59 @@ def test_scheduled_start_remains_bound_to_its_configuration(
         start.assert_called_once_with("2")
     assert server.scheduled_start_timer is None
     assert server.scheduled_start_at is None
+
+
+@pytest.mark.parametrize("token", [None, "wrong", "inventory-token"])
+@pytest.mark.parametrize("generation", [None, "0", "active-generation"])
+def test_depot_read_authenticates_and_checks_generation_before_inventory_writes(
+    storage, monkeypatch, token, generation
+):
+    import server
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import config_backup as backup
+    from arknights_mower.utils import config_profiles, depot
+
+    monkeypatch.setattr(server.app, "token", "inventory-token", raising=False)
+    monkeypatch.setattr(
+        config_profiles, "current_generation", lambda: "active-generation"
+    )
+    monkeypatch.setattr(record, "get_path", storage)
+    monkeypatch.setattr(record, "_tables_created", False)
+    monkeypatch.setattr(depot, "get_path", storage)
+    storage("@app/tmp/cultivate.json").write_text(
+        json.dumps(
+            {
+                "code": 0,
+                "data": {"items": [{"id": "30062", "count": 9}]},
+                "_mower_inventory_observed_at": 1759400000,
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = backup.read_archive(backup.export_archive(), include_tmp=True)
+    parsed = []
+    read = depot.读取仓库
+
+    def parse():
+        parsed.append(True)
+        return read()
+
+    monkeypatch.setattr(depot, "读取仓库", parse)
+    headers = {}
+    if token is not None:
+        headers["token"] = token
+    if generation is not None:
+        headers["X-Mower-Config-Generation"] = generation
+    response = server.app.test_client().get("/depot/readdepot", headers=headers)
+    if token != "inventory-token":
+        assert response.status_code == 403
+    elif generation != "active-generation":
+        assert response.status_code == 409
+        assert response.json["code"] == "configuration_changed"
+    else:
+        assert response.status_code == 200
+        assert parsed == [True]
+        assert record.get_inventory_counts()["装置"] == 9
+        return
+    assert parsed == []
+    assert backup.read_archive(backup.export_archive(), include_tmp=True) == before

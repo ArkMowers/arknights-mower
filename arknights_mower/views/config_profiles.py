@@ -83,7 +83,7 @@ def _execute(action, *, mutation=True):
                 if _busy():
                     return {
                         "ok": False,
-                        "message": "请先停止 Mower，并等待设备操作、更新任务和 AI 回复结束",
+                        "message": "请先停止 Mower，并等待设备操作、更新任务、AI 回复和回收站上报结束",
                     }, 409
             return action()
     except profiles.ProfileConflict as exc:

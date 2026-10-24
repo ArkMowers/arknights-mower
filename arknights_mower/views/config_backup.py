@@ -63,7 +63,7 @@ def import_backup():
         if current_app.config["CONFIG_BACKUP_BUSY"]():
             return {
                 "ok": False,
-                "message": "请先停止 Mower，并等待更新任务和 AI 回复结束后再导入档案",
+                "message": "请先停止 Mower，并等待更新任务、AI 回复和回收站上报结束后再导入档案",
             }, 409
         try:
             if request.mimetype == "multipart/form-data":
