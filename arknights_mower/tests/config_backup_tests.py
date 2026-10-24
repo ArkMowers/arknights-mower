@@ -3,6 +3,7 @@ import sqlite3
 from contextlib import closing
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import patch
 from zipfile import ZipFile
 
 import pytest
@@ -1149,6 +1150,7 @@ def test_income_image_keeps_snapshot_after_live_plan_changes(
     snapshot = populated_plan.model_dump(exclude_none=True)
     snapshot["advanced_settings"] = {"resting_threshold": 0.7, "fia_fool": False}
     expected = parse_plan_document(snapshot).model_dump(exclude_none=True)
+    snapshot_json = json.dumps(snapshot).ljust(500_001)
     live_before = config.plan.model_dump()
     conf_before = config.conf.model_dump()
     source = Image.new("RGB", (2940, 1248), "black" if theme == "dark" else "white")
@@ -1160,7 +1162,7 @@ def test_income_image_keeps_snapshot_after_live_plan_changes(
         headers={"token": "test-token"},
         data={
             "img": (upload, "plan.png", "image/png"),
-            "plan": json.dumps(snapshot),
+            "plan": snapshot_json,
             "theme": theme,
         },
     )
@@ -1192,6 +1194,61 @@ def test_income_image_keeps_snapshot_after_live_plan_changes(
     assert config.plan.backup_plans == populated_plan.backup_plans
     assert config.conf.resting_threshold == 0.7
     assert config.conf.fia_fool is False
+
+
+@pytest.mark.parametrize("token", [None, "invalid"])
+def test_income_export_rejects_invalid_token_before_parsing_upload(plan_client, token):
+    import server
+
+    headers = {} if token is None else {"token": token}
+    with patch.object(
+        server.app.request_class,
+        "_load_form_data",
+        side_effect=AssertionError("未授权请求不应解析上传内容"),
+    ) as parse_form:
+        response = plan_client.post(
+            "/dialog/save/img",
+            headers=headers,
+            data=b"invalid multipart body",
+            content_type="multipart/form-data; boundary=fixture",
+        )
+
+    assert response.status_code == 403
+    parse_form.assert_not_called()
+
+
+def test_income_export_rejects_oversized_snapshot_without_mutation(
+    plan_client, populated_plan, monkeypatch
+):
+    from PIL import Image
+
+    from arknights_mower.utils import qrcode
+
+    live_before = config.plan.model_dump()
+    conf_before = config.conf.model_dump()
+    plan_file_before = config.plan_path.read_bytes()
+    conf_file_before = config.conf_path.read_bytes()
+    snapshot_json = json.dumps(populated_plan.model_dump(exclude_none=True)).ljust(
+        16 * 1024 * 1024 + 1
+    )
+    upload = BytesIO()
+    Image.new("RGB", (20, 20), "white").save(upload, "PNG")
+    upload.seek(0)
+    monkeypatch.setattr(
+        qrcode, "export", lambda *_: pytest.fail("超大排班快照不应生成二维码")
+    )
+
+    response = plan_client.post(
+        "/dialog/save/img",
+        headers={"token": "test-token"},
+        data={"img": (upload, "plan.png", "image/png"), "plan": snapshot_json},
+    )
+
+    assert response.status_code == 413
+    assert config.plan.model_dump() == live_before
+    assert config.conf.model_dump() == conf_before
+    assert config.plan_path.read_bytes() == plan_file_before
+    assert config.conf_path.read_bytes() == conf_file_before
 
 
 def test_income_export_rejects_invalid_snapshot_without_mutation(plan_client):
