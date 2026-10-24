@@ -285,6 +285,11 @@
         "sortWithinYear": 6
     },
     {
+        "name": "昨日海",
+        "sortByYear": 8,
+        "sortWithinYear": 4
+    },
+    {
         "name": "沃伦姆德的薄暮",
         "sortByYear": 2,
         "sortWithinYear": 2

@@ -1,0 +1,21 @@
+{
+  "title": "Intelligent Rescue Handoff Fill Cancellation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_filter_tasks",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_restore"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_observation_budget_tests.py",
+    "arknights_mower/tests/emergency_compensation_tests.py"
+  ]
+}

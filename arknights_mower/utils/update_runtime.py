@@ -1,0 +1,610 @@
+"""Installation-wide update coordination, independent of config and GUI imports.
+
+Only registered Mower launchers receive shutdown requests. No process-name scan
+or global Python/ADB termination is used. State lives in the shared data tmp tree.
+"""
+
+import atexit
+import errno
+import hashlib
+import json
+import os
+import sys
+import tempfile
+import threading
+import time
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
+
+
+def frozen():
+    return bool(getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"))
+
+
+def installation_root():
+    if not frozen():
+        return Path(__file__).resolve().parents[2]
+    executable = Path(sys.executable).resolve()
+    for parent in executable.parents:
+        if parent.suffix == ".app":
+            return parent
+    return executable.parent
+
+
+def state_dir(root=None):
+    from .path import get_path
+
+    root = Path(root or installation_root()).resolve()
+    key = hashlib.sha256(os.fsencode(root)).hexdigest()[:20]
+    return get_path("@app/tmp/updates", space="") / key
+
+
+@contextmanager
+def supervision_lock(directory, timeout=15.0, *, child=False, cancelled=None):
+    """Lock configuration-space ownership without importing the installation."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    name = "instance-child.lock" if child else "instance.lock"
+    with (directory / name).open("a+b") as stream:
+        if stream.tell() == 0:
+            stream.write(b"0")
+            stream.flush()
+        deadline = time.monotonic() + timeout
+        while True:
+            if cancelled is not None and cancelled():
+                raise InterruptedError("启动已取消，保留现有实例")
+            try:
+                stream.seek(0)
+                if sys.platform == "win32":
+                    import msvcrt
+
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("该配置空间已有运行实例或监督进程") from None
+                time.sleep(min(0.1, max(0, deadline - time.monotonic())))
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if sys.platform == "win32":
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def wait_for_supervisor_release(record, deadline):
+    """Keep source/frozen replacement outside a still-owned installation."""
+    directory = record.get("supervision_directory")
+    if directory:
+        with supervision_lock(directory, timeout=max(0, deadline - time.monotonic())):
+            pass
+
+
+def recovery_failure_details(previous, *, reason, message, exit_code=None):
+    """Keep the first fault of an active recovery and report its latest failure."""
+    now = datetime.now(timezone.utc).isoformat()
+    details = {
+        "occurred_at": now,
+        "reason": reason,
+        "trigger_message": message,
+        "last_failure_at": now,
+        "last_failure_reason": reason,
+        "last_failure_message": message,
+        "last_exit_code": exit_code,
+    }
+    if exit_code is not None:
+        details["exit_code"] = exit_code
+    if (
+        isinstance(previous, dict)
+        and previous.get("active") is True
+        and previous.get("startup") is not True
+    ):
+        details.pop("exit_code", None)
+        for key in ("occurred_at", "reason", "trigger_message", "exit_code"):
+            if key in previous:
+                details[key] = previous[key]
+        details["trigger_message"] = previous.get("trigger_message")
+    return details
+
+
+def read_json(path, default=None):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+
+
+def write_json(path, value, *, indent=None, sync=False):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, temporary = tempfile.mkstemp(dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, ensure_ascii=False, indent=indent)
+            if sync:
+                stream.flush()
+                os.fsync(stream.fileno())
+        replace_with_retry(temporary, path)
+        if sync and os.name != "nt":
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def replace_with_retry(source, destination):
+    """Atomically replace ``destination``, tolerating transient Windows locks.
+
+    ``os.replace`` is atomic, but on Windows it fails with a sharing violation
+    (WinError 5/32) when another handle keeps the destination open without
+    ``FILE_SHARE_DELETE`` — for example a concurrent ``instances()`` directory
+    scan reading the same JSON. Retrying briefly is enough for the reader to
+    release the file. POSIX ``os.replace`` never contends this way, so it
+    always re-raises immediately.
+    """
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            os.replace(source, destination)
+            return
+        except OSError as exc:
+            winerror = getattr(exc, "winerror", None)
+            if sys.platform != "win32" or winerror not in (5, 32):
+                raise
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+
+
+def process_alive(pid):
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        # PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE.  An exit code can
+        # already be published while Windows is still running process teardown
+        # (DLL detach / handle cleanup).  Only a signaled process handle means
+        # the process has fully terminated and its resources are releasable.
+        handle = kernel.OpenProcess(0x1000 | 0x00100000, False, pid)
+        if not handle:
+            return ctypes.get_last_error() == 5  # Access denied: conservatively alive.
+        try:
+            result = kernel.WaitForSingleObject(handle, 0)
+            if result == 0:  # WAIT_OBJECT_0: fully terminated.
+                return False
+            return True  # WAIT_TIMEOUT / WAIT_FAILED: conservatively alive.
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def active_job(directory=None):
+    directory = Path(directory or state_dir())
+    owner = read_json(directory / "active/owner.json", {})
+    return bool(owner and process_alive(owner.get("pid")))
+
+
+def record_task_stop():
+    """Keep a user Stop effective across an already accepted replacement job."""
+    directory = state_dir()
+    owner = read_json(directory / "active/owner.json", {})
+    if not owner or not process_alive(owner.get("pid")):
+        return
+    current = next(
+        (
+            record
+            for record in instances(directory)
+            if record.get("pid") == os.getpid() and record.get("kind") == "instance"
+        ),
+        None,
+    )
+    if (
+        current is not None
+        and isinstance(current.get("id"), str)
+        and current["id"]
+        and Path(current["id"]).name == current["id"]
+    ):
+        write_json(
+            directory / "active/task-stops" / f"{current['id']}.json",
+            {"job": owner["id"]},
+            sync=True,
+        )
+
+
+def task_stop_requested(record, job_id, directory):
+    instance_id = record.get("id")
+    if (
+        not isinstance(instance_id, str)
+        or not instance_id
+        or Path(instance_id).name != instance_id
+    ):
+        return False
+    stopped = read_json(
+        Path(directory) / "active/task-stops" / f"{instance_id}.json", {}
+    )
+    return stopped.get("job") == job_id
+
+
+class LockBusyError(ValueError):
+    """Another process owns the requested nonblocking update lock."""
+
+
+@contextmanager
+def submission_lock(directory):
+    """Serialize admission, including recovery of a dead updater's active lock."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (directory / "submission.lock").open("a+b") as stream:
+        if stream.tell() == 0:
+            stream.write(b"0")
+            stream.flush()
+        stream.seek(0)
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            if sys.platform == "win32":
+                winerror = getattr(exc, "winerror", None)
+                busy = winerror == 33 or (
+                    winerror is None and exc.errno in (errno.EACCES, errno.EAGAIN)
+                )
+            else:
+                busy = exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK)
+            if busy:
+                raise LockBusyError("其他实例正在提交更新任务") from exc
+            raise
+        try:
+            yield
+        finally:
+            if sys.platform == "win32":
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+def registration_key(record):
+    """Stable identity for matching an instance's registration across a restart.
+
+    Space, name and port only mean something together as the identity of an
+    instance. Matching on them is independent of the process id, which on some
+    Windows launchers differs from the registered ``os.getpid()``.
+    """
+    return (record.get("space") or "", record.get("name") or "", record.get("port"))
+
+
+class InstanceScanError(RuntimeError):
+    """A complete registration snapshot could not be read safely."""
+
+
+def instances(directory=None, *, timeout=5, strict=True):
+    """Read registrations without treating an unreadable file as a dead process.
+
+    The entire scan shares one retry budget. Update admission and shutdown need
+    a complete snapshot; tray rendering can explicitly request a best-effort one.
+    """
+    directory = Path(directory or state_dir()) / "instances"
+    deadline = time.monotonic() + timeout
+    while True:
+        result = []
+        failures = []
+        try:
+            paths = sorted(p for p in directory.iterdir() if p.suffix == ".json")
+        except FileNotFoundError:
+            return []
+        except OSError as exc:
+            paths = []
+            failures.append((directory, exc))
+        for path in paths:
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+                if (
+                    not isinstance(record, dict)
+                    or type(record.get("pid")) is not int
+                    or record["pid"] <= 0
+                ):
+                    raise ValueError("实例登记缺少有效的进程编号")
+                if process_alive(record["pid"]):
+                    result.append(record)
+                else:
+                    path.unlink(missing_ok=True)
+                    if record.get("kind") == "ocr-worker":
+                        (directory.parent / "shutdown" / path.name).unlink(
+                            missing_ok=True
+                        )
+            except FileNotFoundError:
+                pass  # The instance may have removed its registration on exit.
+            except (OSError, ValueError) as exc:
+                failures.append((path, exc))
+        if not failures:
+            return result
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            if not strict:
+                return result
+            path, error = failures[0]
+            raise InstanceScanError(
+                f"无法完整读取实例登记，请稍后重试或检查文件权限：{path}（{error}）"
+            ) from error
+        time.sleep(min(0.05, remaining))
+
+
+def managed_instances(directory=None, data_dir=None):
+    data_dir = os.environ.get("MOWER_DATA_DIR", "") if data_dir is None else data_dir
+    return [
+        record
+        for record in instances(directory, timeout=0, strict=False)
+        if record.get("kind") == "instance"
+        and record.get("managed")
+        and record.get("data_dir", "") == data_dir
+    ]
+
+
+def unified_managers(directory=None, data_dir=None):
+    data_dir = os.environ.get("MOWER_DATA_DIR", "") if data_dir is None else data_dir
+    return [
+        record
+        for record in instances(directory, timeout=0, strict=False)
+        if record.get("kind") == "manager"
+        and record.get("unified_tray")
+        and record.get("data_dir", "") == data_dir
+    ]
+
+
+def send_instance_command(record, action, directory=None):
+    """Address only the registered instance selected by the manager."""
+    directory = Path(directory or state_dir())
+    if action == "exit":
+        write_json(directory / "shutdown" / f"{record['id']}.json", {"manager": True})
+    elif action in ("toggle", "browser", "show"):
+        write_json(
+            directory / "commands" / record["id"] / f"{uuid4().hex}.json",
+            {"action": action},
+        )
+    else:
+        raise ValueError(f"Unknown instance command: {action}")
+
+
+class RuntimeRegistration:
+    def __init__(
+        self,
+        kind,
+        *,
+        space="",
+        name="",
+        port=None,
+        running=None,
+        directory=None,
+        maintenance=True,
+    ):
+        self.directory = Path(directory) if directory is not None else state_dir()
+        launch_id = (
+            os.environ.pop("MOWER_LAUNCH_ID", "")
+            if kind == "instance" and os.environ.get("MOWER_MANAGED") == "1"
+            else ""
+        )
+        self.id = (
+            launch_id
+            if len(launch_id) == 32 and all(c in "0123456789abcdef" for c in launch_id)
+            else uuid4().hex
+        )
+        self.path = self.directory / "instances" / f"{self.id}.json"
+        self.request = self.directory / "shutdown" / f"{self.id}.json"
+        self.running = running or (lambda: False)
+        self.closed = threading.Event()
+        self._publication_lock = threading.Lock()
+        self.record = {
+            "id": self.id,
+            "pid": os.getpid(),
+            "kind": kind,
+            "space": str(space or ""),
+            "name": name,
+            "port": port,
+            "root": str(installation_root()),
+            "data_dir": os.environ.get("MOWER_DATA_DIR", ""),
+            "executable": sys.executable,
+            "argv": list(sys.argv),
+            "cwd": os.getcwd(),
+            "background": os.environ.get("MOWER_BACKGROUND") == "1",
+            "managed": kind == "instance" and os.environ.get("MOWER_MANAGED") == "1",
+            "ready": False,
+            "restart_job": os.environ.get("MOWER_RESTART_JOB", ""),
+            "supervision_directory": os.environ.get("MOWER_SUPERVISOR_DIRECTORY", "")
+            if kind == "instance"
+            else "",
+        }
+        self.publish()
+        atexit.register(self.close)
+        self.thread = threading.Thread(target=self._heartbeat, daemon=True)
+        self.thread.start()
+        if maintenance:
+            threading.Thread(
+                target=self._retry_backups, name="mower-backup-cleanup", daemon=True
+            ).start()
+
+    def _retry_backups(self):
+        # A copied stdlib runtime has no application backup-cleanup service.
+        if not __package__:
+            return
+        try:
+            from arknights_mower.utils.log import logger
+
+            from .software_update_worker import retry_backup_cleanup
+
+            retry_backup_cleanup(self.directory, self.record["root"], logger=logger)
+        except Exception:
+            # This optional maintenance cannot prevent registration or startup.
+            from arknights_mower.utils.log import logger
+
+            logger.warning("历史更新备份暂无法清理")
+
+    def publish(self):
+        with self._publication_lock:
+            if self.closed.is_set():
+                return
+            self.record.update(running=bool(self.running()), heartbeat=time.time())
+            write_json(self.path, self.record.copy(), sync=True)
+
+    def _heartbeat(self):
+        while not self.closed.wait(1):
+            try:
+                self.publish()
+            except Exception:
+                if __package__:
+                    from arknights_mower.utils.log import logger
+
+                    logger.exception("实例登记发布失败，下次心跳将重试：%s", self.path)
+                elif sys.stderr is not None:
+                    # The copied updater runtime has only its redirected stream.
+                    import traceback
+
+                    print(
+                        f"实例登记发布失败，下次心跳将重试：{self.path}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    traceback.print_exc()
+
+    def shutdown_requested(self):
+        return self.request.exists()
+
+    def take_commands(self):
+        actions = []
+        for path in sorted((self.directory / "commands" / self.id).glob("*.json")):
+            command = read_json(path, {})
+            path.unlink(missing_ok=True)
+            if command.get("action") in ("toggle", "browser", "show"):
+                actions.append(command["action"])
+        return actions
+
+    def close(self):
+        from shutil import rmtree
+
+        self.closed.set()
+        if not self._publication_lock.acquire(timeout=6):
+            raise TimeoutError("实例登记仍在发布，保留登记文件，请稍后重试关闭")
+        try:
+            self.path.unlink(missing_ok=True)
+            self.request.unlink(missing_ok=True)
+            rmtree(self.directory / "commands" / self.id, ignore_errors=True)
+        finally:
+            self._publication_lock.release()
+        self.thread.join(timeout=3)
+
+
+def hide_macos_dock_icon():
+    """The tray process is an accessory app, with no Dock tile."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+
+        NSApplication.sharedApplication().setActivationPolicy_(
+            NSApplicationActivationPolicyAccessory
+        )
+    except ImportError:
+        pass  # Headless/source installations need not have Cocoa installed.
+
+
+def detached_options():
+    if sys.platform == "win32":
+        return {"creationflags": 0x00000008 | 0x00000200 | 0x08000000}
+    return {"start_new_session": True}
+
+
+def hidden_console_options():
+    """Hide console tools started by a windowed application on Windows."""
+    return {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+
+
+def launch_environment(record, job_id="", background=False):
+    env = os.environ.copy()
+    env.pop("MOWER_RECOVERY_RUN", None)
+    # A frozen child must initialize its own bootloader/runtime, including after
+    # replacement of the bundle. System subprocesses must not inherit private libs.
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    # Set these before starting source Python children. Frozen workers also
+    # configure their streams explicitly, since bootloaders may ignore them.
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    for name in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+        if name + "_ORIG" in env:
+            env[name] = env[name + "_ORIG"]
+        else:
+            env.pop(name, None)
+    # os._Environ normalizes variable names to uppercase on Windows, so a plain
+    # copy can change the casing of proxy variables. Normalize them to lowercase
+    # so subprocesses and callers see a deterministic environment on every platform.
+    for name in ("http_proxy", "https_proxy", "all_proxy", "no_proxy"):
+        matches = [key for key in env if key.lower() == name]
+        if matches:
+            # requests/urllib prefer the exact lowercase spelling, even when
+            # its value is empty. Never let insertion order overwrite it.
+            key = name if name in env else name.upper()
+            value = env[key] if key in env else env[sorted(matches)[0]]
+            for key in matches:
+                del env[key]
+            env[name] = value
+    env.update(
+        MOWER_RESTART_JOB=job_id,
+        MOWER_BACKGROUND="1" if background else "0",
+        MOWER_RESUME_RUN="1" if record.get("running") else "0",
+        MOWER_RESTART_PORT=str(record.get("port") or ""),
+        MOWER_MANAGED="1" if record.get("managed") else "0",
+    )
+    if record.get("data_dir"):
+        env["MOWER_DATA_DIR"] = record["data_dir"]
+    else:
+        env.pop("MOWER_DATA_DIR", None)
+    return env
+
+
+@contextmanager
+def utf8_output(log_path):
+    """Use UTF-8 for worker logs, including windowed/frozen standard streams."""
+    original = sys.stdout, sys.stderr
+    log = None
+    try:
+        if any(stream is None for stream in original):
+            log = Path(log_path).open("a", encoding="utf-8", buffering=1)
+        for name, stream in zip(("stdout", "stderr"), original):
+            if stream is None:
+                setattr(sys, name, log)
+            elif hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        yield
+    finally:
+        sys.stdout, sys.stderr = original
+        if log is not None:
+            log.close()

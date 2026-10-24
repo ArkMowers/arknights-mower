@@ -1,0 +1,24 @@
+{
+  "title": "Rescue Worker Rotation and Retry Ownership",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-14]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_defer_read",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_replace_low_workers",
+    "arknights_mower.utils.emergency_staffing.worker_block_reason"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_observation_budget_tests.py",
+    "arknights_mower/tests/emergency_group_staffing_tests.py",
+    "arknights_mower/tests/emergency_staffing_tests.py",
+    "ui/src/stores/rescuePlan.test.js"
+  ]
+}

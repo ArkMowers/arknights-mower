@@ -1,0 +1,19 @@
+{
+  "title": "Simulator Command Isolation and Review Repairs",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-03]",
+    "[INV-DEV-02]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.simulator.build_command_set"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_review_regression_tests.py"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "title": "Intelligent Rescue Startup Progress Lifecycle",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.__main__.simulate",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_startup"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_observation_budget_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py"
+  ]
+}

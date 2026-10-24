@@ -1,0 +1,2855 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88",
+  "actualFunctions": [
+    "available_free",
+    "active_high_resting_count",
+    "_slot_takable",
+    "_find_dorm_slot",
+    "assign_dorm_group",
+    "assign_dorm",
+    "standby_candidates",
+    "has_resting_anchor",
+    "standby_can_yield",
+    "legacy_standby_can_yield",
+    "_can_standby",
+    "rescue_mood_threshold",
+    "rest_mood_complete",
+    "has_rest_mood_limit",
+    "is_planned_operator",
+    "is_effective_free_slot",
+    "group_is_resting",
+    "is_auto_free_dorm_slot",
+    "is_auto_free_dorm_operator",
+    "is_free_room_excluded",
+    "is_full_dorm_fallback",
+    "skip_idle_dorm_release",
+    "average_mood",
+    "is_standby",
+    "get_current_operator",
+    "get_dorm_by_name",
+    "all_dorms",
+    "is_recovery_dorm",
+    "is_dynamic_dorm_position",
+    "current_mood",
+    "is_high",
+    "is_resting",
+    "is_workshop",
+    "has_resting_mood",
+    "resting_mood"
+  ],
+  "scope": "Default original recovery-bed pool primitives. Stable input order, source absolute completion timestamps, physical locations separate from reservations, actual helper AST. Workshop global name lists and recognized agent_list are controlled fixture inputs; no production/income/devicetime fitting.",
+  "cases": [
+    {
+      "id": "strict-timer--0.01",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "P",
+            "room": "room_P",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_P": [
+            "P"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "P",
+            "completedAtHours": -0.01
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "find",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "index": 0,
+        "dorms": [
+          {
+            "name": "P",
+            "timeMicros": -36000000
+          },
+          {
+            "name": "",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "P",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "strict-timer-0",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "P",
+            "room": "room_P",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_P": [
+            "P"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "P",
+            "completedAtHours": 0
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "find",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "index": 1,
+        "dorms": [
+          {
+            "name": "P",
+            "timeMicros": 0
+          },
+          {
+            "name": "",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "P",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "strict-timer-1",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "P",
+            "room": "room_P",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_P": [
+            "P"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "P",
+            "completedAtHours": 1
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "find",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "index": 1,
+        "dorms": [
+          {
+            "name": "P",
+            "timeMicros": 3600000000
+          },
+          {
+            "name": "",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "P",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "first-takable-before-empty",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "R",
+            "room": "room_R",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "low",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_R": [
+            "R"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "R",
+            "completedAtHours": 1
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "find",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "index": 0,
+        "dorms": [
+          {
+            "name": "R",
+            "timeMicros": 3600000000
+          },
+          {
+            "name": "",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "R",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "low-protect-unfinished-replacement",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "low",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "R",
+            "room": "room_R",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "low",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_R": [
+            "R"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "",
+            "completedAtHours": null
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "R",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "find",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "index": 0,
+        "dorms": [
+          {
+            "name": "",
+            "timeMicros": null
+          },
+          {
+            "name": "R",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "R",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "low-take-expired-replacement",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "low",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "R",
+            "room": "room_R",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "low",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_R": [
+            "R"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "",
+            "completedAtHours": null
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "R",
+            "completedAtHours": -0.01
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "find",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "index": 1,
+        "dorms": [
+          {
+            "name": "",
+            "timeMicros": null
+          },
+          {
+            "name": "R",
+            "timeMicros": -36000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "R",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "used-bed-skipped",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "",
+            "completedAtHours": null
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "find",
+        "names": [
+          "A"
+        ],
+        "used": [
+          0
+        ],
+        "groupResting": false
+      },
+      "output": {
+        "index": 1,
+        "dorms": [
+          {
+            "name": "",
+            "timeMicros": null
+          },
+          {
+            "name": "",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "standby-yield-12-True-False",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "S",
+            "room": "room_S",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "standby",
+            "mood": 12,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_S": [
+            "S"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "S",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "slot",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": true
+      },
+      "output": {
+        "takable": true,
+        "dorms": [
+          {
+            "name": "S",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "S",
+            "mood": 12,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "standby-yield-10-True-False",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "S",
+            "room": "room_S",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "standby",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_S": [
+            "S"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "S",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "slot",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": true
+      },
+      "output": {
+        "takable": false,
+        "dorms": [
+          {
+            "name": "S",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "S",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "standby-yield-12-False-False",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "S",
+            "room": "room_S",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "standby",
+            "mood": 12,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": null,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_S": [
+            "S"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "S",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "slot",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": true
+      },
+      "output": {
+        "takable": false,
+        "dorms": [
+          {
+            "name": "S",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "S",
+            "mood": 12,
+            "depletionRate": 0,
+            "timeStampMicros": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "standby-yield-12-True-True",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "low",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "S",
+            "room": "room_S",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "standby",
+            "mood": 12,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_S": [
+            "S"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "S",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "slot",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": true
+      },
+      "output": {
+        "takable": false,
+        "dorms": [
+          {
+            "name": "S",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "S",
+            "mood": 12,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "workshop-yield-23-True-False",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 23,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "W",
+            "room": "room_W",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": true,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_W": [
+            "W"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "W",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "slot",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": true
+      },
+      "output": {
+        "takable": true,
+        "dorms": [
+          {
+            "name": "W",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 23,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "W",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "workshop-yield-22-False-False",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "low",
+            "resting_priority": "high",
+            "mood": 22,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "W",
+            "room": "room_W",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": true,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_W": [
+            "W"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "W",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "slot",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": true
+      },
+      "output": {
+        "takable": true,
+        "dorms": [
+          {
+            "name": "W",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 22,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "W",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "workshop-yield-23-False-False",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "low",
+            "resting_priority": "high",
+            "mood": 23,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "W",
+            "room": "room_W",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": true,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_W": [
+            "W"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "W",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "slot",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": true
+      },
+      "output": {
+        "takable": false,
+        "dorms": [
+          {
+            "name": "W",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 23,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "W",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "workshop-yield-10-True-True",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": true,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "W",
+            "room": "room_W",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": true,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_W": [
+            "W"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "W",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "slot",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": true
+      },
+      "output": {
+        "takable": false,
+        "dorms": [
+          {
+            "name": "W",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "W",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "group-low-first-allocation",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "H",
+            "room": "room_H",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "L",
+            "room": "room_L",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "low",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "F",
+            "room": "room_F",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "R",
+            "room": "room_R",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "low",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_H": [
+            "H"
+          ],
+          "room_L": [
+            "L"
+          ],
+          "room_F": [
+            "F"
+          ],
+          "room_R": [
+            "R"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "F",
+            "completedAtHours": -0.01
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "R",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "group",
+        "names": [
+          "H",
+          "L"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "assignedIndices": [
+          0,
+          1
+        ],
+        "dorms": [
+          {
+            "name": "L",
+            "timeMicros": null
+          },
+          {
+            "name": "H",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "H",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "L",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "F",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "R",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "group-failure-keeps-bed-names-and-timers",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "H",
+            "room": "room_H",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "L",
+            "room": "room_L",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "low",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "P",
+            "room": "room_P",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_H": [
+            "H"
+          ],
+          "room_L": [
+            "L"
+          ],
+          "room_P": [
+            "P"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "",
+            "completedAtHours": null
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "P",
+            "completedAtHours": 1
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "group",
+        "names": [
+          "H",
+          "L"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "assignedIndices": null,
+        "dorms": [
+          {
+            "name": "",
+            "timeMicros": null
+          },
+          {
+            "name": "P",
+            "timeMicros": 3600000000
+          }
+        ],
+        "operators": [
+          {
+            "name": "H",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "L",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "P",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "standby-optional-after-anchor",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "H",
+            "room": "room_H",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "S",
+            "room": "room_S",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "standby",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_H": [
+            "H"
+          ],
+          "room_S": [
+            "S"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "group",
+        "names": [
+          "S",
+          "H"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "assignedIndices": [
+          0
+        ],
+        "dorms": [
+          {
+            "name": "H",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "H",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "S",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "standby-required-without-unfinished-anchor",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "H",
+            "room": "room_H",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 24,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "S",
+            "room": "room_S",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "standby",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_H": [
+            "H"
+          ],
+          "room_S": [
+            "S"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "group",
+        "names": [
+          "S",
+          "H"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "assignedIndices": null,
+        "dorms": [
+          {
+            "name": "",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "H",
+            "mood": 24,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "S",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "stable-low-high-standby-sort",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "H",
+            "room": "room_H",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "L2",
+            "room": "room_L2",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "low",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "S",
+            "room": "room_S",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "standby",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "L1",
+            "room": "room_L1",
+            "index": 0,
+            "group": "g",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "low",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_H": [
+            "H"
+          ],
+          "room_L2": [
+            "L2"
+          ],
+          "room_S": [
+            "S"
+          ],
+          "room_L1": [
+            "L1"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free",
+            "Free",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "",
+            "completedAtHours": null
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "",
+            "completedAtHours": null
+          },
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "",
+            "completedAtHours": null
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "group",
+        "names": [
+          "H",
+          "L2",
+          "S",
+          "L1"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "assignedIndices": [
+          1,
+          2,
+          0,
+          3
+        ],
+        "dorms": [
+          {
+            "name": "H",
+            "timeMicros": null
+          },
+          {
+            "name": "L2",
+            "timeMicros": null
+          },
+          {
+            "name": "L1",
+            "timeMicros": null
+          },
+          {
+            "name": "S",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "H",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "L2",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "S",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "L1",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "cap-completed-excluded",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "令",
+            "room": "room_令",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 12,
+            "lower_limit": 0,
+            "upper_limit": 12,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_令": [
+            "令"
+          ],
+          "dormitory_1": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 1,
+          "operator_mood_limits": {}
+        },
+        "action": "find",
+        "names": [
+          "令"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "index": null,
+        "dorms": [
+          {
+            "name": "",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "令",
+            "mood": 12,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "available-free-and-expired-observation",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "P",
+            "room": "room_P",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 2,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "J",
+            "room": "room_J",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 2,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_2",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "R",
+            "room": "room_R",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "low",
+            "resting_priority": "low",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "W",
+            "room": "room_W",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 2,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": true,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_P": [
+            "P"
+          ],
+          "room_J": [
+            "J"
+          ],
+          "room_R": [
+            "R"
+          ],
+          "room_W": [
+            "W"
+          ],
+          "dormitory_1": [
+            "Free",
+            "Free",
+            "Free",
+            "Free"
+          ],
+          "dormitory_2": [
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "P",
+            "completedAtHours": -0.01
+          },
+          {
+            "position": [
+              "dormitory_2",
+              0
+            ],
+            "name": "J",
+            "completedAtHours": 0
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "R",
+            "completedAtHours": 1
+          },
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "W",
+            "completedAtHours": 1
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "capacity",
+        "names": [
+          "P"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "availableHigh": 1,
+        "availableLow": 2,
+        "activeHigh": 1,
+        "dorms": [
+          {
+            "name": "P",
+            "timeMicros": -36000000
+          },
+          {
+            "name": "J",
+            "timeMicros": 0
+          },
+          {
+            "name": "R",
+            "timeMicros": 3600000000
+          },
+          {
+            "name": "W",
+            "timeMicros": 3600000000
+          },
+          {
+            "name": "",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "P",
+            "mood": 24,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "J",
+            "mood": 2,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "R",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "W",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fixed-native-slot-not-in-effective-pool",
+      "input": {
+        "nowHours": 0,
+        "operators": [
+          {
+            "name": "A",
+            "room": "room_A",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "",
+            "current_index": -1,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          },
+          {
+            "name": "P",
+            "room": "room_P",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "mood": 10,
+            "lower_limit": 0,
+            "upper_limit": 24,
+            "current_room": "dormitory_1",
+            "current_index": 0,
+            "timeStampHours": 0,
+            "depletion_rate": 0,
+            "workshop": false,
+            "workaholic": false,
+            "exhaust_require": false,
+            "rest_in_full": false,
+            "standby_low_priority": false
+          }
+        ],
+        "plan": {
+          "room_A": [
+            "A"
+          ],
+          "room_P": [
+            "P"
+          ],
+          "dormitory_1": [
+            "Fixed",
+            "Free"
+          ]
+        },
+        "dorms": [
+          {
+            "position": [
+              "dormitory_1",
+              0
+            ],
+            "name": "P",
+            "completedAtHours": -0.01
+          },
+          {
+            "position": [
+              "dormitory_1",
+              1
+            ],
+            "name": "",
+            "completedAtHours": null
+          }
+        ],
+        "config": {
+          "resting_threshold": 0.65,
+          "ling_xi": 0,
+          "operator_mood_limits": {}
+        },
+        "action": "capacity",
+        "names": [
+          "A"
+        ],
+        "used": [],
+        "groupResting": false
+      },
+      "output": {
+        "availableHigh": 1,
+        "availableLow": 0,
+        "activeHigh": 0,
+        "dorms": [
+          {
+            "name": "P",
+            "timeMicros": -36000000
+          },
+          {
+            "name": "",
+            "timeMicros": null
+          }
+        ],
+        "operators": [
+          {
+            "name": "A",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          },
+          {
+            "name": "P",
+            "mood": 10,
+            "depletionRate": 0,
+            "timeStampMicros": 0
+          }
+        ]
+      }
+    }
+  ]
+}

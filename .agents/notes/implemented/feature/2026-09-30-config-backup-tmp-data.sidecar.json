@@ -1,0 +1,19 @@
+{
+  "title": "Configuration backup includes persistent tmp data",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-CFG-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.config_backup.export_archive",
+    "arknights_mower.utils.config_backup.import_configuration"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/config_backup_tests.py"
+  ]
+}

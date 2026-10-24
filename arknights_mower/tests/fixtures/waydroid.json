@@ -1,0 +1,12 @@
+{
+  "not_installed": {"installed": false},
+  "uninitialized": {"status": "[12:00:00] Waydroid is not initialized, run \"waydroid init\"\n", "returncode": 0},
+  "stopped": {"status": "Session:\tSTOPPED\nVendor type:\tMAINLINE\n", "session": {}},
+  "running": {
+    "status": "Session:\tRUNNING\nContainer:\tRUNNING\nVendor type:\tMAINLINE\nIP address:\t192.168.240.112\nSession user:\talice(1000)\nWayland display:\twayland-0\n",
+    "session": {"user_id": "1000", "user_name": "alice", "waydroid_data": "/home/alice/.local/share/waydroid/data", "state": "RUNNING"}
+  },
+  "missing_endpoint": {"status": "Session:\tRUNNING\nContainer:\tRUNNING\nVendor type:\tMAINLINE\nIP address:\tUNKNOWN\nSession user:\talice(1000)\nWayland display:\twayland-0\n"},
+  "multiple_targets": {"devices": [["USB-123", "device"], ["192.168.240.111:5555", "device"], ["192.168.240.112:5555", "device"]]},
+  "ambiguous_endpoint": {"status": "Session:\tRUNNING\nContainer:\tRUNNING\nIP address:\t192.168.240.112\nIP address:\t192.168.240.113\nSession user:\talice(1000)\n"}
+}

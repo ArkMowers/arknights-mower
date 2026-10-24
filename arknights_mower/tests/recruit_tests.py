@@ -1,7 +1,16 @@
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-with patch.dict("sys.modules", {"cv2": MagicMock(), "numpy": MagicMock()}):
+# Windows 中文控制台（GBK）打印干员名里的上标字符（如 ²）会 UnicodeEncodeError——
+# 重配 stdout 为 UTF-8/replace，保证本机与 CI（UTF-8）都能跑。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# 只 mock cv2：recruit 计算测试不需真实 OpenCV。numpy 不能 mock——import RecruitSolver
+# 会连带 import arknights_mower.models，其导入时反序列化含 numpy 数组的 pickle
+# （avatar.pkl 等），numpy 被 MagicMock 顶掉会炸「numpy is not a package」。
+with patch.dict("sys.modules", {"cv2": MagicMock()}):
     from arknights_mower.solvers.recruit import RecruitSolver
 
 

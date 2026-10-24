@@ -1,0 +1,17 @@
+{
+  "title": "Resource migration test boundary",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [],
+  "code_symbols": [
+    "arknights_mower.utils.resource_pkg.migrate_legacy_resource_overlay",
+    "arknights_mower.utils.resource_pkg.reload_resource_caches_if_changed"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/resource_pkg_tests.py"
+  ]
+}

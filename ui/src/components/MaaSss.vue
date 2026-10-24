@@ -1,8 +1,11 @@
 <script setup>
 import { inject, nextTick, onMounted, ref } from 'vue'
+import { useMessage } from 'naive-ui'
+import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 
 const mobile = inject('mobile')
 const axios = inject('axios')
+const message = useMessage()
 
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
@@ -38,22 +41,26 @@ function start_input() {
 }
 
 async function download_maa_copilot() {
+  const number = maa_code.value.replace(/^maa:\/\//, '').trim()
+  if (!/^\d+$/.test(number)) {
+    message.error('请输入有效的 MAA 作业编号')
+    return
+  }
   loading.value = true
-  const number = maa_code.value.replace('maa://', '')
-  const { data } = await axios.get(`https://prts.maa.plus/copilot/get/${number}`, {
-    transformRequest: [
-      (data, headers) => {
-        delete headers.token
-        return JSON.stringify(data)
-      }
-    ]
-  })
-  const form_data = new FormData()
-  form_data.append('copilot', new Blob([data.data.content], { type: 'application/json' }))
-  const response = await axios.post(sss_url, form_data)
-  sss_data.value = response.data
-  maa_code_input.value = false
-  loading.value = false
+  try {
+    const { data } = await axios.get(
+      `${import.meta.env.VITE_HTTP_URL || ''}/network/maa-copilot/${number}`
+    )
+    const form_data = new FormData()
+    form_data.append('copilot', new Blob([data.data.content], { type: 'application/json' }))
+    const response = await axios.post(sss_url, form_data)
+    sss_data.value = response.data
+    maa_code_input.value = false
+  } catch (error) {
+    message.error(error.response?.data?.message || 'MAA 作业下载失败，请检查网络代理')
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -105,7 +112,12 @@ async function download_maa_copilot() {
             style="width: auto; flex-grow: 1"
             trigger-style="width: 100%"
             :action="sss_url"
-            :headers="{ token: token }"
+            :headers="
+              () => ({
+                token,
+                [CONFIG_GENERATION_HEADER]: axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
+              })
+            "
             :show-file-list="false"
             name="copilot"
             @finish="import_sss"
@@ -122,7 +134,7 @@ async function download_maa_copilot() {
           <div>{{ sss_data.details }}</div>
         </div>
         <div v-else>未选择作业</div>
-        <n-flex v-for="o in sss_data.operators" align="center">
+        <n-flex v-for="o in sss_data.operators" :key="o.name" align="center">
           <n-avatar :src="`avatar/${o.name}.webp`" />
           <div>{{ o.name }}（{{ o.skill }}技能）</div>
         </n-flex>

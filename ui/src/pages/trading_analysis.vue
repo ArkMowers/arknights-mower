@@ -1,28 +1,35 @@
 <template>
-  <div>
-    <h1 class="page-title">贸易订单分析</h1>
-  </div>
-  <div>
-    <n-button @click="restoreHistory" type="default">
-      恢复历史
-      <help-text>
-        <p>点击后会在后台运行，请勿多次发送请求</p>
-        <p>如果截图比较多，可能等待时间会比较长，请耐心</p>
-      </help-text></n-button
-    >
-  </div>
-  <div>
-    <n-grid x-gap="12" y-gap="12" cols="1 1000:2 " style="text-align: center" autoresize>
-      <n-gi v-if="show_analysis_chart">
-        <div class="report-card_1">
-          <v-chart class="chart" :option="option_analysis" />
-        </div>
-      </n-gi>
-    </n-grid>
-  </div>
+  <PageLayout>
+    <template #header>
+      <PageHeader>
+        贸易订单分析
+        <template #actions>
+          <n-button @click="restoreHistory" secondary size="small">
+            恢复历史
+            <help-text>
+              <p>点击后会在后台运行，请勿多次发送请求</p>
+              <p>如果截图比较多，可能等待时间会比较长，请耐心</p>
+            </help-text>
+          </n-button>
+        </template>
+      </PageHeader>
+    </template>
+
+    <div class="analysis-section">
+      <n-grid x-gap="12" y-gap="12" cols="1 1000:2" style="text-align: center" autoresize>
+        <n-gi v-if="show_analysis_chart">
+          <div class="analysis-card">
+            <v-chart class="chart" :option="option_analysis" />
+          </div>
+        </n-gi>
+      </n-grid>
+    </div>
+  </PageLayout>
 </template>
 
 <script setup>
+import PageLayout from '@/components/PageLayout.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { registerTheme, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
@@ -51,19 +58,20 @@ use([
   CanvasRenderer
 ])
 import { useConfigStore } from '@/stores/config'
+import { useResolvedTheme } from '@/composables/theme'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'
-const { theme } = storeToRefs(store)
+const { theme: themePreference } = storeToRefs(store)
+const theme = useResolvedTheme(themePreference)
 
 import roma from './theme/roma.json'
 import dark from './theme/dark.json'
 registerTheme('dark', dark)
-if (theme.value == 'dark') {
-  provide(THEME_KEY, 'dark')
-} else {
-  registerTheme('roma', roma)
-  provide(THEME_KEY, 'roma')
-}
+registerTheme('roma', roma)
+provide(
+  THEME_KEY,
+  computed(() => (theme.value === 'dark' ? 'dark' : 'roma'))
+)
 const priceMapping = {
   但书_2000: 2000,
   但书_2500: 2500,
@@ -309,21 +317,36 @@ const option_analysis = computed(() => ({
 </script>
 
 <style scoped>
+.analysis-section {
+  width: 100%;
+}
+
 .chart {
   height: 400px;
 }
 
-.report-card_1 {
-  display: gird;
+.analysis-card {
+  display: flex;
   flex-direction: column;
   align-items: center;
-  /* 让内容在水平方向上居中 */
   justify-content: center;
-  /* 让内容在垂直方向上居中 */
-
-  width: 800px;
-  height: 400px;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
   padding: 20px 20px 80px 20px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--mower-divider);
+  border-radius: 8px;
+  background: var(--mower-surface);
+  box-shadow: var(--mower-shadow-surface);
+}
+
+@media (max-width: 640px) {
+  .analysis-card {
+    padding: 12px 12px 60px 12px;
+  }
+
+  .chart {
+    height: 320px;
+  }
 }
 </style>

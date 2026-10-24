@@ -1,0 +1,33 @@
+{
+  "title": "Unanswered Connect Restart Evidence",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-06",
+  "authors": [
+    "DeepSeek",
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-19]",
+    "[INV-SCHED-39]",
+    "[INV-05]",
+    "[INV-06]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.adb_client.server.probe_adb_server",
+    "arknights_mower.utils.device.adb_client.server.SharedADBHandshakeTimeout",
+    "arknights_mower.utils.device.adb_client.shared.SharedADBRecovery._require_host_timeout",
+    "arknights_mower.utils.device.adb_client.shared.SharedADBRecovery._observe",
+    "arknights_mower.utils.device.adb_client.shared.SharedADBRecovery._wait_absent",
+    "arknights_mower.utils.device.adb_client.shared.SharedADBRecovery._start",
+    "arknights_mower.utils.device.adb_client.server_process.adb_listener_absent"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/adb_server_tests.py",
+    "arknights_mower/tests/adb_shared_server_tests.py",
+    "arknights_mower/tests/adb_server_process_tests.py",
+    "arknights_mower/tests/adb_shared_transport_tests.py",
+    "arknights_mower/tests/device_adb_recovery_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py"
+  ]
+}

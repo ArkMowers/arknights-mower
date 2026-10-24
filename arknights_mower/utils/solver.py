@@ -13,14 +13,13 @@ from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.const import KeyCode
-from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.device import Device
-from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
-from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.swipe import noinertia_path
 from arknights_mower.utils.traceback import caller_info
 
 
@@ -47,6 +46,8 @@ class BaseSolver:
         self,
         device: Device | None = None,
         recog: Recognizer | None = None,
+        *,
+        connection_retries: int = 3,
     ) -> None:
         # self.device = device if device is not None else (recog.device if recog is not None else Device())
         if device is None and recog is not None:
@@ -54,23 +55,7 @@ class BaseSolver:
         if device is not None:
             self.device = device
         else:
-            while True:
-                try:
-                    self.device = Device()
-                    self.device.client.check_server_alive()
-                    Session().connect(config.conf.adb)
-                    if not self.device.check_resolution():
-                        raise MowerExit
-                    if config.conf.droidcast.enable:
-                        self.device.start_droidcast()
-                    if config.conf.touch_method == "scrcpy":
-                        self.device.control.scrcpy = Scrcpy(self.device.client)
-                    break
-                except MowerExit:
-                    raise
-                except Exception as e:
-                    logger.exception(e)
-                    restart_simulator()
+            self.device = Device.create(connection_retries=connection_retries)
 
         self.recog = recog if recog is not None else Recognizer(self.device)
 
@@ -95,7 +80,10 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.exception(f"识别出了点小差错 qwq: {e}")
+                logger.exception(
+                    f"识别出了点小差错 qwq: {e}",
+                    extra={"archive_screenshots": False},
+                )
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -103,6 +91,10 @@ class BaseSolver:
                 logger.exception(e)
                 raise e
             retry_times = config.MAX_RETRYTIME
+            # transition() 既没点屏幕也没等待就返回时，缓存不会被清掉（清理写在
+            # sleep 里）。下一次 get_scene 仍返回旧场景，比如 tap_element 找不到
+            # 元素直接返回 False，while 就会一直空转下去。这里补上清理。
+            self.recog.update()
 
     @abstractmethod
     def transition(self) -> bool:
@@ -170,6 +162,7 @@ class BaseSolver:
     ) -> tp.Scope:
         return self.recog.find(res, draw, scope, thres, judge, strict, score)
 
+    @timed_step("tap")
     def tap(
         self,
         poly: tp.Location,
@@ -214,14 +207,13 @@ class BaseSolver:
         draw: bool = False,
         scope: tp.Scope = None,
         judge: bool = True,
-        detected: bool = False,
         thres: Optional[int] = None,
     ) -> bool:
-        """tap element"""
+        """tap element，找不到时返回 False 而不报错"""
         element = self.find(
             element_name, draw, scope, judge=judge, score=score, thres=thres
         )
-        if detected and element is None:
+        if element is None:
             return False
         self.tap(element, x_rate, y_rate, interval)
         return True
@@ -353,30 +345,36 @@ class BaseSolver:
     #     if interval > 0:
     #         self.sleep(interval, rebuild)
 
+    @timed_step("swipe")
     def swipe_noinertia(
         self,
         start: tp.Coordinate,
         movement: tp.Coordinate,
         duration: int = 20,
         interval: float = 0.2,
+        *,
+        retry: bool = False,
+        capture: bool = False,
     ) -> None:
-        """swipe with no inertia (movement should be vertical)"""
+        """无惯性滑动；调用方确认未生效后可用 retry=True 延长拖动。
+
+        本接口只执行一次手势，不根据截图差异自动重复操作。
+        """
         if config.stop_mower.is_set():
             raise MowerExit
-        points = [start]
-        if movement[0] == 0:
-            dis = abs(movement[1])
-            points.append((start[0] + 100, start[1]))
-            points.append((start[0] + 100, start[1] + movement[1]))
-            points.append((start[0], start[1] + movement[1]))
-        else:
-            dis = abs(movement[0])
-            points.append((start[0], start[1] + 100))
-            points.append((start[0] + movement[0], start[1] + 100))
-            points.append((start[0] + movement[0], start[1]))
-        self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
+        points, durations = noinertia_path(start, movement, duration, retry=retry)
+        frame = self.device.swipe_ext(
+            points,
+            durations=durations,
+            up_wait=400,
+            **({"capture": True} if capture else {}),
+        )
         if interval > 0:
             self.sleep(interval)
+        else:
+            self.recog.update()
+        if capture:
+            self.recog.set_frame(frame)
 
     def back(self, interval: float = 1) -> None:
         """send back keyevent"""
@@ -426,6 +424,10 @@ class BaseSolver:
     def solve_captcha(self, refresh=False):
         th = thres2(self.recog.gray, 254)
         pos = np.nonzero(th)
+        if pos[0].size == 0:
+            # 启动页的图案偶尔误命中验证码特征；此时没有白色验证码面板。
+            logger.info("验证码画面已消失，等待场景重新识别")
+            return
         offset_x = pos[1].min()
         offset_y = pos[0].min()
         img_scope = ((offset_x, offset_y), (pos[1].max(), pos[0].max()))
@@ -520,14 +522,30 @@ class BaseSolver:
         x, y, w, h = rect[0]
         self.tap(((x, y), (x + w, y + h)))
 
+    def retry_cancelled_login(self, attempt: int) -> None:
+        if attempt > config.MAX_RETRYTIME:
+            raise StrategyError("登录被取消，已达到本轮重试登录次数上限")
+        if not (
+            self.find("double_confirm/main")
+            and self.find("double_confirm/login_cancelled")
+            and (button := self.find("double_confirm/retry_login"))
+        ):
+            raise RecognizeError("登录取消弹窗或重试登录按钮已变化")
+        logger.info("登录被取消，第 %s 次重试登录", attempt)
+        self.tap(button)
+
     def login(self):
         """
         登录进游戏
         """
         retry_times = config.MAX_RETRYTIME
+        cancelled_login_attempts = 0
         while retry_times and not self.is_login():
             try:
-                if (scene := self.scene()) == Scene.LOGIN_START:
+                if (scene := self.scene()) == Scene.LOGIN_CANCELLED:
+                    cancelled_login_attempts += 1
+                    self.retry_cancelled_login(cancelled_login_attempts)
+                elif scene == Scene.LOGIN_START:
                     # 应对两种情况：
                     # 1. 点击左上角“网络检测”后出现“您即将进行一次网络拨测，该操作将采集您的网络状态并上报，点击确认继续”，点x
                     # 2. 点击左上角“清除缓存”之后取消
@@ -592,7 +610,10 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.exception(f"识别出了点小差错 qwq: {e}")
+                logger.exception(
+                    f"识别出了点小差错 qwq: {e}",
+                    extra={"archive_screenshots": False},
+                )
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -612,7 +633,7 @@ class BaseSolver:
         while retry_times:
             if self.scene() == Scene.NAVIGATION_BAR:
                 return True
-            elif not self.tap_element("nav_button", detected=True):
+            elif not self.tap_element("nav_button"):
                 return False
             retry_times -= 1
 
@@ -679,7 +700,10 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.exception(f"识别出了点小差错 qwq: {e}")
+                logger.exception(
+                    f"识别出了点小差错 qwq: {e}",
+                    extra={"archive_screenshots": False},
+                )
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -793,11 +817,11 @@ class BaseSolver:
                         logger.info("生息演算导航完成（ra/start_button）")
                         return
                     logger.info("匹配到 continue_button（非当前模式预期）")
-                    send_message("生息演算（Maa）导航失败：未正确选择模式")
-                    raise Exception("生息演算（Maa）导航失败：未正确选择模式")
+                    send_message("生息演算（MAA）导航失败：未正确选择模式")
+                    raise Exception("生息演算（MAA）导航失败：未正确选择模式")
                 self.sleep(1)
             else:
-                raise Exception("生息演算（Maa）导航失败：未识别到开始/继续按钮")
+                raise Exception("生息演算（MAA）导航失败：未识别到开始/继续按钮")
 
         # RelaunchAnchor 主题
         elif theme == "RelaunchAnchor":
@@ -865,8 +889,8 @@ class BaseSolver:
                     logger.warning(f"RelaunchAnchor 导航第{attempt + 1}次失败，重试")
             raise Exception("无法找到指定的 RelaunchAnchor 模式")
 
-    def waiting_solver(self):
-        """需要等待的页面解决方法。触发超时重启会返回False"""
+    def waiting_solver(self, *, restart_on_timeout: bool = True):
+        """等待当前场景变化；超时返回 False，可由调用方禁止重启。"""
         scene = self.scene()
         sleep_time, wait_count = getattr(
             config.conf.waiting_scene, scene_list[str(scene)]["label"]
@@ -876,6 +900,8 @@ class BaseSolver:
             if self.scene() != scene:
                 return True
         logger.warning("相同场景等待超时")
+        if not restart_on_timeout:
+            return False
         self.device.exit()
         csleep(3)
         self.check_current_focus()
@@ -896,7 +922,8 @@ class BaseSolver:
                 if (scene := self.scene()) == target_scene:
                     return True
                 if scene in self.waiting_scene:
-                    self.waiting_solver()
+                    if not self.waiting_solver():
+                        return False
                 else:
                     self.sleep(interval)
             return False

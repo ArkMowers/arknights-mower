@@ -1,0 +1,28 @@
+{
+  "title": "Preservation Repair Boundaries",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-02]",
+    "[INV-DEV-03]",
+    "[INV-DEV-04]",
+    "[INV-DIAG-03]",
+    "[INV-DIAG-04]",
+    "[INV-DEV-08]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.screenshot.ScreenshotStore",
+    "arknights_mower.utils.device.session.DeviceSession"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/screenshot_tests.py",
+    "arknights_mower/tests/screenshot_pipeline_tests.py",
+    "arknights_mower/tests/device_preparation_tests.py",
+    "arknights_mower/tests/device_adb_input_tests.py",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

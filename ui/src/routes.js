@@ -15,29 +15,45 @@ export const routes = [
         name: 'log'
       },
       {
+        path: 'task-settings',
+        component: () => import('@/pages/TaskSettings.vue'),
+        meta: { title: '任务配置' },
+        name: 'task-settings'
+      },
+      {
         path: 'plan-editor',
         component: () => import('@/pages/Plan.vue'),
         meta: { title: '排班' },
         name: 'plan'
       },
       {
+        path: 'rescue-plan-editor',
+        component: () => import('@/pages/RescuePlan.vue'),
+        meta: { title: '救急排班' },
+        name: 'rescue_plan'
+      },
+      {
         path: 'mowersettings',
         component: () => import('@/pages/Settings.vue'),
-        meta: { title: 'mower设置' },
+        meta: { title: 'Mower 设置', settings: true, settingsSidebar: true },
         name: 'mowersettings'
       },
       {
         path: 'maasettings',
-        component: () => import('@/pages/maasettings.vue'),
-        meta: { title: 'maa设置' },
+        redirect: (to) => ({ name: 'task-settings', query: to.query, hash: to.hash }),
         name: 'maasettings'
       },
-      {
-        path: 'aio',
-        component: () => import('@/pages/Material_all_in_one.vue'),
-        meta: { title: '设置' },
-        name: 'aio'
-      },
+      // PROTOTYPE：任务编排原型，选定方案后删除
+      ...(import.meta.env.DEV
+        ? [
+            {
+              path: 'taskflow-prototype',
+              component: () => import('@/pages/taskflow-prototype/TaskflowPrototype.vue'),
+              meta: { title: '任务编排原型' },
+              name: 'taskflow-prototype'
+            }
+          ]
+        : []),
       {
         path: 'doc',
         component: () => import('@/pages/Doc.vue'),
@@ -47,7 +63,7 @@ export const routes = [
       {
         path: 'mastery-recommendation',
         component: () => import('@/pages/MasteryRecommendation.vue'),
-        meta: { title: '专精推荐' },
+        meta: { title: '养成规划' },
         name: 'mastery_recommendation'
       },
       {
@@ -88,6 +104,18 @@ export const routes = [
             component: () => import('@/pages/trading_analysis.vue'),
             meta: { title: '贸易订单分析' },
             name: 'trading_analysis'
+          },
+          {
+            path: 'recycling',
+            component: () => import('@/pages/RecyclingStats.vue'),
+            meta: { title: '回收站材料统计' },
+            name: 'recycling'
+          },
+          {
+            path: 'log-schedule',
+            component: () => import('@/pages/LogSchedule.vue'),
+            meta: { title: '日志调度' },
+            name: 'log_schedule'
           }
         ]
       }

@@ -1,0 +1,26 @@
+{
+  "title": "Yituliu growth survey and local operator statistics",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-GROWTH-02]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.yituliu_statistics.get_statistics",
+    "arknights_mower.utils.yituliu_sync.sync_after_cultivate",
+    "arknights_mower.utils.yituliu_sync.sync_cached_operators",
+    "arknights_mower.utils.operator_statistics.personal_statistics"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/yituliu_statistics_tests.py",
+    "arknights_mower/tests/yituliu_sync_tests.py",
+    "arknights_mower/tests/operator_statistics_tests.py",
+    "arknights_mower/tests/cultivate_depot_tests.py",
+    "ui/src/utils/operatorStatistics.test.js",
+    "ui/src/utils/growthSurvey.test.js"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "Share Device Command Output Ownership",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-20]",
+    "[INV-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.manager_io.run_command",
+    "arknights_mower.utils.device.manager_io.run_manager_command"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_command_tests.py",
+    "arknights_mower/tests/device_mumu_io_tests.py"
+  ]
+}

@@ -1,0 +1,642 @@
+{
+  "revision": "b2d9ac85fe070e805aadf0d5f44fc095c1e95253",
+  "scope": "Unmodified alpha metadata, migration and task-coalescing decision oracle.\n\nPhysical reads, inventory and skill flags are explicit fixture inputs. No UI,\nSQLite or game execution is claimed by these fixtures.\n",
+  "metadata": [
+    {
+      "name": "ordinary-return",
+      "input": {
+        "rows": [
+          {
+            "name": "A",
+            "room": "room_1_1",
+            "index": 0,
+            "replacement": [
+              "R"
+            ],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "current_room": "dormitory_1",
+            "current_index": 2,
+            "mood": 10
+          },
+          {
+            "name": "R",
+            "room": "",
+            "current_room": "room_1_1",
+            "current_index": 0
+          },
+          {
+            "name": "N",
+            "room": "",
+            "current_room": "dormitory_1",
+            "current_index": 3,
+            "mood": 20
+          }
+        ],
+        "plan": {
+          "room_1_1": [
+            "A"
+          ],
+          "dormitory_1": [
+            "K1",
+            "K2",
+            "Free",
+            "Free",
+            "Free"
+          ]
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "A",
+            "time": 3
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "N",
+            "time": 1
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ]
+          }
+        ],
+        "freeRoom": false
+      },
+      "output": [
+        {
+          "type": "SHIFT_ON",
+          "time": 2.8666666666666667,
+          "plan": {
+            "room_1_1": [
+              "A"
+            ]
+          },
+          "metadata": "",
+          "strict": false
+        }
+      ]
+    },
+    {
+      "name": "individual-release",
+      "input": {
+        "rows": [
+          {
+            "name": "A",
+            "room": "room_1_1",
+            "index": 0,
+            "replacement": [
+              "R"
+            ],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "current_room": "dormitory_1",
+            "current_index": 2,
+            "mood": 10
+          },
+          {
+            "name": "R",
+            "room": "",
+            "current_room": "room_1_1",
+            "current_index": 0
+          },
+          {
+            "name": "N",
+            "room": "",
+            "current_room": "dormitory_1",
+            "current_index": 3,
+            "mood": 20
+          }
+        ],
+        "plan": {
+          "room_1_1": [
+            "A"
+          ],
+          "dormitory_1": [
+            "K1",
+            "K2",
+            "Free",
+            "Free",
+            "Free"
+          ]
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "A",
+            "time": 3
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "N",
+            "time": 1
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ]
+          }
+        ],
+        "freeRoom": true
+      },
+      "output": [
+        {
+          "type": "RELEASE_DORM",
+          "time": 1.0,
+          "plan": {
+            "dormitory_1": [
+              "Current",
+              "Current",
+              "Current",
+              "Free",
+              "Current"
+            ]
+          },
+          "metadata": "N",
+          "strict": false
+        },
+        {
+          "type": "SHIFT_ON",
+          "time": 2.8666666666666667,
+          "plan": {
+            "room_1_1": [
+              "A"
+            ]
+          },
+          "metadata": "",
+          "strict": false
+        }
+      ]
+    },
+    {
+      "name": "pending-migration",
+      "input": {
+        "rows": [
+          {
+            "name": "A",
+            "room": "room_1_1",
+            "index": 0,
+            "replacement": [
+              "R"
+            ],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "current_room": "dormitory_1",
+            "current_index": 2,
+            "mood": 10
+          },
+          {
+            "name": "R",
+            "room": "",
+            "current_room": "room_1_1",
+            "current_index": 0
+          },
+          {
+            "name": "N",
+            "room": "",
+            "current_room": "dormitory_1",
+            "current_index": 3,
+            "mood": 20
+          }
+        ],
+        "plan": {
+          "room_1_1": [
+            "A"
+          ],
+          "dormitory_1": [
+            "K1",
+            "K2",
+            "Free",
+            "Free",
+            "Free"
+          ]
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "A",
+            "time": 3
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "N",
+            "time": 1
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ]
+          }
+        ],
+        "freeRoom": false,
+        "pending": {
+          "plan": {
+            "dormitory_1": [
+              "Current",
+              "Current",
+              "Current",
+              "Current",
+              "A"
+            ]
+          },
+          "type": "RE_ORDER",
+          "time": 2
+        }
+      },
+      "output": [
+        {
+          "type": "RE_ORDER",
+          "time": 2.0,
+          "plan": {
+            "dormitory_1": [
+              "Current",
+              "Current",
+              "Current",
+              "Current",
+              "A"
+            ]
+          },
+          "metadata": "",
+          "strict": false
+        }
+      ]
+    },
+    {
+      "name": "no-invented-return-cooldown",
+      "input": {
+        "rows": [
+          {
+            "name": "A",
+            "room": "room_1_1",
+            "index": 0,
+            "replacement": [
+              "R"
+            ],
+            "operator_type": "high",
+            "resting_priority": "high",
+            "current_room": "dormitory_1",
+            "current_index": 2,
+            "mood": 10
+          },
+          {
+            "name": "R",
+            "room": "",
+            "current_room": "room_1_1",
+            "current_index": 0
+          },
+          {
+            "name": "N",
+            "room": "",
+            "current_room": "dormitory_1",
+            "current_index": 3,
+            "mood": 20
+          }
+        ],
+        "plan": {
+          "room_1_1": [
+            "A"
+          ],
+          "dormitory_1": [
+            "K1",
+            "K2",
+            "Free",
+            "Free",
+            "Free"
+          ]
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "A",
+            "time": 0.1
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "N",
+            "time": 1
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ]
+          }
+        ],
+        "freeRoom": false,
+        "recentReturn": true
+      },
+      "output": [
+        {
+          "type": "SHIFT_ON",
+          "time": -0.0002777777777777778,
+          "plan": {
+            "room_1_1": [
+              "A"
+            ]
+          },
+          "metadata": "",
+          "strict": false
+        }
+      ]
+    }
+  ],
+  "closing": {
+    "input": {
+      "rows": [
+        {
+          "name": "A",
+          "room": "room_1_1",
+          "index": 0,
+          "group": "g",
+          "replacement": [
+            "R"
+          ],
+          "operator_type": "high",
+          "mood": 24
+        },
+        {
+          "name": "K",
+          "room": "dormitory_1",
+          "index": 3,
+          "group": "g",
+          "replacement": [
+            "Free"
+          ],
+          "operator_type": "high"
+        },
+        {
+          "name": "B",
+          "room": "room_1_2",
+          "index": 0,
+          "group": "h",
+          "replacement": [
+            "S"
+          ],
+          "operator_type": "high",
+          "resting_priority": "high",
+          "current_room": "dormitory_1",
+          "current_index": 2,
+          "mood": 8
+        },
+        {
+          "name": "C",
+          "room": "room_1_3",
+          "index": 0,
+          "group": "h",
+          "replacement": [
+            "U"
+          ],
+          "operator_type": "high",
+          "resting_priority": "high",
+          "current_room": "dormitory_1",
+          "current_index": 3,
+          "mood": 10
+        }
+      ],
+      "plan": {
+        "room_1_1": [
+          "A"
+        ],
+        "room_1_2": [
+          "B"
+        ],
+        "room_1_3": [
+          "C"
+        ],
+        "dormitory_1": [
+          "K1",
+          "K2",
+          "Free",
+          "K"
+        ]
+      },
+      "beds": [
+        {
+          "position": [
+            "dormitory_1",
+            2
+          ],
+          "name": "B",
+          "time": 3
+        },
+        {
+          "position": [
+            "dormitory_1",
+            3
+          ],
+          "name": "C",
+          "time": 4
+        }
+      ],
+      "intent": {
+        "room_1_1": [
+          "A"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "K"
+        ]
+      },
+      "recalled": [
+        "A",
+        "K"
+      ]
+    },
+    "output": {
+      "plan": {
+        "room_1_1": [
+          "A"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Free",
+          "K"
+        ],
+        "room_1_3": [
+          "C"
+        ],
+        "room_1_2": [
+          "B"
+        ]
+      },
+      "recalled": [
+        "A",
+        "B",
+        "C",
+        "K"
+      ],
+      "beds": [
+        {
+          "position": [
+            "dormitory_1",
+            2
+          ],
+          "name": "",
+          "time": null
+        },
+        {
+          "position": [
+            "dormitory_1",
+            3
+          ],
+          "name": "",
+          "time": null
+        }
+      ]
+    }
+  },
+  "selection": [
+    {
+      "freeRoom": false,
+      "fallback": false,
+      "excluded": false,
+      "output": [
+        "K1",
+        "K2",
+        "Current",
+        "N",
+        "Current"
+      ]
+    },
+    {
+      "freeRoom": true,
+      "fallback": false,
+      "excluded": false,
+      "output": [
+        "K1",
+        "K2",
+        "Current",
+        "Free",
+        "Current"
+      ]
+    },
+    {
+      "freeRoom": true,
+      "fallback": true,
+      "excluded": false,
+      "output": [
+        "K1",
+        "K2",
+        "Current",
+        "N",
+        "Current"
+      ]
+    },
+    {
+      "freeRoom": true,
+      "fallback": false,
+      "excluded": true,
+      "output": [
+        "K1",
+        "K2",
+        "Current",
+        "N",
+        "Current"
+      ]
+    }
+  ],
+  "release": [
+    {
+      "identity": "N",
+      "due": 1,
+      "excluded": false,
+      "ready": false,
+      "plan": {},
+      "retries": [
+        {
+          "type": "RELEASE_DORM",
+          "time": 1.0,
+          "plan": {
+            "dormitory_1": [
+              "Current",
+              "Current",
+              "Current",
+              "Free",
+              "Current"
+            ]
+          },
+          "metadata": "N",
+          "strict": false
+        }
+      ]
+    },
+    {
+      "identity": "N",
+      "due": 0,
+      "excluded": false,
+      "ready": true,
+      "plan": {
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "Free",
+          "Current"
+        ]
+      },
+      "retries": []
+    },
+    {
+      "identity": "",
+      "due": 0,
+      "excluded": false,
+      "ready": false,
+      "plan": {},
+      "retries": []
+    },
+    {
+      "identity": "N",
+      "due": 0,
+      "excluded": true,
+      "ready": false,
+      "plan": {},
+      "retries": []
+    }
+  ],
+  "coalesce": {
+    "consumed": [
+      0,
+      1
+    ],
+    "plan": {
+      "dormitory_1": [
+        "Current",
+        "B"
+      ],
+      "room_1_2": [
+        "R"
+      ]
+    }
+  }
+}

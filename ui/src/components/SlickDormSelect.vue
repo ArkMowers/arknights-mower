@@ -2,12 +2,17 @@
   <slick-list
     v-model:list="dormitoryValue"
     axis="xy"
-    appendTo=".n-select"
+    append-to="body"
     :distance="5"
+    :transition-duration="dragAnimation"
+    :dragged-settling-duration="dragAnimation"
+    helper-class="mower-drag-fallback"
     class="width100"
     group="dormitory"
     :accept="!props.disabled"
     @update:list="deleteRepeat"
+    @sort-start="({ node }) => normalizeSortablePreview({ item: node })"
+    @dragstart.prevent
   >
     <n-select
       :disabled="props.disabled"
@@ -24,14 +29,28 @@
 </template>
 
 <script setup>
-import { ref, h, computed } from 'vue'
+import { h, computed } from 'vue'
 import { SlickList, SlickItem } from 'vue-slicksort'
 import { NTag } from 'naive-ui'
+import '@/styles/drag.css'
+import { normalizeSortablePreview } from '@/utils/sortablePreview'
 
+const dragAnimation =
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 0
+    : 180
 const dormitoryValue = defineModel() // 绑定 v-model:value
 
 const props = defineProps({
   disabled: {
+    type: Boolean,
+    default: false
+  },
+  includeLow: {
+    type: Boolean,
+    default: false
+  },
+  roomOnly: {
     type: Boolean,
     default: false
   }
@@ -41,6 +60,13 @@ const props = defineProps({
 const dormitories = computed(() => {
   let options = []
   for (let x = 1; x <= 4; x++) {
+    if (props.roomOnly) {
+      options.push({ label: `宿舍 ${x}`, value: `dormitory_${x}` })
+      if (props.includeLow) {
+        options.push({ label: `宿舍 ${x} 低优位`, value: `dormitory_${x}_low` })
+      }
+      continue
+    }
     for (let y = 1; y <= 4; y++) {
       const value = `dormitory_${x}_${y}`
       options.push({ label: `宿舍 ${x}-${y + 1}`, value })
@@ -62,6 +88,8 @@ const render_dorm_slick_tag = ({ option, handleClose }) => {
       key: option.value,
       index: dormitoryValue.value.findIndex((value) => value == option.value),
       disabled: props.disabled,
+      class: 'mower-drag-tag',
+      'aria-disabled': props.disabled,
       style: 'z-index: 999; display: inline;'
     },
     () =>

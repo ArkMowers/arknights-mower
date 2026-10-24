@@ -1,0 +1,26 @@
+{
+  "server": {"Platform": {"Name": "Docker Engine - Community"}, "Components": [{"Name": "Engine", "Version": "27.5.1"}]},
+  "running": {
+    "Id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "Name": "/redroid-main",
+    "Config": {"Image": "redroid/redroid:12.0.0_64only-latest", "Labels": {}},
+    "State": {"Status": "running", "Running": true, "Paused": false, "Restarting": false},
+    "HostConfig": {"NetworkMode": "bridge"},
+    "NetworkSettings": {"Ports": {"5555/tcp": [{"HostIp": "0.0.0.0", "HostPort": "15555"}, {"HostIp": "::", "HostPort": "15555"}]}}
+  },
+  "stopped": {
+    "Id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "Name": "/redroid-alt",
+    "Config": {"Image": "docker.io/redroid/redroid:11.0.0-latest", "Labels": {}},
+    "State": {"Status": "exited", "Running": false, "Paused": false, "Restarting": false},
+    "HostConfig": {"NetworkMode": "bridge"},
+    "NetworkSettings": {"Ports": {}}
+  },
+  "custom": {
+    "Id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "Name": "/custom-redroid",
+    "Config": {"Image": "example/redroid:latest", "Labels": {}}
+  },
+  "changed_port": [{"HostIp": "127.0.0.1", "HostPort": "25555"}],
+  "malformed_inspect": ["null", "{}", "[null]", "not json", "[]", "[{}]"]
+}

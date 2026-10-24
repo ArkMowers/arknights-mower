@@ -4,6 +4,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from arknights_mower.utils.log import logger
+
 from .image import loadres
 
 
@@ -46,6 +48,50 @@ class DigitReader:
                     result[loc[1][i]] = j
         ch = [str(result[k]) for k in sorted(result)]
         return int("".join(ch))
+
+    def get_deer_causality(self, img_grey):
+        """Read the numerator in the first Nine-Colored Deer causality counter."""
+        from arknights_mower.models import riic_base_digits
+
+        counter = img_grey[290:335, 95:200]
+        numerator = counter[:, :45]  # Exclude the fixed /40 denominator.
+        numerator = cv2.resize(
+            numerator, None, fx=4 / 3, fy=4 / 3, interpolation=cv2.INTER_LINEAR
+        )
+        _, binary = cv2.threshold(numerator, 170, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(
+            binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        boxes = sorted((cv2.boundingRect(c) for c in contours), key=lambda box: box[0])
+        digits = []
+        for x, y, width, height in boxes:
+            if height < 24:  # The remaining edge of the slash is shorter.
+                continue
+            candidate = cv2.copyMakeBorder(
+                binary[y : y + height, x : x + width],
+                10,
+                10,
+                10,
+                10,
+                cv2.BORDER_CONSTANT,
+                value=0,
+            )
+            matches = [
+                cv2.minMaxLoc(
+                    cv2.matchTemplate(
+                        candidate, riic_base_digits[digit], cv2.TM_SQDIFF_NORMED
+                    )
+                )[0]
+                for digit in range(10)
+            ]
+            best = min(range(10), key=matches.__getitem__)
+            if matches[best] >= 0.5:
+                return None
+            digits.append(best)
+        if not 1 <= len(digits) <= 2:
+            return None
+        value = int("".join(map(str, digits)))
+        return value if 0 <= value < 40 else None
 
     def get_time(self, img_grey, h, w):
         digit_part = img_grey[h * 510 // 1080 : h * 543 // 1080, w * 499 // 1920 : w]
@@ -102,7 +148,7 @@ class DigitReader:
                 if accept:
                     result[loc[1][i]] = j
         ch = [str(result[k]) for k in sorted(result)]
-        print(ch)
+        logger.debug("识别订单时间数字：%s", ch)
         if len(ch) == 6:
             return (
                 int(f"{ch[0]}{ch[1]}"),

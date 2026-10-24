@@ -1,0 +1,19 @@
+{
+  "title": "Weekly Availability Placeholder",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UI-04]"
+  ],
+  "code_symbols": [
+    "ui/src/components/MaaWeeklyTable.vue"
+  ],
+  "test_suites": [
+    "ui/src/components/MaaWeeklyTable.test.js",
+    "ui/src/utils/maa_weekly_plan.test.js"
+  ]
+}
