@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { createPinia, setActivePinia } from 'pinia'
+import axios from 'axios'
 import { readFileSync } from 'node:fs'
 import { compileScript, parse } from '@vue/compiler-sfc'
 
@@ -39,10 +41,11 @@ const state = vi.hoisted(() => ({
   warning: null
 }))
 
-vi.mock('pinia', async (original) => ({
-  ...(await original()),
-  storeToRefs: (store) => store.refs
-}))
+vi.mock('pinia', async (original) => {
+  const pinia = await original()
+  return { ...pinia, storeToRefs: (store) => store.refs ?? pinia.storeToRefs(store) }
+})
+vi.mock('axios', () => ({ default: { get: vi.fn() } }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
@@ -69,6 +72,7 @@ describe('log page', () => {
     onMounted.mockClear()
     onUnmounted.mockClear()
     state.client = { get: vi.fn(), post: vi.fn() }
+    axios.get.mockImplementation((...args) => state.client.get(...args))
     state.warning = vi.fn()
     state.mower = {
       refs: {
@@ -88,16 +92,22 @@ describe('log page', () => {
     }
     state.config = { refs: { theme: ref('light') } }
     vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) })
-    vi.stubGlobal('document', {
-      hidden: false,
-      querySelector: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
-    })
+    vi.stubGlobal(
+      'document',
+      Object.assign(new EventTarget(), { hidden: false, querySelector: vi.fn() })
+    )
+    vi.stubGlobal(
+      'ResizeObserver',
+      vi.fn(function () {
+        this.observe = vi.fn()
+        this.disconnect = vi.fn()
+      })
+    )
     scope = effectScope()
   })
 
   afterEach(() => {
+    state.mower.$dispose?.()
     scope.stop()
     vi.clearAllTimers()
     vi.useRealTimers()
@@ -106,13 +116,6 @@ describe('log page', () => {
 
   it('subscribes to task updates only while the log page is mounted', async () => {
     state.client.get.mockResolvedValue({ data: {} })
-    vi.stubGlobal(
-      'ResizeObserver',
-      vi.fn(function () {
-        this.observe = vi.fn()
-        this.disconnect = vi.fn()
-      })
-    )
     const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
     onMounted.mock.lastCall[0]()
     expect(state.mower.start_task_polling).toHaveBeenCalledOnce()
@@ -125,6 +128,151 @@ describe('log page', () => {
     expect(state.mower.stop_task_polling).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
     await nextTick()
+  })
+
+  async function mountWithStore({ hidden = false } = {}) {
+    const { useMowerStore } = await vi.importActual('@/stores/mower')
+    setActivePinia(createPinia())
+    state.mower = useMowerStore()
+    document.hidden = hidden
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    onMounted.mock.lastCall[0]()
+    await vi.advanceTimersByTimeAsync(0)
+    return component
+  }
+
+  function setHidden(hidden) {
+    document.hidden = hidden
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+
+  function callsTo(path) {
+    return state.client.get.mock.calls.filter(([url]) => url.endsWith(path))
+  }
+
+  it('pauses hidden-page requests and refreshes immediately when visible again', async () => {
+    let status = 'working'
+    let tasks = [{ time: 'initial', plan: {} }]
+    state.client.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/status')
+        ? { status, plan_condition: [] }
+        : url.endsWith('/task')
+          ? tasks
+          : {}
+    }))
+    await mountWithStore()
+    expect(state.mower.task_list).toEqual(tasks)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(callsTo('/status')).toHaveLength(2)
+    expect(callsTo('/task')).toHaveLength(2)
+
+    setHidden(true)
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(callsTo('/status')).toHaveLength(2)
+    expect(callsTo('/task')).toHaveLength(2)
+
+    status = 'recovering'
+    tasks = [{ time: 'current', plan: {} }]
+    setHidden(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(callsTo('/status')).toHaveLength(3)
+    expect(callsTo('/task')).toHaveLength(3)
+    expect(state.mower.status).toBe('recovering')
+    expect(state.mower.task_list).toEqual(tasks)
+    expect(vi.getTimerCount()).toBe(2)
+
+    onUnmounted.mock.lastCall[0]()
+    setHidden(true)
+    setHidden(false)
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(callsTo('/status')).toHaveLength(3)
+    expect(callsTo('/task')).toHaveLength(3)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('starts no display polling when mounted hidden and reads current status on return', async () => {
+    state.client.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/status') ? { status: 'starting', plan_condition: [] } : []
+    }))
+    await mountWithStore({ hidden: true })
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(callsTo('/status')).toHaveLength(0)
+    expect(callsTo('/task')).toHaveLength(0)
+
+    setHidden(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(callsTo('/status')).toHaveLength(1)
+    expect(callsTo('/task')).toHaveLength(1)
+    expect(state.mower.status_label).toBe('启动中')
+    onUnmounted.mock.lastCall[0]()
+  })
+
+  it.each(['hide', 'unmount'])(
+    'does not restart polling when pending responses finish after %s',
+    async (action) => {
+      let resolveStatus
+      let resolveTasks
+      let statusReads = 0
+      state.client.get.mockImplementation((url) => {
+        if (url.endsWith('/status')) {
+          if (statusReads++ === 0) {
+            return Promise.resolve({ data: { status: 'working', plan_condition: [] } })
+          }
+          return new Promise((resolve) => (resolveStatus = resolve))
+        }
+        if (url.endsWith('/task')) {
+          return new Promise((resolve) => (resolveTasks = resolve))
+        }
+        return Promise.resolve({ data: {} })
+      })
+      await mountWithStore()
+      await vi.advanceTimersByTimeAsync(5000)
+      const signal = callsTo('/task')[0][1].signal
+      if (action === 'hide') setHidden(true)
+      else onUnmounted.mock.lastCall[0]()
+      expect(signal.aborted).toBe(true)
+
+      resolveStatus({ data: { status: 'working', plan_condition: [] } })
+      resolveTasks({ data: [{ time: 'obsolete', plan: {} }] })
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(state.mower.task_list).toEqual([])
+      expect(callsTo('/status')).toHaveLength(2)
+      expect(callsTo('/task')).toHaveLength(1)
+      expect(vi.getTimerCount()).toBe(0)
+      if (action === 'hide') onUnmounted.mock.lastCall[0]()
+    }
+  )
+
+  it('preserves manual Start and Stop after returning from a hidden page', async () => {
+    let status = 'stopped'
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/status')) return { data: { status, plan_condition: [] } }
+      if (url.endsWith('/stop')) {
+        status = 'stopped'
+        return { data: true }
+      }
+      if (url.endsWith('/start/0')) status = 'working'
+      return { data: url.endsWith('/task') ? [{ time: 'current', plan: {} }] : {} }
+    })
+    const component = await mountWithStore()
+    setHidden(true)
+    setHidden(false)
+    await vi.advanceTimersByTimeAsync(0)
+    component.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state.mower.running).toBe(true)
+    expect(callsTo('/start/0')).toHaveLength(1)
+    expect(state.mower.task_list).toHaveLength(1)
+
+    component.stop()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state.mower.running).toBe(false)
+    expect(state.mower.waiting).toBe(false)
+    expect(state.mower.task_list).toEqual([])
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(callsTo('/task')).toHaveLength(1)
+    onUnmounted.mock.lastCall[0]()
   })
 
   it.each(['启动中', '等待设备恢复'])(

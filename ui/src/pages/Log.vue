@@ -172,16 +172,25 @@ watch(
 )
 
 let runningTimer
-onMounted(() => {
+function updatePageVisibility() {
+  updateScreenshotPreview()
+  clearInterval(runningTimer)
+  if (document.hidden) {
+    stop_task_polling()
+    return
+  }
   start_task_polling()
   get_running()
   runningTimer = setInterval(get_running, 5000)
+}
+
+onMounted(() => {
   const savedPreviewState = localStorage.getItem('sc_preview')
   if (savedPreviewState !== null) {
     sc_preview.value = JSON.parse(savedPreviewState)
   }
-  document.addEventListener('visibilitychange', updateScreenshotPreview)
-  updateScreenshotPreview()
+  document.addEventListener('visibilitychange', updatePageVisibility)
+  updatePageVisibility()
   layoutObserver = new ResizeObserver(apply_log_layout)
   if (log_layout.value) layoutObserver.observe(log_layout.value)
   restore_log_layout()
@@ -192,7 +201,7 @@ onUnmounted(() => {
   task_dialog_active = false
   stop_task_polling()
   clearInterval(runningTimer)
-  document.removeEventListener('visibilitychange', updateScreenshotPreview)
+  document.removeEventListener('visibilitychange', updatePageVisibility)
   layoutObserver?.disconnect()
   screenshotPreview.stop()
 })
