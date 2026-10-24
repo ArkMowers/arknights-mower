@@ -3758,6 +3758,7 @@ def mastery_recommendation_debug():
 
 
 @app.route("/mastery-recommendation")
+@require_token
 def mastery_recommendation():
     from arknights_mower.utils.mastery_recommendation import get_mastery_recommendations
 

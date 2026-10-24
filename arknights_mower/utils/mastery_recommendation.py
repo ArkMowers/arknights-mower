@@ -184,13 +184,14 @@ def get_mastery_recommendations(*, include_materials=True, char_id=None):
             workshop_formula,
             blocked_materials=protected_workshop_materials(),
         )
-        result["goals"] = load_goals()
-        catalog = price_catalog()
-        result["statistics"] = statistics(box["characters"], skills, catalog)
-        result["personal_statistics"] = personal_statistics(
-            box["characters"], skills, catalog
-        )
-        result["history"] = statistics_history()
+        if char_id is None:
+            result["goals"] = load_goals()
+            catalog = price_catalog()
+            result["statistics"] = statistics(box["characters"], skills, catalog)
+            result["personal_statistics"] = personal_statistics(
+                box["characters"], skills, catalog
+            )
+            result["history"] = statistics_history()
     except (OSError, ValueError, KeyError) as exc:
         result["error"] = f"请从森空岛同步干员数据：{exc}"
         return result
