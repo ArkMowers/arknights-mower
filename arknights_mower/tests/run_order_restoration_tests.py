@@ -58,6 +58,98 @@ def assert_pending_restoration(task):
     assert task.run_order_restore_pending
 
 
+def test_late_secondary_prompt_cancels_before_restoring_original_staff(
+    solver, monkeypatch
+):
+    from arknights_mower.solvers.base_mixin import BaseMixin
+    from arknights_mower.tests.selection_confirm_handoff_tests import captured_prompt
+
+    task, place = prepare_order(solver, monkeypatch)
+    task.meta_data = ""
+    task.plan = {ROOM: ORIGINAL.copy()}
+    task.run_order_original_roster = copy.deepcopy(task.plan)
+    task.run_order_restore_pending = True
+    original_time = task.time
+    inserted = ["但书", COVERS[1]]
+    place(inserted)
+    del solver._selection_profile_snapshot
+    config.conf.performance_mode = "xhigh"
+    prompt = captured_prompt()
+    state = {"popup": False, "cancelled": False, "opened": True}
+    observed = []
+    confirmed = []
+    popup_waits = []
+    choose = solver.choose_agent.side_effect
+    read = solver.get_agent_from_room.side_effect
+    confirm = solver.tap_confirm.side_effect
+
+    def select(*args, **kwargs):
+        if solver.choose_agent.call_count == 1:
+            state["popup"] = True
+        choose(*args, **kwargs)
+
+    def find(name, *args, **kwargs):
+        if state["popup"]:
+            return prompt.find(name, *args, **kwargs)
+        if name in ("double_confirm/main", "arrange_check_in_on", "recycle/dashboard"):
+            return None
+        if name in ("confirm_blue", "confirm_train"):
+            x = 1609 if state["opened"] else 1724
+            return ((x, 990), (x + 89, 1041)) if name == "confirm_blue" else None
+        return None if name == "bill_accelerate" else True
+
+    def tap(position, *args, **kwargs):
+        assert not state["popup"]
+        if position == (1860, 60):
+            state["opened"] = not state["opened"]
+
+    def cancel(*args, **kwargs):
+        if state["popup"]:
+            assert task.plan == {ROOM: ORIGINAL}
+            assert confirmed == []
+            state.update(popup=False, cancelled=True)
+
+    def observe(*args, **kwargs):
+        result = read(*args, **kwargs)
+        if state["cancelled"]:
+            observed.append([item["agent"] for item in result])
+        return result
+
+    def submit(*args, **kwargs):
+        assert state["cancelled"] and observed
+        assert not state["popup"]
+        confirmed.append(solver.choose_agent.call_args.args[0].copy())
+        confirm(*args, **kwargs)
+
+    solver.profession_filter = BaseMixin.profession_filter.__get__(solver)
+    # 正常重试的 ALL 已高亮，弹窗出现前不需要修改职业。
+    solver.get_color = MagicMock(return_value=(0, 0, 255))
+    solver.find.side_effect = find
+    solver.scene.side_effect = lambda: (
+        Scene.DOUBLE_CONFIRM if state["popup"] else Scene.INFRA_MAIN
+    )
+    solver.back.side_effect = cancel
+    solver.tap.side_effect = tap
+    solver.sleep.side_effect = lambda *args: (
+        popup_waits.append(args) if state["popup"] else None
+    )
+    solver.choose_agent.side_effect = select
+    solver.get_agent_from_room.side_effect = observe
+    solver.tap_confirm.side_effect = submit
+
+    solver.agent_arrange(task.plan)
+
+    assert observed[0] == inserted
+    assert confirmed == [ORIGINAL]
+    assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
+    assert solver.task is task and task.time == original_time
+    assert task.plan == {}
+    assert not getattr(task, "run_order_restore_pending", False)
+    assert not state["popup"]
+    assert popup_waits == []
+    prompt.device.screencap.assert_not_called()
+
+
 @pytest.mark.parametrize("row", [["但书"], ["但书", COVERS[1]], ["Current", "但书"]])
 @pytest.mark.parametrize("adjusted,buffer", [(False, 1), (True, 1), (False, 0)])
 def test_observed_order_roster_runs_without_selection_or_restoration(

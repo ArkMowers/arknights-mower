@@ -660,7 +660,11 @@ class BaseMixin:
         )
 
     def require_agent_selection_page(self):
-        """名单异常时，用同帧入住信息页签区分页面退出与卡片识别失败。"""
+        """同帧房间页签或二次确认表明选人页面已变化。"""
+        if self.find("double_confirm/main"):
+            raise AgentSelectionPageChanged(
+                "选人页面出现二次确认，停止选人并返回房间实读重试"
+            )
         if self.find("arrange_check_in_on") or self.find("recycle/dashboard"):
             raise AgentSelectionPageChanged(
                 "选人页面已退出到当前房间入住信息，停止选人并返回房间实读重试"
@@ -1286,6 +1290,7 @@ class BaseMixin:
         for attempt in range(max_attempts):
             if attempt:
                 self.sleep(poll_interval)
+            self.require_agent_selection_page()
             if self.get_color(position)[2] >= 240:
                 self.record_operation_feedback(attempt)
                 return
@@ -1305,6 +1310,7 @@ class BaseMixin:
         for attempt in range(max_attempts + 1):
             if config.stop_mower.is_set():
                 raise MowerExit
+            self.require_agent_selection_page()
             buttons = tuple(
                 (resource, button[0][0], button[0][1])
                 for resource in ("confirm_blue", "confirm_train")
