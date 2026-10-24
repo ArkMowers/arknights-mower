@@ -12,6 +12,7 @@ from zipfile import ZIP_STORED, ZipFile
 from arknights_mower.utils.screenshot import ScreenshotStore
 
 _LOG_START = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+_LINE_END = re.compile(b"\r\n|\r|\n")
 _WINDOW = timedelta(minutes=5)
 
 
@@ -55,6 +56,76 @@ def archive_window(folder: Path, center: datetime):
         return center - _WINDOW, center + _WINDOW
 
 
+def _reverse_lines(stream, block_size=64 * 1024):
+    """从文件末尾分块读取，完整拼接 UTF-8 行后再解码。"""
+    position = stream.seek(0, 2)
+    pending = b""
+    last_line = True
+    while position:
+        size = min(position, block_size)
+        position -= size
+        stream.seek(position)
+        chunk = stream.read(size)
+        if position and chunk.startswith(b"\n"):
+            stream.seek(position - 1)
+            if stream.read(1) == b"\r":
+                position -= 1
+                chunk = b"\r" + chunk
+        lines = _LINE_END.split(chunk + pending)
+        pending = lines[0]
+        for line in reversed(lines[1:]):
+            if last_line:
+                last_line = False
+                if not line:
+                    continue
+            yield line.decode("utf-8", errors="replace")
+    if pending:
+        yield pending.decode("utf-8", errors="replace")
+
+
+def _recent_records(files, start, end, limit):
+    """按原文件及行顺序保留末尾记录，不假定日志时间严格递增。"""
+    retained = []
+    for path in reversed(files):
+        details = deque()
+        detail_size = 0
+        with path.open("rb") as stream:
+            for line in _reverse_lines(stream):
+                if not _LOG_START.match(line):
+                    details.appendleft(line)
+                    detail_size += len(line) + 1
+                    # 保留正文开头足够的续行，仍按原先的 8000 字符规则截断。
+                    while detail_size - len(details[-1]) - 1 >= 8000:
+                        detail_size -= len(details.pop()) + 1
+                    continue
+                try:
+                    when = datetime.fromisoformat(line[:19])
+                except ValueError:
+                    when = None
+                if when is not None and start <= when <= end:
+                    message = line.rstrip()
+                    for detail in details:
+                        if len(message) >= 8000:
+                            break
+                        message += "\n" + detail
+                    retained.append((when, message))
+                    if len(retained) == limit:
+                        return reversed(retained)
+                details.clear()
+                detail_size = 0
+    return reversed(retained)
+
+
+def _log_row(when, message, timestamps, images):
+    # 文件日志精度为秒；包含同一秒中较早采集的画面。
+    at_ns = int(when.timestamp() * 10**9) + 10**9 - 1
+    index = bisect.bisect_right(timestamps, at_ns) - 1
+    screenshot = None
+    if index >= 0 and at_ns - timestamps[index] <= 30 * 10**9:
+        screenshot = images[index][1]
+    return {"time": message[:19], "message": message, "screenshot": screenshot}
+
+
 def timeline(
     log_folder: Path,
     screenshot_folder: Path,
@@ -72,7 +143,7 @@ def timeline(
         images = screenshots_between(screenshot_folder, start, end)
     timestamps = [item[0] for item in images]
     bounded = limit is not None and limit > 0
-    rows = deque(maxlen=limit) if bounded else []
+    rows = []
     if not log_folder.exists():
         return []
     suffixes = set()
@@ -89,7 +160,13 @@ def timeline(
             or path.name.removeprefix("runtime.log.") in suffixes
         )
     ]
-    for path in sorted(files, key=lambda item: (item.name == "runtime.log", item.name)):
+    files.sort(key=lambda item: (item.name == "runtime.log", item.name))
+    if bounded:
+        return [
+            _log_row(when, message, timestamps, images)
+            for when, message in _recent_records(files, start, end, limit)
+        ]
+    for path in files:
         current_row = None
         with path.open(encoding="utf-8", errors="replace") as stream:
             for line in stream:
@@ -104,22 +181,8 @@ def timeline(
                     continue
                 if not start <= when <= end:
                     continue
-                # 文件日志精度为秒；包含同一秒中较早采集的画面。
-                at_ns = int(when.timestamp() * 10**9) + 10**9 - 1
-                index = bisect.bisect_right(timestamps, at_ns) - 1
-                screenshot = None
-                if index >= 0 and at_ns - timestamps[index] <= 30 * 10**9:
-                    screenshot = images[index][1]
-                rows.append(
-                    {
-                        "time": line[:19],
-                        "message": line.rstrip(),
-                        "screenshot": screenshot,
-                    }
-                )
+                rows.append(_log_row(when, line.rstrip(), timestamps, images))
                 current_row = rows[-1]
-    if bounded:
-        return list(rows)
     return rows[-limit:] if limit is not None else rows
 
 
