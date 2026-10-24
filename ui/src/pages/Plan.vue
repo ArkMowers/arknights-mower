@@ -18,6 +18,7 @@ import {
   collect_plan_operators
 } from '@/utils/plan_edit'
 import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPersistence'
+import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 
 const router = useRouter()
 const config_store = useConfigStore()
@@ -855,7 +856,12 @@ function movePlanForward() {
             :on-before-upload="beforeImport"
             style="width: auto"
             :action="import_url"
-            :headers="{ token: token }"
+            :headers="
+              () => ({
+                token,
+                [CONFIG_GENERATION_HEADER]: axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
+              })
+            "
             :show-file-list="false"
             name="img"
             @finish="import_plan"
