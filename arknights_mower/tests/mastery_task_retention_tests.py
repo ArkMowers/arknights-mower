@@ -1,9 +1,9 @@
 """训练读数失败保留原任务，有限本地复核不依赖普通巡检周期。"""
 
+import pickle
 from datetime import timedelta
 from unittest.mock import Mock
 
-import jsonpickle
 import pytest
 
 from arknights_mower.tests import mastery_legacy_swap_recovery_tests as legacy
@@ -92,7 +92,7 @@ def test_exhausted_observation_retains_original_until_related_new_evidence(
     assert state["swap_frozen"] == 0
     assert find_next_task(solver.tasks) is later
     assert not solver.error
-    restored = jsonpickle.decode(jsonpickle.encode(task))
+    restored = pickle.loads(pickle.dumps(task))
     assert restored.execution_failure == task.execution_failure
     assert restored.time == now
 
@@ -160,7 +160,7 @@ def test_restart_without_new_training_observation_keeps_failure_paused(
     action = Mock(side_effect=TrainingObservationError("槽位未确认"))
     monkeypatch.setattr(mastery, "run_swap_support", action)
     solver.infra_main()
-    restored = jsonpickle.decode(jsonpickle.encode(task))
+    restored = pickle.loads(pickle.dumps(task))
     solver.tasks = [restored]
     del solver.last_mastery_observation
 

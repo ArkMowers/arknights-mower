@@ -131,8 +131,6 @@ jsonpatch==1.33
     # via
     #   -r requirements.txt
     #   langchain-core
-jsonpickle==3.0.4
-    # via -r requirements.txt
 jsonpointer==3.0.0
     # via
     #   -r requirements.txt

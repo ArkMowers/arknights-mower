@@ -6,7 +6,6 @@
 `mower_thread` 由 server.py 运行时注入（判定「mower 正在运行」），本模块保持可独立测试。
 """
 
-import json
 from datetime import datetime
 from functools import wraps
 
@@ -41,6 +40,34 @@ def _require_token(f):
         return f(*args, **kwargs)
 
     return wrapper
+
+
+def _task_response(task):
+    response = {
+        "time": task.time.isoformat(),
+        "plan": {room: list(operators) for room, operators in task.plan.items()},
+        "type": {
+            "_value_": task.type.value,
+            "_name_": task.type.name,
+            "display_value": task.type.display_value,
+            "priority": task.type.priority,
+        },
+        "meta_data": task.meta_data,
+        "adjusted": getattr(task, "adjusted", False),
+        "strict_mood_limit": getattr(task, "strict_mood_limit", False),
+        "mood_limit": getattr(task, "mood_limit", None),
+        "initial_fia": getattr(task, "initial_fia", False),
+        "display_name": task.display_name,
+    }
+    for name in (
+        "emergency_recovery_release",
+        "emergency_staffing",
+        "emergency_dorm",
+        "workshop_generation",
+    ):
+        if hasattr(task, name):
+            response[name] = getattr(task, name)
+    return response
 
 
 @task_bp.route("/task", methods=["GET", "POST"])
@@ -111,14 +138,6 @@ def add_task():
             return str(e)
     else:
         if base_scheduler and mower_thread and mower_thread.is_alive():
-            from jsonpickle import encode
-
-            return [
-                {
-                    **json.loads(encode(i, unpicklable=False)),
-                    "display_name": i.display_name,
-                }
-                for i in base_scheduler.tasks
-            ]
+            return [_task_response(task) for task in base_scheduler.tasks]
         else:
             return []

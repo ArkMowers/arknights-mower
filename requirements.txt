@@ -91,8 +91,6 @@ jiter==0.10.0
     # via openai
 jsonpatch==1.33
     # via langchain-core
-jsonpickle==3.0.4
-    # via -r requirements.in
 jsonpointer==3.0.0
     # via jsonpatch
 langchain-core==0.3.66
