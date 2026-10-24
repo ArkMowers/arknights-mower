@@ -255,6 +255,7 @@ class DesktopStartupTests(unittest.TestCase):
         updates_enabled=True,
         instance_name="",
         managed=True,
+        commands=None,
     ):
         import server as task_server
         import webview_ui
@@ -272,13 +273,12 @@ class DesktopStartupTests(unittest.TestCase):
             server.http_start = Mock()
             server.browser_open = Mock()
             tray_channel = Mock()
-            tray_channel.get.side_effect = [
-                "toggle",
-                "toggle",
-                "browser",
-                "browser",
-                "exit",
-            ]
+            commands = (
+                ["toggle", "toggle", "browser", "browser", "exit"]
+                if commands is None
+                else commands
+            )
+            tray_channel.get.side_effect = commands
             server.desktop_child = Mock(return_value=(Mock(), tray_channel))
             server.start = Mock(wraps=task_server.start)
             stack.enter_context(patch.object(task_server, "app", server.app))
@@ -286,13 +286,7 @@ class DesktopStartupTests(unittest.TestCase):
             server.stop.return_value = "true"
             registration = Mock(record={})
             registration.shutdown_requested.return_value = False
-            registration.take_commands.side_effect = [
-                ["toggle"],
-                ["toggle"],
-                ["browser"],
-                ["browser"],
-                ["exit"],
-            ]
+            registration.take_commands.side_effect = [[command] for command in commands]
             shutdown = Shutdown()
             events = []
             server.resource_update.thread.join.side_effect = lambda: events.append(
@@ -378,7 +372,7 @@ class DesktopStartupTests(unittest.TestCase):
             webview_ui.run_desktop()
             self.assertTrue(server.app.config["DESKTOP_STARTUP_HANDLED"])
             if cancel != "shutdown":
-                self.assertEqual(mocks[-1].call_count, 2)
+                self.assertEqual(mocks[-1].call_count, commands.count("browser"))
             # Closing/reopening the window and opening browser tabs never queue
             # another worker; shutdown also cancels a delayed worker callback.
             self.assertLessEqual(len(workers), 1)
@@ -390,6 +384,22 @@ class DesktopStartupTests(unittest.TestCase):
         events, server = self.launch()
         self.assertEqual(events, [("start", "0")])
         server.start.assert_called_once_with("0", automatic=True)
+
+    def test_managed_background_start_and_browser_access_create_no_desktop_windows(
+        self,
+    ):
+        for automatic in (False, True):
+            with self.subTest(automatic=automatic):
+                events, server = self.launch(
+                    automatic=automatic,
+                    background=True,
+                    managed=True,
+                    commands=["browser", "exit"],
+                )
+                self.assertEqual(events, [("start", "0")] if automatic else [])
+                server.desktop_child.assert_not_called()
+                server.http_start.assert_called_once()
+                server.browser_open.assert_called_once()
 
     def test_browser_commands_and_tray_launch_keep_the_session_url_without_instance_name(
         self,

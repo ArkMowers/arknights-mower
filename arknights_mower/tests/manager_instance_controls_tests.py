@@ -9,6 +9,7 @@ import pytest
 import yaml
 from yamlcore import CoreLoader
 
+from arknights_mower.utils import manager_common
 from arknights_mower.utils import manager_instances as controls
 from arknights_mower.utils import update_runtime as runtime
 from manager import Api
@@ -171,6 +172,86 @@ def test_duplicate_launch_is_blocked_before_registration_and_after_window_reopen
     state = reopened.get_instances()[0]
     assert state["state"] == "starting"
     assert not state["editable"] and not state["can_start"] and state["can_stop"]
+
+
+@pytest.mark.parametrize(
+    "values,background",
+    [
+        ({}, "0"),
+        ({"startup_mode": "window"}, "0"),
+        ({"startup_mode": "background"}, "1"),
+    ],
+)
+@pytest.mark.parametrize("bulk", [False, True])
+def test_manager_launch_honors_saved_common_startup_mode(
+    manager, monkeypatch, values, background, bulk
+):
+    monkeypatch.setenv("MOWER_BACKGROUND", "1")
+    manager.update_all_settings(
+        [], manager.instances.copy(), {"values": values, "original": {}}
+    )
+    assert (manager.start_all() if bulk else manager.start(0))["ok"]
+    controls.subprocess.Popen.assert_called_once()
+    env = controls.subprocess.Popen.call_args.kwargs["env"]
+    assert env["MOWER_BACKGROUND"] == background
+    assert env["MOWER_MANAGED"] == "1"
+    assert manager_common.read_settings(manager._common_path) == values
+    assert not Path(manager.instances[0]["path"]).exists()
+
+
+def test_invalid_common_startup_mode_blocks_launch_before_creating_a_process(manager):
+    runtime.write_json(manager._common_path, {"startup_mode": "invalid"})
+    assert not manager.start(0)["ok"]
+    controls.subprocess.Popen.assert_not_called()
+
+
+def test_browser_action_addresses_ready_registration_without_starting_another_instance(
+    manager, monkeypatch
+):
+    manager.update_settings(0, {"token": "saved-token", "port": 58001})
+    registered = record(manager, port=59002)
+    pending = {**registered, "ready": False}
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [pending, registered])
+    assert manager.get_instances()[0]["can_open_browser"]
+    assert manager.open_browser(0, dict(manager.instances[0])) == {"ok": True}
+    commands = list((runtime.state_dir() / "commands/registered").glob("*.json"))
+    assert len(commands) == 1
+    assert json.loads(commands[0].read_text()) == {"action": "browser"}
+    controls.subprocess.Popen.assert_not_called()
+
+
+@pytest.mark.parametrize("state", ["stopped", "starting", "stopping", "unmanaged"])
+def test_browser_action_rechecks_instance_readiness_before_dispatch(
+    manager, monkeypatch, state
+):
+    registered = record(manager)
+    registered["ready"] = state != "starting"
+    registered["managed"] = state != "unmanaged"
+    monkeypatch.setattr(
+        runtime,
+        "instances",
+        lambda **kwargs: [] if state == "stopped" else [registered],
+    )
+    if state == "stopping":
+        runtime.send_instance_command(registered, "exit")
+    assert not manager.get_instances()[0]["can_open_browser"]
+    assert not manager.open_browser(0, dict(manager.instances[0]))["ok"]
+    assert not (runtime.state_dir() / "commands").exists()
+    controls.subprocess.Popen.assert_not_called()
+
+
+def test_browser_action_rejects_stale_target_and_unreadable_state(manager, monkeypatch):
+    target = dict(manager.instances[0])
+    manager.rename(0, "renamed")
+    assert not manager.open_browser(0, target)["ok"]
+    assert not manager.open_browser(-1, dict(manager.instances[0]))["ok"]
+    assert not manager.open_browser(True, dict(manager.instances[0]))["ok"]
+    monkeypatch.setattr(runtime, "instances", Mock(side_effect=OSError("scan failed")))
+    assert manager.open_browser(0, dict(manager.instances[0])) == {
+        "ok": False,
+        "message": "scan failed",
+    }
+    assert not (runtime.state_dir() / "commands").exists()
 
 
 def test_bridge_does_not_expose_filesystem_objects(manager):
