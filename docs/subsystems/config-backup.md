@@ -28,6 +28,17 @@ retains the current process's access settings and protected configuration files.
 Database backup operations have a ten-second deadline. Archive byte and entry
 limits cover configuration and tmp data together.
 
+Full backup import retains the active saved-profile identifier and name, replaces
+its snapshot with the imported content, and advances the configuration generation
+within the same file and database transaction. Metadata failure restores the
+previous files, database, snapshot and generation. Requests from pages opened
+before import are rejected according to the
+[saved-configuration request boundary](config-profiles.md#api-and-verification).
+Before submission, the frontend pauses and drains configuration, normal-plan and
+initialized rescue-plan saves. Success or an uncertain response keeps those
+stores paused until the page reloads; an explicit validation or busy rejection
+can resume saving when the configuration has not changed.
+
 Legacy ZIP entries `tmp/growth_plan.json` and `tmp/workshop_preset.json`
 restore into the current instance's `config/` directory. Canonical config entries
 win when both forms exist. Growth goals must decode as a JSON list before any

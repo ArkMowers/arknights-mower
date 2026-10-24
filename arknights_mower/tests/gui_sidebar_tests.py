@@ -5,6 +5,7 @@ import multiprocessing
 import tempfile
 import threading
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest import mock
 
@@ -202,6 +203,72 @@ class GuiSidebarTests(unittest.TestCase):
         gui.save_window_mode("maximized")
         self.assertEqual(gui.load_window_mode(), "maximized")
         self.assertEqual(gui.load_sidebar(), sidebar_layout())
+
+    def test_unreadable_gui_reports_storage_failure_without_publishing_defaults(self):
+        for path in ("/gui/sidebar", "/gui/appearance"):
+            for method in ("get", "head"):
+                with (
+                    self.subTest(path=path, method=method),
+                    mock.patch.object(
+                        Path, "open", side_effect=PermissionError("unreadable")
+                    ),
+                    mock.patch.object(Path, "is_file", return_value=True),
+                ):
+                    response = getattr(self.client, method)(path, headers=self.headers)
+                    self.assertEqual(response.status_code, 503)
+
+    def test_damaged_gui_returns_storage_failure_and_preserves_original_bytes(self):
+        self.path.parent.mkdir(parents=True)
+        for original in (b"sidebar: [", b"- invalid\n", b"\xff"):
+            self.path.write_bytes(original)
+            for path, payload in (
+                ("/gui/sidebar", {"sidebar": sidebar_layout()}),
+                ("/gui/appearance", {"software_version_display": "channel"}),
+            ):
+                with self.subTest(original=original, path=path):
+                    response = self.client.get(path, headers=self.headers)
+                    self.assertEqual(response.status_code, 503)
+                    response = self.client.put(path, json=payload, headers=self.headers)
+                    self.assertEqual(response.status_code, 503)
+                    self.assertEqual(self.path.read_bytes(), original)
+
+    def test_streamed_oversized_gui_json_is_bounded_before_saving(self):
+        raw = b'{"padding":"' + b"x" * (1024 * 1024) + b'"}'
+        for path in ("/gui/sidebar", "/gui/appearance"):
+            with self.subTest(path=path):
+                stream = BytesIO(raw)
+                response = self.client.put(
+                    path,
+                    headers=self.headers,
+                    content_type="application/json",
+                    environ_overrides={
+                        "CONTENT_LENGTH": "",
+                        "wsgi.input_terminated": True,
+                        "wsgi.input": stream,
+                    },
+                )
+                self.assertEqual(response.status_code, 413)
+                self.assertLessEqual(stream.tell(), 1024 * 1024 + 1)
+                self.assertFalse(self.path.exists())
+
+    def test_streamed_gui_body_is_not_read_without_the_current_token(self):
+        for path in ("/gui/sidebar", "/gui/appearance"):
+            for token in (None, "another-instance"):
+                with self.subTest(path=path, token=token):
+                    stream = BytesIO(b"x" * (1024 * 1024 + 2))
+                    response = self.client.put(
+                        path,
+                        headers={} if token is None else {"token": token},
+                        content_type="application/json",
+                        environ_overrides={
+                            "CONTENT_LENGTH": "",
+                            "wsgi.input_terminated": True,
+                            "wsgi.input": stream,
+                        },
+                    )
+                    self.assertEqual(response.status_code, 403)
+                    self.assertEqual(stream.tell(), 0)
+                    self.assertFalse(self.path.parent.exists())
 
     def test_other_process_cannot_overwrite_a_new_sidebar_with_old_window_data(self):
         context = multiprocessing.get_context("spawn")

@@ -158,16 +158,20 @@ def export_current_archive():
         return backup._archive_bytes(files, tmp)
 
 
+def _initial_registry():
+    identifier = uuid4().hex
+    return {
+        "version": 1,
+        "active_id": identifier,
+        "generation": "0",
+        "profiles": [{"id": identifier, "name": "默认档案"}],
+    }
+
+
 def _registry():
     data = _read_registry()
     if data is None:
-        identifier = uuid4().hex
-        data = {
-            "version": 1,
-            "active_id": identifier,
-            "generation": "0",
-            "profiles": [{"id": identifier, "name": "默认档案"}],
-        }
+        data = _initial_registry()
         _write_registry(data)
     return data
 
@@ -232,6 +236,38 @@ def _restore(path, raw):
         path.unlink(missing_ok=True)
     else:
         backup._write_bytes(path, raw)
+
+
+def import_backup(raw, *, expected_generation=None):
+    """Restore a backup and invalidate drafts from the previous configuration."""
+    with backup.backup_lock, workshop_lock:
+        check_generation(expected_generation)
+        data = _read_registry() or _initial_registry()
+        data["generation"] = uuid4().hex
+        index_path = _root() / "index.json"
+        snapshot_path = _profile_path(data["active_id"])
+        previous_index = _regular_bytes(index_path, MAX_INDEX_BYTES, optional=True)
+        previous_snapshot = _regular_bytes(
+            snapshot_path, backup.MAX_BACKUP_BYTES, optional=True
+        )
+
+        def commit():
+            try:
+                backup._write_bytes(snapshot_path, export_current_archive())
+                _write_registry(data)
+            except Exception:
+                logger.exception("备份导入元数据提交失败")
+                for path, previous in (
+                    (snapshot_path, previous_snapshot),
+                    (index_path, previous_index),
+                ):
+                    try:
+                        _restore(path, previous)
+                    except Exception:
+                        logger.exception("备份导入元数据回滚失败：%s", path)
+                raise
+
+        return backup.import_configuration(raw, commit=commit)
 
 
 def _activate(data, identifier, raw, outgoing):

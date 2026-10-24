@@ -4,10 +4,14 @@ export function reloadImportedConfiguration(
 ) {
   // Set the startup guard before reloading, and keep the existing URL/token.
   session.setItem('mower-config-imported', '1')
-  session.setItem(
-    'mower-config-import-result',
-    JSON.stringify({ message: result.message, recovery_path: result.recovery_path })
-  )
+  if (result) {
+    session.setItem(
+      'mower-config-import-result',
+      JSON.stringify({ message: result.message, recovery_path: result.recovery_path })
+    )
+  } else {
+    session.removeItem('mower-config-import-result')
+  }
   location.reload()
 }
 

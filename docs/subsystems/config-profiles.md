@@ -85,8 +85,9 @@ with only the selected weekly-plan key added as configuration metadata.
 Profile writes require the access token, `X-Mower-Settings: 1` and the current
 `X-Mower-Config-Generation` header. Other state-changing requests and task startup
 also check the generation under the serialization lock. A missing generation is
-accepted for legacy clients only before the first activation, when the generation
-is `0`. After activation, a missing or old generation returns HTTP 409 with
+accepted for legacy clients only before the first activation or full backup
+import, when the generation is `0`. After either operation, a missing or old
+generation returns HTTP 409 with
 `configuration_changed`; clients reload before submitting more work. A malformed
 registry refuses writes instead of falling back to an unprotected generation.
 

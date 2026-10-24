@@ -13,6 +13,7 @@ import yaml
 
 from arknights_mower.utils import config
 from arknights_mower.utils import config_backup as backup
+from arknights_mower.utils.config.plan import has_retired_dorm_options
 from arknights_mower.utils.config.plan_advanced import export_advanced_settings
 from arknights_mower.utils.config_profile_groups import (
     CONF_GROUPS,
@@ -328,7 +329,12 @@ def combine_archives(incoming_raw, current_raw, selected):
                     raise ValueError("持久化配置文件名大小写冲突")
                 files[name] = tmp[name]
             tmp.pop(name, None)
-        data, _, _, _, rescue_plan = backup._validate_configuration(files)
+        data, _, plan, migrated, rescue_plan = backup._validate_configuration(files)
+        if migrated or has_retired_dorm_options(
+            backup._object_file(files, "plan.json")
+        ):
+            files["plan.json"] = _json_bytes(plan.model_dump(exclude_none=True))
+        data.pop("dorm_order", None)
         if "rescue_plan.json" not in files:
             if any(name.casefold() == "rescue_plan.json" for name in files):
                 raise ValueError("救急排班文件名必须为 rescue_plan.json")

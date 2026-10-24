@@ -44,6 +44,7 @@ export function createConfigProfiles({
 }) {
   const base = `${import.meta.env.VITE_HTTP_URL || ''}/config-profiles`
   const saves = createSaveCoordinator(config, plan, rescuePlan ? [rescuePlan] : [])
+  const frozenSaves = createSaveCoordinator(config, plan, rescuePlan ? [rescuePlan] : [])
   const state = shallowRef(null)
   const loading = ref(false)
   const busy = ref(false)
@@ -81,7 +82,7 @@ export function createConfigProfiles({
 
   function freeze() {
     stale.value = true
-    saves.pause({ pendingOperation: true })
+    frozenSaves.pause({ pendingOperation: true })
   }
 
   async function observeFailure(failure) {
@@ -196,6 +197,7 @@ export function createConfigProfiles({
     try {
       await saves.pauseAndDrain()
       await beforeChange()
+      if (stale.value) throw new Error('当前档案已变更，请重新加载后继续。')
       if (blocked() || state.value.busy) throw new Error('请先停止任务并等待设备或更新操作结束')
       const options = {
         headers: { 'X-Mower-Settings': '1', [CONFIG_GENERATION_HEADER]: generation }

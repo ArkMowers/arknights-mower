@@ -8,25 +8,22 @@ from urllib.parse import urlparse
 import yaml
 from flask import Blueprint, abort, current_app, request, send_file
 
+from arknights_mower.utils import config_profiles as profiles
 from arknights_mower.utils.config_backup import (
     MAX_BACKUP_BYTES,
     LocalConfigError,
     backup_lock,
     export_archive,
-    import_configuration,
 )
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.web_auth import require_token
 
 config_backup_bp = Blueprint("config_backup", __name__, url_prefix="/config-backup")
 
 
 @config_backup_bp.before_request
+@require_token
 def authorize():
-    if (
-        hasattr(current_app, "token")
-        and request.headers.get("token", "") != current_app.token
-    ):
-        abort(403)
     if request.method == "POST":
         if request.headers.get("X-Mower-Settings") != "1":
             abort(403)
@@ -75,7 +72,12 @@ def import_backup():
                 raw = request.stream.read(MAX_BACKUP_BYTES + 1)
             if len(raw) > MAX_BACKUP_BYTES:
                 abort(413)
-            recovery = import_configuration(raw)
+            recovery = profiles.import_backup(
+                raw,
+                expected_generation=request.headers.get("X-Mower-Config-Generation"),
+            )
+        except profiles.ProfileConflict as exc:
+            return {"ok": False, "code": exc.code, "message": str(exc)}, 409
         except LocalConfigError as exc:
             return {"ok": False, "message": str(exc)}, 409
         except (ValueError, TypeError, RecursionError, yaml.YAMLError):

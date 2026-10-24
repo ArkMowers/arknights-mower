@@ -20,6 +20,10 @@ _MAX_KNOWN_KEYS = 100
 _MAX_PLACEMENTS = 2200
 
 
+class GuiStorageError(OSError):
+    """Saved GUI preferences could not be read without losing existing data."""
+
+
 @contextmanager
 def _gui_file_lock(timeout=3.0):
     # Keep a stable lock file across atomic replacements and process exits.
@@ -71,9 +75,9 @@ def read_gui_data(*, strict=False) -> dict:
                 raise ValueError("gui.yml 必须包含配置对象")
             return {}
         return data
-    except (OSError, ValueError, yaml.YAMLError):
+    except (OSError, ValueError, yaml.YAMLError) as exc:
         if strict:
-            raise
+            raise GuiStorageError("无法读取已保存的界面配置") from exc
         return {}
 
 
@@ -166,7 +170,7 @@ def validate_sidebar(value: object) -> dict:
 
 
 def load_sidebar() -> dict | None:
-    value = read_gui_data().get("sidebar")
+    value = read_gui_data(strict=True).get("sidebar")
     if not isinstance(value, dict):
         return None
     if type(value.get("version")) is int and value["version"] in (1, 2):
@@ -184,7 +188,7 @@ def save_sidebar(value: object) -> dict:
 
 
 def load_software_version_display() -> str:
-    value = read_gui_data().get("software_version_display")
+    value = read_gui_data(strict=True).get("software_version_display")
     return value if value in ("version", "channel") else "version"
 
 
@@ -194,12 +198,12 @@ def save_software_version_display(value: object) -> str:
 
 
 def load_software_version_language() -> str:
-    value = read_gui_data().get("software_version_language")
+    value = read_gui_data(strict=True).get("software_version_language")
     return value if value in ("zh", "en") else "en"
 
 
 def load_task_settings_layout() -> str:
-    value = read_gui_data().get("task_settings_layout")
+    value = read_gui_data(strict=True).get("task_settings_layout")
     return value if value in ("checklist", "waterfall") else "checklist"
 
 

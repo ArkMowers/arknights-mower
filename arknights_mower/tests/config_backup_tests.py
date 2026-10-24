@@ -3,14 +3,15 @@ import sqlite3
 from contextlib import closing
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from zipfile import ZipFile
 
 import pytest
-from flask import Flask
+from flask import Flask, Request
 
 from arknights_mower.utils import config
 from arknights_mower.utils import config_backup as backup
+from arknights_mower.utils import config_profiles as profiles
 from arknights_mower.views.config_backup import config_backup_bp
 
 
@@ -20,6 +21,7 @@ def storage(tmp_path, monkeypatch):
         return tmp_path / "instance" / name.removeprefix("@app/")
 
     monkeypatch.setattr(backup, "get_path", get_path)
+    monkeypatch.setattr(profiles, "get_path", get_path)
     for attr, name in (
         ("conf_path", "conf.yml"),
         ("plan_path", "plan.json"),
@@ -838,6 +840,33 @@ def client(storage):
     app.token = "old-token"
     app.config["CONFIG_BACKUP_BUSY"] = lambda: False
     return app.test_client()
+
+
+@pytest.mark.parametrize("token", [None, "different-token"])
+@pytest.mark.parametrize(
+    "method,path,multipart",
+    [
+        ("GET", "/config-backup/export", False),
+        ("HEAD", "/config-backup/export", False),
+        ("POST", "/config-backup/import", False),
+        ("POST", "/config-backup/import", True),
+    ],
+)
+def test_backup_credentials_precede_upload_parsing_and_filesystem_access(
+    client, monkeypatch, token, method, path, multipart
+):
+    forbidden = Mock(side_effect=AssertionError("Unauthorized backup access"))
+    monkeypatch.setattr(Request, "stream", property(forbidden))
+    monkeypatch.setattr(Request, "files", property(forbidden))
+    monkeypatch.setattr(profiles, "import_backup", forbidden)
+    monkeypatch.setattr("arknights_mower.views.config_backup.export_archive", forbidden)
+    headers = {"X-Mower-Settings": "1"}
+    if token is not None:
+        headers["token"] = token
+    data = {"backup": (BytesIO(b"unread"), "backup.zip")} if multipart else b"unread"
+    response = client.open(path, method=method, headers=headers, data=data)
+    assert response.status_code == 403
+    forbidden.assert_not_called()
 
 
 def test_routes_validate_auth_busy_format_and_download(client):

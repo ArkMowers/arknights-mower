@@ -374,6 +374,94 @@ def test_metadata_failure_rolls_back_configuration_database_state_and_registry(
     assert len(list(storage("@app/config-profiles").glob("*.zip"))) == 1
 
 
+@pytest.mark.parametrize("initialized", ["absent", "listed", "activated"])
+def test_backup_import_advances_generation_and_rejects_old_page_saves(
+    storage, monkeypatch, initialized
+):
+    import server
+
+    monkeypatch.setattr(server.app, "token", "secret", raising=False)
+    monkeypatch.setitem(server.app.config, "CONFIG_BACKUP_BUSY", lambda: False)
+    baseline = None
+    if initialized == "activated":
+        baseline = _create("active profile", ["inventory"])
+    elif initialized == "listed":
+        baseline = profiles.list_profiles()
+    initial_generation = profiles.current_generation()
+    raw = backup.export_archive()
+    config.conf.theme = "dark"
+    config.save_conf()
+    client = server.app.test_client()
+    imported = client.post(
+        "/config-backup/import", headers=_headers(initial_generation), data=raw
+    )
+    assert imported.status_code == 200
+    current = profiles.list_profiles()
+    assert current["generation"] != initial_generation
+    assert len(current["profiles"]) == (2 if initialized == "activated" else 1)
+    if baseline is not None:
+        assert current["active_id"] == baseline["active_id"]
+        assert current["profiles"] == baseline["profiles"]
+    assert config.conf.theme == "light"
+    stale = client.patch(
+        "/conf", headers=_headers(initial_generation), json={"theme": "dark"}
+    )
+    assert stale.status_code == 409
+    assert stale.json["code"] == "configuration_changed"
+    assert config.conf.theme == "light"
+    snapshot = storage(f"@app/config-profiles/{current['active_id']}.zip")
+    assert (
+        backup._object_file(backup.read_archive(snapshot.read_bytes()), "conf.yml").get(
+            "theme", "light"
+        )
+        == "light"
+    )
+
+
+@pytest.mark.parametrize("initialized", [False, True])
+def test_backup_import_metadata_failure_rolls_back_files_database_and_generation(
+    storage, monkeypatch, initialized
+):
+    import server
+
+    monkeypatch.setattr(server.app, "token", "secret", raising=False)
+    monkeypatch.setitem(server.app.config, "CONFIG_BACKUP_BUSY", lambda: False)
+    if initialized:
+        _create("second", ["inventory"])
+    initial_generation = profiles.current_generation()
+    raw = backup.export_archive()
+    config.conf.theme = "dark"
+    config.save_conf()
+    before = backup.read_archive(backup.export_archive(), include_tmp=True)
+    previous_conf = config.conf
+    index = storage("@app/config-profiles/index.json")
+    previous_index = index.read_bytes() if index.exists() else None
+    snapshots = {
+        path.name: path.read_bytes()
+        for path in storage("@app/config-profiles").glob("*.zip")
+    }
+
+    write_registry = profiles._write_registry
+
+    def fail(data):
+        write_registry(data)
+        raise OSError("metadata failed")
+
+    monkeypatch.setattr(profiles, "_write_registry", fail)
+    imported = server.app.test_client().post(
+        "/config-backup/import", headers=_headers(initial_generation), data=raw
+    )
+    assert imported.status_code == 500
+    assert config.conf is previous_conf
+    assert profiles.current_generation() == initial_generation
+    assert (index.read_bytes() if index.exists() else None) == previous_index
+    assert {
+        path.name: path.read_bytes()
+        for path in storage("@app/config-profiles").glob("*.zip")
+    } == snapshots
+    assert backup.read_archive(backup.export_archive(), include_tmp=True) == before
+
+
 @pytest.mark.parametrize("operation", ["create", "activate", "rename", "import"])
 def test_stale_generation_rejects_every_mutation_before_writes(storage, operation):
     old = profiles.list_profiles()
@@ -445,6 +533,33 @@ def test_selection_rebuilds_normal_plan_advanced_settings_from_selected_conf(sto
     assert config.conf.group_mood_gap_exclusions == ["excluded"]
     assert config.plan.advanced_settings["resting_threshold"] == 0.8
     assert config.plan.advanced_settings["group_mood_gap_exclusions"] == ["excluded"]
+
+
+@pytest.mark.parametrize("source", ["global", "advanced"])
+@pytest.mark.parametrize("keep", [[], ["other_settings"]])
+def test_profile_import_migrates_bed_order_before_group_selection(
+    storage, source, keep
+):
+    files = backup.read_archive(backup.export_archive(include_tmp=False))
+    order = "dormitory_2,dormitory_1,dormitory_3,dormitory_4"
+    plan = json.loads(files["plan.json"])
+    plan["conf"].pop("dorm_order", None)
+    if source == "global":
+        files["conf.yml"] += f"\ndorm_order: {order}\n".encode("utf-8")
+    else:
+        plan["advanced_settings"] = {"dorm_order": order}
+    files["plan.json"] = json.dumps(plan).encode("utf-8")
+    profiles.import_profile(
+        backup._archive_bytes(files, {}),
+        "legacy bed order",
+        keep,
+        expected_generation="0",
+    )
+    assert config.plan.conf.dorm_order == order
+    assert (
+        json.loads(config.plan_path.read_text(encoding="utf-8"))["conf"]["dorm_order"]
+        == order
+    )
 
 
 def test_partial_cultivate_snapshot_separates_inventory_and_operators(storage):

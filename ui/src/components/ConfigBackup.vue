@@ -1,7 +1,7 @@
 <script setup>
 import { inject, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
-import { usePlanStore } from '@/stores/plan'
+import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
 import { createSaveCoordinator } from '@/utils/configPersistence'
 import { consumeImportResult, reloadImportedConfiguration } from '@/utils/configBackup'
 import { downloadConfiguration } from '@/composables/configProfiles'
@@ -9,7 +9,8 @@ import { downloadConfiguration } from '@/composables/configProfiles'
 const axios = inject('axios')
 const configStore = useConfigStore()
 const planStore = usePlanStore()
-const saves = createSaveCoordinator(configStore, planStore)
+const saves = createSaveCoordinator(configStore, planStore, [useRescuePlanStore()])
+const savesPaused = saves.paused
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/config-backup`
 const input = ref(null)
 const busy = ref(false)
@@ -19,6 +20,7 @@ const filename = ref('')
 const showConfirm = ref(false)
 const result = ref(consumeImportResult())
 const pendingReload = ref(false)
+const reloadRequired = ref(false)
 
 async function message(err) {
   // Axios keeps JSON error responses as Blob when downloading a ZIP.
@@ -67,19 +69,26 @@ async function selectFile(event) {
 }
 
 async function importConfig() {
+  if (busy.value || reloadRequired.value || savesPaused.value) return
   busy.value = true
   error.value = ''
+  let attempted = false
   try {
     await saves.pauseAndDrain()
     const form = new FormData()
     form.append('backup', selected.value)
+    attempted = true
     const { data } = await axios.post(`${base}/import`, form, {
       headers: { 'X-Mower-Settings': '1' }
     })
-    if (!data.ok) throw new Error(data.message)
+    if (!data.ok) {
+      attempted = false
+      throw new Error(data.message)
+    }
     result.value = data
     showConfirm.value = false
     pendingReload.value = true
+    reloadRequired.value = true
     // Keep old stores paused until the page reloads with the imported values.
     reload()
   } catch (err) {
@@ -87,14 +96,18 @@ async function importConfig() {
       ? `档案已导入，但自动刷新未完成，请重试刷新页面：${await message(err)}`
       : await message(err)
     showConfirm.value = false
-    if (!pendingReload.value) saves.resume()
+    const detail = err.response?.data
+    const changed = (detail?.code || detail?.error) === 'configuration_changed'
+    const rejected = err.response?.status >= 400 && err.response.status < 500
+    if (!pendingReload.value && !changed && (!attempted || rejected)) saves.resume()
+    else reloadRequired.value = true
   } finally {
     busy.value = false
   }
 }
 
 function reload() {
-  reloadImportedConfiguration(result.value)
+  reloadImportedConfiguration(pendingReload.value ? result.value : null)
 }
 </script>
 
@@ -108,7 +121,7 @@ function reload() {
             <span class="config-backup-label">导出档案</span>
             <p>将当前实例的设置、排班与本地数据打包为 ZIP。</p>
           </div>
-          <n-button :loading="busy" :disabled="busy || pendingReload" @click="exportConfig">
+          <n-button :loading="busy" :disabled="busy || savesPaused" @click="exportConfig">
             导出档案
           </n-button>
         </div>
@@ -117,7 +130,7 @@ function reload() {
             <span class="config-backup-label">导入档案</span>
             <p>先停止 Mower，再选择 ZIP 备份。导入前自动备份现有数据，成功后自动刷新页面。</p>
           </div>
-          <n-button :disabled="busy || pendingReload" @click="input.click()">导入档案</n-button>
+          <n-button :disabled="busy || savesPaused" @click="input.click()">导入档案</n-button>
           <input
             ref="input"
             type="file"
@@ -161,6 +174,10 @@ function reload() {
         </n-collapse-item>
       </n-collapse>
       <n-alert v-if="error" type="error" aria-live="polite">{{ error }}</n-alert>
+      <n-alert v-if="reloadRequired && !pendingReload" type="info" aria-live="polite">
+        导入结果尚未确认，配置自动保存保持暂停。请重新加载页面后继续编辑。
+        <n-button @click="reload">重新加载页面</n-button>
+      </n-alert>
       <n-alert v-if="result" type="success" title="档案已导入" aria-live="polite">
         <n-space vertical>
           <n-text>{{ result.message }}</n-text>

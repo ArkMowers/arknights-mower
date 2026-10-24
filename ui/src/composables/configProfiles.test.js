@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
 import { CONFIG_GENERATION_HEADER, createConfigProfiles } from './configProfiles'
+import { createSaveCoordinator } from '@/utils/configPersistence'
 
 const metadata = () => ({
   ok: true,
@@ -275,6 +276,49 @@ describe('configuration profile operations', () => {
     expect(controller.error.value).toBe('名称已存在')
     expect(controller.stale.value).toBe(false)
   })
+
+  it('keeps stale stores paused when an overlapping operation releases its pause', async () => {
+    const { controller, config, plan, rescuePlan } = await setup()
+    const importing = createSaveCoordinator(config, plan)
+    await importing.pauseAndDrain()
+    await controller.observeFailure({
+      response: { status: 409, data: { code: 'configuration_changed' } }
+    })
+    importing.resume()
+    expect(controller.stale.value).toBe(true)
+    for (const store of [config, plan, rescuePlan]) expect(store.autosave_paused).toBe(true)
+  })
+
+  it.each(['rename-success', 'validation-error', 'before-change-error'])(
+    'keeps a generation freeze when %s completes an already paused operation',
+    async (outcome) => {
+      const pending = deferred()
+      const beforeChange =
+        outcome === 'before-change-error' ? vi.fn(() => pending.promise) : undefined
+      const { controller, axios, config, plan, rescuePlan } = await setup({ beforeChange })
+      if (outcome === 'rename-success') axios.patch.mockReturnValueOnce(pending.promise)
+      else if (outcome === 'validation-error') axios.post.mockReturnValueOnce(pending.promise)
+      controller.open(outcome === 'rename-success' ? 'rename' : 'create')
+      controller.name.value = '新名称'
+      const submitted = controller.submit()
+      await vi.waitFor(() => {
+        expect(config.autosave_paused).toBe(true)
+        if (outcome !== 'before-change-error')
+          expect(outcome === 'rename-success' ? axios.patch : axios.post).toHaveBeenCalledOnce()
+        else expect(beforeChange).toHaveBeenCalledOnce()
+      })
+      await controller.observeFailure({
+        response: { status: 409, data: { code: 'configuration_changed' } }
+      })
+      if (outcome === 'rename-success') pending.resolve({ data: metadata() })
+      else if (outcome === 'validation-error')
+        pending.reject({ response: { status: 400, data: { message: '名称已存在' } } })
+      else pending.reject(new Error('布局保存失败'))
+      await submitted
+      expect(controller.stale.value).toBe(true)
+      for (const store of [config, plan, rescuePlan]) expect(store.autosave_paused).toBe(true)
+    }
+  )
 
   it('freezes after a lost response and never replays the submitted action', async () => {
     const { controller, axios, config, reload } = await setup()
