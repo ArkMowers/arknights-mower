@@ -3,6 +3,7 @@
 from arknights_mower.utils.config.conf import Conf
 
 ADVANCED_SETTING_KEYS = (
+    "test_mood_calculation",
     "product_switching",
     "drone_count_limit",
     "drone_interval",

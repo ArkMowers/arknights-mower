@@ -79,7 +79,7 @@ def recovery_target(
     target = op_data.operators.get(agents[index])
     if (
         target is None
-        or target.mood >= 24
+        or full_dorm_candidate(op_data, target.name)
         or target.room.startswith("dorm")
         or target.name == "菲亚梅塔"
         or dorm_skills.is_single_recovery_manager(target.name)
@@ -143,7 +143,6 @@ def recovery_order_plan(
         ):
             retained.append(name)
             continue
-        op = op_data.operators.get(name)
         if index < target_index:
             retained.append(name if full_dorm_candidate(op_data, name) else "")
             continue
@@ -152,10 +151,9 @@ def recovery_order_plan(
         ):
             retained.append("")
             continue
-        op = op_data.operators.get(name)
         if op_data.is_dorm_replacement_for_slot(
             name, room, index, group_transitions=group_transitions
-        ) and (op is None or op.time_stamp is None or op.mood < 24):
+        ) and not full_dorm_candidate(op_data, name):
             retained.append("")
             continue
         if name in ("", "Free", "Current"):

@@ -241,7 +241,8 @@
     "simulator/scheduleSimulation.spec.ts": "9d28b5c9fa302881a37dde7179fcacfe101442abb52eccb0a5e2d77d74e477b4",
     "scheduler/fixtures/mower-dorm-assignment-alpha-cases.json": "90de8a55045031e7992e6142929f12c4f10bc971f1a117aea7802c84bd6f77ce",
     "scheduler/fixtures/mower-alpha-metadata.json": "d2b7f150f533bdd34b7f4af8df51a86e3923bf4693daf5f05c51411df5bd1653",
-    "scheduler/fixtures/mower-alpha-selection-20261013.json": "f156c1c8381c988d273e78de8d22e183fe1befdcbd4f51f1fe2db3619fc49fa9"
+    "scheduler/fixtures/mower-alpha-selection-20261013.json": "f156c1c8381c988d273e78de8d22e183fe1befdcbd4f51f1fe2db3619fc49fa9",
+    "engine/moraleThresholds.ts": "4dd8e92403e535a1fb34bb751c4a5218adb98922e089d9c44f960533a9e8fb34"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -249,8 +250,8 @@
       "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances. Capture warmup-adjusted quality probabilities only at new-order acquisition."
     },
     "simulator/scheduleSimulation.ts": {
-      "sha256": "b64a6474e7eace754e86fecddbd78685bdf2fc430e9e1c5fe6d223729fe27e4a",
-      "reason": "Mark completed windows with unresolved task failures as incomplete; preserve the local read-only interval observer and segment timeline. Select the lowest-morale eligible resident when no valid single-target recovery confirmation remains; retain an automatic target until it becomes ineligible or the provider or target position changes. Equal morale uses stable slot order. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Reset skill sessions after confirmed physical slot changes and expose the same work-hour clock to reception observations; label the trade-quality linear approximation."
+      "sha256": "786c9475e5112cd9469e761814218482c70461245677ea9fabc8453e456e322e",
+      "reason": "Mark completed windows with unresolved task failures as incomplete; preserve the local read-only interval observer and segment timeline. Select the lowest-morale eligible resident when no valid single-target recovery confirmation remains; retain an automatic target until it becomes ineligible or the provider or target position changes. Equal morale uses stable slot order. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Reset skill sessions after confirmed physical slot changes and expose the same work-hour clock to reception observations; label the trade-quality linear approximation. Reuse shared morale boundaries and retained target selection in the embedded runtime."
     },
     "workbench/scheduleSimulationBridge.ts": {
       "reason": "Forward the local interval observer separately from JSON-cloned simulation data.",
@@ -559,6 +560,10 @@
     "scheduler/backupInventoryExpression.spec.ts": {
       "reason": "Verify live group maximum and minimum mood, anchor filtering, condition trees and missing groups.",
       "sha256": "d98065552e1ad51ec1223d64fc2c04b8b7bef9d6dd24ee4d82934932e6321d48"
+    },
+    "engine/moraleThresholds.ts": {
+      "sha256": "4dd8e92403e535a1fb34bb751c4a5218adb98922e089d9c44f960533a9e8fb34",
+      "reason": "Share morale boundaries and retained single-recovery target selection between income simulation and embedded runtime."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

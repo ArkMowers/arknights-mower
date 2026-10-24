@@ -1,5 +1,6 @@
 """共享替班的完整交接、首选恢复及保守召回检查。"""
 
+from copy import deepcopy
 from datetime import datetime
 from math import isfinite
 
@@ -295,12 +296,6 @@ def recall_can_sustain(
         return True
     if not ordinary_recall_mood_admissible(original, recalled, candidates, now=now):
         return False
-    if rates is None:
-        from arknights_mower.utils.recall_estimates import estimated_recall_rates
-
-        rates = estimated_recall_rates(original, admitted, now=now)
-    work, recovery = rates
-
     from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 
     def mood_at_check(op):
@@ -314,6 +309,47 @@ def recall_can_sustain(
             *(bed.name for bed in admitted.all_dorms() if bed.name),
         ],
     )
+    if getattr(original, "mood_calculation_enabled", False):
+        forecast = deepcopy(admitted, {id(admitted.eval_model): admitted.eval_model})
+        horizon = now
+        working = []
+        for name in connected:
+            op = forecast.operators.get(name)
+            if op is None or not op.current_room:
+                continue
+            mood = forecast.calculated_mood(name, now)
+            if mood is None:
+                return False
+            if (
+                op.is_resting()
+                and op.is_high()
+                and not op.workaholic
+                and not op.room.startswith("dorm")
+                and mood < op.upper_limit
+            ):
+                deadline = forecast.calculated_mood_deadline(name, op.upper_limit, now)
+                if deadline is None:
+                    return False
+                horizon = max(horizon, deadline)
+            elif op.is_working() and not op.workaholic:
+                rate = forecast.calculated_mood_rate(name, now)
+                if rate is None or mood <= op.lower_limit:
+                    return False
+                working.append((name, op.lower_limit))
+        for name, lower in working:
+            exhausted = forecast.calculated_mood_deadline(name, lower, now)
+            if exhausted is not None and exhausted <= horizon:
+                return False
+        for name, lower in working:
+            mood = forecast.calculated_mood(name, horizon)
+            if mood is None or mood <= lower:
+                return False
+        return True
+    if rates is None:
+        from arknights_mower.utils.recall_estimates import estimated_recall_rates
+
+        rates = estimated_recall_rates(original, admitted, now=now)
+    work, recovery = rates
     horizon = 0.0
     for name in connected:
         op = admitted.operators.get(name)

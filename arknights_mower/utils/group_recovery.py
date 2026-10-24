@@ -6,18 +6,24 @@ from arknights_mower.utils import config
 
 
 def recovery_mood_complete(data, operator, now=None):
-    """回满判断接受较新的有效实读或列表预估，不改写恢复记录。"""
+    """按所选心情来源判断回满，不改写恢复记录。"""
     from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 
     if operator is None:
         return False
-    mood = dorm_candidate_mood(data, operator.name, now)
+    mood = (
+        data.calculated_mood(operator.name, now)
+        if getattr(data, "mood_calculation_enabled", False)
+        else dorm_candidate_mood(data, operator.name, now)
+    )
     return mood is not None and mood >= operator.upper_limit
 
 
-def observed_recovery_deadline(data, name):
-    """固定宿舍位的实读倒计时也可用于等待，不将该位开放为 Free。"""
+def observed_recovery_deadline(data, name, now=None):
+    """按模型或宿舍实读倒计时规划恢复，不将固定岗位开放为 Free。"""
     op = data.operators[name]
+    if getattr(data, "mood_calculation_enabled", False):
+        return data.calculated_mood_deadline(name, op.upper_limit, now)
     _, bed = data.get_dorm_by_name(name)
     if bed is not None:
         return bed.time
@@ -89,7 +95,7 @@ def group_recovery_deadline(data, group, *, now=None):
             data, op
         ):
             return now
-        return observed_recovery_deadline(data, op.name)
+        return observed_recovery_deadline(data, op.name, now)
 
     if group in config.conf.group_mood_gap_exclusions:
         latches.pop(group, None)

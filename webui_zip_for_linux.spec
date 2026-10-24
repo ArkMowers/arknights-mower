@@ -94,7 +94,7 @@ mower_a = Analysis(
         ),
     ]
     + add_data + adb_datas,
-    hiddenimports=PYWEBVIEW_GTK_HIDDENIMPORTS,
+    hiddenimports=PYWEBVIEW_GTK_HIDDENIMPORTS + ["quickjs", "_quickjs"],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[

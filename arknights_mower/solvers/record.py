@@ -276,6 +276,9 @@ def current_state():
         "waiting_group_shifts": getattr(base_scheduler, "waiting_group_shifts", []),
         "party_time": data.party_time,
         "operators": data.operators,
+        "calculated_mood": copy.deepcopy(vars(data.mood_model))
+        if getattr(data, "mood_model", None) is not None
+        else None,
         "facility_states": getattr(data, "facility_states", {}),
         "room_observations": getattr(data, "room_observations", {}),
         "recall_recovery_rates": copy.deepcopy(
@@ -341,6 +344,16 @@ def save_state_to_db(saved_state):
 
     current_time = datetime.now()
 
+    # 运行引用不写进 pickle，旧版本仍能读取实际驻员及未完成任务。
+    persisted = dict(saved_state)
+    if "operators" in persisted:
+        persisted["operators"] = {}
+        for name, operator in saved_state["operators"].items():
+            detached = copy.copy(operator)
+            detached.__dict__.pop("_mood_model", None)
+            detached.__dict__.pop("_mood_conf", None)
+            persisted["operators"][name] = detached
+
     try:
         with _conn() as connection:
             cursor = connection.cursor()
@@ -349,7 +362,7 @@ def save_state_to_db(saved_state):
                 "INSERT INTO saved_state VALUES (?, ?)",
                 (
                     str(current_time),
-                    sqlite3.Binary(pickle.dumps(saved_state)),
+                    sqlite3.Binary(pickle.dumps(persisted)),
                 ),
             )
             connection.commit()

@@ -358,8 +358,16 @@ class Operators:
     current_room_changed_callback = None
     first_init = True
 
-    def __init__(self, plan, *, runtime_conf=None):
+    def __init__(self, plan, *, runtime_conf=None, facility_levels=None):
         self.runtime_conf = runtime_conf
+        self.facility_levels = copy.deepcopy(
+            facility_levels
+            if facility_levels is not None
+            else getattr(config.plan, "facility_levels", {})
+        )
+        from arknights_mower.utils.calculated_mood import CalculatedMood
+
+        self.mood_model = CalculatedMood()
         self.operators = {}
         self.groups = {}
         self.group_shift_state = {}
@@ -858,6 +866,39 @@ class Operators:
                 dorm_skills.is_single_recovery_manager(name)
             )
         self._dorm_skill_generation = dorm_skills.resource_generation
+
+    @property
+    def mood_calculation_enabled(self):
+        conf = getattr(self, "runtime_conf", None) or config.conf
+        enabled = bool(getattr(conf, "test_mood_calculation", False))
+        if hasattr(self, "mood_model"):
+            self.mood_model.enabled = enabled
+        return enabled
+
+    def calculated_mood(self, name, now=None):
+        if not self.mood_calculation_enabled:
+            return None
+        from arknights_mower.utils.calculated_mood import sync_model
+
+        return sync_model(self).value(name, now)
+
+    def calculated_mood_rate(self, name, now=None):
+        if not self.mood_calculation_enabled:
+            return None
+        from arknights_mower.utils.calculated_mood import sync_model
+
+        model = sync_model(self)
+        if now is not None:
+            model = copy.deepcopy(model)
+            model.advance(now)
+        return model._rates().get(name) if name in model.moods else None
+
+    def calculated_mood_deadline(self, name, target, now=None, max_hours=240):
+        if not self.mood_calculation_enabled:
+            return None
+        from arknights_mower.utils.calculated_mood import sync_model
+
+        return sync_model(self).deadline(name, target, now, max_hours)
 
     def set_mood_limit(self, name, upper_limit=24, lower_limit=0):
         if name in self.operators and self.is_planned_operator(name):
@@ -1801,6 +1842,12 @@ class Operators:
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
+        if self.mood_calculation_enabled:
+            if current_room == "train":
+                agent.depletion_rate = 0
+            self.mood_model.move(name, current_room, current_index)
+            if update_time:
+                self.mood_model.observe(name, mood)
         if returned_to_post and not to_dorm and not preserve_depletion_rate:
             # 实际回班结束本人的本轮恢复；临时换组后离岗不能重新加入旧等待。
             for group, names in self.group_recovery_full_members.items():
@@ -1934,7 +1981,11 @@ class Operators:
                     dorm.name = ""
                     dorm.time = None
                 else:
-                    if dorm.time is not None and dorm.time < datetime.now():
+                    if (
+                        not self.mood_calculation_enabled
+                        and dorm.time is not None
+                        and dorm.time < datetime.now()
+                    ):
                         if (op.time_stamp is not None) and op.mood >= op.upper_limit:
                             # 全体上限不是实际心情封顶，保留已读到的较高心情及读数时间。
                             op.depletion_rate = 0
@@ -2049,6 +2100,9 @@ class Operators:
                 exist, "individual_return_window", None
             )
         self.operators[operator.name] = operator
+        if self.mood_calculation_enabled:
+            operator._mood_model = self.mood_model
+            operator._mood_conf = self.runtime_conf or config.conf
         self.apply_custom_mood_limits(operator)
         self.apply_ling_xi_mood_limits()
         # 需要用尽心情干员逻辑
@@ -2282,6 +2336,10 @@ class Operators:
             getattr(self, "recall_recovery_rates", {})
         )
         projected.operators = copy.deepcopy(self.operators)
+        if self.mood_calculation_enabled:
+            projected.mood_model = copy.deepcopy(self.mood_model)
+            for op in projected.operators.values():
+                op._mood_model = projected.mood_model
         projected.groups = copy.deepcopy(self.groups)
         projected.group_shift_state = dict(self.group_shift_state)
         projected.group_recovery_full_members = copy.deepcopy(
@@ -2367,6 +2425,11 @@ class Operators:
                     )
                 else:
                     bed.reset()
+
+        if self.mood_calculation_enabled:
+            from arknights_mower.utils.calculated_mood import sync_model
+
+            sync_model(self, max(datetime.now(), self.mood_model.at or datetime.min))
 
     def all_dorms(self):
         """返回动态床位与只供配置内同组工作替班恢复的固定床位。"""
@@ -3265,6 +3328,15 @@ class Operator:
     @current_room.setter
     def current_room(self, value):
         if self._current_room != value:
+            model = getattr(self, "_mood_model", None)
+            if (
+                model is not None
+                and model.enabled
+                and getattr(
+                    getattr(self, "_mood_conf", None), "test_mood_calculation", False
+                )
+            ):
+                model.move(self.name, value or "", self.current_index)
             self.dorm_position_version = getattr(self, "dorm_position_version", 0) + 1
             was_working = self.is_working()
             self.idle_rest_check = None
@@ -3296,6 +3368,15 @@ class Operator:
     @current_index.setter
     def current_index(self, value):
         if self.current_index != value:
+            model = getattr(self, "_mood_model", None)
+            if (
+                model is not None
+                and model.enabled
+                and getattr(
+                    getattr(self, "_mood_conf", None), "test_mood_calculation", False
+                )
+            ):
+                model.move(self.name, self.current_room or "", value)
             self.dorm_position_version = getattr(self, "dorm_position_version", 0) + 1
             self.clear_dorm_recovery()
         self.__dict__["current_index"] = value
@@ -3331,6 +3412,25 @@ class Operator:
             return True
 
     def not_valid(self):
+        model = getattr(self, "_mood_model", None)
+        if (
+            model is not None
+            and model.enabled
+            and getattr(
+                getattr(self, "_mood_conf", None), "test_mood_calculation", False
+            )
+        ):
+            if self.operator_type != "high":
+                return False
+            if (
+                not self.workaholic
+                and not self.room.startswith("dorm")
+                and self.is_resting()
+            ):
+                return (
+                    self.current_mood() < 0 or self.current_mood() >= self.upper_limit
+                )
+            return self.current_room != self.room or self.index != self.current_index
         if self.operator_type == "high":
             if self.workaholic:
                 return (
@@ -3351,6 +3451,17 @@ class Operator:
         return False
 
     def current_mood(self, time=None):
+        model = getattr(self, "_mood_model", None)
+        if (
+            model is not None
+            and model.enabled
+            and getattr(
+                getattr(self, "_mood_conf", None), "test_mood_calculation", False
+            )
+            and self.current_room != "train"
+        ):
+            value = model.value(self.name, time)
+            return value if value is not None else -1
         if not time:
             time = datetime.now()
         predict = self.mood
@@ -3376,6 +3487,21 @@ class Operator:
     def predict_exhaust(self):
         if self.workaholic or self.exhaust_require or self.room in ["factory", "train"]:
             return datetime.now() + timedelta(hours=24)
+        model = getattr(self, "_mood_model", None)
+        if (
+            model is not None
+            and model.enabled
+            and getattr(
+                getattr(self, "_mood_conf", None), "test_mood_calculation", False
+            )
+            and self.room not in ("factory", "train")
+        ):
+            deadline = model.deadline(self.name, self.lower_limit)
+            return (
+                max(datetime.now(), deadline - timedelta(minutes=30))
+                if deadline
+                else datetime.now() + timedelta(hours=24)
+            )
         remaining_mood = self.mood - self.lower_limit  # 剩余心情
         depletion_rate = self.depletion_rate  # 心情掉率，小时单位
         # 计算到心情归零所需时间（小时），再加上当前时间戳

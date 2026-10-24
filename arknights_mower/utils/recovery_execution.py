@@ -19,6 +19,16 @@ def recovery_ready_for_arrangement(data, name, *, sampled_after, now):
     op = data.operators.get(name)
     if recovery_mood_complete(data, op, now):
         return True
+    if getattr(data, "mood_calculation_enabled", False):
+        due = data.calculated_mood_deadline(name, op.upper_limit, now) if op else None
+        return bool(
+            op
+            and op.is_resting()
+            and due is not None
+            and now
+            < due
+            <= now + timedelta(minutes=estimate_dorm_minutes(op.current_room, 1.5))
+        )
     if (
         op is None
         or op.time_stamp is None

@@ -29,6 +29,26 @@ ORDINARY_SHIFTS = {
 }
 
 
+def _known_mood(data, op, now=None):
+    if op is None:
+        return None
+    if getattr(data, "mood_calculation_enabled", False):
+        return data.calculated_mood(op.name, now)
+    return op.current_mood(now) if has_resting_mood(op, now) else None
+
+
+def _full_mood(data, op, now=None):
+    if getattr(data, "mood_calculation_enabled", False):
+        mood = _known_mood(data, op, now)
+        return mood is not None and mood >= op.upper_limit
+    return (
+        op is not None
+        and has_resting_mood(op, now)
+        and not op.mood_is_prediction
+        and op.mood >= op.upper_limit
+    )
+
+
 def mood_context(data, room):
     """实际驻员及产物构成采样环境；床位索引由采样独立记录。"""
     roster = sorted(
@@ -160,7 +180,8 @@ def exhaust_rest_due(data, op, tasks, now):
     if not exhausted or op.is_resting():
         return True
     if any(
-        has_resting_mood(member) and member.current_mood(now) <= member.lower_limit
+        (mood := _known_mood(data, member, now)) is not None
+        and mood <= member.lower_limit
         for member in exhausted
     ):
         return True
@@ -204,7 +225,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
         and task.meta_data in required
         and fia is not None
         and fia.current_room == fia.room
-        and has_resting_mood(fia)
+        and _known_mood(initial, fia, now) is not None
         and task.meta_data in fia.replacement
         and any(
             "菲亚梅塔" in names and task.meta_data in names
@@ -258,8 +279,17 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             ):
                 continue
             if name in remaining or (
-                has_resting_mood(op)
-                and op.current_mood() <= data.resting_mood_threshold(op)
+                (
+                    mood := _known_mood(
+                        data,
+                        op,
+                        when
+                        if getattr(data, "mood_calculation_enabled", False)
+                        else None,
+                    )
+                )
+                is not None
+                and mood <= data.resting_mood_threshold(op)
             ):
                 groups[op.group or name] = (
                     data.shift_group_members(op.group) if op.group else [name]
@@ -315,9 +345,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             current_fia = data.operators.get("菲亚梅塔")
             if current_only and (
                 current_fia is None
-                or not has_resting_mood(current_fia)
-                or current_fia.mood_is_prediction
-                or current_fia.mood < current_fia.upper_limit
+                or not _full_mood(data, current_fia, when)
                 or (current_fia.current_room, current_fia.current_index)
                 != (current_fia.room, current_fia.index)
             ):
@@ -337,7 +365,12 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 or event_id in used
             ):
                 continue
-            if bed.time is None:
+            due = (
+                data.calculated_mood_deadline(op.name, op.upper_limit, when)
+                if getattr(data, "mood_calculation_enabled", False)
+                else bed.time
+            )
+            if due is None:
                 if op.is_high():
                     uncertain = True
                 continue
@@ -349,7 +382,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     plan.setdefault(
                         worker.room, ["Current"] * len(data.plan[worker.room])
                     )[worker.index] = member
-            events.append((max(when, bed.time), event_id, plan))
+            events.append((max(when, due), event_id, plan))
         for time, event_id, plan in events:
             if current_only and time > now:
                 continue
@@ -357,15 +390,17 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 uncertain = True
                 continue
             projected = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
+            if getattr(projected, "mood_calculation_enabled", False):
+                from arknights_mower.utils.calculated_mood import sync_model
+
+                sync_model(projected, time)
             if current_only and event_id[0] == "task":
                 event_task = copy.deepcopy(pending[event_id[1]])
                 if event_task.type == TaskTypes.RELEASE_DORM:
                     for name in event_task.release_dorm_targets():
                         resident = projected.operators.get(name)
                         if not event_task.strict_mood_limit and (
-                            not has_resting_mood(resident)
-                            or resident.mood_is_prediction
-                            or resident.mood < resident.upper_limit
+                            not _full_mood(projected, resident, time)
                         ):
                             event_task.remove_release_dorm_operator(name)
                     if not event_task.plan:
@@ -385,6 +420,16 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             for name in remaining:
                 op = projected.operators[name]
                 if time > when and op.is_working():
+                    if getattr(projected, "mood_calculation_enabled", False):
+                        mood = projected.calculated_mood(name, time)
+                        if mood is None:
+                            uncertain = True
+                            timely = False
+                            break
+                        if mood <= op.lower_limit:
+                            timely = False
+                            break
+                        continue
                     if not has_resting_mood(op) or op.depletion_rate <= 0:
                         uncertain = True
                         timely = False
@@ -403,6 +448,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 for name in names:
                     if (
                         not current_only
+                        and not getattr(projected, "mood_calculation_enabled", False)
                         and name in projected.operators
                         and projected.operators[name].is_resting()
                     ):
@@ -411,10 +457,23 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             charged = set()
             if event_id[0] == "charge":
                 name = charges[event_id[1]].meta_data
-                projected.operators[name].mood = projected.operators[name].upper_limit
-                projected.operators[name].time_stamp = datetime.now()
+                if getattr(projected, "mood_calculation_enabled", False):
+                    target_mood = projected.calculated_mood(name, time)
+                    fia = projected.operators.get("菲亚梅塔")
+                    if target_mood is None or not _full_mood(projected, fia, time):
+                        continue
+                    # 搜索中的充能由 used 标记消费，不与同刻真实观测竞争。
+                    projected.mood_model.moods[name] = 24
+                    projected.mood_model.moods[fia.name] = target_mood
+                else:
+                    projected.operators[name].mood = projected.operators[
+                        name
+                    ].upper_limit
+                    projected.operators[name].time_stamp = datetime.now()
                 charged.add(name)
-                if current_only:
+                if current_only and not getattr(
+                    projected, "mood_calculation_enabled", False
+                ):
                     projected.operators["菲亚梅塔"].mood = 0
             queue.append(
                 (
@@ -522,9 +581,13 @@ def emergency_dorm_plan(
                 and resident.index < 2
                 and resting_tier(data, resident.name) != RestingTier.PRIORITY
                 and not data.is_free_room_excluded(resident.name)
-                and has_resting_mood(resident)
-                and not resident.mood_is_prediction
-                and resting_mood(resident) >= resident.upper_limit
+                and (
+                    _full_mood(data, resident)
+                    if getattr(data, "mood_calculation_enabled", False)
+                    else has_resting_mood(resident)
+                    and not resident.mood_is_prediction
+                    and resting_mood(resident) >= resident.upper_limit
+                )
             ):
                 # 救急临时开放宿管位按既有离宿流程投影，不授权恢复床位抢占。
                 room, position = bed.position

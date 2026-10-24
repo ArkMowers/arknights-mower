@@ -18,6 +18,7 @@ const {
   free_room,
   dorm_isolation,
   merge_interval,
+  test_mood_calculation,
   group_rest_in_full_on_mood_gap,
   group_mood_gap_threshold_minutes,
   group_mood_gap_max_extra_wait_hours,
@@ -45,6 +46,16 @@ const excludedGroupOptions = computed(() =>
       label-align="left"
       :show-feedback="false"
     >
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="test_mood_calculation">
+          测试心情计算
+          <help-text
+            >默认关闭。开启后使用与收益演算相同的技能规则计算普通基建调度心情；启动时读取实际驻员和心情，后续在正常进房时校准。已同步
+            BOX
+            的干员按实际练度选择已解锁技能，缺少练度缓存时按满练技能计算。宿舍氛围按对应等级的满氛围计算。</help-text
+          >
+        </n-checkbox>
+      </n-form-item>
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="product_switching.enable">
           自动切换产物与订单

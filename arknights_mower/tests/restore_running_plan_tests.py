@@ -43,17 +43,21 @@ def test_runtime_plan_keeps_independent_startup_snapshot(monkeypatch):
 
 def test_startup_snapshot_captures_actual_advanced_settings(monkeypatch):
     configured = config.PlanModel(advanced_settings={"drone_count_limit": 20})
-    startup_conf = config.Conf(drone_count_limit=150, drone_interval=2)
+    startup_conf = config.Conf(
+        drone_count_limit=150, drone_interval=2, test_mood_calculation=True
+    )
     monkeypatch.setattr(config, "plan", configured)
     monkeypatch.setattr(config, "conf", startup_conf)
 
     _, snapshot = build_global_plan(include_source=True)
     startup_conf.drone_count_limit = 20
     startup_conf.product_switching.waiting_seconds = 5
+    startup_conf.test_mood_calculation = False
 
     assert set(snapshot["advanced_settings"]) == set(ADVANCED_SETTING_KEYS)
     assert snapshot["advanced_settings"]["drone_count_limit"] == 150
     assert snapshot["advanced_settings"]["drone_interval"] == 2
+    assert snapshot["advanced_settings"]["test_mood_calculation"] is True
     assert snapshot["advanced_settings"]["product_switching"]["waiting_seconds"] == 2
     assert configured.advanced_settings == {"drone_count_limit": 20}
 
@@ -65,7 +69,12 @@ def test_restore_running_plan_uses_startup_snapshot(client, monkeypatch):
             {"name": "运行副表", "plan": {}, "conf": {}, "task": {}, "trigger": {}}
         ],
         advanced_settings=export_advanced_settings(
-            config.Conf(drone_count_limit=150, drone_interval=2, free_room=True)
+            config.Conf(
+                drone_count_limit=150,
+                drone_interval=2,
+                free_room=True,
+                test_mood_calculation=True,
+            )
         ),
     )
     edited = config.PlanModel(
@@ -92,9 +101,11 @@ def test_restore_running_plan_uses_startup_snapshot(client, monkeypatch):
     assert config.conf.drone_count_limit == 150
     assert config.conf.drone_interval == 2
     assert config.conf.free_room is True
+    assert config.conf.test_mood_calculation is True
     assert config.conf.account == "current account"
     assert config.conf.drone_room == "room_3_3"
     assert safe_load(config.conf_path.read_text())["drone_count_limit"] == 150
+    assert safe_load(config.conf_path.read_text())["test_mood_calculation"] is True
     assert (
         json.loads(config.plan_path.read_text())["advanced_settings"]
         == startup.advanced_settings

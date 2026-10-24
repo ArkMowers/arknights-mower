@@ -51,6 +51,8 @@ mower_a = Analysis(
     ]
     + add_data,
     hiddenimports=[
+        "quickjs",
+        "_quickjs",
         "arknights_mower.utils.instance_supervisor",
         "arknights_mower.utils.crash_recovery",
         "arknights_mower.utils.jpeg_worker",
