@@ -36,6 +36,7 @@ describe('manager instance controls', () => {
     api = {
       get_instances: vi.fn(async () => structuredClone(rows)),
       mark_ready: vi.fn(async () => {}),
+      add: vi.fn(async () => ({ ok: true })),
       start: vi.fn(async () => {
         rows[0] = {
           ...rows[0],
@@ -84,93 +85,33 @@ describe('manager instance controls', () => {
     vi.unstubAllGlobals()
   })
 
-  it('edits the server directory as a browser draft and sends its captured target on save', async () => {
-    vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
-    hooks.axios = {
-      get: vi.fn(async () => ({ data: structuredClone(rows) })),
-      post: vi.fn(async (_url, { action, args }) => {
-        if (action === 'set_path') rows[0].path = args[1]
-        return { data: { ok: true } }
-      })
-    }
-    await mount()
-    component.selectPath(0)
-    expect(component.editing.value.kind).toBe('path')
-    component.draft.value.path = '/server/another-instance'
-    expect(hooks.axios.post).not.toHaveBeenCalled()
-    await component.save()
-    expect(hooks.axios.post).toHaveBeenCalledWith(
-      expect.stringMatching(/\/instances\/actions$/),
-      {
-        action: 'set_path',
-        args: [0, '/server/another-instance', { name: 'first', path: '/first' }]
-      },
-      expect.objectContaining({ headers: { 'X-Mower-Settings': '1' } })
-    )
-    expect(component.instances.value[0].path).toBe('/server/another-instance')
-    expect(component.editing.value).toBeNull()
-  })
-
-  it('blocks browser directory edits for live instances', async () => {
-    vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
-    rows[0] = { ...rows[0], state: 'running', editable: false }
-    hooks.axios = { get: vi.fn(async () => ({ data: structuredClone(rows) })), post: vi.fn() }
-    await mount()
-    component.selectPath(0)
-    expect(component.editing.value).toBeNull()
-    expect(hooks.axios.post).not.toHaveBeenCalled()
-  })
-
-  it('uses the accepted browser list identity after a late discarded refresh', async () => {
+  it('keeps a directly opened browser manager unavailable without reading or changing instances', async () => {
     vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
     hooks.axios = {
       get: vi.fn(async () => ({ data: structuredClone(rows) })),
       post: vi.fn(async () => ({ data: { ok: true } }))
     }
-    await mount()
-    const oldRows = structuredClone(rows)
-    let finishOldRefresh
-    hooks.axios.get.mockImplementationOnce(
-      () => new Promise((resolve) => (finishOldRefresh = resolve))
-    )
-    const oldRefresh = component.refresh()
-    rows[0].name = 'renamed elsewhere'
-    await component.initialize()
-    finishOldRefresh({ data: oldRows })
-    await oldRefresh
-    await component.addInstance()
-    expect(hooks.axios.post).toHaveBeenCalledWith(
-      expect.any(String),
-      {
-        action: 'add',
-        args: ['新实例', '', [{ name: 'renamed elsewhere', path: '/first' }]]
-      },
-      expect.any(Object)
-    )
-  })
-
-  it('offers retry after an unsupported browser backend without exposing cached actions', async () => {
-    vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
-    hooks.axios = {
-      get: vi
-        .fn()
-        .mockRejectedValueOnce({ response: { status: 404 } })
-        .mockResolvedValue({ data: structuredClone(rows) }),
-      post: vi.fn(async () => ({ data: { ok: true } }))
-    }
-    await mount()
-    expect(component.initializationError.value).toContain('当前 Mower 版本不支持网页实例管理')
+    const mounting = mount()
+    await vi.advanceTimersByTimeAsync(15000)
+    await mounting
+    expect(component.initializationError.value).toContain('本机多开管理器或 Mower 桌面窗口')
+    expect(component.instances.value).toEqual([])
     expect(component.unavailable.value).toBe(true)
     await component.addInstance()
+    component.selectPath(0)
+    component.confirmBulk('start')
+    expect(component.editing.value).toBeNull()
+    expect(component.confirmation.value).toBeNull()
+    expect(hooks.axios.get).not.toHaveBeenCalled()
     expect(hooks.axios.post).not.toHaveBeenCalled()
+
+    window.pywebview = { api }
     await component.initialize()
     expect(component.unavailable.value).toBe(false)
     await component.addInstance()
-    expect(hooks.axios.post).toHaveBeenCalledWith(
-      expect.any(String),
-      { action: 'add', args: ['新实例', '', [{ name: 'first', path: '/first' }]] },
-      expect.any(Object)
-    )
+    expect(api.add).toHaveBeenCalledWith('新实例', '')
+    expect(hooks.axios.get).not.toHaveBeenCalled()
+    expect(hooks.axios.post).not.toHaveBeenCalled()
   })
 
   it.each(['settings', 'batch', 'deletion'])(

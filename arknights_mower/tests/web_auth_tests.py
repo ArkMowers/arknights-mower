@@ -12,10 +12,14 @@ from arknights_mower.utils.web_auth import require_token
 @pytest.fixture
 def protected_server(monkeypatch):
     import server
-    from arknights_mower.utils import config_profiles, crash_recovery, resource_version
+    from arknights_mower.utils import (
+        config_profiles,
+        crash_recovery,
+        manager_instances,
+        resource_version,
+    )
     from arknights_mower.utils.config import gui
     from arknights_mower.views import config_profiles as profile_routes
-    from arknights_mower.views import instances
 
     monkeypatch.setattr(server.app, "token", "current-instance", raising=False)
     monkeypatch.setitem(server.app.config, "UPDATES_ENABLED", True)
@@ -24,7 +28,7 @@ def protected_server(monkeypatch):
         (Request, "get_json"),
         (config_profiles, "check_generation"),
         (profile_routes, "_execute"),
-        (instances, "InstanceController"),
+        (manager_instances, "InstanceController"),
         (resource_version, "check_resource_update"),
         (crash_recovery, "status"),
         (server, "runtime_deployment"),
@@ -197,7 +201,6 @@ def preflight_server(monkeypatch):
     from arknights_mower.utils import config_profiles
     from arknights_mower.utils.config import gui
     from arknights_mower.views import config_profiles as profile_routes
-    from arknights_mower.views import instances
 
     monkeypatch.setattr(server.app, "token", "current-instance", raising=False)
     monkeypatch.setenv("MOWER_DEV_PORT", "5188")
@@ -206,7 +209,6 @@ def preflight_server(monkeypatch):
     access = Mock(return_value={"ok": True})
     for owner, name in (
         (profile_routes, "_execute"),
-        (instances, "_execute"),
         (gui, "load_sidebar"),
         (gui, "save_sidebar"),
         (gui, "load_software_version_display"),
@@ -231,8 +233,6 @@ def preflight_server(monkeypatch):
         ("PUT", "/gui/sidebar"),
         ("GET", "/gui/appearance"),
         ("PUT", "/gui/appearance"),
-        ("GET", "/instances"),
-        ("POST", "/instances/actions"),
     ],
 )
 def test_development_preflight_admits_only_the_following_authenticated_request(

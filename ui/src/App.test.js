@@ -42,6 +42,7 @@ const state = vi.hoisted(() => ({
   router: null,
   shellMetadata: null,
   shellActive: false,
+  shellConnected: null,
   sidebarInitialize: vi.fn(async () => true),
   sidebarFlush: vi.fn(async () => {}),
   settingsDialogClose: null,
@@ -108,6 +109,7 @@ vi.mock('@/window-shell/adapter.js', () => ({
     close: state.closeWindow,
     metadata: state.shellMetadata,
     active: ref(state.shellActive),
+    connected: state.shellConnected,
     capabilities: ref({ enabled: true, move: 'bridge', resize: 'native' }),
     state: { maximized: false },
     initialize: vi.fn(),
@@ -121,8 +123,12 @@ vi.mock('@/components/Feedback.vue', () => ({ default: {} }))
 vi.mock('@/components/GlobalUpdateDrop.vue', () => ({ default: {} }))
 vi.mock('@/components/WindowTitlebar.vue', () => ({
   default: defineComponent({
-    props: ['theme'],
-    setup: (props) => () => h('header', { 'data-window-theme': props.theme })
+    props: ['theme', 'showInstanceMenu'],
+    setup: (props) => () =>
+      h('header', {
+        'data-window-theme': props.theme,
+        'data-window-instance-management': String(props.showInstanceMenu)
+      })
   })
 }))
 vi.mock('@/components/AppMenuBar.vue', () => ({
@@ -243,6 +249,7 @@ describe('desktop page startup', () => {
     state.client.patch.mockReset().mockResolvedValue({ data: {} })
     state.shellMetadata = { version: '', instanceName: '' }
     state.shellActive = false
+    state.shellConnected = ref(false)
     state.route = reactive({ meta: {} })
     state.navigated = []
     state.settingsDialogClose = null
@@ -751,11 +758,42 @@ describe('desktop page startup', () => {
     expect(html).toContain('data-menu-mode="brand"')
   })
 
-  it('offers instance management in ordinary browsers and desktop windows', async () => {
+  it('omits instance management from ordinary browsers, including a forged shell query', async () => {
+    window.location.search = '?window_shell=1'
     const component = await mount()
     expect(window.pywebview).toBeUndefined()
-    expect(await renderShell(component)).toContain('data-instance-management="true"')
+    expect(await renderShell(component)).toContain('data-instance-management="false"')
+    expect(await renderShell(component)).toContain('data-window-instance-management="false"')
+  })
+
+  it.each([false, true])(
+    'reveals local instance management after delayed native injection (custom shell %s)',
+    async (customShell) => {
+      state.shellActive = customShell
+      const component = await mount()
+      expect(await renderShell(component)).toContain('data-window-instance-management="false"')
+      window.pywebview = { api: { get_instances: vi.fn() } }
+      if (customShell) state.shellConnected.value = true
+      else {
+        const ready = window.addEventListener.mock.calls.find(
+          ([event]) => event === 'pywebviewready'
+        )
+        expect(ready).toBeDefined()
+        ready[1]()
+      }
+      await nextTick()
+      const html = await renderShell(component)
+      expect(html).toContain('data-window-instance-management="true"')
+      if (!customShell) expect(html).toContain('data-instance-management="true"')
+      expect(state.client.get.mock.calls.some(([url]) => /\/instances(?:\/|$)/.test(url))).toBe(
+        false
+      )
+    }
+  )
+
+  it('keeps local instance management available when the native bridge is already injected', async () => {
     window.pywebview = { api: { get_instances: vi.fn() } }
+    const component = await mount()
     expect(await renderShell(component)).toContain('data-instance-management="true"')
   })
 

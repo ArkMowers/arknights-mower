@@ -7,7 +7,7 @@ import StopIcon from '@vicons/ionicons5/es/Stop'
 import SettingsIcon from '@vicons/ionicons5/es/SettingsOutline'
 import TrashIcon from '@vicons/ionicons5/es/TrashOutline'
 import WarningIcon from '@vicons/ionicons5/es/WarningOutline'
-import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { managerCall } from './bridge.js'
 import { createInstanceManagement } from '../src/utils/instanceManagement.js'
 
@@ -73,10 +73,7 @@ let riskTimer
 let riskStartedAt = 0
 let disposed = false
 let refreshVersion = 0
-const transport = createInstanceManagement({
-  axios: inject('axios', null),
-  getTargets: () => instances.value.map(({ name, path }) => ({ name, path }))
-})
+const transport = createInstanceManagement()
 const api = () => transport.api
 const statuses = { stopped: '已停止', starting: '启动中', running: '运行中', stopping: '停止中' }
 
@@ -244,10 +241,6 @@ function editBatch() {
 
 function selectPath(idx) {
   if (unavailable.value || !instances.value[idx]?.editable) return
-  if (!transport.nativeDirectoryPicker) {
-    edit(idx, 'path')
-    return
-  }
   const { name, path } = instances.value[idx]
   return execute(() => api().select_path(idx, { name, path }), { waitForUser: true })
 }
@@ -273,11 +266,6 @@ async function save() {
   }
   if (kind === 'name') {
     const succeeded = await execute(() => api().rename(idx, draft.value.name, target))
-    if (succeeded) editing.value = null
-    return
-  }
-  if (kind === 'path') {
-    const succeeded = await execute(() => api().set_path(idx, draft.value.path, target))
     if (succeeded) editing.value = null
     return
   }
@@ -620,11 +608,9 @@ defineExpose({
       :title="
         displayedEditing?.kind === 'name'
           ? '实例名称'
-          : displayedEditing?.kind === 'path'
-            ? '保存目录'
-            : displayedEditing?.kind === 'batch'
-              ? '批量实例配置'
-              : '实例配置'
+          : displayedEditing?.kind === 'batch'
+            ? '批量实例配置'
+            : '实例配置'
       "
       class="instance-settings-dialog"
       :style="{
@@ -647,16 +633,6 @@ defineExpose({
         <n-form-item v-if="displayedEditing.kind === 'name'" label="实例名称"
           ><n-input v-model:value="draft.name" :disabled="unavailable"
         /></n-form-item>
-        <template v-else-if="displayedEditing.kind === 'path'">
-          <n-form-item label="保存目录">
-            <n-input
-              v-model:value="draft.path"
-              :disabled="unavailable"
-              placeholder="输入完整目录路径"
-            />
-          </n-form-item>
-          <n-text depth="3">这是运行 Mower 的电脑上的目录，请输入该电脑上的完整路径。</n-text>
-        </template>
         <template v-else-if="displayedEditing.kind === 'batch'">
           <div class="batch-actions">
             <span>{{ displayedEditing.targets.length }} 个实例</span>

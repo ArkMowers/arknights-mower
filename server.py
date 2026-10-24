@@ -65,7 +65,7 @@ from arknights_mower.views.config_backup import config_backup_bp
 from arknights_mower.views.config_profiles import config_profiles_bp
 from arknights_mower.views.db_admin import db_admin_bp
 from arknights_mower.views.gui import gui_bp
-from arknights_mower.views.instances import instances_bp
+from arknights_mower.views.instances import instances_bp, reject_instance_management
 from arknights_mower.views.mastery import mastery_bp
 from arknights_mower.views.network import network_bp
 from arknights_mower.views.process_control import process_control_bp
@@ -862,6 +862,8 @@ def authorize_instance_updates():
 
 @app.before_request
 def serialize_configuration_requests():
+    if request.path == "/instances" or request.path.startswith("/instances/"):
+        return reject_instance_management()
     # Export/restore must not interleave with form saves, plan edits or startup.
     changes_configuration = request.method in {"POST", "PUT", "PATCH", "DELETE"} or (
         request.path.startswith("/start/")
@@ -908,11 +910,10 @@ def serialize_configuration_requests():
     ):
         backup_lock.acquire()
         g.configuration_locked = True
-    # GUI preferences and the shared instance list are independent of saved profiles.
+    # GUI preferences are independent of saved profiles.
     if changes_configuration and request.path not in {
         "/gui/appearance",
         "/gui/sidebar",
-        "/instances/actions",
     }:
         check_token()
         from arknights_mower.utils.config_backup import LocalConfigError
@@ -952,6 +953,13 @@ def release_configuration_lock(error):
         lock.release()
     if g.pop("configuration_locked", False):
         backup_lock.release()
+
+
+@app.after_request
+def disable_instance_management_caching(response):
+    if request.path == "/instances" or request.path.startswith("/instances/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/<path:path>")
