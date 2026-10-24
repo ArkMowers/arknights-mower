@@ -62,6 +62,119 @@ def archive(files, tmp_files=None):
     return stream.getvalue()
 
 
+@pytest.mark.parametrize("managed", [False, True])
+def test_import_keeps_managed_device_settings_but_restores_other_configuration(
+    storage, monkeypatch, managed
+):
+    from arknights_mower.utils import managed_device
+
+    monkeypatch.setattr(
+        "arknights_mower.utils.manager_common.read_document", lambda: {"values": {}}
+    )
+    monkeypatch.setenv("MOWER_MANAGED", "1" if managed else "0")
+    config.conf = config.conf.updated(
+        {
+            "device": {"last_serial": "current-device"},
+            "custom_screenshot": {"command": "current-capture"},
+            "performance_mode": "high",
+        }
+    )
+    config.save_conf()
+    before = managed_device.snapshot(config.conf)
+    incoming = {
+        "device": {"last_serial": "incoming-device"},
+        "custom_screenshot": {"command": "incoming-capture"},
+        "performance_mode": "low",
+        "account": "imported",
+    }
+    backup.import_configuration(
+        archive({"conf.yml": json.dumps(incoming), "plan.json": '{"plan1": {}}'})
+    )
+    assert config.conf.account == "imported"
+    if managed:
+        assert managed_device.snapshot(config.conf) == before
+    else:
+        assert config.conf.device.last_serial == "incoming-device"
+        assert config.conf.custom_screenshot.command == "incoming-capture"
+        assert config.conf.performance_mode == "low"
+    saved = backup._object_file(
+        backup.read_archive(backup.export_archive()), "conf.yml"
+    )
+    assert (
+        saved["custom_screenshot"]["command"] == config.conf.custom_screenshot.command
+    )
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_import_never_creates_or_replaces_global_manager_configuration(
+    storage, existing
+):
+    destination = storage("@app/config/manager-common.json")
+    if existing:
+        destination.write_bytes(b'{"performance_mode":"high"}')
+    backup.import_configuration(
+        archive(
+            {
+                "conf.yml": "{}",
+                "plan.json": '{"plan1": {}}',
+                "manager-common.json": '{"performance_mode":"low"}',
+            }
+        )
+    )
+    assert destination.exists() is existing
+    if existing:
+        assert destination.read_bytes() == b'{"performance_mode":"high"}'
+    assert "manager-common.json" not in backup.read_archive(backup.export_archive())
+
+
+def test_managed_import_preserves_permissions_launch_preferences_and_selected_common_values(
+    storage, monkeypatch
+):
+    monkeypatch.setenv("MOWER_MANAGED", "1")
+    monkeypatch.setattr(
+        "arknights_mower.utils.manager_common.read_document",
+        lambda: {
+            "values": {
+                "screenshot": 7,
+                "startup_mode": "background",
+                "instance_page_mode": "webview",
+            }
+        },
+    )
+    config.conf.start_automatically = True
+    config.conf.ai_assistant_enabled = True
+    config.conf.updates_enabled = False
+    config.conf.account = "manager-sender"
+    config.conf.pass_code = "manager-secret"
+    config.conf.screenshot = 7
+    config.conf.maa_path = "/manager/MAA"
+    config.conf = config.conf.updated({"waiting_scene": {"UNKNOWN": [7, 13]}})
+    config.save_conf()
+    incoming = {
+        "start_automatically": False,
+        "ai_assistant_enabled": False,
+        "updates_enabled": True,
+        "account": "incoming-sender",
+        "pass_code": "incoming-secret",
+        "mail_subject": "imported-subject",
+        "screenshot": 9,
+        "maa_path": "/incoming/MAA",
+        "waiting_scene": {"UNKNOWN": [9, 17]},
+    }
+    backup.import_configuration(
+        archive({"conf.yml": json.dumps(incoming), "plan.json": '{"plan1": {}}'})
+    )
+    assert config.conf.start_automatically
+    assert config.conf.ai_assistant_enabled
+    assert not config.conf.updates_enabled
+    assert config.conf.account == "incoming-sender"
+    assert config.conf.pass_code == "incoming-secret"
+    assert config.conf.screenshot == 7
+    assert config.conf.mail_subject == "imported-subject"
+    assert config.conf.maa_path == "/manager/MAA"
+    assert config.conf.waiting_scene.UNKNOWN == (7, 13)
+
+
 @pytest.mark.parametrize("name", ["growth_plan.json", "workshop_preset.json"])
 @pytest.mark.parametrize("canonical", [False, True])
 def test_long_term_tmp_archive_migrates_with_canonical_precedence(
@@ -210,18 +323,19 @@ def incoming(**files):
     return archive({**backup.read_archive(backup.export_archive()), **files})
 
 
+@pytest.mark.parametrize("field", ["updates_enabled", "extra_settings_visible"])
 @pytest.mark.parametrize("saved", [False, True])
 @pytest.mark.parametrize("archived", [None, False, True])
-def test_restore_preserves_current_update_authorization(storage, saved, archived):
-    config.conf.updates_enabled = saved
+def test_restore_preserves_current_manager_choice(storage, field, saved, archived):
+    setattr(config.conf, field, saved)
     config.save_conf()
-    uploaded = {} if archived is None else {"updates_enabled": archived}
+    uploaded = {} if archived is None else {field: archived}
     raw = incoming(**{"conf.yml": json.dumps(uploaded)})
     backup.import_configuration(raw)
-    assert config.conf.updates_enabled is saved
+    assert getattr(config.conf, field) is saved
     assert (
         backup._object_file(backup.read_archive(backup.export_archive()), "conf.yml")[
-            "updates_enabled"
+            field
         ]
         is saved
     )

@@ -1,14 +1,53 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, ref } from 'vue'
+import { createSSRApp, effectScope, nextTick, ref } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import Component from './MaaBasic.vue'
 
-const state = vi.hoisted(() => ({ client: null, config: {}, unmounted: [] }))
+const state = vi.hoisted(() => ({ client: null, config: {}, mounted: [], unmounted: [] }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
   inject: (key) => (key === 'axios' ? state.client : false),
-  onMounted: () => {},
+  onMounted: (callback) => state.mounted.push(callback),
   onUnmounted: (callback) => state.unmounted.push(callback)
+}))
+vi.mock('naive-ui', async () => {
+  const { h } = await import('vue')
+  const wrapper = {
+    inheritAttrs: false,
+    props: ['label'],
+    setup:
+      (props, { slots }) =>
+      () =>
+        h('div', [slots.header?.(), slots.label?.() || props.label, slots.default?.()])
+  }
+  return Object.fromEntries(
+    [
+      'NA',
+      'NAlert',
+      'NButton',
+      'NCard',
+      'NCheckbox',
+      'NDivider',
+      'NForm',
+      'NFormItem',
+      'NInput',
+      'NProgress',
+      'NRadio',
+      'NRadioGroup',
+      'NSelect',
+      'NSpace',
+      'NSwitch'
+    ].map((name) => [name, wrapper])
+  )
+})
+vi.mock('./HelpText.vue', () => ({
+  default: {
+    setup:
+      (_, { slots }) =>
+      () =>
+        slots.default?.()
+  }
 }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => ({}) }))
 vi.mock('@/stores/mower', () => ({ useMowerStore: () => ({}) }))
@@ -20,9 +59,11 @@ describe('Android MAA companion update checks', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.stubGlobal('window', { setTimeout, clearTimeout })
+    state.mounted = []
     state.unmounted = []
     state.config = Object.fromEntries(
       Object.entries({
+        manager_owned_device: false,
         runtime_platform: 'android',
         updates_enabled: true,
         maa_path: '/maa',
@@ -68,6 +109,104 @@ describe('Android MAA companion update checks', () => {
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
+  it.each(['windows', 'android'])(
+    'shows only theme restoration in a managed %s instance',
+    async (platform) => {
+      state.config.runtime_platform.value = platform
+      state.config.manager_owned_device.value = true
+      state.config.maa_restore_theme_enable.value = true
+      await nextTick()
+      const html = await renderToString(createSSRApp(Component))
+      expect(html).toContain('任务结束后恢复主题')
+      expect(html).toContain('目标主题')
+      for (const label of ['MAA目录', '连接配置', '触控模式', '测试连接', 'CDK', '更新 MAA']) {
+        expect(html).not.toContain(label)
+      }
+      expect(html).not.toContain('Android 应用管理')
+      expect(html).not.toContain('/mowersettings#software-update')
+      state.config.maa_restore_theme_enable.value = false
+      const disabled = await renderToString(createSSRApp(Component))
+      expect(disabled).toContain('任务结束后恢复主题')
+      expect(disabled).not.toContain('目标主题')
+    }
+  )
+
+  it('keeps connection controls for independently launched instances', async () => {
+    state.config.runtime_platform.value = 'windows'
+    const html = await renderToString(createSSRApp(Component))
+    for (const label of ['MAA目录', '连接配置', '触控模式', '测试连接', '任务结束后恢复主题']) {
+      expect(html).toContain(label)
+    }
+  })
+
+  it('does not load or update MAA from a managed instance, even with automatic updates enabled', async () => {
+    state.config.manager_owned_device.value = true
+    state.config.maa_auto_update.value = true
+    state.config.maa_resource_auto_update.value = true
+    state.config.maa_mirrorchyan_token.value = 'x'.repeat(24)
+    state.config.maa_path.value = '/manager/maa'
+    await nextTick()
+    const before = Object.fromEntries(
+      Object.entries(state.config).map(([key, value]) => [key, value.value])
+    )
+    await Promise.all(state.mounted.map((callback) => callback()))
+    await component.get_maa_conn_presets()
+    await component.test_maa()
+    await component.get_maa_update_info()
+    await component.get_maa_resource_update_info()
+    await component.check_maa_update()
+    await component.check_maa_resource_update()
+    await component.start_maa_update()
+    await component.start_maa_resource_update()
+    await component.check_mirrorchyan_cdk()
+    component.schedule_auto_check_updates(0)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(state.client.get).not.toHaveBeenCalled()
+    expect(state.client.post).not.toHaveBeenCalled()
+    expect(
+      Object.fromEntries(Object.entries(state.config).map(([key, value]) => [key, value.value]))
+    ).toEqual(before)
+    expect(state.config.updates_enabled.value).toBe(true)
+  })
+
+  it('cancels scheduled MAA activity when manager ownership arrives after mounting', async () => {
+    state.config.maa_path.value = '/pending/maa'
+    state.config.maa_auto_check_update.value = true
+    component.maa_update_supported.value = true
+    state.config.runtime_platform.value = 'windows'
+    state.config.maa_mirrorchyan_token.value = 'x'.repeat(24)
+    await nextTick()
+    state.client.get.mockClear()
+    state.client.post.mockClear()
+    state.config.manager_owned_device.value = true
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(state.client.get).not.toHaveBeenCalled()
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it.each(['core', 'resource'])(
+    'does not resume %s status polling after the instance becomes managed',
+    async (kind) => {
+      let complete
+      state.client.get.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            complete = resolve
+          })
+      )
+      const pending =
+        kind === 'core' ? component.poll_maa_update() : component.poll_maa_resource_update()
+      state.config.manager_owned_device.value = true
+      await nextTick()
+      complete({ data: { job: { status: 'running' } } })
+      await pending
+      expect(vi.getTimerCount()).toBe(0)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(state.client.get).toHaveBeenCalledOnce()
+    }
+  )
+
   it('starts both checks concurrently and preserves the core check token', async () => {
     let complete
     state.client.post.mockImplementation(

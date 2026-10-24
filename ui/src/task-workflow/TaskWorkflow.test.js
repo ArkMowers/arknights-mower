@@ -147,7 +147,7 @@ function hostNode(tag, text = '') {
         if (selector === '.task-workspace' && String(node.props.class).includes('task-workspace'))
           return node
         if (
-          selector === 'a[href^="#task-"]' &&
+          selector === 'a[href^="#"]' &&
           node.tag === 'a' &&
           node.props.href?.startsWith('#task-')
         )
@@ -173,7 +173,10 @@ async function mount(hash = '', queue = []) {
     },
     parentNode: (node) => node.parent,
     nextSibling: (node) => node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null,
-    patchProp: (node, key, _previous, value) => (node.props[key] = value),
+    patchProp(node, key, _previous, value) {
+      if (key.startsWith('.')) node[key.slice(1)] = value
+      else node.props[key] = value
+    },
     insert(node, parent, anchor = null) {
       if (node.parent) {
         const siblings = node.parent.children
@@ -255,7 +258,7 @@ function selected() {
   return find((node) => node.props['data-active-editor'] !== undefined).props['data-active-editor']
 }
 function heading() {
-  return find((node) => node.tag === 'h2')
+  return find((node) => node.props.class === 'checklist-mobile-toggle')
 }
 function visibleTasks() {
   return nodes()
@@ -263,7 +266,7 @@ function visibleTasks() {
     .map((node) => node.props['data-task-id'])
 }
 function searchInput() {
-  return find((node) => node.props['aria-label'] === '查找托管功能')
+  return find((node) => node.props['aria-label'] === '查找设置')
 }
 async function search(value) {
   searchInput().props.onInput({ target: { value } })
@@ -275,12 +278,6 @@ async function check(id, value) {
 }
 function batch(label) {
   return find((node) => node.tag === 'button' && text(node) === label)
-}
-function switchDirectory(label) {
-  const directory = find((node) => node.props['aria-label'] === '配置分类')
-  return click(
-    nodes(directory).find((node) => node.tag === 'button' && text(node).trim() === label)
-  )
 }
 
 const switches = {
@@ -315,7 +312,11 @@ beforeEach(() => {
     drone_room: 'room_1_1',
     automatic_rescue_enable: true,
     workshop_manual_settings: [{ enabled: true, operator: '九色鹿' }],
-    maa_recruit: true
+    maa_mail: false,
+    maa_recruit: true,
+    maa_orundum: false,
+    maa_mining: false,
+    maa_specialaccess: false
   })
   state.panels = []
   state.reveals = []
@@ -327,26 +328,47 @@ afterEach(() => {
 })
 
 describe('production task checklist interactions', () => {
+  it.each(['checklist', 'waterfall'])(
+    'omits managed connection navigation in %s layout',
+    async (layout) => {
+      state.config.manager_owned_device = true
+      state.gui.taskSettingsLayout = layout
+      await mount('#task-devices')
+      expect(selected()).toBe('base')
+      expect(nodes().find((node) => node.props['aria-label'] === '配置连接与启动')).toBeUndefined()
+      await search('任务结束后')
+      expect(nodes().find((node) => node.props['aria-label'] === '配置连接与启动')).toBeUndefined()
+      state.config.manager_owned_device = false
+      await nextTick()
+      await search('')
+      await click(find((node) => node.props['aria-label'] === '配置连接与启动'))
+      expect(selected()).toBe('device')
+      state.config.manager_owned_device = true
+      await nextTick()
+      expect(selected()).toBe('base')
+    }
+  )
+
   it('opens base scheduling with persistent panels and concise names without gear buttons or automatic labels', async () => {
     await mount()
     expect(selected()).toBe('base')
-    expect(text(heading())).toBe('基建排班')
+    expect(text(heading())).toBe('自动救急')
     expect(
       find((node) => node.props['data-active-editor'] !== undefined).props['data-checklist']
-    ).toBe(true)
+    ).toBe(false)
     const navigation = find((node) => node.tag === 'nav')
     for (const label of ['连接与启动', '基建任务', '日常任务', '作战与空闲', '运行配置'])
       expect(text(navigation)).toContain(label)
     expect(
       nodes(navigation).filter((node) => node.props['data-ui-icon'] !== undefined)
-    ).toHaveLength(1)
+    ).toHaveLength(2)
     expect(nodes(navigation).filter((node) => node.tag === 'small')).toHaveLength(0)
     expect(nodes(navigation).some((node) => node.text.trim() === '自动')).toBe(false)
     for (const button of nodes(navigation).filter((node) => node.tag === 'button'))
-      expect(text(button).trim()).not.toBe('')
-    for (const id of ['base', 'runorder', 'drone', 'workshop', 'rewards'])
-      expect(checkbox(id)).toBeUndefined()
+      expect(text(button).trim() || button.props['aria-label']).toBeTruthy()
+    for (const id of ['base', 'runorder', 'drone', 'workshop']) expect(checkbox(id)).toBeUndefined()
     expect(checkbox('training')).toBeTruthy()
+    expect(checkbox('rewards')).toBeTruthy()
   })
 
   it('selects disabled tasks by name without saving configuration or closing the selected editor', async () => {
@@ -363,6 +385,32 @@ describe('production task checklist interactions', () => {
     for (const method of Object.values(axios)) expect(method).not.toHaveBeenCalled()
   })
 
+  it('updates the reward DOM checkbox through partial, all and empty selections without selecting a card', async () => {
+    await mount()
+    const input = checkbox('rewards')
+    const before = { ...state.config }
+    expect(input.props.checked).toBe(false)
+    expect(input.indeterminate).toBe(true)
+    expect(input.props['aria-checked']).toBe('mixed')
+    await check('rewards', true)
+    expect(input.props.checked).toBe(true)
+    expect(input.indeterminate).toBe(false)
+    expect(input.props['aria-checked']).toBe(true)
+    expect(selected()).toBe('base')
+    state.config.maa_mail = false
+    await flush()
+    expect(input.indeterminate).toBe(true)
+    expect(input.props['aria-checked']).toBe('mixed')
+    await check('rewards', false)
+    expect(input.props.checked).toBe(false)
+    expect(input.indeterminate).toBe(false)
+    expect(input.props['aria-checked']).toBe(false)
+    expect(state.config).toEqual({ ...before, maa_recruit: false })
+    expect(selected()).toBe('base')
+    expect(state.reveals).toEqual([])
+    expect(nodes().some((node) => node.focus.mock.calls.length)).toBe(false)
+  })
+
   it('opens the compact directory and closes it after selecting an entry while retaining drafts and switches', async () => {
     const page = await mount()
     const before = JSON.stringify(state.config)
@@ -372,7 +420,7 @@ describe('production task checklist interactions', () => {
     })
     const toggle = () => find((node) => node.props.class === 'checklist-mobile-toggle')
     expect(toggle().props['aria-expanded']).toBe(false)
-    expect(toggle().props['aria-label']).toBe('选择配置：基建排班')
+    expect(toggle().props['aria-label']).toBe('选择配置：自动救急')
     const contentId = toggle().props['aria-controls']
     expect(find((node) => node.props.id === contentId).props.class).toBe('checklist-content')
     await click(toggle())
@@ -417,27 +465,19 @@ describe('production task checklist interactions', () => {
     }
   )
 
-  it('returns waterfall directory focus to its visible toggle after entries and category changes', async () => {
-    state.gui.taskSettingsLayout = 'waterfall'
+  it('returns directory focus to its visible toggle after selecting runtime settings', async () => {
     await mount()
     const toggle = find((node) => node.props.class === 'checklist-mobile-toggle')
     await click(toggle)
-    await click(task('recruit'))
+    await click(task('runtime'))
     expect(toggle.props['aria-expanded']).toBe(false)
     expect(toggle.focus).toHaveBeenCalledWith({ preventScroll: true })
-    expect(toggle.focus).toHaveBeenCalledOnce()
-
-    await click(toggle)
-    await switchDirectory('运行配置')
-    expect(toggle.props['aria-expanded']).toBe(false)
-    expect(toggle.focus).toHaveBeenCalledTimes(2)
-    expect(selected()).toBe('intervals')
+    expect(selected()).toBe('runtime')
   })
 
   it('folds and restores the waterfall directory without replacing its search, selection or editor draft', async () => {
     state.gui.taskSettingsLayout = 'waterfall'
     await mount()
-    await switchDirectory('运行配置')
     await search('截图')
     await click(task('runtime'))
     const panels = state.panels[0]
@@ -472,11 +512,7 @@ describe('production task checklist interactions', () => {
     expect(input.props.value).toBe('截图')
     expect(selected()).toBe('runtime')
     expect(task('runtime').props['aria-pressed']).toBe(true)
-    const categories = find((node) => node.props['aria-label'] === '配置分类')
-    expect(
-      nodes(categories).find((node) => node.tag === 'button' && text(node).trim() === '运行配置')
-        .props['aria-pressed']
-    ).toBe(true)
+    expect(nodes().some((node) => node.props['aria-label'] === '配置分类')).toBe(false)
     expect(find((node) => node.props['aria-label'] === '本地草稿')).toBe(draft)
     expect(draft.props.value).toBe('未保存的截图设置')
     expect(state.panels).toEqual([panels])
@@ -485,8 +521,7 @@ describe('production task checklist interactions', () => {
     for (const method of Object.values(axios)) expect(method).not.toHaveBeenCalled()
   })
 
-  it('retains the folded waterfall preference across a checklist layout without folding the checklist', async () => {
-    state.gui.taskSettingsLayout = 'waterfall'
+  it('keeps continuous settings and a folded directory when an obsolete layout preference changes', async () => {
     await mount()
     await search('公招')
     await click(task('recruit'))
@@ -494,25 +529,15 @@ describe('production task checklist interactions', () => {
     const input = searchInput()
     const workspace = find((node) => node.props.class?.split(' ').includes('task-workspace'))
     await click(find((node) => node.props.class === 'checklist-desktop-toggle'))
-    expect(workspace.props.class.split(' ')).toContain('task-workspace--navigation-collapsed')
-    state.gui.taskSettingsLayout = 'checklist'
-    await flush()
-    expect(workspace.props.class.split(' ')).not.toContain('task-workspace--navigation-collapsed')
-    expect(nodes().some((node) => node.props.class === 'checklist-desktop-toggle')).toBe(false)
-    expect(selected()).toBe('recruit')
-    expect(searchInput()).toBe(input)
-    expect(input.props.value).toBe('公招')
-
-    state.gui.taskSettingsLayout = 'waterfall'
-    await flush()
-    expect(workspace.props.class.split(' ')).toContain('task-workspace--navigation-collapsed')
-    expect(
-      find((node) => node.props.class === 'checklist-desktop-toggle').props['aria-expanded']
-    ).toBe(false)
-    expect(searchInput()).toBe(input)
-    expect(input.props.value).toBe('公招')
-    expect(selected()).toBe('recruit')
-    expect(state.panels).toEqual([panels])
+    for (const layout of ['checklist', 'waterfall']) {
+      state.gui.taskSettingsLayout = layout
+      await flush()
+      expect(workspace.props.class.split(' ')).toContain('task-workspace--navigation-collapsed')
+      expect(searchInput()).toBe(input)
+      expect(input.props.value).toBe('公招')
+      expect(selected()).toBe('recruit')
+      expect(state.panels).toEqual([panels])
+    }
     for (const method of Object.values(axios)) expect(method).not.toHaveBeenCalled()
   })
 
@@ -539,7 +564,7 @@ describe('production task checklist interactions', () => {
     expect(searchInput().props.value).toBe('公招')
   })
 
-  it('selects and clears real switches while preserving automatic tasks and all parameter choices', async () => {
+  it('selects and clears task and reward switches while preserving automatic tasks and parameters', async () => {
     await mount()
     await click(task('recruit'))
     const before = JSON.parse(JSON.stringify(state.config))
@@ -548,12 +573,17 @@ describe('production task checklist interactions', () => {
       ...before,
       ...Object.fromEntries(
         Object.values(switches).map((key) => [key, key === 'maa_rg_enable' ? 1 : true])
-      )
+      ),
+      maa_mail: true,
+      maa_recruit: true,
+      maa_orundum: true,
+      maa_mining: true,
+      maa_specialaccess: true
     })
     expect(selected()).toBe('recruit')
     await click(batch('清空'))
-    expect(state.config).toEqual(before)
-    expect(state.config.maa_recruit).toBe(true)
+    expect(state.config).toEqual({ ...before, maa_recruit: false })
+    expect(state.config.maa_recruit).toBe(false)
     expect(state.config.workshop_manual_settings[0].enabled).toBe(true)
     expect(selected()).toBe('recruit')
   })
@@ -568,13 +598,12 @@ describe('production task checklist interactions', () => {
       expect(nodes(groupHeading).some((node) => node.tag === 'button')).toBe(false)
       expect(nodes().some((node) => node.props['aria-label'] === `配置${title}`)).toBe(false)
     }
-    await switchDirectory('运行配置')
+    await click(task('intervals'))
     expect(selected()).toBe('intervals')
     expect(text(heading())).toBe('执行间隔')
     expect(checkbox('intervals')).toBeUndefined()
     await click(find((node) => node.tag === 'h3' && text(node) === '运行配置'))
     expect(selected()).toBe('intervals')
-    await switchDirectory('任务')
     await click(find((node) => node.props['aria-label'] === '配置连接与启动'))
     expect(selected()).toBe('device')
     expect(text(heading())).toBe('连接与启动')
@@ -589,7 +618,7 @@ describe('production task checklist interactions', () => {
     expect(JSON.stringify(state.config)).toBe(before)
   })
 
-  it('separates runtime configuration from tasks and retains selection and drafts across both directories', async () => {
+  it('shows task, runtime and Mower settings together and searches without replacing drafts', async () => {
     const page = await mount()
     const before = JSON.stringify(state.config)
     const panels = state.panels[0]
@@ -597,24 +626,27 @@ describe('production task checklist interactions', () => {
     find((node) => node.props['aria-label'] === '本地草稿').props.onInput({
       target: { value: '未保存的设备地址' }
     })
-    expect(visibleTasks()).not.toEqual(
-      expect.arrayContaining(['intervals', 'runtime', 'accounts', 'maa'])
+    expect(visibleTasks()).toEqual(
+      expect.arrayContaining([
+        'recruit',
+        'intervals',
+        'runtime',
+        'accounts',
+        'maa',
+        'mower-interface',
+        'mower-data'
+      ])
     )
-    await switchDirectory('运行配置')
-    expect(visibleTasks()).toEqual(['intervals', 'runtime', 'accounts', 'maa'])
-    expect(selected()).toBe('intervals')
+    expect(nodes().some((node) => node.props['aria-label'] === '配置分类')).toBe(false)
     await click(task('accounts'))
-    await switchDirectory('任务')
-    expect(selected()).toBe('recruit')
-    await switchDirectory('运行配置')
-    expect(selected()).toBe('accounts')
+    await click(task('mower-interface'))
+    expect(selected()).toBe('mower-interface')
     await search('公招')
     expect(visibleTasks()).toEqual(['recruit'])
     await click(task('recruit'))
-    expect(selected()).toBe('recruit')
     await page.openEditor('maa')
-    expect(visibleTasks()).toEqual(['intervals', 'runtime', 'accounts', 'maa'])
     expect(searchInput().props.value).toBe('')
+    expect(visibleTasks()).toContain('mower-data')
     expect(state.panels).toEqual([panels])
     expect(find((node) => node.props['aria-label'] === '本地草稿').props.value).toBe(
       '未保存的设备地址'
@@ -630,9 +662,7 @@ describe('production task checklist interactions', () => {
       target: { value: '未保存的设备地址' }
     })
     await click(task('recruit'))
-    await switchDirectory('运行配置')
     await click(task('intervals'))
-    await switchDirectory('任务')
     await click(find((node) => node.props['aria-label'] === '配置连接与启动'))
     await page.openEditor('base')
     expect(state.panels).toHaveLength(1)
@@ -642,56 +672,25 @@ describe('production task checklist interactions', () => {
     )
   })
 
-  it('follows the settings layout preference while retaining the device editor and unsaved draft', async () => {
+  it('retains the device editor and unsaved draft independently of the retired layout preference', async () => {
     const page = await mount()
-    const before = JSON.stringify(state.config)
     await click(find((node) => node.props['aria-label'] === '配置连接与启动'))
     const panels = state.panels[0]
     find((node) => node.props['aria-label'] === '本地草稿').props.onInput({
       target: { value: '未保存的设备地址' }
     })
-    await flush()
-
-    function checklistVisible() {
-      return nodes()
-        .filter((node) => node.props['aria-label'] === '任务配置导航')
-        .some((node) => {
-          for (let current = node; current; current = current.parent) {
-            if (current.style.display === 'none' || current.props.hidden) return false
-          }
-          return true
-        })
-    }
-    function expectView(layout) {
-      const waterfall = layout === 'waterfall'
-      expect(nodes().some((node) => node.props['aria-label'] === '任务配置视图')).toBe(false)
-      expect(checklistVisible()).toBe(true)
-      const workspace = find((node) => node.props.class?.split(' ').includes('task-workspace'))
-      expect(workspace.props.class.split(' ').includes('task-workspace--waterfall')).toBe(waterfall)
-      const panel = find((node) => node.props['data-active-editor'] !== undefined)
-      expect(panel.props['data-layout']).toBe(layout)
-      expect(panel.props['data-checklist']).toBe(!waterfall)
-      expect(panel.props['data-active-editor']).toBe('device')
-      expect(state.panels).toHaveLength(1)
-      expect(state.panels[0]).toBe(panels)
+    const before = JSON.stringify(state.config)
+    for (const layout of ['waterfall', 'checklist']) {
+      state.gui.taskSettingsLayout = layout
+      await flush()
+      expect(selected()).toBe('device')
+      expect(state.panels).toEqual([panels])
       expect(find((node) => node.props['aria-label'] === '本地草稿').props.value).toBe(
         '未保存的设备地址'
       )
       expect(JSON.stringify(state.config)).toBe(before)
       expect(page.route.hash).toBe('')
-      for (const method of Object.values(axios)) expect(method).not.toHaveBeenCalled()
     }
-
-    expectView('checklist')
-    state.gui.taskSettingsLayout = 'waterfall'
-    await flush()
-    expectView('waterfall')
-    state.gui.taskSettingsLayout = 'checklist'
-    await flush()
-    expectView('checklist')
-    expect(
-      find((node) => node.props['aria-label'] === '配置连接与启动').props['aria-pressed']
-    ).toBe(true)
   })
 
   it('keeps current configuration selected when polling replaces or clears queued tasks', async () => {
@@ -749,9 +748,22 @@ describe('production task checklist interactions', () => {
       expect(selected()).toBe('recruit')
       expect(panels.revealActive).toHaveBeenCalledTimes(count)
     }
-    await switchDirectory('运行配置')
+    await search('')
+    await click(task('intervals'))
     expect(selected()).toBe('intervals')
-    expect(visibleTasks()).toEqual(['intervals', 'runtime', 'accounts', 'maa'])
+    expect(visibleTasks()).toEqual(
+      expect.arrayContaining([
+        'recruit',
+        'intervals',
+        'runtime',
+        'accounts',
+        'maa',
+        'mower-interface',
+        'mower-notifications',
+        'mower-updates',
+        'mower-data'
+      ])
+    )
     expect(panels.revealActive).toHaveBeenCalledTimes(3)
     for (const id of ['runtime', 'accounts', 'maa']) {
       await click(task(id))
@@ -820,36 +832,13 @@ describe('production task checklist interactions', () => {
     expect(searchInput().props.value).toBe('')
   })
 
-  it('starts each selected configuration at the top of its scrollable content', async () => {
+  it('reveals the selected card without resetting a separate content scroll pane', async () => {
     await mount()
-    const content = find((node) => node.props.class === 'inspector-content')
-    content.scrollTop = 320
+    const panels = state.panels[0]
     await click(task('recruit'))
-    expect(content.scrollTop).toBe(0)
-    content.scrollTop = 180
-    await click(find((node) => node.props['aria-label'] === '配置连接与启动'))
-    expect(content.scrollTop).toBe(0)
-  })
-
-  it.each([
-    ['stacked', { left: 18, right: 302, top: -250, bottom: -220 }, true],
-    ['side by side', { left: 264, right: 500, top: 100, bottom: 130 }, false]
-  ])('reveals the selected heading for %s navigation', async (_layout, bounds, shouldReveal) => {
-    await mount()
-    const navigation = find((node) => node.tag === 'nav')
-    const inspectorHeading = find((node) => node.props.class === 'inspector-heading')
-    navigation.getBoundingClientRect = () => ({ left: 0, right: 236, top: 36, bottom: 88 })
-    inspectorHeading.getBoundingClientRect = () => bounds
-    inspectorHeading.scrollIntoView = vi.fn()
-
-    await click(task('recruit'))
-    expect(heading().focus).toHaveBeenCalledWith({ preventScroll: true })
-    expect(inspectorHeading.scrollIntoView).toHaveBeenCalledTimes(shouldReveal ? 1 : 0)
-    if (shouldReveal)
-      expect(inspectorHeading.scrollIntoView).toHaveBeenCalledWith({
-        block: 'start',
-        behavior: 'instant'
-      })
+    expect(panels.revealActive).toHaveBeenCalled()
+    expect(selected()).toBe('recruit')
+    expect(nodes().some((node) => node.props.class === 'inspector-heading')).toBe(false)
   })
 
   it('shows an empty search result without changing selection and repeats external requests for the same editor', async () => {

@@ -21,7 +21,12 @@ const resourceLabel = computed(() => {
 })
 
 function applyMode(mode) {
-  if (props.disabled || gameTestRunning.value || !options.value.some((item) => item.value === mode))
+  if (
+    config.manager_owned_device ||
+    props.disabled ||
+    gameTestRunning.value ||
+    !options.value.some((item) => item.value === mode)
+  )
     return
   config.performance_mode = mode
 }
@@ -32,6 +37,7 @@ function applyMode(mode) {
     <n-space vertical :size="8">
       <n-space align="center" :wrap="false">
         <n-radio-group
+          v-if="!config.manager_owned_device"
           :value="config.performance_mode"
           :disabled="disabled || gameTestRunning"
           @update:value="applyMode"
@@ -42,6 +48,9 @@ function applyMode(mode) {
             </n-radio>
           </n-flex>
         </n-radio-group>
+        <n-text v-else
+          >当前档位：{{ labels[config.performance_mode] }}；请在多开管理器中修改。</n-text
+        >
         <help-text>
           自动从极高开始，按选人反馈调整。 极高、高优先速度，中、低增加画面确认。
           切换档位不改时间参数；资源信息仅供参考。当前生效：{{

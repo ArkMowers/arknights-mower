@@ -164,7 +164,7 @@ export const useConfigStore = defineStore('config', () => {
   const run_order_grandet_mode = ref({})
   const product_switching = ref({})
   const check_mail_enable = ref(true)
-  const mail_skip_clear_read = ref(false)
+  const mail_skip_clear_read = ref(true)
   const report_enable = ref(true)
   const trust_rotation_enable = ref(false)
   const trust_rotation_prefer_low = ref(false)
@@ -174,6 +174,9 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_auto_5 = ref('hand')
   const webview = ref({ scale: 1.0 })
   const runtime_platform = ref('')
+  const manager_owned_device = ref(false)
+  const manager_inherited_settings = ref([])
+  const extra_settings_visible = ref(false)
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
   const fix_mumu12_adb_disconnect = ref(false)
@@ -474,6 +477,11 @@ export const useConfigStore = defineStore('config', () => {
       const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/conf`)
       device_profile.value = response.data.device ?? null
       runtime_platform.value = response.data.runtime_platform || ''
+      manager_owned_device.value = response.data.manager_owned_device === true
+      manager_inherited_settings.value = Array.isArray(response.data.manager_inherited_settings)
+        ? response.data.manager_inherited_settings.filter((key) => typeof key === 'string')
+        : []
+      extra_settings_visible.value = response.data.extra_settings_visible === true
       performance_mode.value = normalizePerformanceMode(
         response.data.performance_mode,
         response.data.low_frame_rate_mode
@@ -616,7 +624,7 @@ export const useConfigStore = defineStore('config', () => {
         ...(response.data.product_switching || {})
       }
       check_mail_enable.value = response.data.check_mail_enable
-      mail_skip_clear_read.value = response.data.mail_skip_clear_read ?? false
+      mail_skip_clear_read.value = response.data.mail_skip_clear_read ?? true
       report_enable.value = response.data.report_enable
       trust_rotation_enable.value = response.data.trust_rotation_enable ?? false
       trust_rotation_prefer_low.value = response.data.trust_rotation_prefer_low ?? false
@@ -1171,6 +1179,9 @@ export const useConfigStore = defineStore('config', () => {
     recruit_auto_5,
     webview,
     runtime_platform,
+    manager_owned_device,
+    manager_inherited_settings,
+    extra_settings_visible,
     shop_collect_enable,
     meeting_level,
     fix_mumu12_adb_disconnect,

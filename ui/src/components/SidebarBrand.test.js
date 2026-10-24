@@ -423,36 +423,44 @@ describe('sidebar version badges', () => {
     expect(resource).toHaveBeenCalledOnce()
   })
 
-  it('checks software from the saved channel and reports the result without changing preferences or installing', async () => {
-    let finish
-    axios.get.mockResolvedValue({ data: { ok: true, settings: { channel: 'stable' } } })
-    axios.post.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
-    const update = vi.fn()
-    const view = mountClock(
-      { version: '4.1.6', enabled: true, 'onUpdate:displayMode': update },
-      ClientChecks
-    )
-    const request = view.button().props.onClick()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(view.button().props.disabled).toBe(true)
-    view.button().props.onClick()
-    expect(axios.get).toHaveBeenCalledExactlyOnceWith(
-      expect.stringContaining('/software-update/info')
-    )
-    expect(axios.post).toHaveBeenCalledExactlyOnceWith(
-      expect.stringContaining('/software-update/check'),
-      { channel: 'stable' },
-      { headers: { 'X-Mower-Update': '1' } }
-    )
-    finish({ data: { ok: true, available: true, version: '4.1.7' } })
-    await request
-    await vi.advanceTimersByTimeAsync(0)
-    expect(messages.info).toHaveBeenCalledWith(expect.stringContaining('4.1.7'), { duration: 6000 })
-    expect(messages.destroy).toHaveBeenCalledOnce()
-    expect(view.button().props.disabled).toBe(false)
-    expect(update).not.toHaveBeenCalled()
-    expect(axios.post).toHaveBeenCalledOnce()
-  })
+  it.each([true, false])(
+    'checks software and directs installation to the available settings (visible=%s)',
+    async (extraSettingsVisible) => {
+      let finish
+      axios.get.mockResolvedValue({ data: { ok: true, settings: { channel: 'stable' } } })
+      axios.post.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+      const update = vi.fn()
+      const view = mountClock(
+        { version: '4.1.6', enabled: true, extraSettingsVisible, 'onUpdate:displayMode': update },
+        ClientChecks
+      )
+      const request = view.button().props.onClick()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(view.button().props.disabled).toBe(true)
+      view.button().props.onClick()
+      expect(axios.get).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining('/software-update/info')
+      )
+      expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining('/software-update/check'),
+        { channel: 'stable' },
+        { headers: { 'X-Mower-Update': '1' } }
+      )
+      finish({ data: { ok: true, available: true, version: '4.1.7' } })
+      await request
+      await vi.advanceTimersByTimeAsync(0)
+      expect(messages.info).toHaveBeenCalledWith(expect.stringContaining('4.1.7'), {
+        duration: 6000
+      })
+      expect(messages.info.mock.calls[0][0]).toContain(
+        extraSettingsVisible ? '全部设置 → 网络与更新' : '请在多开管理器中操作'
+      )
+      expect(messages.destroy).toHaveBeenCalledOnce()
+      expect(view.button().props.disabled).toBe(false)
+      expect(update).not.toHaveBeenCalled()
+      expect(axios.post).toHaveBeenCalledOnce()
+    }
+  )
 
   it('checks resources through the shared store and reports failures before allowing retry', async () => {
     axios.get

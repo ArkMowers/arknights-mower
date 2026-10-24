@@ -840,6 +840,15 @@ def vary_frontend_response(response):
 
 @app.before_request
 def authorize_instance_updates():
+    from arknights_mower.utils import managed_device
+
+    if managed_device.operation_blocked(request.path, request.method, config.conf):
+        check_token()
+        return {
+            "ok": False,
+            "error": "manager_owned_setting",
+            "message": "请在多开管理器中操作，或开启该实例的额外设置",
+        }, 403
     if app.config["UPDATES_ENABLED"]:
         return None
     if (
@@ -854,6 +863,7 @@ def authorize_instance_updates():
         or request.path in {"/resource/install", "/resource/status"}
         or (request.path == "/resource-version" and request.args.get("local") != "1")
     ):
+        check_token()
         return {
             "ok": False,
             "error": "updates_disabled",
@@ -1137,6 +1147,9 @@ def device_status():
     from arknights_mower.__main__ import device_control
 
     status = device_control.settings_status()
+    from arknights_mower.utils.managed_device import enabled
+
+    status["manager_owned"] = enabled()
     status["active"] = status["active"] or bool(
         mower_thread and mower_thread.is_alive()
     )
@@ -1198,6 +1211,20 @@ def device_preflight():
             "error": "invalid_configuration",
             "message": "设备配置或游戏包无效",
         }, 400
+    from arknights_mower.utils import managed_device
+
+    if managed_device.enabled():
+        try:
+            proposed = config.conf.updated({"device": device})
+        except (ValidationError, ValueError) as exc:
+            return {"error": "invalid_configuration", "message": str(exc)}, 400
+        if managed_device.changed(config.conf, proposed) or (
+            confirmed is not None and confirmed != config.conf.device.game_package
+        ):
+            return {
+                "error": "manager_owned_setting",
+                "message": "设备连接与性能设置只能在多开管理器中修改",
+            }, 403
     if mower_thread and mower_thread.is_alive():
         return {
             **device_control.settings_status(),
@@ -1369,6 +1396,17 @@ def device_boss_key():
     from arknights_mower.utils.device.window import trigger_simulator_boss_key
 
     payload = request.get_json(silent=True) or {}
+    from arknights_mower.utils.managed_device import enabled
+
+    if (
+        enabled()
+        and payload.get("hotkey", config.conf.device.simulator_hotkey)
+        != config.conf.device.simulator_hotkey
+    ):
+        return {
+            "error": "manager_owned_setting",
+            "message": "请在多开管理器中设置模拟器老板键",
+        }, 403
     hotkey = (
         payload.get("hotkey")
         or getattr(config.conf.device, "simulator_hotkey", "")
@@ -1402,6 +1440,13 @@ def load_config():
         )
 
         data["runtime_platform"] = "android" if is_android_runtime() else __system__
+        from arknights_mower.utils.managed_device import enabled
+
+        data["manager_owned_device"] = enabled()
+        if enabled():
+            data["manager_inherited_settings"] = sorted(
+                config.manager_inherited_settings
+            )
 
         performance = effective_performance_profile(
             config.conf,
@@ -1422,6 +1467,48 @@ def load_config():
                 "message": "配置必须是 JSON 对象",
             }, 400
         req = dict(payload)
+        req.pop("manager_inherited_settings", None)
+        from arknights_mower.utils import managed_device
+
+        if managed_device.enabled() and "start_automatically" in req:
+            if req["start_automatically"] != config.conf.start_automatically:
+                return {
+                    "error": "manager_owned_setting",
+                    "message": "请在多开管理器中修改启动后自动开始任务设置",
+                }, 403
+            req.pop("start_automatically")
+        if managed_device.enabled() and "extra_settings_visible" in req:
+            if req["extra_settings_visible"] != config.conf.extra_settings_visible:
+                return {
+                    "error": "manager_owned_setting",
+                    "message": "请在实例退出后通过多开管理器修改额外设置的显示开关",
+                }, 403
+            req.pop("extra_settings_visible")
+        protected = managed_device.protected_settings(config.conf)
+        managed_window = isinstance(req.get("webview"), dict) and (
+            {"port", "token"} & req["webview"].keys()
+        )
+        if managed_device.enabled() and (set(req) & set(protected) or managed_window):
+            try:
+                proposed = config.conf.updated(req)
+            except (ValidationError, ValueError) as exc:
+                return {"error": "invalid_configuration", "message": str(exc)}, 400
+            if any(
+                getattr(config.conf, key) != getattr(proposed, key) for key in protected
+            ) or (
+                proposed.webview.port != config.conf.webview.port
+                or proposed.webview.token != config.conf.webview.token
+            ):
+                return {
+                    "error": "manager_owned_setting",
+                    "message": "请通过多开管理器修改受管理的设置，或开启该实例的额外设置",
+                }, 403
+            # Legacy full forms may echo these values; they do not own them.
+            for key in protected:
+                req.pop(key, None)
+            if managed_window:
+                req["webview"].pop("port", None)
+                req["webview"].pop("token", None)
         if "updates_enabled" in req:
             if req["updates_enabled"] != config.conf.updates_enabled:
                 return {

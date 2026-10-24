@@ -134,7 +134,7 @@ describe('task layout preference', () => {
     const page = mount()
     expect(page.button('任务清单').props.disabled).toBe(true)
     expect(page.button('瀑布流').props.disabled).toBe(true)
-    expect(page.nodes().some((element) => element.props.label === '任务配置显示')).toBe(true)
+    expect(page.nodes().some((element) => element.props.label === '全部设置显示')).toBe(true)
     resolve({ data: { software_version_display: 'channel', task_settings_layout: 'waterfall' } })
     await flush()
     expect(page.button('瀑布流').props['aria-pressed']).toBe(true)

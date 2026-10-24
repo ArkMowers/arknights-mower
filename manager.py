@@ -7,9 +7,10 @@ from pathlib import Path
 
 import webview
 
+from arknights_mower.utils import manager_common
 from arknights_mower.utils.folder_dialog import choose_directory
 from arknights_mower.utils.manager_instances import InstanceController
-from arknights_mower.utils.path import get_path
+from arknights_mower.utils.path import get_path, resolve_config_path
 
 
 def choose_instance_directory(window, directory=""):
@@ -58,16 +59,40 @@ class Api(InstanceController):
         storage_path=None,
         ready=None,
         window=None,
-        *,
-        defer_load=False,
-        current_instance_path=None,
     ):
-        super().__init__(storage_path, ready, defer_load=defer_load)
+        super().__init__(storage_path, ready)
         self._window = window
-        self._current_instance_path = current_instance_path
 
-    def stop_all(self):
-        return self._bulk("stop", last_directory=self._current_instance_path)
+    def select_device_path(self, key, current=""):
+        from arknights_mower.utils.managed_device import fields
+
+        field = next((item for item in fields() if item["key"] == key), None)
+        if field is None or field["kind"] not in {"directory", "file"}:
+            raise ValueError("不支持的设备路径配置")
+        return self._choose_path(field, current)
+
+    def select_common_path(self, key, current=""):
+        field = next(
+            (item for item in manager_common.FIELDS if item["key"] == key), None
+        )
+        if field is None or field["kind"] not in {"directory", "file"}:
+            raise ValueError("不支持的公共路径配置")
+        return self._choose_path(field, current)
+
+    def _choose_path(self, field, current):
+        if not isinstance(current, str):
+            raise ValueError("路径必须是文本")
+        current = resolve_config_path(current)
+        window = self._window if self._window is not None else webview.active_window()
+        if field["kind"] == "directory":
+            result = choose_directory(window, current, title=field["label"])
+        else:
+            result = window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                directory=str(Path(current).parent) if current else "",
+            )
+        return result if isinstance(result, str) else result[0] if result else None
 
     def select_path(self, idx, target=None):
         with self._operation():
@@ -83,25 +108,6 @@ class Api(InstanceController):
             idx, {"path": folder}, {key: original[key] for key in ("name", "path")}
         )
         return folder
-
-
-def attach_instance_controls(window):
-    api = Api(window=window, defer_load=True, current_instance_path=get_path("@app"))
-    window.expose(
-        api.get_instances,
-        api.mark_ready,
-        api.add,
-        api.remove,
-        api.rename,
-        api.select_path,
-        api.update_settings,
-        api.update_all_settings,
-        api.start,
-        api.stop,
-        api.start_all,
-        api.stop_all,
-    )
-    return api
 
 
 def manager_app():
@@ -140,6 +146,14 @@ def manager_window(connection, ready, closed):
         try:
             while True:
                 message = connection.recv()
+                if message == "request_exit":
+                    allowed = api.request_close()
+                    connection.send(allowed)
+                    if allowed:
+                        window.destroy()
+                        return
+                    window.show()
+                    window.restore()
                 if message == "exit":
                     window.destroy()
                     return
@@ -149,6 +163,13 @@ def manager_window(connection, ready, closed):
         except (EOFError, OSError):
             return
 
+    def closing():
+        if not api.request_close():
+            window.hide()
+            return False
+        return True
+
+    window.events.closing += closing
     window.events.closed += closed.set
     Thread(target=receive, daemon=True).start()
     webview.start(http_server=True)
@@ -234,6 +255,10 @@ def run_manager():
                 for record in runtime.managed_instances():
                     runtime.send_instance_command(record, "exit")
             elif message[0] == "close_manager":
+                if window_process is not None and window_process.is_alive():
+                    connection.send("request_exit")
+                    if not connection.poll(2) or connection.recv() is not True:
+                        continue
                 break
     finally:
         close_child(window_process, connection)

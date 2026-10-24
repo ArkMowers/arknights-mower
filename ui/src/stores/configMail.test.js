@@ -27,20 +27,20 @@ function setup() {
 
 it('saves the mail cleanup choice independently and retains it when collection is disabled', async () => {
   setup()
-  expect(store.mail_skip_clear_read).toBe(false)
+  expect(store.mail_skip_clear_read).toBe(true)
   loaded.value = true
   await nextTick()
   await store.flush_config_saves()
-  store.mail_skip_clear_read = true
+  store.mail_skip_clear_read = false
   await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledOnce())
-  expect(axios.patch.mock.lastCall[1]).toEqual({ mail_skip_clear_read: true })
+  expect(axios.patch.mock.lastCall[1]).toEqual({ mail_skip_clear_read: false })
   store.check_mail_enable = false
   await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(2))
   expect(axios.patch.mock.lastCall[1]).toEqual({ check_mail_enable: false })
-  expect(store.build_config().mail_skip_clear_read).toBe(true)
+  expect(store.build_config().mail_skip_clear_read).toBe(false)
 })
 
-it('loads the saved choice and defaults to clearing for old configurations', async () => {
+it('loads an explicit cleanup choice and defaults to retaining mail for old configurations', async () => {
   setup()
   const response = {
     free_blacklist: '',
@@ -52,10 +52,10 @@ it('loads the saved choice and defaults to clearing for old configurations', asy
     secret_front: {},
     maa_weekly_plan: []
   }
-  axios.get.mockResolvedValue({ data: { ...response, mail_skip_clear_read: true } })
-  await store.load_config()
-  expect(store.mail_skip_clear_read).toBe(true)
-  axios.get.mockResolvedValue({ data: response })
+  axios.get.mockResolvedValue({ data: { ...response, mail_skip_clear_read: false } })
   await store.load_config()
   expect(store.mail_skip_clear_read).toBe(false)
+  axios.get.mockResolvedValue({ data: response })
+  await store.load_config()
+  expect(store.mail_skip_clear_read).toBe(true)
 })

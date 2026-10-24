@@ -1,14 +1,31 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
+import { computed } from 'vue'
+import { getMaaRewardSelection, setTaskEnabled } from '@/task-workflow/model'
 
 const store = useConfigStore()
 
 const { maa_mail, maa_recruit, maa_orundum, maa_mining, maa_specialaccess } = storeToRefs(store)
+const selection = computed(() => getMaaRewardSelection(store))
+function setRewardsEnabled(value) {
+  setTaskEnabled(store, 'rewards', value)
+}
 </script>
 
 <template>
-  <n-card title="领取奖励">
+  <n-card>
+    <template #header>
+      <n-flex align="center" :size="8">
+        <n-checkbox
+          :checked="selection.checked"
+          :indeterminate="selection.indeterminate"
+          aria-label="启用MAA 领取奖励"
+          @update:checked="setRewardsEnabled"
+        />
+        <span>MAA 领取奖励</span>
+      </n-flex>
+    </template>
     <n-flex vertical>
       <n-checkbox v-model:checked="maa_mail">
         <div class="item">领取所有邮件奖励</div>
@@ -27,7 +44,7 @@ const { maa_mail, maa_recruit, maa_orundum, maa_mining, maa_specialaccess } = st
       </n-checkbox>
       <n-divider />
       <n-checkbox v-model:checked="maa_specialaccess">
-        <div class="item">领取五周年赠送月卡奖励</div>
+        <div class="item">领取赠送月卡奖励</div>
       </n-checkbox>
       <!-- <n-flex>
         <n-checkbox v-model:checked="sign_in.enable">

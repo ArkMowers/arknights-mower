@@ -111,7 +111,7 @@ describe('desktop title bar controls', () => {
     expect(nodes.some((element) => element.props['aria-controls'] === 'sidebar-navigation')).toBe(
       true
     )
-    expect(nodes.filter((element) => element.props['aria-haspopup'] === 'menu')).toHaveLength(5)
+    expect(nodes.filter((element) => element.props['aria-haspopup'] === 'menu')).toHaveLength(4)
   })
 
   it('keeps the three HTML window controls for GTK, Qt and WinForms', () => {
@@ -129,7 +129,7 @@ describe('desktop title bar controls', () => {
     expect(nodes.some((element) => element.props['aria-controls'] === 'sidebar-navigation')).toBe(
       true
     )
-    expect(nodes.filter((element) => element.props['aria-haspopup'] === 'menu')).toHaveLength(5)
+    expect(nodes.filter((element) => element.props['aria-haspopup'] === 'menu')).toHaveLength(4)
   })
 
   it('keeps Cocoa controls before the logo and leaves application buttons outside native drag regions', () => {
@@ -221,9 +221,7 @@ describe('native titlebar sidebar control', () => {
       (element) => element.tag === 'img' && element.props.src === '/favicon.ico'
     )
     const toggle = nodes.find((element) => element.props['aria-controls'] === 'sidebar-navigation')
-    const menus = nodes.find(
-      (element) => element.props['aria-label'] === '实例、连接、档案、视图和帮助'
-    )
+    const menus = nodes.find((element) => element.props['aria-label'] === '连接、档案、视图和帮助')
     expect(logo).toBeTruthy()
     expect(logo.props.draggable).toBe('false')
     expect(logo.parent.props['aria-hidden']).toBe('true')
@@ -258,7 +256,7 @@ describe('native titlebar sidebar control', () => {
     ).toEqual([])
   })
 
-  it.each(['实例', '连接', '档案', '视图', '帮助'])(
+  it.each(['连接', '档案', '视图', '帮助'])(
     'keeps the %s menu separate from native window actions',
     (label) => {
       const { nodes, props } = mount()

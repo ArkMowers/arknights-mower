@@ -86,6 +86,63 @@ def _activate(identifier, keep=None):
     )
 
 
+@pytest.mark.parametrize("operation", ["create", "activate", "import"])
+@pytest.mark.parametrize("selected", [[], ["device", "runtime"]])
+def test_managed_profiles_retain_device_and_performance_settings(
+    storage, monkeypatch, operation, selected
+):
+    from arknights_mower.utils import managed_device
+
+    monkeypatch.setattr(
+        "arknights_mower.utils.manager_common.read_document",
+        lambda: {"values": {"screenshot": 7}},
+    )
+    monkeypatch.setenv("MOWER_MANAGED", "1")
+    original = profiles.list_profiles()["active_id"]
+    incoming = backup.export_archive()
+    if operation == "activate":
+        _create("second")
+    config.conf = config.conf.updated(
+        {
+            "custom_screenshot": {"command": "manager-capture"},
+            "device": {"last_serial": "manager-device"},
+            "performance_mode": "low",
+            "maa_path": "/manager/MAA",
+            "waiting_scene": {"UNKNOWN": [7, 13]},
+        }
+    )
+    config.save_conf()
+    before = managed_device.snapshot(config.conf)
+    config.conf.ai_assistant_enabled = True
+    config.conf.extra_settings_visible = True
+    config.conf.start_automatically = True
+    config.conf.account = "manager-sender"
+    config.conf.screenshot = 7
+    config.save_conf()
+    if operation == "create":
+        _create("created", selected)
+    elif operation == "activate":
+        _activate(original, selected)
+    else:
+        profiles.import_profile(
+            incoming,
+            "imported",
+            selected,
+            expected_generation=profiles.current_generation(),
+        )
+    assert managed_device.snapshot(config.conf) == before
+    assert config.conf.ai_assistant_enabled is True
+    assert config.conf.extra_settings_visible is True
+    assert config.conf.start_automatically is True
+    assert config.conf.account != "manager-sender"
+    assert config.conf.screenshot == 7
+    saved = backup._object_file(
+        backup.read_archive(backup.export_archive()), "conf.yml"
+    )
+    assert saved["custom_screenshot"]["command"] == "manager-capture"
+    assert saved["performance_mode"] == "low"
+
+
 def test_generation_read_does_not_initialize_storage(storage):
     assert profiles.current_generation() == "0"
     assert not storage("@app/config-profiles").exists()
@@ -301,19 +358,20 @@ def test_legacy_rescue_import_obeys_selection_with_separate_local_plan(storage, 
     )
 
 
+@pytest.mark.parametrize("field", ["updates_enabled", "extra_settings_visible"])
 @pytest.mark.parametrize("saved", [False, True])
 @pytest.mark.parametrize("selected", [[], ["other_settings"]])
 @pytest.mark.parametrize("operation", ["create", "activate", "import"])
-def test_profile_operations_preserve_current_update_authorization(
-    storage, saved, selected, operation
+def test_profile_operations_preserve_current_manager_choice(
+    storage, field, saved, selected, operation
 ):
-    config.conf.updates_enabled = not saved
+    setattr(config.conf, field, not saved)
     config.save_conf()
     original = profiles.list_profiles()["active_id"]
     incoming = backup.export_archive()
     if operation == "activate":
         _create("second")
-    config.conf.updates_enabled = saved
+    setattr(config.conf, field, saved)
     config.save_conf()
 
     if operation == "create":
@@ -328,10 +386,10 @@ def test_profile_operations_preserve_current_update_authorization(
             expected_generation=profiles.current_generation(),
         )
 
-    assert config.conf.updates_enabled is saved
+    assert getattr(config.conf, field) is saved
     assert (
         backup._object_file(backup.read_archive(backup.export_archive()), "conf.yml")[
-            "updates_enabled"
+            field
         ]
         is saved
     )
@@ -600,6 +658,7 @@ def test_conf_fields_have_one_group_and_no_unmapped_current_fields():
     assert set(config.Conf.model_fields) - set(fields) == {
         "ai_assistant_enabled",
         "updates_enabled",
+        "extra_settings_visible",
     }
     keys = {group["key"] for group in GROUPS}
     assert set(CONF_GROUPS) <= keys

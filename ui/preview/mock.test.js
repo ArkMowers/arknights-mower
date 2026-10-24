@@ -15,6 +15,24 @@ import {
 afterEach(() => vi.useRealTimers())
 
 describe('offline preview', () => {
+  it('serves all waiting scene rows while preserving supplied values and fixture isolation', async () => {
+    const initial = { waiting_scene: { LOADING: [4, 20] } }
+    const data = createPreviewData(createPreviewConfiguration(initial))
+    const client = axios.create({ adapter: createPreviewAdapter(data) })
+    const { data: config } = await client.get('/conf')
+    expect(config.waiting_scene).toEqual({
+      CONNECTING: [1, 10],
+      UNKNOWN: [1, 10],
+      LOADING: [4, 20],
+      LOGIN_LOADING: [3, 10],
+      LOGIN_MAIN_NOENTRY: [3, 10],
+      OPERATOR_ONGOING: [10, 30]
+    })
+    await client.patch('/conf', { waiting_scene: { LOADING: [5, 15] } })
+    expect(initial).toEqual({ waiting_scene: { LOADING: [4, 20] } })
+    expect(createPreviewConfiguration({}).waiting_scene.LOADING).toEqual([2, 30])
+  })
+
   it('merges appearance edits independently without changing business configuration', async () => {
     const data = createPreviewData({ theme: 'light' })
     const originalConfig = structuredClone(data.config)
@@ -68,76 +86,34 @@ describe('offline preview', () => {
     expect(data.appearance).toEqual(original)
   })
 
-  it('serves read-only instance examples in browser mode without a native bridge', async () => {
-    const originalAdapter = axios.defaults.adapter
-    try {
-      const target = {
-        innerWidth: 1280,
-        innerHeight: 800,
-        location: { search: '?native_preview=1' }
-      }
-      installPreviewBackend({}, target)
-      expect(target.pywebview).toBeUndefined()
-      const { data: instances } = await axios.get('/instances')
-      expect(instances).toEqual([
-        {
-          name: '离线预览',
-          path: '预览数据/默认实例',
-          state: 'running',
-          editable: false,
-          can_start: false,
-          can_stop: false
-        },
-        {
-          name: '示例实例',
-          path: '预览数据/示例实例',
-          state: 'stopped',
-          editable: false,
-          can_start: false,
-          can_stop: false
-        }
-      ])
-    } finally {
-      axios.defaults.adapter = originalAdapter
-    }
-  })
-
-  it('isolates HTTP and native bridge instance responses from the shared examples', async () => {
+  it('omits embedded instance controls from the preview bridge', () => {
     const originalAdapter = axios.defaults.adapter
     try {
       const target = { innerWidth: 1280, innerHeight: 800 }
       installPreviewBackend({}, target)
-      const client = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
-      const { data: instances } = await client.get('/instances')
-      const nativeInstances = await target.pywebview.api.get_instances()
-      const original = structuredClone(instances)
-      expect(nativeInstances).toEqual(original)
-      instances[0].name = 'changed HTTP response'
-      instances[0].editable = true
-      instances.push({ name: 'added HTTP response' })
-      nativeInstances[1].state = 'running'
-      nativeInstances.pop()
-      expect((await client.get('/instances')).data).toEqual(original)
-      expect(await target.pywebview.api.get_instances()).toEqual(original)
+      expect(target.pywebview.api).not.toHaveProperty('get_instances')
+      expect(target.pywebview.api.get_platform).toBeTypeOf('function')
+      expect(target.pywebview.api.get_window_launch_mode).toBeTypeOf('function')
     } finally {
       axios.defaults.adapter = originalAdapter
     }
   })
 
-  it.each(['start', 'stop', 'start_all', 'stop_all', 'rename', 'delete'])(
-    'rejects the preview instance action %s without changing the example state',
-    async (action) => {
+  it.each([
+    ['get', '/instances'],
+    ['post', '/instances/actions']
+  ])(
+    'rejects unsupported embedded instance API %s %s without changing preview state',
+    async (method, path) => {
       const data = createPreviewData({ theme: 'light' })
       const original = structuredClone(data)
       const client = axios.create({ adapter: createPreviewAdapter(data) })
-      const { data: instances } = await client.get('/instances')
       await expect(
-        client.post('/instances/actions', { action, idx: 0, name: 'changed example' })
+        client.request({ method, url: path, data: { action: 'start', idx: 0 } })
       ).rejects.toMatchObject({
         code: 'ERR_PREVIEW_OPERATION',
         response: { status: 405 }
       })
-      expect((await client.get('/instances')).data).toEqual(instances)
       expect(data).toEqual(original)
     }
   )

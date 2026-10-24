@@ -35,9 +35,9 @@ def test_mail_run_collects_once_and_respects_clear_setting(monkeypatch, skip_cle
         solver.sleep.assert_called_once_with(0.25)
 
 
-def test_old_mail_config_keeps_clearing_read_mail_by_default():
+def test_old_mail_config_skips_clearing_read_mail_by_default():
     conf = Conf(check_mail_enable=True)
-    assert conf.mail_skip_clear_read is False
+    assert conf.mail_skip_clear_read is True
     assert "mail_skip_clear_read" not in conf.model_dump(exclude_unset=True)
 
 

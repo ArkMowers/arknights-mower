@@ -6,7 +6,7 @@
       'app-menu-bar--dark': theme === 'dark',
       'app-menu-bar--brand': mode === 'brand'
     }"
-    :aria-label="showInstanceMenu ? '实例、连接、档案、视图和帮助' : '连接、档案、视图和帮助'"
+    aria-label="连接、档案、视图和帮助"
     @mousedown.stop
     @dblclick.stop
   >
@@ -75,22 +75,12 @@
         </button>
       </n-dropdown>
     </template>
-    <MowerManager
-      v-if="instanceManagerMounted && showInstanceMenu"
-      ref="instanceManager"
-      embedded
-      :active="
-        active &&
-        (openMenu === 'instance' || activeBrandMenu === 'instance' || instanceManager?.hasDialog)
-      "
-    />
   </nav>
 </template>
 
 <script setup>
 import { NDropdown } from 'naive-ui'
 import { computed, h, ref, useId, watch } from 'vue'
-import MowerManager from '../../manager/MowerManager.vue'
 
 const titlebarDropdownTheme = {
   borderRadius: '10px',
@@ -104,10 +94,10 @@ const props = defineProps({
   mode: { type: String, default: 'bar', validator: (value) => ['bar', 'brand'].includes(value) },
   instanceName: { type: String, default: '默认实例' },
   theme: { type: String, default: 'light' },
-  showInstanceMenu: { type: Boolean, default: true },
   mowerPort: { type: String, default: '' },
   emulatorName: { type: String, default: '' },
   adbPort: { type: String, default: '' },
+  managerOwnedDevice: { type: Boolean, default: false },
   connectionTestDisabled: { type: Boolean, default: false },
   profileState: { type: Object, default: null },
   profileWriteDisabled: { type: Boolean, default: true },
@@ -120,176 +110,77 @@ const menuBar = ref(null)
 const menuId = useId()
 const openMenu = ref(null)
 const activeBrandMenu = ref(null)
-const instanceManager = ref(null)
-const instanceManagerMounted = ref(false)
-const instanceStates = {
-  stopped: '已停止',
-  starting: '启动中',
-  running: '运行中',
-  stopping: '停止中'
-}
-const instanceOptions = computed(() => {
-  const manager = instanceManager.value
-  const rows = manager?.instances || []
-  const unavailable = manager?.unavailable !== false
-  const options = [
-    currentOption(props.instanceName, props.mowerPort ? `服务端口 ${props.mowerPort}` : ''),
-    { type: 'divider', key: 'instance-divider' }
-  ]
-  if (!manager?.ready) {
-    options.push({
-      key: 'instance-loading',
-      label: manager?.initializationError ? '无法加载实例列表' : '正在加载实例…',
-      disabled: true
-    })
-  } else if (!rows.length) {
-    options.push({ key: 'instance-empty', label: '尚未添加实例', disabled: true })
-  } else {
-    options.push(
-      ...rows.map((instance, idx) => ({
-        key: `instance-${idx}`,
-        accessibleLabel: `${instance.name}，${instanceStates[instance.state] || instance.state}`,
-        label: () =>
-          h('span', { class: 'window-titlebar__menu-row' }, [
-            h('span', instance.name),
-            h('span', { class: 'window-titlebar__menu-detail' }, instanceStates[instance.state])
-          ]),
-        children: [
-          {
-            key: `instance-description-${idx}`,
-            type: 'render',
-            render: () =>
-              h('div', { class: 'window-titlebar__menu-description' }, [
-                h('div', instance.path || '未选择保存目录'),
-                instance.reason && h('div', instance.reason)
-              ])
-          },
-          {
-            label: instance.state === 'stopped' ? '启动实例' : '停止实例',
-            key: `instance-lifecycle-${idx}`,
-            action: 'lifecycle',
-            idx,
-            target: instance,
-            disabled:
-              unavailable ||
-              (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop)
-          },
-          { type: 'divider', key: `instance-tools-${idx}` },
-          ...[
-            ['重命名实例…', 'rename'],
-            ['实例配置…', 'settings'],
-            ['选择保存目录…', 'path'],
-            ['删除实例…', 'remove']
-          ].map(([label, action]) => ({
-            label,
-            key: `instance-${action}-${idx}`,
-            action,
-            idx,
-            target: instance,
-            disabled: unavailable || !instance.editable || (action === 'settings' && !instance.path)
-          }))
-        ]
-      }))
-    )
-  }
-  options.push(
-    { type: 'divider', key: 'instance-actions-divider' },
-    { label: '添加实例', key: 'add-instance', disabled: unavailable },
-    {
-      label: '批量配置…',
-      key: 'batch-instances',
-      disabled: unavailable || !rows.some((row) => row.editable && row.path)
-    },
-    { type: 'divider', key: 'instance-lifecycle-divider' },
-    {
-      label: '全部打开…',
-      key: 'start-instances',
-      disabled: unavailable || !rows.some((row) => row.can_start)
-    },
-    {
-      label: '全部关闭…',
-      key: 'stop-instances',
-      disabled: unavailable || !rows.some((row) => row.can_stop)
-    },
-    { type: 'divider', key: 'instance-refresh-divider' },
-    { label: '刷新实例列表', key: 'reload-instances', disabled: !manager || manager.loading }
-  )
-  return options
-})
-const menus = computed(() =>
-  [
-    {
-      key: 'instance',
-      label: '实例',
-      options: instanceOptions.value
-    },
-    {
-      key: 'connection',
-      label: '连接',
-      options: [
-        currentOption(
-          props.emulatorName || '尚未选择模拟器',
-          props.adbPort ? `ADB 端口 ${props.adbPort}` : '',
-          !props.emulatorName
+const menus = computed(() => [
+  {
+    key: 'connection',
+    label: '连接',
+    options: [
+      currentOption(
+        props.emulatorName || '尚未选择模拟器',
+        props.adbPort ? `ADB 端口 ${props.adbPort}` : '',
+        !props.emulatorName
+      ),
+      { type: 'divider', key: 'connection-divider' },
+      ...(props.managerOwnedDevice
+        ? [{ label: '连接与启动由多开管理器配置', key: 'managed-connection', disabled: true }]
+        : [
+            { label: '选择模拟器…', key: 'select-emulator' },
+            { label: '测试连接', key: 'test-connection', disabled: props.connectionTestDisabled },
+            { label: '连接设置…', key: 'connection-settings' }
+          ])
+    ]
+  },
+  {
+    key: 'profile',
+    label: '档案',
+    options: [
+      ...(props.profileState?.profiles || []).map((profile) => ({
+        ...currentOption(
+          profile.name,
+          profile.id === props.profileState.active_id ? '当前档案' : ''
         ),
-        { type: 'divider', key: 'connection-divider' },
-        { label: '选择模拟器…', key: 'select-emulator' },
-        { label: '测试连接', key: 'test-connection', disabled: props.connectionTestDisabled },
-        { label: '连接设置…', key: 'connection-settings' }
-      ]
-    },
-    {
-      key: 'profile',
-      label: '档案',
-      options: [
-        ...(props.profileState?.profiles || []).map((profile) => ({
-          ...currentOption(
-            profile.name,
-            profile.id === props.profileState.active_id ? '当前档案' : ''
-          ),
-          key: `profile-${profile.id}`,
-          profileId: profile.id,
-          checked: profile.id === props.profileState.active_id,
-          disabled: props.profileWriteDisabled || profile.id === props.profileState.active_id,
-          icon: profile.id === props.profileState.active_id ? currentOption('').icon : undefined
-        })),
-        ...(!props.profileState
-          ? [{ key: 'profiles-unavailable', label: '档案列表尚未载入', disabled: true }]
-          : []),
-        { type: 'divider', key: 'profile-divider' },
-        { label: '新建档案…', key: 'add-profile', disabled: props.profileWriteDisabled },
-        { label: '复制当前档案…', key: 'copy-profile', disabled: props.profileWriteDisabled },
-        { label: '重命名档案…', key: 'rename-profile', disabled: props.profileWriteDisabled },
-        { type: 'divider', key: 'profile-transfer-divider' },
-        { label: '导入档案…', key: 'import-profile', disabled: props.profileWriteDisabled },
-        { label: '导出当前档案…', key: 'export-profile', disabled: props.profileReadDisabled },
-        { type: 'divider', key: 'profile-refresh-divider' },
-        { label: '刷新档案列表', key: 'reload-profiles' }
-      ]
-    },
-    {
-      key: 'view',
-      label: '视图',
-      options: [
-        {
-          label: props.sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
-          key: 'view-toggle-sidebar'
-        },
-        { label: '编辑侧边栏', key: 'view-edit-sidebar' }
-      ]
-    },
-    {
-      key: 'help',
-      label: '帮助',
-      options: [
-        { label: '反馈问题', key: 'help-feedback' },
-        { label: '文档', key: 'help-documentation' },
-        { label: '更新日志', key: 'help-changelog' },
-        { label: '关于', key: 'help-about' }
-      ]
-    }
-  ].filter((menu) => menu.key !== 'instance' || props.showInstanceMenu)
-)
+        key: `profile-${profile.id}`,
+        profileId: profile.id,
+        checked: profile.id === props.profileState.active_id,
+        disabled: props.profileWriteDisabled || profile.id === props.profileState.active_id,
+        icon: profile.id === props.profileState.active_id ? currentOption('').icon : undefined
+      })),
+      ...(!props.profileState
+        ? [{ key: 'profiles-unavailable', label: '档案列表尚未载入', disabled: true }]
+        : []),
+      { type: 'divider', key: 'profile-divider' },
+      { label: '新建档案…', key: 'add-profile', disabled: props.profileWriteDisabled },
+      { label: '复制当前档案…', key: 'copy-profile', disabled: props.profileWriteDisabled },
+      { label: '重命名档案…', key: 'rename-profile', disabled: props.profileWriteDisabled },
+      { type: 'divider', key: 'profile-transfer-divider' },
+      { label: '导入档案…', key: 'import-profile', disabled: props.profileWriteDisabled },
+      { label: '导出当前档案…', key: 'export-profile', disabled: props.profileReadDisabled },
+      { type: 'divider', key: 'profile-refresh-divider' },
+      { label: '刷新档案列表', key: 'reload-profiles' }
+    ]
+  },
+  {
+    key: 'view',
+    label: '视图',
+    options: [
+      {
+        label: props.sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
+        key: 'view-toggle-sidebar'
+      },
+      { label: '编辑侧边栏', key: 'view-edit-sidebar' }
+    ]
+  },
+  {
+    key: 'help',
+    label: '帮助',
+    options: [
+      { label: '反馈问题', key: 'help-feedback' },
+      { label: '文档', key: 'help-documentation' },
+      { label: '更新日志', key: 'help-changelog' },
+      { label: '关于', key: 'help-about' }
+    ]
+  }
+])
 
 const brandOptions = computed(() => [
   ...menus.value.map((menu) => ({
@@ -418,19 +309,10 @@ function currentOption(label, detail, disabled = false) {
 
 function prepareMenu(key) {
   if (key === 'profile') emit('profile-action', 'refresh')
-  if (key === 'instance' && props.showInstanceMenu) {
-    instanceManagerMounted.value = true
-    if (
-      instanceManager.value &&
-      !instanceManager.value.loading &&
-      !instanceManager.value.unavailable
-    )
-      void instanceManager.value.initialize()
-  }
 }
 
 function setMenuOpen(key, show) {
-  if (!props.active || (key === 'instance' && !props.showInstanceMenu)) return
+  if (!props.active) return
   if (show) {
     if (openMenu.value !== key) prepareMenu(key)
     openMenu.value = key
@@ -484,6 +366,7 @@ function selectMenuItem(key, option) {
     'connection-settings': 'settings'
   }
   if (connectionActions[key]) {
+    if (props.managerOwnedDevice) return
     if (key === 'test-connection' && props.connectionTestDisabled) return
     emit('connection-action', connectionActions[key])
     return
@@ -498,35 +381,9 @@ function selectMenuItem(key, option) {
     emit('help-action', helpActions[key])
     return
   }
-  if (!props.showInstanceMenu) return
-  const manager = instanceManager.value
-  if (!manager) return
-  if (key === 'reload-instances') {
-    void manager.initialize()
-    return
-  }
-  if (manager.unavailable) return
-  if (option?.target) {
-    const current = manager.instances[option.idx]
-    if (current?.name !== option.target.name || current?.path !== option.target.path) {
-      void manager.initialize()
-      return
-    }
-    if (option.action === 'lifecycle') manager.lifecycle(option.idx)
-    else if (option.action === 'rename') manager.edit(option.idx, 'name')
-    else if (option.action === 'settings') manager.edit(option.idx, 'settings')
-    else if (option.action === 'path') void manager.selectPath(option.idx)
-    else if (option.action === 'remove') manager.confirmDelete(option.idx)
-    return
-  }
-  if (key === 'add-instance') void manager.addInstance()
-  else if (key === 'batch-instances') manager.editBatch()
-  else if (key === 'start-instances') manager.confirmBulk('start')
-  else if (key === 'stop-instances') manager.confirmBulk('stop')
 }
 
 function onMenuArrow(event, index, offset) {
-  if (openMenu.value === 'instance') return
   event.preventDefault()
   event.stopPropagation()
   focusMenu(index, offset)
@@ -539,7 +396,7 @@ function focusMenu(index, offset) {
 }
 
 watch(
-  () => [props.active, props.showInstanceMenu, props.mode],
+  () => [props.active, props.mode],
   () => {
     openMenu.value = null
     activeBrandMenu.value = null

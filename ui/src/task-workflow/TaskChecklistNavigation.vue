@@ -12,25 +12,35 @@ const props = defineProps({
   selectedId: { type: String, required: true },
   selectedTitle: { type: String, default: '选择配置' },
   statuses: { type: Object, required: true },
+  connectionEnabled: { type: Boolean, default: true },
   connectionId: { type: String, default: 'device' },
   connectionKeywords: { type: String, default: '设备 模拟器 ADB 截图 触控 游戏 启动' },
   selectionRequest: { type: Number, default: 0 },
-  waterfall: { type: Boolean, default: false },
   collapsed: { type: Boolean, default: false }
 })
 const emit = defineEmits(['select', 'toggle', 'set-all', 'update:collapsed'])
 const query = ref('')
 const directory = ref(null)
+const directoryScroll = ref(null)
 const renderedKeywords = ref({})
 const directoryId = useId()
 const mobileOpen = ref(false)
 const mobileToggle = ref(null)
-const section = ref('tasks')
-const lastTask = ref('base')
-const lastSupport = ref('intervals')
-const supportIds = computed(() =>
-  props.tasks.filter((task) => task.group === 'support').map((task) => task.id)
-)
+
+function revealSelectedEntry() {
+  const viewport = directoryScroll.value
+  const selected = viewport?.querySelector?.('.checklist-task.selected')
+  if (!selected || viewport.clientHeight <= 0) return
+  const bounds = viewport.getBoundingClientRect()
+  const row = selected.getBoundingClientRect()
+  if (bounds.height <= 0) return
+  const offset = (row.top + row.bottom - bounds.top - bounds.bottom) / 2
+  const target = viewport.scrollTop + offset / (bounds.height / viewport.clientHeight)
+  const maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+  const scrollTop = Math.max(0, Math.min(maximum, target))
+  if (scrollTop !== viewport.scrollTop) viewport.scrollTop = scrollTop
+}
+watch([() => props.selectedId, directoryScroll], revealSelectedEntry, { flush: 'post' })
 watch(
   query,
   () => {
@@ -47,6 +57,7 @@ watch(
   { flush: 'post' }
 )
 const connectionVisible = computed(() => {
+  if (!props.connectionEnabled) return false
   return query.value.trim()
     ? matchesSettingsSearch(
         query.value,
@@ -54,13 +65,8 @@ const connectionVisible = computed(() => {
         props.connectionKeywords,
         renderedKeywords.value[props.connectionId]
       )
-    : section.value === 'tasks'
+    : true
 })
-function selectSection(value) {
-  section.value = value
-  query.value = ''
-  emit('select', value === 'support' ? lastSupport.value : lastTask.value)
-}
 function closeDirectory() {
   if (mobileOpen.value) mobileToggle.value?.focus({ preventScroll: true })
   mobileOpen.value = false
@@ -72,7 +78,6 @@ function selectEntry(id) {
 const visibleGroups = computed(() => {
   const words = query.value.trim()
   return props.groups
-    .filter((group) => words || (group.id === 'support') === (section.value === 'support'))
     .map((group) => ({
       ...group,
       tasks: props.tasks.filter(
@@ -95,10 +100,6 @@ watch(
   () => [props.selectedId, props.selectionRequest],
   (_current, previous) => {
     if (previous && props.selectionRequest !== previous[1]) closeDirectory()
-    const support = supportIds.value.includes(props.selectedId)
-    section.value = support ? 'support' : 'tasks'
-    if (support) lastSupport.value = props.selectedId
-    else lastTask.value = props.selectedId
     if (
       !(props.selectedId === props.connectionId && connectionVisible.value) &&
       !visibleGroups.value.some((group) => group.tasks.some((task) => task.id === props.selectedId))
@@ -115,12 +116,11 @@ watch(
     class="task-checklist"
     :class="{
       'is-open': mobileOpen,
-      'is-collapsed': collapsed,
-      'task-checklist--waterfall': waterfall
+      'is-collapsed': collapsed
     }"
-    aria-label="任务配置导航"
+    aria-label="全部设置导航"
   >
-    <div v-if="waterfall" class="checklist-desktop-heading">
+    <div class="checklist-desktop-heading">
       <span class="checklist-desktop-title">配置导航</span>
       <button
         class="checklist-desktop-toggle"
@@ -155,26 +155,14 @@ watch(
           clearable
           size="small"
           placeholder="查找功能"
-          :input-props="{ 'aria-label': '查找托管功能' }"
+          :input-props="{ 'aria-label': '查找设置' }"
         >
           <template #prefix><n-icon :component="SearchIcon" :size="16" /></template>
         </n-input>
       </div>
 
-      <div class="checklist-sections" role="group" aria-label="配置分类">
-        <button type="button" :aria-pressed="section === 'tasks'" @click="selectSection('tasks')">
-          任务
-        </button>
-        <button
-          type="button"
-          :aria-pressed="section === 'support'"
-          @click="selectSection('support')"
-        >
-          运行配置
-        </button>
-      </div>
-
       <div
+        v-if="connectionEnabled"
         v-show="connectionVisible"
         class="connection-row"
         :class="{ selected: selectedId === connectionId }"
@@ -191,7 +179,7 @@ watch(
         </button>
       </div>
 
-      <div class="checklist-scroll">
+      <div ref="directoryScroll" class="checklist-scroll">
         <section v-for="group in visibleGroups" :key="group.id" class="checklist-group">
           <h3 class="checklist-group-heading">{{ group.label }}</h3>
 
@@ -202,13 +190,13 @@ watch(
             :class="{
               selected: selectedId === task.id,
               enabled: statuses[task.id],
-              'checklist-task--support': group.id === 'support'
+              'checklist-task--support': ['support', 'mower'].includes(group.id)
             }"
             :data-task-id="task.id"
             :data-enabled="Boolean(statuses[task.id])"
           >
             <span
-              v-if="task.mode === 'automatic' && group.id !== 'support'"
+              v-if="task.mode === 'automatic' && !['support', 'mower'].includes(group.id)"
               class="checklist-control-spacer"
               aria-hidden="true"
             />
@@ -217,6 +205,8 @@ watch(
               class="checklist-checkbox"
               type="checkbox"
               :checked="Boolean(statuses[task.id])"
+              :indeterminate.prop="Boolean(task.indeterminate)"
+              :aria-checked="task.indeterminate ? 'mixed' : Boolean(statuses[task.id])"
               :aria-label="`启用${task.title}`"
               @change="emit('toggle', task.id, $event.target.checked)"
             />
@@ -240,11 +230,7 @@ watch(
         </p>
       </div>
 
-      <footer
-        v-show="section === 'tasks' && !query.trim()"
-        class="checklist-footer"
-        aria-label="批量启用任务"
-      >
+      <footer v-show="!query.trim()" class="checklist-footer" aria-label="批量启用任务">
         <button type="button" @click="emit('set-all', true)">全选</button>
         <button type="button" @click="emit('set-all', false)">清空</button>
       </footer>
@@ -254,13 +240,17 @@ watch(
 
 <style scoped>
 .task-checklist {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100dvh / var(--mower-zoom, 1) - 148px);
+  border: 1px solid var(--mower-border);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
   min-height: 0;
-  border-right: 1px solid var(--mower-border);
   background: var(--mower-surface);
   color: var(--mower-text);
   overflow: hidden;
@@ -270,13 +260,6 @@ watch(
   flex: 1;
   flex-direction: column;
   min-height: 0;
-}
-.task-checklist--waterfall {
-  position: sticky;
-  top: 16px;
-  max-height: calc(100dvh / var(--mower-zoom, 1) - 148px);
-  border: 1px solid var(--mower-border);
-  border-radius: 12px;
 }
 .checklist-desktop-heading {
   display: flex;
@@ -312,17 +295,14 @@ watch(
   background: var(--mower-control-surface);
   color: var(--mower-primary);
 }
-.task-checklist--waterfall.is-collapsed .checklist-desktop-heading {
+.task-checklist.is-collapsed .checklist-desktop-heading {
   justify-content: center;
   padding-inline: 3px;
   border-bottom: 0;
 }
-.task-checklist--waterfall.is-collapsed .checklist-content,
-.task-checklist--waterfall.is-collapsed .checklist-desktop-title {
+.task-checklist.is-collapsed .checklist-content,
+.task-checklist.is-collapsed .checklist-desktop-title {
   display: none;
-}
-.task-checklist--waterfall .checklist-search {
-  padding-top: 12px;
 }
 .checklist-mobile-toggle {
   display: none;
@@ -350,32 +330,7 @@ watch(
   transform: rotate(180deg);
 }
 .checklist-search {
-  padding: 20px 16px 12px;
-}
-.checklist-sections {
-  display: flex;
-  gap: 4px;
-  margin: 0 16px 16px;
-  padding: 3px;
-  border-radius: 8px;
-  background: var(--mower-control-surface);
-}
-.checklist-sections button {
-  flex: 1;
-  min-height: 32px;
-  padding: 5px 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--mower-text-muted);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.checklist-sections button[aria-pressed='true'] {
-  background: var(--mower-surface);
-  color: var(--mower-text);
-  font-weight: 600;
+  padding: 12px 16px;
 }
 .connection-row,
 .checklist-group-heading,
@@ -505,21 +460,11 @@ input:focus-visible {
   outline: 2px solid var(--mower-primary);
   outline-offset: 2px;
 }
-@container task-configuration (min-width: 1500px) {
-  .task-checklist--waterfall .checklist-group {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 4px;
-  }
-  .task-checklist--waterfall .checklist-group-heading {
-    grid-column: 1 / -1;
-  }
-}
 @container main-content (max-width: 760px) {
   .checklist-desktop-heading {
     display: none;
   }
-  .task-checklist--waterfall.is-collapsed .checklist-content {
+  .task-checklist.is-collapsed .checklist-content {
     display: flex;
   }
   .task-checklist {
@@ -528,14 +473,7 @@ input:focus-visible {
     z-index: 5;
     align-self: start;
     max-height: min(440px, calc(100dvh / var(--mower-zoom, 1) - 112px));
-    border-right: 0;
-    border-bottom: 1px solid var(--mower-border);
-    border-radius: 16px 16px 0 0;
     box-shadow: 0 3px 8px rgb(0 0 0 / 4%);
-  }
-  .task-checklist--waterfall {
-    border: 1px solid var(--mower-border);
-    border-radius: 12px;
   }
   .checklist-content {
     overflow-y: auto;
@@ -545,19 +483,13 @@ input:focus-visible {
     min-height: 88px;
     overscroll-behavior: contain;
   }
-  .checklist-search,
-  .task-checklist--waterfall .checklist-search {
+  .checklist-search {
     flex: none;
     padding-top: 8px;
   }
-  .checklist-sections,
   .connection-row {
     flex: none;
   }
-  .checklist-sections {
-    margin-bottom: 8px;
-  }
-  .checklist-sections button,
   .connection-select,
   .checklist-task-select,
   .checklist-footer button {

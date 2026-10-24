@@ -72,7 +72,7 @@ describe('基报读取 Mower 收益设置', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('收益设置入口保留会话凭证并定位任务配置的账号面板', async () => {
+  it('收益设置入口保留会话凭证并定位全部设置的账号面板', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: ['/', '/task-settings'].map((path) => ({

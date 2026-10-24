@@ -15,14 +15,14 @@ onMounted(() => void gui.load())
 </script>
 
 <template>
-  <n-form-item label="任务配置显示" class="settings-appearance-row task-layout-preference">
+  <n-form-item label="全部设置显示" class="settings-appearance-row task-layout-preference">
     <div class="task-layout-preference-content">
       <SettingsSegmented
         :value="taskSettingsLayout"
         :options="layoutOptions"
         :disabled="layoutDisabled"
         :busy="layoutSaving"
-        label="任务配置显示"
+        label="全部设置显示"
         @update:value="gui.setTaskSettingsLayout"
       />
       <n-alert v-if="layoutError" type="error" :show-icon="false" role="alert">

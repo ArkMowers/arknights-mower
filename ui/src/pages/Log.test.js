@@ -424,7 +424,7 @@ describe('log page', () => {
       false
     )
     expect(state.configurationMounts).toBe(0)
-    expect(all().some((target) => target.props.title === '任务配置')).toBe(false)
+    expect(all().some((target) => target.props.title === '全部设置')).toBe(false)
     expect(all().some((target) => target.props.class === 'task-configuration-trigger')).toBe(false)
     expect(state.client.get).not.toHaveBeenCalled()
     expect(state.client.post).not.toHaveBeenCalled()
@@ -729,7 +729,7 @@ describe('log page', () => {
     const addTask = find((target) => target.props.type === 'warning')
     const database = find((target) => target.props.type === 'info')
     const databaseModal = find(
-      (target) => target.props.preset === 'card' && target.props.title !== '任务配置'
+      (target) => target.props.preset === 'card' && target.props.title !== '全部设置'
     )
     expect(state.taskVisibility.value).toBe(false)
     expect(databaseModal.props.show).toBe(false)

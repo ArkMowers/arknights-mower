@@ -1048,10 +1048,12 @@ def info():
         blockers.append(str(exc))
     else:
         if not any(
-            r["pid"] == os.getpid() and r["kind"] == "instance" for r in registered
+            (r["pid"] == os.getpid() and r["kind"] == "instance")
+            or (r["pid"] == os.getppid() and r["kind"] == "manager")
+            for r in registered
         ):
             blockers.append(
-                "请通过 webview_ui.py / Mower 桌面程序启动；直接运行 Flask 或容器请使用原部署工具更新"
+                "请通过 Mower 桌面程序或多开管理器启动；直接运行 Flask 或容器请使用原部署工具更新"
             )
     settings = get_settings()
     remotes = source_remotes() if deployment == "source" else []
@@ -1262,7 +1264,8 @@ def start_job(
     plan, background=False, uploaded=None, *, force=False, confirm_downgrade=False
 ):
     require_downgrade_confirmation(plan, confirm_downgrade)
-    with runtime.submission_lock(runtime.state_dir()):
+    state = runtime.state_dir()
+    with runtime.submission_lock(state), runtime.manager_maintenance_lock(state):
         return _start_job(plan, background, uploaded, force=force)
 
 

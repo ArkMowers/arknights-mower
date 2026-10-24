@@ -81,10 +81,10 @@ describe('sidebar editing window', () => {
     const original = component.groups.value
       .find((group) => group.key === 'daily')
       .items.find((item) => item.key === 'task-settings')
-    expect(original).toMatchObject({ label: '任务配置', to: '/task-settings' })
-    expect(await renderEditor()).toContain('aria-label="移除任务配置"')
+    expect(original).toMatchObject({ label: '全部设置', to: '/task-settings' })
+    expect(await renderEditor()).toContain('aria-label="移除全部设置"')
     expect(state.preferences.removeEntry(original.id)).toBe(true)
-    expect(await renderEditor()).not.toContain('aria-label="移除任务配置"')
+    expect(await renderEditor()).not.toContain('aria-label="移除全部设置"')
 
     const editorWithPicker = {
       ...SidebarEditor,
@@ -95,14 +95,14 @@ describe('sidebar editing window', () => {
       }
     }
     const pickerHtml = await renderToString(createSSRApp(editorWithPicker, props))
-    expect(pickerHtml).toContain('aria-label="添加任务配置"')
+    expect(pickerHtml).toContain('aria-label="添加全部设置"')
     expect(pickerHtml.match(/<input[^>]*data-page-key="task-settings"/)[0]).not.toContain(
       'disabled'
     )
     const picker = scope.run(() =>
       SidebarCustomize.setup(reactive({ groupKey: 'daily' }), { expose: vi.fn(), emit: vi.fn() })
     )
-    picker.search.value = '任务配置'
+    picker.search.value = '全部设置'
     expect(picker.availableEntries.value.map((item) => item.key)).toEqual(['task-settings'])
     picker.selectedKeys.value = ['task-settings']
     picker.confirm()
@@ -110,8 +110,21 @@ describe('sidebar editing window', () => {
     const restored = component.groups.value
       .find((group) => group.key === 'daily')
       .items.find((item) => item.key === 'task-settings')
-    expect(restored).toMatchObject({ label: '任务配置', to: '/task-settings' })
-    expect(await renderEditor()).toContain('aria-label="移除任务配置"')
+    expect(restored).toMatchObject({ label: '全部设置', to: '/task-settings' })
+    expect(await renderEditor()).toContain('aria-label="移除全部设置"')
+  })
+
+  it('does not offer removed settings or rescue entries through the page picker', async () => {
+    const picker = scope.run(() =>
+      SidebarCustomize.setup(reactive({ groupKey: 'daily' }), { expose: vi.fn(), emit: vi.fn() })
+    )
+    for (const query of ['Mower 设置', '救急排班编辑']) {
+      picker.search.value = query
+      expect(picker.availableEntries.value).toEqual([])
+    }
+    const html = await renderToString(createSSRApp(SidebarEditor, props))
+    expect(html).not.toContain('救急排班编辑')
+    expect(html).not.toContain('Mower 设置')
   })
 
   it('validates names and applies group creation and renaming only after confirmation', () => {

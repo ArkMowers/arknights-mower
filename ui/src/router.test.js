@@ -28,7 +28,6 @@ describe('frontend navigation credentials', () => {
   it.each([
     ['/plan-editor', 'plan'],
     ['/task-settings', 'task-settings'],
-    ['/mowersettings', 'mowersettings'],
     ['/record/report', 'report']
   ])('keeps the session token when navigating to %s', async (path, name) => {
     await router.push('/?token=session-token')
@@ -41,12 +40,23 @@ describe('frontend navigation credentials', () => {
     })
   })
 
+  it('redirects the old Mower settings address while retaining its session and target', async () => {
+    await router.push('/?token=session-token')
+    await router.push('/mowersettings?view=details#mower-updates')
+    expect(router.currentRoute.value).toMatchObject({
+      path: '/task-settings',
+      name: 'task-settings',
+      query: { token: 'session-token', view: 'details' },
+      hash: '#mower-updates'
+    })
+  })
+
   it('keeps an explicit destination token and its other navigation fields', async () => {
     await router.push('/?token=session-token')
     await router.push('/mowersettings?token=destination-token&view=details#software-update')
 
     expect(router.currentRoute.value).toMatchObject({
-      path: '/mowersettings',
+      path: '/task-settings',
       query: { token: 'destination-token', view: 'details' },
       hash: '#software-update'
     })

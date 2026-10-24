@@ -104,23 +104,6 @@ const squads = [
       :show-feedback="false"
       class="rogue"
     >
-      <template v-if="task === 'all' || task === 'credit-fight'">
-        <n-form-item v-if="showEnable" :show-label="false">
-          <n-checkbox v-model:checked="maa_credit_fight">
-            <div class="item">信用作战</div>
-          </n-checkbox>
-        </n-form-item>
-        <n-form-item data-task-editor="credit-fight">
-          <template #label>
-            <span>编队</span>
-            <help-text label="信用作战编队说明">
-              <div>借助战打OF-1</div>
-              <div>使用指定编队</div>
-            </help-text>
-          </template>
-          <n-select :options="squads" v-model:value="credit_fight.squad" />
-        </n-form-item>
-      </template>
       <template v-if="task === 'all' || task === 'visit'">
         <n-form-item v-if="showEnable" :show-label="false">
           <n-checkbox v-model:checked="visit_friend_enable">
@@ -142,6 +125,23 @@ const squads = [
             <div>MAA：在执行日常任务时由 MAA 进入好友列表拜访并收取信用。</div>
             <div>Mower：在轮询基建调度之余由 Mower 原生进入好友列表拜访并收取信用。</div>
           </help-text>
+        </n-form-item>
+      </template>
+      <template v-if="task === 'all' || task === 'credit-fight'">
+        <n-form-item v-if="showEnable" :show-label="false">
+          <n-checkbox v-model:checked="maa_credit_fight">
+            <div class="item">信用作战</div>
+          </n-checkbox>
+        </n-form-item>
+        <n-form-item data-task-editor="credit-fight">
+          <template #label>
+            <span>编队</span>
+            <help-text label="信用作战编队说明">
+              <div>借助战打OF-1</div>
+              <div>使用指定编队</div>
+            </help-text>
+          </template>
+          <n-select :options="squads" v-model:value="credit_fight.squad" />
         </n-form-item>
       </template>
     </n-form>

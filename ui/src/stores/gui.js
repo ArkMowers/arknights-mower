@@ -50,7 +50,7 @@ export const useGuiStore = defineStore('gui', () => {
         return true
       } catch {
         error.value = '软件版本显示偏好读取失败，请重试。'
-        layoutError.value = '任务配置显示偏好读取失败，请重试。'
+        layoutError.value = '全部设置显示偏好读取失败，请重试。'
         return false
       } finally {
         loading.value = false
@@ -141,7 +141,7 @@ export const useGuiStore = defineStore('gui', () => {
     } catch {
       taskSettingsLayout.value = previous
       failedLayout = value
-      layoutError.value = '任务配置显示偏好保存失败，已恢复原来的显示。请重试。'
+      layoutError.value = '全部设置显示偏好保存失败，已恢复原来的显示。请重试。'
       return false
     } finally {
       layoutSaving.value = false

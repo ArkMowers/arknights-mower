@@ -8,6 +8,8 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
 
+import yaml
+
 from arknights_mower.tests.device_application_tests import ManualAdapter, ManualDevice
 from arknights_mower.tests.device_preflight_tests import PreflightIO
 from arknights_mower.utils import config
@@ -19,9 +21,18 @@ from arknights_mower.utils.device.touch_backend import TouchFailure
 
 class DeviceSettingsRouteTests(unittest.TestCase):
     def setUp(self):
-        self.enterContext(
-            patch.dict(sys.modules, {"arknights_mower.utils.skland": MagicMock()})
-        )
+        module_name = "arknights_mower.utils.skland"
+        missing = object()
+        previous = sys.modules.get(module_name, missing)
+        sys.modules[module_name] = MagicMock()
+
+        def restore_skland():
+            if previous is missing:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous
+
+        self.addCleanup(restore_skland)
         self.main = importlib.import_module("arknights_mower.__main__")
         self.server = importlib.import_module("server")
         directory = self.enterContext(tempfile.TemporaryDirectory())
@@ -85,6 +96,201 @@ class DeviceSettingsRouteTests(unittest.TestCase):
         self.assertTrue(response.json["active"])
         self.assertEqual(response.json["serial"], "USB-123")
         self.assertEqual(self.client.get("/device/status").status_code, 403)
+
+    def test_managed_device_and_performance_edits_fail_before_saving(self):
+        with patch.dict("os.environ", {"MOWER_MANAGED": "1"}):
+            before = self.path.read_bytes()
+            for method in ("POST", "PATCH"):
+                for payload in (
+                    {"device": {"adb_path": "untrusted-program"}},
+                    {"device": {"instance_id": "different"}},
+                    {"simulator": {"simulator_folder": "/different"}},
+                    {"maa_adb_path": "untrusted-adb"},
+                    {"maa_path": "/different/MAA"},
+                    {"custom_screenshot": {"command": "different-capture"}},
+                    {"tap_to_launch_game": {"command": "different-launch"}},
+                    {"performance_mode": "low"},
+                    {"screenshot_interval": 987},
+                    {"selection_poll_interval": 1.5},
+                    {"waiting_scene": {"UNKNOWN": [7, 13]}},
+                    {"start_automatically": True},
+                ):
+                    with self.subTest(method=method, payload=payload):
+                        response = self.client.open(
+                            "/conf", method=method, headers=self.headers, json=payload
+                        )
+                        self.assertEqual(response.status_code, 403, response.json)
+                        self.assertEqual(
+                            response.json["error"], "manager_owned_setting"
+                        )
+                        self.assertEqual(self.path.read_bytes(), before)
+            self.assertTrue(
+                self.client.get("/conf", headers=self.headers).json[
+                    "manager_owned_device"
+                ]
+            )
+            self.assertTrue(
+                self.client.get("/device/status", headers=self.headers).json[
+                    "manager_owned"
+                ]
+            )
+            response = self.client.patch(
+                "/conf",
+                headers=self.headers,
+                json={**config.conf.model_dump(), "theme": "dark"},
+            )
+            self.assertEqual(response.status_code, 200, response.json)
+            self.assertEqual(config.conf.theme, "dark")
+
+    def test_extra_settings_visibility_uses_manager_choice_and_standalone_can_save(
+        self,
+    ):
+        for managed in (False, True):
+            with patch.dict("os.environ", {"MOWER_MANAGED": "1" if managed else "0"}):
+                for current in (False, True):
+                    config.conf.extra_settings_visible = current
+                    config.conf.ai_assistant_enabled = True
+                    config.conf.updates_enabled = False
+                    config.save_conf()
+                    before = self.path.read_bytes()
+                    loaded = self.client.get("/conf", headers=self.headers)
+                    self.assertIs(loaded.json["extra_settings_visible"], current)
+                    self.assertIs(loaded.json["manager_owned_device"], managed)
+                    for method in ("POST", "PATCH"):
+                        response = self.client.open(
+                            "/conf",
+                            method=method,
+                            headers=self.headers,
+                            json={"extra_settings_visible": not current},
+                        )
+                        if managed:
+                            self.assertEqual(response.status_code, 403, response.json)
+                            self.assertEqual(
+                                response.json["error"], "manager_owned_setting"
+                            )
+                            self.assertEqual(self.path.read_bytes(), before)
+                            self.assertIs(config.conf.extra_settings_visible, current)
+                        else:
+                            self.assertEqual(response.status_code, 200, response.json)
+                            self.assertIs(
+                                config.conf.extra_settings_visible, not current
+                            )
+                        self.assertIs(config.conf.ai_assistant_enabled, True)
+                        self.assertIs(config.conf.updates_enabled, False)
+                    echo = self.client.patch(
+                        "/conf",
+                        headers=self.headers,
+                        json={
+                            "extra_settings_visible": config.conf.extra_settings_visible,
+                            "theme": "dark",
+                        },
+                    )
+                    self.assertEqual(echo.status_code, 200, echo.json)
+
+    def test_standalone_instance_can_change_maa_installation_path(self):
+        with patch.dict("os.environ", {"MOWER_MANAGED": "0"}):
+            response = self.client.patch(
+                "/conf", headers=self.headers, json={"maa_path": "/standalone/MAA"}
+            )
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(config.conf.maa_path, "/standalone/MAA")
+
+    def test_standalone_instance_can_change_waiting_scene_table(self):
+        values = config.conf.waiting_scene.model_dump(mode="json")
+        values["UNKNOWN"] = [7, 13]
+        with patch.dict("os.environ", {"MOWER_MANAGED": "0"}):
+            response = self.client.patch(
+                "/conf", headers=self.headers, json={"waiting_scene": values}
+            )
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(config.conf.waiting_scene.UNKNOWN, (7, 13))
+        self.assertEqual(response.json["waiting_scene"], values)
+        persisted = config.Conf(**yaml.safe_load(self.path.read_text()))
+        self.assertEqual(persisted.waiting_scene.UNKNOWN, (7, 13))
+
+    def test_managed_detection_refuses_overrides_before_device_actions(self):
+        with (
+            patch.dict("os.environ", {"MOWER_MANAGED": "1"}),
+            patch.object(self.control, "preflight") as preflight,
+        ):
+            for route in (
+                "preflight",
+                "discover",
+                "start",
+                "avd/start",
+                "redroid/start",
+                "genymotion/start",
+            ):
+                payload = {"device": {"adb_path": "untrusted-adb"}}
+                if "/" in route:
+                    payload["confirmed_instance"] = "chosen"
+                response = self.client.post(
+                    "/device/" + route, headers=self.headers, json=payload
+                )
+                self.assertEqual(response.status_code, 403, response.json)
+            preflight.assert_not_called()
+
+    def test_managed_preflight_refuses_even_the_saved_profile(self):
+        io = PreflightIO()
+        self.main.device_control = DeviceControl(
+            lambda: config.conf, ManualAdapter(), preflight=PreflightService(io)
+        )
+        before = self.path.read_bytes()
+        with patch.dict("os.environ", {"MOWER_MANAGED": "1"}):
+            response = self.client.post(
+                "/device/preflight", headers=self.headers, json={"device": {}}
+            )
+        self.assertEqual(response.status_code, 403, response.json)
+        self.assertEqual(response.json["error"], "manager_owned_setting")
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_managed_boss_key_refuses_even_the_saved_hotkey(self):
+        config.conf = config.conf.updated({"device": {"simulator_hotkey": "ctrl+f9"}})
+        with (
+            patch.dict("os.environ", {"MOWER_MANAGED": "1"}),
+            patch(
+                "arknights_mower.utils.device.window.trigger_simulator_boss_key",
+                return_value={"ok": True},
+            ) as trigger,
+        ):
+            rejected = self.client.post(
+                "/device/boss_key", headers=self.headers, json={"hotkey": "ctrl+f10"}
+            )
+            self.assertEqual(rejected.status_code, 403)
+            trigger.assert_not_called()
+            accepted = self.client.post(
+                "/device/boss_key", headers=self.headers, json={}
+            )
+            self.assertEqual(accepted.status_code, 403, accepted.json)
+            trigger.assert_not_called()
+
+    def test_manager_restrictions_preserve_token_rejection_before_body_parsing(self):
+        with (
+            patch.dict("os.environ", {"MOWER_MANAGED": "1"}),
+            patch(
+                "flask.Request.get_json",
+                side_effect=AssertionError("parsed unauthorized body"),
+            ),
+        ):
+            for route, method in (
+                ("/conf", "GET"),
+                ("/conf", "POST"),
+                ("/conf", "PATCH"),
+                ("/device/preflight", "POST"),
+                ("/device/discover", "POST"),
+                ("/device/start", "POST"),
+                ("/device/avd/start", "POST"),
+                ("/device/redroid/start", "POST"),
+                ("/device/genymotion/start", "POST"),
+                ("/device/boss_key", "POST"),
+            ):
+                for headers in ({}, {"token": "wrong"}):
+                    self.assertEqual(
+                        self.client.open(
+                            route, method=method, headers=headers
+                        ).status_code,
+                        403,
+                    )
 
     def test_screenshot_failure_exposes_native_reason_and_peers_without_saving(self):
         io = PreflightIO()

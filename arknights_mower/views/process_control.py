@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 
 from flask import Blueprint, abort, current_app, request
 
-from arknights_mower.utils import process_control
+from arknights_mower.utils import config, managed_device, process_control
 from arknights_mower.views.software_update import result
 
 process_control_bp = Blueprint(
@@ -41,4 +41,12 @@ def status():
 @result
 def action():
     data = request.get_json(silent=True) or {}
+    if not managed_device.extra_settings_allowed(config.conf) and data.get(
+        "action"
+    ) in {"restart", "stop"}:
+        return {
+            "ok": False,
+            "error": "manager_owned_setting",
+            "message": "请通过多开管理器操作，或开启该实例的额外设置",
+        }, 403
     return process_control.request_action(data.get("action"))

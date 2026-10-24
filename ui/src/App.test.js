@@ -17,6 +17,7 @@ import { renderToString } from 'vue/server-renderer'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
+import { routes } from './routes'
 
 const state = vi.hoisted(() => ({
   mounted: [],
@@ -123,25 +124,22 @@ vi.mock('@/components/Feedback.vue', () => ({ default: {} }))
 vi.mock('@/components/GlobalUpdateDrop.vue', () => ({ default: {} }))
 vi.mock('@/components/WindowTitlebar.vue', () => ({
   default: defineComponent({
-    props: ['theme', 'showInstanceMenu'],
+    props: ['theme'],
     setup: (props) => () =>
       h('header', {
-        'data-window-theme': props.theme,
-        'data-window-instance-management': String(props.showInstanceMenu)
+        'data-window-theme': props.theme
       })
   })
 }))
 vi.mock('@/components/AppMenuBar.vue', () => ({
   default: defineComponent({
     props: {
-      showInstanceMenu: Boolean,
       mode: String,
       active: { type: Boolean, default: true }
     },
     setup: (props) => () =>
       h('nav', {
         'data-app-menus': true,
-        'data-instance-management': String(props.showInstanceMenu),
         'data-menu-mode': props.mode,
         'data-menu-active': String(props.active)
       })
@@ -758,43 +756,13 @@ describe('desktop page startup', () => {
     expect(html).toContain('data-menu-mode="brand"')
   })
 
-  it('omits instance management from ordinary browsers, including a forged shell query', async () => {
-    window.location.search = '?window_shell=1'
+  it('keeps instance management out of instance windows even with a native bridge', async () => {
+    const getInstances = vi.fn()
+    window.pywebview = { api: { get_instances: getInstances } }
     const component = await mount()
-    expect(window.pywebview).toBeUndefined()
-    expect(await renderShell(component)).toContain('data-instance-management="false"')
-    expect(await renderShell(component)).toContain('data-window-instance-management="false"')
-  })
-
-  it.each([false, true])(
-    'reveals local instance management after delayed native injection (custom shell %s)',
-    async (customShell) => {
-      state.shellActive = customShell
-      const component = await mount()
-      expect(await renderShell(component)).toContain('data-window-instance-management="false"')
-      window.pywebview = { api: { get_instances: vi.fn() } }
-      if (customShell) state.shellConnected.value = true
-      else {
-        const ready = window.addEventListener.mock.calls.find(
-          ([event]) => event === 'pywebviewready'
-        )
-        expect(ready).toBeDefined()
-        ready[1]()
-      }
-      await nextTick()
-      const html = await renderShell(component)
-      expect(html).toContain('data-window-instance-management="true"')
-      if (!customShell) expect(html).toContain('data-instance-management="true"')
-      expect(state.client.get.mock.calls.some(([url]) => /\/instances(?:\/|$)/.test(url))).toBe(
-        false
-      )
-    }
-  )
-
-  it('keeps local instance management available when the native bridge is already injected', async () => {
-    window.pywebview = { api: { get_instances: vi.fn() } }
-    const component = await mount()
-    expect(await renderShell(component)).toContain('data-instance-management="true"')
+    expect(component.appMenuProps.value).not.toHaveProperty('showInstanceMenu')
+    expect(getInstances).not.toHaveBeenCalled()
+    expect(state.client.get.mock.calls.some(([url]) => /\/instances(?:\/|$)/.test(url))).toBe(false)
   })
 
   it('opens shared help actions without changing task execution', async () => {
@@ -819,6 +787,116 @@ describe('desktop page startup', () => {
     expect(component.sidebarCollapsed.value).toBe(false)
     expect(component.userToggledSidebar.value).toBe(true)
   })
+
+  async function useAllSettingsRouter(initial = '/') {
+    const stubRoutes = (records) =>
+      records.map(({ component, children, ...record }) => ({
+        ...record,
+        ...(component && { component: { render: () => null } }),
+        ...(children && { children: stubRoutes(children) })
+      }))
+    const router = createRouter({ history: createMemoryHistory(), routes: stubRoutes(routes) })
+    await router.push(initial)
+    state.router = router
+    state.route = reactive({
+      get name() {
+        return router.currentRoute.value.name
+      },
+      get meta() {
+        return router.currentRoute.value.meta
+      },
+      get fullPath() {
+        return router.currentRoute.value.fullPath
+      }
+    })
+    return router
+  }
+
+  it.each(['/task-settings', '/mowersettings?token=existing#interface'])(
+    'collapses the main sidebar for a direct visit to %s and keeps it collapsed on resize',
+    async (path) => {
+      const router = await useAllSettingsRouter(path)
+      const component = await mount()
+      expect(router.currentRoute.value.name).toBe('task-settings')
+      expect(component.sidebarCollapsed.value).toBe(true)
+      expect(component.sidebarHidden.value).toBe(false)
+      expect(component.mobileMenuOpen.value).toBe(false)
+      window.innerWidth = 1440
+      component.actions_on_resize()
+      expect(component.sidebarCollapsed.value).toBe(true)
+      const html = await renderShell(component)
+      expect(html).toContain('data-collapsed="true"')
+      expect(html).toContain('data-sidebar="main"')
+    }
+  )
+
+  it('collapses on entering all settings and preserves manual expansion until the next visit', async () => {
+    const router = await useAllSettingsRouter()
+    const component = await mount()
+    component.expandSidebar()
+    await router.push('/task-settings')
+    expect(component.sidebarCollapsed.value).toBe(true)
+
+    component.toggleSidebar()
+    expect(component.sidebarCollapsed.value).toBe(false)
+    await router.push('/task-settings?search=maa#task-maa')
+    expect(component.sidebarCollapsed.value).toBe(false)
+    component.actions_on_resize()
+    expect(component.sidebarCollapsed.value).toBe(false)
+
+    await router.push('/')
+    expect(component.sidebarCollapsed.value).toBe(false)
+    await router.push('/mowersettings#interface')
+    expect(component.sidebarCollapsed.value).toBe(true)
+    expect(component.sidebarHidden.value).toBe(false)
+    expect(component.mobileMenuOpen.value).toBe(false)
+  })
+
+  it.each([false, true])(
+    'restores the previous sidebar collapse state after leaving settings (%s)',
+    async (collapsed) => {
+      const router = await useAllSettingsRouter()
+      const component = await mount()
+      component.sidebarCollapsed.value = collapsed
+      component.userToggledSidebar.value = true
+      await router.push('/task-settings')
+      expect(component.sidebarCollapsed.value).toBe(true)
+      component.toggleSidebar()
+      expect(component.sidebarCollapsed.value).toBe(false)
+      await router.push('/plan-editor')
+      expect(component.sidebarCollapsed.value).toBe(collapsed)
+      expect(component.userToggledSidebar.value).toBe(true)
+    }
+  )
+
+  it('restores automatic responsive collapsing after leaving settings', async () => {
+    const router = await useAllSettingsRouter()
+    const component = await mount()
+    expect(component.userToggledSidebar.value).toBe(false)
+    await router.push('/task-settings')
+    component.toggleSidebar()
+    await router.push('/')
+    expect(component.userToggledSidebar.value).toBe(false)
+    window.innerWidth = 720
+    component.actions_on_resize()
+    expect(component.sidebarCollapsed.value).toBe(true)
+  })
+
+  it.each([false, true])(
+    'keeps the mobile drawer state when entering all settings (open %s)',
+    async (open) => {
+      window.innerWidth = 600
+      const router = await useAllSettingsRouter()
+      const component = await mount()
+      expect(component.isMobileNav.value).toBe(true)
+      component.mobileMenuOpen.value = open
+      const collapsed = component.sidebarCollapsed.value
+      await router.push('/task-settings')
+      expect(component.mobileMenuOpen.value).toBe(open)
+      expect(component.sidebarCollapsed.value).toBe(collapsed)
+      expect(component.sidebarHidden.value).toBe(false)
+    }
+  )
 
   it('hides and restores the desktop sidebar without changing its collapse or task state', async () => {
     const component = await mount()

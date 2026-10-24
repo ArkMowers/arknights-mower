@@ -268,7 +268,10 @@ class WebRoutingTests(unittest.TestCase):
                     )
                     if token == "fixture-secret":
                         self.assertEqual(response.status_code, 200)
-                        self.assertEqual(response.get_json(), {"active": False})
+                        self.assertEqual(
+                            response.get_json(),
+                            {"active": False, "manager_owned": False},
+                        )
                         read_status.assert_called_once_with()
                     else:
                         self.assertEqual(response.status_code, 403)

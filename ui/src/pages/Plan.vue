@@ -723,7 +723,7 @@ function movePlanForward() {
             <template #trigger>
               <n-button
                 class="plan-restore-button"
-                :aria-label="rescue ? '返回任务配置' : '还原为当前运行排班表及高级设置'"
+                :aria-label="rescue ? '返回全部设置' : '还原为当前运行排班表及高级设置'"
                 :disabled="edit_locked || (!rescue && !running)"
                 :loading="restoring_running_plan"
                 @click="rescue ? returnToSettings() : restoreRunningPlan()"
@@ -735,7 +735,7 @@ function movePlanForward() {
             </template>
             {{
               rescue
-                ? '返回任务配置'
+                ? '返回全部设置'
                 : running
                   ? '还原为当前运行排班表及高级设置'
                   : 'Mower 运行时可还原排班表及高级设置'

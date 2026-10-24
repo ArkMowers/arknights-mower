@@ -256,6 +256,7 @@ class DesktopStartupTests(unittest.TestCase):
         updates_enabled=True,
         instance_name="",
         managed=True,
+        commands=None,
         configuration_change=None,
         configure_startup=None,
     ):
@@ -280,13 +281,12 @@ class DesktopStartupTests(unittest.TestCase):
             server.http_start = Mock()
             server.browser_open = Mock()
             tray_channel = Mock()
-            tray_channel.get.side_effect = [
-                "toggle",
-                "toggle",
-                "browser",
-                "browser",
-                "exit",
-            ]
+            commands = (
+                ["toggle", "toggle", "browser", "browser", "exit"]
+                if commands is None
+                else commands
+            )
+            tray_channel.get.side_effect = commands
             server.desktop_child = Mock(return_value=(Mock(), tray_channel))
             server.start = Mock(wraps=task_server.start)
             stack.enter_context(patch.object(task_server, "app", server.app))
@@ -294,13 +294,7 @@ class DesktopStartupTests(unittest.TestCase):
             server.stop.return_value = "true"
             registration = Mock(record={})
             registration.shutdown_requested.return_value = False
-            registration.take_commands.side_effect = [
-                ["toggle"],
-                ["toggle"],
-                ["browser"],
-                ["browser"],
-                ["exit"],
-            ]
+            registration.take_commands.side_effect = [[command] for command in commands]
             shutdown = Shutdown()
             events = []
 
@@ -412,7 +406,7 @@ class DesktopStartupTests(unittest.TestCase):
             webview_ui.run_desktop()
             self.assertTrue(server.app.config["DESKTOP_STARTUP_HANDLED"])
             if cancel != "shutdown":
-                self.assertEqual(mocks[-1].call_count, 2)
+                self.assertEqual(mocks[-1].call_count, commands.count("browser"))
             # Closing/reopening the window and opening browser tabs never queue
             # another worker; shutdown also cancels a delayed worker callback.
             self.assertLessEqual(len(workers), 1)
@@ -424,6 +418,22 @@ class DesktopStartupTests(unittest.TestCase):
         events, server = self.launch()
         self.assertEqual(events, [("start", "0")])
         server.start.assert_called_once_with("0", automatic=True)
+
+    def test_managed_background_start_and_browser_access_create_no_desktop_windows(
+        self,
+    ):
+        for automatic in (False, True):
+            with self.subTest(automatic=automatic):
+                events, server = self.launch(
+                    automatic=automatic,
+                    background=True,
+                    managed=True,
+                    commands=["browser", "exit"],
+                )
+                self.assertEqual(events, [("start", "0")] if automatic else [])
+                server.desktop_child.assert_not_called()
+                server.http_start.assert_called_once()
+                server.browser_open.assert_called_once()
 
     def test_browser_commands_and_tray_launch_keep_the_session_url_without_instance_name(
         self,
@@ -454,6 +464,46 @@ class DesktopStartupTests(unittest.TestCase):
                     for call in trays:
                         self.assertEqual(call.args[1], instance_name)
                         self.assertEqual(call.args[3], expected_url)
+
+    def test_show_creates_a_missing_window_and_reuses_the_existing_window(self):
+        for background in (False, True):
+            with self.subTest(background=background):
+                events, server = self.launch(
+                    automatic=False,
+                    background=background,
+                    commands=["show", "show", "exit"],
+                )
+                self.assertEqual(events, [])
+                windows = [
+                    call
+                    for call in server.desktop_child.call_args_list
+                    if call.args[0] == "window"
+                ]
+                self.assertEqual(len(windows), 1)
+                channel = server.desktop_child.return_value[1]
+                self.assertEqual(
+                    [call.args for call in channel.send.call_args_list],
+                    [("show",)] * (1 if background else 2),
+                )
+                server.browser_open.assert_not_called()
+
+    def test_show_recreates_a_window_after_its_channel_closes(self):
+        def close_window_channel(stack, task_server, server, config, events):
+            server.desktop_child.return_value[1].send.side_effect = BrokenPipeError
+
+        _, server = self.launch(
+            automatic=False,
+            background=False,
+            commands=["show", "exit"],
+            configure_startup=close_window_channel,
+        )
+        windows = [
+            call
+            for call in server.desktop_child.call_args_list
+            if call.args[0] == "window"
+        ]
+        self.assertEqual(len(windows), 2)
+        server.browser_open.assert_not_called()
 
     def test_managed_desktop_honors_explicit_and_random_ports_with_or_without_token(
         self,

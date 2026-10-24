@@ -4,9 +4,18 @@ import SidebarBrand from '@/components/SidebarBrand.vue'
 import { useVersionChecksStore } from '@/stores/versionChecks'
 
 defineOptions({ inheritAttrs: false })
-const props = defineProps({ enabled: { type: Boolean, default: false } })
+const props = defineProps({
+  enabled: { type: Boolean, default: false },
+  extraSettingsVisible: { type: Boolean, default: true }
+})
 const checks = useVersionChecksStore()
 const messages = useMessage()
+
+function installationHint() {
+  return !props.extraSettingsVisible
+    ? '请在多开管理器中操作，或由管理器开启更新与维护设置后安装。'
+    : '可在全部设置 → 网络与更新中查看并安装。'
+}
 
 async function checkSoftware() {
   if (!props.enabled || checks.softwareChecking) return
@@ -16,7 +25,7 @@ async function checkSoftware() {
     if (result.available) {
       const target = result.version ? ` ${result.version}` : ''
       messages.info(
-        `发现${result.downgrade ? '可回退的软件版本' : '软件更新'}${target}，可在 Mower 设置 → 网络与更新中查看并安装。`,
+        `发现${result.downgrade ? '可回退的软件版本' : '软件更新'}${target}，${installationHint()}`,
         { duration: 6000 }
       )
     } else {
@@ -37,10 +46,9 @@ async function checkResource() {
     if (!result) return
     if (result.update_available === true) {
       const target = result.remote_display || result.remote_version
-      messages.info(
-        `发现资源更新${target ? ` ${target}` : ''}，可在 Mower 设置 → 网络与更新中查看并安装。`,
-        { duration: 6000 }
-      )
+      messages.info(`发现资源更新${target ? ` ${target}` : ''}，${installationHint()}`, {
+        duration: 6000
+      })
     } else if (result.update_available === false) {
       messages.success('资源已是最新版本。')
     } else {

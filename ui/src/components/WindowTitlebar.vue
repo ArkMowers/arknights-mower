@@ -49,10 +49,10 @@
       :active="active"
       :instance-name="instanceName"
       :theme="theme"
-      :show-instance-menu="showInstanceMenu"
       :mower-port="mowerPort"
       :emulator-name="emulatorName"
       :adb-port="adbPort"
+      :manager-owned-device="managerOwnedDevice"
       :connection-test-disabled="connectionTestDisabled"
       :profile-state="profileState"
       :profile-write-disabled="profileWriteDisabled"
@@ -134,7 +134,6 @@ const props = defineProps({
   title: { type: String, required: true },
   instanceName: { type: String, required: true },
   theme: { type: String, required: true },
-  showInstanceMenu: { type: Boolean, default: true },
   controlSide: { type: String, required: true },
   maximized: { type: Boolean, required: true },
   controls: { type: Array, required: true },
@@ -144,6 +143,7 @@ const props = defineProps({
   mowerPort: { type: String, default: '' },
   emulatorName: { type: String, default: '' },
   adbPort: { type: String, default: '' },
+  managerOwnedDevice: { type: Boolean, default: false },
   connectionTestDisabled: { type: Boolean, default: false },
   profileState: { type: Object, default: null },
   profileWriteDisabled: { type: Boolean, default: true },

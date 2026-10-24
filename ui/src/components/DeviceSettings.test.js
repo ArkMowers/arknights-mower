@@ -86,6 +86,24 @@ it('opens connection selection and advanced settings without inspecting or chang
   expect(navigation.consume).toHaveBeenCalledTimes(2)
 })
 
+it('tests the saved managed target without writing configuration or accepting a draft command', async () => {
+  state.config.manager_owned_device = true
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.client.post = vi.fn(async () => ({
+    data: { ok: true, serial: 'verified', preset_id: 'manual.other' }
+  }))
+  const before = structuredClone(state.config.device_profile)
+  component.edit('adb_path', 'untrusted')
+  await component.detect('preflight', null, false)
+  expect(state.client.post).toHaveBeenCalledExactlyOnceWith(
+    expect.stringMatching(/\/device\/preflight$/),
+    { device: {} }
+  )
+  expect(component.draft.value).toEqual(before)
+  expect(state.config.device_profile).toEqual(before)
+  expect(state.config.save_config).not.toHaveBeenCalled()
+})
+
 it('keeps advanced fields visible in the task checklist without changing connection selection', async () => {
   state.client.post = vi.fn()
   const navigation = mountConnectionNavigation({ action: 'select' }, { expanded: true })

@@ -540,3 +540,46 @@ describe('资源更新后的周计划元数据', () => {
     expect(axios.patch).not.toHaveBeenCalled()
   })
 })
+
+describe('managed maintenance visibility', () => {
+  it.each([
+    [undefined, false],
+    [false, false],
+    [true, true],
+    ['true', false]
+  ])(
+    'loads visibility %s as %s without adding a writable instance preference',
+    async (value, expected) => {
+      pinia = createPinia()
+      setActivePinia(pinia)
+      const app = createApp({})
+      app.use(pinia)
+      app.provide('loaded', ref(false))
+      store = app.runWithContext(() => useConfigStore())
+      expect(store.extra_settings_visible).toBe(false)
+      expect(store.manager_inherited_settings).toEqual([])
+      axios.get.mockResolvedValue({
+        data: {
+          manager_owned_device: true,
+          manager_inherited_settings: ['screenshot', 42],
+          extra_settings_visible: value,
+          free_blacklist: '',
+          reload_room: '',
+          maa_mall_buy: '',
+          maa_mall_blacklist: '',
+          favorite: '',
+          reclamation_algorithm: {},
+          secret_front: {},
+          maa_weekly_plan: []
+        }
+      })
+      await store.load_config()
+      expect(store.manager_owned_device).toBe(true)
+      expect(store.manager_inherited_settings).toEqual(['screenshot'])
+      expect(store.extra_settings_visible).toBe(expected)
+      expect(store.build_config()).not.toHaveProperty('extra_settings_visible')
+      expect(store.build_config()).not.toHaveProperty('manager_inherited_settings')
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+})
