@@ -21,8 +21,7 @@
         其中加工费 {{ summary.crafting_gold.toLocaleString() }} 龙门币，已计入下方龙门币总需求。
       </n-text>
       <n-alert v-if="summary.manual_chips" type="info" :bordered="false" class="chip-hint">
-        双芯片需手动准备：每个消耗 2 个同职业芯片组和 1 个芯片助剂。每个缺少的芯片助剂折算为 90
-        张采购凭证；下方同时展示成品与原料需求，不会生成芯片合成任务。
+        双芯片需手动准备，不会生成芯片合成任务
       </n-alert>
       <div class="material-grid">
         <div v-for="material in summary.materials" :key="material.id" class="material-row">

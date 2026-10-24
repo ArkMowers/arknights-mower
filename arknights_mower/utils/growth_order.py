@@ -66,7 +66,18 @@ def crafting_projects(plans, goals, order=(), *, box=None, skills=None):
 
 def prepare_project_materials(box, skills, projects, inventory, formulas, blocked=()):
     """Skip shortages without reserving them; keep confirmed training protected."""
+    from arknights_mower.utils.growth_workshop import calculate_crafting_materials
+
     budget = MaterialBudget(skills, inventory, formulas, blocked_materials=blocked)
+    crafting_names = set()
+    for name, formula in formulas.items():
+        if formula.get("tab") in ("精英材料", "技巧概要"):
+            crafting_names.add(formula.get("output_name", name))
+            crafting_names.update(formula.get("costs", {}))
+            crafting_names.update(formula.get("items", []))
+    crafting_ids = {
+        iid for iid, item in budget.items.items() if item["name"] in crafting_names
+    }
     groups, accounted, prerequisite_costs, entries = {}, {}, {}, []
     reserved = Counter()
     active_shortage = False
@@ -89,15 +100,17 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
                 cumulative[material["id"]] += material["count"]
         extra = cumulative - accounted.get(cid, Counter())
         total = reserved + extra
-        summary = calculate_growth_materials(
-            budget, [{"id": iid, "count": n} for iid, n in total.items()]
+        materials = [{"id": iid, "count": n} for iid, n in total.items()]
+        summary = calculate_crafting_materials(
+            budget, [row for row in materials if row["id"] in crafting_ids]
         )
         eligible = summary["craftable"] and not active_shortage
         state = {
             **project,
             "status": "ready",
             "reason": "",
-            "materials_prepared": eligible and summary["available"],
+            "materials_prepared": eligible
+            and calculate_growth_materials(budget, materials)["available"],
             "shortages": summary["missing"],
         }
         if project["locked"]:
