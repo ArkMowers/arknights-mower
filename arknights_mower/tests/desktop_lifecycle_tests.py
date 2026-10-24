@@ -257,6 +257,7 @@ class DesktopStartupTests(unittest.TestCase):
         instance_name="",
         managed=True,
         configuration_change=None,
+        configure_startup=None,
     ):
         import server as task_server
         import webview_ui
@@ -332,6 +333,7 @@ class DesktopStartupTests(unittest.TestCase):
 
             def install_resource():
                 self.assertEqual(request.method, "POST")
+                self.assertEqual(request.get_json(), {"background": True})
                 events.append("install resource")
                 if cancel == "stop":
                     config.stop_mower.set()
@@ -405,6 +407,8 @@ class DesktopStartupTests(unittest.TestCase):
                 patch("webbrowser.open", server.browser_open),
             ]
             mocks = [stack.enter_context(item) for item in patches]
+            if configure_startup is not None:
+                configure_startup(stack, task_server, server, config, events)
             webview_ui.run_desktop()
             self.assertTrue(server.app.config["DESKTOP_STARTUP_HANDLED"])
             if cancel != "shutdown":
@@ -503,6 +507,108 @@ class DesktopStartupTests(unittest.TestCase):
                 events, server = self.launch(resource=True, cancel=cancel)
                 self.assertEqual(events, ["check resource", "install resource"])
                 server.start.assert_not_called()
+
+    def test_http_stop_cancels_startup_while_resource_install_blocks_profile_changes(
+        self,
+    ):
+        from arknights_mower.solvers import record
+        from arknights_mower.utils import crash_recovery, instance_supervisor
+        from arknights_mower.utils.resource_update_job import ResourceUpdateJob
+
+        real_thread = threading.Thread
+        completed = threading.Event()
+        outcome = {}
+        request_threads = []
+
+        def configure(stack, task_server, server, config, events):
+            job = ResourceUpdateJob()
+            server.resource_update = job
+            server.install_resource = Mock(wraps=task_server.install_resource)
+            server.app.before_request(task_server.serialize_configuration_requests)
+            server.app.teardown_request(task_server.release_configuration_lock)
+            server.app.add_url_rule("/stop", view_func=task_server.stop)
+            server.app.register_blueprint(task_server.config_profiles_bp)
+            server.app.config.update(
+                CONFIG_PROFILES_LOCKS=task_server.configuration_profile_locks,
+                CONFIG_PROFILES_BUSY=task_server.configuration_profiles_busy,
+                CONFIG_BACKUP_BUSY=job.running,
+            )
+            create_profile = stack.enter_context(
+                patch(
+                    "arknights_mower.utils.config_profiles.create_profile",
+                    side_effect=ValueError("activation must wait for installation"),
+                )
+            )
+            outcome["create_profile"] = create_profile
+
+            def requests_during_install():
+                try:
+                    with server.app.test_client() as client:
+                        headers = {
+                            "token": "startup-test",
+                            "X-Mower-Settings": "1",
+                            "X-Mower-Config-Generation": "0",
+                        }
+                        outcome["profile"] = client.post(
+                            "/config-profiles",
+                            headers=headers,
+                            json={"name": "blocked", "inherit": []},
+                        )
+                        outcome["stop"] = client.get("/stop", headers=headers)
+                        outcome["cancelled"] = config.stop_mower.is_set()
+                except Exception as error:
+                    outcome["error"] = error
+                finally:
+                    completed.set()
+
+            def install(_after_install):
+                worker = real_thread(target=requests_during_install)
+                request_threads.append(worker)
+                worker.start()
+                outcome["requests_before_finish"] = completed.wait(1)
+                events.append("resource finished")
+                job.report(status="success", message="installed")
+
+            main = importlib.import_module("arknights_mower.__main__")
+            for target, name, value in (
+                (job, "run", install),
+                (task_server, "resource_update", job),
+                (task_server, "config", config),
+                (task_server, "mower_thread", None),
+                (task_server, "shutdown", SimpleNamespace(closing=False)),
+                (task_server, "active_job", lambda: False),
+                (task_server, "_mower_busy_response", lambda: None),
+                (task_server, "_performance_test_status", lambda: {"status": "idle"}),
+                (task_server, "maa_check_job", {"status": "idle"}),
+                (
+                    main,
+                    "device_control",
+                    SimpleNamespace(active=False, configuration_lock=threading.RLock()),
+                ),
+                (record, "current_state", lambda: {}),
+                (record, "save_state_to_db", Mock(return_value=True)),
+                (runtime, "record_task_stop", Mock()),
+                (instance_supervisor, "task_intent", Mock()),
+                (crash_recovery, "cancel", Mock()),
+            ):
+                stack.enter_context(patch.object(target, name, value))
+
+        try:
+            events, server = self.launch(
+                resource=True, token="startup-test", configure_startup=configure
+            )
+        finally:
+            for worker in request_threads:
+                worker.join(2)
+        self.assertNotIn("error", outcome)
+        self.assertTrue(outcome["requests_before_finish"])
+        self.assertEqual(outcome["profile"].status_code, 409)
+        self.assertEqual(outcome["stop"].status_code, 200)
+        self.assertEqual(outcome["stop"].data, b"true")
+        self.assertTrue(outcome["cancelled"])
+        outcome["create_profile"].assert_not_called()
+        self.assertEqual(events, ["check resource", "resource finished"])
+        server.start.assert_not_called()
 
     def test_resource_automation_is_independent_of_task_autostart(self):
         events, server = self.launch(automatic=False, resource=True)
@@ -607,3 +713,88 @@ class DesktopStartupTests(unittest.TestCase):
                 expected = ["check resource", "install resource"]
                 self.assertEqual(events, expected)
                 server.start.assert_not_called()
+
+
+def test_synchronous_resource_install_allows_http_stop_before_completion(monkeypatch):
+    import server
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import (
+        config,
+        config_profiles,
+        crash_recovery,
+        instance_supervisor,
+    )
+    from arknights_mower.utils.resource_update_job import ResourceUpdateJob
+
+    entered, release, stopped = threading.Event(), threading.Event(), threading.Event()
+    outcome = {}
+    job = ResourceUpdateJob()
+    app = Flask(__name__)
+    app.token = "resource-test"
+    app.before_request(server.serialize_configuration_requests)
+    app.teardown_request(server.release_configuration_lock)
+    app.add_url_rule(
+        "/resource/install", view_func=server.install_resource, methods=["POST"]
+    )
+    app.add_url_rule("/stop", view_func=server.stop)
+    cancelled = threading.Event()
+
+    def install(_after_install):
+        entered.set()
+        release.wait(3)
+        job.report(status="success", message="installed")
+
+    for target, name, value in (
+        (job, "run", install),
+        (server, "app", app),
+        (server, "resource_update", job),
+        (server, "mower_thread", None),
+        (server, "active_job", lambda: False),
+        (server, "_mower_busy_response", lambda: None),
+        (config, "stop_mower", cancelled),
+        (config_profiles, "current_generation", lambda: "0"),
+        (record, "current_state", lambda: {}),
+        (record, "save_state_to_db", Mock(return_value=True)),
+        (runtime, "record_task_stop", Mock()),
+        (instance_supervisor, "task_intent", Mock()),
+        (crash_recovery, "cancel", Mock()),
+    ):
+        monkeypatch.setattr(target, name, value)
+
+    headers = {"token": "resource-test", "X-Mower-Config-Generation": "0"}
+
+    def install_request():
+        with app.test_client() as client:
+            outcome["install"] = client.post(
+                "/resource/install", headers=headers, json={}
+            )
+
+    def stop_request():
+        try:
+            with app.test_client() as client:
+                outcome["stop"] = client.get("/stop", headers=headers)
+        finally:
+            stopped.set()
+
+    installer = threading.Thread(target=install_request)
+    stopper = threading.Thread(target=stop_request)
+    installer.start()
+    try:
+        assert entered.wait(2)
+        stopper.start()
+        completed_before_release = stopped.wait(1)
+        cancelled_before_release = cancelled.is_set()
+        assert "install" not in outcome
+    finally:
+        release.set()
+        installer.join(2)
+        if stopper.ident is not None:
+            stopper.join(2)
+        if job.thread is not None:
+            job.thread.join(2)
+    assert not installer.is_alive()
+    assert not stopper.is_alive()
+    assert completed_before_release
+    assert cancelled_before_release
+    assert outcome["stop"].data == b"true"
+    assert outcome["install"].json["ok"] is True

@@ -1001,7 +1001,7 @@ def _run_desktop():
         if startup_cancelled():
             return
         with server.app.test_request_context(
-            method="POST", headers={"token": runtime_token}
+            method="POST", headers={"token": runtime_token}, json={"background": True}
         ):
             if auto_resource:
                 try:

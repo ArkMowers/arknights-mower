@@ -3518,12 +3518,17 @@ def install_resource():
             return {"ok": False, "message": "Mower 软件更新或进程操作正在进行中"}, 409
         try:
             job = resource_update.start(_request_title_refresh)
+            thread = resource_update.thread
+            installed_job = resource_update.job
         except ValueError as error:
             return {"ok": False, "message": str(error)}, 409
     if (request.get_json(silent=True) or {}).get("background") is True:
         return {"ok": True, "job": job}
-    resource_update.thread.join()
-    job = resource_update.snapshot()
+    # The tracked job blocks activation while synchronous clients wait.
+    if g.pop("configuration_locked", False):
+        backup_lock.release()
+    thread.join()
+    job = dict(installed_job)
     return {
         "ok": job["status"] == "success",
         "message": job["message"],
