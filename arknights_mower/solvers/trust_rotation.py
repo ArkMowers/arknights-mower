@@ -163,16 +163,31 @@ class TrustRotationSolver(SceneGraphSolver):
         self._check_budget()
         return super().scene()
 
-    def tap(self, *args, **kwargs):
+    def _wait_for_ready(self):
+        while True:
+            self._check_budget()
+            connecting = self.find("connecting")
+            self._check_budget()
+            if not connecting:
+                return
+            self.sleep(min(1, max(0, self.deadline - monotonic())))
+
+    def _check_ready(self):
         self._check_budget()
+        if self.find("connecting"):
+            raise TrustReadingError("页面正在联网，停止本次信赖检查")
+        self._check_budget()
+
+    def tap(self, *args, **kwargs):
+        self._check_ready()
         return super().tap(*args, **kwargs)
 
     def swipe(self, *args, **kwargs):
-        self._check_budget()
+        self._check_ready()
         return super().swipe(*args, **kwargs)
 
     def _ocr(self, scope):
-        self._check_budget()
+        self._check_ready()
         # These game fields are upright; classification can rotate 69% into %69.
         result, _ = rapidocr.engine(cropimg(self.recog.img, scope), use_cls=False)
         self._check_budget()
@@ -182,6 +197,7 @@ class TrustRotationSolver(SceneGraphSolver):
         return " ".join(text for _, text, _ in self._ocr(scope))
 
     def _require(self, text, scope):
+        self._wait_for_ready()
         if text not in self._text(scope):
             raise TrustReadingError(f"未确认{text}页面，停止信赖选人")
 
@@ -385,7 +401,7 @@ class TrustRotationSolver(SceneGraphSolver):
         raise TrustReadingError("信赖名单超过本轮扫描上限")
 
     def _name(self, scope, *, activity=False):
-        self._check_budget()
+        self._check_ready()
         name = match_operator_name(
             cropimg(self.recog.img, scope),
             dark_text=not activity,

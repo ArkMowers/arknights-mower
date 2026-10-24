@@ -3,6 +3,7 @@
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -90,12 +91,153 @@ def solver():
     result = trust.TrustRotationSolver.__new__(trust.TrustRotationSolver)
     result.deadline = float("inf")
     result.prefer, result.threshold = True, 100
-    result.recog = SimpleNamespace(img=np.zeros((1080, 1920, 3), dtype=np.uint8))
+    result.recog = SimpleNamespace(
+        img=np.zeros((1080, 1920, 3), dtype=np.uint8), find=Mock(return_value=None)
+    )
     result.tap, result.swipe = Mock(), Mock()
     result._require = Mock()
     result._prepare_selection = Mock()
     result.assistant_names = {}
     return result
+
+
+@pytest.fixture
+def connecting_inspection(monkeypatch):
+    obj = solver()
+    del obj.tap, obj._require
+    state = SimpleNamespace(
+        now=0.0,
+        page=1,
+        connecting=0,
+        persistent=False,
+        cancel=False,
+        changed_page=False,
+        observations=0,
+        inputs=[],
+        reads=[],
+    )
+    stopped = Event()
+    monkeypatch.setattr(config, "stop_mower", stopped)
+    monkeypatch.setattr(config, "conf", Conf())
+    monkeypatch.setattr(trust, "monotonic", lambda: state.now)
+    monkeypatch.setattr(trust.rapidocr, "initialize_ocr", Mock())
+
+    def observe(interval):
+        state.now += interval
+        if state.connecting:
+            state.observations += 1
+            if state.cancel and state.observations == 2:
+                stopped.set()
+            if not state.persistent:
+                state.connecting -= 1
+                if not state.connecting and state.changed_page:
+                    state.page = 4
+        obj.recog.img.fill(state.page)
+
+    def tap(point):
+        assert not state.connecting, "input reached a connecting screen"
+        state.inputs.append(point)
+        if point == (95, 625):
+            state.page, state.connecting = 2, 3
+        elif point == obj.ASSISTANT_POINTS[0]:
+            state.page = 3
+        elif point == (65, 55):
+            state.page = 2
+
+    def ocr(image, **kwargs):
+        state.reads.append((state.connecting, state.now))
+        labels = {1: "基建副手", 2: "罗德岛基建副手", 3: "确认", 4: "其他页面"}
+        return [([], labels[int(image[0, 0, 0])], 1.0)], None
+
+    obj.recog.img.fill(1)
+    obj.recog.find = lambda *args: bool(state.connecting)
+    obj.device = SimpleNamespace(tap=Mock(side_effect=tap))
+    obj.sleep = observe
+    obj.ASSISTANT_POINTS = obj.ASSISTANT_POINTS[:1]
+    for name in (
+        "discard_pending_selection",
+        "back_to_infrastructure",
+        "_enter_control_center",
+        "_return_from_assistants",
+        "_activity_rooms",
+    ):
+        setattr(obj, name, Mock())
+    obj._assistant_trust = Mock(return_value=1)
+    obj._name = Mock(return_value="芬")
+    monkeypatch.setattr(trust.rapidocr, "engine", ocr)
+    return obj, state
+
+
+def test_inspection_waits_for_connecting_before_opening_assistant(
+    connecting_inspection,
+):
+    obj, state = connecting_inspection
+    obj.run(seconds=20)
+    assert state.observations == 3
+    assert state.inputs == [(95, 625), (635, 350), (65, 55)]
+    assert all(not connecting for connecting, _ in state.reads)
+    assert obj.assistant_names == {0: "芬"}
+    obj._activity_rooms.assert_called_once()
+
+
+def test_inspection_rechecks_page_after_connecting_clears(connecting_inspection):
+    obj, state = connecting_inspection
+    state.changed_page = True
+    with pytest.raises(trust.TrustReadingError, match="未确认罗德岛基建副手页面"):
+        obj.run(seconds=20)
+    assert state.inputs == [(95, 625)]
+    obj._name.assert_not_called()
+
+
+def test_connecting_after_page_read_never_receives_stale_input(connecting_inspection):
+    obj, state = connecting_inspection
+
+    def read_trust(index):
+        state.connecting, state.changed_page = 3, True
+        return 1
+
+    obj._assistant_trust.side_effect = read_trust
+    with pytest.raises(trust.TrustReadingError, match="联网"):
+        obj.run(seconds=20)
+    assert state.inputs == [(95, 625)]
+    obj._name.assert_not_called()
+
+
+def test_connecting_never_reads_names_from_an_unverified_page(
+    connecting_inspection, monkeypatch
+):
+    obj, state = connecting_inspection
+    del obj._name
+    obj.deadline = 20
+    state.connecting, state.changed_page = 3, True
+    matcher = Mock(return_value="芬")
+    monkeypatch.setattr(trust, "match_operator_name", matcher)
+    with pytest.raises(trust.TrustReadingError, match="联网"):
+        obj._name(obj.SELECTOR_NAME)
+    matcher.assert_not_called()
+    assert state.inputs == []
+
+
+def test_connecting_uses_original_inspection_deadline(connecting_inspection):
+    obj, state = connecting_inspection
+    state.persistent = True
+    with pytest.raises(trust.TrustReadingError, match="时间预算"):
+        obj.run(seconds=3.5)
+    assert state.now == obj.deadline == 3.5
+    assert state.inputs == [(95, 625)]
+    assert len(state.reads) == 1
+    obj._name.assert_not_called()
+
+
+def test_connecting_stop_cancels_before_selection_readback(connecting_inspection):
+    obj, state = connecting_inspection
+    state.persistent, state.cancel = True, True
+    with pytest.raises(MowerExit):
+        obj.run(seconds=20)
+    assert state.now == 2
+    assert state.inputs == [(95, 625)]
+    assert len(state.reads) == 1
+    obj._name.assert_not_called()
 
 
 @pytest.fixture(scope="module")
