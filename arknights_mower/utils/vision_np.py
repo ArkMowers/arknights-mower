@@ -51,7 +51,9 @@ def argrelmin(data, order=1):
 
 def _box(img, size):
     """均值窗：cv2.blur 复刻 scipy.ndimage.uniform_filter(mode='reflect')。"""
-    return cv2.blur(img.astype(np.float64), (size, size), borderType=cv2.BORDER_REFLECT)
+    return cv2.blur(
+        img.astype(np.float64, copy=False), (size, size), borderType=cv2.BORDER_REFLECT
+    )
 
 
 def ssim(im1, im2, win_size=7, K1=0.01, K2=0.03):
