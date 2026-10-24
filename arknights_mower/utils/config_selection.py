@@ -329,7 +329,10 @@ def combine_archives(incoming_raw, current_raw, selected):
                     raise ValueError("持久化配置文件名大小写冲突")
                 files[name] = tmp[name]
             tmp.pop(name, None)
-        data, _, plan, migrated, rescue_plan = backup._validate_configuration(files)
+        data, conf, plan, migrated, rescue_plan = backup._validate_configuration(files)
+        # Resolve legacy-derived fields and defaults in their source configuration.
+        # Original values retain unknown nested fields while new keys come from Conf.
+        data = {**conf.model_dump(), **data}
         if migrated or has_retired_dorm_options(
             backup._object_file(files, "plan.json")
         ):

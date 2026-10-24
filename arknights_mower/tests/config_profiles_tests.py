@@ -5,6 +5,7 @@ from io import BytesIO
 from threading import Event
 
 import pytest
+import yaml
 from flask import Flask
 
 from arknights_mower.utils import config, crash_recovery
@@ -604,6 +605,141 @@ def test_conf_fields_have_one_group_and_no_unmapped_current_fields():
     assert set(CONF_GROUPS) <= keys
     assert set(selection.TABLE_GROUPS.values()) <= keys
     assert set(selection.TMP_GROUPS.values()) <= keys
+
+
+@pytest.mark.parametrize(
+    "current,incoming,keep,expected",
+    [
+        pytest.param(
+            {"maa_enable": False},
+            {"maa_enable": True},
+            ["daily"],
+            (True, "maa", True, "maa"),
+            id="retain-daily-disabled",
+        ),
+        pytest.param(
+            {"maa_enable": True},
+            {"maa_enable": False},
+            ["daily"],
+            (False, "mower", False, "maa"),
+            id="retain-daily-enabled",
+        ),
+        pytest.param(
+            {"maa_enable": False},
+            {"maa_enable": True},
+            ["weekly_plan"],
+            (False, "mower", True, "maa"),
+            id="retain-legacy-weekly-plan",
+        ),
+        pytest.param(
+            {"maa_enable": True},
+            {"maa_enable": False},
+            ["credit"],
+            (False, "mower", True, "maa"),
+            id="retain-legacy-credit",
+        ),
+        pytest.param(
+            {"maa_enable": False},
+            {},
+            ["daily"],
+            (True, "maa", True, "maa"),
+            id="incoming-defaults",
+        ),
+        pytest.param(
+            {},
+            {"maa_enable": False},
+            ["weekly_plan", "credit"],
+            (True, "maa", True, "maa"),
+            id="retained-defaults",
+        ),
+        pytest.param(
+            {"maa_enable": True},
+            {
+                "maa_enable": False,
+                "stage_plan_enable": True,
+                "stage_plan_runner": "mower",
+                "maa_mall_enable": True,
+                "maa_mall_mode": "mower",
+            },
+            ["daily"],
+            (True, "mower", True, "mower"),
+            id="incoming-explicit-fields",
+        ),
+        pytest.param(
+            {
+                "maa_enable": False,
+                "stage_plan_enable": True,
+                "stage_plan_runner": "mower",
+                "maa_mall_enable": True,
+                "maa_mall_mode": "mower",
+            },
+            {"maa_enable": True},
+            ["weekly_plan", "credit"],
+            (True, "mower", True, "mower"),
+            id="retained-explicit-fields",
+        ),
+    ],
+)
+def test_profile_import_resolves_legacy_task_settings_before_group_selection(
+    storage, current, incoming, keep, expected
+):
+    config.conf = config.Conf(**current)
+    config.conf_path.write_text(yaml.safe_dump(current), encoding="utf-8")
+    files = backup.read_archive(backup.export_archive(include_tmp=False))
+    files["conf.yml"] = yaml.safe_dump(incoming).encode("utf-8")
+    profiles.import_profile(
+        backup._archive_bytes(files, {}),
+        "legacy task settings",
+        keep,
+        expected_generation="0",
+    )
+
+    saved = config.Conf(**yaml.safe_load(config.conf_path.read_text(encoding="utf-8")))
+    for conf in (config.conf, saved):
+        assert (
+            conf.stage_plan_enable,
+            conf.stage_plan_runner,
+            conf.maa_mall_enable,
+            conf.maa_mall_mode,
+        ) == expected
+
+
+@pytest.mark.parametrize(
+    "keep,unknown_source,window_source,weekly_source",
+    [
+        ([], "incoming", "incoming", "incoming"),
+        (["other_settings"], "current", "incoming", "incoming"),
+        (["appearance", "weekly_plan"], "incoming", "current", "current"),
+    ],
+)
+def test_profile_import_preserves_unknown_fields_during_configuration_normalization(
+    storage, keep, unknown_source, window_source, weekly_source
+):
+    def configuration(source):
+        return {
+            "_private_setting": {"source": source},
+            "webview": {"_private_window": source},
+            "maa_weekly_plan": [
+                {"stage": ["1-7"], "weekday": "周一", "_private_weekly": source}
+            ],
+        }
+
+    current = configuration("current")
+    config.conf = config.Conf(**current)
+    config.conf_path.write_text(yaml.safe_dump(current), encoding="utf-8")
+    files = backup.read_archive(backup.export_archive(include_tmp=False))
+    files["conf.yml"] = yaml.safe_dump(configuration("incoming")).encode("utf-8")
+    profiles.import_profile(
+        backup._archive_bytes(files, {}),
+        "private fields",
+        keep,
+        expected_generation="0",
+    )
+
+    saved = yaml.safe_load(config.conf_path.read_text(encoding="utf-8"))
+    assert saved["_private_setting"] == {"source": unknown_source}
+    assert saved["webview"]["_private_window"] == window_source
+    assert saved["maa_weekly_plan"][0]["_private_weekly"] == weekly_source
 
 
 def test_selection_rebuilds_normal_plan_advanced_settings_from_selected_conf(storage):
