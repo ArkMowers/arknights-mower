@@ -100,7 +100,7 @@ def test_initial_idle_primary_keeps_first_assignment_after_priority_yield(
     ]
 
 
-def test_new_order_reserves_mastery_handoff_before_another_inline_read(
+def test_final_order_read_reserves_mastery_handoff_before_another_read(
     order_navigation,
 ):
     from arknights_mower.tests.run_order_staffing_admission_tests import correction
@@ -117,7 +117,7 @@ def test_new_order_reserves_mastery_handoff_before_another_inline_read(
     for room in ("room_1_1", "room_2_2"):
         solver.get_agent_from_room(room)
     ui.events.clear()
-    arrangement = correction(ui, {"room_1_1", "room_2_2"})
+    arrangement = correction(ui, {"room_1_1"})
     refreshes = [
         ui.task(task_type=ui.task_type.REFRESH_TIME, meta_data=room)
         for room in ("room_1_1", "room_2_2")
@@ -143,8 +143,8 @@ def test_new_order_reserves_mastery_handoff_before_another_inline_read(
     assert [event[1] for event in ui.events if event[0] == "read"] == ["room_1_1"]
     assert ui.clock.now() == start + timedelta(seconds=70)
     assert swap.time == start + timedelta(seconds=99)
-    assert arrangement in solver.tasks and arrangement.time == start
-    assert arrangement.plan == {"room_2_2": ["图耶"]}
+    assert arrangement not in solver.tasks and arrangement.time == start
+    assert arrangement.plan == {}
     assert refreshes[0] not in solver.tasks
     assert refreshes[1] in solver.tasks
     assert not getattr(refreshes[1], "execution_failure", None)
@@ -152,7 +152,7 @@ def test_new_order_reserves_mastery_handoff_before_another_inline_read(
 
 @pytest.mark.parametrize("mastery_enabled", [False, True])
 @pytest.mark.parametrize("priority_kind", ["SWAP_SUPPORT", "RELEASE_DORM"])
-def test_inline_reads_respect_priority_after_refresh_operator_moves(
+def test_final_reads_respect_priority_after_refresh_operator_moves(
     order_navigation, monkeypatch, mastery_enabled, priority_kind
 ):
     from arknights_mower.tests.run_order_staffing_admission_tests import correction
@@ -176,6 +176,7 @@ def test_inline_reads_respect_priority_after_refresh_operator_moves(
         ui.operators, "current_room_changed_callback", solver.current_room_changed
     )
     ui.events.clear()
+    ui.durations["room_1_1"] = 80
     task = correction(ui, {"room_1_1", "room_2_2"})
     original_time = task.time
     priority_at = ui.clock.now() + timedelta(seconds=100)
@@ -206,7 +207,7 @@ def test_inline_reads_respect_priority_after_refresh_operator_moves(
     if not mastery_enabled and priority_kind == "SWAP_SUPPORT":
         assert task.plan == {} and task not in solver.tasks
         read_rooms = [event[1] for event in ui.events if event[0] == "read"]
-        assert read_rooms.count("room_1_1") == read_rooms.count("room_2_2") == 2
+        assert read_rooms.count("room_1_1") == read_rooms.count("room_2_2") == 1
         assert priority in solver.tasks
         return
     assert ui.clock.now() < priority_at
@@ -216,7 +217,7 @@ def test_inline_reads_respect_priority_after_refresh_operator_moves(
         assert task.plan and "room_1_1" not in task.plan
     remaining_plan = copy.deepcopy(task.plan)
     assert task.time == original_time and task in solver.tasks
-    assert [event[1] for event in ui.events if event[0] == "read"] == ["room_1_1"]
+    assert [event[1] for event in ui.events if event[0] == "read"] == []
     waiting = next(
         pending
         for pending in solver.tasks
@@ -229,7 +230,7 @@ def test_inline_reads_respect_priority_after_refresh_operator_moves(
         solver.infra_main()
         assert task.time == original_time and task.plan == remaining_plan
         assert waiting in solver.tasks
-        assert [event[1] for event in ui.events if event[0] == "read"] == ["room_1_1"]
+        assert [event[1] for event in ui.events if event[0] == "read"] == []
 
     ui.clock.current = priority_at + timedelta(minutes=1)
     solver.tasks.remove(priority)
@@ -239,8 +240,8 @@ def test_inline_reads_respect_priority_after_refresh_operator_moves(
     assert task.plan == {} and task not in solver.tasks
     assert task.time == original_time and waiting not in solver.tasks
     read_rooms = [event[1] for event in ui.events if event[0] == "read"]
-    assert len(read_rooms) == 3 and read_rooms[0] == "room_1_1"
-    assert set(read_rooms[1:]) == {"room_1_1", "room_2_2"}
+    assert len(read_rooms) == 2
+    assert set(read_rooms) == {"room_1_1", "room_2_2"}
     assert [call.args[0] for call in solver.choose_agent.call_args_list].count(
         ["鸿雪"]
     ) == 1
@@ -248,7 +249,7 @@ def test_inline_reads_respect_priority_after_refresh_operator_moves(
 
 @pytest.mark.parametrize("priority_kind", ["RUN_ORDER", "SWAP_SUPPORT", "RELEASE_DORM"])
 @pytest.mark.parametrize("offset", [-1, 60])
-def test_inline_reads_preserve_due_refresh_before_imminent_priority(
+def test_final_reads_preserve_due_refresh_before_imminent_priority(
     order_navigation, priority_kind, offset
 ):
     ui = order_navigation
@@ -256,7 +257,7 @@ def test_inline_reads_preserve_due_refresh_before_imminent_priority(
     ui.config.conf.enable_mastery = True
     arrangement = ui.task(
         task_type=ui.task_type.SELF_CORRECTION,
-        task_plan={"room_2_2": ["图耶"]},
+        task_plan={},
     )
     refresh = ui.task(task_type=ui.task_type.REFRESH_TIME, meta_data="room_1_1")
     priority = ui.task(
@@ -267,6 +268,8 @@ def test_inline_reads_preserve_due_refresh_before_imminent_priority(
         strict_mood_limit=priority_kind == "RELEASE_DORM",
     )
     solver.task, solver.tasks = arrangement, [arrangement, refresh, priority]
+    solver.op_data.products["room_2_2"] = "orundum"
+    solver.op_data.refresh_run_order_rooms()
     before = copy.deepcopy(vars(refresh)), copy.deepcopy(vars(arrangement))
 
     for _ in range(3):
@@ -276,25 +279,20 @@ def test_inline_reads_preserve_due_refresh_before_imminent_priority(
     assert vars(refresh) == before[0]
     assert arrangement.time == before[1]["time"]
     assert arrangement.plan == before[1]["plan"]
-    assert solver.tasks == [arrangement, refresh, priority]
+    assert all(task in solver.tasks for task in (arrangement, refresh, priority))
 
     solver.tasks.remove(priority)
     ui.states["room_1_1"] = "active"
     solver._read_arrangement_order_times("room_1_1")
 
     assert [event[1] for event in ui.events if event[0] == "read"] == ["room_1_1"]
-    assert refresh in solver.tasks
-    assert not any(pending.type == ui.task_type.RUN_ORDER for pending in solver.tasks)
-    assert arrangement.time == before[1]["time"]
-    assert arrangement.plan == before[1]["plan"]
-
-    solver.agent_arrange(arrangement.plan)
-    assert arrangement.plan == {} and arrangement.time == before[1]["time"]
     assert refresh not in solver.tasks
     assert any(pending.type == ui.task_type.RUN_ORDER for pending in solver.tasks)
+    assert arrangement.time == before[1]["time"]
+    assert arrangement.plan == {}
 
 
-def test_blocked_order_allows_independent_inline_refresh(order_navigation):
+def test_blocked_order_allows_independent_final_refresh(order_navigation):
     ui = order_navigation
     solver = ui.solver
     arrangement = ui.task(task_type=ui.task_type.SELF_CORRECTION)
@@ -324,7 +322,7 @@ def test_blocked_order_allows_independent_inline_refresh(order_navigation):
 
 
 @pytest.mark.parametrize("next_room", ["room_2_2", "dormitory_1"])
-def test_failed_inline_order_read_restores_navigation_before_next_room(
+def test_failed_final_order_read_restores_navigation_before_next_task(
     order_navigation, monkeypatch, next_room
 ):
     from arknights_mower.solvers import base_mixin
@@ -340,10 +338,12 @@ def test_failed_inline_order_read_restores_navigation_before_next_room(
     )
     arrangement = ui.task(
         task_type=ui.task_type.SELF_CORRECTION,
-        task_plan={next_room: ["Current"]},
+        task_plan={},
     )
     solver.tasks = [arrangement, refresh]
     solver.task = arrangement
+    solver.op_data.products["room_2_2"] = "orundum"
+    solver.op_data.refresh_run_order_rooms()
     ui.states["room_1_1"] = "active"
     solver.read_time.side_effect = ui.base.RecognizeError("订单数字未确认")
 
@@ -356,7 +356,7 @@ def test_failed_inline_order_read_restores_navigation_before_next_room(
     solver._read_arrangement_order_times("room_1_1")
 
     assert refresh.execution_failure
-    assert arrangement.plan == {next_room: ["Current"]}
+    assert arrangement.plan == {}
     assert arrangement in solver.tasks and refresh in solver.tasks
 
     def find(resource, *args, **kwargs):
@@ -396,7 +396,7 @@ def test_failed_inline_order_read_restores_navigation_before_next_room(
 @pytest.mark.parametrize(
     "error_name", ["DeviceRecoveryError", "SharedADBError", "MowerExit"]
 )
-def test_failed_inline_read_propagates_navigation_recovery_failure(
+def test_failed_final_read_propagates_navigation_recovery_failure(
     order_navigation, error_name
 ):
     ui = order_navigation
@@ -407,10 +407,12 @@ def test_failed_inline_read_propagates_navigation_recovery_failure(
     )
     arrangement = ui.task(
         task_type=ui.task_type.SELF_CORRECTION,
-        task_plan={"dormitory_1": ["Current"]},
+        task_plan={},
     )
     solver.tasks = [arrangement, refresh]
     solver.task = arrangement
+    solver.op_data.products["room_2_2"] = "orundum"
+    solver.op_data.refresh_run_order_rooms()
     ui.states["room_1_1"] = "active"
     solver.read_time.side_effect = ui.base.RecognizeError("订单数字未确认")
     failure = getattr(ui.base, error_name)("导航恢复中断")
@@ -422,7 +424,7 @@ def test_failed_inline_read_propagates_navigation_recovery_failure(
     assert caught.value is failure
     assert refresh.execution_failure["reason"] == "订单数字未确认"
     assert solver.tasks == [arrangement, refresh]
-    assert arrangement.plan == {"dormitory_1": ["Current"]}
+    assert arrangement.plan == {}
     solver.back_to_infrastructure.assert_called_once_with()
 
 
@@ -459,10 +461,7 @@ def test_restoration_with_old_room_metadata_does_not_interrupt_order_refreshes(
 
     solver._read_arrangement_order_times("room_2_2")
 
-    assert [event[1] for event in ui.events if event[0] == "read"] == [
-        "room_2_2",
-        "room_3_3",
-    ]
+    assert not any(event[0] == "read" for event in ui.events)
     assert all(refresh in solver.tasks for refresh in refreshes)
     assert [task for task in solver.tasks if task.type == ui.task_type.RUN_ORDER] == [
         restoration

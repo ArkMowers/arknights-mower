@@ -1,4 +1,4 @@
-"""换班中途只检查临近跑单，换班完毕后正式读取远期时间。"""
+"""整批换班完成后读取订单，未完安排与失败刷新保留原责任。"""
 
 import pickle
 from datetime import timedelta
@@ -33,7 +33,7 @@ def test_final_read_uses_completed_staffing_and_preserves_existing_order(staffed
     def boost(room, new_plan):
         if room == "dormitory_1":
             assert not orders(ui, "room_1_1")
-            assert len(admission.reads(ui)) == 1
+            assert not admission.reads(ui)
             probes.extend(
                 t for t in solver.tasks if t.type == ui.task_type.REFRESH_TIME
             )
@@ -47,18 +47,18 @@ def test_final_read_uses_completed_staffing_and_preserves_existing_order(staffed
     solver.agent_arrange(task.plan)
 
     assert task.plan == {} and task.time == original_time
-    assert len(admission.reads(ui)) == 2
+    assert len(admission.reads(ui)) == 1
     assert orders(ui, "room_1_1")[0].time == ui.deadlines["room_1_1"] - timedelta(
         minutes=3
     )
-    assert probes and all(t not in solver.tasks for t in probes)
+    assert not probes
     assert orders(ui, "room_2_2") == [existing] and existing.time == existing_time
     assert len(admission.reads(ui, "room_2_2")) == 1
     staffed = next(e for e in ui.events if e[:2] == ("staffed", "dormitory_1"))
     assert ui.events.index(admission.reads(ui)[-1]) > ui.events.index(staffed)
 
 
-def test_intermediate_probe_rechecks_after_later_staffing_and_yields(staffed_order):
+def test_completed_batch_reads_time_after_later_staffing(staffed_order):
     ui = staffed_order
     confirm = ui.solver.tap_confirm.side_effect
 
@@ -73,18 +73,18 @@ def test_intermediate_probe_rechecks_after_later_staffing_and_yields(staffed_ord
     task = admission.correction(ui)
     original_time = task.time
 
-    assert ui.solver.agent_arrange(task.plan) is False
+    assert ui.solver.agent_arrange(task.plan) is not False
 
-    assert len(admission.reads(ui)) == 2
+    assert len(admission.reads(ui)) == 1
     assert orders(ui, "room_1_1")[0].time == ui.deadlines["room_1_1"] - timedelta(
         minutes=3
     )
-    assert task.time == original_time and set(task.plan) == {"dormitory_1"}
-    assert not any(event[:2] == ("staffed", "dormitory_1") for event in ui.events)
+    assert task.time == original_time and task.plan == {}
+    assert any(event[:2] == ("staffed", "dormitory_1") for event in ui.events)
 
 
 @pytest.mark.parametrize("restart", [False, True])
-def test_far_probe_keeps_refresh_responsibility_across_critical_yield(
+def test_critical_yield_keeps_unfinished_task_without_reading_orders(
     staffed_order, restart
 ):
     ui = staffed_order
@@ -99,18 +99,14 @@ def test_far_probe_keeps_refresh_responsibility_across_critical_yield(
     original_time = task.time
     assert ui.solver.agent_arrange(task.plan) is False
     assert not orders(ui, "room_1_1")
-    refresh = next(t for t in ui.solver.tasks if t.type == ui.task_type.REFRESH_TIME)
-    refresh_time = refresh.time
+    assert not any(t.type == ui.task_type.REFRESH_TIME for t in ui.solver.tasks)
     for _ in range(3):
         assert ui.solver.agent_arrange(task.plan) is False
-    assert len(admission.reads(ui)) == 1
+    assert not admission.reads(ui)
     if restart:
         ui.solver.tasks = pickle.loads(pickle.dumps(ui.solver.tasks))
         task = next(
             t for t in ui.solver.tasks if t.type == ui.task_type.SELF_CORRECTION
-        )
-        refresh = next(
-            t for t in ui.solver.tasks if t.type == ui.task_type.REFRESH_TIME
         )
     ui.solver.tasks.remove(orders(ui, "room_2_2")[0])
     ui.solver.task = task
@@ -124,8 +120,11 @@ def test_far_probe_keeps_refresh_responsibility_across_critical_yield(
     ui.solver.agent_arrange(task.plan)
 
     assert task.plan == {} and task.time == original_time
-    assert len(admission.reads(ui)) == 2
-    assert refresh not in ui.solver.tasks and refresh.time == refresh_time
+    assert len(admission.reads(ui)) == 1
+    assert not any(
+        t.type == ui.task_type.REFRESH_TIME and t.meta_data == "room_1_1"
+        for t in ui.solver.tasks
+    )
     assert orders(ui, "room_1_1")[0].time == ui.deadlines["room_1_1"] - timedelta(
         minutes=3
     )
@@ -141,8 +140,7 @@ def test_failed_final_read_keeps_one_refresh_and_does_not_repeat_staffing(
     def fail_final_read(*args, **kwargs):
         if ui.solver._page["room"] == "room_1_1":
             attempts.append(ui.clock.now())
-            if len(attempts) > 1:
-                raise ui.base.RecognizeError("订单数字未确认")
+            raise ui.base.RecognizeError("订单数字未确认")
         return read(*args, **kwargs)
 
     ui.solver.read_time.side_effect = fail_final_read
@@ -153,14 +151,18 @@ def test_failed_final_read_keeps_one_refresh_and_does_not_repeat_staffing(
     assert task.plan == {} and task.time == original_time
     assert any(event[:2] == ("staffed", "dormitory_1") for event in ui.events)
     assert not orders(ui, "room_1_1")
-    refreshes = [t for t in ui.solver.tasks if t.type == ui.task_type.REFRESH_TIME]
+    refreshes = [
+        t
+        for t in ui.solver.tasks
+        if t.type == ui.task_type.REFRESH_TIME and t.meta_data == "room_1_1"
+    ]
     assert len(refreshes) == 1
     refresh = refreshes[0]
     refresh_time = refresh.time
     for _ in range(3):
         ui.solver._resume_failed_tasks()
         ui.solver.plan_run_order("room_1_1")
-    assert len(attempts) == 2
+    assert len(attempts) == 1
     assert refresh.time == refresh_time and refresh.execution_failure
     assert refresh in ui.solver.tasks
 
