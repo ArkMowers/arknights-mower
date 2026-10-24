@@ -458,6 +458,7 @@ def simulate(saved):
                 or bool(saved.get("_process_crash_recovery"))
                 or bool(saved.get("initial_mood_pending", False))
                 or config.conf.automatic_rescue_enable
+                or config.conf.test_mood_calculation
                 or bool(saved and saved.get("automatic_rescue_state"))
             )
             base_scheduler._initial_staffing_pending = (
@@ -468,6 +469,11 @@ def simulate(saved):
             base_scheduler._initial_mood_refresh_rooms = set(
                 saved.get("initial_mood_refresh_rooms", ()) if saved else ()
             ) | set(saved.get("initial_mood_probe_layout", {}) if saved else {})
+            if config.conf.test_mood_calculation:
+                # 重启及首次启用都先核实实际驻员，计算快照不能替代启动实读。
+                base_scheduler._initial_mood_refresh_rooms.update(
+                    room for room in base_room_list if not room.startswith("gaming")
+                )
             success = True
         except RECOVERABLE_DEVICE_ERRORS as exc:
             try:
@@ -545,6 +551,15 @@ def simulate(saved):
                 base_scheduler.op_data.operators[k].dorm_recovery_fixed = getattr(
                     v, "dorm_recovery_fixed", ()
                 )
+            if saved.get("calculated_mood") is not None:
+                from arknights_mower.utils.calculated_mood import CalculatedMood
+
+                restored_mood = CalculatedMood()
+                restored_mood.__dict__.update(copy.deepcopy(saved["calculated_mood"]))
+                base_scheduler.op_data.mood_model = restored_mood.restore()
+            if base_scheduler.op_data.mood_calculation_enabled:
+                for operator in base_scheduler.op_data.operators.values():
+                    operator._mood_model = base_scheduler.op_data.mood_model
             base_scheduler.op_data.restore_group_shift_state(
                 saved.get("group_shift_state"),
                 saved.get("group_recovery_full_members"),
@@ -653,6 +668,7 @@ def simulate(saved):
         ]
     if (
         config.conf.automatic_rescue_enable
+        or config.conf.test_mood_calculation
         or isinstance(base_scheduler.emergency_state, dict)
         or bool(saved and saved.get("initial_mood_pending"))
     ):
@@ -662,9 +678,9 @@ def simulate(saved):
             task for task in base_scheduler.tasks if task.meta_data != RESUME_META
         ]
         if not (saved and saved.get("initial_mood_pending")):
-            base_scheduler._initial_mood_refresh_rooms = {
-                room for room in base_scheduler.op_data.plan if room in base_room_list
-            }
+            base_scheduler._initial_mood_refresh_rooms.update(
+                {room for room in base_scheduler.op_data.plan if room in base_room_list}
+            )
         base_scheduler.tasks.insert(0, SchedulerTask(time=datetime.now()))
     while True:
         try:

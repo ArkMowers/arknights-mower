@@ -1,4 +1,4 @@
-"""在岗普通替班按实读心情检查个人下限，计时信息只辅助安排检查。"""
+"""在岗普通替班按所选心情来源检查个人下限并安排检查期限。"""
 
 from copy import copy, deepcopy
 from datetime import datetime, timedelta
@@ -135,6 +135,37 @@ def replacement_check_snapshot(solver, task):
             if getattr(op, "refresh_drained", False)
         ),
     }
+    if getattr(data, "mood_calculation_enabled", False):
+        model = data.mood_model
+        relevant = names | {
+            name for name, op in data.operators.items() if op.current_room == "central"
+        }
+        environment["calculated_mood"] = {
+            "stages": model.stages,
+            "single_targets": model.single_targets,
+            "rooms": {
+                room: (
+                    sorted(
+                        (op.current_index, name)
+                        for name, op in data.operators.items()
+                        if op.current_room == room
+                    ),
+                    getattr(data, "facility_states", {}).get(room, {}).get("facility"),
+                    getattr(data, "facility_states", {}).get(room, {}).get("product"),
+                    getattr(data, "products", {}).get(room),
+                    model.rooms.get(room, {}).get(
+                        "level",
+                        5 if room.startswith("dorm") or room == "central" else 3,
+                    ),
+                    [getattr(slot, "facility", "") for slot in data.plan[room]],
+                )
+                for room in data.plan
+            },
+            "observations": {
+                name: (model.observed.get(name), model.barriers.get(name))
+                for name in sorted(relevant)
+            },
+        }
     return deepcopy(
         {
             "target": target,
@@ -366,15 +397,20 @@ def _preserve_peer_failures(solver, peers, room):
 
 
 def run_replacement_check(solver, task):
-    """到期核实原岗位；确认达到个人下限后复用普通替班纠错。"""
+    """到期核实原岗位心情，达到个人下限后复用普通替班纠错。"""
     target, data = task.replacement_check, solver.op_data
     if not _target_applies(data, target):
         return True
     room, index = target["room"], target["index"]
     cover = data.operators[target["cover"]]
-    mood = _cached_work_mood(cover, task)
+    calculated = getattr(data, "mood_calculation_enabled", False)
+    mood = (
+        data.calculated_mood(cover.name)
+        if calculated
+        else _cached_work_mood(cover, task)
+    )
     observed = {"agent": cover.name, "mood": mood}
-    if mood is None:
+    if mood is None and not calculated:
         peers = [
             (peer, failure, solver._task_failure_snapshot(peer, failure["rooms"]))
             for peer in solver.tasks
@@ -396,7 +432,12 @@ def run_replacement_check(solver, task):
         _preserve_peer_failures(solver, peers, room)
         observed = result[index] if 0 <= index < len(result) else {}
     if observed.get("observed") is False or not _finite_mood(observed.get("mood")):
-        return _retain(solver, task, "替班心情检查未取得有效读数")
+        return _retain(
+            solver,
+            task,
+            "替班心情计算尚无有效观测" if calculated else "替班心情检查未取得有效读数",
+            dependency=calculated,
+        )
     if observed.get("agent") != target["cover"]:
         if observed.get("observed", True) and isinstance(observed.get("agent"), str):
             return True
@@ -409,7 +450,11 @@ def run_replacement_check(solver, task):
     now = datetime.now()
     if mood > cover.lower_limit:
         end = observed.get("time")
-        if isfinite(cover.depletion_rate) and cover.depletion_rate > 0:
+        if calculated:
+            deadline = data.calculated_mood_deadline(cover.name, cover.lower_limit, now)
+            if deadline is None:
+                return _retain(solver, task, _TIMING_DEPENDENCY, dependency=True)
+        elif isfinite(cover.depletion_rate) and cover.depletion_rate > 0:
             deadline = now + timedelta(
                 hours=(mood - cover.lower_limit) / cover.depletion_rate
             )

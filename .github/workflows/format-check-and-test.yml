@@ -47,6 +47,8 @@ jobs:
               - 'arknights_mower/solvers/base_schedule.py'
               - 'arknights_mower/utils/{screenshot,workshop_ui,rapidocr,scheduler_task}.py'
               - 'arknights_mower/utils/{ocr_shared,ocr_service}.py'
+              - 'arknights_mower/utils/calculated_mood.py'
+              - 'arknights_mower/tests/calculated_mood_tests.py'
               - 'arknights_mower/views/task.py'
               - 'arknights_mower/tests/{scheduler_wakeup,screenshot,workshop_inflight}_tests.py'
               - 'arknights_mower/tests/{shared_ocr,shared_ocr_update_lifecycle,ocr_gate,ocr_service_logging,runtime_memory}_tests.py'
@@ -75,6 +77,8 @@ jobs:
             frontend:
               # Shared components and build inputs can affect update/drop flows.
               - 'ui/**'
+              - 'scripts/build_mood_runtime.mjs'
+              - 'arknights_mower/data/mood/**'
               - '{.node-version,.nvmrc,.npmrc}'
               - '.github/workflows/format-check-and-test.yml'
               - '.github/actions/**'
@@ -130,6 +134,8 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - name: Install locked frontend dependencies
         run: npm ci
+      - name: Verify shared mood calculation bundle
+        run: node ../scripts/build_mood_runtime.mjs --check
       - name: Run frontend regressions
         run: npm test
       - name: Build production frontend
@@ -237,6 +243,8 @@ jobs:
         run: brew install zbar
       - name: Install Python dependencies
         run: python -m pip install -r requirements.txt pytest
+      - name: Verify shared mood runtime on each OS
+        run: python -m pytest -q arknights_mower/tests/calculated_mood_tests.py
       - name: Require transaction tools
         shell: bash
         run: |

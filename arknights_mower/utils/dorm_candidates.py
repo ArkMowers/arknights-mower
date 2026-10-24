@@ -44,6 +44,9 @@ def scheduling_mood_reaches(op_data, name, limit, now=None):
 def scheduling_mood_observation(op_data, name, now=None, *, estimates=None):
     """返回决策值及来源时间，实读字段和预估缓存分别保留。"""
     now = now or datetime.now()
+    if getattr(op_data, "mood_calculation_enabled", False):
+        value = op_data.calculated_mood(name, now)
+        return (value, now) if value is not None else None
     op = op_data.operators.get(name)
     measured = (
         (op.mood if op.is_resting() else resting_mood(op, now), op.time_stamp)

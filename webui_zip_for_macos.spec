@@ -51,6 +51,8 @@ add_data = list(set(yaml_add_data + onnx_add_data))
 site_packages = install_dir.parent
 
 MACOS_HIDDEN_IMPORTS = [
+    "quickjs",
+    "_quickjs",
     "objc",
     "PyObjCTools",
     "Cocoa",

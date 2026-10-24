@@ -186,6 +186,7 @@ export const useConfigStore = defineStore('config', () => {
   const free_room = ref(false)
   const dorm_isolation = ref([])
   const merge_interval = ref(10)
+  const test_mood_calculation = ref(false)
   const group_rest_in_full_on_mood_gap = ref(true)
   const group_mood_gap_threshold_minutes = ref(60)
   const group_mood_gap_max_extra_wait_hours = ref(0)
@@ -642,6 +643,7 @@ export const useConfigStore = defineStore('config', () => {
       free_room.value = response.data.free_room
       dorm_isolation.value = response.data.dorm_isolation ?? []
       merge_interval.value = response.data.merge_interval
+      test_mood_calculation.value = response.data.test_mood_calculation ?? false
       group_rest_in_full_on_mood_gap.value = response.data.group_rest_in_full_on_mood_gap ?? true
       group_mood_gap_threshold_minutes.value = response.data.group_mood_gap_threshold_minutes ?? 60
       group_mood_gap_max_extra_wait_hours.value =
@@ -829,6 +831,7 @@ export const useConfigStore = defineStore('config', () => {
       free_room: free_room.value,
       dorm_isolation: dorm_isolation.value,
       merge_interval: merge_interval.value,
+      test_mood_calculation: test_mood_calculation.value,
       group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
       group_mood_gap_threshold_minutes: group_mood_gap_threshold_minutes.value,
       group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
@@ -876,6 +879,7 @@ export const useConfigStore = defineStore('config', () => {
       free_room: free_room.value,
       dorm_isolation: dorm_isolation.value,
       merge_interval: merge_interval.value,
+      test_mood_calculation: test_mood_calculation.value,
       group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
       group_mood_gap_threshold_minutes: group_mood_gap_threshold_minutes.value,
       group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
@@ -1191,6 +1195,7 @@ export const useConfigStore = defineStore('config', () => {
     free_room,
     dorm_isolation,
     merge_interval,
+    test_mood_calculation,
     group_rest_in_full_on_mood_gap,
     group_mood_gap_threshold_minutes,
     group_mood_gap_max_extra_wait_hours,

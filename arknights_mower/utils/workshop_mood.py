@@ -51,10 +51,11 @@ def _bundled_moods():
     )["workshop"].get("mood_operators", {})
 
 
-def operator_mood_rules(name):
+def operator_mood_rules(name, *, assume_maximum=False):
     from arknights_mower.utils.mastery_recommendation import get_skill_data
     from arknights_mower.utils.workshop_data import (
         WorkshopRecommendationError,
+        fully_unlocked_operators,
         owned_roster,
         unlocked,
     )
@@ -74,6 +75,9 @@ def operator_mood_rules(name):
         character = None
     if character is not None:
         return unlocked(meta, character), True
+    if assume_maximum:
+        # 实验计算模式只在缺练度缓存时使用满练技能，不写回干员数据。
+        return fully_unlocked_operators({cid: meta})[name], True
     # Manual selections without BOX must not assume an unlocked reduction.
     return [
         effect

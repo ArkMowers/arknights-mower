@@ -42,7 +42,7 @@ def smoke(archive_path: Path):
                 str(root),
                 "/usr/local/bin/python",
                 "-c",
-                'import ssl, cv2, numpy, onnxruntime, rjieba, yamlcore, flask; from pyzbar.pyzbar import decode; print("Exported ARM64 Python runtime imports passed")',
+                'import ssl, cv2, numpy, onnxruntime, rjieba, yamlcore, flask, quickjs; assert quickjs.Context().eval("1+1") == 2; from pyzbar.pyzbar import decode; print("Exported ARM64 Python runtime imports passed")',
             ],
             check=True,
         )

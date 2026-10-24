@@ -100,9 +100,13 @@ def is_full_dorm_filler(op_data, name, now=None):
         < resting_tier(op_data, name, now)
         < RestingTier.EXCLUDED
         and has_resting_mood(op, now)
-        and op.time_stamp <= now
-        and not getattr(op, "mood_is_prediction", False)
-        and op.mood >= op.upper_limit
+        and (
+            getattr(op_data, "mood_calculation_enabled", False)
+            or op.time_stamp is not None
+            and op.time_stamp <= now
+            and not getattr(op, "mood_is_prediction", False)
+            and op.mood >= op.upper_limit
+        )
     )
 
 
@@ -132,7 +136,15 @@ def bed_takeover_allowed(op_data, requester, resident):
 
 
 def has_resting_mood(op, now=None):
-    """是否有可用于恢复计时等操作的真实心情读数。"""
+    """是否有当前模式可用于恢复计时的有效心情。"""
+    if (
+        op is not None
+        and (model := getattr(op, "_mood_model", None)) is not None
+        and model.enabled
+        and getattr(getattr(op, "_mood_conf", None), "test_mood_calculation", False)
+        and op.current_room != "train"
+    ):
+        return model.value(op.name, now) is not None
     return (
         op is not None
         and op.time_stamp is not None
@@ -143,6 +155,15 @@ def has_resting_mood(op, now=None):
 
 def resting_mood(op, now=None):
     """没有有效缓存时沿用默认 24 心情，读到实际心情后再更新。"""
+    if (
+        op is not None
+        and (model := getattr(op, "_mood_model", None)) is not None
+        and model.enabled
+        and getattr(getattr(op, "_mood_conf", None), "test_mood_calculation", False)
+        and op.current_room != "train"
+    ):
+        value = model.value(op.name, now)
+        return value if value is not None else -1
     return op.current_mood(now) if has_resting_mood(op, now) else 24
 
 

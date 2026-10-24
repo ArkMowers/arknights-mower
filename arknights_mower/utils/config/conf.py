@@ -611,6 +611,8 @@ class RIICPart(ConfModel):
                 raise ValueError("宿舍隔离分组内不能重复填写干员")
         return groups
 
+    test_mood_calculation: bool = False
+    "使用与收益演算相同的技能规则计算普通基建调度心情"
     group_rest_in_full_on_mood_gap: bool = True
     "组内高优先干员预计恢复时间差过大时，等待整组回满"
     group_mood_gap_threshold_minutes: int = Field(default=60, ge=1, le=1440)

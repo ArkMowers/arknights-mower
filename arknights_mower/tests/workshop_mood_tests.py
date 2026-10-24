@@ -113,3 +113,37 @@ def test_missing_box_does_not_assume_reduction(monkeypatch):
     assert mood_cost("聚合剂", {"tab": "精英材料", "apCost": 8}, rules, known) == 8
     rules, known = operator_mood_rules("年")
     assert mood_cost("聚合剂", {"tab": "精英材料", "apCost": 8}, rules, known) == 10
+
+
+@pytest.mark.parametrize(
+    "operator,recipe,original,expected",
+    [("缇缇", "聚合剂", 8, 4), ("止颂", "糖组", 2, 3), ("泥岩", "提纯源岩", 4, 2)],
+)
+def test_calculated_mode_uses_latest_skill_version_without_box(
+    monkeypatch, operator, recipe, original, expected
+):
+    from arknights_mower.utils import workshop_data
+
+    roster = []
+    monkeypatch.setattr(workshop_data, "owned_roster", lambda: roster)
+    rules, known = operator_mood_rules(operator, assume_maximum=True)
+    assert known
+    assert (
+        mood_cost(recipe, {"tab": "精英材料", "apCost": original}, rules, known)
+        == expected
+    )
+    assert roster == []
+
+
+def test_calculated_mode_preserves_cached_progression(monkeypatch):
+    from arknights_mower.utils import workshop_data
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+    metadata = get_skill_data()["workshop"]["mood_operators"]
+    cid = next(cid for cid, meta in metadata.items() if meta["name"] == "缇缇")
+    character = {"id": cid, "evolvePhase": 0, "level": 1}
+    monkeypatch.setattr(workshop_data, "owned_roster", lambda: [character])
+    rules, known = operator_mood_rules("缇缇", assume_maximum=True)
+    assert known
+    assert mood_cost("聚合剂", {"tab": "精英材料", "apCost": 8}, rules, known) == 8
+    assert character == {"id": cid, "evolvePhase": 0, "level": 1}

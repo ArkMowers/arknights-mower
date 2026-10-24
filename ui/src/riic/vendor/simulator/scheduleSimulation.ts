@@ -25,6 +25,7 @@ import type {CompiledSchedule} from '../scheduler/types'
 import {compiledScheduleToRuntimeConfig} from '../scheduler/scheduleAdapter'
 import {normalizeMowerRecoveryBeds} from '../scheduler/mowerRecoveryBeds'
 import {advanceRoster,createRosterRuntime,currentMoraleDerivatives,MORALE_EPSILON,nextRosterEventHours,nextRosterActionHours,settleRoster,moraleDerivative,type RuntimeState,type RuntimeRates,type RuntimeEvent} from '../scheduler/rosterRuntime'
+import { MORALE_SKILL_THRESHOLDS, retainedRecoveryTarget } from '../engine/moraleThresholds'
 
 export interface ScheduleSimulationProgress {
  phase:'warmup'|'sampling'; elapsedHours:number; totalHours:number; warmupHours:number
@@ -216,7 +217,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   const rateMoodBand=(value:number|undefined)=>{
    if(value===undefined)return -1
    let band=Number(value>0)|Number(value>=24-EPS)<<1|Number(value<=12)<<2|Number(value<=18)<<3|Number(value<=20)<<4
-   for(const [index,threshold] of [4,8,12,16,18,20].entries())if(Math.abs(value-threshold)<EPS)band|=1<<(index+5)
+   for(const [index,threshold] of MORALE_SKILL_THRESHOLDS.entries())if(Math.abs(value-threshold)<EPS)band|=1<<(index+5)
    return band
   }
   const trackOccupancyMap=<T extends string|number>(map:Record<string,T>):Record<string,T>=>new Proxy(map,{
@@ -248,7 +249,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   // Strict mood thresholds use the directional limit in an evaluation copy, never alter physical mood.
   for(const [id,m] of Object.entries(c.operatorMorale)){
    const direction=restingIds.has(id)?1:-Math.sign(options.consumptionOverrides?.[id]??work[id]??0)
-     if([4,8,12,16,18,20].some(x=>Math.abs(m-x)<EPS)){c.operatorMorale[id]=m+direction*EPS*2;atBoundary=true}
+     if(MORALE_SKILL_THRESHOLDS.some(x=>Math.abs(m-x)<EPS)){c.operatorMorale[id]=m+direction*EPS*2;atBoundary=true}
   }
   if(atBoundary)work=currentMoraleRates(c).rates
    cachedWork={...work,...options.consumptionOverrides};cachedRecovery={}
@@ -271,11 +272,9 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
     if(target)automaticRecoveryTargets.delete(id)
     else{
      const previous=automaticRecoveryTargets.get(id)
-     if(previous?.room===room.roomId&&candidates.includes(previous.target)
-       &&previous.providerPosition===position(id)&&previous.targetPosition===position(previous.target))target=previous.target
-     else{
+     target=retainedRecoveryTarget(candidates,previous,room.roomId,id,position,other=>morale.get(other)!)
+     if(target!==previous?.target||previous?.providerPosition!==position(id)||previous?.targetPosition!==position(target??'')){
       // Stable sorting keeps slot order only when eligible residents have equal morale.
-      target=candidates.sort((a,b)=>morale.get(a)!-morale.get(b)!)[0]
       if(target)automaticRecoveryTargets.set(id,{room:room.roomId,target,providerPosition:position(id),targetPosition:position(target)})
       else automaticRecoveryTargets.delete(id)
      }
@@ -299,7 +298,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    }
   }
  }
-  const rates:RuntimeRates={workRate:id=>{updateRates();return cachedWork[id]??0},recoveryRate:id=>{updateRates();return cachedRecovery[id]??0},snapshotRates:()=>{updateRates();return {work:cachedWork,recovery:cachedRecovery}},thresholds:()=>[4,8,12,16,18,20]}
+  const rates:RuntimeRates={workRate:id=>{updateRates();return cachedWork[id]??0},recoveryRate:id=>{updateRates();return cachedRecovery[id]??0},snapshotRates:()=>{updateRates();return {work:cachedWork,recovery:cachedRecovery}},thresholds:()=>[...MORALE_SKILL_THRESHOLDS]}
   rates.forecastRates=projected=>{
    const config=projectScheduleState(schedule,projected,currentProducts())
    config.operatorRecords=operatorRecords;Object.assign(config.efficiencyResources,options.efficiencyResources)

@@ -63,3 +63,6 @@ langchain-openai==0.3.24
 langgraph==0.5.1
 # Rust 实现的中文分词，替代 jieba（体积更小、性能更快）
 rjieba>=0.2.0
+
+# 心情演算共享 JavaScript 引擎
+quickjs-ng==0.17.0.2
