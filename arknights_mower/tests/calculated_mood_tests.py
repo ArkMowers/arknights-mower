@@ -253,7 +253,7 @@ def test_collected_package_resources_run_with_crlf_without_node(tmp_path):
     collected = build_assets._collect_arknights_mower_datas()
     package = tmp_path / "arknights_mower"
     for source, destination in collected:
-        if "/data/mood/" not in source:
+        if destination != "arknights_mower/data/mood":
             continue
         target = tmp_path / destination / Path(source).name
         target.parent.mkdir(parents=True, exist_ok=True)
