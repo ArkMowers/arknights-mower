@@ -4412,6 +4412,7 @@ def configuration_profile_locks():
 def configuration_profiles_busy():
     from arknights_mower.__main__ import device_control
 
+    _collect_maa_check_result()
     return bool(
         shutdown.closing
         or app.config["CONFIG_BACKUP_BUSY"]()

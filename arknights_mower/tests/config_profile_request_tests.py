@@ -215,6 +215,83 @@ def test_profile_admission_covers_device_and_background_work(
     assert server.configuration_profiles_busy() is True
 
 
+@pytest.mark.parametrize("operation", ["list", "create"])
+@pytest.mark.parametrize("completion", ["success", "error", "timeout", "running"])
+def test_profile_admission_collects_maa_check_without_browser_polling(
+    storage, monkeypatch, operation, completion
+):
+    import arknights_mower.__main__ as main
+    import server
+    from arknights_mower.utils import config_profiles as profiles
+
+    monkeypatch.setattr(server.app, "token", "profile-test-token", raising=False)
+    monkeypatch.setattr(server, "shutdown", SimpleNamespace(closing=False))
+    monkeypatch.setattr(server, "_performance_test_status", lambda: {"status": "idle"})
+    monkeypatch.setitem(server.app.config, "CONFIG_BACKUP_BUSY", lambda: False)
+    monkeypatch.setitem(server.app.config, "CONFIGURATION_ACTIVATED", lambda: None)
+    monkeypatch.setattr(
+        main,
+        "device_control",
+        SimpleNamespace(active=False, configuration_lock=RLock()),
+    )
+    process = Mock(returncode=0 if completion == "success" else 1)
+    process.poll.return_value = (
+        None if completion in {"timeout", "running"} else process.returncode
+    )
+    process.communicate.return_value = (
+        json.dumps({"status": completion, "message": "completed check"}),
+        "",
+    )
+    started_at = server.time.monotonic() - (
+        server.MAA_CHECK_TIMEOUT + 1 if completion == "timeout" else 1
+    )
+    monkeypatch.setattr(
+        server,
+        "maa_check_job",
+        {
+            "process": process,
+            "status": "running",
+            "message": "checking",
+            "started_at": started_at,
+        },
+    )
+    initial = profiles.list_profiles()
+    headers = {
+        "token": "profile-test-token",
+        "X-Mower-Settings": "1",
+        "X-Mower-Config-Generation": initial["generation"],
+    }
+    client = server.app.test_client()
+    running = completion == "running"
+
+    if operation == "list":
+        response = client.get("/config-profiles", headers=headers)
+        assert response.status_code == 200
+        assert response.json["busy"] is running
+    else:
+        response = client.post(
+            "/config-profiles",
+            headers=headers,
+            json={"name": "after MAA check", "inherit": []},
+        )
+        assert response.status_code == (409 if running else 200)
+        assert (profiles.current_generation() == initial["generation"]) is running
+
+    assert server.maa_check_job["status"] == completion
+    if running:
+        assert server.maa_check_job["process"] is process
+        process.communicate.assert_not_called()
+    else:
+        assert server.maa_check_job["process"] is None
+        process.communicate.assert_called_once_with(
+            **({"timeout": 1} if completion == "timeout" else {})
+        )
+    if completion == "timeout":
+        process.kill.assert_called_once_with()
+    else:
+        process.kill.assert_not_called()
+
+
 def test_real_server_switches_selected_groups_and_rejects_old_page_saves(
     storage, monkeypatch
 ):
