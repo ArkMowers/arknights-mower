@@ -75,10 +75,15 @@ class DelayedFrameSolver(BaseMixin, BaseSolver):
         self.lookups = []
 
     def find(self, name):
-        assert name in ("connecting", "arrange_check_in_on", "recycle/dashboard")
+        assert name in (
+            "connecting",
+            "double_confirm/main",
+            "arrange_check_in_on",
+            "recycle/dashboard",
+        )
         captures = len(self.device.captures)
         img = self.recog.img
-        if name in ("arrange_check_in_on", "recycle/dashboard"):
+        if name in ("double_confirm/main", "arrange_check_in_on", "recycle/dashboard"):
             # 首列坐标异常时检查选人页面退出，必须复用当前识别帧。
             assert len(self.device.captures) == captures
         self.lookups.append((name, int(img[488, 600, 0])))
@@ -128,9 +133,11 @@ def test_slow_matching_waits_for_late_frame_before_using_coordinates(
     assert solver.lookups == [
         ("connecting", 0),
         ("connecting", 1),
+        ("double_confirm/main", 1),
         ("arrange_check_in_on", 1),
         ("recycle/dashboard", 1),
         ("connecting", 1),
+        ("double_confirm/main", 1),
         ("arrange_check_in_on", 1),
         ("recycle/dashboard", 1),
     ]
