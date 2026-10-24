@@ -56,5 +56,6 @@ COPY docker/entrypoint.sh /usr/local/bin/mower-entrypoint.sh
 RUN chmod +x /usr/local/bin/mower-entrypoint.sh
 
 HEALTHCHECK --interval=10s --timeout=3s --retries=12 \
-    CMD curl -fs "http://127.0.0.1:${MOWER_PORT:-58000}/status" || exit 1
+    CMD http_status=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 2 "http://127.0.0.1:${MOWER_PORT:-58000}/status") \
+    && { [ "$http_status" = 200 ] || [ "$http_status" = 403 ]; } || exit 1
 ENTRYPOINT ["mower-entrypoint.sh"]
