@@ -25,6 +25,8 @@ const { workshop_settings } = storeToRefs(config_store)
 const task_list = ref([])
 const task_time = ref(new Date().getTime())
 const task_type = ref('空任务')
+const daily_task = ref('日常任务')
+const saving = ref(false)
 const mastery_target_level = ref(1)
 const mastery_operator = ref('')
 const mastery_skill = ref(1)
@@ -34,13 +36,6 @@ const msg = ref('')
 const error = ref(false)
 const taskTypeOptions = [
   { label: '日常任务', value: '日常任务' },
-  { label: '公招', value: '公招' },
-  { label: '森空岛签到', value: '森空岛签到' },
-  { label: '信用购物', value: '信用购物' },
-  { label: '领取邮件', value: '领取邮件' },
-  { label: '读取基报', value: '读取基报' },
-  { label: '访问好友', value: '访问好友' },
-  { label: '领取任务奖励', value: '领取任务奖励' },
   { label: '作战计划', value: '作战计划' },
   { label: '集成战略 (MAA)', value: '集成战略 (MAA)' },
   { label: '保全派驻 (MAA)', value: '保全派驻 (MAA)' },
@@ -53,6 +48,16 @@ const taskTypeOptions = [
   { label: '仓库扫描', value: '仓库扫描' },
   { label: '线索任务', value: '线索任务' },
   { label: '空任务', value: '空任务' }
+]
+const dailyTaskOptions = [
+  { label: '全部（按当前配置）', value: '日常任务' },
+  { label: '公招', value: '公招' },
+  { label: '森空岛签到', value: '森空岛签到' },
+  { label: '信用购物', value: '信用购物' },
+  { label: '领取邮件', value: '领取邮件' },
+  { label: '读取基报', value: '读取基报' },
+  { label: '访问好友', value: '访问好友' },
+  { label: '领取任务奖励', value: '领取任务奖励' }
 ]
 const workshopOperatorOptions = computed(() => {
   return workshop_settings.value.map((s) => ({
@@ -102,6 +107,7 @@ function clear() {
   task_list.value = []
   task_time.value = new Date().getTime()
   task_type.value = '空任务'
+  daily_task.value = '日常任务'
   mastery_target_level.value = 1
   mastery_operator.value = ''
   mastery_skill.value = 1
@@ -110,7 +116,7 @@ function clear() {
 }
 
 async function saveTasks() {
-  if (!isLogPage.value && edit_locked.value) return
+  if (saving.value || (!isLogPage.value && edit_locked.value)) return
   const plan = {}
   for (const i of task_list.value) {
     plan[i.room] = i.operators
@@ -118,43 +124,15 @@ async function saveTasks() {
   const task = {
     time: new Date(task_time.value),
     plan,
-    task_type: task_type.value,
+    task_type: task_type.value === '日常任务' ? daily_task.value : task_type.value,
     meta_data: ''
   }
   if (task_type.value == '技能专精') {
-    // #71：手动对话框改走 DB 计划创建 API（POST /mastery-plan），保留用户选的目标等级。
-    // 原「技能专精」/task（带 upgrade_support 载荷）是死流——server 只认 DB 计划。
-    if (!mastery_operator.value) {
-      msg.value = '请先选择要专精的干员！'
-      error.value = true
-      return
-    }
-    const warning = masteryTraineeWarning(mastery_operator.value, masterySchedule.value.blocked)
-    if (warning) message.warning(warning)
-    const body = {
-      items: [
-        {
-          name: mastery_operator.value,
-          skill_index: mastery_skill.value - 1,
-          target_level: mastery_target_level.value,
-          support_mode: mastery_support_mode.value
-        }
-      ]
-    }
-    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, body)
-    const results = r.data?.results || []
-    if (results[0]?.status === 'added') {
-      msg.value = `已添加 ${mastery_operator.value} 技能${mastery_skill.value} 专${mastery_target_level.value} 计划`
-      error.value = false
-      if (results[0].warning) message.warning(results[0].warning)
-    } else if (['existing', 'insufficient', 'deferred'].includes(results[0]?.status)) {
-      // 后端按 (干员, 技能) 拦重复：已有计划不再新建一行，直接复用那条去派发。
-      // 材料不足或排班冲突时展示暂缓原因；计划已保存，两者都不是创建错误。
-      msg.value = results[0].reason || '已在计划中，已安排立即开始'
-      error.value = false
-    } else {
-      msg.value = results[0]?.reason || '添加失败'
-      error.value = true
+    saving.value = true
+    try {
+      await saveMasteryTask()
+    } finally {
+      saving.value = false
     }
     return
   } else if (task_type.value == '加工材料') {
@@ -175,6 +153,56 @@ async function saveTasks() {
   } else {
     error.value = false
     get_tasks()
+  }
+}
+
+async function saveMasteryTask() {
+  if (!mastery_operator.value) {
+    msg.value = '请先选择要专精的干员！'
+    error.value = true
+    return
+  }
+  const warning = masteryTraineeWarning(mastery_operator.value, masterySchedule.value.blocked)
+  if (warning) message.warning(warning)
+  try {
+    const { data } = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/mastery-plan`,
+      {
+        create_task: true,
+        items: [
+          {
+            name: mastery_operator.value,
+            skill_index: mastery_skill.value - 1,
+            target_level: mastery_target_level.value,
+            support_mode: mastery_support_mode.value
+          }
+        ]
+      },
+      { timeout: 30000 }
+    )
+    const result = data?.results?.[0]
+    if (!['added', 'existing'].includes(result?.status)) {
+      msg.value = result?.reason || '添加专精计划失败'
+      error.value = true
+      return
+    }
+    if (result.warning) message.warning(result.warning)
+    const planStatus = result.status === 'added' ? '已加入专精计划' : '已在专精计划中'
+    const task = result.task
+    if (['inserted', 'queued'].includes(task?.status)) {
+      msg.value = `${planStatus}；${task.reason}`
+      error.value = false
+      get_tasks()
+    } else if (task?.status === 'active') {
+      msg.value = `${planStatus}；${task.reason}，未重复生成任务`
+      error.value = false
+    } else {
+      msg.value = `${planStatus}；尚未生成任务：${task?.reason || '未确认入队结果，请刷新后重试'}`
+      error.value = true
+    }
+  } catch (e) {
+    msg.value = `未确认提交结果：${e.response?.data?.error || e.message}，请刷新计划和任务队列后重试`
+    error.value = true
   }
 }
 
@@ -229,7 +257,7 @@ const level_list = [
     :style="{ width: isLogPage ? 'auto' : 'max-content', maxWidth: '90vw' }"
   >
     <template #header>
-      <div v-if="isLogPage" class="task_row" style="width: auto">
+      <div v-if="isLogPage" class="task_row task_header" style="width: auto">
         <n-select
           v-model:value="task_type"
           :options="taskTypeOptions"
@@ -239,6 +267,14 @@ const level_list = [
           placeholder="任务类别"
           class="dropdown-select"
           :style="{ width: task_type === '分解所有重复家具' ? '290px' : '190px' }"
+        />
+        <n-select
+          v-if="task_type === '日常任务'"
+          v-model:value="daily_task"
+          :options="dailyTaskOptions"
+          :consistent-menu-width="false"
+          placeholder="选择日常项目"
+          style="width: 210px"
         />
         <n-select
           v-if="task_type == '技能专精'"
@@ -271,7 +307,10 @@ const level_list = [
           style="width: 200px"
         />
         <help-text v-if="task_type == '技能专精'">
-          <div>选择要专精的干员、技能与目标等级，将加入专精计划，由系统自动调度训练</div>
+          <div>选择干员、技能与目标等级，加入专精计划并生成关联的专精任务。</div>
+          <div>
+            需开启专精自动化并运行 Mower；材料不足或训练室占用时，保留计划并显示未入队原因。
+          </div>
           <div>自动协助按已同步 BOX 生成方案；未同步 BOX 时使用职业路线。</div>
           <div>使用职业路线时，可在通用专精路线预览中设置协助者。</div>
           <div>
@@ -353,7 +392,7 @@ const level_list = [
       </n-card>
     </n-scrollbar>
     <template v-if="isLogPage">
-      <n-text v-if="task_type === '日常任务'" depth="3">
+      <n-text v-if="task_type === '日常任务' && daily_task === '日常任务'" depth="3">
         按当前配置执行已启用的日常项目和作战计划，不包含长任务。
       </n-text>
       <n-text
@@ -403,10 +442,10 @@ const level_list = [
           <label v-if="!error" style="color: green">{{ msg }}</label>
         </div>
         <div style="display: flex; gap: 12px; margin-top: 16px">
-          <n-button type="primary" @click="saveTasks">
-            {{ task_type == '技能专精' ? '添加到专精计划' : '添加至任务队列' }}
+          <n-button type="primary" :loading="saving" @click="saveTasks">
+            {{ task_type == '技能专精' ? '加入专精计划并生成任务' : '添加至任务队列' }}
           </n-button>
-          <n-button type="error" @click="clear">清除输入</n-button>
+          <n-button type="error" :disabled="saving" @click="clear">清除输入</n-button>
         </div>
       </div>
     </template>
@@ -416,6 +455,11 @@ const level_list = [
 <style scoped lang="scss">
 .button_row {
   margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.task_header {
+  flex-wrap: wrap;
 }
 
 .task_row {
