@@ -275,7 +275,9 @@ def test_backup_actions_can_trigger_another_backup_before_any_real_arrangement(s
     assert solver.op_data.plan_condition == [False, False]
 
 
-def test_cycle_keeps_live_state_queue_and_original_task_unchanged(solver):
+def test_cycle_keeps_live_state_queue_and_original_task_unchanged(solver, monkeypatch):
+    info = MagicMock()
+    monkeypatch.setattr(base.logger, "info", info)
     solver.op_data.backup_plans[0].task["central"] = ["薇薇安娜"]
     solver.op_data.backup_plans.append(
         Plan(
@@ -297,6 +299,13 @@ def test_cycle_keeps_live_state_queue_and_original_task_unchanged(solver):
     assert solver.op_data.plan_condition == [False, False]
     assert positions(solver.op_data) == before
     assert not hasattr(task, "backup_shift_active")
+    records = [call for call in info.call_args_list if "收敛演算耗时" in call.args[0]]
+    assert len(records) == 1
+    assert records[0].args[1] == "上下班副表"
+    assert records[0].args[3].startswith("上下班副表 ")
+    assert int(records[0].args[3].split()[1]) > 1
+    assert records[0].args[4] == "异常中断（ValueError）"
+    assert base._backup_timing_runtime.current is None
 
 
 def test_activation_changes_configuration_but_never_fakes_actual_positions(solver):
@@ -517,3 +526,20 @@ def test_direct_selection_remembers_group_with_no_active_backup(solver):
     assert not solver.backup_plan_solver()
     assert solver.op_data.backup_group == "empty"
     assert solver.op_data.plan_condition == [False]
+
+
+def test_full_shift_emits_one_timing_for_nested_backup_rounds(solver, monkeypatch):
+    info = MagicMock()
+    monkeypatch.setattr(base.logger, "info", info)
+    task = downshift(solver)
+
+    solver._prepare_shift_cycle(task)
+
+    records = [call for call in info.call_args_list if "收敛演算耗时" in call.args[0]]
+    assert len(records) == 1
+    assert records[0].args[1] == "完整换班"
+    assert "完整换班" in records[0].args[3]
+    assert "上下班副表" in records[0].args[3]
+    assert records[0].args[4] == "已收敛"
+    assert task.backup_shift_conditions == [True]
+    assert base._backup_timing_runtime.current is None

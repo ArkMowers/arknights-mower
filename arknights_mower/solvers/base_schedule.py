@@ -4,9 +4,11 @@ import math
 import os
 import pathlib
 import re
+import threading
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
-from time import monotonic
+from functools import wraps
+from time import monotonic, perf_counter
 from typing import Literal, Optional
 from uuid import uuid4
 
@@ -67,6 +69,7 @@ from arknights_mower.solvers.shop import CreditShop
 from arknights_mower.solvers.skland import SKLand
 from arknights_mower.utils import config, detector, rapidocr, segment
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.calculated_mood import log_mood_calculation
 from arknights_mower.utils.character_recognize import estimate_agent_mood
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.datetime import (
@@ -176,6 +179,55 @@ from arknights_mower.utils.workshop_ui import (
 
 # 只保留在当前进程；进房失败后即使重建调度器，也不再自动巡检训练室。
 _training_room_scan_disabled = False
+_backup_timing_runtime = threading.local()
+
+
+class _BackupCalculationTiming:
+    def __init__(self):
+        self.started = None
+        self.rounds = defaultdict(int)
+        self.result = "未完成"
+
+    def start(self, elapsed=0.0):
+        if self.started is None:
+            self.started = perf_counter() - elapsed
+
+
+def _log_backup_calculation(label):
+    def decorate(function):
+        @wraps(function)
+        def wrapped(self, *args, **kwargs):
+            if getattr(_backup_timing_runtime, "current", None) is not None:
+                return function(self, *args, **kwargs)
+            timing = _BackupCalculationTiming()
+            _backup_timing_runtime.current = timing
+            try:
+                return function(self, *args, **kwargs)
+            except BaseException as error:
+                timing.result = f"异常中断（{type(error).__name__}）"
+                raise
+            finally:
+                _backup_timing_runtime.current = None
+                if timing.started is not None:
+                    elapsed = perf_counter() - timing.started
+                    rounds = (
+                        "、".join(
+                            f"{name} {count} 轮"
+                            for name, count in timing.rounds.items()
+                        )
+                        or "0 轮"
+                    )
+                    logger.info(
+                        "副表收敛演算耗时：%s，%.3f 秒，%s，结果：%s",
+                        label,
+                        elapsed,
+                        rounds,
+                        timing.result,
+                    )
+
+        return wrapped
+
+    return decorate
 
 
 def _is_mastery_busy(operator_name: str) -> bool:
@@ -617,6 +669,41 @@ class BaseSchedulerSolver(
                 room: getattr(data, "room_observations", {}).get(room) for room in rooms
             },
         }
+        if (
+            task.type == TaskTypes.EXHAUST_OFF
+            and not task.plan
+            and not getattr(task, "mood_physical_started", False)
+            and getattr(data, "mood_calculation_enabled", False)
+        ):
+            model = data.mood_model
+            snapshot["calculated_exhaustion"] = {
+                "rules_hash": model.rules_hash,
+                "rooms": model.rooms,
+                "stages": model.stages,
+                "single_targets": model.single_targets,
+                "limits": {
+                    name: (op.lower_limit, op.upper_limit)
+                    for name, op in data.operators.items()
+                    if name in names or name in task.meta_data.split(",")
+                },
+                "known": sorted(model.moods),
+                "observed": model.observed,
+                "pending_events": model.pending_events,
+                "observations": {
+                    name: (
+                        op.current_room,
+                        op.current_index,
+                        op.mood
+                        if op.time_stamp is not None
+                        and not getattr(op, "mood_is_prediction", False)
+                        else None,
+                        None
+                        if getattr(op, "mood_is_prediction", False)
+                        else op.time_stamp,
+                    )
+                    for name, op in data.operators.items()
+                },
+            }
         if task.plan:
             snapshot["card_moods"] = {
                 name: getattr(data, "dorm_mood_estimates", {}).get(name)
@@ -1007,6 +1094,167 @@ class BaseSchedulerSolver(
             self.last_room = ""
             logger.debug("重设上次房间为空")
 
+    def _schedule_calculated_exhaustion(self, op):
+        candidates = self.op_data.groups[op.group] if op.group else [op.name]
+        if self._has_pending_exhausted_shift(candidates):
+            return
+        pending = next(
+            (
+                task
+                for task in self.tasks
+                if task.type == TaskTypes.EXHAUST_OFF
+                and set(task.meta_data.split(",")) & set(candidates)
+            ),
+            None,
+        )
+        if pending is not None and (
+            pending.retains_execution
+            or pending.plan
+            or getattr(pending, "mood_physical_started", False)
+            or getattr(pending, "ordinary_coordination", False)
+        ):
+            return
+        model = self.op_data.mood_model
+        signature = (
+            model.revision,
+            model._input_signature(),
+            tuple(
+                (name, self.op_data.operators[name].lower_limit) for name in candidates
+            ),
+        )
+        if (
+            pending is not None
+            and getattr(pending, "calculated_exhaust_signature", None) == signature
+        ):
+            return
+        now = datetime.now()
+        deadlines = [
+            deadline
+            for name in candidates
+            if name in self.op_data.exhaust_agent
+            and (member := self.op_data.operators[name]).current_room
+            not in ("train", "factory")
+            and member.is_high()
+            and not member.is_resting()
+            and member.current_room in base_room_list
+            and (
+                deadline := self.op_data.calculated_mood_deadline(
+                    name, member.lower_limit, now
+                )
+            )
+            is not None
+        ]
+        task = pending or SchedulerTask(
+            time=now, task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name
+        )
+        if pending is None:
+            self.tasks.append(task)
+        task.calculated_exhaust_signature = (
+            model.revision,
+            model._input_signature(),
+            signature[2],
+        )
+        if deadlines:
+            task.time = max(now, min(deadlines))
+        if not deadlines:
+            self._retain_failed_task(
+                task, "用尽下班缺少可用的计算期限", [op.current_room], dependency=True
+            )
+
+    def _refresh_calculated_exhaustion_tasks(self):
+        for task in tuple(self.tasks):
+            if (
+                task.type != TaskTypes.EXHAUST_OFF
+                or task.plan
+                or task.time <= datetime.now()
+            ):
+                continue
+            op = self.op_data.operators.get(task.meta_data.split(",")[0])
+            if (
+                op is not None
+                and op.is_high()
+                and not op.is_resting()
+                and op.current_room in base_room_list
+                and op.current_room not in ("train", "factory")
+            ):
+                self._schedule_calculated_exhaustion(op)
+
+    def _confirm_calculated_exhaustion(self, members):
+        task = self.task
+        now = datetime.now()
+        due = [
+            op
+            for op in members
+            if (mood := self.op_data.calculated_mood(op.name, now)) is not None
+            and mood <= op.lower_limit
+        ]
+        if any(
+            not getattr(op, "mood_is_prediction", False)
+            and isinstance(op.time_stamp, datetime)
+            and op.time_stamp >= task.time
+            and 0 <= op.mood <= op.lower_limit
+            for op in due
+        ):
+            return True
+        if due:
+            observed = {}
+            positions = {op.name: (op.current_room, op.current_index) for op in due}
+            try:
+                for room in dict.fromkeys(room for room, _ in positions.values()):
+                    self.enter_room(room)
+                    try:
+                        observed[room] = self.get_agent_from_room(
+                            room, force_mood=True, strict_observation=True
+                        )
+                    finally:
+                        self.back()
+            except (MowerExit, DeviceRecoveryError, SharedADBError):
+                raise
+            except Exception as error:
+                self._retain_failed_task(
+                    task, str(error), [op.current_room for op in due]
+                )
+                return False
+            for op in due:
+                room, index = positions[op.name]
+                room_data = observed.get(room, [])
+                item = room_data[index] if 0 <= index < len(room_data) else {}
+                if (
+                    item.get("observed") is not False
+                    and item.get("agent") == op.name
+                    and isinstance(item.get("mood"), (int, float))
+                    and 0 <= item["mood"] <= op.lower_limit
+                ):
+                    return True
+        deadlines = [
+            deadline
+            for op in members
+            if (
+                deadline := self.op_data.calculated_mood_deadline(
+                    op.name, op.lower_limit, datetime.now()
+                )
+            )
+            is not None
+            and deadline > datetime.now()
+        ]
+        if deadlines:
+            if task.retains_execution:
+                successor = copy.deepcopy(task)
+                successor.__dict__.pop("execution_failure", None)
+                successor.__dict__.pop("execution_retained", None)
+                successor.time = min(deadlines)
+                self.tasks.append(successor)
+                return None
+            task.time = min(deadlines)
+        else:
+            self._retain_failed_task(
+                task,
+                "用尽下班尚未取得个人下限的有效观测或计算期限",
+                [op.current_room for op in members],
+                dependency=True,
+            )
+        return False
+
     def overtake_room(self):
         candidates = self.task.meta_data.split(",")
         if len(candidates) == 0:
@@ -1057,6 +1305,29 @@ class BaseSchedulerSolver(
             )
             self.skip()
             return
+        if (
+            getattr(self.op_data, "mood_calculation_enabled", False)
+            and not getattr(self.task, "ordinary_coordination", False)
+            and not self.task.plan
+            and not getattr(self.task, "mood_physical_started", False)
+        ):
+            trigger_members = [
+                op
+                for op in resting_members
+                if op.is_high()
+                and not op.is_resting()
+                and op.current_room in base_room_list
+                and op.current_room not in ("train", "factory")
+                and op.name in self.op_data.exhaust_agent
+            ]
+            if trigger_members:
+                confirmed = self._confirm_calculated_exhaustion(trigger_members)
+                if confirmed is not True:
+                    if confirmed is False and not any(
+                        queued is self.task for queued in self.tasks
+                    ):
+                        self.tasks.append(self.task)
+                    return confirmed
         # 在candidate 中，计算出需要的high free 和 Low free 数量
         # 只计算无法直接接管的主力床位。低优、替班和临时休息干员会让床，
         # 不能在这里阻止整个大组尝试下班。
@@ -2407,12 +2678,14 @@ class BaseSchedulerSolver(
                 {} if completed else {room: original_plan[room] for room in task.plan}
             )
 
+    @log_mood_calculation("基建调度")
     def infra_main(self):
         """位于基建首页"""
         if getattr(self.op_data, "mood_calculation_enabled", False):
             from arknights_mower.utils.calculated_mood import sync_model
 
             sync_model(self.op_data)
+            self._refresh_calculated_exhaustion_tasks()
         if self.find("control_central") is None:
             self.back()
             return
@@ -2783,7 +3056,7 @@ class BaseSchedulerSolver(
                     self.task.meta_data.split(",")[0] in agent_list
                     and self.task.type == TaskTypes.EXHAUST_OFF
                 ):
-                    self.overtake_room()
+                    remove_current_task = self.overtake_room() is not False
                 elif self.task.type == TaskTypes.CLUE_PARTY:
                     self._run_clue_flow()
                 elif self.task.type == TaskTypes.CLUE:
@@ -4825,6 +5098,7 @@ class BaseSchedulerSolver(
                     )
                 ]
 
+    @log_mood_calculation("跑单规划")
     def plan_run_order(self, room):
         """按实际订单倒计时规划跑单。"""
         if any(
@@ -5080,22 +5354,26 @@ class BaseSchedulerSolver(
                     if fia_data.current_index != -1
                     else fia_data.index
                 )
-                result = [{}] * (fia_idx + 1)
-                result[fia_idx]["time"] = datetime.now()
-                self.enter_room(fia_room)
-                result = self.get_agent_from_room(fia_room, [fia_idx])
-                self.back()
-                if fia_idx >= len(result) or result[fia_idx].get("agent") != "菲亚梅塔":
-                    logger.info("肥鸭实际位置已变化，等待纠偏后重新读取充能时间")
+                if getattr(self.op_data, "mood_calculation_enabled", False):
+                    ready_at = self.op_data.calculated_mood_deadline("菲亚梅塔", 24)
                 else:
+                    self.enter_room(fia_room)
+                    result = self.get_agent_from_room(fia_room, [fia_idx])
+                    self.back()
+                    ready_at = (
+                        result[fia_idx].get("time")
+                        if fia_idx < len(result)
+                        and result[fia_idx].get("agent") == "菲亚梅塔"
+                        else None
+                    )
+                    if ready_at is None:
+                        logger.info("肥鸭实际位置已变化，等待纠偏后重新读取充能时间")
+                if isinstance(ready_at, datetime):
                     logger.info(
-                        "下一次进行菲亚梅塔充能："
-                        + result[fia_idx]["time"].strftime("%H:%M:%S")
+                        "下一次进行菲亚梅塔充能：" + ready_at.strftime("%H:%M:%S")
                     )
                     self.tasks.append(
-                        SchedulerTask(
-                            time=result[fia_idx]["time"], task_type=TaskTypes.FIAMMETTA
-                        )
+                        SchedulerTask(time=ready_at, task_type=TaskTypes.FIAMMETTA)
                     )
         if self._emergency_frozen():
             return
@@ -5107,6 +5385,11 @@ class BaseSchedulerSolver(
                 or not op.is_high()
                 or op.current_room not in base_room_list
             ):
+                continue
+            if getattr(
+                self.op_data, "mood_calculation_enabled", False
+            ) and op.current_room not in ("train", "factory"):
+                self._schedule_calculated_exhaustion(op)
                 continue
             if op.current_mood() <= op.lower_limit + 2:
                 candidates = self.op_data.groups[op.group] if op.group else [name]
@@ -5334,6 +5617,7 @@ class BaseSchedulerSolver(
         try_add_release_dorm({}, None, self.op_data, self.tasks)
         return True
 
+    @log_mood_calculation("普通换班规划")
     def plan_solver(self):
         if self._emergency_frozen():
             self._emergency_tick()
@@ -6301,6 +6585,8 @@ class BaseSchedulerSolver(
                 )
             )
 
+    @log_mood_calculation("副表切换")
+    @_log_backup_calculation("副表切换")
     def backup_plan_solver(
         self,
         custom_task_time=None,
@@ -6336,7 +6622,9 @@ class BaseSchedulerSolver(
                 self.maintenance_entry_pending = False
                 return False
 
+            selection_started = perf_counter()
             selection = self.op_data.evaluate_backup_selection()
+            selection_elapsed = perf_counter() - selection_started
             initial_conditions = selection.conditions
             original_group = self.op_data.backup_group
             if self._advance_orders_before_maintenance(
@@ -6359,6 +6647,8 @@ class BaseSchedulerSolver(
                         raise ValueError(f"副表分组切换失败：{error}")
                     self._sync_run_order_tasks()
                 return False
+            timing = _backup_timing_runtime.current
+            timing.start(selection_elapsed)
             previous_data = self.op_data.project_arrangements([])
             previous_exhaust = self._exhaust_task_signatures()
             previous_plan = copy.deepcopy(self.op_data.plan)
@@ -6368,6 +6658,7 @@ class BaseSchedulerSolver(
             current = original
             conditions = initial_conditions
             while True:
+                timing.rounds["副表切换"] += 1
                 for bp in self.op_data.backup_plans:
                     logger.debug(str(bp.trigger))
                 if conditions == current:
@@ -6379,9 +6670,11 @@ class BaseSchedulerSolver(
                     self.op_data.swap_plan(
                         original, refresh=True, backup_group=original_group
                     )
+                    timing.result = "等待提前跑单"
                     return False
                 key = tuple(conditions)
                 if key in seen:
+                    timing.result = "循环未收敛"
                     logger.error(
                         "副表条件在内存演算中出现循环 %s -> %s，保持切换前状态",
                         current,
@@ -6397,6 +6690,7 @@ class BaseSchedulerSolver(
                     conditions, refresh=True, backup_group=selection.group_id
                 )
                 if error:
+                    timing.result = "演算失败"
                     logger.error("副表内存演算失败：%s", error)
                     self.op_data.swap_plan(
                         original, refresh=True, backup_group=original_group
@@ -6406,6 +6700,7 @@ class BaseSchedulerSolver(
                 selection = self.op_data.evaluate_backup_selection()
                 conditions = selection.conditions
 
+            timing.result = "已收敛"
             if current == original:
                 return False
 
@@ -6418,6 +6713,7 @@ class BaseSchedulerSolver(
                 previous_plan, original, current, previous_dorms, previous_dorm_layout
             )
             if transition_plan is None:
+                timing.result = "替班暂不可用，保留原排班"
                 self.op_data = previous_data
                 logger.info("副表替班暂不可用，保留原排班和休息状态")
                 return False
@@ -6496,6 +6792,7 @@ class BaseSchedulerSolver(
         except MowerExit:
             raise
         except Exception as e:
+            _backup_timing_runtime.current.result = "演算失败"
             if previous_data is not None:
                 self.op_data = previous_data
             save_exception(e)
@@ -7624,6 +7921,8 @@ class BaseSchedulerSolver(
             if all(name == "Current" for name in row):
                 del plan[room]
 
+    @log_mood_calculation("完整换班")
+    @_log_backup_calculation("完整换班")
     def _prepare_shift_cycle(self, task):
         """在副本中收敛换班、副表、后续轮休和补床，成功后一次提交最终安排。"""
         if getattr(self, "maintenance_entry_pending", False):
@@ -7692,6 +7991,9 @@ class BaseSchedulerSolver(
                 reserved_names=reserved_names,
             )
             return
+        timing = _backup_timing_runtime.current
+        if self.op_data.backup_plans:
+            timing.start()
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
         explicit_slots = set(getattr(task, "backup_explicit_slots", ()))
         ordinary = {
@@ -7804,6 +8106,7 @@ class BaseSchedulerSolver(
         ordinary_unknown = set()
         initial_step = True
         for _ in range(64):
+            timing.rounds["完整换班"] += 1
             simulation.tasks, simulation.waiting_group_shifts = copy.deepcopy(
                 (pending, getattr(self, "waiting_group_shifts", []))
             )
@@ -8076,10 +8379,13 @@ class BaseSchedulerSolver(
                             ].dorm_mood_fallback = simulation.op_data.operators[
                                 name
                             ].dorm_mood_fallback
+            timing.result = "已收敛"
             logger.info("完整换班收敛：副表 %s，最终安排 %s", conditions, final)
             return
         raise ValueError("完整换班预演未收敛，保留原任务，暂不执行换人")
 
+    @log_mood_calculation("上下班副表")
+    @_log_backup_calculation("上下班副表")
     def _prepare_shift_backup(self, task):
         """从原换班意图推演副表及其动作，只改待执行任务，不伪造实际驻员。"""
         if (
@@ -8131,6 +8437,8 @@ class BaseSchedulerSolver(
                 "等待上一轮最终换班完成后再推演",
                 minutes=max(1, (retry - datetime.now()).total_seconds() / 60),
             )
+        timing = _backup_timing_runtime.current
+        timing.start()
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
         original = list(self.op_data.plan_condition)
         explicit_slots = set(getattr(task, "backup_explicit_slots", ()))
@@ -8143,6 +8451,7 @@ class BaseSchedulerSolver(
         conditions = selection.conditions
         seen = set()
         for _ in range(64):
+            timing.rounds["上下班副表"] += 1
             key = (
                 tuple(conditions),
                 selection.group_id,
@@ -8261,6 +8570,7 @@ class BaseSchedulerSolver(
                 next_conditions == conditions
                 and next_selection.group_id == selection.group_id
             ):
+                timing.result = "已收敛"
                 task.backup_group = selection.group_id
                 if ordinary_policy_changed:
                     for attr in (

@@ -10,6 +10,7 @@ from typing import Any, Literal, overload
 from evalidate import EvalModel, ExecutionException, Expr, base_eval_model
 
 from arknights_mower.utils import config
+from arknights_mower.utils.calculated_mood import measure_mood_calculation
 from arknights_mower.utils.config.plan_advanced import export_advanced_settings
 from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
@@ -875,6 +876,7 @@ class Operators:
             self.mood_model.enabled = enabled
         return enabled
 
+    @measure_mood_calculation
     def calculated_mood(self, name, now=None):
         if not self.mood_calculation_enabled:
             return None
@@ -882,6 +884,7 @@ class Operators:
 
         return sync_model(self, advance_clock=False).value(name, now)
 
+    @measure_mood_calculation
     def calculated_mood_rate(self, name, now=None):
         if not self.mood_calculation_enabled:
             return None
@@ -893,6 +896,7 @@ class Operators:
             model.advance(now)
         return model._rates().get(name) if name in model.moods else None
 
+    @measure_mood_calculation
     def calculated_mood_deadline(self, name, target, now=None, max_hours=240):
         if not self.mood_calculation_enabled:
             return None

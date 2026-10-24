@@ -89,7 +89,12 @@ def replacement_check_snapshot(solver, task):
     reserved, slots = _reservations(solver, task)
     observations = {}
     previous = getattr(task, "replacement_check_source", {}).get("observations", {})
-    for name in sorted(names):
+    observation_names = names
+    if getattr(data, "mood_calculation_enabled", False):
+        observation_names = names | {
+            name for name, op in data.operators.items() if op.current_room == "central"
+        }
+    for name in sorted(observation_names):
         op = data.operators.get(name)
         if op is None:
             continue
@@ -207,6 +212,7 @@ def sync_replacement_checks(solver):
     pending = getattr(solver, "_initial_mood_read_pending", None)
     if pending is not None and pending():
         return
+    calculated = getattr(data, "mood_calculation_enabled", False)
     frozen = getattr(solver, "_emergency_frozen", None)
     targets = {}
     concrete_slots = {
@@ -258,6 +264,18 @@ def sync_replacement_checks(solver):
             failure["dependency"] = True
         snapshot = replacement_check_snapshot(solver, task)
         previous = getattr(task, "replacement_check_source", None)
+        if calculated:
+            if not task.retains_execution:
+                task.meta_data = f"替班下限确认：{target['cover']}"
+            task.__dict__.pop("replacement_check_read_after", None)
+            if (
+                previous != snapshot
+                or getattr(task, "replacement_check_deadline", None) is None
+            ) and not task.retains_execution:
+                _sync_calculated_deadline(solver, task)
+            else:
+                task.replacement_check_source = snapshot
+            continue
         if previous is not None:
             if previous["environment"] != snapshot["environment"] or (
                 previous["revision"] != snapshot["revision"]
@@ -311,17 +329,50 @@ def sync_replacement_checks(solver):
         task.replacement_check_deadline = None
         task.replacement_check_source = replacement_check_snapshot(solver, task)
         solver.tasks.append(task)
+        if calculated:
+            task.meta_data = f"替班下限确认：{target['cover']}"
+            _sync_calculated_deadline(solver, task)
+
+
+def _sync_calculated_deadline(solver, task):
+    """直接安排模型下限期限，未知输入等待正常观测，不派发额外检查。"""
+    data = solver.op_data
+    cover = data.operators[task.replacement_check["cover"]]
+    now = datetime.now()
+    mood = data.calculated_mood(cover.name, now)
+    if not _finite_mood(mood):
+        return _retain(solver, task, "替班心情计算尚无有效观测", dependency=True)
+    if mood <= cover.lower_limit:
+        # 正常操作已经实读到下限时，该次观测直接完成确认，不再专门进房。
+        deadline = (
+            cover.time_stamp
+            if cover.time_stamp is not None
+            and cover.time_stamp <= now
+            and not getattr(cover, "mood_is_prediction", False)
+            and _finite_mood(cover.mood)
+            and cover.mood <= cover.lower_limit
+            else now
+        )
+    else:
+        deadline = data.calculated_mood_deadline(cover.name, cover.lower_limit, now)
+    if deadline is None or mood > cover.lower_limit and deadline <= now:
+        return _retain(solver, task, _TIMING_DEPENDENCY, dependency=True)
+    task.time = deadline
+    task.replacement_check_deadline = deadline
+    task.replacement_check_source = replacement_check_snapshot(solver, task)
 
 
 def invalidate_replacement_checks(solver):
-    """已确认影响工作消耗的环境事件使原倒计时需要重新实读。"""
+    """环境事件重算模型期限；旧识别模式仍要求重新实读。"""
+    calculated = getattr(solver.op_data, "mood_calculation_enabled", False)
     for task in solver.tasks:
         if getattr(task, "replacement_check", None) is not None:
-            task.replacement_check_read_after = datetime.now()
+            if not calculated:
+                task.replacement_check_read_after = datetime.now()
             task.replacement_check_revision = (
                 getattr(task, "replacement_check_revision", 0) + 1
             )
-            if not task.retains_execution:
+            if not calculated and not task.retains_execution:
                 task.time = min(task.time, datetime.now())
 
 
@@ -381,6 +432,10 @@ def _check_read_values(snapshot, room):
                 *observation[4:],
             )
     source["room_observations"].pop(room, None)
+    model = source["environment"].get("calculated_mood", {})
+    for name, observation in model.get("observations", {}).items():
+        if source["observations"].get(name, (None,))[0] == room:
+            model["observations"][name] = (None, observation[1])
     return values
 
 
@@ -410,7 +465,22 @@ def run_replacement_check(solver, task):
         else _cached_work_mood(cover, task)
     )
     observed = {"agent": cover.name, "mood": mood}
-    if mood is None and not calculated:
+    deadline = getattr(task, "replacement_check_deadline", None)
+    confirmed_floor = (
+        calculated
+        and deadline is not None
+        and cover.time_stamp is not None
+        and deadline <= cover.time_stamp <= datetime.now()
+        and not getattr(cover, "mood_is_prediction", False)
+        and _finite_mood(cover.mood)
+        and cover.mood <= cover.lower_limit
+    )
+    if (not calculated and mood is None) or (
+        calculated
+        and _finite_mood(mood)
+        and mood <= cover.lower_limit
+        and not confirmed_floor
+    ):
         peers = [
             (peer, failure, solver._task_failure_snapshot(peer, failure["rooms"]))
             for peer in solver.tasks
@@ -452,7 +522,7 @@ def run_replacement_check(solver, task):
         end = observed.get("time")
         if calculated:
             deadline = data.calculated_mood_deadline(cover.name, cover.lower_limit, now)
-            if deadline is None:
+            if deadline is None or deadline <= now:
                 return _retain(solver, task, _TIMING_DEPENDENCY, dependency=True)
         elif isfinite(cover.depletion_rate) and cover.depletion_rate > 0:
             deadline = now + timedelta(
