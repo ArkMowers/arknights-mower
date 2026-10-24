@@ -3446,7 +3446,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                     patch.object(base_schedule, "send_message") as notify,
                     patch.object(base_schedule, "save_exception"),
                 ):
-                    with self.assertRaises(base_schedule.RunOrderMissed):
+                    with self.assertRaises(base_schedule.RunOrderWindowExpired):
                         solver.agent_arrange_room({}, room, solver.task.plan)
                 self.assertEqual(solver.task.time, original_time)
                 self.assertEqual(solver.task.plan, original_plan)
@@ -3713,7 +3713,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_order_remaining_time.assert_called_once_with()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_changed_countdown_reports_miss_and_restores_original_roster(self):
+    def test_changed_countdown_restores_without_confirming_missed_run(self):
         room = "room_1_1"
         task = SchedulerTask(
             time=datetime.now(),
@@ -3733,18 +3733,20 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_order_remaining_time = MagicMock(return_value=120)
         solver.accept_order = MagicMock()
         solver.find = MagicMock(return_value=None)
+        solver.reset_room_time = MagicMock()
 
         with (
-            patch.object(base_schedule.logger, "error") as error,
+            patch.object(base_schedule.logger, "warning") as warning,
             patch.object(base_schedule, "save_exception") as save_exception,
             patch.object(base_schedule, "send_message") as send_message,
         ):
-            with self.assertRaises(base_schedule.RunOrderMissed):
+            with self.assertRaises(base_schedule.RunOrderWindowExpired):
                 solver.agent_arrange(task.plan)
 
-        error.assert_called_once()
-        save_exception.assert_called_once()
-        send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+        warning.assert_called_once()
+        save_exception.assert_not_called()
+        send_message.assert_not_called()
+        solver.reset_room_time.assert_called_once_with(room)
         solver.accept_order.assert_called_once_with()
         self.assertEqual(solver.agent_arrange_room.call_count, 2)
 

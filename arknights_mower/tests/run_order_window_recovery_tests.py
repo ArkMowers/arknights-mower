@@ -77,7 +77,7 @@ def test_pre_swap_miss_retires_stale_order_and_plans_next_order(window, remainin
 
 
 @pytest.mark.parametrize("remaining", [0, -1, 60, 900])
-def test_post_swap_miss_notifies_and_restores_without_completed_order_evidence(
+def test_post_swap_window_expiry_restores_without_claiming_a_missed_run(
     window, remaining
 ):
     solver, _, order = window
@@ -85,7 +85,7 @@ def test_post_swap_miss_notifies_and_restores_without_completed_order_evidence(
 
     solver.infra_main()
 
-    base.send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+    base.send_message.assert_not_called()
     assert solver.op_data.get_current_room(ROOM, True) == ["鸿雪"]
     assert order not in solver.tasks
     assert not getattr(order, "run_order_restore_pending", False)
@@ -250,7 +250,7 @@ def test_two_slot_miss_never_leaves_trade_agent_as_original_roster(
         ]
 
 
-def test_post_swap_miss_keeps_failed_restoration_until_actual_roster_is_restored(
+def test_post_swap_window_expiry_keeps_failed_restoration_until_roster_is_restored(
     window,
 ):
     solver, clock, order = window
@@ -270,7 +270,7 @@ def test_post_swap_miss_keeps_failed_restoration_until_actual_roster_is_restored
     assert order.run_order_original_roster == {ROOM: ["鸿雪"]}
     assert solver.op_data.get_current_room(ROOM, True) == ["但书"]
     assert not any(task.type == TaskTypes.REFRESH_TIME for task in solver.tasks)
-    base.send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+    base.send_message.assert_not_called()
 
     solver.choose_agent.side_effect = choose
     clock.current += timedelta(minutes=2)
