@@ -126,6 +126,14 @@ def manager_window(connection, ready, closed):
         try:
             while True:
                 message = connection.recv()
+                if message == "request_exit":
+                    allowed = api.request_close()
+                    connection.send(allowed)
+                    if allowed:
+                        window.destroy()
+                        return
+                    window.show()
+                    window.restore()
                 if message == "exit":
                     window.destroy()
                     return
@@ -135,6 +143,13 @@ def manager_window(connection, ready, closed):
         except (EOFError, OSError):
             return
 
+    def closing():
+        if not api.request_close():
+            window.hide()
+            return False
+        return True
+
+    window.events.closing += closing
     window.events.closed += closed.set
     Thread(target=receive, daemon=True).start()
     webview.start(http_server=True)
@@ -220,6 +235,10 @@ def run_manager():
                 for record in runtime.managed_instances():
                     runtime.send_instance_command(record, "exit")
             elif message[0] == "close_manager":
+                if window_process is not None and window_process.is_alive():
+                    connection.send("request_exit")
+                    if not connection.poll(2) or connection.recv() is not True:
+                        continue
                 break
     finally:
         close_child(window_process, connection)

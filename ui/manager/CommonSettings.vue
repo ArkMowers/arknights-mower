@@ -1,6 +1,6 @@
 <script setup>
-import FolderIcon from '@vicons/ionicons5/FolderOpenOutline'
-import { computed } from 'vue'
+import { FolderOpenOutline as FolderIcon } from '@vicons/ionicons5'
+import { computed, ref } from 'vue'
 import HelpText from '../src/components/HelpText.vue'
 import { editDeviceDraft } from '../src/utils/deviceSettings'
 
@@ -10,7 +10,13 @@ const props = defineProps({
   disabled: Boolean
 })
 const emit = defineEmits(['update:values', 'browse'])
-const groups = computed(() => [...new Set(props.fields.map((field) => field.group))])
+const groups = computed(() => [...new Set(visibleFields.value.map((field) => field.group))])
+const search = ref('')
+const visibleFields = computed(() =>
+  props.fields.filter((field) =>
+    `${field.group} ${field.label}`.toLowerCase().includes(search.value.trim().toLowerCase())
+  )
+)
 const backendKeys = ['device.screenshot_backend', 'device.touch_backend']
 const enabled = (key) => Object.hasOwn(props.values, key)
 
@@ -37,17 +43,38 @@ function change(field, value) {
 </script>
 
 <template>
-  <details class="common-settings">
+  <details class="common-settings" open>
     <summary>
       <span>公共配置</span>
       <n-tag size="small">{{ Object.keys(values).length }} 项</n-tag>
       <span class="effective-time">下次启动生效</span>
     </summary>
-    <details v-for="group in groups" :key="group" class="common-group">
-      <summary>{{ group }}</summary>
+    <p class="common-description">勾选后统一覆盖，下次受管理启动生效；未勾选的项目保留实例设置。</p>
+    <n-input
+      v-model:value="search"
+      clearable
+      placeholder="搜索公共配置"
+      aria-label="搜索公共配置"
+    />
+    <p v-if="!visibleFields.length" class="common-description">没有匹配的配置项</p>
+    <details
+      v-for="group in groups"
+      :key="group"
+      class="common-group"
+      :open="!!search || group === '实例启动'"
+    >
+      <summary>
+        {{ group
+        }}<span class="group-count"
+          >{{
+            fields.filter((field) => field.group === group && enabled(field.key)).length
+          }}
+          项已启用</span
+        >
+      </summary>
       <div class="common-fields">
         <div
-          v-for="field in fields.filter((item) => item.group === group)"
+          v-for="field in visibleFields.filter((item) => item.group === group)"
           :key="field.key"
           class="common-field"
         >
@@ -122,7 +149,8 @@ function change(field, value) {
 }
 summary {
   cursor: pointer;
-  padding: 8px 0;
+  padding: 10px 0;
+  min-height: 24px;
 }
 .common-settings > summary {
   font-weight: 600;
@@ -134,6 +162,16 @@ summary > * {
   font-size: 12px;
   font-weight: 400;
   color: #666;
+}
+.common-description {
+  color: #666;
+  line-height: 1.65;
+}
+.group-count {
+  float: right;
+  color: #777;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .common-group {
   border-top: 1px solid #eee;

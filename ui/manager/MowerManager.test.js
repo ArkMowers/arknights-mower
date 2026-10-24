@@ -150,6 +150,47 @@ describe('manager instance controls', () => {
     expect(api.get_instances).toHaveBeenCalledTimes(2)
   })
 
+  it('changes automatic start only for editable rows and sends changed cells', async () => {
+    rows.push({
+      ...stopped(),
+      name: 'running',
+      path: '/running',
+      editable: false,
+      state: 'running'
+    })
+    await mount()
+    await component.editBatch()
+    component.changeBatchAutomatic(true)
+    expect(component.batchDraft.value.map((row) => row.start_automatically)).toEqual([true, false])
+    await component.save()
+    expect(api.update_all_settings).toHaveBeenCalledWith(
+      [{ idx: 0, settings: { start_automatically: true } }],
+      [
+        { name: 'first', path: '/first' },
+        { name: 'running', path: '/running' }
+      ]
+    )
+  })
+
+  it('discards a late preview after common values change', async () => {
+    let resolve
+    api.preview_common_settings = vi.fn(
+      () =>
+        new Promise((done) => {
+          resolve = done
+        })
+    )
+    await mount()
+    await component.editBatch()
+    const request = component.previewCommon()
+    await vi.advanceTimersByTimeAsync(0)
+    component.commonDraft.value.account = 'changed'
+    await nextTick()
+    resolve({ rows: [{ name: 'old' }] })
+    await request
+    expect(component.preview.value).toBeNull()
+  })
+
   it('loads saved public choices on reopening and discards cancelled drafts', async () => {
     api.get_common_settings.mockResolvedValue({ values: { screenshot: 2 }, fields: [] })
     await mount()
@@ -522,7 +563,13 @@ describe('manager instance controls', () => {
     })
     expect(component.batchChanges.value).toEqual([])
     expect(component.batchDraft.value).toEqual([
-      { token: '', port: null, ai_assistant_enabled: false, updates_enabled: false }
+      {
+        token: '',
+        port: null,
+        ai_assistant_enabled: false,
+        updates_enabled: false,
+        start_automatically: false
+      }
     ])
     await component.save()
     expect(api.update_all_settings).not.toHaveBeenCalled()

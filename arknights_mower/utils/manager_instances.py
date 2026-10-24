@@ -19,6 +19,7 @@ from yamlcore import CoreDumper, CoreLoader
 
 from . import manager_common
 from . import update_runtime as runtime
+from .manager_tools import ManagerTools
 from .path import get_path
 
 
@@ -54,6 +55,9 @@ def read_webview(space):
     port = settings.get("port", 0)
     assistant = raw.get("ai_assistant_enabled")
     updates = raw.get("updates_enabled", True)
+    automatic = raw.get("start_automatically", False)
+    if type(automatic) is not bool:
+        raise ValueError("启动后自动开始任务必须是布尔值")
     if not isinstance(token, str):
         raise ValueError("Token 必须是文本")
     if type(port) is not int or not 0 <= port <= 65535:
@@ -70,12 +74,19 @@ def read_webview(space):
             "port": port or None,
             "ai_assistant_enabled": assistant is True,
             "updates_enabled": updates,
+            "start_automatically": automatic,
         },
     )
 
 
 def validate_settings(settings, *, partial=False):
-    allowed = {"token", "port", "ai_assistant_enabled", "updates_enabled"}
+    allowed = {
+        "token",
+        "port",
+        "ai_assistant_enabled",
+        "updates_enabled",
+        "start_automatically",
+    }
     if (
         not isinstance(settings, dict)
         or not settings
@@ -98,14 +109,21 @@ def validate_settings(settings, *, partial=False):
         raise ValueError("Mower AI 助手开关必须是布尔值")
     if "updates_enabled" in result and type(result["updates_enabled"]) is not bool:
         raise ValueError("允许更新开关必须是布尔值")
+    if (
+        "start_automatically" in result
+        and type(result["start_automatically"]) is not bool
+    ):
+        raise ValueError("启动后自动开始任务必须是布尔值")
     return result
 
 
-class InstanceController:
+class InstanceController(ManagerTools):
     def __init__(self, storage_path=None, ready=None):
         self._ready = ready
         self._lock = threading.RLock()
         self._operation_depth = 0
+        self._maintenance_job = {"status": "idle"}
+        self._maa_check = {}
         self._storage_path = (
             Path(storage_path)
             if storage_path is not None
@@ -201,6 +219,7 @@ class InstanceController:
             raise ValueError("请先选择实例保存目录")
         if self._matching(instance, records):
             raise ValueError("实例正在运行或启动中，不能重复启动")
+        self._check_maintenance_start(instance)
         _, _, settings = read_webview(instance["path"])
         if port := settings["port"]:
             if any(r.get("port") == port for r in records):
@@ -225,6 +244,7 @@ class InstanceController:
                     port=None,
                     ai_assistant_enabled=False,
                     updates_enabled=True,
+                    start_automatically=False,
                     editable=False,
                     can_start=False,
                     can_stop=False,
@@ -326,7 +346,7 @@ class InstanceController:
         destination, raw = read_instance_config(instance["path"])
         current = {
             key: raw.get(key)
-            if key in {"ai_assistant_enabled", "updates_enabled"}
+            if key in {"ai_assistant_enabled", "updates_enabled", "start_automatically"}
             else raw.get("webview", {}).get(key)
             for key in settings
         }
@@ -347,6 +367,8 @@ class InstanceController:
             raw["ai_assistant_enabled"] = settings["ai_assistant_enabled"]
         if "updates_enabled" in settings:
             raw["updates_enabled"] = settings["updates_enabled"]
+        if "start_automatically" in settings:
+            raw["start_automatically"] = settings["start_automatically"]
         destination.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=destination.parent)
         try:

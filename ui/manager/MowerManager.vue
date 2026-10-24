@@ -1,17 +1,24 @@
 <script setup>
-import PlusIcon from '@vicons/ionicons5/Add'
-import FolderIcon from '@vicons/ionicons5/FolderOpenOutline'
-import BrowserIcon from '@vicons/ionicons5/GlobeOutline'
-import PencilIcon from '@vicons/ionicons5/Pencil'
-import PlayIcon from '@vicons/ionicons5/Play'
-import StopIcon from '@vicons/ionicons5/Stop'
-import SettingsIcon from '@vicons/ionicons5/SettingsOutline'
-import TrashIcon from '@vicons/ionicons5/TrashOutline'
-import WarningIcon from '@vicons/ionicons5/WarningOutline'
+import {
+  Add as PlusIcon,
+  FolderOpenOutline as FolderIcon,
+  GlobeOutline as BrowserIcon,
+  Pencil as PencilIcon,
+  Play as PlayIcon,
+  Stop as StopIcon,
+  SettingsOutline as SettingsIcon,
+  TrashOutline as TrashIcon,
+  WarningOutline as WarningIcon
+} from '@vicons/ionicons5'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { initializeManager, managerCall } from './bridge.js'
 import CommonSettings from './CommonSettings.vue'
+import ManagerTools from './ManagerTools.vue'
 
+const toolsOpen = ref(false)
+const preview = ref(null)
+const previewLoading = ref(false)
+const previewRevision = ref(0)
 const instances = ref([])
 const loading = ref(true)
 const ready = ref(false)
@@ -38,6 +45,14 @@ const batchResult = ref(null)
 const commonDraft = ref({})
 const commonOriginal = ref({})
 const commonFields = ref([])
+watch(
+  commonDraft,
+  () => {
+    preview.value = null
+    previewRevision.value += 1
+  },
+  { deep: true, flush: 'sync' }
+)
 const commonLoading = ref(false)
 const commonError = ref('')
 const commonChanged = computed(() => {
@@ -155,7 +170,9 @@ async function initialize() {
 
 async function poll() {
   try {
-    if (ready.value && !busy.value) await refresh()
+    if (ready.value && !busy.value) {
+      await refresh()
+    }
   } catch (failure) {
     connected.value = false
     error.value = failure?.message || '无法读取实例状态，请稍后重试'
@@ -203,14 +220,16 @@ function edit(idx, kind) {
   draft.value = {
     ...instances.value[idx],
     ai_assistant_enabled: instances.value[idx].ai_assistant_enabled === true,
-    updates_enabled: instances.value[idx].updates_enabled === true
+    updates_enabled: instances.value[idx].updates_enabled === true,
+    start_automatically: instances.value[idx].start_automatically === true
   }
   editing.value = {
     idx,
     kind,
     target: { name: draft.value.name, path: draft.value.path },
     originalAssistant: draft.value.ai_assistant_enabled,
-    originalUpdates: draft.value.updates_enabled
+    originalUpdates: draft.value.updates_enabled,
+    originalAutomatic: draft.value.start_automatically
   }
 }
 
@@ -225,7 +244,8 @@ async function editBatch() {
     token: item.token,
     port: item.port,
     ai_assistant_enabled: item.ai_assistant_enabled === true,
-    updates_enabled: item.updates_enabled === true
+    updates_enabled: item.updates_enabled === true,
+    start_automatically: item.start_automatically === true
   }))
   batchDraft.value = originals.map((row) => ({ ...row }))
   batchAiRead.value = false
@@ -234,9 +254,30 @@ async function editBatch() {
     originals,
     targets: instances.value.map(({ name, path }) => ({ name, path }))
   }
+  preview.value = null
   await loadCommon()
 }
 
+async function previewCommon() {
+  const editor = editing.value
+  const revision = previewRevision.value
+  previewLoading.value = true
+  try {
+    const result = await managerCall(() =>
+      api().preview_common_settings({ ...commonDraft.value }, editor.targets)
+    )
+    if (editing.value === editor && revision === previewRevision.value) preview.value = result
+  } catch (failure) {
+    error.value = failure?.message || '无法预览公共配置'
+  } finally {
+    previewLoading.value = false
+  }
+}
+function changeBatchAutomatic(enabled) {
+  if (unavailable.value || assistantConfirmation.value) return
+  for (let idx = 0; idx < batchDraft.value.length; idx++)
+    if (batchEditable(idx)) batchDraft.value[idx].start_automatically = enabled
+}
 async function loadCommon() {
   const editor = editing.value
   commonLoading.value = true
@@ -272,7 +313,7 @@ function selectPath(idx) {
 
 async function save() {
   if (!editing.value || unavailable.value || assistantConfirmation.value) return
-  const { idx, kind, target, originalAssistant, originalUpdates } = editing.value
+  const { idx, kind, target, originalAssistant, originalUpdates, originalAutomatic } = editing.value
   if (kind === 'batch') {
     if (
       commonLoading.value ||
@@ -309,6 +350,8 @@ async function save() {
     settings.ai_assistant_enabled = draft.value.ai_assistant_enabled
   if (draft.value.updates_enabled !== originalUpdates)
     settings.updates_enabled = draft.value.updates_enabled
+  if (draft.value.start_automatically !== originalAutomatic)
+    settings.start_automatically = draft.value.start_automatically
   const succeeded = await execute(() => api().update_settings(idx, settings, target))
   if (succeeded) editing.value = null
 }
@@ -471,6 +514,15 @@ async function applyDelete() {
         </li>
       </ul>
     </n-alert>
+    <div class="manager-heading">
+      <div>
+        <h1>多开管理器</h1>
+        <p>
+          {{ instances.length }} 个实例 ·
+          {{ instances.filter((item) => item.state === 'running').length }} 个运行中
+        </p>
+      </div>
+    </div>
     <div class="bulk-actions">
       <n-button
         :disabled="unavailable || !instances.some((i) => i.can_start)"
@@ -493,7 +545,12 @@ async function applyDelete() {
           ><n-icon><settings-icon /></n-icon></template
         >批量配置
       </n-button>
+      <n-button :disabled="unavailable" @click="toolsOpen = true">维护工具</n-button>
     </div>
+    <n-empty
+      v-if="ready && !instances.length"
+      description="添加实例，或先在批量配置中设置公共参数"
+    />
     <n-skeleton v-if="loading" :height="140" />
     <n-card v-for="(instance, idx) in instances" :key="idx" size="small">
       <div class="instance-heading">
@@ -573,7 +630,8 @@ async function applyDelete() {
       <code class="folder-content">{{ instance.path || '未选择保存目录' }}</code>
       <div class="connection-info">
         <span>端口：{{ instance.port || '随机' }}</span
-        ><span>Token：{{ instance.token ? '已设置' : '未设置' }}</span>
+        ><span>Token：{{ instance.token ? '已设置' : '未设置' }}</span
+        ><span>自动开始任务：{{ instance.start_automatically ? '开' : '关' }}</span>
       </div>
       <div v-if="instance.reason && instance.state === 'stopped'" class="reason">
         {{ instance.reason }}
@@ -588,6 +646,15 @@ async function applyDelete() {
         ><n-icon><plus-icon /></n-icon></template
       >添加实例</n-button
     >
+    <n-modal
+      :show="toolsOpen"
+      preset="card"
+      title="维护工具"
+      :style="{ width: 'min(840px, calc(100vw - 24px))' }"
+      @update:show="(show) => (toolsOpen = show)"
+    >
+      <div class="settings-content"><manager-tools v-if="toolsOpen" :api="api()" /></div>
+    </n-modal>
     <n-modal
       :show="!!confirmation"
       preset="dialog"
@@ -674,8 +741,47 @@ async function applyDelete() {
               :disabled="unavailable || !!assistantConfirmation"
               @browse="browseCommon"
             />
+            <div class="preview-section">
+              <n-button
+                :disabled="unavailable || commonLoading || !!commonError || previewLoading"
+                :loading="previewLoading"
+                @click="previewCommon"
+                >预览生效范围</n-button
+              >
+              <span>当前 {{ displayedEditing.targets.length }} 个实例及以后新增的实例</span>
+              <div v-if="preview" class="preview-results" aria-live="polite">
+                <p>以下公共值在下次受管理启动时覆盖实例配置；已运行实例保留当前值。</p>
+                <details v-for="row in preview.rows" :key="row.idx" :open="row.warnings.length > 0">
+                  <summary>
+                    {{ row.name }} · {{ row.fields.length }} 项<span v-if="row.warnings.length">
+                      · 需要检查</span
+                    >
+                  </summary>
+                  <p v-for="message in row.warnings" :key="message" class="reason">{{ message }}</p>
+                  <ul>
+                    <li v-for="field in row.fields" :key="field.label">
+                      {{ field.label }}：{{ field.before ?? '实例默认值' }} → {{ field.after }}
+                    </li>
+                  </ul>
+                </details>
+              </div>
+            </div>
+            <h2 class="section-title">逐实例配置</h2>
+            <p class="section-description">只保存修改过的单元格；运行中的实例会跳过。</p>
             <div class="batch-actions">
               <span>{{ displayedEditing.targets.length }} 个实例</span>
+              <n-button
+                size="small"
+                :disabled="unavailable || !!assistantConfirmation"
+                @click="changeBatchAutomatic(true)"
+                >全部自动开始</n-button
+              >
+              <n-button
+                size="small"
+                :disabled="unavailable || !!assistantConfirmation"
+                @click="changeBatchAutomatic(false)"
+                >全部手动开始</n-button
+              >
               <n-button
                 size="small"
                 :disabled="unavailable || !!assistantConfirmation"
@@ -709,6 +815,7 @@ async function applyDelete() {
                   <col class="batch-port-col" />
                   <col class="batch-ai-col" />
                   <col class="batch-updates-col" />
+                  <col class="batch-updates-col" />
                 </colgroup>
                 <thead>
                   <tr>
@@ -717,6 +824,7 @@ async function applyDelete() {
                     <th scope="col">端口</th>
                     <th scope="col">Mower AI 助手</th>
                     <th scope="col">允许更新</th>
+                    <th scope="col">启动后自动开始</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -770,6 +878,13 @@ async function applyDelete() {
                         @update:value="(enabled) => changeBatchUpdates(enabled, idx)"
                       />
                     </td>
+                    <td>
+                      <n-switch
+                        v-model:value="row.start_automatically"
+                        :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
+                        :aria-label="`${displayedEditing.targets[idx].name} 启动后自动开始任务`"
+                      />
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -802,6 +917,12 @@ async function applyDelete() {
                 @update:value="changeAssistant"
               />
             </n-form-item>
+            <n-form-item label="启动后自动开始任务"
+              ><n-switch
+                v-model:value="draft.start_automatically"
+                aria-label="启动后自动开始任务"
+                :disabled="unavailable || !!assistantConfirmation"
+            /></n-form-item>
             <n-form-item label="允许更新">
               <n-switch
                 v-model:value="draft.updates_enabled"
@@ -888,7 +1009,8 @@ async function applyDelete() {
 .mower-list {
   box-sizing: border-box;
   width: 100%;
-  padding: 12px;
+  padding: 20px;
+  -webkit-font-smoothing: antialiased;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -902,6 +1024,54 @@ async function applyDelete() {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.manager-heading h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.manager-heading p {
+  margin: 6px 0 12px;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+.section-title {
+  font-size: 16px;
+  margin: 20px 0 6px;
+}
+.section-description {
+  margin: 0 0 14px;
+  color: #666;
+}
+.preview-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.preview-section > span {
+  color: #666;
+  font-size: 12px;
+}
+.preview-results {
+  width: 100%;
+  padding: 12px;
+  background: #f7f8fa;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.preview-results summary {
+  cursor: pointer;
+  padding: 10px 0;
+}
+.instance-tools :deep(.n-button) {
+  min-height: 40px;
+  min-width: 40px;
+}
+.connection-info,
+.batch-change-count {
+  font-variant-numeric: tabular-nums;
 }
 .bulk-actions {
   flex-wrap: wrap;
@@ -981,7 +1151,7 @@ async function applyDelete() {
 }
 .batch-table {
   width: 100%;
-  min-width: 820px;
+  min-width: 960px;
   table-layout: fixed;
   border-spacing: 0;
   font-size: 13px;
