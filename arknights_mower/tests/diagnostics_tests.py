@@ -6,6 +6,7 @@ import sys
 import tempfile
 import tracemalloc
 import unittest
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -21,6 +22,94 @@ from arknights_mower.utils.diagnostics import (
 
 
 class DiagnosticTimelineTests(unittest.TestCase):
+    def test_recent_limit_does_not_read_the_entire_hour(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "runtime.log"
+            prefix = "2026-10-18 12:30:00 task.py:1 DEBUG "
+            with path.open("w", encoding="utf-8") as stream:
+                for number in range(50000):
+                    stream.write(f"{prefix}{number}: " + "x" * 100 + "\n")
+            opened = Path.open
+            bytes_read = 0
+
+            class Reader:
+                def __init__(self, stream):
+                    self.stream = stream
+
+                def seek(self, *args):
+                    return self.stream.seek(*args)
+
+                def read(self, *args):
+                    nonlocal bytes_read
+                    data = self.stream.read(*args)
+                    bytes_read += len(data)
+                    return data
+
+                def __iter__(self):
+                    nonlocal bytes_read
+                    for line in self.stream:
+                        bytes_read += len(line.encode("utf-8"))
+                        yield line
+
+            @contextmanager
+            def track(file, *args, **kwargs):
+                with opened(file, *args, **kwargs) as stream:
+                    yield Reader(stream) if file == path else stream
+
+            with patch.object(Path, "open", track):
+                rows = timeline(
+                    root, root, datetime(2026, 10, 18, 12, 30), 2, images=[]
+                )
+            self.assertEqual(
+                [row["message"] for row in rows],
+                [f"{prefix}{i}: " + "x" * 100 for i in (49998, 49999)],
+            )
+            self.assertLess(bytes_read, 256 * 1024)
+
+    def test_recent_records_preserve_unicode_newlines_and_long_details(self):
+        center = datetime(2026, 10, 18, 12, 30)
+        header = "2026-10-18 12:30:00 task.py:1 ERROR 中文"
+        details = [str(i) + "界" * 2000 for i in range(40)]
+        long_header = "2026-10-18 12:30:01 task.py:1 INFO " + "中" * 30000
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for ending in ("\n", "\r\n", "\r"):
+                for final_newline in ("", ending):
+                    with self.subTest(ending=repr(ending), final=bool(final_newline)):
+                        (root / "runtime.log").write_bytes(
+                            (
+                                ending.join([header, *details, long_header])
+                                + final_newline
+                            ).encode("utf-8")
+                        )
+                        rows = timeline(root, root, center, limit=2, images=[])
+                        self.assertEqual(
+                            [row["message"] for row in rows],
+                            ["\n".join([header, *details[:4]]), long_header],
+                        )
+
+    def test_recent_records_keep_file_order_when_timestamps_move_backwards(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "runtime.log").write_text(
+                "2026-10-18 12:31:00 task.py:1 INFO first\n"
+                "2026-10-18 12:30:00 task.py:2 INFO second\n"
+                "2026-10-18 10:00:00 task.py:3 INFO outside\n"
+                "  outside detail\n"
+                "2026-10-18 12:29:00 task.py:4 INFO last\n"
+                "  last detail",
+                encoding="utf-8",
+            )
+            rows = timeline(root, root, datetime(2026, 10, 18, 12, 30), 2, images=[])
+            self.assertEqual(
+                [row["message"] for row in rows],
+                [
+                    "2026-10-18 12:30:00 task.py:2 INFO second",
+                    "2026-10-18 12:29:00 task.py:4 INFO last\n  last detail",
+                ],
+            )
+
     def test_positive_limit_bounds_memory_while_reading_large_window(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
