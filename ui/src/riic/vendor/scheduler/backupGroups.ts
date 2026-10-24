@@ -14,6 +14,12 @@ export function readBackupGroups(workspace: RosterWorkspace): BackupGroup[] {
   if (!ids.has('default')) groups.unshift({ id: 'default', name: '默认分组', trigger: undefined })
   return groups
 }
+export function readBackupMembership(raw: Record<string, unknown>, groups: readonly BackupGroup[]) {
+  const groupIds = raw.group_ids ?? ['default']
+  const backupType = raw.type ?? 'global'
+  if (!Array.isArray(groupIds) || !groupIds.length || new Set(groupIds).size !== groupIds.length || !groupIds.every(id => typeof id === 'string' && groups.some(group => group.id === id)) || typeof backupType !== 'string' || !['global', 'exclusive'].includes(backupType)) throw new Error('副表分组或类型无效')
+  return { groupIds: groupIds as string[], backupType: backupType as 'global' | 'exclusive' }
+}
 export function selectBackupPlans(
   plans: readonly { groupIds: readonly string[]; backupType: 'global' | 'exclusive' }[],
   eligibleGroups: readonly string[], eligiblePlans: readonly boolean[] | ((index:number)=>boolean),

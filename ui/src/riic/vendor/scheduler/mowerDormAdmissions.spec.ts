@@ -82,7 +82,7 @@ it('retains both groups through the real ordinary planning round', () => {
   expect(final.currentOperator('room_1_2', 0)?.name).toBe('Y')
 })
 
-it('protects a completed primary bed while its group is still recovering', () => {
+it('releases a completed dynamic primary bed without recalling its recovering group', () => {
   const make = (
     name:string,
     room:string,
@@ -128,7 +128,12 @@ it('protects a completed primary bed while its group is still recovering', () =>
   })
   const queue = new MowerTaskQueue(),
     task = planMowerAlphaDormFill(data, queue)
-  expect(task).toBeUndefined()
+  expect(task?.plan.room_1_1).toBeUndefined()
+  const projected=projectMowerArrangements(data,[task!.plan])
+  expect(projected.operators.A!.currentRoom).toBe('')
+  expect(projected.operators.B!.isResting()).toBe(true)
+  expect(projected.operators.L!.isResting()).toBe(true)
+  expect(projected.groupIsResting('g')).toBe(true)
   expect(data.operators.A!.currentRoom).toBe('dormitory_1')
   expect(data.operators.B!.currentRoom).toBe('dormitory_1')
   expect(data.currentOperator('room_1_1', 1)?.name).toBe('Y')

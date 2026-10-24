@@ -21,7 +21,7 @@ export function mowerCoveredRecoveryPending(data:MowerSchedulingData,op:MowerOpe
 }
 
 /** Complete only concrete primary-to-cover departures; transfers and untouched group members retain their own intent. */
-export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,plan:MowerTaskPlan,explicitSlots:ReadonlySet<string>=new Set(),reservedSlots:ReadonlySet<string>=new Set(),pending:readonly MowerTask[]=[],repairIdle=false,blockOnMissingBed=false,displaced:readonly string[]=[]):MowerTaskPlan|undefined {
+export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,plan:MowerTaskPlan,explicitSlots:ReadonlySet<string>=new Set(),reservedSlots:ReadonlySet<string>=new Set(),_pending:readonly MowerTask[]=[],repairIdle=false,blockOnMissingBed=false,displaced:readonly string[]=[]):MowerTaskPlan|undefined {
  if(!data.alpha)return structuredClone(plan)
  const projected=projectMowerArrangements(data,[plan]),required=new Set<string>()
  for(const slot of explicitSlots){

@@ -12,7 +12,7 @@ afterEach(() => vi.restoreAllMocks())
 function inventoryData() {
   const operators = Object.fromEntries(Array.from({ length: 200 }, (_, index) => {
     const name = `idle-${index}`
-    return [name, new MowerOperatorState({ name, mood: 24, timeStampMicros: 0 })]
+    return [name, new MowerOperatorState({ name, mood: 12, timeStampMicros: 0 })]
   }))
   operators.owner = new MowerOperatorState({ name: 'owner', room: 'room_1_1', currentRoom: 'room_1_1',
     operatorType: 'high', replacement: ['idle-150'] })
@@ -41,8 +41,8 @@ describe('large-library dorm candidate ordering', () => {
     expect(mowerAlphaDormCandidates(data).filling[0]).toBe('idle-0')
     data.restingPriorityNames.push('idle-90')
     expect(mowerAlphaDormCandidates(data).filling[0]).toBe('idle-90')
-    data.operators['idle-80']!.mood = 12
-    expect(mowerAlphaDormCandidates(data).recovering).toEqual(['idle-80'])
+    data.operators['idle-80']!.mood = 10
+    expect(mowerAlphaDormCandidates(data).recovering).toContain('idle-80')
     expect(mowerAlphaDormCandidates(data).filling[0]).toBe('idle-80')
     expect(mowerAlphaDormCandidates(data, new Set(['idle-80'])).filling[0]).toBe('idle-90')
   })
@@ -105,25 +105,26 @@ describe('native priority replacement bed takeover', () => {
     const data = takeoverData()
     data.freeRoom = true
     data.restingPriorityNames.push('S')
+    data.operators.S!.mood = 20
     vi.spyOn(dorm, 'alphaSlotTakable').mockReturnValue(true)
     expect(planMowerAlphaDormFill(data, new MowerTaskQueue())).toBeUndefined()
   })
   it('uses the same takeover in the shared fill projection', () => {
     expect(mowerAlphaFillPlan(takeoverData(), []).dormitory_1).toEqual(['R'])
   })
-  it.each(['high', 'low'] as const)('keeps completed %s primary beds protected', priority => {
+  it.each(['high', 'low'] as const)('replaces completed %s dynamic primary beds', priority => {
     const data = takeoverData()
     data.freeRoom = true
     data.operators.S!.restingPriority = priority
-    expect(planMowerAlphaDormFill(data, new MowerTaskQueue())).toBeUndefined()
+    expect(planMowerAlphaDormFill(data, new MowerTaskQueue())?.plan.dormitory_1).toEqual(['R'])
   })
-  it('keeps a completed equal-priority replacement bed protected', () => {
+  it('replaces a completed equal-priority replacement', () => {
     const data = takeoverData()
     data.freeRoom = true
     data.operators.S!.operatorType = 'low'
     data.operators.owner!.replacement.push('S')
     data.priorityReplacement.push('S')
-    expect(planMowerAlphaDormFill(data, new MowerTaskQueue())).toBeUndefined()
+    expect(planMowerAlphaDormFill(data, new MowerTaskQueue())?.plan.dormitory_1).toEqual(['R'])
   })
   it.each(['name', 'slot', 'excluded'] as const)('preserves %s reservations', kind => {
     const data = takeoverData(), queue = new MowerTaskQueue()
@@ -154,13 +155,13 @@ describe('native priority replacement bed takeover', () => {
     data.dormMoodEstimates.set('R', [2, -toMowerMicros(1)])
     expect(planMowerAlphaDormFill(data, new MowerTaskQueue())).toBeUndefined()
   })
-  it.each([0, 20])('requires measured low mood for ordinary takeover (mood=%s)', mood => {
+  it.each([0, 20])('allows ordinary tired replacements to take full filler beds (mood=%s)', mood => {
     const data = takeoverData()
     data.priorityReplacement = []
     data.operators.S!.operatorType = 'low'
     data.operators.R!.mood = mood
     expect(planMowerAlphaDormFill(data, new MowerTaskQueue())?.plan.dormitory_1)
-      .toEqual(mood <= 19.2 ? ['R'] : undefined)
+      .toEqual(['R'])
   })
   it('restricts empty-only occupied-bed takeover to priority replacements', () => {
     const data = takeoverData()

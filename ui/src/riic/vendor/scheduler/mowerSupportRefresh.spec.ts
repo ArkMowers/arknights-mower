@@ -51,8 +51,9 @@ describe('runtime refreshes unstarted coordination support',()=>{
  it('replans the original request after changed replacement configuration',()=>{
   const {state,source,support,retry}=generatedSupport(),time=support.timeMicros
   retainMowerFailedTask(state,source.data,support,'previous preview')
-  source.data.operators.B!.replacement=['X','Z']
-  source.data.planConditions=[true]
+  const plan=structuredClone(state.config.mowerSourcePlan)!
+  plan.room_1_2![0]!.replacement=['X','Z']
+  state.config={...state.config,mowerSourcePlan:plan}
   settleMowerSource(state,rates)
   dispatchUntilSettled(state,support)
   expect(source.trace.some(entry=>entry.type==='SELF_CORRECTION'&&entry.plan.room_1_2?.[0]==='Z')).toBe(true)
@@ -86,7 +87,10 @@ describe('runtime refreshes unstarted coordination support',()=>{
   const {state,source,support}=generatedSupport(),time=support.timeMicros
   retainMowerFailedTask(state,source.data,support,'previous preview')
   const failure=support.executionFailure,plan=structuredClone(support.plan),refresh=vi.spyOn(supportPlanning,'planMowerExhaustSupport')
-  for(let n=0;n<8;n++)settleMowerSource(state,rates)
+  for(let n=0;n<8;n++){
+   source.data.planConditions=[n%2===0]
+   settleMowerSource(state,rates)
+  }
   expect(refresh).not.toHaveBeenCalled()
   expect(support.executionFailure).toBe(failure)
   expect(support.plan).toEqual(plan);expect(support.timeMicros).toBe(time)

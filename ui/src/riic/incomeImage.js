@@ -14,6 +14,11 @@ import { incomeAlgorithmLabel } from '@/utils/incomeSettings'
 const number = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 export function incomeReportLines(result, settings, plan, label) {
   const finite = settings.finiteInventory || result.inventoryMode === 'finite'
+  const initialMood =
+    result.initialConditions?.fiammettaMorale == null
+      ? '初始心情 24（受个人上限约束）'
+      : `菲亚梅塔初始心情 ${result.initialConditions.fiammettaMorale}；其他干员从个人心情上限开始（未设置时为 24）`
+  const provenance = result.modelProvenance
   const target = incomeFacilities(plan).find((f) => f.roomId === settings.droneRoom)
   const levels = Object.values(incomeWorkspace(plan).mainPlan.facilities)
     .filter((f) => f.level > 0)
@@ -42,7 +47,7 @@ export function incomeReportLines(result, settings, plan, label) {
           `缓存库存同步时间：${settings.cacheObservedAt ? new Date(settings.cacheObservedAt * 1000).toLocaleString('zh-CN') : '缓存未提供时间'}；缓存不代表当前游戏即时状态。`
         ]
       : []),
-    `干员：${settings.operatorMode === 'cache' ? '森空岛缓存的实际拥有和练度' : settings.operatorMode === 'custom' ? '按本次填写的拥有和练度' : '全部干员满配假设'}；初始心情 24（受个人上限约束）；孑精零 ${settings.jayeElite0 ? '开启' : '关闭'}。`,
+    `干员：${settings.operatorMode === 'cache' ? '森空岛缓存的实际拥有和练度' : settings.operatorMode === 'custom' ? '按本次填写的拥有和练度' : '全部干员满配假设'}；${initialMood}；孑精零 ${settings.jayeElite0 ? '开启' : '关闭'}。`,
     settings.masteryPlanPresent === undefined
       ? '本次演算固定为无未完成训练计划且未在训练，不模拟训练进度或计划完成时刻。'
       : `历史演算的未完成训练计划：${settings.masteryPlanPresent ? '有' : '无'}，整段演算保持此条件，不模拟训练完成。`,
@@ -54,7 +59,9 @@ export function incomeReportLines(result, settings, plan, label) {
       .join('；')}。加权产出不是龙门币结算额。`,
     `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
     `本次设施等级（优先使用排班保存值，未设置时推断）：${levels}。`,
-    `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、赤金透支、制造成本观察、公招与线索观察适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
+    provenance
+      ? `计算器基线 ${provenance.calculatorBaseRevision}，选择性同步 ${provenance.calculatorSyncRevision}（含本地适配）；调度基线 Mower alpha ${provenance.mowerBaseReference}，本轮核对 ${provenance.mowerCheckedRevision}，后续本体逻辑不自动同步。`
+      : `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、赤金透支、制造成本观察、公招与线索观察适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
     '公招刷新按办公室驻员、心情与已解锁技能计算联络产出；初始进度为零，预热进度延续但预热完成次数不计。假设及时使用刷新次数，不模拟存满 3 次停工，不计入加权收益。',
     ...(result.summary?.clueCount == null
       ? ['这份历史记录未统计会客室线索，重新演算后可查看。']

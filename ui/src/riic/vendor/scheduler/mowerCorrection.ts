@@ -1,11 +1,12 @@
+import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {mowerCoveredRecoveryPending} from './mowerBackupDepartureRecovery'
-import {mowerDormTaskReservations,mowerDormCandidateMood} from './mowerAlphaCandidates'
 import {mowerAssignDormGroup} from './mowerDormAssignment'
 import {projectMowerArrangements} from './mowerObservations'
+import {mowerGroupRecoveryWorkers,mowerRecoveryMoodComplete} from './mowerGroupRecovery'
+import {mowerDormTaskReservations} from './mowerAlphaCandidates'
 import {normalizeMowerSharedArrangement,mowerSameGroupPrimaryReplacement,mowerArrangementGroupTransitions} from './mowerSharedGroups'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
 import {mowerActiveUrgentRecoveryNames} from './mowerUrgentRecovery'
-import {mowerGroupRecoveryWorkers,mowerRecoveryMoodComplete} from './mowerGroupRecovery'
 // Port of default agent_get_mood correction and prefer_resting_replacements.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import {mowerReplacementCandidates,type MowerOperatorState} from './mowerOperatorState'
@@ -45,6 +46,7 @@ function completeMowerDepartedRecovery(data:MowerSchedulingData,plan:MowerTaskPl
 }
 export function mowerNotValid(data:MowerSchedulingData,op:MowerOperatorState):boolean {
  if(!op.isHigh())return false
+ if(data.alpha&&op.isResting()){const mood=mowerDormCandidateMood(data,op.name);if(mood!==undefined&&mood<op.upperLimit)return false}
  if(mowerCoveredRecoveryPending(data,op))return false
  if(op.workaholic)return op.currentRoom!==op.room||op.currentIndex!==op.index
  if(!op.room.startsWith('dorm')&&op.isResting())return op.mood===-1||op.mood===24
@@ -61,7 +63,7 @@ export function preferMowerRestingReplacements(data:MowerSchedulingData,plan:Mow
  const ends=new Map(data.allDorms().filter(b=>b.name).map(b=>[b.name,b.timeMicros])),resting=new Set<string>(),groups=new Set<string>()
  for(const op of Object.values(data.operators)){
   if(!op.isHigh()||op.workaholic||op.room.startsWith('dorm')||!op.isResting()&&!mowerCoveredRecoveryPending(data,op))continue
-  const end=ends.get(op.name),unfinished=end!==undefined?end>data.nowMicros:op.mood>=0&&op.mood<op.upperLimit
+  const end=ends.get(op.name),mood=data.alpha?mowerDormCandidateMood(data,op.name):op.mood,unfinished=end!==undefined?end>data.nowMicros:mood!==undefined&&mood>=0&&mood<op.upperLimit
   if(unfinished){resting.add(op.name);if(op.group&&(!data.alpha||data.isGroupShiftAnchor(op)))groups.add(op.group)}
  }
  for(const group of groups){

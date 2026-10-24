@@ -3,7 +3,7 @@ import type {MowerTaskPlan} from './mowerTaskQueue'
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import {hasRestingMood,rescueMoodThreshold,restingMood,type MowerOperatorState} from './mowerOperatorState'
 import type {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
-import {alphaRestingTier,alphaRestingKey,compareAlphaKeys,alphaSlotTakable,alphaFindDormSlot} from './mowerAlphaDorm'
+import {alphaRestingTier,alphaFullDynamicCandidate,alphaRestingKey,compareAlphaKeys,alphaSlotTakable,alphaFindDormSlot} from './mowerAlphaDorm'
 function defaultOnly(data:MowerSchedulingData){if(data.policy.experimentalDormLogic)throw new Error('Experimental resting tiers require their source port')}
 export function mowerStandbyCanYield(data:MowerSchedulingData,op:MowerOperatorState):boolean {
  return data.canStandby(op)&&hasRestingMood(op,data.nowMicros)&&restingMood(op,data.nowMicros)>=rescueMoodThreshold(op,data.policy)
@@ -68,11 +68,14 @@ export function mowerStandbyCandidates(data:MowerSchedulingData,names:string[]):
  const hasAnchor=data.dorms.some(b=>{const op=data.operators[b.name];return !!op&&data.effectiveFreeSlot(b)&&op.isHigh()&&(data.alpha?!data.canStandby(op)&&!data.restMoodComplete(op.name):op.restingPriority==='high')})
  return new Set(names.filter(n=>{const op=data.operators[n]!;return data.canStandby(op)&&(anchors.has(op.group)||op.independentRest&&op.groupBindings.some(binding=>!!binding.group&&anchors.has(binding.group))||!op.group&&hasAnchor)}))
 }
+/** Alpha group admission follows Operators.assign_dorm_group at Mower
+ * 617aef56f233381426107087437262fb6a802287: keep the ordered greedy choices;
+ * a required member without a bed rejects the whole reservation atomically. */
 export function mowerAssignDormGroup(data:MowerSchedulingData,names:string[],activeGroups?:Set<string>,departingNames?:ReadonlySet<string>,plan:MowerTaskPlan={},reservedSlots:ReadonlySet<string>=new Set()):MowerDormState[]|undefined {
  defaultOnly(data)
  const required=names.filter(n=>!data.restMoodComplete(n)),optional=mowerStandbyCandidates(data,required)
  const ordered=[...required].sort((a,b)=>{
-  if(data.alpha)return Number(optional.has(a))-Number(optional.has(b))||compareAlphaKeys(alphaRestingKey(data,a),alphaRestingKey(data,b))
+  if(data.alpha)return Number(optional.has(a))-Number(optional.has(b))||Number(alphaFullDynamicCandidate(data,a))-Number(alphaFullDynamicCandidate(data,b))||compareAlphaKeys(alphaRestingKey(data,a),alphaRestingKey(data,b))
   const x=data.operators[a]!,y=data.operators[b]!
   return Number(x.restingPriority==='standby')-Number(y.restingPriority==='standby')||Number(x.restingPriority==='high')-Number(y.restingPriority==='high')
  })

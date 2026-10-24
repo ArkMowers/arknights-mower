@@ -6,7 +6,7 @@ import {mowerIsDormReplacement} from './mowerCorrection'
 import {mowerGetRestingPlan} from './mowerOrdinaryPlanning'
 import {commitMowerGroupShifts,mowerArrangementGroupTransitions} from './mowerSharedGroups'
 import {prepareMowerShiftBackup,prepareMowerShiftCycle,type MowerShiftModel} from './mowerShiftCycle'
-import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T} from './mowerTaskQueue'
+import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,type MowerTaskPlan} from './mowerTaskQueue'
 
 function fixture(explicitDeparture=false){
  const operators:Record<string,MowerOperatorState>={}
@@ -34,7 +34,7 @@ function fixture(explicitDeparture=false){
    return next
   },
   explicitSlots:()=>new Set(explicitDeparture?['room_1_1\0'+'0']:[]),
-  transition:()=>explicitDeparture?{room_1_1:['S']}: {},
+  transition:():MowerTaskPlan=>explicitDeparture?{room_1_1:['S']}: {},
   activate:()=>{},
  }
  const queue=new MowerTaskQueue();queue.tasks=[task]

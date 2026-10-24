@@ -60,10 +60,11 @@ it.each(['满心情', '已离宿'])(
   }
 )
 it('excludes the provider and Fiammetta even when their morale is lower', () => {
-  const result = run({ 闪灵: 0, 菲亚梅塔: 0, 芬: 15, 香草: 5 })
+  const result = run({ 闪灵: 0, 菲亚梅塔: 0, 芬: 20, 香草: 18 })
   expect(result.闪灵).toBeCloseTo(0.4, 7)
-  expect(result.菲亚梅塔).toBeCloseTo(0.2, 7)
-  expect(result.香草).toBeCloseTo(5.475, 7)
+  // Fiammetta starts at sixteen, still lower than both eligible recipients.
+  expect(result.菲亚梅塔).toBeCloseTo(16.2, 7)
+  expect(result.香草).toBeCloseTo(18.475, 7)
 })
 it('uses slot order only to break an equal-morale tie', () => {
   const result = run({ 芬: 5, 香草: 5 })
@@ -117,7 +118,7 @@ it.each(['automatic', 'confirmed', 'explicit'] as const)(
 it('allows another single provider as the sole unfinished recipient, ignoring full residents and Fiammetta',()=>{
   const result=run({深靛:1,菲亚梅塔:0},{names:['闪灵','深靛','芬','菲亚梅塔']})
   expect(result.深靛).toBeCloseTo(1.475,7)
-  expect(result.菲亚梅塔).toBeCloseTo(.2,7)
+  expect(result.菲亚梅塔).toBeCloseTo(16.2,7)
 })
 it('rejects an explicit self target even when raw text does not exclude self',()=>{
   const result=run({深靛:1,芬:15},{names:['深靛','芬'],recoveryTargetByProvider:{[id('深靛')]:id('深靛')}})

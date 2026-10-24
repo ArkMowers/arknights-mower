@@ -30,19 +30,30 @@ describe('native task failures retain work and release dispatch',()=>{
   expect(queue.tasks).toContain(task)
   expect(task.timeMicros).toBe(0)
  })
- it.each(['measurement','position','effective-plan','product','backup-conditions'])('resumes after a new relevant %s',change=>{
+ it.each(['measurement','position','effective-plan','product'])('resumes after a new relevant %s',change=>{
   const {state,data,task,queue}=fixture()
   if(change==='measurement')data.operators.A!.timeStampMicros=1
   if(change==='position')data.operators.A!.currentRoom='dormitory_1'
   if(change==='effective-plan')state.config.mowerSourcePlan!.room_1_1![0]!.replacement=[]
   if(change==='product')state.mowerFacilityProducts={room_1_1:'exp3'}
-  if(change==='backup-conditions')data.planConditions=[true]
   expect(resumeMowerFailedTasks(state,data,queue)).toBe(true)
   expect(queue.tasks).toEqual([task]);expect(task.executionFailure).toBeUndefined()
   expect(task.executionRetained).toBe(true);expect(task.timeMicros).toBe(0)
   prepareMowerRunEntry(queue,toMowerMicros(2),true)
   expect(queue.tasks).toContain(task)
   queue.removeDerived();expect(queue.tasks).toContain(task)
+ })
+ it('retains the failed task when an unrelated backup condition changes',()=>{
+  const {state,data,task,queue}=fixture()
+  for(const conditions of [[true],[false],[true]]){
+   data.planConditions=conditions
+   expect(resumeMowerFailedTasks(state,data,queue)).toBe(false)
+   expect(queue.tasks).toEqual([task]);expect(task.timeMicros).toBe(0)
+   expect(task.executionFailure).toBeDefined()
+  }
+  state.config.mowerSourcePlan!.room_1_1![0]!.replacement=[]
+  expect(resumeMowerFailedTasks(state,data,queue)).toBe(true)
+  expect(queue.tasks).toEqual([task]);expect(task.timeMicros).toBe(0)
  })
  it('ignores unrelated observations and product changes',()=>{
   const {state,data,task,queue}=fixture()

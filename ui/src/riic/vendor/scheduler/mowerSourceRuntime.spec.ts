@@ -11,7 +11,7 @@ function fixture():RuntimeConfig {
  return {positions:[{id:'room_1_1_0',roomId:'room_1_1',primary:'A',candidates:['R'],lowerLimit:0,upperLimit:24,shiftOffThreshold:15},...keepers.map((name,i)=>({id:'dormitory_1_'+i,roomId:'dormitory_1',primary:name,candidates:[],permanent:true,dormitory:true}))],beds:[{id:'dormitory_1_4',roomId:'dormitory_1',vip:true}],initialMorale:{A:16,R:24},idleOperators:[],mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},mowerSourcePlan:{room_1_1:[{agent:'A',group:'',replacement:['R']}],dormitory_1:[...keepers.map(name=>({agent:name,group:'',replacement:[]})),{agent:'Free',group:'',replacement:[]}]},mowerSourceRules:{workaholic:[],exhaustRequire:[],restInFull:[],lowPriority:[],refreshDrained:[],lingMode:0}}
 }
 describe('integrated Mower source scheduler',()=>{
- it('retains temporary standby promotion and identity when rebuilding scheduling data',()=>{
+ it('retains standby identity and full-mood idle tier when rebuilding scheduling data',()=>{
   const config=fixture();config.mowerAlpha=true;config.mowerSourceRules!.standby=['A']
   config.mowerSourcePlan!.room_1_1![0]!.group='g'
   config.mowerPolicy!.groupMoodGapExclusions=['other','saved']
@@ -31,13 +31,11 @@ describe('integrated Mower source scheduler',()=>{
   expect(source.data.groupRecoveryReturnMicros.g).toBe(12345)
   expect(op).not.toBe(source.data.operators.A)
   expect(op.mood).toBe(24)
-  expect(op.standbyLowPriority).toBe(true)
-  expect(alphaRestingTier(rebuilt,'A')).toBe(2)
+  expect(alphaRestingTier(rebuilt,'A')).toBe(6)
   expect(rebuilt.canStandby(op)).toBe(true)
   expect(rebuilt.isGroupShiftAnchor(op)).toBe(false)
   mowerUpdateDetail(rebuilt,'A',24,'room_1_1',0,true)
-  expect(op.standbyLowPriority).toBe(false)
-  expect(alphaRestingTier(rebuilt,'A')).toBe(4)
+  expect(alphaRestingTier(rebuilt,'A')).toBe(6)
  })
  it('wakes from retained tasks rather than ordinary morale threshold crossings',()=>{
   const s=createRosterRuntime(fixture());settleRoster(s,rates)
@@ -205,6 +203,8 @@ describe('integrated Mower source scheduler',()=>{
   config.initialMorale={A:24,R:24,[fia]:24};config.fiammetta={operatorId:fia,orderedTargets:['A'],fool:true,threshold:1}
   const state=createRosterRuntime(config);settleRoster(state,rates)
   const source=getMowerSourceRuntime(state),candidate=source.data.operators.A!
+  // Resume an already charged cycle; the initial-condition contract is tested separately.
+  state.morale[fia]=24;source.data.operators[fia]!.mood=24
   expect(candidate.mood).toBe(24);candidate.depletionRate=0;candidate.timeStampMicros=source.data.nowMicros
   state.morale.A=10;source.queue.tasks=[new MowerTask({time:state.time,type:T.FIAMMETTA})]
   settleRoster(state,rates)
@@ -246,6 +246,7 @@ describe('integrated Mower source scheduler',()=>{
   config.initialMorale={A:24,R:24,[fia]:24};config.fiammetta={operatorId:fia,orderedTargets:['A'],fool:true,threshold:21.6}
   const state=createRosterRuntime(config);settleRoster(state,rates)
   const source=getMowerSourceRuntime(state),bed=source.data.getDormByName('R')![1],op=source.data.operators.R!
+  state.morale[fia]=24;source.data.operators[fia]!.mood=24
   state.time=1;source.data.nowMicros=3_600_000_000;bed.timeMicros=5*3_600_000_000;op.timeStampMicros=0
   const fiaTimestamp=source.data.operators[fia]!.timeStampMicros
   source.queue.tasks=[new MowerTask({time:1,type:T.FIAMMETTA,plan:{dormitory_1:[fia,'K2','K3','K4','R']}})]
@@ -261,6 +262,7 @@ describe('integrated Mower source scheduler',()=>{
   config.idleOperators=['X'];config.initialMorale={A:24,R:24,X:24,[fia]:24}
   config.fiammetta={operatorId:fia,orderedTargets:['A'],fool:false,threshold:21.6}
   const state=createRosterRuntime(config),source=getMowerSourceRuntime(state);source.initial=false
+  expect(state.morale[fia]).toBe(16);state.morale[fia]=24
   for(const [slot,name] of Object.entries(state.occupants)){const op=source.data.operators[name]!;op.currentRoom=slot.slice(0,slot.lastIndexOf('_'));op.currentIndex=Number(slot.slice(slot.lastIndexOf('_')+1));op.mood=state.morale[name]!;op.timeStampMicros=0}
   source.queue.tasks=[new MowerTask({type:T.FIAMMETTA,...(named?{plan:{room_1_1:['Current'],dormitory_1:['A',fia]},metadata:'A'}:{})})]
   const before={...state.occupants}
