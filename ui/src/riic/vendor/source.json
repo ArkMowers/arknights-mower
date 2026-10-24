@@ -517,8 +517,8 @@
       "reason": "Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
     },
     "scheduler/mowerSupportRefresh.spec.ts": {
-      "sha256": "0737859e4fea0b3e19250aff55fd4f1fc7514c390a658d64a6adceb20cb0bbdf",
-      "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity."
+      "sha256": "6b38b96db1f25b8467e2381aea5795d8a3d8841ed4190a4b37b6ef3fe11e7890",
+      "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Exercise replacement changes through the effective runtime configuration refresh; unrelated backup condition changes must preserve failed support and its original deadline."
     },
     "scheduler/mowerTaskExecutor.ts": {
       "sha256": "eb5385ad4472870acaa26364b2eb21206e517b1b49bb8bd70fcdc19510615fc3",
