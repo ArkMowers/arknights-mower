@@ -15,6 +15,7 @@ from arknights_mower.solvers.base_mixin import (  # noqa: E402
     BaseMixin,
 )
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
 
@@ -53,6 +54,8 @@ def test_room_recovery_is_bounded_and_user_stop_is_not_retried(monkeypatch, stop
 
 
 def room_solver(monkeypatch, *, enter_on=None, enter_after_reset=False):
+    monkeypatch.setattr(config.conf, "screenshot_interval", 100)
+    monkeypatch.setattr(config.conf, "selection_transition_timeout", 2.0)
     solver = BaseMixin()
     solver.recog = SimpleNamespace(img=None)
     state = {"room": "main", "taps": 0}
@@ -82,6 +85,16 @@ def room_solver(monkeypatch, *, enter_on=None, enter_after_reset=False):
 
     solver.tap = MagicMock(side_effect=tap)
     solver.sleep = MagicMock()
+    monkeypatch.setattr(
+        base_mixin,
+        "perf_counter",
+        lambda: round(
+            sum(
+                call.args[0] if call.args else 1 for call in solver.sleep.call_args_list
+            ),
+            6,
+        ),
+    )
     solver.back_to_index = MagicMock()
     solver.back_to_infrastructure = MagicMock()
     return solver
@@ -103,7 +116,7 @@ def test_delayed_map_frame_is_not_clicked_again(monkeypatch):
     solver.find.side_effect = lambda name: None if solver.sleep.called else find(name)
     solver.enter_room("room_1_1")
     solver.tap.assert_called_once()
-    solver.sleep.assert_called_once_with(0.2)
+    solver.sleep.assert_called_once_with(0.1)
     solver.back_to_index.assert_not_called()
 
 

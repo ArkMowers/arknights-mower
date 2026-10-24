@@ -362,6 +362,8 @@ def map_frame(room, anchor=((10, 10), (30, 30))):
 
 
 def navigation_solver(monkeypatch, frames):
+    monkeypatch.setattr(config.conf, "selection_transition_timeout", 2.0)
+    monkeypatch.setattr(config.conf, "screenshot_interval", 100)
     solver = adjustment_solver(monkeypatch)
     solver.recog = MapRecognizer(frames)
     started = datetime(2026, 10, 23)
@@ -441,13 +443,125 @@ def test_enter_room_passes_configured_right_side_layout(monkeypatch):
     }
 
 
+@pytest.mark.parametrize(
+    "timeout,screenshot_interval,waits",
+    [(1.0, 400, 3), (2.5, 500, 5), (4.5, 700, 7), (1.0, 1500, 1)],
+)
+@pytest.mark.parametrize("confirmed", [True, False])
+def test_entry_uses_configured_feedback_timeout_and_screenshot_interval(
+    monkeypatch, timeout, screenshot_interval, waits, confirmed
+):
+    room = rectangle(450, 350, 750, 600)
+    solver, _ = navigation_solver(
+        monkeypatch,
+        [map_frame(room)]
+        + [{"kind": "entering"}] * waits
+        + [{"kind": "room" if confirmed else "entering"}],
+    )
+    monkeypatch.setattr(config.conf, "selection_transition_timeout", timeout)
+    monkeypatch.setattr(config.conf, "screenshot_interval", screenshot_interval)
+    solver.scene.side_effect = lambda: (
+        Scene.INFRA_MAIN if solver.recog.img["kind"] == "map" else Scene.UNKNOWN
+    )
+
+    if confirmed:
+        solver.enter_room(ROOM, max_attempts=1)
+    else:
+        with pytest.raises(RuntimeError, match="未成功进入房间"):
+            solver.enter_room(ROOM, max_attempts=1)
+
+    assert solver.sleep.call_args_list == [((screenshot_interval / 1000,),)] * waits
+    assert base_mixin.perf_counter() == pytest.approx(
+        waits * screenshot_interval / 1000
+    )
+    solver.tap.assert_called_once()
+    solver.back_to_index.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+
+
+@pytest.mark.parametrize("phase", ["map", "mask", "entering", "wrong_room"])
+@pytest.mark.parametrize("retain_anchor", [False, True])
+def test_every_entry_click_waits_for_confirmation_before_navigation(
+    monkeypatch, phase, retain_anchor
+):
+    room = rectangle(450, 350, 750, 600)
+    delayed = map_frame(room) if phase == "map" else {"kind": phase}
+    solver, _ = navigation_solver(
+        monkeypatch, [map_frame(room)] + [delayed] * 20 + [{"kind": "room"}]
+    )
+    find = solver.find.side_effect
+    solver.find.side_effect = lambda name: (
+        ((10, 10), (30, 30))
+        if retain_anchor and name == "control_central"
+        else find(name)
+    )
+    solver.detect_room.side_effect = lambda: (
+        ROOM
+        if solver.recog.img["kind"] == "room"
+        else (None if phase == "entering" else "room_1_2")
+    )
+    solver.scene.side_effect = lambda: (
+        Scene.INFRA_MAIN if solver.recog.img["kind"] == "map" else Scene.INFRA_DETAILS
+    )
+
+    solver.enter_room(ROOM, max_attempts=1)
+
+    solver.tap.assert_called_once()
+    assert base_mixin.perf_counter() == pytest.approx(2)
+    solver.back_to_index.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+
+
+@pytest.mark.parametrize("phase,clicks", [("map", 5), ("mask", 1), ("entering", 1)])
+def test_unconfirmed_clicks_each_exhaust_two_seconds_before_retry(
+    monkeypatch, phase, clicks
+):
+    room = rectangle(450, 350, 750, 600)
+    delayed = map_frame(room) if phase == "map" else {"kind": phase}
+    solver, _ = navigation_solver(monkeypatch, [map_frame(room), delayed])
+    solver.detect_room.side_effect = None
+    solver.detect_room.return_value = None
+    solver.scene.side_effect = lambda: (
+        Scene.INFRA_MAIN if solver.recog.img["kind"] == "map" else Scene.UNKNOWN
+    )
+    clicked_at = []
+
+    def tap(*_, **__):
+        clicked_at.append(base_mixin.perf_counter())
+        solver.recog.update()
+
+    solver.tap.side_effect = tap
+    with pytest.raises(RuntimeError, match="未成功进入房间"):
+        solver.enter_room(ROOM, max_attempts=1)
+
+    assert clicked_at == [2 * attempt for attempt in range(clicks)]
+    assert base_mixin.perf_counter() == pytest.approx(2 * clicks)
+    solver.back_to_index.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+
+
+def test_confirmed_room_with_map_anchor_does_not_require_another_click(monkeypatch):
+    solver, _ = navigation_solver(monkeypatch, [{"kind": "room"}])
+    solver.find.side_effect = lambda name: (
+        ((10, 10), (30, 30)) if name == "control_central" else None
+    )
+    solver.scene.return_value = Scene.INFRA_DETAILS
+
+    solver.enter_room(ROOM, max_attempts=1)
+
+    solver.tap.assert_not_called()
+    solver.sleep.assert_not_called()
+    solver.back_to_index.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+
+
 @pytest.mark.parametrize("unconfirmed", [None, "dormitory_1"])
 @pytest.mark.parametrize("delayed_frames", [1, 20])
 @pytest.mark.parametrize("entry_click", [1, 5])
 def test_entry_waits_for_room_title_feedback_before_leaving(
     monkeypatch, unconfirmed, delayed_frames, entry_click
 ):
-    map_frames = 2 * entry_click - 1
+    map_frames = 21 * (entry_click - 1) + 1
     solver, _ = navigation_solver(
         monkeypatch,
         [map_frame(rectangle(450, 350, 750, 600))] * map_frames
@@ -465,7 +579,7 @@ def test_entry_waits_for_room_title_feedback_before_leaving(
 
     assert solver.tap.call_count == entry_click
     assert solver.sleep.call_args_list == (
-        [((0.2,),)] * (entry_click - 1) + [((0.1,),)] * delayed_frames
+        [((0.1,),)] * (20 * (entry_click - 1) + delayed_frames)
     )
     assert solver.recog.captures == map_frames + delayed_frames + 1
     solver.back_to_infrastructure.assert_not_called()
@@ -477,9 +591,9 @@ def test_entry_waits_for_room_title_feedback_before_leaving(
 def test_unconfirmed_entry_exhausts_time_budget_before_existing_recovery(
     monkeypatch, unconfirmed, entry_click
 ):
-    map_frames = 2 * entry_click - 1
-    waits = entry_click - 1 + 20
-    expected_waits = [((0.2,),)] * (entry_click - 1) + [((0.1,),)] * 20
+    map_frames = 21 * (entry_click - 1) + 1
+    waits = 20 * entry_click
+    expected_waits = [((0.1,),)] * waits
     solver, _ = navigation_solver(
         monkeypatch,
         [map_frame(rectangle(450, 350, 750, 600))] * map_frames
@@ -488,7 +602,7 @@ def test_unconfirmed_entry_exhausts_time_budget_before_existing_recovery(
     solver.detect_room.return_value = unconfirmed
     solver.detect_room.side_effect = None
     solver.scene.side_effect = lambda: (
-        Scene.INFRA_MAIN if solver.recog.img["kind"] == "map" else Scene.INFRA_DETAILS
+        Scene.INFRA_MAIN if solver.recog.img["kind"] == "map" else Scene.UNKNOWN
     )
 
     def recover():
@@ -526,14 +640,20 @@ def test_stop_during_room_title_wait_propagates_without_navigation(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "screenshot_interval,last_frame", [(1200, 2), (2000, 2), (2500, 1)]
+    "timeout,screenshot_interval,last_frame",
+    [(2.5, 1200, 3), (2.5, 2000, 2), (2.5, 2500, 2), (1.0, 1500, 1), (4.5, 1200, 4)],
 )
 @pytest.mark.parametrize(
     "confirmed,room_scene",
-    [(True, Scene.INFRA_DETAILS), (False, Scene.INFRA_DETAILS), (False, Scene.UNKNOWN)],
+    [
+        (True, Scene.INFRA_DETAILS),
+        (True, Scene.INFRA_MAIN),
+        (False, Scene.INFRA_DETAILS),
+        (False, Scene.UNKNOWN),
+    ],
 )
 def test_room_entry_stops_at_first_frame_after_deadline_with_slow_capture(
-    monkeypatch, screenshot_interval, last_frame, confirmed, room_scene
+    monkeypatch, timeout, screenshot_interval, last_frame, confirmed, room_scene
 ):
     started = datetime(2026, 10, 23)
     clock = SimpleNamespace(now=started)
@@ -545,6 +665,7 @@ def test_room_entry_stops_at_first_frame_after_deadline_with_slow_capture(
     monkeypatch.setattr(config, "stop_mower", Event())
     monkeypatch.setattr(config.conf, "performance_mode", "high")
     monkeypatch.setattr(config.conf, "screenshot_interval", screenshot_interval)
+    monkeypatch.setattr(config.conf, "selection_transition_timeout", timeout)
     monkeypatch.setattr(
         config,
         "screenshot_time",
@@ -573,13 +694,14 @@ def test_room_entry_stops_at_first_frame_after_deadline_with_slow_capture(
     solver = BaseMixin()
     solver.recog = Recognizer(device)
     solver.sleep = BaseSolver.sleep.__get__(solver)
-    solver.find = MagicMock(
-        side_effect=lambda name: (
-            ((10, 10), (30, 30))
-            if name == "control_central" and solver.recog.img[0, 0, 0] == 0
-            else None
-        )
-    )
+
+    def find(name):
+        frame = solver.recog.img[0, 0, 0]
+        if name == "control_central" and (frame == 0 or room_scene == Scene.INFRA_MAIN):
+            return ((10, 10), (30, 30))
+        return None
+
+    solver.find = MagicMock(side_effect=find)
     monkeypatch.setattr(
         base_mixin.segment,
         "base",
@@ -615,8 +737,8 @@ def test_room_entry_stops_at_first_frame_after_deadline_with_slow_capture(
         for frame in range(last_frame + 1)
     ]
     assert config.screenshot_count == last_frame + 1
-    assert captured_at[-1] >= started + timedelta(seconds=2.2)
-    assert captured_at[-2] < started + timedelta(seconds=2.2)
+    assert captured_at[-1] >= started + timedelta(seconds=0.2 + timeout)
+    assert captured_at[-2] < started + timedelta(seconds=0.2 + timeout)
     solver.tap.assert_called_once()
     solver.back_to_index.assert_not_called()
 

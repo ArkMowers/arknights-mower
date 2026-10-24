@@ -196,7 +196,7 @@ def test_unknown_name_and_inexact_quantity_reject(monkeypatch):
     assert recycling.read_recycling_materials(reward_frame()) is None
 
 
-def collection_solver():
+def collection_solver(monkeypatch=None):
     solver = BaseSchedulerSolver.__new__(BaseSchedulerSolver)
     solver.op_data = SimpleNamespace(recycle_capacity=2)
     solver.recog = SimpleNamespace(
@@ -204,6 +204,20 @@ def collection_solver():
     )
     solver.tap = Mock()
     solver.sleep = Mock()
+    if monkeypatch is not None:
+        monkeypatch.setattr(base_mixin.config.conf, "screenshot_interval", 100)
+        monkeypatch.setattr(base_mixin.config.conf, "selection_transition_timeout", 2.5)
+        monkeypatch.setattr(
+            base_mixin,
+            "perf_counter",
+            lambda: round(
+                sum(
+                    call.args[0] if call.args else 1
+                    for call in solver.sleep.call_args_list
+                ),
+                6,
+            ),
+        )
     solver.scene_graph_navigation = Mock()
     solver._read_recycling_operators = Mock(return_value=["旅骨"])
     return solver
@@ -583,7 +597,7 @@ def test_other_material_sources_are_not_recorded():
 def test_room_entry_records_incidental_collection_before_dismissal(
     db, monkeypatch, dismiss_failures, entry_delay
 ):
-    solver = collection_solver()
+    solver = collection_solver(monkeypatch)
     page = ["map"]
     ready = [True]
     dismissals = [0]
@@ -630,13 +644,9 @@ def test_room_entry_records_incidental_collection_before_dismissal(
 
     solver.tap.side_effect = tap
     solver.sleep.side_effect = sleep
-    if entry_delay:
-        with pytest.raises(RuntimeError, match="未成功进入房间"):
-            solver.enter_room("recycle", max_attempts=1)
-    else:
-        solver.enter_room("recycle", max_attempts=1)
+    solver.enter_room("recycle", max_attempts=1)
 
-    assert page[0] == ("map" if entry_delay else "room")
+    assert page[0] == "room"
     assert waits[0] == entry_delay
     result = record.get_recycling_history("2000-01-01", "2100-01-01")
     assert result["total"] == 1
@@ -645,7 +655,7 @@ def test_room_entry_records_incidental_collection_before_dismissal(
 
 
 def test_room_entry_waits_for_connecting_before_recording_reward(db, monkeypatch):
-    solver = collection_solver()
+    solver = collection_solver(monkeypatch)
     page = ["map"]
     solver.scene = lambda: Scene.INFRA_MAIN if page[0] == "map" else Scene.CONNECTING
     solver.find = lambda name: (
@@ -679,7 +689,7 @@ def test_room_entry_waits_for_connecting_before_recording_reward(db, monkeypatch
 def test_room_entry_does_not_attribute_unrelated_rewards(
     db, monkeypatch, room, initial_page
 ):
-    solver = collection_solver()
+    solver = collection_solver(monkeypatch)
     page = [initial_page]
     solver.scene = lambda: Scene.INFRA_MAIN if page[0] == "map" else Scene.MATERIEL
     solver.find = lambda name: (
@@ -698,7 +708,7 @@ def test_room_entry_does_not_attribute_unrelated_rewards(
 
 
 def test_room_entry_without_production_enters_room_without_recording(db, monkeypatch):
-    solver = collection_solver()
+    solver = collection_solver(monkeypatch)
     page = ["map"]
     solver.scene = lambda: Scene.INFRA_MAIN if page[0] == "map" else Scene.INFRA_DETAILS
     solver.find = lambda name: (
