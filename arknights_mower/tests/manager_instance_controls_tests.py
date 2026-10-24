@@ -55,15 +55,17 @@ def batch_changes(manager, settings):
     ]
 
 
-def test_unset_permissions_allow_updates_and_disable_ai_without_writing(manager):
+def test_unset_permissions_hide_maintenance_and_disable_ai_without_writing(manager):
     item = manager.get_instances()[0]
-    assert item["updates_enabled"] is True
+    assert item["extra_settings_visible"] is False
+    assert "updates_enabled" not in item
     assert item["ai_assistant_enabled"] is False
     assert not (Path(item["path"]) / "config/conf.yml").exists()
     manager.update_settings(0, {"token": "keep", "port": 58001})
     reopened = Api(manager._storage_path)
     item = reopened.get_instances()[0]
-    assert item["updates_enabled"] is True
+    assert item["extra_settings_visible"] is False
+    assert "updates_enabled" not in item
     assert item["ai_assistant_enabled"] is False
     saved = read_conf(reopened)
     assert "updates_enabled" not in saved
@@ -71,39 +73,93 @@ def test_unset_permissions_allow_updates_and_disable_ai_without_writing(manager)
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_update_permission_is_persisted_without_changing_other_settings(
+def test_maintenance_permission_is_persisted_without_changing_other_settings(
     manager, enabled
 ):
-    assert manager.get_instances()[0]["updates_enabled"] is True
+    assert manager.get_instances()[0]["extra_settings_visible"] is False
     manager.update_settings(
         0, {"token": "keep", "port": 58001, "ai_assistant_enabled": True}
     )
     manager.update_all_settings(
-        batch_changes(manager, {"updates_enabled": enabled}), manager.instances.copy()
+        batch_changes(manager, {"extra_settings_visible": enabled}),
+        manager.instances.copy(),
     )
     reopened = Api(manager._storage_path)
-    assert reopened.get_instances()[0]["updates_enabled"] is enabled
+    assert reopened.get_instances()[0]["extra_settings_visible"] is enabled
     saved = read_conf(reopened)
-    assert saved["updates_enabled"] is enabled
+    assert saved["extra_settings_visible"] is enabled
+    assert "updates_enabled" not in saved
     assert saved["ai_assistant_enabled"] is True
     assert saved["webview"] == {"token": "keep", "port": 58001}
 
 
-@pytest.mark.parametrize("enabled", [None, 0, 1, "true", "false"])
-def test_manager_rejects_invalid_update_permission_without_writing(manager, enabled):
-    with pytest.raises(ValueError, match="布尔值"):
+@pytest.mark.parametrize("enabled", [False, True, None, 0, 1, "true", "false"])
+def test_manager_rejects_retired_update_permission_without_writing(manager, enabled):
+    with pytest.raises(ValueError, match="不支持"):
         manager.update_settings(
             0, {"token": "", "port": None, "updates_enabled": enabled}
+        )
+    with pytest.raises(ValueError, match="不支持"):
+        manager.update_all_settings(
+            batch_changes(manager, {"updates_enabled": enabled}),
+            manager.instances.copy(),
         )
     assert not (Path(manager.instances[0]["path"]) / "config/conf.yml").exists()
 
 
-def test_manager_skips_live_update_permission_edits(manager, monkeypatch):
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ({}, False),
+        ({"updates_enabled": True}, False),
+        ({"updates_enabled": False}, False),
+        ({"extra_settings_visible": True}, True),
+        ({"extra_settings_visible": True, "updates_enabled": True}, True),
+        ({"extra_settings_visible": True, "updates_enabled": False}, False),
+        ({"extra_settings_visible": False, "updates_enabled": True}, False),
+    ],
+)
+def test_manager_merges_legacy_update_permission_without_read_writes(
+    manager, raw, expected
+):
+    path = Path(manager.instances[0]["path"]) / "config/conf.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    before = path.read_bytes()
+    item = manager.get_instances()[0]
+    assert item["extra_settings_visible"] is expected
+    assert "updates_enabled" not in item
+    assert path.read_bytes() == before
+    manager.update_settings(0, {"token": "saved", "port": None})
+    saved = read_conf(manager)
+    assert "updates_enabled" not in saved
+    assert saved.get("extra_settings_visible", False) is expected
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_explicit_manager_choice_replaces_legacy_denial(manager, enabled):
+    path = Path(manager.instances[0]["path"]) / "config/conf.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "extra_settings_visible: true\nupdates_enabled: false\n", encoding="utf-8"
+    )
+    manager.update_all_settings(
+        batch_changes(manager, {"extra_settings_visible": enabled}),
+        manager.instances.copy(),
+    )
+    assert read_conf(manager) == {"extra_settings_visible": enabled}
+    assert manager.get_instances()[0]["extra_settings_visible"] is enabled
+
+
+def test_manager_skips_live_maintenance_permission_edits(manager, monkeypatch):
     monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
     with pytest.raises(ValueError):
-        manager.update_settings(0, {"token": "", "port": None, "updates_enabled": True})
+        manager.update_settings(
+            0, {"token": "", "port": None, "extra_settings_visible": True}
+        )
     result = manager.update_all_settings(
-        batch_changes(manager, {"updates_enabled": True}), manager.instances.copy()
+        batch_changes(manager, {"extra_settings_visible": True}),
+        manager.instances.copy(),
     )
     assert result["results"][0]["status"] == "skipped"
     assert not (Path(manager.instances[0]["path"]) / "config/conf.yml").exists()
@@ -357,7 +413,7 @@ def test_instance_page_uses_current_manager_preference_and_retains_permissions(
             "token": "saved-token",
             "port": 58001,
             "ai_assistant_enabled": assistant,
-            "updates_enabled": updates,
+            "extra_settings_visible": updates,
         },
     )
     before = read_conf(manager)
@@ -1251,7 +1307,7 @@ def test_extra_settings_visibility_defaults_hidden_without_rewriting_old_config(
 
 @pytest.mark.parametrize("assistant", [False, True])
 @pytest.mark.parametrize("enabled", [False, True])
-def test_extra_settings_visibility_persists_without_changing_authorization(
+def test_extra_settings_visibility_persists_without_changing_ai_authorization(
     manager, enabled, assistant
 ):
     manager.update_settings(
@@ -1259,7 +1315,6 @@ def test_extra_settings_visibility_persists_without_changing_authorization(
         {
             "token": "keep",
             "port": None,
-            "updates_enabled": False,
             "ai_assistant_enabled": assistant,
         },
     )
@@ -1271,14 +1326,14 @@ def test_extra_settings_visibility_persists_without_changing_authorization(
     assert reopened.get_instances()[0]["extra_settings_visible"] is enabled
     saved = read_conf(reopened)
     assert saved["extra_settings_visible"] is enabled
-    assert saved["updates_enabled"] is False
+    assert "updates_enabled" not in saved
     assert saved["ai_assistant_enabled"] is assistant
     assert saved["webview"] == {"token": "keep", "port": 0}
     reopened.update_settings(
         0, {"token": "keep", "port": None, "extra_settings_visible": not enabled}
     )
     assert reopened.get_instances()[0]["extra_settings_visible"] is not enabled
-    assert read_conf(reopened)["updates_enabled"] is False
+    assert "updates_enabled" not in read_conf(reopened)
     assert read_conf(reopened)["ai_assistant_enabled"] is assistant
 
 

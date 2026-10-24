@@ -256,9 +256,8 @@ class ManagedHttpBoundaryTests(unittest.TestCase):
                 ["restart_resume", "apply_schedule"],
             )
 
-    def test_showing_extra_settings_cannot_grant_maa_or_update_permission(self):
+    def test_enabled_maintenance_keeps_maa_in_manager_and_allows_resource_policy(self):
         config.conf.extra_settings_visible = True
-        config.conf.updates_enabled = False
         for path in ("/maa-update/check", "/maa-resource-update/start", "/check-maa"):
             response = self.client.open(
                 path,
@@ -270,7 +269,8 @@ class ManagedHttpBoundaryTests(unittest.TestCase):
         response = self.client.patch(
             "/conf", headers=self.headers, json={"resource_update": {"enable": True}}
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertTrue(config.conf.resource_update.enable)
         with (
             patch.dict(os.environ, {"MOWER_MANAGED": "0"}),
             patch(

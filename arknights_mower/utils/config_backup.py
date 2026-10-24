@@ -342,8 +342,8 @@ def _validate_configuration(files):
     from .managed_device import preserve
 
     preserve(data, config.conf)
-    # An imported archive cannot replace the manager's update authorization.
-    data["updates_enabled"] = config.conf.updates_enabled
+    # An imported archive cannot replace the manager's maintenance authorization.
+    data.pop("updates_enabled", None)
     data["extra_settings_visible"] = config.conf.extra_settings_visible
     legacy_dorm_order = str(data.get("dorm_order", "") or "")
     webview = data.get("webview", {})

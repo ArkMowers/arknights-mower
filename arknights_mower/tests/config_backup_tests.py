@@ -143,7 +143,7 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
     )
     config.conf.start_automatically = True
     config.conf.ai_assistant_enabled = True
-    config.conf.updates_enabled = False
+    config.conf.extra_settings_visible = False
     config.conf.account = "manager-sender"
     config.conf.pass_code = "manager-secret"
     config.conf.screenshot = 7
@@ -154,6 +154,7 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
         "start_automatically": False,
         "ai_assistant_enabled": False,
         "updates_enabled": True,
+        "extra_settings_visible": True,
         "account": "incoming-sender",
         "pass_code": "incoming-secret",
         "mail_subject": "imported-subject",
@@ -166,7 +167,7 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
     )
     assert config.conf.start_automatically
     assert config.conf.ai_assistant_enabled
-    assert not config.conf.updates_enabled
+    assert not config.conf.extra_settings_visible
     assert config.conf.account == "incoming-sender"
     assert config.conf.pass_code == "incoming-secret"
     assert config.conf.screenshot == 7
@@ -327,18 +328,17 @@ def incoming(**files):
 @pytest.mark.parametrize("saved", [False, True])
 @pytest.mark.parametrize("archived", [None, False, True])
 def test_restore_preserves_current_manager_choice(storage, field, saved, archived):
-    setattr(config.conf, field, saved)
+    config.conf.extra_settings_visible = saved
     config.save_conf()
     uploaded = {} if archived is None else {field: archived}
     raw = incoming(**{"conf.yml": json.dumps(uploaded)})
     backup.import_configuration(raw)
-    assert getattr(config.conf, field) is saved
-    assert (
-        backup._object_file(backup.read_archive(backup.export_archive()), "conf.yml")[
-            field
-        ]
-        is saved
+    assert config.conf.extra_settings_visible is saved
+    exported = backup._object_file(
+        backup.read_archive(backup.export_archive()), "conf.yml"
     )
+    assert exported["extra_settings_visible"] is saved
+    assert "updates_enabled" not in exported
 
 
 @pytest.fixture

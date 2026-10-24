@@ -52,9 +52,8 @@ const batchDraft = ref([])
 const batchAiRead = ref(false)
 const batchBooleanColumns = [
   { key: 'ai_assistant_enabled', label: 'Mower AI 助手', change: changeBatchAssistant },
-  { key: 'updates_enabled', label: '允许更新', change: changeBatchUpdates },
   { key: 'start_automatically', label: '启动后自动开始', change: changeBatchAutomatic },
-  { key: 'extra_settings_visible', label: '显示更新与维护设置', change: changeBatchExtraSettings }
+  { key: 'extra_settings_visible', label: '更新与维护', change: changeBatchExtraSettings }
 ]
 const batchSelection = computed(() => {
   const editableRows = batchDraft.value.filter((_, idx) => batchEditable(idx))
@@ -316,9 +315,11 @@ async function execute(action, { waitForUser = false } = {}) {
 function edit(idx, kind) {
   if (unavailable.value || !instances.value[idx]?.editable) return
   draft.value = {
-    ...instances.value[idx],
+    name: instances.value[idx].name,
+    path: instances.value[idx].path,
+    token: instances.value[idx].token,
+    port: instances.value[idx].port,
     ai_assistant_enabled: instances.value[idx].ai_assistant_enabled === true,
-    updates_enabled: instances.value[idx].updates_enabled === true,
     start_automatically: instances.value[idx].start_automatically === true,
     extra_settings_visible: instances.value[idx].extra_settings_visible === true
   }
@@ -327,7 +328,6 @@ function edit(idx, kind) {
     kind,
     target: { name: draft.value.name, path: draft.value.path },
     originalAssistant: draft.value.ai_assistant_enabled,
-    originalUpdates: draft.value.updates_enabled,
     originalAutomatic: draft.value.start_automatically,
     originalExtraSettings: draft.value.extra_settings_visible
   }
@@ -344,7 +344,6 @@ async function editBatch() {
     token: item.token,
     port: item.port,
     ai_assistant_enabled: item.ai_assistant_enabled === true,
-    updates_enabled: item.updates_enabled === true,
     start_automatically: item.start_automatically === true,
     extra_settings_visible: item.extra_settings_visible === true
   }))
@@ -382,10 +381,11 @@ function changeBatchAutomatic(enabled) {
   for (let idx = 0; idx < batchDraft.value.length; idx++)
     if (batchEditable(idx)) batchDraft.value[idx].start_automatically = enabled
 }
-function changeBatchExtraSettings(visible) {
-  if (unavailable.value || assistantConfirmation.value) return
-  for (let idx = 0; idx < batchDraft.value.length; idx++)
-    if (batchEditable(idx)) batchDraft.value[idx].extra_settings_visible = visible
+function changeBatchExtraSettings(enabled, idx = null) {
+  if (editing.value?.kind !== 'batch' || unavailable.value || assistantConfirmation.value) return
+  for (const index of idx === null ? batchDraft.value.map((_, index) => index) : [idx]) {
+    if (batchEditable(index)) batchDraft.value[index].extra_settings_visible = enabled
+  }
 }
 async function loadCommon() {
   const editor = editing.value
@@ -424,15 +424,8 @@ function selectPath(idx) {
 
 async function save() {
   if (!editing.value || unavailable.value || assistantConfirmation.value) return
-  const {
-    idx,
-    kind,
-    target,
-    originalAssistant,
-    originalUpdates,
-    originalAutomatic,
-    originalExtraSettings
-  } = editing.value
+  const { idx, kind, target, originalAssistant, originalAutomatic, originalExtraSettings } =
+    editing.value
   if (kind === 'batch') {
     if (
       commonLoading.value ||
@@ -467,8 +460,6 @@ async function save() {
   const settings = { token: draft.value.token, port: draft.value.port }
   if (draft.value.ai_assistant_enabled !== originalAssistant)
     settings.ai_assistant_enabled = draft.value.ai_assistant_enabled
-  if (draft.value.updates_enabled !== originalUpdates)
-    settings.updates_enabled = draft.value.updates_enabled
   if (draft.value.start_automatically !== originalAutomatic)
     settings.start_automatically = draft.value.start_automatically
   if (draft.value.extra_settings_visible !== originalExtraSettings)
@@ -503,13 +494,6 @@ async function changeAssistant(enabled) {
 
 function batchEditable(idx) {
   return Boolean(instances.value[idx]?.editable && instances.value[idx]?.path)
-}
-
-function changeBatchUpdates(enabled, idx = null) {
-  if (editing.value?.kind !== 'batch' || unavailable.value || assistantConfirmation.value) return
-  for (const index of idx === null ? batchDraft.value.map((_, index) => index) : [idx]) {
-    if (batchEditable(index)) batchDraft.value[index].updates_enabled = enabled
-  }
 }
 
 async function changeBatchAssistant(enabled, idx = null) {
@@ -987,8 +971,7 @@ function addInstance() {
               个实例。勾选表头可批量设置可编辑实例；只保存修改过的单元格，运行中的实例会跳过。
             </p>
             <p class="section-description">
-              “显示更新与维护设置”控制实例页面的“网络与更新”和“数据与维护”两组，下次启动生效；不改变更新许可或
-              AI 助手权限。
+              “更新与维护”在下次启动时生效，控制实例页面的“网络与更新”和“数据与维护”两组及对应操作权限。关闭后隐藏这两组并禁止对应操作，管理器仍可执行维护。
             </p>
             <div class="batch-table-scroll">
               <table class="batch-table">
@@ -997,7 +980,6 @@ function addInstance() {
                   <col class="batch-token-col" />
                   <col class="batch-port-col" />
                   <col class="batch-ai-col" />
-                  <col class="batch-updates-col" />
                   <col class="batch-updates-col" />
                   <col class="batch-updates-col" />
                 </colgroup>
@@ -1063,14 +1045,6 @@ function addInstance() {
                     </td>
                     <td>
                       <n-checkbox
-                        :checked="row.updates_enabled"
-                        :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
-                        :aria-label="`${displayedEditing.targets[idx].name} 允许更新`"
-                        @update:checked="(enabled) => changeBatchUpdates(enabled, idx)"
-                      />
-                    </td>
-                    <td>
-                      <n-checkbox
                         v-model:checked="row.start_automatically"
                         :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
                         :aria-label="`${displayedEditing.targets[idx].name} 启动后自动开始任务`"
@@ -1078,9 +1052,10 @@ function addInstance() {
                     </td>
                     <td>
                       <n-checkbox
-                        v-model:checked="row.extra_settings_visible"
+                        :checked="row.extra_settings_visible"
                         :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
-                        :aria-label="`${displayedEditing.targets[idx].name} 显示更新与维护设置`"
+                        :aria-label="`${displayedEditing.targets[idx].name} 更新与维护`"
+                        @update:checked="(enabled) => changeBatchExtraSettings(enabled, idx)"
                       />
                     </td>
                   </tr>
@@ -1121,23 +1096,15 @@ function addInstance() {
                 aria-label="启动后自动开始任务"
                 :disabled="unavailable || !!assistantConfirmation"
             /></n-form-item>
-            <n-form-item label="允许更新">
-              <n-switch
-                v-model:value="draft.updates_enabled"
-                aria-label="允许更新"
-                :disabled="unavailable || !!assistantConfirmation"
-              />
-            </n-form-item>
-            <n-form-item label="显示更新与维护设置">
+            <n-form-item label="更新与维护">
               <n-space vertical>
                 <n-switch
                   v-model:value="draft.extra_settings_visible"
-                  aria-label="显示更新与维护设置"
+                  aria-label="更新与维护"
                   :disabled="unavailable || !!assistantConfirmation"
                 />
                 <n-text depth="3">
-                  控制实例页面的“网络与更新”和“数据与维护”两组，下次启动生效；不改变更新许可或 AI
-                  助手权限。
+                  下次启动时生效。开启后，实例页面显示“网络与更新”和“数据与维护”，并允许对应操作；关闭后隐藏这两组并禁止对应操作。管理器仍可执行维护。
                 </n-text>
               </n-space>
             </n-form-item>

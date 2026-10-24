@@ -726,7 +726,8 @@ def test_shared_values_and_policy_survive_instance_configuration_import_projecti
     assert imported["device"]["last_serial"] == "chosen:18003"
     assert imported["performance_mode"] == "low"
     assert imported["account"] == "foreign sender"
-    assert imported["updates_enabled"] is False
+    assert imported["extra_settings_visible"] is False
+    assert "updates_enabled" not in imported
     assert manager._common_path.read_bytes() == before
     assert path.exists()
 

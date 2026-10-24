@@ -259,15 +259,10 @@ onUnmounted(() => {
           </n-alert>
           <div class="actions">
             <n-button :disabled="busy" @click="loadMaa">刷新状态</n-button>
-            <n-button
-              :disabled="busy || job.status === 'running' || !group?.updates_enabled"
-              @click="maintenance('check')"
+            <n-button :disabled="busy || job.status === 'running'" @click="maintenance('check')"
               >检查更新</n-button
             >
-            <n-button
-              type="primary"
-              :disabled="busy || !canUpdate || !group?.updates_enabled"
-              @click="maintenance('update')"
+            <n-button type="primary" :disabled="busy || !canUpdate" @click="maintenance('update')"
               >更新所选目录</n-button
             >
           </div>
