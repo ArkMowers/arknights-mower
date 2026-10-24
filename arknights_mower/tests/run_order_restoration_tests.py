@@ -877,7 +877,7 @@ def test_missed_order_before_selection_never_claims_compensation(solver, monkeyp
     solver.get_order_remaining_time.return_value = 0
     solver.reset_room_time = MagicMock()
 
-    with pytest.raises(base_schedule.RunOrderWindowExpired):
+    with pytest.raises(base_schedule.RunOrderMissed):
         solver.agent_arrange(task.plan)
 
     solver.reset_room_time.assert_called_once_with(ROOM)

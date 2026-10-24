@@ -331,11 +331,11 @@ _COLLECTIBLE_START_KEYS = (
 )
 
 
-class RunOrderWindowExpired(Exception):
+class RunOrderMissed(Exception):
     """本次跑单已错过倒计时窗口，交回调度重新读单规划。"""
 
     def __init__(self, room):
-        super().__init__("跑单倒计时超出窗口")
+        super().__init__("检测到漏单！")
         self.room = room
 
 
@@ -2697,8 +2697,8 @@ class BaseSchedulerSolver(
                     and self.tasks[0].type in [TaskTypes.SHIFT_ON]
                 ):
                     self.backup_plan_solver()
-            except RunOrderWindowExpired as e:
-                # 超窗结束本次插拔；当前订单重新读单，不保留失效时间。
+            except RunOrderMissed as e:
+                # 漏单结束本次插拔；新订单使用正常读单流程，不保留失效时间。
                 self.tasks[:] = [task for task in self.tasks if task is not self.task]
                 self._queue_order_refresh(e.room)
                 self.skip()
@@ -13032,7 +13032,7 @@ class BaseSchedulerSolver(
                             self.turn_on_room_detail(room)
                         else:
                             self._report_missed_order(room, remaining_time)
-                            raise RunOrderWindowExpired(room)
+                            raise RunOrderMissed(room)
                     if room == "train":
                         # #59：idx1 冻结已在 gate L1 按锁定状态处理好（Current），
                         # 不再依赖 find_next_task(SKILL_UPGRADE) 的脆弱信号。
@@ -13151,7 +13151,7 @@ class BaseSchedulerSolver(
                 MowerExit,
                 DeviceRecoveryError,
                 RoomArrangementDeferred,
-                RunOrderWindowExpired,
+                RunOrderMissed,
             ):
                 raise
             except Exception as e:
@@ -13582,7 +13582,7 @@ class BaseSchedulerSolver(
                 and self.task.meta_data == room
             )
         ):
-            expired_order = False
+            missed_order = False
             try:
                 if config.conf.run_order_buffer_time <= 0 or self.task.adjusted:
                     if self.task.adjusted:
@@ -13614,14 +13614,8 @@ class BaseSchedulerSolver(
                                     )
                                 return False
                     else:
-                        logger.warning(
-                            "%s 换入后订单倒计时 %s 秒超出等待窗口，"
-                            "仅凭换入后读数无法确认漏单，恢复原班后重新读单",
-                            room,
-                            wait_time,
-                        )
-                        self.reset_room_time(room)
-                        expired_order = True
+                        self._report_missed_order(room, wait_time)
+                        missed_order = True
                     self.accept_order()
                     if self.drone_room is None or (
                         self.drone_room == room and room in self.op_data.run_order_rooms
@@ -13645,8 +13639,8 @@ class BaseSchedulerSolver(
                     del plan[room]
                     if getattr(self.task, "maintenance_replacement_run", False):
                         self.maintenance_entry_pending = True
-                    if expired_order:
-                        raise RunOrderWindowExpired(room)
+                    if missed_order:
+                        raise RunOrderMissed(room)
                     return True
                 # 防止由于意外导致的死循环
                 run_order_room = next(iter(new_plan))
@@ -13688,8 +13682,8 @@ class BaseSchedulerSolver(
                         restore_task.maintenance_replacement_run = True
                     self.tasks.append(restore_task)
                     self.skip()
-                if expired_order:
-                    raise RunOrderWindowExpired(room)
+                if missed_order:
+                    raise RunOrderMissed(room)
             except BaseException:
                 if getattr(self.task, "run_order_restore_pending", False):
                     self._retain_run_order_restoration()
