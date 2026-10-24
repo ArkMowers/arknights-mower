@@ -31,7 +31,7 @@ function setup() {
   axios.post.mockResolvedValue({ data: { active: '默认', plan: [] } })
 }
 
-it('测试心情计算默认关闭，单独保存开关并随排班导出', async () => {
+it('实时心情计算默认关闭，单独保存开关并随排班导出', async () => {
   setup()
   expect(config.test_mood_calculation).toBe(false)
   loaded.value = true

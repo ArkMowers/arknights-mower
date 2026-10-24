@@ -605,3 +605,227 @@ def test_group_gap_cap_allows_ordinary_return_without_an_extra_full_mood_rule(
     data.group_recovery_return_time[op.group] = NOW - timedelta(hours=2)
     solver.tap_confirm(op.room)
     solver.tap.assert_not_called()
+
+
+def test_identical_forecasts_reuse_rates_without_sharing_mutable_results(monkeypatch):
+    import threading
+
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    value = central_model()
+    before = pickle.dumps(value)
+    expected = value.value("桃金娘", NOW + timedelta(hours=20))
+    calculate = MagicMock(wraps=calculated_mood._runtime.calculate)
+    monkeypatch.setattr(calculated_mood._runtime, "calculate", calculate)
+    assert value.value("桃金娘", NOW + timedelta(hours=20)) == expected
+    calculate.assert_not_called()
+    assert pickle.dumps(value) == before
+    payload = {"moods": {"桃金娘": 12}, "rooms": {}}
+    first = calculated_mood.shared_rates(payload)
+    first["rates"]["桃金娘"] = 99
+    first["thresholds"].clear()
+    second = calculated_mood.shared_rates(payload)
+    assert second["rates"]["桃金娘"] == 0
+    assert second["thresholds"] == [0, 4, 8, 12, 16, 18, 20, 24]
+
+
+def test_shared_rate_cache_is_bounded_and_preserves_exact_mood_inputs(monkeypatch):
+    import threading
+
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    for index in range(257):
+        calculated_mood.shared_rates({"moods": {"桃金娘": index / 100}, "rooms": {}})
+    assert len(calculated_mood._runtime.rate_results) == 256
+    calculate = MagicMock(wraps=calculated_mood._runtime.calculate)
+    monkeypatch.setattr(calculated_mood._runtime, "calculate", calculate)
+    calculated_mood.shared_rates({"moods": {"桃金娘": 2.56}, "rooms": {}})
+    calculate.assert_not_called()
+    calculated_mood.shared_rates({"moods": {"桃金娘": 0}, "rooms": {}})
+    calculate.assert_called_once()
+
+
+def test_same_roster_keeps_rate_cache_after_discovering_skill_thresholds(monkeypatch):
+    value = central_model()
+    shared = MagicMock(wraps=calculated_mood.shared_rates)
+    monkeypatch.setattr(calculated_mood, "shared_rates", shared)
+    assert value._rates()["桃金娘"] == pytest.approx(0.7)
+    assert value._rates()["桃金娘"] == pytest.approx(0.7)
+    assert shared.call_count == 1
+    value.observe("阿米娅", 0, NOW)
+    assert value._rates()["桃金娘"] == pytest.approx(0.75)
+    assert shared.call_count == 2
+
+
+def test_same_future_roster_query_advances_once_and_observation_invalidates(
+    monkeypatch,
+):
+    import threading
+
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    value = central_model()
+    advance = CalculatedMood.advance
+    projected_advances = []
+
+    def counted(model, now=None):
+        if model is not value:
+            projected_advances.append(now)
+        return advance(model, now)
+
+    monkeypatch.setattr(CalculatedMood, "advance", counted)
+    future = NOW + timedelta(hours=20)
+    assert value.value("阿米娅", future) == 0
+    expected = 24 - (1 / 0.95) * 0.7 - (20 - 1 / 0.95) * 0.75
+    assert value.value("桃金娘", future) == pytest.approx(expected)
+    assert projected_advances == [future]
+    value.observe("阿米娅", 0, NOW)
+    assert value.value("桃金娘", future) == pytest.approx(9)
+    assert projected_advances == [future, future]
+
+
+def test_automatic_target_survives_crossing_then_changes_at_full_mood(monkeypatch):
+    value = model(
+        {"闪灵": 12, "芬": 5, "香草": 6},
+        {"dormitory_1": {"roster": ["闪灵", "芬", "香草"], "level": 5}},
+    )
+    shared = MagicMock(wraps=calculated_mood.shared_rates)
+    monkeypatch.setattr(calculated_mood, "shared_rates", shared)
+    assert value._rates()["芬"] == pytest.approx(-4.75)
+    assert value._rates()["芬"] == pytest.approx(-4.75)
+    assert shared.call_count == 1
+    value.observe("芬", 7, NOW)
+    assert value._rates()["芬"] == pytest.approx(-4.75)
+    value.observe("芬", 24, NOW)
+    assert value._rates()["芬"] == pytest.approx(-4)
+    assert value._rates()["香草"] == pytest.approx(-4.75)
+    assert shared.call_count == 2
+
+
+def test_unobserved_occupied_global_provider_does_not_gain_default_full_mood():
+    value = central_model()
+    del value.moods["阿米娅"]
+    assert value.value("桃金娘", NOW + timedelta(hours=1)) == pytest.approx(23.25)
+    assert value.value("阿米娅", NOW + timedelta(hours=1)) is None
+
+
+def test_future_cache_is_bounded(monkeypatch):
+    import threading
+
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    value = model({"桃金娘": 12})
+    for seconds in range(33):
+        assert value.value("桃金娘", NOW + timedelta(seconds=seconds)) == 12
+    assert len(calculated_mood._runtime.future_values) == 32
+
+
+def test_deadlines_reuse_identical_boundary_steps_and_calibrate_after_observation(
+    monkeypatch,
+):
+    import threading
+
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    value = central_model()
+    value.moods = {"阿米娅": 1, "芬": 24, "香草": 24}
+    value.rooms["room_1_1"]["roster"] = ["芬", "香草"]
+    advance = CalculatedMood.advance
+    advances = []
+
+    def counted(model, now=None):
+        advances.append(now)
+        return advance(model, now)
+
+    monkeypatch.setattr(CalculatedMood, "advance", counted)
+    before = pickle.dumps(value)
+    exhaustion = 1 / 0.95
+    expected = NOW + timedelta(hours=exhaustion + (24 - exhaustion * 0.9) / 0.95)
+    first = value.deadline("芬", 0, NOW)
+    first_steps = len(advances)
+    assert first == pytest.approx(expected, abs=timedelta(microseconds=5))
+    assert value.deadline("香草", 0, NOW) == first
+    assert len(advances) == first_steps
+    assert pickle.dumps(value) == before
+    value.observe("阿米娅", 0, NOW)
+    assert value.deadline("香草", 0, NOW) == pytest.approx(
+        NOW + timedelta(hours=24 / 0.95), abs=timedelta(microseconds=5)
+    )
+    assert value.moods["香草"] == 24
+
+
+def test_deadline_step_cache_keeps_horizon_and_target_limits(monkeypatch):
+    import threading
+
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    value = central_model()
+    full = value.deadline("桃金娘", 0, NOW)
+    assert full is not None
+    assert value.deadline("桃金娘", 0, NOW, max_hours=1) is None
+    earlier = value.deadline("桃金娘", 12, NOW)
+    assert earlier is not None and NOW < earlier < full
+    assert value.deadline("桃金娘", 24, NOW) == NOW
+
+
+def test_owner_deadline_queries_share_baseline_while_wall_clock_advances(
+    solver,
+    monkeypatch,
+):
+    import threading
+
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    data = enable(solver, monkeypatch)
+
+    class AdvancingClock(datetime):
+        seconds = 0
+
+        @classmethod
+        def now(cls, tz=None):
+            cls.seconds += 1
+            return NOW + timedelta(seconds=cls.seconds)
+
+    monkeypatch.setattr(calculated_mood, "datetime", AdvancingClock)
+    before = pickle.dumps(data.mood_model)
+    target_time = NOW + timedelta(minutes=30)
+    first = data.calculated_mood_deadline("伊内丝", 0, target_time)
+    assert first is not None and first > target_time
+    original = CalculatedMood.advance
+    advances = []
+
+    def counted(model, now=None):
+        advances.append(now)
+        return original(model, now)
+
+    monkeypatch.setattr(CalculatedMood, "advance", counted)
+    assert data.calculated_mood_deadline("伊内丝", 0, target_time) == first
+    assert not advances
+    count = len(next(iter(calculated_mood._runtime.deadline_trajectories.values())))
+    for name in ("银灰", "讯使", "能天使"):
+        assert data.calculated_mood_deadline(name, 0, target_time) is not None
+    assert len(calculated_mood._runtime.deadline_trajectories) == 1
+    assert (
+        len(next(iter(calculated_mood._runtime.deadline_trajectories.values())))
+        >= count
+    )
+    assert pickle.dumps(data.mood_model) == before
+    sync_model(data, target_time)
+    assert data.mood_model.at == target_time
+
+
+def test_owner_query_advances_old_inputs_before_applying_changed_room_level(
+    solver,
+    monkeypatch,
+):
+    data = enable(solver, monkeypatch)
+    op = data.operators["伊内丝"]
+    op.current_room, op.current_index = "dormitory_1", 2
+    sync_model(data, NOW)
+    old_rate = data.mood_model._rates()[op.name]
+    assert old_rate < 0
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW + timedelta(hours=1)
+
+    monkeypatch.setattr(calculated_mood, "datetime", Clock)
+    data.facility_levels["dormitory_1"] = 1
+    data.calculated_mood_deadline(op.name, 24, NOW + timedelta(hours=2))
+    assert data.mood_model.at == NOW + timedelta(hours=1)
+    assert data.mood_model.moods[op.name] == pytest.approx(12 - old_rate)
+    assert data.mood_model.rooms["dormitory_1"]["level"] == 1

@@ -2133,6 +2133,9 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
     min_resting_time = datetime.max
     _plan = {}
     _type = []
+    mood_now = (
+        datetime.now() if getattr(op_data, "mood_calculation_enabled", False) else None
+    )
     # 第一个心情低的且小于3 则只休息半小时
     total_agent = sorted(
         (
@@ -2146,15 +2149,23 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             and not v.is_resting()
             and not op_data.is_standby(v.name)
         ),
-        key=lambda x: x.current_mood() - x.lower_limit,
+        key=lambda x: (
+            (x.current_mood(mood_now) if mood_now is not None else x.current_mood())
+            - x.lower_limit
+        ),
     )
 
     # 工作心情预测与本轮休息等待窗口分别计算，重算不能重启等待。
     for agent in total_agent:
-        min_resting_time = min(min_resting_time, agent.predict_exhaust())
+        exhausted = (
+            agent.predict_exhaust(mood_now)
+            if mood_now is not None
+            else agent.predict_exhaust()
+        )
+        min_resting_time = min(min_resting_time, exhausted)
 
     return_windows = {}
-    now = datetime.now()
+    now = mood_now or datetime.now()
 
     def previous_return_time(name):
         previous = previous_returns.get(name)

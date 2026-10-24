@@ -5,6 +5,8 @@ import hashlib
 import json
 import math
 import threading
+from bisect import bisect_left
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -27,8 +29,18 @@ def shared_rates(payload):
         context.eval(source.decode("utf-8"))
         _runtime.context = context
         _runtime.calculate = context.get("mowerMoodRates")
+        _runtime.rate_results = OrderedDict()
+    key = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    cached = _runtime.rate_results
+    if key in cached:
+        cached.move_to_end(key)
+        return json.loads(cached[key])
     _runtime.context.set_time_limit(2)
-    return json.loads(_runtime.calculate(json.dumps(payload, ensure_ascii=False)))
+    result = _runtime.calculate(key)
+    cached[key] = result
+    if len(cached) > 256:
+        cached.popitem(last=False)
+    return json.loads(result)
 
 
 class CalculatedMood:
@@ -54,30 +66,44 @@ class CalculatedMood:
         self.event_watermark = None
         self.revision = 0
 
+    def __deepcopy__(self, memo):
+        projected = type(self).__new__(type(self))
+        memo[id(self)] = projected
+        signature = getattr(self, "_rate_signature", None)
+        if signature is not None:
+            memo[id(signature)] = signature
+        projected.__dict__.update(copy.deepcopy(self.__dict__, memo))
+        return projected
+
+    def _input_signature(self):
+        return json.dumps(
+            [
+                self.rooms,
+                self.stages,
+                self.single_targets,
+                self.versions,
+                self.automatic_targets,
+            ],
+            sort_keys=True,
+        )
+
+    def _signature(self, source):
+        thresholds = getattr(self, "thresholds", ())
+        upper = tuple(threshold + 1e-8 for threshold in thresholds)
+        bands = []
+        for name, value in sorted(source.items()):
+            index = bisect_left(thresholds, value)
+            near = -1
+            if index < len(thresholds) and abs(value - thresholds[index]) <= 1e-8:
+                near = index
+            elif index and abs(value - thresholds[index - 1]) <= 1e-8:
+                near = index - 1
+            bands.append((name, bisect_left(upper, value), near))
+        return self._input_signature(), tuple(bands)
+
     def _rates(self, moods=None):
         source = self.moods if moods is None else moods
-        signature = (
-            json.dumps(
-                [
-                    self.rooms,
-                    self.stages,
-                    self.single_targets,
-                    self.versions,
-                    self.automatic_targets,
-                ],
-                sort_keys=True,
-            ),
-            tuple(
-                (
-                    name,
-                    tuple(
-                        (value > threshold + 1e-8, abs(value - threshold) <= 1e-8)
-                        for threshold in getattr(self, "thresholds", ())
-                    ),
-                )
-                for name, value in sorted(source.items())
-            ),
-        )
+        signature = self._signature(source)
         if signature == getattr(self, "_rate_signature", None):
             return self._cached_rates
         result = shared_rates(
@@ -96,9 +122,13 @@ class CalculatedMood:
 
             logger.warning("心情演算含未量化技能：" + "；".join(warnings))
         self._warnings = warnings
+        inputs_changed = (
+            self.automatic_targets != result["automaticTargets"]
+            or getattr(self, "thresholds", ()) != result["thresholds"]
+        )
         self.automatic_targets = result["automaticTargets"]
         self.thresholds = result["thresholds"]
-        self._rate_signature = signature
+        self._rate_signature = self._signature(source) if inputs_changed else signature
         self._cached_rates = result["rates"]
         return result["rates"]
 
@@ -124,31 +154,68 @@ class CalculatedMood:
                     distance = (value - boundary) / rate
                     if distance > 1e-9:
                         step = min(step, distance)
-            for name, value in tuple(self.moods.items()):
+            for name, value in self.moods.items():
                 rate = rates.get(name) or 0
                 updated = max(0, min(24, value - rate * step))
-                self.moods[name] = next(
-                    (
-                        boundary
-                        for boundary in self.thresholds
-                        if abs(updated - boundary) <= 1e-9
-                    ),
-                    updated,
-                )
+                index = bisect_left(self.thresholds, updated)
+                if index and abs(updated - self.thresholds[index - 1]) <= 1e-9:
+                    updated = self.thresholds[index - 1]
+                elif (
+                    index < len(self.thresholds)
+                    and abs(updated - self.thresholds[index]) <= 1e-9
+                ):
+                    updated = self.thresholds[index]
+                self.moods[name] = updated
             remaining -= step
         else:
             raise RuntimeError("心情计算分段超过上限")
         self.at = now
 
+    def _projection_key(self, now):
+        return (
+            self.rules_hash,
+            self.at,
+            now,
+            self._input_signature(),
+            tuple(sorted(self.moods.items())),
+            tuple(getattr(self, "thresholds", ())),
+        )
+
+    @staticmethod
+    def _deadline_node(projected):
+        rates = projected._rates()
+        boundary_hours = float("inf")
+        for member, mood in projected.moods.items():
+            rate = rates.get(member) or 0
+            if rate:
+                for boundary in projected.thresholds:
+                    distance = (mood - boundary) / rate
+                    if distance > 1e-9:
+                        boundary_hours = min(boundary_hours, distance)
+        return projected, rates, boundary_hours
+
+    @classmethod
+    def _next_deadline_node(cls, node, future):
+        projected = copy.copy(node[0])
+        projected.moods = node[0].moods.copy()
+        projected.advance(future)
+        return cls._deadline_node(projected)
+
     def value(self, name, now=None):
         if now is not None:
-            projected = copy.deepcopy(self)
-            projected.advance(now)
-            return (
-                projected.moods.get(name)
-                if projected._rates().get(name) is not None
-                else None
-            )
+            if not hasattr(_runtime, "future_values"):
+                _runtime.future_values = OrderedDict()
+            cached = _runtime.future_values
+            key = self._projection_key(now)
+            if key not in cached:
+                projected = copy.deepcopy(self)
+                projected.advance(now)
+                cached[key] = (projected.moods, projected._rates())
+                if len(cached) > 32:
+                    cached.popitem(last=False)
+            cached.move_to_end(key)
+            moods, rates = cached[key]
+            return moods.get(name) if rates.get(name) is not None else None
         now = max(datetime.now(), self.at or datetime.min)
         self.advance(now)
         return self.moods.get(name) if self._rates().get(name) is not None else None
@@ -253,13 +320,27 @@ class CalculatedMood:
 
     def deadline(self, name, target, now=None, max_hours=240):
         now = now or datetime.now()
-        projected = copy.deepcopy(self)
-        projected.advance(now)
+        if not hasattr(_runtime, "deadline_trajectories"):
+            _runtime.deadline_trajectories = OrderedDict()
+        cached = _runtime.deadline_trajectories
+        key = self._projection_key(now)
+        if key not in cached:
+            projected = copy.deepcopy(self)
+            projected.advance(now)
+            if name not in projected.moods:
+                return None
+            while cached and (
+                len(cached) >= 16
+                or sum(len(trajectory) for trajectory in cached.values()) >= 256
+            ):
+                cached.popitem(last=False)
+            cached[key] = [self._deadline_node(projected)]
+        cached.move_to_end(key)
+        nodes = cached[key]
+        projected, rates, _ = nodes[0]
         value = projected.moods.get(name)
-        if value is None:
-            return None
-        initial_rate = projected._rates().get(name)
-        if initial_rate is None:
+        initial_rate = rates.get(name)
+        if value is None or initial_rate is None:
             return None
         recovering = initial_rate <= 0
         if (
@@ -271,29 +352,40 @@ class CalculatedMood:
         ):
             return now
         end = now + timedelta(hours=max_hours)
-        # 在技能边界内按当前速率推进，跨界后重新求值；只修改副本。
-        for _ in range(4096):
-            rates = projected._rates()
+        node = nodes[0]
+        shared = True
+        for index in range(4096):
+            projected, rates, boundary_hours = node
             rate = rates.get(name) or 0
             hours = (
                 (projected.moods[name] - target) / rate
                 if rate and recovering != (rate > 0)
                 else float("inf")
             )
-            for member, mood in projected.moods.items():
-                member_rate = rates.get(member) or 0
-                if member_rate:
-                    for boundary in projected.thresholds:
-                        distance = (mood - boundary) / member_rate
-                        if distance > 1e-9:
-                            hours = min(hours, distance)
+            hours = min(hours, boundary_hours)
             if not math.isfinite(hours):
                 return None
             future = projected.at + timedelta(hours=max(hours, 1e-8))
             if future > end:
                 return None
-            projected.advance(future)
-            mood = projected.moods[name]
+            if shared and hours == boundary_hours:
+                if index + 1 == len(nodes):
+                    node = self._next_deadline_node(node, future)
+                    while (
+                        sum(len(trajectory) for trajectory in cached.values()) >= 256
+                        and len(cached) > 1
+                    ):
+                        cached.popitem(last=False)
+                    if len(nodes) < 256:
+                        nodes.append(node)
+                    else:
+                        shared = False
+                else:
+                    node = nodes[index + 1]
+            else:
+                node = self._next_deadline_node(node, future)
+                shared = False
+            mood = node[0].moods[name]
             if (
                 recovering
                 and mood >= target - 1e-7
@@ -304,13 +396,11 @@ class CalculatedMood:
         return None
 
 
-def sync_model(owner, now=None):
+def sync_model(owner, now=None, *, advance_clock=True):
     from arknights_mower.utils import config
 
     model = owner.mood_model
     now = now or datetime.now()
-    model.advance(now)
-    model.enabled = True
     from arknights_mower.utils.building_skills import load_skill_snapshot
     from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
 
@@ -328,23 +418,20 @@ def sync_model(owner, now=None):
             and type(entry["phase"]) is int
             and type(entry["level"]) is int
         }
-    model.stages = dict(_runtime.growth_stages)
-    model.metadata_loaded = True
+    stages = dict(_runtime.growth_stages)
     levels = owner.facility_levels
     observed_rooms = (
         set(owner.plan)
         | set(owner.facility_states)
         | {op.current_room for op in owner.operators.values() if op.current_room}
     )
-    model.rooms = {
+    rosters = {room: [] for room in observed_rooms}
+    for op in sorted(owner.operators.values(), key=lambda op: op.current_index):
+        if op.current_room in rosters:
+            rosters[op.current_room].append(op.name)
+    rooms = {
         room: {
-            "roster": [
-                op.name
-                for op in sorted(
-                    owner.operators.values(), key=lambda op: op.current_index
-                )
-                if op.current_room == room
-            ],
+            "roster": rosters[room],
             "facility": owner.facility_states.get(room, {}).get("facility")
             or (slots[0].facility if slots else None),
             "product": owner.facility_states.get(room, {}).get("product")
@@ -356,14 +443,14 @@ def sync_model(owner, now=None):
         for room in observed_rooms
         for slots in [owner.plan.get(room, [])]
     }
-    model.positions = {
+    positions = {
         op.name: (op.current_room, op.current_index) for op in owner.operators.values()
     }
-    model.versions = {
+    versions = {
         op.name: getattr(op, "dorm_position_version", 0)
         for op in owner.operators.values()
     }
-    model.single_targets = {
+    single_targets = {
         manager[0]: op.name
         for op in owner.operators.values()
         if op.current_room.startswith("dorm")
@@ -372,6 +459,22 @@ def sync_model(owner, now=None):
         for manager in getattr(op, "dorm_recovery_fixed", ())
         if len(manager) == 3
     }
+    if advance_clock or any(
+        (
+            model.stages != stages,
+            model.rooms != rooms,
+            model.versions != versions,
+            model.single_targets != single_targets,
+        )
+    ):
+        model.advance(now)
+    model.enabled = True
+    model.metadata_loaded = True
+    model.stages = stages
+    model.rooms = rooms
+    model.positions = positions
+    model.versions = versions
+    model.single_targets = single_targets
     for op in owner.operators.values():
         op._mood_model = model
         op._mood_conf = getattr(owner, "runtime_conf", None) or config.conf

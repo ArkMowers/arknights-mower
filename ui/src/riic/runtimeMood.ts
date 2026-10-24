@@ -17,9 +17,17 @@ export function rates(input: any) {
   config.facilities.dormitories = [0, 0, 0, 0]
   Object.assign(config.facilities, { central: 0, office: 0, reception: 0, workshop: 0, training: 0, recycle: 0 })
   config.operatorRecords = {}
-  for (const operator of OPERATORS) {
-    const stage = input.stages?.[operator.name]
-    config.operatorRecords[operator.charId] = { ...operator, skills: stage ? selectUnlockedSkills(operator, stage[0], stage[1]) : operator.skills }
+  const participants = new Set<string>(Object.keys(input.moods))
+  for (const room of Object.values(input.rooms) as any[]) {
+    room.roster.forEach((name: string) => participants.add(name))
+  }
+  for (const name of participants) {
+    const operator = byName.get(name)
+    if (!operator) continue
+    const stage = input.stages?.[name]
+    config.operatorRecords[operator.charId] = stage
+      ? { ...operator, skills: selectUnlockedSkills(operator, stage[0], stage[1]) }
+      : operator
     config.operatorMorale[operator.charId] = Number.NaN
   }
   const names = new Map<string, string>()

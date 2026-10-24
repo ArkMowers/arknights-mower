@@ -46,6 +46,38 @@ def observations(data):
     }
 
 
+def test_metadata_exhaustion_queries_share_one_planning_time(solver, monkeypatch):
+    from arknights_mower.utils import scheduler_task
+
+    data = solver.op_data
+    enable(data, NOW, monkeypatch)
+    before = observations(data)
+
+    class AdvancingClock(datetime):
+        seconds = 0
+
+        @classmethod
+        def now(cls, tz=None):
+            cls.seconds += 1
+            return NOW + timedelta(seconds=cls.seconds)
+
+    monkeypatch.setattr(scheduler_task, "datetime", AdvancingClock)
+    predict = Operator.predict_exhaust
+    queries = []
+
+    def record(operator, now=None):
+        queries.append((operator.name, now))
+        return predict(operator, now)
+
+    monkeypatch.setattr(Operator, "predict_exhaust", record)
+    scheduler_task.plan_metadata(data, [])
+    assert {name for name, _ in queries} == set(PRIMARY)
+    assert len({when for _, when in queries}) == 1
+    assert queries[0][1] is not None
+    assert observations(data) == before
+    solver.enter_room.assert_not_called()
+
+
 def test_future_native_rotation_uses_model_recovery_deadline(solver, monkeypatch):
     data = solver.op_data
     required = data.operators[PRIMARY[0]]
