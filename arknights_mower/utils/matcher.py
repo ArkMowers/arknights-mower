@@ -201,17 +201,16 @@ class Matcher:
 
             # specify the crop scope
             if scope is not None:
-                ori_kp, ori_des = [], []
-                for _kp, _des in zip(self.kp, self.des):
-                    if (
-                        scope[0][0] <= _kp.pt[0]
-                        and scope[0][1] <= _kp.pt[1]
-                        and _kp.pt[0] <= scope[1][0]
-                        and _kp.pt[1] <= scope[1][1]
-                    ):
-                        ori_kp.append(_kp)
-                        ori_des.append(_des)
-                ori_kp, ori_des = np.array(ori_kp), np.array(ori_des)
+                # 在原生层批量读取坐标；float64 保留原先 Python 浮点边界比较。
+                x, y = cv2.KeyPoint_convert(self.kp).astype(np.float64).T
+                selected = (
+                    (scope[0][0] <= x)
+                    & (scope[0][1] <= y)
+                    & (x <= scope[1][0])
+                    & (y <= scope[1][1])
+                )
+                ori_kp = [self.kp[index] for index in np.flatnonzero(selected)]
+                ori_des = self.des[selected]
             else:
                 ori_kp, ori_des = self.kp, self.des
 
