@@ -13,6 +13,8 @@ from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.resting_correction import reconsider_low_mood_replacements
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
+_TIMING_DEPENDENCY = "替班心情仍高于下限，等待有效心情消耗观测"
+
 
 def _ordinary_replacements(data, owner):
     replacements = (
@@ -219,8 +221,18 @@ def sync_replacement_checks(solver):
             remove.append(task)
             continue
         existing[key] = task
+        failure = getattr(task, "execution_failure", None)
+        if failure and failure["reason"] == _TIMING_DEPENDENCY:
+            # 旧快照没有保存依赖分类；加载后仍按正常观测依赖处理。
+            failure["dependency"] = True
         snapshot = replacement_check_snapshot(solver, task)
         previous = getattr(task, "replacement_check_source", None)
+        if previous is not None:
+            if previous["environment"] != snapshot["environment"] or (
+                previous["revision"] != snapshot["revision"]
+                and getattr(task, "replacement_check_read_after", None) is None
+            ):
+                task.replacement_check_read_after = datetime.now()
         cover = data.operators[target["cover"]]
         observation = snapshot["observations"][target["cover"]]
         previous_observation = (
@@ -259,12 +271,13 @@ def sync_replacement_checks(solver):
     for key, target in targets.items():
         if key in existing or (target["room"], target["index"]) in concrete_slots:
             continue
-        # 新上岗先核实当前心情，不要求设施提供工作倒计时。
+        # 执行时先复用已有观测，不因新建检查而强制进房。
         task = SchedulerTask(
             meta_data=f"替班心情检查：{target['cover']}",
             task_type=TaskTypes.NOT_SPECIFIC,
         )
         task.replacement_check = target
+        task.replacement_check_deadline = None
         task.replacement_check_source = replacement_check_snapshot(solver, task)
         solver.tasks.append(task)
 
@@ -273,6 +286,7 @@ def invalidate_replacement_checks(solver):
     """已确认影响工作消耗的环境事件使原倒计时需要重新实读。"""
     for task in solver.tasks:
         if getattr(task, "replacement_check", None) is not None:
+            task.replacement_check_read_after = datetime.now()
             task.replacement_check_revision = (
                 getattr(task, "replacement_check_revision", 0) + 1
             )
@@ -291,6 +305,30 @@ def _retain(solver, task, reason, *, dependency=False):
 
 def _finite_mood(value):
     return isinstance(value, (int, float)) and isfinite(value) and 0 <= value <= 24
+
+
+def _cached_work_mood(cover, task):
+    """近期实读仍高于下限时复用；预计到期及工作环境变化仍须新观测。"""
+    now = datetime.now()
+    sampled_at = cover.time_stamp
+    read_after = getattr(task, "replacement_check_read_after", None)
+    # 旧任务沿用保存的原期限；新建检查显式标记尚无期限。
+    deadline = getattr(task, "replacement_check_deadline", task.time)
+    if (
+        sampled_at is None
+        or not sampled_at <= now
+        or getattr(cover, "mood_is_prediction", False)
+        or not _finite_mood(cover.mood)
+        or cover.need_to_refresh(r=cover.current_room)
+        or (read_after is not None and sampled_at <= read_after)
+        or (deadline is not None and sampled_at < deadline <= now)
+    ):
+        return None
+    rate = cover.depletion_rate
+    mood = cover.mood
+    if isfinite(rate) and rate > 0:
+        mood -= rate * (now - sampled_at).total_seconds() / 3600
+    return mood if mood > cover.lower_limit else None
 
 
 def _check_read_values(snapshot, room):
@@ -333,26 +371,30 @@ def run_replacement_check(solver, task):
     if not _target_applies(data, target):
         return True
     room, index = target["room"], target["index"]
-    peers = [
-        (peer, failure, solver._task_failure_snapshot(peer, failure["rooms"]))
-        for peer in solver.tasks
-        if peer is not task
-        and getattr(peer, "replacement_check", None)
-        and (failure := getattr(peer, "execution_failure", None))
-    ]
-    try:
-        solver.enter_room(room)
-        result = solver.get_agent_from_room(
-            room,
-            force_mood=True,
-            strict_observation=True,
-        )
-        solver.back()
-    except RecognizeError as exc:
+    cover = data.operators[target["cover"]]
+    mood = _cached_work_mood(cover, task)
+    observed = {"agent": cover.name, "mood": mood}
+    if mood is None:
+        peers = [
+            (peer, failure, solver._task_failure_snapshot(peer, failure["rooms"]))
+            for peer in solver.tasks
+            if peer is not task
+            and getattr(peer, "replacement_check", None)
+            and (failure := getattr(peer, "execution_failure", None))
+        ]
+        try:
+            solver.enter_room(room)
+            result = solver.get_agent_from_room(
+                room,
+                force_mood=True,
+                strict_observation=True,
+            )
+            solver.back()
+        except RecognizeError as exc:
+            _preserve_peer_failures(solver, peers, room)
+            return _retain(solver, task, f"替班心情检查未取得有效读数：{exc}")
         _preserve_peer_failures(solver, peers, room)
-        return _retain(solver, task, f"替班心情检查未取得有效读数：{exc}")
-    _preserve_peer_failures(solver, peers, room)
-    observed = result[index] if 0 <= index < len(result) else {}
+        observed = result[index] if 0 <= index < len(result) else {}
     if observed.get("observed") is False or not _finite_mood(observed.get("mood")):
         return _retain(solver, task, "替班心情检查未取得有效读数")
     if observed.get("agent") != target["cover"]:
@@ -361,6 +403,7 @@ def run_replacement_check(solver, task):
         return _retain(solver, task, "替班心情检查未确认原岗位驻员")
     if not _target_applies(data, target):
         return True
+    task.__dict__.pop("replacement_check_read_after", None)
     cover = data.operators[target["cover"]]
     mood = observed["mood"]
     now = datetime.now()
@@ -376,7 +419,7 @@ def run_replacement_check(solver, task):
             return _retain(
                 solver,
                 task,
-                "替班心情仍高于下限，等待有效心情消耗观测",
+                _TIMING_DEPENDENCY,
                 dependency=True,
             )
         if task.retains_execution:
@@ -388,9 +431,11 @@ def run_replacement_check(solver, task):
             successor.replacement_check_source = replacement_check_snapshot(
                 solver, successor
             )
+            successor.replacement_check_deadline = deadline
             solver.tasks.append(successor)
             return True
         task.time = deadline
+        task.replacement_check_deadline = deadline
         task.replacement_check_source = replacement_check_snapshot(solver, task)
         return False
 

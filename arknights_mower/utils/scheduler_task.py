@@ -3547,6 +3547,8 @@ class SchedulerTask:
 
     @property
     def display_name(self):
+        if target := getattr(self, "replacement_check", None):
+            return f"替班心情检查：{target['cover']}"
         if self.type == TaskTypes.SELF_CORRECTION and getattr(
             self, "exhaust_support", False
         ):

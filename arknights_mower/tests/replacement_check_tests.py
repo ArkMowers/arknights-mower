@@ -142,6 +142,8 @@ def replacement_solver(clock, monkeypatch):
 
 
 def _bootstrap(solver):
+    # 需要验证实际读房的用例从未知心情开始；近期缓存复用另有回归覆盖。
+    solver.op_data.operators["薇薇安娜"].time_stamp = None
     replacement_check.sync_replacement_checks(solver)
     assert len(solver.tasks) == 1
     task = solver.tasks[0]
@@ -299,13 +301,15 @@ def test_same_room_checks_keep_deadlines_after_full_room_reads(
     solver = replacement_solver
     data = solver.op_data
     covers, deadlines = _prepare_same_room_reader(solver, clock, count)
+    for cover in covers:
+        cover.time_stamp -= timedelta(hours=3)
+    deadlines = [deadline + timedelta(seconds=6) for deadline in deadlines]
     replacement_check.sync_replacement_checks(solver)
     checks = list(solver.tasks)
 
-    for index, task in enumerate(checks):
+    for task in checks:
         clock.current += timedelta(seconds=6)
         assert replacement_check.run_replacement_check(solver, task) is False
-        deadlines[index] = clock.now() + timedelta(hours=4 + index)
         replacement_check.sync_replacement_checks(solver)
 
     independent = SchedulerTask(clock.now(), task_type=TaskTypes.DEPOT)
@@ -316,7 +320,7 @@ def test_same_room_checks_keep_deadlines_after_full_room_reads(
         scheduling(solver.tasks, time_now=clock.now(), op_data=data)
         assert find_next_task(solver.tasks) is independent
     solver.read_operator_time.assert_not_called()
-    assert data.room_observations["central"] == count
+    assert data.room_observations["central"] == 1
 
 
 @pytest.mark.parametrize("partial_read", [False, True])
@@ -433,7 +437,7 @@ def test_new_observation_above_floor_keeps_deadline_after_pickle(
 
 
 @pytest.mark.parametrize("previous_rate", [0, 6, 30, float("nan")])
-def test_new_measured_rate_rechecks_countdown_once(
+def test_new_measured_rate_reuses_observation_for_deadline(
     replacement_solver, clock, previous_rate
 ):
     solver = replacement_solver
@@ -452,7 +456,7 @@ def test_new_measured_rate_rechecks_countdown_once(
 
     assert solver.tasks == [task] and task.time == clock.now()
     solver.get_agent_from_room.assert_called_once()
-    # 按新实测心情消耗速率安排检查，优先于已有倒计时。
+    # 心情仍高于低心情范围，按新实测速率安排检查，不使用倒计时。
     solver.reading.update(mood=12, time=clock.now() + timedelta(minutes=30))
     assert replacement_check.run_replacement_check(solver, task) is False
     deadline = clock.now() + timedelta(minutes=15)
@@ -462,7 +466,7 @@ def test_new_measured_rate_rechecks_countdown_once(
         solver.op_data.update_detail(cover.name, 11.9, "central", 0, True)
         replacement_check.sync_replacement_checks(solver)
         assert solver.tasks == [task] and task.time == deadline
-    assert solver.get_agent_from_room.call_count == 2
+    assert solver.get_agent_from_room.call_count == 1
 
 
 @pytest.mark.parametrize("count", [2, 3])
@@ -685,6 +689,7 @@ def test_missing_countdown_with_remaining_mood_does_not_mean_exhaustion(
 
 def test_failed_read_uses_existing_retention(replacement_solver):
     solver = replacement_solver
+    solver.op_data.operators["薇薇安娜"].time_stamp = None
     replacement_check.sync_replacement_checks(solver)
     task = solver.tasks[0]
     solver.get_agent_from_room.side_effect = RecognizeError("未确认")
@@ -696,6 +701,7 @@ def test_failed_read_uses_existing_retention(replacement_solver):
 @pytest.mark.parametrize("error", [MowerExit, DeviceRecoveryError, SharedADBError])
 def test_cancellation_and_device_failure_propagate(replacement_solver, error):
     solver = replacement_solver
+    solver.op_data.operators["薇薇安娜"].time_stamp = None
     replacement_check.sync_replacement_checks(solver)
     solver.get_agent_from_room.side_effect = error("stop")
 

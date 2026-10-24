@@ -693,6 +693,7 @@ class BaseSchedulerSolver(
             "reason": reason,
             "rooms": rooms,
             "snapshot": self._task_failure_snapshot(task, rooms),
+            "dependency": dependency,
         }
         log = logger.info if dependency else logger.error
         log("%s；保留原任务及时间，相关观测或安排更新后复核", reason)
@@ -15471,6 +15472,8 @@ class BaseSchedulerSolver(
             return
         for pending in self.tasks:
             if failure := getattr(pending, "execution_failure", None):
+                if failure.get("dependency", False):
+                    continue
                 logger.warning(
                     "未完成任务暂停派发：原时间=%s，任务=%s，原因=%s",
                     pending.time,
