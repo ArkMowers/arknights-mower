@@ -82,6 +82,16 @@ def room_solver(monkeypatch, *, enter_on=None, enter_after_reset=False):
 
     solver.tap = MagicMock(side_effect=tap)
     solver.sleep = MagicMock()
+    monkeypatch.setattr(
+        base_mixin,
+        "perf_counter",
+        lambda: round(
+            sum(
+                call.args[0] if call.args else 1 for call in solver.sleep.call_args_list
+            ),
+            6,
+        ),
+    )
     solver.back_to_index = MagicMock()
     solver.back_to_infrastructure = MagicMock()
     return solver
@@ -103,7 +113,7 @@ def test_delayed_map_frame_is_not_clicked_again(monkeypatch):
     solver.find.side_effect = lambda name: None if solver.sleep.called else find(name)
     solver.enter_room("room_1_1")
     solver.tap.assert_called_once()
-    solver.sleep.assert_called_once_with(0.2)
+    solver.sleep.assert_called_once_with(0.1)
     solver.back_to_index.assert_not_called()
 
 
