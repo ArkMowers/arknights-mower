@@ -4375,12 +4375,20 @@ def _recycling_reports_running():
     return bool(module and module.running())
 
 
+def _configuration_recovery_pending():
+    from arknights_mower.utils import crash_recovery
+
+    return crash_recovery.status()["automatic"]
+
+
 app.register_blueprint(config_backup_bp)
 app.config["CONFIG_BACKUP_MAINTENANCE_LOCK"] = maa_maintenance_lock
+app.config["CONFIGURATION_ACTIVATED"] = lambda: _stop_mower()
 app.config["CONFIG_BACKUP_BUSY"] = lambda: bool(
     (mower_thread and mower_thread.is_alive())
     or chat_active_requests > 0
     or _recycling_reports_running()
+    or _configuration_recovery_pending()
     or active_job()
     or _job_running(maa_update_job)
     or _job_running(maa_resource_update_job)

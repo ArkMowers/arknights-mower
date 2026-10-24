@@ -51,6 +51,14 @@ maintenance lock order. The generation is checked inside
 the same serialization boundary as saves and activation. Requests from a previous generation are
 rejected before changing files or starting work.
 
+Pending desktop task startup and automatic resource installation retain their
+original generation and recheck it under the configuration lock before admission.
+Successful activation or ordinary backup import clears the previous task and
+recovery intent after committing the new configuration; failed operations and
+renaming preserve that intent. Pending automatic recovery blocks activation and
+backup import until the user stops it. A later manual start uses the new
+configuration normally.
+
 Each `/ws/chat` message carries the page's `generation`. The backend checks it
 and registers the active message under the configuration serialization lock
 before calling the model. Profile activation and the existing backup import remain

@@ -76,6 +76,7 @@ def import_backup():
                 raw,
                 expected_generation=request.headers.get("X-Mower-Config-Generation"),
             )
+            current_app.config.get("CONFIGURATION_ACTIVATED", lambda: None)()
         except profiles.ProfileConflict as exc:
             return {"ok": False, "code": exc.code, "message": str(exc)}, 409
         except LocalConfigError as exc:

@@ -1,7 +1,7 @@
 """Profile generation admission through the real server request hooks."""
 
 import json
-from threading import RLock
+from threading import Event, RLock
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -399,3 +399,197 @@ def test_depot_read_authenticates_and_checks_generation_before_inventory_writes(
         return
     assert parsed == []
     assert backup.read_archive(backup.export_archive(), include_tmp=True) == before
+
+
+@pytest.fixture
+def profile_run_intent(storage, monkeypatch):
+    import arknights_mower.__main__ as main
+    import server
+    from arknights_mower.utils import config, config_profiles, crash_recovery
+    from arknights_mower.utils import instance_supervisor as supervisor
+    from arknights_mower.utils import update_runtime as runtime
+
+    monkeypatch.setattr(server.app, "token", "intent-test-token", raising=False)
+    monkeypatch.setattr(server, "mower_thread", None)
+    monkeypatch.setattr(server, "chat_active_requests", 0)
+    monkeypatch.setattr(server, "active_job", lambda: None)
+    monkeypatch.setattr(server, "_job_running", lambda job: False)
+    monkeypatch.setattr(server, "_recycling_reports_running", lambda: False)
+    monkeypatch.setattr(server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(server, "shutdown", SimpleNamespace(closing=False))
+    monkeypatch.setattr(server, "_performance_test_status", lambda: {"status": "idle"})
+    monkeypatch.setattr(server, "maa_check_job", {"status": "idle"})
+    monkeypatch.setattr(main, "base_scheduler", None)
+    monkeypatch.setattr(
+        main,
+        "device_control",
+        SimpleNamespace(active=False, configuration_lock=RLock()),
+    )
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(crash_recovery, "_cancelled", False)
+    monkeypatch.setattr(crash_recovery, "_progress", {})
+    directory = storage("@app/supervisor")
+    directory.mkdir()
+    report, notice = directory / "child.json", directory / "recovery.json"
+    monkeypatch.setenv("MOWER_SUPERVISOR_DIRECTORY", str(directory))
+    monkeypatch.setenv("MOWER_SUPERVISOR_CHILD_REPORT", str(report))
+    monkeypatch.setenv("MOWER_SUPERVISOR_GENERATION", "intent-test-launch")
+    monkeypatch.delenv("MOWER_SUPERVISOR_INTENT", raising=False)
+    monkeypatch.setenv("MOWER_RECOVERY_RUN", "1")
+    runtime.write_json(notice, {"active": False, "phase": "resolved"})
+    supervisor.task_intent(True)
+    config_profiles.list_profiles()
+    return SimpleNamespace(
+        server=server,
+        client=server.app.test_client(),
+        config=config,
+        profiles=config_profiles,
+        recovery=crash_recovery,
+        runtime=runtime,
+        supervisor=supervisor,
+        report=report,
+        notice=notice,
+        activation_target=None,
+    )
+
+
+def _replace_configuration(api, operation):
+    from io import BytesIO
+
+    current = api.profiles.list_profiles()
+    if operation == "activate" and api.activation_target is None:
+        original = current["active_id"]
+        api.activation_target = api.profiles.create_profile(
+            "target", [], expected_generation=current["generation"]
+        )["active_id"]
+        current = api.profiles.activate_profile(
+            original, [], expected_generation=api.profiles.current_generation()
+        )
+    headers = {
+        "token": "intent-test-token",
+        "X-Mower-Settings": "1",
+        "X-Mower-Config-Generation": current["generation"],
+    }
+    if operation == "create":
+        return api.client.post(
+            "/config-profiles", headers=headers, json={"name": "created", "inherit": []}
+        )
+    if operation == "activate":
+        return api.client.post(
+            f"/config-profiles/{api.activation_target}/activate",
+            headers=headers,
+            json={"keep": []},
+        )
+    raw = api.profiles.export_current_archive()
+    if operation == "import":
+        return api.client.post(
+            "/config-profiles/import",
+            headers=headers,
+            data={"backup": (BytesIO(raw), "backup.zip"), "name": "imported"},
+        )
+    return api.client.post("/config-backup/import", headers=headers, data=raw)
+
+
+@pytest.mark.parametrize("operation", ["create", "activate", "import", "backup"])
+def test_successful_configuration_replacement_clears_old_run_intent_and_allows_manual_start(
+    profile_run_intent, monkeypatch, operation
+):
+    api = profile_run_intent
+    response = _replace_configuration(api, operation)
+    assert response.status_code == 200
+    assert api.runtime.read_json(api.report)["desired_running"] is False
+    assert api.recovery.cancelled()
+    assert api.config.stop_mower.is_set()
+
+    api.supervisor.child_ready(
+        SimpleNamespace(record={"port": 58000}, request=api.report.parent / "shutdown"),
+        desired_running=True,
+    )
+    assert api.runtime.read_json(api.report)["desired_running"] is False
+    assert api.recovery.cancelled()
+
+    worker = Mock()
+    monkeypatch.setattr(api.server, "Thread", Mock(return_value=worker))
+    started = api.client.get(
+        "/start/2",
+        headers={
+            "token": "intent-test-token",
+            "X-Mower-Config-Generation": api.profiles.current_generation(),
+        },
+    )
+    assert started.data == b"true"
+    worker.start.assert_called_once()
+    assert api.runtime.read_json(api.report)["desired_running"] is True
+    assert not api.recovery.cancelled()
+    assert not api.config.stop_mower.is_set()
+
+
+@pytest.mark.parametrize("operation", ["create", "activate", "import", "backup"])
+def test_failed_configuration_replacement_keeps_old_run_intent(
+    profile_run_intent, monkeypatch, operation
+):
+    api = profile_run_intent
+    if operation == "activate":
+        original = api.profiles.list_profiles()["active_id"]
+        api.activation_target = api.profiles.create_profile(
+            "target", [], expected_generation=api.profiles.current_generation()
+        )["active_id"]
+        api.profiles.activate_profile(
+            original, [], expected_generation=api.profiles.current_generation()
+        )
+    original_generation = api.profiles.current_generation()
+
+    def fail(_data):
+        raise OSError("metadata unavailable")
+
+    monkeypatch.setattr(api.profiles, "_write_registry", fail)
+    response = _replace_configuration(api, operation)
+    assert response.status_code == 500
+    assert api.profiles.current_generation() == original_generation
+    assert api.runtime.read_json(api.report)["desired_running"] is True
+    assert not api.recovery.cancelled()
+    assert not api.config.stop_mower.is_set()
+
+
+@pytest.mark.parametrize("operation", ["create", "backup"])
+def test_waiting_automatic_recovery_requires_stop_before_replacing_configuration(
+    profile_run_intent, operation
+):
+    api = profile_run_intent
+    api.runtime.write_json(
+        api.notice,
+        {"active": True, "phase": "waiting", "resume_requested": True},
+    )
+    generation = api.profiles.current_generation()
+    assert api.server.configuration_profiles_busy()
+    response = _replace_configuration(api, operation)
+    assert response.status_code == 409
+    assert api.profiles.current_generation() == generation
+    assert api.recovery.status()["automatic"]
+    assert api.runtime.read_json(api.report)["desired_running"] is True
+
+    stopped = api.client.get(
+        "/stop",
+        headers={"token": "intent-test-token", "X-Mower-Config-Generation": generation},
+    )
+    assert stopped.data == b"true"
+    assert not api.recovery.status()["automatic"]
+    assert _replace_configuration(api, operation).status_code == 200
+
+
+def test_renaming_configuration_preserves_pending_run_intent(profile_run_intent):
+    api = profile_run_intent
+    current = api.profiles.list_profiles()
+    response = api.client.patch(
+        f"/config-profiles/{current['active_id']}",
+        headers={
+            "token": "intent-test-token",
+            "X-Mower-Settings": "1",
+            "X-Mower-Config-Generation": current["generation"],
+        },
+        json={"name": "renamed"},
+    )
+    assert response.status_code == 200
+    assert api.runtime.read_json(api.report)["desired_running"] is True
+    assert not api.recovery.cancelled()
+    assert not api.config.stop_mower.is_set()

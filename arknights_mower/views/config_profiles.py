@@ -85,7 +85,12 @@ def _execute(action, *, mutation=True):
                         "ok": False,
                         "message": "请先停止 Mower，并等待设备操作、更新任务、AI 回复和回收站上报结束",
                     }, 409
-            return action()
+            result = action()
+            if mutation and result["generation"] != request.headers.get(
+                "X-Mower-Config-Generation"
+            ):
+                current_app.config.get("CONFIGURATION_ACTIVATED", lambda: None)()
+            return result
     except profiles.ProfileConflict as exc:
         return {"ok": False, "code": exc.code, "message": str(exc)}, 409
     except LocalConfigError as exc:
