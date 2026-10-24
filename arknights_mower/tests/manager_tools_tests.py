@@ -93,6 +93,15 @@ def test_common_preview_is_read_only_redacts_both_secrets_and_reports_native_mis
         manager.preview_common_settings({}, [])
 
 
+def test_common_preview_omits_manager_preferences_from_instance_changes(manager):
+    result = manager.preview_common_settings(
+        {"startup_mode": "background", "instance_page_mode": "webview"},
+        manager.instances.copy(),
+    )
+    assert all(row["fields"] == [] and row["warnings"] == [] for row in result["rows"])
+    assert not manager._common_path.exists()
+
+
 def test_common_preview_respects_independent_policy_and_current_shared_values(
     manager, monkeypatch
 ):

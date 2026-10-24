@@ -437,18 +437,18 @@ const idleOptions = computed(() => [
             label-align="left"
           >
             <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="自动救急">
-                自动救急
-                <help-text>
-                  初始化时多组主班低于救急线且普通轮休无法安排休息，使用救急排班接管普通工作站。
-                  恢复期间冻结正常副表，正常排班可接回周转后退出；双方副表生效后的设施类型、等级或产物不一致时不启动。
-                </help-text>
-              </n-checkbox>
+              <div class="rescue-controls">
+                <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="自动救急">
+                  自动救急
+                  <help-text>
+                    初始化时多组主班低于救急线且普通轮休无法安排休息，使用救急排班接管普通工作站。
+                    恢复期间冻结正常副表，正常排班可接回周转后退出；双方副表生效后的设施类型、等级或产物不一致时不启动。
+                  </help-text>
+                </n-checkbox>
+                <SessionLink to="/rescue-plan-editor"><n-button>救急排班</n-button></SessionLink>
+              </div>
             </n-form-item>
           </n-form>
-          <div class="task-related-actions task-plan-actions">
-            <SessionLink to="/rescue-plan-editor"><n-button>救急排班</n-button></SessionLink>
-          </div>
         </n-card>
       </div>
     </section>
@@ -806,6 +806,13 @@ const idleOptions = computed(() => [
 </template>
 
 <style scoped>
+.rescue-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .task-settings-panels {
   --settings-radius: 12px;
   --settings-card-border: var(--mower-border);

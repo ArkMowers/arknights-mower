@@ -67,6 +67,8 @@ class DesktopWindow:
         self.minimize = Mock()
         self.maximize = Mock()
         self.restore = Mock()
+        self.page_shown = Event()
+        self.show = Mock(side_effect=self.page_shown.set)
         self.destroy = Mock(side_effect=self._destroy)
 
     def expose(self, *methods):
@@ -491,6 +493,7 @@ def run_desktop_window(
     launch_mode,
     scenario,
     loaded_before_shown=False,
+    child_messages=(),
 ):
     import webview
 
@@ -558,7 +561,7 @@ def run_desktop_window(
         scenario(window, native_factory.adapters[0], save_mode)
 
     monkeypatch.setattr(webview, "start", start)
-    child = SimpleNamespace(recv=Mock(side_effect=EOFError))
+    child = SimpleNamespace(recv=Mock(side_effect=[*child_messages, EOFError()]))
     with pytest.raises(SystemExit):
         webview_ui.webview_window(
             child,
@@ -596,6 +599,25 @@ def test_real_desktop_window_keeps_normal_ratio_through_maximize_and_close(
 
     saved = run_desktop_window(monkeypatch, native_factory, backend, "normal", scenario)
     saved.assert_called_once_with(window_shell.WindowRatio(0.6, 0.7))
+
+
+@pytest.mark.parametrize("backend", ["gtk", "qt", "cocoa"])
+def test_manager_show_restores_existing_desktop_window(
+    monkeypatch, native_factory, backend
+):
+    def scenario(window, adapter, save_mode):
+        assert window.page_shown.wait(timeout=1)
+        window.restore.assert_called_once_with()
+        window.show.assert_called_once_with()
+
+    run_desktop_window(
+        monkeypatch,
+        native_factory,
+        backend,
+        "normal",
+        scenario,
+        child_messages=["show"],
+    )
 
 
 @pytest.mark.parametrize("loaded_before_shown", [False, True])

@@ -169,6 +169,8 @@ def test_legacy_flat_common_values_materialize_the_effective_binding(manager, tm
                 "device.manager_path": "C:/foreign/manager.exe",
                 "performance_mode": "low",
                 "account": "shared sender",
+                "startup_mode": "background",
+                "instance_page_mode": "webview",
             }
         )
     )
@@ -194,6 +196,8 @@ def test_legacy_flat_common_values_materialize_the_effective_binding(manager, tm
     )
     assert changed.device.model_dump() == expected.device.model_dump()
     assert changed.account == "shared sender"
+    assert "startup_mode" not in yaml.safe_load(path.read_text())
+    assert "instance_page_mode" not in yaml.safe_load(path.read_text())
     assert (
         manager.get_common_settings()["values"]["device.installation_path"]
         == "C:/foreign"

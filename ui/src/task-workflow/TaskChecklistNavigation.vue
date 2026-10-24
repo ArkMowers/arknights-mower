@@ -205,6 +205,8 @@ watch(
               class="checklist-checkbox"
               type="checkbox"
               :checked="Boolean(statuses[task.id])"
+              :indeterminate.prop="Boolean(task.indeterminate)"
+              :aria-checked="task.indeterminate ? 'mixed' : Boolean(statuses[task.id])"
               :aria-label="`启用${task.title}`"
               @change="emit('toggle', task.id, $event.target.checked)"
             />

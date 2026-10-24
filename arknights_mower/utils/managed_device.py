@@ -59,11 +59,11 @@ def preserve(data, current):
             "extra_settings_visible",
         ):
             data[key] = getattr(current, key)
-        from .manager_common import read_settings
+        from .manager_common import MANAGER_ONLY_KEYS, read_settings
 
         current_values = current.model_dump()
         for key in read_settings():
-            if key == "startup_mode":
+            if key in MANAGER_ONLY_KEYS:
                 continue
             parts = key.split(".")
             source, destination = current_values, data

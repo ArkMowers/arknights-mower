@@ -430,17 +430,15 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
         ]
     )
     solver.op_data.operators["引星棘刺"].depletion_rate = 6
+    sampled_at = solver.op_data.operators["引星棘刺"].time_stamp
     solver.task = replacement_check
     solver.infra_main()
     assert solver.task is None
     assert len(solver.tasks) == 2
     assert refresh in solver.tasks and replacement_check in solver.tasks
     assert replacement_check.time > execute_time
-    solver.get_agent_from_room.assert_called_once_with(
-        "room_2_2",
-        force_mood=True,
-        strict_observation=True,
-    )
+    solver.get_agent_from_room.assert_not_called()
+    assert solver.op_data.operators["引星棘刺"].time_stamp == sampled_at
     assert not solver.planned
     solver.task = refresh
     solver.infra_main()
@@ -462,7 +460,7 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
     assert any(task is replacement_check for task in solver.tasks)
     assert any(task is run_order for task in solver.tasks)
     solver.get_run_order_time.assert_called_once()
-    solver.enter_room.assert_called_once_with("room_2_2")
+    solver.enter_room.assert_not_called()
     base_schedule.send_message.assert_not_called()
 
 

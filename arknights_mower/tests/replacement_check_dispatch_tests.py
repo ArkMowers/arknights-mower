@@ -141,7 +141,7 @@ def test_due_dispatch_observes_before_generating_replacement_correction(
     assert correction.type == TaskTypes.SELF_CORRECTION
     assert correction.plan == {"central": ["赫默"]}
     assert solver.op_data.operators["歌蕾蒂娅"].current_room == "dormitory_1"
-    assert solver.get_agent_from_room.call_count == 2
+    assert solver.get_agent_from_room.call_count == 1
     sync_replacement_checks(solver)
     assert solver.tasks == [correction]
 
@@ -150,6 +150,7 @@ def test_failed_check_yields_to_independent_work_and_reopens_after_new_observati
     dispatch_solver, clock
 ):
     solver = dispatch_solver
+    solver.op_data.operators["薇薇安娜"].mood = 0
     sync_replacement_checks(solver)
     check = solver.tasks[0]
     solver.reading.update(mood=0, time=clock.now())

@@ -35,7 +35,10 @@ def save(manager, values, original=None, changes=None):
 def test_common_editor_defaults_match_existing_configuration():
     conf = Conf()
     for field in common.fields():
-        if field["kind"] in {"directory", "file"} or field["key"] == "startup_mode":
+        if (
+            field["kind"] in {"directory", "file"}
+            or field["key"] in common.MANAGER_ONLY_KEYS
+        ):
             continue
         actual = conf
         for name in field["key"].split("."):
@@ -92,6 +95,8 @@ def test_common_native_selection_is_a_draft_and_cancel_does_not_write(
         "/update_all_settings",
         "/select_common_path",
         "/open_browser",
+        "/open_instance_page",
+        "/open_instance_pages",
         "/config/manager-common.json",
         "/get_mower_update_info",
         "/check_mower_update",
@@ -178,6 +183,8 @@ def test_common_save_leaves_running_and_stopped_instance_files_untouched(
         {"performance_mode": "invalid"},
         {"startup_mode": "invalid"},
         {"startup_mode": True},
+        {"instance_page_mode": "invalid"},
+        {"instance_page_mode": True},
         {"custom_smtp_server.ssl_port": 65536},
         {"custom_smtp_server.encryption": "none"},
         {"device.screenshot_backend": "droidcast"},
@@ -289,9 +296,26 @@ def test_common_application_preserves_recipients_permissions_and_device_identity
     assert original.model_dump() == before
 
 
-def test_startup_mode_stays_manager_owned_and_does_not_patch_instance_configuration():
+@pytest.mark.parametrize(
+    "values", [{"startup_mode": "background"}, {"instance_page_mode": "webview"}]
+)
+def test_manager_preferences_do_not_patch_instance_configuration(values):
     original = Conf(start_automatically=False)
-    assert common.apply_settings(original, {"startup_mode": "background"}) is original
+    assert common.apply_settings(original, values) is original
+
+
+def test_instance_page_mode_persists_only_in_manager_common_settings(manager, tmp_path):
+    manager.add("one", str(tmp_path / "one"))
+    original = manager.get_common_settings()["values"]
+    assert "instance_page_mode" not in original
+    field = next(f for f in common.fields() if f["key"] == "instance_page_mode")
+    assert field["default"] == "browser"
+    save(manager, {**original, "instance_page_mode": "webview"}, original)
+    reopened = InstanceController(manager._storage_path)
+    assert reopened.get_common_settings()["values"]["instance_page_mode"] == "webview"
+    assert common.read_settings(manager._common_path)["instance_page_mode"] == "webview"
+    assert not (tmp_path / "one").exists()
+    assert "instance_page_mode" not in Conf.model_fields
 
 
 def test_common_template_paths_clear_endpoint_while_retaining_instance_binding():
@@ -356,6 +380,7 @@ def test_real_configuration_startup_reads_common_only_for_managed_launch(
                 "maa_path": "C:/shared-maa",
                 "account": "shared-sender",
                 "startup_mode": "background",
+                "instance_page_mode": "webview",
             }
         ),
         encoding="utf-8",

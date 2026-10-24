@@ -165,6 +165,33 @@ describe('selected settings directory entry visibility', () => {
     expect(writeScroll).not.toHaveBeenCalled()
   })
 
+  it('keeps focus and scroll in place when reward checkbox states change', async () => {
+    await mountDirectory()
+    const mobileFocus = vi.fn()
+    component.mobileToggle.value = { focus: mobileFocus }
+    component.mobileOpen.value = true
+    props.tasks.push({
+      id: 'rewards',
+      title: 'MAA 领取奖励',
+      group: 'settings',
+      mode: 'aggregate',
+      indeterminate: true
+    })
+    props.statuses.rewards = false
+    await nextTick()
+    props.tasks[2].indeterminate = false
+    props.statuses.rewards = true
+    await nextTick()
+    props.statuses.rewards = false
+    await nextTick()
+    expect(writeScroll).not.toHaveBeenCalled()
+    expect(viewport.scrollIntoView).not.toHaveBeenCalled()
+    expect(viewport.focus).not.toHaveBeenCalled()
+    expect(mobileFocus).not.toHaveBeenCalled()
+    expect(component.mobileOpen.value).toBe(true)
+    expect(emitted).not.toHaveBeenCalled()
+  })
+
   it('retains explicit entry selection and mobile focus restoration', async () => {
     await mountDirectory()
     const mobileFocus = vi.fn()

@@ -294,6 +294,7 @@ def test_browser_action_addresses_ready_registration_without_starting_another_in
     manager, monkeypatch
 ):
     manager.update_settings(0, {"token": "saved-token", "port": 58001})
+    runtime.write_json(manager._common_path, {"instance_page_mode": "webview"})
     registered = record(manager, port=59002)
     pending = {**registered, "ready": False}
     monkeypatch.setattr(runtime, "instances", lambda **kwargs: [pending, registered])
@@ -306,8 +307,9 @@ def test_browser_action_addresses_ready_registration_without_starting_another_in
 
 
 @pytest.mark.parametrize("state", ["stopped", "starting", "stopping", "unmanaged"])
+@pytest.mark.parametrize("method", ["open_browser", "open_instance_page"])
 def test_browser_action_rechecks_instance_readiness_before_dispatch(
-    manager, monkeypatch, state
+    manager, monkeypatch, state, method
 ):
     registered = record(manager)
     registered["ready"] = state != "starting"
@@ -320,22 +322,70 @@ def test_browser_action_rechecks_instance_readiness_before_dispatch(
     if state == "stopping":
         runtime.send_instance_command(registered, "exit")
     assert not manager.get_instances()[0]["can_open_browser"]
-    assert not manager.open_browser(0, dict(manager.instances[0]))["ok"]
+    assert not getattr(manager, method)(0, dict(manager.instances[0]))["ok"]
     assert not (runtime.state_dir() / "commands").exists()
     controls.subprocess.Popen.assert_not_called()
 
 
-def test_browser_action_rejects_stale_target_and_unreadable_state(manager, monkeypatch):
+@pytest.mark.parametrize("method", ["open_browser", "open_instance_page"])
+def test_browser_action_rejects_stale_target_and_unreadable_state(
+    manager, monkeypatch, method
+):
+    open_page = getattr(manager, method)
     target = dict(manager.instances[0])
     manager.rename(0, "renamed")
-    assert not manager.open_browser(0, target)["ok"]
-    assert not manager.open_browser(-1, dict(manager.instances[0]))["ok"]
-    assert not manager.open_browser(True, dict(manager.instances[0]))["ok"]
+    assert not open_page(0, target)["ok"]
+    assert not open_page(-1, dict(manager.instances[0]))["ok"]
+    assert not open_page(True, dict(manager.instances[0]))["ok"]
     monkeypatch.setattr(runtime, "instances", Mock(side_effect=OSError("scan failed")))
-    assert manager.open_browser(0, dict(manager.instances[0])) == {
+    assert open_page(0, dict(manager.instances[0])) == {
         "ok": False,
         "message": "scan failed",
     }
+    assert not (runtime.state_dir() / "commands").exists()
+
+
+@pytest.mark.parametrize("mode,action", [("browser", "browser"), ("webview", "show")])
+@pytest.mark.parametrize("assistant", [False, True])
+@pytest.mark.parametrize("updates", [False, True])
+def test_instance_page_uses_current_manager_preference_and_retains_permissions(
+    manager, monkeypatch, mode, action, assistant, updates
+):
+    manager.update_settings(
+        0,
+        {
+            "token": "saved-token",
+            "port": 58001,
+            "ai_assistant_enabled": assistant,
+            "updates_enabled": updates,
+        },
+    )
+    before = read_conf(manager)
+    if mode is not None:
+        runtime.write_json(manager._common_path, {"instance_page_mode": mode})
+    registered = record(manager, port=59002)
+    monkeypatch.setattr(
+        runtime,
+        "instances",
+        lambda **kwargs: [{**registered, "ready": False}, registered],
+    )
+    assert manager.open_instance_page(0, dict(manager.instances[0])) == {"ok": True}
+    commands = list((runtime.state_dir() / "commands/registered").glob("*.json"))
+    assert [json.loads(command.read_text()) for command in commands] == [
+        {"action": action}
+    ]
+    assert read_conf(manager) == before
+    controls.subprocess.Popen.assert_not_called()
+
+
+def test_invalid_page_preference_blocks_dispatch_without_replacing_saved_data(
+    manager, monkeypatch
+):
+    runtime.write_json(manager._common_path, {"instance_page_mode": "invalid"})
+    before = manager._common_path.read_bytes()
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
+    assert not manager.open_instance_page(0, dict(manager.instances[0]))["ok"]
+    assert manager._common_path.read_bytes() == before
     assert not (runtime.state_dir() / "commands").exists()
 
 

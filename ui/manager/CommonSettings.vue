@@ -65,10 +65,10 @@ function change(field, value) {
     <summary>
       <span>通用设置</span>
       <n-tag size="small">{{ Object.keys(values).length }} 项</n-tag>
-      <span class="effective-time">下次启动生效</span>
+      <span class="effective-time">实例配置下次启动生效</span>
     </summary>
     <p class="common-description">
-      未启用独立配置的实例共用此处的模拟器预设、路径、连接、截图、启动和性能参数，仅单独设置实例编号、实例名称和游戏包名。页面等待参数默认统一应用，开启独立配置后可单独设置；其他项目勾选后统一应用。修改在下次受管理启动时生效。
+      未启用独立配置的实例共用此处的模拟器预设、路径、连接、截图、启动和性能参数，仅单独设置实例编号、实例名称和游戏包名。页面等待参数默认统一应用，开启独立配置后可单独设置；其他项目勾选后统一应用。实例配置在下次受管理启动时生效；实例页面打开方式在保存后用于“打开实例页面”按钮。
     </p>
     <n-input
       v-model:value="search"

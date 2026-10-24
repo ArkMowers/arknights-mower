@@ -137,6 +137,7 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
             "account": "manager-sender",
             "pass_code": "manager-secret",
             "startup_mode": "background",
+            "instance_page_mode": "webview",
         },
     )
     config.conf.start_automatically = True

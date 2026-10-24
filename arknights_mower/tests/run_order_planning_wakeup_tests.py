@@ -734,7 +734,7 @@ def test_paused_empty_order_keeps_same_refresh_without_repeated_reads(
 
 
 def test_staffing_change_resumes_original_paused_order_refresh(paused_empty_order):
-    solver, clock, _, refresh, states = paused_empty_order
+    solver, clock, correction, refresh, states = paused_empty_order
     original_time = refresh.time
     dispatch(solver, clock, observe_failures=False)
     assert any(task is refresh for task in solver.tasks)
@@ -746,6 +746,17 @@ def test_staffing_change_resumes_original_paused_order_refresh(paused_empty_orde
     solver._resume_failed_tasks()
     assert not getattr(refresh, "execution_failure", None)
     assert refresh.time == original_time
+    solver.read_time.assert_called_once()
+    remaining_at_read = []
+
+    def read_after_staffing(*args, **kwargs):
+        assert any(task is refresh for task in solver.tasks)
+        assert refresh.time == original_time
+        assert not any(task.type == TaskTypes.RUN_ORDER for task in solver.tasks)
+        remaining_at_read.append(set(correction.plan))
+        return 3600 if correction.plan else 1800
+
+    solver.read_time.side_effect = read_after_staffing
     for _ in range(3):
         dispatch(solver, clock, observe_failures=False)
         if not any(task is refresh for task in solver.tasks):
@@ -753,8 +764,11 @@ def test_staffing_change_resumes_original_paused_order_refresh(paused_empty_orde
     assert not any(task is refresh for task in solver.tasks)
     orders = [task for task in solver.tasks if task.type == TaskTypes.RUN_ORDER]
     assert len(orders) == 1 and orders[0].meta_data == "room_1_1"
-    assert orders[0].time > clock.now()
-    assert solver.read_time.call_count == 2
+    assert remaining_at_read == [{"contact", "room_1_1"}, {"room_1_1"}, set()]
+    assert orders[0].time == clock.now() + timedelta(
+        seconds=1800 - 60 * config.conf.run_order_delay
+    )
+    assert solver.read_time.call_count == 4
 
 
 def test_saved_paused_refresh_remains_suspended_until_room_changes(

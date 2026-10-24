@@ -28,6 +28,14 @@ const busy = ref(false)
 const error = ref('')
 const initializationError = ref('')
 const confirmation = ref(null)
+const pageOpening = ref(null)
+const pageMode = ref('browser')
+const rememberPageMode = ref(false)
+const pageResult = ref(null)
+const pageSummary = computed(() => {
+  const count = (status) => (pageResult.value || []).filter((item) => item.status === status).length
+  return `已派发 ${count('opened')} 个页面，跳过 ${count('skipped')} 个，失败 ${count('failed')} 个`
+})
 const deleting = ref(null)
 const editing = ref(null)
 const displayedEditing = ref(null)
@@ -42,6 +50,28 @@ watch(
 const draft = ref({ name: '', token: '', port: null })
 const batchDraft = ref([])
 const batchAiRead = ref(false)
+const batchBooleanColumns = [
+  { key: 'ai_assistant_enabled', label: 'Mower AI 助手', change: changeBatchAssistant },
+  { key: 'updates_enabled', label: '允许更新', change: changeBatchUpdates },
+  { key: 'start_automatically', label: '启动后自动开始', change: changeBatchAutomatic },
+  { key: 'extra_settings_visible', label: '显示更新与维护设置', change: changeBatchExtraSettings }
+]
+const batchSelection = computed(() => {
+  const editableRows = batchDraft.value.filter((_, idx) => batchEditable(idx))
+  return Object.fromEntries(
+    batchBooleanColumns.map(({ key }) => {
+      const selected = editableRows.filter((row) => row[key]).length
+      return [
+        key,
+        {
+          checked: editableRows.length > 0 && selected === editableRows.length,
+          indeterminate: selected > 0 && selected < editableRows.length,
+          disabled: unavailable.value || !!assistantConfirmation.value || !editableRows.length
+        }
+      ]
+    })
+  )
+})
 const batchResult = ref(null)
 const commonDraft = ref({})
 const commonOriginal = ref({})
@@ -75,7 +105,7 @@ const batchChanges = computed(() => {
 const batchSummary = computed(() => {
   const results = batchResult.value?.results || []
   const count = (status) => results.filter((item) => item.status === status).length
-  const prefix = batchResult.value?.common_saved ? '通用设置已保存，下次启动生效。' : ''
+  const prefix = batchResult.value?.common_saved ? '通用设置已保存。' : ''
   if (prefix && !results.length) return prefix
   return `${prefix}已更新 ${count('updated')} 个，跳过 ${count('skipped')} 个，失败 ${count('failed')} 个`
 })
@@ -146,6 +176,23 @@ function deviceSaved() {
 function acceptInstances(loaded) {
   instances.value = loaded
   connected.value = true
+  if (pageOpening.value) {
+    const request = pageOpening.value
+    const changed =
+      request.kind === 'all'
+        ? loaded.length !== request.targets.length ||
+          loaded.some(
+            (item, idx) =>
+              item.name !== request.targets[idx].name || item.path !== request.targets[idx].path
+          )
+        : !loaded[request.idx]?.can_open_browser ||
+          loaded[request.idx].name !== request.target.name ||
+          loaded[request.idx].path !== request.target.path
+    if (changed) {
+      pageOpening.value = null
+      error.value = '实例状态或列表已变化，请重新打开实例页面'
+    }
+  }
   if (deviceEditor.value) {
     const { idx, target } = deviceEditor.value
     const current = loaded[idx]
@@ -163,7 +210,7 @@ function acceptInstances(loaded) {
     ) {
       editing.value = null
       cancelAssistantConfirmation()
-      error.value = '实例列表已变化，请重新打开批量配置'
+      error.value = '实例列表已变化，请重新打开配置管理'
     }
   } else if (editing.value) {
     const current = loaded[editing.value.idx]
@@ -404,7 +451,7 @@ async function save() {
         : await api().update_all_settings(changes, targets)
       if (result?.ok !== false) {
         if (!Array.isArray(result?.results))
-          throw new Error('批量配置结果格式不正确，请刷新后检查各实例')
+          throw new Error('配置管理结果格式不正确，请刷新后检查各实例')
         batchResult.value = result
       }
       return result
@@ -536,11 +583,54 @@ function lifecycle(idx) {
   execute(() => api()[instance.state === 'stopped' ? 'start' : 'stop'](idx, target))
 }
 
-function openBrowser(idx) {
+function openInstancePage(idx) {
   const instance = instances.value[idx]
-  if (!instance?.can_open_browser) return
+  if (unavailable.value || pageOpening.value || !instance?.can_open_browser) return
   const target = { name: instance.name, path: instance.path }
-  return execute(() => api().open_browser(idx, target))
+  return dispatchPages({ kind: 'one', idx, target })
+}
+
+function openAllInstancePages() {
+  if (
+    unavailable.value ||
+    pageOpening.value ||
+    !instances.value.some((item) => item.can_open_browser)
+  )
+    return
+  const targets = instances.value.map(({ name, path }) => ({ name, path }))
+  return dispatchPages({ kind: 'all', targets })
+}
+
+function dispatchPages(request, mode, remember = false) {
+  pageResult.value = null
+  return execute(async () => {
+    const result =
+      request.kind === 'all'
+        ? await api().open_instance_pages(request.targets, ...(mode ? [mode, remember] : []))
+        : await api().open_instance_page(
+            request.idx,
+            request.target,
+            ...(mode ? [mode, remember] : [])
+          )
+    if (result?.needs_mode && !mode) {
+      pageMode.value = 'browser'
+      rememberPageMode.value = false
+      pageOpening.value = request
+      return { ok: true }
+    }
+    if (Array.isArray(result?.results)) pageResult.value = result.results
+    if (result?.ok === false && result?.results && !result.message)
+      return { ...result, message: '部分页面未能打开，请查看逐实例结果' }
+    return result
+  })
+}
+
+function confirmPageMode() {
+  if (unavailable.value || !pageOpening.value) return false
+  const request = pageOpening.value
+  pageOpening.value = null
+  void dispatchPages(request, pageMode.value, rememberPageMode.value)
+  return false
 }
 
 function confirmDelete(idx) {
@@ -563,12 +653,25 @@ function addInstance() {
 
 <template>
   <div class="mower-list" :data-manager-ready="ready">
-    <div v-if="initializationError || error || batchResult" class="manager-feedback">
+    <div v-if="initializationError || error || batchResult || pageResult" class="manager-feedback">
       <n-alert v-if="initializationError" type="error">
         {{ initializationError }}
         <template #action><n-button @click="initialize">重新加载</n-button></template>
       </n-alert>
       <n-alert v-if="error" type="warning" closable @close="error = ''">{{ error }}</n-alert>
+      <n-alert
+        v-if="pageResult"
+        :title="pageSummary"
+        :type="pageResult.some((item) => item.status === 'failed') ? 'error' : 'info'"
+        closable
+        @close="pageResult = null"
+      >
+        <ul v-if="pageResult.some((item) => item.status !== 'opened')" class="batch-results">
+          <li v-for="item in pageResult.filter((item) => item.status !== 'opened')" :key="item.idx">
+            {{ item.name }}：{{ item.message }}
+          </li>
+        </ul>
+      </n-alert>
       <n-alert
         v-if="batchResult"
         :title="batchSummary"
@@ -614,6 +717,15 @@ function addInstance() {
         >全部打开
       </n-button>
       <n-button
+        :disabled="unavailable || !instances.some((i) => i.can_open_browser)"
+        @click="openAllInstancePages"
+      >
+        <template #icon
+          ><n-icon><browser-icon /></n-icon
+        ></template>
+        一键开启页面
+      </n-button>
+      <n-button
         :disabled="unavailable || !instances.some((i) => i.can_stop)"
         @click="confirmBulk('stop')"
       >
@@ -624,18 +736,34 @@ function addInstance() {
       <n-button :disabled="unavailable" @click="editBatch">
         <template #icon
           ><n-icon><settings-icon /></n-icon></template
-        >批量配置
+        >配置管理
       </n-button>
       <n-button :disabled="unavailable" @click="toolsOpen = true">维护工具</n-button>
     </div>
     <n-empty
       v-if="ready && !instances.length"
-      description="添加实例，或先在批量配置中设置通用参数"
+      description="添加实例，或先在配置管理中设置通用参数"
     />
     <n-skeleton v-if="loading" :height="140" />
     <n-card v-for="(instance, idx) in instances" :key="idx" size="small">
       <div class="instance-heading">
-        <strong class="instance-name">{{ instance.name }}</strong>
+        <div class="instance-identity">
+          <strong class="instance-name">{{ instance.name }}</strong>
+          <n-button
+            text
+            size="small"
+            class="instance-page-action"
+            type="primary"
+            :disabled="unavailable || !instance.can_open_browser"
+            :aria-label="`${instance.name} 打开实例页面`"
+            @click="openInstancePage(idx)"
+          >
+            <template #icon
+              ><n-icon><browser-icon /></n-icon
+            ></template>
+            打开实例页面
+          </n-button>
+        </div>
         <n-tag size="small" :type="instance.state === 'running' ? 'success' : 'default'">{{
           statuses[instance.state]
         }}</n-tag>
@@ -694,19 +822,6 @@ function addInstance() {
               ><n-icon><trash-icon /></n-icon></template
           ></n-button>
         </div>
-        <n-button
-          text
-          size="small"
-          class="browser-action"
-          :disabled="unavailable || !instance.can_open_browser"
-          :aria-label="`${instance.name} 在浏览器中打开`"
-          @click="openBrowser(idx)"
-        >
-          <template #icon
-            ><n-icon><browser-icon /></n-icon
-          ></template>
-          在浏览器中打开
-        </n-button>
       </div>
       <code class="folder-content">{{ instance.path || '未选择保存目录' }}</code>
       <div class="connection-info">
@@ -799,7 +914,7 @@ function addInstance() {
         displayedEditing?.kind === 'name'
           ? '实例名称'
           : displayedEditing?.kind === 'batch'
-            ? '批量实例配置'
+            ? '配置管理'
             : '实例配置'
       "
       class="settings-dialog"
@@ -866,62 +981,15 @@ function addInstance() {
               </div>
             </div>
             <h2 class="section-title">逐实例配置</h2>
-            <p class="section-description">只保存修改过的单元格；运行中的实例会跳过。</p>
+            <p class="section-description">
+              共
+              {{ displayedEditing.targets.length }}
+              个实例。勾选表头可批量设置可编辑实例；只保存修改过的单元格，运行中的实例会跳过。
+            </p>
             <p class="section-description">
               “显示更新与维护设置”控制实例页面的“网络与更新”和“数据与维护”两组，下次启动生效；不改变更新许可或
               AI 助手权限。
             </p>
-            <div class="batch-actions">
-              <span>{{ displayedEditing.targets.length }} 个实例</span>
-              <n-button
-                size="small"
-                :disabled="unavailable || !!assistantConfirmation"
-                @click="changeBatchAutomatic(true)"
-                >全部自动开始</n-button
-              >
-              <n-button
-                size="small"
-                :disabled="unavailable || !!assistantConfirmation"
-                @click="changeBatchAutomatic(false)"
-                >全部手动开始</n-button
-              >
-              <n-button
-                size="small"
-                :disabled="unavailable || !!assistantConfirmation"
-                @click="changeBatchAssistant(true)"
-                >AI 全部开启</n-button
-              >
-              <n-button
-                size="small"
-                :disabled="unavailable || !!assistantConfirmation"
-                @click="changeBatchAssistant(false)"
-                >AI 全部关闭</n-button
-              >
-              <n-button
-                size="small"
-                :disabled="unavailable || !!assistantConfirmation"
-                @click="changeBatchUpdates(true)"
-                >全部允许更新</n-button
-              >
-              <n-button
-                size="small"
-                :disabled="unavailable || !!assistantConfirmation"
-                @click="changeBatchUpdates(false)"
-                >全部禁止更新</n-button
-              >
-              <n-button
-                size="small"
-                :disabled="unavailable || !!assistantConfirmation"
-                @click="changeBatchExtraSettings(true)"
-                >全部显示更新与维护</n-button
-              >
-              <n-button
-                size="small"
-                :disabled="unavailable || !!assistantConfirmation"
-                @click="changeBatchExtraSettings(false)"
-                >全部隐藏更新与维护</n-button
-              >
-            </div>
             <div class="batch-table-scroll">
               <table class="batch-table">
                 <colgroup>
@@ -938,10 +1006,16 @@ function addInstance() {
                     <th scope="col">实例名称</th>
                     <th scope="col">Token</th>
                     <th scope="col">端口</th>
-                    <th scope="col">Mower AI 助手</th>
-                    <th scope="col">允许更新</th>
-                    <th scope="col">启动后自动开始</th>
-                    <th scope="col">显示更新与维护设置</th>
+                    <th v-for="column in batchBooleanColumns" :key="column.key" scope="col">
+                      <n-checkbox
+                        :checked="batchSelection[column.key].checked"
+                        :indeterminate="batchSelection[column.key].indeterminate"
+                        :disabled="batchSelection[column.key].disabled"
+                        :aria-label="`批量设置${column.label}`"
+                        @update:checked="(enabled) => column.change(enabled)"
+                        >{{ column.label }}</n-checkbox
+                      >
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -977,34 +1051,34 @@ function addInstance() {
                       />
                     </td>
                     <td>
-                      <n-switch
-                        :value="row.ai_assistant_enabled"
+                      <n-checkbox
+                        :checked="row.ai_assistant_enabled"
                         :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
                         :aria-disabled="
                           unavailable || !batchEditable(idx) || !!assistantConfirmation
                         "
                         :aria-label="`${displayedEditing.targets[idx].name} AI 助手`"
-                        @update:value="(enabled) => changeBatchAssistant(enabled, idx)"
+                        @update:checked="(enabled) => changeBatchAssistant(enabled, idx)"
                       />
                     </td>
                     <td>
-                      <n-switch
-                        :value="row.updates_enabled"
+                      <n-checkbox
+                        :checked="row.updates_enabled"
                         :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
                         :aria-label="`${displayedEditing.targets[idx].name} 允许更新`"
-                        @update:value="(enabled) => changeBatchUpdates(enabled, idx)"
+                        @update:checked="(enabled) => changeBatchUpdates(enabled, idx)"
                       />
                     </td>
                     <td>
-                      <n-switch
-                        v-model:value="row.start_automatically"
+                      <n-checkbox
+                        v-model:checked="row.start_automatically"
                         :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
                         :aria-label="`${displayedEditing.targets[idx].name} 启动后自动开始任务`"
                       />
                     </td>
                     <td>
-                      <n-switch
-                        v-model:value="row.extra_settings_visible"
+                      <n-checkbox
+                        v-model:checked="row.extra_settings_visible"
                         :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
                         :aria-label="`${displayedEditing.targets[idx].name} 显示更新与维护设置`"
                       />
@@ -1103,6 +1177,33 @@ function addInstance() {
       >
     </n-modal>
     <n-modal
+      :show="!!pageOpening"
+      preset="dialog"
+      title="选择实例页面打开方式"
+      positive-text="打开"
+      negative-text="取消"
+      :positive-button-props="{ disabled: unavailable }"
+      @positive-click="confirmPageMode"
+      @negative-click="pageOpening = null"
+      @close="pageOpening = null"
+      @update:show="
+        (show) => {
+          if (!show) pageOpening = null
+        }
+      "
+    >
+      <p>请选择本次打开方式。勾选“记住我的选择”后，下次直接使用，也可在“配置管理”中修改。</p>
+      <n-radio-group v-model:value="pageMode" aria-label="实例页面打开方式">
+        <n-space vertical>
+          <n-radio value="browser">外部默认浏览器</n-radio>
+          <n-radio value="webview">内置 WebView</n-radio>
+        </n-space>
+      </n-radio-group>
+      <n-checkbox v-model:checked="rememberPageMode" class="remember-page-mode"
+        >记住我的选择</n-checkbox
+      >
+    </n-modal>
+    <n-modal
       :show="!!assistantConfirmation"
       preset="dialog"
       type="warning"
@@ -1162,6 +1263,10 @@ function addInstance() {
 .manager-feedback {
   display: grid;
   gap: 10px;
+}
+.remember-page-mode {
+  display: flex;
+  margin-top: 16px;
 }
 .bulk-actions,
 .instance-heading,
@@ -1227,9 +1332,16 @@ function addInstance() {
 .instance-heading {
   min-height: 32px;
 }
+.instance-identity {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
 .instance-name {
   min-width: 0;
-  flex: 1;
   overflow-wrap: anywhere;
   font-size: 15px;
 }
@@ -1237,8 +1349,8 @@ function addInstance() {
   flex-wrap: wrap;
   margin: 10px 0;
 }
-.browser-action {
-  margin-left: auto;
+.instance-page-action {
+  flex-shrink: 0;
 }
 .folder-content {
   display: block;
@@ -1274,14 +1386,6 @@ function addInstance() {
 .ai-risk-notice p:last-child {
   margin-bottom: 0;
 }
-.batch-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.batch-actions > span,
 .batch-change-count {
   margin-right: auto;
   font-size: 13px;

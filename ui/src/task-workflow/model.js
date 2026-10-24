@@ -133,18 +133,20 @@ const taskSwitches = {
   long: 'maa_rg_enable'
 }
 
-function hasMaaDaily(config) {
-  return Boolean(
-    (config.stage_plan_enable && config.stage_plan_runner === 'maa') ||
-    (config.visit_friend_enable && config.visit_friend_mode === 'maa') ||
-    (config.maa_mall_enable && config.maa_mall_mode === 'maa') ||
-    config.maa_credit_fight ||
-    config.maa_mail ||
-    config.maa_recruit ||
-    config.maa_orundum ||
-    config.maa_mining ||
-    config.maa_specialaccess
-  )
+const maaRewardFields = [
+  'maa_mail',
+  'maa_recruit',
+  'maa_orundum',
+  'maa_mining',
+  'maa_specialaccess'
+]
+
+export function getMaaRewardSelection(config) {
+  const checked = maaRewardFields.every((key) => Boolean(config[key]))
+  return {
+    checked,
+    indeterminate: !checked && maaRewardFields.some((key) => Boolean(config[key]))
+  }
 }
 
 export function createTaskWorkflow(config) {
@@ -170,6 +172,7 @@ export function createTaskWorkflow(config) {
           ? 'MAA 恢复主题 目标主题'
           : editorKeywords[id] || ''
     }))
+  const rewardSelection = getMaaRewardSelection(config)
   const tasks = taskDefinitions
     .filter(([id]) => !hiddenEditors.has(id))
     .map(([id, group]) => {
@@ -181,7 +184,9 @@ export function createTaskWorkflow(config) {
         description: editor.description,
         searchKeywords: editor.searchKeywords,
         group,
-        mode: Object.hasOwn(taskSwitches, id) ? 'switch' : 'automatic'
+        mode:
+          id === 'rewards' ? 'aggregate' : Object.hasOwn(taskSwitches, id) ? 'switch' : 'automatic',
+        ...(id === 'rewards' ? { indeterminate: rewardSelection.indeterminate } : {})
       }
     })
   const workshopSettings = config.workshop_manual_settings ?? config.workshop_settings ?? []
@@ -192,7 +197,7 @@ export function createTaskWorkflow(config) {
       if (Object.hasOwn(taskSwitches, task.id))
         return [task.id, Boolean(config[taskSwitches[task.id]])]
       if (task.id === 'workshop') return [task.id, workshopSettings.some((entry) => entry.enabled)]
-      if (task.id === 'rewards') return [task.id, hasMaaDaily(config)]
+      if (task.id === 'rewards') return [task.id, rewardSelection.checked]
       return [task.id, true]
     })
   )
@@ -200,11 +205,15 @@ export function createTaskWorkflow(config) {
 }
 
 export function setTaskEnabled(config, id, value) {
+  if (id === 'rewards') {
+    for (const key of maaRewardFields) config[key] = Boolean(value)
+    return true
+  }
   if (!Object.hasOwn(taskSwitches, id)) return false
   config[taskSwitches[id]] = id === 'long' ? (value ? 1 : 0) : Boolean(value)
   return true
 }
 
 export function setAllTasksEnabled(config, value) {
-  for (const id of Object.keys(taskSwitches)) setTaskEnabled(config, id, value)
+  for (const id of [...Object.keys(taskSwitches), 'rewards']) setTaskEnabled(config, id, value)
 }

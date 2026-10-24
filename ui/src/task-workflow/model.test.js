@@ -159,7 +159,6 @@ describe('task configuration checklist', () => {
     'runorder',
     'drone',
     'workshop',
-    'rewards',
     'intervals',
     'runtime',
     'accounts',
@@ -183,7 +182,7 @@ describe('task configuration checklist', () => {
     expect(config.workshop_manual_settings[0].enabled).toBe(true)
   })
 
-  it('changes independent switches without clearing plans, reward choices or parameters', () => {
+  it('changes task and reward switches without clearing plans or parameters', () => {
     const config = {
       ...Object.fromEntries(switches.map(([, field]) => [field, true])),
       maa_rg_enable: 1,
@@ -193,7 +192,11 @@ describe('task configuration checklist', () => {
       maa_gap: 3,
       automatic_rescue_enable: true,
       workshop_manual_settings: [{ enabled: true, operator: '九色鹿' }],
+      maa_mail: true,
       maa_recruit: true,
+      maa_orundum: true,
+      maa_mining: true,
+      maa_specialaccess: true,
       stage_plan_runner: 'maa',
       visit_friend_mode: 'mower',
       maa_mall_mode: 'maa',
@@ -203,7 +206,12 @@ describe('task configuration checklist', () => {
     setAllTasksEnabled(config, false)
     expect(config).toEqual({
       ...before,
-      ...Object.fromEntries(switches.map(([, key]) => [key, key === 'maa_rg_enable' ? 0 : false]))
+      ...Object.fromEntries(switches.map(([, key]) => [key, key === 'maa_rg_enable' ? 0 : false])),
+      maa_mail: false,
+      maa_recruit: false,
+      maa_orundum: false,
+      maa_mining: false,
+      maa_specialaccess: false
     })
     setAllTasksEnabled(config, true)
     expect(config).toEqual(before)
@@ -250,16 +258,16 @@ describe('task configuration checklist', () => {
   })
 
   it.each([
-    [{ stage_plan_enable: true, stage_plan_runner: 'maa' }, true],
+    [{ stage_plan_enable: true, stage_plan_runner: 'maa' }, false],
     [{ stage_plan_enable: true, stage_plan_runner: 'mower' }, false],
-    [{ visit_friend_enable: true, visit_friend_mode: 'maa' }, true],
+    [{ visit_friend_enable: true, visit_friend_mode: 'maa' }, false],
     [{ visit_friend_enable: true, visit_friend_mode: 'mower' }, false],
-    [{ maa_mall_enable: true, maa_mall_mode: 'maa' }, true],
+    [{ maa_mall_enable: true, maa_mall_mode: 'maa' }, false],
     [{ maa_mall_enable: true, maa_mall_mode: 'mower' }, false],
-    [{ maa_credit_fight: true }, true],
+    [{ maa_credit_fight: true }, false],
     [{ maa_rg_enable: 1, maa_long_task_type: 'rogue' }, false],
     [{ maa_enable: true }, false]
-  ])('derives MAA reward activity from actual daily work', (config, enabled) => {
+  ])('keeps reward selection independent of other MAA daily tasks', (config, enabled) => {
     expect(createTaskWorkflow(config).statuses.rewards).toBe(enabled)
   })
 
@@ -267,11 +275,56 @@ describe('task configuration checklist', () => {
     'recognizes %s as an additional MAA reward without enabling public recruitment',
     (key) => {
       const workflow = createTaskWorkflow({ [key]: true, recruit_enable: false })
-      expect(workflow.statuses.rewards).toBe(true)
+      expect(workflow.statuses.rewards).toBe(false)
+      expect(workflow.tasks.find(({ id }) => id === 'rewards').indeterminate).toBe(true)
       expect(workflow.statuses.recruit).toBe(false)
-      expect(workflow.tasks.find(({ id }) => id === 'rewards').mode).toBe('automatic')
+      expect(workflow.tasks.find(({ id }) => id === 'rewards').mode).toBe('aggregate')
     }
   )
+
+  it('selects all five rewards and clears them without modifying other tasks or Mower mail', () => {
+    const config = {
+      maa_mail: false,
+      maa_recruit: true,
+      maa_orundum: false,
+      maa_mining: true,
+      maa_specialaccess: false,
+      check_mail_enable: true,
+      mail_skip_clear_read: false,
+      recruit_enable: false,
+      visit_friend_enable: true,
+      maa_mall_enable: false,
+      stage_plan_enable: true,
+      maa_credit_fight: true
+    }
+    const before = { ...config }
+    expect(setTaskEnabled(config, 'rewards', true)).toBe(true)
+    expect(config).toEqual({
+      ...before,
+      maa_mail: true,
+      maa_recruit: true,
+      maa_orundum: true,
+      maa_mining: true,
+      maa_specialaccess: true
+    })
+    expect(createTaskWorkflow(config).statuses.rewards).toBe(true)
+    expect(createTaskWorkflow(config).tasks.find(({ id }) => id === 'rewards').indeterminate).toBe(
+      false
+    )
+    expect(setTaskEnabled(config, 'rewards', false)).toBe(true)
+    expect(config).toEqual({
+      ...before,
+      maa_mail: false,
+      maa_recruit: false,
+      maa_orundum: false,
+      maa_mining: false,
+      maa_specialaccess: false
+    })
+    expect(createTaskWorkflow(config).statuses.rewards).toBe(false)
+    expect(createTaskWorkflow(config).tasks.find(({ id }) => id === 'rewards').indeterminate).toBe(
+      false
+    )
+  })
 
   it('reads configuration without mutations, credentials or invented runtime state', () => {
     const config = freeze({

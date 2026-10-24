@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from arknights_mower.tests.config_profiles_tests import storage as storage
+from arknights_mower.tests.mastery_start_tests import dialog_context as dialog_context
 
 
 @pytest.fixture
@@ -93,6 +94,86 @@ def test_current_generation_reaches_read_only_validation(guarded_server):
     )
     assert response.status_code == 400
     assert response.json["error"] == "invalid_configuration"
+
+
+@pytest.mark.parametrize("path", ["/task", "/mastery-plan"])
+@pytest.mark.parametrize(
+    "generation", [None, "previous-generation", "active-generation", "legacy"]
+)
+def test_manual_task_submission_preserves_profile_generation_boundary(
+    guarded_server, dialog_context, monkeypatch, path, generation
+):
+    from arknights_mower.utils import config, mastery_db
+    from arknights_mower.utils.scheduler_task import TaskTypes
+    from arknights_mower.views import task as task_view
+
+    _, profiles, client = guarded_server
+    context = dialog_context
+    context.scheduler.find_next_task = Mock(return_value=None)
+    worker = Mock()
+    worker.is_alive.return_value = True
+    monkeypatch.setattr(task_view, "mower_thread", worker)
+    headers = {"token": "profile-test-token"}
+    if generation == "legacy":
+        monkeypatch.setattr(profiles, "current_generation", lambda: "0")
+    elif generation is not None:
+        headers["X-Mower-Config-Generation"] = generation
+    body = (
+        context.payload
+        if path == "/mastery-plan"
+        else {
+            "task": {
+                "time": "2026-10-24T02:00:00.000Z",
+                "task_type": "领取邮件",
+                "plan": {},
+                "meta_data": "",
+            }
+        }
+    )
+
+    response = client.post(path, json=body, headers=headers)
+
+    if generation not in {"active-generation", "legacy"}:
+        assert response.status_code == 409
+        assert response.json["error"] == "configuration_changed"
+        assert context.scheduler.tasks == []
+        assert mastery_db.get_all_plans() == []
+        assert not config.wake_scheduler.is_set()
+        worker.is_alive.assert_not_called()
+    else:
+        assert response.status_code == 200
+        (task,) = context.scheduler.tasks
+        if path == "/mastery-plan":
+            result = response.json["results"][0]
+            assert result["status"] == "added"
+            assert result["task"]["status"] == "inserted"
+            (plan,) = mastery_db.get_all_plans()
+            assert task.type == TaskTypes.SKILL_UPGRADE
+            assert task.plan_key == str(plan["id"])
+        else:
+            assert response.text == "添加任务成功！"
+            assert task.type == TaskTypes.MAIL
+            assert mastery_db.get_all_plans() == []
+        assert config.wake_scheduler.is_set()
+    context.automatic.assert_not_called()
+
+
+@pytest.mark.parametrize("path", ["/task", "/mastery-plan"])
+@pytest.mark.parametrize("token", [None, "wrong"])
+def test_manual_task_submission_rejects_invalid_token_before_generation(
+    guarded_server, monkeypatch, path, token
+):
+    _, profiles, client = guarded_server
+    check = Mock(side_effect=AssertionError("Unauthenticated generation lookup"))
+    monkeypatch.setattr(profiles, "check_generation", check)
+    headers = {"X-Mower-Config-Generation": "active-generation"}
+    if token is not None:
+        headers["token"] = token
+    response = client.post(
+        path, data="invalid json", content_type="application/json", headers=headers
+    )
+    assert response.status_code == 403
+    check.assert_not_called()
 
 
 @pytest.mark.parametrize("generation", [None, "previous-generation"])

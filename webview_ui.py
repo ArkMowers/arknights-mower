@@ -526,6 +526,10 @@ def webview_window(
             if msg == "title":
                 window.set_title(window_title(instance_name, port))
                 continue
+            if msg == "show":
+                window.restore()
+                window.show()
+                continue
             if msg == "file":
                 result = window.create_file_dialog(
                     dialog_type=webview.OPEN_DIALOG,
@@ -1090,6 +1094,14 @@ def _run_desktop():
                     import webbrowser
 
                     webbrowser.open(url)
+                elif msg == "show":
+                    if config.webview_process and config.webview_process.is_alive():
+                        try:
+                            config.parent_conn.send("show")
+                            continue
+                        except (EOFError, OSError):
+                            pass
+                    open_window()
             if "exit" in messages:
                 shutdown.request("tray")
                 break

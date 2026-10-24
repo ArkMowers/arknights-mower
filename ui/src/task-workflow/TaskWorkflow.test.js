@@ -173,7 +173,10 @@ async function mount(hash = '', queue = []) {
     },
     parentNode: (node) => node.parent,
     nextSibling: (node) => node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null,
-    patchProp: (node, key, _previous, value) => (node.props[key] = value),
+    patchProp(node, key, _previous, value) {
+      if (key.startsWith('.')) node[key.slice(1)] = value
+      else node.props[key] = value
+    },
     insert(node, parent, anchor = null) {
       if (node.parent) {
         const siblings = node.parent.children
@@ -309,7 +312,11 @@ beforeEach(() => {
     drone_room: 'room_1_1',
     automatic_rescue_enable: true,
     workshop_manual_settings: [{ enabled: true, operator: '九色鹿' }],
-    maa_recruit: true
+    maa_mail: false,
+    maa_recruit: true,
+    maa_orundum: false,
+    maa_mining: false,
+    maa_specialaccess: false
   })
   state.panels = []
   state.reveals = []
@@ -359,9 +366,9 @@ describe('production task checklist interactions', () => {
     expect(nodes(navigation).some((node) => node.text.trim() === '自动')).toBe(false)
     for (const button of nodes(navigation).filter((node) => node.tag === 'button'))
       expect(text(button).trim() || button.props['aria-label']).toBeTruthy()
-    for (const id of ['base', 'runorder', 'drone', 'workshop', 'rewards'])
-      expect(checkbox(id)).toBeUndefined()
+    for (const id of ['base', 'runorder', 'drone', 'workshop']) expect(checkbox(id)).toBeUndefined()
     expect(checkbox('training')).toBeTruthy()
+    expect(checkbox('rewards')).toBeTruthy()
   })
 
   it('selects disabled tasks by name without saving configuration or closing the selected editor', async () => {
@@ -376,6 +383,32 @@ describe('production task checklist interactions', () => {
     expect(selected()).toBe('recruit')
     expect(JSON.stringify(state.config)).toBe(before)
     for (const method of Object.values(axios)) expect(method).not.toHaveBeenCalled()
+  })
+
+  it('updates the reward DOM checkbox through partial, all and empty selections without selecting a card', async () => {
+    await mount()
+    const input = checkbox('rewards')
+    const before = { ...state.config }
+    expect(input.props.checked).toBe(false)
+    expect(input.indeterminate).toBe(true)
+    expect(input.props['aria-checked']).toBe('mixed')
+    await check('rewards', true)
+    expect(input.props.checked).toBe(true)
+    expect(input.indeterminate).toBe(false)
+    expect(input.props['aria-checked']).toBe(true)
+    expect(selected()).toBe('base')
+    state.config.maa_mail = false
+    await flush()
+    expect(input.indeterminate).toBe(true)
+    expect(input.props['aria-checked']).toBe('mixed')
+    await check('rewards', false)
+    expect(input.props.checked).toBe(false)
+    expect(input.indeterminate).toBe(false)
+    expect(input.props['aria-checked']).toBe(false)
+    expect(state.config).toEqual({ ...before, maa_recruit: false })
+    expect(selected()).toBe('base')
+    expect(state.reveals).toEqual([])
+    expect(nodes().some((node) => node.focus.mock.calls.length)).toBe(false)
   })
 
   it('opens the compact directory and closes it after selecting an entry while retaining drafts and switches', async () => {
@@ -531,7 +564,7 @@ describe('production task checklist interactions', () => {
     expect(searchInput().props.value).toBe('公招')
   })
 
-  it('selects and clears real switches while preserving automatic tasks and all parameter choices', async () => {
+  it('selects and clears task and reward switches while preserving automatic tasks and parameters', async () => {
     await mount()
     await click(task('recruit'))
     const before = JSON.parse(JSON.stringify(state.config))
@@ -540,12 +573,17 @@ describe('production task checklist interactions', () => {
       ...before,
       ...Object.fromEntries(
         Object.values(switches).map((key) => [key, key === 'maa_rg_enable' ? 1 : true])
-      )
+      ),
+      maa_mail: true,
+      maa_recruit: true,
+      maa_orundum: true,
+      maa_mining: true,
+      maa_specialaccess: true
     })
     expect(selected()).toBe('recruit')
     await click(batch('清空'))
-    expect(state.config).toEqual(before)
-    expect(state.config.maa_recruit).toBe(true)
+    expect(state.config).toEqual({ ...before, maa_recruit: false })
+    expect(state.config.maa_recruit).toBe(false)
     expect(state.config.workshop_manual_settings[0].enabled).toBe(true)
     expect(selected()).toBe('recruit')
   })

@@ -332,7 +332,7 @@ class InstanceController(ManagerTools):
         legacy_patch = {}
         if document["version"] == 0 and legacy_paths & document["values"].keys():
             for name, selected in document["values"].items():
-                if name == "startup_mode":
+                if name in manager_common.MANAGER_ONLY_KEYS:
                     continue
                 if "." in name:
                     parent, child = name.split(".", 1)
@@ -1035,6 +1035,49 @@ class InstanceController(ManagerTools):
             return {"ok": False, "message": str(error)}
 
     def open_browser(self, idx, target):
+        return self._open_instance_page(idx, target, action="browser")
+
+    def open_instance_page(self, idx, target, mode=None, remember=False):
+        return self._open_instance_page(idx, target, mode=mode, remember=remember)
+
+    def _ready_instance_page(self, instance, records):
+        matches = self._matching(instance, records)
+        if not matches or any(not r.get("managed") for r in matches):
+            raise ValueError("请先通过多开管理器启动此实例")
+        if any(
+            (runtime.state_dir() / "shutdown" / f"{r['id']}.json").exists()
+            for r in matches
+        ):
+            raise ValueError("实例正在停止，无法打开网页")
+        ready = next((r for r in matches if r.get("ready")), None)
+        if ready is None:
+            raise ValueError("实例尚未就绪，请稍后重试")
+        return ready
+
+    def _page_mode(self, mode, remember):
+        if type(remember) is not bool:
+            raise ValueError("记住打开方式必须是布尔值")
+        if remember and mode is None:
+            raise ValueError("请选择需要记住的实例页面打开方式")
+        if mode is not None:
+            manager_common.validate_settings({"instance_page_mode": mode})
+        document = manager_common.read_document(self._common_path)
+        return document, mode or document["values"].get("instance_page_mode")
+
+    def _remember_page_mode(self, document, mode):
+        if document["values"].get("instance_page_mode") == mode:
+            return
+        updated = copy.deepcopy(document)
+        updated["values"]["instance_page_mode"] = mode
+        runtime.write_json(
+            self._common_path,
+            updated if updated["version"] == 1 else updated["values"],
+            sync=True,
+        )
+
+    def _open_instance_page(
+        self, idx, target, *, action=None, mode=None, remember=False
+    ):
         try:
             with self._operation():
                 if (
@@ -1044,19 +1087,98 @@ class InstanceController(ManagerTools):
                     != {key: self.instances[idx][key] for key in ("name", "path")}
                 ):
                     raise ValueError("实例已变化，请刷新后重试")
-                matches = self._matching(self.instances[idx], self._records())
-                if not matches or any(not r.get("managed") for r in matches):
-                    raise ValueError("请先通过多开管理器启动此实例")
-                if any(
-                    (runtime.state_dir() / "shutdown" / f"{r['id']}.json").exists()
-                    for r in matches
-                ):
-                    raise ValueError("实例正在停止，无法打开网页")
-                ready = next((r for r in matches if r.get("ready")), None)
-                if ready is None:
-                    raise ValueError("实例尚未就绪，请稍后重试")
-                runtime.send_instance_command(ready, "browser")
+                ready = self._ready_instance_page(self.instances[idx], self._records())
+                if action is None:
+                    document, selected_mode = self._page_mode(mode, remember)
+                    if selected_mode is None:
+                        return {
+                            "ok": False,
+                            "needs_mode": True,
+                            "message": "请选择实例页面打开方式",
+                        }
+                    if remember:
+                        self._remember_page_mode(document, selected_mode)
+                    action = "show" if selected_mode == "webview" else "browser"
+                runtime.send_instance_command(ready, action)
             return {"ok": True}
+        except (OSError, ValueError, runtime.InstanceScanError) as error:
+            return {"ok": False, "message": str(error)}
+
+    def open_instance_pages(self, targets, mode=None, remember=False):
+        try:
+            with self._operation():
+                if targets is None:
+                    raise ValueError("请提供当前实例列表")
+                self._check_targets(targets)
+                document, selected_mode = self._page_mode(mode, remember)
+                deadline = monotonic() + 10
+                records = self._records()
+                available = []
+                for idx, instance in enumerate(self.instances):
+                    try:
+                        self._ready_instance_page(instance, records)
+                        available.append(idx)
+                    except ValueError:
+                        pass
+                if available and selected_mode is None:
+                    return {
+                        "ok": False,
+                        "needs_mode": True,
+                        "message": "请选择实例页面打开方式",
+                    }
+                results, blocked, remembered = [], "", False
+                for idx, instance in enumerate(self.instances):
+                    item = dict(
+                        idx=idx, name=instance["name"], status="skipped", message=""
+                    )
+                    results.append(item)
+                    if blocked or monotonic() >= deadline:
+                        blocked = (
+                            blocked or "打开实例页面已达到时间上限，请检查结果后重试"
+                        )
+                        item.update(status="failed", message=blocked)
+                        continue
+                    try:
+                        records = self._records()
+                    except (OSError, ValueError, runtime.InstanceScanError) as error:
+                        blocked = str(error)
+                        item.update(status="failed", message=blocked)
+                        continue
+                    try:
+                        ready = self._ready_instance_page(instance, records)
+                    except ValueError as error:
+                        item["message"] = str(error)
+                        continue
+                    if selected_mode is None:
+                        item["message"] = "尚未选择实例页面打开方式，请重试"
+                        continue
+                    if monotonic() >= deadline:
+                        blocked = "打开实例页面已达到时间上限，请检查结果后重试"
+                        item.update(status="failed", message=blocked)
+                        continue
+                    if remember and not remembered:
+                        try:
+                            self._remember_page_mode(document, selected_mode)
+                            remembered = True
+                        except (OSError, ValueError) as error:
+                            blocked = str(error)
+                            item.update(status="failed", message=blocked)
+                            continue
+                    if monotonic() >= deadline:
+                        blocked = "打开实例页面已达到时间上限，请检查结果后重试"
+                        item.update(status="failed", message=blocked)
+                        continue
+                    try:
+                        runtime.send_instance_command(
+                            ready, "show" if selected_mode == "webview" else "browser"
+                        )
+                        item["status"] = "opened"
+                    except (OSError, ValueError) as error:
+                        item.update(status="failed", message=str(error))
+                return {
+                    "ok": all(item["status"] != "failed" for item in results),
+                    "results": results,
+                }
         except (OSError, ValueError, runtime.InstanceScanError) as error:
             return {"ok": False, "message": str(error)}
 

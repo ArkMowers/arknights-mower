@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick } from 'vue'
+import { readFileSync } from 'node:fs'
+import { parse } from '@vue/compiler-sfc'
+import { renderToString } from 'vue/server-renderer'
+import { compile, createSSRApp, effectScope, nextTick } from 'vue'
 import MowerManager from './MowerManager.vue'
 import { managerCall } from './bridge.js'
 
@@ -56,7 +59,8 @@ describe('manager instance controls', () => {
       }),
       start_all: vi.fn(async () => ({ ok: true })),
       stop_all: vi.fn(async () => ({ ok: true })),
-      open_browser: vi.fn(async () => ({ ok: true })),
+      open_instance_page: vi.fn(async () => ({ ok: true })),
+      open_instance_pages: vi.fn(async () => ({ ok: true, results: [] })),
       rename: vi.fn(async () => {}),
       select_path: vi.fn(async () => null),
       remove: vi.fn(async () => {}),
@@ -180,12 +184,148 @@ describe('manager instance controls', () => {
     expect(component.editing.value).toBeNull()
   })
 
-  it('opens a ready instance in the browser with its captured name and directory', async () => {
+  it('opens a ready instance using the saved mode with its captured name and directory', async () => {
     rows[0] = { ...stopped(), state: 'running', can_open_browser: true }
     await mount()
-    await component.openBrowser(0)
-    expect(api.open_browser).toHaveBeenCalledExactlyOnceWith(0, { name: 'first', path: '/first' })
+    await component.openInstancePage(0)
+    expect(api.open_instance_page).toHaveBeenCalledExactlyOnceWith(0, {
+      name: 'first',
+      path: '/first'
+    })
     expect(api.start).not.toHaveBeenCalled()
+  })
+
+  it('asks for the first page opening mode without saving or starting the instance', async () => {
+    rows[0] = { ...stopped(), state: 'running', can_open_browser: true }
+    api.open_instance_page.mockResolvedValue({ ok: false, needs_mode: true })
+    await mount()
+    await component.openInstancePage(0)
+    expect(component.pageOpening.value).toEqual({
+      kind: 'one',
+      idx: 0,
+      target: { name: 'first', path: '/first' }
+    })
+    expect(component.pageMode.value).toBe('browser')
+    expect(component.rememberPageMode.value).toBe(false)
+    expect(component.error.value).toBe('')
+    component.pageOpening.value = null
+    expect(component.confirmPageMode()).toBe(false)
+    expect(api.open_instance_page).toHaveBeenCalledTimes(1)
+    expect(api.update_all_settings).not.toHaveBeenCalled()
+    expect(api.start).not.toHaveBeenCalled()
+  })
+
+  it('submits the chosen page mode only on confirmation and subsequently opens directly', async () => {
+    rows[0] = { ...stopped(), state: 'running', can_open_browser: true }
+    api.open_instance_page.mockResolvedValueOnce({ ok: false, needs_mode: true })
+    await mount()
+    await component.openInstancePage(0)
+    component.pageMode.value = 'webview'
+    component.rememberPageMode.value = true
+    component.confirmPageMode()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.open_instance_page).toHaveBeenLastCalledWith(
+      0,
+      { name: 'first', path: '/first' },
+      'webview',
+      true
+    )
+    expect(component.pageOpening.value).toBeNull()
+    await component.openInstancePage(0)
+    expect(api.open_instance_page).toHaveBeenLastCalledWith(0, { name: 'first', path: '/first' })
+    expect(component.pageOpening.value).toBeNull()
+  })
+
+  it('keeps an unremembered mode local to one request and resets the checkbox for the next prompt', async () => {
+    rows[0] = { ...stopped(), state: 'running', can_open_browser: true }
+    api.open_instance_page.mockImplementation(async (_idx, _target, mode) =>
+      mode ? { ok: true } : { ok: false, needs_mode: true }
+    )
+    await mount()
+    await component.openInstancePage(0)
+    component.pageMode.value = 'webview'
+    component.confirmPageMode()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.open_instance_page).toHaveBeenLastCalledWith(
+      0,
+      { name: 'first', path: '/first' },
+      'webview',
+      false
+    )
+    await component.openInstancePage(0)
+    expect(component.pageOpening.value).not.toBeNull()
+    expect(component.rememberPageMode.value).toBe(false)
+    expect(api.update_all_settings).not.toHaveBeenCalled()
+  })
+
+  it('discards a page mode prompt when the captured instance is replaced or stops', async () => {
+    rows[0] = { ...stopped(), state: 'running', can_open_browser: true }
+    api.open_instance_page.mockResolvedValue({ ok: false, needs_mode: true })
+    await mount()
+    await component.openInstancePage(0)
+    rows[0] = { ...stopped(), name: 'replacement' }
+    await component.refresh()
+    expect(component.pageOpening.value).toBeNull()
+    component.confirmPageMode()
+    expect(api.open_instance_page).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens all pages using a captured list and reports skipped and failed instances', async () => {
+    rows[0] = { ...stopped(), state: 'running', can_open_browser: true }
+    rows.push({ ...stopped(), name: 'second', path: '/second' })
+    api.open_instance_pages.mockResolvedValue({
+      ok: false,
+      message: '部分页面未能打开',
+      results: [
+        { idx: 0, name: 'first', status: 'opened' },
+        { idx: 1, name: 'second', status: 'failed', message: '通道关闭' }
+      ]
+    })
+    await mount()
+    await component.openAllInstancePages()
+    expect(api.open_instance_pages).toHaveBeenCalledExactlyOnceWith([
+      { name: 'first', path: '/first' },
+      { name: 'second', path: '/second' }
+    ])
+    expect(component.pageSummary.value).toBe('已派发 1 个页面，跳过 0 个，失败 1 个')
+    expect(component.error.value).toBe('部分页面未能打开')
+    expect(api.start_all).not.toHaveBeenCalled()
+  })
+
+  it('uses one first-use prompt for all pages and cancels it if the list changes', async () => {
+    rows[0] = { ...stopped(), state: 'running', can_open_browser: true }
+    api.open_instance_pages.mockResolvedValueOnce({ ok: false, needs_mode: true })
+    await mount()
+    await component.openAllInstancePages()
+    component.pageMode.value = 'browser'
+    component.confirmPageMode()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.open_instance_pages).toHaveBeenLastCalledWith(
+      [{ name: 'first', path: '/first' }],
+      'browser',
+      false
+    )
+    api.open_instance_pages.mockResolvedValueOnce({ ok: false, needs_mode: true })
+    await component.openAllInstancePages()
+    rows.push({ ...stopped(), name: 'added', path: '/added' })
+    await component.refresh()
+    expect(component.pageOpening.value).toBeNull()
+    component.confirmPageMode()
+    expect(api.open_instance_pages).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not dispatch bulk pages without a ready instance or while a prompt is pending', async () => {
+    await mount()
+    await component.openAllInstancePages()
+    expect(api.open_instance_pages).not.toHaveBeenCalled()
+    rows[0] = { ...stopped(), state: 'running', can_open_browser: true }
+    await component.refresh()
+    api.open_instance_page.mockResolvedValue({ ok: false, needs_mode: true })
+    await component.openInstancePage(0)
+    await component.openAllInstancePages()
+    await component.openInstancePage(0)
+    expect(api.open_instance_pages).not.toHaveBeenCalled()
+    expect(api.open_instance_page).toHaveBeenCalledTimes(1)
   })
 
   it.each(['stopped', 'starting', 'stopping'])(
@@ -193,16 +333,16 @@ describe('manager instance controls', () => {
     async (state) => {
       rows[0] = { ...stopped(), state }
       await mount()
-      await component.openBrowser(0)
-      expect(api.open_browser).not.toHaveBeenCalled()
+      await component.openInstancePage(0)
+      expect(api.open_instance_page).not.toHaveBeenCalled()
     }
   )
 
   it('reports browser dispatch failure and refreshes the current state', async () => {
     rows[0] = { ...stopped(), state: 'running', can_open_browser: true }
-    api.open_browser.mockResolvedValue({ ok: false, message: '实例正在停止，无法打开网页' })
+    api.open_instance_page.mockResolvedValue({ ok: false, message: '实例正在停止，无法打开网页' })
     await mount()
-    await component.openBrowser(0)
+    await component.openInstancePage(0)
     expect(component.error.value).toBe('实例正在停止，无法打开网页')
     expect(component.busy.value).toBe(false)
     expect(api.get_instances).toHaveBeenCalledTimes(2)
@@ -865,6 +1005,109 @@ describe('manager instance controls', () => {
     await component.editBatch()
     expect(component.batchDraft.value[0].updates_enabled).toBe(true)
     expect(component.batchChanges.value).toEqual([])
+    expect(api.update_all_settings).not.toHaveBeenCalled()
+  })
+
+  it.each(['updates_enabled', 'start_automatically', 'extra_settings_visible'])(
+    'keeps the %s table header in sync with editable row choices',
+    async (key) => {
+      rows[0][key] = true
+      rows.push(
+        { ...stopped(), name: 'second', path: '/second' },
+        { ...stopped(), name: 'live', path: '/live', editable: false, state: 'running' }
+      )
+      await mount()
+      await component.editBatch()
+      const column = component.batchBooleanColumns.find((item) => item.key === key)
+      expect(component.batchSelection.value[key]).toEqual({
+        checked: false,
+        indeterminate: true,
+        disabled: false
+      })
+      column.change(true)
+      expect(component.batchDraft.value.map((row) => row[key])).toEqual([true, true, false])
+      expect(component.batchSelection.value[key]).toEqual({
+        checked: true,
+        indeterminate: false,
+        disabled: false
+      })
+      component.batchDraft.value[1][key] = false
+      expect(component.batchSelection.value[key].indeterminate).toBe(true)
+      column.change(false)
+      expect(component.batchSelection.value[key]).toEqual({
+        checked: false,
+        indeterminate: false,
+        disabled: false
+      })
+      expect(component.batchChanges.value).toEqual([{ idx: 0, settings: { [key]: false } }])
+      expect(api.update_all_settings).not.toHaveBeenCalled()
+      rows[0].editable = false
+      rows[1].editable = false
+      await component.refresh()
+      expect(component.batchSelection.value[key].disabled).toBe(true)
+      column.change(true)
+      expect(component.batchDraft.value.every((row) => !row[key])).toBe(true)
+    }
+  )
+
+  it('handles the checkbox metadata argument through the production table header binding', async () => {
+    rows[0].updates_enabled = true
+    await mount()
+    await component.editBatch()
+    const { descriptor } = parse(
+      readFileSync(new URL('./MowerManager.vue', import.meta.url), 'utf8')
+    )
+    const header = descriptor.template.content.match(
+      /<th v-for="column in batchBooleanColumns"[\s\S]+?<\/th>/
+    )[0]
+    const controls = []
+    const app = createSSRApp({
+      setup: () => ({ ...component }),
+      render: compile(`<table><thead><tr>${header}</tr></thead></table>`),
+      components: {
+        NCheckbox: {
+          emits: ['update:checked'],
+          setup(_props, { attrs, emit }) {
+            controls.push({ label: attrs['aria-label'], emit })
+            return () => null
+          }
+        }
+      }
+    })
+    await renderToString(app)
+    controls
+      .find(({ label }) => label === '批量设置允许更新')
+      .emit('update:checked', false, { label: '允许更新' })
+    expect(component.batchDraft.value[0].updates_enabled).toBe(false)
+    expect(component.batchSelection.value.updates_enabled.checked).toBe(false)
+    expect(component.batchChanges.value).toEqual([{ idx: 0, settings: { updates_enabled: false } }])
+  })
+
+  it('keeps the AI header unchanged until reading is confirmed and then follows individual cells', async () => {
+    rows.push({ ...stopped(), name: 'second', path: '/second' })
+    await mount()
+    await component.editBatch()
+    const column = component.batchBooleanColumns.find(({ key }) => key === 'ai_assistant_enabled')
+    await column.change(true)
+    expect(component.batchSelection.value.ai_assistant_enabled).toEqual({
+      checked: false,
+      indeterminate: false,
+      disabled: true
+    })
+    expect(component.batchDraft.value.every((row) => !row.ai_assistant_enabled)).toBe(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    component.riskAcknowledged.value = true
+    component.confirmAssistantChange()
+    expect(component.batchSelection.value.ai_assistant_enabled).toEqual({
+      checked: true,
+      indeterminate: false,
+      disabled: false
+    })
+    await component.changeBatchAssistant(false, 1)
+    expect(component.batchSelection.value.ai_assistant_enabled.indeterminate).toBe(true)
+    await column.change(false)
+    expect(component.batchChanges.value).toEqual([])
+    expect(component.assistantConfirmation.value).toBeNull()
     expect(api.update_all_settings).not.toHaveBeenCalled()
   })
 

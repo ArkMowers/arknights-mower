@@ -20,9 +20,18 @@ FIELDS = [
         options=[("window", "普通启动（显示窗口）"), ("background", "后台静默启动")],
         help=(
             "后台静默启动不显示启动画面和内置窗口，实例后台仍正常运行。"
-            "可通过“在浏览器中打开”访问，或从托盘打开内置窗口；关闭网页不会停止实例。"
+            "可通过“打开实例页面”访问，或从托盘打开内置窗口；关闭网页不会停止实例。"
             "自动化是否开始仍由实例原有设置决定，保存后对下次启动生效。"
         ),
+    ),
+    dict(
+        key="instance_page_mode",
+        group="实例启动",
+        label="实例页面打开方式",
+        kind="select",
+        default="browser",
+        options=[("browser", "外部默认浏览器"), ("webview", "内置 WebView")],
+        help="用于管理器打开单个或全部实例页面，不改变实例启动方式。",
     ),
     dict(
         key="device.installation_path",
@@ -389,6 +398,7 @@ FIELDS.append(
     )
 )
 _FIELDS_BY_KEY = {field["key"]: field for field in FIELDS}
+MANAGER_ONLY_KEYS = frozenset({"startup_mode", "instance_page_mode"})
 _BACKENDS = {"device.screenshot_backend", "device.touch_backend"}
 SHARED_CONNECTION_KEYS = frozenset(
     field["key"]
@@ -535,7 +545,7 @@ def apply_settings(conf, values, *, independent=False):
         return conf
     patch = {}
     for key, value in values.items():
-        if key == "startup_mode":
+        if key in MANAGER_ONLY_KEYS:
             continue
         if "." in key:
             parent, name = key.split(".", 1)

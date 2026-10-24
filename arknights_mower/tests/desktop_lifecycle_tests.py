@@ -465,6 +465,46 @@ class DesktopStartupTests(unittest.TestCase):
                         self.assertEqual(call.args[1], instance_name)
                         self.assertEqual(call.args[3], expected_url)
 
+    def test_show_creates_a_missing_window_and_reuses_the_existing_window(self):
+        for background in (False, True):
+            with self.subTest(background=background):
+                events, server = self.launch(
+                    automatic=False,
+                    background=background,
+                    commands=["show", "show", "exit"],
+                )
+                self.assertEqual(events, [])
+                windows = [
+                    call
+                    for call in server.desktop_child.call_args_list
+                    if call.args[0] == "window"
+                ]
+                self.assertEqual(len(windows), 1)
+                channel = server.desktop_child.return_value[1]
+                self.assertEqual(
+                    [call.args for call in channel.send.call_args_list],
+                    [("show",)] * (1 if background else 2),
+                )
+                server.browser_open.assert_not_called()
+
+    def test_show_recreates_a_window_after_its_channel_closes(self):
+        def close_window_channel(stack, task_server, server, config, events):
+            server.desktop_child.return_value[1].send.side_effect = BrokenPipeError
+
+        _, server = self.launch(
+            automatic=False,
+            background=False,
+            commands=["show", "exit"],
+            configure_startup=close_window_channel,
+        )
+        windows = [
+            call
+            for call in server.desktop_child.call_args_list
+            if call.args[0] == "window"
+        ]
+        self.assertEqual(len(windows), 2)
+        server.browser_open.assert_not_called()
+
     def test_managed_desktop_honors_explicit_and_random_ports_with_or_without_token(
         self,
     ):

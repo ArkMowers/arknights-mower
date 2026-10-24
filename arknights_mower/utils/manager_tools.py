@@ -175,7 +175,10 @@ class ManagerTools:
                     current_configuration = configuration.model_dump()
                     for field in manager_common.FIELDS:
                         key = field["key"]
-                        if key not in proposed:
+                        if (
+                            key in manager_common.MANAGER_ONLY_KEYS
+                            or key not in proposed
+                        ):
                             continue
                         current = current_values.get(
                             key, _value(current_configuration, key)
