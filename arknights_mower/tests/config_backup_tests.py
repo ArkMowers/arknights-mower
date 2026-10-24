@@ -91,6 +91,28 @@ def test_config_only_legacy_archive_preserves_moved_local_settings(storage):
         assert storage("@app/config/" + name).read_text() == "[]"
 
 
+@pytest.mark.parametrize(
+    "name,legacy_name",
+    [
+        ("growth_plan.json", "tmp/growth_plan.json"),
+        ("workshop_preset.json", "tmp/workshop_preset.json"),
+        ("weekly_plans.yml", "weekly_plans.yml"),
+    ],
+)
+def test_ordinary_backup_import_retains_obsolete_configuration_paths(
+    storage, monkeypatch, name, legacy_name
+):
+    canonical = storage("@app/config/" + name)
+    legacy = storage("@app/" + legacy_name)
+    current = b"plans:\n  current: []\n" if name.endswith(".yml") else b"[]"
+    canonical.write_bytes(current)
+    legacy.write_bytes(b"obsolete configuration")
+    monkeypatch.setattr(config, "_CONFIG_PATH_PAIRS", ((legacy, canonical),))
+    backup.import_configuration(backup.export_archive(include_tmp=False))
+    assert canonical.read_bytes() == current
+    assert legacy.read_bytes() == b"obsolete configuration"
+
+
 @pytest.mark.parametrize("content", ["{", "{}"])
 def test_invalid_growth_archive_rejected_before_writes(storage, content):
     before = config.conf_path.read_bytes()

@@ -189,6 +189,79 @@ def test_legacy_tmp_group_does_not_override_current_canonical_selection(
     assert not storage("@app/tmp/" + name).exists()
 
 
+@pytest.mark.parametrize(
+    "name,legacy_name",
+    [
+        ("growth_plan.json", "tmp/growth_plan.json"),
+        ("workshop_preset.json", "tmp/workshop_preset.json"),
+        ("weekly_plans.yml", "weekly_plans.yml"),
+    ],
+)
+@pytest.mark.parametrize("fail_metadata", [False, True])
+def test_profile_clearing_prevents_legacy_restart_migration_and_rolls_back(
+    storage, monkeypatch, name, legacy_name, fail_metadata
+):
+    canonical = storage("@app/config/" + name)
+    legacy = storage("@app/" + legacy_name)
+    current = b"plans:\n  current: []\n" if name.endswith(".yml") else b"[]"
+    obsolete = (
+        b"plans:\n  obsolete: []\n"
+        if name.endswith(".yml")
+        else b'[{"source": "previous configuration"}]'
+    )
+    canonical.write_bytes(current)
+    legacy.write_bytes(obsolete)
+    monkeypatch.setattr(config, "_CONFIG_PATH_PAIRS", ((legacy, canonical),))
+    initial = profiles.list_profiles()
+
+    if fail_metadata:
+
+        def fail(data):
+            assert not legacy.exists()
+            raise OSError("metadata failed")
+
+        monkeypatch.setattr(profiles, "_write_registry", fail)
+        with pytest.raises(OSError, match="metadata failed"):
+            _create("failed clearing")
+        assert canonical.read_bytes() == current
+        assert legacy.read_bytes() == obsolete
+        assert profiles.list_profiles() == initial
+    else:
+        _create("empty configuration")
+        assert not canonical.exists()
+        assert not legacy.exists()
+
+    config.migrate_app_config_paths()
+    if fail_metadata:
+        assert canonical.read_bytes() == current
+        assert legacy.read_bytes() == obsolete
+    else:
+        assert not canonical.exists()
+
+
+@pytest.mark.parametrize("kind", ["directory", "symlink", "oversized"])
+def test_invalid_obsolete_weekly_file_prevents_profile_activation(
+    storage, monkeypatch, kind
+):
+    canonical = config.weekly_plans_path
+    legacy = storage("@app/weekly_plans.yml")
+    if kind == "directory":
+        legacy.mkdir()
+    elif kind == "symlink":
+        legacy.symlink_to(config.conf_path)
+    else:
+        with legacy.open("wb") as stream:
+            stream.truncate(backup.MAX_BACKUP_BYTES + 1)
+    monkeypatch.setattr(config, "_CONFIG_PATH_PAIRS", ((legacy, canonical),))
+    initial = profiles.list_profiles()
+    current = canonical.read_bytes()
+    with pytest.raises(backup.LocalConfigError):
+        _create("invalid legacy")
+    assert canonical.read_bytes() == current
+    assert profiles.list_profiles() == initial
+    assert not storage("@app/config-backups").exists()
+
+
 @pytest.mark.parametrize("keep", [[], ["rescue_plan"]])
 def test_legacy_rescue_import_obeys_selection_with_separate_local_plan(storage, keep):
     local = {"plan1": {"central": {"plans": [{"agent": "阿米娅"}]}}}

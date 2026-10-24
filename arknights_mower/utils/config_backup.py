@@ -160,6 +160,44 @@ def _tmp_snapshot(total):
     return files
 
 
+def _obsolete_config_snapshot(files, previous, previous_tmp):
+    """Keep rollback originals for legacy paths whose destination is being cleared."""
+    root = config.conf_path.parent
+    tmp_root = get_path("@app/tmp")
+    captured = {root / name for name in previous} | {
+        tmp_root / name for name in previous_tmp
+    }
+    total = sum(map(len, previous.values())) + sum(map(len, previous_tmp.values()))
+    originals = {}
+    for legacy, canonical in config._CONFIG_PATH_PAIRS:
+        if not canonical.is_relative_to(root):
+            continue
+        name = canonical.relative_to(root).as_posix()
+        if (
+            name in files
+            or name.casefold() in IMPORT_PRESERVED_FILES
+            or legacy in captured
+        ):
+            continue
+        if legacy.is_symlink() or (legacy.exists() and not legacy.is_file()):
+            raise LocalConfigError("待清理的旧配置必须是普通文件")
+        if not legacy.exists():
+            continue
+        if legacy.stat().st_size > MAX_BACKUP_BYTES - total:
+            raise LocalConfigError(
+                "本机配置和待清理的旧配置内容超过 16 MB，无法安全切换档案"
+            )
+        with legacy.open("rb") as stream:
+            content = stream.read(MAX_BACKUP_BYTES - total + 1)
+        total += len(content)
+        if total > MAX_BACKUP_BYTES:
+            raise LocalConfigError(
+                "本机配置和待清理的旧配置内容超过 16 MB，无法安全切换档案"
+            )
+        originals[legacy] = content
+    return originals
+
+
 def _archive_bytes(files, tmp_files):
     if len(files) + len(tmp_files) > MAX_ARCHIVE_ENTRIES:
         raise LocalConfigError("本机配置和数据文件数量超过 1024 个，请整理后重试")
@@ -418,6 +456,11 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
             if not replace_tmp and name not in files and name in previous:
                 files[name] = previous[name]
         previous_tmp = _tmp_snapshot(sum(map(len, previous.values())))
+        previous_legacy = (
+            _obsolete_config_snapshot(files, previous, previous_tmp)
+            if replace_tmp
+            else {}
+        )
         if "data.db" not in tmp_files and "data.db" in previous_tmp:
             if replace_tmp:
                 # Keep open SQLite readers on the same file while clearing old tables.
@@ -474,6 +517,7 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
         originals = {
             **{root / name: content for name, content in previous.items()},
             **{tmp_root / name: content for name, content in previous_tmp.items()},
+            **previous_legacy,
         }
         targets = {root / name: content for name, content in contents.items()}
         targets.update(
@@ -485,6 +529,7 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
         )
         removed = {root / name for name in previous.keys() - contents.keys()}
         if replace_tmp:
+            removed.update(previous_legacy)
             removed.update(
                 tmp_root / name
                 for name in previous_tmp.keys() - tmp_files.keys()
