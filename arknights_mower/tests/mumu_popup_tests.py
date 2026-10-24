@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 from pathlib import Path
 from threading import Event
@@ -13,7 +14,7 @@ from arknights_mower.utils.device.adb_client.core import Client
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
 from arknights_mower.utils.device.mumu_popup import (
-    UI_DUMP_COMMAND,
+    MUMU_UI_DUMP_COMMAND,
     is_mumu_launcher,
     startup_ad_close_point,
 )
@@ -21,7 +22,7 @@ from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.device.touch_backend import TouchFailure
 
 LAUNCHER = "app.lawnchair/app.lawnchair.LawnchairLauncher"
-DUMP_COMMAND = UI_DUMP_COMMAND
+DUMP_COMMAND = MUMU_UI_DUMP_COMMAND
 CLOSE_COMMAND = "input tap 1655 162"
 ICON_COMMAND = "input tap 800 500"
 DESKTOP_XML = (
@@ -32,6 +33,56 @@ DESKTOP_XML = (
     b'clickable="true" enabled="true" bounds="[700,400][900,600]" />'
     b"</node></hierarchy>"
 )
+
+
+@pytest.fixture
+def guest_shell(tmp_path):
+    shell = shutil.which("bash")
+    if shell is None:
+        pytest.skip("A POSIX shell is required for the offline Android command check")
+
+    def run(uiautomator, data=b""):
+        script = (
+            'mktemp() { : > hierarchy; printf "%s\\n" ./hierarchy; }; '
+            f"uiautomator() {{ {uiautomator}; }}; " + DUMP_COMMAND
+        )
+        return subprocess.run(
+            [shell, "-c", script],
+            input=data,
+            capture_output=True,
+            cwd=tmp_path,
+            timeout=5,
+        )
+
+    return run
+
+
+def test_guest_ui_collection_uses_the_observed_stdout_destination(
+    guest_shell, popup_xml
+):
+    result = guest_shell(
+        '[ "$1" = dump ] && [ "$2" = /proc/self/fd/1 ] || return 139; cat',
+        popup_xml,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == popup_xml
+    assert startup_ad_close_point(result.stdout) == (1655, 162)
+
+
+def test_guest_ui_collection_preserves_native_failure_and_diagnostics(guest_shell):
+    result = guest_shell('printf "native dump failure\\n" >&2; return 139')
+
+    assert result.returncode == 139
+    assert b"native dump failure" in result.stderr
+
+
+def test_guest_ui_collection_bounds_output_before_parsing(guest_shell):
+    result = guest_shell("cat", b" " * (1024 * 1024 + 2048))
+
+    assert len(result.stdout) == 1024 * 1024 + 1
+    with pytest.raises(ValueError):
+        startup_ad_close_point(result.stdout)
 
 
 @pytest.fixture
@@ -190,6 +241,7 @@ class AndroidResponses:
         self.close_error = None
         self.dump_error = None
         self.verification_error = None
+        self.verification_override = None
         self.dump_override = None
         self.commands = []
 
@@ -205,6 +257,13 @@ class AndroidResponses:
     def custom_command(self):
         return f"echo custom; {self.start_command}"
 
+    @property
+    def launcher_command(self):
+        return (
+            "am start -a android.intent.action.MAIN "
+            f"-c android.intent.category.LAUNCHER -p {self.device.game_package}"
+        )
+
     def run(self, command):
         self.commands.append(command)
         if command == "dumpsys window | grep mCurrentFocus":
@@ -214,6 +273,8 @@ class AndroidResponses:
                 raise self.dump_error
             if not self.visible and self.verification_error is not None:
                 raise self.verification_error
+            if not self.visible and self.verification_override is not None:
+                return self.verification_override
             if self.dump_override is not None:
                 return self.dump_override
             return self.popup_xml if self.visible else DESKTOP_XML
@@ -355,7 +416,7 @@ def test_ui_cli_preserves_xml_bytes_for_existing_parsers(ui_cli):
     data = DESKTOP_XML.replace(b"Arknights", "明日方舟".encode("utf8"))
     responses.dump_override = data
 
-    result = device._read_ui_hierarchy()
+    result = device._read_ui_hierarchy(command=DUMP_COMMAND)
 
     assert isinstance(result, bytes)
     assert result == data
@@ -371,6 +432,206 @@ def test_ui_cli_second_read_shares_ten_second_ad_deadline(ui_cli):
     assert [call[2] for call in calls if call[0] == "guard"] == pytest.approx([10, 4.5])
     assert responses.commands.count(CLOSE_COMMAND) == 1
     assert ICON_COMMAND not in responses.commands
+
+
+@pytest.fixture
+def ui_cli_exit_139(ui_cli, monkeypatch):
+    from arknights_mower.utils.device.adb_client import utils
+
+    device, responses, _ = ui_cli
+    error = subprocess.CalledProcessError(
+        139,
+        ["offline-adb", "-s", "offline-device", "shell", DUMP_COMMAND],
+        output=b"",
+    )
+    run_command = MagicMock(side_effect=error)
+    monkeypatch.setattr(utils, "run_command", run_command)
+    return device, responses, run_command, error
+
+
+@pytest.mark.parametrize(
+    "mode,running",
+    [
+        ("tap", "main"),
+        ("tap", "pushcore"),
+        ("adb", "main"),
+        ("custom", "main"),
+        ("adb", None),
+        ("custom", None),
+    ],
+)
+def test_ui_dump_exit_139_cannot_block_direct_game_recovery(
+    ui_cli_exit_139, mode, running
+):
+    device, responses, run_command, _ = ui_cli_exit_139
+    config.conf.tap_to_launch_game.mode = mode
+    responses.running = running
+    bound_client = device.client
+    original_profile = device.profile.model_copy(deep=True)
+
+    assert device.check_current_focus() is True
+    assert responses.focus == responses.game_focus
+    assert device.check_current_focus() is False
+
+    expected = (
+        responses.custom_command
+        if running is None and mode == "custom"
+        else responses.start_command
+    )
+    assert responses.commands.count(expected) == 1
+    assert CLOSE_COMMAND not in responses.commands
+    assert ICON_COMMAND not in responses.commands
+    run_command.assert_not_called()
+    device._connect_once.assert_not_called()
+    assert device.client is bound_client
+    assert device.profile == original_profile
+
+
+@pytest.mark.parametrize("managed", [False, True], ids=["legacy", "application"])
+def test_direct_launch_reports_ui_dump_failure_without_generic_recovery(
+    ui_cli_exit_139, monkeypatch, managed
+):
+    from arknights_mower.tests.device_session_tests import ADB, Simulator
+    from arknights_mower.utils.device.application import DeviceControl
+    from arknights_mower.utils.device.session import DeviceSession
+    from arknights_mower.utils.solver import BaseSolver
+
+    device, responses, run_command, error = ui_cli_exit_139
+
+    def failed_collection(*args, **kwargs):
+        responses.clock[0] += 2.25
+        raise error
+
+    run_command.side_effect = failed_collection
+    if managed:
+        device.device_id = device.client.device_id
+        device._profile = device.profile.model_copy(
+            update={"last_serial": device.device_id, "recovery_timeout": 180}
+        )
+        adb, simulator = ADB(), Simulator()
+        adb.rows, adb.boot = [(device.device_id, "device")], "1"
+        simulator.state, simulator.serial = "running", device.device_id
+
+        def sleep(seconds):
+            responses.clock[0] += seconds
+
+        clock = SimpleNamespace(monotonic=lambda: responses.clock[0], sleep=sleep)
+        session = DeviceSession(adb, simulator, clock=clock)
+        session.bind(device.profile)
+        ensure_ready = MagicMock(wraps=session.ensure_ready)
+        monkeypatch.setattr(session, "ensure_ready", ensure_ready)
+
+        def devices(adb_path, timeout):
+            responses.clock[0] += 8
+            return adb.rows
+
+        readiness = MagicMock(side_effect=devices)
+        monkeypatch.setattr(adb, "devices", readiness)
+        control = DeviceControl(lambda: config.conf, MagicMock(), session=session)
+        control._device = device
+        control._state = "connected"
+        device.session_control = control
+        stop_command = f"am force-stop {device.game_package}"
+
+        def run(command):
+            if command == stop_command:
+                responses.commands.append(command)
+                responses.running = None
+                responses.focus = LAUNCHER
+                return b""
+            return responses.run(command)
+
+        device.client.run.side_effect = run
+        responses.focus, responses.running = responses.game_focus, "main"
+        solver = BaseSolver(device=device)
+        with pytest.raises(DeviceRecoveryError):
+            solver.restart_game()
+    else:
+        del device.session_control
+        with pytest.raises(DeviceRecoveryError):
+            device.launch()
+
+    assert responses.focus == LAUNCHER
+    assert responses.clock[0] == pytest.approx(2.5)
+    assert responses.launcher_command not in responses.commands
+    assert CLOSE_COMMAND not in responses.commands
+    assert ICON_COMMAND not in responses.commands
+    run_command.assert_called_once()
+    device._connect_once.assert_not_called()
+    if managed:
+        ensure_ready.assert_not_called()
+        readiness.assert_not_called()
+        assert responses.commands.count(stop_command) == 1
+
+
+def test_unreadable_tap_launch_never_substitutes_an_adb_start(android):
+    device, responses, _ = android
+    responses.dump_override = b""
+    failure = None
+
+    try:
+        device.launch()
+    except DeviceRecoveryError as exc:
+        failure = exc
+
+    assert responses.launcher_command not in responses.commands
+    assert responses.start_command not in responses.commands
+    assert CLOSE_COMMAND not in responses.commands
+    assert ICON_COMMAND not in responses.commands
+    assert isinstance(failure, DeviceRecoveryError)
+    device._connect_once.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["protocol", "command"])
+def test_unreadable_post_close_hierarchy_blocks_launch_without_repeating_close(
+    android, failure
+):
+    device, responses, _ = android
+    device.session_control = SimpleNamespace(executing=True)
+    if failure == "protocol":
+        responses.verification_override = b""
+    else:
+        responses.verification_error = OSError("UI collection failed")
+
+    with pytest.raises(DeviceRecoveryError):
+        device.launch()
+
+    assert responses.commands.count(CLOSE_COMMAND) == 1
+    assert responses.launcher_command not in responses.commands
+    assert responses.start_command not in responses.commands
+    assert responses.focus == LAUNCHER
+    assert ICON_COMMAND not in responses.commands
+    device._connect_once.assert_not_called()
+
+
+@pytest.mark.parametrize("new_focus", ["game", "other"])
+def test_unreadable_hierarchy_only_accepts_an_already_foregrounded_game(
+    android, new_focus
+):
+    device, responses, _ = android
+    responses.dump_override = b""
+
+    def run(command):
+        result = responses.run(command)
+        if command == DUMP_COMMAND:
+            responses.focus = (
+                responses.game_focus
+                if new_focus == "game"
+                else "com.example.other/.Activity"
+            )
+        return result
+
+    device.client.run.side_effect = run
+    if new_focus == "game":
+        device.launch()
+    else:
+        with pytest.raises(DeviceRecoveryError):
+            device.launch()
+
+    assert responses.launcher_command not in responses.commands
+    assert CLOSE_COMMAND not in responses.commands
+    assert ICON_COMMAND not in responses.commands
+    device._connect_once.assert_not_called()
 
 
 def test_tap_launch_closes_real_popup_then_rechecks_before_icon_tap(android):
@@ -395,6 +656,28 @@ def test_normal_mumu_desktop_only_taps_the_configured_icon(android):
     device.launch()
     assert CLOSE_COMMAND not in responses.commands
     assert responses.commands.count(ICON_COMMAND) == 1
+
+
+def test_game_foreground_confirmed_after_close_returns_without_an_icon_tap(android):
+    device, responses, _ = android
+
+    def run(command):
+        result = responses.run(command)
+        if command == CLOSE_COMMAND:
+            responses.focus = responses.game_focus
+        return result
+
+    device.client.run.side_effect = run
+
+    device.launch()
+
+    assert responses.commands.count(CLOSE_COMMAND) == 1
+    assert responses.commands.count(DUMP_COMMAND) == 1
+    assert responses.commands.count("dumpsys window | grep mCurrentFocus") == 3
+    assert ICON_COMMAND not in responses.commands
+    assert responses.launcher_command not in responses.commands
+    assert responses.start_command not in responses.commands
+    device._connect_once.assert_not_called()
 
 
 @pytest.mark.parametrize("new_focus", ["game", "other"])
@@ -694,6 +977,7 @@ def test_unreadable_popup_state_blocks_further_game_input(android, entry, data):
     assert CLOSE_COMMAND not in responses.commands
     assert ICON_COMMAND not in responses.commands
     assert responses.start_command not in responses.commands
+    assert responses.launcher_command not in responses.commands
     device._connect_once.assert_not_called()
 
 
