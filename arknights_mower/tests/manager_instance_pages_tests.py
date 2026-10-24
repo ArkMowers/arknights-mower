@@ -59,7 +59,7 @@ def test_page_choice_preserves_other_common_values_and_is_reused(
     pages, version, mode, action
 ):
     api, records = pages
-    original = {"account": "sender", "startup_mode": "background"}
+    original = {"screenshot": 3, "startup_mode": "background"}
     if version:
         original = dict(
             version=1,
@@ -412,3 +412,82 @@ def test_bulk_remembers_choice_once_for_multiple_ready_instances(pages, monkeypa
     assert [row["status"] for row in result["results"]] == ["opened"] * 3
     assert sum(call.args[0] == api._common_path for call in write.call_args_list) == 1
     assert common.read_settings(api._common_path)["instance_page_mode"] == "browser"
+
+
+def with_page_overrides(api, overrides, global_mode=None):
+    values = api.get_common_settings()["values"]
+    if global_mode:
+        values["instance_page_mode"] = global_mode
+    document = dict(
+        version=2,
+        values=values,
+        independent_instances={},
+        instance_overrides={
+            common.policy_key(api.instances[idx]["path"]): {
+                "local_keys": [],
+                "manager_values": {"instance_page_mode": mode},
+            }
+            for idx, mode in overrides.items()
+        },
+    )
+    runtime.write_json(api._common_path, document)
+    return document
+
+
+def test_single_page_uses_instance_choice_and_explicit_choice_only_changes_global(
+    pages,
+):
+    api, _ = pages
+    original = with_page_overrides(api, {0: "webview"}, "browser")
+    assert api.open_instance_page(0, api.instances[0].copy()) == {"ok": True}
+    assert commands() == [("0", "show")]
+    for file in (runtime.state_dir() / "commands").glob("*/*.json"):
+        file.unlink()
+    assert api.open_instance_page(0, api.instances[0].copy(), "browser", True) == {
+        "ok": True
+    }
+    assert (
+        json.loads(api._common_path.read_text())["instance_overrides"]
+        == original["instance_overrides"]
+    )
+    assert commands() == [("0", "browser")]
+    for file in (runtime.state_dir() / "commands").glob("*/*.json"):
+        file.unlink()
+    assert api.open_instance_page(0, api.instances[0].copy()) == {"ok": True}
+    assert commands() == [("0", "show")]
+
+
+def test_bulk_page_uses_each_instance_choice_without_global_prompt(pages):
+    api, _ = pages
+    with_page_overrides(api, {0: "webview", 1: "browser", 2: "webview"})
+    result = api.open_instance_pages(api.instances.copy())
+    assert result["ok"]
+    assert commands() == [("0", "show"), ("1", "browser"), ("2", "show")]
+
+
+def test_bulk_prompt_only_requires_choices_for_ready_instances(pages):
+    api, records = pages
+    with_page_overrides(api, {0: "webview", 1: "browser"})
+    result = api.open_instance_pages(api.instances.copy())
+    assert result["needs_mode"]
+    assert commands() == []
+    records[2]["ready"] = False
+    assert api.open_instance_pages(api.instances.copy())["ok"]
+    assert commands() == [("0", "show"), ("1", "browser")]
+
+
+def test_bulk_explicit_page_choice_overrides_current_request_and_retains_saved_choices(
+    pages,
+):
+    api, _ = pages
+    original = with_page_overrides(api, {0: "webview", 1: "browser", 2: "webview"})
+    result = api.open_instance_pages(api.instances.copy(), "browser", True)
+    assert result["ok"]
+    assert commands() == [("0", "browser"), ("1", "browser"), ("2", "browser")]
+    document = json.loads(api._common_path.read_text())
+    assert document["values"]["instance_page_mode"] == "browser"
+    assert document["instance_overrides"] == original["instance_overrides"]
+    for file in (runtime.state_dir() / "commands").glob("*/*.json"):
+        file.unlink()
+    assert api.open_instance_pages(api.instances.copy())["ok"]
+    assert commands() == [("0", "show"), ("1", "browser"), ("2", "show")]

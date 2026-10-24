@@ -15,6 +15,15 @@ from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.manager_instances import InstanceController
 from manager import Api, manager_app
 
+LEGACY_SENDER_VALUES = {
+    "account": "shared@example.com",
+    "pass_code": "shared-secret",
+    "custom_smtp_server.enable": True,
+    "custom_smtp_server.server": "smtp.shared.example.com",
+    "custom_smtp_server.encryption": "tls",
+    "custom_smtp_server.ssl_port": 465,
+}
+
 
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
@@ -51,7 +60,7 @@ def test_common_editor_defaults_match_existing_configuration():
 def test_common_settings_persist_without_any_instances(manager):
     defaults = manager.get_common_settings()["values"]
     assert set(defaults) == common.SHARED_CONNECTION_KEYS
-    values = {**defaults, "maa_path": "C:/共享/MAA", "account": "sender@example.com"}
+    values = {**defaults, "maa_path": "C:/共享/MAA"}
     assert save(manager, values, defaults) == {
         "ok": True,
         "results": [],
@@ -63,6 +72,79 @@ def test_common_settings_persist_without_any_instances(manager):
     assert not manager._storage_path.exists()
     save(manager, {}, values)
     assert reopened.get_common_settings()["values"] == defaults
+
+
+@pytest.mark.parametrize("key,value", LEGACY_SENDER_VALUES.items())
+def test_sender_settings_are_absent_from_schema_and_rejected_before_write(
+    manager, tmp_path, key, value
+):
+    assert key not in {field["key"] for field in common.fields()}
+    assert key not in common.SHARED_CONNECTION_KEYS
+    manager.add("one", str(tmp_path / "one"))
+    original = manager.get_common_settings()["values"]
+    before = manager._common_path.read_bytes()
+    with pytest.raises(ValueError, match="不支持"):
+        save(
+            manager,
+            {**original, key: value},
+            original,
+            [{"idx": 0, "settings": {"token": "new"}}],
+        )
+    assert manager._common_path.read_bytes() == before
+    assert not (tmp_path / "one").exists()
+
+
+@pytest.mark.parametrize("versioned", [False, True])
+def test_legacy_sender_values_are_filtered_only_on_document_reads(
+    manager, tmp_path, versioned
+):
+    values = {**manager.get_common_settings()["values"], "screenshot": 7}
+    policies = {str((tmp_path / "independent").resolve()): True}
+    document = (
+        dict(
+            version=1,
+            values={**values, **LEGACY_SENDER_VALUES},
+            independent_instances=policies,
+        )
+        if versioned
+        else {**values, **LEGACY_SENDER_VALUES}
+    )
+    manager._common_path.write_text(json.dumps(document), encoding="utf-8")
+    before = manager._common_path.read_bytes()
+    assert common.read_document(manager._common_path) == dict(
+        version=1 if versioned else 0,
+        values=values,
+        independent_instances=policies if versioned else {},
+    )
+    assert common.read_settings(manager._common_path) == values
+    assert manager._common_path.read_bytes() == before
+    result = manager.get_common_settings()
+    assert result["values"] == values
+    persisted = json.loads(manager._common_path.read_text())
+    if versioned:
+        assert persisted == document
+    else:
+        assert persisted["values"] == values
+    save(manager, {**values, "screenshot": 8}, values)
+    persisted = json.loads(manager._common_path.read_text())
+    assert persisted["values"] == {**values, "screenshot": 8}
+    assert persisted["independent_instances"] == (policies if versioned else {})
+
+
+@pytest.mark.parametrize("versioned", [False, True])
+def test_legacy_sender_compatibility_keeps_other_validation_strict(manager, versioned):
+    values = {**manager.get_common_settings()["values"], **LEGACY_SENDER_VALUES}
+    for invalid in ({"unknown_setting": True}, {"screenshot": -1}):
+        document = (
+            dict(version=1, values={**values, **invalid}, independent_instances={})
+            if versioned
+            else {**values, **invalid}
+        )
+        manager._common_path.write_text(json.dumps(document), encoding="utf-8")
+        before = manager._common_path.read_bytes()
+        with pytest.raises(ValueError):
+            manager.get_common_settings()
+        assert manager._common_path.read_bytes() == before
 
 
 @pytest.mark.parametrize("key", ["maa_path", "device.adb_path"])
@@ -155,7 +237,7 @@ def test_common_save_leaves_running_and_stopped_instance_files_untouched(
     )
     result = save(
         manager,
-        {"account": "shared"},
+        {"screenshot": 2},
         changes=[{"idx": 0, "settings": {"token": "blocked"}}],
     )
     assert result["common_saved"] is True
@@ -257,6 +339,14 @@ def test_common_application_preserves_recipients_permissions_and_device_identity
             "last_serial": "127.0.0.1:17000",
             "instance_uuid": "vm-seven",
         },
+        account="personal@example.com",
+        pass_code="personal-secret",
+        custom_smtp_server={
+            "enable": True,
+            "server": "smtp.personal.example.com",
+            "encryption": "tls",
+            "ssl_port": 465,
+        },
         recipient=["personal@example.com"],
         mail_subject="personal",
         mail_enable=0,
@@ -271,17 +361,15 @@ def test_common_application_preserves_recipients_permissions_and_device_identity
             "startup_mode": "background",
             "device.adb_path": "C:/adb.exe",
             "maa_path": "C:/MAA",
-            "account": "sender@example.com",
-            "pass_code": "sender-secret",
-            "custom_smtp_server.server": "smtp.example.com",
             "device.recovery_timeout": 240,
             "performance_mode": "low",
             "screenshot": 6,
             "screenshot_archive_limit_mb": 1024,
         },
     )
-    assert changed.account == "sender@example.com"
-    assert changed.pass_code == "sender-secret"
+    assert changed.account == original.account
+    assert changed.pass_code == original.pass_code
+    assert changed.custom_smtp_server == original.custom_smtp_server
     assert changed.recipient == ["personal@example.com"]
     assert changed.mail_subject == "personal" and changed.mail_enable == 0
     assert changed.webview.port == 58001 and changed.webview.token == "instance-token"
@@ -379,6 +467,11 @@ def test_real_configuration_startup_reads_common_only_for_managed_launch(
             {
                 "maa_path": "C:/shared-maa",
                 "account": "shared-sender",
+                "pass_code": "shared-secret",
+                "custom_smtp_server.enable": True,
+                "custom_smtp_server.server": "smtp.shared.example.com",
+                "custom_smtp_server.encryption": "tls",
+                "custom_smtp_server.ssl_port": 465,
                 "startup_mode": "background",
                 "instance_page_mode": "webview",
             }
@@ -417,7 +510,7 @@ def test_real_configuration_startup_reads_common_only_for_managed_launch(
         check=True,
     )
     expected = (
-        ["C:/shared-maa", "shared-sender"]
+        ["C:/shared-maa", "" if fresh else "personal"]
         if managed
         else ["C:/private-maa", "personal"]
     )

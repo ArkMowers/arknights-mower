@@ -47,6 +47,8 @@ const sections = [
 const section = Object.fromEntries(sections.map((item) => [item.id, item]))
 
 const config_store = useConfigStore()
+const inheritsFromManager = (key) =>
+  config_store.manager_owned_device && config_store.manager_inherited_settings?.includes(key)
 const showExtraSettings = computed(
   () => !config_store.manager_owned_device || config_store.extra_settings_visible === true
 )
@@ -330,11 +332,15 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
                 <span>截图保存时间</span>
                 <span id="screenshot-retention-description" class="settings-row-description">
                   普通截图保留多久。设为 0 时只为报错归档保留画面。
+                  <template v-if="inheritsFromManager('screenshot')">
+                    当前使用通用设置，请在多开管理器中修改或选择使用本实例值。
+                  </template>
                 </span>
               </span>
             </template>
             <mower-input-number
               v-model:value="screenshot"
+              :disabled="inheritsFromManager('screenshot')"
               :min="0"
               :input-props="{
                 'aria-label': '截图保存时间',
@@ -350,11 +356,15 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
                 <span>报错归档空间上限</span>
                 <span id="screenshot-archive-limit-description" class="settings-row-description">
                   达到上限后清理较早的报错归档，0 表示不限容量。
+                  <template v-if="inheritsFromManager('screenshot_archive_limit_mb')">
+                    当前使用通用设置，请在多开管理器中修改或选择使用本实例值。
+                  </template>
                 </span>
               </span>
             </template>
             <mower-input-number
               v-model:value="archive_limit_gib"
+              :disabled="inheritsFromManager('screenshot_archive_limit_mb')"
               :min="0"
               :precision="2"
               :input-props="{

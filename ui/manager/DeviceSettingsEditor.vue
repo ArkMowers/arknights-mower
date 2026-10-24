@@ -20,6 +20,13 @@ const discovery = ref(null)
 const policySupported = ref(false)
 const originalPolicy = ref(null)
 const sharedKeys = ref([])
+const overrideKeys = ref([])
+const instanceOverride = ref({ local_keys: [], manager_values: {} })
+const initialOverride = ref({ local_keys: [], manager_values: {} })
+const managerOnlyKeys = new Set(['startup_mode', 'instance_page_mode'])
+const usesLocalValue = (key) =>
+  instanceOverride.value.local_keys.includes(key) ||
+  Object.hasOwn(instanceOverride.value.manager_values, key)
 const independentConfiguration = ref(false)
 const initialIndependentConfiguration = ref(false)
 const instanceFields = new Set([
@@ -35,16 +42,23 @@ const templateFields = [
   'device.config_path'
 ]
 const sharedConfiguration = computed(() => policySupported.value && !independentConfiguration.value)
-const editableField = (key) => !sharedConfiguration.value || instanceFields.has(key)
+const editableField = (key) =>
+  overrideKeys.value.includes(key)
+    ? usesLocalValue(key)
+    : !sharedConfiguration.value || instanceFields.has(key)
 const patchField = (key) => editableField(key) || derivedIdentityFields.has(key)
 const visibleFields = computed(() =>
-  fields.value.filter((field) => !field.read_only && editableField(field.key))
+  fields.value.filter(
+    (field) =>
+      !field.read_only && (editableField(field.key) || overrideKeys.value.includes(field.key))
+  )
 )
 const groups = computed(() => [...new Set(visibleFields.value.map((field) => field.group))])
 const policyChanged = computed(
   () =>
     policySupported.value &&
-    independentConfiguration.value !== initialIndependentConfiguration.value
+    (independentConfiguration.value !== initialIndependentConfiguration.value ||
+      JSON.stringify(instanceOverride.value) !== JSON.stringify(initialOverride.value))
 )
 const changes = computed(() =>
   Object.fromEntries(
@@ -78,6 +92,11 @@ async function load() {
       throw new Error('连接配置的继承信息不完整，请更新管理器后重新加载')
     originalPolicy.value = result.original_policy ?? null
     sharedKeys.value = result.shared_keys ?? []
+    overrideKeys.value = result.override_keys ?? []
+    instanceOverride.value = copyValue(
+      result.instance_override ?? { local_keys: [], manager_values: {} }
+    )
+    initialOverride.value = copyValue(instanceOverride.value)
     independentConfiguration.value = result.independent_configuration === true
     initialIndependentConfiguration.value = independentConfiguration.value
     const flat = Object.fromEntries(
@@ -112,6 +131,8 @@ function edit(key, value) {
       if (Object.hasOwn(draft.value, `device.${field}`)) draft.value[`device.${field}`] = next
     }
   } else draft.value[key] = value
+  if (managerOnlyKeys.has(key) && usesLocalValue(key))
+    instanceOverride.value.manager_values[key] = value
 }
 
 function setIndependent(value) {
@@ -120,7 +141,7 @@ function setIndependent(value) {
   discovery.value = null
   if (!independentConfiguration.value) {
     for (const field of fields.value) {
-      if (!instanceFields.has(field.key))
+      if (!instanceFields.has(field.key) && !overrideKeys.value.includes(field.key))
         draft.value[field.key] = copyValue(initial.value[field.key])
     }
     for (const key of sharedKeys.value) {
@@ -136,6 +157,35 @@ function setIndependent(value) {
       draft.value['device.topology_fingerprint'] = ''
     }
   }
+}
+
+function setLocalValue(key, local) {
+  if (disabled.value || !overrideKeys.value.includes(key)) return
+  if (managerOnlyKeys.has(key)) {
+    if (local) instanceOverride.value.manager_values[key] = draft.value[key]
+    else delete instanceOverride.value.manager_values[key]
+  } else {
+    instanceOverride.value.local_keys = local
+      ? [...new Set([...instanceOverride.value.local_keys, key])].sort()
+      : instanceOverride.value.local_keys.filter((item) => item !== key)
+  }
+  if (
+    local &&
+    !managerOnlyKeys.has(key) &&
+    Object.hasOwn(originalPolicy.value.local_values ?? {}, key)
+  )
+    draft.value[key] = copyValue(originalPolicy.value.local_values[key])
+  if (!local)
+    draft.value[key] = copyValue(originalPolicy.value.shared_values[key] ?? initial.value[key])
+}
+
+function requestPolicy() {
+  const result = {
+    independent_configuration: independentConfiguration.value,
+    original_policy: originalPolicy.value
+  }
+  if (overrideKeys.value.length) result.instance_override = copyValue(instanceOverride.value)
+  return result
 }
 
 function copyValue(value) {
@@ -163,11 +213,7 @@ async function detect() {
   discovery.value = null
   try {
     const args = [props.idx, { ...changes.value }, props.target, original.value]
-    if (policySupported.value)
-      args.push({
-        independent_configuration: independentConfiguration.value,
-        original_policy: originalPolicy.value
-      })
+    if (policySupported.value) args.push(requestPolicy())
     const result = await managerCall(() => props.api.discover_device_settings(...args), 60000)
     if (!disposed) discovery.value = result
   } catch (reason) {
@@ -232,11 +278,7 @@ async function save() {
   error.value = ''
   try {
     const args = [props.idx, { ...changes.value }, props.target, original.value]
-    if (policySupported.value)
-      args.push({
-        independent_configuration: independentConfiguration.value,
-        original_policy: originalPolicy.value
-      })
+    if (policySupported.value) args.push(requestPolicy())
     const result = await managerCall(() => props.api.update_device_settings(...args))
     if (result?.ok === false) throw new Error(result.message)
     if (!disposed) emit('saved')
@@ -258,7 +300,7 @@ onUnmounted(() => {
     <n-alert type="info" :show-icon="false"
       >修改
       {{ target.name }}
-      的模拟器选择与连接配置，保存后下次启动生效。自定义截图命令会在主机上执行，请确认命令来源。
+      的连接与启动配置，保存后下次启动生效。自定义截图命令会在主机上执行，请确认命令来源。
     </n-alert>
     <n-alert v-if="error" type="error"
       >{{ error
@@ -280,12 +322,11 @@ onUnmounted(() => {
       type="info"
       :show-icon="false"
     >
-      此处仅设置模拟器实例编号、实例名称和游戏包名；模拟器预设、路径、连接、截图、启动、性能和页面等待参数统一使用通用设置。需要手动指定
-      ADB
-      地址或单独设置页面等待参数时请开启独立配置。关闭独立配置会放弃其他参数的未保存修改，保存后下次启动生效。
+      模拟器预设、连接、游戏启动、性能和页面等待参数使用通用设置。开启独立配置后可单独设置这些参数；关闭会放弃这些参数的未保存修改。MAA
+      安装目录、截图保存、实例启动及页面打开方式可分别选择使用本实例值，本实例值优先。
     </n-alert>
     <n-text v-else-if="original && policySupported" depth="3">
-      连接、截图、启动、性能和页面等待参数仅应用于此实例，下次启动生效；任务设置仍由此实例单独保存。
+      连接、游戏启动、性能和页面等待参数仅应用于此实例，下次启动生效。其他通用配置可逐项选择使用本实例值；任务设置仍由此实例单独保存。
     </n-text>
     <n-space v-if="original" vertical>
       <n-button :disabled="disabled" :loading="pending" @click="detect">检测可用实例</n-button>
@@ -326,56 +367,69 @@ onUnmounted(() => {
                     field.key.endsWith('.command')
                 }"
               >
-                <WaitingSceneEditor
-                  v-if="field.kind === 'waiting_scene'"
-                  :field="field"
-                  :value="draft[field.key]"
-                  :disabled="disabled"
-                  @update:value="(value) => edit(field.key, value)"
-                />
-                <n-switch
-                  v-else-if="field.kind === 'boolean'"
-                  :value="draft[field.key]"
-                  :disabled="disabled"
-                  :aria-label="field.label"
-                  @update:value="(value) => edit(field.key, value)"
-                />
-                <n-select
-                  v-else-if="field.kind === 'select'"
-                  :value="draft[field.key]"
-                  :options="options(field)"
-                  :consistent-menu-width="false"
-                  :disabled="disabled"
-                  :aria-label="field.label"
-                  @update:value="(value) => edit(field.key, value)"
-                />
-                <n-input-number
-                  v-else-if="['integer', 'number'].includes(field.kind)"
-                  :value="draft[field.key]"
-                  :min="field.min ?? 0"
-                  :max="field.max"
-                  :precision="field.kind === 'integer' ? 0 : undefined"
-                  :disabled="disabled"
-                  :aria-label="field.label"
-                  @update:value="(value) => edit(field.key, value)"
-                />
-                <n-input-group v-else>
-                  <n-input
-                    :value="draft[field.key]"
-                    :type="field.key.endsWith('.command') ? 'textarea' : 'text'"
-                    :autosize="{ minRows: 1, maxRows: 6 }"
-                    placeholder="未设置"
+                <div class="device-editor-field-value">
+                  <n-select
+                    v-if="overrideKeys.includes(field.key)"
+                    :value="usesLocalValue(field.key)"
+                    :options="[
+                      { value: false, label: '使用通用设置' },
+                      { value: true, label: '使用本实例值' }
+                    ]"
                     :disabled="disabled"
+                    :aria-label="`${field.label}配置来源`"
+                    @update:value="(value) => setLocalValue(field.key, value)"
+                  />
+                  <WaitingSceneEditor
+                    v-if="field.kind === 'waiting_scene'"
+                    :field="field"
+                    :value="draft[field.key]"
+                    :disabled="disabled || !editableField(field.key)"
+                    @update:value="(value) => edit(field.key, value)"
+                  />
+                  <n-switch
+                    v-else-if="field.kind === 'boolean'"
+                    :value="draft[field.key]"
+                    :disabled="disabled || !editableField(field.key)"
                     :aria-label="field.label"
                     @update:value="(value) => edit(field.key, value)"
                   />
-                  <n-button
-                    v-if="['file', 'directory'].includes(field.kind)"
-                    :disabled="disabled"
-                    @click="browse(field)"
-                    >选择</n-button
-                  >
-                </n-input-group>
+                  <n-select
+                    v-else-if="field.kind === 'select'"
+                    :value="draft[field.key]"
+                    :options="options(field)"
+                    :consistent-menu-width="false"
+                    :disabled="disabled || !editableField(field.key)"
+                    :aria-label="field.label"
+                    @update:value="(value) => edit(field.key, value)"
+                  />
+                  <n-input-number
+                    v-else-if="['integer', 'number'].includes(field.kind)"
+                    :value="draft[field.key]"
+                    :min="field.min ?? 0"
+                    :max="field.max"
+                    :precision="field.kind === 'integer' ? 0 : undefined"
+                    :disabled="disabled || !editableField(field.key)"
+                    :aria-label="field.label"
+                    @update:value="(value) => edit(field.key, value)"
+                  />
+                  <n-input-group v-else>
+                    <n-input
+                      :value="draft[field.key]"
+                      :type="field.key.endsWith('.command') ? 'textarea' : 'text'"
+                      :autosize="{ minRows: 1, maxRows: 6 }"
+                      placeholder="未设置"
+                      :disabled="disabled || !editableField(field.key)"
+                      :aria-label="field.label"
+                      @update:value="(value) => edit(field.key, value)"
+                    />
+                    <n-button
+                      v-if="['file', 'directory'].includes(field.kind)"
+                      :disabled="disabled || !editableField(field.key)"
+                      @click="browse(field)"
+                      >选择</n-button
+                    >
+                  </n-input-group>
+                </div>
               </n-form-item>
             </div>
           </n-form>
@@ -411,6 +465,11 @@ onUnmounted(() => {
   min-width: 0;
 }
 .device-editor-grid :deep(.n-input-number) {
+  width: 100%;
+}
+.device-editor-field-value {
+  display: grid;
+  gap: 8px;
   width: 100%;
 }
 .device-editor-wide {

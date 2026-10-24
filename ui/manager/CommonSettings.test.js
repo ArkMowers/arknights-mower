@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import CommonSettings from './CommonSettings.vue'
 
 vi.mock('vue', async (original) => ({
@@ -22,7 +24,7 @@ function setup(values = {}, shared = false) {
         group: '连接方式',
         shared_connection: shared
       },
-      { key: 'account', default: '', group: '邮件发信人' },
+      { key: 'screenshot', label: '截图保存时间', kind: 'number', default: 1, group: '截图保存' },
       { key: 'startup_mode', default: 'window', group: '实例启动' }
     ]
   }
@@ -63,15 +65,15 @@ describe('manager common settings', () => {
   it('opts into one field without copying unrelated defaults', () => {
     const { props, component } = setup()
     component.toggle(props.fields[2], true)
-    expect(props.values).toEqual({ account: '' })
-    component.change(props.fields[2], 'sender@example.com')
-    expect(props.values).toEqual({ account: 'sender@example.com' })
+    expect(props.values).toEqual({ screenshot: 1 })
+    component.change(props.fields[2], 24)
+    expect(props.values).toEqual({ screenshot: 24 })
     component.toggle(props.fields[2], false)
     expect(props.values).toEqual({})
   })
 
   it('selects screenshot and touch together and preserves the MuMu pair', () => {
-    const { props, component } = setup({ account: 'keep' })
+    const { props, component } = setup({ screenshot: 12 })
     component.toggle(props.fields[0], true)
     expect(props.values['device.touch_backend']).toBe('scrcpy')
     component.change(props.fields[0], 'mumu_ipc')
@@ -79,18 +81,18 @@ describe('manager common settings', () => {
     component.change(props.fields[1], 'maatouch')
     expect(props.values['device.screenshot_backend']).toBe('droidcast')
     component.toggle(props.fields[1], false)
-    expect(props.values).toEqual({ account: 'keep' })
+    expect(props.values).toEqual({ screenshot: 12 })
   })
 
   it('keeps the startup mode as an explicit draft and permits returning to the default', () => {
-    const { props, component } = setup({ account: 'keep' })
+    const { props, component } = setup({ screenshot: 12 })
     const field = props.fields[3]
     component.toggle(field, true)
-    expect(props.values).toEqual({ account: 'keep', startup_mode: 'window' })
+    expect(props.values).toEqual({ screenshot: 12, startup_mode: 'window' })
     component.change(field, 'background')
-    expect(props.values).toEqual({ account: 'keep', startup_mode: 'background' })
+    expect(props.values).toEqual({ screenshot: 12, startup_mode: 'background' })
     component.toggle(field, false)
-    expect(props.values).toEqual({ account: 'keep' })
+    expect(props.values).toEqual({ screenshot: 12 })
   })
 })
 
@@ -111,9 +113,9 @@ it('keeps shared connection defaults mandatory while allowing their values to ch
     'device.touch_backend': 'mumu_ipc'
   })
   component.toggle(props.fields[2], true)
-  expect(props.values.account).toBe('')
+  expect(props.values.screenshot).toBe(1)
   component.toggle(props.fields[2], false)
-  expect(props.values.account).toBeUndefined()
+  expect(props.values.screenshot).toBeUndefined()
   expect(props.values['device.touch_backend']).toBe('mumu_ipc')
 })
 
@@ -139,11 +141,11 @@ it('labels shared simulator presets with their simulator name and platform', () 
 it('edits only one waiting cell without mutating other scenes, the original object or schema defaults', () => {
   const field = waitingField()
   const original = { ...structuredClone(field.default), UNKNOWN: [7, 13] }
-  const { props, emit, component } = setup({ waiting_scene: original, account: 'keep' })
+  const { props, emit, component } = setup({ waiting_scene: original, screenshot: 12 })
   props.fields.push(field)
   component.change(field, { ...original, LOADING: [2, 25] })
   expect(props.values).toEqual({
-    account: 'keep',
+    screenshot: 12,
     waiting_scene: { ...original, LOADING: [2, 25] }
   })
   expect(original.LOADING).toEqual([2, 30])
@@ -171,4 +173,51 @@ it('searches waiting scene labels and keeps the six rows together', () => {
   component.search.value = '代理作战'
   expect(component.visibleFields.value).toEqual([field])
   expect(field.scenes).toHaveLength(6)
+})
+
+it('renders connection settings in one open board with continuous subsections', async () => {
+  const { props } = setup()
+  props.fields.push(
+    { key: 'device.preset_id', label: '模拟器预设', group: '模拟器模板', default: 'manual.other' },
+    { key: 'device.adb_path', label: 'ADB 程序', group: '程序位置', default: '' },
+    { key: 'performance_mode', label: '设备性能适配', group: '性能', default: 'auto' },
+    { key: 'device.recovery_timeout', label: '恢复总时限', group: '连接恢复', default: 180 },
+    {
+      key: 'tap_to_launch_game.mode',
+      label: '启动游戏方式',
+      group: '游戏启动与空闲',
+      default: 'adb'
+    },
+    waitingField()
+  )
+  const html = await renderToString(createSSRApp(CommonSettings, props))
+  const boards = [...html.matchAll(/<details\b[^>]*class="common-group"[^>]*>/g)]
+  expect(boards).toHaveLength(2)
+  expect(boards[0][0]).toContain(' open')
+  const headings = [...html.matchAll(/<h3\b[^>]*>([^<]+)<\/h3>/g)].map((match) => match[1])
+  expect(headings).toEqual([
+    '模拟器模板',
+    '程序位置',
+    '连接方式',
+    '性能',
+    '连接恢复',
+    '游戏启动与空闲',
+    '运行参数',
+    '实例启动'
+  ])
+  expect(html).toContain('连接与启动')
+  expect(html).not.toContain('邮件发信人')
+})
+
+it('searches the combined connection board without including unrelated settings', () => {
+  const { props, component } = setup()
+  props.fields.push(waitingField())
+  component.search.value = '连接与启动'
+  expect(component.visibleFields.value.map((field) => field.key)).toEqual([
+    'device.screenshot_backend',
+    'device.touch_backend',
+    'startup_mode',
+    'waiting_scene'
+  ])
+  expect(component.groups.value).toEqual(['连接与启动'])
 })

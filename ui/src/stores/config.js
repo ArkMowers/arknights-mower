@@ -175,6 +175,7 @@ export const useConfigStore = defineStore('config', () => {
   const webview = ref({ scale: 1.0 })
   const runtime_platform = ref('')
   const manager_owned_device = ref(false)
+  const manager_inherited_settings = ref([])
   const extra_settings_visible = ref(false)
   const shop_collect_enable = ref(true)
   const meeting_level = ref(3)
@@ -477,6 +478,9 @@ export const useConfigStore = defineStore('config', () => {
       device_profile.value = response.data.device ?? null
       runtime_platform.value = response.data.runtime_platform || ''
       manager_owned_device.value = response.data.manager_owned_device === true
+      manager_inherited_settings.value = Array.isArray(response.data.manager_inherited_settings)
+        ? response.data.manager_inherited_settings.filter((key) => typeof key === 'string')
+        : []
       extra_settings_visible.value = response.data.extra_settings_visible === true
       performance_mode.value = normalizePerformanceMode(
         response.data.performance_mode,
@@ -1176,6 +1180,7 @@ export const useConfigStore = defineStore('config', () => {
     webview,
     runtime_platform,
     manager_owned_device,
+    manager_inherited_settings,
     extra_settings_visible,
     shop_collect_enable,
     meeting_level,

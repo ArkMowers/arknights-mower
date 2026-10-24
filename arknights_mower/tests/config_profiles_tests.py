@@ -94,8 +94,8 @@ def test_managed_profiles_retain_device_and_performance_settings(
     from arknights_mower.utils import managed_device
 
     monkeypatch.setattr(
-        "arknights_mower.utils.manager_common.read_settings",
-        lambda: {"account": "manager-sender"},
+        "arknights_mower.utils.manager_common.read_document",
+        lambda: {"values": {"screenshot": 7}},
     )
     monkeypatch.setenv("MOWER_MANAGED", "1")
     original = profiles.list_profiles()["active_id"]
@@ -117,6 +117,7 @@ def test_managed_profiles_retain_device_and_performance_settings(
     config.conf.extra_settings_visible = True
     config.conf.start_automatically = True
     config.conf.account = "manager-sender"
+    config.conf.screenshot = 7
     config.save_conf()
     if operation == "create":
         _create("created", selected)
@@ -133,7 +134,8 @@ def test_managed_profiles_retain_device_and_performance_settings(
     assert config.conf.ai_assistant_enabled is True
     assert config.conf.extra_settings_visible is True
     assert config.conf.start_automatically is True
-    assert config.conf.account == "manager-sender"
+    assert config.conf.account != "manager-sender"
+    assert config.conf.screenshot == 7
     saved = backup._object_file(
         backup.read_archive(backup.export_archive()), "conf.yml"
     )

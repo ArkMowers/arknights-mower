@@ -557,9 +557,11 @@ describe('managed maintenance visibility', () => {
       app.provide('loaded', ref(false))
       store = app.runWithContext(() => useConfigStore())
       expect(store.extra_settings_visible).toBe(false)
+      expect(store.manager_inherited_settings).toEqual([])
       axios.get.mockResolvedValue({
         data: {
           manager_owned_device: true,
+          manager_inherited_settings: ['screenshot', 42],
           extra_settings_visible: value,
           free_blacklist: '',
           reload_room: '',
@@ -573,8 +575,10 @@ describe('managed maintenance visibility', () => {
       })
       await store.load_config()
       expect(store.manager_owned_device).toBe(true)
+      expect(store.manager_inherited_settings).toEqual(['screenshot'])
       expect(store.extra_settings_visible).toBe(expected)
       expect(store.build_config()).not.toHaveProperty('extra_settings_visible')
+      expect(store.build_config()).not.toHaveProperty('manager_inherited_settings')
       expect(axios.patch).not.toHaveBeenCalled()
     }
   )

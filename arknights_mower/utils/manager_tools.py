@@ -159,12 +159,10 @@ class ManagerTools:
                     )
                     independent = document["independent_instances"].get(key, False)
                     row["independent_configuration"] = independent
-                    proposed = manager_common.effective_values(
-                        values, independent=independent
+                    proposed = manager_common.instance_values(
+                        document, key, values=values
                     )
-                    current_values = manager_common.effective_values(
-                        document["values"], independent=independent
-                    )
+                    current_values = manager_common.instance_values(document, key)
                     if reason := capture_compatibility_error(
                         proposed.get(
                             "device.preset_id", configuration.device.preset_id
@@ -298,8 +296,10 @@ class ManagerTools:
             return {"ok": True, "deleted": deleted, "freed": freed, "errors": errors}
 
     def get_maa_installations(self):
+        from .manager_instances import instance_directory
+
         with self._operation():
-            common = manager_common.read_settings(self._common_path)
+            document = manager_common.read_document(self._common_path)
             records = self._records()
             groups = {}
             errors = []
@@ -308,6 +308,9 @@ class ManagerTools:
                     if not instance["path"]:
                         continue
                     raw = self._raw(instance)
+                    common = manager_common.instance_values(
+                        document, instance_directory(instance["path"])
+                    )
                     target = _maa_target(raw, common)
                     key = os.path.normcase(target)
                     group = groups.setdefault(
@@ -337,8 +340,14 @@ class ManagerTools:
     def _check_maintenance_start(self, instance):
         job = self._maintenance_job
         if job.get("status") == "running" and job.get("action") == "update":
+            from .manager_instances import instance_directory
+
             target = _maa_target(
-                self._raw(instance), manager_common.read_settings(self._common_path)
+                self._raw(instance),
+                manager_common.instance_values(
+                    manager_common.read_document(self._common_path),
+                    instance_directory(instance["path"]),
+                ),
             )
             if os.path.normcase(target) == os.path.normcase(job["target"]):
                 raise ValueError("此实例使用的 MAA 正在更新，请完成后再启动")

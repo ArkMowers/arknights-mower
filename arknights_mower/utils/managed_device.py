@@ -32,7 +32,74 @@ SETTINGS = (
     "selection_poll_interval",
     "selection_transition_timeout",
     "waiting_scene",
+    "maa_mirrorchyan_token",
+    "maa_update_channel",
+    "maa_auto_check_update",
+    "maa_auto_update",
+    "maa_resource_auto_check_update",
+    "maa_resource_auto_update",
 )
+
+EXTRA_SETTINGS = (
+    "resource_update",
+    "screenshot",
+    "screenshot_archive_limit_mb",
+    "depot_history_limit",
+    "depot_history_keep",
+)
+
+
+def extra_settings_allowed(configuration):
+    return not enabled() or configuration.extra_settings_visible
+
+
+def protected_settings(configuration):
+    keys = SETTINGS
+    if not extra_settings_allowed(configuration):
+        keys += EXTRA_SETTINGS
+    elif enabled() and not configuration.updates_enabled:
+        keys += ("resource_update",)
+    if enabled():
+        from . import config
+
+        keys = tuple(dict.fromkeys((*keys, *config.manager_inherited_settings)))
+    return keys
+
+
+def operation_blocked(path, method, configuration):
+    if not enabled() or method == "OPTIONS":
+        return False
+    if path in {
+        "/device/preflight",
+        "/device/discover",
+        "/device/start",
+        "/device/avd/start",
+        "/device/redroid/start",
+        "/device/genymotion/start",
+        "/device/boss_key",
+        "/test-custom-screenshot",
+        "/check-maa",
+        "/maa-conn-preset",
+    } or (path == "/device/performance-test" and method not in {"GET", "HEAD"}):
+        return True
+    if path.startswith(("/maa-update/", "/maa-resource-update/")):
+        return not path.endswith(("/info", "/status"))
+    if extra_settings_allowed(configuration):
+        return False
+    return (
+        (path in {"/network/settings", "/network/test"} and method == "POST")
+        or (
+            path.startswith("/software-update/")
+            and (
+                (method not in {"GET", "HEAD"} and path != "/software-update/check")
+                or path.endswith(
+                    ("/source/history", "/source/pulls", "/release/rollback-options")
+                )
+            )
+        )
+        or path
+        in {"/resource/install", "/resource-update/manual", "/config-backup/import"}
+    )
 
 
 def enabled():
@@ -51,7 +118,12 @@ def changed(current, proposed):
 def preserve(data, current):
     """Imports retain the current manager-owned values, including legacy aliases."""
     if enabled():
-        data.update(snapshot(current))
+        current_values = current.model_dump(mode="json")
+        for key in protected_settings(current):
+            data[key] = copy.deepcopy(current_values[key])
+        webview = data.get("webview")
+        if isinstance(webview, dict):
+            webview.update(port=current.webview.port, token=current.webview.token)
         for key in (
             "start_automatically",
             "ai_assistant_enabled",
@@ -59,10 +131,14 @@ def preserve(data, current):
             "extra_settings_visible",
         ):
             data[key] = getattr(current, key)
-        from .manager_common import MANAGER_ONLY_KEYS, read_settings
+        from .manager_common import MANAGER_ONLY_KEYS, instance_override, read_document
+        from .path import get_path
 
-        current_values = current.model_dump()
-        for key in read_settings():
+        document = read_document()
+        selected = set(document["values"]) | set(
+            instance_override(document, get_path("@app"))["local_keys"]
+        )
+        for key in selected:
             if key in MANAGER_ONLY_KEYS:
                 continue
             parts = key.split(".")
@@ -262,6 +338,11 @@ def fields():
             "fix_mumu12_adb_disconnect": "关闭 MuMu 12 时断开当前 ADB 连接",
         },
         "运行参数": {"waiting_scene": "页面等待参数"},
+        "MAA": {"maa_path": "MAA 目录"},
+        "截图归档": {
+            "screenshot": "截图保存时间（小时）",
+            "screenshot_archive_limit_mb": "报错归档空间上限（MiB）",
+        },
         "性能": {
             "performance_mode": "设备性能适配",
             "screenshot_interval": "截图间隔（毫秒）",
@@ -314,7 +395,7 @@ def fields():
                 field["options"].append(("custom", "自定义命令"))
             if key in {"device.config_path", "device.manager_path"}:
                 field["kind"] = "file"
-            if key == "device.installation_path":
+            if key in {"device.installation_path", "maa_path"}:
                 field["kind"] = "directory"
             for source, target in (("minimum", "min"), ("maximum", "max")):
                 if source in schema:

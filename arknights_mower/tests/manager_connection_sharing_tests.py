@@ -43,6 +43,16 @@ def editor(manager, idx=0):
     return target, manager.get_device_settings(idx, target)
 
 
+def editor_values(configuration):
+    return {
+        **managed_device.snapshot(configuration),
+        "screenshot": configuration.screenshot,
+        "screenshot_archive_limit_mb": configuration.screenshot_archive_limit_mb,
+        "startup_mode": "window",
+        "instance_page_mode": "browser",
+    }
+
+
 def set_independent(manager, enabled, idx=0, changes=None):
     target, state = editor(manager, idx)
     return manager.update_device_settings(
@@ -121,9 +131,7 @@ def test_migration_uses_one_coherent_baseline_and_retains_explicit_conflicting_i
         },
     )
     before = [path.read_bytes() for path in (first_path, second_path)]
-    expected_second = managed_device.snapshot(
-        Conf(**yaml.safe_load(second_path.read_text()))
-    )
+    expected_second = editor_values(Conf(**yaml.safe_load(second_path.read_text())))
     baseline = manager.get_common_settings()["values"]
     assert (
         baseline["device.screenshot_backend"]
@@ -159,6 +167,12 @@ def test_legacy_flat_common_values_materialize_the_effective_binding(manager, tm
                 "game_package": "com.hypergryph.arknights.bilibili",
             },
             "performance_mode": "high",
+            "account": "personal sender",
+            "pass_code": "personal secret",
+            "custom_smtp_server": {
+                "enable": True,
+                "server": "smtp.personal.example.com",
+            },
         },
     )
     manager._common_path.parent.mkdir(parents=True)
@@ -182,7 +196,6 @@ def test_legacy_flat_common_values_materialize_the_effective_binding(manager, tm
                 "manager_path": "C:/foreign/manager.exe",
             },
             "performance_mode": "low",
-            "account": "shared sender",
         }
     )
     target, state = editor(manager)
@@ -195,7 +208,13 @@ def test_legacy_flat_common_values_materialize_the_effective_binding(manager, tm
         independent=True,
     )
     assert changed.device.model_dump() == expected.device.model_dump()
-    assert changed.account == "shared sender"
+    assert changed.account == original.account
+    assert changed.pass_code == original.pass_code
+    assert changed.custom_smtp_server == original.custom_smtp_server
+    persisted = yaml.safe_load(path.read_text())
+    assert persisted["account"] == "personal sender"
+    assert persisted["pass_code"] == "personal secret"
+    assert persisted["custom_smtp_server"]["server"] == "smtp.personal.example.com"
     assert "startup_mode" not in yaml.safe_load(path.read_text())
     assert "instance_page_mode" not in yaml.safe_load(path.read_text())
     assert (
@@ -207,6 +226,67 @@ def test_legacy_flat_common_values_materialize_the_effective_binding(manager, tm
         == "C:/foreign/manager.exe"
     )
     assert target == {"name": "first", "path": str(path.parent.parent)}
+
+
+@pytest.mark.parametrize("independent", [False, True])
+def test_versioned_sender_removal_preserves_instance_mail_and_connection_policy(
+    manager, tmp_path, monkeypatch, independent
+):
+    _, path = add_instance(
+        manager,
+        tmp_path,
+        "first",
+        {
+            "account": "personal@example.com",
+            "pass_code": "personal-secret",
+            "custom_smtp_server": {
+                "enable": True,
+                "server": "smtp.personal.example.com",
+                "encryption": "tls",
+                "ssl_port": 465,
+            },
+            "recipient": ["owner@example.com"],
+            "mail_enable": 0,
+            "performance_mode": "high",
+        },
+    )
+    manager.get_common_settings()
+    document = json.loads(manager._common_path.read_text())
+    policy_key = common.policy_key(path.parent.parent)
+    document["independent_instances"][policy_key] = independent
+    document["values"].update(
+        {
+            "performance_mode": "low",
+            "account": "shared@example.com",
+            "pass_code": "shared-secret",
+            "custom_smtp_server.enable": False,
+            "custom_smtp_server.server": "smtp.shared.example.com",
+            "custom_smtp_server.encryption": "starttls",
+            "custom_smtp_server.ssl_port": 587,
+        }
+    )
+    manager._common_path.write_text(json.dumps(document), encoding="utf-8")
+    before = path.read_bytes()
+    original = Conf(**yaml.safe_load(before))
+    monkeypatch.setattr(common, "settings_path", lambda: manager._common_path)
+    monkeypatch.setattr(common, "get_path", lambda *args: path.parent.parent)
+    launched = common.for_launch(original, managed=True)
+    assert launched.account == original.account
+    assert launched.pass_code == original.pass_code
+    assert launched.custom_smtp_server == original.custom_smtp_server
+    assert launched.recipient == original.recipient
+    assert launched.mail_enable == original.mail_enable
+    assert launched.performance_mode == ("high" if independent else "low")
+    schema = manager.get_common_settings()
+    assert "account" not in schema["values"]
+    assert "pass_code" not in schema["values"]
+    assert not any(key.startswith("custom_smtp_server.") for key in schema["values"])
+    assert editor(manager)[1]["independent_configuration"] is independent
+    edit_common(manager, screenshot=7)
+    persisted = json.loads(manager._common_path.read_text())
+    assert persisted["independent_instances"] == {policy_key: independent}
+    assert persisted["values"] == {**schema["values"], "screenshot": 7}
+    assert path.read_bytes() == before
 
 
 def test_legacy_flat_paths_remain_shared_without_instance_or_preview_writes(
@@ -339,7 +419,7 @@ def test_unrepresentable_legacy_values_remain_independent_without_blocking_migra
     assert values["performance_mode"] == expected.performance_mode
     state = editor(manager, idx)[1]
     assert state["independent_configuration"] is True
-    assert state["values"] == managed_device.snapshot(original)
+    assert state["values"] == editor_values(original)
     assert path.read_bytes() == before
     monkeypatch.setattr(common, "settings_path", lambda: manager._common_path)
     monkeypatch.setattr(common, "get_path", lambda *args, **kwargs: path.parent.parent)
@@ -624,14 +704,17 @@ def test_shared_values_and_policy_survive_instance_configuration_import_projecti
             "updates_enabled": False,
         },
     )
-    edit_common(manager, performance_mode="low", account="global sender")
+    edit_common(manager, performance_mode="low")
     current = Conf(
         **copy.deepcopy(editor(manager)[1]["values"]),
-        account="global sender",
+        account="personal sender",
         updates_enabled=False,
     )
     monkeypatch.setenv("MOWER_MANAGED", "1")
     monkeypatch.setattr(common, "settings_path", lambda: manager._common_path)
+    document = json.loads(manager._common_path.read_text())
+    document["values"]["account"] = "retired shared sender"
+    manager._common_path.write_text(json.dumps(document), encoding="utf-8")
     before = manager._common_path.read_bytes()
     imported = {
         "device": {"last_serial": "foreign"},
@@ -642,7 +725,7 @@ def test_shared_values_and_policy_survive_instance_configuration_import_projecti
     managed_device.preserve(imported, current)
     assert imported["device"]["last_serial"] == "chosen:18003"
     assert imported["performance_mode"] == "low"
-    assert imported["account"] == "global sender"
+    assert imported["account"] == "foreign sender"
     assert imported["updates_enabled"] is False
     assert manager._common_path.read_bytes() == before
     assert path.exists()
@@ -841,9 +924,7 @@ def test_old_version_one_template_upgrade_preserves_effective_shared_values_and_
     assert editor(manager, first)[1]["independent_configuration"] is False
     assert editor(manager, first)[1]["values"]["performance_mode"] == "low"
     assert editor(manager, second)[1]["independent_configuration"] is True
-    assert editor(manager, second)[1]["values"] == managed_device.snapshot(
-        expected_second
-    )
+    assert editor(manager, second)[1]["values"] == editor_values(expected_second)
     assert editor(manager, third)[1]["independent_configuration"] is True
     assert editor(manager, third)[1]["values"]["performance_mode"] == "medium"
     assert (first_path.read_bytes(), third_path.read_bytes()) == before
@@ -1103,7 +1184,7 @@ def test_template_upgrade_preserves_implicit_auto_paths_in_existing_bindings(
     assert editor(manager, first)[1]["independent_configuration"] is False
     state = editor(manager, second)[1]
     assert state["independent_configuration"] is True
-    assert state["values"] == managed_device.snapshot(expected)
+    assert state["values"] == editor_values(expected)
     assert state["values"]["device"]["installation_path"] == ""
     assert state["values"]["device"]["last_serial"] == "second:17001"
 
@@ -1315,9 +1396,7 @@ def test_old_shared_document_adds_waiting_scene_without_losing_effective_values(
     assert editor(manager, first)[1]["independent_configuration"] is False
     assert editor(manager, first)[1]["values"]["performance_mode"] == "low"
     assert editor(manager, second)[1]["independent_configuration"] is True
-    assert editor(manager, second)[1]["values"] == managed_device.snapshot(
-        expected_second
-    )
+    assert editor(manager, second)[1]["values"] == editor_values(expected_second)
     assert editor(manager, third)[1]["independent_configuration"] is True
     assert editor(manager, third)[1]["values"]["waiting_scene"] == waiting_values(
         UNKNOWN=[7, 13]

@@ -205,45 +205,6 @@ FIELDS = [
         min=0,
         max=1048576,
     ),
-    dict(key="account", group="邮件发信人", label="发件邮箱", kind="text", default=""),
-    dict(
-        key="pass_code",
-        group="邮件发信人",
-        label="邮箱授权码或密码",
-        kind="password",
-        default="",
-    ),
-    dict(
-        key="custom_smtp_server.enable",
-        group="邮件发信人",
-        label="自定义 SMTP",
-        kind="boolean",
-        default=False,
-    ),
-    dict(
-        key="custom_smtp_server.server",
-        group="邮件发信人",
-        label="SMTP 服务器",
-        kind="text",
-        default="",
-    ),
-    dict(
-        key="custom_smtp_server.encryption",
-        group="邮件发信人",
-        label="SMTP 加密方式",
-        kind="select",
-        default="starttls",
-        options=[("starttls", "STARTTLS"), ("tls", "SSL/TLS")],
-    ),
-    dict(
-        key="custom_smtp_server.ssl_port",
-        group="邮件发信人",
-        label="SMTP 端口",
-        kind="integer",
-        default=587,
-        min=1,
-        max=65535,
-    ),
 ]
 TEMPLATE_KEYS = frozenset(
     {
@@ -397,8 +358,21 @@ FIELDS.append(
         ],
     )
 )
+_RETIRED_SENDER_KEYS = frozenset(
+    {
+        "account",
+        "pass_code",
+        "custom_smtp_server.enable",
+        "custom_smtp_server.server",
+        "custom_smtp_server.encryption",
+        "custom_smtp_server.ssl_port",
+    }
+)
 _FIELDS_BY_KEY = {field["key"]: field for field in FIELDS}
 MANAGER_ONLY_KEYS = frozenset({"startup_mode", "instance_page_mode"})
+LOCAL_OVERRIDE_KEYS = frozenset(
+    {"maa_path", "screenshot", "screenshot_archive_limit_mb"}
+)
 _BACKENDS = {"device.screenshot_backend", "device.touch_backend"}
 SHARED_CONNECTION_KEYS = frozenset(
     field["key"]
@@ -489,6 +463,17 @@ def policy_key(path):
     return os.path.normcase(str(Path(path).expanduser().resolve()))
 
 
+def _validate_stored_settings(values):
+    # Retired sender settings are accepted only when reading existing documents.
+    if isinstance(values, dict):
+        values = {
+            key: value
+            for key, value in values.items()
+            if key not in _RETIRED_SENDER_KEYS
+        }
+    return validate_settings(values)
+
+
 def read_document(path=None):
     try:
         raw = (path or settings_path()).read_text(encoding="utf-8")
@@ -497,9 +482,13 @@ def read_document(path=None):
     data = json.loads(raw)
     if isinstance(data, dict) and "version" in data:
         if (
-            set(data) != {"version", "values", "independent_instances"}
+            set(data)
+            != (
+                {"version", "values", "independent_instances"}
+                | ({"instance_overrides"} if data.get("version") == 2 else set())
+            )
             or type(data["version"]) is not int
-            or data["version"] != 1
+            or data["version"] not in {1, 2}
         ):
             raise ValueError("公共连接配置格式不正确")
         policies = data["independent_instances"]
@@ -512,30 +501,81 @@ def read_document(path=None):
             for key, value in policies.items()
         ):
             raise ValueError("独立连接配置格式不正确")
-        values = validate_settings(data["values"])
+        values = _validate_stored_settings(data["values"])
         if (
             not SHARED_CONNECTION_KEYS - TEMPLATE_KEYS - {"waiting_scene"}
             <= values.keys()
         ):
             raise ValueError("公共连接配置缺少共享参数")
-        return dict(
-            version=1,
+        result = dict(
+            version=data["version"],
             values=values,
             independent_instances=policies.copy(),
         )
-    return dict(version=0, values=validate_settings(data), independent_instances={})
+        if data["version"] == 2:
+            overrides = data["instance_overrides"]
+            if not isinstance(overrides, dict) or any(
+                not isinstance(key, str)
+                or len(key) > 4096
+                or "\0" in key
+                or not Path(key).is_absolute()
+                for key in overrides
+            ):
+                raise ValueError("实例配置继承格式不正确")
+            result["instance_overrides"] = {
+                key: validate_override(value) for key, value in overrides.items()
+            }
+        return result
+    return dict(
+        version=0, values=_validate_stored_settings(data), independent_instances={}
+    )
 
 
 def read_settings(path=None):
     return read_document(path)["values"]
 
 
-def effective_values(values, *, independent=False):
+def validate_override(value):
+    if not isinstance(value, dict) or set(value) != {"local_keys", "manager_values"}:
+        raise ValueError("实例配置继承格式不正确")
+    keys, manager = value["local_keys"], value["manager_values"]
+    if (
+        not isinstance(keys, list)
+        or any(not isinstance(key, str) for key in keys)
+        or len(keys) != len(set(keys))
+        or set(keys) - LOCAL_OVERRIDE_KEYS
+        or not isinstance(manager, dict)
+        or manager.keys() - MANAGER_ONLY_KEYS
+    ):
+        raise ValueError("实例配置继承格式不正确")
+    return dict(local_keys=sorted(keys), manager_values=validate_settings(manager))
+
+
+def instance_override(document, path):
+    return document.get("instance_overrides", {}).get(
+        policy_key(path), dict(local_keys=[], manager_values={})
+    )
+
+
+def effective_values(values, *, independent=False, override=None):
+    override = override or dict(local_keys=[], manager_values={})
     return {
-        key: value
-        for key, value in values.items()
-        if not (independent and key in SHARED_CONNECTION_KEYS)
+        **{
+            key: value
+            for key, value in values.items()
+            if not (independent and key in SHARED_CONNECTION_KEYS)
+            and key not in override["local_keys"]
+        },
+        **override["manager_values"],
     }
+
+
+def instance_values(document, path, *, values=None):
+    return effective_values(
+        document["values"] if values is None else values,
+        independent=document["independent_instances"].get(policy_key(path), False),
+        override=instance_override(document, path),
+    )
 
 
 def apply_settings(conf, values, *, independent=False):
@@ -557,11 +597,13 @@ def apply_settings(conf, values, *, independent=False):
     return conf.updated(patch) if patch else conf
 
 
-def for_launch(conf, *, managed):
+def launch_snapshot(conf, *, managed):
     if not managed:
-        return conf
+        return conf, frozenset()
     document = read_document()
-    independent = document["independent_instances"].get(
-        policy_key(get_path("@app")), False
-    )
-    return apply_settings(conf, document["values"], independent=independent)
+    values = instance_values(document, get_path("@app"))
+    return apply_settings(conf, values), frozenset(values.keys() & LOCAL_OVERRIDE_KEYS)
+
+
+def for_launch(conf, *, managed):
+    return launch_snapshot(conf, managed=managed)[0]

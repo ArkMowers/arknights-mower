@@ -21,9 +21,18 @@ from arknights_mower.utils.device.touch_backend import TouchFailure
 
 class DeviceSettingsRouteTests(unittest.TestCase):
     def setUp(self):
-        self.enterContext(
-            patch.dict(sys.modules, {"arknights_mower.utils.skland": MagicMock()})
-        )
+        module_name = "arknights_mower.utils.skland"
+        missing = object()
+        previous = sys.modules.get(module_name, missing)
+        sys.modules[module_name] = MagicMock()
+
+        def restore_skland():
+            if previous is missing:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous
+
+        self.addCleanup(restore_skland)
         self.main = importlib.import_module("arknights_mower.__main__")
         self.server = importlib.import_module("server")
         directory = self.enterContext(tempfile.TemporaryDirectory())
@@ -221,7 +230,7 @@ class DeviceSettingsRouteTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 403, response.json)
             preflight.assert_not_called()
 
-    def test_managed_preflight_uses_saved_profile_without_saving(self):
+    def test_managed_preflight_refuses_even_the_saved_profile(self):
         io = PreflightIO()
         self.main.device_control = DeviceControl(
             lambda: config.conf, ManualAdapter(), preflight=PreflightService(io)
@@ -231,11 +240,11 @@ class DeviceSettingsRouteTests(unittest.TestCase):
             response = self.client.post(
                 "/device/preflight", headers=self.headers, json={"device": {}}
             )
-        self.assertEqual(response.status_code, 200, response.json)
-        self.assertTrue(response.json["ok"], response.json)
+        self.assertEqual(response.status_code, 403, response.json)
+        self.assertEqual(response.json["error"], "manager_owned_setting")
         self.assertEqual(self.path.read_bytes(), before)
 
-    def test_managed_boss_key_only_tests_the_saved_hotkey(self):
+    def test_managed_boss_key_refuses_even_the_saved_hotkey(self):
         config.conf = config.conf.updated({"device": {"simulator_hotkey": "ctrl+f9"}})
         with (
             patch.dict("os.environ", {"MOWER_MANAGED": "1"}),
@@ -252,8 +261,8 @@ class DeviceSettingsRouteTests(unittest.TestCase):
             accepted = self.client.post(
                 "/device/boss_key", headers=self.headers, json={}
             )
-            self.assertEqual(accepted.status_code, 200, accepted.json)
-            trigger.assert_called_once_with("ctrl+f9", delay=0.0)
+            self.assertEqual(accepted.status_code, 403, accepted.json)
+            trigger.assert_not_called()
 
     def test_manager_restrictions_preserve_token_rejection_before_body_parsing(self):
         with (

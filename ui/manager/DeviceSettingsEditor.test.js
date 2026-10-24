@@ -508,3 +508,75 @@ it('fails closed on a response with incomplete connection inheritance metadata',
   await component.save()
   expect(api.update_device_settings).not.toHaveBeenCalled()
 })
+
+async function loadOverrides() {
+  const originalPolicy = await loadPolicy()
+  const result = await api.get_device_settings()
+  originalPolicy.shared_values = {
+    ...originalPolicy.shared_values,
+    maa_path: '/common/maa',
+    screenshot: 2,
+    startup_mode: 'window'
+  }
+  originalPolicy.local_values = { maa_path: '/saved/maa', screenshot: 7 }
+  const instanceOverride = { local_keys: [], manager_values: {} }
+  api.get_device_settings.mockResolvedValue({
+    ...result,
+    values: { ...result.values, maa_path: '/common/maa', screenshot: 2, startup_mode: 'window' },
+    fields: [
+      ...result.fields,
+      { key: 'maa_path', label: 'MAA 安装目录', group: '程序位置', kind: 'directory' },
+      { key: 'screenshot', label: '截图保存时间（小时）', group: '截图保存', kind: 'number' },
+      { key: 'startup_mode', label: '启动方式', group: '实例启动', kind: 'select' }
+    ],
+    original_policy: originalPolicy,
+    instance_override: instanceOverride,
+    override_keys: ['maa_path', 'screenshot', 'startup_mode']
+  })
+  await component.load()
+  return originalPolicy
+}
+
+it('offers local common-field overrides while retaining shared device connections', async () => {
+  const originalPolicy = await loadOverrides()
+  expect(component.visibleFields.value.some(({ key }) => key === 'maa_path')).toBe(true)
+  component.edit('maa_path', '/forged')
+  expect(component.changes.value).toEqual({})
+  component.setLocalValue('maa_path', true)
+  expect(component.draft.value.maa_path).toBe('/saved/maa')
+  component.edit('maa_path', '/instance/maa')
+  component.setLocalValue('screenshot', true)
+  component.edit('screenshot', 9)
+  component.setLocalValue('startup_mode', true)
+  component.edit('startup_mode', 'background')
+  await component.save()
+  expect(api.update_device_settings).toHaveBeenCalledExactlyOnceWith(
+    0,
+    { maa_path: '/instance/maa', screenshot: 9, startup_mode: 'background' },
+    target,
+    component.original.value,
+    {
+      independent_configuration: false,
+      original_policy: originalPolicy,
+      instance_override: {
+        local_keys: ['maa_path', 'screenshot'],
+        manager_values: { startup_mode: 'background' }
+      }
+    }
+  )
+})
+
+it('returning one item to common settings drops its unsaved edit and preserves other local choices', async () => {
+  await loadOverrides()
+  component.setLocalValue('maa_path', true)
+  component.edit('maa_path', '/unsaved')
+  component.setLocalValue('screenshot', true)
+  component.edit('screenshot', 9)
+  component.setLocalValue('maa_path', false)
+  expect(component.draft.value.maa_path).toBe('/common/maa')
+  expect(component.changes.value).toEqual({ screenshot: 9 })
+  expect(component.instanceOverride.value.local_keys).toEqual(['screenshot'])
+  component.setIndependent(true)
+  component.setIndependent(false)
+  expect(component.draft.value.screenshot).toBe(9)
+})

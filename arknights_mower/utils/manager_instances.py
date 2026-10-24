@@ -344,14 +344,14 @@ class InstanceController(ManagerTools):
             if not instance["path"]:
                 continue
             key = manager_common.policy_key(instance_directory(instance["path"]))
-            if document["version"] == 1 and key in document["independent_instances"]:
+            if document["version"] >= 1 and key in document["independent_instances"]:
                 if not missing_shared or document["independent_instances"][key]:
                     continue
             try:
                 destination, raw = read_instance_config(instance["path"])
                 configuration = Conf(**raw)
                 upgrading_shared = (
-                    document["version"] == 1
+                    document["version"] >= 1
                     and key in document["independent_instances"]
                 )
                 if upgrading_shared:
@@ -428,7 +428,7 @@ class InstanceController(ManagerTools):
                     else baseline
                 )
                 document["values"].setdefault(key, value(source, key))
-            document["version"] = 1
+            document["version"] = max(1, document["version"])
         for (
             key,
             configuration,
@@ -520,16 +520,21 @@ class InstanceController(ManagerTools):
 
         key = manager_common.policy_key(instance_directory(instance["path"]))
         independent = document["independent_instances"].get(key, False)
-        shared_values = {
-            name: value
-            for name, value in document["values"].items()
-            if name in manager_common.SHARED_CONNECTION_KEYS
-        }
+        shared_values = copy.deepcopy(document["values"])
+        stored = Conf(**raw)
         effective = manager_common.apply_settings(
-            Conf(**raw), shared_values, independent=independent
+            stored, manager_common.instance_values(document, key)
         )
         policy = dict(
-            independent_configuration=independent, shared_values=shared_values
+            independent_configuration=independent,
+            shared_values=shared_values,
+            instance_override=copy.deepcopy(
+                manager_common.instance_override(document, key)
+            ),
+            local_values={
+                name: getattr(stored, name)
+                for name in manager_common.LOCAL_OVERRIDE_KEYS
+            },
         )
         return effective, independent, policy
 
@@ -648,6 +653,52 @@ class InstanceController(ManagerTools):
         finally:
             Path(temporary).unlink(missing_ok=True)
 
+    @staticmethod
+    def _settings_snapshot(configuration):
+        from . import managed_device
+
+        return {
+            **managed_device.snapshot(configuration),
+            **{
+                key: getattr(configuration, key)
+                for key in manager_common.LOCAL_OVERRIDE_KEYS
+            },
+        }
+
+    def _editor_snapshot(self, configuration, policy):
+        defaults = {
+            field["key"]: field["default"]
+            for field in manager_common.FIELDS
+            if field["key"] in manager_common.MANAGER_ONLY_KEYS
+        }
+        values = manager_common.effective_values(
+            policy["shared_values"], override=policy["instance_override"]
+        )
+        return {
+            **self._settings_snapshot(configuration),
+            **{
+                key: values.get(key, defaults[key])
+                for key in manager_common.MANAGER_ONLY_KEYS
+            },
+        }
+
+    @staticmethod
+    def _validate_device_policy(policy):
+        if policy is None:
+            return
+        if (
+            not isinstance(policy, dict)
+            or set(policy)
+            not in (
+                {"independent_configuration", "original_policy"},
+                {"independent_configuration", "original_policy", "instance_override"},
+            )
+            or type(policy["independent_configuration"]) is not bool
+        ):
+            raise ValueError("独立连接配置格式不正确")
+        if "instance_override" in policy:
+            manager_common.validate_override(policy["instance_override"])
+
     def get_device_settings(self, idx, target):
         from . import managed_device
 
@@ -662,24 +713,58 @@ class InstanceController(ManagerTools):
                 instance, raw, document
             )
             return {
-                "values": managed_device.snapshot(configuration),
-                "fields": managed_device.fields(),
+                "values": self._editor_snapshot(configuration, policy),
+                "fields": managed_device.fields()
+                + [
+                    copy.deepcopy(field)
+                    for field in manager_common.FIELDS
+                    if field["key"] in manager_common.MANAGER_ONLY_KEYS
+                ],
+                "instance_override": policy["instance_override"],
+                "override_keys": sorted(
+                    manager_common.LOCAL_OVERRIDE_KEYS
+                    | manager_common.MANAGER_ONLY_KEYS
+                ),
                 "independent_configuration": independent,
                 "original_policy": policy,
                 "shared_keys": sorted(manager_common.SHARED_CONNECTION_KEYS),
             }
 
+    @staticmethod
+    def _device_changes(changes):
+        from . import managed_device
+
+        if not isinstance(changes, dict):
+            raise ValueError("不支持的设备配置项")
+        manager_changes = {
+            key: value
+            for key, value in changes.items()
+            if key in manager_common.MANAGER_ONLY_KEYS
+        }
+        manager_common.validate_settings(manager_changes)
+        ordinary_changes = {
+            key: value
+            for key, value in changes.items()
+            if key not in manager_common.MANAGER_ONLY_KEYS
+        }
+        manager_common.validate_settings(
+            {
+                key: value
+                for key, value in ordinary_changes.items()
+                if key in manager_common.LOCAL_OVERRIDE_KEYS
+            }
+        )
+        patch = (
+            managed_device.validate_patch(ordinary_changes) if ordinary_changes else {}
+        )
+        return manager_changes, ordinary_changes, patch
+
     def update_device_settings(self, idx, changes, target, original, policy=None):
         from . import managed_device
         from .config import Conf
 
-        if policy is not None and (
-            not isinstance(policy, dict)
-            or set(policy) != {"independent_configuration", "original_policy"}
-            or type(policy["independent_configuration"]) is not bool
-        ):
-            raise ValueError("独立连接配置格式不正确")
-        patch = managed_device.validate_patch(changes) if changes else {}
+        self._validate_device_policy(policy)
+        manager_changes, ordinary_changes, patch = self._device_changes(changes)
         if not changes and policy is None:
             raise ValueError("请选择需要保存的设备配置")
         derived = managed_device.DERIVED_IDENTITY_FIELDS
@@ -712,13 +797,25 @@ class InstanceController(ManagerTools):
             current, independent, current_policy = self._connection_state(
                 instance, raw, document
             )
-            if original != managed_device.snapshot(current):
+            if original != self._editor_snapshot(current, current_policy):
                 raise ValueError("设备配置已变化，请重新打开编辑器")
             if policy is not None and policy["original_policy"] != current_policy:
                 raise ValueError("独立连接配置已变化，请重新打开编辑器")
             desired = (
                 independent if policy is None else policy["independent_configuration"]
             )
+            override = manager_common.validate_override(
+                policy.get("instance_override", current_policy["instance_override"])
+                if policy is not None
+                else current_policy["instance_override"]
+            )
+            if set(ordinary_changes) & (
+                manager_common.LOCAL_OVERRIDE_KEYS - set(override["local_keys"])
+            ):
+                raise ValueError("请先为该配置项选择使用本实例值")
+            if manager_changes.keys() - override["manager_values"].keys():
+                raise ValueError("请先为该配置项选择使用本实例值")
+            override["manager_values"].update(manager_changes)
             if not desired and set(changes) & (
                 manager_common.SHARED_CONNECTION_KEYS | {"device.last_serial"}
             ):
@@ -727,7 +824,10 @@ class InstanceController(ManagerTools):
                 current
                 if desired
                 else manager_common.apply_settings(
-                    Conf(**raw), current_policy["shared_values"]
+                    Conf(**raw),
+                    manager_common.effective_values(
+                        current_policy["shared_values"], override=override
+                    ),
                 )
             )
             if "instance_name" in patch.get("device", {}) and (
@@ -736,7 +836,7 @@ class InstanceController(ManagerTools):
                 patch["device"]["last_serial"] = ""
                 for name in derived:
                     patch["device"].setdefault(name, "")
-            proposed = managed_device.snapshot(baseline.updated(patch))
+            proposed = self._settings_snapshot(baseline.updated(patch))
             if submitted_identity:
                 ordinary_patch = copy.deepcopy(patch)
                 for key in derived:
@@ -763,7 +863,7 @@ class InstanceController(ManagerTools):
             if not desired:
                 # Validate the binding against shared launch values, but retain
                 # local connection values and their synchronized legacy aliases.
-                stored = managed_device.snapshot(Conf(**raw))
+                stored = self._settings_snapshot(Conf(**raw))
                 for name in (
                     manager_common.SHARED_CONNECTION_KEYS - manager_common.TEMPLATE_KEYS
                 ):
@@ -775,7 +875,11 @@ class InstanceController(ManagerTools):
                             destination_values[part],
                         )
                     destination_values[parts[-1]] = source[parts[-1]]
-                proposed = managed_device.snapshot(Conf(**proposed))
+                proposed = self._settings_snapshot(Conf(**proposed))
+            for name in manager_common.LOCAL_OVERRIDE_KEYS - set(
+                override["local_keys"]
+            ):
+                proposed[name] = getattr(Conf(**raw), name)
             # Preserve unknown private fields while synchronizing legacy aliases.
             for key, value in proposed.items():
                 raw[key] = (
@@ -784,30 +888,48 @@ class InstanceController(ManagerTools):
                     else value
                 )
             original_bytes = destination.read_bytes() if destination.exists() else None
-            self._write_config(destination, raw)
-            if desired != independent:
-                key = manager_common.policy_key(instance_directory(instance["path"]))
-                document["independent_instances"][key] = desired
-                try:
+            common_bytes = (
+                self._common_path.read_bytes() if self._common_path.exists() else None
+            )
+            try:
+                self._write_config(destination, raw)
+                if (
+                    desired != independent
+                    or override != current_policy["instance_override"]
+                ):
+                    key = manager_common.policy_key(
+                        instance_directory(instance["path"])
+                    )
+                    document["independent_instances"][key] = desired
+                    if override != current_policy["instance_override"]:
+                        document["version"] = 2
+                        document.setdefault("instance_overrides", {})[key] = override
                     runtime.write_json(self._common_path, document, sync=True)
-                except BaseException:
-                    if original_bytes is None:
-                        destination.unlink(missing_ok=True)
-                    else:
-                        self._write_config_bytes(destination, original_bytes)
-                    raise
+            except BaseException:
+                failures = []
+                for path, content in (
+                    (destination, original_bytes),
+                    (self._common_path, common_bytes),
+                ):
+                    try:
+                        if content is None:
+                            path.unlink(missing_ok=True)
+                        elif not path.exists() or path.read_bytes() != content:
+                            self._write_config_bytes(path, content)
+                    except OSError as error:
+                        failures.append(error)
+                if failures:
+                    raise OSError(
+                        "配置保存失败且无法完整恢复，请检查文件权限"
+                    ) from failures[0]
+                raise
             return {"ok": True}
 
     def discover_device_settings(self, idx, changes, target, original, policy=None):
         from . import managed_device
 
-        if policy is not None and (
-            not isinstance(policy, dict)
-            or set(policy) != {"independent_configuration", "original_policy"}
-            or type(policy["independent_configuration"]) is not bool
-        ):
-            raise ValueError("独立连接配置格式不正确")
-        patch = managed_device.validate_patch(changes) if changes else {}
+        self._validate_device_policy(policy)
+        manager_changes, ordinary_changes, patch = self._device_changes(changes)
         with self._operation():
             instance = self._target(idx, target)
             self._editable(instance, self._records())
@@ -818,13 +940,25 @@ class InstanceController(ManagerTools):
             current, independent, current_policy = self._connection_state(
                 instance, raw, document
             )
-            if original != managed_device.snapshot(current):
+            if original != self._editor_snapshot(current, current_policy):
                 raise ValueError("设备配置已变化，请重新打开编辑器")
             if policy is not None and policy["original_policy"] != current_policy:
                 raise ValueError("独立连接配置已变化，请重新打开编辑器")
             desired = (
                 independent if policy is None else policy["independent_configuration"]
             )
+            override = manager_common.validate_override(
+                policy.get("instance_override", current_policy["instance_override"])
+                if policy is not None
+                else current_policy["instance_override"]
+            )
+            if set(ordinary_changes) & (
+                manager_common.LOCAL_OVERRIDE_KEYS - set(override["local_keys"])
+            ):
+                raise ValueError("请先为该配置项选择使用本实例值")
+            if manager_changes.keys() - override["manager_values"].keys():
+                raise ValueError("请先为该配置项选择使用本实例值")
+            override["manager_values"].update(manager_changes)
             if not desired and set(changes) & (
                 manager_common.SHARED_CONNECTION_KEYS | {"device.last_serial"}
             ):
@@ -833,7 +967,10 @@ class InstanceController(ManagerTools):
                 current
                 if desired
                 else manager_common.apply_settings(
-                    current, current_policy["shared_values"]
+                    current,
+                    manager_common.effective_values(
+                        current_policy["shared_values"], override=override
+                    ),
                 )
             )
             configuration = baseline.updated(patch)
@@ -887,7 +1024,7 @@ class InstanceController(ManagerTools):
             records = self._records()
             if common is not None:
                 document = manager_common.read_document(self._common_path)
-                if document["version"] == 1:
+                if document["version"] >= 1:
                     document = self._connection_document()
                     for key in manager_common.SHARED_CONNECTION_KEYS:
                         common_values.setdefault(key, document["values"][key])
@@ -962,7 +1099,10 @@ class InstanceController(ManagerTools):
                 )
                 command += [instance["path"], instance["name"]]
                 launch_id = uuid4().hex
-                common_settings = manager_common.read_settings(self._common_path)
+                common_settings = manager_common.instance_values(
+                    manager_common.read_document(self._common_path),
+                    instance_directory(instance["path"]),
+                )
                 env = runtime.launch_environment(
                     {"data_dir": os.environ.get("MOWER_DATA_DIR", ""), "managed": True},
                     background=common_settings.get("startup_mode") == "background",
@@ -1071,7 +1211,7 @@ class InstanceController(ManagerTools):
         updated["values"]["instance_page_mode"] = mode
         runtime.write_json(
             self._common_path,
-            updated if updated["version"] == 1 else updated["values"],
+            updated if updated["version"] >= 1 else updated["values"],
             sync=True,
         )
 
@@ -1090,6 +1230,10 @@ class InstanceController(ManagerTools):
                 ready = self._ready_instance_page(self.instances[idx], self._records())
                 if action is None:
                     document, selected_mode = self._page_mode(mode, remember)
+                    if mode is None:
+                        selected_mode = manager_common.instance_values(
+                            document, instance_directory(self.instances[idx]["path"])
+                        ).get("instance_page_mode")
                     if selected_mode is None:
                         return {
                             "ok": False,
@@ -1120,7 +1264,14 @@ class InstanceController(ManagerTools):
                         available.append(idx)
                     except ValueError:
                         pass
-                if available and selected_mode is None:
+                instance_modes = {
+                    idx: mode
+                    or manager_common.instance_values(
+                        document, instance_directory(self.instances[idx]["path"])
+                    ).get("instance_page_mode")
+                    for idx in available
+                }
+                if any(instance_modes[idx] is None for idx in available):
                     return {
                         "ok": False,
                         "needs_mode": True,
@@ -1149,7 +1300,8 @@ class InstanceController(ManagerTools):
                     except ValueError as error:
                         item["message"] = str(error)
                         continue
-                    if selected_mode is None:
+                    row_mode = instance_modes.get(idx)
+                    if row_mode is None:
                         item["message"] = "尚未选择实例页面打开方式，请重试"
                         continue
                     if monotonic() >= deadline:
@@ -1170,7 +1322,7 @@ class InstanceController(ManagerTools):
                         continue
                     try:
                         runtime.send_instance_command(
-                            ready, "show" if selected_mode == "webview" else "browser"
+                            ready, "show" if row_mode == "webview" else "browser"
                         )
                         item["status"] = "opened"
                     except (OSError, ValueError) as error:

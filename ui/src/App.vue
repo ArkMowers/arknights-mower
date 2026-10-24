@@ -119,6 +119,9 @@
                   :deployment="deployment"
                   :display-mode="softwareVersionDisplay"
                   :enabled="updates_enabled === true"
+                  :extra-settings-visible="
+                    !config_store.manager_owned_device || config_store.extra_settings_visible
+                  "
                   :resource-version="resourceVersion"
                   :resource-metadata="resource_version_store.info.current_metadata"
                   @toggle="toggleSidebar"
@@ -216,6 +219,9 @@
                   :deployment="deployment"
                   :display-mode="softwareVersionDisplay"
                   :enabled="updates_enabled === true"
+                  :extra-settings-visible="
+                    !config_store.manager_owned_device || config_store.extra_settings_visible
+                  "
                   :resource-version="resourceVersion"
                   :resource-metadata="resource_version_store.info.current_metadata"
                 />

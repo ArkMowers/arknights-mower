@@ -65,7 +65,7 @@ def test_batch_automatic_start_only_changes_selected_rows_and_preserves_permissi
         )
 
 
-def test_common_preview_is_read_only_redacts_both_secrets_and_reports_native_mismatch(
+def test_common_preview_is_read_only_excludes_sender_and_reports_native_mismatch(
     manager,
 ):
     path = write_conf(
@@ -76,7 +76,6 @@ def test_common_preview_is_read_only_redacts_both_secrets_and_reports_native_mis
     before = path.read_bytes()
     result = manager.preview_common_settings(
         {
-            "pass_code": "new-secret",
             "device.screenshot_backend": "mumu_ipc",
             "device.touch_backend": "mumu_ipc",
         },
@@ -85,8 +84,10 @@ def test_common_preview_is_read_only_redacts_both_secrets_and_reports_native_mis
     assert "MuMu" in result["rows"][0]["warnings"][0]
     assert result["future_instances"] is True
     serialized = json.dumps(result)
-    assert "old-secret" not in serialized and "new-secret" not in serialized
-    assert result["rows"][0]["fields"][2]["after"] == "已设置"
+    assert "old-secret" not in serialized
+    assert all(
+        field["label"] != "邮箱授权码或密码" for field in result["rows"][0]["fields"]
+    )
     assert path.read_bytes() == before
     assert not manager._common_path.exists()
     with pytest.raises(ValueError, match="实例列表"):
@@ -130,7 +131,6 @@ def test_common_preview_respects_independent_policy_and_current_shared_values(
             "values": {
                 **original,
                 "performance_mode": "medium",
-                "pass_code": "global-secret",
             },
             "original": original,
         },
@@ -144,7 +144,6 @@ def test_common_preview_respects_independent_policy_and_current_shared_values(
             "performance_mode": "low",
             "device.screenshot_backend": "mumu_ipc",
             "device.touch_backend": "mumu_ipc",
-            "pass_code": "proposed-secret",
         },
         manager.instances.copy(),
     )
@@ -154,12 +153,9 @@ def test_common_preview_respects_independent_policy_and_current_shared_values(
     assert any(field["before"] == "medium" for field in shared["fields"])
     assert independent["independent_configuration"] is True
     assert independent["warnings"] == []
-    assert independent["fields"] == [
-        {"label": "邮箱授权码或密码", "before": "已设置", "after": "已设置"}
-    ]
+    assert independent["fields"] == []
     serialized = json.dumps(result)
-    for secret in ("instance-secret", "global-secret", "proposed-secret"):
-        assert secret not in serialized
+    assert "instance-secret" not in serialized
     assert (
         first.read_bytes(),
         second.read_bytes(),

@@ -529,6 +529,37 @@ describe('settings page layouts', () => {
 })
 
 describe('managed optional maintenance settings', () => {
+  it.each([true, false])(
+    'locks only inherited screenshot fields (inherited=%s)',
+    async (inherited) => {
+      const html = await renderToString(
+        setup(MowerSettings, {
+          manager_owned_device: true,
+          extra_settings_visible: true,
+          manager_inherited_settings: inherited ? ['screenshot', 'screenshot_archive_limit_mb'] : []
+        })
+      )
+      const forms = elements(parseHtml(html)).filter(
+        (node) => attribute(node, 'data-control') === 'NFormItem'
+      )
+      for (const label of ['截图保存时间', '报错归档空间上限']) {
+        const field = forms.find((node) =>
+          elements(node).some((child) => child.type === 2 && child.content === label)
+        )
+        expect(field, label).toBeDefined()
+        const input = elements(field).find((node) => node.tag === 'input')
+        expect(
+          input.props.some((prop) => prop.name === 'disabled'),
+          label
+        ).toBe(inherited)
+      }
+      expect(html.includes('当前使用通用设置，请在多开管理器中修改或选择使用本实例值。')).toBe(
+        inherited
+      )
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
   it.each([false, true])(
     'omits the complete managed runtime panel with extra settings visibility %s',
     async (visible) => {

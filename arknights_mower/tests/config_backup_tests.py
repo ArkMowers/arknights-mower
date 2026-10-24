@@ -69,7 +69,7 @@ def test_import_keeps_managed_device_settings_but_restores_other_configuration(
     from arknights_mower.utils import managed_device
 
     monkeypatch.setattr(
-        "arknights_mower.utils.manager_common.read_settings", lambda: {}
+        "arknights_mower.utils.manager_common.read_document", lambda: {"values": {}}
     )
     monkeypatch.setenv("MOWER_MANAGED", "1" if managed else "0")
     config.conf = config.conf.updated(
@@ -132,12 +132,13 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
 ):
     monkeypatch.setenv("MOWER_MANAGED", "1")
     monkeypatch.setattr(
-        "arknights_mower.utils.manager_common.read_settings",
+        "arknights_mower.utils.manager_common.read_document",
         lambda: {
-            "account": "manager-sender",
-            "pass_code": "manager-secret",
-            "startup_mode": "background",
-            "instance_page_mode": "webview",
+            "values": {
+                "screenshot": 7,
+                "startup_mode": "background",
+                "instance_page_mode": "webview",
+            }
         },
     )
     config.conf.start_automatically = True
@@ -145,6 +146,7 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
     config.conf.updates_enabled = False
     config.conf.account = "manager-sender"
     config.conf.pass_code = "manager-secret"
+    config.conf.screenshot = 7
     config.conf.maa_path = "/manager/MAA"
     config.conf = config.conf.updated({"waiting_scene": {"UNKNOWN": [7, 13]}})
     config.save_conf()
@@ -155,6 +157,7 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
         "account": "incoming-sender",
         "pass_code": "incoming-secret",
         "mail_subject": "imported-subject",
+        "screenshot": 9,
         "maa_path": "/incoming/MAA",
         "waiting_scene": {"UNKNOWN": [9, 17]},
     }
@@ -164,8 +167,9 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
     assert config.conf.start_automatically
     assert config.conf.ai_assistant_enabled
     assert not config.conf.updates_enabled
-    assert config.conf.account == "manager-sender"
-    assert config.conf.pass_code == "manager-secret"
+    assert config.conf.account == "incoming-sender"
+    assert config.conf.pass_code == "incoming-secret"
+    assert config.conf.screenshot == 7
     assert config.conf.mail_subject == "imported-subject"
     assert config.conf.maa_path == "/manager/MAA"
     assert config.conf.waiting_scene.UNKNOWN == (7, 13)

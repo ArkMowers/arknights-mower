@@ -22,7 +22,7 @@ from arknights_mower.utils.config.plan import (
     retire_rescue_backups,
 )
 from arknights_mower.utils.log import frontend_log_queue, logger
-from arknights_mower.utils.manager_common import for_launch
+from arknights_mower.utils.manager_common import launch_snapshot
 from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
 
@@ -126,12 +126,32 @@ def migrate_app_config_paths():
 migrate_app_config_paths()
 
 
+manager_inherited_settings = frozenset()
+
+
+def persistent_conf(data):
+    if os.environ.get("MOWER_MANAGED") != "1" or not manager_inherited_settings:
+        return data
+    with conf_path.open("r", encoding="utf-8") as stream:
+        saved = yaml.load(stream, Loader=CoreLoader)
+    if not isinstance(saved, dict):
+        raise ValueError("本实例配置必须包含配置对象")
+    Conf(**saved)
+    result = dict(data)
+    for key in manager_inherited_settings:
+        if key in saved:
+            result[key] = saved[key]
+        else:
+            result.pop(key, None)
+    return result
+
+
 def save_conf():
     conf.sync_legacy_device_fields()
 
     def dump(f):
         yaml.dump(
-            conf.model_dump(exclude_unset=True),
+            persistent_conf(conf.model_dump(exclude_unset=True)),
             f,
             Dumper=CoreDumper,
             encoding="utf-8",
@@ -237,7 +257,9 @@ def load_conf():
 conf: Conf
 load_conf()
 # Public manager values are a launch snapshot, never a live configuration watch.
-conf = for_launch(conf, managed=os.environ.get("MOWER_MANAGED") == "1")
+conf, manager_inherited_settings = launch_snapshot(
+    conf, managed=os.environ.get("MOWER_MANAGED") == "1"
+)
 # Managed update permission stays fixed across configuration reloads.
 updates_enabled = conf.updates_enabled_for_launch(
     managed=os.environ.get("MOWER_MANAGED") == "1"

@@ -446,6 +446,7 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
         data, conf, plan, dorm_order_migrated, rescue_plan = _validate_configuration(
             files
         )
+        data = config.persistent_conf(data)
         if "rescue_plan.json" not in files:
             if any(name.casefold() == "rescue_plan.json" for name in files):
                 raise ValueError("救急排班文件名必须为 rescue_plan.json")

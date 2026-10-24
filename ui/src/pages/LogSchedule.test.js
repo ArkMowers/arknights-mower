@@ -193,7 +193,8 @@ describe('log schedule browsing', () => {
     page.events.value = [event]
     state.client.get.mockResolvedValueOnce({ data: { logs: [row('已删除')] } })
     await page.selectEvent(event)
-    page.confirmDelete(event)
+    page.toggleEvent(event.id, true)
+    page.confirmDeleteSelected()
     state.client.delete.mockResolvedValueOnce({})
     await page.deleteEvent()
     expect(page.events.value).toEqual([])
@@ -201,6 +202,184 @@ describe('log schedule browsing', () => {
     expect(page.imagePath.value).toBe('')
     expect(page.browseMode.value).toBe('archives')
     expect(page.canExport.value).toBe(false)
+  })
+
+  it('requires confirmation and keeps empty or cancelled batches unchanged', async () => {
+    page.confirmDeleteSelected()
+    await page.deleteEvent()
+    expect(state.client.delete).not.toHaveBeenCalled()
+    page.events.value = [event]
+    page.toggleAllEvents(true)
+    page.confirmDeleteSelected()
+    expect(page.pendingDeleteEvents.value).toEqual([event])
+    expect(state.client.delete).not.toHaveBeenCalled()
+    page.handleDeleteModal(false)
+    await page.deleteEvent()
+    expect(page.events.value).toEqual([event])
+    expect(state.client.delete).not.toHaveBeenCalled()
+  })
+
+  it('deletes the confirmed snapshot and clears late evidence while retaining new archives', async () => {
+    const second = { ...event, id: '456' }
+    const fresh = { ...event, id: '789', screenshots: [] }
+    const oldLogs = deferred()
+    page.events.value = [event, second]
+    page.toggleAllEvents(true)
+    state.client.get.mockReturnValueOnce(oldLogs.promise)
+    const old = page.selectEvent(event)
+    page.confirmDeleteSelected()
+    page.events.value.push(fresh)
+    state.client.get.mockResolvedValueOnce({ data: { logs: [row('新归档')] } })
+    state.client.delete.mockResolvedValue({})
+    await page.deleteEvent()
+    oldLogs.resolve({ data: { logs: [row('已删除的归档')] } })
+    await old
+    expect(state.client.delete.mock.calls).toEqual([
+      ['/diagnostics/errors/123', { headers: { 'X-Mower-Diagnostics': '1' } }],
+      ['/diagnostics/errors/456', { headers: { 'X-Mower-Diagnostics': '1' } }]
+    ])
+    expect(page.events.value).toEqual([fresh])
+    expect(page.activeEventId.value).toBe(fresh.id)
+    expect(page.logs.value[0].message).toContain('新归档')
+    expect(page.pendingDeleteEvents.value).toBe(null)
+  })
+
+  it('retains failed archives and retries only the failed confirmation targets', async () => {
+    const failed = { ...event, id: '456' }
+    const fresh = { ...event, id: '789' }
+    page.events.value = [event, failed]
+    page.toggleAllEvents(true)
+    page.confirmDeleteSelected()
+    state.client.delete
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce({ response: { status: 403 } })
+      .mockResolvedValueOnce({})
+    await page.deleteEvent()
+    expect(page.events.value).toEqual([failed])
+    expect(page.pendingDeleteEvents.value).toEqual([failed])
+    expect(page.deleteError.value).toContain('已删除 1 条归档，1 条删除失败')
+    page.events.value.push(fresh)
+    await page.deleteEvent()
+    expect(state.client.delete.mock.calls.map(([url]) => url)).toEqual([
+      '/diagnostics/errors/123',
+      '/diagnostics/errors/456',
+      '/diagnostics/errors/456'
+    ])
+    expect(page.events.value).toEqual([fresh])
+    expect(page.deleteError.value).toBe('')
+    expect(page.pendingDeleteEvents.value).toBe(null)
+  })
+
+  it('selects all, clears all, and deletes only checked archives', async () => {
+    const second = { ...event, id: '456' }
+    page.events.value = [event, second]
+    page.toggleAllEvents(true)
+    expect(page.allEventsSelected.value).toBe(true)
+    page.toggleAllEvents(false)
+    expect(page.selectedEvents.value).toEqual([])
+    page.toggleEvent(second.id, true)
+    expect(page.allEventsSelected.value).toBe(false)
+    expect(page.selectedEvents.value).toEqual([second])
+    page.confirmDeleteSelected()
+    state.client.delete.mockResolvedValue({})
+    await page.deleteEvent()
+    expect(state.client.delete.mock.calls.map(([url]) => url)).toEqual(['/diagnostics/errors/456'])
+    expect(page.events.value).toEqual([event])
+    expect(page.selectedEventIds.value).toEqual([])
+  })
+
+  it('drops expired selections on refresh without selecting newly arrived archives', async () => {
+    page.events.value = [event, { ...event, id: '456' }]
+    page.toggleAllEvents(true)
+    state.client.get.mockResolvedValue({ data: { events: [event, { ...event, id: '789' }] } })
+    await page.loadEvents()
+    expect(page.selectedEventIds.value).toEqual(['123'])
+    expect(page.allEventsSelected.value).toBe(false)
+  })
+
+  it('exports only the checked snapshot in one ZIP with original archive contents', async () => {
+    const { ZipReader, BlobReader, TextWriter } = await import('@zip.js/zip.js')
+    page.events.value = [event, { ...event, id: '456' }, { ...event, id: '789' }]
+    page.toggleEvent('123', true)
+    page.toggleEvent('789', true)
+    const pending = deferred()
+    state.client.get
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce({ data: new Blob(['archive 789']) })
+    const link = { click: vi.fn(), remove: vi.fn() }
+    let downloaded
+    vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
+    vi.stubGlobal('URL', {
+      createObjectURL: (blob) => {
+        downloaded = blob
+        return 'blob:test'
+      },
+      revokeObjectURL: vi.fn()
+    })
+    const exporting = page.exportSelected()
+    await page.exportSelected()
+    page.toggleAllEvents(false)
+    page.confirmDeleteSelected()
+    expect(page.pendingDeleteEvents.value).toBe(null)
+    pending.resolve({ data: new Blob(['archive 123']) })
+    await exporting
+    expect(state.client.get.mock.calls).toEqual([
+      ['/diagnostics/errors/123/export', { responseType: 'blob' }],
+      ['/diagnostics/errors/789/export', { responseType: 'blob' }]
+    ])
+    expect(link.click).toHaveBeenCalledOnce()
+    const reader = new ZipReader(new BlobReader(downloaded), { useWebWorkers: false })
+    try {
+      const entries = await reader.getEntries()
+      expect(entries.map((entry) => entry.filename)).toEqual([
+        '异常归档-123.zip',
+        '异常归档-789.zip'
+      ])
+      expect(await entries[0].getData(new TextWriter())).toBe('archive 123')
+      expect(await entries[1].getData(new TextWriter())).toBe('archive 789')
+    } finally {
+      await reader.close()
+    }
+    expect(page.exporting.value).toBe(false)
+  })
+
+  it('does not download a partial export and retains selection for retry', async () => {
+    await page.exportSelected()
+    expect(state.client.get).not.toHaveBeenCalled()
+    page.events.value = [event, { ...event, id: '456' }]
+    page.toggleAllEvents(true)
+    const createUrl = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL: createUrl, revokeObjectURL: vi.fn() })
+    state.client.get
+      .mockResolvedValueOnce({ data: new Blob(['archive 123']) })
+      .mockRejectedValueOnce(new Error('expired'))
+    await page.exportSelected()
+    expect(createUrl).not.toHaveBeenCalled()
+    expect(page.exportError.value).toContain('未下载文件')
+    expect(page.selectedEventIds.value).toEqual(['123', '456'])
+    expect(page.exporting.value).toBe(false)
+  })
+
+  it('avoids duplicate submissions and treats already expired archives as removed', async () => {
+    const pending = deferred()
+    page.events.value = [event, { ...event, id: '456' }]
+    page.toggleAllEvents(true)
+    page.confirmDeleteSelected()
+    state.client.delete
+      .mockReturnValueOnce(pending.promise)
+      .mockRejectedValueOnce({ response: { status: 404 } })
+    const deleting = page.deleteEvent()
+    await page.deleteEvent()
+    page.handleDeleteModal(false)
+    expect(page.deleting.value).toBe(true)
+    expect(page.pendingDeleteEvents.value).toHaveLength(2)
+    expect(state.client.delete).toHaveBeenCalledOnce()
+    pending.resolve({})
+    await deleting
+    expect(state.client.delete).toHaveBeenCalledTimes(2)
+    expect(page.events.value).toEqual([])
+    expect(page.deleting.value).toBe(false)
+    expect(page.deleteError.value).toBe('')
   })
 })
 

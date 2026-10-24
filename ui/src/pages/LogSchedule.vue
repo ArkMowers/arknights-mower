@@ -28,7 +28,8 @@ const searchText = ref('')
 const levelFilter = ref('all')
 const exporting = ref(false)
 const exportError = ref('')
-const pendingDeleteEvent = ref(null)
+const selectedEventIds = ref([])
+const pendingDeleteEvents = ref(null)
 const deleting = ref(false)
 const deleteError = ref('')
 const analysisLoading = ref(false)
@@ -45,6 +46,14 @@ const levelOptions = [
   { label: '信息', value: 'INFO' },
   { label: '调试', value: 'DEBUG' }
 ]
+
+const selectedEvents = computed(() =>
+  events.value.filter((event) => selectedEventIds.value.includes(event.id))
+)
+const allEventsSelected = computed(
+  () => events.value.length > 0 && selectedEvents.value.length === events.value.length
+)
+const archiveBusy = computed(() => deleting.value || exporting.value)
 
 const activeEvent = computed(() => events.value.find((event) => event.id === activeEventId.value))
 const imagePath = computed(() => screenshots.value[imageIndex.value] || '')
@@ -112,6 +121,7 @@ function imageNearest(center) {
 }
 
 async function loadEvents() {
+  if (archiveBusy.value) return
   const version = ++eventRequestVersion
   eventLoading.value = true
   eventError.value = ''
@@ -119,6 +129,7 @@ async function loadEvents() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors`)
     if (version !== eventRequestVersion) return
     events.value = response.data.events || []
+    selectedEventIds.value = selectedEvents.value.map((event) => event.id)
     if (browseMode.value === 'archives') {
       if (events.value.length) selectEvent(activeEvent.value || events.value[0])
       else {
@@ -262,19 +273,63 @@ async function exportWindow() {
       params: activeEvent.value ? undefined : { at: center },
       responseType: 'blob'
     })
-    const url = URL.createObjectURL(response.data)
-    const link = document.createElement('a')
-    link.href = url
     const date = new Date(center)
     const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`
-    link.download = `日志调度-${stamp}.zip`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    downloadBundle(response.data, `日志调度-${stamp}.zip`)
   } catch {
     exportError.value = '导出失败，请稍后重试'
   } finally {
+    exporting.value = false
+  }
+}
+
+function downloadBundle(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function toggleEvent(id, checked) {
+  if (archiveBusy.value) return
+  const ids = new Set(selectedEventIds.value)
+  if (checked) ids.add(id)
+  else ids.delete(id)
+  selectedEventIds.value = [...ids]
+}
+
+function toggleAllEvents(checked) {
+  if (archiveBusy.value) return
+  selectedEventIds.value = checked ? events.value.map((event) => event.id) : []
+}
+
+async function exportSelected() {
+  if (archiveBusy.value || eventLoading.value || !selectedEvents.value.length) return
+  const targets = [...selectedEvents.value]
+  exporting.value = true
+  exportError.value = ''
+  let writer
+  try {
+    const { BlobReader, BlobWriter, ZipWriter } = await import('@zip.js/zip.js')
+    writer = new ZipWriter(new BlobWriter('application/zip'), { useWebWorkers: false })
+    for (const event of targets) {
+      const response = await axios.get(
+        `${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}/export`,
+        { responseType: 'blob' }
+      )
+      await writer.add(`异常归档-${event.id}.zip`, new BlobReader(response.data), { level: 0 })
+    }
+    const blob = await writer.close()
+    writer = null
+    downloadBundle(blob, `异常归档-选中${targets.length}条.zip`)
+  } catch {
+    exportError.value = '选中归档导出失败，未下载文件，请刷新归档后重试'
+  } finally {
+    if (writer) await writer.close().catch(() => {})
     exporting.value = false
   }
 }
@@ -301,31 +356,47 @@ async function analyzeEvent() {
   }
 }
 
-function confirmDelete(event) {
-  pendingDeleteEvent.value = event
+function confirmDeleteSelected() {
+  if (archiveBusy.value || eventLoading.value || !selectedEvents.value.length) return
+  pendingDeleteEvents.value = [...selectedEvents.value]
   deleteError.value = ''
 }
 
 function handleDeleteModal(show) {
   if (!show && !deleting.value) {
-    pendingDeleteEvent.value = null
+    pendingDeleteEvents.value = null
     deleteError.value = ''
   }
 }
 
 async function deleteEvent() {
-  const event = pendingDeleteEvent.value
-  if (!event || deleting.value) return
+  const targets = [...(pendingDeleteEvents.value || [])]
+  if (!targets.length || archiveBusy.value) return
   deleting.value = true
   deleteError.value = ''
+  ++eventRequestVersion
+  eventLoading.value = false
+  const removed = new Set()
+  const failed = []
   try {
-    await axios.delete(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}`, {
-      headers: { 'X-Mower-Diagnostics': '1' }
-    })
-    events.value = events.value.filter((item) => item.id !== event.id)
-    pendingDeleteEvent.value = null
-    if (activeEventId.value === event.id) {
-      if (events.value.length) selectEvent(events.value[0])
+    for (const event of targets) {
+      try {
+        await axios.delete(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}`, {
+          headers: { 'X-Mower-Diagnostics': '1' }
+        })
+        removed.add(event.id)
+      } catch (error) {
+        if (error.response?.status === 404) removed.add(event.id)
+        else failed.push(event)
+      }
+    }
+    events.value = events.value.filter((item) => !removed.has(item.id))
+    selectedEventIds.value = selectedEventIds.value.filter((id) => !removed.has(id))
+    pendingDeleteEvents.value = failed.length ? failed : null
+    if (failed.length)
+      deleteError.value = `已删除 ${removed.size} 条归档，${failed.length} 条删除失败，请重试。`
+    if (removed.has(activeEventId.value)) {
+      if (events.value.length) await selectEvent(events.value[0])
       else {
         ++requestVersion
         activeEventId.value = ''
@@ -333,8 +404,6 @@ async function deleteEvent() {
         clearEvidence()
       }
     }
-  } catch {
-    deleteError.value = '删除失败，请重试'
   } finally {
     deleting.value = false
   }
@@ -416,6 +485,7 @@ onMounted(() => {
         >刷新日志</n-button
       >
       <n-button
+        v-if="browseMode === 'time'"
         class="export-button"
         secondary
         :disabled="!canExport"
@@ -424,6 +494,24 @@ onMounted(() => {
       >
         导出日志与截图
       </n-button>
+      <div v-else class="archive-actions">
+        <n-button
+          secondary
+          type="error"
+          :disabled="eventLoading || archiveBusy || !selectedEvents.length"
+          @click="confirmDeleteSelected"
+        >
+          删除选中
+        </n-button>
+        <n-button
+          secondary
+          :disabled="eventLoading || archiveBusy || !selectedEvents.length"
+          :loading="exporting"
+          @click="exportSelected"
+        >
+          导出选中
+        </n-button>
+      </div>
     </section>
     <p v-if="exportError" class="export-error" role="alert">{{ exportError }}</p>
 
@@ -444,14 +532,30 @@ onMounted(() => {
             <span class="section-kicker">已归档</span>
             <h2>异常记录</h2>
           </div>
-          <n-button secondary :loading="eventLoading" @click="loadEvents">刷新归档</n-button>
+          <n-button secondary :loading="eventLoading" :disabled="archiveBusy" @click="loadEvents">
+            刷新归档
+          </n-button>
         </div>
         <p class="panel-intro">选择记录，查看对应日志和留存画面。</p>
         <div v-if="eventError" class="state-message error" role="alert">{{ eventError }}</div>
         <div v-else-if="eventLoading" class="state-message">正在读取异常记录…</div>
         <div v-else-if="!events.length" class="state-message">暂无异常记录</div>
         <div v-else class="event-list">
+          <n-checkbox
+            :checked="allEventsSelected"
+            :indeterminate="selectedEvents.length > 0 && !allEventsSelected"
+            :disabled="archiveBusy"
+            @update:checked="toggleAllEvents"
+          >
+            全选（已选 {{ selectedEvents.length }} / {{ events.length }}）
+          </n-checkbox>
           <div v-for="event in events" :key="event.id" class="event-row">
+            <n-checkbox
+              :checked="selectedEventIds.includes(event.id)"
+              :disabled="archiveBusy"
+              :aria-label="`选择 ${formatTime(event.time_ns)} 的异常记录`"
+              @update:checked="toggleEvent(event.id, $event)"
+            />
             <button
               type="button"
               class="event-card"
@@ -467,15 +571,6 @@ onMounted(() => {
               </span>
               <span class="event-arrow" aria-hidden="true">查看记录 →</span>
             </button>
-            <n-button
-              class="event-delete"
-              quaternary
-              type="error"
-              :aria-label="`删除 ${formatTime(event.time_ns)} 的异常记录`"
-              @click="confirmDelete(event)"
-            >
-              删除
-            </n-button>
           </div>
         </div>
       </aside>
@@ -613,33 +708,24 @@ onMounted(() => {
     </div>
 
     <n-modal
-      :show="pendingDeleteEvent !== null"
+      :show="pendingDeleteEvents !== null"
       preset="card"
-      title="删除异常记录"
+      title="删除选中归档"
       :style="deleteDialogStyle"
       :closable="!deleting"
       :mask-closable="!deleting"
       :close-on-esc="!deleting"
       @update:show="handleDeleteModal"
     >
-      <template v-if="pendingDeleteEvent">
-        <p class="delete-prompt">确定删除这条异常记录及其归档日志、截图吗？删除后无法恢复。</p>
-        <div class="delete-target">
-          <time>{{ formatTime(pendingDeleteEvent.time_ns) }}</time>
-          <strong>{{ pendingDeleteEvent.message }}</strong>
-          <span>
-            <template v-if="pendingDeleteEvent.error_count > 1">
-              {{ pendingDeleteEvent.error_count }} 次异常 ·
-            </template>
-            {{ pendingDeleteEvent.screenshots.length }} 张归档截图
-          </span>
-        </div>
-      </template>
+      <p v-if="pendingDeleteEvents !== null" class="delete-prompt">
+        确定删除选中的 {{ pendingDeleteEvents.length }} 条异常归档及其日志、截图吗？
+        删除后无法恢复，确认后新产生的归档会保留。
+      </p>
       <p v-if="deleteError" class="delete-error" role="alert">{{ deleteError }}</p>
       <template #footer>
         <div class="delete-actions">
           <n-button :disabled="deleting" @click="handleDeleteModal(false)">取消</n-button>
-          <n-button type="error" :loading="deleting" @click="deleteEvent">删除记录</n-button>
+          <n-button type="error" :loading="deleting" @click="deleteEvent"> 删除选中 </n-button>
         </div>
       </template>
     </n-modal>
@@ -647,6 +733,17 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.archive-actions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.events-panel .panel-heading {
+  flex-wrap: wrap;
+}
+
 .ai-analysis {
   margin: 12px 0;
 }
@@ -876,28 +973,9 @@ h2 {
   background: var(--mower-control-surface);
   box-shadow: inset 3px 0 var(--mower-primary);
 }
-.event-delete {
-  flex: 0 0 auto;
-  min-width: 48px;
-  min-height: 40px;
-}
 .delete-prompt {
   margin: 0 0 14px;
   line-height: 1.55;
-}
-.delete-target {
-  display: grid;
-  gap: 5px;
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--mower-control-surface);
-  overflow-wrap: anywhere;
-}
-.delete-target time,
-.delete-target span {
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.7;
 }
 .delete-error {
   margin: 12px 0 0;
@@ -1147,7 +1225,8 @@ h2 {
     grid-column: 2;
     grid-row: 3;
   }
-  .export-button {
+  .export-button,
+  .archive-actions {
     margin-left: 0;
   }
 }
