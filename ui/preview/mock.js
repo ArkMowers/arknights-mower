@@ -76,6 +76,35 @@ export function createPreviewConfiguration(config, theme = 'light') {
   }
 }
 
+// 基建报表示例：30 天产出，按日期生成稳定的起伏，不使用随机数。
+function previewBaseReport(today) {
+  const end = new Date(`${today}T00:00:00`)
+  const report = []
+  const orundum = []
+  const trading = []
+  for (let offset = 30; offset >= 1; offset--) {
+    const day = new Date(end)
+    day.setDate(end.getDate() - offset)
+    const date = day.toLocaleDateString('sv-SE')
+    const wave = Math.sin(offset / 2.3)
+    const orders = 21 + Math.round(wave * 3)
+    const gold = 70000 + Math.round(wave * 8000) + (offset % 4) * 1500
+    report.push({
+      日期: date,
+      赤金: gold,
+      作战录像: 22000 + Math.round(Math.cos(offset / 3) * 4000),
+      龙门币订单: orders * 1000 + (offset % 3) * 1500,
+      龙门币订单数: orders,
+      每单获取龙门币: Math.round((orders * 1000 + (offset % 3) * 1500) / orders)
+    })
+    orundum.push({ 日期: date, 合成玉: offset % 5 === 0 ? 0 : 160, 合成玉订单数量: 8 })
+    if (offset % 3 === 0) trading.push({ 日期: date, 龙舌兰: 1 + (offset % 2), 可露希尔: 1 })
+  }
+  // 示例里保留一天未读到赤金，演示缺失读数的显示。
+  report[report.length - 6].赤金 = null
+  return { report, orundum, trading }
+}
+
 export function createPreviewData(config) {
   const date = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })
   const messages = [
@@ -132,6 +161,12 @@ export function createPreviewData(config) {
     logs,
     tasks,
     status: 'running',
+    baseReport: previewBaseReport(date),
+    incomeSettings: {
+      base_algorithm: 2,
+      base_algorithm_saved: true,
+      ratios: { experience: 0.9568, gold: 0.76544, order: 0.23456, efficiency: 1 }
+    },
     plan: { conf: { ling_xi: 1 }, plan1: {}, backup_plans: [], facility_levels: {} },
     layout: { screenshot_height: 180, task_height: 132 },
     sidebar: null,
@@ -305,6 +340,10 @@ export function createPreviewAdapter(data, requests = []) {
       '/config-profiles': profileList,
       '/shop': () => ['龙门币', '招聘许可', '赤金'],
       '/item': () => ['龙门币', '赤金', '源岩'],
+      '/report/getReportData': () => clone(data.baseReport.report),
+      '/report/getOrundumData': () => clone(data.baseReport.orundum),
+      '/report/trading_history': () => clone(data.baseReport.trading),
+      '/report/recycling_settings': () => clone(data.incomeSettings),
       // 离线示例仅提供默认预设，不读取 MAA 文件或建立连接。
       '/maa-conn-preset': () => ['General'],
       '/operator': () => [
@@ -470,6 +509,9 @@ export function createPreviewAdapter(data, requests = []) {
     else if (method === 'PUT' && path === '/gui/sidebar') {
       data.sidebar = clone(body.sidebar)
       result = { sidebar: clone(data.sidebar) }
+    } else if (method === 'PUT' && path === '/report/recycling_settings') {
+      data.incomeSettings = { ...body, base_algorithm_saved: true }
+      result = clone(data.incomeSettings)
     } else if (method === 'PUT' && path === '/gui/appearance') {
       const choices = {
         software_version_display: ['version', 'channel'],
