@@ -98,7 +98,8 @@ export function mowerAverageMood(data:MowerSchedulingData):number {
  let current=0,total=0
  for(const op of Object.values(data.operators)){
   if(op.isResting()||op.group&&op.room.startsWith('dorm')||!op.isHigh()||op.workaholic||op.group&&data.canStandby(op)||data.isStandby(op.name))continue
-  current+=op.currentMood(data.nowMicros)-op.lowerLimit;total+=op.upperLimit-op.lowerLimit
+  const mood=op.currentMood(data.nowMicros);if(!Number.isFinite(mood)||mood<0||mood>24)continue
+  current+=mood-op.lowerLimit;total+=op.upperLimit-op.lowerLimit
  }
  return total?current/total:0
 }

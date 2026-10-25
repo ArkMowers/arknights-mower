@@ -10,6 +10,11 @@ import {planMowerMetadata} from './mowerMetadata'
 import {mowerAverageMood} from './mowerDormAssignment'
 
 describe('alpha resting boundaries with stable standby identity',()=>{
+ it.each([-1,NaN,Infinity])('omits an unknown working mood %s from the average',mood=>{
+  const operators=Object.fromEntries(['A','B'].map((name,index)=>[name,new MowerOperatorState({name,room:'room_1_1',index,currentRoom:'room_1_1',currentIndex:index,operatorType:'high',mood:index?mood:12,timeStampMicros:0})]))
+  const data=new MowerSchedulingData({operators,plan:{room_1_1:['A','B']},nowMicros:0})
+  expect(mowerAverageMood(data)).toBe(.5)
+ })
  for(const c of oracle.cases)it(c.kind,()=>{
   const standby=c.kind==='standby'
   const operators={A:new MowerOperatorState({name:'A',room:'room_1_1',index:0,currentRoom:'room_1_1',currentIndex:0,operatorType:'high',mood:4,timeStampMicros:['unknown','estimated'].includes(c.kind)?undefined:0,replacement:['R'],restingPriority:standby?'standby':'high'}),R:new MowerOperatorState({name:'R',mood:10,timeStampMicros:0}),...Object.fromEntries(['K1','K2'].map((name,index)=>[name,new MowerOperatorState({name,room:'dormitory_1',index,currentRoom:'dormitory_1',currentIndex:index,operatorType:'high',mood:24,timeStampMicros:0})]))}

@@ -1835,7 +1835,7 @@ class Operators:
         if update_time:
             from arknights_mower.utils.recall_estimates import observe_work_rate
 
-            observe_work_rate(
+            learned_rate = observe_work_rate(
                 agent,
                 mood,
                 current_room,
@@ -1845,23 +1845,11 @@ class Operators:
             )
             agent.mood_is_prediction = False
             agent.working_mood_unconfirmed = False
-            if (
-                not preserve_depletion_rate
-                and agent.time_stamp is not None
-                and agent.mood > mood
-            ):
-                time_difference = datetime.now() - agent.time_stamp
-                if time_difference > timedelta(minutes=29):
-                    logger.debug("开始计算心情掉率")
-                    logger.debug(
-                        f"当前心情：{mood},上次{agent.mood},上次时间{agent.time_stamp}"
-                    )
-                    agent.depletion_rate = (
-                        (agent.mood - mood) * 3600 / time_difference.total_seconds()
-                    )
-                    logger.debug(
-                        f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}"
-                    )
+            agent.work_rate_sample_eligible = not preserve_depletion_rate
+            if learned_rate is not None:
+                agent.depletion_rate = learned_rate
+                agent.depletion_rate_position = (current_room, current_index)
+                logger.debug(f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}")
             agent.time_stamp = datetime.now()
         from_dorm = agent.current_room.startswith("dorm")
         to_dorm = current_room.startswith("dorm")
@@ -2118,6 +2106,12 @@ class Operators:
                 exist, "working_mood_unconfirmed", False
             )
             operator.depletion_rate = exist.depletion_rate
+            operator.depletion_rate_position = getattr(
+                exist, "depletion_rate_position", None
+            )
+            operator.work_rate_sample_eligible = getattr(
+                exist, "work_rate_sample_eligible", True
+            )
             operator.recall_work_rate = getattr(exist, "recall_work_rate", None)
             operator.recall_work_rate_checked = getattr(
                 exist, "recall_work_rate_checked", False
@@ -2638,7 +2632,10 @@ class Operators:
                 and (not v.group or self.is_group_shift_anchor(v))
                 and not self.is_standby(k)
             ):
-                current_mood += v.current_mood() - v.lower_limit
+                mood = v.current_mood()
+                if not isinstance(mood, (int, float)) or not 0 <= mood <= 24:
+                    continue
+                current_mood += mood - v.lower_limit
                 total_mood += v.upper_limit - v.lower_limit
                 count += 1
         if total_mood == 0:
@@ -3370,6 +3367,8 @@ class Operator:
         self.current_index = current_index
         self.lower_limit = lower_limit
         self.depletion_rate = depletion_rate
+        self.depletion_rate_position = None
+        self.work_rate_sample_eligible = True
         self.time_stamp = time_stamp
         self.mood_is_prediction = False
         self.working_mood_unconfirmed = False

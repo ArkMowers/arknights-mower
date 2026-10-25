@@ -219,3 +219,75 @@ def test_lightweight_room_reader_keeps_deadline_without_sampling():
     )
     assert bed.time == now + timedelta(hours=4)
     assert not hasattr(reader, "recall_recovery_rates")
+
+
+def test_derived_work_sample_is_not_the_next_rate_learning_baseline(
+    solver, monkeypatch
+):
+    from arknights_mower.utils import operators
+
+    class Clock(datetime):
+        current = datetime(2026, 10, 26, 12)
+
+        @classmethod
+        def now(cls):
+            return cls.current
+
+    monkeypatch.setattr(operators, "datetime", Clock)
+    data = solver.op_data
+    op = data.operators["伊内丝"]
+    op.mood, op.time_stamp, op.depletion_rate = (
+        1.2,
+        Clock.now() - timedelta(hours=1),
+        0.8,
+    )
+    op.recall_work_rate = (0.8, op.time_stamp)
+    data.update_detail(op.name, 0.4, "meeting", 0, True, preserve_depletion_rate=True)
+    sampled_rate = op.recall_work_rate
+    data.shadow_copy = data.operators.copy()
+    data.add(Operator(op.name, "meeting", 0))
+    op = data.operators[op.name]
+    Clock.current += timedelta(hours=1)
+    data.update_detail(op.name, 0.2, "meeting", 0, True)
+    assert op.depletion_rate == 0.8
+    assert op.recall_work_rate == sampled_rate
+    Clock.current += timedelta(hours=1)
+    data.update_detail(op.name, 0, "meeting", 0, True)
+    assert op.depletion_rate == pytest.approx(0.2)
+    assert op.recall_work_rate[0] == pytest.approx(0.2)
+
+
+@pytest.mark.parametrize("invalid", ["prediction", "unconfirmed"])
+def test_invalid_previous_sample_cannot_train_rate_after_valid_read(solver, invalid):
+    data = solver.op_data
+    op = data.operators["伊内丝"]
+    op.mood, op.time_stamp, op.depletion_rate = (
+        20,
+        datetime.now() - timedelta(hours=2),
+        0.8,
+    )
+    if invalid == "prediction":
+        op.mood_is_prediction = True
+    else:
+        op.working_mood_unconfirmed = True
+    data.update_detail(op.name, 16, "meeting", 0, True)
+    assert op.depletion_rate == 0.8
+    assert getattr(op, "recall_work_rate", None) is None
+
+
+def test_unconfirmed_work_reading_never_supplies_legacy_recall_estimate(solver):
+    data = solver.op_data
+    op = data.operators["伊内丝"]
+    op.depletion_rate = 2
+    op.working_mood_unconfirmed = True
+    assert op.name not in estimated_recall_rates(data, data)[0]
+
+
+def test_average_mood_omits_unknown_workers(solver):
+    data = solver.op_data
+    for op in data.operators.values():
+        op.workaholic = op.name not in {"伊内丝", "银灰"}
+    known, unknown = data.operators["伊内丝"], data.operators["银灰"]
+    known.mood, known.time_stamp, known.depletion_rate = 12, datetime.now(), 0
+    unknown.working_mood_unconfirmed = True
+    assert data.average_mood() == pytest.approx(0.5)

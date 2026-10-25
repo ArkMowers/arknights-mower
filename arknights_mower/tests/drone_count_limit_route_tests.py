@@ -21,23 +21,13 @@ def client(monkeypatch):
 @pytest.mark.parametrize("url", ["/plan", "/conf"])
 @pytest.mark.parametrize("limit", [0, 19, 20])
 def test_drone_reserve_save_boundary(client, url, limit):
-    original_plan = config.plan
     original_conf = config.conf
     payload = {"drone_count_limit": limit}
     if url == "/plan":
         payload = {"advanced_settings": payload}
     response = client.post(url, json=payload, headers={"token": "drone-limit-test"})
-    assert response.status_code == (400 if limit < 20 else 200)
-    if limit < 20:
-        assert response.get_json() == {
-            "error": "invalid_configuration",
-            "message": "无人机使用阈值不能低于 20",
-        }
-        assert config.plan is original_plan
-        assert config.conf is original_conf
-        config.save_plan.assert_not_called()
-        config.save_conf.assert_not_called()
-    elif url == "/plan":
+    assert response.status_code == 200
+    if url == "/plan":
         assert config.plan.advanced_settings["drone_count_limit"] == 20
         assert config.conf is original_conf
         config.save_plan.assert_called_once()
@@ -72,3 +62,27 @@ def test_plan_read_accepts_current_token(client):
     response = client.get("/plan", headers={"token": "drone-limit-test"})
     assert response.status_code == 200
     assert response.get_json() == config.plan.model_dump(exclude_none=True)
+
+
+@pytest.mark.parametrize("limit", [0, 10, 19])
+def test_plan_save_normalizes_legacy_drone_reserve(client, monkeypatch, limit):
+    from arknights_mower.utils.config.plan_advanced import export_advanced_settings
+
+    monkeypatch.setattr(config, "conf", config.Conf(drone_count_limit=limit))
+    response = client.post(
+        "/plan",
+        json={
+            "plan1": {"central": {"plans": [{"agent": "阿米娅"}]}},
+            "advanced_settings": {
+                **export_advanced_settings(config.conf),
+                "drone_count_limit": limit,
+            },
+        },
+        headers={"token": "drone-limit-test"},
+    )
+    assert response.status_code == 200
+    assert config.plan.plan1.central.plans[0].agent == "阿米娅"
+    assert config.plan.advanced_settings["drone_count_limit"] == 20
+    assert config.conf.drone_count_limit == 20
+    config.save_plan.assert_called_once()
+    config.save_conf.assert_not_called()

@@ -472,3 +472,180 @@ def test_recovery_wait_preserves_named_fill_and_unrelated_vacancies(
     assert not instance.waiting_group_shifts
     assert sum(queued is waiting for queued in instance.tasks) == 1
     assert waiting.time == before[1]["time"]
+
+
+@pytest.fixture
+def explicit_resting_solver(solver):
+    data = Operators(
+        {
+            "default_plan": Plan(
+                {
+                    "central": [Room("薇薇安娜", "红松", ["陈"])],
+                    "room_1_1": [Room("远牙", "红松", ["酒神"])],
+                    "room_2_1": [Room("乌尔比安", "深海", ["酒神"])],
+                    "dormitory_1": [
+                        Room("杜林", "", []),
+                        Room("桃金娘", "", []),
+                        *[Room("Free", "", []) for _ in range(3)],
+                    ],
+                },
+                PlanConfig("", "", ""),
+            ),
+            "backup_plans": [],
+        }
+    )
+    assert data.init_and_validate() is None
+    data.add(Operator("迷迭香", ""))
+    for op in data.operators.values():
+        op._current_room, op.current_index = (op.room, op.index)
+        op.mood, op.time_stamp = 24, datetime.now()
+    data.operators["薇薇安娜"].mood = 0
+    data.operators["薇薇安娜"]._current_room = "dormitory_1"
+    data.operators["薇薇安娜"].current_index = 2
+    data.operators["远牙"]._current_room = "dormitory_1"
+    data.operators["远牙"].current_index = 3
+    for name, room in (("陈", "central"), ("迷迭香", "room_1_1"), ("酒神", "room_2_1")):
+        data.operators[name]._current_room, data.operators[name].current_index = room, 0
+    data.operators["乌尔比安"]._current_room = ""
+    data.operators["乌尔比安"].current_index = -1
+    data.group_shift_state.update({"红松": True, "深海": True})
+    data.first_init = False
+    solver.op_data = data
+    return solver
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_explicit_working_slot_does_not_trigger_incidental_group_recall(
+    explicit_resting_solver, explicit
+):
+    solver = explicit_resting_solver
+    plan = solver.agent_get_mood(
+        read_rooms=False,
+        return_plan=True,
+        explicit_slots={("room_1_1", 0), ("room_2_1", 0)} if explicit else (),
+    )
+    if explicit:
+        assert "central" not in plan
+        assert plan["room_1_1"] == ["迷迭香"]
+    else:
+        assert plan["central"] == ["薇薇安娜"]
+    assert solver.op_data.operators["薇薇安娜"].is_resting()
+
+
+def test_explicit_working_slot_preserves_feasible_exhausted_cycle(
+    explicit_resting_solver,
+):
+    solver = explicit_resting_solver
+    data = solver.op_data
+    for name in ("薇薇安娜", "远牙"):
+        op = data.operators[name]
+        op._current_room, op.current_index = op.room, op.index
+    for name in ("陈", "迷迭香"):
+        data.operators[name]._current_room, data.operators[name].current_index = "", -1
+    data.group_shift_state["红松"] = False
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "central": ["陈"],
+            "room_1_1": ["迷迭香"],
+            "dormitory_1": ["Current", "Current", "薇薇安娜", "远牙", "Current"],
+        },
+    )
+    task.backup_explicit_slots = {("room_1_1", 0), ("room_2_1", 0)}
+    solver.tasks, solver.task = [task], task
+    solver._prepare_shift_cycle(task)
+    plan, time = copy.deepcopy(task.plan), task.time
+    for _ in range(3):
+        solver._prepare_shift_cycle(task)
+    assert task.plan == plan
+    assert task.time == time
+    assert solver.tasks == [task]
+    assert data.get_current_operator("central", 0).name == "薇薇安娜"
+    final = data.project_arrangements([task.plan])
+    assert final.operators["薇薇安娜"].is_resting()
+    assert final.get_current_operator("central", 0).name == "陈"
+    assert final.get_current_operator("room_1_1", 0).name == "迷迭香"
+    assert task.group_shift_transitions["红松"] is True
+
+
+@pytest.fixture
+def blocked_departure_solver(explicit_resting_solver):
+    solver = explicit_resting_solver
+    data = solver.op_data
+    entry = Plan(
+        {},
+        PlanConfig("", "", ""),
+        trigger=backup.LogicExpression(
+            "op_data.operators['薇薇安娜'].is_working()", "!=", "True"
+        ),
+        task={"room_2_1": ["酒神"]},
+    )
+    data.global_plan["backup_plans"] = data.backup_plans = [entry]
+    data.plan_condition = [False]
+    for name in ("薇薇安娜", "远牙"):
+        op = data.operators[name]
+        op._current_room, op.current_index = op.room, op.index
+    data.operators["薇薇安娜"].exhaust_require = True
+    for name in ("陈", "迷迭香"):
+        data.operators[name]._current_room, data.operators[name].current_index = "", -1
+    data.group_shift_state["红松"] = False
+    task = SchedulerTask(
+        time=datetime.now() - timedelta(hours=1),
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "central": ["陈"],
+            "room_1_1": ["酒神"],
+            "dormitory_1": ["Current", "Current", "薇薇安娜", "远牙", "Current"],
+        },
+    )
+    solver.tasks, solver.task = [task], task
+    return solver
+
+
+def test_required_departure_rejects_incidental_recall_and_resumes_changed_arrangement(
+    blocked_departure_solver,
+):
+    solver = blocked_departure_solver
+    task = solver.task
+    original, time = copy.deepcopy(task.plan), task.time
+    with pytest.raises(ValueError, match="原下班目标未完成"):
+        solver._prepare_shift_cycle(task)
+    assert task.plan == original
+    assert task.time == time
+    assert solver.tasks == [task]
+    assert solver.op_data.operators["薇薇安娜"].is_working()
+    solver.op_data.backup_plans[0].task = {"room_1_1": ["酒神"]}
+    solver._prepare_shift_cycle(task)
+    final = solver.op_data.project_arrangements([task.plan])
+    assert final.operators["薇薇安娜"].is_resting()
+    assert task.time == time
+
+
+def test_ordinary_source_does_not_consume_required_departure(blocked_departure_solver):
+    solver = blocked_departure_solver
+    required = solver.task
+    ordinary = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF, task_plan={"room_2_1": ["酒神"]}
+    )
+    ordinary.ordinary_coordination = True
+    ordinary.coordination_request_names = []
+    solver.tasks.insert(0, ordinary)
+    solver.task = ordinary
+    time, plan = required.time, copy.deepcopy(required.plan)
+    solver._prepare_shift_cycle(ordinary)
+    assert required in solver.tasks
+    assert required.time == time
+    assert required.plan == plan
+
+
+def test_required_departure_does_not_accept_exited_explicit_work(
+    blocked_departure_solver,
+):
+    solver = blocked_departure_solver
+    task = solver.task
+    solver.op_data.backup_plans[0].trigger = backup.LogicExpression(
+        "op_data.operators['远牙'].is_working()", "!=", "True"
+    )
+    solver.op_data.backup_plans[0].task = {"central": ["薇薇安娜"]}
+    with pytest.raises(ValueError, match="保留原任务"):
+        solver._prepare_shift_cycle(task)

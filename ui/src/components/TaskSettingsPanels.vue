@@ -531,6 +531,7 @@ const idleOptions = computed(() => [
               <template #label>
                 <span>无人机使用阈值</span>
                 <help-text>
+                  <div>最低为 20，旧配置中小于 20 的值自动调整为 20。</div>
                   <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
                   <div>如加速制造，推荐大于 贸易站数*10</div>
                 </help-text>

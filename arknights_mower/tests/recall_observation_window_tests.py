@@ -329,3 +329,22 @@ def test_recall_cannot_use_check_cancelled_by_its_own_handoff(recall, empty_meta
     assert not solver._coordination_support_valid(
         {"room_2_2": ["苍苔"], "contact": ["絮雨"]}, ["机械师"]
     )
+
+
+@pytest.mark.parametrize("kind", ["patrol", "order"])
+def test_ordinary_queue_before_recheck_is_part_of_recall_endurance(recall, kind):
+    solver, _, calculated = recall
+    for name in ("苍苔", "絮雨"):
+        solver.op_data.operators[name].mood = 0.5
+        if calculated:
+            solver.op_data.mood_model.observe(name, 0.5, NOW)
+    wake = event(kind)
+    solver.tasks = [wake]
+    assert solver._plan_exhaust_support(["机械师"])
+    furniture = SchedulerTask(
+        time=NOW + timedelta(minutes=5), task_type=TaskTypes.FURNITURE
+    )
+    solver.tasks.insert(0, furniture)
+    before = [deepcopy(vars(task)) for task in solver.tasks]
+    assert bool(solver._plan_exhaust_support(["机械师"])) == (kind == "order")
+    assert [vars(task) for task in solver.tasks] == before
