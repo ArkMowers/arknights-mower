@@ -51,9 +51,10 @@ writes; malformed legacy workshop presets retain their existing recoverable
 warning behavior. A ZIP missing both forms preserves the corresponding local
 config file. Exports omit obsolete tmp copies once canonical files exist.
 
-Local `gui.yml` is exported but protected during import, including its window
-settings, mood curve preferences and log layout. Shared installation settings
-outside the current instance directory remain outside the archive.
+Local `gui.yml` and the [running log background](web-access.md#running-log-background)
+at `config/log-background.webp` are exported but protected during import, including
+the GUI file's window settings, mood curve preferences and log layout. Shared
+installation settings outside the current instance directory remain outside the archive.
 Import preserves both local lock files, even when an older archive includes
 them, so an active OS lock continues to protect the same file.
 

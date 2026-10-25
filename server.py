@@ -925,6 +925,7 @@ def serialize_configuration_requests():
     if changes_configuration and request.path not in {
         "/gui/appearance",
         "/gui/sidebar",
+        "/gui/log-background",
     }:
         check_token()
         from arknights_mower.utils.config_backup import LocalConfigError

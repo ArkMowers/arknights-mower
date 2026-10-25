@@ -15,6 +15,21 @@ import {
 afterEach(() => vi.useRealTimers())
 
 describe('offline preview', () => {
+  it('previews image selection and reset independently of profile generation', async () => {
+    const client = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
+    const options = { headers: { 'X-Mower-Config-Generation': 'obsolete' } }
+    expect((await client.get('/gui/log-background')).status).toBe(204)
+    const uploaded = await client.put(
+      '/gui/log-background',
+      new Blob(['png image'], { type: 'image/png' }),
+      options
+    )
+    expect(uploaded.status).toBe(200)
+    expect(uploaded.data.type).toBe('image/webp')
+    expect((await client.get('/gui/log-background')).data).toBe(uploaded.data)
+    expect((await client.delete('/gui/log-background', options)).status).toBe(204)
+    expect((await client.get('/gui/log-background')).status).toBe(204)
+  })
   it('serves all waiting scene rows while preserving supplied values and fixture isolation', async () => {
     const initial = { waiting_scene: { LOADING: [4, 20] } }
     const data = createPreviewData(createPreviewConfiguration(initial))

@@ -1,9 +1,11 @@
 """Authenticated instance GUI preferences for browser and desktop clients."""
 
 import json
+from io import BytesIO
 
-from flask import Blueprint, abort, request
+from flask import Blueprint, abort, request, send_file
 
+from arknights_mower.utils import log_background
 from arknights_mower.utils.config import gui
 from arknights_mower.utils.web_auth import preflight_allowed, require_token
 
@@ -78,3 +80,33 @@ def save_appearance():
         return {"ok": False, "message": str(exc)}, 400
     except (OSError, TimeoutError):
         return {"ok": False, "message": "外观配置保存失败，请稍后重试"}, 503
+
+
+@gui_bp.route("/log-background", methods=["GET", "PUT", "DELETE"])
+def running_log_background():
+    try:
+        if request.method == "PUT":
+            if (
+                request.content_length
+                and request.content_length > log_background.MAX_IMAGE_BYTES
+            ):
+                abort(413)
+            content = request.stream.read(log_background.MAX_IMAGE_BYTES + 1)
+            if len(content) > log_background.MAX_IMAGE_BYTES:
+                abort(413)
+            content = log_background.save(content)
+        elif request.method == "DELETE":
+            log_background.reset()
+            content = None
+        else:
+            content = log_background.load()
+        if content is None:
+            return "", 204, {"Cache-Control": "no-store"}
+        response = send_file(BytesIO(content), mimetype="image/webp", max_age=0)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+    except ValueError as exc:
+        return {"ok": False, "message": str(exc)}, 400
+    except (OSError, TimeoutError):
+        return {"ok": False, "message": "运行日志背景图读取或保存失败，请稍后重试"}, 503

@@ -11,6 +11,7 @@ import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
 import { settingsSectionKey } from '@/composables/settingsNavigation'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
+import LogBackgroundPreference from '@/components/LogBackgroundPreference.vue'
 import SettingsSegmented from '@/components/SettingsSegmented.vue'
 import InterfaceIcon from '@vicons/fluent/es/PaintBrush24Regular'
 import NotifyIcon from '@vicons/fluent/es/Alert24Regular'
@@ -227,6 +228,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
             />
           </n-form-item>
           <SoftwareVersionPreference />
+          <LogBackgroundPreference />
         </n-form>
       </n-card>
       <n-card v-if="runtime_platform !== 'android'" id="window-settings" title="窗口">

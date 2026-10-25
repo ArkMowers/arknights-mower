@@ -143,6 +143,14 @@ The former `/mowersettings` address redirects to `/task-settings`, preserving qu
 
 The display theme defaults to `light` and accepts `light`, `dark` or `system`. Explicit light and dark selections retain their appearance when the operating system changes. `system` follows the current system color preference through [`useResolvedTheme`](../../ui/src/composables/theme.js), without rewriting the saved preference, and releases its media-query listener when its owning scope is disposed. Providers, teleported editors, navigation, charts and the embedded guide use that effective appearance. Image exports capture an explicit light or dark appearance.
 
+### Running Log Background
+
+界面与窗口 provides 运行日志背景图 with 选择图片 and 恢复默认. Selection and reset update the shared frontend state immediately, including an already mounted settings page; opening 运行日志 uses that state without refreshing the page. A failed save keeps the displayed image and exposes the failure for retry.
+
+The current instance stores one validated, re-encoded WebP at `config/log-background.webp`; absence selects the bundled `/bg.webp`. Like `gui.yml`, this local interface preference is exported but preserved during backup import and saved-profile activation. It is not temporary data or a selectable profile group. [Configuration Backup](config-backup.md#2-import-boundary) owns that preservation boundary.
+
+`GET /gui/log-background` returns the saved WebP, or 204 for the default. `PUT` accepts raw static PNG, JPEG or WebP bytes, bounded to 8 MiB and 24 million decoded pixels; it decodes before atomically replacing the saved image and returns the resulting WebP. `DELETE` removes the custom image and returns 204, including when it is already absent. All methods require the current instance token, retain the existing GUI preflight boundary and remain independent of saved-profile generations. Responses disable caching. The frontend obtains the image through authenticated Axios requests and shares an object URL, releasing replaced URLs. Focused offline checks are in [`log_background_tests.py`](../../arknights_mower/tests/log_background_tests.py), [`logBackground.test.js`](../../ui/src/stores/logBackground.test.js) and the configuration import and profile tests.
+
 ### Task Configuration
 
 The running log contains screenshot preview when available, the task list, log output and shared bottom toolbar in one workspace. Its transparent task table appears only when the backend queue is nonempty, uses 时间 and 任务 columns, and has a maximum width of 600px. Rows retain backend order, execution times, room assignments, available task details and the distinct automatic-rescue labels. The screenshot and task table keep their resize controls.
