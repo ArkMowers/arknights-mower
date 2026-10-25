@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { readFileSync } from 'node:fs'
+import { parse } from '@vue/compiler-sfc'
+import { renderToString } from 'vue/server-renderer'
+import { compile, createSSRApp, effectScope } from 'vue'
 import ManagerTools from './ManagerTools.vue'
 
 const hooks = vi.hoisted(() => ({ mounted: [], unmounted: [] }))
@@ -25,8 +28,7 @@ describe('manager maintenance tools', () => {
             target: '/shared/maa',
             instances: ['one', 'two'],
             channels: ['stable'],
-            running: false,
-            updates_enabled: true
+            running: false
           }
         ],
         errors: []
@@ -76,6 +78,69 @@ describe('manager maintenance tools', () => {
     component.groups.value[0].running = true
     expect(component.canUpdate.value).toBe(false)
   })
+  it.each([false, undefined])(
+    'keeps manager maintenance buttons available regardless of instance update choice %s',
+    async (legacyChoice) => {
+      await component.loadMaa()
+      component.groups.value[0].updates_enabled = legacyChoice
+      const { descriptor } = parse(
+        readFileSync(new URL('./ManagerTools.vue', import.meta.url), 'utf8')
+      )
+      const actions = descriptor.template.content
+        .match(/<div class="actions">[\s\S]+?<\/div>/g)
+        .find((section) => section.includes("maintenance('check')"))
+      async function renderActions() {
+        const controls = []
+        const app = createSSRApp({
+          setup: () => ({ ...component }),
+          render: compile(actions),
+          components: {
+            NButton: {
+              emits: ['click'],
+              setup(_props, { attrs, emit }) {
+                controls.push({ disabled: attrs.disabled, emit })
+                return () => null
+              }
+            }
+          }
+        })
+        await renderToString(app)
+        return controls
+      }
+      const [, check, unavailableUpdate] = await renderActions()
+      expect(check.disabled).toBe(false)
+      expect(unavailableUpdate.disabled).toBe(true)
+      check.emit('click')
+      await vi.waitFor(() =>
+        expect(api.start_maa_maintenance).toHaveBeenCalledWith(
+          '/shared/maa',
+          'stable',
+          'core',
+          'check'
+        )
+      )
+      await vi.waitFor(() => expect(component.busy.value).toBe(false))
+      component.job.value = {
+        status: 'completed',
+        action: 'check',
+        target: '/shared/maa',
+        channel: 'stable',
+        component: 'core',
+        result: { available: true }
+      }
+      const [, , update] = await renderActions()
+      expect(update.disabled).toBe(false)
+      update.emit('click')
+      await vi.waitFor(() =>
+        expect(api.start_maa_maintenance).toHaveBeenCalledWith(
+          '/shared/maa',
+          'stable',
+          'core',
+          'update'
+        )
+      )
+    }
+  )
   it('polls only an active maintenance job and stops polling on completion', async () => {
     await component.loadMaa()
     api.get_maintenance_status

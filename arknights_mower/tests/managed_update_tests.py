@@ -16,30 +16,75 @@ from arknights_mower.utils.config.conf import Conf
 
 @pytest.mark.parametrize("choice", [False, True])
 def test_launch_choice_only_restricts_managed_instances(choice):
-    conf = Conf(updates_enabled=choice)
+    conf = Conf(extra_settings_visible=choice)
     assert conf.updates_enabled_for_launch(managed=False) is True
     assert conf.updates_enabled_for_launch(managed=True) is choice
 
 
-def test_managed_update_default_is_enabled_without_persisting_a_choice():
+def test_managed_update_default_is_disabled_without_persisting_a_choice():
     conf = Conf()
-    assert conf.updates_enabled_for_launch(managed=True) is True
+    assert conf.updates_enabled_for_launch(managed=True) is False
     assert conf.assistant_enabled_for_launch(managed=True) is False
     assert "updates_enabled" not in conf.model_dump(exclude_unset=True)
+    assert "extra_settings_visible" not in conf.model_dump(exclude_unset=True)
     assert "ai_assistant_enabled" not in conf.model_dump(exclude_unset=True)
 
 
 @pytest.mark.parametrize("choice", [None, 0, 1, "true", "false", [], {}])
-def test_update_choice_rejects_non_boolean_values(choice):
+@pytest.mark.parametrize("field", ["updates_enabled", "extra_settings_visible"])
+def test_update_choice_rejects_non_boolean_values(choice, field):
     with pytest.raises(ValidationError):
-        Conf(updates_enabled=choice)
+        Conf(**{field: choice})
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ({"updates_enabled": True}, True),
+        ({"updates_enabled": False}, False),
+        ({"extra_settings_visible": True}, True),
+        ({"extra_settings_visible": False}, False),
+        ({"extra_settings_visible": False, "updates_enabled": False}, False),
+        ({"extra_settings_visible": True, "updates_enabled": True}, True),
+        ({"extra_settings_visible": True, "updates_enabled": False}, False),
+        ({"extra_settings_visible": False, "updates_enabled": True}, True),
+    ],
+)
+def test_legacy_permissions_converge_on_real_configuration_load_and_save(
+    tmp_path, monkeypatch, raw, expected
+):
+    path = tmp_path / "conf.yml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    monkeypatch.setattr(config, "conf_path", path)
+    monkeypatch.setattr(config, "conf", Conf())
+    monkeypatch.setattr(config, "manager_inherited_settings", frozenset())
+    monkeypatch.setattr(config, "_load_rescue_plan", Mock())
+    before = path.read_bytes()
+    config.load_conf()
+    assert config.conf.extra_settings_visible is expected
+    assert config.conf.updates_enabled_for_launch(managed=True) is expected
+    assert config.conf.updates_enabled_for_launch(managed=False) is True
+    assert path.read_bytes() == before
+    config.save_conf()
+    saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert "updates_enabled" not in saved
+    assert saved.get("extra_settings_visible", False) is expected
+    assert Conf(**saved).extra_settings_visible is expected
+
+
+def test_update_permission_compatibility_property_is_read_only():
+    conf = Conf(extra_settings_visible=True)
+    assert conf.updates_enabled is True
+    with pytest.raises(AttributeError):
+        conf.updates_enabled = False
+    assert "updates_enabled" not in conf.model_dump()
 
 
 @pytest.mark.parametrize(
     "managed,choice,expected",
     [
         (False, False, True),
-        (True, None, True),
+        (True, None, False),
         (True, False, False),
         (True, True, True),
     ],
@@ -49,13 +94,13 @@ def test_fresh_launch_captures_permission_once(tmp_path, managed, choice, expect
     directory.mkdir()
     if choice is not None:
         (directory / "conf.yml").write_text(
-            f"updates_enabled: {str(choice).lower()}\n", encoding="utf-8"
+            f"extra_settings_visible: {str(choice).lower()}\n", encoding="utf-8"
         )
     script = (
         "import json, os, server\n"
         "from arknights_mower.utils import config\n"
         "before = server.app.config['UPDATES_ENABLED']\n"
-        "config.conf.updates_enabled = not before\n"
+        "config.conf.extra_settings_visible = not before\n"
         "os.environ['MOWER_MANAGED'] = '0'\n"
         "config.load_conf()\n"
         "server.app.token = 'update-status-test'\n"
@@ -154,7 +199,7 @@ def test_configuration_api_cannot_change_update_authorization(
     monkeypatch, method, choice
 ):
     monkeypatch.setattr(server.app, "token", "fixture-token", raising=False)
-    monkeypatch.setattr(config, "conf", Conf(updates_enabled=choice))
+    monkeypatch.setattr(config, "conf", Conf(extra_settings_visible=choice))
     save = Mock()
     monkeypatch.setattr(config, "save_conf", save)
     response = getattr(server.app.test_client(), method)(
@@ -182,7 +227,7 @@ def test_automatic_checks_skip_before_settings_network_or_thread_creation(monkey
 
 
 @pytest.mark.parametrize("choice", [False, True])
-@pytest.mark.parametrize("echo", [False, True])
+@pytest.mark.parametrize("echo", [None, "extra_settings_visible", "updates_enabled"])
 def test_ordinary_configuration_saves_preserve_update_choice(
     monkeypatch, tmp_path, choice, echo
 ):
@@ -190,7 +235,8 @@ def test_ordinary_configuration_saves_preserve_update_choice(
     from arknights_mower.utils.config import weekly_plan_loader
 
     monkeypatch.setattr(server.app, "token", "fixture-token", raising=False)
-    monkeypatch.setattr(config, "conf", Conf(updates_enabled=choice))
+    monkeypatch.setenv("MOWER_MANAGED", "1")
+    monkeypatch.setattr(config, "conf", Conf(extra_settings_visible=choice))
     monkeypatch.setattr(config, "conf_path", tmp_path / "conf.yml")
     monkeypatch.setattr(server, "mower_thread", None)
     monkeypatch.setattr(__main__, "device_control", Mock(active=False))
@@ -201,13 +247,18 @@ def test_ordinary_configuration_saves_preserve_update_choice(
     )
     payload = {"theme": "dark"}
     if echo:
-        payload["updates_enabled"] = choice
+        payload[echo] = choice
     response = server.app.test_client().patch(
         "/conf", json=payload, headers={"token": "fixture-token"}
     )
     assert response.status_code == 200, response.data
     assert config.conf.updates_enabled is choice
     assert (
-        yaml.safe_load(config.conf_path.read_text(encoding="utf-8"))["updates_enabled"]
+        yaml.safe_load(config.conf_path.read_text(encoding="utf-8"))[
+            "extra_settings_visible"
+        ]
         is choice
+    )
+    assert "updates_enabled" not in yaml.safe_load(
+        config.conf_path.read_text(encoding="utf-8")
     )

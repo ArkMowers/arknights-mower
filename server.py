@@ -1481,7 +1481,7 @@ def load_config():
             if req["extra_settings_visible"] != config.conf.extra_settings_visible:
                 return {
                     "error": "manager_owned_setting",
-                    "message": "请在实例退出后通过多开管理器修改额外设置的显示开关",
+                    "message": "请在实例退出后通过多开管理器修改更新与维护开关",
                 }, 403
             req.pop("extra_settings_visible")
         protected = managed_device.protected_settings(config.conf)
@@ -1513,7 +1513,7 @@ def load_config():
             if req["updates_enabled"] != config.conf.updates_enabled:
                 return {
                     "error": "manager_owned_setting",
-                    "message": "请在实例退出后通过多开管理器修改允许更新开关",
+                    "message": "请在实例退出后通过多开管理器修改更新与维护开关",
                 }, 403
             req.pop("updates_enabled")
         if "ai_assistant_enabled" in req:

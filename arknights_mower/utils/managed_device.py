@@ -57,8 +57,6 @@ def protected_settings(configuration):
     keys = SETTINGS
     if not extra_settings_allowed(configuration):
         keys += EXTRA_SETTINGS
-    elif enabled() and not configuration.updates_enabled:
-        keys += ("resource_update",)
     if enabled():
         from . import config
 
@@ -127,10 +125,10 @@ def preserve(data, current):
         for key in (
             "start_automatically",
             "ai_assistant_enabled",
-            "updates_enabled",
             "extra_settings_visible",
         ):
             data[key] = getattr(current, key)
+        data.pop("updates_enabled", None)
         from .manager_common import MANAGER_ONLY_KEYS, instance_override, read_document
         from .path import get_path
 

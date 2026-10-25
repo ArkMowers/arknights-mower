@@ -48,16 +48,23 @@ def read_instance_config(space):
     return destination, raw
 
 
+def _maintenance_permission(raw):
+    updates = raw.get("updates_enabled")
+    extra_settings = raw.get("extra_settings_visible", False)
+    if type(extra_settings) is not bool:
+        raise ValueError("更新与维护开关必须是布尔值")
+    if "updates_enabled" in raw and type(updates) is not bool:
+        raise ValueError("旧版允许更新开关必须是布尔值")
+    return updates if "updates_enabled" in raw else extra_settings
+
+
 def read_webview(space):
     destination, raw = read_instance_config(space)
     settings = raw.get("webview", {})
     token = settings.get("token", "")
     port = settings.get("port", 0)
     assistant = raw.get("ai_assistant_enabled")
-    updates = raw.get("updates_enabled", True)
-    extra_settings = raw.get("extra_settings_visible", False)
-    if type(extra_settings) is not bool:
-        raise ValueError("显示额外设置开关必须是布尔值")
+    extra_settings = _maintenance_permission(raw)
     automatic = raw.get("start_automatically", False)
     if type(automatic) is not bool:
         raise ValueError("启动后自动开始任务必须是布尔值")
@@ -67,8 +74,6 @@ def read_webview(space):
         raise ValueError("端口必须是 1 至 65535 的整数，或留空")
     if assistant is not None and type(assistant) is not bool:
         raise ValueError("Mower AI 助手开关必须是布尔值")
-    if type(updates) is not bool:
-        raise ValueError("允许更新开关必须是布尔值")
     return (
         destination,
         raw,
@@ -76,7 +81,6 @@ def read_webview(space):
             "token": token,
             "port": port or None,
             "ai_assistant_enabled": assistant is True,
-            "updates_enabled": updates,
             "start_automatically": automatic,
             "extra_settings_visible": extra_settings,
         },
@@ -88,7 +92,6 @@ def validate_settings(settings, *, partial=False):
         "token",
         "port",
         "ai_assistant_enabled",
-        "updates_enabled",
         "start_automatically",
         "extra_settings_visible",
     }
@@ -112,8 +115,6 @@ def validate_settings(settings, *, partial=False):
         and type(result["ai_assistant_enabled"]) is not bool
     ):
         raise ValueError("Mower AI 助手开关必须是布尔值")
-    if "updates_enabled" in result and type(result["updates_enabled"]) is not bool:
-        raise ValueError("允许更新开关必须是布尔值")
     if (
         "start_automatically" in result
         and type(result["start_automatically"]) is not bool
@@ -123,7 +124,7 @@ def validate_settings(settings, *, partial=False):
         "extra_settings_visible" in result
         and type(result["extra_settings_visible"]) is not bool
     ):
-        raise ValueError("显示额外设置开关必须是布尔值")
+        raise ValueError("更新与维护开关必须是布尔值")
     return result
 
 
@@ -257,7 +258,6 @@ class InstanceController(ManagerTools):
                     token="",
                     port=None,
                     ai_assistant_enabled=False,
-                    updates_enabled=True,
                     start_automatically=False,
                     extra_settings_visible=False,
                     editable=False,
@@ -604,7 +604,6 @@ class InstanceController(ManagerTools):
             if key
             in {
                 "ai_assistant_enabled",
-                "updates_enabled",
                 "start_automatically",
                 "extra_settings_visible",
             }
@@ -613,6 +612,7 @@ class InstanceController(ManagerTools):
         }
         if (
             destination.is_file()
+            and "updates_enabled" not in raw
             and current == settings
             and all(
                 type(current[key]) is type(value) for key, value in settings.items()
@@ -626,12 +626,13 @@ class InstanceController(ManagerTools):
             raw.setdefault("webview", {}).update(connection)
         if "ai_assistant_enabled" in settings:
             raw["ai_assistant_enabled"] = settings["ai_assistant_enabled"]
-        if "updates_enabled" in settings:
-            raw["updates_enabled"] = settings["updates_enabled"]
         if "start_automatically" in settings:
             raw["start_automatically"] = settings["start_automatically"]
         if "extra_settings_visible" in settings:
             raw["extra_settings_visible"] = settings["extra_settings_visible"]
+        elif "updates_enabled" in raw:
+            raw["extra_settings_visible"] = _maintenance_permission(raw)
+        raw.pop("updates_enabled", None)
         self._write_config(destination, raw)
         return True
 

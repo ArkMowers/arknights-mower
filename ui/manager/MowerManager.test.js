@@ -26,7 +26,6 @@ describe('manager instance controls', () => {
     editable: true,
     can_start: true,
     ai_assistant_enabled: false,
-    updates_enabled: false,
     can_stop: false,
     can_open_browser: false
   })
@@ -867,7 +866,6 @@ describe('manager instance controls', () => {
         token: '',
         port: null,
         ai_assistant_enabled: false,
-        updates_enabled: false,
         start_automatically: false,
         extra_settings_visible: false
       }
@@ -877,45 +875,34 @@ describe('manager instance controls', () => {
     expect(api.update_settings).not.toHaveBeenCalled()
   })
 
-  it('keeps the enabled update default and disabled AI in individual and batch drafts', async () => {
-    rows[0].updates_enabled = true
-    await mount()
-    component.edit(0, 'settings')
-    expect(component.draft.value.updates_enabled).toBe(true)
-    expect(component.draft.value.ai_assistant_enabled).toBe(false)
-    await component.save()
-    expect(api.update_settings.mock.calls[0][1]).toEqual({ token: '', port: null })
-    await component.editBatch()
-    expect(component.batchDraft.value[0].updates_enabled).toBe(true)
-    expect(component.batchDraft.value[0].ai_assistant_enabled).toBe(false)
-    expect(component.batchChanges.value).toEqual([])
-    expect(component.assistantConfirmation.value).toBeNull()
-    await component.save()
-    expect(api.update_all_settings).not.toHaveBeenCalled()
-  })
+  it.each([true, false])(
+    'keeps the maintenance choice %s and disabled AI in individual and batch drafts',
+    async (enabled) => {
+      rows[0].extra_settings_visible = enabled
+      await mount()
+      component.edit(0, 'settings')
+      expect(component.draft.value.extra_settings_visible).toBe(enabled)
+      expect(component.draft.value.ai_assistant_enabled).toBe(false)
+      await component.save()
+      expect(api.update_settings.mock.calls[0][1]).toEqual({ token: '', port: null })
+      await component.editBatch()
+      expect(component.batchDraft.value[0].extra_settings_visible).toBe(enabled)
+      expect(component.batchDraft.value[0].ai_assistant_enabled).toBe(false)
+      expect(component.batchChanges.value).toEqual([])
+      expect(component.assistantConfirmation.value).toBeNull()
+      await component.save()
+      expect(api.update_all_settings).not.toHaveBeenCalled()
+    }
+  )
 
-  it('saves update permission separately without triggering the AI notice', async () => {
-    await mount()
-    component.edit(0, 'settings')
-    component.draft.value.updates_enabled = true
-    expect(component.assistantConfirmation.value).toBeNull()
-    expect(api.update_settings).not.toHaveBeenCalled()
-    await component.save()
-    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(
-      0,
-      { token: '', port: null, updates_enabled: true },
-      { name: 'first', path: '/first' }
-    )
-  })
-
-  it('saves optional maintenance visibility without granting update or AI permissions', async () => {
+  it('saves the maintenance choice without triggering the AI notice', async () => {
     await mount()
     component.edit(0, 'settings')
     expect(component.draft.value.extra_settings_visible).toBe(false)
     component.draft.value.extra_settings_visible = true
-    expect(component.draft.value.updates_enabled).toBe(false)
     expect(component.draft.value.ai_assistant_enabled).toBe(false)
     expect(component.assistantConfirmation.value).toBeNull()
+    expect(api.update_settings).not.toHaveBeenCalled()
     await component.save()
     expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(
       0,
@@ -924,44 +911,13 @@ describe('manager instance controls', () => {
     )
   })
 
-  it('changes maintenance visibility only for editable batch rows and sends changed cells', async () => {
-    rows.push({ ...stopped(), name: 'live', path: '/live', editable: false, state: 'running' })
-    await mount()
-    await component.editBatch()
-    component.changeBatchExtraSettings(true)
-    expect(component.batchDraft.value.map((row) => row.extra_settings_visible)).toEqual([
-      true,
-      false
-    ])
-    expect(
-      component.batchDraft.value.every((row) => !row.updates_enabled && !row.ai_assistant_enabled)
-    ).toBe(true)
-    expect(component.assistantConfirmation.value).toBeNull()
-    await component.save()
-    expect(api.update_all_settings).toHaveBeenCalledExactlyOnceWith(
-      [{ idx: 0, settings: { extra_settings_visible: true } }],
-      rows.map(({ name, path }) => ({ name, path }))
-    )
-  })
-
-  it('does not overwrite an untouched visibility choice after external changes', async () => {
-    rows[0].extra_settings_visible = true
-    await mount()
-    component.edit(0, 'settings')
-    rows[0].extra_settings_visible = false
-    component.draft.value.token = 'edited'
-    await component.refresh()
-    await component.save()
-    expect(api.update_settings.mock.calls[0][1]).toEqual({ token: 'edited', port: null })
-  })
-
   it.each([true, false])(
-    'does not overwrite an untouched update choice %s after external changes',
+    'does not overwrite an untouched maintenance choice %s after external changes',
     async (original) => {
-      rows[0].updates_enabled = original
+      rows[0].extra_settings_visible = original
       await mount()
       component.edit(0, 'settings')
-      rows[0].updates_enabled = !original
+      rows[0].extra_settings_visible = !original
       component.draft.value.token = 'edited'
       await component.refresh()
       await component.save()
@@ -969,7 +925,7 @@ describe('manager instance controls', () => {
     }
   )
 
-  it('changes all editable update drafts and saves only changed cells', async () => {
+  it('changes all editable maintenance drafts and saves only changed cells', async () => {
     rows.push(
       { ...stopped(), name: 'second', path: '/second' },
       { ...stopped(), name: 'live', path: '/live', editable: false, state: 'running' },
@@ -977,8 +933,8 @@ describe('manager instance controls', () => {
     )
     await mount()
     await component.editBatch()
-    component.changeBatchUpdates(true)
-    expect(component.batchDraft.value.map((row) => row.updates_enabled)).toEqual([
+    component.changeBatchExtraSettings(true)
+    expect(component.batchDraft.value.map((row) => row.extra_settings_visible)).toEqual([
       true,
       true,
       false,
@@ -987,28 +943,30 @@ describe('manager instance controls', () => {
     expect(component.batchDraft.value.every((row) => row.ai_assistant_enabled === false)).toBe(true)
     expect(component.assistantConfirmation.value).toBeNull()
     expect(api.update_all_settings).not.toHaveBeenCalled()
-    component.changeBatchUpdates(false, 1)
+    component.changeBatchExtraSettings(false, 1)
     await component.save()
     expect(api.update_all_settings).toHaveBeenCalledExactlyOnceWith(
-      [{ idx: 0, settings: { updates_enabled: true } }],
+      [{ idx: 0, settings: { extra_settings_visible: true } }],
       rows.map(({ name, path }) => ({ name, path }))
     )
   })
 
-  it('can cancel a bulk update choice or turn it all off before saving', async () => {
-    rows[0].updates_enabled = true
+  it('can cancel a bulk maintenance choice or turn it all off before saving', async () => {
+    rows[0].extra_settings_visible = true
     await mount()
     await component.editBatch()
-    component.changeBatchUpdates(false)
-    expect(component.batchChanges.value).toEqual([{ idx: 0, settings: { updates_enabled: false } }])
+    component.changeBatchExtraSettings(false)
+    expect(component.batchChanges.value).toEqual([
+      { idx: 0, settings: { extra_settings_visible: false } }
+    ])
     component.editing.value = null
     await component.editBatch()
-    expect(component.batchDraft.value[0].updates_enabled).toBe(true)
+    expect(component.batchDraft.value[0].extra_settings_visible).toBe(true)
     expect(component.batchChanges.value).toEqual([])
     expect(api.update_all_settings).not.toHaveBeenCalled()
   })
 
-  it.each(['updates_enabled', 'start_automatically', 'extra_settings_visible'])(
+  it.each(['start_automatically', 'extra_settings_visible'])(
     'keeps the %s table header in sync with editable row choices',
     async (key) => {
       rows[0][key] = true
@@ -1051,7 +1009,7 @@ describe('manager instance controls', () => {
   )
 
   it('handles the checkbox metadata argument through the production table header binding', async () => {
-    rows[0].updates_enabled = true
+    rows[0].extra_settings_visible = true
     await mount()
     await component.editBatch()
     const { descriptor } = parse(
@@ -1076,11 +1034,13 @@ describe('manager instance controls', () => {
     })
     await renderToString(app)
     controls
-      .find(({ label }) => label === '批量设置允许更新')
-      .emit('update:checked', false, { label: '允许更新' })
-    expect(component.batchDraft.value[0].updates_enabled).toBe(false)
-    expect(component.batchSelection.value.updates_enabled.checked).toBe(false)
-    expect(component.batchChanges.value).toEqual([{ idx: 0, settings: { updates_enabled: false } }])
+      .find(({ label }) => label === '批量设置更新与维护')
+      .emit('update:checked', false, { label: '更新与维护' })
+    expect(component.batchDraft.value[0].extra_settings_visible).toBe(false)
+    expect(component.batchSelection.value.extra_settings_visible.checked).toBe(false)
+    expect(component.batchChanges.value).toEqual([
+      { idx: 0, settings: { extra_settings_visible: false } }
+    ])
   })
 
   it('keeps the AI header unchanged until reading is confirmed and then follows individual cells', async () => {

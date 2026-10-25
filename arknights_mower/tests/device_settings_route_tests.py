@@ -150,7 +150,6 @@ class DeviceSettingsRouteTests(unittest.TestCase):
                 for current in (False, True):
                     config.conf.extra_settings_visible = current
                     config.conf.ai_assistant_enabled = True
-                    config.conf.updates_enabled = False
                     config.save_conf()
                     before = self.path.read_bytes()
                     loaded = self.client.get("/conf", headers=self.headers)
@@ -176,7 +175,10 @@ class DeviceSettingsRouteTests(unittest.TestCase):
                                 config.conf.extra_settings_visible, not current
                             )
                         self.assertIs(config.conf.ai_assistant_enabled, True)
-                        self.assertIs(config.conf.updates_enabled, False)
+                        self.assertIs(
+                            config.conf.updates_enabled,
+                            config.conf.extra_settings_visible,
+                        )
                     echo = self.client.patch(
                         "/conf",
                         headers=self.headers,

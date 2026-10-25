@@ -358,20 +358,19 @@ def test_legacy_rescue_import_obeys_selection_with_separate_local_plan(storage, 
     )
 
 
-@pytest.mark.parametrize("field", ["updates_enabled", "extra_settings_visible"])
 @pytest.mark.parametrize("saved", [False, True])
 @pytest.mark.parametrize("selected", [[], ["other_settings"]])
 @pytest.mark.parametrize("operation", ["create", "activate", "import"])
 def test_profile_operations_preserve_current_manager_choice(
-    storage, field, saved, selected, operation
+    storage, saved, selected, operation
 ):
-    setattr(config.conf, field, not saved)
+    config.conf.extra_settings_visible = not saved
     config.save_conf()
     original = profiles.list_profiles()["active_id"]
     incoming = backup.export_archive()
     if operation == "activate":
         _create("second")
-    setattr(config.conf, field, saved)
+    config.conf.extra_settings_visible = saved
     config.save_conf()
 
     if operation == "create":
@@ -386,13 +385,49 @@ def test_profile_operations_preserve_current_manager_choice(
             expected_generation=profiles.current_generation(),
         )
 
-    assert getattr(config.conf, field) is saved
+    assert config.conf.extra_settings_visible is saved
     assert (
         backup._object_file(backup.read_archive(backup.export_archive()), "conf.yml")[
-            field
+            "extra_settings_visible"
         ]
         is saved
     )
+
+
+@pytest.mark.parametrize("saved", [False, True])
+@pytest.mark.parametrize("operation", ["activate", "import"])
+def test_legacy_profile_cannot_replace_unified_maintenance_permission(
+    storage, saved, operation
+):
+    original = profiles.list_profiles()["active_id"]
+    _create("second")
+    files = backup.read_archive(backup.export_archive())
+    legacy = backup._object_file(files, "conf.yml")
+    legacy.update(extra_settings_visible=not saved, updates_enabled=not saved)
+    files["conf.yml"] = yaml.safe_dump(legacy).encode("utf-8")
+    incoming = backup._archive_bytes(files, {})
+    if operation == "activate":
+        storage(f"@app/config-profiles/{original}.zip").write_bytes(incoming)
+    config.conf.extra_settings_visible = saved
+    config.save_conf()
+
+    if operation == "activate":
+        _activate(original)
+    else:
+        profiles.import_profile(
+            incoming,
+            "legacy maintenance",
+            [],
+            expected_generation=profiles.current_generation(),
+        )
+
+    config.load_conf()
+    assert config.conf.extra_settings_visible is saved
+    exported = backup._object_file(
+        backup.read_archive(backup.export_archive()), "conf.yml"
+    )
+    assert exported["extra_settings_visible"] is saved
+    assert "updates_enabled" not in exported
 
 
 def test_activation_retains_selected_current_groups_and_updates_target_snapshot(
@@ -657,7 +692,6 @@ def test_conf_fields_have_one_group_and_no_unmapped_current_fields():
     assert len(fields) == len(set(fields))
     assert set(config.Conf.model_fields) - set(fields) == {
         "ai_assistant_enabled",
-        "updates_enabled",
         "extra_settings_visible",
     }
     keys = {group["key"] for group in GROUPS}

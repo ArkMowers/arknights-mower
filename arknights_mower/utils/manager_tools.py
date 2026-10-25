@@ -320,7 +320,6 @@ class ManagerTools:
                             instances=[],
                             channels=[],
                             running=False,
-                            updates_enabled=True,
                         ),
                     )
                     group["instances"].append(instance["name"])
@@ -332,7 +331,6 @@ class ManagerTools:
                     if channel not in group["channels"]:
                         group["channels"].append(channel)
                     group["running"] |= bool(self._matching(instance, records))
-                    group["updates_enabled"] &= raw.get("updates_enabled", True) is True
                 except (OSError, ValueError, yaml.YAMLError) as error:
                     errors.append(f"{instance['name']}：{error}")
             return {"groups": list(groups.values()), "errors": errors}
@@ -374,8 +372,6 @@ class ManagerTools:
             group = next((g for g in snapshot["groups"] if g["target"] == target), None)
             if snapshot["errors"] or group is None:
                 raise ValueError("MAA 使用范围无法确认，请重新加载")
-            if not group["updates_enabled"]:
-                raise ValueError("使用此目录的实例未全部允许更新")
             if group["running"] and action == "update":
                 raise ValueError("请先停止使用此 MAA 目录的实例")
             check = self._maa_check

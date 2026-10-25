@@ -890,13 +890,32 @@ class Conf(
     MaaRewardPart,
     AIAgentPart,
 ):
-    updates_enabled: StrictBool = True
-    "多开管理器保存的更新授权；单开不受此设置限制"
     extra_settings_visible: StrictBool = False
-    "多开管理器启动的实例是否显示网络与更新、数据与维护设置"
+    "多开管理器启动的实例是否允许使用更新与维护设置"
+
+    @model_validator(mode="before")
+    @classmethod
+    def merge_update_permission(cls, data):
+        if not isinstance(data, dict) or "updates_enabled" not in data:
+            return data
+        data = dict(data)
+        legacy = data.pop("updates_enabled")
+        if type(legacy) is not bool:
+            raise ValueError("旧版允许更新开关必须是布尔值")
+        if (
+            "extra_settings_visible" in data
+            and type(data["extra_settings_visible"]) is not bool
+        ):
+            raise ValueError("更新与维护开关必须是布尔值")
+        data["extra_settings_visible"] = legacy
+        return data
+
+    @property
+    def updates_enabled(self) -> bool:
+        return self.extra_settings_visible
 
     def updates_enabled_for_launch(self, *, managed: bool) -> bool:
-        return not managed or self.updates_enabled
+        return not managed or self.extra_settings_visible
 
     @model_validator(mode="after")
     def migrate_device_profile(self):

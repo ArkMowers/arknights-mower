@@ -51,7 +51,7 @@ def test_batch_automatic_start_only_changes_selected_rows_and_preserves_permissi
     assert result["results"][0]["status"] == "updated"
     assert yaml.safe_load(path.read_text()) == {
         "private": "keep",
-        "updates_enabled": False,
+        "extra_settings_visible": False,
         "ai_assistant_enabled": False,
         "start_automatically": True,
         "webview": {"token": "secret", "port": 58001},
@@ -273,7 +273,11 @@ def test_cleanup_leaves_symlink_targets_and_private_data_untouched(manager, tmp_
     assert (root / "database.db").read_text() == "database"
 
 
-def test_maa_groups_effective_paths_aliases_channels_and_permissions(manager, tmp_path):
+@pytest.mark.parametrize("component", ["core", "resource"])
+@pytest.mark.parametrize("action", ["check", "update"])
+def test_maa_groups_effective_paths_and_channels_ignore_instance_permission(
+    manager, tmp_path, monkeypatch, component, action
+):
     shared = tmp_path / "maa"
     write_conf(manager, 0, {"maa_path": str(shared), "maa_update_channel": "beta"})
     write_conf(
@@ -283,9 +287,18 @@ def test_maa_groups_effective_paths_aliases_channels_and_permissions(manager, tm
     assert len(groups) == 1
     assert groups[0]["instances"] == ["one", "two"]
     assert groups[0]["channels"] == ["beta", "stable"]
-    assert groups[0]["updates_enabled"] is False
-    with pytest.raises(ValueError, match="允许更新"):
-        manager.start_maa_maintenance(str(shared), "stable", "core", "check")
+    assert "updates_enabled" not in groups[0]
+    manager._maa_check = dict(
+        target=str(shared),
+        channel="stable",
+        component=component,
+        available=True,
+        time=tools.monotonic(),
+    )
+    thread = Mock()
+    monkeypatch.setattr(tools.threading, "Thread", Mock(return_value=thread))
+    assert manager.start_maa_maintenance(str(shared), "stable", component, action)["ok"]
+    thread.start.assert_called_once()
 
 
 def test_maa_update_requires_fresh_matching_check_and_stopped_instances(
