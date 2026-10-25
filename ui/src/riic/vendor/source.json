@@ -676,8 +676,8 @@
       "reason": "Reallocate movable dormitory residents when effective bed order changes, including backup activation and deactivation, without preserving previous single-target beds. Preserve fixed staffing and real task or product reservations; apply bounded isolation after allocation, allowing unreserved vacant first beds. Verify actual transition and complete shift-preview entry points, unchanged-order stability and repeated-preview convergence."
     },
     "scheduler/mowerShiftCycle.ts": {
-      "sha256": "e5af2391d10f9e457753f04565c6ac9cde9ad5837b4aff481487de21422aa4b4",
-      "reason": "Carry policy admission and named exit provenance through complete backup previews, task clones and coalescing. Exclude current-batch exits from ordinary dorm candidates and preserve explicit empty departures without changing original task deadlines or unrelated work. Preserve named empty-slot identity through cloning and coalescing; cancel an obsolete empty departure after a new resident or renewed effective retention supersedes it."
+      "sha256": "2b95c2252f4c320342a7ee0f96c279c5937e7d2587116c9f84fd3288df742586",
+      "reason": "Carry policy admission and named exit provenance through complete backup previews, task clones and coalescing. Exclude current-batch exits from ordinary dorm candidates and preserve explicit empty departures without changing original task deadlines or unrelated work. Preserve named empty-slot identity through cloning and coalescing; cancel an obsolete empty departure after a new resident or renewed effective retention supersedes it. Build the retention-adjusted pending-task copy only after invalidating obsolete exhaustion reservations, so discarded deadlines cannot reappear in complete shift planning."
     },
     "scheduler/mowerTaskFailure.ts": {
       "sha256": "e21021d184795488032408f30676b2be321ec9b11c4367134d568bb6fdd96e56",

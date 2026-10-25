@@ -242,9 +242,9 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
   simulation=model.swap(simulation,conditions,step.backupGroup)
   step.backupRetentionReleasedNames.forEach(name=>retentionReleasedNames.add(name))
   const retentionExits=[...retentionReleasedNames].filter(name=>!simulation.freeRoomExcluded(name))
-  const effectivePending=mowerBackupRetentionPending(simulation,pending)
   simulation.freeBlacklist=[...new Set([...simulation.freeBlacklist,...retentionExits])]
   invalidateMowerExhaustTasks(simulation,pending,pendingExhaust,model.exhaustRoomContext?.(simulation))
+  const effectivePending=mowerBackupRetentionPending(simulation,pending)
   if(!initialCorrection)for(const [group,resting] of Object.entries(step.groupShiftTransitions))if(!resting&&simulation.groupIsResting(group))returningGroups.add(group)
   commitMowerGroupShifts(simulation,step.groupShiftTransitions)
   step.backupExplicitSlots.forEach(slot=>explicitSlots.add(slot))
