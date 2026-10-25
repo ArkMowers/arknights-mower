@@ -56,6 +56,7 @@ class DesktopWindow:
             }
         )
         self.exposed = {}
+        self.initial_state = "normal"
         self.current_size = (1000, 600)
         self.events.resized.before_fire = self._resize
         self.evaluations = Queue()
@@ -107,7 +108,7 @@ class NativeWindow:
         self.backend = backend
         self.regions = regions
         self.changed = changed
-        self.state = "normal"
+        self.state = window.initial_state
         self.capabilities = {
             "enabled": True,
             "move": "native",
@@ -397,11 +398,11 @@ def desktop_url_window(monkeypatch):
     monkeypatch.setattr(webview, "start", start)
     monkeypatch.setattr("webbrowser.open", browser_open)
 
-    def launch(backend):
+    def launch(backend, child=None):
         prepare_backend.return_value = backend
         window.gui.__name__ = "webview.platforms." + backend
         webview_ui.webview_window(
-            SimpleNamespace(recv=Mock(side_effect=EOFError)),
+            child or SimpleNamespace(recv=Mock(side_effect=EOFError)),
             path.global_space,
             instance_name,
             "127.0.0.1",
@@ -486,6 +487,201 @@ def test_desktop_backend_initialization_failure_opens_the_original_browser_url(
     fixture.browser_open.assert_called_once_with(fixture.browser_url)
 
 
+@pytest.mark.parametrize("backend", ["winforms", "cocoa", "gtk", "qt"])
+@pytest.mark.parametrize("launch_mode", ["last", "maximized"])
+@pytest.mark.parametrize("loaded_before_shown", [False, True])
+def test_startup_maximized_window_is_first_visible_in_its_saved_mode(
+    desktop_url_window,
+    native_factory,
+    monkeypatch,
+    backend,
+    launch_mode,
+    loaded_before_shown,
+):
+    from arknights_mower.utils.config import gui
+
+    fixture = desktop_url_window
+    window = fixture.create_window.return_value
+    visible_modes = []
+
+    def current_mode():
+        return (
+            native_factory.adapters[0].state
+            if native_factory.adapters
+            else window.initial_state
+        )
+
+    def create(*args, **kwargs):
+        window.initial_state = "maximized" if kwargs.get("maximized") else "normal"
+        return window
+
+    def maximize():
+        window.initial_state = "maximized"
+        window.events.maximized.fire()
+
+    fixture.create_window.side_effect = create
+    window.maximize.side_effect = maximize
+    window.show.side_effect = lambda: visible_modes.append(current_mode())
+    monkeypatch.setattr(gui, "load_window_launch_mode", lambda: launch_mode)
+    monkeypatch.setattr(gui, "load_window_mode", lambda: "maximized")
+    monkeypatch.setattr(gui, "save_window_mode", Mock())
+
+    def start(**kwargs):
+        if not fixture.create_window.call_args.kwargs.get("hidden", False):
+            visible_modes.append(current_mode())
+        if loaded_before_shown:
+            loaded = Thread(target=window.events.loaded.fire)
+            loaded.start()
+            assert window.events.loaded.flag.wait(timeout=1)
+            window.events.shown.fire()
+            loaded.join(timeout=1)
+            assert not loaded.is_alive()
+        else:
+            window.events.shown.fire()
+            window.events.resized.fire(2000, 1000)
+            assert "normal" not in visible_modes
+            window.events.loaded.fire()
+        window.events.loaded.fire()
+        assert visible_modes == ["maximized"]
+        window.events.closing.fire()
+        window.events.resized.fire(2100, 1100)
+        window.events.closed.fire()
+
+    fixture.start.side_effect = start
+    with pytest.raises(SystemExit):
+        fixture.launch(backend)
+    gui.save_window_ratio.assert_called_once_with(window_shell.WindowRatio(0.5, 0.6))
+    fixture.browser_open.assert_not_called()
+
+
+@pytest.mark.parametrize("backend", ["winforms", "cocoa", "gtk", "qt"])
+@pytest.mark.parametrize(
+    "launch_mode, saved_mode", [("normal", "maximized"), ("last", "normal")]
+)
+def test_normal_startup_does_not_hide_or_maximize_the_window(
+    desktop_url_window, native_factory, monkeypatch, backend, launch_mode, saved_mode
+):
+    from arknights_mower.utils.config import gui
+
+    fixture = desktop_url_window
+    window = fixture.create_window.return_value
+    monkeypatch.setattr(gui, "load_window_launch_mode", lambda: launch_mode)
+    monkeypatch.setattr(gui, "load_window_mode", lambda: saved_mode)
+    monkeypatch.setattr(gui, "save_window_mode", Mock())
+
+    def start(**kwargs):
+        assert fixture.create_window.call_args.kwargs["hidden"] is False
+        assert fixture.create_window.call_args.kwargs["maximized"] is False
+        window.events.shown.fire()
+        window.events.loaded.fire()
+        window.show.assert_not_called()
+        window.maximize.assert_not_called()
+        if native_factory.adapters:
+            native_factory.adapters[0].maximize.assert_not_called()
+        window.events.closed.fire()
+
+    fixture.start.side_effect = start
+    with pytest.raises(SystemExit):
+        fixture.launch(backend)
+    fixture.browser_open.assert_not_called()
+
+
+@pytest.mark.parametrize("backend", ["winforms", "cocoa"])
+@pytest.mark.parametrize("close_before_loaded", [False, True])
+def test_hidden_startup_reveals_a_usable_window_after_maximize_failure_or_stays_closed(
+    desktop_url_window, native_factory, monkeypatch, backend, close_before_loaded
+):
+    from arknights_mower.utils.config import gui
+
+    fixture = desktop_url_window
+    window = fixture.create_window.return_value
+    monkeypatch.setattr(gui, "load_window_launch_mode", lambda: "maximized")
+    monkeypatch.setattr(gui, "save_window_mode", Mock())
+
+    def start(**kwargs):
+        assert fixture.create_window.call_args.kwargs["hidden"] is True
+        window.events.shown.fire()
+        if backend == "cocoa":
+            native_factory.adapters[0].maximize.return_value = False
+            native_factory.adapters[0].maximize.side_effect = None
+        else:
+            window.maximize.side_effect = RuntimeError("Native maximize unavailable")
+        if close_before_loaded:
+            assert window.exposed["close"]() is True
+        window.events.loaded.fire()
+        if close_before_loaded:
+            window.show.assert_not_called()
+        else:
+            window.show.assert_called_once_with()
+        window.events.closed.fire()
+
+    fixture.start.side_effect = start
+    with pytest.raises(SystemExit):
+        fixture.launch(backend)
+    fixture.browser_open.assert_not_called()
+
+
+@pytest.mark.parametrize("backend", ["winforms", "cocoa"])
+def test_manager_show_during_hidden_startup_waits_for_the_initial_mode(
+    desktop_url_window, native_factory, monkeypatch, backend
+):
+    from arknights_mower.utils.config import gui
+
+    fixture = desktop_url_window
+    window = fixture.create_window.return_value
+    messages_done = Event()
+    messages = iter(["show"])
+
+    def recv():
+        try:
+            return next(messages)
+        except StopIteration:
+            messages_done.set()
+            raise EOFError
+
+    monkeypatch.setattr(gui, "load_window_launch_mode", lambda: "maximized")
+    monkeypatch.setattr(gui, "save_window_mode", Mock())
+
+    def start(**kwargs):
+        assert messages_done.wait(timeout=1)
+        window.show.assert_not_called()
+        window.restore.assert_not_called()
+        window.events.shown.fire()
+        window.events.loaded.fire()
+        window.show.assert_called_once_with()
+        window.restore.assert_not_called()
+        window.events.closed.fire()
+
+    fixture.start.side_effect = start
+    with pytest.raises(SystemExit):
+        fixture.launch(backend, child=SimpleNamespace(recv=recv))
+    fixture.browser_open.assert_not_called()
+
+
+@pytest.mark.parametrize("backend", ["gtk", "qt"])
+@pytest.mark.parametrize("launch_mode", ["normal", "maximized"])
+def test_initial_native_mode_is_saved_after_early_state_publication(
+    monkeypatch, native_factory, backend, launch_mode
+):
+    on_loaded = window_shell.WindowShellBridge._on_loaded
+
+    def load_after_publication(bridge):
+        on_loaded(bridge)
+        bridge._window.wait_for_state(launch_mode)
+
+    monkeypatch.setattr(
+        window_shell.WindowShellBridge, "_on_loaded", load_after_publication
+    )
+
+    def scenario(window, adapter, save_mode):
+        assert adapter.state == launch_mode
+        save_mode.assert_called_with(launch_mode)
+        window.events.closing.fire()
+        window.events.closed.fire()
+
+    run_desktop_window(monkeypatch, native_factory, backend, launch_mode, scenario)
+
+
 def run_desktop_window(
     monkeypatch,
     native_factory,
@@ -539,6 +735,9 @@ def run_desktop_window(
     def start(**kwargs):
         assert kwargs == {"gui": backend if backend in ("gtk", "qt") else None}
         window.confirm_close = create_window.call_args.kwargs["confirm_close"]
+        window.initial_state = (
+            "maximized" if create_window.call_args.kwargs["maximized"] else "normal"
+        )
         if loaded_before_shown:
             load_errors = []
 
@@ -696,14 +895,17 @@ def test_real_desktop_window_saves_normal_size_when_startup_modes_are_coalesced(
     )
 
     def scenario(window, adapter, save_mode):
-        adapter.maximize.assert_called_once_with()
+        if backend == "cocoa":
+            adapter.maximize.assert_called_once_with()
+        else:
+            adapter.maximize.assert_not_called()
         assert adapter.state == "maximized"
         try:
             adapter.change_state("normal")
         finally:
             can_publish.set()
         window.wait_for_state("normal")
-        assert "maximized" not in [call.args[0] for call in save_mode.call_args_list]
+        assert save_mode.call_args.args == ("normal",)
         window.events.resized.fire(1200, 700)
         window.wait_for_state("normal")
         window.events.closing.fire()

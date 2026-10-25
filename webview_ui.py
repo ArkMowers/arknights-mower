@@ -356,6 +356,10 @@ def webview_window(
         width, height = default_desktop_window_size()
     launch_mode = load_window_launch_mode() if shell_enabled else "normal"
     startup_mode = load_window_mode() if launch_mode == "last" else launch_mode
+    # WinForms calibrates its normal frame after shown. Cocoa uses our native
+    # adapter to maximize without fullscreen. Keep both invisible until ready;
+    # GTK and Qt support a maximized first map directly.
+    startup_hidden = startup_mode == "maximized" and backend in ("winforms", "cocoa")
     # Guard the initial window setup and teardown; pywebview can emit transient
     # resize/restore events in both phases.
     mode_ready = False
@@ -440,6 +444,8 @@ def webview_window(
         height=height,
         min_size=min_size,
         resizable=True,
+        hidden=startup_hidden,
+        maximized=startup_mode == "maximized" and not startup_hidden,
         frameless=shell_enabled,
         # Preserve page link drag/drop. easy_drag=False separately disables
         # whole-page window dragging.
@@ -492,7 +498,7 @@ def webview_window(
         )
 
     def restore_startup_mode():
-        nonlocal mode_ready, startup_maximize_pending
+        nonlocal mode_ready, startup_maximize_pending, startup_hidden
         if mode_ready or closing:
             return
         if not bridge.wait_until_ready():
@@ -502,9 +508,20 @@ def webview_window(
         # Windows registers this after its client-layout hook. Other backends
         # wait for their native input and state adapter before applying the mode.
         mode_ready = True
-        if startup_mode == "maximized":
+        if startup_hidden:
             if not bridge.maximize():
                 startup_maximize_pending = False
+            if not closing:
+                window.show()
+            startup_hidden = False
+        # A native notification may have been published before mode_ready.
+        # Confirm the current state once startup can persist it.
+        state = bridge.get_window_state()
+        if state["native_state_confirmed"] and state["state"] in (
+            "normal",
+            "maximized",
+        ):
+            remember_mode(state["state"])
 
     window.events.loaded += restore_startup_mode
     bridge.on_ready = restore_startup_mode
@@ -527,6 +544,8 @@ def webview_window(
                 window.set_title(window_title(instance_name, port))
                 continue
             if msg == "show":
+                if startup_hidden:
+                    continue  # Startup reveals the window after restoring its mode.
                 window.restore()
                 window.show()
                 continue
