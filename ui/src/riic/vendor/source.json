@@ -287,7 +287,7 @@
       "sha256": "5b80d31438e69316853e400911363f5aff41d6b6a76db6a246dd18289eeff841"
     },
     "scheduler/mowerCompletedDeparture.spec.ts": {
-      "sha256": "6239ae0ee5258d71c8a82a5692760854d812c538c928ade8f81e8211cbeca3f3",
+      "sha256": "3ddf1c77522e39a9038a1bd4fbaf77d272c921d20eee7a9a911a326a8252ddb9",
       "reason": "Preserve bundled explicit group-recovery and independent-room regression tests alongside synchronized departure assertions."
     },
     "scheduler/mowerFiammetta.ts": {
