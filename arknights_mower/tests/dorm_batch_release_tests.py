@@ -97,7 +97,15 @@ def test_batch_ignores_invalid_person_without_cancelling_other(batch_solver, cha
         instance.tasks[1].meta_data = "不存在的干员"
     plan, _ = run_batch(instance)
     assert plan == {ROOM: ["Current"] * 3 + ["Free", "Current"]}
-    assert instance.tasks == [instance.task]
+    if change == "protected":
+        assert len(instance.tasks) == 2
+        reorder = instance.tasks[1]
+        assert reorder.type == TaskTypes.RE_ORDER
+        assert reorder.plan == {ROOM: ["Current"] * 3 + ["空爆", "Free"]}
+        after = data.project_arrangements([plan, reorder.plan])
+        assert after.operators["空爆"].current_room == ROOM
+    else:
+        assert instance.tasks == [instance.task]
 
 
 @pytest.mark.parametrize(
