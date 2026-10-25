@@ -164,8 +164,8 @@ describe('settings page ownership', () => {
       '软件更新',
       '截图保存时间',
       '仓库历史',
-      '档案备份与恢复',
-      '导出档案',
+      '完整备份与恢复',
+      '导出当前档案',
       '导入档案'
     ]) {
       expect(html).toContain(label)
@@ -516,12 +516,18 @@ describe('settings page layouts', () => {
       '邮件提醒',
       '软件更新',
       '仓库历史',
-      '档案备份与恢复',
+      '完整备份与恢复',
       '自动救急',
       '连接与启动'
     ])
       expect(html).toContain(label)
-    for (const id of ['mower-interface', 'mower-notifications', 'mower-updates', 'mower-data'])
+    for (const id of [
+      'mower-interface',
+      'mower-notifications',
+      'mower-profiles',
+      'mower-updates',
+      'mower-data'
+    ])
       expect(html).toContain(`data-task-editor="${id}"`)
     expect(axios.post).not.toHaveBeenCalled()
     expect(axios.patch).not.toHaveBeenCalled()
@@ -529,6 +535,28 @@ describe('settings page layouts', () => {
 })
 
 describe('managed optional maintenance settings', () => {
+  it('keeps selectable profile actions and live restart-resume outside hidden maintenance', async () => {
+    const app = setup(MowerSettings, {
+      manager_owned_device: true,
+      extra_settings_visible: false
+    })
+    const mower = app.runWithContext(() => useMowerStore())
+    let sections = taskSections(await renderToString(app))
+    expect(sections.get('mower-profiles')?.content).toContain('导入档案')
+    expect(sections.get('mower-profiles')?.content).toContain('导出当前档案')
+    expect(sections.get('mower-profiles')?.content).not.toContain('data-settings-label="重启续接"')
+
+    mower.running = true
+    sections = taskSections(await renderToString(app))
+    const profiles = sections.get('mower-profiles')?.content
+    expect(profiles).toContain('重启续接')
+    expect(profiles).not.toContain('重启 Mower 进程')
+    expect(profiles).not.toContain('结束 Mower 进程')
+    expect(sections.has('mower-updates')).toBe(false)
+    expect(sections.has('mower-data')).toBe(false)
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+
   it.each([true, false])(
     'locks only inherited screenshot fields (inherited=%s)',
     async (inherited) => {
@@ -594,6 +622,7 @@ describe('managed optional maintenance settings', () => {
       expect(ids).toEqual([
         'mower-interface',
         'mower-notifications',
+        'mower-profiles',
         ...(expected ? ['mower-updates', 'mower-data'] : [])
       ])
       expect(mower.updates_enabled).toBe(false)

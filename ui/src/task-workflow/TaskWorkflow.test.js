@@ -618,11 +618,15 @@ describe('production task checklist interactions', () => {
         'accounts',
         'maa',
         'mower-interface',
+        'mower-profiles',
         'mower-data'
       ])
     )
     expect(nodes().some((node) => node.props['aria-label'] === '配置分类')).toBe(false)
     await click(task('accounts'))
+    await click(task('mower-profiles'))
+    expect(selected()).toBe('mower-profiles')
+    expect(text(heading())).toBe('档案与运行')
     await click(task('mower-interface'))
     expect(selected()).toBe('mower-interface')
     await search('公招')
@@ -744,6 +748,7 @@ describe('production task checklist interactions', () => {
         'maa',
         'mower-interface',
         'mower-notifications',
+        'mower-profiles',
         'mower-updates',
         'mower-data'
       ])

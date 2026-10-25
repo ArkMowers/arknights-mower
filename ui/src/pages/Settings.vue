@@ -7,6 +7,7 @@ import ChatBotSetting from '@/components/ChatBotSetting.vue'
 import SoftwareUpdate from '@/components/SoftwareUpdate.vue'
 import NetworkSettings from '@/components/NetworkSettings.vue'
 import ConfigBackup from '@/components/ConfigBackup.vue'
+import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
 import { settingsSectionKey } from '@/composables/settingsNavigation'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
@@ -34,6 +35,11 @@ const sections = [
     icon: NotifyIcon
   },
   {
+    id: 'mower-profiles',
+    title: '档案与运行',
+    icon: DataIcon
+  },
+  {
     id: 'mower-updates',
     title: '网络与更新',
     icon: UpdateIcon
@@ -52,7 +58,7 @@ const inheritsFromManager = (key) =>
 const showExtraSettings = computed(
   () => !config_store.manager_owned_device || config_store.extra_settings_visible === true
 )
-const { updates_enabled } = storeToRefs(useMowerStore())
+const { updates_enabled, running } = storeToRefs(useMowerStore())
 const mobile = inject('mobile')
 const { theme, webview, runtime_platform, screenshot, screenshot_archive_limit_mb } =
   storeToRefs(config_store)
@@ -303,6 +309,14 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
       <email />
       <ChatBotSetting />
     </SettingsSection>
+    <SettingsSection v-bind="section['mower-profiles']" data-task-editor="mower-profiles">
+      <ConfigProfilesSettings />
+      <ProcessControl
+        v-if="runtime_platform !== 'android'"
+        :running="running"
+        :resume-only="!showExtraSettings"
+      />
+    </SettingsSection>
     <SettingsSection
       v-if="showExtraSettings"
       v-bind="section['mower-updates']"
@@ -401,7 +415,6 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
         </n-collapse>
       </n-card>
       <ConfigBackup />
-      <ProcessControl v-if="runtime_platform !== 'android'" />
     </SettingsSection>
   </div>
 </template>

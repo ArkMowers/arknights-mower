@@ -2,7 +2,7 @@
 
 ## Scope and selection
 
-The title bar manages named snapshots within the current Mower instance. The
+Named snapshots belong to the current Mower instance. The
 working paths remain `config/` and `tmp/`; saved snapshots live in
 `config-profiles/`, outside exported configuration. Existing installations begin
 with their current files as the default configuration.
@@ -69,10 +69,26 @@ a missing generation is accepted only while the current generation is `0`.
 
 ## Frontend boundary
 
-The menu lists configurations and provides create, copy, rename, ZIP import and
-ZIP export. Selection trees support parent selection and independent children.
-Confirmation states that selected current content is written into the target
-and that unapplied editor drafts are discarded.
+[`App.vue`](../../ui/src/App.vue) owns one controller for saved configurations and
+shares it with the title bar menu and the 档案与运行 settings group. The menu lists
+configurations and provides create, copy, rename, ZIP import and ZIP export.
+[`ConfigProfilesSettings.vue`](../../ui/src/components/ConfigProfilesSettings.vue)
+shows the same active configuration and invokes the controller's import and export
+actions. Both entry points share loading, busy status, paused saves and the generation;
+settings does not create another controller or its own import transaction.
+
+Importing from either entry opens the same grouped selection dialog, creates a
+configuration from the ZIP and retains the selected current content. Selection
+trees support parent selection and independent children. Confirmation states that
+selected current content is written into the target and that unapplied editor
+drafts are discarded. Export uses the existing profile export endpoint.
+These entries remain available in managed settings independently of optional
+maintenance visibility, subject to the existing running-state and save guards.
+
+The separate 完整备份与恢复 maintenance card follows the
+[full backup import boundary](config-backup.md#2-import-boundary). Its restore
+operation replaces the current configuration's content and does not create a new
+configuration. Its labels and confirmation identify that operation explicitly.
 
 Before activation, the frontend pauses and drains configuration, normal-plan and
 initialized rescue-plan saves. It keeps old stores paused after success and

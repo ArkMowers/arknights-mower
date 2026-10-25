@@ -34,6 +34,11 @@ within the same file and database transaction. Metadata failure restores the
 previous files, database, snapshot and generation. Requests from pages opened
 before import are rejected according to the
 [saved-configuration request boundary](config-profiles.md#api-and-verification).
+
+The 完整备份与恢复 maintenance card names this restore explicitly; the separate
+[档案与运行 import](config-profiles.md#frontend-boundary) creates a new configuration
+and lets the user select current content to retain.
+
 Before submission, the frontend pauses and drains configuration, normal-plan and
 initialized rescue-plan saves. Success or an uncertain response keeps those
 stores paused until the page reloads; an explicit validation or busy rejection

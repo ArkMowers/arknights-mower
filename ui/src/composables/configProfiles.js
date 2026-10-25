@@ -3,6 +3,7 @@ import { createSaveCoordinator } from '@/utils/configPersistence'
 import { reloadImportedConfiguration } from '@/utils/configBackup'
 
 export const CONFIG_GENERATION_HEADER = 'X-Mower-Config-Generation'
+export const configProfilesKey = Symbol('config-profiles')
 
 export async function downloadConfiguration(axios, url) {
   const { data } = await axios.get(url, { responseType: 'blob' })

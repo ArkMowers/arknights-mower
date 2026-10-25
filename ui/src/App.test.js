@@ -10,6 +10,7 @@ import {
   effectScope,
   h,
   nextTick,
+  provide,
   reactive,
   ref
 } from 'vue'
@@ -17,6 +18,7 @@ import { renderToString } from 'vue/server-renderer'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
+import { configProfilesKey } from '@/composables/configProfiles'
 import { routes } from './routes'
 
 const state = vi.hoisted(() => ({
@@ -381,6 +383,11 @@ describe('desktop page startup', () => {
     for (const callback of state.mounted) await callback()
     return component
   }
+
+  it('shares the title-bar profile controller with settings actions', async () => {
+    const component = await mount()
+    expect(provide).toHaveBeenCalledWith(configProfilesKey, component.configProfiles)
+  })
 
   it('closes a managed window directly without saving or applying a standalone exit choice', async () => {
     const savePreference = vi.fn()

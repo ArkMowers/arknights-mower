@@ -18,7 +18,8 @@ const error = ref('')
 const selected = ref(null)
 const filename = ref('')
 const showConfirm = ref(false)
-const result = ref(consumeImportResult())
+const savedResult = consumeImportResult()
+const result = ref(savedResult?.recovery_path ? savedResult : null)
 const pendingReload = ref(false)
 const reloadRequired = ref(false)
 
@@ -93,7 +94,7 @@ async function importConfig() {
     reload()
   } catch (err) {
     error.value = pendingReload.value
-      ? `档案已导入，但自动刷新未完成，请重试刷新页面：${await message(err)}`
+      ? `配置已恢复，但自动刷新未完成，请重试刷新页面：${await message(err)}`
       : await message(err)
     showConfirm.value = false
     const detail = err.response?.data
@@ -112,30 +113,30 @@ function reload() {
 </script>
 
 <template>
-  <n-card title="档案备份与恢复" class="config-backup">
+  <n-card title="完整备份与恢复" class="config-backup">
     <n-space vertical :size="16">
       <p class="config-backup-notice">备份包含账号、密码和密钥，请妥善保管。</p>
       <div class="config-backup-actions">
-        <div class="config-backup-row" data-settings-label="导出档案">
+        <div class="config-backup-row" data-settings-label="导出完整备份">
           <div class="config-backup-copy">
-            <span class="config-backup-label">导出档案</span>
+            <span class="config-backup-label">导出完整备份</span>
             <p>将当前实例的设置、排班与本地数据打包为 ZIP。</p>
           </div>
           <n-button :loading="busy" :disabled="busy || savesPaused" @click="exportConfig">
-            导出档案
+            导出完整备份
           </n-button>
         </div>
-        <div class="config-backup-row" data-settings-label="导入档案">
+        <div class="config-backup-row" data-settings-label="恢复当前配置">
           <div class="config-backup-copy">
-            <span class="config-backup-label">导入档案</span>
-            <p>先停止 Mower，再选择 ZIP 备份。导入前自动备份现有数据，成功后自动刷新页面。</p>
+            <span class="config-backup-label">恢复当前配置</span>
+            <p>使用 ZIP 备份覆盖当前档案的配置与对应数据，不新建档案。恢复前自动备份现有数据。</p>
           </div>
-          <n-button :disabled="busy || savesPaused" @click="input.click()">导入档案</n-button>
+          <n-button :disabled="busy || savesPaused" @click="input.click()">恢复当前配置</n-button>
           <input
             ref="input"
             type="file"
             accept=".zip,application/zip"
-            aria-label="选择完整档案备份"
+            aria-label="选择完整配置备份"
             hidden
             @change="selectFile"
           />
@@ -166,7 +167,7 @@ function reload() {
             <div>
               <dt>恢复后加载</dt>
               <dd>
-                导入前自动备份现有设置及 tmp 数据，导入后清空调度状态缓存。
+                恢复前自动备份现有设置及 tmp 数据，恢复后清空调度状态缓存。
                 成功后自动刷新页面加载，无需重启 Mower，且此次刷新不会自动开始任务。
               </dd>
             </div>
@@ -175,13 +176,13 @@ function reload() {
       </n-collapse>
       <n-alert v-if="error" type="error" aria-live="polite">{{ error }}</n-alert>
       <n-alert v-if="reloadRequired && !pendingReload" type="info" aria-live="polite">
-        导入结果尚未确认，配置自动保存保持暂停。请重新加载页面后继续编辑。
+        恢复结果尚未确认，配置自动保存保持暂停。请重新加载页面后继续编辑。
         <n-button @click="reload">重新加载页面</n-button>
       </n-alert>
-      <n-alert v-if="result" type="success" title="档案已导入" aria-live="polite">
+      <n-alert v-if="result" type="success" title="当前配置已恢复" aria-live="polite">
         <n-space vertical>
           <n-text>{{ result.message }}</n-text>
-          <n-text depth="3" class="recovery-path">导入前备份：{{ result.recovery_path }}</n-text>
+          <n-text depth="3" class="recovery-path">恢复前备份：{{ result.recovery_path }}</n-text>
           <n-button v-if="pendingReload" @click="reload">重试刷新页面</n-button>
         </n-space>
       </n-alert>
@@ -189,8 +190,8 @@ function reload() {
     <n-modal
       v-model:show="showConfirm"
       preset="dialog"
-      title="导入档案"
-      positive-text="确认导入"
+      title="恢复当前配置"
+      positive-text="确认恢复"
       negative-text="取消"
       :loading="busy"
       :closable="!busy"
@@ -202,7 +203,7 @@ function reload() {
     >
       将使用「{{ filename }}」恢复设置及备份内的 tmp 数据表、库存和记录，覆盖对应本机数据，
       未包含的数据文件保持不变。保留当前管理页面端口、访问令牌和网络代理。请先停止
-      Mower；导入前会自动生成恢复备份。托盘和窗口尺寸保持不变，导入成功后自动刷新页面加载导入的档案，
+      Mower；恢复前会自动生成备份。托盘和窗口尺寸保持不变，恢复成功后自动刷新页面加载当前档案，
       无需重启 Mower，且此次刷新不会自动开始任务。
     </n-modal>
   </n-card>
