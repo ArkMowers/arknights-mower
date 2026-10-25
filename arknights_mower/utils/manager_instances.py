@@ -49,13 +49,13 @@ def read_instance_config(space):
 
 
 def _maintenance_permission(raw):
-    updates = raw.get("updates_enabled", True)
+    updates = raw.get("updates_enabled")
     extra_settings = raw.get("extra_settings_visible", False)
     if type(extra_settings) is not bool:
         raise ValueError("更新与维护开关必须是布尔值")
-    if type(updates) is not bool:
+    if "updates_enabled" in raw and type(updates) is not bool:
         raise ValueError("旧版允许更新开关必须是布尔值")
-    return extra_settings and updates
+    return updates if "updates_enabled" in raw else extra_settings
 
 
 def read_webview(space):

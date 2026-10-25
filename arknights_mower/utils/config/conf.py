@@ -907,8 +907,7 @@ class Conf(
             and type(data["extra_settings_visible"]) is not bool
         ):
             raise ValueError("更新与维护开关必须是布尔值")
-        if not legacy:
-            data["extra_settings_visible"] = False
+        data["extra_settings_visible"] = legacy
         return data
 
     @property

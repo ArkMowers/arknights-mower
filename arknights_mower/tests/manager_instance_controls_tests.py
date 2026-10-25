@@ -111,12 +111,14 @@ def test_manager_rejects_retired_update_permission_without_writing(manager, enab
     "raw, expected",
     [
         ({}, False),
-        ({"updates_enabled": True}, False),
+        ({"updates_enabled": True}, True),
         ({"updates_enabled": False}, False),
         ({"extra_settings_visible": True}, True),
+        ({"extra_settings_visible": False}, False),
+        ({"extra_settings_visible": False, "updates_enabled": False}, False),
         ({"extra_settings_visible": True, "updates_enabled": True}, True),
         ({"extra_settings_visible": True, "updates_enabled": False}, False),
-        ({"extra_settings_visible": False, "updates_enabled": True}, False),
+        ({"extra_settings_visible": False, "updates_enabled": True}, True),
     ],
 )
 def test_manager_merges_legacy_update_permission_without_read_writes(

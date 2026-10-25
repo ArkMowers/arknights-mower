@@ -40,12 +40,14 @@ def test_update_choice_rejects_non_boolean_values(choice, field):
 @pytest.mark.parametrize(
     "raw, expected",
     [
-        ({"updates_enabled": True}, False),
+        ({"updates_enabled": True}, True),
         ({"updates_enabled": False}, False),
         ({"extra_settings_visible": True}, True),
+        ({"extra_settings_visible": False}, False),
+        ({"extra_settings_visible": False, "updates_enabled": False}, False),
         ({"extra_settings_visible": True, "updates_enabled": True}, True),
         ({"extra_settings_visible": True, "updates_enabled": False}, False),
-        ({"extra_settings_visible": False, "updates_enabled": True}, False),
+        ({"extra_settings_visible": False, "updates_enabled": True}, True),
     ],
 )
 def test_legacy_permissions_converge_on_real_configuration_load_and_save(
