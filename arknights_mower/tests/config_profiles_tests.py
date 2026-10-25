@@ -509,6 +509,47 @@ def test_profile_switch_preserves_the_active_gui_process_lock(
     assert gui.load_window_mode() == "normal"
 
 
+@pytest.mark.parametrize("selected", [[], ["other_settings"]])
+@pytest.mark.parametrize("operation", ["create", "activate", "import"])
+def test_profile_operations_preserve_watermark_key_without_saving_it_in_snapshots(
+    storage, selected, operation
+):
+    key_path = storage("@app/config/gui-watermark.key")
+    key_path.write_bytes(b"local watermark signing key")
+    original = profiles.list_profiles()["active_id"]
+    incoming_files, incoming_tmp = backup.read_archive(
+        profiles.export_current_archive(), include_tmp=True
+    )
+    incoming_files["Gui-Watermark.Key"] = b"key from another instance"
+    incoming = backup._archive_bytes(incoming_files, incoming_tmp)
+
+    if operation == "create":
+        _create("created", selected)
+    elif operation == "activate":
+        _create("second")
+        storage(f"@app/config-profiles/{original}.zip").write_bytes(incoming)
+        _activate(original, selected)
+    else:
+        profiles.import_profile(
+            incoming,
+            "imported",
+            selected,
+            expected_generation=profiles.current_generation(),
+        )
+
+    assert key_path.read_bytes() == b"local watermark signing key"
+    snapshots = list(storage("@app/config-profiles").glob("*.zip"))
+    assert len(snapshots) == 2
+    for snapshot in snapshots:
+        assert "gui-watermark.key" not in {
+            name.casefold() for name in backup.read_archive(snapshot.read_bytes())
+        }
+    assert "gui-watermark.key" not in {
+        name.casefold()
+        for name in backup.read_archive(profiles.export_current_archive())
+    }
+
+
 def test_all_selected_groups_preserve_configuration_without_saved_scheduler(storage):
     config.conf.theme = "dark"
     config.conf.automatic_rescue_enable = True

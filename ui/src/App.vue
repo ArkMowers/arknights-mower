@@ -141,6 +141,7 @@
               </n-layout-sider>
               <n-layout-content class="layout-content-container">
                 <n-watermark
+                  v-if="watermarkVisible"
                   class="content-watermark"
                   :content="watermarkData"
                   cross
@@ -589,7 +590,7 @@ const {
 } = storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
 const guiStore = useGuiStore()
-const { softwareVersionDisplay } = storeToRefs(guiStore)
+const { softwareVersionDisplay, watermarkVisible } = storeToRefs(guiStore)
 
 const update_notice_store = useUpdateNoticeStore()
 const { notice: updateNotice } = storeToRefs(update_notice_store)

@@ -40,6 +40,7 @@ const state = vi.hoisted(() => ({
   gui: null,
   loaded: null,
   loadUpdateNotice: vi.fn(),
+  loadWatermark: vi.fn(async () => 'mower'),
   closeWindow: vi.fn(),
   route: null,
   router: null,
@@ -90,7 +91,7 @@ vi.mock('@/stores/updateNotice', () => ({
 }))
 vi.mock('@/stores/watermark', () => ({
   usewatermarkStore: () => ({
-    getwatermarkinfo: vi.fn(async () => 'mower')
+    getwatermarkinfo: state.loadWatermark
   })
 }))
 vi.mock('@/composables/sidebarPreferences', () => ({
@@ -245,6 +246,7 @@ describe('desktop page startup', () => {
     state.unmounted = []
     state.loaded = ref(false)
     state.loadUpdateNotice.mockResolvedValue({ should_show: false })
+    state.loadWatermark.mockResolvedValue('mower')
     state.client.get.mockReset()
     state.client.patch.mockReset().mockResolvedValue({ data: {} })
     state.shellMetadata = { version: '', instanceName: '' }
@@ -329,6 +331,7 @@ describe('desktop page startup', () => {
     })
     state.gui = reactive({
       softwareVersionDisplay: 'version',
+      watermarkVisible: true,
       loaded: true,
       loading: false,
       saving: false,
@@ -431,6 +434,94 @@ describe('desktop page startup', () => {
     }
     return html
   }
+
+  it('toggles the mounted content watermark without reloading its version or application data', async () => {
+    state.loadWatermark.mockResolvedValue('4.1.6-alpha.42')
+    const component = await mount()
+    const { descriptor } = parse(readFileSync(new URL('./App.vue', import.meta.url), 'utf8'))
+    const findContent = (node) =>
+      node.tag === 'n-layout-content' ? node : node.children?.map(findContent).find(Boolean)
+    const content = findContent(descriptor.template.ast)
+    expect(content).toBeTruthy()
+    const node = (tag, text = '') => ({ tag, text, props: {}, children: [], parent: null })
+    const renderer = createRenderer({
+      createElement: (tag) => node(tag),
+      createText: (text) => node('#text', text),
+      createComment: (text) => node('#comment', text),
+      setText: (target, text) => (target.text = text),
+      setElementText: (target, text) => (target.text = text),
+      parentNode: (target) => target.parent,
+      nextSibling: (target) => target.parent?.children[target.parent.children.indexOf(target) + 1],
+      patchProp: (target, key, _previous, value) => (target.props[key] = value),
+      insert(target, parent, anchor = null) {
+        if (target.parent) target.parent.children.splice(target.parent.children.indexOf(target), 1)
+        target.parent = parent
+        const index = anchor ? parent.children.indexOf(anchor) : -1
+        parent.children.splice(index < 0 ? parent.children.length : index, 0, target)
+      },
+      remove(target) {
+        target.parent.children.splice(target.parent.children.indexOf(target), 1)
+        target.parent = null
+      }
+    })
+    const app = renderer.createApp({
+      setup: () => ({ ...component }),
+      render: compile(content.loc.source),
+      components: {
+        NLayoutContent: defineComponent(
+          (_, { slots }) =>
+            () =>
+              h('div', slots.default?.())
+        ),
+        NWatermark: defineComponent({
+          props: ['content'],
+          setup: (props) => () => h('div', { 'data-version-watermark': props.content })
+        }),
+        RouterView: defineComponent(() => () => h('main', { 'data-current-page': true })),
+        ...Object.fromEntries(
+          [
+            'ConfigSaveNotice',
+            'CrashRecoveryNotice',
+            'SettingsDialog',
+            'ChatBot',
+            'Feedback',
+            'GlobalUpdateDrop',
+            'NModal',
+            'NButton'
+          ].map((name) => [name, { render: () => null }])
+        )
+      }
+    })
+    const root = node('root')
+    const all = (target = root) => [target, ...target.children.flatMap(all)]
+    const watermark = () => all().find((target) => target.props['data-version-watermark'])
+    const page = () => all().find((target) => target.props['data-current-page'])
+    const requests = state.client.get.mock.calls.length
+    window.location.reload = vi.fn()
+    app.mount(root)
+    try {
+      const currentPage = page()
+      expect(currentPage).toBeTruthy()
+      expect(watermark()?.props['data-version-watermark']).toBe('4.1.6-alpha.42')
+
+      state.gui.watermarkVisible = false
+      await nextTick()
+      expect(watermark()).toBeUndefined()
+      expect(page()).toBe(currentPage)
+
+      state.gui.watermarkVisible = true
+      await nextTick()
+      expect(watermark()?.props['data-version-watermark']).toBe('4.1.6-alpha.42')
+      expect(page()).toBe(currentPage)
+      expect(state.gui.load).toHaveBeenCalledOnce()
+      expect(state.config.load_config).toHaveBeenCalledOnce()
+      expect(state.loadWatermark).toHaveBeenCalledOnce()
+      expect(state.client.get).toHaveBeenCalledTimes(requests)
+      expect(window.location.reload).not.toHaveBeenCalled()
+    } finally {
+      app.unmount()
+    }
+  })
 
   async function useSettingsRouter(initial, logComponent = { render: () => null }) {
     const router = createRouter({

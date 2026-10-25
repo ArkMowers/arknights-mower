@@ -1,5 +1,7 @@
 """Software version display preferences use the shared instance GUI file."""
 
+import hashlib
+import hmac
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +18,7 @@ class GuiAppearanceTests(unittest.TestCase):
     def setUp(self):
         directory = self.enterContext(tempfile.TemporaryDirectory())
         self.path = Path(directory) / "config" / "gui.yml"
+        self.key_path = self.path.with_name("gui-watermark.key")
         self.enterContext(patch.object(gui, "gui_path", self.path))
         self.app = Flask(__name__)
         self.app.token = "appearance-token"
@@ -33,6 +36,12 @@ class GuiAppearanceTests(unittest.TestCase):
             headers=self.headers,
         )
 
+    def save_watermark(self, visible):
+        payload = {"watermark_visible": visible}
+        if visible is False:
+            payload["watermark_confirmation"] = "反馈问题时务必说明具体版本"
+        return self.client.put("/gui/appearance", json=payload, headers=self.headers)
+
     def test_missing_preference_defaults_to_version_without_creating_files(self):
         response = self.read()
         self.assertEqual(response.status_code, 200)
@@ -42,9 +51,11 @@ class GuiAppearanceTests(unittest.TestCase):
                 "software_version_display": "version",
                 "software_version_language": "en",
                 "task_settings_layout": "checklist",
+                "watermark_visible": True,
             },
         )
         self.assertEqual(gui.load_software_version_display(), "version")
+        self.assertIs(gui.load_watermark_visible(), True)
         self.assertFalse(self.path.parent.exists())
 
     def test_valid_values_round_trip_in_gui_file(self):
@@ -59,6 +70,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         **response.json,
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
+                        "watermark_visible": True,
                     },
                 )
                 self.assertEqual(gui.load_software_version_display(), value)
@@ -77,6 +89,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         "software_version_display": "version",
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
+                        "watermark_visible": True,
                     },
                 )
                 self.assertEqual(self.path.read_bytes(), before)
@@ -284,7 +297,12 @@ class GuiAppearanceTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            self.read().json, {**response.json, "software_version_language": "en"}
+            self.read().json,
+            {
+                **response.json,
+                "software_version_language": "en",
+                "watermark_visible": True,
+            },
         )
 
     def test_version_language_round_trips_and_preserves_other_gui_preferences(self):
@@ -377,6 +395,360 @@ class GuiAppearanceTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(gui.load_task_settings_layout(), "checklist")
+
+    def test_watermark_visibility_round_trips_and_reloads_for_a_new_client(self):
+        for value in (False, True):
+            with self.subTest(value=value):
+                response = self.save_watermark(value)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json, {"watermark_visible": value})
+                self.assertIs(gui.read_gui_data()["watermark_visible"], value)
+                self.assertIs(gui.load_watermark_visible(), value)
+                reloaded_app = Flask(__name__)
+                reloaded_app.token = self.app.token
+                reloaded_app.register_blueprint(gui_bp)
+                response = reloaded_app.test_client().get(
+                    "/gui/appearance", headers=self.headers
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertIs(response.json["watermark_visible"], value)
+
+    def test_invalid_saved_watermark_visibility_defaults_without_rewriting(self):
+        for value in (None, False, 0, 1, [], {}, "true", "false", "hidden"):
+            with self.subTest(value=value):
+                gui._update_gui_data(watermark_visible=value)
+                before = self.path.read_bytes()
+                response = self.read()
+                self.assertEqual(response.status_code, 200)
+                self.assertIs(response.json["watermark_visible"], True)
+                self.assertEqual(self.path.read_bytes(), before)
+
+    def test_invalid_watermark_visibility_rejects_the_entire_appearance_update(self):
+        gui.save_appearance(
+            {"software_version_display": "channel", "watermark_visible": True}
+        )
+        before = self.path.read_bytes()
+        for value in (None, 0, 1, [], {}, "", "true", "false"):
+            with self.subTest(value=value):
+                payload = {
+                    "software_version_display": "version",
+                    "watermark_visible": value,
+                }
+                with patch.object(gui, "update_gui_data") as update:
+                    response = self.client.put(
+                        "/gui/appearance", json=payload, headers=self.headers
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    self.assertFalse(response.json["ok"])
+                    update.assert_not_called()
+                    with self.assertRaises(ValueError):
+                        gui.save_appearance(payload)
+                    update.assert_not_called()
+                self.assertEqual(self.path.read_bytes(), before)
+
+    def test_watermark_updates_preserve_all_other_gui_fields_in_both_directions(self):
+        gui.save_appearance(
+            {
+                "software_version_display": "channel",
+                "software_version_language": "zh",
+                "task_settings_layout": "waterfall",
+            }
+        )
+        gui.save_sidebar(
+            {"version": 3, "knownKeys": [], "groups": [], "placements": []}
+        )
+        gui.save_window_mode("maximized")
+        gui.save_window_launch_mode("last")
+        gui.save_close_preference("exit", True)
+        gui.save_window_ratio(WindowRatio(0.7, 0.8))
+        gui._update_gui_data(private_setting={"theme": "custom"})
+        original = gui.read_gui_data()
+        response = self.save_watermark(False)
+        self.assertEqual(response.status_code, 200)
+        saved = gui.read_gui_data()
+        self.assertEqual(len(saved.pop("watermark_signature")), 64)
+        self.assertEqual(saved, {**original, "watermark_visible": False})
+        self.save("version")
+        gui.save_appearance(
+            {"software_version_language": "en", "task_settings_layout": "checklist"}
+        )
+        gui.save_window_mode("normal")
+        gui.save_window_launch_mode("normal")
+        gui.save_close_preference("tray", False)
+        gui.save_window_ratio(WindowRatio(0.6, 0.9))
+        gui.save_sidebar(
+            {"version": 3, "knownKeys": ["log"], "groups": [], "placements": []}
+        )
+        self.assertIs(self.read().json["watermark_visible"], False)
+        self.assertEqual(gui.read_gui_data()["private_setting"], {"theme": "custom"})
+
+    def test_watermark_routes_reject_missing_and_wrong_tokens_before_any_work(self):
+        gui.save_appearance({"watermark_visible": True})
+        before = self.path.read_bytes()
+        for method in ("GET", "HEAD", "PUT"):
+            for headers in ({}, {"token": "wrong-instance"}):
+                with self.subTest(method=method, headers=headers):
+                    with (
+                        patch(
+                            "arknights_mower.views.gui._request_json"
+                        ) as parse_request,
+                        patch.object(gui, "read_gui_data") as read_data,
+                        patch.object(gui, "update_gui_data") as update_data,
+                        patch.object(gui, "_watermark_key") as read_key,
+                    ):
+                        response = self.client.open(
+                            "/gui/appearance",
+                            method=method,
+                            json={"watermark_visible": False},
+                            headers=headers,
+                        )
+                        self.assertEqual(response.status_code, 403)
+                        parse_request.assert_not_called()
+                        read_data.assert_not_called()
+                        update_data.assert_not_called()
+                        read_key.assert_not_called()
+                    self.assertEqual(self.path.read_bytes(), before)
+
+    def test_watermark_storage_failure_keeps_preference_and_allows_retry(self):
+        gui.save_appearance({"watermark_visible": True})
+        before = self.path.read_bytes()
+        for operation in ("atomic_write", "_gui_file_lock"):
+            with self.subTest(operation=operation):
+                with patch.object(gui, operation, side_effect=OSError("unavailable")):
+                    response = self.save_watermark(False)
+                self.assertEqual(response.status_code, 503)
+                self.assertFalse(response.json["ok"])
+                self.assertEqual(self.path.read_bytes(), before)
+                self.assertIs(self.read().json["watermark_visible"], True)
+        response = self.save_watermark(False)
+        self.assertEqual(response.status_code, 200)
+        self.assertIs(self.read().json["watermark_visible"], False)
+
+    def test_watermark_read_failure_returns_retryable_error_without_writing(self):
+        self.assertEqual(self.save_watermark(False).status_code, 200)
+        before = self.path.read_bytes()
+        with patch.object(
+            gui,
+            "load_watermark_visible",
+            side_effect=gui.GuiStorageError("unavailable"),
+        ):
+            response = self.read()
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json["ok"])
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertIs(self.read().json["watermark_visible"], False)
+
+    def test_confirmed_hide_saves_hmac_without_exposing_confirmation_or_key(self):
+        response = self.save_watermark(False)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"watermark_visible": False})
+        saved = gui.read_gui_data()
+        key = bytes.fromhex(self.key_path.read_text(encoding="ascii"))
+        self.assertEqual(len(key), 32)
+        expected = hmac.new(
+            key, b"arknights-mower:watermark-hidden:v1", hashlib.sha256
+        ).hexdigest()
+        self.assertEqual(
+            saved, {"watermark_visible": False, "watermark_signature": expected}
+        )
+        self.assertNotIn("watermark_confirmation", self.read().json)
+        self.assertNotIn("watermark_signature", self.read().json)
+        self.assertNotIn(
+            "反馈问题时务必说明具体版本", self.path.read_text(encoding="utf-8")
+        )
+
+    def test_enabling_clears_signature_so_editing_only_bool_cannot_hide(self):
+        self.assertEqual(self.save_watermark(False).status_code, 200)
+        key_before = self.key_path.read_bytes()
+        self.assertEqual(self.save_watermark(True).status_code, 200)
+        self.assertNotIn("watermark_signature", gui.read_gui_data())
+        gui._update_gui_data(watermark_visible=False)
+        before = self.path.read_bytes()
+        with patch.object(gui, "atomic_write") as write:
+            self.assertIs(self.read().json["watermark_visible"], True)
+            write.assert_not_called()
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(self.key_path.read_bytes(), key_before)
+
+    def test_missing_or_invalid_signatures_show_watermark_without_rewriting(self):
+        self.assertEqual(self.save_watermark(False).status_code, 200)
+        key_before = self.key_path.read_bytes()
+        for signature in (None, False, 0, 1, [], {}, "", "0" * 64, "版本" * 32):
+            with self.subTest(signature=signature):
+                gui._update_gui_data(watermark_signature=signature)
+                before = self.path.read_bytes()
+                with (
+                    patch.object(gui, "atomic_write") as write,
+                    patch.object(gui.secrets, "token_bytes") as generate,
+                ):
+                    self.assertIs(self.read().json["watermark_visible"], True)
+                    write.assert_not_called()
+                    generate.assert_not_called()
+                self.assertEqual(self.path.read_bytes(), before)
+                self.assertEqual(self.key_path.read_bytes(), key_before)
+
+    def test_missing_or_invalid_key_shows_watermark_without_creating_files(self):
+        self.assertEqual(self.save_watermark(False).status_code, 200)
+        before_gui = self.path.read_bytes()
+        self.key_path.unlink()
+        for raw in (None, b"", b"invalid", b"z" * 64, b"a" * 65, b"\xff" * 64):
+            with self.subTest(raw=raw):
+                if raw is not None:
+                    self.key_path.write_bytes(raw)
+                with patch.object(gui, "atomic_write") as write:
+                    self.assertIs(self.read().json["watermark_visible"], True)
+                    write.assert_not_called()
+                self.assertEqual(self.path.read_bytes(), before_gui)
+                if raw is None:
+                    self.assertFalse(self.key_path.exists())
+                else:
+                    self.assertEqual(self.key_path.read_bytes(), raw)
+
+    def test_other_instances_cannot_reuse_a_copied_hidden_preference(self):
+        self.assertEqual(self.save_watermark(False).status_code, 200)
+        original_gui = self.path.read_bytes()
+        original_key = self.key_path.read_bytes()
+        other_path = self.path.parent.parent / "other" / "config" / "gui.yml"
+        other_path.parent.mkdir(parents=True)
+        other_path.write_bytes(original_gui)
+        other_key_path = other_path.with_name("gui-watermark.key")
+        with patch.object(gui, "gui_path", other_path):
+            self.assertIs(self.read().json["watermark_visible"], True)
+            self.assertFalse(other_key_path.exists())
+            self.assertEqual(self.save_watermark(False).status_code, 200)
+            self.assertNotEqual(other_key_path.read_bytes(), original_key)
+            other_path.write_bytes(original_gui)
+            before = other_path.read_bytes()
+            self.assertIs(self.read().json["watermark_visible"], True)
+            self.assertEqual(other_path.read_bytes(), before)
+        self.assertIs(self.read().json["watermark_visible"], False)
+        self.assertEqual(self.key_path.read_bytes(), original_key)
+
+    def test_confirmation_must_match_and_only_accompany_hiding(self):
+        gui.save_appearance({"software_version_display": "channel"})
+        before = self.path.read_bytes()
+        payloads = [
+            {"watermark_visible": False},
+            {"watermark_confirmation": "反馈问题时务必说明具体版本"},
+            {
+                "watermark_visible": True,
+                "watermark_confirmation": "反馈问题时务必说明具体版本",
+            },
+            {
+                "watermark_visible": False,
+                "watermark_confirmation": "反馈问题时务必说明具体版本",
+                "watermark_signature": "0" * 64,
+            },
+        ]
+        for value in (
+            None,
+            False,
+            0,
+            1,
+            [],
+            {},
+            "",
+            "知道了",
+            "反馈问题时务必说明具体版本 ",
+        ):
+            payloads.append(
+                {
+                    "software_version_display": "version",
+                    "watermark_visible": False,
+                    "watermark_confirmation": value,
+                }
+            )
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                with patch.object(gui, "update_gui_data") as update:
+                    response = self.client.put(
+                        "/gui/appearance", json=payload, headers=self.headers
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    update.assert_not_called()
+                self.assertEqual(self.path.read_bytes(), before)
+                self.assertFalse(self.key_path.exists())
+
+    def test_mixed_confirmed_update_returns_only_persisted_appearance_fields(self):
+        response = self.client.put(
+            "/gui/appearance",
+            json={
+                "software_version_display": "channel",
+                "software_version_language": "zh",
+                "watermark_visible": False,
+                "watermark_confirmation": "反馈问题时务必说明具体版本",
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json,
+            {
+                "software_version_display": "channel",
+                "software_version_language": "zh",
+                "watermark_visible": False,
+            },
+        )
+        self.assertNotIn("watermark_confirmation", gui.read_gui_data())
+        self.assertIs(self.read().json["watermark_visible"], False)
+
+    def test_gui_write_failure_retains_a_new_key_for_the_next_confirmed_retry(self):
+        gui.save_appearance({"watermark_visible": True})
+        before = self.path.read_bytes()
+        real_write = gui.atomic_write
+
+        def fail_gui_write(path, writer):
+            if path == self.path:
+                raise OSError("disk full")
+            return real_write(path, writer)
+
+        with patch.object(gui, "atomic_write", side_effect=fail_gui_write):
+            response = self.save_watermark(False)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.path.read_bytes(), before)
+        key_before = self.key_path.read_bytes()
+        with patch.object(gui.secrets, "token_bytes") as generate:
+            self.assertEqual(self.save_watermark(False).status_code, 200)
+            generate.assert_not_called()
+        self.assertEqual(self.key_path.read_bytes(), key_before)
+        self.assertIs(self.read().json["watermark_visible"], False)
+
+    def test_existing_key_and_signed_preference_survive_failed_write(self):
+        self.assertEqual(self.save_watermark(False).status_code, 200)
+        before_gui = self.path.read_bytes()
+        before_key = self.key_path.read_bytes()
+        for visible in (False, True):
+            with self.subTest(visible=visible):
+                with patch.object(
+                    gui, "atomic_write", side_effect=OSError("disk full")
+                ):
+                    response = self.save_watermark(visible)
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(self.path.read_bytes(), before_gui)
+                self.assertEqual(self.key_path.read_bytes(), before_key)
+                self.assertIs(self.read().json["watermark_visible"], False)
+        self.assertEqual(self.save_watermark(True).status_code, 200)
+        self.assertEqual(self.key_path.read_bytes(), before_key)
+
+    def test_key_read_failure_does_not_change_saved_preference(self):
+        self.assertEqual(self.save_watermark(False).status_code, 200)
+        before_gui = self.path.read_bytes()
+        before_key = self.key_path.read_bytes()
+        real_open = type(self.key_path).open
+
+        def fail_key_read(path, *args, **kwargs):
+            if path == self.key_path:
+                raise PermissionError("key unavailable")
+            return real_open(path, *args, **kwargs)
+
+        with patch.object(type(self.key_path), "open", fail_key_read):
+            response = self.read()
+            save_response = self.save_watermark(False)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(save_response.status_code, 503)
+        self.assertEqual(self.path.read_bytes(), before_gui)
+        self.assertEqual(self.key_path.read_bytes(), before_key)
+        self.assertIs(self.read().json["watermark_visible"], False)
 
     def test_real_server_does_not_apply_saved_profile_generation_to_appearance(self):
         with patch("arknights_mower.utils.network_settings.start_proxy_sync"):

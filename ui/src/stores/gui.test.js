@@ -372,3 +372,181 @@ describe('shared GUI appearance preferences', () => {
     expect(reloaded.taskSettingsLayout).toBe('waterfall')
   })
 })
+
+describe('shared version watermark preference', () => {
+  const confirmation = '反馈问题时务必说明具体版本'
+
+  it('keeps the default watermark visible until a successful read enables editing', async () => {
+    const { store } = createStore()
+    expect(store.watermarkVisible).toBe(true)
+    expect(store.watermarkDisabled).toBe(true)
+    expect(await store.setWatermarkVisible(false, confirmation)).toBe(false)
+    expect(axios.put).not.toHaveBeenCalled()
+    expect(await store.load()).toBe(true)
+    expect(store.watermarkVisible).toBe(true)
+    expect(store.watermarkDisabled).toBe(false)
+    expect(axios.put).not.toHaveBeenCalled()
+  })
+
+  it('immediately shares confirmed hiding, serializes appearance saves and shows without confirmation', async () => {
+    const { pinia, store } = createStore()
+    await store.load()
+    const save = deferred()
+    axios.put.mockReturnValueOnce(save.promise)
+    const pending = store.setWatermarkVisible(false, confirmation)
+    expect(useGuiStore(pinia).watermarkVisible).toBe(false)
+    expect(store.watermarkSaving).toBe(true)
+    expect(store.watermarkDisabled).toBe(true)
+    expect(store.displayDisabled).toBe(true)
+    expect(store.layoutDisabled).toBe(true)
+    expect(await store.setWatermarkVisible(true)).toBe(false)
+    expect(await store.setSoftwareVersionDisplay('channel')).toBe(false)
+    expect(await store.setSoftwareVersionLanguage('zh')).toBe(false)
+    expect(await store.setTaskSettingsLayout('waterfall')).toBe(false)
+    expect(axios.put).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/\/gui\/appearance$/),
+      { watermark_visible: false, watermark_confirmation: confirmation },
+      { timeout: 5000 }
+    )
+    save.resolve({ data: { watermark_visible: false } })
+    expect(await pending).toBe(true)
+    expect(store.watermarkVisible).toBe(false)
+    expect(store.watermarkSaving).toBe(false)
+    expect(store.watermarkDisabled).toBe(false)
+    expect(await store.setWatermarkVisible(true)).toBe(true)
+    expect(store.watermarkVisible).toBe(true)
+    expect(axios.put.mock.calls[1][1]).toEqual({ watermark_visible: true })
+    expect(store.softwareVersionDisplay).toBe('version')
+    expect(store.softwareVersionLanguage).toBe('en')
+    expect(store.taskSettingsLayout).toBe('checklist')
+  })
+
+  it('retains the visible watermark on a read failure and retries the saved hidden preference', async () => {
+    axios.get.mockRejectedValueOnce(new Error('offline'))
+    const { store } = createStore()
+    expect(await store.load()).toBe(false)
+    expect(store.watermarkVisible).toBe(true)
+    expect(store.watermarkDisabled).toBe(true)
+    expect(store.watermarkError).toContain('读取失败')
+    expect(await store.setWatermarkVisible(false, confirmation)).toBe(false)
+    expect(axios.put).not.toHaveBeenCalled()
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', watermark_visible: false }
+    })
+    expect(await store.retryWatermarkVisible()).toBe(true)
+    expect(store.watermarkVisible).toBe(false)
+    expect(store.watermarkDisabled).toBe(false)
+    expect(store.watermarkError).toBe('')
+    expect(axios.get).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([null, 0, 'false', {}])('rejects an invalid loaded watermark value %j', async (value) => {
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'channel', watermark_visible: value }
+    })
+    const { store } = createStore()
+    expect(await store.load()).toBe(false)
+    expect(store.watermarkVisible).toBe(true)
+    expect(store.watermarkDisabled).toBe(true)
+    expect(store.watermarkError).toContain('读取失败')
+    expect(store.softwareVersionDisplay).toBe('version')
+    expect(axios.put).not.toHaveBeenCalled()
+  })
+
+  it.each(['rejected', 'unconfirmed'])(
+    'restores visibility after a %s hide save and retains the acknowledgement for retry',
+    async (failure) => {
+      const { store } = createStore()
+      await store.load()
+      if (failure === 'rejected') axios.put.mockRejectedValueOnce(new Error('offline'))
+      else axios.put.mockResolvedValueOnce({ data: { watermark_visible: true } })
+      expect(await store.setWatermarkVisible(false, confirmation)).toBe(false)
+      expect(store.watermarkVisible).toBe(true)
+      expect(store.watermarkSaving).toBe(false)
+      expect(store.watermarkDisabled).toBe(false)
+      expect(store.watermarkError).toContain('已恢复原来的显示')
+      expect(store.error).toBe('')
+      expect(store.layoutError).toBe('')
+      expect(await store.retryWatermarkVisible()).toBe(true)
+      expect(store.watermarkVisible).toBe(false)
+      expect(store.watermarkError).toBe('')
+      expect(axios.put.mock.calls.map(([, payload]) => payload)).toEqual([
+        { watermark_visible: false, watermark_confirmation: confirmation },
+        { watermark_visible: false, watermark_confirmation: confirmation }
+      ])
+    }
+  )
+
+  it('retains the saved hidden preference if showing fails and retries without acknowledgement', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', watermark_visible: false }
+    })
+    const { store } = createStore()
+    await store.load()
+    axios.put.mockRejectedValueOnce(new Error('offline'))
+    expect(await store.setWatermarkVisible(true)).toBe(false)
+    expect(store.watermarkVisible).toBe(false)
+    expect(await store.retryWatermarkVisible()).toBe(true)
+    expect(store.watermarkVisible).toBe(true)
+    expect(axios.put.mock.calls.map(([, payload]) => payload)).toEqual([
+      { watermark_visible: true },
+      { watermark_visible: true }
+    ])
+  })
+
+  it('restores the hidden watermark after reload without changing separate appearance settings', async () => {
+    const saved = {
+      software_version_display: 'channel',
+      software_version_language: 'zh',
+      task_settings_layout: 'waterfall',
+      watermark_visible: true
+    }
+    axios.get.mockImplementation(async () => ({ data: { ...saved } }))
+    axios.put.mockImplementation(async (_url, payload) => {
+      const changes = { ...payload }
+      delete changes.watermark_confirmation
+      Object.assign(saved, changes)
+      return { data: changes }
+    })
+    const first = createStore().store
+    await first.load()
+    expect(await first.setWatermarkVisible(false, confirmation)).toBe(true)
+    const reloaded = createStore().store
+    expect(reloaded.watermarkVisible).toBe(true)
+    expect(await reloaded.load()).toBe(true)
+    expect(reloaded.watermarkVisible).toBe(false)
+    expect(reloaded.softwareVersionDisplay).toBe('channel')
+    expect(reloaded.softwareVersionLanguage).toBe('zh')
+    expect(reloaded.taskSettingsLayout).toBe('waterfall')
+    expect(saved).not.toHaveProperty('watermark_confirmation')
+    expect(axios.put).toHaveBeenCalledOnce()
+  })
+
+  it('requires a Boolean choice and the exact acknowledgement before hiding', async () => {
+    const { store } = createStore()
+    await store.load()
+    for (const value of [null, 0, 1, 'false', {}])
+      expect(await store.setWatermarkVisible(value, confirmation)).toBe(false)
+    expect(await store.setWatermarkVisible(false)).toBe(false)
+    expect(await store.setWatermarkVisible(false, '我知道了')).toBe(false)
+    expect(await store.setWatermarkVisible(true)).toBe(true)
+    expect(await store.retryWatermarkVisible()).toBe(false)
+    expect(store.watermarkVisible).toBe(true)
+    expect(axios.put).not.toHaveBeenCalled()
+  })
+
+  it('does not interrupt another appearance preference save to hide the watermark', async () => {
+    const { store } = createStore()
+    await store.load()
+    const save = deferred()
+    axios.put.mockReturnValueOnce(save.promise)
+    const pending = store.setTaskSettingsLayout('waterfall')
+    expect(store.watermarkDisabled).toBe(true)
+    expect(await store.setWatermarkVisible(false, confirmation)).toBe(false)
+    expect(store.watermarkVisible).toBe(true)
+    expect(axios.put).toHaveBeenCalledOnce()
+    save.resolve({ data: { task_settings_layout: 'waterfall' } })
+    expect(await pending).toBe(true)
+    expect(store.watermarkDisabled).toBe(false)
+  })
+})

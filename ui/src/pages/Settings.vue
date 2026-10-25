@@ -11,6 +11,7 @@ import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
 import { settingsSectionKey } from '@/composables/settingsNavigation'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
+import VersionWatermarkPreference from '@/components/VersionWatermarkPreference.vue'
 import LogBackgroundPreference from '@/components/LogBackgroundPreference.vue'
 import SettingsSegmented from '@/components/SettingsSegmented.vue'
 import InterfaceIcon from '@vicons/fluent/es/PaintBrush24Regular'
@@ -228,6 +229,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
             />
           </n-form-item>
           <SoftwareVersionPreference />
+          <VersionWatermarkPreference />
           <LogBackgroundPreference />
         </n-form>
       </n-card>
