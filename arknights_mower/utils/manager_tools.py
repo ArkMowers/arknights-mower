@@ -3,6 +3,7 @@
 import copy
 import json
 import os
+import stat
 import threading
 from contextlib import ExitStack
 from pathlib import Path
@@ -32,13 +33,23 @@ def _maa_target(raw, common):
     return str(Path(resolve_config_path(value)).expanduser().resolve())
 
 
+def _is_storage_link(path):
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    return stat.S_ISLNK(info.st_mode) or bool(
+        getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    )
+
+
 def _files(root, deadline, limit=100000):
-    """Walk a bounded tree without following directory or file links."""
+    """Walk a bounded tree without following links or Windows reparse points."""
     stack = [root]
     count = 0
     while stack:
         folder = stack.pop()
-        if folder.is_symlink():
+        if _is_storage_link(folder):
             continue
         try:
             entries = os.scandir(folder)
@@ -49,9 +60,9 @@ def _files(root, deadline, limit=100000):
                 count += 1
                 if count > limit or monotonic() >= deadline:
                     raise ValueError("文件过多或扫描超时，请缩小范围后重试")
-                if entry.is_symlink():
-                    continue
                 path = Path(entry.path)
+                if _is_storage_link(path):
+                    continue
                 if entry.is_dir(follow_symlinks=False):
                     stack.append(path)
                 elif entry.is_file(follow_symlinks=False):
@@ -238,8 +249,8 @@ class ManagerTools:
                     seen.add(key)
                     for category in ("log", "screenshot"):
                         root = instance_directory(instance["path"]) / category
-                        if root.is_symlink():
-                            row["warning"] = "目录是符号链接，已跳过"
+                        if _is_storage_link(root):
+                            row["warning"] = "目录是符号链接或目录联接，已跳过"
                             continue
                         for path in _files(root, deadline):
                             row[category] += path.stat().st_size
@@ -270,15 +281,17 @@ class ManagerTools:
             for category in dict.fromkeys(categories):
                 root = instance_directory(instance["path"]) / category
                 try:
-                    if root.is_symlink():
-                        raise ValueError("不能清理符号链接目录")
+                    if _is_storage_link(root):
+                        raise ValueError("不能清理符号链接或目录联接")
                     for path in _files(root, deadline):
                         # Recheck ancestry; a path may have been replaced during scanning.
                         if any(
-                            p.is_symlink()
+                            _is_storage_link(p)
                             for p in (path, *path.parents)
                             if p != root.parent
                         ):
+                            continue
+                        if not path.resolve().is_relative_to(root):
                             continue
                         stat = path.stat()
                         if older_days and stat.st_mtime >= cutoff:

@@ -1,5 +1,7 @@
 import json
 import os
+import stat
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -271,6 +273,102 @@ def test_cleanup_leaves_symlink_targets_and_private_data_untouched(manager, tmp_
     manager.clean_instance_storage(0, manager.instances[0].copy(), ["log"], 0)
     assert outside.read_text() == "private"
     assert (root / "database.db").read_text() == "database"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows directory junctions")
+@pytest.mark.parametrize("nested", [False, True])
+def test_storage_skips_windows_junctions_and_preserves_external_files(
+    manager, tmp_path, nested
+):
+    root = Path(manager.instances[0]["path"])
+    ordinary = root / "screenshot/ordinary"
+    ordinary.parent.mkdir(parents=True)
+    ordinary.write_bytes(b"abc")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    keep = outside / "keep"
+    keep.write_bytes(b"private")
+    link = root / "log"
+    if nested:
+        link.mkdir()
+        link /= "archive"
+    created = subprocess.run(
+        ["cmd.exe", "/c", "mklink", "/J", str(link), str(outside)],
+        capture_output=True,
+        timeout=5,
+    )
+    if created.returncode:
+        pytest.skip("Directory junction creation is unavailable")
+    try:
+        usage = manager.get_storage_usage()["rows"][0]
+        result = manager.clean_instance_storage(
+            0, manager.instances[0].copy(), ["screenshot", "log"], 0
+        )
+        assert keep.read_bytes() == b"private"
+        assert usage["log"] == 0 and usage["screenshot"] == 3
+        assert result["deleted"] == 1 and result["freed"] == 3
+        assert not ordinary.exists()
+    finally:
+        link.rmdir()
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_storage_skips_reparse_directories_without_deleting_external_files(
+    manager, tmp_path, monkeypatch, nested
+):
+    root = Path(manager.instances[0]["path"])
+    redirect = root / "log"
+    if nested:
+        redirect /= "archive"
+    redirect.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    keep = outside / "keep"
+    keep.write_bytes(b"private")
+    ordinary = root / "screenshot/ordinary"
+    ordinary.parent.mkdir()
+    ordinary.write_bytes(b"abc")
+    lstat = Path.lstat
+    scandir = os.scandir
+
+    def reparse_info(path, *args, **kwargs):
+        info = lstat(path, *args, **kwargs)
+        if path == redirect:
+            return SimpleNamespace(
+                st_mode=stat.S_IFDIR,
+                st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
+            )
+        return info
+
+    def redirected_entries(path):
+        return scandir(outside if Path(path) == redirect else path)
+
+    monkeypatch.setattr(Path, "lstat", reparse_info)
+    monkeypatch.setattr(os, "scandir", redirected_entries)
+    usage = manager.get_storage_usage()["rows"][0]
+    result = manager.clean_instance_storage(
+        0, manager.instances[0].copy(), ["screenshot", "log"], 0
+    )
+    assert keep.read_bytes() == b"private"
+    assert usage["log"] == 0 and usage["screenshot"] == 3
+    assert result["deleted"] == 1 and result["freed"] == 3
+    assert not ordinary.exists()
+
+
+def test_cleanup_rejects_file_paths_outside_the_selected_tree(
+    manager, tmp_path, monkeypatch
+):
+    root = Path(manager.instances[0]["path"]) / "log"
+    root.mkdir(parents=True)
+    ordinary = root / "ordinary"
+    ordinary.write_bytes(b"abc")
+    outside = tmp_path / "keep"
+    outside.write_bytes(b"private")
+    monkeypatch.setattr(tools, "_files", lambda *args: iter([outside, ordinary]))
+    result = manager.clean_instance_storage(0, manager.instances[0].copy(), ["log"], 0)
+    assert outside.read_bytes() == b"private"
+    assert not ordinary.exists()
+    assert result == {"ok": True, "deleted": 1, "freed": 3, "errors": []}
 
 
 @pytest.mark.parametrize("component", ["core", "resource"])
