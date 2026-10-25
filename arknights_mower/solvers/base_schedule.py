@@ -2929,6 +2929,7 @@ class BaseSchedulerSolver(
                 self.tasks[:] = [task for task in self.tasks if task is not self.task]
                 self.task = None
             self._emergency_startup()
+            self._refresh_observed_recovery_tasks()
             if self._emergency_active() and not self._emergency_startup_pending:
                 self._emergency_tick()
         self._reconcile_initial_staffing()

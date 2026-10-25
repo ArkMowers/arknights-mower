@@ -17,6 +17,8 @@ export interface MowerTaskExecutionHooks {
  prepareRelease?:(task:MowerTask)=>boolean
  /** A critical task may postpone the remaining dorm rooms without ending this shift. */
  deferRoom?:(room:string,task:MowerTask)=>boolean
+ /** Commit the confirmed group arrangement before evaluating post-shift backups. */
+ completeGroupShift?:()=>void
  metadata:()=>void
  corrections?:()=>MowerTask[]
  skip?:()=>void
@@ -77,6 +79,7 @@ export function* executeMowerTaskArrangementSteps(task:MowerTask,queue:MowerTask
   hooks.skip?.()
  }
  task.backupShiftActive=false
+ hooks.completeGroupShift?.()
  if(getTime){
   const result=hooks.backup('BEFORE_PLANNING',task,{appendEmptyTask:true,restoreOnDeactivate:false});enqueueGenerated(queue,result.generated)
   if(!result.changed)hooks.metadata()

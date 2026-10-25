@@ -9,6 +9,7 @@ import {planMowerMetadata} from './mowerMetadata'
 import {mowerArrangementResources} from './mowerDormTasks'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,type MowerTaskPlan} from './mowerTaskQueue'
 import type {MowerSchedulingData} from './mowerSchedulingData'
+import type {MowerCoordinationRates} from './mowerReplacementCoordination'
 import {MOWER_MOOD_CONTROL_VERSION,selectMoodControlCandidate,type MoodControlResult} from './mowerPredictiveMoodControl'
 
 export interface MowerPredictiveEvidence {version:string;fingerprint:string;names:string[];plan:MowerTaskPlan;untilMicros:number;startMicros:number}
@@ -46,11 +47,11 @@ function isolatedForecast(data:MowerSchedulingData):MowerSchedulingData {
  return state
 }
 /** Advance old staffing before applying a handoff; rates are recomputed at every skill boundary. */
-function advance(data:MowerSchedulingData,time:number,options:MowerRestingOptions):boolean {
+function advance(data:MowerSchedulingData,time:number,options:MowerRestingOptions,initialRates:MowerCoordinationRates,deadline:number):boolean {
  let remaining=time-data.nowMicros,steps=0
  while(remaining>0){
-  if(++steps>64)return false
-  const rates=options.coordinationRates?.(data);if(!rates)return false
+  if(++steps>64||performance.now()>=deadline)return false
+  const rates=steps===1?initialRates:options.coordinationRates?.(data);if(!rates)return false
   let dt=remaining
   const velocities=new Map<string,number>()
   for(const o of Object.values(data.operators))if(o.currentRoom){
@@ -88,7 +89,7 @@ function dynamicRollout(initial:MowerSchedulingData,tasks:readonly MowerTask[],u
    for(const o of Object.values(state.operators))if(o.currentRoom){const rate=o.isResting()?rates.recovery[o.name]:rates.work[o.name];if(rate===undefined||!Number.isFinite(rate))return false;const v=o.isResting()?rate:-rate;if(v)for(const boundary of [0,4,8,12,16,18,20,24,o.lowerLimit,o.upperLimit])if(v>0?boundary>o.mood+1e-8:boundary<o.mood-1e-8)dt=Math.min(dt,Math.ceil((boundary-o.mood)/v*3_600_000_000))}
    for(const unit of units)if(!departed.has(unit.id)&&unit.names.some(n=>{const o=state.operators[n]!;return requestMember(state,o)&&o.currentRoom&&!o.isResting()&&o.mood<=o.lowerLimit+1e-8}))score[0]!+=dt/1_000_000
    for(const position of positions){const o=state.currentOperator(position.room,position.index);if(!o||!o.workaholic&&o.mood<=1e-8)score[1]!+=dt/1_000_000}
-   if(!advance(state,state.nowMicros+dt,options))return false
+   if(!advance(state,state.nowMicros+dt,options,rates,deadline))return false
   }
   return true
  }
@@ -185,7 +186,7 @@ function initialDeadlines(initial:MowerSchedulingData,targets:Map<string,{soft:n
   }
   if([...result.values()].every(e=>Number.isFinite(e.lowerAt))){exhausted=false;break}
   for(const o of Object.values(state.operators))if(o.currentRoom){const rate=o.isResting()?rates.recovery[o.name]:rates.work[o.name];if(rate===undefined||!rate)continue;const v=o.isResting()?rate:-rate;for(const boundary of [0,4,8,12,16,18,20,24,o.lowerLimit,o.upperLimit])if(v>0?boundary>o.mood+1e-8:boundary<o.mood-1e-8)dt=Math.min(dt,Math.ceil((boundary-o.mood)/v*3_600_000_000))}
-  if(!Number.isFinite(dt)||dt<=0||state.nowMicros+dt-initial.nowMicros>240*3_600_000_000||!advance(state,state.nowMicros+dt,options)){exhausted=false;break}
+  if(!Number.isFinite(dt)||dt<=0||state.nowMicros+dt-initial.nowMicros>240*3_600_000_000||!advance(state,state.nowMicros+dt,options,rates,deadline)){exhausted=false;break}
  }
  return {deadlines:result,exhausted}
 }

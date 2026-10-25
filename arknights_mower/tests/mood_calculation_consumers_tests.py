@@ -233,6 +233,7 @@ def test_real_projection_recall_rates_follow_new_rooms_without_mutating_source(
     monkeypatch.setattr(calculated_mood, "datetime", clock)
     data = replacement_solver.op_data
     data.runtime_conf = SimpleNamespace(test_mood_calculation=True)
+    data.global_plan["default_plan"].plan = deepcopy(data.plan)
     set_e0_box(monkeypatch, data.operators)
     now = clock.now()
     for name in data.operators:

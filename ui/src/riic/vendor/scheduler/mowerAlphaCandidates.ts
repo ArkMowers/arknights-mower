@@ -33,8 +33,22 @@ export function mowerAlphaDormCandidates(data:MowerSchedulingData,excluded=new S
  return {recovering,full,unknown:searchUnknown,estimatedRecovering:searchUnknown.filter(n=>{const mood=mowerDormCandidateMood(data,n);return mood!==undefined&&mood<(data.operators[n]?.upperLimit??24)}),filling}
 }
 export function mowerDormTaskReservations(data:MowerSchedulingData,pending:MowerTask[]){
- const names=new Set<string>(),slots=new Set<string>()
- for(const task of pending){task.urgentRecoveryReservedNames.forEach(name=>names.add(name));task.urgentRecoveryReservedSlots.forEach(slot=>slots.add(slot))}
+ const names=new Set<string>(),slots=new Set<string>(),retainedSlots=new Set<string>()
+ for(const task of pending){
+  task.urgentRecoveryReservedNames.forEach(name=>names.add(name));task.urgentRecoveryReservedSlots.forEach(slot=>{slots.add(slot);retainedSlots.add(slot)})
+  if(!task.retainsExecution)continue
+  Object.keys(task.releaseDormTargets()).forEach(name=>names.add(name))
+  for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{
+   if(name!=='Current')retainedSlots.add(alphaPosition(room,index))
+   if(!['Current','Free',''].includes(name))names.add(name)
+  })
+ }
+ // Retained arrangements own the actual occupants and all members of their bindings.
+ for(const op of Object.values(data.operators))if(retainedSlots.has(alphaPosition(op.currentRoom,op.currentIndex)))names.add(op.name)
+ const groups=new Set([...names].flatMap(name=>{const op=data.operators[name];return op?.multiGroup?op.groupBindings.map(binding=>binding.group):[op?.group]}).filter((group):group is string=>!!group))
+ for(const group of groups)data.shiftGroupMembers(group).forEach(name=>names.add(name))
+ for(const name of names){const op=data.operators[name];if(op?.currentRoom.startsWith('dorm')&&op.currentIndex>=0)slots.add(alphaPosition(op.currentRoom,op.currentIndex))}
+ for(const slot of retainedSlots)if(slot.startsWith('dorm'))slots.add(slot)
  for(const task of pending){
   const rows=Object.values(task.plan),targets=Object.keys(task.releaseDormTargets())
   // Future ordinary releases are rebuilt from observed beds after a move.

@@ -5,8 +5,14 @@ import { currentMoraleRates } from './vendor/engine/morale'
 import { evaluateDormitoryRecovery } from './vendor/engine/dormitoryRecovery'
 import { eligibleSingleRecoveryTargets, hasSingleRecoverySkill } from './vendor/engine/singleRecoveryEligibility'
 import { MORALE_SKILL_THRESHOLDS, MORALE_RATE_EPSILON, retainedRecoveryTarget } from './vendor/engine/moraleThresholds'
+import { importMowerJson } from './vendor/workbench/compat/mowerJson'
 
 const byName = new Map(OPERATORS.map(operator => [operator.name, operator]))
+
+// 共享运行时仅接收 JSON；嵌入式引擎没有浏览器的克隆 API。
+if (typeof globalThis.structuredClone !== 'function') {
+  globalThis.structuredClone = value => JSON.parse(JSON.stringify(value))
+}
 
 /** The backend supplies observed positions; the income engine owns all skill rules. */
 export function rates(input: any) {
@@ -111,3 +117,6 @@ export function rates(input: any) {
 }
 
 ;(globalThis as any).mowerMoodRates = (payload: string) => JSON.stringify(rates(JSON.parse(payload)))
+;(globalThis as any).mowerFacilityLevels = (payload: string) => JSON.stringify(Object.fromEntries(
+  Object.entries(importMowerJson(payload).mainPlan.facilities).map(([room, facility]) => [room, facility.level]),
+))
