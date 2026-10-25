@@ -5,6 +5,7 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 from enum import Enum
+from math import isfinite
 from time import perf_counter
 
 from arknights_mower.utils.log import logger
@@ -12,6 +13,8 @@ from arknights_mower.utils.log import logger
 POLICY_VERSION = 1
 MAX_CANDIDATES = 16
 MAX_EVENTS = 64
+MAX_INITIAL_NODES = 64
+MAX_PLANNING_SECONDS = 1.0
 
 
 def _plain(value):
@@ -108,7 +111,54 @@ def input_signature(solver, external=None):
     ).hexdigest()
 
 
-def build_snapshot(solver, now):
+class _PlanningBudgetExhausted(Exception):
+    pass
+
+
+def _initial_deadlines(data, targets, now, deadline):
+    """同一初始阵容的个人期限共用有界模型轨迹。"""
+    model = copy.deepcopy(data.mood_model)
+    model.advance(now)
+    node = model._deadline_node(model)
+    recovering = {name: (node[1].get(name) or 0) <= 0 for name, _ in targets}
+    result = {}
+    end = now + timedelta(hours=240)
+    for _ in range(MAX_INITIAL_NODES):
+        if deadline is not None and perf_counter() >= deadline:
+            raise _PlanningBudgetExhausted
+        projected, rates, boundary_hours = node
+        for name, target in targets - result.keys():
+            value, rate = projected.moods.get(name), rates.get(name)
+            if (
+                value is None
+                or rate is None
+                or getattr(data.operators[name], "working_mood_unconfirmed", False)
+            ):
+                return None
+            if abs(value - target) <= 1e-7 or (
+                value >= target if recovering[name] else value <= target
+            ):
+                result[name, target] = projected.at
+            elif rate and recovering[name] != (rate > 0):
+                hours = (value - target) / rate
+                due = projected.at + timedelta(hours=max(hours, 1e-8))
+                if hours <= boundary_hours and due <= end:
+                    result[name, target] = due
+        if len(result) == len(targets):
+            return result
+        if not isfinite(boundary_hours):
+            break
+        future = projected.at + timedelta(hours=max(boundary_hours, 1e-8))
+        if future > end:
+            break
+        node = model._next_deadline_node(node, future)
+    else:
+        raise _PlanningBudgetExhausted
+    return None
+
+
+def build_snapshot(solver, now, *, deadline=None):
+
     from arknights_mower.utils.resting_priority import RestingTier, resting_tier
 
     data = solver.op_data
@@ -146,17 +196,8 @@ def build_snapshot(solver, now):
                 not data.operators[n].multi_group or data.operators[n].independent_rest
             )
         ]
-        floors = [
-            data.calculated_mood_deadline(w.name, w.lower_limit, now) for w in workers
-        ]
-        softs = [
-            data.calculated_mood_deadline(w.name, data.resting_mood_threshold(w), now)
-            for w in workers
-        ]
         if not workers:
             continue
-        if any(t is None for t in [*floors, *softs]):
-            return None
         hard = any(
             w.name in data.exhaust_agent or w.group in data.exhaust_group
             for w in workers
@@ -165,13 +206,33 @@ def build_snapshot(solver, now):
             dict(
                 id=identity,
                 members=members,
-                lowerAt=min(floors).timestamp(),
-                softAt=min(floors if hard else softs).timestamp(),
+                workers=workers,
                 exhaust=hard,
             )
         )
     if not groups:
         return None
+    targets = {
+        (w.name, target)
+        for group in groups
+        for w in group["workers"]
+        for target in (w.lower_limit, data.resting_mood_threshold(w))
+    }
+    deadlines = _initial_deadlines(data, targets, now, deadline)
+    if deadlines is None:
+        return None
+    for group in groups:
+        workers = group.pop("workers")
+        group["lowerAt"] = min(
+            deadlines[w.name, w.lower_limit] for w in workers
+        ).timestamp()
+        group["softAt"] = min(
+            deadlines[
+                w.name,
+                w.lower_limit if group["exhaust"] else data.resting_mood_threshold(w),
+            ]
+            for w in workers
+        ).timestamp()
     # 同一观察终点覆盖后继下限及完整恢复；超出范围的候选不能取得提前资格。
     horizon = min(
         now.timestamp() + 240 * 3600, max(g["lowerAt"] for g in groups) + 24 * 3600
@@ -179,7 +240,9 @@ def build_snapshot(solver, now):
     return dict(now=now.timestamp(), horizon=horizon, groups=groups)
 
 
-def dynamic_rollout(solver, snapshot, early=None, start=None, *, max_events=MAX_EVENTS):
+def dynamic_rollout(
+    solver, snapshot, early=None, start=None, *, max_events=MAX_EVENTS, deadline=None
+):
     from arknights_mower.utils import config
     from arknights_mower.utils.operation_timing import (
         estimate_dorm_minutes,
@@ -272,7 +335,8 @@ def dynamic_rollout(solver, snapshot, early=None, start=None, *, max_events=MAX_
 
     def take_node():
         nonlocal count, exhausted
-        if exhausted:
+        if exhausted or deadline is not None and perf_counter() >= deadline:
+            exhausted = True
             return False
         count += 1
         if count > max_events:
@@ -468,6 +532,9 @@ def dynamic_rollout(solver, snapshot, early=None, start=None, *, max_events=MAX_
         )
 
     while clock < end:
+        if deadline is not None and perf_counter() >= deadline:
+            exhausted = True
+            break
         service_release = None
         # 阵容、技能和副表变化后复用同一时刻的恢复与期限求解。
         if returns:
@@ -643,7 +710,9 @@ def dynamic_rollout(solver, snapshot, early=None, start=None, *, max_events=MAX_
     )
 
 
-def _plan(solver, now=None):
+def _plan(solver, now=None, *, revalidate=None):
+    started = perf_counter()
+    deadline = started + MAX_PLANNING_SECONDS
     now = now or datetime.now()
     from arknights_mower.utils.calculated_mood import sync_model
 
@@ -668,7 +737,6 @@ def _plan(solver, now=None):
         )
         external["maintenance"] = copy.deepcopy(NewsChecker.get_maintenance())
     signature = input_signature(solver, external)
-    started = perf_counter()
     blocked = any(
         t.retains_execution
         or getattr(t, "mood_physical_started", False)
@@ -687,52 +755,81 @@ def _plan(solver, now=None):
     if cached is not None and cached["signature"] == signature:
         cached["reused"] = True
         return cached
-    snapshot = None if blocked else build_snapshot(solver, now)
+    snapshot_exhausted = False
+    try:
+        snapshot = None if blocked else build_snapshot(solver, now, deadline=deadline)
+    except _PlanningBudgetExhausted:
+        snapshot = None
+        snapshot_exhausted = True
     if snapshot is not None:
         snapshot.update(external)
     if snapshot is None:
+        expired = snapshot_exhausted or not blocked and perf_counter() >= deadline
         result = dict(
             decision=None,
-            status="insufficient",
+            status="budget-exhausted" if expired else "insufficient",
             events=[],
             nextWake=None,
             candidates=0,
             enumeratedCandidates=0,
             processedNodes=0,
             eventCount=0,
-            budgetExhausted=False,
+            budgetExhausted=expired,
+            maxCandidateNodes=0,
+            complete=False,
+            score=[0.0, 0.0, 0, 0.0],
             plans={},
             dependencies={},
         )
     else:
+        from arknights_mower.utils.scheduler_task import TaskTypes
+
+        service_types = {
+            TaskTypes.CLUE,
+            TaskTypes.CLUE_PARTY,
+            TaskTypes.MAA_MALL,
+            TaskTypes.RECRUIT,
+            TaskTypes.SKLAND,
+            TaskTypes.REFRESH_TIME,
+            TaskTypes.DEPOT,
+            TaskTypes.FURNITURE,
+        }
         groups = snapshot["groups"]
         boundaries = sorted(
             {
                 snapshot["now"],
                 *(g["softAt"] for g in groups),
                 *(g["lowerAt"] for g in groups),
-                *(t.time.timestamp() for t in solver.tasks if t.time >= now),
+                *(
+                    t.time.timestamp()
+                    for t in solver.tasks
+                    if t.time >= now and not (t.type in service_types and not t.plan)
+                ),
             }
         )
         candidates = [(None, snapshot["now"])]
         truncated = False
         for group in sorted(groups, key=lambda g: g["lowerAt"]):
+            if revalidate is not None and group["id"] != revalidate["group"]:
+                continue
             if group["exhaust"]:
                 continue
-            for at in boundaries:
+            for at in [snapshot["now"]] if revalidate is not None else boundaries:
                 if at < group["softAt"]:
                     if len(candidates) < MAX_CANDIDATES:
                         candidates.append((group["id"], at))
                     else:
                         truncated = True
-        baseline = dynamic_rollout(solver, snapshot, max_events=MAX_EVENTS)
+        baseline = dynamic_rollout(
+            solver, snapshot, max_events=MAX_EVENTS, deadline=deadline
+        )
         selected, decision = baseline, None
         budget, events = baseline["exhausted"], len(baseline["events"])
         max_nodes = baseline["nodeCount"]
         evaluated, processed = 1, min(MAX_EVENTS, max_nodes)
         for identity, at in [] if budget or truncated else candidates[1:]:
             candidate = dynamic_rollout(
-                solver, snapshot, identity, at, max_events=MAX_EVENTS
+                solver, snapshot, identity, at, max_events=MAX_EVENTS, deadline=deadline
             )
             events += len(candidate["events"])
             evaluated += 1
@@ -778,7 +875,7 @@ def _plan(solver, now=None):
     return result
 
 
-def plan(solver, now=None):
+def plan(solver, now=None, *, revalidate=None):
     """记录整个规划批次；模型时间只作为总时间的组成部分。"""
     from arknights_mower.utils.calculated_mood import _runtime
 
@@ -789,7 +886,7 @@ def plan(solver, now=None):
     if existing is None:
         _runtime.timing = timing
     try:
-        result = _plan(solver, now)
+        result = _plan(solver, now, revalidate=revalidate)
     finally:
         if existing is None:
             _runtime.timing = None
@@ -849,6 +946,7 @@ def reconcile(solver, now=None):
             e
             for e in result["events"]
             if e["type"] == "departure-start"
+            and (e["time"] > now.timestamp() or e["group"] == decision)
             and (result["signature"], e["group"], e["time"]) not in consumed
         ),
         None,
@@ -901,7 +999,7 @@ def admits(solver, names, task=None):
         return False
     if getattr(solver, "_mood_control_projection", False):
         return set(names) <= set(getattr(solver, "_mood_control_allowed", ()))
-    result = plan(solver)
+    result = plan(solver, revalidate=evidence)
     decision = result["decision"]
     due = next(
         (

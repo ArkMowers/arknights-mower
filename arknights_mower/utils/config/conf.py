@@ -31,9 +31,7 @@ from arknights_mower.utils.performance import (
 
 def validate_drone_count_limit(value):
     limit = TypeAdapter(int).validate_python(value)
-    if limit < 20:
-        raise ValueError("无人机使用阈值不能低于 20")
-    return limit
+    return max(20, limit)
 
 
 DEFAULT_LAUNCH_COMMAND = (
@@ -559,6 +557,12 @@ class RIICPart(ConfModel):
     "旧版低帧率适配兼容字段；档位决定实际选人策略"
     drone_count_limit: int = 100
     "无人机使用阈值"
+
+    @field_validator("drone_count_limit")
+    @classmethod
+    def normalize_drone_count_limit(cls, value):
+        return validate_drone_count_limit(value)
+
     drone_room: str = ""
     "无人机使用房间"
     drone_interval: float = 3
@@ -621,7 +625,7 @@ class RIICPart(ConfModel):
         return groups
 
     test_mood_calculation: bool = False
-    "使用与收益演算相同的技能规则计算普通基建调度心情"
+    "使用共用技能规则计算心情，并预测调控普通基建轮班"
     group_rest_in_full_on_mood_gap: bool = True
     "组内高优先干员预计恢复时间差过大时，等待整组回满"
     group_mood_gap_threshold_minutes: int = Field(default=60, ge=1, le=1440)
@@ -981,8 +985,6 @@ class Conf(
 
     def updated(self, updates: dict) -> "Conf":
         """Validate a partial or legacy full form against the current Conf."""
-        if "drone_count_limit" in updates:
-            validate_drone_count_limit(updates["drone_count_limit"])
         data = _merge_model_fields(self, updates)
         if os.environ.get("MOWER_ANDROID") == "1":
             return type(self)(**data)

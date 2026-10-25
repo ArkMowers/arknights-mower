@@ -25,6 +25,7 @@ def observe_work_rate(op, mood, room, index, now, *, preserve=False):
     op.recall_work_rate_checked = True
     if (
         preserve
+        or not getattr(op, "work_rate_sample_eligible", True)
         or not op.is_working()
         or (op.current_room, op.current_index) != (room, index)
         or not _observed(op, now)
@@ -37,6 +38,7 @@ def observe_work_rate(op, mood, room, index, now, *, preserve=False):
     rate = (op.mood - mood) * 3600 / (now - op.time_stamp).total_seconds()
     if _positive(rate):
         op.recall_work_rate = (rate, now)
+        return rate
 
 
 def _bed_role(data, op, *, projected=False):

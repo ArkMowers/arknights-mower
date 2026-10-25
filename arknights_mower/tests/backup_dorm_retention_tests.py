@@ -286,6 +286,90 @@ def test_explicit_backup_dorm_admission_is_not_cancelled_as_retention_policy(sol
     assert "夕" not in task.backup_retention_admissions
 
 
+@pytest.mark.parametrize(
+    "started_field",
+    [
+        "execution_retained",
+        "backup_shift_active",
+        "backup_retention_started",
+        "group_shift_expected",
+    ],
+)
+def test_started_retention_admission_keeps_original_arrangement(solver, started_field):
+    retain(solver)
+    solver.backup_plan_solver()
+    task = next(task for task in solver.tasks if "夕" in sum(task.plan.values(), []))
+    task.plan["meeting"] = ["香草"]
+    setattr(
+        task,
+        started_field,
+        {("dormitory_1", 3): "夕"} if started_field == "group_shift_expected" else True,
+    )
+    before = copy.deepcopy(task.__dict__)
+    assert solver.op_data.swap_plan([False], refresh=True) is None
+    pending = solver._cancel_stale_retention_admissions()
+    assert any(queued is task for queued in pending)
+    assert task.__dict__ == before
+
+
+@pytest.mark.parametrize("path", ["cached", "shift", "product"])
+def test_retention_uses_vacancy_without_moving_recovering_residents(solver, path):
+    retain(solver)
+    solver.op_data.backup_plans[
+        0
+    ].config.dorm_order = solver.op_data.config.dorm_order.copy()
+    positions = {
+        name: (solver.op_data.operators[name].current_room, 2)
+        for name in ("芬", "香草")
+    }
+    vacancies = {bed.position for bed in solver.op_data.dorm if not bed.name}
+    transition(solver, path)
+    final = final_data(solver)
+    for name, position in positions.items():
+        op = final.operators[name]
+        assert (op.current_room, op.current_index) == position
+    op = final.operators["夕"]
+    assert (op.current_room, op.current_index) in vacancies
+
+
+def test_retention_release_does_not_evict_a_newly_observed_resident(
+    solver, monkeypatch
+):
+    retain(solver)
+    solver.op_data.backup_plans[
+        0
+    ].config.dorm_order = solver.op_data.config.dorm_order.copy()
+    solver.backup_plan_solver()
+    solver.op_data = final_data(solver)
+    solver.tasks = []
+    solver.op_data.backup_plans[0].trigger = LogicExpression("False", "==", "True")
+    solver.backup_plan_solver()
+    task = next(
+        task for task in solver.tasks if getattr(task, "backup_retention_releases", {})
+    )
+    previous = solver.op_data.operators["夕"]
+    room, index = previous.current_room, previous.current_index
+    assert task.backup_retention_empty_slots[room, index] == "夕"
+    previous._current_room, previous.current_index = "", -1
+    solver.op_data.add(Operator("令", ""))
+    observed = solver.op_data.operators["令"]
+    observed._current_room, observed.current_index = room, index
+    observed.mood, observed.time_stamp = 5, datetime.now()
+    next(
+        bed for bed in solver.op_data.dorm if bed.position == (room, index)
+    ).name = "令"
+    instance, selected = executable_selection(solver, monkeypatch, task, room)
+    row = [
+        instance.op_data.get_current_room(room, True)[slot]
+        if name == "Current"
+        else name
+        for slot, name in enumerate(task.plan[room])
+    ]
+    instance.choose_agent(row, room, fast_mode=False)
+    assert "令" in selected
+    assert "夕" not in selected
+
+
 @pytest.mark.parametrize("path", ["cached", "shift"])
 def test_retention_admission_does_not_evict_actual_recovering_residents(solver, path):
     retain(solver)

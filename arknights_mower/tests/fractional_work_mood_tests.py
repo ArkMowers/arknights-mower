@@ -18,6 +18,11 @@ from arknights_mower.utils.resting_priority import has_resting_mood
 _REAL_CONNECTION = record._conn
 
 
+@pytest.fixture(autouse=True)
+def isolate_configuration(monkeypatch):
+    monkeypatch.setattr(config, "conf", config.conf.model_copy(deep=True))
+
+
 @pytest.fixture
 def fractional_reader(room_reader, monkeypatch, tmp_path):
     solver, target, clock = room_reader
@@ -31,6 +36,7 @@ def fractional_reader(room_reader, monkeypatch, tmp_path):
     monkeypatch.setattr(calculated_mood, "datetime", clock)
     target.mood = 1.2
     target.depletion_rate = 0.8
+    target.depletion_rate_position = ("central", 0)
     target.lower_limit = 0
     target.time_stamp = clock.now() - timedelta(hours=1)
     solver.op_data.true_exhaust_room = {"central"}
@@ -238,6 +244,7 @@ def test_continuous_work_rooms_use_operator_row_countdown(room_reader, room):
     solver.read_time = MagicMock(return_value=1800)
     solver.read_accurate_mood.return_value = 0
     target.depletion_rate = 0.8
+    target.depletion_rate_position = (room, 0)
     result = solver.get_agent_from_room(room, force_mood=True)[0]
     assert result["mood"] == pytest.approx(0.4)
     solver.read_time.assert_called_once_with(((1650, 270), (1780, 305)), None)
@@ -251,12 +258,15 @@ def test_future_empirical_sample_cannot_supply_fractional_rate(fractional_reader
     assert record._fetchall("SELECT mood FROM agent_action") == []
 
 
+@pytest.mark.parametrize("enabled", [False, True])
 def test_unknown_worker_does_not_open_room_again_or_move_pending_work(
     fractional_reader,
+    enabled,
 ):
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
     solver, target, clock = fractional_reader
+    config.conf.test_mood_calculation = enabled
     solver.read_time.return_value = 7200
     solver.get_agent_from_room("central", force_mood=True)
     pending = SchedulerTask(time=clock.now(), task_type=TaskTypes.NOT_SPECIFIC)
@@ -294,3 +304,31 @@ def test_due_exhaustion_confirmation_defers_fractional_worker(fractional_reader)
     assert target.mood == pytest.approx(0.7)
     solver.enter_room.assert_called_once_with("central")
     solver.read_time.assert_called_once()
+
+
+@pytest.mark.parametrize("position", [None, ("meeting", 0), ("central", 1)])
+def test_fractional_read_rejects_rate_without_current_position_evidence(
+    fractional_reader, position
+):
+    solver, target, _ = fractional_reader
+    if position is None:
+        del target.depletion_rate_position
+    else:
+        target.depletion_rate_position = position
+    with pytest.raises(RecognizeError, match="未核实"):
+        solver.get_agent_from_room("central", force_mood=True, strict_observation=True)
+    assert target.working_mood_unconfirmed
+    assert record._fetchall("SELECT mood FROM agent_action") == []
+
+
+def test_empirical_work_observation_supplies_fractional_rate_position(
+    fractional_reader,
+):
+    solver, target, clock = fractional_reader
+    del target.depletion_rate_position
+    target.mood = 2
+    solver.op_data.update_detail(target.name, 1.2, "central", 0, True)
+    assert target.depletion_rate_position == ("central", 0)
+    assert solver.get_agent_from_room("central", force_mood=True)[0][
+        "mood"
+    ] == pytest.approx(0.4)

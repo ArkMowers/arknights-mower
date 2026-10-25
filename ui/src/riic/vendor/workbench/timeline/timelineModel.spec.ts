@@ -11,6 +11,8 @@ describe('timelineModel', () => {
       elapsedHours: 24,
       observedHours: 24,
       assumptions: {
+        moodControlStrategyVersion: 'test',
+        predictiveMoodControl: false,
         sampleHours: 24,
         warmupHours: 0,
         maxStepHours: 0.25,
@@ -76,6 +78,8 @@ describe('timelineModel', () => {
       elapsedHours: 24,
       observedHours: 24,
       assumptions: {
+        moodControlStrategyVersion: 'test',
+        predictiveMoodControl: false,
         sampleHours: 24,
         warmupHours: 0,
         maxStepHours: 0.25,
@@ -229,6 +233,8 @@ describe('timelineModel', () => {
       elapsedHours: 96,
       observedHours: 24,
       assumptions: {
+        moodControlStrategyVersion: 'test',
+        predictiveMoodControl: false,
         sampleHours: 24,
         warmupHours: 72,
         maxStepHours: 0.25,

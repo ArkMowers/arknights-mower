@@ -24,6 +24,15 @@ function allowed(original:MowerSchedulingData,admitted:MowerSchedulingData,coord
 }
 
 describe('replacement recall forecast covers the connected recovery cycle',()=>{
+ it.each(['patrol','order'])('accounts for queued operations before a %s recheck using dispatch priority',kind=>{
+  const {original}=fixture(.5),recheck=new MowerTask({time:10/60}),furniture=new MowerTask({type:T.FURNITURE,time:5/60})
+  const options={coordinationRates:fixed,priorityScheduling:{dormDurations:{dormitory_2:[1800]}}}
+  if(kind==='order'){recheck.type=T.RUN_ORDER;recheck.metadata='room_1_1';recheck.wakeOnlyCompletion=true;furniture.type=T.SHIFT_ON;furniture.plan={dormitory_2:['Free']}}
+  expect(planMowerExhaustSupport(original,['B'],{...options,tasks:[recheck]})).toEqual({room_1_1:['A']})
+  const tasks=[furniture,recheck],before=JSON.stringify(tasks)
+  expect(!!planMowerExhaustSupport(original,['B'],{...options,tasks})).toBe(kind==='order')
+  expect(JSON.stringify(tasks)).toBe(before)
+ })
  it.each([{mood:4,result:false},{mood:20,result:true}])('checks actual sustainable work for $mood mood',({mood,result})=>{
   const {original,admit}=fixture(mood),before=JSON.stringify(original)
   expect(allowed(original,admit(),fixed)).toBe(result)

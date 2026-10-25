@@ -1,4 +1,4 @@
-import {describe,it,expect} from 'vitest'
+import {describe,it,expect,vi} from 'vitest'
 import {MowerOperatorState} from './mowerOperatorState'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T} from './mowerTaskQueue'
@@ -128,4 +128,58 @@ describe('predictive wake and snapshot boundaries',()=>{
   planMowerPredictiveDeparture(data,queue,{...options,predictiveShiftModel:model})
   expect(data.planConditions).toEqual([false]);expect(data.operators.A!.currentRoom).toBe('room_1_1');expect(queue.tasks).toEqual([])
  })
+})
+
+it.each(['executionRetained','arrangementStarted','backupShiftActive','groupShiftTransitions','executionFailure'] as const)('blocks predictive planning for retained physical work: %s',field=>{
+ const {data,queue,options,diagnostics}=fixture()
+ const task=new MowerTask({type:T.RUN_ORDER})
+ Object.assign(task,{[field]:field==='groupShiftTransitions'?{joined:true}:field==='executionFailure'?{reason:'failed',rooms:[],snapshot:{}}:true})
+ queue.tasks.push(task)
+ expect(planMowerPredictiveDeparture(data,queue,options)).toBeUndefined()
+ expect(diagnostics[0]).toMatchObject({status:'insufficient',candidates:0})
+ expect(queue.tasks).toEqual([task])
+})
+it('does not let unrelated service timestamps exhaust the candidate list',()=>{
+ const {data,queue,options,diagnostics}=fixture()
+ for(let i=1;i<=10;i++)queue.tasks.push(new MowerTask({type:T.DEPOT,time:i/12}))
+ planMowerPredictiveDeparture(data,queue,options)
+ expect(diagnostics[0]).toMatchObject({status:'feasible',enumeratedCandidates:4})
+})
+
+it('caches a wall-clock exhausted batch without producing a planning wake',()=>{
+ const {data,queue,options,diagnostics}=fixture()
+ let clock=0
+ const timer=vi.spyOn(performance,'now').mockImplementation(()=>clock)
+ try {
+  const forecast=options.coordinationRates
+  options.coordinationRates=state=>{const result=forecast(state);clock=1100;return result}
+  expect(planMowerPredictiveDeparture(data,queue,options)).toBeUndefined()
+  expect(diagnostics[0]).toMatchObject({status:'budget-exhausted',candidates:0})
+  syncMowerPredictiveWake(data,queue);expect(queue.tasks).toEqual([])
+  clock=1200;planMowerPredictiveDeparture(data,queue,options)
+  expect(diagnostics[1]).toMatchObject({reused:true,status:'budget-exhausted'})
+ } finally {timer.mockRestore()}
+})
+it('drops disabled search state and computes fresh evidence after re-enabling',()=>{
+ const {data,queue,options,diagnostics}=fixture()
+ planMowerPredictiveDeparture(data,queue,options)
+ data.policy.predictiveMoodControl=false;syncMowerPredictiveWake(data,queue)
+ data.policy.predictiveMoodControl=true;planMowerPredictiveDeparture(data,queue,options)
+ expect(diagnostics[1]).toMatchObject({reused:false})
+})
+it('invalidates cached advice as physical work starts and keeps its original task',()=>{
+ const {data,queue,options,diagnostics}=fixture()
+ planMowerPredictiveDeparture(data,queue,options)
+ const task=new MowerTask({type:T.SHIFT_ON,plan:{room_1_2:['B']}});task.arrangementStarted=true;queue.tasks.push(task)
+ expect(planMowerPredictiveDeparture(data,queue,options)).toBeUndefined()
+ expect(diagnostics[1]).toMatchObject({status:'insufficient',candidates:0})
+ syncMowerPredictiveWake(data,queue);expect(queue.tasks).toEqual([task])
+})
+it('isolates nested roster, configuration and reservation state passed to backup forecasting',()=>{
+ const {data,queue,options}=fixture()
+ data.planConditions=[false];data.backupExplicitTasks=[{room_1_2:['B']}]
+ const before={explicit:structuredClone(data.backupExplicitTasks),plan:structuredClone(data.plan),conditions:[...data.planConditions],reserved:[...data.reservedProductReplacements],replacements:[...data.operators.A!.replacement]}
+ const model={count:1,evaluate:(state:MowerSchedulingData)=>{state.planConditions[0]=true;state.backupExplicitTasks[0]!.room_1_2![0]='projected';state.plan.room_1_1![0]='projected';state.reservedProductReplacements.add('projected');state.operators.A!.replacement.push('projected');return [true]},swap:(state:MowerSchedulingData)=>state,transition:()=>({}),activate:()=>{throw new Error('physical activation')}}
+ planMowerPredictiveDeparture(data,queue,{...options,predictiveShiftModel:model})
+ expect({explicit:data.backupExplicitTasks,plan:data.plan,conditions:data.planConditions,reserved:[...data.reservedProductReplacements],replacements:data.operators.A!.replacement}).toEqual(before)
 })

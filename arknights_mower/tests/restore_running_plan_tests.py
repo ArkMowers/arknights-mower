@@ -30,6 +30,44 @@ def restore(client):
     return client.post("/plan/restore-running", headers={"token": "restore-test"})
 
 
+@pytest.mark.parametrize("limit", [0, 10, 19])
+def test_restore_normalizes_legacy_drone_limit(client, monkeypatch, limit):
+    source = {"advanced_settings": {"drone_count_limit": limit}}
+    monkeypatch.setattr(server, "mower_thread", SimpleNamespace(is_alive=lambda: True))
+    monkeypatch.setattr(
+        mower_main, "base_scheduler", SimpleNamespace(source_plan=source)
+    )
+    response = restore(client)
+    assert response.status_code == 200
+    assert config.conf.drone_count_limit == 20
+    assert config.plan.advanced_settings["drone_count_limit"] == 20
+    assert safe_load(config.conf_path.read_text())["drone_count_limit"] == 20
+    assert (
+        json.loads(config.plan_path.read_text())["advanced_settings"][
+            "drone_count_limit"
+        ]
+        == 20
+    )
+    assert source["advanced_settings"]["drone_count_limit"] == limit
+
+
+@pytest.mark.parametrize("token", [None, "wrong"])
+def test_restore_rejects_unauthorized_requests_before_access(
+    client, monkeypatch, token
+):
+    class ForbiddenThread:
+        def is_alive(self):
+            pytest.fail("未授权请求访问运行排班")
+
+    monkeypatch.setattr(server, "mower_thread", ForbiddenThread())
+    response = client.post(
+        "/plan/restore-running", headers={"token": token} if token else {}
+    )
+    assert response.status_code == 403
+    assert not config.plan_path.exists()
+    assert not config.conf_path.exists()
+
+
 def test_runtime_plan_keeps_independent_startup_snapshot(monkeypatch):
     configured = config.PlanModel(plan1={"central": {"plans": [{"agent": "阿米娅"}]}})
     monkeypatch.setattr(config, "plan", configured)

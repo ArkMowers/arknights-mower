@@ -4,7 +4,7 @@ import {alphaPosition,mowerMatchReplacements} from './mowerAlphaDorm'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import {hasObservedFullMood,mowerReplacementCandidates,rescueMoodThreshold,MowerOperatorState} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
-import {alphaSupportSwapMicros} from './mowerAlphaTaskProtection'
+import {alphaSupportSwapMicros,protectMowerAlphaTasks} from './mowerAlphaTaskProtection'
 import {mowerWorkingReplacementApplies} from './mowerWorkingReplacement'
 import {mowerPlanningWakeThreshold} from './mowerPlanningWake'
 import type {MowerRestingOptions} from './mowerOrdinaryPlanning'
@@ -114,7 +114,11 @@ export function mowerRecallMoodAdmissible(data:MowerSchedulingData,recalled:Read
 }
 /** Existing dispatch opportunities bound ordinary recall without creating a new timer. */
 export function mowerRecallRecheckWindow(data:MowerSchedulingData,admitted:MowerSchedulingData,support:MowerTaskPlan,admission:MowerTaskPlan,options:MowerRestingOptions):MowerRecallRecheckWindow {
- const next=options.tasks?.filter(task=>task.timeMicros>data.nowMicros&&!task.executionFailure&&!task.moodControlEvent&&(
+ const duration=(plan:MowerTaskPlan,type:MowerTaskType)=>Object.keys(plan).length?alphaSupportSwapMicros(new MowerTask({type,plan}),options.priorityScheduling):0
+ const notBeforeMicros=data.nowMicros+duration(support,T.SELF_CORRECTION)+duration(admission,T.SHIFT_OFF)
+ const dispatch=(options.tasks??[]).filter(task=>!task.executionFailure).map(task=>Object.assign(new MowerTask({type:task.type}),structuredClone(task),{type:task.type}))
+ protectMowerAlphaTasks(dispatch,notBeforeMicros,options.priorityScheduling)
+ const next=dispatch.filter(task=>task.timeMicros>data.nowMicros&&!task.moodControlEvent&&(
   task.type===T.RUN_ORDER&&!!task.metadata&&!Object.keys(task.plan).length&&(task.wakeOnlyCompletion||Number.isSafeInteger(task.observedOrderDueMicros))||!!task.workingReplacementCheck&&mowerWorkingReplacementApplies(data,task.workingReplacementCheck)&&mowerWorkingReplacementApplies(admitted,task.workingReplacementCheck)||task.type===T.NOT_SPECIFIC&&!task.metadata&&!Object.keys(task.plan).length&&!task.workingReplacementCheck
  )).sort((a,b)=>a.timeMicros-b.timeMicros)[0]
  const observed=options.coordinationRecheck
@@ -132,10 +136,13 @@ export function mowerRecallRecheckWindow(data:MowerSchedulingData,admitted:Mower
  const planningWake=Object.keys(observationLimits).length>0
  const recheckMicros=planningWake?observed!.timeMicros:next?.timeMicros
  if(recheckMicros===undefined)return {notBeforeMicros:data.nowMicros}
- const duration=(plan:MowerTaskPlan,type:MowerTaskType)=>Object.keys(plan).length?alphaSupportSwapMicros(new MowerTask({type,plan}),options.priorityScheduling):0
- const notBeforeMicros=data.nowMicros+duration(support,T.SELF_CORRECTION)+duration(admission,T.SHIFT_OFF)
  const recheckDuration=alphaSupportSwapMicros(planningWake?new MowerTask():next!,options.priorityScheduling)
- const startMicros=Math.max(notBeforeMicros,recheckMicros)
+ let cursor=notBeforeMicros
+ for(const queued of dispatch){
+  if(queued===next&&!planningWake||queued.timeMicros>recheckMicros)break
+  cursor=Math.max(cursor,queued.timeMicros)+alphaSupportSwapMicros(queued,options.priorityScheduling)
+ }
+ const startMicros=Math.max(cursor,recheckMicros)
  return {notBeforeMicros,untilMicros:startMicros+recheckDuration,observation:planningWake?{timeMicros:startMicros,limits:observationLimits}:undefined}
 }
 function materializeCoordinationMoods(original:MowerSchedulingData,shadow:MowerSchedulingData):boolean {

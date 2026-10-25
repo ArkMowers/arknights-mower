@@ -336,6 +336,20 @@ class PlanModel(BaseModel):
     # 全局运行设置随排班导出；旧排班没有此字段时保留本机现有设置。
     advanced_settings: Optional[dict[str, Any]] = None
 
+    @field_validator("advanced_settings")
+    @classmethod
+    def normalize_advanced_drone_limit(cls, settings):
+        from arknights_mower.utils.config.conf import validate_drone_count_limit
+
+        if settings is not None and "drone_count_limit" in settings:
+            return {
+                **settings,
+                "drone_count_limit": validate_drone_count_limit(
+                    settings["drone_count_limit"]
+                ),
+            }
+        return settings
+
     @model_validator(mode="before")
     @classmethod
     def retire_rescue_conditions(cls, data):

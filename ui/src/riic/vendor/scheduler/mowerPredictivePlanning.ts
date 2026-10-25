@@ -15,11 +15,14 @@ export interface MowerPredictiveEvidence {version:string;fingerprint:string;name
 export interface MowerPredictiveDiagnostics {reused:boolean;candidates:number;enumeratedCandidates:number;processedNodes:number;events:number;elapsedMs:number;modelMs:number;modelCalls:number;status:string;result?:MoodControlResult}
 interface Cached {fingerprint:string;result:MoodControlResult;evidence?:MowerPredictiveEvidence;wake?:number;consumed?:number}
 const cache=new WeakMap<MowerSchedulingData,Cached>()
+const pureServiceTypes=[T.CLUE,T.CLUE_PARTY,T.MAA_MALL,T.RECRUIT,T.SKLAND,T.REFRESH_TIME,T.DEPOT,T.FURNITURE]
+const blocked=(tasks:readonly MowerTask[])=>tasks.some(t=>t.retainsExecution||t.arrangementStarted||t.backupShiftActive||Object.keys(t.groupShiftTransitions).length)
+const MAX_PLANNING_MS=1000
 const seconds=(micros:number)=>micros/1_000_000
 const requestMember=(data:MowerSchedulingData,o:MowerSchedulingData['operators'][string])=>!o.workaholic&&!o.room.startsWith('dorm')&&(!o.multiGroup||o.independentRest)&&!data.canStandby(o)
 /** Observations retain their absolute timestamps: elapsed time alone does not invalidate a suggestion. */
 export function mowerMoodControlFingerprint(data:MowerSchedulingData,tasks:readonly MowerTask[]):string {
- return JSON.stringify([MOWER_MOOD_CONTROL_VERSION,data.plan,data.planConditions,data.backupGroup,data.policy,data.dormIsolation,data.groupShiftState,data.groupRecoveryFullMembers,data.groupRecoveryReturnMicros,[...data.busyRestingNames],[...data.excludedCandidates],[...data.reservedProductReplacements],[...data.reservedProductBeds],data.allDorms().map(b=>[b.position,b.name,b.timeMicros]),Object.values(data.operators).map(o=>[o.name,o.room,o.index,o.currentRoom,o.currentIndex,o.group,o.groupBindings,o.replacement,o.mood,o.timeStampMicros,o.depletionRate,o.upperLimit,o.lowerLimit,o.exhaustRequire,o.restInFull,o.workaholic,o.restingPriority]),tasks.filter(t=>!t.moodControlEvent).map(t=>[t.type.key,t.timeMicros,t.plan,t.executionFailure,t.arrangementStarted,t.productShiftLocked])])
+ return JSON.stringify([MOWER_MOOD_CONTROL_VERSION,data.plan,data.planConditions,data.backupGroup,data.policy,data.dormIsolation,data.groupShiftState,data.groupRecoveryFullMembers,data.groupRecoveryReturnMicros,[...data.busyRestingNames],[...data.excludedCandidates],[...data.reservedProductReplacements],[...data.reservedProductBeds],data.allDorms().map(b=>[b.position,b.name,b.timeMicros]),Object.values(data.operators).map(o=>[o.name,o.room,o.index,o.currentRoom,o.currentIndex,o.group,o.groupBindings,o.replacement,o.mood,o.timeStampMicros,o.depletionRate,o.upperLimit,o.lowerLimit,o.exhaustRequire,o.restInFull,o.workaholic,o.restingPriority]),tasks.filter(t=>!t.moodControlEvent).map(t=>[t.type.key,t.timeMicros,t.plan,t.executionFailure,t.executionRetained,t.arrangementStarted,t.backupShiftActive,t.groupShiftTransitions,t.productShiftLocked])])
 }
 export function completeMowerPredictivePlan(data:MowerSchedulingData,names:string[],options:MowerRestingOptions):MowerTaskPlan|undefined {
  const shadow=projectMowerArrangements(data,[]),plan:MowerTaskPlan={}
@@ -29,6 +32,18 @@ export function completeMowerPredictivePlan(data:MowerSchedulingData,names:strin
  const projected=projectMowerArrangements(data,[plan])
  if(names.some(name=>{const o=projected.operators[name]!;return !o.room.startsWith('dorm')&&!o.workaholic&&!o.isResting()&&!data.canStandby(o)}))return
  return plan
+}
+function cloneForecastTask(task:MowerTask):MowerTask {
+ const {type,...fields}=task
+ return Object.assign(new MowerTask({type}),structuredClone(fields))
+}
+function isolatedForecast(data:MowerSchedulingData):MowerSchedulingData {
+ const state=projectMowerArrangements(data,[])
+ for(const [key,value] of Object.entries(data)){
+  if(['operators','dorms','groupDorms'].includes(key))continue
+  if(value&&typeof value==='object')Reflect.set(state,key,structuredClone(value))
+ }
+ return state
 }
 /** Advance old staffing before applying a handoff; rates are recomputed at every skill boundary. */
 function advance(data:MowerSchedulingData,time:number,options:MowerRestingOptions):boolean {
@@ -53,21 +68,21 @@ function advance(data:MowerSchedulingData,time:number,options:MowerRestingOption
 interface Unit {id:string;names:string[];exhaust:boolean;lowerAt:number;softAt:number}
 interface DynamicResult {complete:boolean;score:number[];events:import('./mowerPredictiveMoodControl').MoodControlEvent[];firstPlan?:MowerTaskPlan;exhausted:boolean;nodes:number}
 /** Independent rollouts use the native matcher and native recovery metadata at each event. */
-function dynamicRollout(initial:MowerSchedulingData,tasks:readonly MowerTask[],units:Unit[],early:Unit|undefined,start:number,horizon:number,options:MowerRestingOptions):DynamicResult {
+function dynamicRollout(initial:MowerSchedulingData,tasks:readonly MowerTask[],units:Unit[],early:Unit|undefined,start:number,horizon:number,options:MowerRestingOptions,deadline:number):DynamicResult {
  const nodeLimit=Math.min(64,Math.max(1,options.predictiveMaxEvents??64))
- let state=projectMowerArrangements(initial,[]),nodes=0,exhausted=false,firstPlan:MowerTaskPlan|undefined
+ let state=isolatedForecast(initial),nodes=0,exhausted=false,firstPlan:MowerTaskPlan|undefined
  for(const o of Object.values(state.operators)){const mood=options.predictiveCurrentMoods?.[o.name]??mowerDormCandidateMood(initial,o.name);if(mood!==undefined){o.mood=mood;o.timeStampMicros=state.nowMicros;o.depletionRate=0}}
- const queue=new MowerTaskQueue();queue.tasks=tasks.filter(t=>!t.moodControlEvent).map(t=>Object.assign(new MowerTask(),t,{plan:structuredClone(t.plan)}))
- const safeTypes=[T.CLUE,T.CLUE_PARTY,T.MAA_MALL,T.RECRUIT,T.SKLAND,T.REFRESH_TIME,T.DEPOT,T.FURNITURE]
+ const queue=new MowerTaskQueue();queue.tasks=tasks.filter(t=>!t.moodControlEvent).map(cloneForecastTask)
+ const safeTypes=pureServiceTypes
  const service=(t:MowerTask)=>!Object.keys(t.plan).length&&!t.retainsExecution&&safeTypes.includes(t.type)
- const unknown=(t:MowerTask)=>!t.executionFailure&&![T.SHIFT_ON,T.RELEASE_DORM].includes(t.type)&&!([T.NOT_SPECIFIC,T.EXHAUST_OFF].includes(t.type)&&!Object.keys(t.plan).length)&&!service(t)
+ const unknown=(t:MowerTask)=>![T.SHIFT_ON,T.RELEASE_DORM].includes(t.type)&&!([T.NOT_SPECIFIC,T.EXHAUST_OFF].includes(t.type)&&!Object.keys(t.plan).length)&&!service(t)
  let serviceRelease:number|undefined
  const events:DynamicResult['events']=[],score=[0,0,0,0],departed=new Set<string>(),returned=new Set<string>()
  const positions=Object.values(initial.operators).filter(o=>o.isHigh()&&!o.room.startsWith('dorm')&&!o.workaholic).map(o=>({room:o.room,index:o.index,name:o.name}))
  const tick=(until:number):boolean=>{
   // Integrate scores through skill and personal-limit boundaries using old staffing.
   while(state.nowMicros<until){
-   if(++nodes>nodeLimit){exhausted=true;return false}
+   if(performance.now()>=deadline||++nodes>nodeLimit){exhausted=true;return false}
    const rates=options.coordinationRates?.(state);if(!rates)return false
    let dt=until-state.nowMicros
    for(const o of Object.values(state.operators))if(o.currentRoom){const rate=o.isResting()?rates.recovery[o.name]:rates.work[o.name];if(rate===undefined||!Number.isFinite(rate))return false;const v=o.isResting()?rate:-rate;if(v)for(const boundary of [0,4,8,12,16,18,20,24,o.lowerLimit,o.upperLimit])if(v>0?boundary>o.mood+1e-8:boundary<o.mood-1e-8)dt=Math.min(dt,Math.ceil((boundary-o.mood)/v*3_600_000_000))}
@@ -85,7 +100,7 @@ function dynamicRollout(initial:MowerSchedulingData,tasks:readonly MowerTask[],u
   const resources=mowerArrangementResources(plan),res=[...resources.names,...resources.slots],begin=seconds(state.nowMicros)
   events.push({time:begin,type:type===T.SHIFT_OFF?'departure-start':'return-start',group,resources:res})
   for(const {room,row,duration} of roomDurations){
-   if(++nodes>nodeLimit){exhausted=true;return false}
+   if(performance.now()>=deadline||++nodes>nodeLimit){exhausted=true;return false}
    if(state.nowMicros+duration>horizon*1_000_000||!tick(state.nowMicros+duration))return false
    state=projectMowerArrangements(state,[{[room]:row}])
   }
@@ -93,12 +108,13 @@ function dynamicRollout(initial:MowerSchedulingData,tasks:readonly MowerTask[],u
   return true
  }
  rolloutLoop: while(state.nowMicros<horizon*1_000_000){
+  if(performance.now()>=deadline){exhausted=true;break}
   serviceRelease=undefined
   const model=options.predictiveShiftModel
   if(model?.count){
    const selection=model.select?.(state),conditions=selection?.conditions??model.evaluate(state)
    if(JSON.stringify(conditions)!==JSON.stringify(state.planConditions)||selection&&selection.groupId!==state.backupGroup){
-    if(++nodes>nodeLimit){exhausted=true;break}
+    if(performance.now()>=deadline||++nodes>nodeLimit){exhausted=true;break}
     const transition=new MowerTask({type:T.SELF_CORRECTION,plan:{}})
     try{prepareMowerShiftBackup(state,transition,model,queue.tasks)}catch{return {complete:false,score,events,firstPlan,exhausted,nodes}}
     state=model.swap(state,transition.backupShiftConditions??conditions,transition.backupGroup??selection?.groupId)
@@ -153,11 +169,11 @@ function dynamicRollout(initial:MowerSchedulingData,tasks:readonly MowerTask[],u
  return {complete:!exhausted&&state.nowMicros>=horizon*1_000_000&&units.every(u=>departed.has(u.id)&&returned.has(u.id))&&!queue.tasks.some(t=>unknown(t)&&t.timeMicros<=horizon*1_000_000),score,events,firstPlan,exhausted,nodes}
 }
 /** Batch initial deadlines on unchanged staffing, including shared mood-skill boundaries. */
-function initialDeadlines(initial:MowerSchedulingData,targets:Map<string,{soft:number;lower:number}>,options:MowerRestingOptions):Map<string,{softAt:number;lowerAt:number}> {
- const result=new Map<string,{softAt:number;lowerAt:number}>();let state=projectMowerArrangements(initial,[])
+function initialDeadlines(initial:MowerSchedulingData,targets:Map<string,{soft:number;lower:number}>,options:MowerRestingOptions,deadline:number):{deadlines:Map<string,{softAt:number;lowerAt:number}>;exhausted:boolean} {
+ const result=new Map<string,{softAt:number;lowerAt:number}>();let state=isolatedForecast(initial),exhausted=true
  for(const o of Object.values(state.operators)){const mood=options.predictiveCurrentMoods?.[o.name]??mowerDormCandidateMood(initial,o.name);if(mood!==undefined){o.mood=mood;o.timeStampMicros=state.nowMicros;o.depletionRate=0}}
- for(let step=0;step<64;step++){
-  const rates=options.coordinationRates?.(state);if(!rates)break
+ for(let step=0;step<64&&performance.now()<deadline;step++){
+  const rates=options.coordinationRates?.(state);if(!rates){exhausted=false;break}
   let dt=Infinity
   for(const [name,target] of targets){
    const o=state.operators[name]!,entry=result.get(name)??{softAt:Infinity,lowerAt:Infinity}
@@ -167,23 +183,29 @@ function initialDeadlines(initial:MowerSchedulingData,targets:Map<string,{soft:n
    const rate=rates.work[name]
    if(rate!==undefined&&rate>0)for(const threshold of [target.soft,target.lower])if(threshold<o.mood-1e-8)dt=Math.min(dt,Math.ceil((o.mood-threshold)/rate*3_600_000_000))
   }
-  if([...result.values()].every(e=>Number.isFinite(e.lowerAt)))break
+  if([...result.values()].every(e=>Number.isFinite(e.lowerAt))){exhausted=false;break}
   for(const o of Object.values(state.operators))if(o.currentRoom){const rate=o.isResting()?rates.recovery[o.name]:rates.work[o.name];if(rate===undefined||!rate)continue;const v=o.isResting()?rate:-rate;for(const boundary of [0,4,8,12,16,18,20,24,o.lowerLimit,o.upperLimit])if(v>0?boundary>o.mood+1e-8:boundary<o.mood-1e-8)dt=Math.min(dt,Math.ceil((boundary-o.mood)/v*3_600_000_000))}
-  if(!Number.isFinite(dt)||dt<=0||state.nowMicros+dt-initial.nowMicros>240*3_600_000_000||!advance(state,state.nowMicros+dt,options))break
+  if(!Number.isFinite(dt)||dt<=0||state.nowMicros+dt-initial.nowMicros>240*3_600_000_000||!advance(state,state.nowMicros+dt,options)){exhausted=false;break}
  }
- return result
+ return {deadlines:result,exhausted}
 }
 export function planMowerPredictiveDeparture(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRestingOptions):MowerPredictiveEvidence|undefined {
  if(!data.alpha||!data.policy.predictiveMoodControl||!options.coordinationRates)return
- const started=performance.now(),fingerprint=mowerMoodControlFingerprint(data,queue.tasks),previous=cache.get(data)
+ const started=performance.now(),deadline=started+MAX_PLANNING_MS
+ if(blocked(queue.tasks)){cache.delete(data);options.onPredictiveDiagnostics?.({reused:false,candidates:0,enumeratedCandidates:0,processedNodes:0,events:0,elapsedMs:performance.now()-started,modelMs:0,modelCalls:0,status:'insufficient'});return}
+ const fingerprint=mowerMoodControlFingerprint(data,queue.tasks),previous=cache.get(data)
  if(previous?.fingerprint===fingerprint){options.onPredictiveDiagnostics?.({reused:true,candidates:0,enumeratedCandidates:0,processedNodes:0,events:0,elapsedMs:performance.now()-started,modelMs:0,modelCalls:0,status:previous.result.status});return previous.evidence&&previous.evidence.startMicros<=data.nowMicros&&previous.evidence.untilMicros>=data.nowMicros?previous.evidence:undefined}
  let modelMs=0,modelCalls=0
  const forecast=options.coordinationRates
- options={...options,coordinationRates:state=>{const before=performance.now();modelCalls++;try{return forecast(state)}finally{modelMs+=performance.now()-before}}}
+ options={...options,coordinationRates:state=>{const before=performance.now();if(before>=deadline)return undefined;modelCalls++;try{return forecast(state)}finally{modelMs+=performance.now()-before}}}
  const rates=options.coordinationRates!(data);if(!rates)return
  const targets=new Map<string,{soft:number;lower:number}>()
  for(const m of Object.values(data.operators))if(m.currentRoom&&!m.isResting()&&!m.workaholic){const soft=m.customMoodLimit?m.lowerLimit+(m.upperLimit-m.lowerLimit)*data.policy.restingThreshold:Math.floor(m.lowerLimit+(m.upperLimit-m.lowerLimit)*data.policy.restingThreshold);targets.set(m.name,{soft,lower:m.lowerLimit})}
- const deadlines=initialDeadlines(data,targets,options)
+ const initial=initialDeadlines(data,targets,options,deadline),deadlines=initial.deadlines
+ if(initial.exhausted||performance.now()>=deadline){
+  const result:MoodControlResult={decision:null,status:'budget-exhausted',score:[0,0,0,0],events:[],candidates:0,enumeratedCandidates:0,processedNodes:0,eventCount:0,maxCandidateNodes:0,nextWake:null}
+  cache.set(data,{fingerprint,result});options.onPredictiveDiagnostics?.({reused:false,candidates:0,enumeratedCandidates:0,processedNodes:0,events:0,elapsedMs:performance.now()-started,modelMs,modelCalls,status:result.status,result});return
+ }
  const units:Unit[]=[],seen=new Set<string>(),now=seconds(data.nowMicros),exhausted=mowerExhaustGroups(data)
  for(const o of Object.values(data.operators)){
   const independent=o.isHigh()&&o.independentRest&&!mowerRestingBindingGroups(data,o).length&&!o.workaholic&&!data.canStandby(o)
@@ -200,8 +222,8 @@ export function planMowerPredictiveDeparture(data:MowerSchedulingData,queue:Mowe
  }
  if(!units.length)return
  const horizon=Math.min(now+240*3600,Math.max(...units.map(u=>u.lowerAt))+24*3600)
- const boundaries=[...queue.tasks.map(t=>seconds(t.timeMicros)),...units.flatMap(u=>[u.softAt,u.lowerAt])]
- const choice=selectMoodControlCandidate(now,units,boundaries,candidate=>dynamicRollout(data,queue.tasks,units,units.find(u=>u.id===candidate.group),candidate.start??now,horizon,options),16,Math.min(64,Math.max(1,options.predictiveMaxEvents??64)))
+ const boundaries=[...queue.tasks.filter(t=>!pureServiceTypes.includes(t.type)||Object.keys(t.plan).length).map(t=>seconds(t.timeMicros)),...units.flatMap(u=>[u.softAt,u.lowerAt])]
+ const choice=selectMoodControlCandidate(now,units,boundaries,candidate=>dynamicRollout(data,queue.tasks,units,units.find(u=>u.id===candidate.group),candidate.start??now,horizon,options,deadline),16,Math.min(64,Math.max(1,options.predictiveMaxEvents??64)))
  const {best,candidates,enumeratedCandidates,processedNodes,events:eventCount,maxCandidateNodes,exhausted:budget}=choice,selected=units.find(u=>u.id===choice.selected?.group)
  const result:MoodControlResult={decision:selected?.id??null,status:budget?'budget-exhausted':best.complete?'feasible':'insufficient',score:best.score,events:best.events,candidates,enumeratedCandidates,processedNodes,eventCount,maxCandidateNodes,nextWake:best.events.find(e=>e.time>now)?.time??null}
  let evidence:MowerPredictiveEvidence|undefined
@@ -220,7 +242,8 @@ export function mowerPredictiveEvidenceValid(data:MowerSchedulingData,task:Mower
 export function syncMowerPredictiveWake(data:MowerSchedulingData,queue:MowerTaskQueue):void {
  const entry=cache.get(data)
  if(queue.tasks.some(t=>t.moodControlEvent))queue.tasks=queue.tasks.filter(t=>!t.moodControlEvent)
- if(!data.policy.predictiveMoodControl||!entry?.wake||entry.wake*1_000_000<=data.nowMicros||entry.consumed===entry.wake)return
+ if(!data.policy.predictiveMoodControl||blocked(queue.tasks)){cache.delete(data);return}
+ if(!entry?.wake||entry.wake*1_000_000<=data.nowMicros||entry.consumed===entry.wake)return
  const task=new MowerTask({type:T.NOT_SPECIFIC});task.timeMicros=Math.round(entry.wake*1_000_000);task.moodControlEvent={fingerprint:entry.fingerprint,timeMicros:task.timeMicros};queue.tasks.push(task)
 }
 export function consumeMowerPredictiveWake(data:MowerSchedulingData,task:MowerTask):void {

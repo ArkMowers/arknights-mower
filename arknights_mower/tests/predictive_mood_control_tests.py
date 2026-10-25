@@ -17,6 +17,12 @@ from arknights_mower.utils import predictive_mood_control as control
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
+@pytest.fixture(autouse=True)
+def planning_clock(monkeypatch):
+    """语义测试不消耗真实时间预算；预算用例自行推进此计时器。"""
+    monkeypatch.setattr(control, "perf_counter", lambda: 0.0)
+
+
 def test_dynamic_rollout_keeps_live_observations_clock_and_config(solver, monkeypatch):
     enable(solver.op_data, NOW, monkeypatch)
     monkeypatch.setattr(
@@ -87,7 +93,15 @@ def test_disable_removes_only_memory_wakeup_and_preserves_started_work(
     started.mood_physical_started = True
     started.execution_retained = True
     solver.tasks = [wake, started]
+    solver._mood_control_cache = {"old": True}
     solver.op_data.runtime_conf.test_mood_calculation = False
+    control.reconcile(solver, NOW)
+    assert solver.tasks == [started]
+    assert solver._mood_control_cache is None
+    solver.op_data.runtime_conf.test_mood_calculation = True
+    monkeypatch.setattr(
+        control, "plan", lambda *a, **kw: pytest.fail("retained work replanned")
+    )
     control.reconcile(solver, NOW)
     assert solver.tasks == [started]
 
@@ -734,3 +748,171 @@ def test_shared_production_trajectories(solver, monkeypatch, case):
         assert got["type"] == want["type"] and got["group"] == want["group"]
         assert got["time"] == pytest.approx(want["time"], abs=0.01)
     assert actual["nextWake"] == pytest.approx(expected["nextWake"], abs=0.01)
+
+
+def test_service_queue_does_not_expand_candidate_search(solver, monkeypatch):
+    shared_rotation(solver, monkeypatch)
+    solver.tasks = [
+        SchedulerTask(
+            time=NOW + timedelta(minutes=5 * (i + 1)), task_type=TaskTypes.DEPOT
+        )
+        for i in range(10)
+    ]
+    result = control.plan(solver, NOW)
+    assert result["enumeratedCandidates"] == 4
+    assert result["status"] == "feasible" and result["decision"] == PRIMARY[0]
+    assert len(solver.tasks) == 10
+
+
+def test_expired_other_group_event_does_not_hide_due_decision(solver, monkeypatch):
+    shared_rotation(solver, monkeypatch)
+    result = dict(
+        signature="same",
+        decision=PRIMARY[1],
+        events=[
+            dict(type="departure-start", group=name, time=NOW.timestamp())
+            for name in PRIMARY[:2]
+        ],
+        plans={PRIMARY[1]: {"room_1_2": [COVERS[0]]}},
+        dependencies={PRIMARY[1]: [PRIMARY[1]]},
+    )
+    monkeypatch.setattr(control, "plan", lambda *a, **kw: result)
+    control.reconcile(solver, NOW)
+    assert [t.mood_control_evidence["group"] for t in solver.tasks] == [PRIMARY[1]]
+
+
+def test_candidate_truncation_keeps_baseline_without_evaluating_partial_search(
+    solver, monkeypatch
+):
+    shared_rotation(solver, monkeypatch)
+    monkeypatch.setattr(control, "MAX_CANDIDATES", 2)
+    original = control.dynamic_rollout
+    calls = []
+
+    def rollout(*args, **kwargs):
+        calls.append(args[2:] if len(args) > 2 else ())
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(control, "dynamic_rollout", rollout)
+    result = control.plan(solver, NOW)
+    assert result["status"] == "budget-exhausted" and result["decision"] is None
+    assert result["enumeratedCandidates"] == 2 and calls == [()]
+
+
+def test_batch_deadline_exhaustion_is_cached_without_new_wakes(solver, monkeypatch):
+    shared_rotation(solver, monkeypatch)
+    clock = [0.0]
+    monkeypatch.setattr(control, "perf_counter", lambda: clock[0])
+    original = control.build_snapshot
+
+    def snapshot(*args, **kwargs):
+        result = original(*args, **kwargs)
+        clock[0] = control.MAX_PLANNING_SECONDS + 0.1
+        return result
+
+    monkeypatch.setattr(control, "build_snapshot", snapshot)
+    result = control.reconcile(solver, NOW)
+    assert result["status"] == "budget-exhausted" and result["decision"] is None
+    assert result["processedNodes"] == 0 and not solver.tasks
+    monkeypatch.setattr(
+        control, "build_snapshot", lambda *a: pytest.fail("expired batch retried")
+    )
+    assert control.plan(solver, NOW + timedelta(minutes=1))["reused"]
+
+
+def test_readback_revalidation_compares_only_baseline_and_requested_group(
+    solver, monkeypatch
+):
+    data = shared_rotation(solver, monkeypatch)
+    result = control.reconcile(solver, NOW)
+    task = next(t for t in solver.tasks if getattr(t, "mood_control_evidence", None))
+    solver.task = task
+    data.mood_model.observe(PRIMARY[0], 2, NOW + timedelta(microseconds=1))
+    original = control.dynamic_rollout
+    calls = []
+
+    def rollout(*args, **kwargs):
+        calls.append(args[2] if len(args) > 2 else None)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(control, "dynamic_rollout", rollout)
+    monkeypatch.setattr(
+        control,
+        "datetime",
+        type("Clock", (datetime,), {"now": classmethod(lambda cls: NOW)}),
+    )
+    assert control.admits(solver, [PRIMARY[0]], task)
+    assert calls == [None, PRIMARY[0]]
+    assert result["decision"] == PRIMARY[0]
+
+
+def test_rollout_mutable_inputs_are_deeply_isolated(solver, monkeypatch):
+    from arknights_mower.solvers.base_schedule import (
+        BaseSchedulerSolver,
+        GroupShiftBlocked,
+    )
+
+    data = shared_rotation(solver, monkeypatch)
+    solver.waiting_group_shifts = [{"names": [PRIMARY[0]]}]
+    task = SchedulerTask(time=NOW + timedelta(hours=20), task_type=TaskTypes.DEPOT)
+    task.extra = {"nested": ["original"]}
+    solver.tasks = [task]
+    before = control._plain(
+        (
+            vars(data.config),
+            data.runtime_conf.model_dump(),
+            data.plan,
+            data.group_shift_state,
+            solver.waiting_group_shifts,
+            vars(task),
+        )
+    )
+
+    def mutate(trial, task):
+        assert trial.op_data.eval_model is data.eval_model
+        trial.op_data.config.free_room = not data.config.free_room
+        trial.op_data.runtime_conf.rescue_threshold = 0.1
+        trial.op_data.plan["room_1_1"][0].replacement.append("changed")
+        trial.op_data.group_shift_state["changed"] = True
+        trial.waiting_group_shifts[0]["names"].append("changed")
+        trial.tasks[0].extra["nested"].append("changed")
+        raise GroupShiftBlocked("projection stopped")
+
+    monkeypatch.setattr(BaseSchedulerSolver, "_prepare_shift_backup", mutate)
+    result = control.dynamic_rollout(
+        solver, control.build_snapshot(solver, NOW), PRIMARY[0], NOW.timestamp()
+    )
+    assert not result["complete"]
+    assert (
+        control._plain(
+            (
+                vars(data.config),
+                data.runtime_conf.model_dump(),
+                data.plan,
+                data.group_shift_state,
+                solver.waiting_group_shifts,
+                vars(task),
+            )
+        )
+        == before
+    )
+
+
+def test_rescue_start_removes_prediction_before_its_due_time(solver, monkeypatch):
+    shared_rotation(solver, monkeypatch)
+    wake = SchedulerTask(time=NOW + timedelta(hours=1))
+    wake.mood_control_event = {"at": wake.time.timestamp()}
+    real = SchedulerTask(time=NOW + timedelta(minutes=5), task_type=TaskTypes.DEPOT)
+    solver.tasks = [wake, real]
+    solver._mood_control_cache = {"old": True}
+    solver.emergency_state = {"phase": "recovering"}
+    solver._emergency_filter_tasks()
+    assert solver.tasks == [real] and solver._mood_control_cache is None
+
+
+def test_initial_deadline_node_limit_reports_budget_exhaustion(solver, monkeypatch):
+    shared_rotation(solver, monkeypatch)
+    monkeypatch.setattr(control, "MAX_INITIAL_NODES", 0)
+    result = control.plan(solver, NOW)
+    assert result["status"] == "budget-exhausted" and result["budgetExhausted"]
+    assert result["decision"] is None and result["candidates"] == 0

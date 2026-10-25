@@ -51,5 +51,7 @@ def apply_advanced_settings(conf: Conf, settings: dict | None) -> Conf:
     if unknown:
         raise ValueError(f"未知的高级设置：{', '.join(sorted(unknown))}")
     if "drone_count_limit" in settings:
-        validate_drone_count_limit(settings["drone_count_limit"])
+        settings["drone_count_limit"] = validate_drone_count_limit(
+            settings["drone_count_limit"]
+        )
     return Conf.model_validate({**conf.model_dump(), **settings})

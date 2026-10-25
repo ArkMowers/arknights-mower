@@ -22,35 +22,13 @@ Use bounded event projection and submit only the next executable arrangement to 
 
 [`predictive_mood_control.py`](../../../../arknights_mower/utils/predictive_mood_control.py) owns candidate comparison, input reuse and memory-only wakes. Actual arrangements still use existing matching, recovery metadata and complete backup convergence. Advice reserves no operators or beds; concrete admitted tasks own reservations.
 
-### Timeline and selection
+### Reasons for bounded comparison
 
-Each candidate has exclusive projected operators, a virtual clock and frozen configuration, skills, inventory and maintenance inputs. Old occupants advance to each room-operation completion before new staffing and recovery effects apply. Existing return/release metadata controls resource availability. Forecasts do not invent future inventory, order output, charging or training effects.
+An arrangement that is legal now can occupy the only bed or replacement needed by another group later. Comparing candidates on the same timeline exposes this conflict. For example, A and B share one bed and one replacement: if resting A now lets A return before B reaches its lower limit, waiting for A's normal departure can delay B. This motivates continuity as the first selection criterion; it does not establish a globally optimal schedule.
 
-Baseline and candidates share participating primary positions and an observation endpoint. Ranking compares waiting after personal floors before legal handoff, ineffective position time, arrangement count, advancement relative to ordinary thresholds, then stable order. Configured zero-mood workers are not ineffective coverage. Early departure must strictly improve one of the first two quantities without worsening a higher-priority one; equal continuity cannot justify leaving early.
+The [predictive shift contract](../../../../docs/subsystems/base-scheduler.md#predictive-mood-control) owns candidate admission, ordering, budgets, observation invalidation and wake handling. Keeping those rules with the scheduler avoids maintaining a second operational specification in this decision record. Unsupported future effects and incomplete forecasts remain reasons to retain the existing policy, rather than inventing resource availability.
 
-For example, A and B share a bed and a cover. A reaches its floor in two hours, B in three. If A can leave now and complete legal recovery and return within one hour, releasing both resources for B, while waiting for A's floor delays B, the earlier departure may win. The forecast must still prove cover endurance and complete subsequent recovery; it does not claim the latest feasible early start or global optimality. Exhausted A cannot use this exception.
-
-A batch includes at most sixteen candidates including baseline, each processing at most sixty-four discrete nodes. Nodes include advances through skill or personal-limit boundaries, room-operation completion and backup transitions; mood queries alone do not count. An attempted sixty-fifth node records exhaustion without further processing. Candidate truncation, baseline exhaustion or any candidate exhaustion stops remaining doomed work and disallows an early decision. Existing legal scheduling continues; an incomplete search does not make the configuration illegal.
-
-Existing rules retain replacement lists and order, groups and multiple bindings, exhaustion, personal limits, full recovery, recovery tiers, protected beds and dorm-isolation preferences, including permitted unavoidable cohabitation. Operators not yet occupying their effective primary positions are reconciled by existing scheduling before prediction uses the new state. Training, crafting, Fiammetta charging and rescue retain their owners.
-
-Projection does not cross a special task with an unproven ending state by inventing resource changes. A backup transition changing participating group identities cannot prove early rest using stale members. Real tasks and timestamps remain; normal execution or actual backup reconciliation supplies the next planning input. These limits reject only unproven early advice and do not block independent legacy work.
-
-### Replanning and execution
-
-Replan after initialization observations, normal room calibration, completed arrangements or specialized actions, and changes to effective plans, skills, personal limits, recovery state or task dependencies. Advancing time without relevant changes reuses absolute deadlines. A new successful same-value observation is new evidence; unchanged failed-task readback creates no timed retry.
-
-One empty `NOT_SPECIFIC` task carries `mood_control_event` and participates only in wake ordering. Its due branch runs in memory before generic room-reading dispatch. Valid due early advice materializes once, and consumed events are not recreated. Disabling, restart or rescue removes prediction-only wakes while actual arrangements, started work and retained failures keep their existing lifecycles.
-
-Before the first physical arrangement, new observations must re-establish early eligibility and timing. Backup convergence that enlarges an arrangement rechecks its operation window. Started arrangements preserve remaining work rather than rebuilding from intermediate occupants. Complete backup convergence carries the same evidence without recursively searching all candidates. Unmaterialized advice and search caches are not persisted; plain-data evidence retained on concrete tasks is revalidated before unstarted execution.
-
-### Performance and simulation
-
-Reuse same-time mood and deadline trajectories. Known-rate current-value queries avoid model copies; target queries stop before calculating post-target skill effects. Each projected arrangement reuses absolute deadlines until staffing changes. Relevant facts determine the input signature, rather than object addresses, elapsed time or a bare model revision.
-
-INFO diagnostics distinguish evaluated candidates, enumerated candidates, processed nodes and arrangement trace events, with total time, model time, reuse and exhaustion. Model time belongs to total time and is not added again to nested backup calculations.
-
-The [income-simulation policy mapping](../../../../docs/subsystems/plan-editor.md#predictive-mood-control-simulation) consumes the same setting; both modes still calculate physical mood. The TypeScript [planning adapter](../../../../ui/src/riic/vendor/scheduler/mowerPredictivePlanning.ts) uses existing matching and recovery owners and shares inputs and expected traces with Python. Compiler and successful reports identify policy version and selection. Historical successful results remain available; missing policy fields do not represent new-policy results. Shared formulas alone do not establish policy parity.
+Reusing the existing matcher and recovery metadata keeps early timing subject to the same resource constraints as normal shifts. Isolated projections permit comparing alternatives without reserving real beds. The [simulation policy mapping](../../../../docs/subsystems/plan-editor.md#predictive-mood-control-simulation) shares the decision constraints; equal formulas or equal final income alone cannot establish scheduling parity.
 
 ## Alternatives considered
 

@@ -143,6 +143,7 @@ export function mowerCorrectionPlan(data:MowerSchedulingData,skipDorm=false,expl
  }
  for(const [room,names] of Object.entries(plan))if(skipDorm&&room.startsWith('dorm')&&names.every(n=>n==='Free'||n==='Current'))delete plan[room]
  for(const op of Object.values(data.operators))if(data.busyRestingNames.has(op.name)&&op.room==='train')delete plan.train
+ for(const [room,row] of Object.entries(plan))row.forEach((_,index)=>{if(explicitSlots.has(alphaPosition(room,index)))row[index]='Current'})
  preferMowerRestingReplacements(data,plan)
  if(data.alpha){
   alphaCorrectGroupDorms(data,plan)
