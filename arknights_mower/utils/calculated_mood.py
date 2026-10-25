@@ -8,10 +8,69 @@ import threading
 from bisect import bisect_left
 from collections import OrderedDict
 from datetime import datetime, timedelta
+from functools import wraps
 from pathlib import Path
+from time import perf_counter
 
 _runtime = threading.local()
 _DATA = Path(__file__).parents[1] / "data" / "mood"
+
+
+def log_mood_calculation(label):
+    """按调度批次汇总模型同步与预测耗时，嵌套批次共用外层统计。"""
+
+    def decorate(function):
+        @wraps(function)
+        def wrapped(self, *args, **kwargs):
+            if (
+                not getattr(
+                    getattr(self, "op_data", None), "mood_calculation_enabled", False
+                )
+                or getattr(_runtime, "timing", None) is not None
+            ):
+                return function(self, *args, **kwargs)
+            timing = {"elapsed": 0.0, "calls": 0, "measuring": False}
+            _runtime.timing = timing
+            result = "完成"
+            try:
+                return function(self, *args, **kwargs)
+            except BaseException:
+                result = "中断"
+                raise
+            finally:
+                _runtime.timing = None
+                if timing["calls"]:
+                    from arknights_mower.utils.log import logger
+
+                    logger.info(
+                        "实时心情计算耗时：%s，模型同步与预测累计 %.3f 秒，计算调用 %d 次，%s",
+                        label,
+                        timing["elapsed"],
+                        timing["calls"],
+                        result,
+                    )
+
+        return wrapped
+
+    return decorate
+
+
+def measure_mood_calculation(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        timing = getattr(_runtime, "timing", None)
+        if timing is None or timing["measuring"]:
+            return function(*args, **kwargs)
+        timing["measuring"] = True
+        started = perf_counter()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            timing["elapsed"] += perf_counter() - started
+            timing["calls"] += 1
+            timing["measuring"] = False
+
+    return wrapped
 
 
 def shared_rates(payload):
@@ -132,6 +191,7 @@ class CalculatedMood:
         self._cached_rates = result["rates"]
         return result["rates"]
 
+    @measure_mood_calculation
     def advance(self, now=None):
         now = now or datetime.now()
         if self.at is None:
@@ -201,6 +261,7 @@ class CalculatedMood:
         projected.advance(future)
         return cls._deadline_node(projected)
 
+    @measure_mood_calculation
     def value(self, name, now=None):
         if now is not None:
             if not hasattr(_runtime, "future_values"):
@@ -318,6 +379,7 @@ class CalculatedMood:
                 self.moods.pop(name, None)
         return self
 
+    @measure_mood_calculation
     def deadline(self, name, target, now=None, max_hours=240):
         now = now or datetime.now()
         if not hasattr(_runtime, "deadline_trajectories"):
@@ -396,6 +458,7 @@ class CalculatedMood:
         return None
 
 
+@measure_mood_calculation
 def sync_model(owner, now=None, *, advance_clock=True):
     from arknights_mower.utils import config
 

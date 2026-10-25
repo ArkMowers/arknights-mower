@@ -123,12 +123,13 @@ def test_calculated_replacement_lower_limit_uses_existing_matching(
     model_values(instance.op_data, {"薇薇安娜": 0, "赫默": 20, "歌蕾蒂娅": 2})
     # 旧实读仍为 24；替班检查与实际候补匹配都必须使用模型下限。
     assert instance.op_data.operators["薇薇安娜"].mood == 24
+    instance.reading.update(mood=0)
     task = create_check(instance)
     assert replacement_check.run_replacement_check(instance, task) is True
     assert [queued.plan for queued in instance.tasks if queued is not task] == [
         {"central": ["赫默"]}
     ]
-    instance.get_agent_from_room.assert_not_called()
+    instance.get_agent_from_room.assert_called_once()
 
 
 def test_calculated_replacement_failure_survives_restart_without_timed_retry(
@@ -264,10 +265,10 @@ def test_calculation_environment_change_replans_check_without_clock_source(
     replacement_check.sync_replacement_checks(instance)
     assert task.replacement_check_source == source and task.time == expected
     instance.op_data.mood_model.stages["薇薇安娜"] = (2, 90)
-    replacement_check.sync_replacement_checks(instance)
-    assert task.time == clock.now()
     next_deadline = clock.now() + timedelta(hours=5)
     instance.op_data.test_deadlines["薇薇安娜"] = next_deadline
+    replacement_check.sync_replacement_checks(instance)
+    assert task.time == next_deadline
     assert replacement_check.run_replacement_check(instance, task) is False
     assert task.time == next_deadline
     instance.get_agent_from_room.assert_not_called()

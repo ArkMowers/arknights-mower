@@ -468,6 +468,7 @@ class TestBaseScheduler(unittest.TestCase):
         solver.tasks = []
         solver.drone_room = None
         solver.op_data = MagicMock()
+        solver.op_data.mood_calculation_enabled = False
         solver.op_data.exhaust_agent = ["伊内丝"]
         solver.op_data.rest_in_full_group = set()
         solver.op_data.groups = {}

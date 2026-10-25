@@ -829,3 +829,102 @@ def test_owner_query_advances_old_inputs_before_applying_changed_room_level(
     assert data.mood_model.at == NOW + timedelta(hours=1)
     assert data.mood_model.moods[op.name] == pytest.approx(12 - old_rate)
     assert data.mood_model.rooms["dormitory_1"]["level"] == 1
+
+
+def test_infra_mood_timing_excludes_device_work_and_nested_model_calls(
+    solver, monkeypatch
+):
+    from arknights_mower.utils.log import logger
+
+    enable(solver, monkeypatch)
+    ticks = iter([10.0, 10.125])
+    clock = MagicMock(side_effect=lambda: next(ticks))
+    monkeypatch.setattr(calculated_mood, "perf_counter", clock)
+    info = MagicMock()
+    monkeypatch.setattr(logger, "info", info)
+    solver.find = MagicMock(return_value=None)
+    solver.back = MagicMock()
+
+    solver.infra_main()
+
+    solver.back.assert_called_once()
+    assert clock.call_count == 2
+    info.assert_called_once_with(
+        "实时心情计算耗时：%s，模型同步与预测累计 %.3f 秒，计算调用 %d 次，%s",
+        "基建调度",
+        0.125,
+        1,
+        "完成",
+    )
+    assert calculated_mood._runtime.timing is None
+
+
+def test_disabled_mood_timing_does_not_sample_clock_or_sync_model(solver, monkeypatch):
+    from arknights_mower.utils.log import logger
+
+    clock, info, sync = MagicMock(), MagicMock(), MagicMock()
+    monkeypatch.setattr(calculated_mood, "perf_counter", clock)
+    monkeypatch.setattr(calculated_mood, "sync_model", sync)
+    monkeypatch.setattr(logger, "info", info)
+    solver.find = MagicMock(return_value=None)
+    solver.back = MagicMock()
+
+    solver.infra_main()
+
+    clock.assert_not_called()
+    sync.assert_not_called()
+    info.assert_not_called()
+
+
+def test_mood_timing_reports_failure_and_releases_batch(solver, monkeypatch):
+    from arknights_mower.utils.log import logger
+
+    enable(solver, monkeypatch)
+    failure = RuntimeError("snapshot unavailable")
+    monkeypatch.setattr(
+        "arknights_mower.utils.mastery_recommendation.get_cultivate_snapshot",
+        MagicMock(side_effect=failure),
+    )
+    ticks = iter([20.0, 20.25])
+    monkeypatch.setattr(calculated_mood, "perf_counter", lambda: next(ticks))
+    info = MagicMock()
+    monkeypatch.setattr(logger, "info", info)
+
+    with pytest.raises(RuntimeError) as raised:
+        solver.infra_main()
+
+    assert raised.value is failure
+    assert info.call_args.args[1:] == ("基建调度", 0.25, 1, "中断")
+    assert calculated_mood._runtime.timing is None
+
+
+def test_planning_timing_includes_projection_queries_without_between_call_work(
+    solver, monkeypatch
+):
+    from arknights_mower.utils.log import logger
+
+    data = enable(solver, monkeypatch)
+    ticks = iter([10.0, 10.125, 20.0, 20.25])
+    clock = MagicMock(side_effect=lambda: next(ticks))
+    monkeypatch.setattr(calculated_mood, "perf_counter", clock)
+    info = MagicMock()
+    monkeypatch.setattr(logger, "info", info)
+
+    def plan_recovery():
+        assert data.calculated_mood_rate("伊内丝", NOW + timedelta(hours=1)) > 0
+        assert data.operators["伊内丝"].current_mood(NOW + timedelta(hours=1)) < 12
+        return False
+
+    solver._plan_dorm_recovery = plan_recovery
+    solver.plan_solver()
+
+    assert clock.call_count == 4
+    info.assert_called_once_with(
+        "实时心情计算耗时：%s，模型同步与预测累计 %.3f 秒，计算调用 %d 次，%s",
+        "普通换班规划",
+        0.375,
+        2,
+        "完成",
+    )
+    assert data.mood_model.at == NOW
+    assert data.mood_model.moods["伊内丝"] == 12

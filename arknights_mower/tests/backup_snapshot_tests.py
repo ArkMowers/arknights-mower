@@ -179,3 +179,30 @@ def test_changed_observation_activates_backup_after_unchanged_check(solver):
     assert solver.op_data.plan["meeting"][0].replacement == ["砾"]
     assert solver.op_data.get_current_operator("meeting", 0).name == "伊内丝"
     assert len(solver.tasks) == 2
+
+
+def test_unchanged_backup_does_not_emit_convergence_timing(solver, monkeypatch):
+    from arknights_mower.solvers import base_schedule as base
+
+    info = MagicMock()
+    monkeypatch.setattr(base.logger, "info", info)
+    assert solver.backup_plan_solver() is False
+    assert not any("收敛演算耗时" in call.args[0] for call in info.call_args_list)
+
+
+def test_backup_timing_includes_initial_selection_and_all_rounds(solver, monkeypatch):
+    from arknights_mower.solvers import base_schedule as base
+
+    solver.op_data.operators["伊内丝"].mood = 5
+    ticks = iter([1.0, 1.25, 2.0, 2.5])
+    monkeypatch.setattr(base, "perf_counter", lambda: next(ticks))
+    info = MagicMock()
+    monkeypatch.setattr(base.logger, "info", info)
+
+    assert solver.backup_plan_solver() is False
+    assert solver.op_data.plan_condition == [True]
+
+    records = [call for call in info.call_args_list if "收敛演算耗时" in call.args[0]]
+    assert len(records) == 1
+    assert records[0].args[1:] == ("副表切换", 0.75, "副表切换 2 轮", "已收敛")
+    assert base._backup_timing_runtime.current is None
