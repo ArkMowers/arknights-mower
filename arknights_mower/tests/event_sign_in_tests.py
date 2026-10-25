@@ -1000,3 +1000,143 @@ def test_late_presentation_cannot_extend_past_the_global_deadline(activity):
     assert state.presentations_handled == [(2, "costume_animation")]
     assert state.claimed == []
     assert state.now == 180
+
+
+@pytest.mark.parametrize("stage", ["card", "operator", "material", "close"])
+def test_slow_capture_cannot_send_input_after_the_operation_budget(
+    activity, monkeypatch, stage
+):
+    solver, state, _ = activity
+    tap = solver.tap.side_effect
+    solver.device = Mock()
+    solver.device.tap.side_effect = lambda point: tap(point, interval=0)
+    solver.tap = sign_in.EventSignInSolver.tap.__get__(solver)
+
+    if stage in ("operator", "material"):
+        state.presentation = "operator" if stage == "operator" else None
+        find = solver.find
+
+        def delayed_find(name):
+            result = find(name)
+            if result and name == (
+                "recruit/agent_token" if stage == "operator" else "materiel_ico"
+            ):
+                state.now = 181
+            return result
+
+        monkeypatch.setattr(solver, "find", delayed_find)
+    elif stage == "card":
+        panel_states = solver._panel_states
+
+        def delayed_panel_states():
+            result = panel_states()
+            if state.panel_updates >= 2:
+                state.now = 181
+            return result
+
+        monkeypatch.setattr(solver, "_panel_states", delayed_panel_states)
+    else:
+        set_available(state)
+        check_announcement = solver.recog.check_announcement
+        observations = 0
+
+        def delayed_close_position():
+            nonlocal observations
+            position = check_announcement()
+            if position is not None:
+                observations += 1
+                if observations >= 2:
+                    state.now = 181
+            return position
+
+        monkeypatch.setattr(solver.recog, "check_announcement", delayed_close_position)
+
+    assert solver.run() is False
+
+    assert state.inputs == [((172, 160), "index")] + (
+        [((1100, 430), "panel")] if stage in ("operator", "material") else []
+    )
+    assert state.claimed == []
+    assert solver.claimed_days == set()
+
+
+@pytest.mark.parametrize("action", ["tap", "swipe", "back"])
+def test_expired_navigation_budget_blocks_the_device_input(activity, action):
+    solver, state, _ = activity
+    solver.deadline = 180
+    state.now = 181
+    solver.device = Mock()
+
+    with pytest.raises(sign_in.RecognizeError, match="活动签到操作超时"):
+        if action == "tap":
+            sign_in.EventSignInSolver.tap(solver, (100, 100), interval=0)
+        elif action == "swipe":
+            sign_in.EventSignInSolver.swipe(solver, (100, 100), (100, 0), interval=0)
+        else:
+            sign_in.EventSignInSolver.back(solver, interval=0)
+
+    assert solver.device.mock_calls == []
+
+
+@pytest.mark.parametrize("stage", ["material", "operator", "claimed"])
+def test_late_reward_observation_cannot_advance_or_complete_its_stage(
+    activity, monkeypatch, stage
+):
+    solver, state, _ = activity
+    if stage == "claimed":
+        panel_states = solver._panel_states
+        confirmations = 0
+
+        def late_claimed_state():
+            nonlocal confirmations
+            result = panel_states()
+            if result is not None and state.claimed:
+                confirmations += 1
+                if confirmations == 2:
+                    state.now += 16
+            return result
+
+        monkeypatch.setattr(solver, "_panel_states", late_claimed_state)
+    else:
+        state.presentation = "operator" if stage == "operator" else None
+        find = solver.find
+
+        def late_reward_page(name):
+            result = find(name)
+            if result and name == (
+                "recruit/agent_token" if stage == "operator" else "materiel_ico"
+            ):
+                state.now += 16
+            return result
+
+        monkeypatch.setattr(solver, "find", late_reward_page)
+
+    assert solver.run() is False
+
+    assert state.now < 35
+    assert state.inputs == [((172, 160), "index"), ((1100, 430), "panel")] + (
+        [((960, 960), "reward")] if stage == "claimed" else []
+    )
+    assert state.presentations_handled == []
+    assert solver.claimed_days == set()
+
+
+def test_late_home_confirmation_cannot_complete_after_the_operation_budget(
+    activity, monkeypatch
+):
+    solver, state, _ = activity
+    set_available(state)
+    detect_index = solver.recog.detect_index_scene
+
+    def late_home_confirmation():
+        confirmed = detect_index()
+        if len(state.inputs) == 2:
+            state.now = 181
+        return confirmed
+
+    monkeypatch.setattr(solver.recog, "detect_index_scene", late_home_confirmation)
+
+    assert solver.run() is False
+
+    assert state.inputs == [((172, 160), "index"), ((1875, 152), "panel")]
+    assert state.claimed == []

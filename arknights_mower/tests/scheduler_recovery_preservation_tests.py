@@ -76,6 +76,8 @@ def scheduler(monkeypatch):
     solver.device = Mock()
     solver.recog = Mock()
     solver.party_time = solver.free_clue = solver.credit_fight = None
+    solver.daily_event_sign_in = Clock.current.date() - timedelta(days=1)
+    solver.daily_event_sign_in_attempt = None
     solver.scene = Mock(return_value=base_schedule.Scene.INFRA_MAIN)
     solver.find = Mock(return_value=True)
     solver.check_current_focus = Mock()
@@ -166,6 +168,11 @@ def test_depot_mastery_dispatch_keeps_source_release_available(
     monkeypatch.setattr(main, "refresh_resource_at_boundary", Mock())
     monkeypatch.setattr(main.NewsChecker, "get_maintenance", Mock(return_value=None))
     monkeypatch.setattr(main, "_apply_version_update_resting_threshold", Mock())
+    monkeypatch.setattr(
+        main,
+        "_resume_device_dispatch",
+        Mock(side_effect=AssertionError("unexpected device recovery during dispatch")),
+    )
     depot = tmp_path / "depotresult.csv"
     depot.touch()
     monkeypatch.setattr(main, "get_path", lambda value: depot)

@@ -145,6 +145,18 @@ class EventSignInSolver(SceneGraphSolver):
         self._check_budget()
         return super().scene()
 
+    def tap(self, poly, x_rate=0.5, y_rate=0.5, interval=1):
+        self._check_budget()
+        super().tap(poly, x_rate, y_rate, interval)
+
+    def swipe(self, start, movement, duration=100, interval=1):
+        self._check_budget()
+        super().swipe(start, movement, duration, interval)
+
+    def back(self, interval=1):
+        self._check_budget()
+        super().back(interval)
+
     def sleep(self, interval=1):
         self._check_budget()
         super().sleep(min(interval, max(0, self.deadline - time.monotonic())))
@@ -239,13 +251,20 @@ class EventSignInSolver(SceneGraphSolver):
             if time.monotonic() >= deadline:
                 break
             self.recog.update()
-            if self.find("materiel_ico"):
+            material = self.find("materiel_ico")
+            self._check_budget()
+            if time.monotonic() >= deadline:
+                break
+            if material:
                 if not dismissed:
                     logger.info("第 %s 日签到奖励的物资领取页面已打开", day)
                     self.tap((960, 960), interval=0)
                     dismissed = True
                 stable = 0
             elif dismissed and (states := self._panel_states()) is not None:
+                self._check_budget()
+                if time.monotonic() >= deadline:
+                    break
                 if states[day - 1] == "claimed":
                     stable += 1
                     if stable >= 2:
@@ -254,6 +273,9 @@ class EventSignInSolver(SceneGraphSolver):
                     stable = 0
             elif not dismissed and self._panel_states() is None:
                 presentation = self._reward_presentation()
+                self._check_budget()
+                if time.monotonic() >= deadline:
+                    break
                 if presentation is not None and presentation[0] not in presentations:
                     name, position = presentation
                     if name == "时装动画":
@@ -276,7 +298,9 @@ class EventSignInSolver(SceneGraphSolver):
         for _ in range(8):
             self._check_budget()
             self.recog.update()
-            if self.recog.detect_index_scene():
+            at_home = self.recog.detect_index_scene()
+            self._check_budget()
+            if at_home:
                 logger.info("活动签到完成，已返回首页")
                 return True
             self.sleep(0.5)
