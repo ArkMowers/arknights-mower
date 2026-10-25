@@ -36,7 +36,7 @@ from arknights_mower.utils.config.plan_advanced import (
     export_advanced_settings,
 )
 from arknights_mower.utils.config_backup import MAX_BACKUP_BYTES, backup_lock
-from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
+from arknights_mower.utils.csv_utils import EmptyDataError, parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.diagnostics import (
     archive_window,
@@ -3684,13 +3684,14 @@ def date2str(target: datetime.date):
 
 
 @app.route("/report/getReportData")
+@require_token
 def get_report_data():
     record_path = get_path("@app/tmp/report.csv")
     try:
         format_data = []
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
-            return False
+            return []
         data = read_dicts(record_path, encoding="gbk")
         for row in data:
             row["赤金"] = parse_cell_num(row["赤金"])
@@ -3744,68 +3745,42 @@ def get_report_data():
                 )
         logger.debug(format_data)
         return format_data
+    except EmptyDataError:
+        return []
     except PermissionError:
         logger.info("report.csv正在被占用")
+        return {"error": "report.csv 正在被其他程序占用，请关闭后刷新"}, 503
 
 
 @app.route("/report/getOrundumData")
+@require_token
 def get_orundum_data():
     record_path = get_path("@app/tmp/report.csv")
     try:
         format_data = []
         if os.path.exists(record_path) is False:
             logger.debug("基报不存在")
-            return False
+            return []
         data = read_dicts(record_path, encoding="gbk")
-        earliest_date = datetime.datetime.now()
-
-        begin_make_orundum = (earliest_date + datetime.timedelta(days=1)).date()
         for item in data:
-            # 脏数据（读取失败为 None）保留行但置空，避免被当作 0 污染累计总量
             item["合成玉"] = parse_cell_num(item["合成玉"])
             item["合成玉订单数量"] = parse_cell_num(item["合成玉订单数量"])
             if item["合成玉"] is None:
                 logger.debug("合成玉读取失败：{}".format(item.get("Unnamed: 0")))
-        if len(data) >= 15:
-            for i in range(len(data) - 1, -1, -1):
-                if 0 < i < len(data) - 15:
-                    data.pop(i)
-                else:
-                    logger.debug("合成玉{}".format(data[i]["合成玉"]))
-                    if data[i]["合成玉"] is not None and data[i]["合成玉"] > 0:
-                        begin_make_orundum = str2date(data[i]["Unnamed: 0"])
-        else:
-            for item in data:
-                if item["合成玉"] is not None and item["合成玉"] > 0:
-                    begin_make_orundum = str2date(item["Unnamed: 0"])
-        if begin_make_orundum > earliest_date.date():
-            return format_data
         total_orundum = 0
         for item in data:
-            if item["合成玉"] is None:
-                # 脏行保留、累计值断开，与赤金等字段的 null 表现一致
-                format_data.append(
-                    {
-                        "日期": date2str(
-                            str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
-                        ),
-                        "合成玉": None,
-                        "合成玉订单数量": None,
-                        "抽数": None,
-                        "累计制造合成玉": None,
-                    }
-                )
-                continue
-            total_orundum = total_orundum + item["合成玉"]
+            amount = item["合成玉"]
+            if amount is not None:
+                total_orundum += amount
             format_data.append(
                 {
                     "日期": date2str(
                         str2date(item["Unnamed: 0"]) - datetime.timedelta(days=1)
                     ),
-                    "合成玉": item["合成玉"],
+                    "合成玉": amount,
                     "合成玉订单数量": item["合成玉订单数量"],
-                    "抽数": round((item["合成玉"] / 600), 1),
-                    "累计制造合成玉": total_orundum,
+                    "抽数": round(amount / 600, 1) if amount is not None else None,
+                    "累计制造合成玉": total_orundum if amount is not None else None,
                 }
             )
 
@@ -3826,8 +3801,11 @@ def get_orundum_data():
                 )
         logger.debug(format_data)
         return format_data
+    except EmptyDataError:
+        return []
     except PermissionError:
         logger.info("report.csv正在被占用")
+        return {"error": "report.csv 正在被其他程序占用，请关闭后刷新"}, 503
 
 
 @contextmanager
