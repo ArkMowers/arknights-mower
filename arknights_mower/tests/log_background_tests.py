@@ -14,9 +14,9 @@ from arknights_mower.utils.config import gui
 from arknights_mower.views.gui import gui_bp
 
 
-def image_bytes(format="PNG", color="red"):
+def image_bytes(format="PNG", color="red", size=(40, 24)):
     stream = BytesIO()
-    Image.new("RGB", (40, 24), color).save(stream, format=format)
+    Image.new("RGB", size, color).save(stream, format=format)
     return stream.getvalue()
 
 
@@ -134,6 +134,58 @@ class LogBackgroundTests(unittest.TestCase):
             alpha = decoded.convert("RGBA").getchannel("A")
             self.assertEqual(alpha.getpixel((0, 0)), 0)
             self.assertEqual(alpha.getpixel((1, 0)), 255)
+
+    def test_long_images_fit_the_webp_limit_without_enlarging_smaller_images(self):
+        for original, expected in (
+            ((40, 20), (40, 20)),
+            ((20, 40), (20, 40)),
+            ((39, 20), (39, 20)),
+            ((20, 39), (20, 39)),
+            ((41, 20), (40, 20)),
+            ((20, 41), (20, 40)),
+            ((80, 40), (40, 20)),
+            ((40, 80), (20, 40)),
+        ):
+            with (
+                self.subTest(original=original),
+                patch.object(log_background, "MAX_WEBP_DIMENSION", 40),
+            ):
+                response = self.upload(image_bytes(size=original))
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self.image_path.read_bytes(), response.data)
+                with Image.open(BytesIO(response.data)) as decoded:
+                    self.assertEqual(decoded.size, expected)
+
+    def test_resizing_keeps_exif_orientation_and_transparency(self):
+        source = Image.new("RGBA", (80, 40), (255, 0, 0, 96))
+        exif = source.getexif()
+        exif[274] = 6
+        raw = BytesIO()
+        source.save(raw, format="PNG", exif=exif)
+        with patch.object(log_background, "MAX_WEBP_DIMENSION", 40):
+            response = self.upload(raw.getvalue())
+        self.assertEqual(response.status_code, 200)
+        with Image.open(BytesIO(response.data)) as decoded:
+            self.assertEqual(decoded.size, (20, 40))
+            self.assertEqual(
+                decoded.convert("RGBA").getchannel("A").getextrema(), (96, 96)
+            )
+
+    def test_encoder_errors_keep_the_saved_image_and_return_a_readable_message(self):
+        self.upload()
+        before = self.image_path.read_bytes()
+        raw = image_bytes(color="blue")
+        with patch.object(
+            Image.Image, "save", side_effect=ValueError("encoding error 5")
+        ):
+            response = self.upload(raw)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json["message"], "图片无法转换为背景图，请选择其他图片"
+        )
+        self.assertEqual(self.image_path.read_bytes(), before)
+        self.assertEqual(self.upload(raw).status_code, 200)
+        self.assertNotEqual(self.image_path.read_bytes(), before)
 
     def test_unknown_length_uploads_are_bounded_and_not_read_without_authentication(
         self,

@@ -10,6 +10,7 @@ from arknights_mower.utils.config_backup import backup_lock
 
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_IMAGE_PIXELS = 24_000_000
+MAX_WEBP_DIMENSION = 16_383
 FILENAME = "log-background.webp"
 
 
@@ -34,8 +35,14 @@ def _encode(content):
                     if "A" in source.getbands() or "transparency" in source.info
                     else "RGB"
                 )
+                image.thumbnail(
+                    (MAX_WEBP_DIMENSION, MAX_WEBP_DIMENSION), Image.Resampling.LANCZOS
+                )
                 output = BytesIO()
-                image.save(output, format="WEBP", quality=90)
+                try:
+                    image.save(output, format="WEBP", quality=90)
+                except ValueError as exc:
+                    raise ValueError("图片无法转换为背景图，请选择其他图片") from exc
         encoded = output.getvalue()
         if len(encoded) > MAX_IMAGE_BYTES:
             raise ValueError("处理后的图片超过 8 MiB，请选择较小的图片")
