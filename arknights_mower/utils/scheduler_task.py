@@ -2000,6 +2000,13 @@ def generate_plan_by_drom(
 def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
     now = now or getattr(op_data, "_projection_now", None) or datetime.now()
     conf = getattr(op_data, "runtime_conf", None) or config.conf
+    for task in tasks:
+        for name in list(task.release_dorm_targets()):
+            if op_data.is_free_room_excluded(name):
+                task.remove_release_dorm_operator(name)
+    tasks[:] = [
+        task for task in tasks if task.type != TaskTypes.RELEASE_DORM or task.plan
+    ]
     # 部分换班的剩余目标必须先确认，不能从中间驻员状态重建回班队列。
     if any(
         getattr(task, "backup_shift_active", False)
@@ -2531,6 +2538,10 @@ def plan_mood_limit_releases(
     op_data, *, recovery_targets=None, previous_tasks=(), now=None
 ):
     now = now or getattr(op_data, "_projection_now", None) or datetime.now()
+    for task in previous_tasks:
+        for name in list(task.release_dorm_targets()):
+            if op_data.is_free_room_excluded(name):
+                task.remove_release_dorm_operator(name)
     previous = {
         task.meta_data: task
         for task in previous_tasks
@@ -2540,6 +2551,7 @@ def plan_mood_limit_releases(
         task
         for task in previous_tasks
         if task.retains_execution
+        and task.plan
         and (
             getattr(task, "strict_mood_limit", False)
             or recovery_targets is not None
@@ -2563,6 +2575,8 @@ def plan_mood_limit_releases(
         if op is None or (op.current_room, op.current_index) != bed.position:
             continue
         if not op_data.is_recovery_dorm(bed, op.name):
+            continue
+        if op_data.is_free_room_excluded(op.name):
             continue
         target = (recovery_targets or {}).get(op.name)
         if (
@@ -2686,8 +2700,8 @@ def prioritize_new_dorm_recovery(
         if bed.name and (
             bed.name not in op_data.operators
             or bed.name in reserved_names
-            or op_data.is_free_room_excluded(bed.name)
             or projected.rest_mood_complete(bed.name)
+            and not projected.is_free_room_excluded(bed.name)
             or resting_tier(projected, bed.name) == RestingTier.EXCLUDED
         ):
             locked_rooms.add(bed.position[0])
@@ -2724,7 +2738,11 @@ def prioritize_new_dorm_recovery(
         if not name:
             return filler_tier
         op = projected.operators[name]
-        if has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit:
+        if (
+            not projected.is_free_room_excluded(name)
+            and has_resting_mood(op, now)
+            and resting_mood(op, now) >= op.upper_limit
+        ):
             return filler_tier
         return resting_tier(projected, name)
 
@@ -2909,7 +2927,6 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=(), *, reserved_names=()):
         and (
             not bed.name
             or bed.name in projected.operators
-            and not projected.is_free_room_excluded(bed.name)
             and resting_tier(projected, bed.name) != RestingTier.EXCLUDED
         )
         and (bed.position != first_positions[bed.position[0]] or bed.name in newcomers)
@@ -2946,7 +2963,8 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=(), *, reserved_names=()):
         op = projected.operators.get(bed.name)
         if (
             op is None
-            or has_resting_mood(op, now)
+            or not projected.is_free_room_excluded(bed.name)
+            and has_resting_mood(op, now)
             and resting_mood(op, now) >= op.upper_limit
         ):
             return int(RestingTier.EXCLUDED) + 1

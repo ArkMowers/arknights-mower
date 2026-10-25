@@ -54,7 +54,7 @@ export function planMowerDormIsolation(data: MowerSchedulingData, plan: MowerTas
   }
   const isFirst = (bed: typeof beds[number]) => bed.position[1] === first.get(bed.position[0])
   const movable = beds.filter(bed => !reserved.has(alphaPosition(...bed.position)) && !protectedNames.has(bed.name)
-    && (!bed.name || projected.operators[bed.name] && !projected.freeRoomExcluded(bed.name) && alphaRestingTier(projected, bed.name) !== 7)
+    && (!bed.name || projected.operators[bed.name] && alphaRestingTier(projected, bed.name) !== 7)
     && (!isFirst(bed) || newcomers.has(bed.name)))
   if (movable.length < 2) return plan
   const result = structuredClone(plan)
@@ -72,7 +72,7 @@ export function planMowerDormIsolation(data: MowerSchedulingData, plan: MowerTas
   }
   const recoveryRank = (bed: typeof beds[number]) => {
     const op = projected.operators[bed.name]
-    return !op || hasRestingMood(op, projected.nowMicros) && restingMood(op, projected.nowMicros) >= op.upperLimit ? 8 : alphaRestingTier(projected, bed.name)
+    return !op || !projected.freeRoomExcluded(bed.name) && hasRestingMood(op, projected.nowMicros) && restingMood(op, projected.nowMicros) >= op.upperLimit ? 8 : alphaRestingTier(projected, bed.name)
   }
   const recoveryScore = () => allocationGroups.flatMap(group => group.map(recoveryRank).sort((a, b) => a - b))
   type SwapKey = [gain: number, recovery: number[], targetMoves: number, residentMoves: number]

@@ -262,7 +262,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         const slots=new Set(Object.entries(transition).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[alphaPosition(room,index)]:[])))
         const plan=alphaRebalanceDorms(migration,recovery.dorms,reserved,slots);next.dorms=migration.dorms;mergeMowerShiftTransition(transition,plan,next)
       }
-      for(const [room,names] of Object.entries(transition))if(room.startsWith('dorm'))names.forEach((name,index)=>{if(!['Current','Free',''].includes(name)&&next.restMoodComplete(name)&&next.currentOperator(room,index)?.name!==name)names[index]='Current'})
+      for(const [room,names] of Object.entries(transition))if(room.startsWith('dorm'))names.forEach((name,index)=>{if(!['Current','Free',''].includes(name)&&next.restMoodComplete(name)&&!next.freeRoomExcluded(name)&&next.currentOperator(room,index)?.name!==name)names[index]='Current'})
       return stripMowerCurrent(transition)
     },
     activate(conditions,task){

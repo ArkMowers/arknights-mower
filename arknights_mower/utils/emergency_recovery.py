@@ -561,6 +561,15 @@ def emergency_dorm_plan(
         if bed.position not in slots
         and bed.name not in reserved | (set() if reallocate else protected)
     ]
+    retained = {
+        resident.name
+        for bed in beds
+        if reallocate
+        and (resident := data.get_current_operator(*bed.position)) is not None
+        and data.is_free_room_excluded(resident.name)
+    }
+    need.update(retained)
+    ordinary.difference_update(retained)
     plan = {}
     if reallocate:
         # 独立空床预演让旧住客与新恢复者共用排序，不修改实测床位。
@@ -622,9 +631,13 @@ def emergency_dorm_plan(
             data, sorted(ordinary, key=lambda name: (resting_key(data, name), name))
         )
     )
+    unassigned_retained = set(retained)
     for name in ordered:
         op = data.operators[name]
         if (name in residents and not reallocate) or op.is_working():
+            continue
+        # 入场可移动保留住客，但不能用其最后的可用床位安置其他恢复者。
+        if name not in retained and len(beds) <= len(unassigned_retained):
             continue
         active_groups = {op.group} if op.group else set()
         index = probe._find_dorm_slot(
@@ -635,10 +648,13 @@ def emergency_dorm_plan(
             isolation=not reallocate,
         )
         if index is None:
+            if name in retained:
+                return {}
             continue
         bed = beds.pop(index)
         room, position = bed.position
         plan.setdefault(room, ["Current"] * len(data.plan[room]))[position] = name
+        unassigned_retained.discard(name)
     from arknights_mower.utils.scheduler_task import plan_dorm_isolation
 
     return plan_dorm_isolation(data, plan, slots, reserved_names=reserved)

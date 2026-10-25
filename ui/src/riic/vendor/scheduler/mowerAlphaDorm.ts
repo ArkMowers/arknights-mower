@@ -125,7 +125,7 @@ function singleRecoveryBedCost(bed:MowerDormState,beds:readonly MowerDormState[]
  return peers.length>1&&bed.position[1]===Math.min(...peers.map(other=>other.position[1]))?1:0
 }
 export function alphaFindDormSlot(data:MowerSchedulingData,name:string,used:Set<number>,activeGroups?:Set<string>,plan:MowerTaskPlan={},reservedSlots:ReadonlySet<string>=new Set()):number|undefined{
- if(data.restMoodComplete(name)||alphaRestingTier(data,name)===7)return undefined
+ if(data.restMoodComplete(name)&&!data.freeRoomExcluded(name)||alphaRestingTier(data,name)===7)return undefined
  const vip=Object.keys(data.plan).filter(room=>room.startsWith('dorm')).length,indices=orderMowerAlphaDormIndices(data,activeGroups)
  const order=alphaRestingTier(data,name)<=1||data.dormOrder.some(value=>value.endsWith('_low'))?indices:[...indices.slice(vip),...indices.slice(0,vip)]
  const candidates=order.filter(i=>!used.has(i)&&!reservedSlots.has(alphaPosition(...data.dorms[i]!.position))&&alphaSlotTakable(data,data.dorms[i]!,name,activeGroups,plan))
@@ -142,7 +142,7 @@ export function alphaPrioritizeRecovery(data:MowerSchedulingData,plan:MowerTaskP
  for(const slot of [...reservedSlots,...data.reservedProductBeds.keys()])lockedRooms.add(slot.split('\0')[0]!)
  for(const bed of data.dorms){const op=data.operators[bed.name];if(op&&!explicit.has(op.name)&&(op.currentRoom!==bed.position[0]||op.currentIndex!==bed.position[1]))lockedRooms.add(bed.position[0])}
  let beds=orderMowerAlphaDormIndices(projected).map(i=>projected.dorms[i]!).filter(b=>projected.effectiveFreeSlot(b))
- for(const bed of beds)if(bed.name&&(!projected.operators[bed.name]||reservedNames.has(bed.name)||projected.freeRoomExcluded(bed.name)||projected.restMoodComplete(bed.name)||alphaRestingTier(projected,bed.name)===7))lockedRooms.add(bed.position[0])
+ for(const bed of beds)if(bed.name&&(!projected.operators[bed.name]||reservedNames.has(bed.name)||projected.restMoodComplete(bed.name)&&!projected.freeRoomExcluded(bed.name)||alphaRestingTier(projected,bed.name)===7))lockedRooms.add(bed.position[0])
  beds=beds.filter(b=>!lockedRooms.has(b.position[0]))
  const actual=new Map(beds.map(b=>[alphaPosition(...b.position),data.currentOperator(...b.position)?.name??'']))
  if(beds.every(b=>actual.get(alphaPosition(...b.position))===b.name))return plan
@@ -159,7 +159,7 @@ export function alphaPrioritizeRecovery(data:MowerSchedulingData,plan:MowerTaskP
  const tier=(name:string)=>{
   if(!name)return fillerTier
   const op=projected.operators[name]!
-  return hasRestingMood(op,projected.nowMicros)&&restingMood(op,projected.nowMicros)>=op.upperLimit?fillerTier:alphaRestingTier(projected,name)
+  return !projected.freeRoomExcluded(name)&&hasRestingMood(op,projected.nowMicros)&&restingMood(op,projected.nowMicros)>=op.upperLimit?fillerTier:alphaRestingTier(projected,name)
  }
  const names=beds.map(b=>b.name).filter(Boolean).sort((a,b)=>compareAlphaKeys(alphaRestingKey(projected,a),alphaRestingKey(projected,b)))
  const desired=beds.map(b=>tier(b.name)).sort((a,b)=>a-b),allocations=new Map<string,string>()

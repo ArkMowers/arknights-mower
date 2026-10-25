@@ -110,7 +110,7 @@ def test_concurrent_ordinary_arrival_does_not_take_vacated_single_free(residents
     assert projected.get_current_operator(OTHER, 3).name == "夕"
 
 
-@pytest.mark.parametrize("lock", ["queued", "product", "protected", "returning"])
+@pytest.mark.parametrize("lock", ["queued", "product", "returning"])
 def test_departure_preserves_reserved_or_protected_donor(residents, lock):
     data = residents
     slots, names = set(), set()
@@ -118,8 +118,6 @@ def test_departure_preserves_reserved_or_protected_donor(residents, lock):
         slots.add((OTHER, 3))
     elif lock == "product":
         data.reserved_product_beds[(OTHER, 3)] = "苍苔"
-    elif lock == "protected":
-        data.config.free_room_exclusions = ["苍苔"]
     else:
         names.add("苍苔")
     result = prioritize_new_dorm_recovery(
@@ -127,6 +125,15 @@ def test_departure_preserves_reserved_or_protected_donor(residents, lock):
     )
     projected = data.project_arrangements([result])
     assert projected.get_current_operator(OTHER, 3).name == "苍苔"
+
+
+def test_departure_can_move_retained_donor_without_leaving_it_idle(residents):
+    data = residents
+    data.config.free_room_exclusions = ["苍苔"]
+    result = prioritize_new_dorm_recovery(data, {"meeting": ["银灰"]})
+    projected = data.project_arrangements([result])
+    assert projected.get_current_operator(ROOM, 4).name == "苍苔"
+    assert {bed.name for bed in projected.dorm if bed.name} == {"苍苔", "夕", "空爆"}
 
 
 def test_multi_free_target_departure_reallocates_across_dormitories(residents):

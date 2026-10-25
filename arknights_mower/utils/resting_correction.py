@@ -21,7 +21,11 @@ def suppress_completed_dorm_returns(op_data, plan):
         if not room.startswith("dorm"):
             continue
         for index, name in enumerate(row):
-            if name not in PLACEHOLDERS and op_data.rest_mood_complete(name):
+            if (
+                name not in PLACEHOLDERS
+                and op_data.rest_mood_complete(name)
+                and not op_data.is_free_room_excluded(name)
+            ):
                 current = op_data.get_current_operator(room, index)
                 if current is None or current.name != name:
                     row[index] = "Current"

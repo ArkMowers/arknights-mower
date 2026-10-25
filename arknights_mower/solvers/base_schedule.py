@@ -2697,6 +2697,8 @@ class BaseSchedulerSolver(
                 task_plan={room: row},
                 task_type=TaskTypes.RELEASE_DORM,
                 meta_data=name,
+                strict_mood_limit=getattr(task, "strict_mood_limit", False),
+                mood_limit=getattr(task, "mood_limit", None),
             )
             get_time |= self._prepare_release_dorm_member(member)
             if not member.plan:
@@ -2712,7 +2714,8 @@ class BaseSchedulerSolver(
         strict = getattr(task, "strict_mood_limit", False)
         operator = self.op_data.operators.get(task.meta_data)
         if (
-            strict
+            self.op_data.is_free_room_excluded(task.meta_data)
+            or strict
             and not (
                 operator is not None
                 and self.op_data.has_rest_mood_limit(task.meta_data)
@@ -2721,7 +2724,7 @@ class BaseSchedulerSolver(
             or (not strict)
             and self.op_data.skip_idle_dorm_release(task.meta_data)
         ):
-            # 配置已变化，或普通清退对象已受保床保护。
+            # 配置变化或宿舍保留使本人的清退失效，其他住客分别核验。
             task.plan = {}
             return False
         room = next(iter(task.plan), None)
@@ -6128,10 +6131,13 @@ class BaseSchedulerSolver(
             if not (op := projected.operators[name]).workaholic
             and not op.room.startswith("dorm")
             and not op.current_room
-            and not projected.rest_mood_complete(name)
             and (
-                (mood := dorm_candidate_mood(projected, name)) is None
-                or mood < op.upper_limit
+                projected.is_free_room_excluded(name)
+                or not projected.rest_mood_complete(name)
+                and (
+                    (mood := dorm_candidate_mood(projected, name)) is None
+                    or mood < op.upper_limit
+                )
             )
         ]
         if not missing:
@@ -11469,9 +11475,8 @@ class BaseSchedulerSolver(
                 ):
                     continue
                 capped = self.op_data.rest_mood_complete(name)
-                if (
-                    resting_tier(self.op_data, name) != RestingTier.EXCLUDED
-                    and not capped
+                if resting_tier(self.op_data, name) != RestingTier.EXCLUDED and (
+                    not capped or self.op_data.is_free_room_excluded(name)
                 ):
                     continue
                 if expected.get((room, index)) == name:
@@ -11576,7 +11581,7 @@ class BaseSchedulerSolver(
             else set()
         )
         # 名单可能在任务入队后才修改；已写明新入住者的旧补床任务也须保床。
-        # 本次已明确上班或换床的原入住者不受保护，个人上限任务仍可离宿。
+        # 本次已明确上班或换床的原入住者可移动，不能仅因上限清退为空闲。
         for index in range(len(agents)):
             current = self.op_data.get_current_operator(room, index)
             if (
@@ -11585,10 +11590,6 @@ class BaseSchedulerSolver(
                 and self.op_data.is_free_room_excluded(current.name)
                 and self.op_data.is_dynamic_dorm_position(
                     room, index, current.name, group_transitions=group_transitions
-                )
-                and not (
-                    getattr(self.task, "strict_mood_limit", False)
-                    and self.task.meta_data == current.name
                 )
             ):
                 agents[index] = current.name
@@ -11673,6 +11674,7 @@ class BaseSchedulerSolver(
                 and getattr(self.task, "strict_mood_limit", False)
                 and self.task.meta_data == current.name
                 and self.op_data.has_rest_mood_limit(current.name)
+                and not self.op_data.is_free_room_excluded(current.name)
             ):
                 # 上限释放必须真正换出本人，不能被主班床位保护抵消。
                 current = None
@@ -11862,6 +11864,7 @@ class BaseSchedulerSolver(
                 and room.startswith("dorm")
                 and agents[idx] in self.op_data.operators
                 and self.op_data.rest_mood_complete(agents[idx])
+                and not self.op_data.is_free_room_excluded(agents[idx])
                 and self.op_data.is_dynamic_dorm_position(
                     room, idx, agents[idx], group_transitions=group_transitions
                 )

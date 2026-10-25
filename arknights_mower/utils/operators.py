@@ -966,12 +966,11 @@ class Operators:
         )
 
     def is_free_room_excluded(self, name):
-        """名单内入住者不被清退或接管床位；达到个人上限仍须离宿。"""
+        """宿舍保留禁止自动清退为空闲，不限制换床或合法工作安排。"""
         return (
             (bool(name))
             and name in getattr(self.config, "free_room_exclusions", ())
             and resting_tier(self, name) != RestingTier.EXCLUDED
-            and not self.rest_mood_complete(name)
         )
 
     def stop_idle_dorm_search(self, now=None):
@@ -2964,7 +2963,7 @@ class Operators:
         from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
         from arknights_mower.utils.dorm_skills import is_single_recovery_manager
 
-        if self.rest_mood_complete(name):
+        if self.rest_mood_complete(name) and not self.is_free_room_excluded(name):
             return None
         if resting_tier(self, name) == RestingTier.EXCLUDED:
             return None
@@ -3072,15 +3071,23 @@ class Operators:
         self, names, active_groups=None, plan=None, *, reserved_slots=()
     ):
         """先保障必需床位；候补有床则休息，无床则随组离岗待命。"""
-        # 达到个人上限后随组离岗即可，不再占床恢复。
-        names = [name for name in names if not self.rest_mood_complete(name)]
+        # 保留干员随组离岗仍须有床；上限完成不能授权将其安排为空闲。
+        names = [
+            name
+            for name in names
+            if not self.rest_mood_complete(name) or self.is_free_room_excluded(name)
+        ]
         used = {
             index
             for index, bed in enumerate(self.dorm)
             if bed.position in reserved_slots
         }
         assignments = []
-        optional = self.standby_candidates(names)
+        optional = {
+            name
+            for name in self.standby_candidates(names)
+            if not self.is_free_room_excluded(name)
+        }
         ordered_names = sorted(
             names,
             key=lambda name: (

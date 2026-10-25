@@ -76,7 +76,6 @@ def _eligible(data, owner, name, protected, slots, is_busy, required=()):
         and name not in TRADE_ORDER_AGENTS
         and (op.current_room, op.current_index) not in slots
         and not data.is_dorm_replacement(name)
-        and not data.is_free_room_excluded(name)
         and not data.replacement_exhausted(name, operator=owner)
         and not is_busy(name)
     )
