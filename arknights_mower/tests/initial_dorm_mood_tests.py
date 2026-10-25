@@ -210,6 +210,50 @@ def test_saved_state_uses_live_operators_and_tasks_without_card_estimates(
     assert record.current_state()["tasks"] is solver.tasks
 
 
+@pytest.mark.parametrize("include_wakeup", [False, True])
+def test_saved_state_omits_predictive_wakeup_without_changing_live_queue(
+    solver, monkeypatch, include_wakeup
+):
+    from arknights_mower import __main__ as main
+
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    for attr in (
+        "daily_visit_friend",
+        "daily_report",
+        "daily_skland",
+        "daily_mail",
+        "task_count",
+    ):
+        setattr(solver, attr, 0)
+    at = datetime(2026, 10, 1, 10)
+    wake = SchedulerTask(time=at)
+    wake.mood_control_event = {"at": at.timestamp()}
+    task = SchedulerTask(
+        time=at - timedelta(hours=1),
+        task_plan={ROOM: ["银灰"]},
+        task_type=TaskTypes.SHIFT_OFF,
+    )
+    task.execution_failure = {"reason": "wait for observation"}
+    original = solver.tasks = [wake, task] if include_wakeup else [task]
+
+    state = record.current_state()
+    assert solver.tasks is original
+    assert solver.tasks == ([wake, task] if include_wakeup else [task])
+    assert state["tasks"] == [task]
+    if not include_wakeup:
+        assert state["tasks"] is original
+    assert state["tasks"][0] is task
+    assert task.time == at - timedelta(hours=1)
+    restored = pickle.loads(pickle.dumps(state))["tasks"]
+    assert len(restored) == 1
+    assert not getattr(restored[0], "mood_control_event", None)
+    assert (restored[0].time, restored[0].plan, restored[0].execution_failure) == (
+        task.time,
+        task.plan,
+        task.execution_failure,
+    )
+
+
 def test_initialization_blocks_backup_and_position_callbacks(solver):
     data = solver.op_data
     data.evaluate_expression = MagicMock(

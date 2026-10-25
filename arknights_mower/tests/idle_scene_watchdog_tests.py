@@ -112,6 +112,7 @@ def production_idle_scheduler(idle_scheduler, monkeypatch):
         ),
     ]
     solver.op_data = SimpleNamespace(
+        mood_calculation_enabled=False,
         config=SimpleNamespace(free_room=False),
         plan={},
         operators={},

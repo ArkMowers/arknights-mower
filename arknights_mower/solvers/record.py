@@ -270,11 +270,13 @@ def current_state():
     ):
         return None
     data, tasks = base_scheduler.op_data, base_scheduler.tasks
+    if any(getattr(task, "mood_control_event", None) for task in tasks):
+        tasks = [
+            task for task in tasks if not getattr(task, "mood_control_event", None)
+        ]
     return {
         "dorm": data.all_dorms(),
-        "tasks": [
-            task for task in tasks if not getattr(task, "mood_control_event", None)
-        ],
+        "tasks": tasks,
         "waiting_group_shifts": getattr(base_scheduler, "waiting_group_shifts", []),
         "party_time": data.party_time,
         "operators": data.operators,
