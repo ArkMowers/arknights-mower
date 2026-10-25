@@ -183,3 +183,75 @@ it('isolates nested roster, configuration and reservation state passed to backup
  planMowerPredictiveDeparture(data,queue,{...options,predictiveShiftModel:model})
  expect({explicit:data.backupExplicitTasks,plan:data.plan,conditions:data.planConditions,reserved:[...data.reservedProductReplacements],replacements:data.operators.A!.replacement}).toEqual(before)
 })
+
+describe('forecast rate reuse through the production planner',()=>{
+ it.each(['initial','rollout'])('keeps the deadline when the %s rate calculation overruns',stage=>{
+  let clock=0,initialForecast:MowerSchedulingData|undefined,expiredState:MowerSchedulingData|undefined,rolloutCalls=0
+  const timer=vi.spyOn(performance,'now').mockImplementation(()=>clock)
+  try {
+   const {data,queue,options,diagnostics}=fixture(),forecast=options.coordinationRates
+   options.coordinationRates=state=>{
+    const rates=forecast(state)
+    if(state!==data){
+     initialForecast??=state
+     if(stage==='initial'&&state===initialForecast||stage==='rollout'&&state!==initialForecast&&++rolloutCalls===2){expiredState=state;clock=1100}
+    }
+    return rates
+   }
+   expect(planMowerPredictiveDeparture(data,queue,options)).toBeUndefined()
+   expect(expiredState).toBeDefined();expect(expiredState!.nowMicros).toBe(0)
+   expect(diagnostics[0]).toMatchObject({status:'budget-exhausted'})
+   syncMowerPredictiveWake(data,queue);expect(queue.tasks).toEqual([])
+   expect(data.operators.A!.mood).toBe(2);expect(data.nowMicros).toBe(0)
+  }finally{timer.mockRestore()}
+ })
+ it('computes each initial staffing boundary once and retains piecewise personal deadlines',()=>{
+  const timer=vi.spyOn(performance,'now').mockReturnValue(0)
+  try {
+   const {data,queue,options}=predictiveFixture({moods:{A:13,B:14,X:24},workRate:1,workBelow12:2,recoveryRate:24,threshold:0,exhaust:[],restInFull:['A','B'],roomSeconds:300})
+   const forecast=options.coordinationRates!,calls:{at:number;a:number;b:number;work:Readonly<Record<string,number>>}[]=[]
+   let initialForecast:MowerSchedulingData|undefined
+   options.coordinationRates=state=>{
+    const rates=forecast(state)
+    if(state!==data)initialForecast??=state
+    if(state===initialForecast)calls.push({at:state.nowMicros,a:state.operators.A!.mood,b:state.operators.B!.mood,work:rates!.work})
+    return rates
+   }
+   const evidence=planMowerPredictiveDeparture(data,queue,options)
+   expect(calls.length).toBeLessThanOrEqual(9)
+   expect(calls.map(c=>c.at/3_600_000_000)).toEqual([0,1,2,3,4,5,6,7,8])
+   expect(calls[1]).toMatchObject({a:12,b:13,work:{A:2,B:1}})
+   expect(calls[2]).toMatchObject({a:10,b:12,work:{A:2,B:2}})
+   expect(calls.at(-2)).toMatchObject({a:0,b:2})
+   expect(calls.at(-1)).toMatchObject({a:0,b:0})
+   expect(evidence).toMatchObject({names:['A'],startMicros:0,plan:{room_1_1:['X'],dormitory_1:['A']}})
+   expect(data.operators.A!.mood).toBe(13);expect(data.operators.B!.mood).toBe(14)
+   expect(data.nowMicros).toBe(0);expect(queue.tasks).toEqual([])
+  }finally{timer.mockRestore()}
+ })
+ it('limits model calls while retaining skill changes, room handoffs and complete recovery',()=>{
+  const timer=vi.spyOn(performance,'now').mockReturnValue(0)
+  try {
+   const {data,queue,options,diagnostics}=predictiveFixture({moods:{A:13,B:14,X:24},workRate:1,workBelow12:2,recoveryRate:24,threshold:0,exhaust:[],restInFull:['A','B'],roomSeconds:300})
+   const forecast=vi.fn(options.coordinationRates!)
+   options.coordinationRates=forecast
+   const evidence=planMowerPredictiveDeparture(data,queue,options),report=diagnostics[0]!,result=report.result!
+   expect(forecast).toHaveBeenCalledTimes(report.modelCalls)
+   expect(report.modelCalls).toBeLessThanOrEqual(350)
+   expect(result).toMatchObject({decision:'operator:A',status:'feasible',candidates:4,enumeratedCandidates:4})
+   expect(result.events.map(({time,type,group})=>({time,type,group}))).toEqual([
+    {time:0,type:'departure-start',group:'operator:A'},
+    {time:600,type:'departure-complete',group:'operator:A'},
+    {time:2262.5,type:'return-start',group:'operator:A'},
+    {time:2562.5,type:'return-complete',group:'operator:A'},
+    {time:8*3600,type:'departure-start',group:'operator:B'},
+    {time:8*3600+600,type:'departure-complete',group:'operator:B'},
+    {time:8*3600+4200,type:'return-start',group:'operator:B'},
+    {time:8*3600+4500,type:'return-complete',group:'operator:B'}
+   ])
+   expect(result.score[0]).toBe(0);expect(result.score[2]).toBe(4);expect(result.score[3]).toBe(7*3600)
+   expect(evidence?.plan).toEqual({room_1_1:['X'],dormitory_1:['A']})
+   expect(data.operators.A!.currentRoom).toBe('room_1_1');expect(data.dorms[0]!.name).toBe('')
+  }finally{timer.mockRestore()}
+ })
+})

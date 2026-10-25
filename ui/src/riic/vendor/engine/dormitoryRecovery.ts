@@ -2,12 +2,12 @@ import { eligibleSingleRecoveryTargets } from './singleRecoveryEligibility'
 import { operatorFor } from '../domain/operatorContext'
 import { isWanderingMedic, isLaiosSquad } from './supportRecovery'
 import { hasRiicTag } from '../domain/riicTags'
-import { buildRiicGlobalContext } from './globalContext'
+import { buildRiicGlobalContext, type RiicGlobalContext } from './globalContext'
 import { matchesRiicFaction, matchesRiicIdentity } from '../domain/riicIdentity'
 import type { AppConfig } from '../domain/types'
 export interface DormitoryRecoveryResult { rates:Map<string,number>; details:Map<string,string[]>; unquantified:string[] }
 /** Actual-room rates; unspecified atmosphere is diagnosed. Valid policy targets are retained; invalid targets fall back to eligible residents. */
-export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,moraleValues:ReadonlyMap<string,number>,atmosphere?:number,targetByProvider?:ReadonlyMap<string,string>,conservative=false):DormitoryRecoveryResult {
+export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,moraleValues:ReadonlyMap<string,number>,atmosphere?:number,targetByProvider?:ReadonlyMap<string,string>,conservative=false,preparedContext?:RiicGlobalContext):DormitoryRecoveryResult {
  const rates=new Map<string,number>(),details=new Map<string,string[]>(),unquantified:string[]=[]
  const level=config.facilities.dormitories[roomIndex]
  if(!level)return {rates,details,unquantified:['宿舍等级缺失']}
@@ -16,7 +16,7 @@ export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,mora
  const operators=(config.facilityOperatorIds.dormitories[roomIndex]??[]).map(id=>operatorFor(config, id)).filter(o=>o!==undefined)
  // Match runtime endpoint tolerance without moving directional skill thresholds (18/20).
  const mood=(id:string)=>{const value=moraleValues.get(id)??config.operatorMorale[id]??24;return value<=24&&value>=24-1e-8?24:value}
- const global=buildRiicGlobalContext(config,undefined,new Map(moraleValues))
+ const global=preparedContext??buildRiicGlobalContext(config,undefined,new Map(moraleValues))
  const centralEffects:{value:number;eliteOnly:boolean;label:string}[]=[]
  for (const id of config.controlOperatorIds) {
   const provider=operatorFor(config, id)

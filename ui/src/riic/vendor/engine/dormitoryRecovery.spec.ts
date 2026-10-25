@@ -14,6 +14,19 @@ describe('dormitory recovery source contract',()=>{
  it('redistributes Coldshots shared pool and changes max category at one unfinished occupant',()=>{const c=dorm(['冰酿','芬','杜林']);const r=evaluateDormitoryRecovery(c,0,new Map([[id('冰酿'),24],[id('芬'),10],[id('杜林'),10]]),5000);expect(r.rates.get(id('芬'))).toBeCloseTo(4.4);const alone=evaluateDormitoryRecovery(c,0,new Map([[id('冰酿'),24],[id('芬'),10],[id('杜林'),24]]),5000);expect(alone.rates.get(id('芬'))).toBeCloseTo(5.05)})
  it('applies room-level and unfinished-person recovery before the same-category maximum',()=>{const c=dorm(['响石','波卜','芬']);const r=evaluateDormitoryRecovery(c,0,new Map([[id('响石'),24],[id('波卜'),24],[id('芬'),12]]),5000);expect(r.rates.get(id('芬'))).toBeCloseTo(4.25);expect(r.unquantified).toEqual([])})
 import { buildRiicGlobalContext } from './globalContext'
+it('reads one immutable prepared context for distinct global dormitory skills',()=>{
+ const c=dorm(['流明','芬']),power=createDefaultConfig().rooms.find(room=>room.type==='power')!
+ power.operatorIds=[id('承曦格雷伊')];c.rooms=[power]
+ c.facilities.dormitories=[5,5];c.facilityOperatorIds.dormitories.push(['纯烬艾雅法拉','香草'].map(id))
+ c.facilityOperatorIds.reception=['蜜莓','桑葚'].map(id)
+ const moods=new Map([[id('芬'),10],[id('香草'),10]]),context=buildRiicGlobalContext(c,undefined,moods)
+ const before=JSON.stringify(context)
+ Object.freeze(context);Object.freeze(context.presentOperators);Object.freeze(context.effectivePowerStations);Object.freeze(context.silentResonance)
+ expect(evaluateDormitoryRecovery(c,0,moods,5000,undefined,false,context).rates.get(id('芬'))).toBeCloseTo(4.25)
+ expect(evaluateDormitoryRecovery(c,1,moods,5000,undefined,false,context).rates.get(id('香草'))).toBeCloseTo(4.18)
+ expect(JSON.stringify(context)).toBe(before)
+ expect([...moods]).toEqual([[id('芬'),10],[id('香草'),10]])
+})
 it('zero-morale dormitory residents retain dream and bar perception while exhausted office workers do not',()=>{const c=createDefaultConfig();c.controlOperatorIds=[];c.rooms.forEach(r=>r.operatorIds=[]);c.rooms.find(r=>r.type==='manufacture')!.operatorIds=[id('迷迭香')];c.facilities.dormitories=[1,3];c.facilityOperatorIds.dormitories=[[id('爱丽丝')],[id('车尔尼')]];c.dormitoryOccupantCount=2;c.facilities.office=3;c.facilityOperatorIds.office=[id('絮雨')];c.zeroMoraleOperatorIds=['爱丽丝','车尔尼','絮雨'].map(id);const ctx=buildRiicGlobalContext(c,new Set([id('迷迭香')]));expect(ctx.thoughtChain.effective).toBe(6)})
 it.each([['斥罪',1,4.15],['斥罪',3,4.25],['隐德来希',1,4.1],['隐德来希',3,4.3]] as const)('uses actual extra recruitment slots for %s at office %s',(name,l,expected)=>{const c=dorm([name,'芬']);c.facilities.office=l;expect(evaluateDormitoryRecovery(c,0,new Map([[id('芬'),10]]),5000).rates.get(id('芬'))).toBeCloseTo(expected)})
 it('Lumen scales with the number of physical stations when there are no virtual providers',()=>{const c=dorm(['流明','芬']);const power=c.rooms.find(r=>r.type==='power')!;c.rooms=c.rooms.filter(r=>r.type!=='power');expect(evaluateDormitoryRecovery(c,0,new Map([[id('芬'),10]]),5000).rates.get(id('芬'))).toBeCloseTo(4.15);c.rooms.push(power);expect(evaluateDormitoryRecovery(c,0,new Map([[id('芬'),10]]),5000).rates.get(id('芬'))).toBeCloseTo(4.2)})

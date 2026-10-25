@@ -27,21 +27,31 @@ describe('retained full-to-full Fiammetta requests admit only new observations',
   expect(retained.plan.room_1_1).toBeUndefined()
   expect(state.events.filter(e=>e.type==='fiammetta')).toHaveLength(0)
   expect(state.occupants).toEqual(before)
+  // Alpha fills R's empty bed during the first settle, before the later room task.
+  expect(source.data.operators.R!.currentRoom).toBe(alpha?'dormitory_1':'')
   const traceCount=source.trace.filter(t=>t.type==='FIAMMETTA').length
-  const independent=new MowerTask({time:.01});source.queue.tasks.push(independent)
+  for(let attempt=0;attempt<3;attempt++)settleRoster(state,rates)
+  expect(source.trace.filter(t=>t.type==='FIAMMETTA')).toHaveLength(traceCount)
+  expect(source.queue.tasks.find(task=>task.type===T.FIAMMETTA)).toBe(retained)
+  expect(retained.timeMicros).toBe(0)
+  const independent=new MowerTask({time:.01,plan:{dormitory_1:[fia,'K2','K3','K4','X']}});source.queue.tasks.push(independent)
   let independentPhases=0
   state.time=.01;settleMowerSource(state,rates,()=>{independentPhases++;return false})
   expect(independentPhases).toBeGreaterThan(0)
   expect(source.queue.tasks).not.toContain(independent)
-  expect(source.queue.tasks.filter(task=>task.type===T.FIAMMETTA)).toEqual([retained])
-  // Independent work moved R into a Free bed and refreshed Fiammetta's observation.
-  // That real dependency change permits one retry; unchanged dispatches remain suspended.
+  expect(source.queue.tasks.find(task=>task.type===T.FIAMMETTA)).toBe(retained)
+  expect(source.queue.tasks.filter(task=>task.type===T.FIAMMETTA)).toHaveLength(1)
+  // Alpha replaces R with X; normal dorm selection admits the previously idle R.
+  // Either actual room change permits one retry; unchanged dispatches stay suspended.
   expect(source.trace.filter(t=>t.type==='FIAMMETTA')).toHaveLength(traceCount+1)
-  expect(source.data.operators.R!.currentRoom).toBe('dormitory_1')
+  expect(state.bedOccupants.dormitory_1_4).toBe(alpha?'X':'R')
+  expect(source.data.operators.X!.currentRoom).toBe(alpha?'dormitory_1':'')
+  expect(source.data.operators.R!.currentRoom).toBe(alpha?'':'dormitory_1')
   expect(retained.executionFailure).toBeDefined()
   for(let attempt=0;attempt<3;attempt++)settleRoster(state,rates)
   expect(source.trace.filter(t=>t.type==='FIAMMETTA')).toHaveLength(traceCount+1)
-  expect(source.queue.tasks.filter(task=>task.type===T.FIAMMETTA)).toEqual([retained])
+  expect(source.queue.tasks.find(task=>task.type===T.FIAMMETTA)).toBe(retained)
+  expect(source.queue.tasks.filter(task=>task.type===T.FIAMMETTA)).toHaveLength(1)
   expect(state.events.filter(e=>e.type==='fiammetta')).toHaveLength(0)
   expect(retained.timeMicros).toBe(0)
   expect(state.diagnostics.some(d=>d.message.includes('五分钟'))).toBe(false)

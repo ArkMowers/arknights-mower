@@ -35,6 +35,7 @@
     "engine/jayeRules.ts": "691eb8047af77eb16c3983270367387c96488a5ed0025b9b31653e72fb5ee869",
     "engine/morale.ts": "d0e4915c4919626e4f0a0eec47141107a314613f6a95eb4174690f21ce720ec3",
     "engine/moraleSui.spec.ts": "cdb825d55dd348a81728beae4b3f9eb06f897069d01d4473a8ef39278351620f",
+    "engine/moraleThresholds.ts": "4dd8e92403e535a1fb34bb751c4a5218adb98922e089d9c44f960533a9e8fb34",
     "engine/operatorGroups.ts": "7e3641b88d4e8f9dd008150e7f492b59026d51e46a2b253b86edcba9debbd621",
     "engine/operatorRules.ts": "c07812ea02bed35cf503e2acbcba399cf1915b0413e7c72d59befb9e70fa26a0",
     "engine/orderCapacity.ts": "00a45da50a9113a1ddcdbf9d9592f95aea79fc71fa1970b496a0cc9e7247dad0",
@@ -51,6 +52,9 @@
     "rules/orderRules.ts": "21c889662cf5219024b4122afe69cd1f3e147846ad566e8510bfc24c12e3cea4",
     "rules/orderValue.ts": "cf3be5de94c7878cc20b91722b46e9a90065fe6810cb7460ed86562e370882f8",
     "scheduler/backupExpression.ts": "7a78c42d94f92012dfc703744752c92f104d124f60ff8c165950eb3bab81cc41",
+    "scheduler/backupFunctionExpression.spec.ts": "523ec34e9f4f2c57ddb74e759134c7489742d69e6b8db0b972e7a9fe9e4b00d2",
+    "scheduler/backupGroups.spec.ts": "6882f0f75ac8d3387cb9430d665046cbcc85501ca92aa3a6a9debf4a55aefada",
+    "scheduler/backupGroups.ts": "55c1f4ffed895e6524461293bc211e4b4816f6691c6a0094f049043cda15863b",
     "scheduler/backupInventory.ts": "ed571be4e45d68c805fe67c2a97fc4f343484a5d4783d390e05e84ee6fb0b716",
     "scheduler/backupInventoryExpression.spec.ts": "62175e568909e7642f46668502d5e11b6b141c13a214be6b70d44d1b7480797e",
     "scheduler/backupInventoryWake.spec.ts": "e0956656ccf4b5bee7ddc39a7289a36c7e13cc2375fd39efb2735473ecbf5788",
@@ -58,7 +62,10 @@
     "scheduler/compileRosterSchedule.ts": "d6d5c3004b46c58cd71f7ff02e20b72d9c70ee3f402a1246a21c9d4cdca23de9",
     "scheduler/fiammettaPolicy.ts": "3e51b24c1138506ac1ce8a8e54ec135dd26e2b2f2fc11094f44545cb83bdc357",
     "scheduler/fixtures/mower-alpha-exhaust-support.json": "b121dfd1ab645ca75feb202b0df88efa1048318bc51aa3b100927bdc4f847ba7",
+    "scheduler/fixtures/mower-alpha-metadata.json": "d2b7f150f533bdd34b7f4af8df51a86e3923bf4693daf5f05c51411df5bd1653",
     "scheduler/fixtures/mower-alpha-resting-boundaries.json": "275aadbbf58fb4bba3a3ba02022485886151458442bc4975ccf8cbab0bcdb001",
+    "scheduler/fixtures/mower-alpha-selection-20261013.json": "f156c1c8381c988d273e78de8d22e183fe1befdcbd4f51f1fe2db3619fc49fa9",
+    "scheduler/fixtures/mower-dorm-assignment-alpha-cases.json": "90de8a55045031e7992e6142929f12c4f10bc971f1a117aea7802c84bd6f77ce",
     "scheduler/fixtures/mower-dorm-recovery-alpha.json": "981055215e957a4962e1c4e939b4a0ec644fe6d4671b8b8fc5d7adbba0a8e3d0",
     "scheduler/fixtures/mower-drone-operations-alpha.json": "668802b1cd142242adf2f5216b853be6e863a6b527e51d2f3fca82516cbf8b7b",
     "scheduler/fixtures/mower-fia-ready-cache-alpha.json": "71e03df275c11737217034644dc4c87fed7b5c609dd383770218d964530ccfa0",
@@ -70,9 +77,11 @@
     "scheduler/mowerAlphaCandidates.spec.ts": "860323bc0bd175743a7fd3d352e04eff8d86c5453abb332c108bc01164c38c40",
     "scheduler/mowerAlphaCandidates.ts": "b512c664d5d4e66e2c3d9a0c642b9c19e4a1041f70e4b5fcc0936ef8336812ca",
     "scheduler/mowerAlphaDorm.ts": "99ce280784b5e2d012afd9f554e22ddc12f809902cec0e02de0e7cd9a7ff4825",
+    "scheduler/mowerAlphaDormPlanning.spec.ts": "cf2e00c3814ca23dddf52272e9472de7cbc8c6dc1fe5a97363700da91056dba6",
     "scheduler/mowerAlphaDormPlanning.ts": "873d3d5640b0bdbf5a21c47b895dbe9ab8b757108f6d15d141cffeae7fce5df5",
     "scheduler/mowerAlphaExhaustSupport.spec.ts": "2ddbb7f4526515aed581b3a3a345834102810d479065e387e2071cc0dc3dcb10",
     "scheduler/mowerAlphaExhaustSupport.ts": "65b0fbd89f81521d8630e9aa119094a84e9fa8a439ac138675adb93979396612",
+    "scheduler/mowerAlphaMetadata.spec.ts": "519c66231e7b850fac428054be629429edbedd4b09c0d273be4dc5c099ac6c98",
     "scheduler/mowerAlphaMetadata.ts": "35c1f97e7f6923251f4741a563ad42ff9b433b36c8ae0b5ecf28390d2aaa0b5d",
     "scheduler/mowerAlphaResting.spec.ts": "ef17c1061807adebede2948ef3871a29644bdfa8ab8edadb1c0dd368e50b3a26",
     "scheduler/mowerAlphaTaskProtection.ts": "a09fce69fd4b54646aed28e7b409a8ef40f56db571b906646b9a2d7d808fe3d4",
@@ -87,17 +96,25 @@
     "scheduler/mowerBackupReplacements.ts": "d60efd6b1978ca8c694ba6c54078c0018c24cea1d20eaf7f7dc5c2679633ecc9",
     "scheduler/mowerBackupRestingJoin.spec.ts": "6c3d4cc64f8efd61b20df08fda998c97fceac116f6bfc5ddb611fd5c75c3c9b2",
     "scheduler/mowerBackupRestingJoin.ts": "1d3031eed9f43cd75a90adf4668c5ccf210f5024de3f952b8347846ec2459c3c",
+    "scheduler/mowerBackupRetention.ts": "5c1d882887fc49a082ec6c39244041a336f11dbdf60892fccfe83c56d9d8723a",
+    "scheduler/mowerBackupRetentionTransition.spec.ts": "60df9f80cfd0f4d637fdb6511a9681b1cade352109d23a762ef6a469d6e5c6b6",
     "scheduler/mowerBackupTransitionConfig.spec.ts": "dd46b8f3809e2c098f9e77eb9e7a837fe16b785db3fd634f8dd77278614aa35e",
+    "scheduler/mowerBackupWake.spec.ts": "8de96461b6da0d5a93c543cec09fc07ec7dc61a9c6e542f9d6e094c92c9487f2",
     "scheduler/mowerClueLifecycle.ts": "37d6be3bc36484e22dd2ba8f8640ef7a983fe3cf90f89383391e6e1349750e2e",
     "scheduler/mowerCompletedDeparture.spec.ts": "e9719c2743f32d2dfb6a25afe6f2dd3e54bab15f0e137765411fd4f44ae400b2",
     "scheduler/mowerCoordinationRunBoundary.spec.ts": "bd41c788658e554814ba07e3c9897787bc7631c23f55af876eb1cf08f7450e27",
     "scheduler/mowerCorrection.ts": "d836819d13eeaa14ae596b2be94a09688637126f509b135b5a4bcb7e36fcd7c8",
     "scheduler/mowerDormAdmissions.spec.ts": "9721353355b0be7c09230354ed8e1dca4fad704a20bd7c0401f6ed4ebbcf2249",
+    "scheduler/mowerDormAssignment.spec.ts": "63cb34cad2178ca92d5653de079dc484a404ca1feb39d98eede11d31a520fae7",
     "scheduler/mowerDormAssignment.ts": "7939837ae1d159f7a6cacfa79e10494eccd2f9cefbee3ae2506c92f9a6f3bec2",
+    "scheduler/mowerDormCapacity.spec.ts": "3fbe1206d128a586b00327bd20d8c3f93148870aa6d5e9053c51770f1f6df161",
+    "scheduler/mowerDormCapacity.ts": "de14a57931aa073e25547759c72ee4f228821dc070e5ebbb8609fb86451cb0f1",
     "scheduler/mowerDormIsolation.ts": "92a5a161bb3fe0953352c5c08cbbbad589abcf5ba484eb24f2550a7ad5e25f17",
     "scheduler/mowerDormOrder.ts": "cfc83bfccd994ff36ba8c4bb5c35f4dbac39026a162463becd62921551772339",
+    "scheduler/mowerDormOrderTransition.spec.ts": "0d6b39dcdd521cb674eab14c897cec8d50c337df58353c8c0108a9effea1bc33",
     "scheduler/mowerDormRecovery.spec.ts": "5c05f951d2f00ad9187f4d03b5ebfa8292ae65c8df95ae23d611355c19a64ac5",
     "scheduler/mowerDormRecovery.ts": "50f24ead377812f3be620f4d5b3cc401ca30edff1c47024d6e7dd7c71b5f8261",
+    "scheduler/mowerDormRetention.spec.ts": "98ba02944e50298e21ba52c144fc782db65bb9ef503c8ca8fa98474a9f87df46",
     "scheduler/mowerDormTasks.ts": "642faae51078a58e54a56e2be35bf709a99775ba523f9ea5da074882000ecdfe",
     "scheduler/mowerDroneInterface.ts": "369bf71f498428cf4e96034416a1efe309ab260b19a87a386ec03cd26b04b022",
     "scheduler/mowerDroneOperations.spec.ts": "15b332ce027b36d60e10770633fa4a6ec148f5dfffeb0bd7e5ff82986ff45599",
@@ -106,15 +123,26 @@
     "scheduler/mowerExhaustPlanning.ts": "b8c3481103f6508250790816a6bf64861c0337fa266f41baa95f371d1a6d3da9",
     "scheduler/mowerExhaustPolicy.ts": "52a2dccc1738dca0b11cc16f97e0b54f42b82141494d023c2cb393e7933f29f1",
     "scheduler/mowerExhaustPreview.spec.ts": "602d2d8befb2151cf7047498b0df119a8a3b63cbac13fae4e1ea084ccf293e4e",
+    "scheduler/mowerExhaustReservations.spec.ts": "af0e126a8bbe0490f049c74444eb4d4d4ff43b491ae796f178c98a7ab04b651a",
+    "scheduler/mowerExhaustReservations.ts": "53522cd72f8c8cb88813addcc6f047a721bd8ebcfef392ca6cc13cfcd3419e52",
     "scheduler/mowerExhaustSupportDispatch.spec.ts": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039",
     "scheduler/mowerExplicitCorrectionCycle.spec.ts": "df3f677660ef5e3916c8734615b52c3796edbd5ce5988f956399ce247415f89b",
     "scheduler/mowerFiammetta.spec.ts": "8ed31150736f0089040692b350676e83acd081241b67b33b86d024aab14fa749",
     "scheduler/mowerFiammetta.ts": "4c5c96f4545873869a42cee9771e15ff69daa5a4f2efb01c2d8c1ef15e7a7e84",
+    "scheduler/mowerFiammettaRetainedObservation.spec.ts": "7b0786fa30d475f7611124381e02a9e38755eb16792350146a15121f5ef5af3b",
+    "scheduler/mowerFixedSlotRecovery.spec.ts": "be6e2bede38e358dd186e6ea7240edb140b8d3e667b8102cea37fff5b2df1bfc",
+    "scheduler/mowerFullDormFiller.spec.ts": "6124bcd2a7b4535ca9a5a2fa82d039324d43752e1271bab83f9688d0170c8f6a",
     "scheduler/mowerGlobalDormOrder.ts": "8d2b1189c36b0fba3040c758ac1788f491bbc653e0ccf4a0f772cf62396424f1",
     "scheduler/mowerGroupFullRecovery.spec.ts": "9481504048e55fe778c2d4d662d56ca7786b7d080284a47cdfd0a214784b3fb9",
     "scheduler/mowerGroupRecovery.ts": "e4947a6bf864ce4388720ed902b448ecc62428e9295b0c2f16ca07b44b66f822",
+    "scheduler/mowerGroupShiftCompletion.spec.ts": "aa2d1db8d73a63f544f9a157a730e5ee9f9d9c9664346665ff48a4fc8abe1cd6",
+    "scheduler/mowerGroupTargetCancellation.spec.ts": "437cc0d2c097b0320f8eb2283479b513faf6b1af27c03a73391eb3a84fe2fe80",
     "scheduler/mowerGroupTransitionLifecycle.spec.ts": "61fbe396032d67d43cb42579d60defdc038ee7c8ebe2bd6b45a9700457054de4",
     "scheduler/mowerIndependentRest.spec.ts": "fc9bdb24ee84277c0990de410cfea239888eda65308fcb265001dcdb898e9a55",
+    "scheduler/mowerInitialMorale.spec.ts": "b9571825bb175b25ced291b04b02728f39cb7954225fc9aeae98706d10f8dcf4",
+    "scheduler/mowerInitialMorale.ts": "f3dcf9a48b56432e674c92cef93b7e81c905a8e42f7d345e81a607854e09e37b",
+    "scheduler/mowerInitialStaffing.spec.ts": "f1db17582e94f5b8aa9b9683610825ea8bd1cf7c2715d46a1ac95b3d6f504616",
+    "scheduler/mowerInitialStaffing.ts": "79967dc48347ddf793e65ea15b38fb3c533d3ae03edf1add6165c7edd790e5bd",
     "scheduler/mowerMaintenanceScheduling.ts": "1c1e149db3c5a69ebbeb53f32f40a67da07d2eb80d87a92e51043c1913f91170",
     "scheduler/mowerMetadata.ts": "3af7f4f7afde54720be25743de861fdf9b8102c1fde0080e84424641aff16917",
     "scheduler/mowerMoodLimits.ts": "c1a50a7eca31cd17669d5ca7db0e86106796d8730caec22325ec5656ca4f8918",
@@ -125,9 +153,15 @@
     "scheduler/mowerObservedFullRelease.spec.ts": "b89fba07c2a1310accfd86267019d1a942785e3ce882b40a5da93580ac7a7e5d",
     "scheduler/mowerOffDutyRecovery.spec.ts": "e72a6f8156043827c44748b1d2028b146843ebd72ea8d12258ad441a94e716ca",
     "scheduler/mowerOperatorState.ts": "dc0f90c51af96745a43fdb08cf7c64bff7ccf1cac53281424885728ab54d082a",
+    "scheduler/mowerOrdinaryMetadata.spec.ts": "6f613b43936823b6f07ad54efd4786ae22ec2322496b2a09938d56392f7f676b",
     "scheduler/mowerOrdinaryPlanning.ts": "429cf35013a84708226a29e49d4fc61c2e977e159c8b8a5434464b09320ec6b8",
+    "scheduler/mowerOrdinaryPlanningWake.ts": "0cd40626fd83599b216291c95cda23f701324535ccd92f02198c66cb415700e4",
     "scheduler/mowerPlanOrder.ts": "52fafa25bd17e9834f15c9aa9c0f338d89f75263a37e1b5d1088c0e27fe49540",
     "scheduler/mowerPlanningWake.ts": "dc72c9ad22d7b63c9d377c8f753a8f3dc2df3220b355ee6a6da1c48444872f9c",
+    "scheduler/mowerPredictiveMoodControl.spec.ts": "9d6a9d22d3eb1341ca3dcd7ae75c07666364e5fa2ddfd895cd1b4e6a943db5cf",
+    "scheduler/mowerPredictiveMoodControl.ts": "b5cef1bea6336d7a85c113b946d188b3df6e221a8eff70852a9cb7e3765c22b3",
+    "scheduler/mowerPredictivePlanning.spec.ts": "823e146382dd8cba64df0206cecc2bd0cfafea1f173e35983cc13a559f95e51f",
+    "scheduler/mowerPredictivePlanning.ts": "250a9e6a7a8da3e68e099cedf0288c46e5f5f7213e615e5fb79267e569a3af57",
     "scheduler/mowerPreviewRecovery.spec.ts": "f5640e0416e3cd73c8cfaa34b93e4cfc49d0b2d617773a1cc3f956c7222c188b",
     "scheduler/mowerPreviewRecoveryWait.spec.ts": "0a36486beecd5f3ca7ce1bcd4df66b4f4aa03dea745e165fd6ff179f8eb6416d",
     "scheduler/mowerPreviewRecoveryWait.ts": "e9079f316c7101a8702759bbac108bc14ee0adce2259e4208fa1a9f7d2d36718",
@@ -149,6 +183,7 @@
     "scheduler/mowerRunOrderRefresh.ts": "c20ca0cc6fc31df55aa0e6d6ce189140260ee77d43da86133412d247aa5357c9",
     "scheduler/mowerSameGroupReplacementCoordination.spec.ts": "3ffc56e0970686dbe49dfc2ee687af1d974c5a2ee79ec70e57409b90abff5294",
     "scheduler/mowerSchedulingData.ts": "6ada0e9e6dee6a17fab82028f9b3f930e07319f6f57577a554503ab5ff40267c",
+    "scheduler/mowerSchedulingMood.ts": "25cd537d6972c6bbef6871a352596b0cf2fea27179a785914f9e0a9d017a52b2",
     "scheduler/mowerSelection.ts": "c34cfe1a4e82eece5f73fd0d601e69d233c52d7275ecf138475f3c0f23b341c0",
     "scheduler/mowerSharedGroups.spec.ts": "cb62cc931bd64f58280ad2bbf7ea88e92bc8f924fdbba44f1d67bfbdf9cdb090",
     "scheduler/mowerSharedGroups.ts": "fdeece3488adc3543e3939f4aa6959443c77d68c3fe17780b8111212a227a687",
@@ -167,8 +202,11 @@
     "scheduler/mowerTaskScheduling.ts": "c5d77fe0e04ca4e0ca23262696690b5f00ef82313893e7167bca5da97da27c51",
     "scheduler/mowerTiming.ts": "482768893ed442d8eb317b286691be72d6ff85a5cb879cfe1f3fb4ed9ab10b3e",
     "scheduler/mowerTodoTask.ts": "a739d8499d93277f33b42d38b92c1a5718f8b68f509bdf3ef598ad1aad766cc8",
+    "scheduler/mowerTodoTaskProgress.spec.ts": "a796154feecc315d2f18e305c8a0f98fb869145001dd1811b3706922a9e6dcab",
     "scheduler/mowerUrgentRecovery.spec.ts": "0c331b1f446328e477f51f7d3df77412cdb9abe70ede1c2c44d83d91da3ea982",
     "scheduler/mowerUrgentRecovery.ts": "c0de58da4ca19b76431a949ddcb749803e4118f99c36505e5b017258f0761be6",
+    "scheduler/mowerWorkingReplacement.spec.ts": "b06718e6e00ed7dc487110accacfb63812775ef6e58b9486f9263651349e7639",
+    "scheduler/mowerWorkingReplacement.ts": "a7f5106e6ca614a2faa896788b30f8f80f74dce2283e94f2aa62ec8ec5c0afa0",
     "scheduler/rosterRuntime.ts": "94f9e1b729a07a90c9ac0d61bc6b782639c8a3e2048ac55863af6c1e5f54b23c",
     "scheduler/scheduleAdapter.ts": "a2e501cb4a61527892e5ec4513be6dd60fd6d90e5251d4af96b5c60cdbe11b44",
     "scheduler/types.ts": "c91d2c530b23289582ef7ec4cb07fcd2e959f5bc4894f72d18f268a570b619bb",
@@ -178,6 +216,7 @@
     "simulator/manufacturingTimeline.ts": "4037214828c960b9700caffb732d021c81f7ab6d769c246ae9c1f9ad474a4298",
     "simulator/mowerCoordinationRates.spec.ts": "b99547690d7c686b20ba41cf9ae737b214a88c1e4a382fbe76a4e2076aeca720",
     "simulator/mowerCoordinationRates.ts": "2ae7f2e7cdb2625d7cb52d799f5a4507765fbef9cff3db9e7cd42395b1be594c",
+    "simulator/mowerEfficiencyCache.spec.ts": "fa3dbe91a1c861b3bfe7e55d3a3ec0613f6eda77f76d118e0371fb496ba881c4",
     "simulator/mowerInventoryBackup.spec.ts": "3a818218af335b640d2d68eae01eb6864c76817bca0efec06f345aff814cfee7",
     "simulator/mowerManufactureIO.spec.ts": "a3a1ad285bdc56fffd0dfd0a15ddd113b7cc091d8898e5f12bdeb442a5351895",
     "simulator/mowerNativeClueIO.ts": "ba8bf23e3a3495b6cc4bef6cf97178dcb58fe6550c2d47e8f3c7aaf59635939c",
@@ -189,6 +228,7 @@
     "simulator/productionTimeline.ts": "f0603db72db6d8116d0b4494346e5745a255e58ef79b8d3005762de770df3d94",
     "simulator/recycleTimeline.ts": "3bad36431c5fcba877860a06748c59b91790e5052b54691939aedea0a091d136",
     "simulator/resourceLedger.ts": "46e8f98c97afdcacf654bac88067fc850318ed76ed4eacdc2a8f707e47c63827",
+    "simulator/scheduleSimulation.spec.ts": "9d28b5c9fa302881a37dde7179fcacfe101442abb52eccb0a5e2d77d74e477b4",
     "simulator/scheduleSimulation.ts": "2c73bff2ec66b487d5bbcfd454a9281e055c035fb4f52c9f043fb2c30da63244",
     "simulator/simulationActivity.ts": "d49d93689a45a57554f4d4ba780e8790ab50845ce406ca82ba75cc19299725eb",
     "simulator/simulationActivityFindings.ts": "5822770ab57231075a344435d0fd11910a97620fab9550b701f8080b890f65dc",
@@ -215,44 +255,7 @@
     "workbench/timeline/timelineModel.spec.ts": "a3e2104f69ccf38fbb6f519f13ed4fab6e996601b55b45b85c6de22fcb9703fe",
     "workbench/timeline/timelineModel.ts": "2f34633f54a07ea962f4c687ba16574bef7fd35ca1bbfdd17c2a2d8b9038e0d4",
     "workbench/validate.ts": "403fbb46a1b24096897f4b244e01511d7fd3a5bab179b4ba2f1dbaaef7e708d9",
-    "workbench/validateBackupPlans.ts": "49b48c206a06825efa08db9670fae0c723c7d471590dfcec99f8051d35e1b0d4",
-    "scheduler/backupGroups.spec.ts": "6882f0f75ac8d3387cb9430d665046cbcc85501ca92aa3a6a9debf4a55aefada",
-    "scheduler/backupGroups.ts": "55c1f4ffed895e6524461293bc211e4b4816f6691c6a0094f049043cda15863b",
-    "scheduler/mowerFixedSlotRecovery.spec.ts": "be6e2bede38e358dd186e6ea7240edb140b8d3e667b8102cea37fff5b2df1bfc",
-    "scheduler/backupFunctionExpression.spec.ts": "523ec34e9f4f2c57ddb74e759134c7489742d69e6b8db0b972e7a9fe9e4b00d2",
-    "scheduler/mowerAlphaMetadata.spec.ts": "519c66231e7b850fac428054be629429edbedd4b09c0d273be4dc5c099ac6c98",
-    "scheduler/mowerDormAssignment.spec.ts": "63cb34cad2178ca92d5653de079dc484a404ca1feb39d98eede11d31a520fae7",
-    "scheduler/mowerDormCapacity.spec.ts": "3fbe1206d128a586b00327bd20d8c3f93148870aa6d5e9053c51770f1f6df161",
-    "scheduler/mowerDormCapacity.ts": "de14a57931aa073e25547759c72ee4f228821dc070e5ebbb8609fb86451cb0f1",
-    "scheduler/mowerExhaustReservations.spec.ts": "af0e126a8bbe0490f049c74444eb4d4d4ff43b491ae796f178c98a7ab04b651a",
-    "scheduler/mowerExhaustReservations.ts": "53522cd72f8c8cb88813addcc6f047a721bd8ebcfef392ca6cc13cfcd3419e52",
-    "scheduler/mowerFiammettaRetainedObservation.spec.ts": "7b0786fa30d475f7611124381e02a9e38755eb16792350146a15121f5ef5af3b",
-    "scheduler/mowerFullDormFiller.spec.ts": "6124bcd2a7b4535ca9a5a2fa82d039324d43752e1271bab83f9688d0170c8f6a",
-    "scheduler/mowerGroupTargetCancellation.spec.ts": "437cc0d2c097b0320f8eb2283479b513faf6b1af27c03a73391eb3a84fe2fe80",
-    "scheduler/mowerInitialMorale.spec.ts": "b9571825bb175b25ced291b04b02728f39cb7954225fc9aeae98706d10f8dcf4",
-    "scheduler/mowerInitialMorale.ts": "f3dcf9a48b56432e674c92cef93b7e81c905a8e42f7d345e81a607854e09e37b",
-    "scheduler/mowerInitialStaffing.spec.ts": "f1db17582e94f5b8aa9b9683610825ea8bd1cf7c2715d46a1ac95b3d6f504616",
-    "scheduler/mowerInitialStaffing.ts": "79967dc48347ddf793e65ea15b38fb3c533d3ae03edf1add6165c7edd790e5bd",
-    "scheduler/mowerOrdinaryMetadata.spec.ts": "6f613b43936823b6f07ad54efd4786ae22ec2322496b2a09938d56392f7f676b",
-    "scheduler/mowerSchedulingMood.ts": "25cd537d6972c6bbef6871a352596b0cf2fea27179a785914f9e0a9d017a52b2",
-    "scheduler/mowerWorkingReplacement.spec.ts": "b06718e6e00ed7dc487110accacfb63812775ef6e58b9486f9263651349e7639",
-    "scheduler/mowerWorkingReplacement.ts": "a7f5106e6ca614a2faa896788b30f8f80f74dce2283e94f2aa62ec8ec5c0afa0",
-    "simulator/mowerEfficiencyCache.spec.ts": "fa3dbe91a1c861b3bfe7e55d3a3ec0613f6eda77f76d118e0371fb496ba881c4",
-    "simulator/scheduleSimulation.spec.ts": "9d28b5c9fa302881a37dde7179fcacfe101442abb52eccb0a5e2d77d74e477b4",
-    "scheduler/fixtures/mower-dorm-assignment-alpha-cases.json": "90de8a55045031e7992e6142929f12c4f10bc971f1a117aea7802c84bd6f77ce",
-    "scheduler/fixtures/mower-alpha-metadata.json": "d2b7f150f533bdd34b7f4af8df51a86e3923bf4693daf5f05c51411df5bd1653",
-    "scheduler/fixtures/mower-alpha-selection-20261013.json": "f156c1c8381c988d273e78de8d22e183fe1befdcbd4f51f1fe2db3619fc49fa9",
-    "engine/moraleThresholds.ts": "4dd8e92403e535a1fb34bb751c4a5218adb98922e089d9c44f960533a9e8fb34",
-    "scheduler/mowerPredictiveMoodControl.spec.ts": "9d6a9d22d3eb1341ca3dcd7ae75c07666364e5fa2ddfd895cd1b4e6a943db5cf",
-    "scheduler/mowerPredictiveMoodControl.ts": "b5cef1bea6336d7a85c113b946d188b3df6e221a8eff70852a9cb7e3765c22b3",
-    "scheduler/mowerPredictivePlanning.spec.ts": "823e146382dd8cba64df0206cecc2bd0cfafea1f173e35983cc13a559f95e51f",
-    "scheduler/mowerPredictivePlanning.ts": "250a9e6a7a8da3e68e099cedf0288c46e5f5f7213e615e5fb79267e569a3af57",
-    "scheduler/mowerOrdinaryPlanningWake.ts": "0cd40626fd83599b216291c95cda23f701324535ccd92f02198c66cb415700e4",
-    "scheduler/mowerBackupWake.spec.ts": "8de96461b6da0d5a93c543cec09fc07ec7dc61a9c6e542f9d6e094c92c9487f2",
-    "scheduler/mowerDormRetention.spec.ts": "98ba02944e50298e21ba52c144fc782db65bb9ef503c8ca8fa98474a9f87df46",
-    "scheduler/mowerDormOrderTransition.spec.ts": "0d6b39dcdd521cb674eab14c897cec8d50c337df58353c8c0108a9effea1bc33",
-    "scheduler/mowerBackupRetention.ts": "5c1d882887fc49a082ec6c39244041a336f11dbdf60892fccfe83c56d9d8723a",
-    "scheduler/mowerBackupRetentionTransition.spec.ts": "60df9f80cfd0f4d637fdb6511a9681b1cade352109d23a762ef6a469d6e5c6b6"
+    "workbench/validateBackupPlans.ts": "49b48c206a06825efa08db9670fae0c723c7d471590dfcec99f8051d35e1b0d4"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -272,8 +275,8 @@
       "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points. Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points. Reallocate movable dormitory residents when effective bed order changes, including backup activation and deactivation, without preserving previous single-target beds. Preserve fixed staffing and real task or product reservations; apply bounded isolation after allocation, allowing unreserved vacant first beds. Verify actual transition and complete shift-preview entry points, unchanged-order stability and repeated-preview convergence. Reconcile final effective dorm retention on backup changes, admit idle no-primary actors only to empty eligible beds, and cancel only obsolete unstarted policy admissions after successful activation. Suspend unchanged bed failures until occupancy, reservations or effective selection changes."
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "sha256": "55a0b2c7f19abf5ea6b7da394f7d7864331b1dd291d543f87c2b4a267ead2f75",
-      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch. Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points. Register valid retention-only actors without fabricating observations, preserve explicit empty dorm selections and exclude named backup exits from all actual Free card selection paths. Retain blocked backup task identity and deadline. Read named empty departures before actual selection and preserve the observed replacement resident when the original resident no longer occupies that slot. Protect the original resident when renewed effective retention or a later primary job supersedes an old policy-only empty departure."
+      "sha256": "5e8c96267b8deed572944072a7426146bbc1e256da897714526129670160fc0e",
+      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch. Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points. Register valid retention-only actors without fabricating observations, preserve explicit empty dorm selections and exclude named backup exits from all actual Free card selection paths. Retain blocked backup task identity and deadline. Read named empty departures before actual selection and preserve the observed replacement resident when the original resident no longer occupies that slot. Protect the original resident when renewed effective retention or a later primary job supersedes an old policy-only empty departure. Commit confirmed group state at the complete-arrangement boundary before post-shift backup and correction planning."
     },
     "scheduler/rosterRuntime.ts": {
       "sha256": "bd5769a7f4653f369884491455af91f4e5fed1346ca338142776dd526cc301b3",
@@ -284,7 +287,7 @@
       "sha256": "5b80d31438e69316853e400911363f5aff41d6b6a76db6a246dd18289eeff841"
     },
     "scheduler/mowerCompletedDeparture.spec.ts": {
-      "sha256": "6239ae0ee5258d71c8a82a5692760854d812c538c928ade8f81e8211cbeca3f3",
+      "sha256": "3ddf1c77522e39a9038a1bd4fbaf77d272c921d20eee7a9a911a326a8252ddb9",
       "reason": "Preserve bundled explicit group-recovery and independent-room regression tests alongside synchronized departure assertions."
     },
     "scheduler/mowerFiammetta.ts": {
@@ -304,8 +307,8 @@
       "reason": "Verify runtime exhaustion-support generation, recovery capacity, required backups, task cloning and coalescing boundaries. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Apply due exhaustion priority while preserving explicit full recovery, validate final backup admission and retain failed support identities. Synchronize shared-follower recall normalization and same-slot dorm cover retention from calculator 5473efd934db64d4a8c34fe321d6a7732da7cba0; retain explicit group recovery requirements and original pending tasks."
     },
     "engine/dormitoryRecovery.ts": {
-      "sha256": "88594b24e38610b68c77315f1131a0b96fb9fe982fdb4da6c2229639aba13821",
-      "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "1617e43ca2122da6b34bda6a178d0669f9104fce9efcb775580309cd02772871",
+      "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Reuse a caller-provided immutable global context for the same recovery-rate calculation; direct callers still build their own context."
     },
     "scheduler/mowerDroneOperations.ts": {
       "sha256": "ede7f1ae46261f588f800b9ecd0aec962642d48d84b63cd416fa3818e6c3a186",
@@ -364,8 +367,8 @@
       "reason": "Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline. Restore the configurable extra-wait cap for spread-triggered group recovery, preserving explicit full recovery, completed-member idle release, and cycle-scoped timing across replanning and projections. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Verify recovery partitioning preserves shared operators, groups, started arrangements and explicit backup handoffs. Verify actual return followed by temporary regrouping does not restore an obsolete recovery requirement, including empty waits and explicit full recovery."
     },
     "engine/dormitoryRecovery.spec.ts": {
-      "sha256": "9ef9d3935936b2d90ce271930ffeada7b90b88832bdc23d602272de77f3b08da",
-      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "566cc4e8ab4f221b09724bd4e10ae16a1c4389246d1469065a9d03432e897824",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Verify shared recovery contexts preserve rates and remain unchanged."
     },
     "engine/singleRecoveryEligibility.ts": {
       "sha256": "2f02ca260d2d3a61a9af32588bab5f56b5cf4f2d794ba25e5295b31ec3af99f4",
@@ -404,16 +407,16 @@
       "reason": "Synchronize full-dorm first-manager confirmation and focused regressions from calculator a4c6bc668b54d637305c2218a14b48ba285bb050. Inspect every slot, retain only the first single-recovery manager confirmation, and skip that provider when selecting the recovery target."
     },
     "scheduler/mowerSourceRuntime.spec.ts": {
-      "sha256": "93627da8963c39ff2e526cbcc0546bdd4132a508ad1808baaa42da900552ef25",
-      "reason": "Preserve bundled regression cases alongside the synchronized source tests. Verify actual source-runtime dispatch of predictive early shifts and the disabled policy."
+      "sha256": "67dd5c5af6ae887c100513ca1fdb1251815c129429bd20f77ee4118198b9ac3f",
+      "reason": "Preserve bundled regression cases alongside the synchronized source tests. Verify actual source-runtime dispatch of predictive early shifts and the disabled policy. Use a real later dormitory occupancy change for retained Fiammetta retry tests after initial independent filling."
     },
     "simulator/mowerCoordinationRates.spec.ts": {
-      "sha256": "b99547690d7c686b20ba41cf9ae737b214a88c1e4a382fbe76a4e2076aeca720",
-      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "dd8ac073bcbd7db4f3b8196883d349f1a7947bbe18dc76eb920ad1bbee09b9b6",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Verify one context build across dormitories, conservative rates and fresh calculations after state changes."
     },
     "simulator/mowerCoordinationRates.ts": {
-      "sha256": "2ae7f2e7cdb2625d7cb52d799f5a4507765fbef9cff3db9e7cd42395b1be594c",
-      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "0e4249c238b222df954c8968a20df0e2df906758673c0b4ec5265cdb8adfcdb8",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Build the global recovery context once per coordination-rate calculation and rebuild it for each later state."
     },
     "simulator/mowerTaskFailureReport.spec.ts": {
       "sha256": "f2a698ecdbacb396713992299c34ffddc9cd6cf0dc40d8d9cde05d31010c930b",
@@ -532,8 +535,8 @@
       "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Exercise replacement changes through the effective runtime configuration refresh; unrelated backup condition changes must preserve failed support and its original deadline."
     },
     "scheduler/mowerTaskExecutor.ts": {
-      "sha256": "eb5385ad4472870acaa26364b2eb21206e517b1b49bb8bd70fcdc19510615fc3",
-      "reason": "Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
+      "sha256": "b5492b098dc924a59ea7374e835d2cefe31d2255c2d19c5e95690e0ba9516fbc",
+      "reason": "Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions. Complete successful group arrangements before post-shift backup evaluation and correction; unfinished arrangements do not commit group state."
     },
     "scheduler/mowerTaskFailure.spec.ts": {
       "sha256": "8f25f08fbc2785ba552ddbe1d5fbe6e0ef9c7963a87fd5e1fdbe4cd7343650c8",
@@ -596,12 +599,12 @@
       "reason": "Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. The recorded source hash identifies this locally introduced file at Mower commit 32fefdb5d6cc5c70196213656c1f6910b73f969c."
     },
     "scheduler/mowerPredictivePlanning.spec.ts": {
-      "sha256": "1108b6344016b4ef6dc261d56bac411402ae3218668c64513c11714fa5055d92",
-      "reason": "Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. The recorded source hash identifies this locally introduced file at Mower commit 32fefdb5d6cc5c70196213656c1f6910b73f969c. Verify service-task candidate filtering, retained-work blocking, bounded computation, wake cleanup and isolated mutable projections."
+      "sha256": "262f8321a90a877a8282e3c2a027a12ee121729529af8a3e41040df7016d5eda",
+      "reason": "Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. The recorded source hash identifies this locally introduced file at Mower commit 32fefdb5d6cc5c70196213656c1f6910b73f969c. Verify service-task candidate filtering, retained-work blocking, bounded computation, wake cleanup and isolated mutable projections. Verify reduced model calls, exact recovery and depletion, skill-boundary recomputation and deadline enforcement."
     },
     "scheduler/mowerPredictivePlanning.ts": {
-      "sha256": "b8e48ea84735b59019f08b7f269ff20155ac86067f95cc14890467778feddd76",
-      "reason": "Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. The recorded source hash identifies this locally introduced file at Mower commit 32fefdb5d6cc5c70196213656c1f6910b73f969c. Filter pure service boundaries without dropping their operation windows; block forecasts around retained and started work; bound the complete batch cooperatively to one second and isolate mutable projection inputs."
+      "sha256": "f76974a86e4f443bde09dcf62b1c0ccad67db448fb85fcd8f87615eaaa05c8c0",
+      "reason": "Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. The recorded source hash identifies this locally introduced file at Mower commit 32fefdb5d6cc5c70196213656c1f6910b73f969c. Filter pure service boundaries without dropping their operation windows; block forecasts around retained and started work; bound the complete batch cooperatively to one second and isolate mutable projection inputs. Reuse already-computed rates for the first forecast segment, recompute at skill boundaries and enforce the existing deadline within integration."
     },
     "scheduler/mowerReplacementCoordination.ts": {
       "sha256": "200c1f333fca5d35060ee707f337be27796dd3f917febd12cacab2e0ebd14616",
@@ -698,6 +701,34 @@
     "workbench/timeline/timelineModel.spec.ts": {
       "sha256": "6e11707d8049d26a518d77cde664b39134f81b954926243efc20ca236218b88e",
       "reason": "Declare mood-control provenance in existing report fixtures."
+    },
+    "scheduler/mowerTodoTask.ts": {
+      "sha256": "8ada622457f94a3981c3b6acb15c87f3d0d439080ad72c50c65c26a8f7eff258",
+      "reason": "Use dispatchable tasks when deciding whether independent daily services may run; suspended failures retain their original work."
+    },
+    "scheduler/mowerTodoTaskProgress.spec.ts": {
+      "sha256": "a796154feecc315d2f18e305c8a0f98fb869145001dd1811b3706922a9e6dcab",
+      "reason": "Verify suspended failures do not block independent services and unchanged or reopened tasks keep their intended dispatch behavior."
+    },
+    "scheduler/mowerAlphaDormPlanning.ts": {
+      "sha256": "104cd34fc696383be0797f5a4396f30f4759aa310e01b240b829c525ff381290",
+      "reason": "Allow independent empty-bed planning around suspended failures while preserving retained arrangements and their reservations."
+    },
+    "scheduler/mowerAlphaCandidates.ts": {
+      "sha256": "b9106a5bcb8175b356a1e9e387db90b4ffadde8683eaf35c964621eea16bafbf",
+      "reason": "Reserve retained arrangements, actual affected occupants, binding-group members and their occupied recovery beds during independent filling."
+    },
+    "scheduler/mowerAlphaDormPlanning.spec.ts": {
+      "sha256": "cf2e00c3814ca23dddf52272e9472de7cbc8c6dc1fe5a97363700da91056dba6",
+      "reason": "Verify independent empty-bed admission, retained task identity and time, and protection of targets, actual occupants and binding-group peers."
+    },
+    "scheduler/mowerFiammettaRetainedObservation.spec.ts": {
+      "sha256": "e706d57ee2444abf6bbf19714b219e67063519bc9b0d67a2a56cf7be5e2d6b92",
+      "reason": "Use a real later dormitory occupancy change to test one permitted retry after independent filling; preserve failed-task identity and time."
+    },
+    "scheduler/mowerGroupShiftCompletion.spec.ts": {
+      "sha256": "aa2d1db8d73a63f544f9a157a730e5ee9f9d9c9664346665ff48a4fc8abe1cd6",
+      "reason": "Verify post-shift backups observe committed group state, unfinished recovery is not recalled by stale correction, legitimate fixed-dorm restoration remains, and unfinished arrangements do not commit."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

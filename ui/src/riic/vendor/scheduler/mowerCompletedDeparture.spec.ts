@@ -366,6 +366,8 @@ describe('group full-rest execution confirmation', () => {
 
   it('retains an unobserved full-rest member and admits no repeat on unchanged observations', () => {
     const f = fixture(24, 24)
+    // 本场景不触发独立填人及读房，后续观测只由显式进驻提供。
+    f.state.config.freeBlacklist = f.source.data.freeBlacklist = ['Incoming']
     f.source.data.operators.B!.restInFull = true
     f.source.data.operators.B!.currentRoom = ''
     f.source.data.operators.B!.currentIndex = -1
@@ -380,9 +382,17 @@ describe('group full-rest execution confirmation', () => {
     expect(task.timeMicros).toBe(toMowerMicros(1))
     expect(task.executionFailure).toBeDefined()
     const failure = task.executionFailure
-    settleRoster(f.state, rates)
-    expect(task.executionFailure).toBe(failure)
-    expect(f.state.occupants.room_1_2_0).toBe('S')
+    const observedAt = f.source.data.operators.A!.timeStampMicros
+    const traceLength = f.source.trace.length
+    for (let i = 0; i < 3; i++) {
+      settleRoster(f.state, rates)
+      expect(task.executionFailure).toBe(failure)
+      expect(task.timeMicros).toBe(toMowerMicros(1))
+      expect(f.source.data.operators.A!.timeStampMicros).toBe(observedAt)
+      expect(f.source.data.operators.B!.timeStampMicros).toBeUndefined()
+      expect(f.source.trace).toHaveLength(traceLength)
+      expect(f.state.occupants.room_1_2_0).toBe('S')
+    }
     // A separate physical arrangement supplies the previously missing observation.
     f.state.morale.B = 24
     const admission = new MowerTask({ time: f.state.time, type: T.RE_ORDER, plan: { [room]: ['K1', 'K2', 'K3', 'A', 'B'] } })
@@ -397,6 +407,33 @@ describe('group full-rest execution confirmation', () => {
     expect(f.source.queue.tasks).not.toContain(task)
     expect(task.executionFailure).toBeUndefined()
     expect(f.source.data.operators.B!.currentRoom).toBe('room_1_2')
+  })
+
+  it('admits a retained return after independent dorm filling supplies a new room observation', () => {
+    const f = fixture(24, 24), data = f.source.data
+    Object.assign(data.operators.B!, { restInFull: true, currentRoom: '', currentIndex: -1, timeStampMicros: undefined })
+    delete f.state.bedOccupants[room + '_4']
+    data.dorms[1]!.reset()
+    const task = new MowerTask({ time: 1, type: T.SHIFT_ON, plan: { room_1_1: ['A'], room_1_2: ['B'] } })
+    task.backupShiftActive = true
+    f.source.queue.tasks = [task]
+
+    settleRoster(f.state, rates)
+
+    expect(task.executionFailure).toBeDefined()
+    expect(task.executionFailure!.snapshot.observations.A).toEqual([room, 3, 0])
+    expect(f.source.trace.some(entry => entry.type === 'FILL_DORM')).toBe(true)
+    expect(f.state.bedOccupants[room + '_4']).toBe('Incoming')
+    expect(data.operators.A!.timeStampMicros).toBe(toMowerMicros(1))
+
+    settleRoster(f.state, rates)
+
+    expect(f.source.queue.tasks).toContain(task)
+    expect(task.executionFailure).toBeUndefined()
+    expect(task.executionRetained).toBe(true)
+    expect(task.timeMicros).toBe(toMowerMicros(1))
+    expect(data.operators.B!.timeStampMicros).toBeUndefined()
+    expect(f.state.occupants.room_1_2_0).toBe('S')
   })
 })
 

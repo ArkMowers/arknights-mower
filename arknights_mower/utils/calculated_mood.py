@@ -73,7 +73,7 @@ def measure_mood_calculation(function):
     return wrapped
 
 
-def shared_rates(payload):
+def _shared_runtime():
     import quickjs
 
     if not hasattr(_runtime, "context"):
@@ -89,6 +89,13 @@ def shared_rates(payload):
         _runtime.context = context
         _runtime.calculate = context.get("mowerMoodRates")
         _runtime.rate_results = OrderedDict()
+        _runtime.facility_levels = context.get("mowerFacilityLevels")
+        _runtime.facility_level_results = OrderedDict()
+    return _runtime
+
+
+def shared_rates(payload):
+    _shared_runtime()
     key = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     cached = _runtime.rate_results
     if key in cached:
@@ -100,6 +107,36 @@ def shared_rates(payload):
     if len(cached) > 256:
         cached.popitem(last=False)
     return json.loads(result)
+
+
+def _facility_levels(owner):
+    primary = owner.global_plan.get(owner.global_plan.get("default"))
+    if primary is None:
+        primary = {
+            room: {
+                "name": slots[0].facility if slots else "",
+                "plans": [{"agent": slot.agent} for slot in slots],
+            }
+            for room, slots in owner.global_plan["default_plan"].plan.items()
+        }
+    payload = json.dumps(
+        {
+            "default": "plan1",
+            "plan1": primary,
+            "facility_levels": owner.facility_levels,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    runtime = _shared_runtime()
+    cached = runtime.facility_level_results
+    if payload not in cached:
+        runtime.context.set_time_limit(2)
+        cached[payload] = runtime.facility_levels(payload)
+        if len(cached) > 32:
+            cached.popitem(last=False)
+    cached.move_to_end(payload)
+    return json.loads(cached[payload])
 
 
 class CalculatedMood:
@@ -503,7 +540,7 @@ def sync_model(owner, now=None, *, advance_clock=True):
                 and type(entry["level"]) is int
             }
         stages = dict(_runtime.growth_stages)
-    levels = owner.facility_levels
+    levels = _facility_levels(owner)
     observed_rooms = (
         set(owner.plan)
         | set(owner.facility_states)
@@ -520,9 +557,7 @@ def sync_model(owner, now=None, *, advance_clock=True):
             or (slots[0].facility if slots else None),
             "product": owner.facility_states.get(room, {}).get("product")
             or owner.products.get(room),
-            "level": levels.get(
-                room, 5 if room.startswith("dorm") or room == "central" else 3
-            ),
+            "level": levels.get(room, 0),
         }
         for room in observed_rooms
         for slots in [owner.plan.get(room, [])]

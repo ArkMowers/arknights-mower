@@ -4,7 +4,7 @@
  * Earlier task/planning phases and inner clue/reload/device flows belong to the caller.
  * Read each gate at its native position, after previous nested I/O has advanced time.
  */
-import {toMowerMicros,type MowerTaskQueue} from './mowerTaskQueue'
+import {fromMowerMicros,toMowerMicros,type MowerTaskQueue} from './mowerTaskQueue'
 import type {MowerNotificationFlags} from './mowerNotification'
 export interface MowerTodoTaskState {
  queue:MowerTaskQueue;flags:MowerNotificationFlags
@@ -33,7 +33,7 @@ function* observed(seam:MowerTodoTaskSeam,request:MowerTodoTaskRequest):
  return observation.value
 }
 function noPendingTask(state:MowerTodoTaskState,seam:MowerTodoTaskSeam,minutes:number):boolean{
- return state.queue.tasks.every(task=>task.timeMicros>=seam.nowMicros()+minutes*60_000_000)
+ return !state.queue.find({time:fromMowerMicros(seam.nowMicros()+minutes*60_000_000)})
 }
 export function* executeMowerTodoTask(state:MowerTodoTaskState,seam:MowerTodoTaskSeam):MowerTodoTaskGenerator{
  if(state.enableParty&&(state.lastClueMicros===null||seam.nowMicros()-state.lastClueMicros>3_600_000_000)&&
