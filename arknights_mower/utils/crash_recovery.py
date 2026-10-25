@@ -141,7 +141,7 @@ def initialize_intent(wanted, *, startup=False, start_type="0"):
                     "2" if start_type == "2" else pending_start_type() or start_type
                 )
                 values["reset_observation_pending"] = values["start_type"] == "2"
-                if values["start_type"] in ("1", "2"):
+                if values["start_type"] in ("1", "2", "3"):
                     values["pending_start_type"] = values["start_type"]
                 values.update(
                     phase="waiting",
@@ -165,7 +165,7 @@ def initialize_intent(wanted, *, startup=False, start_type="0"):
                 selected = (
                     "2" if start_type == "2" else pending_start_type() or start_type
                 )
-                if selected in ("1", "2"):
+                if selected in ("1", "2", "3"):
                     raw.update(
                         start_type=selected,
                         pending_start_type=selected,
@@ -188,7 +188,9 @@ def request_resume(start_type="0"):
                 startup=True,
                 start_type=start_type,
                 reset_observation_pending=start_type == "2",
-                pending_start_type=start_type if start_type in ("1", "2") else None,
+                pending_start_type=start_type
+                if start_type in ("1", "2", "3")
+                else None,
                 phase="waiting",
                 message="正在重新观察设备、驻员和心情，按所选启动方式继续调度。",
             )
@@ -198,7 +200,7 @@ def request_resume(start_type="0"):
                 raw = runtime.read_json(path) or {"active": False, "phase": "resolved"}
                 raw["reset_observation_pending"] = start_type == "2"
                 raw["pending_start_type"] = (
-                    start_type if start_type in ("1", "2") else None
+                    start_type if start_type in ("1", "2", "3") else None
                 )
                 runtime.write_json(path, raw, sync=True)
 
@@ -212,7 +214,7 @@ def pending_start_type():
     if current.get("reset_observation_pending"):
         return "2"
     selected = current.get("pending_start_type")
-    return selected if selected in ("1", "2") else None
+    return selected if selected in ("1", "2", "3") else None
 
 
 def checkpoint_reset(scheduler):
@@ -230,18 +232,23 @@ def checkpoint_reset(scheduler):
 def checkpoint_start(scheduler):
     if pending_start_type() == "2":
         return checkpoint_reset(scheduler)
-    if pending_start_type() != "1":
+    if pending_start_type() not in ("1", "3"):
         return
     from arknights_mower.solvers.record import save_current_state
 
     scheduler._state_restore_complete = True
     try:
         if not save_current_state():
-            raise RuntimeError("清空任务后的状态暂未保存，保留所选启动方式等待重试")
+            message = (
+                "更新重规划后的状态暂未保存，保留重要任务和所选启动方式等待重试"
+                if pending_start_type() == "3"
+                else "清空任务后的状态暂未保存，保留所选启动方式等待重试"
+            )
+            raise RuntimeError(message)
         with _lock:
             path = notice_path()
             raw = runtime.read_json(path) if path is not None else None
-            if isinstance(raw, dict) and raw.get("pending_start_type") == "1":
+            if isinstance(raw, dict) and raw.get("pending_start_type") in ("1", "3"):
                 raw["pending_start_type"] = None
                 runtime.write_json(path, raw, sync=True)
     except BaseException:

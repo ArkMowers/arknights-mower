@@ -2062,6 +2062,10 @@ def _start_mower(
         )
         if start_type == "1":
             saved_state["tasks"] = []
+        elif start_type == "3":
+            from arknights_mower.utils.scheduler_task import replan_update_tasks
+
+            saved_state = replan_update_tasks(saved_state)
         mower_thread = Thread(
             target=_run_mower_worker,
             args=(saved_state,),

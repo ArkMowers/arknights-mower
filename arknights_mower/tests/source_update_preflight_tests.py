@@ -241,7 +241,7 @@ class SourceCheckoutTests(unittest.TestCase):
             worker.restart([{"kind": "instance", "name": "fixture"}], verify=False)
         self.assertEqual(start.call_args.kwargs["env"]["PATH"], worker.env["PATH"])
 
-    def test_source_update_restart_preserves_stopped_and_running_task_state(self):
+    def test_source_update_restart_replans_running_tasks_and_keeps_stopped_state(self):
         from arknights_mower.tests.desktop_lifecycle_tests import DesktopStartupTests
 
         desktop = DesktopStartupTests()
@@ -252,8 +252,8 @@ class SourceCheckoutTests(unittest.TestCase):
             for running, automatic, expected in (
                 (False, False, []),
                 (False, True, []),
-                (True, False, [("start", "0")]),
-                (True, True, [("start", "0")]),
+                (True, False, [("start", "3")]),
+                (True, True, [("start", "3")]),
             ):
                 with self.subTest(
                     background=background, running=running, automatic=automatic
@@ -269,6 +269,7 @@ class SourceCheckoutTests(unittest.TestCase):
                         restart=bool(env["MOWER_RESTART_JOB"]),
                         resume_run=env["MOWER_RESUME_RUN"],
                         resume_mode=env.get("MOWER_RESUME_MODE", ""),
+                        update_replan=env.get("MOWER_UPDATE_REPLAN", ""),
                     )
                     self.assertEqual(events, expected)
                     self.assertEqual(server.start.call_count, int(bool(expected)))
