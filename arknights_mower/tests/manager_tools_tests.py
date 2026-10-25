@@ -1,7 +1,6 @@
 import json
 import os
 import stat
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -31,6 +30,15 @@ def write_conf(manager, index, values):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(values), encoding="utf-8")
     return path
+
+
+def storage_directory_link(source, destination):
+    if os.name == "nt":
+        import _winapi
+
+        _winapi.CreateJunction(str(source), str(destination))
+    else:
+        destination.symlink_to(source, target_is_directory=True)
 
 
 def test_batch_automatic_start_only_changes_selected_rows_and_preserves_permissions(
@@ -292,13 +300,7 @@ def test_storage_skips_windows_junctions_and_preserves_external_files(
     if nested:
         link.mkdir()
         link /= "archive"
-    created = subprocess.run(
-        ["cmd.exe", "/c", "mklink", "/J", str(link), str(outside)],
-        capture_output=True,
-        timeout=5,
-    )
-    if created.returncode:
-        pytest.skip("Directory junction creation is unavailable")
+    storage_directory_link(outside, link)
     try:
         usage = manager.get_storage_usage()["rows"][0]
         result = manager.clean_instance_storage(
@@ -651,3 +653,167 @@ def test_cleanup_reports_completed_deletions_when_later_category_is_a_link(
     assert result["deleted"] == 1 and result["freed"] == 3
     assert "符号链接" in result["errors"][0]
     assert (outside / "keep").read_text() == "keep"
+
+
+@pytest.mark.parametrize("directory", ["instance", "log", "archive"])
+def test_cleanup_retains_external_files_when_ancestry_changes_during_metadata_read(
+    manager, tmp_path, monkeypatch, directory
+):
+    instance = Path(manager.instances[0]["path"])
+    root = instance / "log"
+    local = root / "archive/keep"
+    local.parent.mkdir(parents=True)
+    local.write_bytes(b"old")
+    folder = {"instance": instance, "log": root, "archive": local.parent}[directory]
+    outside = tmp_path / "outside"
+    keep = outside / local.relative_to(folder)
+    keep.parent.mkdir(parents=True)
+    keep.write_bytes(b"private")
+    moved = folder.with_name(folder.name + "-moved")
+    attempted = False
+    linked = False
+    resolved = False
+    path_stat, file_stat, relative_stat = Path.stat, os.fstat, os.stat
+    path_resolve = Path.resolve
+
+    def inspect_resolve(path, *args, **kwargs):
+        nonlocal resolved
+        value = path_resolve(path, *args, **kwargs)
+        if path == local:
+            resolved = True
+        return value
+
+    def replace_directory():
+        nonlocal attempted, linked
+        if attempted:
+            return
+        attempted = True
+        try:
+            folder.rename(moved)
+        except PermissionError:
+            # Windows holds the selected file without delete sharing.
+            return
+        storage_directory_link(outside, folder)
+        linked = True
+
+    def inspect_path(path, *args, **kwargs):
+        info = path_stat(path, *args, **kwargs)
+        if resolved and path == local and kwargs.get("follow_symlinks", True):
+            replace_directory()
+        return info
+
+    def inspect_file(descriptor):
+        info = file_stat(descriptor)
+        replace_directory()
+        return info
+
+    def inspect_relative(path, *args, **kwargs):
+        info = relative_stat(path, *args, **kwargs)
+        if kwargs.get("dir_fd") is not None and path == local.name:
+            replace_directory()
+        return info
+
+    monkeypatch.setattr(Path, "stat", inspect_path)
+    monkeypatch.setattr(Path, "resolve", inspect_resolve)
+    monkeypatch.setattr(os, "fstat", inspect_file)
+    monkeypatch.setattr(os, "stat", inspect_relative)
+    monkeypatch.setattr(tools, "_files", lambda *args: iter([local]))
+    try:
+        result = manager.clean_instance_storage(
+            0, manager.instances[0].copy(), ["log"], 0
+        )
+        assert attempted
+        assert keep.read_bytes() == b"private"
+        assert result == {"ok": True, "deleted": 1, "freed": 3, "errors": []}
+        assert not (moved / local.relative_to(folder) if linked else local).exists()
+    finally:
+        if linked:
+            folder.rmdir() if os.name == "nt" else folder.unlink()
+
+
+@pytest.mark.parametrize("directory", ["instance", "log", "archive"])
+def test_cleanup_rejects_ancestry_replaced_just_before_open(
+    manager, tmp_path, monkeypatch, directory
+):
+    instance = Path(manager.instances[0]["path"])
+    root = instance / "log"
+    local = root / "archive/keep"
+    local.parent.mkdir(parents=True)
+    local.write_bytes(b"old")
+    folder = {"instance": instance, "log": root, "archive": local.parent}[directory]
+    outside = tmp_path / "outside"
+    keep = outside / local.relative_to(folder)
+    keep.parent.mkdir(parents=True)
+    keep.write_bytes(b"private")
+    moved = folder.with_name(folder.name + "-moved")
+    delete = tools._delete_storage_file
+    attempted = False
+    linked = False
+
+    def replace_before_open(path, selected_root, cutoff):
+        nonlocal attempted, linked
+        attempted = True
+        folder.rename(moved)
+        storage_directory_link(outside, folder)
+        linked = True
+        return delete(path, selected_root, cutoff)
+
+    monkeypatch.setattr(tools, "_delete_storage_file", replace_before_open)
+    monkeypatch.setattr(tools, "_files", lambda *args: iter([local]))
+    try:
+        result = manager.clean_instance_storage(
+            0, manager.instances[0].copy(), ["log"], 0
+        )
+        assert attempted
+        assert keep.read_bytes() == b"private"
+        assert (moved / local.relative_to(folder)).read_bytes() == b"old"
+        assert result["deleted"] == 0 and result["freed"] == 0
+    finally:
+        if linked:
+            folder.rmdir() if os.name == "nt" else folder.unlink()
+
+
+@pytest.mark.parametrize("outcome", ["deleted", "recent", "metadata_error"])
+def test_cleanup_releases_open_files_after_each_outcome(manager, monkeypatch, outcome):
+    root = Path(manager.instances[0]["path"]) / "log"
+    root.mkdir(parents=True)
+    path = root / "keep"
+    path.write_bytes(b"")
+    opened = set()
+    if os.name != "nt":
+        open_directory, close_directory = os.open, os.close
+
+        def tracked_open(*args, **kwargs):
+            descriptor = open_directory(*args, **kwargs)
+            opened.add(descriptor)
+            return descriptor
+
+        def tracked_close(descriptor):
+            close_directory(descriptor)
+            opened.discard(descriptor)
+
+        monkeypatch.setattr(os, "open", tracked_open)
+        monkeypatch.setattr(os, "close", tracked_close)
+    if outcome == "metadata_error":
+        if os.name == "nt":
+            monkeypatch.setattr(
+                os, "fstat", Mock(side_effect=OSError("metadata failed"))
+            )
+        else:
+            original = os.stat
+
+            def failed_metadata(path, *args, **kwargs):
+                if kwargs.get("dir_fd") is not None:
+                    raise OSError("metadata failed")
+                return original(path, *args, **kwargs)
+
+            monkeypatch.setattr(os, "stat", failed_metadata)
+    result = manager.clean_instance_storage(
+        0, manager.instances[0].copy(), ["log"], 7 if outcome == "recent" else 0
+    )
+    assert result["deleted"] == (1 if outcome == "deleted" else 0)
+    assert result["freed"] == 0
+    assert bool(result["errors"]) == (outcome == "metadata_error")
+    assert path.exists() == (outcome != "deleted")
+    assert not opened
+    root.rename(root.with_name("released"))

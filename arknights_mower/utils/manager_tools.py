@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from . import manager_common
 from . import update_runtime as runtime
 from .device_compatibility import capture_compatibility_error
+from .manager_storage import delete_file as _delete_storage_file
 from .path import resolve_config_path
 
 
@@ -293,13 +294,13 @@ class ManagerTools:
                             continue
                         if not path.resolve().is_relative_to(root):
                             continue
-                        stat = path.stat()
-                        if older_days and stat.st_mtime >= cutoff:
-                            continue
                         try:
-                            path.unlink()
-                            deleted += 1
-                            freed += stat.st_size
+                            size = _delete_storage_file(
+                                path, root, cutoff if older_days else None
+                            )
+                            if size is not None:
+                                deleted += 1
+                                freed += size
                         except OSError as error:
                             if len(errors) < 10:
                                 errors.append(str(error))
