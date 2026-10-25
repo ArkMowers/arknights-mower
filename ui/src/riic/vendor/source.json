@@ -246,7 +246,9 @@
     "scheduler/mowerPredictiveMoodControl.spec.ts": "83dd77d76f59b85efb8db59530611bfdc243da032981471a5a4910b325c0b3e3",
     "scheduler/mowerPredictiveMoodControl.ts": "39c56413bed7fa5f858d301ae3749618162378e7bcb8cf7cded09a20a0f6d6e7",
     "scheduler/mowerPredictivePlanning.spec.ts": "27b2c7a1694b2a0f4c0b214aba18e278fa0a4b1cefbf259dfb74329ca58f7581",
-    "scheduler/mowerPredictivePlanning.ts": "051009cb3f9aa8e6bcab02f78114b6d749d86e9e6441c8a7ee496b153a66bbf6"
+    "scheduler/mowerPredictivePlanning.ts": "051009cb3f9aa8e6bcab02f78114b6d749d86e9e6441c8a7ee496b153a66bbf6",
+    "scheduler/mowerOrdinaryPlanningWake.ts": "0cd40626fd83599b216291c95cda23f701324535ccd92f02198c66cb415700e4",
+    "scheduler/mowerBackupWake.spec.ts": "8de96461b6da0d5a93c543cec09fc07ec7dc61a9c6e542f9d6e094c92c9487f2"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -262,12 +264,12 @@
       "sha256": "8888318457b8aba820573a7edb882923a48f1a1c143f7ca7daf3575cc34d2682"
     },
     "scheduler/backupPlans.ts": {
-      "sha256": "56b640029dfdd67900101394a8a5fe7b8dfd8f7bff8203f49a495a23d3068df5",
-      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE."
+      "sha256": "6b06533fff1f5a7b9dbec4f3d342ebd7895e38308d36b7e98855e2d24fecf1a8",
+      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points."
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "sha256": "8630a83ed869a24bd679bdd61c547884be6aae52da8925fdd000290db77cb792",
-      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
+      "sha256": "168a6259c5a05edcdab3356706ee6b6ab0f9124fb2e89d7d96f2d138024e91c9",
+      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch. Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points."
     },
     "scheduler/rosterRuntime.ts": {
       "sha256": "bd5769a7f4653f369884491455af91f4e5fed1346ca338142776dd526cc301b3",
@@ -620,6 +622,14 @@
     "scheduler/mowerWorkingReplacement.ts": {
       "sha256": "ebfe901d66e0c60cf278df316b3660fc122e1dcbd07b6e454314bedded036add",
       "reason": "Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
+    },
+    "scheduler/mowerOrdinaryPlanningWake.ts": {
+      "sha256": "0cd40626fd83599b216291c95cda23f701324535ccd92f02198c66cb415700e4",
+      "reason": "Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points."
+    },
+    "scheduler/mowerBackupWake.spec.ts": {
+      "sha256": "8de96461b6da0d5a93c543cec09fc07ec7dc61a9c6e542f9d6e094c92c9487f2",
+      "reason": "Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

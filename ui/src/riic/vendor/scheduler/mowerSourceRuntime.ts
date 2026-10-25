@@ -16,6 +16,7 @@ import {executeMowerTodoTask,type MowerTodoTaskState} from './mowerTodoTask'
 import {executeMowerClueNew,runMowerClueFlow,setMowerPartyTime,type MowerClueLifecycleState} from './mowerClueLifecycle'
 import {collectMowerInfraNotification,collectMowerTodoList} from './mowerNotification'
 import {bridgeMowerNativeIO,type MowerNativeIOYield} from './mowerRunOrderBridge'
+import {hasMowerPlanningWake} from './mowerOrdinaryPlanningWake'
 import {runDefaultTradeSegment,dispatchDefaultRefreshTime,type RunOrderPlanningState,type RunOrderPlanningSeam} from './mowerRunOrderPlanning'
 // Headless adapter for pinned default Mower task decisions.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
@@ -583,7 +584,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
   if(_task?.type===T.FIAMMETTA||queue.tasks.some(t=>!t.executionFailure&&t.type===T.FIAMMETTA&&t.timeMicros<=toMowerMicros(s.time)))return {changed:false,generated:[]}
   const previousConfig=s.config
   s.mowerBackupContext=context;s.mowerBackupGenerated=[]
-  const changed=onPhase?.(phase)??false
+  const previousTask=source.activeTask
+  if(_task)source.activeTask=_task
+  let changed:boolean
+  try{changed=onPhase?.(phase)??false}finally{if(previousTask)source.activeTask=previousTask;else delete source.activeTask}
   const generated=s.mowerBackupGenerated??[];delete s.mowerBackupContext;getMowerSourceRuntime(s)
   for(const task of generated)if(!queue.tasks.includes(task))queue.tasks.push(task)
   if(previousConfig!==s.config&&queue.tasks.some(t=>t.type===T.SHIFT_ON||t.type===T.RELEASE_DORM))planMowerMetadata(getMowerSourceRuntime(s).data,queue,dependencyReturn)
@@ -850,6 +854,11 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     data.pendingGroupTransitions={}
     const success=next.value,eventData=running?.data??data
     skipPlanning=!success||task.type===T.RE_ORDER
+    if(success&&(task.type===T.RE_ORDER||task.exhaustSupport&&task.ordinaryCoordination||task.type===T.SELF_CORRECTION&&task.metadata==='副表内存收敛')){
+     const followup=new MowerTask({time:s.time})
+     if(!hasMowerPlanningWake(queue.tasks,followup,task))queue.tasks.push(followup)
+     skipPlanning=true
+    }
     if(success&&data.alpha){
      commitMowerGroupShifts(getMowerSourceRuntime(s).data,{...mowerArrangementGroupTransitions(data,intent),...task.groupShiftTransitions})
      const actual=getMowerSourceRuntime(s).data,off:string[]=[],on:string[]=[]

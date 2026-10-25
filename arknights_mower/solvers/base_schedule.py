@@ -3384,14 +3384,7 @@ class BaseSchedulerSolver(
             ):
                 # 延期或重启可能已消费切表时的空任务；完成边界补回规划责任。
                 # 复用已到期的空任务，远期回班不能代替立即正常规划。
-                if not any(
-                    task.type == TaskTypes.NOT_SPECIFIC
-                    and not task.plan
-                    and not task.meta_data
-                    and task.time <= datetime.now()
-                    for task in self.tasks
-                ):
-                    self.tasks.append(SchedulerTask())
+                self._ensure_ordinary_planning_wake()
                 self.skip()
                 return True
         elif not self.planned:
@@ -6783,6 +6776,19 @@ class BaseSchedulerSolver(
                 )
             )
 
+    def _ensure_ordinary_planning_wake(self, custom_task_time=None):
+        followup = SchedulerTask(time=custom_task_time)
+        if any(
+            task is not getattr(self, "task", None)
+            and type(task) is type(followup)
+            and task.time <= followup.time
+            and vars(task) == {**vars(followup), "time": task.time}
+            for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
+        ):
+            return None
+        self.tasks.append(followup)
+        return followup
+
     @log_mood_calculation("副表切换")
     @_log_backup_calculation("副表切换")
     def backup_plan_solver(
@@ -6978,13 +6984,8 @@ class BaseSchedulerSolver(
                 self.plan_metadata()
             # 回班重建和唤醒常规规划是两个独立步骤；没有实际换人也要规划。
             # 实际换班的完成边界会补回被延期或重启提前消费的空任务。
-            followup = SchedulerTask(
-                time=custom_task_time,
-                task_plan={},
-                task_type=TaskTypes.NOT_SPECIFIC,
-            )
-            self.tasks.append(followup)
-            if generated_tasks is not None:
+            followup = self._ensure_ordinary_planning_wake(custom_task_time)
+            if followup is not None and generated_tasks is not None:
                 generated_tasks.append(followup)
             return generated is not None
         except MowerExit:

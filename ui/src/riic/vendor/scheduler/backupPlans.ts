@@ -16,6 +16,7 @@ import {parseProduct} from '../domain/mowerProducts'
 // See validation/mower-backup-2026-09-22/implementation-report.md for source contracts.
 import { OPERATOR_MAP } from '../domain/operators'
 import {MowerTask} from './mowerTaskQueue'
+import {hasMowerPlanningWake} from './mowerOrdinaryPlanningWake'
 import { resolveOperatorCharId as resolveId } from '../domain/operatorIdentifiers'
 import type { MowerRoomId, RosterWorkspace } from '../domain/roster'
 import { compileRosterSchedule } from './compileRosterSchedule'
@@ -297,7 +298,8 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         const activation=generated[0]??new MowerTask({time:state.time});activation.backupGroup=selection.groupId
         alphaModel.activate(conditions,activation);getMowerSourceRuntime(state).data.dorms=current.dorms
         for(const event of state.events.slice(-plans.length))if(event.type==='backup-plan'&&event.time===state.time)event.timing=timing
-        const followup=new MowerTask({time:state.time});if(state.mowerBackupContext?.customTimeMicros!==undefined)followup.timeMicros=state.mowerBackupContext.customTimeMicros;generated.push(followup)
+        const followup=new MowerTask({time:state.time});if(state.mowerBackupContext?.customTimeMicros!==undefined)followup.timeMicros=state.mowerBackupContext.customTimeMicros
+        if(!hasMowerPlanningWake(queue.tasks,followup,source.activeTask))generated.push(followup)
         state.mowerBackupGenerated=generated
         return Object.keys(merged.plan).length>0
       }
