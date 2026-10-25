@@ -255,6 +255,7 @@ export function createPreviewAdapter(data, requests = []) {
     profiles.push({ id, name: name.trim() })
     return activate(config, id, incoming, selected)
   }
+  let logBackground = null
   return async (config) => {
     const method = (config.method || 'get').toUpperCase()
     const requestUrl = new URL(config.url, 'http://mower-preview.invalid')
@@ -273,12 +274,31 @@ export function createPreviewAdapter(data, requests = []) {
       config.headers?.['X-Mower-Config-Generation']
     if (
       ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method) &&
+      !path.startsWith('/gui/') &&
       supplied !== generation &&
       !(generation === '0' && supplied == null)
     ) {
       fail(config, '当前配置已切换，请重新加载页面', 409)
     }
     let result
+    if (path === '/gui/log-background' && ['GET', 'PUT', 'DELETE'].includes(method)) {
+      if (method === 'PUT') {
+        if (
+          !(body instanceof Blob) ||
+          !['image/png', 'image/jpeg', 'image/webp'].includes(body.type) ||
+          body.size > 8 * 1024 * 1024
+        )
+          fail(config, '请选择不超过 8 MiB 的 PNG、JPEG 或 WebP 图片')
+        logBackground = new Blob([body], { type: 'image/webp' })
+      } else if (method === 'DELETE') logBackground = null
+      return {
+        status: logBackground ? 200 : 204,
+        statusText: 'OK',
+        data: logBackground || '',
+        headers: { 'cache-control': 'no-store' },
+        config
+      }
+    }
     const reads = {
       '/conf': () => clone(data.config),
       '/network/settings': () => ({ ok: true, ...networkSettings }),

@@ -467,6 +467,24 @@ def test_database_tables_keep_schema_indexes_and_autoincrement(storage):
 
 
 @pytest.mark.parametrize("inherit", [[], ["other_settings"]])
+def test_profile_switch_preserves_current_log_background(storage, inherit):
+    path = config.conf_path.parent / "log-background.webp"
+    path.write_bytes(b"first local image")
+    original = profiles.list_profiles()["active_id"]
+    created = _create("background preservation", inherit)
+    assert path.read_bytes() == b"first local image"
+    path.write_bytes(b"latest local image")
+    _activate(original)
+    assert path.read_bytes() == b"latest local image"
+    _activate(created["active_id"])
+    assert path.read_bytes() == b"latest local image"
+    assert (
+        backup.read_archive(backup.export_archive())["log-background.webp"]
+        == b"latest local image"
+    )
+
+
+@pytest.mark.parametrize("inherit", [[], ["other_settings"]])
 def test_profile_switch_preserves_the_active_gui_process_lock(
     storage, monkeypatch, inherit
 ):

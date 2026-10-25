@@ -19,6 +19,7 @@ import { routeLocationKey, routerKey } from 'vue-router'
 
 import LogPage from './Log.vue'
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
+import { useLogBackgroundStore } from '@/stores/logBackground'
 
 const { descriptor } = parse(readFileSync(new URL('./Log.vue', import.meta.url), 'utf8'))
 const script = compileScript(descriptor, { id: 'task-dialog-loading-test' })
@@ -107,6 +108,7 @@ describe('log page', () => {
   let app
 
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.useFakeTimers()
     onMounted.mockClear()
     onUnmounted.mockClear()
@@ -414,6 +416,19 @@ describe('log page', () => {
     }
     return { root, find, all }
   }
+
+  it('updates the mounted background immediately when shared settings change', async () => {
+    const { find } = mountWorkspace()
+    const layer = find((target) => target.props.class === 'log-bg')
+    expect(layer.props.style.backgroundImage).toBe("url('/bg.webp')")
+    const background = useLogBackgroundStore()
+    background.customUrl = 'blob:custom-image'
+    await nextTick()
+    expect(layer.props.style.backgroundImage).toBe("url('blob:custom-image')")
+    background.customUrl = ''
+    await nextTick()
+    expect(layer.props.style.backgroundImage).toBe("url('/bg.webp')")
+  })
 
   it('keeps an empty queue compact without mounting task preparation or editors', () => {
     const { all } = mountWorkspace()

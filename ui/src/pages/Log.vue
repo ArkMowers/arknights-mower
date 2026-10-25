@@ -18,6 +18,7 @@ import { useDialog, useMessage } from 'naive-ui'
 import { routeLocationKey, routerKey } from 'vue-router'
 
 import { useMowerStore } from '@/stores/mower'
+import { useLogBackgroundStore } from '@/stores/logBackground'
 import {
   clampScreenshotHeight,
   clampTaskHeight,
@@ -28,6 +29,7 @@ import { createScreenshotPreview } from '@/utils/screenshotPreview'
 import StartSchedule from '@/components/StartSchedule.vue'
 import { useResolvedTheme } from '@/composables/theme'
 const mower_store = useMowerStore()
+const logBackground = useLogBackgroundStore()
 const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting } =
   storeToRefs(mower_store)
 const { get_tasks, get_running, start_task_polling, stop_task_polling } = mower_store
@@ -229,6 +231,7 @@ function updatePageVisibility() {
 }
 
 onMounted(() => {
+  void logBackground.load()
   const savedPreviewState = localStorage.getItem('sc_preview')
   if (savedPreviewState !== null) {
     sc_preview.value = JSON.parse(savedPreviewState)
@@ -495,7 +498,11 @@ async function db_delete(keys) {
 
 <template>
   <div class="home-container" :class="{ 'home-container--mobile': mobile }">
-    <div class="log-bg" aria-hidden="true"></div>
+    <div
+      class="log-bg"
+      :style="{ backgroundImage: `url('${logBackground.url}')` }"
+      aria-hidden="true"
+    ></div>
     <section
       ref="log_layout"
       class="log-pane"
@@ -1095,7 +1102,6 @@ async function db_delete(keys) {
   top: 0;
   left: 0;
   opacity: v-bind(bg_opacity);
-  background-image: url(/bg.webp);
   background-repeat: no-repeat;
   background-size: cover;
   background-position: 65% 50%;

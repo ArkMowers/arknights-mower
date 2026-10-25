@@ -37,6 +37,7 @@ IMPORT_PRESERVED_FILES = {
     "network.json",
     "gui.yml",
     "gui.yml.lock",
+    "log-background.webp",
     "state.json",
     "recycling_report/submission.lock",
 }
