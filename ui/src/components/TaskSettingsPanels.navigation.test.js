@@ -61,9 +61,17 @@ const workflow = defineComponent({
         },
         [
           h('button', { class: 'checklist-mobile-toggle' }),
-          ...['device', 'runtime', 'report', 'skland', 'mail', 'visit', 'credit-fight', 'shop'].map(
-            (id) => h('button', { 'data-select': id, onClick: () => emit('select', id) })
-          ),
+          ...[
+            'device',
+            'runtime',
+            'report',
+            'skland',
+            'mail',
+            'event-sign-in',
+            'visit',
+            'credit-fight',
+            'shop'
+          ].map((id) => h('button', { 'data-select': id, onClick: () => emit('select', id) })),
           slots.default?.()
         ]
       )
@@ -439,7 +447,7 @@ describe('continuous settings directory and scroll selection', () => {
   it('maps shared cards and legacy links to existing editors without a flash', async () => {
     const page = await mount('#task-long')
     expect(panels('long')[0].scrollIntoView).toHaveBeenCalledOnce()
-    for (const id of ['report', 'skland', 'mail']) {
+    for (const id of ['report', 'skland', 'mail', 'event-sign-in']) {
       await page.select(id)
       expect(panels(id)[0].scrollIntoView).toHaveBeenCalledOnce()
     }

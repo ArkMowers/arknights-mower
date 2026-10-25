@@ -84,6 +84,23 @@ function selectedLabels(html) {
 }
 
 describe('partial configuration saves', () => {
+  it.each([undefined, false, true])(
+    'loads activity sign-in %s with a disabled default and saves only its explicit change',
+    async (saved) => {
+      await setup(saved === undefined ? {} : { event_sign_in_enable: saved })
+      const enabled = saved ?? false
+      expect(store.event_sign_in_enable).toBe(enabled)
+      expect(store.build_config().event_sign_in_enable).toBe(enabled)
+      expect(axios.patch).not.toHaveBeenCalled()
+      store.event_sign_in_enable = !enabled
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        event_sign_in_enable: !enabled
+      })
+    }
+  )
+
   it.each([
     ['load_shop', 'shop_list'],
     ['load_item', 'item_list']

@@ -146,7 +146,7 @@ function resolveTarget(id) {
 
 function revealActive(target = '') {
   if (!pageActive) return
-  const id = ['report', 'skland', 'mail'].includes(props.active)
+  const id = ['report', 'skland', 'mail', 'event-sign-in'].includes(props.active)
     ? 'daily'
     : ['visit', 'credit-fight', 'shop'].includes(props.active)
       ? 'credit'

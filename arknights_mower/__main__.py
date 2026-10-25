@@ -653,6 +653,12 @@ def simulate(saved):
             base_scheduler.daily_report = saved["daily_report"]
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
+            base_scheduler.daily_event_sign_in = saved.get(
+                "daily_event_sign_in", get_server_time().date() - timedelta(days=1)
+            )
+            base_scheduler.daily_event_sign_in_attempt = saved.get(
+                "daily_event_sign_in_attempt"
+            )
             base_scheduler.task_count = saved["task_count"]
             if len(base_scheduler.op_data.backup_plans) > 0 and not saved.get(
                 "_process_crash_recovery"
@@ -777,6 +783,8 @@ def simulate(saved):
                     ):
                         if base_scheduler.mail_plan_solver():
                             base_scheduler.daily_mail = get_server_time().date()
+
+                    base_scheduler.event_sign_in_plan_solver()
 
                     if config.conf.recruit_enable:
                         base_scheduler.recruit_plan_solver()

@@ -6,7 +6,7 @@ import pickle
 import sqlite3
 import traceback
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from threading import Event, Lock
 
 import pytz
@@ -322,6 +322,10 @@ def current_state():
         "daily_report": base_scheduler.daily_report,
         "daily_skland": base_scheduler.daily_skland,
         "daily_mail": base_scheduler.daily_mail,
+        "daily_event_sign_in": getattr(base_scheduler, "daily_event_sign_in", date.min),
+        "daily_event_sign_in_attempt": getattr(
+            base_scheduler, "daily_event_sign_in_attempt", None
+        ),
         "task_count": base_scheduler.task_count,
     }
 

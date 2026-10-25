@@ -38,7 +38,8 @@ function previewFieldGroup(key) {
     return 'runtime'
   if (key.startsWith('maa_rg_') || key === 'maa_long_task_type') return 'long'
   if (key.startsWith('maa_')) return 'maa'
-  if (['check_mail_enable', 'report_enable', 'skland_enable'].includes(key)) return 'daily'
+  if (['check_mail_enable', 'event_sign_in_enable', 'report_enable', 'skland_enable'].includes(key))
+    return 'daily'
   return 'other_settings'
 }
 

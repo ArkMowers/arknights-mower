@@ -498,6 +498,8 @@ class BaseSchedulerSolver(
         self.daily_report = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_skland = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_mail = (datetime.now() - timedelta(days=1, hours=8)).date()
+        self.daily_event_sign_in = get_server_time().date() - timedelta(days=1)
+        self.daily_event_sign_in_attempt = None
         self.daily_visit_friend = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_visit_friend_attempt = None
         self.ideal_resting_count = 4
@@ -16556,6 +16558,28 @@ class BaseSchedulerSolver(
         if config.conf.check_mail_enable:
             MailSolver(self.device, self.recog).run()
         return True
+
+    def event_sign_in_plan_solver(self):
+        if not config.conf.event_sign_in_enable:
+            if self.daily_event_sign_in_attempt is not None:
+                self.daily_event_sign_in_attempt = None
+                save_current_state()
+            return False
+        today = get_server_time().date()
+        if (
+            self.daily_event_sign_in >= today
+            or self.daily_event_sign_in_attempt == today
+        ):
+            return False
+
+        from arknights_mower.solvers.event_sign_in import EventSignInSolver
+
+        completed = EventSignInSolver(self.device, self.recog).run()
+        self.daily_event_sign_in_attempt = today
+        if completed:
+            self.daily_event_sign_in = today
+        save_current_state()
+        return completed
 
     def report_plan_solver(self):
         if config.conf.report_enable:
