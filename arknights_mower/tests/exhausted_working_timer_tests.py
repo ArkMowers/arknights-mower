@@ -1,4 +1,4 @@
-"""中枢已耗尽干员不重读不存在的计时，恢复和正常工作计时保持不变。"""
+"""零心情先核验工作倒计时，实际耗尽、恢复和正常工作计时各有依据。"""
 
 import sys
 from datetime import datetime, timedelta
@@ -23,6 +23,7 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noq
 def room_reader():
     def make(room="central", name="歌蕾蒂娅", mood=0):
         target = SimpleNamespace(
+            name=name,
             current_room=room,
             current_index=0,
             mood=mood,
@@ -83,12 +84,13 @@ def room_reader():
         solver.read_accurate_mood = MagicMock(return_value=mood)
         deadline = datetime.now() + timedelta(hours=1)
         solver.read_operator_time = MagicMock(return_value=deadline)
+        solver.read_time = MagicMock(return_value=None)
         return solver, target, deadline
 
     return make
 
 
-def test_confirmed_exhausted_central_sets_real_exhaust_time_without_timer_ocr(
+def test_confirmed_exhausted_central_checks_countdown_before_accepting_zero(
     room_reader,
 ):
     solver, target, _ = room_reader()
@@ -99,12 +101,13 @@ def test_confirmed_exhausted_central_sets_real_exhaust_time_without_timer_ocr(
     assert before <= target.exhaust_time <= after
     assert result["mood"] == 0
     solver.read_operator_time.assert_not_called()
+    solver.read_time.assert_called_once_with(((1650, 270), (1780, 305)), None)
     assert solver.read_screen.call_count == 2
     assert solver.read_accurate_mood.call_count == 2
     solver.recog.update.assert_called_once()
 
 
-@pytest.mark.parametrize("room", ["dormitory_1", "train", "room_1_1", "contact"])
+@pytest.mark.parametrize("room", ["dormitory_1", "train"])
 def test_zero_mood_outside_central_keeps_existing_countdown(room_reader, room):
     solver, _, deadline = room_reader(room=room)
     result = solver.get_agent_from_room(room, [0])[0]
@@ -596,8 +599,9 @@ def test_nonzero_central_keeps_measured_working_countdown(room_reader):
 
 
 @pytest.mark.parametrize("change", ["room", "name", "mood", "detail", "connecting"])
-def test_uncertain_second_observation_keeps_existing_countdown(room_reader, change):
-    solver, _, deadline = room_reader()
+def test_uncertain_second_observation_keeps_mood_unconfirmed(room_reader, change):
+    solver, target, _ = room_reader()
+    sampled_at = target.time_stamp
     if change == "room":
         solver.detect_room.return_value = "dormitory_1"
     elif change == "name":
@@ -615,8 +619,13 @@ def test_uncertain_second_observation_keeps_existing_countdown(room_reader, chan
             return old_find(resource, **kwargs)
 
         solver.find.side_effect = find
-    assert solver.get_agent_from_room("central", [0])[0]["time"] == deadline
-    solver.read_operator_time.assert_called_once()
+    result = solver.get_agent_from_room("central", [0])[0]
+    assert result["mood"] == -1
+    assert "time" not in result
+    assert target.time_stamp == sampled_at
+    assert target.working_mood_unconfirmed
+    solver.read_operator_time.assert_not_called()
+    solver.read_time.assert_called_once()
 
 
 def test_cached_zero_mood_is_not_an_exhaustion_measurement(room_reader):
@@ -630,18 +639,16 @@ def test_cached_zero_mood_is_not_an_exhaustion_measurement(room_reader):
     solver.recog.update.assert_not_called()
 
 
-@pytest.mark.parametrize("condition", ["not_working", "not_exhaust_room"])
-def test_zero_mood_without_working_exhaustion_semantics_keeps_countdown(
-    room_reader, condition
+def test_zero_mood_outside_exhaust_configuration_still_confirms_actual_value(
+    room_reader,
 ):
-    solver, target, deadline = room_reader()
-    if condition == "not_working":
-        target.is_working.return_value = False
-    else:
-        solver.op_data.true_exhaust_room.clear()
-    assert solver.get_agent_from_room("central", [0])[0]["time"] == deadline
-    solver.read_operator_time.assert_called_once()
-    solver.recog.update.assert_not_called()
+    solver, target, _ = room_reader()
+    solver.op_data.true_exhaust_room.clear()
+    result = solver.get_agent_from_room("central", [0])[0]
+    assert result["mood"] == target.mood == 0
+    solver.read_operator_time.assert_not_called()
+    solver.read_time.assert_called_once()
+    solver.recog.update.assert_called_once()
 
 
 @pytest.mark.parametrize("rest_in_full", [False, True])

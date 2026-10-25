@@ -1,4 +1,4 @@
-"""普通替班读心情不要求倒计时，游戏工作倒计时保持归零终点。"""
+"""普通替班的正心情读数不要求倒计时，游戏工作倒计时保持归零终点。"""
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -17,7 +17,7 @@ from arknights_mower.utils.recognize import RecognizeError
     "room", ["central", "room_1_1", "contact", "meeting", "factory"]
 )
 @pytest.mark.parametrize(
-    "lower,mood", [(0, 0), (0, 1), (0, 2), (0, 16), (0, 24), (6, 7), (20, 21)]
+    "lower,mood", [(0, 1), (0, 2), (0, 16), (0, 24), (6, 7), (20, 21)]
 )
 def test_replacement_mood_observation_does_not_request_countdown(
     room_reader, room, lower, mood

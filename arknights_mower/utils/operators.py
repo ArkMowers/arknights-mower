@@ -878,6 +878,8 @@ class Operators:
 
     @measure_mood_calculation
     def calculated_mood(self, name, now=None):
+        if getattr(self.operators.get(name), "working_mood_unconfirmed", False):
+            return None
         if not self.mood_calculation_enabled:
             return None
         from arknights_mower.utils.calculated_mood import sync_model
@@ -901,6 +903,8 @@ class Operators:
 
     @measure_mood_calculation
     def calculated_mood_deadline(self, name, target, now=None, max_hours=240):
+        if getattr(self.operators.get(name), "working_mood_unconfirmed", False):
+            return None
         if not self.mood_calculation_enabled:
             return None
         from arknights_mower.utils.calculated_mood import sync_model
@@ -1835,6 +1839,7 @@ class Operators:
                 preserve=preserve_depletion_rate,
             )
             agent.mood_is_prediction = False
+            agent.working_mood_unconfirmed = False
             if (
                 not preserve_depletion_rate
                 and agent.time_stamp is not None
@@ -2104,6 +2109,9 @@ class Operators:
             operator.mood = exist.mood
             operator.time_stamp = exist.time_stamp
             operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
+            operator.working_mood_unconfirmed = getattr(
+                exist, "working_mood_unconfirmed", False
+            )
             operator.depletion_rate = exist.depletion_rate
             operator.recall_work_rate = getattr(exist, "recall_work_rate", None)
             operator.recall_work_rate_checked = getattr(
@@ -3351,6 +3359,7 @@ class Operator:
         self.depletion_rate = depletion_rate
         self.time_stamp = time_stamp
         self.mood_is_prediction = False
+        self.working_mood_unconfirmed = False
         self.workaholic = False
         self.arrange_order = ["技能", "false"]
         self.exhaust_time = None
@@ -3507,6 +3516,8 @@ class Operator:
         return False
 
     def current_mood(self, time=None):
+        if getattr(self, "working_mood_unconfirmed", False):
+            return -1
         time = time or getattr(self, "_projection_now", None)
         model = getattr(self, "_mood_model", None)
         if (

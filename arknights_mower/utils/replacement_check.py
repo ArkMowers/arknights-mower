@@ -400,6 +400,7 @@ def _cached_work_mood(cover, task):
         sampled_at is None
         or not sampled_at <= now
         or getattr(cover, "mood_is_prediction", False)
+        or getattr(cover, "working_mood_unconfirmed", False)
         or not _finite_mood(cover.mood)
         or cover.need_to_refresh(r=cover.current_room)
         or (read_after is not None and sampled_at <= read_after)

@@ -2,6 +2,7 @@
 
 import pickle
 from datetime import timedelta
+from itertools import cycle
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -219,11 +220,29 @@ def test_failed_floor_read_yields_without_repeated_dispatch(
     solver.get_agent_from_room.assert_called_once()
 
 
+def _prepare_zero_floor_reader(solver, clock):
+    covers, deadlines = _prepare_same_room_reader(solver, clock, 2)
+    solver.read_time = Mock(return_value=None)
+    solver.detect_room = Mock(return_value="central")
+    solver.find = Mock(
+        side_effect=lambda resource, **kwargs: (
+            True if resource == "room_detail" else None
+        )
+    )
+    # 每个槽位先读姓名，再在耗尽复核中读同一姓名；模拟两帧实际房间。
+    solver.read_screen.side_effect = cycle(
+        name for cover in covers for name in (cover.name, cover.name)
+    )
+    solver.read_accurate_mood.side_effect = None
+    solver.read_accurate_mood.return_value = 0
+    return covers, deadlines
+
+
 def test_same_room_floor_confirmation_supplies_both_checks(
     replacement_solver, clock, calculated
 ):
     solver = replacement_solver
-    covers, _ = _prepare_same_room_reader(solver, clock, 2)
+    covers, _ = _prepare_zero_floor_reader(solver, clock)
     model_values(solver.op_data, {op.name: 0 for op in covers} | {"赫默": 20})
     solver.read_accurate_mood.side_effect = None
     solver.read_accurate_mood.return_value = 0
@@ -234,7 +253,9 @@ def test_same_room_floor_confirmation_supplies_both_checks(
     assert replacement_check.run_replacement_check(solver, second) is False
     assert second.execution_failure
     solver.enter_room.assert_called_once()
-    assert solver.read_accurate_mood.call_count == 2
+    assert solver.read_accurate_mood.call_count == 4
+    assert solver.read_time.call_count == 2
+    assert solver.recog.update.call_count == 2
 
 
 @pytest.mark.parametrize("release", [None, "before", "during"])
@@ -242,7 +263,7 @@ def test_peer_same_value_read_preserves_failure_but_keeps_external_release(
     replacement_solver, clock, calculated, release
 ):
     solver = replacement_solver
-    covers, _ = _prepare_same_room_reader(solver, clock, 2)
+    covers, _ = _prepare_zero_floor_reader(solver, clock)
     model_values(solver.op_data, {op.name: 0 for op in covers} | {"赫默": 20})
     spare = solver.op_data.operators["赫默"]
     spare.current_room, spare.current_index = "meeting", 0
