@@ -2337,9 +2337,9 @@ def diagnostic_errors():
     return {"events": error_events(get_path("@app/screenshot"))}
 
 
-def _send_diagnostic_bundle(center, archive_id=None):
+def _send_diagnostic_bundle(center, archive_id=None, **options):
     bundle = export_bundle(
-        get_path("@app/log"), get_path("@app/screenshot"), center, archive_id
+        get_path("@app/log"), get_path("@app/screenshot"), center, archive_id, **options
     )
     response = send_file(
         bundle,
@@ -2363,7 +2363,29 @@ def diagnostic_export():
         center = datetime.datetime.fromtimestamp(timestamp / 1000)
     except (OverflowError, OSError, ValueError):
         return {"error": "请选择有效的导出时间"}, 400
-    return _send_diagnostic_bundle(center)
+    options = {}
+    if "start" in request.args or "end" in request.args:
+        start_ms = request.args.get("start", type=int)
+        end_ms = request.args.get("end", type=int)
+        if (
+            start_ms is None
+            or end_ms is None
+            or start_ms < 0
+            or end_ms <= start_ms
+            or end_ms > (time.time() + 3600) * 1000
+            or end_ms - start_ms > 7 * 24 * 3600 * 1000
+        ):
+            return {"error": "请选择有效的起止时间，单次最多导出 7 天"}, 400
+        try:
+            options["start"] = datetime.datetime.fromtimestamp(start_ms / 1000)
+            options["end"] = datetime.datetime.fromtimestamp(end_ms / 1000)
+        except (OverflowError, OSError, ValueError):
+            return {"error": "请选择有效的导出起止时间"}, 400
+    screenshots = request.args.get("screenshots", "1")
+    if screenshots not in ("0", "1"):
+        return {"error": "请选择是否包含截图"}, 400
+    options["include_screenshots"] = screenshots == "1"
+    return _send_diagnostic_bundle(center, **options)
 
 
 @app.route("/diagnostics/errors/<archive_id>/logs")
