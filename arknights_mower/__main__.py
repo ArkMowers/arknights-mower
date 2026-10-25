@@ -437,7 +437,15 @@ def simulate(saved):
     具体调用方法可见各个函数的参数说明
     """
     logger.info(f"正在使用全局配置空间: {path.global_space}")
-    tasks = saved.get("tasks", []) if saved else []
+    tasks = (
+        [
+            task
+            for task in saved.get("tasks", [])
+            if not getattr(task, "mood_control_event", None)
+        ]
+        if saved
+        else []
+    )
     connection_retries = 1
     global base_scheduler
     if config.stop_mower.is_set():

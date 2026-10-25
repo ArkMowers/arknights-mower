@@ -43,7 +43,7 @@ def scheduling_mood_reaches(op_data, name, limit, now=None):
 
 def scheduling_mood_observation(op_data, name, now=None, *, estimates=None):
     """返回决策值及来源时间，实读字段和预估缓存分别保留。"""
-    now = now or datetime.now()
+    now = now or getattr(op_data, "_projection_now", None) or datetime.now()
     if getattr(op_data, "mood_calculation_enabled", False):
         value = op_data.calculated_mood(name, now)
         return (value, now) if value is not None else None
@@ -70,7 +70,7 @@ def scheduling_mood_observation(op_data, name, now=None, *, estimates=None):
 
 def card_mood_estimate(op_data, name, now=None, *, estimates=None):
     """返回一小时内的卡牌预估，不创建或修改实读心情。"""
-    now = now or datetime.now()
+    now = now or getattr(op_data, "_projection_now", None) or datetime.now()
     estimate = (
         getattr(op_data, "dorm_mood_estimates", {}) if estimates is None else estimates
     ).get(name)
@@ -228,7 +228,8 @@ def dorm_task_reservations(op_data, tasks, excluded=()):
         task_type = getattr(getattr(task, "type", None), "name", "")
         if (
             task_type == "RELEASE_DORM"
-            and task.time > datetime.now()
+            and task.time
+            > (getattr(op_data, "_projection_now", None) or datetime.now())
             and not task.retains_execution
             and not getattr(task, "strict_mood_limit", False)
             and not getattr(task, "product_shift_locked", False)
@@ -273,7 +274,7 @@ def vacant_dorm_slots(op_data, reserved_slots=()):
 def dorm_candidates(
     op_data, excluded=(), *, include_standby=True, current_residents=(), now=None
 ):
-    now = now or datetime.now()
+    now = now or getattr(op_data, "_projection_now", None) or datetime.now()
     excluded = set(excluded) | busy_resting_names() | {op_data.get_train_support()}
     recovering, full, unknown = [], [], []
     for name, op in op_data.operators.items():

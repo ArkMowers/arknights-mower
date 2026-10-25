@@ -69,7 +69,9 @@ export function calculateIncome(plan, settings, onProgress) {
       calculatorBaseRevision: sourceManifest.revision,
       calculatorSyncRevision: sourceManifest.schedulingSync.calculatorRevision,
       mowerBaseReference: sourceManifest.mowerReference,
-      mowerCheckedRevision: sourceManifest.mowerCheckedRevision
+      mowerCheckedRevision: sourceManifest.mowerCheckedRevision,
+      moodControlStrategyVersion: simulation.assumptions.moodControlStrategyVersion,
+      predictiveMoodControl: simulation.assumptions.predictiveMoodControl
     },
     eventLog: incomeEventLog(simulation),
     orderDistribution: incomeOrderDistribution(simulation),

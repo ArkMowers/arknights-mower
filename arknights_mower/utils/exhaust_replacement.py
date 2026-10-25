@@ -251,7 +251,7 @@ def _plan_exhaust_support_attempt(
         op = state.operators[name]
         if not op.is_resting():
             return False
-        now = datetime.now()
+        now = getattr(state, "_projection_now", None) or datetime.now()
         if op.rest_in_full and not recovery_ready_for_arrangement(
             state, name, sampled_after=None, now=now
         ):
@@ -509,7 +509,7 @@ def _plan_exhaust_support_attempt(
         return plan
 
     # 替班已落实，才按原心情降序腾床；每次验证真实分床，不只比较人数。
-    now = datetime.now()
+    now = getattr(data, "_projection_now", None) or datetime.now()
     beds = sorted(
         data.dorm,
         key=lambda bed: (

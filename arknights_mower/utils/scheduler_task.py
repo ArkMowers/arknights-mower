@@ -1773,6 +1773,7 @@ def generate_plan_by_drom(
     pending_arrangements=(),
     *,
     excluded_names=(),
+    now=None,
 ):
     # 同时刻的回班与释放床位必须分别保留类型，并共用一次未来状态演算。
     batches = list(tasks.items()) + list((release_tasks or {}).items())
@@ -1797,7 +1798,7 @@ def generate_plan_by_drom(
     result = []
     planned = set()
     release_positions = {bed.name: bed.position for bed in op_data.dorm if bed.name}
-    current_time = datetime.now()
+    current_time = now or getattr(op_data, "_projection_now", None) or datetime.now()
     pending_resources = [
         (task.time, *_arrangement_resources(task.plan)) for task in pending_arrangements
     ]
@@ -1990,7 +1991,9 @@ def generate_plan_by_drom(
     return result
 
 
-def plan_metadata(op_data, tasks, *, excluded_names=()):
+def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
+    now = now or getattr(op_data, "_projection_now", None) or datetime.now()
+    conf = getattr(op_data, "runtime_conf", None) or config.conf
     # 部分换班的剩余目标必须先确认，不能从中间驻员状态重建回班队列。
     if any(
         getattr(task, "backup_shift_active", False)
@@ -1998,7 +2001,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
         for task in task_view(tasks, TaskScope.DISPATCH)
     ):
         # 保留未确认安排，但个人上限仍按已经实读的入住位置和期限独立清退。
-        releases = plan_mood_limit_releases(op_data, previous_tasks=tasks)
+        releases = plan_mood_limit_releases(op_data, previous_tasks=tasks, now=now)
         tasks[:] = [
             task for task in tasks if not getattr(task, "strict_mood_limit", False)
         ]
@@ -2012,7 +2015,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
     )
 
     actual_data = op_data
-    for group in config.conf.group_mood_gap_exclusions:
+    for group in conf.group_mood_gap_exclusions:
         actual_data.group_recovery_full_members.pop(group, None)
         actual_data.group_recovery_return_time.pop(group, None)
     op_data.refresh_idle_dorm_search()
@@ -2114,7 +2117,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
     pending_arrangements = []
     # 按实际床位定时；迁移完成读房后会重建，避免清理尚未发生的未来位置。
     limited_releases = plan_mood_limit_releases(
-        op_data, previous_tasks=previous_releases
+        op_data, previous_tasks=previous_releases, now=now
     )
     limited_releases = [task for task in limited_releases if id(task) not in locked_ids]
     # 纠偏／重排是已经确定的安排，普通回班属于其后的派生计划。
@@ -2133,9 +2136,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
     min_resting_time = datetime.max
     _plan = {}
     _type = []
-    mood_now = (
-        datetime.now() if getattr(op_data, "mood_calculation_enabled", False) else None
-    )
+    mood_now = now if getattr(op_data, "mood_calculation_enabled", False) else None
     # 第一个心情低的且小于3 则只休息半小时
     total_agent = sorted(
         (
@@ -2165,7 +2166,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
         min_resting_time = min(min_resting_time, exhausted)
 
     return_windows = {}
-    now = mood_now or datetime.now()
+    now = mood_now or now
 
     def previous_return_time(name):
         previous = previous_returns.get(name)
@@ -2362,6 +2363,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
         release_tasks=release_tasks,
         pending_arrangements=pending_arrangements,
         excluded_names=excluded_names,
+        now=now,
     )
     for task in generated:
         if task.type == TaskTypes.SHIFT_ON:
@@ -2412,7 +2414,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             and observed_full_mood(op)
             and (
                 required
-                or config.conf.group_rest_in_full_on_mood_gap
+                or conf.group_rest_in_full_on_mood_gap
                 and op_data.group_is_resting(op.group)
             )
         ):
@@ -2480,7 +2482,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             SchedulerTask(
                 task_plan=plan,
                 time=max(
-                    deadline or datetime.now(),
+                    deadline or now,
                     _after_pending_arrangements(plan, pending_resources),
                 ),
                 task_type=TaskTypes.SHIFT_ON,
@@ -2515,17 +2517,19 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             returning.add(op.name)
             break
     tasks.extend(limited_releases)
-    merge_release_dorm(tasks, config.conf.merge_interval)
+    merge_release_dorm(tasks, conf.merge_interval)
     return tasks
 
 
-def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=()):
+def plan_mood_limit_releases(
+    op_data, *, recovery_targets=None, previous_tasks=(), now=None
+):
+    now = now or getattr(op_data, "_projection_now", None) or datetime.now()
     previous = {
         task.meta_data: task
         for task in previous_tasks
         if getattr(task, "strict_mood_limit", False)
     }
-    now = datetime.now()
     result = [
         task
         for task in previous_tasks

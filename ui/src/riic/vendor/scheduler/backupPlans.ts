@@ -228,7 +228,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     nextIdleConditionWakeMicros:data=>[...plans,...groups].some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours!==undefined&&data.nowMicros<=base.assumptions.majorMaintenanceStartHours*3_600_000_000?data.nowMicros+1_000_000:undefined,
     select(data){return selectionFor({...state,time:data.nowMicros/3_600_000_000,mowerSource:{...getMowerSourceRuntime(state),data}},data.backupGroup,data.planConditions)},
     evaluate(data){return alphaModel.select!(data).conditions},
-    swap(data,conditions,groupId){const {config}=alphaConfiguration(conditions,groupId??data.backupGroup);const next=makeMowerSchedulingData({...state,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];next.backupGroup=groupId??data.backupGroup;return next},
+    swap(data,conditions,groupId){const {config}=alphaConfiguration(conditions,groupId??data.backupGroup);const next=makeMowerSchedulingData({...state,time:data.nowMicros/3_600_000_000,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];next.backupGroup=groupId??data.backupGroup;return next},
     transition(previous,next,original,conditions,recovery=previous,pendingTasks){
       const transition:Record<string,string[]>={},groupPositions=new Set<string>(),replacementPositions:[string,number][]=[],restored=new Set<string>(),joiningResting=new Set<string>()
       const protectedTraining=new Set([...previous.busyRestingNames,...next.busyRestingNames])

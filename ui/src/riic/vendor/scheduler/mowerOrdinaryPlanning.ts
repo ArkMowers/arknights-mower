@@ -1,3 +1,4 @@
+import {planMowerPredictiveDeparture,syncMowerPredictiveWake,type MowerPredictiveDiagnostics} from './mowerPredictivePlanning'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerDependencyReturnAdmission} from './mowerTaskDerivation'
 import {mowerExhaustGroups} from './mowerExhaustPolicy'
@@ -14,6 +15,11 @@ import {mowerDormCandidateMood} from './mowerAlphaCandidates'
 import {alphaPosition,alphaRestingTier,alphaSlotTakable,mowerMatchReplacements,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue,fromMowerMicros,toMowerMicros} from './mowerTaskQueue'
 export interface MowerRestingOptions {
+ predictiveMaxEvents?:number
+ predictiveCurrentMoods?:Readonly<Record<string,number>>
+ predictiveOperationMicros?:(room:string,type:import('./mowerTaskQueue').MowerTaskType)=>number
+ predictiveShiftModel?:import('./mowerShiftCycle').MowerShiftModel
+ onPredictiveDiagnostics?:(diagnostics:MowerPredictiveDiagnostics)=>void
  urgentExhaust?:boolean
  urgentRecoveryPendingSupporters?:ReadonlySet<string>
  dependencyReturn?:MowerDependencyReturnAdmission
@@ -214,7 +220,10 @@ export function planMowerOrdinary(data:MowerSchedulingData,queue:MowerTaskQueue,
  try {
   if(queue.find({type:T.SHIFT_OFF}))return undefined
   planMowerMetadata(data,queue,options.dependencyReturn)
-  plan=resting(data,queue,options,!data.alpha)
+  const early=planMowerPredictiveDeparture(data,queue,options)
+  if(early){plan=structuredClone(early.plan);const task=new MowerTask({plan,type:T.SHIFT_OFF});task.timeMicros=data.nowMicros;task.ordinaryCoordination=true;task.coordinationRequestNames=[...early.names];task.moodControlEvidence=early;queue.tasks.push(task)}
+  else plan=resting(data,queue,options,!data.alpha)
+  syncMowerPredictiveWake(data,queue)
  }catch(error){
   // Native plan_solver catches every Exception here except MowerExit, then reorders.
   if(error instanceof MowerExitError)throw error

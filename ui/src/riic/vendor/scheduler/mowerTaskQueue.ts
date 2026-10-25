@@ -43,6 +43,9 @@ export class MowerTask {
  /** Once room execution begins, remaining rooms retain the confirmed shift intent. */
  arrangementStarted=false
  productShiftLocked=false
+ moodControlObserved=false
+ moodControlEvent?:{fingerprint:string;timeMicros:number}
+ moodControlEvidence?:import('./mowerPredictivePlanning').MowerPredictiveEvidence
  ordinaryCoordination=false
  exhaustSupport=false
  coordinationRequestNames:string[]=[]
