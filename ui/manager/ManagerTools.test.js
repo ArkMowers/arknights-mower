@@ -61,6 +61,54 @@ describe('manager maintenance tools', () => {
     expect(component.error.value).toBe('changed')
     expect(component.notice.value).toBe('')
   })
+  it('keeps the current tab during a network read and loads MAA after the read finishes', async () => {
+    let finishRead
+    api.get_network_settings.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishRead = resolve
+      })
+    )
+    const reading = component.loadNetwork()
+    await Promise.resolve()
+    component.changeTab('maa')
+    expect(component.tab.value).toBe('network')
+    expect(api.get_maa_installations).not.toHaveBeenCalled()
+
+    finishRead({ http_proxy: 'http://saved-proxy:7890', github_proxy: '' })
+    await reading
+    component.changeTab('maa')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(component.tab.value).toBe('maa')
+    expect(component.groups.value.map(({ target }) => target)).toEqual(['/shared/maa'])
+    expect(component.busy.value).toBe(false)
+  })
+  it('keeps the network draft during saving and loads storage after saving finishes', async () => {
+    let finishSave
+    api.save_network_settings.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSave = resolve
+      })
+    )
+    component.network.value.http_proxy = 'http://saved-proxy:7890'
+    const saving = component.saveNetwork()
+    await Promise.resolve()
+    component.changeTab('storage')
+    expect(component.tab.value).toBe('network')
+    expect(component.network.value.http_proxy).toBe('http://saved-proxy:7890')
+    expect(api.get_storage_usage).not.toHaveBeenCalled()
+
+    finishSave({ http_proxy: 'http://saved-proxy:7890', github_proxy: '' })
+    await saving
+    component.network.value.http_proxy = 'http://next-proxy:7890'
+    await vi.advanceTimersByTimeAsync(0)
+    expect(component.network.value.http_proxy).toBe('http://next-proxy:7890')
+    expect(api.get_storage_usage).not.toHaveBeenCalled()
+    component.changeTab('storage')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(component.tab.value).toBe('storage')
+    expect(component.storage.value.map(({ name }) => name)).toEqual(['one'])
+    expect(component.busy.value).toBe(false)
+  })
   it('requires a matching successful check for the selected directory and component', async () => {
     await component.loadMaa()
     component.job.value = {
