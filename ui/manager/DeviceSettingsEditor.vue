@@ -63,10 +63,14 @@ const policyChanged = computed(
 )
 const changes = computed(() =>
   Object.fromEntries(
-    Object.entries(draft.value).filter(
-      ([key, value]) =>
-        JSON.stringify(value) !== JSON.stringify(initial.value[key]) && patchField(key)
-    )
+    Object.entries(draft.value).filter(([key, value]) => {
+      const baseline =
+        instanceOverride.value.local_keys.includes(key) &&
+        Object.hasOwn(originalPolicy.value?.local_values ?? {}, key)
+          ? originalPolicy.value.local_values[key]
+          : initial.value[key]
+      return patchField(key) && JSON.stringify(value) !== JSON.stringify(baseline)
+    })
   )
 )
 const disabled = computed(() => pending.value || !original.value)
@@ -180,8 +184,12 @@ function setLocalValue(key, local) {
     Object.hasOwn(originalPolicy.value.local_values ?? {}, key)
   )
     draft.value[key] = copyValue(originalPolicy.value.local_values[key])
-  if (!local)
-    draft.value[key] = copyValue(originalPolicy.value.shared_values[key] ?? initial.value[key])
+  if (!local) {
+    const defaultValue = managerOnlyKeys.has(key)
+      ? (fields.value.find((field) => field.key === key)?.default ?? initial.value[key])
+      : initial.value[key]
+    draft.value[key] = copyValue(originalPolicy.value.shared_values[key] ?? defaultValue)
+  }
 }
 
 function requestPolicy() {

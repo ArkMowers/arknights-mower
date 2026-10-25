@@ -514,26 +514,113 @@ async function loadOverrides() {
     ...originalPolicy.shared_values,
     maa_path: '/common/maa',
     screenshot: 2,
+    screenshot_archive_limit_mb: 900,
     startup_mode: 'window'
   }
-  originalPolicy.local_values = { maa_path: '/saved/maa', screenshot: 7 }
+  originalPolicy.local_values = {
+    maa_path: '/saved/maa',
+    screenshot: 7,
+    screenshot_archive_limit_mb: 123
+  }
   const instanceOverride = { local_keys: [], manager_values: {} }
   api.get_device_settings.mockResolvedValue({
     ...result,
-    values: { ...result.values, maa_path: '/common/maa', screenshot: 2, startup_mode: 'window' },
+    values: {
+      ...result.values,
+      maa_path: '/common/maa',
+      screenshot: 2,
+      screenshot_archive_limit_mb: 900,
+      startup_mode: 'window'
+    },
     fields: [
       ...result.fields,
       { key: 'maa_path', label: 'MAA 安装目录', group: '程序位置', kind: 'directory' },
       { key: 'screenshot', label: '截图保存时间（小时）', group: '截图保存', kind: 'number' },
+      {
+        key: 'screenshot_archive_limit_mb',
+        label: '报错归档空间上限（MiB）',
+        group: '截图保存',
+        kind: 'number'
+      },
       { key: 'startup_mode', label: '启动方式', group: '实例启动', kind: 'select' }
     ],
     original_policy: originalPolicy,
     instance_override: instanceOverride,
-    override_keys: ['maa_path', 'screenshot', 'startup_mode']
+    override_keys: ['maa_path', 'screenshot', 'screenshot_archive_limit_mb', 'startup_mode']
   })
   await component.load()
   return originalPolicy
 }
+
+it.each([
+  ['maa_path', '/common/maa', '/saved/maa'],
+  ['screenshot', 2, 7],
+  ['screenshot_archive_limit_mb', 900, 123]
+])(
+  'saves %s as a local value even when it equals the opening common value',
+  async (key, common, local) => {
+    const originalPolicy = await loadOverrides()
+    component.setLocalValue(key, true)
+    expect(component.draft.value[key]).toBe(local)
+    component.edit(key, common)
+    component.edit('performance_mode', 'low')
+    component.edit('device.installation_path', '/other-template')
+    await component.save()
+    expect(api.update_device_settings).toHaveBeenCalledExactlyOnceWith(
+      0,
+      { [key]: common },
+      target,
+      component.original.value,
+      {
+        independent_configuration: false,
+        original_policy: originalPolicy,
+        instance_override: { local_keys: [key], manager_values: {} }
+      }
+    )
+    expect(component.initial.value[key]).toBe(common)
+    expect(originalPolicy.local_values[key]).toBe(local)
+    expect(emit).toHaveBeenCalledWith('saved')
+  }
+)
+
+it.each([
+  ['startup_mode', 'background', 'window'],
+  ['instance_page_mode', 'webview', 'browser']
+])(
+  'shows the default %s after removing a local mode without a selected common value',
+  async (key, local, defaultValue) => {
+    const originalPolicy = await loadOverrides()
+    const result = await api.get_device_settings()
+    delete originalPolicy.shared_values[key]
+    const instanceOverride = { local_keys: [], manager_values: { [key]: local } }
+    originalPolicy.instance_override = structuredClone(instanceOverride)
+    api.get_device_settings.mockResolvedValue({
+      ...result,
+      values: { ...result.values, [key]: local },
+      fields: [
+        ...result.fields.filter((field) => field.key !== key),
+        { key, group: '实例启动', kind: 'select', default: defaultValue }
+      ],
+      instance_override: instanceOverride,
+      override_keys: [...new Set([...result.override_keys, key])]
+    })
+    await component.load()
+    component.setLocalValue(key, false)
+    expect(component.draft.value[key]).toBe(defaultValue)
+    await component.save()
+    expect(api.update_device_settings).toHaveBeenCalledExactlyOnceWith(
+      0,
+      {},
+      target,
+      component.original.value,
+      {
+        independent_configuration: false,
+        original_policy: originalPolicy,
+        instance_override: { local_keys: [], manager_values: {} }
+      }
+    )
+  }
+)
 
 it('offers local common-field overrides while retaining shared device connections', async () => {
   const originalPolicy = await loadOverrides()
