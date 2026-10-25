@@ -13,6 +13,7 @@ def _observed(op, now):
         op.time_stamp is not None
         and op.time_stamp <= now
         and not getattr(op, "mood_is_prediction", False)
+        and not getattr(op, "working_mood_unconfirmed", False)
         and isinstance(op.mood, (int, float))
         and isfinite(op.mood)
         and 0 <= op.mood <= 24

@@ -45,6 +45,7 @@ class TestSchedulingRoomPlans(unittest.TestCase):
     def make_op_data(self, current, targets=(), groups=None):
         groups = groups or {}
         data = object.__new__(Operators)
+        data.runtime_conf = None
         data.plan = {
             room: [Room(name, groups.get(name, ""), []) for name in names]
             for room, names in current.items()

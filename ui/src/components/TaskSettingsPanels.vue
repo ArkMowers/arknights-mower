@@ -535,7 +535,7 @@ const idleOptions = computed(() => [
                   <div>如加速制造，推荐大于 贸易站数*10</div>
                 </help-text>
               </template>
-              <mower-input-number v-model:value="drone_count_limit" />
+              <mower-input-number v-model:value="drone_count_limit" :min="20" />
             </n-form-item>
             <n-form-item>
               <template #label>

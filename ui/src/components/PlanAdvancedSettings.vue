@@ -48,11 +48,11 @@ const excludedGroupOptions = computed(() =>
     >
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="test_mood_calculation">
-          实时心情计算
+          实时心情计算调控
           <help-text
             >默认关闭。开启后使用与收益演算相同的技能规则计算普通基建调度心情；启动时读取实际驻员和心情，后续在正常进房时校准。已同步
             BOX
-            的干员按实际练度选择已解锁技能，缺少练度缓存时按满练技能计算。宿舍氛围按对应等级的满氛围计算。</help-text
+            的干员按实际练度选择已解锁技能，缺少练度缓存时按满练技能计算。宿舍氛围按对应等级的满氛围计算。预测会比较普通主班按原阈值下班与提前轮休；只有完整替班和床位安排能改善后续接续时才提前下班。用尽下班、个人上下限及回满要求继续生效。关闭后沿用原识别和轮班策略；收益演算在两种模式下都计算心情，并使用对应轮班策略。</help-text
           >
         </n-checkbox>
       </n-form-item>
@@ -144,7 +144,7 @@ const excludedGroupOptions = computed(() =>
             <div>如加速制造，推荐大于 贸易站数*10</div>
           </help-text>
         </template>
-        <mower-input-number v-model:value="drone_count_limit" />
+        <mower-input-number v-model:value="drone_count_limit" :min="20" />
       </n-form-item>
       <n-form-item>
         <template #label>

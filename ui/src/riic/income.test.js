@@ -473,7 +473,9 @@ it('reports saved initial conditions and source versions without relabeling hist
     calculatorBaseRevision: '55294037d208bf1c416af386236ac0b12f321f66',
     calculatorSyncRevision: '6ddbeece6264e1881b7bf34f9b346bbf03704fff',
     mowerBaseReference: '80c97ee604375af144090656ef84b083acd6dc7f',
-    mowerCheckedRevision: '84e3926c0f36045d7baeb1ac050f815b40952d6d'
+    mowerCheckedRevision: '84e3926c0f36045d7baeb1ac050f815b40952d6d',
+    moodControlStrategyVersion: 'predictive-mood-control-v1',
+    predictiveMoodControl: false
   })
   const saved = structuredClone(result)
   const report = incomeReportLines(saved, settings, source, '主表').join('\n')

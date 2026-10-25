@@ -80,7 +80,8 @@ def group_recovery_workers(data, group):
 
 def group_recovery_deadline(data, group, *, now=None):
     """额外等待仅限制组内时间差等待，明确回满要求始终生效。"""
-    now = now or datetime.now()
+    now = now or getattr(data, "_projection_now", None) or datetime.now()
+    conf = getattr(data, "runtime_conf", None) or config.conf
     workers = group_recovery_workers(data, group)
     gap_workers = [op for op in workers if not op.multi_group]
     latches = getattr(data, "group_recovery_full_members", None)
@@ -97,7 +98,7 @@ def group_recovery_deadline(data, group, *, now=None):
             return now
         return observed_recovery_deadline(data, op.name, now)
 
-    if group in config.conf.group_mood_gap_exclusions:
+    if group in conf.group_mood_gap_exclusions:
         latches.pop(group, None)
         anchors.pop(group, None)
     elif group in latches:
@@ -106,9 +107,9 @@ def group_recovery_deadline(data, group, *, now=None):
             for op in gap_workers
             if op.is_resting() or op.name in latches[group]
         ]
-    elif config.conf.group_rest_in_full_on_mood_gap:
+    elif conf.group_rest_in_full_on_mood_gap:
         times = [at for op in gap_workers if (at := completed_at(op)) is not None]
-        limit = timedelta(minutes=config.conf.group_mood_gap_threshold_minutes)
+        limit = timedelta(minutes=conf.group_mood_gap_threshold_minutes)
         if len(times) > 1 and max(times) - min(times) > limit:
             latches[group] = [op.name for op in gap_workers]
     gap_names = latches.get(group, [])
@@ -122,7 +123,7 @@ def group_recovery_deadline(data, group, *, now=None):
         ]
         if times:
             anchors[group] = max(now, min(times) - timedelta(minutes=8))
-    max_wait = config.conf.group_mood_gap_max_extra_wait_hours
+    max_wait = conf.group_mood_gap_max_extra_wait_hours
     cap = (
         anchors[group] + timedelta(hours=max_wait)
         if gap_names and max_wait > 0 and group in anchors

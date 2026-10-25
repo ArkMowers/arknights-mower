@@ -8,6 +8,7 @@ from pydantic import (
     ConfigDict,
     Field,
     StrictBool,
+    TypeAdapter,
     field_validator,
     model_validator,
 )
@@ -26,6 +27,14 @@ from arknights_mower.utils.performance import (
     default_performance_mode,
     default_performance_profile,
 )
+
+
+def validate_drone_count_limit(value):
+    limit = TypeAdapter(int).validate_python(value)
+    if limit < 20:
+        raise ValueError("无人机使用阈值不能低于 20")
+    return limit
+
 
 DEFAULT_LAUNCH_COMMAND = (
     "input keyevent KEYCODE_WAKEUP; "
@@ -972,6 +981,8 @@ class Conf(
 
     def updated(self, updates: dict) -> "Conf":
         """Validate a partial or legacy full form against the current Conf."""
+        if "drone_count_limit" in updates:
+            validate_drone_count_limit(updates["drone_count_limit"])
         data = _merge_model_fields(self, updates)
         if os.environ.get("MOWER_ANDROID") == "1":
             return type(self)(**data)

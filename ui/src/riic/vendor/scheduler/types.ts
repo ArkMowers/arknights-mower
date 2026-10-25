@@ -12,6 +12,7 @@ export interface SimulationAssumptions {
   /** Hours from simulation start until major maintenance; omitted means no scheduled window. */
   majorMaintenanceStartHours?: number
   /** Mower global configuration; absent from the plan JSON. */
+  predictiveMoodControl?: boolean
   restingThreshold?: number
   rescueThreshold?: number
   /** Mower global free_room: release recovered ordinary dorm residents. */

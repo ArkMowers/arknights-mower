@@ -14,18 +14,28 @@ export function prepareMowerDormSelection(data:MowerSchedulingData,names:string[
  if(data.policy.experimentalDormLogic)throw new Error('Experimental selection and recovery ordering require their source port')
  const seen=new Set<string>()
  for(const [index,name] of names.entries()){
+  const expected=task?.backupRetentionEmptySlots[room+'\0'+index],current=data.currentOperator(room,index)
+  if(expected&&current&&(current.name!==expected||data.freeRoomExcluded(current.name)||current.room)&&(name===''||current.name===name)){names[index]=current.name;continue}
   if(data.alpha&&task?.simpleDormFill&&data.currentOperator(room,index)?.name===name){seen.add(name);continue}
   if(!seen.has(name))seen.add(name)
   else if(!['','Free','Current'].includes(name))names[index]='Free'
   const op=data.operators[names[index]!]
   if(!room.startsWith('dorm')||!op)continue
   const dynamic=data.alpha?data.dynamicDormPosition(room,index,op.name):data.plan[room]?.[index]==='Free'
-  const limited=!moodProbe&&data.restMoodComplete(op.name)&&dynamic
+  const limited=!moodProbe&&data.restMoodComplete(op.name)&&!data.freeRoomExcluded(op.name)&&dynamic
   // Alpha cancels excluded or personally capped recovery targets, not ordinary full-mood names.
   const excluded=data.alpha&&!preserve&&dynamic&&alphaRestingTier(data,op.name)===7
   const full=!data.alpha&&!preserve&&op.mood===op.upperLimit&&!op.room.startsWith('dorm')&&!mowerDormReplacementForSlot(data,op.name,room,index)
   if(limited||full||excluded){names[index]='Free';if(!data.alpha&&(limited||full))op.depletionRate=0}
  }
+ if(data.alpha&&room.startsWith('dorm')&&!preserve){
+  const moving=new Set(Object.entries(task?.plan??{}).flatMap(([targetRoom,row])=>row.filter((name,index)=>{const op=data.operators[name];return op&&(op.currentRoom!==targetRoom||op.currentIndex!==index)})))
+  for(let index=0;index<names.length;index++){
+   const current=data.currentOperator(room,index)
+   if(current&&data.freeRoomExcluded(current.name)&&data.dynamicDormPosition(room,index,current.name)&&!names.includes(current.name)&&!moving.has(current.name))names[index]=current.name
+  }
+ }
+
 }
 
 /** agent_arrange_room captures timer indexes before choose_agent mutates shared names. */

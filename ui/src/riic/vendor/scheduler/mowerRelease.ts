@@ -58,7 +58,7 @@ function prepareAlphaRelease(data:MowerSchedulingData,queue:MowerTaskQueue,task:
 function prepareAlphaMember(data:MowerSchedulingData,queue:MowerTaskQueue,task:MowerTask):boolean {
  const op=data.operators[task.metadata],strict=task.strictMoodLimit
  const reject=()=>{task.plan={};return false}
- if(strict&&!(op?.restMoodLimit&&(task.moodLimit===undefined||task.moodLimit===op.upperLimit))||!strict&&data.skipIdleDormRelease(task.metadata))return reject()
+ if(data.freeRoomExcluded(task.metadata)||strict&&!(op?.restMoodLimit&&(task.moodLimit===undefined||task.moodLimit===op.upperLimit))||!strict&&data.skipIdleDormRelease(task.metadata))return reject()
  const room=Object.keys(task.plan)[0],index=room?task.plan[room]!.indexOf('Free'):-1
  if(!room||index<0||!op||op.currentRoom!==room||op.currentIndex!==index)return reject()
  // A saved full dorm observation takes precedence over a retained working depletion rate.

@@ -28,7 +28,7 @@ export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,pl
   const [room,indexText]=slot.split('\0'),index=Number(indexText)
   if(!room||room.startsWith('dorm'))continue
   const primary=data.operators[data.plan[room]?.[index]??''],target=plan[room]?.[index],next=primary&&projected.operators[primary.name]
-  if(!primary||!primary.isHigh()||primary.workaholic||primary.room!==room||primary.index!==index||!target||isTradeRunOrderOperator(target)||!replacements(projected,next??primary).includes(target)||!next||next.currentRoom||projected.restMoodComplete(primary.name))continue
+  if(!primary||!primary.isHigh()||primary.workaholic||primary.room!==room||primary.index!==index||!target||isTradeRunOrderOperator(target)||!replacements(projected,next??primary).includes(target)||!next||next.currentRoom||projected.restMoodComplete(primary.name)&&!projected.freeRoomExcluded(primary.name))continue
   if(primary.currentRoom===room&&primary.currentIndex===index||mowerCoveredRecoveryPending(data,primary))required.add(primary.name)
  }
  if(repairIdle)for(const op of Object.values(data.operators))if(!op.currentRoom&&mowerCoveredRecoveryPending(data,op)&&!projected.operators[op.name]!.currentRoom)required.add(op.name)
@@ -39,7 +39,7 @@ export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,pl
  if(admissions===undefined){if(blockOnMissingBed)throw new MowerBackupRecoveryBlocked([...required],projected,new Set(explicitSlots),new Set(reservedSlots));return undefined}
  for(const bed of admissions){const [room,index]=bed.position;(combined[room]??=Array(projected.plan[room]!.length).fill('Current'))[index]=bed.name}
  const final=projectMowerArrangements(data,[combined]),optional=mowerStandbyCandidates(projected,[...required])
- if([...required].some(name=>!optional.has(name)&&!final.operators[name]!.isResting()&&!final.restMoodComplete(name)))return undefined
+ if([...required].some(name=>!optional.has(name)&&!final.operators[name]!.isResting()&&(!final.restMoodComplete(name)||final.freeRoomExcluded(name))))return undefined
  for(const slot of explicitSlots){const [room,index]=slot.split('\0');if(plan[room!]?.[Number(index)]!==combined[room!]?.[Number(index)])return undefined}
  return combined
 }

@@ -14,6 +14,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower import __main__ as main  # noqa: E402
 from arknights_mower.solvers import base_schedule as base  # noqa: E402
+from arknights_mower.solvers import record  # noqa: E402
 from arknights_mower.tests.device_session_tests import (  # noqa: E402
     ADB,
     Clock,
@@ -49,6 +50,7 @@ def idle_scheduler(monkeypatch):
     monkeypatch.setattr(config, "stop_mower", Event())
     monkeypatch.setattr(config, "wake_scheduler", Event())
     monkeypatch.setattr(config, "maintenance_recheck", Event())
+    monkeypatch.setattr(record, "workshop_inventory_changed", Event())
     monkeypatch.setattr(base, "refresh_resource_at_boundary", MagicMock())
     solver = object.__new__(base.BaseSchedulerSolver)
     solver._simulator_closed_for_idle = False
@@ -112,6 +114,7 @@ def production_idle_scheduler(idle_scheduler, monkeypatch):
         ),
     ]
     solver.op_data = SimpleNamespace(
+        mood_calculation_enabled=False,
         config=SimpleNamespace(free_room=False),
         plan={},
         operators={},

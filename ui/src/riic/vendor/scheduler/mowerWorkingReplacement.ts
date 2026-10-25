@@ -16,7 +16,7 @@ function candidates(data:MowerSchedulingData,owner:MowerOperatorState):string[]{
  const names=owner.multiGroup?mowerSharedReplacements(owner,mowerRestingBindingGroups(data,owner)):owner.replacement
  return [...new Set(names)].filter(name=>name!=='Free'&&!runners.has(data.operators[name]?.nativeName??name))
 }
-function applies(data:MowerSchedulingData,target:Target):boolean{
+export function mowerWorkingReplacementApplies(data:MowerSchedulingData,target:Target):boolean{
  const {room,index,owner,cover}=target,primary=data.operators[owner],worker=data.operators[cover]
  return !room.startsWith('dorm')&&room!=='train'&&data.plan[room]?.[index]===owner&&!!primary?.isHigh()
   &&!!worker&&!worker.isHigh()&&!worker.workaholic&&worker.currentRoom===room&&worker.currentIndex===index
@@ -40,7 +40,7 @@ export function mowerWorkingReplacementSnapshot(data:MowerSchedulingData,queue:M
   return sample&&Number.isFinite(sample[0])&&sample[0]>=0&&sample[0]<=24&&sample[1]<=data.nowMicros&&(!measured(op,data)||sample[1]>op.timeStampMicros!)?sample[0]:null
  }
  const previousSamples=new Map<string,unknown>((previous?.operators??[]).map((item:unknown[])=>[String(item[0]),item[3]] as [string,unknown]))
- return JSON.stringify({target,applies:applies(data,target),list,
+ return JSON.stringify({target,applies:mowerWorkingReplacementApplies(data,target),list,
   environment:{slots:state?.config.mowerSourcePlan?.[target.room]??data.plan[target.room],
    occupants:Object.values(data.operators).filter(op=>op.currentRoom===target.room).map(op=>[op.name,op.currentIndex]).sort(),
    product:state?.mowerFacilityProducts?.[target.room]??null,plannedProduct:state?.mowerShiftModel?.exhaustRoomContext?.(data)[target.room]??null,
@@ -55,7 +55,7 @@ export function syncMowerWorkingReplacementChecks(state:RuntimeState,data:MowerS
   for(const [room,row] of Object.entries(pending.plan))row.forEach((name,index)=>{if(name!=='Current'&&data.currentOperator(room,index)?.name!==name)concrete.add(room+'\0'+index)})
  for(const [room,row] of Object.entries(data.plan))row.forEach((owner,index)=>{
   const cover=data.currentOperator(room,index)?.name,target={room,index,owner,cover:cover??''}
-  if(cover&&applies(data,target))targets.set(JSON.stringify(target),target)
+  if(cover&&mowerWorkingReplacementApplies(data,target))targets.set(JSON.stringify(target),target)
  })
  const existing=new Set<string>();let wake=false
  for(const task of [...queue.tasks]){
@@ -90,9 +90,9 @@ export function syncMowerWorkingReplacementChecks(state:RuntimeState,data:MowerS
 }
 export function runMowerWorkingReplacementCheck(state:RuntimeState,data:MowerSchedulingData,queue:MowerTaskQueue,task:MowerTask,read:(room:string,index:number)=>void):void{
  const target=task.workingReplacementCheck!
- if(!applies(data,target)){queue.consume(task);return}
+ if(!mowerWorkingReplacementApplies(data,target)){queue.consume(task);return}
  read(target.room,target.index)
- if(!applies(data,target)){queue.consume(task);return}
+ if(!mowerWorkingReplacementApplies(data,target)){queue.consume(task);return}
  const cover=data.operators[target.cover]!
  const retain=(reason:string,dependency=false)=>{
   task.workingReplacementSource=mowerWorkingReplacementSnapshot(data,queue,task,state)

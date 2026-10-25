@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.solvers import base_schedule as base
-from arknights_mower.utils import config
+from arknights_mower.utils import config, dorm_candidates, operators
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
@@ -116,6 +116,39 @@ def projection_source_state(data):
             "config": vars(data.config),
         }
     )
+
+
+@pytest.mark.parametrize("clock_mode", ["live", "explicit", "inherited"])
+def test_arrangement_projection_observations_respect_clock_scope(
+    solver, monkeypatch, clock_mode
+):
+    class Clock(datetime):
+        current = datetime(2026, 10, 1, 10)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+    monkeypatch.setattr(operators, "datetime", Clock)
+    monkeypatch.setattr(dorm_candidates, "datetime", Clock)
+    data = solver.op_data
+    original = data.operators["旅骨"]
+    original.mood, original.time_stamp, original.depletion_rate = 12, Clock.current, 0
+    projected = data.project_arrangements(
+        [], **({"now": Clock.current} if clock_mode != "live" else {})
+    )
+    if clock_mode != "explicit":
+        projected = projected.project_arrangements([])
+    Clock.current += timedelta(minutes=1)
+    observed = projected.operators["旅骨"]
+    observed.mood, observed.time_stamp = 6, Clock.current
+
+    assert dorm_candidates.dorm_candidate_mood(projected, "旅骨") == (
+        6 if clock_mode == "live" else None
+    )
+    assert dorm_candidates.dorm_candidate_mood(projected, "旅骨", Clock.current) == 6
+    assert dorm_candidates.dorm_candidate_mood(data, "旅骨") == 12
+    solver.enter_room.assert_not_called()
 
 
 @pytest.mark.parametrize("unknown", [False, True], ids=["stale", "unknown"])

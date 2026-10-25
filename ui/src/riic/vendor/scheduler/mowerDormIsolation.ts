@@ -35,9 +35,11 @@ export function mowerDormIsolationCost(data: MowerSchedulingData, name: string, 
 }
 
 /** Swap dynamic beds before admission while protecting established first beds and reservations. */
-export function planMowerDormIsolation(data: MowerSchedulingData, plan: MowerTaskPlan, reservedSlots: ReadonlySet<string> = new Set(), reservedNames: ReadonlySet<string> = new Set()): MowerTaskPlan {
-  if (!data.dormIsolation.length || !Object.keys(plan).length) return plan
+export function planMowerDormIsolation(data: MowerSchedulingData, plan: MowerTaskPlan, reservedSlots: ReadonlySet<string> = new Set(), reservedNames: ReadonlySet<string> = new Set(), reallocatingNames: ReadonlySet<string> = new Set()): MowerTaskPlan {
+  if (!data.dormIsolation.length || !Object.keys(plan).length && !reallocatingNames.size) return plan
   const newcomers = new Set(Object.entries(plan).filter(([room]) => room.startsWith('dorm')).flatMap(([, row]) => row).filter(name => data.operators[name] && !data.operators[name]!.isResting()))
+  // 生效床序改变时，原住客也参与本批分配，可让出已有单回位置。
+  for (const name of reallocatingNames) newcomers.add(name)
   if (!newcomers.size) return plan
   const projected = projectMowerArrangements(data, [plan])
   const beds = orderMowerAlphaDormIndices(projected).map(index => projected.dorms[index]!).filter(bed => projected.effectiveFreeSlot(bed))
@@ -54,8 +56,8 @@ export function planMowerDormIsolation(data: MowerSchedulingData, plan: MowerTas
   }
   const isFirst = (bed: typeof beds[number]) => bed.position[1] === first.get(bed.position[0])
   const movable = beds.filter(bed => !reserved.has(alphaPosition(...bed.position)) && !protectedNames.has(bed.name)
-    && (!bed.name || projected.operators[bed.name] && !projected.freeRoomExcluded(bed.name) && alphaRestingTier(projected, bed.name) !== 7)
-    && (!isFirst(bed) || newcomers.has(bed.name)))
+    && (!bed.name || projected.operators[bed.name] && alphaRestingTier(projected, bed.name) !== 7)
+    && (!isFirst(bed) || newcomers.has(bed.name) || reallocatingNames.size && !bed.name))
   if (movable.length < 2) return plan
   const result = structuredClone(plan)
   const roomCost = (room: string) => {
@@ -72,7 +74,7 @@ export function planMowerDormIsolation(data: MowerSchedulingData, plan: MowerTas
   }
   const recoveryRank = (bed: typeof beds[number]) => {
     const op = projected.operators[bed.name]
-    return !op || hasRestingMood(op, projected.nowMicros) && restingMood(op, projected.nowMicros) >= op.upperLimit ? 8 : alphaRestingTier(projected, bed.name)
+    return !op || !projected.freeRoomExcluded(bed.name) && hasRestingMood(op, projected.nowMicros) && restingMood(op, projected.nowMicros) >= op.upperLimit ? 8 : alphaRestingTier(projected, bed.name)
   }
   const recoveryScore = () => allocationGroups.flatMap(group => group.map(recoveryRank).sort((a, b) => a - b))
   type SwapKey = [gain: number, recovery: number[], targetMoves: number, residentMoves: number]

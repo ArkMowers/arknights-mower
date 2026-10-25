@@ -46,6 +46,7 @@ def scheduler(monkeypatch, offline_maintenance):
     )
     solver.tasks = [shift, recheck]
     solver.op_data = SimpleNamespace(
+        mood_calculation_enabled=False,
         config=SimpleNamespace(free_room=False),
         plan={},
         operators={},

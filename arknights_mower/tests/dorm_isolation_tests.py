@@ -401,7 +401,7 @@ def test_admission_can_swap_an_existing_ordinary_resident(data, guard):
 
     result = plan_dorm_isolation(data, plan, reserved, reserved_names=names)
 
-    if guard:
+    if guard not in (None, "retention"):
         assert result == plan
     else:
         assert result["dormitory_1"][3] == "初雪"

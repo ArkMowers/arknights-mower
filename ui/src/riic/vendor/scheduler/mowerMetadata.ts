@@ -32,7 +32,7 @@ function stableGroupReturnMicros(data:MowerSchedulingData,beds:MowerDormState[])
 export function planMowerMoodLimitReleases(data:MowerSchedulingData):MowerTask[] {
  const result:MowerTask[]=[]
  for(const bed of data.dorms){
-  const op=data.operators[bed.name];if(!op?.restMoodLimit)continue
+  const op=data.operators[bed.name];if(!op?.restMoodLimit||data.freeRoomExcluded(op.name))continue
   const [room,index]=bed.position;if(op.currentRoom!==room||op.currentIndex!==index||!data.recoveryDorm(bed,op.name))continue
   const due=data.restMoodComplete(op.name)?data.nowMicros:bed.timeMicros===undefined?undefined:Math.max(data.nowMicros,bed.timeMicros);if(due===undefined)continue
   const names=Array(data.plan[room]!.length).fill('Current');names[index]='Free'
@@ -41,6 +41,10 @@ export function planMowerMoodLimitReleases(data:MowerSchedulingData):MowerTask[]
  return result
 }
 export function planMowerMetadata(data:MowerSchedulingData,queue:MowerTaskQueue,dependencyReturn?:MowerDependencyReturnAdmission):void {
+ for(const task of [...queue.tasks])if(task.type===T.RELEASE_DORM){
+  for(const name of Object.keys(task.releaseDormTargets()))if(data.freeRoomExcluded(name))task.removeReleaseDormOperator(name)
+  if(!Object.keys(task.plan).length)queue.consume(task)
+ }
  if(queue.tasks.some(task=>task.backupShiftActive))return
  if(data.alpha){planMowerAlphaMetadata(data,queue,planMowerMoodLimitReleases(data),dependencyReturn);return}
  if(data.policy.experimentalDormLogic)throw new Error('Experimental product locks and dorm projection require their source port')

@@ -60,7 +60,7 @@ export class MowerOperatorState {
 export function hasObservedFullMood(op:MowerOperatorState|undefined):boolean {return !!op&&op.timeStampMicros!==undefined&&op.mood>=0&&op.mood<=24&&op.mood>=op.upperLimit}
 export function hasRestingMood(op:MowerOperatorState|undefined,nowMicros:number):boolean {return !!op&&op.timeStampMicros!==undefined&&op.mood>=0&&op.mood<=24&&op.currentMood(nowMicros)>=0&&op.currentMood(nowMicros)<=24}
 export const restingMood=(op:MowerOperatorState|undefined,nowMicros:number)=>op&&hasRestingMood(op,nowMicros)?op.currentMood(nowMicros):24
-export interface MowerMoodPolicy {restingThreshold:number;rescueThreshold:number;experimentalDormLogic?:boolean;alpha?:boolean}
+export interface MowerMoodPolicy {predictiveMoodControl?:boolean;restingThreshold:number;rescueThreshold:number;experimentalDormLogic?:boolean;alpha?:boolean}
 export const rescueMoodThreshold=(op:MowerOperatorState,policy:MowerMoodPolicy)=>op.lowerLimit+(op.upperLimit-op.lowerLimit)*policy.restingThreshold*policy.rescueThreshold
 export function mowerReplacementCandidates(op:MowerOperatorState,operators:Record<string,MowerOperatorState>,policy:MowerMoodPolicy,nowMicros:number):string[] {
  const complete=(name:string)=>{const candidate=operators[name];return !!candidate&&candidate.restMoodLimit&&hasRestingMood(candidate,nowMicros)&&restingMood(candidate,nowMicros)>=candidate.upperLimit}

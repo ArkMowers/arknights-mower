@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest'
-import {createRosterRuntime,settleRoster,advanceRoster,nextRosterActionHours,type RuntimeConfig} from './rosterRuntime'
+import {createRosterRuntime,settleRoster,advanceRoster,nextRosterActionHours,type RuntimeConfig,type RuntimeState} from './rosterRuntime'
 import {getMowerSourceRuntime,makeMowerSchedulingData} from './mowerSourceRuntime'
 import {mowerUpdateDetail} from './mowerObservations'
 import {alphaRestingTier} from './mowerAlphaDorm'
@@ -11,6 +11,22 @@ function fixture():RuntimeConfig {
  return {positions:[{id:'room_1_1_0',roomId:'room_1_1',primary:'A',candidates:['R'],lowerLimit:0,upperLimit:24,shiftOffThreshold:15},...keepers.map((name,i)=>({id:'dormitory_1_'+i,roomId:'dormitory_1',primary:name,candidates:[],permanent:true,dormitory:true}))],beds:[{id:'dormitory_1_4',roomId:'dormitory_1',vip:true}],initialMorale:{A:16,R:24},idleOperators:[],mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},mowerSourcePlan:{room_1_1:[{agent:'A',group:'',replacement:['R']}],dormitory_1:[...keepers.map(name=>({agent:name,group:'',replacement:[]})),{agent:'Free',group:'',replacement:[]}]},mowerSourceRules:{workaholic:[],exhaustRequire:[],restInFull:[],lowPriority:[],refreshDrained:[],lingMode:0}}
 }
 describe('integrated Mower source scheduler',()=>{
+ it('executes the selected early shift through the actual source runtime',()=>{
+  for(const enabled of [false,true]){
+   const config=fixture();config.mowerAlpha=true
+   config.mowerPolicy={...config.mowerPolicy!,restingThreshold:0,predictiveMoodControl:enabled,groupRestInFullOnMoodGap:false}
+   config.positions[0]!.candidates=['R'];config.positions[0]!.shiftOffThreshold=0
+   config.positions.push({id:'room_1_2_0',roomId:'room_1_2',primary:'B',candidates:['R'],lowerLimit:0,upperLimit:24,shiftOffThreshold:0})
+   config.mowerSourcePlan!.room_1_2=[{agent:'B',group:'',replacement:['R']}]
+   config.mowerSourceRules!.restInFull=['A','B'];config.initialMorale={A:2,B:3,R:24}
+   const runtime=createRosterRuntime(config),predictiveRates={workRate:()=>1,recoveryRate:()=>24,forecastRates:(state:RuntimeState)=>({work:Object.fromEntries(Object.keys(state.morale).map(n=>[n,1])),recovery:Object.fromEntries(Object.keys(state.morale).map(n=>[n,24]))})}
+   settleRoster(runtime,predictiveRates);getMowerSourceRuntime(runtime).queue.tasks.push(new MowerTask());settleRoster(runtime,predictiveRates)
+   expect(runtime.occupants.room_1_1_0).toBe(enabled?'R':'A')
+   expect(runtime.occupants.room_1_2_0).toBe('B')
+   if(enabled){expect(runtime.bedOccupants.dormitory_1_4).toBe('A');expect(getMowerSourceRuntime(runtime).trace.some(t=>t.type==='SHIFT_OFF'&&t.plan.room_1_1?.includes('R'))).toBe(true)}
+   expect(runtime.diagnostics.some(d=>d.code==='mower-plan-solver-exception')).toBe(false)
+  }
+ })
  it('retains standby identity and full-mood idle tier when rebuilding scheduling data',()=>{
   const config=fixture();config.mowerAlpha=true;config.mowerSourceRules!.standby=['A']
   config.mowerSourcePlan!.room_1_1![0]!.group='g'

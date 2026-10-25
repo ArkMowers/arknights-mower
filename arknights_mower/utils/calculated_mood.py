@@ -263,7 +263,17 @@ class CalculatedMood:
 
     @measure_mood_calculation
     def value(self, name, now=None):
+        if name not in self.moods:
+            return None
         if now is not None:
+            if now == self.at and self._signature(self.moods) == getattr(
+                self, "_rate_signature", None
+            ):
+                return (
+                    self.moods[name]
+                    if self._cached_rates.get(name) is not None
+                    else None
+                )
             if not hasattr(_runtime, "future_values"):
                 _runtime.future_values = OrderedDict()
             cached = _runtime.future_values
@@ -382,6 +392,8 @@ class CalculatedMood:
     @measure_mood_calculation
     def deadline(self, name, target, now=None, max_hours=240):
         now = now or datetime.now()
+        if name not in self.moods:
+            return None
         if not hasattr(_runtime, "deadline_trajectories"):
             _runtime.deadline_trajectories = OrderedDict()
         cached = _runtime.deadline_trajectories
@@ -413,23 +425,29 @@ class CalculatedMood:
             and value <= target
         ):
             return now
+        if not 0 <= target <= 24:
+            return None
         end = now + timedelta(hours=max_hours)
         node = nodes[0]
         shared = True
         for index in range(4096):
             projected, rates, boundary_hours = node
             rate = rates.get(name) or 0
-            hours = (
+            target_hours = (
                 (projected.moods[name] - target) / rate
                 if rate and recovering != (rate > 0)
                 else float("inf")
             )
-            hours = min(hours, boundary_hours)
+            hours = min(target_hours, boundary_hours)
             if not math.isfinite(hours):
                 return None
             future = projected.at + timedelta(hours=max(hours, 1e-8))
             if future > end:
                 return None
+            # 本段速率已知；到达查询目标后无需再演算目标之后的技能。
+            # 后续查询若需要越过此边界，仍从共享轨迹继续求值。
+            if target_hours <= boundary_hours:
+                return future
             if shared and hours == boundary_hours:
                 if index + 1 == len(nodes):
                     node = self._next_deadline_node(node, future)
@@ -463,25 +481,28 @@ def sync_model(owner, now=None, *, advance_clock=True):
     from arknights_mower.utils import config
 
     model = owner.mood_model
-    now = now or datetime.now()
+    now = now or getattr(owner, "_projection_now", None) or datetime.now()
     from arknights_mower.utils.building_skills import load_skill_snapshot
     from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
 
-    payload = get_cultivate_snapshot()
-    if (
-        not hasattr(_runtime, "growth_payload")
-        or _runtime.growth_payload is not payload
-    ):
-        cached = load_skill_snapshot(payload or {})
-        _runtime.growth_payload = payload
-        _runtime.growth_stages = {
-            entry["name"]: (entry["phase"], entry["level"])
-            for entry in cached["operators"]
-            if entry["owned"]
-            and type(entry["phase"]) is int
-            and type(entry["level"]) is int
-        }
-    stages = dict(_runtime.growth_stages)
+    if getattr(owner, "_mood_frozen_inputs", False):
+        stages = dict(model.stages)
+    else:
+        payload = get_cultivate_snapshot()
+        if (
+            not hasattr(_runtime, "growth_payload")
+            or _runtime.growth_payload is not payload
+        ):
+            cached = load_skill_snapshot(payload or {})
+            _runtime.growth_payload = payload
+            _runtime.growth_stages = {
+                entry["name"]: (entry["phase"], entry["level"])
+                for entry in cached["operators"]
+                if entry["owned"]
+                and type(entry["phase"]) is int
+                and type(entry["level"]) is int
+            }
+        stages = dict(_runtime.growth_stages)
     levels = owner.facility_levels
     observed_rooms = (
         set(owner.plan)

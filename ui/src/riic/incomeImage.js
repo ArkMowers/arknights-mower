@@ -58,6 +58,9 @@ export function incomeReportLines(result, settings, plan, label) {
       .map(([key, value]) => `${key}=${value}`)
       .join('；')}。加权产出不是龙门币结算额。`,
     `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
+    provenance?.moodControlStrategyVersion
+      ? `轮班策略 ${provenance.moodControlStrategyVersion}；实时心情计算调控${provenance.predictiveMoodControl ? '开启' : '关闭'}。两种模式均模拟心情变化。`
+      : '这份历史记录未保存轮班策略版本，重新演算后可比较当前策略。',
     `本次设施等级（优先使用排班保存值，未设置时推断）：${levels}。`,
     provenance
       ? `计算器基线 ${provenance.calculatorBaseRevision}，选择性同步 ${provenance.calculatorSyncRevision}（含本地适配）；调度基线 Mower alpha ${provenance.mowerBaseReference}，本轮核对 ${provenance.mowerCheckedRevision}，后续本体逻辑不自动同步。`

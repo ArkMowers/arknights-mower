@@ -39,10 +39,17 @@ export class MowerTask {
  correctionSkipDorm=false
  get retainsExecution():boolean{return !!this.executionFailure||this.executionRetained}
  previewReturnVeto?:{conditions:number[];names:string[]}
+ backupRetentionWait?:{names:string[]}
+ backupRetentionReleasedNames:string[]=[]
+ backupRetentionAdmissions:string[]=[]
+ backupRetentionEmptySlots:Record<string,string>={}
  groupShiftTransitions:Record<string,boolean>={}
  /** Once room execution begins, remaining rooms retain the confirmed shift intent. */
  arrangementStarted=false
  productShiftLocked=false
+ moodControlObserved=false
+ moodControlEvent?:{fingerprint:string;timeMicros:number}
+ moodControlEvidence?:import('./mowerPredictivePlanning').MowerPredictiveEvidence
  ordinaryCoordination=false
  exhaustSupport=false
  coordinationRequestNames:string[]=[]

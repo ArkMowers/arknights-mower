@@ -73,7 +73,7 @@ export function mowerStandbyCandidates(data:MowerSchedulingData,names:string[]):
  * a required member without a bed rejects the whole reservation atomically. */
 export function mowerAssignDormGroup(data:MowerSchedulingData,names:string[],activeGroups?:Set<string>,departingNames?:ReadonlySet<string>,plan:MowerTaskPlan={},reservedSlots:ReadonlySet<string>=new Set()):MowerDormState[]|undefined {
  defaultOnly(data)
- const required=names.filter(n=>!data.restMoodComplete(n)),optional=mowerStandbyCandidates(data,required)
+ const required=names.filter(n=>!data.restMoodComplete(n)||data.freeRoomExcluded(n)),optional=new Set([...mowerStandbyCandidates(data,names)].filter(n=>!data.freeRoomExcluded(n)))
  const ordered=[...required].sort((a,b)=>{
   if(data.alpha)return Number(optional.has(a))-Number(optional.has(b))||Number(alphaFullDynamicCandidate(data,a))-Number(alphaFullDynamicCandidate(data,b))||compareAlphaKeys(alphaRestingKey(data,a),alphaRestingKey(data,b))
   const x=data.operators[a]!,y=data.operators[b]!

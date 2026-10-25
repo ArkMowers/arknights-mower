@@ -16,6 +16,7 @@ import {parseProduct} from '../domain/mowerProducts'
 // See validation/mower-backup-2026-09-22/implementation-report.md for source contracts.
 import { OPERATOR_MAP } from '../domain/operators'
 import {MowerTask} from './mowerTaskQueue'
+import {hasMowerPlanningWake} from './mowerOrdinaryPlanningWake'
 import { resolveOperatorCharId as resolveId } from '../domain/operatorIdentifiers'
 import type { MowerRoomId, RosterWorkspace } from '../domain/roster'
 import { compileRosterSchedule } from './compileRosterSchedule'
@@ -29,6 +30,9 @@ import {projectMowerArrangements} from './mowerObservations'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {alphaCorrectGroupDorms,alphaRebalanceDorms,alphaPosition} from './mowerAlphaDorm'
+import {mowerDormTaskReservations} from './mowerAlphaCandidates'
+import {planMowerDormIsolation} from './mowerDormIsolation'
+import {MowerBackupRetentionBlocked,mowerBackupRetentionFingerprint,reconcileMowerBackupRetention,mowerBackupRetentionPending,cancelMowerBackupRetentionAdmissions,recordMowerBackupRetention} from './mowerBackupRetention'
 import {mergeMowerPlanOverlay,mergeMowerShiftTransition,coalesceMowerBackupTransition,stripMowerCurrent,type MowerShiftModel} from './mowerShiftCycle'
 export { actualRoom } from './backupExpression'
 
@@ -175,6 +179,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   }
   const displaced = new Set<string>()
   let effective = base
+  let retentionFailure:{names:string[];fingerprint:string}|undefined
   const alphaConfigs=new Map<string,{compiled:CompiledSchedule;config:RuntimeState['config']}>()
   // Keep the caller's compiled base constraints (including an intentionally empty
   // recovery pool) when a preview refreshes the unchanged base plan.
@@ -228,8 +233,8 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     nextIdleConditionWakeMicros:data=>[...plans,...groups].some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours!==undefined&&data.nowMicros<=base.assumptions.majorMaintenanceStartHours*3_600_000_000?data.nowMicros+1_000_000:undefined,
     select(data){return selectionFor({...state,time:data.nowMicros/3_600_000_000,mowerSource:{...getMowerSourceRuntime(state),data}},data.backupGroup,data.planConditions)},
     evaluate(data){return alphaModel.select!(data).conditions},
-    swap(data,conditions,groupId){const {config}=alphaConfiguration(conditions,groupId??data.backupGroup);const next=makeMowerSchedulingData({...state,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];next.backupGroup=groupId??data.backupGroup;return next},
-    transition(previous,next,original,conditions,recovery=previous,pendingTasks){
+    swap(data,conditions,groupId){const {config}=alphaConfiguration(conditions,groupId??data.backupGroup);const next=makeMowerSchedulingData({...state,time:data.nowMicros/3_600_000_000,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];next.backupGroup=groupId??data.backupGroup;return next},
+    transition(previous,next,original,conditions,recovery=previous,pendingTasks,intent={}){
       const transition:Record<string,string[]>={},groupPositions=new Set<string>(),replacementPositions:[string,number][]=[],restored=new Set<string>(),joiningResting=new Set<string>()
       const protectedTraining=new Set([...previous.busyRestingNames,...next.busyRestingNames])
       plans.forEach((p,i)=>{if(original[i]&&!conditions[i])for(const [room,names] of Object.entries(p.task))names.forEach((name,index)=>{if(name!=='Current')restored.add(alphaPosition(room,index))})})
@@ -255,14 +260,25 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       })
       if(groupPositions.size)alphaCorrectGroupDorms(next,transition,groupPositions)
       if(joiningResting.size?!preserveMowerBackupRestingJoins(next,transition,replacementPositions,recovery.dorms,joiningResting,pendingTasks??getMowerSourceRuntime(state).queue.tasks.filter(task=>task!==getMowerSourceRuntime(state).activeTask),protectedTraining):!preserveMowerBackupReplacements(next,transition,replacementPositions,recovery.dorms))throw new MowerShiftPreviewError('副表替班或恢复床位不可用，暂缓切表')
+      const retentionExplicitNames=new Set([...Object.values(transition).flat(),...Object.values(intent).flat()].filter(name=>!['Current','Free',''].includes(name)))
+      const orderChanged=JSON.stringify(recovery.dormOrder)!==JSON.stringify(next.dormOrder)
+      const reserved=new Set(Object.values(transition).flat().filter(n=>!['Current','Free',''].includes(n)))
+      const slots=new Set(Object.entries(transition).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[alphaPosition(room,index)]:[])))
       const signature=(data:MowerSchedulingData)=>JSON.stringify([data.dormOrder,data.dorms.map(b=>[b.position,data.plan[b.position[0]]?.[b.position[1]],data.operators[data.plan[b.position[0]]?.[b.position[1]]??'']?.group,data.effectiveFreeSlot(b),b.name])])
       if(signature(recovery)!==signature(next)){
-        const migration=projectMowerArrangements(next,[transition]),reserved=new Set(Object.values(transition).flat().filter(n=>!['Current','Free',''].includes(n)))
-        const slots=new Set(Object.entries(transition).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[alphaPosition(room,index)]:[])))
-        const plan=alphaRebalanceDorms(migration,recovery.dorms,reserved,slots);next.dorms=migration.dorms;mergeMowerShiftTransition(transition,plan,next)
+        const migration=projectMowerArrangements(next,[transition])
+        if(orderChanged){
+          const source=getMowerSourceRuntime(state),pending=pendingTasks??source.queue.tasks.filter(task=>task!==source.activeTask)
+          const reservations=mowerDormTaskReservations(next,pending.filter(task=>task.type!==T.SHIFT_ON||task.retainsExecution||task.backupShiftActive||task.productShiftLocked||task.dormRecoveryRestore.length))
+          for(const name of reservations.names)reserved.add(name)
+          for(const slot of reservations.slots)slots.add(slot)
+        }
+        const plan=alphaRebalanceDorms(migration,recovery.dorms,reserved,slots,orderChanged);next.dorms=migration.dorms;mergeMowerShiftTransition(transition,plan,next)
       }
-      for(const [room,names] of Object.entries(transition))if(room.startsWith('dorm'))names.forEach((name,index)=>{if(!['Current','Free',''].includes(name)&&next.restMoodComplete(name)&&next.currentOperator(room,index)?.name!==name)names[index]='Current'})
-      return stripMowerCurrent(transition)
+      for(const [room,names] of Object.entries(transition))if(room.startsWith('dorm'))names.forEach((name,index)=>{if(!['Current','Free',''].includes(name)&&next.restMoodComplete(name)&&!next.freeRoomExcluded(name)&&next.currentOperator(room,index)?.name!==name)names[index]='Current'})
+      const changed=original.some((value,index)=>value!==conditions[index])||previous.backupGroup!==next.backupGroup
+      const reconciled=changed?reconcileMowerBackupRetention(previous,next,transition,pendingTasks??getMowerSourceRuntime(state).queue.tasks.filter(task=>task!==getMowerSourceRuntime(state).activeTask),retentionExplicitNames):transition
+      return stripMowerCurrent(orderChanged||changed?planMowerDormIsolation(next,reconciled,slots,reserved,orderChanged?new Set(recovery.dorms.map(b=>b.name).filter(Boolean)):new Set()):reconciled)
     },
     activate(conditions,task){
       const previous=getMowerSourceRuntime(state).data,oldDrained=state.config.mowerSourceRules?.refreshDrained??[]
@@ -271,6 +287,8 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       const snapshot=alphaConfiguration(conditions,activeGroup)
       conditions.forEach((value,i)=>{if(value!==active[i])state.events.push({time:state.time,type:'backup-plan',operators:[],backupIndex:i,backupName:plans[i]!.name,active:value,timing:'END'});active[i]=value})
       state.config=snapshot.config;effective=snapshot.compiled;getMowerSourceRuntime(state).data.planConditions=[...active];getMowerSourceRuntime(state).data.backupGroup=activeGroup
+      const cancelled=cancelMowerBackupRetentionAdmissions(getMowerSourceRuntime(state).data,getMowerSourceRuntime(state).queue.tasks.filter(pendingTask=>pendingTask!==task))
+      getMowerSourceRuntime(state).queue.tasks=getMowerSourceRuntime(state).queue.tasks.filter(pendingTask=>!cancelled.has(pendingTask))
       invalidateMowerExhaustTasks(getMowerSourceRuntime(state).data,getMowerSourceRuntime(state).queue.tasks,exhaust,alphaModel.exhaustRoomContext!(getMowerSourceRuntime(state).data))
       captureMowerBackupRefreshRules(task,previous,getMowerSourceRuntime(state).data,oldDrained,state.config.mowerSourceRules?.refreshDrained??[])
     },
@@ -279,16 +297,26 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   function evaluateAlpha(timing:BackupTiming):boolean{
     const source=getMowerSourceRuntime(state),queue=source.queue,data=source.data
     if(queue.tasks.some(t=>!t.executionFailure&&(t.backupShiftActive||t.type===T.FIAMMETTA&&t.timeMicros<=data.nowMicros))||source.activeTask?.type===T.FIAMMETTA)return false
-    const original=[...active],seen=new Set([JSON.stringify(original)]);let current=data,selection=alphaModel.select!(data),conditions=selection.conditions
+    const original=[...active],seen=new Set([JSON.stringify([data.backupGroup,original])]);let current=data,selection=alphaModel.select!(data),conditions=selection.conditions
+    if(retentionFailure){
+      const fingerprint=mowerBackupRetentionFingerprint(data,queue.tasks.filter(task=>task!==source.activeTask),retentionFailure.names,selection)
+      if(fingerprint===retentionFailure.fingerprint)return false
+      retentionFailure=undefined
+    }
     for(let pass=0;pass<64;pass++){
-      if(conditions.every((v,i)=>v===current.planConditions[i])){
-        if(conditions.every((v,i)=>v===original[i])){if(data.backupGroup!==selection.groupId){const task=new MowerTask({time:state.time});task.backupGroup=selection.groupId;alphaModel.activate(conditions,task)}return false}
+      if(conditions.every((v,i)=>v===current.planConditions[i])&&selection.groupId===current.backupGroup){
+        if(conditions.every((v,i)=>v===original[i])&&data.backupGroup===selection.groupId)return false
         let transition:Record<string,string[]>
-        try{transition=alphaModel.transition(data,current,original,conditions)}catch(error){if(!(error instanceof MowerShiftPreviewError))throw error;state.diagnostics.push({code:'mower-backup-deferred',message:error.message});return false}
-        const merged=coalesceMowerBackupTransition(current,transition,queue.tasks)
+        try{transition=alphaModel.transition(data,current,original,conditions)}catch(error){if(!(error instanceof MowerShiftPreviewError))throw error;if(error instanceof MowerBackupRetentionBlocked)retentionFailure={names:error.names,fingerprint:mowerBackupRetentionFingerprint(data,queue.tasks.filter(task=>task!==source.activeTask),error.names,alphaModel.select!(data))};state.diagnostics.push({code:'mower-backup-deferred',message:error.message});return false}
+        const pending=mowerBackupRetentionPending(current,queue.tasks)
+        const merged=coalesceMowerBackupTransition(current,transition,pending)
+        merged.consumed=merged.consumed.map(task=>queue.tasks[pending.indexOf(task)]!)
         const generated:MowerTask[]=[]
-        if(Object.keys(merged.plan).length){const task=new MowerTask({time:state.time,type:Object.keys(merged.plan).some(room=>room.startsWith('dorm'))?T.RE_ORDER:T.SELF_CORRECTION,plan:merged.plan,metadata:'副表内存收敛'});if(state.mowerBackupContext?.customTimeMicros!==undefined)task.timeMicros=state.mowerBackupContext.customTimeMicros;generated.push(task);queue.tasks.push(task);queue.tasks=queue.tasks.filter(t=>!merged.consumed.includes(t))}
+        if(Object.keys(merged.plan).length){const task=new MowerTask({time:state.time,type:Object.keys(merged.plan).some(room=>room.startsWith('dorm'))?T.RE_ORDER:T.SELF_CORRECTION,plan:merged.plan,metadata:'副表内存收敛'});if(state.mowerBackupContext?.customTimeMicros!==undefined)task.timeMicros=state.mowerBackupContext.customTimeMicros;recordMowerBackupRetention(data,current,task);generated.push(task);queue.tasks.push(task);queue.tasks=queue.tasks.filter(t=>!merged.consumed.includes(t))}
         if(generated[0]){
+          generated[0].backupRetentionReleasedNames=[...new Set([...generated[0].backupRetentionReleasedNames,...merged.consumed.flatMap(task=>task.backupRetentionReleasedNames)])].filter(name=>!current.freeRoomExcluded(name))
+          generated[0].backupRetentionAdmissions=[...new Set([...generated[0].backupRetentionAdmissions,...merged.consumed.flatMap(task=>task.backupRetentionAdmissions)])].filter(name=>current.freeRoomExcluded(name))
+          generated[0].backupRetentionEmptySlots=Object.assign({},...merged.consumed.map(task=>task.backupRetentionEmptySlots),generated[0].backupRetentionEmptySlots)
           generated[0].coordinationRequestNames=[...new Set(merged.consumed.filter(task=>task.ordinaryCoordination).flatMap(task=>task.coordinationRequestNames))]
           generated[0].ordinaryCoordination=generated[0].coordinationRequestNames.length>0
           inheritMowerBackupRefreshRules(generated[0],merged.consumed)
@@ -297,11 +325,12 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         const activation=generated[0]??new MowerTask({time:state.time});activation.backupGroup=selection.groupId
         alphaModel.activate(conditions,activation);getMowerSourceRuntime(state).data.dorms=current.dorms
         for(const event of state.events.slice(-plans.length))if(event.type==='backup-plan'&&event.time===state.time)event.timing=timing
-        const followup=new MowerTask({time:state.time});if(state.mowerBackupContext?.customTimeMicros!==undefined)followup.timeMicros=state.mowerBackupContext.customTimeMicros;generated.push(followup)
+        const followup=new MowerTask({time:state.time});if(state.mowerBackupContext?.customTimeMicros!==undefined)followup.timeMicros=state.mowerBackupContext.customTimeMicros
+        if(!hasMowerPlanningWake(queue.tasks,followup,source.activeTask))generated.push(followup)
         state.mowerBackupGenerated=generated
         return Object.keys(merged.plan).length>0
       }
-      const key=JSON.stringify(conditions)
+      const key=JSON.stringify([selection.groupId,conditions])
       if(seen.has(key)){state.diagnostics.push({code:'mower-backup-cycle',message:'副表条件在内存演算中出现循环，保持切换前状态'});return false}
       seen.add(key);current=alphaModel.swap(current,conditions,selection.groupId);selection=alphaModel.select!(current);conditions=selection.conditions
     }

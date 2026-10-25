@@ -10,11 +10,11 @@ date: 2026-10-25
 
 ## 问题
 
-普通调度原先使用房间观测与实测心情消耗速率；[收益图片决策](../../implemented/feature/2026-10-14-plan-income-export.zh.md)则在浏览器 Worker 中运行固定版本的 TypeScript 计算器。“实时心情计算”需要使用计算器的技能效果，同时保留普通调度的任务执行、实读与重启恢复。将公式另译为 Python 会形成两份需要同步维护的实现。[Arknights Mower 基建调度子系统说明](../../../../docs/subsystems/base-scheduler.md#calculated-mood-test)负责说明本次选择形成的行为规则。
+普通调度原先使用房间观测与实测心情消耗速率；[收益图片决策](../../implemented/feature/2026-10-14-plan-income-export.zh.md)则在浏览器 Worker 中运行固定版本的 TypeScript 计算器。“实时心情计算调控”需要使用计算器的技能效果，同时保留普通调度的任务执行、实读与重启恢复。将公式另译为 Python 会形成两份需要同步维护的实现。[Arknights Mower 基建调度子系统说明](../../../../docs/subsystems/base-scheduler.md#calculated-mood-test)负责说明本次选择形成的行为规则。
 
 ## 决策
 
-排班高级设置中的“实时心情计算”默认关闭，开启后普通调度使用计算心情。[`runtimeMood.ts`](../../../../ui/src/riic/runtimeMood.ts)将观测输入交给收益引擎已有的心情和宿舍恢复函数。构建时将这些函数及其依赖打包成纯 JavaScript，随 Python 程序发布，由内嵌的 `quickjs-ng` 执行。用户无需安装 Node.js，也无需打开网页。收益演算继续使用浏览器 Worker；两条路径共用公式源码与技能阈值规则，分别持有状态和时间。
+排班高级设置中的“实时心情计算调控”默认关闭，开启后普通调度使用计算心情。[`runtimeMood.ts`](../../../../ui/src/riic/runtimeMood.ts)将观测输入交给收益引擎已有的心情和宿舍恢复函数。构建时将这些函数及其依赖打包成纯 JavaScript，随 Python 程序发布，由内嵌的 `quickjs-ng` 执行。用户无需安装 Node.js，也无需打开网页。收益演算继续使用浏览器 Worker；两条路径共用公式源码与技能阈值规则，分别持有状态和时间。
 
 Python 的 [`CalculatedMood`](../../../../arknights_mower/utils/calculated_mood.py)负责观测、经过时间、操作事件和持久化模型数据；JavaScript 根据传入数据计算技能效果与速率。未来时刻查询与预演驻员使用独立状态，计算值不替代房间实读。运行快照保存普通模型数据，并去掉干员对新增运行类的引用，使旧版本仍能反序列化实际驻员与未完成任务。启动时恢复兼容的模型数据，再进行初始化实读，并保留已开始工作。观测与操作事件分别负责校准和结算，避免操作后读回心情时再次计算同一次变化。训练策略、实际换人和补偿继续由原有执行流程负责。
 

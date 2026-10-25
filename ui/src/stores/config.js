@@ -16,7 +16,7 @@ export const useConfigStore = defineStore('config', () => {
   const config_saving = ref(false)
   const configLoading = ref(false)
   let savedConfig = null
-  const drone_count_limit = ref(0)
+  const drone_count_limit = ref(100)
   const drone_room = ref('')
   const right_side_room_order = ref(['contact', 'train', 'recycle'])
 

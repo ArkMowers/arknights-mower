@@ -63,6 +63,7 @@ def scheduler(monkeypatch):
     solver.emergency_state = None
     solver.error = False
     solver.op_data = SimpleNamespace(
+        mood_calculation_enabled=False,
         plan={},
         operators={},
         dorm=[],

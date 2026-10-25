@@ -4,12 +4,16 @@ import {alphaPosition,mowerMatchReplacements} from './mowerAlphaDorm'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import {hasObservedFullMood,mowerReplacementCandidates,rescueMoodThreshold,MowerOperatorState} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
+import {alphaSupportSwapMicros} from './mowerAlphaTaskProtection'
+import {mowerWorkingReplacementApplies} from './mowerWorkingReplacement'
+import {mowerPlanningWakeThreshold} from './mowerPlanningWake'
 import type {MowerRestingOptions} from './mowerOrdinaryPlanning'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {mowerRestingBindingGroups,mowerSharedReplacements,mowerSameGroupPrimaryReplacement} from './mowerSharedGroups'
-import {toMowerMicros,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
+import {toMowerMicros,MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskType} from './mowerTaskQueue'
 
 export interface MowerCoordinationRates {work:Readonly<Record<string,number>>;recovery:Readonly<Record<string,number>>}
+export interface MowerRecallRecheckWindow {untilMicros?:number;notBeforeMicros:number;observation?:{timeMicros:number;limits:Readonly<Record<string,number>>}}
 function replacements(data:MowerSchedulingData,op:MowerOperatorState,required:ReadonlySet<string>=new Set()):string[]{
  const transitions=Object.fromEntries([...required].map(name=>data.operators[name]!).filter(worker=>worker.group&&data.isGroupShiftAnchor(worker)).map(worker=>[worker.group,true]))
  return op.multiGroup?mowerSharedReplacements(op,mowerRestingBindingGroups(data,op,transitions)):op.replacement
@@ -108,8 +112,43 @@ export function mowerRecallMoodAdmissible(data:MowerSchedulingData,recalled:Read
   return mood!==undefined
  })
 }
-/** Recall is admitted only with a complete post-admission recovery/depletion forecast. */
-export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[],options:MowerRestingOptions):boolean {
+/** Existing dispatch opportunities bound ordinary recall without creating a new timer. */
+export function mowerRecallRecheckWindow(data:MowerSchedulingData,admitted:MowerSchedulingData,support:MowerTaskPlan,admission:MowerTaskPlan,options:MowerRestingOptions):MowerRecallRecheckWindow {
+ const next=options.tasks?.filter(task=>task.timeMicros>data.nowMicros&&!task.executionFailure&&!task.moodControlEvent&&(
+  task.type===T.RUN_ORDER&&!!task.metadata&&!Object.keys(task.plan).length&&(task.wakeOnlyCompletion||Number.isSafeInteger(task.observedOrderDueMicros))||!!task.workingReplacementCheck&&mowerWorkingReplacementApplies(data,task.workingReplacementCheck)&&mowerWorkingReplacementApplies(admitted,task.workingReplacementCheck)||task.type===T.NOT_SPECIFIC&&!task.metadata&&!Object.keys(task.plan).length&&!task.workingReplacementCheck
+ )).sort((a,b)=>a.timeMicros-b.timeMicros)[0]
+ const observed=options.coordinationRecheck
+ const observationLimits:Record<string,number>={}
+ if(observed&&Number.isSafeInteger(observed.timeMicros)&&observed.timeMicros>data.nowMicros&&observed.timeMicros<(next?.timeMicros??Infinity)&&materializeCoordinationMoods(data,admitted)){
+  const rates=options.coordinationRates?.(admitted)
+  for(const name of observed.names){
+   const before=data.operators[name],after=admitted.operators[name]
+   if(!before?.currentRoom||before.isResting()||!after||after.currentRoom!==before.currentRoom||after.currentIndex!==before.currentIndex)continue
+   const limit=mowerPlanningWakeThreshold(admitted,after),rate=rates?.work[name]
+   if(limit===undefined||after.mood<=limit||rate===undefined||!Number.isFinite(rate)||rate<=0)continue
+   if(data.nowMicros+Math.ceil((after.mood-limit)/rate*3_600_000_000)<=observed.timeMicros)observationLimits[name]=limit
+  }
+ }
+ const planningWake=Object.keys(observationLimits).length>0
+ const recheckMicros=planningWake?observed!.timeMicros:next?.timeMicros
+ if(recheckMicros===undefined)return {notBeforeMicros:data.nowMicros}
+ const duration=(plan:MowerTaskPlan,type:MowerTaskType)=>Object.keys(plan).length?alphaSupportSwapMicros(new MowerTask({type,plan}),options.priorityScheduling):0
+ const notBeforeMicros=data.nowMicros+duration(support,T.SELF_CORRECTION)+duration(admission,T.SHIFT_OFF)
+ const recheckDuration=alphaSupportSwapMicros(planningWake?new MowerTask():next!,options.priorityScheduling)
+ const startMicros=Math.max(notBeforeMicros,recheckMicros)
+ return {notBeforeMicros,untilMicros:startMicros+recheckDuration,observation:planningWake?{timeMicros:startMicros,limits:observationLimits}:undefined}
+}
+function materializeCoordinationMoods(original:MowerSchedulingData,shadow:MowerSchedulingData):boolean {
+ for(const op of Object.values(shadow.operators)){
+  const source=original.operators[op.name]
+  const mood=source?mowerDormCandidateMood(original,source.name):undefined
+  if(op.currentRoom&&mood===undefined)return false
+  op.mood=mood??op.mood;op.timeStampMicros=shadow.nowMicros;op.depletionRate=0
+ }
+ return true
+}
+/** Keep connected workers above their floors until an existing recheck or complete recovery. */
+export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[],options:MowerRestingOptions,untilMicros?:number,notBeforeMicros=original.nowMicros,observation?:MowerRecallRecheckWindow['observation']):boolean {
  if(recalled.size&&(mowerUrgentRecallBlocked(original,candidates,options.urgentRecoveryPendingSupporters)||[...recalled].some(name=>name in original.urgentRecoverySupporters)))return false
  for(const name of recalled){
   const op=original.operators[name];if(!op||!op.isResting())continue
@@ -124,28 +163,31 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
  for(const bed of admitted.allDorms())if(bed.name&&admitted.operators[bed.name]?.isHigh())connected.add(bed.name)
  connected=mowerReplacementDependencyNames(original,connected)
  const shadow=projectMowerArrangements(admitted,[])
- for(const op of Object.values(shadow.operators)){
-  const source=original.operators[op.name]
-  const mood=source?mowerDormCandidateMood(original,source.name):undefined
-  if(op.currentRoom&&mood===undefined)return false
-  op.mood=mood??op.mood;op.timeStampMicros=shadow.nowMicros;op.depletionRate=0
- }
+ if(!materializeCoordinationMoods(original,shadow))return false
  const waiting=[...connected].map(name=>shadow.operators[name]).filter((op):op is MowerOperatorState=>!!op?.isHigh()&&op.isResting()&&!op.workaholic&&!op.room.startsWith('dorm'))
  if(!waiting.length)return false
  // Fixed staffing is deliberately conservative: no hypothetical future rescue is credited.
  // Every physical actor participates in mood boundaries because global skills affect rates.
  const actors=Object.values(shadow.operators).filter(op=>op.currentRoom)
+ const working=actors.filter(op=>connected.has(op.name)&&!op.isResting()&&!op.workaholic)
  const boundaries=(op:MowerOperatorState)=>[0,4,8,12,16,18,20,24,op.lowerLimit,op.upperLimit]
  for(let step=0;step<actors.length*16+1;step++){
-  if(waiting.every(op=>op.mood>=op.upperLimit-1e-8))return true
+  if(working.some(op=>op.mood<=op.lowerLimit+1e-8))return false
+  const recovered=waiting.every(op=>op.mood>=op.upperLimit-1e-8)
+  if(observation&&shadow.nowMicros>=observation.timeMicros){
+   if(!Object.entries(observation.limits).some(([name,limit])=>shadow.operators[name]!.mood<=limit+1e-8))untilMicros=undefined
+   observation=undefined
+  }
+  if(shadow.nowMicros>=notBeforeMicros&&(recovered||untilMicros!==undefined&&shadow.nowMicros>=untilMicros))return true
   const rates=options.coordinationRates(shadow);if(!rates)return false
-  let hours=Infinity
+  let hours=untilMicros===undefined?Infinity:(untilMicros-shadow.nowMicros)/3_600_000_000
+  if(observation)hours=Math.min(hours,(observation.timeMicros-shadow.nowMicros)/3_600_000_000)
+  if(recovered)hours=Math.min(hours,(notBeforeMicros-shadow.nowMicros)/3_600_000_000)
   const velocities=new Map<string,number>()
   for(const op of actors){
    const rate=op.isResting()?rates.recovery[op.name]:rates.work[op.name]
    if(rate===undefined||!Number.isFinite(rate)||op.isResting()&&rate<0)return false
    const velocity=op.isResting()?rate:-rate;velocities.set(op.name,velocity)
-   if(connected.has(op.name)&&!op.isResting()&&!op.workaholic&&op.mood<=op.lowerLimit+1e-8)return false
    if(velocity===0)continue
    const next=boundaries(op).filter(value=>velocity>0?value>op.mood+1e-8:value<op.mood-1e-8)
    for(const value of next)hours=Math.min(hours,(value-op.mood)/velocity)

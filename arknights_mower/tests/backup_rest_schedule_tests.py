@@ -1018,3 +1018,196 @@ def test_priority_switch_keeps_reserved_preferred_bed(solver, reservation):
     assert not solver.backup_plan_solver()
     assert solver.op_data.get_dorm_by_name("黑键")[1].position == ("dormitory_1", 2)
     assert all(task.type != TaskTypes.RE_ORDER for task in solver.tasks)
+
+
+def ordinary_wakeups(solver):
+    return [
+        t
+        for t in solver.tasks
+        if t.type == TaskTypes.NOT_SPECIFIC and not t.plan and not t.meta_data
+    ]
+
+
+def test_repeated_state_changes_keep_one_wake(solver):
+    first = None
+    for index in range(16):
+        solver.op_data.backup_plans[0].trigger = LogicExpression(
+            "True" if index % 2 == 0 else "False", "==", "True"
+        )
+        generated = []
+        solver.backup_plan_solver(generated_tasks=generated)
+        if first is None:
+            first = ordinary_wakeups(solver)[0]
+            assert generated == [first]
+        else:
+            assert generated == []
+        assert len(ordinary_wakeups(solver)) == 1
+        assert ordinary_wakeups(solver)[0] is first
+
+
+@pytest.mark.parametrize(
+    "offset,custom_offset,expected",
+    [
+        (-1, None, False),
+        (0, None, False),
+        (1, None, True),
+        (60, 120, False),
+        (120, 60, True),
+    ],
+)
+def test_existing_wake_deadline_and_new_tasks(solver, offset, custom_offset, expected):
+    now = base.datetime.now()
+    original = SchedulerTask(time=now + timedelta(seconds=offset))
+    before = vars(original).copy()
+    solver.tasks = [original]
+    generated = []
+    when = None if custom_offset is None else now + timedelta(seconds=custom_offset)
+    solver.backup_plan_solver(custom_task_time=when, generated_tasks=generated)
+    assert vars(original) == before
+    assert any(t is original for t in solver.tasks)
+    assert len(ordinary_wakeups(solver)) == 1 + expected
+    assert len(generated) == int(expected)
+    if expected:
+        assert generated[0] is not original
+        assert generated[0].time == (when or now)
+    else:
+        assert solver.find_next_task() is original
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("meta_data", "ordinary-other"),
+        ("plan", {"meeting": ["黑角"]}),
+        ("mood_control_event", {"group": "歌蕾蒂娅", "at": 0}),
+        ("replacement_check", {"cover": "陈"}),
+        (
+            "execution_failure",
+            {"reason": "failed", "rooms": [], "snapshot": (), "dependency": False},
+        ),
+        ("execution_retained", True),
+        ("strict_mood_limit", True),
+        ("adjusted", True),
+        ("mood_limit", 18),
+        ("initial_fia", True),
+        ("reservation_names", ["陈"]),
+        ("unknown_phase", None),
+    ],
+)
+def test_special_empty_tasks_do_not_replace_plain_wake(solver, field, value):
+    original = SchedulerTask(time=base.datetime.now() - timedelta(minutes=1))
+    setattr(original, field, value)
+    before = vars(original).copy()
+    solver.tasks = [original]
+    generated = []
+    solver.backup_plan_solver(generated_tasks=generated)
+    assert any(t is original for t in solver.tasks)
+    assert vars(original) == before
+    assert len(generated) == 1
+    assert generated[0] is not original
+    assert vars(generated[0]) == vars(SchedulerTask(time=base.datetime.now()))
+    assert generated[0] in solver.tasks
+
+
+def test_current_wake_cannot_replace_followup(solver):
+    current = SchedulerTask(time=base.datetime.now())
+    solver.tasks = [current]
+    solver.task = current
+    generated = []
+    solver.backup_plan_solver(generated_tasks=generated)
+    assert len(ordinary_wakeups(solver)) == 2
+    assert len(generated) == 1 and generated[0] is not current
+
+
+def test_dispatch_view_excludes_blocked_wake(solver, monkeypatch):
+    from arknights_mower.utils import scheduler_task
+
+    original = SchedulerTask(time=base.datetime.now())
+    solver.tasks = [original]
+    monkeypatch.setattr(
+        scheduler_task, "blocked_run_order_ids", lambda *args: {id(original)}
+    )
+    generated = []
+    solver.backup_plan_solver(generated_tasks=generated)
+    assert len(generated) == 1
+    assert generated[0] is not original
+    assert solver.find_next_task() is generated[0]
+
+
+@pytest.mark.parametrize(
+    "completion_state",
+    [None, "execution_failure", "execution_retained"],
+)
+def test_physical_backup_keeps_generated_work_and_completion_wake(
+    solver, completion_state
+):
+    solver.op_data.backup_plans[0].task = {"central": ["陈"]}
+    original = SchedulerTask(time=base.datetime.now())
+    solver.tasks = [original]
+    generated = []
+    assert solver.backup_plan_solver(generated_tasks=generated)
+    assert len(generated) == 1 and generated[0].plan
+    assert (
+        len(ordinary_wakeups(solver)) == 1 and ordinary_wakeups(solver)[0] is original
+    )
+    physical = generated[0]
+    solver.task = original
+    solver.infra_main()
+    assert all(task is not original for task in solver.tasks)
+    special = SchedulerTask(time=base.datetime.now() - timedelta(minutes=1))
+    solver.tasks = [physical] if completion_state is None else [physical, special]
+    if completion_state == "execution_failure":
+        solver._retain_failed_task(special, "failed", [])
+    elif completion_state is not None:
+        setattr(special, completion_state, True)
+    solver.task = physical
+
+    def arrange(plan, get_time):
+        solver.op_data = solver.op_data.project_arrangements([plan])
+        plan.clear()
+
+    solver.agent_arrange = MagicMock(side_effect=arrange)
+    solver.infra_main()
+    assert all(t is not physical for t in solver.tasks)
+    fresh = SchedulerTask(time=base.datetime.now())
+    assert any(vars(task) == vars(fresh) for task in solver.tasks)
+    if completion_state is not None:
+        assert any(task is special for task in solver.tasks)
+        if completion_state == "execution_failure":
+            assert solver.find_next_task() is not special
+
+
+def test_independent_manual_task_still_dispatches(solver, monkeypatch):
+    independent = SchedulerTask(
+        time=base.datetime.now() - timedelta(minutes=1), task_type=TaskTypes.RECRUIT
+    )
+    solver.tasks = [independent]
+    for index in range(3):
+        solver.op_data.backup_plans[0].trigger = LogicExpression(
+            "True" if index % 2 == 0 else "False", "==", "True"
+        )
+        solver.backup_plan_solver()
+    assert len(ordinary_wakeups(solver)) == 1
+    assert solver.find_next_task() is independent
+    solver.task = independent
+    from arknights_mower.solvers import manual_tasks
+
+    run_manual = MagicMock(return_value=True)
+    monkeypatch.setattr(manual_tasks, "run_manual_task", run_manual)
+    solver.infra_main()
+    run_manual.assert_called_once_with(solver, independent)
+    assert all(t is not independent for t in solver.tasks)
+    assert len(ordinary_wakeups(solver)) == 1
+
+
+def test_task_subclass_cannot_replace_plain_wake(solver):
+    class SpecializedTask(SchedulerTask):
+        pass
+
+    original = SpecializedTask(time=base.datetime.now())
+    solver.tasks = [original]
+    generated = []
+    solver.backup_plan_solver(generated_tasks=generated)
+    assert len(generated) == 1
+    assert generated[0] is not original
+    assert any(task is original for task in solver.tasks)

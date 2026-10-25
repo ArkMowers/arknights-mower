@@ -1,4 +1,4 @@
-"""不养闲人排除名单：回满保床、仍可上班，个人上限优先。"""
+"""宿舍保留允许返岗，个人心情上限不触发自动清退。"""
 
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
@@ -90,7 +90,7 @@ def test_cached_release_is_cancelled_after_exclusion_enabled(solver):
 
 
 @pytest.mark.parametrize("mood", [10, 12, 24])
-def test_custom_limit_release_still_takes_priority(solver, mood):
+def test_custom_limit_does_not_override_retention(solver, mood):
     instance, _ = solver
     data = instance.op_data
     data.config.free_room_exclusions = ["空爆"]
@@ -100,12 +100,10 @@ def test_custom_limit_release_still_takes_priority(solver, mood):
     data.operators["空爆"].mood = mood
     data.dorm[0].time = datetime.now() - timedelta(minutes=1)
     tasks = plan_metadata(data, [])
-    strict = next(t for t in tasks if t.strict_mood_limit)
-    assert strict.meta_data == "空爆"
-    instance.task = strict
-    agents = strict.plan[ROOM].copy()
+    assert not any(t.strict_mood_limit for t in tasks)
+    agents = ["Current"] * 4 + ["Free"]
     instance.preserve_resting_crafters(agents, ROOM)
-    assert agents[-1] != "空爆"
+    assert agents[-1] == "空爆"
 
 
 def test_exclusion_removal_restores_takeover_independently_of_release_switch(op_data):
