@@ -138,6 +138,7 @@ async function clean() {
   })
 }
 function changeTab(value) {
+  if (busy.value) return
   tab.value = value
   error.value = notice.value = ''
   if (value === 'maa') loadMaa()
@@ -161,7 +162,7 @@ onUnmounted(() => {
       :theme-overrides="{ tabGapMediumLine: '18px' }"
       @update:value="changeTab"
     >
-      <n-tab-pane name="network" tab="网络代理">
+      <n-tab-pane name="network" tab="网络代理" :disabled="busy">
         <p class="description">同一数据目录下的实例共用这些设置。保存后用于后续请求。</p>
         <n-form label-placement="top">
           <n-form-item label="HTTP 代理">
@@ -190,10 +191,10 @@ onUnmounted(() => {
           >
         </div>
       </n-tab-pane>
-      <n-tab-pane name="mower" tab="Mower 更新">
+      <n-tab-pane name="mower" tab="Mower 更新" :disabled="busy">
         <manager-software-update :api="api" :disabled="job.status === 'running'" />
       </n-tab-pane>
-      <n-tab-pane name="maa" tab="MAA 更新">
+      <n-tab-pane name="maa" tab="MAA 更新" :disabled="busy">
         <p class="description">
           按实际安装目录合并显示。更新前需停止使用该目录的实例，并允许这些实例更新。维护期间关闭窗口会收起到托盘，完成后可退出管理器。
         </p>
@@ -269,7 +270,7 @@ onUnmounted(() => {
           <p v-if="group?.running" class="description">有实例正在运行，停止后刷新状态即可更新。</p>
         </template>
       </n-tab-pane>
-      <n-tab-pane name="storage" tab="存储清理">
+      <n-tab-pane name="storage" tab="存储清理" :disabled="busy">
         <p class="description">
           统计日志、日常截图和报错归档。清理仅处理已停止实例，不删除配置、排班和数据库。
         </p>
