@@ -2400,10 +2400,10 @@ class Operators:
 
     def _apply_projected_arrangements(self, plans, *, now=None):
         """仅在调用方独占的隔离副本上推进驻员和床位，不再复制副本。"""
-        now = now or getattr(self, "_projection_now", None) or datetime.now()
+        self._projection_now = now or getattr(self, "_projection_now", None)
+        now = self._projection_now or datetime.now()
         if self.mood_calculation_enabled:
             self.mood_model.advance(now)
-        self._projection_now = now if hasattr(self, "_projection_now") else None
         if getattr(self, "_projection_now", None) is not None:
             self._projection_deadlines = {}
         for plan in plans:
