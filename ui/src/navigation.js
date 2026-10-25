@@ -11,12 +11,12 @@ import LibraryOutline from '@vicons/ionicons5/es/LibraryOutline'
 import MedkitOutline from '@vicons/ionicons5/es/MedkitOutline'
 import PieChartOutline from '@vicons/ionicons5/es/PieChartOutline'
 import ReceiptOutline from '@vicons/ionicons5/es/ReceiptOutline'
-import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline'
 import SchoolOutline from '@vicons/ionicons5/es/SchoolOutline'
 import SettingsOutline from '@vicons/ionicons5/es/SettingsOutline'
 import TerminalOutline from '@vicons/ionicons5/es/TerminalOutline'
 import TimeOutline from '@vicons/ionicons5/es/TimeOutline'
 import TrendingUpOutline from '@vicons/ionicons5/es/TrendingUpOutline'
+import Recycle from '@vicons/tabler/es/Recycle'
 import MowerAIIcon from './components/MowerAIIcon.vue'
 
 // Entries carry either `to` (a registered route path) or `href` (an external https URL).
@@ -90,7 +90,7 @@ export const navigationSections = [
       {
         key: 'record-recycling',
         label: '回收站材料统计',
-        icon: RefreshOutline,
+        icon: Recycle,
         to: '/record/recycling'
       },
       {
