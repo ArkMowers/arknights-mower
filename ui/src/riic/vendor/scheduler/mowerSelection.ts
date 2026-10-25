@@ -14,6 +14,8 @@ export function prepareMowerDormSelection(data:MowerSchedulingData,names:string[
  if(data.policy.experimentalDormLogic)throw new Error('Experimental selection and recovery ordering require their source port')
  const seen=new Set<string>()
  for(const [index,name] of names.entries()){
+  const expected=task?.backupRetentionEmptySlots[room+'\0'+index],current=data.currentOperator(room,index)
+  if(expected&&current&&(current.name!==expected||data.freeRoomExcluded(current.name)||current.room)&&(name===''||current.name===name)){names[index]=current.name;continue}
   if(data.alpha&&task?.simpleDormFill&&data.currentOperator(room,index)?.name===name){seen.add(name);continue}
   if(!seen.has(name))seen.add(name)
   else if(!['','Free','Current'].includes(name))names[index]='Free'

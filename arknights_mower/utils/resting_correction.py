@@ -1,5 +1,6 @@
 """Prefer available replacements before recalling resting operators in correction."""
 
+import copy
 from datetime import datetime
 from functools import cache
 
@@ -13,6 +14,70 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
 
 PLACEHOLDERS = {"", "Current", "Free"}
+
+
+def reconcile_backup_dorm_retention(
+    op_data,
+    plan,
+    previous_names,
+    *,
+    explicit_slots=(),
+    reserved_names=(),
+    reserved_slots=(),
+):
+    """切表时安置无主岗位的保留干员，并释放退出保留的动态住客。"""
+    if not any(previous_names) and not any(op_data.config.free_room_exclusions):
+        return plan
+    result = copy.deepcopy(plan)
+    projected = op_data.project_arrangements([result])
+    explicit_names = {
+        result.get(room, [])[index]
+        for room, index in explicit_slots
+        if index < len(result.get(room, ()))
+    } - PLACEHOLDERS
+    reserved_names = set(reserved_names) | set(op_data.reserved_product_replacements)
+    reserved_slots = set(reserved_slots) | set(op_data.reserved_product_beds)
+    for name in set(previous_names) - set(op_data.config.free_room_exclusions):
+        op = projected.operators.get(name)
+        if op is None or op.room or not op.is_resting() or name in explicit_names:
+            continue
+        position = (op.current_room, op.current_index)
+        bed = next((bed for bed in projected.dorm if bed.position == position), None)
+        if bed is None or not projected.is_effective_free_slot(bed):
+            continue
+        if name in reserved_names or position in reserved_slots:
+            return None
+        result.setdefault(
+            op.current_room, ["Current"] * len(projected.plan[op.current_room])
+        )[op.current_index] = ""
+    projected = op_data.project_arrangements([result])
+    missing = [
+        name
+        for name in op_data.config.free_room_exclusions
+        if projected.is_free_room_excluded(name)
+        and not projected.operators[name].room
+        and not projected.operators[name].current_room
+    ]
+    if not missing:
+        return result
+    if set(missing) & reserved_names:
+        return None
+    occupied = reserved_slots | set(explicit_slots)
+    occupied.update(
+        bed.position
+        for bed in projected.dorm
+        if bed.name or projected.get_current_operator(*bed.position) is not None
+    )
+    # 保留身份占用空余 Free 床，不以切表安置之名挤走其他恢复住客。
+    beds = projected.assign_dorm_group(missing, reserved_slots=occupied)
+    if beds is None:
+        return None
+    for bed in beds:
+        room, index = bed.position
+        result.setdefault(room, ["Current"] * len(projected.plan[room]))[index] = (
+            bed.name
+        )
+    return result
 
 
 def suppress_completed_dorm_returns(op_data, plan):

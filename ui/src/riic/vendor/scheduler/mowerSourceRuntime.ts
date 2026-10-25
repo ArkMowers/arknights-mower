@@ -12,6 +12,7 @@ import {mowerArrangementGroupTransitions,normalizeMowerSharedArrangement,commitM
 import {mergeMowerBackupRefreshRule} from './mowerBackupRefresh'
 import {executeMowerReload} from './mowerReload'
 import {MowerExitError,MowerRecognizeError,MowerShiftPreviewError,MowerRoomArrangementDeferred,rethrowMowerInfraFatal} from './mowerNativeErrors'
+import {MowerBackupRetentionBlocked} from './mowerBackupRetention'
 import {executeMowerTodoTask,type MowerTodoTaskState} from './mowerTodoTask'
 import {executeMowerClueNew,runMowerClueFlow,setMowerPartyTime,type MowerClueLifecycleState} from './mowerClueLifecycle'
 import {collectMowerInfraNotification,collectMowerTodoList} from './mowerNotification'
@@ -96,6 +97,7 @@ export function makeMowerSchedulingData(s:RuntimeState,previous?:{data:MowerSche
  for(const [room,slots] of Object.entries(source))slots.forEach((p,index)=>create(p.agent,room,index,p.group,[...p.replacement],p.groupBindings))
  for(const slots of Object.values(source))for(const p of slots)if(OPERATOR_MAP.get(p.agent)?.name!=='菲亚梅塔')[...p.replacement,...(p.groupBindings??[]).flatMap(binding=>binding.replacement)].forEach(name=>create(name))
  config.idleOperators?.forEach(name=>create(name))
+ for(const name of rules.freeRoomExclusions??[]){if(!OPERATOR_MAP.has(name))throw new Error('未知宿舍保留干员：'+name);create(name)}
  if(previous)Object.keys(previous.data.operators).forEach(name=>create(name))
  const singleRecoveryNames=config.mowerSingleRecoverySkillNames===undefined?undefined:new Set(config.mowerSingleRecoverySkillNames)
  for(const op of Object.values(operators))op.singleRecoveryManager=singleRecoveryNames?.has(op.name)??hasSingleRecoverySkill(OPERATOR_MAP.get(op.name))
@@ -311,7 +313,7 @@ function confirmPhysicalRoom(s:RuntimeState,room:string,names:string[]):void {
  for(const slot of Object.keys(s.bedOccupants))if(slot.startsWith(room+'_'))delete s.bedOccupants[slot]
  for(const [index,name] of names.entries()){
   const slot=room+'_'+index;delete s.occupants[slot];delete s.bedOccupants[slot]
-  if(name!=='Free'){
+  if(!['Free','Current',''].includes(name)){
    if(s.config.beds.some(b=>b.id===slot)||s.config.mowerAlpha&&getMowerSourceRuntime(s).data.dynamicDormPosition(room,index))s.bedOccupants[slot]=name
    else s.occupants[slot]=name
   }
@@ -340,7 +342,7 @@ function recordMowerAlphaDormCard(s:RuntimeState,data:MowerSchedulingData,task:M
 function selectConcreteNames(s:RuntimeState,room:string,names:string[],task:MowerTask,preserve=false):string[] {
  const {data}=getMowerSourceRuntime(s),selected=[...names]
  prepareMowerDormSelection(data,selected,room,preserve,false,task)
- const forbidden=new Set([...selected,...Object.values(task.plan).flat(),...(s.config.freeBlacklist??[])])
+ const forbidden=new Set([...task.backupRetentionReleasedNames,...selected,...Object.values(task.plan).flat(),...(s.config.freeBlacklist??[])])
  const trainee=data.currentOperator('train',0)?.name;if(trainee)forbidden.add(trainee)
  const free=freeCandidateNames(s,data,forbidden)
  for(const [index,name] of selected.entries())if(name==='Free'){
@@ -354,8 +356,8 @@ function* arrangeRoom(s:RuntimeState,rates:RuntimeRates,room:string,names:string
  // refresh_current_room uses cached positions when all requested slots are known.
  const requested=names.flatMap((name,index)=>name==='Current'?[index]:[])
  const cached=()=>data.currentRoom(room,true)!
- if(data.currentRoom(room,false,requested)===undefined)observeRoom(s,rates,room,task)
- const current=cached(),resolved=names.map((name,index)=>name==='Current'?current[index]||'Free':name||'Free'),fia=s.config.fiammetta?.operatorId
+ if(data.currentRoom(room,false,requested)===undefined||names.some((name,index)=>name===''&&task.backupRetentionEmptySlots[room+'\0'+index]))observeRoom(s,rates,room,task)
+ const current=cached(),resolved=names.map((name,index)=>name==='Current'?current[index]||'Free':name===''&&task.backupRetentionEmptySlots[room+'\0'+index]&&(current[index]!==task.backupRetentionEmptySlots[room+'\0'+index]||data.freeRoomExcluded(task.backupRetentionEmptySlots[room+'\0'+index]!)||data.operators[task.backupRetentionEmptySlots[room+'\0'+index]!]?.room)?current[index]||'':name),fia=s.config.fiammetta?.operatorId
  // Moving an explicit operator vacates their old Current slot before dorm recovery ordering.
  const explicit=new Set(names.filter(name=>name!=='Current'&&name!=='Free'&&name!==''))
  for(const [index,name] of names.entries())if(name==='Current'&&explicit.has(resolved[index]!))resolved[index]='Free'
@@ -415,14 +417,14 @@ function* arrangeRoom(s:RuntimeState,rates:RuntimeRates,room:string,names:string
  let readTimes=recoveryOrdered?data.plan[room]!.flatMap((name,index)=>name==='Free'?[index]:[]):mowerArrangementReadIndexes(data,room,resolved,getTime,task)
  // Default get_free_list; the UI chooses eligible idle cards in ascending physical mood.
  // Account-specific tie order is the provided roster registration order.
- const forbidden=new Set([...resolved,...Object.values(task.plan).flat(),...(s.config.freeBlacklist??[])])
+ const forbidden=new Set([...task.backupRetentionReleasedNames,...resolved,...Object.values(task.plan).flat(),...(s.config.freeBlacklist??[])])
  const trainee=data.currentOperator('train',0)?.name;if(trainee)forbidden.add(trainee)
  let free=freeCandidateNames(s,data,forbidden)
  if(room.startsWith('dorm')){
   const ordinary=free.map(name=>data.operators[name]).filter((op):op is MowerOperatorState=>!!op&&!op.workshop&&op.currentMood(data.nowMicros)<=22).sort((a,b)=>a.currentMood(data.nowMicros)-b.currentMood(data.nowMicros))
   for(const [index,name] of resolved.entries())if(name==='Free'){
    const current=data.currentOperator(room,index)
-   if(current?.workshop&&current.currentMood(data.nowMicros)<current.upperLimit&&!resolved.includes(current.name)){
+   if(current?.workshop&&!task.backupRetentionReleasedNames.includes(current.name)&&current.currentMood(data.nowMicros)<current.upperLimit&&!resolved.includes(current.name)){
     const next=ordinary.shift()??current;resolved[index]=next.name;free=free.filter(name=>name!==next.name)
    }
   }
@@ -430,7 +432,7 @@ function* arrangeRoom(s:RuntimeState,rates:RuntimeRates,room:string,names:string
  // choose_agent mutates the list shared with task.plan after no-op detection.
  prepareMowerDormSelection(data,resolved,room,recoveryOrdered,false,task)
  names.splice(0,names.length,...resolved)
- const refreshedForbidden=new Set([...resolved,...Object.values(task.plan).flat(),...(s.config.freeBlacklist??[])])
+ const refreshedForbidden=new Set([...task.backupRetentionReleasedNames,...resolved,...Object.values(task.plan).flat(),...(s.config.freeBlacklist??[])])
  if(trainee)refreshedForbidden.add(trainee)
  free=freeCandidateNames(s,data,refreshedForbidden)
  for(const [index,name] of resolved.entries())if(name==='Free'){
@@ -895,7 +897,8 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     }else{
     source.error=true;skip();skipPlanning=true
     if(error instanceof MowerShiftPreviewError){
-     retainMowerFailedTask(s,data,task,error.message)
+     if(error instanceof MowerBackupRetentionBlocked)task.backupRetentionWait={names:error.names}
+     retainMowerFailedTask(s,data,task,error.message,error instanceof MowerBackupRetentionBlocked?error.rooms:undefined)
      source.error=false
      delete source.activeTask
      continue

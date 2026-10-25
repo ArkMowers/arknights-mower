@@ -543,6 +543,9 @@ class Operators:
         for name in self.config.operator_mood_limits:
             if name not in agent_list:
                 return f"心情上下限中的干员名无效：{name}"
+        for name in self.config.free_room_exclusions:
+            if name and name not in agent_list:
+                return f"宿舍保留中的干员名无效：{name}"
         saved_dorms = copy.deepcopy(self.all_dorms()) if (update) else []
         self.displaced_dorms = []
         self.groups = {}
@@ -732,6 +735,9 @@ class Operators:
                 ):
                     self.dorm.append(Dormitory((dorm, index)))
                     added.append(key)
+        for name in self.config.free_room_exclusions:
+            if name and name not in self.operators:
+                self.add(Operator(name, ""))
         if update:
             for key, value in self.shadow_copy.items():
                 if key not in self.operators:

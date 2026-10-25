@@ -6172,10 +6172,34 @@ class BaseSchedulerSolver(
         return True
 
     def _backup_transition_plan(
-        self, previous_plan, original, conditions, previous_dorms, previous_dorm_layout
+        self,
+        previous_plan,
+        original,
+        conditions,
+        previous_dorms,
+        previous_dorm_layout,
+        previous_retention_names=(),
     ):
         """普通切表与换班推演共用最终岗位、显式任务和宿舍迁移规则。"""
         self._backup_departure_waiting_names = ()
+        pending = self._cancel_stale_retention_admissions(preview=True)
+        if any(left is not right for left, right in zip(pending, self.tasks)):
+            simulation = copy.copy(self)
+            simulation.op_data = self.op_data.project_arrangements([])
+            simulation.tasks = pending
+            simulation._refresh_deferred_product_reservations()
+            result = simulation._backup_transition_plan(
+                previous_plan,
+                original,
+                conditions,
+                previous_dorms,
+                previous_dorm_layout,
+                previous_retention_names,
+            )
+            self._backup_departure_waiting_names = (
+                simulation._backup_departure_waiting_names
+            )
+            return result
         transition_plan = {}
         deactivated_slots = {}
         # 退出副表时恢复其任务写过的槽位；切入任务在最后覆盖，确保多个
@@ -6426,6 +6450,26 @@ class BaseSchedulerSolver(
             for room, names in transition_plan.items()
             if any(name != "Current" for name in names)
         }
+        from arknights_mower.utils.resting_correction import (
+            reconcile_backup_dorm_retention,
+        )
+
+        transition_plan = reconcile_backup_dorm_retention(
+            self.op_data,
+            transition_plan,
+            previous_retention_names,
+            explicit_slots=self._backup_explicit_slots(original, conditions),
+            reserved_names=reserved_names,
+            reserved_slots=reserved_slots,
+        )
+        if transition_plan is None:
+            self._backup_departure_waiting_names = tuple(
+                sorted(
+                    set(previous_retention_names)
+                    | set(self.op_data.config.free_room_exclusions)
+                )
+            )
+            return None
         transition_plan = prioritize_new_dorm_recovery(
             self.op_data,
             transition_plan,
@@ -6513,6 +6557,109 @@ class BaseSchedulerSolver(
         )
         return merged, merged_tasks
 
+    def _record_backup_retention(self, task, previous_names, data=None):
+        """自动保留动作记录来源，执行和后续切表只修改这些具名动作。"""
+        data = data or self.op_data
+        previous = set(previous_names) - {""}
+        retained = set(data.config.free_room_exclusions) - {""}
+        explicit = {
+            task.plan[room][index]
+            for room, index in getattr(task, "backup_explicit_slots", ())
+            if index < len(task.plan.get(room, ()))
+        }
+        task.backup_retention_admissions = (
+            set(getattr(task, "backup_retention_admissions", ()))
+            | {
+                name
+                for names in task.plan.values()
+                for name in names
+                if name in retained
+                and (op := data.operators.get(name)) is not None
+                and not op.room
+                and not getattr(self.op_data.operators.get(name), "current_room", "")
+            }
+        ) & retained - explicit
+        releases = dict(getattr(task, "backup_retention_releases", {}))
+        releases.update(
+            {
+                name: (op.current_room, op.current_index)
+                for name in previous - retained
+                if (op := self.op_data.operators.get(name)) is not None
+                and name in data.operators
+                and not data.operators[name].room
+                and op.is_resting()
+                and not any(name in names for names in task.plan.values())
+            }
+        )
+        task.backup_retention_releases = {
+            name: position
+            for name, position in releases.items()
+            if name not in retained
+            and name not in explicit
+            and not any(name in names for names in task.plan.values())
+        }
+        for name, (room, index) in task.backup_retention_releases.items():
+            if (
+                index < len(task.plan.get(room, ()))
+                and task.plan[room][index] == "Free"
+                and (current := self.op_data.get_current_operator(room, index))
+                is not None
+                and current.name == name
+            ):
+                task.plan[room][index] = ""
+        empty_slots = getattr(task, "backup_retention_empty_slots", {})
+        task.backup_retention_empty_slots = {
+            (room, index): empty_slots.get((room, index), current.name)
+            for room, names in task.plan.items()
+            if room.startswith("dorm")
+            for index, name in enumerate(names)
+            if name == ""
+            and (current := self.op_data.get_current_operator(room, index)) is not None
+        }
+
+    def _cancel_stale_retention_admissions(self, *, preview=False):
+        """尚未执行的自动保留入住随最终配置撤销，同批其他安排继续执行。"""
+        pending = []
+        for original in self.tasks:
+            task = original
+            pending.append(task)
+            if task.retains_execution or any(
+                getattr(task, field, False)
+                for field in (
+                    "backup_shift_active",
+                    "backup_retention_started",
+                    "group_shift_expected",
+                )
+            ):
+                continue
+            stale = {
+                name
+                for name in getattr(task, "backup_retention_admissions", ())
+                if not self.op_data.is_free_room_excluded(name)
+            }
+            if not stale:
+                continue
+            if preview:
+                task = copy.deepcopy(task)
+                pending[-1] = task
+            for field in ("plan", "backup_shift_intent", "dorm_fill_plan"):
+                plan = getattr(task, field, None)
+                if plan is not None:
+                    for room, names in list(plan.items()):
+                        plan[room] = [
+                            "Current" if name in stale else name for name in names
+                        ]
+                        if all(name == "Current" for name in plan[room]):
+                            del plan[room]
+            task.backup_retention_admissions = (
+                set(task.backup_retention_admissions) - stale
+            )
+            if hasattr(task, "product_lock_names"):
+                task.product_lock_names = set(task.product_lock_names) - stale
+        if not preview:
+            self._refresh_deferred_product_reservations()
+        return pending
+
     def _reconcile_initial_staffing(self):
         """清零启动观测后生成驻员建议，与轮休和补床一起预演最终安排。"""
         if (
@@ -6584,6 +6731,10 @@ class BaseSchedulerSolver(
                 )
             if getattr(task, "derived_correction", False):
                 task.derived_correction_started = True
+            if getattr(task, "backup_retention_admissions", ()) or getattr(
+                task, "backup_retention_releases", ()
+            ):
+                task.backup_retention_started = True
             return self.agent_arrange(task.plan, get_time)
         finally:
             for name in rules:
@@ -6929,13 +7080,19 @@ class BaseSchedulerSolver(
                 for task in self.tasks
             )
             transition_plan = self._backup_transition_plan(
-                previous_plan, original, current, previous_dorms, previous_dorm_layout
+                previous_plan,
+                original,
+                current,
+                previous_dorms,
+                previous_dorm_layout,
+                previous_data.config.free_room_exclusions,
             )
             if transition_plan is None:
                 timing.result = "替班暂不可用，保留原排班"
                 self.op_data = previous_data
                 logger.info("副表替班暂不可用，保留原排班和休息状态")
                 return False
+            self._cancel_stale_retention_admissions()
             self._invalidate_changed_exhaust_tasks(previous_exhaust)
             self._sync_run_order_tasks()
             self.queue_product_switches()
@@ -6954,6 +7111,9 @@ class BaseSchedulerSolver(
                 )
                 generated.backup_explicit_slots = self._backup_explicit_slots(
                     original, current
+                )
+                self._record_backup_retention(
+                    generated, previous_data.config.free_room_exclusions
                 )
                 self._capture_shift_refresh_rules(
                     generated,
@@ -8397,6 +8557,15 @@ class BaseSchedulerSolver(
             waiting_names, waiting_slots = simulation._waiting_shift_reservations(
                 returning_groups=returning_groups
             )
+            waiting_names.update(getattr(task, "backup_retention_releases", ()))
+            # 本批退出保留的无主岗位住客清为空闲，不由后续普通补床立即吸回。
+            waiting_names.update(
+                name
+                for name in set(self.op_data.config.free_room_exclusions)
+                - set(simulation.op_data.config.free_room_exclusions)
+                if (op := simulation.op_data.operators.get(name)) is not None
+                and not op.room
+            )
             reserved_names.update(waiting_names)
             reserved_slots.update(waiting_slots)
             step.plan = prioritize_new_dorm_recovery(
@@ -8585,6 +8754,10 @@ class BaseSchedulerSolver(
                 step.dorm_fill_plan = ordinary_fill
                 continue
             final = {}
+            retention_exits = (
+                set(self.op_data.config.free_room_exclusions)
+                | set(getattr(task, "backup_retention_releases", ()))
+            ) - set(simulation.op_data.config.free_room_exclusions)
             for room, slots in simulation.op_data.plan.items():
                 for index in range(len(slots)):
                     old = self.op_data.get_current_operator(room, index)
@@ -8593,7 +8766,7 @@ class BaseSchedulerSolver(
                     new_name = new.name if new else ""
                     if old_name != new_name or (room, index) in unresolved:
                         final.setdefault(room, ["Current"] * len(slots))[index] = (
-                            new_name or "Free"
+                            new_name or ("" if old_name in retention_exits else "Free")
                         )
             task.group_shift_transitions = {
                 group: resting
@@ -8607,6 +8780,9 @@ class BaseSchedulerSolver(
             task.backup_shift_conditions = list(conditions)
             task.backup_group = simulation.op_data.backup_group
             task.plan = final
+            self._record_backup_retention(
+                task, self.op_data.config.free_room_exclusions, simulation.op_data
+            )
             task.dorm_fill_plan = {
                 room: [
                     name
@@ -8731,6 +8907,9 @@ class BaseSchedulerSolver(
             seen.add(key)
             simulation = copy.copy(self)
             simulation.op_data = seed.project_arrangements([])
+            # 重算产品换班时，自身上轮预演的预约不能锁住本轮宿舍分配。
+            simulation.tasks = [queued for queued in self.tasks if queued is not task]
+            simulation._refresh_deferred_product_reservations()
             if error := simulation.op_data.swap_plan(
                 conditions, refresh=True, backup_group=selection.group_id
             ):
@@ -8759,6 +8938,7 @@ class BaseSchedulerSolver(
                 conditions,
                 copy.deepcopy(seed.all_dorms()),
                 dorm_rebalance_signature(seed),
+                self.op_data.config.free_room_exclusions,
             )
             if transition is None:
                 if simulation._backup_departure_waiting_names:
@@ -8876,6 +9056,9 @@ class BaseSchedulerSolver(
                     for room, names in merged.items()
                     if any(name != "Current" for name in names)
                 }
+                self._record_backup_retention(
+                    task, self.op_data.config.free_room_exclusions, simulation.op_data
+                )
                 if getattr(task, "product_shift_locked", False):
                     self._reserve_deferred_product_shift(task, set())
                     self._refresh_deferred_product_reservations()
@@ -11396,6 +11579,7 @@ class BaseSchedulerSolver(
         excluded, _ = dorm_task_reservations(
             self.op_data, [self.task, *getattr(self, "tasks", [])], agents
         )
+        excluded.update(getattr(self.task, "backup_retention_releases", ()))
         residents = set(current_resident.split(",")) | set(
             getattr(self.task, "dorm_mood_residents", ())
         )
@@ -11882,6 +12066,19 @@ class BaseSchedulerSolver(
         if getattr(getattr(self, "task", None), "type", None) == TaskTypes.FIAMMETTA:
             return []
         task = getattr(self, "task", None)
+        for (target_room, index), expected in getattr(
+            task, "backup_retention_empty_slots", {}
+        ).items():
+            if target_room != room or index >= len(agents) or agents[index] != "":
+                continue
+            current = self.op_data.get_current_operator(room, index)
+            # 清空只作用于生成任务时的原住者，后续观测的其他住客不被误退。
+            if current is not None and (
+                current.name != expected
+                or self.op_data.is_free_room_excluded(current.name)
+                or self.op_data.operators[current.name].room
+            ):
+                agents[index] = current.name
         plan = dict(getattr(task, "plan", {}) or {})
         plan[room] = agents
         group_transitions = self._execution_group_transitions(plan)
@@ -13889,6 +14086,10 @@ class BaseSchedulerSolver(
                             if _name == "" and not (
                                 getattr(self.task, "emergency_staffing", False)
                                 or getattr(self.task, "emergency_dorm", False)
+                                or (room, current_idx)
+                                in getattr(
+                                    self.task, "backup_retention_empty_slots", {}
+                                )
                                 or (
                                     self._emergency_frozen()
                                     and self.task.type
