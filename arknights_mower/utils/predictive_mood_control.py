@@ -91,6 +91,10 @@ def input_signature(solver, external=None):
                 t.type.value,
                 t.time,
                 t.plan,
+                t.meta_data,
+                getattr(t, "run_order_restore_pending", False),
+                getattr(t, "replacement_check", None),
+                t is getattr(solver, "task", None),
                 getattr(t, "execution_failure", None),
                 getattr(t, "execution_retained", False),
             )

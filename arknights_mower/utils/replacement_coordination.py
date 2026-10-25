@@ -255,7 +255,16 @@ def ordinary_recall_mood_admissible(data, recalled, candidates, *, now=None):
 
 
 def recall_can_sustain(
-    original, admitted, recalled, candidates, *, rates=None, now=None, urgent=False
+    original,
+    admitted,
+    recalled,
+    candidates,
+    *,
+    rates=None,
+    now=None,
+    urgent=False,
+    until=None,
+    not_before=None,
 ):
     """普通召回检查续航，用尽交接仅保留明确恢复要求。"""
     from arknights_mower.utils.group_recovery import group_recovery_deadline
@@ -311,8 +320,37 @@ def recall_can_sustain(
     )
     if getattr(original, "mood_calculation_enabled", False):
         forecast = deepcopy(admitted, {id(admitted.eval_model): admitted.eval_model})
-        horizon = now
         working = []
+        for name in connected:
+            op = forecast.operators.get(name)
+            if op is None or not op.is_working() or op.workaholic:
+                continue
+            mood = forecast.calculated_mood(name, now)
+            rate = forecast.calculated_mood_rate(name, now)
+            if mood is None or rate is None or mood <= op.lower_limit:
+                return False
+            working.append((name, op.lower_limit))
+
+        def sustains(horizon):
+            for name, lower in working:
+                exhausted = forecast.calculated_mood_deadline(
+                    name,
+                    lower,
+                    now,
+                    max_hours=max(0, (horizon - now).total_seconds() / 3600),
+                )
+                if exhausted is not None and exhausted <= horizon:
+                    return False
+                mood = forecast.calculated_mood(name, horizon)
+                if mood is None or mood <= lower:
+                    return False
+            return True
+
+        minimum = max(now, not_before or now)
+        if until is not None and sustains(max(minimum, until)):
+            return True
+        # 既有事件足以支持交接时，不必先查询所有休息主班的回满期限。
+        horizon = minimum
         for name in connected:
             op = forecast.operators.get(name)
             if op is None or not op.current_room:
@@ -331,26 +369,36 @@ def recall_can_sustain(
                 if deadline is None:
                     return False
                 horizon = max(horizon, deadline)
-            elif op.is_working() and not op.workaholic:
-                rate = forecast.calculated_mood_rate(name, now)
-                if rate is None or mood <= op.lower_limit:
-                    return False
-                working.append((name, op.lower_limit))
-        for name, lower in working:
-            exhausted = forecast.calculated_mood_deadline(name, lower, now)
-            if exhausted is not None and exhausted <= horizon:
-                return False
-        for name, lower in working:
-            mood = forecast.calculated_mood(name, horizon)
-            if mood is None or mood <= lower:
-                return False
-        return True
+        return sustains(min(horizon, max(minimum, until)) if until else horizon)
     if rates is None:
         from arknights_mower.utils.recall_estimates import estimated_recall_rates
 
         rates = estimated_recall_rates(original, admitted, now=now)
     work, recovery = rates
-    horizon = 0.0
+    working = []
+    for name in connected:
+        op = admitted.operators.get(name)
+        if op is None or not op.is_working() or op.workaholic:
+            continue
+        observed = original.operators.get(name)
+        mood = mood_at_check(observed) if observed is not None else None
+        rate = work.get(name)
+        if mood is None or rate is None or not isfinite(rate) or rate < 0:
+            return False
+        working.append((mood, rate, op.lower_limit))
+
+    def sustains(hours):
+        return all(mood - rate * hours > lower for mood, rate, lower in working)
+
+    minimum = max(0, ((not_before or now) - now).total_seconds() / 3600)
+    event_hours = (
+        max(minimum, (until - now).total_seconds() / 3600)
+        if until is not None
+        else None
+    )
+    if event_hours is not None and sustains(event_hours):
+        return True
+    horizon = minimum
     for name in connected:
         op = admitted.operators.get(name)
         observed = original.operators.get(name)
@@ -370,19 +418,4 @@ def recall_can_sustain(
             horizon = max(
                 horizon, max(0, op.upper_limit - mood_at_check(observed)) / rate
             )
-    if horizon <= 0:
-        return True
-    for name in connected:
-        op = admitted.operators.get(name)
-        if op is None or not op.is_working() or op.workaholic:
-            continue
-        rate = work.get(name)
-        if (
-            rate is None
-            or not isfinite(rate)
-            or rate < 0
-            or mood_at_check(original.operators[name]) - rate * horizon
-            <= op.lower_limit
-        ):
-            return False
-    return True
+    return sustains(min(horizon, event_hours) if event_hours is not None else horizon)

@@ -130,6 +130,7 @@ from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.replacement_check import (
     invalidate_replacement_checks,
+    replacement_check_applies,
     replacement_check_snapshot,
     run_replacement_check,
     sync_replacement_checks,
@@ -160,6 +161,7 @@ from arknights_mower.utils.scheduler_task import (
     prioritize_new_dorm_recovery,
     protect_priority_tasks,
     rebalance_plan_swap_dorms,
+    run_order_end_time,
     scheduling,
     simplify_dorm_fill,
     task_view,
@@ -1502,6 +1504,62 @@ class BaseSchedulerSolver(
         self.tasks.append(departure)
         task.__dict__.pop("coordination_admission_plan", None)
 
+    def _coordination_recall_window(self, original, supported, admitted, *, now):
+        """只借用既有可执行事件的重新判断机会，不增加心情检查任务。"""
+        events = [
+            task
+            for task in task_view(self.tasks, TaskScope.DISPATCH, original)
+            if task is not getattr(self, "task", None)
+            and task.time > now
+            and not getattr(task, "mood_control_event", None)
+            and (
+                task.type == TaskTypes.RUN_ORDER
+                and task.meta_data
+                and not getattr(task, "run_order_restore_pending", False)
+                or getattr(task, "replacement_check", None)
+                and replacement_check_applies(original, task.replacement_check)
+                and replacement_check_applies(admitted, task.replacement_check)
+                or task.type == TaskTypes.NOT_SPECIFIC
+                and not task.plan
+                and not task.meta_data
+                and not getattr(task, "replacement_check", None)
+            )
+        ]
+        if not events:
+            return None, None
+
+        def duration(before, after, task_type):
+            plan = {
+                room: after.get_current_room(room, True)
+                for room in after.plan
+                if before.get_current_room(room, True)
+                != after.get_current_room(room, True)
+            }
+            return estimate_task_duration(
+                SchedulerTask(time=now, task_plan=plan, task_type=task_type),
+                op_data=before,
+            )
+
+        not_before = (
+            now
+            + duration(original, supported, TaskTypes.SELF_CORRECTION)
+            + duration(supported, admitted, TaskTypes.SHIFT_OFF)
+        )
+        event = min(events, key=lambda task: task.time)
+        start = max(event.time, not_before)
+        until = start + estimate_task_duration(event, op_data=original)
+        if event.type == TaskTypes.RUN_ORDER:
+            until = max(
+                until,
+                run_order_end_time(
+                    event,
+                    start,
+                    op_data=original,
+                    conf=original.runtime_conf or config.conf,
+                ),
+            )
+        return max(until, not_before), not_before
+
     def _coordination_support_valid(self, plan, candidates):
         from arknights_mower.utils.replacement_coordination import (
             coordination_reservations,
@@ -1523,9 +1581,8 @@ class BaseSchedulerSolver(
             for index, name in enumerate(row)
         ):
             return False
-        admitted = self._coordination_admission(
-            data.project_arrangements([plan]), candidates
-        )
+        supported = data.project_arrangements([plan])
+        admitted = self._coordination_admission(supported, candidates)
         if admitted is None:
             return False
         recalled = {
@@ -1536,14 +1593,26 @@ class BaseSchedulerSolver(
             and not op.room.startswith("dorm")
             and admitted.operators[op.name].is_working()
         }
-        # 召回评估使用工作实测掉率及宿舍恢复位估计，仍保留严格回满保护。
-        return not recalled or recall_can_sustain(
+        if not recalled:
+            return True
+        urgent = getattr(self.task, "exhaust_support", False) and not getattr(
+            self.task, "ordinary_coordination", False
+        )
+        now = getattr(data, "_projection_now", None) or datetime.now()
+        until, not_before = (
+            (None, None)
+            if urgent
+            else self._coordination_recall_window(data, supported, admitted, now=now)
+        )
+        return recall_can_sustain(
             data,
             admitted,
             recalled,
             candidates,
-            urgent=getattr(self.task, "exhaust_support", False)
-            and not getattr(self.task, "ordinary_coordination", False),
+            urgent=urgent,
+            now=now,
+            until=until,
+            not_before=not_before,
         )
 
     def _plan_exhaust_support(self, candidates, *, urgent=False):
@@ -1573,8 +1642,25 @@ class BaseSchedulerSolver(
                 and not op.room.startswith("dorm")
                 and admitted.operators[op.name].is_working()
             }
-            return not recalled or recall_can_sustain(
-                self.op_data, admitted, recalled, candidates, urgent=urgent
+            if not recalled:
+                return True
+            now = getattr(self.op_data, "_projection_now", None) or datetime.now()
+            until, not_before = (
+                (None, None)
+                if urgent
+                else self._coordination_recall_window(
+                    self.op_data, data, admitted, now=now
+                )
+            )
+            return recall_can_sustain(
+                self.op_data,
+                admitted,
+                recalled,
+                candidates,
+                urgent=urgent,
+                now=now,
+                until=until,
+                not_before=not_before,
             )
 
         protected, slots = coordination_reservations(

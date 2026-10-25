@@ -29,7 +29,7 @@ def _ordinary_replacements(data, owner):
     ]
 
 
-def _target_applies(data, target):
+def replacement_check_applies(data, target):
     room, index = target["room"], target["index"]
     slots = data.plan.get(room, ())
     owner = data.operators.get(target["owner"])
@@ -240,7 +240,7 @@ def sync_replacement_checks(solver):
                     "room": room,
                     "index": index,
                 }
-                if _target_applies(data, target):
+                if replacement_check_applies(data, target):
                     targets[(room, index, slot.agent, actual.name)] = target
     existing = {}
     remove = []
@@ -454,7 +454,7 @@ def _preserve_peer_failures(solver, peers, room):
 def run_replacement_check(solver, task):
     """到期核实原岗位心情，达到个人下限后复用普通替班纠错。"""
     target, data = task.replacement_check, solver.op_data
-    if not _target_applies(data, target):
+    if not replacement_check_applies(data, target):
         return True
     room, index = target["room"], target["index"]
     cover = data.operators[target["cover"]]
@@ -512,7 +512,7 @@ def run_replacement_check(solver, task):
         if observed.get("observed", True) and isinstance(observed.get("agent"), str):
             return True
         return _retain(solver, task, "替班心情检查未确认原岗位驻员")
-    if not _target_applies(data, target):
+    if not replacement_check_applies(data, target):
         return True
     task.__dict__.pop("replacement_check_read_after", None)
     cover = data.operators[target["cover"]]

@@ -266,8 +266,8 @@
       "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE."
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "sha256": "3122d27356f7b780710a20c6754b62b5144edf26379a7a5ac8249bf348407e8c",
-      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE."
+      "sha256": "8630a83ed869a24bd679bdd61c547884be6aae52da8925fdd000290db77cb792",
+      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
     },
     "scheduler/rosterRuntime.ts": {
       "sha256": "bd5769a7f4653f369884491455af91f4e5fed1346ca338142776dd526cc301b3",
@@ -574,8 +574,8 @@
       "reason": "Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE."
     },
     "scheduler/mowerOrdinaryPlanning.ts": {
-      "sha256": "8df402bbe3c4f29dea92642a9c7e9357308bcafd4f05aae128d39e2aa9ed3eea",
-      "reason": "Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE."
+      "sha256": "dd20ade94cec6101ad8563041659de1765f1bcc6762f9bf4a124b2a98a6f6c59",
+      "reason": "Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
     },
     "scheduler/mowerTaskQueue.ts": {
       "sha256": "9465f7e68c064db42680dd69cf72afe18c837464f4c592de89692ee25c92e6ea",
@@ -596,6 +596,30 @@
     "scheduler/mowerPredictivePlanning.ts": {
       "sha256": "250a9e6a7a8da3e68e099cedf0288c46e5f5f7213e615e5fb79267e569a3af57",
       "reason": "Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE."
+    },
+    "scheduler/mowerReplacementCoordination.ts": {
+      "sha256": "3c9ac69a3454ac1eaf68869d356f35e633206aec31e54053a2b0f5fbaaa7853e",
+      "reason": "Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
+    },
+    "scheduler/mowerAlphaExhaustSupport.ts": {
+      "sha256": "d16f1c7a1c708f7297a083e07ef00536c45348faf9f13ac4c7ed59d0436fb213",
+      "reason": "Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
+    },
+    "scheduler/mowerReplacementCoordinationForecast.spec.ts": {
+      "sha256": "76d9de3b5c4dcd68c513aada449bb42851281b143e5263aec187dba4a23d6559",
+      "reason": "Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
+    },
+    "scheduler/mowerReplacementCoordinationRuntime.spec.ts": {
+      "sha256": "2db7818e977cd643096edb99e1cec56dae6bb86ebf909e8e3a017e234b918113",
+      "reason": "Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
+    },
+    "scheduler/mowerPlanningWake.ts": {
+      "sha256": "f034266335df12d5c2d3c1f335d2a76d02f381435274f3c03d9dfe4f620e2f24",
+      "reason": "Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
+    },
+    "scheduler/mowerWorkingReplacement.ts": {
+      "sha256": "ebfe901d66e0c60cf278df316b3660fc122e1dcbd07b6e454314bedded036add",
+      "reason": "Bound ordinary rescue recall by existing future run-order, replacement-check, patrol or named mood-observation opportunities. Validate that observation targets remain applicable after admission and that named observation deadlines remain attainable across admitted rate boundaries. Cover separate support and departure budgets followed by the next event operation allowance; preserve the no-event full-recovery fallback, physical rate boundaries and recovery ownership. Revalidate the current opportunity before dispatch."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

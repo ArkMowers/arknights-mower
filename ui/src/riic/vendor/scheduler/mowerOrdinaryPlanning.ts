@@ -24,6 +24,7 @@ export interface MowerRestingOptions {
  urgentRecoveryPendingSupporters?:ReadonlySet<string>
  dependencyReturn?:MowerDependencyReturnAdmission
  coordinationRates?:(data:MowerSchedulingData)=>import('./mowerReplacementCoordination').MowerCoordinationRates|undefined
+ coordinationRecheck?:{timeMicros:number;names:readonly string[]}
  returning?:Set<string>;returningGroups?:Set<string>;tasks?:MowerTask[]
  fiaTargets?:string[];hasActiveMastery?:boolean;isMasteryBusy?:(name:string)=>boolean
  isDormReplacement?:(name:string)=>boolean;onBlocked?:(names:string[])=>void;onException?:(error:unknown)=>void

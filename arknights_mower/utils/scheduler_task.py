@@ -1066,6 +1066,19 @@ def _future_dorm_deferrals(task, following, op_data):
     return deferred
 
 
+def run_order_end_time(task, start, execution_time=None, op_data=None, *, conf=None):
+    """沿用跑单关键窗口，包含提前进站后的订单等待和原班恢复。"""
+    conf = conf or config.conf
+    if getattr(task, "run_order_restore_pending", False):
+        return start + estimate_task_duration(task, execution_time, op_data)
+    if conf.run_order_buffer_time > 0 and not task.adjusted:
+        return max(
+            start + timedelta(seconds=45),
+            task.time + timedelta(minutes=conf.run_order_delay),
+        ) + timedelta(seconds=45)
+    return start + timedelta(seconds=90)
+
+
 def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=None):
     now = time_now or datetime.now()
     tasks.sort(key=lambda task: task.time)
@@ -1085,15 +1098,8 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             start = max(cursor, task.time)
             if task.type == TaskTypes.SWAP_SUPPORT:
                 cursor = start + _support_swap_duration(task, execution_time, projected)
-            elif getattr(task, "run_order_restore_pending", False):
-                cursor = start + estimate_task_duration(task, execution_time, projected)
-            elif config.conf.run_order_buffer_time > 0 and not task.adjusted:
-                cursor = max(
-                    start + timedelta(seconds=45),
-                    task.time + timedelta(minutes=config.conf.run_order_delay),
-                ) + timedelta(seconds=45)
             else:
-                cursor = start + timedelta(seconds=90)
+                cursor = run_order_end_time(task, start, execution_time, projected)
             projected = None
             index += 1
             continue

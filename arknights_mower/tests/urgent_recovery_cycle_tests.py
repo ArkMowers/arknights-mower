@@ -553,3 +553,111 @@ def test_independent_shared_recall_recovery_does_not_hold_other_group_members(so
     plan = solver.agent_get_mood(skip_dorm=True, read_rooms=False, return_plan=True)
     assert "苍苔" not in plan.get("room_2_2", [])
     assert plan.get("contact") == ["絮雨"]
+
+
+def short_window_ordinary_support(solver):
+    from datetime import timedelta
+
+    start_ordinary_handoff(solver)
+    solver.tasks, solver.task = [], None
+    now = datetime.now()
+    boundary = SchedulerTask(
+        time=now + timedelta(minutes=10),
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data="room_3_3",
+    )
+    solver.tasks = [boundary]
+    for name in ("苍苔", "絮雨"):
+        solver.op_data.operators[name].mood = 1
+        solver.op_data.operators[name].time_stamp = now
+    solver._schedule_group_coordination(["机械师"])
+    support = next(
+        task for task in solver.tasks if getattr(task, "exhaust_support", False)
+    )
+    solver.task = support
+    assert solver._coordination_support_valid(support.plan, ["机械师"])
+    return support, boundary, now
+
+
+@pytest.mark.parametrize("restore", [False, True])
+def test_short_recall_window_retains_failed_reverse_request_and_dispatches_other_work(
+    solver, restore
+):
+    import pickle
+    from datetime import timedelta
+
+    support, boundary, now = short_window_ordinary_support(solver)
+    support_time = support.time
+    confirm_arrangement(solver, support)
+    departure = next(task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF)
+    assert departure.time == support_time
+    confirm_arrangement(solver, departure)
+    solver.tasks.remove(boundary)
+    assert set(solver.op_data.urgent_recovery_supporters["机械师"]) == {"苍苔", "絮雨"}
+    for name in ("苍苔", "絮雨"):
+        solver.op_data.operators[name].mood = 0
+        solver.op_data.operators[name].time_stamp = datetime.now()
+    solver.op_data.operators["能天使"].replacement = ["槐琥"]
+    solver.op_data.plan["meeting"][0].replacement = ["槐琥"]
+    reverse = SchedulerTask(
+        time=now - timedelta(minutes=30),
+        task_type=TaskTypes.EXHAUST_OFF,
+        meta_data="苍苔,絮雨",
+    )
+    solver.tasks, solver.task = [reverse], reverse
+    solver.overtake_room()
+    assert reverse.execution_failure
+    if restore:
+        solver.op_data, solver.tasks = pickle.loads(
+            pickle.dumps((solver.op_data, solver.tasks))
+        )
+        (reverse,) = solver.tasks
+    reverse_time, reverse_plan = reverse.time, deepcopy(reverse.plan)
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert reverse.execution_failure
+        solver.task = reverse
+        assert solver._plan_exhaust_support(["苍苔", "絮雨"], urgent=True) is None
+        assert solver._plan_exhaust_support(["能天使"], urgent=True) is None
+        solver._schedule_group_coordination(["苍苔", "絮雨"])
+        assert solver.tasks == [reverse]
+        assert reverse.time == reverse_time
+        assert reverse.plan == reverse_plan
+    independent = SchedulerTask(
+        time=now,
+        task_type=TaskTypes.SELF_CORRECTION,
+        task_plan={"meeting": ["陈"]},
+    )
+    solver.tasks.append(independent)
+    assert solver.find_next_task() is independent
+    confirm_arrangement(solver, independent)
+    assert solver.op_data.get_current_operator("meeting", 0).name == "陈"
+    assert solver.tasks == [reverse]
+    assert reverse.time == reverse_time
+    assert solver.op_data.operators["机械师"].is_resting()
+    assert set(solver.op_data.urgent_recovery_supporters["机械师"]) == {"苍苔", "絮雨"}
+
+
+@pytest.mark.parametrize("change", ["cancel", "postpone"])
+def test_short_recall_window_rechecks_changed_boundary_before_support(solver, change):
+    from datetime import timedelta
+
+    support, boundary, now = short_window_ordinary_support(solver)
+    at, plan = support.time, deepcopy(support.plan)
+    positions = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    if change == "cancel":
+        solver.tasks.remove(boundary)
+    else:
+        boundary.time = now + timedelta(hours=2)
+    assert not solver._coordination_support_valid(support.plan, ["机械师"])
+    assert support in solver.tasks
+    assert support.time == at
+    assert support.plan == plan
+    assert solver.op_data.urgent_recovery_supporters == {}
+    assert positions == {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
