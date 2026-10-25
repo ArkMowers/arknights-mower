@@ -8,6 +8,8 @@ Mower 的 Vue 3 前端与 Python 后端同在本仓库。界面可运行在桌�
 
 多开管理器启动的实例由管理器配置连接和运行参数，可选择通用配置或逐实例独立配置。实例页面的显示范围、更新与维护显示开关及独立启动的区别见[受管理实例设置](../docs/subsystems/web-access.md#managed-device-configuration)。
 
+全部设置 → 界面与窗口 → 常规中的“版本水印”切换后立即生效。隐藏前的提醒、确认输入和防止直接修改配置的凭据规则见[版本水印说明](../docs/subsystems/web-access.md#version-watermark)。实现入口为 [VersionWatermarkPreference.vue](src/components/VersionWatermarkPreference.vue)，组件测试为 [VersionWatermarkPreference.test.js](src/components/VersionWatermarkPreference.test.js)。
+
 侧栏的分组、页面副本、固定区域和保存边界由 Arknights Mower Web 访问子系统说明中的[侧栏偏好](../docs/subsystems/web-access.md#sidebar-preferences)与[布局和编辑规则](../docs/subsystems/web-access.md#sidebar-layout-and-editing)维护。源码启动标识、软件渠道徽标、资源名称与随活动时间变化的颜色见[侧栏版本徽标规则](../docs/subsystems/web-access.md#sidebar-version-badges)；资源元数据来自[已安装资源](../docs/subsystems/resource-update.md#installed-resource-metadata)。
 
 在全部设置 → 界面与窗口 → 常规中，“软件版本显示”选择版本号或版本类型，常驻预览标题旁的小型“版本类型语言”控件可切换中文或 English，默认使用 English。中文类型显示为“源码部署”“公测版”“开发版”“正式版”，沿用更新渠道的发布版本名称。预览徽标与侧栏共用这些选择，窄屏中的长版本号在节点内换行。保存失败时恢复原来的显示，并提供重试。完整行为见[软件版本徽标规则](../docs/subsystems/web-access.md#sidebar-version-badges)。

@@ -1,8 +1,11 @@
 """实例的窗口设置与界面偏好；读改写共用跨进程文件锁。"""
 
 import errno
+import hashlib
+import hmac
 import os
 import re
+import secrets
 import time
 from contextlib import contextmanager
 from threading import RLock
@@ -18,6 +21,8 @@ _KEY_PATTERN = re.compile(r"[a-zA-Z0-9_-]{1,100}\Z")
 _MAX_GROUPS = 20
 _MAX_KNOWN_KEYS = 100
 _MAX_PLACEMENTS = 2200
+_WATERMARK_CONFIRMATION = "反馈问题时务必说明具体版本"
+_WATERMARK_SIGNATURE_MESSAGE = b"arknights-mower:watermark-hidden:v1"
 
 
 class GuiStorageError(OSError):
@@ -207,24 +212,86 @@ def load_task_settings_layout() -> str:
     return value if value in ("checklist", "waterfall") else "checklist"
 
 
+def load_watermark_visible() -> bool:
+    data = read_gui_data(strict=True)
+    if data.get("watermark_visible") is not False:
+        return True
+    signature = data.get("watermark_signature")
+    if not isinstance(signature, str) or not re.fullmatch(r"[0-9a-f]{64}", signature):
+        return True
+    key = _watermark_key()
+    return key is None or not hmac.compare_digest(signature, _watermark_signature(key))
+
+
+def _watermark_key(*, create=False) -> bytes | None:
+    path = gui_path.with_name("gui-watermark.key")
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(65)
+    except FileNotFoundError:
+        raw = b""
+    try:
+        key = bytes.fromhex(raw.decode("ascii"))
+    except (ValueError, UnicodeDecodeError):
+        key = b""
+    if len(raw) == 64 and len(key) == 32:
+        return key
+    if not create:
+        return None
+    key = secrets.token_bytes(32)
+    atomic_write(path, lambda stream: stream.write(key.hex()))
+    return key
+
+
+def _watermark_signature(key: bytes) -> str:
+    return hmac.new(key, _WATERMARK_SIGNATURE_MESSAGE, hashlib.sha256).hexdigest()
+
+
 def save_appearance(changes: dict) -> dict:
     fields = {
-        "software_version_display": (("version", "channel"), "软件版本显示方式无效"),
-        "software_version_language": (("zh", "en"), "软件版本类型语言无效"),
-        "task_settings_layout": (("checklist", "waterfall"), "任务配置显示方式无效"),
+        "software_version_display": (
+            str,
+            ("version", "channel"),
+            "软件版本显示方式无效",
+        ),
+        "software_version_language": (str, ("zh", "en"), "软件版本类型语言无效"),
+        "task_settings_layout": (
+            str,
+            ("checklist", "waterfall"),
+            "任务配置显示方式无效",
+        ),
+        "watermark_visible": (bool, (True, False), "版本水印显示设置无效"),
     }
     if (
         not isinstance(changes, dict)
         or not changes
-        or not changes.keys() <= fields.keys()
+        or not changes.keys() <= fields.keys() | {"watermark_confirmation"}
     ):
         raise ValueError("请提供有效的外观配置")
-    for key, value in changes.items():
-        choices, message = fields[key]
-        if not isinstance(value, str) or value not in choices:
+    values = {key: value for key, value in changes.items() if key in fields}
+    if not values:
+        raise ValueError("请提供有效的外观配置")
+    for key, value in values.items():
+        value_type, choices, message = fields[key]
+        if not isinstance(value, value_type) or value not in choices:
             raise ValueError(message)
-    _update_gui_data(**changes)
-    return dict(changes)
+    if values.get("watermark_visible") is False:
+        if changes.get("watermark_confirmation") != _WATERMARK_CONFIRMATION:
+            raise ValueError("隐藏版本水印前，请输入：反馈问题时务必说明具体版本")
+    elif "watermark_confirmation" in changes:
+        raise ValueError("仅隐藏版本水印时需要提交确认文字")
+
+    def update(data):
+        data.update(values)
+        if values.get("watermark_visible") is False:
+            data["watermark_signature"] = _watermark_signature(
+                _watermark_key(create=True)
+            )
+        elif values.get("watermark_visible") is True:
+            data.pop("watermark_signature", None)
+
+    update_gui_data(update)
+    return values
 
 
 def load_window_mode() -> str:

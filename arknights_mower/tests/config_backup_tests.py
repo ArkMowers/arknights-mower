@@ -860,6 +860,49 @@ def test_preserves_access_gui_and_state(storage, local_exists, in_archive):
             assert path.read_bytes() == b"local bytes"
 
 
+@pytest.mark.parametrize("name", ["gui-watermark.key", "Gui-Watermark.Key"])
+def test_watermark_key_is_not_exported(storage, name):
+    storage(f"@app/config/{name}").write_bytes(b"local watermark signing key")
+
+    with ZipFile(BytesIO(backup.export_archive())) as exported:
+        assert "config/gui-watermark.key" not in {
+            name.casefold() for name in exported.namelist()
+        }
+
+
+@pytest.mark.parametrize("name", ["gui-watermark.key", "Gui-Watermark.Key"])
+@pytest.mark.parametrize("local_exists", [False, True])
+def test_backup_cannot_create_or_replace_watermark_key(storage, name, local_exists):
+    destination = storage("@app/config/gui-watermark.key")
+    if local_exists:
+        destination.write_bytes(b"local watermark signing key")
+    raw = archive(
+        {
+            "conf.yml": "account: imported",
+            "plan.json": '{"plan1": {}}',
+            name: b"key from another instance",
+        }
+    )
+
+    if local_exists and name != "gui-watermark.key":
+        with pytest.raises(ValueError, match="大小写冲突"):
+            backup.import_configuration(raw)
+        assert config.conf.account == "before"
+        assert not storage("@app/config-backups").exists()
+    else:
+        backup.import_configuration(raw)
+        assert config.conf.account == "imported"
+
+    matching_names = {
+        path.name
+        for path in destination.parent.iterdir()
+        if path.name.casefold() == "gui-watermark.key"
+    }
+    assert matching_names == ({"gui-watermark.key"} if local_exists else set())
+    if local_exists:
+        assert destination.read_bytes() == b"local watermark signing key"
+
+
 @pytest.mark.parametrize("incoming_lock", [False, True])
 def test_active_gui_process_lock_is_not_exported_or_replaced_by_import(
     storage, monkeypatch, incoming_lock

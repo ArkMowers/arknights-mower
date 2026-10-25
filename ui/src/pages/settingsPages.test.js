@@ -172,6 +172,7 @@ describe('settings page ownership', () => {
     for (const label of [
       '界面缩放',
       '软件版本显示',
+      '版本水印',
       '版本类型',
       '邮件提醒',
       '软件更新',

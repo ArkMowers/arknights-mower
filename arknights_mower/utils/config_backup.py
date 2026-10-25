@@ -37,6 +37,7 @@ IMPORT_PRESERVED_FILES = {
     "network.json",
     "gui.yml",
     "gui.yml.lock",
+    "gui-watermark.key",
     "log-background.webp",
     "state.json",
     "recycling_report/submission.lock",
@@ -63,6 +64,7 @@ EXPORT_EXCLUDED_FILES = {
     "manager-common.json",
     "state.json",
     "gui.yml.lock",
+    "gui-watermark.key",
     "recycling_report/submission.lock",
 }
 

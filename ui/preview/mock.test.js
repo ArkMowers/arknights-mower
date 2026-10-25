@@ -55,25 +55,38 @@ describe('offline preview', () => {
     expect((await client.get('/gui/appearance')).data).toEqual({
       software_version_display: 'version',
       software_version_language: 'en',
+      watermark_visible: true,
       task_settings_layout: 'checklist'
     })
     await client.put('/gui/appearance', { task_settings_layout: 'waterfall' })
     await client.put('/gui/appearance', { software_version_display: 'channel' })
     await client.put('/gui/appearance', { software_version_language: 'zh' })
+    await expect(
+      client.put('/gui/appearance', {
+        watermark_visible: false,
+        watermark_confirmation: '反馈问题时务必说明具体版本'
+      })
+    ).resolves.toMatchObject({
+      data: { watermark_visible: false }
+    })
     expect((await client.get('/gui/appearance')).data).toEqual({
       software_version_display: 'channel',
       software_version_language: 'zh',
+      watermark_visible: false,
       task_settings_layout: 'waterfall'
     })
     expect(data.config).toEqual(originalConfig)
+    expect(data.appearance).not.toHaveProperty('watermark_confirmation')
     await client.put('/gui/appearance', {
       software_version_display: 'version',
       software_version_language: 'en',
+      watermark_visible: true,
       task_settings_layout: 'checklist'
     })
     expect(data.appearance).toEqual({
       software_version_display: 'version',
       software_version_language: 'en',
+      watermark_visible: true,
       task_settings_layout: 'checklist'
     })
   })
@@ -85,6 +98,20 @@ describe('offline preview', () => {
     { task_settings_layout: 'invalid', software_version_display: 'channel' },
     { software_version_language: 'zh-CN', software_version_display: 'channel' },
     { software_version_language: null },
+    { watermark_visible: null },
+    { watermark_visible: 0 },
+    { watermark_visible: 1 },
+    { watermark_visible: 'false' },
+    { watermark_visible: [] },
+    { watermark_visible: {} },
+    { watermark_visible: false },
+    { watermark_visible: false, watermark_confirmation: '我知道了' },
+    { watermark_visible: false, watermark_confirmation: true },
+    { watermark_visible: false, watermark_confirmation: ['反馈问题时务必说明具体版本'] },
+    { watermark_confirmation: '反馈问题时务必说明具体版本' },
+    { watermark_visible: true, watermark_confirmation: '反馈问题时务必说明具体版本' },
+    { software_version_display: 'channel', watermark_visible: false },
+    { software_version_display: 'channel', watermark_visible: 'true' },
     { task_settings_layout: 'waterfall', unknown: true },
     { task_settings_layout: 'waterfall', constructor: 'channel' }
   ])('rejects invalid appearance update %j without partial writes', async (payload) => {

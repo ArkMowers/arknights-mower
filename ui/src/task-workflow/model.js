@@ -82,7 +82,7 @@ const taskDefinitions = [
 // 目录的补充词来自对应编辑器中的字段和常用名称，条件字段也可用于定位所属配置。
 const editorKeywords = {
   'mower-interface':
-    '主题 暗色 亮色 跟随系统 界面缩放 软件版本 版本类型 语言 关闭窗口 托盘 启动时窗口状态',
+    '主题 暗色 亮色 跟随系统 界面缩放 软件版本 版本类型 语言 版本水印 显示水印 隐藏水印 关闭窗口 托盘 启动时窗口状态',
   'mower-notifications': '邮件 SMTP QQ 通知 发件人 收件人 Mower AI 助手 自定义模型 API 密钥',
   'mower-profiles': '档案 选择保留内容 导入 导出 重启续接 重启 Mower 进程 结束 退出',
   'mower-updates': 'Mower 本体 资源 网络 更新 Mirror酱 CDK 代理 下载源 更新源 自动更新',

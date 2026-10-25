@@ -1,6 +1,7 @@
 import { computed, reactive } from 'vue'
 import { describe, expect, it } from 'vitest'
 import { createTaskWorkflow, setTaskEnabled } from './model'
+import { matchesSettingsSearch } from '@/utils/settingsSearch'
 
 const switches = [
   ['clue', 'enable_party'],
@@ -28,6 +29,14 @@ function freeze(value) {
 }
 
 describe('task configuration checklist', () => {
+  it.each(['版本水印', '显示水印', '隐藏水印'])('finds the interface editor for %s', (query) => {
+    const workflow = createTaskWorkflow({})
+    const matches = workflow.tasks.filter((task) =>
+      matchesSettingsSearch(query, task.title, task.description, task.searchKeywords)
+    )
+    expect(matches.map(({ id }) => id)).toEqual(['mower-interface'])
+  })
+
   it.each([
     [false, false],
     [true, false],

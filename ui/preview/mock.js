@@ -174,6 +174,7 @@ export function createPreviewData(config) {
     appearance: {
       software_version_display: 'version',
       software_version_language: 'en',
+      watermark_visible: true,
       task_settings_layout: 'checklist'
     }
   }
@@ -517,20 +518,24 @@ export function createPreviewAdapter(data, requests = []) {
       const choices = {
         software_version_display: ['version', 'channel'],
         software_version_language: ['zh', 'en'],
+        watermark_visible: [true, false],
         task_settings_layout: ['checklist', 'waterfall']
       }
+      if (!body || typeof body !== 'object' || Array.isArray(body)) fail(config, '外观配置无效')
+      const changes = { ...body }
+      delete changes.watermark_confirmation
       if (
-        !body ||
-        typeof body !== 'object' ||
-        Array.isArray(body) ||
-        Object.keys(body).length === 0 ||
-        Object.entries(body).some(
+        Object.keys(changes).length === 0 ||
+        Object.entries(changes).some(
           ([key, value]) => !Object.hasOwn(choices, key) || !choices[key].includes(value)
-        )
+        ) ||
+        (Object.hasOwn(body, 'watermark_confirmation') && body.watermark_visible !== false) ||
+        (body.watermark_visible === false &&
+          body.watermark_confirmation !== '反馈问题时务必说明具体版本')
       )
         fail(config, '外观配置无效')
-      Object.assign(data.appearance, clone(body))
-      result = clone(body)
+      Object.assign(data.appearance, clone(changes))
+      result = clone(changes)
     } else if (method === 'POST' && path === '/network/settings') {
       if (!body || typeof body.http_proxy !== 'string' || typeof body.github_proxy !== 'string')
         fail(config, '请提供完整的网络代理设置')
