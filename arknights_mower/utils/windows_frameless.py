@@ -10,7 +10,9 @@ handling, cursor feedback, and multi-monitor interaction.
 """
 
 import ctypes
+from collections.abc import Callable
 from ctypes import wintypes
+from threading import Lock
 from typing import Any
 
 from arknights_mower.utils.log import logger
@@ -218,28 +220,50 @@ def install_windows_frameless_resize(
     window: Any,
     initial_size: WindowSize,
     min_size: WindowSize,
+    *,
+    on_ready: Callable[[], None] | None = None,
 ) -> bool:
+    """Attempt frame calibration and loaded layout refresh before signaling ready."""
     if not is_windows():
         return False
-    layout_refreshed = False
+    setup_lock = Lock()
+    frame_setup_finished = False
+    page_loaded = False
+    layout_started = False
 
     def install_after_show() -> None:
+        nonlocal frame_setup_finished
         try:
             _install_hook(window, initial_size, min_size)
         except Exception:
             logger.exception("Failed to install Windows frameless resize support")
+        finally:
+            with setup_lock:
+                frame_setup_finished = True
+        finish_setup()
 
-    def refresh_after_load() -> None:
-        nonlocal layout_refreshed
-        if layout_refreshed:
-            return
+    def finish_setup() -> None:
+        nonlocal layout_started
+        # pywebview runs shown and loaded handlers on different threads. The
+        # layout refresh must consume the calibrated frame before signaling ready.
+        with setup_lock:
+            if not frame_setup_finished or not page_loaded or layout_started:
+                return
+            layout_started = True
         try:
             _refresh_webview_layout(window)
-            layout_refreshed = True
         except Exception:
             logger.exception(
                 "Failed to refresh the WebView layout after startup sizing"
             )
+        if on_ready is not None:
+            on_ready()
+
+    def refresh_after_load() -> None:
+        nonlocal page_loaded
+        with setup_lock:
+            page_loaded = True
+        finish_setup()
 
     window.events.shown += install_after_show
     window.events.loaded += refresh_after_load
