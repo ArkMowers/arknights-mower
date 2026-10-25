@@ -43,6 +43,7 @@ beforeEach(() => {
   state.buttons = []
   state.config = reactive({
     check_mail_enable: true,
+    event_sign_in_enable: false,
     report_enable: true,
     skland_enable: true,
     skland_info: [
@@ -167,12 +168,20 @@ describe('daily task editors', () => {
   it('keeps the existing combined editor as the default', async () => {
     const html = await render()
     expect(html).toContain('每日任务')
-    for (const task of ['skland', 'mail', 'report']) {
+    for (const task of ['skland', 'mail', 'event-sign-in', 'report']) {
       expect(regionTag(html, task)).toBeTruthy()
       expect(regionTag(html, task)).not.toContain('display:none')
     }
     expect(html).toContain('测试签到')
     expect(html).toContain('领取邮件')
+    expect(html.indexOf('data-daily-task="event-sign-in"')).toBeGreaterThan(
+      html.indexOf('data-daily-task="mail"')
+    )
+    expect(html.indexOf('data-daily-task="event-sign-in"')).toBeLessThan(
+      html.indexOf('data-daily-task="report"')
+    )
+    expect(html).toContain('活动签到说明')
+    expect(state.config.event_sign_in_enable).toBe(false)
     expect(html).toContain('读取基报')
     expect(axios.get).not.toHaveBeenCalled()
   })
@@ -186,11 +195,11 @@ describe('daily task editors', () => {
     expect(axios.get).not.toHaveBeenCalled()
   })
 
-  it.each(['skland', 'mail', 'report'])(
+  it.each(['skland', 'mail', 'event-sign-in', 'report'])(
     'shows only the %s editor while retaining the other task controls',
     async (selected) => {
       const html = await render({ task: selected })
-      for (const task of ['skland', 'mail', 'report']) {
+      for (const task of ['skland', 'mail', 'event-sign-in', 'report']) {
         expect(regionTag(html, task)).toBeTruthy()
         expect(regionTag(html, task).includes('display:none')).toBe(task !== selected)
       }
@@ -213,7 +222,7 @@ describe('daily task editors', () => {
     component.AllCheck(account, false, 'arknights')
     const originalComponent = component
 
-    for (const task of ['mail', 'report', 'skland']) {
+    for (const task of ['mail', 'event-sign-in', 'report', 'skland']) {
       selected.value = task
       await nextTick()
       expect(editor.component).toBe(originalComponent)

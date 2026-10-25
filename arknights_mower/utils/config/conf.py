@@ -404,6 +404,8 @@ class RegularTaskPart(ConfModel):
     "领取邮件奖励"
     mail_skip_clear_read: bool = True
     "领取邮件后跳过清除已读邮件"
+    event_sign_in_enable: bool = False
+    "活动签到"
     maa_enable: bool = True
     "日常任务（兼容旧字段）"
     stage_plan_enable: bool = True
