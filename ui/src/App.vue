@@ -298,7 +298,7 @@ import {
   formatEmulatorLabel
 } from '@/window-shell/adapter.js'
 import { createSaveCoordinator } from '@/utils/configPersistence'
-import { createConfigProfiles } from '@/composables/configProfiles'
+import { configProfilesKey, createConfigProfiles } from '@/composables/configProfiles'
 import { readProcessActionStatus, submitProcessAction } from '@/utils/processAction'
 import { resolveCloseIntent } from '@/utils/closePreference'
 import {
@@ -626,6 +626,7 @@ const configProfiles = createConfigProfiles({
   },
   blocked: () => !loaded.value || running.value || deviceConnectionNavigation.locked.value
 })
+provide(configProfilesKey, configProfiles)
 const appMenuProps = computed(() => ({
   theme: theme.value,
   instanceName: windowShell.metadata.instanceName || '默认实例',

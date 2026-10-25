@@ -9,8 +9,9 @@ const groups = [
 const editorDefinitions = [
   ['mower-interface', '界面与窗口', '设置主题、界面缩放、版本显示与桌面窗口。'],
   ['mower-notifications', '通知与助手', '设置邮件通知和 Mower AI 助手。'],
+  ['mower-profiles', '档案与运行', '导入档案时选择保留内容，导出当前档案，或重启续接任务。'],
   ['mower-updates', '网络与更新', '设置网络代理，检查和更新 Mower 本体与资源。'],
-  ['mower-data', '数据与维护', '管理仓库历史、截图与报错归档、配置备份和进程。'],
+  ['mower-data', '数据与维护', '管理仓库历史、截图与报错归档、完整备份与恢复。'],
   ['intervals', '执行间隔', '设置日常任务、刷理智、仓库扫描与制造站补货的执行间隔。'],
   ['device', '连接与启动', '连接设备，设置截图、触控、游戏启动与任务空档时的动作。'],
   ['runtime', '运行参数', '设置截图间隔、选人采样和页面等待时间。'],
@@ -71,6 +72,7 @@ const taskDefinitions = [
   ['maa', 'support'],
   ['mower-interface', 'mower'],
   ['mower-notifications', 'mower'],
+  ['mower-profiles', 'mower'],
   ['mower-updates', 'mower'],
   ['mower-data', 'mower']
 ]
@@ -80,8 +82,9 @@ const editorKeywords = {
   'mower-interface':
     '主题 暗色 亮色 跟随系统 界面缩放 软件版本 版本类型 语言 关闭窗口 托盘 启动时窗口状态',
   'mower-notifications': '邮件 SMTP QQ 通知 发件人 收件人 Mower AI 助手 自定义模型 API 密钥',
+  'mower-profiles': '档案 选择保留内容 导入 导出 重启续接 重启 Mower 进程 结束 退出',
   'mower-updates': 'Mower 本体 资源 网络 更新 Mirror酱 CDK 代理 下载源 更新源 自动更新',
-  'mower-data': '仓库历史 截图 保存 报错归档 容量 空间 导入 导出 配置备份 数据库 重启 退出',
+  'mower-data': '仓库历史 截图 保存 报错归档 容量 空间 完整备份 恢复 数据库',
   device:
     '设备 模拟器 ADB 截图 触控 MuMu 性能适配 恢复 超时 重试 选择实例 旋转截图 截图命令 启动游戏 点击坐标 启动命令 自定义命令启动 空闲动作 关闭MuMu模拟器12时断开该实例的adb连接 启动后自动开始任务',
   intervals: '日常任务间隔 MAA 日常 制造站补货',

@@ -1,16 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, effectScope, nextTick, ref } from 'vue'
-import { createPinia } from 'pinia'
+import { createApp, createSSRApp, effectScope, nextTick, ref } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { createPinia, disposePinia } from 'pinia'
 import axios from 'axios'
 import ConfigBackup from './ConfigBackup.vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
-import { reloadImportedConfiguration } from '@/utils/configBackup'
+import { consumeImportResult, reloadImportedConfiguration } from '@/utils/configBackup'
 import { drainConfigurationSaves } from '@/utils/configPersistence'
 
 vi.mock('axios', () => ({ default: { post: vi.fn(), patch: vi.fn(), get: vi.fn() } }))
 vi.mock('@/utils/configBackup', () => ({
-  consumeImportResult: () => null,
+  consumeImportResult: vi.fn(() => null),
   reloadImportedConfiguration: vi.fn()
 }))
 vi.mock('vue', async (original) => ({
@@ -45,7 +46,47 @@ afterEach(() => {
   for (const store of [config, plan, rescuePlan]) store.$dispose()
 })
 
+async function renderBackup() {
+  const pinia = createPinia()
+  const app = createSSRApp(ConfigBackup)
+  app.use(pinia)
+  app.provide('loaded', ref(false))
+  app.provide('axios', axios)
+  try {
+    return await renderToString(app)
+  } finally {
+    disposePinia(pinia)
+  }
+}
+
 describe('backup import save boundary', () => {
+  it('labels full backup restoration separately from named profile import', async () => {
+    const html = await renderBackup()
+    expect(html).toContain('完整备份与恢复')
+    expect(html).toContain('导出完整备份')
+    expect(html).toContain('恢复当前配置')
+    expect(html).not.toContain('导入档案')
+  })
+
+  it('does not present a profile switch receipt as successful full restoration', async () => {
+    consumeImportResult.mockReturnValueOnce({ message: '档案已切换', recovery_path: '' })
+    const html = await renderBackup()
+    expect(html).not.toContain('当前配置已恢复')
+    expect(html).not.toContain('档案已切换')
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+
+  it('retains the recovery backup path from a full restoration receipt', async () => {
+    consumeImportResult.mockReturnValueOnce({
+      message: '配置已恢复',
+      recovery_path: '/config-backups/before-import.zip'
+    })
+    const html = await renderBackup()
+    expect(html).toContain('当前配置已恢复')
+    expect(html).toContain('/config-backups/before-import.zip')
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+
   it('drains a pending rescue-plan save before importing and keeps every store paused', async () => {
     let finish
     axios.post.mockImplementationOnce(

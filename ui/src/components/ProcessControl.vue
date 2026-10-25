@@ -7,6 +7,7 @@ import { readProcessActionStatus, submitProcessAction } from '@/utils/processAct
 
 const props = defineProps({
   compact: { type: Boolean, default: false },
+  resumeOnly: { type: Boolean, default: false },
   running: { default: null }
 })
 
@@ -151,7 +152,7 @@ onUnmounted(() => {
         仅操作当前实例{{ info?.name ? `（${info.name}）` : '' }}，其他实例和多开管理器不受影响。
       </p>
       <div class="process-control-actions">
-        <div v-if="info?.running" class="process-control-row" data-settings-label="重启续接">
+        <div v-if="effectiveRunning" class="process-control-row" data-settings-label="重启续接">
           <div class="process-control-copy">
             <span>重启续接</span>
             <p>保存当前配置后重启当前实例，并保留任务队列继续运行。</p>
@@ -168,7 +169,11 @@ onUnmounted(() => {
             保存当前配置后重启当前实例，并保留任务队列继续运行。
           </n-popconfirm>
         </div>
-        <div class="process-control-row" data-settings-label="重启 Mower 进程">
+        <div
+          v-if="!props.resumeOnly"
+          class="process-control-row"
+          data-settings-label="重启 Mower 进程"
+        >
           <div class="process-control-copy">
             <span>重启 Mower 进程</span>
             <p>保留名称、数据目录、端口和启动参数。原本运行中的任务将重置运行缓存后重新开始。</p>
@@ -185,7 +190,11 @@ onUnmounted(() => {
             重启当前实例，保留名称、数据目录、端口和启动参数；原本运行中的任务将重置运行缓存后重新开始。
           </n-popconfirm>
         </div>
-        <div class="process-control-row" data-settings-label="结束 Mower 进程">
+        <div
+          v-if="!props.resumeOnly"
+          class="process-control-row"
+          data-settings-label="结束 Mower 进程"
+        >
           <div class="process-control-copy">
             <span>结束 Mower 进程</span>
             <p>正常停止当前任务并结束此实例，网页连接将断开。</p>
@@ -203,6 +212,9 @@ onUnmounted(() => {
           </n-popconfirm>
         </div>
       </div>
+      <n-text v-if="props.resumeOnly && !effectiveRunning" depth="3">
+        当前没有运行中的任务，无需重启续接。
+      </n-text>
       <n-alert v-if="savesPaused" type="info">
         配置自动保存已暂停。配置导入或进程操作结束后，请刷新页面重新读取配置再编辑。
         <n-button v-if="!busy" size="small" @click="reload">刷新页面</n-button>

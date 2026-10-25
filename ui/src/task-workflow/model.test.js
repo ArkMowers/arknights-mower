@@ -27,6 +27,34 @@ function freeze(value) {
 }
 
 describe('task configuration checklist', () => {
+  it.each([
+    [false, false],
+    [true, false],
+    [true, true]
+  ])(
+    'keeps profiles and continuation visible for managed=%s and maintenance=%s',
+    (managed, visible) => {
+      const workflow = createTaskWorkflow(
+        freeze({ manager_owned_device: managed, extra_settings_visible: visible })
+      )
+      const editor = workflow.editors.find(({ id }) => id === 'mower-profiles')
+      expect(editor).toMatchObject({
+        title: '档案与运行',
+        description: '导入档案时选择保留内容，导出当前档案，或重启续接任务。'
+      })
+      expect(editor.searchKeywords).toContain('重启续接')
+      expect(editor.searchKeywords).toContain('导入')
+      expect(editor.searchKeywords).toContain('导出')
+      expect(workflow.tasks.find(({ id }) => id === 'mower-profiles')).toMatchObject({
+        group: 'mower',
+        mode: 'automatic'
+      })
+      expect(
+        workflow.editors.find(({ id }) => id === 'mower-data')?.searchKeywords || ''
+      ).not.toContain('重启')
+    }
+  )
+
   it('hides managed connection and optional maintenance editors while retaining all business tasks', () => {
     const direct = createTaskWorkflow({ manager_owned_device: false })
     const managed = createTaskWorkflow({ manager_owned_device: true })
@@ -38,7 +66,7 @@ describe('task configuration checklist', () => {
         .map(({ id }) => id)
     )
     expect(managed.editors.map(({ id }) => id)).toEqual(
-      expect.arrayContaining(['mower-interface', 'mower-notifications'])
+      expect.arrayContaining(['mower-interface', 'mower-notifications', 'mower-profiles'])
     )
     expect(managed.editors.find(({ id }) => id === 'maa')).toMatchObject({
       description: '设置 MAA 恢复主题与目标主题。',
@@ -69,6 +97,7 @@ describe('task configuration checklist', () => {
       expect(workflow.tasks.filter(({ group }) => group === 'mower').map(({ id }) => id)).toEqual([
         'mower-interface',
         'mower-notifications',
+        'mower-profiles',
         ...(visible ? ['mower-updates', 'mower-data'] : [])
       ])
       expect(config).toEqual(before)
@@ -103,7 +132,13 @@ describe('task configuration checklist', () => {
       ],
       combat: ['stage-plan', 'long'],
       support: ['intervals', 'runtime', 'accounts', 'maa'],
-      mower: ['mower-interface', 'mower-notifications', 'mower-updates', 'mower-data']
+      mower: [
+        'mower-interface',
+        'mower-notifications',
+        'mower-profiles',
+        'mower-updates',
+        'mower-data'
+      ]
     }
     const editors = new Set(workflow.editors.map(({ id }) => id))
     for (const group of workflow.groups) {
