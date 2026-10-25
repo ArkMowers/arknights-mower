@@ -215,7 +215,7 @@ def preferred_replacement_restore(data, is_busy, protected=(), slots=()):
 
 def ordinary_recall_mood_admissible(data, recalled, candidates, *, now=None):
     """普通请求到急救线后才评估召回，双方必须有有效心情读数。"""
-    now = now or datetime.now()
+    now = now or getattr(data, "_projection_now", None) or datetime.now()
 
     def anchor(op):
         return data.is_group_shift_anchor(op) or (

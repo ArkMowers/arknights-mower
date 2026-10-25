@@ -9,7 +9,12 @@ import pytest
 from arknights_mower.solvers import base_schedule
 from arknights_mower.tests import exhaust_replacement_tests
 from arknights_mower.tests.mood_calculation_projection_consumers_tests import enable
-from arknights_mower.utils import config, predictive_mood_control, recall_estimates
+from arknights_mower.utils import (
+    config,
+    predictive_mood_control,
+    recall_estimates,
+    replacement_coordination,
+)
 from arknights_mower.utils.replacement_coordination import recall_can_sustain
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -76,6 +81,21 @@ def test_short_existing_event_admits_real_recall_without_mutating_queue(recall, 
     assert solver._coordination_support_valid(support, ["机械师"])
     assert solver.tasks == [wake] and vars(wake) == before
     solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("wall_offset", [-1, 1])
+def test_recall_planning_uses_projection_time_instead_of_wall_clock(
+    recall, monkeypatch, wall_offset
+):
+    solver, _, _ = recall
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = NOW + timedelta(hours=wall_offset)
+    monkeypatch.setattr(replacement_coordination, "datetime", clock)
+    solver.tasks = [event()]
+    support = solver._plan_exhaust_support(["机械师"])
+    assert support and support["room_2_2"] == ["苍苔"]
+    assert solver._coordination_support_valid(support, ["机械师"])
+    clock.now.assert_not_called()
 
 
 @pytest.mark.parametrize(
