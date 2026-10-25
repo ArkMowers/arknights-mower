@@ -109,6 +109,67 @@ class TaskScope(Enum):
     REPLAN = "replan"
 
 
+def replan_update_tasks(saved):
+    """更新重启保留专项任务、未完成操作和依赖，再用空任务重建普通安排。"""
+    if not saved:
+        return {}
+    ordinary = {
+        TaskTypes.SHIFT_OFF,
+        TaskTypes.SHIFT_ON,
+        TaskTypes.EXHAUST_OFF,
+        TaskTypes.SELF_CORRECTION,
+        TaskTypes.RE_ORDER,
+        TaskTypes.RELEASE_DORM,
+        TaskTypes.FILL_DORM,
+        TaskTypes.NOT_SPECIFIC,
+    }
+    protected_flags = (
+        "strict_mood_limit",
+        "initial_fia",
+        "run_order_restore_pending",
+        "group_shift_expected",
+        "group_shift_waiting",
+        "group_shift_predecessors",
+        "return_windows",
+        "backup_shift_active",
+        "backup_shift_intent",
+        "backup_explicit_slots",
+        "product_shift_locked",
+        "exhaust_support",
+        "ordinary_coordination",
+        "dorm_recovery_restore",
+        "preferred_replacement_restore",
+        "derived_correction_started",
+        "replacement_check",
+        "emergency_staffing",
+        "emergency_recovery_release",
+    )
+    result = dict(saved)
+    tasks = list(saved.get("tasks", ()))
+    retained = [
+        task
+        for task in tasks
+        if task.type not in ordinary
+        or task.retains_execution
+        or any(getattr(task, flag, False) for flag in protected_flags)
+        or hasattr(task, "emergency_original_roster")
+        or hasattr(task, "run_order_original_roster")
+        or task.type == TaskTypes.NOT_SPECIFIC
+        and (task.plan or task.meta_data)
+    ]
+    dependencies = [*retained, *saved.get("waiting_group_shifts", ())]
+    protected = set()
+    while dependencies:
+        task = dependencies.pop()
+        if id(task) in protected:
+            continue
+        protected.add(id(task))
+        dependencies.extend(getattr(task, "group_shift_predecessors", ()))
+    result["tasks"] = [task for task in tasks if id(task) in protected]
+    result["tasks"].append(SchedulerTask())
+    return result
+
+
 def task_view(tasks, scope, op_data=None):
     """按用途读取同一队列；返回原任务引用，不复制执行状态。"""
     if scope == TaskScope.PENDING:

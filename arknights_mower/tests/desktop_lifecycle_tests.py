@@ -259,6 +259,7 @@ class DesktopStartupTests(unittest.TestCase):
         commands=None,
         configuration_change=None,
         configure_startup=None,
+        update_replan="",
     ):
         import server as task_server
         import webview_ui
@@ -364,6 +365,7 @@ class DesktopStartupTests(unittest.TestCase):
                         "MOWER_MANAGER_PORT": manager_port,
                         "MOWER_RESUME_RUN": resume_run,
                         "MOWER_RESUME_MODE": resume_mode,
+                        "MOWER_UPDATE_REPLAN": update_replan,
                     },
                 ),
                 patch.dict(sys.modules, {"server": server}),

@@ -564,6 +564,7 @@ def hidden_console_options():
 def launch_environment(record, job_id="", background=False):
     env = os.environ.copy()
     env.pop("MOWER_RECOVERY_RUN", None)
+    env.pop("MOWER_UPDATE_REPLAN", None)
     # A frozen child must initialize its own bootloader/runtime, including after
     # replacement of the bundle. System subprocesses must not inherit private libs.
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"

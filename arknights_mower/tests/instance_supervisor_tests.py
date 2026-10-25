@@ -303,7 +303,7 @@ def test_explicit_launch_uses_current_policy_instead_of_old_recovery_intent(
     assert policy["startup"] is not early_failure
 
 
-@pytest.mark.parametrize("start_type", ["0", "1", "2"])
+@pytest.mark.parametrize("start_type", ["0", "1", "2", "3"])
 def test_explicit_startup_keeps_selected_mode_and_refreshes_stopped_progress(
     isolated_runtime, monkeypatch, start_type
 ):
@@ -393,7 +393,9 @@ def test_crash_relaunch_preserves_published_intent_over_current_startup_option(
     assert policy["startup"] is False
 
 
-@pytest.mark.parametrize("mode,expected", [("0", "0"), ("1", "1"), ("preserve", "2")])
+@pytest.mark.parametrize(
+    "mode,expected", [("0", "0"), ("1", "1"), ("update", "3"), ("preserve", "2")]
+)
 def test_unready_restart_keeps_its_supplied_start_mode(
     isolated_runtime, mode, expected
 ):
@@ -413,7 +415,8 @@ def test_unready_restart_keeps_its_supplied_start_mode(
         os.environ,
         MOWER_RESTART_JOB="explicit-restart",
         MOWER_RESUME_RUN="1",
-        MOWER_RESUME_MODE=mode,
+        MOWER_RESUME_MODE="0" if mode == "update" else mode,
+        MOWER_UPDATE_REPLAN="1" if mode == "update" else "",
     )
     assert (
         supervisor.supervise(
@@ -431,7 +434,7 @@ def test_unready_restart_keeps_its_supplied_start_mode(
     assert bool(policy.get("reset_observation_pending")) is (expected == "2")
 
 
-@pytest.mark.parametrize("mode", ["1", "preserve"])
+@pytest.mark.parametrize("mode", ["1", "3", "preserve"])
 def test_completed_restart_does_not_repeat_its_reset_after_later_crash(
     isolated_runtime, mode
 ):
@@ -467,7 +470,7 @@ def test_completed_restart_does_not_repeat_its_reset_after_later_crash(
     assert not policy.get("reset_observation_pending")
 
 
-@pytest.mark.parametrize("mode", ["1", "2"])
+@pytest.mark.parametrize("mode", ["1", "2", "3"])
 def test_ready_before_automation_start_keeps_selected_mode_until_checkpoint(
     isolated_runtime, mode
 ):

@@ -82,10 +82,14 @@ class UpdateStorageTests(unittest.TestCase):
         for previous in ("0", "1", "unknown"):
             with (
                 self.subTest(previous=previous),
-                patch.dict(os.environ, {"MOWER_RECOVERY_RUN": previous}),
+                patch.dict(
+                    os.environ,
+                    {"MOWER_RECOVERY_RUN": previous, "MOWER_UPDATE_REPLAN": "1"},
+                ),
             ):
                 result = runtime.launch_environment({"running": False}, "new-restart")
                 self.assertNotIn("MOWER_RECOVERY_RUN", result)
+                self.assertNotIn("MOWER_UPDATE_REPLAN", result)
                 self.assertEqual(result["MOWER_RESUME_RUN"], "0")
 
     def test_shared_tmp_storage_preserves_installation_isolation(self):

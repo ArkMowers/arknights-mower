@@ -1290,14 +1290,14 @@ class WorkerTests(unittest.TestCase):
             }
             for i in range(3)
         ] + [{"kind": "manager"}]
-        for background in (True, False):
+        for background, recovery in product((True, False), repeat=2):
             with (
-                self.subTest(background=background),
+                self.subTest(background=background, recovery=recovery),
                 patch.object(subprocess, "Popen") as process,
             ):
                 self.job.update(deployment="release", background=background)
                 worker = self.worker()
-                worker.restart(records, verify=False)
+                worker.restart(records, verify=False, recovery=recovery)
                 self.assertEqual(process.call_count, 3 if background else 4)
                 for call, record in zip(process.call_args_list, records):
                     env = call.kwargs["env"]
@@ -1309,8 +1309,10 @@ class WorkerTests(unittest.TestCase):
                     )
                     if record["kind"] == "instance" and record.get("running"):
                         self.assertEqual(env["MOWER_RESUME_MODE"], "0")
+                        self.assertEqual(env["MOWER_UPDATE_REPLAN"], "1")
                     else:
                         self.assertNotIn("MOWER_RESUME_MODE", env)
+                        self.assertNotIn("MOWER_UPDATE_REPLAN", env)
                     self.assertEqual(
                         env["MOWER_RESTART_PORT"], str(record.get("port") or "")
                     )
@@ -1384,6 +1386,7 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(instance_env["MOWER_MANAGED"], "1")
         self.assertEqual(instance_env["MOWER_RESUME_RUN"], "1")
         self.assertEqual(instance_env["MOWER_RESUME_MODE"], "0")
+        self.assertEqual(instance_env["MOWER_UPDATE_REPLAN"], "1")
         self.assertEqual(instance_env["MOWER_RESTART_PORT"], "58100")
 
         with patch.object(subprocess, "Popen") as process:

@@ -1601,8 +1601,10 @@ class Worker:
             env = launch_environment(record, self.job["id"], self.job["background"])
             if record["kind"] == "instance" and record.get("running"):
                 env["MOWER_RESUME_MODE"] = "0"
+                env["MOWER_UPDATE_REPLAN"] = "1"
             else:
                 env.pop("MOWER_RESUME_MODE", None)
+                env.pop("MOWER_UPDATE_REPLAN", None)
             if self.job.get("tool_path"):
                 env["PATH"] = self.job["tool_path"]
             with (self.work / "restart.log").open("ab") as log:

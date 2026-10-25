@@ -857,12 +857,18 @@ def _run_desktop():
         except (LocalConfigError, OSError):
             startup_generation = None
         resume_mode = os.environ.pop("MOWER_RESUME_MODE", "")
+        if (
+            os.environ.pop("MOWER_UPDATE_REPLAN", "") == "1"
+            and os.environ.get("MOWER_RESTART_JOB")
+            and os.environ.get("MOWER_RESUME_RUN") == "1"
+        ):
+            resume_mode = "3"
         resume_run = (
             bool(os.environ.get("MOWER_RESTART_JOB"))
             and os.environ.get("MOWER_RESUME_RUN") == "1"
         )
         resume = (
-            resume_mode in ("0", "1")
+            resume_mode in ("0", "1", "3")
             or resume_run
             or (
                 not os.environ.get("MOWER_RESTART_JOB")
@@ -871,7 +877,11 @@ def _run_desktop():
             )
         )
         start_type = (
-            resume_mode if resume_mode in ("0", "1") else "2" if resume_run else "0"
+            resume_mode
+            if resume_mode in ("0", "1", "3")
+            else "2"
+            if resume_run
+            else "0"
         )
         auto_resource = (
             config.updates_enabled
@@ -1049,7 +1059,7 @@ def _run_desktop():
                 with server.app.test_request_context(
                     method="GET", headers={"token": runtime_token}
                 ):
-                    if resume_mode in ("0", "1"):
+                    if resume_mode in ("0", "1", "3"):
                         server.start(resume_mode, automatic=True)
                     else:
                         server.start(

@@ -15,7 +15,12 @@ describe('release rollback confirmation', () => {
       expect(options.content).toContain('4.1.6-alpha.4')
       expect(options.content).toContain('v4.1.5')
       expect(options.content).toContain('3 个实例')
-      expect(options.content).toContain('保留已保存的心情、位置和任务队列（包括跑单与专精任务）')
+      expect(options.content).toContain(
+        '保留已保存的心情、位置，以及跑单、专精换人等重要任务和未完成的补偿'
+      )
+      expect(options.content).toContain('按当前版本和排班重新生成普通任务')
+      expect(options.content).toContain('已停止的实例保持停止')
+      expect(options.content).toContain('配置、专精计划和数据库记录保留')
       if (force) expect(options.content).toContain('不备份本地修改')
       expect(options.negativeText).toBe('取消')
       expect(options.autoFocus).toBe(false)
@@ -69,6 +74,10 @@ describe('force update confirmation', () => {
     expect(options.content).toContain('3 个实例')
     expect(options.content).toContain('不备份本地修改')
     expect(options.content).toContain('本地修改也不会恢复')
+    expect(options.content).toContain(
+      '保留已保存的心情、位置，以及跑单、专精换人等重要任务和未完成的补偿'
+    )
+    expect(options.content).toContain('已停止的实例保持停止')
     await options.onPositiveClick()
     expect(install).toHaveBeenCalledOnce()
   })
@@ -129,6 +138,11 @@ describe('source version confirmation', () => {
       expect(options.content).toContain('3 个实例')
       expect(options.content).toContain('关闭软件自动更新')
       expect(options.content).toContain('专精计划和数据库记录保留')
+      expect(options.content).toContain(
+        '保留已保存的心情、位置，以及跑单、专精换人等重要任务和未完成的补偿'
+      )
+      expect(options.content).toContain('按当前版本和排班重新生成普通任务')
+      expect(options.content).toContain('已停止的实例保持停止')
       if (force) expect(options.content).toContain('不备份本地修改')
       options.onNegativeClick?.()
       options.onClose?.()
