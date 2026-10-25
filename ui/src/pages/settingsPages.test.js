@@ -48,7 +48,7 @@ vi.mock('naive-ui', async (original) => {
           content.push(slots.default?.())
         }
         if (['NInput', 'NInputNumber'].includes(name)) {
-          content.push(h('input', { value: props.value, disabled: props.disabled }))
+          content.push(h('input', { value: props.value, disabled: props.disabled, min: attrs.min }))
         }
         return h('div', { 'data-control': name }, content)
       }
@@ -144,6 +144,20 @@ function attribute(node, name) {
 }
 
 describe('settings page ownership', () => {
+  it.each([0, 19, 20, 100])('无人机设置最小为 20，保留已读取的值 %s', async (limit) => {
+    const html = await renderToString(setup(TaskSettingsPanels, { drone_count_limit: limit }))
+    const forms = elements(parseHtml(html)).filter(
+      (node) => attribute(node, 'data-control') === 'NFormItem'
+    )
+    const field = forms.find((node) => node.loc.source.includes('无人机使用阈值'))
+    expect(field).toBeDefined()
+    const input = elements(field).find((node) => node.tag === 'input')
+    expect(attribute(input, 'min')).toBe('20')
+    expect(attribute(input, 'value')).toBe(String(limit))
+    expect(store.drone_count_limit).toBe(limit)
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+
   it.each([false, null])('keeps update controls hidden with permission %s', async (permission) => {
     const app = setup(MowerSettings)
     app.runWithContext(() => useMowerStore()).updates_enabled = permission

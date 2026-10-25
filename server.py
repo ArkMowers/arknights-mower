@@ -1615,9 +1615,12 @@ def load_plan_from_json():
     else:
         from arknights_mower.utils.workshop_config import workshop_lock
 
-        plan = config.PlanModel(**request.json)
-        # 校验随排班保存的设置；网页配置保存仍负责更新运行配置。
-        apply_advanced_settings(config.conf, plan.advanced_settings)
+        try:
+            plan = config.PlanModel(**request.json)
+            # 校验随排班保存的设置；网页配置保存仍负责更新运行配置。
+            apply_advanced_settings(config.conf, plan.advanced_settings)
+        except (ValidationError, ValueError) as exc:
+            return {"error": "invalid_configuration", "message": str(exc)}, 400
         with workshop_lock:
             previous_plan = config.plan
             config.plan = plan

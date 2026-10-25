@@ -20,7 +20,12 @@ vi.mock('naive-ui', async (importOriginal) => ({
     }
   }
 }))
-vi.mock('./MowerInputNumber.vue', () => ({ default: { render: () => h('input') } }))
+vi.mock('./MowerInputNumber.vue', () => ({
+  default: {
+    props: ['value', 'min'],
+    setup: (props) => () => h('input', { value: props.value, min: props.min })
+  }
+}))
 vi.mock('./SlickOperatorSelect.vue', () => ({ default: { render: () => h('select') } }))
 vi.mock('./HelpText.vue', () => ({ default: { render: () => h('span') } }))
 
@@ -28,6 +33,21 @@ const stores = []
 afterEach(() => {
   stores.forEach((store) => store.$dispose())
   stores.length = 0
+})
+
+it.each([0, 19, 20, 100])('无人机使用阈值最小为 20，保留已读取的值 %s', async (limit) => {
+  const app = createSSRApp(PlanAdvancedSettings)
+  app.use(createPinia())
+  app.provide('loaded', ref(false))
+  app.provide('mobile', ref(false))
+  const config = app.runWithContext(() => useConfigStore())
+  const plan = app.runWithContext(() => usePlanStore())
+  stores.push(config, plan)
+  expect(config.drone_count_limit).toBe(100)
+  config.drone_count_limit = limit
+  expect(await renderToString(app)).toContain(`<input value="${limit}" min="20"`)
+  expect(config.drone_count_limit).toBe(limit)
+  expect(config.build_advanced_settings().drone_count_limit).toBe(limit)
 })
 
 it('从主副表及多绑组提供多选，保留已保存的组名并绑定配置', async () => {
