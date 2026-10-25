@@ -7,7 +7,7 @@ from queue import Queue
 from threading import Event, Thread, current_thread, get_ident
 from time import monotonic
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock, patch
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -359,7 +359,15 @@ def test_unconfirmed_mode_keeps_display_state_and_saves_after_native_recovery(
 
 
 @pytest.fixture
-def desktop_url_window(monkeypatch):
+def windows_frameless_module():
+    with patch.object(ctypes, "WinDLL", create=True):
+        from arknights_mower.utils import windows_frameless
+
+    return windows_frameless
+
+
+@pytest.fixture
+def desktop_url_window(monkeypatch, windows_frameless_module):
     import webview
 
     import webview_ui
@@ -369,7 +377,12 @@ def desktop_url_window(monkeypatch):
     window = DesktopWindow("gtk")
     create_window = Mock(return_value=window)
     prepare_backend = Mock()
-    install_windows_resize = Mock()
+
+    def install_windows_resize(window, initial_size, min_size, *, on_ready=None):
+        if on_ready is not None:
+            window.events.loaded += on_ready
+
+    install_windows_resize = Mock(side_effect=install_windows_resize)
     start = Mock()
     browser_open = Mock()
     instance_name = "测试实例 & + / ?"
@@ -459,6 +472,7 @@ def test_desktop_window_keeps_encoded_instance_name_in_its_own_url(
             fixture.create_window.return_value,
             window_shell.WindowSize(1000, 600),
             window_shell.desktop_window_min_size(),
+            on_ready=ANY,
         )
     else:
         fixture.install_windows_resize.assert_not_called()
@@ -551,6 +565,90 @@ def test_startup_maximized_window_is_first_visible_in_its_saved_mode(
     with pytest.raises(SystemExit):
         fixture.launch(backend)
     gui.save_window_ratio.assert_called_once_with(window_shell.WindowRatio(0.5, 0.6))
+    fixture.browser_open.assert_not_called()
+
+
+@pytest.mark.parametrize("loaded_before_shown", [False, True])
+@pytest.mark.parametrize(
+    "outcome", ["ready", "close", "calibration_failure", "layout_failure"]
+)
+def test_winforms_startup_finishes_calibration_and_layout_before_display(
+    desktop_url_window,
+    windows_frameless_module,
+    monkeypatch,
+    loaded_before_shown,
+    outcome,
+):
+    from arknights_mower.utils.config import gui
+
+    fixture = desktop_url_window
+    window = fixture.create_window.return_value
+    windows = windows_frameless_module
+    calibration_started, finish_calibration = Event(), Event()
+    operations = []
+    early_operations = []
+
+    def calibrate(*args):
+        calibration_started.set()
+        assert finish_calibration.wait(timeout=2)
+        operations.append("calibrate")
+        if outcome == "calibration_failure":
+            raise RuntimeError("Native frame unavailable")
+
+    def refresh_layout(window):
+        operations.append("layout")
+        if outcome == "layout_failure":
+            raise RuntimeError("WebView layout unavailable")
+
+    def maximize():
+        window.initial_state = "maximized"
+        operations.append("maximize")
+        window.events.maximized.fire()
+
+    user32 = Mock()
+    user32.IsWindow.return_value = True
+    user32.IsIconic.return_value = False
+    user32.IsZoomed.side_effect = lambda *args: window.initial_state == "maximized"
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *args, **kwargs: user32, raising=False)
+    monkeypatch.setitem(sys.modules, "arknights_mower.utils.windows_frameless", windows)
+    monkeypatch.setattr(windows, "is_windows", lambda: True)
+    monkeypatch.setattr(windows, "_winforms_hwnd", lambda window: 1)
+    monkeypatch.setattr(windows, "_install_hook", calibrate)
+    monkeypatch.setattr(windows, "_refresh_webview_layout", refresh_layout)
+    monkeypatch.setattr(gui, "load_window_launch_mode", lambda: "maximized")
+    monkeypatch.setattr(gui, "save_window_mode", Mock())
+    window.maximize.side_effect = maximize
+    window.show.side_effect = lambda: operations.append("show")
+
+    def start(**kwargs):
+        if loaded_before_shown:
+            window.events.loaded.fire()
+        shown = Thread(target=window.events.shown.fire)
+        shown.start()
+        try:
+            assert calibration_started.wait(timeout=2)
+            if not loaded_before_shown:
+                window.events.loaded.fire()
+            early_operations.extend(operations)
+            if outcome == "close":
+                assert window.exposed["close"]() is True
+        finally:
+            finish_calibration.set()
+            shown.join(timeout=2)
+        assert not shown.is_alive()
+        window.events.loaded.fire()
+        window.events.closing.fire()
+        window.events.closed.fire()
+
+    fixture.start.side_effect = start
+    with pytest.raises(SystemExit):
+        fixture.launch("winforms")
+
+    assert early_operations == []
+    expected = ["calibrate", "layout"]
+    if outcome != "close":
+        expected += ["maximize", "show"]
+    assert operations == expected
     fixture.browser_open.assert_not_called()
 
 

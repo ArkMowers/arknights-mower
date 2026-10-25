@@ -369,6 +369,8 @@ def webview_window(
     # notification cannot leave their normal-size persistence blocked.
     startup_maximize_pending = windows_native and startup_mode == "maximized"
     normal_size_lock = Lock()
+    startup_mode_lock = Lock()
+    windows_layout_ready = not windows_native
 
     window_url = append_query_param(url, "instance_name", instance_name)
     window_url = (
@@ -486,28 +488,17 @@ def webview_window(
         window.events.restored += lambda: remember_mode("normal")
     else:
         bridge.on_mode_changed = remember_mode
-    if windows_native:
-        from arknights_mower.utils.windows_frameless import (
-            install_windows_frameless_resize,
-        )
-
-        install_windows_frameless_resize(
-            window,
-            WindowSize(width, height),
-            min_size,
-        )
 
     def restore_startup_mode():
         nonlocal mode_ready, startup_maximize_pending, startup_hidden
-        if mode_ready or closing:
+        if mode_ready or closing or not windows_layout_ready:
             return
         if not bridge.wait_until_ready():
             return
-        if mode_ready or closing:
-            return
-        # Windows registers this after its client-layout hook. Other backends
-        # wait for their native input and state adapter before applying the mode.
-        mode_ready = True
+        with startup_mode_lock:
+            if mode_ready or closing:
+                return
+            mode_ready = True
         if startup_hidden:
             if not bridge.maximize():
                 startup_maximize_pending = False
@@ -522,6 +513,23 @@ def webview_window(
             "maximized",
         ):
             remember_mode(state["state"])
+
+    if windows_native:
+        from arknights_mower.utils.windows_frameless import (
+            install_windows_frameless_resize,
+        )
+
+        def on_windows_layout_ready():
+            nonlocal windows_layout_ready
+            windows_layout_ready = True
+            restore_startup_mode()
+
+        install_windows_frameless_resize(
+            window,
+            WindowSize(width, height),
+            min_size,
+            on_ready=on_windows_layout_ready,
+        )
 
     window.events.loaded += restore_startup_mode
     bridge.on_ready = restore_startup_mode
