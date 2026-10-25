@@ -110,6 +110,128 @@ class DiagnosticTimelineTests(unittest.TestCase):
                 ],
             )
 
+    def test_export_custom_range_reads_rotated_logs_and_archived_frames(self):
+        import server
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "log"
+            shots = root / "screenshot"
+            logs.mkdir()
+            center = datetime(2026, 10, 20, 14, 30)
+            start = center - timedelta(hours=6)
+            end = center + timedelta(minutes=5)
+            detail = "  完整错误详情\n" * 1200
+            (logs / "runtime.log.2026-10-20_08").write_text(
+                "2026-10-20 08:29:59 task.py:1 INFO 范围外\n"
+                "2026-10-20 08:30:00 task.py:1 ERROR 开始\n" + detail,
+                encoding="utf-8",
+            )
+            (logs / "runtime.log").write_text(
+                "2026-10-20 14:00:00 task.py:1 INFO 中间\n"
+                * 1100
+                + "2026-10-20 14:35:00 task.py:1 INFO 结束\n"
+                "2026-10-20 14:35:01 task.py:1 INFO 范围外\n",
+                encoding="utf-8",
+            )
+            archive = shots / "errors" / str(int(start.timestamp() * 10**9))
+            archive.mkdir(parents=True)
+            image = archive / f"{int(start.timestamp() * 10**9)}.jpg"
+            image.write_bytes(b"archived image")
+            (archive / "logs.json").write_text("[]", encoding="utf-8")
+            with (
+                patch.object(
+                    server, "get_path", side_effect=lambda name: root / name[5:]
+                ),
+                patch.object(server.app, "token", "diagnostics-test", create=True),
+            ):
+                for screenshots in ("0", "1"):
+                    with self.subTest(screenshots=screenshots):
+                        response = server.app.test_client().get(
+                            "/diagnostics/export",
+                            query_string={
+                                "at": int(center.timestamp() * 1000),
+                                "start": int(start.timestamp() * 1000),
+                                "end": int(end.timestamp() * 1000),
+                                "screenshots": screenshots,
+                            },
+                            headers={"token": "diagnostics-test"},
+                        )
+                        self.assertEqual(response.status_code, 200)
+                        with ZipFile(BytesIO(response.data)) as bundle:
+                            text = bundle.read("日志.txt").decode("utf-8")
+                            self.assertIn("开始\n" + detail, text)
+                            self.assertEqual(text.count("中间"), 1100)
+                            self.assertIn("结束", text)
+                            self.assertNotIn("范围外", text)
+                            manifest = bundle.read("说明.txt").decode("utf-8")
+                            self.assertIn("08:30:00 至 2026-10-20 14:35:00", manifest)
+                            self.assertIn("日志：1102 条", manifest)
+                            self.assertEqual(
+                                f"截图/{image.relative_to(shots).as_posix()}"
+                                in bundle.namelist(),
+                                screenshots == "1",
+                            )
+                        response.close()
+
+    def test_export_range_validation_precedes_file_access(self):
+        import server
+
+        center = int(datetime.now().timestamp() * 1000)
+        invalid = (
+            {"start": center},
+            {"end": center},
+            {"start": "invalid", "end": center},
+            {"start": -1, "end": center},
+            {"start": center, "end": center},
+            {"start": center, "end": center - 1},
+            {"start": center - 8 * 86400000, "end": center},
+            {"start": center, "end": center + 7200000},
+            {"screenshots": "invalid"},
+        )
+        with (
+            patch.object(server.app, "token", "diagnostics-test", create=True),
+            patch.object(server, "get_path") as get_path,
+            patch.object(server, "export_bundle") as export,
+        ):
+            for params in invalid:
+                with self.subTest(params=params):
+                    response = server.app.test_client().get(
+                        "/diagnostics/export",
+                        query_string={"at": center, **params},
+                        headers={"token": "diagnostics-test"},
+                    )
+                    self.assertEqual(response.status_code, 400)
+            get_path.assert_not_called()
+            export.assert_not_called()
+
+    def test_long_export_streams_log_text_with_bounded_memory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "log"
+            logs.mkdir()
+            center = datetime(2026, 10, 20, 12)
+            with (logs / "runtime.log").open("w", encoding="utf-8") as stream:
+                for number in range(10000):
+                    stream.write(
+                        f"2026-10-20 12:00:00 task.py:1 DEBUG {number}: "
+                        + "x" * 1024
+                        + "\n"
+                    )
+            tracemalloc.start()
+            try:
+                with export_bundle(
+                    logs, root / "screenshot", center, include_screenshots=False
+                ) as data:
+                    _, peak = tracemalloc.get_traced_memory()
+                    self.assertLess(peak, 4 * 1024**2)
+                    with ZipFile(data) as bundle:
+                        self.assertIn(
+                            "日志：10000 条", bundle.read("说明.txt").decode("utf-8")
+                        )
+            finally:
+                tracemalloc.stop()
+
     def test_positive_limit_bounds_memory_while_reading_large_window(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

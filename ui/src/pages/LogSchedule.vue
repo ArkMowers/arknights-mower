@@ -30,6 +30,10 @@ const exporting = ref(false)
 const exportError = ref('')
 const selectedEventIds = ref([])
 const pendingDeleteEvents = ref(null)
+const showExportDialog = ref(false)
+const exportCenter = ref(null)
+const exportRange = ref(null)
+const includeScreenshots = ref(true)
 const deleting = ref(false)
 const deleteError = ref('')
 const analysisLoading = ref(false)
@@ -60,6 +64,15 @@ const imagePath = computed(() => screenshots.value[imageIndex.value] || '')
 const canExport = computed(
   () => !logLoading.value && !logError.value && (browseMode.value === 'time' || !!activeEvent.value)
 )
+const exportRangeError = computed(() => {
+  const [start, end] = exportRange.value || []
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= end) {
+    return '请选择有效的导出起止时间'
+  }
+  if (end - start > 7 * 86400000) return '单次最多导出 7 天，请缩小范围'
+  if (end > Date.now() + 3600000) return '结束时间不能超过当前时间一小时'
+  return ''
+})
 const windowLabel = computed(() => {
   const first = activeEvent.value ? Number(activeEvent.value.time_ns) / 1e6 : loadedAt.value
   const last = activeEvent.value
@@ -147,6 +160,7 @@ async function loadEvents() {
 }
 
 function clearEvidence() {
+  showExportDialog.value = false
   logs.value = []
   screenshots.value = []
   imageIndex.value = 0
@@ -258,24 +272,47 @@ function jumpToNow() {
   return loadWindow(Date.now())
 }
 
+function setExportHours(hours) {
+  exportRange.value = [
+    Math.max(0, exportCenter.value - hours * 3600000),
+    exportCenter.value + 300000
+  ]
+}
+
+function beginExport() {
+  if (!canExport.value || exporting.value) return
+  if (activeEvent.value) return exportWindow()
+  exportCenter.value = loadedAt.value
+  setExportHours(1)
+  exportError.value = ''
+  showExportDialog.value = true
+}
+
 async function exportWindow() {
   if (!canExport.value || exporting.value) return
+  const event = activeEvent.value
+  if (!event && (!showExportDialog.value || exportRangeError.value)) return
   exporting.value = true
   exportError.value = ''
-  const center = activeEvent.value
-    ? Math.floor(activeEvent.value.time_ns / 1000000)
-    : loadedAt.value
-  const path = activeEvent.value
-    ? `/diagnostics/errors/${activeEvent.value.id}/export`
-    : '/diagnostics/export'
+  const center = event ? Math.floor(event.time_ns / 1000000) : exportCenter.value
+  const path = event ? `/diagnostics/errors/${event.id}/export` : '/diagnostics/export'
+  const params = event
+    ? undefined
+    : {
+        at: center,
+        start: exportRange.value[0],
+        end: exportRange.value[1],
+        screenshots: includeScreenshots.value ? '1' : '0'
+      }
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}${path}`, {
-      params: activeEvent.value ? undefined : { at: center },
+      params,
       responseType: 'blob'
     })
     const date = new Date(center)
     const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`
     downloadBundle(response.data, `日志调度-${stamp}.zip`)
+    showExportDialog.value = false
   } catch {
     exportError.value = '导出失败，请稍后重试'
   } finally {
@@ -490,7 +527,7 @@ onMounted(() => {
         secondary
         :disabled="!canExport"
         :loading="exporting"
-        @click="exportWindow"
+        @click="beginExport"
       >
         导出日志与截图
       </n-button>
@@ -513,7 +550,65 @@ onMounted(() => {
         </n-button>
       </div>
     </section>
-    <p v-if="exportError" class="export-error" role="alert">{{ exportError }}</p>
+    <p v-if="exportError && !showExportDialog" class="export-error" role="alert">
+      {{ exportError }}
+    </p>
+
+    <n-modal
+      v-model:show="showExportDialog"
+      preset="card"
+      title="选择导出范围"
+      style="width: min(600px, calc(100vw - 32px))"
+      :closable="!exporting"
+      :mask-closable="!exporting"
+      :close-on-esc="!exporting"
+    >
+      <n-space vertical :size="16">
+        <p class="export-hint">
+          默认导出查看时间前 1 小时、后 5 分钟的记录，可修改起止时间，单次最多 7 天。
+        </p>
+        <n-space>
+          <n-button
+            v-for="hours in [1, 6, 24]"
+            :key="hours"
+            :disabled="exporting"
+            @click="setExportHours(hours)"
+          >
+            查看时间前 {{ hours }} 小时
+          </n-button>
+        </n-space>
+        <div>
+          <label for="export-time-range">导出起止时间</label>
+          <n-date-picker
+            id="export-time-range"
+            v-model:value="exportRange"
+            type="datetimerange"
+            :clearable="false"
+            :disabled="exporting"
+          />
+        </div>
+        <n-checkbox v-model:checked="includeScreenshots" :disabled="exporting">
+          包含截图（长时段的文件可能较大）
+        </n-checkbox>
+        <p class="export-hint">仅导出仍保留的记录，已清理的日志和截图无法恢复。</p>
+        <p v-if="exportRangeError || exportError" class="export-error" role="alert">
+          {{ exportRangeError || exportError }}
+        </p>
+      </n-space>
+      <template #action>
+        <n-space justify="end">
+          <n-button :disabled="exporting" @click="showExportDialog = false">取消</n-button>
+          <n-button
+            type="primary"
+            :loading="exporting"
+            :disabled="!!exportRangeError"
+            @click="exportWindow"
+          >
+            导出所选时段
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
 
     <div
       id="log-workspace"
@@ -742,6 +837,11 @@ onMounted(() => {
 
 .events-panel .panel-heading {
   flex-wrap: wrap;
+}
+
+.export-hint {
+  margin: 0;
+  line-height: 1.6;
 }
 
 .ai-analysis {

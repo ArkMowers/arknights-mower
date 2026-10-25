@@ -7,7 +7,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import SpooledTemporaryFile
-from zipfile import ZIP_STORED, ZipFile
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
 from arknights_mower.utils.screenshot import ScreenshotStore
 
@@ -126,24 +126,7 @@ def _log_row(when, message, timestamps, images):
     return {"time": message[:19], "message": message, "screenshot": screenshot}
 
 
-def timeline(
-    log_folder: Path,
-    screenshot_folder: Path,
-    center: datetime,
-    limit=1000,
-    *,
-    start=None,
-    end=None,
-    images=None,
-):
-    """返回指定时间窗口的日志及最近截图。"""
-    start = start or center - _WINDOW
-    end = end or center + _WINDOW
-    if images is None:
-        images = screenshots_between(screenshot_folder, start, end)
-    timestamps = [item[0] for item in images]
-    bounded = limit is not None and limit > 0
-    rows = []
+def _log_files(log_folder, start, end):
     if not log_folder.exists():
         return []
     suffixes = set()
@@ -160,20 +143,52 @@ def timeline(
             or path.name.removeprefix("runtime.log.") in suffixes
         )
     ]
-    files.sort(key=lambda item: (item.name == "runtime.log", item.name))
-    if bounded:
+    return sorted(files, key=lambda item: (item.name == "runtime.log", item.name))
+
+
+def timeline(
+    log_folder: Path,
+    screenshot_folder: Path,
+    center: datetime,
+    limit=1000,
+    *,
+    start=None,
+    end=None,
+    images=None,
+):
+    """返回指定时间窗口的日志及最近截图。"""
+    start = start or center - _WINDOW
+    end = end or center + _WINDOW
+    if images is None:
+        images = screenshots_between(screenshot_folder, start, end)
+    if limit is not None and limit > 0:
+        timestamps = [item[0] for item in images]
         return [
             _log_row(when, message, timestamps, images)
-            for when, message in _recent_records(files, start, end, limit)
+            for when, message in _recent_records(
+                _log_files(log_folder, start, end), start, end, limit
+            )
         ]
-    for path in files:
+    rows = list(_log_rows(log_folder, start, end, images))
+    return rows[-limit:] if limit is not None else rows
+
+
+def _log_rows(log_folder, start, end, images, *, detail_limit=8000):
+    """逐条读取范围内的日志，避免导出长时段时积累全部正文。"""
+    timestamps = [item[0] for item in images]
+    for path in _log_files(log_folder, start, end):
         current_row = None
         with path.open(encoding="utf-8", errors="replace") as stream:
             for line in stream:
                 if not _LOG_START.match(line):
-                    if current_row is not None and len(current_row["message"]) < 8000:
+                    if current_row is not None and (
+                        detail_limit is None
+                        or len(current_row["message"]) < detail_limit
+                    ):
                         current_row["message"] += "\n" + line.rstrip("\r\n")
                     continue
+                if current_row is not None:
+                    yield current_row
                 current_row = None
                 try:
                     when = datetime.fromisoformat(line[:19])
@@ -181,39 +196,48 @@ def timeline(
                     continue
                 if not start <= when <= end:
                     continue
-                rows.append(_log_row(when, line.rstrip(), timestamps, images))
-                current_row = rows[-1]
-    return rows[-limit:] if limit is not None else rows
+                current_row = _log_row(when, line.rstrip(), timestamps, images)
+        if current_row is not None:
+            yield current_row
 
 
 def export_bundle(
-    log_folder: Path, screenshot_folder: Path, center: datetime, archive_id=None
+    log_folder: Path,
+    screenshot_folder: Path,
+    center: datetime,
+    archive_id=None,
+    *,
+    start=None,
+    end=None,
+    include_screenshots=True,
 ):
     """打包时间窗口内的完整日志和仍可读取的截图。调用方负责关闭返回的文件。"""
     archive_root = screenshot_folder / "errors"
     start, end = (
         archive_window(archive_root / archive_id, center)
         if archive_id is not None
-        else (center - _WINDOW, center + _WINDOW)
+        else (start or center - _WINDOW, end or center + _WINDOW)
     )
     start_ns = int(start.timestamp() * 10**9)
     end_ns = int(end.timestamp() * 10**9)
     images = {}
-    for timestamp, relative in screenshots_between(screenshot_folder, start, end):
+    for timestamp, relative in (
+        screenshots_between(screenshot_folder, start, end)
+        if include_screenshots
+        else []
+    ):
         images[timestamp] = (screenshot_folder / relative, relative)
 
     # 报错归档中的画面即使已从普通截图目录清理，也应进入下载包。
-    if archive_id is not None:
+    if not include_screenshots:
+        archives = []
+    elif archive_id is not None:
         archives = [archive_root / archive_id]
     elif archive_root.exists():
         archives = [
             path
             for path in archive_root.iterdir()
-            if path.is_dir()
-            and path.name.isascii()
-            and path.name.isdigit()
-            and abs(int(path.name) - int(center.timestamp() * 10**9))
-            <= 2 * int(_WINDOW.total_seconds() * 10**9)
+            if path.is_dir() and path.name.isascii() and path.name.isdigit()
         ]
     else:
         archives = []
@@ -231,30 +255,34 @@ def export_bundle(
     if saved is not None and saved.is_file():
         rows = json.loads(saved.read_text(encoding="utf-8"))
     else:
-        rows = timeline(
-            log_folder, screenshot_folder, center, limit=None, start=start, end=end
-        )
+        rows = _log_rows(log_folder, start, end, [], detail_limit=None)
 
     output = SpooledTemporaryFile(max_size=16 * 1024**2, mode="w+b")
     try:
         with ZipFile(output, "w", compression=ZIP_STORED) as bundle:
+            count = 0
+            log_info = ZipInfo("日志.txt")
+            log_info.compress_type = ZIP_DEFLATED
+            with bundle.open(log_info, "w", force_zip64=True) as stream:
+                for row in rows:
+                    stream.write((row["message"] + "\n").encode("utf-8"))
+                    count += 1
+            image_count = 0
+            for _, (image, relative) in sorted(images.items()):
+                try:
+                    bundle.write(image, f"截图/{relative}")
+                    image_count += 1
+                except FileNotFoundError:
+                    # 清理线程可能在打包期间删除普通截图。
+                    continue
             bundle.writestr(
                 "说明.txt",
                 f"日志调度导出\n时间范围：{start:%Y-%m-%d %H:%M:%S} 至 "
                 f"{end:%Y-%m-%d %H:%M:%S}\n"
-                f"日志：{len(rows)} 条\n截图：{len(images)} 张\n"
+                f"日志：{count} 条\n截图：{image_count} 张\n"
+                f"包含截图：{'是' if include_screenshots else '否'}\n"
                 "截图按采集时间排序；已过期或尚未写入的文件无法导出。\n",
             )
-            bundle.writestr(
-                "日志.txt",
-                "\n".join(row["message"] for row in rows) + ("\n" if rows else ""),
-            )
-            for _, (image, relative) in sorted(images.items()):
-                try:
-                    bundle.write(image, f"截图/{relative}")
-                except FileNotFoundError:
-                    # 清理线程可能在打包期间删除普通截图。
-                    continue
         output.seek(0)
         return output
     except Exception:

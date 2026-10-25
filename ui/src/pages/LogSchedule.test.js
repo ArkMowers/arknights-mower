@@ -103,14 +103,81 @@ describe('log schedule browsing', () => {
     state.client.get.mockResolvedValue({ data: { logs: [], screenshots: [] } })
     await page.loadWindow(center)
     page.queryAt.value = center - 86400000
+    page.beginExport()
+    expect(page.showExportDialog.value).toBe(true)
+    expect(page.exportRange.value).toEqual([center - 3600000, center + 300000])
     const link = { click: vi.fn(), remove: vi.fn() }
     vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
     vi.stubGlobal('URL', { createObjectURL: () => 'blob:test', revokeObjectURL: vi.fn() })
     await page.exportWindow()
     expect(state.client.get.mock.calls.at(-1)).toEqual([
       '/diagnostics/export',
-      { params: { at: center }, responseType: 'blob' }
+      {
+        params: { at: center, start: center - 3600000, end: center + 300000, screenshots: '1' },
+        responseType: 'blob'
+      }
     ])
+    expect(link.click).toHaveBeenCalledOnce()
+    expect(page.showExportDialog.value).toBe(false)
+  })
+
+  it('exports a custom interval without screenshots after choosing a longer preset', async () => {
+    const center = 1791604800000
+    state.client.get.mockResolvedValue({ data: { logs: [] } })
+    await page.loadWindow(center)
+    page.beginExport()
+    page.queryAt.value = center - 86400000
+    page.setExportHours(24)
+    expect(page.exportRange.value).toEqual([center - 86400000, center + 300000])
+    page.exportRange.value = [center - 7200000, center - 600000]
+    page.includeScreenshots.value = false
+    const link = { click: vi.fn(), remove: vi.fn() }
+    vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:test', revokeObjectURL: vi.fn() })
+    await page.exportWindow()
+    expect(state.client.get.mock.calls.at(-1)).toEqual([
+      '/diagnostics/export',
+      {
+        params: { at: center, start: center - 7200000, end: center - 600000, screenshots: '0' },
+        responseType: 'blob'
+      }
+    ])
+  })
+
+  it('blocks invalid or oversized ranges and closes a draft when changing source', async () => {
+    const center = 1791604800000
+    state.client.get.mockResolvedValue({ data: { logs: [] } })
+    await page.loadWindow(center)
+    page.beginExport()
+    for (const range of [
+      null,
+      [center, center],
+      [center, center - 1],
+      [center - 8 * 86400000, center]
+    ]) {
+      page.exportRange.value = range
+      expect(page.exportRangeError.value).toBeTruthy()
+      const count = state.client.get.mock.calls.length
+      await page.exportWindow()
+      expect(state.client.get).toHaveBeenCalledTimes(count)
+    }
+    await page.loadWindow(center - 600000)
+    expect(page.showExportDialog.value).toBe(false)
+  })
+
+  it('keeps archive export on its saved bounds without ordinary range parameters', async () => {
+    page.events.value = [event]
+    state.client.get.mockResolvedValue({ data: { logs: [] } })
+    await page.selectEvent(event)
+    const link = { click: vi.fn(), remove: vi.fn() }
+    vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:test', revokeObjectURL: vi.fn() })
+    await page.beginExport()
+    expect(state.client.get.mock.calls.at(-1)).toEqual([
+      '/diagnostics/errors/123/export',
+      { params: undefined, responseType: 'blob' }
+    ])
+    expect(page.showExportDialog.value).toBe(false)
     expect(link.click).toHaveBeenCalledOnce()
   })
 

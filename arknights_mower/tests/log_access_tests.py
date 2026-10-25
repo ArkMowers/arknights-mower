@@ -258,6 +258,56 @@ class LocalLogAccessTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200)
 
+    def test_range_export_preserves_local_and_configured_token_boundaries(self):
+        url = "/diagnostics/export?at=1792468800000&start=1792465200000&end=1792469100000&screenshots=0"
+        with patch.object(
+            server, "_send_diagnostic_bundle", return_value="bundle"
+        ) as send:
+            client = server.app.test_client()
+            local_headers = {
+                "Host": "127.0.0.1:58000",
+                "Origin": "http://127.0.0.1:58000",
+                "Sec-Fetch-Site": "same-origin",
+            }
+            for method in ("GET", "HEAD"):
+                for headers, remote, expected in (
+                    (local_headers, "127.0.0.1", 200),
+                    (
+                        {**local_headers, "Origin": "https://attacker.example"},
+                        "127.0.0.1",
+                        403,
+                    ),
+                    ({**local_headers, "Host": "attacker.example"}, "127.0.0.1", 403),
+                    (
+                        {**local_headers, "Sec-Fetch-Site": "cross-site"},
+                        "127.0.0.1",
+                        403,
+                    ),
+                    (local_headers, "192.0.2.1", 403),
+                ):
+                    with self.subTest(method=method, headers=headers, remote=remote):
+                        send.reset_mock()
+                        response = client.open(
+                            url,
+                            method=method,
+                            headers=headers,
+                            environ_base={"REMOTE_ADDR": remote},
+                        )
+                        self.assertEqual(response.status_code, expected)
+                        self.assertEqual(send.call_count, int(expected == 200))
+            server.app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = False
+            for token, expected in (
+                (None, 403),
+                ("invalid", 403),
+                ("runtime-secret", 200),
+            ):
+                with self.subTest(token=token):
+                    send.reset_mock()
+                    headers = {**local_headers, **({"token": token} if token else {})}
+                    response = client.get(url, headers=headers)
+                    self.assertEqual(response.status_code, expected)
+                    self.assertEqual(send.call_count, int(expected == 200))
+
 
 if __name__ == "__main__":
     unittest.main()
