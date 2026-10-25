@@ -159,6 +159,50 @@ def test_update_post_retains_explicit_preparation_validation(offline, monkeypatc
     offline.io.assert_not_called()
 
 
+@pytest.mark.parametrize("has_snapshot", [False, True])
+def test_update_start_preserves_initial_observation_without_snapshot(
+    offline, notice, observed_scheduler, monkeypatch, tmp_path, has_snapshot
+):
+    runtime.write_json(notice, {"active": False, "phase": "resolved"})
+    observed_scheduler.tasks = []
+    if has_snapshot:
+        assert offline.record.save_current_state()
+    else:
+        assert offline.record.load_state(strict=True) is None
+    worker = Mock()
+    worker.is_alive.return_value = False
+    create = Mock(return_value=worker)
+    monkeypatch.setattr(offline.server, "Thread", create)
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(instance_supervisor, "task_intent", Mock())
+    response = offline.server.app.test_client().get(
+        "/start/3", headers={"token": "crash-test"}
+    )
+    assert response.get_data(as_text=True) == "true"
+    saved = create.call_args.kwargs["args"][0]
+    if has_snapshot:
+        assert [task.type for task in saved["tasks"]] == [TaskTypes.NOT_SPECIFIC]
+    configure_simulate(offline, monkeypatch, observed_scheduler)
+
+    at_dispatch = []
+
+    def dispatch():
+        at_dispatch.append(offline.record.load_state(strict=True))
+        raise MowerExit
+
+    monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", dispatch)
+    offline.main.simulate(saved)
+    assert len(at_dispatch) == 1
+    assert observed_scheduler.defer_backup_plan_until_mood_read is not has_snapshot
+    assert observed_scheduler._initial_staffing_pending is not has_snapshot
+    assert bool(saved) is has_snapshot
+    assert at_dispatch[0]["initial_mood_pending"] is not has_snapshot
+    assert at_dispatch[0]["initial_staffing_pending"] is not has_snapshot
+    assert crash_recovery.pending_start_type() is None
+    offline.io.assert_not_called()
+
+
 @pytest.mark.parametrize("checkpoint_failure", [False, True])
 def test_update_route_checkpoints_retained_tasks_and_keeps_mode_on_failure(
     offline, notice, observed_scheduler, monkeypatch, tmp_path, checkpoint_failure

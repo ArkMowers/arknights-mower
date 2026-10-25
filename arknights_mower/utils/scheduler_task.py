@@ -111,6 +111,8 @@ class TaskScope(Enum):
 
 def replan_update_tasks(saved):
     """更新重启保留专项任务、未完成操作和依赖，再用空任务重建普通安排。"""
+    if not saved:
+        return {}
     ordinary = {
         TaskTypes.SHIFT_OFF,
         TaskTypes.SHIFT_ON,
