@@ -30,6 +30,8 @@ import {projectMowerArrangements} from './mowerObservations'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {alphaCorrectGroupDorms,alphaRebalanceDorms,alphaPosition} from './mowerAlphaDorm'
+import {mowerDormTaskReservations} from './mowerAlphaCandidates'
+import {planMowerDormIsolation} from './mowerDormIsolation'
 import {mergeMowerPlanOverlay,mergeMowerShiftTransition,coalesceMowerBackupTransition,stripMowerCurrent,type MowerShiftModel} from './mowerShiftCycle'
 export { actualRoom } from './backupExpression'
 
@@ -256,14 +258,22 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       })
       if(groupPositions.size)alphaCorrectGroupDorms(next,transition,groupPositions)
       if(joiningResting.size?!preserveMowerBackupRestingJoins(next,transition,replacementPositions,recovery.dorms,joiningResting,pendingTasks??getMowerSourceRuntime(state).queue.tasks.filter(task=>task!==getMowerSourceRuntime(state).activeTask),protectedTraining):!preserveMowerBackupReplacements(next,transition,replacementPositions,recovery.dorms))throw new MowerShiftPreviewError('副表替班或恢复床位不可用，暂缓切表')
+      const orderChanged=JSON.stringify(recovery.dormOrder)!==JSON.stringify(next.dormOrder)
+      const reserved=new Set(Object.values(transition).flat().filter(n=>!['Current','Free',''].includes(n)))
+      const slots=new Set(Object.entries(transition).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[alphaPosition(room,index)]:[])))
       const signature=(data:MowerSchedulingData)=>JSON.stringify([data.dormOrder,data.dorms.map(b=>[b.position,data.plan[b.position[0]]?.[b.position[1]],data.operators[data.plan[b.position[0]]?.[b.position[1]]??'']?.group,data.effectiveFreeSlot(b),b.name])])
       if(signature(recovery)!==signature(next)){
-        const migration=projectMowerArrangements(next,[transition]),reserved=new Set(Object.values(transition).flat().filter(n=>!['Current','Free',''].includes(n)))
-        const slots=new Set(Object.entries(transition).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[alphaPosition(room,index)]:[])))
-        const plan=alphaRebalanceDorms(migration,recovery.dorms,reserved,slots);next.dorms=migration.dorms;mergeMowerShiftTransition(transition,plan,next)
+        const migration=projectMowerArrangements(next,[transition])
+        if(orderChanged){
+          const source=getMowerSourceRuntime(state),pending=pendingTasks??source.queue.tasks.filter(task=>task!==source.activeTask)
+          const reservations=mowerDormTaskReservations(next,pending.filter(task=>task.type!==T.SHIFT_ON||task.retainsExecution||task.backupShiftActive||task.productShiftLocked||task.dormRecoveryRestore.length))
+          for(const name of reservations.names)reserved.add(name)
+          for(const slot of reservations.slots)slots.add(slot)
+        }
+        const plan=alphaRebalanceDorms(migration,recovery.dorms,reserved,slots,orderChanged);next.dorms=migration.dorms;mergeMowerShiftTransition(transition,plan,next)
       }
       for(const [room,names] of Object.entries(transition))if(room.startsWith('dorm'))names.forEach((name,index)=>{if(!['Current','Free',''].includes(name)&&next.restMoodComplete(name)&&!next.freeRoomExcluded(name)&&next.currentOperator(room,index)?.name!==name)names[index]='Current'})
-      return stripMowerCurrent(transition)
+      return stripMowerCurrent(orderChanged?planMowerDormIsolation(next,transition,slots,reserved,new Set(recovery.dorms.map(b=>b.name).filter(Boolean))):transition)
     },
     activate(conditions,task){
       const previous=getMowerSourceRuntime(state).data,oldDrained=state.config.mowerSourceRules?.refreshDrained??[]

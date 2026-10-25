@@ -2883,9 +2883,11 @@ def prioritize_new_dorm_recovery(
     return result
 
 
-def plan_dorm_isolation(op_data, plan, reserved_slots=(), *, reserved_names=()):
-    """入住前交换动态床位以减少同宿，保护固定驻员和任务预约。"""
-    if not config.conf.dorm_isolation or not plan:
+def plan_dorm_isolation(
+    op_data, plan, reserved_slots=(), *, reserved_names=(), reallocating_names=()
+):
+    """入住或床序改变时交换动态床位，保护固定驻员和任务预约。"""
+    if not config.conf.dorm_isolation or not plan and not reallocating_names:
         return plan
     newcomers = {
         name
@@ -2894,6 +2896,8 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=(), *, reserved_names=()):
         for name in row
         if name in op_data.operators and not op_data.operators[name].is_resting()
     }
+    # 生效床序改变时，原住客也参与本批分配，可让出已有单回位置。
+    newcomers.update(reallocating_names)
     if not newcomers:
         return plan
     projected = op_data.project_arrangements([plan])
@@ -2929,7 +2933,12 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=(), *, reserved_names=()):
             or bed.name in projected.operators
             and resting_tier(projected, bed.name) != RestingTier.EXCLUDED
         )
-        and (bed.position != first_positions[bed.position[0]] or bed.name in newcomers)
+        and (
+            bed.position != first_positions[bed.position[0]]
+            or bed.name in newcomers
+            or reallocating_names
+            and not bed.name
+        )
     ]
     if len(movable) < 2:
         return plan

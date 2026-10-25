@@ -249,7 +249,8 @@
     "scheduler/mowerPredictivePlanning.ts": "051009cb3f9aa8e6bcab02f78114b6d749d86e9e6441c8a7ee496b153a66bbf6",
     "scheduler/mowerOrdinaryPlanningWake.ts": "0cd40626fd83599b216291c95cda23f701324535ccd92f02198c66cb415700e4",
     "scheduler/mowerBackupWake.spec.ts": "8de96461b6da0d5a93c543cec09fc07ec7dc61a9c6e542f9d6e094c92c9487f2",
-    "scheduler/mowerDormRetention.spec.ts": "98ba02944e50298e21ba52c144fc782db65bb9ef503c8ca8fa98474a9f87df46"
+    "scheduler/mowerDormRetention.spec.ts": "98ba02944e50298e21ba52c144fc782db65bb9ef503c8ca8fa98474a9f87df46",
+    "scheduler/mowerDormOrderTransition.spec.ts": "0d6b39dcdd521cb674eab14c897cec8d50c337df58353c8c0108a9effea1bc33"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -265,8 +266,8 @@
       "sha256": "8888318457b8aba820573a7edb882923a48f1a1c143f7ca7daf3575cc34d2682"
     },
     "scheduler/backupPlans.ts": {
-      "sha256": "52e49dc394292d8f145d5c2640a872ad3c2d4a9371fbf97fc2d880fd760b5cd0",
-      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points. Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points."
+      "sha256": "1b0690bb8fd6a0f9dd2323ab450b9ce1555908857277be9fb6e300be2faa6380",
+      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Implement bounded predictive ordinary shift control with isolated virtual clocks, native matching and recovery, observation-scoped reuse and memory-only event dispatch. Map the existing saved setting to simulated rotation policy and retain physiological mood integration in both modes. Verify shared production trajectories, hard limits, unchanged input reuse and policy provenance. Local Mower implementation; the original MIT license remains in THIRD_PARTY_MOWER_LICENSE. Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points. Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points. Reallocate movable dormitory residents when effective bed order changes, including backup activation and deactivation, without preserving previous single-target beds. Preserve fixed staffing and real task or product reservations; apply bounded isolation after allocation, allowing unreserved vacant first beds. Verify actual transition and complete shift-preview entry points, unchanged-order stability and repeated-preview convergence."
     },
     "scheduler/mowerSourceRuntime.ts": {
       "sha256": "168a6259c5a05edcdab3356706ee6b6ab0f9124fb2e89d7d96f2d138024e91c9",
@@ -633,8 +634,8 @@
       "reason": "Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points."
     },
     "scheduler/mowerAlphaDorm.ts": {
-      "sha256": "76e9cfaaec0a35e527c39c734da594bffdb46e566e90090ccd9f66738629b8b3",
-      "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points."
+      "sha256": "5ed3b10f5a6a2c59e266510763cacecc87d63a70b153a05b7cff671c97a10361",
+      "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points. Reallocate movable dormitory residents when effective bed order changes, including backup activation and deactivation, without preserving previous single-target beds. Preserve fixed staffing and real task or product reservations; apply bounded isolation after allocation, allowing unreserved vacant first beds. Verify actual transition and complete shift-preview entry points, unchanged-order stability and repeated-preview convergence."
     },
     "scheduler/mowerBackupDepartureRecovery.ts": {
       "sha256": "8914a295b737a7e1e1e39ce91be03e7dd29a93806f0e29fda8406118a1286f57",
@@ -649,8 +650,8 @@
       "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points."
     },
     "scheduler/mowerDormIsolation.ts": {
-      "sha256": "013e09da0d1df84dabaf01f6bb60b03f634a34063f20cd44d36264cb33f3a95b",
-      "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points."
+      "sha256": "ea82342dfeff1b6b77fb51b9966ececd5f584a0c14fde1dca386f56aa684f1c2",
+      "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points. Reallocate movable dormitory residents when effective bed order changes, including backup activation and deactivation, without preserving previous single-target beds. Preserve fixed staffing and real task or product reservations; apply bounded isolation after allocation, allowing unreserved vacant first beds. Verify actual transition and complete shift-preview entry points, unchanged-order stability and repeated-preview convergence."
     },
     "scheduler/mowerRelease.ts": {
       "sha256": "c9d80830fad66488d157cfc2033985b94649718797c94049e30ba4c37bb485e7",
@@ -667,6 +668,10 @@
     "scheduler/mowerDormRetention.spec.ts": {
       "sha256": "98ba02944e50298e21ba52c144fc782db65bb9ef503c8ca8fa98474a9f87df46",
       "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points."
+    },
+    "scheduler/mowerDormOrderTransition.spec.ts": {
+      "sha256": "0d6b39dcdd521cb674eab14c897cec8d50c337df58353c8c0108a9effea1bc33",
+      "reason": "Reallocate movable dormitory residents when effective bed order changes, including backup activation and deactivation, without preserving previous single-target beds. Preserve fixed staffing and real task or product reservations; apply bounded isolation after allocation, allowing unreserved vacant first beds. Verify actual transition and complete shift-preview entry points, unchanged-order stability and repeated-preview convergence."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
@@ -713,11 +718,12 @@
       "phase completion admits newly created cover checks before committing the existing outer-run boundary; unchanged due checks do not repeatedly clear that boundary",
       "failed tasks ignore unrelated global backup-condition changes while relevant effective plans, products, eligibility, reservations and observations retain release authority",
       "future ordinary named dorm releases do not reserve movable beds; due, personal-limit, retained, product-locked and unnamed releases remain reserved",
-      "ordinary dorm filling does not infer whole-group recalls from displaced beds"
+      "ordinary dorm filling does not infer whole-group recalls from displaced beds",
+      "effective dormitory bed-order changes reallocate existing residents through backup and shift previews while preserving isolation, fixed staffing and real reservations"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
-      "persistent return windows, configuration-only dorm reallocation and crafting recovery ordering are not ported",
+      "persistent return windows and crafting recovery ordering are not ported",
       "live mastery progress and device training observations are not simulated",
       "this snapshot does not establish full native-scheduler parity or live-device results",
       "the frozen full-preview fixture retains pre-existing failures; targeted regression checks do not establish full-suite or live-device parity"
@@ -776,6 +782,8 @@
       "scheduler/mowerDormAssignment.ts",
       "scheduler/mowerDormCapacity.spec.ts",
       "scheduler/mowerDormCapacity.ts",
+      "scheduler/mowerDormIsolation.ts",
+      "scheduler/mowerDormOrderTransition.spec.ts",
       "scheduler/mowerDormTasks.ts",
       "scheduler/mowerExhaustReservations.spec.ts",
       "scheduler/mowerExhaustReservations.ts",

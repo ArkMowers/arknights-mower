@@ -6358,21 +6358,21 @@ class BaseSchedulerSolver(
             )
 
         current_dorm_layout = dorm_rebalance_signature(self.op_data)
+        priority_changed = (
+            previous_dorm_layout is not None
+            and previous_dorm_layout[0] != current_dorm_layout[0]
+        )
         if previous_dorm_layout is None or previous_dorm_layout != current_dorm_layout:
             # 迁移须与副表已提出的槽位安排比较，不能把被该安排覆盖的
             # 原住者误判为无需移动，导致合并后丢失其床位。
             migration_data = self.op_data.project_arrangements([transition_plan])
-            priority_changed = (
-                previous_dorm_layout is not None
-                and previous_dorm_layout[0] != current_dorm_layout[0]
-            )
             dorm_migration = rebalance_plan_swap_dorms(
                 migration_data,
                 previous_dorms,
                 reserved_names=_assigned_operator_names(transition_plan)
                 | (reserved_names if priority_changed else set()),
-                # 先只迁移失效床位，最终由统一分配入口纠正层级并保留同级原位。
-                reorder=False,
+                # 生效床序变化时重新分配，已有单回位置不覆盖用户的新顺序。
+                reorder=priority_changed,
                 reserved_slots=(
                     reserved_slots
                     | {
@@ -6426,13 +6426,22 @@ class BaseSchedulerSolver(
             for room, names in transition_plan.items()
             if any(name != "Current" for name in names)
         }
-        return prioritize_new_dorm_recovery(
+        transition_plan = prioritize_new_dorm_recovery(
             self.op_data,
             transition_plan,
             reserved_slots | explicit_dorm_slots,
             reserved_names=reserved_names,
             configuration_changed=previous_dorm_layout != current_dorm_layout,
         )
+        if priority_changed:
+            transition_plan = plan_dorm_isolation(
+                self.op_data,
+                transition_plan,
+                reserved_slots | explicit_dorm_slots,
+                reserved_names=reserved_names,
+                reallocating_names={bed.name for bed in previous_dorms if bed.name},
+            )
+        return transition_plan
 
     def _coalesce_backup_transition(self, transition):
         """切表的新意图替换同轮旧安排，保留同批其他成员；返回被合并的任务。"""
@@ -8172,8 +8181,26 @@ class BaseSchedulerSolver(
             or getattr(task, "product_shift_locked", False)
         ):
             self._prepare_shift_backup(task)
+            recovery_data = self.op_data
+            conditions = getattr(
+                task, "backup_shift_conditions", self.op_data.plan_condition
+            )
+            backup_group = getattr(task, "backup_group", self.op_data.backup_group)
+            if (
+                conditions != self.op_data.plan_condition
+                or backup_group != self.op_data.backup_group
+            ):
+                recovery_data = self.op_data.project_arrangements([])
+                if error := recovery_data.swap_plan(
+                    conditions, refresh=True, backup_group=backup_group
+                ):
+                    raise ValueError(f"换班恢复分配预演失败：{error}")
+            order_changed = (
+                dorm_rebalance_signature(self.op_data)[0]
+                != dorm_rebalance_signature(recovery_data)[0]
+            )
             reserved_names, reserved_slots = dorm_task_reservations(
-                self.op_data,
+                recovery_data,
                 [
                     pending
                     for pending in self.tasks
@@ -8184,16 +8211,22 @@ class BaseSchedulerSolver(
                 ],
             )
             task.plan = prioritize_new_dorm_recovery(
-                self.op_data,
+                recovery_data,
                 task.plan,
                 reserved_slots | set(getattr(task, "backup_explicit_slots", ())),
                 reserved_names=reserved_names,
+                configuration_changed=order_changed,
             )
             task.plan = plan_dorm_isolation(
-                self.op_data,
+                recovery_data,
                 task.plan,
                 reserved_slots | set(getattr(task, "backup_explicit_slots", ())),
                 reserved_names=reserved_names,
+                reallocating_names=(
+                    {bed.name for bed in self.op_data.dorm if bed.name}
+                    if order_changed
+                    else ()
+                ),
             )
             return
         timing = _backup_timing_runtime.current
@@ -8379,6 +8412,12 @@ class BaseSchedulerSolver(
                 step.plan,
                 reserved_slots | explicit_slots,
                 reserved_names=reserved_names,
+                reallocating_names=(
+                    {bed.name for bed in simulation.op_data.dorm if bed.name}
+                    if dorm_rebalance_signature(self.op_data)[0]
+                    != dorm_rebalance_signature(simulation.op_data)[0]
+                    else ()
+                ),
             )
             simulation._suppress_train_arrangement(step.plan)
             simulation._suppress_retained_arrangements(
