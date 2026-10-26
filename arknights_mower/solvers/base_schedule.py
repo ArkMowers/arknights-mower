@@ -67,7 +67,7 @@ from arknights_mower.solvers.report import ReportSolver
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.solvers.shop import CreditShop
 from arknights_mower.solvers.skland import SKLand
-from arknights_mower.utils import config, detector, rapidocr, segment
+from arknights_mower.utils import config, detector, rapidocr, round_stop, segment
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.calculated_mood import log_mood_calculation
 from arknights_mower.utils.character_recognize import estimate_agent_mood
@@ -16681,7 +16681,18 @@ class BaseSchedulerSolver(
             self.device = device
             self.recog.device = device
 
-    def _idle_sleep(self, remaining_time, allow_wakeup=True):
+    def _stop_after_round(self, body=""):
+        if not round_stop.finish_if_requested():
+            return
+        message = "本轮任务结束，已按要求停止"
+        logger.info(message)
+        try:
+            send_message(body or message, message)
+        except Exception:
+            logger.exception("发送本轮结束停止通知失败")
+        raise MowerExit
+
+    def _idle_sleep(self, remaining_time, allow_wakeup=True, *, round_end=False):
         """等待任务并统一维护 `sleeping` 与连续场景观测边界。
 
         普通等待响应调度器唤醒；维护等待仅响应停止信号。
@@ -16697,6 +16708,8 @@ class BaseSchedulerSolver(
         try:
             end_time = datetime.now() + timedelta(seconds=remaining_time)
             while datetime.now() < end_time:
+                if round_end:
+                    self._stop_after_round()
                 refresh_resource_at_boundary()
                 if allow_wakeup and config.wake_scheduler.is_set():
                     config.wake_scheduler.clear()
@@ -16704,6 +16717,8 @@ class BaseSchedulerSolver(
                 csleep(min(1, (end_time - datetime.now()).total_seconds()))
             if config.stop_mower.is_set():
                 raise MowerExit
+            if round_end:
+                self._stop_after_round()
             self._idle_observation_pending = True
             if restoration_failures is not None:
                 self._idle_run_order_restoration_failures = restoration_failures
@@ -16779,6 +16794,7 @@ class BaseSchedulerSolver(
         protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         first = self.find_next_task()
         if first is None:
+            self._stop_after_round()
             return
         remaining_time = (first.time - datetime.now()).total_seconds()
         if remaining_time <= 0:
@@ -16801,19 +16817,20 @@ class BaseSchedulerSolver(
         )
         context = f"下一次任务:{first.plan if len(first.plan) != 0 else '空任务' if first.type == '' else first.type}"
         logger.info(context)
-        logger.info(subject)
         self.task_count += 1
         logger.info(f"第{self.task_count}次任务结束")
         body = task_template.render(
             tasks=[obj.format(timezone_offset) for obj in self.tasks],
             base_scheduler=self,
         )
+        self._stop_after_round(body)
+        logger.info(subject)
         send_message(
             body,
             f"休息 {format_time(remaining_time)}，到{first.format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
         )
         if remaining_time > 0:
-            self._idle_sleep(remaining_time)
+            self._idle_sleep(remaining_time, round_end=True)
             self.check_current_focus()
 
     def handle_idle_action(self, remaining_time=0):

@@ -30,8 +30,16 @@ import StartSchedule from '@/components/StartSchedule.vue'
 import { useResolvedTheme } from '@/composables/theme'
 const mower_store = useMowerStore()
 const logBackground = useLogBackgroundStore()
-const { log, log_mobile, running, plan_condition, log_lines, task_list, waiting } =
-  storeToRefs(mower_store)
+const {
+  log,
+  log_mobile,
+  running,
+  plan_condition,
+  log_lines,
+  task_list,
+  waiting,
+  stop_after_round
+} = storeToRefs(mower_store)
 const { get_tasks, get_running, start_task_polling, stop_task_polling } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
@@ -347,7 +355,25 @@ function stop_maa() {
 }
 
 const process_control = ref(null)
+const round_stop_busy = ref(false)
+async function toggle_round_stop() {
+  if (round_stop_busy.value || waiting.value) return
+  round_stop_busy.value = true
+  try {
+    await mower_store.set_stop_after_round(!stop_after_round.value)
+  } catch (error) {
+    db_message.error(error.response?.data?.error || '设置本轮结束后停止失败')
+  } finally {
+    round_stop_busy.value = false
+  }
+}
 const stop_options = computed(() => [
+  {
+    label: stop_after_round.value ? '取消本轮结束后停止' : '本轮结束后停止',
+    key: 'after_round',
+    disabled: round_stop_busy.value || waiting.value,
+    props: { title: '完成本轮操作，在正常休息前停止；已在正常休息时直接停止。' }
+  },
   {
     label: '停止MAA',
     key: 'maa'
@@ -367,6 +393,7 @@ const stop_options = computed(() => [
 ])
 
 function select_stop_action(key) {
+  if (key === 'after_round') return toggle_round_stop()
   if (key === 'maa') return stop_maa()
   if (!process_control.value?.canRunProcessAction) return
   if (key === 'apply_schedule') return process_control.value.applySchedule()
@@ -620,6 +647,14 @@ async function db_delete(keys) {
               <span class="btn-text">立即停止</span>
             </n-button>
           </drop-down>
+          <n-text
+            v-if="running && stop_after_round"
+            type="warning"
+            class="round-stop-notice"
+            role="status"
+          >
+            将在本轮结束后停止
+          </n-text>
           <start-schedule
             v-if="!running"
             :start="start"
@@ -917,6 +952,7 @@ async function db_delete(keys) {
   gap: 12px;
   min-width: 0;
   padding-top: 12px;
+  margin-bottom: 4px;
   border-top: 1px solid rgb(128 128 128 / 16%);
   position: relative;
 
@@ -943,6 +979,20 @@ async function db_delete(keys) {
 
 .execution-control :deep(.start-label) {
   display: inline;
+}
+
+.execution-control {
+  position: relative;
+}
+
+.round-stop-notice {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  line-height: 10px;
+  white-space: nowrap;
 }
 
 .toolbar-options {

@@ -53,6 +53,7 @@ const state = vi.hoisted(() => ({
   mower: null,
   config: null,
   warning: null,
+  error: null,
   taskVisibility: null,
   route: null,
   router: null,
@@ -64,7 +65,7 @@ vi.mock('pinia', async (original) => {
   const pinia = await original()
   return { ...pinia, storeToRefs: (store) => store.refs ?? pinia.storeToRefs(store) }
 })
-vi.mock('axios', () => ({ default: { get: vi.fn() } }))
+vi.mock('axios', () => ({ default: { get: vi.fn(), put: vi.fn(), delete: vi.fn() } }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
@@ -84,7 +85,7 @@ vi.mock('vue', async (original) => ({
 }))
 vi.mock('naive-ui', () => ({
   useDialog: () => ({ warning: state.warning }),
-  useMessage: () => ({ error: vi.fn(), success: vi.fn() })
+  useMessage: () => ({ error: state.error, success: vi.fn() })
 }))
 vi.mock('@/stores/mower', () => ({ useMowerStore: () => state.mower }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
@@ -112,14 +113,18 @@ describe('log page', () => {
     vi.useFakeTimers()
     onMounted.mockClear()
     onUnmounted.mockClear()
-    state.client = { get: vi.fn(), post: vi.fn() }
+    state.client = { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }
     axios.get.mockImplementation((...args) => state.client.get(...args))
+    axios.put.mockImplementation((...args) => state.client.put(...args))
+    axios.delete.mockImplementation((...args) => state.client.delete(...args))
     state.warning = vi.fn()
+    state.error = vi.fn()
     state.mower = {
       refs: {
         log: ref(''),
         log_mobile: ref(''),
         running: ref(false),
+        stop_after_round: ref(false),
         status_label: ref('已停止'),
         plan_condition: ref([]),
         log_lines: ref([]),
@@ -128,6 +133,7 @@ describe('log page', () => {
       },
       get_tasks: vi.fn(),
       get_running: vi.fn(),
+      set_stop_after_round: vi.fn(),
       start_task_polling: vi.fn(),
       stop_task_polling: vi.fn()
     }
@@ -378,6 +384,7 @@ describe('log page', () => {
       'NTable',
       'NButton',
       'NIcon',
+      'NText',
       'NSwitch',
       'NModal',
       'NCheckbox',
@@ -815,13 +822,62 @@ describe('log page', () => {
     }
   )
 
+  it('sets and cancels round stop from the stop menu while retaining immediate Stop', async () => {
+    state.mower.refs.running.value = true
+    const { find, all } = mountWorkspace()
+    const page = app._instance.setupState
+    const menu = () => page.stop_options.find((option) => option.key === 'after_round')
+    expect(menu().label).toBe('本轮结束后停止')
+    await page.select_stop_action('after_round')
+    expect(state.mower.set_stop_after_round).toHaveBeenCalledExactlyOnceWith(true)
+    state.mower.refs.stop_after_round.value = true
+    await nextTick()
+    expect(menu().label).toBe('取消本轮结束后停止')
+    expect(all().some((node) => node.text.includes('将在本轮结束后停止'))).toBe(true)
+    expect(find((node) => node.props.onClick === page.stop).props.disabled).toBe(false)
+    await page.select_stop_action('after_round')
+    expect(state.mower.set_stop_after_round).toHaveBeenLastCalledWith(false)
+  })
+
+  it('blocks duplicate round-stop requests but keeps immediate Stop available', async () => {
+    state.mower.refs.running.value = true
+    let resolveRequest
+    state.mower.set_stop_after_round.mockImplementation(
+      () => new Promise((resolve) => (resolveRequest = resolve))
+    )
+    const page = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    const request = page.select_stop_action('after_round')
+    expect(page.stop_options.value[0].disabled).toBe(true)
+    expect(state.mower.refs.waiting.value).toBe(false)
+    await page.select_stop_action('after_round')
+    expect(state.mower.set_stop_after_round).toHaveBeenCalledOnce()
+    resolveRequest()
+    await request
+    expect(page.stop_options.value[0].disabled).toBe(false)
+  })
+
+  it('shows request errors and allows another attempt', async () => {
+    state.mower.set_stop_after_round.mockRejectedValueOnce({
+      response: { data: { error: '任务已经结束' } }
+    })
+    const page = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    await page.select_stop_action('after_round')
+    expect(state.error).toHaveBeenCalledExactlyOnceWith('任务已经结束')
+    expect(page.round_stop_busy.value).toBe(false)
+    expect(state.mower.refs.stop_after_round.value).toBe(false)
+  })
+
   it('runs both process actions directly through ProcessControl', async () => {
     state.mower.refs.running.value = true
     const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
     const applySchedule = vi.fn()
     const restartResume = vi.fn()
-    expect(component.stop_options.value[1].disabled).toBe(true)
-    expect(component.stop_options.value[2].disabled).toBe(true)
+    expect(
+      component.stop_options.value.find((option) => option.key === 'apply_schedule').disabled
+    ).toBe(true)
+    expect(
+      component.stop_options.value.find((option) => option.key === 'restart_resume').disabled
+    ).toBe(true)
 
     component.process_control.value = {
       canRunProcessAction: true,
@@ -830,12 +886,17 @@ describe('log page', () => {
     }
     await nextTick()
     expect(component.stop_options.value.map((option) => option.label)).toEqual([
+      '本轮结束后停止',
       '停止MAA',
       '应用排班',
       '重启续接'
     ])
-    expect(component.stop_options.value[1].disabled).toBe(false)
-    expect(component.stop_options.value[2].disabled).toBe(false)
+    expect(
+      component.stop_options.value.find((option) => option.key === 'apply_schedule').disabled
+    ).toBe(false)
+    expect(
+      component.stop_options.value.find((option) => option.key === 'restart_resume').disabled
+    ).toBe(false)
 
     component.select_stop_action('apply_schedule')
     component.select_stop_action('restart_resume')

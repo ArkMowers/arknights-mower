@@ -25,6 +25,7 @@ def maintenance(*, hours=6, update_type="major", title="停机维护"):
         start=datetime.now() + timedelta(hours=hours),
         update_type=update_type,
         is_flash_update="闪断更新" in title,
+        manual=False,
     )
 
 

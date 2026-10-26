@@ -30,7 +30,7 @@ from werkzeug.security import safe_join
 
 from arknights_mower import __system__
 from arknights_mower.solvers.record import clear_data, load_state, save_state
-from arknights_mower.utils import config, network_settings
+from arknights_mower.utils import config, network_settings, round_stop
 from arknights_mower.utils.config.plan_advanced import (
     apply_advanced_settings,
     export_advanced_settings,
@@ -1913,6 +1913,9 @@ def get_status():
         "plan_condition": [],
         "status": "stopped",
         "scheduled_start_at": start_at,
+        "stop_after_round": bool(
+            mower_thread and mower_thread.is_alive() and round_stop.pending()
+        ),
         "next_task_time": None,
         "remaining_seconds": None,
     }
@@ -2030,6 +2033,7 @@ def _run_mower_worker(saved_state, preparation_serial=None):
                 f"工作线程发生异常：{exc}；后台退避后自动重新观察并接续任务。"
             )
     finally:
+        round_stop.cancel()
         if saved_state.get("_process_crash_recovery"):
             from arknights_mower.utils import crash_recovery
 
@@ -2087,6 +2091,7 @@ def _start_mower(
         tmp_dir.mkdir(exist_ok=True)
 
         config.stop_mower.clear()
+        round_stop.cancel()
         # Reset starts must not deserialize a snapshot from an older version.
         saved_state = (
             recovery_state
@@ -2205,6 +2210,25 @@ def scheduled_start():
     return {"scheduled_start_at": start_at}
 
 
+@app.route("/stop-after-round", methods=["PUT", "DELETE"])
+@require_token
+def stop_after_round():
+    with maa_maintenance_lock:
+        if request.method == "DELETE":
+            round_stop.cancel()
+        else:
+            if (
+                shutdown.closing
+                or active_job()
+                or not mower_thread
+                or not mower_thread.is_alive()
+                or _performance_test_status()["status"] == "running"
+                or not round_stop.request_stop()
+            ):
+                return {"error": "当前没有可等待结束的任务，或任务正在停止"}, 409
+        return {"stop_after_round": round_stop.pending()}
+
+
 @app.route("/stop")
 @require_token
 @save_state
@@ -2231,6 +2255,7 @@ def _request_mower_stop(*, preserve_run_intent=False):
         logger.exception("记录任务停止意图失败，继续取消工作线程")
     finally:
         config.stop_mower.set()
+        round_stop.cancel()
         if not preserve_run_intent:
             try:
                 crash_recovery.cancel()
