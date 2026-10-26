@@ -48,6 +48,8 @@ class MaintenanceInfo:
     announcement_id: str
     manual: bool = False
     prepare: bool = True
+    restart_after_update: bool = True
+    preparation_pending: bool = False
 
     @property
     def allows_early_login(self) -> bool:
@@ -67,6 +69,12 @@ class MaintenanceInfo:
         return self.end
 
     def active_at(self, now: datetime) -> bool:
+        if (
+            self.manual
+            and self.update_type == "major"
+            and (not self.restart_after_update or self.preparation_pending)
+        ):
+            return self.start <= now
         return self.start <= now < self.resume_at
 
 
@@ -81,7 +89,11 @@ class NewsChecker:
     @classmethod
     def get_manual_maintenances(cls, now=None):
         now = now or datetime.now()
-        return [info for info in cls.manual_maintenance_provider() if now < info.end]
+        return [
+            info
+            for info in cls.manual_maintenance_provider()
+            if now < info.end or info.active_at(now)
+        ]
 
     @classmethod
     def get_effective_maintenance(cls):
@@ -100,6 +112,9 @@ class NewsChecker:
                     and not info.manual
                     and info.update_type == "major"
                 ),
+                not (
+                    info.active_at(now) and info.manual and info.update_type == "major"
+                ),
                 not (info.manual and info.active_at(now)),
                 info.start,
             ),
@@ -117,7 +132,7 @@ class NewsChecker:
                 if info is not None
                 and info.update_type == "major"
                 and not info.is_flash_update
-                and now < info.start
+                and (now < info.start or info.manual and info.active_at(now))
             ),
             key=lambda info: info.start,
             default=None,

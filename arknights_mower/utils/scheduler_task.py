@@ -184,7 +184,9 @@ def task_view(tasks, scope, op_data=None):
         return [
             task
             for task in tasks
-            if not getattr(task, "execution_failure", None) and id(task) not in blocked
+            if not getattr(task, "execution_failure", None)
+            and not getattr(task, "maintenance_preparation_pending", False)
+            and id(task) not in blocked
         ]
     if scope == TaskScope.REPLAN:
         return [task for task in tasks if not task.retains_execution]
@@ -3644,6 +3646,8 @@ class SchedulerTask:
             announcement_id=f"manual-{self.type.value}-{self.time.isoformat()}",
             manual=True,
             prepare=getattr(self, "maintenance_mode", "prepare") == "prepare",
+            restart_after_update=getattr(self, "duration_minutes", 10) > 0,
+            preparation_pending=getattr(self, "maintenance_preparation_pending", False),
         )
 
     @property
@@ -3721,6 +3725,12 @@ class SchedulerTask:
     def display_name(self):
         if self.type in MAINTENANCE_TASK_TYPES:
             mode = "提前准备" if self.maintenance_info.prepare else "直接暂停"
+            if self.type == TaskTypes.SERVER_UPDATE:
+                mode = (
+                    "定时启动"
+                    if self.maintenance_info.restart_after_update
+                    else "关闭进程"
+                )
             return f"{self.type.display_value}（{getattr(self, 'duration_minutes', 10)} 分钟，{mode}）"
         if target := getattr(self, "replacement_check", None):
             return self.meta_data or f"替班心情检查：{target['cover']}"

@@ -1185,7 +1185,7 @@ class Operators:
         return counts.get(item_name, 0)
 
     def major_maintenance_remaining_hours(self) -> float:
-        """返回停服大更新开始前的小时数；已停服时条件不成立。"""
+        """返回停服前小时数；手动停服准备保持为零，公告停服后不成立。"""
         info = (
             self._projection_maintenance
             if hasattr(self, "_projection_maintenance")
@@ -1196,6 +1196,8 @@ class Operators:
         hours = (
             info.start - (getattr(self, "_projection_now", None) or datetime.now())
         ).total_seconds() / 3600
+        if info.manual and info.active_at(datetime.now()):
+            return 0.0
         return hours if hours > 0 else float("inf")
 
     def next_major_maintenance_check(self, now=None):

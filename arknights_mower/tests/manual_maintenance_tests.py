@@ -18,6 +18,7 @@ from arknights_mower.utils.scheduler_task import (
     MAINTENANCE_TASK_TYPES,
     SchedulerTask,
     TaskTypes,
+    find_next_task,
     protect_priority_tasks,
     replan_update_tasks,
     scheduling,
@@ -48,8 +49,11 @@ def update_task(maintenance, kind=TaskTypes.FLASH_UPDATE, mode="prepare", minute
     return task
 
 
-@pytest.mark.parametrize("kind", list(MAINTENANCE_TASK_TYPES))
-@pytest.mark.parametrize("duration", [None, 25])
+@pytest.mark.parametrize(
+    "kind,duration",
+    [(kind, duration) for kind in MAINTENANCE_TASK_TYPES for duration in (None, 25)]
+    + [(TaskTypes.SERVER_UPDATE, 0)],
+)
 def test_authenticated_route_creates_window_without_roster_and_wakes(
     maintenance, monkeypatch, kind, duration
 ):
@@ -83,13 +87,14 @@ def test_authenticated_route_creates_window_without_roster_and_wakes(
     (task,) = maintenance.solver.tasks
     assert task.type == kind
     assert task.plan == {} and task.meta_data == ""
-    assert task.duration_minutes == (duration or 10)
+    expected_duration = 10 if duration is None else duration
+    assert task.duration_minutes == expected_duration
     assert task.maintenance_mode == "prepare"
     assert maintenance.module.config.wake_scheduler.is_set()
     assert maintenance.module.config.maintenance_recheck.is_set()
     result = client.get("/task", headers={"token": "test-token"}).json[0]
-    assert str(duration or 10) in result["display_name"]
-    assert result["duration_minutes"] == (duration or 10)
+    assert str(expected_duration) in result["display_name"]
+    assert result["duration_minutes"] == expected_duration
     maintenance.io.assert_not_called()
 
 
@@ -166,12 +171,11 @@ def test_flash_update_reuses_order_and_support_advance_only_in_prepare_mode(
     assert [(id(task), task.time) for task in maintenance.solver.tasks] == snapshot
 
 
-@pytest.mark.parametrize("kind", list(MAINTENANCE_TASK_TYPES))
 @pytest.mark.parametrize("elapsed", [0, 4, 5, 9, 10])
-def test_manual_window_waits_to_exact_end_without_probe_or_stopping(
-    maintenance, monkeypatch, kind, elapsed
+def test_manual_flash_waits_to_exact_end_without_probe_or_stopping(
+    maintenance, monkeypatch, elapsed
 ):
-    update = update_task(maintenance, kind=kind, minutes=0)
+    update = update_task(maintenance, minutes=0)
     info = update.maintenance_info
     maintenance.clock.current += timedelta(minutes=elapsed)
     solver = maintenance.solver
@@ -192,6 +196,82 @@ def test_manual_window_waits_to_exact_end_without_probe_or_stopping(
     assert not maintenance.main._flash_probe_ids
     stop.assert_not_called()
     assert not maintenance.module.config.stop_mower.is_set()
+
+
+@pytest.mark.parametrize("elapsed", [0, 4, 9])
+def test_manual_server_stops_and_returns_exact_restart_time(
+    maintenance, monkeypatch, elapsed
+):
+    from arknights_mower.solvers import record
+
+    update = update_task(maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=0)
+    maintenance.clock.current += timedelta(minutes=elapsed)
+    save = Mock(return_value=True)
+    monkeypatch.setattr(record, "save_current_state", save)
+    maintenance.solver._idle_sleep = Mock()
+    maintenance.solver.handle_idle_action = Mock()
+    info = maintenance.main._handle_maintenance(
+        update.maintenance_info, maintenance.solver
+    )
+    assert info == update.maintenance_info
+    assert info.end == update.time + timedelta(minutes=10)
+    save.assert_not_called()
+    assert maintenance.module.config.stop_mower.is_set()
+    maintenance.solver._idle_sleep.assert_not_called()
+    maintenance.solver.handle_idle_action.assert_not_called()
+    maintenance.io.assert_not_called()
+
+
+def test_startup_server_update_returns_restart_before_device_initialization(
+    maintenance, monkeypatch
+):
+    update = update_task(maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=-4)
+    main = maintenance.main
+    monkeypatch.setattr(main, "base_scheduler", None)
+    monkeypatch.setattr(main, "_startup_maintenance_tasks", ())
+    monkeypatch.setattr(main, "_arm_maintenance_timer", Mock())
+    monkeypatch.setattr(main.rapidocr, "initialize_ocr", Mock())
+    monkeypatch.setattr(main, "simulate", Mock())
+    monkeypatch.setattr(
+        main, "csleep", Mock(side_effect=AssertionError("server downtime must stop"))
+    )
+    result = main._main({"tasks": [update]})
+    assert result == update.maintenance_info
+    assert maintenance.module.config.stop_mower.is_set()
+    main.rapidocr.initialize_ocr.assert_not_called()
+    main.simulate.assert_not_called()
+    main.csleep.assert_not_called()
+
+
+@pytest.mark.parametrize("server_minutes", [0, 5])
+def test_overlapping_flash_hands_control_to_server_stop_at_its_start(
+    maintenance, monkeypatch, server_minutes
+):
+    flash = update_task(maintenance, minutes=-1)
+    server = update_task(
+        maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=server_minutes
+    )
+    main = maintenance.main
+    monkeypatch.setattr(main, "base_scheduler", None)
+    monkeypatch.setattr(main, "_startup_maintenance_tasks", ())
+    monkeypatch.setattr(main, "_arm_maintenance_timer", Mock())
+    monkeypatch.setattr(main.rapidocr, "initialize_ocr", Mock())
+    monkeypatch.setattr(main, "simulate", Mock())
+    sleep = Mock(
+        side_effect=lambda seconds: setattr(
+            maintenance.clock,
+            "current",
+            maintenance.clock.now() + timedelta(seconds=seconds),
+        )
+    )
+    monkeypatch.setattr(main, "csleep", sleep)
+    result = main._main({"tasks": [flash, server]})
+    assert result == server.maintenance_info
+    assert maintenance.clock.now() == server.time
+    assert maintenance.module.config.stop_mower.is_set()
+    main.rapidocr.initialize_ocr.assert_not_called()
+    main.simulate.assert_not_called()
+    assert sleep.call_count == (1 if server_minutes else 0)
 
 
 def test_active_window_yields_before_scheduler_device_work_and_preserves_queue(
@@ -228,22 +308,99 @@ def test_server_update_supplies_existing_backup_threshold_without_flash_activati
     assert Operators.next_major_maintenance_check(data) is None
     task.type = TaskTypes.SERVER_UPDATE
     maintenance.clock.current = task.time
-    assert Operators.major_maintenance_remaining_hours(data) == float("inf")
+    assert Operators.major_maintenance_remaining_hours(data) == 0.0
 
 
-@pytest.mark.parametrize("kind", list(MAINTENANCE_TASK_TYPES))
+@pytest.mark.parametrize(
+    "kind,duration",
+    [(kind, 35) for kind in MAINTENANCE_TASK_TYPES] + [(TaskTypes.SERVER_UPDATE, 0)],
+)
 def test_restored_update_preserves_duration_mode_and_original_timestamp(
-    maintenance, kind
+    maintenance, kind, duration
 ):
     task = update_task(maintenance, kind=kind)
-    task.duration_minutes = 35
+    task.duration_minutes = duration
     (restored,) = pickle.loads(pickle.dumps([task]))
     maintenance.solver.tasks = [restored]
     assert restored.time == task.time
-    assert restored.duration_minutes == 35
+    assert restored.duration_minutes == duration
+    assert restored.maintenance_info.restart_after_update == (duration > 0)
     assert restored.maintenance_mode == "prepare"
     assert restored.maintenance_info in NewsChecker.get_manual_maintenances()
     assert replan_update_tasks({"tasks": [restored]})["tasks"][0] is restored
+
+
+@pytest.mark.parametrize("elapsed", [0, 4])
+def test_zero_duration_startup_consumes_only_shutdown_task_and_saves_before_exit(
+    maintenance, monkeypatch, elapsed
+):
+    from arknights_mower.solvers import record
+
+    task = update_task(maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=-elapsed)
+    task.duration_minutes = 0
+    pending = SchedulerTask(maintenance.clock.now(), task_type=TaskTypes.MAIL)
+    saved = {"tasks": [task, pending], "other_state": "preserved"}
+    main = maintenance.main
+    monkeypatch.setattr(main, "base_scheduler", None)
+    monkeypatch.setattr(main, "_startup_maintenance_tasks", ())
+    monkeypatch.setattr(main, "_arm_maintenance_timer", Mock())
+    monkeypatch.setattr(main.rapidocr, "initialize_ocr", Mock())
+    monkeypatch.setattr(main, "simulate", Mock())
+    write = Mock(return_value=True)
+    monkeypatch.setattr(record, "save_state_to_db", write)
+    result = main._main(saved)
+    assert result == task.maintenance_info
+    assert not result.restart_after_update
+    main._save_manual_update_state(result, saved)
+    write.assert_called_once_with({"tasks": [pending], "other_state": "preserved"})
+    main.rapidocr.initialize_ocr.assert_not_called()
+    main.simulate.assert_not_called()
+    assert maintenance.module.config.stop_mower.is_set()
+
+
+def test_managed_instance_rejects_zero_duration_without_process_permission(
+    maintenance, monkeypatch
+):
+    from arknights_mower.utils import managed_device
+    from arknights_mower.views import task as route
+
+    app = Flask(__name__)
+    app.token = "test-token"
+    app.register_blueprint(route.task_bp)
+    monkeypatch.setattr(route, "mower_thread", Mock(is_alive=Mock(return_value=True)))
+    monkeypatch.setattr(managed_device, "extra_settings_allowed", lambda _: False)
+    result = app.test_client().post(
+        "/task",
+        json={
+            "task": {
+                "time": "2026-10-01T03:00:00.000Z",
+                "plan": {},
+                "task_type": "停服更新",
+                "meta_data": "",
+                "duration_minutes": 0,
+            }
+        },
+        headers={"token": "test-token"},
+    )
+    assert "多开管理器" in result.text
+    assert maintenance.solver.tasks == []
+    assert not maintenance.module.config.wake_scheduler.is_set()
+
+
+def test_zero_duration_failed_snapshot_keeps_shutdown_task_for_manual_recovery(
+    maintenance, monkeypatch
+):
+    from arknights_mower.solvers import record
+
+    task = update_task(maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=0)
+    task.duration_minutes = 0
+    pending = SchedulerTask(maintenance.clock.now(), task_type=TaskTypes.MAIL)
+    saved = {"tasks": [task, pending]}
+    monkeypatch.setattr(maintenance.main, "base_scheduler", None)
+    monkeypatch.setattr(record, "save_state_to_db", Mock(return_value=False))
+    with pytest.raises(RuntimeError, match="保存任务状态失败"):
+        maintenance.main._save_manual_update_state(task.maintenance_info, saved)
+    assert saved["tasks"] == [task, pending]
 
 
 def test_manual_pause_takes_precedence_over_announced_flash_probe(
@@ -278,23 +435,110 @@ def test_manual_server_timer_wakes_without_requesting_client_update(
     timer.call_args.args[1]()
     stop.assert_not_called()
     assert maintenance.module.config.wake_scheduler.is_set()
+    assert not maintenance.module.config.stop_mower.is_set()
     assert maintenance.module.config.maintenance_recheck.is_set()
 
 
+@pytest.mark.parametrize("duration", [0, 10])
 def test_manual_server_update_activates_and_exits_the_existing_backup(
-    maintenance, backup_solver, monkeypatch
+    maintenance, backup_solver, monkeypatch, duration
 ):
     from arknights_mower.utils import operators
 
     monkeypatch.setattr(operators, "datetime", maintenance.clock)
     task = update_task(maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=20)
+    task.duration_minutes = duration
     backup_solver.backup_plan_solver()
     assert backup_solver.op_data.plan_condition == [True]
     assert backup_solver.op_data.run_order_paused
     maintenance.clock.current = task.maintenance_info.end
+    if duration == 0:
+        maintenance.solver.tasks.remove(task)
     backup_solver.backup_plan_solver()
     assert backup_solver.op_data.plan_condition == [False]
     assert not backup_solver.op_data.run_order_paused
+
+
+@pytest.mark.parametrize("duration", [0, 10])
+def test_due_server_update_waits_for_actual_backup_shift_before_stopping(
+    maintenance, backup_solver, monkeypatch, duration
+):
+    from arknights_mower.utils import operators
+
+    monkeypatch.setattr(operators, "datetime", maintenance.clock)
+    task = update_task(maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=0)
+    task.duration_minutes = duration
+    backup_solver.tasks = [task]
+    monkeypatch.setattr(maintenance.main, "base_scheduler", backup_solver)
+    # 没有跑单替班时，直接经过原有的维护副表换班流程。
+    for op in backup_solver.op_data.operators.values():
+        op.replacement = []
+    assert (
+        maintenance.main._handle_maintenance(task.maintenance_info, backup_solver)
+        is False
+    )
+    assert backup_solver.op_data.plan_condition == [True]
+    shifts = [
+        pending
+        for pending in backup_solver.tasks
+        if pending.meta_data == "副表内存收敛"
+    ]
+    assert shifts
+    assert task.maintenance_preparation_pending
+    assert (
+        find_next_task(backup_solver.tasks, op_data=backup_solver.op_data) is not task
+    )
+    snapshot = [(id(pending), pending.time) for pending in backup_solver.tasks]
+    for _ in range(3):
+        assert (
+            maintenance.main._handle_maintenance(task.maintenance_info, backup_solver)
+            is False
+        )
+        assert [
+            (id(pending), pending.time) for pending in backup_solver.tasks
+        ] == snapshot
+        assert not maintenance.module.config.stop_mower.is_set()
+
+    # 切表任务失败时保留原停止任务，并让无关的可执行任务继续调度。
+    for shift in shifts:
+        shift.execution_failure = {"reason": "controlled device failure"}
+    # 消费切表流程附带的普通规划唤醒，再检查无关任务的调度。
+    backup_solver.tasks[:] = [task, *shifts]
+    unrelated = SchedulerTask(maintenance.clock.now(), task_type=TaskTypes.MAIL)
+    backup_solver.tasks.append(unrelated)
+    assert (
+        maintenance.main._handle_maintenance(task.maintenance_info, backup_solver)
+        is False
+    )
+    assert (
+        find_next_task(backup_solver.tasks, op_data=backup_solver.op_data) is unrelated
+    )
+    assert task.time == maintenance.clock.now()
+
+    # 模拟设备边界确认已完成换班并移除任务，下一次检查才允许停止。
+    backup_solver.tasks[:] = [task, unrelated]
+    backup_solver.maintenance_entry_pending = False
+    result = maintenance.main._handle_maintenance(task.maintenance_info, backup_solver)
+    assert isinstance(result, MaintenanceInfo)
+    assert not task.maintenance_preparation_pending
+    assert maintenance.module.config.stop_mower.is_set()
+    assert unrelated in backup_solver.tasks
+
+
+def test_pending_server_preparation_survives_overdue_cleanup_and_snapshot(maintenance):
+    task = update_task(maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=-20)
+    task.maintenance_preparation_pending = True
+    stale = SchedulerTask(task.time, task_type=TaskTypes.SHIFT_OFF)
+    unrelated = SchedulerTask(maintenance.clock.now(), task_type=TaskTypes.MAIL)
+    maintenance.solver.tasks.extend([stale, unrelated])
+    maintenance.solver.handle_error(True)
+    assert task in maintenance.solver.tasks
+    assert task.maintenance_info in NewsChecker.get_manual_maintenances()
+    (restored,) = pickle.loads(pickle.dumps([task]))
+    assert restored.time == task.time
+    assert restored.maintenance_preparation_pending
+    assert restored.maintenance_info.active_at(maintenance.clock.now())
+    assert find_next_task([task, unrelated]) is unrelated
 
 
 def test_update_start_is_fixed_even_when_an_order_needs_the_same_operation_window(
@@ -394,6 +638,36 @@ def test_main_removes_only_expired_manual_windows_before_dispatch(
     assert len(solver.tasks) == 1
     assert solver.tasks[0] is pending
     solver.run.assert_called_once()
+
+
+def test_main_dispatches_backup_preparation_before_due_server_stop(
+    maintenance, monkeypatch
+):
+    from arknights_mower.utils.csleep import MowerExit
+
+    task = update_task(maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=0)
+    task.duration_minutes = 0
+    task.maintenance_preparation_pending = True
+    shift = SchedulerTask(
+        maintenance.clock.now(), {"room_1_1": ["但书"]}, TaskTypes.SELF_CORRECTION
+    )
+    solver = Mock()
+    solver.tasks = [task, shift]
+    solver.initialize_operators.return_value = None
+    solver.op_data.validate_backup_plans.return_value = {"success": True}
+    solver._initial_mood_refresh_rooms = set()
+    solver._prepare_manual_server_update.return_value = False
+    solver.run.side_effect = MowerExit
+    main = maintenance.main
+    monkeypatch.setattr(main, "base_scheduler", None)
+    monkeypatch.setattr(main, "initialize", Mock(return_value=solver))
+    monkeypatch.setattr(main, "_apply_version_update_resting_threshold", Mock())
+    monkeypatch.setattr(main, "refresh_resource_at_boundary", Mock())
+    main.simulate(None)
+    solver._prepare_manual_server_update.assert_called_once_with(task.maintenance_info)
+    solver.run.assert_called_once()
+    assert task in solver.tasks
+    assert not maintenance.module.config.stop_mower.is_set()
 
 
 @pytest.mark.parametrize(

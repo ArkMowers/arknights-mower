@@ -219,6 +219,19 @@ describe('manual task dialog', () => {
     expect(axios.post.mock.calls[0][1].task.maintenance_mode).toBe('prepare')
   })
 
+  it('submits zero duration for server shutdown without a timed start', async () => {
+    component.task_type.value = '停服更新'
+    component.duration_minutes.value = 0
+    await component.saveTasks()
+    expect(axios.post.mock.calls[0][1].task).toMatchObject({
+      task_type: '停服更新',
+      duration_minutes: 0,
+      maintenance_mode: 'prepare'
+    })
+    component.clear()
+    expect(component.duration_minutes.value).toBe(10)
+  })
+
   it.each([null, 0, -1, 1.5, 10081])(
     'rejects invalid duration %s before submitting',
     async (duration) => {

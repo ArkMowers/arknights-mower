@@ -966,6 +966,40 @@ class BaseSchedulerSolver(
                 task.__dict__.pop("process_recovery_fia_wait", None)
                 logger.info("相关观测或安排已更新，恢复原任务：%s", task)
 
+    def _prepare_manual_server_update(self, info):
+        """先完成适用的停服副表和既有准备任务，再允许停服任务停止 Mower。"""
+        windows = [
+            task
+            for task in self.tasks
+            if task.type == TaskTypes.SERVER_UPDATE
+            and task.maintenance_info.announcement_id == info.announcement_id
+        ]
+        if not windows or not any(
+            backup.uses_major_maintenance_condition
+            for backup in getattr(self.op_data, "backup_plans", ())
+        ):
+            return True
+        for task in windows:
+            task.maintenance_preparation_pending = True
+        self.backup_plan_solver()
+        selection = self.op_data.evaluate_backup_selection()
+        pending = (
+            selection.conditions != self.op_data.plan_condition
+            or selection.group_id != self.op_data.backup_group
+            or getattr(self, "maintenance_entry_pending", False)
+            or any(
+                getattr(task, "backup_shift_active", False)
+                or task.meta_data == "副表内存收敛"
+                or getattr(task, "group_shift_expected", {})
+                or getattr(task, "maintenance_replacement_run", False)
+                or getattr(task, "maintenance_advance_before_backup", False)
+                for task in self.tasks
+            )
+        )
+        for task in windows:
+            task.maintenance_preparation_pending = bool(pending)
+        return not pending
+
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
@@ -979,6 +1013,7 @@ class BaseSchedulerSolver(
         if any(
             task.type in MAINTENANCE_TASK_TYPES
             and task.maintenance_info.active_at(datetime.now())
+            and not getattr(task, "maintenance_preparation_pending", False)
             for task in self.tasks
         ):
             config.maintenance_recheck.set()
@@ -2098,6 +2133,7 @@ class BaseSchedulerSolver(
                 and not getattr(t, "execution_failure", None)
                 and not getattr(t, "execution_retained", False)
                 and not getattr(t, "replacement_check", None)
+                and not getattr(t, "maintenance_preparation_pending", False)
                 for t in self.tasks
             ):
                 logger.info(
@@ -2116,6 +2152,7 @@ class BaseSchedulerSolver(
                     or getattr(t, "execution_failure", None)
                     or getattr(t, "execution_retained", False)
                     or getattr(t, "replacement_check", None)
+                    or getattr(t, "maintenance_preparation_pending", False)
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始

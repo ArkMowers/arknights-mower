@@ -137,10 +137,13 @@ async function saveTasks() {
   if (isMaintenance.value) {
     if (
       !Number.isInteger(duration_minutes.value) ||
-      duration_minutes.value < 1 ||
+      duration_minutes.value < (task_type.value === '停服更新' ? 0 : 1) ||
       duration_minutes.value > 10080
     ) {
-      msg.value = '更新时长须为 1 至 10080 分钟的整数'
+      msg.value =
+        task_type.value === '停服更新'
+          ? '停服更新时长须为 0 至 10080 分钟的整数，0 表示不定时启动'
+          : '更新时长须为 1 至 10080 分钟的整数'
       error.value = true
       return
     }
@@ -433,7 +436,12 @@ const level_list = [
       <template v-if="isMaintenance">
         <div class="task_row">
           <label>更新时长（分钟）：</label>
-          <n-input-number v-model:value="duration_minutes" :min="1" :max="10080" :precision="0" />
+          <n-input-number
+            v-model:value="duration_minutes"
+            :min="task_type === '停服更新' ? 0 : 1"
+            :max="10080"
+            :precision="0"
+          />
         </div>
         <div v-if="task_type === '闪断更新'" class="task_row">
           <label>处理方式：</label>
@@ -447,14 +455,23 @@ const level_list = [
           />
         </div>
         <n-text depth="3">
-          从所选时间开始暂停，满设定时长后继续；期间不会提前尝试登录。
           <template v-if="task_type === '停服更新'">
-            会按已有提前量触发停服更新副表，并复用停服更新前的跑单和换人安排。
+            更新前会按已有提前量触发适用的停服更新副表；切表和准备任务完成后才会停止。填写 0
+            表示关闭进程且不定时启动。
+            <template v-if="duration_minutes > 0">
+              从所选时间停止
+              Mower，并创建在设定时长结束后继续运行的定时启动任务；期间不会提前尝试登录。
+              可在停止后取消定时启动；关闭程序会取消预约。
+            </template>
+            <template v-else>从所选时间关闭 Mower 进程，不创建定时启动任务。</template>
           </template>
-          <template v-else-if="maintenance_mode === 'prepare'">
-            更新前会按现有闪断更新规则提前跑单、更换专精协助干员。
+          <template v-else>
+            从所选时间开始暂停，满设定时长后继续；期间不会提前尝试登录。
+            <template v-if="maintenance_mode === 'prepare'">
+              更新前会按现有闪断更新规则提前跑单、更换专精协助干员。
+            </template>
+            <template v-else>不为本次更新提前跑单或换人。</template>
           </template>
-          <template v-else>不为本次更新提前跑单或换人。</template>
         </n-text>
       </template>
       <n-text v-if="task_type === '日常任务' && daily_task === '日常任务'" depth="3">
