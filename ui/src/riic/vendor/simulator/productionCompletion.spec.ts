@@ -52,7 +52,7 @@ describe('sample endpoint production collection',()=>{
   expect(p.sample.inflows.lmd).toBe(0)
   expect(p.events.filter(e=>e.type==='collect-manufacture:room_1_1')).toEqual([{time:3.1,type:'collect-manufacture:room_1_1',delta:{exp:1000}}])
   const daily=1000*24/3.1
-  expect(scoreSimulationProduction(report).exp).toBeCloseTo(8000,8)
+  expect(scoreSimulationProduction(report).exp).toBeCloseTo(daily,8)
   expect(simulationReportToCalculationReport(workspace,report).summary!.exp).toBeCloseTo(daily,8)
   expect(report.elapsedHours).toBe(3.1)
   expect(report.segments.reduce((n,s)=>n+s.end-s.start,0)).toBeCloseTo(3.1,8)

@@ -572,15 +572,7 @@ it.each(['龙舌兰', '可露希尔'])(
       (result.resources.inflows.gold * 500 + premiums) / (result.observedHours / 24),
       6
     )
-    const completedScore = value * 0.8 + result.summary.orderLmd * 0.2
-    const adjustment = result.summary.valuation.adjustment.amounts
-    const estimatedScore =
-      (adjustment.exp +
-        (adjustment.gold + adjustment.virtualGold) * 500 * 0.8 +
-        adjustment.orderLmd * 0.2) /
-      (result.observedHours / 24)
-    expect(result.summary.valuation.completedScore.daily).toBeCloseTo(completedScore, 6)
-    expect(result.summary.totalScore82).toBeCloseTo(completedScore + estimatedScore, 6)
+    expect(result.summary.totalScore82).toBeCloseTo(value * 0.8 + result.summary.orderLmd * 0.2, 6)
     expect(result.resources.closing.gold).toBeCloseTo(
       (result.resources.opening.gold ?? 0) +
         (result.resources.inflows.gold ?? 0) -

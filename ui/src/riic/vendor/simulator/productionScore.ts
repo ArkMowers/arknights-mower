@@ -1,4 +1,4 @@
-import { scoreProduction, scoreProductionAdjustment, type CompletedProduction, type ProductionScore } from '../domain/productionScore'
+import { scoreProduction, type CompletedProduction, type ProductionScore } from '../domain/productionScore'
 import type { ScheduleSimulationReport } from './scheduleSimulation'
 import { virtualGoldEquivalent } from '../rules/orderValue'
 
@@ -28,10 +28,5 @@ export function simulationOutputAmounts(report:ScheduleSimulationReport):Complet
 
 /** Score the selected output mode without counting initial inventory as income. */
 export function scoreSimulationProduction(report:ScheduleSimulationReport):ProductionScore {
- const completed=scoreProduction(simulationOutputAmounts(report),report.observedHours,report.inputs.options.productionWeights)
- const valuation=report.production?.valuation
- if(!valuation)return completed
- const valuationAdjustment=scoreProductionAdjustment(valuation.adjustment,report.observedHours,report.inputs.options.productionWeights)
- const combined=Object.fromEntries(Object.entries(completed).map(([key,value])=>[key,(value as number)+(valuationAdjustment[key as keyof ProductionScore] as number)])) as unknown as ProductionScore
- return {...combined,completed,valuationAdjustment}
+ return scoreProduction(simulationOutputAmounts(report),report.observedHours,report.inputs.options.productionWeights)
 }

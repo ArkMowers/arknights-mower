@@ -124,22 +124,3 @@ it('returns no result for empty storage and reports incompatible data', async ()
   stored = { ...record(), version: 99 }
   await expect(loadIncomeArchive()).rejects.toThrow('格式不兼容')
 })
-it('preserves signed valuation without changing the completed product quantities or legacy scores', async () => {
-  const data = record()
-  data.result.summary = {
-    totalScore82: 75,
-    exp: 1000,
-    valuation: {
-      completedScore: { daily: 100, total: 2800 },
-      opening: { amounts: { exp: 500 }, score: { daily: 50, total: 1400 } },
-      closing: { amounts: { exp: 250 }, score: { daily: 25, total: 700 } },
-      adjustment: { amounts: { exp: -250 }, score: { daily: -25, total: -700 } }
-    }
-  }
-  await saveIncomeArchive(data)
-  const restored = await loadIncomeArchive()
-  expect(restored.result.summary).toEqual(data.result.summary)
-  delete restored.result.summary.valuation
-  await saveIncomeArchive(restored)
-  expect((await loadIncomeArchive()).result.summary).toEqual({ totalScore82: 75, exp: 1000 })
-})

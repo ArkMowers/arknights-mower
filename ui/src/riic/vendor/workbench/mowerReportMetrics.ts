@@ -11,9 +11,9 @@ export function mowerReportMetrics(report: ScheduleSimulationReport) {
   const factor = 24 / report.observedHours
   const orders = simulationOutputOrders(report).filter(order => order.kind !== 'orundum')
   const virtualGoldCount = orders.reduce((n, o) => n + virtualGoldEquivalent(o), 0)
-  const score = scoreSimulationProduction(report),completed = score.completed ?? score
+  const score = scoreSimulationProduction(report)
   return {
-    exp: completed.exp, goldValue: completed.goldValue, orderLmd: completed.orderValue,
+    exp: score.exp, goldValue: score.goldValue, orderLmd: score.orderValue,
     virtualGoldCount: virtualGoldCount * factor,
     virtualGoldValue: virtualGoldCount * 500 * factor,
     mower82: score.total,

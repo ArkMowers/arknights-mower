@@ -122,7 +122,6 @@ function scoringReport(mode: 'settled' | 'potential') {
   report.inputs.options.productionWeights = { exp: 1, gold: .8, orders: .2, fragments: 10, orundum: 5 }
   const production = report.production!
   production.assumptions.outputMode = mode
-  delete production.valuation
   production.ledger.initial = { exp: 1000000, gold: 1000, lmd: 1000000, fragment: 100, orundum: 1000 }
   production.sample.completed = { exp: 9000, gold: 9, orderLmd: 2250 }
   production.sample.inflows = { exp: 1000, gold: 2, lmd: 2500, fragment: 3, orundum: 20 }

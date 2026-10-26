@@ -221,9 +221,9 @@
     "simulator/mowerTaskFailureReport.spec.ts": "90c2797e43e56607194428cbf3a115c3666d0969622215ec1a03a0d83fef5105",
     "simulator/orderTimeline.ts": "13cab8a17b33555054c70fd26d0e0bb9aeeb5d33810c5f0e336f38cfd1436d71",
     "simulator/productionCompletion.spec.ts": "64d5ddadad8d23314f6d3c8ea247a4b57fc26cc238eba3f0f9f7d55326ea144f",
+    "simulator/productionSampleAttribution.spec.ts": "27c48c0cdb62964bf9896d3e52f88944959fc80a64719e96cdfc7d72f71bde3c",
     "simulator/productionScore.ts": "5a547d6b9a82e8303a0104805a8eb0a5ece5691745116be636001d50b2744e50",
     "simulator/productionTimeline.ts": "f0603db72db6d8116d0b4494346e5745a255e58ef79b8d3005762de770df3d94",
-    "simulator/productionValuation.spec.ts": "30b7b23afc523568fded2a18126f4c4830ec06ee1abec1b19de0ee5270b8d25a",
     "simulator/recycleTimeline.ts": "3bad36431c5fcba877860a06748c59b91790e5052b54691939aedea0a091d136",
     "simulator/resourceLedger.ts": "46e8f98c97afdcacf654bac88067fc850318ed76ed4eacdc2a8f707e47c63827",
     "simulator/scheduleSimulation.spec.ts": "9d28b5c9fa302881a37dde7179fcacfe101442abb52eccb0a5e2d77d74e477b4",
@@ -257,8 +257,8 @@
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
-      "sha256": "df85feea5c3101d8e678e8eca337ed935332759c7b128e52985c25968aacf0a5",
-      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances. Capture warmup-adjusted quality probabilities only at new-order acquisition. Finalize a successful sampling endpoint by collecting completed manufacturing output, payable orders and recycling counts without opening new work or spending drones. Capture unfinished-production value at sample boundaries without advancing work, changing inventory or drawing orders; attribute delayed warmup receipts separately."
+      "sha256": "11ef976f19449ed3707c0443c10ee0bb3d81d3c2ab5f3e110e4b642bfe93da8e",
+      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances. Capture warmup-adjusted quality probabilities only at new-order acquisition. Finalize successful sampling by collecting completed manufacturing output, payable trade orders and recycling counts without opening new work or spending drones. Attribute delayed warmup receipts separately without altering physical inventory."
     },
     "simulator/scheduleSimulation.ts": {
       "sha256": "01216885bbb7d35232d6b0600d52dac4ec0465ed0177f64f0c3ef680bdbb0943",
@@ -720,37 +720,21 @@
       "reason": "Verify full Fiammetta targets complete simulation and production without charge events, retained failures or exhausted event budgets; preserve the initial sixteen-morale condition and full working target occupancy.",
       "sha256": "70ea21f8d2ef01145425553a59a664296c73bf9fed1384675127596ed0ae537d"
     },
-    "simulator/productionCompletion.spec.ts": {
-      "sha256": "8a3b5707289cf89537c59e6bf4530aa545c52c4e6e5b8a70b3395aa463ccf85a",
-      "reason": "Verify successful endpoint collection through simulateSchedule and the calculation summary, exact and unfinished work boundaries, finite payment constraints, no new manufacturing costs, recycling counts, initial inventory exclusion, idempotency and incomplete-run isolation."
-    },
-    "domain/productionScore.ts": {
-      "sha256": "b7274ac2a66df07c525c93f7b2b9e0244468ebae69c58fa303bcef7471f91693",
-      "reason": "Score signed unfinished-production adjustments separately while retaining nonnegative validation for completed output."
-    },
-    "domain/types.ts": {
-      "sha256": "3abac0de4459bfa33c2f3e37fe56a972edb761c4429d2e31b86b7a4a326f2162",
-      "reason": "Expose opening, closing and signed unfinished-production valuation separately from actual output quantities."
-    },
     "simulator/productionScore.ts": {
-      "sha256": "38cbc54d03da80da6386b69b9a21510b3f6db787c1a884655db859900644cd66",
-      "reason": "Exclude delayed warmup receipts and premiums from sample output; add the signed boundary valuation to weighted scores."
+      "sha256": "e165de19bd9ba0484013835ce2032cac1715127fc608eccac68167e0b826cce1",
+      "reason": "Exclude delayed warmup receipts and special-order premiums from sampled income; score completed output only."
     },
-    "simulator/productionValuation.spec.ts": {
-      "sha256": "30b7b23afc523568fded2a18126f4c4830ec06ee1abec1b19de0ee5270b8d25a",
-      "reason": "Verify base-work valuation, signed opening subtraction, boundary skill premiums, delayed warmup receipts, actual output separation and no physical side effects."
+    "simulator/productionCompletion.spec.ts": {
+      "sha256": "64d5ddadad8d23314f6d3c8ea247a4b57fc26cc238eba3f0f9f7d55326ea144f",
+      "reason": "Verify successful endpoint collection, exact and unfinished work boundaries, finite payment constraints, no new manufacturing costs, recycling counts, idempotency and incomplete-run isolation."
     },
-    "workbench/calculationBridge.ts": {
-      "sha256": "071a6e72bbedc8dfddb6550038fa8b405e223468989d5ffe33611aec7daab6d2",
-      "reason": "Expose completed scores and both boundary valuations with signed daily and total adjustments."
+    "simulator/productionSampleAttribution.spec.ts": {
+      "sha256": "27c48c0cdb62964bf9896d3e52f88944959fc80a64719e96cdfc7d72f71bde3c",
+      "reason": "Verify that delayed warmup manufacturing and trade receipts remain in physical inventory while their output and premiums are excluded from sampled income; unfinished work has no reporting value."
     },
     "workbench/inventorySimulationBridge.spec.ts": {
-      "sha256": "f6d9c88bf67e93c27e40b1a690bc3e8ede4ab83544071933e2f1ecc788286423",
-      "reason": "Verify completed and potential output attribution independently of optional unfinished-production valuation."
-    },
-    "workbench/mowerReportMetrics.ts": {
-      "sha256": "0f7135f164219b60c484473d95d35d64041b1ffe971148b6771875b77f3916b6",
-      "reason": "Keep completed resource quantities separate from weighted scores that include unfinished-production valuation."
+      "sha256": "0f8b9fe2413e0c3efffc3d623a68b1ae8c43268896a508f315a3d04ad5aef52b",
+      "reason": "Keep sampled order completion timestamps consistent with the selected settled or potential output fixture."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

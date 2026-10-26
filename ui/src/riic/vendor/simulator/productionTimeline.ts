@@ -9,15 +9,13 @@ import {evaluateManufacturingCapacity,type OperatorEfficiencyResult} from '../en
 import {evaluateTradeOrderCapacity} from '../engine/orderCapacity'
 import type {CompiledSchedule} from '../scheduler/types'
 import type {RuntimeState} from '../scheduler/rosterRuntime'
-import {getOrderDistribution,selectBaseOrder,captureOrder,type SpecialCapture,type OrderMode} from '../rules/orderRules'
+import {getOrderDistribution,selectBaseOrder,type SpecialCapture,type OrderMode} from '../rules/orderRules'
 import {startOrder,advanceOrder,finishOrder,type ActiveOrder} from './orderTimeline'
 import {createLedger,type ResourceAmounts,type ResourceKind} from './resourceLedger'
 import {createDroneState,generateDrones,spendDrones} from './droneTimeline'
 import {MANUFACTURING_FORMULAS,startManufacturing,authorizeManufacturingBatch,advanceManufacturing,collectManufacturing,nextManufacturingEvent,updateManufacturingCapacity,type ManufacturingFormulaId,type ManufacturingState} from './manufacturingTimeline'
 import { evaluateRecycleEfficiency } from '../engine/supportFacilitySkills'
 import { createRecycleTimeline, type RecycleProduction } from './recycleTimeline'
-import type { ProductionAdjustment } from '../domain/productionScore'
-import { virtualGoldEquivalent } from '../rules/orderValue'
 
 /** Reject legacy persisted/API options as well as typed callers. */
 export function assertRunOrderMode(mode: unknown): void {
@@ -39,14 +37,7 @@ export interface ProductionEvent {time:number;type:string;roomId?:string;orderId
 type CompletedOrder=ReturnType<typeof finishOrder>
 interface ManufactureRoom {completedByProduct:Record<string,number>;pendingSwitch?:{target:string;accelerated:boolean;readyAt?:number};roomId:string;state:ManufacturingState;blockedHours:number;blockedMaterialHours:number;collectedItems:number}
 interface TradeRoom {product:string;roomId:string;active:ActiveOrder|null;pending:CompletedOrder[];completedOrders:number;collectedOrders:number;blockedHours:number;limit:number|null;disabled:boolean;rng:number}
-export interface ProductionValuationSnapshot {
- amounts:ProductionAdjustment
- manufacturing:{roomId:string;formulaId:string;product:string;progress:number;quantity:number}[]
- trading:{roomId:string;orderId:string;progress:number;kind:string;lmdReward:number;orundumReward:number;goldCost:number;fragmentCost:number}[]
-}
-export interface ProductionValuation {policy:string;opening:ProductionValuationSnapshot;closing:ProductionValuationSnapshot;adjustment:ProductionAdjustment}
 export interface ProductionReport {
- valuation?:ProductionValuation
  recycle?: RecycleProduction
  success:boolean;ledger:ReturnType<typeof createLedger>;sample:{completed:{exp:number;gold:number;orderLmd:number};warmupReceipts?:ResourceAmounts;opening:ResourceAmounts;closing:ResourceAmounts;inflows:ResourceAmounts;outflows:ResourceAmounts;net:ResourceAmounts}
  materialsConsumed:ResourceAmounts
@@ -107,13 +98,13 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
  const completedTotals=()=>({exp:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.exp??0)*1000,0),gold:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.gold??0),0),orderLmd:events.filter(e=>e.type==='order-completed').reduce((n,e)=>n+(e.order?.lmdReward??0),0)})
  let openingCompleted={exp:0,gold:0,orderLmd:0}
  let openingManufactured=new Map<string,number>()
- let openingValuation:ProductionValuationSnapshot|undefined,closingValuation:ProductionValuationSnapshot|undefined
+ let observationMarked=false
  const openingPendingManufacture=new Map<string,{product:string;quantity:number}>(),warmupReceipts:ResourceAmounts={}
  const completedSample=()=>{const total=completedTotals();return {exp:total.exp-openingCompleted.exp,gold:total.gold-openingCompleted.gold,orderLmd:total.orderLmd-openingCompleted.orderLmd}}
- const markObservation=(getFrame:()=>ProductionFrame)=>{if(state.time<warmupHours-EPS||openingValuation)return
+ const markObservation=()=>{if(state.time<warmupHours-EPS||observationMarked)return
   if(!opening){opening={...ledger.balances};openingIn={...ledger.inflows};openingOut={...ledger.outflows};openingCompleted=completedTotals();openingManufactured=new Map([...manufactures].map(([id,m])=>[id,m.state.lifetimeItems]));recycle?.markObservation()}
   for(const m of manufactures.values())if(m.state.pendingItems)openingPendingManufacture.set(m.roomId,{product:m.state.formula.product,quantity:m.state.pendingItems})
-  openingValuation=valueUnfinished(getFrame())
+  observationMarked=true
  }
  const cost=(m:ManufacturingState):ResourceAmounts=>Object.fromEntries(m.formula.costs.map(c=>[c.id==='4001'?'lmd':c.id==='30012'?'orirock':'device',-c.count]))
  const advanceManufacture=(m:ManufactureRoom,work:number)=>{
@@ -134,7 +125,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
  }
  const collect=(roomId?:string,includeTrade=true,includeManufacture=true,orderLimit=Infinity)=>{
   for(const m of manufactures.values())if(includeManufacture&&(roomId===undefined||roomId===m.roomId)&&m.state.pendingItems){const product=m.state.formula.product,n=m.state.pendingItems*(product==='exp'?1000:1);transact({[product]:n},`collect-manufacture:${m.roomId}`);const carried=openingPendingManufacture.get(m.roomId);if(carried&&carried.product===product){const excluded=Math.min(carried.quantity,m.state.pendingItems);warmupReceipts[product]=(warmupReceipts[product]??0)+excluded*(product==='exp'?1000:1);carried.quantity-=excluded}m.collectedItems+=m.state.pendingItems;m.state=collectManufacturing(m.state).state}
-  for(const t of trades.values())if(includeTrade&&(roomId===undefined||roomId===t.roomId)){let count=0;while(t.pending.length&&count++<orderLimit){const o=t.pending[0]!,delta={gold:unlimitedMaterials?0:-o.goldCost,fragment:unlimitedMaterials?0:-o.fragmentCost,lmd:o.lmdReward,orundum:o.orundumReward};if(!transact(delta,`collect-order:${o.id}`))break;materialsConsumed.gold=(materialsConsumed.gold??0)+o.goldCost;materialsConsumed.fragment=(materialsConsumed.fragment??0)+o.fragmentCost;if(openingValuation&&o.completedAt<=warmupHours){warmupReceipts.lmd=(warmupReceipts.lmd??0)+o.lmdReward;warmupReceipts.orundum=(warmupReceipts.orundum??0)+o.orundumReward}t.pending.shift();t.collectedOrders++;record('order-collected',{roomId:t.roomId,orderId:o.id,order:o})}}
+  for(const t of trades.values())if(includeTrade&&(roomId===undefined||roomId===t.roomId)){let count=0;while(t.pending.length&&count++<orderLimit){const o=t.pending[0]!,delta={gold:unlimitedMaterials?0:-o.goldCost,fragment:unlimitedMaterials?0:-o.fragmentCost,lmd:o.lmdReward,orundum:o.orundumReward};if(!transact(delta,`collect-order:${o.id}`))break;materialsConsumed.gold=(materialsConsumed.gold??0)+o.goldCost;materialsConsumed.fragment=(materialsConsumed.fragment??0)+o.fragmentCost;if(observationMarked&&o.completedAt<=warmupHours){warmupReceipts.lmd=(warmupReceipts.lmd??0)+o.lmdReward;warmupReceipts.orundum=(warmupReceipts.orundum??0)+o.orundumReward}t.pending.shift();t.collectedOrders++;record('order-collected',{roomId:t.roomId,orderId:o.id,order:o})}}
  }
  const rng=(t:TradeRoom)=>{t.rng=(Math.imul(1664525,t.rng)+1013904223)>>>0;return t.rng/4294967296}
  const synchronize=(frame:ProductionFrame)=>{
@@ -214,52 +205,23 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   }
  }
  const actualProducts=()=>Object.fromEntries([...manufactures.values()].map(m=>[m.roomId,manufacturingProductId(m.state.formula.id)]).concat([...trades.values()].map(t=>[t.roomId,t.product])))
- const completionCapture=(t:TradeRoom,frame:ProductionFrame)=>{
-  const a=t.active!,c=capture(frame,t.roomId)
-  let runners:string[]=[]
-  if(a.base.mode==='gold'){
-   const policy=(state.config.runOrderPolicies??schedule.runOrderPolicies).find(p=>p.roomId===t.roomId)
-   const level=schedule.rooms.find(r=>r.roomId===t.roomId)!.level
-   runners=policy?.orderedOperatorIds.filter(id=>{const name=OPERATOR_MAP.get(id)?.name;return name==='但书'||level===3&&name==='龙舌兰'||name==='U-Official'})??[]
-   c.uOfficial=c.uOfficial||runners.some(id=>hasOperatorSkill(frame.config,id,'trade_ord_spd&wt[000]'))
-   c.proviso=Math.max(c.proviso??0,...runners.map(id=>runOrderSkillRank(frame.config,id,'proviso'))) as 0|1|2
-   c.tequila=Math.max(c.tequila??0,...runners.map(id=>runOrderSkillRank(frame.config,id,'tequila'))) as 0|1|2
-  }
-  c.pepe=a.base.mode==='pepe';c.closure=a.base.mode==='closure'
-  return {capture:c,runners}
- }
- const valueUnfinished=(frame:ProductionFrame):ProductionValuationSnapshot=>{
-  const amounts:ProductionAdjustment={exp:0,gold:0,orderLmd:0,virtualGold:0,fragments:0,orundum:0}
-  const manufacturing:ProductionValuationSnapshot['manufacturing']=[],trading:ProductionValuationSnapshot['trading']=[]
-  for(const m of manufactures.values()){
-   if(m.state.awaitingPayment)continue
-   const formula=m.state.formula,progress=Math.max(0,Math.min(1,1-m.state.remainingBaseMinutes/formula.baseMinutes))
-   if(progress<=0)continue
-   const quantity=formula.batchSize*progress
-   if(formula.product==='exp')amounts.exp+=quantity*1000
-   else if(formula.product==='gold')amounts.gold+=quantity
-   else amounts.fragments+=quantity
-   manufacturing.push({roomId:m.roomId,formulaId:formula.id,product:formula.product,progress,quantity})
-  }
-  for(const t of trades.values()){
-   const a=t.active
-   if(!a||a.remainingBaseMinutes<=EPS)continue
-   const progress=Math.max(0,Math.min(1,1-a.remainingBaseMinutes/a.base.baseMinutes))
-   if(progress<=0)continue
-   // Quote the existing base choice with boundary skills; this neither finishes nor pays the order.
-   const quote=captureOrder(a.base,completionCapture(t,frame).capture,state.time)
-   amounts.orderLmd+=quote.lmdReward*progress;amounts.orundum+=quote.orundumReward*progress
-   amounts.virtualGold+=virtualGoldEquivalent(quote)*progress
-   trading.push({roomId:t.roomId,orderId:a.id,progress,kind:quote.kind,lmdReward:quote.lmdReward,orundumReward:quote.orundumReward,goldCost:quote.goldCost,fragmentCost:quote.fragmentCost})
-  }
-  return {amounts,manufacturing,trading}
- }
  const finish=(frame:ProductionFrame)=>{
   for(const t of trades.values())if(t.active&&t.active.remainingBaseMinutes<=EPS){
-   const a=t.active,quoted=completionCapture(t,frame)
-   if(quoted.runners.length)record('run-order-ideal',{roomId:t.roomId,orderId:a.id,operatorIds:[...new Set(quoted.runners)]})
-   // Workload-changing modes remain the acquisition-start snapshot.
-   const snapshot=finishOrder({...a,remainingBaseMinutes:0},quoted.capture,state.time)
+   const a=t.active,c=capture(frame,t.roomId)
+   if(a.base.mode==='gold'){
+    const policy=(state.config.runOrderPolicies??schedule.runOrderPolicies).find(p=>p.roomId===t.roomId)
+    const level=schedule.rooms.find(r=>r.roomId===t.roomId)!.level
+    const runners=policy?.orderedOperatorIds.filter(id=>{const name=OPERATOR_MAP.get(id)?.name;return name==='但书'||level===3&&name==='龙舌兰'||name==='U-Official'})??[]
+    if(runners.length){
+     c.uOfficial=c.uOfficial||runners.some(id=>hasOperatorSkill(frame.config,id,'trade_ord_spd&wt[000]'))
+     c.proviso=Math.max(c.proviso??0,...runners.map(id=>runOrderSkillRank(frame.config,id,'proviso'))) as 0|1|2
+     c.tequila=Math.max(c.tequila??0,...runners.map(id=>runOrderSkillRank(frame.config,id,'tequila'))) as 0|1|2
+     record('run-order-ideal',{roomId:t.roomId,orderId:a.id,operatorIds:[...new Set(runners)]})
+    }
+   }
+   // Workload-changing modes are explicit acquisition-start snapshots; later staffing cannot reroll them.
+   c.pepe=a.base.mode==='pepe';c.closure=a.base.mode==='closure'
+   const snapshot=finishOrder({...a,remainingBaseMinutes:0},c,state.time)
    t.pending.push(snapshot);t.completedOrders++;t.active=null
    record('order-completed',{roomId:t.roomId,orderId:a.id,order:snapshot})
   }
@@ -342,7 +304,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    if(state.time>=nextDailyClear-EPS){
     nextDailyClear=(Math.floor((state.time+EPS)/24)+1)*24
    }
-   markObservation(getFrame)
+   markObservation()
   }
   const finalize=(frame:ProductionFrame)=>{
    if(!valid)return
@@ -350,7 +312,6 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    collect()
    const collected=recycle?.collect()??0
    if(collected)record('recycle-collected',{roomId:'recycle',amount:collected})
-   closingValuation=valueUnfinished(frame)
   }
   const nextStep=(maximum:number,getFrame:(offset:number)=>ProductionFrame)=>{
    let dt=Math.min(maximum,nativeScheduler?Infinity:nextCollection-state.time)
@@ -389,7 +350,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    }
    for(const t of trades.values())if(t.active)t.active=advanceOrder(t.active,{elapsedMinutes:hours*60,efficiency:frame.evaluations[t.roomId]!.efficiencyPercent/100}).order;else if(!t.disabled)t.blockedHours+=hours
   }
-  const report=():ProductionReport=>({success:valid,ledger,...(openingValuation&&closingValuation?{valuation:{policy:'按基础工作量完成比例计值；按采样边界技能估值，最终完成价值可能变化；期末减期初，不计入实体库存',opening:openingValuation,closing:closingValuation,adjustment:Object.fromEntries(Object.keys(openingValuation.amounts).map(key=>[key,closingValuation!.amounts[key as keyof ProductionAdjustment]-openingValuation!.amounts[key as keyof ProductionAdjustment]])) as unknown as ProductionAdjustment}}:{}),sample:{completed:completedSample(),warmupReceipts:{...warmupReceipts},opening:opening??{...ledger.balances},closing:{...ledger.balances},inflows:difference(ledger.inflows,openingIn),outflows:difference(ledger.outflows,openingOut),net:difference(ledger.balances,opening??ledger.balances)},materialsConsumed:{...materialsConsumed},drones,events,
+  const report=():ProductionReport=>({success:valid,ledger,sample:{completed:completedSample(),warmupReceipts:{...warmupReceipts},opening:opening??{...ledger.balances},closing:{...ledger.balances},inflows:difference(ledger.inflows,openingIn),outflows:difference(ledger.outflows,openingOut),net:difference(ledger.balances,opening??ledger.balances)},materialsConsumed:{...materialsConsumed},drones,events,
    ...(recycle?{recycle:recycle.report()}:{}),
    assumptions:{outputMode,inventoryMode,allowGoldDebt:options.allowGoldDebt===true,seed,runOrderMode:'ideal',droneTarget:target,droneRoomId:options.droneRoomId,droneReserve:reserve,collectionIntervalHours:interval,orderSnapshotPolicy:'acquisition-start-v1: base draw and Pepe/Closure workload at start; U-Official/Proviso/Tequila conversion at completion; payment at collection; simultaneous facilities use schedule order'},
    manufacturing:[...manufactures.values()].map(m=>({roomId:m.roomId,product:m.state.formula.product,completedItems:m.state.lifetimeItems,sampleCompletedItems:m.state.lifetimeItems-(openingManufactured.get(m.roomId)??0),pendingItems:m.state.pendingItems,remainingBaseMinutes:m.state.remainingBaseMinutes,blockedHours:m.blockedHours,blockedMaterialHours:m.blockedMaterialHours})),
