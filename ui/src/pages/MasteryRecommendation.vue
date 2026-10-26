@@ -1,540 +1,272 @@
 <template>
-  <div class="home-container growth-page" :style="{ color: theme.textColor1 }">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">养成规划</h1>
-        <n-text depth="3" class="page-subtitle">选定目标，准备材料，逐位完成养成</n-text>
-      </div>
-      <n-space align="center" :size="8">
-        <GrowthCraftingOrder
-          :revision="craftingOrderRevision"
-          :recommendations="store.recommendations"
-          :count="totalGoalCount"
-          @changed="refreshGrowthPlan"
-        />
-        <n-button size="small" @click="openSettings">
-          <template #icon><n-icon :component="SettingsIcon" /></template>
-          通用专精路线预览
-        </n-button>
-        <n-button size="small" @click="openWorkshopSettings">
-          <template #icon><n-icon :component="SettingsIcon" /></template>
-          加工站干员设置
-        </n-button>
-        <n-button
-          size="small"
-          type="warning"
-          @click="autoWorkshop"
-          :loading="workshopLoading"
-          :disabled="!totalGoalCount || store.loading"
-        >
-          <template #icon><n-icon :component="HammerIcon" /></template>
-          生成缺失材料合成任务
-        </n-button>
-        <n-button type="primary" size="small" @click="fetchCultivate" :loading="store.loading">
-          <template #icon><n-icon :component="RefreshIcon" /></template>
-          刷新
-        </n-button>
-        <n-text v-if="store.cultivateMsg" depth="3" style="font-size: 11px"
-          >更新: {{ store.cultivateMsg }}</n-text
-        >
-      </n-space>
-    </div>
-
-    <WorkshopStatus :revision="workshopStatusRevision" />
-
-    <n-card size="small" class="statistics-panel" title="干员数据统计">
-      <template #header-extra
-        ><n-button
-          size="small"
-          :aria-expanded="statisticsExpanded"
-          @click="statisticsExpanded = !statisticsExpanded"
-        >
-          {{ statisticsExpanded ? '收起统计' : '展开统计' }}
-        </n-button></template
-      >
-      <OperatorStatistics
-        v-if="statisticsExpanded"
-        :statistics="store.personalStatistics"
-        :history="store.history"
-      />
-      <n-text v-else depth="3">查看招募、练度、材料消耗与等效理智排行</n-text>
-    </n-card>
-
-    <div
-      class="mastery-global-switch"
-      style="display: flex; align-items: center; gap: 8px; margin-top: 8px"
-    >
-      <n-switch v-model:value="configStore.enable_mastery" size="small" />
-      <n-text strong>全自动专精</n-text>
-      <n-text depth="3" style="font-size: 12px"
-        >控制自动专精与养成材料自动合成；精英化、基础技能升级与模组开启需要手动完成后同步</n-text
-      >
-    </div>
-
-    <n-alert
-      v-if="crossFormWarning"
-      type="warning"
-      title="阿米娅专精请注意切换升变"
-      :closable="false"
-      style="margin-top: 12px"
-    >
-      {{ crossFormWarning }}
-    </n-alert>
-
-    <GrowthSurveyFilters
-      v-model="surveyFilters"
-      :survey="survey"
-      :loading="surveyLoading"
-      @refresh="loadSurvey"
-    >
-      <n-space style="margin-top: 8px" :size="8" align="center" wrap>
-        <n-input
-          v-model:value="searchQuery"
-          placeholder="搜索干员 / 拼音"
-          clearable
-          style="width: 200px"
-          size="small"
-        />
-        <n-select
-          v-model:value="filterRarity"
-          :options="rarityOptions"
-          multiple
-          placeholder="稀有度"
-          style="min-width: 140px"
-          size="small"
-          clearable
-        />
-        <n-select
-          v-model:value="filterProfession"
-          :options="professionOptions"
-          multiple
-          placeholder="职业"
-          style="min-width: 140px"
-          size="small"
-          clearable
-        />
-        <n-select
-          v-model:value="idleFilter"
-          :options="idleFilterOptions"
-          size="small"
-          style="min-width: 130px"
-          aria-label="基地空闲状态"
-        />
-        <n-button size="small" @click="resetFilters">
-          <template #icon><n-icon :component="RefreshIcon" /></template>
-          重置筛选
-        </n-button>
-      </n-space>
-    </GrowthSurveyFilters>
-
-    <n-space justify="space-between" align="center" class="filter-summary">
-      <n-text depth="3"
-        >显示 {{ displayList.length }} / {{ store.recommendations.length }} 位干员</n-text
-      >
-      <n-space align="center" :size="8">
-        <n-tooltip>
-          <template #trigger>
-            <n-button
-              size="small"
-              type="primary"
-              secondary
-              :loading="batchAdding"
-              :disabled="store.loading || goalSaving || targetSaving || !filteredPlanItems.length"
-              @click="addFilteredToPlan"
-            >
-              按筛选一键添加计划（{{ filteredPlanItems.length }} 项）
-            </n-button>
-          </template>
-          添加全部分页中达到所选比例门槛的技能、模组及精英化目标，跳过已计划及已完成的项目。未设置门槛的类别不添加；技能和模组沿用所选目标等级，精一、精二均规划至该阶段
-          1 级，同一干员取较高目标。
-        </n-tooltip>
-        <n-text v-if="batchAdding" depth="3">{{ batchProgress }}</n-text>
-      </n-space>
-    </n-space>
-
-    <n-card size="small" class="materials-overview">
-      <n-spin :show="materialsLoading">
-        <n-collapse>
-          <n-collapse-item title="养成材料总览" name="materials-overview">
-            <template #header-extra>
-              <n-tag
-                v-if="planMaterials"
-                :type="materialStatusType(planMaterials)"
-                size="small"
-                :bordered="false"
-              >
-                {{ materialStatus(planMaterials) }}
-              </n-tag>
-            </template>
-            <n-alert v-if="materialsError" type="warning">{{ materialsError }}</n-alert>
-            <n-space justify="end" style="margin-bottom: 12px" v-if="hasChipShortage">
-              <n-button
-                :loading="chipFarmingLoading"
-                :disabled="materialsLoading"
-                @click="configureChipFarming"
-                >一键设置芯片 / 采购凭证刷取</n-button
-              >
-            </n-space>
-            <MasteryMaterials
-              v-if="planMaterials"
-              :summary="planMaterials"
-              :missing-skills="missingPlanSkills"
-              :show-header="false"
-              expand-crafting
-            />
-            <n-text v-else-if="!materialsError" depth="3">尚未选择养成目标</n-text>
-            <n-text v-if="totalGoalCount" depth="3" class="overview-note"
-              >已扣除现有库存；同一干员的精英化与基础技能费用只计一次。芯片、龙门币、经验和模组任务需另行准备。</n-text
-            >
-          </n-collapse-item>
-        </n-collapse>
-      </n-spin>
-    </n-card>
-
-    <n-text
-      v-if="store.cultivateMsg"
-      :type="store.cultivateOk ? 'success' : 'error'"
-      depth="2"
-      style="font-size: 12px"
-    >
-      森空岛同步：{{ store.cultivateMsg }}
-    </n-text>
-
-    <n-alert
-      v-if="store.yituliuSyncResult"
-      :type="store.yituliuSyncResult.success ? 'success' : 'warning'"
-      :bordered="false"
-      style="margin: 12px 0"
-    >
-      一图流同步：{{ store.yituliuSyncResult.message }}
-    </n-alert>
-
-    <n-spin v-if="store.loading" size="large" description="正在分析干员数据..." />
-    <n-alert v-else-if="store.error" type="warning" :closable="false">
-      <template #header><n-text strong>暂无干员数据</n-text></template>
-      <div>{{ store.error }}</div>
-      <n-button
-        type="primary"
-        size="small"
-        style="margin-top: 12px"
-        @click="fetchCultivate"
+  <div class="growth-workspace">
+    <div class="growth-workspace__inner">
+      <GrowthHero
+        :total-goals="totalGoalCount"
+        :plan-count="planEntries.length"
+        :training="trainingCard"
+        :next-up="nextUpItem"
+        :operators="store.recommendations"
+        :auto-mastery="configStore.enable_mastery"
         :loading="store.loading"
-        >从森空岛拉取数据</n-button
-      >
-    </n-alert>
-    <n-empty v-else-if="displayList.length === 0" :description="emptyText" />
+        :syncing="cultivateSyncing"
+        :sync-hint="syncHint"
+        :missing-kinds="planMaterialStats.missing"
+        :ready-goals="planMaterialStats.ready"
+        :compact="activeView !== 'overview'"
+        @update:auto-mastery="configStore.enable_mastery = $event"
+        @add-target="openOperatorPicker"
+        @open-plan="openCraftingOrder"
+        @refresh="refreshGrowthPlanOnly"
+        @sync="fetchCultivate"
+      />
 
-    <div v-else class="mastery-list">
-      <n-collapse v-model:expanded-names="expandedOperator" accordion class="operator-cards">
-        <n-collapse-item
-          v-for="op in pagedOperators"
-          :key="op.char_id"
-          :name="op.char_id"
-          @click="toggleOperatorHeaderSpace(op, $event)"
+      <div v-if="crossFormWarning" class="growth-notice" role="status">
+        <span class="gp-stamp gp-stamp--warn growth-notice__stamp">升变提醒</span>
+        <p>{{ crossFormWarning }}</p>
+      </div>
+
+      <GrowthViewNav
+        v-model="activeView"
+        :operator-count="store.recommendations.length"
+        :missing-kinds="planMaterialStats.missing"
+        :ready-count="planMaterialStats.ready"
+        :goal-count="totalGoalCount"
+        @open-route="openSettings"
+        @open-workshop="openWorkshopSettings"
+      />
+
+      <div v-if="!store.hasData && store.error" class="gp-panel growth-blocked">
+        <span class="gp-kicker">Sync required</span>
+        <h2>还没有可规划的干员数据</h2>
+        <p>{{ store.error }}</p>
+        <div class="growth-blocked__actions">
+          <n-button type="primary" :loading="store.loading" @click="fetchCultivate">
+            从森空岛同步数据
+          </n-button>
+          <n-button quaternary @click="refreshGrowthPlanOnly">重试读取</n-button>
+        </div>
+      </div>
+
+      <div v-else-if="!store.hasData && store.loading" class="growth-loading" aria-busy="true">
+        <div class="gp-skeleton" style="height: 220px" />
+        <div class="gp-skeleton" style="height: 160px" />
+      </div>
+
+      <template v-else>
+        <GrowthOverview
+          v-if="activeView === 'overview'"
+          :goal-count="totalGoalCount"
+          :plan-count="planEntries.length"
+          :training="trainingCard"
+          :next-up="nextUpItem"
+          :queue="queueItems"
+          :queue-error="queueOrderError"
+          :materials="planMaterials"
+          :materials-loading="materialsLoading"
+          :materials-error="materialsError"
+          :material-stats="planMaterialStats"
+          :recommended="recommendedCards"
+          :roster-stats="rosterStats"
+          :workshop-status-revision="workshopStatusRevision"
+          :workshop-loading="workshopLoading"
+          :has-chip-shortage="hasChipShortage"
+          :chip-farming-loading="chipFarmingLoading"
+          @open-plan="openCraftingOrder"
+          @open-materials="activeView = 'materials'"
+          @open-insights="activeView = 'insights'"
+          @open-operators="activeView = 'operators'"
+          @open-operator="openOperator"
+          @add-target="openOperatorPicker"
+          @generate-crafting="autoWorkshop"
+          @configure-chips="configureChipFarming"
+          @refresh-materials="refreshT3Summary"
+        />
+
+        <div
+          v-else-if="activeView === 'operators'"
+          class="growth-operators"
+          :class="{ 'has-dossier': !!selectedOperator }"
         >
-          <template #header>
-            <n-space align="center" :size="8">
-              <n-avatar
-                :src="'/avatar/' + op.name + '.webp'"
-                :size="28"
-                round
-                fallback-src="/avatar/阿米娅.webp"
-              />
-              <n-text strong>{{ op.name }}</n-text>
-              <n-text depth="3">({{ op.rarity }}★)</n-text>
-            </n-space>
-          </template>
-          <template #header-extra>
-            <n-space :size="4" align="center" class="operator-status">
-              <n-tag :bordered="false" size="small">{{ professionName(op.profession) }}</n-tag>
-              <n-tag
-                :bordered="false"
-                size="small"
-                :type="surveyFor(op).eliteHighlight ? 'warning' : 'default'"
-                >E{{ op.elite }} Lv{{ op.level }}</n-tag
-              >
-              <n-tooltip v-if="op.max_phase === undefined || op.max_phase >= 1"
-                ><template #trigger
-                  ><n-tag size="small" :bordered="false"
-                    >{{ op.max_phase === 1 ? '精一' : '精二' }}
-                    {{
-                      formatSurveyRate(
-                        op.max_phase === 1 ? surveyFor(op).elite1 : surveyFor(op).elite2
-                      )
-                    }}</n-tag
-                  ></template
-                >一图流拥有者{{ op.max_phase === 1 ? '精一' : '精二' }}率；拥有样本
-                {{ surveyMap.get(op.char_id)?.own?.toLocaleString() || '暂无' }}</n-tooltip
-              >
-              <n-tag v-if="hasPlannedGoal(op)" type="success" :bordered="false" size="small"
-                >计划中</n-tag
-              >
-              <n-button
-                size="tiny"
-                class="all-plan-button"
-                type="warning"
-                @click.stop="addAllToPlan(op)"
-                :disabled="!!op.material_error"
-                v-if="op.recommendations.length && !allPlanned(op)"
-                >全部技能加入计划</n-button
-              >
-            </n-space>
-          </template>
-
-          <n-spin
-            v-if="detailLoading && expandedOperator.includes(op.char_id)"
-            description="正在读取材料详情..."
+          <GrowthOperatorGrid
+            :cards="operatorCards"
+            :loading="store.loading"
+            :error="store.error"
+            :empty-text="emptyText"
+            :has-data="store.hasData"
+            :search="searchQuery"
+            :rarities="filterRarity"
+            :professions="filterProfession"
+            :idle-filter="idleFilter"
+            :idle-options="idleFilterOptions"
+            :rarity-options="rarityOptions"
+            :profession-options="professionOptions"
+            :survey-filters="surveyFilters"
+            :survey="survey"
+            :survey-loading="surveyLoading"
+            :batch-adding="batchAdding"
+            :batch-progress="batchProgress"
+            :filtered-count="displayList.length"
+            :addable-count="filteredPlanItems.length"
+            :total="store.recommendations.length"
+            :page="operatorPage"
+            :page-size="operatorPageSize"
+            @update:search="searchQuery = $event"
+            @update:rarities="filterRarity = $event"
+            @update:professions="filterProfession = $event"
+            @update:idle-filter="idleFilter = $event"
+            @update:survey-filters="surveyFilters = $event"
+            @update:page="operatorPage = $event"
+            @refresh-survey="loadSurvey"
+            @reset="resetFilters"
+            @add-filtered="addFilteredToPlan"
+            @refresh="refreshGrowthPlanOnly"
+            @sync="fetchCultivate"
+            @open="selectOperator"
           />
-          <n-alert v-else-if="detailError && expandedOperator.includes(op.char_id)" type="warning">
-            {{ detailError }}
-            <n-button size="small" @click="loadOperatorDetail(op.char_id)">重试</n-button>
-          </n-alert>
-          <template v-else-if="operatorDetail?.char_id === op.char_id">
+          <GrowthOperatorDetail
+            v-if="selectedOperator"
+            :operator="selectedOperator"
+            :loading="detailLoading"
+            :error="detailError"
+            :skill-rows="selectedSkillRows"
+            :module-rows="selectedModuleRows"
+            :basic="selectedBasicState"
+            :level-selected="selectedLevelGoalValue"
+            :level-required="selectedRequiredLevel"
+            :level-saving="goalSaving"
+            :goal-saving="goalSaving"
+            :target-saving="targetSaving"
+            :starting-mastery="startingMastery"
+            :batch-adding="batchAdding"
+            :survey="surveyFor(selectedOperatorBase || selectedOperator)"
+            :planned-count="selectedPlannedCount"
+            @close="closeOperator"
+            @retry="loadOperatorDetail(expandedOperator[0])"
+            @apply-level="applySelectedLevel"
+            @toggle-skill="toggleSelectedSkill"
+            @change-target="changeSelectedTarget"
+            @insert-task="insertSelectedMasteryTask"
+            @open-supports="openSelectedSupports"
+            @toggle-module="toggleSelectedModule"
+            @change-module-target="changeSelectedModuleTarget"
+            @toggle-basic="toggleSelectedBasic"
+            @add-all="addAllToPlan(selectedOperatorBase)"
+          />
+        </div>
+
+        <GrowthMaterialsView
+          v-else-if="activeView === 'materials'"
+          :summary="planMaterials"
+          :loading="materialsLoading"
+          :error="materialsError"
+          :missing-skills="missingPlanSkills"
+          :total-goals="totalGoalCount"
+          :plan-count="planEntries.length"
+          :has-chip-shortage="hasChipShortage"
+          :chip-loading="chipFarmingLoading"
+          :workshop-loading="workshopLoading"
+          @refresh="refreshT3Summary"
+          @generate-crafting="autoWorkshop"
+          @configure-chips="configureChipFarming"
+          @add-target="openOperatorPicker"
+          @open-plan="openCraftingOrder"
+        />
+
+        <GrowthInsightsView
+          v-else
+          :statistics="store.personalStatistics"
+          :history="store.history"
+          :survey="survey"
+          :operator-count="store.recommendations.length"
+          :survey-loading="surveyLoading"
+          @refresh-survey="loadSurvey"
+        />
+      </template>
+
+      <GrowthCraftingOrder
+        ref="craftingOrderRef"
+        hide-trigger
+        :revision="craftingOrderRevision"
+        :recommendations="store.recommendations"
+        :count="totalGoalCount"
+        @changed="refreshGrowthPlan"
+      />
+
+      <MasterySupports
+        v-model:show="showSupports"
+        :plan="supportSelection.plan"
+        :name="supportSelection.name"
+        @saved="refreshPlanFromServer"
+      />
+
+      <!-- 通用专精路线 -->
+      <n-modal
+        v-model:show="showSettings"
+        preset="card"
+        class="growth-modal"
+        :style="{ width: 'min(960px, calc(100vw - 24px))' }"
+        :mask-closable="false"
+        :close-on-esc="!routeCalculating"
+        :closable="!routeCalculating"
+        @update:show="(value) => (!value ? (showSettings = false) : null)"
+      >
+        <template #header>
+          <div class="growth-modal__head">
+            <span class="gp-kicker">Mastery routes</span>
+            <h2>通用专精路线</h2>
+            <p>按职业准备训练室协助者；具体计划按干员职业与分支独立计算，实际路线可能不同。</p>
+          </div>
+        </template>
+
+        <div class="growth-modal__body route-drawer">
+          <nav class="route-drawer__rail" aria-label="职业路线">
+            <button
+              v-for="prof in profKeys"
+              :key="prof"
+              type="button"
+              class="route-drawer__prof"
+              :class="{ 'is-active': settingsTab === prof }"
+              :aria-pressed="settingsTab === prof"
+              @click="settingsTab = prof"
+            >
+              {{ prof }}
+            </button>
+          </nav>
+
+          <div class="route-drawer__body">
             <n-alert
-              v-if="op.mastery_error && op.recommendations.length"
-              type="info"
+              v-if="defaultsError"
+              type="warning"
               :bordered="false"
-              class="prerequisite-notice"
+              class="route-drawer__alert"
             >
-              {{ op.mastery_error }}
+              {{ defaultsError }}
             </n-alert>
-            <n-alert v-if="op.material_error" type="warning">{{ op.material_error }}</n-alert>
-            <GrowthLevelPlan
-              :operator="op"
-              :selected-key="levelGoalFor(op)"
-              :required-key="prerequisiteLevelGoal(op, hasPlannedSkill(op), store.goals)"
-              :saving="goalSaving"
-              :apply-target="(key) => applyLevelTarget(op, key)"
-            />
-            <n-card
-              v-if="op.basic_skill_summary || (op.supports_basic_skill7 && op.max_phase < 2)"
-              size="small"
-              class="level-card"
-              :title="`基础技能 ${op.main_skill_level} → 7 级`"
-            >
-              <n-checkbox
-                v-if="op.supports_basic_skill7"
-                :checked="isGoalPlanned(op.char_id, 'skill7') || hasPlannedSkill(op)"
-                :disabled="
-                  goalSaving ||
-                  hasPlannedSkill(op) ||
-                  (!op.basic_skill_summary && !isGoalPlanned(op.char_id, 'skill7'))
-                "
-                @update:checked="(value) => toggleGoal(op, 'skill7', value)"
-              >
-                {{ op.basic_skill_summary ? '规划至基础技能 7 级' : '基础技能已达 7 级' }}
-              </n-checkbox>
-              <n-text depth="3" class="overview-note">
-                基础技能材料按干员只计算一次，需在游戏中手动升级。
-                <template
-                  v-if="op.basic_skill_prerequisite && op.elite < op.basic_skill_prerequisite.elite"
-                  >最低前置为{{ eliteLabel(op.basic_skill_prerequisite.elite) }}
-                  {{ op.basic_skill_prerequisite.level }} 级，材料自动计入。</template
-                >
-                <template v-if="op.max_phase >= 2"
-                  >专精计划自动包含此项，升级并同步后才执行专精。</template
-                >
-              </n-text>
-              <MasteryMaterials
-                v-if="op.basic_skill_summary"
-                :summary="op.basic_skill_summary"
-                title="基础技能升级材料"
-              />
-            </n-card>
-            <div v-for="rec in visibleRecs(op)" :key="rec.skill_index" class="rec-item">
-              <n-card size="small">
-                <template #header>
-                  <n-space align="center" justify="space-between" style="width: 100%">
-                    <n-space align="center" :size="8">
-                      <n-text strong>{{ rec.skill_name }}</n-text>
-                      <n-tag
-                        size="small"
-                        :bordered="false"
-                        :type="
-                          surveyFor(op).skillHighlights.includes(rec.skill_index)
-                            ? 'warning'
-                            : 'default'
-                        "
-                        >专三
-                        {{
-                          formatSurveyRate(
-                            surveyFor(op).skills.find((skill) => skill.index === rec.skill_index)
-                              ?.rate
-                          )
-                        }}</n-tag
-                      >
-                      <n-text depth="3" style="font-size: 12px"
-                        >{{ masteryLevelLabel(op.main_skill_level, rec.current_level) }} → 专{{
-                          rec.target_level
-                        }}</n-text
-                      >
-                    </n-space>
-                    <n-space :size="8" align="center" class="rec-controls">
-                      <n-select
-                        :value="rec.target_level"
-                        :options="targetOptions(rec)"
-                        :disabled="isTargetLocked(op, rec) || targetSaving"
-                        @update:value="(value) => changeTarget(op, rec, value)"
-                        size="small"
-                        style="width: 104px"
-                        aria-label="目标专精等级"
-                      />
-                      <n-button
-                        size="small"
-                        :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
-                        @click.stop="toggleSkillPlan(op, rec)"
-                        :disabled="
-                          batchAdding ||
-                          (!!op.material_error && !isSkillPlanned(op.char_id, rec.skill_index))
-                        "
-                      >
-                        {{ isSkillPlanned(op.char_id, rec.skill_index) ? '移出计划' : '加入计划' }}
-                      </n-button>
-                      <n-button
-                        type="primary"
-                        size="small"
-                        :disabled="!!op.mastery_error || startingMastery"
-                        @click.stop="insertMasteryTask(op, rec)"
-                        >一键插入专精任务</n-button
-                      >
-                      <n-button
-                        v-if="planStatus[planKey(op.char_id, rec.skill_index)]?.id"
-                        size="small"
-                        @click.stop="openSupports(op, rec)"
-                        >协助方案</n-button
-                      >
-                    </n-space>
-                  </n-space>
-                </template>
-                <n-space vertical :size="4">
-                  <n-text depth="2"
-                    >总训练时间: {{ formatTime(rec.total_time) }} |
-                    {{ rec.remaining_levels }}级专精</n-text
-                  >
-                  <MasteryMaterials :summary="rec.skill_material_summary" title="技能专精材料" />
-                </n-space>
-              </n-card>
-            </div>
-            <section v-if="op.modules?.length" class="module-section">
-              <h3>模组养成 · {{ op.modules.length }}</h3>
-              <n-text depth="3"
-                >默认规划至满级，可选择目标等级；信赖与解锁任务仍需在游戏中完成。</n-text
-              >
-              <div v-for="module in visibleModules(op)" :key="module.id" class="module-row">
-                <div class="module-heading">
-                  <n-checkbox
-                    :checked="isGoalPlanned(op.char_id, module.id)"
-                    :disabled="
-                      goalSaving ||
-                      (module.current_level >= module.max_level &&
-                        !isGoalPlanned(op.char_id, module.id))
-                    "
-                    @update:checked="(value) => toggleGoal(op, module.id, value)"
-                  >
-                    <n-text strong>{{ module.type }} · {{ module.name }}</n-text>
-                  </n-checkbox>
-                  <n-tag
-                    size="small"
-                    :bordered="false"
-                    :type="
-                      surveyFor(op).moduleHighlights.includes(module.id) ? 'warning' : 'default'
-                    "
-                    >解锁
-                    {{
-                      formatSurveyRate(
-                        surveyFor(op).modules.find((item) => item.id === module.id)?.rate
-                      )
-                    }}</n-tag
-                  >
-                  <n-select
-                    v-if="module.current_level < module.max_level"
-                    :value="moduleTarget(op, module)"
-                    :options="moduleTargetOptions(module)"
-                    :disabled="goalSaving"
-                    style="width: 135px"
-                    @update:value="(value) => changeModuleTarget(op, module, value)"
-                  />
-                  <n-tag size="small" :type="module.current_level ? 'success' : 'default'">{{
-                    module.current_level
-                      ? `已开启 · ${module.current_level} 级`
-                      : `精${module.elite} ${module.level} 级开启`
-                  }}</n-tag>
+
+            <section class="route-slots">
+              <header class="route-section-head">
+                <div>
+                  <h3>{{ settingsTab }} · 协助位</h3>
+                  <p>每个专精阶段一位协助者；留空则按当前默认路线执行。</p>
                 </div>
-                <n-alert v-if="module.material_error" type="warning">{{
-                  module.material_error
-                }}</n-alert>
-                <MasteryMaterials
-                  v-else-if="module.current_level < module.max_level"
-                  :summary="moduleSummary(op, module).opening_summary"
-                  title="模组升级材料"
-                />
-              </div>
-            </section>
-            <n-text
-              v-if="op.rarity >= 4 && !op.recommendations.length && !op.modules?.length"
-              depth="3"
-              >该干员的技能已全部专三</n-text
-            >
-          </template>
-        </n-collapse-item>
-      </n-collapse>
-      <n-pagination
-        v-model:page="operatorPage"
-        :page-size="operatorPageSize"
-        :item-count="displayList.length"
-        simple
-        style="margin-top: 16px"
-      />
-    </div>
+                <span class="gp-stamp gp-stamp--flat">{{
+                  routeSettings[settingsTab].optimal ? '最优' : '自选'
+                }}</span>
+              </header>
 
-    <MasterySupports
-      v-model:show="showSupports"
-      :plan="supportSelection.plan"
-      :name="supportSelection.name"
-      @saved="refreshPlanFromServer"
-    />
-
-    <!-- 通用专精路线预览 -->
-    <n-modal
-      v-model:show="showSettings"
-      preset="card"
-      title="通用专精路线预览"
-      style="width: min(900px, 95vw)"
-      content-style="overflow-y: auto; min-height: 0"
-      :mask-closable="false"
-      :closable="!routeCalculating"
-      :close-on-esc="!routeCalculating"
-    >
-      <n-alert v-if="defaultsError" type="warning" style="margin-bottom: 12px">{{
-        defaultsError
-      }}</n-alert>
-      <n-text depth="3">
-        此处预览各职业的通用路线，默认按已拥有且已解锁的训练技能生成；无 BOX
-        时展示原默认最佳路线。不计分支专属加成。手动下拉可选全部干员。
-        添加具体干员的训练计划时，会按其职业和分支独立计算，符合条件的分支加成协助者也会参与计算，因此实际路线可能与预览不同。
-      </n-text>
-      <MasteryProfessionTrainers
-        :trainers="bestTrainers"
-        :professions="profKeys"
-        style="margin: 12px 0"
-      />
-      <n-tabs class="mastery-route-tabs" type="segment" v-model:value="settingsTab">
-        <n-tab-pane v-for="prof in profKeys" :key="prof" :name="prof" :tab="prof">
-          <n-scrollbar style="max-height: 60vh">
-            <n-dynamic-input v-model:value="routeSettings[prof].supports" :min="3" :max="3">
-              <!-- 空插槽会回退到默认增删按钮，保留隐藏节点以覆盖默认操作。 -->
-              <template #action><span hidden /></template>
-              <template #default="{ value }">
-                <div class="support-outer">
-                  <n-select
-                    v-model:value="value.skill_level"
-                    disabled
-                    :options="level_list"
-                    style="width: 80px"
-                  />
-                  <div class="support-inner">
-                    <div class="task-col">
-                      <label style="font-size: 13px">协助位</label>
+              <n-dynamic-input
+                v-model:value="routeSettings[settingsTab].supports"
+                :min="3"
+                :max="3"
+              >
+                <template #action><span hidden /></template>
+                <template #default="{ value }">
+                  <div class="route-slot">
+                    <div class="route-slot__line">
+                      <div class="route-slot__stage gp-mono">
+                        专{{ ['一', '二', '三'][value.skill_level - 1] }}
+                      </div>
                       <n-select
                         v-model:value="value.name"
                         filterable
@@ -542,19 +274,23 @@
                         :filter="(p, o) => pinyin_match(o.label, p)"
                         :render-label="render_op_label"
                         :render-option="render_op_option"
-                        style="width: 178px"
+                        placeholder="选择协助干员"
+                        aria-label="协助干员"
                       />
-                      <label class="ml" style="font-size: 13px">训练速度</label>
-                      <mower-input-number
-                        v-model:value="value.efficiency"
-                        :min="0"
-                        :max="100"
-                        style="width: 80px"
-                        :show-button="false"
-                        ><template #suffix>%</template></mower-input-number
-                      >
+                      <label class="route-slot__efficiency">
+                        <span>训练速度</span>
+                        <mower-input-number
+                          v-model:value="value.efficiency"
+                          :min="0"
+                          :max="100"
+                          :show-button="false"
+                          style="width: 88px"
+                        >
+                          <template #suffix>%</template>
+                        </mower-input-number>
+                      </label>
                     </div>
-                    <div class="task-col">
+                    <div class="route-slot__swap">
                       <n-checkbox v-model:checked="value.swap">中途换人</n-checkbox>
                       <n-select
                         :disabled="!value.swap"
@@ -562,204 +298,250 @@
                         :options="swap_list"
                         :render-label="render_op_label"
                         :render-option="render_op_option"
-                        style="width: 140px"
+                        placeholder="接班人"
+                        aria-label="换人干员"
                       />
                       <n-select
                         :disabled="!value.swap"
                         v-model:value="value.match"
                         :options="swap_30"
-                        style="width: 160px"
+                        aria-label="换人加成"
                       />
                     </div>
                   </div>
-                </div>
-              </template>
-            </n-dynamic-input>
-          </n-scrollbar>
-          <div style="display: flex; gap: 12px; margin-top: 16px; align-items: center">
-            <n-checkbox v-model:checked="routeSettings[prof].optimal">最优协助干员</n-checkbox>
-            <n-checkbox v-model:checked="routeSettings[prof].half_off">有减半加成</n-checkbox>
-          </div>
-        </n-tab-pane>
-      </n-tabs>
-      <n-divider />
-      <n-text depth="2">中枢干员加成</n-text>
-      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px">
-        <n-switch :value="autoCentralBonus" disabled :checked-value="5" :unchecked-value="0">
-          <template #checked>+5%</template>
-          <template #unchecked>无</template>
-        </n-switch>
-        <n-text depth="3" style="font-size: 11px">
-          按主排班、备用排班中枢栏的主力及替换干员自动识别 +5%
-        </n-text>
-      </div>
-      <n-text depth="2" style="margin-top: 10px">减半换人缓冲时间（分钟）</n-text>
-      <div
-        v-for="item in masteryBufferFields"
-        :key="item.key"
-        style="
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          margin-top: 8px;
-        "
-      >
-        <n-text depth="2">{{ item.label }}</n-text>
-        <mower-input-number
-          :value="masterySettings.mastery_swap_buffers[item.key]"
-          @update:value="
-            (value) =>
-              (masterySettings.mastery_swap_buffers[item.key] =
-                value ?? DEFAULT_MASTERY_SWAP_BUFFERS[item.key])
-          "
-          :min="0"
-          :max="60"
-          clearable
-          size="small"
-          style="width: 120px; flex-shrink: 0"
-        />
-      </div>
-      <n-text depth="3" style="font-size: 11px; margin-top: 2px">
-        默认均为 10 分钟，可自行调整；清空单项恢复默认值。
-      </n-text>
-      <template #footer>
-        <n-space justify="end" align="center">
-          <n-button
-            @click="calculateOptimalRoutes"
-            :disabled="routeSaving || store.loading"
-            :loading="routeCalculating"
-            >计算最优</n-button
-          >
-          <HelpText label="计算最优说明">
-            先同步干员数据，再按照最新 BOX 计算最优默认专精路线，应用于全部职业。
-          </HelpText>
-          <n-button
-            type="primary"
-            @click="saveRouteAndClose"
-            :loading="routeSaving"
-            :disabled="routeCalculating"
-          >
-            保存并关闭
-          </n-button>
-        </n-space>
-      </template>
-    </n-modal>
+                </template>
+              </n-dynamic-input>
 
-    <!-- 加工站干员设置 -->
-    <n-modal
-      v-model:show="showWorkshopSettings"
-      preset="card"
-      title="加工站干员设置"
-      style="width: min(600px, 95vw)"
-      content-style="overflow-y: auto; min-height: 0"
-      :mask-closable="false"
-      :closable="!workshopDefaultsLoading"
-      :close-on-esc="!workshopDefaultsLoading"
-    >
-      <n-space vertical>
-        <n-alert v-if="workshopDefaultsError" type="warning">{{ workshopDefaultsError }}</n-alert>
-        <n-text depth="3">
-          一键设置先同步干员数据，再按最新 BOX
-          填入已拥有、已解锁技能且副产品概率加成达到所设下限的干员，可继续手动增删。
-          某类名单为空时，仅该类每次降低 5% 下限，直到至少有一位干员；最低降至
-          0%，已有干员的名单保持不变。
-          材料专属干员仅分配符合条件的缺失材料，相关低阶材料按缺口生成。
-          主排班及全部备用排班中的主力和替换干员，出现在宿舍、加工站以外的设施时，一键设置会跳过这些干员。
-        </n-text>
-        <n-space align="center">
-          <n-text>副产品概率加成至少</n-text>
-          <mower-input-number
-            :value="workshopMinBonus"
-            @update:value="workshopMinBonus = $event ?? 80"
-            :min="0"
-            :max="1000"
-            :precision="0"
-            :step="5"
-            :show-button="false"
-            :disabled="workshopDefaultsLoading"
-            :input-props="{ 'aria-label': '副产品概率加成下限' }"
-            style="width: 100px"
-            ><template #suffix>%</template></mower-input-number
-          >
-          <n-button size="small" @click="setWorkshopOperators" :loading="workshopDefaultsLoading"
-            >一键设置</n-button
-          >
-        </n-space>
-        <n-space align="center" :size="6">
-          <n-switch
-            :value="workshopProtectT2"
-            :disabled="workshopPolicySaving"
-            @update:value="setWorkshopMaterialPolicy"
-            size="small"
-            aria-label="不使用装置/固源岩进行合成"
-          />
-          <n-text>不使用装置/固源岩进行合成</n-text>
-          <help-text>
-            仅保留 T2 装置、固源岩，其他等级照常合成。开启后，材料预算也不使用这两种原料。
-          </help-text>
-        </n-space>
-        <div>
-          <n-text depth="3">非 T5 材料加工干员</n-text>
-          <help-text>缺口合成暂不使用需要额外垫刀的九色鹿，请同时选择其他加工干员。</help-text>
+              <div class="route-flags">
+                <n-checkbox v-model:checked="routeSettings[settingsTab].optimal"
+                  >最优协助干员</n-checkbox
+                >
+                <n-checkbox v-model:checked="routeSettings[settingsTab].half_off"
+                  >有减半加成</n-checkbox
+                >
+              </div>
+            </section>
+
+            <details class="route-reference">
+              <summary>各职业最优协助者（参考）</summary>
+              <MasteryProfessionTrainers :trainers="bestTrainers" :professions="profKeys" />
+            </details>
+
+            <section class="route-global">
+              <header class="route-section-head">
+                <div>
+                  <h3>全局参数</h3>
+                  <p>中枢加成按主排班与备用排班的中枢干员自动识别。</p>
+                </div>
+              </header>
+              <div class="route-central">
+                <n-switch
+                  :value="autoCentralBonus"
+                  disabled
+                  :checked-value="5"
+                  :unchecked-value="0"
+                >
+                  <template #checked>+5%</template>
+                  <template #unchecked>无</template>
+                </n-switch>
+                <span>中枢干员加成</span>
+                <HelpText label="中枢加成来源">
+                  按主排班、备用排班中枢栏的主力及替换干员自动识别 +5%。
+                </HelpText>
+              </div>
+              <div class="route-buffers">
+                <label v-for="item in masteryBufferFields" :key="item.key" class="route-buffer">
+                  <span>{{ item.label }}</span>
+                  <mower-input-number
+                    :value="masterySettings.mastery_swap_buffers[item.key]"
+                    @update:value="
+                      (value) =>
+                        (masterySettings.mastery_swap_buffers[item.key] =
+                          value ?? DEFAULT_MASTERY_SWAP_BUFFERS[item.key])
+                    "
+                    :min="0"
+                    :max="60"
+                    clearable
+                    size="small"
+                    style="width: 110px"
+                  >
+                    <template #suffix>分钟</template>
+                  </mower-input-number>
+                </label>
+              </div>
+            </section>
+          </div>
         </div>
-        <slick-operator-select
-          v-model="fodderOps"
-          :disabled="workshopDefaultsLoading"
-          select_placeholder="选择加工干员"
-        />
-        <n-text depth="3">T5 加工干员</n-text>
-        <slick-operator-select
-          v-model="t5Ops"
-          :disabled="workshopDefaultsLoading"
-          select_placeholder="选择干员"
-        />
-        <n-text depth="3">技巧概要加工干员</n-text>
-        <slick-operator-select
-          v-model="bookOps"
-          :disabled="workshopDefaultsLoading"
-          select_placeholder="选择干员"
-        />
-        <n-collapse>
-          <n-collapse-item title="九色鹿垫刀素材设置（仅手动合成使用）" name="deer-fodder">
+
+        <template #footer>
+          <div class="growth-modal__foot">
+            <div class="growth-drawer__foot-left">
+              <n-button
+                @click="calculateOptimalRoutes"
+                :disabled="routeSaving || store.loading"
+                :loading="routeCalculating"
+              >
+                计算最优
+              </n-button>
+              <HelpText label="计算最优说明">
+                先同步干员数据，再按照最新 BOX 计算最优默认专精路线，应用于全部职业。
+              </HelpText>
+            </div>
+            <div class="growth-drawer__foot-right">
+              <n-button :disabled="routeCalculating" @click="showSettings = false">取消</n-button>
+              <n-button
+                type="primary"
+                @click="saveRouteAndClose"
+                :loading="routeSaving"
+                :disabled="routeCalculating"
+              >
+                保存并关闭
+              </n-button>
+            </div>
+          </div>
+        </template>
+      </n-modal>
+
+      <!-- 加工站干员 -->
+      <n-modal
+        v-model:show="showWorkshopSettings"
+        preset="card"
+        class="growth-modal"
+        :style="{ width: 'min(720px, calc(100vw - 24px))' }"
+        :mask-closable="false"
+        :close-on-esc="!workshopDefaultsLoading"
+        :closable="!workshopDefaultsLoading"
+      >
+        <template #header>
+          <div class="growth-modal__head">
+            <span class="gp-kicker">Workshop lineup</span>
+            <h2>加工站干员</h2>
+            <p>按副产品概率与材料范围分配合成干员；缺口生成任务会沿用这里的名单。</p>
+          </div>
+        </template>
+
+        <div class="growth-modal__body workshop-drawer">
+          <n-alert v-if="workshopDefaultsError" type="warning" :bordered="false">
+            {{ workshopDefaultsError }}
+          </n-alert>
+
+          <section class="workshop-threshold">
+            <div class="workshop-threshold__copy">
+              <h3>副产品概率下限</h3>
+              <p>一键设置会填入达到该下限且已解锁技能的干员，名单为空时逐档降低下限。</p>
+            </div>
+            <div class="workshop-threshold__controls">
+              <mower-input-number
+                :value="workshopMinBonus"
+                @update:value="workshopMinBonus = $event ?? 80"
+                :min="0"
+                :max="1000"
+                :precision="0"
+                :step="5"
+                :show-button="false"
+                :disabled="workshopDefaultsLoading"
+                :input-props="{ 'aria-label': '副产品概率加成下限' }"
+                style="width: 104px"
+              >
+                <template #suffix>%</template>
+              </mower-input-number>
+              <n-button
+                size="small"
+                secondary
+                type="primary"
+                @click="setWorkshopOperators"
+                :loading="workshopDefaultsLoading"
+              >
+                一键设置
+              </n-button>
+            </div>
+          </section>
+
+          <section class="workshop-policy">
+            <n-switch
+              :value="workshopProtectT2"
+              :disabled="workshopPolicySaving"
+              @update:value="setWorkshopMaterialPolicy"
+              size="small"
+              aria-label="不使用装置/固源岩进行合成"
+            />
+            <span>不使用装置 / 固源岩进行合成</span>
+            <HelpText>
+              仅保留 T2 装置、固源岩，其他等级照常合成；开启后材料预算也不使用这两种原料。
+            </HelpText>
+          </section>
+
+          <section class="workshop-group">
+            <header>
+              <h3>非 T5 材料</h3>
+              <HelpText>缺口合成暂不使用需要额外垫刀的九色鹿，请同时选择其他加工干员。</HelpText>
+            </header>
+            <slick-operator-select
+              v-model="fodderOps"
+              :disabled="workshopDefaultsLoading"
+              select_placeholder="选择加工干员"
+            />
+          </section>
+
+          <section class="workshop-group">
+            <header><h3>T5 材料</h3></header>
+            <slick-operator-select
+              v-model="t5Ops"
+              :disabled="workshopDefaultsLoading"
+              select_placeholder="选择干员"
+            />
+          </section>
+
+          <section class="workshop-group">
+            <header><h3>技巧概要</h3></header>
+            <slick-operator-select
+              v-model="bookOps"
+              :disabled="workshopDefaultsLoading"
+              select_placeholder="选择干员"
+            />
+          </section>
+
+          <details class="workshop-advanced">
+            <summary>九色鹿垫刀素材设置（仅手动合成使用）</summary>
             <workshop-deer-fodder v-model="deerFodder" :disabled="workshopDefaultsLoading" />
-          </n-collapse-item>
-          <n-collapse-item
-            v-if="workshopRecommendations"
-            title="值得培养的干员"
-            name="workshop-materials"
-          >
-            <n-space vertical>
+          </details>
+
+          <details v-if="workshopRecommendations" class="workshop-advanced">
+            <summary>值得培养的干员</summary>
+            <div class="workshop-recommendations">
               <div v-for="category in workshopCategoryLabels" :key="category.key">
-                <n-text strong>{{ category.label }}</n-text>
-                <div v-for="operator in workshopRecommendations[category.key]" :key="operator.name">
-                  <n-text depth="3">{{
+                <h4>{{ category.label }}</h4>
+                <p v-for="operator in workshopRecommendations[category.key]" :key="operator.name">
+                  {{
                     workshopRecommendationText(
                       operator,
                       workshopOwnedOperators !== null && !workshopOwnedOperators.has(operator.name)
                     )
-                  }}</n-text>
-                </div>
-                <n-text v-if="!workshopRecommendations[category.key].length" depth="3"
-                  >暂无推荐干员</n-text
-                >
+                  }}
+                </p>
+                <p v-if="!workshopRecommendations[category.key].length" class="gp-muted">
+                  暂无推荐干员
+                </p>
               </div>
-            </n-space>
-          </n-collapse-item>
-        </n-collapse>
-      </n-space>
-      <template #footer>
-        <n-space justify="end">
-          <n-button
-            type="primary"
-            size="small"
-            @click="showWorkshopSettings = false"
-            :disabled="workshopDefaultsLoading"
-            >保存</n-button
-          >
-        </n-space>
-      </template>
-    </n-modal>
+            </div>
+          </details>
+        </div>
+
+        <template #footer>
+          <div class="growth-modal__foot">
+            <span class="gp-muted growth-drawer__foot-note">关闭后仍保留已保存的名单</span>
+            <n-button
+              type="primary"
+              size="small"
+              @click="showWorkshopSettings = false"
+              :disabled="workshopDefaultsLoading"
+            >
+              完成
+            </n-button>
+          </div>
+        </template>
+      </n-modal>
+    </div>
   </div>
 </template>
 
@@ -773,50 +555,28 @@ import {
   workshopRecommendationText,
   workshopTraineeWarning
 } from '@/utils/workshopOperators'
-import WorkshopStatus from '@/components/WorkshopStatus.vue'
 import {
   masteryFormWarning,
   masteryScheduleContext,
   masteryTraineeWarning
 } from '@/utils/masterySupport'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
-import MasteryMaterials from '@/components/MasteryMaterials.vue'
-import { materialStatus, materialStatusType } from '@/utils/masteryMaterials'
-import GrowthLevelPlan from '@/components/GrowthLevelPlan.vue'
 import GrowthCraftingOrder from '@/components/GrowthCraftingOrder.vue'
-import {
-  NAlert,
-  NAvatar,
-  NButton,
-  NCard,
-  NCheckbox,
-  NCollapse,
-  NCollapseItem,
-  NDivider,
-  NEmpty,
-  NIcon,
-  NInput,
-  NModal,
-  NScrollbar,
-  NPagination,
-  NSelect,
-  NSpace,
-  NSpin,
-  NTabs,
-  NTabPane,
-  NTag,
-  NText,
-  NDynamicInput,
-  useMessage,
-  useThemeVars
-} from 'naive-ui'
-import Settings from '@vicons/carbon/es/Settings'
-import Build from '@vicons/ionicons5/es/Build'
-import Refresh from '@vicons/ionicons5/es/Refresh'
+import { NAlert, NButton, NCheckbox, NDynamicInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import axios from 'axios'
 import { useMasteryStore } from '@/stores/mastery'
 import MasterySupports from '@/components/MasterySupports.vue'
 import MasteryProfessionTrainers from '@/components/MasteryProfessionTrainers.vue'
+import GrowthHero from '@/growth/GrowthHero.vue'
+import GrowthViewNav from '@/growth/GrowthViewNav.vue'
+import GrowthOverview from '@/growth/GrowthOverview.vue'
+import GrowthOperatorGrid from '@/growth/GrowthOperatorGrid.vue'
+import GrowthOperatorDetail from '@/growth/GrowthOperatorDetail.vue'
+import GrowthMaterialsView from '@/growth/GrowthMaterialsView.vue'
+import GrowthInsightsView from '@/growth/GrowthInsightsView.vue'
+import { goalLabel } from '@/growth/growthFormatters'
+import { sumPersonalStatistics } from '@/utils/operatorStatistics'
+import '@/growth/growth.css'
 import HelpText from '@/components/HelpText.vue'
 import { usePlanStore } from '@/stores/plan'
 import { useConfigStore } from '@/stores/config'
@@ -831,11 +591,7 @@ import {
   normalizeMasterySwapBuffers
 } from '@/utils/masteryRoute'
 import { render_op_option, render_op_label } from '@/utils/op_select'
-import { masteryLevelLabel } from '@/utils/masteryLevel'
-import OperatorStatistics from '@/components/OperatorStatistics.vue'
-import GrowthSurveyFilters from '@/components/GrowthSurveyFilters.vue'
-import { defaultSurveyFilters, operatorSurvey, formatSurveyRate } from '@/utils/growthSurvey'
-const theme = useThemeVars()
+import { defaultSurveyFilters, operatorSurvey } from '@/utils/growthSurvey'
 import {
   selectedRecommendation,
   goalSelected,
@@ -845,9 +601,6 @@ import {
   selectedLevelGoal
 } from '@/utils/growthPlanning'
 
-const SettingsIcon = Settings
-const HammerIcon = Build
-const RefreshIcon = Refresh
 const message = useMessage()
 const store = useMasteryStore()
 const planStore = usePlanStore()
@@ -865,7 +618,6 @@ const profMap = {
   SPECIAL: '特种',
   PIONEER: '先锋'
 }
-const professionName = (p) => profMap[p] || p
 
 const rarityOptions = [
   { label: '6★', value: 6 },
@@ -878,19 +630,9 @@ const rarityOptions = [
 const professionOptions = profKeys.map((p) => ({ label: p, value: p }))
 
 const expandedOperator = ref([])
-function toggleOperatorHeaderSpace(op, event) {
-  const item = event.currentTarget
-  const header = item.querySelector(':scope > .n-collapse-item__header')
-  // Naive UI handles its main and extra regions; cover the remaining header space.
-  if (event.target !== header && event.target !== item) return
-  const bounds = header.getBoundingClientRect()
-  if (event.clientY < bounds.top || event.clientY > bounds.bottom) return
-  expandedOperator.value = expandedOperator.value.includes(op.char_id) ? [] : [op.char_id]
-}
-const statisticsExpanded = ref(false)
 const idleFilter = ref('all')
 const idleFilterOptions = [
-  { label: '空闲状态：不限', value: 'all' },
+  { label: '不限', value: 'all' },
   { label: '空闲', value: 'idle' },
   { label: '忙碌', value: 'busy' }
 ]
@@ -916,11 +658,16 @@ async function applyLevelTarget(op, key) {
   const choice = levelChoices(op).find((entry) => entry.key === key)
   const choices = levelChoices(op).map((entry) => entry.key)
   const required = prerequisiteLevelGoal(op, hasPlannedSkill(op), store.goals)
-  if (choices.indexOf(choice?.key) < choices.indexOf(required)) {
+  if (choice && choices.indexOf(choice.key) < choices.indexOf(required)) {
     message.info('此等级低于已选养成项目的最低前置；移除对应项目后可降低目标。')
     return
   }
-  if (choice && !choice.summary) {
+  // 用实际练度判断是否达成，不能依赖材料摘要：概览/详情返回的摘要可能为空。
+  const reached =
+    choice &&
+    ((op.elite ?? 0) > choice.elite ||
+      ((op.elite ?? 0) === choice.elite && (op.level ?? 1) >= choice.level))
+  if (reached) {
     message.info('该等级已经达成，无需再加入计划。')
     return
   }
@@ -996,9 +743,6 @@ function moduleTargetOptions(module) {
   return Array.from({ length: module.max_level || 1 }, (_, i) => i + 1)
     .filter((level) => level > module.current_level)
     .map((level) => ({ label: `目标 ${level} 级`, value: level }))
-}
-function moduleSummary(op, module) {
-  return module.targets?.[moduleTarget(op, module)] || module
 }
 async function changeModuleTarget(op, module, value) {
   if (isGoalPlanned(op.char_id, module.id)) {
@@ -1124,6 +868,14 @@ const emptyText = computed(() =>
 // ─── 计划（技能级别）───
 // 格式: { "charId_skillIndex": true, ... }
 const plan = ref({})
+const queueOrderKeys = shallowRef([])
+const queueOrderError = ref('')
+let planReadSequence = 0
+let queueOrderController = null
+onUnmounted(() => {
+  ++planReadSequence
+  queueOrderController?.abort()
+})
 const planStatus = ref({}) // { "charId_skillIndex": {id, status, target_level, priority, expires_at} }
 const crossFormWarning = computed(() =>
   masteryFormWarning(
@@ -1156,9 +908,6 @@ function isSkillPlanned(cid, si) {
 }
 function hasPlannedSkill(op) {
   return op.recommendations.some((r) => isSkillPlanned(op.char_id, r.skill_index))
-}
-function allPlanned(op) {
-  return op.recommendations.every((r) => isSkillPlanned(op.char_id, r.skill_index))
 }
 
 async function warnMaterialShortage(additions) {
@@ -1334,8 +1083,29 @@ async function addAllToPlan(op) {
 }
 
 async function refreshPlanFromServer() {
+  const sequence = ++planReadSequence
+  queueOrderController?.abort()
+  const controller = new AbortController()
+  queueOrderController = controller
   try {
-    const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
+    const [r, order] = await Promise.all([
+      axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`),
+      axios
+        .get(`${import.meta.env.VITE_HTTP_URL}/growth-crafting-order`, {
+          signal: controller.signal,
+          timeout: 30000
+        })
+        .catch((error) => ({ error }))
+    ])
+    if (controller.signal.aborted || sequence !== planReadSequence) return
+    if (order.error || order.data?.error) {
+      queueOrderError.value = '养成顺序读取失败，当前队列可能不是最新顺序；请重新读取。'
+    } else {
+      queueOrderKeys.value = (order.data?.planning_items || order.data?.items || []).map(
+        (item) => item.key
+      )
+      queueOrderError.value = ''
+    }
     const data = r.data || {}
     const p = {}
     const ps = {}
@@ -1501,11 +1271,6 @@ const swap_list = [
 const swap_30 = [
   { value: 'yes', label: '有30%速度加成' },
   { value: 'no', label: '无训练速度加成' }
-]
-const level_list = [
-  { value: 1, label: '专一' },
-  { value: 2, label: '专二' },
-  { value: 3, label: '专三' }
 ]
 // 全局路线设置（#91 修订）：中枢加成（0/5）+ 换人缓冲时间，存路线配置设置行，不走 conf。
 const masterySettings = reactive({
@@ -2072,20 +1837,19 @@ onUnmounted(() => {
 })
 
 // ─── 工具函数 ───
-function formatTime(s) {
-  const h = Math.floor(s / 3600),
-    m = Math.floor((s % 3600) / 60)
-  if (h > 0 && m > 0) return `${h}小时${m}分钟`
-  if (h > 0) return `${h}小时`
-  if (m > 0) return `${m}分钟`
-  return `${s}秒`
-}
+const cultivateSyncing = ref(false)
 async function fetchCultivate() {
-  await store.fetchCultivate()
-  if (store.cultivateOk) {
-    message.success(`森空岛数据同步成功 ${store.cultivateMsg}`)
-  } else if (store.cultivateMsg) {
-    message.error(`森空岛同步失败: ${store.cultivateMsg}`)
+  if (cultivateSyncing.value) return
+  cultivateSyncing.value = true
+  try {
+    await store.fetchCultivate()
+    if (store.cultivateOk) {
+      message.success(`森空岛数据同步成功 ${store.cultivateMsg}`)
+    } else if (store.cultivateMsg) {
+      message.error(`森空岛同步失败: ${store.cultivateMsg}`)
+    }
+  } finally {
+    cultivateSyncing.value = false
   }
 }
 
@@ -2119,11 +1883,388 @@ async function insertMasteryTask(op, rec) {
   }
 }
 
+// ─── 工作区视图、队列与派生数据 ───
+const VIEW_KEYS = ['overview', 'operators', 'materials', 'insights']
+
+function readQuery() {
+  if (typeof window === 'undefined' || !window.location) return new URLSearchParams()
+  try {
+    return new URLSearchParams(window.location.search)
+  } catch {
+    return new URLSearchParams()
+  }
+}
+
+const initialView = readQuery().get('view')
+const activeView = ref(VIEW_KEYS.includes(initialView) ? initialView : 'overview')
+const craftingOrderRef = ref(null)
+
+function replaceQuery(patch) {
+  if (typeof window === 'undefined' || !window.location || !window.history) return
+  try {
+    const url = new URL(window.location.href)
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === undefined || value === '') url.searchParams.delete(key)
+      else url.searchParams.set(key, value)
+    }
+    window.history.replaceState(window.history.state, '', url.toString())
+  } catch {
+    // 地址栏同步失败不影响页面状态。
+  }
+}
+
+function scrollToTop() {
+  if (typeof document === 'undefined') return
+  const host = document.querySelector('.layout-content-container > .n-layout-scroll-container')
+  if (host && typeof host.scrollTo === 'function') {
+    host.scrollTo({ top: 0, behavior: 'smooth' })
+  } else if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+watch(activeView, (value) => {
+  if (value !== 'operators') expandedOperator.value = []
+  replaceQuery({ view: value === 'overview' ? null : value, op: expandedOperator.value[0] || null })
+  scrollToTop()
+})
+
+watch(expandedOperator, (names) => {
+  if (activeView.value === 'operators') replaceQuery({ op: names[0] || null })
+})
+
+function openOperatorPicker() {
+  activeView.value = 'operators'
+  nextTick(() => {
+    if (typeof document === 'undefined') return
+    document.querySelector('.growth-filters__search input')?.focus?.()
+  })
+}
+
+function openCraftingOrder() {
+  craftingOrderRef.value?.open?.()
+}
+
+function openOperator(op) {
+  if (!op) return
+  activeView.value = 'operators'
+  expandedOperator.value = [op.char_id]
+  replaceQuery({ view: 'operators', op: op.char_id })
+}
+
+function selectOperator(op) {
+  if (!op) return
+  expandedOperator.value = expandedOperator.value.includes(op.char_id) ? [] : [op.char_id]
+}
+
+function closeOperator() {
+  expandedOperator.value = []
+}
+
+function refreshGrowthPlanOnly() {
+  void loadSurvey()
+  return refreshGrowthPlan()
+}
+
+const syncHint = computed(() => {
+  const text = store.cultivateMsg
+  if (!text) return ''
+  if (!store.cultivateOk) return '森空岛同步失败'
+  return text.length > 12 ? '森空岛已同步' : '森空岛 · ' + text
+})
+
+function plannedCountFor(op) {
+  if (!op) return 0
+  const skills = (op.recommendations || []).filter((rec) =>
+    isSkillPlanned(op.char_id, rec.skill_index)
+  ).length
+  const goals = store.goals.filter((goal) => goal.char_id === op.char_id).length
+  return skills + goals
+}
+
+const queueItems = computed(() => {
+  const rows = planEntries.value.map((entry) => ({
+    key: 'skill:' + entry.char_id + ':' + entry.skill_index,
+    kind: 'skill',
+    char_id: entry.char_id,
+    name: entry.name,
+    label: entry.skill_name + ' · 专' + ['', '一', '二', '三'][entry.target_level || 3],
+    status: entry.status,
+    failed_reason: entry.failed_reason
+  }))
+  for (const goal of store.goals) {
+    const op = store.recommendations.find((entry) => entry.char_id === goal.char_id)
+    rows.push({
+      key: 'goal:' + goal.char_id + ':' + goal.module_id,
+      kind: 'goal',
+      char_id: goal.char_id,
+      name: op?.name || goal.char_id,
+      label: goalLabel(op, goal),
+      status: 'manual',
+      failed_reason: ''
+    })
+  }
+  const rank = new Map(queueOrderKeys.value.map((key, index) => [key, index]))
+  return rows.sort(
+    (left, right) => (rank.get(left.key) ?? rank.size) - (rank.get(right.key) ?? rank.size)
+  )
+})
+
+const trainingCard = computed(() => {
+  const entry = planEntries.value.find((row) =>
+    ['training', 'arranging', 'waiting_collect'].includes(row.status)
+  )
+  if (!entry) return null
+  const op = store.recommendations.find((item) => item.char_id === entry.char_id) || null
+  const rec = op?.recommendations?.find((item) => item.skill_index === entry.skill_index) || null
+  const target = entry.target_level || 3
+  const selected = rec ? selectedRecommendation(rec, target) : null
+  return {
+    entry,
+    op,
+    rec: selected,
+    target,
+    totalTime: selected?.total_time || 0
+  }
+})
+
+const nextUpItem = computed(
+  () =>
+    queueItems.value.find(
+      (row) => !['training', 'arranging', 'waiting_collect', 'failed'].includes(row.status)
+    ) || null
+)
+
+const planMaterialStats = computed(() => {
+  const resourceIds = new Set(['4001', 'growth_exp', '4006', '32001'])
+  const rows = (planMaterials.value?.materials || []).filter((row) => !resourceIds.has(row.id))
+  const missingRows = (planMaterials.value?.missing || []).filter((row) => !resourceIds.has(row.id))
+  if (!rows.length) {
+    return { ready: 0, total: 0, missing: 0, craftable: 0, percent: 0 }
+  }
+  const ready = rows.filter((row) => row.owned >= row.required).length
+  const missing = missingRows.length
+  const craftable = rows.filter((row) => row.owned < row.required && row.craftable).length
+  return {
+    ready,
+    total: rows.length,
+    missing,
+    craftable,
+    percent: rows.length ? (ready / rows.length) * 100 : 0
+  }
+})
+
+const rosterStats = computed(() => {
+  const totals = sumPersonalStatistics(store.personalStatistics, [1, 2, 3, 4, 5, 6])
+  return {
+    owned: totals.owned,
+    elite2: totals.elite2,
+    masteries: totals.skills[3],
+    modules: totals.modules[1] + totals.modules[2] + totals.modules[3]
+  }
+})
+
+const recommendedCards = computed(() =>
+  store.recommendations
+    .map((op) => {
+      const survey = surveyFor(op) || {}
+      const skillRates = (survey.skills || [])
+        .map((skill) => skill.rate)
+        .filter((rate) => rate !== null && rate !== undefined)
+      const surveyScore = skillRates.length
+        ? Math.max(...skillRates)
+        : Math.max(
+            0,
+            ...(survey.modules || []).map((module) => module.rate || 0),
+            survey.elite2 || 0
+          )
+      const plannedCount = plannedCountFor(op)
+      const bestRecommendation =
+        (op.recommendations || [])
+          .filter((rec) => Number(rec.current_level) < 3)
+          .sort((left, right) => {
+            const leftHighlight = survey.skillHighlights?.includes(left.skill_index) ? 1 : 0
+            const rightHighlight = survey.skillHighlights?.includes(right.skill_index) ? 1 : 0
+            return (
+              rightHighlight - leftHighlight ||
+              Number(left.current_level) - Number(right.current_level)
+            )
+          })[0] || null
+      return {
+        operator: op,
+        survey,
+        planned: plannedCount > 0,
+        plannedCount,
+        recommendation: bestRecommendation,
+        score: surveyScore,
+        hasWork:
+          (op.recommendations || []).some((rec) => Number(rec.current_level) < 3) ||
+          (op.modules || []).some((module) => module.current_level < module.max_level)
+      }
+    })
+    .filter((card) => card.hasWork && !card.planned)
+    .sort((left, right) => right.score - left.score || right.operator.rarity - left.operator.rarity)
+    .slice(0, 4)
+)
+
+const operatorCards = computed(() =>
+  pagedOperators.value.map((op) => ({
+    operator: op,
+    survey: surveyFor(op),
+    planned: hasPlannedGoal(op),
+    plannedCount: plannedCountFor(op)
+  }))
+)
+
+const selectedOperatorBase = computed(
+  () => store.recommendations.find((op) => op.char_id === expandedOperator.value[0]) || null
+)
+const selectedOperator = computed(() => {
+  const id = expandedOperator.value[0]
+  if (!id) return null
+  if (operatorDetail.value?.char_id === id) return operatorDetail.value
+  return selectedOperatorBase.value
+})
+const selectedLevelGoalValue = computed(() =>
+  selectedOperatorBase.value ? levelGoalFor(selectedOperatorBase.value) : null
+)
+const selectedRequiredLevel = computed(() =>
+  selectedOperatorBase.value
+    ? prerequisiteLevelGoal(
+        selectedOperatorBase.value,
+        hasPlannedSkill(selectedOperatorBase.value),
+        store.goals
+      )
+    : null
+)
+const selectedPlannedCount = computed(() => plannedCountFor(selectedOperatorBase.value))
+
+const selectedSkillRows = computed(() => {
+  const op = selectedOperator.value
+  const base = selectedOperatorBase.value
+  if (!op || !base) return []
+  const rows = op.recommendations || base.recommendations || []
+  return rows.map((rec) => {
+    const target = targetFor(base, rec)
+    const key = planKey(base.char_id, rec.skill_index)
+    const status = planStatus.value[key] || null
+    const planned = isSkillPlanned(base.char_id, rec.skill_index)
+    return {
+      rec: selectedRecommendation(rec, target),
+      target,
+      planned,
+      status,
+      locked: isTargetLocked(base, rec),
+      targetOptions: targetOptions(rec),
+      disabled: batchAdding.value || (!planned && !!base.material_error),
+      hasSupport: Boolean(status?.id)
+    }
+  })
+})
+
+const selectedModuleRows = computed(() => {
+  const op = selectedOperator.value
+  const base = selectedOperatorBase.value
+  if (!op || !base) return []
+  return (op.modules || []).map((module) => {
+    const target = moduleTarget(base, module)
+    const planned = isGoalPlanned(base.char_id, module.id)
+    const summary = module.targets?.[target] || module.targets?.[module.max_level] || null
+    return {
+      module,
+      target,
+      planned,
+      targetOptions: moduleTargetOptions(module),
+      disabled: goalSaving.value || (module.current_level >= module.max_level && !planned),
+      summary: summary?.opening_summary || null
+    }
+  })
+})
+
+const selectedBasicState = computed(() => {
+  const base = selectedOperatorBase.value
+  const op = selectedOperator.value
+  if (!base && !op) return { supported: false }
+  const target = op || base
+  const supported = Boolean(target.supports_basic_skill7 || target.basic_skill_summary)
+  if (!supported) return { supported: false }
+  const explicit = isGoalPlanned(target.char_id, 'skill7')
+  const planned = explicit || hasPlannedSkill(target)
+  const prerequisite = target.basic_skill_prerequisite
+  const pieces = []
+  if (target.basic_skill_summary) {
+    pieces.push('基础技能材料按干员只计算一次，升级需在游戏内手动完成。')
+  }
+  if (prerequisite && target.elite < prerequisite.elite) {
+    pieces.push(
+      '最低前置为' +
+        eliteLabel(prerequisite.elite) +
+        ' ' +
+        prerequisite.level +
+        ' 级，材料自动计入。'
+    )
+  }
+  if ((target.max_phase || 0) >= 2) {
+    pieces.push('专精计划会自动包含此项。')
+  }
+  if (!pieces.length) pieces.push('独立基础技能目标，不依赖专精计划。')
+  return {
+    supported: true,
+    planned,
+    checked: planned,
+    disabled:
+      goalSaving.value || hasPlannedSkill(target) || (!target.basic_skill_summary && !explicit),
+    achieved: target.main_skill_level >= 7,
+    materials: target.basic_skill_summary || null,
+    note: pieces.join('')
+  }
+})
+
+function applySelectedLevel(key) {
+  // 等级目标的材料摘要只存在于按需详情里；用列表快照会误判「已经达成」。
+  const op = selectedOperator.value || selectedOperatorBase.value
+  if (op) return applyLevelTarget(op, key)
+}
+function toggleSelectedSkill(rec) {
+  if (selectedOperatorBase.value) return toggleSkillPlan(selectedOperatorBase.value, rec)
+}
+function changeSelectedTarget(payload) {
+  if (selectedOperatorBase.value) {
+    return changeTarget(selectedOperatorBase.value, payload.rec, payload.value)
+  }
+}
+function insertSelectedMasteryTask(rec) {
+  if (selectedOperatorBase.value) return insertMasteryTask(selectedOperatorBase.value, rec)
+}
+function openSelectedSupports(rec) {
+  if (selectedOperatorBase.value) return openSupports(selectedOperatorBase.value, rec)
+}
+function toggleSelectedModule(payload) {
+  if (selectedOperatorBase.value) {
+    return toggleGoal(selectedOperatorBase.value, payload.module.id, payload.value)
+  }
+}
+function changeSelectedModuleTarget(payload) {
+  if (selectedOperatorBase.value) {
+    return changeModuleTarget(selectedOperatorBase.value, payload.module, payload.value)
+  }
+}
+function toggleSelectedBasic(value) {
+  if (selectedOperatorBase.value) {
+    return toggleGoal(selectedOperatorBase.value, 'skill7', value)
+  }
+}
+
 // ─── 初始化 ───
 onMounted(async () => {
+  const params = readQuery()
   await refreshPlanFromServer()
   void loadSurvey()
   await Promise.all([loadOperators(), store.fetchRecommendations()])
+  const requestedOperator = params.get('op')
+  if (requestedOperator && activeView.value === 'operators') {
+    expandedOperator.value = [requestedOperator]
+  }
   // 载入专精路线；打开设置时刷新拥有情况和解锁技能。
   if (!defaultsCache.value) {
     try {
@@ -2146,200 +2287,489 @@ async function loadOperators() {
 </script>
 
 <style scoped>
-.statistics-panel {
-  margin: 18px 0;
-}
-.rec-controls :deep(.n-button),
-.rec-controls :deep(.n-base-selection) {
-  height: 28px;
-  --n-height: 28px !important;
-}
-.operator-status :deep(.n-tag),
-.operator-status :deep(.n-button) {
-  height: 22px;
-  --n-height: 22px !important;
-}
-.operator-status :deep(.all-plan-button) {
-  padding: 0 8px;
-}
-.page-header {
+.growth-notice {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--gp-warn-block);
+  color: var(--gp-ink-2);
+}
+
+.growth-notice p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.growth-notice__stamp {
+  flex: none;
+  margin-top: 1px;
+}
+
+.growth-blocked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 30px 28px;
+}
+
+.growth-blocked h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.growth-blocked p {
+  margin: 0;
+  color: var(--gp-muted);
+  font-size: 13px;
+}
+
+.growth-blocked__actions {
+  display: flex;
+  gap: 10px;
   flex-wrap: wrap;
-  gap: 8px;
+  margin-top: 6px;
 }
-.page-title {
-  margin: 0 0 4px;
-  font-size: 26px;
-  font-weight: 650;
-  letter-spacing: -0.5px;
+
+.growth-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.mastery-list {
-  width: 100%;
-  max-width: 1280px;
-  /* Short filtered lists can still scroll past the filters into the viewport. */
-  min-height: calc(100dvh - 128px);
+
+.growth-operators {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
 }
-.mastery-route-tabs {
-  /* Keep the segment capsule inside the scrolling content's coordinate space. */
-  position: relative;
+
+.growth-operators.has-dossier {
+  align-items: start;
 }
-.rec-item .n-card {
-  margin-bottom: 0;
+
+@media (min-width: 1121px) {
+  .growth-operators.has-dossier {
+    grid-template-columns: minmax(0, 1fr) 392px;
+  }
 }
-.section-label {
-  display: block;
-  margin-bottom: 2px;
-}
-.missing-section {
-  margin-top: 4px;
-}
+
 .support-outer {
   margin-bottom: 8px;
 }
+
 .support-inner {
   margin-top: 4px;
 }
+
 .task-col {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 4px 0;
 }
+
 .ml {
   margin-left: 12px;
 }
-.confirm-support-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 2px 0;
+
+.mastery-route-tabs {
+  position: relative;
 }
-.plan-op-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+
+/* ── 设置弹窗 ─────────────────────────────────────────── */
+/* 弹窗整张纸统一暖色，内部区块用浅一档的纸面区分，不再出现白底嵌暖黄块。 */
+.growth-modal {
+  background: var(--gp-surface-2);
 }
-.growth-page {
-  max-width: 1440px;
-  margin: 0 auto;
-  -webkit-font-smoothing: antialiased;
-  font-variant-numeric: tabular-nums;
+
+.growth-modal :deep(.n-card-header) {
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--gp-hair-soft);
+  background: var(--gp-surface-2);
 }
-.page-subtitle {
-  font-size: 13px;
+
+.growth-modal :deep(.n-card__content) {
+  padding: 0;
 }
-.mastery-global-switch {
-  padding: 16px 0;
-  flex-wrap: wrap;
+
+.growth-modal :deep(.n-card__footer) {
+  padding: 14px 24px;
+  border-top: 1px solid var(--gp-hair-soft);
+  background: var(--gp-surface-2);
 }
-.filter-summary {
-  margin: 16px 0;
+
+.growth-modal__body {
+  padding: 18px 24px;
+  max-height: min(66dvh, 720px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-.materials-overview {
-  margin: 16px 0 24px;
-  border-radius: 14px;
+
+.growth-modal__head h2 {
+  margin: 4px 0 3px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
-.overview-note {
-  display: block;
-  font-size: 12px;
-  margin-top: 14px;
-}
-.mastery-list :deep(.operator-cards) {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
-  align-items: start;
-  gap: 8px;
-}
-.mastery-list :deep(.operator-cards > .n-collapse-item) {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
+
+.growth-modal__head p {
   margin: 0;
-  padding: 0 10px;
-  border: none;
-  border-radius: 8px;
-  background: var(--mower-control-surface, var(--n-color));
+  max-width: 58ch;
+  color: var(--gp-muted);
+  font-size: 11.5px;
+  line-height: 1.6;
 }
-.mastery-list :deep(.operator-cards > .n-collapse-item--active) {
-  grid-column: 1 / -1;
-  max-width: 880px;
-  padding-bottom: 10px;
-}
-.mastery-list :deep(.operator-cards > .n-collapse-item > .n-collapse-item__header) {
-  padding: 6px 0;
-  gap: 12px;
-  flex-wrap: wrap;
-  cursor: pointer;
-}
-.mastery-list
-  :deep(
-    .operator-cards > .n-collapse-item > .n-collapse-item__header > .n-collapse-item__header-main
-  ) {
-  flex: none;
-}
-.mastery-list
-  :deep(
-    .operator-cards > .n-collapse-item > .n-collapse-item__header > .n-collapse-item__header-extra
-  ) {
-  margin-left: auto;
-  min-width: 0;
-  max-width: 100%;
-}
-.prerequisite-notice {
-  margin-bottom: 16px;
-}
-.level-card {
-  margin: 16px 0;
-  border-radius: 12px;
-}
-.promotion-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin: 14px 0;
-}
-.promotion-row > :last-child {
-  font-size: 12px;
-}
-.rec-item {
-  margin: 14px 0;
-}
-.rec-item :deep(.n-card) {
-  border-radius: 12px;
-}
-.module-section {
-  margin-top: 18px;
-}
-.module-row {
-  padding: 18px 0;
-}
-.module-heading {
+
+.growth-modal__foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   flex-wrap: wrap;
+}
+
+.growth-drawer__foot-left,
+.growth-drawer__foot-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.growth-drawer__foot-note {
+  font-size: 11.5px;
+}
+
+.route-drawer {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.route-drawer__rail {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--gp-surface-2);
+}
+
+.route-drawer__prof {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gp-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-drawer__prof:hover {
+  color: var(--gp-ink);
+  background: var(--gp-surface-3);
+}
+
+.route-drawer__prof.is-active {
+  background: var(--gp-ink);
+  color: var(--gp-page);
+}
+
+.route-drawer__body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.route-drawer__alert {
+  font-size: 12px;
+}
+
+.route-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.route-section-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.route-section-head p {
+  margin: 3px 0 0;
+  color: var(--gp-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.route-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: var(--gp-surface);
+  box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
+}
+
+.route-slot__line {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
   gap: 10px;
-  margin-bottom: 14px;
+  align-items: center;
 }
-.growth-page :deep(.n-checkbox) {
-  padding-block: 8px;
+
+.route-slot__stage {
+  display: grid;
+  place-items: center;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--gp-surface-2);
+  color: var(--gp-ink);
+  font-size: 11px;
+  font-weight: 700;
 }
-@media (max-width: 650px) {
-  .page-header {
-    align-items: flex-start;
-    gap: 18px;
+
+.route-slot__efficiency {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: 11px;
+}
+
+.route-slot__swap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-left: 56px;
+}
+
+.route-slot__swap :deep(.n-select) {
+  width: 168px;
+}
+
+.route-flags {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.route-reference {
+  padding-top: 4px;
+  border-top: 1px solid var(--gp-hair-soft);
+}
+
+.route-reference > summary {
+  padding: 8px 0;
+  color: var(--gp-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-global {
+  padding-top: 14px;
+  border-top: 1px solid var(--gp-hair-soft);
+}
+
+.route-central {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.route-buffers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.route-buffer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--gp-surface-2);
+  font-size: 11.5px;
+}
+
+.workshop-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workshop-threshold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--gp-surface);
+  box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
+}
+
+.workshop-threshold__copy h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.workshop-threshold__copy p {
+  margin: 3px 0 0;
+  max-width: 46ch;
+  color: var(--gp-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.workshop-threshold__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workshop-policy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.workshop-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--gp-hair-soft);
+}
+
+.workshop-group:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.workshop-group header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workshop-group h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workshop-advanced {
+  border-top: 1px solid var(--gp-hair-soft);
+  padding-top: 10px;
+}
+
+.workshop-advanced > summary {
+  color: var(--gp-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.workshop-recommendations {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.workshop-recommendations h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workshop-recommendations p {
+  margin: 2px 0;
+  color: var(--gp-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+@media (max-width: 760px) {
+  .route-drawer {
+    grid-template-columns: 1fr;
   }
-  .page-title {
-    font-size: 23px;
+
+  .route-drawer__rail {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
-  .growth-page :deep(.n-collapse-item__header-main) {
-    flex-wrap: wrap;
-    gap: 10px;
+
+  .route-drawer__rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .route-drawer__prof {
+    flex: none;
+    text-align: center;
+  }
+
+  .route-slot__line {
+    grid-template-columns: 1fr;
+  }
+
+  .route-slot__stage {
+    place-items: start;
+    height: auto;
+    padding: 2px 8px;
+    justify-self: start;
+  }
+
+  .route-slot__swap {
+    padding-left: 0;
+  }
+
+  .route-slot__swap :deep(.n-select) {
+    width: 100%;
+  }
+
+  .growth-modal :deep(.n-card-header),
+  .growth-modal :deep(.n-card__footer) {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .growth-modal__body {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 }
 </style>

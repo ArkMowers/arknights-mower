@@ -36,6 +36,8 @@ const initialPath = location.pathname.startsWith('/preview') ? '/' : location.pa
 history.replaceState(history.state, '', `${initialPath}?${params}${location.hash}`)
 
 const config = createPreviewConfiguration(defaultConfiguration(), params.get('theme'))
-installPreviewBackend(config)
+const previewData = installPreviewBackend(config)
+// 离线截图 / 评审可用 ?watermark=0 关闭示例水印，仅影响预览会话。
+if (params.get('watermark') === '0') previewData.appearance.watermark_visible = false
 localStorage.setItem('sc_preview', 'true')
 await import('../src/main.js')
