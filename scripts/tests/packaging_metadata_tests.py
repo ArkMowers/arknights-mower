@@ -33,6 +33,11 @@ class PackagingMetadataTests(unittest.TestCase):
             "arknights_mower/utils/__init__.py",
             "arknights_mower/utils/git_rev.py",
             "arknights_mower/templates/version.html",
+            "arknights_mower/models/rapidocr/PP-OCRv6_det_tiny.onnx",
+            "arknights_mower/models/rapidocr/PP-OCRv6_rec_tiny.onnx",
+            "arknights_mower/models/rapidocr/README.md",
+            "arknights_mower/models/rapidocr/LICENSE",
+            "arknights_mower/models/rapidocr/UPSTREAM_MODEL_LICENSES.md",
         ):
             destination = source / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -133,6 +138,32 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertEqual(
             self.rebuilt_metadata["Version"], self.original_metadata["Version"]
         )
+
+    def test_sdist_and_wheels_preserve_tiny_models_and_license_material(self):
+        model_dir = REPO_ROOT / "arknights_mower/models/rapidocr"
+        expected = {
+            f"arknights_mower/models/rapidocr/{name}": (model_dir / name).read_bytes()
+            for name in (
+                "PP-OCRv6_det_tiny.onnx",
+                "PP-OCRv6_rec_tiny.onnx",
+                "README.md",
+                "LICENSE",
+                "UPSTREAM_MODEL_LICENSES.md",
+            )
+        }
+        with tarfile.open(next(self.original_dist.glob("*.tar.gz"))) as archive:
+            actual = {
+                member.name.partition("/")[2]: archive.extractfile(member).read()
+                for member in archive.getmembers()
+                if member.isfile() and member.name.partition("/")[2] in expected
+            }
+        self.assertEqual(actual, expected)
+        for directory in (self.original_dist, self.rebuilt_dist):
+            with self.subTest(directory=directory):
+                with zipfile.ZipFile(next(directory.glob("*.whl"))) as wheel:
+                    self.assertEqual(
+                        {name: wheel.read(name) for name in expected}, expected
+                    )
 
     def test_wheels_keep_the_package_template_and_console_entry(self):
         for directory in (self.original_dist, self.rebuilt_dist):

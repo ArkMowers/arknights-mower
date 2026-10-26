@@ -59,6 +59,11 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 
 [Command tree cleanup](../../.agents/notes/implemented/bug-fix/2026-10-02-update-command-tree-cleanup.md) records implementation and focused verification.
 
+<a id="source-dependency-environments"></a>
+### Source Dependency Environments
+
+Source updates retain and rebuild an owned project virtual environment with pip when dependency changes require it. Other environments receive in-place dependency installation, which adds or updates target requirements without removing retired distributions. Its rollback reinstalls the original requirements and does not restore the complete shared environment. Source jobs run the detached installer copied from the initiating version; changes in the target checkout do not replace that running installer. The [OCR dependency migration procedure](../cookbook/source-dependency-migration.md) covers replacement environments, conflicting OpenCV distributions and recovery when adopting RapidOCR 3.10 and PP-OCRv6 tiny.
+
 <a id="6-nightly-version-direction"></a>
 ## 6. Online Channel Targets
 

@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from rapidocr_onnxruntime import RapidOCR
 
 from arknights_mower.solvers.clue_gift import ClueGiftMixin, clue_card_number
 from arknights_mower.utils import rapidocr
@@ -249,7 +248,7 @@ def test_actual_ocr_reads_gift_inventory_and_filter(
 ):
     solver, _ = gift_ui
     solver.recog.img = frame(filename)
-    monkeypatch.setattr(rapidocr, "engine", RapidOCR())
+    monkeypatch.setattr(rapidocr, "engine", rapidocr.create_engine())
     solver.get_color = lambda p: solver.recog.img[p[1], p[0]]
     assert solver._read_clue_gift_capacity() == capacity
     assert solver._clue_missing_filter() is filtered

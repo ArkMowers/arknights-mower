@@ -2,7 +2,6 @@ from unittest.mock import MagicMock
 
 import cv2
 import pytest
-from rapidocr_onnxruntime import RapidOCR
 
 from arknights_mower.tests.clue_gift_tests import clue_workflow as clue_workflow
 from arknights_mower.tests.clue_gift_tests import frame
@@ -192,7 +191,7 @@ def test_real_receive_credit_caption(receive_workflow, monkeypatch, filename, ex
     solver, state = receive_workflow
     state.scene = Scene.CLUE_RECEIVE
     state.snapshots[Scene.CLUE_RECEIVE] = frame(filename)
-    monkeypatch.setattr(rapidocr, "engine", RapidOCR())
+    monkeypatch.setattr(rapidocr, "engine", rapidocr.create_engine())
 
     assert solver._clue_receive_credit_capped() is expected
 

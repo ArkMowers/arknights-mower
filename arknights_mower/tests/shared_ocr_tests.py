@@ -175,7 +175,7 @@ def test_same_instance_serializes_concurrent_calls_before_transport(
         assert sorted(row[2] for row in rows) == [1, 2]
 
 
-def test_production_defaults_bound_shared_ocr_and_model_threads(monkeypatch):
+def test_production_defaults_bound_shared_ocr_and_model_threads(monkeypatch, tmp_path):
     from types import SimpleNamespace
 
     import cv2
@@ -214,30 +214,57 @@ def test_production_defaults_bound_shared_ocr_and_model_threads(monkeypatch):
     assert factory["engine"] == {"threads": 2}
 
     created = {}
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    for name in (
+        "PP-OCRv6_det_tiny.onnx",
+        "PP-OCRv6_rec_tiny.onnx",
+        "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+    ):
+        (model_dir / name).touch()
+    monkeypatch.setattr(rapidocr, "_MODEL_DIR", model_dir)
 
     class FakeDetector:
-        def __init__(self):
-            self.preprocess_op = lambda image: image
+        def get_preprocess(self):
+            return lambda image: image
 
     class FakeRapidOCR:
-        def __init__(self, **kwargs):
-            created.update(kwargs)
+        def __init__(self, *, params):
+            created.update(params)
             self.text_det = FakeDetector()
+
+        def _load_det_model(self):
+            return self.text_det
+
+        def _load_cls_model(self):
+            pass
+
+        def _load_rec_model(self):
+            pass
 
     monkeypatch.setitem(
         sys.modules,
-        "rapidocr_onnxruntime",
-        SimpleNamespace(RapidOCR=FakeRapidOCR),
+        "rapidocr",
+        SimpleNamespace(
+            RapidOCR=FakeRapidOCR,
+            ModelType=SimpleNamespace(TINY="tiny"),
+            __file__=str(tmp_path / "__init__.py"),
+        ),
     )
     engine = original(threads=2)
-    assert created["intra_op_num_threads"] == 2
-    assert created["inter_op_num_threads"] == 1
-    assert created["det_limit_type"] == "max"
-    assert created["det_limit_side_len"] == 1920
-    assert created["text_score"] == rapidocr.DEFAULT_TEXT_SCORE
-    assert created["det_box_thresh"] == rapidocr.DEFAULT_BOX_THRESH
-    assert created["det_unclip_ratio"] == rapidocr.DEFAULT_UNCLIP_RATIO
-    assert engine.text_det.preprocess_op is not None
+    assert created["EngineConfig.onnxruntime.intra_op_num_threads"] == 2
+    assert created["EngineConfig.onnxruntime.inter_op_num_threads"] == 1
+    assert created["Det.limit_type"] == "max"
+    assert created["Det.limit_side_len"] == 1920
+    assert created["Global.text_score"] == rapidocr.DEFAULT_TEXT_SCORE
+    assert created["Global.use_preprocess_img"] is False
+    assert created["Det.box_thresh"] == rapidocr.DEFAULT_BOX_THRESH
+    assert created["Det.unclip_ratio"] == rapidocr.DEFAULT_UNCLIP_RATIO
+    assert created["Det.model_type"] == "tiny"
+    assert created["Rec.model_type"] == "tiny"
+    assert isinstance(
+        engine._sdk.text_det.get_preprocess(), rapidocr._BoundedDetectionInput
+    )
 
 
 def test_waiting_client_sends_no_image_before_admission(tmp_path):

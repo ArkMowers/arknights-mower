@@ -6,12 +6,16 @@ import lzma
 import posixpath
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts.smoke_android_runtime import RUNTIME_SMOKE_CODE  # noqa: E402
 
 
 def pack_rootfs(source: Path, output: Path) -> None:
@@ -134,7 +138,7 @@ def main():
             image,
             "python",
             "-c",
-            "import platform, ssl, cv2, numpy, onnxruntime, rjieba, yamlcore, flask; from pyzbar.pyzbar import decode; assert platform.machine() == 'aarch64'; assert cv2.__version__ == '4.11.0'; print(platform.python_version())",
+            RUNTIME_SMOKE_CODE,
         ],
         check=True,
     )

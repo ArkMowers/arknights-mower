@@ -184,7 +184,10 @@ jobs:
       - name: Inject release version
         run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
       - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt pytest ruff
+        run: |
+          python -m pip install -r requirements.txt pytest ruff
+          python -m pip check
+          python scripts/prune_opencv.py
       - name: Check Python formatting and lint
         run: |
           python -m ruff check .
@@ -235,6 +238,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
+          python -m pip check
 
       - name: Prune unused OpenCV assets
         shell: bash
@@ -380,6 +384,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.in
           python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
+          python -m pip check
 
       - name: Prune unused OpenCV assets
         run: python scripts/prune_opencv.py
@@ -538,6 +543,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.in
           python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
+          python -m pip check
 
       - name: Prune unused OpenCV assets
         run: python scripts/prune_opencv.py

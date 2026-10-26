@@ -85,35 +85,45 @@ def glyph_image(mask, padding=6, *, reject_clipped=False, source=None):
 
 
 def furniture_name(img):
-    # 名称长短差异很大，先定位文字，避免「桌子」等短名称被大块留白干扰。
+    # 固定名称区域内用完整白色字形定位，避免检测模型裁掉引号或小号上标。
     name_img = crop_relative(img, NAME_SCOPE)
-    result, _ = rapidocr.engine(
-        name_img,
-        use_det=True,
-        use_cls=False,
-        use_rec=True,
-    )
-    if not result:
-        raise ValueError("家具名称无法可靠确认")
-    name = (
-        normalize_name(result[0][1])
-        if len(result) == 1 and MIN_TEXT_CONFIDENCE <= result[0][2] <= 1
-        else None
-    )
-    # 引号可能被拆框或在高置信度结果中漏读，重新识别完整白色字形。
-    # 整个名称区域重读，不能用检测框把漏检的字切掉后再次确认残缺名称。
     mask = cv2.inRange(name_img, (200, 200, 200), (255, 255, 255))
     try:
-        # 掩膜只定位整行范围；保留原图抗锯齿细节，避免小号 TM 被二值化损坏。
-        original_glyph = glyph_image(mask, reject_clipped=True, source=name_img)
-        try:
-            candidate = read_confident_text(original_glyph)
-        except ValueError:
-            # 原色背景仍有干扰时再读二值字形；可靠结果冲突不能走此重试。
-            candidate = read_confident_text(glyph_image(mask, reject_clipped=True))
+        glyph = glyph_image(mask, 0, reject_clipped=True, source=name_img)
+        enlarged = cv2.copyMakeBorder(
+            cv2.resize(glyph, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR),
+            6,
+            6,
+            6,
+            6,
+            cv2.BORDER_CONSTANT,
+            value=(0, 0, 0),
+        )
+        binary = cv2.copyMakeBorder(
+            cv2.threshold(
+                cv2.cvtColor(glyph, cv2.COLOR_RGB2GRAY), 220, 255, cv2.THRESH_BINARY
+            )[1],
+            6,
+            6,
+            6,
+            6,
+            cv2.BORDER_CONSTANT,
+            value=0,
+        )
+        original = cv2.copyMakeBorder(
+            glyph, 6, 6, 6, 6, cv2.BORDER_CONSTANT, value=(0, 0, 0)
+        )
+        names = []
+        # 两种完整行各自确认；仅低置信度时换一次像素处理，可靠冲突不再重读。
+        for pixels, fallback in ((enlarged, name_img), (binary, original)):
+            try:
+                names.append(read_confident_text(pixels))
+            except ValueError:
+                names.append(read_confident_text(fallback))
     except ValueError as error:
         raise ValueError("家具名称无法可靠确认") from error
-    if name is None or candidate == name or candidate in {f"“{name}”", f'"{name}"'}:
+    name, candidate = names
+    if candidate == name or candidate in {f"“{name}”", f'"{name}"'}:
         return candidate
     if name in {f"“{candidate}”", f'"{candidate}"'}:
         return name

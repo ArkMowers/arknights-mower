@@ -295,6 +295,9 @@ def activity(monkeypatch):
         }
 
     def engine(image, **options):
+        if options.get("use_det") is False:
+            assert options == {"use_det": False, "use_cls": False, "use_rec": True}
+            return [], None
         assert options == {"use_det": True, "use_cls": False, "use_rec": True}
         if image.shape == (247, 180, 3):
             state.entry_reads += 1

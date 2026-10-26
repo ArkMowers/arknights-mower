@@ -9,6 +9,7 @@ from arknights_mower.solvers.event_sign_in_recognition import (
     Progress,
     detect_progress,
     read_cards,
+    supplement_day_numbers,
 )
 from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.csleep import MowerExit
@@ -244,9 +245,13 @@ class EventSignInSolver(SceneGraphSolver):
     def _ocr(self, scope):
         self._check_budget()
         image = cropimg(self.recog.img, scope)
+        return self._ocr_image(image)
+
+    def _ocr_image(self, image, *, use_det=True):
+        self._check_budget()
         try:
             result, _ = rapidocr.engine(
-                image, use_det=True, use_cls=False, use_rec=True
+                image, use_det=use_det, use_cls=False, use_rec=True
             )
         except MowerExit:
             raise
@@ -318,7 +323,12 @@ class EventSignInSolver(SceneGraphSolver):
         progress = detect_progress(image)
         if progress is None or self.activity_days not in (None, progress.total_days):
             return None
-        cards = read_cards(image, progress, self._ocr(progress.day_scope))
+        result = supplement_day_numbers(
+            image, progress, self._ocr(progress.day_scope), self._ocr_image
+        )
+        if result is None:
+            return None
+        cards = read_cards(image, progress, result)
         self._check_budget()
         if not cards:
             return None

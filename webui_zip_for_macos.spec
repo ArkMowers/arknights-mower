@@ -16,41 +16,23 @@
 import sys
 from pathlib import Path
 
-import rapidocr_onnxruntime
+import rapidocr
 
 SPEC_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 if str(SPEC_DIR) not in sys.path:
     sys.path.insert(0, str(SPEC_DIR))
 
-from build_assets import get_pyinstaller_common_datas
+from build_assets import get_pyinstaller_common_datas, get_rapidocr_datas
 from scripts.prepare_macos_adb import prepare_macos_adb
 
 adb_dir = prepare_macos_adb()
 
 block_cipher = None
 
-package_name = "rapidocr_onnxruntime"
-install_dir = Path(rapidocr_onnxruntime.__file__).resolve().parent
-
-onnx_paths = list(install_dir.rglob("*.onnx"))
-yaml_paths = list(install_dir.rglob("*.yaml"))
-
-onnx_add_data = [(str(v.parent), f"{package_name}/{v.parent.name}") for v in onnx_paths]
-
-yaml_add_data = []
-for v in yaml_paths:
-    if package_name == v.parent.name:
-        yaml_add_data.append((str(v.parent / "*.yaml"), package_name))
-    else:
-        yaml_add_data.append(
-            (str(v.parent / "*.yaml"), f"{package_name}/{v.parent.name}")
-        )
-
-add_data = list(set(yaml_add_data + onnx_add_data))
-
-site_packages = install_dir.parent
+site_packages = Path(rapidocr.__file__).resolve().parent.parent
 
 MACOS_HIDDEN_IMPORTS = [
+    "rapidocr.main",
     "quickjs",
     "_quickjs",
     "objc",
@@ -78,7 +60,10 @@ mower_a = Analysis(
     ["webview_ui.py"],
     pathex=[],
     binaries=[(str(adb_dir / "adb"), "platform-tools")],
-    datas=get_pyinstaller_common_datas() + existing_native_datas() + add_data + [
+    datas=get_pyinstaller_common_datas()
+    + existing_native_datas()
+    + get_rapidocr_datas()
+    + [
         (str(adb_dir / "NOTICE.txt"), "platform-tools"),
         (str(adb_dir / "source.properties"), "platform-tools"),
     ],

@@ -26,7 +26,8 @@ def _detector_input(engine, height, width):
     """
     import numpy as np
 
-    tensor = engine.text_det.preprocess_op(np.zeros((height, width, 3), dtype=np.uint8))
+    preprocess = engine._sdk.text_det.get_preprocess()
+    tensor = preprocess(np.zeros((height, width, 3), dtype=np.uint8))
     assert tensor.shape[:2] == (1, 3)
     return tuple(tensor.shape[2:])
 
@@ -521,3 +522,26 @@ def test_production_ocr_bounds_detector_tensor(production_ocr_engine):
         assert actual_width % 32 == 0
     # 小字仍放大，宽文字带不会生成 736 × 6752 的检测输入。
     assert _detector_input(production_ocr_engine, 48, 440) == (224, 1920)
+
+
+def test_actual_detector_rebuilds_bounded_preprocess_each_call(
+    production_ocr_engine, monkeypatch
+):
+    import numpy as np
+
+    detector = production_ocr_engine._sdk.text_det
+    original_session = detector.session
+    shapes = []
+
+    def capture(tensor):
+        shapes.append(tensor.shape)
+        return original_session(tensor)
+
+    monkeypatch.setattr(detector, "session", capture)
+    for height, width in ((48, 441), (65, 1920)):
+        production_ocr_engine(
+            np.zeros((height, width, 3), dtype=np.uint8),
+            use_cls=False,
+            use_rec=False,
+        )
+    assert shapes == [(1, 3, 480, 1920), (1, 3, 480, 1920)]

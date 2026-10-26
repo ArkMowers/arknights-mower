@@ -172,7 +172,8 @@ def day_positions(result, progress):
     for box, text, score in result or []:
         text = text.strip()
         if (
-            score < 0.9
+            not np.isfinite(score)
+            or score < 0.9
             or not text.isascii()
             or not text.isdecimal()
             or text.startswith("0")
@@ -197,6 +198,97 @@ def day_positions(result, progress):
     if any(second <= first for first, second in zip(ordered, ordered[1:])):
         return {}
     return positions
+
+
+def supplement_day_numbers(image, progress, result, recognize):
+    """Supplement missed complete numerals without replacing detected identities."""
+    result = list(result or [])
+    accepted = [row for row in result if day_positions([row], progress)]
+    if accepted and not day_positions(accepted, progress):
+        return None
+    band = cropimg(image, progress.day_scope)
+    header = band[: min(band.shape[0], round(190 * progress.scale))]
+    glyphs = []
+    for lower, upper in (
+        ((0, 0, 0), (180, 180, 180)),
+        ((180, 180, 180), (255, 255, 255)),
+    ):
+        mask = cv2.inRange(header, lower, upper)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            x, y, width, height = cv2.boundingRect(contour)
+            if (
+                max(12, 60 * progress.scale) <= height <= 150 * progress.scale
+                and width <= height * 2
+                and x >= 3
+                and x + width <= band.shape[1] - 3
+                and y > 0
+                and y + height < header.shape[0]
+            ):
+                glyphs.append((x, y, width, height))
+    if len(glyphs) > progress.total_days * 2:
+        return None
+    merged = []
+    for x, y, width, height in sorted(glyphs):
+        if merged:
+            px, py, pw, ph = merged[-1]
+            if (
+                0 <= x - px - pw <= min(height, ph) * 0.6
+                and x + width - px <= min(height, ph) * 2
+                and abs(y - py) <= min(height, ph) * 0.15
+                and abs(y + height - py - ph) <= min(height, ph) * 0.15
+            ):
+                merged[-1] = (
+                    px,
+                    min(y, py),
+                    x + width - px,
+                    max(y + height, py + ph) - min(y, py),
+                )
+                continue
+        merged.append((x, y, width, height))
+    glyphs = merged
+    if len(glyphs) > progress.total_days:
+        return None
+    for x, y, width, height in glyphs:
+        overlaps = [
+            row
+            for row in accepted
+            if np.all(np.asarray(row[0]).min(axis=0) < (x + width, y + height))
+            and np.all(np.asarray(row[0]).max(axis=0) > (x, y))
+        ]
+        if any(
+            np.all(np.asarray(row[0]).min(axis=0) <= (x, y))
+            and np.all(np.asarray(row[0]).max(axis=0) >= (x + width, y + height))
+            for row in overlaps
+        ):
+            continue
+        glyph = cv2.copyMakeBorder(
+            band[y : y + height, x : x + width],
+            8,
+            8,
+            8,
+            8,
+            cv2.BORDER_CONSTANT,
+            value=(255, 255, 255),
+        )
+        reading = recognize(glyph, use_det=False)
+        if not reading or len(reading) != 1:
+            continue
+        text, score = reading[0]
+        box = [[x, y], [x + width, y], [x + width, y + height], [x, y + height]]
+        row = (box, text, score)
+        if not day_positions([row], progress):
+            continue
+        if overlaps:
+            if any(previous[1].strip() != text.strip() for previous in overlaps):
+                return None
+            continue
+        result.append(row)
+    if any(day_positions([row], progress) for row in result) and not day_positions(
+        result, progress
+    ):
+        return None
+    return result
 
 
 def _receipt_positions(image, progress):
@@ -269,8 +361,16 @@ def read_cards(image, progress, ocr_result):
     gaps = np.diff([point[0] for point in entries])
     pitches = [gap / max(1, round(gap / expected_pitch)) for gap in gaps]
     pitch = float(np.median(pitches)) if pitches else expected_pitch
+    if numbers:
+        pitch = expected_pitch
     if not expected_pitch * 0.8 <= pitch <= expected_pitch * 1.2:
         return ()
+    if numbers:
+        anchor = next(iter(numbers.values()))[0]
+        for index, (x, y, day, claimed) in enumerate(entries):
+            aligned = anchor + round((x - anchor) / pitch) * pitch
+            if day is None and claimed and abs(x - aligned) <= pitch * 0.15:
+                entries[index] = (aligned, y, day, claimed)
     entries = [
         entry
         for entry in entries
