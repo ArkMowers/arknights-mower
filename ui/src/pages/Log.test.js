@@ -824,7 +824,7 @@ describe('log page', () => {
     }
   )
 
-  it('shows flash pause and cancels only its captured window while retaining immediate Stop', async () => {
+  it('replaces the Stop button with cancellation and keeps immediate Stop in the menu', async () => {
     state.mower.refs.running.value = true
     state.mower.refs.maintenance_pause.value = {
       id: 'current-window',
@@ -838,17 +838,22 @@ describe('log page', () => {
     const page = app._instance.setupState
     expect(all().some((node) => node.text.includes('闪断暂停中'))).toBe(true)
     const button = find((node) => node.props.onClick === page.cancel_pause)
+    expect(all().filter((node) => node.props.onClick === page.cancel_pause)).toHaveLength(1)
+    expect(all().some((node) => node.props.onClick === page.stop)).toBe(false)
+    expect(page.stop_options.find((option) => option.key === 'immediate').label).toBe('立即停止')
     const request = button.props.onClick()
     await nextTick()
     await page.cancel_pause()
     expect(state.mower.cancel_maintenance_pause).toHaveBeenCalledExactlyOnceWith('current-window')
     expect(button.props.disabled).toBe(true)
-    expect(find((node) => node.props.onClick === page.stop).props.disabled).toBe(false)
+    expect(page.stop_options.find((option) => option.key === 'immediate').disabled).toBe(false)
     resolveCancel()
     await request
     state.mower.refs.maintenance_pause.value = null
     await nextTick()
     expect(all().some((node) => node.text.includes('闪断暂停中'))).toBe(false)
+    expect(find((node) => node.props.onClick === page.stop).props.disabled).toBe(false)
+    expect(page.stop_options.some((option) => option.key === 'immediate')).toBe(false)
   })
 
   it('keeps the flash pause visible and reports a failed cancellation', async () => {

@@ -300,6 +300,7 @@ function stop() {
 }
 
 import StopIcon from '@vicons/ionicons5/es/Stop'
+import PlayIcon from '@vicons/ionicons5/es/Play'
 import AddIcon from '@vicons/ionicons5/es/Add'
 import ServerOutlineIcon from '@vicons/ionicons5/es/ServerOutline'
 import CollapseIcon from '@vicons/fluent/es/PanelTopContract20Regular'
@@ -387,6 +388,9 @@ async function toggle_round_stop() {
   }
 }
 const stop_options = computed(() => [
+  ...(maintenance_pause.value
+    ? [{ label: '立即停止', key: 'immediate', disabled: waiting.value }]
+    : []),
   {
     label: stop_after_round.value ? '取消本轮结束后停止' : '本轮结束后停止',
     key: 'after_round',
@@ -412,6 +416,7 @@ const stop_options = computed(() => [
 ])
 
 function select_stop_action(key) {
+  if (key === 'immediate') return stop()
   if (key === 'after_round') return toggle_round_stop()
   if (key === 'maa') return stop_maa()
   if (!process_control.value?.canRunProcessAction) return
@@ -645,19 +650,35 @@ async function db_delete(keys) {
         style="user-select: text"
       />
     </section>
-    <div ref="action_bar" class="action-container">
+    <div
+      ref="action_bar"
+      class="action-container"
+      :class="{ 'action-container--paused': running && maintenance_pause }"
+    >
       <div class="action-buttons" role="group" aria-label="运行操作">
         <div class="execution-control">
           <drop-down
             v-if="running"
             :select="select_stop_action"
             :options="stop_options"
-            type="error"
+            :type="maintenance_pause ? 'warning' : 'error'"
             :up="true"
             menu-label="停止选项"
             :disabled="waiting"
           >
-            <n-button type="error" @click="stop" :loading="waiting" :disabled="waiting">
+            <n-button
+              v-if="maintenance_pause"
+              type="warning"
+              @click="cancel_pause"
+              :loading="cancelling_pause"
+              :disabled="waiting || cancelling_pause"
+            >
+              <template #icon>
+                <n-icon><play-icon /></n-icon>
+              </template>
+              <span class="btn-text">取消暂停</span>
+            </n-button>
+            <n-button v-else type="error" @click="stop" :loading="waiting" :disabled="waiting">
               <template #icon>
                 <n-icon>
                   <stop-icon />
@@ -668,13 +689,6 @@ async function db_delete(keys) {
           </drop-down>
           <div v-if="running && maintenance_pause" class="maintenance-pause-notice" role="status">
             <n-text type="warning">闪断暂停中，设定结束时间 {{ pause_end }}</n-text>
-            <n-button
-              size="small"
-              :loading="cancelling_pause"
-              :disabled="waiting || cancelling_pause"
-              @click="cancel_pause"
-              >取消暂停</n-button
-            >
           </div>
           <n-text
             v-if="running && stop_after_round"
@@ -1015,11 +1029,12 @@ async function db_delete(keys) {
 }
 
 .maintenance-pause-notice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  white-space: nowrap;
   font-size: 12px;
+  line-height: 16px;
 }
 
 .round-stop-notice {
@@ -1135,6 +1150,10 @@ async function db_delete(keys) {
       margin: 0;
     }
   }
+}
+
+.action-container.action-container--paused {
+  padding-top: 28px;
 }
 
 .process-status {
