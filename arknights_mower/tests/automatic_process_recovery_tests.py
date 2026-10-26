@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from arknights_mower.tests.process_crash_recovery_tests import (  # noqa: F401
     notice as _notice,
 )
@@ -20,8 +22,10 @@ from arknights_mower.tests.process_crash_recovery_tests import (
     pending_tasks,
 )
 from arknights_mower.utils import config, crash_recovery, instance_supervisor
+from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.device.touch_backend import TouchFailure
+from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 notice = _notice
@@ -319,31 +323,130 @@ def test_fia_saved_return_roster_is_immediate_before_next_charge(
     )
 
 
-def test_normal_python_worker_exception_activates_already_running_recovery(
-    offline, notice, monkeypatch
+@pytest.mark.parametrize("error", [RuntimeError, MemoryError, RecognizeError])
+@pytest.mark.parametrize("start_type", ["0", "1", "2", "3"])
+def test_normal_python_worker_exception_does_not_create_process_recovery(
+    offline, notice, monkeypatch, error, start_type
 ):
     from arknights_mower.utils import update_runtime as runtime
 
     runtime.write_json(notice, {"active": False, "phase": "resolved"})
-    called = threading.Event()
-
-    def recover():
-        called.set()
-        crash_recovery._update(active=False, phase="resolved")
-
-    runner = crash_recovery.AutomaticRecovery(
-        recover, running=lambda: False, closing=lambda: False, delays=(0.01,)
-    )
-    runner.start()
+    crash_recovery.request_resume(start_type)
+    original = notice.read_bytes()
     monkeypatch.setattr(
-        offline.main, "main", Mock(side_effect=RuntimeError("initial OCR failed"))
+        offline.main, "main", Mock(side_effect=error("initial OCR failed"))
     )
-    try:
-        offline.server._run_mower_worker({})
-        assert called.wait(2)
-    finally:
-        runner.close()
+    intent = Mock()
+    monkeypatch.setattr(instance_supervisor, "task_intent", intent)
+
+    offline.server._run_mower_worker({})
+
     assert not crash_recovery.status()["active"]
+    assert not crash_recovery.status()["automatic"]
+    assert notice.read_bytes() == original
+    intent.assert_called_once_with(False)
+    assert config.stop_mower.is_set()
+    assert crash_recovery.pending_start_type() == (
+        start_type if start_type in ("1", "2", "3") else None
+    )
+    offline.io.assert_not_called()
+
+
+def test_legacy_worker_failure_cannot_dispatch_and_explicit_start_keeps_reset(
+    offline, notice, monkeypatch, tmp_path
+):
+    from arknights_mower.utils import update_runtime as runtime
+
+    previous = {
+        "active": True,
+        "reason": "worker_exception",
+        "resume_requested": True,
+        "phase": "waiting",
+        "start_type": "2",
+        "pending_start_type": "2",
+        "reset_observation_pending": True,
+        "trigger_message": "old ordinary worker failure",
+    }
+    runtime.write_json(notice, previous)
+    original = notice.read_bytes()
+    load = Mock(side_effect=AssertionError("pre-reset state must not be loaded"))
+    monkeypatch.setattr(offline.server, "load_state", load)
+
+    assert not crash_recovery.status()["automatic"]
+    assert not offline.server._retry_after_process_crash()
+    assert notice.read_bytes() == original
+
+    worker = Mock()
+    create = Mock(return_value=worker)
+    monkeypatch.setattr(offline.server, "Thread", create)
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(instance_supervisor, "task_intent", Mock())
+
+    assert offline.server._start_mower("0")
+    assert create.call_args.kwargs["args"] == ({},)
+    assert not crash_recovery.status()["active"]
+    assert crash_recovery.pending_start_type() == "2"
+    assert runtime.read_json(notice)["trigger_message"] == previous["trigger_message"]
+    load.assert_not_called()
+    worker.start.assert_called_once()
+    offline.io.assert_not_called()
+
+
+def test_explicit_launch_retires_legacy_worker_failure_without_losing_pending_mode(
+    offline, notice
+):
+    from arknights_mower.utils import update_runtime as runtime
+
+    runtime.write_json(
+        notice,
+        {
+            "active": True,
+            "reason": "worker_exception",
+            "start_type": "3",
+            "pending_start_type": "3",
+            "trigger_message": "old ordinary worker failure",
+        },
+    )
+
+    assert crash_recovery.initialize_intent(True, startup=True)
+
+    assert not crash_recovery.status()["active"]
+    assert not crash_recovery.status()["automatic"]
+    assert crash_recovery.pending_start_type() == "3"
+    assert runtime.read_json(notice)["trigger_message"] == "old ordinary worker failure"
+
+
+@pytest.mark.parametrize("start_type", ["0", "1", "2", "3"])
+def test_failed_ordinary_automatic_thread_start_does_not_create_recovery(
+    offline, notice, monkeypatch, tmp_path, start_type
+):
+    from arknights_mower.utils import update_runtime as runtime
+
+    runtime.write_json(notice, {"active": False, "phase": "resolved"})
+    crash_recovery.initialize_intent(True, startup=True, start_type=start_type)
+    original = notice.read_bytes()
+    worker = Mock()
+    worker.start.side_effect = OSError("temporary thread limit")
+    monkeypatch.setattr(offline.server, "Thread", Mock(return_value=worker))
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server, "load_state", lambda: {})
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    intent = Mock()
+    monkeypatch.setattr(instance_supervisor, "task_intent", intent)
+
+    with pytest.raises(OSError, match="temporary thread limit"):
+        offline.server._start_mower(start_type, automatic=True)
+
+    assert not crash_recovery.status()["active"]
+    assert not crash_recovery.status()["automatic"]
+    assert notice.read_bytes() == original
+    assert crash_recovery.pending_start_type() == (
+        start_type if start_type in ("1", "2", "3") else None
+    )
+    assert intent.call_args.args == (False,)
+    assert config.stop_mower.is_set()
+    assert offline.server.mower_thread is None
     offline.io.assert_not_called()
 
 
@@ -380,27 +483,24 @@ def test_new_failure_after_resolution_starts_without_previous_cooldown(
     runner.start()
     try:
         assert inactive_seen.wait(2)
-        crash_recovery.activate("later independent failure")
+        runtime.write_json(notice, {"active": True, "reason": "process_exit"})
         assert second_attempt.wait(1)
     finally:
         runner.close()
     assert calls == [1, 1]
 
 
-def test_new_worker_failure_before_next_poll_starts_without_previous_cooldown(
+def test_new_process_failure_before_next_poll_starts_without_previous_cooldown(
     offline, notice, monkeypatch
 ):
     second_attempt = threading.Event()
     calls = []
-    monkeypatch.setattr(
-        offline.main, "main", Mock(side_effect=RuntimeError("later worker failure"))
-    )
 
     def attempt():
         calls.append(1)
         crash_recovery.complete()
         if len(calls) == 1:
-            offline.server._run_mower_worker({})
+            runtime.write_json(notice, {"active": True, "reason": "process_exit"})
             assert crash_recovery.status()["automatic"]
         else:
             second_attempt.set()
@@ -417,15 +517,12 @@ def test_new_worker_failure_before_next_poll_starts_without_previous_cooldown(
     offline.io.assert_not_called()
 
 
-def test_completed_episode_interrupts_its_cooldown_for_new_worker_failure(
+def test_completed_episode_interrupts_its_cooldown_for_new_process_failure(
     offline, notice, monkeypatch
 ):
     backoff, second_attempt = threading.Event(), threading.Event()
     real_failed = crash_recovery.failed
     calls = []
-    monkeypatch.setattr(
-        offline.main, "main", Mock(side_effect=RuntimeError("later worker failure"))
-    )
 
     def failed(*args, **kwargs):
         real_failed(*args, **kwargs)
@@ -447,7 +544,7 @@ def test_completed_episode_interrupts_its_cooldown_for_new_worker_failure(
     try:
         assert backoff.wait(1)
         crash_recovery.complete()
-        offline.server._run_mower_worker({})
+        runtime.write_json(notice, {"active": True, "reason": "process_exit"})
         assert second_attempt.wait(1)
     finally:
         runner.close()
@@ -492,7 +589,7 @@ def test_repeated_worker_failure_in_same_episode_keeps_retry_sequence(
     offline.io.assert_not_called()
 
 
-def test_explicit_start_after_stop_reenables_later_worker_recovery(
+def test_explicit_start_after_stop_does_not_enable_worker_recovery(
     offline, notice, monkeypatch, tmp_path
 ):
     from arknights_mower.utils import update_runtime as runtime
@@ -511,7 +608,9 @@ def test_explicit_start_after_stop_reenables_later_worker_recovery(
         offline.main, "main", Mock(side_effect=RuntimeError("new worker failure"))
     )
     offline.server._run_mower_worker({})
-    assert crash_recovery.status()["automatic"]
+    assert not crash_recovery.status()["automatic"]
+    assert not crash_recovery.status()["active"]
+    assert crash_recovery.pending_start_type() == "2"
     offline.io.assert_not_called()
 
 

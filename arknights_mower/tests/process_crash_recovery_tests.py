@@ -622,7 +622,8 @@ def test_queue_reset_start_keeps_mode_until_its_first_checkpoint(
         monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", dispatch)
         offline.main.simulate(saved)
         crash_recovery.activate("later independent failure")
-        assert crash_recovery.status()["start_type"] == "0"
+        assert not crash_recovery.status()["active"]
+        assert crash_recovery.pending_start_type() is None
     offline.io.assert_not_called()
 
 
@@ -1200,10 +1201,11 @@ def test_initial_reset_failure_cannot_reload_previous_urgent_handoff(
         offline.main, "main", Mock(side_effect=RuntimeError("observation unavailable"))
     )
     offline.server._run_mower_worker(saved)
-    assert offline.server._retry_after_process_crash()
+    assert not offline.server._retry_after_process_crash()
+    assert crash_recovery.pending_start_type() == "2"
+    assert offline.server._start_mower("0")
     retried = create.call_args.kwargs["args"][0]
-    assert retried["_process_crash_no_snapshot"]
-    assert retried["tasks"] == []
+    assert retried == {}
     assert "urgent_recovery_supporters" not in retried
     assert "waiting_group_shifts" not in retried
     with offline.record._conn() as connection:
@@ -1292,7 +1294,8 @@ def test_start_entry_resets_or_restores_urgent_handoff_and_protection(
                 == original
             )
         crash_recovery.activate("initial reset failure")
-        assert crash_recovery.status()["start_type"] == "2"
+        assert not crash_recovery.status()["active"]
+        assert crash_recovery.pending_start_type() == "2"
         offline.io.assert_not_called()
         return
     offline.main.simulate(saved)
@@ -1315,7 +1318,8 @@ def test_start_entry_resets_or_restores_urgent_handoff_and_protection(
         assert checkpoint["urgent_recovery_supporters"] == {}
         assert checkpoint["waiting_group_shifts"] == []
         crash_recovery.activate("later unrelated worker failure")
-        assert crash_recovery.status()["start_type"] == "0"
+        assert not crash_recovery.status()["active"]
+        assert crash_recovery.pending_start_type() is None
     else:
         assert fresh.op_data.urgent_recovery_supporters == {"夕": ["絮雨"]}
         assert len(fresh.waiting_group_shifts) == 1
@@ -1355,8 +1359,5 @@ def test_stopped_reset_still_skips_old_snapshot_on_ordinary_start(
     assert crash_recovery.reset_observation_pending()
     saved = create.call_args.kwargs["args"][0]
     assert not saved.get("tasks")
-    if failed_before_stop:
-        assert saved["_process_crash_no_snapshot"]
-    else:
-        assert saved == {}
+    assert saved == {}
     offline.io.assert_not_called()

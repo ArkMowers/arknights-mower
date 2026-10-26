@@ -109,10 +109,9 @@ class DeviceShutdownTests(unittest.TestCase):
         # ended the run without a reason the user could act on.
         self.assertEqual(unhandled, [])
 
-    def test_worker_boundary_reports_device_and_software_faults_for_recovery(self):
-        from unittest.mock import patch
-
+    def test_worker_boundary_reports_faults_and_stops_without_process_recovery(self):
         from arknights_mower import __main__ as mower
+        from arknights_mower.utils import instance_supervisor
         from arknights_mower.utils.device.session import (
             ReadinessResult,
             SessionFailure,
@@ -122,37 +121,26 @@ class DeviceShutdownTests(unittest.TestCase):
             ReadinessResult("offline", "USB-A", code="recovery_exhausted"),
             "设备恢复命令失败：模拟器启动命令被拒绝（退出码 -506）",
         )
-        forwarded = []
-
-        def run(saved_state, *, preparation_serial=None):
-            forwarded.append((saved_state, preparation_serial))
-            raise verdict
-
-        with (
-            patch.object(mower, "main", side_effect=run),
-            patch.object(self.server, "shutdown", Shutdown()),
-            patch.object(crash_recovery, "activate") as activate,
-            self.assertLogs(self.server.logger, level="ERROR") as logs,
-        ):
-            self.server._run_mower_worker({"tasks": []}, "USB-123")
-        activate.assert_called_once()
-        self.assertIn("启动命令被拒绝（退出码 -506）", activate.call_args.args[0])
-        self.assertEqual(forwarded, [({"tasks": []}, "USB-123")])
-        self.assertTrue(
-            any("启动命令被拒绝（退出码 -506）" in line for line in logs.output)
-        )
-        # Ordinary software faults retain diagnostics and enter automatic recovery.
-        fault = RuntimeError("unrelated")
-        with (
-            patch.object(mower, "main", side_effect=fault),
-            patch.object(self.server, "shutdown", Shutdown()),
-            patch.object(crash_recovery, "activate") as activate,
-            self.assertLogs(self.server.logger, level="ERROR") as logs,
-        ):
-            self.server._run_mower_worker({})
-        self.assertIs(logs.records[0].exc_info[1], fault)
-        activate.assert_called_once()
-        self.assertIn("unrelated", activate.call_args.args[0])
+        for fault in (verdict, RuntimeError("unrelated")):
+            with self.subTest(fault=type(fault).__name__):
+                config.stop_mower.clear()
+                with (
+                    patch.object(mower, "main", side_effect=fault) as run,
+                    patch.object(self.server, "shutdown", Shutdown()),
+                    patch.object(crash_recovery, "notice_path", return_value=None),
+                    patch.object(crash_recovery, "activate") as activate,
+                    patch.object(instance_supervisor, "task_intent") as intent,
+                    self.assertLogs(self.server.logger, level="ERROR") as logs,
+                ):
+                    self.server._run_mower_worker({"tasks": []}, "USB-123")
+                    self.assertFalse(crash_recovery.status()["active"])
+                    self.assertFalse(crash_recovery.status()["automatic"])
+                run.assert_called_once_with({"tasks": []}, preparation_serial="USB-123")
+                activate.assert_not_called()
+                intent.assert_called_once_with(False)
+                self.assertTrue(config.stop_mower.is_set())
+                self.assertIs(logs.records[0].exc_info[1], fault)
+                self.assertTrue(any(str(fault) in line for line in logs.output))
 
 
 if __name__ == "__main__":

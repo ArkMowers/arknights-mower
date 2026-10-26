@@ -250,7 +250,8 @@ def test_update_route_checkpoints_retained_tasks_and_keeps_mode_on_failure(
             TaskTypes.SHIFT_ON,
         ]
         crash_recovery.activate("update startup failed")
-        assert offline.server._retry_after_process_crash()
+        assert not offline.server._retry_after_process_crash()
+        assert offline.server._start_mower("0")
         retried = create.call_args.kwargs["args"][0]
         assert [task.type for task in retried["tasks"]] == [
             TaskTypes.SWAP_SUPPORT,
@@ -273,5 +274,6 @@ def test_update_route_checkpoints_retained_tasks_and_keeps_mode_on_failure(
         monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", dispatch)
         offline.main.simulate(saved)
         crash_recovery.activate("later independent failure")
-        assert crash_recovery.status()["start_type"] == "0"
+        assert not crash_recovery.status()["active"]
+        assert crash_recovery.pending_start_type() is None
     offline.io.assert_not_called()
