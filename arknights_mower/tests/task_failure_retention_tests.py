@@ -201,7 +201,7 @@ def test_worker_idle_preserves_reopened_priority_order(
             solver.rest_until_next_task()
 
     solver.run.assert_not_called()
-    solver._idle_sleep.assert_called_once_with(critical_seconds)
+    solver._idle_sleep.assert_called_once_with(critical_seconds, round_end=True)
     assert solver.tasks == [critical, task]
     assert task.time == now
     assert task.plan == {ROOM: ["陈"]}
