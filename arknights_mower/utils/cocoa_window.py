@@ -93,7 +93,7 @@ class CocoaWindow:
         if browser is None:
             raise RuntimeError("Cocoa window is unavailable")
         self._native = browser.window
-        self._view = browser.webkit
+        self._view = browser.webview
         return browser
 
     def install(self):

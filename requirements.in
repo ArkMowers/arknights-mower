@@ -18,7 +18,7 @@ Flask-Cors==6.0.5
 flask-sock==0.7.0
 simple-websocket==1.1.0
 Werkzeug==3.1.9
-pywebview==5.1
+pywebview==6.2.1
 pystray==0.19.5
 
 # 配置文件

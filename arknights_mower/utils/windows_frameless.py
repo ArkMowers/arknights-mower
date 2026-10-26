@@ -1,6 +1,6 @@
 """Small WinForms adaptation that restores OS-owned frameless window behaviour.
 
-pywebview 5.1 sets ``FormBorderStyle.None`` for frameless windows, which removes
+pywebview sets ``FormBorderStyle.None`` for frameless windows, which removes
 the native resize frame and the caption styles. This module keeps the caption
 visually absent while DWM draws the thin outer border and rounded corners. It
 restores the standard sizing and caption styles, and returns native non-client
@@ -273,8 +273,8 @@ def install_windows_frameless_resize(
 def _refresh_webview_layout(window: Any) -> None:
     """Make WebView2 consume the DPI-corrected outer size after navigation.
 
-    pywebview 5.1 creates the WebView2 controller before the frameless form is
-    calibrated to its requested logical size. On a scaled display the control
+    The WebView2 controller can exist before Mower calibrates the frameless form
+    to its requested logical size. On a scaled display the control
     can retain its smaller pre-calibration surface until the next user resize.
     A one-physical-pixel native resize, immediately restored, lets WinForms
     perform its normal DockStyle.Fill layout after WebView2 is ready.

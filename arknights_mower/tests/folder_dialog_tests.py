@@ -134,7 +134,7 @@ def test_other_platforms_keep_pywebview_selection(monkeypatch, platform):
         is window.create_file_dialog.return_value
     )
     window.create_file_dialog.assert_called_once_with(
-        dialog_type=webview.FOLDER_DIALOG, directory="/data"
+        dialog_type=webview.FileDialog.FOLDER, directory="/data"
     )
 
 
