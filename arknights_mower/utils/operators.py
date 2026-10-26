@@ -884,8 +884,6 @@ class Operators:
 
     @measure_mood_calculation
     def calculated_mood(self, name, now=None):
-        if getattr(self.operators.get(name), "working_mood_unconfirmed", False):
-            return None
         if not self.mood_calculation_enabled:
             return None
         from arknights_mower.utils.calculated_mood import sync_model
@@ -909,8 +907,6 @@ class Operators:
 
     @measure_mood_calculation
     def calculated_mood_deadline(self, name, target, now=None, max_hours=240):
-        if getattr(self.operators.get(name), "working_mood_unconfirmed", False):
-            return None
         if not self.mood_calculation_enabled:
             return None
         from arknights_mower.utils.calculated_mood import sync_model
@@ -1844,11 +1840,9 @@ class Operators:
                 preserve=preserve_depletion_rate,
             )
             agent.mood_is_prediction = False
-            agent.working_mood_unconfirmed = False
             agent.work_rate_sample_eligible = not preserve_depletion_rate
             if learned_rate is not None:
                 agent.depletion_rate = learned_rate
-                agent.depletion_rate_position = (current_room, current_index)
                 logger.debug(f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}")
             agent.time_stamp = datetime.now()
         from_dorm = agent.current_room.startswith("dorm")
@@ -2102,13 +2096,7 @@ class Operators:
             operator.mood = exist.mood
             operator.time_stamp = exist.time_stamp
             operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
-            operator.working_mood_unconfirmed = getattr(
-                exist, "working_mood_unconfirmed", False
-            )
             operator.depletion_rate = exist.depletion_rate
-            operator.depletion_rate_position = getattr(
-                exist, "depletion_rate_position", None
-            )
             operator.work_rate_sample_eligible = getattr(
                 exist, "work_rate_sample_eligible", True
             )
@@ -3367,11 +3355,9 @@ class Operator:
         self.current_index = current_index
         self.lower_limit = lower_limit
         self.depletion_rate = depletion_rate
-        self.depletion_rate_position = None
         self.work_rate_sample_eligible = True
         self.time_stamp = time_stamp
         self.mood_is_prediction = False
-        self.working_mood_unconfirmed = False
         self.workaholic = False
         self.arrange_order = ["技能", "false"]
         self.exhaust_time = None
@@ -3528,8 +3514,6 @@ class Operator:
         return False
 
     def current_mood(self, time=None):
-        if getattr(self, "working_mood_unconfirmed", False):
-            return -1
         time = time or getattr(self, "_projection_now", None)
         model = getattr(self, "_mood_model", None)
         if (

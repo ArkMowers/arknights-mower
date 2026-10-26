@@ -599,9 +599,8 @@ def test_nonzero_central_keeps_measured_working_countdown(room_reader):
 
 
 @pytest.mark.parametrize("change", ["room", "name", "mood", "detail", "connecting"])
-def test_uncertain_second_observation_keeps_mood_unconfirmed(room_reader, change):
-    solver, target, _ = room_reader()
-    sampled_at = target.time_stamp
+def test_uncertain_second_observation_keeps_existing_countdown(room_reader, change):
+    solver, target, deadline = room_reader()
     if change == "room":
         solver.detect_room.return_value = "dormitory_1"
     elif change == "name":
@@ -620,11 +619,9 @@ def test_uncertain_second_observation_keeps_mood_unconfirmed(room_reader, change
 
         solver.find.side_effect = find
     result = solver.get_agent_from_room("central", [0])[0]
-    assert result["mood"] == -1
-    assert "time" not in result
-    assert target.time_stamp == sampled_at
-    assert target.working_mood_unconfirmed
-    solver.read_operator_time.assert_not_called()
+    assert result["mood"] == 0
+    assert result["time"] == target.exhaust_time == deadline
+    solver.read_operator_time.assert_called_once()
     solver.read_time.assert_called_once()
 
 
@@ -639,16 +636,16 @@ def test_cached_zero_mood_is_not_an_exhaustion_measurement(room_reader):
     solver.recog.update.assert_not_called()
 
 
-def test_zero_mood_outside_exhaust_configuration_still_confirms_actual_value(
+def test_zero_mood_outside_exhaust_configuration_keeps_requested_countdown(
     room_reader,
 ):
     solver, target, _ = room_reader()
     solver.op_data.true_exhaust_room.clear()
     result = solver.get_agent_from_room("central", [0])[0]
     assert result["mood"] == target.mood == 0
-    solver.read_operator_time.assert_not_called()
+    solver.read_operator_time.assert_called_once()
     solver.read_time.assert_called_once()
-    solver.recog.update.assert_called_once()
+    solver.recog.update.assert_not_called()
 
 
 @pytest.mark.parametrize("rest_in_full", [False, True])

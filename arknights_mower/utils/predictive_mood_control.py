@@ -129,11 +129,7 @@ def _initial_deadlines(data, targets, now, deadline):
         projected, rates, boundary_hours = node
         for name, target in targets - result.keys():
             value, rate = projected.moods.get(name), rates.get(name)
-            if (
-                value is None
-                or rate is None
-                or getattr(data.operators[name], "working_mood_unconfirmed", False)
-            ):
+            if value is None or rate is None:
                 return None
             if abs(value - target) <= 1e-7 or (
                 value >= target if recovering[name] else value <= target
