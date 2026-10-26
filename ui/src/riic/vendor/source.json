@@ -277,8 +277,8 @@
       "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. Ordinary rescue recall requires connected working operators to stay above personal mood floors until resting primaries reach their personal upper limits; future observations do not shorten this admission horizon. Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points. Register valid retention-only actors without fabricating observations, preserve explicit empty dorm selections and exclude named backup exits from all actual Free card selection paths. Retain blocked backup task identity and deadline. Read named empty departures before actual selection and preserve the observed replacement resident when the original resident no longer occupies that slot. Protect the original resident when renewed effective retention or a later primary job supersedes an old policy-only empty departure. Commit confirmed group state at the complete-arrangement boundary before post-shift backup and correction planning. Complete full-target Fiammetta intentions without physical moves, failed tasks or fixed retries; preserve genuine charging, independent observations, legacy task completion and existing roster restoration. Keep explicit charge targets below actual 24 even when they have reached a lower personal recovery limit. Cancel obsolete ordinary requests that have resumed from failure only when no concrete plan, started arrangement or recovery restoration remains; allow independent ordinary planning after exhaustion rules change."
     },
     "scheduler/rosterRuntime.ts": {
-      "sha256": "bd5769a7f4653f369884491455af91f4e5fed1346ca338142776dd526cc301b3",
-      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts."
+      "sha256": "e4012a45ed15b96c3e5f51b173eba2689ee2ce46c7b5b99c8532e1b1eb74ce11",
+      "reason": "Preserve the bundled ideal run-order model without maintenance-primary pause or runner restoration; retain the fixed no-training assumption. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. 运行配置接收可选总停止时长，供维护副表条件比较。"
     },
     "workbench/compat/mowerJson.ts": {
       "reason": "Retain the existing Mower facility import/export adapter; facility-export changes are outside this two-fix synchronization.",
@@ -333,8 +333,8 @@
       "reason": "Allow the Mower wrapper to host the existing overview scrubber at the bottom without changing time-window state. Release overview drag listeners on collapse and unmount. Keep operator and event inspectors beside the pointer within viewport bounds under CSS zoom, and reserve cursor-info space to avoid hover-induced layout shifts. Remove four initial assignments whose values are replaced in every branch before use; retain the existing cycle labels and ruler steps."
     },
     "scheduler/compileRosterSchedule.ts": {
-      "sha256": "90cf6340bdfbea28adb734076283c8ba993a608fa29fecce8fc95c57da53b49b",
-      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Restore the default group recovery spread threshold to 60 minutes from calculator b77478801e825fc5cbaf152e27c3511b5f0d518c; preserve explicitly saved thresholds. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts."
+      "sha256": "ac5c8daee129fda5a7392ad874280dd50a2ece833c3dc64b9e9d2fa56517e8f2",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Restore the default group recovery spread threshold to 60 minutes from calculator b77478801e825fc5cbaf152e27c3511b5f0d518c; preserve explicitly saved thresholds. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. 校验显式总停止时长假设为非负有限小时数。"
     },
     "scheduler/mowerAlphaMetadata.ts": {
       "sha256": "9173257c79cb7003f5abf0cd67b46e868fd74eb394a6d046e8567c1f5d973804",
@@ -477,12 +477,12 @@
       "sha256": "aa1dce78df0ecf913fe11401223fcc2fad3b1aa9d604fcc406560d5213c5afa6"
     },
     "scheduler/scheduleAdapter.ts": {
-      "reason": "Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts.",
-      "sha256": "3984c158b172c4a201203067a03bebf5f9fc36bf24bbf8236b5761a31f4e1ee7"
+      "reason": "Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. 将显式总停止时长假设传给演算运行配置。",
+      "sha256": "c5f4194447ff58935f3c2bcbb543e1c920050044271b2134ecfcf1fd2e8ffc43"
     },
     "scheduler/types.ts": {
-      "reason": "Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts.",
-      "sha256": "53e22f6b706b9d77a7c15737abe160fce0be5c7426bf20032a930aef88d029fc"
+      "reason": "Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. 声明可选总停止时长假设；缺省或零时长不满足时长筛选。",
+      "sha256": "27f4df9a670b15a5b7921afafeba4e048e88b8d22f753d1e5dd8271418d6685e"
     },
     "scheduler/mowerBackupDepartureRecovery.spec.ts": {
       "sha256": "b2be967d8fae2fbef86d408a0c231daf0863f2708f991112fb18a3d094937cb0",
@@ -735,6 +735,10 @@
     "workbench/inventorySimulationBridge.spec.ts": {
       "sha256": "0f8b9fe2413e0c3efffc3d623a68b1ae8c43268896a508f315a3d04ad5aef52b",
       "reason": "Keep sampled order completion timestamps consistent with the selected settled or potential output fixture."
+    },
+    "scheduler/backupExpression.ts": {
+      "sha256": "37122f6954f5d39d16ca417fe737577e3491c9baa52e737009c095ebf60d437a",
+      "reason": "支持维护条件按总停止时长比较；时长缺失或为零时不匹配任何时长比较，保留原提前量及停服开始截止。"
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

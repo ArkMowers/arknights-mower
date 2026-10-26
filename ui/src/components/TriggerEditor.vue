@@ -4,7 +4,10 @@ const emit = defineEmits(['update'])
 import { computed, ref, watch } from 'vue'
 import {
   maintenance_expression,
+  maintenance_duration_expression,
+  maintenance_duration_options,
   maintenance_trigger,
+  parse_maintenance_expression,
   parse_maintenance_trigger
 } from '@/utils/trigger_maintenance'
 import { expression_type, function_options, new_expression } from '@/utils/trigger_function'
@@ -17,6 +20,18 @@ const args = ref((props.data.args || []).map((value) => ({ id: next_argument_id+
 const maintenance_hours = computed(() =>
   parse_maintenance_trigger({ left: left.value, operator: operator.value, right: right.value })
 )
+const maintenance_duration = computed(() => parse_maintenance_expression(left.value))
+const duration_hours = ref(maintenance_duration.value?.hours ?? 6)
+
+function update_duration_operator(operator) {
+  left.value = maintenance_duration_expression(operator, duration_hours.value)
+}
+
+function update_duration_hours(hours) {
+  if (hours === null) return
+  duration_hours.value = hours
+  left.value = maintenance_duration_expression(maintenance_duration.value.operator, hours)
+}
 
 function update_left(value) {
   left.value = value
@@ -178,6 +193,26 @@ const operator_tips = [
               @update:value="update_maintenance_hours"
             />
             <span style="white-space: nowrap">小时内生效</span>
+            <span style="white-space: nowrap">停止时长</span>
+            <n-select
+              :value="maintenance_duration.operator"
+              :options="maintenance_duration_options"
+              aria-label="停止时长比较符"
+              :consistent-menu-width="false"
+              style="width: 90px"
+              @update:value="update_duration_operator"
+            />
+            <template v-if="maintenance_duration.operator">
+              <mower-input-number
+                :value="duration_hours"
+                :min="0"
+                :step="0.5"
+                aria-label="停止时长小时数"
+                style="width: 120px"
+                @update:value="update_duration_hours"
+              />
+              <span style="white-space: nowrap">小时</span>
+            </template>
           </n-flex>
         </td>
       </tr>

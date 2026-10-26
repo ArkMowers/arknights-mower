@@ -11,6 +11,8 @@ export interface SimulationAssumptions {
   initialMorale: number
   /** Hours from simulation start until major maintenance; omitted means no scheduled window. */
   majorMaintenanceStartHours?: number
+  /** Total stopping hours; zero or omitted does not match duration comparisons. */
+  majorMaintenanceDurationHours?: number
   /** Mower global configuration; absent from the plan JSON. */
   predictiveMoodControl?: boolean
   restingThreshold?: number

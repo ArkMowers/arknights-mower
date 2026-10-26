@@ -27,6 +27,7 @@ export interface RuntimePosition {
 export interface RuntimeBed { id: string; roomId: string; vip: boolean; managedRecovery?: boolean }
 export interface RuntimeConfig {
  majorMaintenanceStartHours?:number
+ majorMaintenanceDurationHours?:number
  /** The application simulation selects the October 3 source contract. */
  mowerDormIsolation?:string[][]
  mowerAlpha?:boolean;mowerDormOrder?:string[]

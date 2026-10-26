@@ -119,6 +119,28 @@ describe('维护副表条件编辑', () => {
     expect(html).toContain('value="12"')
   })
 
+  it.each(['>', '>=', '<', '<=', '==', '!='])(
+    'edits and restores a %s duration condition independently of the advance',
+    async (operator) => {
+      const editor = mount(maintenance_trigger(12))
+      editor.state.update_duration_operator(operator)
+      await nextTick()
+      expect(editor.update).toHaveBeenLastCalledWith(maintenance_trigger(12, operator, 6))
+      editor.state.update_duration_hours(5.5)
+      await nextTick()
+      const saved = JSON.parse(JSON.stringify(editor.update.mock.lastCall[0]))
+      const reopened = mount(saved)
+      expect(reopened.state.maintenance_hours).toBe(12)
+      expect(reopened.state.maintenance_duration).toEqual({ operator, hours: 5.5 })
+      const html = await render(saved)
+      expect(html).toContain('停止时长比较符')
+      expect(html).toContain('停止时长小时数')
+      reopened.state.update_duration_operator('')
+      await nextTick()
+      expect(reopened.update).toHaveBeenLastCalledWith(maintenance_trigger(12))
+    }
+  )
+
   it('preserves ordinary and nested conditions', async () => {
     const ordinary = { left: '1', operator: '==', right: '1' }
     expect(await render(ordinary)).toContain('运算符')
