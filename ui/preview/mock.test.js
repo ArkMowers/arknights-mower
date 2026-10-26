@@ -726,3 +726,113 @@ describe('offline preview', () => {
     expect(socket.readyState).toBe(Socket.CLOSED)
   })
 })
+
+describe('成长规划离线示例', () => {
+  function growthClient() {
+    return axios.create({
+      adapter: createPreviewAdapter(createPreviewData(createPreviewConfiguration({})))
+    })
+  }
+
+  it('列表接口不携带材料明细，详情接口带材料与目标', async () => {
+    const client = growthClient()
+    const list = await client.get('/mastery-recommendation', { params: { materials: 0 } })
+    expect(list.data.has_data).toBe(true)
+    expect(list.data.operators.length).toBeGreaterThan(10)
+    const operator = list.data.operators.find((entry) => entry.recommendations.length)
+    expect(operator.recommendations[0]).not.toHaveProperty('targets')
+    const detail = await client.get('/mastery-recommendation', {
+      params: { char_id: operator.char_id }
+    })
+    expect(detail.data.operators[0].recommendations[0].targets).toBeTruthy()
+    expect(detail.data).not.toHaveProperty('goals')
+  })
+
+  it('养成计划、目标与顺序的修改只保存在预览内存中', async () => {
+    const client = growthClient()
+    const plan = await client.get('/mastery-plan')
+    expect(plan.data.plans.length).toBeGreaterThan(0)
+    const target = plan.data.plans[0]
+    const added = await client.post('/mastery-plan', {
+      planning: true,
+      items: [
+        {
+          char_id: target.char_id,
+          name: target.name,
+          skill_index: 0,
+          target_level: 2
+        }
+      ]
+    })
+    expect(['added', 'existing']).toContain(added.data.results[0].status)
+    const goals = await client.post('/growth-plan', {
+      char_id: target.char_id,
+      module_id: 'elite2',
+      selected: true
+    })
+    expect(goals.data.goals.some((goal) => goal.module_id === 'elite2')).toBe(true)
+    const order = await client.get('/growth-crafting-order')
+    expect(Array.isArray(order.data.planning_items)).toBe(true)
+    expect(Array.isArray(order.data.items)).toBe(true)
+    const survey = await client.get('/growth-survey')
+    expect(survey.data.operators.length).toBeGreaterThan(10)
+  })
+
+  it('提供工作区需要的干员名列表与工作室状态', async () => {
+    const client = growthClient()
+    const names = await client.get('/operator')
+    expect(names.data.length).toBeGreaterThan(10)
+    const status = await client.get('/workshop-status')
+    expect(status.data).toHaveProperty('execution')
+    await expect(client.get('/growth-not-provided')).rejects.toMatchObject({
+      code: 'ERR_PREVIEW_OPERATION'
+    })
+  })
+
+  it('同阶段升级保留在完整计划中，跨阶段升级才进入合成列表', async () => {
+    const client = growthClient()
+    const list = await client.get('/mastery-recommendation', { params: { materials: 0 } })
+    const leveling = list.data.operators.find(
+      (operator) =>
+        operator.elite === 2 &&
+        operator.level < operator.level_goals.find((goal) => goal.id === 'elite2_max')?.level
+    )
+    const promotion = list.data.operators.find(
+      (operator) => operator.elite < 2 && operator.level_goals.some((goal) => goal.id === 'elite2')
+    )
+    expect(leveling).toBeTruthy()
+    expect(promotion).toBeTruthy()
+    await client.post('/growth-plan', {
+      char_id: leveling.char_id,
+      module_id: 'elite2_max',
+      selected: true
+    })
+    await client.post('/growth-plan', {
+      char_id: promotion.char_id,
+      module_id: 'elite2',
+      selected: true
+    })
+    const { data: order } = await client.get('/growth-crafting-order')
+    const levelingKey = `goal:${leveling.char_id}:elite2_max`
+    const promotionKey = `goal:${promotion.char_id}:elite2`
+    expect(order.planning_items.find((item) => item.key === levelingKey)).toMatchObject({
+      crafting_required: false,
+      label: leveling.level_goals.find((goal) => goal.id === 'elite2_max').label
+    })
+    expect(order.items.some((item) => item.key === levelingKey)).toBe(false)
+    expect(order.planning_items.find((item) => item.key === promotionKey)).toMatchObject({
+      crafting_required: true
+    })
+    expect(order.items.some((item) => item.key === promotionKey)).toBe(true)
+  })
+
+  it('失败计划保留失败原因并排除在可执行顺序之外', async () => {
+    const client = growthClient()
+    const { data: plans } = await client.get('/mastery-plan')
+    const failed = plans.plans.find((plan) => plan.status === 'failed')
+    expect(failed.failed_reason).toBeTruthy()
+    const { data: order } = await client.get('/growth-crafting-order')
+    expect(order.planning_items.some((item) => item.plan_id === failed.id)).toBe(false)
+    expect(order.items.some((item) => item.plan_id === failed.id)).toBe(false)
+  })
+})

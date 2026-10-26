@@ -1,98 +1,91 @@
 <template>
-  <n-card size="small" title="大数据养成推荐 / 干员筛选" class="survey-filters">
-    <template #header-extra>
-      <n-button size="small" :loading="loading" @click="$emit('refresh')">读取统计</n-button>
-    </template>
-    <n-alert v-if="survey.error" type="warning" :bordered="false" style="margin-bottom: 12px">
+  <section class="survey">
+    <header class="survey__head">
+      <div>
+        <h4 class="survey__title">大数据筛选</h4>
+        <p class="survey__coverage">
+          {{ coverageText }}
+        </p>
+      </div>
+      <n-button size="tiny" quaternary :loading="loading" @click="$emit('refresh')">
+        读取统计
+      </n-button>
+    </header>
+
+    <n-alert v-if="survey.error" type="warning" :bordered="false" class="survey__alert">
       {{ survey.error }}
       <template v-if="survey.retry_after">
         下次可重试时间：{{ new Date(survey.retry_after * 1000).toLocaleTimeString() }}。
       </template>
     </n-alert>
-    <div class="threshold-rows">
-      <div v-for="dimension in surveyDimensions" :key="dimension.key" class="threshold-row">
+
+    <div class="survey__rows">
+      <div v-for="dimension in surveyDimensions" :key="dimension.key" class="survey__row">
         <n-tooltip>
           <template #trigger
-            ><n-text strong>{{ dimension.label }}</n-text></template
+            ><span class="survey__label">{{ dimension.label }}</span></template
           >
           {{ dimension.detail }}；分母为样本中拥有该干员的人数。
         </n-tooltip>
-        <div class="threshold-controls">
-          <n-scrollbar x-scrollable class="threshold-scroll">
-            <div
-              class="threshold-segments"
-              :class="`tone-${dimension.key}`"
-              role="group"
-              :aria-label="`${dimension.label}阈值`"
-              :style="{ '--foreground': theme.textColor1 }"
-            >
-              <button
-                v-for="rate in surveyThresholds"
-                :key="rate"
-                type="button"
-                :disabled="!hasSamples"
-                :aria-pressed="modelValue[dimension.key] === rate"
-                :aria-label="`${dimension.label}至少${rate}%`"
-                :class="{ selected: modelValue[dimension.key] === rate }"
-                @click="updateRate(dimension.key, rate)"
-              >
-                {{ rate }}%
-              </button>
-            </div>
-          </n-scrollbar>
-          <n-button
-            size="small"
-            :type="modelValue[dimension.key] === null ? 'primary' : 'default'"
-            :secondary="modelValue[dimension.key] === null"
-            @click="update(dimension.key, null)"
-            >不限</n-button
+        <div class="survey__rail" role="group" :aria-label="dimension.label + '阈值'">
+          <button
+            v-for="rate in surveyThresholds"
+            :key="rate"
+            type="button"
+            class="survey__node"
+            :class="{ 'is-active': modelValue[dimension.key] === rate }"
+            :disabled="!hasSamples"
+            :aria-pressed="modelValue[dimension.key] === rate"
+            :aria-label="dimension.label + '至少' + rate + '%'"
+            @click="updateRate(dimension.key, rate)"
           >
+            {{ rate }}
+          </button>
         </div>
+        <button
+          type="button"
+          class="survey__clear"
+          :class="{ 'is-active': modelValue[dimension.key] === null }"
+          :disabled="!hasSamples"
+          @click="update(dimension.key, null)"
+        >
+          不限
+        </button>
       </div>
     </div>
-    <n-space align="center" :size="12" style="margin-top: 14px">
+
+    <div class="survey__foot">
       <n-checkbox
         :checked="modelValue.hideCompleted"
         :disabled="!hasSamples"
         @update:checked="update('hideCompleted', $event)"
-        >隐藏已满足推荐条件的干员</n-checkbox
       >
+        隐藏已满足的干员
+      </n-checkbox>
       <n-select
         :value="modelValue.sort"
         :options="sortOptions"
         size="small"
-        style="width: 150px"
+        class="survey__sort"
+        aria-label="排序方式"
         @update:value="update('sort', $event)"
       />
-    </n-space>
-    <n-divider style="margin: 14px 0" />
+    </div>
     <slot />
-    <n-text depth="3" class="survey-source">
-      统计最多每 24 小时重新获取；请求失败后等待 5
-      分钟再试。缺少完整、可识别样本的指标显示“暂无样本”。比例用于发现养成方向，不代表强度排名。模组按已开启统计，精一率包含精二干员。
-      <template v-if="survey.fetched_at"
-        >统计获取于 {{ new Date(survey.fetched_at * 1000).toLocaleString() }}。</template
-      >
-      数据来自<a
-        href="https://ark.yituliu.cn/survey/operators"
-        target="_blank"
-        rel="noopener noreferrer"
-        >明日方舟一图流</a
-      >， 依<a
-        href="https://creativecommons.org/licenses/by-nc/4.0/deed.zh"
-        target="_blank"
-        rel="noopener noreferrer"
-        >CC BY-NC 4.0</a
-      >署名非商业使用，数据按原样提供。本功能为 Mower
-      独立实现，属于非官方样本统计；推荐统计仅拉取公开数据，不上传个人练度。
-    </n-text>
-  </n-card>
+    <p class="survey__source">
+      样本按拥有者分布计算，用于发现养成方向，不代表强度排名；缺失样本显示“暂无样本”。
+      <template v-if="survey.fetched_at">
+        获取于 {{ new Date(survey.fetched_at * 1000).toLocaleString() }}。
+      </template>
+    </p>
+  </section>
 </template>
+
 <script setup>
 import { computed } from 'vue'
-import { useThemeVars } from 'naive-ui'
-const theme = useThemeVars()
+import { NAlert, NButton, NCheckbox, NSelect, NTooltip } from 'naive-ui'
 import { surveyDimensions, surveyThresholds } from '@/utils/growthSurvey'
+
 const props = defineProps({
   modelValue: { type: Object, required: true },
   survey: { type: Object, required: true },
@@ -100,6 +93,12 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue', 'refresh'])
 const hasSamples = computed(() => props.survey.operators?.some((row) => row.own > 0))
+const coverageText = computed(() => {
+  const rows = props.survey.operators || []
+  const known = rows.filter((row) => row.own > 0).length
+  if (!known) return '暂无可用的公开样本'
+  return '覆盖 ' + known + ' 位干员 · 样本只用于高亮养成方向'
+})
 function updateRate(key, rate) {
   update(key, props.modelValue[key] === rate ? null : rate)
 }
@@ -112,88 +111,158 @@ function update(key, value) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
 }
 </script>
+
 <style scoped>
-.survey-filters {
-  margin-top: 16px;
+.survey {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--gp-surface);
 }
-.threshold-rows {
-  display: grid;
+
+.survey__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
 }
-.threshold-row {
-  display: grid;
-  grid-template-columns: 100px minmax(0, 1fr);
-  align-items: center;
+
+.survey__title {
+  margin: 0;
+  color: var(--gp-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.survey__coverage {
+  margin: 3px 0 0;
+  color: var(--gp-muted);
+  font-size: 11px;
+}
+
+.survey__alert {
+  font-size: 11.5px;
+}
+
+.survey__rows {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
-.threshold-controls {
+
+.survey__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  padding: 2px 0;
+  grid-template-columns: 82px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
-.threshold-scroll {
-  min-width: 0;
-  border-radius: 999px;
+
+.survey__label {
+  color: var(--gp-ink-2);
+  font-size: 11.5px;
+  font-weight: 650;
+  border-bottom: 1px dashed var(--gp-hair);
+  cursor: help;
 }
-.threshold-segments {
-  --tone: #b98312;
+
+.survey__rail {
   display: grid;
-  grid-template-columns: repeat(10, minmax(54px, 1fr));
-  min-width: 570px;
-  padding: 4px;
-  gap: 3px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--tone) 10%, transparent);
-  color: color-mix(in srgb, var(--tone) 78%, var(--foreground));
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--gp-surface-2);
 }
-.tone-mastery {
-  --tone: #2784d9;
-}
-.tone-module {
-  --tone: #ee8a20;
-}
-.threshold-segments button {
-  color: inherit;
+
+.survey__node {
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
   background: transparent;
-  border: none;
-  border-radius: 999px;
-  padding: 9px 3px;
+  color: var(--gp-muted);
   font: inherit;
-  font-size: 12px;
+  font-family: var(--gp-mono);
+  font-size: 10.5px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
   cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background 140ms var(--gp-ease),
+    color 140ms var(--gp-ease);
 }
-.threshold-segments button:hover:not(:disabled),
-.threshold-segments button.selected {
-  background: color-mix(in srgb, var(--tone) 15%, transparent);
+
+.survey__node:hover:not(:disabled) {
+  background: var(--gp-surface-3);
+  color: var(--gp-ink);
 }
-.threshold-segments button.selected {
-  box-shadow: inset 0 0 0 1.5px currentColor;
+
+.survey__node.is-active {
+  background: var(--gp-ink);
+  color: var(--gp-page);
 }
-.threshold-segments button:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: -2px;
+
+.survey__node:focus-visible {
+  outline: 2px solid var(--gp-accent);
+  outline-offset: 1px;
 }
-.threshold-segments button:disabled {
-  opacity: 0.45;
+
+.survey__node:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
-.survey-source {
-  display: block;
-  margin-top: 12px;
+
+.survey__clear {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gp-muted);
+  font: inherit;
   font-size: 11px;
-  line-height: 1.8;
+  font-weight: 600;
+  cursor: pointer;
 }
-.survey-source a {
-  color: inherit;
-  text-decoration: underline;
+
+.survey__clear.is-active {
+  border-color: var(--gp-hair);
+  color: var(--gp-ink);
 }
+
+.survey__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid var(--gp-hair-soft);
+}
+
+.survey__sort {
+  width: 150px;
+}
+
+.survey__source {
+  margin: 0;
+  color: var(--gp-faint);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
 @media (max-width: 600px) {
-  .threshold-row {
-    grid-template-columns: 1fr;
+  .survey__row {
+    grid-template-columns: 1fr auto;
+  }
+  .survey__rail {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    overflow-x: auto;
+  }
+  .survey__node {
+    min-width: 30px;
   }
 }
 </style>

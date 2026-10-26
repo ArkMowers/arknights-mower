@@ -1,3 +1,240 @@
+<template>
+  <n-button v-if="!hideTrigger" size="small" class="plan-trigger" @click="show = true">
+    <template #icon><n-icon :component="List" /></template>
+    养成计划
+    <span v-if="count" class="plan-trigger__count gp-mono">{{ count }}</span>
+  </n-button>
+
+  <n-modal
+    :show="show"
+    :closable="!busy"
+    :close-on-esc="!busy"
+    :mask-closable="false"
+    preset="card"
+    class="growth-plan-modal"
+    :style="{ width: 'min(760px, calc(100vw - 24px))' }"
+    :content-style="{ minHeight: 0, overflowY: 'auto' }"
+    @update:show="
+      (value) => {
+        if (!value) cancel()
+      }
+    "
+  >
+    <template #header>
+      <div class="plan-head">
+        <div class="plan-head__main">
+          <span class="gp-kicker">Growth plan</span>
+          <h2 class="plan-head__title">养成计划</h2>
+          <p class="plan-head__sub">拖动排序；保存后同步到专精优先级与材料合成。</p>
+        </div>
+        <div class="plan-head__stats">
+          <span class="gp-mono">{{ draftItems.length }} 项</span>
+          <span class="gp-mono">{{ draftItems.filter((item) => item.locked).length }} 进行中</span>
+          <span v-if="draftPreparedItems.length" class="gp-stamp gp-stamp--flat"
+            >{{ draftPreparedItems.length }} 备齐</span
+          >
+        </div>
+      </div>
+    </template>
+
+    <div class="plan-body">
+      <section v-if="draftPreparedItems.length" class="plan-prepared">
+        <header class="plan-prepared__head">
+          <span class="gp-kicker">Ready</span>
+          <h3>材料已备齐</h3>
+          <p>完成养成并同步后移除此提示；已备齐的材料不会重复合成。</p>
+        </header>
+        <div class="plan-prepared__list">
+          <div
+            v-for="item in draftPreparedItems"
+            :key="item.key"
+            class="plan-row plan-row--prepared"
+          >
+            <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="32" round />
+            <div class="plan-row__text">
+              <b>{{ item.char_name }}</b>
+              <span class="plan-row__label">{{ item.label }}</span>
+              <span v-if="item.reason" class="plan-row__status">{{ item.reason }}</span>
+            </div>
+            <n-button size="tiny" quaternary :disabled="!editable" @click="remove(item)"
+              >移除</n-button
+            >
+          </div>
+        </div>
+      </section>
+
+      <div class="plan-toolbar">
+        <n-input
+          v-model:value="search"
+          size="small"
+          clearable
+          placeholder="查找计划中的干员或项目"
+          aria-label="查找养成计划"
+          class="plan-search"
+        />
+        <div class="plan-toolbar__actions">
+          <n-button
+            size="small"
+            quaternary
+            :disabled="!editable || dragging || !!search.trim()"
+            @click="organize"
+          >
+            按职业整理
+          </n-button>
+          <n-button
+            size="small"
+            quaternary
+            :disabled="!editable || dragging || !!search.trim()"
+            @click="prioritizeSkills"
+          >
+            专精优先
+          </n-button>
+          <n-button size="small" quaternary :disabled="busy || dragging || dirty" @click="refresh()"
+            >刷新</n-button
+          >
+        </div>
+      </div>
+
+      <p v-if="search.trim()" class="plan-hint">搜索期间暂停拖动；清除搜索后可调整完整顺序。</p>
+      <p v-if="draftItems.some((item) => item.locked)" class="plan-hint">
+        进行中的专精固定在队首，不能移动或移除；清空仅移除其他项目。
+      </p>
+
+      <n-spin :show="busy">
+        <div class="plan-list">
+          <draggable
+            v-if="sortableItems.length"
+            :model-value="sortableItems"
+            item-key="key"
+            handle=".order-drag-handle"
+            :animation="dragAnimation"
+            easing="cubic-bezier(0.2, 0, 0, 1)"
+            :force-fallback="true"
+            :fallback-on-body="true"
+            :fallback-tolerance="5"
+            ghost-class="mower-drag-ghost"
+            chosen-class="mower-drag-chosen"
+            fallback-class="mower-drag-fallback"
+            :disabled="!editable || !!search.trim()"
+            :move="canDrag"
+            class="crafting-order"
+            role="list"
+            aria-label="养成计划顺序"
+            @update:model-value="commitDrag"
+            @start="startDrag"
+            @end="finishDrag"
+          >
+            <template #item="{ element: item, index }">
+              <div v-show="matchesSearch(item)" class="plan-row" role="listitem">
+                <span
+                  :class="item.locked ? 'order-drag-locked' : 'order-drag-handle'"
+                  :tabindex="item.locked || !editable || !!search.trim() ? -1 : 0"
+                  :aria-label="
+                    item.locked
+                      ? '进行中，顺序已固定'
+                      : '拖动排序 ' + item.char_name + ' ' + item.label
+                  "
+                  :aria-disabled="item.locked || !editable || !!search.trim()"
+                  role="button"
+                  @keydown.up.prevent="keyboardMove(index, -1)"
+                  @keydown.down.prevent="keyboardMove(index, 1)"
+                  >⠿</span
+                >
+                <span class="plan-row__index gp-mono">{{
+                  String(index + 1).padStart(2, '0')
+                }}</span>
+                <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="34" round />
+                <div class="plan-row__text">
+                  <span class="plan-row__name">
+                    <b>{{ item.char_name }}</b>
+                    <em>{{ projectText(item).name }}</em>
+                  </span>
+                  <span
+                    class="plan-row__status"
+                    :class="{ 'is-waiting': item.status === 'waiting' }"
+                  >
+                    <template v-if="projectText(item).target"
+                      >{{ projectText(item).target }} ·
+                    </template>
+                    {{ projectStatus(item) }}
+                  </span>
+                </div>
+                <n-button
+                  size="tiny"
+                  quaternary
+                  :disabled="!editable || item.locked"
+                  @click="remove(item)"
+                  >移除</n-button
+                >
+              </div>
+            </template>
+          </draggable>
+
+          <div
+            v-else-if="loaded && !draftFailedItems.length && !draftPreparedItems.length"
+            class="plan-empty"
+          >
+            <p class="plan-empty__title">还没有养成目标</p>
+            <p class="plan-empty__text">先在干员档案里加入专精、模组或等级目标。</p>
+          </div>
+
+          <div v-if="draftFailedItems.length" class="plan-failed">
+            <span class="plan-failed__label">失败计划</span>
+            <div
+              v-for="item in draftFailedItems"
+              v-show="matchesSearch(item)"
+              :key="item.key"
+              class="plan-row"
+            >
+              <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="34" round />
+              <div class="plan-row__text">
+                <span class="plan-row__name"
+                  ><b>{{ item.char_name }}</b
+                  ><em>{{ item.label }}</em></span
+                >
+                <span class="plan-row__status is-failed">{{ item.reason }}</span>
+              </div>
+              <n-button size="tiny" quaternary :disabled="!editable" @click="remove(item)"
+                >移除</n-button
+              >
+            </div>
+          </div>
+        </div>
+      </n-spin>
+
+      <p v-if="feedback" class="plan-feedback" :class="{ 'is-failed': failed }" aria-live="polite">
+        {{ feedback }}
+      </p>
+    </div>
+
+    <template #footer>
+      <div class="plan-footer">
+        <n-button
+          size="small"
+          quaternary
+          :disabled="
+            !editable || (!draftItems.some((item) => !item.locked) && !draftFailedItems.length)
+          "
+          @click="clear"
+          >清空计划</n-button
+        >
+        <div class="plan-footer__actions">
+          <n-button size="small" :disabled="busy" @click="cancel">取消</n-button>
+          <n-button
+            size="small"
+            type="primary"
+            :loading="busy"
+            :disabled="!editable || !dirty || dragging"
+            @click="save"
+          >
+            保存变更
+          </n-button>
+        </div>
+      </div>
+    </template>
+  </n-modal>
+</template>
+
 <script setup>
 import { computed, ref, watch } from 'vue'
 import axios from 'axios'
@@ -15,7 +252,8 @@ const dragAnimation =
 const props = defineProps({
   revision: { type: String, default: '' },
   recommendations: { type: Array, default: () => [] },
-  count: { type: Number, default: 0 }
+  count: { type: Number, default: 0 },
+  hideTrigger: Boolean
 })
 const emit = defineEmits(['changed'])
 const show = ref(false)
@@ -297,292 +535,324 @@ async function save() {
 watch([show, () => props.revision], ([opened], [wasOpened]) => {
   if (opened) refresh(wasOpened)
 })
+
+function open() {
+  show.value = true
+}
+
+defineExpose({ open })
 </script>
 
-<template>
-  <n-button size="small" @click="show = true">
-    <template #icon><n-icon :component="List" /></template>
-    养成计划
-    <n-badge v-if="count" :value="count" :max="99" style="margin-left: 4px" />
-  </n-button>
-  <n-modal
-    :show="show"
-    :closable="!busy"
-    :close-on-esc="!busy"
-    :mask-closable="false"
-    @update:show="
-      (value) => {
-        if (!value) cancel()
-      }
-    "
-    preset="card"
-    title="养成计划"
-    size="small"
-    :style="{ width: 'min(620px, calc(100vw - 32px))' }"
-    :content-style="{ minHeight: 0, overflowY: 'auto' }"
-  >
-    <div class="order-content">
-      <n-alert v-if="draftPreparedItems.length" type="success" :show-icon="false" :bordered="false">
-        <n-text strong>材料已备齐，待完成养成</n-text>
-        <n-scrollbar style="max-height: 144px">
-          <div v-for="item in draftPreparedItems" :key="item.key" class="prepared-project">
-            <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="28" round />
-            <div class="order-description">
-              <n-text strong>{{ item.char_name }} · {{ item.label }}</n-text>
-              <n-text v-if="item.reason" depth="3" class="order-label">{{ item.reason }}</n-text>
-            </div>
-            <n-button size="small" quaternary :disabled="!editable" @click="remove(item)">
-              移除
-            </n-button>
-          </div>
-        </n-scrollbar>
-        <n-text depth="3" class="order-label">
-          完成养成并同步后移除此提示；已备齐的材料不会重复合成。
-        </n-text>
-      </n-alert>
-      <div class="order-help">
-        <n-text depth="3"
-          >拖动调整养成顺序，保存后同步用于专精与材料合成；缺料项目本轮跳过。</n-text
-        >
-        <n-text depth="3"
-          >前置随项目准备，共用费用只计一次；纯升级不生成合成任务，模组前置仅准备至精二一级。</n-text
-        >
-      </div>
-      <div class="plan-tools">
-        <n-input
-          v-model:value="search"
-          size="small"
-          clearable
-          placeholder="查找计划中的干员 / 项目"
-          aria-label="查找养成计划"
-          class="plan-search"
-        />
-        <n-button
-          size="small"
-          :disabled="!editable || dragging || !!search.trim()"
-          @click="organize"
-          >按职业整理</n-button
-        >
-        <n-button
-          size="small"
-          :disabled="!editable || dragging || !!search.trim()"
-          @click="prioritizeSkills"
-          >专精优先</n-button
-        >
-        <n-button size="small" :disabled="busy || dragging || dirty" @click="refresh()"
-          >刷新</n-button
-        >
-      </div>
-      <n-text v-if="search.trim()" depth="3" class="order-label"
-        >搜索时暂不能拖动，清除搜索后可调整完整顺序。</n-text
-      >
-      <n-text v-if="draftItems.some((item) => item.locked)" depth="3" class="order-label">
-        进行中的专精固定优先，不能移动或移除；清空仅移除其他项目。
-      </n-text>
-      <n-spin :show="busy">
-        <div class="order-list">
-          <draggable
-            v-if="sortableItems.length"
-            :model-value="sortableItems"
-            item-key="key"
-            handle=".order-drag-handle"
-            :animation="dragAnimation"
-            easing="cubic-bezier(0.2, 0, 0, 1)"
-            :force-fallback="true"
-            :fallback-on-body="true"
-            :fallback-tolerance="5"
-            ghost-class="mower-drag-ghost"
-            chosen-class="mower-drag-chosen"
-            fallback-class="mower-drag-fallback"
-            :disabled="!editable || !!search.trim()"
-            :move="canDrag"
-            class="crafting-order"
-            role="list"
-            aria-label="养成计划顺序"
-            @update:model-value="commitDrag"
-            @start="startDrag"
-            @end="finishDrag"
-          >
-            <template #item="{ element: item, index }">
-              <div v-show="matchesSearch(item)" class="crafting-order-row" role="listitem">
-                <span
-                  :class="item.locked ? 'order-drag-locked' : 'order-drag-handle'"
-                  :tabindex="item.locked || !editable || !!search.trim() ? -1 : 0"
-                  :aria-label="
-                    item.locked ? '进行中，顺序已固定' : `拖动排序 ${item.char_name} ${item.label}`
-                  "
-                  :aria-disabled="item.locked || !editable || !!search.trim()"
-                  role="button"
-                  @keydown.up.prevent="keyboardMove(index, -1)"
-                  @keydown.down.prevent="keyboardMove(index, 1)"
-                  >⠿</span
-                >
-                <span class="order-position">{{ index + 1 }}</span>
-                <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="36" round />
-                <div class="order-description">
-                  <n-text strong>
-                    {{ item.char_name }}
-                    <n-text depth="3">· {{ projectText(item).name }}</n-text>
-                  </n-text>
-                  <n-text
-                    :type="item.status === 'waiting' ? 'warning' : undefined"
-                    depth="3"
-                    class="order-label"
-                  >
-                    <template v-if="projectText(item).target"
-                      >{{ projectText(item).target }} ·
-                    </template>
-                    {{ projectStatus(item) }}
-                  </n-text>
-                </div>
-                <n-button
-                  size="small"
-                  quaternary
-                  :disabled="!editable || item.locked"
-                  @click="remove(item)"
-                  >移除</n-button
-                >
-              </div>
-            </template>
-          </draggable>
-          <n-empty
-            v-else-if="loaded && !draftFailedItems.length && !draftPreparedItems.length"
-            description="还没有养成目标"
-          />
-          <div v-if="draftFailedItems.length" class="failed-plans">
-            <n-text strong>失败计划</n-text>
-            <div
-              v-for="item in draftFailedItems"
-              v-show="matchesSearch(item)"
-              :key="item.key"
-              class="crafting-order-row"
-            >
-              <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="36" round />
-              <div class="order-description">
-                <n-text strong>{{ item.char_name }} · {{ item.label }}</n-text>
-                <n-text type="warning" class="order-label">{{ item.reason }}</n-text>
-              </div>
-              <n-button size="small" quaternary :disabled="!editable" @click="remove(item)"
-                >移除</n-button
-              >
-            </div>
-          </div>
-        </div>
-      </n-spin>
-      <n-text v-if="feedback" :type="failed ? 'error' : 'success'" aria-live="polite">
-        {{ feedback }}
-      </n-text>
-    </div>
-    <template #footer>
-      <div class="plan-footer">
-        <n-button
-          size="small"
-          :disabled="
-            !editable || (!draftItems.some((item) => !item.locked) && !draftFailedItems.length)
-          "
-          @click="clear"
-          >清空计划</n-button
-        >
-        <div class="plan-tools">
-          <n-button size="small" :disabled="busy" @click="cancel">取消</n-button>
-          <n-button
-            size="small"
-            type="primary"
-            :loading="busy"
-            :disabled="!editable || !dirty || dragging"
-            @click="save"
-            >保存变更</n-button
-          >
-        </div>
-      </div>
-    </template>
-  </n-modal>
-</template>
-
 <style scoped>
-.plan-tools,
-.plan-footer {
+.growth-plan-modal {
+  background: var(--gp-surface-2);
+}
+
+.growth-plan-modal :deep(.n-card-header) {
+  padding: 18px 22px 12px;
+  background: var(--gp-surface-2);
+  border-bottom: 1px solid var(--gp-hair-soft);
+}
+
+.growth-plan-modal :deep(.n-card__content) {
+  padding: 0 22px 16px;
+}
+
+.growth-plan-modal :deep(.n-card__footer) {
+  padding: 12px 22px;
+  background: var(--gp-surface-2);
+  border-top: 1px solid var(--gp-hair-soft);
+}
+
+.plan-trigger__count {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--gp-surface-3);
+  color: var(--gp-muted);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.plan-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.plan-head__title {
+  margin: 4px 0 2px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.plan-head__sub {
+  margin: 0;
+  color: var(--gp-muted);
+  font-size: 11.5px;
+}
+
+.plan-head__stats {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--gp-muted);
+  font-size: 10.5px;
+  white-space: nowrap;
 }
-.plan-footer {
-  justify-content: space-between;
-}
-.plan-search {
-  width: 200px;
-  flex: 1 1 180px;
-}
-.order-content {
+
+.plan-body {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.order-help {
+
+.plan-prepared {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--gp-accent-block);
+}
+
+.plan-prepared__head h3 {
+  margin: 3px 0 2px;
+  color: var(--gp-accent-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.plan-prepared__head p {
+  margin: 0;
+  color: var(--gp-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.plan-prepared__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 148px;
+  overflow-y: auto;
+}
+
+.plan-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.plan-search {
+  width: 230px;
+  flex: 1 1 200px;
+}
+
+.plan-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.plan-hint {
+  margin: 0;
+  color: var(--gp-faint);
+  font-size: 10.5px;
+}
+
+.plan-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: min(46vh, 430px);
+  overflow-y: auto;
+  padding-right: 2px;
 }
-.order-help,
-.order-label {
-  font-size: 12px;
-}
-.prepared-project {
+
+.plan-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-}
-.crafting-order-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 6px;
+  gap: 10px;
+  min-height: 56px;
+  padding: 7px 8px;
   border-radius: 10px;
+  background: var(--gp-surface-2);
 }
-.order-position {
-  min-width: 18px;
-  flex-shrink: 0;
-  font-size: 12px;
-  opacity: 0.55;
-  font-variant-numeric: tabular-nums;
+
+.plan-row--prepared {
+  background: var(--gp-surface);
 }
-.order-description {
+
+.plan-row__index {
+  width: 20px;
+  flex: none;
+  color: var(--gp-faint);
+  font-size: 10px;
+}
+
+.plan-row__text {
   display: flex;
   flex: 1;
   min-width: 0;
   flex-direction: column;
-  gap: 4px;
-  overflow-wrap: anywhere;
+  gap: 2px;
 }
+
+.plan-row__name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.plan-row__name b {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-row__name em {
+  overflow: hidden;
+  color: var(--gp-muted);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-row__label {
+  color: var(--gp-muted);
+  font-size: 11px;
+}
+
+.plan-row__status {
+  overflow: hidden;
+  color: var(--gp-faint);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-row__status.is-waiting {
+  color: var(--gp-warn);
+}
+
+.plan-row__status.is-failed {
+  color: var(--gp-signal);
+}
+
 .order-drag-handle,
 .order-drag-locked {
-  font-size: 22px;
-  opacity: 0.5;
-  padding: 8px;
+  flex: none;
+  padding: 6px 4px;
+  color: var(--gp-faint);
+  font-size: 15px;
+  line-height: 1;
   touch-action: none;
   user-select: none;
 }
+
 .order-drag-handle {
   cursor: grab;
 }
+
 .order-drag-handle:active {
   cursor: grabbing;
 }
+
+.order-drag-handle:focus-visible {
+  outline: 2px solid var(--gp-accent);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
 .order-drag-locked {
   cursor: not-allowed;
-  opacity: 0.2;
+  opacity: 0.3;
 }
-@media (prefers-reduced-motion: reduce) {
-  .crafting-order > * {
-    transition-duration: 0ms !important;
-  }
+
+.plan-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 28px 16px;
+  border-radius: 12px;
+  background: var(--gp-surface-2);
 }
-@media (max-width: 480px) {
-  .crafting-order-row {
+
+.plan-empty__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.plan-empty__text {
+  margin: 0;
+  color: var(--gp-muted);
+  font-size: 11px;
+}
+
+.plan-failed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--gp-hair-soft);
+}
+
+.plan-failed__label {
+  color: var(--gp-signal);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.plan-feedback {
+  margin: 0;
+  color: var(--gp-accent-ink);
+  font-size: 11px;
+}
+
+.plan-feedback.is-failed {
+  color: var(--gp-signal);
+}
+
+.plan-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plan-footer__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 560px) {
+  .plan-head {
+    flex-direction: column;
+    align-items: flex-start;
     gap: 8px;
-    padding-inline: 0;
+  }
+  .plan-search {
+    width: 100%;
+    flex-basis: 100%;
+  }
+  .plan-list {
+    max-height: 52vh;
   }
 }
 </style>

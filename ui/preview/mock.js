@@ -293,6 +293,42 @@ export function createPreviewAdapter(data, requests = []) {
     return activate(config, id, incoming, selected)
   }
   let logBackground = null
+  // 成长规划示例数据按需加载，普通预览页面不必解析约 1 MB 的示例对象。
+  let growthAdapter = null
+  let growthLoading = null
+  function loadGrowth() {
+    if (growthAdapter) return Promise.resolve(growthAdapter)
+    if (!growthLoading) {
+      growthLoading = Promise.all([import('./growthFixture.js'), import('./growthAdapter.js')])
+        .then(([{ createGrowthPreview }, { createGrowthAdapter }]) => {
+          growthAdapter = createGrowthAdapter(createGrowthPreview())
+          return growthAdapter
+        })
+        .catch((error) => {
+          growthLoading = null
+          throw error
+        })
+    }
+    return growthLoading
+  }
+  function isGrowthPath(target) {
+    return (
+      target === '/mastery-recommendation' ||
+      target.startsWith('/mastery-plan') ||
+      target === '/growth-plan' ||
+      target === '/mastery-t3-summary' ||
+      target === '/growth-survey' ||
+      target === '/growth-crafting-order' ||
+      target === '/mastery-route' ||
+      target === '/mastery-route/settings' ||
+      target === '/cultivate-fetch' ||
+      target === '/workshop-status' ||
+      target === '/workshop-auto-config' ||
+      target.startsWith('/workshop-operators') ||
+      target === '/growth-chip-farming' ||
+      target === '/operator'
+    )
+  }
   return async (config) => {
     const method = (config.method || 'get').toUpperCase()
     const requestUrl = new URL(config.url, 'http://mower-preview.invalid')
@@ -306,6 +342,37 @@ export function createPreviewAdapter(data, requests = []) {
     )
       fail(config, '网络设置请求缺少确认标识', 403)
     const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+    // 养成规划使用独立的示例数据与内存状态，先于通用配置校验处理。
+    // Axios 自定义适配器不会把 config.params 并进 url，这里手动合并查询参数。
+    if (isGrowthPath(path)) {
+      const growthQuery = new URLSearchParams(requestUrl.searchParams)
+      for (const [key, value] of Object.entries(config.params || {})) {
+        if (value !== undefined && value !== null) growthQuery.set(key, String(value))
+      }
+      const growthResult = (await loadGrowth()).handle({
+        method,
+        path,
+        query: growthQuery,
+        body
+      })
+      if (!growthResult.unhandled) {
+        if (growthResult.status && growthResult.status >= 400) {
+          fail(
+            config,
+            growthResult.data?.error || growthResult.data?.message || '离线预览接口返回错误',
+            growthResult.status,
+            'ERR_PREVIEW_OPERATION'
+          )
+        }
+        return {
+          status: growthResult.status || 200,
+          statusText: 'OK',
+          data: growthResult.data,
+          headers: {},
+          config
+        }
+      }
+    }
     const supplied =
       config.headers?.get?.('X-Mower-Config-Generation') ??
       config.headers?.['X-Mower-Config-Generation']

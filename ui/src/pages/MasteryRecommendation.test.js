@@ -151,6 +151,27 @@ async function flush() {
 }
 
 describe('养成规划按需详情', () => {
+  it('离开干员视图释放选中详情并忽略迟到结果', async () => {
+    const page = setup()
+    let resolve
+    axios.get.mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      })
+    )
+    page.activeView.value = 'operators'
+    await flush()
+    page.expandedOperator.value = ['char_0']
+    await flush()
+    const signal = axios.get.mock.calls[0][1].signal
+    page.activeView.value = 'materials'
+    await flush()
+    expect(signal.aborted).toBe(true)
+    expect(page.expandedOperator.value).toEqual([])
+    resolve({ data: { operators: [{ char_id: 'char_0' }] } })
+    await flush()
+    expect(page.operatorDetail.value).toBeNull()
+  })
   it('限制渲染卡片数量，翻页与筛选保留完整列表且不自动请求详情', async () => {
     const page = setup()
     useMasteryStore().recommendations = operators()
@@ -526,5 +547,270 @@ describe('按筛选一键添加养成计划', () => {
     expect(writes()).toHaveLength(1)
     expect(axios.get).not.toHaveBeenCalled()
     expect(state.feedback.success).not.toHaveBeenCalled()
+  })
+})
+
+describe('养成工作区派生数据', () => {
+  it('清除更高显式等级目标时保留专精最低前置', async () => {
+    const page = setup()
+    const op = {
+      char_id: 'char_clear',
+      name: '清除目标',
+      rarity: 6,
+      elite: 1,
+      level: 1,
+      max_phase: 2,
+      modules: [],
+      recommendations: [{ skill_index: 0, current_level: 0 }],
+      level_goals: [
+        { id: 'elite2', elite: 2, level: 1 },
+        { id: 'elite2_max', elite: 2, level: 90 }
+      ]
+    }
+    const store = useMasteryStore()
+    store.recommendations = [op]
+    store.goals = [{ char_id: op.char_id, module_id: 'elite2_max' }]
+    page.plan.value = { char_clear_0: true }
+    axios.post.mockResolvedValue({ data: { goals: [] } })
+    await page.applyLevelTarget(op, null)
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/growth-plan'),
+      expect.objectContaining({ char_id: op.char_id, module_id: 'elite2_max', selected: false })
+    )
+    expect(page.levelGoalFor(op)).toBe('elite2')
+  })
+
+  it('总览使用服务端保存的技能与手动目标混排顺序', async () => {
+    const page = setup()
+    const store = useMasteryStore()
+    store.recommendations = [
+      {
+        char_id: 'char_order',
+        name: '排序干员',
+        rarity: 6,
+        elite: 2,
+        recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 0 }],
+        modules: [{ id: 'mod_x', name: '模组', max_level: 3 }],
+        level_goals: []
+      }
+    ]
+    store.goals = [{ char_id: 'char_order', module_id: 'mod_x', target_level: 3 }]
+    axios.get.mockImplementation(async (url) =>
+      url.endsWith('/growth-crafting-order')
+        ? {
+            data: {
+              planning_items: [{ key: 'goal:char_order:mod_x' }, { key: 'skill:char_order:0' }]
+            }
+          }
+        : { data: { plans: [savedPlan(1, 'char_order')] } }
+    )
+    await page.refreshPlanFromServer()
+    expect(page.queueItems.value.map((row) => row.kind)).toEqual(['goal', 'skill'])
+    expect(page.nextUpItem.value.label).toBe('模组 · 模组 3 级')
+  })
+
+  it('部分成品可合成时逐行统计，不用底层原料缺口数量相减', () => {
+    const page = setup()
+    page.planMaterials.value = {
+      craftable: false,
+      materials: [
+        { id: 'ready', owned: 2, required: 2, craftable: true },
+        { id: 'can_craft', owned: 0, required: 2, craftable: true },
+        { id: 'cannot_craft', owned: 0, required: 2, craftable: false }
+      ],
+      missing: [{ id: 'raw_1' }, { id: 'raw_2' }]
+    }
+    expect(page.planMaterialStats.value).toMatchObject({ ready: 1, craftable: 1, missing: 2 })
+  })
+
+  it('同步失败的长提示不能变成已同步', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    store.cultivateOk = false
+    store.cultivateMsg = '森空岛接口读取失败，请稍后重试'
+    expect(page.syncHint.value).not.toContain('已同步')
+  })
+  it('总览沿用已合并升变形态的本地统计口径', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    store.recommendations = [
+      { char_id: 'char_002_amiya', name: '阿米娅', elite: 2, recommendations: [], modules: [] },
+      { char_id: 'char_1001_amiya2', name: '阿米娅', elite: 2, recommendations: [], modules: [] },
+      { char_id: 'char_1037_amiya3', name: '阿米娅', elite: 2, recommendations: [], modules: [] }
+    ]
+    store.personalStatistics = {
+      rarities: { 5: { owned: 1, elite2: 1, skills: { 3: 5 }, modules: { 1: 1, 3: 2 } } }
+    }
+    expect(page.rosterStats.value).toEqual({ owned: 1, elite2: 1, masteries: 5, modules: 3 })
+  })
+
+  it('构建训练队列、进行中训练与材料备齐度', async () => {
+    const page = setup()
+    const store = useMasteryStore()
+    axios.get.mockResolvedValue({
+      data: {
+        plans: [
+          {
+            id: 1,
+            char_id: 'char_a',
+            skill_index: 0,
+            status: 'training',
+            target_level: 3,
+            priority: 0
+          },
+          { id: 2, char_id: 'char_b', skill_index: 1, status: 'idle', target_level: 2, priority: 1 }
+        ]
+      }
+    })
+    store.recommendations = [
+      {
+        char_id: 'char_a',
+        name: '甲',
+        rarity: 6,
+        elite: 2,
+        level: 90,
+        recommendations: [
+          { skill_index: 0, skill_name: '技能一', current_level: 1, total_time: 7200 }
+        ],
+        modules: [],
+        level_goals: []
+      },
+      {
+        char_id: 'char_b',
+        name: '乙',
+        rarity: 5,
+        elite: 1,
+        level: 50,
+        recommendations: [{ skill_index: 1, skill_name: '技能二', current_level: 0 }],
+        modules: [],
+        level_goals: []
+      }
+    ]
+    store.goals = [{ char_id: 'char_b', module_id: 'elite2' }]
+    await page.refreshPlanFromServer()
+    await nextTick()
+
+    expect(page.queueItems.value.map((item) => item.status)).toEqual(['training', 'idle', 'manual'])
+    expect(page.trainingCard.value.op.name).toBe('甲')
+    expect(page.trainingCard.value.target).toBe(3)
+    expect(page.trainingCard.value.totalTime).toBe(7200)
+    expect(page.nextUpItem.value.name).toBe('乙')
+
+    page.planMaterials.value = {
+      materials: [
+        { id: 'm1', owned: 5, required: 3 },
+        { id: 'm2', owned: 1, required: 2 }
+      ],
+      missing: [{ id: 'm2' }],
+      craftable: false
+    }
+    expect(page.planMaterialStats.value).toMatchObject({
+      ready: 1,
+      total: 2,
+      missing: 1,
+      percent: 50
+    })
+  })
+
+  it('推荐卡跳过已计划干员，并按公开样本排序', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    store.recommendations = [
+      {
+        char_id: 'char_new',
+        name: '新干员',
+        rarity: 6,
+        elite: 2,
+        level: 1,
+        skill_levels: [0],
+        recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 0 }],
+        modules: []
+      },
+      {
+        char_id: 'char_planned',
+        name: '已计划',
+        rarity: 6,
+        elite: 2,
+        level: 1,
+        skill_levels: [0],
+        recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 0 }],
+        modules: []
+      }
+    ]
+    store.goals = [{ char_id: 'char_planned', module_id: 'elite2' }]
+    page.survey.value = {
+      operators: [{ charId: 'char_new', own: 100, skill1: { 0: 10, 3: 90 } }]
+    }
+    expect(page.recommendedCards.value.map((card) => card.operator.char_id)).toEqual(['char_new'])
+    expect(page.recommendedCards.value[0].score).toBe(90)
+    expect(page.recommendedCards.value[0].planned).toBe(false)
+  })
+
+  it('详情派生技能目标、模组目标与基础技能状态', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    const base = {
+      char_id: 'char_detail',
+      name: '档案干员',
+      rarity: 6,
+      elite: 2,
+      level: 60,
+      main_skill_level: 5,
+      max_phase: 2,
+      supports_basic_skill7: true,
+      basic_skill_summary: null,
+      basic_skill_prerequisite: { elite: 1, level: 1 },
+      recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 1 }],
+      modules: [],
+      level_goals: []
+    }
+    store.recommendations = [base]
+    page.operatorDetail.value = {
+      ...base,
+      basic_skill_summary: { materials: [{ id: '3301', required: 3, owned: 0 }] },
+      recommendations: [
+        {
+          skill_index: 0,
+          skill_name: '技能',
+          current_level: 0,
+          targets: {
+            3: {
+              target_level: 3,
+              remaining_levels: 3,
+              total_time: 3600,
+              skill_material_summary: { materials: [] }
+            }
+          }
+        }
+      ],
+      modules: [
+        {
+          id: 'module_1',
+          name: '战术装备',
+          type: 'MOD-X',
+          current_level: 0,
+          max_level: 3,
+          elite: 2,
+          level: 40,
+          targets: { 3: { opening_summary: { materials: [] } } }
+        }
+      ]
+    }
+    page.expandedOperator.value = ['char_detail']
+
+    expect(page.selectedSkillRows.value[0].target).toBe(3)
+    expect(page.selectedSkillRows.value[0].targetOptions.map((option) => option.value)).toEqual([
+      1, 2, 3
+    ])
+    expect(page.selectedModuleRows.value[0].target).toBe(3)
+    expect(page.selectedModuleRows.value[0].summary).toEqual({ materials: [] })
+    expect(page.selectedBasicState.value).toMatchObject({
+      supported: true,
+      planned: false,
+      achieved: false,
+      disabled: false,
+      materials: { materials: [{ id: '3301', required: 3, owned: 0 }] }
+    })
+    expect(page.selectedBasicState.value.note).toContain('基础技能材料按干员只计算一次')
   })
 })
