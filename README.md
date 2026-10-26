@@ -14,6 +14,8 @@ Mower 是为长期运行设计的、开源的明日方舟脚本，支持 Windows
 [![qq_guild](https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-2r118jwue4-blue)](https://pd.qq.com/s/5t91c3gx9)
 [![QQ群](https://img.shields.io/badge/QQ群-521857729(mower用户交流群)-green)](https://qm.qq.com/q/uALU6yjUuk)
 
+[官网与下载](https://mower.dev/) · [使用文档](https://docs.mower.dev/)
+
 初次使用，建议阅读
 
 [《Mower入门一条龙》](https://arkmowers.github.io/arknights-mower/docs/manual/README.html)

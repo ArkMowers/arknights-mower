@@ -1,4 +1,11 @@
+---
+title: Mower 下载、安装与更新
+description: 了解 Mower 的下载入口、Windows 安装、macOS 源码运行、软件更新与多开配置。
+---
+
 # 下载及更新
+
+各平台版本与最新发布说明见 [Mower 官网下载入口](https://mower.dev/)。
 
 ## 下载
 

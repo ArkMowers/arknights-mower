@@ -1,4 +1,6 @@
 ---
+title: Mower 入门指南
+description: Mower 入门指南，按下载与更新、软件设置、基建排班、数据图表和常见问题了解明日方舟长草助手的使用方法。
 hide: 
     - toc
 ---

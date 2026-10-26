@@ -1,4 +1,5 @@
 site_name: Arknights-Mower 文档
+site_description: Arknights Mower 明日方舟长草助手使用文档，提供下载与更新、模拟器连接、基建排班、动态换班和常见问题说明。
 site_url: https://docs.mower.dev/
 repo_name: arkmowers/arknights-mower
 repo_url: https://github.com/ArkMowers/arknights-mower
@@ -81,6 +82,7 @@ markdown_extensions:
   - pymdownx.superfences
 
 extra:
+  homepage: https://mower.dev/
   generator: false
   social:
     - icon: fontawesome/brands/github
@@ -108,6 +110,7 @@ plugins:
       enabled: !ENV [CI, false]
 
 nav: 
+  - 官网与下载: https://mower.dev/
   - 简介: ./README.md
   - Mower入门一条龙:
     - manual/README.md

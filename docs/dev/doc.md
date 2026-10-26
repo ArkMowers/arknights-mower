@@ -228,3 +228,21 @@ git push -f origin doc-pages
 
 在你的 GitHub Fork 仓库页面点击 **"Compare & pull request"**。
 **注意：** 请确保 `base repository` 指向主仓库，且 `base` 分支选择为 `doc-pages`。
+
+## 搜索与官网入口
+
+文档站正式地址为 `https://docs.mower.dev/`，产品官网为
+`https://mower.dev/`。`mkdocs.yml` 的 `site_url` 用于生成文档页的
+canonical 和站点地图；`extra.homepage` 控制页头与侧栏 Logo 的链接，
+导航中保留「官网与下载」文字入口。
+
+各指南在 Markdown front matter 中设置独立的 `title` 和 `description`，
+准确说明当前页面内容。修改教程时同步检查摘要，不加入过时版本号、评分或
+未经核实的承诺。文档保持现有目录网址；修改链接时优先使用对应 Markdown
+源文件路径，由 MkDocs 生成目录地址，不将目录网址替换成 `.html` 网址。
+
+运行 `mkdocs build --clean` 后，检查 `site/` 中的标题、摘要、canonical、
+官网入口及内部链接。`docs/robots.txt` 声明正式站点地图，站点地图保留首页
+和所有正常文档页。旧版手册继续按版本提供，不因 SEO 调整删除或禁止索引。
+发布沿用现有 `doc-pages` 分支工作流，由 MkDocs 生成 `gh-pages`；上线后
+以实际 HTTP 响应核对 SEO 信息，本地构建不代表已经收录或取得搜索排名。

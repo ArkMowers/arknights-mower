@@ -1,8 +1,12 @@
 ---
+title: Mower 使用文档：明日方舟长草助手入门
+description: Arknights Mower 明日方舟长草助手使用文档，介绍下载安装、模拟器连接、基建排班、动态换班和常见问题，提供官网与入门指南入口。
 hide:
   - navigation
   - toc
 ---
+
+# Mower 明日方舟长草助手使用文档 {#简介}
 
 <div align="center" markdown>
 
@@ -19,6 +23,8 @@ Mower 是为长期运行设计的、开源的明日方舟脚本，支持 Windows
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ArkMowers/arknights-mower/pyinstaller-win-shawn.yml?branch=dev&)](https://github.com/ArkMowers/arknights-mower/actions/workflows/pyinstaller-win-shawn.yml)
 [![qq_guild](https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-2r118jwue4-blue)](https://pd.qq.com/s/5t91c3gx9)
 [![QQ群](https://img.shields.io/badge/QQ群-521857729(mower用户交流群)-green)](https://qm.qq.com/q/uALU6yjUuk)
+
+[Mower 官网与下载](https://mower.dev/)
 
 初次使用，建议阅读
 
