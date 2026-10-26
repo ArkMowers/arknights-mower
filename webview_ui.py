@@ -1037,18 +1037,30 @@ def _run_desktop():
                 # A cached page or manual request can already own the install.
                 if server.resource_update.running():
                     server.resource_update.thread.join()
-        with backup_lock:
-            if resume and not crash_notice["active"] and not startup_cancelled():
-                with server.app.test_request_context(
-                    method="GET", headers={"token": runtime_token}
-                ):
-                    if resume_mode in ("0", "1", "3"):
-                        server.start(resume_mode, automatic=True)
-                    else:
-                        server.start(
-                            "2" if resume_run else "0",
-                            automatic=True,
-                        )
+        while resume and not crash_notice["active"] and not startup_cancelled():
+            # Updates and task admission share this lock. Release both locks
+            # before waiting so maintenance and explicit Stop can finish.
+            with backup_lock, server.maa_maintenance_lock:
+                if startup_cancelled():
+                    return
+                pending = [
+                    job["thread"]
+                    for job in (server.maa_update_job, server.maa_resource_update_job)
+                    if server._job_running(job)
+                ]
+                if server.resource_update.running():
+                    pending.append(server.resource_update.thread)
+                if not pending:
+                    with server.app.test_request_context(
+                        method="GET", headers={"token": runtime_token}
+                    ):
+                        server.start(start_type, automatic=True)
+                    return
+            for thread in pending:
+                while thread.is_alive():
+                    if startup_cancelled():
+                        return
+                    thread.join(timeout=0.5)
 
     if resume and not crash_notice["active"] or auto_resource:
         Thread(target=resume_after_update, daemon=True).start()

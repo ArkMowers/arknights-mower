@@ -279,6 +279,10 @@ class DesktopStartupTests(unittest.TestCase):
             config.updates_enabled = updates_enabled
             config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
+            server.maa_maintenance_lock = threading.RLock()
+            server.maa_update_job = {"status": "idle", "thread": None}
+            server.maa_resource_update_job = {"status": "idle", "thread": None}
+            server._job_running = task_server._job_running
             server.http_start = Mock()
             server.browser_open = Mock()
             tray_channel = Mock()
@@ -313,6 +317,7 @@ class DesktopStartupTests(unittest.TestCase):
 
             def finish_existing_install():
                 events.append("existing install finished")
+                server.resource_update.running.return_value = False
                 if configuration_change == "existing_install":
                     change_configuration()
 
@@ -420,6 +425,162 @@ class DesktopStartupTests(unittest.TestCase):
         events, server = self.launch()
         self.assertEqual(events, [("start", "0")])
         server.start.assert_called_once_with("0", automatic=True)
+
+    def launch_during_maintenance(
+        self, kind, *, cancel=None, handoff=False, waits=1, result="success"
+    ):
+        import server as task_server
+        from arknights_mower.utils import crash_recovery, instance_supervisor
+        from arknights_mower.utils.config_backup import backup_lock
+        from arknights_mower.utils.resource_update_job import ResourceUpdateJob
+
+        real_start = task_server._start_mower
+        outcome = {}
+
+        def configure(stack, task_server, server, config, events):
+            worker = Mock()
+            worker.is_alive.return_value = True
+            server.resource_update = ResourceUpdateJob()
+            jobs = {
+                "core": server.maa_update_job,
+                "maa_resource": server.maa_resource_update_job,
+                "resource": server.resource_update.job,
+            }
+
+            def begin_update(selected):
+                thread = Mock()
+                thread.is_alive.return_value = True
+                job = jobs[selected]
+                job.update(status="running", thread=thread)
+                if selected == "resource":
+                    server.resource_update.thread = thread
+                remaining = waits
+
+                def finish(timeout=None):
+                    nonlocal remaining
+                    self.assertIsNotNone(timeout)
+                    self.assertFalse(server.maa_maintenance_lock._is_owned())
+                    self.assertFalse(backup_lock._is_owned())
+                    worker.start.assert_not_called()
+                    remaining -= 1
+                    events.append(
+                        (
+                            "update wait" if cancel or remaining else "update finished",
+                            selected,
+                        )
+                    )
+                    if not cancel and not remaining:
+                        thread.is_alive.return_value = False
+                        job["status"] = result
+                    if handoff and selected == "core":
+                        begin_update("maa_resource")
+                    if cancel == "stop":
+                        config.stop_mower.set()
+                    elif cancel == "shutdown":
+                        server.register_shutdown.call_args.args[0].request("test")
+                    elif cancel == "configuration":
+                        stack.enter_context(
+                            patch(
+                                "arknights_mower.utils.config_profiles.current_generation",
+                                return_value="1" * 32,
+                            )
+                        )
+
+                thread.join.side_effect = finish
+                return thread
+
+            outcome["update"] = begin_update(kind)
+            outcome["worker"] = worker
+            outcome["start"] = stack.enter_context(
+                patch.object(task_server, "_start_mower", wraps=real_start)
+            )
+            original_route = server.start
+
+            def admit(*args, **kwargs):
+                self.assertTrue(server.maa_maintenance_lock._is_owned())
+                return original_route(*args, **kwargs)
+
+            server.start = Mock(side_effect=admit)
+            for target, name, value in (
+                (task_server, "maa_maintenance_lock", server.maa_maintenance_lock),
+                (task_server, "maa_update_job", server.maa_update_job),
+                (
+                    task_server,
+                    "maa_resource_update_job",
+                    server.maa_resource_update_job,
+                ),
+                (task_server, "resource_update", server.resource_update),
+                (task_server, "config", config),
+                (task_server, "mower_thread", None),
+                (task_server, "shutdown", SimpleNamespace(closing=False)),
+                (task_server, "active_job", lambda: False),
+                (task_server, "get_path", Mock()),
+                (task_server, "load_state", Mock(return_value={})),
+                (task_server, "Thread", Mock(return_value=worker)),
+                (task_server, "set_mower_thread", Mock()),
+                (task_server, "_cancel_scheduled_start", Mock()),
+                (crash_recovery, "cancelled", lambda: False),
+                (crash_recovery, "status", lambda: {"active": False}),
+                (crash_recovery, "pending_start_type", lambda: None),
+                (instance_supervisor, "task_intent", Mock()),
+            ):
+                stack.enter_context(patch.object(target, name, value))
+
+        events, server = self.launch(
+            restart=True,
+            resume_run="1",
+            resume_mode="0",
+            update_replan="1",
+            cancel=cancel,
+            configure_startup=configure,
+        )
+        return events, server, outcome
+
+    def test_update_restart_waits_for_maintenance_before_real_task_admission(self):
+        for kind in ("core", "maa_resource", "resource"):
+            with self.subTest(kind=kind):
+                events, server, outcome = self.launch_during_maintenance(kind)
+                self.assertEqual(events, [("update finished", kind)])
+                server.start.assert_called_once_with("3", automatic=True)
+                outcome["worker"].start.assert_called_once()
+                outcome["start"].assert_called_once_with("3", automatic=True)
+
+    def test_update_restart_rechecks_maintenance_started_during_the_previous_update(
+        self,
+    ):
+        events, server, outcome = self.launch_during_maintenance("core", handoff=True)
+        self.assertEqual(
+            events, [("update finished", "core"), ("update finished", "maa_resource")]
+        )
+        server.start.assert_called_once_with("3", automatic=True)
+        outcome["worker"].start.assert_called_once()
+
+    def test_unchanged_update_does_not_repeat_task_admission(self):
+        events, server, outcome = self.launch_during_maintenance("core", waits=2)
+        self.assertEqual(events, [("update wait", "core"), ("update finished", "core")])
+        self.assertEqual(outcome["update"].join.call_count, 2)
+        server.start.assert_called_once_with("3", automatic=True)
+        outcome["worker"].start.assert_called_once()
+
+    def test_failed_maintenance_releases_pending_update_restart(self):
+        for kind in ("core", "maa_resource", "resource"):
+            with self.subTest(kind=kind):
+                _, server, outcome = self.launch_during_maintenance(
+                    kind, result="error"
+                )
+                server.start.assert_called_once_with("3", automatic=True)
+                outcome["worker"].start.assert_called_once()
+
+    def test_cancellation_while_waiting_prevents_update_restart(self):
+        for cancel in ("stop", "shutdown", "configuration"):
+            with self.subTest(cancel=cancel):
+                events, server, outcome = self.launch_during_maintenance(
+                    "core", cancel=cancel
+                )
+                self.assertEqual(events, [("update wait", "core")])
+                server.start.assert_not_called()
+                outcome["worker"].start.assert_not_called()
+                self.assertTrue(outcome["update"].is_alive())
 
     def test_managed_background_start_and_browser_access_create_no_desktop_windows(
         self,
