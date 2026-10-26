@@ -16,7 +16,7 @@
           type="button"
           class="baseline-trigger-btn"
           :class="{ active: popoverOpen, 'custom-active': modelValue.preset !== 'previous' }"
-          :disabled="history.length < 2"
+          :disabled="disabled || history.length < 2"
           :title="
             history.length < 2 ? '历史快照不足 2 次，暂无法对比' : '点击切换对比基准与时间范围'
           "
@@ -208,6 +208,7 @@ import {
 } from '@/utils/depot_inventory'
 
 const props = defineProps({
+  disabled: Boolean,
   history: {
     type: Array,
     default: () => []

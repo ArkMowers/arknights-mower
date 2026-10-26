@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios'
 import screenshot from './screenshot.svg?raw'
+import { DEFAULT_BASELINE_CONFIG, DEFAULT_VIEW_PREFS } from '../src/utils/depot_inventory.js'
 import {
   BlobReader,
   BlobWriter,
@@ -171,6 +172,7 @@ export function createPreviewData(config) {
     plan: { conf: { ling_xi: 1 }, plan1: {}, backup_plans: [], facility_levels: {} },
     layout: { screenshot_height: 180, task_height: 132 },
     sidebar: null,
+    depotPreferences: null,
     appearance: {
       software_version_display: 'version',
       software_version_language: 'en',
@@ -507,6 +509,7 @@ export function createPreviewAdapter(data, requests = []) {
       }),
       '/ui-state/log-layout': () => clone(data.layout),
       '/gui/sidebar': () => ({ sidebar: clone(data.sidebar) }),
+      '/gui/depot': () => ({ depot: clone(data.depotPreferences) }),
       '/gui/appearance': () => clone(data.appearance),
       '/db-admin/stats': () => ({ log: 64, task: 5 }),
       '/screenshot/latest': () => new Blob([screenshot], { type: 'image/svg+xml' })
@@ -578,6 +581,31 @@ export function createPreviewAdapter(data, requests = []) {
     else if (method === 'PUT' && path === '/gui/sidebar') {
       data.sidebar = clone(body.sidebar)
       result = { sidebar: clone(data.sidebar) }
+    } else if (method === 'PUT' && path === '/gui/depot') {
+      const groups = ['favorites', 'view', 'baseline']
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        Array.isArray(body) ||
+        Object.keys(body).some((key) => !['depot', 'migrate'].includes(key)) ||
+        (Object.hasOwn(body, 'migrate') && body.migrate !== true) ||
+        !body.depot ||
+        typeof body.depot !== 'object' ||
+        Array.isArray(body.depot) ||
+        Object.keys(body.depot).length === 0 ||
+        Object.keys(body.depot).some((key) => !groups.includes(key))
+      )
+        fail(config, '仓库偏好无效')
+      if (!body.migrate || data.depotPreferences === null) {
+        data.depotPreferences = {
+          favorites: [],
+          view: clone(DEFAULT_VIEW_PREFS),
+          baseline: clone(DEFAULT_BASELINE_CONFIG),
+          ...data.depotPreferences,
+          ...clone(body.depot)
+        }
+      }
+      result = { depot: clone(data.depotPreferences) }
     } else if (method === 'PUT' && path === '/report/recycling_settings') {
       data.incomeSettings = { ...body, base_algorithm_saved: true }
       result = clone(data.incomeSettings)

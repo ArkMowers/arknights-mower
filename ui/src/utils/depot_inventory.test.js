@@ -37,13 +37,13 @@ import {
   loadViewPrefs,
   matchesNumericQuery,
   matchesPinyin,
+  normalizeBaselineConfig,
+  normalizeFavorites,
+  normalizeViewPrefs,
   parseDepotResponse,
   RELATIVE_PRESET_KEYS,
   resolveCopyText,
   resolveSnapshot,
-  saveBaselineConfig,
-  saveFavorites,
-  saveViewPrefs,
   sortItems,
   summarizeItemHistory,
   tierOf,
@@ -358,6 +358,12 @@ describe('alignSnapshotsToRange and baseline presets', () => {
     expect(isValidSnapshotKey('nope')).toBe(false)
     expect(isValidSnapshotKey('')).toBe(false)
     expect(isValidSnapshotKey(null)).toBe(false)
+    for (const key of ['0x10', '1_0', '１２', '1'.repeat(101), '1e999', '   ']) {
+      expect(isValidSnapshotKey(key)).toBe(false)
+    }
+    for (const key of ['100.5', ' 1.2e3 ', '-1', '.5']) {
+      expect(isValidSnapshotKey(key)).toBe(true)
+    }
   })
 
   it('computes preset ranges accurately', () => {
@@ -675,7 +681,7 @@ describe('matchesNumericQuery', () => {
   })
 })
 
-describe('favorites persistence and highlights', () => {
+describe('legacy depot preferences, normalization and highlights', () => {
   const fakeStorage = () => {
     let store = {}
     return {
@@ -696,20 +702,36 @@ describe('favorites persistence and highlights', () => {
     expect(loadFavorites(storage)).toEqual([])
   })
 
-  it('saves and loads favorites correctly', () => {
+  it('reads legacy favorites while discarding duplicates and invalid names', () => {
     const storage = fakeStorage()
-    saveFavorites(['固源岩', '高级作战记录', '固源岩'], storage)
+    storage.setItem(FAVORITES_STORAGE_KEY, '["固源岩","高级作战记录","固源岩",null,42,"", "   "]')
     expect(loadFavorites(storage)).toEqual(['固源岩', '高级作战记录'])
   })
 
-  it('saves and loads baseline config correctly with fallback', () => {
+  it('normalizes favorite names without mutating the input and bounds migration size', () => {
+    const source = ['固源岩', null, '高级作战记录', '固源岩', ' ', '岩'.repeat(129)]
+    expect(normalizeFavorites(source)).toEqual(['固源岩', '高级作战记录'])
+    expect(source).toEqual(['固源岩', null, '高级作战记录', '固源岩', ' ', '岩'.repeat(129)])
+    const names = Array.from({ length: 1001 }, (_, index) => `材料${index}`)
+    const normalized = normalizeFavorites(names)
+    expect(normalized).toHaveLength(1000)
+    expect(normalized[0]).toBe('材料0')
+    expect(normalized[999]).toBe('材料999')
+    expect(normalized).not.toContain('材料1000')
+    expect(normalizeFavorites({ name: '固源岩' })).toEqual([])
+  })
+
+  it('reads legacy baseline choices and falls back for missing or corrupt data', () => {
     const storage = fakeStorage()
     expect(loadBaselineConfig(storage)).toEqual(DEFAULT_BASELINE_CONFIG)
 
     storage.setItem(BASELINE_STORAGE_KEY, 'corrupt-json')
     expect(loadBaselineConfig(storage)).toEqual(DEFAULT_BASELINE_CONFIG)
 
-    saveBaselineConfig({ preset: '7d', range: [1000, 2000], followLatest: false }, storage)
+    storage.setItem(
+      BASELINE_STORAGE_KEY,
+      '{"preset":"7d","range":[1000,2000],"followLatest":false}'
+    )
     expect(loadBaselineConfig(storage)).toEqual({
       mode: 'time',
       preset: '7d',
@@ -720,9 +742,9 @@ describe('favorites persistence and highlights', () => {
     })
 
     // 按快照模式：时间范围清掉，起止两次扫描跟着走。
-    saveBaselineConfig(
-      { mode: 'snapshot', preset: 'previous', startKey: '100', endKey: '300', range: [1, 2] },
-      storage
+    storage.setItem(
+      BASELINE_STORAGE_KEY,
+      '{"mode":"snapshot","preset":"previous","startKey":"100","endKey":"300","range":[1,2]}'
     )
     expect(loadBaselineConfig(storage)).toEqual({
       mode: 'snapshot',
@@ -778,8 +800,56 @@ describe('favorites persistence and highlights', () => {
       endKey: 'latest'
     })
 
-    saveBaselineConfig({ preset: '上个版本', range: [2000, 1000] }, storage)
-    expect(loadBaselineConfig(storage)).toEqual(DEFAULT_BASELINE_CONFIG)
+    expect(normalizeBaselineConfig({ preset: '上个版本', range: [2000, 1000] })).toEqual({
+      mode: 'time',
+      preset: 'previous',
+      range: null,
+      followLatest: true,
+      startKey: 'previous',
+      endKey: 'latest'
+    })
+  })
+
+  it('normalizes snapshot choices and rejects nonfinite or incomplete time ranges', () => {
+    expect(
+      normalizeBaselineConfig({
+        mode: 'snapshot',
+        preset: 'custom',
+        range: [1000, 2000],
+        followLatest: false,
+        startKey: 'first',
+        endKey: '300'
+      })
+    ).toEqual({
+      mode: 'snapshot',
+      preset: 'custom',
+      range: null,
+      followLatest: false,
+      startKey: 'first',
+      endKey: '300'
+    })
+    for (const range of [[1000], [2000, 1000], [0, Infinity], [NaN, 2000], [null, null]]) {
+      expect(normalizeBaselineConfig({ preset: 'custom', range })).toEqual({
+        mode: 'time',
+        preset: 'custom',
+        range: null,
+        followLatest: true,
+        startKey: 'previous',
+        endKey: 'latest'
+      })
+    }
+    const source = { preset: 'custom', range: [1000, 2000], startKey: {}, endKey: 'invalid' }
+    const normalized = normalizeBaselineConfig(source)
+    expect(normalized).toEqual({
+      mode: 'time',
+      preset: 'custom',
+      range: [1000, 2000],
+      followLatest: true,
+      startKey: 'previous',
+      endKey: 'latest'
+    })
+    normalized.range[0] = 0
+    expect(source.range).toEqual([1000, 2000])
   })
 
   it('builds favorite highlights with deltas and compact formatting', () => {
@@ -813,19 +883,13 @@ describe('favorites persistence and highlights', () => {
     })
   })
 
-  it('persists the filter and sort preferences', () => {
+  it('reads the legacy filter and sort preferences', () => {
     const storage = fakeStorage()
     expect(loadViewPrefs(storage)).toEqual(DEFAULT_VIEW_PREFS)
 
-    saveViewPrefs(
-      {
-        stockFilter: 'owned',
-        deltaFilter: 'decreased',
-        showDerived: false,
-        sortMode: 'count-desc',
-        showcaseTab: 'favorites'
-      },
-      storage
+    storage.setItem(
+      VIEW_PREFS_STORAGE_KEY,
+      '{"stockFilter":"owned","deltaFilter":"decreased","showDerived":false,"sortMode":"count-desc","showcaseTab":"favorites"}'
     )
     expect(loadViewPrefs(storage)).toEqual({
       stockFilter: 'owned',
@@ -855,8 +919,44 @@ describe('favorites persistence and highlights', () => {
     storage.setItem(VIEW_PREFS_STORAGE_KEY, 'corrupt-json')
     expect(loadViewPrefs(storage)).toEqual(DEFAULT_VIEW_PREFS)
 
-    saveViewPrefs(null, storage)
-    expect(loadViewPrefs(storage)).toEqual(DEFAULT_VIEW_PREFS)
+    expect(normalizeViewPrefs(null)).toEqual({
+      stockFilter: 'all',
+      deltaFilter: 'all',
+      showDerived: true,
+      sortMode: 'tier',
+      showcaseTab: 'core'
+    })
+  })
+
+  it('retains valid independent view choices when another field is invalid', () => {
+    expect(
+      normalizeViewPrefs({
+        stockFilter: 'invalid',
+        deltaFilter: 'changed',
+        showDerived: false,
+        sortMode: 'name',
+        showcaseTab: 'favorites'
+      })
+    ).toEqual({
+      stockFilter: 'all',
+      deltaFilter: 'changed',
+      showDerived: false,
+      sortMode: 'name',
+      showcaseTab: 'favorites'
+    })
+  })
+
+  it('uses defaults when browser storage is unavailable or throws during migration', () => {
+    const unavailable = {
+      getItem() {
+        throw new Error('Storage unavailable')
+      }
+    }
+    for (const storage of [null, unavailable]) {
+      expect(loadFavorites(storage)).toEqual([])
+      expect(loadBaselineConfig(storage)).toEqual(DEFAULT_BASELINE_CONFIG)
+      expect(loadViewPrefs(storage)).toEqual(DEFAULT_VIEW_PREFS)
+    }
   })
 })
 
