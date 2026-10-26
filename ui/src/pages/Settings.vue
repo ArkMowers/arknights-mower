@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { computed, inject, onMounted, onUnmounted, provide, ref } from 'vue'
 import ChatBotSetting from '@/components/ChatBotSetting.vue'
 import SoftwareUpdate from '@/components/SoftwareUpdate.vue'
+import MaaUpdates from '@/components/MaaUpdates.vue'
 import NetworkSettings from '@/components/NetworkSettings.vue'
 import ConfigBackup from '@/components/ConfigBackup.vue'
 import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
@@ -328,6 +329,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
     >
       <SoftwareUpdate v-if="updates_enabled === true" />
       <ResourceUpdate v-if="updates_enabled === true" />
+      <div v-if="updates_enabled === true" class="settings-card-wide"><MaaUpdates /></div>
       <div class="settings-card-wide"><NetworkSettings /></div>
     </SettingsSection>
     <SettingsSection

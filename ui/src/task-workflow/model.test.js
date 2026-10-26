@@ -29,6 +29,17 @@ function freeze(value) {
 }
 
 describe('task configuration checklist', () => {
+  it.each(['MAA 资源', 'MAA 自动更新', 'Mirror酱 CDK'])(
+    'finds the network and updates editor for %s',
+    (query) => {
+      const workflow = createTaskWorkflow({})
+      const matches = workflow.tasks.filter((task) =>
+        matchesSettingsSearch(query, task.title, task.description, task.searchKeywords)
+      )
+      expect(matches.map(({ id }) => id)).toEqual(['mower-updates'])
+    }
+  )
+
   it.each(['十日 签到', '十五日 签到', '10天 签到', '14天 签到', '15天 补领'])(
     'finds event sign-in for %s without enabling it',
     (query) => {
