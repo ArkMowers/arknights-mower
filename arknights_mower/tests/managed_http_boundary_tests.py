@@ -256,23 +256,18 @@ class ManagedHttpBoundaryTests(unittest.TestCase):
                 ["restart_resume", "apply_schedule"],
             )
 
-    def test_enabled_maintenance_keeps_maa_in_manager_and_allows_resource_policy(self):
+    def test_enabled_maintenance_allows_maa_updates_but_keeps_connection_in_manager(
+        self,
+    ):
         config.conf.extra_settings_visible = True
-        for path in ("/maa-update/check", "/maa-resource-update/start", "/check-maa"):
-            response = self.client.open(
-                path,
-                method="GET" if path == "/check-maa" else "POST",
-                headers=self.headers,
-                json={},
-            )
-            self.assertEqual(response.status_code, 403)
+        response = self.client.get("/check-maa", headers=self.headers)
+        self.assertEqual(response.status_code, 403)
         response = self.client.patch(
             "/conf", headers=self.headers, json={"resource_update": {"enable": True}}
         )
         self.assertEqual(response.status_code, 200, response.json)
         self.assertTrue(config.conf.resource_update.enable)
         with (
-            patch.dict(os.environ, {"MOWER_MANAGED": "0"}),
             patch(
                 "arknights_mower.utils.maa_update.has_maa_installation",
                 return_value=False,
@@ -284,6 +279,64 @@ class ManagedHttpBoundaryTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertFalse(response.json["ok"])
             installation.assert_called_once()
+
+    def test_maa_policy_edits_follow_maintenance_permission_and_keep_manager_location(
+        self,
+    ):
+        policies = {
+            "maa_mirrorchyan_token": "instance-cdk",
+            "maa_update_channel": "beta",
+            "maa_auto_check_update": True,
+            "maa_auto_update": True,
+            "maa_resource_auto_check_update": True,
+            "maa_resource_auto_update": True,
+        }
+        for allowed in (False, True):
+            config.conf.extra_settings_visible = allowed
+            before = self.path.read_bytes()
+            response = self.client.patch("/conf", headers=self.headers, json=policies)
+            self.assertEqual(response.status_code, 200 if allowed else 403)
+            if not allowed:
+                self.assertEqual(self.path.read_bytes(), before)
+        config.load_conf()
+        for key, value in policies.items():
+            self.assertEqual(getattr(config.conf, key), value)
+        response = self.client.patch(
+            "/conf", headers=self.headers, json={"maa_path": "/other/MAA"}
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_enabled_maa_routes_keep_token_checks_and_reach_handlers(self):
+        config.conf.extra_settings_visible = True
+        routes = [
+            (rule.rule, method, rule.endpoint)
+            for rule in self.server.app.url_map.iter_rules()
+            if rule.rule.startswith(("/maa-update/", "/maa-resource-update/"))
+            for method in sorted(rule.methods - {"OPTIONS"})
+        ]
+        before = self.path.read_bytes()
+        with patch.object(
+            Request, "get_json", side_effect=AssertionError("must not parse")
+        ):
+            for path, method, endpoint in routes:
+                for token in (None, "wrong"):
+                    with self.subTest(path=path, method=method, token=token):
+                        response = self.client.open(
+                            path,
+                            method=method,
+                            headers={"token": token} if token else {},
+                        )
+                        self.assertEqual(response.status_code, 403)
+        for path, method, endpoint in routes:
+            with self.subTest(path=path, method=method):
+                handler = Mock(return_value={"ok": True})
+                with patch.dict(self.server.app.view_functions, {endpoint: handler}):
+                    response = self.client.open(
+                        path, method=method, headers=self.headers
+                    )
+                self.assertEqual(response.status_code, 200)
+                handler.assert_called_once_with()
+        self.assertEqual(self.path.read_bytes(), before)
 
     def test_local_version_and_normal_task_reads_remain_available(self):
         with patch(

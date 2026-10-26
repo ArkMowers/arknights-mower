@@ -29,6 +29,17 @@ function freeze(value) {
 }
 
 describe('task configuration checklist', () => {
+  it.each(['MAA 资源', 'MAA 自动更新', 'Mirror酱 CDK'])(
+    'finds the network and updates editor for %s',
+    (query) => {
+      const workflow = createTaskWorkflow({})
+      const matches = workflow.tasks.filter((task) =>
+        matchesSettingsSearch(query, task.title, task.description, task.searchKeywords)
+      )
+      expect(matches.map(({ id }) => id)).toEqual(['mower-updates'])
+    }
+  )
+
   it.each(['版本水印', '显示水印', '隐藏水印'])('finds the interface editor for %s', (query) => {
     const workflow = createTaskWorkflow({})
     const matches = workflow.tasks.filter((task) =>
