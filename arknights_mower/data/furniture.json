@@ -15360,6 +15360,24 @@
       "quantity": 0,
       "canBeDestroy": false
     },
+    "furni_guotu_wallset_01": {
+      "name": "绒毛读书伴侣",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_guotu_sofa_01": {
+      "name": "“推荐书目”沙发",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_guotu_shelf_01": {
+      "name": "“纳入图中”置物架",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
     "furni_dropS001_theLittleMermaid_01": {
       "name": "饰牌《泡沫》",
       "themeId": "",
@@ -16364,6 +16382,12 @@
     },
     "furni_annihilation_s33_01": {
       "name": "拉特兰回声-圣祠",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_annihilation_s34_01": {
+      "name": "米诺斯回声-剧场",
       "themeId": "",
       "quantity": 0,
       "canBeDestroy": false

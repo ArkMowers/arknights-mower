@@ -1,5 +1,59 @@
 # CHANGELOG
 
+## 4.1.6-alpha.12 - 2026-10-10
+
+### New
+
+- 改进 AI 助手、支持 Android 性能测试并更新文档 [PR](https://github.com/ArkMowers/arknights-mower/pull/1329) @ALEXsun0
+- 将性能适配并入连接并增加游戏内选人测试 [PR](https://github.com/ArkMowers/arknights-mower/pull/1328) @ALEXsun0
+
+### Bug Fixes
+
+- 修复宿舍排除干员重复换入 [PR](https://github.com/ArkMowers/arknights-mower/pull/1349) @ALEXsun0
+- 修复右侧卡片轻微裁切导致的选人失败 [PR](https://github.com/ArkMowers/arknights-mower/pull/1347) @NiceAfternoon
+- 修复训练室末页选人错误 [PR](https://github.com/ArkMowers/arknights-mower/pull/1346) @NiceAfternoon
+- 修复 HTTPS 和端口转发后的日志连接 [PR](https://github.com/ArkMowers/arknights-mower/pull/1348) @ALEXsun0
+- 修复绑组回班纠错及副表心情条件选择 [PR](https://github.com/ArkMowers/arknights-mower/pull/1345) @ALEXsun0
+- 修复贸易站订单暂停导致的跑单重试循环 [PR](https://github.com/ArkMowers/arknights-mower/pull/1339) @NiceAfternoon
+- 改善普通日志浏览并区分调度图标 [PR](https://github.com/ArkMowers/arknights-mower/pull/1342) @ALEXsun0
+- 删除重复性能提示并校验资源打包 [PR](https://github.com/ArkMowers/arknights-mower/pull/1332) @ALEXsun0
+- 修复选人末页回弹后的旧坐标点击 [PR](https://github.com/ArkMowers/arknights-mower/pull/1341) @ALEXsun0
+- 适配回收站材料产出收取提示 [PR](https://github.com/ArkMowers/arknights-mower/pull/1340) @ALEXsun0
+- 允许全零心情工作绑组并验证最新排班 [PR](https://github.com/ArkMowers/arknights-mower/pull/1338) @NiceAfternoon
+- 修复跑单中断后的贸易站原班恢复 @NiceAfternoon
+- 修正自动性能档位的错误起始说明 [PR](https://github.com/ArkMowers/arknights-mower/pull/1336) @NiceAfternoon
+- 修复正式安装包资源增量更新失败 [PR](https://github.com/ArkMowers/arknights-mower/pull/1335) @NiceAfternoon
+- 修复实例关闭后更新登记残留的问题 [PR](https://github.com/ArkMowers/arknights-mower/pull/1333) @NiceAfternoon
+- 选人滑动按住期间截图并统一终点等待 [PR](https://github.com/ArkMowers/arknights-mower/pull/1331) @ALEXsun0
+- 补充排班条件不满足时的手动刷新指引 [PR](https://github.com/ArkMowers/arknights-mower/pull/1330) @ALEXsun0
+- 校验训练位干员技能与专精条件 [PR](https://github.com/ArkMowers/arknights-mower/pull/1327) @ALEXsun0
+- 恢复保床规则并限制绑组Free额度 [PR](https://github.com/ArkMowers/arknights-mower/pull/1323) @ALEXsun0
+- 更新程序内帮助、模型配置与邮件反馈 [PR](https://github.com/ArkMowers/arknights-mower/pull/1317) @ALEXsun0
+- 统一基建技能数据归属并修复 Android 打包缺失 [PR](https://github.com/ArkMowers/arknights-mower/pull/1324) @ALEXsun0
+- 修复换班延期后漏安排跑单 [PR](https://github.com/ArkMowers/arknights-mower/pull/1320) @NiceAfternoon
+- 修复异常记录的日志级别与详情显示 [PR](https://github.com/ArkMowers/arknights-mower/pull/1319) @NiceAfternoon
+- 修复 MaaTouch 触控结束后任务意外暂停 [PR](https://github.com/ArkMowers/arknights-mower/pull/1318) @NiceAfternoon
+- 修复休息候补被计入必需床位 [PR](https://github.com/ArkMowers/arknights-mower/pull/1322) @ALEXsun0
+- 修复特别关注标志导致训练室姓名漏识别 [PR](https://github.com/ArkMowers/arknights-mower/pull/1315) @ALEXsun0
+- 备料完成后立即派发专精任务 [PR](https://github.com/ArkMowers/arknights-mower/pull/1316) @ALEXsun0
+- 避免长任务正常结束时误报中断错误 [PR](https://github.com/ArkMowers/arknights-mower/pull/1314) @ALEXsun0
+- 开发版与公测版接收更新的公开版本 [PR](https://github.com/ArkMowers/arknights-mower/pull/1313) @ALEXsun0
+- 停止后续 macOS x64 构建 [PR](https://github.com/ArkMowers/arknights-mower/pull/1312) @ALEXsun0
+
+### Improvements
+
+- 减少 MaaTouch 调用开销 [PR](https://github.com/ArkMowers/arknights-mower/pull/1325) @NiceAfternoon
+
+### Documentation
+
+- 补充单元测试质量判断规范 [PR](https://github.com/ArkMowers/arknights-mower/pull/1343) @NiceAfternoon
+
+### Other
+
+- prerelease v4.1.6-alpha.12 [PR](https://github.com/ArkMowers/arknights-mower/pull/1350) @ALEXsun0
+
+**Full Changelog**: [v4.1.6-alpha.11...v4.1.6-alpha.12](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.11...v4.1.6-alpha.12)
+
 ## 4.1.6-alpha.11 - 2026-10-09
 
 ### New
