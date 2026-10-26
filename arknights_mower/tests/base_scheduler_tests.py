@@ -2044,6 +2044,7 @@ class TestBaseScheduler(unittest.TestCase):
         solver.drone_time = None
         solver.reload_time = datetime.now()
         solver.op_data = MagicMock()
+        solver.op_data.mood_calculation_enabled = False
         solver.op_data.run_order_rooms = []
         return solver
 

@@ -555,7 +555,7 @@ def test_independent_shared_recall_recovery_does_not_hold_other_group_members(so
     assert plan.get("contact") == ["絮雨"]
 
 
-def short_window_ordinary_support(solver):
+def full_recovery_ordinary_support(solver):
     from datetime import timedelta
 
     start_ordinary_handoff(solver)
@@ -568,7 +568,7 @@ def short_window_ordinary_support(solver):
     )
     solver.tasks = [boundary]
     for name in ("苍苔", "絮雨"):
-        solver.op_data.operators[name].mood = 1
+        solver.op_data.operators[name].mood = 20
         solver.op_data.operators[name].time_stamp = now
     solver._schedule_group_coordination(["机械师"])
     support = next(
@@ -580,13 +580,13 @@ def short_window_ordinary_support(solver):
 
 
 @pytest.mark.parametrize("restore", [False, True])
-def test_short_recall_window_retains_failed_reverse_request_and_dispatches_other_work(
+def test_ordinary_recall_retains_failed_reverse_request_and_dispatches_other_work(
     solver, restore
 ):
     import pickle
     from datetime import timedelta
 
-    support, boundary, now = short_window_ordinary_support(solver)
+    support, boundary, now = full_recovery_ordinary_support(solver)
     support_time = support.time
     confirm_arrangement(solver, support)
     departure = next(task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF)
@@ -639,10 +639,12 @@ def test_short_recall_window_retains_failed_reverse_request_and_dispatches_other
 
 
 @pytest.mark.parametrize("change", ["cancel", "postpone"])
-def test_short_recall_window_rechecks_changed_boundary_before_support(solver, change):
+def test_ordinary_recall_rechecks_endurance_independently_of_existing_event(
+    solver, change
+):
     from datetime import timedelta
 
-    support, boundary, now = short_window_ordinary_support(solver)
+    support, boundary, now = full_recovery_ordinary_support(solver)
     at, plan = support.time, deepcopy(support.plan)
     positions = {
         name: (op.current_room, op.current_index)
@@ -652,6 +654,10 @@ def test_short_recall_window_rechecks_changed_boundary_before_support(solver, ch
         solver.tasks.remove(boundary)
     else:
         boundary.time = now + timedelta(hours=2)
+    assert solver._coordination_support_valid(support.plan, ["机械师"])
+    for name in ("苍苔", "絮雨"):
+        solver.op_data.operators[name].mood = 1
+        solver.op_data.operators[name].time_stamp = datetime.now()
     assert not solver._coordination_support_valid(support.plan, ["机械师"])
     assert support in solver.tasks
     assert support.time == at
@@ -661,3 +667,15 @@ def test_short_recall_window_rechecks_changed_boundary_before_support(solver, ch
         name: (op.current_room, op.current_index)
         for name, op in solver.op_data.operators.items()
     }
+    for name in ("苍苔", "絮雨"):
+        solver.op_data.operators[name].mood = 20
+        solver.op_data.operators[name].time_stamp = datetime.now()
+    assert solver._coordination_support_valid(support.plan, ["机械师"])
+    assert support.time == at
+    assert support.plan == plan
+    confirm_arrangement(solver, support)
+    departure = next(task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF)
+    assert departure.time == at
+    confirm_arrangement(solver, departure)
+    assert solver.op_data.operators["机械师"].is_resting()
+    assert set(solver.op_data.urgent_recovery_supporters["机械师"]) == {"苍苔", "絮雨"}

@@ -214,7 +214,6 @@ def save_action_to_sqlite_decorator(func):
         preserve_depletion_rate=False,
         *,
         group_transitions=None,
-        working_countdown=None,
     ):
         agent = self.operators[name]  # 干员
 
@@ -239,21 +238,6 @@ def save_action_to_sqlite_decorator(func):
         )
         if not update_time:
             return
-        if mood == 0 and working_countdown is not None:
-            previous_room = agent_current_room
-            if not previous_room:
-                try:
-                    rows = _fetchall(
-                        "SELECT current_room FROM agent_action WHERE name = ? "
-                        'ORDER BY "current_time" DESC, rowid DESC LIMIT 1',
-                        name,
-                    )
-                except sqlite3.Error as exc:
-                    logger.error(f"SQLite error: {exc}")
-                    return result
-                previous_room = rows[0][0] if rows else None
-            if previous_room == current_room:
-                return result
         from arknights_mower.utils.emergency_recovery import mood_context
 
         save_agent_action(
@@ -611,6 +595,7 @@ def get_mood_ratios(*, include_work_rest=True):
             + """
                         ) AS subquery ON a.name = subquery.name
                         WHERE a.current_time >= DATE('now', '-7 day', 'localtime')
+                        AND a.mood <> 0
                         AND
             """
             + FIAMMETTA_CURVE_FILTER

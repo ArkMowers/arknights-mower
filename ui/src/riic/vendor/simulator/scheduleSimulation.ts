@@ -1,4 +1,3 @@
-import {MOWER_MOOD_CONTROL_VERSION} from '../scheduler/mowerPredictiveMoodControl'
 import { eligibleSingleRecoveryTargets, hasSingleRecoverySkill } from '../engine/singleRecoveryEligibility'
 import {createSimulationActivityMonitor, type SimulationActivity} from './simulationActivity'
 import {mowerCoordinationRates} from './mowerCoordinationRates'
@@ -140,7 +139,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  const warmupModel=options.warmupModel??'continuous'
  if(!['continuous','hourly'].includes(warmupModel))throw new Error('Invalid warmup model')
  const report:ScheduleSimulationReport={schemaVersion:1,engine:'mower-morale-v1',success:false,elapsedHours:0,observedHours:0,
-  assumptions:{moodControlStrategyVersion:MOWER_MOOD_CONTROL_VERSION,predictiveMoodControl:schedule.assumptions.predictiveMoodControl??false,schedulingModel,sampleHours,warmupHours,maxStepHours,warmupModel,restingThreshold:schedule.assumptions.restingThreshold??.65,operationDurationHours:0,dormAtmosphere:'各宿舍默认等级上限；可逐室覆盖',singleRecoveryTarget:'先检查单回资格；禁止自身和菲亚梅塔，单回技能持有者仅在唯一待恢复候选时合格；有效普通目标保持至失效，重选按最低心情和槽位顺序'},
+  assumptions:{moodControlStrategyVersion:'ordinary-threshold-v1',predictiveMoodControl:schedule.assumptions.predictiveMoodControl??false,schedulingModel,sampleHours,warmupHours,maxStepHours,warmupModel,restingThreshold:schedule.assumptions.restingThreshold??.65,operationDurationHours:0,dormAtmosphere:'各宿舍默认等级上限；可逐室覆盖',singleRecoveryTarget:'先检查单回资格；禁止自身和菲亚梅塔，单回技能持有者仅在唯一待恢复候选时合格；有效普通目标保持至失效，重选按最低心情和槽位顺序'},
   inputs:{schedule:structuredClone(schedule),options:structuredClone({...options,observeInterval:undefined})},operators:[],rooms:[],events:[],segments:[],diagnostics:[]}
  const diagnostic=(code:string,message:string)=>{if(!report.diagnostics.some(d=>d.code===code&&d.message===message))report.diagnostics.push({code,message})}
  if(options.production?.inventoryMode==='finite')diagnostic('FINITE_INVENTORY_MODEL','使用预设初始库存；从预热开始连续扣料、收取和交付，采样时不重置。无外源收入或自动补货；缺料停止相应生产或交付。回收站随机材料未计入物品库存。')
@@ -532,12 +531,14 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    Object.assign(state.morale,moraleStep.morale)
    moraleStep=undefined
   }
+  if(production&&state.time>=total)break
   production?.settle(()=>frameAt(0))
   if(state.config.mowerSourcePlan?nextRosterActionHours(state,rates)===0:Math.abs(dt-action)<=EPS){settle();production?.settle(()=>frameAt(0))}
  }
  const unresolvedFailures=state.mowerSource?.queue.tasks.filter(task=>task.executionFailure&&!task.coordinationDependencyWait)??[]
  for(const task of unresolvedFailures)diagnostic('MOWER_PENDING_TASK_FAILURE',`统计结束仍有未恢复的${task.type.displayValue}任务（${Object.keys(task.plan).join('、')}）：${task.executionFailure!.reason}；保留原任务和时间，本次收益演算未完整完成`)
  report.elapsedHours=state.time;report.success=!backupFailed&&!unresolvedFailures.length&&Math.abs(state.time-total)<EPS
+ if(report.success)production?.finalize(frameAt(0))
  report.operators=[...stats.values()].map(s=>({...s,initialMorale:initial[s.operatorId]??s.initialMorale,finalMorale:state.morale[s.operatorId]!,workFraction:report.observedHours?s.workHours/report.observedHours:0,workRestRatio:s.restHours>EPS?s.workHours/s.restHours:null}))
  report.rooms=[...roomStats.values()].map(r=>({...r,averageEfficiencyPercent:report.observedHours?r.efficiencyPercentHours/report.observedHours:0,teams:r.teams.map(t=>({...t,fraction:report.observedHours?t.hours/report.observedHours:0}))}))
  if(production){report.production=production.report();report.production.success&&=report.success}

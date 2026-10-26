@@ -39,7 +39,7 @@ interface ManufactureRoom {completedByProduct:Record<string,number>;pendingSwitc
 interface TradeRoom {product:string;roomId:string;active:ActiveOrder|null;pending:CompletedOrder[];completedOrders:number;collectedOrders:number;blockedHours:number;limit:number|null;disabled:boolean;rng:number}
 export interface ProductionReport {
  recycle?: RecycleProduction
- success:boolean;ledger:ReturnType<typeof createLedger>;sample:{completed:{exp:number;gold:number;orderLmd:number};opening:ResourceAmounts;closing:ResourceAmounts;inflows:ResourceAmounts;outflows:ResourceAmounts;net:ResourceAmounts}
+ success:boolean;ledger:ReturnType<typeof createLedger>;sample:{completed:{exp:number;gold:number;orderLmd:number};warmupReceipts?:ResourceAmounts;opening:ResourceAmounts;closing:ResourceAmounts;inflows:ResourceAmounts;outflows:ResourceAmounts;net:ResourceAmounts}
  materialsConsumed:ResourceAmounts
  drones:ReturnType<typeof createDroneState>
  manufacturing:{roomId:string;product:string;completedItems:number;sampleCompletedItems:number;pendingItems:number;remainingBaseMinutes:number;blockedHours:number;blockedMaterialHours:number}[]
@@ -98,8 +98,14 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
  const completedTotals=()=>({exp:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.exp??0)*1000,0),gold:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.gold??0),0),orderLmd:events.filter(e=>e.type==='order-completed').reduce((n,e)=>n+(e.order?.lmdReward??0),0)})
  let openingCompleted={exp:0,gold:0,orderLmd:0}
  let openingManufactured=new Map<string,number>()
+ let observationMarked=false
+ const openingPendingManufacture=new Map<string,{product:string;quantity:number}>(),warmupReceipts:ResourceAmounts={}
  const completedSample=()=>{const total=completedTotals();return {exp:total.exp-openingCompleted.exp,gold:total.gold-openingCompleted.gold,orderLmd:total.orderLmd-openingCompleted.orderLmd}}
- const markObservation=()=>{if(!opening&&state.time>=warmupHours-EPS){opening={...ledger.balances};openingIn={...ledger.inflows};openingOut={...ledger.outflows};openingCompleted=completedTotals();openingManufactured=new Map([...manufactures].map(([id,m])=>[id,m.state.lifetimeItems]));recycle?.markObservation()}}
+ const markObservation=()=>{if(state.time<warmupHours-EPS||observationMarked)return
+  if(!opening){opening={...ledger.balances};openingIn={...ledger.inflows};openingOut={...ledger.outflows};openingCompleted=completedTotals();openingManufactured=new Map([...manufactures].map(([id,m])=>[id,m.state.lifetimeItems]));recycle?.markObservation()}
+  for(const m of manufactures.values())if(m.state.pendingItems)openingPendingManufacture.set(m.roomId,{product:m.state.formula.product,quantity:m.state.pendingItems})
+  observationMarked=true
+ }
  const cost=(m:ManufacturingState):ResourceAmounts=>Object.fromEntries(m.formula.costs.map(c=>[c.id==='4001'?'lmd':c.id==='30012'?'orirock':'device',-c.count]))
  const advanceManufacture=(m:ManufactureRoom,work:number)=>{
   const progress=advanceManufacturing(m.state,work)
@@ -118,8 +124,8 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   }
  }
  const collect=(roomId?:string,includeTrade=true,includeManufacture=true,orderLimit=Infinity)=>{
-  for(const m of manufactures.values())if(includeManufacture&&(roomId===undefined||roomId===m.roomId)&&m.state.pendingItems){const n=m.state.pendingItems*(m.state.formula.product==='exp'?1000:1);transact({[m.state.formula.product]:n},`collect-manufacture:${m.roomId}`);m.collectedItems+=m.state.pendingItems;m.state=collectManufacturing(m.state).state}
-  for(const t of trades.values())if(includeTrade&&(roomId===undefined||roomId===t.roomId)){let count=0;while(t.pending.length&&count++<orderLimit){const o=t.pending[0]!,delta={gold:unlimitedMaterials?0:-o.goldCost,fragment:unlimitedMaterials?0:-o.fragmentCost,lmd:o.lmdReward,orundum:o.orundumReward};if(!transact(delta,`collect-order:${o.id}`))break;materialsConsumed.gold=(materialsConsumed.gold??0)+o.goldCost;materialsConsumed.fragment=(materialsConsumed.fragment??0)+o.fragmentCost;t.pending.shift();t.collectedOrders++;record('order-collected',{roomId:t.roomId,orderId:o.id,order:o})}}
+  for(const m of manufactures.values())if(includeManufacture&&(roomId===undefined||roomId===m.roomId)&&m.state.pendingItems){const product=m.state.formula.product,n=m.state.pendingItems*(product==='exp'?1000:1);transact({[product]:n},`collect-manufacture:${m.roomId}`);const carried=openingPendingManufacture.get(m.roomId);if(carried&&carried.product===product){const excluded=Math.min(carried.quantity,m.state.pendingItems);warmupReceipts[product]=(warmupReceipts[product]??0)+excluded*(product==='exp'?1000:1);carried.quantity-=excluded}m.collectedItems+=m.state.pendingItems;m.state=collectManufacturing(m.state).state}
+  for(const t of trades.values())if(includeTrade&&(roomId===undefined||roomId===t.roomId)){let count=0;while(t.pending.length&&count++<orderLimit){const o=t.pending[0]!,delta={gold:unlimitedMaterials?0:-o.goldCost,fragment:unlimitedMaterials?0:-o.fragmentCost,lmd:o.lmdReward,orundum:o.orundumReward};if(!transact(delta,`collect-order:${o.id}`))break;materialsConsumed.gold=(materialsConsumed.gold??0)+o.goldCost;materialsConsumed.fragment=(materialsConsumed.fragment??0)+o.fragmentCost;if(observationMarked&&o.completedAt<=warmupHours){warmupReceipts.lmd=(warmupReceipts.lmd??0)+o.lmdReward;warmupReceipts.orundum=(warmupReceipts.orundum??0)+o.orundumReward}t.pending.shift();t.collectedOrders++;record('order-collected',{roomId:t.roomId,orderId:o.id,order:o})}}
  }
  const rng=(t:TradeRoom)=>{t.rng=(Math.imul(1664525,t.rng)+1013904223)>>>0;return t.rng/4294967296}
  const synchronize=(frame:ProductionFrame)=>{
@@ -300,6 +306,13 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    }
    markObservation()
   }
+  const finalize=(frame:ProductionFrame)=>{
+   if(!valid)return
+   finish(frame)
+   collect()
+   const collected=recycle?.collect()??0
+   if(collected)record('recycle-collected',{roomId:'recycle',amount:collected})
+  }
   const nextStep=(maximum:number,getFrame:(offset:number)=>ProductionFrame)=>{
    let dt=Math.min(maximum,nativeScheduler?Infinity:nextCollection-state.time)
    for(const m of manufactures.values())if(m.pendingSwitch){
@@ -337,7 +350,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    }
    for(const t of trades.values())if(t.active)t.active=advanceOrder(t.active,{elapsedMinutes:hours*60,efficiency:frame.evaluations[t.roomId]!.efficiencyPercent/100}).order;else if(!t.disabled)t.blockedHours+=hours
   }
-  const report=():ProductionReport=>({success:valid,ledger,sample:{completed:completedSample(),opening:opening??{...ledger.balances},closing:{...ledger.balances},inflows:difference(ledger.inflows,openingIn),outflows:difference(ledger.outflows,openingOut),net:difference(ledger.balances,opening??ledger.balances)},materialsConsumed:{...materialsConsumed},drones,events,
+  const report=():ProductionReport=>({success:valid,ledger,sample:{completed:completedSample(),warmupReceipts:{...warmupReceipts},opening:opening??{...ledger.balances},closing:{...ledger.balances},inflows:difference(ledger.inflows,openingIn),outflows:difference(ledger.outflows,openingOut),net:difference(ledger.balances,opening??ledger.balances)},materialsConsumed:{...materialsConsumed},drones,events,
    ...(recycle?{recycle:recycle.report()}:{}),
    assumptions:{outputMode,inventoryMode,allowGoldDebt:options.allowGoldDebt===true,seed,runOrderMode:'ideal',droneTarget:target,droneRoomId:options.droneRoomId,droneReserve:reserve,collectionIntervalHours:interval,orderSnapshotPolicy:'acquisition-start-v1: base draw and Pepe/Closure workload at start; U-Official/Proviso/Tequila conversion at completion; payment at collection; simultaneous facilities use schedule order'},
    manufacturing:[...manufactures.values()].map(m=>({roomId:m.roomId,product:m.state.formula.product,completedItems:m.state.lifetimeItems,sampleCompletedItems:m.state.lifetimeItems-(openingManufactured.get(m.roomId)??0),pendingItems:m.state.pendingItems,remainingBaseMinutes:m.state.remainingBaseMinutes,blockedHours:m.blockedHours,blockedMaterialHours:m.blockedMaterialHours})),
@@ -396,7 +409,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    finish(frame);openWork(frame)
   }
   const nativeAcceptOrder=(room:string,frame:ProductionFrame)=>{finish(frame);const trade=trades.get(room);if(!trade)throw new Error('Native trade facility is unavailable: '+room);const before=trade.collectedOrders;collect(room,true,false,1);openWork(frame);return trade.collectedOrders>before}
-  return {settle,nextStep,advance,report,actualProducts,
+  return {settle,finalize,nextStep,advance,report,actualProducts,
    nativePendingRecycleItems:()=>recycle?.report().pendingItems??0,
    nativeCollectRecycleItems:()=>{const collected=recycle?.collect()??0;if(collected)record('recycle-collected',{roomId:'recycle',amount:collected})},
    nativeHasTrade:(room:string)=>trades.has(room),nativeHasManufacture:(room:string)=>manufactures.has(room),nativeManufactureDroneMaximum,nativeSpendManufacturingDrones,

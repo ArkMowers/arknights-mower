@@ -16,15 +16,15 @@ function scenario(primary='砾',candidate?:string){
  return compileRosterSchedule(ws)
 }
 
-function expectRetainedFullCharge(report:ScheduleSimulationReport,hours:number){
- expect(report.success,JSON.stringify(report.diagnostics.slice(-5))).toBe(false)
- expect(report.production?.success).toBe(false)
+function expectFullTargetSkipped(report:ScheduleSimulationReport,hours:number){
+ expect(report.success,JSON.stringify(report.diagnostics.slice(-5))).toBe(true)
+ expect(report.production?.success).toBe(true)
  expect(report.operators.find(operator=>operator.operatorId===id('菲亚梅塔'))?.initialMorale).toBe(16)
  expect(report.elapsedHours).toBeCloseTo(hours,8)
  expect(report.observedHours).toBeCloseTo(hours,8)
- expect(report.diagnostics).toContainEqual(expect.objectContaining({code:'MOWER_PENDING_TASK_FAILURE',message:expect.stringContaining('菲亚梅塔与实际充能目标均已满心情')}))
+ expect(report.diagnostics.some(d=>d.code==='MOWER_PENDING_TASK_FAILURE')).toBe(false)
  expect(report.diagnostics.some(d=>d.code==='SIMULATION_EVENT_LIMIT'||d.code==='SIMULATION_SAME_TIME_ACTION')).toBe(false)
- expect(report.events.filter(e=>e.type==='fiammetta'&&e.moraleBefore?.[0]===24&&e.moraleBefore?.[1]===24)).toHaveLength(0)
+ expect(report.events.filter(e=>e.type==='fiammetta')).toHaveLength(0)
  expect(report.segments.length).toBeGreaterThan(0)
  expect(report.segments.every(segment=>segment.end>segment.start)).toBe(true)
  expect(report.segments.reduce((total,segment)=>total+segment.end-segment.start,0)).toBeCloseTo(hours,8)
@@ -147,36 +147,36 @@ describe('time-dependent Mower schedule simulation',()=>{
   expect(r.rooms.find(x=>x.roomId==='room_1_1')!.averageEfficiencyPercent).toBeCloseTo((4*146+127)/5,2)
  })
 
- it('retains a full-to-full Fiammetta charge after initial recovery without exhausting the event budget',()=>{
+ it('skips a full Fiammetta target after initial recovery without exhausting the event budget',()=>{
   const ws=createDefaultWorkspace()
   ws.mainPlan.facilities.dormitory_1.slots=[{occupant:{kind:'operator',operatorId:'菲亚梅塔'},groupId:null,replacements:['重岳']}]
   ws.mainPlan.facilities.dormitory_2.slots=[{occupant:{kind:'operator',operatorId:'重岳'},groupId:null,replacements:[]}]
   const s=compileRosterSchedule(ws,{fiammettaFool:false})
   const r=simulateSchedule(s,{sampleHours:4.05,maxEvents:1000,recordSegments:true,production:{outputMode:'potential',runOrderMode:'ideal',droneTarget:'none'}})
-  expectRetainedFullCharge(r,4.05)
+  expectFullTargetSkipped(r,4.05)
   expect(r.operators.find(o=>o.operatorId===id('菲亚梅塔'))?.finalMorale).toBe(24)
   expect(r.operators.find(o=>o.operatorId===id('重岳'))?.finalMorale).toBe(24)
  })
 
- it('retains the charge when a full working Fiammetta target resolves to a full Free card',()=>{
+ it('keeps a full working Fiammetta target in place without charging a full Free card',()=>{
   const ws=createDefaultWorkspace()
   ws.mainPlan.facilities.room_1_1.slots=[{occupant:{kind:'operator',operatorId:'阿罗玛'},groupId:null,replacements:[]}]
   ws.mainPlan.facilities.dormitory_1.slots=[{occupant:{kind:'operator',operatorId:'菲亚梅塔'},groupId:null,replacements:['阿罗玛']}]
   const s=compileRosterSchedule(ws,{fiammettaFool:false,idleOperators:[id('重岳')]})
   const r=simulateSchedule(s,{sampleHours:4.1,maxEvents:1000,consumptionOverrides:{[id('阿罗玛')]:0},recordSegments:true,production:{outputMode:'potential',runOrderMode:'ideal',droneTarget:'none'}})
-  expectRetainedFullCharge(r,4.1)
+  expectFullTargetSkipped(r,4.1)
   expect(r.operators.find(o=>o.operatorId===id('重岳'))?.finalMorale).toBe(24)
   expect(r.operators.find(o=>o.operatorId===id('阿罗玛'))!.finalMorale).toBe(24)
   expect(r.operators.find(o=>o.operatorId===id('阿罗玛'))!.workHours).toBeCloseTo(4.1,8)
  })
 
- it('starts Fiammetta at sixteen despite saved twenty-three, then reports the retained full charge',()=>{
+ it('starts Fiammetta at sixteen despite saved twenty-three, then skips the full target',()=>{
   const ws=createDefaultWorkspace()
   ws.mainPlan.facilities.dormitory_1.slots=[{occupant:{kind:'operator',operatorId:'菲亚梅塔'},groupId:null,replacements:['重岳']}]
   ws.mainPlan.facilities.dormitory_2.slots=[{occupant:{kind:'operator',operatorId:'重岳'},groupId:null,replacements:[]}]
   const s=compileRosterSchedule(ws,{fiammettaFool:false,operatorMorale:{[id('菲亚梅塔')]:23}})
   const r=simulateSchedule(s,{sampleHours:4.6,maxEvents:1000,recordSegments:true,production:{outputMode:'potential',runOrderMode:'ideal',droneTarget:'none'}})
-  expectRetainedFullCharge(r,4.6)
+  expectFullTargetSkipped(r,4.6)
   expect(r.operators.find(o=>o.operatorId===id('菲亚梅塔'))?.initialMorale).toBe(16)
   expect(r.events.filter(e=>e.type==='fiammetta')).toHaveLength(0)
   expect(r.operators.find(o=>o.operatorId===id('菲亚梅塔'))?.finalMorale).toBe(24)

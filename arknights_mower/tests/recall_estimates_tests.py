@@ -252,9 +252,9 @@ def test_derived_work_sample_is_not_the_next_rate_learning_baseline(
     assert op.depletion_rate == 0.8
     assert op.recall_work_rate == sampled_rate
     Clock.current += timedelta(hours=1)
-    data.update_detail(op.name, 0, "meeting", 0, True)
-    assert op.depletion_rate == pytest.approx(0.2)
-    assert op.recall_work_rate[0] == pytest.approx(0.2)
+    data.update_detail(op.name, 0.1, "meeting", 0, True)
+    assert op.depletion_rate == pytest.approx(0.1)
+    assert op.recall_work_rate[0] == pytest.approx(0.1)
 
 
 def test_predicted_previous_sample_cannot_train_rate_after_valid_read(solver):

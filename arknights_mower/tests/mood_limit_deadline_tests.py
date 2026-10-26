@@ -67,7 +67,7 @@ def test_logged_two_order_windows_clear_before_first_order_without_moving_orders
 @pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT])
 @pytest.mark.parametrize("offset", [-1, 0, 600])
 def test_due_priority_wins_but_future_priority_allows_early_release(kind, offset):
-    now = datetime.now()
+    now = datetime(2026, 9, 29, 12)
     priority = SchedulerTask(
         time=now + timedelta(seconds=offset),
         task_type=kind,

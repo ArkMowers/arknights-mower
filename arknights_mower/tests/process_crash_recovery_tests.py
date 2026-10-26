@@ -388,7 +388,6 @@ def test_zero_working_mood_does_not_interrupt_observation_checkpoint(
         side_effect=lambda *a, **kw: 0 if current_room == "central" else 20
     )
     solver.read_time = Mock(return_value=3009)
-    solver.read_operator_time = Mock(side_effect=AssertionError("重复读取倒计时"))
     if start == "reset":
         crash_recovery.checkpoint_reset(solver)
     else:
@@ -407,7 +406,8 @@ def test_zero_working_mood_does_not_interrupt_observation_checkpoint(
     assert loaded["operators"]["絮雨"].mood == 20
     assert offline.record._fetchall(
         "SELECT mood FROM agent_action WHERE name = ?", "夕"
-    ) == [(1,)]
+    ) == [(1,), (0,)]
+    solver.read_time.assert_called_once()
     offline.io.assert_not_called()
 
 

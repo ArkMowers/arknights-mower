@@ -90,21 +90,17 @@ def room_reader():
     return make
 
 
-def test_confirmed_exhausted_central_checks_countdown_before_accepting_zero(
-    room_reader,
-):
+def test_absent_work_countdown_means_exhaustion(room_reader):
     solver, target, _ = room_reader()
+    solver.read_operator_time = BaseSchedulerSolver.read_operator_time.__get__(solver)
     before = datetime.now()
     result = solver.get_agent_from_room("central", [0])[0]
-    after = datetime.now()
-    assert before <= result["time"] <= after
-    assert before <= target.exhaust_time <= after
+    assert before <= result["time"] <= datetime.now()
+    assert before <= target.exhaust_time <= datetime.now()
     assert result["mood"] == 0
-    solver.read_operator_time.assert_not_called()
     solver.read_time.assert_called_once_with(((1650, 270), (1780, 305)), None)
-    assert solver.read_screen.call_count == 2
-    assert solver.read_accurate_mood.call_count == 2
-    solver.recog.update.assert_called_once()
+    assert solver.read_screen.call_count == solver.read_accurate_mood.call_count == 1
+    solver.recog.update.assert_not_called()
 
 
 @pytest.mark.parametrize("room", ["dormitory_1", "train"])
@@ -458,7 +454,7 @@ def test_fiammetta_swap_writes_both_operators_one_second_apart(
     }
     if phase != "charge":
         save_history.assert_not_called()
-        assert len(curves["菲亚梅塔"]) == 1
+        assert len(curves.get("菲亚梅塔", [])) == int(before_mood > 0)
         assert fia.mood == before_mood
         return
 
@@ -500,10 +496,13 @@ def test_fiammetta_swap_writes_both_operators_one_second_apart(
         ("歌蕾蒂娅", [before_mood, 24]),
     ):
         points = curves[name]
-        assert [point["y"] for point in points] == expected_moods
-        assert datetime.fromisoformat(points[1]["x"]) - datetime.fromisoformat(
-            points[0]["x"]
-        ) == timedelta(seconds=1)
+        assert [point["y"] for point in points] == [
+            mood for mood in expected_moods if mood > 0
+        ]
+        if before_mood > 0:
+            assert datetime.fromisoformat(points[1]["x"]) - datetime.fromisoformat(
+                points[0]["x"]
+            ) == timedelta(seconds=1)
         assert all(
             point["relatedOperator"]
             == ("歌蕾蒂娅" if name == "菲亚梅塔" else "菲亚梅塔")
@@ -511,9 +510,10 @@ def test_fiammetta_swap_writes_both_operators_one_second_apart(
         )
     assert fia.mood == before_mood
     assert fia.time_stamp != fia_call.kwargs["recorded_at"]
-    assert [point["x"] for point in curves["菲亚梅塔"]] == [
-        point["x"] for point in curves["歌蕾蒂娅"]
-    ]
+    if before_mood > 0:
+        assert [point["x"] for point in curves["菲亚梅塔"]] == [
+            point["x"] for point in curves["歌蕾蒂娅"]
+        ]
     save_history.assert_any_call(
         "菲亚梅塔",
         "dormitory_2",
@@ -622,7 +622,7 @@ def test_uncertain_second_observation_keeps_existing_countdown(room_reader, chan
     assert result["mood"] == 0
     assert result["time"] == target.exhaust_time == deadline
     solver.read_operator_time.assert_called_once()
-    solver.read_time.assert_called_once()
+    solver.read_time.assert_not_called()
 
 
 def test_cached_zero_mood_is_not_an_exhaustion_measurement(room_reader):
@@ -644,7 +644,7 @@ def test_zero_mood_outside_exhaust_configuration_keeps_requested_countdown(
     result = solver.get_agent_from_room("central", [0])[0]
     assert result["mood"] == target.mood == 0
     solver.read_operator_time.assert_called_once()
-    solver.read_time.assert_called_once()
+    solver.read_time.assert_not_called()
     solver.recog.update.assert_not_called()
 
 

@@ -136,6 +136,7 @@ def selected_mood_series(database: str | Path, names: list[str]) -> list[dict]:
                        {event_column} AS event
                 FROM agent_action a
                 WHERE name = ? AND "current_time" IS NOT NULL AND mood IS NOT NULL
+                  AND mood <> 0
                   AND {curve_filter}
                 ORDER BY "current_time" DESC, rowid DESC LIMIT ?
                 """,

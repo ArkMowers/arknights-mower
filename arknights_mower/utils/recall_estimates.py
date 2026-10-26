@@ -30,7 +30,7 @@ def observe_work_rate(op, mood, room, index, now, *, preserve=False):
         or not _observed(op, now)
         or not isinstance(mood, (int, float))
         or not isfinite(mood)
-        or not 0 <= mood < op.mood
+        or not 0 < mood < op.mood
         or now - op.time_stamp <= timedelta(minutes=29)
     ):
         return
