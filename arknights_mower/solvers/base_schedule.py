@@ -90,6 +90,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_candidates,
     dorm_task_reservations,
     retained_task_reservations,
+    scheduling_mood_reaches,
     vacant_dorm_slots,
 )
 from arknights_mower.utils.dorm_recovery import DormRecoveryPaddingUnavailable
@@ -130,7 +131,6 @@ from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.replacement_check import (
     invalidate_replacement_checks,
-    replacement_check_applies,
     replacement_check_snapshot,
     run_replacement_check,
     sync_replacement_checks,
@@ -161,7 +161,6 @@ from arknights_mower.utils.scheduler_task import (
     prioritize_new_dorm_recovery,
     protect_priority_tasks,
     rebalance_plan_swap_dorms,
-    run_order_end_time,
     scheduling,
     simplify_dorm_fill,
     task_view,
@@ -975,11 +974,7 @@ class BaseSchedulerSolver(
             raise MowerExit
         if config.maintenance_recheck.is_set():
             return
-        if not self.op_data.mood_calculation_enabled:
-            self.tasks[:] = [
-                t for t in self.tasks if not getattr(t, "mood_control_event", None)
-            ]
-            self._mood_control_cache = None
+        self._discard_legacy_mood_control_tasks()
         self.error = False
         self._refresh_observed_recovery_tasks()
         sync_replacement_checks(self)
@@ -1546,85 +1541,6 @@ class BaseSchedulerSolver(
         self.tasks.append(departure)
         task.__dict__.pop("coordination_admission_plan", None)
 
-    def _coordination_recall_window(self, original, supported, admitted, *, now):
-        """只借用既有可执行事件的重新判断机会，不增加心情检查任务。"""
-        dispatch = copy.deepcopy(
-            [
-                task
-                for task in task_view(self.tasks, TaskScope.DISPATCH, original)
-                if task is not getattr(self, "task", None)
-            ]
-        )
-        events = [
-            task
-            for task in dispatch
-            if task.time > now
-            and not getattr(task, "mood_control_event", None)
-            and (
-                task.type == TaskTypes.RUN_ORDER
-                and task.meta_data
-                and not getattr(task, "run_order_restore_pending", False)
-                or getattr(task, "replacement_check", None)
-                and replacement_check_applies(original, task.replacement_check)
-                and replacement_check_applies(admitted, task.replacement_check)
-                or task.type == TaskTypes.NOT_SPECIFIC
-                and not task.plan
-                and not task.meta_data
-                and not getattr(task, "replacement_check", None)
-            )
-        ]
-        if not events:
-            return None, None
-
-        def duration(before, after, task_type):
-            plan = {
-                room: after.get_current_room(room, True)
-                for room in after.plan
-                if before.get_current_room(room, True)
-                != after.get_current_room(room, True)
-            }
-            return estimate_task_duration(
-                SchedulerTask(time=now, task_plan=plan, task_type=task_type),
-                op_data=before,
-            )
-
-        not_before = (
-            now
-            + duration(original, supported, TaskTypes.SELF_CORRECTION)
-            + duration(supported, admitted, TaskTypes.SHIFT_OFF)
-        )
-        protect_priority_tasks(dispatch, time_now=not_before, op_data=admitted)
-        event = min(events, key=lambda task: task.time)
-        cursor = not_before
-        for queued in dispatch:
-            if queued is event:
-                break
-            start = max(cursor, queued.time)
-            cursor = start + estimate_task_duration(queued, op_data=original)
-            if queued.type == TaskTypes.RUN_ORDER:
-                cursor = max(
-                    cursor,
-                    run_order_end_time(
-                        queued,
-                        start,
-                        op_data=original,
-                        conf=original.runtime_conf or config.conf,
-                    ),
-                )
-        start = max(event.time, cursor)
-        until = start + estimate_task_duration(event, op_data=original)
-        if event.type == TaskTypes.RUN_ORDER:
-            until = max(
-                until,
-                run_order_end_time(
-                    event,
-                    start,
-                    op_data=original,
-                    conf=original.runtime_conf or config.conf,
-                ),
-            )
-        return max(until, not_before), not_before
-
     def _coordination_support_valid(self, plan, candidates):
         from arknights_mower.utils.replacement_coordination import (
             coordination_reservations,
@@ -1664,11 +1580,6 @@ class BaseSchedulerSolver(
             self.task, "ordinary_coordination", False
         )
         now = getattr(data, "_projection_now", None) or datetime.now()
-        until, not_before = (
-            (None, None)
-            if urgent
-            else self._coordination_recall_window(data, supported, admitted, now=now)
-        )
         return recall_can_sustain(
             data,
             admitted,
@@ -1676,8 +1587,6 @@ class BaseSchedulerSolver(
             candidates,
             urgent=urgent,
             now=now,
-            until=until,
-            not_before=not_before,
         )
 
     def _plan_exhaust_support(self, candidates, *, urgent=False):
@@ -1710,13 +1619,6 @@ class BaseSchedulerSolver(
             if not recalled:
                 return True
             now = getattr(self.op_data, "_projection_now", None) or datetime.now()
-            until, not_before = (
-                (None, None)
-                if urgent
-                else self._coordination_recall_window(
-                    self.op_data, data, admitted, now=now
-                )
-            )
             return recall_can_sustain(
                 self.op_data,
                 admitted,
@@ -1724,8 +1626,6 @@ class BaseSchedulerSolver(
                 candidates,
                 urgent=urgent,
                 now=now,
-                until=until,
-                not_before=not_before,
             )
 
         protected, slots = coordination_reservations(
@@ -1766,6 +1666,25 @@ class BaseSchedulerSolver(
         task.ordinary_coordination = True
         self.tasks.append(task)
 
+    def _discard_legacy_mood_control_tasks(self):
+        """撤销旧版未开始的提前下班和预测唤醒，保留已开始的执行责任。"""
+        removed = {
+            id(task)
+            for task in self.tasks
+            if (
+                getattr(task, "mood_control_event", None)
+                or getattr(task, "mood_control_evidence", None)
+            )
+            and not task.retains_execution
+            and not getattr(task, "mood_physical_started", False)
+        }
+        if not removed:
+            return
+        self.tasks[:] = [task for task in self.tasks if id(task) not in removed]
+        if id(getattr(self, "task", None)) in removed:
+            self.task = None
+        self.planned = False
+
     def _discard_legacy_ordinary_requests(self):
         """旧版普通互斥占位请求回归普通规划，实际换班和用尽任务保留。"""
         previous = len(self.tasks)
@@ -1787,10 +1706,7 @@ class BaseSchedulerSolver(
         ):
             self.tasks.append(SchedulerTask())
 
-    def _ordinary_coordination_needed(self, names, task=None):
-        from arknights_mower.utils.predictive_mood_control import admits
-
-        early = admits(self, names, task)
+    def _ordinary_coordination_needed(self, names):
         protected = self._protected_facility_names()
         for name in names:
             op = self.op_data.operators.get(name)
@@ -1817,17 +1733,11 @@ class BaseSchedulerSolver(
                 name,
                 getattr(self.op_data, "_projection_now", None) or datetime.now(),
             )
-            if mood is None or (
-                not early and mood > self.op_data.resting_mood_threshold(op)
-            ):
+            if mood is None or mood > self.op_data.resting_mood_threshold(op):
                 continue
-            if (
-                early
-                or mood < op.upper_limit
-                and (
-                    self.op_data.custom_mood_limits(name) is not None
-                    or op.upper_limit - mood >= 2
-                )
+            if mood < op.upper_limit and (
+                self.op_data.custom_mood_limits(name) is not None
+                or op.upper_limit - mood >= 2
             ):
                 return True
         return False
@@ -1840,13 +1750,9 @@ class BaseSchedulerSolver(
             or getattr(task, "mood_physical_started", False)
             or not getattr(task, "ordinary_coordination", False)
             or getattr(task, "backup_shift_active", False)
-            and not getattr(task, "mood_control_evidence", None)
             or getattr(task, "group_shift_expected", {})
-            and not getattr(task, "mood_control_evidence", None)
             or getattr(task, "product_shift_locked", False)
-            and not getattr(task, "mood_control_evidence", None)
             or getattr(task, "backup_explicit_slots", ())
-            and not getattr(task, "mood_control_evidence", None)
         ):
             return True
         if not getattr(task, "backup_shift_active", False):
@@ -1861,8 +1767,7 @@ class BaseSchedulerSolver(
             key = ("group", op.group) if op.group else ("operator", name)
             requests[key] = self.op_data.groups[op.group] if op.group else [name]
         return bool(requests) and all(
-            self._ordinary_coordination_needed(names, task)
-            for names in requests.values()
+            self._ordinary_coordination_needed(names) for names in requests.values()
         )
 
     def _validate_calculated_arrangement(self):
@@ -1874,15 +1779,10 @@ class BaseSchedulerSolver(
             or task.retains_execution
             or getattr(task, "mood_physical_started", False)
             or getattr(task, "backup_shift_active", False)
-            and not getattr(task, "mood_control_evidence", None)
             or getattr(task, "backup_explicit_slots", ())
-            and not getattr(task, "mood_control_evidence", None)
             or getattr(task, "product_shift_locked", False)
-            and not getattr(task, "mood_control_evidence", None)
             or getattr(task, "dorm_recovery_restore", ())
-            and not getattr(task, "mood_control_evidence", None)
             or getattr(task, "run_order_restore_pending", False)
-            and not getattr(task, "mood_control_evidence", None)
         ):
             return
         from arknights_mower.utils.calculated_mood import sync_model
@@ -1916,7 +1816,7 @@ class BaseSchedulerSolver(
                 if op is not None:
                     groups.append(self.op_data.groups[op.group] if op.group else [name])
             if not groups or not all(
-                self._ordinary_coordination_needed(names, task) for names in groups
+                self._ordinary_coordination_needed(names) for names in groups
             ):
                 raise MoodArrangementChanged("心情观测已改变普通下班条件")
         for room, names in task.plan.items():
@@ -2216,6 +2116,7 @@ class BaseSchedulerSolver(
         if fia_room is None or fia_plan is None:
             return
         self._refresh_fia_candidate_moods(fia_plan)
+        configured_full = self._fia_targets_all_full(fia_plan)
         fallback = self._emergency_fia_fallback(fia_plan)
         if fallback is not None:
             self._refresh_fia_candidate_moods(fallback)
@@ -2223,6 +2124,9 @@ class BaseSchedulerSolver(
             logger.info(
                 "自动救急：配置充能目标已满心情，按心情选择正常主班：%s", fia_plan
             )
+        if self._fia_targets_all_full(fia_plan) or (not fia_plan and configured_full):
+            logger.info("菲亚充能目标均已满心情，跳过本次充能")
+            return
         # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
         target = None
         if not config.conf.fia_fool:
@@ -2236,7 +2140,7 @@ class BaseSchedulerSolver(
             operator_morale = data.current_mood()
             operator_limit = data.lower_limit
             logger.debug(f"{operator}的心情为{operator_morale}")
-            if operator_morale > fia_threshold * 24:
+            if operator_morale >= 24 or operator_morale > fia_threshold * 24:
                 logger.debug(f"{operator}的心情高于阈值，跳过充能")
                 continue
             if data.rest_in_full and data.exhaust_require and not data.is_resting():
@@ -2270,7 +2174,6 @@ class BaseSchedulerSolver(
             break
         # 若全部跳过且关闭防呆则令目标干员为心情最低干员
         if target is None and fia_plan and not config.conf.fia_fool:
-            target = fia_plan[0]
             op_mood = 24
             for op in fia_plan:
                 data = self.op_data.operators[op]
@@ -2319,6 +2222,11 @@ class BaseSchedulerSolver(
                     task.time,
                 )
             )
+
+    def _fia_targets_all_full(self, names):
+        return bool(names) and all(
+            scheduling_mood_reaches(self.op_data, name, 24) for name in names
+        )
 
     def _refresh_fia_candidate_moods(self, names):
         """挑选充能对象前补读失效缓存，同房候选只进房一次，不触发纠错或切表。"""
@@ -2865,6 +2773,7 @@ class BaseSchedulerSolver(
     @log_mood_calculation("基建调度")
     def infra_main(self):
         """位于基建首页"""
+        self._discard_legacy_mood_control_tasks()
         if getattr(self.op_data, "mood_calculation_enabled", False):
             from arknights_mower.utils.calculated_mood import sync_model
 
@@ -3029,14 +2938,7 @@ class BaseSchedulerSolver(
                 self.task.meta_data
             )
             try:
-                if getattr(self.task, "mood_control_event", None):
-                    from arknights_mower.utils.predictive_mood_control import (
-                        consume_event,
-                    )
-
-                    consume_event(self, self.task)
-                    self.skip()
-                elif not self._prepare_ordinary_departure(self.task):
+                if not self._prepare_ordinary_departure(self.task):
                     # 副表或心情变化已取消普通下班需求，重新规划尚未开始的整批安排。
                     self.planned = False
                 elif getattr(self.task, "replacement_check", None):
@@ -5541,7 +5443,14 @@ class BaseSchedulerSolver(
             fia_room = actual_room if actual_room.startswith("dorm") else None
             if fia_room is None:
                 self._refresh_fiammetta_task(None)
-        if fia_room is not None and fia_plan is not None:
+        if (
+            fia_room is not None
+            and fia_plan is not None
+            and (
+                not self._fia_targets_all_full(fia_plan)
+                or self._emergency_fia_fallback(fia_plan)
+            )
+        ):
             if (
                 self.find_next_task(
                     task_type=TaskTypes.FIAMMETTA, scope=TaskScope.PENDING
@@ -5835,21 +5744,6 @@ class BaseSchedulerSolver(
             self.backup_plan_solver()
 
     def resting(self, *, returning=(), returning_groups=()):
-        if not getattr(self, "_mood_control_projection", False):
-            from arknights_mower.utils.predictive_mood_control import reconcile
-
-            before = {id(t) for t in self.tasks}
-            reconcile(self)
-            generated = next(
-                (
-                    t
-                    for t in self.tasks
-                    if id(t) not in before and getattr(t, "mood_control_evidence", None)
-                ),
-                None,
-            )
-            if generated is not None:
-                return generated.plan
         self._refresh_deferred_product_reservations()
         reserved_names = self.op_data.reserved_product_replacements
         now = getattr(self.op_data, "_projection_now", None) or datetime.now()
@@ -5903,7 +5797,6 @@ class BaseSchedulerSolver(
                 op, self.op_data.arrangement_group_transitions(_plan)
             ):
                 continue
-            early = op.name in set(getattr(self, "_mood_control_allowed", ()))
             mood = moods[op.name]
             if mood is None:
                 continue
@@ -5927,15 +5820,10 @@ class BaseSchedulerSolver(
             has_group_dorm_bed = op.group and self.op_data.group_dorm_bed_count(
                 op.group
             )
-            if (
-                not early
-                and _high_done
-                and not (can_standby or can_preempt or has_group_dorm_bed)
-            ):
+            if _high_done and not (can_standby or can_preempt or has_group_dorm_bed):
                 continue
             if (
-                not early
-                and not can_standby
+                not can_standby
                 and not can_preempt
                 and not has_group_dorm_bed
                 and current_resting + len(_replacement) >= self.ideal_resting_count
@@ -5954,7 +5842,7 @@ class BaseSchedulerSolver(
             ):
                 continue
             # 忽略掉心情太高的
-            if not early and (
+            if (
                 mood >= op.upper_limit
                 if self.op_data.custom_mood_limits(op.name) is not None
                 else op.upper_limit - mood < 2
@@ -5964,7 +5852,7 @@ class BaseSchedulerSolver(
             if op.name in self.op_data.exhaust_agent:
                 continue
             # 忽略掉心情值没低于上限的的
-            if not early and mood > self.op_data.resting_mood_threshold(op):
+            if mood > self.op_data.resting_mood_threshold(op):
                 continue
             previous_plan = copy.deepcopy(_plan)
             if op.group != "":
@@ -8551,12 +8439,6 @@ class BaseSchedulerSolver(
             and self.op_data.operators[name].group not in required_groups
         ]
         simulation = copy.copy(self)
-        simulation._mood_control_projection = True
-        simulation._mood_control_allowed = (
-            set(getattr(task, "coordination_request_names", ()))
-            if getattr(task, "mood_control_evidence", None)
-            else set()
-        )
         # 求值模型只读复用；eval 注入的 Python 内建对象不能全部深拷贝。
         simulation.op_data = copy.deepcopy(
             self.op_data, {id(self.op_data.eval_model): self.op_data.eval_model}
@@ -8570,8 +8452,6 @@ class BaseSchedulerSolver(
         step.backup_explicit_slots = explicit_slots
         step.ordinary_coordination = bool(ordinary_requests)
         step.coordination_request_names = list(dict.fromkeys(ordinary_requests))
-        if getattr(task, "mood_control_evidence", None):
-            step.mood_control_evidence = copy.deepcopy(task.mood_control_evidence)
         step.dorm_fill_plan = copy.deepcopy(getattr(task, "dorm_fill_plan", {}))
         initial_correction = getattr(task, "initial_staffing", False)
         returning_groups = {
@@ -8822,10 +8702,6 @@ class BaseSchedulerSolver(
                 step = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=rest)
                 step.ordinary_coordination = bool(rest_requests)
                 step.coordination_request_names = rest_requests
-                if getattr(task, "mood_control_evidence", None):
-                    step.mood_control_evidence = copy.deepcopy(
-                        task.mood_control_evidence
-                    )
                 step.backup_explicit_slots = explicit_slots
                 step.dorm_fill_plan = ordinary_fill
                 continue
@@ -14708,6 +14584,18 @@ class BaseSchedulerSolver(
         return False
 
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
+        if (
+            self.task.type == TaskTypes.FIAMMETTA
+            and self.task.meta_data
+            and len(plan) == 1
+            and next(iter(plan.values())) == [self.task.meta_data, "菲亚梅塔"]
+            and not self.task.retains_execution
+            and not getattr(self.task, "mood_physical_started", False)
+        ):
+            self._refresh_fia_candidate_moods([self.task.meta_data])
+            if self._fia_targets_all_full([self.task.meta_data]):
+                logger.info("菲亚充能目标已满心情，跳过尚未开始的充能")
+                return True
         restoring_order = getattr(self.task, "run_order_restore_pending", False)
         if restoring_order:
             self.task.prepare_run_order_restoration()

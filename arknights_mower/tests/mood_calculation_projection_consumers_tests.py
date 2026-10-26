@@ -205,3 +205,36 @@ def test_real_recall_forecast_uses_projected_model_without_rate_history(
     ) is (not low and not unknown)
     assert (vars(data.mood_model), observations(data)) == before
     assert (vars(admitted.mood_model), observations(admitted)) == admitted_before
+
+
+def test_projection_uses_explicit_clock_and_frozen_configuration(solver, monkeypatch):
+    enable(solver.op_data, NOW, monkeypatch)
+    data = solver.op_data
+    future = NOW + timedelta(hours=2)
+    projected = data.project_arrangements(
+        [], now=future, runtime_conf=data.runtime_conf.model_copy(deep=True)
+    )
+    assert projected.mood_model.at == future
+    assert data.mood_model.at == NOW
+    assert projected.operators[PRIMARY[0]].current_mood() == pytest.approx(22)
+    projected.runtime_conf.rescue_threshold = 0.1
+    assert data.runtime_conf.rescue_threshold == 0.75
+
+
+def test_projection_never_notifies_real_clock_position_setters(solver, monkeypatch):
+    from arknights_mower.utils.calculated_mood import CalculatedMood
+
+    enable(solver.op_data, NOW, monkeypatch)
+    monkeypatch.setattr(
+        CalculatedMood,
+        "move",
+        lambda *a, **k: pytest.fail("real position notification"),
+    )
+    projected = solver.op_data.project_arrangements(
+        [{"room_1_1": [COVERS[0]], "dormitory_1": ["Current", "Current", PRIMARY[0]]}],
+        now=NOW + timedelta(minutes=5),
+    )
+    assert projected.mood_model.at == NOW + timedelta(minutes=5)
+    assert projected.operators[PRIMARY[0]].current_room == "dormitory_1"
+    assert solver.op_data.mood_model.at == NOW
+    assert solver.op_data.operators[PRIMARY[0]].current_room == "room_1_1"

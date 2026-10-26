@@ -474,12 +474,19 @@ it('reports saved initial conditions and source versions without relabeling hist
     calculatorSyncRevision: '6ddbeece6264e1881b7bf34f9b346bbf03704fff',
     mowerBaseReference: '80c97ee604375af144090656ef84b083acd6dc7f',
     mowerCheckedRevision: '84e3926c0f36045d7baeb1ac050f815b40952d6d',
-    moodControlStrategyVersion: 'predictive-mood-control-v1',
+    moodControlStrategyVersion: 'ordinary-threshold-v1',
     predictiveMoodControl: false
   })
   const saved = structuredClone(result)
   const report = incomeReportLines(saved, settings, source, '主表').join('\n')
   expect(report).toContain('菲亚梅塔初始心情 16')
+  expect(report).toContain('按正常下班阈值轮休，不为避免替班断档而提前下班')
+  expect(report).toContain('普通救急召回须能坚持到对应主班回满')
+  const predictive = structuredClone(saved)
+  predictive.modelProvenance.moodControlStrategyVersion = 'predictive-mood-control-v1'
+  const predictiveReport = incomeReportLines(predictive, settings, source, '主表').join('\n')
+  expect(predictiveReport).toContain('轮班策略 predictive-mood-control-v1')
+  expect(predictiveReport).not.toContain('按正常下班阈值轮休')
   expect(report).toContain(`选择性同步 ${saved.modelProvenance.calculatorSyncRevision}`)
   expect(report).toContain(`本轮核对 ${saved.modelProvenance.mowerCheckedRevision}`)
   const historical = { ...saved }

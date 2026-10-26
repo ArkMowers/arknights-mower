@@ -940,7 +940,6 @@ class EmergencyRecoveryMixin:
             or task.retains_execution
             or getattr(task, "mood_physical_started", False)
         ]
-        self._mood_control_cache = None
         fia_targets = set(self.emergency_state.get("fia_targets", ()))
         fia = self.op_data.operators.get("菲亚梅塔")
         fia_rooms = {
