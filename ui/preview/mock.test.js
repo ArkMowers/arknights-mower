@@ -15,6 +15,64 @@ import {
 afterEach(() => vi.useRealTimers())
 
 describe('offline preview', () => {
+  it('keeps depot choices across independent edits and ignores a later migration', async () => {
+    const data = createPreviewData({ theme: 'light' })
+    const client = axios.create({ adapter: createPreviewAdapter(data) })
+    const options = { headers: { 'X-Mower-Config-Generation': 'obsolete' } }
+    expect((await client.get('/gui/depot')).data).toEqual({ depot: null })
+
+    const migrated = await client.put(
+      '/gui/depot',
+      { depot: { favorites: ['龙门币'] }, migrate: true },
+      options
+    )
+    expect(migrated.data.depot).toEqual({
+      favorites: ['龙门币'],
+      view: {
+        stockFilter: 'all',
+        deltaFilter: 'all',
+        showDerived: true,
+        sortMode: 'tier',
+        showcaseTab: 'core'
+      },
+      baseline: {
+        mode: 'time',
+        preset: 'previous',
+        range: null,
+        followLatest: true,
+        startKey: 'previous',
+        endKey: 'latest'
+      }
+    })
+    const view = { ...migrated.data.depot.view, sortMode: 'name', showcaseTab: 'favorites' }
+    await client.put('/gui/depot', { depot: { view } }, options)
+    const afterRace = await client.put(
+      '/gui/depot',
+      { depot: { favorites: ['赤金'] }, migrate: true },
+      options
+    )
+    expect(afterRace.data.depot).toEqual({ ...migrated.data.depot, view })
+    afterRace.data.depot.favorites.push('赤金')
+    expect((await client.get('/gui/depot')).data.depot.favorites).toEqual(['龙门币'])
+    expect(data.config).toEqual({ theme: 'light' })
+    const freshClient = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
+    expect((await freshClient.get('/gui/depot')).data).toEqual({ depot: null })
+  })
+
+  it.each([
+    {},
+    { depot: {} },
+    { depot: [] },
+    { depot: { unknown: true } },
+    { depot: { favorites: [] }, migrate: 'yes' }
+  ])('rejects malformed depot preference group update %j', async (payload) => {
+    const client = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
+    await expect(client.put('/gui/depot', payload)).rejects.toMatchObject({
+      response: { status: 400 }
+    })
+    expect((await client.get('/gui/depot')).data).toEqual({ depot: null })
+  })
+
   it('previews image selection and reset independently of profile generation', async () => {
     const client = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
     const options = { headers: { 'X-Mower-Config-Generation': 'obsolete' } }

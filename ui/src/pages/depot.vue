@@ -1,5 +1,17 @@
 <template>
   <div ref="depotPageRef" class="depot-page">
+    <n-alert v-if="preferences.error" type="warning" class="preferences-alert">
+      {{ preferences.error }}
+      <template #action>
+        <n-button
+          size="small"
+          :loading="preferences.loading || preferences.saving"
+          @click="preferences.retry()"
+        >
+          重试
+        </n-button>
+      </template>
+    </n-alert>
     <!-- ① 顶部总览看板 -->
     <n-card class="depot-hero" :bordered="false">
       <!-- 头部：标题、状态与快捷操作 -->
@@ -160,6 +172,7 @@
               <button
                 type="button"
                 class="showcase-tab-btn"
+                :disabled="preferences.disabled"
                 :class="{ active: showcaseTab === 'core' }"
                 @click="showcaseTab = 'core'"
               >
@@ -168,6 +181,7 @@
               <button
                 type="button"
                 class="showcase-tab-btn"
+                :disabled="preferences.disabled"
                 :class="{ active: showcaseTab === 'favorites' }"
                 @click="showcaseTab = 'favorites'"
               >
@@ -306,6 +320,7 @@
                   class="fav-unstar-btn"
                   title="取消关注"
                   @click.stop="toggleFavorite(item.name)"
+                  :disabled="preferences.disabled"
                 >
                   <svg viewBox="0 0 24 24" class="star-mini-svg" fill="currentColor">
                     <polygon :points="STAR_POLYGON" />
@@ -403,7 +418,11 @@
           <!-- 桌面端对比区间选择器 -->
           <div class="toolbar-baseline-wrap desktop-only" v-if="history.length >= 2">
             <span class="control-label">对比：</span>
-            <depot-baseline-picker v-model="baselineConfig" :history="history" />
+            <depot-baseline-picker
+              v-model="baselineConfig"
+              :history="history"
+              :disabled="preferences.disabled"
+            />
           </div>
 
           <!-- 移动端筛选展开/折叠按钮 -->
@@ -440,13 +459,22 @@
           <!-- 移动端对比区间选择器（置于展开筛选区内） -->
           <div class="toolbar-baseline-wrap mobile-only" v-if="history.length >= 2">
             <span class="control-label">对比：</span>
-            <depot-baseline-picker v-model="baselineConfig" :history="history" />
+            <depot-baseline-picker
+              v-model="baselineConfig"
+              :history="history"
+              :disabled="preferences.disabled"
+            />
           </div>
 
           <!-- 库存状态单选 -->
           <div class="filter-group">
             <span class="control-label">库存：</span>
-            <n-radio-group v-model:value="stockFilter" size="small" name="stockFilter">
+            <n-radio-group
+              v-model:value="stockFilter"
+              size="small"
+              name="stockFilter"
+              :disabled="preferences.disabled"
+            >
               <n-radio-button value="all">全部</n-radio-button>
               <n-radio-button value="favorite">我的关注</n-radio-button>
               <n-radio-button value="owned">有货</n-radio-button>
@@ -457,7 +485,12 @@
           <!-- 增减变动单选 -->
           <div class="filter-group" v-if="history.length >= 2">
             <span class="control-label">变动：</span>
-            <n-radio-group v-model:value="deltaFilter" size="small" name="deltaFilter">
+            <n-radio-group
+              v-model:value="deltaFilter"
+              size="small"
+              name="deltaFilter"
+              :disabled="preferences.disabled"
+            >
               <n-radio-button value="all">全部</n-radio-button>
               <n-radio-button value="increased">仅增加</n-radio-button>
               <n-radio-button value="decreased">仅减少</n-radio-button>
@@ -465,12 +498,19 @@
             </n-radio-group>
           </div>
 
-          <n-checkbox v-model:checked="showDerived" class="toolbar-checkbox"> 含折算物 </n-checkbox>
+          <n-checkbox
+            v-model:checked="showDerived"
+            class="toolbar-checkbox"
+            :disabled="preferences.disabled"
+          >
+            含折算物
+          </n-checkbox>
 
           <div class="sort-selector-wrap">
             <span class="control-label">排序：</span>
             <n-select
               v-model:value="sortMode"
+              :disabled="preferences.disabled"
               :options="SORT_MODES"
               size="small"
               class="toolbar-sort-select"
@@ -659,6 +699,7 @@
                   :class="{ starred: isFavorite(row.name) }"
                   :title="isFavorite(row.name) ? '取消关注' : '添加关注'"
                   @click.stop="toggleFavorite(row.name)"
+                  :disabled="preferences.disabled"
                 >
                   <svg viewBox="0 0 24 24" class="star-svg" fill="currentColor">
                     <polygon :points="STAR_POLYGON" />
@@ -721,6 +762,7 @@
                 :secondary="!isFavorite(detailItem.name)"
                 class="detail-fav-btn"
                 @click="toggleFavorite(detailItem.name)"
+                :disabled="preferences.disabled"
               >
                 <template #icon>
                   <svg
@@ -1005,6 +1047,7 @@ import { toPng } from 'html-to-image'
 import { sleep } from '@/utils/sleep'
 
 import { usedepotStore } from '@/stores/depot'
+import { useDepotPreferencesStore } from '@/stores/depotPreferences'
 import { useConfigStore } from '@/stores/config'
 import { useResolvedTheme } from '@/composables/theme'
 import { mowerDarkCssVariables, mowerLightCssVariables } from '@/theme/mower'
@@ -1031,14 +1074,8 @@ import {
   formatTimestamp,
   groupItemsByTier,
   itemIconUrl,
-  loadBaselineConfig,
-  loadFavorites,
-  loadViewPrefs,
   parseDepotResponse,
   resolveCopyText,
-  saveBaselineConfig,
-  saveFavorites,
-  saveViewPrefs,
   sortItems,
   summarizeItemHistory,
   usableSnapshots
@@ -1054,6 +1091,7 @@ use([
 ])
 
 const depotStore = usedepotStore()
+const preferences = useDepotPreferencesStore()
 const configStore = useConfigStore()
 const { theme: themePreference } = storeToRefs(configStore)
 const theme = useResolvedTheme(themePreference)
@@ -1085,27 +1123,28 @@ watch(query, (val) => {
   }, 120)
 })
 
-const viewPrefs = loadViewPrefs()
-const stockFilter = ref(viewPrefs.stockFilter) // 'all' | 'favorite' | 'owned' | 'empty'
-const deltaFilter = ref(viewPrefs.deltaFilter) // 'all' | 'increased' | 'decreased' | 'changed'
-const baselineConfig = ref(loadBaselineConfig())
+function viewPreference(key) {
+  return computed({
+    get: () => preferences.view[key],
+    set: (value) => preferences.update({ view: { ...preferences.view, [key]: value } })
+  })
+}
 
-watch(
-  baselineConfig,
-  (val) => {
-    saveBaselineConfig(val)
-  },
-  { deep: true }
-)
-const showDerived = ref(viewPrefs.showDerived)
-const sortMode = ref(viewPrefs.sortMode)
+const stockFilter = viewPreference('stockFilter')
+const deltaFilter = viewPreference('deltaFilter')
+const showDerived = viewPreference('showDerived')
+const sortMode = viewPreference('sortMode')
+const baselineConfig = computed({
+  get: () => preferences.baseline,
+  set: (value) => preferences.update({ baseline: value })
+})
 const activeDrawKey = ref('')
 const activeTier = ref('')
 const detailItem = ref(null)
 const detailOpen = ref(false)
 
 // 关注物品管理
-const favorites = ref(loadFavorites())
+const favorites = computed(() => preferences.favorites)
 
 function isFavorite(name) {
   if (!name) return false
@@ -1113,33 +1152,19 @@ function isFavorite(name) {
 }
 
 function toggleFavorite(name) {
-  if (!name) return
-  const index = favorites.value.indexOf(name)
-  if (index >= 0) {
-    favorites.value.splice(index, 1)
+  if (!name || preferences.disabled) return
+  if (isFavorite(name)) {
     message.info(`已取消关注 "${name}"`)
   } else {
-    favorites.value.push(name)
     message.success(`已添加关注 "${name}"`)
   }
-  saveFavorites(favorites.value)
+  preferences.toggleFavorite(name)
 }
 
 // 顶部右侧看板模式
-const showcaseTab = ref(viewPrefs.showcaseTab) // 'core' | 'favorites'
+const showcaseTab = viewPreference('showcaseTab')
 const favPage = ref(0)
 const PAGE_SIZE = 8
-
-// 筛选、排序、看板页签跟着走：这些默认值都是"什么都没选"，不落盘等于每次回来重设一遍。
-watch([stockFilter, deltaFilter, showDerived, sortMode, showcaseTab], () => {
-  saveViewPrefs({
-    stockFilter: stockFilter.value,
-    deltaFilter: deltaFilter.value,
-    showDerived: showDerived.value,
-    sortMode: sortMode.value,
-    showcaseTab: showcaseTab.value
-  })
-})
 
 // 五角星路径：空态、缩略图、卡片角标、详情按钮四处共用一份，
 // 之前是同一串坐标抄四遍，改尺寸要四处对齐。
@@ -1877,6 +1902,7 @@ watch(
 )
 
 onMounted(async () => {
+  preferences.load()
   depotStore.loadReport().catch(() => {})
   if (typeof ResizeObserver !== 'undefined' && stickyBarRef.value) {
     stickyBarObserver = new ResizeObserver(() => {

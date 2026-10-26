@@ -329,9 +329,11 @@ export const BASELINE_MODES = [
  * 存进 localStorage 的东西不可信，认不出来就当没选。
  */
 export function isValidSnapshotKey(key) {
-  if (typeof key !== 'string' || !key.trim()) return false
+  if (typeof key !== 'string' || !key.trim() || key.length > 100) return false
   if (key === 'previous' || key === 'first' || key === 'latest') return true
-  return Number.isFinite(Number(key))
+  return (
+    /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(key.trim()) && Number.isFinite(Number(key))
+  )
 }
 
 /**
@@ -888,28 +890,25 @@ export function buildHighlights(categories) {
 
 export const FAVORITES_STORAGE_KEY = 'mower_depot_favorites'
 
+export function normalizeFavorites(value) {
+  return Array.isArray(value)
+    ? [
+        ...new Set(
+          value.filter((name) => typeof name === 'string' && name.trim() && name.length <= 128)
+        )
+      ].slice(0, 1000)
+    : []
+}
+
 export function loadFavorites(storage = typeof localStorage !== 'undefined' ? localStorage : null) {
   if (!storage) return []
   try {
     const raw = storage.getItem(FAVORITES_STORAGE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string') : []
+    return normalizeFavorites(parsed)
   } catch {
     return []
-  }
-}
-
-export function saveFavorites(
-  favorites,
-  storage = typeof localStorage !== 'undefined' ? localStorage : null
-) {
-  if (!storage) return
-  try {
-    const list = Array.isArray(favorites) ? Array.from(new Set(favorites.filter(Boolean))) : []
-    storage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(list))
-  } catch {
-    // ignore
   }
 }
 
@@ -942,50 +941,24 @@ export function loadBaselineConfig(
   try {
     const raw = storage.getItem(BASELINE_STORAGE_KEY)
     if (!raw) return { ...DEFAULT_BASELINE_CONFIG }
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_BASELINE_CONFIG }
-    // preset 必须是我们认识的键：把旧版本写下的、或手改出来的字符串带进
-    // alignSnapshotsToRange，会一路落到"整段历史"兜底分支，用户看到的是一个从没
-    // 选过的对比区间。认不出来就整套回到默认，别留一半旧配置。
-    if (!BASELINE_PRESET_KEYS.has(parsed.preset)) {
-      return { ...DEFAULT_BASELINE_CONFIG }
-    }
-    // mode 是后加的字段：旧配置没有它，按"按时间"处理，行为与升级前一致。
-    const mode = parsed.mode === 'snapshot' ? 'snapshot' : 'time'
-    return {
-      mode,
-      preset: parsed.preset,
-      range: normalizeBaselineRange(mode, parsed.range),
-      followLatest: typeof parsed.followLatest === 'boolean' ? parsed.followLatest : true,
-      startKey: isValidSnapshotKey(parsed.startKey) ? parsed.startKey : 'previous',
-      endKey: isValidSnapshotKey(parsed.endKey) ? parsed.endKey : 'latest'
-    }
+    return normalizeBaselineConfig(JSON.parse(raw))
   } catch {
     return { ...DEFAULT_BASELINE_CONFIG }
   }
 }
 
-export function saveBaselineConfig(
-  config,
-  storage = typeof localStorage !== 'undefined' ? localStorage : null
-) {
-  if (!storage) return
-  try {
-    if (!config || typeof config !== 'object') return
-    const mode = config.mode === 'snapshot' ? 'snapshot' : 'time'
-    const payload = {
-      mode,
-      preset: BASELINE_PRESET_KEYS.has(config.preset)
-        ? config.preset
-        : DEFAULT_BASELINE_CONFIG.preset,
-      range: normalizeBaselineRange(mode, config.range),
-      followLatest: config.followLatest !== false,
-      startKey: isValidSnapshotKey(config.startKey) ? config.startKey : 'previous',
-      endKey: isValidSnapshotKey(config.endKey) ? config.endKey : 'latest'
-    }
-    storage.setItem(BASELINE_STORAGE_KEY, JSON.stringify(payload))
-  } catch {
-    // ignore
+export function normalizeBaselineConfig(config) {
+  if (!config || typeof config !== 'object' || !BASELINE_PRESET_KEYS.has(config.preset)) {
+    return { ...DEFAULT_BASELINE_CONFIG }
+  }
+  const mode = config.mode === 'snapshot' ? 'snapshot' : 'time'
+  return {
+    mode,
+    preset: config.preset,
+    range: normalizeBaselineRange(mode, config.range),
+    followLatest: typeof config.followLatest === 'boolean' ? config.followLatest : true,
+    startKey: isValidSnapshotKey(config.startKey) ? config.startKey : 'previous',
+    endKey: isValidSnapshotKey(config.endKey) ? config.endKey : 'latest'
   }
 }
 
@@ -1024,45 +997,20 @@ export function loadViewPrefs(storage = typeof localStorage !== 'undefined' ? lo
   try {
     const raw = storage.getItem(VIEW_PREFS_STORAGE_KEY)
     if (!raw) return { ...DEFAULT_VIEW_PREFS }
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_VIEW_PREFS }
-    // 取值必须是我们认识的：旧版本写下的、手改出来的字符串带回页面，筛选条会停在
-    // 一个界面上根本不存在的档位上，用户点也点不掉。
-    return {
-      stockFilter: STOCK_FILTERS.includes(parsed.stockFilter)
-        ? parsed.stockFilter
-        : DEFAULT_VIEW_PREFS.stockFilter,
-      deltaFilter: DELTA_FILTERS.includes(parsed.deltaFilter)
-        ? parsed.deltaFilter
-        : DEFAULT_VIEW_PREFS.deltaFilter,
-      showDerived: typeof parsed.showDerived === 'boolean' ? parsed.showDerived : true,
-      sortMode: SORT_MODE_KEYS.has(parsed.sortMode) ? parsed.sortMode : DEFAULT_VIEW_PREFS.sortMode,
-      showcaseTab: SHOWCASE_TABS.includes(parsed.showcaseTab)
-        ? parsed.showcaseTab
-        : DEFAULT_VIEW_PREFS.showcaseTab
-    }
+    return normalizeViewPrefs(JSON.parse(raw))
   } catch {
     return { ...DEFAULT_VIEW_PREFS }
   }
 }
 
-export function saveViewPrefs(
-  prefs,
-  storage = typeof localStorage !== 'undefined' ? localStorage : null
-) {
-  if (!storage) return
-  try {
-    if (!prefs || typeof prefs !== 'object') return
-    const payload = {
-      stockFilter: STOCK_FILTERS.includes(prefs.stockFilter) ? prefs.stockFilter : 'all',
-      deltaFilter: DELTA_FILTERS.includes(prefs.deltaFilter) ? prefs.deltaFilter : 'all',
-      showDerived: prefs.showDerived !== false,
-      sortMode: SORT_MODE_KEYS.has(prefs.sortMode) ? prefs.sortMode : 'tier',
-      showcaseTab: SHOWCASE_TABS.includes(prefs.showcaseTab) ? prefs.showcaseTab : 'core'
-    }
-    storage.setItem(VIEW_PREFS_STORAGE_KEY, JSON.stringify(payload))
-  } catch {
-    // ignore
+export function normalizeViewPrefs(prefs) {
+  if (!prefs || typeof prefs !== 'object') return { ...DEFAULT_VIEW_PREFS }
+  return {
+    stockFilter: STOCK_FILTERS.includes(prefs.stockFilter) ? prefs.stockFilter : 'all',
+    deltaFilter: DELTA_FILTERS.includes(prefs.deltaFilter) ? prefs.deltaFilter : 'all',
+    showDerived: typeof prefs.showDerived === 'boolean' ? prefs.showDerived : true,
+    sortMode: SORT_MODE_KEYS.has(prefs.sortMode) ? prefs.sortMode : 'tier',
+    showcaseTab: SHOWCASE_TABS.includes(prefs.showcaseTab) ? prefs.showcaseTab : 'core'
   }
 }
 
