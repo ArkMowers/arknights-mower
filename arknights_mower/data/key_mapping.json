@@ -1861,6 +1861,20 @@
         "CONSUME",
         60124
     ],
+    "randomMaterial_7d5": [
+        "randomMaterial_7d5",
+        "randomMaterial_4",
+        "2026感谢庆典物资补给",
+        "CONSUME",
+        60125
+    ],
+    "2026感谢庆典物资补给": [
+        "randomMaterial_7d5",
+        "randomMaterial_4",
+        "2026感谢庆典物资补给",
+        "CONSUME",
+        60125
+    ],
     "2001": [
         "2001",
         "sprite_exp_card_t1",
@@ -8007,6 +8021,34 @@
         "MATERIAL",
         700195
     ],
+    "p_char_393_toledo": [
+        "p_char_393_toledo",
+        "p_char_393_toledo",
+        "德·托莱多的信物",
+        "MATERIAL",
+        700196
+    ],
+    "德·托莱多的信物": [
+        "p_char_393_toledo",
+        "p_char_393_toledo",
+        "德·托莱多的信物",
+        "MATERIAL",
+        700196
+    ],
+    "p_char_4232_hbound": [
+        "p_char_4232_hbound",
+        "p_char_4232_hbound",
+        "旅骨的信物",
+        "MATERIAL",
+        700197
+    ],
+    "旅骨的信物": [
+        "p_char_4232_hbound",
+        "p_char_4232_hbound",
+        "旅骨的信物",
+        "MATERIAL",
+        700197
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -9910,6 +9952,20 @@
         "结城理的信物",
         "MATERIAL",
         600136
+    ],
+    "p_char_4231_clemnt": [
+        "p_char_4231_clemnt",
+        "p_char_4231_clemnt",
+        "克莱门莎的信物",
+        "MATERIAL",
+        600137
+    ],
+    "克莱门莎的信物": [
+        "p_char_4231_clemnt",
+        "p_char_4231_clemnt",
+        "克莱门莎的信物",
+        "MATERIAL",
+        600137
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
