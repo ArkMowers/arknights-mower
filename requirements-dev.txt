@@ -231,7 +231,7 @@ packaging==24.1
     #   lazy-loader
     #   onnxruntime
     #   scikit-image
-pillow==10.3.0
+pillow==13.0.0
     # via
     #   -r requirements.txt
     #   ddddocr
