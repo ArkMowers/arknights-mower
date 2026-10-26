@@ -1189,7 +1189,7 @@ class Operators:
         info = (
             self._projection_maintenance
             if hasattr(self, "_projection_maintenance")
-            else NewsChecker.get_maintenance()
+            else NewsChecker.get_major_maintenance(datetime.now())
         )
         if info is None or info.update_type != "major" or info.is_flash_update:
             return float("inf")
@@ -1218,7 +1218,7 @@ class Operators:
         )
         if not thresholds:
             return None
-        info = NewsChecker.get_maintenance()
+        info = NewsChecker.get_major_maintenance(now or datetime.now())
         if info is None or info.update_type != "major" or info.is_flash_update:
             return None
         now = now or datetime.now()

@@ -20,7 +20,7 @@ from arknights_mower.utils.furniture_task import (
     FURNITURE_RUN_SECONDS,
 )
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.news_checker import NewsChecker
+from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
 from arknights_mower.utils.operation_timing import (
     estimate_dorm_minutes,
     estimate_work_minutes,
@@ -74,6 +74,8 @@ class TaskTypes(Enum):
     RECLAMATION = ("reclamation", "生息演算 (MAA)", 2)
     RA = ("ra", "生息演算", 2)
     SECRET_FRONT = ("secret_front", "隐秘战线", 2)
+    FLASH_UPDATE = ("flash_update", "闪断更新", 2)
+    SERVER_UPDATE = ("server_update", "停服更新", 2)
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
@@ -101,6 +103,9 @@ MANUAL_TASK_TYPES = frozenset(
         TaskTypes.SECRET_FRONT,
     }
 )
+
+
+MAINTENANCE_TASK_TYPES = frozenset({TaskTypes.FLASH_UPDATE, TaskTypes.SERVER_UPDATE})
 
 
 class TaskScope(Enum):
@@ -377,7 +382,7 @@ def protect_priority_tasks(
         key=lambda t: t.time,
     )
     _advance_support_swaps_for_maintenance(
-        swaps, run_order_delay, execution_time, now, op_data
+        swaps, run_order_delay, execution_time, now, op_data, tasks
     )
     for swap in swaps:
         _advance_swap_before_orders(tasks, swap, now, execution_time, op_data)
@@ -394,14 +399,22 @@ def protect_priority_tasks(
 
 
 def _advance_support_swaps_for_maintenance(
-    swaps, run_order_delay, execution_time, now, op_data
+    swaps, run_order_delay, execution_time, now, op_data, tasks=()
 ):
     if not swaps:
         return
-    windows = [NewsChecker.get_daily_reset(now), NewsChecker.get_maintenance()]
+    windows = [
+        NewsChecker.get_daily_reset(now),
+        NewsChecker.get_maintenance(),
+        *(
+            task.maintenance_info
+            for task in tasks
+            if task.type in MAINTENANCE_TASK_TYPES
+        ),
+    ]
     # 先处理较晚边界，提前换人产生的新冲突在同轮继续向前处理。
     for maintenance in sorted(
-        (info for info in windows if info is not None),
+        {info for info in windows if info is not None and info.prepare},
         key=lambda info: info.start,
         reverse=True,
     ):
@@ -1155,6 +1168,11 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
     index = 0
     while index < len(ordered):
         task = ordered[index]
+        if task.type in MAINTENANCE_TASK_TYPES:
+            # 用户指定的维护起止时间不参与普通任务的避让改时。
+            cursor = max(cursor, task.maintenance_info.end)
+            index += 1
+            continue
         if id(task) in priority_ids:
             start = max(cursor, task.time)
             if task.type == TaskTypes.SWAP_SUPPORT:
@@ -1348,6 +1366,13 @@ def adjust_run_order_for_maintenance(
     windows = [
         (*NewsChecker.get_update_time(), False),
         (reset.start, reset.end, True),
+        *[
+            (task.maintenance_info.start, task.maintenance_info.end, False)
+            for task in tasks
+            if task.type in MAINTENANCE_TASK_TYPES
+            and task.maintenance_info.prepare
+            and (now or datetime.now()) < task.time
+        ],
     ]
     blocked_orders = blocked_run_order_ids(tasks, op_data)
     orders = [
@@ -1361,7 +1386,7 @@ def adjust_run_order_for_maintenance(
     for st, ed, daily_reset in sorted(
         (
             window
-            for window in windows
+            for window in set(windows)
             if window[0] is not None and window[1] is not None
         ),
         reverse=True,
@@ -3609,6 +3634,19 @@ class SchedulerTask:
     meta_data = ""
 
     @property
+    def maintenance_info(self):
+        return MaintenanceInfo(
+            start=self.time,
+            end=self.time + timedelta(minutes=getattr(self, "duration_minutes", 10)),
+            update_type="major" if self.type == TaskTypes.SERVER_UPDATE else "hot",
+            title=self.type.display_value,
+            url="",
+            announcement_id=f"manual-{self.type.value}-{self.time.isoformat()}",
+            manual=True,
+            prepare=getattr(self, "maintenance_mode", "prepare") == "prepare",
+        )
+
+    @property
     def retains_execution(self):
         """失败任务与重新准入的剩余执行均保留原对象、安排和时间。"""
         return bool(
@@ -3681,6 +3719,9 @@ class SchedulerTask:
 
     @property
     def display_name(self):
+        if self.type in MAINTENANCE_TASK_TYPES:
+            mode = "提前准备" if self.maintenance_info.prepare else "直接暂停"
+            return f"{self.type.display_value}（{getattr(self, 'duration_minutes', 10)} 分钟，{mode}）"
         if target := getattr(self, "replacement_check", None):
             return self.meta_data or f"替班心情检查：{target['cover']}"
         if self.type == TaskTypes.SELF_CORRECTION and getattr(

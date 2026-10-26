@@ -46,9 +46,13 @@ class MaintenanceInfo:
     title: str
     url: str
     announcement_id: str
+    manual: bool = False
+    prepare: bool = True
 
     @property
     def allows_early_login(self) -> bool:
+        if self.manual:
+            return False
         return self.update_type == "major" or "停机维护" in self.title
 
     @property
@@ -72,6 +76,52 @@ class NewsChecker:
     cached_et = None
     cached_maintenance = None
     last_check_ts = None
+    manual_maintenance_provider = staticmethod(lambda: ())
+
+    @classmethod
+    def get_manual_maintenances(cls, now=None):
+        now = now or datetime.now()
+        return [info for info in cls.manual_maintenance_provider() if now < info.end]
+
+    @classmethod
+    def get_effective_maintenance(cls):
+        now = datetime.now()
+        announced = cls.get_maintenance()
+        candidates = cls.get_manual_maintenances(now)
+        if announced is not None:
+            candidates.append(announced)
+        # 已开始的维护先接管；官网要求更新客户端时仍使用原有停止流程。
+        return min(
+            candidates,
+            key=lambda info: (
+                not info.active_at(now),
+                not (
+                    info.active_at(now)
+                    and not info.manual
+                    and info.update_type == "major"
+                ),
+                not (info.manual and info.active_at(now)),
+                info.start,
+            ),
+            default=None,
+        )
+
+    @classmethod
+    def get_major_maintenance(cls, now=None):
+        now = now or datetime.now()
+        candidates = [cls.get_maintenance(), *cls.get_manual_maintenances(now)]
+        return min(
+            (
+                info
+                for info in candidates
+                if info is not None
+                and info.update_type == "major"
+                and not info.is_flash_update
+                and now < info.start
+            ),
+            key=lambda info: info.start,
+            default=None,
+        )
 
     @classmethod
     def get_daily_reset(cls, now=None):
@@ -249,6 +299,6 @@ class NewsChecker:
         still use their full announced interval.
         """
         info = cls.get_maintenance()
-        if info is None:
+        if info is None or not info.prepare:
             return None, None
         return info.start, info.resume_at

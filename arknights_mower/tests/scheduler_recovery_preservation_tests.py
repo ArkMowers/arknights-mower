@@ -14,6 +14,7 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device import recovery
 from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.scheduler_task import (
+    MAINTENANCE_TASK_TYPES,
     MANUAL_TASK_TYPES,
     SchedulerTask,
     TaskTypes,
@@ -26,13 +27,17 @@ CRITICAL_TYPES = {
     TaskTypes.SWITCH_PRODUCT,
     TaskTypes.FIAMMETTA,
 }
-FUTURE_TYPES = {
-    TaskTypes.RUN_ORDER,
-    TaskTypes.FURNITURE,
-    TaskTypes.DEPOT,
-    TaskTypes.CLUE,
-    TaskTypes.WORKSHOP,
-} | MANUAL_TASK_TYPES
+FUTURE_TYPES = (
+    {
+        TaskTypes.RUN_ORDER,
+        TaskTypes.FURNITURE,
+        TaskTypes.DEPOT,
+        TaskTypes.CLUE,
+        TaskTypes.WORKSHOP,
+    }
+    | MANUAL_TASK_TYPES
+    | MAINTENANCE_TASK_TYPES
+)
 MANUAL_TYPES = (
     TaskTypes.FURNITURE,
     TaskTypes.DEPOT,

@@ -146,6 +146,7 @@ from arknights_mower.utils.resting_priority import (
     resting_tier,
 )
 from arknights_mower.utils.scheduler_task import (
+    MAINTENANCE_TASK_TYPES,
     MANUAL_TASK_TYPES,
     SchedulerTask,
     TaskScope,
@@ -975,6 +976,13 @@ class BaseSchedulerSolver(
         if config.maintenance_recheck.is_set():
             return
         self._discard_legacy_mood_control_tasks()
+        if any(
+            task.type in MAINTENANCE_TASK_TYPES
+            and task.maintenance_info.active_at(datetime.now())
+            for task in self.tasks
+        ):
+            config.maintenance_recheck.set()
+            return
         self.error = False
         self._refresh_observed_recovery_tasks()
         sync_replacement_checks(self)
@@ -1007,6 +1015,9 @@ class BaseSchedulerSolver(
             logger.info(f"出现任务调度情况休息{reschedule_time}秒等待下一个任务开始")
             # 休眠可能被新增任务唤醒；返回后重新排序、选择并检查到期时间。
             self._idle_sleep(reschedule_time)
+        if self.task is not None and self.task.type in MAINTENANCE_TASK_TYPES:
+            config.maintenance_recheck.set()
+            return
         if config.maintenance_recheck.is_set():
             return
         if self.party_time is not None and self.party_time < datetime.now():
@@ -2065,13 +2076,17 @@ class BaseSchedulerSolver(
                 TaskTypes.SWITCH_PRODUCT,
                 TaskTypes.FIAMMETTA,
             }
-            future_preserved = {
-                TaskTypes.RUN_ORDER,
-                TaskTypes.FURNITURE,
-                TaskTypes.DEPOT,
-                TaskTypes.CLUE,
-                TaskTypes.WORKSHOP,
-            } | MANUAL_TASK_TYPES
+            future_preserved = (
+                {
+                    TaskTypes.RUN_ORDER,
+                    TaskTypes.FURNITURE,
+                    TaskTypes.DEPOT,
+                    TaskTypes.CLUE,
+                    TaskTypes.WORKSHOP,
+                }
+                | MANUAL_TASK_TYPES
+                | MAINTENANCE_TASK_TYPES
+            )
             if any(
                 t.time < now - timedelta(minutes=15)
                 and t.type not in preserved

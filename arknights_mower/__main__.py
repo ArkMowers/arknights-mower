@@ -34,6 +34,20 @@ if TYPE_CHECKING:
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
 base_scheduler = None
+_startup_maintenance_tasks = ()
+
+
+def _manual_maintenances():
+    from arknights_mower.utils.scheduler_task import MAINTENANCE_TASK_TYPES
+
+    tasks = base_scheduler.tasks if base_scheduler else _startup_maintenance_tasks
+    return [
+        task.maintenance_info for task in tasks if task.type in MAINTENANCE_TASK_TYPES
+    ]
+
+
+NewsChecker.manual_maintenance_provider = staticmethod(_manual_maintenances)
+
 device_control = create_device_control()
 _maintenance_timer = None
 _maintenance_timer_key = None
@@ -103,20 +117,24 @@ def _cancel_maintenance_timer():
         _maintenance_timer_key = None
 
 
-def _arm_maintenance_timer(info: MaintenanceInfo, now=None):
+def _arm_maintenance_timer(info: MaintenanceInfo, now=None, *, major_info=None):
     """Wake for threshold activation, then react exactly when maintenance starts."""
     global _maintenance_timer, _maintenance_timer_key
     now = now or datetime.now()
-    threshold_at = info.start - timedelta(
+    major_info = major_info or info
+    threshold_at = major_info.start - timedelta(
         hours=config.conf.version_update_threshold_advance_hours
     )
-    threshold_pending = info.update_type == "major" and now < threshold_at
+    threshold_pending = (
+        major_info.update_type == "major" and now < threshold_at <= info.start
+    )
     target = threshold_at if threshold_pending else info.start
     action = "threshold" if threshold_pending else "maintenance"
     delay = (target - now).total_seconds()
     if delay <= 0:
         return
-    key = (info.announcement_id, target, action)
+    owner = major_info if threshold_pending else info
+    key = (owner.announcement_id, target, action)
     with _maintenance_timer_lock:
         if _maintenance_timer_key == key and _maintenance_timer is not None:
             return
@@ -131,7 +149,7 @@ def _arm_maintenance_timer(info: MaintenanceInfo, now=None):
                     _maintenance_timer_key = None
                 config.maintenance_recheck.set()
                 config.wake_scheduler.set()
-            elif info.update_type == "major":
+            elif info.update_type == "major" and not info.manual:
                 _stop_for_major_update(info)
             else:
                 config.maintenance_recheck.set()
@@ -203,13 +221,13 @@ def _handle_maintenance(info: MaintenanceInfo, scheduler, now=None):
     now = now or datetime.now()
     if not info.active_at(now):
         return False
-    if info.update_type == "major":
+    if info.update_type == "major" and not info.manual:
         _stop_for_major_update(info)
         return True
 
     flash_probe_at = min(info.end, info.start + timedelta(minutes=2))
     flash_probe_pending = False
-    if info.is_flash_update:
+    if not info.manual and info.is_flash_update:
         if info.announcement_id in _flash_probe_ids:
             return False
         probe_reference = max(now, flash_probe_at)
@@ -249,7 +267,7 @@ def _handle_maintenance(info: MaintenanceInfo, scheduler, now=None):
 def _wait_before_early_login_retry(now=None):
     """Wait out a failed flash probe or retry early downtime entry in five minutes."""
     now = now or datetime.now()
-    info = NewsChecker.get_maintenance()
+    info = NewsChecker.get_effective_maintenance()
     if (
         info is not None
         and info.is_flash_update
@@ -288,7 +306,7 @@ def _read_depot_scan_timestamp(path):
 
 # 执行自动排班
 def main(saved_state, *, preparation_serial=None):
-    global base_scheduler
+    global base_scheduler, _startup_maintenance_tasks
     config.maintenance_recheck.clear()
     try:
         with (
@@ -311,20 +329,27 @@ def main(saved_state, *, preparation_serial=None):
         _close_device_session()
         _cancel_maintenance_timer()
         base_scheduler = None
+        _startup_maintenance_tasks = ()
 
 
 def _main(saved_state):
+    global _startup_maintenance_tasks
+
+    _startup_maintenance_tasks = saved_state.get("tasks", ()) if saved_state else ()
     logger.info("开始运行Mower")
     from arknights_mower.utils.recycling_report import start_recycling_reports
 
     start_recycling_reports()
-    maintenance = NewsChecker.get_maintenance()
-    if maintenance is not None:
-        _arm_maintenance_timer(maintenance)
+    while (maintenance := NewsChecker.get_effective_maintenance()) is not None:
+        _arm_maintenance_timer(
+            maintenance, major_info=NewsChecker.get_major_maintenance()
+        )
         # Check before connecting to the game. A Mower started during maintenance
         # may otherwise fail device/game initialization before reaching the loop.
         if _handle_maintenance(maintenance, None):
             return
+        if not (maintenance.manual and maintenance.start <= datetime.now()):
+            break
     rapidocr.initialize_ocr()
     data = None
     if saved_state != {}:
@@ -515,7 +540,7 @@ def simulate(saved):
         logger.error(f"排班验证失败: {validation_msg['message']}")
         return
     _apply_version_update_resting_threshold(
-        NewsChecker.get_maintenance(), base_scheduler
+        NewsChecker.get_major_maintenance(), base_scheduler
     )
     if saved and not saved.get("_process_crash_no_snapshot"):
         try:
@@ -722,12 +747,23 @@ def simulate(saved):
         try:
             config.maintenance_recheck.clear()
             refresh_resource_at_boundary()
-            maintenance = NewsChecker.get_maintenance()
-            _apply_version_update_resting_threshold(maintenance, base_scheduler)
+            from arknights_mower.utils.scheduler_task import MAINTENANCE_TASK_TYPES
+
+            base_scheduler.tasks[:] = [
+                task
+                for task in base_scheduler.tasks
+                if task.type not in MAINTENANCE_TASK_TYPES
+                or datetime.now() < task.maintenance_info.end
+            ]
+            maintenance = NewsChecker.get_effective_maintenance()
+            major_maintenance = NewsChecker.get_major_maintenance()
+            _apply_version_update_resting_threshold(major_maintenance, base_scheduler)
             if maintenance is not None:
-                _arm_maintenance_timer(maintenance)
+                _arm_maintenance_timer(maintenance, major_info=major_maintenance)
                 if _handle_maintenance(maintenance, base_scheduler):
                     return
+                if maintenance.manual and maintenance.start <= datetime.now():
+                    continue
             if (
                 find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
                 is not None

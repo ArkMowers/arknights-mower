@@ -12,6 +12,15 @@ Manual tasks carry no room arrangement or caller-supplied metadata. Adding one r
 
 [`manual_tasks.py`](../../arknights_mower/solvers/manual_tasks.py) owns selection and remaining steps; [`manual_task_tests.py`](../../arknights_mower/tests/manual_task_tests.py) verifies queue dispatch, authentication, runner selection and unchanged-dependency retention offline. Existing scheduling and configuration concepts retain their meanings.
 
+<a id="manual-maintenance-windows"></a>
+## Manual Maintenance Windows
+
+The task dialog also admits flash updates and server downtime with a selected start and an integer duration of 1–10080 minutes, defaulting to ten minutes. Flash updates offer preparation followed by pause, or direct pause. Preparation reuses the existing maintenance Drone Acceleration and mastery support handoff scheduling. Direct pause does not advance either operation for that window. Server downtime uses preparation and supplies the existing major-maintenance condition, so configured maintenance backups activate at their own lead times; creating a task does not force an immediate backup transition.
+
+The queue owns these windows and preserves their start, duration and mode through saved-state recovery and software-update replanning. Adding a window requires the existing Web UI token, clears caller-supplied room arrangements and metadata, and wakes maintenance evaluation. During a manual window, dispatch pauses until its exact end, with no announced flash probe or half-hour early login. Manual server downtime resumes automatically instead of invoking the announced client-update stop. Official announcements retain their existing handling. A nearer manual flash does not hide a later major update's preparation threshold or its scheduled wakeup. Expired manual windows leave the queue without deleting other pending tasks. These are operational additions to existing scheduling concepts; glossary definitions remain unchanged.
+
+[`manual_maintenance_tests.py`](../../arknights_mower/tests/manual_maintenance_tests.py) verifies authentication, queue recovery, preparation, exact-end waiting and maintenance-condition timing offline. [`TaskDialog.test.js`](../../ui/src/components/TaskDialog.test.js) covers form defaults and submitted choices.
+
 ## Start with the affected operation
 
 | Operation | Implementation entry | Focused offline verification |
