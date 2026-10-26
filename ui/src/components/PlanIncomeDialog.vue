@@ -21,7 +21,9 @@ import {
   renderIncomeImage,
   downloadIncomeImage,
   incomeReportLines,
-  incomeImageFilename
+  incomeImageFilename,
+  incomeValuationRows,
+  signedIncomeNumber
 } from '@/riic/incomeImage'
 import { MOWER_INVENTORY_ITEMS } from '@/riic/vendor/domain/simulationInventory'
 
@@ -179,6 +181,14 @@ watch(
 const metrics = computed(() =>
   state.result?.success ? incomeMetrics(state.result.summary, state.result.observedHours / 24) : []
 )
+const valuation = computed(() => (state.result?.success ? state.result.summary.valuation : null))
+const valuationRows = computed(() => incomeValuationRows(state.result?.summary))
+const quantityDescription = computed(() => {
+  const mode =
+    state.result?.simulationReport?.production?.assumptions.outputMode ??
+    (state.result?.inventoryMode === 'finite' ? 'settled' : 'potential')
+  return mode === 'settled' ? '产物数量为采样期产出且已收取量。' : '产物数量为采样期完成量。'
+})
 const summary = computed(() => state.bottleneck?.slowest ?? state.bottleneck?.latest)
 const planIssues = computed(() =>
   props.snapshot ? validateRosterWorkspace(incomeWorkspace(props.snapshot.plan)).issues : []
@@ -667,7 +677,41 @@ onBeforeUnmount(() => {
               赤金等价龙门币 = 制造赤金 × 500 + 龙舌兰等特殊订单溢价；不扣除交付消耗的赤金。
               <span v-if="state.result.inventoryMode === 'finite'">实际消耗及余额见库存收支。</span>
             </p>
-            <h3>日均加权产出 {{ format(state.result.summary.totalScore82) }}</h3>
+            <h3>
+              日均加权产出 {{ format(state.result.summary.totalScore82) }}
+              <span v-if="valuation">（含在制品估值）</span>
+            </h3>
+            <template v-if="valuation">
+              <p>
+                已完成产出日均 {{ format(valuation.completedScore.daily) }}；在制品净调整日均
+                {{ signedIncomeNumber(valuation.adjustment.score.daily) }}。
+                {{ quantityDescription }}估值不增加库存或触发库存副表。
+              </p>
+              <n-table size="small">
+                <thead>
+                  <tr>
+                    <th>在制品估值</th>
+                    <th>期初</th>
+                    <th>期末</th>
+                    <th>净调整</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>加权估值</td>
+                    <td>{{ format(valuation.opening.score.total) }}</td>
+                    <td>{{ format(valuation.closing.score.total) }}</td>
+                    <td>{{ signedIncomeNumber(valuation.adjustment.score.total) }}</td>
+                  </tr>
+                  <tr v-for="row in valuationRows" :key="row.key">
+                    <td>{{ row.label }}（{{ row.unit }}）</td>
+                    <td>{{ format(row.opening) }}</td>
+                    <td>{{ format(row.closing) }}</td>
+                    <td>{{ signedIncomeNumber(row.adjustment) }}</td>
+                  </tr>
+                </tbody>
+              </n-table>
+            </template>
             <n-table size="small"
               ><thead>
                 <tr>

@@ -9,6 +9,7 @@ import type { RosterWorkspace } from '../domain/roster'
 import { validateRosterWorkspace, type ValidationResult } from './validate'
 import { runScheduleSimulationBridge } from './scheduleSimulationBridge'
 import { scoreSimulationProduction, simulationOutputAmounts, simulationOutputOrders } from '../simulator/productionScore'
+import { scoreProductionAdjustment } from '../domain/productionScore'
 import { normalizeProductionWeights } from '../domain/productionWeights'
 import type { ScheduleSimulationOptions, ScheduleSimulationReport, ScheduleSimulationProgress } from '../simulator/scheduleSimulation'
 
@@ -90,6 +91,12 @@ export function simulationReportToCalculationReport(
     netGoldCount,
     netGoldValue: netGoldCount * 500,
     totalScore82,
+    ...(simReport.production?.valuation?{valuation:(()=>{
+      const v=simReport.production!.valuation!
+      const value=(amounts:typeof v.adjustment)=>{const daily=scoreProductionAdjustment(amounts,simReport.observedHours,simReport.inputs.options.productionWeights).total;return {amounts:{...amounts},score:{daily,total:daily*days}}}
+      const completedDaily=scoreBreakdown.completed!.total
+      return {policy:v.policy,opening:value(v.opening.amounts),closing:value(v.closing.amounts),adjustment:value(v.adjustment),completedScore:{daily:completedDaily,total:completedDaily*days}}
+    })()}:{}),
     scoreBreakdown,
     totalEquivalentLmd,
   }

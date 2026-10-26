@@ -520,13 +520,13 @@ it('does not count ordinary gold delivery as gold income or deduct it from manuf
   })
   expect(result.success, result.error).toBe(true)
   expect(result.summary.goldConsumed).toBeGreaterThan(0)
-  expect(incomeGoldEquivalentLmd(result.summary)).toBeCloseTo(9000, 8)
+  expect(incomeGoldEquivalentLmd(result.summary)).toBeCloseTo(10000, 8)
   expect(incomeImageMetrics(result.summary, 1).find((row) => row.key === 'gold').daily).toBeCloseTo(
-    9000,
+    10000,
     8
   )
   const rows = incomeMetrics(result.summary, 1)
-  expect(rows.find((row) => row.label === '赤金等价龙门币').daily).toBeCloseTo(9000, 8)
+  expect(rows.find((row) => row.label === '赤金等价龙门币').daily).toBeCloseTo(10000, 8)
   expect(rows.some((row) => ['赤金产量', '赤金消耗', '赤金净增'].includes(row.label))).toBe(false)
   source.plan1.room_1_1.product = 'exp'
   const noGold = calculateIncome(source, {
@@ -572,7 +572,15 @@ it.each(['龙舌兰', '可露希尔'])(
       (result.resources.inflows.gold * 500 + premiums) / (result.observedHours / 24),
       6
     )
-    expect(result.summary.totalScore82).toBeCloseTo(value * 0.8 + result.summary.orderLmd * 0.2, 6)
+    const completedScore = value * 0.8 + result.summary.orderLmd * 0.2
+    const adjustment = result.summary.valuation.adjustment.amounts
+    const estimatedScore =
+      (adjustment.exp +
+        (adjustment.gold + adjustment.virtualGold) * 500 * 0.8 +
+        adjustment.orderLmd * 0.2) /
+      (result.observedHours / 24)
+    expect(result.summary.valuation.completedScore.daily).toBeCloseTo(completedScore, 6)
+    expect(result.summary.totalScore82).toBeCloseTo(completedScore + estimatedScore, 6)
     expect(result.resources.closing.gold).toBeCloseTo(
       (result.resources.opening.gold ?? 0) +
         (result.resources.inflows.gold ?? 0) -

@@ -122,6 +122,7 @@ function scoringReport(mode: 'settled' | 'potential') {
   report.inputs.options.productionWeights = { exp: 1, gold: .8, orders: .2, fragments: 10, orundum: 5 }
   const production = report.production!
   production.assumptions.outputMode = mode
+  delete production.valuation
   production.ledger.initial = { exp: 1000000, gold: 1000, lmd: 1000000, fragment: 100, orundum: 1000 }
   production.sample.completed = { exp: 9000, gold: 9, orderLmd: 2250 }
   production.sample.inflows = { exp: 1000, gold: 2, lmd: 2500, fragment: 3, orundum: 20 }
@@ -129,11 +130,12 @@ function scoringReport(mode: 'settled' | 'potential') {
   production.manufacturing = [{ roomId: 'room_1_1', product: 'fragment', completedItems: 12, sampleCompletedItems: 8, pendingItems: 5, remainingBaseMinutes: 0, blockedHours: 0, blockedMaterialHours: 0 }]
   const base = getOrderDistribution(3).find(order => order.goldCost === 4)!
   const order = (id: string, completedAt: number, tequila: 1 | 2 = 2) => ({ ...captureOrder(base, { tequila }, completedAt), id, startedAt: 0 })
+  const paidAt = mode === 'settled' ? 1.25 : .5
   production.events = [
     { time: .25, type: 'order-completed', order: order('warmup', .25) },
     { time: .75, type: 'order-collected', order: order('warmup', .25) },
-    { time: .5, type: 'order-completed', order: order('paid', .5) },
-    { time: 1.5, type: 'order-collected', order: order('paid', .5) },
+    { time: paidAt, type: 'order-completed', order: order('paid', paidAt) },
+    { time: 1.5, type: 'order-collected', order: order('paid', paidAt) },
     { time: 2, type: 'order-completed', order: order('unpaid', 2, 1) },
   ]
   return report

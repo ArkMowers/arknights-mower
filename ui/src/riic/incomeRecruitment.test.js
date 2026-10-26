@@ -105,7 +105,10 @@ it('reports actual office interval production through the complete Worker calcul
   // 24 h at 145% produces 2 complete refreshes, with partial progress retained.
   expect(result.summary.recruitmentCount).toBeCloseTo(2, 8)
   expect(result.summary.goldCount).toBeGreaterThan(0)
-  expect(result.summary.totalScore82).toBeCloseTo(result.summary.goldCount * 400)
+  expect(result.summary.valuation.completedScore.daily).toBeCloseTo(result.summary.goldCount * 400)
+  expect(result.summary.totalScore82).toBeCloseTo(
+    (result.summary.goldCount + result.summary.valuation.adjustment.amounts.gold) * 400
+  )
   expect(
     incomeMetrics(result.summary, result.observedHours / 24).find((row) => row.label === '公招刷新')
       .total

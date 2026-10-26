@@ -423,3 +423,46 @@ it('does not start on network failure or a validation response received after cl
   await start
   expect(workers).toHaveLength(0)
 })
+
+it('retains signed WIP valuation separately from actual products through display, archive and export', async () => {
+  await page.readCache()
+  await page.start()
+  const result = success()
+  result.inventoryMode = 'finite'
+  result.goldInventory = { initial: 0, sampleOpening: 0, closing: 0 }
+  result.summary = {
+    totalScore82: 75,
+    exp: 1000,
+    valuation: {
+      policy: '按采样边界技能估值',
+      completedScore: { daily: 100, total: 2800 },
+      opening: { amounts: { exp: 500 }, score: { daily: 50, total: 1400 } },
+      closing: { amounts: { exp: 250 }, score: { daily: 25, total: 700 } },
+      adjustment: { amounts: { exp: -250 }, score: { daily: -25, total: -700 } }
+    }
+  }
+  workers[0].onmessage({ data: { type: 'complete', result } })
+  expect(page.valuation.value).toEqual(result.summary.valuation)
+  expect(page.quantityDescription.value).toBe('产物数量为采样期产出且已收取量。')
+  expect(page.valuationRows.value).toEqual([
+    { key: 'exp', label: '制造经验', unit: '经验值', opening: 500, closing: 250, adjustment: -250 }
+  ])
+  expect(page.metrics.value.find((row) => row.label === '经验').daily).toBe(1000)
+  expect(page.reportLines.value.join('\n')).toContain('含在制品估值')
+  const saved = saveIncomeArchive.mock.calls.at(-1)[0]
+  expect(saved.result.summary.valuation.adjustment.score.daily).toBe(-25)
+  loadIncomeArchive.mockResolvedValue(saved)
+  await page.restoreResult()
+  await page.exportImage()
+  expect(renderIncomeImage.mock.calls.at(-1)[1].summary).toEqual(result.summary)
+  expect(downloadIncomeImage.mock.calls.at(-1)[1]).toContain('日均收益75_')
+  const legacy = { ...saved, result: { ...saved.result, summary: { ...saved.result.summary } } }
+  delete legacy.result.summary.valuation
+  loadIncomeArchive.mockResolvedValue(legacy)
+  await page.restoreResult()
+  expect(page.valuation.value).toBeUndefined()
+  expect(page.valuationRows.value).toEqual([])
+  await page.exportImage()
+  expect(renderIncomeImage.mock.calls.at(-1)[1].summary.totalScore82).toBe(75)
+  expect(renderIncomeImage.mock.calls.at(-1)[1].summary).not.toHaveProperty('valuation')
+})

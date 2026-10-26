@@ -531,12 +531,14 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    Object.assign(state.morale,moraleStep.morale)
    moraleStep=undefined
   }
+  if(production&&state.time>=total)break
   production?.settle(()=>frameAt(0))
   if(state.config.mowerSourcePlan?nextRosterActionHours(state,rates)===0:Math.abs(dt-action)<=EPS){settle();production?.settle(()=>frameAt(0))}
  }
  const unresolvedFailures=state.mowerSource?.queue.tasks.filter(task=>task.executionFailure&&!task.coordinationDependencyWait)??[]
  for(const task of unresolvedFailures)diagnostic('MOWER_PENDING_TASK_FAILURE',`统计结束仍有未恢复的${task.type.displayValue}任务（${Object.keys(task.plan).join('、')}）：${task.executionFailure!.reason}；保留原任务和时间，本次收益演算未完整完成`)
  report.elapsedHours=state.time;report.success=!backupFailed&&!unresolvedFailures.length&&Math.abs(state.time-total)<EPS
+ if(report.success)production?.finalize(frameAt(0))
  report.operators=[...stats.values()].map(s=>({...s,initialMorale:initial[s.operatorId]??s.initialMorale,finalMorale:state.morale[s.operatorId]!,workFraction:report.observedHours?s.workHours/report.observedHours:0,workRestRatio:s.restHours>EPS?s.workHours/s.restHours:null}))
  report.rooms=[...roomStats.values()].map(r=>({...r,averageEfficiencyPercent:report.observedHours?r.efficiencyPercentHours/report.observedHours:0,teams:r.teams.map(t=>({...t,fraction:report.observedHours?t.hours/report.observedHours:0}))}))
  if(production){report.production=production.report();report.production.success&&=report.success}

@@ -166,6 +166,13 @@ export interface CalculationReport {
     netGoldCount: number
     netGoldValue: number
     totalScore82: number
+    valuation?: {
+      policy:string
+      opening:{amounts:import('./productionScore').ProductionAdjustment;score:{daily:number;total:number}}
+      closing:{amounts:import('./productionScore').ProductionAdjustment;score:{daily:number;total:number}}
+      adjustment:{amounts:import('./productionScore').ProductionAdjustment;score:{daily:number;total:number}}
+      completedScore:{daily:number;total:number}
+    }
     scoreBreakdown?: import('./productionScore').ProductionScore
     totalEquivalentLmd: number
   } | null

@@ -12,8 +12,46 @@ import { incomeOrderDistribution } from './incomeOrders'
 import { incomeAlgorithmLabel } from '@/utils/incomeSettings'
 
 const number = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+export const signedIncomeNumber = (value) => `${value > 0 ? '+' : ''}${number(value)}`
+
+export function incomeValuationRows(summary) {
+  const valuation = summary?.valuation
+  if (!valuation) return []
+  return [
+    ['exp', '制造经验', '经验值'],
+    ['gold', '制造赤金', '个'],
+    ['orderLmd', '贸易龙门币', '龙门币'],
+    ['virtualGold', '特殊订单溢价', '赤金等价个数'],
+    ['fragments', '制造源石碎片', '个'],
+    ['orundum', '贸易合成玉', '个']
+  ]
+    .map(([key, label, unit]) => ({
+      key,
+      label,
+      unit,
+      opening: valuation.opening.amounts[key] ?? 0,
+      closing: valuation.closing.amounts[key] ?? 0,
+      adjustment: valuation.adjustment.amounts[key] ?? 0
+    }))
+    .filter((row) =>
+      [row.opening, row.closing, row.adjustment].some((value) => Math.abs(value) > 1e-8)
+    )
+}
+
+export function incomeImageSummaryLine(result, settings) {
+  const valuation = result.summary?.valuation
+  return `${incomeImageAlgorithmLines(settings)[0]} · ${number(result.observedHours / 24)} 天采样${
+    valuation
+      ? ` · 含在制品估值 · 估值净调整（日均）${signedIncomeNumber(valuation.adjustment.score.daily)}`
+      : ''
+  }`
+}
+
 export function incomeReportLines(result, settings, plan, label) {
   const finite = settings.finiteInventory || result.inventoryMode === 'finite'
+  const outputMode =
+    result.simulationReport?.production?.assumptions.outputMode ??
+    (finite ? 'settled' : 'potential')
   const initialMood =
     result.initialConditions?.fiammettaMorale == null
       ? '初始心情 24（受个人上限约束）'
@@ -57,6 +95,12 @@ export function incomeReportLines(result, settings, plan, label) {
     )
       .map(([key, value]) => `${key}=${value}`)
       .join('；')}。加权产出不是龙门币结算额。`,
+    ...(result.summary?.valuation
+      ? [
+          `日均加权收益含在制品估值：已完成产出日均 ${number(result.summary.valuation.completedScore.daily)}；在制品期初加权估值 ${number(result.summary.valuation.opening.score.total)}，期末 ${number(result.summary.valuation.closing.score.total)}，净调整 ${signedIncomeNumber(result.summary.valuation.adjustment.score.total)}，日均贡献 ${signedIncomeNumber(result.summary.valuation.adjustment.score.daily)}。`,
+          `在制品按采样边界的生产进度及技能快照估值；贸易订单最终完成奖励可能变化。估值不进入库存，也不触发库存副表。${outputMode === 'settled' ? '产物数量为采样期产出且已收取量' : '产物数量为采样期完成量'}。预热期完成后在采样期领取的成品保留在库存收支中，不计入采样收益。`
+        ]
+      : []),
     `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
     provenance?.moodControlStrategyVersion
       ? provenance.moodControlStrategyVersion === 'ordinary-threshold-v1'
@@ -128,7 +172,6 @@ export async function renderIncomeImage(
     const width = source.naturalWidth
     const scale = width / 980
     const algorithmLines = incomeImageAlgorithmLines(settings)
-    const days = result.observedHours / 24
     const contentBottom = Math.max(100, 28 + Math.ceil(metrics.length / 3) * 24)
     const canvas = document.createElement('canvas')
     canvas.width = width
@@ -143,7 +186,7 @@ export async function renderIncomeImage(
       exportDetails,
       (text) => ctx.measureText(text).width / scale,
       516,
-      `${algorithmLines[0]} · ${number(days)} 天采样`
+      incomeImageSummaryLine(result, settings)
     )
     const orders = result.orderDistribution ?? incomeOrderDistribution(result.simulationReport)
     const annotationTop = Math.max(73 + weightLines.length * 14, orders?.other ? 100 : 87)
@@ -179,7 +222,7 @@ export async function renderIncomeImage(
       ctx.fillStyle = color
       ctx.fillText(text, x * scale, y * scale)
     }
-    write('日均加权收益', 28, 24, 13)
+    write(result.summary.valuation ? '日均加权收益（含在制品估值）' : '日均加权收益', 28, 24, 13)
     const score = number(result.summary.totalScore82)
     let scoreSize = 38
     ctx.font = `bold ${scoreSize * scale}px sans-serif`
