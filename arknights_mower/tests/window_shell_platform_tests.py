@@ -490,6 +490,56 @@ def test_desktop_window_start_failure_opens_the_original_browser_url(
     fixture.browser_open.assert_called_once_with(fixture.browser_url)
 
 
+@pytest.mark.parametrize("scales", [(1.0,), (1.25,), (1.5,), (2.0,), (1.25, 2.0, 1.0)])
+def test_winforms_saves_logical_resize_dimensions_across_display_scales(
+    desktop_url_window, windows_frameless_module, monkeypatch, scales
+):
+    import webview_ui
+    from arknights_mower.utils.config import gui
+
+    fixture = desktop_url_window
+    window = fixture.create_window.return_value
+    windows = windows_frameless_module
+    user32 = Mock()
+    user32.IsWindow.return_value = True
+    user32.IsIconic.return_value = False
+    user32.IsZoomed.return_value = False
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *args, **kwargs: user32, raising=False)
+    monkeypatch.setattr(window_shell.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(windows, "_winforms_hwnd", lambda window: 1)
+    monkeypatch.setattr(
+        windows, "install_windows_frameless_resize", fixture.install_windows_resize
+    )
+    monkeypatch.setitem(sys.modules, "arknights_mower.utils.windows_frameless", windows)
+    scale = Mock(return_value=scales[0])
+    monkeypatch.setattr(window_shell, "window_dpi_scale", scale)
+    form = SimpleNamespace(Handle=SimpleNamespace(ToInt64=lambda: 1))
+    monkeypatch.setitem(
+        sys.modules,
+        "webview.platforms.winforms",
+        SimpleNamespace(BrowserView=SimpleNamespace(instances={window.uid: form})),
+    )
+
+    def start(**kwargs):
+        window.events.shown.fire()
+        window.events.loaded.fire()
+        for current_scale in scales:
+            scale.return_value = current_scale
+            window.events.resized.fire(1200, 800)
+            assert (webview_ui.width, webview_ui.height) == (1200, 800)
+        window.events.closing.fire()
+        window.events.resized.fire(1800, 900)
+        window.events.closed.fire()
+
+    fixture.start.side_effect = start
+    with pytest.raises(SystemExit):
+        fixture.launch("winforms")
+    gui.save_window_ratio.assert_called_once_with(window_shell.WindowRatio(0.6, 0.8))
+    assert window_shell.window_size_from_ratio(
+        gui.save_window_ratio.call_args.args[0]
+    ) == window_shell.WindowSize(1200, 800)
+
+
 def test_desktop_backend_initialization_failure_opens_the_original_browser_url(
     desktop_url_window,
 ):

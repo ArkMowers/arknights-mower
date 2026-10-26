@@ -1996,7 +1996,7 @@ def _valid_preparation_serial(serial):
 
 
 def _run_mower_worker(saved_state, preparation_serial=None):
-    """Report a failed worker and retain automatic high-level recovery intent."""
+    """Stop failed workers; only an existing process recovery may retry them."""
     from arknights_mower.__main__ import main
     from arknights_mower.utils import crash_recovery
     from arknights_mower.utils.csleep import MowerExit
@@ -2034,11 +2034,19 @@ def _run_mower_worker(saved_state, preparation_serial=None):
             _request_mower_stop()
             logger.exception("工作线程已停止，请检查错误后手动启动")
             return
-        logger.exception("工作线程暂未完成，正在等待自动恢复")
         if not shutdown.closing and not config.stop_mower.is_set():
-            crash_recovery.activate(
-                f"工作线程发生异常：{exc}；后台退避后自动重新观察并接续任务。"
-            )
+            if crash_recovery.status().get("automatic"):
+                crash_recovery.activate(f"恢复期间工作线程发生异常：{exc}")
+                logger.exception("进程恢复尚未完成，保留任务等待后续恢复尝试")
+            else:
+                from arknights_mower.utils.instance_supervisor import task_intent
+
+                config.stop_mower.set()
+                try:
+                    task_intent(False)
+                except Exception:
+                    logger.exception("记录任务停止意图失败，工作线程已停止")
+                logger.exception("工作线程发生异常，本次任务运行已停止")
     finally:
         round_stop.cancel()
         if saved_state.get("_process_crash_recovery"):
@@ -2085,7 +2093,12 @@ def _start_mower(
             return False
         if start_type != "2":
             start_type = crash_recovery.pending_start_type() or start_type
-        if crash_recovery.status()["active"] and recovery_state is None:
+        current_recovery = crash_recovery.status()
+        if (
+            current_recovery["active"]
+            and current_recovery.get("reason") != "worker_exception"
+            and recovery_state is None
+        ):
             if automatic:
                 if not crash_recovery.status().get("automatic"):
                     return False
@@ -2136,9 +2149,7 @@ def _start_mower(
             set_mower_thread(None)
             config.stop_mower.set()
             try:
-                wanted = automatic and not crash_recovery.cancelled()
-                if wanted and not crash_recovery.status()["active"]:
-                    crash_recovery.activate("启动工作线程暂未成功，后台稍后自动重试。")
+                wanted = automatic and crash_recovery.status().get("automatic", False)
                 task_intent(wanted, automatic=wanted)
             except Exception:
                 logger.exception("记录任务停止意图失败，工作线程未启动")

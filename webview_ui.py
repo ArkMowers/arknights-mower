@@ -75,7 +75,7 @@ def linux_webview_backend_error() -> str | None:
     if platform.system() not in ("Linux", "OpenBSD"):
         return None
 
-    # 复刻 pywebview 5.1 guilib.initialize 的调度：PYWEBVIEW_GUI 优先，其次
+    # 按 pywebview guilib.initialize 的调度：PYWEBVIEW_GUI 优先，其次
     # KDE_FULL_SESSION 触发 Qt，否则默认 GTK 优先。
     requested_gui = os.environ.get("PYWEBVIEW_GUI", "").strip().lower()
     if requested_gui not in ("qt", "gtk"):
@@ -327,7 +327,6 @@ def webview_window(
         desktop_window_min_size,
         ratio_from_window_size,
         window_background_color,
-        window_dpi_scale,
         window_size_from_ratio,
     )
 
@@ -381,22 +380,6 @@ def webview_window(
     window_url = append_query_param(window_url, "window_theme", theme)
     window_url = append_query_param(window_url, "mower_version", title_version())
 
-    def current_dpi_scale() -> float:
-        # 窗口所在显示器 DPI 缩放（1.0 / 1.25 / 1.5 ...）。resized 回调给的是物理
-        # 像素，存盘前要还原成逻辑值，否则物理值会被 create_window 当作逻辑再放大
-        # 一次，越开越大。每次缩放时重新探测，窗口拖到不同 DPI 的显示器也能对上。
-        if not windows_native:
-            return 1.0
-        try:
-            from webview.platforms import winforms
-
-            form = winforms.BrowserView.instances.get(window.uid)
-            if form is not None:
-                return window_dpi_scale(int(form.Handle.ToInt64()))
-        except Exception:
-            pass
-        return 1.0
-
     def window_size(w, h):
         global width
         global height
@@ -431,8 +414,8 @@ def webview_window(
                     return  # Never persist maximized dimensions as normal size.
             except Exception:
                 return  # An unavailable native state is not a valid size sample.
-        scale = current_dpi_scale()
-        logical = sanitize_window_size(round(w / scale), round(h / scale))
+        # pywebview 6.2.1 的 resize 事件已使用逻辑像素，包括 WinForms。
+        logical = sanitize_window_size(w, h)
         if logical is not None:
             width, height = logical
 
@@ -559,7 +542,7 @@ def webview_window(
                 continue
             if msg == "file":
                 result = window.create_file_dialog(
-                    dialog_type=webview.OPEN_DIALOG,
+                    dialog_type=webview.FileDialog.OPEN,
                 )
             elif msg == "folder":
                 from arknights_mower.utils.folder_dialog import choose_directory
@@ -1054,18 +1037,30 @@ def _run_desktop():
                 # A cached page or manual request can already own the install.
                 if server.resource_update.running():
                     server.resource_update.thread.join()
-        with backup_lock:
-            if resume and not crash_notice["active"] and not startup_cancelled():
-                with server.app.test_request_context(
-                    method="GET", headers={"token": runtime_token}
-                ):
-                    if resume_mode in ("0", "1", "3"):
-                        server.start(resume_mode, automatic=True)
-                    else:
-                        server.start(
-                            "2" if resume_run else "0",
-                            automatic=True,
-                        )
+        while resume and not crash_notice["active"] and not startup_cancelled():
+            # Updates and task admission share this lock. Release both locks
+            # before waiting so maintenance and explicit Stop can finish.
+            with backup_lock, server.maa_maintenance_lock:
+                if startup_cancelled():
+                    return
+                pending = [
+                    job["thread"]
+                    for job in (server.maa_update_job, server.maa_resource_update_job)
+                    if server._job_running(job)
+                ]
+                if server.resource_update.running():
+                    pending.append(server.resource_update.thread)
+                if not pending:
+                    with server.app.test_request_context(
+                        method="GET", headers={"token": runtime_token}
+                    ):
+                        server.start(start_type, automatic=True)
+                    return
+            for thread in pending:
+                while thread.is_alive():
+                    if startup_cancelled():
+                        return
+                    thread.join(timeout=0.5)
 
     if resume and not crash_notice["active"] or auto_resource:
         Thread(target=resume_after_update, daemon=True).start()

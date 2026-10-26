@@ -1706,8 +1706,11 @@ class ArchiveAndLauncherTests(unittest.TestCase):
             config.conf.resource_update.enable = False
             config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
+            server.maa_maintenance_lock = threading.RLock()
             server._job_running.return_value = False
-            server.resource_update.running.side_effect = [True, False]
+            server.resource_update.running.side_effect = (
+                [False] if restart or automatic else []
+            ) + [True, False]
             server.stop.return_value = "true"
             registration = Mock(record={})
             registration.shutdown_requested.return_value = True
@@ -1812,7 +1815,10 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 stack.enter_context(patch("time.sleep"))
                 webview_ui.run_desktop()
                 auto_check.assert_called_once()
-                self.assertEqual(server.resource_update.running.call_count, 2)
+                self.assertEqual(
+                    server.resource_update.running.call_count,
+                    2 + int(restart or automatic),
+                )
                 targets = [call.args[0] for call in process.call_args_list]
                 expected = [] if background else ["splash"]
                 if (tray_enabled or background) and not managed:

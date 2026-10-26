@@ -16,8 +16,16 @@ notice = recovery.notice
 def test_worker_retry_preserves_first_trigger_after_progress_and_finally(
     offline, notice, monkeypatch
 ):
-    update_runtime.write_json(notice, {"active": False})
-    crash_recovery.activate("首次工作线程故障")
+    update_runtime.write_json(
+        notice,
+        {
+            "active": True,
+            "reason": "process_exit",
+            "exit_code": 23,
+            "occurred_at": "2026-10-20T12:00:00+00:00",
+            "trigger_message": "首次进程故障",
+        },
+    )
     first = crash_recovery.status()
     crash_recovery.begin()
     monkeypatch.setattr(
@@ -28,7 +36,9 @@ def test_worker_retry_preserves_first_trigger_after_progress_and_finally(
 
     current = crash_recovery.status()
     assert current["occurred_at"] == first["occurred_at"]
-    assert current["trigger_message"] == "首次工作线程故障"
+    assert current["trigger_message"] == "首次进程故障"
+    assert current["reason"] == "process_exit" and current["exit_code"] == 23
+    assert current["automatic"]
     assert "训练室读取失败" in current["last_failure_message"]
     assert current["last_failure_reason"] == "worker_exception"
     assert current["phase"] == "waiting"
@@ -64,7 +74,7 @@ def test_supervisor_repeated_exit_preserves_first_event_and_reports_last_exit(
     assert current["attempt"] == 2
 
 
-def test_worker_failure_keeps_native_trigger_and_new_episode_replaces_it(
+def test_worker_failure_keeps_native_trigger_and_cannot_open_another_episode(
     offline,
     notice,
 ):
@@ -88,15 +98,16 @@ def test_worker_failure_keeps_native_trigger_and_new_episode_replaces_it(
     assert current["last_failure_message"] == "后续观察失败"
 
     crash_recovery.complete()
+    completed = notice.read_bytes()
     crash_recovery.activate("新的独立故障")
     current = crash_recovery.status()
-    assert current["reason"] == "worker_exception"
-    assert current["trigger_message"] == "新的独立故障"
-    assert current["occurred_at"] != "2026-10-20T12:00:00+00:00"
-    assert "exit_code" not in current
+    assert not current["active"] and not current["automatic"]
+    assert notice.read_bytes() == completed
 
 
-def test_real_failure_during_explicit_start_creates_a_new_fault(offline, notice):
+def test_failed_explicit_start_within_native_episode_preserves_original_fault(
+    offline, notice
+):
     update_runtime.write_json(
         notice,
         {
@@ -112,10 +123,76 @@ def test_real_failure_during_explicit_start_creates_a_new_fault(offline, notice)
     crash_recovery.activate("本次启动期间发生异常")
 
     current = crash_recovery.status()
+    assert current["occurred_at"] == "2026-10-20T12:00:00+00:00"
+    assert current["trigger_message"] == "上一次启动前的故障"
+    assert current["reason"] == "process_exit" and current["exit_code"] == 23
+    assert current["last_failure_message"] == "本次启动期间发生异常"
+    assert current["automatic"]
+
+
+def test_reasonless_legacy_process_failure_keeps_retry_permission(offline, notice):
+    original = update_runtime.read_json(notice)
+
+    crash_recovery.activate("后续观察失败")
+
+    current = crash_recovery.status()
+    assert current["automatic"] and current["active"]
+    assert current.get("reason") is None
+    assert current["exit_code"] == original["exit_code"]
+    assert current["occurred_at"] == original["occurred_at"]
+    assert current["last_failure_reason"] == "worker_exception"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["process_exit", "process_creation", "startup_timeout", "http_unresponsive"],
+)
+def test_supervisor_fault_replaces_only_legacy_worker_origin(reason):
+    original = {
+        "active": True,
+        "reason": "worker_exception",
+        "occurred_at": "2026-10-20T12:00:00+00:00",
+        "trigger_message": "旧工作线程异常",
+    }
+
+    current = update_runtime.recovery_failure_details(
+        original, reason=reason, message="新的进程故障", exit_code=23
+    )
+
+    assert current["reason"] == reason
+    assert current["occurred_at"] != original["occurred_at"]
+    assert current["trigger_message"] == "新的进程故障"
+    assert current["exit_code"] == 23
+
+
+def test_supervisor_native_exit_after_legacy_worker_failure_starts_fresh_episode(
+    isolated_runtime,
+):
+    directory = isolated_runtime
+    update_runtime.write_json(
+        directory / "recovery.json",
+        {
+            "active": True,
+            "reason": "worker_exception",
+            "occurred_at": "2026-10-20T12:00:00+00:00",
+            "trigger_message": "旧工作线程异常",
+        },
+    )
+    command = processes.child_script(
+        directory, "if len(events) == 1: os._exit(23)\nchild_exit('window')\n"
+    )
+
+    assert (
+        instance_supervisor.supervise(
+            command, directory, delays=(0,), cooldowns=(0,), poll_interval=0.01
+        )
+        == 0
+    )
+
+    current = update_runtime.read_json(directory / "recovery.json")
+    assert current["active"] and current["reason"] == "process_exit"
     assert current["occurred_at"] != "2026-10-20T12:00:00+00:00"
-    assert current["trigger_message"] == "本次启动期间发生异常"
-    assert current["reason"] == "worker_exception"
-    assert "exit_code" not in current
+    assert current["exit_code"] == 23
 
 
 @pytest.mark.parametrize("progress", ["正在重新观察设备和驻员", "设备观察尚未完成"])

@@ -148,7 +148,7 @@ def choose_directory(window, directory="", title="选择文件夹"):
         import webview
 
         return window.create_file_dialog(
-            dialog_type=webview.FOLDER_DIALOG, directory=directory
+            dialog_type=webview.FileDialog.FOLDER, directory=directory
         )
     from arknights_mower.utils.windows_frameless import _winforms_hwnd, _winforms_window
 

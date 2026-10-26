@@ -4,11 +4,14 @@ The bundled FFmpeg libraries named ``libav*``/``libsw*`` in Linux wheels are
 link-time dependencies of ``cv2.abi3.so`` and must remain. This script only
 removes separately-loadable videoio FFmpeg plugins and the unused cascade data.
 It stages every candidate and imports/exercises core recognition APIs before
-making the deletion permanent.
+making the deletion permanent. The command line requires exactly one installed
+OpenCV distribution before pruning.
 """
 
 import argparse
+import importlib.metadata
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +25,29 @@ VIDEOIO_PATTERNS = (
     "libopencv_videoio_ffmpeg*.so*",
 )
 OPENCV_LIBRARY_DIRS = ("opencv_python.libs", "opencv_python_headless.libs")
+OPENCV_DISTRIBUTIONS = frozenset(
+    {
+        "opencv-python",
+        "opencv-python-headless",
+        "opencv-contrib-python",
+        "opencv-contrib-python-headless",
+    }
+)
+
+
+def check_opencv_distribution() -> None:
+    installed = []
+    for distribution in importlib.metadata.distributions():
+        name = re.sub(r"[-_.]+", "-", distribution.metadata.get("Name", "")).lower()
+        if name in OPENCV_DISTRIBUTIONS:
+            installed.append(f"{name}=={distribution.version}")
+    if len(installed) != 1:
+        found = ", ".join(sorted(installed)) or "none"
+        raise SystemExit(
+            "Install exactly one OpenCV distribution before pruning; "
+            f"found {len(installed)}: {found}. "
+            "OpenCV distributions share the 'cv2' package."
+        )
 
 
 def find_cv2_root() -> Path:
@@ -135,7 +161,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    check_opencv_distribution()
     candidates, removed_bytes = prune_opencv(find_cv2_root(), dry_run=args.dry_run)
+    if not args.dry_run and not candidates:
+        smoke_test_core_apis()
     action = "Would remove" if args.dry_run else "Removed"
     for path in candidates:
         print(f"{action}: {path}")

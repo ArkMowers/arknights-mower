@@ -581,47 +581,13 @@ class BaseSchedulerSolver(
                 "按非工作状态或心情耗尽处理"
             )
             return datetime.now()
+        if (
+            not isinstance(remaining, (int, float))
+            or not math.isfinite(remaining)
+            or remaining < 0
+        ):
+            raise RecognizeError(f"房间 {room} 第 {index + 1} 槽位倒计时未核实")
         return datetime.now() + timedelta(seconds=remaining)
-
-    def _fractional_work_mood(self, agent, room, index, remaining):
-        """用实际工作倒计时补足心情条未显示的小数，不采用默认消耗速率。"""
-        if (agent.current_room, agent.current_index) != (room, index):
-            return None
-        if getattr(self.op_data, "mood_calculation_enabled", False):
-            from arknights_mower.utils.calculated_mood import sync_model
-
-            model = copy.deepcopy(sync_model(self.op_data, advance_clock=False))
-            model.advance(datetime.now())
-            # 现有技能在 0 与 4 之间没有阈值；0.5 只选择正心情技能，
-            # 不作为观测，也不改变实际模型中的心情。
-            model.moods[agent.name] = 0.5
-            rate = model._rates().get(agent.name)
-        else:
-            rate = (
-                agent.depletion_rate
-                if getattr(agent, "depletion_rate_position", None) == (room, index)
-                and agent.time_stamp is not None
-                and agent.time_stamp <= datetime.now()
-                and isinstance(agent.mood, (int, float))
-                and math.isfinite(agent.mood)
-                and 0 <= agent.mood <= 24
-                and not getattr(agent, "mood_is_prediction", False)
-                else None
-            )
-        if not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
-            return None
-        mood = rate * remaining / 3600
-        return mood if 0 < mood < 1 else None
-
-    def _unconfirmed_work_mood(self, agent):
-        """保留原采样，撤销未核实的工作心情基线；重复观测不增加版本。"""
-        agent.working_mood_unconfirmed = True
-        agent.exhaust_time = None
-        if getattr(self.op_data, "mood_calculation_enabled", False):
-            model = self.op_data.mood_model
-            if agent.name in model.moods:
-                model.moods.pop(agent.name)
-                model.revision += 1
 
     def _task_failure_snapshot(self, task, rooms):
         """失败任务仅由新观测或相关安排变化重新准入，不使用时钟计时。"""
@@ -1290,6 +1256,11 @@ class BaseSchedulerSolver(
             for op in members
             if (mood := self.op_data.calculated_mood(op.name, now)) is not None
             and mood <= op.lower_limit
+            and not (
+                op.lower_limit == 0
+                and (end := op.working_zero_deadline(now)) is not None
+                and end > now
+            )
         ]
         if any(
             not getattr(op, "mood_is_prediction", False)
@@ -1327,6 +1298,12 @@ class BaseSchedulerSolver(
                     and item.get("agent") == op.name
                     and isinstance(item.get("mood"), (int, float))
                     and 0 <= item["mood"] <= op.lower_limit
+                    and not (
+                        op.lower_limit == 0
+                        and (end := op.working_zero_deadline(datetime.now()))
+                        is not None
+                        and end > datetime.now()
+                    )
                 ):
                     return True
         deadlines = [
@@ -3927,17 +3904,10 @@ class BaseSchedulerSolver(
                                     estimates.pop(name, None)
                         else:
                             estimates[name] = (mood, observed_at)
-                            if (
-                                getattr(self.op_data, "mood_calculation_enabled", False)
-                                and name
-                                not in getattr(
-                                    self, "_initial_mood_room_observations", set()
-                                )
-                                and not getattr(
-                                    self.op_data.operators.get(name),
-                                    "working_mood_unconfirmed",
-                                    False,
-                                )
+                            if getattr(
+                                self.op_data, "mood_calculation_enabled", False
+                            ) and name not in getattr(
+                                self, "_initial_mood_room_observations", set()
                             ):
                                 self.op_data.mood_model.observe(name, mood, observed_at)
                     if mood == 24:
@@ -3952,11 +3922,6 @@ class BaseSchedulerSolver(
                             for candidate in agent_list:
                                 if (
                                     candidate not in observed_names
-                                    and not getattr(
-                                        self.op_data.operators.get(candidate),
-                                        "working_mood_unconfirmed",
-                                        False,
-                                    )
                                     and candidate
                                     not in getattr(
                                         self, "_initial_mood_room_observations", set()
@@ -5559,8 +5524,6 @@ class BaseSchedulerSolver(
                 or not op.is_high()
                 or op.current_room not in base_room_list
             ):
-                continue
-            if getattr(op, "working_mood_unconfirmed", False):
                 continue
             if getattr(
                 self.op_data, "mood_calculation_enabled", False
@@ -13118,7 +13081,6 @@ class BaseSchedulerSolver(
             # 如果房间不为空
             update_time = False
             working_time = None
-            fractional_work_mood = False
             if _name != "":
                 if _name not in self.op_data.operators.keys() and _name in agent_list:
                     self.op_data.add(Operator(_name, ""))
@@ -13127,7 +13089,6 @@ class BaseSchedulerSolver(
                 previous_position = (agent.current_room, agent.current_index)
                 should_read_mood = (
                     force_mood
-                    or getattr(agent, "working_mood_unconfirmed", False)
                     or self.op_data.operators[_name].need_to_refresh(r=room)
                     or (self.tasks and self.tasks[0].type == TaskTypes.SHIFT_ON)
                     or i in read_time_index
@@ -13187,47 +13148,7 @@ class BaseSchedulerSolver(
                         or room.startswith("room_")
                     )
                 ):
-                    remaining = self.read_time(time_p[i], None)
-                    read_at = datetime.now()
-                    if (
-                        isinstance(remaining, (int, float))
-                        and math.isfinite(remaining)
-                        and remaining > 0
-                    ):
-                        working_time = read_at + timedelta(seconds=remaining)
-                        _mood = BaseSchedulerSolver._fractional_work_mood(
-                            self, agent, room, i, remaining
-                        )
-                        fractional_work_mood = _mood is not None
-                    elif remaining is None or remaining == 0:
-                        # 耗尽后游戏不显示倒计时；复核房间、姓名与零心情，
-                        # 不将未核实的空倒计时单独作为耗尽依据。
-                        self.recog.update()
-                        confirmed_zero = (
-                            not self.find("connecting")
-                            and self.find("room_detail") is not None
-                            and self.detect_room() == room
-                            and self.read_screen(
-                                cropimg(self.recog.gray, name_p[i]), type="name"
-                            )
-                            == _name
-                            and self.read_accurate_mood(
-                                cropimg(self.recog.gray, mood_p[i])
-                            )
-                            == 0
-                        )
-                        _mood = 0 if confirmed_zero else None
-                        if confirmed_zero:
-                            working_time = read_at
-                    else:
-                        _mood = None
-                    if _mood is None:
-                        BaseSchedulerSolver._unconfirmed_work_mood(self, agent)
-                        if strict_observation:
-                            raise RecognizeError(
-                                f"房间 {room} 第 {i + 1} 槽位零心情与工作倒计时未核实"
-                            )
-                        _mood, update_time = -1, False
+                    working_time = self.read_operator_time(room, i, time_p[i])
                 # 估算值只用于本次读数，保留与原采样时间配对的心情，避免重复扣减。
                 sample_mood = _mood if update_time else agent.mood
                 if training_observation is not None:
@@ -13279,11 +13200,13 @@ class BaseSchedulerSolver(
                         room.startswith("dorm") or agent.current_room.startswith("dorm")
                     )
                 )
-                # 倒计时补足的读数也不反过来作为实测下降更新消耗速率。
-                if charge_transition or fractional_work_mood:
+                if charge_transition:
                     record_kwargs["preserve_depletion_rate"] = True
                 record_kwargs.update(recovery_context)
                 high_no_time = self.op_data.update_detail(*update_args, **record_kwargs)
+                if working_time is not None:
+                    agent.exhaust_time = working_time
+                    data["time"] = working_time
                 BaseSchedulerSolver._record_dorm_admission(
                     self, _name, room, i, previous_position
                 )

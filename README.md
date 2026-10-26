@@ -76,6 +76,8 @@ ADB 准备脚本下载并校验官方 Platform Tools。已有对应离线 ZIP �
 
 打包与其他部署方式：[本地打包](docs/cookbook/packaging.md) · [Docker 部署](docs/cookbook/docker-deploy.md)。
 
+已有源码环境升级 RapidOCR 与 OpenCV 时，参考 [OCR 依赖迁移](docs/cookbook/source-dependency-migration.md)。
+
 ## 界面截图
 
 ![运行日志](img/log.png)

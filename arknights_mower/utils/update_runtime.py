@@ -106,6 +106,16 @@ def recovery_failure_details(previous, *, reason, message, exit_code=None):
         isinstance(previous, dict)
         and previous.get("active") is True
         and previous.get("startup") is not True
+        and not (
+            previous.get("reason") == "worker_exception"
+            and reason
+            in {
+                "process_exit",
+                "process_creation",
+                "startup_timeout",
+                "http_unresponsive",
+            }
+        )
     ):
         details.pop("exit_code", None)
         for key in ("occurred_at", "reason", "trigger_message", "exit_code"):

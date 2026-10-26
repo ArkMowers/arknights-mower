@@ -13,7 +13,7 @@ date: 2026-10-12
 
 ## Problem
 
-A native main-process exit bypasses Python task recovery, and a surviving HTTP service cannot repair an exited automation worker by itself. Recovery must preserve explicit Stop, configuration-space ownership and the existing high-level task and compensation boundaries.
+A native main-process exit bypasses Python task recovery. Ordinary Python worker exceptions need their existing failure handling without initiating a complete process-recovery observation. Recovery must preserve explicit Stop, configuration-space ownership and the existing high-level task and compensation boundaries.
 
 ## Decision
 
@@ -23,7 +23,7 @@ The [process recovery contract](../../../../docs/subsystems/process-recovery.md)
 
 ## Recovery
 
-The supervisor restores service after a native main-process failure. A persistent recovery controller also admits ordinary Python worker failures. Both preserve task-run intent and continue after temporary startup, snapshot or observation failures. Recovery automatically observes actual room occupancy, mood and relevant task state, saves a checkpoint, then returns to existing solver recovery. Ordinary Stop cancels that intent; an accepted ordinary Start enables it again. No separate acknowledgement, manual completed-task disposition or new action-receipt system is required.
+The supervisor restores service after a native main-process failure. The initial design also admitted ordinary Python worker failures through the persistent recovery controller because a surviving HTTP service cannot repair an exited automation worker by itself. This revision excludes ordinary Python worker exceptions from initiating or reopening process recovery: applying the full recovery observation to them can repeatedly interrupt an otherwise live instance. The persistent recovery controller continues an existing supervisor episode after temporary startup, snapshot or observation failures. Legacy worker-exception notices do not authorize retries, while a later genuine supervisor fault receives its own original cause. Recovery automatically observes actual room occupancy, mood and relevant task state, saves a checkpoint, then returns to existing solver recovery. Ordinary Stop cancels that intent; an accepted ordinary Start enables it again. No separate acknowledgement, manual completed-task disposition or new action-receipt system is required.
 
 Due dynamic trade orders and Fiammetta charging need replanning because the interrupted effect can already have completed. Existing task types provide that reentry, while saved roster compensation and future appointments remain available. Existing Workshop stock records become unverified until depot observation supplies required counts; this delays crafting while other scheduling continues. Quiet logs during a healthy service do not establish a hang. This boundary does not establish exactly-once irreversible actions, reconstruct a roster held only on the interrupted Python stack or repair a confirmed invalid configuration.
 

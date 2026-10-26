@@ -14,10 +14,15 @@ from arknights_mower.utils import rapidocr
 from arknights_mower.utils.operation_drops import _icon_directory
 
 
-def _ocr(image):
+def _ocr(image, *, use_det=True):
     if rapidocr.engine is None:
         rapidocr.initialize_ocr()
-    return rapidocr.engine(image, use_det=True, use_cls=False, use_rec=True)[0] or []
+    result = (
+        rapidocr.engine(image, use_det=use_det, use_cls=False, use_rec=True)[0] or []
+    )
+    if use_det:
+        return result
+    return [(None, text, confidence) for text, confidence in result]
 
 
 @lru_cache(maxsize=128)
@@ -136,7 +141,12 @@ def read_recycling_materials(image):
         score = cv2.minMaxLoc(scores)[1]
         if not np.isfinite(score) or score < 0.90:
             return None
-        counts = _ocr(image[570:625, center + 10 : center + 90])
+        # 数量位置由已确认的名称与奖励圆确定，避免再次检测把单个数字旋斜。
+        quantity = cv2.cvtColor(
+            image[570:625, center + 10 : center + 90], cv2.COLOR_RGB2GRAY
+        )
+        quantity = cv2.threshold(quantity, 200, 255, cv2.THRESH_BINARY)[1]
+        counts = _ocr(quantity, use_det=False)
         if len(counts) != 1:
             return None
         _, count, confidence = counts[0]

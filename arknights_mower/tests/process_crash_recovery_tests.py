@@ -349,6 +349,68 @@ def test_actual_checkpoint_roundtrip_keeps_receipts_appointments_and_compensatio
     offline.io.assert_not_called()
 
 
+@pytest.mark.parametrize("start", ["reset", "recovery"])
+def test_zero_working_mood_does_not_interrupt_observation_checkpoint(
+    offline, notice, observed_scheduler, start
+):
+    solver = observed_scheduler
+    solver.op_data.plan = {
+        room: solver.op_data.plan[room] for room in ("central", "contact")
+    }
+    pending = SchedulerTask(datetime.now() + timedelta(hours=1), {}, TaskTypes.DEPOT)
+    solver.tasks = [pending]
+    target = solver.op_data.operators["夕"]
+    offline.record.save_agent_action(
+        target.name,
+        "central",
+        "central",
+        True,
+        target.group,
+        1,
+        current_time=datetime.now() - timedelta(hours=1),
+    )
+    current_room = None
+
+    def enter(room):
+        nonlocal current_room
+        current_room = room
+
+    solver.enter_room = Mock(side_effect=enter)
+    solver.leifeng_mode = True
+    solver.turn_on_room_detail = Mock()
+    solver.refresh_facility_state = Mock()
+    solver.detect_product_complete = Mock(return_value=None)
+    solver.find = Mock(return_value=None)
+    solver.read_screen = Mock(
+        side_effect=lambda *a, **kw: "夕" if current_room == "central" else "絮雨"
+    )
+    solver.read_accurate_mood = Mock(
+        side_effect=lambda *a, **kw: 0 if current_room == "central" else 20
+    )
+    solver.read_time = Mock(return_value=3009)
+    if start == "reset":
+        crash_recovery.checkpoint_reset(solver)
+    else:
+        crash_recovery.reconcile_scheduler(solver)
+        assert not crash_recovery.status()["active"]
+    assert [call.args[0] for call in solver.enter_room.call_args_list] == [
+        "central",
+        "contact",
+    ]
+    assert solver.tasks == [pending]
+    assert solver.tasks[0] is pending
+    loaded = offline.record.load_state(strict=True)
+    assert loaded["tasks"][0].time == pending.time
+    assert loaded["operators"]["夕"].current_room == "central"
+    assert loaded["operators"]["夕"].mood == 0
+    assert loaded["operators"]["絮雨"].mood == 20
+    assert offline.record._fetchall(
+        "SELECT mood FROM agent_action WHERE name = ?", "夕"
+    ) == [(1,), (0,)]
+    solver.read_time.assert_called_once()
+    offline.io.assert_not_called()
+
+
 @pytest.mark.parametrize("mode", ["0", "1", "2"])
 def test_explicit_recovery_start_preserves_the_selected_mode(
     offline, notice, observed_scheduler, monkeypatch, tmp_path, mode
@@ -560,7 +622,8 @@ def test_queue_reset_start_keeps_mode_until_its_first_checkpoint(
         monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", dispatch)
         offline.main.simulate(saved)
         crash_recovery.activate("later independent failure")
-        assert crash_recovery.status()["start_type"] == "0"
+        assert not crash_recovery.status()["active"]
+        assert crash_recovery.pending_start_type() is None
     offline.io.assert_not_called()
 
 
@@ -1138,10 +1201,11 @@ def test_initial_reset_failure_cannot_reload_previous_urgent_handoff(
         offline.main, "main", Mock(side_effect=RuntimeError("observation unavailable"))
     )
     offline.server._run_mower_worker(saved)
-    assert offline.server._retry_after_process_crash()
+    assert not offline.server._retry_after_process_crash()
+    assert crash_recovery.pending_start_type() == "2"
+    assert offline.server._start_mower("0")
     retried = create.call_args.kwargs["args"][0]
-    assert retried["_process_crash_no_snapshot"]
-    assert retried["tasks"] == []
+    assert retried == {}
     assert "urgent_recovery_supporters" not in retried
     assert "waiting_group_shifts" not in retried
     with offline.record._conn() as connection:
@@ -1230,7 +1294,8 @@ def test_start_entry_resets_or_restores_urgent_handoff_and_protection(
                 == original
             )
         crash_recovery.activate("initial reset failure")
-        assert crash_recovery.status()["start_type"] == "2"
+        assert not crash_recovery.status()["active"]
+        assert crash_recovery.pending_start_type() == "2"
         offline.io.assert_not_called()
         return
     offline.main.simulate(saved)
@@ -1253,7 +1318,8 @@ def test_start_entry_resets_or_restores_urgent_handoff_and_protection(
         assert checkpoint["urgent_recovery_supporters"] == {}
         assert checkpoint["waiting_group_shifts"] == []
         crash_recovery.activate("later unrelated worker failure")
-        assert crash_recovery.status()["start_type"] == "0"
+        assert not crash_recovery.status()["active"]
+        assert crash_recovery.pending_start_type() is None
     else:
         assert fresh.op_data.urgent_recovery_supporters == {"夕": ["絮雨"]}
         assert len(fresh.waiting_group_shifts) == 1
@@ -1293,8 +1359,5 @@ def test_stopped_reset_still_skips_old_snapshot_on_ordinary_start(
     assert crash_recovery.reset_observation_pending()
     saved = create.call_args.kwargs["args"][0]
     assert not saved.get("tasks")
-    if failed_before_stop:
-        assert saved["_process_crash_no_snapshot"]
-    else:
-        assert saved == {}
+    assert saved == {}
     offline.io.assert_not_called()

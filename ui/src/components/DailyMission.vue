@@ -202,7 +202,8 @@ const SyncStatus = (item, game) => {
           <div class="item">活动签到</div>
         </n-checkbox>
         <help-text label="活动签到说明">
-          领取游戏内七日签到活动中已满足登录天数的奖励，包括之前登录后尚未领取的奖励。
+          识别已适配活动的登录进度，检查奖励卡片是否已领取，补领已解锁的奖励。
+          多个签到活动按首页从上到下的顺序依次检查。暂不支持特殊登录活动和不同布局的十五日签到页面。
         </help-text>
       </n-flex>
       <n-divider v-show="task === 'all'" />

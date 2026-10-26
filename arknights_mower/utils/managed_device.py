@@ -8,6 +8,15 @@ import os
 # Keep legacy inputs in the same boundary as their Device Profile equivalents.
 DERIVED_IDENTITY_FIELDS = ("instance_uuid", "topology_fingerprint")
 
+MAA_UPDATE_SETTINGS = (
+    "maa_mirrorchyan_token",
+    "maa_update_channel",
+    "maa_auto_check_update",
+    "maa_auto_update",
+    "maa_resource_auto_check_update",
+    "maa_resource_auto_update",
+)
+
 SETTINGS = (
     "device",
     "simulator",
@@ -32,12 +41,7 @@ SETTINGS = (
     "selection_poll_interval",
     "selection_transition_timeout",
     "waiting_scene",
-    "maa_mirrorchyan_token",
-    "maa_update_channel",
-    "maa_auto_check_update",
-    "maa_auto_update",
-    "maa_resource_auto_check_update",
-    "maa_resource_auto_update",
+    *MAA_UPDATE_SETTINGS,
 )
 
 EXTRA_SETTINGS = (
@@ -55,7 +59,9 @@ def extra_settings_allowed(configuration):
 
 def protected_settings(configuration):
     keys = SETTINGS
-    if not extra_settings_allowed(configuration):
+    if extra_settings_allowed(configuration):
+        keys = tuple(key for key in keys if key not in MAA_UPDATE_SETTINGS)
+    else:
         keys += EXTRA_SETTINGS
     if enabled():
         from . import config
@@ -80,12 +86,14 @@ def operation_blocked(path, method, configuration):
         "/maa-conn-preset",
     } or (path == "/device/performance-test" and method not in {"GET", "HEAD"}):
         return True
-    if path.startswith(("/maa-update/", "/maa-resource-update/")):
-        return not path.endswith(("/info", "/status"))
     if extra_settings_allowed(configuration):
         return False
     return (
-        (path in {"/network/settings", "/network/test"} and method == "POST")
+        (
+            path.startswith(("/maa-update/", "/maa-resource-update/"))
+            and not path.endswith(("/info", "/status"))
+        )
+        or (path in {"/network/settings", "/network/test"} and method == "POST")
         or (
             path.startswith("/software-update/")
             and (
@@ -117,7 +125,7 @@ def preserve(data, current):
     """Imports retain the current manager-owned values, including legacy aliases."""
     if enabled():
         current_values = current.model_dump(mode="json")
-        for key in protected_settings(current):
+        for key in dict.fromkeys((*protected_settings(current), *MAA_UPDATE_SETTINGS)):
             data[key] = copy.deepcopy(current_values[key])
         webview = data.get("webview")
         if isinstance(webview, dict):

@@ -3,6 +3,7 @@ import math
 import os
 from pathlib import Path
 from threading import Lock
+from weakref import WeakMethod
 
 SMALL_TEXT_EDGE = 736
 MAX_DETECTION_EDGE = 1920
@@ -10,6 +11,7 @@ DETECTION_ALIGN = 32
 DEFAULT_TEXT_SCORE = 0.3
 DEFAULT_BOX_THRESH = 0.5
 DEFAULT_UNCLIP_RATIO = 1.6
+_MODEL_DIR = Path(__file__).resolve().parents[1] / "models" / "rapidocr"
 DEFAULT_OCR_OPTIONS = {
     "text_score": DEFAULT_TEXT_SCORE,
     "box_thresh": DEFAULT_BOX_THRESH,
@@ -58,29 +60,48 @@ class _BoundedDetectionInput:
 
 
 def create_engine(score=DEFAULT_TEXT_SCORE, *, threads=None):
-    from rapidocr_onnxruntime import RapidOCR
+    import rapidocr as sdk
 
-    options = (
-        {}
-        if threads is None
-        else {"intra_op_num_threads": threads, "inter_op_num_threads": 1}
-    )
-    result = RapidOCR(
-        text_score=score,
-        det_limit_type="max",
-        det_limit_side_len=MAX_DETECTION_EDGE,
-        # 本地模型与服务端每次请求重置使用同一组默认阈值。
-        det_box_thresh=DEFAULT_BOX_THRESH,
-        det_unclip_ratio=DEFAULT_UNCLIP_RATIO,
-        **options,
-    )
-    # 依赖 rapidocr_onnxruntime==1.3.24 的私有结构：text_det.preprocess_op
-    # 以单张图像调用并返回检测张量。升级该依赖前必须复核这一调用约定，
-    # 回归见 runtime_memory_tests.test_production_ocr_bounds_detector_tensor。
-    result.text_det.preprocess_op = _BoundedDetectionInput(
-        result.text_det.preprocess_op
-    )
-    return result
+    _checked_text_score(score)
+    model_paths = {
+        "Det": _MODEL_DIR / "PP-OCRv6_det_tiny.onnx",
+        "Rec": _MODEL_DIR / "PP-OCRv6_rec_tiny.onnx",
+        "Cls": Path(sdk.__file__).resolve().parent
+        / "models"
+        / "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+    }
+    for path in model_paths.values():
+        if not path.is_file():
+            raise FileNotFoundError(f"缺少本地 OCR 模型：{path}")
+    params = {
+        "Global.use_preprocess_img": False,
+        "Global.text_score": score,
+        "Det.model_type": sdk.ModelType.TINY,
+        "Rec.model_type": sdk.ModelType.TINY,
+        "Det.limit_type": "max",
+        "Det.limit_side_len": MAX_DETECTION_EDGE,
+        "Det.box_thresh": DEFAULT_BOX_THRESH,
+        "Det.unclip_ratio": DEFAULT_UNCLIP_RATIO,
+        **{f"{stage}.model_path": str(path) for stage, path in model_paths.items()},
+    }
+    if threads is not None:
+        params["EngineConfig.onnxruntime.intra_op_num_threads"] = threads
+        params["EngineConfig.onnxruntime.inter_op_num_threads"] = 1
+    result = sdk.RapidOCR(params=params)
+    detector = result._load_det_model()
+    result._load_cls_model()
+    result._load_rec_model()
+    # RapidOCR 3.10 每次检测都调用 get_preprocess；包装其实际构造路径，
+    # 避免 SDK 重新赋值 preprocess_op 时绕过尺寸上限。
+    # 弱引用避免检测器经包装函数再次持有自己，延长 ONNX 会话的存活时间。
+    preprocess_method = WeakMethod(detector.get_preprocess)
+
+    def bounded_preprocess():
+        preprocess_factory = preprocess_method()
+        return _BoundedDetectionInput(preprocess_factory())
+
+    detector.get_preprocess = bounded_preprocess
+    return _RapidOCRAdapter(result, score)
 
 
 def _checked_text_score(score):
@@ -120,6 +141,68 @@ def _checked_call_options(options):
         "box_thresh": options.get("box_thresh", DEFAULT_BOX_THRESH),
         "unclip_ratio": options.get("unclip_ratio", DEFAULT_UNCLIP_RATIO),
     }
+
+
+class _RapidOCRAdapter:
+    """将 RapidOCR 3.10 的四种输出转为现有结果与耗时列表。"""
+
+    def __init__(self, sdk, score=DEFAULT_TEXT_SCORE):
+        _checked_text_score(score)
+        self._sdk = sdk
+        self.score = score
+
+    def __call__(
+        self,
+        image,
+        use_det=None,
+        use_cls=None,
+        use_rec=None,
+        *,
+        text_score=None,
+        box_thresh=None,
+        unclip_ratio=None,
+    ):
+        # 新 SDK 会保留调用选项，每次显式传入全部默认值以隔离相邻请求。
+        options = _checked_call_options(
+            {
+                "use_det": True if use_det is None else use_det,
+                "use_cls": True if use_cls is None else use_cls,
+                "use_rec": True if use_rec is None else use_rec,
+                "text_score": self.score if text_score is None else text_score,
+                "box_thresh": DEFAULT_BOX_THRESH if box_thresh is None else box_thresh,
+                "unclip_ratio": DEFAULT_UNCLIP_RATIO
+                if unclip_ratio is None
+                else unclip_ratio,
+            }
+        )
+        output = self._sdk(image, **options)
+        boxes = getattr(output, "boxes", None)
+        texts = getattr(output, "txts", None)
+        classes = getattr(output, "cls_res", None)
+        if boxes is None and texts is None:
+            if classes is None or len(classes) == 0:
+                return None, None
+            return [[label, float(score)] for label, score in classes], [
+                float(output.elapse)
+            ]
+        if texts is None:
+            if len(boxes) == 0:
+                return None, None
+            return [box.tolist() for box in boxes], [float(output.elapse)]
+        if len(texts) == 0:
+            return None, None
+        if boxes is None:
+            return [
+                [text, float(score)] for text, score in zip(texts, output.scores)
+            ], [float(output.elapse)]
+        if len(boxes) == 0:
+            return None, None
+        return [
+            [box.tolist(), text, float(score)]
+            for box, text, score in zip(boxes, texts, output.scores)
+        ], [
+            0.0 if elapsed is None else float(elapsed) for elapsed in output.elapse_list
+        ]
 
 
 class _LocalOCREngine:

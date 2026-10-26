@@ -401,7 +401,7 @@ class QtWindow:
         ) or event.button() != self._enum("MouseButton", "LeftButton"):
             return False
         ancestor = watched
-        while ancestor is not None and ancestor is not self._native.view:
+        while ancestor is not None and ancestor is not self._native.webview:
             ancestor = ancestor.parent()
         if ancestor is None:
             return False
@@ -410,7 +410,7 @@ class QtWindow:
             if hasattr(event, "globalPosition")
             else event.globalPos()
         )
-        view = self._native.view
+        view = self._native.webview
         local = view.mapFromGlobal(position)
         region = self._regions.hit_test(
             local.x(), local.y(), view.width(), view.height()

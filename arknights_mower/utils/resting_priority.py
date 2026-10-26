@@ -137,8 +137,6 @@ def bed_takeover_allowed(op_data, requester, resident):
 
 def has_resting_mood(op, now=None):
     """是否有当前模式可用于恢复计时的有效心情。"""
-    if getattr(op, "working_mood_unconfirmed", False):
-        return False
     now = now or getattr(op, "_projection_now", None)
     if (
         op is not None

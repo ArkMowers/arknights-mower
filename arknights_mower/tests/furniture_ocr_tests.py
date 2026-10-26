@@ -50,6 +50,78 @@ def test_real_panel_ocr(monkeypatch, ocr, fixture, name, stock, batch):
         assert furniture.furniture_batch(img) == batch
 
 
+def test_name_confirms_two_complete_rows_without_detection(monkeypatch):
+    from unittest.mock import MagicMock
+
+    image = bytes2img(
+        (Path(__file__).parent / "fixtures/furniture/calculator_tm.png").read_bytes()
+    )
+    engine = MagicMock(return_value=([["便携TM计算器", 0.99]], 0))
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    assert furniture.furniture_name(image) == "便携TM计算器"
+    assert engine.call_count == 2
+    assert all(call.kwargs["use_det"] is False for call in engine.call_args_list)
+
+
+def test_reliable_full_row_conflict_is_not_retried(monkeypatch):
+    from unittest.mock import MagicMock
+
+    image = bytes2img(
+        (Path(__file__).parent / "fixtures/furniture/calculator_tm.png").read_bytes()
+    )
+    engine = MagicMock(
+        side_effect=[([["复古吊扇", 0.99]], 0), ([["复古吊灯", 0.99]], 0)]
+    )
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    with pytest.raises(ValueError, match="两次识别冲突"):
+        furniture.furniture_name(image)
+    assert engine.call_count == 2
+
+
+@pytest.mark.parametrize("uncertain_view", ("enlarged", "binary"))
+def test_low_confidence_name_view_has_one_pixel_fallback(monkeypatch, uncertain_view):
+    from unittest.mock import MagicMock
+
+    image = bytes2img(
+        (Path(__file__).parent / "fixtures/furniture/calculator_tm.png").read_bytes()
+    )
+    reliable = ([["便携TM计算器", 0.99]], 0)
+    uncertain = ([["便携TTM计算器", 0.89]], 0)
+    results = (
+        [uncertain, reliable, reliable]
+        if uncertain_view == "enlarged"
+        else [reliable, uncertain, reliable]
+    )
+    engine = MagicMock(side_effect=results)
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    assert furniture.furniture_name(image) == "便携TM计算器"
+    assert engine.call_count == 3
+    assert all(call.kwargs["use_det"] is False for call in engine.call_args_list)
+
+
+@pytest.mark.parametrize("uncertain_view", ("enlarged", "binary"))
+def test_name_view_stops_after_one_uncertain_pixel_fallback(
+    monkeypatch, uncertain_view
+):
+    from unittest.mock import MagicMock
+
+    image = bytes2img(
+        (Path(__file__).parent / "fixtures/furniture/calculator_tm.png").read_bytes()
+    )
+    reliable = ([["便携TM计算器", 0.99]], 0)
+    uncertain = ([["便携TTM计算器", 0.89]], 0)
+    results = (
+        [uncertain, uncertain]
+        if uncertain_view == "enlarged"
+        else [reliable, uncertain, uncertain]
+    )
+    engine = MagicMock(side_effect=results)
+    monkeypatch.setattr(furniture.rapidocr, "engine", engine)
+    with pytest.raises(ValueError, match="无法可靠确认"):
+        furniture.furniture_name(image)
+    assert engine.call_count == len(results)
+
+
 def test_real_list_quantities_and_row_order(monkeypatch, ocr):
     monkeypatch.setattr(furniture.rapidocr, "engine", ocr)
     path = Path(__file__).parent / "fixtures/furniture/list_quantity.png"
