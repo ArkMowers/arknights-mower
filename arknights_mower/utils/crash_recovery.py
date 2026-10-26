@@ -43,6 +43,7 @@ def status():
     with _lock:
         automatic = (
             value["active"]
+            and value.get("reason") != "worker_exception"
             and value.get(
                 "resume_requested", os.environ.get("MOWER_RECOVERY_RUN") != "0"
             )
@@ -127,6 +128,24 @@ def cancelled():
         return _cancelled
 
 
+def _retire_worker_failure(path, raw):
+    if (
+        isinstance(raw, dict)
+        and raw.get("active") is True
+        and raw.get("reason") == "worker_exception"
+    ):
+        raw = dict(raw)
+        raw.update(
+            active=False,
+            phase="stopped",
+            resume_requested=False,
+            next_retry_at=None,
+        )
+        runtime.write_json(path, raw, sync=True)
+        _progress.clear()
+    return raw
+
+
 def initialize_intent(wanted, *, startup=False, start_type="0"):
     """Resolve an unready launch from its actual startup policy, honoring Stop."""
     with _lock:
@@ -134,6 +153,7 @@ def initialize_intent(wanted, *, startup=False, start_type="0"):
         os.environ["MOWER_RECOVERY_RUN"] = "1" if wanted else "0"
         path = notice_path()
         raw = runtime.read_json(path) if path is not None else None
+        raw = _retire_worker_failure(path, raw)
         if isinstance(raw, dict) and raw.get("active") is True:
             values = {"resume_requested": wanted, "startup": startup}
             if startup and wanted:
@@ -180,6 +200,9 @@ def request_resume(start_type="0"):
     global _cancelled
     with _lock:
         _cancelled = False
+        path = notice_path()
+        raw = runtime.read_json(path) if path is not None else None
+        _retire_worker_failure(path, raw)
         if start_type != "2":
             start_type = pending_start_type() or start_type
         if status()["active"]:
@@ -257,43 +280,35 @@ def checkpoint_start(scheduler):
 
 
 def activate(message):
-    """A failed Python worker uses the same recovery boundary as native exit."""
+    """Record a failed attempt only within an existing process recovery."""
     path = notice_path()
     if path is None or _cancelled:
         return
     with _lock:
         raw = runtime.read_json(path)
-        if path.exists() and (
-            not isinstance(raw, dict) or type(raw.get("active")) is not bool
+        if (
+            _cancelled
+            or not isinstance(raw, dict)
+            or raw.get("active") is not True
+            or raw.get("reason") == "worker_exception"
         ):
             return
+        previous = {**raw, "startup": False}
+        details = runtime.recovery_failure_details(
+            previous, reason="worker_exception", message=message
+        )
+        if "reason" not in raw:
+            details.pop("reason", None)
+        raw.update(
+            startup=False,
+            phase="waiting",
+            message=message,
+            next_retry_at=None,
+            **details,
+        )
         runtime.write_json(
             path,
-            {
-                "active": True,
-                "startup": False,
-                "phase": "waiting",
-                "resume_requested": True,
-                "start_type": (
-                    "2"
-                    if isinstance(raw, dict) and raw.get("reset_observation_pending")
-                    else raw.get("pending_start_type") or raw.get("start_type", "0")
-                    if isinstance(raw, dict)
-                    and (raw.get("active") or raw.get("pending_start_type"))
-                    else "0"
-                ),
-                "reset_observation_pending": bool(
-                    isinstance(raw, dict) and raw.get("reset_observation_pending")
-                ),
-                "pending_start_type": raw.get("pending_start_type")
-                if isinstance(raw, dict)
-                else None,
-                "message": message,
-                "next_retry_at": None,
-                **runtime.recovery_failure_details(
-                    raw, reason="worker_exception", message=message
-                ),
-            },
+            raw,
             sync=True,
         )
         _progress.clear()
