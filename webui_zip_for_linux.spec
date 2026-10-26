@@ -2,14 +2,14 @@
 from pathlib import Path
 import sys
 
-import rapidocr_onnxruntime
+import rapidocr
 from PyInstaller.utils.hooks import collect_submodules
 
 SPEC_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 if str(SPEC_DIR) not in sys.path:
     sys.path.insert(0, str(SPEC_DIR))
 
-from build_assets import get_pyinstaller_common_datas
+from build_assets import get_pyinstaller_common_datas, get_rapidocr_datas
 from scripts.bundled_linux_adb import configure_linux_adb, linux_adb_assets
 
 adb_binaries, adb_datas = linux_adb_assets()
@@ -58,28 +58,7 @@ except ImportError:
     # 宿主安装原生库，而不是抛出裸 ImportError。
     pass
 
-# 参考 https://github.com/RapidAI/RapidOCR/blob/main/ocrweb/rapidocr_web/ocrweb.spec
-package_name = "rapidocr_onnxruntime"
-install_dir = Path(rapidocr_onnxruntime.__file__).resolve().parent
-
-onnx_paths = list(install_dir.rglob("*.onnx"))
-yaml_paths = list(install_dir.rglob("*.yaml"))
-
-onnx_add_data = [(str(v.parent), f"{package_name}/{v.parent.name}") for v in onnx_paths]
-
-yaml_add_data = []
-for v in yaml_paths:
-    if package_name == v.parent.name:
-        yaml_add_data.append((str(v.parent / "*.yaml"), package_name))
-    else:
-        yaml_add_data.append(
-            (str(v.parent / "*.yaml"), f"{package_name}/{v.parent.name}")
-        )
-
-add_data = list(set(yaml_add_data + onnx_add_data))
-
-
-site_packages = install_dir.parent
+site_packages = Path(rapidocr.__file__).resolve().parent.parent
 
 
 mower_a = Analysis(
@@ -93,8 +72,10 @@ mower_a = Analysis(
             "onnxruntime/capi/",
         ),
     ]
-    + add_data + adb_datas,
-    hiddenimports=PYWEBVIEW_GTK_HIDDENIMPORTS + ["quickjs", "_quickjs"],
+    + get_rapidocr_datas()
+    + adb_datas,
+    hiddenimports=PYWEBVIEW_GTK_HIDDENIMPORTS
+    + ["rapidocr.main", "quickjs", "_quickjs"],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[

@@ -419,6 +419,11 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             build_index = names.index("Build with PyInstaller")
             self.assertLess(install_index, prune_index, msg=f"{job_name} prune order")
             self.assertLess(prune_index, build_index, msg=f"{job_name} prune order")
+            self.assertIn(
+                "python -m pip check",
+                job["steps"][install_index]["run"],
+                msg=f"{job_name} dependency consistency",
+            )
             self.assertEqual(
                 job["steps"][prune_index]["run"],
                 "python scripts/prune_opencv.py",
@@ -663,6 +668,28 @@ if __name__ == "__main__":
 
 
 class UpdateCompatibilityScopeTests(unittest.TestCase):
+    def test_native_ci_checks_dependencies_and_opencv_after_installation(self):
+        jobs = load_workflow(REPO_ROOT / ".github/workflows/format-check-and-test.yml")[
+            "jobs"
+        ]
+        for name in (
+            "unittest",
+            "recognition-equivalence",
+            "update-compatibility",
+            "android-compatibility",
+        ):
+            with self.subTest(job=name):
+                commands = "\n".join(
+                    step.get("run", "") for step in jobs[name]["steps"]
+                )
+                self.assertLess(
+                    commands.index("-r requirements"), commands.index("-m pip check")
+                )
+                self.assertLess(
+                    commands.index("-m pip check"),
+                    commands.index("scripts/prune_opencv.py"),
+                )
+
     def test_four_platforms_share_trigger_and_keep_manual_failure_fallback(self):
         jobs = load_workflow(REPO_ROOT / ".github/workflows/format-check-and-test.yml")[
             "jobs"

@@ -3,9 +3,12 @@
 import io
 import json
 import lzma
+import sys
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stdout
+from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -182,9 +185,7 @@ class AndroidDownloadLinkTests(unittest.TestCase):
 
 
 class AndroidRuntimeBuildTests(unittest.TestCase):
-    def test_image_smoke_check_accepts_locked_opencv_and_rejects_other_versions(self):
-        import sys
-
+    def image_smoke_command(self):
         from scripts import build_android_runtime as builder
 
         with (
@@ -202,13 +203,19 @@ class AndroidRuntimeBuildTests(unittest.TestCase):
             command[:5], ["docker", "run", "--rm", "--platform", "linux/arm64"]
         )
         self.assertEqual(command[-3:-1], ["python", "-c"])
-        pinned = parse_lock(builder.ROOT / "requirements.txt")["opencv-python"]
-        opencv = SimpleNamespace(__version__=".".join(pinned.split(".")[:3]))
+        return command
+
+    def test_image_smoke_checks_distribution_metadata_and_real_core_apis(self):
+        import cv2
+
+        from scripts import build_android_runtime as builder
+
+        command = self.image_smoke_command()
+        pinned = parse_lock(builder.ROOT / "requirements.txt")["opencv-python-headless"]
         modules = {
             name: Mock()
             for name in (
                 "ssl",
-                "numpy",
                 "onnxruntime",
                 "rjieba",
                 "yamlcore",
@@ -221,13 +228,69 @@ class AndroidRuntimeBuildTests(unittest.TestCase):
             platform=SimpleNamespace(
                 machine=lambda: "aarch64", python_version=lambda: "3.12"
             ),
-            cv2=opencv,
+            quickjs=SimpleNamespace(
+                Context=lambda: SimpleNamespace(eval=lambda expression: 2)
+            ),
         )
-        with patch.dict(sys.modules, modules):
+        good = ("opencv-python-headless", pinned)
+        cases = [
+            ([good], True),
+            ([], False),
+            ([("opencv-python", pinned)], False),
+            ([good, ("opencv-python", pinned)], False),
+            ([good, ("opencv-contrib-python-headless", pinned)], False),
+            ([("opencv-python-headless", "0.0.0")], False),
+        ]
+        for installed, accepted in cases:
+            distributions = [
+                SimpleNamespace(metadata={"Name": name}, version=version)
+                for name, version in installed
+            ]
+            with (
+                self.subTest(installed=installed),
+                patch.dict(sys.modules, modules),
+                patch.object(metadata, "distributions", return_value=distributions),
+                patch.object(cv2, "__version__", ".".join(pinned.split(".")[:3])),
+                patch.object(cv2, "blur", wraps=cv2.blur) as blur,
+                redirect_stdout(io.StringIO()),
+            ):
+                if accepted:
+                    exec(command[-1], {})
+                    blur.assert_called_once()
+                else:
+                    with self.assertRaises(AssertionError):
+                        exec(command[-1], {})
+
+        with (
+            patch.dict(sys.modules, modules),
+            patch.object(
+                metadata,
+                "distributions",
+                return_value=[
+                    SimpleNamespace(metadata={"Name": good[0]}, version=pinned)
+                ],
+            ),
+            patch.object(cv2, "__version__", "0.0.0"),
+            self.assertRaises(AssertionError),
+        ):
             exec(command[-1], {})
-            opencv.__version__ = "0.0.0"
-            with self.assertRaises(AssertionError):
-                exec(command[-1], {})
+
+    def test_exported_rootfs_reuses_the_image_smoke_check(self):
+        from scripts import smoke_android_runtime as runtime_smoker
+
+        with tempfile.TemporaryDirectory() as temporary:
+            archive = runtime_fixture(Path(temporary))
+            with (
+                patch.object(runtime_smoker.os, "mknod", create=True),
+                patch.object(runtime_smoker.os, "makedev", create=True, return_value=0),
+                patch.object(runtime_smoker.os, "symlink"),
+                patch.object(runtime_smoker.subprocess, "run") as run,
+            ):
+                runtime_smoker.smoke(archive)
+            command = run.call_args.args[0]
+            self.assertEqual(command[0], "chroot")
+            self.assertEqual(command[-3:-1], ["/usr/local/bin/python", "-c"])
+            self.assertEqual(command[-1], self.image_smoke_command()[-1])
 
 
 if __name__ == "__main__":

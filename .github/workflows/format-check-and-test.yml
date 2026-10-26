@@ -70,6 +70,8 @@ jobs:
               - '{.gitignore,.gitattributes,MANIFEST.in,*.spec}'
               - 'ui/{package.json,package-lock.json,vite.config.*,copy.js,.npmrc}'
               - 'scripts/android-runtime.Dockerfile'
+              - 'docker/{Dockerfile,gen_server_requirements.py}'
+              - 'Dockerfile'
               - 'scripts/{check_*,compile_requirements,inject_version,prepare_macos_adb,prune_opencv,bundled_linux_adb,package_android,build_android_runtime,smoke_android_runtime,android_runtime_archive,sync_android_release}.py'
               - 'scripts/tests/**'
               - 'arknights_mower/tests/android*_tests.py'
@@ -168,6 +170,8 @@ jobs:
           python3.12 -m venv venv
           ./venv/bin/pip install -r requirements.txt
           ./venv/bin/pip install pytest setuptools wheel
+          ./venv/bin/python -m pip check
+          ./venv/bin/python scripts/prune_opencv.py
       - name: Compile all Python sources
         run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
       - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）
@@ -203,6 +207,8 @@ jobs:
       - run: |
           python3.12 -m venv venv
           ./venv/bin/pip install -r requirements-dev.txt pytest
+          ./venv/bin/python -m pip check
+          ./venv/bin/python scripts/prune_opencv.py
       - name: Assert upstream libraries are importable
         # 缺少任何一个都会让等价性用例静默跳过，这里先失败，避免任务假绿。
         run: ./venv/bin/python3 -c "import scipy, skimage, sklearn"
@@ -242,7 +248,10 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install zbar
       - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt pytest
+        run: |
+          python -m pip install -r requirements.txt pytest
+          python -m pip check
+          python scripts/prune_opencv.py
       - name: Verify shared mood runtime on each OS
         run: python -m pytest -q arknights_mower/tests/calculated_mood_tests.py
       - name: Require transaction tools
@@ -346,6 +355,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libzbar0 libgl1 libglib2.0-0
           python -m pip install -r requirements.txt
+          python -m pip check
+          python scripts/prune_opencv.py
           python -c "import os, platform; from pathlib import Path; assert platform.machine() == 'aarch64'; Path(os.environ['MOWER_DATA_DIR']).mkdir(parents=True, exist_ok=True)"
       - name: Test Android update routes, official MAA assets and packaging
         run: |

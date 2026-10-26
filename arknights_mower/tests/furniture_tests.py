@@ -509,7 +509,7 @@ def test_details_reject_uncertain_stock(monkeypatch, solver, text, score):
         "engine",
         MagicMock(
             side_effect=[
-                ([title(10, 10, "测试家具")], 0),
+                ([["测试家具", 1]], 0),
                 ([["测试家具", 1]], 0),
                 ([[text, score]], 0),
             ]
@@ -546,7 +546,7 @@ def test_detail_stock_parser_accepts_multiple_digits(monkeypatch, solver, stock)
         "engine",
         MagicMock(
             side_effect=[
-                ([title(10, 10, "测试家具")], 0),
+                ([["测试家具", 1]], 0),
                 ([["测试家具", 1]], 0),
                 ([[f"{stock}/1", 1]], 0),
             ]
@@ -577,13 +577,13 @@ def test_empty_or_clipped_batch_is_rejected(solver):
 
 
 @pytest.mark.parametrize("name", ["桌子", "货物垫板", "街头涂鸦"])
-def test_names_are_detected_before_recognition(monkeypatch, solver, name):
+def test_names_are_confirmed_from_two_complete_rows(monkeypatch, solver, name):
     engine = MagicMock(
-        side_effect=[([title(10, 10, name)], 0), ([[name, 1]], 0), ([["2/1", 1]], 0)]
+        side_effect=[([[name, 1]], 0), ([[name, 1]], 0), ([["2/1", 1]], 0)]
     )
     monkeypatch.setattr(furniture.rapidocr, "engine", engine)
     assert REAL_FURNITURE_DETAILS(solver.recog.img, 2) == (name, 2)
-    assert engine.call_args_list[0].kwargs["use_det"] is True
+    assert all(call.kwargs["use_det"] is False for call in engine.call_args_list)
 
 
 @pytest.mark.parametrize(
@@ -601,7 +601,7 @@ def test_name_retry_only_restores_confident_quotes(
         "engine",
         MagicMock(
             side_effect=[
-                ([title(10, 10, "桌子")], 0),
+                ([["桌子", 1]], 0),
                 ([[candidate, score]], 0),
                 ([["2/1", 1]], 0),
             ]
@@ -618,16 +618,16 @@ def test_name_retry_only_restores_confident_quotes(
     "result",
     [
         None,
-        [title(0, 0, "桌子"), title(50, 0, "另一名称")],
-        [[[[0, 0]] * 4, "桌子", 0.8]],
+        [["桌子", 0.8]],
+        [["桌子", float("nan")]],
     ],
 )
-def test_uncertain_name_detection_never_uses_partial_text(monkeypatch, solver, result):
+def test_uncertain_complete_name_never_uses_partial_text(monkeypatch, solver, result):
     engine = MagicMock(return_value=(result, 0))
     monkeypatch.setattr(furniture.rapidocr, "engine", engine)
     with pytest.raises(ValueError, match="家具名称无法可靠确认"):
         REAL_FURNITURE_DETAILS(solver.recog.img, 2)
-    assert engine.call_count == (3 if result else 1)
+    assert engine.call_count == 2
 
 
 def test_multi_digit_stock_is_used_in_both_detail_checks(monkeypatch, solver):
@@ -683,7 +683,7 @@ def test_detail_consumption_tracks_selected_batch(monkeypatch, solver, stock, ba
         "engine",
         MagicMock(
             side_effect=[
-                ([title(10, 10, "桌子")], 0),
+                ([["桌子", 1]], 0),
                 ([["桌子", 1]], 0),
                 ([[f"{stock}/{batch}", 1]], 0),
             ]
@@ -698,7 +698,7 @@ def test_recipe_can_open_with_a_remembered_batch(monkeypatch, solver):
         "engine",
         MagicMock(
             side_effect=[
-                ([title(10, 10, "桌子")], 0),
+                ([["桌子", 1]], 0),
                 ([["桌子", 1]], 0),
                 ([["3/2", 1]], 0),
             ]
@@ -716,7 +716,7 @@ def test_detail_rejects_consumption_different_from_target(
         "engine",
         MagicMock(
             side_effect=[
-                ([title(10, 10, "桌子")], 0),
+                ([["桌子", 1]], 0),
                 ([["桌子", 1]], 0),
                 ([[f"3/{consumed}", 1]], 0),
             ]
@@ -830,11 +830,11 @@ def test_low_confidence_keep_switch_never_enables_processing(monkeypatch, solver
 def test_clipped_name_cannot_match_a_shorter_known_name(monkeypatch, solver):
     region = furniture.crop_relative(solver.recog.img, furniture.NAME_SCOPE)
     region[:, -2:] = 255
-    engine = MagicMock(return_value=([title(10, 10, "复古吊扇")], 0))
+    engine = MagicMock(return_value=([["复古吊扇", 1]], 0))
     monkeypatch.setattr(furniture.rapidocr, "engine", engine)
     with pytest.raises(ValueError, match="无法可靠确认"):
         furniture.furniture_name(solver.recog.img)
-    engine.assert_called_once()
+    engine.assert_not_called()
 
 
 def test_two_valid_resource_names_disagree_so_neither_is_accepted(monkeypatch, solver):
@@ -843,7 +843,7 @@ def test_two_valid_resource_names_disagree_so_neither_is_accepted(monkeypatch, s
         "engine",
         MagicMock(
             side_effect=[
-                ([title(10, 10, "复古吊扇")], 0),
+                ([["复古吊扇", 1]], 0),
                 ([["复古吊灯", 1]], 0),
             ]
         ),
