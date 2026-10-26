@@ -252,13 +252,12 @@ def test_derived_work_sample_is_not_the_next_rate_learning_baseline(
     assert op.depletion_rate == 0.8
     assert op.recall_work_rate == sampled_rate
     Clock.current += timedelta(hours=1)
-    data.update_detail(op.name, 0, "meeting", 0, True)
-    assert op.depletion_rate == pytest.approx(0.2)
-    assert op.recall_work_rate[0] == pytest.approx(0.2)
+    data.update_detail(op.name, 0.1, "meeting", 0, True)
+    assert op.depletion_rate == pytest.approx(0.1)
+    assert op.recall_work_rate[0] == pytest.approx(0.1)
 
 
-@pytest.mark.parametrize("invalid", ["prediction", "unconfirmed"])
-def test_invalid_previous_sample_cannot_train_rate_after_valid_read(solver, invalid):
+def test_predicted_previous_sample_cannot_train_rate_after_valid_read(solver):
     data = solver.op_data
     op = data.operators["伊内丝"]
     op.mood, op.time_stamp, op.depletion_rate = (
@@ -266,20 +265,17 @@ def test_invalid_previous_sample_cannot_train_rate_after_valid_read(solver, inva
         datetime.now() - timedelta(hours=2),
         0.8,
     )
-    if invalid == "prediction":
-        op.mood_is_prediction = True
-    else:
-        op.working_mood_unconfirmed = True
+    op.mood_is_prediction = True
     data.update_detail(op.name, 16, "meeting", 0, True)
     assert op.depletion_rate == 0.8
     assert getattr(op, "recall_work_rate", None) is None
 
 
-def test_unconfirmed_work_reading_never_supplies_legacy_recall_estimate(solver):
+def test_unknown_work_reading_never_supplies_legacy_recall_estimate(solver):
     data = solver.op_data
     op = data.operators["伊内丝"]
     op.depletion_rate = 2
-    op.working_mood_unconfirmed = True
+    op.mood = -1
     assert op.name not in estimated_recall_rates(data, data)[0]
 
 
@@ -289,5 +285,5 @@ def test_average_mood_omits_unknown_workers(solver):
         op.workaholic = op.name not in {"伊内丝", "银灰"}
     known, unknown = data.operators["伊内丝"], data.operators["银灰"]
     known.mood, known.time_stamp, known.depletion_rate = 12, datetime.now(), 0
-    unknown.working_mood_unconfirmed = True
+    unknown.mood = -1
     assert data.average_mood() == pytest.approx(0.5)

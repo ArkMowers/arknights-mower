@@ -914,3 +914,106 @@ def test_unconfirmed_room_cache_is_retained(replacement_solver, clock, monkeypat
 
     assert replacement_check.run_replacement_check(solver, task) is False
     assert task.execution_failure
+
+
+@pytest.mark.parametrize("calculated", [False, True])
+def test_zero_working_countdown_defers_replacement_until_observed_end(
+    replacement_solver, clock, monkeypatch, calculated
+):
+    solver = replacement_solver
+    cover = solver.op_data.operators["薇薇安娜"]
+    end = clock.now() + timedelta(minutes=30)
+    monkeypatch.setattr(
+        Operators, "mood_calculation_enabled", property(lambda self: calculated)
+    )
+    monkeypatch.setattr(
+        solver.op_data,
+        "calculated_mood",
+        lambda name, *args: 0 if name == cover.name else 20,
+    )
+    monkeypatch.setattr(
+        solver.op_data, "calculated_mood_deadline", lambda *args: clock.now()
+    )
+    cover.mood = 0
+    cover.time_stamp = None
+    solver.reading.update(mood=0, time=end)
+    old_read = solver.get_agent_from_room.side_effect
+
+    def read(*args, **kwargs):
+        result = old_read(*args, **kwargs)
+        cover.exhaust_time = result[0]["time"]
+        return result
+
+    solver.get_agent_from_room.side_effect = read
+    replacement_check.sync_replacement_checks(solver)
+    task = solver.tasks[0]
+    for _ in range(3):
+        assert replacement_check.run_replacement_check(solver, task) is False
+        assert solver.tasks == [task]
+        assert task.time == task.replacement_check_deadline == end
+        assert not task.plan
+    clock.current = end
+    solver.reading.update(time=clock.now())
+    assert replacement_check.run_replacement_check(solver, task) is True
+    assert any(t.plan == {"central": ["赫默"]} for t in solver.tasks)
+
+
+@pytest.mark.parametrize("calculated", [False, True])
+def test_sync_keeps_zero_countdown_after_new_observation(
+    replacement_solver, clock, monkeypatch, calculated
+):
+    solver = replacement_solver
+    cover = solver.op_data.operators["薇薇安娜"]
+    monkeypatch.setattr(
+        Operators, "mood_calculation_enabled", property(lambda self: calculated)
+    )
+    monkeypatch.setattr(solver.op_data, "calculated_mood", lambda *args: 0)
+    end = clock.now() + timedelta(minutes=30)
+    for _ in range(3):
+        solver.op_data.update_detail(cover.name, 0, "central", 0, True)
+        cover.exhaust_time = end
+        replacement_check.sync_replacement_checks(solver)
+        assert len(solver.tasks) == 1
+        assert solver.tasks[0].time == solver.tasks[0].replacement_check_deadline == end
+        clock.current += timedelta(minutes=1)
+    solver.get_agent_from_room.assert_not_called()
+
+
+@pytest.mark.parametrize("calculated", [False, True])
+@pytest.mark.parametrize("change", ["product", "refresh_drained"])
+def test_zero_countdown_invalidates_when_work_environment_changes(
+    replacement_solver, clock, monkeypatch, calculated, change
+):
+    solver = replacement_solver
+    cover = solver.op_data.operators["薇薇安娜"]
+    monkeypatch.setattr(
+        Operators, "mood_calculation_enabled", property(lambda self: calculated)
+    )
+    monkeypatch.setattr(solver.op_data, "calculated_mood", lambda *args: 0)
+    solver.op_data.update_detail(cover.name, 0, "central", 0, True)
+    cover.exhaust_time = clock.now() + timedelta(minutes=30)
+    replacement_check.sync_replacement_checks(solver)
+    task = solver.tasks[0]
+    clock.current += timedelta(minutes=10)
+    if change == "product":
+        solver.op_data.products["central"] = "changed"
+    else:
+        replacement_check.invalidate_replacement_checks(solver)
+    replacement_check.sync_replacement_checks(solver)
+    assert task.time == clock.now()
+    assert cover.exhaust_time is None
+    old_read = solver.get_agent_from_room.side_effect
+    end = clock.now() + timedelta(minutes=12)
+    solver.reading.update(mood=0, time=end)
+
+    def read(*args, **kwargs):
+        result = old_read(*args, **kwargs)
+        cover.exhaust_time = end
+        return result
+
+    solver.get_agent_from_room.side_effect = read
+    assert replacement_check.run_replacement_check(solver, task) is False
+    assert task.time == end
+    replacement_check.sync_replacement_checks(solver)
+    assert task.time == end
+    solver.get_agent_from_room.assert_called_once()

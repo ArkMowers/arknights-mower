@@ -13,7 +13,6 @@ def _observed(op, now):
         op.time_stamp is not None
         and op.time_stamp <= now
         and not getattr(op, "mood_is_prediction", False)
-        and not getattr(op, "working_mood_unconfirmed", False)
         and isinstance(op.mood, (int, float))
         and isfinite(op.mood)
         and 0 <= op.mood <= 24
@@ -31,7 +30,7 @@ def observe_work_rate(op, mood, room, index, now, *, preserve=False):
         or not _observed(op, now)
         or not isinstance(mood, (int, float))
         or not isfinite(mood)
-        or not 0 <= mood < op.mood
+        or not 0 < mood < op.mood
         or now - op.time_stamp <= timedelta(minutes=29)
     ):
         return

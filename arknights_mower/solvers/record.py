@@ -595,6 +595,7 @@ def get_mood_ratios(*, include_work_rest=True):
             + """
                         ) AS subquery ON a.name = subquery.name
                         WHERE a.current_time >= DATE('now', '-7 day', 'localtime')
+                        AND a.mood <> 0
                         AND
             """
             + FIAMMETTA_CURVE_FILTER

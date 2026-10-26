@@ -231,57 +231,25 @@ def test_fiammetta_curve_point_contains_charged_operator(monkeypatch):
     }
 
 
-def test_charged_operator_curve_contains_before_and_after_points(monkeypatch):
-    rows = [
-        (
-            "歌蕾蒂娅",
-            "control",
-            "dormitory_1",
-            1,
-            "深海猎人",
-            0,
-            "2026-09-22 10:00:00.000000",
-            "菲亚梅塔",
-            "fiammetta_before",
-        ),
-        (
-            "歌蕾蒂娅",
-            "control",
-            "dormitory_1",
-            1,
-            "深海猎人",
-            24,
-            "2026-09-22 10:00:01.000000",
-            "菲亚梅塔",
-            "fiammetta_after",
-        ),
-    ]
-    monkeypatch.setattr(record, "_fetchall", lambda *args: rows)
-    monkeypatch.setattr(
-        record,
-        "get_work_rest_ratios",
-        lambda: {
-            "歌蕾蒂娅": {
-                "labels": ["休息时间", "工作时间"],
-                "datasets": [{"data": [1, 0]}],
-            }
-        },
+@pytest.mark.parametrize("source", ["grouped", "selected"])
+@pytest.mark.parametrize("before_mood", [0.0, 0.5])
+def test_charged_operator_curve_keeps_positive_events_only(
+    curve_history, source, before_mood
+):
+    database, save = curve_history
+    save(-1, before_mood, name="歌蕾蒂娅", event="fiammetta_before", related="菲亚梅塔")
+    save(0, 24, name="歌蕾蒂娅", event="fiammetta_after", related="菲亚梅塔")
+
+    points = curve_points(database, source)["歌蕾蒂娅"]
+
+    expected_moods = [before_mood, 24] if before_mood else [24]
+    expected_events = (
+        ["fiammetta_before", "fiammetta_after"] if before_mood else ["fiammetta_after"]
     )
-    monkeypatch.setattr(config, "conf", config.Conf())
-
-    points = record.get_mood_ratios()[0]["moodData"]["datasets"][0]["data"]
-
-    assert points == [
-        {
-            "x": "2026-09-22T10:00:00.000000+08:00",
-            "y": 0,
-            "relatedOperator": "菲亚梅塔",
-            "moodEvent": "fiammetta_before",
-        },
-        {
-            "x": "2026-09-22T10:00:01.000000+08:00",
-            "y": 24,
-            "relatedOperator": "菲亚梅塔",
-            "moodEvent": "fiammetta_after",
-        },
-    ]
+    assert [point["y"] for point in points] == expected_moods
+    assert [point["moodEvent"] for point in points] == expected_events
+    assert all(point["relatedOperator"] == "菲亚梅塔" for point in points)
+    assert record._fetchall(
+        "SELECT mood, mood_event FROM agent_action WHERE name = ? ORDER BY current_time",
+        "歌蕾蒂娅",
+    ) == [(before_mood, "fiammetta_before"), (24, "fiammetta_after")]
