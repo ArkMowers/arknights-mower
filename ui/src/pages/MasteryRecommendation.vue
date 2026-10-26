@@ -2097,7 +2097,9 @@ const recommendedCards = computed(() =>
         plannedCount,
         recommendation: bestRecommendation,
         score: surveyScore,
-        hasWork: Boolean((op.recommendations || []).length || (op.modules || []).length)
+        hasWork:
+          (op.recommendations || []).some((rec) => Number(rec.current_level) < 3) ||
+          (op.modules || []).some((module) => module.current_level < module.max_level)
       }
     })
     .filter((card) => card.hasWork && !card.planned)

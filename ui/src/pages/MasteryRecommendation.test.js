@@ -746,6 +746,46 @@ describe('养成工作区派生数据', () => {
     expect(page.recommendedCards.value[0].planned).toBe(false)
   })
 
+  it('推荐卡只保留仍有未完成技能或模组的干员', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    store.recommendations = [
+      {
+        char_id: 'char_completed',
+        name: '已完成模组',
+        rarity: 6,
+        recommendations: [],
+        modules: [{ id: 'completed', current_level: 3, max_level: 3 }]
+      },
+      {
+        char_id: 'char_mastered',
+        name: '已完成专精',
+        rarity: 6,
+        recommendations: [{ skill_index: 0, current_level: 3 }],
+        modules: []
+      },
+      {
+        char_id: 'char_module',
+        name: '模组待升级',
+        rarity: 6,
+        recommendations: [],
+        modules: [{ id: 'unfinished', current_level: 1, max_level: 3 }]
+      },
+      {
+        char_id: 'char_skill',
+        name: '专精待完成',
+        rarity: 6,
+        recommendations: [{ skill_index: 0, current_level: 1 }],
+        modules: [{ id: 'completed', current_level: 3, max_level: 3 }]
+      }
+    ]
+
+    expect(page.recommendedCards.value.map((card) => card.operator.char_id)).toEqual([
+      'char_module',
+      'char_skill'
+    ])
+  })
+
   it('详情派生技能目标、模组目标与基础技能状态', () => {
     const page = setup()
     const store = useMasteryStore()
