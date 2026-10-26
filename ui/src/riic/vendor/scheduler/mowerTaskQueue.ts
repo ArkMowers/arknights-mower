@@ -47,9 +47,9 @@ export class MowerTask {
  /** Once room execution begins, remaining rooms retain the confirmed shift intent. */
  arrangementStarted=false
  productShiftLocked=false
- moodControlObserved=false
+ /** 兼容旧快照标记：只用于清除未执行的提前轮休，不再生成预测建议。 */
  moodControlEvent?:{fingerprint:string;timeMicros:number}
- moodControlEvidence?:import('./mowerPredictivePlanning').MowerPredictiveEvidence
+ moodControlEvidence?:unknown
  ordinaryCoordination=false
  exhaustSupport=false
  coordinationRequestNames:string[]=[]

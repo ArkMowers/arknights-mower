@@ -38,34 +38,22 @@ function dispatchUntil(state:RuntimeState,done:()=>boolean,maxSteps=50){
 }
 
 describe('replacement coordination through source runtime',()=>{
- it.each([false,true].flatMap(predictiveMoodControl=>['patrol','planning'].map(recheck=>({predictiveMoodControl,recheck}))))('recalls until $recheck without reversing recovery with prediction=$predictiveMoodControl',({predictiveMoodControl,recheck})=>{
+ it.each([false,true].flatMap(predictiveMoodControl=>['patrol','planning'].map(recheck=>({predictiveMoodControl,recheck}))))('requires full-recovery endurance despite $recheck with saved mood mode=$predictiveMoodControl',({predictiveMoodControl,recheck})=>{
   const {state,source}=fixture([],recheck==='planning'?'working':undefined)
   state.config.mowerPolicy!.predictiveMoodControl=predictiveMoodControl
   source.data.policy.predictiveMoodControl=predictiveMoodControl
   state.config.mowerSourceRules!.restInFull=['B'];source.data.operators.A!.restInFull=false
   source.data.operators.B!.exhaustRequire=false;state.config.mowerSourceRules!.exhaustRequire=[]
   source.queue.tasks[0]!.ordinaryCoordination=true
-  const patrol=new MowerTask({time:1})
   if(recheck==='planning'){
    source.planningWake=nextMowerMoodPlanningWake(state,source.data,rates)
    expect(source.planningWake).toEqual({timeMicros:toMowerMicros(1),names:['C']})
-  }
-  else source.queue.tasks.push(patrol)
+  }else source.queue.tasks.push(new MowerTask({time:1}))
   settleMowerSource(state,rates)
-  expect(source.queue.tasks.some(task=>task.exhaustSupport)).toBe(true)
-  dispatchUntil(state,()=>state.occupants.room_1_1_0==='A'&&state.occupants.room_1_2_0==='X'&&Object.values(state.bedOccupants).includes('B'))
-  expect(source.data.urgentRecoverySupporters.B).toEqual(['A'])
-  const returns=state.events.filter(event=>event.type==='shift-on'&&event.operators.includes('A')).length
-  dispatchUntil(state,()=>recheck==='planning'?!source.planningWake&&!source.planningMoodRefreshNames:!source.queue.tasks.includes(patrol),100)
-  expect(state.time).toBeLessThan(2)
-  for(let attempt=0;attempt<8;attempt++)settleMowerSource(state,rates)
-  expect(source.data.urgentRecoverySupporters.B).toEqual(['A'])
-  expect(mowerUrgentRecallBlocked(source.data,['A'])).toBe(true)
-  expect(Object.values(state.bedOccupants)).toContain('B')
-  expect(state.events.filter(event=>event.type==='shift-on'&&event.operators.includes('A'))).toHaveLength(returns)
-  expect(source.queue.tasks).not.toContain(patrol)
-  expect(patrol.timeMicros).toBe(toMowerMicros(1))
-  if(recheck==='planning')expect(source.data.operators.C!.timeStampMicros).toBeGreaterThanOrEqual(toMowerMicros(1))
+  expect(source.queue.tasks.some(task=>task.exhaustSupport)).toBe(false)
+  expect(state.occupants.room_1_1_0).toBe('X')
+  expect(state.occupants.room_1_2_0).toBe('B')
+  expect(Object.values(state.bedOccupants)).toContain('A')
  })
  it.each([{mood:4,rate:1,allowed:false,ordinary:true},{mood:4,rate:1,allowed:true,ordinary:false},{mood:20,rate:1,allowed:true,ordinary:true}])('recall feasibility uses remaining work endurance: $mood mood, $rate depletion',({mood,rate,allowed,ordinary})=>{
   const {state,source}=fixture([])

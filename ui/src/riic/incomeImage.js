@@ -59,7 +59,9 @@ export function incomeReportLines(result, settings, plan, label) {
       .join('；')}。加权产出不是龙门币结算额。`,
     `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
     provenance?.moodControlStrategyVersion
-      ? `轮班策略 ${provenance.moodControlStrategyVersion}；实时心情计算调控${provenance.predictiveMoodControl ? '开启' : '关闭'}。两种模式均模拟心情变化。`
+      ? provenance.moodControlStrategyVersion === 'ordinary-threshold-v1'
+        ? `轮班策略 ${provenance.moodControlStrategyVersion}；实时心情计算调控${provenance.predictiveMoodControl ? '开启' : '关闭'}。两种模式均模拟心情变化，按正常下班阈值轮休，不为避免替班断档而提前下班；普通救急召回须能坚持到对应主班回满。`
+        : `轮班策略 ${provenance.moodControlStrategyVersion}；实时心情计算调控${provenance.predictiveMoodControl ? '开启' : '关闭'}。两种模式均模拟心情变化。`
       : '这份历史记录未保存轮班策略版本，重新演算后可比较当前策略。',
     `本次设施等级（优先使用排班保存值，未设置时推断）：${levels}。`,
     provenance
