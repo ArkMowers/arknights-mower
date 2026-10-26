@@ -17,7 +17,7 @@ def choose_instance_directory(window, directory=""):
     if sys.platform != "darwin":
         return choose_directory(window, directory, title="选择实例保存目录")
 
-    # pywebview 5.1 does not enable directory creation on NSOpenPanel.
+    # Instance directories use a native panel with directory creation enabled.
     # Its JS API runs on a worker thread; Cocoa dialogs belong on the main thread.
     from concurrent.futures import Future
 
@@ -88,7 +88,7 @@ class Api(InstanceController):
             result = choose_directory(window, current, title=field["label"])
         else:
             result = window.create_file_dialog(
-                webview.OPEN_DIALOG,
+                webview.FileDialog.OPEN,
                 allow_multiple=False,
                 directory=str(Path(current).parent) if current else "",
             )

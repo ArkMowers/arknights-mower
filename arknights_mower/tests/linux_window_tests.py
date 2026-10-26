@@ -280,7 +280,7 @@ def qt(monkeypatch):
         width=lambda: 1000,
         height=lambda: 700,
     )
-    native.view = view
+    native.webview = view
     app = SimpleNamespace(
         installEventFilter=Mock(),
         removeEventFilter=Mock(),

@@ -9,7 +9,7 @@ from unittest import mock
 from unittest.mock import patch
 from wsgiref.util import setup_testing_defaults
 
-from webview import FOLDER_DIALOG
+from webview import FileDialog
 
 from arknights_mower.utils import manager_instances as controls
 from arknights_mower.utils import update_runtime as runtime
@@ -284,7 +284,7 @@ class ManagerFolderDialogTests(unittest.TestCase):
                 window.create_file_dialog.return_value,
             )
         window.create_file_dialog.assert_called_once_with(
-            dialog_type=FOLDER_DIALOG, directory="/data"
+            dialog_type=FileDialog.FOLDER, directory="/data"
         )
 
     def test_macos_allows_creating_folders_on_main_thread_and_handles_cancel(self):

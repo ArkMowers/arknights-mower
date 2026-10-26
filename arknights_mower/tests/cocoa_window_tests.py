@@ -85,7 +85,7 @@ class CocoaWindowTests(unittest.TestCase):
             isFlipped=lambda: False,
         )
         self.browser = SimpleNamespace(
-            window=self.native, webkit=self.view, frameless=True
+            window=self.native, webview=self.view, frameless=True
         )
         self.monitors = []
         self.removed_monitors = []

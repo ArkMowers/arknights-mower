@@ -312,7 +312,7 @@ pytweening==1.2.0
     #   pyautogui
 pytz==2024.1
     # via -r requirements.txt
-pywebview==5.1
+pywebview==6.2.1
     # via -r requirements.txt
 pyyaml==6.0.1
     # via
