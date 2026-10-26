@@ -38,10 +38,29 @@ const {
   log_lines,
   task_list,
   waiting,
-  stop_after_round
+  stop_after_round,
+  maintenance_pause
 } = storeToRefs(mower_store)
 const { get_tasks, get_running, start_task_polling, stop_task_polling } = mower_store
 const axios = inject('axios')
+const cancelling_pause = ref(false)
+const pause_end = computed(() =>
+  maintenance_pause.value?.end ? new Date(maintenance_pause.value.end).toLocaleTimeString() : ''
+)
+
+async function cancel_pause() {
+  const id = maintenance_pause.value?.id
+  if (!id || cancelling_pause.value) return
+  cancelling_pause.value = true
+  try {
+    await mower_store.cancel_maintenance_pause(id)
+  } catch (error) {
+    db_message.error(error.response?.data?.error || '取消暂停失败，请重试')
+    void get_running()
+  } finally {
+    cancelling_pause.value = false
+  }
+}
 const mobile = inject('mobile')
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
@@ -647,6 +666,16 @@ async function db_delete(keys) {
               <span class="btn-text">立即停止</span>
             </n-button>
           </drop-down>
+          <div v-if="running && maintenance_pause" class="maintenance-pause-notice" role="status">
+            <n-text type="warning">闪断暂停中，设定结束时间 {{ pause_end }}</n-text>
+            <n-button
+              size="small"
+              :loading="cancelling_pause"
+              :disabled="waiting || cancelling_pause"
+              @click="cancel_pause"
+              >取消暂停</n-button
+            >
+          </div>
           <n-text
             v-if="running && stop_after_round"
             type="warning"
@@ -983,6 +1012,14 @@ async function db_delete(keys) {
 
 .execution-control {
   position: relative;
+}
+
+.maintenance-pause-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
 }
 
 .round-stop-notice {

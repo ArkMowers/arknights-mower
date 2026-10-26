@@ -1918,9 +1918,16 @@ def get_status():
         ),
         "next_task_time": None,
         "remaining_seconds": None,
+        "maintenance_pause": None,
     }
     if mower_thread and mower_thread.is_alive():
-        from arknights_mower.__main__ import base_scheduler, device_control
+        from arknights_mower.__main__ import (
+            base_scheduler,
+            device_control,
+            get_manual_pause,
+        )
+
+        response["maintenance_pause"] = get_manual_pause()
 
         device_state = device_control.status().status
         response["status"] = (
@@ -2208,6 +2215,24 @@ def scheduled_start():
         start_at = _schedule_start(delay_seconds)
     logger.info(f"已预约在 {start_at} 启动 Mower")
     return {"scheduled_start_at": start_at}
+
+
+@app.route("/maintenance-pause", methods=["DELETE"])
+@require_token
+def cancel_maintenance_pause():
+    from arknights_mower.__main__ import cancel_manual_pause
+
+    payload = request.get_json(silent=True)
+    pause_id = payload.get("id") if isinstance(payload, dict) else None
+    if not isinstance(pause_id, str) or not pause_id:
+        return {"error": "请指定要取消的闪断暂停"}, 400
+    if (
+        not mower_thread
+        or not mower_thread.is_alive()
+        or not cancel_manual_pause(pause_id)
+    ):
+        return {"error": "该闪断暂停已结束，请刷新状态"}, 409
+    return {"maintenance_pause": None}
 
 
 @app.route("/stop-after-round", methods=["PUT", "DELETE"])

@@ -125,6 +125,7 @@ describe('log page', () => {
         log_mobile: ref(''),
         running: ref(false),
         stop_after_round: ref(false),
+        maintenance_pause: ref(null),
         status_label: ref('已停止'),
         plan_condition: ref([]),
         log_lines: ref([]),
@@ -134,6 +135,7 @@ describe('log page', () => {
       get_tasks: vi.fn(),
       get_running: vi.fn(),
       set_stop_after_round: vi.fn(),
+      cancel_maintenance_pause: vi.fn(),
       start_task_polling: vi.fn(),
       stop_task_polling: vi.fn()
     }
@@ -821,6 +823,49 @@ describe('log page', () => {
       expect(state.mower.refs.status_label.value).toBe(label)
     }
   )
+
+  it('shows flash pause and cancels only its captured window while retaining immediate Stop', async () => {
+    state.mower.refs.running.value = true
+    state.mower.refs.maintenance_pause.value = {
+      id: 'current-window',
+      end: '2026-10-26T18:00:00+08:00'
+    }
+    let resolveCancel
+    state.mower.cancel_maintenance_pause.mockImplementation(
+      () => new Promise((resolve) => (resolveCancel = resolve))
+    )
+    const { find, all } = mountWorkspace()
+    const page = app._instance.setupState
+    expect(all().some((node) => node.text.includes('闪断暂停中'))).toBe(true)
+    const button = find((node) => node.props.onClick === page.cancel_pause)
+    const request = button.props.onClick()
+    await nextTick()
+    await page.cancel_pause()
+    expect(state.mower.cancel_maintenance_pause).toHaveBeenCalledExactlyOnceWith('current-window')
+    expect(button.props.disabled).toBe(true)
+    expect(find((node) => node.props.onClick === page.stop).props.disabled).toBe(false)
+    resolveCancel()
+    await request
+    state.mower.refs.maintenance_pause.value = null
+    await nextTick()
+    expect(all().some((node) => node.text.includes('闪断暂停中'))).toBe(false)
+  })
+
+  it('keeps the flash pause visible and reports a failed cancellation', async () => {
+    state.mower.refs.running.value = true
+    state.mower.refs.maintenance_pause.value = {
+      id: 'current-window',
+      end: '2026-10-26T18:00:00+08:00'
+    }
+    state.mower.cancel_maintenance_pause.mockRejectedValueOnce({
+      response: { data: { error: '无法取消' } }
+    })
+    const page = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    await page.cancel_pause()
+    expect(state.error).toHaveBeenCalledWith('无法取消')
+    expect(state.mower.refs.maintenance_pause.value.id).toBe('current-window')
+    expect(page.cancelling_pause.value).toBe(false)
+  })
 
   it('sets and cancels round stop from the stop menu while retaining immediate Stop', async () => {
     state.mower.refs.running.value = true

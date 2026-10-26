@@ -35,6 +35,7 @@ export const useMowerStore = defineStore('mower', () => {
   )
   const scheduled_start_at = ref(null)
   const stop_after_round = ref(false)
+  const maintenance_pause = ref(null)
   const auto_start_handled = ref(false)
   const desktop_startup_handled = ref(false)
   const ai_assistant_enabled = ref(null)
@@ -90,6 +91,7 @@ export const useMowerStore = defineStore('mower', () => {
         status.value = response.data.status
         running.value = status.value !== 'stopped'
         stop_after_round.value = running.value && response.data.stop_after_round === true
+        maintenance_pause.value = running.value ? (response.data.maintenance_pause ?? null) : null
         scheduled_start_at.value = response.data.scheduled_start_at ?? null
         auto_start_handled.value = response.data.auto_start_handled === true
         desktop_startup_handled.value = response.data.desktop_startup_handled === true
@@ -116,6 +118,18 @@ export const useMowerStore = defineStore('mower', () => {
     const request = taskRequest
     taskRequest = null
     request?.controller.abort()
+  }
+
+  async function cancel_maintenance_pause(pauseId) {
+    const revision = runningRevision
+    await axios.delete(`${import.meta.env.VITE_HTTP_URL}/maintenance-pause`, {
+      data: { id: pauseId },
+      timeout: 10000
+    })
+    if (revision !== runningRevision) return
+    runningRevision += 1
+    if (maintenance_pause.value?.id === pauseId) maintenance_pause.value = null
+    await get_tasks()
   }
 
   async function set_stop_after_round(enabled) {
@@ -176,6 +190,7 @@ export const useMowerStore = defineStore('mower', () => {
       if (active) void get_tasks()
       else {
         stop_after_round.value = false
+        maintenance_pause.value = null
         cancel_task_poll()
         task_list.value = []
       }
@@ -194,6 +209,8 @@ export const useMowerStore = defineStore('mower', () => {
     status_label,
     scheduled_start_at,
     stop_after_round,
+    maintenance_pause,
+    cancel_maintenance_pause,
     set_stop_after_round,
     auto_start_handled,
     desktop_startup_handled,

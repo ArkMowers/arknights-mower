@@ -420,7 +420,9 @@ def _advance_support_swaps_for_maintenance(
         key=lambda info: info.start,
         reverse=True,
     ):
-        if now >= maintenance.start:
+        if now >= maintenance.start and not (
+            maintenance.manual and maintenance.active_at(now)
+        ):
             continue
         deadline = maintenance.start - timedelta(minutes=max(10, run_order_delay * 2))
         # 公告维护使用完整区间；即时刷新也保护恰好位于刷新时刻的换人。
@@ -446,6 +448,7 @@ def _advance_support_swaps_for_maintenance(
                 ),
             )
             swap.advance_support_swap = True
+            swap.maintenance_start = maintenance.start
             deadline = swap.time
             logger.info(
                 f"专精换人避让维护，从 {original:%H:%M:%S} 提前至 {swap.time:%H:%M:%S}"
@@ -1373,7 +1376,10 @@ def adjust_run_order_for_maintenance(
             for task in tasks
             if task.type in MAINTENANCE_TASK_TYPES
             and task.maintenance_info.prepare
-            and (now or datetime.now()) < task.time
+            and (
+                (now or datetime.now()) < task.time
+                or task.maintenance_info.active_at(now or datetime.now())
+            )
         ],
     ]
     blocked_orders = blocked_run_order_ids(tasks, op_data)

@@ -1,12 +1,13 @@
 import copy
 import os
+from dataclasses import replace
 from datetime import datetime, timedelta
-from threading import Lock, Timer
+from threading import Event, Lock, Timer
 from typing import TYPE_CHECKING
 
 from arknights_mower.data import base_room_list
 from arknights_mower.utils import config, path, rapidocr
-from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.csleep import MowerExit, cancellation_scope, csleep
 from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
@@ -25,6 +26,7 @@ from arknights_mower.utils.resource_pkg import (
     resource_task_session,
 )
 from arknights_mower.utils.scheduler_task import (
+    MAINTENANCE_TASK_TYPES,
     find_next_task,
     merge_restored_waiting_shifts,
     protect_priority_tasks,
@@ -35,15 +37,88 @@ if TYPE_CHECKING:
 
 base_scheduler = None
 _startup_maintenance_tasks = ()
+_manual_pause = None
+_manual_pause_lock = Lock()
+
+
+def get_manual_pause():
+    with _manual_pause_lock:
+        if _manual_pause is None or _manual_pause[1].is_set():
+            return None
+        info, _ = _manual_pause
+        return {"id": info.announcement_id, "end": info.end.astimezone().isoformat()}
+
+
+def cancel_manual_pause(pause_id):
+    with _manual_pause_lock:
+        if _manual_pause is None or _manual_pause[0].announcement_id != pause_id:
+            return False
+        _manual_pause[1].set()
+        return True
+
+
+def _wait_for_maintenance(info, scheduler, remaining_time):
+    global _manual_pause
+    pause = (info, Event()) if info.manual else None
+    if pause is not None:
+        with _manual_pause_lock:
+            _manual_pause = pause
+    try:
+        if scheduler is None:
+
+            def cancelled():
+                return config.stop_mower.is_set() or (
+                    pause is not None and pause[1].is_set()
+                )
+
+            try:
+                with cancellation_scope(cancelled):
+                    csleep(remaining_time)
+            except MowerExit:
+                if config.stop_mower.is_set() or pause is None or not pause[1].is_set():
+                    return True
+        else:
+            scheduler.handle_idle_action(remaining_time)
+            options = {"cancelled": pause[1].is_set} if pause is not None else {}
+            scheduler._idle_sleep(remaining_time, allow_wakeup=False, **options)
+        return False
+    finally:
+        if pause is not None:
+            if pause[1].is_set():
+                tasks = (
+                    scheduler.tasks
+                    if scheduler is not None
+                    else _startup_maintenance_tasks
+                )
+                for task in list(tasks):
+                    if (
+                        task.type in MAINTENANCE_TASK_TYPES
+                        and task.maintenance_info.announcement_id
+                        == info.announcement_id
+                    ):
+                        tasks.remove(task)
+                logger.info("已取消本次闪断暂停，继续执行待办任务")
+            with _manual_pause_lock:
+                if _manual_pause is pause:
+                    _manual_pause = None
 
 
 def _manual_maintenances():
     from arknights_mower.utils.scheduler_task import MAINTENANCE_TASK_TYPES
 
     tasks = base_scheduler.tasks if base_scheduler else _startup_maintenance_tasks
-    return [
+    windows = [
         task.maintenance_info for task in tasks if task.type in MAINTENANCE_TASK_TYPES
     ]
+    if base_scheduler is None:
+        # 启动时先等完闪断，不登录补做准备；原队列仍保留未完成责任。
+        windows = [
+            replace(info, preparation_pending=False)
+            if info.update_type == "hot"
+            else info
+            for info in windows
+        ]
+    return windows
 
 
 NewsChecker.manual_maintenance_provider = staticmethod(_manual_maintenances)
@@ -257,11 +332,18 @@ def _handle_maintenance(
     if info.update_type == "major" and not info.manual:
         _stop_for_major_update(info)
         return True
+    if (
+        info.manual
+        and info.prepare
+        and scheduler is not None
+        and not scheduler._prepare_manual_maintenance(info)
+    ):
+        return False
     if info.update_type == "major" and info.manual:
-        if scheduler is not None and not scheduler._prepare_manual_server_update(info):
-            return False
         config.stop_mower.set()
         return info
+    if now >= info.resume_at:
+        return False
 
     flash_probe_at = min(info.end, info.start + timedelta(minutes=2))
     flash_probe_pending = False
@@ -298,18 +380,8 @@ def _handle_maintenance(
     logger.info("WRYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY!")
     logger.info("服务器维护/热更新中，DIO大人已为你暂停一切行动。")
     logger.info("==============================================")
-    if scheduler is None:
-        try:
-            csleep(remaining_time)
-        except MowerExit:
-            return True
-        if next_server_update is not None:
-            return _handle_maintenance(next_server_update, scheduler)
-        logger.info("时间开始流动了……DIO大人贴心为你重启时间！")
-        return False
-    scheduler.handle_idle_action(remaining_time)
-    # 服务器维护期间 mower 完全空闲，同样走休眠收口点，让 /status 显示休眠
-    scheduler._idle_sleep(remaining_time, allow_wakeup=False)
+    if _wait_for_maintenance(info, scheduler, remaining_time):
+        return True
     if next_server_update is not None:
         return _handle_maintenance(next_server_update, scheduler)
     if flash_probe_pending:

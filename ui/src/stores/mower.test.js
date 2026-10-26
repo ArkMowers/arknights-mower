@@ -55,6 +55,50 @@ describe('worker status', () => {
     )
   })
 
+  it('restores flash pause from status and clears it for older or stopped backends', async () => {
+    const pause = { id: 'window', end: '2026-10-26T18:00:00+08:00' }
+    axios.get.mockResolvedValueOnce({
+      data: { status: 'sleeping', plan_condition: [], maintenance_pause: pause }
+    })
+    await store.get_running()
+    expect(store.maintenance_pause).toEqual(pause)
+    axios.get.mockResolvedValueOnce({ data: { status: 'sleeping', plan_condition: [] } })
+    await store.get_running()
+    expect(store.maintenance_pause).toBeNull()
+    store.maintenance_pause = pause
+    store.running = false
+    expect(store.maintenance_pause).toBeNull()
+  })
+
+  it('cancels the captured flash pause and ignores an older status response', async () => {
+    store.running = true
+    store.maintenance_pause = { id: 'window', end: '2026-10-26T18:00:00+08:00' }
+    let resolveStatus
+    axios.get.mockImplementationOnce(() => new Promise((resolve) => (resolveStatus = resolve)))
+    const request = store.get_running()
+    axios.delete.mockResolvedValueOnce({ data: { maintenance_pause: null } })
+    await store.cancel_maintenance_pause('window')
+    expect(axios.delete).toHaveBeenCalledWith('/maintenance-pause', {
+      data: { id: 'window' },
+      timeout: 10000
+    })
+    expect(store.maintenance_pause).toBeNull()
+    resolveStatus({
+      data: { status: 'sleeping', plan_condition: [], maintenance_pause: { id: 'window' } }
+    })
+    await request
+    expect(store.maintenance_pause).toBeNull()
+    expect(store.running).toBe(true)
+  })
+
+  it('does not clear a newer flash window when an older cancel request finishes', async () => {
+    store.running = true
+    store.maintenance_pause = { id: 'next-window' }
+    axios.delete.mockResolvedValueOnce({ data: { maintenance_pause: null } })
+    await store.cancel_maintenance_pause('old-window')
+    expect(store.maintenance_pause.id).toBe('next-window')
+  })
+
   it.each([true, false, null, undefined])(
     'reads the assistant authorization snapshot %s without saving it',
     async (enabled) => {

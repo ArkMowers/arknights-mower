@@ -69,10 +69,10 @@ class MaintenanceInfo:
         return self.end
 
     def active_at(self, now: datetime) -> bool:
-        if (
-            self.manual
-            and self.update_type == "major"
-            and (not self.restart_after_update or self.preparation_pending)
+        if self.manual and (
+            self.preparation_pending
+            or self.update_type == "major"
+            and not self.restart_after_update
         ):
             return self.start <= now
         return self.start <= now < self.resume_at

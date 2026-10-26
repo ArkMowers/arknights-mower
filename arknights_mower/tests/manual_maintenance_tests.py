@@ -4,7 +4,7 @@ import pickle
 from datetime import timedelta
 from threading import Event
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 from flask import Flask
@@ -189,13 +189,160 @@ def test_manual_flash_waits_to_exact_end_without_probe_or_stopping(
     assert maintenance.main._handle_maintenance(info, solver) is False
     if elapsed < 10:
         solver._idle_sleep.assert_called_once_with(
-            (10 - elapsed) * 60, allow_wakeup=False
+            (10 - elapsed) * 60, allow_wakeup=False, cancelled=ANY
         )
     else:
         solver._idle_sleep.assert_not_called()
     assert not maintenance.main._flash_probe_ids
     stop.assert_not_called()
     assert not maintenance.module.config.stop_mower.is_set()
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.FLASH_UPDATE, TaskTypes.SERVER_UPDATE])
+@pytest.mark.parametrize("immediate", [False, True])
+def test_prepared_update_finishes_advanced_work_before_pausing(
+    maintenance, kind, immediate
+):
+    solver = maintenance.solver
+    update = update_task(maintenance, kind=kind, minutes=0 if immediate else 60)
+    order = SchedulerTask(
+        update.time + timedelta(minutes=4),
+        {"room_1_1": ["但书"]},
+        TaskTypes.RUN_ORDER,
+        "room_1_1",
+    )
+    swap = SchedulerTask(
+        update.time + timedelta(minutes=6), task_type=TaskTypes.SWAP_SUPPORT
+    )
+    solver.tasks.extend([order, swap])
+    if not immediate:
+        scheduling(solver.tasks, time_now=maintenance.clock.now())
+    maintenance.clock.current = update.time
+    solver._idle_sleep = Mock()
+    solver.handle_idle_action = Mock()
+    original_start = update.time
+
+    assert (
+        maintenance.main._handle_maintenance(update.maintenance_info, solver) is False
+    )
+    solver._idle_sleep.assert_not_called()
+    assert not maintenance.module.config.stop_mower.is_set()
+    assert update.maintenance_preparation_pending
+    assert order.time < original_start
+    assert swap.time <= original_start
+
+    # 失败保留原任务；暂停任务不占派发位置，无关工作仍可执行。
+    order.execution_failure = {"reason": "controlled device failure"}
+    solver.tasks.remove(swap)
+    unrelated = SchedulerTask(maintenance.clock.now(), task_type=TaskTypes.MAIL)
+    solver.tasks.append(unrelated)
+    snapshot = [(id(task), task.time) for task in solver.tasks]
+    for _ in range(3):
+        assert (
+            maintenance.main._handle_maintenance(update.maintenance_info, solver)
+            is False
+        )
+        assert find_next_task(solver.tasks, op_data=solver.op_data) is unrelated
+        assert [(id(task), task.time) for task in solver.tasks] == snapshot
+    solver._idle_sleep.assert_not_called()
+
+    # 原班恢复也是同一次跑单的剩余工作，完成后才交接暂停。
+    order.run_order_restore_pending = True
+    order.run_order_original_roster = {"room_1_1": ["鸿雪"]}
+    del order.execution_failure
+    assert (
+        maintenance.main._handle_maintenance(update.maintenance_info, solver) is False
+    )
+    solver._idle_sleep.assert_not_called()
+    solver.tasks.remove(order)
+    result = maintenance.main._handle_maintenance(update.maintenance_info, solver)
+    assert not update.maintenance_preparation_pending
+    assert update.time == original_start
+    if kind == TaskTypes.FLASH_UPDATE:
+        assert result is False
+        solver._idle_sleep.assert_called_once_with(
+            600, allow_wakeup=False, cancelled=ANY
+        )
+    else:
+        assert isinstance(result, MaintenanceInfo)
+        assert maintenance.module.config.stop_mower.is_set()
+
+
+def test_direct_pause_does_not_wait_for_advanced_work(maintenance):
+    update = update_task(maintenance, mode="pause", minutes=0)
+    order = SchedulerTask(update.time, task_type=TaskTypes.RUN_ORDER)
+    order.maintenance_start = update.time
+    maintenance.solver.tasks.append(order)
+    maintenance.solver._idle_sleep = Mock()
+    maintenance.solver.handle_idle_action = Mock()
+    maintenance.main._handle_maintenance(update.maintenance_info, maintenance.solver)
+    maintenance.solver._idle_sleep.assert_called_once_with(
+        600, allow_wakeup=False, cancelled=ANY
+    )
+    assert order in maintenance.solver.tasks
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.FLASH_UPDATE, TaskTypes.SERVER_UPDATE])
+def test_prepared_update_waits_for_support_handoff_without_orders(maintenance, kind):
+    update = update_task(maintenance, kind=kind)
+    swap = SchedulerTask(
+        update.time + timedelta(minutes=5), task_type=TaskTypes.SWAP_SUPPORT
+    )
+    solver = maintenance.solver
+    solver.tasks.append(swap)
+    scheduling(solver.tasks, time_now=maintenance.clock.now())
+    maintenance.clock.current = update.time
+    solver._idle_sleep = Mock()
+    solver.handle_idle_action = Mock()
+    assert (
+        maintenance.main._handle_maintenance(update.maintenance_info, solver) is False
+    )
+    assert update.maintenance_preparation_pending
+    assert find_next_task(solver.tasks, op_data=solver.op_data) is swap
+    solver._idle_sleep.assert_not_called()
+    assert not maintenance.module.config.stop_mower.is_set()
+    solver.tasks.remove(swap)
+    result = maintenance.main._handle_maintenance(update.maintenance_info, solver)
+    if kind == TaskTypes.FLASH_UPDATE:
+        solver._idle_sleep.assert_called_once_with(
+            600, allow_wakeup=False, cancelled=ANY
+        )
+    else:
+        assert isinstance(result, MaintenanceInfo)
+
+
+def test_overdue_flash_keeps_preparation_until_completion_without_new_pause(
+    maintenance,
+):
+    update = update_task(maintenance, minutes=60)
+    order = SchedulerTask(
+        update.time + timedelta(minutes=4),
+        {"room_1_1": ["但书"]},
+        TaskTypes.RUN_ORDER,
+        "room_1_1",
+    )
+    solver = maintenance.solver
+    solver.tasks.append(order)
+    scheduling(solver.tasks, time_now=maintenance.clock.now())
+    solver._idle_sleep = Mock()
+    solver.handle_idle_action = Mock()
+    maintenance.clock.current = update.time
+    assert (
+        maintenance.main._handle_maintenance(update.maintenance_info, solver) is False
+    )
+    maintenance.clock.current += timedelta(minutes=20)
+    (restored,) = pickle.loads(pickle.dumps([update]))
+    assert restored.maintenance_info.active_at(maintenance.clock.now())
+    assert update.maintenance_info in NewsChecker.get_manual_maintenances()
+    assert (
+        maintenance.main._handle_maintenance(update.maintenance_info, solver) is False
+    )
+    assert update.time == restored.time
+    solver.tasks.remove(order)
+    assert (
+        maintenance.main._handle_maintenance(update.maintenance_info, solver) is False
+    )
+    solver._idle_sleep.assert_not_called()
 
 
 @pytest.mark.parametrize("elapsed", [0, 4, 9])
@@ -554,12 +701,15 @@ def test_update_start_is_fixed_even_when_an_order_needs_the_same_operation_windo
         assert task.maintenance_info.end == start + timedelta(minutes=10)
 
 
+@pytest.mark.parametrize("preparation_pending", [False, True])
 def test_startup_waits_through_overlapping_manual_windows_before_initializing(
-    maintenance, monkeypatch
+    maintenance, monkeypatch, preparation_pending
 ):
     main = maintenance.main
     first = update_task(maintenance, minutes=0)
     second = update_task(maintenance, minutes=5)
+    first.maintenance_preparation_pending = preparation_pending
+    second.maintenance_preparation_pending = preparation_pending
     monkeypatch.setattr(main, "base_scheduler", None)
     monkeypatch.setattr(main, "_startup_maintenance_tasks", ())
     sleeps = []
@@ -584,6 +734,8 @@ def test_startup_waits_through_overlapping_manual_windows_before_initializing(
     assert maintenance.clock.now() == second.maintenance_info.end
     initialize.assert_called_once()
     simulate.assert_called_once_with(saved)
+    assert first.maintenance_preparation_pending is preparation_pending
+    assert second.maintenance_preparation_pending is preparation_pending
 
 
 def test_short_idle_wait_yields_at_manual_start_without_waiting_for_timer(
@@ -640,13 +792,14 @@ def test_main_removes_only_expired_manual_windows_before_dispatch(
     solver.run.assert_called_once()
 
 
-def test_main_dispatches_backup_preparation_before_due_server_stop(
-    maintenance, monkeypatch
+@pytest.mark.parametrize("kind", [TaskTypes.FLASH_UPDATE, TaskTypes.SERVER_UPDATE])
+def test_main_dispatches_preparation_before_due_manual_pause(
+    maintenance, monkeypatch, kind
 ):
     from arknights_mower.utils.csleep import MowerExit
 
-    task = update_task(maintenance, kind=TaskTypes.SERVER_UPDATE, minutes=0)
-    task.duration_minutes = 0
+    task = update_task(maintenance, kind=kind, minutes=0)
+    task.duration_minutes = 0 if kind == TaskTypes.SERVER_UPDATE else 10
     task.maintenance_preparation_pending = True
     shift = SchedulerTask(
         maintenance.clock.now(), {"room_1_1": ["但书"]}, TaskTypes.SELF_CORRECTION
@@ -656,7 +809,7 @@ def test_main_dispatches_backup_preparation_before_due_server_stop(
     solver.initialize_operators.return_value = None
     solver.op_data.validate_backup_plans.return_value = {"success": True}
     solver._initial_mood_refresh_rooms = set()
-    solver._prepare_manual_server_update.return_value = False
+    solver._prepare_manual_maintenance.return_value = False
     solver.run.side_effect = MowerExit
     main = maintenance.main
     monkeypatch.setattr(main, "base_scheduler", None)
@@ -664,7 +817,7 @@ def test_main_dispatches_backup_preparation_before_due_server_stop(
     monkeypatch.setattr(main, "_apply_version_update_resting_threshold", Mock())
     monkeypatch.setattr(main, "refresh_resource_at_boundary", Mock())
     main.simulate(None)
-    solver._prepare_manual_server_update.assert_called_once_with(task.maintenance_info)
+    solver._prepare_manual_maintenance.assert_called_once_with(task.maintenance_info)
     solver.run.assert_called_once()
     assert task in solver.tasks
     assert not maintenance.module.config.stop_mower.is_set()
