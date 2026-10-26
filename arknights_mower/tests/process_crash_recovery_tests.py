@@ -349,6 +349,68 @@ def test_actual_checkpoint_roundtrip_keeps_receipts_appointments_and_compensatio
     offline.io.assert_not_called()
 
 
+@pytest.mark.parametrize("start", ["reset", "recovery"])
+def test_zero_working_mood_does_not_interrupt_observation_checkpoint(
+    offline, notice, observed_scheduler, start
+):
+    solver = observed_scheduler
+    solver.op_data.plan = {
+        room: solver.op_data.plan[room] for room in ("central", "contact")
+    }
+    pending = SchedulerTask(datetime.now() + timedelta(hours=1), {}, TaskTypes.DEPOT)
+    solver.tasks = [pending]
+    target = solver.op_data.operators["夕"]
+    offline.record.save_agent_action(
+        target.name,
+        "central",
+        "central",
+        True,
+        target.group,
+        1,
+        current_time=datetime.now() - timedelta(hours=1),
+    )
+    current_room = None
+
+    def enter(room):
+        nonlocal current_room
+        current_room = room
+
+    solver.enter_room = Mock(side_effect=enter)
+    solver.leifeng_mode = True
+    solver.turn_on_room_detail = Mock()
+    solver.refresh_facility_state = Mock()
+    solver.detect_product_complete = Mock(return_value=None)
+    solver.find = Mock(return_value=None)
+    solver.read_screen = Mock(
+        side_effect=lambda *a, **kw: "夕" if current_room == "central" else "絮雨"
+    )
+    solver.read_accurate_mood = Mock(
+        side_effect=lambda *a, **kw: 0 if current_room == "central" else 20
+    )
+    solver.read_time = Mock(return_value=3009)
+    if start == "reset":
+        crash_recovery.checkpoint_reset(solver)
+    else:
+        crash_recovery.reconcile_scheduler(solver)
+        assert not crash_recovery.status()["active"]
+    assert [call.args[0] for call in solver.enter_room.call_args_list] == [
+        "central",
+        "contact",
+    ]
+    assert solver.tasks == [pending]
+    assert solver.tasks[0] is pending
+    loaded = offline.record.load_state(strict=True)
+    assert loaded["tasks"][0].time == pending.time
+    assert loaded["operators"]["夕"].current_room == "central"
+    assert loaded["operators"]["夕"].mood == 0
+    assert loaded["operators"]["絮雨"].mood == 20
+    assert offline.record._fetchall(
+        "SELECT mood FROM agent_action WHERE name = ?", "夕"
+    ) == [(1,), (0,)]
+    solver.read_time.assert_called_once()
+    offline.io.assert_not_called()
+
+
 @pytest.mark.parametrize("mode", ["0", "1", "2"])
 def test_explicit_recovery_start_preserves_the_selected_mode(
     offline, notice, observed_scheduler, monkeypatch, tmp_path, mode

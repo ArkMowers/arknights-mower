@@ -40,6 +40,19 @@ describe('task configuration checklist', () => {
     }
   )
 
+  it.each(['十日 签到', '十五日 签到', '10天 签到', '14天 签到', '15天 补领'])(
+    'finds event sign-in for %s without enabling it',
+    (query) => {
+      const config = { event_sign_in_enable: false }
+      const workflow = createTaskWorkflow(config)
+      const matches = workflow.tasks.filter((task) =>
+        matchesSettingsSearch(query, task.title, task.description, task.searchKeywords)
+      )
+      expect(matches.map(({ id }) => id)).toEqual(['event-sign-in'])
+      expect(config.event_sign_in_enable).toBe(false)
+    }
+  )
+
   it.each(['版本水印', '显示水印', '隐藏水印'])('finds the interface editor for %s', (query) => {
     const workflow = createTaskWorkflow({})
     const matches = workflow.tasks.filter((task) =>

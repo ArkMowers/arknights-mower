@@ -884,8 +884,6 @@ class Operators:
 
     @measure_mood_calculation
     def calculated_mood(self, name, now=None):
-        if getattr(self.operators.get(name), "working_mood_unconfirmed", False):
-            return None
         if not self.mood_calculation_enabled:
             return None
         from arknights_mower.utils.calculated_mood import sync_model
@@ -909,10 +907,14 @@ class Operators:
 
     @measure_mood_calculation
     def calculated_mood_deadline(self, name, target, now=None, max_hours=240):
-        if getattr(self.operators.get(name), "working_mood_unconfirmed", False):
-            return None
         if not self.mood_calculation_enabled:
             return None
+        if target == 0 and name in self.operators:
+            observed = self.operators[name].working_zero_deadline(
+                now or getattr(self, "_projection_now", None)
+            )
+            if observed is not None:
+                return observed
         from arknights_mower.utils.calculated_mood import sync_model
 
         now = now or getattr(self, "_projection_now", None)
@@ -1841,14 +1843,12 @@ class Operators:
                 current_room,
                 current_index,
                 datetime.now(),
-                preserve=preserve_depletion_rate,
+                preserve=preserve_depletion_rate or mood == 0,
             )
             agent.mood_is_prediction = False
-            agent.working_mood_unconfirmed = False
-            agent.work_rate_sample_eligible = not preserve_depletion_rate
+            agent.work_rate_sample_eligible = not preserve_depletion_rate and mood > 0
             if learned_rate is not None:
                 agent.depletion_rate = learned_rate
-                agent.depletion_rate_position = (current_room, current_index)
                 logger.debug(f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}")
             agent.time_stamp = datetime.now()
         from_dorm = agent.current_room.startswith("dorm")
@@ -1864,9 +1864,12 @@ class Operators:
             idx, dorm = self.get_dorm_by_name(name, group_transitions=group_transitions)
             if dorm and dorm.name == name:
                 dorm.reset()
-        if current_room not in self.true_exhaust_room:
+        if update_time or (agent.current_room, agent.current_index) != (
+            current_room,
+            current_index,
+        ):
             agent.exhaust_time = None
-            logger.debug(f"{name} 退出{current_room}，重置真实用尽时间")
+            logger.debug(f"{name} 观测或位置变化，清除旧工作期限")
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
@@ -2102,13 +2105,7 @@ class Operators:
             operator.mood = exist.mood
             operator.time_stamp = exist.time_stamp
             operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
-            operator.working_mood_unconfirmed = getattr(
-                exist, "working_mood_unconfirmed", False
-            )
             operator.depletion_rate = exist.depletion_rate
-            operator.depletion_rate_position = getattr(
-                exist, "depletion_rate_position", None
-            )
             operator.work_rate_sample_eligible = getattr(
                 exist, "work_rate_sample_eligible", True
             )
@@ -3367,11 +3364,9 @@ class Operator:
         self.current_index = current_index
         self.lower_limit = lower_limit
         self.depletion_rate = depletion_rate
-        self.depletion_rate_position = None
         self.work_rate_sample_eligible = True
         self.time_stamp = time_stamp
         self.mood_is_prediction = False
-        self.working_mood_unconfirmed = False
         self.workaholic = False
         self.arrange_order = ["技能", "false"]
         self.exhaust_time = None
@@ -3405,6 +3400,7 @@ class Operator:
     @current_room.setter
     def current_room(self, value):
         if self._current_room != value:
+            self.exhaust_time = None
             model = getattr(self, "_mood_model", None)
             if (
                 model is not None
@@ -3445,6 +3441,7 @@ class Operator:
     @current_index.setter
     def current_index(self, value):
         if self.current_index != value:
+            self.exhaust_time = None
             model = getattr(self, "_mood_model", None)
             if (
                 model is not None
@@ -3528,8 +3525,6 @@ class Operator:
         return False
 
     def current_mood(self, time=None):
-        if getattr(self, "working_mood_unconfirmed", False):
-            return -1
         time = time or getattr(self, "_projection_now", None)
         model = getattr(self, "_mood_model", None)
         if (
@@ -3555,6 +3550,20 @@ class Operator:
         else:
             return self.mood
 
+    def working_zero_deadline(self, now=None):
+        """零读数优先使用同岗位实读工作期限，不把显示精度当作耗尽。"""
+        now = now or getattr(self, "_projection_now", None) or datetime.now()
+        if (
+            self.mood == 0
+            and self.is_working()
+            and self.exhaust_time is not None
+            and self.time_stamp is not None
+            and self.time_stamp <= now
+            and not self.mood_is_prediction
+        ):
+            return max(now, self.exhaust_time)
+        return None
+
     def exhaust_time_at_lower_limit(self, zero_time, now=None):
         """按本次读到的心情，把游戏的归零倒计时换算到设置下限。"""
         now = now or datetime.now()
@@ -3567,6 +3576,10 @@ class Operator:
     def predict_exhaust(self, now=None):
         if self.workaholic or self.exhaust_require or self.room in ["factory", "train"]:
             return datetime.now() + timedelta(hours=24)
+        now = now or getattr(self, "_projection_now", None) or datetime.now()
+        observed = self.working_zero_deadline(now) if self.lower_limit == 0 else None
+        if observed is not None:
+            return max(now, observed - timedelta(minutes=30))
         model = getattr(self, "_mood_model", None)
         if (
             model is not None
