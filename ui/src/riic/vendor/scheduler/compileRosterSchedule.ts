@@ -43,6 +43,7 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
     else assumptions.dormIsolation = assumptions.dormIsolation.map(group => [...new Set(group.map(resolveOperatorCharId))])
   }
   if(assumptions.majorMaintenanceStartHours!==undefined&&(!Number.isFinite(assumptions.majorMaintenanceStartHours)||assumptions.majorMaintenanceStartHours<0))invalid('assumptions.majorMaintenanceStartHours','Maintenance start must be a nonnegative finite hour offset')
+  if(assumptions.majorMaintenanceDurationHours!==undefined&&(!Number.isFinite(assumptions.majorMaintenanceDurationHours)||assumptions.majorMaintenanceDurationHours<0))invalid('assumptions.majorMaintenanceDurationHours','Maintenance duration must be nonnegative and finite')
   if(assumptions.runOrderSimulationMode!==undefined&&assumptions.runOrderSimulationMode!=='ideal')invalid('assumptions.runOrderSimulationMode','Invalid simulation run-order mode')
   for (const key of ['enableMastery','enableParty','leifengMode'] as const) if (typeof assumptions[key] !== 'boolean') invalid('assumptions.'+key, 'Native scheduling switch must be boolean')
   for(const key of ['droneIntervalHours','maaGapHours'] as const)if(!Number.isFinite(assumptions[key])||assumptions[key]!<0)invalid('assumptions.'+key,'Native service interval must be nonnegative and finite')

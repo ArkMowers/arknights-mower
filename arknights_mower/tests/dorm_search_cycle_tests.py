@@ -292,6 +292,7 @@ def test_restart_preserves_search_deadline_and_full_resident_protection(
     fresh = copy.deepcopy(data)
     fresh.refresh_idle_dorm_search(reason="模拟重启前的新对象")
     restarted = object.__new__(BaseSchedulerSolver)
+    restarted.tasks = []
     restarted.op_data = fresh
     restarted.initialize_operators = MagicMock(return_value=None)
     fresh.validate_backup_plans = MagicMock(return_value={"success": True})

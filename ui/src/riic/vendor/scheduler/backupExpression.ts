@@ -52,8 +52,8 @@ function tokenize(text: string): Token[] {
   for (let rest = text.trim(); rest; rest = rest.trimStart()) {
     if (tokens.length >= 1024) return fail('条件文本超过限制')
     const worker = /^op_data\.operators\[['"]([^'"\[\]]+)['"]\]\.(is_resting\(\)|is_working\(\)|current_mood\(\)|current_room|current_index|room|index|mood|upper_limit|lower_limit|group|workaholic|exhaust_require|rest_in_full|operator_type|resting_priority)\b/.exec(rest) ?? /^op_data\.operators\[['"]([^'"\[\]]+)['"]\]\.(is_resting\(\)|is_working\(\)|current_mood\(\))/.exec(rest)
-    const query = /^op_data\.(group_min_mood|group_max_mood|facility_has_mastery_plan|facility_is_training|inventory_count|facility_product_count|facility_product_type_count|facility_product)\b/.exec(rest)
-    const external = /^op_data\.(?:party_time\b|major_maintenance_remaining_hours\(\))/.exec(rest)
+    const query = /^op_data\.(major_maintenance_remaining_hours|group_min_mood|group_max_mood|facility_has_mastery_plan|facility_is_training|inventory_count|facility_product_count|facility_product_type_count|facility_product)\b/.exec(rest)
+    const external = /^op_data\.party_time\b/.exec(rest)
     const quoted = /^(['"])((?:\\.|(?!\1)[^\\])*)\1/.exec(rest)
     const number = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(rest)
     const word = /^(?:and|or|not|is|in|True|False|None)\b/.exec(rest)
@@ -150,6 +150,24 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
       if (token?.kind === 'value') return Object.assign(() => token.value!, {integerLiteral: typeof token.value === 'number' && /^\d+$/.test(token.text) ? token.value : undefined})
       if (token?.kind === 'query') {
         if (!take('(')) return fail(`${token.member} 缺少参数括号`)
+        if (token.member === 'major_maintenance_remaining_hours') {
+          let comparison: string | undefined, hours: number | undefined
+          if (!take(')')) {
+            const operator = tokens[cursor++]
+            if (operator?.kind !== 'value' || typeof operator.value !== 'string' || !['<', '<=', '==', '!=', '>=', '>'].includes(operator.value) || !take(',')) return fail('停止时长条件需要比较符和非负有限小时数')
+            const duration = tokens[cursor++]
+            if (duration?.kind !== 'value' || typeof duration.value !== 'number' || !Number.isFinite(duration.value) || duration.value < 0 || !take(')')) return fail('停止时长条件需要比较符和非负有限小时数')
+            comparison = operator.value; hours = duration.value
+          }
+          return state => {
+            if (comparison !== undefined) {
+              const duration = state.config.majorMaintenanceDurationHours
+              if (duration === undefined || duration <= 0 || !Number.isFinite(duration) || !binary(() => duration, () => hours!, comparison)(state)) return Infinity
+            }
+            const remaining = (state.config.majorMaintenanceStartHours ?? Infinity) - state.time
+            return remaining > 0 ? remaining : Infinity
+          }
+        }
         if (token.member === 'facility_product_type_count') {
           if (!take(')')) return fail('facility_product_type_count 不接受参数')
           return state => {
@@ -205,7 +223,6 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
         }
       }
       if (token?.kind === 'external') {
-        if (token.text === 'op_data.major_maintenance_remaining_hours()') return state => {const remaining=(state.config.majorMaintenanceStartHours??Infinity)-state.time;return remaining>0?remaining:Infinity}
         return state => state.mowerSource?.data.partyTime ?? null
       }
       if (token?.kind === 'worker') {
@@ -293,7 +310,7 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
   function logicalOr(): Expression { let expr = logicalAnd(); while (take('or')) expr = binary(expr, logicalAnd(), 'or'); return expr }
   const evaluate = tokens.length ? logicalOr() : () => false
   if (cursor !== tokens.length) return fail(`条件存在未解析内容 ${peek()}`)
-  const usesMajorMaintenance = tokens.some(token => token.kind === 'external' && token.text === 'op_data.major_maintenance_remaining_hours()')
+  const usesMajorMaintenance = tokens.some(token => token.kind === 'query' && token.member === 'major_maintenance_remaining_hours')
   return {
     evaluate, usesMajorMaintenance,
     observedOperatorDependenciesOnly:tokens.some(token=>token.kind==='worker')&&tokens.every(token=>token.kind==='operator'||token.kind==='value'||token.kind==='worker'&&['is_working()','is_resting()','current_room','current_index','room','index','current_mood()','mood'].includes(token.member!)),

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { maintenance_trigger, parse_maintenance_trigger } from './trigger_maintenance'
+import {
+  maintenance_trigger,
+  parse_maintenance_trigger,
+  parse_maintenance_expression
+} from './trigger_maintenance'
 
 describe('停服大更新定时条件', () => {
   it('defaults to half an hour with the existing expression schema', () => {
@@ -14,6 +18,28 @@ describe('停服大更新定时条件', () => {
     expect(parse_maintenance_trigger(maintenance_trigger(12))).toBe(12)
     expect(parse_maintenance_trigger(maintenance_trigger(0))).toBe(0)
   })
+
+  it.each(['>', '>=', '<', '<=', '==', '!='])(
+    'restores %s duration comparisons without changing the advance',
+    (operator) => {
+      const trigger = JSON.parse(JSON.stringify(maintenance_trigger(12, operator, 6)))
+      expect(parse_maintenance_trigger(trigger)).toBe(12)
+      expect(parse_maintenance_expression(trigger.left)).toEqual({ operator, hours: 6 })
+      expect(parse_maintenance_expression(maintenance_trigger().left)).toEqual({
+        operator: '',
+        hours: 6
+      })
+    }
+  )
+
+  it.each(["'=', 6", "'>=', -1", "'>=', Infinity", "'>=', True", "'>=', 1e309", "'>=', other()"])(
+    'leaves unsupported duration arguments %s in the normal editor',
+    (args) => {
+      expect(
+        parse_maintenance_expression(`op_data.major_maintenance_remaining_hours(${args})`)
+      ).toBeNull()
+    }
+  )
 
   it('leaves other comparisons and nonnumeric expressions in the normal editor', () => {
     for (const trigger of [

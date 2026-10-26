@@ -67,7 +67,7 @@ from arknights_mower.solvers.report import ReportSolver
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.solvers.shop import CreditShop
 from arknights_mower.solvers.skland import SKLand
-from arknights_mower.utils import config, detector, rapidocr, segment
+from arknights_mower.utils import config, detector, rapidocr, round_stop, segment
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.calculated_mood import log_mood_calculation
 from arknights_mower.utils.character_recognize import estimate_agent_mood
@@ -146,6 +146,7 @@ from arknights_mower.utils.resting_priority import (
     resting_tier,
 )
 from arknights_mower.utils.scheduler_task import (
+    MAINTENANCE_TASK_TYPES,
     MANUAL_TASK_TYPES,
     SchedulerTask,
     TaskScope,
@@ -931,6 +932,53 @@ class BaseSchedulerSolver(
                 task.__dict__.pop("process_recovery_fia_wait", None)
                 logger.info("相关观测或安排已更新，恢复原任务：%s", task)
 
+    def _prepare_manual_maintenance(self, info):
+        """先执行完提前跑单、原班恢复及换人，再暂停或停服。"""
+        windows = [
+            task
+            for task in self.tasks
+            if task.type in MAINTENANCE_TASK_TYPES
+            and task.maintenance_info.announcement_id == info.announcement_id
+        ]
+        if not windows:
+            return True
+        if not any(
+            getattr(task, "maintenance_preparation_pending", False) for task in windows
+        ):
+            scheduling(self.tasks, op_data=self.op_data)
+        pending = any(
+            getattr(task, "maintenance_start", None) == info.start
+            or task.type == TaskTypes.SWAP_SUPPORT
+            and getattr(task, "advance_support_swap", False)
+            and task.time <= info.start
+            for task in self.tasks
+        )
+        has_backup = info.update_type == "major" and any(
+            backup.uses_major_maintenance_condition
+            for backup in getattr(self.op_data, "backup_plans", ())
+        )
+        if has_backup:
+            for task in windows:
+                task.maintenance_preparation_pending = True
+            self.backup_plan_solver()
+            selection = self.op_data.evaluate_backup_selection()
+            pending = pending or (
+                selection.conditions != self.op_data.plan_condition
+                or selection.group_id != self.op_data.backup_group
+                or getattr(self, "maintenance_entry_pending", False)
+                or any(
+                    getattr(task, "backup_shift_active", False)
+                    or task.meta_data == "副表内存收敛"
+                    or getattr(task, "group_shift_expected", {})
+                    or getattr(task, "maintenance_replacement_run", False)
+                    or getattr(task, "maintenance_advance_before_backup", False)
+                    for task in self.tasks
+                )
+            )
+        for task in windows:
+            task.maintenance_preparation_pending = bool(pending)
+        return not pending
+
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
@@ -941,6 +989,14 @@ class BaseSchedulerSolver(
         if config.maintenance_recheck.is_set():
             return
         self._discard_legacy_mood_control_tasks()
+        if any(
+            task.type in MAINTENANCE_TASK_TYPES
+            and task.maintenance_info.active_at(datetime.now())
+            and not getattr(task, "maintenance_preparation_pending", False)
+            for task in self.tasks
+        ):
+            config.maintenance_recheck.set()
+            return
         self.error = False
         self._refresh_observed_recovery_tasks()
         sync_replacement_checks(self)
@@ -973,6 +1029,9 @@ class BaseSchedulerSolver(
             logger.info(f"出现任务调度情况休息{reschedule_time}秒等待下一个任务开始")
             # 休眠可能被新增任务唤醒；返回后重新排序、选择并检查到期时间。
             self._idle_sleep(reschedule_time)
+        if self.task is not None and self.task.type in MAINTENANCE_TASK_TYPES:
+            config.maintenance_recheck.set()
+            return
         if config.maintenance_recheck.is_set():
             return
         if self.party_time is not None and self.party_time < datetime.now():
@@ -2042,13 +2101,17 @@ class BaseSchedulerSolver(
                 TaskTypes.SWITCH_PRODUCT,
                 TaskTypes.FIAMMETTA,
             }
-            future_preserved = {
-                TaskTypes.RUN_ORDER,
-                TaskTypes.FURNITURE,
-                TaskTypes.DEPOT,
-                TaskTypes.CLUE,
-                TaskTypes.WORKSHOP,
-            } | MANUAL_TASK_TYPES
+            future_preserved = (
+                {
+                    TaskTypes.RUN_ORDER,
+                    TaskTypes.FURNITURE,
+                    TaskTypes.DEPOT,
+                    TaskTypes.CLUE,
+                    TaskTypes.WORKSHOP,
+                }
+                | MANUAL_TASK_TYPES
+                | MAINTENANCE_TASK_TYPES
+            )
             if any(
                 t.time < now - timedelta(minutes=15)
                 and t.type not in preserved
@@ -2060,6 +2123,8 @@ class BaseSchedulerSolver(
                 and not getattr(t, "execution_failure", None)
                 and not getattr(t, "execution_retained", False)
                 and not getattr(t, "replacement_check", None)
+                and not getattr(t, "maintenance_preparation_pending", False)
+                and getattr(t, "maintenance_start", None) is None
                 for t in self.tasks
             ):
                 logger.info(
@@ -2078,6 +2143,8 @@ class BaseSchedulerSolver(
                     or getattr(t, "execution_failure", None)
                     or getattr(t, "execution_retained", False)
                     or getattr(t, "replacement_check", None)
+                    or getattr(t, "maintenance_preparation_pending", False)
+                    or getattr(t, "maintenance_start", None) is not None
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始
@@ -14843,6 +14910,8 @@ class BaseSchedulerSolver(
                         restore_task.maintenance_advance_before_backup = True
                     if getattr(self.task, "maintenance_replacement_run", False):
                         restore_task.maintenance_replacement_run = True
+                    if hasattr(self.task, "maintenance_start"):
+                        restore_task.maintenance_start = self.task.maintenance_start
                     self.tasks.append(restore_task)
                     self.skip()
                 if missed_order:
@@ -16552,10 +16621,23 @@ class BaseSchedulerSolver(
             self.device = device
             self.recog.device = device
 
-    def _idle_sleep(self, remaining_time, allow_wakeup=True):
+    def _stop_after_round(self, body=""):
+        if not round_stop.finish_if_requested():
+            return
+        message = "本轮任务结束，已按要求停止"
+        logger.info(message)
+        try:
+            send_message(body or message, message)
+        except Exception:
+            logger.exception("发送本轮结束停止通知失败")
+        raise MowerExit
+
+    def _idle_sleep(
+        self, remaining_time, allow_wakeup=True, *, round_end=False, cancelled=None
+    ):
         """等待任务并统一维护 `sleeping` 与连续场景观测边界。
 
-        普通等待响应调度器唤醒；维护等待仅响应停止信号。
+        普通等待响应调度器唤醒；维护等待响应停止或当前暂停的明确取消。
         成功恢复时清理标准画面帧、场景和计时；设备恢复失败时保留待完成的识别复位。
         主循环成功恢复设备后完成复位；取消与错误始终复位 `sleeping`。
         """
@@ -16568,6 +16650,10 @@ class BaseSchedulerSolver(
         try:
             end_time = datetime.now() + timedelta(seconds=remaining_time)
             while datetime.now() < end_time:
+                if cancelled is not None and cancelled():
+                    break
+                if round_end:
+                    self._stop_after_round()
                 refresh_resource_at_boundary()
                 if allow_wakeup and config.wake_scheduler.is_set():
                     config.wake_scheduler.clear()
@@ -16575,6 +16661,8 @@ class BaseSchedulerSolver(
                 csleep(min(1, (end_time - datetime.now()).total_seconds()))
             if config.stop_mower.is_set():
                 raise MowerExit
+            if round_end:
+                self._stop_after_round()
             self._idle_observation_pending = True
             if restoration_failures is not None:
                 self._idle_run_order_restoration_failures = restoration_failures
@@ -16650,6 +16738,7 @@ class BaseSchedulerSolver(
         protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         first = self.find_next_task()
         if first is None:
+            self._stop_after_round()
             return
         remaining_time = (first.time - datetime.now()).total_seconds()
         if remaining_time <= 0:
@@ -16672,19 +16761,20 @@ class BaseSchedulerSolver(
         )
         context = f"下一次任务:{first.plan if len(first.plan) != 0 else '空任务' if first.type == '' else first.type}"
         logger.info(context)
-        logger.info(subject)
         self.task_count += 1
         logger.info(f"第{self.task_count}次任务结束")
         body = task_template.render(
             tasks=[obj.format(timezone_offset) for obj in self.tasks],
             base_scheduler=self,
         )
+        self._stop_after_round(body)
+        logger.info(subject)
         send_message(
             body,
             f"休息 {format_time(remaining_time)}，到{first.format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
         )
         if remaining_time > 0:
-            self._idle_sleep(remaining_time)
+            self._idle_sleep(remaining_time, round_end=True)
             self.check_current_focus()
 
     def handle_idle_action(self, remaining_time=0):

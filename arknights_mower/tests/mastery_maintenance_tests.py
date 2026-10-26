@@ -192,7 +192,7 @@ def test_rest_uses_advanced_handoff_time(maintenance, monkeypatch):
     solver.rest_until_next_task()
     assert swap.time < maintenance.info.start - timedelta(minutes=10)
     solver._idle_sleep.assert_called_once_with(
-        (swap.time - maintenance.clock.now()).total_seconds()
+        (swap.time - maintenance.clock.now()).total_seconds(), round_end=True
     )
 
 

@@ -4,6 +4,7 @@ const emit = defineEmits(['update'])
 
 import { ref, watch, computed, onMounted, h, inject } from 'vue'
 import { NAvatar } from 'naive-ui'
+import { parse_maintenance_expression } from '@/utils/trigger_maintenance'
 import {
   inventory_expression,
   inventory_options,
@@ -71,7 +72,7 @@ const op_data = computed(() => {
       type: 'impart'
     }
   }
-  if (data.value == 'op_data.major_maintenance_remaining_hours()') {
+  if (parse_maintenance_expression(data.value)) {
     return {
       type: 'major_maintenance'
     }
@@ -459,6 +460,9 @@ function render_custom_tip(option) {
   />
   <help-text v-if="op_type == 'major_maintenance'" label="查看停服大更新副表说明" :max-width="480">
     默认在停服大更新开始前半小时触发，可在同一行修改提前小时数。到达设定时间时，调度器自动检查此副表；其他组合条件仍须成立。
+    停止时长可选择比较符并填写小时数，按公告或计划停止的总时长判断，不随倒计时缩短。例如“&gt;=
+    6”和“&lt; 6”可分别触发不同副表，6 小时整匹配前者。 默认为不限时长；计划停止填 0
+    表示不预约启动，不参与时长比较，只能匹配不限时长的条件。
     到达公告停服开始时间后，此条件变为不成立，Mower 保存状态并停止任务线程。更新客户端后需重新启动
     Mower，首次检查时退出此副表；停服期间不执行换班。
     合并后的主班不含跑单干员时，触发后先用无人机加速已有的停服前跑单任务，完成原班恢复后再换班。提前跑单期间不生成新的普通跑单任务。

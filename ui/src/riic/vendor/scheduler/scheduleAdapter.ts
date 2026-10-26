@@ -166,6 +166,7 @@ export function compiledScheduleToRuntimeConfig(schedule: CompiledSchedule): Run
     mowerDormIsolation:schedule.assumptions.dormIsolation,
     mowerDormOrder:effectiveMowerDormOrder(schedule.assumptions.dormOrder?schedule.assumptions.dormOrder.split(','):typeof schedule.rawConf.dorm_order==='string'?schedule.rawConf.dorm_order.split(','):[]),
     majorMaintenanceStartHours:schedule.assumptions.majorMaintenanceStartHours,
+    majorMaintenanceDurationHours:schedule.assumptions.majorMaintenanceDurationHours,
     mowerMoodLimits:readMowerMoodLimits(schedule.rawConf,resolveOperatorCharId),
     mowerDroneRoom:schedule.assumptions.droneRoom??null,
     // Preserve ideal runner metadata; excludedCandidates below blocks ordinary shift use.

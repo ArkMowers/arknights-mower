@@ -336,8 +336,9 @@ class Plan:
                 isinstance(node, ast.Compare)
                 and len(node.ops) == 1
                 and isinstance(node.ops[0], ast.LtE)
-                and ast.unparse(node.left)
-                == "op_data.major_maintenance_remaining_hours()"
+                and isinstance(node.left, ast.Call)
+                and ast.unparse(node.left.func)
+                == "op_data.major_maintenance_remaining_hours"
             ):
                 continue
             try:

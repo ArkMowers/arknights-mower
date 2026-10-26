@@ -1059,9 +1059,10 @@ class ScreenshotTests(unittest.TestCase):
             and time.monotonic() < deadline
         ):
             Event().wait(0.005)
-        self.assertIn(archive_id, self.store._deleted_archives)
-        self.assertFalse((self.root / "errors" / archive_id).exists())
-        self.assertLessEqual(self.store._archive_bytes, 1024**2)
+        with self.store._archive_lock:
+            self.assertIn(archive_id, self.store._deleted_archives)
+            self.assertFalse((self.root / "errors" / archive_id).exists())
+            self.assertLessEqual(self.store._archive_bytes, 1024**2)
 
     def test_important_retention_keeps_latest_100_including_new_arrival(self):
         old = time.time_ns() - 2 * 3600 * 10**9

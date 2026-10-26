@@ -4,7 +4,7 @@ import ReconnectingWebSocket from 'reconnecting-websocket'
 import axios from 'axios'
 import { useMowerStore } from './mower'
 
-vi.mock('axios', () => ({ default: { get: vi.fn() } }))
+vi.mock('axios', () => ({ default: { get: vi.fn(), put: vi.fn(), delete: vi.fn() } }))
 vi.mock('reconnecting-websocket', () => ({
   default: vi.fn(function MockSocket() {
     this.send = vi.fn()
@@ -53,6 +53,50 @@ describe('worker status', () => {
     expect(axios.get.mock.calls.filter(([url]) => url.endsWith('/task'))).toHaveLength(
       running ? 1 : 0
     )
+  })
+
+  it('restores flash pause from status and clears it for older or stopped backends', async () => {
+    const pause = { id: 'window', end: '2026-10-26T18:00:00+08:00' }
+    axios.get.mockResolvedValueOnce({
+      data: { status: 'sleeping', plan_condition: [], maintenance_pause: pause }
+    })
+    await store.get_running()
+    expect(store.maintenance_pause).toEqual(pause)
+    axios.get.mockResolvedValueOnce({ data: { status: 'sleeping', plan_condition: [] } })
+    await store.get_running()
+    expect(store.maintenance_pause).toBeNull()
+    store.maintenance_pause = pause
+    store.running = false
+    expect(store.maintenance_pause).toBeNull()
+  })
+
+  it('cancels the captured flash pause and ignores an older status response', async () => {
+    store.running = true
+    store.maintenance_pause = { id: 'window', end: '2026-10-26T18:00:00+08:00' }
+    let resolveStatus
+    axios.get.mockImplementationOnce(() => new Promise((resolve) => (resolveStatus = resolve)))
+    const request = store.get_running()
+    axios.delete.mockResolvedValueOnce({ data: { maintenance_pause: null } })
+    await store.cancel_maintenance_pause('window')
+    expect(axios.delete).toHaveBeenCalledWith('/maintenance-pause', {
+      data: { id: 'window' },
+      timeout: 10000
+    })
+    expect(store.maintenance_pause).toBeNull()
+    resolveStatus({
+      data: { status: 'sleeping', plan_condition: [], maintenance_pause: { id: 'window' } }
+    })
+    await request
+    expect(store.maintenance_pause).toBeNull()
+    expect(store.running).toBe(true)
+  })
+
+  it('does not clear a newer flash window when an older cancel request finishes', async () => {
+    store.running = true
+    store.maintenance_pause = { id: 'next-window' }
+    axios.delete.mockResolvedValueOnce({ data: { maintenance_pause: null } })
+    await store.cancel_maintenance_pause('old-window')
+    expect(store.maintenance_pause.id).toBe('next-window')
   })
 
   it.each([true, false, null, undefined])(
@@ -144,6 +188,66 @@ describe('worker status', () => {
     await store.get_running()
     store.running = false
     expect(store.status_label).toBe('已停止')
+  })
+
+  it('reads the pending round stop from backend status after opening the page', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { status: 'working', plan_condition: [], stop_after_round: true }
+    })
+    await store.get_running()
+    expect(store.stop_after_round).toBe(true)
+    axios.get.mockResolvedValueOnce({ data: { status: 'stopped', plan_condition: [] } })
+    await store.get_running()
+    expect(store.stop_after_round).toBe(false)
+  })
+
+  it('sets and cancels a round stop through the backend without stopping current work', async () => {
+    status = 'working'
+    await store.get_running()
+    axios.put.mockResolvedValueOnce({ data: { stop_after_round: true } })
+    await store.set_stop_after_round(true)
+    expect(axios.put).toHaveBeenCalledExactlyOnceWith('/stop-after-round', null, { timeout: 10000 })
+    expect(store.running).toBe(true)
+    expect(store.stop_after_round).toBe(true)
+    axios.delete.mockResolvedValueOnce({ data: { stop_after_round: false } })
+    await store.set_stop_after_round(false)
+    expect(axios.delete).toHaveBeenCalledExactlyOnceWith('/stop-after-round', { timeout: 10000 })
+    expect(store.stop_after_round).toBe(false)
+  })
+
+  it('does not let an older status response undo a confirmed round stop', async () => {
+    status = 'working'
+    await store.get_running()
+    let resolveStatus
+    axios.get.mockImplementationOnce(() => new Promise((resolve) => (resolveStatus = resolve)))
+    const request = store.get_running()
+    axios.put.mockResolvedValueOnce({ data: { stop_after_round: true } })
+    await store.set_stop_after_round(true)
+    resolveStatus({ data: { status: 'working', plan_condition: [], stop_after_round: false } })
+    await request
+    expect(store.stop_after_round).toBe(true)
+  })
+
+  it('keeps immediate Stop effective while the round-stop request is pending', async () => {
+    status = 'working'
+    await store.get_running()
+    let resolveStop
+    axios.put.mockImplementationOnce(() => new Promise((resolve) => (resolveStop = resolve)))
+    const request = store.set_stop_after_round(true)
+    store.running = false
+    resolveStop({ data: { stop_after_round: true } })
+    await request
+    expect(store.stop_after_round).toBe(false)
+    expect(store.running).toBe(false)
+  })
+
+  it('retains the previous state when a round-stop request fails', async () => {
+    status = 'working'
+    await store.get_running()
+    axios.put.mockRejectedValueOnce(new Error('request failed'))
+    await expect(store.set_stop_after_round(true)).rejects.toThrow('request failed')
+    expect(store.stop_after_round).toBe(false)
+    expect(store.running).toBe(true)
   })
 
   it('does not undo a successful Stop when an older status response arrives', async () => {

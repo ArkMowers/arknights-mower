@@ -30,7 +30,7 @@ from werkzeug.security import safe_join
 
 from arknights_mower import __system__
 from arknights_mower.solvers.record import clear_data, load_state, save_state
-from arknights_mower.utils import config, network_settings
+from arknights_mower.utils import config, network_settings, round_stop
 from arknights_mower.utils.config.plan_advanced import (
     apply_advanced_settings,
     export_advanced_settings,
@@ -187,11 +187,16 @@ def _cancel_scheduled_start():
         scheduled_start_at = None
 
 
-def _run_scheduled_start(timer, generation):
+def _run_scheduled_start(timer, generation, start_type="2"):
     global scheduled_start_timer, scheduled_start_at
     from arknights_mower.utils.config_backup import LocalConfigError
     from arknights_mower.utils.config_profiles import ProfileConflict, check_generation
 
+    # A downtime can end while its old worker is finishing cleanup. Wait for
+    # that real dependency once, rather than trying to start a second worker.
+    worker = mower_thread
+    if start_type == "0" and worker and config.stop_mower.is_set():
+        worker.join(10)
     with backup_lock:
         with scheduled_start_lock:
             if scheduled_start_timer is not timer:
@@ -203,13 +208,13 @@ def _run_scheduled_start(timer, generation):
         except (ProfileConflict, LocalConfigError) as exc:
             logger.warning("预约启动已取消：%s", exc)
             return
-        if _start_mower("2"):
+        if _start_mower(start_type):
             logger.info("预约时间已到，Mower 开始执行")
         else:
             logger.warning("预约时间已到，但 Mower 当前无法启动")
 
 
-def _schedule_start(delay_seconds):
+def _schedule_start(delay_seconds, *, start_type="2"):
     global scheduled_start_timer, scheduled_start_at
     from arknights_mower.utils.config_profiles import current_generation
 
@@ -220,7 +225,9 @@ def _schedule_start(delay_seconds):
         scheduled_start_at = datetime.datetime.now().astimezone() + datetime.timedelta(
             seconds=delay_seconds
         )
-        timer = Timer(delay_seconds, lambda: _run_scheduled_start(timer, generation))
+        timer = Timer(
+            delay_seconds, lambda: _run_scheduled_start(timer, generation, start_type)
+        )
         timer.daemon = True
         scheduled_start_timer = timer
         timer.start()
@@ -1906,11 +1913,21 @@ def get_status():
         "plan_condition": [],
         "status": "stopped",
         "scheduled_start_at": start_at,
+        "stop_after_round": bool(
+            mower_thread and mower_thread.is_alive() and round_stop.pending()
+        ),
         "next_task_time": None,
         "remaining_seconds": None,
+        "maintenance_pause": None,
     }
     if mower_thread and mower_thread.is_alive():
-        from arknights_mower.__main__ import base_scheduler, device_control
+        from arknights_mower.__main__ import (
+            base_scheduler,
+            device_control,
+            get_manual_pause,
+        )
+
+        response["maintenance_pause"] = get_manual_pause()
 
         device_state = device_control.status().status
         response["status"] = (
@@ -1983,18 +2000,40 @@ def _run_mower_worker(saved_state, preparation_serial=None):
     from arknights_mower.__main__ import main
     from arknights_mower.utils import crash_recovery
     from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.news_checker import MaintenanceInfo
 
     try:
         if preparation_serial is None:
-            main(saved_state)
+            result = main(saved_state)
         else:
-            main(
+            result = main(
                 saved_state,
                 preparation_serial=preparation_serial,
             )
+        if isinstance(result, MaintenanceInfo):
+            # main has already saved the queue and closed the device session.
+            # Serialize this handoff with explicit stop/cancel and timer changes.
+            with backup_lock, scheduled_start_lock:
+                if shutdown.closing or crash_recovery.cancelled():
+                    return
+                _request_mower_stop()
+                if not result.restart_after_update:
+                    _cancel_scheduled_start()
+                    logger.info("停服更新已停止任务，按用户选择关闭 Mower 进程")
+                    shutdown.request("manual_server_update")
+                    return
+                start_at = _schedule_start(
+                    max(0, (result.end - datetime.datetime.now()).total_seconds()),
+                    start_type="0",
+                )
+            logger.info(f"停服更新已停止 Mower，已预约在 {start_at} 继续运行")
     except MowerExit:
         return
     except Exception as exc:
+        if config.stop_mower.is_set():
+            _request_mower_stop()
+            logger.exception("工作线程已停止，请检查错误后手动启动")
+            return
         if not shutdown.closing and not config.stop_mower.is_set():
             if crash_recovery.status().get("automatic"):
                 crash_recovery.activate(f"恢复期间工作线程发生异常：{exc}")
@@ -2009,6 +2048,7 @@ def _run_mower_worker(saved_state, preparation_serial=None):
                     logger.exception("记录任务停止意图失败，工作线程已停止")
                 logger.exception("工作线程发生异常，本次任务运行已停止")
     finally:
+        round_stop.cancel()
         if saved_state.get("_process_crash_recovery"):
             from arknights_mower.utils import crash_recovery
 
@@ -2071,6 +2111,7 @@ def _start_mower(
         tmp_dir.mkdir(exist_ok=True)
 
         config.stop_mower.clear()
+        round_stop.cancel()
         # Reset starts must not deserialize a snapshot from an older version.
         saved_state = (
             recovery_state
@@ -2187,6 +2228,43 @@ def scheduled_start():
     return {"scheduled_start_at": start_at}
 
 
+@app.route("/maintenance-pause", methods=["DELETE"])
+@require_token
+def cancel_maintenance_pause():
+    from arknights_mower.__main__ import cancel_manual_pause
+
+    payload = request.get_json(silent=True)
+    pause_id = payload.get("id") if isinstance(payload, dict) else None
+    if not isinstance(pause_id, str) or not pause_id:
+        return {"error": "请指定要取消的闪断暂停"}, 400
+    if (
+        not mower_thread
+        or not mower_thread.is_alive()
+        or not cancel_manual_pause(pause_id)
+    ):
+        return {"error": "该闪断暂停已结束，请刷新状态"}, 409
+    return {"maintenance_pause": None}
+
+
+@app.route("/stop-after-round", methods=["PUT", "DELETE"])
+@require_token
+def stop_after_round():
+    with maa_maintenance_lock:
+        if request.method == "DELETE":
+            round_stop.cancel()
+        else:
+            if (
+                shutdown.closing
+                or active_job()
+                or not mower_thread
+                or not mower_thread.is_alive()
+                or _performance_test_status()["status"] == "running"
+                or not round_stop.request_stop()
+            ):
+                return {"error": "当前没有可等待结束的任务，或任务正在停止"}, 409
+        return {"stop_after_round": round_stop.pending()}
+
+
 @app.route("/stop")
 @require_token
 @save_state
@@ -2201,10 +2279,8 @@ def stop(*, user_requested=True):
     return str(_stop_mower()).lower()
 
 
-def _stop_mower(timeout=10, *, preserve_run_intent=False):
-    """Let the worker's run boundary restore preparation before it exits."""
-    global mower_thread
-
+def _request_mower_stop(*, preserve_run_intent=False):
+    """Signal a stop without joining the calling worker."""
     from arknights_mower.utils import crash_recovery
     from arknights_mower.utils.instance_supervisor import task_intent
 
@@ -2215,11 +2291,25 @@ def _stop_mower(timeout=10, *, preserve_run_intent=False):
         logger.exception("记录任务停止意图失败，继续取消工作线程")
     finally:
         config.stop_mower.set()
+        round_stop.cancel()
         if not preserve_run_intent:
             try:
                 crash_recovery.cancel()
             except Exception:
                 logger.exception("记录自动恢复取消失败，当前进程已停止后台重试")
+
+
+def _stop_mower(timeout=10, *, preserve_run_intent=False):
+    """Let the worker's run boundary restore preparation before it exits."""
+    global mower_thread
+
+    from arknights_mower.utils import crash_recovery
+    from arknights_mower.utils.instance_supervisor import task_intent
+
+    with scheduled_start_lock:
+        _request_mower_stop(preserve_run_intent=preserve_run_intent)
+        if not preserve_run_intent:
+            _cancel_scheduled_start()
     deadline = time.monotonic() + timeout
     if not maa_maintenance_lock.acquire(timeout=timeout):
         logger.error("等待任务状态锁超时，保留未完成的设备恢复记录")

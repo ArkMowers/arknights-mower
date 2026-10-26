@@ -530,6 +530,11 @@ class NewsCheckerTests(unittest.TestCase):
         scheduler.initialize_operators.return_value = None
         scheduler.op_data.validate_backup_plans.return_value = {"success": True}
 
+        announcement = Mock(return_value=None)
+        scheduler.rest_until_next_task.side_effect = lambda: setattr(
+            announcement, "return_value", info
+        )
+
         with (
             patch.object(config.conf, "close_simulator_when_idle", False),
             patch.object(mower_main, "base_scheduler", None),
@@ -541,9 +546,7 @@ class NewsCheckerTests(unittest.TestCase):
                 "_resume_device_dispatch",
                 side_effect=AssertionError("maintenance wake entered device recovery"),
             ) as recover,
-            patch.object(
-                NewsChecker, "get_maintenance", side_effect=[None, None, info]
-            ) as get_maintenance,
+            patch.object(NewsChecker, "get_maintenance", announcement),
             patch.object(mower_main, "_handle_maintenance", side_effect=MowerExit),
         ):
             mower_main.simulate(None)
@@ -551,7 +554,7 @@ class NewsCheckerTests(unittest.TestCase):
         scheduler.rest_until_next_task.assert_called_once_with()
         scheduler.run.assert_not_called()
         recover.assert_not_called()
-        self.assertEqual(get_maintenance.call_count, 3)
+        self.assertGreaterEqual(announcement.call_count, 2)
 
     def test_early_login_failure_retries_in_five_minutes(self):
         info = MaintenanceInfo(

@@ -16,6 +16,7 @@ from tzlocal import get_localzone
 
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scheduler_task import (
+    MAINTENANCE_TASK_TYPES,
     MANUAL_TASK_TYPES,
     SchedulerTask,
     TaskTypes,
@@ -68,6 +69,40 @@ def add_task():
                         task_type=task["task_type"],
                         meta_data=task["meta_data"],
                     )
+                    if new_task.type in MAINTENANCE_TASK_TYPES:
+                        from arknights_mower.utils import config, managed_device
+
+                        duration = task.get("duration_minutes", 10)
+                        mode = task.get("maintenance_mode", "prepare")
+                        minimum = 0 if new_task.type == TaskTypes.SERVER_UPDATE else 1
+                        if (
+                            type(duration) is not int
+                            or not minimum <= duration <= 10080
+                        ):
+                            raise ValueError(
+                                f"持续时长须为 {minimum} 至 10080 分钟的整数"
+                            )
+                        if mode not in ("prepare", "pause"):
+                            raise ValueError("请选择提前准备或直接暂停")
+                        if (
+                            new_task.type == TaskTypes.SERVER_UPDATE
+                            and mode != "prepare"
+                        ):
+                            raise ValueError("计划停止使用提前准备并触发停服更新副表")
+                        if new_task.type == TaskTypes.SERVER_UPDATE:
+                            if (
+                                duration == 0
+                                and not managed_device.extra_settings_allowed(
+                                    config.conf
+                                )
+                            ):
+                                raise ValueError(
+                                    "请通过多开管理器操作，或开启该实例的额外设置"
+                                )
+                        new_task.duration_minutes = duration
+                        new_task.maintenance_mode = mode
+                        new_task.plan = {}
+                        new_task.meta_data = ""
                     if new_task.type in MANUAL_TASK_TYPES | {TaskTypes.FURNITURE}:
                         new_task.plan = {}
                         new_task.meta_data = ""
@@ -100,13 +135,15 @@ def add_task():
                             "系统会自动调度训练"
                         )
                     base_scheduler.tasks.append(new_task)
-                    if new_task.type in MANUAL_TASK_TYPES | {
+                    if new_task.type in MANUAL_TASK_TYPES | MAINTENANCE_TASK_TYPES | {
                         TaskTypes.WORKSHOP,
                         TaskTypes.FURNITURE,
                     }:
                         from arknights_mower.utils import config
 
                         config.wake_scheduler.set()
+                        if new_task.type in MAINTENANCE_TASK_TYPES:
+                            config.maintenance_recheck.set()
                     logger.debug(f"成功：{str(new_task)}")
                     return "添加任务成功！"
             raise Exception("添加任务失败！！请确保Mower正在运行")

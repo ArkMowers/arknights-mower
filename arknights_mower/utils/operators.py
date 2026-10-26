@@ -1,6 +1,7 @@
 import ast
 import copy
 import json
+import math
 from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -1186,18 +1187,46 @@ class Operators:
             counts = get_inventory_counts([item_name])
         return counts.get(item_name, 0)
 
-    def major_maintenance_remaining_hours(self) -> float:
-        """返回停服大更新开始前的小时数；已停服时条件不成立。"""
+    def major_maintenance_remaining_hours(
+        self, duration_operator=None, duration_hours=None
+    ) -> float:
+        """按总停止时长筛选后返回提前小时数；零时长只匹配不限条件。"""
+        if duration_operator is not None or duration_hours is not None:
+            if (
+                duration_operator not in ("<", "<=", "==", "!=", ">=", ">")
+                or type(duration_hours) not in (int, float)
+                or not math.isfinite(duration_hours)
+                or duration_hours < 0
+            ):
+                raise ValueError("停止时长条件需要比较符和非负有限小时数")
         info = (
             self._projection_maintenance
             if hasattr(self, "_projection_maintenance")
-            else NewsChecker.get_maintenance()
+            else NewsChecker.get_major_maintenance(datetime.now())
         )
         if info is None or info.update_type != "major" or info.is_flash_update:
             return float("inf")
+        if duration_operator is not None:
+            duration = (info.end - info.start).total_seconds() / 3600
+            if (
+                duration <= 0
+                or info.manual
+                and not info.restart_after_update
+                or not {
+                    "<": duration < duration_hours,
+                    "<=": duration <= duration_hours,
+                    "==": duration == duration_hours,
+                    "!=": duration != duration_hours,
+                    ">=": duration >= duration_hours,
+                    ">": duration > duration_hours,
+                }[duration_operator]
+            ):
+                return float("inf")
         hours = (
             info.start - (getattr(self, "_projection_now", None) or datetime.now())
         ).total_seconds() / 3600
+        if info.manual and info.active_at(datetime.now()):
+            return 0.0
         return hours if hours > 0 else float("inf")
 
     def next_major_maintenance_check(self, now=None):
@@ -1220,7 +1249,7 @@ class Operators:
         )
         if not thresholds:
             return None
-        info = NewsChecker.get_maintenance()
+        info = NewsChecker.get_major_maintenance(now or datetime.now())
         if info is None or info.update_type != "major" or info.is_flash_update:
             return None
         now = now or datetime.now()

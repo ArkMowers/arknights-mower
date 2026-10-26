@@ -1050,6 +1050,10 @@ button.app-sidebar__heading:not(:disabled) {
   padding: 10px 8px 6px;
 }
 
+.app-sidebar:not(.app-sidebar--mobile) .app-sidebar__footer {
+  padding-bottom: 16px;
+}
+
 .app-sidebar--collapsed .app-sidebar__heading-row {
   min-height: 12px;
   margin-inline: 0;

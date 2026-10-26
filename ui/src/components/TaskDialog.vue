@@ -25,6 +25,9 @@ const { workshop_settings } = storeToRefs(config_store)
 const task_list = ref([])
 const task_time = ref(new Date().getTime())
 const task_type = ref('空任务')
+const duration_minutes = ref(10)
+const maintenance_mode = ref('prepare')
+const isMaintenance = computed(() => ['计划暂停', '计划停止'].includes(task_type.value))
 const daily_task = ref('日常任务')
 const saving = ref(false)
 const mastery_target_level = ref(1)
@@ -35,6 +38,8 @@ const workshop_operator = ref('')
 const msg = ref('')
 const error = ref(false)
 const taskTypeOptions = [
+  { label: '计划暂停', value: '计划暂停' },
+  { label: '计划停止', value: '计划停止' },
   { label: '日常任务', value: '日常任务' },
   { label: '作战计划', value: '作战计划' },
   { label: '集成战略 (MAA)', value: '集成战略 (MAA)' },
@@ -107,6 +112,8 @@ function clear() {
   task_list.value = []
   task_time.value = new Date().getTime()
   task_type.value = '空任务'
+  duration_minutes.value = 10
+  maintenance_mode.value = 'prepare'
   daily_task.value = '日常任务'
   mastery_target_level.value = 1
   mastery_operator.value = ''
@@ -127,7 +134,23 @@ async function saveTasks() {
     task_type: task_type.value === '日常任务' ? daily_task.value : task_type.value,
     meta_data: ''
   }
-  if (task_type.value == '技能专精') {
+  if (isMaintenance.value) {
+    if (
+      !Number.isInteger(duration_minutes.value) ||
+      duration_minutes.value < (task_type.value === '计划停止' ? 0 : 1) ||
+      duration_minutes.value > 10080
+    ) {
+      msg.value =
+        task_type.value === '计划停止'
+          ? '计划停止时长须为 0 至 10080 分钟的整数，0 表示不定时启动'
+          : '持续时长须为 1 至 10080 分钟的整数'
+      error.value = true
+      return
+    }
+    task.duration_minutes = duration_minutes.value
+    task.maintenance_mode = task_type.value === '计划停止' ? 'prepare' : maintenance_mode.value
+    task.plan = {}
+  } else if (task_type.value == '技能专精') {
     saving.value = true
     try {
       await saveMasteryTask()
@@ -410,11 +433,53 @@ const level_list = [
       </n-card>
     </n-scrollbar>
     <template v-if="isLogPage">
+      <template v-if="isMaintenance">
+        <div class="task_row">
+          <label>持续时长（分钟）：</label>
+          <n-input-number
+            v-model:value="duration_minutes"
+            :min="task_type === '计划停止' ? 0 : 1"
+            :max="10080"
+            :precision="0"
+          />
+        </div>
+        <div v-if="task_type === '计划暂停'" class="task_row">
+          <label>处理方式：</label>
+          <n-select
+            v-model:value="maintenance_mode"
+            :options="[
+              { label: '提前准备后暂停', value: 'prepare' },
+              { label: '直接暂停', value: 'pause' }
+            ]"
+            style="width: 240px"
+          />
+        </div>
+        <n-text depth="3">
+          <template v-if="task_type === '计划停止'">
+            计划停止会按配置提前量触发符合条件的停服更新副表；切表和准备任务完成后才会停止。填写 0
+            表示关闭进程且不定时启动。
+            <template v-if="duration_minutes > 0">
+              从所选时间停止
+              Mower，并创建在设定时长结束后继续运行的定时启动任务；期间不会提前尝试登录。
+              可在停止后取消定时启动；关闭程序会取消预约。
+            </template>
+            <template v-else>从所选时间关闭 Mower 进程，不创建定时启动任务。</template>
+          </template>
+          <template v-else>
+            从所选时间开始暂停，满设定时长后继续；期间不会提前尝试登录。
+            <template v-if="maintenance_mode === 'prepare'">
+              暂停前会按现有闪断更新规则提前跑单、更换专精协助干员。
+            </template>
+            <template v-else>不为本次暂停提前跑单或换人。</template>
+          </template>
+        </n-text>
+      </template>
       <n-text v-if="task_type === '日常任务' && daily_task === '日常任务'" depth="3">
         按当前配置执行已启用的日常项目和作战计划，不包含长任务。
       </n-text>
       <n-text
         v-else-if="
+          !isMaintenance &&
           !['空任务', '技能专精', '加工材料', '仓库扫描', '线索任务', '分解所有重复家具'].includes(
             task_type
           )
