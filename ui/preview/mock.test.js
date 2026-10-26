@@ -835,4 +835,22 @@ describe('成长规划离线示例', () => {
     expect(order.planning_items.some((item) => item.plan_id === failed.id)).toBe(false)
     expect(order.items.some((item) => item.plan_id === failed.id)).toBe(false)
   })
+
+  it('既有计划和新建计划的辅助工时都使用小时', async () => {
+    const client = growthClient()
+    const { data: initial } = await client.get('/mastery-plan')
+    const existing = initial.plans.find((plan) => plan.name === '泥岩')
+    expect(existing.support_plan.stages.map((stage) => stage.hours)).toEqual([4.57, 9.14, 15])
+    expect(existing.support_plan.hours).toBe(28.71)
+
+    const { data: added } = await client.post('/mastery-plan', {
+      planning: true,
+      items: [{ char_id: 'char_2023_ling', name: '令', skill_index: 0, target_level: 3 }]
+    })
+    expect(added.results[0].status).toBe('added')
+    const { data: updated } = await client.get('/mastery-plan')
+    const created = updated.plans.find((plan) => plan.id === added.results[0].id)
+    expect(created.support_plan.stages.map((stage) => stage.hours)).toEqual([4.57, 9.14, 15])
+    expect(created.support_plan.hours).toBe(28.71)
+  })
 })

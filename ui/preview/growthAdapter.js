@@ -177,7 +177,7 @@ export function createGrowthAdapter(preview) {
         mastery_swap_buffer: 10,
         configured_swap_buffer: 10,
         half_inherited: false,
-        hours: Math.round((work * 3600 * 100) / (100 + efficiency)) / 100,
+        hours: Math.round((work / (1 + efficiency / 100)) * 100) / 100,
         switch_after: null,
         activate_with: null,
         next_carry: null,

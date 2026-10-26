@@ -293,7 +293,7 @@ export function createPreviewAdapter(data, requests = []) {
     return activate(config, id, incoming, selected)
   }
   let logBackground = null
-  // 成长规划示例数据按需加载，普通预览页面不必解析约 1 MB 的示例对象。
+  // 养成规划示例数据按需加载，其他预览页面不必创建这部分示例对象。
   let growthAdapter = null
   let growthLoading = null
   function loadGrowth() {
