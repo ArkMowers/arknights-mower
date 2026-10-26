@@ -222,23 +222,29 @@ def _cancel_maintenance_timer():
         _maintenance_timer_key = None
 
 
-def _arm_maintenance_timer(info: MaintenanceInfo, now=None, *, major_info=None):
+def _arm_maintenance_timer(
+    info: MaintenanceInfo, now=None, *, major_info=None, announced_info=None
+):
     """Wake for threshold activation, then react exactly when maintenance starts."""
     global _maintenance_timer, _maintenance_timer_key
     now = now or datetime.now()
-    major_info = major_info or info
-    threshold_at = major_info.start - timedelta(
-        hours=config.conf.version_update_threshold_advance_hours
-    )
-    threshold_pending = (
-        major_info.update_type == "major" and now < threshold_at <= info.start
-    )
-    target = threshold_at if threshold_pending else info.start
-    action = "threshold" if threshold_pending else "maintenance"
-    delay = (target - now).total_seconds()
-    if delay <= 0:
+    events = [(info.start, "maintenance", info)] if now < info.start else []
+    for major in (major_info or info, announced_info):
+        if major is None or major.update_type != "major":
+            continue
+        if now < major.start:
+            events.append((major.start, "maintenance", major))
+        threshold_at = major.start - timedelta(
+            hours=config.conf.version_update_threshold_advance_hours
+        )
+        if now < threshold_at:
+            events.append((threshold_at, "threshold", major))
+    if not events:
         return
-    owner = major_info if threshold_pending else info
+    target, action, owner = min(
+        events, key=lambda event: (event[0], event[1] == "threshold", event[2].manual)
+    )
+    delay = (target - now).total_seconds()
     key = (owner.announcement_id, target, action)
     with _maintenance_timer_lock:
         if _maintenance_timer_key == key and _maintenance_timer is not None:
@@ -248,15 +254,21 @@ def _arm_maintenance_timer(info: MaintenanceInfo, now=None, *, major_info=None):
 
         def begin_maintenance():
             global _maintenance_timer, _maintenance_timer_key
-            if action == "threshold":
-                with _maintenance_timer_lock:
-                    _maintenance_timer = None
-                    _maintenance_timer_key = None
-                config.maintenance_recheck.set()
-                config.wake_scheduler.set()
-            elif info.update_type == "major" and not info.manual:
-                _stop_for_major_update(info)
+            with _maintenance_timer_lock:
+                if _maintenance_timer_key != key:
+                    return
+                _maintenance_timer = None
+                _maintenance_timer_key = None
+            if (
+                action == "maintenance"
+                and owner.update_type == "major"
+                and not owner.manual
+            ):
+                _stop_for_major_update(owner)
             else:
+                _arm_maintenance_timer(
+                    info, major_info=major_info, announced_info=announced_info
+                )
                 config.maintenance_recheck.set()
                 config.wake_scheduler.set()
 
@@ -265,7 +277,9 @@ def _arm_maintenance_timer(info: MaintenanceInfo, now=None, *, major_info=None):
         _maintenance_timer = timer
         _maintenance_timer_key = key
         timer.start()
-        action_name = "启用版本维护心情阈值" if threshold_pending else "响应服务器维护"
+        action_name = (
+            "启用版本维护心情阈值" if action == "threshold" else "响应服务器维护"
+        )
         logger.info(f"已安排在 {target:%Y-%m-%d %H:%M} {action_name}")
 
 
@@ -329,6 +343,15 @@ def _handle_maintenance(
     now = now or datetime.now()
     if not info.active_at(now):
         return False
+    announced = NewsChecker.get_maintenance()
+    if (
+        info.manual
+        and announced is not None
+        and announced.update_type == "major"
+        and announced.active_at(now)
+    ):
+        _stop_for_major_update(announced)
+        return True
     if info.update_type == "major" and not info.manual:
         _stop_for_major_update(info)
         return True
@@ -364,11 +387,13 @@ def _handle_maintenance(
         resume_at = info.resume_at
     next_server_update = min(
         (
-            manual
-            for manual in NewsChecker.get_manual_maintenances(now)
-            if manual.update_type == "major" and now < manual.start < resume_at
+            candidate
+            for candidate in [announced, *NewsChecker.get_manual_maintenances(now)]
+            if candidate is not None
+            and candidate.update_type == "major"
+            and now <= candidate.start <= resume_at
         ),
-        key=lambda manual: manual.start,
+        key=lambda candidate: (candidate.start, candidate.manual),
         default=None,
     )
     if next_server_update is not None:
@@ -471,7 +496,9 @@ def _main(saved_state):
     start_recycling_reports()
     while (maintenance := NewsChecker.get_effective_maintenance()) is not None:
         _arm_maintenance_timer(
-            maintenance, major_info=NewsChecker.get_major_maintenance()
+            maintenance,
+            major_info=NewsChecker.get_major_maintenance(),
+            announced_info=NewsChecker.get_maintenance(),
         )
         # Check before connecting to the game. A Mower started during maintenance
         # may otherwise fail device/game initialization before reaching the loop.
@@ -889,7 +916,11 @@ def simulate(saved):
             major_maintenance = NewsChecker.get_major_maintenance()
             _apply_version_update_resting_threshold(major_maintenance, base_scheduler)
             if maintenance is not None:
-                _arm_maintenance_timer(maintenance, major_info=major_maintenance)
+                _arm_maintenance_timer(
+                    maintenance,
+                    major_info=major_maintenance,
+                    announced_info=NewsChecker.get_maintenance(),
+                )
                 if result := _handle_maintenance(maintenance, base_scheduler):
                     return result
                 if (

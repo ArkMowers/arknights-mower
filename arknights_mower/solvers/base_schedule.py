@@ -2124,6 +2124,7 @@ class BaseSchedulerSolver(
                 and not getattr(t, "execution_retained", False)
                 and not getattr(t, "replacement_check", None)
                 and not getattr(t, "maintenance_preparation_pending", False)
+                and getattr(t, "maintenance_start", None) is None
                 for t in self.tasks
             ):
                 logger.info(
@@ -2143,6 +2144,7 @@ class BaseSchedulerSolver(
                     or getattr(t, "execution_retained", False)
                     or getattr(t, "replacement_check", None)
                     or getattr(t, "maintenance_preparation_pending", False)
+                    or getattr(t, "maintenance_start", None) is not None
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始

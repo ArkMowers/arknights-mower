@@ -74,8 +74,8 @@ class TaskTypes(Enum):
     RECLAMATION = ("reclamation", "生息演算 (MAA)", 2)
     RA = ("ra", "生息演算", 2)
     SECRET_FRONT = ("secret_front", "隐秘战线", 2)
-    FLASH_UPDATE = ("flash_update", "闪断更新", 2)
-    SERVER_UPDATE = ("server_update", "停服更新", 2)
+    FLASH_UPDATE = ("flash_update", "计划暂停", 2)
+    SERVER_UPDATE = ("server_update", "计划停止", 2)
 
     def __new__(cls, value, display_value, priority):
         obj = object.__new__(cls)
@@ -3538,6 +3538,12 @@ def set_type_enum(value):
     if isinstance(value, TaskTypes):
         return value
     if isinstance(value, str):
+        legacy_maintenance_types = {
+            "闪断更新": TaskTypes.FLASH_UPDATE,
+            "停服更新": TaskTypes.SERVER_UPDATE,
+        }
+        if value in legacy_maintenance_types:
+            return legacy_maintenance_types[value]
         for task_type in TaskTypes:
             if value.upper() == task_type.display_value.upper():
                 return task_type

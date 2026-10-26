@@ -836,7 +836,7 @@ describe('log page', () => {
     )
     const { find, all } = mountWorkspace()
     const page = app._instance.setupState
-    expect(all().some((node) => node.text.includes('闪断暂停中'))).toBe(true)
+    expect(all().some((node) => node.text.includes('计划暂停中'))).toBe(true)
     const button = find((node) => node.props.onClick === page.cancel_pause)
     expect(all().filter((node) => node.props.onClick === page.cancel_pause)).toHaveLength(1)
     expect(all().some((node) => node.props.onClick === page.stop)).toBe(false)
@@ -851,7 +851,7 @@ describe('log page', () => {
     await request
     state.mower.refs.maintenance_pause.value = null
     await nextTick()
-    expect(all().some((node) => node.text.includes('闪断暂停中'))).toBe(false)
+    expect(all().some((node) => node.text.includes('计划暂停中'))).toBe(false)
     expect(find((node) => node.props.onClick === page.stop).props.disabled).toBe(false)
     expect(page.stop_options.some((option) => option.key === 'immediate')).toBe(false)
   })

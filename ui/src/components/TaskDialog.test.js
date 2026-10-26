@@ -185,7 +185,7 @@ describe('manual task dialog', () => {
     expect(axios.post.mock.calls[0][1].task.plan).toEqual({ train: ['陈'] })
   })
 
-  it.each(['闪断更新', '停服更新'])('submits %s with a default ten minute window', async (kind) => {
+  it.each(['计划暂停', '计划停止'])('submits %s with a default ten minute window', async (kind) => {
     component.task_type.value = kind
     component.task_list.value = [{ room: 'train', operators: ['陈'] }]
     await component.saveTasks()
@@ -199,7 +199,7 @@ describe('manual task dialog', () => {
   })
 
   it('submits direct pause and resets the inputs to defaults', async () => {
-    component.task_type.value = '闪断更新'
+    component.task_type.value = '计划暂停'
     component.duration_minutes.value = 25
     component.maintenance_mode.value = 'pause'
     await component.saveTasks()
@@ -214,17 +214,17 @@ describe('manual task dialog', () => {
 
   it('always uses maintenance backups for server updates after choosing direct flash pause', async () => {
     component.maintenance_mode.value = 'pause'
-    component.task_type.value = '停服更新'
+    component.task_type.value = '计划停止'
     await component.saveTasks()
     expect(axios.post.mock.calls[0][1].task.maintenance_mode).toBe('prepare')
   })
 
   it('submits zero duration for server shutdown without a timed start', async () => {
-    component.task_type.value = '停服更新'
+    component.task_type.value = '计划停止'
     component.duration_minutes.value = 0
     await component.saveTasks()
     expect(axios.post.mock.calls[0][1].task).toMatchObject({
-      task_type: '停服更新',
+      task_type: '计划停止',
       duration_minutes: 0,
       maintenance_mode: 'prepare'
     })
@@ -235,7 +235,7 @@ describe('manual task dialog', () => {
   it.each([null, 0, -1, 1.5, 10081])(
     'rejects invalid duration %s before submitting',
     async (duration) => {
-      component.task_type.value = '闪断更新'
+      component.task_type.value = '计划暂停'
       component.duration_minutes.value = duration
       await component.saveTasks()
       expect(axios.post).not.toHaveBeenCalled()

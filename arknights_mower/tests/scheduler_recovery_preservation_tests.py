@@ -160,6 +160,16 @@ def test_stale_cleanup_preserves_only_critical_or_future_explicit_tasks(
     scheduler.io.assert_not_called()
 
 
+def test_overdue_maintenance_order_alone_does_not_rebuild_schedule(scheduler):
+    now = scheduler.clock.now()
+    order = SchedulerTask(now - timedelta(minutes=20), task_type=TaskTypes.RUN_ORDER)
+    order.maintenance_start = now - timedelta(minutes=10)
+    scheduler.solver.tasks = [order]
+    scheduler.solver.handle_error(True)
+    assert scheduler.solver.tasks == [order]
+    assert order.time == now - timedelta(minutes=20)
+
+
 def test_depot_mastery_dispatch_keeps_source_release_available(
     scheduler, monkeypatch, tmp_path
 ):

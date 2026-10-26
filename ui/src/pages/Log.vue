@@ -688,7 +688,7 @@ async function db_delete(keys) {
             </n-button>
           </drop-down>
           <div v-if="running && maintenance_pause" class="maintenance-pause-notice" role="status">
-            <n-text type="warning">闪断暂停中，设定结束时间 {{ pause_end }}</n-text>
+            <n-text type="warning">计划暂停中，设定结束时间 {{ pause_end }}</n-text>
           </div>
           <n-text
             v-if="running && stop_after_round"

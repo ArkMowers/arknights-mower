@@ -80,7 +80,7 @@ def add_task():
                             or not minimum <= duration <= 10080
                         ):
                             raise ValueError(
-                                f"更新时长须为 {minimum} 至 10080 分钟的整数"
+                                f"持续时长须为 {minimum} 至 10080 分钟的整数"
                             )
                         if mode not in ("prepare", "pause"):
                             raise ValueError("请选择提前准备或直接暂停")
@@ -88,7 +88,7 @@ def add_task():
                             new_task.type == TaskTypes.SERVER_UPDATE
                             and mode != "prepare"
                         ):
-                            raise ValueError("停服更新使用提前准备并触发停服更新副表")
+                            raise ValueError("计划停止使用提前准备并触发停服更新副表")
                         if new_task.type == TaskTypes.SERVER_UPDATE:
                             if (
                                 duration == 0

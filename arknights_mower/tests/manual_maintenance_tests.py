@@ -54,8 +54,9 @@ def update_task(maintenance, kind=TaskTypes.FLASH_UPDATE, mode="prepare", minute
     [(kind, duration) for kind in MAINTENANCE_TASK_TYPES for duration in (None, 25)]
     + [(TaskTypes.SERVER_UPDATE, 0)],
 )
+@pytest.mark.parametrize("legacy_name", [False, True])
 def test_authenticated_route_creates_window_without_roster_and_wakes(
-    maintenance, monkeypatch, kind, duration
+    maintenance, monkeypatch, kind, duration, legacy_name
 ):
     from arknights_mower.views import task as route
 
@@ -67,7 +68,9 @@ def test_authenticated_route_creates_window_without_roster_and_wakes(
         "task": {
             "time": "2026-10-01T03:00:00.000Z",
             "plan": {"train": ["陈"]},
-            "task_type": kind.display_value,
+            "task_type": ("闪断更新" if kind == TaskTypes.FLASH_UPDATE else "停服更新")
+            if legacy_name
+            else kind.display_value,
             "meta_data": "stale",
         }
     }
@@ -94,6 +97,7 @@ def test_authenticated_route_creates_window_without_roster_and_wakes(
     assert maintenance.module.config.maintenance_recheck.is_set()
     result = client.get("/task", headers={"token": "test-token"}).json[0]
     assert str(expected_duration) in result["display_name"]
+    assert result["display_name"].startswith(kind.display_value)
     assert result["duration_minutes"] == expected_duration
     maintenance.io.assert_not_called()
 
@@ -470,6 +474,14 @@ def test_restored_update_preserves_duration_mode_and_original_timestamp(
     (restored,) = pickle.loads(pickle.dumps([task]))
     maintenance.solver.tasks = [restored]
     assert restored.time == task.time
+    assert restored.type is kind
+    assert restored.type.value == (
+        "flash_update" if kind == TaskTypes.FLASH_UPDATE else "server_update"
+    )
+    assert (
+        restored.maintenance_info.announcement_id
+        == task.maintenance_info.announcement_id
+    )
     assert restored.duration_minutes == duration
     assert restored.maintenance_info.restart_after_update == (duration > 0)
     assert restored.maintenance_mode == "prepare"
@@ -686,6 +698,227 @@ def test_pending_server_preparation_survives_overdue_cleanup_and_snapshot(mainte
     assert restored.maintenance_preparation_pending
     assert restored.maintenance_info.active_at(maintenance.clock.now())
     assert find_next_task([task, unrelated]) is unrelated
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.FLASH_UPDATE, TaskTypes.SERVER_UPDATE])
+def test_overdue_preparation_survives_cleanup_until_actual_completion(
+    maintenance, kind
+):
+    env = maintenance
+    update = update_task(env, kind=kind)
+    order = SchedulerTask(
+        update.time + timedelta(minutes=4),
+        {"room_1_1": ["但书"]},
+        TaskTypes.RUN_ORDER,
+        "room_1_1",
+    )
+    env.solver.tasks.append(order)
+    scheduling(env.solver.tasks, time_now=env.clock.now())
+    env.clock.current = update.time + timedelta(minutes=6)
+    env.solver._idle_sleep = Mock()
+    env.solver.handle_idle_action = Mock()
+    original_time, original_plan = order.time, dict(order.plan)
+    assert env.main._handle_maintenance(update.maintenance_info, env.solver) is False
+    stale = SchedulerTask(env.clock.now() - timedelta(minutes=20))
+    unrelated = SchedulerTask(
+        env.clock.now() + timedelta(minutes=1), task_type=TaskTypes.MAIL
+    )
+    env.solver.tasks.extend([stale, unrelated])
+    assert order.time < env.clock.now() - timedelta(minutes=15)
+    for _ in range(3):
+        assert (
+            env.main._handle_maintenance(update.maintenance_info, env.solver) is False
+        )
+        env.solver.handle_error(True)
+        assert sum(task is order for task in env.solver.tasks) == 1
+        assert order.time == original_time and order.plan == original_plan
+        assert order.maintenance_start == update.time
+        assert update.maintenance_preparation_pending
+        assert unrelated in env.solver.tasks and stale not in env.solver.tasks
+        assert find_next_task(env.solver.tasks) is order
+        env.solver._idle_sleep.assert_not_called()
+        assert not env.module.config.stop_mower.is_set()
+    order.execution_failure = {"reason": "unchanged observation"}
+    assert find_next_task(env.solver.tasks) is unrelated
+    assert env.main._handle_maintenance(update.maintenance_info, env.solver) is False
+    del order.execution_failure
+    assert find_next_task(env.solver.tasks) is order
+    env.solver.tasks.remove(order)
+    info = update.maintenance_info
+    result = env.main._handle_maintenance(info, env.solver)
+    assert not update.maintenance_preparation_pending
+    if kind == TaskTypes.SERVER_UPDATE:
+        assert result is info
+        assert env.module.config.stop_mower.is_set()
+    else:
+        assert result is False
+        env.solver._idle_sleep.assert_called_once_with(
+            240, allow_wakeup=False, cancelled=ANY
+        )
+    assert unrelated in env.solver.tasks
+    env.io.assert_not_called()
+
+
+@pytest.mark.parametrize("startup", [False, True])
+def test_manual_flash_hands_control_to_official_major_at_its_start(
+    maintenance, monkeypatch, startup
+):
+    env, main = maintenance, maintenance.main
+    flash = update_task(env, mode="pause", minutes=0)
+    announced = MaintenanceInfo(
+        flash.time + timedelta(minutes=5),
+        flash.time + timedelta(hours=6),
+        "major",
+        "版本更新停机维护公告",
+        "",
+        "official-major",
+    )
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: announced)
+    monkeypatch.setattr(main, "Timer", Mock())
+    monkeypatch.setattr(main, "_maintenance_timer", None)
+    monkeypatch.setattr(main, "_maintenance_timer_key", None)
+    stop = Mock(side_effect=lambda info: env.module.config.stop_mower.set())
+    monkeypatch.setattr(main, "_stop_for_major_update", stop)
+
+    def sleep(seconds, **kwargs):
+        env.clock.current += timedelta(seconds=seconds)
+
+    monkeypatch.setattr(main, "csleep", sleep)
+    env.solver.handle_idle_action = Mock()
+    env.solver._idle_sleep = Mock(side_effect=sleep)
+    if startup:
+        monkeypatch.setattr(main, "base_scheduler", None)
+        monkeypatch.setattr(main.rapidocr, "initialize_ocr", Mock())
+        monkeypatch.setattr(main, "simulate", Mock())
+        assert main._main({"tasks": [flash]}) is True
+        main.rapidocr.initialize_ocr.assert_not_called()
+        main.simulate.assert_not_called()
+    else:
+        assert main._handle_maintenance(flash.maintenance_info, env.solver) is True
+        assert flash in env.solver.tasks
+    assert env.clock.now() == announced.start
+    stop.assert_called_once_with(announced)
+    assert env.module.config.stop_mower.is_set()
+    assert main.get_manual_pause() is None
+    env.io.assert_not_called()
+
+
+def test_started_official_major_preempts_pending_manual_preparation(
+    maintenance, monkeypatch
+):
+    env = maintenance
+    flash = update_task(env, minutes=0)
+    announced = MaintenanceInfo(
+        flash.time,
+        flash.time + timedelta(hours=6),
+        "major",
+        "版本更新停机维护公告",
+        "",
+        "official-major",
+    )
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: announced)
+    stop = Mock()
+    monkeypatch.setattr(env.main, "_stop_for_major_update", stop)
+    env.solver._prepare_manual_maintenance = Mock(return_value=False)
+    assert env.main._handle_maintenance(flash.maintenance_info, env.solver) is True
+    stop.assert_called_once_with(announced)
+    env.solver._prepare_manual_maintenance.assert_not_called()
+    assert flash in env.solver.tasks
+    env.io.assert_not_called()
+
+
+def test_pending_manual_server_timer_keeps_later_official_stop(
+    maintenance, monkeypatch
+):
+    env, main = maintenance, maintenance.main
+    task = update_task(env, kind=TaskTypes.SERVER_UPDATE, minutes=1)
+    announced = MaintenanceInfo(
+        task.time + timedelta(minutes=5),
+        task.time + timedelta(hours=6),
+        "major",
+        "版本更新停机维护公告",
+        "",
+        "official-major",
+    )
+    monkeypatch.setattr(main, "Timer", Mock(side_effect=lambda *args: Mock()))
+    monkeypatch.setattr(main, "_maintenance_timer", None)
+    monkeypatch.setattr(main, "_maintenance_timer_key", None)
+    stop = Mock()
+    monkeypatch.setattr(main, "_stop_for_major_update", stop)
+    main._arm_maintenance_timer(
+        task.maintenance_info,
+        major_info=task.maintenance_info,
+        announced_info=announced,
+    )
+    assert main.Timer.call_args.args[0] == 60
+    env.clock.current = task.time
+    main.Timer.call_args.args[1]()
+    assert main.Timer.call_args.args[0] == 300
+    env.clock.current = announced.start
+    main.Timer.call_args.args[1]()
+    stop.assert_called_once_with(announced)
+    env.io.assert_not_called()
+
+
+@pytest.mark.parametrize("threshold_during_flash", [False, True])
+def test_flash_timer_and_cancellation_preserve_official_stop(
+    maintenance, monkeypatch, threshold_during_flash
+):
+    from arknights_mower.utils.csleep import MowerExit
+
+    env, main = maintenance, maintenance.main
+    flash = update_task(env, mode="pause", minutes=1)
+    announced = MaintenanceInfo(
+        flash.time + timedelta(minutes=5),
+        flash.time + timedelta(hours=6),
+        "major",
+        "版本更新停机维护公告",
+        "",
+        "official-major",
+    )
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: announced)
+    monkeypatch.setattr(
+        env.module.config.conf,
+        "version_update_threshold_advance_hours",
+        3 / 60 if threshold_during_flash else 1,
+    )
+    timer = Mock(side_effect=lambda *args: Mock())
+    monkeypatch.setattr(main, "Timer", timer)
+    monkeypatch.setattr(main, "_maintenance_timer", None)
+    monkeypatch.setattr(main, "_maintenance_timer_key", None)
+    stop = Mock(side_effect=lambda info: env.module.config.stop_mower.set())
+    monkeypatch.setattr(main, "_stop_for_major_update", stop)
+    main._arm_maintenance_timer(announced)
+    original_timer = main._maintenance_timer
+    main._arm_maintenance_timer(flash.maintenance_info, major_info=announced)
+    original_timer.cancel.assert_called_once()
+    assert timer.call_args.args[0] == 60
+    flash_callback = timer.call_args.args[1]
+    env.clock.current = flash.time
+    flash_callback()
+    assert timer.call_args.args[0] == (120 if threshold_during_flash else 300)
+    calls = timer.call_count
+    flash_callback()
+    assert timer.call_count == calls
+
+    def cancel(seconds):
+        assert main.cancel_manual_pause(flash.maintenance_info.announcement_id)
+        raise MowerExit
+
+    monkeypatch.setattr(main, "base_scheduler", None)
+    monkeypatch.setattr(main, "_startup_maintenance_tasks", env.solver.tasks)
+    monkeypatch.setattr(main, "csleep", cancel)
+    assert main._handle_maintenance(flash.maintenance_info, None) is False
+    assert flash not in env.solver.tasks
+    if threshold_during_flash:
+        env.clock.current = announced.start - timedelta(minutes=3)
+        timer.call_args.args[1]()
+        assert timer.call_args.args[0] == 180
+    env.clock.current = announced.start
+    timer.call_args.args[1]()
+    stop.assert_called_once_with(announced)
+    assert env.module.config.stop_mower.is_set()
+    env.io.assert_not_called()
 
 
 def test_update_start_is_fixed_even_when_an_order_needs_the_same_operation_window(
