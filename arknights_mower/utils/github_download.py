@@ -12,7 +12,12 @@ DOWNLOAD_HOSTS = {
     "codeload.github.com",
     "gist.githubusercontent.com",
 }
-FALLBACK_PROXY = "https://ghfast.top/"
+FALLBACK_PROXIES = (
+    "https://ghfast.top/",
+    "https://gh-proxy.com/",
+    "https://gh-proxy.org/",
+    "https://edgeone.gh-proxy.org/",
+)
 
 
 def normalize_proxy(value):
@@ -67,17 +72,17 @@ def download_url(url, proxy=None):
 
 
 def download_urls(url, proxy=None):
-    """Try a configured station, or direct GitHub followed by the default station."""
+    """Try a configured station, or direct GitHub followed by default stations."""
     proxy = get_proxy() if proxy is None else normalize_proxy(proxy)
     primary = download_url(url, proxy)
     if proxy or primary != url or urlsplit(url).hostname not in DOWNLOAD_HOSTS:
         return (primary,)
-    fallback = download_url(url, FALLBACK_PROXY)
-    return (primary, fallback) if fallback != primary else (primary,)
+    candidates = (primary, *(download_url(url, p) for p in FALLBACK_PROXIES))
+    return tuple(dict.fromkeys(candidates))
 
 
 def request_download(client, method, url, *, proxy=None, **kwargs):
-    """Open a GitHub file response, retrying failed direct requests via ghfast.
+    """Open a GitHub file response, retrying failures via default stations.
 
     The caller owns the response and must close it. A failure while reading the
     body is reported to the caller, which can discard any partial download.
