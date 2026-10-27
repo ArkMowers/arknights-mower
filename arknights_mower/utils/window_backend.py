@@ -11,7 +11,7 @@ SUPPORTED_BACKENDS = frozenset(("winforms", "cocoa", "gtk", "qt"))
 
 def prepare_window_backend():
     global _SELECTED_BACKEND
-    # Keep Windows work-area detection ahead of WebView2's DPI initialization.
+    # WinForms is selected here and initializes its GUI when the window starts.
     if (
         platform.system() == "Windows"
         and os.environ.get("PYWEBVIEW_GUI", "").lower() != "qt"

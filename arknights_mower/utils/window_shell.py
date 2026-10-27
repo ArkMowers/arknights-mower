@@ -43,10 +43,8 @@ _BACKGROUND_COLORS = {
     "dark": "#18181C",
 }
 
-# Cached after the first successful probe: it is read before the window exists
-# (the process is not yet DPI-aware, so Windows returns *logical* pixels), and
-# every later open/save sizing reuses that same logical area instead of
-# re-probing under a has-changed DPI-awareness and mixing logical with physical.
+# Cache logical pixels so window creation and persistence share the same units,
+# regardless of the DPI-awareness state at the first work-area probe.
 _WORK_AREA_CACHE: WindowSize | None = None
 
 
@@ -99,12 +97,21 @@ def _screen_work_area() -> WindowSize | None:
             import ctypes
             from ctypes import wintypes
 
+            user32 = ctypes.windll.user32
+            get_dpi = getattr(user32, "GetDpiForSystem", None)
+            if get_dpi is None:
+                if user32.IsProcessDPIAware():
+                    return None
+                dpi = 96
+            else:
+                get_dpi.restype = wintypes.UINT
+                dpi = int(get_dpi())
+            if dpi <= 0:
+                return None
             rect = wintypes.RECT()
-            if ctypes.windll.user32.SystemParametersInfoW(
-                _SPI_GETWORKAREA, 0, ctypes.byref(rect), 0
-            ):
-                width = rect.right - rect.left
-                height = rect.bottom - rect.top
+            if user32.SystemParametersInfoW(_SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
+                width = round((rect.right - rect.left) * 96 / dpi)
+                height = round((rect.bottom - rect.top) * 96 / dpi)
                 if width > 0 and height > 0:
                     _WORK_AREA_CACHE = WindowSize(width, height)
                     return _WORK_AREA_CACHE
