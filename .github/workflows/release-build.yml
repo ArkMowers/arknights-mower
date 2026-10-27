@@ -234,6 +234,13 @@ jobs:
       - name: Inject version from tag
         run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}" --system windows --arch x64
 
+      - name: Create isolated Python build environment
+        shell: pwsh
+        run: |
+          $buildVenv = Join-Path $env:RUNNER_TEMP "mower-build-venv"
+          python -m venv $buildVenv
+          Join-Path $buildVenv "Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Install Python dependencies
         shell: bash
         run: |
