@@ -33,12 +33,12 @@ def zero_reader(room_reader, monkeypatch):
     solver.read_operator_time = BaseSchedulerSolver.read_operator_time.__get__(solver)
     solver.enter_room = MagicMock()
     solver.back = MagicMock()
+    solver.check_fia = MagicMock(return_value=(None, None))
+    op.rest_in_full = True
     return solver, op, clock
 
 
-def test_observed_countdown_defers_calculated_exhaustion_and_confirms_at_end(
-    zero_reader,
-):
+def test_observed_countdown_sets_original_exhaustion_preparation_window(zero_reader):
     solver, op, clock = zero_reader
     config.conf.test_mood_calculation = True
     observed = solver.get_agent_from_room(
@@ -47,34 +47,29 @@ def test_observed_countdown_defers_calculated_exhaustion_and_confirms_at_end(
     end = clock.now() + timedelta(minutes=30)
     assert observed["time"] == op.exhaust_time == end
     assert observed["mood"] == op.mood == 0
-    solver._schedule_calculated_exhaustion(op)
-    task = solver.tasks[0]
-    solver.task = task
-    for _ in range(3):
-        solver._schedule_calculated_exhaustion(op)
-        assert solver._confirm_calculated_exhaustion([op]) is False
-        assert solver.tasks == [task]
-        assert task.time == end
-    solver.enter_room.assert_not_called()
-    clock.current = end
-    solver.read_time.return_value = None
-    assert solver._confirm_calculated_exhaustion([op]) is True
+    solver.run_order_solver()
+    (task,) = solver.tasks
+    assert task.time == clock.now() + timedelta(minutes=20)
     solver.enter_room.assert_called_once_with("central")
-    assert op.exhaust_time == clock.now()
+    for _ in range(3):
+        solver.run_order_solver()
+        assert solver.tasks == [task]
+        assert task.time == end - timedelta(minutes=10)
+    solver.enter_room.assert_called_once()
 
 
-def test_due_confirmation_uses_new_countdown_without_duplicate_task(zero_reader):
+@pytest.mark.parametrize("remaining", [None, 0, 480])
+def test_reached_or_near_working_countdown_schedules_immediately(
+    zero_reader, remaining
+):
     solver, op, clock = zero_reader
     config.conf.test_mood_calculation = True
-    solver.op_data.mood_model.observe(op.name, 0, clock.now())
-    solver._schedule_calculated_exhaustion(op)
-    solver.task = solver.tasks[0]
-    assert solver.task.time == clock.now()
-    assert solver._confirm_calculated_exhaustion([op]) is False
-    assert solver.task.time == clock.now() + timedelta(minutes=30)
-    assert len(solver.tasks) == 1
-    assert solver._confirm_calculated_exhaustion([op]) is False
-    solver.enter_room.assert_called_once()
+    solver.read_time.return_value = remaining
+    solver.run_order_solver()
+    (task,) = solver.tasks
+    assert task.time == clock.now()
+    assert op.exhaust_time == clock.now() + timedelta(seconds=remaining or 0)
+    solver.enter_room.assert_called_once_with("central")
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -124,7 +119,7 @@ def test_invalidated_mood_observation_does_not_reuse_working_deadline(zero_reade
     assert (
         solver.op_data.calculated_mood_deadline(op.name, 0, clock.now()) > clock.now()
     )
-    solver._schedule_calculated_exhaustion(op)
+    solver.run_order_solver()
     solver.refresh_drained_time()
     assert op.time_stamp is None
     assert op.working_zero_deadline(clock.now()) is None
