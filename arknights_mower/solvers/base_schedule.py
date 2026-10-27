@@ -13472,6 +13472,12 @@ class BaseSchedulerSolver(
                 related_operator = related_operators.get(i)
                 record_kwargs = {}
                 if update_time:
+                    if (
+                        _mood == 0
+                        and working_time is not None
+                        and working_time <= datetime.now()
+                    ):
+                        record_kwargs["mood_event"] = "exhausted"
                     if _name == "菲亚梅塔" and related_operator:
                         record_kwargs = {
                             "related_operator": related_operator,

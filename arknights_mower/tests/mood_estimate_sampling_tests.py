@@ -102,6 +102,36 @@ def test_real_read_still_updates_sample_and_depletion_from_measurements(room_rea
     solver.read_accurate_mood.assert_called_once()
 
 
+def test_full_mood_reads_preserve_rates_until_two_interior_measurements(room_reader):
+    solver, target, clock = room_reader
+    target.recall_work_rate = (0.7, target.time_stamp)
+    target.depletion_rate = 0.7
+    previous_rate = target.recall_work_rate
+
+    solver.read_accurate_mood.return_value = 24
+    result = solver.get_agent_from_room("central", read_time_index=[0])
+    assert result[0]["mood"] == target.mood == 24
+    assert target.time_stamp == clock.now()
+    assert not target.work_rate_sample_eligible
+    assert target.depletion_rate == 0.7
+    assert target.recall_work_rate == previous_rate
+
+    clock.current += timedelta(hours=2)
+    solver.read_accurate_mood.return_value = 23
+    result = solver.get_agent_from_room("central", read_time_index=[0])
+    assert result[0]["mood"] == target.mood == 23
+    assert target.time_stamp == clock.now()
+    assert target.work_rate_sample_eligible
+    assert target.depletion_rate == 0.7
+    assert target.recall_work_rate == previous_rate
+
+    clock.current += timedelta(hours=1)
+    solver.read_accurate_mood.return_value = 22
+    solver.get_agent_from_room("central", read_time_index=[0])
+    assert target.depletion_rate == 1
+    assert target.recall_work_rate == (1, clock.now())
+
+
 def test_room_countdown_uses_its_row_crop_instead_of_fixed_order_region(room_reader):
     solver, target, clock = room_reader
     solver.get_agent_from_room("central", read_time_index=[0])

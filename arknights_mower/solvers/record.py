@@ -12,7 +12,7 @@ from threading import Event, Lock
 import pytz
 from tzlocal import get_localzone
 
-from arknights_mower.solvers.mood_history_query import FIAMMETTA_CURVE_FILTER
+from arknights_mower.solvers.mood_history_query import mood_curve_filter
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -578,6 +578,7 @@ def get_mood_ratios(*, include_work_rest=True):
         for _ in favorite
     )
     try:
+        columns = {row[1] for row in _fetchall("PRAGMA table_info(agent_action)")}
         # 查询数据（筛掉宿管和替班组的数据）
         data = _fetchall(
             """
@@ -595,10 +596,9 @@ def get_mood_ratios(*, include_work_rest=True):
             + """
                         ) AS subquery ON a.name = subquery.name
                         WHERE a.current_time >= DATE('now', '-7 day', 'localtime')
-                        AND a.mood <> 0
                         AND
             """
-            + FIAMMETTA_CURVE_FILTER
+            + mood_curve_filter(columns)
             + """
                         ORDER BY a.agent_group DESC, a.current_time;
 

@@ -96,11 +96,12 @@ def test_recent_rate_supplies_absolute_deadline_without_reading(
 
 def test_new_measured_rate_replans_without_another_room_read(replacement_solver, clock):
     solver = replacement_solver
+    solver.op_data.update_detail("薇薇安娜", 18, "central", 0, True)
     sync_replacement_checks(solver)
     check = solver.tasks[0]
     assert run_replacement_check(solver, check) is False
     clock.current += timedelta(minutes=30)
-    solver.op_data.update_detail("薇薇安娜", 12, "central", 0, True)
+    solver.op_data.update_detail("薇薇安娜", 9, "central", 0, True)
     sync_replacement_checks(solver)
 
     assert run_replacement_check(solver, check) is False

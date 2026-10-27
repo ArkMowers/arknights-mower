@@ -1,6 +1,7 @@
-"""零心情保留原始事件和实读，两条心情曲线均不展示零值。"""
+"""零心情保留实读，曲线展示工作设施切换和已确认耗尽。"""
 
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -23,6 +24,9 @@ _REAL_CONNECTION = record._conn
 @pytest.fixture
 def history_reader(room_reader, monkeypatch, tmp_path):
     solver, target, clock = room_reader
+    clock.current = datetime.now()
+    monkeypatch.setattr(record, "datetime", clock)
+    monkeypatch.setattr(config, "plan", PlanModel())
     monkeypatch.setattr(record, "_conn", _REAL_CONNECTION)
     monkeypatch.setattr(record, "_tables_created", False)
     monkeypatch.setattr(
@@ -42,6 +46,16 @@ def history_reader(room_reader, monkeypatch, tmp_path):
         )
     )
     return solver, target, clock
+
+
+def curve_points(source, target):
+    if source == "selected":
+        return selected_mood_series(record.get_path("@app/tmp/data.db"), [target.name])[
+            0
+        ]["data"]
+    return record.get_mood_ratios(include_work_rest=False)[0]["moodData"]["datasets"][
+        0
+    ]["data"]
 
 
 def seed_history(target, clock, room):
@@ -86,6 +100,11 @@ def test_same_facility_zero_with_countdown_keeps_reading_and_raw_history(
     ]
     assert solver.tasks == []
     assert solver.read_time.call_count == 3
+    assert target.depletion_rate == 0.8
+    assert target.work_rate_sample_eligible is False
+    assert record._fetchall("SELECT mood_event FROM agent_action") == [(None,)] * 4
+    for source in ["grouped", "selected"]:
+        assert [point["y"] for point in curve_points(source, target)] == [1.2]
 
 
 @pytest.mark.parametrize(
@@ -109,9 +128,30 @@ def test_cleared_recovery_position_preserves_zero_observation(
     assert record._fetchall("SELECT mood FROM agent_action") == expected
 
 
-@pytest.mark.parametrize("previous_room", ["meeting", "dormitory_1"])
+@pytest.mark.parametrize("source", ["grouped", "selected"])
+def test_reading_departure_before_arrival_keeps_zero_working_transition(
+    history_reader, source
+):
+    solver, target, clock = history_reader
+    seed_history(target, clock, "central")
+    solver.read_screen.return_value = "絮雨"
+    solver.get_agent_from_room("central", force_mood=True, strict_observation=True)
+    assert target.current_room == ""
+    solver.read_screen.return_value = target.name
+    solver.get_agent_from_room("contact", force_mood=True, strict_observation=True)
+    assert record._fetchall(
+        "SELECT agent_current_room, current_room, mood FROM agent_action WHERE name = ?",
+        target.name,
+    ) == [("central", "central", 1.2), ("", "contact", 0)]
+    assert [point["y"] for point in curve_points(source, target)] == [1.2, 0]
+
+
+@pytest.mark.parametrize(
+    "previous_room", ["meeting", "factory", "train", "recycle", "dormitory_1"]
+)
+@pytest.mark.parametrize("source", ["grouped", "selected"])
 def test_zero_with_countdown_records_actual_facility_change(
-    history_reader, previous_room
+    history_reader, previous_room, source
 ):
     solver, target, clock = history_reader
     seed_history(target, clock, previous_room)
@@ -121,10 +161,14 @@ def test_zero_with_countdown_records_actual_facility_change(
         (previous_room, 1.2),
         ("central", 0),
     ]
+    assert [point["y"] for point in curve_points(source, target)] == (
+        [1.2] if previous_room == "dormitory_1" else [1.2, 0]
+    )
 
 
 @pytest.mark.parametrize("remaining", [None, 0])
-def test_zero_without_countdown_records_exhaustion(history_reader, remaining):
+@pytest.mark.parametrize("source", ["grouped", "selected"])
+def test_zero_without_countdown_records_exhaustion(history_reader, remaining, source):
     solver, target, clock = history_reader
     seed_history(target, clock, "central")
     solver.read_time.return_value = remaining
@@ -133,6 +177,15 @@ def test_zero_without_countdown_records_exhaustion(history_reader, remaining):
     solver.get_agent_from_room("central", force_mood=True, strict_observation=True)
     assert record._fetchall("SELECT mood FROM agent_action") == [(1.2,), (0,)]
     assert target.exhaust_time == clock.now()
+    assert record._fetchall("SELECT mood_event FROM agent_action") == [
+        (None,),
+        ("exhausted",),
+    ]
+    points = curve_points(source, target)
+    assert [point["y"] for point in points] == [1.2, 0]
+    assert points[-1]["moodEvent"] == "exhausted"
+    assert target.depletion_rate == 0.8
+    assert target.work_rate_sample_eligible is False
 
 
 @pytest.mark.parametrize("remaining", [float("nan"), float("inf"), -1, "bad"])
@@ -145,12 +198,15 @@ def test_invalid_countdown_does_not_record_observation(history_reader, remaining
     assert record._fetchall("SELECT mood FROM agent_action") == [(1.2,)]
 
 
-def test_positive_mood_keeps_curve_without_extra_countdown(history_reader):
+@pytest.mark.parametrize("mood", [1, 24])
+def test_positive_mood_keeps_curve_without_extra_countdown(history_reader, mood):
     solver, target, clock = history_reader
     seed_history(target, clock, "central")
-    solver.read_accurate_mood.return_value = 1
+    solver.read_accurate_mood.return_value = mood
     solver.get_agent_from_room("central", force_mood=True, strict_observation=True)
-    assert record._fetchall("SELECT mood FROM agent_action") == [(1.2,), (1,)]
+    assert record._fetchall("SELECT mood FROM agent_action") == [(1.2,), (mood,)]
+    for source in ["grouped", "selected"]:
+        assert [point["y"] for point in curve_points(source, target)] == [1.2, mood]
     solver.read_time.assert_not_called()
 
 
@@ -245,8 +301,20 @@ def test_curves_filter_stored_zero_mood_and_preserve_raw_events(
 def test_selected_curve_filters_zero_before_sample_limit(income_db):
     with sqlite3.connect(income_db) as connection:
         connection.execute(
-            "INSERT INTO agent_action (name, mood, current_time) VALUES (?, ?, ?)",
-            ("夕", 1.2, "2026-09-11 12:00:00.000000"),
+            "INSERT INTO agent_action (name, mood, current_time, current_room) "
+            "VALUES (?, ?, ?, ?)",
+            ("夕", 1.2, "2026-09-11 12:00:00.000000", "central"),
+        )
+        connection.execute(
+            "INSERT INTO agent_action "
+            "(name, mood, current_time, agent_current_room, current_room) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("夕", 0, "2026-09-11 12:00:30.000000", "", "contact"),
+        )
+        connection.execute(
+            "INSERT INTO agent_action (name, mood, current_time, mood_event) "
+            "VALUES (?, ?, ?, ?)",
+            ("夕", 0, "2026-09-11 12:01:00.000000", "exhausted"),
         )
         connection.executemany(
             "INSERT INTO agent_action (name, mood, current_time) VALUES (?, ?, ?)",
@@ -254,4 +322,201 @@ def test_selected_curve_filters_zero_before_sample_limit(income_db):
         )
     assert [
         point["y"] for point in selected_mood_series(income_db, ["夕"])[0]["data"]
-    ] == [1.2]
+    ] == [1.2, 0, 0]
+
+
+@pytest.mark.parametrize("include_events", [False, True])
+@pytest.mark.parametrize("source", ["grouped", "selected"])
+def test_curves_preserve_working_transitions_in_legacy_history(
+    tmp_path, monkeypatch, include_events, source
+):
+    database = tmp_path / "legacy.db"
+    fields = ", related_operator TEXT, mood_event TEXT" if include_events else ""
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE agent_action (name TEXT, agent_current_room TEXT, "
+            "current_room TEXT, is_high INTEGER, agent_group TEXT, mood REAL, "
+            f"current_time TEXT{fields})"
+        )
+        for minute, (previous, current, mood, event) in enumerate(
+            [
+                ("central", "central", 1.2, None),
+                ("central", "meeting", 0, None),
+                ("meeting", "room_1_2", 0, None),
+                ("room_1_2", "contact", 0, None),
+                ("contact", "factory", 0, None),
+                ("factory", "train", 0, None),
+                ("train", "recycle", 0, None),
+                ("recycle", "gaming_1", 0, None),
+                ("gaming_1", "unknown", 0, None),
+                ("unknown", "central", 0, None),
+                ("contact", "contact", 0, None),
+                ("contact", "dormitory_1", 0, None),
+                ("dormitory_1", "central", 0, None),
+                ("", "central", 0, None),
+                (None, "central", 0, None),
+                ("central", "", 0, None),
+                ("central", None, 0, None),
+                ("central", "central", 0, "exhausted"),
+            ]
+        ):
+            values = [
+                "夕",
+                previous,
+                current,
+                1,
+                "感知",
+                mood,
+                str(datetime.now().replace(hour=12, minute=minute)),
+            ]
+            if include_events:
+                values.extend([None, event])
+            connection.execute(
+                f"INSERT INTO agent_action VALUES ({','.join('?' for _ in values)})",
+                values,
+            )
+    original = database.read_bytes()
+
+    @contextmanager
+    def read_only_connection():
+        connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)
+        try:
+            yield connection
+        finally:
+            connection.close()
+
+    monkeypatch.setattr(record, "_conn", read_only_connection)
+    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "plan", PlanModel())
+    if source == "selected":
+        points = selected_mood_series(database, ["夕"])[0]["data"]
+    else:
+        points = record.get_mood_ratios(include_work_rest=False)[0]["moodData"][
+            "datasets"
+        ][0]["data"]
+    assert [point["y"] for point in points] == (
+        [1.2, 0, 0, 0, 0, 0, 0, 0, 0] if include_events else [1.2, 0, 0, 0, 0, 0, 0, 0]
+    )
+    if include_events:
+        assert points[-1]["moodEvent"] == "exhausted"
+    assert database.read_bytes() == original
+
+
+@pytest.mark.parametrize("room_column", [None, "agent_current_room", "current_room"])
+@pytest.mark.parametrize("include_events", [False, True])
+def test_minimal_history_without_facility_pair_keeps_only_confirmed_zero(
+    tmp_path, room_column, include_events
+):
+    database = tmp_path / "minimal.db"
+    fields = ["name TEXT", "mood REAL", "current_time TEXT"]
+    if room_column:
+        fields.append(f"{room_column} TEXT")
+    if include_events:
+        fields.append("mood_event TEXT")
+    with sqlite3.connect(database) as connection:
+        connection.execute(f"CREATE TABLE agent_action ({','.join(fields)})")
+        for minute, (mood, event) in enumerate(
+            [(1.2, None), (0, None), (0, "exhausted")]
+        ):
+            values = ["夕", mood, f"2026-10-27 12:{minute:02}:00"]
+            if room_column:
+                values.append("central")
+            if include_events:
+                values.append(event)
+            connection.execute(
+                f"INSERT INTO agent_action VALUES ({','.join('?' for _ in values)})",
+                values,
+            )
+    original = database.read_bytes()
+    assert [
+        point["y"] for point in selected_mood_series(database, ["夕"])[0]["data"]
+    ] == ([1.2, 0] if include_events else [1.2])
+    assert database.read_bytes() == original
+
+
+@pytest.mark.parametrize("source", ["grouped", "selected"])
+@pytest.mark.parametrize("include_events", [False, True])
+@pytest.mark.parametrize(
+    "before,after,explicit_source,keep_zero",
+    [
+        ([("central", -1)], [], "", True),
+        ([("central", -1)], [], None, True),
+        ([("dormitory_1", -1)], [], "", False),
+        ([("unknown", -1)], [], "", False),
+        ([("", -1)], [], "", False),
+        ([(None, -1)], [], "", False),
+        ([], [], "", False),
+        ([("central", -2), ("dormitory_1", -1)], [], "", False),
+        ([("central", -2), ("contact", -1)], [], "", False),
+        ([("central", 1)], [], "", False),
+        ([("central", 0)], [], "", True),
+        ([], [("central", 0)], "", False),
+        ([("central", -1)], [], "contact", False),
+        ([("central", -1)], [], "dormitory_1", False),
+        ([("dormitory_1", -1)], [], "central", True),
+    ],
+)
+def test_missing_source_uses_only_nearest_prior_facility(
+    tmp_path,
+    monkeypatch,
+    source,
+    include_events,
+    before,
+    after,
+    explicit_source,
+    keep_zero,
+):
+    database = tmp_path / "history.db"
+    event_columns = ", related_operator TEXT, mood_event TEXT" if include_events else ""
+    observed = datetime.now()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE agent_action (name TEXT, agent_current_room TEXT, "
+            "current_room TEXT, is_high INTEGER, agent_group TEXT, mood REAL, "
+            f"current_time TEXT{event_columns})"
+        )
+        connection.execute(
+            'CREATE INDEX agent_action_name_time ON agent_action(name, "current_time")'
+        )
+
+        def save(previous, room, mood, seconds):
+            connection.execute(
+                "INSERT INTO agent_action "
+                "(name, agent_current_room, current_room, is_high, agent_group, mood, "
+                "current_time) VALUES (?, ?, ?, 1, '感知', ?, ?)",
+                (
+                    "夕",
+                    previous,
+                    room,
+                    mood,
+                    str(observed + timedelta(seconds=seconds)),
+                ),
+            )
+
+        for room, seconds in before:
+            save(room, room, 1.2, seconds)
+        save(explicit_source, "contact", 0, 0)
+        for room, seconds in after:
+            save(room, room, 1.2, seconds)
+
+    @contextmanager
+    def read_only_connection():
+        connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)
+        try:
+            yield connection
+        finally:
+            connection.close()
+
+    monkeypatch.setattr(record, "_conn", read_only_connection)
+    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "plan", PlanModel())
+    original = database.read_bytes()
+    if source == "selected":
+        points = selected_mood_series(database, ["夕"])[0]["data"]
+    else:
+        groups = record.get_mood_ratios(include_work_rest=False)
+        points = groups[0]["moodData"]["datasets"][0]["data"] if groups else []
+    assert [point["y"] for point in points if point["y"] == 0] == (
+        [0] if keep_zero else []
+    )
+    assert database.read_bytes() == original

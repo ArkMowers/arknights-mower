@@ -271,6 +271,31 @@ def test_predicted_previous_sample_cannot_train_rate_after_valid_read(solver):
     assert getattr(op, "recall_work_rate", None) is None
 
 
+@pytest.mark.parametrize("legacy_eligibility", [None, True])
+def test_legacy_full_mood_sample_cannot_train_work_rate(solver, legacy_eligibility):
+    data = solver.op_data
+    op = data.operators["伊内丝"]
+    op.mood, op.time_stamp, op.depletion_rate = (
+        24,
+        datetime.now() - timedelta(hours=2),
+        0.8,
+    )
+    op.recall_work_rate = (0.8, op.time_stamp)
+    if legacy_eligibility is None:
+        del op.work_rate_sample_eligible
+    else:
+        op.work_rate_sample_eligible = legacy_eligibility
+    previous_rate = op.recall_work_rate
+
+    data.update_detail(op.name, 23, "meeting", 0, True)
+
+    assert op.mood == 23
+    assert op.work_rate_sample_eligible
+    assert op.depletion_rate == 0.8
+    assert op.recall_work_rate == previous_rate
+    assert estimated_recall_rates(data, data)[0][op.name] == 0.8
+
+
 def test_unknown_work_reading_never_supplies_legacy_recall_estimate(solver):
     data = solver.op_data
     op = data.operators["伊内丝"]
