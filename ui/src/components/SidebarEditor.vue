@@ -145,6 +145,7 @@ function retry() {
     aria-label="编辑侧边栏"
     class="sidebar-editor"
     :style="dialogStyle"
+    content-style="display: flex; flex-direction: column; overflow: hidden"
     @update:show="!$event && close()"
   >
     <p class="sidebar-editor__hint">拖动页面排序、分组或置顶，修改后自动保存。</p>
@@ -305,12 +306,18 @@ function retry() {
   color: var(--mower-text-muted);
 }
 .sidebar-editor__hint {
+  flex: none;
   margin: 0 0 12px;
   font-size: 12px;
   line-height: 1.6;
 }
 .sidebar-editor__fields {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 52dvh;
   margin: 0;
   padding: 0;
   border: 0;
@@ -328,7 +335,13 @@ function retry() {
   flex-wrap: wrap;
   margin-top: 12px;
 }
+.sidebar-editor__toolbar,
+.sidebar-editor__naming {
+  flex: none;
+}
 .sidebar-editor__layout {
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: 52dvh;
   margin-top: 12px;
   padding-right: 6px;
@@ -409,6 +422,7 @@ function retry() {
   font-size: 12px;
 }
 .sidebar-editor__error {
+  flex: none;
   color: var(--mower-error, #d03050);
 }
 .sidebar-editor__footer {

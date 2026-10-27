@@ -109,7 +109,7 @@ function update_trigger(data) {
     transform-origin="center"
     style="width: auto; max-width: 90vw"
   >
-    <n-scrollbar v-if="current_backup" style="max-height: 80vh; margin-top: 5px">
+    <div v-if="current_backup" style="margin-top: 5px">
       <n-form
         :disabled="edit_locked"
         label-placement="left"
@@ -213,7 +213,7 @@ function update_trigger(data) {
           word-wrap
         />
       </n-card>
-    </n-scrollbar>
+    </div>
   </n-modal>
 </template>
 

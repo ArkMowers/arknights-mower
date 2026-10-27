@@ -76,6 +76,7 @@ function confirm() {
     title="添加页面"
     class="sidebar-page-dialog"
     :style="dialogStyle"
+    content-style="display: flex; flex-direction: column; overflow: hidden"
     aria-label="添加页面"
     @update:show="updateShow"
   >
@@ -129,14 +130,8 @@ function confirm() {
 </template>
 
 <style scoped>
-.sidebar-page-dialog :deep(.n-card__content) {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .sidebar-customize__search {
+  flex: none;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -150,8 +145,10 @@ function confirm() {
 
 .sidebar-customize__entries {
   display: grid;
+  flex: 1 1 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
+  min-height: 0;
   max-height: calc(70dvh - 210px);
   margin-top: 12px;
   overflow-y: auto;
@@ -219,6 +216,7 @@ function confirm() {
 }
 
 .sidebar-customize__error {
+  flex: none;
   color: var(--mower-error, #d03050);
 }
 
