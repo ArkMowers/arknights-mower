@@ -1724,3 +1724,46 @@ def test_ordinary_copilot_library_and_queue_roundtrip(storage, monkeypatch):
         ]
         is True
     )
+
+
+def test_sss_library_queue_round_count_and_progress_roundtrip(storage, monkeypatch):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import maa_copilot, maa_sss
+
+    monkeypatch.setattr(maa_copilot, "get_path", storage)
+    monkeypatch.setattr(record, "get_path", storage)
+    monkeypatch.setattr(record, "_tables_created", False)
+    script = {
+        "type": "SSS",
+        "stage_name": "保全",
+        "tool_men": {},
+        "stages": [
+            {
+                "stage_name": "第一关",
+                "draw_as_possible": True,
+                "strategies": [],
+                "actions": [],
+            }
+        ],
+    }
+    info = maa_copilot.store_script(json.dumps(script).encode(), sss=True)
+    config.conf = config.Conf(
+        sss={"scripts": [{"id": info["id"], "type": 2, "ec": 3, "times": 4}]}
+    )
+    config.save_conf()
+    progress = {
+        "key": maa_copilot.queue_key(config.conf.sss),
+        "next": 0,
+        "completed": 2,
+        "failed": False,
+    }
+    record.save_maa_sss_progress(progress)
+    raw = backup.export_archive()
+    assert "sss-copilots/" + info["id"] + ".json" in backup.read_archive(raw)
+    maa_copilot.script_path(info["id"], sss=True).unlink()
+    record.save_maa_sss_progress({})
+    backup.import_configuration(raw)
+    assert record.load_maa_sss_progress() == progress
+    item = config.conf.sss.scripts[0]
+    assert item.model_dump() == {"id": info["id"], "type": 2, "ec": 3, "times": 4}
+    assert maa_sss.build_sss_params(item)["loop_times"] == 1

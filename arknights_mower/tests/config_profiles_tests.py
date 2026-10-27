@@ -1513,3 +1513,48 @@ def test_maa_activity_sign_in_follows_daily_profile_group(storage, inherit):
     config.save_conf()
     _create("MAA 活动签到配置", inherit)
     assert config.conf.maa_signinevent is ("daily" in inherit)
+
+
+@pytest.mark.parametrize("inherit", [[], ["long"], ["other_settings"]])
+def test_sss_queue_files_and_round_progress_follow_long_task_profile_group(
+    storage, monkeypatch, inherit
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import maa_copilot
+
+    monkeypatch.setattr(maa_copilot, "get_path", storage)
+    monkeypatch.setattr(record, "get_path", storage)
+    monkeypatch.setattr(record, "_tables_created", False)
+    script = maa_copilot.store_script(
+        b'{"type":"SSS","stage_name":"SSS","tool_men":{},"stages":[{"stage_name":"one","draw_as_possible":true,"strategies":[],"actions":[]}]}',
+        sss=True,
+    )
+    config.conf.sss = config.Conf(
+        sss={"scripts": [{"id": script["id"], "times": 3}]}
+    ).sss
+    config.save_conf()
+    progress = {
+        "key": maa_copilot.queue_key(config.conf.sss),
+        "next": 0,
+        "completed": 2,
+        "failed": False,
+    }
+    record.save_maa_sss_progress(progress)
+    original = profiles.list_profiles()["active_id"]
+    path = maa_copilot.script_path(script["id"], sss=True)
+
+    _create("作业配置", inherit)
+
+    assert bool(config.conf.sss.scripts) is ("long" in inherit)
+    assert path.is_file() is ("long" in inherit)
+    assert record.load_maa_sss_progress() == (progress if "long" in inherit else {})
+    if "long" in inherit:
+        assert str(
+            maa_copilot.script_path(config.conf.sss.scripts[0].id, sss=True)
+        ) == str(path)
+    _activate(original)
+    assert record.load_maa_sss_progress() == progress
+    assert config.conf.sss.scripts[0].id == script["id"]
+    assert str(maa_copilot.script_path(config.conf.sss.scripts[0].id, sss=True)) == str(
+        path
+    )

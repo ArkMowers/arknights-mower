@@ -2783,25 +2783,45 @@ def delete_maa_copilot(script_id):
 @app.route("/sss-copilot", methods=["GET", "POST"])
 @require_token
 def upload_sss_copilot():
-    copilot = get_path("@app/sss.json")
-    if request.method == "GET":
-        if copilot.is_file():
-            with copilot.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-        else:
-            return {"exists": False}
-    else:
-        logger.debug("上传保全派驻作业：%s", request.files)
-        data = request.files["copilot"]
-        data.save(copilot)
-        data.seek(0)
-        data = json.load(data)
-    return {
-        "exists": True,
-        "title": data["doc"]["title"],
-        "details": data["doc"]["details"],
-        "operators": data["opers"],
-    }
+    from arknights_mower.utils.maa_copilot import (
+        MAX_SCRIPT_BYTES,
+        list_scripts,
+        store_script,
+    )
+
+    with backup_lock:
+        try:
+            if request.method == "GET":
+                return {"scripts": list_scripts(sss=True)}
+            upload = request.files.get("copilot")
+            if upload is None:
+                return {"message": "没有收到作业文件"}, 400
+            return store_script(upload.read(MAX_SCRIPT_BYTES + 1), sss=True)
+        except (ValueError, TypeError, RecursionError):
+            return {
+                "message": "保全作业格式无效或存储已满，请检查文件并清理不再使用的作业"
+            }, 400
+        except OSError:
+            return {"message": "作业读写失败，请检查目录权限"}, 500
+
+
+@app.delete("/sss-copilot/<script_id>")
+@require_token
+def delete_sss_copilot(script_id):
+    from arknights_mower.utils.maa_copilot import script_path
+
+    with backup_lock, maa_maintenance_lock:
+        if any(item.id == script_id for item in config.conf.sss.scripts):
+            return {"message": "请先将作业移出执行队列"}, 409
+        if _maa_busy_response():
+            return {"message": "MAA 正在使用中，请等待任务结束后删除作业"}, 409
+        try:
+            script_path(script_id, sss=True).unlink(missing_ok=True)
+        except ValueError:
+            return {"message": "作业标识无效"}, 400
+        except OSError:
+            return {"message": "删除作业失败，请检查目录权限"}, 500
+    return {"ok": True}
 
 
 @app.route("/resource-update/manual", methods=["POST"])

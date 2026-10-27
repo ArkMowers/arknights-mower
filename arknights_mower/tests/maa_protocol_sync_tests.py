@@ -34,9 +34,6 @@ def dispatch(monkeypatch, tmp_path):
         monkeypatch.setattr(solver, method, MagicMock())
     monkeypatch.setattr(solver, "to_sss", MagicMock(return_value=False))
     monkeypatch.setattr(base_schedule, "send_message", MagicMock())
-    script = tmp_path / "sss.json"
-    script.write_text("{}")
-    monkeypatch.setattr(base_schedule, "get_path", lambda _: script)
 
     def run(kind="rogue", **kwargs):
         conf = Conf(maa_rg_enable=1, maa_long_task_type=kind, **kwargs)
@@ -190,13 +187,6 @@ def test_reclamation_parameters_follow_theme_and_mode(
     assert params["mode"] == mode
     assert (params.get("clear_store") is True) is clear
     assert ("tools_to_craft" in params) is craft
-
-
-def test_sss_retains_existing_repeat_count_and_interface(dispatch):
-    chain, params = dispatch("sss")
-    assert chain == "SSSCopilot"
-    assert params["loop_times"] == 9999999
-    assert set(params) == {"filename", "loop_times"}
 
 
 @pytest.mark.parametrize(

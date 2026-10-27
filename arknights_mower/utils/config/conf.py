@@ -319,7 +319,17 @@ class LongTaskPart(ConfModel):
                     raise ValueError("第一层实托邦需要难度 6 及以上")
             return self
 
+    class SSSQueueItem(ConfModel):
+        id: str = Field(pattern=r"^[a-f0-9]{64}$")
+        type: Literal[1, 2] = 1
+        ec: Literal[1, 2, 3] = 1
+        times: int = Field(default=1, ge=1, le=9999, strict=True)
+
     class SSSConf(ConfModel):
+        scripts: list["LongTaskPart.SSSQueueItem"] = Field(
+            default_factory=list, max_length=32
+        )
+        run_id: str = Field(default="", max_length=128)
         type: int = 1
         "关卡"
         ec: int = 1

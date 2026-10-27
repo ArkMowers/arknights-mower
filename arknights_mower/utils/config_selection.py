@@ -24,6 +24,7 @@ from arknights_mower.utils.config_profile_groups import (
 WEEKLY_SELECTION_FILE = "profile-weekly.json"
 TABLE_GROUPS = {
     "maa_copilot_progress": "long",
+    "maa_sss_progress": "long",
     "inventory": "inventory",
     "workshop_inventory_updates": "inventory",
     "workshop_inventory_pending": "inventory",
@@ -374,7 +375,7 @@ def combine_archives(incoming_raw, current_raw, selected):
                 continue
             if name == WEEKLY_SELECTION_FILE:
                 group = "weekly_plan"
-            elif name.startswith("copilots/"):
+            elif name.startswith(("copilots/", "sss-copilots/")):
                 group = "long"
             else:
                 group = CONFIG_FILE_GROUPS.get(name, "other_settings")

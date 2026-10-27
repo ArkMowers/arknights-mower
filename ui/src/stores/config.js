@@ -145,7 +145,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_rcl_theme = ref('Tales')
   const rcl = ref({})
   const rogue = ref({})
-  const sss = ref({})
+  const sss = ref({ type: 1, ec: 1, scripts: [], run_id: '' })
   const copilot = ref({
     run_id: '',
     scripts: [],
@@ -606,7 +606,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_rcl_theme.value = response.data.maa_rcl_theme
       rcl.value = response.data.rcl
       rogue.value = response.data.rogue
-      sss.value = response.data.sss
+      sss.value = { scripts: [], run_id: '', ...response.data.sss }
       copilot.value = {
         run_id: '',
         scripts: [],

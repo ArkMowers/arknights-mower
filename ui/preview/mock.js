@@ -37,7 +37,8 @@ function previewFieldGroup(key) {
   if (key.startsWith('automatic_rescue')) return 'rescue_plan'
   if (['start_automatically', 'performance_mode', 'screenshot_interval'].includes(key))
     return 'runtime'
-  if (key.startsWith('maa_rg_') || key === 'maa_long_task_type') return 'long'
+  if (key.startsWith('maa_rg_') || ['maa_long_task_type', 'sss', 'copilot'].includes(key))
+    return 'long'
   if (key.startsWith('maa_')) return 'maa'
   if (['check_mail_enable', 'event_sign_in_enable', 'report_enable', 'skland_enable'].includes(key))
     return 'daily'
@@ -417,6 +418,24 @@ export function createPreviewAdapter(data, requests = []) {
       '/report/recycling_settings': () => clone(data.incomeSettings),
       // 离线示例仅提供默认预设，不读取 MAA 文件或建立连接。
       '/maa-conn-preset': () => ['General'],
+      '/sss-copilot': () => ({
+        scripts: [
+          {
+            id: 'a'.repeat(64),
+            stage_name: '保全关卡 1',
+            title: '示例作业一',
+            details: '离线预览示例，请在游戏中准备编队。',
+            operators: [{ name: '棘刺', skill: 3 }]
+          },
+          {
+            id: 'b'.repeat(64),
+            stage_name: '保全关卡 2',
+            title: '示例作业二',
+            details: '可为此项单独选择关卡、导能单元和次数。',
+            operators: []
+          }
+        ]
+      }),
       '/operator': () => [
         '能天使',
         '德克萨斯',

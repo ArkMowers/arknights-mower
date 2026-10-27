@@ -1,4 +1,4 @@
-"""Validate and store ordinary MAA Copilot scripts separately from SSS scripts."""
+"""Validate and store ordinary and SSS scripts in separate libraries."""
 
 import hashlib
 import json
@@ -28,23 +28,27 @@ def queue_key(conf):
     ).hexdigest()
 
 
-def script_path(script_id):
+def script_path(script_id, *, sss=False):
     if not isinstance(script_id, str) or not re.fullmatch(r"[a-f0-9]{64}", script_id):
         raise ValueError("作业标识无效")
-    root = get_path("@app/config/copilots")
+    root = get_path("@app/config/sss-copilots" if sss else "@app/config/copilots")
     path = root / f"{script_id}.json"
     if root.is_symlink() or path.is_symlink():
         raise ValueError("作业目录或文件不能使用符号链接")
     return path
 
 
-def parse_script(raw):
+def parse_script(raw, *, sss=False):
     if len(raw) > MAX_SCRIPT_BYTES:
         raise ValueError("作业文件不能超过 1 MB")
     try:
         data = json.loads(raw)
     except (ValueError, UnicodeError, RecursionError) as exc:
         raise ValueError("作业文件不是有效 JSON") from exc
+    if sss:
+        from arknights_mower.utils.maa_sss import validate_script
+
+        return validate_script(data)
     if not isinstance(data, dict) or data.get("type") == "SSS":
         raise ValueError("请导入普通自动战斗作业，保全作业应在保全派驻中导入")
     stage = data.get("stage_name")
@@ -66,20 +70,26 @@ def parse_script(raw):
     return data
 
 
-def script_info(script_id, data):
+def script_info(script_id, data, *, sss=False):
     doc = data.get("doc")
     doc = doc if isinstance(doc, dict) else {}
-    return {
+    info = {
         "id": script_id,
         "stage_name": data["stage_name"],
         "title": str(doc.get("title") or data["stage_name"])[:1024],
         "details": str(doc.get("details") or "")[:4096],
-        "actions": len(data["actions"]),
+        "stages" if sss else "actions": len(data["stages"] if sss else data["actions"]),
     }
+    if sss:
+        info["operators"] = [
+            {"name": str(item.get("name", ""))[:256], "skill": item.get("skill", 0)}
+            for item in data.get("opers", [])[:64]
+        ]
+    return info
 
 
-def list_scripts():
-    root = get_path("@app/config/copilots")
+def list_scripts(*, sss=False):
+    root = get_path("@app/config/sss-copilots" if sss else "@app/config/copilots")
     if root.is_symlink():
         raise ValueError("作业目录不能使用符号链接")
     paths = sorted(root.glob("*.json"))
@@ -88,20 +98,20 @@ def list_scripts():
     result = []
     for path in paths:
         script_id = path.stem
-        path = script_path(script_id)
+        path = script_path(script_id, sss=sss)
         with path.open("rb") as stream:
-            data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))
-        result.append(script_info(script_id, data))
+            data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1), sss=sss)
+        result.append(script_info(script_id, data, sss=sss))
     return result
 
 
-def store_script(raw):
-    data = parse_script(raw)
+def store_script(raw, *, sss=False):
+    data = parse_script(raw, sss=sss)
     content = json.dumps(data, ensure_ascii=False, allow_nan=False).encode("utf-8")
     if len(content) > MAX_SCRIPT_BYTES:
         raise ValueError("作业文件不能超过 1 MB")
     script_id = hashlib.sha256(content).hexdigest()
-    path = script_path(script_id)
+    path = script_path(script_id, sss=sss)
     files = list(path.parent.glob("*.json"))
     if not path.exists() and (
         len(files) >= MAX_SCRIPTS
@@ -109,7 +119,7 @@ def store_script(raw):
     ):
         raise ValueError("作业存储已满，请先删除不再使用的作业")
     write_json(path, data)
-    return script_info(script_id, data)
+    return script_info(script_id, data, sss=sss)
 
 
 def build_copilot_params(conf):

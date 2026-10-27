@@ -42,9 +42,18 @@ def test_mower_stop_cancels_large_task_closes_game_and_releases_without_wait(
     ):
         monkeypatch.setattr(solver, method, MagicMock())
     solver.to_sss = MagicMock(return_value=False)
-    script = tmp_path / "sss.json"
-    script.write_text("{}")
-    monkeypatch.setattr(base_schedule, "get_path", lambda _: script)
+    if kind == "sss":
+        from arknights_mower.solvers import record
+        from arknights_mower.utils import maa_copilot
+
+        monkeypatch.setattr(maa_copilot, "get_path", lambda value: tmp_path / value[5:])
+        monkeypatch.setattr(record, "get_path", lambda value: tmp_path / value[5:])
+        monkeypatch.setattr(record, "_tables_created", False)
+        script = maa_copilot.store_script(
+            b'{"type":"SSS","stage_name":"SSS","tool_men":{},"stages":[{"stage_name":"one","draw_as_possible":true,"strategies":[],"actions":[]}]}',
+            sss=True,
+        )
+        conf.sss = Conf(sss={"scripts": [{"id": script["id"]}]}).sss
     monkeypatch.setattr(base_schedule, "send_message", MagicMock())
 
     def stop(_):
