@@ -645,9 +645,29 @@ def supervise(
             )
 
 
+def show_existing_instance(directory):
+    from arknights_mower.utils.path import get_path
+
+    target = os.path.normcase(str(Path(directory).resolve()))
+    for record in runtime.instances(timeout=0):
+        if record.get("kind") != "instance" or not record.get("ready"):
+            continue
+        data = Path(record.get("data_dir") or get_path("@app", space=""))
+        owned = data / (record.get("space") or "") / "tmp/process-supervision"
+        if os.path.normcase(str(owned.resolve())) != target:
+            continue
+        if (runtime.state_dir() / "shutdown" / f"{record['id']}.json").exists():
+            continue
+        runtime.send_instance_command(record, "show")
+        return True
+    return False
+
+
 def run_launcher(arguments):
     with console_stop() as stop:
         directory = supervisor_directory(arguments)
+        if show_existing_instance(directory):
+            return 0
         try:
             with instance_lock(directory, cancelled=lambda: stop.requested):
                 # A surviving child retains exclusivity after supervisor termination.

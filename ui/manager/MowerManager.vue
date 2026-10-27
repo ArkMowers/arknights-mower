@@ -768,6 +768,13 @@ function addInstance() {
       <div class="instance-toolbar">
         <div class="instance-tools">
           <n-button
+            v-if="instance.can_open_browser"
+            size="tiny"
+            :disabled="unavailable"
+            @click="execute(() => api().start(idx, { name: instance.name, path: instance.path }))"
+            >打开窗口</n-button
+          >
+          <n-button
             size="tiny"
             title="修改实例名称"
             aria-label="修改实例名称"

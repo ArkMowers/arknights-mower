@@ -97,4 +97,18 @@ describe('manager Mower update', () => {
     await view.cancel()
     expect(api.cancel_mower_update).toHaveBeenCalledWith('job')
   })
+  it('installs with foreground restart when the manager has no running instances', async () => {
+    api.get_mower_update_info.mockResolvedValue({
+      ...view.info.value,
+      instances: [],
+      settings: { channel: 'beta', background: false }
+    })
+    view.info.value = null
+    await view.load()
+    expect(view.background.value).toBe(false)
+    await view.check()
+    view.requestInstall()
+    await view.install()
+    expect(api.start_mower_update).toHaveBeenCalledWith('receipt', false)
+  })
 })

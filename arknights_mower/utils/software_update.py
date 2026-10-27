@@ -126,7 +126,7 @@ def get_settings():
             if "-" in __version__
             else "stable",
         ),
-        "background": saved.get("background", True),
+        "background": saved.get("background", False),
         "auto_check": saved.get("auto_check", False),
         "auto_update": saved.get("auto_update", False),
         "source_branch": saved.get("source_branch", "alpha"),

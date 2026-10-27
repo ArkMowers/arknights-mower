@@ -1101,7 +1101,7 @@ def _run_desktop():
                     managed = False
             if tray and not managed:
                 ensure_tray()
-            messages = registration.take_commands() if manager_owned else []
+            messages = registration.take_commands()
             if tray_queue is not None:
                 try:
                     messages.append(tray_queue.get(timeout=0.5))

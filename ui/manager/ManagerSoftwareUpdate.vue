@@ -5,7 +5,7 @@ import { managerCall } from './bridge'
 const props = defineProps({ api: { type: Object, required: true }, disabled: Boolean })
 const info = ref(null)
 const channel = ref('stable')
-const background = ref(true)
+const background = ref(false)
 const checked = ref(null)
 const confirmation = ref(null)
 const job = ref({ status: 'idle' })

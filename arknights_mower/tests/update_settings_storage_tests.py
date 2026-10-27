@@ -70,3 +70,18 @@ def test_failed_update_settings_migration_preserves_old_file(storage, monkeypatc
         update.get_settings()
     assert legacy.read_bytes() == original
     assert not update.settings_path().exists()
+
+
+def test_background_restart_defaults_to_disabled_without_saving(storage):
+    assert update.get_settings()["background"] is False
+    assert not update.settings_path().exists()
+    update.runtime.write_json(update.settings_path(), {"channel": "beta"})
+    assert update.get_settings()["background"] is False
+
+
+@pytest.mark.parametrize("background", [False, True])
+def test_background_restart_preserves_saved_choice(storage, background):
+    update.save_settings({"background": background})
+    assert update.get_settings()["background"] is background
+    update.save_settings({"auto_check": True})
+    assert update.get_settings()["background"] is background
