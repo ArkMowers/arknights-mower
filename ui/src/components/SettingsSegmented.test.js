@@ -38,7 +38,8 @@ vi.mock('naive-ui', async () => {
               .map((tab) =>
                 cloneVNode(tab, {
                   onClick: () => {
-                    if (!tab.props.disabled) emit('update:value', tab.props.name)
+                    if (!tab.props.disabled && tab.props.name !== props.value)
+                      emit('update:value', tab.props.name)
                   }
                 })
               )
@@ -82,6 +83,7 @@ function mount(overrides = {}) {
     label: '界面主题',
     disabled: false,
     busy: false,
+    emitReselect: false,
     ...overrides
   })
   const update = vi.fn()
@@ -175,6 +177,21 @@ describe('shared settings segmented selection', () => {
       true,
       false
     ])
+  })
+
+  it('does not repeat a current selection unless its owner needs to cancel pending work', async () => {
+    const page = mount()
+    await click(page.choices()[0])
+    expect(page.update).not.toHaveBeenCalled()
+
+    page.props.emitReselect = true
+    await nextTick()
+    await click(page.choices()[0])
+    expect(page.update).toHaveBeenCalledExactlyOnceWith('light')
+
+    page.update.mockClear()
+    await click(page.choices()[1])
+    expect(page.update).toHaveBeenCalledExactlyOnceWith('dark')
   })
 
   it('prevents disabled selection and accepts a later explicit selection after enabling', async () => {

@@ -1,5 +1,6 @@
 <template>
   <n-config-provider
+    inline-theme-disabled
     :locale="zhCN"
     :date-locale="dateZhCN"
     class="provider"
@@ -261,7 +262,6 @@ import {
   computed,
   defineAsyncComponent,
   inject,
-  nextTick,
   onBeforeUnmount,
   onMounted,
   provide,
@@ -285,6 +285,7 @@ import SidebarUpdateChecks from '@/components/SidebarUpdateChecks.vue'
 import SidebarEditor from '@/components/SidebarEditor.vue'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
 import { useResolvedTheme } from '@/composables/theme'
+import { themeSelectionKey, useThemeSelection } from '@/composables/themeSelection'
 import {
   mowerDarkCssVariables,
   mowerDarkThemeOverrides,
@@ -478,20 +479,15 @@ const {
   adb
 } = storeToRefs(config_store)
 const theme = useResolvedTheme(themePreference)
+const setTheme = useThemeSelection(themePreference, theme)
+provide(themeSelectionKey, setTheme)
 // Also applied to the page drawer, which teleports out of the provider element.
 const mowerCssVariables = computed(() =>
   theme.value === 'dark' ? mowerDarkCssVariables : mowerLightCssVariables
 )
-let activeThemeColours = null
-let themeControlWrite = false
 watch(
   theme,
   () => {
-    if (themeControlWrite) return
-    if (activeThemeColours) {
-      activeThemeColours = null
-      document.documentElement.classList.remove('mower-theme-colours')
-    }
     document.documentElement.classList.add('mower-theme-changing')
   },
   { flush: 'sync' }
@@ -506,48 +502,6 @@ watchPostEffect(() => {
   root.classList.remove('mower-theme-changing')
 })
 
-async function setThemeWithTransition(nextTheme) {
-  const root = document.documentElement
-  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  if (reduceMotion) {
-    activeThemeColours = null
-    root.classList.remove('mower-theme-colours')
-    root.classList.add('mower-theme-changing')
-    themePreference.value = nextTheme
-    await nextTick()
-    void root.offsetWidth
-    root.classList.remove('mower-theme-changing')
-    return
-  }
-  if (nextTheme === themePreference.value) return
-
-  const change = {}
-  activeThemeColours = change
-  root.classList.add('mower-theme-colours')
-  void root.offsetWidth
-  try {
-    themeControlWrite = true
-    try {
-      themePreference.value = nextTheme
-    } finally {
-      themeControlWrite = false
-    }
-    await nextTick()
-    if (activeThemeColours !== change) return
-    void root.offsetWidth
-    const transitions = document
-      .getAnimations()
-      .filter((animation) => typeof animation.transitionProperty === 'string')
-    await Promise.allSettled(transitions.map((animation) => animation.finished))
-  } finally {
-    if (activeThemeColours === change) {
-      activeThemeColours = null
-      root.classList.remove('mower-theme-colours')
-    }
-  }
-}
-
-provide('set_theme_with_transition', setThemeWithTransition)
 const windowShellTitle = computed(() =>
   formatWindowTitle({
     version: windowTitleVersion.value,
@@ -1014,8 +968,6 @@ onBeforeUnmount(() => {
   clearTimeout(closePollTimer)
   disposeModalDrag?.()
   windowShell.dispose()
-  activeThemeColours = null
-  document.documentElement.classList.remove('mower-theme-colours')
   document.documentElement.classList.remove('mower-theme-changing')
   delete document.documentElement.dataset.windowShellTheme
   delete document.documentElement.dataset.mowerTheme
@@ -1264,14 +1216,22 @@ html.mower-theme-changing *::after {
   transition: none !important;
 }
 
-html.mower-theme-colours,
-html.mower-theme-colours *,
-html.mower-theme-colours *::before,
-html.mower-theme-colours *::after {
-  transition-property: color, background-color, border-color, box-shadow, fill, stroke !important;
-  transition-duration: 180ms !important;
-  transition-timing-function: ease-out !important;
-  transition-delay: 0s !important;
+html.mower-theme-transition::view-transition {
+  pointer-events: none;
+}
+
+html.mower-theme-transition::view-transition-group(root),
+html.mower-theme-transition::view-transition-old(root),
+html.mower-theme-transition::view-transition-new(root) {
+  animation-duration: 160ms;
+  animation-timing-function: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.mower-theme-transition::view-transition-old(root),
+  html.mower-theme-transition::view-transition-new(root) {
+    animation: none;
+  }
 }
 
 /* naive-ui 弹窗 teleport 到 <body>，不在 .provider--window-shell 内，
