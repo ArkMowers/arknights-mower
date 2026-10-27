@@ -1084,7 +1084,24 @@ class InstanceController(ManagerTools):
         try:
             with self._operation():
                 instance = self._target_instance(idx, target)
-                settings = self._start_settings(instance, self._records())
+                records = self._records()
+                matches = self._matching(instance, records)
+                if matches:
+                    if runtime.active_job():
+                        raise ValueError("软件更新或进程操作期间无法打开实例窗口")
+                    if not all(r.get("managed") for r in matches):
+                        raise ValueError("该实例不是由多开管理器启动")
+                    if any(
+                        (runtime.state_dir() / "shutdown" / f"{r['id']}.json").exists()
+                        for r in matches
+                    ):
+                        raise ValueError("实例正在停止，无法打开窗口")
+                    ready = next((r for r in matches if r.get("ready")), None)
+                    if ready is None:
+                        raise ValueError("实例尚未就绪，请稍后打开窗口")
+                    runtime.send_instance_command(ready, "show")
+                    return {"ok": True}
+                settings = self._start_settings(instance, records)
                 self._connection_document()
                 frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
                 executable = Path(sys.executable).resolve().parent / (

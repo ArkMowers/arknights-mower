@@ -399,6 +399,13 @@ describe('offline software package installation', () => {
     expect(view.switch('自动更新').props['aria-checked']).toBe(true)
   })
 
+  it('starts with foreground restart and honors an explicitly saved background choice', async () => {
+    component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))
+    expect(component.background.value).toBe(false)
+    await Promise.all(state.mounted.map((callback) => callback()))
+    expect(component.background.value).toBe(true)
+  })
+
   it.each([
     { silentRestart: false, restarted: false, reload: false },
     { silentRestart: false, restarted: true, reload: true },

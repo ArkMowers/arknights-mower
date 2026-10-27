@@ -7,7 +7,37 @@
     <title>Mower Manager</title>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/manager/main.js"></script>
+    <div id="app">
+      <section style="margin: 24px; font-family: sans-serif">
+        <h1 id="manager-startup-title" style="font-size: 20px">正在加载多开管理器…</h1>
+        <p>如果无法进入页面，请关闭后重新打开多开管理器。再次失败时，请保留页面提示并反馈。</p>
+        <pre
+          id="manager-startup-error"
+          style="white-space: pre-wrap; overflow-wrap: anywhere"
+        ></pre>
+      </section>
+    </div>
+    <script type="module">
+      import('./main.js').catch((error) => {
+        // Vue may have cleared the loading content before mounting failed.
+        const root = document.getElementById('app')
+        const title = document.createElement('h1')
+        title.textContent = '无法加载多开管理器页面'
+        const help = document.createElement('p')
+        help.textContent = '请关闭后重新打开多开管理器。再次失败时，请保留以下错误并反馈。'
+        const detail = document.createElement('pre')
+        detail.style.whiteSpace = 'pre-wrap'
+        detail.style.overflowWrap = 'anywhere'
+        detail.textContent = error?.message || String(error)
+        root.style.margin = '24px'
+        root.style.fontFamily = 'sans-serif'
+        root.replaceChildren(title, help, detail)
+      })
+    </script>
+    <script nomodule>
+      document.getElementById('manager-startup-title').textContent = '无法加载多开管理器页面'
+      document.getElementById('manager-startup-error').textContent =
+        '当前内置浏览器不支持模块脚本。Windows 用户请安装或修复 Microsoft Edge WebView2 Runtime 后重新打开多开管理器。'
+    </script>
   </body>
 </html>

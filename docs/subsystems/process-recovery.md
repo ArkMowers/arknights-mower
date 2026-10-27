@@ -2,6 +2,12 @@
 
 ## Ownership and Launch
 
+Launching an already ready Windows instance with the same resolved configuration
+directory sends that instance a show-window request and exits the new launcher.
+This also opens a background instance's WebView. The existing process, task-run
+intent and configuration remain intact; repeated requests restore the existing
+window. Unready or stopping instances retain the ownership-lock rejection.
+
 **Owned Process Recovery**: Windows desktop instances have an independent supervisor with exclusive configuration-space ownership. Unexpected exits and sustained HTTP unavailability receive continuing recovery attempts with bounded delays. Intentional exits and active update or process-control jobs prohibit recovery by the old supervisor. Saved tasks resume automatically through fresh observations, successful checkpointing and existing solver recovery. Explicit task stopping takes priority; uncertain input coordinates are never replayed.
 
 The source and frozen Windows entry points separate worker invocations from instance supervision before GUI, configuration, Flask or native image imports. Source launches inherit an attached launcher console so `python webview_ui.py` keeps instance logs in the invoking terminal. Frozen launches and source launches without an attached console keep the instance console hidden. A supervisor holds its instance lock throughout the owned child lifetime and backoff; the child holds a separate lifetime lock. Both locks live under the resolved configuration data directory, so different installations opening the same configuration share ownership. A new explicit launcher waits at most fifteen seconds for the supervisor lock and rejects a surviving child. Supervisor termination therefore cannot authorize a second instance while its child survives. The multi-instance manager launches this same entry; its own closure does not abandon a surviving instance.

@@ -149,6 +149,7 @@ class TrayRecoveryTests(unittest.TestCase):
                 server._stop_mower.side_effect = stop_worker
                 registration = Mock(record={})
                 registration.shutdown_requested.return_value = False
+                registration.take_commands.side_effect = lambda: []
                 parent, child = desktop_process.Pipe()
                 broken = desktop_process.Channel(parent)
                 child.close()
@@ -299,7 +300,9 @@ class DesktopStartupTests(unittest.TestCase):
             server.stop.return_value = "true"
             registration = Mock(record={})
             registration.shutdown_requested.return_value = False
-            registration.take_commands.side_effect = [[command] for command in commands]
+            registration.take_commands.side_effect = (
+                [[command] for command in commands] if managed else lambda: []
+            )
             shutdown = Shutdown()
             events = []
 

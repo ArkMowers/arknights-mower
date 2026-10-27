@@ -162,7 +162,9 @@ Persistent update preferences use the shared data root's
 SHA-256-derived key of the resolved update state directory, retaining installation
 and data-root separation while all its instances share the settings. This file
 stores channel, background mode, automatic checks and updates, source branch,
-source remote and remote history. On first read, an absent destination receives
+source remote and remote history. Background restart defaults to disabled when
+the preference is absent; an explicitly saved choice remains effective. On first
+read, an absent destination receives
 the former update-cache `settings.json` under a migration lock. An existing
 destination wins; migration errors propagate without overwriting the source.
 Update coordination, downloads and temporary workspaces remain in the cache.

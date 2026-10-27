@@ -639,8 +639,8 @@ function addInstance() {
   <div class="mower-list" :data-manager-ready="ready">
     <div v-if="initializationError || error || batchResult || pageResult" class="manager-feedback">
       <n-alert v-if="initializationError" type="error">
-        {{ initializationError }}
-        <template #action><n-button @click="initialize">重新加载</n-button></template>
+        <div>{{ initializationError }}</div>
+        <n-button size="small" @click="initialize">重新加载</n-button>
       </n-alert>
       <n-alert v-if="error" type="warning" closable @close="error = ''">{{ error }}</n-alert>
       <n-alert
@@ -685,10 +685,11 @@ function addInstance() {
     <div class="manager-heading">
       <div>
         <h1>多开管理器</h1>
-        <p>
+        <p v-if="ready">
           {{ instances.length }} 个实例 ·
           {{ instances.filter((item) => item.state === 'running').length }} 个运行中
         </p>
+        <p v-else>{{ loading ? '正在加载实例列表…' : '实例列表未加载' }}</p>
       </div>
     </div>
     <div class="bulk-actions">
@@ -767,6 +768,13 @@ function addInstance() {
       </div>
       <div class="instance-toolbar">
         <div class="instance-tools">
+          <n-button
+            v-if="instance.can_open_browser"
+            size="tiny"
+            :disabled="unavailable"
+            @click="execute(() => api().start(idx, { name: instance.name, path: instance.path }))"
+            >打开窗口</n-button
+          >
           <n-button
             size="tiny"
             title="修改实例名称"
