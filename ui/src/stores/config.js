@@ -223,6 +223,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_recruit = ref(false)
   const maa_orundum = ref(false)
   const maa_mining = ref(false)
+  const maa_signinevent = ref(false)
   const maa_specialaccess = ref(false)
   const syncingWeeklyPlan = ref(false)
   const skipNextWeeklyPlanSync = ref(false)
@@ -708,6 +709,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_recruit.value = response.data.maa_recruit
       maa_orundum.value = response.data.maa_orundum
       maa_mining.value = response.data.maa_mining
+      maa_signinevent.value = response.data.maa_signinevent ?? false
       maa_specialaccess.value = response.data.maa_specialaccess
       await load_weekly_plan_state()
       savedConfig = configSnapshot(build_config())
@@ -896,6 +898,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_recruit: maa_recruit.value,
       maa_orundum: maa_orundum.value,
       maa_mining: maa_mining.value,
+      maa_signinevent: maa_signinevent.value,
       maa_specialaccess: maa_specialaccess.value
     }
   }
@@ -1255,6 +1258,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_orundum,
     maa_mining,
     maa_specialaccess,
+    maa_signinevent,
     load_weekly_plan_state,
     refresh_weekly_plan_metadata,
     update_weekly_plan_active,

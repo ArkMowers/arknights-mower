@@ -852,6 +852,9 @@ def simulate(saved):
                 saved.get("maa_copilot_progress", {})
             )
             base_scheduler.daily_visit_friend = saved["daily_visit_friend"]
+            base_scheduler.maa_daily_completed = dict(
+                saved.get("maa_daily_completed", {})
+            )
             base_scheduler.daily_visit_friend_attempt = saved.get(
                 "daily_visit_friend_attempt"
             )

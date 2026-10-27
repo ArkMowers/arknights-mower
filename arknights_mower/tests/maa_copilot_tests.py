@@ -516,3 +516,25 @@ def test_partial_config_save_preserves_independent_formation_choices():
     assert updated.copilot.add_trust is True
     assert updated.copilot.formation is True
     assert len(updated.copilot.scripts) == 1
+
+
+def test_mower_stop_closes_game_and_keeps_completed_queue_items(scheduler, monkeypatch):
+    queue_pair()
+    scheduler.device = MagicMock()
+    scheduler.sleep = MagicMock()
+    scheduler.MAA.running.side_effect = [False, True]
+    scheduler.MAA.start.side_effect = lambda: emit(scheduler, 10002, 1)
+
+    def stop(_):
+        base_schedule.config.stop_mower.set()
+        raise base_schedule.MowerExit
+
+    monkeypatch.setattr(base_schedule, "csleep", stop)
+    with pytest.raises(base_schedule.MowerExit):
+        scheduler.maa_plan_solver()
+    assert scheduler.maa_copilot_progress["next"] == 1
+    scheduler.device.exit_after_task_stop.assert_called_once_with()
+    scheduler.maa_stop.assert_called_once_with()
+    scheduler.restore_maa_theme.assert_not_called()
+    scheduler.rest_until_next_task.assert_not_called()
+    scheduler.sleep.assert_not_called()

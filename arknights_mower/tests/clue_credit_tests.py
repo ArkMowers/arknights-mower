@@ -514,6 +514,8 @@ def main_runtime(monkeypatch):
     runtime.daily_event_sign_in = date.min
     runtime.daily_event_sign_in_attempt = None
     runtime.daily_visit_friend_attempt = None
+    runtime.maa_copilot_progress = {}
+    runtime.maa_daily_completed = {}
     runtime.find_next_task.return_value = None
     runtime.has_maa_tasks.return_value = False
     runtime.rest_until_next_task.side_effect = MowerExit

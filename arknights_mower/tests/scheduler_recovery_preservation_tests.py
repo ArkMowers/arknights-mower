@@ -104,6 +104,7 @@ def scheduler(monkeypatch):
     monkeypatch.setattr(
         scheduler_task.NewsChecker, "get_update_time", Mock(return_value=(None, None))
     )
+    monkeypatch.setattr(scheduler_task.NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(main, "base_scheduler", solver)
     return SimpleNamespace(
         solver=solver, clock=Clock, module=base_schedule, main=main, io=forbidden_io

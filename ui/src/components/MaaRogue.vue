@@ -17,6 +17,8 @@ import { pinyin_match } from '@/utils/common'
 import { render_op_option, render_op_label } from '@/utils/op_select'
 import HelpText from '@/components/HelpText.vue'
 import {
+  blackflow_animals,
+  blackflow_rewards,
   collectible_start_visible,
   difficulty_options,
   elite_two_visible,
@@ -205,25 +207,34 @@ const rogue_theme_tip = computed(() => {
 2. 使用指挥避战策略将大幅提高刷源石锭效率，也可用于快速刷等级（不追求通关），但需要注意策略选择为 ｢刷源石锭｣
 3. 已解锁的最高难度 <3 或未解锁相关科技时，请不要使用指挥避战策略，否则会导致出错
 4. 当前难度 ≥15 时，6★ 干员希望消耗 +1，使用部分分队时可能无法招募开局 6★ 干员，导致出错或失败`,
-    BlackFlow: `黑流树海推荐配置：
-
-开局干员: 机械师（要精二）
-开局分队: ｢特勤分队｣ / ｢堡垒战术分队｣
-开局职业组: ｢稳扎稳打（重装、术师、狙击）｣ / ｢坚不可摧（重装、术师、医疗）｣
-
-1. 目前没有专用战斗策略，作战由招募评分自动决策；
-    刷源石锭、刷等级、刷襁褓动物目前全部围绕精二机械师的飞展开。
-    本次肉鸽机制繁多，不按上述配置开局就只能使用默认寻路与战斗，大概率失败，
-    强烈推荐精二机械师开局（精二机械师只需通关一次 N1，相对简单）
-2. 机械师精二后，完成 ｢招募精通 II｣ ｢效果提升 II｣ 科技，开局即可携带 ｢结构性原理｣（全图任意飞 3 次）；
-    解锁很简单，精二后累计卖出 10 个零件即可，强烈推荐。
-    未解锁时只能向周围 8 格飞 3 次，虽然也能刷，但效率会低不少
-3. 刷等级时，机械师（要精二）+ 上述分队与职业组 + 重装券，可以快速飞完三层
-4. 没有精二机械师就不要选机械师，可以正常刷钱，但战斗大概率暴毙，其他策略待后续优化
-5. 刷等级 + 不勾选 ｢投资源石锭｣，即可跳过商店`
+    BlackFlow: `黑流树海支持刷等级、投资、培养襁褓动物和刷开局。
+刷等级可选择第一至第三结局或快速到达第三层。刷开局先进行准备局，再以期望奖励结束目标局；也可选择凹第一层实托邦。
+精二机械师配合特勤分队或堡垒战术分队、稳扎稳打或坚不可摧职业组，可在解锁对应科技后使用结构性原理移动。`
   }
   return tips[maa_rg_theme.value] ? rogue_theme_tip_header + tips[maa_rg_theme.value] : ''
 })
+
+const foldartal_options = [
+  { label: '跟随 MAA 默认', value: null },
+  { label: '开启', value: true },
+  { label: '关闭', value: false }
+]
+const blackflow_reward_values = computed({
+  get: () =>
+    blackflow_rewards
+      .filter((item) => (rogue.value.blackflow_start_rewards ?? 0) & item.mask)
+      .map((item) => item.value),
+  set: (values) => {
+    rogue.value.blackflow_start_rewards = blackflow_rewards
+      .filter((item) => values.includes(item.value))
+      .reduce((mask, item) => mask | item.mask, 0)
+  }
+})
+function set_animal(index, value) {
+  const animals = [...(rogue.value.blackflow_start_animals ?? [])]
+  animals[index] = value
+  rogue.value.blackflow_start_animals = animals.filter(Boolean)
+}
 
 const col = [
   '去量化',
@@ -374,21 +385,13 @@ const find_playtime_options = [
 <template>
   <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false" class="rogue">
     <n-form-item label="肉鸽主题">
-      <n-select
-        v-model:value="maa_rg_theme"
-        :options="rogue_themes"
-        :consistent-menu-width="false"
-      />
+      <n-select v-model:value="maa_rg_theme" :options="rogue_themes" />
     </n-form-item>
     <n-form-item label="开局分队">
-      <n-select
-        v-model:value="rogue.squad"
-        :options="squad[maa_rg_theme]"
-        :consistent-menu-width="false"
-      />
+      <n-select v-model:value="rogue.squad" :options="squad[maa_rg_theme]" />
     </n-form-item>
     <n-form-item label="开局职业组">
-      <n-select v-model:value="rogue.roles" :options="roles" :consistent-menu-width="false" />
+      <n-select v-model:value="rogue.roles" :options="roles" />
     </n-form-item>
     <n-form-item>
       <template #label>
@@ -398,7 +401,6 @@ const find_playtime_options = [
         </HelpText>
       </template>
       <n-select
-        :consistent-menu-width="false"
         filterable
         clearable
         :options="operators"
@@ -407,6 +409,9 @@ const find_playtime_options = [
         :render-label="render_op_label"
         :render-option="render_op_option"
       />
+    </n-form-item>
+    <n-form-item label="开局招募顺位">
+      <maa-rogue-recruit v-model="rogue.core_char_list" :options="operators" />
     </n-form-item>
     <n-form-item
       v-if="elite_two_visible(maa_rg_theme, rogue.mode, rogue.squad)"
@@ -427,12 +432,111 @@ const find_playtime_options = [
     <n-form-item :show-label="false">
       <n-checkbox v-model:checked="rogue.use_support">开局干员使用助战</n-checkbox>
     </n-form-item>
-    <n-form-item v-if="rogue.use_support" :show-label="false">
+    <n-form-item
+      v-if="
+        rogue.use_support ||
+        rogue.core_char_list?.some((item) => item.use_support) ||
+        (maa_rg_theme === 'BlackFlow' &&
+          rogue.mode === 30003 &&
+          rogue.collectible_mode_core_char_list?.some((item) => item.use_support))
+      "
+      :show-label="false"
+    >
       <n-checkbox v-model:checked="rogue.use_nonfriend_support">开局干员使用非好友助战</n-checkbox>
     </n-form-item>
     <n-form-item label="策略">
-      <n-select :options="mode_options" v-model:value="rogue.mode" :consistent-menu-width="false" />
+      <n-select :options="mode_options" v-model:value="rogue.mode" />
     </n-form-item>
+    <template v-if="maa_rg_theme === 'Sami'">
+      <n-form-item label="使用密文板"
+        ><n-select v-model:value="rogue.use_foldartal" :options="foldartal_options"
+      /></n-form-item>
+      <n-form-item label="检测坍缩范式"
+        ><n-select v-model:value="rogue.check_collapsal_paradigms" :options="foldartal_options"
+      /></n-form-item>
+      <n-form-item v-if="rogue.check_collapsal_paradigms ?? rogue.mode === 5" label="范式检测防漏">
+        <n-select
+          v-model:value="rogue.double_check_collapsal_paradigms"
+          :options="foldartal_options"
+        />
+      </n-form-item>
+    </template>
+    <n-form-item
+      v-if="
+        maa_rg_theme === 'Sarkaz' &&
+        rogue.mode === 1 &&
+        ['点刺成锭分队', '后勤分队'].includes(rogue.squad)
+      "
+      label="投资固定种子"
+    >
+      <n-input v-model:value="rogue.start_with_seed" placeholder="留空不使用种子" />
+    </n-form-item>
+    <n-form-item v-if="maa_rg_theme === 'BlackFlow' && rogue.mode === 0" label="刷等级路线">
+      <n-select
+        v-model:value="rogue.blackflow_strategy"
+        :options="[
+          { label: '跟随 MAA 默认', value: '' },
+          { label: '快速到达第三层', value: 'burn' },
+          { label: '投资后快速到达第三层', value: 'burn_with_investment' },
+          { label: '第一结局', value: 'ending1' },
+          { label: '第二结局', value: 'ending2' },
+          { label: '第三结局', value: 'ending3' }
+        ]"
+      />
+    </n-form-item>
+    <template v-if="maa_rg_theme === 'BlackFlow' && rogue.mode === 30003">
+      <n-form-item label="准备局动物">
+        <n-flex vertical style="width: 100%">
+          <n-select
+            v-for="index in 2"
+            :key="index"
+            clearable
+            :value="rogue.blackflow_start_animals?.[index - 1] ?? null"
+            :options="blackflow_animals"
+            placeholder="不要求动物"
+            @update:value="set_animal(index - 1, $event)"
+          />
+          <n-text depth="3">最多两只，可重复，羽蛇最多一只；留空时准备局只需进入第三层。</n-text>
+        </n-flex>
+      </n-form-item>
+      <n-form-item label="目标开局奖励">
+        <n-flex vertical style="width: 100%">
+          <n-select multiple v-model:value="blackflow_reward_values" :options="blackflow_rewards" />
+          <n-text depth="3"
+            >命中任意一项即可；留空不限制奖励。后六项仅在准备局要求羽蛇时作为命中条件。</n-text
+          >
+        </n-flex>
+      </n-form-item>
+      <n-form-item label="凹第一层实托邦">
+        <n-checkbox v-model:checked="rogue.blackflow_start_utopia"
+          >开启（需已解锁难度 6 及以上）</n-checkbox
+        >
+      </n-form-item>
+      <n-form-item label="奖励选择优先级">
+        <n-flex vertical style="width: 100%">
+          <n-select
+            multiple
+            v-model:value="rogue.blackflow_start_reward_priority"
+            :options="blackflow_rewards"
+          />
+          <n-text depth="3"
+            >仅凹实托邦时使用，开启前至少选择一项；按添加顺序优先选择，羽蛇奖励也参与排序。</n-text
+          >
+        </n-flex>
+      </n-form-item>
+      <n-form-item label="准备局职业组">
+        <n-select
+          clearable
+          :value="rogue.collectible_mode_roles"
+          @update:value="rogue.collectible_mode_roles = $event ?? ''"
+          :options="roles"
+          placeholder="沿用开局职业组"
+        />
+      </n-form-item>
+      <n-form-item label="准备局招募顺位">
+        <maa-rogue-recruit v-model="rogue.collectible_mode_core_char_list" :options="operators" />
+      </n-form-item>
+    </template>
     <n-form-item
       v-if="is_field_enabled('monthly_squad_auto_iterate', maa_rg_theme, rogue.mode)"
       :show-label="false"
@@ -471,19 +575,10 @@ const find_playtime_options = [
       label="坍缩范式"
       v-if="is_field_enabled('expected_collapsal_paradigms', maa_rg_theme, rogue.mode)"
     >
-      <n-select
-        multiple
-        :options="col_list"
-        v-model:value="rogue.expected_collapsal_paradigms"
-        :consistent-menu-width="false"
-      />
+      <n-select multiple :options="col_list" v-model:value="rogue.expected_collapsal_paradigms" />
     </n-form-item>
     <n-form-item label="难度">
-      <n-select
-        v-model:value="rogue.difficulty"
-        :options="difficulty_options(maa_rg_theme)"
-        :consistent-menu-width="false"
-      />
+      <n-select v-model:value="rogue.difficulty" :options="difficulty_options(maa_rg_theme)" />
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('stop_at_final_boss', maa_rg_theme, rogue.mode)"
@@ -524,13 +619,9 @@ const find_playtime_options = [
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('collectible_mode_squad', maa_rg_theme, rogue.mode)"
-      label="烧水分队"
+      :label="rogue.mode === 30003 ? '准备局分队' : '烧水分队'"
     >
-      <n-select
-        v-model:value="rogue.collectible_mode_squad"
-        :options="collectible_squad_options"
-        :consistent-menu-width="false"
-      />
+      <n-select v-model:value="rogue.collectible_mode_squad" :options="collectible_squad_options" />
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('first_floor_foldartal', maa_rg_theme, rogue.mode)"
@@ -564,19 +655,13 @@ const find_playtime_options = [
       "
       label="刷开局期望奖励"
     >
-      <n-select
-        multiple
-        :options="start_reward_options"
-        v-model:value="start_reward_values"
-        :consistent-menu-width="false"
-      />
+      <n-select multiple :options="start_reward_options" v-model:value="start_reward_values" />
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('blackflow_cultivation_target', maa_rg_theme, rogue.mode)"
       label="目标襁褓动物"
     >
       <n-select
-        :consistent-menu-width="false"
         v-model:value="rogue.blackflow_cultivation_target"
         :options="blackflow_target_options"
       />
@@ -585,11 +670,7 @@ const find_playtime_options = [
       v-if="is_field_enabled('find_playtime_target', maa_rg_theme, rogue.mode)"
       label="目标常乐节点"
     >
-      <n-select
-        v-model:value="rogue.find_playtime_target"
-        :options="find_playtime_options"
-        :consistent-menu-width="false"
-      />
+      <n-select v-model:value="rogue.find_playtime_target" :options="find_playtime_options" />
     </n-form-item>
   </n-form>
 </template>

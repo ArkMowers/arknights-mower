@@ -371,11 +371,12 @@ def combine_archives(incoming_raw, current_raw, selected):
         for name, content in source.items():
             if name == "conf.yml" or name.casefold() in backup.IMPORT_PRESERVED_FILES:
                 continue
-            group = (
-                "weekly_plan"
-                if name == WEEKLY_SELECTION_FILE
-                else CONFIG_FILE_GROUPS.get(name, "other_settings")
-            )
+            if name == WEEKLY_SELECTION_FILE:
+                group = "weekly_plan"
+            elif name.startswith("copilots/"):
+                group = "long"
+            else:
+                group = CONFIG_FILE_GROUPS.get(name, "other_settings")
             if (index == 1) == (group in selected):
                 files[name] = content
     for name in backup.IMPORT_PRESERVED_FILES - {"state.json"}:

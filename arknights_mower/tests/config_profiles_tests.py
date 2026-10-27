@@ -1465,3 +1465,40 @@ def test_only_successful_activation_resets_observed_performance_without_changing
         result.poll_interval,
         result.transition_timeout,
     ) == (900, 0.3, 4.5)
+
+
+@pytest.mark.parametrize("inherit", [[], ["long"], ["other_settings"]])
+def test_copilot_queue_and_files_follow_long_task_profile_group(
+    storage, monkeypatch, inherit
+):
+    from arknights_mower.utils import maa_copilot
+    from arknights_mower.utils.config.conf import CopilotConf, CopilotScriptConf
+
+    monkeypatch.setattr(maa_copilot, "get_path", storage)
+    script = maa_copilot.store_script(b'{"stage_name":"1-7","actions":[]}')
+    config.conf.copilot = CopilotConf(scripts=[CopilotScriptConf(id=script["id"])])
+    config.save_conf()
+    original = profiles.list_profiles()["active_id"]
+    path = maa_copilot.script_path(script["id"])
+
+    _create("作业配置", inherit)
+
+    assert bool(config.conf.copilot.scripts) is ("long" in inherit)
+    assert path.is_file() is ("long" in inherit)
+    if "long" in inherit:
+        assert maa_copilot.build_copilot_params(config.conf.copilot)["copilot_list"][0][
+            "filename"
+        ] == str(path)
+    _activate(original)
+    assert config.conf.copilot.scripts[0].id == script["id"]
+    assert maa_copilot.build_copilot_params(config.conf.copilot)["copilot_list"][0][
+        "filename"
+    ] == str(path)
+
+
+@pytest.mark.parametrize("inherit", [[], ["daily"], ["credit"]])
+def test_maa_activity_sign_in_follows_daily_profile_group(storage, inherit):
+    config.conf.maa_signinevent = True
+    config.save_conf()
+    _create("MAA 活动签到配置", inherit)
+    assert config.conf.maa_signinevent is ("daily" in inherit)

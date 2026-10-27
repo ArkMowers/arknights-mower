@@ -496,6 +496,8 @@ class BaseSchedulerSolver(
         self.waiting_group_shifts = []
         self.free_clue = None
         self.credit_fight = None
+        self.maa_daily_completed = {}
+        self.maa_daily_tasks = {}
         self.task_count = 0
         self.refresh_connecting = False
         self.recruit_time = None
@@ -15339,6 +15341,56 @@ class BaseSchedulerSolver(
         if not error:
             self.reload_time = datetime.now()
 
+    def _maa_daily_done(self, key):
+        today = get_server_time().date()
+        if key == "visit_friends":
+            return getattr(self, "daily_visit_friend", None) == today
+        return getattr(self, "maa_daily_completed", {}).get(key) == today
+
+    def _remember_maa_daily_task(self, task_id, chain, keys):
+        if type(task_id) is not int or task_id <= 0 or not keys:
+            return
+        if not hasattr(self, "maa_daily_tasks"):
+            self.maa_daily_tasks = {}
+        self.maa_daily_tasks[task_id] = {
+            "chain": chain,
+            "day": get_server_time().date(),
+            "keys": set(keys),
+            "failed": False,
+        }
+
+    def _record_maa_daily_callback(self, msg, details):
+        tasks = getattr(self, "maa_daily_tasks", {})
+        task_id = details.get("taskid")
+        task = tasks.get(task_id) if type(task_id) is int else None
+        if task is not None and task["chain"] == details.get("taskchain"):
+            completed = set()
+            if msg == 20000:
+                task["failed"] = True
+            elif msg == 10002 and task["chain"] == "Award" and not task["failed"]:
+                completed = set(task["keys"])
+            elif msg == 20002 and task["chain"] == "Mall":
+                inner = details.get("details")
+                node = inner.get("task") if isinstance(inner, dict) else None
+                if node in ("VisitLimited", "VisitNextBlack"):
+                    completed = {"visit_friends"} & task["keys"]
+                elif node == "StageDrops-Stars-3":
+                    completed = {"credit_fight"} & task["keys"]
+            if completed:
+                if not hasattr(self, "maa_daily_completed"):
+                    self.maa_daily_completed = {}
+                for key in completed:
+                    if key == "visit_friends":
+                        self.daily_visit_friend = task["day"]
+                    else:
+                        self.maa_daily_completed[key] = task["day"]
+                task["keys"].difference_update(completed)
+                save_current_state()
+            if msg in (10000, 10002, 10004):
+                tasks.pop(task_id, None)
+        if msg == 3:
+            tasks.clear()
+
     def _maa_copilot_run(self, conf):
         from arknights_mower.utils.maa_copilot import run_key
 
@@ -15379,6 +15431,10 @@ class BaseSchedulerSolver(
         """MAA 回调入口：累积掉落统计、代发上报请求、输出可读日志行。"""
         d = parse_details(details)
         logger.debug("MAA 回调 %s %s", msg, d)
+        try:
+            self._record_maa_daily_callback(msg, d)
+        except Exception:
+            logger.exception("保存 MAA 每日任务完成记录失败")
         self._record_maa_copilot_callback(msg, d)
         if msg == 3:  # AllTasksCompleted follows the final StageDrops receipt.
             battle_inventory_active.clear()
@@ -15510,6 +15566,7 @@ class BaseSchedulerSolver(
 
         self.maa_drop_inventory = MaaDropInventory()
         self.maa_inventory_tasks = {}
+        self.maa_daily_tasks = {}
         self.maa_copilot_task = None
         battle_inventory_active.set()
 
@@ -15640,48 +15697,60 @@ class BaseSchedulerSolver(
 
         elif type == "Mall":
             conf = config.conf
-            self.MAA.append_task(
+            params = {
+                "shopping": mall_action == "shopping"
+                if mall_action
+                else getattr(
+                    conf,
+                    "should_run_maa_mall",
+                    getattr(conf, "maa_mall_enable", True)
+                    and getattr(conf, "maa_mall_mode", "maa") == "maa",
+                ),
+                "buy_first": conf.maa_mall_buy.split(","),
+                "blacklist": conf.maa_mall_blacklist.split(","),
+                "credit_fight": not mall_action
+                and conf.maa_credit_fight
+                and "" not in self.stages
+                and self.credit_fight is None
+                and not self._maa_daily_done("credit_fight"),
+                "formation_index": max(0, min(4, conf.credit_fight.squad)),
+                "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
+                "visit_friends": mall_action == "visit_friends"
+                if mall_action
+                else getattr(
+                    conf,
+                    "should_run_maa_visit_friend",
+                    getattr(conf, "visit_friend_enable", False)
+                    and getattr(conf, "visit_friend_mode", "maa") == "maa",
+                ),
+                "only_buy_discount": conf.maa_mall_only_buy_discount,
+                "reserve_max_credit": conf.maa_mall_reserve_max_credit,
+            }
+            params["visit_friends"] = params[
+                "visit_friends"
+            ] and not self._maa_daily_done("visit_friends")
+            task_id = self.MAA.append_task("Mall", params)
+            self._remember_maa_daily_task(
+                task_id,
                 "Mall",
-                {
-                    "shopping": mall_action == "shopping"
-                    if mall_action
-                    else getattr(
-                        conf,
-                        "should_run_maa_mall",
-                        getattr(conf, "maa_mall_enable", True)
-                        and getattr(conf, "maa_mall_mode", "maa") == "maa",
-                    ),
-                    "buy_first": conf.maa_mall_buy.split(","),
-                    "blacklist": conf.maa_mall_blacklist.split(","),
-                    "credit_fight": not mall_action
-                    and conf.maa_credit_fight
-                    and "" not in self.stages
-                    and self.credit_fight is None,
-                    "formation_index": max(0, min(4, conf.credit_fight.squad)),
-                    "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
-                    "visit_friends": mall_action == "visit_friends"
-                    if mall_action
-                    else getattr(
-                        conf,
-                        "should_run_maa_visit_friend",
-                        getattr(conf, "visit_friend_enable", False)
-                        and getattr(conf, "visit_friend_mode", "maa") == "maa",
-                    ),
-                    "only_buy_discount": conf.maa_mall_only_buy_discount,
-                    "reserve_max_credit": conf.maa_mall_reserve_max_credit,
-                },
+                [key for key in ("visit_friends", "credit_fight") if params[key]],
             )
         elif type == "Award":
-            self.MAA.append_task(
-                "Award",
-                {
-                    "award": True,
-                    "mail": config.conf.maa_mail,
-                    "recruit": config.conf.maa_recruit,
-                    "orundum": config.conf.maa_orundum,
-                    "mining": config.conf.maa_mining,
-                    "specialaccess": config.conf.maa_specialaccess,
+            daily = ("recruit", "orundum", "mining", "specialaccess", "signinevent")
+            params = {
+                "award": True,
+                "mail": config.conf.maa_mail,
+                **{
+                    key: getattr(config.conf, f"maa_{key}", False)
+                    and not self._maa_daily_done(key)
+                    for key in daily
                 },
+            }
+            task_id = self.MAA.append_task("Award", params)
+            self._remember_maa_daily_task(
+                task_id,
+                "Award",
+                [key for key in daily if params[key]],
             )
 
     def maybe_switch_expired_activity_plan(self):
@@ -15823,6 +15892,7 @@ class BaseSchedulerSolver(
                     getattr(conf, "maa_orundum", False),
                     getattr(conf, "maa_mining", False),
                     getattr(conf, "maa_specialaccess", False),
+                    getattr(conf, "maa_signinevent", False),
                 ]
             )
         )
@@ -15850,6 +15920,7 @@ class BaseSchedulerSolver(
     ):
         """清日常"""
         copilot_run = None
+        large_task_started = False
         try:
             from arknights_mower.solvers.manual_tasks import manual_task_deadline
 
@@ -15975,9 +16046,7 @@ class BaseSchedulerSolver(
                     logger.info("记录MAA 本次执行时间")
                     self.last_execution["maa"] = datetime.now()
                     logger.info(self.last_execution["maa"])
-                    if "Mall" in tasks and self.credit_fight is None:
-                        self.credit_fight = get_server_weekday()
-                        logger.info("记录首次信用作战")
+                    if "Mall" in tasks and self._maa_daily_done("credit_fight"):
                         self.maa_stop(False)
                 elif not manual:
                     send_message("MAA单次任务停止")
@@ -16038,16 +16107,6 @@ class BaseSchedulerSolver(
                     self.recog.reset_after_external_control()
                     self.back_to_index()
                     if selected_long == "rogue":
-                        # Roguelike 通用字段按协议条件下发（#264）：投资类字段仅在
-                        # investment_enabled 时下发（值内联各自的策略/主题限制，与 MAA 一致），
-                        # stop_at_final_boss 除 Phantom 外可用且仅策略 0 下发，
-                        # expected_collapsal_paradigms 仅 Sami + 策略 5 且列表非空时下发，
-                        # 烧水字段仅策略 4 下发，勾选「只凹开局干员直升精二」时
-                        # 撤销 collectible_mode_start_list，指路鳞的值内联 Mizuki 限制。
-                        # 月度小队/深入调查字段仅策略 6/7 下发（通信检查需先勾自动切换），
-                        # first_floor_foldartal 与 start_foldartal_list 仅 Sami + 策略 4
-                        # （板子列表另限生活至上分队），黑流树海字段仅刷襁褓动物模式下发，
-                        # find_playTime_target 仅界园刷常乐节点模式下发。
                         professional = conf.rogue.squad in _PROFESSIONAL_SQUADS
                         rogue_params = {
                             "theme": conf.maa_rg_theme,
@@ -16168,6 +16227,65 @@ class BaseSchedulerSolver(
                             rogue_params["find_playTime_target"] = (
                                 conf.rogue.find_playtime_target
                             )
+                        recruits = getattr(conf.rogue, "core_char_list", [])
+                        if recruits:
+                            rogue_params["core_char_list"] = [
+                                item.model_dump() for item in recruits
+                            ]
+                        if conf.maa_rg_theme == "Sami":
+                            for key in (
+                                "use_foldartal",
+                                "check_collapsal_paradigms",
+                                "double_check_collapsal_paradigms",
+                            ):
+                                value = getattr(conf.rogue, key, None)
+                                checking = getattr(
+                                    conf.rogue, "check_collapsal_paradigms", None
+                                )
+                                if checking is None:
+                                    checking = conf.rogue.mode == 5
+                                if value is not None and (
+                                    key != "double_check_collapsal_paradigms"
+                                    or checking
+                                ):
+                                    rogue_params[key] = value
+                        if (
+                            conf.maa_rg_theme == "Sarkaz"
+                            and conf.rogue.mode == 1
+                            and conf.rogue.squad in ("点刺成锭分队", "后勤分队")
+                        ):
+                            seed = getattr(conf.rogue, "start_with_seed", "")
+                            if seed:
+                                rogue_params["start_with_seed"] = seed
+                        if conf.maa_rg_theme == "BlackFlow":
+                            strategy = getattr(conf.rogue, "blackflow_strategy", "")
+                            if conf.rogue.mode == 0 and strategy:
+                                rogue_params["blackflow_strategy"] = strategy
+                            if conf.rogue.mode == 30003:
+                                for key, default in (
+                                    ("blackflow_start_animals", []),
+                                    ("blackflow_start_rewards", 0),
+                                    ("blackflow_start_utopia", False),
+                                    ("collectible_mode_squad", ""),
+                                ):
+                                    rogue_params[key] = getattr(
+                                        conf.rogue, key, default
+                                    )
+                                if rogue_params["blackflow_start_utopia"]:
+                                    rogue_params["blackflow_start_reward_priority"] = (
+                                        conf.rogue.blackflow_start_reward_priority
+                                    )
+                                if getattr(conf.rogue, "collectible_mode_roles", ""):
+                                    rogue_params["collectible_mode_roles"] = (
+                                        conf.rogue.collectible_mode_roles
+                                    )
+                                preparation = getattr(
+                                    conf.rogue, "collectible_mode_core_char_list", []
+                                )
+                                if preparation:
+                                    rogue_params["collectible_mode_core_char_list"] = [
+                                        item.model_dump() for item in preparation
+                                    ]
                         self.MAA.append_task("Roguelike", rogue_params)
                     elif selected_long == "copilot":
                         from arknights_mower.utils.maa_copilot import (
@@ -16176,9 +16294,7 @@ class BaseSchedulerSolver(
 
                         params = build_copilot_params(conf.copilot)
                         copilot_index = copilot_run["next"]
-                        params["copilot_list"] = [
-                            params["copilot_list"][copilot_index]
-                        ]
+                        params["copilot_list"] = [params["copilot_list"][copilot_index]]
                         task_id = self.MAA.append_task("Copilot", params)
                         self.maa_copilot_task = (
                             task_id,
@@ -16201,20 +16317,30 @@ class BaseSchedulerSolver(
                         )
                     elif selected_long == "rcl":
                         self.to_reclamation(conf.maa_rcl_theme, conf.rcl.mode)
-                        self.MAA.append_task(
-                            "Reclamation",
-                            {
-                                "theme": conf.maa_rcl_theme,
-                                "mode": conf.rcl.mode,
-                                "tools_to_craft": conf.rcl.tools_to_craft,
-                                "increment_mode": conf.rcl.increment_mode,
-                                "num_craft_batches": conf.rcl.num_craft_batches,
-                            },
-                        )
+                        rcl_params = {
+                            "theme": conf.maa_rcl_theme,
+                            "mode": conf.rcl.mode,
+                        }
+                        if conf.maa_rcl_theme == "Tales":
+                            if conf.rcl.mode == 0:
+                                rcl_params["clear_store"] = getattr(
+                                    conf.rcl, "clear_store", False
+                                )
+                            elif conf.rcl.mode == 1:
+                                for key in (
+                                    "tools_to_craft",
+                                    "increment_mode",
+                                    "num_craft_batches",
+                                ):
+                                    rcl_params[key] = getattr(conf.rcl, key)
+                        self.MAA.append_task("Reclamation", rcl_params)
                     logger.info("启动")
+                    large_task_started = True
                     self.MAA.start()
                     while self.MAA.running():
                         csleep(5)
+                        if config.stop_mower.is_set():
+                            raise MowerExit
                         self.report_maa_progress()
                         self.recog.update()
                         self.recog.save_screencap(None)
@@ -16226,6 +16352,8 @@ class BaseSchedulerSolver(
                             self.maa_stop()
                             restore_theme = True
                             break
+                    if config.stop_mower.is_set():
+                        raise MowerExit
                     self.recog.reset_after_external_control()
                     if (
                         copilot_run is not None
@@ -16253,7 +16381,22 @@ class BaseSchedulerSolver(
             if restore_theme:
                 self.restore_maa_theme()
             self.release_maa()
-        except (MowerExit, DeviceRecoveryError, SharedADBError):
+        except MowerExit:
+            try:
+                try:
+                    if getattr(self, "MAA", None) is not None:
+                        self.maa_stop()
+                        logger.info("停止MAA")
+                finally:
+                    if large_task_started and config.stop_mower.is_set():
+                        try:
+                            self.device.exit_after_task_stop()
+                        except Exception:
+                            logger.exception("停止大型任务后关闭游戏失败")
+            finally:
+                self.release_maa()
+            raise
+        except (DeviceRecoveryError, SharedADBError):
             try:
                 if getattr(self, "MAA", None) is not None:
                     self.maa_stop()

@@ -249,6 +249,12 @@ SUB_TASK_INFO = {
             f"{_inner(details).get('max_times', 0)}）"
         ),
     ),
+    "BlackFlowScrapTradeAborted": (
+        logging.WARNING,
+        lambda details: (
+            f"黑流树海秘境行商交易中止：{_inner(details).get('reason', '')}（{_inner(details).get('item', '')}）"
+        ),
+    ),
     # 保全派驻
     "SSSStage": (
         logging.INFO,
@@ -295,6 +301,7 @@ SUB_TASK_INFO = {
 
 # ProcessTask 的原子动作。识别动作每秒多次回传，未列出的节点不产生日志行。
 PROCESS_TASK_START = {
+    "SignInEventBegin": (logging.INFO, "检查限时签到活动奖励"),
     "StartButton2": (logging.INFO, "开始战斗"),
     "AnnihilationConfirm": (logging.INFO, "开始剿灭行动"),
     "MedicineConfirm": (logging.INFO, "使用理智药"),
@@ -353,8 +360,30 @@ PROCESS_TASK_START = {
     "StageDreadfulFoe-5": (logging.INFO, "肉鸽关卡：险路恶敌"),
 }
 
+BLACKFLOW_START_STATUS = {
+    "preparing": (logging.INFO, "黑流树海刷开局：准备局开始"),
+    "target_run": (logging.INFO, "黑流树海刷开局：目标局开始"),
+    "reward_missed": (logging.INFO, "黑流树海刷开局：未命中期望奖励，重新准备"),
+    "reward_picked": (logging.INFO, "黑流树海刷开局：已选择奖励，检查第一层实托邦"),
+    "completed": (logging.INFO, "黑流树海刷开局完成，已保留目标局"),
+    "reward_unrecognized": (
+        logging.WARNING,
+        "黑流树海刷开局：无法识别奖励，已停在选择支援页",
+    ),
+    "reward_page_missing": (
+        logging.WARNING,
+        "黑流树海刷开局：未出现选择支援页，已停止",
+    ),
+    "reward_recognition_failed": (
+        logging.WARNING,
+        "黑流树海刷开局：选择奖励失败，已停止",
+    ),
+}
+
+
 # ProcessTask 的完成动作，按 (任务链, 节点) 区分。
 PROCESS_TASK_COMPLETED = {
+    ("Award", "SignInEventReturn"): (logging.INFO, "限时签到活动检查结束"),
     ("Infrast", "UnlockClues"): (logging.INFO, "已开启线索交流"),
     ("Roguelike", "StartExplore"): (
         logging.INFO,
@@ -680,6 +709,18 @@ class MaaCallbackLog:
                 entry = (logging.WARNING, f"{_chain(details)}：{subtask} 出错")
             return _entry_line(entry, details)
         if message == 20003:
+            if details.get("what") == "BlackFlowStartRun":
+                inner = _inner(details)
+                entry = BLACKFLOW_START_STATUS.get(_key(inner.get("status")))
+                if entry is None:
+                    return None
+                level, text = entry
+                rewards = "、".join(
+                    str(value) for value in _sequence(inner.get("rewards"))
+                )
+                return MaaLogLine(
+                    level, f"{text}（识别奖励：{rewards}）" if rewards else text
+                )
             return _entry_line(SUB_TASK_INFO.get(_key(details.get("what"))), details)
         # 子任务开始与完成只播报 ProcessTask 白名单里的节点。
         if subtask != "ProcessTask":
