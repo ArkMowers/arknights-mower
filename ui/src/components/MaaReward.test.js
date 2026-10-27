@@ -7,6 +7,7 @@ import { createTaskWorkflow, setTaskEnabled } from '@/task-workflow/model'
 const state = vi.hoisted(() => ({ config: null, checkboxes: [] }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('pinia', () => ({ storeToRefs: (store) => toRefs(store) }))
+vi.mock('./HelpText.vue', () => ({ default: { render: () => null } }))
 vi.mock('naive-ui', () => {
   const wrapper = defineComponent(
     (_, { slots }) =>
@@ -43,6 +44,7 @@ beforeEach(() => {
     maa_orundum: false,
     maa_mining: false,
     maa_specialaccess: false,
+    maa_signinevent: false,
     check_mail_enable: true,
     mail_skip_clear_read: false,
     recruit_enable: false,
@@ -69,12 +71,21 @@ function expectSelection(checked, indeterminate) {
 }
 
 describe('MAA reward card aggregate checkbox', () => {
-  it('keeps the card title and all five individual choices visible with a partial selection', async () => {
+  it('keeps the card title and all six individual choices visible with a partial selection', async () => {
     const html = await renderRewards()
     expect(html).toContain('<header>')
     expect(html.match(/<header>(.*?)<\/header>/s)[1]).toContain('MAA 领取奖励')
-    expect(html).toContain('领取赠送月卡奖励')
-    expect(state.checkboxes).toHaveLength(6)
+    for (const label of [
+      '领取所有邮件奖励',
+      '进行限定池赠送的每日免费单抽',
+      '领取幸运墙的每日合成玉奖励',
+      '领取限时开采许可的每日合成玉奖励',
+      '领取赠送月卡奖励',
+      '领取限时签到活动奖励'
+    ]) {
+      expect(html).toContain(label)
+    }
+    expect(state.checkboxes).toHaveLength(7)
     expectSelection(false, true)
   })
 
@@ -90,7 +101,8 @@ describe('MAA reward card aggregate checkbox', () => {
       maa_recruit: true,
       maa_orundum: true,
       maa_mining: true,
-      maa_specialaccess: true
+      maa_specialaccess: true,
+      maa_signinevent: true
     })
     state.checkboxes[1].update(false)
     await renderRewards()
@@ -105,9 +117,13 @@ describe('MAA reward card aggregate checkbox', () => {
     setTaskEnabled(state.config, 'rewards', true)
     await renderRewards()
     expectSelection(true, false)
-    state.config.maa_specialaccess = false
+    state.checkboxes.at(-1).update(false)
+    expect(state.config.maa_signinevent).toBe(false)
     await renderRewards()
     expectSelection(false, true)
+    state.checkboxes.at(-1).update(true)
+    await renderRewards()
+    expectSelection(true, false)
     setTaskEnabled(state.config, 'rewards', false)
     await renderRewards()
     expectSelection(false, false)
