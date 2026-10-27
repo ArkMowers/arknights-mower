@@ -15557,16 +15557,22 @@ class BaseSchedulerSolver(
                 if hard_stop and manual:
                     return False
                 if hard_stop:
-                    hard_stop_msg = "MAA任务未完成，自动登录返回主页"
+                    hard_stop_msg = "MAA任务未完成，等待3分钟后按空闲设置处理"
                     logger.info(hard_stop_msg)
                     send_message(hard_stop_msg)
-                    self.device.exit()
-                    self.sleep(5)
-                    self.device.check_current_focus()
-                    self.recog.update()
-                    # 游戏重启后先完成登录并回到主页，再交给空闲逻辑切后台；
-                    self.login()
-                    self.back_to_index()
+                    self.sleep(180)
+                    next_task = self.find_next_task()
+                    remaining_time = (
+                        (next_task.time - datetime.now()).total_seconds()
+                        if next_task is not None
+                        else 0
+                    )
+                    if self._get_idle_action(remaining_time) not in ("exit", "close"):
+                        self.device.exit()
+                        self.device.check_current_focus()
+                        self.recog.update()
+                        # 返回游戏主页时完成登录，空闲处理再按设置切回安卓首页。
+                        self.back_to_index()
                 elif record_execution:
                     logger.info("记录MAA 本次执行时间")
                     self.last_execution["maa"] = datetime.now()
@@ -16780,8 +16786,18 @@ class BaseSchedulerSolver(
             self._idle_sleep(remaining_time, round_end=True)
             self.check_current_focus()
 
-    def handle_idle_action(self, remaining_time=0):
+    def _get_idle_action(self, remaining_time=0):
         if config.conf.close_simulator_when_idle and remaining_time > 300:
+            return "close"
+        if config.conf.exit_game_when_idle and remaining_time > 300:
+            return "exit"
+        if config.conf.return_home_when_idle:
+            return "home"
+        return "idle"
+
+    def handle_idle_action(self, remaining_time=0):
+        action = self._get_idle_action(remaining_time)
+        if action == "close":
             if restart_simulator(start=False):
                 self._simulator_closed_for_idle = True
             else:
@@ -16789,7 +16805,7 @@ class BaseSchedulerSolver(
                 logger.warning(
                     "空闲关闭模拟器失败，继续等待；请检查所选实例和管理程序。"
                 )
-        elif config.conf.exit_game_when_idle and remaining_time > 300:
+        elif action == "exit":
             self.device.exit()
-        elif config.conf.return_home_when_idle:
+        elif action == "home":
             self.device.return_home()
