@@ -3,7 +3,7 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
-import { parseCopilotCode } from '@/utils/maaCopilotCode'
+import { downloadCopilotScripts } from '@/utils/maaCopilotCode'
 
 const store = useConfigStore()
 const { sss } = storeToRefs(store)
@@ -56,22 +56,26 @@ async function upload({ file, onFinish, onError }) {
   }
 }
 async function download() {
-  let number
-  try {
-    number = parseCopilotCode(code.value)
-  } catch (error) {
-    message.error(error.message)
-    return
-  }
+  if (loading.value) return
   loading.value = true
   try {
-    const { data } = await axios.get(
-      `${import.meta.env.VITE_HTTP_URL || ''}/network/maa-copilot/${number}`
+    const scripts = await downloadCopilotScripts(
+      axios,
+      code.value,
+      endpoint,
+      32 - sss.value.scripts.length
     )
-    await upload_blob(new Blob([data.data.content], { type: 'application/json' }))
+    await refresh()
+    if (sss.value.scripts.length + scripts.length > 32) {
+      throw new Error('队列已变更且剩余容量不足。队列未改变，已入库作业可从已有作业中选择')
+    }
+    sss.value.scripts.push(...scripts.map(({ id }) => ({ id, type: 1, ec: 1, times: 1 })))
+    selected.value = scripts.at(-1).id
     code.value = ''
+    message.success(`已导入 ${scripts.length} 份作业并加入队列`)
   } catch (error) {
-    message.error(error.response?.data?.message || '作业下载失败，请检查网络代理')
+    if (error.refreshLibrary) await refresh()
+    message.error(error.response?.data?.message || error.message || '作业下载失败，请检查网络代理')
   } finally {
     loading.value = false
   }
@@ -121,7 +125,7 @@ async function restart_queue() {
         <n-flex :wrap="false">
           <n-input
             v-model:value="code"
-            placeholder="prts://作业编号或 prts.plus 作业链接"
+            placeholder="prts://作业或作业集代码、prts.plus 作业链接"
             :disabled="loading"
             @keydown.enter="download"
           />
@@ -136,7 +140,10 @@ async function restart_queue() {
             <n-button :disabled="loading">选择文件</n-button>
           </n-upload>
         </n-flex>
-        <n-text depth="3">仅支持保全派驻作业。单个文件最多 1 MB；请提前在游戏中准备编队。</n-text>
+        <n-text depth="3"
+          >仅支持保全派驻作业，也可使用 prts://s 开头的作业集按顺序追加队列。单个文件最多 1
+          MB；请提前在游戏中准备编队。</n-text
+        >
       </n-flex>
     </n-form-item>
     <n-form-item label="已有作业">

@@ -74,13 +74,150 @@ describe('ordinary Copilot library and queue', () => {
       expect(component.loading.value).toBe(false)
     }
   )
-  it('rejects operation-set codes without downloading or changing the queue', async () => {
+  function mock_set(ids = ['456', '789', '456']) {
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/network/maa-copilot-set/123')) return { data: { ids } }
+      if (url.includes('/network/maa-copilot/')) {
+        return {
+          data: {
+            data: {
+              content: JSON.stringify({
+                stage_name: url.endsWith('789') ? 'second' : 'first',
+                actions: []
+              })
+            }
+          }
+        }
+      }
+      return { data: { scripts: [first, second] } }
+    })
+    state.client.post.mockImplementation(async (_url, form) => {
+      const content = JSON.parse(await form.get('copilot').text())
+      return { data: content.stage_name === 'second' ? second : first }
+    })
+  }
+  it('imports an operation set in member order and preserves repeated entries', async () => {
+    mock_set()
+    component.add_script(second.id)
+    const original = { ...state.config.copilot.value.scripts[0] }
+    component.code.value = '  prts://s123  '
+    await component.download()
+    expect(state.client.get).toHaveBeenCalledWith(
+      expect.stringMatching(/\/network\/maa-copilot-set\/123$/)
+    )
+    expect(
+      state.client.get.mock.calls
+        .filter(([url]) => url.includes('/network/maa-copilot/'))
+        .map(([url]) => url.split('/').at(-1))
+    ).toEqual(['456', '789', '456'])
+    expect(state.config.copilot.value.scripts).toEqual([
+      original,
+      { id: first.id, nav_name_override: '', is_raid: false },
+      { id: second.id, nav_name_override: '', is_raid: false },
+      { id: first.id, nav_name_override: '', is_raid: false }
+    ])
+    expect(state.success).toHaveBeenCalledOnce()
+    expect(state.error).not.toHaveBeenCalled()
+    expect(component.code.value).toBe('')
+    expect(component.loading.value).toBe(false)
+  })
+  it.each([{ ids: [] }, { ids: Array.from({ length: 32 }, () => '456') }])(
+    'refuses empty or over-capacity sets without truncation',
+    async ({ ids }) => {
+      mock_set(ids)
+      component.add_script(first.id)
+      const original = [...state.config.copilot.value.scripts]
+      component.code.value = 'prts://s123'
+      await component.download()
+      expect(state.client.post).not.toHaveBeenCalled()
+      expect(
+        state.client.get.mock.calls.some(([url]) => url.includes('/network/maa-copilot/'))
+      ).toBe(false)
+      expect(state.config.copilot.value.scripts).toEqual(original)
+      expect(state.error).toHaveBeenCalledOnce()
+      expect(component.code.value).toBe('prts://s123')
+    }
+  )
+  it('keeps the queue unchanged when a member download fails', async () => {
+    mock_set()
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/network/maa-copilot/789')) throw new Error('download failed')
+      return get(url)
+    })
+    component.add_script(second.id)
+    const original = [...state.config.copilot.value.scripts]
     component.code.value = 'prts://s123'
     await component.download()
-    expect(state.client.get).not.toHaveBeenCalled()
+    expect(state.config.copilot.value.scripts).toEqual(original)
     expect(state.client.post).not.toHaveBeenCalled()
-    expect(state.error).toHaveBeenCalledWith('这是作业集代码，请使用单份作业代码')
+    expect(state.success).not.toHaveBeenCalled()
+    expect(state.error).toHaveBeenCalledOnce()
+    expect(component.loading.value).toBe(false)
+  })
+  it('keeps partial imports in the library without adding an incomplete set to the queue', async () => {
+    mock_set()
+    state.client.post
+      .mockResolvedValueOnce({ data: first })
+      .mockRejectedValueOnce({ response: { data: { message: '作业类型不匹配' } } })
+    component.add_script(second.id)
+    const original = [...state.config.copilot.value.scripts]
+    component.code.value = 'prts://s123'
+    await component.download()
+    expect(state.client.post).toHaveBeenCalledTimes(2)
+    expect(state.config.copilot.value.scripts).toEqual(original)
+    expect(component.library.value).toEqual([first, second])
+    expect(state.success).not.toHaveBeenCalled()
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('队列未改变'))
+    expect(component.code.value).toBe('prts://s123')
+  })
+  it('does not overfill or overwrite a queue edited during import', async () => {
+    mock_set()
+    state.client.post.mockImplementationOnce(async () => {
+      state.config.copilot.value.scripts = Array.from({ length: 32 }, () => ({ id: second.id }))
+      return { data: first }
+    })
+    component.code.value = 'prts://s123'
+    await component.download()
+    expect(state.config.copilot.value.scripts).toHaveLength(32)
+    expect(state.config.copilot.value.scripts.every((item) => item.id === second.id)).toBe(true)
+    expect(state.success).not.toHaveBeenCalled()
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('剩余容量不足'))
+  })
+  it('rejects an oversized member before uploading any member', async () => {
+    mock_set()
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/network/maa-copilot/789'))
+        return { data: { data: { content: 'x'.repeat(1024 * 1024 + 1) } } }
+      return get(url)
+    })
+    component.code.value = 'prts://s123'
+    await component.download()
+    expect(state.client.post).not.toHaveBeenCalled()
     expect(state.config.copilot.value.scripts).toEqual([])
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('1 MB'))
+  })
+  it('ignores a duplicate download action while the current import is pending', async () => {
+    mock_set()
+    let complete
+    const pending = new Promise((resolve) => {
+      complete = resolve
+    })
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/network/maa-copilot-set/123')) {
+        await pending
+      }
+      return get(url)
+    })
+    component.code.value = 'prts://s123'
+    const firstDownload = component.download()
+    await component.download()
+    complete()
+    await firstDownload
+    expect(state.config.copilot.value.scripts).toHaveLength(3)
+    expect(state.client.post).toHaveBeenCalledTimes(3)
   })
   it.each([
     '',
