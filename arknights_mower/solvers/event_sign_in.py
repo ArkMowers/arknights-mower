@@ -407,7 +407,8 @@ class EventSignInSolver(SceneGraphSolver):
     @staticmethod
     def _card_signature(page, card, *, whole=False):
         (left, top), (right, bottom) = card.scope
-        start_y = top if whole else (top + bottom) // 2
+        # 避开卡片中部共用的领取印章，保留底部奖励图案。
+        start_y = top if whole else top + (bottom - top) * 2 // 3
         band = cropimg(page.image, ((left, start_y), (right, bottom)))
         gray = cv2.cvtColor(band, cv2.COLOR_RGB2GRAY)
         return cv2.resize(gray, (96, 160) if whole else (48, 64))

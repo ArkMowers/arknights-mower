@@ -109,7 +109,13 @@ def detect_progress(image):
         ]
         if not nearby_lines:
             continue
-        left, right, _ = max(nearby_lines, key=lambda line: line[1] - line[0])
+        spans = []
+        for left, right, _ in sorted(nearby_lines):
+            if spans and left <= spans[-1][1] + tolerance:
+                spans[-1] = (spans[-1][0], max(right, spans[-1][1]))
+            else:
+                spans.append((left, right))
+        left, right = max(spans, key=lambda span: span[1] - span[0])
         row = sorted(
             (x, y, priority)
             for x, y, priority in candidates
