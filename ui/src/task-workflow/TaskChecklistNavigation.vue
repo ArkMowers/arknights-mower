@@ -237,7 +237,8 @@ watch(
 .task-checklist {
   position: sticky;
   top: 16px;
-  max-height: calc(100dvh / var(--mower-zoom, 1) - 148px);
+  height: calc(var(--settings-viewport-height, 100dvh / var(--mower-zoom, 1)) - 40px);
+  max-height: calc(var(--settings-viewport-height, 100dvh / var(--mower-zoom, 1)) - 40px);
   border: 1px solid var(--mower-border);
   border-radius: 12px;
   display: flex;
@@ -448,6 +449,7 @@ input:focus-visible {
     top: 0;
     z-index: 5;
     align-self: start;
+    height: auto;
     max-height: min(440px, calc(100dvh / var(--mower-zoom, 1) - 112px));
     box-shadow: 0 3px 8px rgb(0 0 0 / 4%);
   }

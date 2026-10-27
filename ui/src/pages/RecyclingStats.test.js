@@ -69,7 +69,7 @@ async function render(calculator, { records = [], client = {}, act } = {}) {
   })
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: ['/', '/task-settings'].map((path) => ({ path, component: { render: () => null } }))
+    routes: ['/', '/settings'].map((path) => ({ path, component: { render: () => null } }))
   })
   await router.push('/?token=session-token')
   app.use(router)
@@ -135,7 +135,7 @@ describe('回收站两种机制对照', () => {
       expect(html).toContain(value)
     }
     expect(html).toContain('实际机制尚未确认')
-    expect(html).toContain('href="/task-settings?token=session-token#task-accounts"')
+    expect(html).toContain('href="/settings?token=session-token#task-accounts"')
   })
   it('旧接口没有对照数据时保留默认结果并隐藏对照区域', async () => {
     const html = await render(calculator)

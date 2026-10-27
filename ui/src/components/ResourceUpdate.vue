@@ -1,5 +1,6 @@
 <script setup>
 import axios from 'axios'
+import { NCard, useDialog } from 'naive-ui'
 import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
@@ -8,6 +9,13 @@ import { useResourceVersionStore } from '@/stores/resourceVersion'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 import { getDroppedFile, postManualUpdate } from '@/utils/manualUpdate'
 import '@/styles/updates.css'
+import UpdatePreview from './UpdatePreview.vue'
+import { showResourceUpdateDialog } from '@/utils/updateDialog'
+
+const props = defineProps({ skipInitialCheck: Boolean, compact: Boolean, preview: Object })
+defineExpose({ installCheckedUpdate: install_resource })
+
+const dialogs = useDialog()
 
 const manual_url = `${import.meta.env.VITE_HTTP_URL}/resource-update/manual`
 
@@ -38,6 +46,7 @@ async function refresh_resource_options() {
 
 onMounted(() => {
   loadResourceJob()
+  if (props.skipInitialCheck) return
   // 当前版本常驻显示；开启「启动时检查更新」时才顺带拉远端最新版本。
   if (resource_update_enable.value) {
     loadResourceVersion()
@@ -56,6 +65,11 @@ async function show_manual_result(data) {
       await loadResourceVersionLocal()
     }
   }
+}
+
+function request_install() {
+  if (!canInstall.value || manual_installing.value) return
+  showResourceUpdateDialog(dialogs, resource_store, info.value)
 }
 
 async function install_resource() {
@@ -113,8 +127,13 @@ function set_auto_update(checked) {
 </script>
 
 <template>
-  <n-card title="资源更新" class="update-card">
-    <div class="update-overview">
+  <component
+    :is="compact ? 'div' : NCard"
+    :title="compact ? undefined : '资源更新'"
+    class="update-card"
+  >
+    <UpdatePreview v-if="compact" v-bind="preview" />
+    <div v-if="!compact" class="update-overview">
       <div class="update-installed">
         <span class="update-caption" data-settings-label="当前版本">当前版本</span>
         <strong class="update-version">{{ info.current_display || '未安装' }}</strong>
@@ -134,12 +153,12 @@ function set_auto_update(checked) {
           type="primary"
           :loading="installing"
           :disabled="!canInstall || manual_installing"
-          @click="install_resource"
+          @click="request_install"
           >下载并安装</n-button
         >
       </div>
     </div>
-    <div class="update-status" role="status" data-settings-label="最新版本">
+    <div v-if="!compact" class="update-status" role="status" data-settings-label="最新版本">
       <template v-if="loading">正在检查最新资源版本…</template>
       <template v-else-if="info.update_available != null">
         <n-tag v-if="info.update_available" size="small" :bordered="false" type="warning"
@@ -176,7 +195,12 @@ function set_auto_update(checked) {
       <p v-if="progress_error">{{ progress_error }}</p>
     </div>
 
-    <n-form class="update-preferences" :show-feedback="false" label-placement="left">
+    <n-form
+      v-if="!compact"
+      class="update-preferences"
+      :show-feedback="false"
+      label-placement="left"
+    >
       <n-form-item>
         <template #label>
           <span class="settings-row-copy">
@@ -204,11 +228,11 @@ function set_auto_update(checked) {
         />
       </n-form-item>
     </n-form>
-    <p class="update-footnote">
+    <p v-if="!compact" class="update-footnote">
       优先下载 OTA 增量包，不可用时自动下载整包。同一套 Mower
       的全部实例共用资源包，空闲时自动加载，无需重启 Mower。
     </p>
-    <n-collapse class="update-details">
+    <n-collapse v-if="!compact" class="update-details">
       <n-collapse-item
         title="从本地资源包更新"
         name="manual"
@@ -232,5 +256,5 @@ function set_auto_update(checked) {
       </n-collapse-item>
     </n-collapse>
     <p v-if="manual_result" class="update-result" role="status">{{ manual_result }}</p>
-  </n-card>
+  </component>
 </template>

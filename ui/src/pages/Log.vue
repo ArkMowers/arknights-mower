@@ -360,7 +360,7 @@ watch(
   () => route?.hash,
   (hash) => {
     if (/^#task-(devices|runtime|base|daily|long|accounts|maa)$/.test(hash || ''))
-      router?.replace({ name: 'task-settings', query: route?.query, hash })
+      router?.replace({ name: 'settings', query: route?.query, hash })
     else if (hash === '#task-queue') revealTaskQueue()
   },
   { immediate: true }

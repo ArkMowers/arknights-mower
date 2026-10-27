@@ -10,12 +10,12 @@ vi.mock('@/task-workflow/TaskConfiguration.vue', () => ({
   })
 }))
 
-async function render(path = '/task-settings') {
+async function render(path = '/settings') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/', name: 'log', component: { render: () => null } },
-      { path: '/task-settings', name: 'task-settings', component: TaskSettings }
+      { path: '/settings', name: 'settings', component: TaskSettings }
     ]
   })
   await router.push(path)
@@ -26,11 +26,11 @@ async function render(path = '/task-settings') {
 
 describe('task configuration page', () => {
   it('renders the real configuration entry as a page without navigating on mount', async () => {
-    const { html, router } = await render('/task-settings?token=demo#task-base')
+    const { html, router } = await render('/settings?token=demo#task-base')
     expect(html).not.toMatch(/<h1\b/)
     expect(html).toContain('aria-label="全部设置"')
     expect(html).toContain('data-task-configuration="true"')
-    expect(router.currentRoute.value.fullPath).toBe('/task-settings?token=demo#task-base')
+    expect(router.currentRoute.value.fullPath).toBe('/settings?token=demo#task-base')
   })
 
   it('keeps the page name required by KeepAlive and omits the queue shortcut', async () => {

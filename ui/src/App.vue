@@ -50,7 +50,7 @@
       placement="top-right"
       :container-style="windowShellActive ? { top: '48px' } : undefined"
     >
-      <n-dialog-provider>
+      <n-message-provider>
         <n-modal
           v-model:show="closeModal"
           preset="card"
@@ -83,7 +83,7 @@
             </n-space>
           </n-space>
         </n-modal>
-        <n-message-provider>
+        <n-dialog-provider>
           <ConfigProfilesController :controller="configProfiles" />
           <SidebarEditor v-model:show="sidebarEditorOpen" :request="sidebarEditorRequest" />
           <HelpDialog
@@ -249,8 +249,8 @@
               />
             </Teleport>
           </n-loading-bar-provider>
-        </n-message-provider>
-      </n-dialog-provider>
+        </n-dialog-provider>
+      </n-message-provider>
     </n-notification-provider>
   </n-config-provider>
 </template>
@@ -422,7 +422,7 @@ async function openDeviceConnection(action) {
   if (configProfiles.busy.value || configProfiles.stale.value || configProfiles.pendingReload.value)
     return
   if (action === 'test' && (running.value || deviceConnectionNavigation.locked.value)) return
-  const failure = await router.push({ name: 'task-settings', hash: '#task-devices' })
+  const failure = await router.push({ name: 'settings', hash: '#task-devices' })
   if (failure && !isNavigationFailure(failure, NavigationFailureType.duplicated)) return
   deviceConnectionNavigation.open(action)
 }
@@ -790,7 +790,7 @@ function apply_zoom(scale) {
 const isMobileNav = ref(false)
 const mobile = ref(false)
 provide('mobile', mobile)
-const allSettingsOpen = computed(() => route.name === 'task-settings')
+const allSettingsOpen = computed(() => route.name === 'settings')
 let sidebarBeforeSettings = null
 let settingsSidebarManuallyToggled = false
 watch(

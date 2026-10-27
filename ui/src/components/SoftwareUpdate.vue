@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useDialog, useMessage } from 'naive-ui'
+import { NCard, useDialog, useMessage } from 'naive-ui'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
 import {
@@ -12,6 +12,10 @@ import SourceVersionManager from './SourceVersionManager.vue'
 import SoftwareComponentUpdates from './SoftwareComponentUpdates.vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 import '@/styles/updates.css'
+import UpdatePreview from './UpdatePreview.vue'
+import { showSoftwareUpdateDialog } from '@/utils/updateDialog'
+
+const props = defineProps({ compact: Boolean, preview: Object })
 
 const axios = inject('axios')
 const messages = useMessage()
@@ -66,7 +70,14 @@ let pendingSince = 0
 let lastCheckAt = 0
 let settingsRequest = Promise.resolve()
 let previewCheckId = ''
-defineExpose({ flushSettings: () => settingsRequest })
+defineExpose({ flushSettings: () => settingsRequest, installCheckedUpdate })
+
+async function installCheckedUpdate(selection) {
+  await settingsRequest
+  await loadInfo()
+  if (blocked.value) throw new Error(info.value.blockers.join('；'))
+  return install(false, null, selection)
+}
 
 function saveSettings() {
   const settings = {
@@ -298,6 +309,9 @@ async function requestInstall(manual = false) {
     if (!checked.value?.check_id) await checkUpdate()
     if (!checked.value?.available || !checked.value?.check_id) return
     selection = { ...checked.value }
+    await settingsRequest
+    showSoftwareUpdateDialog(dialogs, info.value, selection)
+    return
   }
   confirmSoftwareInstall(
     dialogs,
@@ -399,7 +413,7 @@ watch(
 watch(
   pendingSoftwarePackage,
   (file) => {
-    if (!file) return
+    if (!file || props.compact) return
     selectSoftwarePackage(file)
     pendingSoftwarePackage.value = null
   },
@@ -408,7 +422,7 @@ watch(
 onMounted(async () => {
   try {
     await loadInfo()
-    if (autoCheck.value && !packageFiles.value.length)
+    if (!props.compact && autoCheck.value && !packageFiles.value.length)
       await axios.post(`${base}/auto-check`, {}, { headers })
   } catch (err) {
     error.value = errorMessage(err)
@@ -423,8 +437,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <n-card id="software-update" ref="card" title="软件更新" class="update-card">
-    <div class="update-overview">
+  <component
+    :is="compact ? 'div' : NCard"
+    :id="compact ? undefined : 'software-update'"
+    ref="card"
+    :title="compact ? undefined : '软件更新'"
+    class="update-card"
+  >
+    <UpdatePreview v-if="compact" v-bind="preview" />
+    <div v-if="!compact" class="update-overview">
       <div class="update-installed">
         <span class="update-caption" data-settings-label="当前版本">当前版本</span>
         <strong class="update-version">{{ info?.version || '正在读取…' }}</strong>
@@ -443,7 +464,7 @@ onUnmounted(() => {
         </n-button>
       </div>
     </div>
-    <div class="update-status" role="status" data-settings-label="最新版本">
+    <div v-if="!compact" class="update-status" role="status" data-settings-label="最新版本">
       <template v-if="checking">正在检查所选渠道的最新版本…</template>
       <template v-else-if="checked">
         <n-tag v-if="checked.available" size="small" :bordered="false" type="warning">
@@ -487,7 +508,7 @@ onUnmounted(() => {
         >
       </p>
       <p v-if="disconnected">更新服务正在交接，稍后自动重试。</p>
-      <div v-if="showProgress" class="update-actions">
+      <div v-if="showProgress && !compact" class="update-actions">
         <n-button size="small" tag="a" :href="progressUrl" target="_blank" rel="noopener noreferrer"
           >独立更新进度</n-button
         >
@@ -500,7 +521,7 @@ onUnmounted(() => {
           >取消更新</n-button
         >
       </div>
-      <n-collapse v-if="showProgress && (job.log || job.log_path)">
+      <n-collapse v-if="!compact && showProgress && (job.log || job.log_path)">
         <n-collapse-item title="安装日志" name="log">
           <p v-if="job.log_path" class="update-caption">日志：{{ job.log_path }}</p>
           <pre v-if="job.log" class="update-notes">{{ job.log }}</pre>
@@ -508,7 +529,12 @@ onUnmounted(() => {
       </n-collapse>
     </div>
 
-    <n-form class="update-preferences" :show-feedback="false" label-placement="left">
+    <n-form
+      v-if="!compact"
+      class="update-preferences"
+      :show-feedback="false"
+      label-placement="left"
+    >
       <n-form-item class="update-channel">
         <template #label>
           <span class="settings-row-copy">
@@ -573,11 +599,12 @@ onUnmounted(() => {
         />
       </n-form-item>
     </n-form>
-    <p v-if="info?.capabilities?.silent_restart !== false" class="update-footnote">
+    <p v-if="!compact && info?.capabilities?.silent_restart !== false" class="update-footnote">
       软件更新会重启同一安装目录下的全部运行实例；原本运行中的实例保留已保存的心情、位置，以及跑单、专精换人等重要任务和未完成的补偿，按当前版本和排班重新生成普通任务；已停止的实例保持停止。配置、专精计划和数据库记录保留。在线更新和手动安装均使用上方的重启方式。
     </p>
 
     <n-collapse
+      v-if="!compact"
       class="update-details"
       :expanded-names="expandedDetails"
       @update:expanded-names="expandedDetails = $event"
@@ -704,7 +731,7 @@ onUnmounted(() => {
       </n-collapse-item>
     </n-collapse>
     <SourceVersionManager
-      v-if="source"
+      v-if="!compact && source"
       :initial-branch="info.settings.source_branch"
       :initial-remote="info.settings.source_remote"
       :remotes="info.source_remotes"
@@ -715,10 +742,10 @@ onUnmounted(() => {
       @install="(target) => install(target.force, target)"
     />
     <SoftwareComponentUpdates
-      v-for="component in info?.component_updates || []"
+      v-for="component in compact ? [] : info?.component_updates || []"
       :key="component.endpoint"
       :component="component"
       :disabled="running"
     />
-  </n-card>
+  </component>
 </template>

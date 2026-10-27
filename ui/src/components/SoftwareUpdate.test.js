@@ -3,6 +3,7 @@ import { createSSRApp, effectScope, nextTick, ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SoftwareUpdate from './SoftwareUpdate.vue'
 import ResourceUpdate from './ResourceUpdate.vue'
+import { showSoftwareUpdateDialog, showResourceUpdateDialog } from '@/utils/updateDialog'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 
 const state = vi.hoisted(() => ({
@@ -63,6 +64,10 @@ vi.mock('naive-ui', async (original) => {
     useMessage: () => ({ error: vi.fn(), info: vi.fn() })
   }
 })
+vi.mock('@/utils/updateDialog', () => ({
+  showSoftwareUpdateDialog: vi.fn(),
+  showResourceUpdateDialog: vi.fn()
+}))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/stores/plan', () => ({ usePlanStore: () => ({ load_operators: vi.fn() }) }))
 vi.mock('@/stores/resourceVersion', () => ({ useResourceVersionStore: () => state.resource }))
@@ -90,6 +95,8 @@ describe('offline software package installation', () => {
     state.unmounted = []
     state.switches.clear()
     state.warning.mockClear()
+    vi.mocked(showSoftwareUpdateDialog).mockClear()
+    vi.mocked(showResourceUpdateDialog).mockClear()
     state.client = {
       defaults: { headers: { common: {} } },
       get: vi.fn(async (url) => ({
@@ -142,6 +149,118 @@ describe('offline software package installation', () => {
     await nextTick()
   }
 
+  it('installs a confirmed sidebar target with the saved restart preference and no second check', async () => {
+    component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      const response = await get(url)
+      if (url.endsWith('/info')) response.data.settings.background = false
+      else response.data = { ok: true, id: 'offline-job', status: 'running', phase: 'preparing' }
+      return response
+    })
+    await component.installCheckedUpdate({
+      check_id: 'confirmed-sidebar',
+      confirm_downgrade: false
+    })
+    expect(state.client.post).toHaveBeenCalledExactlyOnceWith(
+      '/software-update/start',
+      { check_id: 'confirmed-sidebar', background: false, force: false, confirm_downgrade: false },
+      { headers: { 'X-Mower-Update': '1' } }
+    )
+    expect(state.warning).not.toHaveBeenCalled()
+    expect(component.showProgress.value).toBe(true)
+  })
+
+  it('rechecks installation blockers after sidebar confirmation', async () => {
+    component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      const response = await get(url)
+      if (url.endsWith('/info')) response.data.blockers = ['正在停止实例']
+      return response
+    })
+    await expect(component.installCheckedUpdate({ check_id: 'confirmed-sidebar' })).rejects.toThrow(
+      '正在停止实例'
+    )
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('shows only the checked preview and progress in the sidebar software panel', async () => {
+    const props = {
+      compact: true,
+      preview: { channel: '开发版', version: '4.1.7', notes: '修复设置目录高度' }
+    }
+    const file = new File(['offline'], 'package.zip')
+    pendingSoftwarePackage.value = file
+    component = scope.run(() => SoftwareUpdate.setup(props, { expose: () => {} }))
+    await Promise.all(state.mounted.map((callback) => callback()))
+    component.job.value = {
+      status: 'running',
+      phase: 'downloading',
+      progress: 40,
+      current: 1048576,
+      total: 2621440,
+      message: '正在下载更新包'
+    }
+    const html = await renderToString(
+      createSSRApp({ ...SoftwareUpdate, setup: () => component }, props)
+    )
+    expect(html).toContain('更新渠道 · 开发版')
+    expect(html).toContain('修复设置目录高度')
+    expect(html).toContain('正在下载更新包')
+    expect(html).toContain('已下载 1.0 MiB')
+    for (const text of [
+      '自动检查更新',
+      '自动更新',
+      '更新后后台静默重启',
+      '从本地安装包更新',
+      '强制更新',
+      '检查更新',
+      '独立更新进度'
+    ]) {
+      expect(html).not.toContain(text)
+    }
+    expect(pendingSoftwarePackage.value).toBe(file)
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('shows resource preview and progress without checking again or changing saved preferences', async () => {
+    state.config = {
+      resource_update_enable: ref(true),
+      resource_update_auto_update: ref(true),
+      load_item: vi.fn(),
+      load_shop: vi.fn()
+    }
+    state.resource = {
+      canInstall: ref(false),
+      info: ref({}),
+      loading: ref(false),
+      installing: ref(true),
+      install_message: ref(''),
+      progress_error: ref(''),
+      job: ref({ status: 'running', phase: 'download', progress: 20, message: '正在下载资源包' }),
+      loadResourceJob: vi.fn(),
+      loadResourceVersion: vi.fn(),
+      loadResourceVersionLocal: vi.fn()
+    }
+    const props = { compact: true, skipInitialCheck: true, preview: { version: '新资源' } }
+    const setup = scope.run(() => ResourceUpdate.setup(props, { expose: () => {} }))
+    await Promise.all(state.mounted.map((callback) => callback()))
+    const html = await renderToString(
+      createSSRApp({ ...ResourceUpdate, setup: () => setup }, props)
+    )
+    expect(html).toContain('新资源')
+    expect(html).toContain('此版本未提供更新日志。')
+    expect(html).toContain('正在下载资源包')
+    for (const text of ['自动检查更新', '自动更新', '从本地资源包更新', '检查更新']) {
+      expect(html).not.toContain(text)
+    }
+    expect(state.resource.loadResourceVersion).not.toHaveBeenCalled()
+    expect(state.resource.loadResourceVersionLocal).not.toHaveBeenCalled()
+    expect(state.config.resource_update_enable.value).toBe(true)
+    expect(state.config.resource_update_auto_update.value).toBe(true)
+  })
+
   it.each(['v4.1.5', 'v4.1.6-alpha.12.gfdc9e8b4'])(
     'offers the online channel target %s with ordinary installation confirmation',
     async (version) => {
@@ -164,17 +283,13 @@ describe('offline software package installation', () => {
       expect(html).not.toContain('可回退')
       expect(html).not.toContain('回退并安装')
       await component.requestInstall(false)
-      const dialog = state.warning.mock.calls[0][0]
-      expect(dialog.title).toBe('确认安装并重启？')
-      expect(dialog.content).toContain(version)
-      expect(dialog.content).not.toContain('回退到')
+      expect(showSoftwareUpdateDialog).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ warning: state.warning }),
+        component.info.value,
+        expect.objectContaining({ check_id: 'channel-target', version, downgrade: false })
+      )
+      expect(state.warning).not.toHaveBeenCalled()
       expect(state.client.post.mock.calls.some(([url]) => url.endsWith('/start'))).toBe(false)
-      await dialog.onPositiveClick()
-      const submission = state.client.post.mock.calls.find(([url]) => url.endsWith('/start'))
-      expect(submission[1]).toMatchObject({
-        check_id: 'channel-target',
-        confirm_downgrade: false
-      })
     }
   )
   it('renders saved software switch values and persists changes through update:value', async () => {
@@ -219,6 +334,33 @@ describe('offline software package installation', () => {
     expect(
       state.client.post.mock.calls.find(([url]) => url.endsWith('/settings'))[1].background
     ).toBe(false)
+  })
+
+  it('opens the shared resource update dialog without installing from the settings button', () => {
+    state.config = {
+      resource_update_enable: ref(false),
+      resource_update_auto_update: ref(false),
+      load_item: vi.fn(),
+      load_shop: vi.fn()
+    }
+    state.resource = {
+      canInstall: ref(true),
+      info: ref({ remote_version: 'next', update_available: true }),
+      loading: ref(false),
+      installing: ref(false),
+      install_message: ref(''),
+      job: ref({ status: 'idle' }),
+      progress_error: ref(''),
+      installResource: vi.fn()
+    }
+    const setup = scope.run(() => ResourceUpdate.setup({}, { expose: () => {} }))
+    setup.request_install()
+    expect(showResourceUpdateDialog).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ warning: state.warning }),
+      state.resource,
+      state.resource.info.value
+    )
+    expect(state.resource.installResource).not.toHaveBeenCalled()
   })
 
   it('renders resource switch values and updates both dependent settings through update:value', async () => {

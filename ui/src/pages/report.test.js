@@ -83,7 +83,7 @@ describe('基报读取 Mower 收益设置', () => {
   it('收益设置入口保留会话凭证并定位全部设置的账号面板', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: ['/', '/task-settings'].map((path) => ({
+      routes: ['/', '/settings'].map((path) => ({
         path,
         component: { render: () => null }
       }))
@@ -92,7 +92,7 @@ describe('基报读取 Mower 收益设置', () => {
     const app = createSSRApp(Report)
     app.use(router)
     const html = await renderToString(app)
-    expect(html).toContain('href="/task-settings?token=session-token#task-accounts"')
+    expect(html).toContain('href="/settings?token=session-token#task-accounts"')
     expect(html).toContain('管理收益设置')
   })
 

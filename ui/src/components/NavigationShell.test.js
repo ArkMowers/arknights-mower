@@ -102,7 +102,7 @@ it.each([
     MobileTabBar,
     [
       '/',
-      '/task-settings',
+      '/settings',
       '/plan-editor',
       '/mastery-recommendation',
       '/record/line',
@@ -160,7 +160,7 @@ describe('[INV-UI-04] AppSidebar', () => {
       links(html)
         .slice(0, 3)
         .map((link) => link.href)
-    ).toEqual(['/', '/task-settings', '/plan-editor'])
+    ).toEqual(['/', '/settings', '/plan-editor'])
     expect(html).toContain('排班编辑')
     expect(html).not.toContain('救急排班编辑')
     expect(html).not.toContain('Mower 设置')
@@ -328,17 +328,17 @@ describe('[INV-UI-04] MobileTabBar', () => {
   )
 
   it('links the settings tab straight to all settings', async () => {
-    const html = await render(MobileTabBar, {}, '/task-settings')
+    const html = await render(MobileTabBar, {}, '/settings')
     const current = links(html).filter((link) => isActive(link.tag))
-    expect(current.map((link) => link.href)).toEqual(['/task-settings'])
+    expect(current.map((link) => link.href)).toEqual(['/settings'])
     expect(current[0].tag).toContain('aria-current="page"')
     expect(html).not.toContain('设置，选择页面')
     expect(html).not.toContain('href="/maasettings"')
   })
 
   it('shows compact settings and report labels with complete accessible names', async () => {
-    const html = await render(MobileTabBar, {}, '/task-settings')
-    const task = links(html).find((link) => link.href === '/task-settings')
+    const html = await render(MobileTabBar, {}, '/settings')
+    const task = links(html).find((link) => link.href === '/settings')
     expect(task.tag).toContain('aria-label="全部设置"')
     expect(task.tag).toContain('aria-current="page"')
     expect(html).toContain('aria-label="数据报表，选择页面"')

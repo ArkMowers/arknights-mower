@@ -181,6 +181,7 @@ vi.mock('naive-ui', async (original) => {
   })
   return {
     ...(await original()),
+    useDialog: () => ({ warning: vi.fn() }),
     useMessage: () => ({ loading: vi.fn(), success: vi.fn(), info: vi.fn(), error: vi.fn() }),
     useNotification: () => ({ create: vi.fn(() => ({ destroy: vi.fn() })) }),
     ...Object.fromEntries(
@@ -910,12 +911,12 @@ describe('desktop page startup', () => {
     return router
   }
 
-  it.each(['/task-settings', '/mowersettings?token=existing#interface'])(
+  it.each(['/settings', '/mowersettings?token=existing#interface'])(
     'collapses the main sidebar for a direct visit to %s and expands it when space allows',
     async (path) => {
       const router = await useAllSettingsRouter(path)
       const component = await mount()
-      expect(router.currentRoute.value.name).toBe('task-settings')
+      expect(router.currentRoute.value.name).toBe('settings')
       expect(component.sidebarCollapsed.value).toBe(true)
       expect(component.sidebarHidden.value).toBe(false)
       expect(component.mobileMenuOpen.value).toBe(false)
@@ -941,7 +942,7 @@ describe('desktop page startup', () => {
       const component = await mount()
       document.documentElement.style.zoom = String(zoom)
       component.expandSidebar()
-      await router.push('/task-settings')
+      await router.push('/settings')
       expect(component.sidebarCollapsed.value).toBe(collapsed)
       window.innerWidth = 1800
       document.documentElement.style.zoom = '1'
@@ -957,12 +958,12 @@ describe('desktop page startup', () => {
     const router = await useAllSettingsRouter()
     const component = await mount()
     component.expandSidebar()
-    await router.push('/task-settings')
+    await router.push('/settings')
     expect(component.sidebarCollapsed.value).toBe(true)
 
     component.toggleSidebar()
     expect(component.sidebarCollapsed.value).toBe(false)
-    await router.push('/task-settings?search=maa#task-maa')
+    await router.push('/settings?search=maa#task-maa')
     expect(component.sidebarCollapsed.value).toBe(false)
     component.actions_on_resize()
     expect(component.sidebarCollapsed.value).toBe(false)
@@ -982,7 +983,7 @@ describe('desktop page startup', () => {
       const component = await mount()
       component.sidebarCollapsed.value = collapsed
       component.userToggledSidebar.value = true
-      await router.push('/task-settings')
+      await router.push('/settings')
       expect(component.sidebarCollapsed.value).toBe(true)
       component.toggleSidebar()
       expect(component.sidebarCollapsed.value).toBe(false)
@@ -996,7 +997,7 @@ describe('desktop page startup', () => {
     const router = await useAllSettingsRouter()
     const component = await mount()
     expect(component.userToggledSidebar.value).toBe(false)
-    await router.push('/task-settings')
+    await router.push('/settings')
     component.toggleSidebar()
     await router.push('/')
     expect(component.userToggledSidebar.value).toBe(false)
@@ -1014,7 +1015,7 @@ describe('desktop page startup', () => {
       expect(component.isMobileNav.value).toBe(true)
       component.mobileMenuOpen.value = open
       const collapsed = component.sidebarCollapsed.value
-      await router.push('/task-settings')
+      await router.push('/settings')
       expect(component.mobileMenuOpen.value).toBe(open)
       expect(component.sidebarCollapsed.value).toBe(collapsed)
       expect(component.sidebarHidden.value).toBe(false)
@@ -1415,7 +1416,7 @@ describe('desktop page startup', () => {
       () => new Promise((resolve) => (finishNavigation = resolve))
     )
     const opening = component.openDeviceConnection('settings')
-    expect(state.router.push).toHaveBeenCalledWith({ name: 'task-settings', hash: '#task-devices' })
+    expect(state.router.push).toHaveBeenCalledWith({ name: 'settings', hash: '#task-devices' })
     expect(component.deviceConnectionNavigation.request.value).toBeNull()
     finishNavigation()
     await opening
@@ -1451,7 +1452,7 @@ describe('desktop page startup', () => {
       history: createMemoryHistory(),
       routes: [
         { path: '/', name: 'log', component: { render: () => null } },
-        { path: '/task-settings', name: 'task-settings', component: { render: () => null } },
+        { path: '/settings', name: 'settings', component: { render: () => null } },
         { path: '/other', component: { render: () => null } }
       ]
     })
@@ -1471,10 +1472,10 @@ describe('desktop page startup', () => {
       history: createMemoryHistory(),
       routes: [
         { path: '/', name: 'log', component: { render: () => null } },
-        { path: '/task-settings', name: 'task-settings', component: { render: () => null } }
+        { path: '/settings', name: 'settings', component: { render: () => null } }
       ]
     })
-    await router.push({ name: 'task-settings', hash: '#task-devices' })
+    await router.push({ name: 'settings', hash: '#task-devices' })
     state.router = router
     const component = await mount()
 
@@ -1513,11 +1514,11 @@ describe('desktop page startup', () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: '/task-settings', name: 'task-settings', component: taskPage },
+        { path: '/settings', name: 'settings', component: taskPage },
         { path: '/', name: 'log', component: ordinaryPage }
       ]
     })
-    await router.push('/task-settings')
+    await router.push('/settings')
     const node = (tag, text = '') => ({
       tag,
       text,
@@ -1573,7 +1574,7 @@ describe('desktop page startup', () => {
       expect(ordinaryMounts).toBe(1)
       const ordinaryElement = find('data-ordinary-page')
 
-      await router.push('/task-settings#task-daily')
+      await router.push('/settings#task-daily')
       await nextTick()
       expect(drafts).toHaveLength(1)
       expect(find('data-task-settings')).toBe(taskElement)

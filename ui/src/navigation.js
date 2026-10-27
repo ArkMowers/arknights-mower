@@ -40,7 +40,7 @@ export const navigationSections = [
         label: '全部设置',
         shortLabel: '设置',
         icon: SettingsOutline,
-        to: '/task-settings',
+        to: '/settings',
         tab: 1
       },
       {
