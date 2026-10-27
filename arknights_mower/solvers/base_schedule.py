@@ -54,10 +54,14 @@ from arknights_mower.solvers.record import (
     battle_inventory_active,
     get_inventory_counts,
     invalidate_workshop_inventory,
+    load_maa_copilot_progress,
+    load_maa_sss_progress,
     save_agent_action,
     save_current_state,
     save_exception,
     save_log,
+    save_maa_copilot_progress,
+    save_maa_sss_progress,
     save_recycling_collection,
     update_recycling_operators,
     workshop_inventory_changed,
@@ -127,7 +131,7 @@ from arknights_mower.utils.operators import (
     Operator,
     Operators,
 )
-from arknights_mower.utils.path import get_path, resolve_config_path
+from arknights_mower.utils.path import resolve_config_path
 from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.replacement_check import (
@@ -496,6 +500,8 @@ class BaseSchedulerSolver(
         self.waiting_group_shifts = []
         self.free_clue = None
         self.credit_fight = None
+        self.maa_daily_completed = {}
+        self.maa_daily_tasks = {}
         self.task_count = 0
         self.refresh_connecting = False
         self.recruit_time = None
@@ -514,6 +520,9 @@ class BaseSchedulerSolver(
         self.daily_event_sign_in_attempt = None
         self.daily_visit_friend = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_visit_friend_attempt = None
+        self.maa_copilot_progress = {}
+        self.maa_copilot_task = None
+        self.maa_sss_task = None
         self.ideal_resting_count = 4
         self.choose_error = set()
         self.drop_send = False
@@ -15337,10 +15346,172 @@ class BaseSchedulerSolver(
         if not error:
             self.reload_time = datetime.now()
 
+    def _maa_daily_done(self, key):
+        today = get_server_time().date()
+        if key == "visit_friends":
+            return getattr(self, "daily_visit_friend", None) == today
+        return getattr(self, "maa_daily_completed", {}).get(key) == today
+
+    def _remember_maa_daily_task(self, task_id, chain, keys):
+        if type(task_id) is not int or task_id <= 0 or not keys:
+            return
+        if not hasattr(self, "maa_daily_tasks"):
+            self.maa_daily_tasks = {}
+        self.maa_daily_tasks[task_id] = {
+            "chain": chain,
+            "day": get_server_time().date(),
+            "keys": set(keys),
+            "failed": False,
+        }
+
+    def _record_maa_daily_callback(self, msg, details):
+        tasks = getattr(self, "maa_daily_tasks", {})
+        task_id = details.get("taskid")
+        task = tasks.get(task_id) if type(task_id) is int else None
+        if task is not None and task["chain"] == details.get("taskchain"):
+            completed = set()
+            if msg == 20000:
+                task["failed"] = True
+            elif msg == 10002 and task["chain"] == "Award" and not task["failed"]:
+                completed = set(task["keys"])
+            elif msg == 20002 and task["chain"] == "Mall":
+                inner = details.get("details")
+                node = inner.get("task") if isinstance(inner, dict) else None
+                if node in ("VisitLimited", "VisitNextBlack"):
+                    completed = {"visit_friends"} & task["keys"]
+                elif node == "StageDrops-Stars-3":
+                    completed = {"credit_fight"} & task["keys"]
+            if completed:
+                if not hasattr(self, "maa_daily_completed"):
+                    self.maa_daily_completed = {}
+                for key in completed:
+                    if key == "visit_friends":
+                        self.daily_visit_friend = task["day"]
+                    else:
+                        self.maa_daily_completed[key] = task["day"]
+                task["keys"].difference_update(completed)
+                save_current_state()
+            if msg in (10000, 10002, 10004):
+                tasks.pop(task_id, None)
+        if msg == 3:
+            tasks.clear()
+
+    def _maa_copilot_run(self, conf):
+        from arknights_mower.utils.maa_copilot import queue_key, run_key
+
+        if not getattr(self, "_maa_copilot_progress_loaded", False):
+            self.maa_copilot_progress = load_maa_copilot_progress() or getattr(
+                self, "maa_copilot_progress", {}
+            )
+            self._maa_copilot_progress_loaded = True
+        progress = self.maa_copilot_progress
+        previous = dict(progress)
+        key = queue_key(conf)
+        settings_key = run_key(conf)
+        # 兼容旧运行快照；新记录独立保存，不受清缓存启动影响。
+        if "settings_key" not in progress and progress.get("key") == settings_key:
+            progress.update(key=key, settings_key=settings_key)
+        if progress.get("key") != key:
+            progress.clear()
+            progress.update(key=key, next=0, failed=False, settings_key=settings_key)
+        elif progress.get("settings_key") != settings_key:
+            progress.update(failed=False, settings_key=settings_key)
+        if progress != previous:
+            save_maa_copilot_progress(progress)
+        return progress
+
+    def _record_maa_copilot_callback(self, msg, details):
+        task = getattr(self, "maa_copilot_task", None)
+        if (
+            task is None
+            or type(details.get("taskid")) is not int
+            or details["taskid"] != task[0]
+            or details.get("taskchain") != "Copilot"
+            or msg not in (10000, 10002, 10004)
+        ):
+            return
+        self.maa_copilot_task = None
+        progress = self.maa_copilot_progress
+        if progress.get("key") != task[1] or progress.get("next") != task[2]:
+            return
+        if msg == 10002:
+            progress["next"] = task[2] + 1
+            logger.info(f"自动战斗队列已完成 {progress['next']} 项")
+        elif msg == 10000:
+            progress["failed"] = True
+            logger.warning("自动战斗作业失败，保留进度，等待修改配置或手动重新执行")
+        else:
+            return
+        save_maa_copilot_progress(progress)
+
+    def _maa_sss_run(self, conf):
+        from arknights_mower.utils.maa_copilot import queue_key
+
+        # Read the independent record for each dispatch, including after a profile switch.
+        progress = load_maa_sss_progress()
+        key = queue_key(conf)
+        if progress.get("key") != key:
+            progress = {"key": key, "next": 0, "completed": 0, "failed": False}
+            save_maa_sss_progress(progress)
+        self.maa_sss_progress = progress
+        return progress
+
+    def _record_maa_sss_callback(self, msg, details):
+        task = getattr(self, "maa_sss_task", None)
+        if (
+            task is None
+            or type(details.get("taskid")) is not int
+            or details["taskid"] != task["id"]
+            or details.get("taskchain") != "SSSCopilot"
+        ):
+            return
+        progress = self.maa_sss_progress
+        if (
+            progress.get("key"),
+            progress.get("next"),
+            progress.get("completed"),
+        ) != task["position"]:
+            return
+        if msg == 20003:
+            if details.get("what") == "SSSGamePass":
+                task["passed"] = True
+            elif details.get("what") == "SSSSettlement":
+                task["settled"] = True
+            return
+        if msg not in (10000, 10002, 10004):
+            return
+        self.maa_sss_task = None
+        if msg == 10004:
+            return
+        if msg == 10002 and task["passed"] and not task["settled"]:
+            progress["completed"] += 1
+            logger.info(
+                f"保全队列第 {progress['next'] + 1} 项已完成 {progress['completed']}/{task['times']} 轮"
+            )
+            if progress["completed"] >= task["times"]:
+                progress["next"] += 1
+                progress["completed"] = 0
+        else:
+            progress["failed"] = True
+            logger.warning("保全作业未通关，保留进度，等待修改队列或手动重新执行")
+        save_maa_sss_progress(progress)
+
     def on_maa_callback(self, msg, details, arg):
         """MAA 回调入口：累积掉落统计、代发上报请求、输出可读日志行。"""
         d = parse_details(details)
         logger.debug("MAA 回调 %s %s", msg, d)
+        try:
+            self._record_maa_daily_callback(msg, d)
+        except Exception:
+            logger.exception("保存 MAA 每日任务完成记录失败")
+        try:
+            self._record_maa_copilot_callback(msg, d)
+        except Exception:
+            logger.exception("保存 MAA 自动战斗作业进度失败")
+        try:
+            self._record_maa_sss_callback(msg, d)
+        except Exception:
+            logger.exception("保存 MAA 保全派驻进度失败")
         if msg == 3:  # AllTasksCompleted follows the final StageDrops receipt.
             battle_inventory_active.clear()
         if msg == 20003 and d.get("what") == "StageDrops":
@@ -15471,6 +15642,9 @@ class BaseSchedulerSolver(
 
         self.maa_drop_inventory = MaaDropInventory()
         self.maa_inventory_tasks = {}
+        self.maa_daily_tasks = {}
+        self.maa_copilot_task = None
+        self.maa_sss_task = None
         battle_inventory_active.set()
 
         if os.environ.get("MOWER_ANDROID") == "1":
@@ -15600,48 +15774,60 @@ class BaseSchedulerSolver(
 
         elif type == "Mall":
             conf = config.conf
-            self.MAA.append_task(
+            params = {
+                "shopping": mall_action == "shopping"
+                if mall_action
+                else getattr(
+                    conf,
+                    "should_run_maa_mall",
+                    getattr(conf, "maa_mall_enable", True)
+                    and getattr(conf, "maa_mall_mode", "maa") == "maa",
+                ),
+                "buy_first": conf.maa_mall_buy.split(","),
+                "blacklist": conf.maa_mall_blacklist.split(","),
+                "credit_fight": not mall_action
+                and conf.maa_credit_fight
+                and "" not in self.stages
+                and self.credit_fight is None
+                and not self._maa_daily_done("credit_fight"),
+                "formation_index": max(0, min(4, conf.credit_fight.squad)),
+                "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
+                "visit_friends": mall_action == "visit_friends"
+                if mall_action
+                else getattr(
+                    conf,
+                    "should_run_maa_visit_friend",
+                    getattr(conf, "visit_friend_enable", False)
+                    and getattr(conf, "visit_friend_mode", "maa") == "maa",
+                ),
+                "only_buy_discount": conf.maa_mall_only_buy_discount,
+                "reserve_max_credit": conf.maa_mall_reserve_max_credit,
+            }
+            params["visit_friends"] = params[
+                "visit_friends"
+            ] and not self._maa_daily_done("visit_friends")
+            task_id = self.MAA.append_task("Mall", params)
+            self._remember_maa_daily_task(
+                task_id,
                 "Mall",
-                {
-                    "shopping": mall_action == "shopping"
-                    if mall_action
-                    else getattr(
-                        conf,
-                        "should_run_maa_mall",
-                        getattr(conf, "maa_mall_enable", True)
-                        and getattr(conf, "maa_mall_mode", "maa") == "maa",
-                    ),
-                    "buy_first": conf.maa_mall_buy.split(","),
-                    "blacklist": conf.maa_mall_blacklist.split(","),
-                    "credit_fight": not mall_action
-                    and conf.maa_credit_fight
-                    and "" not in self.stages
-                    and self.credit_fight is None,
-                    "formation_index": max(0, min(4, conf.credit_fight.squad)),
-                    "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
-                    "visit_friends": mall_action == "visit_friends"
-                    if mall_action
-                    else getattr(
-                        conf,
-                        "should_run_maa_visit_friend",
-                        getattr(conf, "visit_friend_enable", False)
-                        and getattr(conf, "visit_friend_mode", "maa") == "maa",
-                    ),
-                    "only_buy_discount": conf.maa_mall_only_buy_discount,
-                    "reserve_max_credit": conf.maa_mall_reserve_max_credit,
-                },
+                [key for key in ("visit_friends", "credit_fight") if params[key]],
             )
         elif type == "Award":
-            self.MAA.append_task(
-                "Award",
-                {
-                    "award": True,
-                    "mail": config.conf.maa_mail,
-                    "recruit": config.conf.maa_recruit,
-                    "orundum": config.conf.maa_orundum,
-                    "mining": config.conf.maa_mining,
-                    "specialaccess": config.conf.maa_specialaccess,
+            daily = ("recruit", "orundum", "mining", "specialaccess", "signinevent")
+            params = {
+                "award": True,
+                "mail": config.conf.maa_mail,
+                **{
+                    key: getattr(config.conf, f"maa_{key}", False)
+                    and not self._maa_daily_done(key)
+                    for key in daily
                 },
+            }
+            task_id = self.MAA.append_task("Award", params)
+            self._remember_maa_daily_task(
+                task_id,
+                "Award",
+                [key for key in daily if params[key]],
             )
 
     def maybe_switch_expired_activity_plan(self):
@@ -15682,6 +15868,8 @@ class BaseSchedulerSolver(
             except Exception:
                 logger.exception("关闭 MAA 工作进程失败")
         self.MAA = None
+        self.maa_copilot_task = None
+        self.maa_sss_task = None
 
     def restore_maa_theme(self):
         """本轮 MAA 任务收尾时恢复指定主题，为下次调度预留时间。"""
@@ -15782,6 +15970,7 @@ class BaseSchedulerSolver(
                     getattr(conf, "maa_orundum", False),
                     getattr(conf, "maa_mining", False),
                     getattr(conf, "maa_specialaccess", False),
+                    getattr(conf, "maa_signinevent", False),
                 ]
             )
         )
@@ -15795,6 +15984,7 @@ class BaseSchedulerSolver(
             or getattr(conf, "RG", False)
             or getattr(conf, "SSS", False)
             or getattr(conf, "RCL", False)
+            or getattr(conf, "COPILOT", False)
         )
 
     def maa_plan_solver(
@@ -15807,6 +15997,9 @@ class BaseSchedulerSolver(
         mall_action=None,
     ):
         """清日常"""
+        copilot_run = None
+        sss_run = None
+        large_task_started = False
         try:
             from arknights_mower.solvers.manual_tasks import manual_task_deadline
 
@@ -15932,9 +16125,7 @@ class BaseSchedulerSolver(
                     logger.info("记录MAA 本次执行时间")
                     self.last_execution["maa"] = datetime.now()
                     logger.info(self.last_execution["maa"])
-                    if "Mall" in tasks and self.credit_fight is None:
-                        self.credit_fight = get_server_weekday()
-                        logger.info("记录首次信用作战")
+                    if "Mall" in tasks and self._maa_daily_done("credit_fight"):
                         self.maa_stop(False)
                 elif not manual:
                     send_message("MAA单次任务停止")
@@ -15955,6 +16146,7 @@ class BaseSchedulerSolver(
                         name
                         for flag, name in (
                             ("RG", "rogue"),
+                            ("COPILOT", "copilot"),
                             ("SSS", "sss"),
                             ("RCL", "rcl"),
                             ("RA", "ra"),
@@ -15975,9 +16167,25 @@ class BaseSchedulerSolver(
                     rg_sleep = min_time < now_time < max_time
             except ValueError:
                 rg_sleep = False
-            if selected_long in ("rogue", "sss", "rcl") and (manual or not rg_sleep):
-                logger.info("准备开始：肉鸽/保全/盐酸")
-                send_message("启动 肉鸽/保全/盐酸")
+            if selected_long == "copilot" and (manual or not rg_sleep):
+                copilot_run = self._maa_copilot_run(conf.copilot)
+            if selected_long == "sss" and (manual or not rg_sleep):
+                sss_run = self._maa_sss_run(conf.sss)
+            if (
+                selected_long in ("rogue", "rcl")
+                or (
+                    sss_run is not None
+                    and not sss_run["failed"]
+                    and sss_run["next"] < len(conf.sss.scripts)
+                )
+                or (
+                    copilot_run is not None
+                    and not copilot_run["failed"]
+                    and copilot_run["next"] < len(conf.copilot.scripts)
+                )
+            ) and (manual or not rg_sleep):
+                logger.info("准备开始 MAA 大型任务")
+                send_message("启动 MAA 大型任务")
                 while True:
                     restore_theme = False
                     self.release_maa()
@@ -15985,16 +16193,6 @@ class BaseSchedulerSolver(
                     self.recog.reset_after_external_control()
                     self.back_to_index()
                     if selected_long == "rogue":
-                        # Roguelike 通用字段按协议条件下发（#264）：投资类字段仅在
-                        # investment_enabled 时下发（值内联各自的策略/主题限制，与 MAA 一致），
-                        # stop_at_final_boss 除 Phantom 外可用且仅策略 0 下发，
-                        # expected_collapsal_paradigms 仅 Sami + 策略 5 且列表非空时下发，
-                        # 烧水字段仅策略 4 下发，勾选「只凹开局干员直升精二」时
-                        # 撤销 collectible_mode_start_list，指路鳞的值内联 Mizuki 限制。
-                        # 月度小队/深入调查字段仅策略 6/7 下发（通信检查需先勾自动切换），
-                        # first_floor_foldartal 与 start_foldartal_list 仅 Sami + 策略 4
-                        # （板子列表另限生活至上分队），黑流树海字段仅刷襁褓动物模式下发，
-                        # find_playTime_target 仅界园刷常乐节点模式下发。
                         professional = conf.rogue.squad in _PROFESSIONAL_SQUADS
                         rogue_params = {
                             "theme": conf.maa_rg_theme,
@@ -16115,37 +16313,123 @@ class BaseSchedulerSolver(
                             rogue_params["find_playTime_target"] = (
                                 conf.rogue.find_playtime_target
                             )
-                        self.MAA.append_task("Roguelike", rogue_params)
-                    elif selected_long == "sss":
-                        copilot = get_path("@app/sss.json")
+                        recruits = getattr(conf.rogue, "core_char_list", [])
+                        if recruits:
+                            rogue_params["core_char_list"] = [
+                                item.model_dump() for item in recruits
+                            ]
+                        if conf.maa_rg_theme == "Sami":
+                            for key in (
+                                "use_foldartal",
+                                "check_collapsal_paradigms",
+                                "double_check_collapsal_paradigms",
+                            ):
+                                value = getattr(conf.rogue, key, None)
+                                checking = getattr(
+                                    conf.rogue, "check_collapsal_paradigms", None
+                                )
+                                if checking is None:
+                                    checking = conf.rogue.mode == 5
+                                if value is not None and (
+                                    key != "double_check_collapsal_paradigms"
+                                    or checking
+                                ):
+                                    rogue_params[key] = value
                         if (
-                            not copilot.is_file()
-                            or conf.sss.type not in [1, 2]
-                            or conf.sss.ec not in [1, 2, 3]
+                            conf.maa_rg_theme == "Sarkaz"
+                            and conf.rogue.mode == 1
+                            and conf.rogue.squad in ("点刺成锭分队", "后勤分队")
                         ):
-                            raise Exception("保全派驻配置错误")
-                        if self.to_sss():
-                            raise Exception("保全派驻导航失败")
-                        self.MAA.append_task(
-                            "SSSCopilot",
-                            {"filename": str(copilot), "loop_times": 9999999},
+                            seed = getattr(conf.rogue, "start_with_seed", "")
+                            if seed:
+                                rogue_params["start_with_seed"] = seed
+                        if conf.maa_rg_theme == "BlackFlow":
+                            strategy = getattr(conf.rogue, "blackflow_strategy", "")
+                            if conf.rogue.mode == 0 and strategy:
+                                rogue_params["blackflow_strategy"] = strategy
+                            if conf.rogue.mode == 30003:
+                                for key, default in (
+                                    ("blackflow_start_animals", []),
+                                    ("blackflow_start_rewards", 0),
+                                    ("blackflow_start_utopia", False),
+                                    ("collectible_mode_squad", ""),
+                                ):
+                                    rogue_params[key] = getattr(
+                                        conf.rogue, key, default
+                                    )
+                                if rogue_params["blackflow_start_utopia"]:
+                                    rogue_params["blackflow_start_reward_priority"] = (
+                                        conf.rogue.blackflow_start_reward_priority
+                                    )
+                                if getattr(conf.rogue, "collectible_mode_roles", ""):
+                                    rogue_params["collectible_mode_roles"] = (
+                                        conf.rogue.collectible_mode_roles
+                                    )
+                                preparation = getattr(
+                                    conf.rogue, "collectible_mode_core_char_list", []
+                                )
+                                if preparation:
+                                    rogue_params["collectible_mode_core_char_list"] = [
+                                        item.model_dump() for item in preparation
+                                    ]
+                        self.MAA.append_task("Roguelike", rogue_params)
+                    elif selected_long == "copilot":
+                        from arknights_mower.utils.maa_copilot import (
+                            build_copilot_params,
                         )
+
+                        params = build_copilot_params(conf.copilot)
+                        copilot_index = copilot_run["next"]
+                        params["copilot_list"] = [params["copilot_list"][copilot_index]]
+                        task_id = self.MAA.append_task("Copilot", params)
+                        self.maa_copilot_task = (
+                            task_id,
+                            copilot_run["key"],
+                            copilot_index,
+                        )
+                    elif selected_long == "sss":
+                        from arknights_mower.utils.maa_sss import build_sss_params
+
+                        sss_index = sss_run["next"]
+                        completed_before = sss_run["completed"]
+                        item = conf.sss.scripts[sss_index]
+                        params = build_sss_params(item)
+                        if self.to_sss(item.type, item.ec):
+                            raise ValueError("保全派驻导航失败")
+                        task_id = self.MAA.append_task("SSSCopilot", params)
+                        self.maa_sss_task = {
+                            "id": task_id,
+                            "position": (sss_run["key"], sss_index, completed_before),
+                            "times": item.times,
+                            "passed": False,
+                            "settled": False,
+                        }
                     elif selected_long == "rcl":
                         self.to_reclamation(conf.maa_rcl_theme, conf.rcl.mode)
-                        self.MAA.append_task(
-                            "Reclamation",
-                            {
-                                "theme": conf.maa_rcl_theme,
-                                "mode": conf.rcl.mode,
-                                "tools_to_craft": conf.rcl.tools_to_craft,
-                                "increment_mode": conf.rcl.increment_mode,
-                                "num_craft_batches": conf.rcl.num_craft_batches,
-                            },
-                        )
+                        rcl_params = {
+                            "theme": conf.maa_rcl_theme,
+                            "mode": conf.rcl.mode,
+                        }
+                        if conf.maa_rcl_theme == "Tales":
+                            if conf.rcl.mode == 0:
+                                rcl_params["clear_store"] = getattr(
+                                    conf.rcl, "clear_store", False
+                                )
+                            elif conf.rcl.mode == 1:
+                                for key in (
+                                    "tools_to_craft",
+                                    "increment_mode",
+                                    "num_craft_batches",
+                                ):
+                                    rcl_params[key] = getattr(conf.rcl, key)
+                        self.MAA.append_task("Reclamation", rcl_params)
                     logger.info("启动")
+                    large_task_started = True
                     self.MAA.start()
                     while self.MAA.running():
                         csleep(5)
+                        if config.stop_mower.is_set():
+                            raise MowerExit
                         self.report_maa_progress()
                         self.recog.update()
                         self.recog.save_screencap(None)
@@ -16157,7 +16441,30 @@ class BaseSchedulerSolver(
                             self.maa_stop()
                             restore_theme = True
                             break
+                    if config.stop_mower.is_set():
+                        raise MowerExit
                     self.recog.reset_after_external_control()
+                    more_copilot = (
+                        copilot_run is not None
+                        and copilot_run["next"] == copilot_index + 1
+                        and not copilot_run["failed"]
+                        and copilot_run["next"] < len(conf.copilot.scripts)
+                    )
+                    more_sss = (
+                        sss_run is not None
+                        and (sss_run["next"], sss_run["completed"])
+                        != (sss_index, completed_before)
+                        and not sss_run["failed"]
+                        and sss_run["next"] < len(conf.sss.scripts)
+                    )
+                    if (
+                        (more_copilot or more_sss)
+                        and not config.stop_maa.is_set()
+                        and not config.stop_mower.is_set()
+                        and not restore_theme
+                        and deadline() - datetime.now() > timedelta(seconds=30)
+                    ):
+                        continue
                     break
 
             elif manual or not rg_sleep:
@@ -16173,7 +16480,22 @@ class BaseSchedulerSolver(
             if restore_theme:
                 self.restore_maa_theme()
             self.release_maa()
-        except (MowerExit, DeviceRecoveryError, SharedADBError):
+        except MowerExit:
+            try:
+                try:
+                    if getattr(self, "MAA", None) is not None:
+                        self.maa_stop()
+                        logger.info("停止MAA")
+                finally:
+                    if large_task_started and config.stop_mower.is_set():
+                        try:
+                            self.device.exit_after_task_stop()
+                        except Exception:
+                            logger.exception("停止大型任务后关闭游戏失败")
+            finally:
+                self.release_maa()
+            raise
+        except (DeviceRecoveryError, SharedADBError):
             try:
                 if getattr(self, "MAA", None) is not None:
                     self.maa_stop()
@@ -16182,6 +16504,18 @@ class BaseSchedulerSolver(
                 self.release_maa()
             raise
         except Exception as e:
+            if sss_run is not None:
+                sss_run["failed"] = True
+                try:
+                    save_maa_sss_progress(sss_run)
+                except Exception:
+                    logger.exception("保存 MAA 保全派驻进度失败")
+            if copilot_run is not None:
+                copilot_run["failed"] = True
+                try:
+                    save_maa_copilot_progress(copilot_run)
+                except Exception:
+                    logger.exception("保存 MAA 自动战斗作业进度失败")
             save_exception(e)
             logger.exception(e)
             if getattr(self, "MAA", None) is not None:

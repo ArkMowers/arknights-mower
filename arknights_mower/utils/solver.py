@@ -715,8 +715,10 @@ class BaseSolver:
         if self.scene() != Scene.INDEX:
             raise StrategyError
 
-    def to_sss(self):
+    def to_sss(self, stage_type=None, ec=None):
         """保全导航"""
+        stage_type = config.conf.sss.type if stage_type is None else stage_type
+        ec = config.conf.sss.ec if ec is None else ec
         logger.info("保全导航")
         start_time = datetime.now()
 
@@ -731,13 +733,13 @@ class BaseSolver:
                 elif scene == Scene.TERMINAL_REGULAR:
                     self.tap((1548, 870))
                 elif scene == Scene.SSS_MAIN:
-                    self.tap((384, 324) if config.conf.sss.type == 1 else (768, 648))
+                    self.tap((384, 324) if stage_type == 1 else (768, 648))
                 elif scene == Scene.SSS_START:
                     self.tap_element("sss/start_button")
                 elif scene == Scene.SSS_EC:
-                    if config.conf.sss.ec == 1:
+                    if ec == 1:
                         ec_x = 576
-                    elif config.conf.sss.ec == 2:
+                    elif ec == 2:
                         ec_x = 960
                     else:
                         ec_x = 1860

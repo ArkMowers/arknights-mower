@@ -848,7 +848,13 @@ def simulate(saved):
                 "idle_dorm_search_stopped_at"
             )
             base_scheduler.party_time = saved["party_time"]
+            base_scheduler.maa_copilot_progress = dict(
+                saved.get("maa_copilot_progress", {})
+            )
             base_scheduler.daily_visit_friend = saved["daily_visit_friend"]
+            base_scheduler.maa_daily_completed = dict(
+                saved.get("maa_daily_completed", {})
+            )
             base_scheduler.daily_visit_friend_attempt = saved.get(
                 "daily_visit_friend_attempt"
             )

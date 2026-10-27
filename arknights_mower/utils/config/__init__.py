@@ -251,6 +251,13 @@ def load_conf():
         & raw.keys()
     )
     conf = Conf(**raw)
+    from arknights_mower.utils.maa_sss import migrate_legacy
+
+    try:
+        if migrate_legacy(conf.sss):
+            save_conf()
+    except (ValueError, OSError):
+        logger.exception("旧保全作业导入失败，请在保全派驻中重新导入")
     _load_rescue_plan(raw)
 
 

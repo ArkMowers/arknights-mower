@@ -21,6 +21,7 @@ const mobile = inject('mobile')
 
 const maa_long_task_options = [
   { label: '集成战略 (MAA)', value: 'rogue' },
+  { label: '自动战斗／作业 (MAA)', value: 'copilot' },
   { label: '保全派驻 (MAA)', value: 'sss' },
   { label: '生息演算 (MAA)', value: 'rcl' },
   { label: '生息演算', value: 'ra' },
@@ -137,6 +138,9 @@ watch(
           />
         </n-form-item>
         <template v-if="maa_rcl_theme == 'Tales'">
+          <n-form-item v-if="rcl.mode === 0" :show-label="false">
+            <n-checkbox v-model:checked="rcl.clear_store">刷满后清空商店</n-checkbox>
+          </n-form-item>
           <n-form-item label="支援道具名称" v-if="rcl.mode == 1">
             <n-select
               v-model:value="rcl.tools_to_craft"
@@ -158,13 +162,14 @@ watch(
               ]"
             />
           </n-form-item>
-          <n-form-item label="单次最大组装轮数">
+          <n-form-item v-if="rcl.mode === 1" label="单次最大组装轮数">
             <mower-input-number v-model:value="rcl.num_craft_batches" :min="1" :max="2147483647" />
           </n-form-item>
         </template>
       </n-form>
     </template>
     <maa-rogue v-else-if="maa_long_task_type == 'rogue'" />
+    <maa-copilot v-else-if="maa_long_task_type == 'copilot'" />
     <maa-sss v-else-if="maa_long_task_type == 'sss'" />
     <reclamation-algorithm v-else-if="maa_long_task_type == 'ra'" />
     <secret-front v-else-if="maa_long_task_type == 'sf'" />

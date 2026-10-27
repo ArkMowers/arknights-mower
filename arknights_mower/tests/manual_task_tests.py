@@ -320,19 +320,40 @@ def test_manual_deadline_excludes_self_and_does_not_move_with_clock(manual):
     assert manual.manual.manual_task_deadline(manual.solver) == deadline
 
 
-def test_manual_sss_uses_configured_copilot(manual, monkeypatch, tmp_path):
+def test_manual_sss_uses_configured_queue_item(manual, monkeypatch, tmp_path):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import maa_copilot
+
     monkeypatch.setattr(manual.module, "send_message", Mock())
-    copilot = tmp_path / "sss.json"
-    copilot.write_text("{}")
-    monkeypatch.setattr(manual.module, "get_path", lambda _: copilot)
-    monkeypatch.setattr(manual.module.config, "conf", Conf(sss={"type": 1, "ec": 1}))
+
+    def get_path(value):
+        return tmp_path / value.removeprefix("@app/")
+
+    monkeypatch.setattr(maa_copilot, "get_path", get_path)
+    monkeypatch.setattr(record, "get_path", get_path)
+    monkeypatch.setattr(record, "_tables_created", False)
+    script = maa_copilot.store_script(
+        b'{"type":"SSS","stage_name":"SSS","tool_men":{},"stages":[{"stage_name":"one","draw_as_possible":true,"strategies":[],"actions":[]}]}',
+        sss=True,
+    )
+    monkeypatch.setattr(
+        manual.module.config,
+        "conf",
+        Conf(sss={"scripts": [{"id": script["id"], "type": 2, "ec": 3, "times": 2}]}),
+    )
     task, _ = queue(manual, TaskTypes.SSS)
     solver, engine = actual_maa(manual)
     solver.to_sss = Mock(return_value=False)
     assert manual.manual.run_manual_task(solver, task)
+    solver.to_sss.assert_called_once_with(2, 3)
     engine.append_task.assert_called_once_with(
-        "SSSCopilot", {"filename": str(copilot), "loop_times": 9999999}
+        "SSSCopilot",
+        {
+            "filename": str(maa_copilot.script_path(script["id"], sss=True)),
+            "loop_times": 1,
+        },
     )
+    assert record.load_maa_sss_progress()["completed"] == 0
     engine.close.assert_called_once()
 
 

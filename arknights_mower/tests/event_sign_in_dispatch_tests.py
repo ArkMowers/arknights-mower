@@ -173,6 +173,8 @@ def main_runtime(monkeypatch, scheduler):
     runtime.daily_visit_friend = runtime.daily_report = date.min
     runtime.daily_skland = runtime.daily_mail = date.min
     runtime.daily_visit_friend_attempt = None
+    runtime.maa_copilot_progress = {}
+    runtime.maa_daily_completed = {}
     runtime.daily_event_sign_in = scheduler.daily_event_sign_in
     runtime.daily_event_sign_in_attempt = scheduler.daily_event_sign_in_attempt
     runtime.find_next_task.return_value = None

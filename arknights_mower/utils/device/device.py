@@ -18,7 +18,7 @@ from arknights_mower import __system__
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import DEFAULT_LAUNCH_COMMAND
 from arknights_mower.utils.config.device_profile import capture_compatibility_error
-from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.csleep import MowerExit, cancellation_scope, csleep
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.server import guard_adb
 from arknights_mower.utils.device.droidcast import DroidCastSession
@@ -626,6 +626,21 @@ class Device:
         logger.info("退出游戏")
         logger.debug("device.exit 调用来源:\n" + "".join(traceback.format_stack()[:-1]))
         self.run(f"am force-stop {self.game_package}")
+
+    def exit_after_task_stop(self) -> None:
+        """停止大型任务后关闭当前游戏，不重连或重新启动设备。"""
+        self._check_open()
+        deadline = time.monotonic() + 5
+
+        def remaining():
+            seconds = deadline - time.monotonic()
+            if seconds <= 0:
+                raise TimeoutError("停止大型任务后关闭游戏超时")
+            return seconds
+
+        with cancellation_scope(lambda: False), device_io_budget(remaining):
+            logger.info("大型任务已停止，立即退出游戏")
+            self.client.run(f"am force-stop {self.game_package}")
 
     def return_home(self) -> None:
         """exit the application"""

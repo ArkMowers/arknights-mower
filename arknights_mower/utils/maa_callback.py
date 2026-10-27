@@ -125,6 +125,57 @@ SUB_TASK_INFO = {
         logging.ERROR,
         lambda details: f"MAA 不支持该关卡：{_inner(details).get('level', '')}",
     ),
+    # 普通作业与自动编队
+    "CopilotPrecheckFile": (
+        logging.INFO,
+        lambda details: f"作业预检：{_inner(details).get('nav_name', '')}",
+    ),
+    "CopilotListLoadTaskFileSuccess": (
+        logging.INFO,
+        lambda details: f"已加载作业：{_inner(details).get('stage_name', '')}",
+    ),
+    "BattleFormation": (
+        logging.INFO,
+        lambda details: (
+            "作业编队："
+            + "、".join(
+                str(item) for item in _sequence(_inner(details).get("formation"))[:12]
+            )
+        ),
+    ),
+    "BattleFormationParseFailed": (logging.WARNING, "作业编队解析失败"),
+    "BattleFormationSelected": (
+        logging.INFO,
+        lambda details: (
+            f"作业已选择干员：{_inner(details).get('group_name', '')} → {_inner(details).get('selected', '')}"
+        ),
+    ),
+    "BattleFormationOperUnavailable": (
+        logging.WARNING,
+        lambda details: (
+            f"作业干员未满足练度要求：{_inner(details).get('oper_name', '')}（{_inner(details).get('requirement_type', '')}）"
+        ),
+    ),
+    "BattleFormationOperboxMatched": (
+        logging.INFO,
+        lambda details: (
+            "已匹配作业编队："
+            + "、".join(
+                f"{item.get('group_name', '')} → {item.get('oper_name', '')}"
+                for item in (
+                    _mapping(value)
+                    for value in _sequence(_inner(details).get("matched_groups"))[:12]
+                )
+            )
+        ),
+    ),
+    "BattleFormationOperbox1Unmatched": (
+        logging.WARNING,
+        lambda details: (
+            f"作业编队可借助战补全：{_inner(details).get('group_name', '')} → {_inner(details).get('may_borrow_oper', '')}"
+        ),
+    ),
+    "CopilotAction": (logging.INFO, lambda details: _copilot_action(details)),
     # 公招
     "RecruitTagsDetected": (
         logging.INFO,
@@ -198,6 +249,12 @@ SUB_TASK_INFO = {
             f"{_inner(details).get('max_times', 0)}）"
         ),
     ),
+    "BlackFlowScrapTradeAborted": (
+        logging.WARNING,
+        lambda details: (
+            f"黑流树海秘境行商交易中止：{_inner(details).get('reason', '')}（{_inner(details).get('item', '')}）"
+        ),
+    ),
     # 保全派驻
     "SSSStage": (
         logging.INFO,
@@ -244,6 +301,7 @@ SUB_TASK_INFO = {
 
 # ProcessTask 的原子动作。识别动作每秒多次回传，未列出的节点不产生日志行。
 PROCESS_TASK_START = {
+    "SignInEventBegin": (logging.INFO, "检查限时签到活动奖励"),
     "StartButton2": (logging.INFO, "开始战斗"),
     "AnnihilationConfirm": (logging.INFO, "开始剿灭行动"),
     "MedicineConfirm": (logging.INFO, "使用理智药"),
@@ -302,8 +360,30 @@ PROCESS_TASK_START = {
     "StageDreadfulFoe-5": (logging.INFO, "肉鸽关卡：险路恶敌"),
 }
 
+BLACKFLOW_START_STATUS = {
+    "preparing": (logging.INFO, "黑流树海刷开局：准备局开始"),
+    "target_run": (logging.INFO, "黑流树海刷开局：目标局开始"),
+    "reward_missed": (logging.INFO, "黑流树海刷开局：未命中期望奖励，重新准备"),
+    "reward_picked": (logging.INFO, "黑流树海刷开局：已选择奖励，检查第一层实托邦"),
+    "completed": (logging.INFO, "黑流树海刷开局完成，已保留目标局"),
+    "reward_unrecognized": (
+        logging.WARNING,
+        "黑流树海刷开局：无法识别奖励，已停在选择支援页",
+    ),
+    "reward_page_missing": (
+        logging.WARNING,
+        "黑流树海刷开局：未出现选择支援页，已停止",
+    ),
+    "reward_recognition_failed": (
+        logging.WARNING,
+        "黑流树海刷开局：选择奖励失败，已停止",
+    ),
+}
+
+
 # ProcessTask 的完成动作，按 (任务链, 节点) 区分。
 PROCESS_TASK_COMPLETED = {
+    ("Award", "SignInEventReturn"): (logging.INFO, "限时签到活动检查结束"),
     ("Infrast", "UnlockClues"): (logging.INFO, "已开启线索交流"),
     ("Roguelike", "StartExplore"): (
         logging.INFO,
@@ -328,6 +408,8 @@ PROCESS_TASK_COMPLETED = {
 
 # SubTaskError 的 subtask 字段。未列出的子任务给出通用出错行。
 SUB_TASK_ERROR = {
+    "CopilotTask": (logging.ERROR, lambda details: _copilot_error(details)),
+    "BattleFormationTask": (logging.ERROR, lambda details: _copilot_error(details)),
     "StartGameTask": (logging.ERROR, "MAA 打开客户端失败，请检查客户端配置"),
     "StopGameTask": (logging.ERROR, "MAA 关闭游戏失败"),
     "CheckStageValid": (logging.ERROR, "无奖励关卡，已停止"),
@@ -463,6 +545,49 @@ def _routing_restart(details: dict) -> str:
     return f"前方战斗数：{details.get('node_cost', '?')}，重开路线"
 
 
+def _copilot_action(details):
+    inner = _inner(details)
+    action = _key(inner.get("action"))
+    names = {
+        "Deploy": "部署",
+        "Skill": "技能",
+        "Retreat": "撤退",
+        "SpeedUp": "切换倍速",
+        "BulletTime": "子弹时间",
+        "SkillUsage": "技能用法",
+        "Output": "打印",
+        "SkillDaemon": "摆完挂机",
+        "MoveCamera": "移动镜头",
+        "ResetStopwatch": "重置计时",
+        "Click": "点击",
+        "Swipe": "滑动",
+        "SetUnitLocation": "设置单位坐标",
+    }
+    text = f"作业步骤：{names.get(action, action)} {inner.get('target', '')}".strip()
+    doc = _key(inner.get("doc"))[:512]
+    elapsed = inner.get("elapsed_time")
+    if type(elapsed) is int and elapsed >= 0:
+        text += f"（已用时 {elapsed} 毫秒）"
+    return f"{text}：{doc}" if doc else text
+
+
+def _copilot_error(details):
+    what = _key(details.get("what"))
+    text = {
+        "CopilotFileReadError": "作业文件读取失败",
+        "CopilotStageNotSupported": "不支持作业关卡",
+        "UserAdditionalOperInvalid": "补充干员名称无效",
+        "OperboxDataParseFailed": "作业干员数据解析失败",
+    }.get(what)
+    if text:
+        inner = _inner(details)
+        return f"{text}：{inner.get('stage_name', inner.get('name', ''))}".rstrip("：")
+    if details.get("why") == "OperatorMissing":
+        names = list(_mapping(_inner(details).get("opers")))[:12]
+        return "作业编队缺少干员：" + "、".join(str(name) for name in names)
+    return "作业执行失败：" + _why_text(details)
+
+
 def _reclamation_report(details: dict) -> str:
     inner = _inner(details)
     return (
@@ -584,6 +709,18 @@ class MaaCallbackLog:
                 entry = (logging.WARNING, f"{_chain(details)}：{subtask} 出错")
             return _entry_line(entry, details)
         if message == 20003:
+            if details.get("what") == "BlackFlowStartRun":
+                inner = _inner(details)
+                entry = BLACKFLOW_START_STATUS.get(_key(inner.get("status")))
+                if entry is None:
+                    return None
+                level, text = entry
+                rewards = "、".join(
+                    str(value) for value in _sequence(inner.get("rewards"))
+                )
+                return MaaLogLine(
+                    level, f"{text}（识别奖励：{rewards}）" if rewards else text
+                )
             return _entry_line(SUB_TASK_INFO.get(_key(details.get("what"))), details)
         # 子任务开始与完成只播报 ProcessTask 白名单里的节点。
         if subtask != "ProcessTask":

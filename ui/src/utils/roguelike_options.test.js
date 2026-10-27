@@ -178,7 +178,7 @@ describe('roguelike_options', () => {
     expect(is_field_enabled('deep_exploration_auto_iterate', 'Sami', 0)).toBe(false)
   })
 
-  it('first_floor_foldartal 仅萨米 + 策略 4 展示', () => {
+  it('first_floor_foldartal 仅萨米刷开局策略展示', () => {
     expect(is_field_enabled('first_floor_foldartal', 'Sami', 4)).toBe(true)
     expect(is_field_enabled('first_floor_foldartal', 'Sami', 0)).toBe(false)
     expect(is_field_enabled('first_floor_foldartal', 'Mizuki', 4)).toBe(false)
