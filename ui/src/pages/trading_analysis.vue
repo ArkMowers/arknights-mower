@@ -1,14 +1,14 @@
 <template>
   <PageLayout>
     <template #header>
-      <PageHeader>
-        贸易订单分析
-        <template #actions>
-          <n-button @click="restoreHistory" secondary size="small">
-            恢复历史
-            <help-text>
-              <p>点击后会在后台运行，请勿多次发送请求</p>
-              <p>如果截图比较多，可能等待时间会比较长，请耐心</p>
+      <PageHeader
+        >{{ t('reports.tradingAnalysisTitle')
+        }}<template #actions>
+          <n-button @click="restoreHistory" secondary size="small"
+            >{{ t('reports.restoreHistory')
+            }}<help-text>
+              <p>{{ t('reports.restoreHistoryHelp') }}</p>
+              <p>{{ t('reports.restoreHistoryTimeHelp') }}</p>
             </help-text>
           </n-button>
         </template>
@@ -28,6 +28,9 @@
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
+import { reportChartLabel } from '@/i18n/reports'
+const { t } = i18n.global
 import PageLayout from '@/components/PageLayout.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { registerTheme, use } from 'echarts/core'
@@ -178,9 +181,10 @@ onMounted(async () => {
 })
 const option_analysis = computed(() => ({
   title: {
-    text: '订单分布'
+    text: t('reports.orderDistribution')
   },
   legend: {
+    formatter: reportChartLabel,
     data: ['赤金', '订单质量'],
     selected: {
       赤金: false,
@@ -209,11 +213,11 @@ const option_analysis = computed(() => ({
     },
     formatter: function (params) {
       return [
-        `总订单数量: ${params[0].value['龙门币订单']}`,
+        t('reports.totalOrderValue', { value: params[0].value['龙门币订单'] }),
         ...params
           .filter((p) => p.value[p.seriesName] !== undefined)
           .map((p) => {
-            var txt = `${p.marker} ${p.seriesName}: ${p.value[p.seriesName]}`
+            var txt = `${p.marker} ${reportChartLabel(p.seriesName)}: ${p.value[p.seriesName]}`
             if (priceMapping[p.seriesName]) {
               txt += `(${p.value[p.seriesName] / priceMapping[p.seriesName]})`
             } else if (p.seriesName == '未知订单') {

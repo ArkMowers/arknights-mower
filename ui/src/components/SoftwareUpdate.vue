@@ -1,4 +1,6 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { softwareUpdateMessage } from '@/utils/softwareUpdatePresentation'
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NCard, useDialog, useMessage } from 'naive-ui'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
@@ -50,9 +52,18 @@ const uploading = ref(false)
 const source = computed(() => info.value?.deployment === 'source')
 const running = computed(() => busy.value || job.value.status === 'running')
 const blocked = computed(() => !info.value || info.value.blockers.length > 0)
+function channelLabel(item) {
+  const key = `settings.software.${item.value}`
+  return i18n.global.te(key) ? i18n.global.t(key) : item.label
+}
+function channelDescription(item) {
+  const key = `settings.software.${item.value}Help`
+  return i18n.global.te(key) ? i18n.global.t(key) : item.description
+}
 const channelOptions = computed(() =>
   (info.value?.channels || []).map((item) => ({
     ...item,
+    label: channelLabel(item),
     disabled:
       item.value === 'dev' &&
       !source.value &&
@@ -131,12 +142,16 @@ function showLastCheck(result) {
 }
 
 function errorMessage(err) {
-  return err.response?.data?.message || err.message || '操作失败，请重试'
+  return (
+    err.response?.data?.message ||
+    err.message ||
+    i18n.global.t('settings.software.operationFailedPleaseTryAgain')
+  )
 }
 
 function selectSoftwarePackage(file) {
   if (running.value) {
-    error.value = '正在更新，请等待当前任务完成'
+    error.value = i18n.global.t('settings.software.anUpdateIsInProgressWaitFor')
     return
   }
   packageFiles.value = [{ id: 'release-upload', name: file.name, status: 'pending', file }]
@@ -441,18 +456,30 @@ onUnmounted(() => {
     :is="compact ? 'div' : NCard"
     :id="compact ? undefined : 'software-update'"
     ref="card"
-    :title="compact ? undefined : '软件更新'"
+    :title="compact ? undefined : i18n.global.t('settings.software.softwareUpdates')"
     class="update-card"
   >
     <UpdatePreview v-if="compact" v-bind="preview" />
     <div v-if="!compact" class="update-overview">
       <div class="update-installed">
-        <span class="update-caption" data-settings-label="当前版本">当前版本</span>
-        <strong class="update-version">{{ info?.version || '正在读取…' }}</strong>
-        <span v-if="info" class="update-caption">{{ source ? '源码部署' : 'Release 独立包' }}</span>
+        <span
+          class="update-caption"
+          :data-settings-label="i18n.global.t('settings.software.currentVersion')"
+          >{{ i18n.global.t('settings.software.currentVersion') }}</span
+        >
+        <strong class="update-version">{{
+          info?.version || i18n.global.t('settings.software.loading')
+        }}</strong>
+        <span v-if="info" class="update-caption">{{
+          source
+            ? i18n.global.t('settings.software.sourceDeployment')
+            : i18n.global.t('settings.software.standaloneRelease')
+        }}</span>
       </div>
       <div class="update-actions">
-        <n-button :loading="checking" :disabled="running" @click="checkUpdate"> 检查更新 </n-button>
+        <n-button :loading="checking" :disabled="running" @click="checkUpdate">
+          {{ i18n.global.t('settings.software.checkForUpdates') }}
+        </n-button>
         <n-button
           v-if="checked?.available"
           type="primary"
@@ -460,27 +487,49 @@ onUnmounted(() => {
           :loading="busy"
           @click="requestInstall(false)"
         >
-          下载并安装
+          {{ i18n.global.t('settings.software.downloadInstall') }}
         </n-button>
       </div>
     </div>
-    <div v-if="!compact" class="update-status" role="status" data-settings-label="最新版本">
-      <template v-if="checking">正在检查所选渠道的最新版本…</template>
+    <div
+      v-if="!compact"
+      class="update-status"
+      role="status"
+      :data-settings-label="i18n.global.t('settings.software.latestVersion')"
+    >
+      <template v-if="checking">{{
+        i18n.global.t('settings.software.checkingTheLatestVersionInTheSelected')
+      }}</template>
       <template v-else-if="checked">
         <n-tag v-if="checked.available" size="small" :bordered="false" type="warning">
-          可更新
+          {{ i18n.global.t('settings.software.updateAvailable') }}
         </n-tag>
-        <n-tag v-else size="small" :bordered="false" type="success">已与渠道一致</n-tag>
+        <n-tag v-else size="small" :bordered="false" type="success">{{
+          i18n.global.t('settings.software.matchesSelectedChannel')
+        }}</n-tag>
         <span v-if="checked.version"
-          >最新版本 <span class="update-version-value">{{ checked.version }}</span></span
+          >{{ i18n.global.t('settings.software.latestVersion') }}
+          <span class="update-version-value">{{ checked.version }}</span></span
         >
         <span v-if="checked.message" class="update-caption">{{ checked.message }}</span>
       </template>
-      <span v-else class="update-caption">检查更新以获取所选渠道的最新版本。</span>
+      <span v-else class="update-caption">{{
+        i18n.global.t('settings.software.checkForUpdatesToFindTheLatest')
+      }}</span>
     </div>
 
-    <n-alert v-if="error" type="error" title="操作未完成" role="alert">{{ error }}</n-alert>
-    <n-alert v-if="info?.blockers.length" type="warning" title="当前安装需要先处理">
+    <n-alert
+      v-if="error"
+      type="error"
+      :title="i18n.global.t('settings.software.operationIncomplete')"
+      role="alert"
+      >{{ error }}</n-alert
+    >
+    <n-alert
+      v-if="info?.blockers.length"
+      type="warning"
+      :title="i18n.global.t('settings.software.thisInstallationNeedsAttention')"
+    >
       <p v-for="message in info.blockers" :key="message">{{ message }}</p>
     </n-alert>
 
@@ -501,16 +550,24 @@ onUnmounted(() => {
                 : 'default'
         "
       />
-      <p v-if="showProgress">{{ job.message }}</p>
+      <p v-if="showProgress">{{ softwareUpdateMessage(job.message) }}</p>
       <p v-if="showProgress && job.current" class="update-caption">
-        已下载 {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
+        {{ i18n.global.t('settings.software.downloaded') }}
+        {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
           / {{ (job.total / 1048576).toFixed(1) }} MiB</span
         >
       </p>
-      <p v-if="disconnected">更新服务正在交接，稍后自动重试。</p>
+      <p v-if="disconnected">
+        {{ i18n.global.t('settings.software.theUpdateServiceIsHandingOverReconnecting') }}
+      </p>
       <div v-if="showProgress && !compact" class="update-actions">
-        <n-button size="small" tag="a" :href="progressUrl" target="_blank" rel="noopener noreferrer"
-          >独立更新进度</n-button
+        <n-button
+          size="small"
+          tag="a"
+          :href="progressUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          >{{ i18n.global.t('settings.software.openUpdateProgress') }}</n-button
         >
         <n-button
           v-if="job.status === 'running'"
@@ -518,12 +575,14 @@ onUnmounted(() => {
           :disabled="!job.cancellable || cancelling"
           :loading="cancelling"
           @click="cancelUpdate"
-          >取消更新</n-button
+          >{{ i18n.global.t('settings.software.cancelUpdate') }}</n-button
         >
       </div>
       <n-collapse v-if="!compact && showProgress && (job.log || job.log_path)">
-        <n-collapse-item title="安装日志" name="log">
-          <p v-if="job.log_path" class="update-caption">日志：{{ job.log_path }}</p>
+        <n-collapse-item :title="i18n.global.t('settings.software.installationLog')" name="log">
+          <p v-if="job.log_path" class="update-caption">
+            {{ i18n.global.t('settings.software.log') }}{{ job.log_path }}
+          </p>
           <pre v-if="job.log" class="update-notes">{{ job.log }}</pre>
         </n-collapse-item>
       </n-collapse>
@@ -538,9 +597,9 @@ onUnmounted(() => {
       <n-form-item class="update-channel">
         <template #label>
           <span class="settings-row-copy">
-            <span>更新渠道</span>
+            <span>{{ i18n.global.t('settings.software.updateChannel') }}</span>
             <span v-if="selectedChannel" class="settings-row-description">{{
-              selectedChannel.description
+              channelDescription(selectedChannel)
             }}</span>
           </span>
         </template>
@@ -550,57 +609,63 @@ onUnmounted(() => {
           size="small"
           :options="channelOptions"
           :disabled="running || checking || !info"
-          :input-props="{ 'aria-label': '更新渠道' }"
+          :input-props="{ 'aria-label': i18n.global.t('settings.software.updateChannel') }"
           @update:value="saveSettings"
         />
       </n-form-item>
       <n-form-item>
         <template #label>
           <span class="settings-row-copy">
-            <span>自动检查更新</span>
-            <span class="settings-row-description">打开 Mower 时检查所选渠道的软件更新</span>
+            <span>{{ i18n.global.t('settings.software.automaticallyCheckForUpdates') }}</span>
+            <span class="settings-row-description">{{
+              i18n.global.t('settings.software.checkTheSelectedSoftwareChannelWhenMower')
+            }}</span>
           </span>
         </template>
         <n-switch
           :value="autoCheck"
           :disabled="!info || running"
-          aria-label="自动检查更新"
+          :aria-label="i18n.global.t('settings.software.automaticallyCheckForUpdates')"
           @update:value="setAutoCheck"
         />
       </n-form-item>
       <n-form-item v-if="info?.capabilities?.auto_update !== false">
         <template #label>
           <span class="settings-row-copy">
-            <span>自动更新</span>
-            <span class="settings-row-description">自动安装所选渠道的不同版本，并重启全部实例</span>
+            <span>{{ i18n.global.t('settings.software.automaticallyUpdate') }}</span>
+            <span class="settings-row-description">{{
+              i18n.global.t('settings.software.installADifferentVersionFromTheSelected')
+            }}</span>
           </span>
         </template>
         <n-switch
           :value="autoUpdate"
           :disabled="!info || running"
-          aria-label="自动更新"
+          :aria-label="i18n.global.t('settings.software.automaticallyUpdate')"
           @update:value="setAutoUpdate"
         />
       </n-form-item>
       <n-form-item v-if="info?.capabilities?.silent_restart !== false">
         <template #label>
           <span class="settings-row-copy">
-            <span>更新后后台静默重启</span>
+            <span>{{ i18n.global.t('settings.software.restartSilentlyAfterUpdates') }}</span>
             <span class="settings-row-description">{{
-              background ? '不打开窗口，在后台运行' : '重启后正常打开窗口'
+              background
+                ? i18n.global.t('settings.software.keepRunningInTheBackgroundWithoutOpening')
+                : i18n.global.t('settings.software.openTheWindowNormallyAfterRestarting')
             }}</span>
           </span>
         </template>
         <n-switch
           v-model:value="background"
           :disabled="running || !info"
-          aria-label="更新后后台静默重启"
+          :aria-label="i18n.global.t('settings.software.restartSilentlyAfterUpdates')"
           @update:value="saveSettings"
         />
       </n-form-item>
     </n-form>
     <p v-if="!compact && info?.capabilities?.silent_restart !== false" class="update-footnote">
-      软件更新会重启同一安装目录下的全部运行实例；原本运行中的实例保留已保存的心情、位置，以及跑单、专精换人等重要任务和未完成的补偿，按当前版本和排班重新生成普通任务；已停止的实例保持停止。配置、专精计划和数据库记录保留。在线更新和手动安装均使用上方的重启方式。
+      {{ i18n.global.t('settings.software.softwareUpdatesRestartAllRunningInstancesIn') }}
     </p>
 
     <n-collapse
@@ -609,10 +674,13 @@ onUnmounted(() => {
       :expanded-names="expandedDetails"
       @update:expanded-names="expandedDetails = $event"
     >
-      <n-collapse-item title="更新渠道与发布说明" name="channels">
+      <n-collapse-item
+        :title="i18n.global.t('settings.software.updateChannelsReleaseNotes')"
+        name="channels"
+      >
         <p v-for="item in info?.channels || []" :key="item.value">
-          <strong>{{ item.label }}</strong
-          >：{{ item.description }}
+          <strong>{{ channelLabel(item) }}</strong
+          >: {{ channelDescription(item) }}
         </p>
         <p>
           <a
@@ -623,7 +691,7 @@ onUnmounted(() => {
             "
             target="_blank"
             rel="noopener noreferrer"
-            >查看发布记录</a
+            >{{ i18n.global.t('settings.software.viewReleases') }}</a
           >
         </p>
         <pre v-if="checked?.notes" class="update-notes">{{ checked.notes }}</pre>
@@ -631,9 +699,9 @@ onUnmounted(() => {
       <n-collapse-item
         v-if="!source"
         id="software-update-manual"
-        title="从本地安装包更新"
+        :title="i18n.global.t('settings.software.updateFromALocalPackage')"
         name="manual"
-        data-settings-label="从本地安装包更新"
+        :data-settings-label="i18n.global.t('settings.software.updateFromALocalPackage')"
       >
         <div v-if="info" class="update-manual">
           <n-upload
@@ -647,16 +715,16 @@ onUnmounted(() => {
                 {{
                   info.manual_label ||
                   (info.manual_ota_supported
-                    ? '点击或拖入 Release 安装包或 OTA 差异包'
-                    : '点击或拖入 Release 安装包')
+                    ? i18n.global.t('settings.software.clickOrDropAReleasePackageOr')
+                    : i18n.global.t('settings.software.clickOrDropAReleasePackage'))
                 }}
               </div>
               <p class="update-caption">
                 {{
                   info.manual_hint ||
                   (info.manual_ota_supported
-                    ? 'OTA 包须从当前版本出发；读取包内版本信息，文件名可任意修改'
-                    : '读取包内版本信息，文件名可任意修改')
+                    ? i18n.global.t('settings.software.theOtaPatchMustStartFromThe')
+                    : i18n.global.t('settings.software.versionDetailsAreReadFromThePackage'))
                 }}
               </p>
             </n-upload-dragger>
@@ -668,7 +736,9 @@ onUnmounted(() => {
               processing
             />
             <span class="update-caption">{{
-              uploadPercent < 100 ? '正在上传安装包' : '正在读取包内版本信息'
+              uploadPercent < 100
+                ? i18n.global.t('settings.software.uploadingPackage')
+                : i18n.global.t('settings.software.readingPackageVersion')
             }}</span>
           </template>
           <n-button
@@ -678,55 +748,65 @@ onUnmounted(() => {
             :disabled="blocked || running"
             :loading="busy"
             @click="requestInstall(true)"
-            >{{ info.install_label || '安装并重启' }}</n-button
+            >{{ info.install_label || i18n.global.t('settings.software.installRestart') }}</n-button
           >
           <p v-if="info.platform === 'darwin'" class="update-caption">
-            若 macOS 拦截更新后启动，请在“隐私与安全性”中允许打开。
+            {{ i18n.global.t('settings.software.ifMacosBlocksStartupAfterAnUpdate') }}
           </p>
         </div>
       </n-collapse-item>
       <n-collapse-item
         v-if="info?.rollback_supported"
-        title="回退到旧版本"
+        :title="i18n.global.t('settings.software.rollBackToAnEarlierVersion')"
         name="rollback"
-        data-settings-label="版本回退"
+        :data-settings-label="i18n.global.t('settings.software.versionRollback')"
       >
-        <p class="update-caption">可选择当前版本之前同渠道最近 3 个兼容的 Release；回退需确认。</p>
+        <p class="update-caption">
+          {{ i18n.global.t('settings.software.chooseFromTheThreeMostRecentCompatible') }}
+        </p>
         <div class="update-rollback">
           <n-button
             size="small"
             :loading="rollbackLoading"
             :disabled="running || checking"
             @click="loadRollbackOptions"
-            >查看可回退版本</n-button
+            >{{ i18n.global.t('settings.software.findRollbackVersions') }}</n-button
           >
           <n-select
             v-model:value="rollbackVersion"
             :consistent-menu-width="false"
             size="small"
-            placeholder="选择旧版本"
+            :placeholder="i18n.global.t('settings.software.selectAnEarlierVersion')"
             :options="rollbackOptions"
             :disabled="running || rollbackLoading || !rollbackOptions.length"
-            :input-props="{ 'aria-label': '回退目标版本' }"
+            :input-props="{
+              'aria-label': i18n.global.t('settings.software.rollbackTargetVersion')
+            }"
           />
           <n-button
             size="small"
             type="warning"
             :disabled="blocked || running || rollbackLoading || !rollbackVersion"
             @click="requestRollback"
-            >回退并安装</n-button
+            >{{ i18n.global.t('settings.software.rollBackInstall') }}</n-button
           >
         </div>
       </n-collapse-item>
-      <n-collapse-item v-if="source" title="强制更新" name="force">
-        <p class="update-caption">强制更新会覆盖本地源码改动；请先检查更新，再确认目标版本。</p>
+      <n-collapse-item
+        v-if="source"
+        :title="i18n.global.t('settings.software.forceUpdate')"
+        name="force"
+      >
+        <p class="update-caption">
+          {{ i18n.global.t('settings.software.aForcedUpdateOverwritesLocalSourceChanges') }}
+        </p>
         <n-button
           size="small"
           type="warning"
           :disabled="!info?.force_supported || running || checking || !checked"
           :loading="busy"
           @click="requestForceUpdate"
-          >强制更新</n-button
+          >{{ i18n.global.t('settings.software.forceUpdate') }}</n-button
         >
       </n-collapse-item>
     </n-collapse>

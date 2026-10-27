@@ -50,11 +50,13 @@ class GuiAppearanceTests(unittest.TestCase):
             {
                 "software_version_display": "version",
                 "software_version_language": "en",
+                "ui_language": "zh-CN",
                 "task_settings_layout": "checklist",
                 "watermark_visible": True,
             },
         )
         self.assertEqual(gui.load_software_version_display(), "version")
+        self.assertEqual(gui.load_ui_language(), "zh-CN")
         self.assertIs(gui.load_watermark_visible(), True)
         self.assertFalse(self.path.parent.exists())
 
@@ -69,6 +71,7 @@ class GuiAppearanceTests(unittest.TestCase):
                     {
                         **response.json,
                         "software_version_language": "en",
+                        "ui_language": "zh-CN",
                         "task_settings_layout": "checklist",
                         "watermark_visible": True,
                     },
@@ -88,6 +91,7 @@ class GuiAppearanceTests(unittest.TestCase):
                     {
                         "software_version_display": "version",
                         "software_version_language": "en",
+                        "ui_language": "zh-CN",
                         "task_settings_layout": "checklist",
                         "watermark_visible": True,
                     },
@@ -301,6 +305,7 @@ class GuiAppearanceTests(unittest.TestCase):
             {
                 **response.json,
                 "software_version_language": "en",
+                "ui_language": "zh-CN",
                 "watermark_visible": True,
             },
         )
@@ -338,6 +343,111 @@ class GuiAppearanceTests(unittest.TestCase):
                 before = self.path.read_bytes()
                 self.assertEqual(self.read().json["software_version_language"], "en")
                 self.assertEqual(self.path.read_bytes(), before)
+
+    def test_ui_language_round_trips_independently_of_other_gui_preferences(self):
+        gui.save_appearance(
+            {
+                "software_version_display": "channel",
+                "software_version_language": "zh",
+                "task_settings_layout": "waterfall",
+                "watermark_visible": True,
+            }
+        )
+        gui.save_window_mode("maximized")
+        gui._update_gui_data(private_setting={"theme": "custom"})
+        original = gui.read_gui_data()
+        for value in ("en-US", "ja-JP", "zh-TW", "zh-CN", "system"):
+            with self.subTest(value=value):
+                response = self.client.put(
+                    "/gui/appearance",
+                    json={"ui_language": value},
+                    headers=self.headers,
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json, {"ui_language": value})
+                reloaded = self.app.test_client().get(
+                    "/gui/appearance", headers=self.headers
+                )
+                self.assertEqual(reloaded.json["ui_language"], value)
+                self.assertEqual(
+                    gui.read_gui_data(), {**original, "ui_language": value}
+                )
+        gui.save_appearance({"ui_language": "en-US"})
+        self.save("version")
+        gui.save_window_mode("normal")
+        self.assertEqual(self.read().json["ui_language"], "en-US")
+
+    def test_invalid_saved_ui_languages_default_without_rewriting_the_file(self):
+        for value in (None, True, 1, [], {}, "en", "zh", "en-us", "fr-FR"):
+            with self.subTest(value=value):
+                gui._update_gui_data(ui_language=value)
+                before = self.path.read_bytes()
+                self.assertEqual(self.read().json["ui_language"], "zh-CN")
+                self.assertEqual(self.path.read_bytes(), before)
+
+    def test_invalid_ui_language_rejects_the_entire_update_without_writing(self):
+        gui.save_appearance(
+            {"ui_language": "en-US", "software_version_display": "channel"}
+        )
+        before = self.path.read_bytes()
+        for value in (None, False, 0, [], {}, "", "en", "EN-US", " en-US ", "fr-FR"):
+            with self.subTest(value=value):
+                payload = {"ui_language": value, "software_version_display": "version"}
+                with patch.object(gui, "update_gui_data") as write:
+                    response = self.client.put(
+                        "/gui/appearance", json=payload, headers=self.headers
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    write.assert_not_called()
+                    with self.assertRaises(ValueError):
+                        gui.save_appearance(payload)
+                    write.assert_not_called()
+                self.assertEqual(self.path.read_bytes(), before)
+
+    def test_ui_language_routes_require_token_before_parsing_or_accessing_state(self):
+        for method in ("GET", "HEAD", "PUT"):
+            for headers in ({}, {"token": "another-instance"}):
+                with (
+                    self.subTest(method=method, headers=headers),
+                    patch("arknights_mower.views.gui._request_json") as parse,
+                    patch.object(gui, "read_gui_data") as read,
+                    patch.object(gui, "save_appearance") as save,
+                ):
+                    response = self.client.open(
+                        "/gui/appearance",
+                        method=method,
+                        json={"ui_language": "system"},
+                        headers=headers,
+                    )
+                    self.assertEqual(response.status_code, 403)
+                    parse.assert_not_called()
+                    read.assert_not_called()
+                    save.assert_not_called()
+        self.assertFalse(self.path.parent.exists())
+        self.assertEqual(
+            self.client.head("/gui/appearance", headers=self.headers).status_code, 200
+        )
+
+    def test_ui_language_storage_failure_preserves_saved_choice_and_allows_retry(self):
+        gui.save_appearance({"ui_language": "zh-CN"})
+        before = self.path.read_bytes()
+        for operation in ("atomic_write", "_gui_file_lock"):
+            with (
+                self.subTest(operation=operation),
+                patch.object(gui, operation, side_effect=OSError("unavailable")),
+            ):
+                response = self.client.put(
+                    "/gui/appearance",
+                    json={"ui_language": "en-US"},
+                    headers=self.headers,
+                )
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(self.path.read_bytes(), before)
+        response = self.client.put(
+            "/gui/appearance", json={"ui_language": "en-US"}, headers=self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.read().json["ui_language"], "en-US")
 
     def test_invalid_version_language_rejects_the_entire_appearance_update(self):
         gui.save_appearance(

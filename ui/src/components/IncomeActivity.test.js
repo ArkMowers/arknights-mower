@@ -1,4 +1,5 @@
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { i18n } from '@/i18n'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import IncomeActivity from './IncomeActivity.vue'
@@ -13,7 +14,7 @@ const activity = () => ({
   findings: [
     {
       code: 'mower-task-exception',
-      message: '副表：替补干员 斯卡蒂 必须为同一非空组内的其他主力或未在岗的替补。'
+      message: '副表 救急：替补干员 斯卡蒂 必须为同一非空组内的其他主力或未在岗的替补。'
     }
   ],
   task: { label: '下班', metadata: '公招', source: 'queued', dueHours: 12, rooms: ['room_1_2'] },
@@ -31,6 +32,24 @@ const activity = () => ({
 })
 const render = (value) =>
   renderToString(createSSRApp({ render: () => h(IncomeActivity, { activity: value }) }))
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
+it('translates observations while retaining source records and user names', async () => {
+  i18n.global.locale.value = 'en-US'
+  const source = activity()
+  const original = JSON.stringify(source)
+  const html = await render(source)
+  expect(html).toContain('Next pending task: Shift off')
+  expect(html).toContain('Scheduled for T+12 h')
+  expect(html).toContain('Morale 16.2 / 24')
+  expect(html).toContain('Skadi')
+  expect(html).toContain('深海')
+  expect(html).toContain('Calculation is progressing slowly.')
+  expect(html).toContain('Backup 救急: Replacement Skadi')
+  expect(html).toContain('Backup switch: 鸿雪下班: 2 times')
+  expect(JSON.stringify(source)).toBe(original)
+})
 it('renders actual findings, task labels, operators and events in the live and historical observation view', async () => {
   const html = await render(activity())
   expect(html).toContain('替补干员 斯卡蒂')

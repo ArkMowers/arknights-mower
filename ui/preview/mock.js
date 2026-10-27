@@ -166,6 +166,9 @@ export function createPreviewData(config) {
     status: 'running',
     baseReport: previewBaseReport(date),
     incomeSettings: {
+      source: '离线示例估值',
+      prices: { 3003: 1, 4001: 0.001 },
+      imported_at: null,
       base_algorithm: 2,
       base_algorithm_saved: true,
       ratios: { experience: 0.9568, gold: 0.76544, order: 0.23456, efficiency: 1 }
@@ -175,6 +178,7 @@ export function createPreviewData(config) {
     sidebar: null,
     depotPreferences: null,
     appearance: {
+      ui_language: 'zh-CN',
       software_version_display: 'version',
       software_version_language: 'en',
       watermark_visible: true,
@@ -533,6 +537,39 @@ export function createPreviewAdapter(data, requests = []) {
       '/gui/sidebar': () => ({ sidebar: clone(data.sidebar) }),
       '/gui/depot': () => ({ depot: clone(data.depotPreferences) }),
       '/gui/appearance': () => clone(data.appearance),
+      '/basement-skill/operators': () => ({
+        has_data: true,
+        operators: [
+          {
+            name: '能天使',
+            owned: true,
+            phase: 2,
+            level: 60,
+            skills: [
+              { skill_key: 0, skill_level: 0, status: 'replaced' },
+              { skill_key: 0, skill_level: 1, status: 'active' }
+            ]
+          }
+        ]
+      }),
+      '/depot/readdepot': () => ({
+        depot: [
+          {
+            A常用资源: {
+              龙门币: { number: 480000, sort: 1, icon: '4001' },
+              赤金: { number: 380, sort: 2, icon: '3003' }
+            },
+            E三星材料: {
+              固源岩组: { number: 86, sort: 3, icon: '30013' },
+              全新装置: { number: 23, sort: 4, icon: '30063' }
+            }
+          },
+          '',
+          '2026-10-27 08:00:00'
+        ],
+        cultivate_ok: true
+      }),
+      '/depot/history': () => ({ snapshots: [] }),
       '/db-admin/stats': () => ({ log: 64, task: 5 }),
       '/screenshot/latest': () => new Blob([screenshot], { type: 'image/svg+xml' })
     }
@@ -629,10 +666,11 @@ export function createPreviewAdapter(data, requests = []) {
       }
       result = { depot: clone(data.depotPreferences) }
     } else if (method === 'PUT' && path === '/report/recycling_settings') {
-      data.incomeSettings = { ...body, base_algorithm_saved: true }
+      data.incomeSettings = { ...data.incomeSettings, ...body, base_algorithm_saved: true }
       result = clone(data.incomeSettings)
     } else if (method === 'PUT' && path === '/gui/appearance') {
       const choices = {
+        ui_language: ['zh-CN', 'en-US', 'ja-JP', 'zh-TW', 'system'],
         software_version_display: ['version', 'channel'],
         software_version_language: ['zh', 'en'],
         watermark_visible: [true, false],

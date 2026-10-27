@@ -6,7 +6,7 @@
       'app-menu-bar--dark': theme === 'dark',
       'app-menu-bar--brand': mode === 'brand'
     }"
-    aria-label="连接、档案、视图和帮助"
+    :aria-label="t('menus.navigation')"
     @mousedown.stop
     @dblclick.stop
   >
@@ -27,7 +27,7 @@
         type="button"
         class="app-menu-bar__brand-trigger"
         :class="{ 'is-open': openMenu === 'brand' }"
-        aria-label="Mower 菜单"
+        :aria-label="t('menus.mowerMenu')"
         aria-haspopup="menu"
         :aria-expanded="active && openMenu === 'brand'"
         :aria-controls="`${menuId}-brand`"
@@ -81,6 +81,9 @@
 <script setup>
 import { NDropdown } from 'naive-ui'
 import { computed, h, ref, useId, watch } from 'vue'
+import { i18n, getInterfaceLanguageOptions } from '@/i18n'
+
+const { t } = i18n.global
 
 const titlebarDropdownTheme = {
   borderRadius: '10px',
@@ -92,7 +95,7 @@ const titlebarDropdownTheme = {
 const props = defineProps({
   active: { type: Boolean, default: true },
   mode: { type: String, default: 'bar', validator: (value) => ['bar', 'brand'].includes(value) },
-  instanceName: { type: String, default: '默认实例' },
+  instanceName: { type: String, default: '' },
   theme: { type: String, default: 'light' },
   mowerPort: { type: String, default: '' },
   emulatorName: { type: String, default: '' },
@@ -102,7 +105,9 @@ const props = defineProps({
   profileState: { type: Object, default: null },
   profileWriteDisabled: { type: Boolean, default: true },
   profileReadDisabled: { type: Boolean, default: true },
-  sidebarVisible: { type: Boolean, default: true }
+  sidebarVisible: { type: Boolean, default: true },
+  interfaceLanguage: { type: String, default: 'zh-CN' },
+  languageDisabled: { type: Boolean, default: false }
 })
 const emit = defineEmits(['connection-action', 'profile-action', 'view-action', 'help-action'])
 
@@ -113,31 +118,35 @@ const activeBrandMenu = ref(null)
 const menus = computed(() => [
   {
     key: 'connection',
-    label: '连接',
+    label: t('menus.connection'),
     options: [
       currentOption(
-        props.emulatorName || '尚未选择模拟器',
-        props.adbPort ? `ADB 端口 ${props.adbPort}` : '',
+        props.emulatorName || t('menus.noEmulator'),
+        props.adbPort ? t('menus.adbPort', { port: props.adbPort }) : '',
         !props.emulatorName
       ),
       { type: 'divider', key: 'connection-divider' },
       ...(props.managerOwnedDevice
-        ? [{ label: '连接与启动由多开管理器配置', key: 'managed-connection', disabled: true }]
+        ? [{ label: t('menus.managedConnection'), key: 'managed-connection', disabled: true }]
         : [
-            { label: '选择模拟器…', key: 'select-emulator' },
-            { label: '测试连接', key: 'test-connection', disabled: props.connectionTestDisabled },
-            { label: '连接设置…', key: 'connection-settings' }
+            { label: t('menus.selectEmulator'), key: 'select-emulator' },
+            {
+              label: t('menus.testConnection'),
+              key: 'test-connection',
+              disabled: props.connectionTestDisabled
+            },
+            { label: t('menus.connectionSettings'), key: 'connection-settings' }
           ])
     ]
   },
   {
     key: 'profile',
-    label: '档案',
+    label: t('menus.profiles'),
     options: [
       ...(props.profileState?.profiles || []).map((profile) => ({
         ...currentOption(
           profile.name,
-          profile.id === props.profileState.active_id ? '当前档案' : ''
+          profile.id === props.profileState.active_id ? t('menus.currentProfile') : ''
         ),
         key: `profile-${profile.id}`,
         profileId: profile.id,
@@ -146,38 +155,60 @@ const menus = computed(() => [
         icon: profile.id === props.profileState.active_id ? currentOption('').icon : undefined
       })),
       ...(!props.profileState
-        ? [{ key: 'profiles-unavailable', label: '档案列表尚未载入', disabled: true }]
+        ? [{ key: 'profiles-unavailable', label: t('menus.profilesUnavailable'), disabled: true }]
         : []),
       { type: 'divider', key: 'profile-divider' },
-      { label: '新建档案…', key: 'add-profile', disabled: props.profileWriteDisabled },
-      { label: '复制当前档案…', key: 'copy-profile', disabled: props.profileWriteDisabled },
-      { label: '重命名档案…', key: 'rename-profile', disabled: props.profileWriteDisabled },
+      { label: t('menus.addProfile'), key: 'add-profile', disabled: props.profileWriteDisabled },
+      { label: t('menus.copyProfile'), key: 'copy-profile', disabled: props.profileWriteDisabled },
+      {
+        label: t('menus.renameProfile'),
+        key: 'rename-profile',
+        disabled: props.profileWriteDisabled
+      },
       { type: 'divider', key: 'profile-transfer-divider' },
-      { label: '导入档案…', key: 'import-profile', disabled: props.profileWriteDisabled },
-      { label: '导出当前档案…', key: 'export-profile', disabled: props.profileReadDisabled },
+      {
+        label: t('menus.importProfile'),
+        key: 'import-profile',
+        disabled: props.profileWriteDisabled
+      },
+      {
+        label: t('menus.exportProfile'),
+        key: 'export-profile',
+        disabled: props.profileReadDisabled
+      },
       { type: 'divider', key: 'profile-refresh-divider' },
-      { label: '刷新档案列表', key: 'reload-profiles' }
+      { label: t('menus.reloadProfiles'), key: 'reload-profiles' }
     ]
   },
   {
     key: 'view',
-    label: '视图',
+    label: t('menus.view'),
     options: [
       {
-        label: props.sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
+        label: t(props.sidebarVisible ? 'menus.hideSidebar' : 'menus.showSidebar'),
         key: 'view-toggle-sidebar'
       },
-      { label: '编辑侧边栏', key: 'view-edit-sidebar' }
+      { label: t('menus.editSidebar'), key: 'view-edit-sidebar' },
+      { type: 'divider', key: 'view-language-divider' },
+      {
+        label: t('menus.interfaceLanguage'),
+        accessibleLabel: t('menus.interfaceLanguage'),
+        key: 'view-language',
+        disabled: props.languageDisabled,
+        children: getInterfaceLanguageOptions().map(({ value, label }) =>
+          languageOption(value, label)
+        )
+      }
     ]
   },
   {
     key: 'help',
-    label: '帮助',
+    label: t('menus.help'),
     options: [
-      { label: '反馈问题', key: 'help-feedback' },
-      { label: '文档', key: 'help-documentation' },
-      { label: '更新日志', key: 'help-changelog' },
-      { label: '关于', key: 'help-about' }
+      { label: t('menus.feedback'), key: 'help-feedback' },
+      { label: t('menus.documentation'), key: 'help-documentation' },
+      { label: t('menus.changelog'), key: 'help-changelog' },
+      { label: t('menus.about'), key: 'help-about' }
     ]
   }
 ])
@@ -187,7 +218,7 @@ const brandOptions = computed(() => [
     key: `brand-${menu.key}`,
     menuKey: menu.key,
     label: menu.label,
-    accessibleLabel: `${menu.label}菜单`,
+    accessibleLabel: t('menus.menuLabel', { label: menu.label }),
     children: menu.options.map((option) => brandOption(menu.key, option))
   })),
   { type: 'divider', key: 'brand-identity-divider' },
@@ -195,23 +226,43 @@ const brandOptions = computed(() => [
     type: 'render',
     key: 'brand-identity',
     render: () =>
-      h('div', { class: 'app-menu-bar__identity', role: 'note', 'aria-label': '当前实例和设备' }, [
-        h('div', { class: 'app-menu-bar__identity-name' }, props.instanceName || '默认实例'),
-        h('div', props.emulatorName || '未选择设备'),
-        (props.mowerPort || props.adbPort) &&
+      h(
+        'div',
+        { class: 'app-menu-bar__identity', role: 'note', 'aria-label': t('menus.currentIdentity') },
+        [
           h(
             'div',
-            { class: 'app-menu-bar__identity-ports' },
-            [
-              props.mowerPort && `服务端口 ${props.mowerPort}`,
-              props.adbPort && `ADB 端口 ${props.adbPort}`
-            ]
-              .filter(Boolean)
-              .join(' · ')
-          )
-      ])
+            { class: 'app-menu-bar__identity-name' },
+            props.instanceName || t('menus.defaultInstance')
+          ),
+          h('div', props.emulatorName || t('menus.noDevice')),
+          (props.mowerPort || props.adbPort) &&
+            h(
+              'div',
+              { class: 'app-menu-bar__identity-ports' },
+              [
+                props.mowerPort && t('menus.serverPort', { port: props.mowerPort }),
+                props.adbPort && t('menus.adbPort', { port: props.adbPort })
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            )
+        ]
+      )
   }
 ])
+
+function languageOption(language, label) {
+  const checked = props.interfaceLanguage === language
+  return {
+    key: `view-language-${language}`,
+    label,
+    language,
+    checked,
+    disabled: props.languageDisabled || checked,
+    icon: checked ? currentOption('').icon : undefined
+  }
+}
 
 function brandOption(menuKey, option) {
   return {
@@ -253,12 +304,13 @@ function dropdownMenuProps(menu, option) {
 function dropdownNodeProps(option) {
   const key = option.commandKey || option.key
   return {
-    role: key === 'current' || option.profileId ? 'menuitemradio' : 'menuitem',
-    'aria-checked': option.profileId
-      ? option.checked
-      : key === 'current'
-        ? !option.disabled
-        : undefined,
+    role: key === 'current' || option.profileId || option.language ? 'menuitemradio' : 'menuitem',
+    'aria-checked':
+      option.profileId || option.language
+        ? option.checked
+        : key === 'current'
+          ? !option.disabled
+          : undefined,
     'aria-disabled': Boolean(option.disabled),
     'aria-label': option.accessibleLabel,
     'aria-haspopup': option.children ? 'menu' : undefined,
@@ -352,6 +404,15 @@ function selectMenuItem(key, option) {
     return
   }
   if (option?.disabled) return
+  const languageActions = Object.fromEntries(
+    getInterfaceLanguageOptions().map(({ value }) => [`view-language-${value}`, value])
+  )
+  if (languageActions[key]) {
+    const language = languageActions[key]
+    if (!props.languageDisabled && language !== props.interfaceLanguage)
+      emit('view-action', `language:${language}`)
+    return
+  }
   const viewActions = {
     'view-toggle-sidebar': 'toggle-sidebar',
     'view-edit-sidebar': 'edit-sidebar'

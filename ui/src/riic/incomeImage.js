@@ -10,14 +10,18 @@ import {
 import { incomeInitialInventory } from './incomeCache'
 import { incomeOrderDistribution } from './incomeOrders'
 import { incomeAlgorithmLabel } from '@/utils/incomeSettings'
+import { i18n } from '@/i18n'
+import { incomeResourceLabel, incomeWeightLabel } from '@/i18n/income'
 
-const number = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+const { t, locale } = i18n.global
+
+const number = (value) => Number(value).toLocaleString(locale.value, { maximumFractionDigits: 2 })
 export function incomeReportLines(result, settings, plan, label) {
   const finite = settings.finiteInventory || result.inventoryMode === 'finite'
   const initialMood =
     result.initialConditions?.fiammettaMorale == null
-      ? '初始心情 24（受个人上限约束）'
-      : `菲亚梅塔初始心情 ${result.initialConditions.fiammettaMorale}；其他干员从个人心情上限开始（未设置时为 24）`
+      ? t('income.initialMorale')
+      : t('income.initialFiammettaMorale', { value: result.initialConditions.fiammettaMorale })
   const provenance = result.modelProvenance
   const target = incomeFacilities(plan).find((f) => f.roomId === settings.droneRoom)
   const levels = Object.values(incomeWorkspace(plan).mainPlan.facilities)
@@ -25,59 +29,115 @@ export function incomeReportLines(result, settings, plan, label) {
     .map((f) => `${f.roomId}=${f.level}`)
     .join('；')
   return [
-    `原图：${label}；二维码包含完整主副表和高级设置，可在 Mower「导入排班」中读取。`,
-    `预热 ${settings.warmupDays} 天，不计入收益；统计 ${number(result.observedHours / 24)} 天，共 ${settings.warmupDays + settings.sampleDays} 天；随机种子 ${settings.seed}。`,
-    `无人机：${target?.label ?? '不使用'}；${finite ? `有限库存：无外源收入，连续记账；${settings.allowGoldDebt ? '赤金可透支，其他材料缺料停产或暂停交付' : '缺料停产或暂停交付'}。` : '潜在产出：不受初始库存限制，不能视为可交付收入。'}`,
+    t('income.sourceImage', { label }),
+    t('income.sampleSummary', {
+      warmup: settings.warmupDays,
+      sample: number(result.observedHours / 24),
+      total: settings.warmupDays + settings.sampleDays,
+      seed: settings.seed
+    }),
+    t('income.droneInventorySummary', {
+      target: target?.label ?? t('plans.noDrones'),
+      inventory: finite
+        ? t('income.finiteInventorySummary', {
+            shortage: t(settings.allowGoldDebt ? 'plans.goldDebtHelp' : 'plans.shortageHelp')
+          })
+        : t('income.potentialInventorySummary')
+    }),
     ...(finite
       ? [
-          `初始库存（${settings.inventorySource === 'cache' ? '森空岛缓存，可手动补充修改' : '手动设定'}）：${
-            Object.entries(incomeInitialInventory(settings))
-              .map(([key, value]) => `${key}=${value}`)
-              .join('；') || '全部为 0'
-          }。初始数量不计入收益。`
+          t('income.initialInventorySummary', {
+            source: t(
+              settings.inventorySource === 'cache'
+                ? 'income.cachedInventorySource'
+                : 'plans.manualInventory'
+            ),
+            inventory:
+              Object.entries(incomeInitialInventory(settings))
+                .map(([key, value]) => `${incomeResourceLabel(key)}=${value}`)
+                .join('; ') || t('income.allZero')
+          })
         ]
       : []),
     ...(finite
       ? [
-          `赤金余额：初始 ${number(result.goldInventory.initial)}；统计开始 ${number(result.goldInventory.sampleOpening)}；期末 ${number(result.goldInventory.closing)}。负数表示赤金缺口，不代表实物库存。`
+          t('income.goldBalanceSummary', {
+            initial: number(result.goldInventory.initial),
+            opening: number(result.goldInventory.sampleOpening),
+            closing: number(result.goldInventory.closing)
+          })
         ]
       : []),
     ...(settings.operatorMode === 'cache' || (finite && settings.inventorySource === 'cache')
       ? [
-          `缓存库存同步时间：${settings.cacheObservedAt ? new Date(settings.cacheObservedAt * 1000).toLocaleString('zh-CN') : '缓存未提供时间'}；缓存不代表当前游戏即时状态。`
+          t('income.cacheDateSummary', {
+            date: settings.cacheObservedAt
+              ? new Date(settings.cacheObservedAt * 1000).toLocaleString(locale.value)
+              : t('income.noCacheDate')
+          })
         ]
       : []),
-    `干员：${settings.operatorMode === 'cache' ? '森空岛缓存的实际拥有和练度' : settings.operatorMode === 'custom' ? '按本次填写的拥有和练度' : '全部干员满配假设'}；${initialMood}；孑精零 ${settings.jayeElite0 ? '开启' : '关闭'}。`,
+    t('income.operatorAssumptions', {
+      source: t(
+        settings.operatorMode === 'cache'
+          ? 'income.cachedOperatorsSource'
+          : settings.operatorMode === 'custom'
+            ? 'income.manualOperatorsSource'
+            : 'income.maximumOperatorsSource'
+      ),
+      initialMorale: initialMood,
+      jaye: t(settings.jayeElite0 ? 'income.enabled' : 'income.disabled')
+    }),
     settings.masteryPlanPresent === undefined
-      ? '本次演算固定为无未完成训练计划且未在训练，不模拟训练进度或计划完成时刻。'
-      : `历史演算的未完成训练计划：${settings.masteryPlanPresent ? '有' : '无'}，整段演算保持此条件，不模拟训练完成。`,
-    '赤金等价龙门币为制造赤金 × 500 加特殊订单溢价，不扣除交付消耗的赤金；该项不是实际龙门币入账。',
-    `收益权重（${settings.weightMode === 'mower' ? incomeAlgorithmLabel(settings.mowerAlgorithm) : '本次自定义'}）：${Object.entries(
-      incomeWeights(settings)
-    )
-      .map(([key, value]) => `${key}=${value}`)
-      .join('；')}。加权产出不是龙门币结算额。`,
-    `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
+      ? t('income.noTrainingAssumption')
+      : t('income.historicalTrainingAssumption', {
+          present: t(settings.masteryPlanPresent ? 'income.present' : 'income.absent')
+        }),
+    t('income.goldEquivalentAssumption'),
+    t('income.weightAssumptions', {
+      source:
+        settings.weightMode === 'mower'
+          ? incomeAlgorithmLabel(settings.mowerAlgorithm)
+          : t('plans.customWeights'),
+      weights: Object.entries(incomeWeights(settings))
+        .map(([key, value]) => `${incomeWeightLabel(key)}=${value}`)
+        .join('; ')
+    }),
+    t('income.modelAssumptions'),
     provenance?.moodControlStrategyVersion
       ? provenance.moodControlStrategyVersion === 'ordinary-threshold-v1'
-        ? `轮班策略 ${provenance.moodControlStrategyVersion}；实时心情计算调控${provenance.predictiveMoodControl ? '开启' : '关闭'}。两种模式均模拟心情变化，按正常下班阈值轮休，不为避免替班断档而提前下班；普通救急召回须能坚持到对应主班回满。`
-        : `轮班策略 ${provenance.moodControlStrategyVersion}；实时心情计算调控${provenance.predictiveMoodControl ? '开启' : '关闭'}。两种模式均模拟心情变化。`
-      : '这份历史记录未保存轮班策略版本，重新演算后可比较当前策略。',
-    `本次设施等级（优先使用排班保存值，未设置时推断）：${levels}。`,
+        ? t('income.thresholdStrategyAssumption', {
+            version: provenance.moodControlStrategyVersion,
+            enabled: t(provenance.predictiveMoodControl ? 'income.enabled' : 'income.disabled')
+          })
+        : t('income.strategyAssumption', {
+            version: provenance.moodControlStrategyVersion,
+            enabled: t(provenance.predictiveMoodControl ? 'income.enabled' : 'income.disabled')
+          })
+      : t('income.noStrategyAssumption'),
+    t('income.facilityLevelsAssumption', { levels }),
     provenance
-      ? `计算器基线 ${provenance.calculatorBaseRevision}，选择性同步 ${provenance.calculatorSyncRevision}（含本地适配）；调度基线 Mower alpha ${provenance.mowerBaseReference}，本轮核对 ${provenance.mowerCheckedRevision}，后续本体逻辑不自动同步。`
-      : `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、赤金透支、制造成本观察、公招与线索观察适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
-    '公招刷新按办公室驻员、心情与已解锁技能计算联络产出；初始进度为零，预热进度延续但预热完成次数不计。假设及时使用刷新次数，不模拟存满 3 次停工，不计入加权收益。',
+      ? t('income.provenanceAssumption', {
+          base: provenance.calculatorBaseRevision,
+          sync: provenance.calculatorSyncRevision,
+          mowerBase: provenance.mowerBaseReference,
+          mowerChecked: provenance.mowerCheckedRevision
+        })
+      : t('income.legacyProvenanceAssumption', {
+          calculator: CALCULATOR_REVISION,
+          mower: MOWER_REFERENCE
+        }),
+    t('income.recruitmentAssumption'),
     ...(result.summary?.clueCount == null
-      ? ['这份历史记录未统计会客室线索，重新演算后可查看。']
+      ? [t('income.noClueAssumption')]
       : [
-          '会客室线索仅统计驻员搜集完成的个数，初始进度为零，预热进度延续但预热完成数不计；假设及时领取及清理库存，不模拟满库停工、每日赠送和好友赠送，不计算信用点或加权收益。',
+          t('income.clueAssumption'),
           result.clueExchangeMode === 'always-on'
-            ? '线索产量按全程开启交流计算，计入已解锁且非涣散驻员的交流加速技能；不模拟集齐线索或交流开关，调度侧 Party Time 仍为空。'
-            : '这份历史记录按线索交流关闭计算；重新演算后按全程开启交流计算线索产量。'
+            ? t('income.clueExchangeAssumption')
+            : t('income.legacyClueExchangeAssumption')
         ]),
-    '回收站仅统计产出次数，不推算随机材料，不增加材料库存，也不计材料收益价值。',
-    '这是离线模型估算，不是实测收益或实际排班可执行性的证明。图片导入不恢复本次计算参数和结果。'
+    t('income.recyclingAssumption'),
+    t('income.offlineAssumption')
   ]
 }
 
@@ -143,7 +203,7 @@ export async function renderIncomeImage(
       exportDetails,
       (text) => ctx.measureText(text).width / scale,
       516,
-      `${algorithmLines[0]} · ${number(days)} 天采样`
+      t('income.sampleAnnotation', { algorithm: algorithmLines[0], days: number(days) })
     )
     const orders = result.orderDistribution ?? incomeOrderDistribution(result.simulationReport)
     const annotationTop = Math.max(73 + weightLines.length * 14, orders?.other ? 100 : 87)
@@ -179,7 +239,7 @@ export async function renderIncomeImage(
       ctx.fillStyle = color
       ctx.fillText(text, x * scale, y * scale)
     }
-    write('日均加权收益', 28, 24, 13)
+    write(t('income.dailyWeightedIncome'), 28, 24, 13)
     const score = number(result.summary.totalScore82)
     let scoreSize = 38
     ctx.font = `bold ${scoreSize * scale}px sans-serif`
@@ -194,9 +254,16 @@ export async function renderIncomeImage(
 
     const stampColor = dark ? '#88cbb1' : '#35896c'
     const muted = dark ? '#a5b3ad' : '#687a70'
-    write('订单分布 · 原始档位', 302, 24, 12, muted)
+    write(t('income.orderDistribution'), 302, 24, 12, muted)
     ctx.textAlign = 'right'
-    write(orders ? `共 ${number(orders.total)} 单` : '暂无统计', 536, 24, 12, foreground, 'bold')
+    write(
+      orders ? t('income.totalOrders', { count: number(orders.total) }) : t('income.noStatistics'),
+      536,
+      24,
+      12,
+      foreground,
+      'bold'
+    )
     ctx.textAlign = 'center'
     if (orders) {
       ctx.fillStyle = dark ? '#1c2d30' : '#f1f5f3'
@@ -205,13 +272,16 @@ export async function renderIncomeImage(
       ctx.fill()
       orders.rows.forEach((row, index) => {
         const x = 338 + index * 82
-        write(`${row.gold} 赤金`, x, 47, 10, muted)
+        write(t('income.orderGold', { count: row.gold }), x, 47, 10, muted)
         write(number(row.count), x, 66, 17, foreground, 'bold')
         write(orders.total ? `${number(row.ratio * 100)}%` : '—', x, 81, 10, stampColor)
       })
       if (orders.other) {
         write(
-          `其他 ${number(orders.other)} 单 · ${number((orders.other / orders.total) * 100)}%`,
+          t('income.otherOrders', {
+            count: number(orders.other),
+            percent: number((orders.other / orders.total) * 100)
+          }),
           420,
           100,
           9,
@@ -219,11 +289,11 @@ export async function renderIncomeImage(
         )
       }
     } else {
-      write('该记录未保存订单统计', 420, 65, 11, muted)
+      write(t('income.noSavedOrders'), 420, 65, 11, muted)
     }
     ctx.textAlign = 'left'
 
-    write('日均产出', 570, 24, 12, muted)
+    write(t('income.dailyOutput'), 570, 24, 12, muted)
     const colors = {
       exp: ['#f7d833', '#172338'],
       lmd: ['#087ead', '#ffffff'],
@@ -286,7 +356,7 @@ export async function renderIncomeImage(
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 24 * scale, 24 * scale)
         }
-        const value = `${compactIncomeNumber(metric.daily)}${metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''}`
+        const value = `${compactIncomeNumber(metric.daily)}${metric.key === 'clue' ? t('income.itemUnit') : ['recycle', 'recruitment'].includes(metric.key) ? t('income.countUnit') : ''}`
         ctx.font = `${14 * scale}px sans-serif`
         ctx.fillStyle = color
         ctx.fillText(value, (x + 30) * scale, (y + 17) * scale, 89 * scale)
@@ -296,7 +366,7 @@ export async function renderIncomeImage(
     })
     return await new Promise((resolve, reject) =>
       canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error('收益图片生成失败'))),
+        (blob) => (blob ? resolve(blob) : reject(new Error(t('income.imageFailed')))),
         'image/jpeg',
         0.95
       )
@@ -314,8 +384,8 @@ export function incomeImageAnnotationLines(details, measure, maxWidth, prefix = 
   const remarks = text('remarks', 300)
   const paragraphs = [
     ...(prefix ? [prefix] : []),
-    ...(author ? [`作者：${author}`] : []),
-    ...(remarks ? [`备注：${remarks}`] : [])
+    ...(author ? [t('income.imageAuthor', { author })] : []),
+    ...(remarks ? [t('income.imageRemarks', { remarks })] : [])
   ].join('　')
   const lines = []
   if (!paragraphs) return lines
@@ -338,9 +408,13 @@ export function incomeImageAlgorithmLines(settings) {
   }
   const weights = incomeWeights(settings)
   return [
-    '自定义',
-    `经验 ${weights.exp} · 赤金 ${weights.gold} · 订单 ${weights.orders}`,
-    `源石碎片 ${weights.fragments} · 合成玉 ${weights.orundum}`
+    t('income.custom'),
+    t('income.imageWeights', {
+      experience: weights.exp,
+      gold: weights.gold,
+      orders: weights.orders
+    }),
+    t('income.imageFragmentWeights', { fragments: weights.fragments, orundum: weights.orundum })
   ]
 }
 export function compactIncomeNumber(value) {
@@ -350,15 +424,15 @@ export function compactIncomeNumber(value) {
 }
 export function incomeImageFilename(name, result) {
   const safe =
-    Array.from(name?.trim() || '排班', (character) =>
+    Array.from(name?.trim() || t('plans.planFallback'), (character) =>
       character.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(character) ? '_' : character
     )
       .join('')
       .replace(/[. ]+$/g, '')
-      .slice(0, 60) || '排班'
+      .slice(0, 60) || t('plans.planFallback')
   const score = Number(result.summary.totalScore82.toFixed(2))
   const days = Number((result.observedHours / 24).toFixed(2))
-  return `${safe}_日均收益${score}_${days}天.jpg`
+  return t('income.imageFilename', { name: safe, score, days })
 }
 export function downloadIncomeImage(blob, filename) {
   const url = URL.createObjectURL(blob)

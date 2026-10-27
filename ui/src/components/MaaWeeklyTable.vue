@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
@@ -7,6 +10,7 @@ import { normalizeSortablePreview } from '@/utils/sortablePreview'
 import { useConfigStore } from '@/stores/config'
 import {
   WEEKDAYS,
+  formatWeekday,
   buildTableStageOptions,
   createStageOption,
   getGameWeekdayIndex,
@@ -177,28 +181,28 @@ async function applyStageOrder() {
         filterable
         tag
         clearable
-        placeholder="输入关卡并回车，添加表格行"
+        :placeholder="t('tasks.addStageTableRow')"
         :options="sortableStageOptions"
         :on-create="createStageOption"
         @update:value="addStageRow"
       />
-      <span class="table-editor-hint">可拖动把手调整关卡顺序</span>
+      <span class="table-editor-hint">{{ t('tasks.dragStageOrder') }}</span>
     </div>
 
     <div class="task-table-wrap">
       <table class="task-table">
         <thead>
           <tr>
-            <th class="select-all-column">全选</th>
-            <th class="stage-column">关卡</th>
+            <th class="select-all-column">{{ t('tasks.selectAll') }}</th>
+            <th class="stage-column">{{ t('tasks.stage') }}</th>
             <th
               v-for="weekday in WEEKDAYS"
               :key="weekday"
               class="day-column"
               :class="{ 'today-header': isToday(weekday) }"
             >
-              {{ weekday.slice(1) }}
-              <span v-if="isToday(weekday)" class="today-dot" title="今天"></span>
+              {{ formatWeekday(weekday).replace(/^周/, '') }}
+              <span v-if="isToday(weekday)" class="today-dot" :title="t('tasks.today')"></span>
             </th>
           </tr>
         </thead>
@@ -227,7 +231,7 @@ async function applyStageOrder() {
                     selectedDayCount(option.value) > 0 &&
                     selectedDayCount(option.value) < selectableDays(option.value).length
                   "
-                  :aria-label="`全选 ${option.label}`"
+                  :aria-label="t('tasks.selectStageAllDays', { stage: option.label })"
                   @update:checked="toggleStageForAllDays(option.value)"
                 />
               </td>
@@ -236,8 +240,8 @@ async function applyStageOrder() {
                   <button
                     type="button"
                     class="stage-drag-handle"
-                    :aria-label="`拖动调整 ${option.label} 的优先级`"
-                    title="拖动调整上下顺序"
+                    :aria-label="t('tasks.reorderStagePriority', { stage: option.label })"
+                    :title="t('tasks.dragReorder')"
                   >
                     ⋮⋮
                   </button>
@@ -263,10 +267,18 @@ async function applyStageOrder() {
                   class="stage-cell-button"
                   :disabled="!canToggle(option.value, weekday)"
                   :aria-pressed="isSelected(option.value, weekday)"
-                  :aria-label="`${weekday}${isSelected(option.value, weekday) ? '取消' : '选择'}${option.label}`"
+                  :aria-label="
+                    t('tasks.weekdayStageAction', {
+                      weekday: formatWeekday(weekday),
+                      action: isSelected(option.value, weekday)
+                        ? t('tasks.cancel')
+                        : t('tasks.select'),
+                      stage: option.label
+                    })
+                  "
                   @click="toggleStage(option.value, weekday)"
                 >
-                  <span v-if="isSelected(option.value, weekday)">打</span>
+                  <span v-if="isSelected(option.value, weekday)">{{ t('tasks.runStage') }}</span>
                   <span v-else-if="isUnavailable(option.value, weekday)">—</span>
                 </button>
               </td>

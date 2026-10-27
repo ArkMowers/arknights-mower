@@ -3,6 +3,7 @@ import { createApp, effectScope, ref } from 'vue'
 import { createPinia } from 'pinia'
 import Email from './Email.vue'
 import { useConfigStore } from '@/stores/config'
+import { i18n } from '@/i18n'
 
 vi.mock('vue', async (original) => ({
   ...(await original()),
@@ -26,11 +27,42 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   scope.stop()
   store.$dispose()
 })
 
 describe('test email feedback', () => {
+  it('updates option labels without changing notification levels or mailbox values', () => {
+    expect(component.levels.value[0].label).toContain('基建任务')
+    expect(component.mailboxTypes.value[1].label).toBe('自定义邮箱')
+
+    i18n.global.locale.value = 'en-US'
+
+    expect(component.levels.value[0].label).toContain('Base tasks')
+    expect(component.levels.value.map(({ value }) => value)).toEqual(['INFO', 'WARNING', 'ERROR'])
+    expect(component.mailboxTypes.value).toEqual([
+      { label: 'QQ Mail', value: 'qq' },
+      { label: 'Custom email', value: 'custom' }
+    ])
+    component.mailboxType.value = 'custom'
+    expect(store.custom_smtp_server.enable).toBe(true)
+    component.mailboxType.value = 'qq'
+    expect(store.custom_smtp_server.enable).toBe(false)
+    expect(http.get).not.toHaveBeenCalled()
+  })
+
+  it('preserves the backend failure prefix and raw response in an English interface', async () => {
+    i18n.global.locale.value = 'en-US'
+    const failure = '邮件发送失败！\nSMTP authentication rejected'
+    http.get.mockResolvedValue({ data: failure })
+
+    await component.test_email()
+
+    expect(component.test_result.value).toBe(failure)
+    expect(component.test_error.value).toBe(true)
+  })
+
   it('keeps test sending available when ordinary email notifications are disabled', async () => {
     store.mail_enable = false
     http.get.mockResolvedValue({ data: '邮件发送成功！' })

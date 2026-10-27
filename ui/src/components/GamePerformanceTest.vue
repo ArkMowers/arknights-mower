@@ -1,4 +1,6 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { sameDeviceProfile } from '@/utils/deviceSettings'
@@ -9,7 +11,12 @@ const emit = defineEmits(['running'])
 const config = useConfigStore()
 const axios = inject('axios')
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/device/performance-test`
-const labels = { xhigh: '极高', high: '高', medium: '中', low: '低' }
+const labels = computed(() => ({
+  xhigh: t('devices.xhigh'),
+  high: t('devices.high'),
+  medium: t('devices.medium'),
+  low: t('devices.low')
+}))
 const job = ref({ status: 'idle' })
 const pending = ref(false)
 const error = ref('')
@@ -19,7 +26,7 @@ const recommendation = computed(() => {
   const result = job.value
   if (
     result.status !== 'passed' ||
-    !labels[result.recommended_mode] ||
+    !labels.value[result.recommended_mode] ||
     !result.device ||
     !config.device_profile ||
     !sameDeviceProfile(result.device, config.device_profile) ||
@@ -31,9 +38,13 @@ const recommendation = computed(() => {
 })
 const progress = computed(() => {
   const result = job.value
-  if (running.value && result.phase === 'cleanup') return '正在取消暂选并退出选人页…'
+  if (running.value && result.phase === 'cleanup') return t('devices.cleanup')
   if (running.value && result.mode) {
-    return `${labels[result.mode]}档 · 第 ${result.round}/3 次选人测试 · ${result.phase === 'preparing' ? '准备目标' : '连续滑动后选人及校验'}`
+    return t('devices.testProgress', {
+      mode: labels.value[result.mode],
+      round: result.round,
+      phase: result.phase === 'preparing' ? t('devices.preparing') : t('devices.testingSelection')
+    })
   }
   return result.message || ''
 })
@@ -70,7 +81,7 @@ async function readStatus() {
     if (!disposed && current === revision) job.value = response.data
   } catch (reason) {
     if (!disposed && current === revision)
-      error.value = reason.response?.data?.message || '读取性能测试状态失败'
+      error.value = reason.response?.data?.message || t('devices.performanceStatusFailed')
   }
 }
 
@@ -87,7 +98,8 @@ async function start() {
     if (!disposed) job.value = response.data
   } catch (reason) {
     if (!disposed)
-      error.value = reason.response?.data?.message || reason.message || '游戏内性能测试启动失败'
+      error.value =
+        reason.response?.data?.message || reason.message || t('devices.performanceStartFailed')
   } finally {
     pending.value = false
   }
@@ -101,7 +113,8 @@ async function cancel() {
     const response = await axios.delete(base, { data: { id: job.value.id } })
     if (!disposed) job.value = response.data
   } catch (reason) {
-    if (!disposed) error.value = reason.response?.data?.message || '取消性能测试失败'
+    if (!disposed)
+      error.value = reason.response?.data?.message || t('devices.performanceCancelFailed')
   } finally {
     pending.value = false
   }
@@ -140,7 +153,7 @@ onUnmounted(() => {
         :loading="pending"
         @click="start"
       >
-        游戏内性能测试
+        {{ t('devices.performanceTest') }}
       </n-button>
       <n-button
         v-else
@@ -149,16 +162,11 @@ onUnmounted(() => {
         :disabled="pending || job.phase === 'cleanup'"
         @click="cancel"
       >
-        取消测试
+        {{ t('devices.cancelTest') }}
       </n-button>
-      <help-text>
-        停止任务后测试，连接设备、启动游戏并进入宿舍一；登录验证、协议确认需手动完成。
-        从极高开始，每轮先选三人，连续滑动三次后补至五人，重排并缩减为三人，逐次核验名单。
-        连续三轮通过才推荐，一次失败立即降档。
-        测试不确认换人，可随时取消。期间请勿操作游戏，采用建议需手动确认。
-      </help-text>
-      <n-tag v-if="recommendation" size="small" :bordered="false"
-        >实测建议：{{ labels[recommendation] }}</n-tag
+      <help-text> {{ t('devices.testHelp') }} </help-text>
+      <n-tag v-if="recommendation" size="small" :bordered="false">
+        {{ t('devices.recommendationPrefix') }} {{ labels[recommendation] }}</n-tag
       >
       <n-button
         v-if="
@@ -171,33 +179,39 @@ onUnmounted(() => {
         :disabled="disabled || pending"
         @click="adopt"
       >
-        采用建议
+        {{ t('devices.adopt') }}
       </n-button>
-      <n-text v-if="config.manager_owned_device && recommendation" depth="3"
-        >请在多开管理器中设置建议档位。</n-text
-      >
+      <n-text v-if="config.manager_owned_device && recommendation" depth="3">
+        {{ t('devices.managedRecommendation') }}
+      </n-text>
     </n-space>
     <n-text v-if="progress" depth="3" role="status" aria-live="polite">{{ progress }}</n-text>
     <div v-if="running" class="performance-test-preview">
       <n-image
         v-if="screenshot"
         :src="screenshot"
-        alt="本次游戏性能测试画面"
+        :alt="t('devices.testScreenshot')"
         object-fit="contain"
         class="performance-test-image"
       />
-      <n-text v-else depth="3">等待本次测试画面…</n-text>
+      <n-text v-else depth="3"> {{ t('devices.waitingScreenshot') }} </n-text>
     </div>
-    <n-text v-if="job.status === 'passed' && !recommendation" depth="3"
-      >设备或时间参数已变化，请重新测试。</n-text
-    >
+    <n-text v-if="job.status === 'passed' && !recommendation" depth="3">
+      {{ t('devices.testChanged') }}
+    </n-text>
     <n-text
       v-for="trial in job.trials || []"
       :key="`${trial.mode}-${trial.round}`"
       :type="trial.ok ? 'success' : 'warning'"
       depth="3"
     >
-      {{ labels[trial.mode] }}档第 {{ trial.round }} 次选人：{{ trial.ok ? '通过' : trial.message }}
+      {{
+        t('devices.trialResult', {
+          mode: labels[trial.mode],
+          round: trial.round,
+          result: trial.ok ? t('devices.passed') : trial.message
+        })
+      }}
     </n-text>
     <n-text v-if="error" type="error" role="alert">{{ error }}</n-text>
   </n-space>

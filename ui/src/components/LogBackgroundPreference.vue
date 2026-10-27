@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { onMounted, ref } from 'vue'
 import { useLogBackgroundStore } from '@/stores/logBackground'
 
@@ -21,10 +22,10 @@ onMounted(() => void background.load())
   >
     <template #label>
       <span class="settings-row-copy">
-        <span>运行日志背景图</span>
-        <span class="settings-row-description"
-          >选择后立即生效。支持 PNG、JPEG、WebP，最大 8 MiB、2400 万像素。</span
-        >
+        <span>{{ i18n.global.t('settings.background.logBackgroundImage') }}</span>
+        <span class="settings-row-description">{{
+          i18n.global.t('settings.background.appliesImmediatelySupportsPngJpegAndWebp')
+        }}</span>
       </span>
     </template>
     <div class="log-background-controls">
@@ -32,28 +33,36 @@ onMounted(() => void background.load())
         class="log-background-preview"
         :style="{ backgroundImage: `url('${background.url}')` }"
         role="img"
-        :aria-label="background.customUrl ? '自定义运行日志背景图预览' : '默认运行日志背景图预览'"
+        :aria-label="
+          background.customUrl
+            ? i18n.global.t('settings.background.customLogBackgroundPreview')
+            : i18n.global.t('settings.background.defaultLogBackgroundPreview')
+        "
       ></div>
       <input
         ref="picker"
         class="log-background-input"
         type="file"
         accept="image/png,image/jpeg,image/webp"
-        aria-label="选择运行日志背景图"
+        :aria-label="i18n.global.t('settings.background.chooseALogBackgroundImage')"
         :disabled="background.busy || !background.loaded"
         @change="select"
       />
       <div class="log-background-actions">
-        <n-button :disabled="background.busy || !background.loaded" @click="picker?.click()"
-          >选择图片</n-button
-        >
+        <n-button :disabled="background.busy || !background.loaded" @click="picker?.click()">{{
+          i18n.global.t('settings.background.chooseImage')
+        }}</n-button>
         <n-button
           :disabled="background.busy || !background.loaded || !background.customUrl"
           @click="background.reset"
-          >恢复默认</n-button
+          >{{ i18n.global.t('settings.background.restoreDefault') }}</n-button
         >
         <span role="status" class="log-background-status">{{
-          background.busy ? '正在处理…' : background.customUrl ? '使用自定义图片' : '使用默认图片'
+          background.busy
+            ? i18n.global.t('settings.background.processing')
+            : background.customUrl
+              ? i18n.global.t('settings.background.usingCustomImage')
+              : i18n.global.t('settings.background.usingDefaultImage')
         }}</span>
       </div>
       <n-alert v-if="background.error" type="error" :show-icon="false" role="alert">
@@ -63,7 +72,7 @@ onMounted(() => void background.load())
           text
           :disabled="background.busy"
           @click="background.load"
-          >重试</n-button
+          >{{ i18n.global.t('settings.background.retry') }}</n-button
         >
       </n-alert>
     </div>

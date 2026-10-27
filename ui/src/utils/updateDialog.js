@@ -1,4 +1,5 @@
-import { h, nextTick, ref, shallowRef } from 'vue'
+import { computed, h, nextTick, ref, shallowRef, watch } from 'vue'
+import { i18n } from '@/i18n'
 import UpdatePreview from '@/components/UpdatePreview.vue'
 
 function showUpdateDialog(
@@ -7,14 +8,26 @@ function showUpdateDialog(
 ) {
   const component = shallowRef(null)
   const updater = ref(null)
-  const error = ref('')
+  const error = shallowRef(null)
+  const errorText = computed(() => {
+    if (!error.value) return ''
+    if (error.value.code === 'RESOURCE_UPDATE_TARGET_CHANGED')
+      return i18n.global.t('updates.resourceTargetChanged')
+    return (
+      error.value.response?.data?.message ||
+      error.value.message ||
+      i18n.global.t('updates.incomplete')
+    )
+  })
   let submitted = false
   let dismissed = false
+  let stopLanguageWatch = () => {}
   const dismiss = () => {
     dismissed = true
+    stopLanguageWatch()
   }
   const dialog = dialogs.warning({
-    title,
+    title: title(),
     showIcon: false,
     style: { width: 'min(560px, calc(100vw - 32px))' },
     content: () =>
@@ -26,22 +39,25 @@ function showUpdateDialog(
           ? h(
               'p',
               { class: 'update-restart-hint update-caption' },
-              `重启同一安装目录下的 ${restartCount} 个实例`
+              i18n.global.t('updates.restartInstances', { count: restartCount })
             )
           : null,
-        error.value ? h('p', { role: 'alert', class: 'update-dialog-error' }, error.value) : null
+        errorText.value
+          ? h('p', { role: 'alert', class: 'update-dialog-error' }, errorText.value)
+          : null
       ]),
-    positiveText: '立即更新',
-    negativeText: '取消',
+    positiveText: i18n.global.t('updates.updateNow'),
+    negativeText: i18n.global.t('runtime.cancel'),
     autoFocus: false,
     onNegativeClick: dismiss,
     onClose: dismiss,
     onMaskClick: dismiss,
+    onAfterLeave: dismiss,
     onPositiveClick: async () => {
       if (submitted || dismissed) return false
       submitted = true
       dialog.loading = true
-      error.value = ''
+      error.value = null
       try {
         validate?.()
         const loaded = await loadComponent()
@@ -55,7 +71,7 @@ function showUpdateDialog(
           await updater.value.installCheckedUpdate(target)
         }
       } catch (err) {
-        error.value = err.response?.data?.message || err.message || '更新未完成，请重试'
+        error.value = err
       } finally {
         if (!component.value) submitted = false
         dialog.loading = false
@@ -63,6 +79,17 @@ function showUpdateDialog(
       return false
     }
   })
+  stopLanguageWatch = watch(
+    i18n.global.locale,
+    () => {
+      dialog.title = title()
+      if (!component.value) {
+        dialog.positiveText = i18n.global.t('updates.updateNow')
+        dialog.negativeText = i18n.global.t('runtime.cancel')
+      }
+    },
+    { flush: 'sync' }
+  )
   return dialog
 }
 
@@ -70,8 +97,9 @@ export function showSoftwareUpdateDialog(dialogs, info, selection) {
   const target = { ...selection, confirm_downgrade: selection.downgrade === true }
   const channel = target.channel || info.settings.channel
   return showUpdateDialog(dialogs, {
-    title: '软件更新',
+    title: () => i18n.global.t('settings.software.softwareUpdates'),
     preview: {
+      channelKey: channel,
       channel: info.channels?.find((item) => item.value === channel)?.label || channel,
       version: target.version,
       notes: target.notes
@@ -85,12 +113,12 @@ export function showSoftwareUpdateDialog(dialogs, info, selection) {
 export function showResourceUpdateDialog(dialogs, resources, selection) {
   const target = { ...selection }
   return showUpdateDialog(dialogs, {
-    title: '资源更新',
+    title: () => i18n.global.t('settings.resource.resourceUpdates'),
     preview: { version: target.remote_display || target.remote_version },
     loadComponent: () => import('@/components/ResourceUpdate.vue'),
     validate() {
       if (resources.info.remote_version !== target.remote_version)
-        throw new Error('资源更新目标已改变，请重新检查更新。')
+        throw Object.assign(new Error(), { code: 'RESOURCE_UPDATE_TARGET_CHANGED' })
     }
   })
 }

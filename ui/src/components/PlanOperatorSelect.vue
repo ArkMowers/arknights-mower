@@ -1,4 +1,6 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { computed } from 'vue'
 import SlickOperatorSelect from './SlickOperatorSelect.vue'
 
@@ -29,11 +31,11 @@ const removals = computed({
 <template>
   <div class="operator-lists" :class="{ 'operator-lists--backup': backup }">
     <div class="operator-list">
-      <span v-if="backup" class="operation-label">增</span>
+      <span v-if="backup" class="operation-label">{{ t('plans.additions') }}</span>
       <SlickOperatorSelect v-model="additions" :disabled="disabled" />
     </div>
     <div v-if="backup" class="operator-list">
-      <span class="operation-label">减</span>
+      <span class="operation-label">{{ t('plans.removals') }}</span>
       <SlickOperatorSelect v-model="removals" :disabled="disabled" />
     </div>
   </div>

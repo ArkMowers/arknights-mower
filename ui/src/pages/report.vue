@@ -1,4 +1,8 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { reportErrorMessage } from '@/i18n/reports'
+const { t } = i18n.global
 defineOptions({ name: 'BaseReportPage' })
 
 import PageLayout from '@/components/PageLayout.vue'
@@ -87,11 +91,28 @@ const algorithmError = ref('')
 const showCustomAlgorithm = ref(false)
 const customRatios = reactive({ experience: 0.9568, gold: 0.76544, order: 0.23456 })
 const customFields = [
-  { key: 'gold', label: '赤金' },
-  { key: 'order', label: '订单' },
-  { key: 'experience', label: '经验' }
+  {
+    key: 'gold',
+    get label() {
+      return t('reports.pureGold')
+    }
+  },
+  {
+    key: 'order',
+    get label() {
+      return t('reports.orders')
+    }
+  },
+  {
+    key: 'experience',
+    get label() {
+      return t('reports.experience')
+    }
+  }
 ]
-const algorithmOptions = incomeAlgorithms.map((option) => ({ ...option, key: option.value }))
+const algorithmOptions = computed(() =>
+  incomeAlgorithms.map((option) => ({ ...option, key: option.value }))
+)
 const algorithmLabel = computed(() => incomeAlgorithmLabel(valuation.value?.base_algorithm))
 const algorithmShortLabel = computed(() => algorithmLabel.value.split('（')[0])
 
@@ -119,7 +140,7 @@ async function saveAlgorithm(algorithm, ratios) {
     valuation.value = response.data
     showCustomAlgorithm.value = false
   } catch (error) {
-    algorithmError.value = error.response?.data?.error || '收益算法保存失败，请重试'
+    algorithmError.value = error.response?.data?.error || t('reports.algorithmSaveError')
   } finally {
     algorithmBusy.value = false
   }
@@ -155,13 +176,14 @@ async function load() {
     orundumRows.value = orundum.status === 'fulfilled' ? orundum.value : []
     tradingRows.value = trading.status === 'fulfilled' ? trading.value : []
     const missing = [
-      orundum.status === 'rejected' && '合成玉记录',
-      trading.status === 'rejected' && '贸易订单记录（特殊赤金未计入收益）'
+      orundum.status === 'rejected' && t('reports.orundumRecords'),
+      trading.status === 'rejected' && t('reports.tradingRecords')
     ].filter(Boolean)
-    if (missing.length) partialWarning.value = `${missing.join('、')}读取失败，可稍后刷新重试`
+    if (missing.length)
+      partialWarning.value = t('reports.partialReadFailed', { names: missing.join(', ') })
   } catch (error) {
     if (version !== loadVersion) return
-    loadError.value = error.response?.data?.error || '基报数据或收益设置读取失败'
+    loadError.value = error.response?.data?.error || t('reports.reportReadError')
   } finally {
     if (version === loadVersion) loading.value = false
   }
@@ -171,7 +193,9 @@ onMounted(load)
 // ---- 派生数据 ----
 const range = ref('14')
 const chartView = ref('income')
-const rangeOptions = reportRanges.map((row) => ({ value: row.value, label: row.label }))
+const rangeOptions = computed(() =>
+  reportRanges.map((row) => ({ value: row.value, label: row.label }))
+)
 const allDays = computed(() =>
   valuation.value
     ? withIncome(
@@ -216,10 +240,30 @@ const palette = computed(() =>
 )
 
 const compositionParts = [
-  { key: 'gold', label: '赤金' },
-  { key: 'special', label: '特殊赤金' },
-  { key: 'order', label: '龙门币订单' },
-  { key: 'experience', label: '经验' }
+  {
+    key: 'gold',
+    get label() {
+      return t('reports.pureGold')
+    }
+  },
+  {
+    key: 'special',
+    get label() {
+      return t('reports.specialGold')
+    }
+  },
+  {
+    key: 'order',
+    get label() {
+      return t('reports.lmdOrders')
+    }
+  },
+  {
+    key: 'experience',
+    get label() {
+      return t('reports.experience')
+    }
+  }
 ]
 // ---- 单日详情：选中日与它在全部记录中的前一条读数对比 ----
 const selectedDate = ref(null)
@@ -253,44 +297,75 @@ const specialGold = (day) => day.tequilaGold + day.closureGold
 const detailItems = [
   {
     key: 'gold',
-    label: '赤金',
+    get label() {
+      return t('reports.pureGold')
+    },
     icon: '赤金',
     pick: (day) => day.gold,
-    note: () => '基报制造价值'
+    note: () => t('reports.manufacturingValue')
   },
   {
     key: 'special',
-    label: '特殊赤金',
+    get label() {
+      return t('reports.specialGold')
+    },
     icon: '赤金',
     pick: specialGold,
     note: (day) =>
       specialGold(day)
         ? [
-            day.tequilaGold && `龙舌兰 ${day.tequilaGold / TEQUILA_GOLD} 单`,
-            day.closureGold && `可露希尔 ${day.closureGold / CLOSURE_GOLD} 单`
+            day.tequilaGold &&
+              t('reports.operatorOrders', {
+                name: operatorDisplayName('龙舌兰'),
+                count: day.tequilaGold / TEQUILA_GOLD
+              }),
+            day.closureGold &&
+              t('reports.operatorOrders', {
+                name: operatorDisplayName('可露希尔'),
+                count: day.closureGold / CLOSURE_GOLD
+              })
           ]
             .filter(Boolean)
             .join(' · ')
-        : '无龙舌兰、可露希尔订单'
+        : t('reports.noSpecialOrders', {
+            first: operatorDisplayName('龙舌兰'),
+            second: operatorDisplayName('可露希尔')
+          })
   },
-  { key: 'experience', label: '经验', icon: '中级作战记录', pick: (day) => day.experience },
+  {
+    key: 'experience',
+    get label() {
+      return t('reports.experience')
+    },
+    icon: '中级作战记录',
+    pick: (day) => day.experience
+  },
   {
     key: 'orders',
-    label: '龙门币订单',
+    get label() {
+      return t('reports.lmdOrders')
+    },
     icon: '龙门币',
     pick: (day) => day.orders,
     note: (day) =>
       isReading(day.orderCount)
-        ? `${formatCount(day.orderCount)} 单 · 每单 ${formatCount(day.perOrder)}`
+        ? t('reports.orderSummary', {
+            count: formatCount(day.orderCount),
+            value: formatCount(day.perOrder)
+          })
         : ''
   },
   {
     key: 'orundum',
-    label: '合成玉',
+    get label() {
+      return t('reports.orundum')
+    },
     icon: '合成玉',
     pick: (day) => day.orundum,
     note: (day) =>
-      isReading(day.orundum) ? `约 ${(day.orundum / ORUNDUM_PER_PULL).toFixed(1)} 抽` : ''
+      isReading(day.orundum)
+        ? t('reports.approxPulls', { count: (day.orundum / ORUNDUM_PER_PULL).toFixed(1) })
+        : ''
   }
 ]
 const detailRows = computed(() => {
@@ -374,9 +449,7 @@ function tooltipRow(color, label, value) {
 
 function incomeNote(income) {
   if (!income.partial) return ''
-  return isReading(income.total)
-    ? '部分数据未读到，缺失项按 0 计算'
-    : '收益数据未读到，无法计算当天收益'
+  return isReading(income.total) ? t('reports.partialIncome') : t('reports.missingIncome')
 }
 
 function lineLabel(format) {
@@ -398,8 +471,8 @@ function chartToolbox(name) {
     feature: {
       saveAsImage: {
         show: true,
-        title: '保存为图片',
-        name: `基建报表-${name}`,
+        title: t('reports.saveChartImage'),
+        name: `${t('reports.baseReportTitle')}-${name}`,
         backgroundColor: isDark.value ? '#18181c' : '#fff'
       }
     }
@@ -416,7 +489,7 @@ const incomeOption = computed(() => {
     aria: { enabled: true },
     animationDuration: 700,
     animationEasing: 'cubicOut',
-    toolbox: chartToolbox('每日收益'),
+    toolbox: chartToolbox(t('reports.dailyIncomeTitle')),
     grid: { top: 56, right: 12, bottom: 4, left: 4, containLabel: true },
     legend: {
       top: 0,
@@ -440,12 +513,18 @@ const incomeOption = computed(() => {
           )
           .join('')
         const raw = [
-          `赤金 ${formatCount(day.gold)}`,
+          t('reports.metricValue', { label: t('reports.pureGold'), value: formatCount(day.gold) }),
           day.tequilaGold || day.closureGold
-            ? `特殊赤金 ${formatCount(day.tequilaGold + day.closureGold)}`
+            ? t('reports.metricValue', {
+                label: t('reports.specialGold'),
+                value: formatCount(day.tequilaGold + day.closureGold)
+              })
             : '',
-          `订单 ${formatCount(day.orders)}`,
-          `经验 ${formatCount(day.experience)}`
+          t('reports.metricValue', { label: t('reports.orders'), value: formatCount(day.orders) }),
+          t('reports.metricValue', {
+            label: t('reports.experience'),
+            value: formatCount(day.experience)
+          })
         ]
           .filter(Boolean)
           .join(' · ')
@@ -453,7 +532,7 @@ const incomeOption = computed(() => {
           <div style="font-weight:600;margin-bottom:4px">${day.date}</div>
           ${rows}
           <div style="border-top:1px solid ${colors.grid};margin-top:6px;padding-top:6px">
-            ${tooltipRow(colors.income, '收益（万）', formatIncome(income.total, 3))}
+            ${tooltipRow(colors.income, t('reports.income10k'), formatIncome(income.total, 3))}
           </div>
           <div style="opacity:.65;margin-top:4px;font-size:11px">${raw}</div>
           ${income.partial ? `<div style="opacity:.65;font-size:11px">${incomeNote(income)}</div>` : ''}
@@ -461,7 +540,12 @@ const incomeOption = computed(() => {
       }
     },
     xAxis: { type: 'category', data: dates.value, ...axisBase(), splitLine: { show: false } },
-    yAxis: { type: 'value', ...axisBase(), name: '万', nameTextStyle: { color: colors.axis } },
+    yAxis: {
+      type: 'value',
+      ...axisBase(),
+      name: t('reports.tenThousandUnit'),
+      nameTextStyle: { color: colors.axis }
+    },
     series: [
       ...compositionParts.map((part, index) => ({
         name: part.label,
@@ -481,7 +565,7 @@ const incomeOption = computed(() => {
         }))
       })),
       {
-        name: '收益',
+        name: t('reports.income'),
         type: 'line',
         smooth: 0.3,
         symbol: 'circle',
@@ -501,7 +585,7 @@ const incomeOption = computed(() => {
               label: {
                 position: 'insideEndTop',
                 color: colors.axis,
-                formatter: `均值 ${formatIncome(average)}`
+                formatter: t('reports.meanValue', { value: formatIncome(average) })
               },
               data: [{ yAxis: average }]
             }
@@ -514,16 +598,26 @@ const incomeOption = computed(() => {
 const productionOption = computed(() => {
   const colors = palette.value
   const parts = [
-    { key: 'gold', label: '赤金', tooltip: '赤金（制造价值）', pick: (day) => day.gold },
-    { key: 'special', label: '特殊赤金', tooltip: '特殊赤金（订单额外价值）', pick: specialGold },
-    { key: 'experience', label: '经验', pick: (day) => day.experience },
-    { key: 'order', label: '龙门币订单', pick: (day) => day.orders }
+    {
+      key: 'gold',
+      label: t('reports.pureGold'),
+      tooltip: t('reports.goldManufacturingValue'),
+      pick: (day) => day.gold
+    },
+    {
+      key: 'special',
+      label: t('reports.specialGold'),
+      tooltip: t('reports.specialGoldValue'),
+      pick: specialGold
+    },
+    { key: 'experience', label: t('reports.experience'), pick: (day) => day.experience },
+    { key: 'order', label: t('reports.lmdOrders'), pick: (day) => day.orders }
   ]
   return {
     backgroundColor: 'transparent',
     aria: { enabled: true },
     animationDuration: 700,
-    toolbox: chartToolbox('每日产出'),
+    toolbox: chartToolbox(t('reports.dailyProductionTitle')),
     grid: { top: 56, right: 12, bottom: 4, left: 4, containLabel: true },
     legend: {
       top: 0,
@@ -573,7 +667,7 @@ const orundumOption = computed(() => {
   return {
     backgroundColor: 'transparent',
     aria: { enabled: true },
-    toolbox: chartToolbox('合成玉'),
+    toolbox: chartToolbox(t('reports.orundum')),
     grid: { top: 16, right: 4, bottom: 4, left: 4, containLabel: true },
     tooltip: {
       ...tooltipBase(),
@@ -582,16 +676,16 @@ const orundumOption = computed(() => {
         const day = days.value[params[0]?.dataIndex]
         if (!day) return ''
         return `<div style="font-weight:600;margin-bottom:4px">${day.date}</div>
-          ${tooltipRow(colors.orundum, '合成玉', formatCount(day.orundum))}
-          ${tooltipRow(colors.axis, '合成玉订单', formatCount(day.orundumOrders))}
-          ${tooltipRow(colors.axis, '折合抽数', isReading(day.orundum) ? (day.orundum / ORUNDUM_PER_PULL).toFixed(1) : '—')}`
+          ${tooltipRow(colors.orundum, t('reports.orundum'), formatCount(day.orundum))}
+          ${tooltipRow(colors.axis, t('reports.orundumOrders'), formatCount(day.orundumOrders))}
+          ${tooltipRow(colors.axis, t('reports.equivalentPulls'), isReading(day.orundum) ? (day.orundum / ORUNDUM_PER_PULL).toFixed(1) : '—')}`
       }
     },
     xAxis: { type: 'category', data: dates.value, ...axisBase(), splitLine: { show: false } },
     yAxis: { type: 'value', ...axisBase() },
     series: [
       {
-        name: '合成玉',
+        name: t('reports.orundum'),
         type: 'bar',
         barMaxWidth: 22,
         color: colors.orundum,
@@ -607,7 +701,7 @@ const orderOption = computed(() => {
   return {
     backgroundColor: 'transparent',
     aria: { enabled: true },
-    toolbox: chartToolbox('贸易订单'),
+    toolbox: chartToolbox(t('reports.tradingOrders')),
     grid: { top: 48, right: 4, bottom: 4, left: 4, containLabel: true },
     legend: {
       top: 0,
@@ -625,9 +719,9 @@ const orderOption = computed(() => {
         const day = days.value[params[0]?.dataIndex]
         if (!day) return ''
         return `<div style="font-weight:600;margin-bottom:4px">${day.date}</div>
-          ${tooltipRow(colors.order, '龙门币订单', formatCount(day.orders))}
-          ${tooltipRow(colors.axis, '订单数', formatCount(day.orderCount))}
-          ${tooltipRow(colors.gold, '每单龙门币', formatCount(day.perOrder))}`
+          ${tooltipRow(colors.order, t('reports.lmdOrders'), formatCount(day.orders))}
+          ${tooltipRow(colors.axis, t('reports.orderCount'), formatCount(day.orderCount))}
+          ${tooltipRow(colors.gold, t('reports.lmdPerOrder'), formatCount(day.perOrder))}`
       }
     },
     xAxis: { type: 'category', data: dates.value, ...axisBase(), splitLine: { show: false } },
@@ -637,7 +731,7 @@ const orderOption = computed(() => {
     ],
     series: [
       {
-        name: '龙门币订单',
+        name: t('reports.lmdOrders'),
         type: 'bar',
         barMaxWidth: 22,
         color: colors.order,
@@ -645,7 +739,7 @@ const orderOption = computed(() => {
         data: days.value.map((day) => day.orders)
       },
       {
-        name: '每单龙门币',
+        name: t('reports.lmdPerOrder'),
         type: 'line',
         yAxisIndex: 1,
         smooth: 0.3,
@@ -687,16 +781,66 @@ function changeClass(date) {
   return change > 0 ? 'is-up' : 'is-down'
 }
 const tableColumns = [
-  { key: 'date', label: '日期' },
-  { key: 'income', label: '收益（万）' },
-  { key: 'change', label: '较上次' },
-  { key: 'gold', label: '赤金价值' },
-  { key: 'special', label: '特殊赤金' },
-  { key: 'experience', label: '经验' },
-  { key: 'orders', label: '龙门币订单' },
-  { key: 'orderCount', label: '订单数' },
-  { key: 'perOrder', label: '每单' },
-  { key: 'orundum', label: '合成玉' }
+  {
+    key: 'date',
+    get label() {
+      return t('reports.date')
+    }
+  },
+  {
+    key: 'income',
+    get label() {
+      return t('reports.income10k')
+    }
+  },
+  {
+    key: 'change',
+    get label() {
+      return t('reports.comparedPrevious')
+    }
+  },
+  {
+    key: 'gold',
+    get label() {
+      return t('reports.goldValue')
+    }
+  },
+  {
+    key: 'special',
+    get label() {
+      return t('reports.specialGold')
+    }
+  },
+  {
+    key: 'experience',
+    get label() {
+      return t('reports.experience')
+    }
+  },
+  {
+    key: 'orders',
+    get label() {
+      return t('reports.lmdOrders')
+    }
+  },
+  {
+    key: 'orderCount',
+    get label() {
+      return t('reports.orderCount')
+    }
+  },
+  {
+    key: 'perOrder',
+    get label() {
+      return t('reports.perOrder')
+    }
+  },
+  {
+    key: 'orundum',
+    get label() {
+      return t('reports.orundum')
+    }
+  }
 ]
 function cell(day, key) {
   switch (key) {
@@ -719,20 +863,14 @@ function cell(day, key) {
 <template>
   <PageLayout max-width="1280px">
     <template #header>
-      <PageHeader>
-        基建报表
-        <help-text>
-          <p>数据来自每日任务「读取基报」，每天读取一次并写入 tmp 文件夹中的 report.csv。</p>
-          <p>日期为产出日，即读取基报的前一天。</p>
-          <p>
-            赤金使用游戏基报中的制造价值，例如 123 根赤金对应 61,500。龙门币订单单独记录订单收入。
-          </p>
-          <p>
-            统计范围从最近一条基报的产出日期向前计算。平均每单收入只统计订单金额和数量均已读到的日期。
-          </p>
-          <p>
-            收益按当前保存的基报收益算法折算，单位为万；特殊赤金来自贸易订单记录中的龙舌兰和可露希尔订单。
-          </p>
+      <PageHeader
+        >{{ t('reports.baseReportTitle')
+        }}<help-text>
+          <p>{{ t('reports.baseReportSourceHelp') }}</p>
+          <p>{{ t('reports.baseReportDateHelp') }}</p>
+          <p>{{ t('reports.baseReportGoldHelp') }}</p>
+          <p>{{ t('reports.baseReportRangeHelp') }}</p>
+          <p>{{ t('reports.baseReportIncomeHelp') }}</p>
         </help-text>
         <template #actions>
           <div class="report-actions">
@@ -740,7 +878,7 @@ function cell(day, key) {
               v-model:value="range"
               size="small"
               name="report-range"
-              aria-label="统计区间"
+              :aria-label="t('reports.reportRange')"
               :disabled="!ready"
             >
               <n-radio-button
@@ -758,8 +896,8 @@ function cell(day, key) {
               :disabled="!valuation || algorithmBusy"
               @select="selectAlgorithm"
             >
-              <n-button secondary size="small" :disabled="!valuation" :loading="algorithmBusy">
-                收益算法：{{ algorithmShortLabel }}
+              <n-button secondary size="small" :disabled="!valuation" :loading="algorithmBusy"
+                >{{ t('reports.algorithmPrefix') }}{{ algorithmShortLabel }}
               </n-button>
             </n-dropdown>
             <n-button
@@ -767,20 +905,25 @@ function cell(day, key) {
               circle
               size="small"
               :loading="loading"
-              aria-label="刷新基报数据"
-              title="刷新"
+              :aria-label="t('reports.refreshBaseReport')"
+              :title="t('reports.refresh')"
               @click="load"
             >
               <template #icon><n-icon :component="RefreshOutline" /></template>
             </n-button>
-            <SessionLink to="/settings#task-accounts">管理收益设置</SessionLink>
+            <SessionLink to="/settings#task-accounts">{{ t('reports.manageIncome') }}</SessionLink>
           </div>
         </template>
       </PageHeader>
     </template>
 
     <div class="report" :class="{ 'is-dark': isDark }">
-      <n-card v-if="showCustomAlgorithm" size="small" title="自定义收益系数" class="custom-card">
+      <n-card
+        v-if="showCustomAlgorithm"
+        size="small"
+        :title="t('reports.customCoefficients')"
+        class="custom-card"
+      >
         <n-space align="center" wrap>
           <label v-for="field in customFields" :key="field.key" class="custom-field">
             <span>{{ field.label }}</span>
@@ -793,31 +936,37 @@ function cell(day, key) {
               :show-button="false"
             />
           </label>
-          <n-button size="small" :disabled="algorithmBusy" @click="showCustomAlgorithm = false">
-            取消
-          </n-button>
+          <n-button size="small" :disabled="algorithmBusy" @click="showCustomAlgorithm = false">{{
+            t('reports.cancel')
+          }}</n-button>
           <n-button
             size="small"
             type="primary"
             :loading="algorithmBusy"
             @click="saveAlgorithm(-1, customRatios)"
+            >{{ t('reports.saveCustom') }}</n-button
           >
-            保存为自定义
-          </n-button>
         </n-space>
       </n-card>
 
       <n-alert v-if="algorithmError" type="error" closable @close="algorithmError = ''">
-        {{ algorithmError }}
+        {{ reportErrorMessage(algorithmError) }}
       </n-alert>
-      <n-alert v-if="loadError" type="error" title="读取失败">
-        <p>{{ loadError }}</p>
-        <p>请稍后重试。若仍然失败，请检查基报文件和收益设置。</p>
-        <n-button size="small" secondary class="retry" @click="load">重试</n-button>
+      <n-alert v-if="loadError" type="error" :title="t('reports.readFailed')">
+        <p>{{ reportErrorMessage(loadError) }}</p>
+        <p>{{ t('reports.readFailedHelp') }}</p>
+        <n-button size="small" secondary class="retry" @click="load">{{
+          t('reports.retry')
+        }}</n-button>
       </n-alert>
       <n-alert v-if="partialWarning" type="warning">{{ partialWarning }}</n-alert>
 
-      <div v-if="loading && !hasData" class="skeleton" aria-busy="true" aria-label="正在读取基报">
+      <div
+        v-if="loading && !hasData"
+        class="skeleton"
+        aria-busy="true"
+        :aria-label="t('reports.loadingBaseReport')"
+      >
         <n-skeleton class="skeleton__overview" />
         <div class="skeleton__grid">
           <n-skeleton class="skeleton__chart" />
@@ -826,21 +975,23 @@ function cell(day, key) {
       </div>
 
       <section v-else-if="ready && !hasData" class="empty reveal">
-        <h2>还没有基报记录</h2>
-        <p>在每日任务中启用「读取基报」，Mower 每天会读取一次基建报告。</p>
-        <p>读取后即可查看每天的产出和收益。</p>
+        <h2>{{ t('reports.noBaseReport') }}</h2>
+        <p>{{ t('reports.enableBaseReportHelp') }}</p>
+        <p>{{ t('reports.baseReportAfterRead') }}</p>
       </section>
 
       <template v-else-if="hasData">
         <section class="overview reveal" :aria-busy="loading">
           <div class="overview__day">
             <div class="overview__label">
-              {{ formatDay(selectedDay.date) }} 收益
-              <span v-if="selectedDay.date === summary.latest.date" class="tag">最新记录</span>
+              {{ formatDay(selectedDay.date) }}{{ t('reports.income')
+              }}<span v-if="selectedDay.date === summary.latest.date" class="tag">{{
+                t('reports.latestRecord')
+              }}</span>
             </div>
             <div class="overview__value">
               <span class="overview__number">{{ formatIncome(animatedIncome) }}</span>
-              <span class="overview__unit">万</span>
+              <span class="overview__unit">{{ t('reports.tenThousandUnit') }}</span>
               <span
                 v-if="isReading(incomeCompare.change)"
                 class="delta delta--pill"
@@ -854,9 +1005,11 @@ function cell(day, key) {
               </span>
             </div>
             <p class="overview__caption">
-              按{{ algorithmShortLabel }}计算<template v-if="isReading(incomeCompare.delta)"
-                >，较 {{ formatDay(previousDay.date) }}
-                {{ deltaText(incomeCompare, 2) }} 万</template
+              {{ t('reports.usingPrefix') }}{{ algorithmShortLabel
+              }}{{ t('reports.calculatedSuffix')
+              }}<template v-if="isReading(incomeCompare.delta)"
+                >{{ t('reports.comparedWithPrefix') }}{{ formatDay(previousDay.date) }}
+                {{ deltaText(incomeCompare, 2) }}{{ t('reports.tenThousandUnit') }}</template
               ><template v-if="selectedDay.income.partial"
                 >；{{ incomeNote(selectedDay.income) }}</template
               >
@@ -864,20 +1017,33 @@ function cell(day, key) {
           </div>
           <dl class="overview__facts">
             <div>
-              <dt>日均收益</dt>
-              <dd>{{ formatIncome(summary.averageIncome) }}<small>万</small></dd>
+              <dt>{{ t('reports.dailyIncome') }}</dt>
+              <dd>
+                {{ formatIncome(summary.averageIncome)
+                }}<small>{{ t('reports.tenThousandUnit') }}</small>
+              </dd>
             </div>
             <div>
-              <dt>总收益</dt>
-              <dd>{{ formatIncome(summary.totalIncome, 1) }}<small>万</small></dd>
+              <dt>{{ t('reports.totalIncome') }}</dt>
+              <dd>
+                {{ formatIncome(summary.totalIncome, 1)
+                }}<small>{{ t('reports.tenThousandUnit') }}</small>
+              </dd>
             </div>
             <div v-if="summary.best">
-              <dt><n-icon :component="TrophyOutline" aria-hidden="true" /> 收益最高</dt>
+              <dt>
+                <n-icon :component="TrophyOutline" aria-hidden="true" />{{
+                  t('reports.bestIncome')
+                }}
+              </dt>
               <dd>
                 <button type="button" class="link" @click="selectDay(summary.best.date)">
                   {{ formatDay(summary.best.date) }}
                 </button>
-                <span class="overview__best">{{ formatIncome(summary.best.income.total) }} 万</span>
+                <span class="overview__best"
+                  >{{ formatIncome(summary.best.income.total)
+                  }}{{ t('reports.tenThousandUnit') }}</span
+                >
               </dd>
             </div>
           </dl>
@@ -887,20 +1053,29 @@ function cell(day, key) {
           <section class="panel reveal" style="--delay: 60ms">
             <header class="panel__head panel__head--chart">
               <div>
-                <h2>{{ chartView === 'production' ? '每日产出' : '每日收益' }}</h2>
+                <h2>
+                  {{
+                    chartView === 'production'
+                      ? t('reports.dailyProductionTitle')
+                      : t('reports.dailyIncomeTitle')
+                  }}
+                </h2>
                 <p v-if="chartView === 'income'">
-                  按{{ algorithmShortLabel }}计算，虚线表示平均收益。点击柱子查看当天详情。
+                  {{ t('reports.usingPrefix') }}{{ algorithmShortLabel
+                  }}{{ t('reports.incomeChartHelpSuffix') }}
                 </p>
-                <p v-else>赤金按基报制造价值显示，作战记录按经验值显示。点击柱子查看当天详情。</p>
+                <p v-else>{{ t('reports.productionChartHelp') }}</p>
               </div>
               <n-radio-group
                 v-model:value="chartView"
                 size="small"
                 name="report-chart"
-                aria-label="图表内容"
+                :aria-label="t('reports.chartContent')"
               >
-                <n-radio-button value="income">折算收益</n-radio-button>
-                <n-radio-button value="production">基报产出</n-radio-button>
+                <n-radio-button value="income">{{ t('reports.weightedIncome') }}</n-radio-button>
+                <n-radio-button value="production">{{
+                  t('reports.baseProduction')
+                }}</n-radio-button>
               </n-radio-group>
             </header>
             <v-chart
@@ -923,7 +1098,7 @@ function cell(day, key) {
                 circle
                 size="small"
                 :disabled="selectedIndex <= 0"
-                aria-label="上一条记录"
+                :aria-label="t('reports.previousRecord')"
                 @click="stepDay(-1)"
               >
                 <template #icon><n-icon :component="ChevronBackOutline" /></template>
@@ -931,7 +1106,11 @@ function cell(day, key) {
               <div class="day__title">
                 <h2 id="report-day-title">{{ formatDay(selectedDay.date) }}</h2>
                 <p>
-                  {{ previousDay ? `对比 ${formatDay(previousDay.date)}` : '没有更早的记录' }}
+                  {{
+                    previousDay
+                      ? t('reports.compareDate', { date: formatDay(previousDay.date) })
+                      : t('reports.noEarlierRecord')
+                  }}
                 </p>
               </div>
               <n-button
@@ -939,14 +1118,14 @@ function cell(day, key) {
                 circle
                 size="small"
                 :disabled="selectedIndex >= days.length - 1"
-                aria-label="下一条记录"
+                :aria-label="t('reports.nextRecord')"
                 @click="stepDay(1)"
               >
                 <template #icon><n-icon :component="ChevronForwardOutline" /></template>
               </n-button>
             </header>
 
-            <ul class="items" aria-label="当天产出">
+            <ul class="items" :aria-label="t('reports.dailyProduction')">
               <li v-for="row in detailRows" :key="row.key" class="item">
                 <span class="item__icon">
                   <img
@@ -971,11 +1150,11 @@ function cell(day, key) {
 
             <div class="split">
               <div class="split__head">
-                <h3>各项收益（万）</h3>
+                <h3>{{ t('reports.incomeBreakdown') }}</h3>
                 <span v-if="previousDay" class="split__legend">
-                  <i class="is-day" aria-hidden="true" />当天
-                  <i class="is-base" aria-hidden="true" />上次记录
-                </span>
+                  <i class="is-day" aria-hidden="true" />{{ t('reports.currentDay')
+                  }}<i class="is-base" aria-hidden="true" />{{ t('reports.previousReading') }}</span
+                >
               </div>
               <ul>
                 <li v-for="row in incomeRows" :key="row.key" class="split__row">
@@ -996,7 +1175,7 @@ function cell(day, key) {
                 </li>
               </ul>
               <div class="split__row split__row--total">
-                <span class="split__label">合计</span>
+                <span class="split__label">{{ t('reports.total') }}</span>
                 <span />
                 <span class="split__value">{{ formatIncome(incomeCompare.value, 3) }}</span>
                 <span class="delta" :class="deltaClass(incomeCompare)">
@@ -1011,24 +1190,27 @@ function cell(day, key) {
           <section class="panel reveal" style="--delay: 180ms">
             <header class="panel__head">
               <div>
-                <h2>贸易订单</h2>
-                <p>订单收入和平均每单收入</p>
+                <h2>{{ t('reports.tradingOrders') }}</h2>
+                <p>{{ t('reports.tradingOrdersSubtitle') }}</p>
               </div>
-              <span class="panel__stat">
-                平均每单 <strong>{{ formatCount(summary.perOrder) }}</strong> 龙门币
-              </span>
+              <span class="panel__stat"
+                >{{ t('reports.averageOrder') }}<strong>{{ formatCount(summary.perOrder) }}</strong
+                >{{ t('reports.lmd') }}</span
+              >
             </header>
             <v-chart class="chart" :option="orderOption" autoresize @click="onChartClick" />
           </section>
           <section class="panel reveal" style="--delay: 220ms">
             <header class="panel__head">
               <div>
-                <h2>合成玉</h2>
-                <p>每天获得的合成玉</p>
+                <h2>{{ t('reports.orundum') }}</h2>
+                <p>{{ t('reports.dailyOrundum') }}</p>
               </div>
-              <span v-if="isReading(summary.pulls)" class="panel__stat">
-                合计约 <strong>{{ summary.pulls.toFixed(1) }}</strong> 抽
-              </span>
+              <span v-if="isReading(summary.pulls)" class="panel__stat"
+                >{{ t('reports.equivalentAboutPrefix')
+                }}<strong>{{ summary.pulls.toFixed(1) }}</strong
+                >{{ t('reports.pullsUnit') }}</span
+              >
             </header>
             <v-chart
               v-if="isReading(summary.orundum)"
@@ -1037,22 +1219,29 @@ function cell(day, key) {
               autoresize
               @click="onChartClick"
             />
-            <div v-else class="panel__empty">没有可用的合成玉数据</div>
+            <div v-else class="panel__empty">{{ t('reports.noOrundumData') }}</div>
           </section>
         </div>
 
         <section class="panel reveal" style="--delay: 260ms">
           <header class="panel__head">
             <div>
-              <h2>逐日明细</h2>
+              <h2>{{ t('reports.dailyDetails') }}</h2>
               <p>
-                点击一行查看详情。「—」表示未读到数据或无法计算<template v-if="summary.missingDays">
-                  ，有 {{ summary.missingDays }} 天的收益数据不完整</template
+                {{ t('reports.dailyDetailsHelp')
+                }}<template v-if="summary.missingDays"
+                  >{{ t('reports.partialDaysPrefix') }}{{ summary.missingDays
+                  }}{{ t('reports.partialDaysSuffix') }}</template
                 >
               </p>
             </div>
           </header>
-          <div class="table-wrap" tabindex="0" role="region" aria-label="逐日明细">
+          <div
+            class="table-wrap"
+            tabindex="0"
+            role="region"
+            :aria-label="t('reports.dailyDetails')"
+          >
             <table class="table">
               <thead>
                 <tr>
@@ -1083,7 +1272,7 @@ function cell(day, key) {
                         v-if="day.date === bestDate"
                         :component="TrophyOutline"
                         class="best-mark"
-                        aria-label="收益最高"
+                        :aria-label="t('reports.bestIncome')"
                       />
                     </template>
                     <template v-else>{{ cell(day, column.key) }}</template>

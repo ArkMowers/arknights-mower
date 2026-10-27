@@ -1,4 +1,8 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { reportErrorMessage } from '@/i18n/reports'
+const { t } = i18n.global
 import { computed, ref, watch } from 'vue'
 import { MAX_MOOD_VIEW_OPERATORS } from '@/utils/mood_observation'
 
@@ -14,11 +18,11 @@ const error = ref('')
 const options = computed(() =>
   props.catalog.map((item) => ({
     label:
-      item.name +
+      operatorDisplayName(item.name) +
       (item.sampleCount === 0
-        ? ' · 暂无记录'
+        ? t('reports.noSamplesSuffix')
         : item.sampleCount != null
-          ? ' · ' + item.sampleCount + ' 条记录'
+          ? t('reports.sampleCountSuffix', { count: item.sampleCount })
           : ''),
     value: item.name
   }))
@@ -37,11 +41,11 @@ watch(
 function submit() {
   const title = name.value.trim()
   if (!title || title.length > 30) {
-    error.value = '请输入 1～30 字的观察表名称'
+    error.value = t('reports.invalidObservationName')
     return
   }
   if (selected.value.length < 1 || selected.value.length > MAX_MOOD_VIEW_OPERATORS) {
-    error.value = '每张观察表请选择 1～16 位干员'
+    error.value = t('reports.invalidObservationOperators')
     return
   }
   emit('save', { id: props.view?.id, name: title, operators: [...selected.value] })
@@ -56,17 +60,21 @@ function close() {
   <n-modal
     :show="show"
     preset="card"
-    :title="view ? '编辑自定义观察表' : '新建自定义观察表'"
+    :title="view ? t('reports.editObservation') : t('reports.createObservation')"
     style="width: min(94vw, 550px)"
     @update:show="emit('update:show', $event)"
   >
     <div class="observation-fields">
       <label>
-        <span>观察表名称</span>
-        <n-input v-model:value="name" maxlength="30" placeholder="例如：重点干员" />
+        <span>{{ t('reports.observationName') }}</span>
+        <n-input
+          v-model:value="name"
+          maxlength="30"
+          :placeholder="t('reports.observationExample')"
+        />
       </label>
       <div class="observation-field">
-        <span>选择干员（可跨任意原始编组）</span>
+        <span>{{ t('reports.chooseObservationOperators') }}</span>
         <n-select
           v-model:value="selected"
           :options="options"
@@ -76,19 +84,17 @@ function close() {
           clearable
           :max-tag-count="3"
           :max="MAX_MOOD_VIEW_OPERATORS"
-          placeholder="搜索已有历史的干员；也可输入无记录的名字"
+          :placeholder="t('reports.observationOperatorsPlaceholder')"
         />
       </div>
-      <p class="observation-help">
-        可搜索历史记录中的任意干员。没有记录时会明确提示；不会更改排班、采样或实际调度。
-      </p>
-      <p v-if="error" role="alert" class="observation-error">{{ error }}</p>
+      <p class="observation-help">{{ t('reports.observationHelp') }}</p>
+      <p v-if="error" role="alert" class="observation-error">{{ reportErrorMessage(error) }}</p>
       <div class="observation-actions">
-        <n-button v-if="view" type="error" secondary @click="emit('remove', view.id)"
-          >删除观察表</n-button
-        >
-        <n-button @click="close">取消</n-button>
-        <n-button type="primary" @click="submit">保存观察表</n-button>
+        <n-button v-if="view" type="error" secondary @click="emit('remove', view.id)">{{
+          t('reports.deleteObservation')
+        }}</n-button>
+        <n-button @click="close">{{ t('reports.cancel') }}</n-button>
+        <n-button type="primary" @click="submit">{{ t('reports.saveObservation') }}</n-button>
       </div>
     </div>
   </n-modal>

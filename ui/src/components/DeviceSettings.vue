@@ -1,4 +1,6 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
@@ -185,12 +187,12 @@ async function testBossKey() {
       hotkey: draft.value.simulator_hotkey
     })
     if (response.data?.ok) {
-      message?.success(response.data.message || '已触发模拟器老板键')
+      message?.success(response.data.message || t('devices.bossTriggered'))
     } else {
-      message?.warning(response.data?.message || '未能触发模拟器老板键')
+      message?.warning(response.data?.message || t('devices.bossNotTriggered'))
     }
   } catch (error) {
-    message?.error(error.response?.data?.message || error.message || '触发模拟器老板键失败')
+    message?.error(error.response?.data?.message || error.message || t('devices.bossFailed'))
   } finally {
     testingBossKey.value = false
   }
@@ -214,8 +216,7 @@ async function readStatus() {
       statusError.value = ''
     }
   } catch (error) {
-    if (!disposed)
-      statusError.value = error.response?.data?.message || '无法读取设备会话状态，请重试'
+    if (!disposed) statusError.value = error.response?.data?.message || t('devices.statusFailed')
   } finally {
     readingStatus = false
   }
@@ -329,7 +330,7 @@ async function detect(
   } catch (error) {
     const detail = error.response?.data
     if (detail?.error?.code) result.value = detail
-    else requestError.value = detail?.message || error.message || '设备检测失败，请重试'
+    else requestError.value = detail?.message || error.message || t('devices.detectionFailed')
   } finally {
     busy.value = false
     void readStatus()
@@ -362,7 +363,7 @@ async function startBound() {
     const detail = error.response?.data
     if (detail?.error?.code) result.value = detail
     else {
-      requestError.value = detail?.message || error.message || '启动并测试连接失败，请重试'
+      requestError.value = detail?.message || error.message || t('devices.startupFailed')
     }
   } finally {
     busy.value = false
@@ -376,17 +377,17 @@ function prepare() {
   const profile = { ...draft.value }
   const packageChoice = confirmedPackage.value
   dialog.warning({
-    title: '授权本次临时尺寸覆盖',
-    content: `保存并启动实体设备 ${action.serial}。本次运行允许 mower 临时修改该设备的显示尺寸，并验证横屏 1920×1080。结束、取消或失败时恢复原尺寸；离线时保留恢复记录，重连后先恢复。若其他程序修改了尺寸，将停止并提示恢复冲突。此授权不会保存到下次运行。`,
-    positiveText: '授权本次并启动',
-    negativeText: '取消',
+    title: t('devices.authorizeSize'),
+    content: t('devices.physicalAuthorization', { serial: action.serial }),
+    positiveText: t('devices.authorizeStart'),
+    negativeText: t('devices.cancel'),
     onPositiveClick: async () => {
       if (
         state.value.locked ||
         !sameDeviceProfile(draft.value, profile) ||
         confirmedPackage.value !== packageChoice
       ) {
-        requestError.value = '设备设置已变化，请重新确认本次授权。'
+        requestError.value = t('devices.authorizationChanged')
         return
       }
       busy.value = true
@@ -405,9 +406,10 @@ function prepare() {
         dirty.value = false
         manual.value = false
         confirmedPackage.value = null
-        preparationNotice.value = `已发起 ${action.serial} 的本次整备启动，请查看连接状态与运行日志。`
+        preparationNotice.value = t('devices.preparationStarted', { serial: action.serial })
       } catch (error) {
-        requestError.value = error.response?.data?.message || error.message || '临时整备启动失败'
+        requestError.value =
+          error.response?.data?.message || error.message || t('devices.preparationFailed')
       } finally {
         busy.value = false
         void readStatus()
@@ -457,15 +459,13 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="device-settings" aria-label="设备连接">
+  <section class="device-settings" :aria-label="t('devices.connection')">
     <template v-if="managerOwned">
-      <n-alert type="info" :show-icon="false"
-        >设备连接、截图命令、游戏启动与性能设置由多开管理器配置。请退出当前实例后，在多开管理器的“设备与性能”中修改。</n-alert
-      >
+      <n-alert type="info" :show-icon="false"> {{ t('devices.managedHelp') }} </n-alert>
       <p>
         {{ config.device_profile?.preset_id }} ·
         {{ config.device_profile?.instance_name || config.device_profile?.instance_id }} ·
-        {{ config.device_profile?.last_serial || '尚无连接地址' }}
+        {{ config.device_profile?.last_serial || t('devices.noAddress') }}
       </p>
       <n-space align="center"
         ><n-tag>{{ state.statusDisplayLabel }}</n-tag
@@ -473,8 +473,9 @@ onUnmounted(() => {
           :disabled="busy || state.locked"
           :loading="busy"
           @click="detect('preflight', null, false)"
-          >测试已配置连接</n-button
-        ></n-space
+        >
+          {{ t('devices.testConfigured') }}
+        </n-button></n-space
       >
       <n-alert v-if="requestError || statusError" type="error">{{
         requestError || statusError
@@ -486,7 +487,7 @@ onUnmounted(() => {
       <div class="device-card">
         <div class="device-card-header">
           <div class="device-title-row">
-            <span class="device-title">{{ state.presetTitle || '尚未绑定设备' }}</span>
+            <span class="device-title">{{ state.presetTitle || t('devices.noBinding') }}</span>
             <n-tag :type="state.statusTagType" size="small" round :bordered="false">
               {{ state.statusDisplayLabel }}
             </n-tag>
@@ -500,22 +501,26 @@ onUnmounted(() => {
               "
               class="sub-item"
             >
-              实例：{{ draft.instance_name || draft.instance_id }}
+              {{ t('devices.instancePrefix') }} {{ draft.instance_name || draft.instance_id }}
             </span>
             <span v-if="draft.last_serial" class="sub-item">
-              ADB 地址：{{ draft.last_serial }}
+              {{ t('devices.adbPrefix') }} {{ draft.last_serial }}
             </span>
             <span class="sub-item">{{ state.hostLabel }}</span>
-            <span v-if="dirty" class="sub-dirty">（已修改，测试连接后保存）</span>
-            <span v-else-if="savedHint" class="sub-saved">（设置已保存）</span>
+            <span v-if="dirty" class="sub-dirty"> {{ t('devices.dirty') }} </span>
+            <span v-else-if="savedHint" class="sub-saved"> {{ t('devices.saved') }} </span>
           </div>
         </div>
       </div>
 
-      <n-form-item :label-width="158" v-if="state.compatibilityLabel" label="兼容层级">
+      <n-form-item
+        :label-width="158"
+        v-if="state.compatibilityLabel"
+        :label="t('devices.compatibility')"
+      >
         {{ state.compatibilityLabel }}
       </n-form-item>
-      <n-form-item :label-width="158" v-if="state.discoveryLabel" label="发现能力">
+      <n-form-item :label-width="158" v-if="state.discoveryLabel" :label="t('devices.discovery')">
         {{ state.discoveryLabel }}
       </n-form-item>
       <n-text v-if="state.compatibilityNote" depth="3">{{ state.compatibilityNote }}</n-text>
@@ -554,7 +559,7 @@ onUnmounted(() => {
         </n-button>
 
         <n-button v-if="!expanded" quaternary @click="advanced = !advanced">
-          {{ advanced ? '收起高级设置' : '高级设置' }}
+          {{ advanced ? t('devices.collapseAdvanced') : t('devices.advanced') }}
         </n-button>
       </n-space>
 
@@ -563,7 +568,7 @@ onUnmounted(() => {
       </n-alert>
 
       <n-alert v-if="metadata.active" :show-icon="false" class="device-notice">
-        设备会话运行中，目标与后端设置已锁定。其他设置仍可保存。
+        {{ t('devices.sessionLocked') }}
       </n-alert>
       <n-alert v-if="state.message" type="warning" class="device-notice" :show-icon="false">
         {{ state.message }}
@@ -602,10 +607,7 @@ onUnmounted(() => {
         :show-icon="false"
       >
         <n-space vertical>
-          <n-text>
-            默认只检查显示尺寸。临时整备只授权本次运行，结束时确认尺寸仍为 mower 写入值后还原。
-            请先将设备手动切到横屏；mower 不修改旋转、密度或导航栏。
-          </n-text>
+          <n-text> {{ t('devices.physicalHelp') }} </n-text>
           <n-button :disabled="state.actions.prepare.disabled" @click="prepare">
             {{ state.actions.prepare.label }}
           </n-button>
@@ -621,9 +623,8 @@ onUnmounted(() => {
       </n-alert>
       <n-text v-if="preparationNotice" role="status">{{ preparationNotice }}</n-text>
       <n-text v-if="manual" depth="3">
-        当前截图：{{ draft.screenshot_backend }}；触控：{{
-          draft.touch_backend
-        }}。可在下方“连接与恢复”修改。
+        {{ t('devices.capturePrefix') }} {{ draft.screenshot_backend }}
+        {{ t('devices.touchPrefix') }} {{ draft.touch_backend }} {{ t('devices.backendSuffix') }}
       </n-text>
       <n-alert v-if="requestError" type="error" class="device-notice" :show-icon="false">
         {{ requestError }}
@@ -640,14 +641,14 @@ onUnmounted(() => {
           <n-gi v-if="state.instances?.options.length" :span="2">
             <n-form-item :label-width="158">
               <template #label>
-                <span>选择实例</span>
-                <help-text>从当前主机上检测到的模拟器列表中，选择要绑定的目标实例。</help-text>
+                <span> {{ t('devices.selectInstance') }} </span>
+                <help-text> {{ t('devices.selectHelp') }} </help-text>
               </template>
               <n-select
                 :value="state.instances.value"
                 :options="state.instances.options"
                 :disabled="state.instances.disabled"
-                placeholder="请选择要绑定的模拟器实例"
+                :placeholder="t('devices.selectBound')"
                 @update:value="(key) => detect('preflight', key)"
               />
             </n-form-item>
@@ -668,7 +669,7 @@ onUnmounted(() => {
                 :disabled="field.disabled"
                 :tag="field.tag"
                 :filterable="field.tag"
-                :placeholder="field.placeholder || '请选择明确目标'"
+                :placeholder="field.placeholder || t('devices.selectTarget')"
                 @update:value="(value) => edit(field.key, value)"
               />
               <template v-else-if="pathFields.includes(field.key)">
@@ -712,7 +713,7 @@ onUnmounted(() => {
                   :value="field.value || null"
                   :options="field.options"
                   :disabled="field.disabled"
-                  :placeholder="field.placeholder || '请选择明确目标'"
+                  :placeholder="field.placeholder || t('devices.selectTarget')"
                   @update:value="(value) => edit(field.key, value)"
                 />
               </n-form-item>
@@ -720,8 +721,8 @@ onUnmounted(() => {
             <n-gi v-if="draft.screenshot_backend === 'droidcast'" :span="2">
               <n-form-item :label-width="158">
                 <template #label>
-                  <span>旋转截图</span>
-                  <help-text>部分模拟器横屏画面可能出现 180 度颠倒，开启后自动纠正旋转。</help-text>
+                  <span> {{ t('devices.rotate') }} </span>
+                  <help-text> {{ t('devices.rotateHelp') }} </help-text>
                 </template>
                 <n-switch v-model:value="config.droidcast.rotate" :disabled="state.locked" />
               </n-form-item>
@@ -729,8 +730,8 @@ onUnmounted(() => {
             <n-gi v-if="draft.screenshot_backend === 'custom'" :span="2">
               <n-form-item :label-width="158">
                 <template #label>
-                  <span>截图命令</span>
-                  <help-text>向 STDOUT 打印图像原始数据的自定义命令行。</help-text>
+                  <span> {{ t('devices.captureCommand') }} </span>
+                  <help-text> {{ t('devices.captureCommandHelp') }} </help-text>
                 </template>
                 <n-input
                   v-model:value="config.custom_screenshot.command"
@@ -752,16 +753,14 @@ onUnmounted(() => {
 
       <template v-if="showAdvanced">
         <div class="advanced-divider">
-          <n-divider dashed title-placement="left">超时保护与高级控制</n-divider>
+          <n-divider dashed title-placement="left"> {{ t('devices.advancedBudget') }} </n-divider>
         </div>
         <n-grid cols="1 s:2 m:3" :x-gap="14" :y-gap="6">
           <n-gi v-if="draft.preset_id !== 'manual.physical'" :span="1">
             <n-form-item :label-width="158">
               <template #label>
-                <span>启动保护时间 (秒)</span>
-                <help-text>
-                  模拟器启动后，在这段时间内等待设备就绪，不再次自动重启。设备提前就绪即可继续；等待仍受连接超时限制。保留原“模拟器启动时间”设置的值。
-                </help-text>
+                <span> {{ t('devices.startupWait') }} </span>
+                <help-text> {{ t('devices.startupWaitHelp') }} </help-text>
               </template>
               <n-input-number
                 v-model:value="startupWait"
@@ -774,10 +773,8 @@ onUnmounted(() => {
           <n-gi :span="1">
             <n-form-item :label-width="158">
               <template #label>
-                <span>连接超时 (秒)</span>
-                <help-text>
-                  开始连接设备（或中途掉线尝试恢复）时，从模拟器启动、建立连接到异常重试全过程允许的最大总等待时间（超时后终止本次连接流程，避免无限等待）。
-                </help-text>
+                <span> {{ t('devices.connectionTimeout') }} </span>
+                <help-text> {{ t('devices.connectionTimeoutHelp') }} </help-text>
               </template>
               <n-input-number
                 :value="draft.recovery_timeout ?? 180"
@@ -792,8 +789,8 @@ onUnmounted(() => {
           <n-gi :span="1">
             <n-form-item :label-width="158">
               <template #label>
-                <span>最大重试次数</span>
-                <help-text> ADB 断连或设备异常时的最大重试轮次。 </help-text>
+                <span> {{ t('devices.attempts') }} </span>
+                <help-text> {{ t('devices.attemptsHelp') }} </help-text>
               </template>
               <n-input-number
                 :value="draft.recovery_attempts ?? 3"
@@ -807,8 +804,8 @@ onUnmounted(() => {
           <n-gi :span="1">
             <n-form-item :label-width="158">
               <template #label>
-                <span>重试间隔 (秒)</span>
-                <help-text> 每次发送重连指令后等待设备重新响应的时间。 </help-text>
+                <span> {{ t('devices.retryInterval') }} </span>
+                <help-text> {{ t('devices.retryHelp') }} </help-text>
               </template>
               <n-input-number
                 :value="draft.recovery_local_wait ?? 10"
@@ -822,10 +819,8 @@ onUnmounted(() => {
           <n-gi :span="1">
             <n-form-item :label-width="158">
               <template #label>
-                <span>关停上限 (秒)</span>
-                <help-text>
-                  执行模拟器完整重启时，等待模拟器进程及多开实例完全退出停止的最长时间。若超过该时间仍未退出，则取消本次重启以保护环境。
-                </help-text>
+                <span> {{ t('devices.shutdownTimeout') }} </span>
+                <help-text> {{ t('devices.shutdownHelp') }} </help-text>
               </template>
               <n-input-number
                 :value="draft.recovery_shutdown_wait ?? 30"
@@ -840,10 +835,8 @@ onUnmounted(() => {
           <n-gi :span="1">
             <n-form-item :label-width="158">
               <template #label>
-                <span>状态检测超时 (秒)</span>
-                <help-text>
-                  检测多开实例运行状态（如是否已启动/已停止）时的单次最大等待时间。若多开较多或模拟器卡顿导致频繁误报未响应，可适当调大。
-                </help-text>
+                <span> {{ t('devices.queryTimeout') }} </span>
+                <help-text> {{ t('devices.queryHelp') }} </help-text>
               </template>
               <n-input-number
                 :value="draft.manager_query_timeout ?? 10"
@@ -858,11 +851,8 @@ onUnmounted(() => {
           <n-gi :span="1">
             <n-form-item :label-width="158">
               <template #label>
-                <span>老板键延迟 (秒)</span>
-                <help-text>
-                  启动模拟器后，等待窗口完全显示再按下老板键的延时时间。电脑性能较好或冷启动较快可设为
-                  1~2 秒；若启动较慢导致老板键未生效，可适当调大。
-                </help-text>
+                <span> {{ t('devices.bossDelay') }} </span>
+                <help-text> {{ t('devices.bossDelayHelp') }} </help-text>
               </template>
               <n-input-number
                 :value="draft.simulator_hotkey_delay ?? 3"
@@ -877,16 +867,16 @@ onUnmounted(() => {
           <n-gi :span="1">
             <n-form-item :label-width="158">
               <template #label>
-                <span>模拟器老板键</span>
+                <span> {{ t('devices.bossKey') }} </span>
                 <help-text>
-                  <div>启动模拟器后自动触发此快捷键以隐藏窗口。</div>
-                  <div>请先在模拟器自身设置中配置相同的老板键（如 alt+q、ctrl+alt+w）。</div>
-                  <div>若不需要此功能，请留空；组合键用“+”连接，不要空格。</div>
+                  <div>{{ t('devices.bossHelp') }}</div>
+                  <div>{{ t('devices.bossMatch') }}</div>
+                  <div>{{ t('devices.bossEmpty') }}</div>
                 </help-text>
               </template>
               <n-input
                 :value="draft.simulator_hotkey ?? ''"
-                placeholder="例如 alt+q，留空禁用"
+                :placeholder="t('devices.bossPlaceholder')"
                 :disabled="state.locked"
                 @update:value="(v) => edit('simulator_hotkey', v)"
               />
@@ -896,7 +886,7 @@ onUnmounted(() => {
                 :loading="testingBossKey"
                 @click="testBossKey"
               >
-                测试老板键
+                {{ t('devices.testBoss') }}
               </n-button>
             </n-form-item>
           </n-gi>

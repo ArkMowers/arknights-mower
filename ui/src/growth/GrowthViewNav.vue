@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed } from 'vue'
 import { NIcon } from 'naive-ui'
 import GridOutline from '@vicons/ionicons5/es/GridOutline'
@@ -18,29 +19,34 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'open-route', 'open-workshop'])
 
 const views = computed(() => [
-  { key: 'overview', label: '总览', icon: GridOutline, meta: '' },
+  { key: 'overview', label: i18n.global.t('growth.nav.overview'), icon: GridOutline, meta: '' },
   {
     key: 'operators',
-    label: '干员',
+    label: i18n.global.t('growth.nav.operators'),
     icon: PeopleOutline,
     meta: props.operatorCount ? String(props.operatorCount) : ''
   },
   {
     key: 'materials',
-    label: '材料',
+    label: i18n.global.t('growth.nav.materials'),
     icon: CubeOutline,
     meta: props.missingKinds
-      ? '缺 ' + props.missingKinds
+      ? i18n.global.t('growth.nav.missing') + props.missingKinds
       : props.readyCount
-        ? '备齐 ' + props.readyCount
+        ? i18n.global.t('growth.nav.ready') + props.readyCount
         : ''
   },
-  { key: 'insights', label: '统计', icon: BarChartOutline, meta: '' }
+  {
+    key: 'insights',
+    label: i18n.global.t('growth.nav.statistics'),
+    icon: BarChartOutline,
+    meta: ''
+  }
 ])
 </script>
 
 <template>
-  <nav class="growth-viewnav" aria-label="养成规划视图">
+  <nav class="growth-viewnav" :aria-label="i18n.global.t('growth.nav.growthPlanningViews')">
     <div class="growth-viewnav__tabs" role="tablist">
       <button
         v-for="view in views"
@@ -60,11 +66,11 @@ const views = computed(() => [
     <div class="growth-viewnav__tools">
       <button type="button" class="growth-viewnav__tool" @click="emit('open-route')">
         <n-icon :component="RouteOutline" :size="15" aria-hidden="true" />
-        专精路线
+        {{ i18n.global.t('growth.nav.masteryRoutes') }}
       </button>
       <button type="button" class="growth-viewnav__tool" @click="emit('open-workshop')">
         <n-icon :component="HammerOutline" :size="15" aria-hidden="true" />
-        加工站
+        {{ i18n.global.t('growth.nav.workshop') }}
       </button>
     </div>
   </nav>

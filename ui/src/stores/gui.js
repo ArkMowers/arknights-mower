@@ -1,6 +1,13 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
 import axios from 'axios'
+import { i18n } from '@/i18n'
+import {
+  DEFAULT_LOCALE,
+  isInterfaceLanguagePreference,
+  readBrowserLanguages,
+  resolveInterfaceLanguage
+} from '@/i18n/languagePreference'
 
 const appearanceUrl = `${import.meta.env.VITE_HTTP_URL || ''}/gui/appearance`
 const validDisplay = (value) => value === 'version' || value === 'channel'
@@ -10,6 +17,24 @@ const validLayout = (value) => value === 'checklist' || value === 'waterfall'
 export const useGuiStore = defineStore('gui', () => {
   const softwareVersionDisplay = ref('version')
   const softwareVersionLanguage = ref('en')
+  const interfaceLanguage = ref(DEFAULT_LOCALE)
+  const browserLanguages = ref(readBrowserLanguages())
+  const resolvedInterfaceLanguage = computed(() =>
+    resolveInterfaceLanguage(interfaceLanguage.value, browserLanguages.value)
+  )
+  const languageTarget = globalThis.window
+  function updateBrowserLanguages() {
+    browserLanguages.value = readBrowserLanguages()
+  }
+  languageTarget?.addEventListener?.('languagechange', updateBrowserLanguages)
+  onScopeDispose(() =>
+    languageTarget?.removeEventListener?.('languagechange', updateBrowserLanguages)
+  )
+  const interfaceLanguageSaving = ref(false)
+  const interfaceLanguageErrorKey = ref('')
+  const interfaceLanguageError = computed(() =>
+    interfaceLanguageErrorKey.value ? i18n.global.t(interfaceLanguageErrorKey.value) : ''
+  )
   const taskSettingsLayout = ref('checklist')
   const watermarkVisible = ref(true)
   const loaded = ref(false)
@@ -17,28 +42,43 @@ export const useGuiStore = defineStore('gui', () => {
   const saving = ref(false)
   const layoutSaving = ref(false)
   const watermarkSaving = ref(false)
-  const error = ref('')
-  const layoutError = ref('')
-  const watermarkError = ref('')
-  const displayDisabled = computed(
-    () =>
-      !loaded.value || loading.value || saving.value || layoutSaving.value || watermarkSaving.value
+  const errorKey = ref('')
+  const error = computed(() => (errorKey.value ? i18n.global.t(errorKey.value) : ''))
+  const layoutErrorKey = ref('')
+  const layoutError = computed(() =>
+    layoutErrorKey.value ? i18n.global.t(layoutErrorKey.value) : ''
   )
+  const watermarkErrorKey = ref('')
+  const watermarkError = computed(() =>
+    watermarkErrorKey.value ? i18n.global.t(watermarkErrorKey.value) : ''
+  )
+  const appearanceBusy = computed(
+    () =>
+      loading.value ||
+      saving.value ||
+      layoutSaving.value ||
+      watermarkSaving.value ||
+      interfaceLanguageSaving.value
+  )
+  const displayDisabled = computed(() => !loaded.value || appearanceBusy.value)
   const layoutDisabled = displayDisabled
   const watermarkDisabled = displayDisabled
+  const interfaceLanguageDisabled = displayDisabled
   let loadRequest = null
   let failedDisplay = null
   let failedLanguage = null
   let failedLayout = null
   let failedWatermark = null
+  let failedInterfaceLanguage = null
 
   async function load() {
     if (loadRequest) return loadRequest
     if (loaded.value) return true
     loading.value = true
-    error.value = ''
-    layoutError.value = ''
-    watermarkError.value = ''
+    errorKey.value = ''
+    layoutErrorKey.value = ''
+    watermarkErrorKey.value = ''
+    interfaceLanguageErrorKey.value = ''
     loadRequest = (async () => {
       try {
         const { data } = await axios.get(appearanceUrl, { timeout: 5000 })
@@ -54,14 +94,18 @@ export const useGuiStore = defineStore('gui', () => {
           throw new Error()
         softwareVersionDisplay.value = data.software_version_display
         softwareVersionLanguage.value = data.software_version_language ?? 'en'
+        interfaceLanguage.value = isInterfaceLanguagePreference(data.ui_language)
+          ? data.ui_language
+          : DEFAULT_LOCALE
         taskSettingsLayout.value = data.task_settings_layout ?? 'checklist'
         watermarkVisible.value = data.watermark_visible ?? true
         loaded.value = true
         return true
       } catch {
-        error.value = '软件版本显示偏好读取失败，请重试。'
-        layoutError.value = '全部设置显示偏好读取失败，请重试。'
-        watermarkError.value = '版本水印设置读取失败，请重试。'
+        errorKey.value = 'settings.gui.versionLoadFailed'
+        layoutErrorKey.value = 'settings.gui.layoutLoadFailed'
+        watermarkErrorKey.value = 'settings.gui.watermarkLoadFailed'
+        interfaceLanguageErrorKey.value = 'appearance.loadFailed'
         return false
       } finally {
         loading.value = false
@@ -78,7 +122,7 @@ export const useGuiStore = defineStore('gui', () => {
     const previous = softwareVersionDisplay.value
     softwareVersionDisplay.value = value
     saving.value = true
-    error.value = ''
+    errorKey.value = ''
     failedDisplay = null
     failedLanguage = null
     try {
@@ -92,7 +136,7 @@ export const useGuiStore = defineStore('gui', () => {
     } catch {
       softwareVersionDisplay.value = previous
       failedDisplay = value
-      error.value = '软件版本显示偏好保存失败，已恢复原来的显示。请重试。'
+      errorKey.value = 'settings.gui.versionSaveFailed'
       return false
     } finally {
       saving.value = false
@@ -112,7 +156,7 @@ export const useGuiStore = defineStore('gui', () => {
     const previous = softwareVersionLanguage.value
     softwareVersionLanguage.value = value
     saving.value = true
-    error.value = ''
+    errorKey.value = ''
     failedDisplay = null
     failedLanguage = null
     try {
@@ -126,7 +170,7 @@ export const useGuiStore = defineStore('gui', () => {
     } catch {
       softwareVersionLanguage.value = previous
       failedLanguage = value
-      error.value = '软件版本类型语言保存失败，已恢复原来的显示。请重试。'
+      errorKey.value = 'settings.gui.versionLanguageSaveFailed'
       return false
     } finally {
       saving.value = false
@@ -139,7 +183,7 @@ export const useGuiStore = defineStore('gui', () => {
     const previous = taskSettingsLayout.value
     taskSettingsLayout.value = value
     layoutSaving.value = true
-    layoutError.value = ''
+    layoutErrorKey.value = ''
     failedLayout = null
     try {
       const { data } = await axios.put(
@@ -152,7 +196,7 @@ export const useGuiStore = defineStore('gui', () => {
     } catch {
       taskSettingsLayout.value = previous
       failedLayout = value
-      layoutError.value = '全部设置显示偏好保存失败，已恢复原来的显示。请重试。'
+      layoutErrorKey.value = 'settings.gui.layoutSaveFailed'
       return false
     } finally {
       layoutSaving.value = false
@@ -170,7 +214,7 @@ export const useGuiStore = defineStore('gui', () => {
     const previous = watermarkVisible.value
     watermarkVisible.value = value
     watermarkSaving.value = true
-    watermarkError.value = ''
+    watermarkErrorKey.value = ''
     failedWatermark = null
     const payload = { watermark_visible: value }
     if (!value) payload.watermark_confirmation = confirmation
@@ -181,7 +225,7 @@ export const useGuiStore = defineStore('gui', () => {
     } catch {
       watermarkVisible.value = previous
       failedWatermark = { value, confirmation }
-      watermarkError.value = '版本水印设置保存失败，已恢复原来的显示。请重试。'
+      watermarkErrorKey.value = 'settings.gui.watermarkSaveFailed'
       return false
     } finally {
       watermarkSaving.value = false
@@ -195,9 +239,42 @@ export const useGuiStore = defineStore('gui', () => {
       : false
   }
 
+  async function setInterfaceLanguage(value) {
+    if (interfaceLanguageDisabled.value || !isInterfaceLanguagePreference(value)) return false
+    if (value === interfaceLanguage.value) return true
+    const previous = interfaceLanguage.value
+    interfaceLanguage.value = value
+    interfaceLanguageSaving.value = true
+    interfaceLanguageErrorKey.value = ''
+    failedInterfaceLanguage = null
+    try {
+      const { data } = await axios.put(appearanceUrl, { ui_language: value }, { timeout: 5000 })
+      if (data?.ui_language !== value) throw new Error()
+      return true
+    } catch {
+      interfaceLanguage.value = previous
+      failedInterfaceLanguage = value
+      interfaceLanguageErrorKey.value = 'appearance.saveFailed'
+      return false
+    } finally {
+      interfaceLanguageSaving.value = false
+    }
+  }
+
+  function retryInterfaceLanguage() {
+    if (!loaded.value) return load()
+    return failedInterfaceLanguage === null ? false : setInterfaceLanguage(failedInterfaceLanguage)
+  }
+
   return {
     softwareVersionDisplay,
     softwareVersionLanguage,
+    interfaceLanguage,
+    resolvedInterfaceLanguage,
+    interfaceLanguageSaving,
+    interfaceLanguageError,
+    interfaceLanguageDisabled,
+    appearanceBusy,
     taskSettingsLayout,
     watermarkVisible,
     loaded,
@@ -214,6 +291,8 @@ export const useGuiStore = defineStore('gui', () => {
     load,
     setSoftwareVersionDisplay,
     setSoftwareVersionLanguage,
+    setInterfaceLanguage,
+    retryInterfaceLanguage,
     setTaskSettingsLayout,
     setWatermarkVisible,
     retry,

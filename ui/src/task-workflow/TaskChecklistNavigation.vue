@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { computed, ref, useId, watch } from 'vue'
 import ConnectionIcon from '@vicons/fluent/es/PlugConnected20Regular'
 import SearchIcon from '@vicons/fluent/es/Search20Regular'
@@ -10,7 +13,7 @@ const props = defineProps({
   tasks: { type: Array, required: true },
   groups: { type: Array, required: true },
   selectedId: { type: String, required: true },
-  selectedTitle: { type: String, default: '选择配置' },
+  selectedTitle: { type: String, default: '' },
   statuses: { type: Object, required: true },
   connectionEnabled: { type: Boolean, default: true },
   connectionId: { type: String, default: 'device' },
@@ -42,7 +45,7 @@ function revealSelectedEntry() {
 }
 watch([() => props.selectedId, directoryScroll], revealSelectedEntry, { flush: 'post' })
 watch(
-  query,
+  [query, () => i18n.global.locale.value],
   () => {
     if (!query.value.trim()) return
     const workspace = directory.value?.closest?.('.task-workspace')
@@ -61,7 +64,7 @@ const connectionVisible = computed(() => {
   return query.value.trim()
     ? matchesSettingsSearch(
         query.value,
-        '连接与启动',
+        t('tasks.connectionStartup'),
         props.connectionKeywords,
         renderedKeywords.value[props.connectionId]
       )
@@ -118,17 +121,17 @@ watch(
       'is-open': mobileOpen,
       'is-collapsed': collapsed
     }"
-    aria-label="全部设置导航"
+    :aria-label="t('tasks.settingsNavigation')"
   >
     <div class="checklist-desktop-heading">
-      <span class="checklist-desktop-title">配置导航</span>
+      <span class="checklist-desktop-title">{{ t('tasks.configurationDirectory') }}</span>
       <button
         class="checklist-desktop-toggle"
         type="button"
         :aria-expanded="!collapsed"
         :aria-controls="directoryId"
-        :aria-label="collapsed ? '展开配置导航' : '收起配置导航'"
-        :title="collapsed ? '展开配置导航' : '收起配置导航'"
+        :aria-label="collapsed ? t('tasks.expandDirectory') : t('tasks.collapseDirectory')"
+        :title="collapsed ? t('tasks.expandDirectory') : t('tasks.collapseDirectory')"
         @click="emit('update:collapsed', !collapsed)"
       >
         <n-icon :component="collapsed ? ExpandNavigationIcon : CollapseNavigationIcon" :size="20" />
@@ -140,10 +143,12 @@ watch(
       type="button"
       :aria-expanded="mobileOpen"
       :aria-controls="directoryId"
-      :aria-label="`选择配置：${selectedTitle}`"
+      :aria-label="
+        t('tasks.selectSettingNamed', { title: selectedTitle || t('tasks.selectSetting') })
+      "
       @click="mobileOpen = !mobileOpen"
     >
-      <span>{{ selectedTitle }}</span>
+      <span>{{ selectedTitle || t('tasks.selectSetting') }}</span>
       <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
         <path d="m5 7.5 5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.5" />
       </svg>
@@ -154,8 +159,8 @@ watch(
           v-model:value="query"
           clearable
           size="small"
-          placeholder="查找功能"
-          :input-props="{ 'aria-label': '查找设置' }"
+          :placeholder="t('tasks.findFeature')"
+          :input-props="{ 'aria-label': t('tasks.findSettings') }"
         >
           <template #prefix><n-icon :component="SearchIcon" :size="16" /></template>
         </n-input>
@@ -170,12 +175,12 @@ watch(
         <button
           class="connection-select"
           type="button"
-          aria-label="配置连接与启动"
+          :aria-label="t('tasks.configureConnection')"
           :aria-pressed="selectedId === connectionId"
           @click="selectEntry(connectionId)"
         >
           <n-icon :component="ConnectionIcon" :size="20" />
-          <span>连接与启动</span>
+          <span>{{ t('tasks.connectionStartup') }}</span>
         </button>
       </div>
 
@@ -207,14 +212,14 @@ watch(
               :checked="Boolean(statuses[task.id])"
               :indeterminate.prop="Boolean(task.indeterminate)"
               :aria-checked="task.indeterminate ? 'mixed' : Boolean(statuses[task.id])"
-              :aria-label="`启用${task.title}`"
+              :aria-label="t('tasks.enableNamedTask', { title: task.title })"
               @change="emit('toggle', task.id, $event.target.checked)"
             />
             <button
               class="checklist-task-select"
               type="button"
               :title="task.title"
-              :aria-label="`${task.title}设置`"
+              :aria-label="t('tasks.namedTaskSettings', { title: task.title })"
               :aria-pressed="selectedId === task.id"
               @click="selectEntry(task.id)"
             >
@@ -226,7 +231,7 @@ watch(
           v-if="query.trim() && !visibleGroups.length && !connectionVisible"
           class="checklist-empty"
         >
-          没有找到匹配的功能
+          {{ t('tasks.noMatchingFeature') }}
         </p>
       </div>
     </div>

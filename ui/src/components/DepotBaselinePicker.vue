@@ -18,7 +18,9 @@
           :class="{ active: popoverOpen, 'custom-active': modelValue.preset !== 'previous' }"
           :disabled="disabled || history.length < 2"
           :title="
-            history.length < 2 ? '历史快照不足 2 次，暂无法对比' : '点击切换对比基准与时间范围'
+            history.length < 2
+              ? t('reports.insufficientSnapshotsHelp')
+              : t('reports.changeBaselineHelp')
           "
         >
           <span class="trigger-icon">
@@ -51,7 +53,9 @@
             </n-radio-button>
           </n-radio-group>
           <span class="mode-hint">
-            {{ draftMode === 'time' ? '看某段时间内的变化' : '跟具体某两次扫描比' }}
+            {{
+              draftMode === 'time' ? t('reports.compareTimeHint') : t('reports.compareSnapshotHint')
+            }}
           </span>
         </div>
 
@@ -72,25 +76,25 @@
             </button>
           </div>
 
-          <div class="pane-section-title">自定义起止时间</div>
+          <div class="pane-section-title">{{ t('reports.customTimeRange') }}</div>
 
           <!-- 开始时间输入卡片 -->
           <div class="time-input-card">
-            <span class="time-card-label">开始时间</span>
+            <span class="time-card-label">{{ t('reports.startTime') }}</span>
             <n-date-picker
               v-model:value="draftStartMs"
               type="datetime"
               size="small"
               :clearable="false"
               class="time-card-picker"
-              placeholder="选择开始时间"
+              :placeholder="t('reports.chooseStartTime')"
               @update:value="onManualTimeChange"
             />
           </div>
 
           <!-- 结束时间输入卡片 -->
           <div class="time-input-card" :class="{ disabled: draftFollowLatest }">
-            <span class="time-card-label">结束时间</span>
+            <span class="time-card-label">{{ t('reports.endTime') }}</span>
             <n-date-picker
               v-model:value="draftEndMs"
               type="datetime"
@@ -98,7 +102,7 @@
               :clearable="false"
               :disabled="draftFollowLatest"
               class="time-card-picker"
-              placeholder="选择结束时间"
+              :placeholder="t('reports.chooseEndTime')"
               @update:value="onManualTimeChange"
             />
           </div>
@@ -109,33 +113,32 @@
               v-model:checked="draftFollowLatest"
               size="small"
               @update:checked="onFollowLatestChange"
+              >{{ t('reports.followLatestScan') }}</n-checkbox
             >
-              结束时间跟随最新扫描
-            </n-checkbox>
           </div>
         </div>
 
         <!-- 按快照：直接挑两次扫描 -->
         <div v-else class="popover-snapshot-form">
-          <div class="pane-section-title">选择起止扫描</div>
+          <div class="pane-section-title">{{ t('reports.chooseScans') }}</div>
           <div class="time-input-card">
-            <span class="time-card-label">开始</span>
+            <span class="time-card-label">{{ t('reports.start') }}</span>
             <n-select
               v-model:value="draftStartKey"
               :options="startOptions"
               size="small"
               filterable
-              placeholder="选择起始扫描"
+              :placeholder="t('reports.chooseStartScan')"
             />
           </div>
           <div class="time-input-card">
-            <span class="time-card-label">结束</span>
+            <span class="time-card-label">{{ t('reports.end') }}</span>
             <n-select
               v-model:value="draftEndKey"
               :options="endOptions"
               size="small"
               filterable
-              placeholder="选择结束扫描"
+              :placeholder="t('reports.chooseEndScan')"
             />
           </div>
         </div>
@@ -144,47 +147,55 @@
         <div class="match-summary-card">
           <template v-if="alignmentPreview.matchedCount >= 2">
             <div class="match-count-text">
-              已匹配 <b>{{ alignmentPreview.matchedCount }}</b> 次有效快照
+              {{ t('reports.matchedPrefix') }}<b>{{ alignmentPreview.matchedCount }}</b
+              >{{ t('reports.validSnapshotsUnit') }}
             </div>
             <div class="match-range-text">
-              {{ formatTimestamp(alignmentPreview.startSnapshot.at).slice(5) }} 至
-              {{ formatTimestamp(alignmentPreview.endSnapshot.at).slice(5) }}
+              {{ formatTimestamp(alignmentPreview.startSnapshot.at).slice(5) }}{{ t('reports.to')
+              }}{{ formatTimestamp(alignmentPreview.endSnapshot.at).slice(5) }}
             </div>
           </template>
           <template v-else-if="alignmentPreview.matchedCount === 1">
-            <div class="match-count-text warning-text">只匹配到 1 次快照</div>
+            <div class="match-count-text warning-text">{{ t('reports.oneSnapshotOnly') }}</div>
             <div class="match-range-text">
               {{
                 draftMode === 'time'
-                  ? '单次快照无差额对比，请扩大时间范围'
-                  : '起止选了同一次扫描，无差额可比'
+                  ? t('reports.singleSnapshotTimeHelp')
+                  : t('reports.sameSnapshotHelp')
               }}
             </div>
           </template>
           <template v-else>
             <div class="match-count-text warning-text">
-              {{ draftMode === 'time' ? '所选时间段内暂无快照' : '没有匹配到快照' }}
+              {{
+                draftMode === 'time'
+                  ? t('reports.noTimeSnapshots')
+                  : t('reports.noMatchedSnapshots')
+              }}
             </div>
             <div class="match-range-text">
-              {{ draftMode === 'time' ? '未匹配到有效扫描记录，请重新选择' : '请重新选择起止扫描' }}
+              {{
+                draftMode === 'time'
+                  ? t('reports.chooseDifferentRange')
+                  : t('reports.chooseDifferentScans')
+              }}
             </div>
           </template>
         </div>
 
         <!-- 操作按钮 -->
         <div class="popover-action-row">
-          <n-button size="small" quaternary class="action-btn" @click="handleCancel">
-            取消
-          </n-button>
+          <n-button size="small" quaternary class="action-btn" @click="handleCancel">{{
+            t('reports.cancel')
+          }}</n-button>
           <n-button
             size="small"
             type="primary"
             class="action-btn confirm-btn"
             :disabled="alignmentPreview.matchedCount < 2"
             @click="handleApply"
+            >{{ t('reports.confirm') }}</n-button
           >
-            确定
-          </n-button>
         </div>
       </div>
     </n-popover>
@@ -192,6 +203,8 @@
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import {
   alignSnapshotsToRange,
@@ -425,7 +438,7 @@ const activeTriggerLabel = computed(() => {
       const endStr = formatTimestamp(preview.endSnapshot.at).slice(5, 10)
       return `${startStr} ~ ${endStr}`
     }
-    return '按快照'
+    return t('reports.bySnapshot')
   }
 
   const preset = current.preset || 'previous'
@@ -440,7 +453,7 @@ const activeTriggerLabel = computed(() => {
     return `${startStr} ~ ${endStr}`
   }
 
-  return '较上次'
+  return t('reports.comparedPrevious')
 })
 </script>
 

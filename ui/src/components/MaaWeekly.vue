@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 defineProps({ showEnable: { type: Boolean, default: true } })
 import { storeToRefs } from 'pinia'
 import { NTag, NCheckbox } from 'naive-ui'
@@ -9,6 +12,7 @@ import { useResourceVersionStore } from '@/stores/resourceVersion'
 import {
   CHIP_STAGES,
   WEEKDAYS,
+  formatWeekday,
   buildStageOptions,
   createStageOption,
   formatStageLabel,
@@ -40,7 +44,8 @@ const mobile = inject('mobile')
 // 最近开启活动（后端当前资源包）：prepend 到关卡下拉最前
 const latestActivityOptions = ref([])
 const activityLoading = ref(false)
-const activityError = ref('')
+const activityErrorKey = ref('')
+const activityError = computed(() => (activityErrorKey.value ? t(activityErrorKey.value) : ''))
 const resourceVersion = useResourceVersionStore()
 let activityRequest = 0
 onBeforeUnmount(() => {
@@ -50,7 +55,7 @@ onBeforeUnmount(() => {
 async function loadLatestActivityStages() {
   const request = ++activityRequest
   activityLoading.value = true
-  activityError.value = ''
+  activityErrorKey.value = ''
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/stage/latest-activity`)
     if (request !== activityRequest) return
@@ -58,7 +63,7 @@ async function loadLatestActivityStages() {
   } catch {
     if (request !== activityRequest) return
     latestActivityOptions.value = []
-    activityError.value = '活动关卡读取失败，请重新读取'
+    activityErrorKey.value = 'tasks.eventStagesFailed'
   } finally {
     if (request === activityRequest) activityLoading.value = false
   }
@@ -274,26 +279,24 @@ function cancelCopyDialogLongPress() {
 <template>
   <n-card class="maa-weekly">
     <template #header>
-      <n-checkbox v-if="showEnable" v-model:checked="stage_plan_enable" aria-label="启用周计划">
-        <div class="card-title">刷理智周计划</div>
+      <n-checkbox
+        v-if="showEnable"
+        v-model:checked="stage_plan_enable"
+        :aria-label="t('tasks.enableWeeklyPlan')"
+      >
+        <div class="card-title">{{ t('tasks.weeklySanityPlan') }}</div>
       </n-checkbox>
-      <span v-else class="weekly-plan-heading">周计划</span>
-      <help-text label="周计划说明">
-        <div>支持 MAA 支持的所有关卡。</div>
-        <div>操作流程：</div>
-        <div>1. 先在"方案"里选择已有方案，或输入新方案名后按回车创建。</div>
-        <div>2. 列表计划与表格计划编辑同一份配置，切换视图后会立即同步。</div>
-        <div>3. 列表中可手动输入关卡；右键（或长按）标签可批量追加到其他日期。</div>
-        <div>4. 表格中点击格子切换“打”，活动关卡会跟随资源包动态加入表格。</div>
-        <div>5. 吃药次数和体力阈值在列表计划中设置。</div>
-        <div>
-          6.
-          库存选关随方案分别保存，只显示当前方案的限制；规则只作用于已选择的关卡，不会自动加入关卡。
-        </div>
-        <div>
-          7.
-          可为当前活动方案设置“结束后”目标和切换时间；默认取方案内活动关卡最晚结束时间，界面按设备本地时区显示，刷理智前优先按已校准的服务器时间自动切换。
-        </div>
+      <span v-else class="weekly-plan-heading">{{ t('tasks.weeklyPlan') }}</span>
+      <help-text :label="t('tasks.weeklyPlanHelp')">
+        <div>{{ t('tasks.maaStageSupport') }}</div>
+        <div>{{ t('tasks.workflowSteps') }}</div>
+        <div>{{ t('tasks.weeklyStep1') }}</div>
+        <div>{{ t('tasks.weeklyStep2') }}</div>
+        <div>{{ t('tasks.weeklyStep3') }}</div>
+        <div>{{ t('tasks.weeklyStep4') }}</div>
+        <div>{{ t('tasks.weeklyStep5') }}</div>
+        <div>{{ t('tasks.weeklyStep6') }}</div>
+        <div>{{ t('tasks.weeklyStep7') }}</div>
       </help-text>
       <n-button
         text
@@ -303,7 +306,7 @@ function cancelCopyDialogLongPress() {
         type="primary"
         class="prts-wiki-link"
       >
-        <div class="prts-wiki-link-text">PRTS.wiki：关卡一览 / 资源收集</div>
+        <div class="prts-wiki-link-text">{{ t('tasks.prtsStageReference') }}</div>
       </n-button>
     </template>
     <n-form
@@ -315,7 +318,7 @@ function cancelCopyDialogLongPress() {
       <n-form-item :show-label="false">
         <n-flex vertical :size="8">
           <n-flex align="center">
-            <span>执行方式</span>
+            <span>{{ t('tasks.runner') }}</span>
             <n-radio-group v-model:value="stage_plan_runner" :disabled="!stage_plan_enable">
               <n-space>
                 <n-radio value="maa">MAA</n-radio>
@@ -323,12 +326,12 @@ function cancelCopyDialogLongPress() {
               </n-space>
             </n-radio-group>
             <help-text>
-              <div>MAA：调用 MAA 客户端完成关卡战斗，支持掉落上报与异常恢复。</div>
-              <div>Mower：使用 Mower 内置本地寻路与作战逻辑，不依赖 MAA。</div>
+              <div>{{ t('tasks.maaCombatHelp') }}</div>
+              <div>{{ t('tasks.mowerCombatHelp') }}</div>
             </help-text>
           </n-flex>
           <n-flex class="weekly-plan-toolbar" align="center">
-            <span>使用还剩</span>
+            <span>{{ t('tasks.usePotionsBefore') }}</span>
             <mower-input-number
               v-model:value="medicine_expire_days"
               :min="0"
@@ -337,65 +340,68 @@ function cancelCopyDialogLongPress() {
               placeholder="0"
               style="width: 90px"
             >
-              <template #suffix>天</template>
+              <template #suffix>{{ t('tasks.days') }}</template>
             </mower-input-number>
-            <span>过期的理智药</span>
+            <span>{{ t('tasks.expiringPotionsAfter') }}</span>
             <help-text>
-              <div>
-                实际会服用游戏内显示剩余天数小于此处填写天数的理智药（如填 3，则剩余不足 3
-                天才用）。
-              </div>
-              <div>填 0 表示不服用（默认）。</div>
+              <div>{{ t('tasks.potionExpiryHelp') }}</div>
+              <div>{{ t('tasks.potionZeroHelp') }}</div>
             </help-text>
           </n-flex>
           <n-flex align="center" v-if="stage_plan_runner === 'maa'">
-            <n-checkbox v-model:checked="maa_report_to_penguin">上报至企鹅物流</n-checkbox>
+            <n-checkbox v-model:checked="maa_report_to_penguin">{{
+              t('tasks.reportPenguin')
+            }}</n-checkbox>
             <n-input
               v-model:value="maa_penguin_id"
               :disabled="!maa_report_to_penguin"
-              placeholder="企鹅物流 id"
+              :placeholder="t('tasks.penguinId')"
               style="width: 200px"
             />
           </n-flex>
           <n-flex align="center" v-if="stage_plan_runner === 'maa'">
-            <n-checkbox v-model:checked="maa_report_to_yituliu">上报至一图流</n-checkbox>
+            <n-checkbox v-model:checked="maa_report_to_yituliu">{{
+              t('tasks.reportYituliu')
+            }}</n-checkbox>
             <n-input
               v-model:value="maa_yituliu_id"
               :disabled="!maa_report_to_yituliu"
-              placeholder="一图流 id"
+              :placeholder="t('tasks.yituliuId')"
               style="width: 200px"
             />
             <help-text>
               <div>
-                勾选后上传关卡掉落数据至
-                <n-a href="https://penguin-stats.io/" target="_blank" rel="noopener noreferrer">
-                  企鹅物流
-                </n-a>
-                或
-                <n-a href="https://ark.yituliu.cn/" target="_blank" rel="noopener noreferrer">
-                  一图流
-                </n-a>
+                {{ t('tasks.reportDropHelpBefore')
+                }}<n-a href="https://penguin-stats.io/" target="_blank" rel="noopener noreferrer">{{
+                  t('tasks.penguinStatistics')
+                }}</n-a
+                >{{ t('tasks.or')
+                }}<n-a href="https://ark.yituliu.cn/" target="_blank" rel="noopener noreferrer">{{
+                  t('tasks.yituliu')
+                }}</n-a>
                 。
               </div>
-              <div>两个上报站点均凭 id 关联个人账号，留空则匿名上报；不勾选则不上传。</div>
+              <div>{{ t('tasks.reportDropHelpAfter') }}</div>
             </help-text>
           </n-flex>
           <n-flex align="center">
-            <n-checkbox v-model:checked="filterStageByAvailability">只显示当日开放关卡</n-checkbox>
+            <n-checkbox v-model:checked="filterStageByAvailability">{{
+              t('tasks.openStagesOnly')
+            }}</n-checkbox>
             <n-flex align="center" v-if="stage_plan_runner === 'mower'">
-              <span>关卡体力默认值</span>
+              <span>{{ t('tasks.defaultStageSanity') }}</span>
               <mower-input-number
                 v-model:value="ap_fallback"
                 :min="0"
                 :max="999"
                 :show-button="false"
-                placeholder="体力"
+                :placeholder="t('tasks.stamina')"
                 style="width: 90px"
               >
-                <template #suffix>体力</template>
+                <template #suffix>{{ t('tasks.stamina') }}</template>
               </mower-input-number>
               <help-text>
-                <div>Mower 本地计算体力阈值时，若关卡数据中未找到消耗，则使用此默认体力值。</div>
+                <div>{{ t('tasks.defaultStageSanityHelp') }}</div>
               </help-text>
             </n-flex>
           </n-flex>
@@ -404,15 +410,13 @@ function cancelCopyDialogLongPress() {
     </n-form>
 
     <n-flex align="center" :size="8" class="activity-resource-status">
-      <span v-if="activityLoading">正在读取活动关卡…</span>
+      <span v-if="activityLoading">{{ t('tasks.loadingEventStages') }}</span>
       <span v-else-if="activityError" role="alert">{{ activityError }}</span>
-      <span v-else-if="!latestActivityOptions.length">
-        当前资源没有可用活动关卡；如游戏中已有活动，请在设置中更新 Mower 资源包。
-      </span>
-      <span v-else>已读取当前活动关卡</span>
-      <n-button size="small" :loading="activityLoading" @click="loadLatestActivityStages">
-        重新读取活动
-      </n-button>
+      <span v-else-if="!latestActivityOptions.length">{{ t('tasks.noEventStages') }}</span>
+      <span v-else>{{ t('tasks.eventStagesLoaded') }}</span>
+      <n-button size="small" :loading="activityLoading" @click="loadLatestActivityStages">{{
+        t('tasks.reloadEvents')
+      }}</n-button>
     </n-flex>
 
     <div class="weekly-plan-selector-wrap">
@@ -420,21 +424,25 @@ function cancelCopyDialogLongPress() {
     </div>
 
     <n-tabs v-model:value="editorMode" type="segment" class="weekly-plan-editors">
-      <n-tab-pane name="list" tab="列表计划">
+      <n-tab-pane name="list" :tab="t('tasks.listPlan')">
         <table class="weekly-plan-table">
           <thead>
             <tr>
-              <th class="weekday-column">日期</th>
-              <th>关卡</th>
-              <th v-if="stage_plan_runner === 'maa'" class="number-column">每次吃药</th>
-              <th v-if="stage_plan_runner === 'mower'" class="number-column">体力阈值</th>
+              <th class="weekday-column">{{ t('tasks.date') }}</th>
+              <th>{{ t('tasks.stage') }}</th>
+              <th v-if="stage_plan_runner === 'maa'" class="number-column">
+                {{ t('tasks.potionsPerRun') }}
+              </th>
+              <th v-if="stage_plan_runner === 'mower'" class="number-column">
+                {{ t('tasks.sanityThreshold') }}
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="plan in maa_weekly_plan" :key="plan.weekday">
               <td class="weekday-column">
                 <span class="weekday-pill" :class="{ 'today-pill': isToday(plan.weekday) }">
-                  {{ plan.weekday }}
+                  {{ formatWeekday(plan.weekday) }}
                 </span>
               </td>
               <td class="stage-column">
@@ -450,41 +458,49 @@ function cancelCopyDialogLongPress() {
                 />
               </td>
               <td v-if="stage_plan_runner === 'maa'" class="number-column">
-                <span class="weekly-mobile-label">每次吃药</span>
+                <span class="weekly-mobile-label">{{ t('tasks.potionsPerRun') }}</span>
                 <mower-input-number
                   v-model:value="plan.medicine"
                   :min="0"
                   :max="999"
                   :show-button="false"
-                  :input-props="{ 'aria-label': `${plan.weekday}每次吃药` }"
+                  :input-props="{
+                    'aria-label': t('tasks.weekdayPotions', {
+                      weekday: formatWeekday(plan.weekday)
+                    })
+                  }"
                 >
-                  <template #suffix>药</template>
+                  <template #suffix>{{ t('tasks.potions') }}</template>
                 </mower-input-number>
               </td>
               <td v-if="stage_plan_runner === 'mower'" class="number-column">
-                <span class="weekly-mobile-label">体力阈值</span>
+                <span class="weekly-mobile-label">{{ t('tasks.sanityThreshold') }}</span>
                 <mower-input-number
                   v-model:value="plan.sanity_threshold"
                   :min="0"
                   :max="210"
                   :show-button="false"
-                  :input-props="{ 'aria-label': `${plan.weekday}体力阈值` }"
+                  :input-props="{
+                    'aria-label': t('tasks.weekdaySanityThreshold', {
+                      weekday: formatWeekday(plan.weekday)
+                    })
+                  }"
                 >
-                  <template #suffix>理智</template>
+                  <template #suffix>{{ t('tasks.sanity') }}</template>
                 </mower-input-number>
               </td>
             </tr>
           </tbody>
         </table>
       </n-tab-pane>
-      <n-tab-pane name="table" tab="表格计划">
+      <n-tab-pane name="table" :tab="t('tasks.tablePlan')">
         <MaaWeeklyTable
           v-model:stage-order="tableStageOrder"
           :latest-activity-options="latestActivityOptions"
           :filter-stage-by-availability="filterStageByAvailability"
         />
       </n-tab-pane>
-      <n-tab-pane name="inventory" tab="库存选关">
+      <n-tab-pane name="inventory" :tab="t('tasks.inventoryStageSelection')">
         <MaaStageInventory @chip-limits-applied="applyChipStageSelection" />
       </n-tab-pane>
     </n-tabs>
@@ -492,24 +508,23 @@ function cancelCopyDialogLongPress() {
     <n-modal
       v-model:show="copyDialogVisible"
       preset="card"
-      title="追加到其他日期"
+      :title="t('tasks.appendOtherDays')"
       :style="{ width: '320px', maxWidth: 'calc(100vw - 32px)' }"
       :mask-closable="false"
     >
       <n-space vertical :size="12">
         <div>
-          关卡：<b>{{ formatStageLabel(copyStageValue) }}</b>
+          {{ t('tasks.stagePrefix') }}<b>{{ formatStageLabel(copyStageValue) }}</b>
         </div>
         <div>
-          来源日期：<b>{{ copySourceWeekday }}</b>
+          {{ t('tasks.sourceDay') }}<b>{{ formatWeekday(copySourceWeekday) }}</b>
         </div>
         <n-checkbox
           :checked="copyTargetDays.length === WEEKDAYS.length"
           :indeterminate="copyTargetDays.length > 0 && copyTargetDays.length < WEEKDAYS.length"
           @update:checked="toggleSelectAllCopyDays"
+          >{{ t('tasks.selectAll') }}</n-checkbox
         >
-          全选
-        </n-checkbox>
         <n-checkbox-group v-model:value="copyTargetDays">
           <n-space vertical>
             <n-checkbox v-for="weekday in WEEKDAYS" :key="weekday" :value="weekday">
@@ -518,17 +533,19 @@ function cancelCopyDialogLongPress() {
                   'stage-unavailable': !isStageAvailableOnWeekday(copyStageValue, weekday)
                 }"
               >
-                {{ weekday }}
+                {{ formatWeekday(weekday) }}
               </span>
-              <span v-if="!isStageAvailableOnWeekday(copyStageValue, weekday)" class="stage-hint">
-                (本日不开)</span
-              >
+              <span v-if="!isStageAvailableOnWeekday(copyStageValue, weekday)" class="stage-hint">{{
+                t('tasks.closedToday')
+              }}</span>
             </n-checkbox>
           </n-space>
         </n-checkbox-group>
         <n-flex justify="end">
-          <n-button @click="closeCopyDialog">取消</n-button>
-          <n-button type="primary" @click="applyStageToSelectedDays">确认追加</n-button>
+          <n-button @click="closeCopyDialog">{{ t('tasks.cancel') }}</n-button>
+          <n-button type="primary" @click="applyStageToSelectedDays">{{
+            t('tasks.confirmAppend')
+          }}</n-button>
         </n-flex>
       </n-space>
     </n-modal>

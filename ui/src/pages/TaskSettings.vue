@@ -1,5 +1,8 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
 
 defineOptions({ name: 'TaskSettings' })
@@ -19,7 +22,7 @@ onUnmounted(() => viewportObserver?.disconnect())
 </script>
 
 <template>
-  <section ref="page" class="task-settings-page" aria-label="全部设置">
+  <section ref="page" class="task-settings-page" :aria-label="t('tasks.allSettings')">
     <TaskConfiguration />
   </section>
 </template>

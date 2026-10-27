@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { inject, onMounted, reactive, ref } from 'vue'
 import { incomeAlgorithms, incomeSettingsUrl, loadIncomeSettings } from '@/utils/incomeSettings'
 const axios = inject('axios')
@@ -26,7 +29,7 @@ async function loadSettings() {
   try {
     applySettings(await loadIncomeSettings(axios))
   } catch {
-    settingsError.value = '收益设置读取失败，请重试'
+    settingsError.value = t('tasks.incomeReadFailed')
   } finally {
     settingsLoading.value = false
   }
@@ -54,10 +57,15 @@ async function updateSettings(action, file = null) {
     applySettings(response.data)
     settingsMessage.value =
       action === 'import'
-        ? `已更新 ${response.data.last_import.updated} 项价值，新增 ${response.data.last_import.added} 项，其余 ${response.data.last_import.retained} 项保留原值；跳过 ${response.data.last_import.unpriced?.length || 0} 项无有效价格的项目`
-        : '收益设置已保存'
+        ? t('tasks.valuationImportSummary', {
+            updated: response.data.last_import.updated,
+            added: response.data.last_import.added,
+            retained: response.data.last_import.retained,
+            skipped: response.data.last_import.unpriced?.length || 0
+          })
+        : t('tasks.incomeSaved')
   } catch (error) {
-    settingsError.value = error.response?.data?.error || '收益设置保存失败，请重新读取设置确认'
+    settingsError.value = error.response?.data?.error || t('tasks.incomeSaveFailed')
   } finally {
     settingsBusy.value = false
   }
@@ -67,7 +75,7 @@ async function importValues(event) {
   try {
     if (!file) return
     if (!file.name.toLowerCase().endsWith('.xlsx') || file.size > 2 * 1024 * 1024) {
-      settingsError.value = '请选择不超过 2 MiB 的一图流 .xlsx 物品价值表'
+      settingsError.value = t('tasks.incomeFileHelp')
       return
     }
     await updateSettings('import', file)
@@ -77,22 +85,20 @@ async function importValues(event) {
 }
 
 function formatTime(at) {
-  return new Date(at * 1000).toLocaleString('zh-CN', { hour12: false })
+  return new Date(at * 1000).toLocaleString(i18n.global.locale.value, { hour12: false })
 }
 onMounted(loadSettings)
 </script>
 <template>
-  <n-card id="income-settings" title="材料价值与基报算法">
+  <n-card id="income-settings" :title="t('tasks.incomeSettingsTitle')">
     <n-spin :show="settingsLoading || settingsBusy">
-      <p class="settings-description">
-        默认采用所提供计算表的材料价值、CE6 / 0.23456 算法与 SS
-        活动计价（含代币折币）。导入“物品价值表”Excel
-        可更新价值或添加新材料，未提供的项目保留原值。回收站与养成统计共用此设置。
-      </p>
+      <p class="settings-description">{{ t('tasks.incomeSettingsHelp') }}</p>
       <div v-if="valuation" class="valuation-source">
         <span>{{ valuation.source }}</span>
-        <span>{{ Object.keys(valuation.prices).length }} 项价值</span>
-        <span>{{ valuation.imported_at ? formatTime(valuation.imported_at) : '内置快照' }}</span>
+        <span>{{ Object.keys(valuation.prices).length }}{{ t('tasks.valuesCountSuffix') }}</span>
+        <span>{{
+          valuation.imported_at ? formatTime(valuation.imported_at) : t('tasks.builtInSnapshot')
+        }}</span>
       </div>
       <div class="valuation-actions">
         <input ref="importInput" type="file" accept=".xlsx" hidden @change="importValues" />
@@ -100,21 +106,24 @@ onMounted(loadSettings)
           secondary
           :disabled="!valuation || settingsBusy || settingsLoading"
           @click="importInput.click()"
-          >导入一图流材料价值</n-button
+          >{{ t('tasks.importYituliuValues') }}</n-button
         >
-        <n-button quaternary :disabled="settingsBusy || settingsLoading" @click="loadSettings"
-          >重新读取</n-button
-        >
+        <n-button quaternary :disabled="settingsBusy || settingsLoading" @click="loadSettings">{{
+          t('tasks.reload')
+        }}</n-button>
         <n-button
           quaternary
           :disabled="!valuation || settingsBusy || settingsLoading"
           @click="updateSettings('reset')"
-          >恢复全部默认值</n-button
+          >{{ t('tasks.restoreAllDefaults') }}</n-button
         >
       </div>
       <n-text depth="3" style="font-size: 12px">
-        <n-a href="https://ark.yituliu.cn/material/value" target="_blank" rel="noopener noreferrer"
-          >一图流物品价值表</n-a
+        <n-a
+          href="https://ark.yituliu.cn/material/value"
+          target="_blank"
+          rel="noopener noreferrer"
+          >{{ t('tasks.yituliuValueTable') }}</n-a
         >
         ·
         <n-a
@@ -125,35 +134,29 @@ onMounted(loadSettings)
         >
       </n-text>
       <n-collapse style="margin-top: 14px">
-        <n-collapse-item title="默认估值口径" name="default-method">
-          <n-text depth="3" style="font-size: 13px; line-height: 1.8">
-            龙门币按 CE6、钱书按 0.23456 算法；蓝材料按 SS 活动计价，包含代币和龙门币价值。
-            扭转醇、轻锰矿、研磨石、RMA70-12 按代币等价龙门币计价。
-            绿→蓝按九色鹿因果价值联立计算，蓝→紫用蚀清（18%固定异铁组副产物），紫→金用年／芳汀（20%副产物）。
-            紫糖、紫酯保留加工价值。电极单元按 SS 掉率 0.7 预估，白材料等其他价值沿用所提供计算表。
-          </n-text>
+        <n-collapse-item :title="t('tasks.defaultValuation')" name="default-method">
+          <n-text depth="3" style="font-size: 13px; line-height: 1.8">{{
+            t('tasks.defaultValuationHelp')
+          }}</n-text>
         </n-collapse-item>
       </n-collapse>
       <n-divider />
       <label class="algorithm-field"
-        ><span>基报收益算法</span
+        ><span>{{ t('tasks.baseIncomeAlgorithm') }}</span
         ><n-select
           v-model:value="algorithm"
           :options="incomeAlgorithms"
           :disabled="!valuation || settingsBusy || settingsLoading"
           @update:value="selectAlgorithm"
       /></label>
-      <p class="settings-description">
-        基建报表与回收站等效制造站效率使用同一组产物系数。回收站效率仅用于理论日产量换算，100% 填
-        1。
-      </p>
+      <p class="settings-description">{{ t('tasks.incomeRatiosHelp') }}</p>
       <div class="ratio-fields">
         <label
           v-for="field in [
-            { key: 'experience', label: '经验书价值比例' },
-            { key: 'gold', label: '赤金价值比例' },
-            { key: 'order', label: '订单价值比例' },
-            { key: 'efficiency', label: '回收站效率（1 = 100%）' }
+            { key: 'experience', label: t('tasks.experienceValueRatio') },
+            { key: 'gold', label: t('tasks.goldValueRatio') },
+            { key: 'order', label: t('tasks.orderValueRatio') },
+            { key: 'efficiency', label: t('tasks.recyclingEfficiency') }
           ]"
           :key="field.key"
         >
@@ -177,7 +180,7 @@ onMounted(loadSettings)
         :loading="settingsBusy"
         :disabled="!valuation || settingsLoading"
         @click="updateSettings('ratios')"
-        >保存收益设置</n-button
+        >{{ t('tasks.saveIncomeSettings') }}</n-button
       >
       <n-alert v-if="settingsError" type="error" class="settings-feedback">{{
         settingsError

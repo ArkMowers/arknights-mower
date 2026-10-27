@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRenderer, createSSRApp, h, nextTick, reactive, ref, ssrContextKey } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import DailyMission from './DailyMission.vue'
+import { i18n } from '@/i18n'
 
-const state = vi.hoisted(() => ({ config: null, buttons: [] }))
+const state = vi.hoisted(() => ({ config: null, buttons: [], tabs: [] }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('pinia', async () => ({ storeToRefs: (await import('vue')).toRefs }))
 vi.mock('naive-ui', async () => {
@@ -13,12 +14,14 @@ vi.mock('naive-ui', async () => {
       name,
       {
         inheritAttrs: false,
-        props: ['title', 'checked', 'disabled', 'loading'],
+        props: ['title', 'checked', 'disabled', 'loading', 'animated', 'tab'],
         setup(props, { attrs, slots }) {
           if (name === 'NButton') state.buttons.push({ props, attrs })
+          if (name === 'NTabs') state.tabs.push(props)
           return () =>
             h(name === 'NButton' ? 'button' : 'div', { ...attrs, disabled: props.disabled }, [
               props.title,
+              props.tab,
               slots.default?.()
             ])
         }
@@ -41,6 +44,7 @@ const axios = { get: vi.fn() }
 
 beforeEach(() => {
   state.buttons = []
+  state.tabs = []
   state.config = reactive({
     check_mail_enable: true,
     event_sign_in_enable: false,
@@ -65,6 +69,7 @@ afterEach(() => {
   app?.unmount()
   app = null
   vi.clearAllMocks()
+  i18n.global.locale.value = 'zh-CN'
 })
 
 async function render(props = {}) {
@@ -122,6 +127,25 @@ function mountEditor(selected = ref('skland')) {
 }
 
 describe('daily task editors', () => {
+  it('localizes game tabs while retaining account choices and the upstream non-animated panels', async () => {
+    const accounts = JSON.stringify(state.config)
+    for (const [locale, game, endfield] of [
+      ['zh-CN', '明日方舟', '明日方舟终末地'],
+      ['en-US', 'Arknights', 'Arknights: Endfield'],
+      ['ja-JP', 'アークナイツ', 'アークナイツ：エンドフィールド'],
+      ['zh-TW', '明日方舟', '明日方舟終末地']
+    ]) {
+      i18n.global.locale.value = locale
+      const html = await render({ task: 'skland', showEnable: false })
+      expect(html).toContain(game)
+      expect(html).toContain(endfield)
+      expect(JSON.stringify(state.config)).toBe(accounts)
+    }
+    expect(state.tabs).toHaveLength(4)
+    expect(state.tabs.every((props) => !props.animated)).toBe(true)
+    expect(axios.get).not.toHaveBeenCalled()
+  })
+
   it('keeps sign-in accounts available when the task checklist owns the enable switch', async () => {
     const html = await render({ task: 'skland', showEnable: false })
     expect(html).toContain('example-account')

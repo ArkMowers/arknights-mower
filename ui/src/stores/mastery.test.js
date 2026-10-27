@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { i18n } from '@/i18n'
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 import { createPinia, setActivePinia } from 'pinia'
 import { isReactive } from 'vue'
 import axios from 'axios'
@@ -95,5 +99,55 @@ describe('养成概览快照', () => {
     expect(first.error).toBe('')
     expect(second.recommendations).toEqual([])
     expect(second.error).toContain('second offline')
+  })
+})
+
+describe('operator sync status presentation', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    axios.get.mockReset()
+  })
+
+  it.each([true, false])(
+    'retranslates the completed sync state (success=%s) without another request',
+    async (success) => {
+      const message = success ? '数据拉取成功' : '未同步到干员数据，请检查森空岛账号及官服/B服选择'
+      const payload = { success, message }
+      axios.get.mockResolvedValueOnce({ data: payload })
+      if (success) axios.get.mockResolvedValueOnce({ data: { operators: [], has_data: true } })
+      const store = useMasteryStore()
+      await store.fetchCultivate()
+      const requests = axios.get.mock.calls.length
+      for (const locale of ['en-US', 'ja-JP', 'zh-TW', 'zh-CN']) {
+        i18n.global.locale.value = locale
+        const expected = i18n.global.t(
+          success ? 'operatorSync.fetched' : 'operatorSync.emptyRoster'
+        )
+        expect(store.cultivateMsg).toBe(expected)
+        expect(store.cultivateOk).toBe(success)
+        if (!success)
+          expect(store.error).toBe(
+            i18n.global.t('growth.store.dataFetchFailed', { value0: expected })
+          )
+      }
+      expect(axios.get).toHaveBeenCalledTimes(requests)
+      expect(payload).toEqual({ success, message })
+    }
+  )
+
+  it('translates the known recommendation prefix and retains an unknown diagnostic suffix', async () => {
+    const diagnostic = 'D:/数据/cache.json: unexpected token X'
+    const payload = { error: '请从森空岛同步干员数据：' + diagnostic }
+    axios.get.mockResolvedValueOnce({ data: payload })
+    const store = useMasteryStore()
+    await store.fetchRecommendations()
+    i18n.global.locale.value = 'ja-JP'
+    expect(store.error).toBe('SKLand のオペレーターデータを同期してください：' + diagnostic)
+    i18n.global.locale.value = 'en-US'
+    expect(store.error).toBe('Sync operator data from SKLand: ' + diagnostic)
+    expect(axios.get).toHaveBeenCalledOnce()
+    expect(payload.error).toBe('请从森空岛同步干员数据：' + diagnostic)
+    store.error = diagnostic
+    expect(store.error).toBe(diagnostic)
   })
 })

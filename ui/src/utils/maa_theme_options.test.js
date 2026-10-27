@@ -1,7 +1,28 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { getMaaThemeOptions } from './maa_theme_options'
+import { i18n } from '@/i18n'
+
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 
 describe('MAA theme dropdown compatibility', () => {
+  it('updates official theme labels and translates CN-only themes while preserving every theme task parameter', () => {
+    const options = getMaaThemeOptions('用户自定义主题')
+    const values = options.map(({ value }) => value)
+    for (const [locale, silverfrost, hunt] of [
+      ['zh-CN', '银凇', '出猎'],
+      ['en-US', 'Silverfrost', 'The Hunt'],
+      ['ja-JP', '銀氷', '狩り'],
+      ['zh-TW', '銀淞', '出獵']
+    ]) {
+      i18n.global.locale.value = locale
+      expect(options.find(({ value }) => value === '银凇').label).toBe(silverfrost)
+      expect(options.find(({ value }) => value === '出猎').label).toBe(hunt)
+      expect(options.map(({ value }) => value)).toEqual(values)
+      expect(options.at(-1).value).toBe('用户自定义主题')
+    }
+  })
   it('uses game names as task parameters without duplicating saved known themes', () => {
     const options = getMaaThemeOptions('银凇')
     expect(options.filter((option) => option.value === '银凇')).toEqual([

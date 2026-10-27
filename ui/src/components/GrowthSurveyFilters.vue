@@ -2,20 +2,21 @@
   <section class="survey">
     <header class="survey__head">
       <div>
-        <h4 class="survey__title">大数据筛选</h4>
+        <h4 class="survey__title">{{ i18n.global.t('growth.survey.surveyFilters') }}</h4>
         <p class="survey__coverage">
           {{ coverageText }}
         </p>
       </div>
       <n-button size="tiny" quaternary :loading="loading" @click="$emit('refresh')">
-        读取统计
+        {{ i18n.global.t('growth.survey.loadStatistics') }}
       </n-button>
     </header>
 
     <n-alert v-if="survey.error" type="warning" :bordered="false" class="survey__alert">
       {{ survey.error }}
       <template v-if="survey.retry_after">
-        下次可重试时间：{{ new Date(survey.retry_after * 1000).toLocaleTimeString() }}。
+        {{ i18n.global.t('growth.survey.nextRetryAt')
+        }}{{ new Date(survey.retry_after * 1000).toLocaleTimeString() }}。
       </template>
     </n-alert>
 
@@ -25,9 +26,14 @@
           <template #trigger
             ><span class="survey__label">{{ dimension.label }}</span></template
           >
-          {{ dimension.detail }}；分母为样本中拥有该干员的人数。
+          {{ dimension.detail
+          }}{{ i18n.global.t('growth.survey.theDenominatorIsSampleParticipantsWhoOwn') }}
         </n-tooltip>
-        <div class="survey__rail" role="group" :aria-label="dimension.label + '阈值'">
+        <div
+          class="survey__rail"
+          role="group"
+          :aria-label="dimension.label + i18n.global.t('growth.survey.threshold')"
+        >
           <button
             v-for="rate in surveyThresholds"
             :key="rate"
@@ -36,7 +42,7 @@
             :class="{ 'is-active': modelValue[dimension.key] === rate }"
             :disabled="!hasSamples"
             :aria-pressed="modelValue[dimension.key] === rate"
-            :aria-label="dimension.label + '至少' + rate + '%'"
+            :aria-label="dimension.label + i18n.global.t('growth.survey.atLeast') + rate + '%'"
             @click="updateRate(dimension.key, rate)"
           >
             {{ rate }}
@@ -49,7 +55,7 @@
           :disabled="!hasSamples"
           @click="update(dimension.key, null)"
         >
-          不限
+          {{ i18n.global.t('growth.survey.any') }}
         </button>
       </div>
     </div>
@@ -60,28 +66,30 @@
         :disabled="!hasSamples"
         @update:checked="update('hideCompleted', $event)"
       >
-        隐藏已满足的干员
+        {{ i18n.global.t('growth.survey.hideOperatorsAlreadyMeetingGoals') }}
       </n-checkbox>
       <n-select
         :value="modelValue.sort"
         :options="sortOptions"
         size="small"
         class="survey__sort"
-        aria-label="排序方式"
+        :aria-label="i18n.global.t('growth.survey.sortOrder')"
         @update:value="update('sort', $event)"
       />
     </div>
     <slot />
     <p class="survey__source">
-      样本按拥有者分布计算，用于发现养成方向，不代表强度排名；缺失样本显示“暂无样本”。
+      {{ i18n.global.t('growth.survey.ratesUseTheDistributionAmongOwnersTo') }}
       <template v-if="survey.fetched_at">
-        获取于 {{ new Date(survey.fetched_at * 1000).toLocaleString() }}。
+        {{ i18n.global.t('growth.survey.fetchedAt') }}
+        {{ new Date(survey.fetched_at * 1000).toLocaleString() }}。
       </template>
     </p>
   </section>
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
 import { computed } from 'vue'
 import { NAlert, NButton, NCheckbox, NSelect, NTooltip } from 'naive-ui'
 import { surveyDimensions, surveyThresholds } from '@/utils/growthSurvey'
@@ -96,18 +104,18 @@ const hasSamples = computed(() => props.survey.operators?.some((row) => row.own 
 const coverageText = computed(() => {
   const rows = props.survey.operators || []
   const known = rows.filter((row) => row.own > 0).length
-  if (!known) return '暂无可用的公开样本'
-  return '覆盖 ' + known + ' 位干员 · 样本只用于高亮养成方向'
+  if (!known) return i18n.global.t('growth.survey.noPublicSamplesAvailable')
+  return i18n.global.t('growth.format.surveyCoverage', { count: known })
 })
 function updateRate(key, rate) {
   update(key, props.modelValue[key] === rate ? null : rate)
 }
-const sortOptions = [
-  { label: '默认排序', value: 'default' },
-  { label: '剩余专三率优先', value: 'recommendation' },
-  { label: '剩余模组解锁率优先', value: 'module' },
-  { label: '等级从高到低', value: 'level' }
-]
+const sortOptions = computed(() => [
+  { label: i18n.global.t('growth.survey.defaultOrder'), value: 'default' },
+  { label: i18n.global.t('growthUpdates.remainingMasteryFirst'), value: 'recommendation' },
+  { label: i18n.global.t('growthUpdates.remainingModuleFirst'), value: 'module' },
+  { label: i18n.global.t('growth.survey.highestLevelFirst'), value: 'level' }
+])
 function update(key, value) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
 }

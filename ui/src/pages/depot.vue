@@ -1,15 +1,14 @@
 <template>
   <div ref="depotPageRef" class="depot-page">
     <n-alert v-if="preferences.error" type="warning" class="preferences-alert">
-      {{ preferences.error }}
+      {{ reportErrorMessage(preferences.error) }}
       <template #action>
         <n-button
           size="small"
           :loading="preferences.loading || preferences.saving"
           @click="preferences.retry()"
+          >{{ t('reports.retry') }}</n-button
         >
-          重试
-        </n-button>
       </template>
     </n-alert>
     <!-- ① 顶部总览看板 -->
@@ -25,11 +24,12 @@
                 <path d="M12 13v7.5" />
               </svg>
             </n-icon>
-            <span>仓库总览</span>
+            <span>{{ t('reports.depotTitle') }}</span>
           </div>
-          <n-tag v-if="parsed.ok" size="small" :bordered="false" round class="hero-count-tag">
-            已登记 {{ allItems.length }} 种物品
-          </n-tag>
+          <n-tag v-if="parsed.ok" size="small" :bordered="false" round class="hero-count-tag"
+            >{{ t('reports.registeredPrefix') }}{{ allItems.length
+            }}{{ t('reports.itemTypesSuffix') }}</n-tag
+          >
         </div>
 
         <div class="hero-actions">
@@ -40,10 +40,9 @@
                   <path d="M20 11a8 8 0 1 0-.7 3.3" stroke-linecap="round" />
                   <path d="M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
-              </n-icon>
-            </template>
-            刷新数据
-          </n-button>
+              </n-icon> </template
+            >{{ t('reports.refreshData') }}</n-button
+          >
           <n-dropdown
             v-if="hasActiveFilters"
             :options="exportImageOptions"
@@ -64,10 +63,9 @@
                     <circle cx="9" cy="9" r="2" />
                     <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
                   </svg>
-                </n-icon>
-              </template>
-              导出图片 ▾
-            </n-button>
+                </n-icon> </template
+              >{{ t('reports.exportImageMenu') }}</n-button
+            >
           </n-dropdown>
           <n-button
             v-else
@@ -84,13 +82,12 @@
                   <circle cx="9" cy="9" r="2" />
                   <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
                 </svg>
-              </n-icon>
-            </template>
-            导出图片
-          </n-button>
-          <n-button size="small" type="primary" :disabled="!copyText" @click="copyToClipboard">
-            复制工具箱代码
-          </n-button>
+              </n-icon> </template
+            >{{ t('reports.exportImage') }}</n-button
+          >
+          <n-button size="small" type="primary" :disabled="!copyText" @click="copyToClipboard">{{
+            t('reports.copyToolbox')
+          }}</n-button>
           <n-tooltip trigger="hover">
             <template #trigger>
               <n-button
@@ -100,12 +97,10 @@
                 href="https://arkntools.app/#/material"
                 target="_blank"
                 rel="noreferrer"
-              >
-                工具箱 ↗
-              </n-button>
-            </template>
-            在新标签页打开明日方舟工具箱的素材页，粘贴代码即可直接对比仓库库存
-          </n-tooltip>
+                >{{ t('reports.toolbox') }}</n-button
+              > </template
+            >{{ t('reports.toolboxHelp') }}</n-tooltip
+          >
         </div>
       </div>
 
@@ -114,15 +109,29 @@
         <!-- 左侧：寻访抽数多档位折算 -->
         <div class="hero-panel hero-draws-panel">
           <div class="panel-header">
-            <span class="panel-title">
-              折合寻访抽数
-              <help-text label="抽数换算口径说明">
-                <p><b>换算规则（逐级折算）：</b></p>
-                <p>1. <b>基础 (玉+券)</b>：合成玉 ÷ 600 + 寻访凭证（单抽 + 十连×10）</p>
-                <p>2. <b>+ 至纯源石</b>：在基础之上，按 1 至纯源石 = 180 合成玉（0.3 抽）并入</p>
-                <p>3. <b>+ 源石碎片</b>：在上述基础之上，按 2 碎片 = 1 源石（20玉/片）并入</p>
-                <p>4. <b>+ 固源岩</b>：在上述基础之上，按 2 固源岩合成 1 碎片折算并入</p>
-                <p class="status-dim">注：抽数为计算折算值，不计入实体物料。</p>
+            <span class="panel-title"
+              >{{ t('reports.recruitmentPulls')
+              }}<help-text :label="t('reports.pullConversionHelpTitle')">
+                <p>
+                  <b>{{ t('reports.pullConversionRules') }}</b>
+                </p>
+                <p>
+                  1. <b>{{ t('reports.pullBase') }}</b
+                  >{{ t('reports.pullBaseFormula') }}
+                </p>
+                <p>
+                  2. <b>{{ t('reports.pullOriginium') }}</b
+                  >{{ t('reports.pullOriginiumFormula') }}
+                </p>
+                <p>
+                  3. <b>{{ t('reports.pullShards') }}</b
+                  >{{ t('reports.pullShardsFormula') }}
+                </p>
+                <p>
+                  4. <b>{{ t('reports.pullOrirock') }}</b
+                  >{{ t('reports.pullOrirockFormula') }}
+                </p>
+                <p class="status-dim">{{ t('reports.pullDerivedHelp') }}</p>
               </help-text>
             </span>
             <n-tag
@@ -140,7 +149,7 @@
             <span class="draw-number">
               {{ activeDrawTier ? formatNumber(activeDrawTier.value) : '—' }}
             </span>
-            <span class="draw-unit">抽</span>
+            <span class="draw-unit">{{ t('reports.pullsUnit') }}</span>
           </div>
 
           <div class="draw-tiers-selector" v-if="highlights.draws.length">
@@ -154,13 +163,15 @@
               :title="tier.detail || tier.label"
             >
               <span class="draw-tier-name">{{ tier.name || tier.key }}</span>
-              <span class="draw-tier-val">{{ formatCompact(tier.value) }} 抽</span>
+              <span class="draw-tier-val"
+                >{{ formatCompact(tier.value) }}{{ t('reports.pullsUnit') }}</span
+              >
             </button>
           </div>
 
           <div class="draw-tier-hint">
-            <span class="hint-prefix">当前口径：</span>
-            <span>{{ activeDrawTier?.detail || activeDrawTier?.hint || '暂无数据' }}</span>
+            <span class="hint-prefix">{{ t('reports.currentBasisPrefix') }}</span>
+            <span>{{ activeDrawTier?.detail || activeDrawTier?.hint || t('reports.noData') }}</span>
           </div>
         </div>
 
@@ -176,7 +187,7 @@
                 :class="{ active: showcaseTab === 'core' }"
                 @click="showcaseTab = 'core'"
               >
-                <span>核心物资</span>
+                <span>{{ t('reports.coreResources') }}</span>
               </button>
               <button
                 type="button"
@@ -185,29 +196,40 @@
                 :class="{ active: showcaseTab === 'favorites' }"
                 @click="showcaseTab = 'favorites'"
               >
-                <span>我的关注</span>
+                <span>{{ t('reports.favorites') }}</span>
               </button>
             </div>
 
             <!-- 右侧操作 / 分页 -->
             <div class="showcase-controls">
               <template v-if="showcaseTab === 'core'">
-                <span class="panel-subtitle">最近存量及基准差额</span>
+                <span class="panel-subtitle">{{ t('reports.favoriteSubtitle') }}</span>
               </template>
               <template v-else>
                 <!-- 关注物品有超过1页时提供翻页 -->
                 <div v-if="totalFavPages > 1" class="fav-pager">
-                  <button type="button" class="pager-arrow" title="上一页" @click="prevFavPage">
+                  <button
+                    type="button"
+                    class="pager-arrow"
+                    :title="t('reports.previousPage')"
+                    @click="prevFavPage"
+                  >
                     ‹
                   </button>
                   <span class="pager-indicator">{{ favPage + 1 }} / {{ totalFavPages }}</span>
-                  <button type="button" class="pager-arrow" title="下一页" @click="nextFavPage">
+                  <button
+                    type="button"
+                    class="pager-arrow"
+                    :title="t('reports.nextPage')"
+                    @click="nextFavPage"
+                  >
                     ›
                   </button>
                 </div>
-                <span v-else-if="favoriteHighlights.length" class="panel-subtitle">
-                  已关注 {{ favoriteHighlights.length }} 项物资
-                </span>
+                <span v-else-if="favoriteHighlights.length" class="panel-subtitle"
+                  >{{ t('reports.favoritesPrefix') }}{{ favoriteHighlights.length
+                  }}{{ t('reports.resourcesSuffix') }}</span
+                >
               </template>
             </div>
           </div>
@@ -223,13 +245,15 @@
               <img
                 class="asset-icon"
                 :src="itemIconUrl(currency.icon)"
-                :alt="currency.name"
+                :alt="depotItemDisplayName(currency.name)"
                 loading="lazy"
                 @error="handleImageError"
               />
               <div class="asset-info">
                 <div class="asset-top-row">
-                  <span class="asset-name" :title="currency.name">{{ currency.name }}</span>
+                  <span class="asset-name" :title="depotItemDisplayName(currency.name)">{{
+                    depotItemDisplayName(currency.name)
+                  }}</span>
                   <span
                     v-if="deltaTextFor(currency.name)"
                     class="asset-delta"
@@ -251,13 +275,13 @@
               <img
                 class="asset-icon"
                 :src="itemIconUrl(highlights.exp.icon)"
-                alt="全部经验"
+                :alt="t('reports.totalExp')"
                 loading="lazy"
                 @error="handleImageError"
               />
               <div class="asset-info">
                 <div class="asset-top-row">
-                  <span class="asset-name">全部经验（折算）</span>
+                  <span class="asset-name">{{ t('reports.totalExpCalculated') }}</span>
                 </div>
                 <div class="asset-number">{{ highlights.exp.compact }}</div>
               </div>
@@ -280,10 +304,8 @@
                 </svg>
               </div>
               <div class="fav-empty-text">
-                <div class="fav-empty-title">暂未添加关注物品</div>
-                <div class="fav-empty-sub">
-                  点击下方物品卡片右上角的星标或在详情页中关注，即可在此快速跟踪库存变动
-                </div>
+                <div class="fav-empty-title">{{ t('reports.noFavorites') }}</div>
+                <div class="fav-empty-sub">{{ t('reports.noFavoritesHelp') }}</div>
               </div>
             </div>
 
@@ -298,13 +320,15 @@
                 <img
                   class="asset-icon"
                   :src="itemIconUrl(item.icon)"
-                  :alt="item.name"
+                  :alt="depotItemDisplayName(item.name)"
                   loading="lazy"
                   @error="handleImageError"
                 />
                 <div class="asset-info">
                   <div class="asset-top-row">
-                    <span class="asset-name" :title="item.name">{{ item.name }}</span>
+                    <span class="asset-name" :title="depotItemDisplayName(item.name)">{{
+                      depotItemDisplayName(item.name)
+                    }}</span>
                     <span
                       v-if="deltaTextFor(item.name)"
                       class="asset-delta"
@@ -318,7 +342,7 @@
                 <button
                   type="button"
                   class="fav-unstar-btn"
-                  title="取消关注"
+                  :title="t('reports.unfavorite')"
                   @click.stop="toggleFavorite(item.name)"
                   :disabled="preferences.disabled"
                 >
@@ -337,24 +361,30 @@
         <div class="status-items">
           <div class="status-item">
             <span class="status-dot" :class="freshness.class" />
-            <span class="status-label">最近扫描：</span>
-            <span class="status-val">{{ parsed.scannedAt || '尚未开始过扫描' }}</span>
+            <span class="status-label">{{ t('reports.lastScanPrefix') }}</span>
+            <span class="status-val">{{ parsed.scannedAt || t('reports.noScanStarted') }}</span>
             <span v-if="freshness.relative" class="status-dim">（{{ freshness.relative }}）</span>
           </div>
 
           <div class="status-divider">/</div>
 
           <div class="status-item">
-            <span class="status-label">扫描历史快照：</span>
+            <span class="status-label">{{ t('reports.scanHistoryPrefix') }}</span>
             <span class="status-val"
-              ><b>{{ history.length }}</b> 次</span
+              ><b>{{ history.length }}</b
+              >{{ t('reports.scansUnit') }}</span
             >
-            <help-text label="关于历史快照与环比">
-              <p>数据源自 <code>@app/tmp/depotresult.csv</code>，每次扫描均记录全量快照。</p>
-              <p>可在工具栏自定义对比两个时间点，全页变动徽标与增减筛选将自动按所选区间计算。</p>
-              <p v-if="historyError" class="status-dim">历史读取提示：{{ historyError }}</p>
+            <help-text :label="t('reports.historyHelpTitle')">
+              <p>
+                {{ t('reports.dataSourcePrefix') }}<code>@app/tmp/depotresult.csv</code
+                >{{ t('reports.fullSnapshotsHelp') }}
+              </p>
+              <p>{{ t('reports.comparisonHelp') }}</p>
+              <p v-if="historyError" class="status-dim">
+                {{ t('reports.historyWarningPrefix') }}{{ reportErrorMessage(historyError) }}
+              </p>
               <p v-else-if="history.length < 2" class="status-dim">
-                当前不足 2 次有效扫描，暂不显示假环比。
+                {{ t('reports.notEnoughScans') }}
               </p>
             </help-text>
           </div>
@@ -362,7 +392,7 @@
           <template v-if="history.length >= 2">
             <div class="status-divider">/</div>
             <div class="status-item">
-              <span class="status-label">对比区间：</span>
+              <span class="status-label">{{ t('reports.comparisonRangePrefix') }}</span>
               <span class="status-val status-baseline-val">{{ activeBaselineSummary }}</span>
             </div>
           </template>
@@ -370,7 +400,7 @@
           <template v-if="parsed.cultivateMsg">
             <div class="status-divider">/</div>
             <div class="status-item">
-              <span class="status-label">森空岛同步：</span>
+              <span class="status-label">{{ t('reports.sklandSyncPrefix') }}</span>
               <span class="status-val" :class="parsed.cultivateOk ? 'status-ok' : 'status-dim'">
                 {{ parsed.cultivateMsg }}
               </span>
@@ -386,9 +416,9 @@
 
     <!-- 读取错误提示 -->
     <n-alert v-if="reportError" type="error" class="depot-error-alert" :show-icon="true">
-      {{ reportError }}
+      {{ reportErrorMessage(reportError) }}
       <template #action>
-        <n-button size="tiny" @click="reload">重试读取</n-button>
+        <n-button size="tiny" @click="reload">{{ t('reports.retryRead') }}</n-button>
       </template>
     </n-alert>
 
@@ -401,7 +431,7 @@
             <n-input
               v-model:value="query"
               clearable
-              placeholder="搜索名称、拼音首字母 (如 lmb) 或数量 (如 <50, >=100)"
+              :placeholder="t('reports.depotSearchPlaceholder')"
               class="toolbar-search-input"
             >
               <template #prefix>
@@ -417,7 +447,7 @@
 
           <!-- 桌面端对比区间选择器 -->
           <div class="toolbar-baseline-wrap desktop-only" v-if="history.length >= 2">
-            <span class="control-label">对比：</span>
+            <span class="control-label">{{ t('reports.comparePrefix') }}</span>
             <depot-baseline-picker
               v-model="baselineConfig"
               :history="history"
@@ -441,7 +471,7 @@
                   </svg>
                 </n-icon>
               </template>
-              <span>筛选</span>
+              <span>{{ t('reports.filter') }}</span>
               <span v-if="activeFilterCount > 0" class="mobile-filter-count-badge">
                 {{ activeFilterCount }}
               </span>
@@ -450,7 +480,8 @@
           </div>
 
           <div class="toolbar-stat-tag">
-            显示 <b>{{ sortedItems.length }}</b> / 共 {{ allItems.length }} 项
+            {{ t('reports.showingPrefix') }}<b>{{ sortedItems.length }}</b
+            >{{ t('reports.ofTotal') }}{{ allItems.length }}{{ t('reports.itemsUnit') }}
           </div>
         </div>
 
@@ -458,7 +489,7 @@
         <div class="toolbar-secondary-row" :class="{ 'mobile-filters-open': mobileFilterOpen }">
           <!-- 移动端对比区间选择器（置于展开筛选区内） -->
           <div class="toolbar-baseline-wrap mobile-only" v-if="history.length >= 2">
-            <span class="control-label">对比：</span>
+            <span class="control-label">{{ t('reports.comparePrefix') }}</span>
             <depot-baseline-picker
               v-model="baselineConfig"
               :history="history"
@@ -468,33 +499,33 @@
 
           <!-- 库存状态单选 -->
           <div class="filter-group">
-            <span class="control-label">库存：</span>
+            <span class="control-label">{{ t('reports.stockPrefix') }}</span>
             <n-radio-group
               v-model:value="stockFilter"
               size="small"
               name="stockFilter"
               :disabled="preferences.disabled"
             >
-              <n-radio-button value="all">全部</n-radio-button>
-              <n-radio-button value="favorite">我的关注</n-radio-button>
-              <n-radio-button value="owned">有货</n-radio-button>
-              <n-radio-button value="empty">缺货</n-radio-button>
+              <n-radio-button value="all">{{ t('reports.all') }}</n-radio-button>
+              <n-radio-button value="favorite">{{ t('reports.favorites') }}</n-radio-button>
+              <n-radio-button value="owned">{{ t('reports.inStock') }}</n-radio-button>
+              <n-radio-button value="empty">{{ t('reports.outOfStock') }}</n-radio-button>
             </n-radio-group>
           </div>
 
           <!-- 增减变动单选 -->
           <div class="filter-group" v-if="history.length >= 2">
-            <span class="control-label">变动：</span>
+            <span class="control-label">{{ t('reports.changePrefix') }}</span>
             <n-radio-group
               v-model:value="deltaFilter"
               size="small"
               name="deltaFilter"
               :disabled="preferences.disabled"
             >
-              <n-radio-button value="all">全部</n-radio-button>
-              <n-radio-button value="increased">仅增加</n-radio-button>
-              <n-radio-button value="decreased">仅减少</n-radio-button>
-              <n-radio-button value="changed">有变动</n-radio-button>
+              <n-radio-button value="all">{{ t('reports.all') }}</n-radio-button>
+              <n-radio-button value="increased">{{ t('reports.increasedOnly') }}</n-radio-button>
+              <n-radio-button value="decreased">{{ t('reports.decreasedOnly') }}</n-radio-button>
+              <n-radio-button value="changed">{{ t('reports.changed') }}</n-radio-button>
             </n-radio-group>
           </div>
 
@@ -502,12 +533,11 @@
             v-model:checked="showDerived"
             class="toolbar-checkbox"
             :disabled="preferences.disabled"
+            >{{ t('reports.includeDerived') }}</n-checkbox
           >
-            含折算物
-          </n-checkbox>
 
           <div class="sort-selector-wrap">
-            <span class="control-label">排序：</span>
+            <span class="control-label">{{ t('reports.sortPrefix') }}</span>
             <n-select
               v-model:value="sortMode"
               :disabled="preferences.disabled"
@@ -524,9 +554,8 @@
             type="warning"
             class="reset-filter-btn"
             @click="resetFilters"
+            >{{ t('reports.resetFilters') }}</n-button
           >
-            重置筛选
-          </n-button>
         </div>
 
         <!-- 第三行：移动端分类水平滚动导览 (移动端吸顶常驻) -->
@@ -560,7 +589,7 @@
     <div class="depot-content-body">
       <!-- 桌面端档位导航侧边栏 -->
       <aside class="depot-nav-rail desktop-only">
-        <div class="rail-header">分类导航</div>
+        <div class="rail-header">{{ t('reports.categoryNavigation') }}</div>
         <div class="rail-items-container">
           <button
             v-for="tier in presentTiers"
@@ -581,7 +610,9 @@
             </span>
           </button>
         </div>
-        <div class="rail-empty-tip" v-if="!presentTiers.length">无匹配分类</div>
+        <div class="rail-empty-tip" v-if="!presentTiers.length">
+          {{ t('reports.noMatchingCategories') }}
+        </div>
       </aside>
 
       <!-- 物品卡片展示区 -->
@@ -589,25 +620,29 @@
         <!-- 空状态与加载状态 -->
         <n-empty
           v-if="loading && !reportLoaded"
-          description="正在读取仓库数据…"
+          :description="t('reports.loadingDepot')"
           class="area-empty-state"
         />
         <n-empty
           v-else-if="!parsed.ok"
-          description="尚未检测到仓库扫描数据，请先让 Mower 在游戏内执行一次仓库扫描"
+          :description="t('reports.noDepotData')"
           class="area-empty-state"
         >
           <template #extra>
-            <n-button size="small" type="primary" @click="reload">重新读取</n-button>
+            <n-button size="small" type="primary" @click="reload">{{
+              t('reports.reload')
+            }}</n-button>
           </template>
         </n-empty>
         <n-empty
           v-else-if="!sortedItems.length"
-          description="没有找到符合当前搜索与筛选条件的物品"
+          :description="t('reports.noMatchingItems')"
           class="area-empty-state"
         >
           <template #extra>
-            <n-button size="small" secondary @click="resetFilters">重置筛选</n-button>
+            <n-button size="small" secondary @click="resetFilters">{{
+              t('reports.resetFilters')
+            }}</n-button>
           </template>
         </n-empty>
 
@@ -628,12 +663,16 @@
               </div>
               <div class="tier-group-meta-info">
                 <span
-                  >当前显示 <b>{{ group.shown }}</b> 项</span
+                  >{{ t('reports.currentlyShowingPrefix') }}<b>{{ group.shown }}</b
+                  >{{ t('reports.itemsUnit') }}</span
                 >
                 <span class="meta-dot">·</span>
-                <span>该类共 {{ group.total }} 种</span>
+                <span
+                  >{{ t('reports.categoryTotalPrefix') }}{{ group.total
+                  }}{{ t('reports.typesUnit') }}</span
+                >
                 <template v-if="group.shown !== group.total">
-                  <span class="filtered-hint">（已按条件筛选）</span>
+                  <span class="filtered-hint">{{ t('reports.filteredSuffix') }}</span>
                 </template>
               </div>
             </div>
@@ -657,17 +696,21 @@
                   <img
                     class="card-avatar"
                     :src="itemIconUrl(row.icon)"
-                    :alt="row.name"
+                    :alt="depotItemDisplayName(row.name)"
                     loading="lazy"
                     @error="handleImageError"
                   />
-                  <span class="card-avatar-fallback">{{ row.name.slice(0, 1) }}</span>
+                  <span class="card-avatar-fallback">{{
+                    depotItemDisplayName(row.name).slice(0, 1)
+                  }}</span>
                 </div>
 
                 <!-- 物品信息（分行排布，防止增量标签与长数字重叠溢出） -->
                 <div class="card-details">
                   <div class="card-title-row">
-                    <span class="card-item-name" :title="row.name">{{ row.name }}</span>
+                    <span class="card-item-name" :title="depotItemDisplayName(row.name)">{{
+                      depotItemDisplayName(row.name)
+                    }}</span>
                     <span
                       v-if="deltaTextFor(row.name)"
                       class="card-delta-tag"
@@ -680,9 +723,8 @@
                       size="tiny"
                       :bordered="false"
                       class="card-derived-tag"
+                      >{{ t('reports.calculated') }}</n-tag
                     >
-                      折算
-                    </n-tag>
                   </div>
 
                   <div class="card-stock-row">
@@ -697,7 +739,7 @@
                   type="button"
                   class="card-star-btn"
                   :class="{ starred: isFavorite(row.name) }"
-                  :title="isFavorite(row.name) ? '取消关注' : '添加关注'"
+                  :title="isFavorite(row.name) ? t('reports.unfavorite') : t('reports.addFavorite')"
                   @click.stop="toggleFavorite(row.name)"
                   :disabled="preferences.disabled"
                 >
@@ -732,19 +774,19 @@
       class="depot-detail-drawer"
       :style="detailThemeStyle"
     >
-      <n-drawer-content v-if="detailItem" closable :title="detailItem.name">
+      <n-drawer-content v-if="detailItem" closable :title="depotItemDisplayName(detailItem.name)">
         <div class="detail-hero-box">
           <div class="detail-hero-icon-box">
             <img
               class="detail-hero-avatar"
               :src="itemIconUrl(detailItem.icon)"
-              :alt="detailItem.name"
+              :alt="depotItemDisplayName(detailItem.name)"
               @error="handleImageError"
             />
           </div>
           <div class="detail-hero-meta">
             <div class="detail-title-row">
-              <span class="detail-item-title">{{ detailItem.name }}</span>
+              <span class="detail-item-title">{{ depotItemDisplayName(detailItem.name) }}</span>
               <n-tag
                 size="small"
                 :bordered="false"
@@ -752,9 +794,9 @@
               >
                 {{ detailItem.tierName }}
               </n-tag>
-              <n-tag v-if="detailItem.derived" size="small" type="info" :bordered="false">
-                计算派生值
-              </n-tag>
+              <n-tag v-if="detailItem.derived" size="small" type="info" :bordered="false">{{
+                t('reports.derivedValue')
+              }}</n-tag>
               <n-button
                 size="tiny"
                 round
@@ -775,11 +817,13 @@
                     <polygon :points="STAR_POLYGON" />
                   </svg>
                 </template>
-                {{ isFavorite(detailItem.name) ? '我的关注' : '添加关注' }}
+                {{
+                  isFavorite(detailItem.name) ? t('reports.favorites') : t('reports.addFavorite')
+                }}
               </n-button>
             </div>
             <div class="detail-stock-line">
-              <span class="detail-stock-label">当前库存</span>
+              <span class="detail-stock-label">{{ t('reports.currentStock') }}</span>
               <span class="detail-stock-count">{{ formatNumber(detailItem.number) }}</span>
             </div>
           </div>
@@ -790,33 +834,32 @@
           type="info"
           class="detail-derived-alert"
           :bordered="false"
+          >{{ t('reports.derivedHistoryHelp') }}</n-alert
         >
-          此项目属于聚合计算派生值（非游戏内独立实体道具），无独立扫描记录。您可在其基础组成材料（如合成玉、寻访凭证等）中查看各自的真实库存历史走势。
-        </n-alert>
 
         <template v-if="detailPoints.length >= 2">
           <div class="detail-kpi-grid">
             <div class="kpi-card">
-              <span class="kpi-label">历史累计变动</span>
+              <span class="kpi-label">{{ t('reports.historyChange') }}</span>
               <span
                 class="kpi-val"
                 :class="
                   detailSummary.change > 0 ? 'kpi-up' : detailSummary.change < 0 ? 'kpi-down' : ''
                 "
               >
-                {{ formatDelta(detailSummary.change) || '无变化 (±0)' }}
+                {{ formatDelta(detailSummary.change) || t('reports.noChange') }}
               </span>
-              <span class="kpi-sub">较统计起始</span>
+              <span class="kpi-sub">{{ t('reports.sinceStart') }}</span>
             </div>
             <div class="kpi-card">
-              <span class="kpi-label">初始记录存量</span>
+              <span class="kpi-label">{{ t('reports.initialStock') }}</span>
               <span class="kpi-val">{{ formatNumber(detailSummary.first) }}</span>
-              <span class="kpi-sub">首次扫描</span>
+              <span class="kpi-sub">{{ t('reports.firstScan') }}</span>
             </div>
             <div class="kpi-card">
-              <span class="kpi-label">历史扫描记录</span>
-              <span class="kpi-val">{{ detailSummary.points }} 次</span>
-              <span class="kpi-sub">有效数据点</span>
+              <span class="kpi-label">{{ t('reports.historicalScans') }}</span>
+              <span class="kpi-val">{{ detailSummary.points }}{{ t('reports.scansUnit') }}</span>
+              <span class="kpi-sub">{{ t('reports.validPoints') }}</span>
             </div>
           </div>
 
@@ -825,8 +868,8 @@
           </div>
 
           <div class="detail-timespan-label">
-            统计时间跨度：{{ formatTimestamp(detailPoints[0].at) }} 至
-            {{ formatTimestamp(detailPoints.at(-1).at) }}
+            {{ t('reports.timeSpanPrefix') }}{{ formatTimestamp(detailPoints[0].at)
+            }}{{ t('reports.to') }}{{ formatTimestamp(detailPoints.at(-1).at) }}
           </div>
         </template>
         <n-empty
@@ -834,17 +877,17 @@
           class="detail-empty-view"
           :description="
             detailItem.derived
-              ? '计算值不记录独立历史走势'
-              : '该物品的历史快照记录少于 2 次，暂无法生成趋势曲线'
+              ? t('reports.derivedHistoryUnavailable')
+              : t('reports.insufficientItemHistory')
           "
         />
 
         <template #footer>
           <n-space justify="space-between" style="width: 100%">
-            <n-button size="small" secondary @click="copyName(detailItem.name)">
-              复制物品名称
-            </n-button>
-            <n-button size="small" @click="detailOpen = false"> 关闭 </n-button>
+            <n-button size="small" secondary @click="copyName(detailItem.name)">{{
+              t('reports.copyItemName')
+            }}</n-button>
+            <n-button size="small" @click="detailOpen = false">{{ t('reports.close') }}</n-button>
           </n-space>
         </template>
       </n-drawer-content>
@@ -872,26 +915,33 @@
                 <path d="M3 8.5V16l9 4.5 9-4.5V8.5" stroke-linejoin="round" />
                 <path d="M12 13v7.5" />
               </svg>
-              <span class="export-title-text">明日方舟 · 仓库库存清单</span>
+              <span class="export-title-text">{{ t('reports.depotExportTitle') }}</span>
             </div>
             <div class="export-scope-desc">
               <span class="export-badge-scope">
-                {{ exportScope === 'filtered' ? '当前筛选视图' : '全量物资清单' }}
+                {{
+                  exportScope === 'filtered' ? t('reports.filteredExport') : t('reports.allExport')
+                }}
               </span>
-              <span class="export-meta-text">共 {{ exportItemsList.length }} 项物品</span>
+              <span class="export-meta-text"
+                >{{ t('reports.totalPrefix') }}{{ exportItemsList.length
+                }}{{ t('reports.exportItemsSuffix') }}</span
+              >
             </div>
           </div>
           <div class="export-header-right">
             <div class="export-meta-line">
-              <span class="export-meta-lbl">数据扫描：</span>
-              <span class="export-meta-val">{{ parsed.scannedAt || '未记录' }}</span>
+              <span class="export-meta-lbl">{{ t('reports.dataScanPrefix') }}</span>
+              <span class="export-meta-val">{{
+                parsed.scannedAt || t('reports.notRecorded')
+              }}</span>
             </div>
             <div class="export-meta-line">
-              <span class="export-meta-lbl">导出时间：</span>
+              <span class="export-meta-lbl">{{ t('reports.exportedAtPrefix') }}</span>
               <span class="export-meta-val">{{ currentExportTime }}</span>
             </div>
             <div v-if="history.length >= 2" class="export-meta-line">
-              <span class="export-meta-lbl">对比区间：</span>
+              <span class="export-meta-lbl">{{ t('reports.comparisonRangePrefix') }}</span>
               <span class="export-meta-val">{{ activeBaselineSummary }}</span>
             </div>
           </div>
@@ -901,12 +951,12 @@
         <div class="export-overview-box">
           <!-- 寻访折算 -->
           <div class="export-draw-panel">
-            <div class="export-panel-title">折合寻访抽数</div>
+            <div class="export-panel-title">{{ t('reports.recruitmentPulls') }}</div>
             <div class="export-draw-hero">
               <span class="export-draw-num">
                 {{ activeDrawTier ? formatNumber(activeDrawTier.value) : '—' }}
               </span>
-              <span class="export-draw-unit">抽</span>
+              <span class="export-draw-unit">{{ t('reports.pullsUnit') }}</span>
               <span v-if="drawDeltaText" class="export-delta-tag" :class="drawDeltaType">
                 {{ drawDeltaText }}
               </span>
@@ -919,14 +969,16 @@
                 :class="{ active: tier.key === activeDrawKey }"
               >
                 <span class="pill-name">{{ tier.name || tier.key }}</span>
-                <span class="pill-val">{{ formatCompact(tier.value) }} 抽</span>
+                <span class="pill-val"
+                  >{{ formatCompact(tier.value) }}{{ t('reports.pullsUnit') }}</span
+                >
               </div>
             </div>
           </div>
 
           <!-- 核心物资栅格 -->
           <div class="export-assets-panel">
-            <div class="export-panel-title">核心资产与折算存量</div>
+            <div class="export-panel-title">{{ t('reports.coreAssets') }}</div>
             <div class="export-assets-grid">
               <div
                 v-for="currency in highlights.currencies"
@@ -936,11 +988,11 @@
                 <img
                   class="export-asset-icon"
                   :src="itemIconUrl(currency.icon)"
-                  :alt="currency.name"
+                  :alt="depotItemDisplayName(currency.name)"
                 />
                 <div class="export-asset-info">
                   <div class="export-asset-top">
-                    <span class="export-asset-name">{{ currency.name }}</span>
+                    <span class="export-asset-name">{{ depotItemDisplayName(currency.name) }}</span>
                     <span
                       v-if="deltaTextFor(currency.name)"
                       class="export-delta-text"
@@ -957,11 +1009,11 @@
                 <img
                   class="export-asset-icon"
                   :src="itemIconUrl(highlights.exp.icon)"
-                  alt="全部经验"
+                  :alt="t('reports.totalExp')"
                 />
                 <div class="export-asset-info">
                   <div class="export-asset-top">
-                    <span class="export-asset-name">全部经验（折算）</span>
+                    <span class="export-asset-name">{{ t('reports.totalExpCalculated') }}</span>
                   </div>
                   <div class="export-asset-val">{{ highlights.exp.compact }}</div>
                 </div>
@@ -978,7 +1030,9 @@
                 {{ group.badge || group.short || group.key }}
               </span>
               <span class="export-tier-title">{{ group.name }}</span>
-              <span class="export-tier-count">({{ group.rows.length }} 项)</span>
+              <span class="export-tier-count"
+                >({{ group.rows.length }}{{ t('reports.itemsClosingSuffix') }}</span
+              >
             </div>
 
             <div class="export-items-grid">
@@ -989,11 +1043,17 @@
                 :class="{ 'is-zero': !(row.number > 0), 'is-derived': row.derived }"
               >
                 <div class="export-item-icon-box">
-                  <img class="export-item-icon" :src="itemIconUrl(row.icon)" :alt="row.name" />
+                  <img
+                    class="export-item-icon"
+                    :src="itemIconUrl(row.icon)"
+                    :alt="depotItemDisplayName(row.name)"
+                  />
                 </div>
                 <div class="export-item-details">
                   <div class="export-item-top-row">
-                    <span class="export-item-name" :title="row.name">{{ row.name }}</span>
+                    <span class="export-item-name" :title="depotItemDisplayName(row.name)">{{
+                      depotItemDisplayName(row.name)
+                    }}</span>
                     <span
                       v-if="deltaTextFor(row.name)"
                       class="export-item-delta"
@@ -1001,7 +1061,9 @@
                     >
                       {{ deltaTextFor(row.name) }}
                     </span>
-                    <span v-if="row.derived" class="export-derived-pill">折算</span>
+                    <span v-if="row.derived" class="export-derived-pill">{{
+                      t('reports.calculated')
+                    }}</span>
                   </div>
                   <div class="export-item-stock-row">
                     <span class="export-item-stock" :class="{ 'zero-stock': !(row.number > 0) }">
@@ -1016,9 +1078,9 @@
 
         <!-- 底部署名与快照说明 -->
         <div class="export-footer-box">
-          <span>Arknights Mower · 自动化基建助手</span>
+          <span>{{ t('reports.mowerTagline') }}</span>
           <span class="export-footer-sep">·</span>
-          <span>仓库库存数据快照</span>
+          <span>{{ t('reports.depotSnapshot') }}</span>
         </div>
       </div>
     </div>
@@ -1026,6 +1088,9 @@
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
+import { depotItemDisplayName, reportErrorMessage } from '@/i18n/reports'
+const { t } = i18n.global
 defineOptions({ name: 'DepotPage' })
 
 import { computed, inject, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
@@ -1154,9 +1219,9 @@ function isFavorite(name) {
 function toggleFavorite(name) {
   if (!name || preferences.disabled) return
   if (isFavorite(name)) {
-    message.info(`已取消关注 "${name}"`)
+    message.info(t('reports.unfollowedItem', { name: depotItemDisplayName(name) }))
   } else {
-    message.success(`已添加关注 "${name}"`)
+    message.success(t('reports.followedItem', { name: depotItemDisplayName(name) }))
   }
   preferences.toggleFavorite(name)
 }
@@ -1212,25 +1277,24 @@ const deltaFilterActive = computed(() => baselineComparable.value && deltaFilter
 
 const activeBaselineSummary = computed(() => {
   const { matchedCount, startSnapshot, endSnapshot } = alignedBaseline.value
-  if (!startSnapshot || !endSnapshot) return '暂无匹配快照'
+  if (!startSnapshot || !endSnapshot) return t('reports.noMatchingSnapshots')
 
   const startLabel = formatTimestamp(startSnapshot.at).slice(5)
   const endLabel = formatTimestamp(endSnapshot.at).slice(5)
 
   if (baselineConfig.value.mode === 'snapshot') {
-    return `${startLabel} → ${endLabel} (共 ${matchedCount} 次扫描)`
+    return t('reports.baselineSummary', { start: startLabel, end: endLabel, count: matchedCount })
   }
   if (baselineConfig.value.preset === 'previous') {
-    return `较上次 (${startLabel}) → 当前最新`
+    return t('reports.previousToLatest', { start: startLabel })
   }
   if (baselineConfig.value.preset === 'all') {
-    return `最早 (${startLabel}) → 当前最新`
+    return t('reports.firstToLatest', { start: startLabel })
   }
-  return `${startLabel} → ${endLabel} (共 ${matchedCount} 次扫描)`
+  return t('reports.baselineSummary', { start: startLabel, end: endLabel, count: matchedCount })
 })
 
 /** 起始快照里有、结束快照（最新一次扫描）里没有出现的物品，在卡片上的标记。 */
-const UNOBSERVED_LABEL = '未扫描'
 
 /**
  * 差额表与"未扫描"名单。
@@ -1331,15 +1395,15 @@ const drawDeltaText = computed(() => {
   const sign = diff > 0 ? `+${diff}` : diff < 0 ? `${diff}` : '±0'
 
   if (baselineConfig.value.mode === 'snapshot') {
-    return `区间变动 ${sign} 抽`
+    return t('reports.pullRangeChange', { count: sign })
   }
   if (baselineConfig.value.preset === 'previous') {
-    return `较上次扫描 ${sign} 抽`
+    return t('reports.pullPreviousChange', { count: sign })
   }
   if (baselineConfig.value.preset === 'all') {
-    return `较最早记录 ${sign} 抽`
+    return t('reports.pullFirstChange', { count: sign })
   }
-  return `区间变动 ${sign} 抽`
+  return t('reports.pullRangeChange', { count: sign })
 })
 
 const drawDeltaType = computed(() => {
@@ -1437,7 +1501,7 @@ watch(
 
 // 变化量与微缩图计算
 function deltaTextFor(name) {
-  if (unobservedItems.value.has(name)) return UNOBSERVED_LABEL
+  if (unobservedItems.value.has(name)) return t('reports.unobserved')
   return formatDelta(deltaMap.value.get(name))
 }
 
@@ -1501,7 +1565,7 @@ const freshness = computed(() => {
 })
 
 const staleWarning = computed(() => {
-  if (freshness.value.class === 'stale') return '数据超过 3 天未更新，建议扫描'
+  if (freshness.value.class === 'stale') return t('reports.staleDepot')
   return ''
 })
 
@@ -1511,23 +1575,23 @@ const copyText = computed(() => resolveCopyText(parsed.value))
 async function reload() {
   try {
     await depotStore.loadReport({ force: true })
-    message.success('仓库数据已刷新')
+    message.success(t('reports.depotRefreshed'))
   } catch (error) {
-    message.error(error?.message || '刷新仓库数据失败')
+    message.error(error?.message || t('reports.depotRefreshFailed'))
   }
 }
 
 async function copyToClipboard() {
   const text = copyText.value
   if (!text) {
-    message.warning('没有可复制的工具箱数据')
+    message.warning(t('reports.noCopyData'))
     return
   }
   try {
     await navigator.clipboard.writeText(text)
-    message.success('已复制明日方舟工具箱代码')
+    message.success(t('reports.toolboxCopied'))
   } catch {
-    message.error('复制失败，请手动在浏览器授权剪贴板权限')
+    message.error(t('reports.clipboardDenied'))
   }
 }
 
@@ -1535,9 +1599,9 @@ async function copyName(name) {
   if (!name) return
   try {
     await navigator.clipboard.writeText(name)
-    message.success(`已复制 "${name}"`)
+    message.success(t('reports.copiedItem', { name: depotItemDisplayName(name) }))
   } catch {
-    message.error('复制失败')
+    message.error(t('reports.copyFailed'))
   }
 }
 
@@ -1549,11 +1613,11 @@ const exportContainer = ref(null)
 const exportImageOptions = computed(() => {
   return [
     {
-      label: `导出全量库存图片 (${allItems.value.length} 种)`,
+      label: t('reports.exportAllItems', { count: allItems.value.length }),
       key: 'all'
     },
     {
-      label: `导出当前筛选视图 (${sortedItems.value.length} 种)`,
+      label: t('reports.exportFilteredItems', { count: sortedItems.value.length }),
       key: 'filtered'
     }
   ]
@@ -1579,19 +1643,19 @@ const currentExportTime = computed(() => formatLocalDateTime())
 async function exportDepotImage(scope = 'all') {
   if (exportingImage.value) return
   if (!parsed.value.ok) {
-    message.warning('尚未获取到有效仓库数据，无法导出图片')
+    message.warning(t('reports.noExportData'))
     return
   }
 
   exportScope.value = scope
   exportingImage.value = true
-  const msgReactive = message.loading('正在生成仓库库存图片...', { duration: 0 })
+  const msgReactive = message.loading(t('reports.generatingDepotImage'), { duration: 0 })
 
   try {
     await nextTick()
     const container = exportContainer.value
     if (!container) {
-      throw new Error('未找到导出容器节点')
+      throw new Error(t('reports.exportNodeMissing'))
     }
 
     if (document.fonts?.ready) {
@@ -1670,7 +1734,7 @@ async function exportDepotImage(scope = 'all') {
     })
 
     if (!dataUrl || dataUrl.length < 500) {
-      throw new Error('生成图片失败，图像数据异常')
+      throw new Error(t('reports.exportImageInvalid'))
     }
 
     const filename = buildDepotExportFilename(parsed.value.scannedAt, scope)
@@ -1682,11 +1746,15 @@ async function exportDepotImage(scope = 'all') {
     document.body.removeChild(link)
 
     msgReactive.destroy()
-    message.success(`仓库库存图片已成功导出 (${filename})`)
+    message.success(t('reports.exportedImageFile', { filename }))
   } catch (error) {
     console.error('Export depot image error:', error)
     msgReactive.destroy()
-    message.error(error?.message ? `导出图片失败: ${error.message}` : '导出图片失败，请重试')
+    message.error(
+      error?.message
+        ? t('reports.exportImageError', { detail: error.message })
+        : t('reports.exportImageFailed')
+    )
   } finally {
     exportingImage.value = false
   }
@@ -1804,7 +1872,7 @@ const detailChartOption = computed(() => {
       textStyle: { color: isDark ? '#fff' : '#333', fontSize: 12 },
       formatter(params) {
         const p = params[0]
-        return `<div><span style="font-size:11px;opacity:0.75">${p.axisValue}</span><br/><b>${detailItem.value?.name}</b>：<b style="font-size:14px;color:${color}">${formatNumber(p.data)}</b></div>`
+        return `<div><span style="font-size:11px;opacity:0.75">${p.axisValue}</span><br/><b>${depotItemDisplayName(detailItem.value?.name)}</b>：<b style="font-size:14px;color:${color}">${formatNumber(p.data)}</b></div>`
       }
     },
     xAxis: {
@@ -1841,7 +1909,7 @@ const detailChartOption = computed(() => {
     ],
     series: [
       {
-        name: detailItem.value?.name,
+        name: depotItemDisplayName(detailItem.value?.name),
         type: 'line',
         smooth: 0.25,
         showSymbol: pts.length <= 15,

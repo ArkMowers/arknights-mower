@@ -1,35 +1,35 @@
 <template>
   <PageLayout>
     <template #header>
-      <PageHeader>基建技能</PageHeader>
+      <PageHeader>{{ t('baseSkills.title') }}</PageHeader>
     </template>
     <div class="base-skills-page">
       <div class="snapshot-actions">
         <n-button :loading="syncing" :disabled="loading" @click="syncCultivate">
-          同步森空岛练度
+          {{ t('baseSkills.sync') }}
         </n-button>
         <n-text depth="3" class="snapshot-message">{{ dataMessage }}</n-text>
       </div>
       <n-alert v-if="error" type="error" closable @close="error = ''">{{ error }}</n-alert>
       <n-tabs v-model:value="activePane" type="line" size="medium" class="base-tabs">
-        <n-tab-pane name="skills" tab="基建技能">
-          <section class="skill-filter-panel" aria-label="技能筛选">
+        <n-tab-pane name="skills" :tab="t('baseSkills.title')">
+          <section class="skill-filter-panel" :aria-label="t('baseSkills.filters')">
             <div class="search-fields">
               <label
-                ><span>干员</span
+                ><span>{{ t('baseSkills.operator') }}</span
                 ><n-input
                   v-model:value="name_select"
                   clearable
-                  placeholder="干员名称 / 拼音"
-                  aria-label="搜索干员"
+                  :placeholder="t('baseSkills.operatorSearch')"
+                  :aria-label="t('baseSkills.operatorSearchLabel')"
               /></label>
               <label
-                ><span>技能</span
+                ><span>{{ t('baseSkills.skill') }}</span
                 ><n-input
                   v-model:value="des_select"
                   clearable
-                  placeholder="技能名称或描述 / 拼音"
-                  aria-label="搜索技能"
+                  :placeholder="t('baseSkills.skillSearch')"
+                  :aria-label="t('baseSkills.skillSearchLabel')"
               /></label>
             </div>
             <button
@@ -38,16 +38,18 @@
               :aria-expanded="showFilters"
               @click="showFilters = !showFilters"
             >
-              {{ showFilters ? '收起设施与状态筛选' : '展开设施与状态筛选' }}
-              <span v-if="facility_select || ownership_select || status_select"> · 已筛选</span>
+              {{ t(showFilters ? 'baseSkills.collapseFilters' : 'baseSkills.expandFilters') }}
+              <span v-if="facility_select || ownership_select || status_select">
+                {{ t('baseSkills.filtered') }}</span
+              >
             </button>
             <div class="filter-extras" :class="{ 'is-open': showFilters }">
               <n-select
                 v-model:value="facility_select"
                 clearable
                 :options="facilityOptions"
-                placeholder="全部设施"
-                aria-label="设施筛选"
+                :placeholder="t('baseSkills.allFacilities')"
+                :aria-label="t('baseSkills.facilityFilter')"
                 class="facility-select"
               />
               <div class="status-filters">
@@ -55,39 +57,48 @@
                   v-model:value="ownership_select"
                   clearable
                   :options="ownershipOptions"
-                  placeholder="全部持有状态"
-                  aria-label="持有状态筛选"
+                  :placeholder="t('baseSkills.allOwnership')"
+                  :aria-label="t('baseSkills.ownershipFilter')"
                 />
                 <n-select
                   v-model:value="status_select"
                   clearable
                   :options="statusOptions"
-                  placeholder="全部解锁状态"
-                  aria-label="技能解锁筛选"
+                  :placeholder="t('baseSkills.allUnlock')"
+                  :aria-label="t('baseSkills.unlockFilter')"
                 />
-                <n-button quaternary @click="resetFilters">重置筛选</n-button>
+                <n-button quaternary @click="resetFilters">{{
+                  t('baseSkills.resetFilters')
+                }}</n-button>
               </div>
             </div>
           </section>
           <div class="results-heading">
-            <span
-              ><strong>{{ filteredItems.length }}</strong> 名干员
-              <span class="count-separator">/</span>
-              <strong>{{ filteredSkillCount }}</strong> 个技能版本</span
-            >
-            <span class="result-help">“已替换”表示该技能的升级版本已解锁</span>
+            <span>{{
+              t('baseSkills.counts', {
+                operators: filteredItems.length,
+                skills: filteredSkillCount
+              })
+            }}</span>
+            <span class="result-help">{{ t('baseSkills.replacedHelp') }}</span>
           </div>
           <n-empty
             v-if="!filteredItems.length"
-            description="没有符合筛选条件的基建技能"
+            :description="t('baseSkills.empty')"
             class="skill-empty"
             ><template #extra
-              ><n-button @click="resetFilters">清除筛选</n-button></template
+              ><n-button @click="resetFilters">{{
+                t('baseSkills.clearFilters')
+              }}</n-button></template
             ></n-empty
           >
           <div v-if="filteredItems.length" class="skill-table-heading" aria-hidden="true">
-            <span>干员</span><span>技能序号</span><span>解锁条件</span><span>当前状态</span>
-            <span>技能名称</span><span>进驻场所</span><span>描述</span>
+            <span>{{ t('baseSkills.operator') }}</span
+            ><span>{{ t('baseSkills.skillNumber') }}</span
+            ><span>{{ t('baseSkills.unlockCondition') }}</span
+            ><span>{{ t('baseSkills.status') }}</span> <span>{{ t('baseSkills.skillName') }}</span
+            ><span>{{ t('baseSkills.facility') }}</span
+            ><span>{{ t('baseSkills.description') }}</span>
           </div>
           <n-virtual-list
             v-if="filteredItems.length"
@@ -101,7 +112,7 @@
             </template>
           </n-virtual-list>
         </n-tab-pane>
-        <n-tab-pane name="groups" tab="基建组合" display-directive="show:lazy">
+        <n-tab-pane name="groups" :tab="t('baseSkills.groups')" display-directive="show:lazy">
           <BaseGroups :items="skill_items" :base-conditions="snapshot?.base_conditions" />
         </n-tab-pane>
       </n-tabs>
@@ -110,6 +121,12 @@
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
+import { baseSkillText } from '@/i18n/baseSkills'
+import { localizedBaseSkill } from '@/i18n/baseSkillDetails'
+import { operatorSyncMessage } from '@/i18n/operatorSync'
+const { t } = i18n.global
+
 import axios from 'axios'
 import BasementSkillRows from '@/components/buffer.vue'
 import BaseGroups from '@/components/BaseGroups.vue'
@@ -129,7 +146,16 @@ const activePane = ref('skills')
 const showFilters = ref(false)
 const loading = ref(false)
 const syncing = ref(false)
-const error = ref('')
+const errorState = ref({ message: '' })
+const error = computed({
+  get: () =>
+    errorState.value.key
+      ? t(errorState.value.key, errorState.value.params)
+      : operatorSyncMessage(errorState.value.message),
+  set: (message) => {
+    errorState.value = { message }
+  }
+})
 const name_select = ref('')
 const des_select = ref('')
 const facility_select = ref(null)
@@ -139,28 +165,50 @@ const status_select = ref(null)
 const skill_items = computed(() => annotateBasementSkills(skill.value, snapshot.value))
 const facilityOptions = computed(() =>
   [...new Set(skill.value.flatMap((operator) => operator.child_skill.map((s) => s.roomType)))].map(
-    (value) => ({ value, label: value })
+    (value) => ({ value, label: baseSkillText(value) })
   )
 )
-const ownershipOptions = Object.entries(ownershipLabels).map(([value, label]) => ({ value, label }))
-const statusOptions = Object.entries(skillStatusLabels)
-  .filter(([value]) => value !== 'unowned')
-  .map(([value, label]) => ({ value, label }))
-const filteredItems = computed(() =>
-  filterBasementSkills(skill_items.value, {
+const ownershipOptions = computed(() =>
+  Object.entries(ownershipLabels).map(([value, label]) => ({ value, label: baseSkillText(label) }))
+)
+const statusOptions = computed(() =>
+  Object.entries(skillStatusLabels)
+    .filter(([value]) => value !== 'unowned')
+    .map(([value, label]) => ({ value, label: baseSkillText(label) }))
+)
+const filteredItems = computed(() => {
+  const filters = {
     name: name_select.value,
-    description: des_select.value,
     facility: facility_select.value,
     ownership: ownership_select.value,
     status: status_select.value
+  }
+  const candidates = filterBasementSkills(skill_items.value, filters)
+  const query = des_select.value.trim()
+  if (!query) return candidates
+  const originalMatches = new Set(
+    filterBasementSkills(candidates, { description: query }).flatMap((item) => item.childSkill)
+  )
+  const displayQuery = query.toLocaleLowerCase()
+  return candidates.flatMap((item) => {
+    const childSkill = item.childSkill.filter((skill) => {
+      if (originalMatches.has(skill)) return true
+      const display = localizedBaseSkill(item.avatar, skill)
+      return `${display.skillname} ${display.des.replace(/<[^>]*>/g, '')}`
+        .toLocaleLowerCase()
+        .includes(displayQuery)
+    })
+    return childSkill.length ? [{ ...item, childSkill, span: childSkill.length }] : []
   })
-)
+})
 const filteredSkillCount = computed(() =>
   filteredItems.value.reduce((count, item) => count + item.childSkill.length, 0)
 )
 const dataMessage = computed(() => {
-  if (loading.value) return '正在读取本地森空岛练度…'
-  return snapshot.value?.message || '同步森空岛练度后可显示持有和技能解锁状态。'
+  if (loading.value) return t('baseSkills.loading')
+  if (snapshot.value?.has_data)
+    return t('baseSkills.snapshotLoaded', { count: snapshot.value.operators?.length || 0 })
+  return operatorSyncMessage(snapshot.value?.message) || t('baseSkills.syncHelp')
 })
 
 function resetFilters() {
@@ -177,7 +225,7 @@ async function loadOwnedOperators() {
   try {
     await readOwnedOperators()
   } catch (e) {
-    error.value = `读取森空岛练度失败：${e.message || e}`
+    errorState.value = { key: 'baseSkills.loadFailed', params: { message: e.message || e } }
   } finally {
     loading.value = false
   }
@@ -190,12 +238,13 @@ async function syncCultivate() {
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/cultivate-fetch`)
     if (!response.data.success) {
-      error.value = response.data.message || '同步森空岛练度失败'
+      if (response.data.message) error.value = response.data.message
+      else errorState.value = { key: 'baseSkills.syncFailed' }
       return
     }
     await loadOwnedOperators()
   } catch (e) {
-    error.value = `同步森空岛练度失败：${e.message || e}`
+    errorState.value = { key: 'baseSkills.syncError', params: { message: e.message || e } }
   } finally {
     syncing.value = false
   }

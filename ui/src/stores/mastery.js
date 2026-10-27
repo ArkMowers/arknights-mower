@@ -1,6 +1,22 @@
+import { i18n } from '@/i18n'
+import { operatorSyncMessage } from '@/i18n/operatorSync'
 import axios from 'axios'
 import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
+
+function displayMessage(value) {
+  return value?.key
+    ? i18n.global.t(
+        value.key,
+        Object.fromEntries(
+          Object.entries(value.params || {}).map(([key, message]) => [
+            key,
+            operatorSyncMessage(message)
+          ])
+        )
+      )
+    : operatorSyncMessage(value)
+}
 
 export const useMasteryStore = defineStore('mastery', () => {
   const loading = ref(false)
@@ -10,10 +26,22 @@ export const useMasteryStore = defineStore('mastery', () => {
   const history = ref([])
   const goals = ref([])
   const hasData = ref(false)
-  const error = ref('')
+  const rawError = ref('')
+  const error = computed({
+    get: () => displayMessage(rawError.value),
+    set: (message) => {
+      rawError.value = message
+    }
+  })
   const filterAchievable = ref(false)
   const cultivateOk = ref(false)
-  const cultivateMsg = ref('')
+  const rawCultivateMsg = ref('')
+  const cultivateMsg = computed({
+    get: () => displayMessage(rawCultivateMsg.value),
+    set: (message) => {
+      rawCultivateMsg.value = message
+    }
+  })
   const yituliuSyncResult = ref(null)
   const planCount = ref(0)
   const isTraining = ref(false)
@@ -39,7 +67,8 @@ export const useMasteryStore = defineStore('mastery', () => {
         return { planCount: planCount.value, isTraining: isTraining.value }
       })
       .catch((e) => {
-        planSummaryError.value = e?.message || '读取专精计划失败'
+        planSummaryError.value =
+          e?.message || i18n.global.t('growth.store.failedToReadMasteryPlans')
         throw e
       })
       .finally(() => {
@@ -68,7 +97,7 @@ export const useMasteryStore = defineStore('mastery', () => {
       goals.value = data.goals || []
       hasData.value = data.has_data || false
     } catch (e) {
-      error.value = `请求失败: ${e.message || e}`
+      error.value = { key: 'growth.store.requestFailed', params: { value0: e.message || e } }
     } finally {
       loading.value = false
     }
@@ -96,18 +125,18 @@ export const useMasteryStore = defineStore('mastery', () => {
       yituliuSyncResult.value = data.yituliu_sync || null
       if (data.success) {
         cultivateOk.value = true
-        cultivateMsg.value = data.message || '拉取成功'
+        cultivateMsg.value = data.message || { key: 'growth.store.fetchedSuccessfully' }
         await fetchRecommendations()
       } else {
         cultivateOk.value = false
-        cultivateMsg.value = data.message || '拉取失败'
-        error.value = `数据拉取失败: ${data.message}`
+        cultivateMsg.value = data.message || { key: 'growth.store.fetchFailed' }
+        error.value = { key: 'growth.store.dataFetchFailed', params: { value0: data.message } }
         loading.value = false
       }
     } catch (e) {
       cultivateOk.value = false
-      cultivateMsg.value = e.message || '请求失败'
-      error.value = `请求失败: ${e.message || e}`
+      cultivateMsg.value = e.message || { key: 'growth.store.requestFailed2' }
+      error.value = { key: 'growth.store.requestFailed', params: { value0: e.message || e } }
       loading.value = false
     }
   }

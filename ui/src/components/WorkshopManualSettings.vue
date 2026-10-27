@@ -1,9 +1,19 @@
 <script setup>
-import { ref } from 'vue'
-import { pinyin_match } from '@/utils/common'
-import { render_op_option, render_op_label } from '@/utils/op_select'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 
-defineProps({ operators: Array, item_list: Array, migrationWarning: String })
+import { computed, ref } from 'vue'
+import { operatorDisplayName, itemDisplayName } from '@/i18n/gameNames'
+import { pinyin_match } from '@/utils/common'
+import { render_op_option, render_op_label, filterOperatorOption } from '@/utils/op_select'
+
+const props = defineProps({ operators: Array, item_list: Array, migrationWarning: String })
+const materialOptions = computed(() =>
+  (props.item_list || []).map((option) => ({
+    ...option,
+    label: itemDisplayName(option.value, option.label)
+  }))
+)
 const settings = defineModel({ type: Array, default: () => [] })
 
 const showSettingModal = ref(false)
@@ -44,8 +54,8 @@ function createNewItem() {
   </n-alert>
   <n-form-item>
     <template #label>
-      <span>无缝合成材料设置</span>
-      <help-text>自动专精备料期间，修改会保存并在备料结束后生效。</help-text>
+      <span>{{ t('tasks.manualCraftingMaterials') }}</span>
+      <help-text>{{ t('tasks.craftingEditDeferred') }}</help-text>
     </template>
     <n-button
       type="primary"
@@ -56,22 +66,27 @@ function createNewItem() {
           showSettingModal = true
         }
       "
-      >新增设置</n-button
+      >{{ t('tasks.addSetting') }}</n-button
     >
     <n-list bordered>
       <n-list-item v-for="(setting, idx) in settings" :key="idx">
         <div class="flex justify-between w-full">
           <div>
-            <strong>干员:</strong> {{ setting.operator }}, 启用: {{ setting.enabled }}<br />
+            <strong>{{ t('tasks.operatorPrefix') }}</strong>
+            {{ operatorDisplayName(setting.operator) }}{{ t('tasks.enabledPrefix')
+            }}{{ setting.enabled }}<br />
             <ul>
               <li v-for="(item, i) in setting.items" :key="i">
-                {{ item.item_names }} - 子项下限: {{ item.children_lower_limit }}, 自身上限:
-                {{ item.self_upper_limit }}
+                {{ item.item_names.map((name) => itemDisplayName(name)).join(', ')
+                }}{{ t('tasks.ingredientMinimumPrefix') }}{{ item.children_lower_limit
+                }}{{ t('tasks.productMaximumPrefix') }}{{ item.self_upper_limit }}
               </li>
             </ul>
           </div>
-          <n-button @click="openEdit(idx)" style="margin-right: 20px">编辑</n-button>
-          <n-button type="error" @click="settings.splice(idx, 1)">删除</n-button>
+          <n-button @click="openEdit(idx)" style="margin-right: 20px">{{
+            t('tasks.edit')
+          }}</n-button>
+          <n-button type="error" @click="settings.splice(idx, 1)">{{ t('tasks.delete') }}</n-button>
         </div>
       </n-list-item>
     </n-list>
@@ -80,22 +95,22 @@ function createNewItem() {
     style="width: 500px"
     v-model:show="showSettingModal"
     preset="dialog"
-    title="新增干员设置"
+    :title="t('tasks.addOperatorSettings')"
     :mask-closable="false"
     @update:show="workshop_setting_close"
   >
     <div style="display: flex; align-items: center; gap: 12px">
-      <span style="font-size: 12px; white-space: nowrap">干员：</span>
+      <span style="font-size: 12px; white-space: nowrap">{{ t('tasks.operatorColon') }}</span>
       <n-select
         filterable
         :options="operators"
         class="operator-select"
         v-model:value="tempSetting.operator"
-        :filter="(p, o) => pinyin_match(o.label, p)"
+        :filter="filterOperatorOption"
         :render-label="render_op_label"
         :render-option="render_op_option"
       />
-      <span style="font-size: 12px; white-space: nowrap">启用：</span>
+      <span style="font-size: 12px; white-space: nowrap">{{ t('tasks.enabledColon') }}</span>
       <n-switch v-model:value="tempSetting.enabled" />
     </div>
     <n-form :model="tempSetting">
@@ -103,39 +118,45 @@ function createNewItem() {
         <template #default="{ value }">
           <div>
             <div style="display: flex; flex-direction: row; align-self: center">
-              <span style="white-space: nowrap; margin-top: 5px">合成材料： </span>
+              <span style="white-space: nowrap; margin-top: 5px">{{
+                t('tasks.craftingMaterialsColon')
+              }}</span>
               <n-select
                 multiple
                 tag
-                :options="item_list"
+                :options="materialOptions"
                 v-model:value="value.item_names"
-                :filter="(p, o) => pinyin_match(o.label, p)"
+                :filter="(p, o) => pinyin_match(o.value, p) || pinyin_match(o.label, p)"
                 filterable
               />
               <help-text>
-                <div>加工站干员合成材料的白名单</div>
+                <div>{{ t('tasks.craftingWhitelist') }}</div>
               </help-text>
             </div>
             <div style="display: flex; flex-direction: row; align-self: center">
-              <span style="white-space: nowrap; margin-top: 5px">合成数量上限： </span>
+              <span style="white-space: nowrap; margin-top: 5px">{{
+                t('tasks.craftingMaximumColon')
+              }}</span>
               <mower-input-number
                 v-model:value="value.self_upper_limit"
                 :min="0"
-                placeholder="自身上限"
+                :placeholder="t('tasks.productMaximum')"
               />
               <help-text>
-                <div>成品库存达到此数量后停止合成</div>
+                <div>{{ t('tasks.stopAtProductLimit') }}</div>
               </help-text>
             </div>
             <div style="display: flex; flex-direction: row; align-self: center">
-              <span style="white-space: nowrap; margin-top: 5px">子材料数量下限： </span>
+              <span style="white-space: nowrap; margin-top: 5px">{{
+                t('tasks.ingredientMinimumColon')
+              }}</span>
               <mower-input-number
                 v-model:value="value.children_lower_limit"
                 :min="0"
-                placeholder="子项下限"
+                :placeholder="t('tasks.ingredientMinimum')"
               />
               <help-text>
-                <div>为每种子材料保留的最低库存，合成时不会消耗到低于此数量</div>
+                <div>{{ t('tasks.ingredientStockHelp') }}</div>
               </help-text>
             </div>
           </div>

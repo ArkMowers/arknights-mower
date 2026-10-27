@@ -1,35 +1,143 @@
+import { i18n } from '@/i18n'
+import { itemDisplayName } from '@/i18n/gameNames'
+const { t } = i18n.global
 // Roguelike 主题与模式枚举。MAA 集成协议的主题/模式值列表，界面与测试共用；
-// 主题补 BlackFlow；模式弃用 2（已移除）与 3（未开放），新增 6/7/30001 及主题限定模式
+// 主题补 BlackFlow；模式弃用 2（已移除）与 3（未开放），新增 6/7/30001/30003 及主题限定模式
 // 10001/20001。主题限定模式用 theme 字段标注，界面按当前主题过滤。
 export const rogue_themes = [
-  { label: '傀影与猩红孤钻', value: 'Phantom' },
-  { label: '水月与深蓝之树', value: 'Mizuki' },
-  { label: '探索者的银凇止境', value: 'Sami' },
-  { label: '萨卡兹的无终奇语', value: 'Sarkaz' },
-  { label: '界园志异', value: 'JieGarden' },
-  { label: '沉沦者的黑流树海', value: 'BlackFlow' }
+  {
+    get label() {
+      return t('tasks.rogueThemePhantom')
+    },
+    value: 'Phantom'
+  },
+  {
+    get label() {
+      return t('tasks.rogueThemeMizuki')
+    },
+    value: 'Mizuki'
+  },
+  {
+    get label() {
+      return t('tasks.rogueThemeSami')
+    },
+    value: 'Sami'
+  },
+  {
+    get label() {
+      return t('tasks.rogueThemeSarkaz')
+    },
+    value: 'Sarkaz'
+  },
+  {
+    get label() {
+      return t('tasks.rogueThemeJieGarden')
+    },
+    value: 'JieGarden'
+  },
+  {
+    get label() {
+      return t('tasks.rogueThemeBlackFlow')
+    },
+    value: 'BlackFlow'
+  }
 ]
 
 export const mode_list = [
-  { label: '刷等级，尽可能稳定地打更多层数', value: 0 },
-  { label: '刷源石锭，投资完成后自动退出', value: 1 },
-  { label: '刷开局，刷取热水壶或精二干员开局', value: 4 },
-  { label: '刷坍缩范式，遇到非稀有坍缩范式后直接重开', value: 5, theme: 'Sami' },
-  { label: '刷月度小队，尽可能稳定地打更多层数', value: 6 },
-  { label: '刷深入调查，尽可能稳定地打更多层数', value: 7 },
-  { label: '快速通过第一层', value: 10001, theme: 'Sarkaz' },
-  { label: '刷常乐节点，第一层进洞，找不到需要的节点就重开', value: 20001, theme: 'JieGarden' },
-  { label: '刷开局，先打准备局再开目标局', value: 30003, theme: 'BlackFlow' },
-  { label: '刷襁褓动物', value: 30001, theme: 'BlackFlow' }
+  {
+    get label() {
+      return t('tasks.farmLevels')
+    },
+    value: 0
+  },
+  {
+    get label() {
+      return t('tasks.farmIngots')
+    },
+    value: 1
+  },
+  {
+    get label() {
+      return t('tasks.farmStarts')
+    },
+    value: 4
+  },
+  {
+    get label() {
+      return t('tasks.farmParadigms')
+    },
+    value: 5,
+    theme: 'Sami'
+  },
+  {
+    get label() {
+      return t('tasks.farmMonthlySquads')
+    },
+    value: 6
+  },
+  {
+    get label() {
+      return t('tasks.farmDeepInvestigations')
+    },
+    value: 7
+  },
+  {
+    get label() {
+      return t('tasks.quickFirstFloor')
+    },
+    value: 10001,
+    theme: 'Sarkaz'
+  },
+  {
+    get label() {
+      return t('tasks.farmPlaytime')
+    },
+    value: 20001,
+    theme: 'JieGarden'
+  },
+  {
+    get label() {
+      return t('maaActivities.blackflowOpeningMode')
+    },
+    value: 30003,
+    theme: 'BlackFlow'
+  },
+  {
+    get label() {
+      return t('tasks.farmSwaddled')
+    },
+    value: 30001,
+    theme: 'BlackFlow'
+  }
 ]
 
-// 黑流树海用独立的三套策略（对照：刷等级快速飞三层 / 刷源石锭 / 刷襁褓动物），
+// 黑流树海使用独立策略列表，包含刷等级、投资、培养襁褓动物和刷开局；
 // 不用通用策略列表；其余主题共用通用策略并按主题追加限定策略。
 const blackflow_modes = [
-  { label: '刷等级', value: 0 },
-  { label: '刷源石锭，投资完成后自动退出', value: 1 },
-  { label: '刷襁褓动物', value: 30001 },
-  { label: '刷开局，先打准备局再开目标局', value: 30003 }
+  {
+    get label() {
+      return t('maaActivities.blackflowLevelMode')
+    },
+    value: 0
+  },
+  {
+    get label() {
+      return t('tasks.farmIngots')
+    },
+    value: 1
+  },
+  {
+    get label() {
+      return t('tasks.farmSwaddled')
+    },
+    value: 30001
+  },
+  {
+    get label() {
+      return t('maaActivities.blackflowOpeningMode')
+    },
+    value: 30003
+  }
 ]
 
 // 当前主题可选的策略列表：黑流树海走专属列表，其余按 theme 过滤主题限定策略，
@@ -53,7 +161,7 @@ export const field_conditions = {
   // 协议注明 stop_when_investment_full 仅在投资源石锭且策略为 1（刷源石锭）时生效；
   // 策略 1 在模式切换时强制开启投资（对照 RoguelikeMode 设置器），此处只判模式
   stop_when_investment_full: (theme, mode) => mode === 1,
-  // 协议注明 collectible_mode_shopping 与 collectible_mode_squad 仅用于策略 4（刷开局）
+  // 普通刷开局显示购物与分队设置；黑流树海刷开局另用准备局分队。
   collectible_mode_shopping: (theme, mode) => mode === 4,
   collectible_mode_squad: (theme, mode) => mode === 4 || (theme === 'BlackFlow' && mode === 30003),
   // 协议注明 collectible_mode_start_list 仅在策略为 4（刷开局）时有效
@@ -146,7 +254,12 @@ const difficulty_max = {
 export function difficulty_options(theme) {
   const max = difficulty_max[theme] ?? 15
   const options = [
-    { label: '不切换难度', value: -1 },
+    {
+      get label() {
+        return t('tasks.keepDifficulty')
+      },
+      value: -1
+    },
     { label: `MAX (${max})`, value: 2147483647 }
   ]
   for (let value = 0; value <= max; value++) {
@@ -155,12 +268,122 @@ export function difficulty_options(theme) {
   return options
 }
 
+// 显示名称按游戏表同 ID 核对；未上线选项使用普通译文，界面语言不改变协议值。
+// https://github.com/ArknightsAssets/ArknightsGamedata/tree/a6d4731c10edc58a70ee71b0b77b9f687af13d59
+const optionKeys = {
+  rogueSquads: {
+    集群分队: 'rogue_1_band_2',
+    矛头分队: 'rogue_1_band_4',
+    研究分队: 'rogue_1_band_9',
+    指挥分队: 'rogue_1_band_1',
+    后勤分队: 'rogue_1_band_3',
+    突击战术分队: 'rogue_1_band_5',
+    堡垒战术分队: 'rogue_1_band_6',
+    远程战术分队: 'rogue_1_band_7',
+    破坏战术分队: 'rogue_1_band_8',
+    高规格分队: 'rogue_1_band_10',
+    心胜于物分队: 'rogue_2_band_11',
+    物尽其用分队: 'rogue_2_band_15',
+    以人为本分队: 'rogue_2_band_19',
+    永恒狩猎分队: 'rogue_3_band_11',
+    生活至上分队: 'rogue_3_band_12',
+    科学主义分队: 'rogue_3_band_13',
+    特训分队: 'rogue_3_band_9',
+    魂灵护送分队: 'rogue_4_band_14',
+    博闻广记分队: 'rogue_4_band_16',
+    蓝图测绘分队: 'rogue_4_band_18',
+    因地制宜分队: 'rogue_4_band_13',
+    异想天开分队: 'rogue_4_band_22',
+    点刺成锭分队: 'rogue_4_band_20',
+    拟态学者分队: 'rogue_4_band_21',
+    专业人士分队: 'rogue_4_band_30',
+    特勤分队: 'rogue_5_band_3',
+    高台突破分队: 'rogue_5_band_11',
+    地面突破分队: 'rogue_5_band_12',
+    游客分队: 'rogue_5_band_15',
+    司岁台分队: 'rogue_5_band_17',
+    天师府分队: 'rogue_5_band_19',
+    花团锦簇分队: 'rogue_5_band_21',
+    棋行险着分队: 'rogue_5_band_22',
+    岁影回音分队: 'rogue_5_band_23',
+    代理人分队: 'rogue_5_band_24',
+    知学分队: 'rogue_5_band_25',
+    商贾分队: 'rogue_5_band_26',
+    本源研修分队: 'rogue_6_band_14',
+    文明开化分队: 'rogue_6_band_15',
+    开拓者分队: 'rogue_6_band_17',
+    多边贸易分队: 'rogue_6_band_19',
+    地质调查分队: 'rogue_6_band_21'
+  },
+  rogueParadigms: {
+    去量化: 'rogue_3_chaos_1',
+    去量深化: 'rogue_3_chaos_1_a',
+    实质性坍缩: 'rogue_3_chaos_2',
+    蔓延性坍缩: 'rogue_3_chaos_2_a',
+    非线性移动: 'rogue_3_chaos_3',
+    非线性行动: 'rogue_3_chaos_3_a',
+    情绪实体: 'rogue_3_chaos_4',
+    恐怖实体: 'rogue_3_chaos_4_a',
+    泛社会悖论: 'rogue_3_chaos_5',
+    泛文明悖论: 'rogue_3_chaos_5_a',
+    气压异常: 'rogue_3_chaos_6',
+    气压失序: 'rogue_3_chaos_6_a',
+    触发性损伤: 'rogue_3_chaos_7',
+    触发性危殆: 'rogue_3_chaos_7_a',
+    趋同性消耗: 'rogue_3_chaos_8',
+    趋同性缺失: 'rogue_3_chaos_8_a',
+    目空一些: 'rogue_3_chaos_9',
+    睁眼瞎: 'rogue_3_chaos_9_a',
+    图像损坏: 'rogue_3_chaos_10',
+    一抹黑: 'rogue_3_chaos_10_a'
+  },
+  rogueAnimals: {
+    襁褓中的猫: 'rogue_6_legacy_01',
+    襁褓羽蛇: 'rogue_6_legacy_04',
+    襁褓中的狗: 'rogue_6_legacy_02',
+    襁褓三头犬: 'rogue_6_legacy_03'
+  },
+  roguePlaytime: {
+    掷地有声: 'scene_ro5_ent3_enter',
+    种因得果: 'scene_ro5_ent2_enter',
+    三缺一: 'scene_ro5_ent1_enter'
+  },
+  rogueRewards: {
+    热水壶: 'rogue_1_relic_r01'
+  }
+}
+
+export function rogueOptionLabel(category, value) {
+  const key = optionKeys[category]?.[value]
+  return key ? t(`tasks.${category}.${key}`) : value
+}
 export const blackflow_animals = [
-  { label: '襁褓猫', value: 'swaddled_cat' },
-  { label: '襁褓狗', value: 'swaddled_dog' },
-  { label: '襁褓三头犬', value: 'swaddled_cerberus' },
-  { label: '襁褓羽蛇', value: 'swaddled_feathered_serpent' }
+  {
+    get label() {
+      return rogueOptionLabel('rogueAnimals', '襁褓中的猫')
+    },
+    value: 'swaddled_cat'
+  },
+  {
+    get label() {
+      return rogueOptionLabel('rogueAnimals', '襁褓中的狗')
+    },
+    value: 'swaddled_dog'
+  },
+  {
+    get label() {
+      return rogueOptionLabel('rogueAnimals', '襁褓三头犬')
+    },
+    value: 'swaddled_cerberus'
+  },
+  {
+    get label() {
+      return rogueOptionLabel('rogueAnimals', '襁褓羽蛇')
+    },
+    value: 'swaddled_feathered_serpent'
+  }
 ]
+// 已有物品译名只用于显示；尚无核实译名的奖励保留原名。
 export const blackflow_rewards = [
   ['未编号物', 'unnumbered_item'],
   ['调查预付款', 'survey_advance'],
@@ -174,4 +397,10 @@ export const blackflow_rewards = [
   ['襁褓九头蛇', 'hydra'],
   ['襁褓白泽', 'bai_ze'],
   ['襁褓金乌', 'golden_crow']
-].map(([label, value], index) => ({ label, value, mask: 1 << index }))
+].map(([label, value], index) => ({
+  get label() {
+    return itemDisplayName(label)
+  },
+  value,
+  mask: 1 << index
+}))

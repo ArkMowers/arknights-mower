@@ -1,3 +1,6 @@
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 const countKeys = [
   'owned',
   'available',
@@ -52,9 +55,13 @@ export function sumPersonalStatistics(statistics, rarities) {
 
 export function personalStatisticsRows(statistics, rarities) {
   return [
-    { key: 'all', label: '全部所选', ...sumPersonalStatistics(statistics, rarities) },
+    { key: 'all', label: t('reports.allSelected'), ...sumPersonalStatistics(statistics, rarities) },
     ...[6, 5, 4, 3, 2, 1]
       .filter((rarity) => rarities.includes(rarity))
-      .map((rarity) => ({ key: rarity, label: `${rarity} 星`, ...statistics?.rarities?.[rarity] }))
+      .map((rarity) => ({
+        key: rarity,
+        label: t('reports.rarityStars', { count: rarity }),
+        ...statistics?.rarities?.[rarity]
+      }))
   ]
 }

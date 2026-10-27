@@ -1,3 +1,6 @@
+import { operatorDisplayName, itemDisplayName } from '@/i18n/gameNames'
+import { i18n } from '@/i18n'
+import { operatorSyncMessage } from '@/i18n/operatorSync'
 export const workshopCategories = ['fodder_operators', 't5_operators', 'book_operators']
 
 export function selectedWorkshopOperators(settings = {}) {
@@ -13,14 +16,19 @@ export function selectedWorkshopOperators(settings = {}) {
 
 export function workshopTraineeWarning(name, operators) {
   return name && operators.has(name)
-    ? `${name} 已在合成计划中被选为加工站干员，专精期间可能影响合成，请留意。`
+    ? i18n.global.t('growth.workshopHelper.isSelectedAsAWorkshopOperatorIn', {
+        value0: operatorDisplayName(name)
+      })
     : ''
 }
 
 export async function syncWorkshopOperators(http, baseUrl, minBonus = 80) {
   const synced = await http.get(`${baseUrl}/cultivate-fetch`)
   if (!synced.data?.success) {
-    throw new Error(synced.data?.message || '干员数据同步失败，请稍后重试')
+    throw new Error(
+      operatorSyncMessage(synced.data?.message) ||
+        i18n.global.t('growth.workshopHelper.operatorSynchronizationFailedPleaseTryAgainLater')
+    )
   }
   const data = await loadWorkshopOperators(http, baseUrl, minBonus)
   const defaults = { ...data.defaults }
@@ -53,7 +61,9 @@ export async function loadWorkshopOperators(http, baseUrl, minBonus = 80, catego
         data.defaults[key].some((name) => typeof name !== 'string' || !name)
     )
   ) {
-    throw new Error('加工站推荐数据不完整，请稍后重试')
+    throw new Error(
+      i18n.global.t('growth.workshopHelper.workshopRecommendationsAreIncompletePleaseTryAgain')
+    )
   }
   return data
 }
@@ -61,7 +71,9 @@ export async function loadWorkshopOperators(http, baseUrl, minBonus = 80, catego
 export async function loadWorkshopReference(http, baseUrl) {
   const { data } = await http.get(`${baseUrl}/workshop-operators/reference`)
   if (workshopCategories.some((key) => !Array.isArray(data?.recommendations?.[key]))) {
-    throw new Error('加工站培养推荐数据不完整，请稍后重试')
+    throw new Error(
+      i18n.global.t('growth.workshopHelper.workshopGrowthRecommendationsAreIncompletePleaseTry')
+    )
   }
   return data.recommendations
 }
@@ -78,19 +90,39 @@ export function usesLegacyWorkshopDefaults(settings) {
 }
 
 export function workshopRecommendationText(operator, unowned = false) {
-  const name = unowned ? `${operator.name}（未持有）` : operator.name
+  const name = unowned
+    ? i18n.global.t('growth.workshopHelper.notOwned', {
+        value0: operatorDisplayName(operator.name)
+      })
+    : operatorDisplayName(operator.name)
   if (operator.causality) return name
-  const materials = operator.materials || []
+  const materials = (operator.materials || []).map((name) => itemDisplayName(name))
   const bonus = [...new Set(Object.values(operator.bonuses || {}))].sort((a, b) => a - b)
   const amount = bonus.length > 1 ? `${bonus[0]}～${bonus.at(-1)}` : bonus[0]
   const scope =
     operator.name === '休谟斯'
-      ? '仅合成 T3 材料'
+      ? i18n.global.t('growth.workshopHelper.craftsT3MaterialsOnly')
       : operator.material_scope === 't4'
-        ? '仅 T4 材料'
+        ? i18n.global.t('growth.workshopHelper.t4MaterialsOnly')
         : operator.specialist
-          ? `仅${materials.join('、')}`
-          : `${materials.slice(0, 3).join('、')}${materials.length > 3 ? `等 ${materials.length} 种材料` : ''}`
-  const extra = operator.name === '蚀清' ? '，副产物固定异铁组（收益仅次于九色鹿）' : ''
-  return `${name}：${scope}，副产品概率加成 +${amount}%${extra}`
+          ? i18n.global.t('growth.workshopHelper.only', { value0: materials.join('、') })
+          : i18n.global.t('growth.workshopHelper.text', {
+              value0: materials.slice(0, 3).join('、'),
+              value1:
+                materials.length > 3
+                  ? i18n.global.t('growth.workshopHelper.andOtherMaterialsTypesTotal', {
+                      value0: materials.length
+                    })
+                  : ''
+            })
+  const extra =
+    operator.name === '蚀清'
+      ? i18n.global.t('growth.workshopHelper.theByproductIsAlwaysReturnsSecondOnly')
+      : ''
+  return i18n.global.t('growth.workshopHelper.byproductProbabilityBonus', {
+    value0: name,
+    value1: scope,
+    value2: amount,
+    value3: extra
+  })
 }

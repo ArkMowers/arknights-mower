@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { computed, onScopeDispose, ref } from 'vue'
 import { defineStore } from 'pinia'
 import axios from 'axios'
@@ -25,7 +26,7 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
     if (response.status === 204) replace(null)
     else if (response.data instanceof Blob && response.data.type === 'image/webp')
       replace(response.data)
-    else throw new Error('背景图响应无效')
+    else throw new Error(i18n.global.t('settings.logBackground.invalidResponse'))
   }
 
   async function load() {
@@ -39,7 +40,7 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
         loaded.value = true
         return true
       } catch {
-        error.value = '运行日志背景图读取失败，请重试。'
+        error.value = i18n.global.t('settings.logBackground.loadFailed')
         return false
       } finally {
         busy.value = false
@@ -52,11 +53,11 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
   async function upload(file) {
     if (busy.value || !loaded.value) return false
     if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      error.value = '请选择 PNG、JPEG 或 WebP 图片。'
+      error.value = i18n.global.t('settings.logBackground.chooseImage')
       return false
     }
     if (file.size > MAX_BACKGROUND_BYTES) {
-      error.value = '图片不能超过 8 MiB。'
+      error.value = i18n.global.t('settings.logBackground.tooLarge')
       return false
     }
     busy.value = true
@@ -80,7 +81,7 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
           // 错误响应可能不是 JSON。
         }
       }
-      error.value = message || '运行日志背景图保存失败，请重试。'
+      error.value = message || i18n.global.t('settings.logBackground.saveFailed')
       return false
     } finally {
       busy.value = false
@@ -97,7 +98,7 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
       replace(null)
       return true
     } catch {
-      error.value = '运行日志背景图恢复默认失败，请重试。'
+      error.value = i18n.global.t('settings.logBackground.resetFailed')
       return false
     } finally {
       busy.value = false

@@ -1,4 +1,9 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { itemDisplayName } from '@/i18n/gameNames'
+import { operatorSyncMessage } from '@/i18n/operatorSync'
+const { t } = i18n.global
+
 import axios from 'axios'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
@@ -15,7 +20,13 @@ import {
   previewInventorySelection,
   selectRatioMember
 } from '@/utils/maa_stage_inventory'
-import { WEEKDAYS, getGameWeekdayIndex } from '@/utils/maa_weekly_plan'
+import {
+  WEEKDAYS,
+  formatWeekday,
+  formatStageLabel,
+  getGameWeekdayIndex,
+  localizeActivityStageLabel
+} from '@/utils/maa_weekly_plan'
 
 const message = useMessage()
 const emit = defineEmits(['chip-limits-applied'])
@@ -38,7 +49,7 @@ const inventory = ref({})
 const inventoryUpdatedAt = ref('')
 const activityRatioSuggestion = ref(null)
 const limitStageToAdd = ref(null)
-const activePlanLabel = computed(() => maa_weekly_plan_active.value || '当前方案')
+const activePlanLabel = computed(() => maa_weekly_plan_active.value || t('tasks.currentPlan'))
 
 const currentWeekdayIndex = computed(() => getGameWeekdayIndex())
 
@@ -84,7 +95,12 @@ const selectedStageValues = computed(() => {
 })
 
 const selectedStageOptions = computed(() =>
-  stageOptions.value.filter((option) => selectedStageValues.value.has(option.value))
+  stageOptions.value
+    .filter((option) => selectedStageValues.value.has(option.value))
+    .map((option) => ({
+      ...option,
+      label: localizeActivityStageLabel(option.label || formatStageLabel(option.value))
+    }))
 )
 
 const limitStageOptions = computed(() => {
@@ -109,7 +125,11 @@ const previewResult = computed(() => {
 })
 
 function stageLabel(stage) {
-  return stageOptionMap.value.get(stage)?.label || stage || '未选择关卡'
+  return (
+    localizeActivityStageLabel(stageOptionMap.value.get(stage)?.label) ||
+    formatStageLabel(stage) ||
+    t('tasks.noStageSelected')
+  )
 }
 
 function withCurrentOption(options, value, label = value) {
@@ -125,7 +145,10 @@ function stageOptionsFor(value) {
 
 function itemOptionsFor(item) {
   const value = String(item?.item_id || '')
-  return withCurrentOption(itemOptions.value, value, item?.item_name || value)
+  return withCurrentOption(itemOptions.value, value, item?.item_name || value).map((option) => ({
+    ...option,
+    label: itemDisplayName(option.id || option.value, option.name || option.label)
+  }))
 }
 
 function ratioStageOptions(rule, memberIndex) {
@@ -193,7 +216,8 @@ async function loadInventoryRuleData() {
     activityRatioSuggestion.value = response.data.activity_ratio_suggestion || null
   } catch (error) {
     if (request !== inventoryRequest) return
-    loadError.value = error?.response?.data?.message || error.message || '读取库存选关数据失败'
+    loadError.value =
+      error?.response?.data?.message || error.message || t('tasks.inventoryStageDataFailed')
   } finally {
     if (request === inventoryRequest) loading.value = false
   }
@@ -204,12 +228,16 @@ async function refreshInventory() {
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/cultivate-fetch`)
     if (!response.data?.success) {
-      throw new Error(response.data?.message || '库存刷新失败')
+      throw new Error(response.data?.message || t('tasks.inventoryRefreshFailed'))
     }
     await loadInventoryRuleData()
-    message.success('库存已刷新')
+    message.success(t('tasks.inventoryRefreshed'))
   } catch (error) {
-    message.error(error?.response?.data?.message || error.message || '库存刷新失败')
+    message.error(
+      operatorSyncMessage(
+        error?.response?.data?.message || error.message || t('tasks.inventoryRefreshFailed')
+      )
+    )
   } finally {
     refreshing.value = false
   }
@@ -231,7 +259,7 @@ function applyChipLimits() {
   )
   maa_stage_inventory_enable.value = true
   emit('chip-limits-applied')
-  message.success('已启用库存选关、绑定芯片上限、勾选芯片关卡，并将排序提升到剿灭之后')
+  message.success(t('tasks.chipPresetApplied'))
 }
 
 function removeLimitRule(index) {
@@ -294,15 +322,15 @@ function applyActivityRatioSuggestion() {
     members: (activityRatioSuggestion.value.members || []).map((member) => ({ ...member }))
   }
   const existingNames = new Set(maa_stage_ratio_rules.value.map((rule) => rule.name))
-  let name = suggestion.name || '当前活动绑定'
+  let name = suggestion.name || t('tasks.currentEventBinding')
   let suffix = 2
   while (existingNames.has(name)) {
-    name = `${suggestion.name || '当前活动绑定'} ${suffix}`
+    name = `${suggestion.name || t('tasks.currentEventBinding')} ${suffix}`
     suffix += 1
   }
   suggestion.name = name
   maa_stage_ratio_rules.value.push(suggestion)
-  message.success('已添加当前活动关卡与掉落物绑定')
+  message.success(t('tasks.eventBindingAdded'))
 }
 
 watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], loadInventoryRuleData, {
@@ -314,7 +342,9 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
   <section class="inventory-panel">
     <n-alert v-if="loadError" type="error" :closable="false">
       {{ loadError }}
-      <n-button text type="primary" @click="loadInventoryRuleData">重新读取</n-button>
+      <n-button text type="primary" @click="loadInventoryRuleData">{{
+        t('tasks.reload')
+      }}</n-button>
     </n-alert>
 
     <n-spin :show="loading">
@@ -322,65 +352,55 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
         <n-flex justify="space-between" align="center" :wrap="true">
           <div class="overview-copy">
             <n-flex align="center" :size="8" :wrap="true">
-              <div class="overview-title">启用库存选关</div>
+              <div class="overview-title">{{ t('tasks.enableInventoryStages') }}</div>
               <n-tag
                 type="info"
                 size="small"
                 :bordered="false"
                 class="plan-scope-tag"
                 :title="activePlanLabel"
-              >
-                方案 · {{ activePlanLabel }}
+                >{{ t('tasks.planPrefix') }}{{ activePlanLabel }}
               </n-tag>
             </n-flex>
-            <n-text depth="3">
-              当前只显示并编辑此方案的库存规则；切换方案时同步切换，且只作用于已选关卡。
-            </n-text>
+            <n-text depth="3">{{ t('tasks.currentPlanRulesHelp') }}</n-text>
           </div>
           <n-space align="center">
-            <n-text v-if="inventoryUpdatedAt" depth="3" class="update-time">
-              库存更新于 {{ inventoryUpdatedAt }}
+            <n-text v-if="inventoryUpdatedAt" depth="3" class="update-time"
+              >{{ t('tasks.inventoryUpdatedAt') }} {{ inventoryUpdatedAt }}
             </n-text>
-            <n-button :loading="refreshing" @click="refreshInventory">刷新库存</n-button>
+            <n-button :loading="refreshing" @click="refreshInventory">{{
+              t('tasks.refreshInventory')
+            }}</n-button>
             <n-switch
               v-model:value="maa_stage_inventory_enable"
               size="large"
-              aria-label="启用库存选关"
+              :aria-label="t('tasks.enableInventoryStages')"
             />
           </n-space>
         </n-flex>
         <n-divider />
         <n-space vertical :size="4">
-          <n-text depth="3"
-            >• 使用本地库存选关，MAA 掉落回调自动更新库存；物品上限优先于比例。</n-text
-          >
-          <n-text depth="3">
-            • 剿灭优先；有效上限或比例绑定关卡仍需刷取时，只执行剿灭和这些关卡。
-          </n-text>
-          <n-text depth="3">
-            • 已选库存关卡全部达到上限后，才执行无有效库存规则的后备关卡（含上次作战）。
-          </n-text>
-          <n-text depth="3">
-            • MAA 保持自动连战，整组结算达标后停止该关；数量可能超过上限一组的掉落量。
-          </n-text>
-          <n-text depth="3">• 上限填 0 表示该物品不限上限。</n-text>
-          <n-text depth="3">• 比例填 0 表示该关卡不参与比例关系计算。</n-text>
-          <n-text depth="3">
-            • 全部关卡达标且无后备关卡时停止刷取，继续其他任务；剿灭和上次作战不参与绑定。
-          </n-text>
+          <n-text depth="3">{{ t('tasks.inventoryRule1') }}</n-text>
+          <n-text depth="3">{{ t('tasks.inventoryRule2') }}</n-text>
+          <n-text depth="3">{{ t('tasks.inventoryRule3') }}</n-text>
+          <n-text depth="3">{{ t('tasks.inventoryRule4') }}</n-text>
+          <n-text depth="3">{{ t('tasks.inventoryRule5') }}</n-text>
+          <n-text depth="3">{{ t('tasks.inventoryRule6') }}</n-text>
+          <n-text depth="3">{{ t('tasks.inventoryRule7') }}</n-text>
         </n-space>
       </n-card>
 
-      <n-alert v-if="!maa_stage_inventory_enable" type="info" :closable="false" class="top-gap">
-        库存选关未启用，物品上限和比例规则均不生效，将按原计划执行。
-      </n-alert>
+      <n-alert v-if="!maa_stage_inventory_enable" type="info" :closable="false" class="top-gap">{{
+        t('tasks.inventoryDisabledHelp')
+      }}</n-alert>
 
-      <n-alert v-if="selectedStageValues.size === 0" type="info" :closable="false" class="top-gap">
-        请先在方案“{{ activePlanLabel }}”的列表计划或表格计划中选择关卡，再配置库存上限或比例。
-      </n-alert>
+      <n-alert v-if="selectedStageValues.size === 0" type="info" :closable="false" class="top-gap"
+        >{{ t('tasks.selectStagesFirstBefore') }}{{ activePlanLabel
+        }}{{ t('tasks.selectStagesFirstAfter') }}</n-alert
+      >
 
       <n-tabs type="segment" class="top-gap">
-        <n-tab-pane name="limit" tab="物品上限">
+        <n-tab-pane name="limit" :tab="t('tasks.itemLimits')">
           <n-card size="small">
             <n-flex align="center" class="add-toolbar">
               <n-select
@@ -389,36 +409,32 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
                 filterable
                 clearable
                 :placeholder="
-                  selectedStageValues.size ? '选择要绑定的关卡' : '请先在周计划中选择关卡'
+                  selectedStageValues.size
+                    ? t('tasks.selectBoundStage')
+                    : t('tasks.selectWeeklyStagesFirst')
                 "
                 :options="limitStageOptions"
               />
-              <n-button type="primary" :disabled="!limitStageToAdd" @click="addLimitRule">
-                添加关卡上限
-              </n-button>
+              <n-button type="primary" :disabled="!limitStageToAdd" @click="addLimitRule">{{
+                t('tasks.addStageLimit')
+              }}</n-button>
               <n-space align="center" :size="6" :wrap="false">
                 <n-button
                   :disabled="loading || !!loadError || stageOptions.length === 0"
                   @click="applyChipLimits"
+                  >{{ t('tasks.chipLimitsPreset') }}</n-button
                 >
-                  一键芯片上限
-                </n-button>
-                <help-text label="一键芯片上限说明">
-                  绑定全部 8 个芯片关卡：小芯片上限 5、芯片组上限 8，两种都达到才跳过。
-                  同时启用当前方案的库存选关，覆盖已有芯片上限，仅对当前方案已选关卡生效。
-                  同时勾选全部芯片关卡：开启开放日过滤时仅勾选开放日，关闭时每天勾选。
-                  将全部芯片关卡排在剿灭之后，保留原有其他关卡勾选；之后所有关卡均可自由拖动排序。
-                </help-text>
+                <help-text :label="t('tasks.chipLimitsHelpTitle')">{{
+                  t('tasks.chipLimitsHelp')
+                }}</help-text>
               </n-space>
-              <n-text depth="3">
-                这里只列出周计划已经选择的关卡；绑定后自动载入常规掉落，也可添加自定义物品。
-              </n-text>
+              <n-text depth="3">{{ t('tasks.selectedStagesOnlyHelp') }}</n-text>
             </n-flex>
           </n-card>
 
           <n-empty
             v-if="maa_stage_limit_rules.length === 0"
-            :description="`方案“${activePlanLabel}”尚未设置物品上限`"
+            :description="t('tasks.noPlanItemLimits', { plan: activePlanLabel })"
             class="empty-block"
           />
 
@@ -438,42 +454,51 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
                   :options="stageOptionsFor(rule.stage)"
                   @update:value="(value) => changeLimitRuleStage(rule, value)"
                 />
-                <n-tag v-if="!selectedStageValues.has(rule.stage)" type="warning" :bordered="false">
-                  周计划未选择，不会刷取
-                </n-tag>
-                <n-tag v-else-if="rule.enabled === false" :bordered="false">规则未启用</n-tag>
-                <n-tag v-else-if="!maa_stage_inventory_enable" :bordered="false">
-                  库存选关未启用，规则不生效
-                </n-tag>
+                <n-tag
+                  v-if="!selectedStageValues.has(rule.stage)"
+                  type="warning"
+                  :bordered="false"
+                  >{{ t('tasks.stageNotSelected') }}</n-tag
+                >
+                <n-tag v-else-if="rule.enabled === false" :bordered="false">{{
+                  t('tasks.ruleDisabled')
+                }}</n-tag>
+                <n-tag v-else-if="!maa_stage_inventory_enable" :bordered="false">{{
+                  t('tasks.inventoryRuleInactive')
+                }}</n-tag>
                 <n-tag
                   v-else-if="limitEvaluation(rule).active"
                   :type="limitEvaluation(rule).reached ? 'error' : 'success'"
                   :bordered="false"
                 >
-                  {{ limitEvaluation(rule).reached ? '已达上限，将跳过' : '未达上限' }}
+                  {{
+                    limitEvaluation(rule).reached
+                      ? t('tasks.reachedWillSkip')
+                      : t('tasks.belowLimit')
+                  }}
                 </n-tag>
-                <n-tag v-else :bordered="false">未设置有效上限</n-tag>
+                <n-tag v-else :bordered="false">{{ t('tasks.noEffectiveLimit') }}</n-tag>
               </n-flex>
             </template>
             <template #header-extra>
-              <n-button quaternary type="error" @click="removeLimitRule(ruleIndex)">
-                删除
-              </n-button>
+              <n-button quaternary type="error" @click="removeLimitRule(ruleIndex)">{{
+                t('tasks.delete')
+              }}</n-button>
             </template>
 
             <n-flex align="center" class="operator-row">
-              <n-text>多物品规则</n-text>
+              <n-text>{{ t('tasks.multiItemRule') }}</n-text>
               <n-radio-group v-model:value="rule.operator" size="small">
-                <n-radio-button value="and">且：全部达到才跳过</n-radio-button>
-                <n-radio-button value="or">或：任一达到就跳过</n-radio-button>
+                <n-radio-button value="and">{{ t('tasks.allLimitsReached') }}</n-radio-button>
+                <n-radio-button value="or">{{ t('tasks.anyLimitReached') }}</n-radio-button>
               </n-radio-group>
             </n-flex>
 
             <div class="limit-grid grid-header">
-              <span>物品</span>
-              <span>当前库存</span>
-              <span>数量上限</span>
-              <span>操作</span>
+              <span>{{ t('tasks.item') }}</span>
+              <span>{{ t('tasks.currentInventory') }}</span>
+              <span>{{ t('tasks.quantityLimit') }}</span>
+              <span>{{ t('tasks.actions') }}</span>
             </div>
             <div
               v-for="(item, itemIndex) in rule.items"
@@ -486,7 +511,7 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
                 tag
                 clearable
                 :clear-created-options-on-clear="false"
-                placeholder="选择或输入物品"
+                :placeholder="t('tasks.selectOrEnterItem')"
                 :options="itemOptionsFor(item)"
                 :on-create="createInventoryItemOption"
                 @update:value="(value) => updateItem(item, value)"
@@ -501,40 +526,37 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
               <n-button
                 quaternary
                 type="error"
-                aria-label="删除物品"
+                :aria-label="t('tasks.deleteItem')"
                 @click="rule.items.splice(itemIndex, 1)"
+                >{{ t('tasks.delete') }}</n-button
               >
-                删除
-              </n-button>
             </div>
-            <n-button dashed block class="row-add-button" @click="addLimitItem(rule)">
-              添加自定义物品
-            </n-button>
+            <n-button dashed block class="row-add-button" @click="addLimitItem(rule)">{{
+              t('tasks.addCustomItem')
+            }}</n-button>
           </n-card>
         </n-tab-pane>
 
-        <n-tab-pane name="ratio" tab="关卡比例">
+        <n-tab-pane name="ratio" :tab="t('tasks.stageRatios')">
           <n-card size="small">
             <n-flex align="center" class="add-toolbar">
-              <n-button type="primary" @click="addRatioRule">新建比例规则</n-button>
+              <n-button type="primary" @click="addRatioRule">{{
+                t('tasks.newRatioRule')
+              }}</n-button>
               <n-button
                 type="info"
                 secondary
                 :disabled="!activityRatioSuggestion"
                 @click="applyActivityRatioSuggestion"
+                >{{ t('tasks.bindEventStages') }}</n-button
               >
-                一键绑定活动关卡
-              </n-button>
-              <n-text depth="3">
-                一键绑定只创建当前活动的关卡与掉落物关系，比例保持
-                0；关卡仍需在周计划中选中才会刷取。
-              </n-text>
+              <n-text depth="3">{{ t('tasks.bindEventStagesHelp') }}</n-text>
             </n-flex>
           </n-card>
 
           <n-empty
             v-if="maa_stage_ratio_rules.length === 0"
-            :description="`方案“${activePlanLabel}”尚未设置关卡比例`"
+            :description="t('tasks.noPlanStageRatios', { plan: activePlanLabel })"
             class="empty-block"
           />
 
@@ -547,13 +569,19 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
             <template #header>
               <n-flex align="center">
                 <n-switch v-model:value="rule.enabled" size="small" />
-                <n-input v-model:value="rule.name" class="ratio-name" placeholder="比例规则名称" />
-                <n-tag v-if="rule.enabled === false" :bordered="false">规则未启用</n-tag>
-                <n-tag v-else-if="!maa_stage_inventory_enable" :bordered="false">
-                  库存选关未启用，规则不生效
-                </n-tag>
-                <n-tag v-else-if="selectedRatioMember(rule)" type="info" :bordered="false">
-                  当前优先 {{ selectedRatioMember(rule).stage }}
+                <n-input
+                  v-model:value="rule.name"
+                  class="ratio-name"
+                  :placeholder="t('tasks.ratioRuleName')"
+                />
+                <n-tag v-if="rule.enabled === false" :bordered="false">{{
+                  t('tasks.ruleDisabled')
+                }}</n-tag>
+                <n-tag v-else-if="!maa_stage_inventory_enable" :bordered="false">{{
+                  t('tasks.inventoryRuleInactive')
+                }}</n-tag>
+                <n-tag v-else-if="selectedRatioMember(rule)" type="info" :bordered="false"
+                  >{{ t('tasks.currentPriority') }} {{ selectedRatioMember(rule).stage }}
                 </n-tag>
                 <n-tag
                   v-if="
@@ -563,23 +591,22 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
                   "
                   type="warning"
                   :bordered="false"
+                  >{{ t('tasks.includesUnselectedStages') }}</n-tag
                 >
-                  含周计划未选择的关卡
-                </n-tag>
               </n-flex>
             </template>
             <template #header-extra>
-              <n-button quaternary type="error" @click="removeRatioRule(ruleIndex)">
-                删除
-              </n-button>
+              <n-button quaternary type="error" @click="removeRatioRule(ruleIndex)">{{
+                t('tasks.delete')
+              }}</n-button>
             </template>
 
             <div class="ratio-grid grid-header">
-              <span>关卡</span>
-              <span>对应物品</span>
-              <span>当前库存</span>
-              <span>比例</span>
-              <span>库存 ÷ 比例</span>
+              <span>{{ t('tasks.stage') }}</span>
+              <span>{{ t('tasks.correspondingItem') }}</span>
+              <span>{{ t('tasks.currentInventory') }}</span>
+              <span>{{ t('tasks.ratio') }}</span>
+              <span>{{ t('tasks.inventoryDividedRatio') }}</span>
               <span></span>
             </div>
             <div
@@ -591,7 +618,7 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
                 :value="member.stage"
                 filterable
                 clearable
-                placeholder="选择关卡"
+                :placeholder="t('tasks.selectStage')"
                 :options="ratioStageOptions(rule, memberIndex)"
                 @update:value="(value) => changeRatioStage(member, value)"
               />
@@ -601,46 +628,49 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
                 tag
                 clearable
                 :clear-created-options-on-clear="false"
-                placeholder="选择或输入物品"
+                :placeholder="t('tasks.selectOrEnterItem')"
                 :options="itemOptionsFor(member)"
                 :on-create="createInventoryItemOption"
                 @update:value="(value) => updateItem(member, value)"
               />
               <span class="inventory-number">{{ displayInventoryCount(member) }}</span>
               <mower-input-number v-model:value="member.ratio" :min="0" placeholder="0" />
-              <n-tag v-if="memberScore(member) === null" size="small" :bordered="false">
-                不参与
-              </n-tag>
+              <n-tag v-if="memberScore(member) === null" size="small" :bordered="false">{{
+                t('tasks.excluded')
+              }}</n-tag>
               <span v-else class="score-number">{{ memberScore(member).toFixed(2) }}</span>
               <n-button
                 quaternary
                 type="error"
-                aria-label="删除比例成员"
+                :aria-label="t('tasks.deleteRatioMember')"
                 @click="rule.members.splice(memberIndex, 1)"
+                >{{ t('tasks.delete') }}</n-button
               >
-                删除
-              </n-button>
             </div>
-            <n-button dashed block class="row-add-button" @click="addRatioMember(rule)">
-              添加关卡
-            </n-button>
+            <n-button dashed block class="row-add-button" @click="addRatioMember(rule)">{{
+              t('tasks.addStage')
+            }}</n-button>
           </n-card>
         </n-tab-pane>
       </n-tabs>
 
-      <n-card title="今日执行预览" size="small" class="top-gap preview-card">
+      <n-card :title="t('tasks.todayPreview')" size="small" class="top-gap preview-card">
         <template #header-extra>
           <n-tag :type="maa_stage_inventory_enable ? 'success' : 'default'" :bordered="false">
-            {{ maa_stage_inventory_enable ? '库存选关已启用' : '库存选关未启用' }}
+            {{
+              maa_stage_inventory_enable
+                ? t('tasks.inventoryStagesEnabled')
+                : t('tasks.inventoryStagesDisabled')
+            }}
           </n-tag>
         </template>
         <n-empty
           v-if="currentPlanStages.length === 0"
-          :description="`${currentWeekday}未设置刷理智关卡`"
+          :description="t('tasks.noWeekdayStages', { weekday: formatWeekday(currentWeekday) })"
         />
         <n-space v-else vertical :size="10">
           <div class="preview-line">
-            <n-text depth="3">原计划</n-text>
+            <n-text depth="3">{{ t('tasks.originalPlan') }}</n-text>
             <n-space :size="6" wrap>
               <n-tag v-for="(stage, index) in currentPlanStages" :key="`${stage}-${index}`">
                 {{ stageLabel(stage) }}
@@ -651,11 +681,10 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
             v-if="!previewResult.stages.length && previewResult.limitSkipped.length"
             type="info"
             :closable="false"
+            >{{ t('tasks.allLimitsReachedHelp') }}</n-alert
           >
-            全部已选关卡均已达到上限，本轮不刷取，继续其他任务。
-          </n-alert>
           <div v-else-if="previewResult.limitSkipped.length" class="preview-line">
-            <n-text depth="3">达到上限</n-text>
+            <n-text depth="3">{{ t('tasks.limitReached') }}</n-text>
             <n-space :size="6" wrap>
               <n-tag v-for="stage in previewResult.limitSkipped" :key="stage" type="error">
                 {{ stageLabel(stage) }}
@@ -663,19 +692,20 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
             </n-space>
           </div>
           <div v-if="previewResult.ratioDecisions.length" class="preview-line">
-            <n-text depth="3">比例选择</n-text>
+            <n-text depth="3">{{ t('tasks.ratioSelection') }}</n-text>
             <n-space :size="6" wrap>
               <n-tag
                 v-for="(decision, index) in previewResult.ratioDecisions"
                 :key="`${decision.name}-${index}`"
                 type="info"
               >
-                {{ decision.name || `规则 ${index + 1}` }} → {{ decision.selected }}
+                {{ decision.name || t('tasks.unnamedRule', { index: index + 1 }) }} →
+                {{ decision.selected }}
               </n-tag>
             </n-space>
           </div>
           <div class="preview-line">
-            <n-text depth="3">实际执行</n-text>
+            <n-text depth="3">{{ t('tasks.actualExecution') }}</n-text>
             <n-space :size="6" wrap>
               <n-tag
                 v-for="(stage, index) in previewResult.stages"

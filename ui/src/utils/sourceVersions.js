@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 
 export function useSourceVersions(axios, base, initialBranch = 'alpha', initialRemote = 'origin') {
@@ -17,7 +18,10 @@ export function useSourceVersions(axios, base, initialBranch = 'alpha', initialR
   const error = ref('')
   let historyRequest = 0
   let checkRequest = 0
-  const message = (err) => err.response?.data?.message || err.message || '操作失败，请重试'
+  const message = (err) =>
+    err.response?.data?.message ||
+    err.message ||
+    i18n.global.t('settings.sourceVersions.operationFailed')
 
   watch(
     [mode, pullNumber, remote, branch, reference],

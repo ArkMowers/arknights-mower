@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import axios from 'axios'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import {
   DEFAULT_BASELINE_CONFIG,
   DEFAULT_VIEW_PREFS,
@@ -94,7 +96,9 @@ export const useDepotPreferencesStore = defineStore('depotPreferences', () => {
         loaded.value = true
         return true
       } catch {
-        error.value = migrating ? '仓库偏好迁移失败，请重试。' : '仓库偏好读取失败，请重试。'
+        error.value = t(
+          migrating ? 'reports.preferencesMigrationFailed' : 'reports.preferencesReadFailed'
+        )
         return false
       } finally {
         loading.value = false
@@ -119,7 +123,7 @@ export const useDepotPreferencesStore = defineStore('depotPreferences', () => {
           apply(parsePreferences(data?.depot), pending)
         } catch {
           pending = { ...changes, ...pending }
-          error.value = '仓库偏好保存失败，当前修改尚未保存，请重试。'
+          error.value = t('reports.preferencesSaveFailed')
           return false
         }
       }

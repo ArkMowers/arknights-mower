@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+const { t } = i18n.global
 import { formatMoodRate } from '@/utils/mood_rate'
 import { moodBadgeBackground } from '@/utils/mood_colors'
 
@@ -10,7 +13,7 @@ const emit = defineEmits(['toggle'])
 </script>
 
 <template>
-  <div class="mood-rate-legend" :aria-label="groupName + ' 的干员图例与平均速率'">
+  <div class="mood-rate-legend" :aria-label="t('reports.moraleLegendLabel', { name: groupName })">
     <button
       v-for="(entry, index) in entries"
       :key="entry.name + ':' + index"
@@ -23,31 +26,29 @@ const emit = defineEmits(['toggle'])
       }"
       :aria-pressed="entry.visible"
       :aria-label="
-        entry.name +
-        ' 消耗 ' +
-        formatMoodRate(entry.consumption) +
-        ' 恢复 ' +
-        formatMoodRate(entry.recovery) +
-        ' 点每小时，点击切换曲线'
+        t('reports.moraleRateLabel', {
+          name: operatorDisplayName(entry.name),
+          consumption: formatMoodRate(entry.consumption),
+          recovery: formatMoodRate(entry.recovery)
+        })
       "
       :title="
-        entry.name +
-        '｜↓平均消耗 ' +
-        formatMoodRate(entry.consumption) +
-        '｜↑平均恢复 ' +
-        formatMoodRate(entry.recovery) +
-        ' 点/小时'
+        t('reports.moraleRateTitle', {
+          name: operatorDisplayName(entry.name),
+          consumption: formatMoodRate(entry.consumption),
+          recovery: formatMoodRate(entry.recovery)
+        })
       "
       @click="emit('toggle', index)"
     >
       <span class="mood-badge-stroke" :style="{ backgroundColor: entry.color }"></span>
-      <strong class="mood-badge-name">{{ entry.name }}</strong>
+      <strong class="mood-badge-name">{{ operatorDisplayName(entry.name) }}</strong>
       <span class="mood-badge-rate-pair">
         <span class="mood-badge-rate">↓{{ formatMoodRate(entry.consumption) }}</span>
         <span class="mood-badge-rate">↑{{ formatMoodRate(entry.recovery) }}</span>
       </span>
     </button>
-    <span v-if="!entries.length" class="mood-rate-empty">暂无可用心情记录</span>
+    <span v-if="!entries.length" class="mood-rate-empty">{{ t('reports.noMoraleRecords') }}</span>
   </div>
 </template>
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSSRApp, effectScope, nextTick, ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import Component from './MaaUpdates.vue'
+import { i18n, setInterfaceLocale } from '@/i18n'
 
 const state = vi.hoisted(() => ({ client: null, config: {}, mounted: [], unmounted: [] }))
 vi.mock('vue', async (original) => ({
@@ -58,6 +59,7 @@ describe('MAA core and resource updates', () => {
   let scope
   let component
   beforeEach(() => {
+    setInterfaceLocale('zh-CN')
     vi.useFakeTimers()
     vi.stubGlobal('window', { setTimeout, clearTimeout })
     state.mounted = []
@@ -105,11 +107,66 @@ describe('MAA core and resource updates', () => {
     component.maa_installed.value = true
   })
   afterEach(() => {
+    setInterfaceLocale('zh-CN')
     state.unmounted.forEach((callback) => callback())
     scope.stop()
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
+  it('retranslates local failures without repeating requests or changing diagnostics', async () => {
+    const diagnostic = 'D:/MAA/测试路径: EACCES'
+    state.client.get.mockRejectedValue(new Error(diagnostic))
+    await component.get_maa_update_info()
+    await component.get_maa_resource_update_info()
+    await component.poll_maa_update()
+    await component.poll_maa_resource_update()
+    const requests = state.client.get.mock.calls.length
+    const config = JSON.stringify(
+      Object.fromEntries(Object.entries(state.config).map(([key, value]) => [key, value.value]))
+    )
+    for (const locale of ['en-US', 'ja-JP', 'zh-TW', 'zh-CN']) {
+      setInterfaceLocale(locale)
+      await nextTick()
+      expect(component.maa_update_info_msg.value).toBe(
+        i18n.global.t('settings.maa.failedToReadMaaVersion2', {
+          value0: component.maa_managed_operation_label.value,
+          value1: diagnostic
+        })
+      )
+      expect(component.maa_resource_update_info_msg.value).toBe(
+        i18n.global.t('settings.maa.failedToReadTheMaaResourceVersion2', { value0: diagnostic })
+      )
+      expect(component.maa_update_job.value.message).toBe(
+        i18n.global.t('settings.maa.failedToReadMaaProgress', {
+          value0: component.maa_job_operation_label.value,
+          value1: diagnostic
+        })
+      )
+      expect(component.maa_resource_update_job.value.message).toBe(
+        i18n.global.t('settings.maa.failedToReadMaaResourceUpdateProgress', { value0: diagnostic })
+      )
+    }
+    expect(state.client.get).toHaveBeenCalledTimes(requests)
+    expect(state.client.post).not.toHaveBeenCalled()
+    expect(
+      JSON.stringify(
+        Object.fromEntries(Object.entries(state.config).map(([key, value]) => [key, value.value]))
+      )
+    ).toBe(config)
+    const backendJob = { status: 'error', message: diagnostic, phase: 'failed' }
+    component.apply_maa_update_job(backendJob)
+    component.maa_resource_update_job.value.message = diagnostic
+    component.maa_update_info_msg.value = diagnostic
+    component.maa_resource_update_info_msg.value = diagnostic
+    setInterfaceLocale('ja-JP')
+    await nextTick()
+    expect(component.maa_update_job.value.message).toBe(diagnostic)
+    expect(component.maa_resource_update_job.value.message).toBe(diagnostic)
+    expect(component.maa_update_info_msg.value).toBe(diagnostic)
+    expect(component.maa_resource_update_info_msg.value).toBe(diagnostic)
+    expect(backendJob).toEqual({ status: 'error', message: diagnostic, phase: 'failed' })
+  })
+
   it.each(['windows', 'android'])(
     'loads MAA updates for authorized managed %s instances without connection requests',
     async (platform) => {

@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed } from 'vue'
 import { NButton, NIcon } from 'naive-ui'
 import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline'
@@ -20,8 +21,8 @@ const surveyCoverage = computed(
 )
 const fetchedAt = computed(() => {
   const stamp = props.survey?.fetched_at
-  if (!stamp) return '尚未获取'
-  return new Date(stamp * 1000).toLocaleString('zh-CN', {
+  if (!stamp) return i18n.global.t('growth.insights.notFetched')
+  return new Date(stamp * 1000).toLocaleString(i18n.global.locale.value, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -29,11 +30,16 @@ const fetchedAt = computed(() => {
   })
 })
 const surveyNote = computed(() => {
-  if (props.survey?.error) return '公开样本暂时不可用：' + props.survey.error
-  if (!surveyCoverage.value) return '还没有可用的公开样本；干员卡会显示“暂无样本”。'
-  return (
-    '覆盖 ' + formatCompactNumber(surveyCoverage.value) + ' 位干员 · 样本获取于 ' + fetchedAt.value
-  )
+  if (props.survey?.error)
+    return (
+      i18n.global.t('growth.insights.publicSamplesAreTemporarilyUnavailable') + props.survey.error
+    )
+  if (!surveyCoverage.value)
+    return i18n.global.t('growth.insights.noPublicSamplesAreAvailableYetOperator')
+  return i18n.global.t('growth.format.surveyNote', {
+    count: formatCompactNumber(surveyCoverage.value),
+    time: fetchedAt.value
+  })
 })
 </script>
 
@@ -42,50 +48,59 @@ const surveyNote = computed(() => {
     <section class="gp-panel growth-insights__stats">
       <header class="gp-section-head">
         <div>
-          <span class="gp-kicker">Local archive</span>
-          <h2 class="gp-section-head__title">养成统计</h2>
+          <span class="gp-kicker">{{ i18n.global.t('growth.format.localArchive') }}</span>
+          <h2 class="gp-section-head__title">
+            {{ i18n.global.t('growth.insights.growthStatistics') }}
+          </h2>
         </div>
-        <span class="gp-muted growth-insights__hint">本页读取本地已同步练度计算统计。</span>
+        <span class="gp-muted growth-insights__hint">{{
+          i18n.global.t('growth.insights.statisticsUseLocallySynchronizedProgression')
+        }}</span>
       </header>
       <OperatorStatistics v-if="statistics" :statistics="statistics" :history="history" />
       <div v-else class="gp-empty">
-        <p class="gp-empty__title">还没有可统计的练度</p>
-        <p class="gp-muted">从森空岛同步一次干员数据后，这里会显示招募、精英化、专精与材料消耗。</p>
+        <p class="gp-empty__title">
+          {{ i18n.global.t('growth.insights.noProgressionDataToAnalyzeYet') }}
+        </p>
+        <p class="gp-muted">
+          {{ i18n.global.t('growth.insights.syncOperatorDataFromSklandToView') }}
+        </p>
       </div>
     </section>
 
     <section class="gp-panel growth-insights__survey">
       <header class="gp-section-head">
         <div>
-          <span class="gp-kicker">Public sample</span>
-          <h2 class="gp-section-head__title">大数据样本</h2>
+          <span class="gp-kicker">{{ i18n.global.t('growth.format.publicSample') }}</span>
+          <h2 class="gp-section-head__title">
+            {{ i18n.global.t('growth.insights.publicSurveySamples') }}
+          </h2>
         </div>
         <n-button size="small" quaternary :loading="surveyLoading" @click="emit('refresh-survey')">
           <template #icon><n-icon :component="RefreshOutline" /></template>
-          重新读取
+          {{ i18n.global.t('growth.insights.reload') }}
         </n-button>
       </header>
       <div class="growth-insights__survey-body">
         <div class="growth-insights__survey-metric">
           <strong class="gp-num">{{ surveyCoverage }}</strong>
-          <span>位干员的公开样本</span>
+          <span>{{ i18n.global.t('growth.insights.operatorsWithPublicSamples') }}</span>
         </div>
         <p class="growth-insights__survey-note">{{ surveyNote }}</p>
         <p class="growth-insights__survey-legal">
-          比例用于发现养成方向，不代表强度排名；缺失样本显示“暂无样本”。模组按已开启统计，精一率包含精二干员。
-          数据来自
+          {{ i18n.global.t('growth.insights.useRatesToFindGrowthGoalsNot') }}
           <a
             href="https://ark.yituliu.cn/survey/operators"
             target="_blank"
             rel="noopener noreferrer"
-            >明日方舟一图流<sup>↗</sup></a
-          >，依
+            >{{ i18n.global.t('growth.insights.arknightsYituliu') }}<sup>↗</sup></a
+          >{{ i18n.global.t('growth.insights.licensedUnder') }}
           <a
             href="https://creativecommons.org/licenses/by-nc/4.0/deed.zh"
             target="_blank"
             rel="noopener noreferrer"
             >CC BY-NC 4.0<sup>↗</sup></a
-          >署名非商业使用。统计展示由 Mower 独立实现，公开样本仅供参考；读取公开样本不上传个人练度。
+          >{{ i18n.global.t('growth.insights.withAttributionForNoncommercialUseMowerImplements') }}
         </p>
         <a
           class="gp-link growth-insights__survey-link"
@@ -93,7 +108,7 @@ const surveyNote = computed(() => {
           target="_blank"
           rel="noopener noreferrer"
         >
-          查看数据来源
+          {{ i18n.global.t('growth.insights.viewDataSource') }}
           <n-icon :component="OpenOutline" :size="13" />
         </a>
       </div>

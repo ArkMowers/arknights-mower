@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import ReconnectingWebSocket from 'reconnecting-websocket'
 import axios from 'axios'
 import { useMowerStore } from './mower'
+import { i18n } from '@/i18n'
 
 vi.mock('axios', () => ({ default: { get: vi.fn(), put: vi.fn(), delete: vi.fn() } }))
 vi.mock('reconnecting-websocket', () => ({
@@ -12,6 +13,7 @@ vi.mock('reconnecting-websocket', () => ({
 }))
 
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   vi.clearAllTimers()
   vi.useRealTimers()
   vi.unstubAllGlobals()
@@ -36,6 +38,22 @@ describe('worker status', () => {
   })
 
   afterEach(() => store.$dispose())
+
+  it('changes only status labels when the locale changes and preserves original log output', () => {
+    store.running = true
+    store.status = 'recovering'
+    store.log_lines = ['2026-10-27 12:00:00.000 原始设备日志', '保留原文内容']
+    const original = [...store.log_lines]
+    const output = store.log
+    const mobileOutput = store.log_mobile
+    i18n.global.locale.value = 'en-US'
+    expect(store.status_label).toBe('Waiting for device recovery')
+    expect(store.status).toBe('recovering')
+    expect(store.log_lines).toEqual(original)
+    expect(store.log).toBe(output)
+    expect(store.log_mobile).toBe(mobileOutput)
+    expect(axios.put).not.toHaveBeenCalled()
+  })
 
   it.each([
     ['starting', true, '启动中'],

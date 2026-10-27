@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createSSRApp, effectScope, h, reactive } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import PerformanceSettings from './PerformanceSettings.vue'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({ config: null }))
 vi.mock('vue', async (original) => ({
@@ -59,7 +60,22 @@ function setup(overrides = {}) {
   })
   return { component, props }
 }
-afterEach(() => scope?.stop())
+afterEach(() => {
+  scope?.stop()
+  i18n.global.locale.value = 'zh-CN'
+})
+
+it('updates mode labels and resource text without changing the selected mode or timings', () => {
+  const { component } = setup({
+    observation: { status: 'available', cpu_cores: 4, memory_mb: 3840 }
+  })
+  const before = { ...state.config }
+  expect(component.options.value[1]).toEqual({ value: 'xhigh', label: '极高' })
+  i18n.global.locale.value = 'en-US'
+  expect(component.options.value[1]).toEqual({ value: 'xhigh', label: 'Very High' })
+  expect(component.resourceLabel.value).toBe('CPU 4 cores · Memory 3.8 GiB')
+  expect(state.config).toEqual(before)
+})
 
 it('displays resources without recommending a hardware-derived mode', () => {
   const { component } = setup({

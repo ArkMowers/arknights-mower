@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { reportErrorMessage } from '@/i18n/reports'
+const { t } = i18n.global
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { useThemeVars } from 'naive-ui'
 
@@ -42,14 +45,14 @@ const analysisError = ref('')
 let requestVersion = 0
 let eventRequestVersion = 0
 
-const levelOptions = [
-  { label: '全部级别', value: 'all' },
-  { label: '错误', value: 'ERROR' },
-  { label: '严重错误', value: 'CRITICAL' },
-  { label: '警告', value: 'WARNING' },
-  { label: '信息', value: 'INFO' },
-  { label: '调试', value: 'DEBUG' }
-]
+const levelOptions = computed(() => [
+  { label: t('reports.allLogLevels'), value: 'all' },
+  { label: t('reports.errorLevel'), value: 'ERROR' },
+  { label: t('reports.criticalLevel'), value: 'CRITICAL' },
+  { label: t('reports.warningLevel'), value: 'WARNING' },
+  { label: t('reports.infoLevel'), value: 'INFO' },
+  { label: t('reports.debugLevel'), value: 'DEBUG' }
+])
 
 const selectedEvents = computed(() =>
   events.value.filter((event) => selectedEventIds.value.includes(event.id))
@@ -67,10 +70,10 @@ const canExport = computed(
 const exportRangeError = computed(() => {
   const [start, end] = exportRange.value || []
   if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= end) {
-    return '请选择有效的导出起止时间'
+    return t('reports.invalidExportRange')
   }
-  if (end - start > 7 * 86400000) return '单次最多导出 7 天，请缩小范围'
-  if (end > Date.now() + 3600000) return '结束时间不能超过当前时间一小时'
+  if (end - start > 7 * 86400000) return t('reports.exportTooLong')
+  if (end > Date.now() + 3600000) return t('reports.exportFutureEnd')
   return ''
 })
 const windowLabel = computed(() => {
@@ -78,7 +81,8 @@ const windowLabel = computed(() => {
   const last = activeEvent.value
     ? Number(activeEvent.value.last_error_ns || activeEvent.value.time_ns) / 1e6
     : first
-  const format = (value) => new Date(value).toLocaleString('zh-CN', { hour12: false })
+  const format = (value) =>
+    new Date(value).toLocaleString(i18n.global.locale.value, { hour12: false })
   return `${format(first - 300000)} — ${format(last + 300000)}`
 })
 const imageUrl = computed(() =>
@@ -111,7 +115,9 @@ function parseLog(message) {
 }
 
 function formatTime(timestampNs) {
-  return new Date(Number(timestampNs) / 1000000).toLocaleString('zh-CN', { hour12: false })
+  return new Date(Number(timestampNs) / 1000000).toLocaleString(i18n.global.locale.value, {
+    hour12: false
+  })
 }
 
 function imageTime(path) {
@@ -163,7 +169,7 @@ async function loadEvents() {
       }
     }
   } catch {
-    if (version === eventRequestVersion) eventError.value = '异常记录读取失败'
+    if (version === eventRequestVersion) eventError.value = t('reports.errorRecordsFailed')
   } finally {
     if (version === eventRequestVersion) eventLoading.value = false
   }
@@ -203,7 +209,7 @@ async function loadLogs(center, event = null) {
     imageIndex.value = imageNearest(center)
     truncated.value = !!response.data.truncated
   } catch {
-    if (version === requestVersion) logError.value = '日志读取失败，请点击刷新重试'
+    if (version === requestVersion) logError.value = t('reports.logsFailed')
   } finally {
     if (version === requestVersion) logLoading.value = false
   }
@@ -321,10 +327,10 @@ async function exportWindow() {
     })
     const date = new Date(center)
     const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`
-    downloadBundle(response.data, `日志调度-${stamp}.zip`)
+    downloadBundle(response.data, `${t('reports.logScheduleTitle')}-${stamp}.zip`)
     showExportDialog.value = false
   } catch {
-    exportError.value = '导出失败，请稍后重试'
+    exportError.value = t('reports.exportFailed')
   } finally {
     exporting.value = false
   }
@@ -368,13 +374,17 @@ async function exportSelected() {
         `${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}/export`,
         { responseType: 'blob' }
       )
-      await writer.add(`异常归档-${event.id}.zip`, new BlobReader(response.data), { level: 0 })
+      await writer.add(
+        `${t('reports.errorArchives')}-${event.id}.zip`,
+        new BlobReader(response.data),
+        { level: 0 }
+      )
     }
     const blob = await writer.close()
     writer = null
-    downloadBundle(blob, `异常归档-选中${targets.length}条.zip`)
+    downloadBundle(blob, `${t('reports.selectedArchivesFilename', { count: targets.length })}.zip`)
   } catch {
-    exportError.value = '选中归档导出失败，未下载文件，请刷新归档后重试'
+    exportError.value = t('reports.archiveExportFailed')
   } finally {
     if (writer) await writer.close().catch(() => {})
     exporting.value = false
@@ -396,7 +406,7 @@ async function analyzeEvent() {
     if (activeEventId.value === event.id) analysisText.value = response.data.analysis || ''
   } catch (error) {
     if (activeEventId.value === event.id) {
-      analysisError.value = error.response?.data?.error || 'AI 分析失败，请检查模型设置后重试'
+      analysisError.value = error.response?.data?.error || t('reports.aiAnalysisFailed')
     }
   } finally {
     analysisLoading.value = false
@@ -441,7 +451,10 @@ async function deleteEvent() {
     selectedEventIds.value = selectedEventIds.value.filter((id) => !removed.has(id))
     pendingDeleteEvents.value = failed.length ? failed : null
     if (failed.length)
-      deleteError.value = `已删除 ${removed.size} 条归档，${failed.length} 条删除失败，请重试。`
+      deleteError.value = t('reports.deleteArchivesFailed', {
+        removed: removed.size,
+        failed: failed.length
+      })
     if (removed.has(activeEventId.value)) {
       if (events.value.length) await selectEvent(events.value[0])
       else {
@@ -471,13 +484,13 @@ onMounted(() => {
   <main class="schedule-page">
     <header class="page-heading">
       <div>
-        <h1>日志调度</h1>
-        <p>按时间查看日志与画面。发生错误时，前后各 5 分钟的截图会单独保存。</p>
+        <h1>{{ t('reports.logScheduleTitle') }}</h1>
+        <p>{{ t('reports.logScheduleHelp') }}</p>
       </div>
-      <SessionLink class="back-link" to="/">返回运行日志</SessionLink>
+      <SessionLink class="back-link" to="/">{{ t('reports.backToLogs') }}</SessionLink>
     </header>
 
-    <div class="browse-tabs" role="tablist" aria-label="日志来源">
+    <div class="browse-tabs" role="tablist" :aria-label="t('reports.logSource')">
       <button
         id="time-tab"
         type="button"
@@ -488,7 +501,7 @@ onMounted(() => {
         @click="setBrowseMode('time')"
         @keydown="onTabKeydown"
       >
-        按时间查看
+        {{ t('reports.browseByTime') }}
       </button>
       <button
         id="archives-tab"
@@ -500,17 +513,17 @@ onMounted(() => {
         @click="setBrowseMode('archives')"
         @keydown="onTabKeydown"
       >
-        异常归档 <span>{{ events.length }}</span>
+        {{ t('reports.errorArchives') }}<span>{{ events.length }}</span>
       </button>
     </div>
 
-    <section class="time-bar mower-surface-panel" aria-label="日志浏览操作">
+    <section class="time-bar mower-surface-panel" :aria-label="t('reports.logActions')">
       <template v-if="browseMode === 'time'">
-        <n-button secondary :disabled="loadedAt <= 0" @click="moveWindow(-1)"
-          >← 前 10 分钟</n-button
-        >
+        <n-button secondary :disabled="loadedAt <= 0" @click="moveWindow(-1)">{{
+          t('reports.previousTenMinutes')
+        }}</n-button>
         <div class="time-field">
-          <label for="schedule-time">查看时间</label>
+          <label for="schedule-time">{{ t('reports.viewTime') }}</label>
           <n-date-picker
             id="schedule-time"
             v-model:value="queryAt"
@@ -518,18 +531,20 @@ onMounted(() => {
             :clearable="false"
           />
         </div>
-        <n-button type="primary" :loading="logLoading" @click="loadWindow()">查看</n-button>
-        <n-button secondary :disabled="loadedAt >= Date.now()" @click="moveWindow(1)"
-          >后 10 分钟 →</n-button
-        >
-        <n-button secondary @click="jumpToNow">跳到现在</n-button>
+        <n-button type="primary" :loading="logLoading" @click="loadWindow()">{{
+          t('reports.view')
+        }}</n-button>
+        <n-button secondary :disabled="loadedAt >= Date.now()" @click="moveWindow(1)">{{
+          t('reports.nextTenMinutes')
+        }}</n-button>
+        <n-button secondary @click="jumpToNow">{{ t('reports.jumpNow') }}</n-button>
       </template>
       <n-button
         secondary
         :loading="logLoading"
         :disabled="browseMode === 'archives' && !activeEvent"
         @click="refreshLogs"
-        >刷新日志</n-button
+        >{{ t('reports.refreshLogs') }}</n-button
       >
       <n-button
         v-if="browseMode === 'time'"
@@ -538,57 +553,51 @@ onMounted(() => {
         :disabled="!canExport"
         :loading="exporting"
         @click="beginExport"
+        >{{ t('reports.exportLogsScreenshots') }}</n-button
       >
-        导出日志与截图
-      </n-button>
       <div v-else class="archive-actions">
         <n-button
           secondary
           type="error"
           :disabled="eventLoading || archiveBusy || !selectedEvents.length"
           @click="confirmDeleteSelected"
+          >{{ t('reports.deleteSelected') }}</n-button
         >
-          删除选中
-        </n-button>
         <n-button
           secondary
           :disabled="eventLoading || archiveBusy || !selectedEvents.length"
           :loading="exporting"
           @click="exportSelected"
+          >{{ t('reports.exportSelected') }}</n-button
         >
-          导出选中
-        </n-button>
       </div>
     </section>
     <p v-if="exportError && !showExportDialog" class="export-error" role="alert">
-      {{ exportError }}
+      {{ reportErrorMessage(exportError) }}
     </p>
 
     <n-modal
       v-model:show="showExportDialog"
       preset="card"
-      title="选择导出范围"
+      :title="t('reports.chooseExportRange')"
       style="width: min(600px, calc(100vw - 32px))"
       :closable="!exporting"
       :mask-closable="!exporting"
       :close-on-esc="!exporting"
     >
       <n-space vertical :size="16">
-        <p class="export-hint">
-          默认导出查看时间前 1 小时、后 5 分钟的记录，可修改起止时间，单次最多 7 天。
-        </p>
+        <p class="export-hint">{{ t('reports.exportRangeHelp') }}</p>
         <n-space>
           <n-button
             v-for="hours in [1, 6, 24]"
             :key="hours"
             :disabled="exporting"
             @click="setExportHours(hours)"
+            >{{ t('reports.beforeViewingTime') }}{{ hours }}{{ t('reports.hours') }}</n-button
           >
-            查看时间前 {{ hours }} 小时
-          </n-button>
         </n-space>
         <div>
-          <label for="export-time-range">导出起止时间</label>
+          <label for="export-time-range">{{ t('reports.exportTimeRange') }}</label>
           <n-date-picker
             id="export-time-range"
             v-model:value="exportRange"
@@ -597,25 +606,26 @@ onMounted(() => {
             :disabled="exporting"
           />
         </div>
-        <n-checkbox v-model:checked="includeScreenshots" :disabled="exporting">
-          包含截图（长时段的文件可能较大）
-        </n-checkbox>
-        <p class="export-hint">仅导出仍保留的记录，已清理的日志和截图无法恢复。</p>
+        <n-checkbox v-model:checked="includeScreenshots" :disabled="exporting">{{
+          t('reports.includeScreenshots')
+        }}</n-checkbox>
+        <p class="export-hint">{{ t('reports.retainedExportHelp') }}</p>
         <p v-if="exportRangeError || exportError" class="export-error" role="alert">
           {{ exportRangeError || exportError }}
         </p>
       </n-space>
       <template #action>
         <n-space justify="end">
-          <n-button :disabled="exporting" @click="showExportDialog = false">取消</n-button>
+          <n-button :disabled="exporting" @click="showExportDialog = false">{{
+            t('reports.cancel')
+          }}</n-button>
           <n-button
             type="primary"
             :loading="exporting"
             :disabled="!!exportRangeError"
             @click="exportWindow"
+            >{{ t('reports.exportRange') }}</n-button
           >
-            导出所选时段
-          </n-button>
         </n-space>
       </template>
     </n-modal>
@@ -630,35 +640,36 @@ onMounted(() => {
       <aside
         v-if="browseMode === 'archives'"
         class="panel events-panel mower-surface-panel"
-        aria-label="异常记录"
+        :aria-label="t('reports.errorRecords')"
       >
         <div class="panel-heading">
           <div>
-            <span class="section-kicker">已归档</span>
-            <h2>异常记录</h2>
+            <span class="section-kicker">{{ t('reports.archivedPrefix') }}</span>
+            <h2>{{ t('reports.errorRecords') }}</h2>
           </div>
-          <n-button secondary :loading="eventLoading" :disabled="archiveBusy" @click="loadEvents">
-            刷新归档
-          </n-button>
+          <n-button secondary :loading="eventLoading" :disabled="archiveBusy" @click="loadEvents">{{
+            t('reports.refreshArchives')
+          }}</n-button>
         </div>
-        <p class="panel-intro">选择记录，查看对应日志和留存画面。</p>
-        <div v-if="eventError" class="state-message error" role="alert">{{ eventError }}</div>
-        <div v-else-if="eventLoading" class="state-message">正在读取异常记录…</div>
-        <div v-else-if="!events.length" class="state-message">暂无异常记录</div>
+        <p class="panel-intro">{{ t('reports.chooseArchiveHelp') }}</p>
+        <div v-if="eventError" class="state-message error" role="alert">
+          {{ reportErrorMessage(eventError) }}
+        </div>
+        <div v-else-if="eventLoading" class="state-message">{{ t('reports.loadingErrors') }}</div>
+        <div v-else-if="!events.length" class="state-message">{{ t('reports.noErrors') }}</div>
         <div v-else class="event-list">
           <n-checkbox
             :checked="allEventsSelected"
             :indeterminate="selectedEvents.length > 0 && !allEventsSelected"
             :disabled="archiveBusy"
             @update:checked="toggleAllEvents"
-          >
-            全选（已选 {{ selectedEvents.length }} / {{ events.length }}）
+            >{{ t('reports.selectAllPrefix') }}{{ selectedEvents.length }} / {{ events.length }}）
           </n-checkbox>
           <div v-for="event in events" :key="event.id" class="event-row">
             <n-checkbox
               :checked="selectedEventIds.includes(event.id)"
               :disabled="archiveBusy"
-              :aria-label="`选择 ${formatTime(event.time_ns)} 的异常记录`"
+              :aria-label="t('reports.selectErrorRecord', { time: formatTime(event.time_ns) })"
               @update:checked="toggleEvent(event.id, $event)"
             />
             <button
@@ -671,65 +682,68 @@ onMounted(() => {
               <span class="event-time">{{ formatTime(event.time_ns) }}</span>
               <span class="event-message">{{ event.message }}</span>
               <span class="event-foot">
-                <template v-if="event.error_count > 1">{{ event.error_count }} 次异常 · </template>
-                {{ event.screenshots.length }} 张截图
-              </span>
-              <span class="event-arrow" aria-hidden="true">查看记录 →</span>
+                <template v-if="event.error_count > 1"
+                  >{{ event.error_count }}{{ t('reports.errorsScreenshotsSeparator') }}</template
+                >
+                {{ event.screenshots.length }}{{ t('reports.screenshotsUnit') }}</span
+              >
+              <span class="event-arrow" aria-hidden="true">{{ t('reports.viewRecord') }}</span>
             </button>
           </div>
         </div>
       </aside>
 
-      <section class="panel logs-panel mower-surface-panel" aria-label="日志时间线">
+      <section class="panel logs-panel mower-surface-panel" :aria-label="t('reports.logTimeline')">
         <div class="panel-heading">
           <div>
-            <span class="section-kicker">{{ activeEvent ? '异常窗口' : '时间窗口' }}</span>
-            <h2>日志时间线</h2>
+            <span class="section-kicker">{{
+              activeEvent ? t('reports.errorWindow') : t('reports.timeWindow')
+            }}</span>
+            <h2>{{ t('reports.logTimeline') }}</h2>
           </div>
           <span class="count-pill">{{ visibleLogs.length }}</span>
         </div>
         <p class="panel-intro">
-          {{
-            browseMode === 'archives' && !activeEvent
-              ? '选择一条异常记录查看日志与画面'
-              : windowLabel
-          }}
+          {{ browseMode === 'archives' && !activeEvent ? t('reports.chooseError') : windowLabel }}
         </p>
         <div v-if="activeEvent" class="ai-analysis">
-          <n-button type="primary" secondary :loading="analysisLoading" @click="analyzeEvent">
-            AI 分析原因与排班建议
-          </n-button>
-          <p>
-            点击后会向已配置的模型服务发送这条异常摘要和最多 30
-            条精简日志；程序会尝试隐藏常见密钥字段，不发送截图。在线服务会接收这些文字，请先确认日志没有其他敏感内容。
+          <n-button type="primary" secondary :loading="analysisLoading" @click="analyzeEvent">{{
+            t('reports.aiAnalysis')
+          }}</n-button>
+          <p>{{ t('reports.aiAnalysisHelp') }}</p>
+          <p v-if="analysisError" class="state-message error" role="alert">
+            {{ reportErrorMessage(analysisError) }}
           </p>
-          <p v-if="analysisError" class="state-message error" role="alert">{{ analysisError }}</p>
           <pre v-if="analysisText" class="ai-analysis-result">{{ analysisText }}</pre>
         </div>
         <div class="log-filters">
           <n-input
             v-model:value="searchText"
             clearable
-            placeholder="搜索日志内容"
-            aria-label="搜索日志内容"
+            :placeholder="t('reports.searchLogs')"
+            :aria-label="t('reports.searchLogs')"
           />
-          <n-select v-model:value="levelFilter" :options="levelOptions" aria-label="筛选日志级别" />
+          <n-select
+            v-model:value="levelFilter"
+            :options="levelOptions"
+            :aria-label="t('reports.filterLogLevel')"
+          />
         </div>
         <p v-if="activeEvent?.truncated" class="window-notice">
-          此归档达到保存上限，部分截图或日志已省略。
+          {{ t('alphaPages.archiveTruncatedHelp') }}
         </p>
-        <p v-if="truncated" class="window-notice">
-          当前显示此时段最近 1000 条日志，导出可获取完整日志。
-        </p>
-        <div v-if="logError" class="state-message error" role="alert">{{ logError }}</div>
-        <div v-else-if="logLoading" class="state-message">正在读取日志…</div>
+        <p v-if="truncated" class="window-notice">{{ t('reports.truncatedLogsHelp') }}</p>
+        <div v-if="logError" class="state-message error" role="alert">
+          {{ reportErrorMessage(logError) }}
+        </div>
+        <div v-else-if="logLoading" class="state-message">{{ t('reports.loadingLogs') }}</div>
         <div v-else-if="!visibleLogs.length" class="state-message">
           {{
             logs.length
-              ? '没有符合筛选条件的日志'
+              ? t('reports.noFilteredLogs')
               : browseMode === 'archives' && !activeEvent
-                ? '暂无选中的异常记录'
-                : '这个时间段没有日志，可查看前后时段或跳到现在'
+                ? t('reports.noSelectedError')
+                : t('reports.noLogsInWindow')
           }}
         </div>
         <div v-else class="log-list">
@@ -741,7 +755,7 @@ onMounted(() => {
             <div class="log-body">
               <p>{{ entry.summary }}</p>
               <details v-if="entry.detail">
-                <summary>查看详细信息</summary>
+                <summary>{{ t('reports.viewDetails') }}</summary>
                 <pre>{{ entry.detail }}</pre>
               </details>
             </div>
@@ -751,57 +765,65 @@ onMounted(() => {
               class="image-action"
               @click="showScreenshot(entry.screenshot)"
             >
-              查看画面 →
+              {{ t('reports.viewScreenshot') }}
             </button>
           </article>
         </div>
       </section>
 
-      <section class="panel image-panel mower-surface-panel" aria-label="关联截图">
+      <section
+        class="panel image-panel mower-surface-panel"
+        :aria-label="t('reports.relatedScreenshots')"
+      >
         <div class="panel-heading">
           <div>
-            <span class="section-kicker">画面证据</span>
-            <h2>关联截图</h2>
+            <span class="section-kicker">{{ t('reports.screenshotEvidence') }}</span>
+            <h2>{{ t('reports.relatedScreenshots') }}</h2>
           </div>
           <span v-if="screenshots.length" class="count-pill">
             {{ imageIndex + 1 }} / {{ screenshots.length }}
           </span>
         </div>
         <p class="panel-intro">
-          {{ imagePath ? imageTime(imagePath) : '当前窗口没有可读取的截图' }}
+          {{ imagePath ? imageTime(imagePath) : t('reports.noWindowScreenshot') }}
         </p>
         <div class="image-stage">
           <div v-if="!imagePath" class="image-empty">
-            <strong>{{ logLoading ? '正在读取画面…' : '暂无截图' }}</strong>
-            <span>普通截图可能已过期清理，异常归档单独保留。</span>
+            <strong>{{
+              logLoading ? t('reports.loadingScreenshots') : t('reports.noScreenshots')
+            }}</strong>
+            <span>{{ t('reports.screenshotRetentionHelp') }}</span>
           </div>
-          <div v-else-if="imageFailed" class="image-empty">截图文件暂时无法读取</div>
+          <div v-else-if="imageFailed" class="image-empty">
+            {{ t('reports.screenshotUnavailable') }}
+          </div>
           <img
             v-else
             :key="imagePath"
             class="shot-image"
             :src="imageUrl"
-            alt="所选时间的游戏截图"
+            :alt="t('reports.gameScreenshot')"
             @error="imageFailed = true"
           />
         </div>
         <div v-if="screenshots.length" class="image-navigation">
-          <n-button secondary :disabled="imageIndex === 0" @click="moveImage(-1)">上一张</n-button>
+          <n-button secondary :disabled="imageIndex === 0" @click="moveImage(-1)">{{
+            t('reports.previousImage')
+          }}</n-button>
           <input
             v-model.number="imageIndex"
             type="range"
             min="0"
             :max="screenshots.length - 1"
-            aria-label="选择当前窗口中的截图"
+            :aria-label="t('reports.chooseScreenshot')"
             @input="onImageSeek"
           />
           <n-button
             secondary
             :disabled="imageIndex === screenshots.length - 1"
             @click="moveImage(1)"
+            >{{ t('reports.nextImage') }}</n-button
           >
-            下一张
-          </n-button>
         </div>
         <a
           v-if="imagePath"
@@ -809,16 +831,15 @@ onMounted(() => {
           :href="imageUrl"
           target="_blank"
           rel="noopener noreferrer"
+          >{{ t('reports.openOriginal') }}</a
         >
-          打开原图 ↗
-        </a>
       </section>
     </div>
 
     <n-modal
       :show="pendingDeleteEvents !== null"
       preset="card"
-      title="删除选中归档"
+      :title="t('reports.deleteArchives')"
       :style="deleteDialogStyle"
       :closable="!deleting"
       :mask-closable="!deleting"
@@ -826,14 +847,20 @@ onMounted(() => {
       @update:show="handleDeleteModal"
     >
       <p v-if="pendingDeleteEvents !== null" class="delete-prompt">
-        确定删除选中的 {{ pendingDeleteEvents.length }} 条异常归档及其日志、截图吗？
-        删除后无法恢复，确认后新产生的归档会保留。
+        {{ t('reports.deleteArchivesPrefix') }}{{ pendingDeleteEvents.length
+        }}{{ t('reports.deleteArchivesSuffix') }}
       </p>
-      <p v-if="deleteError" class="delete-error" role="alert">{{ deleteError }}</p>
+      <p v-if="deleteError" class="delete-error" role="alert">
+        {{ reportErrorMessage(deleteError) }}
+      </p>
       <template #footer>
         <div class="delete-actions">
-          <n-button :disabled="deleting" @click="handleDeleteModal(false)">取消</n-button>
-          <n-button type="error" :loading="deleting" @click="deleteEvent"> 删除选中 </n-button>
+          <n-button :disabled="deleting" @click="handleDeleteModal(false)">{{
+            t('reports.cancel')
+          }}</n-button>
+          <n-button type="error" :loading="deleting" @click="deleteEvent">{{
+            t('reports.deleteSelected')
+          }}</n-button>
         </div>
       </template>
     </n-modal>

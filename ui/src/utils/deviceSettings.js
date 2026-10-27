@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { configPatch } from './configPatch'
 
 // DeviceProfile contains only scalar fields; key order has no identity meaning.
@@ -24,6 +26,17 @@ export const presetLabels = {
   'linux.genymotion': 'Genymotion',
   'manual.other': '其他模拟器',
   'manual.physical': '实体设备'
+}
+
+export function getPresetLabels() {
+  return {
+    ...presetLabels,
+    'windows.ldplayer9': t('devices.ld9'),
+    'windows.ldplayer14': t('devices.ld14'),
+    'windows.nox': t('devices.nox'),
+    'manual.other': t('devices.otherEmulator'),
+    'manual.physical': t('devices.physical')
+  }
 }
 
 // Fallback for a backend that does not report its managed preset set yet. The
@@ -66,9 +79,7 @@ const nativeCapturePresets = {
 function capturePresetReason(backend, preset, host) {
   const required = nativeCapturePresets[backend]
   if (!required || (required.includes(preset) && (!host || host === 'windows'))) return ''
-  return backend === 'mumu_ipc'
-    ? '仅适用于 Windows 的 MuMu 12'
-    : '仅适用于 Windows 的雷电模拟器 9 或 14'
+  return backend === 'mumu_ipc' ? t('devices.mumuOnly') : t('devices.ldOnly')
 }
 
 export function isImmediateDeviceField(key) {
@@ -162,7 +173,7 @@ export function deviceAvdStartRequest(profile, draft, confirmedInstance, confirm
     !/^[A-Za-z0-9_.-]+$/.test(confirmedInstance) ||
     draft.instance_id !== confirmedInstance
   ) {
-    throw new Error('AVD 目标已变化，请重新确认要启动的实例。')
+    throw new Error(t('devices.avdChanged'))
   }
   return {
     ...devicePreflightRequest(profile, draft, confirmedPackage),
@@ -182,7 +193,7 @@ export function deviceRedroidStartRequest(
     draft.instance_id !== confirmedInstance ||
     draft.config_path !== 'unix:///var/run/docker.sock'
   ) {
-    throw new Error('redroid 目标已变化，请重新确认要启动的容器。')
+    throw new Error(t('devices.redroidChanged'))
   }
   return {
     ...devicePreflightRequest(profile, draft, confirmedPackage),
@@ -202,7 +213,7 @@ export function deviceGenymotionStartRequest(
     draft.instance_id !== confirmedInstance ||
     !draft.manager_path?.trim()
   ) {
-    throw new Error('Genymotion 目标已变化，请重新确认要启动的 VM。')
+    throw new Error(t('devices.genymotionChanged'))
   }
   return {
     ...devicePreflightRequest(profile, draft, confirmedPackage),
@@ -212,7 +223,7 @@ export function deviceGenymotionStartRequest(
 
 export function deviceStartupRequest(profile, draft, metadata = {}, confirmedPackage = null) {
   if (!deviceSettingsState({ profile: draft, metadata }).actions.startBound.visible) {
-    throw new Error('当前目标不支持启动，请先检测并选择支持启动的实例。')
+    throw new Error(t('devices.unsupportedStart'))
   }
   const product = {
     'macos.avd': ['avd', deviceAvdStartRequest],
@@ -300,7 +311,7 @@ async function saveDeviceBinding(config, profile, confirmation = null) {
 export async function saveDiscoveredDevice({ config, profile, result, key }) {
   const candidate =
     result?.kind === 'discovery' && result.candidates?.find((item) => item.key === key)
-  if (!candidate?.binding) throw new Error('请选择有效实例。')
+  if (!candidate?.binding) throw new Error(t('devices.invalidInstance'))
   await config.flush_config_saves()
   const previous = { ...config.device_profile }
   config.device_profile = {
@@ -339,7 +350,7 @@ export async function startPhysicalPreparation({
     !serial?.trim() ||
     profile.last_serial !== serial
   ) {
-    throw new Error('设备目标已变化，请重新确认实体设备 serial。')
+    throw new Error(t('devices.physicalChanged'))
   }
   await saveDeviceBinding(
     config,
@@ -354,163 +365,172 @@ export async function startPhysicalPreparation({
     config.device_profile.preset_id !== 'manual.physical' ||
     config.device_profile.last_serial !== serial
   ) {
-    throw new Error('设备目标已变化，请重新确认实体设备 serial。')
+    throw new Error(t('devices.physicalChanged'))
   }
   const response = await axios.post(`${base}/start/0`, { preparation_serial: serial })
   if (response.data !== true && response.data !== 'true') {
-    throw new Error('当前无法启动，请先停止正在运行的任务或等待维护结束。')
+    throw new Error(t('devices.startUnavailable'))
   }
 }
 
-const fieldLabels = {
-  preset_id: '模拟器',
-  installation_path: '安装目录',
-  manager_path: '管理程序路径',
-  config_path: '产品配置路径',
-  adb_path: 'ADB 路径',
-  instance_id: '多开实例序号',
-  instance_name: '多开实例名称',
-  last_serial: '连接地址',
-  screenshot_backend: '截图后端',
-  touch_backend: '触控后端',
-  game_package: '游戏服务器'
-}
-
-const presetPlaceholders = {
-  'windows.mumu12': {
-    installation_path: '例如：D:\\MuMuPlayer-12.0',
-    manager_path: '例如：D:\\MuMuPlayer-12.0\\nx_main\\MuMuManager.exe',
-    adb_path: '例如：D:\\MuMuPlayer-12.0\\shell\\adb.exe',
-    instance_id: '0',
-    instance_name: '选填',
-    last_serial: '例如：127.0.0.1:16384'
-  },
-  'windows.ldplayer9': {
-    installation_path: '例如：C:\\leidian\\LDPlayer9',
-    manager_path: '例如：C:\\leidian\\LDPlayer9\\dnconsole.exe',
-    adb_path: '例如：C:\\leidian\\LDPlayer9\\adb.exe',
-    instance_id: '0',
-    instance_name: '选填',
-    last_serial: '例如：127.0.0.1:5555'
-  },
-  'windows.ldplayer14': {
-    installation_path: '例如：C:\\leidian\\LDPlayer14',
-    manager_path: '例如：C:\\leidian\\LDPlayer14\\dnconsole.exe',
-    adb_path: '例如：C:\\leidian\\LDPlayer14\\adb.exe',
-    instance_id: '0',
-    instance_name: '选填',
-    last_serial: '例如：127.0.0.1:5555'
-  },
-  'windows.nox': {
-    installation_path: '例如：C:\\Program Files\\Nox\\bin',
-    manager_path: '例如：C:\\Program Files\\Nox\\bin\\Nox.exe',
-    adb_path: '例如：C:\\Program Files\\Nox\\bin\\nox_adb.exe',
-    instance_id: '0',
-    instance_name: '选填',
-    last_serial: '例如：127.0.0.1:62001'
-  },
-  'windows.bluestacks5': {
-    installation_path: '例如：C:\\Program Files\\BlueStacks_nxt',
-    manager_path: '例如：C:\\Program Files\\BlueStacks_nxt\\HD-Player.exe',
-    config_path: '例如：C:\\ProgramData\\BlueStacks_nxt\\bluestacks.conf',
-    adb_path: '例如：C:\\Program Files\\BlueStacks_nxt\\HD-Adb.exe',
-    instance_id: 'Pie64',
-    instance_name: '选填',
-    last_serial: '例如：127.0.0.1:5555'
-  },
-  'macos.mumu_pro': {
-    installation_path: '例如：/Applications/MuMuPlayer.app',
-    manager_path: '例如：/Applications/MuMuPlayer.app/Contents/MacOS/mumutool',
-    adb_path: '例如：/Applications/MuMuPlayer.app/Contents/MacOS/adb',
-    instance_id: '0',
-    instance_name: '选填',
-    last_serial: '例如：127.0.0.1:16384'
-  },
-  'macos.bluestacks_air': {
-    installation_path: '例如：/Applications/BlueStacks.app',
-    adb_path: '例如：adb',
-    last_serial: '例如：127.0.0.1:5555'
-  },
-  'linux.waydroid': {
-    installation_path: '例如：/var/lib/waydroid',
-    manager_path: '例如：waydroid',
-    config_path: '例如：/var/lib/waydroid',
-    adb_path: '例如：adb',
-    last_serial: '例如：192.168.240.112:5555'
-  },
-  'linux.redroid': {
-    installation_path: '例如：docker',
-    manager_path: '例如：docker',
-    config_path: '例如：unix:///var/run/docker.sock',
-    instance_id: '例如：redroid1',
-    adb_path: '例如：adb',
-    last_serial: '例如：127.0.0.1:5555'
-  },
-  'linux.genymotion': {
-    installation_path: '例如：/opt/genymobile/genymotion',
-    manager_path: '例如：/opt/genymobile/genymotion/gmtool',
-    instance_id: '例如：0',
-    adb_path: '例如：adb',
-    last_serial: '例如：192.168.56.101:5555'
-  },
-  'macos.avd': {
-    installation_path: '例如：/Users/username/Library/Android/sdk',
-    manager_path: '例如：emulator',
-    instance_id: '例如：Pixel_6_API_33',
-    adb_path: '例如：adb',
-    last_serial: '例如：emulator-5554'
-  },
-  'linux.avd': {
-    installation_path: '例如：/home/username/Android/Sdk',
-    manager_path: '例如：emulator',
-    instance_id: '例如：Pixel_6_API_33',
-    adb_path: '例如：adb',
-    last_serial: '例如：emulator-5554'
-  },
-  default: {
-    installation_path: '请输入模拟器安装根目录',
-    manager_path: '请输入模拟器管理程序完整路径',
-    config_path: '请输入产品配置文件路径',
-    adb_path: '请输入 adb.exe 所在路径',
-    instance_id: '0',
-    instance_name: '选填',
-    last_serial: '例如：127.0.0.1:5555'
+function getFieldLabels() {
+  return {
+    preset_id: t('devices.emulator'),
+    installation_path: t('devices.installationPath'),
+    manager_path: t('devices.managerPath'),
+    config_path: t('devices.configPath'),
+    adb_path: t('devices.adbPath'),
+    instance_id: t('devices.instanceId'),
+    instance_name: t('devices.instanceName'),
+    last_serial: t('devices.address'),
+    screenshot_backend: t('devices.captureBackend'),
+    touch_backend: t('devices.touchBackend'),
+    game_package: t('devices.server')
   }
 }
 
-const fieldHelpTexts = {
-  installation_path:
-    '模拟器的安装根目录。Mower 会在此目录下定位模拟器核心程序、多开管理工具及内置 ADB。检测到的路径会自动填写；也可指定管理程序路径。',
-  manager_path:
-    '模拟器的多开管理控制程序（如 MuMuManager.exe、dnconsole.exe）。用于查询多开列表、控制启动与关停。',
-  config_path:
-    '模拟器的全局配置文件路径（如 BlueStacks 的 bluestacks.conf），用于自动解析多开实例与端口分配。',
-  adb_path:
-    '用于与模拟器通信的 ADB 调试工具路径。默认填写 Mower 自带的 ADB，可手动指定其他路径。留空时会自动优先探测模拟器自带的 ADB。选填。',
-  instance_id:
-    '所选实例的编号或标识，格式由模拟器决定。建议通过“检测实例”选择；MuMu Pro 和夜神的身份核验信息也由检测提供，不能仅填写序号启停。',
-  instance_name: '多开实例的自定义名称（仅用于界面展示与日志标识）。选填。',
-  last_serial:
-    '模拟器的 ADB 调试连接地址与端口号（如 127.0.0.1:16384 或 127.0.0.1:5555）。通常可在模拟器多开器或设置中查看。已绑定实例会核验并读取当前端口；手动连接模式需填写。',
-  screenshot_backend:
-    '用于捕获游戏画面的方式。MuMu 截图增强适用于 Windows MuMu 12，LD 截图增强适用于 Windows 雷电 9 和 14。LD 可搭配 scrcpy 或 MaaTouch 触控。',
-  touch_backend: '用于向模拟器发送点击与滑动指令的方式。可选 scrcpy、MaaTouch 或 MuMu 自带触控。',
-  game_package: '明日方舟游戏客户端服务器类型（官服或 Bilibili 服）。'
+function getPresetPlaceholders() {
+  return {
+    'windows.mumu12': {
+      installation_path: t('devices.example', { value: 'D:\\MuMuPlayer-12.0' }),
+      manager_path: t('devices.example', {
+        value: 'D:\\MuMuPlayer-12.0\\nx_main\\MuMuManager.exe'
+      }),
+      adb_path: t('devices.example', { value: 'D:\\MuMuPlayer-12.0\\shell\\adb.exe' }),
+      instance_id: '0',
+      instance_name: t('devices.optional'),
+      last_serial: t('devices.example', { value: '127.0.0.1:16384' })
+    },
+    'windows.ldplayer9': {
+      installation_path: t('devices.example', { value: 'C:\\leidian\\LDPlayer9' }),
+      manager_path: t('devices.example', { value: 'C:\\leidian\\LDPlayer9\\dnconsole.exe' }),
+      adb_path: t('devices.example', { value: 'C:\\leidian\\LDPlayer9\\adb.exe' }),
+      instance_id: '0',
+      instance_name: t('devices.optional'),
+      last_serial: t('devices.example', { value: '127.0.0.1:5555' })
+    },
+    'windows.ldplayer14': {
+      installation_path: t('devices.example', { value: 'C:\\leidian\\LDPlayer14' }),
+      manager_path: t('devices.example', { value: 'C:\\leidian\\LDPlayer14\\dnconsole.exe' }),
+      adb_path: t('devices.example', { value: 'C:\\leidian\\LDPlayer14\\adb.exe' }),
+      instance_id: '0',
+      instance_name: t('devices.optional'),
+      last_serial: t('devices.example', { value: '127.0.0.1:5555' })
+    },
+    'windows.nox': {
+      installation_path: t('devices.example', { value: 'C:\\Program Files\\Nox\\bin' }),
+      manager_path: t('devices.example', { value: 'C:\\Program Files\\Nox\\bin\\Nox.exe' }),
+      adb_path: t('devices.example', { value: 'C:\\Program Files\\Nox\\bin\\nox_adb.exe' }),
+      instance_id: '0',
+      instance_name: t('devices.optional'),
+      last_serial: t('devices.example', { value: '127.0.0.1:62001' })
+    },
+    'windows.bluestacks5': {
+      installation_path: t('devices.example', { value: 'C:\\Program Files\\BlueStacks_nxt' }),
+      manager_path: t('devices.example', {
+        value: 'C:\\Program Files\\BlueStacks_nxt\\HD-Player.exe'
+      }),
+      config_path: t('devices.example', {
+        value: 'C:\\ProgramData\\BlueStacks_nxt\\bluestacks.conf'
+      }),
+      adb_path: t('devices.example', { value: 'C:\\Program Files\\BlueStacks_nxt\\HD-Adb.exe' }),
+      instance_id: 'Pie64',
+      instance_name: t('devices.optional'),
+      last_serial: t('devices.example', { value: '127.0.0.1:5555' })
+    },
+    'macos.mumu_pro': {
+      installation_path: t('devices.example', { value: '/Applications/MuMuPlayer.app' }),
+      manager_path: t('devices.example', {
+        value: '/Applications/MuMuPlayer.app/Contents/MacOS/mumutool'
+      }),
+      adb_path: t('devices.example', { value: '/Applications/MuMuPlayer.app/Contents/MacOS/adb' }),
+      instance_id: '0',
+      instance_name: t('devices.optional'),
+      last_serial: t('devices.example', { value: '127.0.0.1:16384' })
+    },
+    'macos.bluestacks_air': {
+      installation_path: t('devices.example', { value: '/Applications/BlueStacks.app' }),
+      adb_path: t('devices.example', { value: 'adb' }),
+      last_serial: t('devices.example', { value: '127.0.0.1:5555' })
+    },
+    'linux.waydroid': {
+      installation_path: t('devices.example', { value: '/var/lib/waydroid' }),
+      manager_path: t('devices.example', { value: 'waydroid' }),
+      config_path: t('devices.example', { value: '/var/lib/waydroid' }),
+      adb_path: t('devices.example', { value: 'adb' }),
+      last_serial: t('devices.example', { value: '192.168.240.112:5555' })
+    },
+    'linux.redroid': {
+      installation_path: t('devices.example', { value: 'docker' }),
+      manager_path: t('devices.example', { value: 'docker' }),
+      config_path: t('devices.example', { value: 'unix:///var/run/docker.sock' }),
+      instance_id: t('devices.example', { value: 'redroid1' }),
+      adb_path: t('devices.example', { value: 'adb' }),
+      last_serial: t('devices.example', { value: '127.0.0.1:5555' })
+    },
+    'linux.genymotion': {
+      installation_path: t('devices.example', { value: '/opt/genymobile/genymotion' }),
+      manager_path: t('devices.example', { value: '/opt/genymobile/genymotion/gmtool' }),
+      instance_id: t('devices.example', { value: '0' }),
+      adb_path: t('devices.example', { value: 'adb' }),
+      last_serial: t('devices.example', { value: '192.168.56.101:5555' })
+    },
+    'macos.avd': {
+      installation_path: t('devices.example', { value: '/Users/username/Library/Android/sdk' }),
+      manager_path: t('devices.example', { value: 'emulator' }),
+      instance_id: t('devices.example', { value: 'Pixel_6_API_33' }),
+      adb_path: t('devices.example', { value: 'adb' }),
+      last_serial: t('devices.example', { value: 'emulator-5554' })
+    },
+    'linux.avd': {
+      installation_path: t('devices.example', { value: '/home/username/Android/Sdk' }),
+      manager_path: t('devices.example', { value: 'emulator' }),
+      instance_id: t('devices.example', { value: 'Pixel_6_API_33' }),
+      adb_path: t('devices.example', { value: 'adb' }),
+      last_serial: t('devices.example', { value: 'emulator-5554' })
+    },
+    default: {
+      installation_path: t('devices.installationPlaceholder'),
+      manager_path: t('devices.managerPlaceholder'),
+      config_path: t('devices.configPlaceholder'),
+      adb_path: t('devices.adbPlaceholder'),
+      instance_id: '0',
+      instance_name: t('devices.optional'),
+      last_serial: t('devices.example', { value: '127.0.0.1:5555' })
+    }
+  }
 }
 
-const backendOptions = {
-  screenshot_backend: [
-    { label: 'ADB gzip', value: 'adb_gzip' },
-    { label: 'DroidCast', value: 'droidcast' },
-    { label: 'MuMu 截图增强', value: 'mumu_ipc' },
-    { label: 'LD 截图增强', value: 'ld_native' },
-    { label: '自定义命令', value: 'custom' }
-  ],
-  touch_backend: [
-    { label: 'scrcpy 1.21', value: 'scrcpy' },
-    { label: 'MaaTouch', value: 'maatouch' },
-    { label: 'MuMu 自带触控', value: 'mumu_ipc' }
-  ]
+function getFieldHelpTexts() {
+  return {
+    installation_path: t('devices.installationHelp'),
+    manager_path: t('devices.managerHelp'),
+    config_path: t('devices.configHelp'),
+    adb_path: t('devices.adbHelp'),
+    instance_id: t('devices.instanceHelp'),
+    instance_name: t('devices.instanceNameHelp'),
+    last_serial: t('devices.addressHelp'),
+    screenshot_backend: t('devices.captureHelp'),
+    touch_backend: t('devices.touchHelp'),
+    game_package: t('devices.serverHelp')
+  }
+}
+
+function getBackendOptions() {
+  return {
+    screenshot_backend: [
+      { label: 'ADB gzip', value: 'adb_gzip' },
+      { label: 'DroidCast', value: 'droidcast' },
+      { label: t('devices.mumuCapture'), value: 'mumu_ipc' },
+      { label: t('devices.ldCapture'), value: 'ld_native' },
+      { label: t('devices.customCommand'), value: 'custom' }
+    ],
+    touch_backend: [
+      { label: 'scrcpy 1.21', value: 'scrcpy' },
+      { label: 'MaaTouch', value: 'maatouch' },
+      { label: t('devices.mumuTouch'), value: 'mumu_ipc' }
+    ]
+  }
 }
 
 export function deviceSettingsState({
@@ -523,6 +543,11 @@ export function deviceSettingsState({
   selectedKey = null,
   confirmedPackage = null
 }) {
+  const presetLabels = getPresetLabels()
+  const fieldLabels = getFieldLabels()
+  const presetPlaceholders = getPresetPlaceholders()
+  const fieldHelpTexts = getFieldHelpTexts()
+  const backendOptions = getBackendOptions()
   const locked = busy || metadata.active === true
   const air = profile.preset_id === 'macos.bluestacks_air'
   const waydroid = profile.preset_id === 'linux.waydroid'
@@ -569,11 +594,14 @@ export function deviceSettingsState({
             candidate.preset_id === 'linux.genymotion'
               ? candidate.instance_id
               : candidate.preset_id === 'macos.mumu_pro'
-                ? `实例 ${candidate.instance_id}`
+                ? t('devices.instanceNumber', { id: candidate.instance_id })
                 : '',
-            { running: '运行中', starting: '启动中', stopped: '已停止', error: '操作失败' }[
-              candidate.state
-            ],
+            {
+              running: t('devices.running'),
+              starting: t('devices.starting'),
+              stopped: t('devices.stopped'),
+              error: t('devices.operationFailed')
+            }[candidate.state],
             candidate.preset_id === 'macos.mumu_pro'
               ? candidate.serial
               : candidate.installation_path
@@ -641,7 +669,7 @@ export function deviceSettingsState({
         : ''
     const reason =
       capability?.available === false
-        ? capability.reason || '当前环境不支持此触控后端。'
+        ? capability.reason || t('devices.unsupportedTouch')
         : presetReason
     return {
       ...option,
@@ -669,7 +697,7 @@ export function deviceSettingsState({
   }))
   const packages = (result?.packages || []).map((value) => ({
     value,
-    label: value === 'com.hypergryph.arknights' ? '官服' : 'Bilibili 服'
+    label: value === 'com.hypergryph.arknights' ? t('devices.official') : t('devices.bilibili')
   }))
   const screenshotFailureCodes = ['frame_failed', 'frame_size_mismatch', 'screenshot_failed']
   const touchFailureCodes = ['touch_initialization_failed', 'touch_result_unknown']
@@ -724,13 +752,12 @@ export function deviceSettingsState({
     const placeholder = presetsMap[key] || presetPlaceholders.default[key] || ''
     const help = mumuPro
       ? {
-          installation_path:
-            'MuMu Pro 应用路径；留空时使用 /Applications/MuMuPlayer.app。用于发现和核验所选实例。',
-          manager_path: 'mumutool 路径；留空时从应用路径查找。核验所选实例后可启动或关闭该实例。',
-          instance_id: '从检测结果中选择的实例序号；手动填写 ADB 地址时无需填写。',
+          installation_path: t('devices.mumuAppHelp'),
+          manager_path: t('devices.mumuToolHelp'),
+          instance_id: t('devices.mumuInstanceHelp'),
           last_serial: profile.topology_fingerprint
-            ? '检测连接时从已选实例读取当前 ADB 地址；无需手动维护。'
-            : '手动模式下填写目标实例的 ADB 地址，例如 127.0.0.1:16384。'
+            ? t('devices.mumuBoundAddress')
+            : t('devices.mumuManualAddress')
         }[key] ||
         fieldHelpTexts[key] ||
         ''
@@ -749,10 +776,10 @@ export function deviceSettingsState({
       label:
         key === 'installation_path' && (air || avd)
           ? air
-            ? '应用路径'
-            : 'Android SDK 目录'
+            ? t('devices.appPath')
+            : t('devices.sdkPath')
           : key === 'config_path' && waydroid
-            ? 'Waydroid 数据目录'
+            ? t('devices.waydroidPath')
             : fieldLabels[key],
       value: key === 'game_package' ? confirmedPackage : (profile[key] ?? ''),
       options,
@@ -776,8 +803,8 @@ export function deviceSettingsState({
     hostLabel:
       { windows: 'Windows', win32: 'Windows', darwin: 'macOS', macos: 'macOS', linux: 'Linux' }[
         host
-      ] || '正在读取主机平台',
-    presetTitle: presetLabels[profile.preset_id] || profile.preset_id || '未配置设备',
+      ] || t('devices.loadingHost'),
+    presetTitle: presetLabels[profile.preset_id] || profile.preset_id || t('devices.noDevice'),
     summary: [presetLabels[profile.preset_id], profile.instance_name, profile.last_serial]
       .filter(Boolean)
       .join(' · '),
@@ -795,57 +822,66 @@ export function deviceSettingsState({
               ? 'success'
               : 'default',
     statusDisplayLabel: metadata.active
-      ? '会话运行中'
+      ? t('devices.sessionRunning')
       : busy
-        ? '正在检测...'
+        ? t('devices.detecting')
         : discovery
           ? instances.options.length
-            ? '请选择实例'
-            : '未发现实例'
+            ? t('devices.chooseInstance')
+            : t('devices.noInstances')
           : errors.length
-            ? '需要配置 / 修复'
+            ? t('devices.needsRepair')
             : result?.ok
-              ? '连接正常'
-              : '尚未检测',
+              ? t('devices.connected')
+              : t('devices.notTested'),
     message: messages.join('\n'),
     screenshotAlternativeMessage: screenshotAlternatives.length
-      ? `可选截图后端：${screenshotAlternatives.join('、')}。如需更换，请手动选择截图后端并重新检测。`
+      ? t('devices.captureAlternatives', {
+          backends: screenshotAlternatives.join(i18n.global.locale.value === 'en-US' ? ', ' : '、')
+        })
       : '',
     touchAlternativeMessage: touchAlternatives.length
-      ? `可选触控后端：${touchAlternatives.join('、')}。如需更换，请手动选择触控后端并重新检测。`
+      ? t('devices.touchAlternatives', {
+          backends: touchAlternatives.join(i18n.global.locale.value === 'en-US' ? ', ' : '、')
+        })
       : '',
     guidance: messages.includes(result?.guidance) ? '' : result?.guidance || '',
-    compatibilityLabel: mumuPro || genymotion ? '兼容性记录' : waydroid ? '主要对象' : '',
-    discoveryLabel: mumuPro
-      ? '官方 mumutool'
-      : genymotion
-        ? '官方 gmtool'
+    compatibilityLabel:
+      mumuPro || genymotion
+        ? t('devices.compatibilityRecord')
         : waydroid
-          ? '官方状态与 ADB 连接信息'
+          ? t('devices.primaryTarget')
+          : '',
+    discoveryLabel: mumuPro
+      ? t('devices.officialMumuTool')
+      : genymotion
+        ? t('devices.officialGmtool')
+        : waydroid
+          ? t('devices.officialStatus')
           : '',
     compatibilityNote: mumuPro
       ? profile.topology_fingerprint
-        ? '所选实例由 mumutool 的实例文件路径核验，再读取当前 ADB 端口测试连接。检测可先打开 MuMu Pro 应用，再尝试启动已停止的所选实例；自动启停同样先核验实例文件路径。'
-        : '检测可尝试打开 MuMu Pro 应用并列出实例，选定后尝试启动已停止的目标。也可在高级设置填写 ADB serial；此模式需手动启停，无法识别端口被其他实例复用。'
+        ? t('devices.mumuVerifiedHelp')
+        : t('devices.mumuDiscoveryHelp')
       : genymotion
-        ? 'Genymotion 属于 Linux 兼容性记录，不代表永久支持承诺。发现能力取决于官方 gmtool 可确认的输出；管理工具缺失、版本不兼容或输出不完整时，请使用高级手动配置。'
+        ? t('devices.genymotionCompatibility')
         : '',
     bindingHelp: air
-      ? 'BlueStacks Air 仅检测应用与 ADB 连接，请在应用中手动开启 ADB、启动或关闭模拟器。'
+      ? t('devices.airHelp')
       : avd
-        ? '检测实例或选择目标时，会尝试启动已停止的 AVD。此次选择仅授权本次启动，定时任务不复用此授权。普通退出不会关闭 AVD；在“任务结束后”选择“关闭模拟器”时，仅关闭 mower 启动的目标，再次启动仍需确认。'
+        ? t('devices.avdHelp')
         : redroid
-          ? '仅发现本机 Docker 的 redroid 容器。检测或选择目标时尝试启动已停止的容器；定时任务不复用此次启动授权，新会话只读取同一容器的当前端口；退出保留容器。远程 Docker、Podman、Kubernetes、自定义镜像和非标准网络请使用高级手动配置。'
+          ? t('devices.redroidHelp')
           : genymotion
-            ? '仅使用官方 gmtool 发现和启动实例，检测或选择目标时尝试启动已停止的 VM；定时任务不复用此次启动授权。新会话只复核所选 VM，目标失效时不切换到其他 VM；连接经 ADB 只读检测通过后保存。退出 mower 保留 VM。'
+            ? t('devices.genymotionHelp')
             : waydroid
-              ? '检测使用 waydroid status 与官方会话信息，已停止的所选会话可自动启动，通过 IP:5555 验证连接。新会话复核同一用户与数据目录；地址缺失或不唯一时，请核对官方状态并补充 serial，非标准环境可使用“其他模拟器”。'
+              ? t('devices.waydroidHelp')
               : '',
     // The status tag explains how a connection is verified and when the form is
     // written: the sentence that used to sit in the notice above the buttons.
     connectionHelp: managedStart
-      ? '“启动并检测”核验所选实例，已停止时先启动再检测连接；运行中的实例直接检测连接，其他错误显示修复提示。多个实例需先选定目标，下拉“测试连接”只读取状态，不会启动或重启模拟器及其管理器。“启动并测试连接”按恢复策略处理所选实例。从检测结果选择的实例先保存编号和身份核验信息，连接失败不撤销选择；ADB 地址和游戏包在验证通过后保存。'
-      : '“测试连接”只读取当前连接，不会启动或重启设备；请先确保目标设备已经启动。连接验证通过后，这份设备设置才会保存。',
+      ? t('devices.managedConnectionHelp')
+      : t('devices.readOnlyConnectionHelp'),
     preparationMessage: messages.includes(preparationMessage) ? '' : preparationMessage,
     fields,
     connectionFields,
@@ -859,59 +895,59 @@ export function deviceSettingsState({
           (mumuPro || redroid || genymotion) && errors.some((error) => error.action === 'manual'),
         disabled: locked,
         preset: mumuPro ? 'macos.mumu_pro' : 'manual.other',
-        label: mumuPro ? '手动填写连接地址' : '进入高级手动配置'
+        label: mumuPro ? t('devices.manualAddress') : t('devices.manualAdvanced')
       },
       startBound: {
         visible: managedStart,
         disabled: locked || !managedStart,
-        label: '启动并测试连接'
+        label: t('devices.startTest')
       },
       prepare: {
         visible: profile.preset_id === 'manual.physical',
         disabled: locked || !profile.last_serial?.trim(),
         serial: profile.last_serial || '',
-        label: '仅本次临时整备并启动'
+        label: t('devices.prepareStart')
       },
       detect: {
         label:
           reconfirmInstance || discover || discovery
-            ? '检测实例'
+            ? t('devices.detectInstances')
             : managedStart
-              ? '启动并检测'
+              ? t('devices.startDetect')
               : errors.length
-                ? '重试连接'
-                : '测试连接',
+                ? t('devices.retryConnection')
+                : t('devices.testConnection'),
         disabled: locked,
         endpoint: discovery || discover || reconfirmInstance ? 'discover' : 'preflight',
         options: managedStart
           ? [
               {
-                label: '启动并检测',
+                label: t('devices.startDetect'),
                 key: 'detect',
-                props: { title: '核验所选实例；已停止时先启动，再检测连接。' }
+                props: { title: t('devices.startDetectHelp') }
               },
               {
-                label: '测试连接（只读）',
+                label: t('devices.testReadOnly'),
                 key: 'preflight',
-                props: { title: '只读取当前连接状态，不启动或重启模拟器及其管理器。' }
+                props: { title: t('devices.testReadOnlyHelp') }
               },
               {
-                label: '启动并测试连接',
+                label: t('devices.startTest'),
                 key: 'start',
                 disabled: locked,
-                props: { title: '按恢复策略启动或恢复所选实例，然后验证连接。' }
+                props: { title: t('devices.startTestHelp') }
               }
             ]
           : [
               {
-                label: errors.length ? '重试连接' : '测试连接',
+                label: errors.length ? t('devices.retryConnection') : t('devices.testConnection'),
                 key: 'detect',
-                props: { title: '只读取当前连接状态，不启动或重启模拟器及其管理器。' }
+                props: { title: t('devices.testReadOnlyHelp') }
               }
             ]
       },
       discover: {
-        label: '检测实例',
+        label: t('devices.detectInstances'),
         visible: presetPrefix === 'windows' || avd || mumuPro || waydroid || redroid || genymotion,
         disabled: locked
       }

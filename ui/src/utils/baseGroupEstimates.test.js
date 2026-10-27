@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { computed } from 'vue'
+import { i18n } from '@/i18n'
 import catalog from '../../../arknights_mower/data/building_skill.json'
 import { builtinGroups } from '@/data/baseGroups'
 import {
@@ -40,7 +42,83 @@ function value(result, label) {
   return result.metrics.find((metric) => metric.label === label)?.value
 }
 
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
+
 describe('基建组合效率估算', () => {
+  it.each(['en-US', 'ja-JP', 'zh-TW'])(
+    'updates actual estimates and field labels in %s without changing numeric results or option values',
+    (locale) => {
+      const selected = ['重岳', '桑葚', '令', '夕', '乌有', '截云', '黍']
+      const input = { ...defaultEstimateOptions(group('smoke')), dorm: 18 }
+      const originalInput = JSON.stringify(input)
+      const originalSelection = [...selected]
+      const current = computed(() =>
+        estimateGroup(group('smoke'), selected, input, roster(selected))
+      )
+      const initial = current.value
+      const fields = estimateFields(group('karlan'))
+      const field = fields[0]
+      const originalFieldLabel = field.label
+      const values = field.options.map(({ value }) => value)
+      i18n.global.locale.value = locale
+      expect(current.value.metrics.map(({ value, unit }) => ({ value, unit }))).toEqual(
+        initial.metrics.map(({ value, unit }) => ({ value, unit }))
+      )
+      expect(current.value.metrics[0].label).not.toBe(initial.metrics[0].label)
+      expect(current.value.details).not.toEqual(initial.details)
+      expect(current.value.valid).toBe(initial.valid)
+      expect(field.label).not.toBe(originalFieldLabel)
+      expect(field.options.map(({ value }) => value)).toEqual(values)
+      expect(values).toEqual(['跟随森空岛', '未精英化', '精一及以上'])
+      expect(JSON.stringify(input)).toBe(originalInput)
+      expect(selected).toEqual(originalSelection)
+      for (const id of [
+        'automation',
+        'abyss',
+        'redpine',
+        'tianmao',
+        'nasti',
+        'pozy',
+        'siracusa',
+        'karlan',
+        'gold',
+        'bubble',
+        'cloud',
+        'standardization'
+      ]) {
+        const item = group(id)
+        const members = [...item.core, ...item.support, ...item.accessory]
+        const options = {
+          ...defaultEstimateOptions(item),
+          ...(id === 'karlan' ? { jayeStage: '精一及以上' } : {})
+        }
+        const translated = estimateGroup(item, members, options, roster(members), true)
+        i18n.global.locale.value = 'zh-CN'
+        const chinese = estimateGroup(item, members, options, roster(members), true)
+        expect(translated.metrics.map(({ value }) => value)).toEqual(
+          chinese.metrics.map(({ value }) => value)
+        )
+        expect(translated.valid).toBe(chinese.valid)
+        expect(translated.warnings).toHaveLength(chinese.warnings.length)
+        i18n.global.locale.value = locale
+      }
+    }
+  )
+
+  it('translates capacity and missing-roster warnings while preserving original selection identifiers', () => {
+    const item = group('cloud')
+    const selected = [...item.core, ...item.support]
+    const before = [...selected]
+    i18n.global.locale.value = 'en-US'
+    const tooMany = estimateGroup(item, selected, {}, roster(selected), true)
+    expect(tooMany.valid).toBe(false)
+    expect(tooMany.warnings[0]).toContain('maximum 3')
+    const missing = estimateGroup(group('smoke'), ['重岳'])
+    expect(missing.warnings[0]).toContain('SKLand progression')
+    expect(selected).toEqual(before)
+  })
   it('默认20人宿舍，挂件默认勾选，其余干员不选，不修改预置', () => {
     const previous = JSON.stringify(builtinGroups)
     for (const item of builtinGroups) {

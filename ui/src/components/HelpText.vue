@@ -10,7 +10,14 @@
         @focusin="focused = true"
         @focusout="focused = false"
       >
-        <n-button tertiary circle size="tiny" :disabled="false" :aria-label="label" @click.stop>
+        <n-button
+          tertiary
+          circle
+          size="tiny"
+          :disabled="false"
+          :aria-label="label || t('common.viewHelp')"
+          @click.stop
+        >
           <template #icon>
             <n-icon>
               <svg
@@ -49,9 +56,11 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { NButton, NIcon, NTooltip } from 'naive-ui'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 
 const props = defineProps({
-  label: { type: String, default: '查看说明' },
+  label: { type: String, default: '' },
   maxWidth: { type: Number, default: 360 },
   nowrap: { type: Boolean, default: false }
 })

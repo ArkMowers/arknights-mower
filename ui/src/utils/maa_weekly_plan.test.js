@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { i18n } from '@/i18n'
 
 import {
   buildStageOptions,
   buildTableStageOptions,
   CHIP_STAGES,
   getGameWeekdayIndex,
+  formatWeekday,
+  formatStageLabel,
   isStageAvailableOnWeekday,
   mergeTableStageOrder,
   normalizeCreatedStage,
@@ -14,7 +17,57 @@ import {
   splitStageInventoryLabel
 } from './maa_weekly_plan.js'
 
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
+
 describe('刷理智周计划双视图同步', () => {
+  it('keeps activity stage IDs, materials and stock while translating fixed inventory summaries in every language', () => {
+    const activity = [
+      {
+        value: 'ACT-9',
+        label: 'ACT-9:固源岩(库存:100)',
+        code: 'ACT-9',
+        materials: [{ id: '30012', name: '固源岩' }]
+      }
+    ]
+    const original = JSON.parse(JSON.stringify(activity))
+    for (const [locale, material, stock] of [
+      ['zh-CN', '固源岩', '库存:100'],
+      ['en-US', 'Orirock Cube', 'Stock: 100'],
+      ['ja-JP', '初級源岩', '在庫:100'],
+      ['zh-TW', '固源岩', '庫存:100']
+    ]) {
+      i18n.global.locale.value = locale
+      const options = buildStageOptions(activity)
+      const option = options.find(({ value }) => value === 'ACT-9')
+      expect(option.label).toBe(`ACT-9:${material}(${stock})`)
+      expect(option.materials).toEqual(original[0].materials)
+      expect(activity).toEqual(original)
+      for (const stage of ['Annihilation', 'CE-6', 'JT8-3-HARD', 'JT8-3-NORMAL']) {
+        expect(normalizeCreatedStage(formatStageLabel(stage)), locale).toBe(stage)
+      }
+      expect(splitStageInventoryLabel(option.label)).toEqual({
+        stageLabel: `ACT-9:${material}`,
+        inventoryLabel: `(${stock})`
+      })
+    }
+  })
+  it('localizes weekday and preset stage labels while retaining Chinese weekday keys and canonical stage values', () => {
+    const plan = [{ weekday: '周一', stage: ['Annihilation', 'PR-A-1', 'CE-6'] }]
+    const before = JSON.stringify(plan)
+    const zhValues = buildStageOptions().map(({ value }) => value)
+    i18n.global.locale.value = 'en-US'
+    expect(formatWeekday('周一')).toBe('Mon')
+    expect(formatStageLabel('Annihilation')).toBe('Current Annihilation')
+    expect(buildStageOptions().find(({ value }) => value === 'CE-6').label).toBe('LMD (CE-6)')
+    expect(buildStageOptions().map(({ value }) => value)).toEqual(zhValues)
+    expect(normalizeCreatedStage('Current Annihilation')).toBe('Annihilation')
+    expect(normalizeCreatedStage('当期剿灭')).toBe('Annihilation')
+    expect(normalizeCreatedStage('JT8-3 Hard')).toBe('JT8-3-HARD')
+    expect(JSON.stringify(plan)).toBe(before)
+    expect(buildTableStageOptions([], plan).map(({ value }) => value)).toContain('PR-A-1')
+  })
   it('凌晨 4 点前仍使用前一天的刷取计划', () => {
     expect(getGameWeekdayIndex(new Date('2026-09-20T19:47:00.000Z'))).toBe(6)
     expect(getGameWeekdayIndex(new Date('2026-09-20T19:59:59.999Z'))).toBe(6)

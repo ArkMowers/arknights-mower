@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
+import { i18n } from '@/i18n'
 import {
   deviceSettingsState,
+  presetLabels,
+  getPresetLabels,
   sameDeviceProfile,
   editDeviceDraft,
   manualDeviceDraft,
@@ -18,6 +21,18 @@ import {
   isImmediateDeviceField,
   editedDevicePatch
 } from './deviceSettings'
+
+it('preserves the manager label export while translating instance labels', () => {
+  const previous = i18n.global.locale.value
+  try {
+    i18n.global.locale.value = 'en-US'
+    expect(getPresetLabels()['windows.ldplayer9']).toBe('LDPlayer 9')
+    expect(presetLabels['windows.ldplayer9']).toBe('雷电模拟器 9')
+    expect(presetLabels['manual.physical']).toBe('实体设备')
+  } finally {
+    i18n.global.locale.value = previous
+  }
+})
 
 const profile = {
   preset_id: 'manual.other',

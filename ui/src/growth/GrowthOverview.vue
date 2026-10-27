@@ -1,4 +1,7 @@
 <script setup>
+import { materialDisplayName as itemDisplayName } from '@/growth/growthFormatters'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { i18n } from '@/i18n'
 import { computed } from 'vue'
 import { NButton, NIcon, NSelect } from 'naive-ui'
 import ArrowForwardOutline from '@vicons/ionicons5/es/ArrowForwardOutline'
@@ -6,7 +9,8 @@ import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline'
 import WorkshopStatus from '@/components/WorkshopStatus.vue'
 import GrowthOperatorCard from './GrowthOperatorCard.vue'
 import { materialIcon, planStatusLabel } from './growthFormatters'
-import { RECOMMEND_SORT_OPTIONS } from './growthRecommendation'
+import { recommendationSortOptions } from './growthDisplay'
+import { formatMaterialAmount } from '@/utils/masteryMaterials'
 
 const props = defineProps({
   goalCount: { type: Number, default: 0 },
@@ -47,6 +51,7 @@ const emit = defineEmits([
 ])
 
 const RESOURCE_IDS = new Set(['4001', 'growth_exp', '4006', '32001'])
+const pickSortOptions = computed(recommendationSortOptions)
 const queueRows = computed(() => props.queue.slice(0, 5))
 const overflowCount = computed(() => Math.max(0, props.queue.length - queueRows.value.length))
 const missingItems = computed(() =>
@@ -77,9 +82,7 @@ function statusText(status) {
 }
 
 function formatCount(value) {
-  const number = Number(value) || 0
-  if (number >= 10000) return (number / 10000).toFixed(1).replace(/\.0$/, '') + '万'
-  return number.toLocaleString('zh-CN')
+  return formatMaterialAmount(value)
 }
 </script>
 
@@ -89,13 +92,17 @@ function formatCount(value) {
       <section class="gp-sheet gp-overview__queue" aria-labelledby="growth-queue-title">
         <header class="gp-section-head">
           <div>
-            <span class="gp-kicker">Training queue</span>
-            <h2 id="growth-queue-title" class="gp-section-head__title">训练队列</h2>
+            <span class="gp-kicker">{{ i18n.global.t('growth.format.trainingQueueHeading') }}</span>
+            <h2 id="growth-queue-title" class="gp-section-head__title">
+              {{ i18n.global.t('growth.overview.trainingQueue') }}
+            </h2>
           </div>
           <div class="gp-section-head__meta">
-            <span class="gp-mono">{{ goalCount }} 项</span>
+            <span class="gp-mono"
+              >{{ goalCount }} {{ i18n.global.t('growth.overview.items') }}</span
+            >
             <button type="button" class="gp-link" @click="emit('open-plan')">
-              调整顺序
+              {{ i18n.global.t('growth.overview.reorder') }}
               <n-icon :component="ArrowForwardOutline" :size="14" />
             </button>
           </div>
@@ -108,13 +115,13 @@ function formatCount(value) {
             <span class="gp-queue__avatar">
               <img
                 :src="'/avatar/' + encodeURIComponent(item.name) + '.webp'"
-                :alt="item.name"
+                :alt="operatorDisplayName(item.name)"
                 loading="lazy"
                 @error="(event) => (event.target.src = '/avatar/阿米娅.webp')"
               />
             </span>
             <div class="gp-queue__text">
-              <b>{{ item.name }}</b>
+              <b>{{ operatorDisplayName(item.name) }}</b>
               <span class="gp-queue__label">{{ item.label }}</span>
             </div>
             <span
@@ -138,28 +145,39 @@ function formatCount(value) {
         </ol>
 
         <div v-else class="gp-empty gp-overview__empty">
-          <p class="gp-empty__title">队列还是空的</p>
+          <p class="gp-empty__title">{{ i18n.global.t('growth.overview.theQueueIsEmpty') }}</p>
           <p class="gp-muted">
-            选择干员并设置养成目标；开启全自动专精后自动训练技能，精英化与模组升级仍需手动完成。
+            {{ i18n.global.t('growth.overview.chooseOperatorsAndGrowthGoalsAutomaticMastery') }}
           </p>
           <div class="gp-empty__actions">
-            <n-button size="small" type="primary" @click="emit('add-target')"
-              >选择养成目标</n-button
-            >
+            <n-button size="small" type="primary" @click="emit('add-target')">{{
+              i18n.global.t('growth.overview.chooseGrowthGoals')
+            }}</n-button>
           </div>
         </div>
 
         <footer v-if="queueRows.length" class="gp-overview__queue-foot">
-          <span v-if="overflowCount" class="gp-muted">还有 {{ overflowCount }} 项在计划中</span>
-          <span v-else class="gp-muted">进行中的训练固定在队列最前。</span>
-          <button type="button" class="gp-link" @click="emit('open-plan')">打开完整计划</button>
+          <span v-if="overflowCount" class="gp-muted"
+            >{{ i18n.global.t('growth.overview.another') }} {{ overflowCount }}
+            {{ i18n.global.t('growth.overview.itemsPlanned') }}</span
+          >
+          <span v-else class="gp-muted">{{
+            i18n.global.t('growth.overview.ongoingTrainingStaysAtTheFrontOf')
+          }}</span>
+          <button type="button" class="gp-link" @click="emit('open-plan')">
+            {{ i18n.global.t('growth.overview.openFullPlan') }}
+          </button>
         </footer>
       </section>
 
       <section class="gp-panel gp-overview__materials" aria-labelledby="growth-materials-title">
         <header class="gp-section-head gp-overview__materials-head">
-          <h2 id="growth-materials-title" class="gp-section-head__title">材料准备</h2>
-          <button type="button" class="gp-link" @click="emit('open-materials')">查看明细</button>
+          <h2 id="growth-materials-title" class="gp-section-head__title">
+            {{ i18n.global.t('growth.overview.materialPreparation') }}
+          </h2>
+          <button type="button" class="gp-link" @click="emit('open-materials')">
+            {{ i18n.global.t('growth.overview.viewDetails') }}
+          </button>
         </header>
 
         <div v-if="materialsLoading && !materials" class="gp-overview__loading">
@@ -171,19 +189,21 @@ function formatCount(value) {
           <p>{{ materialsError }}</p>
           <button type="button" class="gp-link" @click="emit('refresh-materials')">
             <n-icon :component="RefreshOutline" :size="13" />
-            重新计算
+            {{ i18n.global.t('growth.overview.recalculate') }}
           </button>
         </div>
 
         <div v-else-if="!goalCount" class="gp-overview__material-empty">
-          <p class="gp-muted">添加目标后，这里会按库存算出差额与可合成项。</p>
+          <p class="gp-muted">
+            {{ i18n.global.t('growth.overview.afterAddingGoalsInventoryIsUsedTo') }}
+          </p>
         </div>
 
         <template v-else>
           <div class="gp-overview__readiness">
             <div class="gp-overview__readiness-value gp-num">{{ percent }}<small>%</small></div>
             <div class="gp-overview__readiness-meta">
-              <span>材料种类备齐</span>
+              <span>{{ i18n.global.t('growth.overview.materialTypesReady') }}</span>
               <span class="gp-mono">{{ materialStats.ready }} / {{ materialStats.total }}</span>
             </div>
           </div>
@@ -195,18 +215,22 @@ function formatCount(value) {
           </div>
           <dl class="gp-overview__material-stats">
             <div>
-              <dt>材料缺口</dt>
+              <dt>{{ i18n.global.t('growth.overview.materialShortages') }}</dt>
               <dd class="gp-mono" :class="{ 'is-signal': missingItems.length }">
-                {{ materialStats.missing }} 种
+                {{ materialStats.missing }} {{ i18n.global.t('growth.overview.types') }}
               </dd>
             </div>
             <div>
-              <dt>可合成</dt>
-              <dd class="gp-mono">{{ materialStats.craftable }} 种</dd>
+              <dt>{{ i18n.global.t('growth.overview.craftable') }}</dt>
+              <dd class="gp-mono">
+                {{ materialStats.craftable }} {{ i18n.global.t('growth.overview.types') }}
+              </dd>
             </div>
             <div>
-              <dt>已备齐</dt>
-              <dd class="gp-mono">{{ materialStats.ready }} 种</dd>
+              <dt>{{ i18n.global.t('growth.overview.ready') }}</dt>
+              <dd class="gp-mono">
+                {{ materialStats.ready }} {{ i18n.global.t('growth.overview.types') }}
+              </dd>
             </div>
           </dl>
           <div v-if="missingItems.length" class="gp-overview__missing">
@@ -214,21 +238,35 @@ function formatCount(value) {
               v-for="material in missingItems"
               :key="material.id"
               class="gp-overview__missing-item"
-              :title="material.name + ' 缺 ' + material.count"
+              :title="
+                itemDisplayName(material.id, material.name) +
+                i18n.global.t('growth.overview.short') +
+                material.count
+              "
             >
-              <img :src="materialIcon(material)" :alt="material.name" loading="lazy" />
+              <img
+                :src="materialIcon(material)"
+                :alt="itemDisplayName(material.id, material.name)"
+                loading="lazy"
+              />
               <span class="gp-mono">×{{ formatCount(material.count) }}</span>
             </div>
           </div>
           <div v-if="resourceMissing.length" class="gp-overview__resources">
-            <span class="gp-overview__resources-label">资源缺口</span>
+            <span class="gp-overview__resources-label">{{
+              i18n.global.t('growth.overview.resourceShortages')
+            }}</span>
             <span
               v-for="resource in resourceMissing"
               :key="resource.id"
               class="gp-overview__resource"
             >
-              <img :src="materialIcon(resource)" :alt="resource.name" loading="lazy" />
-              {{ resource.name }} ×{{ formatCount(resource.count) }}
+              <img
+                :src="materialIcon(resource)"
+                :alt="itemDisplayName(resource.id, resource.name)"
+                loading="lazy"
+              />
+              {{ itemDisplayName(resource.id, resource.name) }} ×{{ formatCount(resource.count) }}
             </span>
           </div>
           <div class="gp-overview__material-actions">
@@ -240,7 +278,7 @@ function formatCount(value) {
               :disabled="!goalCount"
               @click="emit('generate-crafting')"
             >
-              生成合成任务
+              {{ i18n.global.t('growth.overview.generateCraftingTasks') }}
             </n-button>
             <button
               v-if="hasChipShortage"
@@ -249,7 +287,7 @@ function formatCount(value) {
               :disabled="chipFarmingLoading"
               @click="emit('configure-chips')"
             >
-              芯片刷取
+              {{ i18n.global.t('growth.overview.farmChips') }}
             </button>
           </div>
           <div class="gp-overview__workshop">
@@ -262,57 +300,71 @@ function formatCount(value) {
     <div class="gp-overview__bottom">
       <section class="gp-panel gp-overview__roster" aria-labelledby="growth-roster-title">
         <header class="gp-section-head gp-overview__roster-head">
-          <h2 id="growth-roster-title" class="gp-section-head__title">BOX 概览</h2>
-          <button type="button" class="gp-link" @click="emit('open-insights')">统计</button>
+          <h2 id="growth-roster-title" class="gp-section-head__title">
+            {{ i18n.global.t('growth.overview.rosterOverview') }}
+          </h2>
+          <button type="button" class="gp-link" @click="emit('open-insights')">
+            {{ i18n.global.t('growth.overview.statistics') }}
+          </button>
         </header>
         <dl class="gp-overview__roster-grid">
           <div>
-            <dt>已拥有</dt>
+            <dt>{{ i18n.global.t('growth.overview.owned') }}</dt>
             <dd class="gp-num">{{ rosterStats.owned }}</dd>
           </div>
           <div>
-            <dt>精二</dt>
+            <dt>{{ i18n.global.t('growth.overview.elite2') }}</dt>
             <dd class="gp-num">{{ rosterStats.elite2 }}</dd>
           </div>
           <div>
-            <dt>专三技能</dt>
+            <dt>{{ i18n.global.t('growth.overview.m3Skills') }}</dt>
             <dd class="gp-num">{{ rosterStats.masteries }}</dd>
           </div>
           <div>
-            <dt>已开模组</dt>
+            <dt>{{ i18n.global.t('growth.overview.unlockedModules') }}</dt>
             <dd class="gp-num">{{ rosterStats.modules }}</dd>
           </div>
         </dl>
         <div class="gp-overview__roster-meter">
           <div class="gp-overview__roster-meter-head">
-            <span>精二率</span>
+            <span>{{ i18n.global.t('growth.overview.elite2Rate') }}</span>
             <span class="gp-mono">{{ elitePercent }}%</span>
           </div>
           <div class="gp-meter">
             <span :style="{ width: elitePercent + '%' }" />
           </div>
         </div>
-        <p class="gp-overview__roster-note">按本地已同步练度统计，未同步的干员不计入。</p>
+        <p class="gp-overview__roster-note">
+          {{
+            i18n.global.t(
+              'growth.overview.calculatedFromLocallySynchronizedProgressionUnsynchronizedOperators'
+            )
+          }}
+        </p>
       </section>
 
       <section class="gp-panel gp-overview__pick" aria-labelledby="growth-pick-title">
         <header class="gp-section-head">
           <div class="gp-overview__pick-head">
-            <span class="gp-kicker">Suggested next</span>
-            <h2 id="growth-pick-title" class="gp-section-head__title">值得练</h2>
-            <p class="gp-overview__pick-sub">按剩余专三率排序，点开档案核对材料与前置。</p>
+            <span class="gp-kicker">{{ i18n.global.t('growth.format.suggestedNext') }}</span>
+            <h2 id="growth-pick-title" class="gp-section-head__title">
+              {{ i18n.global.t('growth.overview.worthRaising') }}
+            </h2>
+            <p class="gp-overview__pick-sub">
+              {{ i18n.global.t('growthUpdates.remainingRecommendationsHelp') }}
+            </p>
           </div>
           <div class="gp-overview__pick-actions">
             <n-select
               size="small"
               class="gp-overview__pick-sort"
               :value="pickSort"
-              :options="RECOMMEND_SORT_OPTIONS"
-              aria-label="值得练排序"
+              :options="pickSortOptions"
+              :aria-label="i18n.global.t('growthUpdates.pickSort')"
               @update:value="emit('update:pick-sort', $event)"
             />
             <button type="button" class="gp-link" @click="emit('open-operators')">
-              全部干员
+              {{ i18n.global.t('growth.overview.allOperators') }}
               <n-icon :component="ArrowForwardOutline" :size="14" />
             </button>
           </div>
@@ -334,10 +386,14 @@ function formatCount(value) {
           />
         </div>
         <div v-else class="gp-empty gp-overview__pick-empty">
-          <p class="gp-empty__title">暂时没有新的推荐</p>
-          <p class="gp-muted">已拥有的干员要么已在计划里，要么暂无未完成的技能与模组。</p>
+          <p class="gp-empty__title">{{ i18n.global.t('growth.overview.noNewRecommendations') }}</p>
+          <p class="gp-muted">
+            {{ i18n.global.t('growth.overview.ownedOperatorsAreEitherAlreadyPlannedOr') }}
+          </p>
           <div class="gp-empty__actions">
-            <n-button size="small" @click="emit('open-operators')">查看全部干员</n-button>
+            <n-button size="small" @click="emit('open-operators')">{{
+              i18n.global.t('growth.overview.viewAllOperators')
+            }}</n-button>
           </div>
         </div>
       </section>

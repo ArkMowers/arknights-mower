@@ -18,6 +18,7 @@ import TaskWorkflow from './TaskWorkflow.vue'
 import TaskConfiguration from './TaskConfiguration.vue'
 import TaskChecklistNavigation from './TaskChecklistNavigation.vue'
 import TaskSettingsPanels from '@/components/TaskSettingsPanels.vue'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({
   config: null,
@@ -324,9 +325,37 @@ afterEach(() => {
   app?.unmount()
   app = null
   vi.clearAllMocks()
+  i18n.global.locale.value = 'zh-CN'
 })
 
 describe('production task checklist interactions', () => {
+  it('updates mounted English directory text and searches without replacing drafts or saving configuration', async () => {
+    await mount()
+    const before = JSON.stringify(state.config)
+    const panel = state.panels[0]
+    panel.draft.value = 'unsaved device draft'
+    expect(text(task('recruit'))).toBe('公开招募')
+
+    i18n.global.locale.value = 'en-US'
+    await flush()
+
+    expect(text(task('recruit'))).toBe('Recruitment')
+    expect(text(heading())).toBe('Automatic rescue')
+    expect(find((node) => node.props['aria-label'] === 'Enable Recruitment').props.checked).toBe(
+      false
+    )
+    const input = find((node) => node.props['aria-label'] === 'Search settings')
+    input.props.onInput({ target: { value: '5-star recruitment' } })
+    await flush()
+    expect(visibleTasks()).toEqual(['recruit'])
+    await click(task('recruit'))
+    expect(selected()).toBe('recruit')
+    expect(state.panels).toHaveLength(1)
+    expect(panel.draft.value).toBe('unsaved device draft')
+    expect(JSON.stringify(state.config)).toBe(before)
+    for (const method of ['get', 'post', 'patch', 'put', 'delete', 'request'])
+      expect(axios[method]).not.toHaveBeenCalled()
+  })
   it.each(['checklist', 'waterfall'])(
     'omits managed connection navigation in %s layout',
     async (layout) => {

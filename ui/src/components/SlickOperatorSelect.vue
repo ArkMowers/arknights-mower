@@ -21,7 +21,7 @@
       :options="selectOptions"
       :placeholder="props.select_placeholder"
       v-model:value="operatorValue"
-      :filter="(p, o) => match(o.label, p)"
+      :filter="filterOperatorOption"
       :render-label="render_op_label"
       :render-option="render_op_option"
       :render-tag="render_op_slick_tag"
@@ -30,10 +30,14 @@
 </template>
 
 <script setup>
-import { match } from 'pinyin-pro'
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
-import { render_op_option, render_op_label, render_op_tag } from '@/utils/op_select'
+import {
+  render_op_option,
+  render_op_label,
+  render_op_tag,
+  filterOperatorOption
+} from '@/utils/op_select'
 import { computed, h } from 'vue'
 import { SlickList, SlickItem } from 'vue-slicksort'
 import '@/styles/drag.css'

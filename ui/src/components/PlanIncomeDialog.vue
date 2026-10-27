@@ -1,4 +1,8 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { incomeDisplayMessage, incomeRoomName } from '@/i18n/income'
+import { planDisplayName, planValidationMessage } from '@/i18n/plans'
+const { t, locale } = i18n.global
 import { computed, inject, nextTick, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   defaultIncomeSettings,
@@ -30,9 +34,17 @@ const emit = defineEmits(['close'])
 const settings = reactive(defaultIncomeSettings())
 const axios = inject('axios')
 const cacheLoading = ref(false)
-const cacheError = ref('')
+const cacheFailed = ref(false)
+const cacheError = computed(() => (cacheFailed.value ? t('plans.cacheFailed') : ''))
 const weightsBusy = ref(false)
-const weightsError = ref('')
+const weightsFailure = ref('')
+const weightsError = computed(() =>
+  weightsFailure.value === 'read'
+    ? t('plans.weightsFailed')
+    : weightsFailure.value === 'save'
+      ? t('plans.algorithmFailed')
+      : ''
+)
 const submitting = ref(false)
 const validating = ref(false)
 const errorAlert = ref(null)
@@ -48,7 +60,7 @@ const weightValues = computed(() =>
 const cachedRosterCount = computed(() => settings.cachedOperators?.length ?? 0)
 async function readCache() {
   cacheLoading.value = true
-  cacheError.value = ''
+  cacheFailed.value = false
   try {
     const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/riic/income-cache`, {
       timeout: 15000,
@@ -56,14 +68,14 @@ async function readCache() {
     })
     if (alive) applyIncomeCache(settings, data)
   } catch {
-    if (alive) cacheError.value = '森空岛缓存读取失败，可重新读取或选择手动输入'
+    if (alive) cacheFailed.value = true
   } finally {
     if (alive) cacheLoading.value = false
   }
 }
 async function readWeights() {
   weightsBusy.value = true
-  weightsError.value = ''
+  weightsFailure.value = ''
   try {
     const { data } = await axios.get(incomeSettingsUrl, {
       timeout: 15000,
@@ -74,8 +86,8 @@ async function readWeights() {
       sharedRatios = data.ratios
     }
   } catch (error) {
-    if (alive) weightsError.value = 'Mower 收益设置读取失败，可重试或选择本次自定义'
-    throw new Error('Mower 收益设置读取失败，可重试或选择本次自定义', { cause: error })
+    if (alive) weightsFailure.value = 'read'
+    throw new Error(t('plans.weightsFailed'), { cause: error })
   } finally {
     if (alive) weightsBusy.value = false
   }
@@ -84,7 +96,7 @@ async function selectAlgorithm(value) {
   const preset = incomeAlgorithms.find((item) => item.value === value)
   if (!preset?.ratios || !sharedRatios || weightsBusy.value) return
   weightsBusy.value = true
-  weightsError.value = ''
+  weightsFailure.value = ''
   try {
     const { data: latest } = await axios.get(incomeSettingsUrl, {
       timeout: 15000,
@@ -104,7 +116,7 @@ async function selectAlgorithm(value) {
       sharedRatios = data.ratios
     }
   } catch {
-    if (alive) weightsError.value = '算法保存失败，请重新读取 Mower 设置确认'
+    if (alive) weightsFailure.value = 'save'
   } finally {
     if (alive) weightsBusy.value = false
   }
@@ -125,24 +137,35 @@ const exportName = ref('')
 const exportDetails = reactive({ author: '', remarks: '' })
 const completedSnapshot = ref(null)
 const archiveLoading = ref(true)
-const archiveError = ref('')
+const archiveFailure = ref(null)
+const archiveError = computed(() =>
+  archiveFailure.value
+    ? t(archiveFailure.value.key, { detail: incomeDisplayMessage(archiveFailure.value.detail) })
+    : ''
+)
 const attemptDiagnostics = ref([])
 const savedAt = ref(null)
 let lastCompleted = null
 let runSnapshot = null
 const imageName = computed(
-  () => exportName.value.trim() || completedSnapshot.value?.label || '排班'
+  () => exportName.value.trim() || completedSnapshot.value?.label || t('plans.planFallback')
 )
 const seconds = ref(0)
 const activeTab = ref('settings')
 const progressLog = ref([])
 const logPage = ref(1)
 const logSearch = ref('')
-const filteredEvents = computed(() =>
-  (state.result?.eventLog?.entries ?? []).filter((row) =>
-    `${row.type} ${row.room} ${row.detail}`.toLowerCase().includes(logSearch.value.toLowerCase())
-  )
-)
+const filteredEvents = computed(() => {
+  const rows = state.result?.eventLog?.entries ?? []
+  const query = logSearch.value.toLowerCase()
+  return query
+    ? rows.filter((row) =>
+        `${row.type} ${incomeDisplayMessage(row.type)} ${row.room} ${row.room ? incomeRoomName(row.room) : ''} ${row.detail}`
+          .toLowerCase()
+          .includes(query)
+      )
+    : rows
+})
 const visibleEvents = computed(() =>
   filteredEvents.value.slice((logPage.value - 1) * 50, logPage.value * 50)
 )
@@ -180,17 +203,22 @@ const metrics = computed(() =>
   state.result?.success ? incomeMetrics(state.result.summary, state.result.observedHours / 24) : []
 )
 const summary = computed(() => state.bottleneck?.slowest ?? state.bottleneck?.latest)
-const planIssues = computed(() =>
-  props.snapshot ? validateRosterWorkspace(incomeWorkspace(props.snapshot.plan)).issues : []
-)
-const format = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
-const weights = [
-  ['exp', '经验'],
-  ['gold', '赤金'],
-  ['orders', '贸易'],
-  ['fragments', '碎片'],
-  ['orundum', '合成玉']
-]
+const planIssues = computed(() => {
+  if (!props.snapshot) return []
+  const validation = validateRosterWorkspace(incomeWorkspace(props.snapshot.plan))
+  return validation.issues.map((issue) => ({
+    ...issue,
+    message: incomeDisplayMessage(planValidationMessage(issue, validation.power))
+  }))
+})
+const format = (value) => Number(value).toLocaleString(locale.value, { maximumFractionDigits: 2 })
+const weights = computed(() => [
+  ['exp', t('plans.experience')],
+  ['gold', t('plans.pureGold')],
+  ['orders', t('plans.trading')],
+  ['fragments', t('plans.shards')],
+  ['orundum', t('plans.orundum')]
+])
 const timer = setInterval(() => {
   if (state.running) seconds.value = Math.floor((performance.now() - started) / 1000)
 }, 1000)
@@ -248,7 +276,7 @@ async function restoreResult() {
     })
     activeTab.value = 'results'
   } catch (error) {
-    if (alive) archiveError.value = `上次收益记录读取失败：${error.message}`
+    if (alive) archiveFailure.value = { key: 'plans.archiveReadError', detail: error.message }
   } finally {
     if (alive) archiveLoading.value = false
   }
@@ -260,12 +288,11 @@ async function persistResult() {
     exportName: exportName.value,
     exportDetails: { ...exportDetails }
   }
-  archiveError.value = ''
+  archiveFailure.value = null
   try {
     await saveIncomeArchive(lastCompleted)
   } catch (error) {
-    if (alive)
-      archiveError.value = `收益记录保存失败：${error.message}。当前结果仍可导出，请重试保存。`
+    if (alive) archiveFailure.value = { key: 'plans.archiveSaveError', detail: error.message }
   }
 }
 function saveName() {
@@ -298,7 +325,7 @@ async function start() {
     validating.value = false
     if (!alive) return
     if (validation.success !== true)
-      throw new Error(validation.message || '排班校验未通过，尚未开始演算')
+      throw new Error(validation.message || t('plans.validationFailed'))
     exportGeneration++
     exported.value = false
     exportError.value = ''
@@ -369,7 +396,7 @@ onBeforeUnmount(() => {
   <n-modal
     :show="true"
     preset="card"
-    title="计算收益"
+    :title="t('plans.calculateIncome')"
     class="income-dialog"
     :content-style="{
       overflowY: 'auto',
@@ -378,54 +405,59 @@ onBeforeUnmount(() => {
     :mask-closable="false"
     @update:show="!$event && close()"
   >
-    <n-spin v-if="preparing" description="正在准备原排班图片和数据" />
-    <n-alert v-if="prepareError" type="error">{{ prepareError }}</n-alert>
+    <n-spin v-if="preparing" :description="t('plans.preparingSnapshot')" />
+    <n-alert v-if="prepareError" type="error">{{ incomeDisplayMessage(prepareError) }}</n-alert>
     <n-alert v-if="archiveError" type="warning" class="notice">
       {{ archiveError }}
-      <n-button v-if="state.result?.success" size="small" @click="persistResult">重试保存</n-button>
+      <n-button v-if="state.result?.success" size="small" @click="persistResult">{{
+        t('plans.retrySave')
+      }}</n-button>
     </n-alert>
-    <p v-if="archiveLoading">正在读取上次收益记录…</p>
+    <p v-if="archiveLoading">{{ t('plans.loadingArchive') }}</p>
     <p v-else-if="savedAt">
-      保留的成功演算：{{
-        new Date(savedAt).toLocaleString('zh-CN')
-      }}。结果和导出使用该次排班；重新演算使用当前排班。记录保存在本浏览器。
+      {{ t('plans.retainedResult', { date: new Date(savedAt).toLocaleString(locale) }) }}
     </p>
     <template v-if="snapshot || state.result?.success">
       <div v-if="state.running" class="notice" role="status" aria-live="polite">
         <n-progress type="line" :percentage="Math.floor((state.progress?.fraction ?? 0) * 100)" />
-        <p>{{ state.progress?.label || '正在准备演算' }} · 已用 {{ seconds }} 秒</p>
+        <p>
+          {{
+            t('plans.simulationProgress', {
+              label: incomeDisplayMessage(state.progress?.label) || t('plans.preparingSimulation'),
+              seconds
+            })
+          }}
+        </p>
         <n-alert v-if="silent || state.progress?.activity?.status === 'slow'" type="warning">{{
           state.progress?.activity?.status === 'slow'
-            ? '演算推进较慢，具体任务与校验记录见“演算日志”。'
-            : '暂未收到新的进度，可以继续等待或停止演算。'
+            ? t('plans.slowSimulation')
+            : t('plans.noProgress')
         }}</n-alert>
       </div>
-      <n-alert v-if="validating" class="notice" type="info" role="status">
-        正在校验排班组合，完成后自动开始演算。可关闭窗口取消等待。
-      </n-alert>
+      <n-alert v-if="validating" class="notice" type="info" role="status">{{
+        t('plans.validatingCombination')
+      }}</n-alert>
       <n-alert v-if="state.error" ref="errorAlert" role="alert" class="notice" type="error">
-        {{ state.error }}
-        <p v-for="(d, i) in attemptDiagnostics" :key="i">{{ d.message }}</p>
+        {{ incomeDisplayMessage(state.error) }}
+        <p v-for="(d, i) in attemptDiagnostics" :key="i">{{ incomeDisplayMessage(d.message) }}</p>
       </n-alert>
-      <n-alert v-if="exportError" class="notice" type="error"
-        >图片导出失败：{{ exportError }}。计算结果已保留，可以重新导出。</n-alert
-      >
+      <n-alert v-if="exportError" class="notice" type="error">{{
+        t('plans.exportFailed', { detail: incomeDisplayMessage(exportError) })
+      }}</n-alert>
       <n-tabs v-model:value="activeTab" type="line" animated>
-        <n-tab-pane name="settings" tab="参数配置">
-          <n-alert v-if="planIssues.length" class="notice" type="warning" title="排班校验提示">
-            <p>副表单独生效的警告仅供检查，实际组合仍在切表前校验。</p>
+        <n-tab-pane name="settings" :tab="t('plans.parametersTab')">
+          <n-alert
+            v-if="planIssues.length"
+            class="notice"
+            type="warning"
+            :title="t('plans.validationNotice')"
+          >
+            <p>{{ t('plans.backupValidationHelp') }}</p>
             <ul>
               <li v-for="(issue, i) in planIssues" :key="i">{{ issue.message }}</li>
             </ul>
           </n-alert>
-          <n-alert class="notice" type="info">
-            使用打开窗口时的完整排班快照；预热不计收益。演算采用固定版本的离线模型和理想跑单，结果不代表实测收入。
-            点击开始演算时自动校验排班，校验通过后才启动；全员满练与手动练度不校验森空岛名单。
-            菲亚梅塔初始心情固定为 16，其他干员默认从各自心情上限开始，未设置上限时为
-            24；设施等级读取排班保存值，未设置时推断；宿舍氛围按等级上限。导入收益图可恢复完整排班及高级设置。
-            指定回满的主班须全部达标，多绑组也须遵守；同组恢复时间差触发延迟回班后，还须等单绑非候补主班回满。候补、替班及多绑组不延长这项组内等待，本体与演算均按排班中的额外等待上限限制这项等待，0
-            表示不限时；指定回满要求不受该上限限制。开启不养闲人后，先回满的成员可按原有清退规则离宿，其余成员继续休息。
-          </n-alert>
+          <n-alert class="notice" type="info">{{ t('plans.simulationHelp') }}</n-alert>
           <n-form
             :disabled="state.running || exporting || submitting || weightsBusy"
             label-placement="left"
@@ -433,14 +465,14 @@ onBeforeUnmount(() => {
             :show-feedback="false"
           >
             <div class="two-columns">
-              <n-form-item label="预热天数"
+              <n-form-item :label="t('plans.warmupDays')"
                 ><n-input-number
                   v-model:value="settings.warmupDays"
                   :min="0"
                   :max="30"
                   :precision="0"
               /></n-form-item>
-              <n-form-item label="统计天数"
+              <n-form-item :label="t('plans.sampleDays')"
                 ><n-input-number
                   v-model:value="settings.sampleDays"
                   :min="1"
@@ -449,35 +481,39 @@ onBeforeUnmount(() => {
               /></n-form-item>
             </div>
             <p>
-              演算共 {{ (settings.warmupDays ?? 0) + (settings.sampleDays ?? 0) }} 天，仅统计后
-              {{ settings.sampleDays }} 天收益。
+              {{
+                t('plans.simulationDays', {
+                  total: (settings.warmupDays ?? 0) + (settings.sampleDays ?? 0),
+                  sample: settings.sampleDays
+                })
+              }}
             </p>
-            <n-form-item label="无人机加速目标"
+            <n-form-item :label="t('plans.droneTarget')"
               ><n-select
                 v-model:value="settings.droneRoom"
-                :options="[{ label: '不使用无人机', value: '' }, ...targets]"
+                :options="[{ label: t('plans.noDrones'), value: '' }, ...targets]"
             /></n-form-item>
-            <n-form-item label="随机种子"
+            <n-form-item :label="t('plans.randomSeed')"
               ><n-input-number
                 v-model:value="settings.seed"
                 :min="0"
                 :max="4294967295"
                 :precision="0"
             /></n-form-item>
-            <n-form-item label="干员练度"
+            <n-form-item :label="t('plans.operatorDevelopment')"
               ><n-select
                 v-model:value="settings.operatorMode"
                 :options="[
-                  { label: '使用森空岛缓存练度', value: 'cache' },
-                  { label: '全部干员满配（模型假设）', value: 'maximum' },
-                  { label: '填写实际拥有及练度', value: 'custom' }
+                  { label: t('plans.cachedDevelopment'), value: 'cache' },
+                  { label: t('plans.maximumDevelopment'), value: 'maximum' },
+                  { label: t('plans.customDevelopment'), value: 'custom' }
                 ]"
             /></n-form-item>
             <p v-if="settings.operatorMode === 'cache'">
               {{
                 settings.cachedOperators
-                  ? `缓存包含 ${cachedRosterCount} 名已拥有干员；使用各自精英阶段和等级。`
-                  : '尚无可用练度缓存，请先在 Mower 同步森空岛。'
+                  ? t('plans.cachedRosterCount', { count: cachedRosterCount })
+                  : t('plans.noRosterCache')
               }}
             </p>
             <n-alert v-if="cacheError" type="warning">{{ cacheError }}</n-alert>
@@ -486,64 +522,69 @@ onBeforeUnmount(() => {
               :loading="cacheLoading"
               :disabled="state.running || exporting || submitting || weightsBusy"
               @click="readCache"
-              >重新读取缓存</n-button
+              >{{ t('plans.reloadCache') }}</n-button
             >
-            <n-form-item v-if="settings.operatorMode === 'custom'" label="干员名单"
+            <n-form-item
+              v-if="settings.operatorMode === 'custom'"
+              :label="t('plans.operatorRoster')"
               ><n-input
                 v-model:value="settings.operatorText"
                 type="textarea"
-                placeholder="每行：干员代号,精英阶段,等级。未列出视为未拥有。例如：阿米娅,2,80"
+                :placeholder="t('plans.rosterPlaceholder')"
                 :autosize="{ minRows: 3, maxRows: 8 }"
             /></n-form-item>
-            <n-form-item label="孑精零"
+            <n-form-item :label="t('plans.jayeEliteZero')"
               ><n-switch v-model:value="settings.jayeElite0"
             /></n-form-item>
-            <n-form-item label="使用有限库存"
+            <n-form-item :label="t('plans.finiteInventory')"
               ><n-switch
                 :value="required || settings.finiteInventory"
                 :disabled="required || state.running || exporting || submitting || weightsBusy"
                 @update:value="settings.finiteInventory = $event"
             /></n-form-item>
             <template v-if="required || settings.finiteInventory">
-              <n-form-item label="库存来源">
+              <n-form-item :label="t('plans.inventorySource')">
                 <n-select
                   v-model:value="settings.inventorySource"
                   :options="[
-                    { label: '沿用森空岛缓存（可修改）', value: 'cache' },
-                    { label: '手动设定', value: 'manual' }
+                    { label: t('plans.cachedInventory'), value: 'cache' },
+                    { label: t('plans.manualInventory'), value: 'manual' }
                   ]"
                 />
               </n-form-item>
               <p v-if="settings.inventorySource === 'cache'">
                 {{
                   settings.cachedInventory
-                    ? '未提供的数量按 0 计算，可手动修改。重新读取会替换本次缓存修改。'
-                    : '没有可用库存缓存，请同步或选择手动设定。'
+                    ? t('plans.inventoryCacheHelp')
+                    : t('plans.noInventoryCache')
                 }}
                 {{
                   settings.cacheObservedAt
-                    ? `库存同步时间：${new Date(settings.cacheObservedAt * 1000).toLocaleString('zh-CN')}`
+                    ? t('plans.inventorySyncedAt', {
+                        date: new Date(settings.cacheObservedAt * 1000).toLocaleString(locale)
+                      })
                     : ''
                 }}
               </p>
-              <n-form-item label="允许赤金透支"
+              <n-form-item :label="t('plans.goldOverdraft')"
                 ><n-switch v-model:value="settings.allowGoldDebt"
               /></n-form-item>
             </template>
             <p v-if="required || settings.finiteInventory">
               {{
-                required ? '副表含库存条件，必须预设库存。' : ''
-              }}不添加外源收入，预热与统计连续记账。{{
-                settings.allowGoldDebt
-                  ? '赤金可因交付扣为负数，负数表示缺口；其他材料不足时停产或暂停交付。'
-                  : '材料不足时停产或暂停交付。'
-              }}回收站仅计产出次数，不计随机材料或材料价值。
+                t('plans.inventoryExplanation', {
+                  requirement: required ? t('plans.requiredInventory') : '',
+                  shortage: settings.allowGoldDebt
+                    ? t('plans.goldDebtHelp')
+                    : t('plans.shortageHelp')
+                })
+              }}
             </p>
             <div v-if="required || settings.finiteInventory" class="two-columns">
               <n-form-item
                 v-for="item in MOWER_INVENTORY_ITEMS"
                 :key="item.resource"
-                :label="item.label"
+                :label="planDisplayName(item.label)"
                 ><n-input-number
                   :value="stock?.[item.resource] ?? 0"
                   :disabled="!stock || state.running || exporting || submitting || weightsBusy"
@@ -555,17 +596,17 @@ onBeforeUnmount(() => {
               /></n-form-item>
             </div>
             <n-collapse
-              ><n-collapse-item title="产出权重" name="weights">
-                <n-form-item label="权重来源"
+              ><n-collapse-item :title="t('plans.outputWeights')" name="weights">
+                <n-form-item :label="t('plans.weightSource')"
                   ><n-select
                     v-model:value="settings.weightMode"
                     :options="[
-                      { label: '同步 Mower 基报算法', value: 'mower' },
-                      { label: '本次自定义', value: 'custom' }
+                      { label: t('plans.mowerWeights'), value: 'mower' },
+                      { label: t('plans.customWeights'), value: 'custom' }
                     ]"
                 /></n-form-item>
                 <template v-if="settings.weightMode === 'mower'">
-                  <n-form-item label="基报算法"
+                  <n-form-item :label="t('plans.incomeAlgorithm')"
                     ><n-select
                       :value="settings.mowerAlgorithm"
                       :options="
@@ -583,10 +624,7 @@ onBeforeUnmount(() => {
                       "
                       @update:value="selectAlgorithm"
                   /></n-form-item>
-                  <p>
-                    切换算法会同步保存至 Mower 设置；每次演算前重新读取最新设置。自定义系数可在
-                    Mower 设置中修改。
-                  </p>
+                  <p>{{ t('plans.algorithmSaveHelp') }}</p>
                 </template>
                 <n-alert v-if="weightsError" type="warning">{{ weightsError }}</n-alert>
                 <div v-if="weightValues" class="two-columns">
@@ -611,69 +649,86 @@ onBeforeUnmount(() => {
             ></n-collapse>
           </n-form>
         </n-tab-pane>
-        <n-tab-pane name="results" tab="收益数据">
-          <n-empty v-if="!state.result?.success" description="演算完成后显示收益数据" />
+        <n-tab-pane name="results" :tab="t('plans.incomeTab')">
+          <n-empty v-if="!state.result?.success" :description="t('plans.incomeEmpty')" />
           <template v-if="state.result?.success">
-            <n-form-item label="排班名称" :show-feedback="false"
+            <n-form-item :label="t('plans.planName')" :show-feedback="false"
               ><n-input
                 v-model:value="exportName"
                 @change="saveName"
-                :placeholder="completedSnapshot?.label || '排班'"
+                :placeholder="completedSnapshot?.label || t('plans.planFallback')"
                 :maxlength="60"
                 :disabled="exporting"
             /></n-form-item>
-            <p>排班名称仅用于 JPG 文件名，后附日均加权收益和采样天数；图片不显示名称。</p>
-            <n-form-item label="作者" :show-feedback="false">
+            <p>{{ t('plans.filenameHelp') }}</p>
+            <n-form-item :label="t('plans.author')" :show-feedback="false">
               <n-input
                 v-model:value="exportDetails.author"
                 @change="saveName"
-                placeholder="可选，显示在收益与订单统计下方"
+                :placeholder="t('plans.authorPlaceholder')"
                 :maxlength="40"
                 :disabled="exporting"
               />
             </n-form-item>
-            <n-form-item label="备注" :show-feedback="false">
+            <n-form-item :label="t('plans.remarks')" :show-feedback="false">
               <n-input
                 v-model:value="exportDetails.remarks"
                 @change="saveName"
                 type="textarea"
-                placeholder="可填写排班版本、适用条件或使用说明"
+                :placeholder="t('plans.remarksPlaceholder')"
                 :maxlength="300"
                 show-count
                 :autosize="{ minRows: 2, maxRows: 4 }"
                 :disabled="exporting"
               />
             </n-form-item>
+            <p>{{ t('plans.exportDetailsHelp') }}</p>
             <p>
-              作者和备注随收益记录保存，导出时显示在收益与订单统计下方；留空不占空间，无需重新演算。
-            </p>
-            <p>
-              本次结果：预热 {{ state.input.settings.warmupDays }} 天、统计
-              {{ state.input.settings.sampleDays }} 天。修改参数后需重新演算；再次导出使用本次结果。
+              {{
+                t('plans.resultDays', {
+                  warmup: state.input.settings.warmupDays,
+                  sample: state.input.settings.sampleDays
+                })
+              }}
             </p>
             <p v-if="state.result.inventoryMode === 'finite'">
-              赤金余额：初始 {{ format(state.result.goldInventory.initial) }}，统计开始
-              {{ format(state.result.goldInventory.sampleOpening) }}，期末
-              {{ format(state.result.goldInventory.closing) }}。负数表示赤金缺口。
+              {{
+                t('plans.goldBalances', {
+                  initial: format(state.result.goldInventory.initial),
+                  opening: format(state.result.goldInventory.sampleOpening),
+                  closing: format(state.result.goldInventory.closing)
+                })
+              }}
             </p>
             <p>
-              权重：{{
-                state.input.settings.weightMode === 'mower'
-                  ? incomeAlgorithmLabel(state.input.settings.mowerAlgorithm)
-                  : '本次自定义'
-              }}；回收站仅计产出次数。
+              {{
+                t('plans.resultWeights', {
+                  label:
+                    state.input.settings.weightMode === 'mower'
+                      ? incomeAlgorithmLabel(state.input.settings.mowerAlgorithm)
+                      : t('plans.customWeights')
+                })
+              }}
             </p>
             <p>
-              赤金等价龙门币 = 制造赤金 × 500 + 龙舌兰等特殊订单溢价；不扣除交付消耗的赤金。
-              <span v-if="state.result.inventoryMode === 'finite'">实际消耗及余额见库存收支。</span>
+              {{ t('plans.goldEquivalentHelp')
+              }}<span v-if="state.result.inventoryMode === 'finite'">{{
+                t('plans.finiteBalanceHelp')
+              }}</span>
             </p>
-            <h3>日均加权产出 {{ format(state.result.summary.totalScore82) }}</h3>
+            <h3>
+              {{
+                t('plans.dailyWeightedOutputValue', {
+                  value: format(state.result.summary.totalScore82)
+                })
+              }}
+            </h3>
             <n-table size="small"
               ><thead>
                 <tr>
-                  <th>产出</th>
-                  <th>日均</th>
-                  <th>统计期合计</th>
+                  <th>{{ t('plans.output') }}</th>
+                  <th>{{ t('plans.dailyAverage') }}</th>
+                  <th>{{ t('plans.sampleTotal') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -684,44 +739,44 @@ onBeforeUnmount(() => {
                 </tr>
               </tbody></n-table
             >
-            <p v-if="exported" role="status">收益图片已生成并发起下载。</p>
+            <p v-if="exported" role="status">{{ t('plans.exportStarted') }}</p>
             <n-collapse class="notice">
-              <n-collapse-item title="设施数据" name="rooms">
+              <n-collapse-item :title="t('plans.facilityData')" name="rooms">
                 <n-table size="small"
                   ><thead>
                     <tr>
-                      <th>设施</th>
-                      <th>平均效率</th>
-                      <th>有人进驻时长</th>
+                      <th>{{ t('plans.facility') }}</th>
+                      <th>{{ t('plans.averageEfficiency') }}</th>
+                      <th>{{ t('plans.occupiedDuration') }}</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="room in state.result.rooms" :key="room.roomId">
-                      <td>{{ room.roomId }}</td>
+                      <td>{{ incomeRoomName(room.roomId) }}</td>
                       <td>{{ format(room.averageEfficiencyPercent) }}%</td>
-                      <td>{{ format(room.occupiedHours) }} 小时</td>
+                      <td>{{ t('plans.hoursValue', { value: format(room.occupiedHours) }) }}</td>
                     </tr>
                   </tbody></n-table
                 >
               </n-collapse-item>
               <n-collapse-item
                 v-if="state.result.inventoryMode === 'finite'"
-                title="统计期库存收支"
+                :title="t('plans.inventoryFlow')"
                 name="stock"
               >
                 <n-table size="small"
                   ><thead>
                     <tr>
-                      <th>资源</th>
-                      <th>开始</th>
-                      <th>收入</th>
-                      <th>支出</th>
-                      <th>期末</th>
+                      <th>{{ t('plans.resource') }}</th>
+                      <th>{{ t('plans.opening') }}</th>
+                      <th>{{ t('plans.income') }}</th>
+                      <th>{{ t('plans.expense') }}</th>
+                      <th>{{ t('plans.closing') }}</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="item in MOWER_INVENTORY_ITEMS" :key="item.resource">
-                      <td>{{ item.label }}</td>
+                      <td>{{ planDisplayName(item.label) }}</td>
                       <td>{{ format(state.result.resources?.opening[item.resource] ?? 0) }}</td>
                       <td>{{ format(state.result.resources?.inflows[item.resource] ?? 0) }}</td>
                       <td>{{ format(state.result.resources?.outflows[item.resource] ?? 0) }}</td>
@@ -730,22 +785,24 @@ onBeforeUnmount(() => {
                   </tbody></n-table
                 >
               </n-collapse-item>
-              <n-collapse-item title="本次参数与模型说明" name="assumptions"
+              <n-collapse-item :title="t('plans.modelAssumptions')" name="assumptions"
                 ><p v-for="line in reportLines" :key="line">{{ line }}</p></n-collapse-item
               >
             </n-collapse>
             <n-collapse class="notice"
               ><n-collapse-item
-                :title="`演算诊断（${state.result.diagnostics.length} 条）`"
+                :title="
+                  t('plans.simulationDiagnostics', { count: state.result.diagnostics.length })
+                "
                 name="diagnostics"
                 ><p v-for="(d, i) in state.result.diagnostics" :key="i">
-                  {{ d.message }}
+                  {{ incomeDisplayMessage(d.message) }}
                 </p></n-collapse-item
               ></n-collapse
             >
           </template>
         </n-tab-pane>
-        <n-tab-pane name="timeline" tab="工作记录" display-directive="show:lazy">
+        <n-tab-pane name="timeline" :tab="t('plans.workRecords')" display-directive="show:lazy">
           <IncomeTimeline
             v-if="
               state.result?.success && state.result.simulationReport && state.result.timelineData
@@ -756,18 +813,16 @@ onBeforeUnmount(() => {
           <n-empty
             v-else
             :description="
-              state.result?.success
-                ? '这份历史演算记录不含工作记录，请重新演算。原收益和排班图片仍可查看、导出。'
-                : '演算完成后显示工作记录'
+              state.result?.success ? t('plans.missingWorkRecords') : t('plans.workRecordsEmpty')
             "
           />
         </n-tab-pane>
-        <n-tab-pane name="logs" tab="演算日志">
+        <n-tab-pane name="logs" :tab="t('plans.simulationLogs')">
           <n-alert
             v-if="state.running && state.progress?.activity"
             class="notice"
             :type="state.progress.activity.status === 'slow' ? 'warning' : 'info'"
-            title="运行中的演算观察"
+            :title="t('plans.runningActivity')"
           >
             <IncomeActivity :activity="state.progress.activity" />
           </n-alert>
@@ -775,22 +830,27 @@ onBeforeUnmount(() => {
             v-if="state.bottleneck"
             class="notice"
             :type="state.error ? 'warning' : 'info'"
-            title="本次演算观察"
+            :title="t('plans.resultActivity')"
           >
             <p>
-              已用 {{ format(state.bottleneck.elapsedSeconds) }} 秒；{{
-                state.bottleneck.progressLabel
-              }}。
+              {{
+                t('plans.bottleneckProgress', {
+                  seconds: format(state.bottleneck.elapsedSeconds),
+                  label: incomeDisplayMessage(state.bottleneck.progressLabel)
+                })
+              }}
             </p>
             <p v-if="state.bottleneck.silence">
-              结束前 {{ state.bottleneck.silence.seconds }} 秒未收到进度；尚不能确定原因。
+              {{ t('plans.bottleneckSilence', { seconds: state.bottleneck.silence.seconds }) }}
             </p>
             <IncomeActivity v-if="summary" :activity="summary.activity" />
-            <p v-for="(item, i) in state.bottleneck.diagnostics" :key="i">{{ item.message }}</p>
+            <p v-for="(item, i) in state.bottleneck.diagnostics" :key="i">
+              {{ incomeDisplayMessage(item.message) }}
+            </p>
           </n-alert>
 
           <n-collapse v-if="progressLog.length" class="notice"
-            ><n-collapse-item title="计算进度记录（最近 200 条）" name="progress"
+            ><n-collapse-item :title="t('plans.progressRecords')" name="progress"
               ><div class="income-log">
                 <p v-for="(line, i) in progressLog" :key="i">{{ line }}</p>
               </div></n-collapse-item
@@ -798,13 +858,16 @@ onBeforeUnmount(() => {
           >
           <template v-if="state.result?.eventLog">
             <p>
-              统计期事件 {{ state.result.eventLog.total }} 条，保留最近
-              {{ state.result.eventLog.entries.length }}
-              条。时间从统计期开始计算，按发生时间倒序显示。
+              {{
+                t('plans.eventCount', {
+                  total: state.result.eventLog.total,
+                  retained: state.result.eventLog.entries.length
+                })
+              }}
             </p>
             <n-input
               v-model:value="logSearch"
-              placeholder="搜索干员、设施或事件"
+              :placeholder="t('plans.searchEvents')"
               clearable
               @update:value="logPage = 1"
             />
@@ -812,16 +875,16 @@ onBeforeUnmount(() => {
               <n-table size="small"
                 ><thead>
                   <tr>
-                    <th>时间</th>
-                    <th>事件</th>
-                    <th>详情</th>
+                    <th>{{ t('plans.time') }}</th>
+                    <th>{{ t('plans.event') }}</th>
+                    <th>{{ t('plans.detail') }}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="(row, i) in visibleEvents" :key="i">
                     <td class="event-time">{{ incomeLogTime(row.hours) }}</td>
-                    <td>{{ row.type }}</td>
-                    <td>{{ row.room }} {{ row.detail }}</td>
+                    <td>{{ incomeDisplayMessage(row.type) }}</td>
+                    <td>{{ row.room ? incomeRoomName(row.room) : row.room }} {{ row.detail }}</td>
                   </tr>
                 </tbody></n-table
               >
@@ -832,25 +895,28 @@ onBeforeUnmount(() => {
               :item-count="filteredEvents.length"
             />
           </template>
-          <n-empty
-            v-else-if="!state.running && !state.error"
-            description="开始演算后显示进度与日志"
-          />
+          <n-empty v-else-if="!state.running && !state.error" :description="t('plans.logsEmpty')" />
         </n-tab-pane>
       </n-tabs>
     </template>
     <template #footer
       ><n-space justify="end">
         <n-button @click="close">{{
-          validating ? '取消等待并关闭' : state.running ? '停止并关闭' : '关闭'
+          validating
+            ? t('plans.cancelWaitClose')
+            : state.running
+              ? t('plans.stopClose')
+              : t('plans.close')
         }}</n-button>
-        <n-button v-if="state.running" type="warning" @click="session.cancel">停止演算</n-button>
+        <n-button v-if="state.running" type="warning" @click="session.cancel">{{
+          t('plans.stopSimulation')
+        }}</n-button>
         <n-button
           v-if="state.result?.success"
           :loading="exporting"
           :disabled="state.running || exporting || submitting || weightsBusy"
           @click="exportImage"
-          >{{ exported ? '再次导出收益图' : '导出收益图' }}</n-button
+          >{{ exported ? t('plans.exportAgain') : t('plans.exportIncome') }}</n-button
         >
         <n-button
           type="primary"
@@ -867,7 +933,11 @@ onBeforeUnmount(() => {
           :loading="submitting"
           @click="start"
           >{{
-            validating ? '正在校验排班' : state.result?.success ? '重新演算' : '开始演算'
+            validating
+              ? t('plans.validatingPlan')
+              : state.result?.success
+                ? t('plans.rerun')
+                : t('plans.startSimulation')
           }}</n-button
         >
       </n-space></template

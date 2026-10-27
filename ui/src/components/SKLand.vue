@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { inject, ref, computed } from 'vue'
 import { copyMowerTestText } from '../utils/copyMowerTestText'
 const axios = inject('axios')
@@ -31,14 +34,16 @@ const testing = ref(false)
 async function test_maa() {
   testing.value = true
   copy_status.value = ''
-  maa_msg.value = '正在测试……'
+  maa_msg.value = t('tasks.testing')
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-skland`)
     maa_msg.value = Array.isArray(response.data)
       ? response.data.join('\n')
       : String(response.data ?? '')
   } catch (error) {
-    maa_msg.value = `测试失败：${error.response?.data?.message || error.message || String(error)}`
+    maa_msg.value = t('tasks.testFailedMessage', {
+      message: error.response?.data?.message || error.message || String(error)
+    })
   } finally {
     testing.value = false
   }
@@ -49,10 +54,10 @@ async function copy_result() {
   copying.value = true
   try {
     copy_status.value = (await copyMowerTestText(maa_msg.value))
-      ? '已复制'
-      : '复制失败，请手动选择文字'
+      ? t('tasks.copied')
+      : t('tasks.copyFailed')
   } catch {
-    copy_status.value = '复制失败，请手动选择文字'
+    copy_status.value = t('tasks.copyFailed')
   } finally {
     copying.value = false
   }
@@ -68,14 +73,14 @@ const enable_test = computed(() => {
 <template>
   <n-card>
     <template #header>
-      <div class="card-title">森空岛账号</div>
+      <div class="card-title">{{ t('tasks.sklandAccount') }}</div>
       <help-text>
-        <div>连接失败时，请尝试：</div>
+        <div>{{ t('tasks.connectionFailureSteps') }}</div>
         <ol style="margin: 0">
-          <li>同步系统时间后再试；</li>
-          <li>检查账号密码是否正确；</li>
-          <li>关闭代理软件或设置分流规则；</li>
-          <li>登录森空岛App，查看是否需要人机验证。</li>
+          <li>{{ t('tasks.syncClockRetry') }}</li>
+          <li>{{ t('tasks.checkCredentials') }}</li>
+          <li>{{ t('tasks.disableProxyHelp') }}</li>
+          <li>{{ t('tasks.sklandCaptchaHelp') }}</li>
         </ol>
       </help-text>
     </template>
@@ -86,22 +91,24 @@ const enable_test = computed(() => {
             style="margin-right: 10px"
             v-model:value="value.account"
             type="text"
-            placeholder="账号"
+            :placeholder="t('tasks.account')"
           />
           <n-input
             v-model:value="value.password"
             type="password"
             show-password-on="click"
-            placeholder="密码"
+            :placeholder="t('tasks.password')"
           />
         </div>
       </template>
     </n-dynamic-input>
     <div class="misc-container">
-      <n-button :disabled="!enable_test || testing" :loading="testing" @click="test_maa"
-        >测试设置</n-button
-      >
-      <n-button :disabled="!maa_msg || testing || copying" @click="copy_result">复制结果</n-button>
+      <n-button :disabled="!enable_test || testing" :loading="testing" @click="test_maa">{{
+        t('tasks.testSettings')
+      }}</n-button>
+      <n-button :disabled="!maa_msg || testing || copying" @click="copy_result">{{
+        t('tasks.copyResult')
+      }}</n-button>
       <span aria-live="polite">{{ copy_status }}</span>
       <n-card
         content-scrollable

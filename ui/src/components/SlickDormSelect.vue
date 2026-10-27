@@ -19,7 +19,7 @@
       multiple
       filterable
       :options="dormitories"
-      placeholder="选择宿舍位置"
+      :placeholder="t('plans.chooseDormPosition')"
       v-model:value="dormitoryValue"
       :filter="(p, o) => o.label.includes(p)"
       :render-label="render_dorm_label"
@@ -29,6 +29,8 @@
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { h, computed } from 'vue'
 import { SlickList, SlickItem } from 'vue-slicksort'
 import { NTag } from 'naive-ui'
@@ -61,15 +63,18 @@ const dormitories = computed(() => {
   let options = []
   for (let x = 1; x <= 4; x++) {
     if (props.roomOnly) {
-      options.push({ label: `宿舍 ${x}`, value: `dormitory_${x}` })
+      options.push({ label: t('plans.dormNumber', { number: x }), value: `dormitory_${x}` })
       if (props.includeLow) {
-        options.push({ label: `宿舍 ${x} 低优位`, value: `dormitory_${x}_low` })
+        options.push({
+          label: t('plans.dormLowNumber', { number: x }),
+          value: `dormitory_${x}_low`
+        })
       }
       continue
     }
     for (let y = 1; y <= 4; y++) {
       const value = `dormitory_${x}_${y}`
-      options.push({ label: `宿舍 ${x}-${y + 1}`, value })
+      options.push({ label: t('plans.dormPosition', { room: x, position: y + 1 }), value })
     }
   }
   return options

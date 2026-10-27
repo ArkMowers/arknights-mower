@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline'
 import { createCrashRecovery } from '@/utils/crashRecovery'
@@ -49,24 +52,24 @@ onUnmounted(() => {
     :title="
       status.startup
         ? status.automatic === false
-          ? '启动已停止'
-          : '正在启动'
+          ? t('runtime.startupStopped')
+          : t('runtime.starting')
         : status.automatic === false
-          ? '自动恢复已停止'
-          : '正在自动恢复'
+          ? t('runtime.recoveryStopped')
+          : t('runtime.recovering')
     "
   >
     <n-space vertical :size="8">
-      <n-text v-if="status.automatic !== false && status.startup">
-        启动前正在重新读取设备、驻员和心情，保存后按所选方式开始调度；暂时失败时会等待并重试。
-      </n-text>
-      <n-text v-else-if="status.automatic !== false">
-        程序发生异常后会自动重新读取设备、驻员和心情，再继续调度；暂时失败时会等待并重试。
-      </n-text>
-      <n-text v-else>任务已停止。需要继续时，可使用原有的开始按钮。</n-text>
+      <n-text v-if="status.automatic !== false && status.startup">{{
+        t('runtime.startupRecoveryHelp')
+      }}</n-text>
+      <n-text v-else-if="status.automatic !== false">{{
+        t('runtime.automaticRecoveryHelp')
+      }}</n-text>
+      <n-text v-else>{{ t('runtime.recoveryStoppedHelp') }}</n-text>
       <n-text v-if="status.message" depth="3">{{ status.message }}</n-text>
-      <n-text v-if="status.trigger_message && !status.startup" depth="3">
-        触发原因：{{ status.trigger_message }}
+      <n-text v-if="status.trigger_message && !status.startup" depth="3"
+        >{{ t('runtime.triggerPrefix') }}{{ status.trigger_message }}
       </n-text>
       <n-text
         v-if="
@@ -75,16 +78,14 @@ onUnmounted(() => {
           status.last_failure_message !== status.trigger_message
         "
         depth="3"
-      >
-        最近一次失败：{{ status.last_failure_message }}
+        >{{ t('runtime.lastFailurePrefix') }}{{ status.last_failure_message }}
       </n-text>
       <n-text v-if="error" type="error">{{ error }}</n-text>
     </n-space>
     <template #action>
       <n-button size="small" :loading="busy" class="recovery-refresh" @click="recovery.refresh">
-        <template #icon><RefreshOutline /></template>
-        刷新状态
-      </n-button>
+        <template #icon><RefreshOutline /></template>{{ t('runtime.refreshStatus') }}</n-button
+      >
     </template>
   </StatusNotification>
 </template>

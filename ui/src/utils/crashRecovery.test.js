@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createCrashRecovery } from './crashRecovery.js'
+import { i18n } from '@/i18n'
+
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 
 function setup() {
   const axios = {
@@ -12,6 +17,21 @@ function setup() {
 }
 
 describe('automatic crash recovery status', () => {
+  it('translates a current frontend fallback while keeping backend diagnostics unchanged', async () => {
+    const { axios, recovery } = setup()
+    await recovery.refresh()
+    const backendMessage = recovery.status.value.message
+    axios.get.mockRejectedValueOnce(new Error('offline'))
+    await recovery.refresh()
+    i18n.global.locale.value = 'en-US'
+    expect(recovery.error.value).toContain('refresh automatically')
+    expect(recovery.status.value.message).toBe(backendMessage)
+    axios.get.mockRejectedValueOnce({ response: { data: { message: '后端诊断原文' } } })
+    await recovery.refresh()
+    i18n.global.locale.value = 'zh-CN'
+    expect(recovery.error.value).toBe('后端诊断原文')
+    expect(axios.post).not.toHaveBeenCalled()
+  })
   it('displays backend progress without submitting a start or recovery action', async () => {
     const { axios, recovery } = setup()
     expect(await recovery.refresh()).toBe(true)

@@ -1,4 +1,5 @@
 import { match } from 'pinyin-pro'
+import { operatorDisplayName } from '@/i18n/gameNames'
 
 export const ownershipLabels = { owned: '已拥有', unowned: '未拥有' }
 export const skillStatusLabels = {
@@ -56,7 +57,11 @@ export function filterBasementSkills(items, filters) {
   const name = (filters.name || '').trim()
   const description = (filters.description || '').trim()
   return items.flatMap((item) => {
-    if (!matches(item.avatar, name, 'start')) return []
+    if (
+      !matches(item.avatar, name, 'start') &&
+      !matches(operatorDisplayName(item.avatar), name, 'start')
+    )
+      return []
     if (filters.ownership && filters.ownership !== item.ownership) return []
     const childSkill = item.childSkill.filter(
       (skill) =>

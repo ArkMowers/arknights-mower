@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed, onDeactivated, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useGuiStore } from '@/stores/gui'
@@ -10,7 +11,9 @@ const confirmationStep = ref(0)
 const confirmationInput = ref('')
 const confirmationText = '反馈问题时务必说明具体版本'
 const reminderCount = 5
-const reminderText = '隐藏水印后，反馈问题时请提供完整版本号。版本号可在“帮助 → 关于”查看。'
+const reminderText = computed(() =>
+  i18n.global.t('settings.watermark.whenReportingAProblemAfterHidingThe')
+)
 const finalStep = computed(() => confirmationStep.value === reminderCount - 1)
 const confirmationDisabled = computed(
   () =>
@@ -52,7 +55,7 @@ onDeactivated(cancelConfirmation)
 
 <template>
   <n-form-item
-    label="版本水印"
+    :label="i18n.global.t('settings.watermark.versionWatermark')"
     class="settings-appearance-row version-watermark-preference"
     data-settings-keywords="版本水印 显示 隐藏 关闭 反馈 版本号"
   >
@@ -62,11 +65,15 @@ onDeactivated(cancelConfirmation)
           :value="watermarkVisible"
           :disabled="watermarkDisabled || showConfirmation"
           :loading="watermarkSaving"
-          aria-label="显示版本水印"
+          :aria-label="i18n.global.t('settings.watermark.showVersionWatermark')"
           aria-describedby="watermark-description"
           @update:value="changeVisibility"
         />
-        <span>{{ watermarkVisible ? '显示' : '隐藏' }}</span>
+        <span>{{
+          watermarkVisible
+            ? i18n.global.t('settings.watermark.shown')
+            : i18n.global.t('settings.watermark.hidden')
+        }}</span>
       </div>
       <span id="watermark-description" class="watermark-preference-description">
         {{ reminderText }}
@@ -78,7 +85,7 @@ onDeactivated(cancelConfirmation)
           text
           :disabled="gui.loading || gui.saving || gui.layoutSaving || watermarkSaving"
           @click="gui.retryWatermarkVisible"
-          >重试</n-button
+          >{{ i18n.global.t('settings.watermark.retry') }}</n-button
         >
       </n-alert>
     </div>
@@ -86,7 +93,12 @@ onDeactivated(cancelConfirmation)
   <n-modal
     :show="showConfirmation"
     preset="card"
-    :title="`隐藏版本水印（${confirmationStep + 1}/${reminderCount}）`"
+    :title="
+      i18n.global.t('settings.watermark.hideVersionWatermark', {
+        value0: confirmationStep + 1,
+        value1: reminderCount
+      })
+    "
     class="watermark-confirmation"
     style="width: min(480px, calc(100vw - 32px))"
     @update:show="cancelConfirmation"
@@ -96,7 +108,10 @@ onDeactivated(cancelConfirmation)
     </div>
     <div class="watermark-confirmation-input">
       <template v-if="finalStep">
-        <label for="watermark-confirmation-text">请手动输入：{{ confirmationText }}</label>
+        <label for="watermark-confirmation-text"
+          >{{ i18n.global.t('settings.watermark.typeTheFollowingChinesePhraseExactly')
+          }}{{ confirmationText }}</label
+        >
         <n-input
           v-model:value="confirmationInput"
           :placeholder="confirmationText"
@@ -113,11 +128,17 @@ onDeactivated(cancelConfirmation)
         :class="`watermark-confirm-position-${confirmationStep}`"
         :disabled="confirmationDisabled"
         @click="advanceConfirmation"
-        >{{ finalStep ? '确认隐藏' : '继续' }}</n-button
+        >{{
+          finalStep
+            ? i18n.global.t('settings.watermark.confirmHide')
+            : i18n.global.t('settings.watermark.continue')
+        }}</n-button
       >
     </div>
     <template #footer>
-      <n-button block @click="cancelConfirmation">保留水印</n-button>
+      <n-button block @click="cancelConfirmation">{{
+        i18n.global.t('settings.watermark.keepWatermark')
+      }}</n-button>
     </template>
   </n-modal>
 </template>

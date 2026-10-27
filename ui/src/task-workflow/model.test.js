@@ -1,7 +1,12 @@
 import { computed, reactive } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createTaskWorkflow, setTaskEnabled } from './model'
 import { matchesSettingsSearch } from '@/utils/settingsSearch'
+import { i18n } from '@/i18n'
+
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 
 const switches = [
   ['clue', 'enable_party'],
@@ -29,6 +34,53 @@ function freeze(value) {
 }
 
 describe('task configuration checklist', () => {
+  it('resolves every live editor title and description in four languages without changing task identities or configuration', () => {
+    const config = freeze({
+      maa_event_shop: {
+        enable: true,
+        activity: '当前活动',
+        switch_source: '自定义活动方案',
+        blacklist: ['材料关键词']
+      },
+      maa_rg_enable: 1,
+      maa_long_task_type: 'paradox',
+      maa_mail: false,
+      maa_recruit: false,
+      maa_orundum: false,
+      maa_mining: false,
+      maa_specialaccess: false,
+      maa_signinevent: true
+    })
+    const identities = (workflow) => ({
+      editors: workflow.editors.map(({ id }) => id),
+      tasks: workflow.tasks.map(({ id, editor, group, mode }) => ({ id, editor, group, mode })),
+      statuses: workflow.statuses
+    })
+    const before = identities(createTaskWorkflow(config))
+    const saved = structuredClone(config)
+    for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'zh-TW']) {
+      i18n.global.locale.value = locale
+      const workflow = createTaskWorkflow(config)
+      expect(identities(workflow), locale).toEqual(before)
+      for (const editor of workflow.editors) {
+        for (const field of ['title', 'description']) {
+          const key = `tasks.editors.${editor.id}.${field}`
+          expect(i18n.global.te(key, locale), `${locale}: ${key}`).toBe(true)
+          expect(editor[field], `${locale}: ${key}`).not.toMatch(/^tasks\./)
+          expect(editor[field], `${locale}: ${key}`).not.toBe('')
+          expect(editor[field], `${locale}: ${key}`).toBe(i18n.global.t(key))
+        }
+      }
+      expect(workflow.tasks.find(({ id }) => id === 'event-shop')).toMatchObject({
+        group: 'daily',
+        mode: 'switch'
+      })
+      expect(workflow.statuses['event-shop']).toBe(true)
+      expect(workflow.tasks.find(({ id }) => id === 'rewards').indeterminate).toBe(true)
+      expect(config).toEqual(saved)
+    }
+  })
+
   it.each([
     ['限时签到', 'rewards'],
     ['Copilot', 'long'],
@@ -116,7 +168,7 @@ describe('task configuration checklist', () => {
     )
     expect(managed.editors.find(({ id }) => id === 'maa')).toMatchObject({
       description: '设置 MAA 恢复主题与目标主题。',
-      searchKeywords: 'MAA 恢复主题 目标主题'
+      searchKeywords: expect.stringContaining('MAA 恢复主题 目标主题')
     })
     expect(direct.editors.find(({ id }) => id === 'maa').searchKeywords).toContain('MAA目录')
   })
@@ -452,5 +504,52 @@ describe('task configuration checklist', () => {
     expect(workflow.value.statuses.recruit).toBe(true)
     expect(workflow.value.statuses.long).toBe(true)
     expect(config.stage_plan_runner).toBe('maa')
+  })
+
+  it('reacts to interface language while retaining task identities, switch states and both search languages', () => {
+    const config = reactive({ recruit_enable: true, maa_rg_enable: 1, stage_plan_runner: 'mower' })
+    const before = JSON.stringify(config)
+    const workflow = computed(() => createTaskWorkflow(config))
+    const ids = workflow.value.tasks.map(({ id, editor, group }) => ({ id, editor, group }))
+    const statuses = { ...workflow.value.statuses }
+    expect(workflow.value.tasks.find(({ id }) => id === 'recruit').title).toBe('公开招募')
+
+    i18n.global.locale.value = 'en-US'
+
+    expect(workflow.value.tasks.find(({ id }) => id === 'recruit').title).toBe('Recruitment')
+    expect(workflow.value.groups.find(({ id }) => id === 'daily').label).toBe('Daily tasks')
+    expect(workflow.value.tasks.map(({ id, editor, group }) => ({ id, editor, group }))).toEqual(
+      ids
+    )
+    expect(workflow.value.statuses).toEqual(statuses)
+    const recruitment = workflow.value.tasks.find(({ id }) => id === 'recruit')
+    for (const query of ['三星招募阈值', '5-star recruitment']) {
+      expect(
+        matchesSettingsSearch(
+          query,
+          recruitment.title,
+          recruitment.description,
+          recruitment.searchKeywords
+        )
+      ).toBe(true)
+    }
+    expect(JSON.stringify(config)).toBe(before)
+    i18n.global.locale.value = 'zh-CN'
+    expect(workflow.value.tasks.find(({ id }) => id === 'recruit').title).toBe('公开招募')
+  })
+
+  it('does not make manager-owned connection settings searchable through English metadata', () => {
+    i18n.global.locale.value = 'en-US'
+    const maa = createTaskWorkflow({ manager_owned_device: true }).editors.find(
+      ({ id }) => id === 'maa'
+    )
+    expect(maa.description).toBe('Configure MAA theme restoration and the target theme.')
+    expect(
+      matchesSettingsSearch('theme restoration', maa.title, maa.description, maa.searchKeywords)
+    ).toBe(true)
+    expect(
+      matchesSettingsSearch('MAA directory', maa.title, maa.description, maa.searchKeywords)
+    ).toBe(false)
+    expect(maa.searchKeywords).not.toContain('安装目录')
   })
 })

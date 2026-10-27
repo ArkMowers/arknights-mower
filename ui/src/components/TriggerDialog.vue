@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { backupGroupDisplayName } from '@/i18n/plans'
+const { t } = i18n.global
 import { computed, inject, ref, watch } from 'vue'
 const show = inject('show_trigger_editor')
 const edit_locked = inject('planEditLocked', ref(false))
@@ -16,7 +19,7 @@ const plan_store = inject('planStore', null) || usePlanStore()
 const { sub_plan, backup_plans, backup_groups } = storeToRefs(plan_store)
 const current_backup = computed(() => backup_plans.value[sub_plan.value])
 const group_options = computed(() =>
-  backup_groups.value.map((group) => ({ label: group.name, value: group.id }))
+  backup_groups.value.map((group) => ({ label: backupGroupDisplayName(group), value: group.id }))
 )
 const editing_group = ref('default')
 watch(
@@ -104,7 +107,7 @@ function update_trigger(data) {
   <n-modal
     v-model:show="show"
     preset="card"
-    title="副表条件"
+    :title="t('plans.backupConditions')"
     :auto-focus="false"
     transform-origin="center"
     style="width: auto; max-width: 90vw"
@@ -116,7 +119,7 @@ function update_trigger(data) {
         label-width="80"
         style="min-width: 420px; display: grid; gap: 8px; margin-bottom: 8px"
       >
-        <n-form-item label="副表分组" :show-feedback="false">
+        <n-form-item :label="t('plans.backupGroup')" :show-feedback="false">
           <n-select
             :value="current_backup.group_ids"
             :options="group_options"
@@ -124,40 +127,41 @@ function update_trigger(data) {
             @update:value="update_memberships"
           />
         </n-form-item>
-        <n-form-item label="副表类型" :show-feedback="false">
+        <n-form-item :label="t('plans.backupType')" :show-feedback="false">
           <n-radio-group v-model:value="current_backup.type">
-            <n-radio-button value="global">全局副表</n-radio-button>
-            <n-radio-button value="exclusive">互斥副表</n-radio-button>
+            <n-radio-button value="global">{{ t('plans.globalBackup') }}</n-radio-button>
+            <n-radio-button value="exclusive">{{ t('plans.exclusiveBackup') }}</n-radio-button>
           </n-radio-group>
         </n-form-item>
       </n-form>
       <n-text depth="3" style="display: block; margin-bottom: 12px">
         {{
           current_backup.type === 'exclusive'
-            ? '当前分组在所选分组中时参与选择；最多生效一张互斥副表，当前项失效后按顺序选择。'
-            : '当前分组在所选分组中时检查自身条件，可与该组的其他副表叠加。'
+            ? t('plans.exclusiveBackupHelp')
+            : t('plans.globalBackupHelp')
         }}
       </n-text>
       <n-collapse style="margin-bottom: 16px">
-        <n-collapse-item title="分组条件与管理" name="groups">
-          <n-alert :show-icon="false" type="info" style="margin-bottom: 12px">
-            自定义分组同时只生效一个。当前分组仍满足条件时保持生效，否则按列表顺序选择满足条件的分组；均不满足时使用默认分组。
-          </n-alert>
+        <n-collapse-item :title="t('plans.groupManagement')" name="groups">
+          <n-alert :show-icon="false" type="info" style="margin-bottom: 12px">{{
+            t('plans.groupSelectionHelp')
+          }}</n-alert>
           <n-alert
             v-if="groups_without_condition.length"
             :show-icon="false"
             type="warning"
-            title="请为分组添加生效条件"
+            :title="t('plans.missingGroupConditionTitle')"
           >
-            {{ groups_without_condition.map((group) => group.name).join('、') }}
-            尚未设置生效条件，不会生效。请在下方选择分组并添加生效条件。
-          </n-alert>
+            {{ groups_without_condition.map((group) => group.name).join('、')
+            }}{{ t('plans.missingGroupConditionHelp') }}</n-alert
+          >
           <n-space vertical style="margin-top: 12px">
             <n-space v-for="group in backup_groups" :key="group.id" align="center" :wrap="false">
               <n-input
-                v-model:value="group.name"
+                :value="backupGroupDisplayName(group)"
+                @update:value="group.id !== 'default' && !edit_locked && (group.name = $event)"
                 :disabled="edit_locked || group.id === 'default'"
-                placeholder="分组名称"
+                :placeholder="t('plans.groupName')"
               />
               <template v-if="group.id !== 'default'">
                 <n-button
@@ -165,44 +169,47 @@ function update_trigger(data) {
                     edit_locked || backup_groups.findIndex((item) => item.id === group.id) <= 1
                   "
                   @click="move_group(group.id, -1)"
-                  >上移</n-button
+                  >{{ t('plans.moveUp') }}</n-button
                 >
                 <n-button
                   :disabled="edit_locked || backup_groups.at(-1).id === group.id"
                   @click="move_group(group.id, 1)"
-                  >下移</n-button
+                  >{{ t('plans.moveDown') }}</n-button
                 >
                 <n-popconfirm @positive-click="remove_group(group.id)">
-                  <template #trigger><n-button :disabled="edit_locked">删除</n-button></template>
-                  删除此归属；没有剩余分组的副表将移入默认分组。
-                </n-popconfirm>
+                  <template #trigger
+                    ><n-button :disabled="edit_locked">{{ t('plans.delete') }}</n-button></template
+                  >{{ t('plans.deleteGroupHelp') }}</n-popconfirm
+                >
               </template>
             </n-space>
             <n-space :wrap="false">
               <n-input
                 v-model:value="new_group_name"
                 :disabled="edit_locked"
-                placeholder="新分组名称"
+                :placeholder="t('plans.newGroupName')"
                 @keyup.enter="create_group"
               />
-              <n-button :disabled="edit_locked || !new_group_name.trim()" @click="create_group"
-                >创建分组</n-button
-              >
+              <n-button :disabled="edit_locked || !new_group_name.trim()" @click="create_group">{{
+                t('plans.createGroup')
+              }}</n-button>
             </n-space>
             <n-select
               v-model:value="editing_group"
               :options="group_options"
-              placeholder="选择要编辑条件的分组"
+              :placeholder="t('plans.chooseConditionGroup')"
             />
             <template v-if="selected_group && selected_group.id !== 'default'">
-              <n-text>{{ selected_group.name }}的生效条件</n-text>
+              <n-text>{{ t('plans.groupConditionsTitle', { name: selected_group.name }) }}</n-text>
               <trigger-editor :data="selected_group.trigger" @update="update_group_trigger" />
             </template>
-            <n-text v-else depth="3">默认分组作为兜底，不需要设置分组条件。</n-text>
+            <n-text v-else depth="3">{{ t('plans.defaultGroupHelp') }}</n-text>
           </n-space>
         </n-collapse-item>
       </n-collapse>
-      <n-text style="display: block; margin-bottom: 8px">副表自身条件</n-text>
+      <n-text style="display: block; margin-bottom: 8px">{{
+        t('plans.backupOwnConditions')
+      }}</n-text>
       <n-scrollbar x-scrollable>
         <trigger-editor :data="backup_plans[sub_plan].trigger" @update="update_trigger" />
       </n-scrollbar>

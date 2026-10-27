@@ -1,3 +1,6 @@
+import { i18n } from '@/i18n'
+import { depotItemDisplayName } from '@/i18n/reports'
+const { t } = i18n.global
 import { pinyin } from 'pinyin-pro'
 
 /**
@@ -11,52 +14,225 @@ import { pinyin } from 'pinyin-pro'
 
 /** 分类前缀 → 展示名与配色。前缀本身是人工维护的档位序（A 常用 … K 未分类）。 */
 export const DEPOT_TIERS = [
-  { key: 'A', name: '常用资源', short: '常用', badge: '常用', color: '#d4a017', rarity: 5 },
-  { key: 'B', name: '作战记录', short: '经验', badge: '经验', color: '#b07d3b', rarity: 3 },
-  { key: 'C', name: '5星材料', short: '5星', badge: '5★', color: '#e0a800', rarity: 5 },
-  { key: 'D', name: '4星材料', short: '4星', badge: '4★', color: '#b8860b', rarity: 4 },
-  { key: 'E', name: '3星材料', short: '3星', badge: '3★', color: '#8a8a8a', rarity: 3 },
-  { key: 'F', name: '2星材料', short: '2星', badge: '2★', color: '#6f7d5a', rarity: 2 },
-  { key: 'G', name: '1星材料', short: '1星', badge: '1★', color: '#5a6b78', rarity: 1 },
-  { key: 'H', name: '模组材料', short: '模组', badge: '模组', color: '#4a7fb5', rarity: 4 },
-  { key: 'I', name: '技巧概要', short: '技能书', badge: '技能', color: '#5c8a8a', rarity: 3 },
-  { key: 'J', name: '芯片与凭证', short: '芯片', badge: '芯片', color: '#7a6ba5', rarity: 4 },
-  { key: 'K', name: '未分类', short: '未分类', badge: '其他', color: '#8a8a8a', rarity: 0 }
+  {
+    key: 'A',
+    get name() {
+      return t('reports.commonResources')
+    },
+    get short() {
+      return t('reports.common')
+    },
+    get badge() {
+      return t('reports.common')
+    },
+    color: '#d4a017',
+    rarity: 5
+  },
+  {
+    key: 'B',
+    get name() {
+      return t('reports.battleRecords')
+    },
+    get short() {
+      return t('reports.experience')
+    },
+    get badge() {
+      return t('reports.experience')
+    },
+    color: '#b07d3b',
+    rarity: 3
+  },
+  {
+    key: 'C',
+    get name() {
+      return t('reports.fiveStarMaterials')
+    },
+    get short() {
+      return t('reports.fiveStar')
+    },
+    badge: '5★',
+    color: '#e0a800',
+    rarity: 5
+  },
+  {
+    key: 'D',
+    get name() {
+      return t('reports.fourStarMaterials')
+    },
+    get short() {
+      return t('reports.fourStar')
+    },
+    badge: '4★',
+    color: '#b8860b',
+    rarity: 4
+  },
+  {
+    key: 'E',
+    get name() {
+      return t('reports.threeStarMaterials')
+    },
+    get short() {
+      return t('reports.threeStar')
+    },
+    badge: '3★',
+    color: '#8a8a8a',
+    rarity: 3
+  },
+  {
+    key: 'F',
+    get name() {
+      return t('reports.twoStarMaterials')
+    },
+    get short() {
+      return t('reports.twoStar')
+    },
+    badge: '2★',
+    color: '#6f7d5a',
+    rarity: 2
+  },
+  {
+    key: 'G',
+    get name() {
+      return t('reports.oneStarMaterials')
+    },
+    get short() {
+      return t('reports.oneStar')
+    },
+    badge: '1★',
+    color: '#5a6b78',
+    rarity: 1
+  },
+  {
+    key: 'H',
+    get name() {
+      return t('reports.moduleMaterials')
+    },
+    get short() {
+      return t('reports.modules')
+    },
+    get badge() {
+      return t('reports.modules')
+    },
+    color: '#4a7fb5',
+    rarity: 4
+  },
+  {
+    key: 'I',
+    get name() {
+      return t('reports.skillSummaries')
+    },
+    get short() {
+      return t('reports.skillBooks')
+    },
+    get badge() {
+      return t('reports.skills')
+    },
+    color: '#5c8a8a',
+    rarity: 3
+  },
+  {
+    key: 'J',
+    get name() {
+      return t('reports.chipsTokens')
+    },
+    get short() {
+      return t('reports.chips')
+    },
+    get badge() {
+      return t('reports.chips')
+    },
+    color: '#7a6ba5',
+    rarity: 4
+  },
+  {
+    key: 'K',
+    get name() {
+      return t('reports.unclassified')
+    },
+    get short() {
+      return t('reports.unclassified')
+    },
+    get badge() {
+      return t('reports.other')
+    },
+    color: '#8a8a8a',
+    rarity: 0
+  }
 ]
 
 /** 抽卡资源换算：1 抽 = 600 合成玉；1 源石 = 180 合成玉；1 源石碎片 = 20 合成玉（两个碎片换一抽）。 */
 export const DRAW_TIERS = [
   {
     key: '玉+卷',
-    name: '基础 (玉+券)',
-    short: '玉+券',
-    label: '合成玉 + 寻访凭证',
-    hint: '合成玉与寻访凭证现货',
-    detail: '合成玉÷600 + 寻访凭证（单抽及十连）'
+    get name() {
+      return t('reports.pullBase')
+    },
+    get short() {
+      return t('reports.drawBaseShort')
+    },
+    get label() {
+      return t('reports.drawBaseLabel')
+    },
+    get hint() {
+      return t('reports.drawBaseHint')
+    },
+    get detail() {
+      return t('reports.drawBaseDetail')
+    }
   },
   {
     key: '玉+卷+石',
-    name: '+ 至纯源石',
-    short: '+ 源石',
-    label: '并入至纯源石',
-    hint: '源石按 180 合成玉折算',
-    detail: '在玉+券基础上，至纯源石按 180 合成玉 (0.3 抽) 折算并入'
+    get name() {
+      return t('reports.pullOriginium')
+    },
+    get short() {
+      return t('reports.drawPrimeShort')
+    },
+    get label() {
+      return t('reports.drawPrimeLabel')
+    },
+    get hint() {
+      return t('reports.drawPrimeHint')
+    },
+    get detail() {
+      return t('reports.drawPrimeDetail')
+    }
   },
   {
     key: '额外+碎片',
-    name: '+ 源石碎片',
-    short: '+ 碎片',
-    label: '并入源石碎片',
-    hint: '碎片按两片换一抽',
-    detail: '在上述基础之上，源石碎片按 2 片换 20 合成玉折算并入'
+    get name() {
+      return t('reports.pullShards')
+    },
+    get short() {
+      return t('reports.drawShardsShort')
+    },
+    get label() {
+      return t('reports.drawShardsLabel')
+    },
+    get hint() {
+      return t('reports.drawShardsHint')
+    },
+    get detail() {
+      return t('reports.drawShardsDetail')
+    }
   },
   {
     key: '额外+碎片+土',
-    name: '+ 固源岩',
-    short: '+ 固源岩',
-    label: '并入固源岩搓玉',
-    hint: '固源岩按搓玉折算',
-    detail: '在上述基础之上，固源岩按 2 块合成 1 碎片并折算抽数后并入'
+    get name() {
+      return t('reports.pullOrirock')
+    },
+    get short() {
+      return t('reports.pullOrirock')
+    },
+    get label() {
+      return t('reports.drawRockLabel')
+    },
+    get hint() {
+      return t('reports.drawRockHint')
+    },
+    get detail() {
+      return t('reports.drawRockDetail')
+    }
   }
 ]
 
@@ -248,7 +424,7 @@ export function buildBaselineStartOptions(snapshots) {
   const options = [
     {
       value: 'previous',
-      label: `较上次扫描 (${formatTimestamp(previous.at)})`,
+      label: t('reports.previousScanOption', { time: formatTimestamp(previous.at) }),
       at: previous.at
     }
   ]
@@ -256,7 +432,7 @@ export function buildBaselineStartOptions(snapshots) {
   if (usable.length > 2) {
     options.push({
       value: 'first',
-      label: `较最早记录 (${formatTimestamp(first.at)})`,
+      label: t('reports.firstScanOption', { time: formatTimestamp(first.at) }),
       at: first.at
     })
   }
@@ -281,7 +457,7 @@ export function buildBaselineEndOptions(snapshots) {
   const options = [
     {
       value: 'latest',
-      label: `当前最新 (${formatTimestamp(latest.at)})`,
+      label: t('reports.latestScanOption', { time: formatTimestamp(latest.at) }),
       at: latest.at
     }
   ]
@@ -302,13 +478,67 @@ export function buildBaselineEndOptions(snapshots) {
  * previous/all 按快照序列取点，custom 才使用用户手上那对具体时间。
  */
 export const BASELINE_PRESETS = [
-  { key: 'previous', label: '较上次', shortLabel: '较上次' },
-  { key: 'today', label: '今天', shortLabel: '今天', relative: true },
-  { key: '7d', label: '近 7 天', shortLabel: '7d', relative: true },
-  { key: '14d', label: '近 14 天', shortLabel: '14d', relative: true },
-  { key: '30d', label: '近 30 天', shortLabel: '30d', relative: true },
-  { key: 'all', label: '最早至今', shortLabel: '最早至今' },
-  { key: 'custom', label: '自定义', shortLabel: '自定义' }
+  {
+    key: 'previous',
+    get label() {
+      return t('reports.comparedPrevious')
+    },
+    get shortLabel() {
+      return t('reports.comparedPrevious')
+    }
+  },
+  {
+    key: 'today',
+    get label() {
+      return t('reports.today')
+    },
+    get shortLabel() {
+      return t('reports.today')
+    },
+    relative: true
+  },
+  {
+    key: '7d',
+    get label() {
+      return t('reports.last7Days')
+    },
+    shortLabel: '7d',
+    relative: true
+  },
+  {
+    key: '14d',
+    get label() {
+      return t('reports.last14Days')
+    },
+    shortLabel: '14d',
+    relative: true
+  },
+  {
+    key: '30d',
+    get label() {
+      return t('reports.last30Days')
+    },
+    shortLabel: '30d',
+    relative: true
+  },
+  {
+    key: 'all',
+    get label() {
+      return t('reports.firstToNow')
+    },
+    get shortLabel() {
+      return t('reports.firstToNow')
+    }
+  },
+  {
+    key: 'custom',
+    get label() {
+      return t('reports.custom')
+    },
+    get shortLabel() {
+      return t('reports.custom')
+    }
+  }
 ]
 
 /** 相对预设的键集合：对齐时以 now 重算，不吃持久化下来的绝对窗口。 */
@@ -320,8 +550,18 @@ const BASELINE_PRESET_KEYS = new Set(BASELINE_PRESETS.map((preset) => preset.key
 
 /** 对比基准的两种挑法：按时间范围，或直接指定起止那两次扫描。 */
 export const BASELINE_MODES = [
-  { value: 'time', label: '按时间' },
-  { value: 'snapshot', label: '按快照' }
+  {
+    value: 'time',
+    get label() {
+      return t('reports.byTime')
+    }
+  },
+  {
+    value: 'snapshot',
+    get label() {
+      return t('reports.bySnapshot')
+    }
+  }
 ]
 
 /**
@@ -696,6 +936,7 @@ export function matchesNumericQuery(num, queryText) {
 export function matchesQuery(item, text) {
   const t = String(text || '').trim()
   if (!t) return true
+  if (depotItemDisplayName(item.name).toLowerCase().includes(t.toLowerCase())) return true
   if (item.name.includes(t)) return true
   if (item.name.toLowerCase().includes(t.toLowerCase())) return true
   // 拼音首字母或全拼匹配
@@ -765,12 +1006,42 @@ export function matchesPinyin(name, query) {
 }
 
 export const SORT_MODES = [
-  { value: 'tier', label: '档位优先' },
-  { value: 'delta-desc', label: '变动增量从多到少 (增长优先)' },
-  { value: 'delta-asc', label: '变动增量从少到多 (消耗优先)' },
-  { value: 'count-desc', label: '库存数量从多到少' },
-  { value: 'count-asc', label: '库存数量从少到多' },
-  { value: 'name', label: '按物品名称' }
+  {
+    value: 'tier',
+    get label() {
+      return t('reports.sortTier')
+    }
+  },
+  {
+    value: 'delta-desc',
+    get label() {
+      return t('reports.sortIncrease')
+    }
+  },
+  {
+    value: 'delta-asc',
+    get label() {
+      return t('reports.sortDecrease')
+    }
+  },
+  {
+    value: 'count-desc',
+    get label() {
+      return t('reports.sortCountDesc')
+    }
+  },
+  {
+    value: 'count-asc',
+    get label() {
+      return t('reports.sortCountAsc')
+    }
+  },
+  {
+    value: 'name',
+    get label() {
+      return t('reports.sortName')
+    }
+  }
 ]
 
 export function sortItems(items, mode = 'tier', deltaMap = new Map()) {
@@ -1032,11 +1303,22 @@ export function buildFavoriteHighlights(allItems, favoriteNames = [], deltaMap =
     .filter(Boolean)
 }
 
+const compactFormatters = new Map()
+
 /** 数量格式化：万以上折成"万"，保留两位小数，去掉无意义的尾巴零。 */
 export function formatCompact(value) {
   const number = Number(value)
   if (!Number.isFinite(number)) return '—'
   const abs = Math.abs(number)
+  const locale = i18n.global.locale.value
+  if (locale !== 'zh-CN' && abs >= 1000) {
+    if (!compactFormatters.has(locale))
+      compactFormatters.set(
+        locale,
+        new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 2 })
+      )
+    return compactFormatters.get(locale).format(number)
+  }
   if (abs >= 100000000) return `${trimZero(number / 100000000)} 亿`
   if (abs >= 10000) return `${trimZero(number / 10000)} 万`
   return formatNumber(number)
@@ -1087,11 +1369,11 @@ export function formatRelative(at, now = Date.now()) {
   const seconds = typeof at === 'number' ? at : null
   if (seconds == null) return ''
   const diff = Math.floor(now / 1000) - seconds
-  if (diff < 0) return '刚刚'
-  if (diff < 60) return `${diff} 秒前`
-  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
-  if (diff < 2592000) return `${Math.floor(diff / 86400)} 天前`
+  if (diff < 0) return t('reports.justNow')
+  if (diff < 60) return t('reports.secondsAgo', { count: diff })
+  if (diff < 3600) return t('reports.minutesAgo', { count: Math.floor(diff / 60) })
+  if (diff < 86400) return t('reports.hoursAgo', { count: Math.floor(diff / 3600) })
+  if (diff < 2592000) return t('reports.daysAgo', { count: Math.floor(diff / 86400) })
   return formatTimestamp(seconds)
 }
 

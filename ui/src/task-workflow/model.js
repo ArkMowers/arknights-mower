@@ -1,3 +1,7 @@
+import { i18n } from '@/i18n'
+
+const { t } = i18n.global
+
 const groups = [
   { id: 'base', label: '基建任务' },
   { id: 'daily', label: '日常任务' },
@@ -44,7 +48,11 @@ const editorDefinitions = [
     '活动商店兑换',
     'MAA 日常结束后兑换活动商店；有限商品兑换完毕后可切换刷理智方案。'
   ],
-  ['rewards', 'MAA 领取奖励', '任务奖励随 MAA 日常领取，邮件、免费单抽与活动奖励分别勾选。'],
+  [
+    'rewards',
+    'MAA 领取奖励',
+    '随 MAA 日常领取邮件、免费单抽、合成玉、赠送月卡及限时签到活动奖励，可分别选择。'
+  ],
   [
     'long',
     '空闲长任务',
@@ -125,6 +133,7 @@ const editorKeywords = {
     '集成战略 保全派驻 生息演算 隐秘战线 肉鸽主题 开局分队 开局职业组 开局干员 难度 策略 开始时间 停止时间',
     '凹开局干员直升精二 只凹开局干员直升精二，不进行作战 开局干员使用助战 开局干员使用非好友助战 月度小队自动切换 将月度小队通信也作为切换依据 深入调查自动切换 刷新商店（指路鳞） 坍缩范式',
     '到达险路恶敌前停止 肉鸽等级刷满后停止 投资源石锭 源石锭投资满时停止 投资模式启用购物、招募、进2层 烧水时启用购物 烧水分队 第一层远见板子 凹开局板子 刷开局期望奖励 目标襁褓动物 目标常乐节点',
+    '开局招募顺位 使用密文板 检测坍缩范式 范式检测防漏 投资固定种子 刷等级路线 准备局动物 目标开局奖励 凹第一层实托邦 奖励选择优先级 准备局职业组 准备局招募顺位 准备局分队',
     '关卡 导能单元 导入作业 作业信息 普通自动战斗 悖论模拟 ParadoxCopilot Copilot 作业编号 作业队列 突袭 自动编队 助战',
     '沙洲遗闻 重启锚点 支援道具名称 增加方式 单次最大组装轮数',
     '超时时长 选择路线'
@@ -178,15 +187,26 @@ export function createTaskWorkflow(config) {
   )
   const editors = editorDefinitions
     .filter(([id]) => !hiddenEditors.has(id))
-    .map(([id, title, description]) => ({
+    .map(([id, sourceTitle, sourceDescription]) => ({
       id,
-      title,
+      title: t(`tasks.editors.${id}.title`),
       description:
-        config.manager_owned_device && id === 'maa' ? '设置 MAA 恢复主题与目标主题。' : description,
-      searchKeywords:
+        config.manager_owned_device && id === 'maa'
+          ? t('tasks.managedMaaDescription')
+          : t(`tasks.editors.${id}.description`),
+      searchKeywords: [
+        sourceTitle,
+        config.manager_owned_device && id === 'maa'
+          ? '设置 MAA 恢复主题与目标主题。'
+          : sourceDescription,
         config.manager_owned_device && id === 'maa'
           ? 'MAA 恢复主题 目标主题'
-          : editorKeywords[id] || ''
+          : editorKeywords[id] || '',
+        t(`tasks.editors.${id}.title`, {}, { locale: 'en-US' }),
+        config.manager_owned_device && id === 'maa'
+          ? t('tasks.managedMaaDescription', {}, { locale: 'en-US' })
+          : t(`tasks.editors.${id}.description`, {}, { locale: 'en-US' })
+      ].join(' ')
     }))
   const rewardSelection = getMaaRewardSelection(config)
   const tasks = taskDefinitions
@@ -224,7 +244,12 @@ export function createTaskWorkflow(config) {
       return [task.id, true]
     })
   )
-  return { groups, tasks, editors, statuses }
+  return {
+    groups: groups.map((group) => ({ ...group, label: t(`tasks.groups.${group.id}`) })),
+    tasks,
+    editors,
+    statuses
+  }
 }
 
 export function setTaskEnabled(config, id, value) {

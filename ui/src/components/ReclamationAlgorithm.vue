@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { inject } from 'vue'
 
 const mobile = inject('mobile')
@@ -18,9 +21,9 @@ const { ra_timeout } = storeToRefs(store)
     label-width="72"
     label-align="left"
   >
-    <n-form-item label="超时时长">
+    <n-form-item :label="t('tasks.timeout')">
       <mower-input-number v-model:value="ra_timeout">
-        <template #suffix>秒</template>
+        <template #suffix>{{ t('tasks.seconds') }}</template>
       </mower-input-number>
     </n-form-item>
   </n-form>

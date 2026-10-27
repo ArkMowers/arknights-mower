@@ -1,9 +1,69 @@
+import { i18n } from '@/i18n'
 import { computed, ref, shallowRef } from 'vue'
 import { createSaveCoordinator } from '@/utils/configPersistence'
 import { reloadImportedConfiguration } from '@/utils/configBackup'
 
 export const CONFIG_GENERATION_HEADER = 'X-Mower-Config-Generation'
 export const configProfilesKey = Symbol('config-profiles')
+
+const profileSectionGroups = {
+  connection: ['device', 'runtime'],
+  tasks: [
+    'base',
+    'runorder',
+    'drone',
+    'clue',
+    'trust',
+    'daily',
+    'recruit',
+    'credit',
+    'weekly_plan',
+    'maa',
+    'long',
+    'workshop'
+  ],
+  plans: ['normal_plan', 'rescue_plan'],
+  mower: ['accounts', 'notifications', 'assistant', 'appearance', 'maintenance', 'other_settings'],
+  data: ['inventory', 'operators', 'growth', 'mastery', 'mastery_routes', 'recycling'],
+  history: [
+    'mood_history',
+    'trading_history',
+    'operation_history',
+    'recycling_history',
+    'report_history',
+    'skland_history',
+    'growth_history',
+    'other_history'
+  ]
+}
+const profileGroupSections = new Map(
+  Object.entries(profileSectionGroups).flatMap(([section, keys]) =>
+    keys.map((key) => [key, section])
+  )
+)
+
+function profileSectionKey(section) {
+  return (
+    section.key ??
+    section.children.map((group) => profileGroupSections.get(group.key)).find(Boolean)
+  )
+}
+
+export function profileSectionTitle(section) {
+  if (i18n.global.locale.value === 'zh-CN') return section.label
+  const sectionKey = profileSectionKey(section)
+  if (!Object.hasOwn(profileSectionGroups, sectionKey)) return section.label
+  const key = `settings.profileCatalog.section${sectionKey[0].toUpperCase()}${sectionKey.slice(1)}`
+  return i18n.global.te(key) ? i18n.global.t(key) : section.label
+}
+
+export function profileGroupText(group, field) {
+  if (i18n.global.locale.value === 'zh-CN') return group[field]
+  if (!profileGroupSections.has(group.key)) return group[field]
+  const suffix = field === 'description' ? 'Description' : 'Label'
+  const key = `settings.profileCatalog.${group.key}${suffix}`
+  return i18n.global.te(key) ? i18n.global.t(key) : group[field]
+}
 
 export async function downloadConfiguration(axios, url) {
   const { data } = await axios.get(url, { responseType: 'blob' })
@@ -30,7 +90,7 @@ async function errorText(error) {
       detail = null
     }
   }
-  return detail?.message || error.message || '档案操作失败，请重试'
+  return detail?.message || error.message || i18n.global.t('settings.profileDialog.failed')
 }
 
 export function createConfigProfiles({
@@ -62,11 +122,15 @@ export function createConfigProfiles({
   const sections = computed(() => {
     const result = new Map()
     for (const group of groups.value) {
-      const label = group.section || '其他'
+      const label = group.section || i18n.global.t('settings.profileDialog.other')
       if (!result.has(label)) result.set(label, [])
       result.get(label).push(group)
     }
-    return [...result].map(([label, children]) => ({ label, children }))
+    return [...result].map(([label, children]) => {
+      const section = { label, children }
+      const key = profileSectionKey(section) ?? `extension:${label}`
+      return { key, label: profileSectionTitle({ ...section, key }), children }
+    })
   })
   const readDisabled = computed(
     () =>
@@ -90,7 +154,7 @@ export function createConfigProfiles({
     if (failure.response?.data instanceof Blob) await errorText(failure)
     const data = failure.response?.data
     if ((data?.code || data?.error) !== 'configuration_changed') return false
-    error.value = data.message || '当前档案已变更，请重新加载后继续。'
+    error.value = data.message || i18n.global.t('settings.profileDialog.changed')
     freeze()
     return true
   }
@@ -107,7 +171,7 @@ export function createConfigProfiles({
         !Array.isArray(data.groups) ||
         !['string', 'number'].includes(typeof data.generation)
       ) {
-        throw new Error(data.message || '档案列表格式不正确')
+        throw new Error(data.message || i18n.global.t('settings.profileDialog.invalidList'))
       }
       state.value = data
       if (bootstrap && generation === null) {
@@ -115,7 +179,7 @@ export function createConfigProfiles({
         axios.defaults.headers.common[CONFIG_GENERATION_HEADER] = generation
       } else if (generation !== null && String(data.generation) !== generation) {
         freeze()
-        error.value = '当前档案已在其他页面切换，请重新加载后继续。'
+        error.value = i18n.global.t('settings.profileDialog.changedElsewhere')
       }
       return true
     } catch (failure) {
@@ -138,7 +202,11 @@ export function createConfigProfiles({
     error.value = ''
     message.value = ''
     name.value =
-      action === 'rename' ? profile.name : action === 'copy' ? `${profile.name} 副本` : ''
+      action === 'rename'
+        ? profile.name
+        : action === 'copy'
+          ? i18n.global.t('settings.profileDialog.copyName', { value0: profile.name })
+          : ''
     selected.value = action === 'copy' ? groups.value.map((group) => group.key) : []
     file.value = null
     dialog.value = { action, target: profile.id, targetName: profile.name }
@@ -160,11 +228,11 @@ export function createConfigProfiles({
     file.value = null
     error.value = ''
     if (chosen.size > 16 * 1024 * 1024) {
-      error.value = '备份文件不能超过 16 MB'
+      error.value = i18n.global.t('settings.profileDialog.tooLarge')
       return
     }
     if (!/\.zip$/i.test(chosen.name)) {
-      error.value = '请选择包含 config 文件夹的 ZIP 备份'
+      error.value = i18n.global.t('settings.profileDialog.missingConfig')
       return
     }
     file.value = chosen
@@ -173,9 +241,14 @@ export function createConfigProfiles({
 
   function reloadPage() {
     try {
-      reload({ message: message.value || '已重新加载档案。', recovery_path: '' })
+      reload({
+        message: message.value || i18n.global.t('settings.profileDialog.reloaded'),
+        recovery_path: ''
+      })
     } catch (failure) {
-      error.value = `页面未能重新加载：${failure.message || '请重试'}`
+      error.value = i18n.global.t('settings.profileDialog.reloadFailed', {
+        value0: failure.message || i18n.global.t('settings.profileDialog.retry')
+      })
     }
   }
 
@@ -184,11 +257,11 @@ export function createConfigProfiles({
     const operation = { ...dialog.value }
     const profileName = name.value.trim()
     if (operation.action !== 'activate' && !profileName) {
-      error.value = '请填写档案名称'
+      error.value = i18n.global.t('settings.profileDialog.enterName')
       return
     }
     if (operation.action === 'import' && !file.value) {
-      error.value = '请选择 ZIP 档案备份'
+      error.value = i18n.global.t('settings.profileDialog.chooseProfileBackup')
       return
     }
     const selection = [...selected.value]
@@ -198,8 +271,9 @@ export function createConfigProfiles({
     try {
       await saves.pauseAndDrain()
       await beforeChange()
-      if (stale.value) throw new Error('当前档案已变更，请重新加载后继续。')
-      if (blocked() || state.value.busy) throw new Error('请先停止任务并等待设备或更新操作结束')
+      if (stale.value) throw new Error(i18n.global.t('settings.profileDialog.changed'))
+      if (blocked() || state.value.busy)
+        throw new Error(i18n.global.t('settings.profileDialog.stopFirst'))
       const options = {
         headers: { 'X-Mower-Settings': '1', [CONFIG_GENERATION_HEADER]: generation }
       }
@@ -228,14 +302,14 @@ export function createConfigProfiles({
       }
       if (!response.data.ok) {
         attempted = false
-        throw new Error(response.data.message || '档案操作未完成')
+        throw new Error(response.data.message || i18n.global.t('settings.profileDialog.incomplete'))
       }
       state.value = { ...state.value, ...response.data }
       dialog.value = null
       if (operation.action === 'rename') {
         saves.resume()
       } else {
-        message.value = '档案已切换，重新加载后可继续编辑。'
+        message.value = i18n.global.t('settings.profileDialog.switchedReload')
         pendingReload.value = true
         reloadPage()
       }
@@ -247,7 +321,7 @@ export function createConfigProfiles({
         saves.resume()
       } else {
         freeze()
-        error.value += '。操作结果尚未确认，自动保存已暂停，请检查当前档案或重新加载。'
+        error.value += i18n.global.t('settings.profileDialog.uncertain')
       }
     } finally {
       busy.value = false

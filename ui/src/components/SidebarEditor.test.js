@@ -4,6 +4,7 @@ import { renderToString } from 'vue/server-renderer'
 import SidebarEditor from './SidebarEditor.vue'
 import SidebarCustomize from './SidebarCustomize.vue'
 import { createSidebarPreferences } from '@/composables/sidebarPreferences'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({ preferences: null }))
 vi.mock('@/composables/sidebarPreferences', async (original) => ({
@@ -50,7 +51,31 @@ describe('sidebar editing window', () => {
     scope = effectScope()
     component = scope.run(() => SidebarEditor.setup(props, { expose: vi.fn(), emit }))
   })
-  afterEach(() => scope.stop())
+  afterEach(() => {
+    scope.stop()
+    i18n.global.locale.value = 'zh-CN'
+  })
+
+  it('updates built-in labels and current validation while preserving custom group names and drafts', async () => {
+    const customKey = state.preferences.addGroup('我的分组')
+    const original = JSON.stringify(state.preferences.state.value)
+    component.startNaming({ action: 'rename-group', groupKey: customKey })
+    component.groupDraft.value = '  '
+    component.saveName()
+    const chineseError = component.nameError.value
+    component.groupDraft.value = '还没有保存的名称'
+    i18n.global.locale.value = 'en-US'
+    expect(component.nameError.value).not.toBe(chineseError)
+    expect(component.groups.value.find((group) => group.key === customKey).title).toBe('我的分组')
+    expect(
+      component.groups.value
+        .find((group) => group.key === 'daily')
+        .items.find((item) => item.key === 'log').label
+    ).toBe('Logs')
+    expect(component.groupDraft.value).toBe('还没有保存的名称')
+    expect(JSON.stringify(state.preferences.state.value)).toBe(original)
+    expect(await renderToString(createSSRApp(SidebarEditor, props))).toContain('Edit sidebar')
+  })
 
   it('keeps adding pages and creating groups available after every group is dissolved', async () => {
     for (const group of [...state.preferences.state.value.groups])

@@ -1,0 +1,5256 @@
+{
+  "revision": "a6d4731c10edc58a70ee71b0b77b9f687af13d59",
+  "modules": {
+    "uniequip_001_mgllan": {
+      "zh-CN": "麦哲伦证章",
+      "en-US": "Magallan's Badge",
+      "ja-JP": "マゼランの記章",
+      "zh-TW": "麥哲倫證章"
+    },
+    "uniequip_002_mgllan": {
+      "zh-CN": "专业无人机操作模块",
+      "en-US": "Drone Control Module.P",
+      "ja-JP": "ドローン操作専門モジュール",
+      "zh-TW": "專業無人機操作模組"
+    },
+    "uniequip_001_folivo": {
+      "zh-CN": "稀音证章",
+      "en-US": "Scene's Badge",
+      "ja-JP": "シーンの記章",
+      "zh-TW": "稀音證章"
+    },
+    "uniequip_002_folivo": {
+      "zh-CN": "专业级改良镜头",
+      "en-US": "Improved Lens.P",
+      "ja-JP": "プロ級改良レンズ",
+      "zh-TW": "專業級改良鏡頭"
+    },
+    "uniequip_001_otter": {
+      "zh-CN": "梅尔证章",
+      "en-US": "Mayer's Badge",
+      "ja-JP": "メイヤーの記章",
+      "zh-TW": "梅爾證章"
+    },
+    "uniequip_002_otter": {
+      "zh-CN": "咪波控制终端XP",
+      "en-US": "'Meeboo' Control Terminal XP",
+      "ja-JP": "ミーボコントロール端末XP",
+      "zh-TW": "咪波控制終端XP"
+    },
+    "uniequip_001_deepcl": {
+      "zh-CN": "深海色证章",
+      "en-US": "Deepcolor's Badge",
+      "ja-JP": "ディピカの記章",
+      "zh-TW": "深海色證章"
+    },
+    "uniequip_002_deepcl": {
+      "zh-CN": "诡异的调色盘",
+      "en-US": "Weird Palette",
+      "ja-JP": "冒涜的なパレット",
+      "zh-TW": "詭異的調色盤"
+    },
+    "uniequip_001_pallas": {
+      "zh-CN": "帕拉斯证章",
+      "en-US": "Pallas's Badge",
+      "ja-JP": "パラスの記章",
+      "zh-TW": "帕拉斯證章"
+    },
+    "uniequip_002_pallas": {
+      "zh-CN": "“故乡的山岩”",
+      "en-US": "'Ούρος'",
+      "ja-JP": "「故郷の山岩」",
+      "zh-TW": "“故鄉的山岩”"
+    },
+    "uniequip_001_sophia": {
+      "zh-CN": "鞭刃证章",
+      "en-US": "Whislash's Badge",
+      "ja-JP": "ウィスラッシュの記章",
+      "zh-TW": "鞭刃證章"
+    },
+    "uniequip_002_sophia": {
+      "zh-CN": "加长鞭刃丝线",
+      "en-US": "Whipsword Wire.L",
+      "ja-JP": "鞭刃延長ワイヤー",
+      "zh-TW": "加長鞭刃絲線"
+    },
+    "uniequip_001_swire": {
+      "zh-CN": "诗怀雅证章",
+      "en-US": "Swire's Badge",
+      "ja-JP": "スワイヤーの記章",
+      "zh-TW": "詩懷雅證章"
+    },
+    "uniequip_002_swire": {
+      "zh-CN": "防身口红",
+      "en-US": "Self-defense Lipstick",
+      "ja-JP": "防犯ルージュ",
+      "zh-TW": "防身口紅"
+    },
+    "uniequip_001_doberm": {
+      "zh-CN": "杜宾证章",
+      "en-US": "Dobermann's Badge",
+      "ja-JP": "ドーベルマンの記章",
+      "zh-TW": "杜賓證章"
+    },
+    "uniequip_002_doberm": {
+      "zh-CN": "军用望远镜",
+      "en-US": "Military Telescope",
+      "ja-JP": "軍用望遠鏡",
+      "zh-TW": "軍用望遠鏡"
+    },
+    "uniequip_001_fartth": {
+      "zh-CN": "远牙证章",
+      "en-US": "Fartooth's Badge",
+      "ja-JP": "ファートゥースの記章",
+      "zh-TW": "遠牙證章"
+    },
+    "uniequip_002_fartth": {
+      "zh-CN": "首战支援套组",
+      "en-US": "First-show Support Set",
+      "ja-JP": "デビュー戦サポートセット",
+      "zh-TW": "首戰支援套組"
+    },
+    "uniequip_001_milu": {
+      "zh-CN": "守林人证章",
+      "en-US": "Firewatch's Badge",
+      "ja-JP": "ファイヤーウォッチの記章",
+      "zh-TW": "守林人證章"
+    },
+    "uniequip_002_milu": {
+      "zh-CN": "野战狙击套装",
+      "en-US": "Field Sniper Equipment",
+      "ja-JP": "野戦用狙撃装備",
+      "zh-TW": "野戰狙擊套裝"
+    },
+    "uniequip_001_cuttle": {
+      "zh-CN": "安哲拉证章",
+      "en-US": "Andreana's Badge",
+      "ja-JP": "アンドレアナの記章",
+      "zh-TW": "安哲拉證章"
+    },
+    "uniequip_002_cuttle": {
+      "zh-CN": "枪支调试工具组",
+      "en-US": "Gunsmithing Toolkit",
+      "ja-JP": "銃器整備用工具箱",
+      "zh-TW": "槍支調試工具組"
+    },
+    "uniequip_001_glaze": {
+      "zh-CN": "安比尔证章",
+      "en-US": "Ambriel's Badge",
+      "ja-JP": "アンブリエルの記章",
+      "zh-TW": "安比爾證章"
+    },
+    "uniequip_002_glaze": {
+      "zh-CN": "便携雷达的辅助器材",
+      "en-US": "Portable Radar Equipment",
+      "ja-JP": "レーダー補助機材",
+      "zh-TW": "便攜雷達的輔助器材"
+    },
+    "uniequip_001_cgbird": {
+      "zh-CN": "夜莺证章",
+      "en-US": "Nightingale's Badge",
+      "ja-JP": "ナイチンゲールの記章",
+      "zh-TW": "夜鶯證章"
+    },
+    "uniequip_002_cgbird": {
+      "zh-CN": "“封闭的希望”",
+      "en-US": "'Closed Hope'",
+      "ja-JP": "「籠の中の希望」",
+      "zh-TW": "“封閉的希望”"
+    },
+    "uniequip_001_plosis": {
+      "zh-CN": "白面鸮证章",
+      "en-US": "Ptilopsis's Badge",
+      "ja-JP": "フィリオプシスの記章",
+      "zh-TW": "白面鴞證章"
+    },
+    "uniequip_002_plosis": {
+      "zh-CN": "医疗环境分析装置",
+      "en-US": "Medic Environment Analyze System",
+      "ja-JP": "医療環境分析装置",
+      "zh-TW": "醫療環境分析裝置"
+    },
+    "uniequip_001_breeze": {
+      "zh-CN": "微风证章",
+      "en-US": "Breeze's Badge",
+      "ja-JP": "ブリーズの記章",
+      "zh-TW": "微風證章"
+    },
+    "uniequip_002_breeze": {
+      "zh-CN": "外科医疗套组",
+      "en-US": "Surgical Instrument Kit",
+      "ja-JP": "外科医療キット",
+      "zh-TW": "外科醫療套組"
+    },
+    "uniequip_001_flower": {
+      "zh-CN": "调香师证章",
+      "en-US": "Perfumer's Badge",
+      "ja-JP": "パフューマーの記章",
+      "zh-TW": "調香師證章"
+    },
+    "uniequip_002_flower": {
+      "zh-CN": "“爱琴之吻”",
+      "en-US": "'Aegean's Kiss'",
+      "ja-JP": "「エーゲの口づけ」",
+      "zh-TW": "“愛琴之吻”"
+    },
+    "uniequip_001_phatom": {
+      "zh-CN": "傀影证章",
+      "en-US": "Phantom's Badge",
+      "ja-JP": "ファントムの記章",
+      "zh-TW": "傀影證章"
+    },
+    "uniequip_002_phatom": {
+      "zh-CN": "克里斯汀小姐的毛毡",
+      "en-US": "Miss Christine's Felt",
+      "ja-JP": "レディのフェルト細工",
+      "zh-TW": "克里斯汀小姐的毛氈"
+    },
+    "uniequip_001_kafka": {
+      "zh-CN": "卡夫卡证章",
+      "en-US": "Kafka's Badge",
+      "ja-JP": "カフカの記章",
+      "zh-TW": "卡夫卡證章"
+    },
+    "uniequip_002_kafka": {
+      "zh-CN": "魔方挂坠",
+      "en-US": "Rubik's Cube Pendant",
+      "ja-JP": "キューブ型ペンダント",
+      "zh-TW": "魔方掛墜"
+    },
+    "uniequip_001_red": {
+      "zh-CN": "红证章",
+      "en-US": "Projekt Red's Badge",
+      "ja-JP": "レッドの記章",
+      "zh-TW": "紅證章"
+    },
+    "uniequip_002_red": {
+      "zh-CN": "神秘的道具包",
+      "en-US": "Mystery Prop Pack",
+      "ja-JP": "謎多き戦術バッグ",
+      "zh-TW": "神秘的道具包"
+    },
+    "uniequip_001_waaifu": {
+      "zh-CN": "槐琥证章",
+      "en-US": "Waai Fu's Badge",
+      "ja-JP": "ワイフーの記章",
+      "zh-TW": "槐琥證章"
+    },
+    "uniequip_002_waaifu": {
+      "zh-CN": "红眉咏春拳谱",
+      "en-US": "The Classic of Hung Mei Wing Chun",
+      "ja-JP": "紅眉詠春拳譜",
+      "zh-TW": "紅眉詠春拳譜"
+    },
+    "uniequip_001_gravel": {
+      "zh-CN": "砾证章",
+      "en-US": "Gravel's Badge",
+      "ja-JP": "グラベルの記章",
+      "zh-TW": "礫證章"
+    },
+    "uniequip_002_gravel": {
+      "zh-CN": "隐秘行动工具包",
+      "en-US": "Covert Action Toolkit",
+      "ja-JP": "隠密行動用工具バッグ",
+      "zh-TW": "隱秘行動工具包"
+    },
+    "uniequip_001_pasngr": {
+      "zh-CN": "异客证章",
+      "en-US": "Passenger's Badge",
+      "ja-JP": "パッセンジャーの記章",
+      "zh-TW": "異客證章"
+    },
+    "uniequip_002_pasngr": {
+      "zh-CN": "电磁调节器",
+      "en-US": "Electromagnetic Regulator",
+      "ja-JP": "電磁調節器",
+      "zh-TW": "電磁調節器"
+    },
+    "uniequip_001_leizi": {
+      "zh-CN": "惊蛰证章",
+      "en-US": "Leizi's Badge",
+      "ja-JP": "レイズの記章",
+      "zh-TW": "驚蟄證章"
+    },
+    "uniequip_002_leizi": {
+      "zh-CN": "“天地通明”",
+      "en-US": "'All the Thunderlight'",
+      "ja-JP": "「天地通明」",
+      "zh-TW": "“天地通明”"
+    },
+    "uniequip_001_pudd": {
+      "zh-CN": "布丁证章",
+      "en-US": "Pudding's Badge",
+      "ja-JP": "プリンの記章",
+      "zh-TW": "布丁證章"
+    },
+    "uniequip_002_pudd": {
+      "zh-CN": "便携测电设备",
+      "en-US": "Portable Electrical Measuring Equipment",
+      "ja-JP": "携帯式テスター",
+      "zh-TW": "便攜測電設備"
+    },
+    "uniequip_001_chen": {
+      "zh-CN": "陈证章",
+      "en-US": "Ch’en’s Badge",
+      "ja-JP": "チェンの記章",
+      "zh-TW": "陳證章"
+    },
+    "uniequip_002_chen": {
+      "zh-CN": "罗德岛制式剑",
+      "en-US": "Rhodes Island Standard Combat Sword",
+      "ja-JP": "ロドス制式刀剣",
+      "zh-TW": "羅德島制式劍"
+    },
+    "uniequip_001_tachak": {
+      "zh-CN": "战车证章",
+      "en-US": "Tachanka’s Badge",
+      "ja-JP": "Tachankaの記章",
+      "zh-TW": "TACHANKA證章"
+    },
+    "uniequip_002_tachak": {
+      "zh-CN": "轻机枪枪架",
+      "en-US": "Machinegun Rack",
+      "ja-JP": "LMG用銃架",
+      "zh-TW": "輕機槍槍架"
+    },
+    "uniequip_001_bibeak": {
+      "zh-CN": "柏喙证章",
+      "en-US": "Bibeak’s Badge",
+      "ja-JP": "バイビークの記章",
+      "zh-TW": "柏喙證章"
+    },
+    "uniequip_002_bibeak": {
+      "zh-CN": "做工优良的衬衣",
+      "en-US": "A Well-Made Shirt",
+      "ja-JP": "仕立ての良いシャツ",
+      "zh-TW": "做工優良的襯衣"
+    },
+    "uniequip_001_cutter": {
+      "zh-CN": "刻刀证章",
+      "en-US": "Cutter’s Badge",
+      "ja-JP": "カッターの記章",
+      "zh-TW": "刻刀證章"
+    },
+    "uniequip_002_cutter": {
+      "zh-CN": "可替换刀具套装",
+      "en-US": "Replaceable Tool Set",
+      "ja-JP": "刃部交換式刀剣セット",
+      "zh-TW": "可替換刀具套裝"
+    },
+    "uniequip_001_bpipe": {
+      "zh-CN": "风笛证章",
+      "en-US": "Bagpipe’s Badge",
+      "ja-JP": "バグパイプの記章",
+      "zh-TW": "風笛證章"
+    },
+    "uniequip_002_bpipe": {
+      "zh-CN": "破城矛弹夹",
+      "en-US": "Piledriver Spear Magazine",
+      "ja-JP": "破城矛マガジン",
+      "zh-TW": "破城矛彈夾"
+    },
+    "uniequip_001_grani": {
+      "zh-CN": "格拉尼证章",
+      "en-US": "Grani’s Badge",
+      "ja-JP": "グラニの記章",
+      "zh-TW": "格拉尼證章"
+    },
+    "uniequip_002_grani": {
+      "zh-CN": "骑警套装",
+      "en-US": "Cavalry Policeman Suit",
+      "ja-JP": "騎馬警察装備セット",
+      "zh-TW": "騎警套裝"
+    },
+    "uniequip_001_wildmn": {
+      "zh-CN": "野鬃证章",
+      "en-US": "Wild Mane's Badge",
+      "ja-JP": "ワイルドメインの記章",
+      "zh-TW": "野鬃證章"
+    },
+    "uniequip_002_wildmn": {
+      "zh-CN": "长枪替补套装",
+      "en-US": "Spear Replacement Suit",
+      "ja-JP": "ランススペアセット",
+      "zh-TW": "長槍替補套裝"
+    },
+    "uniequip_001_sddrag": {
+      "zh-CN": "苇草证章",
+      "en-US": "Reed’s Badge",
+      "ja-JP": "リードの記章",
+      "zh-TW": "葦草證章"
+    },
+    "uniequip_002_sddrag": {
+      "zh-CN": "枪刃清洁套装",
+      "en-US": "Spear Clean Suit",
+      "ja-JP": "槍用クリーニングセット",
+      "zh-TW": "槍刃清潔套裝"
+    },
+    "uniequip_001_vigna": {
+      "zh-CN": "红豆证章",
+      "en-US": "Vigna’s Badge",
+      "ja-JP": "ヴィグナの記章",
+      "zh-TW": "紅豆證章"
+    },
+    "uniequip_002_vigna": {
+      "zh-CN": "伟大的摇滚",
+      "en-US": "The Greatrock",
+      "ja-JP": "ザ・グレイトロック",
+      "zh-TW": "偉大的搖滾"
+    },
+    "uniequip_001_nearl2": {
+      "zh-CN": "耀骑士临光证章",
+      "en-US": "Nearl the Radiant Knight’s Badge",
+      "ja-JP": "耀騎士ニアールの記章",
+      "zh-TW": "耀騎士臨光證章"
+    },
+    "uniequip_002_nearl2": {
+      "zh-CN": "耀阳锋刃",
+      "en-US": "Blade of Blazing Sun",
+      "ja-JP": "ブレイジングブレイド",
+      "zh-TW": "耀陽鋒刃"
+    },
+    "uniequip_001_skadi": {
+      "zh-CN": "斯卡蒂证章",
+      "en-US": "Skadi’s Badge",
+      "ja-JP": "スカジの記章",
+      "zh-TW": "斯卡蒂證章"
+    },
+    "uniequip_002_skadi": {
+      "zh-CN": "潮湿的剑袋",
+      "en-US": "Moist Sword Bag",
+      "ja-JP": "湿ったソードバッグ",
+      "zh-TW": "潮濕的劍袋"
+    },
+    "uniequip_001_flameb": {
+      "zh-CN": "炎客证章",
+      "en-US": "Flamebringer's Badge",
+      "ja-JP": "エンカクの記章",
+      "zh-TW": "炎客證章"
+    },
+    "uniequip_002_flameb": {
+      "zh-CN": "锈损的断刀",
+      "en-US": "Rusty Broken Blade",
+      "ja-JP": "折れて錆び付いた刀",
+      "zh-TW": "鏽損的斷刀"
+    },
+    "uniequip_001_franka": {
+      "zh-CN": "芙兰卡证章",
+      "en-US": "Franka's Badge",
+      "ja-JP": "フランカの記章",
+      "zh-TW": "芙蘭卡證章"
+    },
+    "uniequip_002_franka": {
+      "zh-CN": "尖端铝热单元",
+      "en-US": "Cutting-edge Thermite Unit",
+      "ja-JP": "刃先テルミットユニット",
+      "zh-TW": "尖端鋁熱單元"
+    },
+    "uniequip_001_peacok": {
+      "zh-CN": "断罪者证章",
+      "en-US": "Conviction’s Badge",
+      "ja-JP": "コンビクションの記章",
+      "zh-TW": "斷罪者證章"
+    },
+    "uniequip_002_peacok": {
+      "zh-CN": "断罪之拳",
+      "en-US": "The Fist of Conviction",
+      "ja-JP": "断罪の拳",
+      "zh-TW": "斷罪之拳"
+    },
+    "uniequip_001_gyuki": {
+      "zh-CN": "缠丸证章",
+      "en-US": "Matoimaru's Badge",
+      "ja-JP": "マトイマルの記章",
+      "zh-TW": "纏丸證章"
+    },
+    "uniequip_002_gyuki": {
+      "zh-CN": "断竹插花作品",
+      "en-US": "Bamboo Ikebana",
+      "ja-JP": "切竹艶めく生け花",
+      "zh-TW": "斷竹插花作品"
+    },
+    "uniequip_001_nothin": {
+      "zh-CN": "乌有证章",
+      "en-US": "Mr. Nothing’s Badge",
+      "ja-JP": "ウユウの記章",
+      "zh-TW": "烏有證章"
+    },
+    "uniequip_002_nothin": {
+      "zh-CN": "“檐下听雨”",
+      "en-US": "'Shelter from the Rain'",
+      "ja-JP": "「檐下聴雨」",
+      "zh-TW": "“簷下聽雨”"
+    },
+    "uniequip_001_strong": {
+      "zh-CN": "孑证章",
+      "en-US": "Jaye’s Badge",
+      "ja-JP": "ジェイの記章",
+      "zh-TW": "孑證章"
+    },
+    "uniequip_002_strong": {
+      "zh-CN": "精钢刀具套组",
+      "en-US": "Steel Tool Set",
+      "ja-JP": "無骨な包丁セット",
+      "zh-TW": "精鋼刀具套組"
+    },
+    "uniequip_001_lmlee": {
+      "zh-CN": "老鲤证章",
+      "en-US": "Lee’s Badge",
+      "ja-JP": "リーの記章",
+      "zh-TW": "老鯉證章"
+    },
+    "uniequip_002_lmlee": {
+      "zh-CN": "“无问吉凶”",
+      "en-US": "'Wandering'",
+      "ja-JP": "「無問吉凶」",
+      "zh-TW": "“無問吉凶”"
+    },
+    "uniequip_001_ling": {
+      "zh-CN": "令证章",
+      "en-US": "Ling’s Badge",
+      "ja-JP": "リィンの記章",
+      "zh-TW": "令證章"
+    },
+    "uniequip_002_ling": {
+      "zh-CN": "诗短梦长",
+      "en-US": "Fond Dream with Poetry",
+      "ja-JP": "詩は短く、夢は長く",
+      "zh-TW": "詩短夢長"
+    },
+    "uniequip_001_cqbw": {
+      "zh-CN": "W证章",
+      "en-US": "W's Badge",
+      "ja-JP": "Wの記章",
+      "zh-TW": "W證章"
+    },
+    "uniequip_002_cqbw": {
+      "zh-CN": "佣兵的行囊",
+      "en-US": "Mercenary's Bag",
+      "ja-JP": "傭兵の鞄",
+      "zh-TW": "傭兵的行囊"
+    },
+    "uniequip_001_phenxi": {
+      "zh-CN": "菲亚梅塔证章",
+      "en-US": "Fiammetta's Badge",
+      "ja-JP": "フィアメッタの記章",
+      "zh-TW": "菲亞梅塔證章"
+    },
+    "uniequip_002_phenxi": {
+      "zh-CN": "“律外”特种弹药配给组",
+      "en-US": "'Out-Law' Special Ammunition Surplus",
+      "ja-JP": "「律外」特殊弾薬配給セット",
+      "zh-TW": "“律外”特種彈藥配給組"
+    },
+    "uniequip_001_meteo": {
+      "zh-CN": "陨星证章",
+      "en-US": "Meteorite's Badge",
+      "ja-JP": "メテオリーテの記章",
+      "zh-TW": "隕星證章"
+    },
+    "uniequip_002_meteo": {
+      "zh-CN": "无名的身份牌",
+      "en-US": "Tag of Nameless",
+      "ja-JP": "名無しの認識票",
+      "zh-TW": "無名的身份牌"
+    },
+    "uniequip_001_sesa": {
+      "zh-CN": "慑砂证章",
+      "en-US": "Sesa's Badge",
+      "ja-JP": "シェーシャの記章",
+      "zh-TW": "懾砂證章"
+    },
+    "uniequip_002_sesa": {
+      "zh-CN": "“灵魂共鸣”",
+      "en-US": "'Soul Resonance'",
+      "ja-JP": "「魂の共鳴」",
+      "zh-TW": "“靈魂共鳴”"
+    },
+    "uniequip_001_yuki": {
+      "zh-CN": "白雪证章",
+      "en-US": "Shirayuki's Badge",
+      "ja-JP": "シラユキの記章",
+      "zh-TW": "白雪證章"
+    },
+    "uniequip_002_yuki": {
+      "zh-CN": "手里剑",
+      "en-US": "Shuriken",
+      "ja-JP": "手裏剣",
+      "zh-TW": "手裡劍"
+    },
+    "uniequip_001_dusk": {
+      "zh-CN": "夕证章",
+      "en-US": "Dusk's Badge",
+      "ja-JP": "シーの記章",
+      "zh-TW": "夕證章"
+    },
+    "uniequip_002_dusk": {
+      "zh-CN": "无题长卷",
+      "en-US": "Untitled Scroll",
+      "ja-JP": "無題の巻物",
+      "zh-TW": "無題長卷"
+    },
+    "uniequip_001_mostma": {
+      "zh-CN": "莫斯提马证章",
+      "en-US": "Mostima's Badge",
+      "ja-JP": "モスティマの記章",
+      "zh-TW": "莫斯提馬證章"
+    },
+    "uniequip_002_mostma": {
+      "zh-CN": "锁与匙之家",
+      "en-US": "Home of 'Black Lock' and 'White Key'",
+      "ja-JP": "錠と鍵の家",
+      "zh-TW": "鎖與匙之家"
+    },
+    "uniequip_001_lava2": {
+      "zh-CN": "炎狱炎熔证章",
+      "en-US": "Lava the Purgatory's Badge",
+      "ja-JP": "炎獄ラヴァの記章",
+      "zh-TW": "炎獄炎熔證章"
+    },
+    "uniequip_002_lava2": {
+      "zh-CN": "萨卡兹的刀",
+      "en-US": "Sarkaz's Knife",
+      "ja-JP": "サルカズの短刀",
+      "zh-TW": "薩卡茲的刀"
+    },
+    "uniequip_001_skfire": {
+      "zh-CN": "天火证章",
+      "en-US": "Skyfire's Badge",
+      "ja-JP": "スカイフレアの記章",
+      "zh-TW": "天火證章"
+    },
+    "uniequip_002_skfire": {
+      "zh-CN": "阻燃处理方案",
+      "en-US": "Fire Retardant Treatment",
+      "ja-JP": "防炎処理案",
+      "zh-TW": "阻燃處理方案"
+    },
+    "uniequip_001_lionhd": {
+      "zh-CN": "莱恩哈特证章",
+      "en-US": "Leonhardt's Badge",
+      "ja-JP": "レオンハルトの記章",
+      "zh-TW": "萊恩哈特證章"
+    },
+    "uniequip_002_lionhd": {
+      "zh-CN": "传承与开拓",
+      "en-US": "Inheritance and Development",
+      "ja-JP": "伝承と開拓",
+      "zh-TW": "傳承與開拓"
+    },
+    "uniequip_001_fmout": {
+      "zh-CN": "远山证章",
+      "en-US": "Gitano's Badge",
+      "ja-JP": "ギターノの記章",
+      "zh-TW": "遠山證章"
+    },
+    "uniequip_002_fmout": {
+      "zh-CN": "占卜师旅行套装",
+      "en-US": "Travel Kit for the Fortune-Teller",
+      "ja-JP": "占い師トラベルセット",
+      "zh-TW": "占卜師旅行套裝"
+    },
+    "uniequip_001_greyy": {
+      "zh-CN": "格雷伊证章",
+      "en-US": "Greyy's Badge",
+      "ja-JP": "グレイの記章",
+      "zh-TW": "格雷伊證章"
+    },
+    "uniequip_002_greyy": {
+      "zh-CN": "新的开始",
+      "en-US": "New Beginning",
+      "ja-JP": "新たな始まり",
+      "zh-TW": "新的開始"
+    },
+    "uniequip_001_shwaz": {
+      "zh-CN": "黑证章",
+      "en-US": "Schwarz's Badge",
+      "ja-JP": "シュヴァルツの記章",
+      "zh-TW": "黑證章"
+    },
+    "uniequip_002_shwaz": {
+      "zh-CN": "定制弩配件套装",
+      "en-US": "Customized Crossbow Accessory Suit",
+      "ja-JP": "特注クロスボウ部品セット",
+      "zh-TW": "定製弩配件套裝"
+    },
+    "uniequip_001_prove": {
+      "zh-CN": "普罗旺斯证章",
+      "en-US": "Provence's Badge",
+      "ja-JP": "プロヴァンスの記章",
+      "zh-TW": "普羅旺斯證章"
+    },
+    "uniequip_002_prove": {
+      "zh-CN": "尾巴养护套装",
+      "en-US": "Tail-Care Suit",
+      "ja-JP": "尻尾ケアセット",
+      "zh-TW": "尾巴養護套裝"
+    },
+    "uniequip_001_acdrop": {
+      "zh-CN": "酸糖证章",
+      "en-US": "Aciddrop's Badge",
+      "ja-JP": "アシッドドロップの記章",
+      "zh-TW": "酸糖證章"
+    },
+    "uniequip_002_acdrop": {
+      "zh-CN": "“自由、洋葱圈和我”",
+      "en-US": "'Freedom, Onion Rings, and Me'",
+      "ja-JP": "「自由とオニオンリングとボク」",
+      "zh-TW": "“自由、洋蔥圈和我”"
+    },
+    "uniequip_001_lisa": {
+      "zh-CN": "铃兰证章",
+      "en-US": "Suzuran's Badge",
+      "ja-JP": "スズランの記章",
+      "zh-TW": "鈴蘭證章"
+    },
+    "uniequip_002_lisa": {
+      "zh-CN": "怀中御守",
+      "en-US": "Pocket Omamori",
+      "ja-JP": "懐中の御守り",
+      "zh-TW": "懷中御守"
+    },
+    "uniequip_001_aglina": {
+      "zh-CN": "安洁莉娜证章",
+      "en-US": "Angelina's Badge",
+      "ja-JP": "アンジェリーナの記章",
+      "zh-TW": "安潔莉娜證章"
+    },
+    "uniequip_002_aglina": {
+      "zh-CN": "重力校准模块",
+      "en-US": "Gravity Calibration Module",
+      "ja-JP": "重力校正モジュール",
+      "zh-TW": "重力校準模組"
+    },
+    "uniequip_001_glacus": {
+      "zh-CN": "格劳克斯证章",
+      "en-US": "Glaucus's Badge",
+      "ja-JP": "グラウコスの記章",
+      "zh-TW": "格勞克斯證章"
+    },
+    "uniequip_002_glacus": {
+      "zh-CN": "外骨骼装备",
+      "en-US": "Powered Exoskeleton",
+      "ja-JP": "パワードスーツ",
+      "zh-TW": "外骨骼裝備"
+    },
+    "uniequip_001_glassb": {
+      "zh-CN": "真理证章",
+      "en-US": "Istina's Badge",
+      "ja-JP": "イースチナの記章",
+      "zh-TW": "真理證章"
+    },
+    "uniequip_002_glassb": {
+      "zh-CN": "读书笔记",
+      "en-US": "Reading Notes",
+      "ja-JP": "読書メモ",
+      "zh-TW": "讀書筆記"
+    },
+    "uniequip_001_podego": {
+      "zh-CN": "波登可证章",
+      "en-US": "Podenco's Badge",
+      "ja-JP": "ポデンコの記章",
+      "zh-TW": "波登可證章"
+    },
+    "uniequip_002_podego": {
+      "zh-CN": "“不谢的苗圃”",
+      "en-US": "'Amaranthine Nursery'",
+      "ja-JP": "「枯れない苗圃」",
+      "zh-TW": "“不謝的苗圃”"
+    },
+    "uniequip_001_skgoat": {
+      "zh-CN": "地灵证章",
+      "en-US": "Earthspirit's Badge",
+      "ja-JP": "アーススピリットの記章",
+      "zh-TW": "地靈證章"
+    },
+    "uniequip_002_skgoat": {
+      "zh-CN": "待确认的申请表",
+      "en-US": "Application Forms, To Be Confirmed",
+      "ja-JP": "確認待ちの申請書",
+      "zh-TW": "待確認的申請表"
+    },
+    "uniequip_001_ghost2": {
+      "zh-CN": "归溟幽灵鲨证章",
+      "en-US": "Specter the Unchained's Badge",
+      "ja-JP": "帰溟スペクターの記章",
+      "zh-TW": "歸溟幽靈鯊證章"
+    },
+    "uniequip_002_ghost2": {
+      "zh-CN": "“唱片”收藏箱",
+      "en-US": "'Vinyl Record' Box",
+      "ja-JP": "「レコード」収納箱",
+      "zh-TW": "“唱片”收藏箱"
+    },
+    "uniequip_001_bena": {
+      "zh-CN": "贝娜证章",
+      "en-US": "Bena's Badge",
+      "ja-JP": "ベナの記章",
+      "zh-TW": "貝娜證章"
+    },
+    "uniequip_002_bena": {
+      "zh-CN": "《乔弗瑞古今童话集》精装本",
+      "en-US": "The Jeffreys Collection of Fairytales New and Old, Hardback Edition",
+      "ja-JP": "『ジェフリー今昔童話集』ハードカバー版",
+      "zh-TW": "《喬弗瑞古今童話集》精裝本"
+    },
+    "uniequip_001_kazema": {
+      "zh-CN": "风丸证章",
+      "en-US": "Kazemaru's Badge",
+      "ja-JP": "カゼマルの記章",
+      "zh-TW": "風丸證章"
+    },
+    "uniequip_002_kazema": {
+      "zh-CN": "旧物",
+      "en-US": "An Old Thing",
+      "ja-JP": "お古",
+      "zh-TW": "舊物"
+    },
+    "uniequip_001_lumen": {
+      "zh-CN": "流明证章",
+      "en-US": "Lumen's Badge",
+      "ja-JP": "ルーメンの記章",
+      "zh-TW": "流明證章"
+    },
+    "uniequip_002_lumen": {
+      "zh-CN": "纯铜单筒望远镜",
+      "en-US": "Spyglass",
+      "ja-JP": "純銅製望遠鏡",
+      "zh-TW": "純銅單筒望遠鏡"
+    },
+    "uniequip_001_ceylon": {
+      "zh-CN": "锡兰证章",
+      "en-US": "Ceylon's Badge",
+      "ja-JP": "セイロンの記章",
+      "zh-TW": "錫蘭證章"
+    },
+    "uniequip_002_ceylon": {
+      "zh-CN": "野外考察套装",
+      "en-US": "Field Research Equipment",
+      "ja-JP": "フィールドワークセット",
+      "zh-TW": "野外考察套裝"
+    },
+    "uniequip_001_whispr": {
+      "zh-CN": "絮雨证章",
+      "en-US": "Whisperain's Badge",
+      "ja-JP": "ウィスパーレインの記章",
+      "zh-TW": "絮雨證章"
+    },
+    "uniequip_002_whispr": {
+      "zh-CN": "古朴的急救箱",
+      "en-US": "A Quaint First-Aid Kit",
+      "ja-JP": "使い込まれた救急箱",
+      "zh-TW": "古樸的急救箱"
+    },
+    "uniequip_001_finlpp": {
+      "zh-CN": "清流证章",
+      "en-US": "Purestream's Badge",
+      "ja-JP": "セイリュウの記章",
+      "zh-TW": "清流證章"
+    },
+    "uniequip_002_finlpp": {
+      "zh-CN": "“江河之韵”",
+      "en-US": "'The River's Lingering Charm'",
+      "ja-JP": "「江河の唄」",
+      "zh-TW": "“江河之韻”"
+    },
+    "uniequip_001_zumama": {
+      "zh-CN": "森蚺证章",
+      "en-US": "Eunectes's Badge",
+      "ja-JP": "ユーネクテスの記章",
+      "zh-TW": "森蚺證章"
+    },
+    "uniequip_002_zumama": {
+      "zh-CN": "祖玛玛的工具箱",
+      "en-US": "Zumama's Tool Box",
+      "ja-JP": "ズゥママの工具箱",
+      "zh-TW": "祖瑪瑪的工具箱"
+    },
+    "uniequip_001_aurora": {
+      "zh-CN": "极光证章",
+      "en-US": "Aurora's Badge",
+      "ja-JP": "オーロラの記章",
+      "zh-TW": "極光證章"
+    },
+    "uniequip_002_aurora": {
+      "zh-CN": "盾用摄制模块",
+      "en-US": "Shield Photography Module",
+      "ja-JP": "盾用撮影モジュール",
+      "zh-TW": "盾用攝製模組"
+    },
+    "uniequip_001_irene": {
+      "zh-CN": "艾丽妮证章",
+      "en-US": "Irene's Badge",
+      "ja-JP": "アイリーニの記章",
+      "zh-TW": "艾麗妮證章"
+    },
+    "uniequip_002_irene": {
+      "zh-CN": "厚重的经卷",
+      "en-US": "Liber Sacer",
+      "ja-JP": "分厚い経典",
+      "zh-TW": "厚重的經卷"
+    },
+    "uniequip_001_ebnhlz": {
+      "zh-CN": "黑键证章",
+      "en-US": "Ebenholz's Badge",
+      "ja-JP": "エーベンホルツの記章",
+      "zh-TW": "黑鍵證章"
+    },
+    "uniequip_002_ebnhlz": {
+      "zh-CN": "源石骰子收纳盒",
+      "en-US": "Originium Dice Case",
+      "ja-JP": "源石ダイス収納箱",
+      "zh-TW": "源石骰子收納盒"
+    },
+    "uniequip_001_iris": {
+      "zh-CN": "爱丽丝证章",
+      "en-US": "Iris's Badge",
+      "ja-JP": "アイリスの記章",
+      "zh-TW": "愛麗絲證章"
+    },
+    "uniequip_002_iris": {
+      "zh-CN": "梦之城堡立体书",
+      "en-US": "Castle Pop-Up Book",
+      "ja-JP": "夢のお城の飛び出す絵本",
+      "zh-TW": "夢之城堡立體書"
+    },
+    "uniequip_001_indigo": {
+      "zh-CN": "深靛证章",
+      "en-US": "Indigo's Badge",
+      "ja-JP": "インディゴの記章",
+      "zh-TW": "深靛證章"
+    },
+    "uniequip_002_indigo": {
+      "zh-CN": "法杖保养套装",
+      "en-US": "Staff Maintenance Kit",
+      "ja-JP": "杖のお手入れセット",
+      "zh-TW": "法杖保養套裝"
+    },
+    "uniequip_001_demkni": {
+      "zh-CN": "塞雷娅证章",
+      "en-US": "Saria's Badge",
+      "ja-JP": "サリアの記章",
+      "zh-TW": "塞雷婭證章"
+    },
+    "uniequip_002_demkni": {
+      "zh-CN": "闲置的拳击手套",
+      "en-US": "Unused Boxing Gloves",
+      "ja-JP": "仕舞い込まれたグローブ",
+      "zh-TW": "閒置的拳擊手套"
+    },
+    "uniequip_001_blemsh": {
+      "zh-CN": "瑕光证章",
+      "en-US": "Blemishine's Badge",
+      "ja-JP": "ブレミシャインの記章",
+      "zh-TW": "瑕光證章"
+    },
+    "uniequip_002_blemsh": {
+      "zh-CN": "工匠团的回响",
+      "en-US": "Echo of Craftsman's Guild",
+      "ja-JP": "職人団の槌音",
+      "zh-TW": "工匠團的迴響"
+    },
+    "uniequip_001_nearl": {
+      "zh-CN": "临光证章",
+      "en-US": "Nearl's Badge",
+      "ja-JP": "ニアールの記章",
+      "zh-TW": "臨光證章"
+    },
+    "uniequip_002_nearl": {
+      "zh-CN": "改良骑士盾牌",
+      "en-US": "Improved Knight Shield",
+      "ja-JP": "改良型の騎士用盾",
+      "zh-TW": "改良騎士盾牌"
+    },
+    "uniequip_001_hmau": {
+      "zh-CN": "吽证章",
+      "en-US": "Hung's Badge",
+      "ja-JP": "ウンの記章",
+      "zh-TW": "吽證章"
+    },
+    "uniequip_002_hmau": {
+      "zh-CN": "八点档情景剧录像带",
+      "en-US": "Popular Sitcom Tapes",
+      "ja-JP": "八時台メロドラマのDVD",
+      "zh-TW": "八點檔情景劇錄影帶"
+    },
+    "uniequip_001_sunbr": {
+      "zh-CN": "古米证章",
+      "en-US": "Gummy's Badge",
+      "ja-JP": "グムの記章",
+      "zh-TW": "古米證章"
+    },
+    "uniequip_002_sunbr": {
+      "zh-CN": "蜜糖馅饼礼包",
+      "en-US": "Медовые Пряники",
+      "ja-JP": "はちみつパイの詰め合わせ",
+      "zh-TW": "蜜糖餡餅禮包"
+    },
+    "uniequip_003_pasngr": {
+      "zh-CN": "王权金币",
+      "en-US": "Gold of Crowns",
+      "ja-JP": "王権の金貨",
+      "zh-TW": "王權金幣"
+    },
+    "uniequip_003_skadi": {
+      "zh-CN": "往日残梦",
+      "en-US": "No Ending to This Dream",
+      "ja-JP": "在りし日の夢の名残",
+      "zh-TW": "往日殘夢"
+    },
+    "uniequip_001_jesica": {
+      "zh-CN": "杰西卡证章",
+      "en-US": "Jessica's Badge",
+      "ja-JP": "ジェシカの記章",
+      "zh-TW": "潔西卡證章"
+    },
+    "uniequip_002_jesica": {
+      "zh-CN": "杰西卡的订单",
+      "en-US": "Jessica's Order",
+      "ja-JP": "ジェシカの発注書",
+      "zh-TW": "潔西卡的訂單"
+    },
+    "uniequip_001_shotst": {
+      "zh-CN": "流星证章",
+      "en-US": "Meteor's Badge",
+      "ja-JP": "メテオの記章",
+      "zh-TW": "流星證章"
+    },
+    "uniequip_002_shotst": {
+      "zh-CN": "猎刀",
+      "en-US": "Hunter's Knife",
+      "ja-JP": "ハンティングナイフ",
+      "zh-TW": "獵刀"
+    },
+    "uniequip_001_clour": {
+      "zh-CN": "红云证章",
+      "en-US": "Vermeil's Badge",
+      "ja-JP": "ヴァーミルの記章",
+      "zh-TW": "紅雲證章"
+    },
+    "uniequip_002_clour": {
+      "zh-CN": "“不落”",
+      "en-US": "'Still Alive'",
+      "ja-JP": "「不落」",
+      "zh-TW": "“不落”"
+    },
+    "uniequip_001_mm": {
+      "zh-CN": "梅证章",
+      "en-US": "May's Badge",
+      "ja-JP": "メイの記章",
+      "zh-TW": "梅證章"
+    },
+    "uniequip_002_mm": {
+      "zh-CN": "新手侦探礼包",
+      "en-US": "Novice Detective's Gift Bag",
+      "ja-JP": "新米探偵セット",
+      "zh-TW": "新手偵探禮包"
+    },
+    "uniequip_001_bluep": {
+      "zh-CN": "蓝毒证章",
+      "en-US": "Blue Poison's Badge",
+      "ja-JP": "アズリウスの記章",
+      "zh-TW": "藍毒證章"
+    },
+    "uniequip_002_bluep": {
+      "zh-CN": "标准比色卡",
+      "en-US": "Standard Color Chart",
+      "ja-JP": "標準カラーチャート",
+      "zh-TW": "標準比色卡"
+    },
+    "uniequip_001_platnm": {
+      "zh-CN": "白金证章",
+      "en-US": "Platinum's Badge",
+      "ja-JP": "プラチナの記章",
+      "zh-TW": "白金證章"
+    },
+    "uniequip_002_platnm": {
+      "zh-CN": "独自旅行套装",
+      "en-US": "Solo Travel Kit",
+      "ja-JP": "一人旅セット",
+      "zh-TW": "獨自旅行套裝"
+    },
+    "uniequip_001_swllow": {
+      "zh-CN": "灰喉证章",
+      "en-US": "GreyThroat's Badge",
+      "ja-JP": "グレースロートの記章",
+      "zh-TW": "灰喉證章"
+    },
+    "uniequip_002_swllow": {
+      "zh-CN": "母爱的倒影",
+      "en-US": "Reflection of a Mother's Love",
+      "ja-JP": "母の愛の倒景",
+      "zh-TW": "母愛的倒影"
+    },
+    "uniequip_001_aprl": {
+      "zh-CN": "四月证章",
+      "en-US": "April's Badge",
+      "ja-JP": "エイプリルの記章",
+      "zh-TW": "四月證章"
+    },
+    "uniequip_002_aprl": {
+      "zh-CN": "高保真通讯耳机",
+      "en-US": "Hi-Fi Headset",
+      "ja-JP": "ハイファイヘッドホン",
+      "zh-TW": "高保真通訊耳機"
+    },
+    "uniequip_001_kroos2": {
+      "zh-CN": "寒芒克洛丝证章",
+      "en-US": "Kroos the Keen Glint's Badge",
+      "ja-JP": "寒芒クルースの記章",
+      "zh-TW": "寒芒克洛絲證章"
+    },
+    "uniequip_002_kroos2": {
+      "zh-CN": "真心的话和想冒的险",
+      "en-US": "Truth or Dare",
+      "ja-JP": "真実か挑戦か",
+      "zh-TW": "真心的話和想冒的險"
+    },
+    "uniequip_001_angel": {
+      "zh-CN": "能天使证章",
+      "en-US": "Exusiai's Badge",
+      "ja-JP": "エクシアの記章",
+      "zh-TW": "能天使證章"
+    },
+    "uniequip_002_angel": {
+      "zh-CN": "能天使的杰作",
+      "en-US": "Exusiai's Surprise",
+      "ja-JP": "エクシアの傑作",
+      "zh-TW": "能天使的傑作"
+    },
+    "uniequip_001_archet": {
+      "zh-CN": "空弦证章",
+      "en-US": "Archetto's Badge",
+      "ja-JP": "アルケットの記章",
+      "zh-TW": "空弦證章"
+    },
+    "uniequip_002_archet": {
+      "zh-CN": "“明天的种子”",
+      "en-US": "'Seeds of Tomorrow'",
+      "ja-JP": "「明日の種」",
+      "zh-TW": "“明天的種子”"
+    },
+    "uniequip_001_ash": {
+      "zh-CN": "灰烬证章",
+      "en-US": "Ash's Badge",
+      "ja-JP": "Ashの記章",
+      "zh-TW": "ASH證章"
+    },
+    "uniequip_002_ash": {
+      "zh-CN": "破墙榴弹战术收纳包",
+      "en-US": "Tactical Breaching Round Pack",
+      "ja-JP": "戦術榴弾バッグ",
+      "zh-TW": "破牆榴彈戰術收納包"
+    },
+    "uniequip_003_mgllan": {
+      "zh-CN": "教学用龙腾无人机",
+      "en-US": "Instructional Soaring Dragon Drone",
+      "ja-JP": "教育用ドローン・DDF",
+      "zh-TW": "教學用龍騰無人機"
+    },
+    "uniequip_003_pallas": {
+      "zh-CN": "“赫里亚之辉”",
+      "en-US": "'Light of Heria'",
+      "ja-JP": "「ヘリアの輝き」",
+      "zh-TW": "“赫里亞之輝”"
+    },
+    "uniequip_001_halo": {
+      "zh-CN": "星源证章",
+      "en-US": "Astgenne's Badge",
+      "ja-JP": "アステジーニの記章",
+      "zh-TW": "星源證章"
+    },
+    "uniequip_002_halo": {
+      "zh-CN": "未组装的钟表",
+      "en-US": "Unassembled Clock",
+      "ja-JP": "未完成の時計",
+      "zh-TW": "未組裝的鐘錶"
+    },
+    "uniequip_001_glady": {
+      "zh-CN": "歌蕾蒂娅证章",
+      "en-US": "Gladiia's Badge",
+      "ja-JP": "グレイディーアの記章",
+      "zh-TW": "歌蕾蒂婭證章"
+    },
+    "uniequip_002_glady": {
+      "zh-CN": "执政官手镜",
+      "en-US": "Consul's Handmirror",
+      "ja-JP": "執政官の手鏡",
+      "zh-TW": "執政官手鏡"
+    },
+    "uniequip_001_snsant": {
+      "zh-CN": "雪雉证章",
+      "en-US": "Snowsant's Badge",
+      "ja-JP": "スノーズントの記章",
+      "zh-TW": "雪雉證章"
+    },
+    "uniequip_002_snsant": {
+      "zh-CN": "雪雉的宝贝存钱罐",
+      "en-US": "Snowsant's Precious Money Bank",
+      "ja-JP": "スノーズントの大事な貯金箱",
+      "zh-TW": "雪雉的寶貝存錢罐"
+    },
+    "uniequip_001_slchan": {
+      "zh-CN": "崖心证章",
+      "en-US": "Cliffheart's Badge",
+      "ja-JP": "クリフハートの記章",
+      "zh-TW": "崖心證章"
+    },
+    "uniequip_002_slchan": {
+      "zh-CN": "“凌绝顶”",
+      "en-US": "'Reach the Top'",
+      "ja-JP": "「頂上への到達」",
+      "zh-TW": "“凌絕頂”"
+    },
+    "uniequip_001_rope": {
+      "zh-CN": "暗索证章",
+      "en-US": "Rope's Badge",
+      "ja-JP": "ロープの記章",
+      "zh-TW": "暗索證章"
+    },
+    "uniequip_002_rope": {
+      "zh-CN": "铁皮首饰盒",
+      "en-US": "Tin Casket",
+      "ja-JP": "ブリキのジュエリーボックス",
+      "zh-TW": "鐵皮首飾盒"
+    },
+    "uniequip_001_bgsnow": {
+      "zh-CN": "鸿雪证章",
+      "en-US": "Pozëmka's Badge",
+      "ja-JP": "パゼオンカの記章",
+      "zh-TW": "鴻雪證章"
+    },
+    "uniequip_002_bgsnow": {
+      "zh-CN": "打字机色带",
+      "en-US": "Typewriter Ribbon",
+      "ja-JP": "インクリボン",
+      "zh-TW": "打字機色帶"
+    },
+    "uniequip_001_mizuki": {
+      "zh-CN": "水月证章",
+      "en-US": "Mizuki's Badge",
+      "ja-JP": "ミヅキの記章",
+      "zh-TW": "水月證章"
+    },
+    "uniequip_002_mizuki": {
+      "zh-CN": "使者之约",
+      "en-US": "Entreaty of the Herald",
+      "ja-JP": "使者の盟約",
+      "zh-TW": "使者之約"
+    },
+    "uniequip_001_mantic": {
+      "zh-CN": "狮蝎证章",
+      "en-US": "Manticore's Badge",
+      "ja-JP": "マンティコアの記章",
+      "zh-TW": "獅蠍證章"
+    },
+    "uniequip_002_mantic": {
+      "zh-CN": "训练用尾部防护套装",
+      "en-US": "Tail-Protection Training Tool",
+      "ja-JP": "訓練用尻尾保護セット",
+      "zh-TW": "訓練用尾部防護套裝"
+    },
+    "uniequip_001_kirara": {
+      "zh-CN": "绮良证章",
+      "en-US": "Kirara's Badge",
+      "ja-JP": "キララの記章",
+      "zh-TW": "綺良證章"
+    },
+    "uniequip_002_kirara": {
+      "zh-CN": "《闹闹生存挑战3 联机版》",
+      "en-US": "We Will Survive 3 Online",
+      "ja-JP": "「ウィー・ウィル・サバイブ3　ONLINE」",
+      "zh-TW": "《鬧鬧生存挑戰3 連線版》"
+    },
+    "uniequip_001_ethan": {
+      "zh-CN": "伊桑证章",
+      "en-US": "Ethan's Badge",
+      "ja-JP": "イーサンの記章",
+      "zh-TW": "伊桑證章"
+    },
+    "uniequip_002_ethan": {
+      "zh-CN": "超级喷漆套装",
+      "en-US": "Super Spray Paint Suit",
+      "ja-JP": "スーパースプレーセット",
+      "zh-TW": "超級噴漆套裝"
+    },
+    "uniequip_003_ghost2": {
+      "zh-CN": "未竟之美",
+      "en-US": "The Beauty in the Incomplete",
+      "ja-JP": "至らずの美しさ",
+      "zh-TW": "未竟之美"
+    },
+    "uniequip_003_fartth": {
+      "zh-CN": "支持者来信",
+      "en-US": "Fan Letters",
+      "ja-JP": "ファンレター",
+      "zh-TW": "支持者來信"
+    },
+    "uniequip_001_provs": {
+      "zh-CN": "但书证章",
+      "en-US": "Proviso's Badge",
+      "ja-JP": "プロヴァイゾの記章",
+      "zh-TW": "但書證章"
+    },
+    "uniequip_002_provs": {
+      "zh-CN": "黛丝特的毕业礼",
+      "en-US": "Deszcz's Graduate Memento",
+      "ja-JP": "デーシュットの卒業祝い",
+      "zh-TW": "黛絲特的畢業禮"
+    },
+    "uniequip_001_yak": {
+      "zh-CN": "角峰证章",
+      "en-US": "Matterhorn's Badge",
+      "ja-JP": "マッターホルンの記章",
+      "zh-TW": "角峰證章"
+    },
+    "uniequip_002_yak": {
+      "zh-CN": "父亲的袍子",
+      "en-US": "Father's Robe",
+      "ja-JP": "父のローブ",
+      "zh-TW": "父親的袍子"
+    },
+    "uniequip_001_snakek": {
+      "zh-CN": "蛇屠箱证章",
+      "en-US": "Cuora's Badge",
+      "ja-JP": "クオーラの記章",
+      "zh-TW": "蛇屠箱證章"
+    },
+    "uniequip_002_snakek": {
+      "zh-CN": "超强棒球套装",
+      "en-US": "Super Baseball Suit",
+      "ja-JP": "スーパーベースボールセット",
+      "zh-TW": "超強棒球套裝"
+    },
+    "uniequip_001_bubble": {
+      "zh-CN": "泡泡证章",
+      "en-US": "Bubble's Badge",
+      "ja-JP": "バブルの記章",
+      "zh-TW": "泡泡證章"
+    },
+    "uniequip_002_bubble": {
+      "zh-CN": "泡泡闪光必杀剑",
+      "en-US": "Bubble's Shining Sword",
+      "ja-JP": "バブルのブレイジングソード",
+      "zh-TW": "泡泡閃光必殺劍"
+    },
+    "uniequip_001_moeshd": {
+      "zh-CN": "可颂证章",
+      "en-US": "Croissant's Badge",
+      "ja-JP": "クロワッサンの記章",
+      "zh-TW": "可頌證章"
+    },
+    "uniequip_002_moeshd": {
+      "zh-CN": "作战靴",
+      "en-US": "Combat Boots",
+      "ja-JP": "ミリタリーブーツ",
+      "zh-TW": "作戰靴"
+    },
+    "uniequip_001_bison": {
+      "zh-CN": "拜松证章",
+      "en-US": "Bison's Badge",
+      "ja-JP": "バイソンの記章",
+      "zh-TW": "拜松證章"
+    },
+    "uniequip_002_bison": {
+      "zh-CN": "“一路以来”",
+      "en-US": "'The Journey Thus Far'",
+      "ja-JP": "「これまでの旅路」",
+      "zh-TW": "“一路以來”"
+    },
+    "uniequip_001_zebra": {
+      "zh-CN": "暴雨证章",
+      "en-US": "Heavyrain's Badge",
+      "ja-JP": "ヘビーレインの記章",
+      "zh-TW": "暴雨證章"
+    },
+    "uniequip_002_zebra": {
+      "zh-CN": "人气角色贴纸",
+      "en-US": "Stickers of a Popular Character",
+      "ja-JP": "人気キャラのステッカー",
+      "zh-TW": "人氣角色貼紙"
+    },
+    "uniequip_001_hsguma": {
+      "zh-CN": "星熊证章",
+      "en-US": "Hoshiguma's Badge",
+      "ja-JP": "ホシグマの記章",
+      "zh-TW": "星熊證章"
+    },
+    "uniequip_002_hsguma": {
+      "zh-CN": "友人们的赠礼",
+      "en-US": "Gifts From Friends",
+      "ja-JP": "友人たちからのプレゼント",
+      "zh-TW": "友人們的贈禮"
+    },
+    "uniequip_001_nian": {
+      "zh-CN": "年证章",
+      "en-US": "Nian's Badge",
+      "ja-JP": "ニェンの記章",
+      "zh-TW": "年證章"
+    },
+    "uniequip_002_nian": {
+      "zh-CN": "混沌阵列",
+      "en-US": "The Array of Chaos",
+      "ja-JP": "混沌の隊列",
+      "zh-TW": "混沌陣列"
+    },
+    "uniequip_003_ebnhlz": {
+      "zh-CN": "“乐理阐释者”",
+      "en-US": "'Theory Expositor'",
+      "ja-JP": "「楽理解釈者」",
+      "zh-TW": "“樂理闡釋者”"
+    },
+    "uniequip_003_zumama": {
+      "zh-CN": "“小小的丑东西”",
+      "en-US": "'The Little Ugly Thing'",
+      "ja-JP": "「リトルアグリー」",
+      "zh-TW": "“小小的醜東西”"
+    },
+    "uniequip_001_kalts": {
+      "zh-CN": "凯尔希证章",
+      "en-US": "Kal'tsit's Badge",
+      "ja-JP": "ケルシーの記章",
+      "zh-TW": "凱爾希證章"
+    },
+    "uniequip_002_kalts": {
+      "zh-CN": "Mon2tr",
+      "en-US": "Mon2tr",
+      "ja-JP": "Mon2tr",
+      "zh-TW": "Mon2tr"
+    },
+    "uniequip_001_shining": {
+      "zh-CN": "闪灵证章",
+      "en-US": "Shining's Badge",
+      "ja-JP": "シャイニングの記章",
+      "zh-TW": "閃靈證章"
+    },
+    "uniequip_002_shining": {
+      "zh-CN": "干枯剑鞘",
+      "en-US": "Withered Scabbard",
+      "ja-JP": "枯れた鞘",
+      "zh-TW": "乾枯劍鞘"
+    },
+    "uniequip_001_tuye": {
+      "zh-CN": "图耶证章",
+      "en-US": "Tuye's Badge",
+      "ja-JP": "トゥイエの記章",
+      "zh-TW": "圖耶證章"
+    },
+    "uniequip_002_tuye": {
+      "zh-CN": "集水装置",
+      "en-US": "Water Still Device",
+      "ja-JP": "集水装置",
+      "zh-TW": "集水裝置"
+    },
+    "uniequip_001_folnic": {
+      "zh-CN": "亚叶证章",
+      "en-US": "Folinic's Badge",
+      "ja-JP": "フォリニックの記章",
+      "zh-TW": "亞葉證章"
+    },
+    "uniequip_002_folnic": {
+      "zh-CN": "母亲的领巾",
+      "en-US": "Mother's Cravat",
+      "ja-JP": "母のネッカチーフ",
+      "zh-TW": "母親的領巾"
+    },
+    "uniequip_001_bldsk": {
+      "zh-CN": "华法琳证章",
+      "en-US": "Warfarin's Badge",
+      "ja-JP": "ワルファリンの記章",
+      "zh-TW": "華法琳證章"
+    },
+    "uniequip_002_bldsk": {
+      "zh-CN": "应急储备",
+      "en-US": "Emergency Reserves",
+      "ja-JP": "緊急用予備血液",
+      "zh-TW": "應急儲備"
+    },
+    "uniequip_001_silent": {
+      "zh-CN": "赫默证章",
+      "en-US": "Silence's Badge",
+      "ja-JP": "サイレンスの記章",
+      "zh-TW": "赫默證章"
+    },
+    "uniequip_002_silent": {
+      "zh-CN": "紧急防卫程序",
+      "en-US": "Emergency Self-Defense Procedures",
+      "ja-JP": "緊急防衛プログラム",
+      "zh-TW": "緊急防衛程式"
+    },
+    "uniequip_001_susuro": {
+      "zh-CN": "苏苏洛证章",
+      "en-US": "Sussurro's Badge",
+      "ja-JP": "ススーロの記章",
+      "zh-TW": "蘇蘇洛證章"
+    },
+    "uniequip_002_susuro": {
+      "zh-CN": "医不自治",
+      "en-US": "...Who Heals Not Herself",
+      "ja-JP": "医者の不養生",
+      "zh-TW": "醫不自治"
+    },
+    "uniequip_001_ccheal": {
+      "zh-CN": "嘉维尔证章",
+      "en-US": "Gavial's Badge",
+      "ja-JP": "ガヴィルの記章",
+      "zh-TW": "嘉維爾證章"
+    },
+    "uniequip_002_ccheal": {
+      "zh-CN": "“请遵医嘱”",
+      "en-US": "'Follow Your Doctor's Orders'",
+      "ja-JP": "「医者の言うことは聞くべし」",
+      "zh-TW": "“請遵醫囑”"
+    },
+    "uniequip_001_myrrh": {
+      "zh-CN": "末药证章",
+      "en-US": "Myrrh's Badge",
+      "ja-JP": "ミルラの記章",
+      "zh-TW": "末藥證章"
+    },
+    "uniequip_002_myrrh": {
+      "zh-CN": "“生命的短暂”",
+      "en-US": "'Brevity of Life'",
+      "ja-JP": "「命の儚さ」",
+      "zh-TW": "“生命的短暫”"
+    },
+    "uniequip_003_dusk": {
+      "zh-CN": "“终夜无寐”",
+      "en-US": "'All Told, A Sleepless Night'",
+      "ja-JP": "「終夜寐ねられず」",
+      "zh-TW": "“終夜無寐”"
+    },
+    "uniequip_003_aglina": {
+      "zh-CN": "实验用反重力模块",
+      "en-US": "Experimental Anti-Gravity Module",
+      "ja-JP": "実験用反重力モジュール",
+      "zh-TW": "實驗用反重力模組"
+    },
+    "uniequip_001_siege": {
+      "zh-CN": "推进之王证章",
+      "en-US": "Siege's Badge",
+      "ja-JP": "シージの記章",
+      "zh-TW": "推進之王證章"
+    },
+    "uniequip_002_siege": {
+      "zh-CN": "“糖果盒”",
+      "en-US": "'Candy Box'",
+      "ja-JP": "「キャンディーボックス」",
+      "zh-TW": "“糖果盒”"
+    },
+    "uniequip_001_saga": {
+      "zh-CN": "嵯峨证章",
+      "en-US": "Saga's Badge",
+      "ja-JP": "サガの記章",
+      "zh-TW": "嵯峨證章"
+    },
+    "uniequip_002_saga": {
+      "zh-CN": "身向云泥",
+      "en-US": "Walk The World",
+      "ja-JP": "身は雲泥に向かふ",
+      "zh-TW": "身向雲泥"
+    },
+    "uniequip_001_flamtl": {
+      "zh-CN": "焰尾证章",
+      "en-US": "Flametail's Badge",
+      "ja-JP": "フレイムテイルの記章",
+      "zh-TW": "焰尾證章"
+    },
+    "uniequip_002_flamtl": {
+      "zh-CN": "红松的起点",
+      "en-US": "The Origins of Pinus Sylvestris",
+      "ja-JP": "レッドパインの原点",
+      "zh-TW": "紅松的起點"
+    },
+    "uniequip_001_texas": {
+      "zh-CN": "德克萨斯证章",
+      "en-US": "Texas's Badge",
+      "ja-JP": "テキサスの記章",
+      "zh-TW": "德克薩斯證章"
+    },
+    "uniequip_002_texas": {
+      "zh-CN": "外勤私人补给包",
+      "en-US": "Private Field Supply Package",
+      "ja-JP": "外勤用プライベート補給パック",
+      "zh-TW": "外勤私人補給包"
+    },
+    "uniequip_001_chiave": {
+      "zh-CN": "贾维证章",
+      "en-US": "Chiave's Badge",
+      "ja-JP": "キアーベの記章",
+      "zh-TW": "賈維證章"
+    },
+    "uniequip_002_chiave": {
+      "zh-CN": "自制千斤顶",
+      "en-US": "Homemade Jack",
+      "ja-JP": "手作りのジャッキ",
+      "zh-TW": "自製千斤頂"
+    },
+    "uniequip_001_blackd": {
+      "zh-CN": "讯使证章",
+      "en-US": "Courier's Badge",
+      "ja-JP": "クーリエの記章",
+      "zh-TW": "訊使證章"
+    },
+    "uniequip_002_blackd": {
+      "zh-CN": "耐低温通讯设备",
+      "en-US": "Low Temperature Resistant Communication Equipment",
+      "ja-JP": "寒冷地仕様通信機",
+      "zh-TW": "耐低溫通訊設備"
+    },
+    "uniequip_001_scave": {
+      "zh-CN": "清道夫证章",
+      "en-US": "Scavenger's Badge",
+      "ja-JP": "スカベンジャーの記章",
+      "zh-TW": "清道夫證章"
+    },
+    "uniequip_002_scave": {
+      "zh-CN": "“专属餐具”",
+      "en-US": "'Designer Dinnerware'",
+      "ja-JP": "「専用食器セット」",
+      "zh-TW": "“專屬餐具”"
+    },
+    "uniequip_001_headbr": {
+      "zh-CN": "凛冬证章",
+      "en-US": "Zima's Badge",
+      "ja-JP": "ズィマーの記章",
+      "zh-TW": "凜冬證章"
+    },
+    "uniequip_002_headbr": {
+      "zh-CN": "冬将军的毕业礼物",
+      "en-US": "A Graduation Gift for Генерал Мороз",
+      "ja-JP": "冬将軍の卒業記念品",
+      "zh-TW": "冬將軍的畢業禮物"
+    },
+    "uniequip_001_texas2": {
+      "zh-CN": "缄默德克萨斯证章",
+      "en-US": "Texas the Omertosa's Badge",
+      "ja-JP": "血掟テキサスの記章",
+      "zh-TW": "緘默德克薩斯證章"
+    },
+    "uniequip_002_texas2": {
+      "zh-CN": "蓝莓与黑巧",
+      "en-US": "Blueberry & Dark Chocolate",
+      "ja-JP": "ブルーベリーとビターチョコ",
+      "zh-TW": "藍莓與黑巧"
+    },
+    "uniequip_001_lunacu": {
+      "zh-CN": "子月证章",
+      "en-US": "Lunacub's Badge",
+      "ja-JP": "ルナカブの記章",
+      "zh-TW": "子月證章"
+    },
+    "uniequip_002_lunacu": {
+      "zh-CN": "“移动的窝”",
+      "en-US": "'A Hidey-Hole That Moves'",
+      "ja-JP": "移動式の「巣」",
+      "zh-TW": "“移動的窩”"
+    },
+    "uniequip_003_shwaz": {
+      "zh-CN": "老剃刀",
+      "en-US": "Old Razor",
+      "ja-JP": "古い剃刀",
+      "zh-TW": "老剃刀"
+    },
+    "uniequip_003_hsguma": {
+      "zh-CN": "护身符",
+      "en-US": "Amulet",
+      "ja-JP": "お守り",
+      "zh-TW": "護身符"
+    },
+    "uniequip_001_poca": {
+      "zh-CN": "早露证章",
+      "en-US": "Rosa's Badge",
+      "ja-JP": "ロサの記章",
+      "zh-TW": "早露證章"
+    },
+    "uniequip_002_poca": {
+      "zh-CN": "攻城器械训练装置",
+      "en-US": "Siege Equipment Training Device",
+      "ja-JP": "訓練用攻城兵器",
+      "zh-TW": "攻城器械訓練裝置"
+    },
+    "uniequip_001_totter": {
+      "zh-CN": "铅踝证章",
+      "en-US": "Totter's Badge",
+      "ja-JP": "トターの記章",
+      "zh-TW": "鉛踝證章"
+    },
+    "uniequip_002_totter": {
+      "zh-CN": "雪花球",
+      "en-US": "Snow Globe",
+      "ja-JP": "スノードーム",
+      "zh-TW": "雪花球"
+    },
+    "uniequip_001_toddi": {
+      "zh-CN": "熔泉证章",
+      "en-US": "Toddifons's Badge",
+      "ja-JP": "トギフォンスの記章",
+      "zh-TW": "熔泉證章"
+    },
+    "uniequip_002_toddi": {
+      "zh-CN": "弩箭调试箱",
+      "en-US": "Arrow Adjustment Box",
+      "ja-JP": "弩矢の調整箱",
+      "zh-TW": "弩箭調試箱"
+    },
+    "uniequip_001_erato": {
+      "zh-CN": "埃拉托证章",
+      "en-US": "Erato's Badge",
+      "ja-JP": "エラトの記章",
+      "zh-TW": "埃拉托證章"
+    },
+    "uniequip_002_erato": {
+      "zh-CN": "改弦更张",
+      "en-US": "Change of Ways",
+      "ja-JP": "調弦工具箱",
+      "zh-TW": "改弦更張"
+    },
+    "uniequip_001_helage": {
+      "zh-CN": "赫拉格证章",
+      "en-US": "Hellagur's Badge",
+      "ja-JP": "ヘラグの記章",
+      "zh-TW": "赫拉格證章"
+    },
+    "uniequip_002_helage": {
+      "zh-CN": "藏锋",
+      "en-US": "Zouhou, a Sheath for Contempt",
+      "ja-JP": "蔵鋒",
+      "zh-TW": "藏鋒"
+    },
+    "uniequip_001_akafyu": {
+      "zh-CN": "赤冬证章",
+      "en-US": "Akafuyu's Badge",
+      "ja-JP": "アカフユの記章",
+      "zh-TW": "赤冬證章"
+    },
+    "uniequip_002_akafyu": {
+      "zh-CN": "武将甲胄",
+      "en-US": "Samurai Armor",
+      "ja-JP": "武将の甲冑",
+      "zh-TW": "武將甲胄"
+    },
+    "uniequip_001_utage": {
+      "zh-CN": "宴证章",
+      "en-US": "Utage's Badge",
+      "ja-JP": "ウタゲの記章",
+      "zh-TW": "宴證章"
+    },
+    "uniequip_002_utage": {
+      "zh-CN": "翻盖手机",
+      "en-US": "Flip Phone",
+      "ja-JP": "デコったガラケー",
+      "zh-TW": "翻蓋手機"
+    },
+    "uniequip_001_hamoni": {
+      "zh-CN": "和弦证章",
+      "en-US": "Harmonie's Badge",
+      "ja-JP": "ハーモニーの記章",
+      "zh-TW": "和弦證章"
+    },
+    "uniequip_002_hamoni": {
+      "zh-CN": "情报人员资料夹",
+      "en-US": "The Spy's Dossiers",
+      "ja-JP": "諜報員ファイル",
+      "zh-TW": "情報人員資料夾"
+    },
+    "uniequip_003_archet": {
+      "zh-CN": "旧日重现",
+      "en-US": "Yesterday Once More",
+      "ja-JP": "過ぎた日々の再訪",
+      "zh-TW": "舊日重現"
+    },
+    "uniequip_003_mizuki": {
+      "zh-CN": "深蓝之籽",
+      "en-US": "Caerulorum Semina",
+      "ja-JP": "紺碧の種",
+      "zh-TW": "深藍之籽"
+    },
+    "uniequip_001_amgoat": {
+      "zh-CN": "艾雅法拉证章",
+      "en-US": "Eyjafjalla's Badge",
+      "ja-JP": "エイヤフィヤトラの記章",
+      "zh-TW": "艾雅法拉證章"
+    },
+    "uniequip_002_amgoat": {
+      "zh-CN": "“错过的声音”",
+      "en-US": "'Missed Sounds'",
+      "ja-JP": "「聞き逃した声」",
+      "zh-TW": "“錯過的聲音”"
+    },
+    "uniequip_001_cerber": {
+      "zh-CN": "刻俄柏证章",
+      "en-US": "Ceobe's Badge",
+      "ja-JP": "ケオベの記章",
+      "zh-TW": "刻俄柏證章"
+    },
+    "uniequip_002_cerber": {
+      "zh-CN": "“很干的面包”",
+      "en-US": "'Really Dry Bread'",
+      "ja-JP": "「カチカチのパン」",
+      "zh-TW": "“很乾的麵包”"
+    },
+    "uniequip_001_absin": {
+      "zh-CN": "苦艾证章",
+      "en-US": "Absinthe's Badge",
+      "ja-JP": "アブサントの記章",
+      "zh-TW": "苦艾證章"
+    },
+    "uniequip_002_absin": {
+      "zh-CN": "“监护者”单兵通讯单元",
+      "en-US": "'Custodia' Individual Comm-Unit",
+      "ja-JP": "「保護者」軍用通信ユニット",
+      "zh-TW": "“監護者”單兵通訊單元"
+    },
+    "uniequip_001_nights": {
+      "zh-CN": "夜烟证章",
+      "en-US": "Haze's Badge",
+      "ja-JP": "ヘイズの記章",
+      "zh-TW": "夜煙證章"
+    },
+    "uniequip_002_nights": {
+      "zh-CN": "女巫的帽子",
+      "en-US": "The Witch's Hat",
+      "ja-JP": "魔女のとんがり帽子",
+      "zh-TW": "女巫的帽子"
+    },
+    "uniequip_001_qanik": {
+      "zh-CN": "雪绒证章",
+      "en-US": "Qanipalaat's Badge",
+      "ja-JP": "カニパラートの記章",
+      "zh-TW": "雪絨證章"
+    },
+    "uniequip_002_qanik": {
+      "zh-CN": "自制登山杖",
+      "en-US": "Homemade Trekking Poles",
+      "ja-JP": "お手製のストック",
+      "zh-TW": "自製登山杖"
+    },
+    "uniequip_001_nightm": {
+      "zh-CN": "夜魔证章",
+      "en-US": "Nightmare's Badge",
+      "ja-JP": "ナイトメアの記章",
+      "zh-TW": "夜魔證章"
+    },
+    "uniequip_002_nightm": {
+      "zh-CN": "“两生花”",
+      "en-US": "'The Double'",
+      "ja-JP": "「二輪咲き」",
+      "zh-TW": "“兩生花”"
+    },
+    "uniequip_001_tomimi": {
+      "zh-CN": "特米米证章",
+      "en-US": "Tomimi's Badge",
+      "ja-JP": "トミミの記章",
+      "zh-TW": "特米米證章"
+    },
+    "uniequip_002_tomimi": {
+      "zh-CN": "损坏的尾尾佳",
+      "en-US": "Broken Tail Corrector",
+      "ja-JP": "壊れたしっぽサポーター",
+      "zh-TW": "損壞的尾尾佳"
+    },
+    "uniequip_001_amiya": {
+      "zh-CN": "阿米娅证章",
+      "en-US": "Amiya's Badge",
+      "ja-JP": "アーミヤの記章",
+      "zh-TW": "阿米婭證章"
+    },
+    "uniequip_002_amiya": {
+      "zh-CN": "DWDB-221E",
+      "en-US": "DWDB-221E",
+      "ja-JP": "DWDB-221E",
+      "zh-TW": "DWDB-221E"
+    },
+    "uniequip_001_bdhkgt": {
+      "zh-CN": "截云证章",
+      "en-US": "Jieyun's Badge",
+      "ja-JP": "ジエユンの記章",
+      "zh-TW": "截雲證章"
+    },
+    "uniequip_002_bdhkgt": {
+      "zh-CN": "小石头",
+      "en-US": "Pebbles",
+      "ja-JP": "小さな石ころ",
+      "zh-TW": "小石頭"
+    },
+    "uniequip_003_lumen": {
+      "zh-CN": "“幸运”",
+      "en-US": "'Luck'",
+      "ja-JP": "「幸運」",
+      "zh-TW": "“幸運”"
+    },
+    "uniequip_003_demkni": {
+      "zh-CN": "科技新星",
+      "en-US": "Technology Rising Star Award",
+      "ja-JP": "研究界の新星",
+      "zh-TW": "科技新星"
+    },
+    "uniequip_001_weedy": {
+      "zh-CN": "温蒂证章",
+      "en-US": "Weedy's Badge",
+      "ja-JP": "ウィーディの記章",
+      "zh-TW": "溫蒂證章"
+    },
+    "uniequip_002_weedy": {
+      "zh-CN": "仿生海龙改型",
+      "en-US": "Custom Bionic Seadragon",
+      "ja-JP": "改良型シードラゴン",
+      "zh-TW": "仿生海龍改型"
+    },
+    "uniequip_001_forcer": {
+      "zh-CN": "见行者证章",
+      "en-US": "Enforcer's Badge",
+      "ja-JP": "エンフォーサーの記章",
+      "zh-TW": "見行者證章"
+    },
+    "uniequip_002_forcer": {
+      "zh-CN": "可执行的幻想",
+      "en-US": "Heaven, Here, Now",
+      "ja-JP": "夢の「執行」計画",
+      "zh-TW": "可執行的幻想"
+    },
+    "uniequip_001_panda": {
+      "zh-CN": "食铁兽证章",
+      "en-US": "FEater's Badge",
+      "ja-JP": "エフイーターの記章",
+      "zh-TW": "食鐵獸證章"
+    },
+    "uniequip_002_panda": {
+      "zh-CN": "尚蜀风味自制辣酱",
+      "en-US": "Shangshu-Style Homemade Chili Sauce",
+      "ja-JP": "尚蜀風手作りラー油",
+      "zh-TW": "尚蜀風味自製辣醬"
+    },
+    "uniequip_001_sqrrel": {
+      "zh-CN": "阿消证章",
+      "en-US": "Shaw's Badge",
+      "ja-JP": "ショウの記章",
+      "zh-TW": "阿消證章"
+    },
+    "uniequip_002_sqrrel": {
+      "zh-CN": "客制化防火服",
+      "en-US": "Customized Firefighting Suit",
+      "ja-JP": "特注の防火服",
+      "zh-TW": "客製化防火服"
+    },
+    "uniequip_001_ifrit": {
+      "zh-CN": "伊芙利特证章",
+      "en-US": "Ifrit's Badge",
+      "ja-JP": "イフリータの記章",
+      "zh-TW": "伊芙利特證章"
+    },
+    "uniequip_002_ifrit": {
+      "zh-CN": "“同熔”",
+      "en-US": "'Syntexis'",
+      "ja-JP": "「シンテクシス」",
+      "zh-TW": "“同熔”"
+    },
+    "uniequip_001_serum": {
+      "zh-CN": "蚀清证章",
+      "en-US": "Corroserum's Badge",
+      "ja-JP": "コロセラムの記章",
+      "zh-TW": "蝕清證章"
+    },
+    "uniequip_002_serum": {
+      "zh-CN": "无可抹消",
+      "en-US": "Unerasable",
+      "ja-JP": "消し去れぬもの",
+      "zh-TW": "無可抹消"
+    },
+    "uniequip_001_yato2": {
+      "zh-CN": "麒麟R夜刀证章",
+      "en-US": "Kirin R Yato's Badge",
+      "ja-JP": "キリンRヤトウの記章",
+      "zh-TW": "麒麟R夜刀證章"
+    },
+    "uniequip_002_yato2": {
+      "zh-CN": "训练用木桩",
+      "en-US": "Training Dummy",
+      "ja-JP": "訓練用の木柱",
+      "zh-TW": "訓練用木樁"
+    },
+    "uniequip_001_noirc2": {
+      "zh-CN": "火龙S黑角证章",
+      "en-US": "Rathalos S Noir Corne's Badge",
+      "ja-JP": "レウスSノイルホーンの記章",
+      "zh-TW": "火龍S黑角證章"
+    },
+    "uniequip_002_noirc2": {
+      "zh-CN": "黑角的随身笔记",
+      "en-US": "Noir Corne's Personal Notes",
+      "ja-JP": "ノイルホーンのメモ帳",
+      "zh-TW": "黑角的隨身筆記"
+    },
+    "uniequip_003_shining": {
+      "zh-CN": "“使徒”",
+      "en-US": "'Followers'",
+      "ja-JP": "「使徒」",
+      "zh-TW": "“使徒”"
+    },
+    "uniequip_003_siege": {
+      "zh-CN": "“初诺”",
+      "en-US": "'Thy First Vow'",
+      "ja-JP": "「誓い」",
+      "zh-TW": "“初諾”"
+    },
+    "uniequip_001_billro": {
+      "zh-CN": "卡涅利安证章",
+      "en-US": "Carnelian's Badge",
+      "ja-JP": "カーネリアンの記章",
+      "zh-TW": "卡涅利安證章"
+    },
+    "uniequip_002_billro": {
+      "zh-CN": "风信子与匕首",
+      "en-US": "Hyacinth and Dagger",
+      "ja-JP": "ヒヤシンスと短剣",
+      "zh-TW": "風信子與匕首"
+    },
+    "uniequip_001_lin": {
+      "zh-CN": "林证章",
+      "en-US": "Lin's Badge",
+      "ja-JP": "リンの記章",
+      "zh-TW": "林證章"
+    },
+    "uniequip_002_lin": {
+      "zh-CN": "“七窍玲珑”",
+      "en-US": "'Exquisite Heart'",
+      "ja-JP": "「聡明怜悧」",
+      "zh-TW": "“七竅玲瓏”"
+    },
+    "uniequip_001_mint": {
+      "zh-CN": "薄绿证章",
+      "en-US": "Mint's Badge",
+      "ja-JP": "ミントの記章",
+      "zh-TW": "薄綠證章"
+    },
+    "uniequip_002_mint": {
+      "zh-CN": "注意力保持装置",
+      "en-US": "Attention-holding Device",
+      "ja-JP": "集中力維持装置",
+      "zh-TW": "注意力保持裝置"
+    },
+    "uniequip_001_beewax": {
+      "zh-CN": "蜜蜡证章",
+      "en-US": "Beeswax's Badge",
+      "ja-JP": "ビーズワクスの記章",
+      "zh-TW": "蜜蠟證章"
+    },
+    "uniequip_002_beewax": {
+      "zh-CN": "“司祭的祝福”",
+      "en-US": "'Beeswax's Blessing'",
+      "ja-JP": "「司祭の祝福」",
+      "zh-TW": "“司祭的祝福”"
+    },
+    "uniequip_001_doroth": {
+      "zh-CN": "多萝西证章",
+      "en-US": "Dorothy's Badge",
+      "ja-JP": "ドロシーの記章",
+      "zh-TW": "多蘿西證章"
+    },
+    "uniequip_002_doroth": {
+      "zh-CN": "童话书",
+      "en-US": "Story Book",
+      "ja-JP": "童話の本",
+      "zh-TW": "童話書"
+    },
+    "uniequip_001_robin": {
+      "zh-CN": "罗宾证章",
+      "en-US": "Robin's Badge",
+      "ja-JP": "ロビンの記章",
+      "zh-TW": "羅賓證章"
+    },
+    "uniequip_002_robin": {
+      "zh-CN": "限量版年历",
+      "en-US": "Calendar the Limited Edition",
+      "ja-JP": "限定版カレンダー",
+      "zh-TW": "限量版年曆"
+    },
+    "uniequip_001_rfrost": {
+      "zh-CN": "霜华证章",
+      "en-US": "Frost's Badge",
+      "ja-JP": "Frostの記章",
+      "zh-TW": "FROST證章"
+    },
+    "uniequip_002_rfrost": {
+      "zh-CN": "机械式陷阱压力板",
+      "en-US": "Metallic Spring Loaded Trap",
+      "ja-JP": "ウェルカムマット",
+      "zh-TW": "機械式陷阱壓力板"
+    },
+    "uniequip_001_cement": {
+      "zh-CN": "洋灰证章",
+      "en-US": "Cement's Badge",
+      "ja-JP": "セメントの記章",
+      "zh-TW": "洋灰證章"
+    },
+    "uniequip_002_cement": {
+      "zh-CN": "工程记录仪",
+      "en-US": "Engineering Recorder",
+      "ja-JP": "工事レコーダー",
+      "zh-TW": "工程記錄儀"
+    },
+    "uniequip_001_morgan": {
+      "zh-CN": "摩根证章",
+      "en-US": "Morgan's Badge",
+      "ja-JP": "モーガンの記章",
+      "zh-TW": "摩根證章"
+    },
+    "uniequip_002_morgan": {
+      "zh-CN": "“钢铁之心”",
+      "en-US": "'Iron Heart'",
+      "ja-JP": "「アイアンハート」",
+      "zh-TW": "“鋼鐵之心”"
+    },
+    "uniequip_003_nian": {
+      "zh-CN": "“请勿叩门”",
+      "en-US": "'Don't Disturb'",
+      "ja-JP": "「扉叩くことなかれ」",
+      "zh-TW": "“請勿叩門”"
+    },
+    "uniequip_003_cerber": {
+      "zh-CN": "“我打的刀”",
+      "en-US": "'Knife, I Made'",
+      "ja-JP": "「おいらが打ったナイフ」",
+      "zh-TW": "“我打的刀”"
+    },
+    "uniequip_001_gnosis": {
+      "zh-CN": "灵知证章",
+      "en-US": "Gnosis's Badge",
+      "ja-JP": "ノーシスの記章",
+      "zh-TW": "靈知證章"
+    },
+    "uniequip_002_gnosis": {
+      "zh-CN": "“誓言”",
+      "en-US": "'Vow'",
+      "ja-JP": "「誓言」",
+      "zh-TW": "“誓言”"
+    },
+    "uniequip_001_slbell": {
+      "zh-CN": "初雪证章",
+      "en-US": "Pramanix's Badge",
+      "ja-JP": "プラマニクスの記章",
+      "zh-TW": "初雪證章"
+    },
+    "uniequip_002_slbell": {
+      "zh-CN": "“续针”",
+      "en-US": "'Knitting of a Future'",
+      "ja-JP": "「編み物の続き」",
+      "zh-TW": "“續針”"
+    },
+    "uniequip_001_vodfox": {
+      "zh-CN": "巫恋证章",
+      "en-US": "Shamare's Badge",
+      "ja-JP": "シャマレの記章",
+      "zh-TW": "巫戀證章"
+    },
+    "uniequip_002_vodfox": {
+      "zh-CN": "布艺苹果",
+      "en-US": "Fabric Apples",
+      "ja-JP": "布製のリンゴ",
+      "zh-TW": "布藝蘋果"
+    },
+    "uniequip_001_rosmon": {
+      "zh-CN": "迷迭香证章",
+      "en-US": "Rosmontis's Badge",
+      "ja-JP": "ロスモンティスの記章",
+      "zh-TW": "迷迭香證章"
+    },
+    "uniequip_002_rosmon": {
+      "zh-CN": "“记事”",
+      "en-US": "'Notes'",
+      "ja-JP": "「メモ」",
+      "zh-TW": "“記事”"
+    },
+    "uniequip_001_greyy2": {
+      "zh-CN": "承曦格雷伊证章",
+      "en-US": "Greyy the Lightningbearer's Badge",
+      "ja-JP": "承曦グレイの記章",
+      "zh-TW": "承曦格雷伊證章"
+    },
+    "uniequip_002_greyy2": {
+      "zh-CN": "新型电控设备技术原型",
+      "en-US": "Experimental ECU Prototype",
+      "ja-JP": "新型電子制御装置の試作品",
+      "zh-TW": "新型電控設備技術原型"
+    },
+    "uniequip_001_heyak": {
+      "zh-CN": "霍尔海雅证章",
+      "en-US": "Ho'olheyak's Badge",
+      "ja-JP": "ホルハイヤの記章",
+      "zh-TW": "霍爾海雅證章"
+    },
+    "uniequip_002_heyak": {
+      "zh-CN": "“图书馆”",
+      "en-US": "'Bibliotheca'",
+      "ja-JP": "「図書館」",
+      "zh-TW": "“圖書館”"
+    },
+    "uniequip_001_melnte": {
+      "zh-CN": "玫拉证章",
+      "en-US": "Melanite's Badge",
+      "ja-JP": "メラナイトの記章",
+      "zh-TW": "玫拉證章"
+    },
+    "uniequip_002_melnte": {
+      "zh-CN": "香薰耳坠",
+      "en-US": "Fragrance Earrings",
+      "ja-JP": "フレグランスイヤリング",
+      "zh-TW": "香薰耳墜"
+    },
+    "uniequip_003_cqbw": {
+      "zh-CN": "刺棱钝刃",
+      "en-US": "Lost Dull Knife",
+      "ja-JP": "鈍い刃",
+      "zh-TW": "刺棱鈍刃"
+    },
+    "uniequip_003_kalts": {
+      "zh-CN": "医者",
+      "en-US": "Panacea",
+      "ja-JP": "医師",
+      "zh-TW": "醫者"
+    },
+    "uniequip_001_ironmn": {
+      "zh-CN": "白铁证章",
+      "en-US": "Stainless's Badge",
+      "ja-JP": "ステインレスの記章",
+      "zh-TW": "白鐵證章"
+    },
+    "uniequip_002_ironmn": {
+      "zh-CN": "铁钳号·爬行者",
+      "en-US": "FMC-Crawler",
+      "ja-JP": "鉄鉗号・クローラー",
+      "zh-TW": "鐵鉗號·爬行者"
+    },
+    "uniequip_001_windft": {
+      "zh-CN": "掠风证章",
+      "en-US": "Windflit's Badge",
+      "ja-JP": "ウインドフリットの記章",
+      "zh-TW": "掠風證章"
+    },
+    "uniequip_002_windft": {
+      "zh-CN": "“灵机一动”",
+      "en-US": "'A Bright Idea Occurs'",
+      "ja-JP": "「思い付き」",
+      "zh-TW": "“靈機一動”"
+    },
+    "uniequip_001_robrta": {
+      "zh-CN": "罗比菈塔证章",
+      "en-US": "Roberta's Badge",
+      "ja-JP": "ロベルタの記章",
+      "zh-TW": "羅比菈塔證章"
+    },
+    "uniequip_002_robrta": {
+      "zh-CN": "半自动造型工具套组",
+      "en-US": "Semi-Auto Stylist Toolkit",
+      "ja-JP": "半自動メイクアップセット",
+      "zh-TW": "半自動造型工具套組"
+    },
+    "uniequip_001_haak": {
+      "zh-CN": "阿证章",
+      "en-US": "Aak's Badge",
+      "ja-JP": "アの記章",
+      "zh-TW": "阿證章"
+    },
+    "uniequip_002_haak": {
+      "zh-CN": "什锦果味医用箱",
+      "en-US": "Mixed-Fruit Medical Caddy",
+      "ja-JP": "フルーツ味の救急箱",
+      "zh-TW": "什錦果味醫用箱"
+    },
+    "uniequip_001_spuria": {
+      "zh-CN": "空构证章",
+      "en-US": "Spuria's Badge",
+      "ja-JP": "スプリアの記章",
+      "zh-TW": "空構證章"
+    },
+    "uniequip_002_spuria": {
+      "zh-CN": "无人机喷涂套装",
+      "en-US": "Drone Spraying Kit",
+      "ja-JP": "ドローン塗装キット",
+      "zh-TW": "無人機噴塗套裝"
+    },
+    "uniequip_001_inside": {
+      "zh-CN": "隐现证章",
+      "en-US": "Insider's Badge",
+      "ja-JP": "インサイダーの記章",
+      "zh-TW": "隱現證章"
+    },
+    "uniequip_002_inside": {
+      "zh-CN": "“最初的惊喜”",
+      "en-US": "'The First Surprise'",
+      "ja-JP": "「最初のサプライズ」",
+      "zh-TW": "“最初的驚喜”"
+    },
+    "uniequip_003_blemsh": {
+      "zh-CN": "“长骑”",
+      "en-US": "'Knight Primus'",
+      "ja-JP": "「首席騎士」",
+      "zh-TW": "“長騎”"
+    },
+    "uniequip_003_flamtl": {
+      "zh-CN": "她们的未来",
+      "en-US": "Their Future",
+      "ja-JP": "彼女たちの未来",
+      "zh-TW": "她們的未來"
+    },
+    "uniequip_001_sntlla": {
+      "zh-CN": "寒檀证章",
+      "en-US": "Santalla's Badge",
+      "ja-JP": "サンタラの記章",
+      "zh-TW": "寒檀證章"
+    },
+    "uniequip_002_sntlla": {
+      "zh-CN": "“冰焰”",
+      "en-US": "Ice Brazier",
+      "ja-JP": "「アイス・ブレイジャー」",
+      "zh-TW": "“冰焰”"
+    },
+    "uniequip_001_elysm": {
+      "zh-CN": "极境证章",
+      "en-US": "Elysium's Badge",
+      "ja-JP": "エリジウムの記章",
+      "zh-TW": "極境證章"
+    },
+    "uniequip_002_elysm": {
+      "zh-CN": "应急通讯指南",
+      "en-US": "Emergency Callbook",
+      "ja-JP": "応急通信マニュアル",
+      "zh-TW": "應急通訊指南"
+    },
+    "uniequip_001_sleach": {
+      "zh-CN": "琴柳证章",
+      "en-US": "Saileach's Badge",
+      "ja-JP": "サイラッハの記章",
+      "zh-TW": "琴柳證章"
+    },
+    "uniequip_002_sleach": {
+      "zh-CN": "牧人的歌",
+      "en-US": "Pastoral",
+      "ja-JP": "牧童の歌",
+      "zh-TW": "牧人的歌"
+    },
+    "uniequip_001_myrtle": {
+      "zh-CN": "桃金娘证章",
+      "en-US": "Myrtle's Badge",
+      "ja-JP": "テンニンカの記章",
+      "zh-TW": "桃金娘證章"
+    },
+    "uniequip_002_myrtle": {
+      "zh-CN": "“私人收藏”",
+      "en-US": "Private Collections",
+      "ja-JP": "「コレクション」",
+      "zh-TW": "“私人收藏”"
+    },
+    "uniequip_001_typhon": {
+      "zh-CN": "提丰证章",
+      "en-US": "Typhon's Badge",
+      "ja-JP": "ティフォンの記章",
+      "zh-TW": "提豐證章"
+    },
+    "uniequip_002_typhon": {
+      "zh-CN": "自然的包容",
+      "en-US": "Ammadikshu",
+      "ja-JP": "自然の容認",
+      "zh-TW": "自然的包容"
+    },
+    "uniequip_003_helage": {
+      "zh-CN": "“热的雪”",
+      "en-US": "'Горячий снег'",
+      "ja-JP": "「熱い雪」",
+      "zh-TW": "“熱的雪”"
+    },
+    "uniequip_003_phatom": {
+      "zh-CN": "“如影随形”",
+      "en-US": "'Think of Me'",
+      "ja-JP": "「影のように」",
+      "zh-TW": "“如影隨形”"
+    },
+    "uniequip_001_huang": {
+      "zh-CN": "煌证章",
+      "en-US": "Blaze's Badge",
+      "ja-JP": "ブレイズの記章",
+      "zh-TW": "煌證章"
+    },
+    "uniequip_002_huang": {
+      "zh-CN": "过载的武器与过热的心脏",
+      "en-US": "Overloaded Weapons, Overheated Heart",
+      "ja-JP": "熱く燃える心臓と武器",
+      "zh-TW": "過載的武器與過熱的心臟"
+    },
+    "uniequip_001_gvial2": {
+      "zh-CN": "百炼嘉维尔证章",
+      "en-US": "Gavial the Invincible's Badge",
+      "ja-JP": "百錬ガヴィルの記章",
+      "zh-TW": "百煉嘉維爾證章"
+    },
+    "uniequip_002_gvial2": {
+      "zh-CN": "嘉维尔的折磨",
+      "en-US": "The Binding of Gavial",
+      "ja-JP": "ガヴィルの受難",
+      "zh-TW": "嘉維爾的折磨"
+    },
+    "uniequip_001_broca": {
+      "zh-CN": "布洛卡证章",
+      "en-US": "Broca's Badge",
+      "ja-JP": "ブローカの記章",
+      "zh-TW": "布洛卡證章"
+    },
+    "uniequip_002_broca": {
+      "zh-CN": "“兄弟”",
+      "en-US": "'Buddies'",
+      "ja-JP": "「兄弟」",
+      "zh-TW": "“兄弟”"
+    },
+    "uniequip_001_ghost": {
+      "zh-CN": "幽灵鲨证章",
+      "en-US": "Specter's Badge",
+      "ja-JP": "スペクターの記章",
+      "zh-TW": "幽靈鯊證章"
+    },
+    "uniequip_002_ghost": {
+      "zh-CN": "幽明烛光",
+      "en-US": "Dim Candlelight",
+      "ja-JP": "幽々たる蝋燭の灯り",
+      "zh-TW": "幽明燭光"
+    },
+    "uniequip_001_savage": {
+      "zh-CN": "暴行证章",
+      "en-US": "Savage's Badge",
+      "ja-JP": "サベージの記章",
+      "zh-TW": "暴行證章"
+    },
+    "uniequip_002_savage": {
+      "zh-CN": "未竟的旅程",
+      "en-US": "Hit the Road",
+      "ja-JP": "果たされざる旅",
+      "zh-TW": "“未竟的旅程”"
+    },
+    "uniequip_001_estell": {
+      "zh-CN": "艾丝黛尔证章",
+      "en-US": "Estelle's Badge",
+      "ja-JP": "エステルの記章",
+      "zh-TW": "艾絲黛爾證章"
+    },
+    "uniequip_002_estell": {
+      "zh-CN": "荒野地的饯别礼",
+      "en-US": "Farewell Gifts from the Wildlands",
+      "ja-JP": "荒野の餞別",
+      "zh-TW": "荒野地的餞別禮"
+    },
+    "uniequip_001_buildr": {
+      "zh-CN": "青枳证章",
+      "en-US": "Poncirus's Badge",
+      "ja-JP": "ポンシラスの記章",
+      "zh-TW": "青枳證章"
+    },
+    "uniequip_002_buildr": {
+      "zh-CN": "寻乡人的启明星",
+      "en-US": "The Morning Star of the Homeseeker",
+      "ja-JP": "故郷を示す明星",
+      "zh-TW": "尋鄉人的啟明星"
+    },
+    "uniequip_001_bryota": {
+      "zh-CN": "苍苔证章",
+      "en-US": "Bryophyta's Badge",
+      "ja-JP": "ブライオファイタの記章",
+      "zh-TW": "蒼苔證章"
+    },
+    "uniequip_002_bryota": {
+      "zh-CN": "餐后好时光",
+      "en-US": "Sobremesa",
+      "ja-JP": "食後のお楽しみ",
+      "zh-TW": "餐後好時光"
+    },
+    "uniequip_001_swire2": {
+      "zh-CN": "琳琅诗怀雅证章",
+      "en-US": "Swire the Elegant Wit's Badge",
+      "ja-JP": "琳琅スワイヤーの記章",
+      "zh-TW": "琳瑯詩懷雅證章"
+    },
+    "uniequip_002_swire2": {
+      "zh-CN": "“金币辉煌”",
+      "en-US": "'Be Resplendent and Outstanding'",
+      "ja-JP": "「輝かしきメダル」",
+      "zh-TW": "“金幣輝煌”"
+    },
+    "uniequip_001_excu2": {
+      "zh-CN": "圣约送葬人证章",
+      "en-US": "Executor the Ex Foedere's Badge",
+      "ja-JP": "聖約イグゼキュターの記章",
+      "zh-TW": "聖約送葬人證章"
+    },
+    "uniequip_002_excu2": {
+      "zh-CN": "待解答",
+      "en-US": "Unanswered",
+      "ja-JP": "回答を求めて",
+      "zh-TW": "待解答"
+    },
+    "uniequip_001_crow": {
+      "zh-CN": "羽毛笔证章",
+      "en-US": "La Pluma's Badge",
+      "ja-JP": "ラ・プルマの記章",
+      "zh-TW": "羽毛筆證章"
+    },
+    "uniequip_002_crow": {
+      "zh-CN": "水蓝色黎明",
+      "en-US": "Aqua Blue Dawn",
+      "ja-JP": "水色の夜明け",
+      "zh-TW": "水藍色黎明"
+    },
+    "uniequip_001_highmo": {
+      "zh-CN": "海沫证章",
+      "en-US": "Highmore's Badge",
+      "ja-JP": "ハイモアの記章",
+      "zh-TW": "海沫證章"
+    },
+    "uniequip_002_highmo": {
+      "zh-CN": "“启航”",
+      "en-US": "'Weighing Anchor'",
+      "ja-JP": "「船出」",
+      "zh-TW": "“啟航”"
+    },
+    "uniequip_001_humus": {
+      "zh-CN": "休谟斯证章",
+      "en-US": "Humus's Badge",
+      "ja-JP": "ヒューマスの記章",
+      "zh-TW": "休謨斯證章"
+    },
+    "uniequip_002_humus": {
+      "zh-CN": "恶地奇异工具套组",
+      "en-US": "Badlands Exotic Toolkit",
+      "ja-JP": "悪地向け奇天烈工具セット",
+      "zh-TW": "惡地奇異工具套組"
+    },
+    "uniequip_001_ncdeer": {
+      "zh-CN": "九色鹿证章",
+      "en-US": "Nine-Colored Deer's Badge",
+      "ja-JP": "九色鹿の記章",
+      "zh-TW": "九色鹿證章"
+    },
+    "uniequip_002_ncdeer": {
+      "zh-CN": "“仙药”",
+      "en-US": "'Elixir'",
+      "ja-JP": "「仙薬」",
+      "zh-TW": "“仙藥”"
+    },
+    "uniequip_001_slent2": {
+      "zh-CN": "淬羽赫默证章",
+      "en-US": "Silence the Paradigmatic's Badge",
+      "ja-JP": "淬羽サイレンスの記章",
+      "zh-TW": "淬羽赫默證章"
+    },
+    "uniequip_002_slent2": {
+      "zh-CN": "难得清醒",
+      "en-US": "Hard to Keep Awake",
+      "ja-JP": "明晰な思考の助け",
+      "zh-TW": "難得清醒"
+    },
+    "uniequip_001_tknogi": {
+      "zh-CN": "月禾证章",
+      "en-US": "Tsukinogi's Badge",
+      "ja-JP": "ツキノギの記章",
+      "zh-TW": "月禾證章"
+    },
+    "uniequip_002_tknogi": {
+      "zh-CN": "胧夜微明",
+      "en-US": "Rouya Bimei",
+      "ja-JP": "朧夜の灯り",
+      "zh-TW": "朧夜微明"
+    },
+    "uniequip_001_quercu": {
+      "zh-CN": "夏栎证章",
+      "en-US": "Quercus's Badge",
+      "ja-JP": "クエルクスの記章",
+      "zh-TW": "夏櫟證章"
+    },
+    "uniequip_002_quercu": {
+      "zh-CN": "锈枝",
+      "en-US": "Rusty Stick",
+      "ja-JP": "錆びついた枝",
+      "zh-TW": "鏽枝"
+    },
+    "uniequip_001_almond": {
+      "zh-CN": "杏仁证章",
+      "en-US": "Almond's Badge",
+      "ja-JP": "アーモンドの記章",
+      "zh-TW": "杏仁證章"
+    },
+    "uniequip_002_almond": {
+      "zh-CN": "“毕业设计”",
+      "en-US": "'Capstone Project'",
+      "ja-JP": "「卒業制作」",
+      "zh-TW": "“畢業設計”"
+    },
+    "uniequip_003_chen": {
+      "zh-CN": "往昔时光",
+      "en-US": "Good Old School Days",
+      "ja-JP": "過ぎ去った日々",
+      "zh-TW": "往昔時光"
+    },
+    "uniequip_003_saga": {
+      "zh-CN": "何处寻驮？",
+      "en-US": "Where to Find the Burdenbeast?",
+      "ja-JP": "何処にか駄獣を尋ねん",
+      "zh-TW": "何處尋馱？"
+    },
+    "uniequip_001_horn": {
+      "zh-CN": "号角证章",
+      "en-US": "Horn's Badge",
+      "ja-JP": "ホルンの記章",
+      "zh-TW": "號角證章"
+    },
+    "uniequip_002_horn": {
+      "zh-CN": "“典范之人”",
+      "en-US": "Exemplars",
+      "ja-JP": "「模範たる人」",
+      "zh-TW": "“典範之人”"
+    },
+    "uniequip_001_firwhl": {
+      "zh-CN": "火哨证章",
+      "en-US": "Firewhistle's Badge",
+      "ja-JP": "ファイヤーホイッスルの記章",
+      "zh-TW": "火哨證章"
+    },
+    "uniequip_002_firwhl": {
+      "zh-CN": "“成长的足迹”",
+      "en-US": "'Footprints Growing'",
+      "ja-JP": "「成長の足跡」",
+      "zh-TW": "“成長的足跡”"
+    },
+    "uniequip_001_ashlok": {
+      "zh-CN": "灰毫证章",
+      "en-US": "Ashlock's Badge",
+      "ja-JP": "アッシュロックの記章",
+      "zh-TW": "灰毫證章"
+    },
+    "uniequip_002_ashlok": {
+      "zh-CN": "出门必备套装",
+      "en-US": "Outdoor Essential Kit",
+      "ja-JP": "外出必需品セット",
+      "zh-TW": "出門必備套裝"
+    },
+    "uniequip_001_delphn": {
+      "zh-CN": "戴菲恩证章",
+      "en-US": "Delphine's Badge",
+      "ja-JP": "デルフィーンの記章",
+      "zh-TW": "戴菲恩證章"
+    },
+    "uniequip_002_delphn": {
+      "zh-CN": "正义黯淡",
+      "en-US": "Gloomy Justice",
+      "ja-JP": "ほの暗い正義",
+      "zh-TW": "正義黯淡"
+    },
+    "uniequip_001_vrdant": {
+      "zh-CN": "维荻证章",
+      "en-US": "Verdant's Badge",
+      "ja-JP": "ヴァーダントの記章",
+      "zh-TW": "維荻證章"
+    },
+    "uniequip_002_vrdant": {
+      "zh-CN": "密林撷萃",
+      "en-US": "Trophies from the Jungle",
+      "ja-JP": "密林での収穫",
+      "zh-TW": "密林擷萃"
+    },
+    "uniequip_003_phenxi": {
+      "zh-CN": "漫长的旅途",
+      "en-US": "A Long Journey",
+      "ja-JP": "長い旅路",
+      "zh-TW": "漫長的旅途"
+    },
+    "uniequip_004_ebnhlz": {
+      "zh-CN": "朽坏传承",
+      "en-US": "Lineage of Decay",
+      "ja-JP": "朽ちた伝承",
+      "zh-TW": "朽壞傳承"
+    },
+    "uniequip_001_mudrok": {
+      "zh-CN": "泥岩证章",
+      "en-US": "Mudrock's Badge",
+      "ja-JP": "マドロックの記章",
+      "zh-TW": "泥岩證章"
+    },
+    "uniequip_002_mudrok": {
+      "zh-CN": "土石的根系",
+      "en-US": "Spreading Roots of Soil and Stone",
+      "ja-JP": "土石の根",
+      "zh-TW": "土石的根系"
+    },
+    "uniequip_001_judge": {
+      "zh-CN": "斥罪证章",
+      "en-US": "Penance's Badge",
+      "ja-JP": "ペナンスの記章",
+      "zh-TW": "斥罪證章"
+    },
+    "uniequip_002_judge": {
+      "zh-CN": "通往未来的荆棘之路",
+      "en-US": "The Thorny Road That Continues",
+      "ja-JP": "未来へと続く茨道",
+      "zh-TW": "通往未來的荊棘之路"
+    },
+    "uniequip_001_hpsts": {
+      "zh-CN": "火神证章",
+      "en-US": "Vulcan's Badge",
+      "ja-JP": "ヴァルカンの記章",
+      "zh-TW": "火神證章"
+    },
+    "uniequip_002_hpsts": {
+      "zh-CN": "锻椎者",
+      "en-US": "The Shaper",
+      "ja-JP": "椎鍛者",
+      "zh-TW": "鍛椎者"
+    },
+    "uniequip_001_lessng": {
+      "zh-CN": "止颂证章",
+      "en-US": "Lessing's Badge",
+      "ja-JP": "レッシングの記章",
+      "zh-TW": "止頌證章"
+    },
+    "uniequip_002_lessng": {
+      "zh-CN": "沉锋之束",
+      "en-US": "Blade Seal",
+      "ja-JP": "重き剣の束縛",
+      "zh-TW": "沉鋒之束"
+    },
+    "uniequip_001_baslin": {
+      "zh-CN": "深律证章",
+      "en-US": "Bassline's Badge",
+      "ja-JP": "ベースラインの記章",
+      "zh-TW": "深律證章"
+    },
+    "uniequip_002_baslin": {
+      "zh-CN": "受赐玩物",
+      "en-US": "Bestowed Trinket",
+      "ja-JP": "下賜されたおもちゃ",
+      "zh-TW": "受賜玩物"
+    },
+    "uniequip_003_bpipe": {
+      "zh-CN": "“棍棒与口袋”",
+      "en-US": "Stick and Sack",
+      "ja-JP": "「棒と袋」",
+      "zh-TW": "“棍棒與口袋”"
+    },
+    "uniequip_003_nearl2": {
+      "zh-CN": "“骑士家族”",
+      "en-US": "'A Knightly House'",
+      "ja-JP": "「騎士の一族」",
+      "zh-TW": "“騎士家族”"
+    },
+    "uniequip_001_gdglow": {
+      "zh-CN": "澄闪证章",
+      "en-US": "Goldenglow's Badge",
+      "ja-JP": "ゴールデングローの記章",
+      "zh-TW": "澄閃證章"
+    },
+    "uniequip_002_gdglow": {
+      "zh-CN": "“辛劳之翼”",
+      "en-US": "'Industrious Wings'",
+      "ja-JP": "「努力の翼」",
+      "zh-TW": "“辛勞之翼”"
+    },
+    "uniequip_001_rockr": {
+      "zh-CN": "洛洛证章",
+      "en-US": "Rockrock's Badge",
+      "ja-JP": "ロックロックの記章",
+      "zh-TW": "洛洛證章"
+    },
+    "uniequip_002_rockr": {
+      "zh-CN": "未命名的无人机",
+      "en-US": "Unnamed Drone",
+      "ja-JP": "名付けされていないドローン",
+      "zh-TW": "未命名的無人機"
+    },
+    "uniequip_001_kjera": {
+      "zh-CN": "耶拉证章",
+      "en-US": "Kjera's Badge",
+      "ja-JP": "イェラの記章",
+      "zh-TW": "耶拉證章"
+    },
+    "uniequip_002_kjera": {
+      "zh-CN": "以雪为线",
+      "en-US": "In the Woolen of Snow",
+      "ja-JP": "雪を紡いで",
+      "zh-TW": "以雪為線"
+    },
+    "uniequip_001_malist": {
+      "zh-CN": "至简证章",
+      "en-US": "Minimalist's Badge",
+      "ja-JP": "ミニマリストの記章",
+      "zh-TW": "至簡證章"
+    },
+    "uniequip_002_malist": {
+      "zh-CN": "“新家园”",
+      "en-US": "'New Home'",
+      "ja-JP": "「新しいふるさと」",
+      "zh-TW": "“新家園”"
+    },
+    "uniequip_001_cammou": {
+      "zh-CN": "卡达证章",
+      "en-US": "Click's Badge",
+      "ja-JP": "カシャの記章",
+      "zh-TW": "卡達證章"
+    },
+    "uniequip_002_cammou": {
+      "zh-CN": "大菲林脱敏实验",
+      "en-US": "Big Feline Desensitization Experiment",
+      "ja-JP": "大型フェリーン克服実験",
+      "zh-TW": "大菲林脫敏實驗"
+    },
+    "uniequip_001_blkkgt": {
+      "zh-CN": "锏证章",
+      "en-US": "Degenbrecher's Badge",
+      "ja-JP": "デーゲンブレヒャーの記章",
+      "zh-TW": "鐧證章"
+    },
+    "uniequip_002_blkkgt": {
+      "zh-CN": "“过往的注脚”",
+      "en-US": "'Footnotes of the Past'",
+      "ja-JP": "「過去の注釈」",
+      "zh-TW": "“過往的註腳”"
+    },
+    "uniequip_001_reed2": {
+      "zh-CN": "焰影苇草证章",
+      "en-US": "Reed the Flame Shadow's Badge",
+      "ja-JP": "焔影リードの記章",
+      "zh-TW": "焰影葦草證章"
+    },
+    "uniequip_002_reed2": {
+      "zh-CN": "“赠予红龙的花冠”",
+      "en-US": "'A Floral Garland to the Red Dragon'",
+      "ja-JP": "「赤き龍に贈る冠」",
+      "zh-TW": "“贈予紅龍的花冠”"
+    },
+    "uniequip_001_hbisc2": {
+      "zh-CN": "濯尘芙蓉证章",
+      "en-US": "Hibiscus the Purifier's Badge",
+      "ja-JP": "濯塵ハイビスカスの記章",
+      "zh-TW": "濯塵芙蓉證章"
+    },
+    "uniequip_002_hbisc2": {
+      "zh-CN": "结晶胸花",
+      "en-US": "Crystal Corsage",
+      "ja-JP": "結晶のブローチ",
+      "zh-TW": "結晶胸花"
+    },
+    "uniequip_001_vendla": {
+      "zh-CN": "刺玫证章",
+      "en-US": "Vendela's Badge",
+      "ja-JP": "ヴァンデラの記章",
+      "zh-TW": "刺玫證章"
+    },
+    "uniequip_002_vendla": {
+      "zh-CN": "碎片",
+      "en-US": "Broken Rose",
+      "ja-JP": "砕かれた薔薇",
+      "zh-TW": "碎片"
+    },
+    "uniequip_003_billro": {
+      "zh-CN": "乡音",
+      "en-US": "Always Have Your Back",
+      "ja-JP": "故郷の音",
+      "zh-TW": "鄉音"
+    },
+    "uniequip_003_weedy": {
+      "zh-CN": "新型仿生原型",
+      "en-US": "New Bionic Prototype",
+      "ja-JP": "新型バイオ装置プロトタイプ",
+      "zh-TW": "新型仿生原型"
+    },
+    "uniequip_003_lisa": {
+      "zh-CN": "孩子们",
+      "en-US": "Children of Terra",
+      "ja-JP": "子供たち",
+      "zh-TW": "孩子們"
+    },
+    "uniequip_003_lmlee": {
+      "zh-CN": "“但思善恶”",
+      "en-US": "'Distinguisher'",
+      "ja-JP": "「ただ善悪を思う」",
+      "zh-TW": "“但思善惡”"
+    },
+    "uniequip_001_chyue": {
+      "zh-CN": "重岳证章",
+      "en-US": "Chongyue's Badge",
+      "ja-JP": "チョンユエの記章",
+      "zh-TW": "重岳證章"
+    },
+    "uniequip_002_chyue": {
+      "zh-CN": "“自晦及明”",
+      "en-US": "'When to Wake Up'",
+      "ja-JP": "「自晦及明」",
+      "zh-TW": "“自晦及明”"
+    },
+    "uniequip_001_shu": {
+      "zh-CN": "黍证章",
+      "en-US": "Shu's Badge",
+      "ja-JP": "シュウの記章",
+      "zh-TW": "黍證章"
+    },
+    "uniequip_002_shu": {
+      "zh-CN": "“钦天司时”",
+      "en-US": "On Architecture of Time",
+      "ja-JP": "「欽天司時」",
+      "zh-TW": "“欽天司時”"
+    },
+    "uniequip_001_zuole": {
+      "zh-CN": "左乐证章",
+      "en-US": "Zuo Le's Badge",
+      "ja-JP": "ズオ・ラウの記章",
+      "zh-TW": "左樂證章"
+    },
+    "uniequip_002_zuole": {
+      "zh-CN": "“岂苦夜长”",
+      "en-US": "'You Night, Be Fleeting'",
+      "ja-JP": "「豈に夜の長きに苦しまんや」",
+      "zh-TW": "“豈苦夜長”"
+    },
+    "uniequip_001_grabds": {
+      "zh-CN": "小满证章",
+      "en-US": "Grain Buds' Badge",
+      "ja-JP": "グレインバッズの記章",
+      "zh-TW": "小滿證章"
+    },
+    "uniequip_002_grabds": {
+      "zh-CN": "在田野上",
+      "en-US": "On the Field",
+      "ja-JP": "田野にて",
+      "zh-TW": "在田野上"
+    },
+    "uniequip_001_wanqin": {
+      "zh-CN": "万顷证章",
+      "en-US": "Wanqing's Badge",
+      "ja-JP": "ワンチィンの記章",
+      "zh-TW": "萬頃證章"
+    },
+    "uniequip_002_wanqin": {
+      "zh-CN": "牵风",
+      "en-US": "With My Wind",
+      "ja-JP": "風を引き連れて",
+      "zh-TW": "牽風"
+    },
+    "uniequip_001_f12yin": {
+      "zh-CN": "山证章",
+      "en-US": "Mountain's Badge",
+      "ja-JP": "マウンテンの記章",
+      "zh-TW": "山證章"
+    },
+    "uniequip_002_f12yin": {
+      "zh-CN": "“自由的代价”",
+      "en-US": "'Price of Freedom'",
+      "ja-JP": "「自由の代償」",
+      "zh-TW": "“自由的代價”"
+    },
+    "uniequip_001_dagda": {
+      "zh-CN": "达格达证章",
+      "en-US": "Dagda's Badge",
+      "ja-JP": "ダグザの記章",
+      "zh-TW": "達格達證章"
+    },
+    "uniequip_002_dagda": {
+      "zh-CN": "后街圆盾",
+      "en-US": "Backstreet Shield",
+      "ja-JP": "裏通りのラウンドシールド",
+      "zh-TW": "後街圓盾"
+    },
+    "uniequip_001_tiger": {
+      "zh-CN": "因陀罗证章",
+      "en-US": "Indra's Badge",
+      "ja-JP": "インドラの記章",
+      "zh-TW": "因陀羅證章"
+    },
+    "uniequip_002_tiger": {
+      "zh-CN": "“汉娜的脱臼复位套装”",
+      "en-US": "'Hannah's Dislocation Rehabilitation Set'",
+      "ja-JP": "「ハンナの脱臼手当セット」",
+      "zh-TW": "“漢娜的脫臼復位套裝”"
+    },
+    "uniequip_001_flint": {
+      "zh-CN": "燧石证章",
+      "en-US": "Flint's Badge",
+      "ja-JP": "フリントの記章",
+      "zh-TW": "燧石證章"
+    },
+    "uniequip_002_flint": {
+      "zh-CN": "这些花朵的含义",
+      "en-US": "Meaning of Flowers",
+      "ja-JP": "花が意味するもの",
+      "zh-TW": "這些花朵的含義"
+    },
+    "uniequip_001_jaksel": {
+      "zh-CN": "杰克证章",
+      "en-US": "Jackie's Badge",
+      "ja-JP": "ジャッキーの記章",
+      "zh-TW": "傑克證章"
+    },
+    "uniequip_002_jaksel": {
+      "zh-CN": "D32钢椅",
+      "en-US": "D32 Steel Chair",
+      "ja-JP": "D32鋼の椅子",
+      "zh-TW": "D32鋼椅"
+    },
+    "uniequip_001_brownb": {
+      "zh-CN": "猎蜂证章",
+      "en-US": "Beehunter's Badge",
+      "ja-JP": "ビーハンターの記章",
+      "zh-TW": "獵蜂證章"
+    },
+    "uniequip_002_brownb": {
+      "zh-CN": "咬紧牙关",
+      "en-US": "Strong Jaw",
+      "ja-JP": "歯を食いしばれ",
+      "zh-TW": "咬緊牙關"
+    },
+    "uniequip_001_rfalcn": {
+      "zh-CN": "红隼证章",
+      "en-US": "Kestrel's Badge",
+      "ja-JP": "ケストレルの記章",
+      "zh-TW": "紅隼證章"
+    },
+    "uniequip_002_rfalcn": {
+      "zh-CN": "威吓者",
+      "en-US": "Intimidator",
+      "ja-JP": "威嚇する者",
+      "zh-TW": "威嚇者"
+    },
+    "uniequip_001_jesca2": {
+      "zh-CN": "涤火杰西卡证章",
+      "en-US": "Jessica the Liberated's Badge",
+      "ja-JP": "滌火ジェシカの記章",
+      "zh-TW": "滌火潔西卡證章"
+    },
+    "uniequip_002_jesca2": {
+      "zh-CN": "“私家英雄”",
+      "en-US": "This Hero of Mine",
+      "ja-JP": "「わたしのヒーロー」",
+      "zh-TW": "“私家英雄”"
+    },
+    "uniequip_001_liskam": {
+      "zh-CN": "雷蛇证章",
+      "en-US": "Liskarm's Badge",
+      "ja-JP": "リスカムの記章",
+      "zh-TW": "雷蛇證章"
+    },
+    "uniequip_002_liskam": {
+      "zh-CN": "震撼存储",
+      "en-US": "Stunner's Storage",
+      "ja-JP": "スタニングストレージ",
+      "zh-TW": "震撼存儲"
+    },
+    "uniequip_001_blitz": {
+      "zh-CN": "闪击证章",
+      "en-US": "Blitz's Badge",
+      "ja-JP": "Blitzの記章",
+      "zh-TW": "BLITZ證章"
+    },
+    "uniequip_002_blitz": {
+      "zh-CN": "战术盾牌维护油",
+      "en-US": "Shield Maintenance Oil",
+      "ja-JP": "シールドメンテナンス油",
+      "zh-TW": "戰術盾牌維護油"
+    },
+    "uniequip_001_ela": {
+      "zh-CN": "艾拉证章",
+      "en-US": "Ela's Badge",
+      "ja-JP": "Elaの記章",
+      "zh-TW": "ELA證章"
+    },
+    "uniequip_002_ela": {
+      "zh-CN": "社会期望背包",
+      "en-US": "Social Expectation Backpack",
+      "ja-JP": "社会の期待を背負って",
+      "zh-TW": "社會期望背包"
+    },
+    "uniequip_001_fuze": {
+      "zh-CN": "导火索证章",
+      "en-US": "Fuze's Badge",
+      "ja-JP": "Fuzeの記章",
+      "zh-TW": "FUZE證章"
+    },
+    "uniequip_002_fuze": {
+      "zh-CN": "副语言符号展示系统",
+      "en-US": "Sublinguistical Sign Showing System",
+      "ja-JP": "パラ言語サイン表示システム",
+      "zh-TW": "副語言符號展示系統"
+    },
+    "uniequip_001_iana": {
+      "zh-CN": "双月证章",
+      "en-US": "Iana's Badge",
+      "ja-JP": "Ianaの記章",
+      "zh-TW": "IANA證章"
+    },
+    "uniequip_002_iana": {
+      "zh-CN": "“遥远陌生的世界”",
+      "en-US": "'Distant and Less Familiar World'",
+      "ja-JP": "「遥けき未知の世界」",
+      "zh-TW": "“遙遠陌生的世界”"
+    },
+    "uniequip_001_rdoc": {
+      "zh-CN": "医生证章",
+      "en-US": "Doc's Badge",
+      "ja-JP": "Docの記章",
+      "zh-TW": "DOC證章"
+    },
+    "uniequip_002_rdoc": {
+      "zh-CN": "“第三种力量”",
+      "en-US": "'The Third Power'",
+      "ja-JP": "「第三の力」",
+      "zh-TW": "“第三種力量”"
+    },
+    "uniequip_003_ash": {
+      "zh-CN": "刺针式合金爆破弹",
+      "en-US": "Modified Breaching Grenade",
+      "ja-JP": "改良型ブリーチング弾",
+      "zh-TW": "刺針式合金爆破彈"
+    },
+    "uniequip_001_mlyss": {
+      "zh-CN": "缪尔赛思证章",
+      "en-US": "Muelsyse's Badge",
+      "ja-JP": "ミュルジスの記章",
+      "zh-TW": "繆爾賽思證章"
+    },
+    "uniequip_002_mlyss": {
+      "zh-CN": "梳妆流形",
+      "en-US": "Dresser Flowing Shape",
+      "ja-JP": "身繕い用水影",
+      "zh-TW": "梳妝流形"
+    },
+    "uniequip_001_vigil": {
+      "zh-CN": "伺夜证章",
+      "en-US": "Vigil's Badge",
+      "ja-JP": "ヴィジェルの記章",
+      "zh-TW": "伺夜證章"
+    },
+    "uniequip_002_vigil": {
+      "zh-CN": "叙拉古式入门礼",
+      "en-US": "La Punciuta",
+      "ja-JP": "シラクーザ式入門の証",
+      "zh-TW": "敘拉古式入門禮"
+    },
+    "uniequip_001_blkngt": {
+      "zh-CN": "夜半证章",
+      "en-US": "Blacknight's Badge",
+      "ja-JP": "ブラックナイトの記章",
+      "zh-TW": "夜半證章"
+    },
+    "uniequip_002_blkngt": {
+      "zh-CN": "星星与瞌睡虫",
+      "en-US": "The Stars and The Sleepyhead",
+      "ja-JP": "星々と寝坊助",
+      "zh-TW": "星星與瞌睡蟲"
+    },
+    "uniequip_001_bstalk": {
+      "zh-CN": "豆苗证章",
+      "en-US": "Beanstalk's Badge",
+      "ja-JP": "ビーンストークの記章",
+      "zh-TW": "豆苗證章"
+    },
+    "uniequip_002_bstalk": {
+      "zh-CN": "钳钳自助餐",
+      "en-US": "All-You-Crabs-Eat",
+      "ja-JP": "カニカニビュッフェ",
+      "zh-TW": "鉗鉗自助餐"
+    },
+    "uniequip_001_ascln": {
+      "zh-CN": "阿斯卡纶证章",
+      "en-US": "Ascalon's Badge",
+      "ja-JP": "アスカロンの記章",
+      "zh-TW": "阿斯卡綸證章"
+    },
+    "uniequip_002_ascln": {
+      "zh-CN": "“无形，无情”",
+      "en-US": "'Hidden Blade'",
+      "ja-JP": "「無形、無情」",
+      "zh-TW": "“無形，無情”"
+    },
+    "uniequip_001_aroma": {
+      "zh-CN": "阿罗玛证章",
+      "en-US": "Aroma's Badge",
+      "ja-JP": "アロマの記章",
+      "zh-TW": "阿羅瑪證章"
+    },
+    "uniequip_002_aroma": {
+      "zh-CN": "柠檬味的童年",
+      "en-US": "Lemon-flavored Childhood",
+      "ja-JP": "レモンの薫る子供時代",
+      "zh-TW": "檸檬味的童年"
+    },
+    "uniequip_001_luton": {
+      "zh-CN": "露托证章",
+      "en-US": "Lutonada's Badge",
+      "ja-JP": "ルトナダの記章",
+      "zh-TW": "露托證章"
+    },
+    "uniequip_002_luton": {
+      "zh-CN": "生还的人与物",
+      "en-US": "Survivors",
+      "ja-JP": "生還者たち",
+      "zh-TW": "生還的人與物"
+    },
+    "uniequip_003_heyak": {
+      "zh-CN": "羽蛇的时间博物馆",
+      "en-US": "Time Gallery of K'uk'ulkan",
+      "ja-JP": "ククルカンの時間博物館",
+      "zh-TW": "羽蛇的時間博物館"
+    },
+    "uniequip_001_svrash": {
+      "zh-CN": "银灰证章",
+      "en-US": "SilverAsh's Badge",
+      "ja-JP": "シルバーアッシュの記章",
+      "zh-TW": "銀灰證章"
+    },
+    "uniequip_002_svrash": {
+      "zh-CN": "雪境羽兽护理套组",
+      "en-US": "Snow Realm Fowlcare Kit",
+      "ja-JP": "雪境羽獣お手入れセット",
+      "zh-TW": "雪境羽獸護理套組"
+    },
+    "uniequip_001_thorns": {
+      "zh-CN": "棘刺证章",
+      "en-US": "Thorns's Badge",
+      "ja-JP": "ソーンズの記章",
+      "zh-TW": "棘刺證章"
+    },
+    "uniequip_002_thorns": {
+      "zh-CN": "“盐与沙”",
+      "en-US": "The Salt and the Sand",
+      "ja-JP": "「塩と砂」",
+      "zh-TW": "“鹽與沙”"
+    },
+    "uniequip_001_qiubai": {
+      "zh-CN": "仇白证章",
+      "en-US": "Qiubai's Badge",
+      "ja-JP": "チューバイの記章",
+      "zh-TW": "仇白證章"
+    },
+    "uniequip_002_qiubai": {
+      "zh-CN": "雪浸过的斗笠",
+      "en-US": "A Weathered Snow Hat",
+      "ja-JP": "雪に濡れる笠",
+      "zh-TW": "雪浸過的斗笠"
+    },
+    "uniequip_001_whitew": {
+      "zh-CN": "拉普兰德证章",
+      "en-US": "Lappland's Badge",
+      "ja-JP": "ラップランドの記章",
+      "zh-TW": "拉普蘭德證章"
+    },
+    "uniequip_002_whitew": {
+      "zh-CN": "“幼狼的牙齿”",
+      "en-US": "'The Young Fang'",
+      "ja-JP": "「幼き狼の牙」",
+      "zh-TW": "“幼狼的牙齒”"
+    },
+    "uniequip_001_leto": {
+      "zh-CN": "烈夏证章",
+      "en-US": "Leto's Badge",
+      "ja-JP": "リェータの記章",
+      "zh-TW": "烈夏證章"
+    },
+    "uniequip_002_leto": {
+      "zh-CN": "旧衣服",
+      "en-US": "The Old Clothes",
+      "ja-JP": "古い衣服",
+      "zh-TW": "舊衣服"
+    },
+    "uniequip_001_ayer": {
+      "zh-CN": "断崖证章",
+      "en-US": "Ayerscarpe's Badge",
+      "ja-JP": "エアースカーペの記章",
+      "zh-TW": "斷崖證章"
+    },
+    "uniequip_002_ayer": {
+      "zh-CN": "荒野便携提神剂",
+      "en-US": "Portable Wildland Stimulants",
+      "ja-JP": "荒野用携帯気付け薬",
+      "zh-TW": "荒野便攜提神劑"
+    },
+    "uniequip_001_spikes": {
+      "zh-CN": "芳汀证章",
+      "en-US": "Arene's Badge",
+      "ja-JP": "アレーンの記章",
+      "zh-TW": "芳汀證章"
+    },
+    "uniequip_002_spikes": {
+      "zh-CN": "芳汀之书",
+      "en-US": "The Book of Arene",
+      "ja-JP": "アレーンのノート",
+      "zh-TW": "芳汀之書"
+    },
+    "uniequip_001_frostl": {
+      "zh-CN": "霜叶证章",
+      "en-US": "Frostleaf's Badge",
+      "ja-JP": "フロストリーフの記章",
+      "zh-TW": "霜葉證章"
+    },
+    "uniequip_002_frostl": {
+      "zh-CN": "不歇律动",
+      "en-US": "The Seamless Mixtape",
+      "ja-JP": "止まないビート",
+      "zh-TW": "不歇律動"
+    },
+    "uniequip_001_lolxh": {
+      "zh-CN": "罗小黑证章",
+      "en-US": "Luo Xiaohei's Badge",
+      "ja-JP": "羅小黒の記章",
+      "zh-TW": "羅小黑證章"
+    },
+    "uniequip_002_lolxh": {
+      "zh-CN": "毛线球",
+      "en-US": "Ball of Yarn",
+      "ja-JP": "毛糸玉",
+      "zh-TW": "毛線球"
+    },
+    "uniequip_001_fang2": {
+      "zh-CN": "历阵锐枪芬证章",
+      "en-US": "Fang the Fire-Sharpened's Badge",
+      "ja-JP": "歴陣鋭槍フェンの記章",
+      "zh-TW": "歷陣銳槍芬證章"
+    },
+    "uniequip_002_fang2": {
+      "zh-CN": "一往无前",
+      "en-US": "The Dauntless",
+      "ja-JP": "たゆまず進め",
+      "zh-TW": "一往無前"
+    },
+    "uniequip_001_logos": {
+      "zh-CN": "逻各斯证章",
+      "en-US": "Logos's Badge",
+      "ja-JP": "ロゴスの記章",
+      "zh-TW": "邏各斯證章"
+    },
+    "uniequip_002_logos": {
+      "zh-CN": "来自河谷的笔盒",
+      "en-US": "A Pen Collection from the Convallis",
+      "ja-JP": "河谷より来たる筆入れ",
+      "zh-TW": "來自河谷的筆盒"
+    },
+    "uniequip_001_wisdel": {
+      "zh-CN": "维什戴尔证章",
+      "en-US": "Wiš'adel's Badge",
+      "ja-JP": "ウィシャデルの記章",
+      "zh-TW": "維什戴爾證章"
+    },
+    "uniequip_002_wisdel": {
+      "zh-CN": "“祖宗发射器”",
+      "en-US": "'Ancestor Launcher'",
+      "ja-JP": "「ご先祖ランチャー」",
+      "zh-TW": "“祖宗發射器”"
+    },
+    "uniequip_001_amiya3": {
+      "zh-CN": "阿米娅证章（医疗）",
+      "en-US": "Amiya's Badge (Medic)",
+      "ja-JP": "アーミヤの記章（医療）",
+      "zh-TW": "阿米婭證章（醫療）"
+    },
+    "uniequip_002_amiya3": {
+      "zh-CN": "带有灼痕的裙子",
+      "en-US": "The Dress Handpicked by Theresa",
+      "ja-JP": "焦げ跡のついたワンピース",
+      "zh-TW": "帶有灼痕的裙子"
+    },
+    "uniequip_001_coldst": {
+      "zh-CN": "冰酿证章",
+      "en-US": "Coldshot's Badge",
+      "ja-JP": "コールドショットの記章",
+      "zh-TW": "冰釀證章"
+    },
+    "uniequip_002_coldst": {
+      "zh-CN": "“桀骜”",
+      "en-US": "'Unbridled'",
+      "ja-JP": "「じゃじゃ馬」",
+      "zh-TW": "“桀驁”"
+    },
+    "uniequip_003_judge": {
+      "zh-CN": "“无罪”",
+      "en-US": "'Innocent'",
+      "ja-JP": "「無罪」",
+      "zh-TW": "“無罪”"
+    },
+    "uniequip_003_glady": {
+      "zh-CN": "淡金坠饰",
+      "en-US": "Pale Gold Hair Pendant",
+      "ja-JP": "淡い金色のペンダント",
+      "zh-TW": "淡金墜飾"
+    },
+    "uniequip_001_haini": {
+      "zh-CN": "海霓证章",
+      "en-US": "Lucilla's Badge",
+      "ja-JP": "ルシーラの記章",
+      "zh-TW": "海霓證章"
+    },
+    "uniequip_002_haini": {
+      "zh-CN": "多功能测绘仪-改良版",
+      "en-US": "Multifunctional Mapping Instruments (Early Access)",
+      "ja-JP": "多機能型測量機・改良版",
+      "zh-TW": "多功能測繪儀-改良版"
+    },
+    "uniequip_001_ray": {
+      "zh-CN": "莱伊证章",
+      "en-US": "Ray's Badge",
+      "ja-JP": "レイの記章",
+      "zh-TW": "萊伊證章"
+    },
+    "uniequip_002_ray": {
+      "zh-CN": "《跳舞的月光》",
+      "en-US": "Dancing Moonlight",
+      "ja-JP": "「月光と踊る」",
+      "zh-TW": "《跳舞的月光》"
+    },
+    "uniequip_001_udflow": {
+      "zh-CN": "深巡证章",
+      "en-US": "Underflow's Badge",
+      "ja-JP": "アンダーフローの記章",
+      "zh-TW": "深巡證章"
+    },
+    "uniequip_002_udflow": {
+      "zh-CN": "基于咖啡的神经活性剂",
+      "en-US": "A Neural Stimulant Based on 'Coffee'",
+      "ja-JP": "コーヒーベースの神経活性剤",
+      "zh-TW": "基於咖啡的神經活性劑"
+    },
+    "uniequip_003_ifrit": {
+      "zh-CN": "“热成形记忆”",
+      "en-US": "'Thermoformed Memory'",
+      "ja-JP": "「熱成形された記憶」",
+      "zh-TW": "“熱成形記憶”"
+    },
+    "uniequip_001_chen2": {
+      "zh-CN": "假日威龙陈证章",
+      "en-US": "Ch'en the Holungday's Badge",
+      "ja-JP": "遊龍チェンの記章",
+      "zh-TW": "假日威龍陳證章"
+    },
+    "uniequip_002_chen2": {
+      "zh-CN": "沙滩战斗套装",
+      "en-US": "Beach Combat Suit",
+      "ja-JP": "ビーチ用コンバットセット",
+      "zh-TW": "沙灘戰鬥套裝"
+    },
+    "uniequip_001_aosta": {
+      "zh-CN": "奥斯塔证章",
+      "en-US": "Aosta's Badge",
+      "ja-JP": "アオスタの記章",
+      "zh-TW": "奧斯塔證章"
+    },
+    "uniequip_002_aosta": {
+      "zh-CN": "逃亡路上的应急小包",
+      "en-US": "Emergency Kit",
+      "ja-JP": "逃亡用の緊急キット",
+      "zh-TW": "逃亡路上的緊急小包"
+    },
+    "uniequip_001_excu": {
+      "zh-CN": "送葬人证章",
+      "en-US": "Executor's Badge",
+      "ja-JP": "イグゼキュターの記章",
+      "zh-TW": "送葬人證章"
+    },
+    "uniequip_002_excu": {
+      "zh-CN": "执行者随身包",
+      "en-US": "Executor's Satchel",
+      "ja-JP": "執行人のバッグ",
+      "zh-TW": "執行者隨身包"
+    },
+    "uniequip_001_pinecn": {
+      "zh-CN": "松果证章",
+      "en-US": "Pinecone's Badge",
+      "ja-JP": "パインコーンの記章",
+      "zh-TW": "松果證章"
+    },
+    "uniequip_002_pinecn": {
+      "zh-CN": "移动电箱",
+      "en-US": "Mobile Powerbank",
+      "ja-JP": "ポータブル電源",
+      "zh-TW": "移動電箱"
+    },
+    "uniequip_001_mitm": {
+      "zh-CN": "渡桥证章",
+      "en-US": "Mitm's Badge",
+      "ja-JP": "ミトムの記章",
+      "zh-TW": "渡橋證章"
+    },
+    "uniequip_002_mitm": {
+      "zh-CN": "内敛锋芒",
+      "en-US": "Beware of the Edges",
+      "ja-JP": "秘められた鋭さ",
+      "zh-TW": "內斂鋒芒"
+    },
+    "uniequip_003_mostma": {
+      "zh-CN": "资深万国信使定制斗篷",
+      "en-US": "Veteran Legatus' Customized Cloak",
+      "ja-JP": "レガトゥス専用クローク",
+      "zh-TW": "資深萬國信使訂製斗篷"
+    },
+    "uniequip_003_swire2": {
+      "zh-CN": "诗怀雅的龙门美食指南",
+      "en-US": "Director Swire's Lungmen Food Guide",
+      "ja-JP": "スワイヤーの龍門グルメガイド",
+      "zh-TW": "詩懷雅的龍門美食指南"
+    },
+    "uniequip_004_kalts": {
+      "zh-CN": "凯尔希特限证章",
+      "en-US": "Kal'tsit's Specialized Badge",
+      "ja-JP": "ケルシーの特別限定記章",
+      "zh-TW": "凱爾希特限證章"
+    },
+    "uniequip_004_phatom": {
+      "zh-CN": "傀影特限证章",
+      "en-US": "Phantom's Specialized Badge",
+      "ja-JP": "ファントムの特別限定記章",
+      "zh-TW": "傀影特限證章"
+    },
+    "uniequip_001_lasher": {
+      "zh-CN": "衡沙证章",
+      "en-US": "Sand Reckoner's Badge",
+      "ja-JP": "サンドレコナーの記章",
+      "zh-TW": "衡沙證章"
+    },
+    "uniequip_002_lasher": {
+      "zh-CN": "过往留痕",
+      "en-US": "Traces From the Past",
+      "ja-JP": "過去の痕跡",
+      "zh-TW": "過往留痕"
+    },
+    "uniequip_001_agoat2": {
+      "zh-CN": "纯烬艾雅法拉证章",
+      "en-US": "Eyjafjalla the Hvít Aska's Badge",
+      "ja-JP": "純燼エイヤフィヤトラの記章",
+      "zh-TW": "純燼艾雅法拉證章"
+    },
+    "uniequip_002_agoat2": {
+      "zh-CN": "想要留住的声音",
+      "en-US": "Sounds I Want to Retain",
+      "ja-JP": "残したい音声",
+      "zh-TW": "想要留住的聲音"
+    },
+    "uniequip_001_harold": {
+      "zh-CN": "哈洛德证章",
+      "en-US": "Harold's Badge",
+      "ja-JP": "ハロルドの記章",
+      "zh-TW": "哈洛德證章"
+    },
+    "uniequip_002_harold": {
+      "zh-CN": "腿部护理套装",
+      "en-US": "Legs Care Kit",
+      "ja-JP": "足ケアセット",
+      "zh-TW": "腿部護理套裝"
+    },
+    "uniequip_001_mberry": {
+      "zh-CN": "桑葚证章",
+      "en-US": "Mulberry's Badge",
+      "ja-JP": "マルベリーの記章",
+      "zh-TW": "桑葚證章"
+    },
+    "uniequip_002_mberry": {
+      "zh-CN": "宁心静神",
+      "en-US": "Serenity Inside",
+      "ja-JP": "心を静めて",
+      "zh-TW": "寧心靜神"
+    },
+    "uniequip_001_glider": {
+      "zh-CN": "蜜莓证章",
+      "en-US": "Honeyberry's Badge",
+      "ja-JP": "ハニーベリーの記章",
+      "zh-TW": "蜜莓證章"
+    },
+    "uniequip_002_glider": {
+      "zh-CN": "落地之后",
+      "en-US": "After Landing",
+      "ja-JP": "着地の後",
+      "zh-TW": "落地之後"
+    },
+    "uniequip_001_chnut": {
+      "zh-CN": "褐果证章",
+      "en-US": "Chestnut's Badge",
+      "ja-JP": "チェストナットの記章",
+      "zh-TW": "褐果證章"
+    },
+    "uniequip_002_chnut": {
+      "zh-CN": "地上巡旅纪念灯",
+      "en-US": "Ground Journey Commemorative Light",
+      "ja-JP": "地上旅行記念の鉱石灯",
+      "zh-TW": "地上巡旅紀念燈"
+    },
+    "uniequip_003_cgbird": {
+      "zh-CN": "“莺歌”",
+      "en-US": "'Nocturnal Echoes'",
+      "ja-JP": "「小夜啼鳥の歌」",
+      "zh-TW": "“鶯歌”"
+    },
+    "uniequip_001_marcil": {
+      "zh-CN": "玛露西尔证章",
+      "en-US": "Marcille's Badge",
+      "ja-JP": "マルシルの記章",
+      "zh-TW": "瑪露希爾證章"
+    },
+    "uniequip_002_marcil": {
+      "zh-CN": "才女的藏书",
+      "en-US": "Book Collection of the Best Magician",
+      "ja-JP": "才女の蔵書",
+      "zh-TW": "才女的藏書"
+    },
+    "uniequip_001_laios": {
+      "zh-CN": "莱欧斯证章",
+      "en-US": "Laios's Badge",
+      "ja-JP": "ライオスの記章",
+      "zh-TW": "萊歐斯證章"
+    },
+    "uniequip_002_laios": {
+      "zh-CN": "想要带回迷宫的包裹",
+      "en-US": "Trophies to Bring Back to the Dungeon",
+      "ja-JP": "持ち帰りたい荷物",
+      "zh-TW": "想要帶回迷宮的包裹"
+    },
+    "uniequip_001_chilc": {
+      "zh-CN": "齐尔查克证章",
+      "en-US": "Chilchuck's Badge",
+      "ja-JP": "チルチャックの記章",
+      "zh-TW": "奇爾查克證章"
+    },
+    "uniequip_002_chilc": {
+      "zh-CN": "原版开锁工具",
+      "en-US": "Authentic Locksmith's Instruments",
+      "ja-JP": "オリジナルピッキングツール",
+      "zh-TW": "原版開鎖工具"
+    },
+    "uniequip_001_sensi": {
+      "zh-CN": "森西证章",
+      "en-US": "Senshi's Badge",
+      "ja-JP": "センシの記章",
+      "zh-TW": "先西證章"
+    },
+    "uniequip_002_sensi": {
+      "zh-CN": "非魔法厨艺",
+      "en-US": "Non-Magical Culinary Arts",
+      "ja-JP": "魔法と無縁の調理技術",
+      "zh-TW": "非魔法廚藝"
+    },
+    "uniequip_001_hodrer": {
+      "zh-CN": "赫德雷证章",
+      "en-US": "Hoederer's Badge",
+      "ja-JP": "ヘドリーの記章",
+      "zh-TW": "赫德雷證章"
+    },
+    "uniequip_002_hodrer": {
+      "zh-CN": "新的生活",
+      "en-US": "A New Life",
+      "ja-JP": "新たな生活",
+      "zh-TW": "新的生活"
+    },
+    "uniequip_001_ulpia": {
+      "zh-CN": "乌尔比安证章",
+      "en-US": "Ulpianus's Badge",
+      "ja-JP": "ウルピアヌスの記章",
+      "zh-TW": "烏爾比安證章"
+    },
+    "uniequip_002_ulpia": {
+      "zh-CN": "乌尔比安的衣橱",
+      "en-US": "Vestiarium Ulpiani",
+      "ja-JP": "ウルピアヌスのクローゼット",
+      "zh-TW": "烏爾比安的衣櫥"
+    },
+    "uniequip_001_chimes": {
+      "zh-CN": "铎铃证章",
+      "en-US": "Wind Chimes' Badge",
+      "ja-JP": "ウィンドチャイムの記章",
+      "zh-TW": "鐸鈴證章"
+    },
+    "uniequip_002_chimes": {
+      "zh-CN": "致继任者",
+      "en-US": "To My Successor",
+      "ja-JP": "後任の方へ",
+      "zh-TW": "致繼任者"
+    },
+    "uniequip_001_quartz": {
+      "zh-CN": "石英证章",
+      "en-US": "Quartz's Badge",
+      "ja-JP": "クォーツの記章",
+      "zh-TW": "石英證章"
+    },
+    "uniequip_002_quartz": {
+      "zh-CN": "钟表修理套组",
+      "en-US": "Watchmaker's Kit",
+      "ja-JP": "時計修理キット",
+      "zh-TW": "鐘錶修理套組"
+    },
+    "uniequip_003_irene": {
+      "zh-CN": "审判官口粮",
+      "en-US": "Inquisitor's Ration",
+      "ja-JP": "審問官のレーション",
+      "zh-TW": "審判官口糧"
+    },
+    "uniequip_003_ironmn": {
+      "zh-CN": "海布里印记",
+      "en-US": "Highbury Imprint",
+      "ja-JP": "ハイベリー・インプリント",
+      "zh-TW": "海布里印記"
+    },
+    "uniequip_001_heidi": {
+      "zh-CN": "海蒂证章",
+      "en-US": "Heidi's Badge",
+      "ja-JP": "ハイディの記章",
+      "zh-TW": "海蒂證章"
+    },
+    "uniequip_002_heidi": {
+      "zh-CN": "华贵璀璨的死斗",
+      "en-US": "Luxurious Life-and-Death Struggle",
+      "ja-JP": "絢爛豪華なる死闘",
+      "zh-TW": "華貴璀璨的死鬥"
+    },
+    "uniequip_003_horn": {
+      "zh-CN": "旧日新装",
+      "en-US": "Old Clothes, New Days",
+      "ja-JP": "過ぎし日の新装",
+      "zh-TW": "舊日新裝"
+    },
+    "uniequip_001_cathy": {
+      "zh-CN": "凯瑟琳证章",
+      "en-US": "Catherine's Badge",
+      "ja-JP": "キャサリンの記章",
+      "zh-TW": "凱瑟琳證章"
+    },
+    "uniequip_002_cathy": {
+      "zh-CN": "闲暇时分",
+      "en-US": "Leisure Hours",
+      "ja-JP": "ひと時の暇",
+      "zh-TW": "閒暇時分"
+    },
+    "uniequip_001_sora": {
+      "zh-CN": "空证章",
+      "en-US": "Sora's Badge",
+      "ja-JP": "ソラの記章",
+      "zh-TW": "空證章"
+    },
+    "uniequip_002_sora": {
+      "zh-CN": "“齐唱”",
+      "en-US": "'Unison'",
+      "ja-JP": "「ユニゾン」",
+      "zh-TW": "“齊唱”"
+    },
+    "uniequip_001_cetsyr": {
+      "zh-CN": "魔王证章",
+      "en-US": "Civilight Eterna's Badge",
+      "ja-JP": "シヴィライト・エテルナの記章",
+      "zh-TW": "魔王證章"
+    },
+    "uniequip_002_cetsyr": {
+      "zh-CN": "故事的结局",
+      "en-US": "Another Story",
+      "ja-JP": "物語の結末",
+      "zh-TW": "故事的結局"
+    },
+    "uniequip_001_skadi2": {
+      "zh-CN": "浊心斯卡蒂证章",
+      "en-US": "Skadi the Corrupting Heart's Badge",
+      "ja-JP": "濁心スカジの記章",
+      "zh-TW": "濁心斯卡蒂證章"
+    },
+    "uniequip_002_skadi2": {
+      "zh-CN": "蜕化的残迹",
+      "en-US": "An Exuvia of Her Past",
+      "ja-JP": "彼女の残滓",
+      "zh-TW": "蛻化的殘跡"
+    },
+    "uniequip_001_cello": {
+      "zh-CN": "塑心证章",
+      "en-US": "Virtuosa's Badge",
+      "ja-JP": "ヴィルトゥオーサの記章",
+      "zh-TW": "塑心證章"
+    },
+    "uniequip_002_cello": {
+      "zh-CN": "强弱法",
+      "en-US": "The Decrescendo",
+      "ja-JP": "デクレシェンド",
+      "zh-TW": "強弱法"
+    },
+    "uniequip_001_threye": {
+      "zh-CN": "凛视证章",
+      "en-US": "Valarqvin's Badge",
+      "ja-JP": "ヴァラルクビンの記章",
+      "zh-TW": "凜視證章"
+    },
+    "uniequip_002_threye": {
+      "zh-CN": "启行未来的灯",
+      "en-US": "The Enlightened",
+      "ja-JP": "未来を導く明かり",
+      "zh-TW": "啟行未來的燈"
+    },
+    "uniequip_001_bobb": {
+      "zh-CN": "波卜证章",
+      "en-US": "Bobbing's Badge",
+      "ja-JP": "ボビングの記章",
+      "zh-TW": "波卜證章"
+    },
+    "uniequip_002_bobb": {
+      "zh-CN": "社工课程二手教材",
+      "en-US": "Second-hand Textbook for Social Work",
+      "ja-JP": "中古のソーシャルワーク教科書",
+      "zh-TW": "社工課程二手教材"
+    },
+    "uniequip_001_whitw2": {
+      "zh-CN": "荒芜拉普兰德证章",
+      "en-US": "Lappland the Decadenza's Badge",
+      "ja-JP": "荒蕪ラップランドの記章",
+      "zh-TW": "荒蕪拉普蘭德證章"
+    },
+    "uniequip_002_whitw2": {
+      "zh-CN": "狼时",
+      "en-US": "Hour of the Wolf",
+      "ja-JP": "狼の時間",
+      "zh-TW": "狼時"
+    },
+    "uniequip_001_vulpis": {
+      "zh-CN": "忍冬证章",
+      "en-US": "Vulpisfoglia's Badge",
+      "ja-JP": "ウルピスフォリアの記章",
+      "zh-TW": "忍冬證章"
+    },
+    "uniequip_002_vulpis": {
+      "zh-CN": "杀手也有假期",
+      "en-US": "Patience, Mission, Vacation",
+      "ja-JP": "殺し屋にも休暇あり",
+      "zh-TW": "殺手也有假期"
+    },
+    "uniequip_001_crosly": {
+      "zh-CN": "弑君者证章",
+      "en-US": "Crownslayer's Badge",
+      "ja-JP": "クラウンスレイヤーの記章",
+      "zh-TW": "弒君者證章"
+    },
+    "uniequip_002_crosly": {
+      "zh-CN": "弑君刃",
+      "en-US": "Цареубийца",
+      "ja-JP": "王冠を屠る刃",
+      "zh-TW": "弒君刃"
+    },
+    "uniequip_001_talr": {
+      "zh-CN": "裁度证章",
+      "en-US": "Figurino's Badge",
+      "ja-JP": "フィグリーノの記章",
+      "zh-TW": "裁度證章"
+    },
+    "uniequip_002_talr": {
+      "zh-CN": "“头面人物”",
+      "en-US": "'The Big Shot'",
+      "ja-JP": "「大物」",
+      "zh-TW": "頭面人物"
+    },
+    "uniequip_003_lessng": {
+      "zh-CN": "苦修者的抗压训练",
+      "en-US": "Stress Test for Ascetics",
+      "ja-JP": "修行者のストレス耐性訓練",
+      "zh-TW": "苦修者的抗壓訓練"
+    },
+    "uniequip_004_aglina": {
+      "zh-CN": "安洁莉娜特限证章",
+      "en-US": "Angelina's Specialized Badge",
+      "ja-JP": "アンジェリーナの特別限定記章",
+      "zh-TW": "安潔莉娜特限證章"
+    },
+    "uniequip_003_rosmon": {
+      "zh-CN": "迷迭香特限证章",
+      "en-US": "Rosmontis's Specialized Badge",
+      "ja-JP": "ロスモンティスの特別限定記章",
+      "zh-TW": "迷迭香特限證章"
+    },
+    "uniequip_001_acnipe": {
+      "zh-CN": "Stormeye证章",
+      "en-US": "Stormeye's Badge",
+      "ja-JP": "Stormeyeの記章",
+      "zh-TW": "Stormeye證章"
+    },
+    "uniequip_002_acnipe": {
+      "zh-CN": "Stormeye证章",
+      "en-US": "Stormeye's Badge",
+      "ja-JP": "Stormeyeの記章",
+      "zh-TW": "Stormeye證章"
+    },
+    "uniequip_001_acspec": {
+      "zh-CN": "Misery证章",
+      "en-US": "Misery's Badge",
+      "ja-JP": "Miseryの記章",
+      "zh-TW": "Misery證章"
+    },
+    "uniequip_002_acspec": {
+      "zh-CN": "Misery证章",
+      "en-US": "Misery's Badge",
+      "ja-JP": "Miseryの記章",
+      "zh-TW": "Misery證章"
+    },
+    "uniequip_001_acguad": {
+      "zh-CN": "Sharp证章",
+      "en-US": "Sharp's Badge",
+      "ja-JP": "Sharpの記章",
+      "zh-TW": "Sharp證章"
+    },
+    "uniequip_002_acguad": {
+      "zh-CN": "Sharp证章",
+      "en-US": "Sharp's Badge",
+      "ja-JP": "Sharpの記章",
+      "zh-TW": "Sharp證章"
+    },
+    "uniequip_001_acfend": {
+      "zh-CN": "Mechanist证章",
+      "en-US": "Mechanist's Badge",
+      "ja-JP": "Mechanistの記章",
+      "zh-TW": "Mechanist證章"
+    },
+    "uniequip_002_acfend": {
+      "zh-CN": "Mechanist证章",
+      "en-US": "Mechanist's Badge",
+      "ja-JP": "Mechanistの記章",
+      "zh-TW": "Mechanist證章"
+    },
+    "uniequip_001_acsupo": {
+      "zh-CN": "Raidian证章",
+      "en-US": "Raidian's Badge",
+      "ja-JP": "Raidianの記章",
+      "zh-TW": "Raidian證章"
+    },
+    "uniequip_002_acsupo": {
+      "zh-CN": "Raidian证章",
+      "en-US": "Raidian's Badge",
+      "ja-JP": "Raidianの記章",
+      "zh-TW": "Raidian證章"
+    },
+    "uniequip_001_accast": {
+      "zh-CN": "Pith证章",
+      "en-US": "Pith's Badge",
+      "ja-JP": "Pithの記章",
+      "zh-TW": "Pith證章"
+    },
+    "uniequip_002_accast": {
+      "zh-CN": "Pith证章",
+      "en-US": "Pith's Badge",
+      "ja-JP": "Pithの記章",
+      "zh-TW": "Pith證章"
+    },
+    "uniequip_001_acpion": {
+      "zh-CN": "郁金香证章",
+      "en-US": "Tulip's Badge",
+      "ja-JP": "チューリップの記章",
+      "zh-TW": "鬱金香證章"
+    },
+    "uniequip_002_acpion": {
+      "zh-CN": "郁金香证章",
+      "en-US": "Tulip's Badge",
+      "ja-JP": "チューリップの記章",
+      "zh-TW": "鬱金香證章"
+    },
+    "uniequip_001_acmedc": {
+      "zh-CN": "Touch证章",
+      "en-US": "Touch's Badge",
+      "ja-JP": "Touchの記章",
+      "zh-TW": "Touch證章"
+    },
+    "uniequip_002_acmedc": {
+      "zh-CN": "Touch证章",
+      "en-US": "Touch's Badge",
+      "ja-JP": "Touchの記章",
+      "zh-TW": "Touch證章"
+    },
+    "uniequip_001_surtr": {
+      "zh-CN": "史尔特尔证章",
+      "en-US": "Surtr's Badge",
+      "ja-JP": "スルトの記章",
+      "zh-TW": "史爾特爾證章"
+    },
+    "uniequip_002_surtr": {
+      "zh-CN": "萨米的不灭心脏碎片",
+      "en-US": "Heart of Sami",
+      "ja-JP": "サーミの不滅なる心臓の欠片",
+      "zh-TW": "薩米的不滅心臟碎片"
+    },
+    "uniequip_001_vvana": {
+      "zh-CN": "薇薇安娜证章",
+      "en-US": "Viviana's Badge",
+      "ja-JP": "ヴィヴィアナの記章",
+      "zh-TW": "薇薇安娜證章"
+    },
+    "uniequip_002_vvana": {
+      "zh-CN": "目不能及之处",
+      "en-US": "The Unforeseeable",
+      "ja-JP": "目の届かないところ",
+      "zh-TW": "目不能及之處"
+    },
+    "uniequip_001_siege2": {
+      "zh-CN": "维娜·维多利亚证章",
+      "en-US": "Vina Victoria's Badge",
+      "ja-JP": "ヴィーナ・ヴィクトリアの記章",
+      "zh-TW": "維娜·維多利亞證章"
+    },
+    "uniequip_002_siege2": {
+      "zh-CN": "城主的冒险",
+      "en-US": "The Adventure of the Lioness",
+      "ja-JP": "アドベンチャー・オブ・ライオネス",
+      "zh-TW": "城主的冒險"
+    },
+    "uniequip_001_amiya2": {
+      "zh-CN": "阿米娅证章（近卫）",
+      "en-US": "Amiya's Badge (Guard)",
+      "ja-JP": "アーミヤの記章（前衛）",
+      "zh-TW": "阿米婭證章（近衛）"
+    },
+    "uniequip_002_amiya2": {
+      "zh-CN": "待调弦的怒火",
+      "en-US": "Anger to be Tuned",
+      "ja-JP": "調律を待つ怒りの弦",
+      "zh-TW": "待調弦的怒火"
+    },
+    "uniequip_001_sidero": {
+      "zh-CN": "铸铁证章",
+      "en-US": "Sideroca's Badge",
+      "ja-JP": "シデロカの記章",
+      "zh-TW": "鑄鐵證章"
+    },
+    "uniequip_002_sidero": {
+      "zh-CN": "漫游者的压舱石",
+      "en-US": "Ballast For Wanderlust",
+      "ja-JP": "放浪者のためのバラスト",
+      "zh-TW": "漫遊者的壓艙石"
+    },
+    "uniequip_001_astesi": {
+      "zh-CN": "星极证章",
+      "en-US": "Astesia's Badge",
+      "ja-JP": "アステシアの記章",
+      "zh-TW": "星極證章"
+    },
+    "uniequip_002_astesi": {
+      "zh-CN": "未卜星图",
+      "en-US": "Unpredictable Star Chart",
+      "ja-JP": "未知の星図",
+      "zh-TW": "未卜星圖"
+    },
+    "uniequip_001_frncat": {
+      "zh-CN": "慕斯证章",
+      "en-US": "Mousse's Badge",
+      "ja-JP": "ムースの記章",
+      "zh-TW": "慕斯證章"
+    },
+    "uniequip_002_frncat": {
+      "zh-CN": "美爪套装二象性",
+      "en-US": "Clawcure Set with Duality",
+      "ja-JP": "ネイルセットの二面性",
+      "zh-TW": "美爪套裝二象性"
+    },
+    "uniequip_001_rosesa": {
+      "zh-CN": "瑰盐证章",
+      "en-US": "Rose Salt's Badge",
+      "ja-JP": "ローズソルトの記章",
+      "zh-TW": "瑰鹽證章"
+    },
+    "uniequip_002_rosesa": {
+      "zh-CN": "多彩盐漠生活",
+      "en-US": "Colorful Life in the Salt Flat",
+      "ja-JP": "カラフル塩海生活",
+      "zh-TW": "多彩鹽漠生活"
+    },
+    "uniequip_003_angel": {
+      "zh-CN": "欢迎光临，企鹅物流",
+      "en-US": "Welcome to Penguin Logistics",
+      "ja-JP": "ようこそ、ペンギン急便へ！",
+      "zh-TW": "歡迎光臨，企鵝物流"
+    },
+    "uniequip_001_pepe": {
+      "zh-CN": "佩佩证章",
+      "en-US": "Pepe's Badge",
+      "ja-JP": "ペペの記章",
+      "zh-TW": "佩佩證章"
+    },
+    "uniequip_002_pepe": {
+      "zh-CN": "晴雨",
+      "en-US": "Rain or Shine",
+      "ja-JP": "晴れか雨か",
+      "zh-TW": "晴雨"
+    },
+    "uniequip_001_odda": {
+      "zh-CN": "奥达证章",
+      "en-US": "Odda's Badge",
+      "ja-JP": "オッダの記章",
+      "zh-TW": "奧達證章"
+    },
+    "uniequip_002_odda": {
+      "zh-CN": "旧背包",
+      "en-US": "Old Backpack",
+      "ja-JP": "古いバッグ",
+      "zh-TW": "舊背包"
+    },
+    "uniequip_001_xingzh": {
+      "zh-CN": "行箸证章",
+      "en-US": "Xingzhu's Badge",
+      "ja-JP": "シィンズゥの記章",
+      "zh-TW": "行箸證章"
+    },
+    "uniequip_002_xingzh": {
+      "zh-CN": "别昔年",
+      "en-US": "Farewell to the Old Days",
+      "ja-JP": "昔年に別れを",
+      "zh-TW": "別昔年"
+    },
+    "uniequip_003_lin": {
+      "zh-CN": "“情与义”",
+      "en-US": "The Compassionate and the Just",
+      "ja-JP": "「情と義」",
+      "zh-TW": "“情與義”"
+    },
+    "uniequip_003_zuole": {
+      "zh-CN": "秉烛人的记录",
+      "en-US": "'Who is he?'",
+      "ja-JP": "持燭人の記録",
+      "zh-TW": "秉燭人的記錄"
+    },
+    "uniequip_003_chyue": {
+      "zh-CN": "“朔”",
+      "en-US": "Shuo",
+      "ja-JP": "「朔」",
+      "zh-TW": "“朔”"
+    },
+    "uniequip_001_nowell": {
+      "zh-CN": "诺威尔证章",
+      "en-US": "Nowell's Badge",
+      "ja-JP": "ノウエルの記章",
+      "zh-TW": "諾威爾證章"
+    },
+    "uniequip_002_nowell": {
+      "zh-CN": "致祖父",
+      "en-US": "To Grandpa",
+      "ja-JP": "祖父へ",
+      "zh-TW": "致祖父"
+    },
+    "uniequip_004_dusk": {
+      "zh-CN": "夕特限证章",
+      "en-US": "Dusk's Specialized Badge",
+      "ja-JP": "シーの特別限定記章",
+      "zh-TW": "夕特限證章"
+    },
+    "uniequip_004_zumama": {
+      "zh-CN": "森蚺特限证章",
+      "en-US": "Eunectes's Specialized Badge",
+      "ja-JP": "ユーネクテスの特別限定記章",
+      "zh-TW": "森蚺特限證章"
+    },
+    "uniequip_001_etlchi": {
+      "zh-CN": "隐德来希证章",
+      "en-US": "Entelechia's Badge",
+      "ja-JP": "エンテレケイアの記章",
+      "zh-TW": "隱德來希證章"
+    },
+    "uniequip_002_etlchi": {
+      "zh-CN": "易枯萎的航船",
+      "en-US": "A Ferry that Withers",
+      "ja-JP": "ひとときで朽ちる船",
+      "zh-TW": "易枯萎的航船"
+    },
+    "uniequip_001_thorn2": {
+      "zh-CN": "引星棘刺证章",
+      "en-US": "Thorns the Lodestar's Badge",
+      "ja-JP": "引星ソーンズの記章",
+      "zh-TW": "引星棘刺證章"
+    },
+    "uniequip_002_thorn2": {
+      "zh-CN": "三面的金币",
+      "en-US": "A Three-Sided Coin",
+      "ja-JP": "第三の選択",
+      "zh-TW": "三面的金幣"
+    },
+    "uniequip_001_tinman": {
+      "zh-CN": "锡人证章",
+      "en-US": "Tin Man's Badge",
+      "ja-JP": "ブリキの記章",
+      "zh-TW": "錫人證章"
+    },
+    "uniequip_002_tinman": {
+      "zh-CN": "“颅相学”",
+      "en-US": "'Phrenology'",
+      "ja-JP": "「骨相学」",
+      "zh-TW": "“顱相學”"
+    },
+    "uniequip_001_wulfen": {
+      "zh-CN": "钼铅证章",
+      "en-US": "Wulfenite's Badge",
+      "ja-JP": "ウルフェナイトの記章",
+      "zh-TW": "鉬鉛證章"
+    },
+    "uniequip_002_wulfen": {
+      "zh-CN": "矿石展览柜",
+      "en-US": "Mineral Display Cabinet",
+      "ja-JP": "鉱石のショーケース",
+      "zh-TW": "礦石展覽櫃"
+    },
+    "uniequip_003_gnosis": {
+      "zh-CN": "一号项目模型",
+      "en-US": "Project One Model",
+      "ja-JP": "第一号プロジェクトモデル",
+      "zh-TW": "一號計劃模型"
+    },
+    "uniequip_003_vigil": {
+      "zh-CN": "时光不再",
+      "en-US": "Time Has Gone",
+      "ja-JP": "過ぎ去りし時間",
+      "zh-TW": "時光不再"
+    },
+    "uniequip_003_sleach": {
+      "zh-CN": "“友谊万岁”",
+      "en-US": "'Auld Lang Syne'",
+      "ja-JP": "「友情讃歌」",
+      "zh-TW": "“友誼萬歲”"
+    },
+    "uniequip_003_bgsnow": {
+      "zh-CN": "仪式感",
+      "en-US": "чувство ритуала",
+      "ja-JP": "ささやかなこだわり",
+      "zh-TW": "儀式感"
+    },
+    "uniequip_001_ines": {
+      "zh-CN": "伊内丝证章",
+      "en-US": "Ines's Badge",
+      "ja-JP": "イネスの記章",
+      "zh-TW": "伊內絲證章"
+    },
+    "uniequip_002_ines": {
+      "zh-CN": "角部“护理”套组",
+      "en-US": "'Horncare Set'",
+      "ja-JP": "角「ケア」セット",
+      "zh-TW": "角部“護理”套組"
+    },
+    "uniequip_001_ctable": {
+      "zh-CN": "晓歌证章",
+      "en-US": "Cantabile's Badge",
+      "ja-JP": "カンタービレの記章",
+      "zh-TW": "曉歌證章"
+    },
+    "uniequip_002_ctable": {
+      "zh-CN": "“不发声者”",
+      "en-US": "'The Voiceless'",
+      "ja-JP": "「声なき者」",
+      "zh-TW": "“不發聲者”"
+    },
+    "uniequip_001_surfer": {
+      "zh-CN": "寻澜证章",
+      "en-US": "Surfer's Badge",
+      "ja-JP": "サーファーの記章",
+      "zh-TW": "尋瀾證章"
+    },
+    "uniequip_002_surfer": {
+      "zh-CN": "佳肴",
+      "en-US": "The Delicacy",
+      "ja-JP": "ごちそう",
+      "zh-TW": "佳餚"
+    },
+    "uniequip_001_alanna": {
+      "zh-CN": "阿兰娜证章",
+      "en-US": "Alanna's Badge",
+      "ja-JP": "アランナの記章",
+      "zh-TW": "阿蘭娜證章"
+    },
+    "uniequip_002_alanna": {
+      "zh-CN": "“随身保险杠”",
+      "en-US": "'Carry-On Bumper'",
+      "ja-JP": "「携帯用バンパー」",
+      "zh-TW": "“隨身保險桿”"
+    },
+    "uniequip_003_logos": {
+      "zh-CN": "《语义范式百科》",
+      "en-US": "Semantics Paradigm Encyclopedia",
+      "ja-JP": "『語義規範百科事典』",
+      "zh-TW": "《語義範式百科》"
+    },
+    "uniequip_003_mudrok": {
+      "zh-CN": "沃土的愿景",
+      "en-US": "Wish of the Fertile Earth",
+      "ja-JP": "沃土の望み",
+      "zh-TW": "沃土的願景"
+    },
+    "uniequip_001_puzzle": {
+      "zh-CN": "谜图证章",
+      "en-US": "Puzzle's Badge",
+      "ja-JP": "パズルの記章",
+      "zh-TW": "謎圖證章"
+    },
+    "uniequip_002_puzzle": {
+      "zh-CN": "首要任务",
+      "en-US": "Top Priority",
+      "ja-JP": "最重要任務",
+      "zh-TW": "首要任務"
+    },
+    "uniequip_003_slent2": {
+      "zh-CN": "可控动量",
+      "en-US": "Controllable Momentum",
+      "ja-JP": "制御可能変数",
+      "zh-TW": "可控動量"
+    },
+    "uniequip_001_mlynar": {
+      "zh-CN": "玛恩纳证章",
+      "en-US": "Młynar's Badge",
+      "ja-JP": "ムリナールの記章",
+      "zh-TW": "瑪恩納證章"
+    },
+    "uniequip_002_mlynar": {
+      "zh-CN": "“鞘中人”",
+      "en-US": "'Man in Scabbard'",
+      "ja-JP": "「鞘に納められた人」",
+      "zh-TW": "“鞘中人”"
+    },
+    "uniequip_001_takila": {
+      "zh-CN": "龙舌兰证章",
+      "en-US": "Tequila's Badge",
+      "ja-JP": "テキーラの記章",
+      "zh-TW": "龍舌蘭證章"
+    },
+    "uniequip_002_takila": {
+      "zh-CN": "“双重身份”",
+      "en-US": "'Two Faces'",
+      "ja-JP": "「二つの顔」",
+      "zh-TW": "“雙重身分”"
+    },
+    "uniequip_001_wscoot": {
+      "zh-CN": "骋风证章",
+      "en-US": "Windscoot's Badge",
+      "ja-JP": "ウィンドスクートの記章",
+      "zh-TW": "騁風證章"
+    },
+    "uniequip_002_wscoot": {
+      "zh-CN": "义",
+      "en-US": "Yi",
+      "ja-JP": "義",
+      "zh-TW": "義"
+    },
+    "uniequip_003_mlyss": {
+      "zh-CN": "落叶四季",
+      "en-US": "Fallen Leaves of Four Seasons",
+      "ja-JP": "落ち葉と四季",
+      "zh-TW": "落葉四季"
+    },
+    "uniequip_003_thorns": {
+      "zh-CN": "沙蚀",
+      "en-US": "Sand Erosion",
+      "ja-JP": "砂の侵食",
+      "zh-TW": "沙蝕"
+    },
+    "uniequip_004_mizuki": {
+      "zh-CN": "水月特限证章",
+      "en-US": "Mizuki's Specialized Badge",
+      "ja-JP": "ミヅキの特別限定記章",
+      "zh-TW": "水月特限證章"
+    },
+    "uniequip_004_archet": {
+      "zh-CN": "空弦特限证章",
+      "en-US": "Archetto's Specialized Badge",
+      "ja-JP": "アルケットの特別限定記章",
+      "zh-TW": "空弦特限證章"
+    },
+    "uniequip_003_crosly": {
+      "zh-CN": "木炭画",
+      "en-US": "рисунок углем",
+      "ja-JP": "木炭画",
+      "zh-TW": "木炭畫"
+    },
+    "uniequip_001_angel2": {
+      "zh-CN": "新约能天使证章",
+      "en-US": "Exusiai the New Covenant's Badge",
+      "ja-JP": "新約エクシアの記章",
+      "zh-TW": "新約能天使證章"
+    },
+    "uniequip_002_angel2": {
+      "zh-CN": "新朋友圣城生活套组",
+      "en-US": "Convenience Kit for New Friends",
+      "ja-JP": "聖都歓迎キット",
+      "zh-TW": "新朋友聖城生活套組"
+    },
+    "uniequip_001_lemuen": {
+      "zh-CN": "蕾缪安证章",
+      "en-US": "Lemuen's Badge",
+      "ja-JP": "レミュアンの記章",
+      "zh-TW": "蕾繆安證章"
+    },
+    "uniequip_002_lemuen": {
+      "zh-CN": "“弹匣与花窗”",
+      "en-US": "'Magazine and Stained Glass'",
+      "ja-JP": "「弾倉とステンドグラス」",
+      "zh-TW": "“彈匣與花窗”"
+    },
+    "uniequip_001_rmixer": {
+      "zh-CN": "信仰搅拌机证章",
+      "en-US": "Sankta Miksaparato's Badge",
+      "ja-JP": "サンクタ・ミキサーの記章",
+      "zh-TW": "信仰攪拌機證章"
+    },
+    "uniequip_002_rmixer": {
+      "zh-CN": "毛刷套装",
+      "en-US": "Armor Cleaning Brush Set",
+      "ja-JP": "甲冑手入れセット",
+      "zh-TW": "毛刷套裝"
+    },
+    "uniequip_001_phatm2": {
+      "zh-CN": "酒神证章",
+      "en-US": "Tragodia's Badge",
+      "ja-JP": "トラゴーディアの記章",
+      "zh-TW": "酒神證章"
+    },
+    "uniequip_002_phatm2": {
+      "zh-CN": "酒神之心",
+      "en-US": "Heart of Tragodia",
+      "ja-JP": "トラゴーディアの心",
+      "zh-TW": "酒神之心"
+    },
+    "uniequip_001_necras": {
+      "zh-CN": "死芒证章",
+      "en-US": "Necrass's Badge",
+      "ja-JP": "ネクラスの記章",
+      "zh-TW": "死芒證章"
+    },
+    "uniequip_002_necras": {
+      "zh-CN": "未处理的遗产",
+      "en-US": "Unclaimed Legacy",
+      "ja-JP": "手つかずの遺産",
+      "zh-TW": "未處理的遺產"
+    },
+    "uniequip_001_tecno": {
+      "zh-CN": "特克诺证章",
+      "en-US": "Tecno's Badge",
+      "ja-JP": "テクノの記章",
+      "zh-TW": "特克諾證章"
+    },
+    "uniequip_002_tecno": {
+      "zh-CN": "烧烤店官方优惠章",
+      "en-US": "Official Coupon Stamp of the BBQ House",
+      "ja-JP": "バーベキューハウス割引スタンプ",
+      "zh-TW": "烤肉店官方優惠章"
+    },
+    "uniequip_003_ascln": {
+      "zh-CN": "“阿斯卡纶的眼睛”",
+      "en-US": "'Eyes of Ascalon'",
+      "ja-JP": "「アスカロンの瞳」",
+      "zh-TW": "“阿斯卡綸的眼睛”"
+    },
+    "uniequip_003_f12yin": {
+      "zh-CN": "“夜深人静”",
+      "en-US": "'In the Dead of Night'",
+      "ja-JP": "「誰もが寝静まった夜」",
+      "zh-TW": "“夜深人靜”"
+    },
+    "uniequip_003_doroth": {
+      "zh-CN": "梦中人",
+      "en-US": "In My Dreams",
+      "ja-JP": "夢の中で",
+      "zh-TW": "夢中人"
+    },
+    "uniequip_001_radian": {
+      "zh-CN": "电弧证章",
+      "en-US": "Raidian's Badge",
+      "ja-JP": "レイディアンの記章",
+      "zh-TW": "電弧證章"
+    },
+    "uniequip_002_radian": {
+      "zh-CN": "电弧特勤证章",
+      "en-US": "Raidian's Special Operator Badge",
+      "ja-JP": "レイディアンの特勤記章",
+      "zh-TW": "電弧特勤證章"
+    },
+    "uniequip_001_reckpr": {
+      "zh-CN": "录武官证章",
+      "en-US": "Record Keeper's Badge",
+      "ja-JP": "レコードキーパーの記章",
+      "zh-TW": "錄武官證章"
+    },
+    "uniequip_002_reckpr": {
+      "zh-CN": "未完成的录武簿",
+      "en-US": "Unfinished Record",
+      "ja-JP": "未完成の録武簿",
+      "zh-TW": "未完成的錄武簿"
+    },
+    "uniequip_001_leizi2": {
+      "zh-CN": "司霆惊蛰证章",
+      "en-US": "Leizi the Thunderbringer's Badge",
+      "ja-JP": "司霆レイズの記章",
+      "zh-TW": "司霆驚蟄證章"
+    },
+    "uniequip_002_leizi2": {
+      "zh-CN": "“一念”",
+      "en-US": "'Within a Thought'",
+      "ja-JP": "「一念」",
+      "zh-TW": "“一念”"
+    },
+    "uniequip_003_typhon": {
+      "zh-CN": "冰原的影子",
+      "en-US": "Shadow of the Icefield",
+      "ja-JP": "氷原の影",
+      "zh-TW": "冰原的影子"
+    },
+    "uniequip_003_gdglow": {
+      "zh-CN": "梦想终将实现",
+      "en-US": "Dream Must Come True",
+      "ja-JP": "いつか叶う夢",
+      "zh-TW": "夢想終將實現"
+    },
+    "uniequip_003_gvial2": {
+      "zh-CN": "好锯多磨",
+      "en-US": "Sanding and Polishing",
+      "ja-JP": "研いで磨いて",
+      "zh-TW": "好鋸多磨"
+    },
+    "uniequip_001_kichi": {
+      "zh-CN": "吉星证章",
+      "en-US": "Kichisei's Badge",
+      "ja-JP": "キチセイの記章",
+      "zh-TW": "吉星證章"
+    },
+    "uniequip_002_kichi": {
+      "zh-CN": "可疑的宣传页",
+      "en-US": "A Suspicious Pamphlet",
+      "ja-JP": "怪しいチラシ",
+      "zh-TW": "可疑的宣傳頁"
+    },
+    "uniequip_001_nymph": {
+      "zh-CN": "妮芙证章",
+      "en-US": "Nymph's Badge",
+      "ja-JP": "ニンフの記章",
+      "zh-TW": "妮芙證章"
+    },
+    "uniequip_002_nymph": {
+      "zh-CN": "心声",
+      "en-US": "'Aspiration'",
+      "ja-JP": "心に響く音",
+      "zh-TW": "心聲"
+    },
+    "uniequip_001_blaze2": {
+      "zh-CN": "烛煌证章",
+      "en-US": "Blaze the Igniting Spark's Badge",
+      "ja-JP": "熾炎ブレイズの記章",
+      "zh-TW": "燭煌證章"
+    },
+    "uniequip_002_blaze2": {
+      "zh-CN": "热切的期盼",
+      "en-US": "The Fervent Longing",
+      "ja-JP": "熱い期待",
+      "zh-TW": "熱切的期盼"
+    },
+    "uniequip_001_christ": {
+      "zh-CN": "Miss.Christine证章",
+      "en-US": "Miss.Christine's Badge",
+      "ja-JP": "ミス・クリスティーンの記章",
+      "zh-TW": "Miss.Christine證章"
+    },
+    "uniequip_002_christ": {
+      "zh-CN": "“黑色”贩卖机",
+      "en-US": "The 'Black' Vending Machine",
+      "ja-JP": "「黒い」自動販売機",
+      "zh-TW": "“黑色”販賣機"
+    },
+    "uniequip_001_kaitou": {
+      "zh-CN": "折光证章",
+      "en-US": "Diamante's Badge",
+      "ja-JP": "ディアマンテの記章",
+      "zh-TW": "折光證章"
+    },
+    "uniequip_002_kaitou": {
+      "zh-CN": "凡石",
+      "en-US": "Ordinary Stones",
+      "ja-JP": "なんの変哲もない石",
+      "zh-TW": "凡石"
+    },
+    "uniequip_001_warmy": {
+      "zh-CN": "温米证章",
+      "en-US": "Warmy's Badge",
+      "ja-JP": "ウォーミーの記章",
+      "zh-TW": "溫米證章"
+    },
+    "uniequip_002_warmy": {
+      "zh-CN": "赠别之味",
+      "en-US": "A Warmy Gift",
+      "ja-JP": "餞別の味",
+      "zh-TW": "贈別之味"
+    },
+    "uniequip_003_chen2": {
+      "zh-CN": "假期的最后一天",
+      "en-US": "The Last Day of Holiday",
+      "ja-JP": "休みの最終日",
+      "zh-TW": "假期的最後一天"
+    },
+    "uniequip_004_swire2": {
+      "zh-CN": "琳琅诗怀雅特限证章",
+      "en-US": "Swire the Elegant Wit's Specialized Badge",
+      "ja-JP": "琳琅スワイヤーの特別限定記章",
+      "zh-TW": "琳瑯詩懷雅特限證章"
+    },
+    "uniequip_003_pepe": {
+      "zh-CN": "佩佩特限证章",
+      "en-US": "Pepe's Specialized Badge",
+      "ja-JP": "ペペの特別限定記章",
+      "zh-TW": "佩佩特限證章"
+    },
+    "uniequip_001_haruka": {
+      "zh-CN": "遥证章",
+      "en-US": "Haruka's Badge",
+      "ja-JP": "ハルカの記章",
+      "zh-TW": "遙證章"
+    },
+    "uniequip_002_haruka": {
+      "zh-CN": "迟来的纪念",
+      "en-US": "The Belated Memorial",
+      "ja-JP": "少し色褪せた記念日",
+      "zh-TW": "遲來的紀念"
+    },
+    "uniequip_001_oblvns": {
+      "zh-CN": "丰川祥子证章",
+      "en-US": "Sakiko Togawa's Badge",
+      "ja-JP": "豊川祥子の記章",
+      "zh-TW": "豐川祥子證章"
+    },
+    "uniequip_002_oblvns": {
+      "zh-CN": "无言的约定",
+      "en-US": "A Silent Pact",
+      "ja-JP": "無言の約束",
+      "zh-TW": "無言的約定"
+    },
+    "uniequip_001_amoris": {
+      "zh-CN": "祐天寺若麦证章",
+      "en-US": "Nyamu Yūtenji's Badge",
+      "ja-JP": "祐天寺にゃむの記章",
+      "zh-TW": "祐天寺若麥證章"
+    },
+    "uniequip_002_amoris": {
+      "zh-CN": "年轻的麦子",
+      "en-US": "A Young Wheat",
+      "ja-JP": "若い麦",
+      "zh-TW": "年輕的麥子"
+    },
+    "uniequip_001_dolris": {
+      "zh-CN": "三角初华证章",
+      "en-US": "Uika Misumi's Badge",
+      "ja-JP": "三角初華の記章",
+      "zh-TW": "三角初華證章"
+    },
+    "uniequip_002_dolris": {
+      "zh-CN": "占卜的意义",
+      "en-US": "The Meaning of Divination",
+      "ja-JP": "占いの意味",
+      "zh-TW": "占卜的意義"
+    },
+    "uniequip_001_tmoris": {
+      "zh-CN": "八幡海铃证章",
+      "en-US": "Umiri Yahata's Badge",
+      "ja-JP": "八幡海鈴の記章",
+      "zh-TW": "八幡海鈴證章"
+    },
+    "uniequip_002_tmoris": {
+      "zh-CN": "额外训练",
+      "en-US": "Extra Training",
+      "ja-JP": "オーバートレーニング",
+      "zh-TW": "額外訓練"
+    },
+    "uniequip_001_mortis": {
+      "zh-CN": "若叶睦证章",
+      "en-US": "Mutsumi Wakaba's Badge",
+      "ja-JP": "若葉睦の記章",
+      "zh-TW": "若葉睦證章"
+    },
+    "uniequip_002_mortis": {
+      "zh-CN": "睦的新朋友",
+      "en-US": "New Friends",
+      "ja-JP": "新しい友達",
+      "zh-TW": "睦的新朋友"
+    },
+    "uniequip_003_huang": {
+      "zh-CN": "“稍后回来”",
+      "en-US": "'I'll be right back'",
+      "ja-JP": "「すぐに戻るから」",
+      "zh-TW": "“稍後回來”"
+    },
+    "uniequip_003_cello": {
+      "zh-CN": "音乐家的旅程",
+      "en-US": "'Tuning on the Heart'",
+      "ja-JP": "音楽家の旅路",
+      "zh-TW": "音樂家的旅程"
+    },
+    "uniequip_001_wintim": {
+      "zh-CN": "冬时证章",
+      "en-US": "Snegurochka's Badge",
+      "ja-JP": "スネグーラチカの記章",
+      "zh-TW": "冬時證章"
+    },
+    "uniequip_002_wintim": {
+      "zh-CN": "缺角的权限",
+      "en-US": "An Invalid Access Card",
+      "ja-JP": "不十分なアクセス権",
+      "zh-TW": "缺角的權限"
+    },
+    "uniequip_001_branch": {
+      "zh-CN": "折桠证章",
+      "en-US": "Vetochki's Badge",
+      "ja-JP": "ヴェトチキの記章",
+      "zh-TW": "折椏證章"
+    },
+    "uniequip_002_branch": {
+      "zh-CN": "“时间的痕迹”",
+      "en-US": "'Marks of Time'",
+      "ja-JP": "「時間が残した傷跡」",
+      "zh-TW": "“時間的痕跡”"
+    },
+    "uniequip_001_mantra": {
+      "zh-CN": "真言证章",
+      "en-US": "Mantra's Badge",
+      "ja-JP": "マントラの記章",
+      "zh-TW": "真言證章"
+    },
+    "uniequip_002_mantra": {
+      "zh-CN": "中枢神经探测模块",
+      "en-US": "Central Nerve Detection Module",
+      "ja-JP": "中枢神経探知モジュール",
+      "zh-TW": "中樞神經探測模組"
+    },
+    "uniequip_003_radian": {
+      "zh-CN": "新起点",
+      "en-US": "Start+",
+      "ja-JP": "新たな始まり",
+      "zh-TW": "新起點"
+    },
+    "uniequip_001_narant": {
+      "zh-CN": "娜仁图亚证章",
+      "en-US": "Narantuya's Badge",
+      "ja-JP": "ナラントゥヤの記章",
+      "zh-TW": "娜仁圖亞證章"
+    },
+    "uniequip_002_narant": {
+      "zh-CN": "“吹尽狂沙”",
+      "en-US": "'Those Buried in Sand'",
+      "ja-JP": "「黄砂の果てに」",
+      "zh-TW": "“吹盡狂沙”"
+    },
+    "uniequip_001_brigid": {
+      "zh-CN": "水灯心证章",
+      "en-US": "Brigid's Badge",
+      "ja-JP": "ブリギッドの記章",
+      "zh-TW": "水燈心證章"
+    },
+    "uniequip_002_brigid": {
+      "zh-CN": "风的颜色",
+      "en-US": "Color of the Wind",
+      "ja-JP": "風の色",
+      "zh-TW": "風的顏色"
+    },
+    "uniequip_001_caper": {
+      "zh-CN": "跃跃证章",
+      "en-US": "Caper's Badge",
+      "ja-JP": "ケイパーの記章",
+      "zh-TW": "躍躍證章"
+    },
+    "uniequip_002_caper": {
+      "zh-CN": "暖意的归宿",
+      "en-US": "Where the Warmth Remains",
+      "ja-JP": "あたたかい居場所",
+      "zh-TW": "暖意的歸宿"
+    },
+    "uniequip_003_excu2": {
+      "zh-CN": "已知悉",
+      "en-US": "Acknowledged",
+      "ja-JP": "了承済み",
+      "zh-TW": "已知悉"
+    },
+    "uniequip_003_amgoat": {
+      "zh-CN": "宠物大赛第一名",
+      "en-US": "Pet Contest First Prize",
+      "ja-JP": "ペットレース大会一位",
+      "zh-TW": "寵物大賽第一名"
+    },
+    "uniequip_001_sbell2": {
+      "zh-CN": "圣聆初雪证章",
+      "en-US": "Pramanix the Prerita's Badge",
+      "ja-JP": "聖聆プラマニクスの記章",
+      "zh-TW": "聖聆初雪證章"
+    },
+    "uniequip_002_sbell2": {
+      "zh-CN": "千分之一的心",
+      "en-US": "A Thousandth of A Heart",
+      "ja-JP": "千分の一の心",
+      "zh-TW": "千分之一的心"
+    },
+    "uniequip_004_heyak": {
+      "zh-CN": "霍尔海雅特限证章",
+      "en-US": "Ho'olheyak's Specialized Badge",
+      "ja-JP": "ホルハイヤの特別限定記章",
+      "zh-TW": "霍爾海雅特限證章"
+    },
+    "uniequip_004_gnosis": {
+      "zh-CN": "灵知特限证章",
+      "en-US": "Gnosis's Specialized Badge",
+      "ja-JP": "ノーシスの特別限定記章",
+      "zh-TW": "靈知特限證章"
+    },
+    "uniequip_001_halo2": {
+      "zh-CN": "溯光星源证章",
+      "en-US": "Astgenne the Lightchaser's Badge",
+      "ja-JP": "溯光アステジーニの記章",
+      "zh-TW": "溯光星源證章"
+    },
+    "uniequip_002_halo2": {
+      "zh-CN": "探索者的收藏",
+      "en-US": "The Seeker's Collection",
+      "ja-JP": "探索者のコレクション",
+      "zh-TW": "探索者的收藏"
+    },
+    "uniequip_001_akkord": {
+      "zh-CN": "协律证章",
+      "en-US": "Akkord's Badge",
+      "ja-JP": "アコルトの記章",
+      "zh-TW": "協律證章"
+    },
+    "uniequip_002_akkord": {
+      "zh-CN": "移动八音盒",
+      "en-US": "The Music Box of A Burdenbeast",
+      "ja-JP": "移動式オルゴール",
+      "zh-TW": "移動音樂盒"
+    },
+    "uniequip_003_siege2": {
+      "zh-CN": "秩序圣“球”",
+      "en-US": "'Speed and Bag'",
+      "ja-JP": "秩序聖「球」",
+      "zh-TW": "秩序聖“球”"
+    },
+    "uniequip_001_durnar": {
+      "zh-CN": "坚雷证章",
+      "en-US": "Dur-nar's Badge",
+      "ja-JP": "ジュナーの記章",
+      "zh-TW": "堅雷證章"
+    },
+    "uniequip_002_durnar": {
+      "zh-CN": "守护的道路",
+      "en-US": "A Guardian's Path",
+      "ja-JP": "守る者の道",
+      "zh-TW": "守護的道路"
+    },
+    "uniequip_001_pianst": {
+      "zh-CN": "车尔尼证章",
+      "en-US": "Czerny's Badge",
+      "ja-JP": "ツェルニーの記章",
+      "zh-TW": "車爾尼證章"
+    },
+    "uniequip_002_pianst": {
+      "zh-CN": "“日复一日”",
+      "en-US": "'Tick-tock Tick-tock'",
+      "ja-JP": "「繰り返し」",
+      "zh-TW": "“日復一日”"
+    },
+    "uniequip_001_asbest": {
+      "zh-CN": "石棉证章",
+      "en-US": "Asbestos's Badge",
+      "ja-JP": "アスベストスの記章",
+      "zh-TW": "石棉證章"
+    },
+    "uniequip_002_asbest": {
+      "zh-CN": "“石棉大战双头钳兽”",
+      "en-US": "'Asbestos vs. Two-headed Gloompincer'",
+      "ja-JP": "『アスベストスVS双頭鉗獣』",
+      "zh-TW": "“石棉大戰雙頭鉗獸”"
+    },
+    "uniequip_001_aprot2": {
+      "zh-CN": "暮落证章",
+      "en-US": "Shalem's Badge",
+      "ja-JP": "シャレムの記章",
+      "zh-TW": "暮落證章"
+    },
+    "uniequip_002_aprot2": {
+      "zh-CN": "票根收纳册",
+      "en-US": "Ticket Stub Album",
+      "ja-JP": "チケットホルダー",
+      "zh-TW": "票根收納冊"
+    },
+    "uniequip_001_hsgma2": {
+      "zh-CN": "斩业星熊证章",
+      "en-US": "Hoshiguma the Breacher's Badge",
+      "ja-JP": "斬業ホシグマの記章",
+      "zh-TW": "斬業星熊證章"
+    },
+    "uniequip_002_hsgma2": {
+      "zh-CN": "无迹",
+      "en-US": "No Trace",
+      "ja-JP": "跡を残さず",
+      "zh-TW": "無跡"
+    },
+    "uniequip_001_snhunt": {
+      "zh-CN": "雪猎证章",
+      "en-US": "Snow Hunter's Badge",
+      "ja-JP": "スノーハンターの記章",
+      "zh-TW": "雪獵證章"
+    },
+    "uniequip_002_snhunt": {
+      "zh-CN": "过去的狩猎",
+      "en-US": "Hunts of the Past",
+      "ja-JP": "いつかの狩猟",
+      "zh-TW": "過去的狩獵"
+    },
+    "uniequip_001_pithst": {
+      "zh-CN": "盟约·辅助干员证章",
+      "en-US": "Alliance/Supportive Operator's Badge",
+      "ja-JP": "盟約・補助オペレーターの記章",
+      "zh-TW": "盟約·輔助幹員證章"
+    },
+    "uniequip_002_pithst": {
+      "zh-CN": "盟约·辅助干员证章",
+      "en-US": "Alliance/Supportive Operator's Badge",
+      "ja-JP": "盟約・補助オペレーターの記章",
+      "zh-TW": "盟約·輔助幹員證章"
+    },
+    "uniequip_001_sharp2": {
+      "zh-CN": "领主·Sharp证章",
+      "en-US": "Lord/Sharp's Badge",
+      "ja-JP": "領主・Sharpの記章",
+      "zh-TW": "領主·Sharp證章"
+    },
+    "uniequip_002_sharp2": {
+      "zh-CN": "领主·Sharp证章",
+      "en-US": "Lord/Sharp's Badge",
+      "ja-JP": "領主・Sharpの記章",
+      "zh-TW": "領主·Sharp證章"
+    },
+    "uniequip_001_monstr": {
+      "zh-CN": "Mon3tr证章",
+      "en-US": "Mon3tr's Badge",
+      "ja-JP": "Mon3trの記章",
+      "zh-TW": "Mon3tr證章"
+    },
+    "uniequip_002_monstr": {
+      "zh-CN": "记忆存档",
+      "en-US": "Ten Thousand Years of Memories",
+      "ja-JP": "記憶アーカイブ",
+      "zh-TW": "記憶存檔"
+    },
+    "uniequip_001_peper": {
+      "zh-CN": "明椒证章",
+      "en-US": "Paprika's Badge",
+      "ja-JP": "パプリカの記章",
+      "zh-TW": "明椒證章"
+    },
+    "uniequip_002_peper": {
+      "zh-CN": "“多彩人生”",
+      "en-US": "'Colorful Life'",
+      "ja-JP": "「多彩な人生」",
+      "zh-TW": "“多彩人生”"
+    },
+    "uniequip_001_papyrs": {
+      "zh-CN": "莎草证章",
+      "en-US": "Papyrus's Badge",
+      "ja-JP": "パピルスの記章",
+      "zh-TW": "莎草證章"
+    },
+    "uniequip_002_papyrs": {
+      "zh-CN": "小小的种子",
+      "en-US": "Little Seeds",
+      "ja-JP": "小さな種",
+      "zh-TW": "小小的種子"
+    },
+    "uniequip_001_nasti": {
+      "zh-CN": "娜斯提证章",
+      "en-US": "Nasti's Badge",
+      "ja-JP": "ナスティの記章",
+      "zh-TW": "娜斯提證章"
+    },
+    "uniequip_002_nasti": {
+      "zh-CN": "工程师们",
+      "en-US": "The Engineers",
+      "ja-JP": "エンジニアたち",
+      "zh-TW": "工程師們"
+    },
+    "uniequip_003_ray": {
+      "zh-CN": "证明什么？",
+      "en-US": "To Certify What?",
+      "ja-JP": "何を証明する？",
+      "zh-TW": "證明什麼？"
+    },
+    "uniequip_001_titi": {
+      "zh-CN": "缇缇证章",
+      "en-US": "Titi's Badge",
+      "ja-JP": "ティティの記章",
+      "zh-TW": "緹緹證章"
+    },
+    "uniequip_002_titi": {
+      "zh-CN": "远方的礼物",
+      "en-US": "Gifts from Columbia",
+      "ja-JP": "遠方からの贈り物",
+      "zh-TW": "遠方的禮物"
+    },
+    "uniequip_001_flwr2": {
+      "zh-CN": "撷英调香师证章",
+      "en-US": "Perfumer the Distilled's Badge",
+      "ja-JP": "萃香パフューマーの記章",
+      "zh-TW": "擷英調香師證章"
+    },
+    "uniequip_002_flwr2": {
+      "zh-CN": "“双月的呼吸”",
+      "en-US": "'Breath of Twin Moons'",
+      "ja-JP": "「双月の息遣い」",
+      "zh-TW": "“雙月的呼吸”"
+    },
+    "uniequip_001_varkis": {
+      "zh-CN": "摆渡人证章",
+      "en-US": "Varkáris's Badge",
+      "ja-JP": "ヴァルカリスの記章",
+      "zh-TW": "擺渡人證章"
+    },
+    "uniequip_002_varkis": {
+      "zh-CN": "回家的路",
+      "en-US": "Way Home",
+      "ja-JP": "帰郷の道",
+      "zh-TW": "回家的路"
+    },
+    "uniequip_003_vvana": {
+      "zh-CN": "“最后一行”",
+      "en-US": "'Final Line'",
+      "ja-JP": "「最後の一行」",
+      "zh-TW": "“最後一行”"
+    },
+    "uniequip_003_etlchi": {
+      "zh-CN": "玫瑰色故事集",
+      "en-US": "A Collection of Rosy Tales",
+      "ja-JP": "薔薇色の逸話集",
+      "zh-TW": "玫瑰色故事集"
+    },
+    "uniequip_003_poca": {
+      "zh-CN": "“心”",
+      "en-US": "'Сердце'",
+      "ja-JP": "「心」",
+      "zh-TW": "“心”"
+    },
+    "uniequip_003_hodrer": {
+      "zh-CN": "笔迹",
+      "en-US": "The Handwriting",
+      "ja-JP": "筆跡",
+      "zh-TW": "筆跡"
+    },
+    "uniequip_001_wang": {
+      "zh-CN": "望证章",
+      "en-US": "Wang's Badge",
+      "ja-JP": "ウァンの記章",
+      "zh-TW": "望證章"
+    },
+    "uniequip_002_wang": {
+      "zh-CN": "兽形棋盒",
+      "en-US": "Beast-Shaped Stone Container",
+      "ja-JP": "獣形の碁笥",
+      "zh-TW": "獸形棋盒"
+    },
+    "uniequip_001_chen3": {
+      "zh-CN": "赤刃明霄陈证章",
+      "en-US": "Ch'en the Dawnstreak's Badge",
+      "ja-JP": "赤刃明霄チェンの記章",
+      "zh-TW": "赤刃明霄陳證章"
+    },
+    "uniequip_002_chen3": {
+      "zh-CN": "记忆残页",
+      "en-US": "Remnant Pages of Memory",
+      "ja-JP": "記憶の残頁",
+      "zh-TW": "記憶殘頁"
+    },
+    "uniequip_001_ju": {
+      "zh-CN": "矩证章",
+      "en-US": "Ju's Badge",
+      "ja-JP": "ジューの記章",
+      "zh-TW": "矩證章"
+    },
+    "uniequip_002_ju": {
+      "zh-CN": "田间吓兽人",
+      "en-US": "Scarecrow in the Field",
+      "ja-JP": "案山子",
+      "zh-TW": "田間嚇獸人"
+    },
+    "uniequip_001_yu": {
+      "zh-CN": "余证章",
+      "en-US": "Yu's Badge",
+      "ja-JP": "ユーの記章",
+      "zh-TW": "餘證章"
+    },
+    "uniequip_002_yu": {
+      "zh-CN": "人间百味",
+      "en-US": "Tastes of Life",
+      "ja-JP": "人間百味",
+      "zh-TW": "人間百味"
+    },
+    "uniequip_001_philae": {
+      "zh-CN": "菲莱证章",
+      "en-US": "Philae's Badge",
+      "ja-JP": "フィラエの記章",
+      "zh-TW": "菲萊證章"
+    },
+    "uniequip_002_philae": {
+      "zh-CN": "被摩挲的日子",
+      "en-US": "The Days Rubbed to Silence",
+      "ja-JP": "撫でさする日々",
+      "zh-TW": "被摩挲的日子"
+    },
+    "uniequip_001_cairn": {
+      "zh-CN": "响石证章",
+      "en-US": "Cairn's Badge",
+      "ja-JP": "ケルンの記章",
+      "zh-TW": "響石證章"
+    },
+    "uniequip_002_cairn": {
+      "zh-CN": "“降落伞”",
+      "en-US": "'Parachute'",
+      "ja-JP": "「パラシュート」",
+      "zh-TW": "“降落傘”"
+    },
+    "uniequip_004_irene": {
+      "zh-CN": "艾丽妮特限证章",
+      "en-US": "Irene's Specialized Badge",
+      "ja-JP": "アイリーニの特別限定記章",
+      "zh-TW": "艾麗妮特限證章"
+    },
+    "uniequip_004_pasngr": {
+      "zh-CN": "异客特限证章",
+      "en-US": "Passenger's Specialized Badge",
+      "ja-JP": "パッセンジャーの特別限定記章",
+      "zh-TW": "異客特限證章"
+    },
+    "uniequip_001_demetr": {
+      "zh-CN": "贝洛内证章",
+      "en-US": "Bellone's Badge",
+      "ja-JP": "ベッローネの記章",
+      "zh-TW": "貝洛內證章"
+    },
+    "uniequip_002_demetr": {
+      "zh-CN": "实用的工具",
+      "en-US": "The Instrument",
+      "ja-JP": "実用的な道具",
+      "zh-TW": "實用的工具"
+    },
+    "uniequip_001_liesel": {
+      "zh-CN": "复奏证章",
+      "en-US": "Ripresa's Badge",
+      "ja-JP": "リプレーザの記章",
+      "zh-TW": "復奏證章"
+    },
+    "uniequip_002_liesel": {
+      "zh-CN": "“暮约”",
+      "en-US": "'Dusk Covenant'",
+      "ja-JP": "「夕暮れ時の約束」",
+      "zh-TW": "“暮約”"
+    },
+    "uniequip_003_agoat2": {
+      "zh-CN": "想要留下的生命",
+      "en-US": "Life I Want to Retain",
+      "ja-JP": "残したい生命",
+      "zh-TW": "想要留下的生命"
+    },
+    "uniequip_003_haak": {
+      "zh-CN": "毒医残章",
+      "en-US": "Remnant of the Malpractice",
+      "ja-JP": "毒医の残章",
+      "zh-TW": "毒醫殘章"
+    },
+    "uniequip_003_jesca2": {
+      "zh-CN": "未曾风化",
+      "en-US": "Unweathered",
+      "ja-JP": "風化せぬもの",
+      "zh-TW": "未曾風化"
+    },
+    "uniequip_001_headb2": {
+      "zh-CN": "怒潮凛冬证章",
+      "en-US": "Zima the Raging Tide's Badge",
+      "ja-JP": "怒潮ズィマーの記章",
+      "zh-TW": "怒潮凜冬證章"
+    },
+    "uniequip_002_headb2": {
+      "zh-CN": "迟到的勋章",
+      "en-US": "Unissued Medal",
+      "ja-JP": "遅れてきた勲章",
+      "zh-TW": "遲到的勛章"
+    },
+    "uniequip_001_turdus": {
+      "zh-CN": "乌啾证章",
+      "en-US": "Ukusik's Badge",
+      "ja-JP": "ウクシクの記章",
+      "zh-TW": "烏啾證章"
+    },
+    "uniequip_002_turdus": {
+      "zh-CN": "“睡前故事”",
+      "en-US": "'Nighttime Stories'",
+      "ja-JP": "「おやすみ前の物語」",
+      "zh-TW": "“睡前故事”"
+    },
+    "uniequip_001_botany": {
+      "zh-CN": "伯塔尼证章",
+      "en-US": "Botani's Badge",
+      "ja-JP": "ボタニの記章",
+      "zh-TW": "伯塔尼證章"
+    },
+    "uniequip_002_botany": {
+      "zh-CN": "昨日、今日、明日",
+      "en-US": "Yesterday, Today and Tomorrow",
+      "ja-JP": "昨日、今日、明日",
+      "zh-TW": "昨日、今日、明日"
+    },
+    "uniequip_003_surtr": {
+      "zh-CN": "旅游必需品",
+      "en-US": "Travel Necessities",
+      "ja-JP": "旅の必需品",
+      "zh-TW": "旅遊必需品"
+    },
+    "uniequip_003_nymph": {
+      "zh-CN": "烦恼问诊匣",
+      "en-US": "Consultation Toolkit",
+      "ja-JP": "お悩み相談箱",
+      "zh-TW": "煩惱問診匣"
+    },
+    "uniequip_003_skadi2": {
+      "zh-CN": "新生代",
+      "en-US": "New Generation",
+      "ja-JP": "新世代",
+      "zh-TW": "新生代"
+    },
+    "uniequip_001_veen": {
+      "zh-CN": "维伊证章",
+      "en-US": "Viy's Badge",
+      "ja-JP": "ヴィイの記章"
+    },
+    "uniequip_002_veen": {
+      "zh-CN": "军械库",
+      "en-US": "Keep Close At Hand",
+      "ja-JP": "武器庫"
+    },
+    "uniequip_001_tanya": {
+      "zh-CN": "裂响证章",
+      "en-US": "Crackborne's Badge",
+      "ja-JP": "クラックボーンの記章"
+    },
+    "uniequip_002_tanya": {
+      "zh-CN": "“漂洗”",
+      "en-US": "'The Rinsing'",
+      "ja-JP": "「洗浄」"
+    },
+    "uniequip_001_closur": {
+      "zh-CN": "可露希尔证章",
+      "en-US": "Closure's Badge",
+      "ja-JP": "クロージャの記章"
+    },
+    "uniequip_002_closur": {
+      "zh-CN": "给自己的小奖杯",
+      "en-US": "Little Trophy for Herself",
+      "ja-JP": "自分に贈る小さなトロフィー"
+    },
+    "uniequip_003_blkkgt": {
+      "zh-CN": "新合同",
+      "en-US": "New Contract",
+      "ja-JP": "新たな契約"
+    },
+    "uniequip_003_rmixer": {
+      "zh-CN": "“老朋友”",
+      "en-US": "'Old Friends'",
+      "ja-JP": "「旧友」"
+    },
+    "uniequip_003_texas2": {
+      "zh-CN": "“新车和新生活”",
+      "en-US": "'New Car and New Life'",
+      "ja-JP": "「新車と新生活」"
+    },
+    "uniequip_004_typhon": {
+      "zh-CN": "提丰特限证章",
+      "en-US": "Typhon's Specialized Badge",
+      "ja-JP": "ティフォンの特別限定記章"
+    },
+    "uniequip_004_ghost2": {
+      "zh-CN": "归溟幽灵鲨特限证章",
+      "en-US": "Specter the Unchained's Specialized Badge",
+      "ja-JP": "帰溟スペクターの特別限定記章"
+    }
+  }
+}

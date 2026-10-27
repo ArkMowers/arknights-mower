@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { THEME_KEY } from 'vue-echarts'
 import Report from './report.vue'
 import TradingAnalysis from './trading_analysis.vue'
+import { i18n } from '@/i18n'
 const state = vi.hoisted(() => ({
   client: null,
   mounted: null,
@@ -78,7 +79,58 @@ describe('基报读取 Mower 收益设置', () => {
       })
     }
   })
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    i18n.global.locale.value = 'zh-CN'
+  })
+
+  it('updates report range labels without changing the selected range or fetching data', async () => {
+    const scope = effectScope()
+    try {
+      const page = scope.run(() => Report.setup({}, { expose: vi.fn() }))
+      await state.mounted()
+      const values = page.rangeOptions.value.map((row) => row.value)
+      const selection = page.range.value
+      const requests = state.client.get.mock.calls.length
+      i18n.global.locale.value = 'en-US'
+      expect(page.rangeOptions.value[0].label).toBe('7 days')
+      i18n.global.locale.value = 'ja-JP'
+      expect(page.rangeOptions.value[0].label).toBe('7 日')
+      expect(page.rangeOptions.value.map((row) => row.value)).toEqual(values)
+      expect(page.range.value).toBe(selection)
+      expect(state.client.get).toHaveBeenCalledTimes(requests)
+      expect(state.client.put).not.toHaveBeenCalled()
+    } finally {
+      scope.stop()
+    }
+  })
+
+  it('translates trading chart display labels while retaining dataset dimensions and raw fields', async () => {
+    const scope = effectScope()
+    try {
+      const page = scope.run(() => TradingAnalysis.setup({}, { expose: vi.fn() }))
+      await state.mounted()
+      const before = JSON.stringify(page.option_analysis.value.dataset)
+      const names = page.option_analysis.value.series.map((series) => series.name)
+      const source = JSON.stringify(state.report)
+      i18n.global.locale.value = 'en-US'
+      const option = page.option_analysis.value
+      expect(option.title.text).toBe('Order distribution')
+      expect(option.legend.formatter('赤金')).toBe('Pure Gold')
+      expect(option.legend.formatter('订单质量')).toBe('Order value')
+      expect(JSON.stringify(option.dataset)).toBe(before)
+      expect(option.dataset.dimensions).toContain('日期')
+      expect(option.series.map((series) => series.name)).toEqual(names)
+      expect(JSON.stringify(state.report)).toBe(source)
+      const tooltip = option.tooltip.formatter([
+        { marker: '', seriesName: '赤金', value: { 龙门币订单: 10000, 赤金: 1000 } }
+      ])
+      expect(tooltip).toContain('Pure Gold: 1000')
+      expect(state.client.put).not.toHaveBeenCalled()
+    } finally {
+      scope.stop()
+    }
+  })
 
   it('收益设置入口保留会话凭证并定位全部设置的账号面板', async () => {
     const router = createRouter({

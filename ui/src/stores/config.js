@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { i18n } from '@/i18n'
 import { normalizePerformanceMode, performanceProfile } from '@/utils/performanceProfile'
 import { defineStore } from 'pinia'
 import { editDeviceDraft } from '@/utils/deviceSettings'
@@ -394,7 +395,7 @@ export const useConfigStore = defineStore('config', () => {
   async function update_weekly_plan_active(key, plan = undefined) {
     const activeKey = typeof key === 'string' ? key.trim() : ''
     if (!activeKey) {
-      throw new Error('周计划方案不能为空')
+      throw new Error(i18n.global.t('tasks.weeklyPlanNameRequired'))
     }
 
     // Finish any autosave for the source plan before changing the active key,
@@ -443,7 +444,7 @@ export const useConfigStore = defineStore('config', () => {
   async function delete_weekly_plan(key) {
     const planKey = typeof key === 'string' ? key.trim() : ''
     if (!planKey) {
-      throw new Error('周计划方案不能为空')
+      throw new Error(i18n.global.t('tasks.weeklyPlanNameRequired'))
     }
 
     await configSaveRequest.catch(() => {})
@@ -470,7 +471,7 @@ export const useConfigStore = defineStore('config', () => {
   async function update_weekly_plan_activity_fallback(target, switchTime = undefined) {
     const source = maa_weekly_plan_active.value
     if (!source) {
-      throw new Error('请先选择周计划方案')
+      throw new Error(i18n.global.t('tasks.selectWeeklyPlanFirst'))
     }
     const payload = {
       source,

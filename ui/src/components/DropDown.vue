@@ -1,10 +1,12 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 defineProps({
   select: { type: Function },
   options: { type: Array },
   type: { default: 'default' },
   up: { default: false, type: Boolean },
-  menuLabel: { type: String, default: '选择操作' },
+  menuLabel: { type: String, default: '' },
   disabled: { type: Boolean, default: false }
 })
 
@@ -32,8 +34,8 @@ const menuOpen = ref(false)
         class="dropdown"
         :type="type"
         :disabled="disabled"
-        :aria-label="menuLabel"
-        :title="menuLabel"
+        :aria-label="menuLabel || t('plans.chooseAction')"
+        :title="menuLabel || t('plans.chooseAction')"
         aria-haspopup="menu"
         :aria-expanded="menuOpen"
         ghost
@@ -59,8 +61,8 @@ const menuOpen = ref(false)
         class="dropdown"
         :type="type"
         :disabled="disabled"
-        :aria-label="menuLabel"
-        :title="menuLabel"
+        :aria-label="menuLabel || t('plans.chooseAction')"
+        :title="menuLabel || t('plans.chooseAction')"
         aria-haspopup="menu"
         :aria-expanded="menuOpen"
         ghost

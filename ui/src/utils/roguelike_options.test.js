@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { i18n } from '@/i18n'
 
 import {
+  blackflow_animals,
+  blackflow_rewards,
   collectible_start_visible,
   difficulty_options,
   elite_two_visible,
@@ -15,6 +18,35 @@ import {
   rogue_themes,
   start_foldartal_visible
 } from './roguelike_options'
+
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
+
+it('keeps BlackFlow protocol values and masks while translating four language option labels', () => {
+  const values = (options) => options.map(({ value }) => value)
+  const animals = values(blackflow_animals)
+  const rewards = blackflow_rewards.map(({ value, mask }) => ({ value, mask }))
+  const animalLabels = {
+    'zh-CN': '襁褓中的猫',
+    'en-US': 'Swaddled Cat',
+    'ja-JP': 'くるまれた猫',
+    'zh-TW': '襁褓中的貓'
+  }
+  for (const locale of Object.keys(animalLabels)) {
+    i18n.global.locale.value = locale
+    expect(values(modes_for_theme('BlackFlow'))).toEqual([0, 1, 30001, 30003])
+    expect(modes_for_theme('BlackFlow').at(-1).label).toBe(
+      i18n.global.t('maaActivities.blackflowOpeningMode')
+    )
+    expect(modes_for_theme('BlackFlow')[0].label).toBe(
+      i18n.global.t('maaActivities.blackflowLevelMode')
+    )
+    expect(blackflow_animals[0].label).toBe(animalLabels[locale])
+    expect(values(blackflow_animals)).toEqual(animals)
+    expect(blackflow_rewards.map(({ value, mask }) => ({ value, mask }))).toEqual(rewards)
+  }
+})
 
 describe('roguelike_options', () => {
   it('主题含 BlackFlow 及既有主题', () => {
@@ -61,6 +93,8 @@ describe('roguelike_options', () => {
     expect(values('BlackFlow')).toContain(1)
     expect(values('BlackFlow')).not.toContain(4)
     expect(values('BlackFlow')).not.toContain(6)
+    expect(values('BlackFlow')).toEqual([0, 1, 30001, 30003])
+    expect(values('Sami')).not.toContain(30003)
   })
 
   it('字段条件覆盖协议注明的主题/模式限定字段', () => {
@@ -119,11 +153,14 @@ describe('roguelike_options', () => {
     expect(is_field_enabled('only_start_with_elite_two', 'Sami', 0)).toBe(false)
   })
 
-  it('collectible_mode_shopping/collectible_mode_squad 仅策略 4 展示', () => {
+  it('保留普通刷开局字段条件，并为黑流树海准备局显示分队', () => {
     expect(is_field_enabled('collectible_mode_shopping', 'BlackFlow', 4)).toBe(true)
     expect(is_field_enabled('collectible_mode_squad', 'Phantom', 4)).toBe(true)
     expect(is_field_enabled('collectible_mode_shopping', 'Sami', 0)).toBe(false)
     expect(is_field_enabled('collectible_mode_squad', 'BlackFlow', 30001)).toBe(false)
+    expect(is_field_enabled('collectible_mode_squad', 'BlackFlow', 30003)).toBe(true)
+    expect(is_field_enabled('collectible_mode_shopping', 'BlackFlow', 30003)).toBe(false)
+    expect(is_field_enabled('collectible_mode_squad', 'Sami', 30003)).toBe(false)
   })
 
   it('collectible_mode_start_list 仅策略 4 展示（无主题限制）', () => {

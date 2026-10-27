@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { localizedPlanOptions, planDisplayName } from '@/i18n/plans'
+const { t } = i18n.global
 const props = defineProps(['data'])
 const emit = defineEmits(['update'])
 
@@ -24,9 +27,10 @@ import { trigger_facility_type_options } from '@/utils/base_facilities'
 import { facility_product_labels, facility_product_options } from '@/utils/base_products'
 import {
   group_mood_expression,
-  group_mood_mode_options,
+  group_mood_mode_options as raw_group_mood_options,
   parse_group_mood_expression
 } from '@/utils/trigger_group'
+const group_mood_mode_options = computed(() => localizedPlanOptions(raw_group_mood_options))
 
 const config_store = useConfigStore()
 const { product_switching } = storeToRefs(config_store)
@@ -146,22 +150,24 @@ const op_type = computed(() => {
 })
 
 const type_options = computed(() => [
-  { label: '干员属性', value: 'op' },
-  { label: '仓库资源', value: 'inventory' },
-  { label: '设施状态', value: 'facility' },
-  ...(product_switching_enabled.value ? [{ label: '生产设施统计', value: 'facility_stat' }] : []),
-  { label: '绑组心情', value: 'group_mood' },
-  { label: '线索交流结束时间', value: 'impart' },
-  { label: '停服大更新前（定时触发）', value: 'major_maintenance' },
-  { label: '常量/自定义', value: 'custom' }
+  { label: t('plans.operatorProperties'), value: 'op' },
+  { label: t('plans.inventoryResource'), value: 'inventory' },
+  { label: t('plans.facilityStatus'), value: 'facility' },
+  ...(product_switching_enabled.value
+    ? [{ label: t('plans.facilityStatistics'), value: 'facility_stat' }]
+    : []),
+  { label: t('plans.groupMorale'), value: 'group_mood' },
+  { label: t('plans.clueExchangeEnd'), value: 'impart' },
+  { label: t('plans.beforeMaintenance'), value: 'major_maintenance' },
+  { label: t('plans.customValue'), value: 'custom' }
 ])
 
-const op_options = [
-  { label: '心情', value: 'mood' },
-  { label: '当前位置', value: 'room' },
-  { label: '在工作', value: 'working' },
-  { label: '在休息', value: 'in_dorm' }
-]
+const op_options = computed(() => [
+  { label: t('plans.morale'), value: 'mood' },
+  { label: t('plans.location'), value: 'room' },
+  { label: t('plans.working'), value: 'working' },
+  { label: t('plans.resting'), value: 'in_dorm' }
+])
 
 function set_op_type(v) {
   data.value = ''
@@ -256,7 +262,7 @@ function render_inventory_option(option) {
             fontVariantNumeric: 'tabular-nums'
           }
         },
-        `库存 ${option.inventoryText}`
+        t('plans.inventoryCount', { count: option.inventoryText })
       )
     ]
   )
@@ -303,25 +309,33 @@ const facility_product_summary = computed(() =>
 
 const facility_select_options = computed(() =>
   [...left_side_facility, { label: '训练室', value: 'train' }].map((option) => {
-    if (option.value == 'train') return option
+    if (option.value == 'train') return { ...option, label: t('plans.trainingRoom') }
     if (!product_switching_enabled.value) return option
     const facilityName =
       (facilityLoaded.value && !facilityLoadError.value
         ? trigger_facility_type_options.find(
             ({ value }) => value == facility_states.value[option.value]?.facility
           )?.label
-        : undefined) || '未读取'
+        : undefined) || t('plans.notRead')
     if (!['制造站', '贸易站'].includes(facilityName)) {
       return {
         ...option,
-        label: facilityName ? `${option.label}（${facilityName}）` : option.label
+        label: facilityName
+          ? t('plans.facilityWithType', { room: option.label, type: planDisplayName(facilityName) })
+          : option.label
       }
     }
     const current =
-      facility_product_labels[facility_product_summary.value.products[option.value]] || '未配置'
+      planDisplayName(
+        facility_product_labels[facility_product_summary.value.products[option.value]]
+      ) || t('plans.notConfigured')
     return {
       ...option,
-      label: `${option.label}（${facilityName}；当前：${current}）`
+      label: t('plans.facilityCurrentProduct', {
+        room: option.label,
+        type: planDisplayName(facilityName),
+        product: current
+      })
     }
   })
 )
@@ -329,43 +343,50 @@ const facility_select_options = computed(() =>
 const facility_status_options = computed(() => {
   if (op_data.value.room == 'train') {
     const planCount = planSummaryError.value
-      ? '读取失败'
+      ? t('plans.readFailed')
       : planSummaryLoaded.value
-        ? `当前 ${masteryPlanCount.value} 条`
-        : '读取中'
+        ? t('plans.currentPlanCount', { count: masteryPlanCount.value })
+        : t('plans.loading')
     const training = planSummaryError.value
-      ? '读取失败'
+      ? t('plans.readFailed')
       : planSummaryLoaded.value
-        ? `当前：${masteryIsTraining.value ? '是' : '否'}`
-        : '读取中'
+        ? t('plans.currentBoolean', {
+            value: t(masteryIsTraining.value ? 'plans.yes' : 'plans.no')
+          })
+        : t('plans.loading')
     return [
-      { label: `是否存在专精计划（${planCount}）`, value: 'mastery_plan' },
-      { label: `是否正在训练（${training}）`, value: 'training' },
-      { label: '当前干员数量', value: 'operator_count' }
+      { label: t('plans.hasMasteryPlan', { state: planCount }), value: 'mastery_plan' },
+      { label: t('plans.isTraining', { state: training }), value: 'training' },
+      { label: t('plans.operatorCount'), value: 'operator_count' }
     ]
   }
   const facilityName = plan.value[op_data.value.room]?.name
-  const options = [{ label: '当前干员数量', value: 'operator_count' }]
+  const options = [{ label: t('plans.operatorCount'), value: 'operator_count' }]
   if (product_switching_enabled.value) {
-    options.unshift({ label: '设施类型', value: 'type' })
-    if (facilityName == '制造站') options.unshift({ label: '当前产物', value: 'product' })
-    if (facilityName == '贸易站') options.unshift({ label: '当前订单类型', value: 'product' })
+    options.unshift({ label: t('plans.facilityType'), value: 'type' })
+    if (facilityName == '制造站')
+      options.unshift({ label: t('plans.currentProduct'), value: 'product' })
+    if (facilityName == '贸易站')
+      options.unshift({ label: t('plans.currentOrderType'), value: 'product' })
   }
   return options
 })
 
 const facility_stat_options = computed(() => [
-  { label: '指定产物/订单的设施数', value: 'product_count' },
+  { label: t('plans.productFacilityCount'), value: 'product_count' },
   {
-    label: `产物/订单种类数（${facility_product_summary.value.typeCount} 种）`,
+    label: t('plans.productTypeCount', { count: facility_product_summary.value.typeCount }),
     value: 'product_type_count'
   }
 ])
 
 const facility_product_stat_options = computed(() =>
-  facility_product_options.map((option) => {
+  localizedPlanOptions(facility_product_options).map((option) => {
     const current = facility_product_summary.value.counts[option.value]
-    return { ...option, label: `${option.label}（${current} 站）` }
+    return {
+      ...option,
+      label: t('plans.productFacilityTotal', { product: option.label, count: current })
+    }
   })
 )
 
@@ -404,8 +425,7 @@ function update_type(type) {
   build_data(op_data.value.operator, type)
 }
 
-import { pinyin_match } from '@/utils/common'
-import { render_op_option, render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label, filterOperatorOption } from '@/utils/op_select'
 
 const custom_tips = computed(() => [
   'True',
@@ -431,10 +451,14 @@ const custom_tips = computed(() => [
   'dormitory_3',
   'dormitory_4',
   ...(product_switching_enabled.value
-    ? facility_product_options.map(({ label, value }) => expression_value_option(label, value))
+    ? localizedPlanOptions(facility_product_options).map(({ label, value }) =>
+        expression_value_option(label, value)
+      )
     : []),
   ...(product_switching_enabled.value
-    ? trigger_facility_type_options.map(({ label, value }) => expression_value_option(label, value))
+    ? localizedPlanOptions(trigger_facility_type_options).map(({ label, value }) =>
+        expression_value_option(label, value)
+      )
     : [])
 ])
 
@@ -458,27 +482,19 @@ function render_custom_tip(option) {
     blur-after-select
     :get-show="() => true"
   />
-  <help-text v-if="op_type == 'major_maintenance'" label="查看停服大更新副表说明" :max-width="480">
-    默认在停服大更新开始前半小时触发，可在同一行修改提前小时数。到达设定时间时，调度器自动检查此副表；其他组合条件仍须成立。
-    停止时长可选择比较符并填写小时数，按公告或计划停止的总时长判断，不随倒计时缩短。例如“&gt;=
-    6”和“&lt; 6”可分别触发不同副表，6 小时整匹配前者。 默认为不限时长；计划停止填 0
-    表示不预约启动，不参与时长比较，只能匹配不限时长的条件。
-    到达公告停服开始时间后，此条件变为不成立，Mower 保存状态并停止任务线程。更新客户端后需重新启动
-    Mower，首次检查时退出此副表；停服期间不执行换班。
-    合并后的主班不含跑单干员时，触发后先用无人机加速已有的停服前跑单任务，完成原班恢复后再换班。提前跑单期间不生成新的普通跑单任务。
-    此副表的主班位置允许填写但书、龙舌兰、佩佩、可露希尔，仍需填写普通替班。
-    若这些主班配置了其他跑单干员作为替班，先换入跑单替班，用无人机加速一轮并恢复原班，再换入维护主班；没有此类替班时直接换班。
-    当此副表生效且合并后的主班保留这些干员时，所有贸易站暂停生成跑单任务，已排队的跑单及跑单时间刷新任务也会移除。
-    副表退出或这些主班被其他副表覆盖后，恢复正常跑单。只使用此条件、未将跑单干员填入主班时，跑单照常运行。
-    未检测到停服大更新时，此定时条件不成立；闪断更新不计入。
-  </help-text>
+  <help-text
+    v-if="op_type == 'major_maintenance'"
+    :label="t('plans.maintenanceBackupHelpTitle')"
+    :max-width="480"
+    >{{ t('plans.maintenanceBackupHelp') }}</help-text
+  >
   <template v-if="op_type == 'op'">
     <n-select
       :default-value="op_data.operator"
       filterable
       :options="operators"
       :on-update:value="update_op"
-      :filter="(p, o) => pinyin_match(o.label, p)"
+      :filter="filterOperatorOption"
       :render-label="render_op_label"
       :render-option="render_op_option"
       style="min-width: 220px"

@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 import { inject, ref, computed } from 'vue'
@@ -9,9 +12,20 @@ const props = defineProps({
 const emit = defineEmits(['configure-accounts'])
 const title = computed(
   () =>
-    ({ report: '读取基报', skland: '森空岛签到', mail: '领取邮件', 'event-sign-in': '活动签到' })[
-      props.task
-    ] || '每日任务'
+    ({
+      get report() {
+        return t('tasks.readBaseReport')
+      },
+      get skland() {
+        return t('tasks.sklandSignIn')
+      },
+      get mail() {
+        return t('tasks.collectMail')
+      },
+      get 'event-sign-in'() {
+        return t('tasks.eventCheckIn')
+      }
+    })[props.task] || t('tasks.dailyTasks')
 )
 const axios = inject('axios')
 
@@ -34,7 +48,7 @@ async function test_sign() {
   if (testing.value || !enable_test.value) return
   testing.value = true
   sign_error.value = false
-  sign_msg.value = '正在测试签到……'
+  sign_msg.value = t('tasks.testingCheckIn')
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-skland-sign`)
     sign_msg.value = Array.isArray(response.data)
@@ -42,7 +56,7 @@ async function test_sign() {
       : String(response.data ?? '')
   } catch {
     sign_error.value = true
-    sign_msg.value = '测试签到失败，请检查连接后重试'
+    sign_msg.value = t('tasks.checkInTestFailed')
   } finally {
     testing.value = false
   }
@@ -87,90 +101,83 @@ const SyncStatus = (item, game) => {
         data-task-editor="skland"
       >
         <n-checkbox v-if="showEnable" v-model:checked="skland_enable">
-          <div class="item">森空岛签到</div>
+          <div class="item">{{ t('tasks.sklandSignIn') }}</div>
         </n-checkbox>
         <div v-if="!skland_info.length" class="skland-empty">
-          <p>尚未添加森空岛账号</p>
+          <p>{{ t('tasks.noSklandAccounts') }}</p>
           <n-button
             v-if="!showEnable && task === 'skland'"
             type="primary"
             secondary
             @click="emit('configure-accounts')"
+            >{{ t('tasks.addSklandAccount') }}</n-button
           >
-            添加森空岛账号
-          </n-button>
         </div>
         <n-tabs v-else type="line">
-          <n-tab-pane name="arknights" tab="明日方舟">
+          <n-tab-pane name="arknights" :tab="t('tasks.arknights')">
             <div v-for="account_info in skland_info" :key="account_info.account">
               <n-flex>
                 <n-checkbox
                   v-model:checked="account_info.arknights_isCheck"
                   @update:checked="(status) => AllCheck(account_info, status, 'arknights')"
                   style="margin-right: 12px"
-                >
-                  森空岛账号：{{ account_info.account }}
+                  >{{ t('tasks.sklandAccountPrefix') }}{{ account_info.account }}
                 </n-checkbox>
                 <div style="margin-left: auto">
                   <n-checkbox
                     v-model:checked="account_info.sign_in_official"
                     @update:checked="() => SyncStatus(account_info, 'arknights')"
                     style="margin-right: 12px"
+                    >{{ t('tasks.officialCheckIn') }}</n-checkbox
                   >
-                    官服签到
-                  </n-checkbox>
                   <n-checkbox
                     v-model:checked="account_info.sign_in_bilibili"
                     @update:checked="() => SyncStatus(account_info, 'arknights')"
                     style="margin-right: 12px"
+                    >{{ t('tasks.bilibiliCheckIn') }}</n-checkbox
                   >
-                    B服签到
-                  </n-checkbox>
                 </div>
               </n-flex>
             </div>
           </n-tab-pane>
-          <n-tab-pane name="endfield" tab="明日方舟终末地">
+          <n-tab-pane name="endfield" :tab="t('tasks.endfield')">
             <div v-for="account_info in skland_info" :key="account_info.account">
               <n-flex>
                 <n-checkbox
                   v-model:checked="account_info.endfield_isCheck"
                   @update:checked="(status) => AllCheck(account_info, status, 'endfield')"
                   style="margin-right: 12px"
-                >
-                  森空岛账号：{{ account_info.account }}
+                  >{{ t('tasks.sklandAccountPrefix') }}{{ account_info.account }}
                 </n-checkbox>
                 <div style="margin-left: auto">
                   <n-checkbox
                     v-model:checked="account_info.sign_in_endfield_official"
                     @update:checked="() => SyncStatus(account_info, 'endfield')"
                     style="margin-right: 12px"
+                    >{{ t('tasks.officialCheckIn') }}</n-checkbox
                   >
-                    官服签到
-                  </n-checkbox>
                   <n-checkbox
                     v-model:checked="account_info.sign_in_endfield_bilibili"
                     @update:checked="() => SyncStatus(account_info, 'endfield')"
                     style="margin-right: 12px"
+                    >{{ t('tasks.bilibiliCheckIn') }}</n-checkbox
                   >
-                    B服签到
-                  </n-checkbox>
                 </div>
               </n-flex>
             </div>
           </n-tab-pane>
         </n-tabs>
         <n-flex v-if="skland_info.length" class="sign-test" align="center">
-          <n-button :disabled="!enable_test || testing" :loading="testing" @click="test_sign">
-            测试签到
-          </n-button>
-          <help-text label="森空岛签到说明">
-            <div>签到失败时，请尝试：</div>
+          <n-button :disabled="!enable_test || testing" :loading="testing" @click="test_sign">{{
+            t('tasks.testCheckIn')
+          }}</n-button>
+          <help-text :label="t('tasks.checkInHelpTitle')">
+            <div>{{ t('tasks.checkInFailureSteps') }}</div>
             <ol style="margin: 0">
-              <li>检查森空岛连接是否正常；</li>
-              <li>检查是否勾选了未绑定的区服/游戏</li>
+              <li>{{ t('tasks.checkSklandConnection') }}</li>
+              <li>{{ t('tasks.checkBoundGames') }}</li>
             </ol>
-            <div>Tips: 可以在根目录下的tmp/skland.csv中查看签到详情</div>
+            <div>{{ t('tasks.sklandCsvTip') }}</div>
           </help-text>
           <div class="sign-result" :class="{ 'sign-result-error': sign_error }" aria-live="polite">
             {{ sign_msg }}
@@ -185,10 +192,10 @@ const SyncStatus = (item, game) => {
         data-task-editor="mail"
       >
         <n-checkbox v-if="showEnable" v-model:checked="check_mail_enable">
-          <div class="item">领取邮件</div>
+          <div class="item">{{ t('tasks.collectMail') }}</div>
         </n-checkbox>
         <n-checkbox v-model:checked="mail_skip_clear_read" :disabled="!check_mail_enable">
-          <div>跳过清除已读</div>
+          <div>{{ t('tasks.skipReadMailDeletion') }}</div>
         </n-checkbox>
       </n-flex>
       <n-divider v-show="task === 'all'" />
@@ -199,12 +206,11 @@ const SyncStatus = (item, game) => {
         data-task-editor="event-sign-in"
       >
         <n-checkbox v-if="showEnable" v-model:checked="event_sign_in_enable">
-          <div class="item">活动签到</div>
+          <div class="item">{{ t('tasks.eventCheckIn') }}</div>
         </n-checkbox>
-        <help-text label="活动签到说明">
-          识别已适配活动的登录进度，检查奖励卡片是否已领取，补领已解锁的奖励。
-          多个签到活动按首页从上到下的顺序依次检查。暂不支持特殊登录活动和不同布局的十五日签到页面。
-        </help-text>
+        <help-text :label="t('tasks.eventCheckInHelpTitle')">{{
+          t('tasks.eventCheckInHelp')
+        }}</help-text>
       </n-flex>
       <n-divider v-show="task === 'all'" />
       <n-flex
@@ -213,10 +219,10 @@ const SyncStatus = (item, game) => {
         data-task-editor="report"
       >
         <n-checkbox v-if="showEnable" v-model:checked="report_enable">
-          <div class="item">读取基报</div>
+          <div class="item">{{ t('tasks.readBaseReport') }}</div>
         </n-checkbox>
       </n-flex>
-      <p v-if="!showEnable && task === 'report'">无需额外设置</p>
+      <p v-if="!showEnable && task === 'report'">{{ t('tasks.noExtraSettings') }}</p>
     </n-flex>
   </n-card>
 </template>

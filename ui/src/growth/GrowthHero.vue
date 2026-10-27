@@ -1,4 +1,6 @@
 <script setup>
+import { operatorDisplayName, skillDisplayName } from '@/i18n/gameNames'
+import { i18n } from '@/i18n'
 import { computed } from 'vue'
 import { NButton, NIcon, NSwitch } from 'naive-ui'
 import AddCircleOutline from '@vicons/ionicons5/es/AddCircleOutline'
@@ -32,58 +34,49 @@ const currentLevel = computed(() => props.training?.rec?.current_level ?? 0)
 const totalTime = computed(() => props.training?.totalTime ?? 0)
 const trainingStatus = computed(() => props.training?.entry?.status || 'training')
 const trainingStatusLabel = computed(() =>
-  props.training ? planStatusLabel(trainingStatus.value) : '待命'
+  props.training ? planStatusLabel(trainingStatus.value) : i18n.global.t('growth.hero.standby')
 )
 
 function formatTime(seconds) {
   if (!seconds) return '—'
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
-  if (hours > 0 && minutes > 0) return hours + ' 小时 ' + minutes + ' 分'
-  if (hours > 0) return hours + ' 小时'
-  return (minutes || 1) + ' 分钟'
+  if (hours > 0 && minutes > 0)
+    return i18n.global.t('growth.format.hoursMinutes', { hours, minutes })
+  if (hours > 0) return i18n.global.t('growth.format.hours', { hours })
+  return i18n.global.t('growth.format.minutes', { minutes: minutes || 1 })
 }
 
 const stateLine = computed(() => {
   if (props.training) {
-    const name = props.training.op?.name || '干员'
-    const skill = props.training.rec?.skill_name || props.training.entry?.skill_name || '技能'
-    if (trainingStatus.value === 'waiting_collect') {
-      return name + ' 的「' + skill + '」本阶段训练已完成，等待收取。'
-    }
-    if (trainingStatus.value === 'arranging') {
-      return (
-        name +
-        ' 的「' +
-        skill +
-        '」正在安排，目标专' +
-        ['', '一', '二', '三'][targetLevel.value] +
-        '。'
-      )
-    }
-    return (
-      name + ' 正在训练「' + skill + '」，目标专' + ['', '一', '二', '三'][targetLevel.value] + '。'
-    )
+    const name =
+      operatorDisplayName(props.training.op?.name) || i18n.global.t('growth.hero.operator')
+    const skill =
+      skillDisplayName(props.training.rec?.skill_name || props.training.entry?.skill_name) ||
+      i18n.global.t('growth.hero.skill')
+    const target = i18n.global.t(`growth.format.ordinal${targetLevel.value}`)
+    const key =
+      trainingStatus.value === 'waiting_collect'
+        ? 'trainingReady'
+        : trainingStatus.value === 'arranging'
+          ? 'trainingArranging'
+          : 'trainingActive'
+    return i18n.global.t(`growth.format.${key}`, { name, skill, target })
   }
-  if (!props.totalGoals) return '还没有养成目标。从一位干员开始，定下这次要练的方向。'
-  if (props.nextUp) {
-    return (
-      '队列里还有 ' +
-      props.totalGoals +
-      ' 项，下一项是 ' +
-      props.nextUp.name +
-      ' 的' +
-      props.nextUp.label +
-      '。'
-    )
-  }
-  return '队列里还有 ' + props.totalGoals + ' 项目标等待安排。'
+  if (!props.totalGoals) return i18n.global.t('growth.hero.noGrowthGoalsYetStartWithOne')
+  if (props.nextUp)
+    return i18n.global.t('growth.format.queueNext', {
+      count: props.totalGoals,
+      name: operatorDisplayName(props.nextUp.name),
+      label: props.nextUp.label
+    })
+  return i18n.global.t('growth.format.queueWaiting', { count: props.totalGoals })
 })
 
 const syncLabel = computed(() => {
-  if (props.syncing) return '正在同步森空岛'
+  if (props.syncing) return i18n.global.t('growth.hero.syncingSkland')
   if (props.syncHint) return props.syncHint
-  return '同步森空岛'
+  return i18n.global.t('growth.hero.syncSkland')
 })
 </script>
 
@@ -98,20 +91,23 @@ const syncLabel = computed(() => {
 
     <div class="growth-hero__grid">
       <div class="growth-hero__lead">
-        <span class="gp-kicker growth-hero__kicker">Training dossier · 训练档案</span>
+        <span class="gp-kicker growth-hero__kicker">{{
+          i18n.global.t('growth.hero.trainingDossier')
+        }}</span>
         <h1 id="growth-hero-title" class="growth-hero__title gp-display">
-          养成规划<span class="growth-hero__title-mark" aria-hidden="true">/</span>
+          {{ i18n.global.t('growth.hero.growthPlanner')
+          }}<span class="growth-hero__title-mark" aria-hidden="true">/</span>
         </h1>
         <p class="growth-hero__state">{{ stateLine }}</p>
 
         <div class="growth-hero__actions">
           <n-button class="gp-btn--paper" @click="emit('add-target')">
             <template #icon><n-icon :component="AddCircleOutline" /></template>
-            选择养成目标
+            {{ i18n.global.t('growth.hero.chooseGrowthGoals') }}
           </n-button>
           <n-button class="gp-btn--ghost-ink" @click="emit('open-plan')">
             <template #icon><n-icon :component="ListOutline" /></template>
-            养成计划
+            {{ i18n.global.t('growth.hero.growthPlan') }}
             <span v-if="totalGoals" class="growth-hero__count gp-mono">{{ totalGoals }}</span>
           </n-button>
         </div>
@@ -123,12 +119,12 @@ const syncLabel = computed(() => {
               size="small"
               :value="autoMastery"
               :loading="loading"
-              aria-label="全自动专精"
+              :aria-label="i18n.global.t('growth.hero.automaticMastery')"
               @update:value="emit('update:autoMastery', $event)"
             />
-            <span>全自动专精</span>
-            <HelpText label="全自动专精范围">
-              开启后自动执行已排队的专精并合成养成材料；精英化、基础技能升级与模组开启仍需在游戏内手动完成后同步。
+            <span>{{ i18n.global.t('growth.hero.automaticMastery') }}</span>
+            <HelpText :label="i18n.global.t('growth.hero.automaticMasteryScope')">
+              {{ i18n.global.t('growth.hero.automaticallyTrainQueuedMasteryPlansAndCraft') }}
             </HelpText>
           </div>
           <span class="growth-hero__meta-sep" aria-hidden="true" />
@@ -143,14 +139,19 @@ const syncLabel = computed(() => {
             @click="emit('refresh')"
           >
             <n-icon :component="RefreshOutline" />
-            刷新
+            {{ i18n.global.t('growth.hero.refresh') }}
           </button>
         </div>
       </div>
 
-      <aside class="growth-hero__current" aria-label="当前训练">
+      <aside
+        class="growth-hero__current"
+        :aria-label="i18n.global.t('growth.hero.currentTraining')"
+      >
         <div class="growth-hero__current-head">
-          <span class="gp-kicker growth-hero__current-kicker">Current training</span>
+          <span class="gp-kicker growth-hero__current-kicker">{{
+            i18n.global.t('growth.format.currentTrainingHeading')
+          }}</span>
           <span
             class="gp-stamp growth-hero__stamp"
             :class="training ? 'gp-stamp--warn' : 'gp-stamp--ink'"
@@ -162,21 +163,40 @@ const syncLabel = computed(() => {
           <div class="growth-hero__current-body">
             <GrowthAvatar :name="training.op?.name" :rarity="training.op?.rarity" :size="76" />
             <div class="growth-hero__current-who">
-              <h2>{{ training.op?.name || training.entry?.name }}</h2>
+              <h2>{{ operatorDisplayName(training.op?.name || training.entry?.name) }}</h2>
               <p class="growth-hero__current-skill">
-                {{ training.rec?.skill_name || training.entry?.skill_name }}
-                <span class="gp-mono">→ 专{{ ['', '一', '二', '三'][targetLevel] }}</span>
+                {{ skillDisplayName(training.rec?.skill_name || training.entry?.skill_name) }}
+                <span class="gp-mono"
+                  >{{ i18n.global.t('growth.hero.m')
+                  }}{{
+                    [
+                      '',
+                      i18n.global.t('growth.hero.1'),
+                      i18n.global.t('growth.hero.2'),
+                      i18n.global.t('growth.hero.3')
+                    ][targetLevel]
+                  }}</span
+                >
               </p>
               <p class="growth-hero__current-sub">
-                <template v-if="totalTime">预计 {{ formatTime(totalTime) }} · </template>还剩
-                {{ Math.max(0, targetLevel - currentLevel) }} 级
+                <template v-if="totalTime"
+                  >{{ i18n.global.t('growth.hero.estimated') }}
+                  {{ formatTime(totalTime) }} · </template
+                >{{ i18n.global.t('growth.hero.remaining') }}
+                {{ Math.max(0, targetLevel - currentLevel) }}
+                {{ i18n.global.t('growth.hero.levels') }}
               </p>
             </div>
           </div>
           <div
             class="growth-hero__track"
             role="img"
-            :aria-label="'专精进度：当前专' + currentLevel + '，目标专' + targetLevel"
+            :aria-label="
+              i18n.global.t('growth.format.masteryProgress', {
+                current: currentLevel,
+                target: targetLevel
+              })
+            "
           >
             <div
               v-for="level in 3"
@@ -188,7 +208,13 @@ const syncLabel = computed(() => {
               }"
             >
               <i aria-hidden="true" />
-              <span>{{ ['专一', '专二', '专三'][level - 1] }}</span>
+              <span>{{
+                [
+                  i18n.global.t('growth.hero.m1'),
+                  i18n.global.t('growth.hero.m2'),
+                  i18n.global.t('growth.hero.m3')
+                ][level - 1]
+              }}</span>
             </div>
           </div>
         </template>
@@ -197,11 +223,14 @@ const syncLabel = computed(() => {
           <div class="growth-hero__idle">
             <div class="growth-hero__idle-mark gp-display" aria-hidden="true">W</div>
             <div>
-              <h2>训练室空闲</h2>
+              <h2>{{ i18n.global.t('growth.hero.trainingRoomIdle') }}</h2>
               <p v-if="nextUp" class="growth-hero__current-sub">
-                下一项 · {{ nextUp.name }} · {{ nextUp.label }}
+                {{ i18n.global.t('growth.hero.next') }} {{ operatorDisplayName(nextUp.name) }} ·
+                {{ nextUp.label }}
               </p>
-              <p v-else class="growth-hero__current-sub">从右侧「养成计划」安排下一项训练。</p>
+              <p v-else class="growth-hero__current-sub">
+                {{ i18n.global.t('growth.hero.useGrowthPlanOnTheRightTo') }}
+              </p>
             </div>
           </div>
           <n-button
@@ -209,28 +238,32 @@ const syncLabel = computed(() => {
             size="small"
             @click="emit('open-plan')"
           >
-            安排训练
+            {{ i18n.global.t('growth.hero.scheduleTraining') }}
           </n-button>
         </template>
 
         <dl class="growth-hero__readout">
           <div>
-            <dt>目标</dt>
+            <dt>{{ i18n.global.t('growth.hero.goals') }}</dt>
             <dd class="gp-num">{{ totalGoals }}</dd>
           </div>
           <div>
-            <dt>材料备齐</dt>
+            <dt>{{ i18n.global.t('growth.hero.materialsReady') }}</dt>
             <dd class="gp-num">{{ readyGoals }}</dd>
           </div>
           <div>
-            <dt>缺口</dt>
+            <dt>{{ i18n.global.t('growth.hero.shortages') }}</dt>
             <dd class="gp-num" :class="{ 'is-signal': missingKinds > 0 }">{{ missingKinds }}</dd>
           </div>
         </dl>
       </aside>
     </div>
 
-    <div v-if="roster.length" class="growth-hero__roster" aria-label="已拥有的干员">
+    <div
+      v-if="roster.length"
+      class="growth-hero__roster"
+      :aria-label="i18n.global.t('growth.hero.ownedOperators')"
+    >
       <span class="growth-hero__roster-label gp-mono">OWNED {{ operators.length }}</span>
       <div class="growth-hero__roster-strip" aria-hidden="true">
         <GrowthAvatar

@@ -20,6 +20,7 @@ import { useResourceVersionStore } from '@/stores/resourceVersion'
 import SidebarBrand from './SidebarBrand.vue'
 import SidebarUpdateChecks from './SidebarUpdateChecks.vue'
 import SoftwareVersionBadge from './SoftwareVersionBadge.vue'
+import { i18n } from '@/i18n'
 
 const messages = vi.hoisted(() => ({
   loading: vi.fn(),
@@ -182,6 +183,8 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2026-10-15T00:00:00+08:00'))
 })
 afterEach(() => {
+  dialogState.value?.onAfterLeave?.()
+  i18n.global.locale.value = 'zh-CN'
   mounted?.unmount()
   mounted = null
   mountedGui?.$dispose()
@@ -191,6 +194,91 @@ afterEach(() => {
 })
 
 describe('sidebar version badges', () => {
+  it('translates an open update preview without checking again or changing the confirmed target', async () => {
+    const selection = {
+      ok: true,
+      available: true,
+      version: '4.1.7',
+      check_id: 'localized-preview',
+      channel: 'stable',
+      notes: '修复设置页面显示；raw release notes'
+    }
+    axios.get.mockResolvedValue({
+      data: {
+        ok: true,
+        version: '4.1.6',
+        blockers: [],
+        instances: [{}, {}],
+        settings: { channel: 'stable' },
+        channels: [{ value: 'stable', label: '正式版' }]
+      }
+    })
+    axios.post.mockResolvedValue({ data: selection })
+    const view = mountClock({ version: '4.1.6', enabled: true }, ClientChecks)
+    await view.button().props.onClick()
+    await vi.advanceTimersByTimeAsync(0)
+    const confirmation = messages.warning.mock.calls[0][0]
+    for (const [locale, title, update, cancel, channel] of [
+      ['en-US', 'Software Updates', 'Update now', 'Cancel', 'Stable'],
+      ['ja-JP', 'ソフトウェア更新', '今すぐ更新', 'キャンセル', '安定版'],
+      ['zh-TW', '軟體更新', '立即更新', '取消', '正式版'],
+      ['zh-CN', '软件更新', '立即更新', '取消', '正式版']
+    ]) {
+      i18n.global.locale.value = locale
+      await nextTick()
+      expect(confirmation.title).toBe(title)
+      expect(confirmation.positiveText).toBe(update)
+      expect(confirmation.negativeText).toBe(cancel)
+      const html = await renderToString(createSSRApp({ render: confirmation.content }))
+      expect(html).toContain(channel)
+      expect(html).toContain(selection.version)
+      expect(html).toContain(selection.notes)
+      expect(html).toContain(i18n.global.t('updates.restartInstances', { count: 2 }))
+      expect(axios.get).toHaveBeenCalledOnce()
+      expect(axios.post).toHaveBeenCalledOnce()
+      expect(messages.installSoftware).not.toHaveBeenCalled()
+    }
+    expect(selection).toEqual({
+      ok: true,
+      available: true,
+      version: '4.1.7',
+      check_id: 'localized-preview',
+      channel: 'stable',
+      notes: '修复设置页面显示；raw release notes'
+    })
+    await confirmation.onPositiveClick()
+    expect(messages.installSoftware).toHaveBeenCalledExactlyOnceWith({
+      ...selection,
+      confirm_downgrade: false
+    })
+    i18n.global.locale.value = 'en-US'
+    await nextTick()
+    expect(confirmation.positiveText).toBeUndefined()
+    expect(confirmation.negativeText).toBeUndefined()
+    expect(axios.get).toHaveBeenCalledOnce()
+    expect(axios.post).toHaveBeenCalledOnce()
+  })
+
+  it('updates the mounted resource action hint without changing resource metadata or triggering a check', async () => {
+    const check = vi.fn()
+    const view = mountClock(
+      {
+        resourceVersion: '原始版本名',
+        resourceMetadata: metadata,
+        updatesEnabled: true,
+        onCheckResource: check
+      },
+      ClientBrand
+    )
+    i18n.global.locale.value = 'ja-JP'
+    await nextTick()
+    expect(view.resourceButton().props['aria-label']).toContain('クリックしてリソースの更新を確認')
+    expect(view.resourceButton().props['aria-label']).toContain('昨日海')
+    expect(view.resourceButton().props['aria-label']).toContain('北京時間')
+    expect(check).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
   it('keeps the exact resource display in a keyboard-accessible badge without the little label', async () => {
     const html = await renderToString(
       createSSRApp(SidebarBrand, {
@@ -671,6 +759,13 @@ describe('sidebar version badges', () => {
     expect(html).toContain('资源更新目标已改变，请重新检查更新。')
     expect(html).not.toContain('重启同一安装目录')
     expect(html).not.toContain('更新影响')
+    expect(axios.post).not.toHaveBeenCalled()
+    i18n.global.locale.value = 'ja-JP'
+    await nextTick()
+    expect(await renderToString(createSSRApp({ render: confirmation.content }))).toContain(
+      'リソースの更新対象が変わりました。もう一度更新を確認してください。'
+    )
+    expect(axios.get).toHaveBeenCalledOnce()
     expect(axios.post).not.toHaveBeenCalled()
   })
 

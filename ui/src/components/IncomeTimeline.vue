@@ -1,5 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { incomeRoomName } from '@/i18n/income'
+const { t, locale } = i18n.global
 import { useThemeVars } from 'naive-ui'
 import ScheduleTimelineGantt from '@/riic/vendor/components/workbench/ScheduleTimelineGantt.vue'
 import IncomeHorizontalScroll from './IncomeHorizontalScroll.vue'
@@ -15,7 +19,7 @@ watch(
   () => props.report,
   () => (overviewPage.value = 1)
 )
-const hours = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+const hours = (value) => Number(value).toLocaleString(locale.value, { maximumFractionDigits: 2 })
 const theme = useThemeVars()
 const colors = computed(() => ({
   '--timeline-surface': theme.value.cardColor,
@@ -36,33 +40,31 @@ const colors = computed(() => ({
 <template>
   <div class="income-timeline" :style="colors">
     <n-collapse class="time-overview" :default-expanded-names="['operator-time']">
-      <n-collapse-item title="干员时间总览" name="operator-time">
+      <n-collapse-item :title="t('income.overview')" name="operator-time">
         <p>
-          仅统计采样期
-          {{ hours(props.report?.observedHours ?? 0) }}
-          小时，不含预热。工作、休息、空闲和心情涣散驻岗分别统计，主班和替班工时不含心情涣散驻岗。
+          {{ t('income.sampling', { hours: hours(props.report?.observedHours ?? 0) }) }}
         </p>
-        <p>工作占比 = 工作时长 / 采样时长；工休比 = 工作时长 / 休息时长，无休息时显示 —。</p>
-        <IncomeHorizontalScroll selector=".time-overview-table" label="干员时间总览横向滚动">
+        <p>{{ t('income.ratioHelp') }}</p>
+        <IncomeHorizontalScroll selector=".time-overview-table" :label="t('income.overviewScroll')">
           <div class="time-overview-table">
             <n-table size="small">
               <thead>
                 <tr>
-                  <th>干员</th>
-                  <th>工作占比</th>
-                  <th>工休比</th>
-                  <th>工作（小时）</th>
-                  <th>主班（小时）</th>
-                  <th>替班（小时）</th>
-                  <th>休息（小时）</th>
-                  <th>空闲（小时）</th>
-                  <th>心情涣散（小时）</th>
-                  <th>期末心情</th>
+                  <th>{{ t('income.operator') }}</th>
+                  <th>{{ t('income.workFraction') }}</th>
+                  <th>{{ t('income.workRest') }}</th>
+                  <th>{{ t('income.work') }}</th>
+                  <th>{{ t('income.primary') }}</th>
+                  <th>{{ t('income.substitute') }}</th>
+                  <th>{{ t('income.rest') }}</th>
+                  <th>{{ t('income.idle') }}</th>
+                  <th>{{ t('income.exhausted') }}</th>
+                  <th>{{ t('income.finalMorale') }}</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="operator in overviewRows" :key="operator.operatorId">
-                  <td>{{ operator.operatorName }}</td>
+                  <td>{{ operatorDisplayName(operator.operatorName) }}</td>
                   <td>{{ hours(operator.workFraction * 100) }}%</td>
                   <td>
                     {{
@@ -92,6 +94,9 @@ const colors = computed(() => ({
     </n-collapse>
     <div class="income-gantt">
       <ScheduleTimelineGantt
+        :translate="(key, params) => t(`timeline.${key}`, params)"
+        :display-operator-name="operatorDisplayName"
+        :display-room-name="incomeRoomName"
         :report="props.report"
         :timeline-data="props.timelineData"
         :initial-window-hours="24"

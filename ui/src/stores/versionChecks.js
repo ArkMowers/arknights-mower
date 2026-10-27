@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
 import { requestSoftwareUpdateCheck } from '@/utils/softwareUpdate'
+import { i18n } from '@/i18n'
 
 export const useVersionChecksStore = defineStore('versionChecks', () => {
   const resources = useResourceVersionStore()
@@ -19,7 +20,7 @@ export const useVersionChecksStore = defineStore('versionChecks', () => {
     softwareRequest = (async () => {
       const base = `${import.meta.env.VITE_HTTP_URL || ''}/software-update`
       const { data } = await axios.get(`${base}/info`)
-      if (!data.ok) throw new Error(data.message || '无法读取软件更新设置')
+      if (!data.ok) throw new Error(data.message || i18n.global.t('updates.softwareInfoFailed'))
       softwareInfo.value = data
       return requestSoftwareUpdateCheck(axios, data.settings.channel)
     })().finally(() => {

@@ -1,3 +1,26 @@
+import { i18n } from '@/i18n'
+import { maaQueueMessages } from '@/i18n/messages/maaQueue'
+
+const messageKeys = new Map(
+  Object.entries(maaQueueMessages['zh-CN'])
+    .filter(([, message]) => !message.includes('{'))
+    .map(([key, message]) => [message, key])
+)
+
+export function copilotMessage(message) {
+  if (typeof message !== 'string') return message
+  const suffix = '。队列未改变，已入库作业可从已有作业中选择'
+  if (message.endsWith(suffix)) {
+    return i18n.global.t('maaQueue.partialImport', {
+      reason: copilotMessage(message.slice(0, -suffix.length))
+    })
+  }
+  const capacity = /^队列最多 32 项，当前还可加入 (\d+) 项；请整理队列后重试$/.exec(message)
+  if (capacity) return i18n.global.t('maaQueue.queueCapacity', { remaining: capacity[1] })
+  const key = messageKeys.get(message)
+  return key ? i18n.global.t(`maaQueue.${key}`) : message
+}
+
 export function parseCopilotCode(value) {
   const code = value.trim()
   const set = /^prts:\/\/s(\d+)$/i.exec(code)

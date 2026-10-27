@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
+import { i18n } from '@/i18n'
+import { copilotMessage } from '@/utils/maaCopilotCode'
 import Component from './MaaCopilot.vue'
 
 const state = vi.hoisted(() => ({
@@ -29,6 +31,7 @@ const first = { id: 'a'.repeat(64), stage_name: '1-7', title: '作业一' }
 const second = { id: 'b'.repeat(64), stage_name: 'CE-6', title: '作业二' }
 beforeEach(() => {
   vi.clearAllMocks()
+  i18n.global.locale.value = 'zh-CN'
   state.config = { copilot: ref({ scripts: [], user_additional: [] }) }
   state.client = {
     get: vi.fn(async () => ({ data: { scripts: [first, second] } })),
@@ -40,6 +43,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   scope.stop()
+  i18n.global.locale.value = 'zh-CN'
   vi.unstubAllGlobals()
 })
 
@@ -297,5 +301,90 @@ describe('ParadoxCopilot queue', () => {
     )
     expect(state.config.paradox.value.scripts).toEqual([{ id: first.id }])
     expect(state.config.copilot.value.scripts).toEqual([])
+  })
+})
+
+describe('queue interface languages', () => {
+  it.each([
+    ['zh-CN', '第 1 编队', '2 技能', '不使用助战', '作业已导入并加入队列'],
+    [
+      'en-US',
+      'Squad 1',
+      'Skill 2',
+      'Do not use support',
+      'Operation imported and added to the queue'
+    ],
+    [
+      'ja-JP',
+      '第 1 部隊',
+      'スキル 2',
+      'サポートを使わない',
+      '攻略ファイルをインポートしてキューに追加しました'
+    ],
+    ['zh-TW', '第 1 編隊', '2 技能', '不使用助戰', '作業已匯入並加入佇列']
+  ])(
+    'updates %s labels while preserving operation and operator values',
+    async (locale, formation, skill, support, imported) => {
+      state.config.copilot.value = {
+        scripts: [{ id: second.id, nav_name_override: '用户关卡名', is_raid: true }],
+        user_additional: [{ name: '能天使', skill: 2 }],
+        formation_index: 3,
+        support_unit_usage: 2,
+        support_unit_name: '棘刺'
+      }
+      const original = JSON.parse(JSON.stringify(state.config.copilot.value))
+      await component.refresh()
+      const chineseLabel = component.formation_options.value[1].label
+      i18n.global.locale.value = locale
+      expect(component.formation_options.value[1]).toEqual({ value: 1, label: formation })
+      expect(component.skill_options.value[2]).toEqual({ value: 2, label: skill })
+      expect(component.support_options.value[0]).toEqual({ value: 0, label: support })
+      if (locale !== 'zh-CN')
+        expect(component.formation_options.value[1].label).not.toBe(chineseLabel)
+      expect(component.options.value[0]).toEqual({ value: first.id, label: '1-7 · 作业一' })
+      expect(component.title(first.id)).toBe('1-7 · 作业一')
+      expect(state.config.copilot.value).toEqual(original)
+      await component.upload_blob(new Blob(['{}']))
+      expect(state.success).toHaveBeenCalledWith(imported)
+      expect(state.config.copilot.value.scripts).toEqual([
+        original.scripts[0],
+        { id: first.id, nav_name_override: '', is_raid: false }
+      ])
+      expect(state.config.copilot.value.support_unit_name).toBe('棘刺')
+    }
+  )
+
+  it('translates known failures at the display boundary and preserves unknown diagnostics', async () => {
+    i18n.global.locale.value = 'en-US'
+    const response = { data: { message: '作业格式无效或存储已满，请检查文件并清理不再使用的作业' } }
+    state.client.post.mockRejectedValue({ response })
+    await component.upload({
+      file: { file: new Blob(['{}']) },
+      onFinish: vi.fn(),
+      onError: vi.fn()
+    })
+    expect(state.error).toHaveBeenLastCalledWith(
+      'The operation format is invalid or storage is full. Check the file and delete unused operations.'
+    )
+    expect(response.data.message).toBe('作业格式无效或存储已满，请检查文件并清理不再使用的作业')
+    const diagnostic = '原始诊断 / socket 123'
+    state.client.get.mockRejectedValue(new Error(diagnostic))
+    component.code.value = '123'
+    await component.download()
+    expect(state.error).toHaveBeenLastCalledWith(diagnostic)
+    expect(state.config.copilot.value.scripts).toEqual([])
+  })
+
+  it('translates capacity and partial-import wrappers without changing their source', () => {
+    i18n.global.locale.value = 'en-US'
+    expect(copilotMessage('队列最多 32 项，当前还可加入 7 项；请整理队列后重试')).toBe(
+      'The queue holds up to 32 items, with 7 slots remaining. Adjust the queue and try again.'
+    )
+    expect(copilotMessage('服务器诊断。队列未改变，已入库作业可从已有作业中选择')).toBe(
+      'The queue is unchanged. Operations already imported remain available in the library. Reason: 服务器诊断'
+    )
+    expect(copilotMessage('作业文件不能超过 1 MB。队列未改变，已入库作业可从已有作业中选择')).toBe(
+      'The queue is unchanged. Operations already imported remain available in the library. Reason: Operation files must not exceed 1 MB'
+    )
   })
 })

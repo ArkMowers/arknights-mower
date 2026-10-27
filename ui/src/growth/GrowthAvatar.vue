@@ -1,4 +1,5 @@
 <script setup>
+import { operatorDisplayName } from '@/i18n/gameNames'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -30,7 +31,13 @@ const rarityClass = computed(() => (props.rarity ? 'growth-avatar--rarity-' + pr
     :class="[rarityClass, { 'growth-avatar--round': round, 'growth-avatar--muted': muted }]"
     :style="{ width: px, height: px }"
   >
-    <img :src="src" :alt="name" loading="lazy" decoding="async" @error="failed = true" />
+    <img
+      :src="src"
+      :alt="operatorDisplayName(name)"
+      loading="lazy"
+      decoding="async"
+      @error="failed = true"
+    />
   </span>
 </template>
 

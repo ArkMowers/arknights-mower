@@ -1,5 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { i18n } from '@/i18n'
+
+const { t } = i18n.global
 
 const thresholds = defineModel({ default: () => ({}) })
 const props = defineProps({
@@ -42,12 +45,14 @@ function remove(group) {
         :max="100"
         :step="5"
         :disabled="disabled"
-        :aria-label="`${group}心情阈值`"
+        :aria-label="t('groupResting.thresholdLabel', { group })"
         @update:value="update(group, $event)"
       >
         <template #suffix>%</template>
       </mower-input-number>
-      <n-button :disabled="disabled" quaternary @click="remove(group)">移除</n-button>
+      <n-button :disabled="disabled" quaternary @click="remove(group)">{{
+        t('plans.remove')
+      }}</n-button>
     </div>
     <div class="threshold-row">
       <n-select
@@ -57,10 +62,10 @@ function remove(group) {
         :disabled="disabled"
         filterable
         clearable
-        placeholder="选择单独设置的绑组"
-        aria-label="单独设置心情阈值的绑组"
+        :placeholder="t('groupResting.chooseGroup')"
+        :aria-label="t('groupResting.groupSelectionLabel')"
       />
-      <n-button :disabled="disabled || !selected" @click="add">添加</n-button>
+      <n-button :disabled="disabled || !selected" @click="add">{{ t('plans.add') }}</n-button>
     </div>
   </div>
 </template>

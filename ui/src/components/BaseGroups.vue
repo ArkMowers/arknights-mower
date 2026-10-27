@@ -1,4 +1,14 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import {
+  baseSkillText,
+  baseSkillProgression,
+  baseGroupTitle,
+  baseGroupNote
+} from '@/i18n/baseSkills'
+const { t } = i18n.global
+
 import { computed, ref, watch } from 'vue'
 import OperatorSkillTooltip from '@/components/OperatorSkillTooltip.vue'
 import { builtinGroups } from '@/data/baseGroups'
@@ -63,7 +73,7 @@ function toggleMember(group, name) {
 }
 function formatMetric(metric) {
   const value = Number(metric.value.toFixed(2))
-  return `${value > 0 ? '+' : ''}${value}${metric.unit}`
+  return `${value > 0 ? '+' : ''}${value}${baseSkillText(metric.unit)}`
 }
 const visibleGroups = computed(() =>
   filterGroups(groups, props.items, {
@@ -75,9 +85,12 @@ const visibleGroups = computed(() =>
 function memberSections(group) {
   const members = groupMembers(group, props.items)
   return [
-    { key: 'core', title: group.coreTitle || '核心干员' },
-    { key: 'support', title: '备选干员' },
-    { key: 'accessory', title: '挂件' }
+    {
+      key: 'core',
+      title: group.id === 'builtin-run-order' ? baseGroupTitle(group) : t('baseSkills.core')
+    },
+    { key: 'support', title: t('baseSkills.support') },
+    { key: 'accessory', title: t('baseSkills.accessory') }
   ]
     .map((section) => ({
       ...section,
@@ -85,19 +98,22 @@ function memberSections(group) {
     }))
     .filter((section) => section.members.length)
 }
-const facilityOptions = groupFacilities.map((value) => ({ value, label: value }))
-const ownershipOptions = [
-  { value: 'core-owned', label: '核心均已拥有' },
-  { value: 'missing', label: '含未拥有成员' },
-  { value: 'unknown', label: '持有状态未知' }
-]
+const facilityOptions = computed(() =>
+  groupFacilities.map((value) => ({ value, label: baseSkillText(value) }))
+)
+const ownershipOptions = computed(() => [
+  { value: 'core-owned', label: t('baseSkills.coreOwned') },
+  { value: 'missing', label: t('baseSkills.missing') },
+  { value: 'unknown', label: t('baseSkills.unknown') }
+])
 function ownershipSummary(group) {
   const list = groupMembers(group, props.items)
   const owned = list.filter((member) => member.ownership === 'owned').length
   const unknown = list.filter((member) => member.ownership === 'unknown').length
   return unknown === list.length
-    ? '持有状态未知'
-    : `已拥有 ${owned} / ${list.length}${unknown ? ` · ${unknown} 人未知` : ''}`
+    ? t('baseSkills.unknown')
+    : t('baseSkills.ownershipSummary', { owned, total: list.length }) +
+        (unknown ? t('baseSkills.unknownCount', { count: unknown }) : '')
 }
 </script>
 
@@ -105,56 +121,59 @@ function ownershipSummary(group) {
   <div class="groups-page">
     <div class="groups-heading">
       <h2>
-        基建组合 <span>{{ visibleGroups.length }}</span>
+        {{ t('baseSkills.groups') }} <span>{{ visibleGroups.length }}</span>
       </h2>
-      <label class="estimate-mode"><input v-model="maxLevel" type="checkbox" />按满练度计算</label>
+      <label class="estimate-mode"
+        ><input v-model="maxLevel" type="checkbox" />{{ t('baseSkills.maxLevel') }}</label
+      >
     </div>
     <div class="group-filters">
       <n-input
         v-model:value="search"
         clearable
-        placeholder="搜索组合 / 干员 / 拼音"
-        aria-label="搜索组合"
+        :placeholder="t('baseSkills.searchGroups')"
+        :aria-label="t('baseSkills.searchGroupsLabel')"
       />
       <n-select
         v-model:value="facility"
         clearable
         :options="facilityOptions"
-        placeholder="全部分类"
-        aria-label="组合分类"
+        :placeholder="t('baseSkills.allCategories')"
+        :aria-label="t('baseSkills.groupCategory')"
       />
       <n-select
         v-model:value="ownership"
         clearable
         :options="ownershipOptions"
-        placeholder="全部持有状态"
-        aria-label="组合持有状态"
+        :placeholder="t('baseSkills.allOwnership')"
+        :aria-label="t('baseSkills.groupOwnership')"
       />
     </div>
-    <div class="group-list" aria-label="基建组合列表">
+    <div class="group-list" :aria-label="t('baseSkills.groupList')">
       <n-empty
         v-if="!visibleGroups.length"
-        description="没有符合条件的组合，请调整筛选条件"
+        :description="t('baseSkills.noGroups')"
         class="group-empty"
       />
       <article
         v-for="group in visibleGroups"
         :key="group.id"
         class="group-detail"
-        :aria-label="group.title"
+        :aria-label="baseGroupTitle(group)"
       >
         <header class="detail-heading">
           <h3>
-            {{ group.title }} <span class="facility-badge">{{ group.facility }}</span>
+            {{ baseGroupTitle(group) }}
+            <span class="facility-badge">{{ baseSkillText(group.facility) }}</span>
           </h3>
           <span class="ownership-summary">{{ ownershipSummary(group) }}</span>
         </header>
-        <p v-if="group.note" class="group-note">{{ group.note }}</p>
+        <p v-if="baseGroupNote(group)" class="group-note">{{ baseGroupNote(group) }}</p>
         <section
           v-for="section in memberSections(group)"
           :key="section.key"
           class="member-section"
-          :aria-label="`${group.title} · ${section.title}`"
+          :aria-label="`${baseGroupTitle(group)} · ${section.title}`"
         >
           <h4>{{ section.title }}</h4>
           <div class="member-grid">
@@ -179,8 +198,8 @@ function ownershipSummary(group) {
                 "
                 :aria-label="
                   group.id === 'builtin-run-order'
-                    ? member.name
-                    : `${group.title} · ${member.name} · ${selections[group.id].includes(member.name) ? '已选中' : '未选中'}`
+                    ? operatorDisplayName(member.name)
+                    : `${baseGroupTitle(group)} · ${operatorDisplayName(member.name)} · ${selections[group.id].includes(member.name) ? t('baseSkills.selected') : t('baseSkills.unselected')}`
                 "
                 @click="group.id !== 'builtin-run-order' && toggleMember(group, member.name)"
               >
@@ -194,26 +213,36 @@ function ownershipSummary(group) {
                   :src="`${resourceBase}avatar/${encodeURIComponent(member.name)}.webp`"
                   :size="32"
                   round
-                  :img-props="{ alt: member.name }"
+                  :img-props="{ alt: operatorDisplayName(member.name) }"
                   :class="{ 'avatar-missing': member.ownership === 'unowned' }"
                 >
-                  <template #fallback>{{ member.name.slice(0, 1) }}</template>
+                  <template #fallback>{{ operatorDisplayName(member.name).slice(0, 1) }}</template>
                 </n-avatar>
                 <span class="member-text">
-                  <strong>{{ member.name }}</strong>
-                  <span v-if="member.note" class="member-note">{{ member.note }}</span>
+                  <strong>{{ operatorDisplayName(member.name) }}</strong>
+                  <span v-if="member.note" class="member-note">{{
+                    baseSkillText(member.note)
+                  }}</span>
                   <span
                     v-if="member.ownership !== 'unknown'"
                     class="member-status"
                     :class="{ owned: member.ownership === 'owned' }"
                     >{{
-                      member.ownership === 'owned' ? member.progression || '已拥有' : '未拥有'
+                      member.ownership === 'owned'
+                        ? baseSkillProgression(member.progression) || t('baseSkills.owned')
+                        : t('baseSkills.unowned')
                     }}</span
                   >
                 </span>
               </component>
               <OperatorSkillTooltip :name="member.name">
-                <span class="skill-label" :aria-label="`${member.name}的基建技能`">技能</span>
+                <span
+                  class="skill-label"
+                  :aria-label="
+                    t('baseSkills.operatorSkills', { operator: operatorDisplayName(member.name) })
+                  "
+                  >{{ t('baseSkills.skill') }}</span
+                >
               </OperatorSkillTooltip>
             </div>
           </div>
@@ -222,23 +251,23 @@ function ownershipSummary(group) {
           v-if="group.id !== 'builtin-run-order'"
           class="estimate-result"
           aria-live="polite"
-          :aria-label="`${group.title}效率估算`"
+          :aria-label="`${baseGroupTitle(group)} · ${t('baseSkills.estimate')}`"
         >
-          <span class="estimate-label">效率估算</span>
-          <span v-if="!estimates[group.id].hasSelection" class="estimate-empty"
-            >勾选核心或备选干员计算</span
-          >
+          <span class="estimate-label">{{ t('baseSkills.estimate') }}</span>
+          <span v-if="!estimates[group.id].hasSelection" class="estimate-empty">{{
+            t('baseSkills.emptySelection')
+          }}</span>
           <span
             v-else-if="!estimates[group.id].metrics.length && !estimates[group.id].warnings.length"
             class="estimate-empty"
-            >该选择无直接效率加成，详见明细</span
+            >{{ t('baseSkills.noDirectBonus') }}</span
           >
           <span
             v-for="metric in estimates[group.id].metrics"
             :key="metric.label"
             class="estimate-metric"
           >
-            {{ metric.label }} <strong>{{ formatMetric(metric) }}</strong>
+            {{ baseSkillText(metric.label) }} <strong>{{ formatMetric(metric) }}</strong>
           </span>
           <span
             v-for="warning in estimates[group.id].warnings"
@@ -248,7 +277,7 @@ function ownershipSummary(group) {
           >
         </div>
         <details v-if="group.id !== 'builtin-run-order'" class="estimate-details">
-          <summary>计算条件与明细</summary>
+          <summary>{{ t('baseSkills.estimateDetails') }}</summary>
           <div v-if="estimateFields(group).length" class="estimate-fields">
             <label v-for="field in estimateFields(group)" :key="field.key">
               <input
@@ -256,10 +285,10 @@ function ownershipSummary(group) {
                 v-model="conditions[group.id][field.key]"
                 type="checkbox"
               />
-              <span>{{ field.label }}</span>
+              <span>{{ baseSkillText(field.label) }}</span>
               <select v-if="field.options" v-model="conditions[group.id][field.key]">
                 <option v-for="option in field.options" :key="option.value" :value="option.value">
-                  {{ option.label }}
+                  {{ baseSkillText(option.label) }}
                 </option>
               </select>
               <input
@@ -273,7 +302,7 @@ function ownershipSummary(group) {
             </label>
           </div>
           <p v-for="line in estimates[group.id].details" :key="line">{{ line }}</p>
-          <p>仅计所选干员技能，不含设施基础效率；不同设施分别显示，中枢同类加成取最高</p>
+          <p>{{ t('baseSkills.estimateHelp') }}</p>
         </details>
       </article>
     </div>

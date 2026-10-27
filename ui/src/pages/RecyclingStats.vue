@@ -1,4 +1,8 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { itemDisplayName, operatorDisplayName } from '@/i18n/gameNames'
+import { reportErrorMessage } from '@/i18n/reports'
+const { t } = i18n.global
 import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
@@ -37,22 +41,22 @@ let requestVersion = 0
 let refreshTimer
 let refreshesRemaining = 0
 let disposed = false
-const uploadLabels = {
-  submitted: '已上传',
-  failed: '上传失败',
-  pending: '待上传',
-  waiting: '待上传',
-  skipped: '未上传（材料未识别）'
-}
+const uploadLabels = computed(() => ({
+  submitted: t('reports.uploaded'),
+  failed: t('reports.uploadFailed'),
+  pending: t('reports.pendingUpload'),
+  waiting: t('reports.pendingUpload'),
+  skipped: t('reports.uploadSkipped')
+}))
 const quantity = computed(() => data.value.materials.reduce((sum, item) => sum + item.count, 0))
 const comparison = computed(() => data.value.comparison)
-const qualityLabels = {
-  0: '未知品质',
-  2: '绿色材料',
-  3: '蓝色材料',
-  4: '紫色材料',
-  5: '金色材料'
-}
+const qualityLabels = computed(() => ({
+  0: t('reports.unknownRarity'),
+  2: t('reports.greenMaterials'),
+  3: t('reports.blueMaterials'),
+  4: t('reports.purpleMaterials'),
+  5: t('reports.goldMaterials')
+}))
 const qualityColors = {
   0: '#8b98a6',
   2: '#79ae59',
@@ -80,7 +84,10 @@ const qualityRows = computed(() => {
 const chart = computed(() => ({
   backgroundColor: 'transparent',
   animationDuration: 350,
-  tooltip: { trigger: 'item', formatter: '{b}：{c} 个（{d}%）' },
+  tooltip: {
+    trigger: 'item',
+    formatter: ({ name, value, percent }) => t('reports.qualityTooltip', { name, value, percent })
+  },
   series: [
     {
       type: 'pie',
@@ -94,7 +101,7 @@ const chart = computed(() => ({
       },
       emphasis: { scaleSize: 5 },
       data: data.value.qualities.map((row) => ({
-        name: qualityLabels[row.rarity] || qualityLabels[0],
+        name: qualityLabels.value[row.rarity] || qualityLabels.value[0],
         value: row.count,
         itemStyle: { color: qualityColors[row.rarity] || qualityColors[0] }
       }))
@@ -106,12 +113,12 @@ function localDate(at) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 function formatTime(at) {
-  return new Date(at * 1000).toLocaleString('zh-CN', { hour12: false })
+  return new Date(at * 1000).toLocaleString(i18n.global.locale.value, { hour12: false })
 }
 function number(value, digits = 1) {
   return value == null
     ? '—'
-    : value.toLocaleString('zh-CN', {
+    : value.toLocaleString(i18n.global.locale.value, {
         maximumFractionDigits: digits,
         minimumFractionDigits: digits
       })
@@ -124,8 +131,10 @@ function materialColor(name) {
 }
 const differenceText = computed(() => {
   const value = comparison.value?.difference
-  if (value == null || !comparison.value?.expected_sanity) return '等待有效样本'
-  return `${value >= 0 ? '高于' : '低于'}预期 ${percent(Math.abs(value) / comparison.value.expected_sanity)}`
+  if (value == null || !comparison.value?.expected_sanity) return t('reports.waitingSamples')
+  return t(value >= 0 ? 'reports.aboveExpected' : 'reports.belowExpected', {
+    percent: percent(Math.abs(value) / comparison.value.expected_sanity)
+  })
 })
 async function load(resetRefresh = true) {
   if (disposed) return
@@ -157,7 +166,7 @@ async function load(resetRefresh = true) {
   } catch {
     if (version === requestVersion) {
       if (resetRefresh) data.value = emptyData()
-      error.value = '回收站统计读取失败，请重试'
+      error.value = t('reports.recyclingReadFailed')
     }
   } finally {
     if (version === requestVersion) loading.value = false
@@ -172,7 +181,7 @@ async function retryUpload(row) {
       `${import.meta.env.VITE_HTTP_URL}/report/recycling_history/${encodeURIComponent(row.id)}/retry`
     )
   } catch (error) {
-    retryError.value = error.response?.data?.error || '重试上传未能启动，请稍后再试'
+    retryError.value = error.response?.data?.error || t('reports.retryUploadFailed')
   } finally {
     retrying.value = ''
     await load()
@@ -200,7 +209,7 @@ async function exportExcel() {
     const link = document.createElement('a')
     try {
       link.href = url
-      link.download = `回收站材料统计-${startDate}-${endDate}.xlsx`
+      link.download = `${t('reports.recyclingTitle')}-${startDate}-${endDate}.xlsx`
       document.body.appendChild(link)
       link.click()
     } finally {
@@ -208,7 +217,7 @@ async function exportExcel() {
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     }
   } catch {
-    exportError.value = 'Excel 导出失败，请重试或缩小日期范围'
+    exportError.value = t('reports.excelExportFailed')
   } finally {
     exporting.value = false
   }
@@ -229,9 +238,9 @@ onUnmounted(() => {
       <div class="heading-copy">
         <div class="title-line">
           <span class="heading-icon"><n-icon :component="CubeOutline" /></span>
-          <h1>回收站材料统计</h1>
+          <h1>{{ t('reports.recyclingTitle') }}</h1>
         </div>
-        <p>收取记录、材料品质与理智收益</p>
+        <p>{{ t('reports.recyclingSubtitle') }}</p>
       </div>
       <div class="filters">
         <n-date-picker
@@ -241,66 +250,75 @@ onUnmounted(() => {
           @update:value="changeRange"
         />
         <n-button secondary :loading="loading" class="refresh-button" @click="load"
-          ><template #icon><n-icon :component="RefreshOutline" /></template>刷新</n-button
+          ><template #icon><n-icon :component="RefreshOutline" /></template
+          >{{ t('reports.refresh') }}</n-button
         >
         <n-button
           secondary
           :loading="exporting"
           :disabled="loading"
           class="refresh-button"
-          title="导出所选日期范围的全部记录与收益统计"
+          :title="t('reports.exportRecyclingHelp')"
           @click="exportExcel"
-          ><template #icon><n-icon :component="DownloadOutline" /></template>导出 Excel</n-button
+          ><template #icon><n-icon :component="DownloadOutline" /></template
+          >{{ t('reports.exportExcel') }}</n-button
         >
       </div>
     </header>
-    <n-alert v-if="error" type="error" class="notice">{{ error }}</n-alert>
-    <n-alert v-if="exportError" type="error" class="notice">{{ exportError }}</n-alert>
+    <n-alert v-if="error" type="error" class="notice">{{ reportErrorMessage(error) }}</n-alert>
+    <n-alert v-if="exportError" type="error" class="notice">{{
+      reportErrorMessage(exportError)
+    }}</n-alert>
     <section class="valuation-panel valuation-source">
-      <span>{{ comparison?.valuation?.source || '材料价值未读取' }}</span>
-      <SessionLink to="/settings#task-accounts">管理材料价值与基报算法</SessionLink>
+      <span>{{ comparison?.valuation?.source || t('reports.materialValuesUnread') }}</span>
+      <SessionLink to="/settings#task-accounts">{{
+        t('reports.manageMaterialValues')
+      }}</SessionLink>
     </section>
     <n-alert
       v-if="comparison?.unknown_collections || comparison?.unknown_materials.length"
       type="warning"
       class="notice"
+      >{{ t('reports.incompleteRecordsPrefix') }}{{ comparison.unknown_collections
+      }}{{ t('reports.incompleteRecordsSuffix')
+      }}<span v-if="comparison.unknown_materials.length"
+        >{{ t('reports.unpricedMaterialsPrefix')
+        }}{{ comparison.unknown_materials.map((name) => itemDisplayName(name)).join('、') }}</span
+      >{{ t('reports.incompleteMaterialsHelp') }}</n-alert
     >
-      存在 {{ comparison.unknown_collections }} 条未完整识别的记录<span
-        v-if="comparison.unknown_materials.length"
-        >，未定价材料：{{ comparison.unknown_materials.join('、') }}</span
-      >。材料汇总仅含已识别数量，总理智收益和预期对比暂不计算。
-    </n-alert>
-    <n-alert v-if="comparison?.unmodeled_materials?.length" type="warning" class="notice">
-      以下材料尚未加入概率表：{{
-        comparison.unmodeled_materials.join('、')
-      }}。已导入价格可用于实际收益；期望收益对比暂不计算，等待概率表更新。
-    </n-alert>
+    <n-alert v-if="comparison?.unmodeled_materials?.length" type="warning" class="notice"
+      >{{ t('reports.missingProbabilityPrefix')
+      }}{{ comparison.unmodeled_materials.map((name) => itemDisplayName(name)).join('、')
+      }}{{ t('reports.missingProbabilityHelp') }}</n-alert
+    >
     <n-spin :show="loading">
       <div class="metrics">
         <section class="metric">
-          <span class="metric-label">累计获得材料</span>
-          <div class="metric-value">{{ number(quantity, 0) }}<small>个</small></div>
-          <span class="metric-note">{{ data.total }} 次收取 · 所选日期</span>
-        </section>
-        <section class="metric">
-          <span class="metric-label">总理智收益</span>
-          <div class="metric-value accent">
-            {{ number(comparison?.actual_sanity) }}<small>理智</small>
-          </div>
-          <span class="metric-note">按实际材料及当前保存价值折算</span>
-        </section>
-        <section class="metric">
-          <span class="metric-label">理论期望收益</span>
+          <span class="metric-label">{{ t('reports.materialsObtained') }}</span>
           <div class="metric-value">
-            {{ number(comparison?.expected_sanity) }}<small>理智</small>
+            {{ number(quantity, 0) }}<small>{{ t('reports.piecesUnit') }}</small>
           </div>
-          <span class="metric-note">与实际相同材料总数的长期期望</span>
+          <span class="metric-note">{{ data.total }}{{ t('reports.collectionsDateSuffix') }}</span>
         </section>
         <section class="metric">
-          <span class="metric-label">与期望的差额</span>
+          <span class="metric-label">{{ t('reports.totalSanityValue') }}</span>
+          <div class="metric-value accent">
+            {{ number(comparison?.actual_sanity) }}<small>{{ t('reports.sanityUnit') }}</small>
+          </div>
+          <span class="metric-note">{{ t('reports.actualValueHelp') }}</span>
+        </section>
+        <section class="metric">
+          <span class="metric-label">{{ t('reports.expectedIncome') }}</span>
+          <div class="metric-value">
+            {{ number(comparison?.expected_sanity) }}<small>{{ t('reports.sanityUnit') }}</small>
+          </div>
+          <span class="metric-note">{{ t('reports.expectedIncomeHelp') }}</span>
+        </section>
+        <section class="metric">
+          <span class="metric-label">{{ t('reports.expectationDifference') }}</span>
           <div class="metric-value" :class="{ accent: comparison?.difference > 0 }">
             {{ comparison?.difference > 0 ? '+' : '' }}{{ number(comparison?.difference)
-            }}<small>理智</small>
+            }}<small>{{ t('reports.sanityUnit') }}</small>
           </div>
           <span class="metric-note">{{ differenceText }}</span>
         </section>
@@ -309,16 +327,18 @@ onUnmounted(() => {
         <section class="surface history-panel">
           <div class="section-heading">
             <div>
-              <h2>收取明细</h2>
-              <p>收取时刻、进驻干员与实际获得材料</p>
+              <h2>{{ t('reports.collectionDetails') }}</h2>
+              <p>{{ t('reports.collectionDetailsHelp') }}</p>
             </div>
-            <span class="count-badge">{{ data.total }} 条记录</span>
+            <span class="count-badge">{{ data.total }}{{ t('reports.recordsUnit') }}</span>
           </div>
-          <n-alert v-if="retryError" type="error" class="notice">{{ retryError }}</n-alert>
+          <n-alert v-if="retryError" type="error" class="notice">{{
+            reportErrorMessage(retryError)
+          }}</n-alert>
           <n-scrollbar style="max-height: 600px" class="history">
             <n-empty
               v-if="!data.records.length"
-              description="所选日期暂无收取记录"
+              :description="t('reports.noCollections')"
               class="empty-state"
               ><template #icon><n-icon :component="CubeOutline" /></template
             ></n-empty>
@@ -327,11 +347,17 @@ onUnmounted(() => {
               <div class="collection-body">
                 <time><n-icon :component="TimeOutline" />{{ formatTime(row.collected_at) }}</time>
                 <div class="operators">
-                  <n-icon :component="PersonOutline" /><span class="operator-label">进驻干员</span
-                  ><span v-if="row.operators === null" class="muted">未识别</span
-                  ><span v-else-if="!row.operators.length" class="muted">无人进驻</span
+                  <n-icon :component="PersonOutline" /><span class="operator-label">{{
+                    t('reports.occupants')
+                  }}</span
+                  ><span v-if="row.operators === null" class="muted">{{
+                    t('reports.unrecognized')
+                  }}</span
+                  ><span v-else-if="!row.operators.length" class="muted">{{
+                    t('reports.noOccupants')
+                  }}</span
                   ><span v-for="name in row.operators || []" :key="name" class="operator-name">{{
-                    name
+                    operatorDisplayName(name)
                   }}</span>
                 </div>
                 <div v-if="row.materials" class="materials">
@@ -345,25 +371,25 @@ onUnmounted(() => {
                       <img
                         v-if="!failedIcons.has(name)"
                         :src="`/depot/${encodeURIComponent(name)}.webp`"
-                        :alt="name"
+                        :alt="itemDisplayName(name)"
                         loading="lazy"
                         @error="failedIcons.add(name)"
                       /><span v-else>◇</span>
                     </div>
-                    <span>{{ name }}</span
+                    <span>{{ itemDisplayName(name) }}</span
                     ><strong>× {{ count }}</strong>
                   </div>
                 </div>
-                <span v-else class="muted">材料未完整识别，请查看收取截图</span>
+                <span v-else class="muted">{{ t('reports.materialsUnrecognized') }}</span>
                 <div class="upload-state" aria-live="polite">
                   <span
                     :class="['upload-label', row.upload_status]"
                     :title="
                       row.upload_status === 'submitted'
-                        ? '请求已提交，接口不提供入库确认'
+                        ? t('reports.uploadSubmittedHelp')
                         : undefined
                     "
-                    >{{ uploadLabels[row.upload_status] || '待上传' }}</span
+                    >{{ uploadLabels[row.upload_status] || t('reports.pendingUpload') }}</span
                   >
                   <n-button
                     v-if="row.upload_status === 'failed'"
@@ -372,7 +398,7 @@ onUnmounted(() => {
                     :loading="retrying === row.id"
                     :disabled="Boolean(retrying)"
                     @click="retryUpload(row)"
-                    >重试上传</n-button
+                    >{{ t('reports.retryUpload') }}</n-button
                   >
                 </div>
               </div>
@@ -392,8 +418,8 @@ onUnmounted(() => {
           <section class="surface">
             <div class="section-heading">
               <div>
-                <h2>材料品质分布</h2>
-                <p>按获得数量统计</p>
+                <h2>{{ t('reports.materialRarityDistribution') }}</h2>
+                <p>{{ t('reports.byMaterialCount') }}</p>
               </div>
               <n-icon :component="LeafOutline" class="section-icon" />
             </div>
@@ -406,13 +432,19 @@ onUnmounted(() => {
               />
               <div class="donut-center">
                 <strong>{{ number(quantity, 0) }}</strong
-                ><span>材料总数</span>
+                ><span>{{ t('reports.materialTotal') }}</span>
               </div>
             </div>
-            <n-empty v-else description="等待首次收取" class="empty-chart" />
+            <n-empty
+              v-else
+              :description="t('reports.waitingFirstCollection')"
+              class="empty-chart"
+            />
             <div class="quality-table">
               <div class="quality-table-head">
-                <span>材料品质</span><span>实际数量 / 占比</span><span>理论占比</span>
+                <span>{{ t('reports.materialRarity') }}</span
+                ><span>{{ t('reports.actualCountShare') }}</span
+                ><span>{{ t('reports.expectedShare') }}</span>
               </div>
               <div v-for="row in qualityRows" :key="row.rarity ?? 'unknown'" class="quality-row">
                 <span
@@ -428,42 +460,45 @@ onUnmounted(() => {
           <section class="surface totals-panel">
             <div class="section-heading">
               <div>
-                <h2>材料汇总</h2>
-                <p>{{ data.materials.length }} 种材料</p>
+                <h2>{{ t('reports.materialSummary') }}</h2>
+                <p>{{ data.materials.length }}{{ t('reports.materialTypesUnit') }}</p>
               </div>
             </div>
             <div class="material-totals">
               <div v-for="item in data.materials" :key="item.name" class="total-row">
-                <span><i :style="{ background: materialColor(item.name) }"></i>{{ item.name }}</span
+                <span
+                  ><i :style="{ background: materialColor(item.name) }"></i
+                  >{{ itemDisplayName(item.name) }}</span
                 ><strong>× {{ item.count }}</strong>
               </div>
-              <n-empty v-if="!data.materials.length" description="暂无材料" />
+              <n-empty v-if="!data.materials.length" :description="t('reports.noMaterials')" />
             </div>
           </section>
         </div>
       </div>
       <section v-if="comparison" class="model-note">
-        <h3>普通池和额外池各产一次（默认假设）</h3>
+        <h3>{{ t('reports.dualPoolAssumption') }}</h3>
         <div v-if="comparison.calculator" class="calculator-results">
           <div>
-            <span>100%效率理论日产</span
+            <span>{{ t('reports.dailyAt100') }}</span
             ><strong
-              >{{ number(comparison.calculator.daily_sanity, 3) }}<small> 理智/天</small></strong
+              >{{ number(comparison.calculator.daily_sanity, 3)
+              }}<small>{{ t('reports.sanityPerDay') }}</small></strong
             >
           </div>
           <div>
-            <span>设定效率理论日产</span
+            <span>{{ t('reports.dailyAtEfficiency') }}</span
             ><strong
               >{{ number(comparison.calculator.configured_daily_sanity, 3)
-              }}<small> 理智/天</small></strong
+              }}<small>{{ t('reports.sanityPerDay') }}</small></strong
             >
           </div>
           <div>
-            <span>等效制造站效率</span
+            <span>{{ t('reports.equivalentFactoryEfficiency') }}</span
             ><strong>{{ percent(comparison.calculator.manufacturing_equivalent) }}</strong>
           </div>
           <div>
-            <span>旅骨精零 / 精二等效制造站</span
+            <span>{{ t('reports.figurinoEquivalent') }}</span
             ><strong
               >{{ percent(comparison.calculator.elite0_equivalent) }} /
               {{ percent(comparison.calculator.elite2_equivalent) }}</strong
@@ -471,30 +506,30 @@ onUnmounted(() => {
           </div>
         </div>
         <template v-if="comparison.calculator?.replacement">
-          <h3>额外池顶替普通池（对照假设）</h3>
+          <h3>{{ t('reports.replacementPoolAssumption') }}</h3>
           <div class="calculator-results">
             <div>
-              <span>100%效率理论日产</span>
+              <span>{{ t('reports.dailyAt100') }}</span>
               <strong
                 >{{ number(comparison.calculator.replacement.daily_sanity, 3)
-                }}<small> 理智/天</small></strong
+                }}<small>{{ t('reports.sanityPerDay') }}</small></strong
               >
             </div>
             <div>
-              <span>设定效率理论日产</span>
+              <span>{{ t('reports.dailyAtEfficiency') }}</span>
               <strong
                 >{{ number(comparison.calculator.replacement.configured_daily_sanity, 3)
-                }}<small> 理智/天</small></strong
+                }}<small>{{ t('reports.sanityPerDay') }}</small></strong
               >
             </div>
             <div>
-              <span>等效制造站效率</span>
+              <span>{{ t('reports.equivalentFactoryEfficiency') }}</span>
               <strong>{{
                 percent(comparison.calculator.replacement.manufacturing_equivalent)
               }}</strong>
             </div>
             <div>
-              <span>旅骨精零 / 精二等效制造站</span>
+              <span>{{ t('reports.figurinoEquivalent') }}</span>
               <strong
                 >{{ percent(comparison.calculator.replacement.elite0_equivalent) }} /
                 {{ percent(comparison.calculator.replacement.elite2_equivalent) }}</strong
@@ -502,27 +537,23 @@ onUnmounted(() => {
             </div>
           </div>
         </template>
-        <p>
-          回收站实际机制尚未确认，以上展示两种假设。100%回收站效率每两天完成一次生产周期，100%制造站每日产出8000经验。旅骨精零/精二分别按20%/30%回收站效率换算。
-        </p>
+        <p>{{ t('reports.recyclingAssumptionsHelp') }}</p>
         <n-collapse
-          ><n-collapse-item title="计算口径与概率来源" name="model"
+          ><n-collapse-item :title="t('reports.probabilitySources')" name="model"
             ><p>
-              实际理智收益 = 各材料数量 × 当前材料理智价值。理论期望 = 材料总数 ×
-              {{ number(comparison.per_material, 4) }} 理智/件。
+              {{ t('reports.actualValueFormulaPrefix') }}{{ number(comparison.per_material, 4)
+              }}{{ t('reports.sanityPerItemSuffix') }}
             </p>
             <p>
-              普通池与额外池分别按权重计算，长期平均每次普通抽取产生
-              {{ number(comparison.extra_rate, 6) }}
-              次额外抽取；双池收益除以双池材料总数，得到同材料量的理论基准。顶替假设下，额外池占生产周期的比例为
-              r / (1 + r)，r
-              为上述额外抽取率。两种假设的单件期望与品质比例相同，理论日产量不同。进驻干员供回溯分析；此比较不推算干员生产效率、收取次数对应的抽数或每日产能，也不保证短期结果。
+              {{ t('reports.extraDrawRatePrefix') }}{{ number(comparison.extra_rate, 6)
+              }}{{ t('reports.poolAssumptionsHelp') }}
             </p>
             <p>
-              来源：{{ comparison.source.source }} · {{ comparison.source.sheet }}
-              {{ comparison.source.ranges.join('、') }}。材料价值：{{
-                comparison.valuation?.source || '材料价值未读取'
-              }}，使用本地保存的快照，不自动更新。
+              {{ t('reports.sourcePrefix') }}{{ comparison.source.source }} ·
+              {{ comparison.source.sheet }} {{ comparison.source.ranges.join('、')
+              }}{{ t('reports.materialValuesPrefix')
+              }}{{ comparison.valuation?.source || t('reports.materialValuesUnread')
+              }}{{ t('reports.savedSnapshotHelp') }}
             </p></n-collapse-item
           ></n-collapse
         >

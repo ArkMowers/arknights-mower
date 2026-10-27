@@ -7,6 +7,7 @@ import axios from 'axios'
 import { useGuiStore } from '@/stores/gui'
 import TaskLayoutPreference from './TaskLayoutPreference.vue'
 import SettingsSegmented from './SettingsSegmented.vue'
+import { i18n } from '@/i18n'
 
 vi.mock('axios', () => ({ default: { get: vi.fn(), put: vi.fn() } }))
 vi.mock('./SettingsSegmented.vue', async () => {
@@ -120,6 +121,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   for (const { app, gui } of mounted.splice(0)) {
     app.unmount()
     gui.$dispose()
@@ -128,6 +130,30 @@ afterEach(() => {
 })
 
 describe('task layout preference', () => {
+  it('updates mounted layout labels in four languages while saving only the original layout enum', async () => {
+    const page = mount()
+    await flush()
+    for (const [locale, checklist, waterfall] of [
+      ['zh-CN', '任务清单', '瀑布流'],
+      ['en-US', 'Task checklist', 'Masonry layout'],
+      ['ja-JP', 'タスク一覧', 'タイル表示'],
+      ['zh-TW', '任務清單', '瀑布流']
+    ]) {
+      i18n.global.locale.value = locale
+      await nextTick()
+      expect(page.button(checklist)?.props['aria-pressed']).toBe(true)
+      expect(page.button(waterfall)?.props.disabled).toBe(false)
+      expect(page.gui.taskSettingsLayout).toBe('checklist')
+    }
+    expect(axios.put).not.toHaveBeenCalled()
+    page.button('瀑布流').props.onClick()
+    await flush()
+    expect(axios.put).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/gui/appearance'),
+      { task_settings_layout: 'waterfall' },
+      { timeout: 5000 }
+    )
+  })
   it('loads the saved layout before enabling the two concise choices', async () => {
     let resolve
     axios.get.mockReturnValueOnce(new Promise((done) => (resolve = done)))

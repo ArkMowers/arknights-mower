@@ -67,6 +67,7 @@ def appearance():
     return {
         "software_version_display": gui.load_software_version_display(),
         "software_version_language": gui.load_software_version_language(),
+        "ui_language": gui.load_ui_language(),
         "task_settings_layout": gui.load_task_settings_layout(),
         "watermark_visible": gui.load_watermark_visible(),
     }

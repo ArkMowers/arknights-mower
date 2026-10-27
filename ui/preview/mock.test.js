@@ -120,6 +120,7 @@ describe('offline preview', () => {
     const originalConfig = structuredClone(data.config)
     const client = axios.create({ adapter: createPreviewAdapter(data) })
     expect((await client.get('/gui/appearance')).data).toEqual({
+      ui_language: 'zh-CN',
       software_version_display: 'version',
       software_version_language: 'en',
       watermark_visible: true,
@@ -128,6 +129,11 @@ describe('offline preview', () => {
     await client.put('/gui/appearance', { task_settings_layout: 'waterfall' })
     await client.put('/gui/appearance', { software_version_display: 'channel' })
     await client.put('/gui/appearance', { software_version_language: 'zh' })
+    await client.put('/gui/appearance', { ui_language: 'en-US' })
+    expect((await client.get('/gui/appearance')).data.ui_language).toBe('en-US')
+    expect((await client.put('/gui/appearance', { ui_language: 'system' })).data).toEqual({
+      ui_language: 'system'
+    })
     await expect(
       client.put('/gui/appearance', {
         watermark_visible: false,
@@ -137,6 +143,7 @@ describe('offline preview', () => {
       data: { watermark_visible: false }
     })
     expect((await client.get('/gui/appearance')).data).toEqual({
+      ui_language: 'system',
       software_version_display: 'channel',
       software_version_language: 'zh',
       watermark_visible: false,
@@ -151,6 +158,7 @@ describe('offline preview', () => {
       task_settings_layout: 'checklist'
     })
     expect(data.appearance).toEqual({
+      ui_language: 'system',
       software_version_display: 'version',
       software_version_language: 'en',
       watermark_visible: true,
@@ -158,8 +166,30 @@ describe('offline preview', () => {
     })
   })
 
+  it('provides valuation metadata and retains it when income weights change', async () => {
+    const data = createPreviewData({})
+    const client = axios.create({ adapter: createPreviewAdapter(data) })
+    const initial = (await client.get('/report/recycling_settings')).data
+    expect(Object.keys(initial.prices)).toHaveLength(2)
+    expect(initial.source).toBe('离线示例估值')
+    const result = (
+      await client.put('/report/recycling_settings', {
+        base_algorithm: 0,
+        ratios: { experience: 1, gold: 0.8, order: 0.2, efficiency: 1 }
+      })
+    ).data
+    expect(result).toMatchObject({
+      source: initial.source,
+      prices: initial.prices,
+      base_algorithm: 0
+    })
+  })
+
   it.each([
     {},
+    { ui_language: 'fr-FR' },
+    { ui_language: null },
+    { ui_language: 'en-US', software_version_language: 'invalid' },
     { task_settings_layout: 'grid' },
     { task_settings_layout: 'waterfall', software_version_display: 'invalid' },
     { task_settings_layout: 'invalid', software_version_display: 'channel' },

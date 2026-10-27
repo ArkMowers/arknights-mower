@@ -1,4 +1,6 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { computed, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import GamePerformanceTest from './GamePerformanceTest.vue'
@@ -11,12 +13,20 @@ const props = defineProps({
 })
 const config = useConfigStore()
 const gameTestRunning = ref(false)
-const labels = { auto: '自动', xhigh: '极高', high: '高', medium: '中', low: '低' }
-const options = computed(() => Object.entries(labels).map(([value, label]) => ({ value, label })))
+const labels = computed(() => ({
+  auto: t('devices.auto'),
+  xhigh: t('devices.xhigh'),
+  high: t('devices.high'),
+  medium: t('devices.medium'),
+  low: t('devices.low')
+}))
+const options = computed(() =>
+  Object.entries(labels.value).map(([value, label]) => ({ value, label }))
+)
 const resourceLabel = computed(() => {
   const info = props.observation
   return info?.status === 'available'
-    ? `CPU ${info.cpu_cores} 核 · 内存 ${(info.memory_mb / 1024).toFixed(1)} GiB`
+    ? t('devices.resources', { cores: info.cpu_cores, memory: (info.memory_mb / 1024).toFixed(1) })
     : ''
 })
 
@@ -33,7 +43,7 @@ function applyMode(mode) {
 </script>
 
 <template>
-  <n-form-item label="设备性能适配" :label-width="labelWidth">
+  <n-form-item :label="t('devices.performance')" :label-width="labelWidth">
     <n-space vertical :size="8">
       <n-space align="center" :wrap="false">
         <n-radio-group
@@ -48,14 +58,16 @@ function applyMode(mode) {
             </n-radio>
           </n-flex>
         </n-radio-group>
-        <n-text v-else
-          >当前档位：{{ labels[config.performance_mode] }}；请在多开管理器中修改。</n-text
-        >
+        <n-text v-else>
+          {{ t('devices.currentModePrefix') }} {{ labels[config.performance_mode] }}
+          {{ t('devices.managedModeSuffix') }}
+        </n-text>
         <help-text>
-          自动从极高开始，按选人反馈调整。 极高、高优先速度，中、低增加画面确认。
-          切换档位不改时间参数；资源信息仅供参考。当前生效：{{
-            labels[config.performance_effective_mode] || '待运行'
-          }}。
+          {{
+            t('devices.performanceHelp', {
+              mode: labels[config.performance_effective_mode] || t('devices.waitingRun')
+            })
+          }}
         </help-text>
       </n-space>
       <n-space v-if="resourceLabel" align="center" aria-live="polite">
@@ -65,7 +77,7 @@ function applyMode(mode) {
         {{ observation.message }}
       </n-text>
       <n-text v-else-if="config.runtime_platform !== 'android'" depth="3">
-        测试连接后显示设备 CPU 与内存信息。
+        {{ t('devices.resourcesHint') }}
       </n-text>
       <GamePerformanceTest
         :disabled="disabled || !testEnabled"

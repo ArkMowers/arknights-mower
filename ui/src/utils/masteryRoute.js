@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+import { operatorSyncMessage } from '@/i18n/operatorSync'
 export const DEFAULT_MASTERY_SWAP_BUFFERS = Object.freeze({
   no_central: 10,
   central: 10,
@@ -26,11 +28,15 @@ function normalizeMatch(value) {
 export async function syncMasteryRouteDefaults(http, baseUrl) {
   const synced = await http.get(`${baseUrl}/cultivate-fetch`)
   if (!synced.data?.success) {
-    throw new Error(synced.data?.message || '干员数据同步失败，请稍后重试')
+    throw new Error(
+      operatorSyncMessage(synced.data?.message) ||
+        i18n.global.t('growth.route.operatorSynchronizationFailedPleaseTryAgainLater')
+    )
   }
   const { data } = await http.get(`${baseUrl}/mastery-route`)
-  if (data?.defaults_error) throw new Error(data.defaults_error)
-  if (!data?.defaults) throw new Error('未获取到专精路线，请稍后重试')
+  if (data?.defaults_error) throw new Error(operatorSyncMessage(data.defaults_error))
+  if (!data?.defaults)
+    throw new Error(i18n.global.t('growth.route.noMasteryRoutesWereReturnedPleaseTry'))
   return data
 }
 

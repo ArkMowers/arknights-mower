@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
 import axios from 'axios'
 import { useGuiStore } from './gui'
+import { i18n } from '@/i18n'
 
 vi.mock('axios', () => ({ default: { get: vi.fn(), put: vi.fn() } }))
 
@@ -24,6 +25,7 @@ function createStore() {
 }
 
 beforeEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   axios.get.mockResolvedValue({ data: { software_version_display: 'version' } })
   axios.put.mockImplementation(async (_url, data) => ({ data }))
 })
@@ -31,9 +33,194 @@ beforeEach(() => {
 afterEach(() => {
   for (const store of stores.splice(0)) store.$dispose()
   vi.resetAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('shared GUI appearance preferences', () => {
+  it('defaults the interface language to Chinese without linking it to version labels', async () => {
+    const { store } = createStore()
+    expect(store.interfaceLanguage).toBe('zh-CN')
+    expect(store.interfaceLanguageDisabled).toBe(true)
+    expect(await store.setInterfaceLanguage('en-US')).toBe(false)
+    expect(await store.load()).toBe(true)
+    expect(store.interfaceLanguage).toBe('zh-CN')
+    expect(store.softwareVersionLanguage).toBe('en')
+    expect(axios.put).not.toHaveBeenCalled()
+  })
+
+  it.each(['en-US', 'ja-JP', 'zh-TW', 'system'])(
+    'restores %s in a new store after a reload',
+    async (language) => {
+      let saved = 'zh-CN'
+      axios.get.mockImplementation(async () => ({
+        data: { software_version_display: 'version', ui_language: saved }
+      }))
+      axios.put.mockImplementation(async (_url, payload) => {
+        saved = payload.ui_language
+        return { data: { ui_language: saved } }
+      })
+      const first = createStore().store
+      await first.load()
+      expect(await first.setInterfaceLanguage(language)).toBe(true)
+      expect(axios.put).toHaveBeenCalledWith(
+        expect.stringMatching(/\/gui\/appearance$/),
+        { ui_language: language },
+        { timeout: 5000 }
+      )
+      const reloaded = createStore().store
+      await reloaded.load()
+      expect(reloaded.interfaceLanguage).toBe(language)
+      expect(reloaded.softwareVersionLanguage).toBe('en')
+    }
+  )
+
+  it('keeps language selection disabled during a save and rejects invalid or unchanged choices', async () => {
+    const { store } = createStore()
+    await store.load()
+    expect(await store.setInterfaceLanguage('zh-CN')).toBe(true)
+    expect(await store.setInterfaceLanguage('fr-FR')).toBe(false)
+    expect(axios.put).not.toHaveBeenCalled()
+    const save = deferred()
+    axios.put.mockReturnValueOnce(save.promise)
+    const pending = store.setInterfaceLanguage('en-US')
+    expect(store.interfaceLanguage).toBe('en-US')
+    expect(store.interfaceLanguageDisabled).toBe(true)
+    expect(await store.setInterfaceLanguage('zh-CN')).toBe(false)
+    expect(await store.setSoftwareVersionLanguage('zh')).toBe(false)
+    expect(axios.put).toHaveBeenCalledOnce()
+    save.resolve({ data: { ui_language: 'en-US' } })
+    expect(await pending).toBe(true)
+    expect(store.interfaceLanguageDisabled).toBe(false)
+  })
+
+  it.each([
+    ['request failure', 'en-US'],
+    ['unconfirmed response', 'en-US'],
+    ['request failure', 'system'],
+    ['unconfirmed response', 'system']
+  ])('restores the interface language after a %s and retries %s', async (failure, target) => {
+    const { store } = createStore()
+    await store.load()
+    if (failure === 'request failure') axios.put.mockRejectedValueOnce(new Error('offline'))
+    else axios.put.mockResolvedValueOnce({ data: { ui_language: 'zh-CN' } })
+    expect(await store.setInterfaceLanguage(target)).toBe(false)
+    expect(store.interfaceLanguage).toBe('zh-CN')
+    expect(store.interfaceLanguageError).toContain('已恢复原来的语言')
+    expect(await store.retryInterfaceLanguage()).toBe(true)
+    expect(store.interfaceLanguage).toBe(target)
+    expect(store.interfaceLanguageError).toBe('')
+    expect(axios.put.mock.calls.map(([, payload]) => payload)).toEqual([
+      { ui_language: target },
+      { ui_language: target }
+    ])
+  })
+
+  it('retries a failed initial language read without writing the default language', async () => {
+    const { store } = createStore()
+    axios.get.mockRejectedValueOnce(new Error('offline'))
+    expect(await store.load()).toBe(false)
+    expect(store.interfaceLanguage).toBe('zh-CN')
+    expect(store.interfaceLanguageDisabled).toBe(true)
+    expect(store.interfaceLanguageError).toContain('读取失败')
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', ui_language: 'en-US' }
+    })
+    expect(await store.retryInterfaceLanguage()).toBe(true)
+    expect(store.interfaceLanguage).toBe('en-US')
+    expect(store.interfaceLanguageError).toBe('')
+    expect(axios.put).not.toHaveBeenCalled()
+  })
+
+  it('defaults an unknown saved preference to Chinese without rewriting it', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', ui_language: 'other' }
+    })
+    const { store } = createStore()
+    expect(await store.load()).toBe(true)
+    expect(store.interfaceLanguage).toBe('zh-CN')
+    expect(store.resolvedInterfaceLanguage).toBe('zh-CN')
+    expect(store.interfaceLanguageDisabled).toBe(false)
+    expect(axios.put).not.toHaveBeenCalled()
+  })
+
+  it('updates system mode on languagechange without requests and releases its listener on disposal', async () => {
+    const target = new EventTarget()
+    const remove = vi.spyOn(target, 'removeEventListener')
+    const browser = { languages: ['zh-Hant-HK', 'en-US'] }
+    vi.stubGlobal('window', target)
+    vi.stubGlobal('navigator', browser)
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', ui_language: 'system' }
+    })
+    const { store } = createStore()
+    await store.load()
+    expect(store.interfaceLanguage).toBe('system')
+    expect(store.resolvedInterfaceLanguage).toBe('zh-TW')
+    browser.languages = ['ja-JP']
+    target.dispatchEvent(new Event('languagechange'))
+    expect(store.resolvedInterfaceLanguage).toBe('ja-JP')
+    expect(store.interfaceLanguage).toBe('system')
+    expect(axios.get).toHaveBeenCalledOnce()
+    expect(axios.put).not.toHaveBeenCalled()
+
+    expect(await store.setInterfaceLanguage('en-US')).toBe(true)
+    browser.languages = ['zh-CN']
+    target.dispatchEvent(new Event('languagechange'))
+    expect(store.resolvedInterfaceLanguage).toBe('en-US')
+    expect(axios.put).toHaveBeenCalledOnce()
+    await store.setInterfaceLanguage('system')
+    expect(store.resolvedInterfaceLanguage).toBe('zh-CN')
+    store.$dispose()
+    expect(remove).toHaveBeenCalledWith('languagechange', expect.any(Function))
+    browser.languages = ['ja-JP']
+    target.dispatchEvent(new Event('languagechange'))
+    expect(store.resolvedInterfaceLanguage).toBe('zh-CN')
+  })
+
+  it('restores system mode using the latest browser language when a manual save fails and retries its target', async () => {
+    const target = new EventTarget()
+    const browser = { languages: ['en-US'] }
+    vi.stubGlobal('window', target)
+    vi.stubGlobal('navigator', browser)
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', ui_language: 'system' }
+    })
+    const { store } = createStore()
+    await store.load()
+    const save = deferred()
+    axios.put.mockReturnValueOnce(save.promise)
+    const pending = store.setInterfaceLanguage('ja-JP')
+    expect(store.resolvedInterfaceLanguage).toBe('ja-JP')
+    expect(store.interfaceLanguageDisabled).toBe(true)
+    browser.languages = ['zh-HK']
+    target.dispatchEvent(new Event('languagechange'))
+    save.reject(new Error('offline'))
+    expect(await pending).toBe(false)
+    expect(store.interfaceLanguage).toBe('system')
+    expect(store.resolvedInterfaceLanguage).toBe('zh-TW')
+    expect(await store.retryInterfaceLanguage()).toBe(true)
+    expect(store.interfaceLanguage).toBe('ja-JP')
+    expect(axios.get).toHaveBeenCalledOnce()
+    expect(axios.put.mock.calls.map(([, payload]) => payload)).toEqual([
+      { ui_language: 'ja-JP' },
+      { ui_language: 'ja-JP' }
+    ])
+  })
+
+  it('updates existing preference errors when the interface language changes without retrying writes', async () => {
+    const { store } = createStore()
+    await store.load()
+    axios.put.mockRejectedValueOnce(new Error('offline'))
+    expect(await store.setSoftwareVersionDisplay('channel')).toBe(false)
+    expect(store.error).toBe(i18n.global.t('settings.gui.versionSaveFailed'))
+    const writes = axios.put.mock.calls.length
+    i18n.global.locale.value = 'ja-JP'
+    expect(store.error).toBe(i18n.global.t('settings.gui.versionSaveFailed'))
+    expect(store.error).not.toContain('失败')
+    expect(axios.put).toHaveBeenCalledTimes(writes)
+    expect(store.softwareVersionDisplay).toBe('version')
+  })
+
   it('shares one version-default store and disables editing before the initial read', async () => {
     const { pinia, store } = createStore()
     expect(useGuiStore(pinia)).toBe(store)

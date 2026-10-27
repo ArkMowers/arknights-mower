@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import axios from 'axios'
+import { i18n } from '@/i18n'
 
 export const useFacilityStore = defineStore('facility-state', () => {
   const states = ref({})
@@ -22,7 +23,7 @@ export const useFacilityStore = defineStore('facility-state', () => {
         return states.value
       })
       .catch((error) => {
-        loadError.value = error?.message || '读取设施状态失败'
+        loadError.value = error?.message || i18n.global.t('tasks.facilityStateReadFailed')
         throw error
       })
       .finally(() => {

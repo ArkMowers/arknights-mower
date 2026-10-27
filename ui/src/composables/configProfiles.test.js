@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
 import { CONFIG_GENERATION_HEADER, createConfigProfiles } from './configProfiles'
 import { createSaveCoordinator } from '@/utils/configPersistence'
+import { i18n } from '@/i18n'
+
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 
 const metadata = () => ({
   ok: true,
@@ -71,6 +76,73 @@ async function setup({ beforeChange } = {}) {
 }
 
 describe('configuration profile operations', () => {
+  it('updates loaded catalog section titles without changing metadata, group identities or selections', async () => {
+    const { controller, axios } = await setup()
+    const originalGroups = controller.state.value.groups
+    controller.selected.value = ['device', 'normal_plan']
+    expect(controller.sections.value.map(({ key, label }) => ({ key, label }))).toEqual([
+      { key: 'connection', label: '连接与运行' },
+      { key: 'plans', label: '排班' }
+    ])
+
+    i18n.global.locale.value = 'en-US'
+
+    expect(controller.sections.value.map(({ key, label }) => ({ key, label }))).toEqual([
+      { key: 'connection', label: 'Connection & Runtime' },
+      { key: 'plans', label: 'Scheduling Plans' }
+    ])
+    expect(controller.sections.value[0].children[0]).toBe(originalGroups[0])
+    expect(controller.state.value.groups).toBe(originalGroups)
+    expect(controller.state.value.groups).toEqual(metadata().groups)
+    expect(controller.selected.value).toEqual(['device', 'normal_plan'])
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('preserves unknown section labels when a backend adds a catalog group', async () => {
+    const { controller } = await setup()
+    const extension = {
+      key: 'future_group',
+      label: '后端新增项目',
+      description: '新增说明',
+      section: '未来分类'
+    }
+    controller.state.value = {
+      ...controller.state.value,
+      groups: [...controller.groups.value, extension]
+    }
+    i18n.global.locale.value = 'en-US'
+    expect(controller.sections.value.at(-1)).toEqual({
+      key: 'extension:未来分类',
+      label: '未来分类',
+      children: [extension]
+    })
+    expect(controller.groups.value.at(-1)).toBe(extension)
+  })
+
+  it('keeps profile identities and selected group keys unchanged when switching in English', async () => {
+    const { controller, axios, reload } = await setup()
+    i18n.global.locale.value = 'en-US'
+    controller.open('activate', 'second')
+    expect(controller.dialog.value.targetName).toBe('备用账号')
+    controller.selected.value = ['device', 'runtime']
+    axios.post.mockResolvedValue({
+      data: { ...metadata(), active_id: 'second', generation: 'next' }
+    })
+
+    await controller.submit()
+
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/\/config-profiles\/second\/activate$/),
+      { keep: ['device', 'runtime'] },
+      { headers: { 'X-Mower-Settings': '1', [CONFIG_GENERATION_HEADER]: '0' } }
+    )
+    expect(reload).toHaveBeenCalledExactlyOnceWith({
+      message: 'The profile has changed. Reload before continuing to edit.',
+      recovery_path: ''
+    })
+  })
+
   it('bootstraps the generation before allowing operations and leaves it fixed on list refresh', async () => {
     const { controller, axios, config, plan, rescuePlan } = await setup()
     expect(axios.defaults.headers.common[CONFIG_GENERATION_HEADER]).toBe('0')

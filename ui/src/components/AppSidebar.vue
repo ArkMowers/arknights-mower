@@ -7,20 +7,22 @@
       'app-sidebar--dragging': dragKey || dragGroupKey
     }"
     :style="palette"
-    aria-label="主导航"
+    :aria-label="t('navigation.mainNavigation')"
   >
     <div v-if="persistenceError" class="app-sidebar__persistence" role="alert">
-      <span v-if="!collapsed">{{ initialized ? '布局尚未保存' : '布局加载失败' }}</span>
+      <span v-if="!collapsed">{{
+        t(initialized ? 'navigation.layoutUnsaved' : 'navigation.layoutLoadFailed')
+      }}</span>
       <button
         type="button"
         class="app-sidebar__retry"
         :disabled="retrying"
-        :aria-label="initialized ? '重试保存侧边栏布局' : '重新加载侧边栏布局'"
-        :title="initialized ? '重试保存侧边栏布局' : '重新加载侧边栏布局'"
+        :aria-label="t(initialized ? 'navigation.retrySaveLayout' : 'navigation.retryLoadLayout')"
+        :title="t(initialized ? 'navigation.retrySaveLayout' : 'navigation.retryLoadLayout')"
         @click="retryPreferences"
       >
         <n-icon :component="ReloadOutline" aria-hidden="true" />
-        <span v-if="!collapsed">重试</span>
+        <span v-if="!collapsed">{{ t('navigation.retry') }}</span>
       </button>
     </div>
     <component
@@ -81,7 +83,7 @@
                 @click.capture="guardDragClick"
                 @click="!section.pinned && toggleGroup(section.key)"
               >
-                <span class="app-sidebar__heading-text">{{ section.title || '常用' }}</span>
+                <span class="app-sidebar__heading-text">{{ navigationGroupTitle(section) }}</span>
                 <n-icon
                   v-if="!section.pinned"
                   class="app-sidebar__chevron"
@@ -105,7 +107,9 @@
                 <button
                   type="button"
                   class="app-sidebar__menu app-sidebar__group-menu"
-                  :aria-label="`管理${section.title || '常用'}分组`"
+                  :aria-label="
+                    t('navigation.manageGroup', { title: navigationGroupTitle(section) })
+                  "
                   aria-haspopup="menu"
                   :disabled="!initialized"
                 >
@@ -147,7 +151,7 @@
                           :is="item.to ? SessionLink : item.action ? 'button' : 'a'"
                           v-bind="linkAttrs(item)"
                           class="app-sidebar__link"
-                          :title="item.label"
+                          :title="navigationLabel(item)"
                           :aria-describedby="collapsed ? undefined : `${listId}-drag-help`"
                           @pointerdown="prepareActivation"
                           @keydown="prepareActivation"
@@ -167,11 +171,11 @@
                                 <n-icon :component="item.icon" aria-hidden="true" />
                               </span>
                             </template>
-                            {{ item.label }}
+                            {{ navigationLabel(item) }}
                           </n-tooltip>
-                          <span class="app-sidebar__label">{{ item.label }}</span>
+                          <span class="app-sidebar__label">{{ navigationLabel(item) }}</span>
                           <template v-if="item.href">
-                            <span class="visually-hidden">（在新标签页打开）</span>
+                            <span class="visually-hidden">{{ t('navigation.opensInNewTab') }}</span>
                             <n-icon
                               class="app-sidebar__external"
                               :component="OpenOutline"
@@ -194,7 +198,9 @@
                           <button
                             type="button"
                             class="app-sidebar__menu"
-                            :aria-label="`管理${item.label}`"
+                            :aria-label="
+                              t('navigation.managePage', { label: navigationLabel(item) })
+                            "
                             aria-haspopup="menu"
                             :disabled="!initialized"
                             @click.stop
@@ -221,7 +227,7 @@
           v-bind="linkAttrs(item)"
           class="app-sidebar__link"
           :data-sidebar-item="item.key"
-          :title="item.label"
+          :title="navigationLabel(item)"
           @pointerdown="prepareActivation"
           @keydown="prepareActivation"
           @click.capture="guardDragClick"
@@ -239,15 +245,15 @@
               ><span class="app-sidebar__icon"
                 ><n-icon :component="item.icon" aria-hidden="true" /></span
             ></template>
-            {{ item.label }}
+            {{ navigationLabel(item) }}
           </n-tooltip>
-          <span class="app-sidebar__label">{{ item.label }}</span>
+          <span class="app-sidebar__label">{{ navigationLabel(item) }}</span>
         </component>
       </div>
     </div>
     <SidebarCustomize :group-key="addingGroup" @close="addingGroup = null" />
     <span :id="`${listId}-drag-help`" class="visually-hidden">
-      拖动页面可排序、移到分组或独立显示，菜单可置顶或移除当前页面。
+      {{ t('navigation.dragHelp') }}
     </span>
   </nav>
 </template>
@@ -266,6 +272,8 @@ import SidebarScroll from './SidebarScroll.vue'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
 import { useCollapsedTips } from '@/composables/useCollapsedTips'
 import { normalizeSortablePreview } from '@/utils/sortablePreview'
+import { i18n } from '@/i18n'
+import { navigationGroupTitle, navigationLabel } from '@/i18n/navigation'
 import '@/styles/sidebar.css'
 import '@/styles/drag.css'
 
@@ -274,6 +282,7 @@ const props = defineProps({
   mobile: { type: Boolean, default: false }
 })
 const emit = defineEmits(['navigate', 'open-chat', 'customize'])
+const { t } = i18n.global
 
 const preferences = useSidebarPreferences()
 const {
@@ -438,20 +447,22 @@ function itemOptions(item) {
   return [
     {
       key: 'pin',
-      label: placement?.pinned ? '取消置顶' : '置顶',
+      label: t(placement?.pinned ? 'navigation.unpin' : 'navigation.pin'),
       disabled: targetOccupied,
       ...(targetOccupied && placement?.pinned
-        ? { description: '原位置已有此页面，可移除此处的入口。' }
+        ? { description: t('navigation.originalEntryExists') }
         : {})
     },
     { type: 'divider', key: 'page-remove-divider' },
     {
       key: 'remove',
-      label: placement?.pinned
-        ? '移除此入口'
-        : placement?.group === 'ungrouped'
-          ? '从侧边栏移除'
-          : '从此分组移除'
+      label: t(
+        placement?.pinned
+          ? 'navigation.removeEntry'
+          : placement?.group === 'ungrouped'
+            ? 'navigation.removeFromSidebar'
+            : 'navigation.removeFromGroup'
+      )
     }
   ]
 }
@@ -469,20 +480,20 @@ function selectItemAction(action, item) {
 function groupOptions(groupKey) {
   if (groupKey === 'pinned')
     return [
-      { key: 'add', label: '添加页面' },
+      { key: 'add', label: t('navigation.addPage') },
       { type: 'divider', key: 'pinned-actions-divider' },
-      { key: 'unpin-all', label: '取消全部置顶' }
+      { key: 'unpin-all', label: t('navigation.unpinAll') }
     ]
   return [
-    { key: 'add', label: '添加页面' },
-    { key: 'new', label: '新建分组' },
+    { key: 'add', label: t('navigation.addPage') },
+    { key: 'new', label: t('navigation.newGroup') },
     { type: 'divider', key: 'group-edit-divider' },
-    { key: 'rename', label: '重命名分组' },
+    { key: 'rename', label: t('navigation.renameGroup') },
     { type: 'divider', key: 'group-dissolve-divider' },
     {
       key: 'dissolve-options',
-      label: '取消分组',
-      children: [{ key: 'dissolve', label: '确认取消分组，页面独立显示' }]
+      label: t('navigation.dissolveGroup'),
+      children: [{ key: 'dissolve', label: t('navigation.confirmDissolveGroup') }]
     }
   ]
 }

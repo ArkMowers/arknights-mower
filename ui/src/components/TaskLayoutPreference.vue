@@ -1,28 +1,32 @@
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
+import { i18n } from '@/i18n'
 import { storeToRefs } from 'pinia'
 import SettingsSegmented from '@/components/SettingsSegmented.vue'
 import { useGuiStore } from '@/stores/gui'
 
 const gui = useGuiStore()
 const { taskSettingsLayout, layoutDisabled, layoutSaving, layoutError } = storeToRefs(gui)
-const layoutOptions = [
-  { value: 'checklist', label: '任务清单' },
-  { value: 'waterfall', label: '瀑布流' }
-]
+const layoutOptions = computed(() => [
+  { value: 'checklist', label: i18n.global.t('tasks.taskChecklist') },
+  { value: 'waterfall', label: i18n.global.t('tasks.waterfallLayout') }
+])
 
 onMounted(() => void gui.load())
 </script>
 
 <template>
-  <n-form-item label="全部设置显示" class="settings-appearance-row task-layout-preference">
+  <n-form-item
+    :label="i18n.global.t('tasks.taskSettingsDisplay')"
+    class="settings-appearance-row task-layout-preference"
+  >
     <div class="task-layout-preference-content">
       <SettingsSegmented
         :value="taskSettingsLayout"
         :options="layoutOptions"
         :disabled="layoutDisabled"
         :busy="layoutSaving"
-        label="全部设置显示"
+        :label="i18n.global.t('tasks.taskSettingsDisplay')"
         @update:value="gui.setTaskSettingsLayout"
       />
       <n-alert v-if="layoutError" type="error" :show-icon="false" role="alert">
@@ -33,7 +37,7 @@ onMounted(() => void gui.load())
           :disabled="gui.loading || gui.saving || layoutSaving"
           @click="gui.retryTaskSettingsLayout"
         >
-          重试
+          {{ i18n.global.t('tasks.retry') }}
         </n-button>
       </n-alert>
     </div>

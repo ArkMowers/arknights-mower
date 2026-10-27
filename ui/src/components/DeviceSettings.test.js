@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { effectScope, nextTick } from 'vue'
 import { createDeviceConnectionNavigation } from '@/composables/deviceConnectionNavigation'
 import DeviceSettings from './DeviceSettings.vue'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({
   mounted: [],
@@ -27,6 +28,7 @@ let scope
 let visibilityChanged
 let component
 beforeEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   vi.useFakeTimers()
   state.mounted = []
   state.unmounted = []
@@ -52,6 +54,34 @@ beforeEach(() => {
   scope.run(() => {
     component = DeviceSettings.setup({}, { expose: () => {} })
   })
+})
+
+it('translates device labels in place without changing identity or saving configuration', async () => {
+  component.metadata.value = { host_platform: 'windows' }
+  component.advanced.value = true
+  component.draft.value = {
+    ...state.config.device_profile,
+    instance_name: '我的设备',
+    last_serial: 'USB-123'
+  }
+  const before = structuredClone(state.config.device_profile)
+  expect(component.state.value.actions.detect.label).toBe('测试连接')
+  i18n.global.locale.value = 'en-US'
+  await nextTick()
+  expect(component.state.value.actions.detect.label).toBe('Test connection')
+  expect(component.state.value.fields.find(({ key }) => key === 'last_serial')).toMatchObject({
+    label: 'Connection address',
+    value: 'USB-123'
+  })
+  expect(component.state.value.fields.find(({ key }) => key === 'instance_name').value).toBe(
+    '我的设备'
+  )
+  expect(
+    component.state.value.connectionFields.find(({ key }) => key === 'screenshot_backend').value
+  ).toBe('droidcast')
+  expect(state.config.device_profile).toEqual(before)
+  expect(state.config.save_config).not.toHaveBeenCalled()
+  i18n.global.locale.value = 'zh-CN'
 })
 
 function mountConnectionNavigation(pending = null, props = {}) {

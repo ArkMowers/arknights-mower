@@ -4,6 +4,7 @@ import { createPinia, defineStore, setActivePinia } from 'pinia'
 import axios from 'axios'
 import MasteryRecommendation from './MasteryRecommendation.vue'
 import { useMasteryStore } from '@/stores/mastery'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({
   unmount: [],
@@ -57,10 +58,37 @@ beforeEach(() => {
   axios.post.mockResolvedValue({ data: { material_summary: { available: true } } })
 })
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   state.unmount.forEach((fn) => fn())
   scope?.stop()
   vi.clearAllTimers()
   vi.useRealTimers()
+})
+
+it('updates swap-buffer descriptions in four languages without changing saved minute values or field keys', () => {
+  const page = setup()
+  state.plan.plan = { central: { plans: [{ agent: '阿斯卡纶' }] } }
+  page.masterySettings.mastery_swap_buffers = { central: 8, central_unhalved_m2: 12, no_central: 9 }
+  for (const [locale, expected] of [
+    ['zh-CN', '有中枢加成'],
+    ['en-US', 'With Control Center bonus'],
+    ['ja-JP', '制御中枢ボーナスあり'],
+    ['zh-TW', '有中樞加成']
+  ]) {
+    i18n.global.locale.value = locale
+    expect(page.masteryBufferFields.value[0]).toEqual({ key: 'central', label: expected })
+    expect(page.masteryBufferFields.value[1].key).toBe('central_unhalved_m2')
+    expect(i18n.global.te('growthUpdates.swapBufferMinutes', locale)).toBe(true)
+    expect(i18n.global.te('growthUpdates.swapBufferHelp', locale)).toBe(true)
+    expect(page.masterySettings.mastery_swap_buffers).toEqual({
+      central: 8,
+      central_unhalved_m2: 12,
+      no_central: 9
+    })
+  }
+  state.plan.plan = {}
+  expect(page.masteryBufferFields.value.map((item) => item.key)).toEqual(['no_central'])
+  expect(axios.post).not.toHaveBeenCalled()
 })
 
 describe('阿米娅专精升变提示', () => {

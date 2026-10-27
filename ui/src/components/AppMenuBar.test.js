@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { compile, createRenderer, h, nextTick, reactive, ssrContextKey } from 'vue'
 import { NDropdown } from 'naive-ui'
 import AppMenuBar from './AppMenuBar.vue'
+import { i18n } from '@/i18n'
 
 vi.mock('naive-ui', async () => {
   const { cloneVNode, defineComponent, h } = await import('vue')
@@ -81,6 +82,7 @@ afterEach(() => {
   for (const callback of Object.values(windowCallbacks || {}))
     expect(callback).not.toHaveBeenCalled()
   windowCallbacks = null
+  i18n.global.locale.value = 'zh-CN'
 })
 
 function mount(overrides = {}) {
@@ -289,9 +291,10 @@ describe('共用视图菜单', () => {
     const bar = mount({ sidebarVisible })
     await bar.toggle('视图')
     const options = bar.menu('视图').props.options
-    expect(options.map((item) => item.label)).toEqual([
+    expect(options.filter((item) => item.type !== 'divider').map((item) => item.label)).toEqual([
       sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
-      '编辑侧边栏'
+      '编辑侧边栏',
+      '界面语言'
     ])
     await bar.select(options[0], '视图')
     expect(bar.viewAction).toHaveBeenCalledExactlyOnceWith('toggle-sidebar')
@@ -303,6 +306,163 @@ describe('共用视图菜单', () => {
     expect(bar.profileAction).not.toHaveBeenCalled()
     expect(bar.helpAction).not.toHaveBeenCalled()
   })
+})
+
+describe('interface language menu', () => {
+  it('updates menu text immediately while retaining user-provided identity and profile names', async () => {
+    const profileState = {
+      active_id: 'main',
+      profiles: [{ id: 'main', name: '主账号' }]
+    }
+    const bar = mount({
+      mode: 'brand',
+      instanceName: '中文实例名',
+      emulatorName: '中文设备名',
+      adbPort: '16384',
+      profileState
+    })
+    const originalConnection = bar
+      .menu('Mower')
+      .props.options[0].children.find((option) => option.commandKey === 'connection-settings')
+
+    i18n.global.locale.value = 'en-US'
+    await nextTick()
+
+    const options = bar.menu('Mower').props.options
+    expect(options.filter((option) => option.children).map((option) => option.label)).toEqual([
+      'Connection',
+      'Profiles',
+      'View',
+      'Help'
+    ])
+    const connection = options[0].children.find(
+      (option) => option.commandKey === 'connection-settings'
+    )
+    expect(connection.key).toBe(originalConnection.key)
+    expect(connection.label).toBe('Connection settings…')
+    const profile = options[1].children.find((option) => option.profileId === 'main')
+    expect(profile.label().children.map((child) => child.children)).toEqual([
+      '主账号',
+      'Current profile'
+    ])
+    const identity = options.at(-1).render()
+    expect(identity.props['aria-label']).toBe('Current instance and device')
+    expect(identity.children.map((child) => child.children)).toEqual([
+      '中文实例名',
+      '中文设备名',
+      'Server port 9010 · ADB port 16384'
+    ])
+    expect(bar.viewAction).not.toHaveBeenCalled()
+    expect(bar.profileAction).not.toHaveBeenCalled()
+  })
+
+  it.each(['bar', 'brand'])('dispatches a controlled language choice in %s mode', async (mode) => {
+    const bar = mount({ mode })
+    const menu = bar.menu(mode === 'brand' ? 'Mower' : '视图')
+    const viewOptions =
+      mode === 'brand'
+        ? menu.props.options.find((option) => option.menuKey === 'view').children
+        : menu.props.options
+    const language = viewOptions.find(
+      (option) => (option.commandKey || option.key) === 'view-language'
+    )
+    expect(language.label).toBe('界面语言')
+    expect(menu.props.menuProps(language)['aria-label']).toBe('界面语言')
+    expect(language.children.map((option) => option.label)).toEqual([
+      '跟随系统',
+      '中文（简体）',
+      'English',
+      '日本語',
+      '繁體中文'
+    ])
+    const chinese = language.children.find((option) => option.language === 'zh-CN')
+    const english = language.children.find((option) => option.language === 'en-US')
+    expect(chinese).toMatchObject({ checked: true, disabled: true })
+    expect(menu.props.nodeProps(chinese)).toMatchObject({
+      role: 'menuitemradio',
+      'aria-checked': true
+    })
+    expect(english).toMatchObject({ checked: false, disabled: false })
+    expect(menu.props.nodeProps(english)).toMatchObject({
+      role: 'menuitemradio',
+      'aria-checked': false
+    })
+
+    await bar.select(english, mode === 'brand' ? 'Mower' : '视图')
+
+    expect(bar.viewAction).toHaveBeenCalledExactlyOnceWith('language:en-US')
+    expect(i18n.global.locale.value).toBe('zh-CN')
+    expect(bar.connectionAction).not.toHaveBeenCalled()
+    expect(bar.profileAction).not.toHaveBeenCalled()
+    expect(bar.helpAction).not.toHaveBeenCalled()
+    bar.options.interfaceLanguage = 'en-US'
+    await nextTick()
+    const updated =
+      mode === 'brand'
+        ? bar.menu('Mower').props.options.find((option) => option.menuKey === 'view').children
+        : bar.menu('视图').props.options
+    expect(
+      updated
+        .find((option) => (option.commandKey || option.key) === 'view-language')
+        .children.find((option) => option.language === 'en-US')
+    ).toMatchObject({ checked: true, disabled: true })
+  })
+
+  it('rejects disabled, current and unsupported language choices including stale events', async () => {
+    const bar = mount()
+    const language = bar.menu('视图').props.options.find((option) => option.key === 'view-language')
+    const chinese = language.children.find((option) => option.language === 'zh-CN')
+    const english = language.children.find((option) => option.language === 'en-US')
+    await bar.select({ ...chinese, disabled: false }, '视图')
+    await bar.select({ key: 'view-language-fr-FR' }, '视图')
+    bar.options.languageDisabled = true
+    await nextTick()
+    const disabledLanguage = bar
+      .menu('视图')
+      .props.options.find((option) => option.key === 'view-language')
+    expect(disabledLanguage.disabled).toBe(true)
+    expect(disabledLanguage.children.every((option) => option.disabled)).toBe(true)
+    await bar.select({ ...english, disabled: false }, '视图')
+    expect(bar.viewAction).not.toHaveBeenCalled()
+  })
+
+  it.each(['bar', 'brand'])(
+    'selects system mode and keeps its checkmark in %s mode',
+    async (mode) => {
+      const bar = mount({ mode })
+      const menuLabel = mode === 'brand' ? 'Mower' : '视图'
+      function languageOptions() {
+        const options = bar.menu(menuLabel).props.options
+        const view =
+          mode === 'brand' ? options.find((item) => item.menuKey === 'view').children : options
+        return view.find((item) => (item.commandKey || item.key) === 'view-language').children
+      }
+      await bar.select(
+        languageOptions().find((item) => item.language === 'system'),
+        menuLabel
+      )
+      expect(bar.viewAction).toHaveBeenCalledExactlyOnceWith('language:system')
+      bar.options.interfaceLanguage = 'system'
+      await nextTick()
+      expect(languageOptions().find((item) => item.language === 'system')).toMatchObject({
+        checked: true,
+        disabled: true
+      })
+      i18n.global.locale.value = 'ja-JP'
+      await nextTick()
+      const updatedOptions = bar.menu(mode === 'brand' ? 'Mower' : '表示').props.options
+      const updatedView =
+        mode === 'brand'
+          ? updatedOptions.find((item) => item.menuKey === 'view').children
+          : updatedOptions
+      expect(
+        updatedView.find((item) => (item.commandKey || item.key) === 'view-language').children[0]
+      ).toMatchObject({ language: 'system', label: 'システムに従う', checked: true })
+      expect(bar.connectionAction).not.toHaveBeenCalled()
+      expect(bar.profileAction).not.toHaveBeenCalled()
+      expect(bar.helpAction).not.toHaveBeenCalled()
+    }
+  )
 })
 
 describe('共用帮助菜单', () => {

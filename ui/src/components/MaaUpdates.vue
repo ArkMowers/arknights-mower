@@ -1,10 +1,29 @@
 <script setup>
-import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
+import { i18n } from '@/i18n'
+import { computed, inject, onMounted, onUnmounted, ref, shallowRef, unref, watch } from 'vue'
+import { softwareUpdateMessage } from '@/utils/softwareUpdatePresentation'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 import SoftwareComponentUpdates from './SoftwareComponentUpdates.vue'
+
+function localizedMessage(key = '', params = {}) {
+  const replacement = shallowRef(undefined)
+  return computed({
+    get: () =>
+      replacement.value !== undefined
+        ? unref(replacement.value)
+        : typeof key === 'function'
+          ? key()
+          : key
+            ? i18n.global.t(key, typeof params === 'function' ? params() : params)
+            : '',
+    set: (value) => {
+      replacement.value = value
+    }
+  })
+}
 
 const axios = inject('axios')
 const { updates_enabled } = storeToRefs(useMowerStore())
@@ -35,7 +54,7 @@ const maa_latest_version = ref('')
 const maa_installed = ref(false)
 const maa_installed_version = ref('')
 const maa_backup_path = ref('')
-const maa_update_info_msg = ref('')
+const maa_update_info_msg = localizedMessage()
 const maa_component_updates = ref([])
 const maa_component_controls = ref([])
 const maa_combined_checking = ref(false)
@@ -63,7 +82,7 @@ const maa_resource_current_version = ref('')
 const maa_resource_latest_version = ref('')
 const maa_resource_release_note = ref('')
 const maa_resource_backup_path = ref('')
-const maa_resource_update_info_msg = ref('')
+const maa_resource_update_info_msg = localizedMessage()
 const maa_resource_update_check = ref({
   status: 'idle',
   message: '',
@@ -123,7 +142,11 @@ async function check_mirrorchyan_cdk(token = maa_mirrorchyan_token.value) {
   }
   const normalized_token = String(token || '').trim()
   if (normalized_token.length !== 24) {
-    reset_mirrorchyan_cdk_status(normalized_token ? '请输入完整的 24 位 Mirror酱 CDK' : '')
+    reset_mirrorchyan_cdk_status(
+      normalized_token
+        ? localizedMessage('settings.maa.enterTheComplete24CharacterMirrorchyanCdk')
+        : ''
+    )
     return false
   }
 
@@ -132,7 +155,7 @@ async function check_mirrorchyan_cdk(token = maa_mirrorchyan_token.value) {
     ...mirrorchyan_cdk_status.value,
     loading: true,
     checked_token: normalized_token,
-    message: '正在检查 Mirror酱 CDK……'
+    message: localizedMessage('settings.maa.checkingMirrorchyanCdk')
   }
   try {
     const response = await axios.post(
@@ -156,7 +179,7 @@ async function check_mirrorchyan_cdk(token = maa_mirrorchyan_token.value) {
       expired: Boolean(data.expired),
       code: data.code ?? null,
       expires_at: Number(data.expires_at || 0),
-      message: data.message || 'Mirror酱 CDK 状态未知'
+      message: data.message || localizedMessage('settings.maa.mirrorchyanCdkStatusUnknown')
     }
   } catch (error) {
     if (request_id !== mirrorchyan_cdk_request_id) return false
@@ -167,7 +190,9 @@ async function check_mirrorchyan_cdk(token = maa_mirrorchyan_token.value) {
       expired: false,
       code: null,
       expires_at: 0,
-      message: error.response?.data?.message || `检查 Mirror酱 CDK 失败：${error.message}`
+      message:
+        error.response?.data?.message ||
+        localizedMessage('settings.maa.mirrorchyanCdkCheckFailed', { value0: error.message })
     }
   }
   return mirrorchyan_cdk_status.value.valid
@@ -184,10 +209,12 @@ function schedule_mirrorchyan_cdk_check(token) {
     return
   }
   if (normalized_token.length !== 24) {
-    reset_mirrorchyan_cdk_status('请输入完整的 24 位 Mirror酱 CDK')
+    reset_mirrorchyan_cdk_status(
+      localizedMessage('settings.maa.enterTheComplete24CharacterMirrorchyanCdk')
+    )
     return
   }
-  reset_mirrorchyan_cdk_status('等待检查 Mirror酱 CDK')
+  reset_mirrorchyan_cdk_status(localizedMessage('settings.maa.waitingForMirrorchyanCdkValidation'))
   mirrorchyan_cdk_timer = window.setTimeout(() => check_mirrorchyan_cdk(normalized_token), 500)
 }
 
@@ -294,12 +321,20 @@ const maa_update_versions_equal = computed(() =>
 const maa_resource_versions_equal = computed(() =>
   versions_are_equal(maa_resource_latest_version.value, maa_resource_current_version.value)
 )
-const maa_managed_operation_label = computed(() => (maa_installed.value ? '更新' : '下载'))
+const maa_managed_operation_label = computed(() =>
+  maa_installed.value
+    ? i18n.global.t('settings.maa.update')
+    : i18n.global.t('settings.maa.download')
+)
 const maa_job_operation_label = computed(() =>
-  maa_update_job.value.operation === 'update' ? '更新' : '下载'
+  maa_update_job.value.operation === 'update'
+    ? i18n.global.t('settings.maa.update')
+    : i18n.global.t('settings.maa.download')
 )
 const maa_update_channel_label = computed(() =>
-  maa_update_channel.value === 'beta' ? '公测版' : '正式版'
+  maa_update_channel.value === 'beta'
+    ? i18n.global.t('settings.maa.beta')
+    : i18n.global.t('settings.maa.stable')
 )
 const mirrorchyan_cdk_remaining_days = computed(() => {
   if (!mirrorchyan_cdk_status.value.expires_at) return null
@@ -311,10 +346,13 @@ const mirrorchyan_cdk_message = computed(() => {
   if (status.loading) return status.message
   if (!status.valid || !status.expires_at) return status.message
   const remaining_days = Math.max(0, mirrorchyan_cdk_remaining_days.value).toFixed(1)
-  const expires_at = new Date(status.expires_at * 1000).toLocaleString('zh-CN', {
+  const expires_at = new Date(status.expires_at * 1000).toLocaleString(i18n.global.locale.value, {
     hour12: false
   })
-  return `Mirror酱 CDK 还剩 ${remaining_days} 天到期（${expires_at}）`
+  return i18n.global.t('settings.maa.mirrorchyanCdkExpiresInDays', {
+    value0: remaining_days,
+    value1: expires_at
+  })
 })
 const mirrorchyan_cdk_message_class = computed(() => {
   const status = mirrorchyan_cdk_status.value
@@ -456,7 +494,10 @@ async function poll_maa_update() {
     }
   } catch (error) {
     maa_update_job.value.status = 'error'
-    maa_update_job.value.message = `读取 MAA ${maa_job_operation_label.value}进度失败：${error.message}`
+    maa_update_job.value.message = localizedMessage('settings.maa.failedToReadMaaProgress', () => ({
+      value0: maa_job_operation_label.value,
+      value1: error.message
+    }))
   }
 }
 
@@ -496,12 +537,18 @@ async function get_maa_update_info() {
     maa_backup_path.value = data.backup || ''
     maa_update_info_msg.value = data.ok
       ? ''
-      : data.message || `读取 MAA ${maa_managed_operation_label.value}版本失败`
+      : data.message ||
+        localizedMessage('settings.maa.failedToReadMaaVersion', () => ({
+          value0: maa_managed_operation_label.value
+        }))
     apply_maa_update_job(data.job, data.job?.result?.target === data.target)
     if (maa_update_job.value.status === 'running') poll_maa_update()
   } catch (error) {
     if (request_id !== maa_update_info_request_id) return
-    maa_update_info_msg.value = `读取 MAA ${maa_managed_operation_label.value}版本失败：${error.message}`
+    maa_update_info_msg.value = localizedMessage('settings.maa.failedToReadMaaVersion2', () => ({
+      value0: maa_managed_operation_label.value,
+      value1: error.message
+    }))
   }
 }
 
@@ -530,7 +577,10 @@ async function poll_maa_resource_update() {
     }
   } catch (error) {
     maa_resource_update_job.value.status = 'error'
-    maa_resource_update_job.value.message = `读取 MAA 资源更新进度失败：${error.message}`
+    maa_resource_update_job.value.message = localizedMessage(
+      'settings.maa.failedToReadMaaResourceUpdateProgress',
+      { value0: error.message }
+    )
   }
 }
 
@@ -551,7 +601,10 @@ async function get_maa_resource_update_info() {
     }
     maa_resource_backup_path.value = data.backup || ''
     maa_resource_update_info_msg.value =
-      data.current?.error || (data.ok ? '' : data.message || '读取 MAA 资源版本失败')
+      data.current?.error ||
+      (data.ok
+        ? ''
+        : data.message || localizedMessage('settings.maa.failedToReadTheMaaResourceVersion'))
     if (data.job?.target === data.target) {
       apply_maa_resource_update_job(data.job)
       if (maa_resource_update_job.value.status === 'running') poll_maa_resource_update()
@@ -570,7 +623,10 @@ async function get_maa_resource_update_info() {
     }
   } catch (error) {
     if (request_id !== maa_resource_update_info_request_id) return
-    maa_resource_update_info_msg.value = `读取 MAA 资源版本失败：${error.message}`
+    maa_resource_update_info_msg.value = localizedMessage(
+      'settings.maa.failedToReadTheMaaResourceVersion2',
+      { value0: error.message }
+    )
   }
 }
 
@@ -607,7 +663,7 @@ async function check_maa_core_update() {
   maa_update_info_msg.value = ''
   if (maa_path_missing.value) {
     maa_update_check.value.status = 'error'
-    maa_update_check.value.message = '请先设置 MAA 目录'
+    maa_update_check.value.message = localizedMessage('settings.maa.setTheMaaDirectoryFirst')
     return
   }
   maa_update_check.value.status = 'checking'
@@ -619,12 +675,16 @@ async function check_maa_core_update() {
     }
     if (!valid) {
       maa_update_check.value.status = 'error'
-      maa_update_check.value.message = mirrorchyan_cdk_status.value.message || '请检查 Mirror酱 CDK'
+      maa_update_check.value.message = localizedMessage(
+        () =>
+          mirrorchyan_cdk_status.value.message ||
+          i18n.global.t('settings.maa.checkYourMirrorchyanCdk')
+      )
       return
     }
   }
   maa_update_check.value.status = 'checking'
-  maa_update_check.value.message = '正在检查 MAA 更新……'
+  maa_update_check.value.message = localizedMessage('settings.maa.checkingForMaaUpdates')
   try {
     const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/maa-update/check`, {
       maa_path: maa_path.value,
@@ -636,7 +696,8 @@ async function check_maa_core_update() {
     const data = response.data
     if (!data.ok) {
       maa_update_check.value.status = 'error'
-      maa_update_check.value.message = data.message || '检查 MAA 更新失败'
+      maa_update_check.value.message =
+        data.message || localizedMessage('settings.maa.maaUpdateCheckFailed')
       return
     }
     maa_installed_version.value = data.installed_version || maa_installed_version.value
@@ -646,8 +707,11 @@ async function check_maa_core_update() {
       status: 'success',
       message:
         !available && maa_update_versions_equal.value
-          ? '当前 MAA 已是最新版本'
-          : data.message || (available ? '发现 MAA 新版本' : '当前 MAA 已是最新版本'),
+          ? localizedMessage('settings.maa.maaIsUpToDate')
+          : data.message ||
+            (available
+              ? localizedMessage('settings.maa.aNewMaaVersionIsAvailable')
+              : localizedMessage('settings.maa.maaIsUpToDate')),
       available,
       id: available ? data.check_id || '' : ''
     }
@@ -656,7 +720,8 @@ async function check_maa_core_update() {
     if (disposed || request_id !== maa_update_check_request_id) return
     maa_update_check.value.status = 'error'
     maa_update_check.value.message =
-      error.response?.data?.message || `检查 MAA 更新失败：${error.message}`
+      error.response?.data?.message ||
+      localizedMessage('settings.maa.maaUpdateCheckFailed2', { value0: error.message })
   } finally {
     if (request_id !== maa_update_check_request_id) schedule_auto_check_updates()
   }
@@ -671,7 +736,9 @@ async function check_maa_resource_update() {
   maa_resource_update_info_msg.value = ''
   if (maa_path_missing.value) {
     maa_resource_update_check.value.status = 'error'
-    maa_resource_update_check.value.message = '请先设置 MAA 目录'
+    maa_resource_update_check.value.message = localizedMessage(
+      'settings.maa.setTheMaaDirectoryFirst'
+    )
     return
   }
   maa_resource_update_check.value.status = 'checking'
@@ -683,13 +750,18 @@ async function check_maa_resource_update() {
     }
     if (!valid) {
       maa_resource_update_check.value.status = 'error'
-      maa_resource_update_check.value.message =
-        mirrorchyan_cdk_status.value.message || '请检查 Mirror酱 CDK'
+      maa_resource_update_check.value.message = localizedMessage(
+        () =>
+          mirrorchyan_cdk_status.value.message ||
+          i18n.global.t('settings.maa.checkYourMirrorchyanCdk')
+      )
       return
     }
   }
   maa_resource_update_check.value.status = 'checking'
-  maa_resource_update_check.value.message = '正在检查 MAA 资源更新……'
+  maa_resource_update_check.value.message = localizedMessage(
+    'settings.maa.checkingForMaaResourceUpdates'
+  )
   try {
     const response = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/maa-resource-update/check`,
@@ -704,7 +776,8 @@ async function check_maa_resource_update() {
     maa_resource_update_info_msg.value = data.current?.error || ''
     if (!data.ok) {
       maa_resource_update_check.value.status = 'error'
-      maa_resource_update_check.value.message = data.message || '检查 MAA 资源更新失败'
+      maa_resource_update_check.value.message =
+        data.message || localizedMessage('settings.maa.maaResourceUpdateCheckFailed')
       return
     }
     maa_resource_current_version.value = data.current?.version ?? ''
@@ -715,8 +788,11 @@ async function check_maa_resource_update() {
       status: 'success',
       message:
         !available && maa_resource_versions_equal.value
-          ? '当前 MAA 资源已是最新版本'
-          : data.message || (available ? '发现 MAA 资源新版本' : '当前 MAA 资源已是最新版本'),
+          ? localizedMessage('settings.maa.maaResourcesAreUpToDate')
+          : data.message ||
+            (available
+              ? localizedMessage('settings.maa.newMaaResourcesAreAvailable')
+              : localizedMessage('settings.maa.maaResourcesAreUpToDate')),
       available,
       id: available ? data.check_id || '' : ''
     }
@@ -725,7 +801,8 @@ async function check_maa_resource_update() {
     if (disposed || request_id !== maa_resource_check_request_id) return
     maa_resource_update_check.value.status = 'error'
     maa_resource_update_check.value.message =
-      error.response?.data?.message || `检查 MAA 资源更新失败：${error.message}`
+      error.response?.data?.message ||
+      localizedMessage('settings.maa.maaResourceUpdateCheckFailed2', { value0: error.message })
   } finally {
     if (request_id !== maa_resource_check_request_id) schedule_auto_check_updates()
   }
@@ -740,18 +817,22 @@ async function start_maa_update() {
     id: '',
     status: 'running',
     progress: null,
-    message: '正在准备更新'
+    message: localizedMessage('settings.maa.preparingUpdate')
   }
   if (maa_path_missing.value) {
     maa_update_job.value.status = 'error'
-    maa_update_job.value.message = '请先设置 MAA 目录'
+    maa_update_job.value.message = localizedMessage('settings.maa.setTheMaaDirectoryFirst')
     return
   }
   if (maa_update_source.value === 'mirrorchyan') {
     const valid = await check_mirrorchyan_cdk()
     if (!valid) {
       maa_update_job.value.status = 'error'
-      maa_update_job.value.message = mirrorchyan_cdk_status.value.message || '请检查 Mirror酱 CDK'
+      maa_update_job.value.message = localizedMessage(
+        () =>
+          mirrorchyan_cdk_status.value.message ||
+          i18n.global.t('settings.maa.checkYourMirrorchyanCdk')
+      )
       return
     }
   }
@@ -766,7 +847,10 @@ async function start_maa_update() {
     if (!response.data.ok) {
       maa_update_job.value.status = 'error'
       maa_update_job.value.message =
-        response.data.message || `MAA ${maa_managed_operation_label.value}启动失败`
+        response.data.message ||
+        localizedMessage('settings.maa.failedToStartMaa', () => ({
+          value0: maa_managed_operation_label.value
+        }))
       return
     }
     reset_maa_update_check(false)
@@ -776,7 +860,10 @@ async function start_maa_update() {
     maa_update_job.value.status = 'error'
     maa_update_job.value.message =
       error.response?.data?.message ||
-      `MAA ${maa_managed_operation_label.value}启动失败：${error.message}`
+      localizedMessage('settings.maa.failedToStartMaa2', () => ({
+        value0: maa_managed_operation_label.value,
+        value1: error.message
+      }))
   }
 }
 
@@ -789,19 +876,22 @@ async function start_maa_resource_update() {
     id: '',
     status: 'running',
     progress: null,
-    message: '正在准备更新'
+    message: localizedMessage('settings.maa.preparingUpdate')
   }
   if (maa_path_missing.value) {
     maa_resource_update_job.value.status = 'error'
-    maa_resource_update_job.value.message = '请先设置 MAA 目录'
+    maa_resource_update_job.value.message = localizedMessage('settings.maa.setTheMaaDirectoryFirst')
     return
   }
   if (maa_resource_source.value === 'mirrorchyan' && runtime_platform.value !== 'android') {
     const valid = await check_mirrorchyan_cdk()
     if (!valid) {
       maa_resource_update_job.value.status = 'error'
-      maa_resource_update_job.value.message =
-        mirrorchyan_cdk_status.value.message || '请检查 Mirror酱 CDK'
+      maa_resource_update_job.value.message = localizedMessage(
+        () =>
+          mirrorchyan_cdk_status.value.message ||
+          i18n.global.t('settings.maa.checkYourMirrorchyanCdk')
+      )
       return
     }
   }
@@ -818,7 +908,8 @@ async function start_maa_resource_update() {
     )
     if (!response.data.ok) {
       maa_resource_update_job.value.status = 'error'
-      maa_resource_update_job.value.message = response.data.message || 'MAA 资源更新启动失败'
+      maa_resource_update_job.value.message =
+        response.data.message || localizedMessage('settings.maa.failedToStartTheMaaResourceUpdate')
       return
     }
     reset_maa_resource_update_check(false)
@@ -827,7 +918,8 @@ async function start_maa_resource_update() {
   } catch (error) {
     maa_resource_update_job.value.status = 'error'
     maa_resource_update_job.value.message =
-      error.response?.data?.message || `MAA 资源更新启动失败：${error.message}`
+      error.response?.data?.message ||
+      localizedMessage('settings.maa.failedToStartTheMaaResourceUpdate2', { value0: error.message })
   }
 }
 
@@ -878,45 +970,77 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <n-card v-if="updatesAllowed" id="maa-update" title="MAA 更新">
+  <n-card v-if="updatesAllowed" id="maa-update" :title="i18n.global.t('settings.maa.maaUpdates')">
     <template v-if="updatesAllowed && maa_update_supported">
       <div class="maa-updater">
         <div class="update-title">
-          {{ maa_update_platform_label }} {{ maa_installed ? '更新 MAA' : '下载 MAA' }}
+          {{ maa_update_platform_label }}
+          {{
+            maa_installed
+              ? i18n.global.t('settings.maa.updateMaa')
+              : i18n.global.t('settings.maa.downloadMaa')
+          }}
         </div>
         <div class="update-meta">
           <span>
-            可{{ maa_managed_operation_label }}的{{ maa_update_channel_label }}：{{
-              maa_latest_version || '尚未检查'
+            {{
+              i18n.global.t('settings.maa.latestPackage', {
+                operation: maa_managed_operation_label,
+                channel: maa_update_channel_label,
+                version: maa_latest_version || i18n.global.t('settings.maa.notChecked')
+              })
             }}
           </span>
-          <span>已安装：{{ maa_installed_version || '未知/手动安装' }}</span>
+          <span
+            >{{ i18n.global.t('settings.maa.installed')
+            }}{{
+              maa_installed_version || i18n.global.t('settings.maa.unknownManuallyInstalled')
+            }}</span
+          >
         </div>
         <div class="update-option">
-          <span class="update-option-label">自动检查更新</span>
+          <span class="update-option-label">{{
+            i18n.global.t('settings.maa.automaticallyCheckForUpdates')
+          }}</span>
           <n-switch v-model:value="maa_auto_check_update" :disabled="maa_auto_update" />
-          <span class="update-hint">进入此页面或修改本体配置后检查 MAA 本体更新。</span>
+          <span class="update-hint">{{
+            i18n.global.t('settings.maa.checkForMaaCoreUpdatesWhenThis')
+          }}</span>
         </div>
         <div class="update-option">
-          <span class="update-option-label">自动更新本体</span>
+          <span class="update-option-label">{{
+            i18n.global.t('settings.maa.automaticallyUpdateMaaCore')
+          }}</span>
           <n-switch v-model:value="maa_auto_update" />
-          <span class="update-hint">检查发现新版本时尝试更新；MAA 使用中时保留手动更新提示。</span>
+          <span class="update-hint">{{
+            i18n.global.t('settings.maa.tryUpdatingWhenANewVersionIs')
+          }}</span>
         </div>
         <div class="update-option">
-          <span class="update-option-label">{{ maa_managed_operation_label }}通道</span>
+          <span class="update-option-label">{{
+            i18n.global.t('settings.maa.operationChannel', {
+              operation: maa_managed_operation_label
+            })
+          }}</span>
           <n-radio-group v-model:value="maa_update_channel">
             <n-space>
-              <n-radio value="stable">正式版</n-radio>
-              <n-radio value="beta">公测版</n-radio>
+              <n-radio value="stable">{{ i18n.global.t('settings.maa.stable') }}</n-radio>
+              <n-radio value="beta">{{ i18n.global.t('settings.maa.beta') }}</n-radio>
             </n-space>
           </n-radio-group>
         </div>
         <div class="update-option">
-          <span class="update-option-label">{{ maa_installed ? '更新源' : '下载源' }}</span>
+          <span class="update-option-label">{{
+            maa_installed
+              ? i18n.global.t('settings.maa.updateSource')
+              : i18n.global.t('settings.maa.downloadSource')
+          }}</span>
           <n-radio-group v-model:value="maa_update_source">
             <n-space>
               <n-radio value="github">GitHub</n-radio>
-              <n-radio v-if="runtime_platform !== 'android'" value="mirrorchyan">Mirror酱</n-radio>
+              <n-radio v-if="runtime_platform !== 'android'" value="mirrorchyan">{{
+                i18n.global.t('settings.maa.mirrorchyan')
+              }}</n-radio>
             </n-space>
           </n-radio-group>
         </div>
@@ -925,7 +1049,7 @@ onUnmounted(() => {
             v-model:value="maa_mirrorchyan_token"
             type="password"
             show-password-on="mousedown"
-            placeholder="Mirror酱 CDK"
+            :placeholder="i18n.global.t('settings.maa.mirrorchyanCdk')"
             :disabled="maa_updating"
           />
           <div
@@ -936,74 +1060,91 @@ onUnmounted(() => {
             {{ mirrorchyan_cdk_message }}
           </div>
           <div class="update-hint">
-            CDK 保存在 Mower 配置文件中。
+            {{ i18n.global.t('settings.maa.theCdkIsSavedInTheMower') }}
             <n-a href="https://mirrorchyan.com/" target="_blank" rel="noopener noreferrer">
-              获取 CDK
+              {{ i18n.global.t('settings.maa.getACdk') }}
             </n-a>
           </div>
           <div v-if="maa_update_platform === 'windows'" class="update-hint">
             <template v-if="maa_installed && maa_update_arch === 'x64'">
-              更新时会向 Mirror酱传递当前版本，优先取得 Windows {{ maa_update_arch }} OTA
-              增量包；若服务端只提供完整包则自动回退。
+              {{ i18n.global.t('settings.maa.mirrorWindowsOta', { arch: maa_update_arch }) }}
             </template>
             <template v-else-if="maa_installed">
-              Windows ARM64 不提供 OTA，更新时会像 Linux
-              一样下载完整包并原子替换，同时保留用户数据。
+              {{ i18n.global.t('settings.maa.windowsArm64HasNoOtaPackageAs') }}
             </template>
             <template v-else>
-              未检测到 MAA，将按当前架构下载一份 {{ maa_update_channel_label }} Windows
-              {{ maa_update_arch }} 完整包并安装到设定目录。
+              {{
+                i18n.global.t('settings.maa.mirrorWindowsInstall', {
+                  channel: maa_update_channel_label,
+                  arch: maa_update_arch
+                })
+              }}
             </template>
           </div>
           <div v-else-if="maa_update_platform === 'android'" class="update-hint">
-            使用 MAA 官方 Android ARM64 组件，Python
-            接口由应用维护。更新后停止并重新启动手机服务生效。
+            {{ i18n.global.t('settings.maa.useTheOfficialMaaAndroidArm64Component') }}
           </div>
           <div v-else-if="maa_update_platform === 'linux'" class="update-hint">
-            {{ maa_installed ? '更新' : '下载' }}时按当前架构取得一份
-            {{ maa_update_channel_label }} Linux {{ maa_update_arch }} 完整包，其中已包含
-            MaaCore、resource 与 Python。
+            {{
+              i18n.global.t('settings.maa.mirrorLinuxPackage', {
+                operation: maa_managed_operation_label,
+                channel: maa_update_channel_label,
+                arch: maa_update_arch
+              })
+            }}
           </div>
           <div v-else-if="maa_update_platform === 'darwin'" class="update-hint">
-            {{ maa_installed ? '更新' : '下载' }}时将取得 {{ maa_update_channel_label }} macOS GUI
-            包并从 DMG 分离运行库与 resource，同时下载同版本的 Windows arm64 包提取 Python 文件夹。
+            {{
+              i18n.global.t('settings.maa.mirrorMacPackage', {
+                operation: maa_managed_operation_label,
+                channel: maa_update_channel_label,
+                arch: maa_update_arch
+              })
+            }}
           </div>
         </template>
         <div v-else-if="maa_update_platform === 'windows'" class="update-hint">
           <template v-if="maa_installed && maa_update_arch === 'x64'">
-            GitHub 更新优先使用与当前版本精确匹配的 Windows {{ maa_update_arch }} OTA
-            增量包，没有对应 OTA 时自动回退到完整包。
+            {{ i18n.global.t('settings.maa.githubWindowsOta', { arch: maa_update_arch }) }}
           </template>
           <template v-else-if="maa_installed">
-            Windows ARM64 不提供 OTA，GitHub 更新会像 Linux
-            一样下载完整包并原子替换，同时保留用户数据。
+            {{ i18n.global.t('settings.maa.windowsArm64HasNoOtaPackageGithub') }}
           </template>
           <template v-else>
-            未检测到 MAA，将通过 GitHub 按当前架构下载 {{ maa_update_channel_label }} Windows
-            {{ maa_update_arch }} 完整包并安装到设定目录。
+            {{
+              i18n.global.t('settings.maa.githubWindowsInstall', {
+                channel: maa_update_channel_label,
+                arch: maa_update_arch
+              })
+            }}
           </template>
         </div>
         <div v-else-if="maa_update_platform === 'android'" class="update-hint">
-          使用 MAA 官方 Android ARM64 组件，暂不支持 Mirror酱。Python
-          接口由应用维护。更新后停止并重新启动手机服务生效。
+          {{ i18n.global.t('settings.maa.useTheOfficialMaaAndroidArm64Component2') }}
         </div>
         <div v-else-if="maa_update_platform === 'linux'" class="update-hint">
-          GitHub {{ maa_installed ? '更新' : '下载' }}按当前架构取得一份
-          {{ maa_update_channel_label }} Linux {{ maa_update_arch }} tar.gz 完整包，其中已包含
-          MaaCore、resource 与 Python。
+          {{
+            i18n.global.t('settings.maa.githubLinuxPackage', {
+              operation: maa_managed_operation_label,
+              channel: maa_update_channel_label,
+              arch: maa_update_arch
+            })
+          }}
         </div>
         <div v-else-if="maa_update_platform === 'darwin'" class="update-hint">
-          GitHub {{ maa_installed ? '更新' : '下载' }}使用 {{ maa_update_channel_label }} macOS
-          universal runtime 包；Python API 仅从同版本 Windows arm64 包按需下载 Python 文件夹。
+          {{
+            i18n.global.t('settings.maa.githubMacPackage', {
+              operation: maa_managed_operation_label,
+              channel: maa_update_channel_label,
+              arch: maa_update_arch
+            })
+          }}
         </div>
         <div v-if="!maa_installed && maa_backup_path" class="update-hint">
-          这是 MAA 下载安装，不会作为已有 MAA 的覆盖更新流程。若目标目录已有其他内容，原目录将保存在
-          {{ maa_backup_path }}。
+          {{ i18n.global.t('settings.maa.newInstallationBackup', { path: maa_backup_path }) }}
         </div>
         <div v-else-if="maa_backup_path" class="update-hint">
-          更新成功后原目录保存在
-          {{ maa_backup_path }}；下一次成功更新时替换该备份，更新失败时保留。 cache 与 config
-          会复制到新目录继续使用。
+          {{ i18n.global.t('settings.maa.installationBackup', { path: maa_backup_path }) }}
         </div>
         <n-progress
           v-if="show_maa_update_progress && maa_update_job.progress !== null"
@@ -1014,7 +1155,7 @@ onUnmounted(() => {
           :processing="maa_updating"
         />
         <div v-if="show_maa_update_progress && maa_update_job.message" class="update-message">
-          {{ maa_update_job.message }}
+          {{ softwareUpdateMessage(maa_update_job.message) }}
           <template v-if="maa_update_job.total">
             （{{ format_bytes(maa_update_job.current) }} /
             {{ format_bytes(maa_update_job.total) }}）
@@ -1026,7 +1167,7 @@ onUnmounted(() => {
           :class="maa_update_check_message_class"
           aria-live="polite"
         >
-          {{ maa_update_check.message }}
+          {{ softwareUpdateMessage(maa_update_check.message) }}
         </div>
         <n-space>
           <n-button
@@ -1037,7 +1178,7 @@ onUnmounted(() => {
             "
             @click="check_maa_update"
           >
-            检查 MAA 更新
+            {{ i18n.global.t('settings.maa.checkForMaaUpdates') }}
           </n-button>
           <n-button
             type="primary"
@@ -1045,7 +1186,11 @@ onUnmounted(() => {
             :disabled="maa_update_action_disabled"
             @click="start_maa_update"
           >
-            {{ maa_installed ? '更新 MAA' : '下载 MAA' }}
+            {{
+              maa_installed
+                ? i18n.global.t('settings.maa.updateMaa')
+                : i18n.global.t('settings.maa.downloadMaa')
+            }}
           </n-button>
         </n-space>
         <SoftwareComponentUpdates
@@ -1061,7 +1206,12 @@ onUnmounted(() => {
       <n-divider />
       <div class="maa-updater">
         <div class="update-title">
-          {{ maa_update_platform_label }} {{ maa_installed ? '更新 MAA' : '下载 MAA' }}
+          {{ maa_update_platform_label }}
+          {{
+            maa_installed
+              ? i18n.global.t('settings.maa.updateMaa')
+              : i18n.global.t('settings.maa.downloadMaa')
+          }}
         </div>
         <div class="update-error">{{ maa_update_info_msg }}</div>
       </div>
@@ -1069,33 +1219,51 @@ onUnmounted(() => {
     <template v-if="updatesAllowed && maa_resource_update_supported">
       <n-divider v-if="maa_update_supported || maa_update_info_msg" />
       <div class="maa-updater">
-        <div class="update-title">{{ maa_update_platform_label }} 更新 MAA 资源</div>
+        <div class="update-title">
+          {{ maa_update_platform_label }} {{ i18n.global.t('settings.maa.updateMaaResources') }}
+        </div>
         <div class="update-meta">
-          <span>当前资源：{{ maa_resource_current_version || '未知' }}</span>
-          <span>最新资源：{{ maa_resource_latest_version || '尚未检查' }}</span>
+          <span
+            >{{ i18n.global.t('settings.maa.currentResources')
+            }}{{ maa_resource_current_version || i18n.global.t('settings.maa.unknown') }}</span
+          >
+          <span
+            >{{ i18n.global.t('settings.maa.latestResources')
+            }}{{ maa_resource_latest_version || i18n.global.t('settings.maa.notChecked') }}</span
+          >
         </div>
         <div v-if="maa_resource_release_note" class="update-hint">
-          最新活动资源：{{ maa_resource_release_note }}
+          {{ i18n.global.t('settings.maa.latestEventResources') }}{{ maa_resource_release_note }}
         </div>
         <div class="update-option">
-          <span class="update-option-label">自动检查资源</span>
+          <span class="update-option-label">{{
+            i18n.global.t('settings.maa.automaticallyCheckResources')
+          }}</span>
           <n-switch
             v-model:value="maa_resource_auto_check_update"
             :disabled="maa_resource_auto_update"
           />
-          <span class="update-hint">进入此页面或修改资源配置后检查 MAA 资源更新。</span>
+          <span class="update-hint">{{
+            i18n.global.t('settings.maa.checkForMaaResourceUpdatesWhenThis')
+          }}</span>
         </div>
         <div class="update-option">
-          <span class="update-option-label">自动更新资源</span>
+          <span class="update-option-label">{{
+            i18n.global.t('settings.maa.automaticallyUpdateResources')
+          }}</span>
           <n-switch v-model:value="maa_resource_auto_update" />
-          <span class="update-hint">检查发现新资源时尝试更新；MAA 本体按上方设置处理。</span>
+          <span class="update-hint">{{
+            i18n.global.t('settings.maa.tryUpdatingWhenNewResourcesAreFound')
+          }}</span>
         </div>
         <div class="update-option">
-          <span class="update-option-label">资源更新源</span>
+          <span class="update-option-label">{{
+            i18n.global.t('settings.maa.resourceUpdateSource')
+          }}</span>
           <n-radio-group v-model:value="maa_resource_source">
             <n-space>
               <n-radio value="github">GitHub</n-radio>
-              <n-radio value="mirrorchyan">Mirror酱</n-radio>
+              <n-radio value="mirrorchyan">{{ i18n.global.t('settings.maa.mirrorchyan') }}</n-radio>
             </n-space>
           </n-radio-group>
         </div>
@@ -1104,20 +1272,24 @@ onUnmounted(() => {
           v-model:value="maa_mirrorchyan_token"
           type="password"
           show-password-on="mousedown"
-          placeholder="Mirror酱 CDK"
+          :placeholder="i18n.global.t('settings.maa.mirrorchyanCdk')"
           :disabled="maa_resource_updating"
         />
         <div class="update-hint">
-          MAA 资源更新不区分正式版与公测版，使用
-          {{ maa_resource_source === 'mirrorchyan' ? 'Mirror酱' : 'GitHub' }}
-          更新源。资源包会增量合并到 resource 目录，不会替换 MaaCore 与 Python。
+          {{
+            i18n.global.t('settings.maa.resourceSourceDetails', {
+              source:
+                maa_resource_source === 'mirrorchyan'
+                  ? i18n.global.t('settings.maa.mirrorchyan')
+                  : 'GitHub'
+            })
+          }}
           <template v-if="runtime_platform === 'android'">
-            安卓版会自动准备 OCR 模型，完成后停止并重新启动手机服务生效。
+            {{ i18n.global.t('settings.maa.onAndroidOcrModelsArePreparedAutomatically') }}
           </template>
         </div>
         <div v-if="maa_resource_backup_path" class="update-hint">
-          更新前的资源保存在
-          {{ maa_resource_backup_path }}；下一次成功更新时替换该备份，失败时回滚。
+          {{ i18n.global.t('settings.maa.resourceBackup', { path: maa_resource_backup_path }) }}
         </div>
         <n-progress
           v-if="show_maa_resource_update_progress && maa_resource_update_job.progress !== null"
@@ -1131,7 +1303,7 @@ onUnmounted(() => {
           v-if="show_maa_resource_update_progress && maa_resource_update_job.message"
           class="update-message"
         >
-          {{ maa_resource_update_job.message }}
+          {{ softwareUpdateMessage(maa_resource_update_job.message) }}
           <template v-if="maa_resource_update_job.total">
             （{{ format_bytes(maa_resource_update_job.current) }} /
             {{ format_bytes(maa_resource_update_job.total) }}）
@@ -1145,7 +1317,7 @@ onUnmounted(() => {
           :class="maa_resource_update_check_message_class"
           aria-live="polite"
         >
-          {{ maa_resource_update_check.message }}
+          {{ softwareUpdateMessage(maa_resource_update_check.message) }}
         </div>
         <n-space>
           <n-button
@@ -1153,7 +1325,7 @@ onUnmounted(() => {
             :disabled="maa_resource_updating || maa_updating || maa_resource_update_checking"
             @click="check_maa_resource_update"
           >
-            检查 MAA 资源更新
+            {{ i18n.global.t('settings.maa.checkForMaaResourceUpdates') }}
           </n-button>
           <n-button
             type="primary"
@@ -1161,7 +1333,7 @@ onUnmounted(() => {
             :disabled="maa_resource_update_action_disabled"
             @click="start_maa_resource_update"
           >
-            更新 MAA 资源
+            {{ i18n.global.t('settings.maa.updateMaaResources') }}
           </n-button>
         </n-space>
       </div>
