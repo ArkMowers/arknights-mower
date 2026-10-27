@@ -67,7 +67,11 @@ def _probe_connection(label, url, proxy, download_proxy=None):
                 used_fallback = not download_proxy and selected_url != url
         result.update(
             ok=True,
-            message="默认站点 ghfast.top 回退连接成功" if used_fallback else "连接成功",
+            message=(
+                f"默认站点 {urlparse(selected_url).hostname} 回退连接成功"
+                if used_fallback
+                else "连接成功"
+            ),
         )
     except requests.ConnectTimeout:
         result["message"] = "建立连接超过 10 秒，请稍后重试或检查代理服务"

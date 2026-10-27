@@ -146,7 +146,7 @@ Mower 资源、MAA 程序、MAA 资源及软件更新的完成进度只在观察
 位于设置页下方、软件更新与资源更新卡片上方。
 
 - **全局网络代理**：用于全局网络连接，例如 `http://127.0.0.1:7897`。填写后覆盖大小写的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`，并覆盖旧的外部域名绕过规则。留空沿用进程最初的启动环境；回环地址保持直连。此设置仅作用于 Mower 进程和它启动的子进程，不修改操作系统代理设置。
-- **GitHub 下载代理站点**：例如 `https://ghfast.top/`，可自行替换为支持“代理站点/原始下载 URL”格式的站点，也可保留自定义路径前缀。用于 Mower 和 MAA 的 GitHub 安装包、资源包及原始文件（包括资源版本清单和 MAA Python 的按需下载）；清空后直接访问原始下载 URL。MAA 的官方下载 API 和 Mirror酱地址保留原始地址，通过全局网络代理连接。文件代理覆盖 `github.com`、`raw.githubusercontent.com`、`codeload.github.com` 和 `gist.githubusercontent.com`。GitHub API、源码 Git/Git LFS 不走文件加速站点，使用上面的全局网络代理。
+- **GitHub 下载代理站点**：例如 `https://ghfast.top/` 或 `https://gh-proxy.com/`，可自行替换为支持“代理站点/原始下载 URL”格式的站点，也可保留自定义路径前缀。用于 Mower 和 MAA 的 GitHub 安装包、资源包及原始文件（包括资源版本清单和 MAA Python 的按需下载）；留空时先直连，失败后按[默认下载站点顺序](../docs/subsystems/software-update.md#github-file-download-fallback)尝试。MAA 的官方下载 API 和 Mirror酱地址保留原始地址，通过全局网络代理连接。文件代理覆盖 `github.com`、`raw.githubusercontent.com`、`codeload.github.com` 和 `gist.githubusercontent.com`。GitHub API、源码 Git/Git LFS 不走文件加速站点，使用上面的全局网络代理。
 
 两项可同时启用：先把 GitHub 文件 URL 拼接到下载代理站点，再通过全局网络代理连接该站点。下载站点不会代替原有的安装检查和在线 Release SHA-256 校验；手动上传 Release 仍然离线安装，无需校验文件。
 

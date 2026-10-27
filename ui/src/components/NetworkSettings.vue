@@ -107,7 +107,8 @@ async function testConnection() {
   try {
     if (!(await save())) return
     testedRevision = revision
-    const { data } = await axios.post(`${base}/test`, {}, { headers, timeout: 65000 })
+    // Direct GitHub and four stations each allow 10s to connect and 10s to read.
+    const { data } = await axios.post(`${base}/test`, {}, { headers, timeout: 105000 })
     if (!data.ok) throw new Error(data.message)
     if (revision === testedRevision) {
       if (
@@ -190,7 +191,8 @@ onBeforeUnmount(() => {
           @blur="save"
         />
         <p id="network-github-proxy-description" class="network-description">
-          用于 Mower、MAA 的 GitHub 文件下载。留空时先直连，失败后尝试 ghfast.top。
+          用于 Mower、MAA 的 GitHub 文件下载。留空时先直连，失败后依次尝试
+          ghfast.top、gh-proxy.com、gh-proxy.org、edgeone.gh-proxy.org；填写后仅使用指定站点。
         </p>
       </n-form-item>
     </n-form>
