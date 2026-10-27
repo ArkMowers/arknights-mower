@@ -1,3 +1,4 @@
+import {restingThresholdFor} from './mowerOperatorState'
 import type {RuntimeRates,RuntimeState} from './rosterRuntime'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import type {MowerOperatorState} from './mowerOperatorState'
@@ -10,7 +11,7 @@ export function mowerPlanningWakeThreshold(data:MowerSchedulingData,op:MowerOper
  if(!op.isHigh()||op.workaholic||op.isResting()||data.isStandby(op.name)||data.busyRestingNames.has(op.name)||!op.room||['dorm','factory','train'].some(room=>op.room.startsWith(room)))return
  if(op.exhaustRequire)return op.lowerLimit+2
  if(op.group&&data.group(op.group).some(name=>data.operators[name]!.exhaustRequire))return
- const limit=op.lowerLimit+(op.upperLimit-op.lowerLimit)*data.policy.restingThreshold
+ const limit=op.lowerLimit+(op.upperLimit-op.lowerLimit)*restingThresholdFor(op,data.policy)
  return data.alpha&&op.customMoodLimit?limit:Math.min(Math.floor(limit),op.upperLimit-2)
 }
 

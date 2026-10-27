@@ -7,9 +7,16 @@ import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 
 let selectProps, updateSelection
+const sliderProps = []
 vi.mock('naive-ui', async (importOriginal) => ({
   ...(await importOriginal()),
-  NSlider: { render: () => h('input') },
+  NSlider: {
+    props: { value: Number, min: Number, max: Number },
+    setup(props) {
+      sliderProps.push({ ...props })
+      return () => h('input')
+    }
+  },
   NSelect: {
     props: { value: Array, options: Array, multiple: Boolean, filterable: Boolean, tag: Boolean },
     emits: ['update:value'],
@@ -33,6 +40,7 @@ const stores = []
 afterEach(() => {
   stores.forEach((store) => store.$dispose())
   stores.length = 0
+  sliderProps.length = 0
 })
 
 it.each([0, 19, 20, 100])('无人机使用阈值最小为 20，保留已读取的值 %s', async (limit) => {
@@ -59,12 +67,15 @@ it('从主副表及多绑组提供多选，保留已保存的组名并绑定配�
   const plan = app.runWithContext(() => usePlanStore())
   stores.push(config, plan)
   config.group_mood_gap_exclusions = ['暂未使用组']
+  config.resting_threshold = 35
   plan.plan = {
     meeting: { plans: [{ agent: 'A', group: '主表组', group_bindings: [{ group: '多绑组' }] }] }
   }
   plan.backup_plans = [{ plan: { meeting: { plans: [{ agent: 'B', group: '副表组' }] } } }]
   const html = await renderToString(app)
   expect(html).toContain('实时心情计算调控')
+  expect(sliderProps).toContainEqual({ value: 35, min: 35, max: 80 })
+  expect(html).toContain('各组心情阈值')
   expect(html).toContain('延后回班排除组')
   expect(selectProps.options.map((option) => option.value)).toEqual([
     '主表组',

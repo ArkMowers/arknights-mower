@@ -57,7 +57,7 @@ export class MowerSchedulingData {
   this.alpha=o.alpha??false;this.priorityReplacement=o.priorityReplacement??[];this.freeRoomExclusions=o.freeRoomExclusions??[];this.dormOrder=o.dormOrder??[]
   this.standbyNames=o.standbyNames??[];Object.values(o.operators).forEach(op=>{op.alpha=this.alpha})
   this.plan=o.plan;this.operators=o.operators;this.dorms=o.dorms;this.nowMicros=o.nowMicros;this.partyTime=o.partyTime;this.runOrderRooms=o.runOrderRooms??{}
-  this.policy={restingThreshold:.65,rescueThreshold:.75,experimentalDormLogic:false,...o.policy,alpha:this.alpha}
+  this.policy={restingThreshold:.65,rescueThreshold:.75,experimentalDormLogic:false,...o.policy,alpha:this.alpha,groupRestingThresholds:{...o.policy?.groupRestingThresholds}}
   this.freeRoom=o.freeRoom??false;this.powerPlantCount=o.powerPlantCount??2;this.planConditions=o.planConditions??[];this.backupGroup=o.backupGroup??'default'
   this.urgentRecoverySupporters=Object.fromEntries(Object.entries(o.urgentRecoverySupporters??{}).map(([name,supporters])=>[name,[...supporters]]))
   this.groupRecoveryReturnMicros={...o.groupRecoveryReturnMicros}

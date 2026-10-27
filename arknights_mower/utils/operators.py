@@ -256,6 +256,7 @@ def build_global_plan(
         ope_resting_priority=source_model.conf.ope_resting_priority,
         dorm_order=source_model.conf.dorm_order,
         resting_threshold=conf.resting_threshold,
+        group_resting_thresholds=conf.group_resting_thresholds,
         refresh_trading_config=source_model.conf.refresh_trading,
         refresh_drained=source_model.conf.refresh_drained,
         free_room=conf.free_room,
@@ -318,6 +319,7 @@ def build_global_plan(
                 "resting_priority_replacement", ""
             ),
             resting_threshold=conf.resting_threshold,
+            group_resting_thresholds=conf.group_resting_thresholds,
             refresh_trading_config=i["conf"]["refresh_trading"],
             refresh_drained=i["conf"]["refresh_drained"],
             free_room=conf.free_room,
@@ -2231,18 +2233,26 @@ class Operators:
             and not self._can_standby(op)
         )
 
+    def resting_threshold_for(self, op):
+        override = getattr(self.config, "resting_threshold_override", None)
+        if override is not None:
+            return override
+        thresholds = getattr(self.config, "group_resting_thresholds", {})
+        if op.group and not op.multi_group:
+            return thresholds.get(op.group, self.config.resting_threshold)
+        return self.config.resting_threshold
+
     def rescue_mood_threshold(self, op):
         """按个人心情上下限换算现有急救阈值。"""
         return op.lower_limit + (op.upper_limit - op.lower_limit) * (
-            self.config.resting_threshold
+            self.resting_threshold_for(op)
             * (self.runtime_conf or config.conf).rescue_threshold
         )
 
     def resting_mood_threshold(self, op):
-        threshold = (
-            op.lower_limit
-            + (op.upper_limit - op.lower_limit) * self.config.resting_threshold
-        )
+        threshold = op.lower_limit + (
+            op.upper_limit - op.lower_limit
+        ) * self.resting_threshold_for(op)
         return (
             threshold
             if self.custom_mood_limits(op.name) is not None

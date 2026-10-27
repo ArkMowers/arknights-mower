@@ -16,6 +16,7 @@ export interface SimulationAssumptions {
   /** Mower global configuration; absent from the plan JSON. */
   predictiveMoodControl?: boolean
   restingThreshold?: number
+  groupRestingThresholds?: Record<string, number>
   rescueThreshold?: number
   /** Mower global free_room: release recovered ordinary dorm residents. */
   freeRoom?: boolean

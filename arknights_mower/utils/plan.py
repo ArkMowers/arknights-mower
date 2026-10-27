@@ -84,6 +84,7 @@ class PlanConfig:
         resting_priority_replacement: str = "",
         free_room_exclusions: str = "",
         removed_operators: Optional[dict[str, str]] = None,
+        group_resting_thresholds: Optional[dict[str, float]] = None,
     ):
         """排班的设置
 
@@ -126,6 +127,8 @@ class PlanConfig:
             for name, limits in (operator_mood_limits or {}).items()
         }
         self.resting_threshold = resting_threshold
+        self.group_resting_thresholds = dict(group_resting_thresholds or {})
+        self.resting_threshold_override = None
         self.free_room = free_room
         # 格式为 干员名字+ 括弧 +指定房间（逗号分隔）
         # 不指定房间则默认全跑单站

@@ -3,6 +3,7 @@ import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 import { computed, inject } from 'vue'
 import { usePlanStore } from '@/stores/plan'
+import GroupRestingThresholds from './GroupRestingThresholds.vue'
 
 const { disabled } = defineProps({ disabled: Boolean })
 const mobile = inject('mobile')
@@ -13,6 +14,7 @@ const {
   drone_count_limit,
   drone_interval,
   resting_threshold,
+  group_resting_thresholds,
   version_update_resting_threshold,
   version_update_threshold_advance_hours,
   free_room,
@@ -171,21 +173,29 @@ const excludedGroupOptions = computed(() =>
           <n-slider
             v-model:value="resting_threshold"
             :step="5"
-            :min="50"
+            :min="35"
             :max="80"
             :format-tooltip="(v) => `${v}%`"
           />
-          <mower-input-number v-model:value="resting_threshold" :step="5" :min="50" :max="80">
+          <mower-input-number v-model:value="resting_threshold" :step="5" :min="35" :max="80">
             <template #suffix>%</template>
           </mower-input-number>
         </div>
+      </n-form-item>
+      <n-form-item label="各组心情阈值">
+        <GroupRestingThresholds
+          v-model="group_resting_thresholds"
+          :groups="planStore.all_groups"
+          :default-threshold="resting_threshold"
+          :disabled="disabled"
+        />
       </n-form-item>
       <n-form-item>
         <template #label>
           <span>版本维护心情阈值</span>
           <help-text>
             <div>检测到需要更新客户端的大版本维护后，在维护前指定时长内临时使用此阈值</div>
-            <div>只修改运行中的排班阈值，不覆盖上方的日常心情阈值</div>
+            <div>维护前的准备时段，所有组统一使用此阈值，结束后恢复日常及各组设置</div>
           </help-text>
         </template>
         <div class="threshold">

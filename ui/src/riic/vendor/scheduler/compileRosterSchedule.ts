@@ -36,6 +36,7 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
   assumptions.enableParty=false
   assumptions.operatorMorale = safeClone(options.operatorMorale ?? {})
   assumptions.currentOccupants = safeClone(options.currentOccupants ?? {})
+  assumptions.groupRestingThresholds = safeClone(assumptions.groupRestingThresholds === undefined ? {} : assumptions.groupRestingThresholds)
   const diagnostics: CompiledSchedule['diagnostics'] = []
   const invalid = (path: string, message: string) => diagnostics.push({ code: 'INVALID_ASSUMPTION', severity: 'error', path, message })
   if (assumptions.dormIsolation !== undefined) {
@@ -56,7 +57,8 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
   else assumptions.groupMoodGapExclusions = [...new Set(assumptions.groupMoodGapExclusions)]
   if (!Number.isFinite(assumptions.mergeIntervalMinutes)) invalid('assumptions.mergeIntervalMinutes', 'merge_interval must be finite')
   if (typeof assumptions.freeRoom !== 'boolean') invalid('assumptions.freeRoom', 'free_room must be boolean')
-  if (!Number.isFinite(assumptions.restingThreshold) || assumptions.restingThreshold! < 0 || assumptions.restingThreshold! > 1) invalid('assumptions.restingThreshold', 'Resting threshold must be within 0..1')
+  if (!assumptions.groupRestingThresholds || typeof assumptions.groupRestingThresholds !== 'object' || Array.isArray(assumptions.groupRestingThresholds) || Object.entries(assumptions.groupRestingThresholds).some(([group, value]) => !group.trim() || !Number.isFinite(value) || value < .35 || value > 1)) invalid('assumptions.groupRestingThresholds', '各组心情阈值必须为非空组名到 0.35–1 的有限数映射')
+  if (!Number.isFinite(assumptions.restingThreshold) || assumptions.restingThreshold! < .35 || assumptions.restingThreshold! > 1) invalid('assumptions.restingThreshold', 'Resting threshold must be within 0.35..1')
   if (!Number.isFinite(assumptions.initialMorale) || assumptions.initialMorale < 0 || assumptions.initialMorale > 24) invalid('assumptions.initialMorale', '初始心情必须为 0–24 的有限数')
   if (!Number.isFinite(assumptions.horizonHours) || assumptions.horizonHours <= 0) invalid('assumptions.horizonHours', '模拟时长必须为正有限数')
   if (!Number.isFinite(assumptions.initialGold) || assumptions.initialGold < 0) invalid('assumptions.initialGold', '初始赤金不能为负数')
