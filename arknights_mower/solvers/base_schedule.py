@@ -804,6 +804,105 @@ class BaseSchedulerSolver(
         log = logger.info if dependency else logger.error
         log("%s；保留原任务及时间，相关观测或安排更新后复核", reason)
 
+    def _observe_failed_arrangement_confirmation(self):
+        """确认失败后只补一次完整实读，任务阶段仍由原执行流程处理。"""
+        ordinary = {
+            TaskTypes.SHIFT_ON,
+            TaskTypes.SHIFT_OFF,
+            TaskTypes.EXHAUST_OFF,
+            TaskTypes.SELF_CORRECTION,
+            TaskTypes.RE_ORDER,
+            TaskTypes.FILL_DORM,
+            TaskTypes.RELEASE_DORM,
+            TaskTypes.NOT_SPECIFIC,
+        }
+        pending = [
+            (task, failure)
+            for task in self.tasks
+            if task.type in ordinary
+            and (failure := getattr(task, "execution_failure", None))
+            and failure.get("reason", "").startswith("干员确认")
+        ]
+        if not pending or self.scene() != Scene.INFRA_MAIN:
+            return False
+        for task, failure in pending:
+            recovery = getattr(task, "confirmation_recovery_rooms", {})
+            for room in failure.get("rooms", ()):
+                if room not in task.plan or recovery.get(room) == "consumed":
+                    continue
+                observation = SchedulerTask(
+                    task_type=task.type, task_plan={room: task.plan[room]}
+                )
+                budget = estimate_task_duration(observation, op_data=self.op_data)
+                budget += timedelta(seconds=60 if room.startswith("dorm") else 15)
+                if any(
+                    pending is not task
+                    and pending.time <= datetime.now() + budget
+                    and (
+                        pending.type
+                        in MAINTENANCE_TASK_TYPES
+                        | {
+                            TaskTypes.RUN_ORDER,
+                            TaskTypes.FIAMMETTA,
+                            TaskTypes.SKILL_UPGRADE,
+                            TaskTypes.SWAP_SUPPORT,
+                        }
+                        or getattr(pending, "strict_mood_limit", False)
+                    )
+                    for pending in task_view(
+                        self.tasks, TaskScope.DISPATCH, self.op_data
+                    )
+                ):
+                    continue
+                # 旧存档按失败原因补齐；同一任务的同一房间不因重登重新获权。
+                recovery[room] = "consumed"
+                task.confirmation_recovery_rooms = recovery
+                try:
+                    saved = save_current_state()
+                except Exception as exc:
+                    logger.error("保存确认恢复状态失败，保留原任务：%s", exc)
+                    return True
+                if saved is not True:
+                    logger.error("保存确认恢复状态失败，保留原任务")
+                    return True
+                current_task = self.task
+                self.task = task
+                complete = False
+                revision = getattr(self.op_data, "room_observations", {}).get(room, 0)
+                try:
+                    self.enter_room(room)
+                    rows = self.get_agent_from_room(room, strict_observation=True)
+                    length = RIGHT_SIDE_ROOM_CAPACITY.get(
+                        room, len(self.op_data.plan.get(room, ()))
+                    )
+                    if room == "recycle":
+                        length = getattr(self.op_data, "recycle_capacity", length)
+                    names = [row["agent"] for row in rows if row["agent"]]
+                    complete = (
+                        bool(rows)
+                        and len(rows) == length
+                        and all(row.get("observed", True) for row in rows)
+                        and len(names) == len(set(names))
+                        and getattr(self.op_data, "room_observations", {}).get(room, 0)
+                        > revision
+                    )
+                except (MowerExit, DeviceRecoveryError, SharedADBError):
+                    raise
+                except Exception as exc:
+                    logger.warning("确认结果补充实读未完成，保留原任务：%s", exc)
+                finally:
+                    if not complete:
+                        # 部分岗位的时间戳更新不能被当作完整成功实读来解除失败。
+                        failure["snapshot"] = self._task_failure_snapshot(
+                            task, failure["rooms"]
+                        )
+                    self.task = current_task
+                self.back_to_infrastructure()
+                if complete:
+                    self._resume_failed_tasks()
+                return True
+        return False
+
     def _run_order_restoration_failures(self):
         """读取仍在原队列中的原班恢复失败，保留本次失败的引用。"""
         return [
@@ -2846,6 +2945,9 @@ class BaseSchedulerSolver(
         self._refresh_observed_recovery_tasks()
         sync_replacement_checks(self)
         self._resume_failed_tasks()
+        if self._observe_failed_arrangement_confirmation():
+            self.skip()
+            return True
         if getattr(self.task, "execution_failure", None):
             self.task = None
         if not self._product_switching_enabled():
