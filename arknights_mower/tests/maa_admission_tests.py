@@ -50,6 +50,7 @@ def desktop(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(base_schedule.config, "conf", conf)
     monkeypatch.setattr(base_schedule.config, "stop_maa", threading.Event())
+    monkeypatch.setattr(base_schedule, "battle_inventory_active", threading.Event())
     monkeypatch.setattr(base_schedule, "guard_adb", Mock())
     monkeypatch.setattr(base_schedule, "save_exception", Mock())
     log = Mock()
