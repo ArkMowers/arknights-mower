@@ -5,7 +5,7 @@ export const MAX_NORMAL_MOOD_RATE_PER_HOUR = 6
 export const MAX_MOOD_RATE_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 function validMood(point) {
-  return typeof point?.y === 'number' && Number.isFinite(point.y) && point.y >= 0 && point.y <= 24
+  return typeof point?.y === 'number' && Number.isFinite(point.y) && point.y > 0 && point.y < 24
 }
 
 function pointTime(point) {
@@ -22,7 +22,7 @@ export function calculateMoodIntervals(points) {
     if (index === 0) return null
     const previous = points[index - 1]
 
-    // A charging jump should not be interpreted as natural mood recovery or consumption.
+    // Events and boundary readings remain visible but cannot establish a natural mood rate.
     if (previous?.moodEvent || current?.moodEvent) return null
     if (!validMood(previous) || !validMood(current)) return null
 
@@ -82,6 +82,7 @@ export function describeMoodEvent(point, datasetLabel) {
   const event = point?.moodEvent
   const related = point?.relatedOperator
   // Explicit backend event types override the heuristic applied to Fiammetta points.
+  if (event === 'exhausted') return '心情已耗尽'
   if (event === 'fiammetta_before') return '被肥鸭充能（交换前）'
   if (event === 'fiammetta_after') return '被肥鸭充能（交换后）'
   if (event === 'fiammetta_charge' || (datasetLabel === '菲亚梅塔' && related)) {

@@ -1915,7 +1915,9 @@ class Operators:
                 preserve=preserve_depletion_rate or mood == 0,
             )
             agent.mood_is_prediction = False
-            agent.work_rate_sample_eligible = not preserve_depletion_rate and mood > 0
+            agent.work_rate_sample_eligible = (
+                not preserve_depletion_rate and 0 < mood < 24
+            )
             if learned_rate is not None:
                 agent.depletion_rate = learned_rate
                 logger.debug(f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}")

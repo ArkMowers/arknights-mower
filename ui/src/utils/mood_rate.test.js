@@ -19,7 +19,7 @@ const point = (minutes, mood, event) => ({
 
 describe('mood history segment rates', () => {
   it('computes adjacent consumption and recovery rates from real timestamps', () => {
-    const intervals = calculateMoodIntervals([point(0, 24), point(120, 22), point(180, 23)])
+    const intervals = calculateMoodIntervals([point(0, 23), point(120, 21), point(180, 22)])
     expect(intervals).toEqual([
       null,
       { hours: 2, delta: -2, rate: 1, kind: 'consumption' },
@@ -36,6 +36,24 @@ describe('mood history segment rates', () => {
       consumptionSamples: 0,
       recoverySamples: 0
     })
+  })
+
+  it.each([0, 24])('excludes %s mood from both ends of rate intervals', (boundary) => {
+    const near = boundary === 0 ? 1 : 23
+    const points = [point(0, near), point(60, boundary), point(120, near), point(180, near - 0.5)]
+    expect(calculateMoodIntervals(points)).toEqual([
+      null,
+      null,
+      null,
+      { hours: 1, delta: -0.5, rate: 0.5, kind: 'consumption' }
+    ])
+    expect(summarizeMoodRates(points)).toEqual({
+      consumption: 0.5,
+      recovery: null,
+      consumptionSamples: 1,
+      recoverySamples: 0
+    })
+    expect(points[1].y).toBe(boundary)
   })
 
   it('excludes charge and special-event jumps, including adjacent event intervals', () => {
@@ -86,7 +104,7 @@ describe('mood history segment rates', () => {
   })
 
   it('skips intervals longer than a day when historical sampling has gaps', () => {
-    const start = { x: '2026-09-20T00:00:00+08:00', y: 24 }
+    const start = { x: '2026-09-20T00:00:00+08:00', y: 23 }
     const end = { x: '2026-09-22T00:00:00+08:00', y: 21 }
     expect(calculateMoodIntervals([start, end])).toEqual([null, null])
     expect(MAX_MOOD_RATE_INTERVAL_MS).toBe(86400000)
@@ -101,7 +119,7 @@ describe('mood history segment rates', () => {
   })
 
   it('uses duration-weighted rates rather than an arithmetic average of intervals', () => {
-    const points = [point(0, 24), point(60, 23), point(240, 19), point(300, 21)]
+    const points = [point(0, 23), point(60, 22), point(240, 18), point(300, 20)]
     const result = summarizeMoodRates(points)
     expect(result.consumption).toBeCloseTo(1.25)
     expect(result.recovery).toBeCloseTo(2)
@@ -111,7 +129,7 @@ describe('mood history segment rates', () => {
 
   it('does not mutate API-supplied historical points', () => {
     const points = Object.freeze([Object.freeze(point(0, 24)), Object.freeze(point(120, 22))])
-    expect(summarizeMoodRates(points).consumption).toBe(1)
+    expect(summarizeMoodRates(points).consumption).toBeNull()
     expect(points[0].y).toBe(24)
   })
 
@@ -138,6 +156,7 @@ describe('mood history segment rates', () => {
   })
 
   it('preserves normal related-operator annotations and avoids undefined event labels', () => {
+    expect(describeMoodEvent({ moodEvent: 'exhausted' }, '机械师')).toBe('心情已耗尽')
     expect(describeMoodEvent({ relatedOperator: '阿米娅' }, '煌')).toBe('关联干员：阿米娅')
     expect(describeMoodEvent({ relatedOperator: '煌' }, '菲亚梅塔')).toBe('被充能干员：煌')
     expect(describeMoodEvent({ moodEvent: 'fiammetta_charge' }, '菲亚梅塔')).toBe('充能记录')

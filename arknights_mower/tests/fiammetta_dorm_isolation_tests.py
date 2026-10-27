@@ -196,7 +196,7 @@ def test_fia_does_not_retain_idle_excluded_resident_in_target_slot(solver):
     assert agents[2] == target.name
 
 
-def test_plan_fia_refreshes_zero_rate_cache_before_full_mood_decision(
+def test_plan_fia_refreshes_full_mood_without_learning_rate_before_charging(
     solver, monkeypatch
 ):
     target = solver.op_data.operators["伊内丝"]
@@ -218,7 +218,7 @@ def test_plan_fia_refreshes_zero_rate_cache_before_full_mood_decision(
     solver.plan_fia()
 
     assert target.mood == 20
-    assert target.depletion_rate > 0
+    assert target.depletion_rate == 0
     assert solver.tasks[0].plan == {ROOM: [target.name, "菲亚梅塔"]}
     solver.enter_room.assert_called_once_with("meeting")
     solver.back.assert_called_once()

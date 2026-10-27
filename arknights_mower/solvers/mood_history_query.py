@@ -10,9 +10,16 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from arknights_mower.data import base_room_list
+
 MAX_OPERATORS = 16
 MAX_NAME_LENGTH = 40
 MAX_SAMPLES_PER_OPERATOR = 600
+_WORKING_ROOMS_SQL = ", ".join(
+    "'" + room.replace("'", "''") + "'"
+    for room in base_room_list
+    if not room.startswith("dorm")
+)
 
 # Both curve queries use alias a; raw observations remain available to scheduling.
 FIAMMETTA_CURVE_FILTER = """
@@ -25,6 +32,32 @@ FIAMMETTA_CURVE_FILTER = """
           AND julianday(charge.current_time) > julianday(a.current_time, '-10 minutes')
     ))
 """
+
+
+def mood_curve_filter(columns):
+    """共用曲线过滤；零值仅展示工作设施切换或已确认耗尽。"""
+    retained = ["a.mood <> 0"]
+    if "mood_event" in columns:
+        retained.append("a.mood_event = 'exhausted'")
+    if "current_room" in columns:
+        source = "a.agent_current_room" if "agent_current_room" in columns else "NULL"
+        previous_room = f"""
+            CASE WHEN a.mood = 0 AND COALESCE({source}, '') = '' THEN (
+                SELECT previous.current_room FROM agent_action previous
+                WHERE previous.name = a.name
+                  AND previous.current_time <= a.current_time
+                  AND (previous.current_time < a.current_time OR previous.rowid < a.rowid)
+                ORDER BY previous.current_time DESC, previous.rowid DESC LIMIT 1
+            ) ELSE {source} END
+        """
+        retained.append(
+            f"""
+            (a.current_room IN ({_WORKING_ROOMS_SQL})
+             AND NULLIF(({previous_room}), a.current_room) IN ({_WORKING_ROOMS_SQL}))
+            """
+        )
+    charging = FIAMMETTA_CURVE_FILTER if "mood_event" in columns else "1"
+    return f"({' OR '.join(retained)}) AND {charging}"
 
 
 def _open_history(database: str | Path):
@@ -127,7 +160,7 @@ def selected_mood_series(database: str | Path, names: list[str]) -> list[dict]:
         }
         related_column = "related_operator" if "related_operator" in columns else "NULL"
         event_column = "mood_event" if "mood_event" in columns else "NULL"
-        curve_filter = FIAMMETTA_CURVE_FILTER if "mood_event" in columns else "1"
+        curve_filter = mood_curve_filter(columns)
         result = []
         for name in names:
             rows = connection.execute(
@@ -136,7 +169,6 @@ def selected_mood_series(database: str | Path, names: list[str]) -> list[dict]:
                        {event_column} AS event
                 FROM agent_action a
                 WHERE name = ? AND "current_time" IS NOT NULL AND mood IS NOT NULL
-                  AND mood <> 0
                   AND {curve_filter}
                 ORDER BY "current_time" DESC, rowid DESC LIMIT ?
                 """,
