@@ -726,7 +726,7 @@ def test_manufacture_execution_below_loss_threshold_uses_no_drone():
     solver._tap_product_point.assert_called_once_with((480, 864))
 
 
-def test_execution_recheck_defers_before_acceleration_with_measured_rate():
+def test_execution_recheck_accelerates_before_yielding_natural_remainder():
     solver = acceleration_solver(available_drones=10, current_total=4640)
     observation = {
         "room": "room_1_2",
@@ -739,12 +739,12 @@ def test_execution_recheck_defers_before_acceleration_with_measured_rate():
         "production_rate_observed": True,
     }
 
-    with pytest.raises(base.ProductSwitchDeferred) as deferred:
-        solver._execute_manufacture_acceleration(observation)
+    remaining = solver._execute_manufacture_acceleration(observation)
 
-    assert 48 <= (deferred.value.ready_at - datetime.now()).total_seconds() <= 49
-    solver._confirm_drone_count.assert_not_called()
-    solver._tap_product_point.assert_called_once_with((480, 864))
+    assert remaining == 100
+    assert observation["remaining_after_acceleration"] == 100
+    solver._confirm_drone_count.assert_called_once_with(3)
+    solver._tap_product_point.assert_not_called()
 
 
 def test_manufacture_execution_at_loss_threshold_uses_one_drone():
@@ -2499,8 +2499,9 @@ def test_accelerated_room_boundary_survives_later_room_failure_and_restart():
 
     solver._execute_manufacture_acceleration = MagicMock(side_effect=execute_first_only)
     solver._change_manufacture_product = MagicMock()
-    with pytest.raises(base.RecognizeError):
+    with pytest.raises(base.ProductSwitchFailed) as failed:
         solver.switch_base_products(tasks)
+    assert failed.value.rooms == ("room_2_2",)
     assert tasks[0].product_switch_progress["room_1_2"]["accelerated"] is True
 
     restored = pickle.loads(pickle.dumps(tasks))
@@ -2887,7 +2888,7 @@ def test_trade_verification_failure_keeps_batch_tasks():
         side_effect=base.RecognizeError("订单切换校验失败")
     )
 
-    with pytest.raises(base.RecognizeError):
+    with pytest.raises(base.ProductSwitchFailed):
         solver.switch_base_products([task])
 
     assert solver.tasks == [task]
@@ -3203,7 +3204,7 @@ def test_product_switch_retry_verifies_queue_when_recipe_already_matches(verifie
         solver.switch_base_products([task])
         assert solver.tasks == []
     else:
-        with pytest.raises(base.RecognizeError, match="制造站生产份数验证失败"):
+        with pytest.raises(base.ProductSwitchFailed, match="制造站生产份数验证失败"):
             solver.switch_base_products([task])
         assert solver.tasks == [task]
     solver._select_manufacture_product.assert_not_called()
