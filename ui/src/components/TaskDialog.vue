@@ -296,6 +296,11 @@ const level_list = [
     preset="card"
     transform-origin="center"
     :style="{ width: isLogPage ? 'auto' : 'max-content', maxWidth: '90vw' }"
+    :content-style="
+      !isLogPage || task_type === '空任务'
+        ? 'display: flex; flex-direction: column; overflow: hidden'
+        : undefined
+    "
   >
     <template #header>
       <div v-if="isLogPage" class="task_row task_header" style="width: auto">
@@ -370,10 +375,7 @@ const level_list = [
       </div>
       <template v-else>任务</template>
     </template>
-    <n-scrollbar
-      v-if="!isLogPage || task_type == '空任务'"
-      style="max-height: 80vh; margin-top: 8px"
-    >
+    <div v-if="!isLogPage || task_type == '空任务'" class="task-list-scroll">
       <n-dynamic-input
         v-model:value="task_list"
         :on-create="new_task"
@@ -431,7 +433,7 @@ const level_list = [
           word-wrap
         />
       </n-card>
-    </n-scrollbar>
+    </div>
     <template v-if="isLogPage">
       <template v-if="isMaintenance">
         <div class="task_row">
@@ -536,7 +538,16 @@ const level_list = [
 </template>
 
 <style scoped lang="scss">
+.task-list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 80vh;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
 .button_row {
+  flex: none;
   margin-top: 8px;
   flex-wrap: wrap;
 }

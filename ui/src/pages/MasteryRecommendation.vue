@@ -2394,7 +2394,7 @@ async function loadOperators() {
   background: var(--gp-surface-2);
 }
 
-.growth-modal :deep(.n-card__content) {
+:global(.growth-modal > .n-card-content) {
   padding: 0;
 }
 
@@ -2406,9 +2406,6 @@ async function loadOperators() {
 
 .growth-modal__body {
   padding: 18px 24px;
-  max-height: min(66dvh, 720px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .growth-modal__head h2 {

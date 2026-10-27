@@ -55,6 +55,7 @@ watch(
     :title="title"
     class="help-dialog"
     :style="dialogStyle"
+    :content-style="section === 'changelog' ? { maxHeight: '65dvh' } : undefined"
     @update:show="(show) => !show && emit('update:section', '')"
   >
     <template v-if="section === 'about'">
@@ -101,8 +102,6 @@ watch(
 }
 
 .help-changelog {
-  max-height: 65dvh;
-  overflow: auto;
   overflow-wrap: anywhere;
   line-height: 1.7;
   user-select: text;

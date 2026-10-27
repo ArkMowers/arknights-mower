@@ -178,25 +178,34 @@
                   preset="card"
                   style="width: min(720px, calc(100vw - 32px))"
                   title="版本更新"
+                  content-style="display: flex; flex-direction: column; overflow: hidden"
                   :mask-closable="false"
                   :close-on-esc="false"
                   closable
                   @close="handleUpdateNoticeAck"
                 >
-                  <div style="font-size: 18px; font-weight: 600">
+                  <div style="flex: none; font-size: 18px; font-weight: 600">
                     {{ `已更新到 ${updateNotice.current_version}` }}
                   </div>
                   <div
                     v-if="updateNotice.previous_version"
-                    style="margin-top: 8px; color: var(--n-text-color-3)"
+                    style="flex: none; margin-top: 8px; color: var(--n-text-color-3)"
                   >
                     {{ `从 ${updateNotice.previous_version} 更新` }}
                   </div>
                   <div
-                    style="margin-top: 16px; max-height: 50vh; overflow: auto; line-height: 1.6"
+                    style="
+                      min-height: 0;
+                      margin-top: 16px;
+                      max-height: 50vh;
+                      overflow: auto;
+                      line-height: 1.6;
+                    "
                     v-html="renderedChangelog"
                   ></div>
-                  <div style="margin-top: 20px; display: flex; justify-content: flex-end">
+                  <div
+                    style="flex: none; margin-top: 20px; display: flex; justify-content: flex-end"
+                  >
                     <n-button type="primary" @click="handleUpdateNoticeAck">我知道了</n-button>
                   </div>
                 </n-modal>
