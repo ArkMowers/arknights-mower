@@ -67,6 +67,7 @@
           :materials-error="materialsError"
           :material-stats="planMaterialStats"
           :recommended="recommendedCards"
+          :pick-sort="pickSort"
           :roster-stats="rosterStats"
           :workshop-status-revision="workshopStatusRevision"
           :workshop-loading="workshopLoading"
@@ -81,6 +82,7 @@
           @generate-crafting="autoWorkshop"
           @configure-chips="configureChipFarming"
           @refresh-materials="refreshT3Summary"
+          @update:pick-sort="pickSort = $event"
         />
 
         <div
@@ -140,6 +142,7 @@
             :starting-mastery="startingMastery"
             :batch-adding="batchAdding"
             :survey="surveyFor(selectedOperatorBase || selectedOperator)"
+            :completed-skills="selectedCompletedSkills"
             :planned-count="selectedPlannedCount"
             @close="closeOperator"
             @retry="loadOperatorDetail(expandedOperator[0])"
@@ -350,6 +353,13 @@
                 </HelpText>
               </div>
               <div class="route-buffers">
+                <p class="route-buffers__caption">
+                  换人缓冲时间（分钟）
+                  <HelpText label="换人缓冲说明">
+                    协助位换人时预留的安全时间，默认 10
+                    分钟；中枢加成与专二未继承减半等场景共用这一设置。
+                  </HelpText>
+                </p>
                 <label v-for="item in masteryBufferFields" :key="item.key" class="route-buffer">
                   <span>{{ item.label }}</span>
                   <mower-input-number
@@ -361,12 +371,9 @@
                     "
                     :min="0"
                     :max="60"
-                    clearable
                     size="small"
-                    style="width: 110px"
-                  >
-                    <template #suffix>分钟</template>
-                  </mower-input-number>
+                    style="width: 116px; flex: none"
+                  />
                 </label>
               </div>
             </section>
@@ -592,6 +599,15 @@ import {
 } from '@/utils/masteryRoute'
 import { render_op_option, render_op_label } from '@/utils/op_select'
 import { defaultSurveyFilters, operatorSurvey } from '@/utils/growthSurvey'
+import {
+  hasRemainingTarget,
+  operatorSkillRows,
+  recommendedTarget,
+  remainingModuleRate,
+  remainingSkillRate,
+  sortRecommendedCards,
+  surveySkillRate
+} from '@/growth/growthRecommendation'
 import {
   selectedRecommendation,
   goalSelected,
@@ -1280,8 +1296,8 @@ const masterySettings = reactive({
 const masteryBufferFields = computed(() =>
   autoCentralBonus.value
     ? [
-        { key: 'central', label: '中枢加成 +5%' },
-        { key: 'central_unhalved_m2', label: '中枢加成 +5%，专二未继承减半' }
+        { key: 'central', label: '有中枢加成' },
+        { key: 'central_unhalved_m2', label: '有中枢加成 · 专二未继承减半' }
       ]
     : [{ key: 'no_central', label: '无中枢加成' }]
 )
@@ -1563,8 +1579,14 @@ const displayList = computed(() => {
       (!filterProfession.value.length || filterProfession.value.includes(profMap[op.profession])) &&
       surveyFor(op).visible
   )
+  const byRate = (left, right, rateOf) =>
+    (rateOf(right) ?? -1) - (rateOf(left) ?? -1) ||
+    right.rarity - left.rarity ||
+    left.name.localeCompare(right.name, 'zh-CN')
   if (surveyFilters.value.sort === 'recommendation')
-    list.sort((a, b) => surveyFor(b).score - surveyFor(a).score)
+    list.sort((left, right) => byRate(left, right, (op) => remainingSkillRate(op, surveyFor(op))))
+  if (surveyFilters.value.sort === 'module')
+    list.sort((left, right) => byRate(left, right, (op) => remainingModuleRate(op, surveyFor(op))))
   if (surveyFilters.value.sort === 'level')
     list.sort((a, b) => b.elite - a.elite || b.level - a.level)
   return list
@@ -2064,48 +2086,27 @@ const rosterStats = computed(() => {
   }
 })
 
-const recommendedCards = computed(() =>
-  store.recommendations
+// 值得练排序条件：默认按剩余专三率，可切剩余模组解锁率、稀有度、等级。
+const pickSort = ref('mastery')
+
+const recommendedCards = computed(() => {
+  const cards = store.recommendations
     .map((op) => {
       const survey = surveyFor(op) || {}
-      const skillRates = (survey.skills || [])
-        .map((skill) => skill.rate)
-        .filter((rate) => rate !== null && rate !== undefined)
-      const surveyScore = skillRates.length
-        ? Math.max(...skillRates)
-        : Math.max(
-            0,
-            ...(survey.modules || []).map((module) => module.rate || 0),
-            survey.elite2 || 0
-          )
-      const plannedCount = plannedCountFor(op)
-      const bestRecommendation =
-        (op.recommendations || [])
-          .filter((rec) => Number(rec.current_level) < 3)
-          .sort((left, right) => {
-            const leftHighlight = survey.skillHighlights?.includes(left.skill_index) ? 1 : 0
-            const rightHighlight = survey.skillHighlights?.includes(right.skill_index) ? 1 : 0
-            return (
-              rightHighlight - leftHighlight ||
-              Number(left.current_level) - Number(right.current_level)
-            )
-          })[0] || null
+      const target = recommendedTarget(op, survey)
       return {
         operator: op,
         survey,
-        planned: plannedCount > 0,
-        plannedCount,
-        recommendation: bestRecommendation,
-        score: surveyScore,
-        hasWork:
-          (op.recommendations || []).some((rec) => Number(rec.current_level) < 3) ||
-          (op.modules || []).some((module) => module.current_level < module.max_level)
+        target,
+        planned: false,
+        plannedCount: plannedCountFor(op),
+        score: target?.rate ?? null
       }
     })
-    .filter((card) => card.hasWork && !card.planned)
-    .sort((left, right) => right.score - left.score || right.operator.rarity - left.operator.rarity)
-    .slice(0, 4)
-)
+    // 完成度只看本地剩余目标：已专三技能不再作为上榜理由；全部练完或已在计划中的干员不出现。
+    .filter((card) => hasRemainingTarget(card.operator) && !card.plannedCount)
+  return sortRecommendedCards(cards, pickSort.value).slice(0, 4)
+})
 
 const operatorCards = computed(() =>
   pagedOperators.value.map((op) => ({
@@ -2160,6 +2161,16 @@ const selectedSkillRows = computed(() => {
       hasSupport: Boolean(status?.id)
     }
   })
+})
+
+// 已专三技能在档案里保留只读行，让顶部聚合数字与技能名对得上号。
+const selectedCompletedSkills = computed(() => {
+  const base = selectedOperatorBase.value
+  if (!base) return []
+  const survey = surveyFor(base)
+  return operatorSkillRows(base)
+    .filter((row) => row.current >= 3)
+    .map((row) => ({ ...row, rate: surveySkillRate(survey, row.index) }))
 })
 
 const selectedModuleRows = computed(() => {
@@ -2600,9 +2611,19 @@ async function loadOperators() {
 
 .route-buffers {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px;
   margin-top: 12px;
+}
+
+.route-buffers__caption {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  color: var(--gp-muted);
+  font-size: 11px;
 }
 
 .route-buffer {

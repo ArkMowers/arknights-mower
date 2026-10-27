@@ -1,11 +1,12 @@
 <script setup>
 import { computed } from 'vue'
-import { NButton, NIcon } from 'naive-ui'
+import { NButton, NIcon, NSelect } from 'naive-ui'
 import ArrowForwardOutline from '@vicons/ionicons5/es/ArrowForwardOutline'
 import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline'
 import WorkshopStatus from '@/components/WorkshopStatus.vue'
 import GrowthOperatorCard from './GrowthOperatorCard.vue'
 import { materialIcon, planStatusLabel } from './growthFormatters'
+import { RECOMMEND_SORT_OPTIONS } from './growthRecommendation'
 
 const props = defineProps({
   goalCount: { type: Number, default: 0 },
@@ -22,6 +23,7 @@ const props = defineProps({
     default: () => ({ ready: 0, total: 0, missing: 0, craftable: 0, percent: 0 })
   },
   recommended: { type: Array, default: () => [] },
+  pickSort: { type: String, default: 'mastery' },
   rosterStats: {
     type: Object,
     default: () => ({ owned: 0, elite2: 0, masteries: 0, modules: 0 })
@@ -40,7 +42,8 @@ const emit = defineEmits([
   'add-target',
   'generate-crafting',
   'configure-chips',
-  'refresh-materials'
+  'refresh-materials',
+  'update:pick-sort'
 ])
 
 const RESOURCE_IDS = new Set(['4001', 'growth_exp', '4006', '32001'])
@@ -297,12 +300,22 @@ function formatCount(value) {
           <div class="gp-overview__pick-head">
             <span class="gp-kicker">Suggested next</span>
             <h2 id="growth-pick-title" class="gp-section-head__title">值得练</h2>
-            <p class="gp-overview__pick-sub">按一图流公开样本比例排序，点开档案核对材料与前置。</p>
+            <p class="gp-overview__pick-sub">按剩余专三率排序，点开档案核对材料与前置。</p>
           </div>
-          <button type="button" class="gp-link" @click="emit('open-operators')">
-            全部干员
-            <n-icon :component="ArrowForwardOutline" :size="14" />
-          </button>
+          <div class="gp-overview__pick-actions">
+            <n-select
+              size="small"
+              class="gp-overview__pick-sort"
+              :value="pickSort"
+              :options="RECOMMEND_SORT_OPTIONS"
+              aria-label="值得练排序"
+              @update:value="emit('update:pick-sort', $event)"
+            />
+            <button type="button" class="gp-link" @click="emit('open-operators')">
+              全部干员
+              <n-icon :component="ArrowForwardOutline" :size="14" />
+            </button>
+          </div>
         </header>
 
         <div v-if="recommended.length" class="gp-overview__cards">
@@ -715,6 +728,17 @@ function formatCount(value) {
   margin: 0;
   color: var(--gp-muted);
   font-size: 11.5px;
+}
+
+.gp-overview__pick-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.gp-overview__pick-sort {
+  width: 148px;
 }
 
 .gp-overview__cards {

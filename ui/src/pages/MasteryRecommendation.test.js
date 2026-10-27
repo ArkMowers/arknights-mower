@@ -786,6 +786,78 @@ describe('养成工作区派生数据', () => {
     ])
   })
 
+  it('推荐卡只按未练完技能算比例，已专三技能不再作为推荐理由', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    store.recommendations = [
+      {
+        char_id: 'char_a',
+        name: '圣聆初雪',
+        rarity: 6,
+        elite: 2,
+        level: 60,
+        skill_levels: [0, 3, 0],
+        recommendations: [
+          { skill_index: 0, skill_name: '一技能', current_level: 0 },
+          { skill_index: 2, skill_name: '三技能', current_level: 0 }
+        ],
+        modules: []
+      }
+    ]
+    page.survey.value = {
+      operators: [
+        {
+          charId: 'char_a',
+          own: 100,
+          skill1: { 0: 94, 3: 6 },
+          skill2: { 0: 5, 3: 95 },
+          skill3: { 0: 40, 3: 60 }
+        }
+      ]
+    }
+    const card = page.recommendedCards.value[0]
+    expect(card.target).toMatchObject({ kind: 'skill', index: 2, rate: 60 })
+    expect(card.score).toBe(60)
+  })
+
+  it('值得练可按剩余模组解锁率重新排序', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    store.recommendations = [
+      {
+        char_id: 'char_module',
+        name: '模组高',
+        rarity: 6,
+        skill_levels: [0],
+        recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 0 }],
+        modules: [{ id: 'mod_x', type: 'EXE-X', current_level: 0, max_level: 3 }]
+      },
+      {
+        char_id: 'char_skill',
+        name: '专三率高',
+        rarity: 6,
+        skill_levels: [0],
+        recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 0 }],
+        modules: []
+      }
+    ]
+    page.survey.value = {
+      operators: [
+        { charId: 'char_module', own: 100, skill1: { 0: 70, 3: 30 }, modX: { 0: 10, 1: 90 } },
+        { charId: 'char_skill', own: 100, skill1: { 0: 40, 3: 60 } }
+      ]
+    }
+    expect(page.recommendedCards.value.map((card) => card.operator.char_id)).toEqual([
+      'char_skill',
+      'char_module'
+    ])
+    page.pickSort.value = 'module'
+    expect(page.recommendedCards.value.map((card) => card.operator.char_id)).toEqual([
+      'char_module',
+      'char_skill'
+    ])
+  })
+
   it('详情派生技能目标、模组目标与基础技能状态', () => {
     const page = setup()
     const store = useMasteryStore()
