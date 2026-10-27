@@ -98,7 +98,7 @@ const activeRate = computed(() => {
 })
 const activeRateLabel = computed(() => (activeModule.value ? '解锁率' : '专三率'))
 const activeRateTitle = computed(() => {
-  if (activeRate.value === null || activeRate.value === undefined) return '暂无公开样本'
+  if (activeRate.value === null || activeRate.value === undefined) return '暂无样本'
   if (activeModule.value && moduleTarget.value) {
     return moduleTarget.value.name + ' · 一图流公开模组解锁率 ' + formatRate(activeRate.value)
   }
@@ -204,7 +204,7 @@ function stopKeydownPropagation(event) {
       v-if="supportsMastery"
       class="growth-opcard__progress"
       role="group"
-      aria-label="技能专精进度"
+      aria-label="技能与模组目标"
     >
       <button
         v-for="row in skillRows"
@@ -466,7 +466,7 @@ function stopKeydownPropagation(event) {
   white-space: nowrap;
 }
 
-/* 固定页脚高度：计划中印章与专三率/无公开样本互换时不改变卡片高度。 */
+/* 固定页脚高度：计划中印章与专三率/解锁率/暂无样本互换时不改变卡片高度。 */
 .growth-opcard__foot {
   display: flex;
   align-items: center;

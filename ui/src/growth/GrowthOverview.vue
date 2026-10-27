@@ -300,9 +300,7 @@ function formatCount(value) {
           <div class="gp-overview__pick-head">
             <span class="gp-kicker">Suggested next</span>
             <h2 id="growth-pick-title" class="gp-section-head__title">值得练</h2>
-            <p class="gp-overview__pick-sub">
-              按剩余养成目标的公开样本比例排序，点开档案核对材料与前置。
-            </p>
+            <p class="gp-overview__pick-sub">按剩余专三率排序，点开档案核对材料与前置。</p>
           </div>
           <div class="gp-overview__pick-actions">
             <n-select

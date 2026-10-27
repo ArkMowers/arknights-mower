@@ -105,11 +105,8 @@ export function recommendationScore(operator, survey) {
 }
 
 // 只要还有没练完的目标就保留在值得练里；公开样本缺失时排在有样本的干员之后。
-export function hasRemainingTarget(operator, survey) {
-  return (
-    remainingSkillTargets(operator, survey).length > 0 ||
-    remainingModuleTargets(operator, survey).length > 0
-  )
+export function hasRemainingTarget(operator) {
+  return remainingSkillTargets(operator).length > 0 || remainingModuleTargets(operator).length > 0
 }
 
 function cardRate(card, kind) {

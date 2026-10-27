@@ -141,18 +141,12 @@ describe('推荐目标', () => {
 
   it('hasRemainingTarget 只看本地剩余目标，不依赖公开样本', () => {
     expect(
-      hasRemainingTarget(
-        operator({ recommendations: [{ skill_index: 0, current_level: 1 }] }),
-        survey()
-      )
+      hasRemainingTarget(operator({ recommendations: [{ skill_index: 0, current_level: 1 }] }))
     ).toBe(true)
     expect(
-      hasRemainingTarget(
-        operator({ modules: [{ id: 'm', current_level: 0, max_level: 3 }] }),
-        survey()
-      )
+      hasRemainingTarget(operator({ modules: [{ id: 'm', current_level: 0, max_level: 3 }] }))
     ).toBe(true)
-    expect(hasRemainingTarget(operator({ skill_levels: [3] }), survey())).toBe(false)
+    expect(hasRemainingTarget(operator({ skill_levels: [3] }))).toBe(false)
   })
 
   it('全部练完或没有公开样本时没有推荐目标', () => {
@@ -232,6 +226,12 @@ describe('剩余比例与排序', () => {
       'module',
       'rarity',
       'level'
+    ])
+    expect(RECOMMEND_SORT_OPTIONS.map((option) => option.label)).toEqual([
+      '剩余专三率',
+      '剩余模组解锁率',
+      '稀有度',
+      '等级'
     ])
   })
 })

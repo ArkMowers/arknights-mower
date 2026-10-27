@@ -2104,7 +2104,7 @@ const recommendedCards = computed(() => {
       }
     })
     // 完成度只看本地剩余目标：已专三技能不再作为上榜理由；全部练完或已在计划中的干员不出现。
-    .filter((card) => hasRemainingTarget(card.operator, card.survey) && !card.plannedCount)
+    .filter((card) => hasRemainingTarget(card.operator) && !card.plannedCount)
   return sortRecommendedCards(cards, pickSort.value).slice(0, 4)
 })
 
