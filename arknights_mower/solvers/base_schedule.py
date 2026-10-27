@@ -2934,7 +2934,21 @@ class BaseSchedulerSolver(
                 return True
         if (
             getattr(self, "_emergency_startup_pending", False)
-            and (self.task is None or not self._emergency_continuation_waiting())
+            and not (
+                self._emergency_continuation_checkpoint() is not None
+                and self.task is not None
+                and not self.task.plan
+                and self.task.type
+                in MANUAL_TASK_TYPES
+                | MAINTENANCE_TASK_TYPES
+                | {
+                    TaskTypes.CLUE,
+                    TaskTypes.CLUE_PARTY,
+                    TaskTypes.DEPOT,
+                    TaskTypes.FURNITURE,
+                    TaskTypes.MAA_MALL,
+                }
+            )
         ) and not (
             getattr(self.task, "strict_mood_limit", False)
             or getattr(self.task, "initial_fia", False)
@@ -2946,6 +2960,9 @@ class BaseSchedulerSolver(
                 and getattr(self.task, "type", None) == TaskTypes.SWAP_SUPPORT
             )
         ):
+            if self.task is not None:
+                # 保留旧安排供实读后重算，但不让它反复派发或挡住独立任务。
+                self.task.startup_observation_pending = True
             self.skip()
             return True
         if self.task is not None:

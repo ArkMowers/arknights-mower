@@ -186,6 +186,7 @@ def task_view(tasks, scope, op_data=None):
             task
             for task in tasks
             if not getattr(task, "execution_failure", None)
+            and not getattr(task, "startup_observation_pending", False)
             and not getattr(task, "maintenance_preparation_pending", False)
             and id(task) not in blocked
         ]

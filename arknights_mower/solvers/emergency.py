@@ -339,6 +339,12 @@ class EmergencyRecoveryMixin:
         if not save_current_state():
             raise RuntimeError("自动救急运行状态保存失败，未安排临时换班")
 
+    def _finish_emergency_startup(self):
+        """关闭启动派发门控，保存完成状态前一并释放旧任务的观察依赖。"""
+        self._emergency_startup_pending = False
+        for task in self.tasks:
+            task.__dict__.pop("startup_observation_pending", None)
+
     def _emergency_startup(self):
         """初始化检查一次；恢复已有批次先核对实际驻员及未完成安排。"""
         if getattr(self, "emergency_state", None) is not None:
@@ -359,7 +365,7 @@ class EmergencyRecoveryMixin:
             self._emergency_replan_releases()
         protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         if self._emergency_active() and self.emergency_state.get("handoff_observing"):
-            self._emergency_startup_pending = False
+            self._finish_emergency_startup()
             self._emergency_defer_read()
             return
         if not hasattr(self, "_initial_mood_refresh_rooms"):
@@ -387,10 +393,10 @@ class EmergencyRecoveryMixin:
                 for room in self.op_data.plan
                 if not room.startswith("dorm")
             }
-            self._emergency_startup_pending = False
+            self._finish_emergency_startup()
             return
         self.backup_plan_solver()
-        self._emergency_startup_pending = False
+        self._finish_emergency_startup()
         reconciled = self._reconcile_initial_staffing()
         self._emergency_save()
         if reconciled or getattr(self, "_initial_staffing_pending", False):

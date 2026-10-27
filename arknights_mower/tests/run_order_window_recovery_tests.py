@@ -273,8 +273,37 @@ def test_post_swap_miss_keeps_failed_restoration_until_actual_roster_is_restored
     base.send_message.assert_called_once_with("检测到漏单！", level="WARNING")
 
     solver.choose_agent.side_effect = choose
-    clock.current += timedelta(minutes=2)
-    solver.task = order
+    original_time = order.time
+    failure = order.execution_failure
+    choices = solver.choose_agent.call_count
+    for _ in range(3):
+        clock.current += timedelta(minutes=2)
+        solver._resume_failed_tasks()
+        assert solver.tasks == [order]
+        assert order.execution_failure is failure
+        assert order.time == original_time
+        assert order.plan == {ROOM: ["鸿雪"]}
+        assert solver.find_next_task() is None
+        assert solver.choose_agent.call_count == choices
+
+    unrelated = SchedulerTask(clock.now(), task_type=TaskTypes.DEPOT)
+    solver.tasks.append(unrelated)
+    solver.仓库扫描 = MagicMock()
+    solver.task = solver.find_next_task()
+    assert solver.task is unrelated
+    solver.infra_main()
+    solver.仓库扫描.assert_called_once()
+    assert solver.tasks == [order]
+    assert order.execution_failure is failure
+    assert order.time == original_time
+    assert solver.choose_agent.call_count == choices
+
+    solver._reconcile_room_observation(ROOM, [{"agent": "但书"}])
+    solver._resume_failed_tasks()
+    assert not getattr(order, "execution_failure", None)
+    assert order.time == original_time
+    solver.task = solver.find_next_task()
+    assert solver.task is order
     solver.infra_main()
     assert order not in solver.tasks
     assert not getattr(order, "run_order_restore_pending", False)
