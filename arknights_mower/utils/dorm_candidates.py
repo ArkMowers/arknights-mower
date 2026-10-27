@@ -93,11 +93,26 @@ def full_dorm_candidate(op_data, name, *, estimates=None, now=None):
     return mood is not None and mood >= 24
 
 
+def unstarted_product_wait(task):
+    """仅因切表依赖等待、尚未执行换人或切产物的任务。"""
+    return bool(getattr(task, "product_shift_waiting", False)) and not any(
+        getattr(task, flag, False)
+        for flag in (
+            "backup_shift_active",
+            "product_shift_locked",
+            "product_switched_before_arrangement",
+            "derived_correction_started",
+            "group_shift_expected",
+            "arrangement_retry_room",
+        )
+    )
+
+
 def retained_task_reservations(
     op_data, tasks, *, current_task=None, returning_groups=()
 ):
     """保留执行预约目标、当前驻员和整组成员，规划与纠错共用。"""
-    tasks = list(tasks)
+    tasks = [task for task in tasks if not unstarted_product_wait(task)]
     if returning_groups:
         from arknights_mower.utils.retained_recovery import retained_recovery_may_return
 
@@ -179,13 +194,23 @@ def retained_task_reservations(
         for group in groups
         for name in getattr(op_data, "groups", {}).get(group, ())
     )
-    # 原班仍在其他工作站时，预约其姓名与恢复目标，不冻结释放它的源岗位。
+    # 目标干员仍在其他工作站时保留姓名和目标岗位，允许源岗位先释放。
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
     restoration_sources = {
         (name, op.current_room, op.current_index)
         for task in tasks
         if task is not current_task
-        and getattr(task, "run_order_restore_pending", False)
-        for room, row in task.run_order_original_roster.items()
+        for room, row in (
+            task.plan
+            if getattr(task, "product_shift_locked", False)
+            or getattr(task, "backup_shift_active", False)
+            else getattr(task, "run_order_original_roster", {})
+            if getattr(task, "run_order_restore_pending", False)
+            else getattr(task, "emergency_original_roster", {})
+            if task.type == TaskTypes.RUN_ORDER and not task.meta_data
+            else {}
+        ).items()
         for name in row
         if (op := op_data.operators.get(name)) is not None
         and op.is_working()
@@ -204,7 +229,7 @@ def retained_task_reservations(
 
 def dorm_task_reservations(op_data, tasks, excluded=()):
     """规划与执行采用相同预约；待命候补的回班任务不阻止其临时恢复。"""
-    tasks = list(tasks)
+    tasks = [task for task in tasks if not unstarted_product_wait(task)]
     names, retained_slots = retained_task_reservations(op_data, tasks)
     names.update(set(excluded) - {"", "Current", "Free"})
     names.update(getattr(op_data, "emergency_reserved_agents", ()))

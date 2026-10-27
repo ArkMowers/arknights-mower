@@ -454,9 +454,14 @@ def test_maintenance_entry_respects_normal_restoration_dependencies(
 
 def test_shift_projection_cannot_bypass_pending_maintenance_orders(solver):
     solver.maintenance_entry_pending = True
+    order = SchedulerTask(task_type=TaskTypes.RUN_ORDER, meta_data="room_1_1")
+    order.maintenance_advance_before_backup = True
+    solver.tasks.append(order)
     task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
-    with pytest.raises(ProductSwitchDeferred, match="提前跑单"):
+    with pytest.raises(ProductSwitchDeferred, match="提前跑单") as deferred:
         solver._prepare_shift_cycle(task)
+    assert deferred.value.dependencies == (order,)
+    assert deferred.value.ready_at is None
     assert solver.op_data.plan_condition == [False]
 
 

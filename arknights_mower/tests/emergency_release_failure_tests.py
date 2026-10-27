@@ -258,7 +258,9 @@ def test_deferred_release_prunes_queued_admission_before_budget_return(group_ret
 
 
 @pytest.mark.parametrize("failure", ["exception", "incomplete"])
-def test_release_failure_retains_near_retry_before_distant_order(group_return, failure):
+def test_release_failure_retains_observation_dependency_before_distant_order(
+    group_return, failure
+):
     from arknights_mower.solvers.emergency import RESUME_META
     from arknights_mower.utils.scheduler_task import TaskTypes
 
@@ -278,7 +280,8 @@ def test_release_failure_retains_near_retry_before_distant_order(group_return, f
     assert solver.task is original_task
     assert solver.emergency_state["release_members"]
     retry = next(t for t in solver.tasks if t.meta_data == RESUME_META)
-    assert retry.time == NOW + timedelta(minutes=1)
+    assert retry.time == NOW
+    assert retry.execution_failure["dependency"]
     assert distant in solver.tasks
 
 

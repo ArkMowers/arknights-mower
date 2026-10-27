@@ -441,12 +441,18 @@ def test_queued_restoration_after_downtime_waits_for_foreign_worker_and_blocks_e
     solver.choose_agent.reset_mock()
     assert solver.agent_arrange(restore.plan) is False
     assert restore in solver.tasks
-    assert restore.time == NOW + timedelta(minutes=1)
+    assert restore.time == NOW - timedelta(days=2)
+    assert restore.execution_failure["dependency"]
     assert restore.plan == {ROOM: [COVERS[0], ""]}
     assert worker.current_room == "room_1_2"
     solver.choose_agent.assert_not_called()
     assert not solver._emergency_ready()
+    source_plan = {"room_1_2": [PRIMARY[1]]}
+    solver._suppress_retained_arrangements(source_plan)
+    assert source_plan == {"room_1_2": [PRIMARY[1]]}
     worker._current_room, worker.current_index = "", -1
+    solver._resume_failed_tasks()
+    assert not getattr(restore, "execution_failure", None)
     solver.agent_arrange(restore.plan)
     assert solver.op_data.get_current_room(ROOM, True) == [COVERS[0], ""]
 
