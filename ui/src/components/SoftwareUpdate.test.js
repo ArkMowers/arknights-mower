@@ -142,6 +142,118 @@ describe('offline software package installation', () => {
     await nextTick()
   }
 
+  it('installs a confirmed sidebar target with the saved restart preference and no second check', async () => {
+    component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      const response = await get(url)
+      if (url.endsWith('/info')) response.data.settings.background = false
+      else response.data = { ok: true, id: 'offline-job', status: 'running', phase: 'preparing' }
+      return response
+    })
+    await component.installCheckedUpdate({
+      check_id: 'confirmed-sidebar',
+      confirm_downgrade: false
+    })
+    expect(state.client.post).toHaveBeenCalledExactlyOnceWith(
+      '/software-update/start',
+      { check_id: 'confirmed-sidebar', background: false, force: false, confirm_downgrade: false },
+      { headers: { 'X-Mower-Update': '1' } }
+    )
+    expect(state.warning).not.toHaveBeenCalled()
+    expect(component.showProgress.value).toBe(true)
+  })
+
+  it('rechecks installation blockers after sidebar confirmation', async () => {
+    component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      const response = await get(url)
+      if (url.endsWith('/info')) response.data.blockers = ['正在停止实例']
+      return response
+    })
+    await expect(component.installCheckedUpdate({ check_id: 'confirmed-sidebar' })).rejects.toThrow(
+      '正在停止实例'
+    )
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('shows only the checked preview and progress in the sidebar software panel', async () => {
+    const props = {
+      compact: true,
+      preview: { channel: '开发版', version: '4.1.7', notes: '修复设置目录高度' }
+    }
+    const file = new File(['offline'], 'package.zip')
+    pendingSoftwarePackage.value = file
+    component = scope.run(() => SoftwareUpdate.setup(props, { expose: () => {} }))
+    await Promise.all(state.mounted.map((callback) => callback()))
+    component.job.value = {
+      status: 'running',
+      phase: 'downloading',
+      progress: 40,
+      current: 1048576,
+      total: 2621440,
+      message: '正在下载更新包'
+    }
+    const html = await renderToString(
+      createSSRApp({ ...SoftwareUpdate, setup: () => component }, props)
+    )
+    expect(html).toContain('更新渠道 · 开发版')
+    expect(html).toContain('修复设置目录高度')
+    expect(html).toContain('正在下载更新包')
+    expect(html).toContain('已下载 1.0 MiB')
+    for (const text of [
+      '自动检查更新',
+      '自动更新',
+      '更新后后台静默重启',
+      '从本地安装包更新',
+      '强制更新',
+      '检查更新',
+      '独立更新进度'
+    ]) {
+      expect(html).not.toContain(text)
+    }
+    expect(pendingSoftwarePackage.value).toBe(file)
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('shows resource preview and progress without checking again or changing saved preferences', async () => {
+    state.config = {
+      resource_update_enable: ref(true),
+      resource_update_auto_update: ref(true),
+      load_item: vi.fn(),
+      load_shop: vi.fn()
+    }
+    state.resource = {
+      canInstall: ref(false),
+      info: ref({}),
+      loading: ref(false),
+      installing: ref(true),
+      install_message: ref(''),
+      progress_error: ref(''),
+      job: ref({ status: 'running', phase: 'download', progress: 20, message: '正在下载资源包' }),
+      loadResourceJob: vi.fn(),
+      loadResourceVersion: vi.fn(),
+      loadResourceVersionLocal: vi.fn()
+    }
+    const props = { compact: true, skipInitialCheck: true, preview: { version: '新资源' } }
+    const setup = scope.run(() => ResourceUpdate.setup(props, { expose: () => {} }))
+    await Promise.all(state.mounted.map((callback) => callback()))
+    const html = await renderToString(
+      createSSRApp({ ...ResourceUpdate, setup: () => setup }, props)
+    )
+    expect(html).toContain('新资源')
+    expect(html).toContain('此版本未提供更新日志。')
+    expect(html).toContain('正在下载资源包')
+    for (const text of ['自动检查更新', '自动更新', '从本地资源包更新', '检查更新']) {
+      expect(html).not.toContain(text)
+    }
+    expect(state.resource.loadResourceVersion).not.toHaveBeenCalled()
+    expect(state.resource.loadResourceVersionLocal).not.toHaveBeenCalled()
+    expect(state.config.resource_update_enable.value).toBe(true)
+    expect(state.config.resource_update_auto_update.value).toBe(true)
+  })
+
   it.each(['v4.1.5', 'v4.1.6-alpha.12.gfdc9e8b4'])(
     'offers the online channel target %s with ordinary installation confirmation',
     async (version) => {

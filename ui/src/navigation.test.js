@@ -51,7 +51,7 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
       title: '常用',
       items: [
         { key: 'log' },
-        { key: 'task-settings', label: '全部设置', to: '/task-settings' },
+        { key: 'task-settings', label: '全部设置', to: '/settings' },
         { key: 'plan' },
         { key: 'rescue-plan' },
         { key: 'mastery' }
@@ -92,7 +92,7 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
     ])
     expect(mobileTabs.find((tab) => tab.key === 'task-settings')).toMatchObject({
       label: '全部设置',
-      to: '/task-settings'
+      to: '/settings'
     })
   })
 
@@ -105,7 +105,7 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
       '/plan-editor',
       '/rescue-plan-editor'
     ])
-    expect(mobileTabItems(settings).map((item) => item.to)).toEqual(['/task-settings'])
+    expect(mobileTabItems(settings).map((item) => item.to)).toEqual(['/settings'])
     expect(internalItems.some((item) => item.to === '/maasettings')).toBe(false)
     const pages = mobileTabs.flatMap(mobileTabItems)
     expect(new Set(pages).size).toBe(pages.length)

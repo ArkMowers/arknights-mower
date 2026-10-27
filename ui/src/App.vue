@@ -422,7 +422,7 @@ async function openDeviceConnection(action) {
   if (configProfiles.busy.value || configProfiles.stale.value || configProfiles.pendingReload.value)
     return
   if (action === 'test' && (running.value || deviceConnectionNavigation.locked.value)) return
-  const failure = await router.push({ name: 'task-settings', hash: '#task-devices' })
+  const failure = await router.push({ name: 'settings', hash: '#task-devices' })
   if (failure && !isNavigationFailure(failure, NavigationFailureType.duplicated)) return
   deviceConnectionNavigation.open(action)
 }
@@ -790,7 +790,7 @@ function apply_zoom(scale) {
 const isMobileNav = ref(false)
 const mobile = ref(false)
 provide('mobile', mobile)
-const allSettingsOpen = computed(() => route.name === 'task-settings')
+const allSettingsOpen = computed(() => route.name === 'settings')
 let sidebarBeforeSettings = null
 let settingsSidebarManuallyToggled = false
 watch(

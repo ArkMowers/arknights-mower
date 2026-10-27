@@ -773,7 +773,7 @@ function cell(day, key) {
             >
               <template #icon><n-icon :component="RefreshOutline" /></template>
             </n-button>
-            <SessionLink to="/task-settings#task-accounts">管理收益设置</SessionLink>
+            <SessionLink to="/settings#task-accounts">管理收益设置</SessionLink>
           </div>
         </template>
       </PageHeader>

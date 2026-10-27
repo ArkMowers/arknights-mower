@@ -1,11 +1,25 @@
 <script setup>
+import { onMounted, onUnmounted, ref } from 'vue'
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
 
 defineOptions({ name: 'TaskSettings' })
+const page = ref(null)
+let viewportObserver
+onMounted(() => {
+  const viewport = page.value?.closest('.layout-content-container')
+  if (!viewport || typeof ResizeObserver === 'undefined') return
+  const resize = () => {
+    page.value?.style.setProperty('--settings-viewport-height', `${viewport.clientHeight}px`)
+  }
+  viewportObserver = new ResizeObserver(resize)
+  viewportObserver.observe(viewport)
+  resize()
+})
+onUnmounted(() => viewportObserver?.disconnect())
 </script>
 
 <template>
-  <section class="task-settings-page" aria-label="全部设置">
+  <section ref="page" class="task-settings-page" aria-label="全部设置">
     <TaskConfiguration />
   </section>
 </template>

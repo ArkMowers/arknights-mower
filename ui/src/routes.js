@@ -15,9 +15,14 @@ export const routes = [
         name: 'log'
       },
       {
-        path: 'task-settings',
+        path: 'settings',
         component: () => import('@/pages/TaskSettings.vue'),
         meta: { title: '全部设置' },
+        name: 'settings'
+      },
+      {
+        path: 'task-settings',
+        redirect: (to) => ({ name: 'settings', query: to.query, hash: to.hash }),
         name: 'task-settings'
       },
       {
@@ -34,12 +39,12 @@ export const routes = [
       },
       {
         path: 'mowersettings',
-        redirect: (to) => ({ name: 'task-settings', query: to.query, hash: to.hash }),
+        redirect: (to) => ({ name: 'settings', query: to.query, hash: to.hash }),
         name: 'mowersettings'
       },
       {
         path: 'maasettings',
-        redirect: (to) => ({ name: 'task-settings', query: to.query, hash: to.hash }),
+        redirect: (to) => ({ name: 'settings', query: to.query, hash: to.hash }),
         name: 'maasettings'
       },
       // PROTOTYPE：任务编排原型，选定方案后删除

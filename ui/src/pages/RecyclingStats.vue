@@ -258,7 +258,7 @@ onUnmounted(() => {
     <n-alert v-if="exportError" type="error" class="notice">{{ exportError }}</n-alert>
     <section class="valuation-panel valuation-source">
       <span>{{ comparison?.valuation?.source || '材料价值未读取' }}</span>
-      <SessionLink to="/task-settings#task-accounts">管理材料价值与基报算法</SessionLink>
+      <SessionLink to="/settings#task-accounts">管理材料价值与基报算法</SessionLink>
     </section>
     <n-alert
       v-if="comparison?.unknown_collections || comparison?.unknown_materials.length"

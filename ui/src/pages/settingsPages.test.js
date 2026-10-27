@@ -315,14 +315,14 @@ describe('settings page ownership', () => {
     const legacyTasks = children.find((route) => route.path === 'maasettings')
     expect(legacyTasks.component).toBeUndefined()
     expect(legacyTasks.redirect({ query: { token: 'demo' }, hash: '#task-devices' })).toEqual({
-      name: 'task-settings',
+      name: 'settings',
       query: { token: 'demo' },
       hash: '#task-devices'
     })
     const legacyMower = children.find((route) => route.path === 'mowersettings')
     expect(legacyMower.component).toBeUndefined()
     expect(legacyMower.redirect({ query: { token: 'demo' }, hash: '#mower-data' })).toEqual({
-      name: 'task-settings',
+      name: 'settings',
       query: { token: 'demo' },
       hash: '#mower-data'
     })

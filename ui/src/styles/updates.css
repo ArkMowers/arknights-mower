@@ -201,3 +201,35 @@
     width: 100%;
   }
 }
+
+.update-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 18px;
+}
+
+.update-preview-notes {
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--mower-control-surface);
+}
+
+.update-preview .update-notes {
+  max-height: min(32dvh, 280px);
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.update-confirm-impact {
+  margin-top: 16px;
+  color: var(--mower-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.update-confirm-impact summary {
+  cursor: pointer;
+}

@@ -27,7 +27,7 @@ describe('frontend navigation credentials', () => {
 
   it.each([
     ['/plan-editor', 'plan'],
-    ['/task-settings', 'task-settings'],
+    ['/settings', 'settings'],
     ['/record/report', 'report']
   ])('keeps the session token when navigating to %s', async (path, name) => {
     await router.push('/?token=session-token')
@@ -40,12 +40,22 @@ describe('frontend navigation credentials', () => {
     })
   })
 
+  it('redirects task-settings to settings while preserving its query and target', async () => {
+    await router.push('/task-settings?token=session-token&view=details#mower-updates')
+    expect(router.currentRoute.value).toMatchObject({
+      path: '/settings',
+      name: 'settings',
+      query: { token: 'session-token', view: 'details' },
+      hash: '#mower-updates'
+    })
+  })
+
   it('redirects the old Mower settings address while retaining its session and target', async () => {
     await router.push('/?token=session-token')
     await router.push('/mowersettings?view=details#mower-updates')
     expect(router.currentRoute.value).toMatchObject({
-      path: '/task-settings',
-      name: 'task-settings',
+      path: '/settings',
+      name: 'settings',
       query: { token: 'session-token', view: 'details' },
       hash: '#mower-updates'
     })
@@ -56,7 +66,7 @@ describe('frontend navigation credentials', () => {
     await router.push('/mowersettings?token=destination-token&view=details#software-update')
 
     expect(router.currentRoute.value).toMatchObject({
-      path: '/task-settings',
+      path: '/settings',
       query: { token: 'destination-token', view: 'details' },
       hash: '#software-update'
     })
@@ -109,8 +119,8 @@ describe('frontend navigation credentials', () => {
     async (hash) => {
       await router.push('/?token=demo&old=unused')
       await router.push(`/maasettings?section=accounts${hash}`)
-      expect(router.currentRoute.value.name).toBe('task-settings')
-      expect(router.currentRoute.value.path).toBe('/task-settings')
+      expect(router.currentRoute.value.name).toBe('settings')
+      expect(router.currentRoute.value.path).toBe('/settings')
       expect(router.currentRoute.value.query).toEqual({
         token: 'demo',
         old: 'unused',

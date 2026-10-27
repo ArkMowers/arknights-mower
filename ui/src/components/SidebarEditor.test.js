@@ -81,7 +81,7 @@ describe('sidebar editing window', () => {
     const original = component.groups.value
       .find((group) => group.key === 'daily')
       .items.find((item) => item.key === 'task-settings')
-    expect(original).toMatchObject({ label: '全部设置', to: '/task-settings' })
+    expect(original).toMatchObject({ label: '全部设置', to: '/settings' })
     expect(await renderEditor()).toContain('aria-label="移除全部设置"')
     expect(state.preferences.removeEntry(original.id)).toBe(true)
     expect(await renderEditor()).not.toContain('aria-label="移除全部设置"')
@@ -110,7 +110,7 @@ describe('sidebar editing window', () => {
     const restored = component.groups.value
       .find((group) => group.key === 'daily')
       .items.find((item) => item.key === 'task-settings')
-    expect(restored).toMatchObject({ label: '全部设置', to: '/task-settings' })
+    expect(restored).toMatchObject({ label: '全部设置', to: '/settings' })
     expect(await renderEditor()).toContain('aria-label="移除全部设置"')
   })
 

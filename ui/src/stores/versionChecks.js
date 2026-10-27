@@ -7,6 +7,7 @@ import { requestSoftwareUpdateCheck } from '@/utils/softwareUpdate'
 export const useVersionChecksStore = defineStore('versionChecks', () => {
   const resources = useResourceVersionStore()
   const softwareChecking = ref(false)
+  const softwareInfo = ref(null)
   const resourceChecking = computed(() => resources.loading)
   const resourceDisabled = computed(() => resources.installing)
   let softwareRequest = null
@@ -19,6 +20,7 @@ export const useVersionChecksStore = defineStore('versionChecks', () => {
       const base = `${import.meta.env.VITE_HTTP_URL || ''}/software-update`
       const { data } = await axios.get(`${base}/info`)
       if (!data.ok) throw new Error(data.message || '无法读取软件更新设置')
+      softwareInfo.value = data
       return requestSoftwareUpdateCheck(axios, data.settings.channel)
     })().finally(() => {
       softwareChecking.value = false
@@ -42,5 +44,12 @@ export const useVersionChecksStore = defineStore('versionChecks', () => {
     return resourceRequest
   }
 
-  return { softwareChecking, resourceChecking, resourceDisabled, checkSoftware, checkResource }
+  return {
+    softwareInfo,
+    softwareChecking,
+    resourceChecking,
+    resourceDisabled,
+    checkSoftware,
+    checkResource
+  }
 })
