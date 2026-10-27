@@ -779,7 +779,7 @@ def simulate(saved):
                     - {backup.name for backup in base_scheduler.op_data.backup_plans}
                 )
             )
-            restored_tasks, restored_predecessors = [], {}
+            restored_tasks, restored_predecessors, restored_pairs = [], {}, []
             for task in tasks:
                 migrated = migrate_backup_tasks(
                     [task],
@@ -790,14 +790,26 @@ def simulate(saved):
                 )
                 if migrated:
                     restored_predecessors[id(task)] = migrated[0]
+                    restored_pairs.append((task, migrated[0]))
                     restored_tasks.extend(migrated)
             base_scheduler.tasks = restored_tasks
-            for task in base_scheduler.waiting_group_shifts:
-                if hasattr(task, "group_shift_predecessors"):
-                    task.group_shift_predecessors = tuple(
-                        restored_predecessors.get(id(previous), previous)
-                        for previous in task.group_shift_predecessors
-                    )
+            restored_pairs.extend(
+                (task, task) for task in base_scheduler.waiting_group_shifts
+            )
+            for original, task in restored_pairs:
+                for attribute in (
+                    "group_shift_predecessors",
+                    "product_shift_predecessors",
+                ):
+                    if hasattr(original, attribute):
+                        setattr(
+                            task,
+                            attribute,
+                            tuple(
+                                restored_predecessors.get(id(previous), previous)
+                                for previous in getattr(original, attribute)
+                            ),
+                        )
             base_scheduler.op_data.restore_dorm_state(
                 saved["dorm"],
                 group_transitions=base_scheduler._pending_group_transitions(),
