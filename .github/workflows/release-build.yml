@@ -183,9 +183,11 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - name: Inject release version
         run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+      - name: Install QR recognition system library
+        run: sudo apt-get update && sudo apt-get install -y libzbar0
       - name: Install Python dependencies
         run: |
-          python -m pip install -r requirements.txt pytest ruff
+          python -m pip install -r requirements.txt pytest ruff setuptools wheel
           python -m pip check
           python scripts/prune_opencv.py
       - name: Check Python formatting and lint
