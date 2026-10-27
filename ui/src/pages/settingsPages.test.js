@@ -13,6 +13,7 @@ import MowerSettings from './Settings.vue'
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
 import TaskSettingsPanels from '@/components/TaskSettingsPanels.vue'
 import { routes } from '@/routes'
+import { themeSelectionKey } from '@/composables/themeSelection'
 
 const state = vi.hoisted(() => ({ segmented: [], actions: {} }))
 
@@ -103,7 +104,7 @@ function setup(Page, overrides = {}, setTheme, pageProps = {}) {
   app.provide('axios', axios)
   app.provide('loaded', ref(false))
   app.provide('mobile', ref(false))
-  if (setTheme) app.provide('set_theme_with_transition', setTheme)
+  if (setTheme) app.provide(themeSelectionKey, setTheme)
   store = app.runWithContext(() => useConfigStore())
   plan = app.runWithContext(() => usePlanStore())
   app.runWithContext(() => useMowerStore()).updates_enabled = true
@@ -211,7 +212,7 @@ describe('settings page ownership', () => {
     expect(axios.patch).not.toHaveBeenCalled()
   })
 
-  it('passes the shared theme selector choice to the injected transition owner', async () => {
+  it('lets the application capture the old appearance before applying a theme selection', async () => {
     const setTheme = vi.fn()
     const html = await renderToString(setup(MowerSettings, { theme: 'light' }, setTheme))
     const control = state.segmented.find((entry) => entry.label === '显示主题')

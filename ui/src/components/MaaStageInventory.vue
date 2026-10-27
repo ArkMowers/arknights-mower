@@ -379,7 +379,7 @@ watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], load
         请先在方案“{{ activePlanLabel }}”的列表计划或表格计划中选择关卡，再配置库存上限或比例。
       </n-alert>
 
-      <n-tabs type="segment" animated class="top-gap">
+      <n-tabs type="segment" class="top-gap">
         <n-tab-pane name="limit" tab="物品上限">
           <n-card size="small">
             <n-flex align="center" class="add-toolbar">

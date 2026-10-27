@@ -419,7 +419,7 @@ function cancelCopyDialogLongPress() {
       <WeeklyPlanSelector compact />
     </div>
 
-    <n-tabs v-model:value="editorMode" type="segment" animated class="weekly-plan-editors">
+    <n-tabs v-model:value="editorMode" type="segment" class="weekly-plan-editors">
       <n-tab-pane name="list" tab="列表计划">
         <table class="weekly-plan-table">
           <thead>

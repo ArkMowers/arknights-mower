@@ -10,6 +10,7 @@ import NetworkSettings from '@/components/NetworkSettings.vue'
 import ConfigBackup from '@/components/ConfigBackup.vue'
 import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
 import { settingsSectionKey } from '@/composables/settingsNavigation'
+import { themeSelectionKey } from '@/composables/themeSelection'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
 import VersionWatermarkPreference from '@/components/VersionWatermarkPreference.vue'
@@ -65,7 +66,7 @@ const { updates_enabled, running } = storeToRefs(useMowerStore())
 const mobile = inject('mobile')
 const { theme, webview, runtime_platform, screenshot, screenshot_archive_limit_mb } =
   storeToRefs(config_store)
-const setTheme = inject('set_theme_with_transition', (value) => (theme.value = value))
+const setTheme = inject(themeSelectionKey, (value) => (theme.value = value))
 const themeOptions = [
   { value: 'light', label: '亮色', icon: SunIcon },
   { value: 'dark', label: '暗色', icon: MoonIcon },
@@ -223,8 +224,9 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
           >
             <SettingsSegmented
               :value="theme"
-              :options="themeOptions"
               @update:value="setTheme"
+              emit-reselect
+              :options="themeOptions"
               class="settings-theme-choices"
               label="显示主题"
             />

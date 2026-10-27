@@ -100,7 +100,7 @@ const SyncStatus = (item, game) => {
             添加森空岛账号
           </n-button>
         </div>
-        <n-tabs v-else type="line" animated>
+        <n-tabs v-else type="line">
           <n-tab-pane name="arknights" tab="明日方舟">
             <div v-for="account_info in skland_info" :key="account_info.account">
               <n-flex>

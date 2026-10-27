@@ -19,6 +19,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
 import { configProfilesKey } from '@/composables/configProfiles'
+import { themeSelectionKey } from '@/composables/themeSelection'
 import { routes } from './routes'
 
 const state = vi.hoisted(() => ({
@@ -393,6 +394,15 @@ describe('desktop page startup', () => {
     expect(provide).toHaveBeenCalledWith(configProfilesKey, component.configProfiles)
   })
 
+  it('shares theme selection with settings while retaining direct configuration updates', async () => {
+    const component = await mount()
+    expect(provide).toHaveBeenCalledWith(themeSelectionKey, component.setTheme)
+    component.setTheme('dark')
+    await nextTick()
+    expect(state.config.theme).toBe('dark')
+    expect(document.documentElement.dataset.mowerTheme).toBe('dark')
+  })
+
   it('closes a managed window directly without saving or applying a standalone exit choice', async () => {
     const savePreference = vi.fn()
     window.pywebview = {
@@ -613,139 +623,70 @@ describe('desktop page startup', () => {
     expect(html).toContain('data-window-theme="light"')
     expect(document.documentElement.dataset.mowerTheme).toBe('light')
     expect(state.config.theme).toBe('system')
-    await component.setThemeWithTransition('dark')
+    state.config.theme = 'dark'
+    await nextTick()
     changed({ matches: false })
     expect(component.theme.value).toBe('dark')
     expect(state.config.theme).toBe('dark')
-    await component.setThemeWithTransition('system')
+    state.config.theme = 'system'
+    await nextTick()
     expect(component.theme.value).toBe('light')
     expect(state.config.theme).toBe('system')
     unmount()
     expect(media.removeEventListener).toHaveBeenCalledWith('change', changed)
   })
 
-  it('keeps the latest requested theme during quick switches without fading the app', async () => {
-    const component = await mount()
-    let finishFade
-    const provider = {
-      animate: vi.fn(() => ({
-        finished: new Promise((resolve) => (finishFade = resolve)),
-        cancel: vi.fn()
-      }))
-    }
-    document.querySelector = vi.fn(() => provider)
+  it('commits a theme change without enumerating or waiting for other page animations', async () => {
+    await mount()
+    document.getAnimations.mockImplementation(() => {
+      throw new Error('Theme changes must not enumerate page animations')
+    })
+    const root = document.documentElement
+    const flushStyles = vi.fn(() => 1000)
+    Object.defineProperty(root, 'offsetWidth', { get: flushStyles })
 
-    const first = component.setThemeWithTransition('dark')
-    const second = component.setThemeWithTransition('light')
-    finishFade?.()
-    await Promise.all([first, second])
-
-    expect(state.config.theme).toBe('light')
-    expect(provider.animate).not.toHaveBeenCalled()
-  })
-
-  it('switches atomically when reduced motion is requested', async () => {
-    const component = await mount()
-    window.matchMedia = vi.fn(() => ({ matches: true }))
-
-    await component.setThemeWithTransition('dark')
+    state.config.theme = 'dark'
+    expect(root.classList.contains('mower-theme-changing')).toBe(true)
+    await nextTick()
 
     expect(state.config.theme).toBe('dark')
-    expect(document.documentElement.classList.contains('mower-theme-changing')).toBe(false)
-    expect(document.documentElement.classList.contains('mower-theme-colours')).toBe(false)
+    expect(root.dataset.mowerTheme).toBe('dark')
+    expect(root.classList.contains('mower-theme-changing')).toBe(false)
+    expect(root.classList.contains('mower-theme-colours')).toBe(false)
+    expect(flushStyles).toHaveBeenCalledOnce()
+    expect(document.getAnimations).not.toHaveBeenCalled()
   })
 
-  it('keeps colour transitions until their actual completion and ignores other animations', async () => {
-    const component = await mount()
-    let finishColours
-    document.getAnimations.mockReturnValue([
-      {
-        transitionProperty: 'background-color',
-        finished: new Promise((resolve) => (finishColours = resolve))
-      },
-      { animationName: 'busy-spinner', finished: new Promise(() => {}) }
-    ])
-
-    const changing = component.setThemeWithTransition('dark')
-    await vi.waitFor(() => expect(document.getAnimations).toHaveBeenCalledOnce())
-    expect(document.documentElement.classList.contains('mower-theme-colours')).toBe(true)
-    expect(document.documentElement.classList.contains('mower-theme-changing')).toBe(false)
-    finishColours()
-    await changing
-    expect(document.documentElement.classList.contains('mower-theme-colours')).toBe(false)
-    expect(state.config.theme).toBe('dark')
-  })
-
-  it('keeps the latest colour transition active after an earlier transition completes', async () => {
-    const component = await mount()
-    let finishFirst
-    let finishLast
-    document.getAnimations
-      .mockReturnValueOnce([
-        {
-          transitionProperty: 'background-color',
-          finished: new Promise((resolve) => (finishFirst = resolve))
-        }
-      ])
-      .mockReturnValueOnce([
-        {
-          transitionProperty: 'background-color',
-          finished: new Promise((resolve) => (finishLast = resolve))
-        }
-      ])
-    const first = component.setThemeWithTransition('dark')
-    await vi.waitFor(() => expect(document.getAnimations).toHaveBeenCalledTimes(1))
-    const last = component.setThemeWithTransition('light')
-    await vi.waitFor(() => expect(document.getAnimations).toHaveBeenCalledTimes(2))
-
-    finishFirst()
-    await first
-    expect(document.documentElement.classList.contains('mower-theme-colours')).toBe(true)
-    finishLast()
-    await last
-    expect(document.documentElement.classList.contains('mower-theme-colours')).toBe(false)
-    expect(state.config.theme).toBe('light')
-  })
-
-  it('cancels active colour motion when reduced motion is requested for the same theme', async () => {
-    const component = await mount()
-    let finishColours
-    document.getAnimations.mockReturnValue([
-      {
-        transitionProperty: 'background-color',
-        finished: new Promise((resolve) => (finishColours = resolve))
-      }
-    ])
-    const first = component.setThemeWithTransition('dark')
-    await vi.waitFor(() => expect(document.getAnimations).toHaveBeenCalledOnce())
-    window.matchMedia = vi.fn(() => ({ matches: true }))
-    await component.setThemeWithTransition('dark')
-    expect(document.documentElement.classList.contains('mower-theme-colours')).toBe(false)
-    expect(document.documentElement.classList.contains('mower-theme-changing')).toBe(false)
-    finishColours()
-    await first
-  })
-
-  it('keeps an external theme assignment atomic while a control transition is active', async () => {
-    const component = await mount()
-    let finishColours
-    document.getAnimations.mockReturnValue([
-      {
-        transitionProperty: 'background-color',
-        finished: new Promise((resolve) => (finishColours = resolve))
-      }
-    ])
-    const first = component.setThemeWithTransition('dark')
-    await vi.waitFor(() => expect(document.getAnimations).toHaveBeenCalledOnce())
+  it('does not refresh styles for a repeated theme selection', async () => {
+    await mount()
+    const flushStyles = vi.fn(() => 1000)
+    Object.defineProperty(document.documentElement, 'offsetWidth', { get: flushStyles })
 
     state.config.theme = 'light'
-    expect(document.documentElement.classList.contains('mower-theme-colours')).toBe(false)
-    expect(document.documentElement.classList.contains('mower-theme-changing')).toBe(true)
     await nextTick()
-    expect(document.documentElement.classList.contains('mower-theme-changing')).toBe(false)
-    finishColours()
-    await first
-    expect(state.config.theme).toBe('light')
+    expect(flushStyles).not.toHaveBeenCalled()
+
+    state.config.theme = 'dark'
+    await nextTick()
+    expect(flushStyles).toHaveBeenCalledOnce()
+
+    state.config.theme = 'dark'
+    await nextTick()
+    expect(flushStyles).toHaveBeenCalledOnce()
+  })
+
+  it('restores ordinary transitions when unmounted before committing a theme change', async () => {
+    await mount()
+    const root = document.documentElement
+    state.config.theme = 'dark'
+    expect(root.classList.contains('mower-theme-changing')).toBe(true)
+
+    unmount()
+    await nextTick()
+
+    expect(root.classList.contains('mower-theme-changing')).toBe(false)
+    expect(root.dataset.mowerTheme).toBeUndefined()
+    expect(root.dataset.windowShellTheme).toBeUndefined()
   })
 
   it('finishes only the last update when theme bindings change repeatedly in one frame', async () => {

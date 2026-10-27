@@ -4,6 +4,7 @@ defineProps({
   options: { type: Array, default: () => [] },
   disabled: { type: Boolean, default: false },
   busy: { type: Boolean, default: false },
+  emitReselect: { type: Boolean, default: false },
   label: { type: String, default: '' }
 })
 defineEmits(['update:value'])
@@ -32,6 +33,13 @@ defineEmits(['update:value'])
         class="settings-segmented-choice"
         :disabled="disabled || option.disabled"
         :aria-pressed="value === option.value"
+        @click="
+          emitReselect &&
+          !disabled &&
+          !option.disabled &&
+          value === option.value &&
+          $emit('update:value', option.value)
+        "
       >
         <n-icon v-if="option.icon" :component="option.icon" size="16" aria-hidden="true" />
         <span>{{ option.label }}</span>
