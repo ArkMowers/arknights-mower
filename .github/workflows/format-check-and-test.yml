@@ -22,9 +22,10 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       update: ${{ steps.filter.outputs.update }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.scope.outputs.backend }}
+      python_shards: ${{ steps.scope.outputs.python_shards }}
     steps:
       - uses: actions/checkout@v4
-        if: github.event_name == 'push'
       - uses: dorny/paths-filter@v3
         id: filter
         # Manual runs and PRs reaching the API's 3,000-file limit run every check.
@@ -33,6 +34,7 @@ jobs:
           (github.event_name != 'pull_request' || github.event.pull_request.changed_files < 3000)
         with:
           base: ${{ github.ref_name }}
+          list-files: json
           filters: |
             code:
               # One exclusion keeps docs-only changes out; other filters use OR.
@@ -84,6 +86,11 @@ jobs:
               - '{.node-version,.nvmrc,.npmrc}'
               - '.github/workflows/format-check-and-test.yml'
               - '.github/actions/**'
+      - name: Determine Python test scope
+        id: scope
+        env:
+          CHANGED_CODE_FILES: ${{ steps.filter.outputs.code_files }}
+        run: python3 scripts/ci_test_scope.py scope
 
   # Skip only an explicit docs-only result. If filtering fails, run the checks.
   ruff:
@@ -153,8 +160,23 @@ jobs:
         uses: rhysd/actionlint@v1.7.12
 
   unittest:
+    needs: [changes, python-tests]
+    if: ${{ always() && !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Python test group to pass
+        env:
+          RESULT: ${{ needs.python-tests.result }}
+        run: test "$RESULT" = success
+
+  python-tests:
+    name: Python regressions (${{ matrix.shard }})
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.python_shards || '[0, 1, 2]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -174,12 +196,31 @@ jobs:
           ./venv/bin/python scripts/prune_opencv.py
       - name: Compile all Python sources
         run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
-      - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）
+      - name: Select Python regression files
+        shell: bash
+        env:
+          BACKEND: ${{ needs.changes.outputs.backend }}
+          NATIVE_UPDATE: ${{ needs.changes.outputs.update }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          options=(--shard "$SHARD" --count 3)
+          if [[ "$BACKEND" == false ]]; then
+            options=(--frontend)
+          elif [[ "$NATIVE_UPDATE" != false ]]; then
+            options+=(--native-update)
+          fi
+          ./venv/bin/python scripts/ci_test_scope.py tests "${options[@]}" \
+            > "${RUNNER_TEMP}/python-test-files.txt"
+          cat "${RUNNER_TEMP}/python-test-files.txt"
+      - name: Run selected Python regressions
         shell: bash
         run: |
+          mapfile -t tests < "${RUNNER_TEMP}/python-test-files.txt"
           status=0
           timeout --signal=TERM --kill-after=30s 20m \
-            ./venv/bin/python3 -u -m pytest -v --durations=20 -o faulthandler_timeout=60 \
+            ./venv/bin/python3 -u -m pytest -q --durations=0 --durations-min=0.1 \
+            --junitxml="${RUNNER_TEMP}/python-regressions.xml" \
+            -o faulthandler_timeout=60 "${tests[@]}" \
             > "${RUNNER_TEMP}/python-regressions.log" 2>&1 || status=$?
           tail -n 200 "${RUNNER_TEMP}/python-regressions.log"
           exit "${status}"
@@ -187,15 +228,18 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: python-regressions-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/python-regressions.log
+          name: python-regressions-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/python-regressions.log
+            ${{ runner.temp }}/python-regressions.xml
+            ${{ runner.temp }}/python-test-files.txt
           retention-days: 7
 
   # 运行依赖不含 scipy/scikit-image/scikit-learn，上面的 unittest 任务里等价性用例
   # 会整体跳过。这个任务装开发依赖把它们真正跑起来，避免识别算法被改坏时无人发现。
   recognition-equivalence:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.backend != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -56,12 +56,13 @@ def state_directory(data_root=None):
 
 
 @contextmanager
-def service(directory, *, factory, idle=3, max_requests=256):
+def service(directory, *, factory, idle=3, max_requests=256, wait_for_idle=False):
     """在自有进程中运行共享 OCR 协调服务。
 
     directory 存放端点、服务锁和模型监督目录，directory / "updates" 隔离
     本次测试的更新登记。factory 必须显式传入，让调用方在测试引擎与生产
-    引擎之间主动选择。
+    引擎之间主动选择。只有空闲退出回归设置 wait_for_idle，其他用例在
+    断言结束后通过服务登记请求正常关闭。
     """
     directory = Path(directory)
     process = mp.get_context("spawn").Process(
@@ -79,6 +80,18 @@ def service(directory, *, factory, idle=3, max_requests=256):
         wait_for_endpoint(directory)
         yield process
     finally:
-        # 正常空闲退出覆盖整个服务；测试失败时先杀自有协调进程，EOF 清理模型。
-        process.join(idle + 3)
-        close_process(process, os.getpid(), timeout=0.5)
+        try:
+            if not wait_for_idle and process.is_alive():
+                state = directory / "updates"
+                for record in runtime.instances(state):
+                    if (
+                        record.get("kind") == "ocr-service"
+                        and record["pid"] == process.pid
+                    ):
+                        runtime.write_json(
+                            state / "shutdown" / f"{record['id']}.json", {}
+                        )
+            process.join(idle + 3 if wait_for_idle else READY_TIMEOUT)
+        finally:
+            # 失败或关闭超时才强制回收自有协调进程，EOF 仍由模型进程负责处理。
+            close_process(process, os.getpid(), timeout=0.5)

@@ -1,17 +1,7 @@
-import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-# Windows 中文控制台（GBK）打印干员名里的上标字符（如 ²）会 UnicodeEncodeError——
-# 重配 stdout 为 UTF-8/replace，保证本机与 CI（UTF-8）都能跑。
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-# 只 mock cv2：recruit 计算测试不需真实 OpenCV。numpy 不能 mock——import RecruitSolver
-# 会连带 import arknights_mower.models，其导入时反序列化含 numpy 数组的 pickle
-# （avatar.pkl 等），numpy 被 MagicMock 顶掉会炸「numpy is not a package」。
-with patch.dict("sys.modules", {"cv2": MagicMock()}):
-    from arknights_mower.solvers.recruit import RecruitSolver
+from arknights_mower.solvers.recruit import RecruitSolver
 
 
 class TestRecruitCal(unittest.TestCase):
@@ -23,12 +13,39 @@ class TestRecruitCal(unittest.TestCase):
     def test_recruit_cal_with_order_1(self):
         recruit_tags = ["重装干员", "先锋干员", "高级资深干员", "支援", "支援机械"]
         results = self.test_class.recruit_cal(recruit_tags)
-        print(f"顺序为 {self.test_class.recruit_order}")
-        print(results.keys())
-        for i in results:
-            for result in results[i]:
-                for agent in result["result"]:
-                    print(f"{i}  {result['tag']} {agent['name']}")
+        by_tags = {
+            item["tag"]: item["result"]
+            for candidates in results.values()
+            for item in candidates
+        }
+
+        self.assertEqual(set(results), {1, 2, 3, 4, 5, 6})
+        self.assertEqual(
+            by_tags[("重装干员", "高级资深干员", "支援")],
+            [{"id": "char_202_demkni", "name": "塞雷娅", "star": 6}],
+        )
+        self.assertEqual(
+            {agent["name"] for agent in by_tags[("先锋干员", "支援")]},
+            {"凛冬", "极境"},
+        )
+        self.assertTrue(results[1])
+        self.assertTrue(
+            all(agent["star"] == 1 for item in results[1] for agent in item["result"])
+        )
+
+    def test_six_star_candidates_require_top_operator_tag(self):
+        results = self.test_class.recruit_cal(["重装干员", "先锋干员", "支援"])
+
+        self.assertEqual(results[6], [])
+        self.assertTrue(results[5])
+        self.assertTrue(
+            all(
+                agent["star"] < 6
+                for candidates in results.values()
+                for item in candidates
+                for agent in item["result"]
+            )
+        )
 
 
 if __name__ == "__main__":

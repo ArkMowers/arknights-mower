@@ -424,13 +424,15 @@ def test_native_exit_or_timeout_ends_owned_worker_without_fallback(
 
 
 def test_idle_exit_releases_model_and_directory_can_be_reused(tmp_path):
-    with service(tmp_path, factory=fake_engine, idle=0.3) as process:
+    with service(
+        tmp_path, factory=fake_engine, idle=0.3, wait_for_idle=True
+    ) as process:
         client = ocr_shared.SharedOCREngine(directory=tmp_path)
         first = client(np.zeros((1, 1), np.uint8))[0][0][0]
         process.join(3)
         assert not process.is_alive()
         assert not runtime.process_alive(first)
-    with service(tmp_path, factory=fake_engine, idle=0.3):
+    with service(tmp_path, factory=fake_engine, idle=0.3, wait_for_idle=True):
         second = client(np.ones((1, 1), np.uint8))[0][0]
         assert second[0] != first
         assert second[2] == 1

@@ -3,6 +3,7 @@ import json
 import sys
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,19 @@ from arknights_mower.utils.maa_check import (
     run_maa_check,
     worker_main,
 )
+
+
+def run_worker(mode, params):
+    if mode == "frozen":
+        return run_maa_check(params)
+    output = io.StringIO()
+    with (
+        patch.object(sys, "argv", ["-c", json.dumps(params)]),
+        patch.object(sys, "path", list(sys.path)),
+        redirect_stdout(output),
+    ):
+        exec(MAA_CHECK_SCRIPT, {})
+    return json.loads(output.getvalue())
 
 
 class TestMaaCheck(unittest.TestCase):
@@ -58,25 +72,21 @@ class TestMaaCheck(unittest.TestCase):
             "maa_conn_preset": "General",
             "maa_touch_option": "maatouch",
         }
-        with patch.dict(
-            sys.modules,
-            {"asst": SimpleNamespace(), "asst.asst": SimpleNamespace(Asst=asst)},
-        ):
-            result = run_maa_check(params)
-            self.assertEqual(result["status"], "error")
-            self.assertIn("资源加载失败", result["message"])
-            asst.assert_not_called()
-            output = io.StringIO()
+        for mode in ("source", "frozen"):
             with (
-                patch.object(sys, "argv", ["-c", json.dumps(params)]),
-                patch.object(sys, "path", list(sys.path)),
-                redirect_stdout(output),
+                self.subTest(mode=mode),
+                patch.dict(
+                    sys.modules,
+                    {
+                        "asst": SimpleNamespace(),
+                        "asst.asst": SimpleNamespace(Asst=asst),
+                    },
+                ),
             ):
-                exec(MAA_CHECK_SCRIPT, {})
-            result = json.loads(output.getvalue())
-            self.assertEqual(result["status"], "error")
-            self.assertIn("资源加载失败", result["message"])
-            asst.assert_not_called()
+                result = run_worker(mode, params)
+                self.assertEqual(result["status"], "error")
+                self.assertIn("资源加载失败", result["message"])
+                asst.assert_not_called()
 
     def test_check_route_keeps_the_active_application_sessions_transport(self):
         import server
@@ -150,15 +160,51 @@ class TestMaaCheck(unittest.TestCase):
 
         self.assertEqual(params["adb"], "configured-device")
 
-    def test_check_loads_incremental_resources_used_by_runtime(self):
-        self.assertIn(
-            'Asst.load(path=maa_path, incremental_path=maa_path / "cache")',
-            MAA_CHECK_SCRIPT,
+    def test_workers_load_incremental_resources_and_report_connection_outcomes(self):
+        params = {
+            "maa_path": "/MAA",
+            "maa_adb_path": "sdk-adb",
+            "adb": "bound-device",
+            "maa_conn_preset": "General",
+            "maa_touch_option": "maatouch",
+        }
+        outcomes = (
+            (True, None, {"status": "success", "message": "MAA v6.test 连接成功"}),
+            (
+                False,
+                None,
+                {"status": "connection_failed", "message": "连接失败，请检查MAA日志！"},
+            ),
+            (
+                None,
+                RuntimeError("SDK failure"),
+                {"status": "error", "message": "MAA测试异常：SDK failure"},
+            ),
         )
-
-    def test_check_distinguishes_connection_failure_from_test_error(self):
-        self.assertIn('"status": "connection_failed"', MAA_CHECK_SCRIPT)
-        self.assertIn('"status": "error"', MAA_CHECK_SCRIPT)
+        for mode in ("source", "frozen"):
+            for connected, error, expected in outcomes:
+                with self.subTest(mode=mode, status=expected["status"]):
+                    asst = MagicMock()
+                    asst.load.return_value = True
+                    instance = asst.return_value
+                    instance.get_version.return_value = "v6.test"
+                    instance.connect.return_value = connected
+                    instance.connect.side_effect = error
+                    with patch.dict(
+                        sys.modules,
+                        {
+                            "asst": SimpleNamespace(),
+                            "asst.asst": SimpleNamespace(Asst=asst),
+                        },
+                    ):
+                        self.assertEqual(run_worker(mode, params), expected)
+                    asst.load.assert_called_once_with(
+                        path=Path("/MAA"), incremental_path=Path("/MAA/cache")
+                    )
+                    instance.set_instance_option.assert_called_once_with(2, "maatouch")
+                    instance.connect.assert_called_once_with(
+                        "sdk-adb", "bound-device", "General"
+                    )
 
     def test_abnormal_process_exit_is_not_reported_as_connection_failure(self):
         result = parse_maa_check_output("", "  <no Python frame>\n", 1)

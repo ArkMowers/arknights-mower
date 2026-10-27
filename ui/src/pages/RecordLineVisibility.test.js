@@ -6,6 +6,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { compile } from '@vue/compiler-dom'
 import { compileScript, parse } from '@vue/compiler-sfc'
 import { Chart } from 'chart.js'
+import ChartDataLabels from 'chartjs-plugin-datalabels'
 import { NButton, NDatePicker, NModal } from 'naive-ui'
 import RecordLine from './RecordLine.vue'
 import RecordPie from './RecordPie.vue'
@@ -152,8 +153,10 @@ describe('mood curve visibility uses the existing Vue and Chart.js instance', ()
   let chart
   let destroy
   let storage
+  let registeredLabelPlugin
 
   beforeEach(async () => {
+    registeredLabelPlugin = false
     state.preferences = null
     const stored = new Map()
     storage = {
@@ -192,6 +195,7 @@ describe('mood curve visibility uses the existing Vue and Chart.js instance', ()
   afterEach(() => {
     app?.unmount()
     expect(Object.values(Chart.instances)).toHaveLength(0)
+    if (registeredLabelPlugin) Chart.unregister(ChartDataLabels)
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -260,6 +264,30 @@ describe('mood curve visibility uses the existing Vue and Chart.js instance', ()
     app.mount(root)
     await settle()
   }
+
+  it('keeps percentage labels local to pie charts', async () => {
+    expect(Chart.registry.plugins.get('datalabels')).toBeUndefined()
+
+    await remount(RecordPie)
+
+    const pie = Object.values(Chart.instances)[0]
+    expect(pie.config.plugins).toContain(ChartDataLabels)
+    expect(Chart.registry.plugins.get('datalabels')).toBeUndefined()
+  })
+
+  it('disables labels on embedded and fullscreen mood lines when registered elsewhere', async () => {
+    Chart.register(ChartDataLabels)
+    registeredLabelPlugin = true
+    await remount(RecordLine)
+
+    expect(Object.values(Chart.instances)[0].options.plugins.datalabels.display).toBe(false)
+    button((node) => node.props['aria-label'] === '全屏查看深海').props.onClick()
+    await settle()
+
+    const charts = Object.values(Chart.instances)
+    expect(charts).toHaveLength(2)
+    for (const line of charts) expect(line.options.plugins.datalabels.display).toBe(false)
+  })
 
   it('persists curve exclusion and applies it when opening the pie page with a fresh store', async () => {
     button((node) => node.props['aria-label']?.startsWith('歌蕾蒂娅 消耗')).props.onClick()
