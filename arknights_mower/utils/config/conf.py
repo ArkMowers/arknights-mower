@@ -174,6 +174,32 @@ class ExtraPart(ConfModel):
     "等待时间"
 
 
+class CopilotScriptConf(ConfModel):
+    id: str = Field(pattern=r"^[a-f0-9]{64}$")
+    nav_name_override: str = ""
+    is_raid: bool = False
+
+
+class CopilotAdditionalConf(ConfModel):
+    name: str = ""
+    skill: int = Field(default=0, ge=0, le=3)
+
+
+class CopilotConf(ConfModel):
+    run_id: str = Field(default="", max_length=64)
+    scripts: list[CopilotScriptConf] = Field(default_factory=list, max_length=32)
+    formation: bool = False
+    formation_index: int = Field(default=0, ge=0, le=4)
+    use_sanity_potion: bool = False
+    add_trust: bool = False
+    ignore_requirements: bool = False
+    support_unit_usage: int = Field(default=0, ge=0, le=3)
+    support_unit_name: str = ""
+    user_additional: list[CopilotAdditionalConf] = Field(
+        default_factory=list, max_length=12
+    )
+
+
 class LongTaskPart(ConfModel):
     class RogueConf(ConfModel):
         squad: str = ""
@@ -261,6 +287,8 @@ class LongTaskPart(ConfModel):
     class SignInConf(ConfModel):
         enable: bool = True
         "签到活动开关"
+
+    copilot: CopilotConf = Field(default_factory=CopilotConf)
 
     maa_rg_enable: int = 0
     "大型任务"
@@ -1129,6 +1157,10 @@ class Conf(
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "rogue"
 
     @property
+    def COPILOT(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "copilot"
+
+    @property
     def SSS(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sss"
 
@@ -1208,7 +1240,9 @@ class Conf(
 
     @property
     def has_maa_tasks(self) -> bool:
-        return self.has_maa_daily_tasks or self.RG or self.SSS or self.RCL
+        return (
+            self.has_maa_daily_tasks or self.RG or self.SSS or self.RCL or self.COPILOT
+        )
 
     @property
     def run_order_buffer_time(self):

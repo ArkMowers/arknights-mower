@@ -2736,6 +2736,50 @@ def import_from_image():
     return "排班已加载"
 
 
+@app.route("/maa-copilot", methods=["GET", "POST"])
+@require_token
+def maa_copilot_library():
+    from arknights_mower.utils.maa_copilot import (
+        MAX_SCRIPT_BYTES,
+        list_scripts,
+        store_script,
+    )
+
+    with backup_lock:
+        try:
+            if request.method == "GET":
+                return {"scripts": list_scripts()}
+            upload = request.files.get("copilot")
+            if upload is None:
+                return {"message": "没有收到作业文件"}, 400
+            return store_script(upload.read(MAX_SCRIPT_BYTES + 1))
+        except (ValueError, TypeError, RecursionError):
+            return {
+                "message": "作业格式无效或存储已满，请检查文件并清理不再使用的作业"
+            }, 400
+        except OSError:
+            return {"message": "作业读写失败，请检查目录权限"}, 500
+
+
+@app.delete("/maa-copilot/<script_id>")
+@require_token
+def delete_maa_copilot(script_id):
+    from arknights_mower.utils.maa_copilot import script_path
+
+    with backup_lock, maa_maintenance_lock:
+        if any(item.id == script_id for item in config.conf.copilot.scripts):
+            return {"message": "请先将作业移出执行队列"}, 409
+        if _maa_busy_response():
+            return {"message": "MAA 正在使用中，请等待任务结束后删除作业"}, 409
+        try:
+            script_path(script_id).unlink(missing_ok=True)
+        except ValueError:
+            return {"message": "作业标识无效"}, 400
+        except OSError:
+            return {"message": "删除作业失败，请检查目录权限"}, 500
+    return {"ok": True}
+
+
 @app.route("/sss-copilot", methods=["GET", "POST"])
 @require_token
 def upload_sss_copilot():

@@ -316,6 +316,7 @@ def current_state():
             getattr(base_scheduler, "_initial_mood_refresh_rooms", ())
         ),
         "daily_visit_friend": base_scheduler.daily_visit_friend,
+        "maa_copilot_progress": getattr(base_scheduler, "maa_copilot_progress", {}),
         "daily_visit_friend_attempt": getattr(
             base_scheduler, "daily_visit_friend_attempt", None
         ),

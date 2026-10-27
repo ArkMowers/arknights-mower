@@ -125,6 +125,57 @@ SUB_TASK_INFO = {
         logging.ERROR,
         lambda details: f"MAA 不支持该关卡：{_inner(details).get('level', '')}",
     ),
+    # 普通作业与自动编队
+    "CopilotPrecheckFile": (
+        logging.INFO,
+        lambda details: f"作业预检：{_inner(details).get('nav_name', '')}",
+    ),
+    "CopilotListLoadTaskFileSuccess": (
+        logging.INFO,
+        lambda details: f"已加载作业：{_inner(details).get('stage_name', '')}",
+    ),
+    "BattleFormation": (
+        logging.INFO,
+        lambda details: (
+            "作业编队："
+            + "、".join(
+                str(item) for item in _sequence(_inner(details).get("formation"))[:12]
+            )
+        ),
+    ),
+    "BattleFormationParseFailed": (logging.WARNING, "作业编队解析失败"),
+    "BattleFormationSelected": (
+        logging.INFO,
+        lambda details: (
+            f"作业已选择干员：{_inner(details).get('group_name', '')} → {_inner(details).get('selected', '')}"
+        ),
+    ),
+    "BattleFormationOperUnavailable": (
+        logging.WARNING,
+        lambda details: (
+            f"作业干员未满足练度要求：{_inner(details).get('oper_name', '')}（{_inner(details).get('requirement_type', '')}）"
+        ),
+    ),
+    "BattleFormationOperboxMatched": (
+        logging.INFO,
+        lambda details: (
+            "已匹配作业编队："
+            + "、".join(
+                f"{item.get('group_name', '')} → {item.get('oper_name', '')}"
+                for item in (
+                    _mapping(value)
+                    for value in _sequence(_inner(details).get("matched_groups"))[:12]
+                )
+            )
+        ),
+    ),
+    "BattleFormationOperbox1Unmatched": (
+        logging.WARNING,
+        lambda details: (
+            f"作业编队可借助战补全：{_inner(details).get('group_name', '')} → {_inner(details).get('may_borrow_oper', '')}"
+        ),
+    ),
+    "CopilotAction": (logging.INFO, lambda details: _copilot_action(details)),
     # 公招
     "RecruitTagsDetected": (
         logging.INFO,
@@ -328,6 +379,8 @@ PROCESS_TASK_COMPLETED = {
 
 # SubTaskError 的 subtask 字段。未列出的子任务给出通用出错行。
 SUB_TASK_ERROR = {
+    "CopilotTask": (logging.ERROR, lambda details: _copilot_error(details)),
+    "BattleFormationTask": (logging.ERROR, lambda details: _copilot_error(details)),
     "StartGameTask": (logging.ERROR, "MAA 打开客户端失败，请检查客户端配置"),
     "StopGameTask": (logging.ERROR, "MAA 关闭游戏失败"),
     "CheckStageValid": (logging.ERROR, "无奖励关卡，已停止"),
@@ -461,6 +514,49 @@ def _offline_confirm(details: dict) -> str:
 def _routing_restart(details: dict) -> str:
     # TaskChainExtraInfo 把 what / why / node_cost 放在顶层，与子任务消息的嵌套不同。
     return f"前方战斗数：{details.get('node_cost', '?')}，重开路线"
+
+
+def _copilot_action(details):
+    inner = _inner(details)
+    action = _key(inner.get("action"))
+    names = {
+        "Deploy": "部署",
+        "Skill": "技能",
+        "Retreat": "撤退",
+        "SpeedUp": "切换倍速",
+        "BulletTime": "子弹时间",
+        "SkillUsage": "技能用法",
+        "Output": "打印",
+        "SkillDaemon": "摆完挂机",
+        "MoveCamera": "移动镜头",
+        "ResetStopwatch": "重置计时",
+        "Click": "点击",
+        "Swipe": "滑动",
+        "SetUnitLocation": "设置单位坐标",
+    }
+    text = f"作业步骤：{names.get(action, action)} {inner.get('target', '')}".strip()
+    doc = _key(inner.get("doc"))[:512]
+    elapsed = inner.get("elapsed_time")
+    if type(elapsed) is int and elapsed >= 0:
+        text += f"（已用时 {elapsed} 毫秒）"
+    return f"{text}：{doc}" if doc else text
+
+
+def _copilot_error(details):
+    what = _key(details.get("what"))
+    text = {
+        "CopilotFileReadError": "作业文件读取失败",
+        "CopilotStageNotSupported": "不支持作业关卡",
+        "UserAdditionalOperInvalid": "补充干员名称无效",
+        "OperboxDataParseFailed": "作业干员数据解析失败",
+    }.get(what)
+    if text:
+        inner = _inner(details)
+        return f"{text}：{inner.get('stage_name', inner.get('name', ''))}".rstrip("：")
+    if details.get("why") == "OperatorMissing":
+        names = list(_mapping(_inner(details).get("opers")))[:12]
+        return "作业编队缺少干员：" + "、".join(str(name) for name in names)
+    return "作业执行失败：" + _why_text(details)
 
 
 def _reclamation_report(details: dict) -> str:

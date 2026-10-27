@@ -146,6 +146,18 @@ export const useConfigStore = defineStore('config', () => {
   const rcl = ref({})
   const rogue = ref({})
   const sss = ref({})
+  const copilot = ref({
+    run_id: '',
+    scripts: [],
+    formation: false,
+    formation_index: 0,
+    use_sanity_potion: false,
+    add_trust: false,
+    ignore_requirements: false,
+    support_unit_usage: 0,
+    support_unit_name: '',
+    user_additional: []
+  })
   const screenshot = ref(1)
   const screenshot_archive_limit_mb = ref(5120)
   const screenshot_interval = ref(500)
@@ -594,6 +606,19 @@ export const useConfigStore = defineStore('config', () => {
       rcl.value = response.data.rcl
       rogue.value = response.data.rogue
       sss.value = response.data.sss
+      copilot.value = {
+        run_id: '',
+        scripts: [],
+        formation: false,
+        formation_index: 0,
+        use_sanity_potion: false,
+        add_trust: false,
+        ignore_requirements: false,
+        support_unit_usage: 0,
+        support_unit_name: '',
+        user_additional: [],
+        ...(response.data.copilot ?? {})
+      }
       screenshot.value = response.data.screenshot
       screenshot_archive_limit_mb.value = response.data.screenshot_archive_limit_mb ?? 5120
       screenshot_interval.value =
@@ -795,6 +820,7 @@ export const useConfigStore = defineStore('config', () => {
       rcl: rcl.value,
       rogue: rogue.value,
       sss: sss.value,
+      copilot: copilot.value,
       ...(runtime_platform.value === 'android' ? {} : { screenshot: screenshot.value }),
       screenshot_archive_limit_mb: screenshot_archive_limit_mb.value,
       screenshot_interval: screenshot_interval.value,
@@ -1162,6 +1188,7 @@ export const useConfigStore = defineStore('config', () => {
     rcl,
     rogue,
     sss,
+    copilot,
     screenshot,
     screenshot_archive_limit_mb,
     screenshot_interval,
