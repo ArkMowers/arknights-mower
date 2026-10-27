@@ -9,8 +9,7 @@ import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 
 const uploads = [
   ['normal plan', '../pages/Plan.vue', 'import_url', false, '/api/import', 'img'],
-  ['rescue plan', '../pages/Plan.vue', 'import_url', true, '/api/import?rescue=1', 'img'],
-  ['SSS copilot', './MaaSss.vue', 'sss_url', false, '/api/sss-copilot', 'copilot']
+  ['rescue plan', '../pages/Plan.vue', 'import_url', true, '/api/import?rescue=1', 'img']
 ]
 
 function uploadProps(path, actionName, rescue, axios) {

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
+import axios from 'axios'
+import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 import Component from './MaaSss.vue'
 
 const state = vi.hoisted(() => ({
@@ -44,6 +46,40 @@ afterEach(() => {
 })
 
 describe('SSS library and per-item rounds', () => {
+  it('uses the current shared client credentials when a custom upload starts', async () => {
+    const requests = []
+    state.client = axios.create({
+      adapter: async (config) => {
+        requests.push(config)
+        return {
+          data: config.method === 'post' ? first : { scripts: [first] },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config
+        }
+      }
+    })
+    component = scope.run(() => Component.setup({}, { expose: () => {} }))
+    state.client.defaults.headers.common.token = 'page-token'
+    for (const generation of ['activated-page-generation', 'reloaded-page-generation']) {
+      state.client.defaults.headers.common[CONFIG_GENERATION_HEADER] = generation
+      const finish = vi.fn()
+      const failure = vi.fn()
+      await component.upload({
+        file: { file: new Blob(['{}']) },
+        onFinish: finish,
+        onError: failure
+      })
+      const request = requests.filter((item) => item.method === 'post').at(-1)
+      expect(request.url).toMatch(/\/sss-copilot$/)
+      expect(request.data.get('copilot')).toBeInstanceOf(Blob)
+      expect(request.headers.get('token')).toBe('page-token')
+      expect(request.headers.get(CONFIG_GENERATION_HEADER)).toBe(generation)
+      expect(finish).toHaveBeenCalledOnce()
+      expect(failure).not.toHaveBeenCalled()
+    }
+  })
   it('downloads through the existing proxy and imports into the separate SSS library', async () => {
     state.client.get.mockImplementation(async (url) => ({
       data: url.includes('/network/')
