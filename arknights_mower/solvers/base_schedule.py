@@ -1288,178 +1288,6 @@ class BaseSchedulerSolver(
             self.last_room = ""
             logger.debug("重设上次房间为空")
 
-    def _schedule_calculated_exhaustion(self, op):
-        candidates = self.op_data.groups[op.group] if op.group else [op.name]
-        if self._has_pending_exhausted_shift(candidates):
-            return
-        pending = next(
-            (
-                task
-                for task in self.tasks
-                if task.type == TaskTypes.EXHAUST_OFF
-                and set(task.meta_data.split(",")) & set(candidates)
-            ),
-            None,
-        )
-        if pending is not None and (
-            pending.retains_execution
-            or pending.plan
-            or getattr(pending, "mood_physical_started", False)
-            or getattr(pending, "ordinary_coordination", False)
-        ):
-            return
-        model = self.op_data.mood_model
-        signature = (
-            model.revision,
-            model._input_signature(),
-            tuple(
-                (name, self.op_data.operators[name].lower_limit) for name in candidates
-            ),
-        )
-        if (
-            pending is not None
-            and getattr(pending, "calculated_exhaust_signature", None) == signature
-        ):
-            return
-        now = datetime.now()
-        deadlines = [
-            deadline
-            for name in candidates
-            if name in self.op_data.exhaust_agent
-            and (member := self.op_data.operators[name]).current_room
-            not in ("train", "factory")
-            and member.is_high()
-            and not member.is_resting()
-            and member.current_room in base_room_list
-            and (
-                deadline := self.op_data.calculated_mood_deadline(
-                    name, member.lower_limit, now
-                )
-            )
-            is not None
-        ]
-        task = pending or SchedulerTask(
-            time=now, task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name
-        )
-        if pending is None:
-            self.tasks.append(task)
-        task.calculated_exhaust_signature = (
-            model.revision,
-            model._input_signature(),
-            signature[2],
-        )
-        if deadlines:
-            task.time = max(now, min(deadlines))
-        if not deadlines:
-            self._retain_failed_task(
-                task, "用尽下班缺少可用的计算期限", [op.current_room], dependency=True
-            )
-
-    def _refresh_calculated_exhaustion_tasks(self):
-        for task in tuple(self.tasks):
-            if (
-                task.type != TaskTypes.EXHAUST_OFF
-                or task.plan
-                or task.time <= datetime.now()
-            ):
-                continue
-            op = self.op_data.operators.get(task.meta_data.split(",")[0])
-            if (
-                op is not None
-                and op.is_high()
-                and not op.is_resting()
-                and op.current_room in base_room_list
-                and op.current_room not in ("train", "factory")
-            ):
-                self._schedule_calculated_exhaustion(op)
-
-    def _confirm_calculated_exhaustion(self, members):
-        task = self.task
-        now = datetime.now()
-        due = [
-            op
-            for op in members
-            if (mood := self.op_data.calculated_mood(op.name, now)) is not None
-            and mood <= op.lower_limit
-            and not (
-                op.lower_limit == 0
-                and (end := op.working_zero_deadline(now)) is not None
-                and end > now
-            )
-        ]
-        if any(
-            not getattr(op, "mood_is_prediction", False)
-            and isinstance(op.time_stamp, datetime)
-            and op.time_stamp >= task.time
-            and 0 <= op.mood <= op.lower_limit
-            for op in due
-        ):
-            return True
-        if due:
-            observed = {}
-            positions = {op.name: (op.current_room, op.current_index) for op in due}
-            try:
-                for room in dict.fromkeys(room for room, _ in positions.values()):
-                    self.enter_room(room)
-                    try:
-                        observed[room] = self.get_agent_from_room(
-                            room, force_mood=True, strict_observation=True
-                        )
-                    finally:
-                        self.back()
-            except (MowerExit, DeviceRecoveryError, SharedADBError):
-                raise
-            except Exception as error:
-                self._retain_failed_task(
-                    task, str(error), [op.current_room for op in due]
-                )
-                return False
-            for op in due:
-                room, index = positions[op.name]
-                room_data = observed.get(room, [])
-                item = room_data[index] if 0 <= index < len(room_data) else {}
-                if (
-                    item.get("observed") is not False
-                    and item.get("agent") == op.name
-                    and isinstance(item.get("mood"), (int, float))
-                    and 0 <= item["mood"] <= op.lower_limit
-                    and not (
-                        op.lower_limit == 0
-                        and (end := op.working_zero_deadline(datetime.now()))
-                        is not None
-                        and end > datetime.now()
-                    )
-                ):
-                    return True
-        deadlines = [
-            deadline
-            for op in members
-            if (
-                deadline := self.op_data.calculated_mood_deadline(
-                    op.name, op.lower_limit, datetime.now()
-                )
-            )
-            is not None
-            and deadline > datetime.now()
-        ]
-        if deadlines:
-            if task.retains_execution:
-                successor = copy.deepcopy(task)
-                successor.__dict__.pop("execution_failure", None)
-                successor.__dict__.pop("execution_retained", None)
-                successor.time = min(deadlines)
-                self.tasks.append(successor)
-                return None
-            task.time = min(deadlines)
-        else:
-            self._retain_failed_task(
-                task,
-                "用尽下班尚未取得个人下限的有效观测或计算期限",
-                [op.current_room for op in members],
-                dependency=True,
-            )
-        return False
-
     def overtake_room(self):
         candidates = self.task.meta_data.split(",")
         if len(candidates) == 0:
@@ -1510,29 +1338,6 @@ class BaseSchedulerSolver(
             )
             self.skip()
             return
-        if (
-            getattr(self.op_data, "mood_calculation_enabled", False)
-            and not getattr(self.task, "ordinary_coordination", False)
-            and not self.task.plan
-            and not getattr(self.task, "mood_physical_started", False)
-        ):
-            trigger_members = [
-                op
-                for op in resting_members
-                if op.is_high()
-                and not op.is_resting()
-                and op.current_room in base_room_list
-                and op.current_room not in ("train", "factory")
-                and op.name in self.op_data.exhaust_agent
-            ]
-            if trigger_members:
-                confirmed = self._confirm_calculated_exhaustion(trigger_members)
-                if confirmed is not True:
-                    if confirmed is False and not any(
-                        queued is self.task for queued in self.tasks
-                    ):
-                        self.tasks.append(self.task)
-                    return confirmed
         # 在candidate 中，计算出需要的high free 和 Low free 数量
         # 只计算无法直接接管的主力床位。低优、替班和临时休息干员会让床，
         # 不能在这里阻止整个大组尝试下班。
@@ -2947,7 +2752,6 @@ class BaseSchedulerSolver(
             from arknights_mower.utils.calculated_mood import sync_model
 
             sync_model(self.op_data)
-            self._refresh_calculated_exhaustion_tasks()
         if self.find("control_central") is None:
             self.back()
             return
@@ -5697,11 +5501,6 @@ class BaseSchedulerSolver(
                 or not op.is_high()
                 or op.current_room not in base_room_list
             ):
-                continue
-            if getattr(
-                self.op_data, "mood_calculation_enabled", False
-            ) and op.current_room not in ("train", "factory"):
-                self._schedule_calculated_exhaustion(op)
                 continue
             if op.current_mood() <= op.lower_limit + 2:
                 candidates = self.op_data.groups[op.group] if op.group else [name]
