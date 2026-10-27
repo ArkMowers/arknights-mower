@@ -179,7 +179,18 @@ def test_reopened_manager_controls_live_instance_after_original_manager_process_
     registrations = runtime.instances(timeout=0)
     assert len(registrations) == 1
     assert registrations[0]["id"] != pending["id"]
-    assert manager.start(0, target)["ok"] is False
+    before = commands.read_text().splitlines()
+    saved = manager._storage_path.read_bytes()
+    assert manager.start(0, target) == {"ok": True}
+    await_condition(lambda: len(commands.read_text().splitlines()) > len(before))
+    assert json.loads(commands.read_text().splitlines()[-1]) == {
+        "id": registrations[0]["id"],
+        "action": "show",
+    }
+    assert [record["id"] for record in runtime.instances(timeout=0)] == [
+        registrations[0]["id"]
+    ]
+    assert manager._storage_path.read_bytes() == saved
     assert manager.stop(0, target) == {"ok": True}
     await_condition(lambda: manager.get_instances()[0]["state"] == "stopped")
 

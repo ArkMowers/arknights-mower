@@ -222,6 +222,7 @@ class DesktopExitTests(unittest.TestCase):
                 )
                 registration = Mock(record={})
                 registration.shutdown_requested.return_value = False
+                registration.take_commands.side_effect = lambda: []
                 server = Mock()
                 server.app.config = {}
 

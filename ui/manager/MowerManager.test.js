@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { parse } from '@vue/compiler-sfc'
 import { renderToString } from 'vue/server-renderer'
 import { compile, createSSRApp, effectScope, nextTick } from 'vue'
+import { NAlert, NButton } from 'naive-ui'
 import MowerManager from './MowerManager.vue'
 import { managerCall } from './bridge.js'
 
@@ -90,6 +91,56 @@ describe('manager instance controls', () => {
     scope = null
     vi.useRealTimers()
     vi.unstubAllGlobals()
+  })
+
+  async function renderLoadingFeedback() {
+    const { descriptor } = parse(
+      readFileSync(new URL('./MowerManager.vue', import.meta.url), 'utf8')
+    )
+    const alert = descriptor.template.content.match(
+      /<n-alert v-if="initializationError"[\s\S]*?<\/n-alert>/
+    )[0]
+    const heading = descriptor.template.content.match(
+      /<div class="manager-heading">[\s\S]*?<\/div>\s*<\/div>/
+    )[0]
+    return renderToString(
+      createSSRApp({
+        setup: () => ({ ...component }),
+        render: compile(`<div>${alert}${heading}</div>`),
+        components: { NAlert, NButton }
+      })
+    )
+  }
+
+  it('renders a retry button after initial failure and shows the saved list after retry', async () => {
+    api.get_instances.mockRejectedValueOnce(new Error('无法读取实例登记'))
+    await mount()
+
+    const failed = await renderLoadingFeedback()
+    expect(failed).toContain('无法读取实例登记')
+    expect(failed).toContain('重新加载')
+    expect(failed).toContain('实例列表未加载')
+    expect(failed).not.toContain('0 个实例')
+    expect(api.mark_ready).not.toHaveBeenCalled()
+
+    await component.initialize()
+    expect(component.instances.value[0].name).toBe('first')
+    expect(component.initializationError.value).toBe('')
+    expect(await renderLoadingFeedback()).toContain('1 个实例')
+    expect(api.mark_ready).toHaveBeenCalledOnce()
+  })
+
+  it('shows loading rather than an empty count until the first list arrives', async () => {
+    let finish
+    api.get_instances.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+    const mounting = mount()
+    await nextTick()
+    const loading = await renderLoadingFeedback()
+    expect(loading).toContain('正在加载实例列表')
+    expect(loading).not.toContain('0 个实例')
+    finish(structuredClone(rows))
+    await mounting
+    expect(await renderLoadingFeedback()).toContain('1 个实例')
   })
 
   it('keeps a directly opened browser manager unavailable without reading or changing instances', async () => {
