@@ -301,6 +301,20 @@ def dorm_candidates(
 ):
     now = now or getattr(op_data, "_projection_now", None) or datetime.now()
     excluded = set(excluded) | busy_resting_names() | {op_data.get_train_support()}
+    replacement_names = {
+        name
+        for slots in op_data.plan.values()
+        for slot in slots
+        if slot.agent != "菲亚梅塔"
+        for name in slot.all_replacements
+    }
+    moods, estimate_keys = {}, {}
+
+    def candidate_mood(name):
+        if name not in moods:
+            moods[name] = dorm_candidate_mood(op_data, name, now)
+        return moods[name]
+
     recovering, full, unknown = [], [], []
     for name, op in op_data.operators.items():
         if (
@@ -310,10 +324,11 @@ def dorm_candidates(
             or op.current_room
             and not (name in current_residents and op.current_room.startswith("dorm"))
             or op_data.rest_mood_complete(name)
-            or resting_tier(op_data, name) == RestingTier.EXCLUDED
+            or resting_tier(op_data, name, replacement_names=replacement_names)
+            == RestingTier.EXCLUDED
         ):
             continue
-        mood = dorm_candidate_mood(op_data, name, now)
+        mood = candidate_mood(name)
         if not has_resting_mood(op, now):
             if (mood is not None and mood < op.upper_limit) or (
                 not op.is_high() and not op_data.has_rest_mood_limit(name)
@@ -328,34 +343,40 @@ def dorm_candidates(
             recovering.append(name)
         elif not op.is_high() and not op_data.has_rest_mood_limit(name):
             full.append(name)
-    recovering.sort(key=lambda name: resting_key(op_data, name, now))
-    recovering = crafting_rest_order(op_data, recovering)
+    recovering.sort(
+        key=lambda name: resting_key(
+            op_data, name, now, replacement_names=replacement_names
+        )
+    )
+    recovering = crafting_rest_order(
+        op_data, recovering, replacement_names=replacement_names
+    )
 
     unknown.extend(unregistered_idle_candidates(op_data, excluded))
 
     def estimate_key(name):
-        mood = dorm_candidate_mood(op_data, name, now)
-        return (
-            is_full_dynamic_candidate(op_data, name, now),
-            24 if mood is None else mood,
-            resting_tier(op_data, name, now),
-        )
+        if name not in estimate_keys:
+            mood = candidate_mood(name)
+            estimate_keys[name] = (
+                is_full_dynamic_candidate(op_data, name, now),
+                24 if mood is None else mood,
+                resting_tier(op_data, name, now, replacement_names=replacement_names),
+            )
+        return estimate_keys[name]
 
     full.sort(key=estimate_key)
     unknown.sort(key=estimate_key)
     filling = sorted([*recovering, *full, *unknown], key=estimate_key)
     # 绿色笑脸只撤销主动核验；仍可补空床，不进入实读 full 集合。
     unknown = [
-        name
-        for name in unknown
-        if (mood := dorm_candidate_mood(op_data, name, now)) is None or mood < 24
+        name for name in unknown if (mood := candidate_mood(name)) is None or mood < 24
     ]
-    unknown = crafting_rest_order(op_data, unknown)
-    filling = crafting_rest_order(op_data, filling)
+    unknown = crafting_rest_order(op_data, unknown, replacement_names=replacement_names)
+    filling = crafting_rest_order(op_data, filling, replacement_names=replacement_names)
     estimated_recovering = [
         name
         for name in unknown
-        if (mood := dorm_candidate_mood(op_data, name, now)) is not None
+        if (mood := candidate_mood(name)) is not None
         and mood < getattr(op_data.operators.get(name), "upper_limit", 24)
     ]
     return DormCandidates(recovering, full, unknown, estimated_recovering, filling)

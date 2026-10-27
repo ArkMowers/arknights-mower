@@ -8317,9 +8317,12 @@ class BaseSchedulerSolver(
             task, "backup_shift_active", False
         ):
             return
+        projection_now = getattr(self.op_data, "_projection_now", None)
+        if projection_now is None and self.op_data.mood_calculation_enabled:
+            projection_now = datetime.now()
         if getattr(task, "exhaust_support", False):
             # 先确认前置接岗，再由原用尽任务重算下班；普通轮休不能在此抢床。
-            self._prepare_shift_backup(task)
+            self._prepare_shift_backup(task, now=projection_now)
             return
         # 肥鸭、延期切产物和临近关键任务仍由原有调度边界处理。
         probe = SchedulerTask(task_type=TaskTypes.FILL_DORM)
@@ -8341,7 +8344,7 @@ class BaseSchedulerSolver(
             )
             or getattr(task, "product_shift_locked", False)
         ):
-            self._prepare_shift_backup(task)
+            self._prepare_shift_backup(task, now=projection_now)
             recovery_data = self.op_data
             conditions = getattr(
                 task, "backup_shift_conditions", self.op_data.plan_condition
@@ -8351,7 +8354,9 @@ class BaseSchedulerSolver(
                 conditions != self.op_data.plan_condition
                 or backup_group != self.op_data.backup_group
             ):
-                recovery_data = self.op_data.project_arrangements([])
+                recovery_data = self.op_data.project_arrangements(
+                    [], now=projection_now
+                )
                 if error := recovery_data.swap_plan(
                     conditions, refresh=True, backup_group=backup_group
                 ):
@@ -8526,6 +8531,14 @@ class BaseSchedulerSolver(
         simulation.op_data = copy.deepcopy(
             self.op_data, {id(self.op_data.eval_model): self.op_data.eval_model}
         )
+        if projection_now is not None:
+            simulation.op_data._projection_now = projection_now
+            simulation.op_data._projection_deadlines = {}
+            for operator in simulation.op_data.operators.values():
+                operator._projection_now = projection_now
+                operator._projection_deadlines = (
+                    simulation.op_data._projection_deadlines
+                )
         simulation.op_data.commit_group_shifts(
             getattr(task, "group_shift_transitions", {})
         )
@@ -8580,6 +8593,8 @@ class BaseSchedulerSolver(
                 backup_group=getattr(step, "backup_group", None),
             ):
                 raise ValueError(f"完整换班预演失败：{error}")
+            if projection_now is not None:
+                simulation.op_data._projection_deadlines.clear()
             # 后续轮次和最终补床均从 pending 复制，失效预约不能重新进入演算。
             if simulation._invalidate_changed_exhaust_tasks(
                 pending_exhaust, tasks=pending
@@ -8917,7 +8932,7 @@ class BaseSchedulerSolver(
 
     @log_mood_calculation("上下班副表")
     @_log_backup_calculation("上下班副表")
-    def _prepare_shift_backup(self, task):
+    def _prepare_shift_backup(self, task, *, now=None):
         """从原换班意图推演副表及其动作，只改待执行任务，不伪造实际驻员。"""
         if (
             (self._initial_mood_read_pending())
@@ -9007,13 +9022,16 @@ class BaseSchedulerSolver(
             return
         timing = _backup_timing_runtime.current
         timing.start()
+        projection_now = now or getattr(self.op_data, "_projection_now", None)
+        if projection_now is None and self.op_data.mood_calculation_enabled:
+            projection_now = datetime.now()
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
         original = list(self.op_data.plan_condition)
         explicit_slots = set(getattr(task, "backup_explicit_slots", ()))
         ordinary_policy = copy.copy(task)
         ordinary_policy_changed = False
         self._suppress_facility_arrangement(intent)
-        seed = self.op_data.project_arrangements([intent])
+        seed = self.op_data.project_arrangements([intent], now=projection_now)
         seed.commit_group_shifts(getattr(task, "group_shift_transitions", {}))
         selection = seed.evaluate_backup_selection()
         conditions = selection.conditions
@@ -9030,7 +9048,7 @@ class BaseSchedulerSolver(
                 raise ValueError("上下班副表推演出现循环，保留原任务，暂不执行换人")
             seen.add(key)
             simulation = copy.copy(self)
-            simulation.op_data = seed.project_arrangements([])
+            simulation.op_data = seed.project_arrangements([], now=projection_now)
             # 重算产品换班时，自身上轮预演的预约不能锁住本轮宿舍分配。
             simulation.tasks = [queued for queued in self.tasks if queued is not task]
             simulation._refresh_deferred_product_reservations()
@@ -9038,11 +9056,13 @@ class BaseSchedulerSolver(
                 conditions, refresh=True, backup_group=selection.group_id
             ):
                 raise ValueError(f"上下班副表推演失败：{error}")
+            if projection_now is not None:
+                simulation.op_data._projection_deadlines.clear()
             if self._filter_ordinary_exhaust_departures(
                 ordinary_policy, intent, simulation.op_data
             ):
                 ordinary_policy_changed = True
-                seed = self.op_data.project_arrangements([intent])
+                seed = self.op_data.project_arrangements([intent], now=projection_now)
                 seed.commit_group_shifts(
                     getattr(ordinary_policy, "group_shift_transitions", {})
                 )
@@ -9123,7 +9143,7 @@ class BaseSchedulerSolver(
                             and (room, index) not in explicit_slots
                         ):
                             names[index] = "Current"
-                seed = self.op_data.project_arrangements([intent])
+                seed = self.op_data.project_arrangements([intent], now=projection_now)
                 seed.commit_group_shifts(
                     simulation.op_data.arrangement_group_transitions(intent)
                 )
@@ -9131,11 +9151,13 @@ class BaseSchedulerSolver(
             _merge_shift_transition(merged, transition, simulation.op_data)
             self._suppress_facility_arrangement(merged)
             # 从真实驻员重新投影，不能把上一轮的中间换人累积到下一轮。
-            projected = self.op_data.project_arrangements([])
+            projected = self.op_data.project_arrangements([], now=projection_now)
             if error := projected.swap_plan(
                 conditions, refresh=True, backup_group=selection.group_id
             ):
                 raise ValueError(f"上下班副表推演失败：{error}")
+            if projection_now is not None:
+                projected._projection_deadlines.clear()
             projected._apply_projected_arrangements([merged])
             next_selection = projected.evaluate_backup_selection()
             next_conditions = next_selection.conditions
