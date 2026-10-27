@@ -429,6 +429,77 @@ class ProxySettingsTests(ProxySettingsBase):
             )
         self.assertEqual(network.get_settings()["github_proxy"], "https://ghfast.top/")
 
+    def test_copilot_set_requires_token_before_network_and_preserves_member_order(self):
+        app = Flask(__name__)
+        app.token = "local-test-token"
+        app.register_blueprint(network_bp)
+        client = app.test_client()
+        with patch("arknights_mower.views.network.requests.get") as get:
+            for method in (client.get, client.head):
+                for headers in ({}, {"token": "wrong"}):
+                    self.assertEqual(
+                        method(
+                            "/network/maa-copilot-set/123", headers=headers
+                        ).status_code,
+                        403,
+                    )
+            get.assert_not_called()
+            get.return_value.json.return_value = {
+                "status_code": 200,
+                "data": {"copilot_ids": [456, 789, 456]},
+            }
+            response = client.get(
+                "/network/maa-copilot-set/123", headers={"token": app.token}
+            )
+            self.assertEqual(response.get_json(), {"ids": ["456", "789", "456"]})
+            get.assert_called_once_with(
+                "https://prts.maa.plus/set/get", params={"id": 123}, timeout=30
+            )
+
+            get.reset_mock()
+            self.assertEqual(
+                client.head(
+                    "/network/maa-copilot-set/123", headers={"token": app.token}
+                ).status_code,
+                200,
+            )
+            get.assert_called_once_with(
+                "https://prts.maa.plus/set/get", params={"id": 123}, timeout=30
+            )
+
+    def test_copilot_set_rejects_missing_invalid_or_oversized_members(self):
+        app = Flask(__name__)
+        app.token = "local-test-token"
+        app.register_blueprint(network_bp)
+        client = app.test_client()
+        for payload in (
+            {},
+            {"data": {"copilot_ids": []}},
+            {"data": {"copilot_ids": [True]}},
+            {"data": {"copilot_ids": [-1]}},
+            {"data": {"copilot_ids": [1.5]}},
+            {"data": {"copilot_ids": ["https://other.test"]}},
+            {"data": {"copilot_ids": list(range(1, 34))}},
+            {"status_code": 400, "data": {"copilot_ids": [456]}},
+        ):
+            with self.subTest(payload=payload):
+                with patch("arknights_mower.views.network.requests.get") as get:
+                    get.return_value.json.return_value = payload
+                    response = client.get(
+                        "/network/maa-copilot-set/123", headers={"token": app.token}
+                    )
+                    self.assertIn(response.status_code, (400, 502))
+                    self.assertNotIn("ids", response.get_json())
+        with patch(
+            "arknights_mower.views.network.requests.get", side_effect=requests.Timeout
+        ):
+            self.assertEqual(
+                client.get(
+                    "/network/maa-copilot-set/123", headers={"token": app.token}
+                ).status_code,
+                502,
+            )
+
     def test_copilot_download_uses_fixed_backend_endpoint_without_forwarding_token(
         self,
     ):

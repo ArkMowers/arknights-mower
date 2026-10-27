@@ -4,10 +4,11 @@ import time
 from urllib.parse import urlparse
 
 import requests
-from flask import Blueprint, abort, current_app, request
+from flask import Blueprint, abort, request
 
 from arknights_mower.utils import network_settings
 from arknights_mower.utils.github_download import download_url, request_download
+from arknights_mower.utils.web_auth import check_token
 
 network_bp = Blueprint("network", __name__, url_prefix="/network")
 FILE_TEST_URL = (
@@ -17,11 +18,7 @@ FILE_TEST_URL = (
 
 @network_bp.before_request
 def authorize():
-    if (
-        hasattr(current_app, "token")
-        and request.headers.get("token", "") != current_app.token
-    ):
-        abort(403)
+    check_token()
     if request.method == "POST":
         if request.headers.get("X-Mower-Settings") != "1":
             abort(403)
@@ -121,4 +118,40 @@ def maa_copilot(code):
         return {
             "ok": False,
             "message": "MAA 作业下载失败，请检查作业编号和网络代理",
+        }, 502
+
+
+@network_bp.get("/maa-copilot-set/<int:code>")
+def maa_copilot_set(code):
+    """Read ordered operation-set members from the fixed public endpoint."""
+    try:
+        network_settings.apply_http_proxy()
+        response = requests.get(
+            "https://prts.maa.plus/set/get", params={"id": code}, timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+        if (
+            not isinstance(data, dict)
+            or data.get("status_code", 200) != 200
+            or not isinstance(data.get("data"), dict)
+        ):
+            raise ValueError("作业集内容缺失")
+        ids = data["data"].get("copilot_ids")
+        if (
+            not isinstance(ids, list)
+            or not ids
+            or any(type(item) is not int or item <= 0 for item in ids)
+        ):
+            raise ValueError("作业集为空或包含无效作业编号")
+        if len(ids) > 32:
+            return {
+                "ok": False,
+                "message": "作业集超过队列的 32 项上限，请拆分后导入",
+            }, 400
+        return {"ids": [str(item) for item in ids]}
+    except (requests.RequestException, ValueError):
+        return {
+            "ok": False,
+            "message": "MAA 作业集读取失败，请检查作业集编号、公开状态和网络代理",
         }, 502
