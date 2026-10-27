@@ -9704,11 +9704,10 @@ class BaseSchedulerSolver(
         event = self._recycling_pending
         if not event.get("recorded"):
             event.setdefault("at", datetime.now().timestamp())
-            previous = None
             materials = None
             notification_deadline = None
             notification_waits = 0
-            for attempt in range(3):
+            for attempt in range(5):
                 observed = read_recycling_materials(self.recog.img)
                 # 读不全且提示可能遮住奖励时，等待提示消失；整次确认共用五秒预算。
                 while (
@@ -9724,11 +9723,10 @@ class BaseSchedulerSolver(
                     self.sleep(min(0.5, remaining))
                     notification_waits += 1
                     observed = read_recycling_materials(self.recog.img)
-                if observed and observed == previous:
+                if observed:
                     materials = observed
                     break
-                previous = observed
-                if attempt < 2:
+                if attempt < 4:
                     self.sleep(0.3)
             if materials is None:
                 self.recog.save_screencap("recycling")
