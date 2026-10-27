@@ -44,30 +44,61 @@ afterEach(() => {
 })
 
 describe('ordinary Copilot library and queue', () => {
-  it('downloads through the existing proxy and imports into the separate ordinary library', async () => {
-    state.client.get.mockImplementation(async (url) => ({
-      data: url.includes('/network/')
-        ? { data: { content: '{"stage_name":"1-7","actions":[]}' } }
-        : { scripts: [first] }
-    }))
-    component.code.value = 'maa://123'
-    await component.download()
-    expect(state.client.get).toHaveBeenCalledWith(
-      expect.stringMatching(/\/network\/maa-copilot\/123$/)
-    )
-    expect(state.client.post).toHaveBeenCalledWith(
-      expect.stringMatching(/\/maa-copilot$/),
-      expect.any(FormData)
-    )
-    expect(state.config.copilot.value.scripts).toEqual([
-      { id: first.id, nav_name_override: '', is_raid: false }
-    ])
-    expect(component.loading.value).toBe(false)
-  })
-  it('rejects invalid download codes without network work and preserves the queue on error', async () => {
-    component.code.value = '../123'
+  it.each([
+    'prts://123',
+    '  prts://123  ',
+    'maa://123',
+    '123',
+    'https://prts.plus/operation/123',
+    'https://prts.plus/operation/123/?source=share#details'
+  ])(
+    'downloads %s through the existing proxy and imports into the separate ordinary library',
+    async (code) => {
+      state.client.get.mockImplementation(async (url) => ({
+        data: url.includes('/network/')
+          ? { data: { content: '{"stage_name":"1-7","actions":[]}' } }
+          : { scripts: [first] }
+      }))
+      component.code.value = code
+      await component.download()
+      expect(state.client.get).toHaveBeenCalledWith(
+        expect.stringMatching(/\/network\/maa-copilot\/123$/)
+      )
+      expect(state.client.post).toHaveBeenCalledWith(
+        expect.stringMatching(/\/maa-copilot$/),
+        expect.any(FormData)
+      )
+      expect(state.config.copilot.value.scripts).toEqual([
+        { id: first.id, nav_name_override: '', is_raid: false }
+      ])
+      expect(component.loading.value).toBe(false)
+    }
+  )
+  it('rejects operation-set codes without downloading or changing the queue', async () => {
+    component.code.value = 'prts://s123'
     await component.download()
     expect(state.client.get).not.toHaveBeenCalled()
+    expect(state.client.post).not.toHaveBeenCalled()
+    expect(state.error).toHaveBeenCalledWith('这是作业集代码，请使用单份作业代码')
+    expect(state.config.copilot.value.scripts).toEqual([])
+  })
+  it.each([
+    '',
+    '../123',
+    'prts://abc',
+    'https://other.test/operation/123',
+    'https://prts.plus.other.test/operation/123',
+    'https://prts.plus@other.test/operation/123',
+    'https://prts.plus/operation/123/extra'
+  ])('rejects invalid code %s without network work', async (code) => {
+    component.code.value = code
+    await component.download()
+    expect(state.client.get).not.toHaveBeenCalled()
+    expect(state.client.post).not.toHaveBeenCalled()
+    expect(state.config.copilot.value.scripts).toEqual([])
+    expect(state.error).toHaveBeenCalledOnce()
+  })
+  it('preserves the queue on download error', async () => {
     component.code.value = '123'
     state.client.get.mockRejectedValue(new Error('offline'))
     await component.download()

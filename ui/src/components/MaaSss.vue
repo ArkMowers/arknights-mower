@@ -3,6 +3,7 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
+import { parseCopilotCode } from '@/utils/maaCopilotCode'
 
 const store = useConfigStore()
 const { sss } = storeToRefs(store)
@@ -55,9 +56,11 @@ async function upload({ file, onFinish, onError }) {
   }
 }
 async function download() {
-  const number = code.value.replace(/^maa:\/\//, '').trim()
-  if (!/^\d+$/.test(number)) {
-    message.error('请输入有效的 MAA 作业编号')
+  let number
+  try {
+    number = parseCopilotCode(code.value)
+  } catch (error) {
+    message.error(error.message)
     return
   }
   loading.value = true
@@ -118,7 +121,7 @@ async function restart_queue() {
         <n-flex :wrap="false">
           <n-input
             v-model:value="code"
-            placeholder="maa://作业编号"
+            placeholder="prts://作业编号或 prts.plus 作业链接"
             :disabled="loading"
             @keydown.enter="download"
           />
