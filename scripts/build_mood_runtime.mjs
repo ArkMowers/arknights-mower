@@ -18,8 +18,8 @@ const files = {}
 for (const name of Object.keys(result.metafile.inputs).sort()) {
   files[name] = crypto.createHash('sha256').update((await readFile(path.join(root, name), 'utf8')).replace(/\r\n/g, '\n')).digest('hex')
 }
-const code = result.outputFiles[0].text.trimEnd() + '\n'
-const license = await readFile(path.join(root, 'ui/src/riic/vendor/THIRD_PARTY_MOWER_LICENSE'), 'utf8')
+const code = result.outputFiles[0].text.replace(/\r\n/g, '\n').trimEnd() + '\n'
+const license = (await readFile(path.join(root, 'ui/src/riic/vendor/THIRD_PARTY_MOWER_LICENSE'), 'utf8')).replace(/\r\n/g, '\n')
 const manifest = JSON.stringify({
   runtime: 'quickjs-ng==0.17.0.2',
   sha256: crypto.createHash('sha256').update(code).digest('hex'),
@@ -29,8 +29,9 @@ const artifacts = { 'runtime.js': code, 'source.json': manifest, 'THIRD_PARTY_MO
 await mkdir(output, { recursive: true })
 for (const [name, text] of Object.entries(artifacts)) {
   const destination = path.join(output, name)
+  const existing = await readFile(destination).catch(() => null)
   if (process.argv.includes('--check')) {
-    if ((await readFile(destination, 'utf8').catch(() => '')).replace(/\r\n/g, '\n') !== text) throw new Error(`Mood runtime is stale: ${name}; run node scripts/build_mood_runtime.mjs`)
-  } else await writeFile(destination, text)
+    if (existing?.toString('utf8').replace(/\r\n/g, '\n') !== text) throw new Error(`Mood runtime is stale: ${name}; run node scripts/build_mood_runtime.mjs`)
+  } else if (!existing?.equals(Buffer.from(text, 'utf8'))) await writeFile(destination, text)
 }
 console.log(`Verified mood runtime: ${Object.keys(files).length} shared sources`)
