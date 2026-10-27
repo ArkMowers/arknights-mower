@@ -1691,20 +1691,31 @@ def test_gap_exclusions_preserve_exact_names_and_have_isolated_defaults():
 
 
 def test_ordinary_copilot_library_and_queue_roundtrip(storage, monkeypatch):
+    from arknights_mower.solvers import record
     from arknights_mower.utils import maa_copilot
 
     monkeypatch.setattr(maa_copilot, "get_path", storage)
+    monkeypatch.setattr(record, "get_path", storage)
+    monkeypatch.setattr(record, "_tables_created", False)
     info = maa_copilot.store_script(b'{"stage_name":"1-7","actions":[]}')
     config.conf = config.Conf(
         copilot={"scripts": [{"id": info["id"], "is_raid": True}]}
     )
     config.save_conf()
+    progress = {
+        "key": maa_copilot.queue_key(config.conf.copilot),
+        "next": 1,
+        "failed": False,
+    }
+    record.save_maa_copilot_progress(progress)
     raw = backup.export_archive()
     files = backup.read_archive(raw)
     name = "copilots/" + info["id"] + ".json"
     assert name in files
     maa_copilot.script_path(info["id"]).unlink()
+    record.save_maa_copilot_progress({})
     backup.import_configuration(raw)
+    assert record.load_maa_copilot_progress() == progress
     assert config.conf.copilot.scripts[0].id == info["id"]
     assert config.conf.copilot.scripts[0].is_raid is True
     assert (

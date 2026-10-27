@@ -54,10 +54,12 @@ from arknights_mower.solvers.record import (
     battle_inventory_active,
     get_inventory_counts,
     invalidate_workshop_inventory,
+    load_maa_copilot_progress,
     save_agent_action,
     save_current_state,
     save_exception,
     save_log,
+    save_maa_copilot_progress,
     save_recycling_collection,
     update_recycling_operators,
     workshop_inventory_changed,
@@ -15392,15 +15394,27 @@ class BaseSchedulerSolver(
             tasks.clear()
 
     def _maa_copilot_run(self, conf):
-        from arknights_mower.utils.maa_copilot import run_key
+        from arknights_mower.utils.maa_copilot import queue_key, run_key
 
-        if not hasattr(self, "maa_copilot_progress"):
-            self.maa_copilot_progress = {}
+        if not getattr(self, "_maa_copilot_progress_loaded", False):
+            self.maa_copilot_progress = load_maa_copilot_progress() or getattr(
+                self, "maa_copilot_progress", {}
+            )
+            self._maa_copilot_progress_loaded = True
         progress = self.maa_copilot_progress
-        key = run_key(conf)
+        previous = dict(progress)
+        key = queue_key(conf)
+        settings_key = run_key(conf)
+        # 兼容旧运行快照；新记录独立保存，不受清缓存启动影响。
+        if "settings_key" not in progress and progress.get("key") == settings_key:
+            progress.update(key=key, settings_key=settings_key)
         if progress.get("key") != key:
             progress.clear()
-            progress.update(key=key, next=0, failed=False)
+            progress.update(key=key, next=0, failed=False, settings_key=settings_key)
+        elif progress.get("settings_key") != settings_key:
+            progress.update(failed=False, settings_key=settings_key)
+        if progress != previous:
+            save_maa_copilot_progress(progress)
         return progress
 
     def _record_maa_copilot_callback(self, msg, details):
@@ -15425,7 +15439,7 @@ class BaseSchedulerSolver(
             logger.warning("自动战斗作业失败，保留进度，等待修改配置或手动重新执行")
         else:
             return
-        save_current_state()
+        save_maa_copilot_progress(progress)
 
     def on_maa_callback(self, msg, details, arg):
         """MAA 回调入口：累积掉落统计、代发上报请求、输出可读日志行。"""
@@ -15435,7 +15449,10 @@ class BaseSchedulerSolver(
             self._record_maa_daily_callback(msg, d)
         except Exception:
             logger.exception("保存 MAA 每日任务完成记录失败")
-        self._record_maa_copilot_callback(msg, d)
+        try:
+            self._record_maa_copilot_callback(msg, d)
+        except Exception:
+            logger.exception("保存 MAA 自动战斗作业进度失败")
         if msg == 3:  # AllTasksCompleted follows the final StageDrops receipt.
             battle_inventory_active.clear()
         if msg == 20003 and d.get("what") == "StageDrops":
@@ -16407,7 +16424,10 @@ class BaseSchedulerSolver(
         except Exception as e:
             if copilot_run is not None:
                 copilot_run["failed"] = True
-                save_current_state()
+                try:
+                    save_maa_copilot_progress(copilot_run)
+                except Exception:
+                    logger.exception("保存 MAA 自动战斗作业进度失败")
             save_exception(e)
             logger.exception(e)
             if getattr(self, "MAA", None) is not None:

@@ -200,7 +200,7 @@ async function restart_queue() {
         </n-card>
         <n-text depth="3"
           >按队列顺序执行，最多 32 项。关卡导航由 MAA
-          完成；请确认作业与关卡、难度及干员练度相符。中断后从未完成项重新执行，已完成项会保存并跳过；整轮完成后停止。修改作业或编队设置会开启新一轮。</n-text
+          完成；请确认作业与关卡、难度及干员练度相符。中断后从未完成项重新执行，已完成项会保存并跳过；整轮完成后停止。清缓存启动保留进度。修改执行队列会开启新一轮，调整编队或理智药设置保留已完成项。</n-text
         >
         <n-button :disabled="!copilot.scripts.length" @click="restart_queue"
           >重新执行整份队列</n-button

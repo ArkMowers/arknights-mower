@@ -18,6 +18,16 @@ def run_key(conf):
     ).hexdigest()
 
 
+def queue_key(conf):
+    return hashlib.sha256(
+        json.dumps(
+            conf.model_dump(include={"run_id", "scripts"}),
+            sort_keys=True,
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+
+
 def script_path(script_id):
     if not isinstance(script_id, str) or not re.fullmatch(r"[a-f0-9]{64}", script_id):
         raise ValueError("作业标识无效")

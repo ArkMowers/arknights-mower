@@ -35,6 +35,8 @@ _DB_TABLE_STMTS = (
     "mood_event TEXT"
     ")",
     "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)",
+    "CREATE TABLE IF NOT EXISTS maa_copilot_progress ("
+    "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS trading_history ("
     "time INTEGER PRIMARY KEY,"
     "server_date TEXT,"
@@ -317,7 +319,6 @@ def current_state():
         ),
         "daily_visit_friend": base_scheduler.daily_visit_friend,
         "maa_daily_completed": getattr(base_scheduler, "maa_daily_completed", {}),
-        "maa_copilot_progress": getattr(base_scheduler, "maa_copilot_progress", {}),
         "daily_visit_friend_attempt": getattr(
             base_scheduler, "daily_visit_friend_attempt", None
         ),
@@ -387,6 +388,23 @@ def save_state_to_db(saved_state):
 
 def save_current_state():
     return save_state_to_db(current_state())
+
+
+def load_maa_copilot_progress():
+    with _conn() as connection:
+        row = connection.execute(
+            "SELECT payload FROM maa_copilot_progress WHERE id = 1"
+        ).fetchone()
+    return json.loads(row[0]) if row else {}
+
+
+def save_maa_copilot_progress(progress):
+    with _conn() as connection:
+        connection.execute(
+            "INSERT OR REPLACE INTO maa_copilot_progress VALUES (1, ?)",
+            (json.dumps(progress),),
+        )
+        connection.commit()
 
 
 def save_state(func):

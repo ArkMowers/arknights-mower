@@ -23,6 +23,7 @@ from arknights_mower.utils.config_profile_groups import (
 
 WEEKLY_SELECTION_FILE = "profile-weekly.json"
 TABLE_GROUPS = {
+    "maa_copilot_progress": "long",
     "inventory": "inventory",
     "workshop_inventory_updates": "inventory",
     "workshop_inventory_pending": "inventory",

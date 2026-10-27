@@ -227,7 +227,11 @@ def test_authorized_upload_list_and_delete_and_selected_guard(
 
 
 @pytest.fixture
-def scheduler(monkeypatch, files):
+def scheduler(monkeypatch, files, tmp_path):
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(record, "get_path", lambda value: tmp_path / value[5:])
+    monkeypatch.setattr(record, "_tables_created", False)
     info = upload()
     conf = Conf(
         maa_rg_enable=1,
@@ -247,6 +251,7 @@ def scheduler(monkeypatch, files):
     solver.recog = MagicMock()
     solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=2))]
     solver.last_execution = {"maa": None}
+    solver.emergency_state = None
     for method in (
         "back_to_index",
         "initialize_maa",
@@ -364,8 +369,10 @@ def test_loading_or_unmatched_callbacks_cannot_advance_queue(scheduler, taskid):
     assert scheduler.MAA.append_task.call_count == 2
 
 
-def test_completion_roundtrips_through_sqlite_snapshot_and_real_startup_restore(
-    scheduler, monkeypatch, tmp_path
+@pytest.mark.parametrize("clear_cache", [False, True])
+@pytest.mark.parametrize("complete_queue", [False, True])
+def test_progress_survives_real_startup_with_or_without_runtime_cache(
+    scheduler, monkeypatch, tmp_path, clear_cache, complete_queue
 ):
     from arknights_mower import __main__ as mower
     from arknights_mower.solvers import record
@@ -390,11 +397,16 @@ def test_completion_roundtrips_through_sqlite_snapshot_and_real_startup_restore(
     monkeypatch.setattr(mower, "base_scheduler", scheduler)
     monkeypatch.setattr(record, "get_path", lambda value: tmp_path / value[5:])
     monkeypatch.setattr(record, "_tables_created", False)
-    snapshot_before_stop = record.current_state()
     emit(scheduler, 10002, 1)
-    assert snapshot_before_stop["maa_copilot_progress"]["next"] == 1
+    if complete_queue:
+        scheduler.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=2))]
+        scheduler.maa_plan_solver()
+        emit(scheduler, 10002, 2)
+        scheduler.tasks = []
+    record.save_current_state()
     saved = record.load_state()
     scheduler.maa_copilot_progress = {}
+    monkeypatch.delattr(scheduler, "_maa_copilot_progress_loaded", raising=False)
     scheduler.initialize_operators = MagicMock(return_value=None)
     scheduler.run = MagicMock(side_effect=base_schedule.MowerExit)
     scheduler._request_run_order_restoration_observations = MagicMock()
@@ -403,23 +415,141 @@ def test_completion_roundtrips_through_sqlite_snapshot_and_real_startup_restore(
     monkeypatch.setattr(mower.NewsChecker, "get_effective_maintenance", lambda: None)
     monkeypatch.setattr(mower.NewsChecker, "get_major_maintenance", lambda: None)
     monkeypatch.setattr(mower, "refresh_resource_at_boundary", MagicMock())
-    mower.simulate(saved)
+    mower.simulate({} if clear_cache else saved)
     assert scheduler.run.called
-    assert scheduler.maa_copilot_progress["next"] == 1
     scheduler.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=2))]
+    calls = scheduler.MAA.append_task.call_count
     scheduler.maa_plan_solver()
+    assert scheduler.maa_copilot_progress["next"] == (2 if complete_queue else 1)
+    assert scheduler.MAA.append_task.call_count == calls + (0 if complete_queue else 1)
+    if not complete_queue:
+        assert scheduler.MAA.append_task.call_args.args[1]["copilot_list"][0][
+            "filename"
+        ].endswith(base_schedule.config.conf.copilot.scripts[1].id + ".json")
+
+
+def test_cleared_runtime_and_execution_options_keep_completed_queue(
+    scheduler, monkeypatch
+):
+    scheduler.maa_plan_solver()
+    emit(scheduler, 10002, 1)
+    scheduler.maa_copilot_progress = {}
+    monkeypatch.delattr(scheduler, "_maa_copilot_progress_loaded", raising=False)
+    conf = base_schedule.config.conf.copilot
+    conf.formation = True
+    conf.use_sanity_potion = True
+    for _ in range(3):
+        scheduler.maa_plan_solver()
+    assert scheduler.maa_copilot_progress["next"] == 1
+    assert scheduler.MAA.append_task.call_count == 1
+    conf.run_id = "manual-new-round"
+    scheduler.maa_plan_solver()
+    assert scheduler.MAA.append_task.call_count == 2
+
+
+def test_fixing_failed_item_options_retries_it_without_replaying_completed_prefix(
+    scheduler,
+):
+    queue_pair()
+
+    def finish_then_fail():
+        taskid = scheduler.MAA.append_task.call_count
+        emit(scheduler, 10002 if taskid == 1 else 10000, taskid)
+        return False
+
+    scheduler.MAA.running.side_effect = finish_then_fail
+    scheduler.maa_plan_solver()
+    assert scheduler.maa_copilot_progress["next"] == 1
+    base_schedule.config.conf.copilot.formation = True
+    scheduler.MAA.running.side_effect = None
+    scheduler.MAA.running.return_value = False
+    scheduler.maa_plan_solver()
+    assert scheduler.MAA.append_task.call_count == 3
+    assert scheduler.maa_copilot_progress["next"] == 1
     assert scheduler.MAA.append_task.call_args.args[1]["copilot_list"][0][
         "filename"
     ].endswith(base_schedule.config.conf.copilot.scripts[1].id + ".json")
 
 
-def test_old_or_cleared_runtime_cache_starts_first_item(scheduler):
+@pytest.mark.parametrize("edit", ["order", "navigation", "raid", "remove"])
+def test_editing_execution_queue_starts_new_round(scheduler, edit):
+    queue_pair()
     scheduler.maa_plan_solver()
     emit(scheduler, 10002, 1)
-    scheduler.maa_copilot_progress = {}
+    scripts = base_schedule.config.conf.copilot.scripts
+    if edit == "order":
+        scripts.reverse()
+    elif edit == "navigation":
+        scripts[0].nav_name_override = "1-7"
+    elif edit == "raid":
+        scripts[0].is_raid = True
+    else:
+        scripts.pop()
     scheduler.maa_plan_solver()
     assert scheduler.maa_copilot_progress["next"] == 0
     assert scheduler.MAA.append_task.call_count == 2
+    assert scheduler.MAA.append_task.call_args.args[1]["copilot_list"][0][
+        "filename"
+    ].endswith(scripts[0].id + ".json")
+
+
+def test_independent_progress_overrides_stale_snapshot_and_migrates_legacy(
+    scheduler, monkeypatch
+):
+    from arknights_mower.solvers import record
+
+    conf = base_schedule.config.conf.copilot
+    scheduler.maa_copilot_progress = {
+        "key": library.run_key(conf),
+        "next": 1,
+        "failed": False,
+    }
+    scheduler.maa_plan_solver()
+    assert scheduler.MAA.append_task.call_count == 0
+    assert record.load_maa_copilot_progress()["next"] == 1
+    scheduler.maa_copilot_progress = {
+        "key": library.run_key(conf),
+        "next": 0,
+        "failed": False,
+    }
+    monkeypatch.delattr(scheduler, "_maa_copilot_progress_loaded")
+    scheduler.maa_plan_solver()
+    assert scheduler.maa_copilot_progress["next"] == 1
+    assert scheduler.MAA.append_task.call_count == 0
+
+
+def test_progress_write_failure_does_not_skip_maa_error_cleanup(scheduler, monkeypatch):
+    scheduler._maa_copilot_run(base_schedule.config.conf.copilot)
+    failure = RuntimeError("MAA submission failed")
+    scheduler.MAA.append_task.side_effect = failure
+    monkeypatch.setattr(
+        base_schedule,
+        "save_maa_copilot_progress",
+        MagicMock(side_effect=OSError("disk full")),
+    )
+    scheduler.maa_plan_solver()
+    assert scheduler.maa_copilot_progress["failed"] is True
+    scheduler.MAA.stop.assert_called_once()
+    assert scheduler.release_maa.called
+    base_schedule.save_exception.assert_called_once_with(failure)
+    scheduler.maa_plan_solver()
+    assert scheduler.MAA.append_task.call_count == 1
+
+
+def test_callback_progress_write_failure_is_logged_and_callback_remains_readable(
+    scheduler, monkeypatch, caplog
+):
+    scheduler.maa_plan_solver()
+    scheduler.maa_callback = MaaCallbackLog()
+    monkeypatch.setattr(
+        base_schedule,
+        "save_maa_copilot_progress",
+        MagicMock(side_effect=OSError("disk full")),
+    )
+    emit(scheduler, 10002, 1)
+    assert "保存 MAA 自动战斗作业进度失败" in caplog.text
+    assert "完成任务" in caplog.text
+    assert scheduler.maa_copilot_progress["next"] == 1
 
 
 def test_large_task_real_dispatch_has_no_daily_or_repeat_parameters(scheduler):
