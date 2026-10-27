@@ -626,6 +626,23 @@ def test_claimed_card_is_skipped_when_its_numeral_is_covered_by_the_receipt_mark
     ]
 
 
+def test_claimed_current_day_without_yellow_point_still_collects_earlier_missed_days(
+    activity,
+):
+    solver, state, _ = activity
+    state.states = [*("available",) * 4, "claimed", "locked", "locked"]
+    state.unlocked_days = 5
+    state.side = "right"
+    state.hide_claimed_numbers = True
+
+    assert solver.run() is True
+
+    assert state.claimed == [1, 2, 3, 4]
+    assert solver.claimed_days == {1, 2, 3, 4}
+    assert state.states == [*("claimed",) * 5, "locked", "locked"]
+    assert state.phase == "index"
+
+
 def test_anonymous_claimed_pages_can_be_scanned_to_the_end_without_card_clicks(
     activity,
 ):

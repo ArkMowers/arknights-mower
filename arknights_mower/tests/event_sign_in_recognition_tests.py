@@ -25,8 +25,11 @@ FIXTURES = Path(__file__).parent / "fixtures/event_sign_in"
 
 
 def frame(name):
+    suffix = "png" if name.startswith("seven_day_four") else "jpg"
     image = cv2.cvtColor(
-        cv2.imdecode(np.fromfile(FIXTURES / f"{name}.jpg", np.uint8), cv2.IMREAD_COLOR),
+        cv2.imdecode(
+            np.fromfile(FIXTURES / f"{name}.{suffix}", np.uint8), cv2.IMREAD_COLOR
+        ),
         cv2.COLOR_BGR2RGB,
     )
     if name.startswith("seven"):
@@ -480,3 +483,49 @@ def test_actual_solver_assembles_real_panel_geometry_and_receipts(
     assert page is not None
     assert page.first_day == 1
     assert [(card.day, card.claimed) for card in page.cards] == expected
+
+
+def test_real_claimed_four_day_prefix_can_be_rechecked_without_reward_clicks(
+    local_ocr, monkeypatch
+):
+    from arknights_mower.solvers.event_sign_in import EventSignInSolver
+    from arknights_mower.utils import config
+
+    solver = object.__new__(EventSignInSolver)
+    solver.deadline = time.monotonic() + 180
+    solver.activity_days = 7
+    solver.claimed_days = set()
+    solver.attempted_days = set()
+    solver.swipe_noinertia = Mock()
+    solver.tap = Mock()
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(rapidocr, "engine", local_ocr)
+    pages = []
+    for side in ("right", "left"):
+        solver.recog = SimpleNamespace(
+            img=frame(f"seven_day_four_claimed_{side}"),
+            check_announcement=lambda: (1800, 150),
+        )
+        page = solver._panel_states()
+        assert page is not None
+        assert (page.progress.total_days, page.progress.unlocked_days) == (7, 4)
+        pages.append(page)
+    before, after = pages
+    assert before.first_day == 4
+    assert [(card.day, card.claimed) for card in before.cards] == [
+        (4, True),
+        (5, False),
+        (6, False),
+        (7, False),
+    ]
+    assert after.first_day is None
+    assert len(after.cards) == 4
+    assert all(card.day is None and card.claimed for card in after.cards)
+    solver._wait_panel = Mock(return_value=after)
+
+    assert solver._collect_activity(before) is True
+
+    assert solver.swipe_noinertia.call_count == 1
+    solver.tap.assert_not_called()
+    assert solver.claimed_days == set()
+    assert solver.attempted_days == set()
