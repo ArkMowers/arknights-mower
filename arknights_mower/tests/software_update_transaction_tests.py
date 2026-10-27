@@ -25,6 +25,38 @@ from arknights_mower.utils.software_update_worker import Worker
     shutil.which("git") and shutil.which("npm"), "requires Git and npm"
 )
 class SourceTransactionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        temporary = tempfile.TemporaryDirectory(prefix="mower-transaction-pip-")
+        cls.addClassCleanup(temporary.cleanup)
+        template = Path(temporary.name)
+        base_python = getattr(sys, "_base_executable", sys.executable)
+        subprocess.run(
+            [base_python, "-m", "venv", str(template)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=60,
+        )
+        python = template / (
+            "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
+        )
+        packages = Path(
+            subprocess.check_output(
+                [
+                    python,
+                    "-c",
+                    "import sysconfig; print(sysconfig.get_path('purelib'))",
+                ],
+                text=True,
+                encoding="utf-8",
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                timeout=10,
+            ).strip()
+        )
+        cls.pip_files = [packages / "pip", *packages.glob("pip-*.dist-info")]
+
     def wait_for_ready_instances(self, state):
         deadline = time.monotonic() + 10
         while True:
@@ -177,7 +209,7 @@ class SourceTransactionTests(unittest.TestCase):
                 base_python,
                 "-m",
                 "venv",
-                *(["--without-pip"] if uv or no_pip or unchanged else []),
+                "--without-pip",
                 str(environment),
             )
             python = environment / (
@@ -191,6 +223,11 @@ class SourceTransactionTests(unittest.TestCase):
                     "import sysconfig; print(sysconfig.get_path('purelib'))",
                 )
             )
+            if not (uv or no_pip or unchanged):
+                # Only pip's relocatable package files are shared; interpreters,
+                # launchers, configuration and application dependencies stay local.
+                for source in self.pip_files:
+                    shutil.copytree(source, packages / source.name)
             with zipfile.ZipFile(wheels[initial_version]) as archive:
                 archive.extractall(packages)
             (ui / "dist").mkdir()

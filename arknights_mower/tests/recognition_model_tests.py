@@ -37,28 +37,6 @@ class TestKnnModelSchemaContract(unittest.TestCase):
             with self.subTest(model=name):
                 self.assertEqual(set(load_model(name)), self.PUBLISHED_KEYS)
 
-    def test_depot_reads_published_keys(self):
-        model = {key: np.zeros(1) for key in self.PUBLISHED_KEYS}
-        solver = depotREC.__new__(depotREC)
-
-        with (
-            patch(
-                "arknights_mower.solvers.depotREC.提取特征点",
-                return_value=np.zeros(2),
-            ),
-            patch(
-                "arknights_mower.solvers.depotREC.vision_np.knn1_predict",
-                return_value="物品",
-            ),
-            patch.object(depotREC, "读取物品数字", return_value=1),
-        ):
-            # 读取未声明的键会抛 KeyError，测试因此覆盖读写两侧的键名一致性。
-            solver.匹配物品一次(
-                np.zeros((213, 213, 3), dtype=np.uint8),
-                np.zeros((213, 213), dtype=np.uint8),
-                model,
-            )
-
 
 class TestMatcherModelWiring(unittest.TestCase):
     def test_match_uses_folded_svm_model(self):

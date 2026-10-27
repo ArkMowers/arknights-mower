@@ -673,7 +673,7 @@ class UpdateCompatibilityScopeTests(unittest.TestCase):
             "jobs"
         ]
         for name in (
-            "unittest",
+            "python-tests",
             "recognition-equivalence",
             "update-compatibility",
             "android-compatibility",

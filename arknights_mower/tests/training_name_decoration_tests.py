@@ -1,5 +1,6 @@
 """训练室姓名识别隔离黄白装饰，保留实际文字与未知姓名门槛。"""
 
+from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -13,15 +14,23 @@ from arknights_mower.utils import character_recognize as recognition
 FIXTURES = Path(__file__).parent / "fixtures" / "selection"
 
 
-def focused_name_frame(name, row=0):
-    source = cv2.cvtColor(
-        cv2.imread(str(FIXTURES / "training_ulpianus_first_20261009.jpg")),
+@cache
+def focus_decoration():
+    source = cv2.imread(str(FIXTURES / "training_ulpianus_first_20261009.jpg"))
+    decoration = cv2.cvtColor(
+        source[895:922, 801:849],
         cv2.COLOR_BGR2RGB,
     )
-    frame = np.full_like(source, 255)
+    # 名单校验共用原始装饰；每个姓名仍使用独立画布，避免识别修改污染后续用例。
+    decoration.setflags(write=False)
+    return decoration
+
+
+def focused_name_frame(name, row=0):
+    frame = np.full((1080, 1920, 3), 255, np.uint8)
     strip = np.zeros((27, 175, 3), np.uint8)
     # 原始特别关注图案与姓名分别绘制，覆盖标记和长姓名重叠的情况。
-    strip[:, :48] = source[895:922, 801:849]
+    strip[:, :48] = focus_decoration()
     template = recognition.OP_TRAIN[name]
     ys, xs = np.where(template > 0)
     glyphs = template[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
