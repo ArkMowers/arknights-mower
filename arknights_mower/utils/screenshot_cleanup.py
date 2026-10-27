@@ -15,7 +15,7 @@ IMPORTANT_FOLDERS = {"run_order", "workshop", "furniture", "solve_captcha"}
 
 def screenshot_timestamp(name):
     stem, suffix = os.path.splitext(name)
-    if suffix != ".jpg" or not stem.isascii() or not stem.isdigit():
+    if suffix not in {".jpg", ".png"} or not stem.isascii() or not stem.isdigit():
         return None
     if len(stem) == 14:
         try:

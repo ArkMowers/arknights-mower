@@ -20,11 +20,11 @@ from arknights_mower.utils.jpeg_protocol import (
 )
 
 
-def encode_packed(*args):
+def encode_packed(*args, **kwargs):
     # Establish the EOF watcher before importing or calling native Pillow code.
     from arknights_mower.utils.jpeg_codec import encode_packed as encode
 
-    return encode(*args)
+    return encode(*args, **kwargs)
 
 
 def receive_exact(channel, size, *, deadline=None):
@@ -90,13 +90,24 @@ def _serve(mapping_path, port, token):
 
         Thread(target=watch_channel, name="jpeg-parent-channel", daemon=True).start()
         while True:
-            width, height, channels = requests.get()
+            width, height, channels, lossless = requests.get()
             try:
+                if lossless not in (0, 1, 2):
+                    raise ValueError("截图编码格式无效")
                 size = width * height * channels
                 if not 0 < size <= MAX_RAW_BYTES:
                     raise ValueError("截图共享输入超过单帧上限")
                 with memoryview(shared) as mapped, mapped[:size] as pixels:
-                    data = encode_packed(width, height, channels, pixels)
+                    if lossless == 2:
+                        data = encode_packed(
+                            width, height, channels, pixels, with_preview=True
+                        )
+                    elif lossless:
+                        data = encode_packed(
+                            width, height, channels, pixels, lossless=True
+                        )
+                    else:
+                        data = encode_packed(width, height, channels, pixels)
                 if not 0 < len(data) <= MAX_JPEG_BYTES:
                     raise ValueError("JPEG 编码结果为空或超过单帧上限")
                 shared[MAX_RAW_BYTES : MAX_RAW_BYTES + len(data)] = data

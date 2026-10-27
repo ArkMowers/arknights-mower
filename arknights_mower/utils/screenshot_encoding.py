@@ -4,6 +4,7 @@ import mmap
 import os
 import secrets
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -141,7 +142,9 @@ class _EncodingSlot:
                 self._mapping_path.unlink(missing_ok=True)
             self._mapping_path = None
 
-    def encode(self, rgb, *, deadline=None, wait=True):
+    def encode(
+        self, rgb, *, deadline=None, wait=True, lossless=False, with_preview=False
+    ):
         started = time.monotonic()
         expires = started + self.timeout
         if deadline is not None:
@@ -176,7 +179,8 @@ class _EncodingSlot:
                 else:
                     shared.write(rgb.tobytes())
             channel.settimeout(self._remaining(work_deadline))
-            channel.sendall(REQUEST.pack(width, height, channels))
+            mode = 2 if with_preview else int(lossless)
+            channel.sendall(REQUEST.pack(width, height, channels, mode))
             status, size = RESPONSE.unpack(
                 receive_exact(channel, RESPONSE.size, deadline=work_deadline)
             )
@@ -193,9 +197,26 @@ class _EncodingSlot:
             with self._state:
                 self._remaining(work_deadline)
                 data = shared[MAX_RAW_BYTES : MAX_RAW_BYTES + size]
-            if not data.startswith(b"\xff\xd8") or not data.endswith(b"\xff\xd9"):
-                raise ValueError("截图编码工作进程返回无效 JPEG")
-            return data
+            preview_data = None
+            if with_preview:
+                if len(data) < 4:
+                    raise ValueError("截图编码工作进程返回无效图片长度")
+                original_size = struct.unpack("!I", data[:4])[0]
+                preview_data = data[4 + original_size :]
+                data = data[4 : 4 + original_size]
+                if not preview_data.startswith(
+                    b"\xff\xd8"
+                ) or not preview_data.endswith(b"\xff\xd9"):
+                    raise ValueError("截图编码工作进程返回无效预览")
+            valid = (
+                data.startswith(b"\x89PNG\r\n\x1a\n")
+                and data.endswith(b"IEND\xaeB`\x82")
+                if lossless or with_preview
+                else data.startswith(b"\xff\xd8") and data.endswith(b"\xff\xd9")
+            )
+            if not valid:
+                raise ValueError("截图编码工作进程返回无效图片")
+            return (data, preview_data) if with_preview else data
         except Exception as exc:
             with self._state:
                 try:
@@ -265,11 +286,19 @@ class ScreenshotEncoding:
         self._reaper_lock = Lock()
         self._reaper = None
 
-    def encode(self, rgb, *, preview=False, deadline=None):
+    def encode(
+        self, rgb, *, preview=False, deadline=None, lossless=False, with_preview=False
+    ):
         primary = self._slots[0]
         expires = time.monotonic() + primary.timeout
         deadline = expires if deadline is None else min(expires, deadline)
-        data = primary.encode(rgb, deadline=deadline, wait=not preview)
+        data = primary.encode(
+            rgb,
+            deadline=deadline,
+            wait=not preview,
+            lossless=lossless,
+            with_preview=with_preview,
+        )
         if data is not None:
             return data
         # A busy history frame never holds newer previews behind its deadline.
@@ -282,7 +311,9 @@ class ScreenshotEncoding:
                 )
                 reaper.start()
                 self._reaper = reaper
-        return self._slots[1].encode(rgb, deadline=deadline)
+        return self._slots[1].encode(
+            rgb, deadline=deadline, lossless=lossless, with_preview=with_preview
+        )
 
     def _reap_auxiliary(self):
         interval = min(1.0, self._auxiliary_idle_timeout)

@@ -44,7 +44,7 @@ def serve_frames(tmp_path, monkeypatch, pixels, shape, encode, *, count=1):
     channel.__enter__.return_value = channel
     channel.sendall.side_effect = send
     requests = Mock()
-    requests.get.side_effect = [shape] * count + [EOFError("requests complete")]
+    requests.get.side_effect = [(*shape, 0)] * count + [EOFError("requests complete")]
     monkeypatch.setattr(jpeg_worker, "Queue", Mock(return_value=requests))
     monkeypatch.setattr(jpeg_worker, "Thread", Mock())
     monkeypatch.setattr(

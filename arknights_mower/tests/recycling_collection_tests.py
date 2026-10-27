@@ -168,6 +168,13 @@ def test_supplied_device_reward_name_icon_and_quantity(real_ocr, monkeypatch):
     assert recycling.read_recycling_materials(reward_frame()) == {"装置": 1}
 
 
+def test_archived_sugar_reward_name_icon_and_quantity(real_ocr, monkeypatch):
+    monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
+    path = Path(__file__).parent / "fixtures/recycling/reward_sugar_20261027.jpg"
+    image = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    assert recycling.read_recycling_materials(image) == {"糖": 1}
+
+
 def test_multiple_rewards_require_every_label(real_ocr, monkeypatch):
     monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
     image = np.zeros((1080, 1920, 3), dtype=np.uint8)
@@ -994,3 +1001,31 @@ def test_excel_download_route_authentication_dates_and_attachment(db, monkeypatc
         assert "attachment;" in response.headers["Content-Disposition"]
         assert ".xlsx" in response.headers["Content-Disposition"]
         assert response.data.startswith(b"PK")
+
+
+@pytest.mark.parametrize(
+    "name,count,confidence,reason",
+    [
+        ("不明物品", "1", 1.0, "材料名称未确认"),
+        ("装置", "1", 0.89, "材料数量未确认"),
+        ("装置", "I", 1.0, "材料数量未确认"),
+    ],
+)
+def test_rejected_observation_logs_stage_and_ocr_evidence(
+    monkeypatch, name, count, confidence, reason
+):
+    box = [[925, 12], [997, 12], [997, 48], [925, 48]]
+    monkeypatch.setattr(
+        recycling,
+        "_ocr",
+        Mock(side_effect=[[(box, name, 1.0)], [(box, count, confidence)]]),
+    )
+    log = Mock()
+    monkeypatch.setattr(recycling, "logger", log)
+    assert recycling.read_recycling_materials(reward_frame()) is None
+    args = log.debug.call_args.args
+    assert args[1] == reason
+    assert args[2]["name"] == name
+    if reason == "材料数量未确认":
+        assert args[2]["text"] == count
+        assert args[2]["confidence"] == confidence

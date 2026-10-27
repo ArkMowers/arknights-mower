@@ -740,7 +740,7 @@ class ScreenshotPipelineTests(unittest.TestCase):
         entered, release = Event(), Event()
         store = self.store()
 
-        def delayed_capacity(*args):
+        def delayed_capacity(*args, **kwargs):
             entered.set()
             self.assertTrue(release.wait(3))
             return True
@@ -827,12 +827,12 @@ class ScreenshotPipelineTests(unittest.TestCase):
         entered, release = Event(), Event()
         store = self.store()
 
-        def delayed_timeline(*args, **kwargs):
+        def delayed_rows(*args, **kwargs):
             entered.set()
             self.assertTrue(release.wait(3))
             return []
 
-        with patch("arknights_mower.utils.diagnostics.timeline", delayed_timeline):
+        with patch("arknights_mower.utils.diagnostics._log_rows", delayed_rows):
             store.start()
             try:
                 archive = (

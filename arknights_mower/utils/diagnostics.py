@@ -9,7 +9,12 @@ from pathlib import Path
 from tempfile import SpooledTemporaryFile
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
-from arknights_mower.utils.screenshot import ScreenshotStore
+from arknights_mower.utils.screenshot import (
+    ARCHIVE_METADATA_RESERVE,
+    MAX_ARCHIVE_BYTES,
+    MAX_ARCHIVE_IMAGES,
+    ScreenshotStore,
+)
 
 _LOG_START = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 _LINE_END = re.compile(b"\r\n|\r|\n")
@@ -223,7 +228,7 @@ def export_bundle(
     images = {}
     for timestamp, relative in (
         screenshots_between(screenshot_folder, start, end)
-        if include_screenshots
+        if include_screenshots and archive_id is None
         else []
     ):
         images[timestamp] = (screenshot_folder / relative, relative)
@@ -244,12 +249,38 @@ def export_bundle(
     for folder in archives:
         if not folder.is_dir():
             continue
-        for image in folder.glob("*.jpg"):
+        for image in folder.iterdir():
             timestamp = ScreenshotStore._timestamp(image.name)
             if timestamp is not None and start_ns <= timestamp <= end_ns:
                 relative = image.relative_to(screenshot_folder).as_posix()
                 if archive_id is not None or timestamp not in images:
                     images[timestamp] = (image, relative)
+
+    truncated = False
+    image_bytes = 0
+    if archive_id is not None:
+        selected = {}
+        for timestamp, (image, relative) in sorted(images.items()):
+            try:
+                size = image.stat().st_size
+            except FileNotFoundError:
+                continue
+            if (
+                len(selected) >= MAX_ARCHIVE_IMAGES
+                or image_bytes + size > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE
+            ):
+                truncated = True
+                continue
+            selected[timestamp] = (image, relative)
+            image_bytes += size
+        images = selected
+        try:
+            event = json.loads(
+                (archive_root / archive_id / "event.json").read_text("utf-8")
+            )
+            truncated |= bool(event.get("truncated"))
+        except (OSError, ValueError):
+            pass
 
     saved = archive_root / archive_id / "logs.json" if archive_id else None
     if saved is not None and saved.is_file():
@@ -262,10 +293,21 @@ def export_bundle(
         with ZipFile(output, "w", compression=ZIP_STORED) as bundle:
             count = 0
             log_info = ZipInfo("日志.txt")
-            log_info.compress_type = ZIP_DEFLATED
+            log_info.compress_type = (
+                ZIP_STORED if archive_id is not None else ZIP_DEFLATED
+            )
             with bundle.open(log_info, "w", force_zip64=True) as stream:
+                log_bytes = 0
                 for row in rows:
-                    stream.write((row["message"] + "\n").encode("utf-8"))
+                    data = (row["message"] + "\n").encode("utf-8")
+                    if archive_id is not None and (
+                        image_bytes + log_bytes + len(data)
+                        > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE
+                    ):
+                        truncated = True
+                        break
+                    stream.write(data)
+                    log_bytes += len(data)
                     count += 1
             image_count = 0
             for _, (image, relative) in sorted(images.items()):
@@ -281,7 +323,8 @@ def export_bundle(
                 f"{end:%Y-%m-%d %H:%M:%S}\n"
                 f"日志：{count} 条\n截图：{image_count} 张\n"
                 f"包含截图：{'是' if include_screenshots else '否'}\n"
-                "截图按采集时间排序；已过期或尚未写入的文件无法导出。\n",
+                "截图按采集时间排序；已过期或尚未写入的文件无法导出。\n"
+                + ("归档达到上限，部分截图或日志已省略。\n" if truncated else ""),
             )
         output.seek(0)
         return output
@@ -306,7 +349,8 @@ def error_events(screenshot_folder: Path):
         event["id"] = folder.name
         event["screenshots"] = [
             f"errors/{folder.name}/{image.name}"
-            for image in sorted(folder.glob("*.jpg"))
+            for image in sorted(folder.iterdir())
+            if ScreenshotStore._timestamp(image.name) is not None
         ]
         events.append(event)
     return sorted(events, key=lambda item: item["time_ns"], reverse=True)
