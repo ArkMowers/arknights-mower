@@ -13,6 +13,7 @@ import SoftwareComponentUpdates from './SoftwareComponentUpdates.vue'
 import { useUpdateProgress } from '@/composables/useUpdateProgress'
 import '@/styles/updates.css'
 import UpdatePreview from './UpdatePreview.vue'
+import { showSoftwareUpdateDialog } from '@/utils/updateDialog'
 
 const props = defineProps({ compact: Boolean, preview: Object })
 
@@ -308,6 +309,9 @@ async function requestInstall(manual = false) {
     if (!checked.value?.check_id) await checkUpdate()
     if (!checked.value?.available || !checked.value?.check_id) return
     selection = { ...checked.value }
+    await settingsRequest
+    showSoftwareUpdateDialog(dialogs, info.value, selection)
+    return
   }
   confirmSoftwareInstall(
     dialogs,

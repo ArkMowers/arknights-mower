@@ -50,7 +50,7 @@
       placement="top-right"
       :container-style="windowShellActive ? { top: '48px' } : undefined"
     >
-      <n-dialog-provider>
+      <n-message-provider>
         <n-modal
           v-model:show="closeModal"
           preset="card"
@@ -83,7 +83,7 @@
             </n-space>
           </n-space>
         </n-modal>
-        <n-message-provider>
+        <n-dialog-provider>
           <ConfigProfilesController :controller="configProfiles" />
           <SidebarEditor v-model:show="sidebarEditorOpen" :request="sidebarEditorRequest" />
           <HelpDialog
@@ -249,8 +249,8 @@
               />
             </Teleport>
           </n-loading-bar-provider>
-        </n-message-provider>
-      </n-dialog-provider>
+        </n-dialog-provider>
+      </n-message-provider>
     </n-notification-provider>
   </n-config-provider>
 </template>

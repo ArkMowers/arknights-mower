@@ -223,13 +223,11 @@
   font-size: 13px;
 }
 
-.update-confirm-impact {
-  margin-top: 16px;
-  color: var(--mower-text-muted);
-  font-size: 12px;
-  line-height: 1.65;
+.update-restart-hint {
+  margin: 16px 0 0;
 }
 
-.update-confirm-impact summary {
-  cursor: pointer;
+.update-dialog-error {
+  margin: 12px 0 0;
+  color: var(--mower-error);
 }

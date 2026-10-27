@@ -1,6 +1,6 @@
 <script setup>
 import axios from 'axios'
-import { NCard } from 'naive-ui'
+import { NCard, useDialog } from 'naive-ui'
 import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
@@ -10,9 +10,12 @@ import { useUpdateProgress } from '@/composables/useUpdateProgress'
 import { getDroppedFile, postManualUpdate } from '@/utils/manualUpdate'
 import '@/styles/updates.css'
 import UpdatePreview from './UpdatePreview.vue'
+import { showResourceUpdateDialog } from '@/utils/updateDialog'
 
 const props = defineProps({ skipInitialCheck: Boolean, compact: Boolean, preview: Object })
 defineExpose({ installCheckedUpdate: install_resource })
+
+const dialogs = useDialog()
 
 const manual_url = `${import.meta.env.VITE_HTTP_URL}/resource-update/manual`
 
@@ -62,6 +65,11 @@ async function show_manual_result(data) {
       await loadResourceVersionLocal()
     }
   }
+}
+
+function request_install() {
+  if (!canInstall.value || manual_installing.value) return
+  showResourceUpdateDialog(dialogs, resource_store, info.value)
 }
 
 async function install_resource() {
@@ -145,7 +153,7 @@ function set_auto_update(checked) {
           type="primary"
           :loading="installing"
           :disabled="!canInstall || manual_installing"
-          @click="install_resource"
+          @click="request_install"
           >下载并安装</n-button
         >
       </div>

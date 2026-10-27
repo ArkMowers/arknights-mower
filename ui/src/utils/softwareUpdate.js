@@ -23,7 +23,7 @@ export function confirmSoftwareInstall(
     content:
       target.confirm_message ||
       `${target.source_repo ? `将使用仓库 ${target.source_repo}。` : ''}${target.downgrade ? `将从 ${currentVersion} 回退到 ${target.version}。旧版可能无法兼容当前配置或运行缓存。` : `将安装 ${target.version}。`}重启同一安装目录下的 ${instanceCount} 个实例；原本运行中的实例保留已保存的心情、位置，以及跑单、专精换人等重要任务和未完成的补偿，按当前版本和排班重新生成普通任务；已停止的实例保持停止。配置、专精计划和数据库记录保留；安装失败时尝试恢复原版本。${target.force ? '将覆盖本地源码改动，不备份本地修改；即使安装失败，本地修改也不会恢复。' : ''}`,
-    positiveText: target.confirm_positive_text || (target.downgrade ? '确认回退' : '确认安装'),
+    positiveText: target.downgrade ? '确认回退' : '确认安装',
     negativeText: '取消',
     autoFocus: false,
     onNegativeClick: cancel,

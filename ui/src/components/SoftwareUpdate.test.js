@@ -3,6 +3,7 @@ import { createSSRApp, effectScope, nextTick, ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SoftwareUpdate from './SoftwareUpdate.vue'
 import ResourceUpdate from './ResourceUpdate.vue'
+import { showSoftwareUpdateDialog, showResourceUpdateDialog } from '@/utils/updateDialog'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 
 const state = vi.hoisted(() => ({
@@ -63,6 +64,10 @@ vi.mock('naive-ui', async (original) => {
     useMessage: () => ({ error: vi.fn(), info: vi.fn() })
   }
 })
+vi.mock('@/utils/updateDialog', () => ({
+  showSoftwareUpdateDialog: vi.fn(),
+  showResourceUpdateDialog: vi.fn()
+}))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/stores/plan', () => ({ usePlanStore: () => ({ load_operators: vi.fn() }) }))
 vi.mock('@/stores/resourceVersion', () => ({ useResourceVersionStore: () => state.resource }))
@@ -90,6 +95,8 @@ describe('offline software package installation', () => {
     state.unmounted = []
     state.switches.clear()
     state.warning.mockClear()
+    vi.mocked(showSoftwareUpdateDialog).mockClear()
+    vi.mocked(showResourceUpdateDialog).mockClear()
     state.client = {
       defaults: { headers: { common: {} } },
       get: vi.fn(async (url) => ({
@@ -276,17 +283,13 @@ describe('offline software package installation', () => {
       expect(html).not.toContain('可回退')
       expect(html).not.toContain('回退并安装')
       await component.requestInstall(false)
-      const dialog = state.warning.mock.calls[0][0]
-      expect(dialog.title).toBe('确认安装并重启？')
-      expect(dialog.content).toContain(version)
-      expect(dialog.content).not.toContain('回退到')
+      expect(showSoftwareUpdateDialog).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ warning: state.warning }),
+        component.info.value,
+        expect.objectContaining({ check_id: 'channel-target', version, downgrade: false })
+      )
+      expect(state.warning).not.toHaveBeenCalled()
       expect(state.client.post.mock.calls.some(([url]) => url.endsWith('/start'))).toBe(false)
-      await dialog.onPositiveClick()
-      const submission = state.client.post.mock.calls.find(([url]) => url.endsWith('/start'))
-      expect(submission[1]).toMatchObject({
-        check_id: 'channel-target',
-        confirm_downgrade: false
-      })
     }
   )
   it('renders saved software switch values and persists changes through update:value', async () => {
@@ -331,6 +334,33 @@ describe('offline software package installation', () => {
     expect(
       state.client.post.mock.calls.find(([url]) => url.endsWith('/settings'))[1].background
     ).toBe(false)
+  })
+
+  it('opens the shared resource update dialog without installing from the settings button', () => {
+    state.config = {
+      resource_update_enable: ref(false),
+      resource_update_auto_update: ref(false),
+      load_item: vi.fn(),
+      load_shop: vi.fn()
+    }
+    state.resource = {
+      canInstall: ref(true),
+      info: ref({ remote_version: 'next', update_available: true }),
+      loading: ref(false),
+      installing: ref(false),
+      install_message: ref(''),
+      job: ref({ status: 'idle' }),
+      progress_error: ref(''),
+      installResource: vi.fn()
+    }
+    const setup = scope.run(() => ResourceUpdate.setup({}, { expose: () => {} }))
+    setup.request_install()
+    expect(showResourceUpdateDialog).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ warning: state.warning }),
+      state.resource,
+      state.resource.info.value
+    )
+    expect(state.resource.installResource).not.toHaveBeenCalled()
   })
 
   it('renders resource switch values and updates both dependent settings through update:value', async () => {

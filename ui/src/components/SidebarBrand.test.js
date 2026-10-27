@@ -9,6 +9,7 @@ import {
   h,
   nextTick,
   reactive,
+  ref,
   ssrContextKey
 } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -67,6 +68,7 @@ const metadata = {
     endTime: Date.parse('2026-10-20T00:00:00+08:00') / 1000
   }
 }
+const dialogState = ref(null)
 let mounted
 let mountedGui
 const ClockBrand = { ...SidebarBrand, render: () => h('div') }
@@ -103,16 +105,7 @@ const checksDescriptor = parse(
 const ClientChecks = {
   ...SidebarUpdateChecks,
   ssrRender: undefined,
-  components: {
-    SidebarBrand: ClientBrand,
-    NModal: defineComponent({
-      props: ['show'],
-      setup:
-        (props, { slots }) =>
-        () =>
-          props.show ? h('div', slots.default?.()) : null
-    })
-  },
+  components: { SidebarBrand: ClientBrand },
   render: compile(checksDescriptor.template.content, { hoistStatic: false }),
   setup: (props, context) => ({ ...SidebarUpdateChecks.setup(props, context) })
 }
@@ -150,10 +143,10 @@ function mountClock(props, component = ClockBrand, copies = 1) {
   const root = node('root')
   mounted = renderer.createApp({
     render: () =>
-      h(
-        'div',
-        Array.from({ length: copies }, () => h(component, props))
-      )
+      h('div', [
+        ...Array.from({ length: copies }, () => h(component, props)),
+        dialogState.value?.content()
+      ])
   })
   const pinia = createPinia()
   mounted.use(pinia)
@@ -180,6 +173,11 @@ function mountClock(props, component = ClockBrand, copies = 1) {
 beforeEach(() => {
   vi.resetAllMocks()
   messages.loading.mockReturnValue({ destroy: messages.destroy })
+  dialogState.value = null
+  messages.warning.mockImplementation((options) => {
+    dialogState.value = reactive(options)
+    return dialogState.value
+  })
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-10-15T00:00:00+08:00'))
 })
@@ -503,6 +501,10 @@ describe('sidebar version badges', () => {
       expect(previewHtml).toContain('更新渠道 · 正式版')
       expect(previewHtml).toContain('修复设置页面显示')
       expect(previewHtml).not.toContain('自动检查更新')
+      expect(previewHtml).toContain('重启同一安装目录下的 1 个实例')
+      expect(previewHtml).not.toContain('更新影响')
+      expect(previewHtml).not.toContain('<details')
+      expect(previewHtml).not.toContain('心情')
       expect(confirmation.positiveText).toBe('立即更新')
       expect(messages.installSoftware).not.toHaveBeenCalled()
       await confirmation.onPositiveClick()
@@ -513,6 +515,13 @@ describe('sidebar version badges', () => {
           confirm_downgrade: false
         })
       )
+      expect(messages.warning).toHaveBeenCalledOnce()
+      expect(confirmation.positiveText).toBeUndefined()
+      expect(await renderToString(createSSRApp({ render: confirmation.content }))).toContain(
+        '软件更新进度'
+      )
+      await confirmation.onPositiveClick()
+      expect(messages.installSoftware).toHaveBeenCalledOnce()
       expect(messages.destroy).toHaveBeenCalledOnce()
       expect(view.button().props.disabled).toBe(false)
       expect(update).not.toHaveBeenCalled()
@@ -614,6 +623,55 @@ describe('sidebar version badges', () => {
       expect.stringContaining('/resource/install'),
       { background: true }
     )
+  })
+
+  it('does not install when the dialog closes while the updater is loading', async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        ok: true,
+        version: '4.1.6',
+        settings: { channel: 'stable' },
+        instances: [{}],
+        blockers: []
+      }
+    })
+    axios.post.mockResolvedValue({
+      data: {
+        ok: true,
+        available: true,
+        version: '4.1.7',
+        check_id: 'dismissed'
+      }
+    })
+    const view = mountClock({ version: '4.1.6', enabled: true }, ClientChecks)
+    view.button().props.onClick()
+    await vi.advanceTimersByTimeAsync(0)
+    const confirmation = messages.warning.mock.calls[0][0]
+    const starting = confirmation.onPositiveClick()
+    confirmation.onClose()
+    expect(await starting).toBe(false)
+    expect(messages.installSoftware).not.toHaveBeenCalled()
+  })
+
+  it('rejects a resource target that changed after the preview opened', async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        current_version: 'old',
+        remote_version: 'next',
+        update_available: true
+      }
+    })
+    const view = mountClock({ resourceVersion: '当前资源', enabled: true }, ClientChecks)
+    view.resourceButton().props.onClick()
+    await vi.advanceTimersByTimeAsync(0)
+    const confirmation = messages.warning.mock.calls[0][0]
+    useResourceVersionStore().info.remote_version = 'changed'
+    expect(await confirmation.onPositiveClick()).toBe(false)
+    const html = await renderToString(createSSRApp({ render: confirmation.content }))
+    expect(html).toContain('资源更新目标已改变，请重新检查更新。')
+    expect(html).not.toContain('重启同一安装目录')
+    expect(html).not.toContain('更新影响')
+    expect(axios.post).not.toHaveBeenCalled()
   })
 
   it('does not offer installation when the software check has blockers', async () => {
