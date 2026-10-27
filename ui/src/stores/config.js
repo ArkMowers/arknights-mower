@@ -91,6 +91,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_gap = ref(3)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
+  const group_resting_thresholds = ref({})
   const version_update_resting_threshold = ref(80)
   const version_update_threshold_advance_hours = ref(12)
   const fia_threshold = ref(90)
@@ -564,6 +565,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_gap.value = response.data.maa_gap
       simulator.value = response.data.simulator
       resting_threshold.value = response.data.resting_threshold * 100
+      group_resting_thresholds.value = { ...(response.data.group_resting_thresholds ?? {}) }
       version_update_resting_threshold.value =
         (response.data.version_update_resting_threshold ?? 0.8) * 100
       version_update_threshold_advance_hours.value =
@@ -755,6 +757,7 @@ export const useConfigStore = defineStore('config', () => {
       simulator: simulator.value,
       ...(runtime_platform.value === 'android' ? {} : { theme: theme.value }),
       resting_threshold: resting_threshold.value / 100,
+      group_resting_thresholds: { ...group_resting_thresholds.value },
       version_update_resting_threshold: version_update_resting_threshold.value / 100,
       version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
       fia_threshold: fia_threshold.value / 100,
@@ -877,6 +880,7 @@ export const useConfigStore = defineStore('config', () => {
       drone_count_limit: drone_count_limit.value,
       drone_interval: drone_interval.value,
       resting_threshold: resting_threshold.value / 100,
+      group_resting_thresholds: { ...group_resting_thresholds.value },
       version_update_resting_threshold: version_update_resting_threshold.value / 100,
       version_update_threshold_advance_hours: version_update_threshold_advance_hours.value,
       free_room: free_room.value,
@@ -1119,6 +1123,7 @@ export const useConfigStore = defineStore('config', () => {
     defaultLaunchCommand,
     simulator,
     resting_threshold,
+    group_resting_thresholds,
     version_update_resting_threshold,
     version_update_threshold_advance_hours,
     fia_threshold,

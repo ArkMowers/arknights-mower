@@ -41,6 +41,7 @@ describe('income export calculation', () => {
       settings = modelSettings()
     source.advanced_settings = {
       resting_threshold: 0.7,
+      group_resting_thresholds: { 主表组: 0.35 },
       fia_fool: false,
       group_rest_in_full_on_mood_gap: true,
       group_mood_gap_max_extra_wait_hours: 0.5,
@@ -55,6 +56,7 @@ describe('income export calculation', () => {
     })
     expect(request.options.simulationAssumptions).toMatchObject({
       restingThreshold: 0.7,
+      groupRestingThresholds: { 主表组: 0.35 },
       fiammettaFool: false,
       groupRestInFullOnMoodGap: true,
       groupMoodGapMaxExtraWaitHours: 0.5,
@@ -63,6 +65,14 @@ describe('income export calculation', () => {
     const compiled = compileRosterSchedule(request.workspace, request.options.simulationAssumptions)
     const runtimeConfig = compiledScheduleToRuntimeConfig(compiled)
     const runtime = createRosterRuntime(runtimeConfig)
+    expect(getMowerSourceRuntime(runtime).data.policy.groupRestingThresholds).toEqual({
+      主表组: 0.35
+    })
+    runtimeConfig.mowerPolicy.groupRestingThresholds.主表组 = 0.8
+    expect(compiled.assumptions.groupRestingThresholds).toEqual({ 主表组: 0.35 })
+    expect(getMowerSourceRuntime(runtime).data.policy.groupRestingThresholds).toEqual({
+      主表组: 0.35
+    })
     expect(getMowerSourceRuntime(runtime).data.groupMoodGapThresholdMinutes).toBe(60)
     expect(getMowerSourceRuntime(runtime).data.groupMoodGapExclusions).toEqual(['主表组', '副表组'])
     runtimeConfig.mowerPolicy.groupMoodGapExclusions.push('额外组')

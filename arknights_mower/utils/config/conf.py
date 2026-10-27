@@ -1,7 +1,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import (
     BaseModel,
@@ -575,8 +575,13 @@ class RIICPart(ConfModel):
         default_factory=lambda: default_performance_profile().run_order_delay
     )
     "跑单前置延时"
-    resting_threshold: float = 0.65
+    resting_threshold: float = Field(default=0.65, ge=0.35, le=1, allow_inf_nan=False)
     "心情阈值"
+    group_resting_thresholds: dict[
+        Annotated[str, Field(min_length=1, pattern=r"\S")],
+        Annotated[float, Field(ge=0.35, le=1, allow_inf_nan=False)],
+    ] = Field(default_factory=dict)
+    "各绑组心情阈值；未设置的组沿用全局值"
     version_update_resting_threshold: float = Field(default=0.8, ge=0, le=1)
     "版本维护心情阈值"
     version_update_threshold_advance_hours: float = Field(default=12, ge=0, le=168)

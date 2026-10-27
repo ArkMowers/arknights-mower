@@ -163,11 +163,13 @@ describe('configuration restore autosave coordination', () => {
     config.drone_room = 'room_1_1'
     config.drone_count_limit = 140
     config.resting_threshold = 75
+    config.group_resting_thresholds = { 主表组: 0.35, 副表组: 0.65 }
     config.product_switching = { waiting_seconds: 5 }
     await plan.save_plan()
     const saved = axios.post.mock.lastCall[1].advanced_settings
     expect(saved.drone_count_limit).toBe(140)
     expect(saved.resting_threshold).toBe(0.75)
+    expect(saved.group_resting_thresholds).toEqual({ 主表组: 0.35, 副表组: 0.65 })
     expect(saved.product_switching.waiting_seconds).toBe(5)
     expect(saved).not.toHaveProperty('drone_room')
   })

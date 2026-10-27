@@ -150,7 +150,9 @@ def _wake_scheduler_if_running():
 def save_user_config(req):
     with workshop_lock:
         previous = config.conf
-        previous_maintenance_policy = (
+        previous_resting_policy = (
+            config.conf.resting_threshold,
+            dict(config.conf.group_resting_thresholds),
             config.conf.version_update_resting_threshold,
             config.conf.version_update_threshold_advance_hours,
         )
@@ -184,7 +186,9 @@ def save_user_config(req):
 
             workshop_inventory_changed.set()
             _wake_scheduler_if_running()
-        if previous_maintenance_policy != (
+        if previous_resting_policy != (
+            conf.resting_threshold,
+            conf.group_resting_thresholds,
             conf.version_update_resting_threshold,
             conf.version_update_threshold_advance_hours,
         ):

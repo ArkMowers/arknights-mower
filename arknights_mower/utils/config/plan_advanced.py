@@ -8,6 +8,7 @@ ADVANCED_SETTING_KEYS = (
     "drone_count_limit",
     "drone_interval",
     "resting_threshold",
+    "group_resting_thresholds",
     "version_update_resting_threshold",
     "version_update_threshold_advance_hours",
     "free_room",

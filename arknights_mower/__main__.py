@@ -311,6 +311,15 @@ def _apply_version_update_resting_threshold(info, scheduler, now=None):
         targets.append(op_data.config)
     changed = False
     for target in targets:
+        group_thresholds = config.conf.group_resting_thresholds
+        override = desired if active else None
+        if (
+            getattr(target, "group_resting_thresholds", {}) != group_thresholds
+            or getattr(target, "resting_threshold_override", None) != override
+        ):
+            changed = True
+        target.group_resting_thresholds = dict(group_thresholds)
+        target.resting_threshold_override = override
         if target.resting_threshold != desired:
             target.resting_threshold = desired
             changed = True

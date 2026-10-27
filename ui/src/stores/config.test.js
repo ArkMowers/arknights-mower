@@ -583,3 +583,47 @@ describe('managed maintenance visibility', () => {
     }
   )
 })
+
+describe('各组心情阈值保存', () => {
+  it.each([undefined, { 主表组: 0.35, 副表组: 0.65 }])(
+    '加载兼容配置并单独保存组阈值 %s',
+    async (thresholds) => {
+      pinia = createPinia()
+      setActivePinia(pinia)
+      const app = createApp({})
+      const loaded = ref(false)
+      app.use(pinia)
+      app.provide('loaded', loaded)
+      store = app.runWithContext(() => useConfigStore())
+      const response = {
+        resting_threshold: 0.35,
+        group_resting_thresholds: thresholds,
+        free_blacklist: '',
+        reload_room: '',
+        maa_mall_buy: '',
+        maa_mall_blacklist: '',
+        favorite: '',
+        reclamation_algorithm: {},
+        secret_front: {},
+        maa_weekly_plan: []
+      }
+      axios.get.mockResolvedValue({ data: response })
+      axios.patch.mockResolvedValue({ data: {} })
+      await store.load_config()
+      expect(store.resting_threshold).toBe(35)
+      expect(store.group_resting_thresholds).toEqual(thresholds ?? {})
+      loaded.value = true
+      await nextTick()
+      await store.flush_config_saves()
+      store.group_resting_thresholds = { 主表组: 0.5 }
+      await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+      expect(axios.patch.mock.lastCall[1]).toEqual({ group_resting_thresholds: { 主表组: 0.5 } })
+      const settings = store.build_advanced_settings()
+      store.group_resting_thresholds.主表组 = 0.35
+      expect(settings.group_resting_thresholds).toEqual({ 主表组: 0.5 })
+      expect(store.build_config().group_resting_thresholds).toEqual({ 主表组: 0.35 })
+      expect(response.group_resting_thresholds).toEqual(thresholds)
+      loaded.value = false
+    }
+  )
+})

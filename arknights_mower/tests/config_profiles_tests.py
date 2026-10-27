@@ -787,6 +787,20 @@ def test_mood_calculation_follows_base_profile_group(storage, enabled, inherit):
     assert saved.test_mood_calculation is expected
 
 
+@pytest.mark.parametrize("inherit", [[], ["base"], ["other_settings"]])
+def test_group_resting_thresholds_follow_base_profile_group(storage, inherit):
+    thresholds = {"大组": 0.35, "普通组": 0.65}
+    config.conf.group_resting_thresholds = thresholds
+    config.save_conf()
+
+    _create("各组心情阈值配置", inherit)
+
+    expected = thresholds if "base" in inherit else {}
+    assert config.conf.group_resting_thresholds == expected
+    saved = config.Conf(**yaml.safe_load(config.conf_path.read_text(encoding="utf-8")))
+    assert saved.group_resting_thresholds == expected
+
+
 @pytest.mark.parametrize(
     "current,incoming,keep,expected",
     [

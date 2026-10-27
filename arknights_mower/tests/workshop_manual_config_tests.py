@@ -122,6 +122,26 @@ def test_version_update_policy_change_does_not_wake_stopped_mower(next_skill):
     assert not config.wake_scheduler.is_set()
 
 
+@pytest.mark.parametrize("thresholds", [{"感知": 0.35}, {}])
+def test_group_threshold_edits_wake_scheduler_and_retain_other_settings(
+    next_skill, monkeypatch, thresholds
+):
+    from arknights_mower import __main__ as mower_main
+
+    config.conf.group_resting_thresholds = {"感知": 0.65}
+    req = payload()
+    req["group_resting_thresholds"] = thresholds
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock())
+    config.wake_scheduler.clear()
+    try:
+        state.save_user_config(req)
+        assert config.wake_scheduler.is_set()
+        assert config.conf.group_resting_thresholds == thresholds
+        assert config.conf.resting_threshold == 0.65
+    finally:
+        config.wake_scheduler.clear()
+
+
 def test_edit_during_restore_uses_manual_revision_not_runtime_generation(next_skill):
     config.conf.workshop_settings = [manual_setting()]
     auto.update_workshop_config()
