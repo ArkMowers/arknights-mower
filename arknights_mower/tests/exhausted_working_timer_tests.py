@@ -46,7 +46,14 @@ def room_reader():
         )
 
         def update_detail(
-            name, value, room, index, update_time, *, preserve_depletion_rate=False
+            name,
+            value,
+            room,
+            index,
+            update_time,
+            *,
+            preserve_depletion_rate=False,
+            mood_event=None,
         ):
             target.mood = value
             target.current_room = room

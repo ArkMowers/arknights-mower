@@ -30,7 +30,8 @@ def report_history(monkeypatch, request):
     queries = []
 
     def fetch(sql, *params):
-        queries.append((sql, params))
+        if sql.lstrip().upper().startswith("SELECT"):
+            queries.append((sql, params))
         return connection.execute(sql, params).fetchall()
 
     monkeypatch.setattr(record, "_fetchall", fetch)

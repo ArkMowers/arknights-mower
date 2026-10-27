@@ -442,14 +442,15 @@ def test_new_measured_rate_reuses_observation_for_deadline(
 ):
     solver = replacement_solver
     cover = solver.op_data.operators["薇薇安娜"]
-    cover.lower_limit = 6
+    cover.lower_limit = 4
+    solver.reading["mood"] = 22
     task = _bootstrap(solver)
     cover.depletion_rate = previous_rate
     assert task.time == clock.now() + timedelta(hours=3)
     solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
     task = solver.tasks[0]
     clock.current += timedelta(minutes=30)
-    solver.op_data.update_detail(cover.name, 12, "central", 0, True)
+    solver.op_data.update_detail(cover.name, 10, "central", 0, True)
     assert cover.depletion_rate == 24
 
     replacement_check.sync_replacement_checks(solver)
@@ -457,13 +458,13 @@ def test_new_measured_rate_reuses_observation_for_deadline(
     assert solver.tasks == [task] and task.time == clock.now()
     solver.get_agent_from_room.assert_called_once()
     # 心情仍高于低心情范围，按新实测速率安排检查，不使用倒计时。
-    solver.reading.update(mood=12, time=clock.now() + timedelta(minutes=30))
+    solver.reading.update(mood=10, time=clock.now() + timedelta(minutes=30))
     assert replacement_check.run_replacement_check(solver, task) is False
     deadline = clock.now() + timedelta(minutes=15)
     assert task.time == deadline
     for _ in range(3):
         clock.current += timedelta(seconds=6)
-        solver.op_data.update_detail(cover.name, 11.9, "central", 0, True)
+        solver.op_data.update_detail(cover.name, 9.9, "central", 0, True)
         replacement_check.sync_replacement_checks(solver)
         assert solver.tasks == [task] and task.time == deadline
     assert solver.get_agent_from_room.call_count == 1
@@ -474,6 +475,7 @@ def test_same_room_new_rates_recheck_once_without_reopening_peers(
     replacement_solver, clock, count
 ):
     solver = replacement_solver
+    solver.op_data.operators["薇薇安娜"].mood = 20
     covers, _ = _prepare_same_room_reader(solver, clock, count)
     for cover in covers:
         cover.lower_limit = 1
@@ -556,7 +558,7 @@ def test_new_rate_resumes_failed_check_without_moving_original_time(
     task = _bootstrap(solver)
     original_time = clock.current = task.time
     cover.depletion_rate = 0
-    cover.mood, cover.time_stamp = 12, clock.now()
+    solver.op_data.update_detail(cover.name, 12, "central", 0, True)
     solver.reading.update(mood=12, time=None)
     assert replacement_check.run_replacement_check(solver, task) is False
     failure = task.execution_failure
