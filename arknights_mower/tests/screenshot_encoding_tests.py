@@ -439,10 +439,9 @@ class ScreenshotEncodingTests(unittest.TestCase):
                     )
                 )
                 wait_until(lambda: store.stats()["pending_count"] == 0)
-                with Image.open(Path(folder) / newest) as image:
-                    self.assertEqual(image.format, "PNG")
-                    np.testing.assert_array_equal(np.array(image), self.rgb())
-                self.assertTrue(store.latest().data.startswith(b"\xff\xd8"))
+                self.assertEqual(
+                    (Path(folder) / newest).read_bytes(), store.latest().data
+                )
                 self.assertEqual(commands.calls, 2)
                 result = store.close(timeout=1)
                 self.assertEqual(result["remaining_threads"], [])

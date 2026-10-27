@@ -12,7 +12,6 @@ from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 from arknights_mower.utils.screenshot import (
     ARCHIVE_METADATA_RESERVE,
     MAX_ARCHIVE_BYTES,
-    MAX_ARCHIVE_IMAGES,
     ScreenshotStore,
 )
 
@@ -266,8 +265,7 @@ def export_bundle(
             except FileNotFoundError:
                 continue
             if (
-                len(selected) >= MAX_ARCHIVE_IMAGES
-                or image_bytes + size > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE
+                image_bytes + size > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE
             ):
                 truncated = True
                 continue

@@ -353,7 +353,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               <span class="settings-row-copy">
                 <span>截图保存时间</span>
                 <span id="screenshot-retention-description" class="settings-row-description">
-                  截图无损保存为 PNG。设为 0 时只为报错归档保留画面。
+                  普通截图保留多久。设为 0 时只为报错归档保留画面。
                   <template v-if="inheritsFromManager('screenshot')">
                     当前使用通用设置，请在多开管理器中修改或选择使用本实例值。
                   </template>
@@ -377,7 +377,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               <span class="settings-row-copy">
                 <span>报错归档空间上限</span>
                 <span id="screenshot-archive-limit-description" class="settings-row-description">
-                  达到上限后清理较早的报错归档，0 表示不限制总容量。 单条归档仍限 256 张图片、512
+                  达到上限后清理较早的报错归档，0 表示不限制总容量。 单条归档仍限 512
                   MiB，达到上限后省略后续图片或日志。
                   <template v-if="inheritsFromManager('screenshot_archive_limit_mb')">
                     当前使用通用设置，请在多开管理器中修改或选择使用本实例值。
