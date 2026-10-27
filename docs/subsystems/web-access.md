@@ -216,6 +216,8 @@ Windows directory browsing in the manager and instance desktop windows uses the 
 
 New manager launches discard inherited supervision and recovery environment before establishing their own launch identity. Folder dialogs belong to the standalone manager window.
 
+The manager HTML displays startup status before Vue loads. Failure to load or execute the page entry module displays an error and instructions to reopen the manager and report the message; a browser without module-script support displays a compatibility message. These messages require the native browser to load the HTML and do not diagnose native browser initialization failures.
+
 Before the first instance list arrives, the manager displays loading status rather than a zero-instance count. A failed initial load displays the error, marks the list as not loaded and provides a visible 重新加载 button. Retrying reads the list again; only a successfully loaded list supplies the instance count. A loading failure does not establish that the saved list is empty.
 
 Individual row actions carry the captured `{name, path}`; under the admission lock, the backend rejects a changed or missing target before editing the list, launching or stopping a process, or opening a folder dialog. Folder selection validates that same identity again before saving.
