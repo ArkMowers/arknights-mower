@@ -456,11 +456,14 @@ def test_worker_idle_uses_next_dispatchable_task(
     assert task.time < later.time
 
 
-def test_confirmed_production_wait_retains_its_existing_timer(scheduler, monkeypatch):
+@pytest.mark.parametrize("seconds", [-3, 120])
+def test_confirmed_production_wait_retains_its_existing_timer(
+    scheduler, monkeypatch, seconds
+):
     monkeypatch.setattr(recovery.config.conf.product_switching, "enable", True)
     solver = scheduler.solver
     task = SchedulerTask(
-        scheduler.clock.now(),
+        scheduler.clock.now() - timedelta(seconds=10),
         task_type=TaskTypes.SWITCH_PRODUCT,
         meta_data=f"{ROOM},gold",
     )
@@ -468,13 +471,14 @@ def test_confirmed_production_wait_retains_its_existing_timer(scheduler, monkeyp
     solver.task = task
     solver.switch_base_products = Mock(
         side_effect=scheduler.module.ProductSwitchDeferred(
-            "当前一份尚未完成", minutes=2
+            "当前一份尚未完成",
+            ready_at=scheduler.clock.now() + timedelta(seconds=seconds),
         )
     )
     solver.infra_main()
     solver.switch_base_products.assert_called_once()
     assert solver.tasks == [task]
-    assert task.time == scheduler.clock.now() + timedelta(minutes=2)
+    assert task.time == scheduler.clock.now() + timedelta(seconds=seconds)
     assert not hasattr(task, "execution_failure")
     assert find_next_task(solver.tasks) is task
 

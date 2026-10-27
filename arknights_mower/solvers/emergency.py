@@ -118,33 +118,151 @@ class EmergencyRecoveryMixin:
         )
         return datetime.now() + timedelta(seconds=seconds + 1) < start
 
+    def _emergency_progress_snapshot(self):
+        """续行只比较相关实测、安排和真实前置，不把时钟变化当成进展。"""
+        state = getattr(self, "emergency_state", None) or {}
+        rooms = set(state.get("pending_read_rooms", ()))
+        for key in (
+            "release_plan",
+            "handoff_plan",
+            "staffing_plan",
+            "worker_replacements",
+        ):
+            rooms.update(state.get(key) or {})
+        names = set(state.get("targets", ()))
+        rooms.update(
+            op.current_room
+            for name in names
+            if (op := self.op_data.operators.get(name)) is not None and op.current_room
+        )
+        if getattr(self, "_emergency_startup_pending", False):
+            rooms.update(getattr(self, "_initial_mood_refresh_rooms", ()))
+        dependencies = [
+            task
+            for task in self.tasks
+            if getattr(task, "strict_mood_limit", False)
+            or getattr(task, "emergency_staffing", False)
+            or getattr(task, "emergency_dorm", False)
+            or getattr(task, "emergency_recovery_release", False)
+            or getattr(task, "run_order_restore_pending", False)
+            or hasattr(task, "emergency_original_roster")
+            or task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
+            and task.plan
+        ]
+        rooms.update(room for task in dependencies for room in task.plan)
+        probe = SchedulerTask()
+        return {
+            "rooms": tuple(sorted(rooms)),
+            "observation": self._task_failure_snapshot(probe, sorted(rooms)),
+            "targets": {
+                name: (
+                    op.current_room,
+                    op.current_index,
+                    None if op.mood_is_prediction else op.time_stamp,
+                )
+                for name in names
+                if (op := self.op_data.operators.get(name)) is not None
+            },
+            "dependencies": sorted(
+                [
+                    (task.type, task.meta_data, task.time, copy.deepcopy(task.plan))
+                    for task in dependencies
+                ],
+                key=lambda item: (item[2], item[0].name, item[1], repr(item[3])),
+            ),
+        }
+
+    def _emergency_continuation_checkpoint(self):
+        state = getattr(self, "emergency_state", None) or {}
+        return state.get("continuation_wait") or getattr(
+            self, "_emergency_continuation_wait", None
+        )
+
+    def _request_emergency_continuation_observation(self, checkpoint):
+        """正常等待后只给等待前已有的中断责任一次实际观察机会。"""
+        if (
+            checkpoint is not None
+            and checkpoint is self._emergency_continuation_checkpoint()
+        ):
+            self._emergency_continuation_observation = checkpoint
+
+    def _emergency_continuation_waiting(self, completed_task=None):
+        state = getattr(self, "emergency_state", None) or {}
+        saved = self._emergency_continuation_checkpoint()
+        if saved is None:
+            return False
+        for observations in (saved["targets"], saved["observation"]["observations"]):
+            for name, previous in observations.items():
+                op = self.op_data.operators.get(name)
+                if (
+                    op is not None
+                    and (op.current_room, op.current_index) == previous[:2]
+                    and (op.time_stamp is None or op.mood_is_prediction)
+                ):
+                    # 丢失旧读数或转为预测不构成新的成功观察。
+                    observations[name] = (*previous[:2], None)
+        observe = (
+            self.__dict__.pop("_emergency_continuation_observation", None) is saved
+        )
+        completed = completed_task is not None and any(
+            (completed_task.type, completed_task.meta_data, completed_task.time)
+            == dependency[:3]
+            for dependency in saved["dependencies"]
+        )
+        waiting = (
+            not observe
+            and not completed
+            and saved == self._emergency_progress_snapshot()
+        )
+        for task in self.tasks:
+            if not getattr(task, "emergency_continuation", False):
+                continue
+            if waiting:
+                if not getattr(task, "execution_failure", None):
+                    self._retain_failed_task(
+                        task,
+                        "自动救急续行等待相关观测或前置完成",
+                        saved["rooms"],
+                        dependency=True,
+                    )
+            else:
+                task.__dict__.pop("execution_failure", None)
+                task.execution_retained = True
+        if not waiting:
+            state.pop("continuation_wait", None)
+            self.__dict__.pop("_emergency_continuation_wait", None)
+            if observe and self._emergency_active():
+                state.pop("observed_at", None)
+                state.setdefault("pending_read_rooms", list(saved["rooms"]))
+        return waiting
+
     def _emergency_defer_read(self):
-        """中断的实际操作使用一次续行任务，不创建周期读心情任务。"""
-        due = datetime.now() + timedelta(minutes=1)
-        if self._emergency_active():
-            self.emergency_state["next_read"] = due
-            self.tasks[:] = [
-                task
-                for task in self.tasks
-                if task.retains_execution
-                or not getattr(task, "emergency_recovery_release", False)
-            ]
-        meta = "" if getattr(self, "_emergency_startup_pending", False) else RESUME_META
+        """保留中断责任及原时间，等待相关观测或真实前置完成后续行。"""
         task = next(
             (
                 t
                 for t in self.tasks
-                if t is not getattr(self, "task", None)
-                and t.meta_data == meta
+                if t.meta_data == RESUME_META
                 and not t.plan
                 and t.type == TaskTypes.NOT_SPECIFIC
             ),
             None,
         )
         if task is None:
-            self.tasks.append(SchedulerTask(time=due, meta_data=meta))
+            task = SchedulerTask(meta_data=RESUME_META)
+            self.tasks.append(task)
+        task.emergency_continuation = True
+        snapshot = self._emergency_progress_snapshot()
+        self._retain_failed_task(
+            task,
+            "自动救急续行等待相关观测或前置完成",
+            snapshot["rooms"],
+            dependency=True,
+        )
+        if self._emergency_active():
+            self.emergency_state["continuation_wait"] = snapshot
         else:
-            task.time = due
+            self._emergency_continuation_wait = snapshot
         self._emergency_save()
 
     def _emergency_read_rooms(self, rooms, *, yield_to_releases=False):
@@ -225,6 +343,8 @@ class EmergencyRecoveryMixin:
         """初始化检查一次；恢复已有批次先核对实际驻员及未完成安排。"""
         if getattr(self, "emergency_state", None) is not None:
             self._emergency_validate_state()
+        if self._emergency_continuation_waiting():
+            return
         if not self._emergency_active() and getattr(
             getattr(self, "task", None), "strict_mood_limit", False
         ):
@@ -1103,6 +1223,8 @@ class EmergencyRecoveryMixin:
     def _emergency_tick(self, *, completed_task=None):
         """只有到期观测或已完成的驻员变更推进恢复，不随空转循环重做规划。"""
         state = self.emergency_state
+        if self._emergency_continuation_waiting(completed_task):
+            return
         staffing_completed = self._emergency_reconcile_staffing()
         if state["phase"] == "staffing" and not state.get("staffing_complete"):
             self._emergency_schedule_staffing()
@@ -1123,11 +1245,6 @@ class EmergencyRecoveryMixin:
             if getattr(task, "emergency_staffing", False)
         ]
         if pending_staffing:
-            state["next_read"] = max(
-                state.get("next_read", datetime.now()),
-                min(task.time for task in pending_staffing) + timedelta(minutes=1),
-                datetime.now() + timedelta(minutes=1),
-            )
             self._emergency_save()
             return
         self._emergency_sync_reservations()

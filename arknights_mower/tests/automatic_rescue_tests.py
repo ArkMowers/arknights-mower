@@ -2029,7 +2029,7 @@ def test_pending_rescue_staffing_precedes_due_observation_and_specialized_planni
     solver.run_order_solver.assert_not_called()
     workshop.assert_not_called()
     assert any(t is task for t in solver.tasks)
-    assert state["next_read"] > task.time
+    assert state["next_read"] == NOW
 
 
 def test_regular_recovery_observes_only_unfinished_primary_dorms(solver):

@@ -149,7 +149,7 @@ def test_due_observation_yields_each_room_before_strict_release(
     assert episode.reads == episode.rooms[:expected_reads]
     assert episode.clock["now"] < release.time
     assert episode.state["pending_read_rooms"] == episode.rooms[expected_reads:]
-    assert episode.state["next_read"] == episode.clock["now"] + timedelta(minutes=1)
+    assert episode.state["next_read"] == NOW
     assert episode.saves[-1]["pending_read_rooms"] == episode.rooms[expected_reads:]
     solver._emergency_update_targets.assert_not_called()
     solver._emergency_ready.assert_not_called()
@@ -224,7 +224,7 @@ def test_each_room_uses_its_recorded_operation_budget(observation_solver):
     solver._emergency_ready.assert_not_called()
 
 
-def test_partial_observation_advances_existing_check_wakeup(observation_solver):
+def test_partial_observation_retains_existing_check_time(observation_solver):
     episode = observation_solver
     solver = episode.solver
     check = SchedulerTask(
@@ -236,8 +236,9 @@ def test_partial_observation_advances_existing_check_wakeup(observation_solver):
     solver._emergency_tick()
 
     assert episode.reads == episode.rooms[:1]
-    assert check.time == episode.state["next_read"]
-    assert check.time == episode.clock["now"] + timedelta(minutes=1)
+    assert check.time == NOW + timedelta(minutes=30)
+    assert episode.state["next_read"] == NOW
+    assert check.execution_failure["dependency"]
     assert [
         task for task in solver.tasks if task.meta_data == emergency.RESUME_META
     ] == [check]
@@ -319,7 +320,7 @@ def test_final_handoff_observation_yields_and_resumes_without_clearing_episode(
     assert episode.state["phase"] == "returning"
     assert episode.state["pending_read_rooms"] == episode.rooms[1:]
     assert episode.saves[-1]["pending_read_rooms"] == episode.rooms[1:]
-    assert episode.state["next_read"] == episode.clock["now"] + timedelta(minutes=1)
+    assert episode.state["next_read"] == NOW
     assert not solver._emergency_handoff
     solver.agent_get_mood.assert_not_called()
     finish_release(episode, release)
@@ -874,7 +875,7 @@ def test_initial_wakeup_does_not_block_its_own_card_scan(observation_solver):
     assert not solver.tasks
 
 
-def test_running_resume_retains_next_retry_after_dispatch_cleanup(observation_solver):
+def test_running_resume_retains_same_task_after_dispatch_cleanup(observation_solver):
     episode = observation_solver
     solver = episode.solver
     current = SchedulerTask(time=NOW, meta_data=emergency.RESUME_META)
@@ -894,7 +895,7 @@ def test_running_resume_retains_next_retry_after_dispatch_cleanup(observation_so
 
     retries = [task for task in solver.tasks if task.meta_data == emergency.RESUME_META]
     assert len(retries) == 1
-    assert retries[0] is not current
-    assert retries[0].time == NOW + timedelta(minutes=1)
+    assert retries[0] is current
+    assert retries[0].time == NOW
+    assert current.execution_failure["dependency"]
     assert release in solver.tasks
-    assert current not in solver.tasks

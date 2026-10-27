@@ -170,6 +170,7 @@ def replan_update_tasks(saved):
             continue
         protected.add(id(task))
         dependencies.extend(getattr(task, "group_shift_predecessors", ()))
+        dependencies.extend(getattr(task, "product_shift_predecessors", ()))
     result["tasks"] = [task for task in tasks if id(task) in protected]
     result["tasks"].append(SchedulerTask())
     return result

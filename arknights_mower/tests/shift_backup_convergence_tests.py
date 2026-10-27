@@ -341,7 +341,9 @@ def test_product_delay_keeps_real_configuration_and_all_actions_pending(solver):
     intent = copy.deepcopy(task.plan)
     before = positions(solver.op_data)
     solver._switch_products_before_arrangement = MagicMock(
-        side_effect=base.ProductSwitchDeferred("等待切产物", minutes=5)
+        side_effect=base.ProductSwitchDeferred(
+            "等待切产物", ready_at=datetime.now() + timedelta(minutes=5)
+        )
     )
     solver.agent_arrange = MagicMock()
     solver.infra_main()
