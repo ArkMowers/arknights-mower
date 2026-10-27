@@ -54,6 +54,12 @@ const fullOperator = () =>
     ]
   })
 
+const surveyRates = (rates, extra = {}) => ({
+  skills: rates.map((rate, index) => ({ index, rate })),
+  modules: [],
+  ...extra
+})
+
 describe('干员卡技能段读数', () => {
   it('只为干员实际拥有的技能显示进度和专三计数', () => {
     const { component, stop } = setup({
@@ -88,28 +94,51 @@ describe('干员卡技能段读数', () => {
     stop()
   })
 
-  it('默认选中第一个技能，读数显示该技能的当前专精状态', () => {
-    const { component, stop } = setup({ operator: fullOperator() })
-    expect(component.activeSkill.value).toBe(0)
-    expect(component.statusLine.value).toEqual({ tone: 'warn', text: '一技能·重进酒 · 专二' })
-    expect(component.skillRows.value.map((row) => row.name)).toEqual([
-      '一技能·重进酒',
-      '二技能·笑鸣瑟',
-      '三技能·宁作吾'
-    ])
+  it('默认选中未专三技能里公开专三率最高的那个，而不是固定一技能', () => {
+    const { component, stop } = setup({
+      operator: fullOperator(),
+      // 二技能公开率最高，但已专三；剩余技能中三技能 59.5% 最高。
+      survey: surveyRates([5.9, 95.1, 59.5])
+    })
+    expect(component.activeSkillIndex.value).toBe(2)
+    expect(component.statusLine.value).toEqual({ tone: 'low', text: '三技能·宁作吾 · 未专精' })
+    expect(component.activeRate.value).toBe(59.5)
+    expect(component.activeRateLabel.value).toBe('专三率')
     stop()
   })
 
-  it('点击任意技能段只切换读数，不改变技能等级或选中之外的数据', () => {
+  it('没有公开样本时默认选第一个未专三技能', () => {
     const { component, stop } = setup({ operator: fullOperator() })
+    expect(component.activeSkillIndex.value).toBe(0)
+    expect(component.statusLine.value).toEqual({ tone: 'warn', text: '一技能·重进酒 · 专二' })
+    stop()
+  })
+
+  it('公开样本异步到达后自动改选推荐技能，用户点过技能段后不再自动改选', async () => {
+    const { props, component, stop } = setup({ operator: fullOperator() })
+    expect(component.activeSkillIndex.value).toBe(0)
+    props.survey = surveyRates([30, 99, 60])
+    await Promise.resolve()
+    expect(component.activeSkillIndex.value).toBe(2)
+    component.selectSkill(0)
+    props.survey = surveyRates([30, 99, 80])
+    await Promise.resolve()
+    expect(component.activeSkillIndex.value).toBe(0)
+    stop()
+  })
+
+  it('点击任意技能段只切换读数与底部比例，不改变技能等级或选中之外的数据', () => {
+    const { component, stop } = setup({
+      operator: fullOperator(),
+      survey: surveyRates([30, 99, 60])
+    })
     const before = component.skills.value.slice()
     component.selectSkill(1)
-    expect(component.activeSkill.value).toBe(1)
     expect(component.statusLine.value).toEqual({ tone: 'done', text: '二技能·笑鸣瑟 · 专三' })
+    expect(component.activeRate.value).toBe(99)
     component.selectSkill(2)
     expect(component.statusLine.value).toEqual({ tone: 'low', text: '三技能·宁作吾 · 未专精' })
-    component.selectSkill(0)
-    expect(component.statusLine.value).toEqual({ tone: 'warn', text: '一技能·重进酒 · 专二' })
+    expect(component.activeRate.value).toBe(60)
     expect(component.skills.value).toEqual(before)
     stop()
   })
@@ -143,7 +172,7 @@ describe('干员卡技能段读数', () => {
     stop()
   })
 
-  it('没有 recommendations 时技能名回退为「一技能 / 二技能 / 三技能」', () => {
+  it('没有 recommendations 与 skill_names 时技能名回退为序数技能名', () => {
     const { component, stop } = setup({ operator: operator({ skill_levels: [1, 0, 0] }) })
     expect(component.skillRows.value.map((row) => row.name)).toEqual(
       ORDINAL.map((name) => name + '技能')
@@ -151,6 +180,20 @@ describe('干员卡技能段读数', () => {
     expect(component.statusLine.value).toEqual({ tone: 'warn', text: '一技能 · 专一' })
     component.selectSkill(2)
     expect(component.statusLine.value).toEqual({ tone: 'low', text: '三技能 · 未专精' })
+    stop()
+  })
+
+  it('已专三技能也能显示真名而不是只回退序数', () => {
+    const { component, stop } = setup({
+      operator: operator({
+        skill_levels: [0, 3],
+        skill_names: ['一技能·真名一', '二技能·真名二']
+      })
+    })
+    expect(component.skillRows.value.map((row) => row.name)).toEqual([
+      '一技能·真名一',
+      '二技能·真名二'
+    ])
     stop()
   })
 
@@ -183,6 +226,47 @@ describe('干员卡技能段读数', () => {
     expect(component.skillRows.value.map((row) => row.tone)).toEqual(['done', 'warn', 'low'])
     component.selectSkill(1)
     expect(component.skillRows.value.map((row) => row.tone)).toEqual(['done', 'warn', 'low'])
+    stop()
+  })
+})
+
+describe('干员卡模组目标', () => {
+  it('技能全部专三、只剩未满模组时默认显示模组目标与公开解锁率', () => {
+    const { component, stop } = setup({
+      operator: operator({
+        skill_levels: [3, 3],
+        recommendations: [],
+        modules: [{ id: 'mod_x', type: 'EXE-X', current_level: 0, max_level: 3 }]
+      }),
+      survey: {
+        skills: [
+          { index: 0, rate: 90 },
+          { index: 1, rate: 80 }
+        ],
+        modules: [{ id: 'mod_x', rate: 71.5 }]
+      }
+    })
+    expect(component.moduleTarget.value).toMatchObject({ id: 'mod_x', rate: 71.5 })
+    expect(component.statusLine.value).toEqual({ tone: 'low', text: 'EXE-X · 0/3' })
+    expect(component.activeRate.value).toBe(71.5)
+    expect(component.activeRateLabel.value).toBe('解锁率')
+    stop()
+  })
+
+  it('模组目标段可切回模组读数', () => {
+    const { component, stop } = setup({
+      operator: operator({
+        skill_levels: [3, 3],
+        recommendations: [],
+        modules: [{ id: 'mod_x', type: 'EXE-X', current_level: 2, max_level: 3 }]
+      }),
+      survey: { skills: [], modules: [{ id: 'mod_x', rate: 71.5 }] }
+    })
+    component.selectSkill(1)
+    expect(component.activeRateLabel.value).toBe('专三率')
+    component.selectModule()
+    expect(component.activeRateLabel.value).toBe('解锁率')
+    expect(component.activeRate.value).toBe(71.5)
     stop()
   })
 })
