@@ -60,25 +60,29 @@ describe('log schedule browsing', () => {
     expect(page.visibleLogs.value[0].detail).toBe('Traceback\n  ValueError: bad')
   })
 
-  it('browses ordinary screenshots even when no log row links to a frame', async () => {
-    const center = new Date('2026-10-10T12:00:00').getTime()
-    const shots = [-90, 2, 60].map(
-      (seconds) => `20261010-12/${(center + seconds * 1000) * 1e6}.jpg`
-    )
-    state.client.get.mockResolvedValue({
-      data: { logs: [row('运行')], screenshots: shots, truncated: true }
-    })
-    await page.loadWindow(center)
-    expect(page.screenshots.value).toEqual(shots)
-    expect(page.imageIndex.value).toBe(1)
-    expect(page.imagePath.value).toBe(shots[1])
-    expect(page.truncated.value).toBe(true)
-    page.moveImage(1)
-    expect(page.imagePath.value).toBe(shots[2])
-    page.showScreenshot(shots[0])
-    expect(page.imageIndex.value).toBe(0)
-    expect(page.imageFailed.value).toBe(false)
-  })
+  it.each(['jpg', 'png'])(
+    'browses %s screenshots even when no log row links to a frame',
+    async (suffix) => {
+      const center = new Date('2026-10-10T12:00:00').getTime()
+      const shots = [-90, 2, 60].map(
+        (seconds) => `20261010-12/${(center + seconds * 1000) * 1e6}.${suffix}`
+      )
+      state.client.get.mockResolvedValue({
+        data: { logs: [row('运行')], screenshots: shots, truncated: true }
+      })
+      await page.loadWindow(center)
+      expect(page.screenshots.value).toEqual(shots)
+      expect(page.imageIndex.value).toBe(1)
+      expect(page.imagePath.value).toBe(shots[1])
+      expect(page.imageTime(shots[1])).toBe(page.formatTime((center + 2000) * 1e6))
+      expect(page.truncated.value).toBe(true)
+      page.moveImage(1)
+      expect(page.imagePath.value).toBe(shots[2])
+      page.showScreenshot(shots[0])
+      expect(page.imageIndex.value).toBe(0)
+      expect(page.imageFailed.value).toBe(false)
+    }
+  )
 
   it('moves contiguous windows from the loaded center and restores time browsing after an archive', async () => {
     const center = new Date('2026-10-10T12:00:00').getTime()

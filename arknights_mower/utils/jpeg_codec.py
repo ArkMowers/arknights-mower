@@ -1,6 +1,7 @@
-"""RGB and grayscale JPEG encoding without OpenCV color conversion."""
+"""RGB and grayscale PNG/JPEG encoding without OpenCV color conversion."""
 
 from io import BytesIO
+from struct import pack
 
 from PIL import Image
 
@@ -26,9 +27,12 @@ def frame_shape(rgb, *, bounded=True):
     return width, height, 1 if rgb.ndim == 2 else 3
 
 
-def _save(image, *, bounded=True):
+def _save(image, *, bounded=True, lossless=False):
     with BytesIO() as output:
-        image.save(output, format="JPEG", quality=JPEG_QUALITY, subsampling=2)
+        if lossless:
+            image.save(output, format="PNG", compress_level=1)
+        else:
+            image.save(output, format="JPEG", quality=JPEG_QUALITY, subsampling=2)
         data = output.getvalue()
     if not data or (bounded and len(data) > MAX_JPEG_BYTES):
         raise ValueError("JPEG 编码结果为空或超过单帧上限")
@@ -41,7 +45,7 @@ def encode_jpeg(rgb):
         return _save(image, bounded=False)
 
 
-def encode_packed(width, height, channels, data):
+def encode_packed(width, height, channels, data, *, lossless=False, with_preview=False):
     if (
         channels not in (1, 3)
         or width <= 0
@@ -53,4 +57,8 @@ def encode_packed(width, height, channels, data):
     with Image.frombytes(
         "L" if channels == 1 else "RGB", (width, height), data
     ) as image:
-        return _save(image)
+        if with_preview:
+            original = _save(image, lossless=True)
+            preview = _save(image)
+            return pack("!I", len(original)) + original + preview
+        return _save(image, lossless=True) if lossless else _save(image)

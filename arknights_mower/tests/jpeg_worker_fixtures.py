@@ -127,7 +127,7 @@ def main(mode, mapping_path, port, token):
         return
     if mode in ("exit", "hang", "error", "native_hang"):
 
-        def fail(*args):
+        def fail(*args, **kwargs):
             if mode == "exit":
                 os._exit(23)
             if mode == "error":

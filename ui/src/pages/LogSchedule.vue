@@ -115,7 +115,11 @@ function formatTime(timestampNs) {
 }
 
 function imageTime(path) {
-  const stem = path.split('/').at(-1)?.replace('.jpg', '') || ''
+  const stem =
+    path
+      .split('/')
+      .at(-1)
+      ?.replace(/\.(jpg|png)$/, '') || ''
   return /^\d{18,}$/.test(stem) ? formatTime(stem) : stem
 }
 
@@ -123,7 +127,13 @@ function imageNearest(center) {
   let best = 0
   let distance = Infinity
   for (let index = 0; index < screenshots.value.length; index++) {
-    const timestamp = Number(screenshots.value[index].split('/').at(-1).replace('.jpg', '')) / 1e6
+    const timestamp =
+      Number(
+        screenshots.value[index]
+          .split('/')
+          .at(-1)
+          .replace(/\.(jpg|png)$/, '')
+      ) / 1e6
     const nextDistance = Math.abs(timestamp - center)
     if (nextDistance < distance) {
       best = index
@@ -705,6 +715,9 @@ onMounted(() => {
           />
           <n-select v-model:value="levelFilter" :options="levelOptions" aria-label="筛选日志级别" />
         </div>
+        <p v-if="activeEvent?.truncated" class="window-notice">
+          此归档达到保存上限，部分截图或日志已省略。
+        </p>
         <p v-if="truncated" class="window-notice">
           当前显示此时段最近 1000 条日志，导出可获取完整日志。
         </p>
