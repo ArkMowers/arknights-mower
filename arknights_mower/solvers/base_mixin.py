@@ -1491,6 +1491,10 @@ class BaseMixin:
             for retry_times in range(9):
                 if self.find("connecting"):
                     self.sleep()
+                elif self.find("order_label"):
+                    # 同一房间的订单页也不能作为房间进入完成，先恢复地图入口。
+                    logger.info("仍在贸易站订单列表，返回基建地图后进入 %s", room)
+                    self.back_to_infrastructure()
                 elif pos := self.find("control_central"):
                     # 地图观测参与场景计时，避免跨房换班只累计房间结束页。
                     if self.scene() != Scene.INFRA_MAIN:
@@ -1518,7 +1522,9 @@ class BaseMixin:
                         # 点击后的地图、连接中和未知画面共用同一确认期限。
                         if not self.find("connecting"):
                             self._handle_room_entry_reward(room)
-                            if self.detect_room() == room:
+                            if self.detect_room() == room and not self.find(
+                                "order_label"
+                            ):
                                 return
                         # 先识别再检查期限，保留超时后的首帧；截图耗时计入等待。
                         if perf_counter() >= room_deadline:
@@ -1529,6 +1535,7 @@ class BaseMixin:
                     if self.scene() in (
                         Scene.INFRA_DETAILS,
                         Scene.CTRLCENTER_ASSISTANT,
+                        Scene.ORDER_LIST,
                     ):
                         logger.info("仍在其他房间，返回基建地图后进入 %s", room)
                         self.back_to_infrastructure()
