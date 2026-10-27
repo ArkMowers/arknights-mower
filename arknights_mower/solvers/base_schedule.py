@@ -424,11 +424,20 @@ def reset_stage_drop():
 
 
 class ProductSwitchDeferred(Exception):
-    def __init__(self, message: str, *, ready_at=None, dependencies=(), rooms=()):
+    def __init__(
+        self,
+        message: str,
+        *,
+        ready_at=None,
+        dependencies=(),
+        rooms=(),
+        room_deferrals=(),
+    ):
         super().__init__(message)
         self.ready_at = ready_at
         self.dependencies = tuple(dependencies)
         self.rooms = tuple(rooms)
+        self.room_deferrals = tuple(room_deferrals)
 
 
 class ProductSwitchFailed(RuntimeError):
@@ -3435,17 +3444,26 @@ class BaseSchedulerSolver(
                     if id(task) in pending_ids
                 ]
                 for task in deferred_tasks:
-                    if e.ready_at is not None:
-                        task.time = max(task.time, e.ready_at)
-                        logger.info("%s，按实测进度等待至 %s", e, e.ready_at)
+                    reason = e
+                    if task.type == TaskTypes.SWITCH_PRODUCT and e.room_deferrals:
+                        room = task.meta_data.split(",", 1)[0]
+                        reason = next(
+                            (item for item in e.room_deferrals if room in item.rooms),
+                            None,
+                        )
+                        if reason is None:
+                            continue
+                    if reason.ready_at is not None:
+                        task.time = max(task.time, reason.ready_at)
+                        logger.info("%s，按实测进度等待至 %s", reason, reason.ready_at)
                     else:
                         task.product_shift_waiting = True
-                        if e.dependencies:
-                            task.product_shift_predecessors = e.dependencies
+                        if reason.dependencies:
+                            task.product_shift_predecessors = reason.dependencies
                         self._retain_failed_task(
                             task,
-                            str(e),
-                            e.rooms
+                            str(reason),
+                            reason.rooms
                             or tuple(task.plan)
                             or (task.meta_data.split(",", 1)[0],),
                             dependency=True,
@@ -7796,7 +7814,11 @@ class BaseSchedulerSolver(
             state = facility_states.get(room)
             expected_facility = "manufacture" if facility == "制造站" else "trade"
             if not state or state.get("facility") != expected_facility:
-                self.tasks[:] = [task for task in self.tasks if task not in existing]
+                self.tasks[:] = [
+                    task
+                    for task in self.tasks
+                    if all(task is not previous for previous in existing)
+                ]
                 logger.debug(
                     f"{self.translate_room(room)}尚无设施状态缓存，暂不生成切换任务"
                 )
@@ -7804,7 +7826,9 @@ class BaseSchedulerSolver(
             if state.get("product") == target_product:
                 if existing:
                     self.tasks[:] = [
-                        task for task in self.tasks if task not in existing
+                        task
+                        for task in self.tasks
+                        if all(task is not previous for previous in existing)
                     ]
                     logger.info(
                         f"{self.translate_room(room)}实际产物或订单已符合排班，"
@@ -7815,7 +7839,11 @@ class BaseSchedulerSolver(
             target_meta = product_task_meta(room, target_product)
             if len(existing) == 1 and existing[0].meta_data == target_meta:
                 continue
-            self.tasks[:] = [task for task in self.tasks if task not in existing]
+            self.tasks[:] = [
+                task
+                for task in self.tasks
+                if all(task is not previous for previous in existing)
+            ]
             self.tasks.append(
                 SchedulerTask(
                     task_type=TaskTypes.SWITCH_PRODUCT,
@@ -11093,26 +11121,14 @@ class BaseSchedulerSolver(
                 and rate is not None
                 and 0.1 <= rate <= 10
             )
-            buffer_seconds = (
-                getattr(setting, "waiting_seconds", 2)
-                if getattr(setting, "grandet_mode", True)
-                else 0
-            )
-            lead = self._product_switch_entry_lead_seconds()
-            ready_at = (
-                observed_at
-                + timedelta(seconds=wait_seconds / rate + buffer_seconds - lead)
-                if timing_observed
-                else None
-            )
-            if ready_at is None or ready_at > observed_at:
+            if not timing_observed:
                 self._tap_product_point((480, 864))
                 raise ProductSwitchDeferred(
-                    f"{self.translate_room(observation['room'])}复核后仍需自然生产，"
-                    "本次不消耗无人机",
-                    ready_at=ready_at,
+                    f"{self.translate_room(observation['room'])}缺少有效生产倒计时，"
+                    "等待新的制造站观测",
                     rooms=[observation["room"]],
                 )
+        # 加速后记录同一份产物的剩余量；自然生产期间交回调度，不反复改算省机方案。
         if drone_count:
             self._confirm_drone_count(drone_count)
         else:
@@ -11341,13 +11357,16 @@ class BaseSchedulerSolver(
         task_observations = []
         for task in tasks:
             room, target_product = parse_product_task_meta(task.meta_data)
-            if target_product in MANUFACTURE_PRODUCTS:
-                observation = self._survey_manufacture_switch(room, target_product)
-                self._retain_manufacture_switch_progress(
-                    task, observation, before_arrangement
-                )
-            else:
-                observation = self._survey_trade_switch(room, target_product)
+            try:
+                if target_product in MANUFACTURE_PRODUCTS:
+                    observation = self._survey_manufacture_switch(room, target_product)
+                    self._retain_manufacture_switch_progress(
+                        task, observation, before_arrangement
+                    )
+                else:
+                    observation = self._survey_trade_switch(room, target_product)
+            except RecognizeError as error:
+                raise ProductSwitchFailed(str(error), [room]) from error
             task_observations.append((task, observation))
 
         locked_trade = [
@@ -11375,7 +11394,12 @@ class BaseSchedulerSolver(
         if not before_arrangement:
             for _, observation in task_observations:
                 if observation["facility"] == "trade" and observation["needs_switch"]:
-                    self._change_trade_product(observation)
+                    try:
+                        self._change_trade_product(observation)
+                    except RecognizeError as error:
+                        raise ProductSwitchFailed(
+                            str(error), [observation["room"]]
+                        ) from error
             resolved_trade = {
                 id(task)
                 for task, observation in task_observations
@@ -11391,7 +11415,12 @@ class BaseSchedulerSolver(
                 observation["facility"] == "manufacture"
                 and not observation["needs_switch"]
             ):
-                self._change_manufacture_product(observation)
+                try:
+                    self._change_manufacture_product(observation)
+                except RecognizeError as error:
+                    raise ProductSwitchFailed(
+                        str(error), [observation["room"]]
+                    ) from error
                 self.tasks[:] = [other for other in self.tasks if other is not task]
 
         pending_manufacture = [
@@ -11416,6 +11445,8 @@ class BaseSchedulerSolver(
             f"制造站批量切产物计划共需至多{planned_drones}架无人机，"
             f"当前可用{available}架"
         )
+        deferred = []
+        deferred_rooms = set()
         insufficient_drones = planned_drones > available
         allow_direct = getattr(
             getattr(config.conf, "product_switching", None),
@@ -11424,11 +11455,14 @@ class BaseSchedulerSolver(
         )
         if insufficient_drones and not allow_direct:
             for item in accelerated_manufacture:
-                refreshed = dict(
-                    self._survey_manufacture_switch(
-                        item["room"], item["target_product"]
+                try:
+                    refreshed = dict(
+                        self._survey_manufacture_switch(
+                            item["room"], item["target_product"]
+                        )
                     )
-                )
+                except RecognizeError as error:
+                    raise ProductSwitchFailed(str(error), [item["room"]]) from error
                 source_task = next(
                     task
                     for task, observation in task_observations
@@ -11440,7 +11474,13 @@ class BaseSchedulerSolver(
                 item.clear()
                 item.update(refreshed)
                 if not item["needs_switch"]:
-                    self._change_manufacture_product(item)
+                    try:
+                        self._change_manufacture_product(item)
+                    except RecognizeError as error:
+                        raise ProductSwitchFailed(str(error), [item["room"]]) from error
+                    self.tasks[:] = [
+                        task for task in self.tasks if task is not source_task
+                    ]
             pending_manufacture = [
                 item for item in pending_manufacture if item["needs_switch"]
             ]
@@ -11463,61 +11503,22 @@ class BaseSchedulerSolver(
                 raise RecognizeError("无人机数量识别异常")
             insufficient_drones = planned_drones > available
             if insufficient_drones:
-                raise ProductSwitchDeferred(
-                    f"批量切产物无人机不足：需要{planned_drones}架，当前{available}架",
-                    ready_at=self._estimate_product_switch_ready_at(
-                        accelerated_manufacture, available
-                    ),
-                    rooms=[item["room"] for item in accelerated_manufacture],
+                rooms = [item["room"] for item in accelerated_manufacture]
+                deferred.append(
+                    ProductSwitchDeferred(
+                        f"批量切产物无人机不足：需要{planned_drones}架，当前{available}架",
+                        ready_at=self._estimate_product_switch_ready_at(
+                            accelerated_manufacture, available
+                        ),
+                        rooms=rooms,
+                    )
                 )
+                deferred_rooms.update(rooms)
 
-        # 确认必须在当前份完成之后，只为界面确认保留短暂等待。
-        lead = self._product_switch_entry_lead_seconds()
-        setting = config.conf.product_switching
-        buffer_seconds = (
-            getattr(setting, "waiting_seconds", 2)
-            if getattr(setting, "grandet_mode", True)
-            else 0
-        )
-        now = datetime.now()
-        for item in pending_manufacture:
-            if insufficient_drones and allow_direct and not item.get("natural_only"):
-                continue
-            remaining_base = max(
-                0,
-                item.get("current_remaining", 0) - item["drone_count"] * DRONE_SECONDS,
-            )
-            if remaining_base and (
-                not item.get("production_rate_observed", True)
-                or not 0.1 <= item.get("production_rate", 0) <= 10
-                or not isinstance(item.get("observed_at"), datetime)
-            ):
-                raise ProductSwitchDeferred(
-                    f"{self.translate_room(item['room'])}缺少有效生产倒计时，"
-                    "等待新的制造站观测",
-                    rooms=[item["room"]],
-                )
-            elapsed = max(0, (now - item.get("observed_at", now)).total_seconds())
-            wait_seconds = max(
-                0,
-                math.ceil(remaining_base / item.get("production_rate", 1.0) - elapsed),
-            )
-            if remaining_base:
-                wait_seconds += buffer_seconds
-            if wait_seconds > lead:
-                raise ProductSwitchDeferred(
-                    f"{self.translate_room(item['room'])}当前一份还需约{wait_seconds}秒，"
-                    "稍后进入切换确认页",
-                    ready_at=item["observed_at"]
-                    + timedelta(
-                        seconds=remaining_base / item["production_rate"]
-                        + buffer_seconds
-                        - lead
-                    ),
-                    rooms=[item["room"]],
-                )
-
-        if insufficient_drones:
+        if insufficient_drones and not allow_direct:
+            execution_order = []
+            direct_switch_rooms = set()
+        elif insufficient_drones:
             logger.warning("无人机不足，按设置直接取消当前份进度并切换产物")
             execution_order = []
             direct_switch_rooms = {item["room"] for item in accelerated_manufacture}
@@ -11530,38 +11531,104 @@ class BaseSchedulerSolver(
             )
             direct_switch_rooms = set()
 
-        waits = []
         for item in execution_order:
             try:
-                waits.append(self._execute_manufacture_acceleration(item))
-            except ProductSwitchDeferred:
+                self._execute_manufacture_acceleration(item)
+            except ProductSwitchDeferred as error:
                 if not allow_direct or item["available_drones"] >= item["drone_count"]:
-                    raise
+                    error.rooms = error.rooms or (item["room"],)
+                    deferred.append(error)
+                    deferred_rooms.add(item["room"])
+                    continue
                 logger.warning(
                     "%s无人机在执行前变得不足，直接切换产物",
                     self.translate_room(item["room"]),
                 )
                 direct_switch_rooms.add(item["room"])
+            except RecognizeError as error:
+                raise ProductSwitchFailed(str(error), [item["room"]]) from error
 
-        # 每个站各自在取消旧计划的确认页等待，完成约两秒后再点击。
-        for observation in natural_only:
-            self._change_manufacture_product(observation)
-        for observation in accelerated_manufacture:
-            if observation["room"] in direct_switch_rooms:
-                self._change_manufacture_product(observation, direct=True)
-            else:
-                self._change_manufacture_product(observation)
+        # 每个站单独确认并保留进度，一个站的自然生产不阻止其他站完成切换。
+        for observation in [*natural_only, *accelerated_manufacture]:
+            room = observation["room"]
+            if room in deferred_rooms:
+                continue
+            try:
+                if observation.get("natural_only") and observation.get(
+                    "current_remaining", 0
+                ):
+                    rate = observation.get("production_rate")
+                    observed_at = observation.get("observed_at")
+                    if (
+                        not observation.get("production_rate_observed", True)
+                        or rate is None
+                        or not 0.1 <= rate <= 10
+                        or not isinstance(observed_at, datetime)
+                    ):
+                        raise ProductSwitchDeferred(
+                            f"{self.translate_room(room)}缺少有效生产倒计时，等待新的制造站观测",
+                            rooms=[room],
+                        )
+                    setting = config.conf.product_switching
+                    buffer_seconds = (
+                        setting.waiting_seconds if setting.grandet_mode else 0
+                    )
+                    ready_at = observed_at + timedelta(
+                        seconds=observation["current_remaining"] / rate
+                        + buffer_seconds
+                        - self._product_switch_entry_lead_seconds()
+                    )
+                    if ready_at > datetime.now():
+                        raise ProductSwitchDeferred(
+                            f"{self.translate_room(room)}当前一份尚未完成",
+                            ready_at=ready_at,
+                            rooms=[room],
+                        )
+                if room in direct_switch_rooms:
+                    self._change_manufacture_product(observation, direct=True)
+                else:
+                    self._change_manufacture_product(observation)
+            except ProductSwitchDeferred as error:
+                error.rooms = error.rooms or (room,)
+                deferred.append(error)
+                continue
+            except RecognizeError as error:
+                raise ProductSwitchFailed(str(error), [room]) from error
+            source = next(
+                task for task, item in task_observations if item is observation
+            )
+            owner = (
+                (getattr(self, "task", None) or source)
+                if before_arrangement
+                else source
+            )
+            getattr(owner, "product_switch_progress", {}).pop(room, None)
+            self.tasks[:] = [task for task in self.tasks if task is not source]
+
+        if deferred:
+            timed = [error for error in deferred if error.ready_at is not None]
+            next_wait = (
+                min(timed, key=lambda error: error.ready_at) if timed else deferred[0]
+            )
+            raise ProductSwitchDeferred(
+                str(next_wait),
+                ready_at=next_wait.ready_at,
+                rooms=tuple(
+                    dict.fromkeys(room for error in deferred for room in error.rooms)
+                ),
+                room_deferrals=deferred,
+            )
         if before_arrangement:
             for _, observation in task_observations:
                 if observation["facility"] == "trade" and observation["needs_switch"]:
-                    self._change_trade_product(observation)
+                    try:
+                        self._change_trade_product(observation)
+                    except RecognizeError as error:
+                        raise ProductSwitchFailed(
+                            str(error), [observation["room"]]
+                        ) from error
 
         task_ids = {id(task) for task, _ in task_observations}
-        for task, observation in task_observations:
-            owner = (
-                (getattr(self, "task", None) or task) if before_arrangement else task
-            )
-            getattr(owner, "product_switch_progress", {}).pop(observation["room"], None)
         self.tasks[:] = [task for task in self.tasks if id(task) not in task_ids]
         self.tasks.sort(
             key=lambda task: (bool(getattr(task, "execution_failure", None)), task.time)
