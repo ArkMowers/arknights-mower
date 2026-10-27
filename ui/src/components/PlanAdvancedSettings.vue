@@ -182,7 +182,18 @@ const excludedGroupOptions = computed(() =>
           </mower-input-number>
         </div>
       </n-form-item>
-      <n-form-item label="各组心情阈值">
+      <n-form-item>
+        <template #label>
+          <span>各组心情阈值</span>
+          <help-text label="各组心情阈值说明">
+            <div>对于需要切换产物的大组，建议单独调低心情阈值，以减少产物频繁切换。</div>
+            <div>
+              未设置的组和未绑组干员沿用上方心情阈值。主表、副表按相同组名应用，移除后恢复全局值。
+            </div>
+            <div>普通下班线和急救线均按组阈值换算，多绑组干员独立休息时沿用全局值。</div>
+            <div>大版本维护前的准备时段，所有组统一使用维护阈值。</div>
+          </help-text>
+        </template>
         <GroupRestingThresholds
           v-model="group_resting_thresholds"
           :groups="planStore.all_groups"
