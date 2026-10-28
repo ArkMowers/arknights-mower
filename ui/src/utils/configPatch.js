@@ -2,8 +2,8 @@ const isObject = (value) => value !== null && typeof value === 'object' && !Arra
 
 export const configSnapshot = (value) => JSON.parse(JSON.stringify(value))
 
-// Match Conf's schema: model fields merge, but this dict is replaced as a whole.
-const dictionaryFields = new Set(['rogue.collectible_mode_start_list'])
+// Match Conf's schema: model fields merge, but dictionaries are replaced as a whole.
+const dictionaryFields = new Set(['rogue.collectible_mode_start_list', 'group_resting_thresholds'])
 
 // Arrays and schema dictionaries are complete replacement values on /conf.
 export function configPatch(previous, current, path = '') {
