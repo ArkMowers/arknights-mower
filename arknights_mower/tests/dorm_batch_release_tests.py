@@ -259,7 +259,7 @@ def test_batch_fills_beds_without_duplicate_people_or_empty_beds(batch_solver, t
         )
 
 
-def test_arrange_room_resolves_selection_once_before_recovery_order(solver):
+def test_arrange_room_resolves_selection_before_recovery_and_after_observation(solver):
     instance, selected = solver
     instance.op_data.operators["红"].mood = 10
     instance.enter_room = MagicMock()
@@ -275,13 +275,27 @@ def test_arrange_room_resolves_selection_once_before_recovery_order(solver):
         side_effect=lambda *args, **kwargs: [{"agent": name} for name in selected]
     )
     resolve = instance.prepare_dorm_selection
-    instance.prepare_dorm_selection = MagicMock(wraps=resolve)
+    events = []
+
+    def prepare(*args, **kwargs):
+        events.append("prepare")
+        return resolve(*args, **kwargs)
+
+    instance.prepare_dorm_selection = MagicMock(side_effect=prepare)
     seen = []
-    instance.ensure_dorm_recovery_order = MagicMock(
-        side_effect=lambda room, agents, **kwargs: seen.append(agents.copy()) or False
-    )
+
+    def recovery(room, agents, **kwargs):
+        events.append("recovery")
+        seen.append(agents.copy())
+        return False
+
+    instance.ensure_dorm_recovery_order = MagicMock(side_effect=recovery)
     instance.agent_arrange_room({}, ROOM, instance.task.plan, get_time=True)
-    instance.prepare_dorm_selection.assert_called_once()
+    assert events == ["prepare", "recovery", "prepare"]
+    assert instance.prepare_dorm_selection.call_args.kwargs == {
+        "preserve_dorm_occupants": False,
+        "observed_candidates": (),
+    }
     assert seen == [selected]
     assert selected[-1] == "红"
     instance.tap_confirm.assert_called_once()

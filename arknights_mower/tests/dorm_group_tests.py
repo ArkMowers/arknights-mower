@@ -714,7 +714,9 @@ def test_full_mood_cover_is_preserved_during_actual_selection(
 ):
     agents = ["黑角", "冰酿", "陈", "红", "初雪"]
     solver.op_data.config.free_room = free_room
-    monkeypatch.setattr(solver, "preserve_resting_crafters", lambda agents, room: None)
+    monkeypatch.setattr(
+        solver, "preserve_resting_crafters", lambda agents, room, **kwargs: None
+    )
     monkeypatch.setattr(
         solver.op_data,
         "get_current_room",
@@ -2281,7 +2283,9 @@ def test_ungrouped_explicit_full_roster_is_preserved(
     agents = ["黑角", "冰酿", "陈", "红", "初雪"]
     ungrouped_solver.op_data.config.free_room = free_room
     monkeypatch.setattr(
-        ungrouped_solver, "preserve_resting_crafters", lambda agents, room: None
+        ungrouped_solver,
+        "preserve_resting_crafters",
+        lambda agents, room, **kwargs: None,
     )
     monkeypatch.setattr(
         ungrouped_solver.op_data,
