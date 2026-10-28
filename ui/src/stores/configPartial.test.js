@@ -84,6 +84,35 @@ function selectedLabels(html) {
 }
 
 describe('partial configuration saves', () => {
+  it('persists all group thresholds across additions, edits, removals and reloads', async () => {
+    const { data } = await setup({ resting_threshold: 0.65, group_resting_thresholds: {} })
+    axios.patch.mockImplementation(async (_url, patch) => {
+      // Conf replaces dictionary fields with the submitted value.
+      Object.assign(data, patch)
+      return { data }
+    })
+    const saveAndReload = async (expected) => {
+      await nextTick()
+      await store.flush_config_saves()
+      expect(data.group_resting_thresholds).toEqual(expected)
+      await store.load_config()
+      expect(store.group_resting_thresholds).toEqual(expected)
+    }
+
+    store.group_resting_thresholds = { 主表组: 0.65 }
+    await saveAndReload({ 主表组: 0.65 })
+    store.group_resting_thresholds = { ...store.group_resting_thresholds, 副表组: 0.5 }
+    await saveAndReload({ 主表组: 0.65, 副表组: 0.5 })
+    store.group_resting_thresholds.主表组 = 0.35
+    await saveAndReload({ 主表组: 0.35, 副表组: 0.5 })
+    delete store.group_resting_thresholds.副表组
+    await saveAndReload({ 主表组: 0.35 })
+    store.group_resting_thresholds = {}
+    await saveAndReload({})
+    expect(data.resting_threshold).toBe(0.65)
+    expect(axios.patch).toHaveBeenCalledTimes(5)
+  })
+
   it.each([undefined, false, true])(
     'loads activity sign-in %s with a disabled default and saves only its explicit change',
     async (saved) => {
