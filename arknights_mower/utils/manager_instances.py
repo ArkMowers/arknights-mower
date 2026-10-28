@@ -760,12 +760,29 @@ class InstanceController(ManagerTools):
         )
         return manager_changes, ordinary_changes, patch
 
+    @staticmethod
+    def _with_explicit_device_serial(configuration, serial):
+        profile = configuration.device
+        if serial is not None and (
+            profile.preset_id
+            in {"macos.bluestacks_air", "manual.other", "manual.physical"}
+            or (
+                profile.preset_id == "macos.mumu_pro"
+                and not profile.topology_fingerprint
+            )
+        ):
+            # A newly selected manual endpoint may equal the previous target's
+            # address, which Conf.updated clears when the binding changes.
+            return configuration.updated({"device": {"last_serial": serial}})
+        return configuration
+
     def update_device_settings(self, idx, changes, target, original, policy=None):
         from . import managed_device
         from .config import Conf
 
         self._validate_device_policy(policy)
         manager_changes, ordinary_changes, patch = self._device_changes(changes)
+        explicit_serial = patch.get("device", {}).get("last_serial")
         if not changes and policy is None:
             raise ValueError("请选择需要保存的设备配置")
         derived = managed_device.DERIVED_IDENTITY_FIELDS
@@ -837,7 +854,10 @@ class InstanceController(ManagerTools):
                 patch["device"]["last_serial"] = ""
                 for name in derived:
                     patch["device"].setdefault(name, "")
-            proposed = self._settings_snapshot(baseline.updated(patch))
+            selected = self._with_explicit_device_serial(
+                baseline.updated(patch), explicit_serial
+            )
+            proposed = self._settings_snapshot(selected)
             if submitted_identity:
                 ordinary_patch = copy.deepcopy(patch)
                 for key in derived:
@@ -974,7 +994,9 @@ class InstanceController(ManagerTools):
                     ),
                 )
             )
-            configuration = baseline.updated(patch)
+            configuration = self._with_explicit_device_serial(
+                baseline.updated(patch), patch.get("device", {}).get("last_serial")
+            )
         result = managed_device.discover(configuration)
         if not desired:
             result = managed_device.project_shared_candidates(

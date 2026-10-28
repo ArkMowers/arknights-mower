@@ -20,6 +20,7 @@ beforeEach(async () => {
       preset_id: 'manual.other',
       installation_path: '/saved',
       manager_path: '/saved/tool',
+      adb_path: '/saved/adb',
       config_path: '',
       instance_id: '0',
       instance_name: 'first',
@@ -48,6 +49,7 @@ beforeEach(async () => {
         { key: 'device.preset_id', group: '设备', kind: 'select' },
         { key: 'device.installation_path', group: '设备', kind: 'directory' },
         { key: 'device.manager_path', group: '设备', kind: 'file' },
+        { key: 'device.adb_path', group: '设备', kind: 'file' },
         { key: 'device.config_path', group: '设备', kind: 'file' },
         { key: 'device.instance_id', group: '设备', kind: 'text' },
         { key: 'device.instance_name', group: '设备', kind: 'text' },
@@ -123,6 +125,168 @@ it('does not save on discovery or candidate selection and clears an unverified e
   component.selectCandidate('chosen')
   expect(component.draft.value['device.last_serial']).toBe('')
   expect(api.update_device_settings).not.toHaveBeenCalled()
+})
+
+function airResult(overrides = {}) {
+  return {
+    kind: 'preflight',
+    preset_id: 'macos.bluestacks_air',
+    host_platform: 'macos',
+    ok: true,
+    status: 'ready',
+    serial: '127.0.0.1:5555',
+    adb_path: '/Applications/BlueStacks.app/Contents/MacOS/hd-adb',
+    game_package: 'com.hypergryph.arknights.bilibili',
+    candidates: [{ serial: '127.0.0.1:5555', state: 'device' }],
+    guidance: '请手动打开 BlueStacks Air 并启用 ADB。',
+    profile_patch: {
+      preset_id: 'macos.bluestacks_air',
+      installation_path: '/Applications/BlueStacks.app',
+      manager_path: '',
+      config_path: '',
+      instance_id: '',
+      instance_name: '',
+      instance_uuid: '',
+      topology_fingerprint: ''
+    },
+    ...overrides
+  }
+}
+
+it('labels Air ADB candidates and saves only the explicitly selected address', async () => {
+  api.discover_device_settings.mockResolvedValue(airResult())
+  await component.detect()
+  expect(component.changes.value).toEqual({})
+  expect(api.update_device_settings).not.toHaveBeenCalled()
+
+  component.selectCandidate('127.0.0.1:5555')
+  expect(component.draft.value).toMatchObject({
+    'device.preset_id': 'macos.bluestacks_air',
+    'device.installation_path': '/Applications/BlueStacks.app',
+    'device.adb_path': '/Applications/BlueStacks.app/Contents/MacOS/hd-adb',
+    'device.manager_path': '',
+    'device.config_path': '',
+    'device.instance_id': '',
+    'device.instance_name': '',
+    'device.instance_uuid': '',
+    'device.topology_fingerprint': '',
+    'device.last_serial': '127.0.0.1:5555',
+    'device.game_package': 'com.hypergryph.arknights'
+  })
+  expect(api.update_device_settings).not.toHaveBeenCalled()
+  expect(component.candidateOptions.value).toEqual([
+    { value: '127.0.0.1:5555', label: '127.0.0.1:5555 · device' }
+  ])
+  await component.save()
+  expect(api.update_device_settings).toHaveBeenCalledExactlyOnceWith(
+    0,
+    component.changes.value,
+    target,
+    original
+  )
+})
+
+it.each([
+  ['device.installation_path', '/another/BlueStacks.app'],
+  ['device.manager_path', '/another/manager'],
+  ['device.config_path', '/another/config'],
+  ['device.preset_id', 'manual.other'],
+  ['device.instance_id', 'another'],
+  ['device.instance_name', 'another']
+])(
+  'resubmits an explicitly selected Air address and clears it after editing %s',
+  async (key, value) => {
+    original.device.last_serial = '127.0.0.1:5555'
+    await component.load()
+    api.discover_device_settings.mockResolvedValue(airResult())
+    await component.detect()
+    component.selectCandidate('127.0.0.1:5555')
+    expect(component.changes.value['device.last_serial']).toBe('127.0.0.1:5555')
+    component.edit(key, value)
+    expect(component.draft.value['device.last_serial']).toBe('')
+    expect(component.confirmedSerial.value).toBeNull()
+    await component.save()
+    expect(api.update_device_settings.mock.calls[0][1]['device.last_serial']).toBe('')
+  }
+)
+
+it('retains an explicitly reentered manual MuMu Pro address when switching the application path', async () => {
+  original.device.preset_id = 'macos.mumu_pro'
+  original.device.last_serial = '127.0.0.1:16384'
+  await component.load()
+  component.edit('device.installation_path', '/Applications/MuMuPlayer.app')
+  component.edit('device.last_serial', '127.0.0.1:16384')
+  await component.save()
+  expect(api.update_device_settings.mock.calls[0][1]['device.last_serial']).toBe('127.0.0.1:16384')
+})
+
+it('keeps Air repair guidance and multiple ADB addresses available for an explicit choice', async () => {
+  const result = airResult({
+    ok: false,
+    status: 'selection_required',
+    serial: '',
+    profile_patch: {},
+    error: { code: 'multiple_devices', message: '请选择一个明确的设备 serial 后重试。' },
+    candidates: [
+      { serial: 'USB-other', state: 'offline' },
+      { serial: '127.0.0.1:5555', state: 'device' }
+    ]
+  })
+  api.discover_device_settings.mockResolvedValue(result)
+  await component.detect()
+  expect(component.candidateOptions.value).toEqual([
+    { value: 'USB-other', label: 'USB-other · offline' },
+    { value: '127.0.0.1:5555', label: '127.0.0.1:5555 · device' }
+  ])
+  expect(component.discovery.value.error).toEqual(result.error)
+  expect(component.discovery.value.guidance).toBe(result.guidance)
+  component.selectCandidate('not-in-the-result')
+  expect(component.changes.value).toEqual({})
+  component.selectCandidate('127.0.0.1:5555')
+  expect(component.draft.value['device.last_serial']).toBe('127.0.0.1:5555')
+  expect(component.draft.value['device.preset_id']).toBe('macos.bluestacks_air')
+  expect(component.draft.value['device.installation_path']).toBe('')
+  expect(api.update_device_settings).not.toHaveBeenCalled()
+})
+
+it('requires independent settings before selecting an Air ADB address outside the shared template', async () => {
+  await loadPolicy()
+  api.discover_device_settings.mockResolvedValue(airResult())
+  await component.detect()
+  component.selectCandidate('127.0.0.1:5555')
+  expect(component.error.value).toContain('独立配置')
+  expect(component.changes.value).toEqual({})
+  await component.save()
+  expect(api.update_device_settings).not.toHaveBeenCalled()
+
+  component.setIndependent(true)
+  await component.detect()
+  component.selectCandidate('127.0.0.1:5555')
+  expect(component.error.value).toBe('')
+  expect(component.draft.value['device.last_serial']).toBe('127.0.0.1:5555')
+  expect(component.draft.value['device.preset_id']).toBe('macos.bluestacks_air')
+})
+
+it('keeps instance discovery choices identified by their binding key', async () => {
+  api.discover_device_settings.mockResolvedValue({
+    kind: 'discovery',
+    candidates: [
+      {
+        key: 'vm-2',
+        preset_id: 'macos.mumu_pro',
+        instance_name: 'Mower',
+        instance_id: '2',
+        binding: { preset_id: 'macos.mumu_pro', instance_id: '2', instance_name: 'Mower' }
+      }
+    ]
+  })
+  await component.detect()
+  expect(component.candidateOptions.value).toEqual([
+    { value: 'vm-2', label: 'MuMu Pro · Mower · 2' }
+  ])
+  component.selectCandidate('vm-2')
+  expect(component.draft.value['device.instance_id']).toBe('2')
+  expect(component.draft.value['device.last_serial']).toBe('')
 })
 
 it('cannot save defaults after a failed reload', async () => {

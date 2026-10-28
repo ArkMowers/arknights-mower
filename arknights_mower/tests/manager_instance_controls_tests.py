@@ -552,6 +552,61 @@ def test_manager_saves_device_and_performance_without_replacing_private_fields(m
     assert saved["theme"] == "dark"
 
 
+@pytest.mark.parametrize(
+    "preset",
+    ["macos.bluestacks_air", "macos.mumu_pro", "manual.other", "manual.physical"],
+)
+@pytest.mark.parametrize("serial", ["127.0.0.1:5555", "127.0.0.1:16384", None])
+def test_manager_manual_target_saves_explicit_address_after_binding_edits(
+    manager, monkeypatch, preset, serial
+):
+    from arknights_mower.utils import managed_device
+
+    manager.update_settings(0, {"token": "private", "port": None})
+    destination = Path(manager.instances[0]["path"]) / "config/conf.yml"
+    raw = read_conf(manager)
+    raw["device"] = {
+        "preset_id": "manual.other",
+        "installation_path": "/Previous.app",
+        "instance_id": "0",
+        "instance_name": "previous",
+        "last_serial": "127.0.0.1:5555",
+    }
+    destination.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    target = manager.instances[0].copy()
+    settings = manager.get_device_settings(0, target)
+    changes = {
+        "device.preset_id": preset,
+        "device.installation_path": "/Applications/Selected.app",
+        "device.instance_id": "",
+        "device.instance_name": "",
+    }
+    if serial is not None:
+        changes["device.last_serial"] = serial
+    policy = {
+        "independent_configuration": True,
+        "original_policy": settings["original_policy"],
+    }
+    discover = Mock(return_value={"candidates": []})
+    monkeypatch.setattr(managed_device, "discover", discover)
+    before = destination.read_bytes()
+    manager.discover_device_settings(0, changes, target, settings["values"], policy)
+    assert discover.call_args.args[0].device.last_serial == (serial or "")
+    assert destination.read_bytes() == before
+    manager.update_device_settings(
+        0,
+        changes,
+        target,
+        settings["values"],
+        policy,
+    )
+    saved = read_conf(manager)
+    assert saved["device"]["last_serial"] == saved["adb"] == (serial or "")
+    reopened = manager.get_device_settings(0, target)["values"]
+    assert reopened["device"]["last_serial"] == (serial or "")
+    assert reopened["device"]["preset_id"] == preset
+
+
 @pytest.mark.parametrize("blocked", ["running", "target", "stale", "job", "invalid"])
 def test_manager_rejects_device_edits_without_writes(manager, monkeypatch, blocked):
     manager.update_settings(0, {"token": "private", "port": None})

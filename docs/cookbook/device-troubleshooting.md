@@ -130,3 +130,12 @@ If device reboots exceed standard deadlines on slower host machines, adjust the 
 ```
 
 The [device contract](../subsystems/device-control.md) defines launch scope and immediate authorization.
+
+### BlueStacks Air on macOS
+
+1. Open the intended BlueStacks Air instance manually. In Settings → Advanced, enable Android Debug Bridge (ADB), save, and wait for the Android desktop.
+2. In the standalone Mower manager, open the instance's 连接与启动 editor and enable 独立配置 to select a manual ADB address. Choose the BlueStacks Air preset. Leave its application path empty for automatic detection, or use `/Applications/BlueStacks.app`; the bundled ADB is `/Applications/BlueStacks.app/Contents/MacOS/hd-adb`.
+3. Click 检测可用实例. Air returns ADB addresses and states rather than named VM bindings. Select the address displayed by the intended instance's settings, then Save. A running emulator alone does not establish that ADB or the game connection is ready; follow any detection error before starting the Mower instance.
+4. `/Applications/BlueStacks Air multi-instance manager.app` is BlueStacks' separate multi-instance application. Do not substitute it for the player application path. Mower's Air preset does not read `bluestacks.conf` or provide automatic emulator start/stop; use the ADB address shown by BlueStacks rather than assuming every instance uses port 5555.
+
+The [managed device configuration rules](../subsystems/web-access.md#managed-device-configuration) define address selection and saving in the standalone manager.

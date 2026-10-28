@@ -1,7 +1,11 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { managerCall } from './bridge.js'
-import { editedDevicePatch, presetLabels } from '../src/utils/deviceSettings.js'
+import {
+  deviceDetectionDraft,
+  editedDevicePatch,
+  presetLabels
+} from '../src/utils/deviceSettings.js'
 import WaitingSceneEditor from './WaitingSceneEditor.vue'
 import { connectionFields, idleAction, idleActionPatch, idleOptions } from './connectionSettings.js'
 
@@ -18,6 +22,20 @@ const fields = ref([])
 const pending = ref(false)
 const error = ref('')
 const discovery = ref(null)
+const confirmedSerial = ref(null)
+const preflightResult = computed(() => discovery.value?.kind === 'preflight')
+const candidateOptions = computed(() =>
+  (discovery.value?.candidates || []).map((item) =>
+    preflightResult.value
+      ? { value: item.serial, label: [item.serial, item.state].filter(Boolean).join(' · ') }
+      : {
+          value: item.key,
+          label: [presetLabels[item.preset_id], item.instance_name, item.instance_id]
+            .filter(Boolean)
+            .join(' · ')
+        }
+  )
+)
 const policySupported = ref(false)
 const originalPolicy = ref(null)
 const sharedKeys = ref([])
@@ -69,7 +87,11 @@ const changes = computed(() =>
         Object.hasOwn(originalPolicy.value?.local_values ?? {}, key)
           ? originalPolicy.value.local_values[key]
           : initial.value[key]
-      return patchField(key) && JSON.stringify(value) !== JSON.stringify(baseline)
+      return (
+        patchField(key) &&
+        (JSON.stringify(value) !== JSON.stringify(baseline) ||
+          (key === 'device.last_serial' && confirmedSerial.value === value))
+      )
     })
   )
 )
@@ -115,6 +137,7 @@ async function load() {
     initial.value = structuredClone(flat)
     draft.value = structuredClone(flat)
     discovery.value = null
+    confirmedSerial.value = null
   } catch (reason) {
     error.value = reason?.message || '无法读取设备配置'
   } finally {
@@ -126,6 +149,18 @@ function edit(key, value) {
   const field = fields.value.find((item) => item.key === key)
   if (!field || disabled.value || !editableField(key) || field.read_only) return
   discovery.value = null
+  const targetChanged =
+    [...templateFields, 'device.instance_id', 'device.instance_name'].includes(key) &&
+    draft.value[key] !== value
+  if (targetChanged) {
+    confirmedSerial.value = null
+    if (key === 'device.instance_name') {
+      draft.value['device.last_serial'] = ''
+      draft.value['device.instance_uuid'] = ''
+      draft.value['device.topology_fingerprint'] = ''
+    }
+  }
+  if (key === 'device.last_serial') confirmedSerial.value = value
   if (key.startsWith('device.')) {
     const profile = Object.fromEntries(
       Object.entries(draft.value)
@@ -148,6 +183,7 @@ function setIndependent(value) {
   if (disabled.value || !policySupported.value) return
   independentConfiguration.value = value === true
   discovery.value = null
+  confirmedSerial.value = null
   if (!independentConfiguration.value) {
     for (const field of fields.value) {
       if (!instanceFields.has(field.key) && !overrideKeys.value.includes(field.key))
@@ -238,6 +274,31 @@ async function detect() {
 
 function selectCandidate(key) {
   if (disabled.value) return
+  if (preflightResult.value) {
+    if (!discovery.value.candidates.some((item) => item.serial === key)) return
+    if (!editableField('device.last_serial')) {
+      error.value = '选择 ADB 连接地址需要开启独立配置，请开启后重新检测。'
+      return
+    }
+    const profile = Object.fromEntries(
+      Object.entries(draft.value)
+        .filter(([field]) => field.startsWith('device.'))
+        .map(([field, value]) => [field.slice(7), value])
+    )
+    const selected = {
+      ...deviceDetectionDraft(profile, discovery.value),
+      ...discovery.value.profile_patch,
+      ...(discovery.value.adb_path ? { adb_path: discovery.value.adb_path } : {}),
+      last_serial: key
+    }
+    confirmedSerial.value = key
+    for (const [field, value] of Object.entries(selected)) {
+      if (Object.hasOwn(draft.value, `device.${field}`) && patchField(`device.${field}`))
+        draft.value[`device.${field}`] = value
+    }
+    error.value = ''
+    return
+  }
   const candidate = discovery.value?.candidates?.find((candidate) => candidate.key === key)
   const binding = candidate?.binding
   if (!binding) return
@@ -254,6 +315,7 @@ function selectCandidate(key) {
     return
   }
   error.value = ''
+  confirmedSerial.value = null
   if (
     Object.hasOwn(binding, 'instance_id') &&
     binding.instance_id !== draft.value['device.instance_id']
@@ -344,17 +406,10 @@ onUnmounted(() => {
     <n-space v-if="original" vertical>
       <n-button :disabled="disabled" :loading="pending" @click="detect">检测可用实例</n-button>
       <n-select
-        v-if="discovery?.candidates?.length"
-        placeholder="选择明确的模拟器实例"
+        v-if="candidateOptions.length"
+        :placeholder="preflightResult ? '选择明确的 ADB 连接地址' : '选择明确的模拟器实例'"
         :disabled="disabled"
-        :options="
-          discovery.candidates.map((item) => ({
-            value: item.key,
-            label: [presetLabels[item.preset_id], item.instance_name, item.instance_id]
-              .filter(Boolean)
-              .join(' · ')
-          }))
-        "
+        :options="candidateOptions"
         @update:value="selectCandidate"
       />
       <n-text v-if="discovery?.candidates?.length" depth="3"
@@ -364,6 +419,9 @@ onUnmounted(() => {
       <n-text v-else-if="discovery && !discovery.candidates?.length">{{
         discovery.ok ? '已完成当前设备检测。' : '未找到可选实例，请检查模拟器安装路径。'
       }}</n-text>
+      <n-alert v-if="discovery?.guidance" type="info" :show-icon="false">{{
+        discovery.guidance
+      }}</n-alert>
     </n-space>
     <div v-if="original" class="device-editor-fields">
       <n-collapse :default-expanded-names="['模拟器与设备']">

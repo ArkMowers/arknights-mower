@@ -33,7 +33,7 @@ SCENARIOS = json.loads(
 
 class AirCommandFixture:
     def __init__(self, root):
-        self.app = Path(root) / "BlueStacks.app"
+        self.app = Path(root).resolve() / "BlueStacks.app"
         self.adb = self.app / "Contents/MacOS/hd-adb"
         self.adb.parent.mkdir(parents=True)
         self.adb.touch()
@@ -196,6 +196,7 @@ class BlueStacksAirIOTests(unittest.TestCase):
         self,
     ):
         fixture = self.fixture
+        fixture.conf.device.adb_path = str(fixture.adb)
         fixture.conf.device.last_serial = SERIAL
         fixture.rows = [(SERIAL, "device"), ("phone", "device")]
         session = DeviceSession(
