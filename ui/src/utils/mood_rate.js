@@ -1,3 +1,7 @@
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+const { t } = i18n.global
+
 // Rates are estimates between adjacent observations, never instantaneous game values.
 // Skip special events (for example Fiammetta charging) and implausibly short / stale spans.
 export const MIN_MOOD_RATE_INTERVAL_MS = 15 * 60 * 1000
@@ -82,21 +86,27 @@ export function describeMoodEvent(point, datasetLabel) {
   const event = point?.moodEvent
   const related = point?.relatedOperator
   // Explicit backend event types override the heuristic applied to Fiammetta points.
-  if (event === 'exhausted') return '心情已耗尽'
-  if (event === 'fiammetta_before') return '被肥鸭充能（交换前）'
-  if (event === 'fiammetta_after') return '被肥鸭充能（交换后）'
+  if (event === 'exhausted') return t('reports.moodExhausted')
+  if (event === 'fiammetta_before') return t('reports.fiammettaBefore')
+  if (event === 'fiammetta_after') return t('reports.fiammettaAfter')
   if (event === 'fiammetta_charge' || (datasetLabel === '菲亚梅塔' && related)) {
-    return related ? `被充能干员：${related}` : '充能记录'
+    return related
+      ? t('reports.chargedOperator', { name: operatorDisplayName(related) })
+      : t('reports.chargingRecord')
   }
-  return related ? `关联干员：${related}` : ''
+  return related ? t('reports.relatedOperator', { name: operatorDisplayName(related) }) : ''
 }
 
 export function describeMoodInterval(interval) {
   if (!interval) return ''
   const duration = interval.hours.toFixed(2)
-  if (interval.kind === 'stable') return `相邻记录心情未变（间隔 ${duration} 小时）`
-  const action = interval.kind === 'consumption' ? '消耗' : '恢复'
-  return `本段平均${action}约 ${formatMoodRate(interval.rate)} 点/小时（间隔 ${duration} 小时）`
+  if (interval.kind === 'stable') return t('reports.stableMoraleInterval', { duration })
+  return t(
+    interval.kind === 'consumption'
+      ? 'reports.moraleConsumptionInterval'
+      : 'reports.moraleRecoveryInterval',
+    { duration, rate: formatMoodRate(interval.rate) }
+  )
 }
 
 // Bulk show / hide uses the Chart.js visibility API, without changing the data or legend defaults.

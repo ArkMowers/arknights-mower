@@ -11,6 +11,7 @@ import {
 } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import ConfigProfilesController from './ConfigProfilesController.vue'
+import { i18n } from '@/i18n'
 
 const feedback = vi.hoisted(() => ({ success: vi.fn() }))
 
@@ -66,6 +67,7 @@ function mount(controller) {
 
 beforeEach(() => vi.clearAllMocks())
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   for (const app of mounted.splice(0)) app.unmount()
 })
 
@@ -109,6 +111,63 @@ function setup(action) {
 }
 
 describe('configuration profile dialog', () => {
+  it('translates the fixed catalog in English while preserving names, source metadata and selected keys', async () => {
+    const { controller, render } = setup('activate')
+    i18n.global.locale.value = 'en-US'
+    const html = await render()
+
+    expect(html).toContain('Switch Profile')
+    expect(html).toContain('Switch to')
+    expect(html).toContain('备用账号')
+    expect(html).toContain('Connection &amp; Runtime')
+    expect(html).toContain('Device &amp; Game Connection')
+    expect(html).toContain('Keep device identity, paths, screenshot and touch methods')
+    expect(html).not.toContain('整组设备身份、截图与触控')
+    expect(html).toContain('data-value="device"')
+    expect(html).toContain('data-value="runtime"')
+    expect(controller.selected.value).toEqual(['device'])
+    expect(controller.sections.value[0]).toMatchObject({
+      label: '连接与运行',
+      children: [
+        { key: 'device', label: '设备与游戏连接', description: '整组设备身份、截图与触控' },
+        { key: 'runtime', label: '运行参数', description: '独立选择性能、采样与等待' }
+      ]
+    })
+    expect(controller.submit).not.toHaveBeenCalled()
+  })
+
+  it.each(['ja-JP', 'zh-TW'])(
+    'translates the fixed catalog in %s while retaining its selection',
+    async (locale) => {
+      const { controller, render } = setup('activate')
+      i18n.global.locale.value = locale
+      const html = await render()
+      expect(html).toContain(i18n.global.t('settings.profileCatalog.deviceLabel'))
+      expect(html).toContain(i18n.global.t('settings.profileCatalog.sectionConnection'))
+      expect(html).toContain('data-value="device"')
+      expect(html).toContain('备用账号')
+      expect(controller.selected.value).toEqual(['device'])
+      expect(controller.sections.value[0].children[0].label).toBe('设备与游戏连接')
+      expect(controller.submit).not.toHaveBeenCalled()
+    }
+  )
+
+  it('keeps unknown catalog extensions visible using their original labels and descriptions', async () => {
+    const { controller, render } = setup('import')
+    controller.sections.value.push({
+      key: 'future-section',
+      label: '后端新增分类',
+      children: [{ key: 'future_group', label: '后端新增项目', description: '后端新增项目说明' }]
+    })
+    i18n.global.locale.value = 'en-US'
+    const html = await render()
+    expect(html).toContain('Device &amp; Game Connection')
+    expect(html).toContain('后端新增分类')
+    expect(html).toContain('后端新增项目说明')
+    expect(html).toContain('data-value="future_group"')
+    expect(controller.selected.value).toEqual(['device'])
+  })
+
   it('renders backend sections as expandable checkbox groups with one complete device group', async () => {
     const { render } = setup('create')
     const html = await render()

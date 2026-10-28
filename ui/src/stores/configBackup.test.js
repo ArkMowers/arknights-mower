@@ -7,6 +7,7 @@ import { usePlanStore } from './plan'
 import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPersistence'
 import { readFileSync } from 'node:fs'
 import { compileScript, parse } from '@vue/compiler-sfc'
+import { i18n } from '@/i18n'
 
 // Execute the page's actual handler with isolated stores and transport.
 const { descriptor } = parse(readFileSync(new URL('../pages/Plan.vue', import.meta.url), 'utf8'))
@@ -17,9 +18,11 @@ const restoreCode = descriptor.scriptSetup.content
   .replaceAll('import.meta.env.VITE_HTTP_URL', JSON.stringify('/api'))
 
 function pageRestoreHandler(dependencies) {
-  return new Function(...Object.keys(dependencies), `${restoreCode}; return restoreRunningPlan`)(
-    ...Object.values(dependencies)
-  )
+  return new Function(
+    't',
+    ...Object.keys(dependencies),
+    `${restoreCode}; return restoreRunningPlan`
+  )(i18n.global.t, ...Object.values(dependencies))
 }
 
 vi.mock('axios', () => ({ default: { post: vi.fn(), patch: vi.fn(), get: vi.fn() } }))

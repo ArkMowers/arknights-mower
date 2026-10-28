@@ -1,35 +1,33 @@
 <template>
   <div class="mood-page">
-    <h1 class="page-title">工作休息比例报表</h1>
-    <p class="order-note">
-      拖动卡片调整顺序，折线图自动同步。点击编组标题展开干员，点击干员设为默认。
-    </p>
+    <h1 class="page-title">{{ t('reports.workRestTitle') }}</h1>
+    <p class="order-note">{{ t('reports.workRestHelp') }}</p>
     <div class="cleanup-toolbar">
-      <n-button v-if="board.hiddenGroups.length" secondary @click="board.restoreGroups">
-        还原隐藏窗口（{{ board.hiddenGroups.length }}）
+      <n-button v-if="board.hiddenGroups.length" secondary @click="board.restoreGroups"
+        >{{ t('reports.restoreHiddenPrefix') }}{{ board.hiddenGroups.length }}）
       </n-button>
       <n-date-picker
         v-model:value="selectedTime"
         type="datetime"
-        placeholder="选择时间"
+        :placeholder="t('reports.chooseTime')"
         style="width: 200px"
       />
-      <n-button @click="showConfirm = true">清除时间之前的心情数据</n-button>
+      <n-button @click="showConfirm = true">{{ t('reports.clearOldMorale') }}</n-button>
     </div>
     <n-modal
       v-model:show="showConfirm"
       preset="dialog"
-      title="确认删除"
-      content="您确定要删除选择时间之前的所有心情数据吗？该行为不可逆，如有需要，请前往 temp 文件夹备份数据库。"
-      positive-text="确定"
-      negative-text="取消"
+      :title="t('reports.confirmDelete')"
+      :content="t('reports.clearMoraleConfirmation')"
+      :positive-text="t('reports.confirm')"
+      :negative-text="t('reports.cancel')"
       @positive-click="clearData"
     />
-    <p v-if="loadError" class="load-error" role="alert">{{ loadError }}</p>
-    <p v-if="board.saveError" class="load-error" role="alert">{{ board.saveError }}</p>
-    <p v-if="historyLimited" class="order-note">
-      当前历史查询接口不可用：自选表暂时只能使用默认报表中已有的干员记录。
+    <p v-if="loadError" class="load-error" role="alert">{{ reportErrorMessage(loadError) }}</p>
+    <p v-if="board.saveError" class="load-error" role="alert">
+      {{ reportErrorMessage(board.saveError) }}
     </p>
+    <p v-if="historyLimited" class="order-note">{{ t('reports.ratioHistoryUnavailable') }}</p>
     <mood-card-grid :groups="orderedReportData" @reorder="reorderCards">
       <template #default="{ group }">
         <header class="group-head">
@@ -37,7 +35,7 @@
             type="info"
             secondary
             class="group-title"
-            :title="'点击展开或收起 ' + group.groupName + ' 的干员占比'"
+            :title="t('reports.expandGroupRatio', { name: group.groupName })"
             @click="handleClick(group.boardKey)"
           >
             {{ group.groupName }}
@@ -45,47 +43,65 @@
           <n-button
             size="tiny"
             secondary
-            :aria-label="'隐藏' + group.groupName + '窗口'"
+            :aria-label="t('reports.hideGroup', { name: group.groupName })"
             @click="board.hideGroup(group.boardKey)"
+            >{{ t('reports.hide') }}</n-button
           >
-            隐藏
-          </n-button>
         </header>
         <p v-if="group.isCustom" class="card-hint">
-          自选观察表 · {{ group.operators.length }} 位干员
-          <span v-if="group.missing.length"> · {{ group.missing.join('、') }} 暂无历史 </span>
+          {{ t('reports.customObservationPrefix') }}{{ group.operators.length
+          }}{{ t('reports.operatorsSuffix')
+          }}<span v-if="group.missing.length">
+            · {{ group.missing.join('、') }}{{ t('reports.noHistory') }}</span
+          >
         </p>
         <div v-if="!showCard[group.boardKey] && group.hasValidRatio" class="pie-area">
           <Pie :data="group.work_break_group" :options="pieOptions" :plugins="[ChartDataLabels]" />
         </div>
-        <div v-else-if="!showCard[group.boardKey]" class="no-history">暂无有效工休比数据</div>
+        <div v-else-if="!showCard[group.boardKey]" class="no-history">
+          {{ t('reports.noRatioData') }}
+        </div>
         <div v-else class="agent-details">
           <button
             v-for="operator in group.operatorRatios"
             :key="operator.name"
             type="button"
             class="agent-detail"
-            :aria-label="'将' + operator.name + '设为' + group.groupName + '的默认干员'"
+            :aria-label="
+              t('reports.defaultOperatorLabel', {
+                operator: operatorDisplayName(operator.name),
+                group: group.groupName
+              })
+            "
             :aria-pressed="group.defaultOperator === operator.name"
             @click="selectOperator(group.boardKey, operator.name)"
           >
-            <span>{{ operator.name }}</span>
-            <span>{{ operator.ratio == null ? '暂无记录' : operator.ratio.toFixed(2) + '%' }}</span>
+            <span>{{ operatorDisplayName(operator.name) }}</span>
+            <span>{{
+              operator.ratio == null ? t('reports.noRecords') : operator.ratio.toFixed(2) + '%'
+            }}</span>
           </button>
           <p
             v-if="!group.operatorRatios.length && group.moodData.datasets.length"
             class="card-hint"
           >
-            所有干员均已在心情曲线中排除
+            {{ t('reports.allCurvesExcluded') }}
           </p>
         </div>
-        <p class="card-hint">当前干员：{{ group.defaultOperator || '无可用干员' }}</p>
+        <p class="card-hint">
+          {{ t('reports.currentOperatorPrefix')
+          }}{{ operatorDisplayName(group.defaultOperator) || t('reports.noOperator') }}
+        </p>
       </template>
     </mood-card-grid>
   </div>
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { reportErrorMessage } from '@/i18n/reports'
+const { t } = i18n.global
 import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 import { Pie } from 'vue-chartjs'
@@ -171,7 +187,7 @@ function decorateGroup(group) {
     hasValidRatio: result != null,
     work_break_group: {
       datasets: [{ data: result == null ? [0, 0] : [100 - result, result] }],
-      labels: ['休息时间', '工作时间']
+      labels: [t('reports.restTime'), t('reports.workTime')]
     }
   }
 }
@@ -208,11 +224,11 @@ async function clearData() {
     await axios.delete(`${import.meta.env.VITE_HTTP_URL || ''}/record/clear-data`, {
       data: { date_time: selectedTime.value }
     })
-    alert('数据已清除')
+    alert(t('reports.clearedData'))
     reportData.value = await getMoodRatios({ includeWorkRest: false })
     await viewHistory.refreshSeries()
   } catch {
-    alert('清除数据失败；若当前为只读验收页面，请先返回主界面确认操作权限。')
+    alert(t('reports.clearDataFailed'))
   } finally {
     showConfirm.value = false
   }
@@ -223,11 +239,14 @@ onMounted(async () => {
   try {
     reportData.value = await getMoodRatios({ includeWorkRest: false })
   } catch {
-    loadError.value = '工休比数据读取失败，请检查本地 Mower 后端。'
+    loadError.value = t('reports.ratioLoadFailed')
   }
 })
 
 const pieOptions = {
+  get locale() {
+    return i18n.global.locale.value
+  },
   responsive: true,
   maintainAspectRatio: false,
   plugins: {

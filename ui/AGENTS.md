@@ -34,5 +34,7 @@ Local contract for the Vue 3 frontend application under `ui/`.
 
 ## 4. Controlled Language
 
+- **Interface Localization**: When adding or changing instance UI text, read and apply [UI language maintenance](../docs/subsystems/web-access.md#ui-language-maintenance), including four-language resources and focused validation. Follow the [localization procedure](../docs/cookbook/ui-localization-sources.md#maintaining-interface-copy) for implementation and source checks.
+
 - UI labels, tooltips, and source comments adhere strictly to authoritative definitions in [CONTEXT.md](../CONTEXT.md).
 - Never introduce issue tracker numbers (`#xxx`).

@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 
 import axios from 'axios'
 import { useResourceVersionStore } from './resourceVersion.js'
+import { i18n } from '@/i18n'
 
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 
@@ -28,8 +29,30 @@ describe('resource version store', () => {
     vi.useFakeTimers()
   })
   afterEach(() => {
+    i18n.global.locale.value = 'zh-CN'
     vi.clearAllTimers()
     vi.useRealTimers()
+  })
+
+  it('updates local errors on language changes without repeating network or installation actions', async () => {
+    axios.get.mockRejectedValueOnce(new Error('offline'))
+    const store = useResourceVersionStore()
+    await store.loadResourceVersion()
+    expect(store.info.error).toBe('网络错误：无法获取资源版本')
+    await store.installResource()
+    const requests = axios.get.mock.calls.length
+    i18n.global.locale.value = 'en-US'
+    expect(store.info.error).toBe('Network error: could not read resource versions')
+    expect(store.install_message).toContain('Check for updates first')
+    i18n.global.locale.value = 'ja-JP'
+    expect(store.info.error).toContain('通信エラー')
+    expect(store.install_message).toContain('先に更新を確認')
+    i18n.global.locale.value = 'zh-TW'
+    expect(store.info.error).toBe('網路錯誤：無法取得資源版本')
+    expect(store.install_message).toContain('請先檢查更新')
+    expect(axios.get).toHaveBeenCalledTimes(requests)
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(store.job.status).toBe('idle')
   })
 
   it('tracks download and installation until success, then refreshes the version', async () => {

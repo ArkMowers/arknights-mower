@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 defineOptions({ name: 'EmailSettings' })
 
 import { useConfigStore } from '@/stores/config'
@@ -28,7 +29,7 @@ async function test_email() {
   if (testing.value) return
   testing.value = true
   test_error.value = false
-  test_result.value = '正在发送……'
+  test_result.value = i18n.global.t('settings.email.sending')
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/test-email`)
     test_result.value = response.data
@@ -36,26 +37,34 @@ async function test_email() {
   } catch (error) {
     test_error.value = true
     test_result.value =
-      error.response?.data?.message || error.message || '发送失败，请检查邮箱设置后重试'
+      error.response?.data?.message ||
+      error.message ||
+      i18n.global.t('settings.email.sendingFailedCheckYourEmailSettingsAnd')
   } finally {
     testing.value = false
   }
 }
 
-const levels = [
-  { label: 'INFO - 基建任务、刷理智、公招汇总、基报、活动签到等', value: 'INFO' },
-  { label: 'WARNING - 版本过旧、组内心情差过大、漏单、公招稀有标签等', value: 'WARNING' },
+const levels = computed(() => [
   {
-    label: 'ERROR - 无法排班、专精失败、MAA调用出错、森空岛签到失败、活动签到超时、OF-1失败等',
+    label: i18n.global.t('settings.email.infoBaseTasksSanityFarmingRecruitmentSummaries'),
+    value: 'INFO'
+  },
+  {
+    label: i18n.global.t('settings.email.warningOutdatedVersionLargeMoraleDifferencesWithin'),
+    value: 'WARNING'
+  },
+  {
+    label: i18n.global.t('settings.email.errorSchedulingOrMasteryFailureMaaErrors'),
     value: 'ERROR'
   }
-]
+])
 const selectMenuProps = { class: 'settings-select-menu' }
 
-const mailboxTypes = [
-  { label: 'QQ邮箱', value: 'qq' },
-  { label: '自定义邮箱', value: 'custom' }
-]
+const mailboxTypes = computed(() => [
+  { label: i18n.global.t('settings.email.qqMail'), value: 'qq' },
+  { label: i18n.global.t('settings.email.customEmail'), value: 'custom' }
+])
 const mailboxType = computed({
   get: () => (custom_smtp_server.value.enable ? 'custom' : 'qq'),
   set: (value) => (custom_smtp_server.value.enable = value === 'custom')
@@ -64,63 +73,105 @@ const mailboxType = computed({
 
 <template>
   <n-card
-    title="邮件提醒"
+    :title="i18n.global.t('settings.email.emailNotifications')"
     class="email-settings"
     data-settings-keywords="发件邮箱 自定义邮箱 SMTP服务器 加密方式 SSL/TLS STARTTLS 端口号 账号 密码 授权码"
   >
     <template #default>
-      <div class="email-enable-row" data-settings-label="启用邮件提醒">
+      <div
+        class="email-enable-row"
+        :data-settings-label="i18n.global.t('settings.email.enableEmailNotifications')"
+      >
         <div class="email-enable-copy">
-          <span>启用邮件提醒</span>
-          <p>通过邮件接收任务汇总和异常提醒。</p>
+          <span>{{ i18n.global.t('settings.email.enableEmailNotifications') }}</span>
+          <p>{{ i18n.global.t('settings.email.receiveTaskSummariesAndErrorNotificationsBy') }}</p>
         </div>
-        <n-switch v-model:value="mail_enable" aria-label="启用邮件提醒" />
+        <n-switch
+          v-model:value="mail_enable"
+          :aria-label="i18n.global.t('settings.email.enableEmailNotifications')"
+        />
       </div>
-      <h3 class="email-group-title">发件邮箱</h3>
+      <h3 class="email-group-title">{{ i18n.global.t('settings.email.sender') }}</h3>
       <n-form
         class="settings-form-stacked email-fields-grid"
         label-placement="top"
         :show-feedback="false"
       >
-        <n-form-item label="邮箱类型" class="email-field-wide">
+        <n-form-item
+          :label="i18n.global.t('settings.email.emailProvider')"
+          class="email-field-wide"
+        >
           <n-select
             v-model:value="mailboxType"
             :options="mailboxTypes"
             :consistent-menu-width="false"
-            aria-label="邮箱类型"
+            :aria-label="i18n.global.t('settings.email.emailProvider')"
           />
         </n-form-item>
-        <n-form-item label="SMTP服务器" v-if="custom_smtp_server.enable" class="email-field-wide">
+        <n-form-item
+          :label="i18n.global.t('settings.email.smtpServer')"
+          v-if="custom_smtp_server.enable"
+          class="email-field-wide"
+        >
           <n-input
             v-model:value="custom_smtp_server.server"
-            :input-props="{ 'aria-label': 'SMTP服务器' }"
+            :input-props="{ 'aria-label': i18n.global.t('settings.email.smtpServer') }"
           />
         </n-form-item>
-        <n-form-item label="加密方式" v-if="custom_smtp_server.enable">
-          <n-radio-group v-model:value="custom_smtp_server.encryption" aria-label="加密方式">
+        <n-form-item
+          :label="i18n.global.t('settings.email.encryption')"
+          v-if="custom_smtp_server.enable"
+        >
+          <n-radio-group
+            v-model:value="custom_smtp_server.encryption"
+            :aria-label="i18n.global.t('settings.email.encryption')"
+          >
             <n-flex>
               <n-radio value="tls" label="SSL/TLS" />
               <n-radio value="starttls" label="STARTTLS" />
             </n-flex>
           </n-radio-group>
         </n-form-item>
-        <n-form-item label="端口号" v-if="custom_smtp_server.enable">
+        <n-form-item :label="i18n.global.t('settings.email.port')" v-if="custom_smtp_server.enable">
           <mower-input-number
             v-model:value="custom_smtp_server.ssl_port"
-            :input-props="{ 'aria-label': '端口号' }"
+            :input-props="{ 'aria-label': i18n.global.t('settings.email.port') }"
           />
         </n-form-item>
-        <n-form-item :label="custom_smtp_server.enable ? '账号' : 'QQ邮箱'">
+        <n-form-item
+          :label="
+            custom_smtp_server.enable
+              ? i18n.global.t('settings.email.account')
+              : i18n.global.t('settings.email.qqMail')
+          "
+        >
           <n-input
             v-model:value="account"
-            :input-props="{ 'aria-label': custom_smtp_server.enable ? '账号' : 'QQ邮箱' }"
+            :input-props="{
+              'aria-label': custom_smtp_server.enable
+                ? i18n.global.t('settings.email.account')
+                : i18n.global.t('settings.email.qqMail')
+            }"
           />
         </n-form-item>
-        <n-form-item :label="custom_smtp_server.enable ? '密码' : '授权码'">
+        <n-form-item
+          :label="
+            custom_smtp_server.enable
+              ? i18n.global.t('settings.email.password')
+              : i18n.global.t('settings.email.authorizationCode')
+          "
+        >
           <template #label>
             <span class="email-field-label">
-              {{ custom_smtp_server.enable ? '密码' : '授权码' }}
-              <help-text v-if="!custom_smtp_server.enable" label="查看 QQ邮箱授权码获取方法">
+              {{
+                custom_smtp_server.enable
+                  ? i18n.global.t('settings.email.password')
+                  : i18n.global.t('settings.email.authorizationCode')
+              }}
+              <help-text
+                v-if="!custom_smtp_server.enable"
+                :label="i18n.global.t('settings.email.howToGetAQqMailAuthorization')"
+              >
                 <n-button
                   text
                   tag="a"
@@ -128,7 +179,7 @@ const mailboxType = computed({
                   target="_blank"
                   type="primary"
                 >
-                  获取 QQ邮箱授权码
+                  {{ i18n.global.t('settings.email.getAQqMailAuthorizationCode') }}
                 </n-button>
               </help-text>
             </span>
@@ -137,18 +188,25 @@ const mailboxType = computed({
             v-model:value="pass_code"
             type="password"
             show-password-on="click"
-            :input-props="{ 'aria-label': custom_smtp_server.enable ? '密码' : '授权码' }"
+            :input-props="{
+              'aria-label': custom_smtp_server.enable
+                ? i18n.global.t('settings.email.password')
+                : i18n.global.t('settings.email.authorizationCode')
+            }"
           />
         </n-form-item>
       </n-form>
       <div class="email-content-group">
-        <h3 class="email-group-title">通知内容</h3>
+        <h3 class="email-group-title">{{ i18n.global.t('settings.email.notificationContent') }}</h3>
         <n-form
           class="settings-form-stacked email-fields-grid"
           label-placement="top"
           :show-feedback="false"
         >
-          <n-form-item label="通知等级" class="email-field-wide">
+          <n-form-item
+            :label="i18n.global.t('settings.email.notificationLevel')"
+            class="email-field-wide"
+          >
             <n-select
               v-model:value="notification_level"
               class="settings-select-wrap"
@@ -157,27 +215,27 @@ const mailboxType = computed({
               :virtual-scroll="false"
               :menu-props="selectMenuProps"
               :consistent-menu-width="false"
-              aria-label="通知等级"
+              :aria-label="i18n.global.t('settings.email.notificationLevel')"
             />
           </n-form-item>
-          <n-form-item label="标题前缀">
+          <n-form-item :label="i18n.global.t('settings.email.subjectPrefix')">
             <n-input
               v-model:value="mail_subject"
               :input-props="{
                 'aria-describedby': 'email-subject-description',
-                'aria-label': '标题前缀'
+                'aria-label': i18n.global.t('settings.email.subjectPrefix')
               }"
             />
             <p id="email-subject-description" class="email-field-description">
-              用于区分多个 Mower 的邮件。
+              {{ i18n.global.t('settings.email.distinguishEmailsFromDifferentMowerInstances') }}
             </p>
           </n-form-item>
-          <n-form-item label="时差修正">
+          <n-form-item :label="i18n.global.t('settings.email.timeZoneOffset')">
             <template #label>
               <span class="email-field-label">
-                时差修正
-                <help-text label="查看邮件时差修正说明">
-                  收件人时区与本地电脑的时差修正。比如你在中国帮美国的朋友代挂，发送邮件的任务时间会自动转化成当地时间。
+                {{ i18n.global.t('settings.email.timeZoneOffset') }}
+                <help-text :label="i18n.global.t('settings.email.aboutTheEmailTimeZoneOffset')">
+                  {{ i18n.global.t('settings.email.adjustTaskTimesForTheDifferenceBetween') }}
                 </help-text>
               </span>
             </template>
@@ -185,25 +243,29 @@ const mailboxType = computed({
               v-model:value="timezone_offset"
               :input-props="{
                 'aria-describedby': 'email-timezone-description',
-                'aria-label': '时差修正'
+                'aria-label': i18n.global.t('settings.email.timeZoneOffset')
               }"
             />
             <p id="email-timezone-description" class="email-field-description">
-              按收件人时区调整邮件中的任务时间。
+              {{ i18n.global.t('settings.email.adjustTaskTimesInEmailsForThe') }}
             </p>
           </n-form-item>
-          <n-form-item label="收件人" class="email-field-wide">
+          <n-form-item :label="i18n.global.t('settings.email.recipients')" class="email-field-wide">
             <n-dynamic-input v-model:value="recipient" />
-            <p class="email-field-description">不填时将邮件发给自己。</p>
+            <p class="email-field-description">
+              {{ i18n.global.t('settings.email.leaveBlankToSendEmailsToYourself') }}
+            </p>
           </n-form-item>
         </n-form>
       </div>
-      <div class="email-test" data-settings-label="发送测试邮件">
+      <div class="email-test" :data-settings-label="i18n.global.t('settings.email.sendTestEmail')">
         <div class="email-test-copy">
-          <span>检查邮件配置</span>
-          <p>发送一封测试邮件，确认邮箱能够收到提醒。</p>
+          <span>{{ i18n.global.t('settings.email.checkEmailSettings') }}</span>
+          <p>{{ i18n.global.t('settings.email.sendATestEmailToCheckThat') }}</p>
         </div>
-        <n-button :loading="testing" :disabled="testing" @click="test_email">发送测试邮件</n-button>
+        <n-button :loading="testing" :disabled="testing" @click="test_email">{{
+          i18n.global.t('settings.email.sendTestEmail')
+        }}</n-button>
       </div>
       <p
         v-if="test_result"

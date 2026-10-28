@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import Close from '@vicons/ionicons5/es/Close'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
@@ -31,7 +34,7 @@ watch(
     try {
       await store.refresh_weekly_plan_metadata()
     } catch {
-      error.value = '活动结束时间读取失败，请重新打开周计划'
+      error.value = t('tasks.eventEndReadFailed')
     }
   }
 )
@@ -93,7 +96,7 @@ function handleInputKeydown(event) {
 async function applyPlan(value, isNew = false) {
   const key = typeof value === 'string' ? value.trim() : ''
   if (!key) {
-    error.value = '周计划方案不能为空'
+    error.value = t('tasks.weeklyPlanNameRequired')
     localValue.value = maa_weekly_plan_active.value || ''
     return
   }
@@ -183,14 +186,14 @@ async function handleFallbackTime(value) {
 
 <template>
   <div class="weekly-plan-row" :class="{ compact }">
-    <div class="weekly-plan-label">{{ compact ? '方案' : '周计划方案' }}</div>
+    <div class="weekly-plan-label">{{ compact ? t('tasks.plan') : t('tasks.weeklyPlanName') }}</div>
     <n-auto-complete
       v-model:value="localValue"
       class="weekly-plan-input"
       :options="options"
       menu-trigger="focus"
       :input-props="{
-        placeholder: '选择方案，或输入新方案名后回车',
+        placeholder: t('tasks.selectOrCreatePlan'),
         onKeydown: handleInputKeydown
       }"
       :loading="loading"
@@ -208,7 +211,7 @@ async function handleFallbackTime(value) {
         <n-icon :component="Close" />
       </template>
     </n-button>
-    <div class="weekly-plan-label fallback-label">切换方案</div>
+    <div class="weekly-plan-label fallback-label">{{ t('tasks.switchPlan') }}</div>
     <n-select
       :value="localFallbackValue"
       class="weekly-plan-input"
@@ -216,30 +219,26 @@ async function handleFallbackTime(value) {
       :loading="loading"
       :disabled="!fallbackOptions.length"
       clearable
-      :placeholder="fallbackOptions.length ? '自动切换到方案' : '请先创建另一个方案'"
+      :placeholder="
+        fallbackOptions.length ? t('tasks.switchToPlan') : t('tasks.createAnotherPlanFirst')
+      "
       @update:value="handleFallback"
     />
-    <span
-      class="fallback-note"
-      title="当前方案包含的资源活动关卡全部结束后，在实际刷理智前自动切换"
-    >
-      自动
-    </span>
-    <div class="weekly-plan-label fallback-label">切换时间</div>
+    <span class="fallback-note" :title="t('tasks.eventPlanSwitchHelp')">{{
+      t('tasks.automatic')
+    }}</span>
+    <div class="weekly-plan-label fallback-label">{{ t('tasks.switchTime') }}</div>
     <n-date-picker
       :value="localFallbackTime"
       class="weekly-plan-input fallback-time"
       type="datetime"
       clearable
       :disabled="!hasFallbackTarget || loading"
-      placeholder="未检测到活动结束时间"
+      :placeholder="t('tasks.eventEndNotDetected')"
       @update:value="handleFallbackTime"
     />
-    <span
-      class="fallback-note"
-      title="界面按设备本地时区显示；实际切换使用活动时间戳，并用已获取的服务器时钟偏移修正设备时间误差。清空后恢复活动结束时间。"
-    >
-      {{ fallbackTimeIsCustom ? '自定' : '默认' }}
+    <span class="fallback-note" :title="t('tasks.switchTimeHelp')">
+      {{ fallbackTimeIsCustom ? t('tasks.custom') : t('tasks.default') }}
     </span>
     <div v-if="error" class="selector-error">{{ error }}</div>
   </div>

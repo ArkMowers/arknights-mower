@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDialog, useMessage } from 'naive-ui'
@@ -85,17 +88,49 @@ function endDrag(event) {
 const atBottom = ref(true)
 const canSend = computed(() => Boolean(userInput.value.trim()) && !loading.value)
 const statusLabel = computed(() =>
-  connecting.value ? '正在连接' : loading.value ? '正在回复' : '日志排查与使用建议'
+  connecting.value
+    ? t('runtime.connecting')
+    : loading.value
+      ? t('runtime.replying')
+      : t('runtime.assistantStatus')
 )
 const suggestions = [
-  { title: '排查连接', description: '设备连接失败，应该先检查什么？', icon: DocumentTextOutline },
   {
-    title: '尝试排班',
-    description: '结合我的森空岛干员练度和基建组合，尝试安排基建主班。',
+    get title() {
+      return t('runtime.suggestionConnection')
+    },
+    get description() {
+      return t('runtime.suggestionConnectionText')
+    },
+    icon: DocumentTextOutline
+  },
+  {
+    get title() {
+      return t('runtime.suggestionPlan')
+    },
+    get description() {
+      return t('runtime.suggestionPlanText')
+    },
     icon: GridOutline
   },
-  { title: '查看专精', description: '帮我查看当前专精计划的状态。', icon: SchoolOutline },
-  { title: '整理反馈', description: '帮我整理一份问题反馈，先不要发送。', icon: MailOutline }
+  {
+    get title() {
+      return t('runtime.suggestionMastery')
+    },
+    get description() {
+      return t('runtime.suggestionMasteryText')
+    },
+    icon: SchoolOutline
+  },
+  {
+    get title() {
+      return t('runtime.suggestionFeedback')
+    },
+    get description() {
+      return t('runtime.suggestionFeedbackText')
+    },
+    icon: MailOutline
+  }
 ]
 let ws = null
 let activeReply = null
@@ -137,7 +172,7 @@ function failReply(text) {
 function connectWS(text) {
   const token = new URLSearchParams(window.location.search).get('token')
   if (!token) {
-    failReply('AI 助手需要 Web UI 访问密钥，请从 Mower 窗口或其浏览器入口打开。')
+    failReply(t('runtime.assistantNeedsToken'))
     return
   }
   closeConnection()
@@ -146,11 +181,11 @@ function connectWS(text) {
   try {
     ws = new WebSocket(backend.replace(/^http/, 'ws') + '/ws/chat')
   } catch {
-    failReply('无法建立 AI 连接，请检查服务地址后重试。')
+    failReply(t('runtime.assistantConnectionFailed'))
     return
   }
   connectTimer = setTimeout(() => {
-    failReply('AI 连接超时，请检查服务是否运行后重试。')
+    failReply(t('runtime.assistantConnectionTimeout'))
   }, 20000)
   ws.onopen = () => {
     clearTimeout(connectTimer)
@@ -163,39 +198,39 @@ function connectWS(text) {
     try {
       data = JSON.parse(event.data)
     } catch {
-      failReply('无法读取 AI 回复，请重试。')
+      failReply(t('runtime.assistantReplyUnreadable'))
       return
     }
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
-      failReply('无法读取 AI 回复，请重试。')
+      failReply(t('runtime.assistantReplyUnreadable'))
       return
     }
     if (!activeReply) return
     if (data.code === 'ai_assistant_disabled') {
-      failReply(data.error || '管理员未开启')
+      failReply(data.error || t('runtime.assistantDisabled'))
       showAssistantUnavailable()
       return
     }
     if (typeof data.reply === 'string') activeReply.content += data.reply
     if (data.error) {
-      failReply(`回复失败：${data.error}`)
+      failReply(t('runtime.replyFailed', { message: data.error }))
       return
     }
     if (data.done === true) {
       if (!activeReply.content.trim()) {
-        activeReply.content = '没有收到回复，请检查模型配置后重试。'
+        activeReply.content = t('runtime.assistantEmptyReply')
         activeReply.error = true
       }
       activeReply = null
       loading.value = false
     }
   }
-  ws.onerror = () => failReply('AI 连接失败，请检查服务与访问密钥后重试。')
+  ws.onerror = () => failReply(t('runtime.assistantAccessFailed'))
   ws.onclose = () => {
     clearTimeout(connectTimer)
     connecting.value = false
     ws = null
-    if (loading.value) failReply('连接已中断。再次发送将建立新会话，请补充必要的问题背景。')
+    if (loading.value) failReply(t('runtime.assistantDisconnected'))
   }
 }
 function sendMessage() {
@@ -234,9 +269,9 @@ function newConversation() {
 async function copyMessage(msg) {
   try {
     await navigator.clipboard.writeText(visibleContent(msg.content))
-    notice.success('已复制回复')
+    notice.success(t('runtime.replyCopied'))
   } catch {
-    notice.error('复制失败，请选中文字手动复制')
+    notice.error(t('runtime.replyCopyFailed'))
   }
 }
 function openFeedbackFlow(msg) {
@@ -252,21 +287,36 @@ function openSettings() {
 function assistantAllowed() {
   if (mower.ai_assistant_enabled === true) return true
   if (mower.ai_assistant_enabled === false) {
-    failReply('管理员未开启')
+    failReply(t('runtime.assistantDisabled'))
     showAssistantUnavailable()
   } else {
-    notice.warning('尚未取得助手授权状态，请稍后重试。')
+    notice.warning(t('runtime.assistantAuthorizationPending'))
   }
   return false
 }
+let unavailableDialog
 function showAssistantUnavailable() {
-  dialog.warning({
-    title: '管理员未开启',
-    content: '当前实例暂未开启该功能，请联系管理员。',
-    positiveText: '知道了'
+  unavailableDialog = dialog.warning({
+    get title() {
+      return t('runtime.assistantDisabled')
+    },
+    get content() {
+      return t('runtime.assistantDisabledHelp')
+    },
+    get positiveText() {
+      return t('runtime.acknowledge')
+    }
   })
   show.value = false
 }
+watch(i18n.global.locale, () => {
+  if (unavailableDialog)
+    Object.assign(unavailableDialog, {
+      title: t('runtime.assistantDisabled'),
+      content: t('runtime.assistantDisabledHelp'),
+      positiveText: t('runtime.acknowledge')
+    })
+})
 watch(
   [chatHistory, loading],
   async () => {
@@ -280,7 +330,7 @@ watch(
   async ([value, enabled]) => {
     if (enabled === false) {
       if (value) assistantAllowed()
-      else failReply('管理员未开启')
+      else failReply(t('runtime.assistantDisabled'))
       return
     }
     if (!value) return
@@ -300,7 +350,7 @@ onBeforeUnmount(closeConnection)
     class="chatbot-container"
     :style="panelStyle"
     role="dialog"
-    aria-label="Mower AI 助手"
+    :aria-label="t('runtime.assistant')"
   >
     <header
       class="chatbot-header"
@@ -313,7 +363,9 @@ onBeforeUnmount(closeConnection)
     >
       <div class="assistant-mark" aria-hidden="true"><n-icon :component="MowerAIIcon" /></div>
       <div class="assistant-heading">
-        <h2>Mower AI <span>助手</span></h2>
+        <h2>
+          Mower AI <span>{{ t('runtime.assistantSuffix') }}</span>
+        </h2>
         <div class="assistant-status" role="status">
           <span v-if="loading" class="status-dot" aria-hidden="true"></span>{{ statusLabel }}
         </div>
@@ -326,19 +378,18 @@ onBeforeUnmount(closeConnection)
               circle
               class="icon-button"
               :disabled="loading || !chatHistory.length"
-              aria-label="新对话"
-              title="新对话"
+              :aria-label="t('runtime.newConversation')"
+              :title="t('runtime.newConversation')"
               ><template #icon><n-icon :component="AddOutline" /></template
-            ></n-button>
-          </template>
-          清空当前对话，开始新的会话？
-        </n-popconfirm>
+            ></n-button> </template
+          >{{ t('runtime.newConversationConfirm') }}</n-popconfirm
+        >
         <n-button
           quaternary
           circle
           class="icon-button"
-          aria-label="Mower 设置"
-          title="前往 Mower 设置"
+          :aria-label="t('runtime.mowerSettings')"
+          :title="t('runtime.openMowerSettings')"
           @click="openSettings"
         >
           <template #icon><n-icon :component="SettingsOutline" /></template>
@@ -347,8 +398,8 @@ onBeforeUnmount(closeConnection)
           quaternary
           circle
           class="icon-button"
-          aria-label="收起助手"
-          title="收起助手，保留当前对话"
+          :aria-label="t('runtime.minimizeAssistant')"
+          :title="t('runtime.minimizeAssistantHelp')"
           @click="show = false"
         >
           <template #icon><n-icon :component="CloseOutline" /></template>
@@ -359,8 +410,8 @@ onBeforeUnmount(closeConnection)
     <div class="history-container">
       <div ref="historyRef" class="chatbot-history" @scroll="trackScroll" :aria-busy="loading">
         <div v-if="!chatHistory.length" class="chatbot-welcome">
-          <h3>从一个问题开始</h3>
-          <p>查日志、理解排班、跟进专精、整理反馈。</p>
+          <h3>{{ t('runtime.startWithQuestion') }}</h3>
+          <p>{{ t('runtime.assistantWelcome') }}</p>
           <div class="suggestion-grid">
             <button
               v-for="suggestion in suggestions"
@@ -374,7 +425,7 @@ onBeforeUnmount(closeConnection)
               <span>{{ suggestion.description }}</span>
             </button>
           </div>
-          <span class="welcome-hint">选择一个话题，补充细节后发送</span>
+          <span class="welcome-hint">{{ t('runtime.suggestionHint') }}</span>
         </div>
         <div v-else class="message-list">
           <article
@@ -384,11 +435,11 @@ onBeforeUnmount(closeConnection)
             :class="[msg.role, { 'message-error': msg.error }]"
           >
             <div class="message-meta">
-              <span>{{ msg.role === 'user' ? '你' : 'Mower AI' }}</span>
+              <span>{{ msg.role === 'user' ? t('runtime.you') : 'Mower AI' }}</span>
               <span
                 v-if="msg.role === 'bot' && loading && idx === chatHistory.length - 1"
                 class="message-state"
-                >正在回复</span
+                >{{ t('runtime.replying') }}</span
               >
             </div>
             <div v-if="msg.role === 'user'" class="message-content user-content">
@@ -402,7 +453,7 @@ onBeforeUnmount(closeConnection)
               ></div>
               <div v-else class="thinking-indicator" role="status">
                 <span aria-hidden="true">···</span
-                >{{ connecting ? '正在建立连接' : '正在思考你的问题' }}
+                >{{ connecting ? t('runtime.establishingConnection') : t('runtime.thinking') }}
               </div>
             </div>
             <div
@@ -412,7 +463,8 @@ onBeforeUnmount(closeConnection)
               class="message-actions"
             >
               <n-button quaternary class="reply-action" @click="copyMessage(msg)"
-                ><template #icon><n-icon :component="CopyOutline" /></template>复制</n-button
+                ><template #icon><n-icon :component="CopyOutline" /></template
+                >{{ t('runtime.copy') }}</n-button
               >
               <template v-if="!msg.error">
                 <n-button
@@ -421,21 +473,21 @@ onBeforeUnmount(closeConnection)
                   class="reply-action"
                   @click="msg.followUpState = 'resolved'"
                   ><template #icon><n-icon :component="CheckmarkOutline" /></template
-                  >已解决</n-button
+                  >{{ t('runtime.resolved') }}</n-button
                 >
                 <n-button
                   v-if="!msg.followUpState && feedbackAvailable"
                   quaternary
                   class="reply-action"
                   @click="openFeedbackFlow(msg)"
-                  >反馈问题</n-button
+                  >{{ t('runtime.reportProblem') }}</n-button
                 >
                 <span v-if="msg.followUpState === 'resolved'" class="follow-up-result"
-                  ><n-icon :component="CheckmarkOutline" />已标记解决</span
+                  ><n-icon :component="CheckmarkOutline" />{{ t('runtime.markedResolved') }}</span
                 >
-                <span v-else-if="msg.followUpState === 'feedback'" class="follow-up-result"
-                  >已打开反馈窗口</span
-                >
+                <span v-else-if="msg.followUpState === 'feedback'" class="follow-up-result">{{
+                  t('runtime.feedbackOpened')
+                }}</span>
               </template>
             </div>
           </article>
@@ -446,7 +498,8 @@ onBeforeUnmount(closeConnection)
         round
         class="jump-latest"
         @click="scrollToLatest"
-        ><template #icon><n-icon :component="ArrowDownOutline" /></template>回到最新</n-button
+        ><template #icon><n-icon :component="ArrowDownOutline" /></template
+        >{{ t('runtime.jumpLatest') }}</n-button
       >
     </div>
 
@@ -459,22 +512,24 @@ onBeforeUnmount(closeConnection)
           :bordered="false"
           :autosize="{ minRows: 2, maxRows: 6 }"
           :maxlength="4000"
-          placeholder="描述问题，或粘贴相关日志…"
-          aria-label="发送给 Mower AI 的问题"
+          :placeholder="t('runtime.chatPlaceholder')"
+          :aria-label="t('runtime.chatInput')"
           @keydown="onInputKeydown"
         />
         <div class="composer-toolbar">
-          <span class="keyboard-hint">Enter 发送 <span>·</span> Shift + Enter 换行</span>
+          <span class="keyboard-hint"
+            >{{ t('runtime.enterToSend') }}<span>·</span>{{ t('runtime.shiftEnterNewline') }}</span
+          >
           <span v-if="userInput.length > 3500" class="input-count"
             >{{ userInput.length }} / 4000</span
           >
           <n-button type="primary" class="send-button" :disabled="!canSend" @click="sendMessage"
             ><template #icon><n-icon :component="ArrowUpOutline" /></template
-            >{{ loading ? '回复中' : '发送' }}</n-button
+            >{{ loading ? t('runtime.replyInProgress') : t('runtime.send') }}</n-button
           >
         </div>
       </div>
-      <p class="composer-note">AI 可能判断有误，请核对日志与操作范围。</p>
+      <p class="composer-note">{{ t('runtime.assistantAccuracy') }}</p>
     </footer>
   </section>
 </template>

@@ -1,4 +1,7 @@
 <script setup>
+import { materialDisplayName as itemDisplayName } from '@/growth/growthFormatters'
+import { operatorDisplayName, skillDisplayName } from '@/i18n/gameNames'
+import { i18n } from '@/i18n'
 import { computed } from 'vue'
 import { NButton, NIcon } from 'naive-ui'
 import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline'
@@ -55,7 +58,8 @@ const readyCount = computed(
   () => materialRows.value.filter((row) => row.owned >= row.required).length
 )
 const status = computed(() => {
-  if (onlyResourcesMissing.value && !props.summary?.available) return '资源待备'
+  if (onlyResourcesMissing.value && !props.summary?.available)
+    return i18n.global.t('growth.materials.resourcesNeeded')
   return materialStatus(props.summary)
 })
 const statusType = computed(() => {
@@ -63,22 +67,21 @@ const statusType = computed(() => {
   return materialStatusType(props.summary)
 })
 const readableLine = computed(() => {
-  if (props.summary?.available) return '库存可以覆盖当前计划'
+  if (props.summary?.available)
+    return i18n.global.t('growth.materials.inventoryCoversTheCurrentPlan')
   if (props.summary?.craftable) {
-    return '成品尚未备齐，可逐级合成；资源缺口请在下方明细中核对。'
+    return i18n.global.t('growth.materials.finishedMaterialsAreNotReadyButCan')
   }
   if (depotMissing.value.length) {
     return (
-      '材料缺口 ' +
-      depotMissing.value.length +
-      ' 种' +
-      (props.summary?.craftable ? ' · 可逐级合成' : '')
+      i18n.global.t('growth.format.materialShortage', { count: depotMissing.value.length }) +
+      (props.summary?.craftable ? i18n.global.t('growth.materials.canBeCraftedStepByStep') : '')
     )
   }
   if (resourceMissing.value.length) {
-    return '材料已齐，资源缺口 ' + resourceMissing.value.length + ' 项'
+    return i18n.global.t('growth.format.resourceShortage', { count: resourceMissing.value.length })
   }
-  return '仍有材料未备齐，请查看下方材料明细。'
+  return i18n.global.t('growth.materials.someMaterialsAreStillMissingCheckThe')
 })
 const missingList = computed(() =>
   [...depotMissing.value]
@@ -93,13 +96,15 @@ const missingList = computed(() =>
     <section class="gp-panel growth-materials__summary">
       <header class="gp-section-head">
         <div>
-          <span class="gp-kicker">Requisition sheet</span>
-          <h2 class="gp-section-head__title">材料总览</h2>
+          <span class="gp-kicker">{{ i18n.global.t('growth.format.requisitionSheet') }}</span>
+          <h2 class="gp-section-head__title">
+            {{ i18n.global.t('growth.materials.materialOverview') }}
+          </h2>
         </div>
         <div class="growth-materials__actions">
           <n-button size="small" quaternary :loading="loading" @click="emit('refresh')">
             <template #icon><n-icon :component="RefreshOutline" /></template>
-            重新计算
+            {{ i18n.global.t('growth.materials.recalculate') }}
           </n-button>
           <n-button
             size="small"
@@ -109,7 +114,7 @@ const missingList = computed(() =>
             :disabled="!totalGoals"
             @click="emit('generate-crafting')"
           >
-            生成缺失材料合成任务
+            {{ i18n.global.t('growth.materials.generateShortageCraftingTasks') }}
           </n-button>
           <n-button
             v-if="hasChipShortage"
@@ -118,7 +123,7 @@ const missingList = computed(() =>
             :loading="chipLoading"
             @click="emit('configure-chips')"
           >
-            设置芯片刷取
+            {{ i18n.global.t('growth.materials.configureChipFarming') }}
           </n-button>
         </div>
       </header>
@@ -128,32 +133,42 @@ const missingList = computed(() =>
       </div>
 
       <div v-else-if="error" class="gp-empty">
-        <p class="gp-empty__title">材料计算失败</p>
+        <p class="gp-empty__title">
+          {{ i18n.global.t('growth.materials.materialCalculationFailed') }}
+        </p>
         <p class="gp-muted">{{ error }}</p>
         <div class="gp-empty__actions">
-          <n-button size="small" @click="emit('refresh')">重试</n-button>
+          <n-button size="small" @click="emit('refresh')">{{
+            i18n.global.t('growth.materials.retry')
+          }}</n-button>
         </div>
       </div>
 
       <div v-else-if="!totalGoals" class="gp-empty">
-        <p class="gp-empty__title">材料清单还是空的</p>
+        <p class="gp-empty__title">
+          {{ i18n.global.t('growth.materials.theMaterialListIsEmpty') }}
+        </p>
         <p class="gp-muted">
-          选好养成目标后，这里按库存与合成配方算出缺口、可合成项和手动准备清单。
+          {{ i18n.global.t('growth.materials.afterChoosingGrowthGoalsInventoryAndRecipes') }}
         </p>
         <div class="gp-empty__actions">
-          <n-button size="small" type="primary" @click="emit('add-target')">选择养成目标</n-button>
-          <n-button size="small" ghost @click="emit('open-plan')">查看养成计划</n-button>
+          <n-button size="small" type="primary" @click="emit('add-target')">{{
+            i18n.global.t('growth.materials.chooseGrowthGoals')
+          }}</n-button>
+          <n-button size="small" ghost @click="emit('open-plan')">{{
+            i18n.global.t('growth.materials.viewGrowthPlan')
+          }}</n-button>
         </div>
       </div>
 
       <template v-else-if="summary">
         <div class="growth-materials__headline">
           <div class="growth-materials__readiness">
-            <span class="gp-kicker">Readiness</span>
+            <span class="gp-kicker">{{ i18n.global.t('growth.format.readiness') }}</span>
             <strong class="gp-num"
               >{{ readyCount }}<small>/{{ materialRows.length }}</small></strong
             >
-            <span class="gp-muted">种材料已备齐</span>
+            <span class="gp-muted">{{ i18n.global.t('growth.materials.materialTypesReady') }}</span>
           </div>
           <div class="growth-materials__status" :class="'is-' + statusType">
             <span
@@ -173,17 +188,19 @@ const missingList = computed(() =>
 
         <div class="growth-materials__tiles">
           <div v-for="row in highlighted" :key="row.id" class="growth-materials__tile">
-            <img :src="materialIcon(row)" :alt="row.name" loading="lazy" />
+            <img :src="materialIcon(row)" :alt="itemDisplayName(row.id, row.name)" loading="lazy" />
             <div class="growth-materials__tile-body">
-              <span class="growth-materials__tile-name">{{ row.name }}</span>
+              <span class="growth-materials__tile-name">{{
+                itemDisplayName(row.id, row.name)
+              }}</span>
               <span
                 class="growth-materials__tile-value gp-mono"
                 :title="
-                  row.name +
-                  '：库存 ' +
-                  row.owned.toLocaleString('zh-CN') +
-                  ' / 需要 ' +
-                  row.required.toLocaleString('zh-CN')
+                  itemDisplayName(row.id, row.name) +
+                  i18n.global.t('growth.materials.owned') +
+                  row.owned.toLocaleString(i18n.global.locale.value) +
+                  i18n.global.t('growth.materials.required') +
+                  row.required.toLocaleString(i18n.global.locale.value)
                 "
               >
                 {{ formatAmount(row.owned) }}
@@ -198,16 +215,28 @@ const missingList = computed(() =>
 
         <div v-if="missingList.length" class="growth-materials__missing">
           <div class="growth-materials__missing-head">
-            <span class="gp-kicker">Still needed</span>
-            <span class="gp-muted">按缺口数量排序</span>
+            <span class="gp-kicker">{{ i18n.global.t('growth.format.stillNeeded') }}</span>
+            <span class="gp-muted">{{
+              i18n.global.t('growth.materials.sortedByShortageQuantity')
+            }}</span>
           </div>
           <div class="growth-materials__missing-list">
             <div v-for="row in missingList" :key="row.id" class="growth-materials__missing-row">
-              <img :src="materialIcon(row)" :alt="row.name" loading="lazy" />
-              <span class="growth-materials__missing-name">{{ row.name }}</span>
+              <img
+                :src="materialIcon(row)"
+                :alt="itemDisplayName(row.id, row.name)"
+                loading="lazy"
+              />
+              <span class="growth-materials__missing-name">{{
+                itemDisplayName(row.id, row.name)
+              }}</span>
               <span
                 class="gp-mono growth-materials__missing-count"
-                :title="row.name + ' ×' + row.count.toLocaleString('zh-CN')"
+                :title="
+                  itemDisplayName(row.id, row.name) +
+                  ' ×' +
+                  row.count.toLocaleString(i18n.global.locale.value)
+                "
                 >×{{ formatAmount(row.count) }}</span
               >
             </div>
@@ -215,29 +244,33 @@ const missingList = computed(() =>
         </div>
 
         <div v-if="resourceMissing.length" class="growth-materials__resources">
-          <span class="gp-kicker">Resources</span>
+          <span class="gp-kicker">{{ i18n.global.t('growth.format.resources') }}</span>
           <div class="growth-materials__resource-list">
             <span
               v-for="resource in resourceMissing"
               :key="resource.id"
               class="gp-chip gp-chip--signal"
-              :title="resource.name + ' ×' + resource.count.toLocaleString('zh-CN')"
+              :title="
+                itemDisplayName(resource.id, resource.name) +
+                ' ×' +
+                resource.count.toLocaleString(i18n.global.locale.value)
+              "
             >
               <img
                 :src="materialIcon(resource)"
-                :alt="resource.name"
+                :alt="itemDisplayName(resource.id, resource.name)"
                 class="growth-materials__resource-icon"
               />
-              {{ resource.name }} ×{{ formatAmount(resource.count) }}
+              {{ itemDisplayName(resource.id, resource.name) }} ×{{ formatAmount(resource.count) }}
             </span>
           </div>
         </div>
 
         <div v-if="missingSkills.length" class="growth-materials__skills">
-          <span class="gp-kicker">Blocked skills</span>
+          <span class="gp-kicker">{{ i18n.global.t('growth.format.blockedSkills') }}</span>
           <div class="growth-materials__skill-list">
             <span v-for="skill in missingSkills" :key="skill.key" class="gp-chip gp-chip--signal">
-              {{ skill.name }} · {{ skill.skill_name }}
+              {{ operatorDisplayName(skill.name) }} · {{ skillDisplayName(skill.skill_name) }}
             </span>
           </div>
         </div>
@@ -245,10 +278,16 @@ const missingList = computed(() =>
         <section class="growth-materials__detail">
           <header class="gp-section-head growth-materials__detail-head">
             <div>
-              <h3 class="growth-materials__detail-title">材料明细</h3>
-              <p class="gp-muted">成品按当前库存列出；展开可看逐级合成链与技巧概要。</p>
+              <h3 class="growth-materials__detail-title">
+                {{ i18n.global.t('growth.materials.materialDetails') }}
+              </h3>
+              <p class="gp-muted">
+                {{ i18n.global.t('growth.materials.finishedMaterialsUseCurrentInventoryExpandTo') }}
+              </p>
             </div>
-            <span class="gp-muted gp-mono">{{ planCount }} 项计划</span>
+            <span class="gp-muted gp-mono"
+              >{{ planCount }} {{ i18n.global.t('growth.materials.plans') }}</span
+            >
           </header>
           <MasteryMaterials
             :summary="summary"
@@ -260,7 +299,7 @@ const missingList = computed(() =>
         </section>
 
         <p class="growth-materials__note">
-          芯片、龙门币、经验与模组任务需在游戏内或对应任务中准备；材料预算只计算可直接合成的部分。
+          {{ i18n.global.t('growth.materials.prepareChipsLmdExpAndModuleMissions') }}
         </p>
       </template>
     </section>

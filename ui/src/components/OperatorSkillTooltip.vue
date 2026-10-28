@@ -4,6 +4,10 @@ import { NTag, NTooltip } from 'naive-ui'
 import { getOperatorSkillDetails } from '@/utils/operatorSkillTooltip'
 import { useBasementSkill } from '@/stores/basementSkill'
 import { ownershipLabels, skillStatusLabels } from '@/utils/basementSkills'
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { baseSkillText, baseSkillProgression } from '@/i18n/baseSkills'
+const { t } = i18n.global
 
 const props = defineProps({ name: String })
 const details = computed(() => getOperatorSkillDetails(props.name))
@@ -31,15 +35,17 @@ async function loadOwnership(show) {
     <template #trigger><slot /></template>
     <div class="operator-skill-tooltip">
       <div class="skill-heading">
-        <strong>{{ name }} · 基建技能</strong>
+        <strong>{{ operatorDisplayName(name) }} · {{ t('income.baseSkills') }}</strong>
         <NTag
           v-if="ownershipLabels[details.ownership]"
           :type="details.ownership === 'owned' ? 'success' : 'default'"
           :bordered="false"
           size="small"
-          >{{ ownershipLabels[details.ownership] }}</NTag
+          >{{ t(`income.${details.ownership}`) }}</NTag
         >
-        <span v-if="details.progression" class="skill-unlock">{{ details.progression }}</span>
+        <span v-if="details.progression" class="skill-unlock">{{
+          baseSkillProgression(details.progression)
+        }}</span>
       </div>
       <section v-for="(skill, index) in details.skills" :key="index">
         <div class="skill-heading">
@@ -49,10 +55,12 @@ async function loadOwnership(show) {
             :type="skill.status === 'active' ? 'success' : 'default'"
             :bordered="false"
             size="small"
-            >{{ skillStatusLabels[skill.status] }}</NTag
+            >{{ t(`income.${skill.status}`) }}</NTag
           >
         </div>
-        <div class="skill-unlock">{{ skill.facility }} · {{ skill.unlock }}</div>
+        <div class="skill-unlock">
+          {{ baseSkillText(skill.facility) }} · {{ baseSkillProgression(skill.unlock) }}
+        </div>
         <p>{{ skill.description }}</p>
       </section>
     </div>

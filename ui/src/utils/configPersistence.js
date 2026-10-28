@@ -1,4 +1,5 @@
 import { computed, nextTick } from 'vue'
+import { i18n } from '@/i18n'
 
 const pauseOwners = new WeakMap()
 
@@ -24,7 +25,7 @@ export function createSaveCoordinator(config, plan, additionalPlans = []) {
   function pause({ pendingOperation = false } = {}) {
     if (ownsPause) return
     if (!pendingOperation && paused.value) {
-      throw new Error('配置导入或进程操作正在进行，请等待完成后再试')
+      throw new Error(i18n.global.t('settings.process.operationInProgress'))
     }
     for (const store of stores) {
       let owners = pauseOwners.get(store)

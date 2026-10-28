@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import PlanAdvancedSettings from './PlanAdvancedSettings.vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import { i18n } from '@/i18n'
 
 let selectProps, updateSelection
 const sliderProps = []
@@ -34,14 +35,56 @@ vi.mock('./MowerInputNumber.vue', () => ({
   }
 }))
 vi.mock('./SlickOperatorSelect.vue', () => ({ default: { render: () => h('select') } }))
-vi.mock('./HelpText.vue', () => ({ default: { render: () => h('span') } }))
+vi.mock('./HelpText.vue', () => ({
+  default: {
+    setup:
+      (_, { slots }) =>
+      () =>
+        h('span', slots.default?.())
+  }
+}))
 
 const stores = []
 afterEach(() => {
   stores.forEach((store) => store.$dispose())
   stores.length = 0
   sliderProps.length = 0
+  i18n.global.locale.value = 'zh-CN'
 })
+
+it.each([
+  ['zh-CN', '各组心情阈值', '结束后恢复日常及各组设置'],
+  ['en-US', 'Group morale thresholds', 'The normal global and group settings resume'],
+  ['ja-JP', 'グループ別の体力閾値', '期間終了後は通常の全体設定とグループ別設定に戻します'],
+  ['zh-TW', '各組心情閾值', '結束後恢復日常及各組設定']
+])(
+  'renders %s group and maintenance rules without changing saved ratios or group names',
+  async (locale, title, maintenance) => {
+    const app = createSSRApp(PlanAdvancedSettings)
+    app.use(createPinia())
+    app.provide('loaded', ref(false))
+    app.provide('mobile', ref(false))
+    const config = app.runWithContext(() => useConfigStore())
+    const plan = app.runWithContext(() => usePlanStore())
+    stores.push(config, plan)
+    config.resting_threshold = 35
+    config.group_resting_thresholds = { 我的中文组: 0.355, 旧组: 0.75 }
+    config.version_update_resting_threshold = 90
+    const original = config.build_advanced_settings()
+    i18n.global.locale.value = locale
+    const html = await renderToString(app)
+    expect(html).toContain(title)
+    expect(html).toContain(maintenance)
+    expect(html).toContain('我的中文组')
+    expect(html).toContain('旧组')
+    expect(config.build_advanced_settings()).toEqual(original)
+    expect(original).toMatchObject({
+      resting_threshold: 0.35,
+      group_resting_thresholds: { 我的中文组: 0.355, 旧组: 0.75 },
+      version_update_resting_threshold: 0.9
+    })
+  }
+)
 
 it.each([0, 19, 20, 100])('无人机使用阈值最小为 20，保留已读取的值 %s', async (limit) => {
   const app = createSSRApp(PlanAdvancedSettings)

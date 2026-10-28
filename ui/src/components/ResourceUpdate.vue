@@ -1,7 +1,9 @@
 <script setup>
+import { i18n } from '@/i18n'
 import axios from 'axios'
 import { NCard, useDialog } from 'naive-ui'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { resourceUpdateMessage } from '@/utils/resourceUpdatePresentation'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
@@ -34,6 +36,12 @@ const { loadResourceVersion, loadResourceVersionLocal, installResource, loadReso
 const showProgress = useUpdateProgress(job)
 
 const manual_result = ref('')
+const manualResultKey = ref('')
+const manualResultText = computed(() =>
+  manualResultKey.value
+    ? i18n.global.t(manualResultKey.value)
+    : resourceUpdateMessage(manual_result.value)
+)
 const manual_installing = ref(false)
 
 async function refresh_resource_options() {
@@ -56,7 +64,14 @@ onMounted(() => {
 })
 
 async function show_manual_result(data) {
-  manual_result.value = data && typeof data.message === 'string' ? data.message : '更新包应用失败'
+  manualResultKey.value =
+    data && typeof data.message === 'string'
+      ? ''
+      : 'settings.resource.failedToApplyTheUpdatePackage'
+  manual_result.value =
+    data && typeof data.message === 'string'
+      ? data.message
+      : i18n.global.t('settings.resource.failedToApplyTheUpdatePackage')
   if (data?.ok && data.kind === 'resource') {
     await refresh_resource_options()
     if (resource_update_enable.value) {
@@ -81,7 +96,8 @@ async function install_resource() {
 async function upload_manual_file(file, onProgress) {
   if (!file || manual_installing.value || installing.value) return false
   manual_installing.value = true
-  manual_result.value = '正在应用更新包…'
+  manualResultKey.value = 'settings.resource.applyingUpdatePackage'
+  manual_result.value = i18n.global.t('settings.resource.applyingUpdatePackage')
   try {
     const data = await postManualUpdate(axios, manual_url, file, onProgress)
     await show_manual_result(data)
@@ -129,14 +145,20 @@ function set_auto_update(checked) {
 <template>
   <component
     :is="compact ? 'div' : NCard"
-    :title="compact ? undefined : '资源更新'"
+    :title="compact ? undefined : i18n.global.t('settings.resource.resourceUpdates')"
     class="update-card"
   >
     <UpdatePreview v-if="compact" v-bind="preview" />
     <div v-if="!compact" class="update-overview">
       <div class="update-installed">
-        <span class="update-caption" data-settings-label="当前版本">当前版本</span>
-        <strong class="update-version">{{ info.current_display || '未安装' }}</strong>
+        <span
+          class="update-caption"
+          :data-settings-label="i18n.global.t('settings.resource.currentVersion')"
+          >{{ i18n.global.t('settings.resource.currentVersion') }}</span
+        >
+        <strong class="update-version">{{
+          info.current_display || i18n.global.t('settings.resource.notInstalled')
+        }}</strong>
         <span v-if="info.current_version" class="update-caption update-version-value">{{
           info.current_version
         }}</span>
@@ -146,7 +168,7 @@ function set_auto_update(checked) {
           :loading="loading"
           :disabled="installing || manual_installing"
           @click="loadResourceVersion(true)"
-          >检查更新</n-button
+          >{{ i18n.global.t('settings.resource.checkForUpdates') }}</n-button
         >
         <n-button
           v-if="info.update_available === true"
@@ -154,27 +176,44 @@ function set_auto_update(checked) {
           :loading="installing"
           :disabled="!canInstall || manual_installing"
           @click="request_install"
-          >下载并安装</n-button
+          >{{ i18n.global.t('settings.resource.downloadInstall') }}</n-button
         >
       </div>
     </div>
-    <div v-if="!compact" class="update-status" role="status" data-settings-label="最新版本">
-      <template v-if="loading">正在检查最新资源版本…</template>
+    <div
+      v-if="!compact"
+      class="update-status"
+      role="status"
+      :data-settings-label="i18n.global.t('settings.resource.latestVersion')"
+    >
+      <template v-if="loading">{{
+        i18n.global.t('settings.resource.checkingTheLatestResourceVersion')
+      }}</template>
       <template v-else-if="info.update_available != null">
-        <n-tag v-if="info.update_available" size="small" :bordered="false" type="warning"
-          >可更新</n-tag
+        <n-tag v-if="info.update_available" size="small" :bordered="false" type="warning">{{
+          i18n.global.t('settings.resource.updateAvailable')
+        }}</n-tag>
+        <n-tag v-else size="small" :bordered="false" type="success">{{
+          i18n.global.t('settings.resource.upToDate')
+        }}</n-tag>
+        <span v-if="info.remote_display"
+          >{{ i18n.global.t('settings.resource.latestVersion') }} {{ info.remote_display }}</span
         >
-        <n-tag v-else size="small" :bordered="false" type="success">已是最新</n-tag>
-        <span v-if="info.remote_display">最新版本 {{ info.remote_display }}</span>
         <span v-if="info.remote_version" class="update-caption update-version-value">{{
           info.remote_version
         }}</span>
       </template>
-      <span v-else class="update-caption">检查更新以获取最新资源包。</span>
+      <span v-else class="update-caption">{{
+        i18n.global.t('settings.resource.checkForUpdatesToFindTheLatest')
+      }}</span>
     </div>
-    <n-alert v-if="info.error" type="error" title="资源检查未完成" role="alert">{{
-      info.error
-    }}</n-alert>
+    <n-alert
+      v-if="info.error"
+      type="error"
+      :title="i18n.global.t('settings.resource.resourceCheckIncomplete')"
+      role="alert"
+      >{{ info.error }}</n-alert
+    >
 
     <div v-if="showProgress" class="update-progress" aria-live="polite">
       <n-progress
@@ -186,9 +225,10 @@ function set_auto_update(checked) {
           job.status === 'error' ? 'error' : job.status === 'success' ? 'success' : 'default'
         "
       />
-      <p>{{ job.message || install_message }}</p>
+      <p>{{ resourceUpdateMessage(job.message || install_message) }}</p>
       <p v-if="job.current" class="update-caption">
-        已下载 {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
+        {{ i18n.global.t('settings.resource.downloaded') }}
+        {{ (job.current / 1048576).toFixed(1) }} MiB<span v-if="job.total">
           / {{ (job.total / 1048576).toFixed(1) }} MiB</span
         >
       </p>
@@ -204,39 +244,42 @@ function set_auto_update(checked) {
       <n-form-item>
         <template #label>
           <span class="settings-row-copy">
-            <span>自动检查更新</span>
-            <span class="settings-row-description">打开 Mower 时自动检查资源包</span>
+            <span>{{ i18n.global.t('settings.resource.automaticallyCheckForUpdates') }}</span>
+            <span class="settings-row-description">{{
+              i18n.global.t('settings.resource.checkForResourcePackagesWhenMowerOpens')
+            }}</span>
           </span>
         </template>
         <n-switch
           :value="resource_update_enable"
-          aria-label="自动检查更新"
+          :aria-label="i18n.global.t('settings.resource.automaticallyCheckForUpdates')"
           @update:value="set_auto_check"
         />
       </n-form-item>
       <n-form-item>
         <template #label>
           <span class="settings-row-copy">
-            <span>自动更新</span>
-            <span class="settings-row-description">发现新资源包后自动安装</span>
+            <span>{{ i18n.global.t('settings.resource.automaticallyUpdate') }}</span>
+            <span class="settings-row-description">{{
+              i18n.global.t('settings.resource.installNewResourcePackagesAutomatically')
+            }}</span>
           </span>
         </template>
         <n-switch
           :value="resource_update_auto_update"
-          aria-label="自动更新"
+          :aria-label="i18n.global.t('settings.resource.automaticallyUpdate')"
           @update:value="set_auto_update"
         />
       </n-form-item>
     </n-form>
     <p v-if="!compact" class="update-footnote">
-      优先下载 OTA 增量包，不可用时自动下载整包。同一套 Mower
-      的全部实例共用资源包，空闲时自动加载，无需重启 Mower。
+      {{ i18n.global.t('settings.resource.preferAnOtaPatchAndFallBack') }}
     </p>
     <n-collapse v-if="!compact" class="update-details">
       <n-collapse-item
-        title="从本地资源包更新"
+        :title="i18n.global.t('settings.resource.updateFromALocalResourcePackage')"
         name="manual"
-        data-settings-label="从本地资源包更新"
+        :data-settings-label="i18n.global.t('settings.resource.updateFromALocalResourcePackage')"
       >
         <div class="update-manual">
           <n-upload
@@ -246,15 +289,15 @@ function set_auto_update(checked) {
             :show-file-list="false"
           >
             <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="drop_manual_update">
-              <div>点击或拖入资源更新包</div>
+              <div>{{ i18n.global.t('settings.resource.clickOrDropAResourceUpdatePackage') }}</div>
               <p class="update-caption">
-                支持资源整包和对应当前版本的 OTA 包，用于网络不稳时手动更新
+                {{ i18n.global.t('settings.resource.acceptsFullResourcePackagesAndOtaPatches') }}
               </p>
             </n-upload-dragger>
           </n-upload>
         </div>
       </n-collapse-item>
     </n-collapse>
-    <p v-if="manual_result" class="update-result" role="status">{{ manual_result }}</p>
+    <p v-if="manual_result" class="update-result" role="status">{{ manualResultText }}</p>
   </component>
 </template>

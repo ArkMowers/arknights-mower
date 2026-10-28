@@ -1,16 +1,25 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { localizedPlanOptions } from '@/i18n/plans'
+const { t } = i18n.global
 const props = defineProps(['data'])
 const emit = defineEmits(['update'])
 import { computed, ref, watch } from 'vue'
 import {
   maintenance_expression,
   maintenance_duration_expression,
-  maintenance_duration_options,
+  maintenance_duration_options as raw_duration_options,
   maintenance_trigger,
   parse_maintenance_expression,
   parse_maintenance_trigger
 } from '@/utils/trigger_maintenance'
-import { expression_type, function_options, new_expression } from '@/utils/trigger_function'
+import {
+  expression_type,
+  function_options as raw_function_options,
+  new_expression
+} from '@/utils/trigger_function'
+const function_options = computed(() => localizedPlanOptions(raw_function_options))
+const maintenance_duration_options = computed(() => localizedPlanOptions(raw_duration_options))
 const left = ref(props.data.left)
 const operator = ref(props.data.operator)
 const right = ref(props.data.right)
@@ -80,11 +89,11 @@ function update_function(name) {
   if (!args.value.length) add_argument()
 }
 
-const le_options = [
-  { label: '表达式', value: 'expression' },
-  { label: '值', value: 'string' },
-  { label: '函数', value: 'function' }
-]
+const le_options = computed(() => [
+  { label: t('plans.expression'), value: 'expression' },
+  { label: t('plans.value'), value: 'string' },
+  { label: t('plans.function'), value: 'function' }
+])
 
 const operator_tips = [
   'and',
@@ -110,11 +119,11 @@ const operator_tips = [
     <n-table size="small" :single-line="false">
       <template v-if="function_name">
         <tr>
-          <th>函数</th>
+          <th>{{ t('plans.function') }}</th>
           <td>
             <n-select
               :value="function_name"
-              aria-label="函数名称"
+              :aria-label="t('plans.functionName')"
               style="width: 220px"
               :options="function_options"
               :consistent-menu-width="false"
@@ -136,7 +145,7 @@ const operator_tips = [
                   <n-flex align="center" :wrap="false" :size="6" class="argument-label">
                     <n-select
                       :value="expression_type(arg.value)"
-                      :aria-label="`第 ${index + 1} 项类型`"
+                      :aria-label="t('plans.argumentType', { number: index + 1 })"
                       :options="le_options"
                       :consistent-menu-width="false"
                       @update:value="(type) => (arg.value = new_expression(type))"
@@ -161,16 +170,16 @@ const operator_tips = [
                 <n-button
                   v-if="function_name !== 'abs' && index === 0"
                   class="argument-action"
-                  aria-label="新增项"
-                  title="新增项"
+                  :aria-label="t('plans.addArgument')"
+                  :title="t('plans.addArgument')"
                   @click="add_argument"
                   >+</n-button
                 >
                 <n-button
                   v-else-if="function_name !== 'abs'"
                   class="argument-action"
-                  :aria-label="`删除第 ${index + 1} 项`"
-                  title="删除此项"
+                  :aria-label="t('plans.removeArgumentNumber', { number: index + 1 })"
+                  :title="t('plans.removeArgument')"
                   @click="remove(index)"
                   >−</n-button
                 >
@@ -180,7 +189,7 @@ const operator_tips = [
         </tr>
       </template>
       <tr v-else-if="maintenance_hours !== null">
-        <th>定时条件</th>
+        <th>{{ t('plans.timedCondition') }}</th>
         <td>
           <n-flex class="label" align="center" :wrap="false" :size="6">
             <trigger-string :data="left" @update="update_left" />
@@ -188,16 +197,16 @@ const operator_tips = [
               :value="maintenance_hours"
               :min="0"
               :step="0.5"
-              aria-label="停服大更新提前小时数"
+              :aria-label="t('plans.maintenanceLeadHours')"
               style="width: 140px"
               @update:value="update_maintenance_hours"
             />
-            <span style="white-space: nowrap">小时内生效</span>
-            <span style="white-space: nowrap">停止时长</span>
+            <span style="white-space: nowrap">{{ t('plans.activateWithinHours') }}</span>
+            <span style="white-space: nowrap">{{ t('plans.downtime') }}</span>
             <n-select
               :value="maintenance_duration.operator"
               :options="maintenance_duration_options"
-              aria-label="停止时长比较符"
+              :aria-label="t('plans.downtimeOperator')"
               :consistent-menu-width="false"
               style="width: 90px"
               @update:value="update_duration_operator"
@@ -207,11 +216,11 @@ const operator_tips = [
                 :value="duration_hours"
                 :min="0"
                 :step="0.5"
-                aria-label="停止时长小时数"
+                :aria-label="t('plans.downtimeHours')"
                 style="width: 120px"
                 @update:value="update_duration_hours"
               />
-              <span style="white-space: nowrap">小时</span>
+              <span style="white-space: nowrap">{{ t('plans.hours') }}</span>
             </template>
           </n-flex>
         </td>
@@ -219,11 +228,11 @@ const operator_tips = [
       <template v-else>
         <tr>
           <th>
-            <n-flex class="label" align="center" :wrap="false" :size="6">
-              左
-              <n-select
+            <n-flex class="label" align="center" :wrap="false" :size="6"
+              >{{ t('plans.left')
+              }}<n-select
                 :value="expression_type(left)"
-                aria-label="左侧类型"
+                :aria-label="t('plans.leftType')"
                 :on-update:value="
                   (v) => {
                     left = new_expression(v)
@@ -247,7 +256,7 @@ const operator_tips = [
           </td>
         </tr>
         <tr>
-          <th>运算符</th>
+          <th>{{ t('plans.operator') }}</th>
           <td>
             <n-auto-complete
               v-model:value="operator"
@@ -260,11 +269,11 @@ const operator_tips = [
         </tr>
         <tr>
           <th>
-            <n-flex class="label" align="center" :wrap="false" :size="6">
-              右
-              <n-select
+            <n-flex class="label" align="center" :wrap="false" :size="6"
+              >{{ t('plans.right')
+              }}<n-select
                 :value="expression_type(right)"
-                aria-label="右侧类型"
+                :aria-label="t('plans.rightType')"
                 :on-update:value="
                   (v) => {
                     right = new_expression(v)

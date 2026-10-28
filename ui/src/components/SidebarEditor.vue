@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { computed, nextTick, ref, watch } from 'vue'
 import draggable from 'vuedraggable'
 import ReorderThreeOutline from '@vicons/ionicons5/es/ReorderThreeOutline'
@@ -7,6 +10,7 @@ import { useThemeVars } from 'naive-ui'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
 import SidebarCustomize from './SidebarCustomize.vue'
 import { normalizeSortablePreview } from '@/utils/sortablePreview'
+import { navigationGroupTitle, navigationLabel } from '@/i18n/navigation'
 import '@/styles/drag.css'
 
 const props = defineProps({
@@ -28,7 +32,8 @@ const { state, visibleSections, standaloneItems, pinnedItems, initialized, persi
 const groupDraft = ref('')
 const groupInput = ref(null)
 const namingGroup = ref(null)
-const nameError = ref('')
+const nameErrorKey = ref('')
+const nameError = computed(() => (nameErrorKey.value ? t(`runtime.${nameErrorKey.value}`) : ''))
 const pickerGroup = ref(null)
 const dragArea = { name: 'sidebar-editor-pages', pull: true, put: true }
 const dragOptions = {
@@ -48,10 +53,31 @@ const dragOptions = {
   filter: 'input, textarea, select, button, a',
   preventOnFilter: false
 }
-const groups = computed(() => visibleSections.value)
+function displayItems(items) {
+  return items.map((item) => ({ ...item, label: navigationLabel(item) }))
+}
+const groups = computed(() =>
+  visibleSections.value.map((group) => ({
+    ...group,
+    title: navigationGroupTitle(group),
+    items: displayItems(group.items)
+  }))
+)
 const outerSections = computed(() => [
-  { key: 'pinned', title: '置顶', items: pinnedItems.value },
-  { key: 'ungrouped', title: '独立页面', items: standaloneItems.value }
+  {
+    key: 'pinned',
+    get title() {
+      return t('runtime.pinned')
+    },
+    items: displayItems(pinnedItems.value)
+  },
+  {
+    key: 'ungrouped',
+    get title() {
+      return t('runtime.standalonePages')
+    },
+    items: displayItems(standaloneItems.value)
+  }
 ])
 
 function close() {
@@ -63,7 +89,7 @@ function startNaming(request = {}) {
   const group = state.value.groups.find((entry) => entry.key === request.groupKey)
   namingGroup.value = request.action === 'rename-group' && group ? group.key : 'new'
   groupDraft.value = group?.title || ''
-  nameError.value = ''
+  nameErrorKey.value = ''
   void nextTick(() => groupInput.value?.focus())
 }
 
@@ -71,7 +97,7 @@ watch(
   () => [props.show, props.request],
   () => {
     namingGroup.value = null
-    nameError.value = ''
+    nameErrorKey.value = ''
     pickerGroup.value = null
     if (props.show && ['new-group', 'rename-group'].includes(props.request.action)) {
       startNaming(props.request)
@@ -83,19 +109,19 @@ watch(
 function saveName() {
   const title = groupDraft.value.trim()
   if (!title) {
-    nameError.value = '请填写分组名称。'
+    nameErrorKey.value = 'groupNameRequired'
     return
   }
   if (namingGroup.value === 'new') {
     const key = preferences.addGroup(title)
     if (!key) {
-      nameError.value = '暂时无法新建分组，最多可保留 20 个分组。'
+      nameErrorKey.value = 'groupCreateFailed'
       return
     }
     const after = state.value.groups.findIndex((group) => group.key === props.request.afterKey)
     if (after >= 0) preferences.moveGroup(key, state.value.groups[after + 1]?.key || null)
   } else if (!preferences.renameGroup(namingGroup.value, title)) {
-    nameError.value = '暂时无法修改分组名称。'
+    nameErrorKey.value = 'groupRenameFailed'
     return
   }
   namingGroup.value = null
@@ -141,36 +167,40 @@ function retry() {
   <n-modal
     :show="show"
     preset="card"
-    title="编辑侧边栏"
-    aria-label="编辑侧边栏"
+    :title="t('runtime.editSidebar')"
+    :aria-label="t('runtime.editSidebar')"
     class="sidebar-editor"
     :style="dialogStyle"
     content-style="display: flex; flex-direction: column; overflow: hidden"
     @update:show="!$event && close()"
   >
-    <p class="sidebar-editor__hint">拖动页面排序、分组或置顶，修改后自动保存。</p>
+    <p class="sidebar-editor__hint">{{ t('runtime.sidebarEditingHelp') }}</p>
     <p v-if="persistenceError" class="sidebar-editor__error" role="alert">
-      {{ initialized ? '侧边栏尚未保存，当前修改仍保留在页面中。' : '暂时无法读取侧边栏布局。' }}
-      <n-button text type="primary" @click="retry">重试</n-button>
+      {{ initialized ? t('runtime.sidebarSaveFailed') : t('runtime.sidebarLoadFailed') }}
+      <n-button text type="primary" @click="retry">{{ t('runtime.retry') }}</n-button>
     </p>
-    <p v-else-if="!initialized" role="status">正在读取侧边栏布局…</p>
+    <p v-else-if="!initialized" role="status">{{ t('runtime.sidebarLoading') }}</p>
     <fieldset :disabled="!initialized" class="sidebar-editor__fields">
       <div class="sidebar-editor__toolbar">
-        <n-button :disabled="!initialized" @click="pickerGroup = 'ungrouped'">添加页面</n-button>
-        <n-button :disabled="!initialized" @click="startNaming()">新建分组</n-button>
+        <n-button :disabled="!initialized" @click="pickerGroup = 'ungrouped'">{{
+          t('runtime.addPage')
+        }}</n-button>
+        <n-button :disabled="!initialized" @click="startNaming()">{{
+          t('runtime.newGroup')
+        }}</n-button>
       </div>
       <form v-if="namingGroup" class="sidebar-editor__naming" @submit.prevent="saveName">
         <input
           ref="groupInput"
           v-model="groupDraft"
-          aria-label="分组名称"
-          placeholder="分组名称"
+          :aria-label="t('runtime.groupName')"
+          :placeholder="t('runtime.groupName')"
           maxlength="80"
           :aria-invalid="Boolean(nameError) || undefined"
           @keydown.esc.stop.prevent="namingGroup = null"
         />
-        <n-button attr-type="submit" :disabled="!initialized">保存名称</n-button>
-        <n-button @click="namingGroup = null">取消</n-button>
+        <n-button attr-type="submit" :disabled="!initialized">{{ t('runtime.saveName') }}</n-button>
+        <n-button @click="namingGroup = null">{{ t('runtime.cancel') }}</n-button>
         <span v-if="nameError" class="sidebar-editor__error" role="alert">{{ nameError }}</span>
       </form>
       <div class="sidebar-editor__layout">
@@ -178,9 +208,9 @@ function retry() {
           <section class="sidebar-editor__section" :data-editor-section="section.key">
             <div class="sidebar-editor__heading">
               <strong>{{ section.title }}</strong>
-              <n-button text :disabled="!initialized" @click="pickerGroup = section.key"
-                >添加页面</n-button
-              >
+              <n-button text :disabled="!initialized" @click="pickerGroup = section.key">{{
+                t('runtime.addPage')
+              }}</n-button>
             </div>
             <draggable
               :model-value="section.items"
@@ -202,8 +232,8 @@ function retry() {
                     type="button"
                     class="sidebar-editor__remove"
                     :disabled="!initialized"
-                    :aria-label="`移除${item.label}`"
-                    :title="`移除${item.label}`"
+                    :aria-label="t('runtime.removeNamedPage', { label: item.label })"
+                    :title="t('runtime.removeNamedPage', { label: item.label })"
                     @click="preferences.removeEntry(item.id)"
                   >
                     <n-icon :component="CloseOutline" aria-hidden="true" />
@@ -212,7 +242,9 @@ function retry() {
               </template>
               <template #footer>
                 <p v-if="!section.items.length" class="sidebar-editor__empty">
-                  {{ section.key === 'pinned' ? '拖到这里即可置顶' : '拖到这里即可独立显示' }}
+                  {{
+                    section.key === 'pinned' ? t('runtime.dropToPin') : t('runtime.dropStandalone')
+                  }}
                 </p>
               </template>
             </draggable>
@@ -236,21 +268,22 @@ function retry() {
                   aria-hidden="true"
                 />
                 <strong>{{ section.title }}</strong>
-                <n-button text :disabled="!initialized" @click="pickerGroup = section.key"
-                  >添加页面</n-button
-                >
+                <n-button text :disabled="!initialized" @click="pickerGroup = section.key">{{
+                  t('runtime.addPage')
+                }}</n-button>
                 <n-button
                   text
                   :disabled="!initialized"
                   @click="startNaming({ action: 'rename-group', groupKey: section.key })"
-                  >重命名</n-button
+                  >{{ t('runtime.rename') }}</n-button
                 >
                 <n-popconfirm @positive-click="preferences.removeGroup(section.key)">
                   <template #trigger
-                    ><n-button text :disabled="!initialized">取消分组</n-button></template
-                  >
-                  取消分组后，组内页面会独立显示，其他分组中的副本保持原位。
-                </n-popconfirm>
+                    ><n-button text :disabled="!initialized">{{
+                      t('runtime.dissolveGroup')
+                    }}</n-button></template
+                  >{{ t('runtime.dissolveGroupHelp') }}</n-popconfirm
+                >
               </div>
               <draggable
                 :model-value="section.items"
@@ -272,8 +305,8 @@ function retry() {
                       type="button"
                       class="sidebar-editor__remove"
                       :disabled="!initialized"
-                      :aria-label="`移除${item.label}`"
-                      :title="`移除${item.label}`"
+                      :aria-label="t('runtime.removeNamedPage', { label: item.label })"
+                      :title="t('runtime.removeNamedPage', { label: item.label })"
                       @click="preferences.removeEntry(item.id)"
                     >
                       <n-icon :component="CloseOutline" aria-hidden="true" />
@@ -281,7 +314,9 @@ function retry() {
                   </div>
                 </template>
               </draggable>
-              <p v-if="!section.items.length" class="sidebar-editor__empty">分组暂无页面</p>
+              <p v-if="!section.items.length" class="sidebar-editor__empty">
+                {{ t('runtime.emptyGroup') }}
+              </p>
             </section>
           </template>
         </draggable>
@@ -290,10 +325,13 @@ function retry() {
     <template #footer>
       <div class="sidebar-editor__footer">
         <n-popconfirm @positive-click="preferences.reset()">
-          <template #trigger><n-button :disabled="!initialized">恢复默认</n-button></template>
-          恢复默认分组、页面顺序和置顶设置？
-        </n-popconfirm>
-        <n-button type="primary" @click="close">完成</n-button>
+          <template #trigger
+            ><n-button :disabled="!initialized">{{
+              t('runtime.restoreDefaults')
+            }}</n-button></template
+          >{{ t('runtime.restoreSidebarConfirm') }}</n-popconfirm
+        >
+        <n-button type="primary" @click="close">{{ t('runtime.done') }}</n-button>
       </div>
     </template>
   </n-modal>

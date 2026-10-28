@@ -8,6 +8,9 @@ import { useConfigStore } from '@/stores/config'
 import { useResolvedTheme } from '@/composables/theme'
 import PageLayout from '@/components/PageLayout.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import { i18n } from '@/i18n'
+
+const { t } = i18n.global
 
 const { theme: themePreference } = storeToRefs(useConfigStore())
 const theme = useResolvedTheme(themePreference)
@@ -57,7 +60,7 @@ watch([theme, guideColors], syncTheme, { flush: 'post' })
   <PageLayout max-width="100%">
     <template #header>
       <PageHeader>
-        帮助文档
+        {{ t('runtime.helpDocs') }}
         <template #actions>
           <n-button
             tag="a"
@@ -66,14 +69,14 @@ watch([theme, guideColors], syncTheme, { flush: 'post' })
             rel="noopener noreferrer"
             secondary
           >
-            在线文档 ↗
+            {{ t('runtime.onlineDocs') }} ↗
           </n-button>
         </template>
       </PageHeader>
     </template>
     <iframe
       ref="guideFrame"
-      title="Mower 一条龙入门说明"
+      :title="t('runtime.gettingStarted')"
       :src="docSrc"
       @load="syncTheme"
       sandbox="allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-forms"

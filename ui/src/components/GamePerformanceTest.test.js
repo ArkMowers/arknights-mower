@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, reactive } from 'vue'
 import GamePerformanceTest from './GamePerformanceTest.vue'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({ config: null, http: null, mounted: [], unmounted: [] }))
 vi.mock('vue', async (original) => ({
@@ -47,11 +48,26 @@ function passed(component) {
   }
 }
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   scope?.stop()
   state.unmounted.forEach((callback) => callback())
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('updates active test progress without starting, cancelling or adopting a mode', () => {
+  const { component } = setup()
+  component.job.value = { id: 'test', status: 'running', phase: 'testing', mode: 'high', round: 2 }
+  expect(component.progress.value).toContain('高档 · 第 2/3 次选人测试')
+  i18n.global.locale.value = 'en-US'
+  expect(component.progress.value).toBe(
+    'High · Operator selection test 2/3 · Selecting and verifying operators after repeated swipes'
+  )
+  expect(state.config.performance_mode).toBe('auto')
+  expect(state.config.save_config).not.toHaveBeenCalled()
+  expect(state.http.post).not.toHaveBeenCalled()
+  expect(state.http.delete).not.toHaveBeenCalled()
 })
 
 it.each(['android', 'darwin'])(

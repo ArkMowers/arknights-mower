@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, reactive, ref } from 'vue'
 import ChatBot from './ChatBot.vue'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({
   feedback: null,
@@ -70,6 +71,7 @@ beforeEach(() => {
   component = scope.run(() => ChatBot.setup(props, { expose: vi.fn(), emit }))
 })
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   state.cleanup?.()
   scope.stop()
   vi.useRealTimers()
@@ -82,6 +84,40 @@ function send(text = '检查日志') {
 }
 
 describe('AI chat interactions', () => {
+  it('updates an already opened refusal dialog without changing authorization or opening a socket', async () => {
+    const opened = reactive({})
+    state.dialog.warning.mockImplementation((options) => Object.assign(opened, options))
+    state.mower.ai_assistant_enabled = false
+    await flush()
+    expect(opened.title).toBe('管理员未开启')
+    i18n.global.locale.value = 'en-US'
+    await flush()
+    expect(opened.title).toBe('Not enabled by the administrator')
+    expect(opened.content).toContain('Contact the administrator')
+    expect(opened.positiveText).toBe('Understood')
+    expect(state.dialog.warning).toHaveBeenCalledOnce()
+    expect(state.mower.ai_assistant_enabled).toBe(false)
+    expect(FakeSocket.instances).toHaveLength(0)
+  })
+  it('updates live suggestion labels and status while preserving a draft, replies and websocket payload', async () => {
+    const socket = send('保留用户的中文问题')
+    socket.open()
+    socket.receive({ reply: '后端回复保持原文' })
+    component.userInput.value = '尚未发送的草稿'
+    const original = JSON.stringify(component.chatHistory.value)
+    const title = component.suggestions[0].title
+    i18n.global.locale.value = 'en-US'
+    await flush()
+    expect(component.suggestions[0].title).not.toBe(title)
+    expect(component.statusLabel.value).toBe('Replying')
+    expect(component.userInput.value).toBe('尚未发送的草稿')
+    expect(JSON.stringify(component.chatHistory.value)).toBe(original)
+    expect(JSON.parse(socket.send.mock.calls.at(-1)[0])).toEqual({
+      message: '保留用户的中文问题',
+      generation: 'page-generation'
+    })
+    expect(FakeSocket.instances).toHaveLength(1)
+  })
   it.each(['/', '/mowersettings', '/mowersettings#mower-data'])(
     'closes the assistant before settings navigation from %s and keeps its conversation',
     async (path) => {

@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+const { t } = i18n.global
 import { computed, ref } from 'vue'
 import { pinyin_match } from '@/utils/common'
 import { render_op_option, render_op_label } from '@/utils/op_select'
@@ -46,54 +49,59 @@ function removeOperator(name) {
 
 <template>
   <div class="mood-limits-editor">
-    <n-checkbox :checked="defaults !== null" :disabled="disabled" @update:checked="enableDefaults">
-      自定义排班内全体干员
-    </n-checkbox>
+    <n-checkbox
+      :checked="defaults !== null"
+      :disabled="disabled"
+      @update:checked="enableDefaults"
+      >{{ t('plans.globalMoraleLimits') }}</n-checkbox
+    >
     <div v-if="defaults" class="mood-range">
-      <span>下限</span>
+      <span>{{ t('plans.lowerLimit') }}</span>
       <mower-input-number
         :value="defaults.lower"
         :disabled="disabled"
         :min="0"
         :max="defaults.upper - 0.1"
         :precision="1"
-        aria-label="全体心情下限"
+        :aria-label="t('plans.globalLowerLimit')"
         @update:value="updateRange(null, 'lower', $event)"
       />
-      <span>上限</span>
+      <span>{{ t('plans.upperLimit') }}</span>
       <mower-input-number
         :value="defaults.upper"
         :disabled="disabled"
         :min="defaults.lower + 0.1"
         :max="24"
         :precision="1"
-        aria-label="全体心情上限"
+        :aria-label="t('plans.globalUpperLimit')"
         @update:value="updateRange(null, 'upper', $event)"
       />
     </div>
     <div v-for="[name, limits] in rows" :key="name" class="mood-range">
-      <span class="operator-name">{{ name }}</span>
-      <span>下限</span>
+      <span class="operator-name">{{ operatorDisplayName(name) }}</span>
+      <span>{{ t('plans.lowerLimit') }}</span>
       <mower-input-number
         :value="limits.lower"
         :disabled="disabled"
         :min="0"
         :max="limits.upper - 0.1"
         :precision="1"
-        :aria-label="`${name}心情下限`"
+        :aria-label="t('plans.personalLowerLimit', { name: operatorDisplayName(name) })"
         @update:value="updateRange(name, 'lower', $event)"
       />
-      <span>上限</span>
+      <span>{{ t('plans.upperLimit') }}</span>
       <mower-input-number
         :value="limits.upper"
         :disabled="disabled"
         :min="limits.lower + 0.1"
         :max="24"
         :precision="1"
-        :aria-label="`${name}心情上限`"
+        :aria-label="t('plans.personalUpperLimit', { name: operatorDisplayName(name) })"
         @update:value="updateRange(name, 'upper', $event)"
       />
-      <n-button :disabled="disabled" quaternary @click="removeOperator(name)">移除</n-button>
+      <n-button :disabled="disabled" quaternary @click="removeOperator(name)">{{
+        t('plans.remove')
+      }}</n-button>
     </div>
     <div class="mood-range">
       <n-select
@@ -106,16 +114,18 @@ function removeOperator(name) {
         :filter="(input, option) => pinyin_match(option.label, input)"
         filterable
         clearable
-        placeholder="选择单独设置的干员"
-        aria-label="单独设置心情的干员"
+        :placeholder="t('plans.choosePersonalMorale')"
+        :aria-label="t('plans.personalMoraleOperator')"
       />
-      <n-button :disabled="disabled || !selected" @click="addOperator">添加</n-button>
+      <n-button :disabled="disabled || !selected" @click="addOperator">{{
+        t('plans.add')
+      }}</n-button>
     </div>
-    <n-text depth="3">
-      单独设置优先，其次令夕模式、全体设置；未设置沿用{{
-        isBackup ? '主表或此前副表' : '令夕等自动规则'
-      }}。仅对排班内主班、替班生效，阈值按上下限换算。全体上限按回满处理，优先满员；个人及令夕上限强制离宿，固定宿管保留。
-    </n-text>
+    <n-text depth="3">{{
+      t('plans.moraleLimitsDescription', {
+        rules: isBackup ? t('plans.previousPlanRules') : t('plans.automaticRules')
+      })
+    }}</n-text>
   </div>
 </template>
 

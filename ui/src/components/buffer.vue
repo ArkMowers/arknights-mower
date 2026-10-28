@@ -1,4 +1,11 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { baseSkillText, baseSkillProgression } from '@/i18n/baseSkills'
+import { localizedBaseSkill } from '@/i18n/baseSkillDetails'
+import { computed } from 'vue'
+const { t } = i18n.global
+
 import { richText2HTML } from '@/stores/richText2HTML'
 import { useBasementSkill } from '@/stores/basementSkill'
 import { ownershipLabels, skillStatusLabels, basementSkillTerms } from '@/utils/basementSkills'
@@ -6,12 +13,18 @@ import BufferInfo from '@/components/bufferinfo.vue'
 
 const { buffer } = useBasementSkill()
 defineOptions({ name: 'BasementSkillRows' })
-defineProps({ item: { type: Object, required: true } })
+const props = defineProps({ item: { type: Object, required: true } })
+const displayedSkills = computed(() =>
+  props.item.childSkill.map((skill) => localizedBaseSkill(props.item.avatar, skill))
+)
 const resourceBase = import.meta.env.BASE_URL
 </script>
 
 <template>
-  <table class="operator-skills" :aria-label="`${item.avatar}的基建技能`">
+  <table
+    class="operator-skills"
+    :aria-label="t('baseSkills.operatorSkills', { operator: operatorDisplayName(item.avatar) })"
+  >
     <colgroup>
       <col style="width: 86px" />
       <col style="width: 66px" />
@@ -23,18 +36,18 @@ const resourceBase = import.meta.env.BASE_URL
     </colgroup>
     <thead class="accessible-heading">
       <tr>
-        <th>干员</th>
-        <th>技能序号</th>
-        <th>解锁条件</th>
-        <th>当前状态</th>
-        <th>技能名称</th>
-        <th>进驻场所</th>
-        <th>描述</th>
+        <th>{{ t('baseSkills.operator') }}</th>
+        <th>{{ t('baseSkills.skillNumber') }}</th>
+        <th>{{ t('baseSkills.unlockCondition') }}</th>
+        <th>{{ t('baseSkills.status') }}</th>
+        <th>{{ t('baseSkills.skillName') }}</th>
+        <th>{{ t('baseSkills.facility') }}</th>
+        <th>{{ t('baseSkills.description') }}</th>
       </tr>
     </thead>
     <tbody>
       <tr
-        v-for="(skill, index) in item.childSkill"
+        v-for="(skill, index) in displayedSkills"
         :key="`${skill.skill_key}:${skill.skill_level}`"
         class="skill-row"
       >
@@ -49,35 +62,37 @@ const resourceBase = import.meta.env.BASE_URL
               :src="`${resourceBase}avatar/${encodeURIComponent(item.avatar)}.webp`"
               :size="40"
               round
-              :img-props="{ alt: item.avatar }"
+              :img-props="{ alt: operatorDisplayName(item.avatar) }"
             >
-              <template #fallback>{{ item.avatar.slice(0, 1) }}</template>
+              <template #fallback>{{ operatorDisplayName(item.avatar).slice(0, 1) }}</template>
             </n-avatar>
-            <span>{{ item.avatar }}</span>
+            <span>{{ operatorDisplayName(item.avatar) }}</span>
           </a>
           <n-tag
             v-if="ownershipLabels[item.ownership]"
             :type="item.ownership === 'owned' ? 'success' : 'default'"
             :bordered="false"
             size="small"
-            >{{ ownershipLabels[item.ownership] }}</n-tag
+            >{{ baseSkillText(ownershipLabels[item.ownership]) }}</n-tag
           >
-          <div v-if="item.progression" class="operator-growth">{{ item.progression }}</div>
+          <div v-if="item.progression" class="operator-growth">
+            {{ baseSkillProgression(item.progression) }}
+          </div>
         </td>
         <td
           class="skill-number"
           :class="{ 'skill-unavailable': ['locked', 'unowned'].includes(skill.status) }"
         >
-          技能 {{ skill.skill_key + 1 }}
+          {{ t('baseSkills.skill') }} {{ skill.skill_key + 1 }}
         </td>
-        <td class="skill-condition">{{ skill.phase_level }}</td>
+        <td class="skill-condition">{{ baseSkillProgression(skill.phase_level) }}</td>
         <td class="skill-status">
           <n-tag
             v-if="skillStatusLabels[skill.status]"
             :type="skill.status === 'active' ? 'success' : 'default'"
             :bordered="false"
             size="small"
-            >{{ skillStatusLabels[skill.status] }}</n-tag
+            >{{ baseSkillText(skillStatusLabels[skill.status]) }}</n-tag
           >
         </td>
         <td
@@ -97,7 +112,7 @@ const resourceBase = import.meta.env.BASE_URL
             {{ skill.skillname }}
           </n-tag>
         </td>
-        <td class="skill-facility">{{ skill.roomType }}</td>
+        <td class="skill-facility">{{ baseSkillText(skill.roomType) }}</td>
         <td
           class="skill-description"
           :class="{ 'skill-unavailable': ['locked', 'unowned'].includes(skill.status) }"

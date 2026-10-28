@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { NButton, NIcon, NInput, NPopover, NTooltip } from 'naive-ui'
 import SearchOutline from '@vicons/ionicons5/es/SearchOutline'
@@ -13,7 +14,7 @@ const props = defineProps({
   cards: { type: Array, default: () => [] },
   loading: Boolean,
   error: { type: String, default: '' },
-  emptyText: { type: String, default: '没有匹配当前筛选条件的干员' },
+  emptyText: { type: String, default: '' },
   hasData: { type: Boolean, default: true },
   search: { type: String, default: '' },
   rarities: { type: Array, default: () => [] },
@@ -87,7 +88,12 @@ watch(showFilters, (open) => {
 })
 onScopeDispose(clearPopoverListeners)
 const activeThresholds = computed(() => {
-  const labels = { mastery: '专三率', module: '模组解锁率', elite1: '精一率', elite2: '精二率' }
+  const labels = {
+    mastery: i18n.global.t('growth.grid.m3Rate'),
+    module: i18n.global.t('growth.grid.moduleUnlockRate'),
+    elite1: i18n.global.t('growth.grid.elite1Rate'),
+    elite2: i18n.global.t('growth.grid.elite2Rate')
+  }
   return Object.entries(labels)
     .filter(([key]) => props.surveyFilters[key] !== null && props.surveyFilters[key] !== undefined)
     .map(([key, label]) => ({
@@ -131,8 +137,8 @@ function resetAll() {
 
 const emptyDescription = computed(() =>
   props.hasData
-    ? props.emptyText || '试着放宽稀有度、职业或大数据门槛，或清空搜索词。'
-    : '从森空岛同步一次干员数据后即可开始规划。'
+    ? props.emptyText || i18n.global.t('growth.grid.relaxTheRarityProfessionOrSurveyThresholds')
+    : i18n.global.t('growth.grid.syncOperatorDataFromSklandToStart')
 )
 
 // 分页只按当前筛选结果计算；用总干员数会让筛选后的页码与“共 N 位”都对不上。
@@ -147,7 +153,7 @@ const pageWindow = computed(() => {
   return pages
 })
 const rangeText = computed(() => {
-  if (!listTotal.value) return '0 位'
+  if (!listTotal.value) return i18n.global.t('growth.grid.0Operators')
   const start = (props.page - 1) * props.pageSize + 1
   const end = Math.min(listTotal.value, props.page * props.pageSize)
   return start + '–' + end + ' / ' + listTotal.value
@@ -161,9 +167,9 @@ const rangeText = computed(() => {
         <n-input
           :value="search"
           class="growth-filters__search"
-          placeholder="搜索干员或拼音"
+          :placeholder="i18n.global.t('growth.grid.searchOperatorNamesOrPinyin')"
           clearable
-          aria-label="搜索干员"
+          :aria-label="i18n.global.t('growth.grid.searchOperators')"
           @update:value="emit('update:search', $event)"
         >
           <template #prefix><n-icon :component="SearchOutline" /></template>
@@ -185,7 +191,7 @@ const rangeText = computed(() => {
               :aria-expanded="showFilters"
             >
               <n-icon :component="FunnelOutline" :size="15" />
-              大数据筛选
+              {{ i18n.global.t('growth.grid.surveyFilters') }}
               <span v-if="activeThresholds.length" class="gp-mono growth-filters__survey-count">{{
                 activeThresholds.length
               }}</span>
@@ -199,13 +205,17 @@ const rangeText = computed(() => {
               @refresh="emit('refresh-survey')"
             >
               <p class="growth-filters__popover-hint">
-                筛选只影响列表展示，不改动任何已保存的养成计划。
+                {{ i18n.global.t('growth.grid.filtersOnlyChangeTheListTheyDo') }}
               </p>
             </GrowthSurveyFilters>
           </div>
         </n-popover>
-        <button type="button" class="growth-filters__reset" @click="resetAll">重置</button>
-        <span class="growth-filters__count gp-mono">{{ filteredCount }} / {{ total }} 位</span>
+        <button type="button" class="growth-filters__reset" @click="resetAll">
+          {{ i18n.global.t('growth.grid.reset') }}
+        </button>
+        <span class="growth-filters__count gp-mono"
+          >{{ filteredCount }} / {{ total }} {{ i18n.global.t('growth.grid.operators') }}</span
+        >
         <div class="growth-filters__spacer" />
         <n-tooltip>
           <template #trigger>
@@ -218,10 +228,10 @@ const rangeText = computed(() => {
               :disabled="loading || !addableCount"
               @click="emit('add-filtered')"
             >
-              按筛选加入计划 · {{ addableCount }}
+              {{ i18n.global.t('growth.grid.addFilteredGoals') }} {{ addableCount }}
             </n-button>
           </template>
-          添加当前筛选结果中达到所选比例门槛的技能、模组与精英化目标，跳过已在计划或已完成的项目。未设置门槛时不添加。
+          {{ i18n.global.t('growth.grid.addSkillsModulesAndPromotionGoalsMeeting') }}
         </n-tooltip>
         <span v-if="batchProgress" class="growth-filters__batch-progress">{{ batchProgress }}</span>
       </div>
@@ -232,17 +242,23 @@ const rangeText = computed(() => {
           :key="threshold.key"
           type="button"
           class="gp-chip gp-chip--accent growth-filters__threshold"
-          :aria-label="'清除筛选 ' + threshold.text"
+          :aria-label="i18n.global.t('growth.grid.clearFilters') + threshold.text"
           @click="clearThreshold(threshold.key)"
         >
           {{ threshold.text }}
           <span aria-hidden="true">×</span>
         </button>
-        <span class="growth-filters__hint">达到比例的目标会在干员卡与档案中标出</span>
+        <span class="growth-filters__hint">{{
+          i18n.global.t('growth.grid.goalsMeetingTheThresholdsAreHighlightedOn')
+        }}</span>
       </div>
 
-      <div class="growth-filters__chips" role="group" aria-label="稀有度筛选">
-        <span class="growth-filters__chips-label">稀有度</span>
+      <div
+        class="growth-filters__chips"
+        role="group"
+        :aria-label="i18n.global.t('growth.grid.rarityFilter')"
+      >
+        <span class="growth-filters__chips-label">{{ i18n.global.t('growth.grid.rarity') }}</span>
         <button
           v-for="option in rarityOptions"
           :key="option.value"
@@ -255,7 +271,9 @@ const rangeText = computed(() => {
           {{ option.label }}
         </button>
         <span class="growth-filters__chips-sep" aria-hidden="true" />
-        <span class="growth-filters__chips-label">职业</span>
+        <span class="growth-filters__chips-label">{{
+          i18n.global.t('growth.grid.profession')
+        }}</span>
         <button
           v-for="option in professionOptions"
           :key="option.value"
@@ -268,7 +286,7 @@ const rangeText = computed(() => {
           {{ option.label }}
         </button>
         <span class="growth-filters__chips-sep" aria-hidden="true" />
-        <span class="growth-filters__chips-label">状态</span>
+        <span class="growth-filters__chips-label">{{ i18n.global.t('growth.grid.status') }}</span>
         <button
           v-for="option in idleOptions"
           :key="option.value"
@@ -284,10 +302,12 @@ const rangeText = computed(() => {
     </div>
 
     <div v-if="error" class="gp-empty">
-      <p class="gp-empty__title">干员数据读取失败</p>
+      <p class="gp-empty__title">{{ i18n.global.t('growth.grid.couldNotLoadOperators') }}</p>
       <p class="gp-muted">{{ error }}</p>
       <div class="gp-empty__actions">
-        <n-button size="small" @click="emit('refresh')">重新读取</n-button>
+        <n-button size="small" @click="emit('refresh')">{{
+          i18n.global.t('growth.grid.reload')
+        }}</n-button>
       </div>
     </div>
 
@@ -296,13 +316,21 @@ const rangeText = computed(() => {
     </div>
 
     <div v-else-if="!cards.length" class="gp-empty">
-      <p class="gp-empty__title">{{ hasData ? '没有符合筛选的干员' : '还没有干员数据' }}</p>
+      <p class="gp-empty__title">
+        {{
+          hasData
+            ? i18n.global.t('growth.grid.noOperatorsMatchTheFilters')
+            : i18n.global.t('growth.grid.noOperatorDataYet')
+        }}
+      </p>
       <p class="gp-muted">{{ emptyDescription }}</p>
       <div class="gp-empty__actions">
-        <n-button v-if="hasData" size="small" @click="resetAll">清空筛选</n-button>
+        <n-button v-if="hasData" size="small" @click="resetAll">{{
+          i18n.global.t('growth.grid.clearFilters2')
+        }}</n-button>
         <n-button v-else size="small" @click="emit('sync')">
           <template #icon><n-icon :component="RefreshOutline" /></template>
-          同步干员数据
+          {{ i18n.global.t('growth.grid.syncOperatorData') }}
         </n-button>
       </div>
     </div>
@@ -321,12 +349,16 @@ const rangeText = computed(() => {
       />
     </div>
 
-    <nav v-if="listTotal > pageSize" class="growth-pager" aria-label="干员分页">
+    <nav
+      v-if="listTotal > pageSize"
+      class="growth-pager"
+      :aria-label="i18n.global.t('growth.grid.operatorPagination')"
+    >
       <button
         type="button"
         class="growth-pager__step"
         :disabled="page <= 1"
-        aria-label="上一页"
+        :aria-label="i18n.global.t('growth.grid.previousPage')"
         @click="emit('update:page', page - 1)"
       >
         <n-icon :component="ChevronBackOutline" />
@@ -346,14 +378,17 @@ const rangeText = computed(() => {
         type="button"
         class="growth-pager__step"
         :disabled="page >= totalPages"
-        aria-label="下一页"
+        :aria-label="i18n.global.t('growth.grid.nextPage')"
         @click="emit('update:page', page + 1)"
       >
         <n-icon :component="ChevronForwardOutline" />
       </button>
       <span class="growth-pager__range gp-mono">{{ rangeText }}</span>
     </nav>
-    <div v-else-if="listTotal" class="growth-grid__count gp-mono">共 {{ listTotal }} 位干员</div>
+    <div v-else-if="listTotal" class="growth-grid__count gp-mono">
+      {{ i18n.global.t('growth.grid.total') }} {{ listTotal }}
+      {{ i18n.global.t('growth.grid.operators2') }}
+    </div>
   </div>
 </template>
 

@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { planValidationMessage } from '@/i18n/plans'
+const { t } = i18n.global
 import { computed, inject } from 'vue'
 import { usePlanStore } from '@/stores/plan'
 import { importMowerJson } from '@/riic/vendor/workbench/compat/mowerJson'
@@ -40,9 +43,9 @@ const options = computed(() => {
   const maximum = props.facility === 'central' || props.facility.startsWith('dormitory_') ? 5 : 3
   return Array.from({ length: maximum + 1 }, (_, level) => ({
     label:
-      (level ? `${level} 级` : '未建造') +
+      (level ? t('plans.levelNumber', { level }) : t('plans.notConstructed')) +
       (level === selected.value.level && !Object.hasOwn(store.facility_levels, props.facility)
-        ? '（默认）'
+        ? t('plans.defaultSuffix')
         : ''),
     value: level
   }))
@@ -61,19 +64,20 @@ function resetLevel() {
   <div class="facility-levels" :class="mode" data-no-update-drop>
     <div class="power-summary" v-if="mode === 'summary' && state.power" role="status">
       <span
-        >发电 <b>{{ state.power.generation }}</b></span
+        >{{ t('plans.powerGeneration') }}<b>{{ state.power.generation }}</b></span
       >
       <span
-        >耗电 <b>{{ state.power.consumption }}</b></span
+        >{{ t('plans.powerConsumption') }}<b>{{ state.power.consumption }}</b></span
       >
       <n-tag :type="state.power.sufficient ? 'success' : 'error'" size="small">
-        {{ state.power.sufficient ? '剩余' : '缺电' }} {{ Math.abs(state.power.margin) }}
+        {{ state.power.sufficient ? t('plans.powerRemaining') : t('plans.powerDeficit') }}
+        {{ Math.abs(state.power.margin) }}
       </n-tag>
     </div>
     <div v-if="mode === 'level' && editable" class="level-control">
-      <span>等级：</span>
+      <span>{{ t('plans.levelLabel') }}</span>
       <n-select
-        aria-label="设施等级"
+        :aria-label="t('plans.facilityLevel')"
         :value="selected.level"
         :options="options"
         :disabled="locked || (facility.startsWith('room_') && !store.plan[facility]?.name)"
@@ -85,12 +89,14 @@ function resetLevel() {
         size="small"
         :disabled="locked"
         @click="resetLevel"
-        >恢复默认</n-button
+        >{{ t('plans.restoreDefault') }}</n-button
       >
     </div>
     <n-alert v-if="mode === 'summary' && state.error" type="warning">{{ state.error }}</n-alert>
     <n-alert v-else-if="mode === 'summary' && state.issues.length" type="warning">
-      <div v-for="(issue, i) in state.issues" :key="i">{{ issue.message }}</div>
+      <div v-for="(issue, i) in state.issues" :key="i">
+        {{ planValidationMessage(issue, state.power) }}
+      </div>
     </n-alert>
   </div>
 </template>

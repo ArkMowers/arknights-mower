@@ -3,7 +3,7 @@
     :show="show"
     @update:show="$emit('update:show', $event)"
     preset="card"
-    title="专精协助方案"
+    :title="i18n.global.t('growth.supports.masteryAssistantPlan')"
     style="width: min(660px, 95vw)"
     content-style="overflow-y: auto; min-height: 0"
     :mask-closable="!saving"
@@ -11,15 +11,15 @@
     :close-on-esc="!saving"
   >
     <n-space vertical :size="16">
-      <n-text strong>{{ name }}</n-text>
+      <n-text strong>{{ operatorDisplayName(name) }}</n-text>
       <n-alert v-if="error" type="error">{{ error }}</n-alert>
-      <n-alert v-if="!editable" type="info"
-        >当前没有可编辑的阶段。训练中可以修改后续尚未开始的阶段。</n-alert
-      >
+      <n-alert v-if="!editable" type="info">{{
+        i18n.global.t('growth.supports.noStagesCanBeEditedNowDuring')
+      }}</n-alert>
       <n-text depth="3">
-        中枢加成：{{
-          plan?.support_plan?.central_bonus || 0
-        }}%。自动方案排除非训练室排班干员及动态加速干员。
+        {{ i18n.global.t('growth.supports.controlCenterBonus')
+        }}{{ plan?.support_plan?.central_bonus || 0
+        }}{{ i18n.global.t('growth.supports.automaticPlansExcludeOperatorsAssignedOutsideThe') }}
       </n-text>
       <n-spin :show="loading">
         <n-space vertical :size="12">
@@ -27,13 +27,17 @@
             v-for="stage in stages"
             :key="stage.level"
             size="small"
-            :title="`专${stage.level}`"
+            :title="i18n.global.t('growth.supports.m', { value0: stage.level })"
           >
             <n-space vertical>
-              <n-text v-if="stage.level <= editableAfter" depth="3"
-                >该阶段已开始或已完成，协助者已锁定。</n-text
-              >
-              <n-text depth="3">{{ stage.manual ? '自选协助者' : '自动推荐' }}</n-text>
+              <n-text v-if="stage.level <= editableAfter" depth="3">{{
+                i18n.global.t('growth.supports.thisStageHasStartedOrFinishedIts')
+              }}</n-text>
+              <n-text depth="3">{{
+                stage.manual
+                  ? i18n.global.t('growth.supports.customAssistants')
+                  : i18n.global.t('growth.supports.automaticRecommendation')
+              }}</n-text>
               <n-text
                 v-if="
                   plan.support_runtime?.level === stage.level &&
@@ -41,9 +45,12 @@
                 "
                 depth="3"
               >
-                实际协助者：{{ plan.support_runtime.working_operator }}
+                {{ i18n.global.t('growth.supports.actualAssistants')
+                }}{{ operatorDisplayName(plan.support_runtime.working_operator) }}
               </n-text>
-              <label :for="`support-${stage.level}`">开始协助者</label>
+              <label :for="`support-${stage.level}`">{{
+                i18n.global.t('growth.supports.startingAssistant')
+              }}</label>
               <n-select
                 :id="`support-${stage.level}`"
                 v-model:value="stage.operator"
@@ -52,7 +59,9 @@
                 :disabled="stage.level <= editableAfter || saving"
               />
               <template v-if="stage.level < plan.target_level">
-                <label :for="`reducer-${stage.level}`">后段接班者（可留空）</label>
+                <label :for="`reducer-${stage.level}`">{{
+                  i18n.global.t('growth.supports.laterReplacementOptional')
+                }}</label>
                 <n-select
                   :id="`reducer-${stage.level}`"
                   v-model:value="stage.swap_target"
@@ -60,30 +69,37 @@
                   filterable
                   clearable
                   :disabled="stage.level <= editableAfter || saving"
-                  placeholder="不换人"
+                  :placeholder="i18n.global.t('growth.supports.noReplacement')"
                 />
               </template>
               <n-text v-if="stage.activate_with" depth="3"
-                >本级开训前需保留 {{ stage.activate_with }}，触发减半后再换人。</n-text
+                >{{ i18n.global.t('growth.supports.beforeThisStageStartsKeep') }}
+                {{ operatorDisplayName(stage.activate_with)
+                }}{{ i18n.global.t('growth.supports.inPlaceThenSwapAfterTheHalving') }}</n-text
               >
             </n-space>
           </n-card>
-          <n-empty v-if="!stages.length" description="此旧计划没有自动协助方案，请重新添加计划" />
+          <n-empty
+            v-if="!stages.length"
+            :description="i18n.global.t('growth.supports.thisOlderPlanHasNoAutomaticAssistant')"
+          />
         </n-space>
       </n-spin>
-      <n-text depth="3"
-        >自选不要求专精速度加成；保存时检查排班冲突。没有减半技能的接班者不会产生减半效果。</n-text
-      >
+      <n-text depth="3">{{
+        i18n.global.t('growth.supports.customAssistantsDoNotNeedATraining')
+      }}</n-text>
     </n-space>
     <template #footer>
       <n-space justify="end">
-        <n-button @click="$emit('update:show', false)" :disabled="saving">关闭</n-button>
+        <n-button @click="$emit('update:show', false)" :disabled="saving">{{
+          i18n.global.t('growth.supports.close')
+        }}</n-button>
         <n-button
           type="primary"
           :loading="saving"
           :disabled="!editable || !stages.length || loading"
           @click="save"
-          >保存协助者</n-button
+          >{{ i18n.global.t('growth.supports.saveAssistants') }}</n-button
         >
       </n-space>
     </template>
@@ -91,6 +107,8 @@
 </template>
 
 <script setup>
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { i18n } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import axios from 'axios'
 import { supportEditableAfter } from '@/utils/masterySupport'
@@ -110,7 +128,11 @@ const options = computed(() =>
     .filter((o) => o.name !== props.name)
     .map((o) => ({
       value: o.name,
-      label: o.blocked.length ? `${o.name}（非训练室排班占用）` : o.name,
+      label: o.blocked.length
+        ? i18n.global.t('growth.supports.assignedOutsideTheTrainingRoom', {
+            value0: operatorDisplayName(o.name)
+          })
+        : operatorDisplayName(o.name),
       disabled: o.blocked.length > 0
     }))
 )

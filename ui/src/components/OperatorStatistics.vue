@@ -2,8 +2,11 @@
   <section v-if="statistics" class="operator-statistics">
     <div class="stat-toolbar">
       <div class="stat-toolbar__title">
-        <h3>本地练度档案</h3>
-        <p>已同步 {{ format(totals.owned) }} 位干员 · 统计口径按星级筛选</p>
+        <h3>{{ t('reports.localRoster') }}</h3>
+        <p>
+          {{ t('reports.syncedPrefix') }}{{ format(totals.owned)
+          }}{{ t('reports.operatorsRaritySuffix') }}
+        </p>
       </div>
       <n-checkbox-group v-model:value="rarities">
         <n-space :size="12">
@@ -11,39 +14,42 @@
             v-for="rarity in [6, 5, 4, 3, 2, 1]"
             :key="rarity"
             :value="rarity"
-            :label="rarity + ' 星'"
+            :label="t('reports.rarityStars', { count: rarity })"
           />
         </n-space>
       </n-checkbox-group>
     </div>
 
     <n-tabs type="line" animated class="stat-tabs">
-      <n-tab-pane name="roster" tab="干员统计">
+      <n-tab-pane name="roster" :tab="t('reports.operatorStatistics')">
         <div class="stat-kpis">
           <div class="stat-kpi">
-            <span>已招募</span>
+            <span>{{ t('reports.recruited') }}</span>
             <strong class="gp-num"
               >{{ format(totals.owned) }}<small>/ {{ format(totals.available) }}</small></strong
             >
-            <em>资源收录 {{ rarities.length }} 个星级合计</em>
+            <em
+              >{{ t('reports.raritiesIncludedPrefix') }}{{ rarities.length
+              }}{{ t('reports.raritiesIncludedSuffix') }}</em
+            >
           </div>
           <div class="stat-kpi">
-            <span>精二干员</span>
+            <span>{{ t('reports.elite2Operators') }}</span>
             <strong class="gp-num"
               >{{ format(totals.elite2)
               }}<small>{{ percent(totals.elite2, totals.owned) }}</small></strong
             >
-            <em>占已招募</em>
+            <em>{{ t('reports.ofRecruited') }}</em>
           </div>
           <div class="stat-kpi">
-            <span>专三技能</span>
+            <span>{{ t('reports.mastery3Skills') }}</span>
             <strong class="gp-num">{{ format(totals.skills[3]) }}</strong>
-            <em>仅计已专三</em>
+            <em>{{ t('reports.mastery3Only') }}</em>
           </div>
           <div class="stat-kpi">
-            <span>已开启模组</span>
+            <span>{{ t('reports.unlockedModules') }}</span>
             <strong class="gp-num">{{ format(openedModules) }}</strong>
-            <em>按已开启数量</em>
+            <em>{{ t('reports.byUnlockedCount') }}</em>
           </div>
         </div>
 
@@ -60,76 +66,66 @@
         </div>
 
         <details class="stat-notes">
-          <summary>统计口径</summary>
-          <p>
-            招募分母为当前资源收录的所选星级干员，包含尚未获得的干员，并非历史抽取次数。阿米娅各形态共用等级，仅计一位干员；各形态独立技能和模组分别统计。
-          </p>
-          <p>
-            技能和模组列按当前恰好达到的等级分别计数。满练为 6 / 5 / 4 星精二 90 / 80 / 70 级，3
-            星精一 55 级，1 / 2 星精零 30 级；模组开启等级为精二 ≥60 / 50 / 40
-            级，不支持的养成项显示“—”。
-          </p>
+          <summary>{{ t('reports.statisticsScope') }}</summary>
+          <p>{{ t('reports.recruitmentScopeHelp') }}</p>
+          <p>{{ t('reports.developmentScopeHelp') }}</p>
         </details>
 
         <div v-if="historyChart.series.length" class="stat-history">
           <div class="stat-history__head">
-            <h4>已缓存的养成趋势</h4>
-            <p>沿用每次同步时保存的原始统计，历史干员形态独立计数；未记录的指标不会补零。</p>
+            <h4>{{ t('reports.cachedGrowthTrends') }}</h4>
+            <p>{{ t('reports.historicalGrowthHelp') }}</p>
           </div>
           <v-chart :option="historyChart" autoresize style="height: 260px" />
         </div>
-        <p v-else-if="history.length > 1" class="stat-empty">
-          所选星级尚无足够历史记录；积累新快照后显示趋势。
-        </p>
+        <p v-else-if="history.length > 1" class="stat-empty">{{ t('reports.noGrowthHistory') }}</p>
       </n-tab-pane>
 
-      <n-tab-pane name="materials" tab="材料消耗">
+      <n-tab-pane name="materials" :tab="t('reports.materialConsumption')">
         <div class="stat-resource">
           <div class="stat-resource__hero">
-            <span>总消耗等效理智</span>
+            <span>{{ t('reports.totalSanitySpent') }}</span>
             <strong class="gp-num">≈ {{ format(totals.sanity) }}</strong>
-            <em>相当于自然恢复约 {{ format(totals.sanity / 240, 1) }} 天</em>
+            <em
+              >{{ t('reports.naturalRecoveryPrefix') }}{{ format(totals.sanity / 240, 1)
+              }}{{ t('reports.days') }}</em
+            >
           </div>
           <dl class="stat-resource__grid">
             <div>
-              <dt>龙门币</dt>
+              <dt>{{ t('reports.lmd') }}</dt>
               <dd class="gp-mono">{{ format(totals.consumed_lmd) }}</dd>
             </div>
             <div>
-              <dt>作战记录经验</dt>
+              <dt>{{ t('reports.battleRecordExp') }}</dt>
               <dd class="gp-mono">{{ format(totals.consumed_exp) }}</dd>
             </div>
             <div>
-              <dt>模组数据块</dt>
+              <dt>{{ t('reports.moduleDataBlocks') }}</dt>
               <dd class="gp-mono">{{ format(totals.module_blocks) }}</dd>
             </div>
             <div>
-              <dt>技巧概要·卷3等效</dt>
+              <dt>{{ t('reports.skillSummary3Equivalent') }}</dt>
               <dd class="gp-mono">{{ format(totals.skill_book_equivalent, 2) }}</dd>
             </div>
           </dl>
         </div>
 
         <details class="stat-notes">
-          <summary>估值口径与数据来源</summary>
+          <summary>{{ t('reports.valuationSources') }}</summary>
+          <p>{{ t('reports.consumptionScopeHelp') }}</p>
           <p>
-            由已完成的等级、精英化、基础技能、专精与模组升级重建材料消耗，不扣当前仓库，也不计未完成计划。龙门币仅含直接养成支出，不推测历史加工费；技巧概要等效
-            = 卷1 ÷ 9 + 卷2 ÷ 3 + 卷3，不计加工副产品。
+            {{ t('reports.valuationSettingsPrefix') }}{{ statistics.source?.source
+            }}{{ t('reports.valuationSettingsSuffix') }}
           </p>
           <p>
-            物品价值使用全部设置中“账号与数据来源”的当前保存值（{{
-              statistics.source?.source
-            }}）；EXP 以中级作战记录每 1000 经验折算。自然恢复按每 6 分钟 1 理智、每天 240
-            理智折算。无法识别直升券等历史优惠，集成战略专属养成不计普通仓库材料。
-          </p>
-          <p>
-            <a :href="statistics.source?.algorithm_url" target="_blank" rel="noopener noreferrer"
-              >物品价值算法</a
-            >
+            <a :href="statistics.source?.algorithm_url" target="_blank" rel="noopener noreferrer">{{
+              t('reports.itemValuationAlgorithm')
+            }}</a>
             ·
-            <a :href="statistics.source?.values_url" target="_blank" rel="noopener noreferrer"
-              >一图流材料价值</a
-            >
+            <a :href="statistics.source?.values_url" target="_blank" rel="noopener noreferrer">{{
+              t('reports.yituliuValues')
+            }}</a>
           </p>
         </details>
 
@@ -140,19 +136,22 @@
           class="stat-coverage"
         >
           <div v-if="unpricedNames.length">
-            未计价：{{ unpricedNames.join('、') }}。等效理智仅包含已知价格部分。
+            {{ t('reports.unpricedPrefix') }}{{ unpricedNames.join('、')
+            }}{{ t('reports.knownPricesOnlySuffix') }}
           </div>
           <div v-if="totals.incomplete.length">
-            部分养成材料数据缺失：{{ totals.incomplete.join('、') }}。
+            {{ t('reports.incompleteGrowthDataPrefix') }}{{ totals.incomplete.join('、') }}。
           </div>
         </n-alert>
 
         <div class="stat-table-toolbar">
-          <span class="gp-muted">{{ filteredMaterials.length }} 种已消耗资源</span>
+          <span class="gp-muted"
+            >{{ filteredMaterials.length }}{{ t('reports.consumedResourcesUnit') }}</span
+          >
           <n-input
             v-model:value="materialQuery"
             clearable
-            placeholder="查找材料"
+            :placeholder="t('reports.searchMaterials')"
             size="small"
             class="stat-search"
           />
@@ -170,10 +169,8 @@
         </div>
       </n-tab-pane>
 
-      <n-tab-pane name="ranking" tab="理智排行">
-        <p class="stat-lead">
-          按已完成养成材料的等效理智排序，包含全部已升级技能与模组；阿米娅各形态合并，未计价材料不参与排名数值。
-        </p>
+      <n-tab-pane name="ranking" :tab="t('reports.sanityRanking')">
+        <p class="stat-lead">{{ t('reports.rankingHelp') }}</p>
         <div class="stat-podium">
           <div
             v-for="(row, index) in totals.ranking.slice(0, 3)"
@@ -184,25 +181,31 @@
             <img
               class="stat-podium__avatar"
               :src="'/avatar/' + encodeURIComponent(row.name) + '.webp'"
-              :alt="row.name"
+              :alt="operatorDisplayName(row.name)"
               loading="lazy"
               @error="(event) => (event.target.style.display = 'none')"
             />
             <div>
-              <strong>{{ row.name }}</strong>
-              <span>{{ row.rarity }} 星 · ≈ {{ format(row.sanity) }} 理智</span>
+              <strong>{{ operatorDisplayName(row.name) }}</strong>
+              <span
+                >{{ row.rarity }}{{ t('reports.starsSanitySeparator') }}{{ format(row.sanity)
+                }}{{ t('reports.sanityUnit') }}</span
+              >
             </div>
           </div>
-          <n-empty v-if="!totals.ranking.length" description="没有所选星级的数据" />
+          <n-empty v-if="!totals.ranking.length" :description="t('reports.noSelectedRarities')" />
         </div>
         <details class="stat-ranking">
-          <summary>查看完整排行（{{ totals.ranking.length }} 位）</summary>
+          <summary>
+            {{ t('reports.viewFullRankingPrefix') }}{{ totals.ranking.length
+            }}{{ t('reports.operatorsClosingSuffix') }}
+          </summary>
           <div class="stat-table-toolbar">
-            <span class="gp-muted">以已同步练度为准</span>
+            <span class="gp-muted">{{ t('reports.syncedDevelopmentBasis') }}</span>
             <n-input
               v-model:value="operatorQuery"
               clearable
-              placeholder="查找干员"
+              :placeholder="t('reports.searchOperators')"
               size="small"
               class="stat-search"
             />
@@ -225,6 +228,9 @@
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
+import { itemDisplayName, operatorDisplayName } from '@/i18n/gameNames'
+const { t } = i18n.global
 import { computed, h, ref } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import VChart from 'vue-echarts'
@@ -248,21 +254,33 @@ const openedModules = computed(() =>
   [1, 2, 3].reduce((sum, level) => sum + totals.value.modules[level], 0)
 )
 const unpricedNames = computed(() =>
-  totals.value.materials.filter((row) => row.sanity === null).map((row) => row.name)
+  totals.value.materials
+    .filter((row) => row.sanity === null)
+    .map((row) => itemDisplayName(row.id, row.name))
 )
 const filteredMaterials = computed(() =>
   totals.value.materials.filter(
     (row) =>
-      row.name.includes(materialQuery.value.trim()) || row.id.includes(materialQuery.value.trim())
+      row.name.includes(materialQuery.value.trim()) ||
+      itemDisplayName(row.id, row.name)
+        .toLowerCase()
+        .includes(materialQuery.value.trim().toLowerCase()) ||
+      row.id.includes(materialQuery.value.trim())
   )
 )
 const filteredRanking = computed(() =>
   totals.value.ranking
     .map((row, index) => ({ ...row, position: index + 1 }))
-    .filter((row) => row.name.includes(operatorQuery.value.trim()))
+    .filter(
+      (row) =>
+        row.name.includes(operatorQuery.value.trim()) ||
+        operatorDisplayName(row.name)
+          .toLowerCase()
+          .includes(operatorQuery.value.trim().toLowerCase())
+    )
 )
 const format = (value, decimals = 0) =>
-  Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: decimals })
+  Number(value || 0).toLocaleString(i18n.global.locale.value, { maximumFractionDigits: decimals })
 const percent = (count, all) => `${all ? ((count / all) * 100).toFixed(1) : 0}%`
 const numberColumn = (title, key, notApplicable = () => false) => ({
   title,
@@ -270,41 +288,45 @@ const numberColumn = (title, key, notApplicable = () => false) => ({
   align: 'right',
   render: (row) => (notApplicable(row) ? '—' : format(row[key]))
 })
-const rosterColumns = [
-  { title: '星级', key: 'label', fixed: 'left', width: 88 },
+const rosterColumns = computed(() => [
+  { title: t('reports.rarity'), key: 'label', fixed: 'left', width: 88 },
   {
-    title: '已招募 / 资源收录',
+    title: t('reports.ownedAvailable'),
     key: 'owned',
     width: 140,
     render: (row) => `${format(row.owned)} / ${format(row.available)}`
   },
-  numberColumn('精二', 'elite2', (row) => row.max_phase < 2),
-  numberColumn('满练', 'max_level'),
+  numberColumn(t('reports.elite2'), 'elite2', (row) => row.max_phase < 2),
+  numberColumn(t('reports.maxDevelopment'), 'max_level'),
   {
-    ...numberColumn('达到模组开启等级', 'module_level', (row) => row.supports_modules === false),
+    ...numberColumn(
+      t('reports.moduleUnlockLevel'),
+      'module_level',
+      (row) => row.supports_modules === false
+    ),
     width: 160
   },
   {
-    title: '专精技能',
+    title: t('reports.masterySkills'),
     key: 'skills',
     children: [1, 2, 3].map((level) => ({
-      title: `专${['', '一', '二', '三'][level]}`,
+      title: t('reports.masteryLevel', { level }),
       key: `skills.${level}`,
       align: 'right',
       render: (row) => (row.supports_mastery === false ? '—' : format(row.skills?.[level]))
     }))
   },
   {
-    title: '模组数量',
+    title: t('reports.moduleCounts'),
     key: 'modules',
     children: [1, 2, 3].map((level) => ({
-      title: `${level} 级`,
+      title: t('reports.levelNumber', { level }),
       key: `modules.${level}`,
       align: 'right',
       render: (row) => (row.supports_modules === false ? '—' : format(row.modules?.[level]))
     }))
   }
-]
+])
 // 数据表列由 n-data-table 渲染，拿不到本组件的 scoped 属性，尺寸与布局用行内样式。
 const assetIcon = (src, kind) =>
   h('img', {
@@ -325,45 +347,58 @@ const assetRow = (icon, name) =>
     icon,
     h('span', name)
   ])
-const materialColumns = [
+const materialColumns = computed(() => [
   {
-    title: '资源',
+    title: t('reports.resourceLabel'),
     key: 'name',
     minWidth: 170,
-    render: (row) => assetRow(assetIcon(materialIcon(row), 'icon'), row.name)
+    render: (row) =>
+      assetRow(assetIcon(materialIcon(row), 'icon'), itemDisplayName(row.id, row.name))
   },
-  numberColumn('累计消耗', 'count'),
+  numberColumn(t('reports.cumulativeConsumption'), 'count'),
   {
-    title: '单件等效理智',
+    title: t('reports.itemSanityValue'),
     key: 'value',
     align: 'right',
-    render: (row) => (row.value === null ? '未计价' : format(row.value, 4))
+    render: (row) => (row.value === null ? t('reports.unpriced') : format(row.value, 4))
   },
   {
-    title: '总等效理智',
+    title: t('reports.totalEquivalentSanity'),
     key: 'sanity',
     align: 'right',
-    render: (row) => (row.sanity === null ? '未计价' : format(row.sanity, 1))
+    render: (row) => (row.sanity === null ? t('reports.unpriced') : format(row.sanity, 1))
   }
-]
-const rankingColumns = [
-  { title: '排名', key: 'position', width: 65 },
+])
+const rankingColumns = computed(() => [
+  { title: t('reports.rank'), key: 'position', width: 65 },
   {
-    title: '干员',
+    title: t('reports.operator'),
     key: 'name',
     minWidth: 160,
     render: (row) =>
-      assetRow(assetIcon('/avatar/' + encodeURIComponent(row.name) + '.webp', 'avatar'), row.name)
+      assetRow(
+        assetIcon('/avatar/' + encodeURIComponent(row.name) + '.webp', 'avatar'),
+        operatorDisplayName(row.name)
+      )
   },
-  { title: '星级', key: 'rarity', width: 65 },
-  { title: '等效理智', key: 'sanity', align: 'right', render: (row) => `≈ ${format(row.sanity)}` },
+  { title: t('reports.rarity'), key: 'rarity', width: 65 },
   {
-    title: '覆盖情况',
+    title: t('reports.equivalentSanity'),
+    key: 'sanity',
+    align: 'right',
+    render: (row) => `≈ ${format(row.sanity)}`
+  },
+  {
+    title: t('reports.coverage'),
     key: 'coverage',
     render: (row) =>
-      row.incomplete ? '部分养成数据缺失' : row.unpriced.length ? '含未计价材料' : '已计价'
+      row.incomplete
+        ? t('reports.incompleteDevelopment')
+        : row.unpriced.length
+          ? t('reports.containsUnpriced')
+          : t('reports.priced')
   }
-]
+])
 const historyChart = computed(() => ({
   color: [
     theme.value.primaryColor,
@@ -393,7 +428,7 @@ const historyChart = computed(() => ({
     },
     {
       type: 'value',
-      name: '等效理智',
+      name: t('reports.equivalentSanity'),
       position: 'right',
       axisLabel: { color: theme.value.textColor3 },
       splitLine: { show: false }

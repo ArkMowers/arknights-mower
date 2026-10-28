@@ -1,10 +1,59 @@
+import { i18n } from '@/i18n'
 export const growthMetrics = [
-  { key: 'max_level', label: '满练干员', detail: '达到该星级实际精英化与等级上限' },
-  { key: 'module_level', label: '达到模组开启等级', detail: '精二 ≥60 / 50 / 40 级' },
-  { key: 'elite2', label: '精二干员', detail: '已完成精英化二' },
-  { key: 'modules', label: '已开启模组', detail: '按模组数量统计' },
-  { key: 'masteries', label: '已专精技能', detail: '仅专三，每技能计一次' },
-  { key: 'sanity_value', label: '总消耗等效理智', detail: '已完成养成投入 · 一图流估值' }
+  {
+    key: 'max_level',
+    get label() {
+      return i18n.global.t('growth.planning.maxedOperators')
+    },
+    get detail() {
+      return i18n.global.t('growth.planning.atTheActualPromotionAndLevelCap')
+    }
+  },
+  {
+    key: 'module_level',
+    get label() {
+      return i18n.global.t('growth.planning.moduleUnlockLevel')
+    },
+    get detail() {
+      return i18n.global.t('growth.planning.elite2Level605040Or')
+    }
+  },
+  {
+    key: 'elite2',
+    get label() {
+      return i18n.global.t('growth.planning.elite2Operators')
+    },
+    get detail() {
+      return i18n.global.t('growth.planning.promotedToElite2')
+    }
+  },
+  {
+    key: 'modules',
+    get label() {
+      return i18n.global.t('growth.planning.unlockedModules')
+    },
+    get detail() {
+      return i18n.global.t('growth.planning.countedPerModule')
+    }
+  },
+  {
+    key: 'masteries',
+    get label() {
+      return i18n.global.t('growth.planning.masteredSkills')
+    },
+    get detail() {
+      return i18n.global.t('growth.planning.m3OnlyEachSkillCountedOnce')
+    }
+  },
+  {
+    key: 'sanity_value',
+    get label() {
+      return i18n.global.t('growth.planning.totalSanityEquivalent')
+    },
+    get detail() {
+      return i18n.global.t('growth.planning.completedGrowthInvestmentYituliuValuation')
+    }
+  }
 ]
 
 export function sumGrowthStatistics(statistics, rarities) {
@@ -35,23 +84,51 @@ export function goalSelected(goals, charId, moduleId) {
 
 export const levelGoals = ['elite2', 'elite2_module', 'elite2_max']
 
+export function localizedLevelGoalLabel(goal) {
+  if (i18n.global.locale.value === 'zh-CN') return goal.label
+  const key = goal.id ?? goal.key
+  if (!['elite1', 'elite2', 'elite2_module', 'elite2_max', 'level_max'].includes(key))
+    return goal.label
+  if (!Number.isInteger(goal.elite) || !Number.isInteger(goal.level)) return goal.label
+  const kind =
+    key === 'elite2_module'
+      ? 'moduleUnlock'
+      : ['elite2_max', 'level_max'].includes(key)
+        ? 'maximum'
+        : 'level'
+  return i18n.global.t(`growth.format.${kind}Goal`, { elite: goal.elite, level: goal.level })
+}
+
 export function operatorLevelGoals(op) {
-  if (op.level_goals) return op.level_goals.map((goal) => ({ ...goal, key: goal.id }))
+  if (op.level_goals)
+    return op.level_goals.map((goal) => ({
+      ...goal,
+      key: goal.id,
+      label: localizedLevelGoalLabel(goal)
+    }))
   if (op.rarity < 4) return []
   return [
-    { key: 'elite2', elite: 2, level: 1, label: '精二 1 级', summary: op.promotion_summary },
+    {
+      key: 'elite2',
+      elite: 2,
+      level: 1,
+      get label() {
+        return i18n.global.t('growth.planning.elite2Lv1')
+      },
+      summary: op.promotion_summary
+    },
     {
       key: 'elite2_module',
       elite: 2,
       level: op.module_level,
-      label: `精二 ${op.module_level} 级（达到模组开启等级）`,
+      label: i18n.global.t('growth.planning.elite2LvModuleUnlock', { value0: op.module_level }),
       summary: op.module_level_summary
     },
     {
       key: 'elite2_max',
       elite: 2,
       level: op.max_level,
-      label: `精二 ${op.max_level} 级（满练）`,
+      label: i18n.global.t('growth.planning.elite2LvMaxed', { value0: op.max_level }),
       summary: op.max_level_summary
     }
   ]

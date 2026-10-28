@@ -1,4 +1,6 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { onBeforeUnmount, ref } from 'vue'
 import { createDragPreview } from '@/utils/dragPreview'
 
@@ -129,8 +131,8 @@ onBeforeUnmount(pointerCancel)
         <button
           class="mood-drag-handle"
           type="button"
-          :aria-label="'拖动或使用方向键调整 ' + group.groupName + ' 的卡片顺序'"
-          title="拖动排序，手机可长按拖动，也可用方向键"
+          :aria-label="t('reports.reorderGroup', { name: group.groupName })"
+          :title="t('reports.dragCardsHelp')"
           @pointerdown="pointerStart(group, $event)"
           @keydown="keyboardMove(group, index, $event)"
         >

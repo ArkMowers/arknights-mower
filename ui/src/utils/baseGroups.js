@@ -1,5 +1,7 @@
 import { match } from 'pinyin-pro'
 import { builtinGroups } from '@/data/baseGroups'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { baseGroupTitle, baseGroupNote } from '@/i18n/baseSkills'
 
 export const groupFacilities = [...new Set(builtinGroups.map((group) => group.facility))]
 
@@ -29,9 +31,12 @@ export function filterGroups(
     const text = [
       group.title,
       group.note,
+      baseGroupTitle(group),
+      baseGroupNote(group),
       ...group.core,
       ...group.support,
       ...group.accessory,
+      ...[...group.core, ...group.support, ...group.accessory].map(operatorDisplayName),
       ...Object.values(group.memberNotes)
     ].join(' ')
     if (query && !text.includes(query) && !match(text, query, { precision: 'every' })) return false

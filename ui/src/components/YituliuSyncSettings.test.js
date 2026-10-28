@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope } from 'vue'
 import YituliuSyncSettings from './YituliuSyncSettings.vue'
+import { i18n } from '@/i18n'
 
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), delete: vi.fn(), post: vi.fn() }))
 vi.mock('vue', async (original) => ({
@@ -16,7 +17,25 @@ function setup() {
   return component
 }
 beforeEach(() => vi.clearAllMocks())
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 describe('一图流同步设置', () => {
+  it('updates an existing local failure on language changes and preserves backend text verbatim', async () => {
+    const page = setup()
+    api.get.mockRejectedValueOnce(new Error('offline'))
+    await page.loadStatus()
+    expect(page.feedback.value).toContain('设置读取失败')
+    i18n.global.locale.value = 'en-US'
+    expect(page.feedback.value).toBe(
+      'Could not load synchronization settings. Refresh and try again.'
+    )
+    api.post.mockRejectedValueOnce({ response: { data: { message: '后端的具体原因' } } })
+    await page.act('sync')
+    expect(page.feedback.value).toBe('后端的具体原因')
+    i18n.global.locale.value = 'zh-CN'
+    expect(page.feedback.value).toBe('后端的具体原因')
+  })
   it('读取状态不回填密钥，也不触发上传', async () => {
     const page = setup()
     api.get.mockResolvedValue({ data: { configured: true } })

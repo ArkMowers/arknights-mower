@@ -1,4 +1,6 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { inject, ref, watch } from 'vue'
 const show = inject('show_name_editor')
 const edit_locked = inject('planEditLocked', ref(false))
@@ -17,12 +19,12 @@ const { sub_plan, backup_plans } = storeToRefs(plan_store)
   <n-modal
     v-model:show="show"
     preset="card"
-    title="重命名"
+    :title="t('plans.rename')"
     transform-origin="center"
     style="width: auto; max-width: 90vw"
   >
     <div class="dropdown-container">
-      <label class="dropdown-label">副表名称 </label>
+      <label class="dropdown-label">{{ t('plans.backupName') }}</label>
       <n-input v-model:value="backup_plans[sub_plan].name" :disabled="edit_locked"> </n-input>
     </div>
   </n-modal>

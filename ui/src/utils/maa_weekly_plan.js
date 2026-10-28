@@ -1,8 +1,26 @@
+import { i18n } from '@/i18n'
+import { itemDisplayName } from '@/i18n/gameNames'
+const { t } = i18n.global
 export const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 export const WEEKDAY_INDICES = Object.fromEntries(
   WEEKDAYS.map((weekday, index) => [weekday, index])
 )
+
+const weekdayMessageKeys = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday'
+]
+
+export function formatWeekday(weekday) {
+  const key = weekdayMessageKeys[WEEKDAY_INDICES[weekday]]
+  return key ? t(`tasks.${key}`) : weekday
+}
 
 const GAME_TIMEZONE_OFFSET_HOURS = 8
 const GAME_DAY_START_HOUR = 4
@@ -21,21 +39,51 @@ export function getGameWeekdayIndex(date = new Date()) {
 }
 
 export const STAGE_DISPLAY_NAMES = {
-  '': '上次作战',
-  Annihilation: '当期剿灭',
-  'LS-6': '经验书',
-  'CE-6': '龙门币',
-  'AP-5': '红票',
-  'SK-5': '碳本',
-  'CA-5': '技能书',
-  'PR-A-1': '医疗重装1',
-  'PR-A-2': '医疗重装2',
-  'PR-B-1': '狙击术师1',
-  'PR-B-2': '狙击术师2',
-  'PR-C-1': '先锋辅助1',
-  'PR-C-2': '先锋辅助2',
-  'PR-D-1': '近卫特种1',
-  'PR-D-2': '近卫特种2',
+  get ''() {
+    return t('tasks.lastStage')
+  },
+  get Annihilation() {
+    return t('tasks.currentAnnihilation')
+  },
+  get 'LS-6'() {
+    return t('tasks.battleRecords')
+  },
+  get 'CE-6'() {
+    return t('tasks.lmd')
+  },
+  get 'AP-5'() {
+    return t('tasks.purchaseCertificates')
+  },
+  get 'SK-5'() {
+    return t('tasks.carbonStage')
+  },
+  get 'CA-5'() {
+    return t('tasks.skillSummaries')
+  },
+  get 'PR-A-1'() {
+    return t('tasks.medicDefender1')
+  },
+  get 'PR-A-2'() {
+    return t('tasks.medicDefender2')
+  },
+  get 'PR-B-1'() {
+    return t('tasks.sniperCaster1')
+  },
+  get 'PR-B-2'() {
+    return t('tasks.sniperCaster2')
+  },
+  get 'PR-C-1'() {
+    return t('tasks.vanguardSupporter1')
+  },
+  get 'PR-C-2'() {
+    return t('tasks.vanguardSupporter2')
+  },
+  get 'PR-D-1'() {
+    return t('tasks.guardSpecialist1')
+  },
+  get 'PR-D-2'() {
+    return t('tasks.guardSpecialist2')
+  },
   '1-7': '1-7'
 }
 
@@ -48,9 +96,29 @@ export function promoteChipStageOrder(currentOrder = []) {
   return [...promoted, ...currentOrder.filter((stage) => !promoted.has(stage))]
 }
 
-const STAGE_VALUE_MAP = Object.fromEntries(
-  Object.entries(STAGE_DISPLAY_NAMES).map(([value, label]) => [label, value])
-)
+const stageMessageKeys = {
+  '': 'lastStage',
+  Annihilation: 'currentAnnihilation',
+  'LS-6': 'battleRecords',
+  'CE-6': 'lmd',
+  'AP-5': 'purchaseCertificates',
+  'SK-5': 'carbonStage',
+  'CA-5': 'skillSummaries',
+  'PR-A-1': 'medicDefender1',
+  'PR-A-2': 'medicDefender2',
+  'PR-B-1': 'sniperCaster1',
+  'PR-B-2': 'sniperCaster2',
+  'PR-C-1': 'vanguardSupporter1',
+  'PR-C-2': 'vanguardSupporter2',
+  'PR-D-1': 'guardSpecialist1',
+  'PR-D-2': 'guardSpecialist2'
+}
+const STAGE_VALUE_MAP = Object.fromEntries([
+  ['1-7', '1-7'],
+  ...Object.entries(stageMessageKeys).flatMap(([value, key]) =>
+    ['zh-CN', 'en-US', 'ja-JP', 'zh-TW'].map((locale) => [t(`tasks.${key}`, {}, { locale }), value])
+  )
+])
 
 const ALWAYS_AVAILABLE_STAGES = new Set(['', 'Annihilation', '1-7', 'LS-6'])
 
@@ -70,10 +138,10 @@ export function formatStageLabel(value) {
     return STAGE_DISPLAY_NAMES[value]
   }
   if (typeof value === 'string' && value.endsWith('-HARD')) {
-    return `${value.slice(0, -5)} 困难`
+    return t('tasks.hardStage', { stage: value.slice(0, -5) })
   }
   if (typeof value === 'string' && value.endsWith('-NORMAL')) {
-    return `${value.slice(0, -7)} 标准`
+    return t('tasks.normalStage', { stage: value.slice(0, -7) })
   }
   return value
 }
@@ -83,26 +151,45 @@ export function normalizeCreatedStage(label) {
   if (normalizedLabel in STAGE_VALUE_MAP) {
     return STAGE_VALUE_MAP[normalizedLabel]
   }
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'zh-TW']) {
+    for (const [key, suffix] of [
+      ['hardStage', '-HARD'],
+      ['normalStage', '-NORMAL']
+    ]) {
+      const [before, after] = t(`tasks.${key}`, { stage: '__STAGE__' }, { locale }).split(
+        '__STAGE__'
+      )
+      if (normalizedLabel.startsWith(before) && normalizedLabel.endsWith(after)) {
+        const stage = normalizedLabel.slice(before.length, after ? -after.length : undefined).trim()
+        if (stage) return stage + suffix
+      }
+    }
+  }
   if (normalizedLabel.endsWith('困难') || normalizedLabel.endsWith('磨难')) {
     return `${normalizedLabel.slice(0, -2)}-HARD`
   }
   if (normalizedLabel.endsWith('标准')) {
     return `${normalizedLabel.slice(0, -2)}-NORMAL`
   }
+  if (/\s+hard$/i.test(normalizedLabel)) return `${normalizedLabel.replace(/\s+hard$/i, '')}-HARD`
+  if (/\s+normal$/i.test(normalizedLabel))
+    return `${normalizedLabel.replace(/\s+normal$/i, '')}-NORMAL`
   return normalizedLabel
 }
 
 export function createStageOption(label) {
   const value = normalizeCreatedStage(label)
   return {
-    label: formatStageLabel(value),
+    get label() {
+      return formatStageLabel(value)
+    },
     value
   }
 }
 
 export function splitStageInventoryLabel(label) {
   const text = typeof label === 'string' ? label : ''
-  const match = text.match(/^(.*?)([（(]库存[:：][^）)]*[）)])$/)
+  const match = text.match(/^(.*?)([（(](?:库存|庫存|Stock|在庫)[:：][^）)]*[）)])$/)
   if (!match) {
     return { stageLabel: text, inventoryLabel: '' }
   }
@@ -112,16 +199,27 @@ export function splitStageInventoryLabel(label) {
   }
 }
 
+export function localizeActivityStageLabel(label) {
+  if (typeof label !== 'string' || i18n.global.locale.value === 'zh-CN') return label
+  return label.replace(
+    /([^:,，()（）]+)[（(](?:库存|庫存|Stock|在庫)[:：]\s*(\d+)[）)]/g,
+    (_match, name, count) => `${itemDisplayName(name)}(${t('tasks.inventoryCount', { count })})`
+  )
+}
+
 function normalizeOption(option) {
   if (!option || typeof option.value !== 'string') {
     return null
   }
   return {
     ...option,
-    label:
-      typeof option.label === 'string' && option.label
-        ? option.label
-        : formatStageLabel(option.value)
+    get label() {
+      return localizeActivityStageLabel(
+        typeof option.label === 'string' && option.label
+          ? option.label
+          : formatStageLabel(option.value)
+      )
+    }
   }
 }
 

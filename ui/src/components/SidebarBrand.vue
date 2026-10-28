@@ -1,5 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { resourceVersionBadge, resourceVersionHint } from '@/utils/versionBadges'
 import SoftwareVersionBadge from '@/components/SoftwareVersionBadge.vue'
 
@@ -24,9 +26,9 @@ const now = ref(Date.now())
 const resourceBadge = computed(() => resourceVersionBadge(props.resourceMetadata, now.value))
 const resourceHint = computed(() => resourceVersionHint(props.resourceVersion, resourceBadge.value))
 const resourceActionHint = computed(() => {
-  if (props.resourceChecking) return `${resourceHint.value}\n正在检查资源更新…`
+  if (props.resourceChecking) return `${resourceHint.value}\n${t('updates.checkingResources')}`
   if (!props.updatesEnabled || props.resourceDisabled) return resourceHint.value
-  return `${resourceHint.value}\n点击检查资源更新`
+  return `${resourceHint.value}\n${t('updates.checkResources')}`
 })
 const resourceTooltipOpen = ref(false)
 const resourceTooltipFocused = ref(false)
@@ -89,8 +91,8 @@ onUnmounted(() => {
         v-if="collapsible"
         type="button"
         class="sidebar-brand-toggle"
-        :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
-        :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
+        :aria-label="t(collapsed ? 'runtime.expandSidebar' : 'runtime.collapseSidebar')"
+        :title="t(collapsed ? 'runtime.expandSidebar' : 'runtime.collapseSidebar')"
         :aria-expanded="!collapsed"
         :aria-controls="navigationId"
         @click="$emit('toggle')"

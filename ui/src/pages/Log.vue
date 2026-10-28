@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 defineOptions({ name: 'MowerLogPage' })
 
 import { storeToRefs } from 'pinia'
@@ -55,7 +58,7 @@ async function cancel_pause() {
   try {
     await mower_store.cancel_maintenance_pause(id)
   } catch (error) {
-    db_message.error(error.response?.data?.error || '取消暂停失败，请重试')
+    db_message.error(error.response?.data?.error || t('runtime.cancelPauseFailed'))
     void get_running()
   } finally {
     cancelling_pause.value = false
@@ -307,18 +310,20 @@ import CollapseIcon from '@vicons/fluent/es/PanelTopContract20Regular'
 import ExpandIcon from '@vicons/fluent/es/PanelTopExpand20Regular'
 import MoreIcon from '@vicons/fluent/es/MoreHorizontal20Regular'
 
-const task_help = [
-  '目前只糊了一个勉强能用的版本，其他功能敬请期待',
-  '支持空任务、专精、加工材料、分解所有重复家具、仓库扫描和线索任务',
-  '只能增，不能删！！写错了可以【载入心情数据】启动',
-  '新增加工材料或分解家具任务会唤醒调度器，按任务时间执行',
-  '其他新增任务不会主动唤醒调度器，休眠期间添加的任务可能延后执行',
-  '添加完任务可以【载入心情任务】启动',
-  '空任务，请确保任务房间名字，干员数量正确（没有判定）',
-  '专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈',
-  '线索任务，到点跑一次完整的会客室流程（信息板、领线索、摆线索、送线索）',
-  '在Q群或者频道提以上问题，看心情踢人'
-]
+const task_help = computed(() =>
+  [
+    'taskHelpPrototype',
+    'taskHelpSupported',
+    'taskHelpNoDelete',
+    'taskHelpWake',
+    'taskHelpNoWake',
+    'taskHelpResume',
+    'taskHelpEmpty',
+    'taskHelpMastery',
+    'taskHelpClue',
+    'taskHelpCommunity'
+  ].map((key) => t(`runtime.${key}`))
+)
 
 const show_task = ref(false)
 const TaskDialog = shallowRef(null)
@@ -337,7 +342,7 @@ async function openTaskDialog() {
     TaskDialog.value = component
     show_task.value = true
   } catch {
-    if (task_dialog_active) db_message.error('新增任务表单加载失败，请点击「新增任务」重试')
+    if (task_dialog_active) db_message.error(t('runtime.taskFormFailed'))
   } finally {
     if (task_dialog_active) task_dialog_loading.value = false
   }
@@ -382,36 +387,62 @@ async function toggle_round_stop() {
   try {
     await mower_store.set_stop_after_round(!stop_after_round.value)
   } catch (error) {
-    db_message.error(error.response?.data?.error || '设置本轮结束后停止失败')
+    db_message.error(error.response?.data?.error || t('runtime.stopAfterRoundFailed'))
   } finally {
     round_stop_busy.value = false
   }
 }
 const stop_options = computed(() => [
   ...(maintenance_pause.value
-    ? [{ label: '立即停止', key: 'immediate', disabled: waiting.value }]
+    ? [
+        {
+          get label() {
+            return t('runtime.stopImmediately')
+          },
+          key: 'immediate',
+          disabled: waiting.value
+        }
+      ]
     : []),
   {
-    label: stop_after_round.value ? '取消本轮结束后停止' : '本轮结束后停止',
+    label: stop_after_round.value ? t('runtime.cancelStopAfterRound') : t('runtime.stopAfterRound'),
     key: 'after_round',
     disabled: round_stop_busy.value || waiting.value,
-    props: { title: '完成本轮操作，在正常休息前停止；已在正常休息时直接停止。' }
+    props: {
+      get title() {
+        return t('runtime.stopAfterRoundHelp')
+      }
+    }
   },
   {
-    label: '停止MAA',
+    get label() {
+      return t('runtime.stopMaa')
+    },
     key: 'maa'
   },
   {
-    label: '应用排班',
+    get label() {
+      return t('runtime.applySchedule')
+    },
     key: 'apply_schedule',
     disabled: !process_control.value?.canRunProcessAction,
-    props: { title: '保存配置并重启当前实例，保留心情和位置，按当前排班重新生成任务。' }
+    props: {
+      get title() {
+        return t('runtime.applyScheduleHelp')
+      }
+    }
   },
   {
-    label: '重启续接',
+    get label() {
+      return t('runtime.restartResume')
+    },
     key: 'restart_resume',
     disabled: !process_control.value?.canRunProcessAction,
-    props: { title: '保存配置并重启当前实例，保留原任务队列继续运行。' }
+    props: {
+      get title() {
+        return t('runtime.restartResumeHelp')
+      }
+    }
   }
 ])
 
@@ -425,21 +456,37 @@ function select_stop_action(key) {
 }
 const start_options = [
   {
-    label: '载入心情任务',
+    get label() {
+      return t('runtime.loadMoraleTasks')
+    },
     key: '0',
-    props: { title: '继续上次任务：保留心情、位置和原任务队列。' }
-  },
-  {
-    label: '载入心情数据',
-    key: '1',
     props: {
-      title: '按当前排班重排：保留心情、位置，清空旧任务后重新生成任务。修改排班后使用。'
+      get title() {
+        return t('runtime.loadMoraleTasksHelp')
+      }
     }
   },
   {
-    label: '缓存清零重启',
+    get label() {
+      return t('runtime.loadMoraleData')
+    },
+    key: '1',
+    props: {
+      get title() {
+        return t('runtime.loadMoraleDataHelp')
+      }
+    }
+  },
+  {
+    get label() {
+      return t('runtime.resetCacheStart')
+    },
     key: '2',
-    props: { title: '重新读取现场：不使用旧运行缓存，重新读取心情和位置。' }
+    props: {
+      get title() {
+        return t('runtime.resetCacheStartHelp')
+      }
+    }
   }
 ]
 
@@ -447,12 +494,16 @@ const start_options = [
 const db_groups = [
   {
     key: 'mastery',
-    label: '全自动专精',
+    get label() {
+      return t('runtime.automaticMastery')
+    },
     items: ['mastery_plan', 'mastery_route', 'mastery_notify']
   },
   {
     key: 'record',
-    label: '运行数据',
+    get label() {
+      return t('runtime.runtimeData')
+    },
     items: [
       'log',
       'agent_action',
@@ -464,19 +515,46 @@ const db_groups = [
   }
 ]
 const db_cat_labels = {
-  mastery_plan: '专精计划',
-  mastery_route: '专精路线配置',
-  mastery_notify: '专精通知记录',
-  log: '错误日志',
-  agent_action: '干员心情记录',
-  operation_history: '刷图记录',
-  trading_history: '跑单记录',
-  inventory: '仓库库存',
-  saved_state: '运行缓存'
+  get mastery_plan() {
+    return t('runtime.masteryPlans')
+  },
+  get mastery_route() {
+    return t('runtime.masteryRoutes')
+  },
+  get mastery_notify() {
+    return t('runtime.masteryNotifications')
+  },
+  get log() {
+    return t('runtime.errorLogs')
+  },
+  get agent_action() {
+    return t('runtime.moraleRecords')
+  },
+  get operation_history() {
+    return t('runtime.operationRecords')
+  },
+  get trading_history() {
+    return t('runtime.tradeOrderRecords')
+  },
+  get inventory() {
+    return t('runtime.depotInventory')
+  },
+  get saved_state() {
+    return t('runtime.runtimeCache')
+  }
 }
 const db_stats = ref({})
 const db_sel = ref({})
 const db_dialog = useDialog()
+let deletionDialog
+watch(i18n.global.locale, () => {
+  if (deletionDialog)
+    Object.assign(deletionDialog, {
+      title: t('runtime.confirmDelete'),
+      positiveText: t('runtime.delete'),
+      negativeText: t('runtime.cancel')
+    })
+})
 const db_message = useMessage()
 const show_db_admin = ref(false)
 for (const g of db_groups) for (const k of g.items) db_sel.value[k] = false
@@ -525,13 +603,19 @@ function db_confirm_delete() {
   const active = keys.includes('mastery_plan') ? db_stats.value.mastery_plan_active || 0 : 0
   const content =
     active > 0
-      ? `确定删除选中的 ${keys.length} 类数据？其中专精计划有 ${active} 条正在训练，会一起删掉（练完可能收到一条「训练室占用」提醒）。`
-      : `确定删除选中的 ${keys.length} 类数据？删除后不可恢复。`
-  db_dialog.warning({
-    title: '删除确认',
+      ? () => t('runtime.deleteActiveDataConfirm', { count: keys.length, active })
+      : () => t('runtime.deleteDataConfirm', { count: keys.length })
+  deletionDialog = db_dialog.warning({
+    get title() {
+      return t('runtime.confirmDelete')
+    },
     content,
-    positiveText: '删除',
-    negativeText: '取消',
+    get positiveText() {
+      return t('runtime.delete')
+    },
+    get negativeText() {
+      return t('runtime.cancel')
+    },
     onPositiveClick: () => db_delete(keys)
   })
 }
@@ -540,9 +624,11 @@ async function db_delete(keys) {
     await axios.post(`${import.meta.env.VITE_HTTP_URL}/db-admin/delete`, { categories: keys })
     db_load_stats()
     keys.forEach((k) => (db_sel.value[k] = false))
-    db_message.success('删除成功')
+    db_message.success(t('runtime.deleted'))
   } catch (e) {
-    db_message.error(`删除失败：${e?.response?.data?.error || e.message || ''}`)
+    db_message.error(
+      t('runtime.deleteFailed', { message: e?.response?.data?.error || e.message || '' })
+    )
   }
 }
 </script>
@@ -558,7 +644,7 @@ async function db_delete(keys) {
       ref="log_layout"
       class="log-pane"
       :class="{ 'with-screenshot': has_screenshot, 'has-tasks': task_table_visible }"
-      aria-label="运行日志"
+      :aria-label="t('runtime.logs')"
     >
       <n-image
         v-if="has_screenshot"
@@ -571,10 +657,10 @@ async function db_delete(keys) {
       <n-button
         v-if="mobile && task_list.length > 0"
         class="toggle-table-collapse-btn"
-        :aria-label="show_task_table ? '收起任务列表' : '展开任务列表'"
+        :aria-label="show_task_table ? t('runtime.collapseTasks') : t('runtime.expandTasks')"
         :aria-expanded="show_task_table"
         :aria-controls="`${toolbar_id}-queue`"
-        :title="show_task_table ? '收起任务列表' : '展开任务列表'"
+        :title="show_task_table ? t('runtime.collapseTasks') : t('runtime.expandTasks')"
         @click="show_task_table = !show_task_table"
       >
         <template #icon>
@@ -597,13 +683,13 @@ async function db_delete(keys) {
         ref="task_queue"
         class="task-table-scroll"
         role="region"
-        aria-label="任务列表"
+        :aria-label="t('runtime.taskList')"
       >
         <n-table class="task-table" size="small" :single-line="false">
           <thead>
             <tr>
-              <th>时间</th>
-              <th :colspan="2">任务</th>
+              <th>{{ t('runtime.time') }}</th>
+              <th :colspan="2">{{ t('runtime.task') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -612,9 +698,11 @@ async function db_delete(keys) {
                 <tr v-for="(value, key, idx) in task.plan" :key="key">
                   <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
                     {{ task.time.split('T')[1].split('.')[0] }}
-                    <div v-if="task.emergency_recovery_release">自动救急</div>
-                    <div v-else-if="task.emergency_staffing">自动救急换班</div>
-                    <div v-else-if="task.emergency_dorm">自动救急宿舍安排</div>
+                    <div v-if="task.emergency_recovery_release">
+                      {{ t('runtime.automaticRescue') }}
+                    </div>
+                    <div v-else-if="task.emergency_staffing">{{ t('runtime.rescueShift') }}</div>
+                    <div v-else-if="task.emergency_dorm">{{ t('runtime.rescueDorm') }}</div>
                   </td>
                   <td>{{ key }}</td>
                   <td>{{ value.map((x) => x || '_').join(', ') }}</td>
@@ -632,7 +720,7 @@ async function db_delete(keys) {
         </n-table>
       </div>
       <div v-if="plan_condition.length > 0" class="plan-condition" style="display: flex; gap: 10px">
-        <span>当前激活的副表为： </span>
+        <span>{{ t('runtime.activeBackupsPrefix') }}</span>
         <span v-for="(x, index) in plan_condition" :key="index" style="color: green">
           {{ x }}
         </span>
@@ -655,7 +743,7 @@ async function db_delete(keys) {
       class="action-container"
       :class="{ 'action-container--paused': running && maintenance_pause }"
     >
-      <div class="action-buttons" role="group" aria-label="运行操作">
+      <div class="action-buttons" role="group" :aria-label="t('runtime.runtimeActions')">
         <div class="execution-control">
           <drop-down
             v-if="running"
@@ -663,7 +751,7 @@ async function db_delete(keys) {
             :options="stop_options"
             :type="maintenance_pause ? 'warning' : 'error'"
             :up="true"
-            menu-label="停止选项"
+            :menu-label="t('runtime.stopOptions')"
             :disabled="waiting"
           >
             <n-button
@@ -676,7 +764,7 @@ async function db_delete(keys) {
               <template #icon>
                 <n-icon><play-icon /></n-icon>
               </template>
-              <span class="btn-text">取消暂停</span>
+              <span class="btn-text">{{ t('runtime.cancelPause') }}</span>
             </n-button>
             <n-button v-else type="error" @click="stop" :loading="waiting" :disabled="waiting">
               <template #icon>
@@ -684,20 +772,19 @@ async function db_delete(keys) {
                   <stop-icon />
                 </n-icon>
               </template>
-              <span class="btn-text">立即停止</span>
+              <span class="btn-text">{{ t('runtime.stopImmediately') }}</span>
             </n-button>
           </drop-down>
           <div v-if="running && maintenance_pause" class="maintenance-pause-notice" role="status">
-            <n-text type="warning">计划暂停中，设定结束时间 {{ pause_end }}</n-text>
+            <n-text type="warning">{{ t('runtime.pauseEndPrefix') }}{{ pause_end }}</n-text>
           </div>
           <n-text
             v-if="running && stop_after_round"
             type="warning"
             class="round-stop-notice"
             role="status"
+            >{{ t('runtime.stopAfterRoundNotice') }}</n-text
           >
-            将在本轮结束后停止
-          </n-text>
           <start-schedule
             v-if="!running"
             :start="start"
@@ -709,8 +796,8 @@ async function db_delete(keys) {
           <n-button
             class="add-task-action"
             type="warning"
-            aria-label="新增任务"
-            title="新增任务"
+            :aria-label="t('runtime.addTask')"
+            :title="t('runtime.addTask')"
             :loading="task_dialog_loading"
             @click="openTaskDialog"
           >
@@ -719,9 +806,9 @@ async function db_delete(keys) {
                 <add-icon />
               </n-icon>
             </template>
-            <span class="btn-text">新增任务</span>
+            <span class="btn-text">{{ t('runtime.addTask') }}</span>
           </n-button>
-          <help-text v-if="!mobile" label="新增任务说明">
+          <help-text v-if="!mobile" :label="t('runtime.addTaskHelp')">
             <div v-for="line in task_help" :key="line">{{ line }}</div>
           </help-text>
         </div>
@@ -731,18 +818,18 @@ async function db_delete(keys) {
               <server-outline-icon />
             </n-icon>
           </template>
-          <span class="btn-text">数据库管理</span>
+          <span class="btn-text">{{ t('runtime.databaseManagement') }}</span>
         </n-button>
       </div>
       <div class="toolbar-options">
-        <div class="view-options" role="group" aria-label="日志显示选项">
+        <div class="view-options" role="group" :aria-label="t('runtime.logDisplayOptions')">
           <div class="view-option">
-            <span>预览截图</span>
-            <n-switch v-model:value="sc_preview" aria-label="预览截图" />
+            <span>{{ t('runtime.screenshotPreview') }}</span>
+            <n-switch v-model:value="sc_preview" :aria-label="t('runtime.screenshotPreview')" />
           </div>
           <div class="view-option">
-            <span>自动滚动</span>
-            <n-switch v-model:value="auto_scroll" aria-label="自动滚动" />
+            <span>{{ t('runtime.autoScroll') }}</span>
+            <n-switch v-model:value="auto_scroll" :aria-label="t('runtime.autoScroll')" />
           </div>
         </div>
         <n-popover
@@ -755,14 +842,14 @@ async function db_delete(keys) {
           <template #trigger>
             <n-button
               class="display-options-trigger"
-              :aria-label="mobile ? '日志更多操作' : '日志显示选项'"
-              :title="mobile ? '更多操作' : '日志显示选项'"
+              :aria-label="mobile ? t('runtime.moreLogActions') : t('runtime.logDisplayOptions')"
+              :title="mobile ? t('runtime.moreActions') : t('runtime.logDisplayOptions')"
               aria-haspopup="dialog"
               :aria-expanded="show_display_options"
               :aria-controls="`${toolbar_id}-display`"
             >
               <template v-if="mobile" #icon><n-icon :component="MoreIcon" /></template>
-              <span v-if="!mobile">显示</span>
+              <span v-if="!mobile">{{ t('runtime.display') }}</span>
             </n-button>
           </template>
           <div
@@ -770,7 +857,7 @@ async function db_delete(keys) {
             class="log-display-panel"
             :class="{ 'log-display-panel--mobile': mobile }"
             role="dialog"
-            :aria-label="mobile ? '日志更多操作' : '日志显示选项'"
+            :aria-label="mobile ? t('runtime.moreLogActions') : t('runtime.logDisplayOptions')"
           >
             <n-button
               v-if="mobile"
@@ -778,19 +865,19 @@ async function db_delete(keys) {
               type="info"
               @click="db_toggle_panel"
             >
-              <template #icon><n-icon :component="ServerOutlineIcon" /></template>
-              数据库管理
-            </n-button>
+              <template #icon><n-icon :component="ServerOutlineIcon" /></template
+              >{{ t('runtime.databaseManagement') }}</n-button
+            >
             <div class="view-option">
-              <span>预览截图</span>
-              <n-switch v-model:value="sc_preview" aria-label="预览截图" />
+              <span>{{ t('runtime.screenshotPreview') }}</span>
+              <n-switch v-model:value="sc_preview" :aria-label="t('runtime.screenshotPreview')" />
             </div>
             <div class="view-option">
-              <span>自动滚动</span>
-              <n-switch v-model:value="auto_scroll" aria-label="自动滚动" />
+              <span>{{ t('runtime.autoScroll') }}</span>
+              <n-switch v-model:value="auto_scroll" :aria-label="t('runtime.autoScroll')" />
             </div>
             <details v-if="mobile" class="log-task-help">
-              <summary>新增任务说明</summary>
+              <summary>{{ t('runtime.addTaskHelp') }}</summary>
               <div v-for="line in task_help" :key="line">{{ line }}</div>
             </details>
           </div>
@@ -808,7 +895,7 @@ async function db_delete(keys) {
       style="width: min(480px, calc(100vw - 32px))"
     >
       <template #header>
-        <div>数据库管理</div>
+        <div>{{ t('runtime.databaseManagement') }}</div>
       </template>
       <div class="db-admin-body">
         <div class="db-admin-group" v-for="g in db_groups" :key="g.key">
@@ -824,7 +911,9 @@ async function db_delete(keys) {
               <n-checkbox :checked="db_sel[k]" @update:checked="(v) => (db_sel[k] = v)">
                 {{ db_cat_labels[k] }}
               </n-checkbox>
-              <span class="db-cat-count">{{ db_stats[k] ?? 0 }} 条</span>
+              <span class="db-cat-count"
+                >{{ db_stats[k] ?? 0 }}{{ t('runtime.recordCountSuffix') }}</span
+              >
             </div>
           </div>
         </div>
@@ -835,17 +924,15 @@ async function db_delete(keys) {
             :checked="db_all.checked"
             :indeterminate="db_all.indeterminate"
             @update:checked="db_toggle_all"
+            >{{ t('runtime.selectAll') }}</n-checkbox
           >
-            全选
-          </n-checkbox>
           <n-button
             type="error"
             size="small"
             :disabled="!db_any_selected"
             @click="db_confirm_delete"
+            >{{ t('runtime.deleteSelected') }}</n-button
           >
-            删除选中
-          </n-button>
         </div>
       </template>
     </n-modal>

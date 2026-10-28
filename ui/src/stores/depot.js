@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import axios from 'axios'
 import { extract_inventory_counts } from '@/utils/trigger_inventory'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 
 export const usedepotStore = defineStore('depot', () => {
   /**
@@ -53,7 +55,7 @@ export const usedepotStore = defineStore('depot', () => {
         return inventory.value
       })
       .catch((error) => {
-        inventoryLoadError.value = error?.message || '读取库存失败'
+        inventoryLoadError.value = error?.message || t('reports.inventoryReadFailed')
         throw error
       })
       .finally(() => {
@@ -82,7 +84,7 @@ export const usedepotStore = defineStore('depot', () => {
         return history.value
       })
       .catch((error) => {
-        historyError.value = error?.message || '读取历史失败'
+        historyError.value = error?.message || t('reports.historyReadFailed')
         history.value = []
         return []
       })
@@ -107,7 +109,7 @@ export const usedepotStore = defineStore('depot', () => {
     reportError.value = ''
     reportRequest = Promise.all([
       getDepotinfo().catch((error) => {
-        reportError.value = error?.message || '读取仓库失败'
+        reportError.value = error?.message || t('reports.depotReadFailed')
         throw error
       }),
       loadHistory()

@@ -1,5 +1,7 @@
 <script setup>
 import { useDialog, useMessage } from 'naive-ui'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import SidebarBrand from '@/components/SidebarBrand.vue'
 import { useVersionChecksStore } from '@/stores/versionChecks'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
@@ -16,21 +18,23 @@ const dialogs = useDialog()
 const resources = useResourceVersionStore()
 async function checkSoftware() {
   if (!props.enabled || checks.softwareChecking) return
-  const pending = messages.loading('正在检查软件更新…', { duration: 0 })
+  const pending = messages.loading(t('updates.checkingSoftware'), { duration: 0 })
   try {
     const result = await checks.checkSoftware()
     if (result.available) {
       const info = checks.softwareInfo
       if (!result.check_id || info.blockers?.length) {
-        messages.error(info.blockers?.join('；') || '未取得更新目标，请重新检查更新。')
+        messages.error(info.blockers?.join('；') || t('updates.missingSoftwareTarget'))
         return
       }
       showSoftwareUpdateDialog(dialogs, info, result)
     } else {
-      messages.success('软件已与所选渠道一致。')
+      messages.success(t('updates.softwareCurrent'))
     }
   } catch (error) {
-    messages.error(`软件检查未完成：${error.response?.data?.message || error.message}`)
+    messages.error(
+      t('updates.softwareCheckFailed', { message: error.response?.data?.message || error.message })
+    )
   } finally {
     pending.destroy()
   }
@@ -38,19 +42,21 @@ async function checkSoftware() {
 
 async function checkResource() {
   if (!props.enabled || checks.resourceChecking || checks.resourceDisabled) return
-  const pending = messages.loading('正在检查资源更新…', { duration: 0 })
+  const pending = messages.loading(t('updates.checkingResources'), { duration: 0 })
   try {
     const result = await checks.checkResource()
     if (!result) return
     if (result.update_available === true) {
       showResourceUpdateDialog(dialogs, resources, result)
     } else if (result.update_available === false) {
-      messages.success('资源已是最新版本。')
+      messages.success(t('updates.resourcesCurrent'))
     } else {
-      messages.error('资源检查未完成，请稍后重试。')
+      messages.error(t('updates.resourcesCheckIncomplete'))
     }
   } catch (error) {
-    messages.error(`资源检查未完成：${error.response?.data?.message || error.message}`)
+    messages.error(
+      t('updates.resourcesCheckFailed', { message: error.response?.data?.message || error.message })
+    )
   } finally {
     pending.destroy()
   }

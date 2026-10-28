@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { render_op_option, render_op_label, filterOperatorOption } from '@/utils/op_select'
+const { t } = i18n.global
 const model = defineModel({ default: () => [] })
 defineProps({ options: { type: Array, default: () => [] } })
 function update(index, key, value) {
@@ -15,17 +18,27 @@ function update(index, key, value) {
         :options="options"
         filterable
         tag
-        placeholder="干员中文名"
+        :placeholder="t('maaActivities.operatorChineseName')"
+        :filter="filterOperatorOption"
+        :render-label="render_op_label"
+        :render-option="render_op_option"
+        :consistent-menu-width="false"
         @update:value="update(index, 'name', $event)"
       />
-      <n-checkbox :checked="item.use_support" @update:checked="update(index, 'use_support', $event)"
-        >助战</n-checkbox
+      <n-checkbox
+        :checked="item.use_support"
+        @update:checked="update(index, 'use_support', $event)"
+        >{{ t('maaActivities.support') }}</n-checkbox
       >
-      <n-button @click="model = model.filter((_, i) => i !== index)">移除</n-button>
+      <n-button @click="model = model.filter((_, i) => i !== index)">{{
+        t('maaActivities.remove')
+      }}</n-button>
     </n-flex>
-    <n-button v-if="model.length < 3" @click="model = [...model, { name: '', use_support: false }]"
-      >添加招募顺位</n-button
+    <n-button
+      v-if="model.length < 3"
+      @click="model = [...model, { name: '', use_support: false }]"
+      >{{ t('maaActivities.addRecruitPriority') }}</n-button
     >
-    <n-text depth="3">最多三名，按顺序招募，职业不能相同。留空列表沿用原开局干员设置。</n-text>
+    <n-text depth="3">{{ t('maaActivities.recruitHelp') }}</n-text>
   </n-flex>
 </template>

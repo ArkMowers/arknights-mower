@@ -2,23 +2,28 @@
   <section v-if="choices.length" class="growth-level">
     <div class="growth-level__head">
       <div>
-        <h4 class="growth-level__title">等级与精英化</h4>
+        <h4 class="growth-level__title">{{ i18n.global.t('growth.level.levelPromotion') }}</h4>
         <p class="growth-level__current">
-          <span class="growth-level__current-chip">当前</span>
-          {{ eliteLabel(operator.elite) }} {{ operator.level }} 级
+          <span class="growth-level__current-chip">{{
+            i18n.global.t('growth.level.current')
+          }}</span>
+          {{ eliteLabel(operator.elite) }} {{ operator.level }}
+          {{ i18n.global.t('growth.level.levels') }}
         </p>
       </div>
       <div class="growth-level__target">
-        <span class="growth-level__target-label">目标</span>
+        <span class="growth-level__target-label">{{ i18n.global.t('growth.level.target') }}</span>
         <span class="growth-level__target-row">
-          <b :class="{ 'is-empty': !selectedKey }">{{ displayedChoice?.label || '未规划' }}</b>
+          <b :class="{ 'is-empty': !selectedKey }">{{
+            displayedChoice?.label || i18n.global.t('growth.level.notPlanned')
+          }}</b>
           <button
             v-if="selectedKey"
             type="button"
             class="growth-level__clear"
             @click="updateDraft(0)"
           >
-            清除
+            {{ i18n.global.t('growth.level.clear') }}
           </button>
         </span>
       </div>
@@ -29,7 +34,7 @@
       :class="{ 'is-idle': idle }"
       :style="{ '--node-count': choices.length }"
       role="group"
-      aria-label="等级与精英化目标"
+      :aria-label="i18n.global.t('growth.level.levelAndPromotionTarget')"
     >
       <span
         v-if="choices.length > 1"
@@ -64,9 +69,9 @@
         :disabled="node.done || saving || committing"
         :aria-label="
           node.done
-            ? node.label + '（已达到）'
+            ? node.label + i18n.global.t('growth.level.reached')
             : node.target
-              ? node.label + '（当前目标）'
+              ? node.label + i18n.global.t('growth.level.currentTarget')
               : node.label
         "
         :aria-pressed="node.done ? undefined : node.target"
@@ -95,22 +100,26 @@
 
     <div class="growth-level__meta">
       <span v-if="requiredKey" class="growth-level__required">
-        最低前置：{{ allChoices.find((choice) => choice.key === requiredKey)?.label }}
+        {{ i18n.global.t('growth.level.minimumPrerequisite')
+        }}{{ allChoices.find((choice) => choice.key === requiredKey)?.label }}
       </span>
       <span v-else class="growth-level__hint">{{
-        idle ? '选一个里程碑作为目标，材料会自动算好' : '点击节点设置目标；再次点击当前目标可清除'
+        idle
+          ? i18n.global.t('growth.level.chooseATargetMilestoneMaterialsAreCalculated')
+          : i18n.global.t('growth.level.clickAMilestoneToSetTheTarget')
       }}</span>
     </div>
 
     <MasteryMaterials
       v-if="displayedChoice?.summary"
       :summary="displayedChoice.summary"
-      title="等级与精英化材料"
+      :title="i18n.global.t('growth.level.levelPromotionMaterials')"
     />
   </section>
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
 import { computed, nextTick, ref, watch } from 'vue'
 import AddOutline from '@vicons/ionicons5/es/AddOutline'
 import CheckmarkOutline from '@vicons/ionicons5/es/CheckmarkOutline'
@@ -130,7 +139,12 @@ const choices = computed(() =>
   props.operator.rarity <= 3 ? allChoices.value.slice(-1) : allChoices.value
 )
 const committing = ref(false)
-const eliteLabel = (elite) => ['精零', '精一', '精二'][elite] || '精' + elite
+const eliteLabel = (elite) =>
+  [
+    i18n.global.t('growth.level.elite0'),
+    i18n.global.t('growth.level.elite1'),
+    i18n.global.t('growth.level.elite2')
+  ][elite] || i18n.global.t('growth.level.elite') + elite
 const draftIndex = ref(0)
 watch(() => [props.operator.char_id, props.selectedKey], resetDraft, { immediate: true })
 const draftChoice = computed(() => choices.value[draftIndex.value - 1])

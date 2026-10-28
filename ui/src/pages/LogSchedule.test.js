@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope } from 'vue'
 
 import LogSchedule from './LogSchedule.vue'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({ client: null }))
 vi.mock('vue', async (original) => ({
@@ -41,6 +42,7 @@ describe('log schedule browsing', () => {
     page = scope.run(() => LogSchedule.setup({}, { expose: vi.fn() }))
   })
   afterEach(() => {
+    i18n.global.locale.value = 'zh-CN'
     scope.stop()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
@@ -58,6 +60,27 @@ describe('log schedule browsing', () => {
     page.levelFilter.value = 'CRITICAL'
     expect(page.visibleLogs.value).toHaveLength(1)
     expect(page.visibleLogs.value[0].detail).toBe('Traceback\n  ValueError: bad')
+  })
+
+  it('translates log controls while retaining raw log text and level filter values', () => {
+    const message = row('材料不足，保留原任务', 'WARNING')
+    page.logs.value = [message]
+    page.levelFilter.value = 'WARNING'
+    page.loadedAt.value = Date.UTC(2026, 9, 10, 12)
+    const originalWindow = page.windowLabel.value
+    const before = JSON.stringify(page.visibleLogs.value)
+    i18n.global.locale.value = 'en-US'
+    expect(page.levelOptions.value.find((option) => option.value === 'WARNING').label).toBe(
+      'Warning'
+    )
+    expect(page.levelFilter.value).toBe('WARNING')
+    expect(page.loadedAt.value).toBe(Date.UTC(2026, 9, 10, 12))
+    expect(page.windowLabel.value).not.toBe(originalWindow)
+    expect(JSON.stringify(page.visibleLogs.value)).toBe(before)
+    expect(page.logs.value[0].message).toBe(message.message)
+    expect(state.client.get).not.toHaveBeenCalled()
+    expect(state.client.post).not.toHaveBeenCalled()
+    expect(state.client.delete).not.toHaveBeenCalled()
   })
 
   it.each(['jpg', 'png'])(

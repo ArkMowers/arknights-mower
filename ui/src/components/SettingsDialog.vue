@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { defineAsyncComponent } from 'vue'
 import SettingsSidebar from './SettingsSidebar.vue'
 
@@ -11,7 +12,7 @@ const MowerSettings = defineAsyncComponent(() => import('@/pages/Settings.vue'))
   <n-modal
     :show="show"
     preset="card"
-    title="设置"
+    :title="i18n.global.t('settings.dialog.settings')"
     class="settings-dialog"
     data-modal-draggable="false"
     :bordered="false"
@@ -21,7 +22,11 @@ const MowerSettings = defineAsyncComponent(() => import('@/pages/Settings.vue'))
   >
     <div class="settings-dialog-body">
       <SettingsSidebar embedded />
-      <div class="settings-dialog-content" role="region" aria-label="设置内容">
+      <div
+        class="settings-dialog-content"
+        role="region"
+        :aria-label="i18n.global.t('settings.dialog.settingsContent')"
+      >
         <MowerSettings />
       </div>
     </div>

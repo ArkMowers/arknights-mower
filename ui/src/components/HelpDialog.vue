@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { computed, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 
@@ -13,15 +16,18 @@ const dialogStyle = computed(() => ({
   width: 'min(760px, calc(100vw - 32px))',
   '--mower-primary': themeVars.value.primaryColor
 }))
-const title = computed(() => (props.section === 'changelog' ? '更新日志' : '关于 Mower'))
+const title = computed(() =>
+  props.section === 'changelog' ? t('runtime.changelog') : t('runtime.aboutMower')
+)
 const changelog = ref('')
 const loading = ref(false)
-const error = ref('')
+const failed = ref(false)
+const error = computed(() => (failed.value ? t('runtime.changelogFailed') : ''))
 
 async function loadChangelog() {
   if (changelog.value || loading.value) return
   loading.value = true
-  error.value = ''
+  failed.value = false
   try {
     const [{ default: source }, { default: markdownit }, { default: externalLink }] =
       await Promise.all([
@@ -33,7 +39,7 @@ async function loadChangelog() {
       .use(externalLink, { externalTarget: '_blank', rel: 'noopener noreferrer' })
       .render(source)
   } catch {
-    error.value = '更新日志加载失败，请重试。'
+    failed.value = true
   } finally {
     loading.value = false
   }
@@ -60,25 +66,27 @@ watch(
   >
     <template v-if="section === 'about'">
       <h2 class="help-about-name">Arknights Mower</h2>
-      <p>明日方舟基建自动化工具</p>
+      <p>{{ t('runtime.mowerDescription') }}</p>
       <dl class="help-about-versions">
-        <dt>软件版本</dt>
-        <dd>{{ version || '未知' }}</dd>
-        <dt>资源版本</dt>
-        <dd>{{ resourceVersion || '未载入' }}</dd>
+        <dt>{{ t('runtime.softwareVersion') }}</dt>
+        <dd>{{ version || t('runtime.unknown') }}</dd>
+        <dt>{{ t('runtime.resourceVersion') }}</dt>
+        <dd>{{ resourceVersion || t('runtime.notLoaded') }}</dd>
       </dl>
       <n-a
         href="https://github.com/ArkMowers/arknights-mower"
         target="_blank"
         rel="noopener noreferrer"
-        >项目源码</n-a
+        >{{ t('runtime.projectSource') }}</n-a
       >
     </template>
     <template v-else-if="section === 'changelog'">
-      <p v-if="loading" role="status">正在加载更新日志…</p>
+      <p v-if="loading" role="status">{{ t('runtime.loadingChangelog') }}</p>
       <n-alert v-else-if="error" type="error">
         {{ error }}
-        <template #action><n-button @click="loadChangelog">重试</n-button></template>
+        <template #action
+          ><n-button @click="loadChangelog">{{ t('runtime.retry') }}</n-button></template
+        >
       </n-alert>
       <div v-else class="help-changelog" v-html="changelog"></div>
     </template>

@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 // 基建报表的纯数据模型：把基报、合成玉与贸易订单记录合并为逐日读数，并按收益系数折算。
 // 未读取的读数保持 null，与真实的 0 区分；后端为凑满 15 天补的「-」占位行不进入模型。
 
@@ -6,10 +8,34 @@ export const CLOSURE_GOLD = 200
 export const ORUNDUM_PER_PULL = 600
 
 export const reportRanges = [
-  { value: '7', label: '7 天', days: 7 },
-  { value: '14', label: '14 天', days: 14 },
-  { value: '30', label: '30 天', days: 30 },
-  { value: 'all', label: '全部', days: Infinity }
+  {
+    value: '7',
+    get label() {
+      return t('reports.days7')
+    },
+    days: 7
+  },
+  {
+    value: '14',
+    get label() {
+      return t('reports.days14')
+    },
+    days: 14
+  },
+  {
+    value: '30',
+    get label() {
+      return t('reports.days30')
+    },
+    days: 30
+  },
+  {
+    value: 'all',
+    get label() {
+      return t('reports.all')
+    },
+    days: Infinity
+  }
 ]
 
 export function isReading(value) {
@@ -187,6 +213,12 @@ export function formatPercent(value) {
 export function formatDay(date) {
   const parsed = new Date(`${date.replaceAll('/', '-')}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) return date
+  if (i18n.global.locale.value !== 'zh-CN')
+    return new Intl.DateTimeFormat(i18n.global.locale.value, {
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'short'
+    }).format(parsed)
   const week = '日一二三四五六'[parsed.getDay()]
   const month = String(parsed.getMonth() + 1).padStart(2, '0')
   const day = String(parsed.getDate()).padStart(2, '0')

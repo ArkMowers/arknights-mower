@@ -12,6 +12,7 @@ import {
 } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaaWeekly from './MaaWeekly.vue'
+import { i18n } from '@/i18n'
 import axios from 'axios'
 import { CHIP_STAGES, WEEKDAYS } from '@/utils/maa_weekly_plan'
 
@@ -21,7 +22,9 @@ const state = vi.hoisted(() => ({
   editor: null,
   tableProps: null,
   applyChips: null,
-  showTable: null
+  showTable: null,
+  tabs: [],
+  panes: []
 }))
 vi.mock('@/stores/resourceVersion', () => ({ useResourceVersionStore: () => state.resource }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => ({}) }))
@@ -90,12 +93,20 @@ vi.mock('naive-ui', () => {
         () =>
           h('section', [h('header', slots.header?.()), slots.default?.()])
     ),
+    NTabs: defineComponent({
+      props: ['animated'],
+      setup(props, { slots }) {
+        state.tabs.push(props)
+        return () => h('div', slots.default?.())
+      }
+    }),
     NTabPane: defineComponent({
-      props: ['name'],
-      setup:
-        (props, { slots }) =>
-        () =>
+      props: ['name', 'tab'],
+      setup(props, { slots }) {
+        state.panes.push(props)
+        return () =>
           h('div', props.name === 'table' && !state.showTable.value ? [] : slots.default?.())
+      }
     })
   }
 })
@@ -103,6 +114,8 @@ vi.mock('naive-ui', () => {
 describe('周计划芯片按钮排序联动', () => {
   let storage
   beforeEach(() => {
+    state.tabs = []
+    state.panes = []
     storage = new Map([
       [
         'maa-weekly-plan-table-stage-order',
@@ -137,6 +150,7 @@ describe('周计划芯片按钮排序联动', () => {
   })
   afterEach(() => {
     vi.unstubAllGlobals()
+    i18n.global.locale.value = 'zh-CN'
   })
 
   function mountEditor() {
@@ -166,6 +180,27 @@ describe('周计划芯片按钮排序联动', () => {
     state.editor = app._instance
     return app
   }
+
+  it('keeps list and table modes without panel animation in every interface language', async () => {
+    const original = JSON.stringify(state.config.maa_weekly_plan.value)
+    for (const [locale, label] of [
+      ['zh-CN', '列表计划'],
+      ['en-US', 'List view'],
+      ['ja-JP', 'リストで編集'],
+      ['zh-TW', '列表計劃']
+    ]) {
+      i18n.global.locale.value = locale
+      const app = createSSRApp(MaaWeekly)
+      app.provide('mobile', false)
+      await renderToString(app)
+      expect(state.panes.findLast((props) => props.name === 'list')).toMatchObject({ tab: label })
+      expect(state.panes.findLast((props) => props.name === 'table')).toBeDefined()
+      expect(JSON.stringify(state.config.maa_weekly_plan.value)).toBe(original)
+    }
+    expect(state.tabs).toHaveLength(4)
+    expect(state.tabs.every((props) => !props.animated)).toBe(true)
+    expect(axios.get).not.toHaveBeenCalled()
+  })
 
   it.each([true, false])('启用控件显示为 %s 时保留计划帮助与关卡链接', async (showEnable) => {
     const app = createSSRApp(MaaWeekly, { showEnable })
@@ -199,6 +234,12 @@ describe('周计划芯片按钮排序联动', () => {
     axios.get.mockRejectedValueOnce(new Error('offline'))
     const app = mountEditor()
     await vi.waitFor(() => expect(state.editor.setupState.activityError).toContain('读取失败'))
+    i18n.global.locale.value = 'en-US'
+    await nextTick()
+    expect(state.editor.setupState.activityError).toBe(
+      'Could not load event stages. Reload to try again.'
+    )
+    i18n.global.locale.value = 'zh-CN'
     let finishOld
     axios.get.mockImplementationOnce(
       () =>

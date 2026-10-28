@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+import { localizedPlanOptions, planDisplayName } from '@/i18n/plans'
+const { t } = i18n.global
 import PlanFacilityLevels from './PlanFacilityLevels.vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
@@ -21,7 +24,11 @@ const { operators, group_colors, current_plan, plan, workaholic, sub_plan, backu
 const { facility_operator_limit } = plan_store
 const { theme: themePreference, right_side_room_order } = storeToRefs(config_store)
 const theme = useResolvedTheme(themePreference)
-const right_room_names = { contact: '办公室', train: '训练室', recycle: '回收站' }
+const right_room_names = computed(() => ({
+  contact: t('plans.office'),
+  train: t('plans.trainingRoom'),
+  recycle: t('plans.recycling')
+}))
 const right_room_drag_type = 'application/x-mower-right-room'
 
 const outer = ref(null)
@@ -49,7 +56,7 @@ function leave_facility(room, event) {
 
 onBeforeUnmount(finish_drag)
 
-const facility_types = plan_facility_type_options
+const facility_types = computed(() => localizedPlanOptions(plan_facility_type_options))
 
 const facility = inject('facility')
 const edit_locked = inject('planEditLocked', ref(false))
@@ -101,7 +108,7 @@ watch(
 )
 
 const operators_with_none = computed(() => {
-  return [{ value: '', label: '（无）' }].concat(operators.value)
+  return [{ value: '', label: t('plans.none') }].concat(operators.value)
 })
 
 const operators_with_none_free = computed(() => {
@@ -216,8 +223,7 @@ defineExpose({
   outer
 })
 
-import { render_op_option, render_op_label } from '@/utils/op_select'
-import { pinyin_match } from '@/utils/common'
+import { render_op_option, render_op_label, filterOperatorOption } from '@/utils/op_select'
 import { factory_product_options } from '@/utils/base_products'
 
 function fill_with_free() {
@@ -229,12 +235,12 @@ function fill_with_free() {
   }
 }
 
-const trading_products = [
-  { label: '赤金订单', value: 'lmd' },
-  { label: '合成玉订单', value: 'orundum' }
-]
+const trading_products = computed(() => [
+  { label: t('plans.goldOrders'), value: 'lmd' },
+  { label: t('plans.orundumOrders'), value: 'orundum' }
+])
 
-const factory_products = factory_product_options
+const factory_products = computed(() => localizedPlanOptions(factory_product_options))
 
 import { NAvatar } from 'naive-ui'
 
@@ -323,7 +329,7 @@ function set_facility(e) {
               class="draggable"
             >
               <div class="facility-name">
-                {{ current_plan[r].name }}
+                {{ planDisplayName(current_plan[r].name) }}
               </div>
               <div class="avatars">
                 <template v-for="(i, slot) in current_plan[r].plans" :key="slot">
@@ -344,7 +350,7 @@ function set_facility(e) {
               </div>
             </div>
             <div v-show="!current_plan[r].name" class="waiting">
-              <div>待建造</div>
+              <div>{{ t('plans.notBuilt') }}</div>
             </div>
           </div>
         </div>
@@ -358,7 +364,7 @@ function set_facility(e) {
             @click="set_facility('central')"
           >
             <div>
-              <div class="facility-name">控制中枢</div>
+              <div class="facility-name">{{ t('plans.controlCenter') }}</div>
               <div class="avatars">
                 <img
                   v-for="(i, slot) in current_plan.central.plans"
@@ -379,7 +385,7 @@ function set_facility(e) {
             @click="set_facility('dormitory_1')"
           >
             <div>
-              <div class="facility-name">宿舍1</div>
+              <div class="facility-name">{{ t('plans.dormitory1') }}</div>
               <div class="avatars">
                 <img
                   v-for="(i, slot) in current_plan.dormitory_1.plans"
@@ -400,7 +406,7 @@ function set_facility(e) {
             @click="set_facility('dormitory_2')"
           >
             <div>
-              <div class="facility-name">宿舍2</div>
+              <div class="facility-name">{{ t('plans.dormitory2') }}</div>
               <div class="avatars">
                 <img
                   v-for="(i, slot) in current_plan.dormitory_2.plans"
@@ -421,7 +427,7 @@ function set_facility(e) {
             @click="set_facility('dormitory_3')"
           >
             <div>
-              <div class="facility-name">宿舍3</div>
+              <div class="facility-name">{{ t('plans.dormitory3') }}</div>
               <div class="avatars">
                 <img
                   v-for="(i, slot) in current_plan.dormitory_3.plans"
@@ -442,7 +448,7 @@ function set_facility(e) {
             @click="set_facility('dormitory_4')"
           >
             <div>
-              <div class="facility-name">宿舍4</div>
+              <div class="facility-name">{{ t('plans.dormitory4') }}</div>
               <div class="avatars">
                 <img
                   v-for="(i, slot) in current_plan.dormitory_4.plans"
@@ -466,7 +472,7 @@ function set_facility(e) {
             @click="set_facility('meeting')"
           >
             <div>
-              <div class="facility-name">会客室</div>
+              <div class="facility-name">{{ t('plans.receptionRoom') }}</div>
               <div class="avatars">
                 <img
                   v-for="(i, slot) in current_plan.meeting.plans"
@@ -487,7 +493,7 @@ function set_facility(e) {
             @click="set_facility('factory')"
           >
             <div>
-              <div class="facility-name">加工站</div>
+              <div class="facility-name">{{ t('plans.workshop') }}</div>
               <div class="avatars">
                 <img
                   v-for="(i, slot) in current_plan.factory.plans"
@@ -510,8 +516,8 @@ function set_facility(e) {
             'facility-drag-target': hovered_facility === r
           }"
           :draggable="!edit_locked"
-          :aria-label="`${right_room_names[r]}，拖动交换设施位置`"
-          title="拖动交换办公室、训练室与回收站位置；仅保存在本机，不随排班导出"
+          :aria-label="t('plans.dragFacility', { name: right_room_names[r] })"
+          :title="t('plans.rightRoomsDragHelp')"
           @dragstart="drag_right_facility(r, $event)"
           @dragover.prevent="hover_facility(r, $event)"
           @dragenter.prevent="hover_facility(r, $event)"
@@ -528,8 +534,8 @@ function set_facility(e) {
             <div>
               <div class="facility-name">
                 <template v-if="r === 'train'">
-                  <div>协助位</div>
-                  <div>训练位</div>
+                  <div>{{ t('plans.assistantPosition') }}</div>
+                  <div>{{ t('plans.traineePosition') }}</div>
                 </template>
                 <template v-else>{{ right_room_names[r] }}</template>
               </div>
@@ -556,7 +562,7 @@ function set_facility(e) {
             @click="set_facility('gaming_1')"
           >
             <div>
-              <div class="facility-name">活动室1</div>
+              <div class="facility-name">{{ t('plans.activityRoomNumber', { number: 1 }) }}</div>
               <div class="avatars">
                 <img
                   v-for="i in current_plan.gaming_1.plans"
@@ -576,7 +582,7 @@ function set_facility(e) {
             @click="set_facility('gaming_2')"
           >
             <div>
-              <div class="facility-name">活动室2</div>
+              <div class="facility-name">{{ t('plans.activityRoomNumber', { number: 2 }) }}</div>
               <div class="avatars">
                 <img
                   v-for="i in current_plan.gaming_2.plans"
@@ -596,7 +602,7 @@ function set_facility(e) {
             @click="set_facility('gaming_3')"
           >
             <div>
-              <div class="facility-name">活动室3</div>
+              <div class="facility-name">{{ t('plans.activityRoomNumber', { number: 3 }) }}</div>
               <div class="avatars">
                 <img
                   v-for="i in current_plan.gaming_3.plans"
@@ -618,7 +624,7 @@ function set_facility(e) {
             <td v-if="!facility.startsWith('gaming_')">
               <PlanFacilityLevels mode="level" :facility="facility" :locked="edit_locked" />
             </td>
-            <td>设施类别：</td>
+            <td>{{ t('plans.facilityTypeLabel') }}</td>
             <td>
               <n-select
                 v-model:value="current_plan[facility].name"
@@ -627,15 +633,17 @@ function set_facility(e) {
                 class="type-select"
                 v-if="facility.startsWith('room')"
               />
-              <span v-else class="type-select">{{ right_side_facility_name }}</span>
+              <span v-else class="type-select">{{
+                planDisplayName(right_side_facility_name)
+              }}</span>
             </td>
             <template v-if="['制造站', '贸易站'].includes(current_plan[facility].name)">
               <td>
-                产物
-                <help-text v-if="current_plan[facility].name == '制造站'">
-                  制造站会随排班自动核对并切换产物。
-                </help-text>
-                <help-text v-else> 贸易站会随排班自动核对并切换订单类型。 </help-text>
+                {{ t('plans.product')
+                }}<help-text v-if="current_plan[facility].name == '制造站'">{{
+                  t('plans.factoryProductHelp')
+                }}</help-text>
+                <help-text v-else>{{ t('plans.tradeProductHelp') }}</help-text>
               </td>
               <td>
                 <n-select
@@ -656,24 +664,26 @@ function set_facility(e) {
                 @click="fill_with_free"
                 :disabled="edit_locked"
                 v-if="facility.startsWith('dorm')"
+                >{{ t('plans.fillFree') }}</n-button
               >
-                此宿舍内空位填充Free
-              </n-button>
             </td>
             <td v-if="sub_plan !== 'main'">
               <n-button
                 ghost
                 :disabled="edit_locked"
-                title="用主表此设施的配置覆盖当前副表的此设施"
+                :title="t('plans.importFacilityHelp')"
                 @click="!edit_locked && plan_store.import_main_facility(facility)"
+                >{{ t('plans.importFacility') }}</n-button
               >
-                从主表导入此设施
-              </n-button>
             </td>
             <td>
-              <n-button ghost type="error" @click="clear" :disabled="edit_locked || facility_empty">
-                清空此设施内干员
-              </n-button>
+              <n-button
+                ghost
+                type="error"
+                @click="clear"
+                :disabled="edit_locked || facility_empty"
+                >{{ t('plans.clearFacility') }}</n-button
+              >
             </td>
           </tr>
         </tbody>
@@ -691,9 +701,13 @@ function set_facility(e) {
               class="select-label"
               :rowspan="planBindings(current_plan[facility].plans[i - 1]).length"
             >
-              <template v-if="facility == 'train' && i == 1">协助位</template>
-              <template v-else-if="facility == 'train' && i == 2">训练位</template>
-              <template v-else>干员：</template>
+              <template v-if="facility == 'train' && i == 1">{{
+                t('plans.assistantPosition')
+              }}</template>
+              <template v-else-if="facility == 'train' && i == 2">{{
+                t('plans.traineePosition')
+              }}</template>
+              <template v-else>{{ t('plans.operatorLabel') }}</template>
             </td>
             <td
               v-if="bindingIndex === 0"
@@ -706,26 +720,22 @@ function set_facility(e) {
                 class="operator-select"
                 v-model:value="current_plan[facility].plans[i - 1].agent"
                 :disabled="edit_locked"
-                :filter="(p, o) => pinyin_match(o.label, p)"
+                :filter="filterOperatorOption"
                 :render-label="render_op_label"
                 :render-option="render_op_option"
               />
             </td>
             <td class="select-label">
-              <span>组</span>
+              <span>{{ t('plans.group') }}</span>
               <help-text>
-                <p>同组一起上下班。宿舍成员随组由替班接岗，不额外占床。</p>
-                <p>点击加号新增绑组，每列分别设置替班；组名不能重复，允许一列空绑组。</p>
-                <p>
-                  未绑组的0心情工作干员、整组均为0心情工作干员时可不填普通替班；混合组仍需为每位成员填写替班。
-                </p>
-                <p>多绑组干员使用所有在休绑组均兼容的替班，不参与组内心情和回班时间计算。</p>
-                <p>
-                  工作主班可填写一列空绑组，按自身心情独立轮休；其他绑组下班时优先使用对应替班，已在休息的干员继续恢复。宿舍候补仍可被更高优先级主班腾床。
-                </p>
-                <p>参与轮休的具名绑组至少需要一名参与心情计算的非宿舍干员。</p>
-                <p>宿舍替班按已知心情从低到高选择，已在岗者保留。</p>
-                <p>宿舍替换填 Free 可在下班时开放休息床位；具体替班可填写同组工作主班或非主班。</p>
+                <p>{{ t('plans.bindingShiftHelp') }}</p>
+                <p>{{ t('plans.bindingAddHelp') }}</p>
+                <p>{{ t('plans.bindingZeroHelp') }}</p>
+                <p>{{ t('plans.bindingMultipleHelp') }}</p>
+                <p>{{ t('plans.bindingIndependentHelp') }}</p>
+                <p>{{ t('plans.bindingNamedHelp') }}</p>
+                <p>{{ t('plans.bindingDormHelp') }}</p>
+                <p>{{ t('plans.bindingFreeHelp') }}</p>
               </help-text>
             </td>
             <td class="table-space group">
@@ -738,8 +748,8 @@ function set_facility(e) {
                   <n-button
                     v-if="bindingIndex === 0"
                     class="add-binding"
-                    aria-label="新增绑组"
-                    title="新增绑组"
+                    :aria-label="t('plans.addBinding')"
+                    :title="t('plans.addBinding')"
                     :disabled="
                       edit_locked ||
                       ['', 'Free', 'Current', '菲亚梅塔'].includes(
@@ -752,8 +762,8 @@ function set_facility(e) {
                   <n-button
                     v-if="bindingIndex > 0"
                     class="remove-binding"
-                    aria-label="删除此绑组"
-                    title="删除此绑组"
+                    :aria-label="t('plans.removeBinding')"
+                    :title="t('plans.removeBinding')"
                     :disabled="edit_locked"
                     @click="removePlanBinding(current_plan[facility].plans[i - 1], bindingIndex)"
                     >−</n-button
@@ -761,7 +771,7 @@ function set_facility(e) {
                 </div>
               </div>
             </td>
-            <td class="select-label">替换：</td>
+            <td class="select-label">{{ t('plans.replacementLabel') }}</td>
             <td>
               <n-form-item :show-label="false" :show-feedback="false">
                 <slick-operator-select

@@ -1,4 +1,9 @@
 import catalog from '../../../arknights_mower/data/building_skill.json'
+import { i18n } from '@/i18n'
+import { baseSkillText } from '@/i18n/baseSkills'
+import { operatorDisplayName } from '@/i18n/gameNames'
+
+const { t } = i18n.global
 
 // Formulas follow the bundled building-skill catalog; skill_key identifies upgrades.
 const maxSkills = new Map(
@@ -15,12 +20,27 @@ const maxSkills = new Map(
     return [operator.name, [...skills.values()].map((entry) => ({ ...entry, status: 'active' }))]
   })
 )
-const number = (key, label, value, max, min = 0) => ({ key, label, value, min, max })
+const number = (key, label, value, max, min = 0) => ({
+  key,
+  get label() {
+    return baseSkillText(label)
+  },
+  value,
+  min,
+  max
+})
 const choice = (key, label, value, options) => ({
   key,
-  label,
+  get label() {
+    return baseSkillText(label)
+  },
   value,
-  options: options.map((option) => ({ label: option, value: option }))
+  options: options.map((option) => ({
+    get label() {
+      return baseSkillText(option)
+    },
+    value: option
+  }))
 })
 const dorm = () => number('dorm', '宿舍人数', 20, 20)
 const recruits = () => number('recruits', '额外招募位', 2, 2)
@@ -66,7 +86,16 @@ export function estimateFields(group) {
       return [number('targetHunters', '每个制造站猎人数', 2, 3, 1)]
     case 'builtin-tianmao':
     case 'builtin-cloud':
-      return [{ key: 'average', label: '按照平均效率计算', type: 'checkbox', value: true }]
+      return [
+        {
+          key: 'average',
+          get label() {
+            return baseSkillText('按照平均效率计算')
+          },
+          type: 'checkbox',
+          value: true
+        }
+      ]
     case 'builtin-pozy':
       return [number('goldLines', '实际赤金生产线', 4, 5)]
     case 'builtin-siracusa':
@@ -162,15 +191,15 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
   for (const name of active) {
     const item = roster.get(name)
     if (item?.ownership === 'unowned' && !maxLevel && name !== '孑') {
-      result.warnings.push(`${name}未拥有，无法按实际练度计算`)
+      result.warnings.push(t('baseSkills.unownedError', { name: operatorDisplayName(name) }))
     } else if (
       !skillsFor(name)?.length ||
       skillsFor(name).some((skill) => skill.status === 'unknown')
     ) {
       result.warnings.push(
         name === '孑'
-          ? '孑缺少森空岛练度，请同步或手选精英阶段'
-          : `${name}缺少森空岛练度，请同步后计算`
+          ? t('baseSkills.missingJaye')
+          : t('baseSkills.missingGrowth', { name: operatorDisplayName(name) })
       )
     }
   }
@@ -203,17 +232,28 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
     const occupants = names.filter(on)
     if (occupants.length > limit) {
       result.valid = false
-      result.warnings.push(`${room}已选${occupants.length}人，最多${limit}人，请取消部分干员`)
+      result.warnings.push(
+        t('baseSkills.capacityError', {
+          room:
+            room === '同一制造站'
+              ? t('baseEstimates.sameFactory')
+              : room === '同一贸易站'
+                ? t('baseEstimates.sameTradingPost')
+                : baseSkillText(room),
+          count: occupants.length,
+          limit
+        })
+      )
     }
     return occupants.length
   }
-  const tradeMetric = (value) => metric('贸易订单效率', value)
-  const factoryMetric = (value, product = '通用') => metric(`${product}制造生产力`, value)
+  const tradeMetric = (value) => metric(t('baseEstimates.tradeMetric'), value)
+  const factoryMetric = (value, product = '通用') =>
+    metric(t('baseSkills.factoryMetric', { product: baseSkillText(product) }), value)
   const factoryProducts = (common, products) => {
     if (common || !Object.keys(products).length) factoryMetric(common)
     for (const [product, extra] of Object.entries(products)) factoryMetric(common + extra, product)
-    if (common && Object.keys(products).length)
-      detail('各配方效率已包含通用制造加成，选择对应配方的结果，不重复叠加')
+    if (common && Object.keys(products).length) detail(t('baseEstimates.recipeHelp'))
   }
   switch (group.id) {
     case 'builtin-smoke': {
@@ -223,27 +263,51 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         (has('令', 1) ? 15 : 0) +
         (has('夕') ? 15 : 0) +
         (has('乌有', 1) ? options.dorm : 0)
-      metric('人间烟火', smoke, '点')
-      if (has('重岳')) detail(`重岳：${options.sui}名岁 × 5 = ${options.sui * 5}烟火`)
+      metric(t('baseEstimates.smokeMetric'), smoke, '点')
+      if (has('重岳'))
+        detail(
+          t('baseEstimates.smokeSui', {
+            name: operatorDisplayName('重岳'),
+            count: options.sui,
+            value: options.sui * 5
+          })
+        )
       if (has('桑葚', 1))
-        detail(`桑葚：${options.recruits}个额外招募位 × 10 = ${options.recruits * 10}烟火`)
-      if (has('令', 1)) detail('令：烟火模式，心情大于12，提供15烟火')
-      if (has('夕')) detail('夕：烟火模式，心情不高于12，提供15烟火')
+        detail(
+          t('baseEstimates.smokeRecruit', {
+            name: operatorDisplayName('桑葚'),
+            count: options.recruits,
+            value: options.recruits * 10
+          })
+        )
+      if (has('令', 1))
+        detail(t('baseEstimates.lingSmoke', { operator0: operatorDisplayName('令') }))
+      if (has('夕')) detail(t('baseEstimates.duskSmoke', { operator0: operatorDisplayName('夕') }))
       if (has('乌有', 1)) {
-        detail(`乌有：${options.dorm}名宿舍干员提供${options.dorm}烟火`)
+        detail(
+          t('baseEstimates.smokeDorm', { name: operatorDisplayName('乌有'), count: options.dorm })
+        )
         tradeMetric(smoke)
       }
-      if (has('桑葚')) metric('公招联络速度', tier('桑葚') === 1 ? 20 : 10)
+      if (has('桑葚')) metric(t('baseEstimates.recruitMetric'), tier('桑葚') === 1 ? 20 : 10)
       const cut =
         has('截云', 1) && has('截云') ? Math.floor(smoke / 5) * (tier('截云', 1) === 1 ? 2 : 1) : 0
       const shu = has('黍', 1) ? Math.floor(smoke / 3) : 0
       if (on('截云') || on('黍')) {
         factoryMetric(cut + shu)
-        detail(`截云 ${cut}% + 黍 ${shu}%，每5/3点烟火按完整组折算`)
+        detail(
+          t('baseEstimates.smokeConversion', {
+            first: operatorDisplayName('截云'),
+            firstValue: cut,
+            second: operatorDisplayName('黍'),
+            secondValue: shu
+          })
+        )
       }
       if (has('望')) {
-        if (options.trade + options.power >= options.factories) metric('所有贸易站订单效率', 7)
-        else metric('所有制造站·通用制造生产力', 2)
+        if (options.trade + options.power >= options.factories)
+          metric(t('baseEstimates.allTradeMetric'), 7)
+        else metric(t('baseEstimates.allFactoryMetric'), 2)
       }
       capacity(['重岳', '令', '夕', '望'], '中枢', 5)
       break
@@ -258,40 +322,70 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         (has('车尔尼', 1) ? options.dormLevel : 0) +
         (has('爱丽丝', 1) ? options.dormLevel : 0)
       const resonance = (has('黑键') ? points : 0) + (has('塑心') ? options.roomResidents : 0)
-      metric('感知信息', points, '点')
+      metric(t('baseEstimates.perceptionMetric'), points, '点')
       if (has('迷迭香', 1)) factoryMetric(Math.floor(points / (tier('迷迭香', 1) === 1 ? 1 : 2)))
       if (has('黑键', 1)) {
-        metric('无声共鸣', resonance, '点')
+        metric(t('baseEstimates.resonanceMetric'), resonance, '点')
         tradeMetric(Math.floor(resonance / (tier('黑键', 1) === 1 ? 2 : 4)))
       }
       const recruitment = has('絮雨') ? 20 : 0
       if (on('絮雨') || on('琴柳'))
-        metric('公招联络速度', recruitment + (has('琴柳', 1) && recruitment + 5 < 30 ? 20 : 0))
+        metric(
+          t('baseEstimates.recruitMetric'),
+          recruitment + (has('琴柳', 1) && recruitment + 5 < 30 ? 20 : 0)
+        )
       for (const name of ['迷迭香', '黑键'])
-        if (has(name)) detail(`${name}：${options.dorm}名宿舍干员提供${options.dorm}感知`)
-      if (has('絮雨', 1)) detail(`絮雨：${options.recruits * 10}感知，心情耗尽后清空`)
-      if (has('令', 1)) detail('令：感知模式，心情不高于12，提供10感知')
-      if (has('夕', 1)) detail('夕：感知模式，心情大于12，提供10感知')
+        if (has(name))
+          detail(
+            t('baseEstimates.perceptionDorm', {
+              name: operatorDisplayName(name),
+              count: options.dorm
+            })
+          )
+      if (has('絮雨', 1))
+        detail(
+          t('baseEstimates.perceptionRecruit', {
+            name: operatorDisplayName('絮雨'),
+            value: options.recruits * 10
+          })
+        )
+      if (has('令', 1))
+        detail(t('baseEstimates.lingPerception', { operator0: operatorDisplayName('令') }))
+      if (has('夕', 1))
+        detail(t('baseEstimates.duskPerception', { operator0: operatorDisplayName('夕') }))
       for (const name of ['车尔尼', '爱丽丝'])
-        if (has(name, 1)) detail(`${name}：${options.dormLevel}级宿舍提供${options.dormLevel}感知`)
-      detail('琴柳按办公室基础联络速度5%判断；比例转换按完整组折算')
+        if (has(name, 1))
+          detail(
+            t('baseEstimates.perceptionLevel', {
+              name: operatorDisplayName(name),
+              level: options.dormLevel
+            })
+          )
+      detail(t('baseEstimates.saileachRule', { operator0: operatorDisplayName('琴柳') }))
       break
     }
     case 'builtin-lgd': {
-      if (has('斩业星熊', 1) && on('诗怀雅')) metric('所有制造站·通用制造生产力', 3)
-      if (has('诗怀雅')) metric('所有贸易站订单效率', 7)
-      detail('两人均进驻中枢')
+      if (has('斩业星熊', 1) && on('诗怀雅')) metric(t('baseEstimates.allFactoryMetric'), 3)
+      if (has('诗怀雅')) metric(t('baseEstimates.allTradeMetric'), 7)
+      detail(t('baseEstimates.bothCenter'))
       break
     }
     case 'builtin-monster-hunter': {
       const center = count(['火龙S黑角', '麒麟R夜刀'])
       const points = (has('火龙S黑角') ? center * 2 : 0) + (has('麒麟R夜刀') ? 8 : 0)
-      metric('木天蓼', points, '点')
-      if (center === 2 && has('火龙S黑角', 1)) metric('所有贸易站订单效率', 7)
-      if (center === 2 && has('麒麟R夜刀', 1)) metric('所有制造站·通用制造生产力', 2)
+      metric(t('baseEstimates.matatabiMetric'), points, '点')
+      if (center === 2 && has('火龙S黑角', 1)) metric(t('baseEstimates.allTradeMetric'), 7)
+      if (center === 2 && has('麒麟R夜刀', 1)) metric(t('baseEstimates.allFactoryMetric'), 2)
       if (options.catRoom === '贸易站' && has('泰拉大陆调查团')) tradeMetric(5 + 3 * points)
       if (options.catRoom === '制造站' && has('泰拉大陆调查团', 1)) factoryMetric(5 + points)
-      detail('黑角和夜刀进驻中枢，调查团按所选设施计算')
+      detail(
+        t('baseEstimates.hunterCenter', {
+          operator0:
+            i18n.global.locale.value === 'zh-CN' ? '夜刀' : operatorDisplayName('麒麟R夜刀'),
+          operator1:
+            i18n.global.locale.value === 'zh-CN' ? '黑角' : operatorDisplayName('火龙S黑角')
+        })
+      )
       break
     }
     case 'builtin-automation': {
@@ -300,7 +394,7 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         options.power +
         (center && has('森蚺', 1) && present('Lancet-2') ? 2 : 0) +
         (has('承曦格雷伊', 1) && options.platforms === '无' ? 1 : 0)
-      metric('计入技能的发电站', virtualPower, '间')
+      metric(t('baseEstimates.virtualPowerMetric'), virtualPower, '间')
       const workers = ['温蒂', '清流', '冬时', ...(!center ? ['森蚺'] : [])]
       const staff = capacity(workers, '同一制造站')
       const suppressed = has('温蒂') || (!center && has('森蚺')) || has('冬时')
@@ -309,17 +403,31 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
       const purestream = has('清流', 1) ? options.trade * 20 : 0
       const winter = tier('冬时') === 1 ? staff * 10 : 0
       factoryProducts(eunectes + weedy + winter, has('清流', 1) ? { 赤金: purestream } : {})
-      detail(`森蚺 ${eunectes}% + 温蒂 ${weedy}% + 清流 ${purestream}% + 冬时 ${winter}%`)
-      if (suppressed) detail('仅保留按设施数量提供的生产加成，其他普通生产力归零')
+      detail(
+        t('baseEstimates.automationParts', {
+          first: operatorDisplayName('森蚺'),
+          firstValue: eunectes,
+          second: operatorDisplayName('温蒂'),
+          secondValue: weedy,
+          third: operatorDisplayName('清流'),
+          thirdValue: purestream,
+          fourth: operatorDisplayName('冬时'),
+          fourthValue: winter
+        })
+      )
+      if (suppressed) detail(t('baseEstimates.suppressedRule'))
       if (has('承曦格雷伊'))
-        metric('承曦格雷伊·无人机充能', Math.min(25, Math.floor(options.droneCap / 10)))
+        metric(
+          t('baseEstimates.greyyMetric', { operator0: operatorDisplayName('承曦格雷伊') }),
+          Math.min(25, Math.floor(options.droneCap / 10))
+        )
       if (has('流明'))
         metric(
-          '流明·宿舍全员心情恢复',
+          t('baseEstimates.lumenMetric', { operator0: operatorDisplayName('流明') }),
           (tier('流明') === 1 ? 0.15 : 0.1) + options.power * 0.05,
           '/小时'
         )
-      detail('Lancet-2按发电站在岗条件计数，不计算自身充能技能')
+      detail(t('baseEstimates.lancetRule', { operator0: operatorDisplayName('Lancet-2') }))
       break
     }
     case 'builtin-abyss': {
@@ -333,7 +441,11 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         const cap = tier('歌蕾蒂娅', 1) === 1 ? 90 : 45
         stations.forEach((hunters, index) =>
           metric(
-            `制造站${'一二三四'[index]}·通用制造生产力`,
+            t('baseEstimates.numberedFactory', {
+              number: ['zh-CN', 'zh-TW'].includes(i18n.global.locale.value)
+                ? '一二三四'[index]
+                : index + 1
+            }),
             Math.min(cap, manufacturers * hunters * perHunter)
           )
         )
@@ -343,7 +455,19 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
           (tier('深巡') === 1 ? 30 : 25) + (on('乌尔比安') ? (tier('深巡') === 1 ? 10 : 5) : 0)
         )
       detail(
-        `歌蕾蒂娅在中枢，${manufacturers}名猎人分配到${stations.length}个制造站${stations.length ? `，${stations.map((hunters, index) => `第${index + 1}站${hunters}人`).join('、')}` : ''}`
+        t('baseEstimates.hunterDistribution', {
+          name: operatorDisplayName('歌蕾蒂娅'),
+          count: manufacturers,
+          stations: stations.length,
+          distribution: stations.length
+            ? t('baseEstimates.distributionPrefix') +
+              stations
+                .map((hunters, index) =>
+                  t('baseEstimates.hunterStation', { number: index + 1, count: hunters })
+                )
+                .join(t('baseEstimates.listSeparator'))
+            : ''
+        })
       )
       break
     }
@@ -365,29 +489,50 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         ...(pineBonus ? { 经验: pineBonus } : {}),
         ...(pineBonus || gold ? { 赤金: gold - pineBonus } : {})
       })
-      detail(`制造干员基础 ${base}% + 骑士/红松林加成 ${bonus}%`)
-      detail('薇薇安娜、焰尾在中枢；焰尾增加经验生产、降低赤金生产；砾仅增加赤金生产')
+      detail(t('baseEstimates.redpineParts', { base, bonus }))
+      detail(
+        t('baseEstimates.redpineRule', {
+          operator0: operatorDisplayName('薇薇安娜'),
+          operator1: operatorDisplayName('焰尾'),
+          operator2: operatorDisplayName('砾')
+        })
+      )
       break
     }
     case 'builtin-tianmao': {
       const rooms = count(['机械师', '烛煌', '真言', '迷迭香', '煌', '逻各斯', '电弧'], present)
-      metric('精英干员设施', rooms, '间')
-      if (has('凯尔希·思衡托', 1)) metric('公招联络速度', 30 + Math.min(5, rooms) * 4)
+      metric(t('baseEstimates.eliteMetric'), rooms, '间')
+      if (has('凯尔希·思衡托', 1))
+        metric(t('baseEstimates.recruitMetric'), 30 + Math.min(5, rooms) * 4)
       if (on('机械师'))
         factoryMetric(
           (has('机械师') ? 30 : 0) +
             (has('机械师', 1) ? (options.average ? (10 * (workCycle - 12)) / workCycle : 10) : 0),
           '经验'
         )
-      if (has('烛煌', 1)) metric('无人机充能速度', 20)
+      if (has('烛煌', 1)) metric(t('baseEstimates.droneMetric'), 20)
       if (has('真言')) tradeMetric(tier('真言') === 1 ? 25 + Math.min(10, rooms) * 2 : 20)
-      detail('凯尔希在办公室、机械师在制造站、烛煌在发电站、真言在贸易站')
-      detail('精干设施数按已选精英干员人数计算，分别进驻不同设施；凯尔希最多计5间，真言最多计10间')
+      detail(
+        t('baseEstimates.elitePlacement', {
+          operator0:
+            i18n.global.locale.value === 'zh-CN' ? '凯尔希' : operatorDisplayName('凯尔希·思衡托'),
+          operator1: operatorDisplayName('机械师'),
+          operator2: operatorDisplayName('烛煌'),
+          operator3: operatorDisplayName('真言')
+        })
+      )
+      detail(
+        t('baseEstimates.eliteRoomRule', {
+          operator0:
+            i18n.global.locale.value === 'zh-CN' ? '凯尔希' : operatorDisplayName('凯尔希·思衡托'),
+          operator1: operatorDisplayName('真言')
+        })
+      )
       if (on('机械师'))
         detail(
           options.average
-            ? '机械师按右满30小时工作周期取平均，挂件不叠加自身技能'
-            : '机械师按工作满12小时后的最高效率计算，挂件不叠加自身技能'
+            ? t('baseEstimates.mechanistAverage', { operator0: operatorDisplayName('机械师') })
+            : t('baseEstimates.mechanistMaximum', { operator0: operatorDisplayName('机械师') })
         )
       break
     }
@@ -397,7 +542,7 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         present
       )
       const capped = Math.min(5, rhine)
-      metric('其他莱茵生命干员', capped, '人')
+      metric(t('baseEstimates.rhineMetric'), capped, '人')
       const tech = familyCount(['娜斯提', '多萝西'], '莱茵科技·')
       const nasti = (has('娜斯提') ? 25 : 0) + (has('娜斯提', 1) ? capped * 3 : 0)
       const dorothy = (has('多萝西', 1) ? 25 : 0) + (has('多萝西') ? tech * 5 : 0)
@@ -406,16 +551,29 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
           (has('娜斯提') ? 25 : 0) + dorothy,
           has('娜斯提', 1) ? { 赤金: capped * 3 } : {}
         )
-      if (has('缪尔赛思', 1)) metric('无人机充能速度', 10 + capped * 3)
-      detail(`娜斯提 ${nasti}% + 多萝西 ${dorothy}%；缪尔赛思在发电站`)
+      if (has('缪尔赛思', 1)) metric(t('baseEstimates.droneMetric'), 10 + capped * 3)
+      detail(
+        t('baseEstimates.rhineParts', {
+          first: operatorDisplayName('娜斯提'),
+          firstValue: nasti,
+          second: operatorDisplayName('多萝西'),
+          secondValue: dorothy,
+          third: operatorDisplayName('缪尔赛思')
+        })
+      )
       break
     }
     case 'builtin-makoto': {
       const sees = Math.min(4, count(members, present))
-      metric('S.E.E.S.在岗人数', sees, '人')
+      metric(t('baseEstimates.seesMetric'), sees, '人')
       if (has('结城理', 1)) factoryMetric(20 + sees * 5)
-      if (has('埃癸斯')) metric('无人机充能速度', 15 + (on('结城理') ? 5 : 0))
-      detail('结城理在制造站，埃癸斯在发电站，挂件仅提供S.E.E.S.人数')
+      if (has('埃癸斯')) metric(t('baseEstimates.droneMetric'), 15 + (on('结城理') ? 5 : 0))
+      detail(
+        t('baseEstimates.seesRule', {
+          operator0: operatorDisplayName('埃癸斯'),
+          operator1: operatorDisplayName('结城理')
+        })
+      )
       break
     }
     case 'builtin-pozy': {
@@ -426,17 +584,37 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         ? Math.floor(options.goldLines / (tier('绮良') === 1 ? 2 : 4)) * 2
         : 0
       const lines = baseLines + extraLines
-      metric('赤金生产线', lines, '条')
+      metric(t('baseEstimates.goldMetric'), lines, '条')
       const pozy = has('鸿雪') ? lines * 5 : 0
       const tuye = has('图耶') ? 5 + Math.floor(lines / (tier('图耶') === 1 ? 2 : 4)) * 15 : 0
       tradeMetric(pozy + tuye + (has('绮良') ? 5 : 0))
       detail(
-        `实际${options.goldLines}条 + 鸿雪杜林${has('鸿雪', 1) ? durin : 0}条 + 绮良${extraLines}条，绮良仅按实际赤金生产线计算`
+        t('baseEstimates.goldLinesParts', {
+          actual: options.goldLines,
+          first: operatorDisplayName('鸿雪'),
+          bonus: has('鸿雪', 1) ? durin : 0,
+          second: operatorDisplayName('绮良'),
+          extra: extraLines
+        })
       )
-      detail(`鸿雪 ${pozy}% + 图耶 ${tuye}% + 绮良 ${has('绮良') ? 5 : 0}%`)
+      detail(
+        t('baseEstimates.pozyParts', {
+          first: operatorDisplayName('鸿雪'),
+          firstValue: pozy,
+          second: operatorDisplayName('图耶'),
+          secondValue: tuye,
+          third: operatorDisplayName('绮良'),
+          thirdValue: has('绮良') ? 5 : 0
+        })
+      )
       if (on('褐果')) {
         factoryProducts(has('褐果') ? 15 : 0, has('褐果', 1) ? { 源石: 30 } : {})
-        detail('褐果在另一个制造站，源石结果包含通用加成；杜林族须有心情')
+        detail(
+          t('baseEstimates.chestnutRule', {
+            operator0: operatorDisplayName('杜林'),
+            operator1: operatorDisplayName('褐果')
+          })
+        )
       }
       break
     }
@@ -447,8 +625,17 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         : 0
       const bonus = has('八幡海铃', 1) ? count(['伺夜', '贝洛内']) * 5 : 0
       tradeMetric(vigil + belone + bonus)
-      if (has('八幡海铃')) metric('公招联络速度', 10)
-      detail(`伺夜 ${vigil}% + 贝洛内 ${belone}% + 海铃中枢加成 ${bonus}%`)
+      if (has('八幡海铃')) metric(t('baseEstimates.recruitMetric'), 10)
+      detail(
+        t('baseEstimates.siracusaParts', {
+          first: operatorDisplayName('伺夜'),
+          firstValue: vigil,
+          second: operatorDisplayName('贝洛内'),
+          secondValue: belone,
+          third: operatorDisplayName('八幡海铃'),
+          bonus
+        })
+      )
       break
     }
     case 'builtin-exusiai': {
@@ -456,7 +643,12 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         (has('能天使') ? (tier('能天使') === 1 ? 35 : 20) : 0) +
           (has('蕾缪安') ? 20 + (tier('蕾缪安') === 1 && on('能天使') ? 25 : 0) : 0)
       )
-      detail('能天使与蕾缪安进驻同一贸易站')
+      detail(
+        t('baseEstimates.exusiaiRule', {
+          operator0: operatorDisplayName('能天使'),
+          operator1: operatorDisplayName('蕾缪安')
+        })
+      )
       break
     }
     case 'builtin-glasgow': {
@@ -466,8 +658,12 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         ? 30 + (tier('维娜·维多利亚') === 1 && gang > 0 ? 10 : 0)
         : 0
       tradeMetric(morgan + vinas + (has('戴菲恩', 1) ? gang * 10 : 0))
-      detail('戴菲恩进驻中枢，其余勾选成员进驻同一贸易站')
-      detail('推进之王在贸易站仅提供阵营人数，不计宿舍技能')
+      detail(
+        t('baseEstimates.delphineRule', {
+          operator0: operatorDisplayName('戴菲恩')
+        })
+      )
+      detail(t('baseEstimates.siegeRule', { operator0: operatorDisplayName('推进之王') }))
       break
     }
     case 'builtin-karlan': {
@@ -498,19 +694,47 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
       const swireBonus = has('琳琅诗怀雅', 1) ? Math.max(0, addedCap - reduction) * 4 : 0
       const peers = beforeSwire + swireBonus
       const jaye = has('孑') ? cap * 4 : 0
-      metric('订单上限', cap, '笔')
+      metric(t('baseEstimates.orderMetric'), cap, '笔')
       tradeMetric(peers + jaye)
       if (has('孑'))
         detail(
-          `孑${has('孑', 1) ? '精一及以上' : '未精英化'}，使用${followJayeProgression ? '森空岛练度' : '手动选择'}`
+          t('baseEstimates.jayeStage', {
+            name: operatorDisplayName('孑'),
+            stage: baseSkillText(has('孑', 1) ? '精一及以上' : '未精英化'),
+            source: t(
+              followJayeProgression
+                ? 'baseEstimates.sklandProgression'
+                : 'baseEstimates.manualSelection'
+            )
+          })
         )
-      detail(`其他干员 ${peers}% + 孑 ${jaye}%，按空单状态估算`)
-      detail(`订单上限增加${positiveCap}，锏减少${negativeCap}，孑减少${reduction}，上限至少1`)
+      detail(t('baseEstimates.jayeParts', { peers, name: operatorDisplayName('孑'), value: jaye }))
+      detail(
+        t('baseEstimates.orderCapParts', {
+          positive: positiveCap,
+          first: operatorDisplayName('锏'),
+          negative: negativeCap,
+          second: operatorDisplayName('孑'),
+          reduction
+        })
+      )
       if (has('琳琅诗怀雅', 1) || has('锏', 1))
         detail(
-          `琳琅诗怀雅 ${swireBonus}% + 锏 ${degenBonus}%，仅转换干员净增加的订单上限，不含设施基础值`
+          t('baseEstimates.orderConversion', {
+            first: operatorDisplayName('琳琅诗怀雅'),
+            firstValue: swireBonus,
+            second: operatorDisplayName('锏'),
+            secondValue: degenBonus
+          })
         )
-      detail('灵知在中枢；先结算锏的订单转效率，再计孑的扣减，最后结算琳琅诗怀雅的订单转效率')
+      detail(
+        t('baseEstimates.gnosisRule', {
+          operator0: operatorDisplayName('琳琅诗怀雅'),
+          operator1: operatorDisplayName('灵知'),
+          operator2: operatorDisplayName('孑'),
+          operator3: operatorDisplayName('锏')
+        })
+      )
       break
     }
     case 'builtin-gold': {
@@ -527,7 +751,14 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
       factoryProducts(has('苍苔', 1) ? metal * 5 : 0, {
         赤金: base + (has('引星棘刺', 1) ? options.trade * 3 : 0)
       })
-      detail(`基础金属技能 ${base}% + 苍苔/引星棘刺加成 ${bonus}%`)
+      detail(
+        t('baseEstimates.metalParts', {
+          base,
+          first: operatorDisplayName('苍苔'),
+          second: operatorDisplayName('引星棘刺'),
+          bonus
+        })
+      )
       break
     }
     case 'builtin-bubble': {
@@ -547,7 +778,7 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         ? caps.reduce((sum, cap) => sum + cap * (cap > 16 ? 3 : 1), 0)
         : 0
       metric(
-        '仓库容量加成',
+        t('baseEstimates.storageMetric'),
         caps.reduce((sum, cap) => sum + cap, 0),
         '格'
       )
@@ -555,7 +786,7 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         (has('圣约送葬人') ? (tier('圣约送葬人') === 1 ? 30 : 20) : 0) +
         (has('泡泡', 1) && has('圣约送葬人', 1) ? 4 : 0)
       factoryProducts(base + bonus - exp, on('圣约送葬人') ? { 经验: exp } : {})
-      detail(`基础 ${base}% + 每名干员各自仓库折算 ${bonus}%`)
+      detail(t('baseEstimates.storageParts', { base, bonus }))
       break
     }
     case 'builtin-cloud': {
@@ -570,11 +801,18 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         (has('帕拉斯', 1) ? 25 : 0) +
         (has('刻俄柏', 1) ? (options.average ? averageRamp(20, 1, 25) : 25) : 0)
       const bonus = has('红云', 1) ? cap * 2 : 0
-      metric('仓库容量加成', cap, '格')
+      metric(t('baseEstimates.storageMetric'), cap, '格')
       const exp = (has('帕拉斯', 1) ? 25 : 0) + (has('红云', 1) && has('稀音', 1) ? 24 : 0)
       factoryProducts(base + bonus - exp, exp ? { 经验: exp } : {})
       detail(
-        `${options.average ? '按右满30小时工作周期取平均' : '按时间技能的最高效率计算'}：基础 ${base}% + 红云仓库折算 ${bonus}%`
+        t('baseEstimates.cloudParts', {
+          method: t(
+            options.average ? 'baseEstimates.averageMethod' : 'baseEstimates.maximumMethod'
+          ),
+          base,
+          name: operatorDisplayName('红云'),
+          bonus
+        })
       )
       break
     }
@@ -587,8 +825,22 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
         (has('水月') ? standards * 5 : 0) +
         (has('涤火杰西卡', 1) ? count(['杰西卡', '香草']) * 5 : 0)
       factoryMetric(base + bonus)
-      detail(`标准化 ${base}% + 水月/涤火杰西卡加成 ${bonus}%`)
-      detail('水月、杰西卡、香草在同一制造站，涤火杰西卡进驻中枢')
+      detail(
+        t('baseEstimates.standardizationParts', {
+          base,
+          first: operatorDisplayName('水月'),
+          second: operatorDisplayName('涤火杰西卡'),
+          bonus
+        })
+      )
+      detail(
+        t('baseEstimates.standardizationRule', {
+          operator0: operatorDisplayName('涤火杰西卡'),
+          operator1: operatorDisplayName('杰西卡'),
+          operator2: operatorDisplayName('香草'),
+          operator3: operatorDisplayName('水月')
+        })
+      )
       break
     }
     default:

@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { resourceVersionBadge, resourceVersionHint, softwareVersionBadge } from './versionBadges'
+import { i18n } from '@/i18n'
+
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 
 const start = Date.parse('2026-10-10T00:00:00+08:00')
 const end = Date.parse('2026-10-20T00:00:00+08:00')
@@ -57,6 +62,26 @@ describe('software version badges', () => {
 })
 
 describe('installed resource badges', () => {
+  it.each([
+    ['en-US', 'Beijing time', '2h 30m'],
+    ['ja-JP', '北京時間', '2時間 30分'],
+    ['zh-TW', '北京時間', '2 小時 30 分鐘']
+  ])(
+    'translates hints in %s while preserving the selected event and China-server timestamps',
+    (locale, timezone, duration) => {
+      const badge = resourceVersionBadge({ activity }, end - 9000000)
+      const original = structuredClone(badge)
+      i18n.global.locale.value = locale
+      const hint = resourceVersionHint('原资源版本', badge)
+      expect(hint).toContain('昨日海')
+      expect(hint).toContain('原资源版本')
+      expect(hint).toContain(timezone)
+      expect(hint).toContain(duration)
+      expect(badge).toEqual(original)
+      expect(badge.end).toBe(end)
+    }
+  )
+
   it('moves from green through yellow to red across the selected activity interval', () => {
     expect(resourceVersionBadge({ activity }, start)).toMatchObject({ state: 'active', hue: 140 })
     expect(resourceVersionBadge({ activity }, start + (end - start) / 2)).toMatchObject({

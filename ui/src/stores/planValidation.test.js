@@ -5,6 +5,7 @@ import { compileScript, parse } from '@vue/compiler-sfc'
 import { readFileSync } from 'node:fs'
 import axios from 'axios'
 import { usePlanStore, useRescuePlanStore } from './plan'
+import { i18n } from '@/i18n'
 
 vi.mock('axios', () => ({ default: { post: vi.fn(), get: vi.fn() } }))
 
@@ -18,6 +19,7 @@ const handlerCode = descriptor.scriptSetup.content
 let store
 
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   store?.$dispose()
   vi.clearAllMocks()
 })
@@ -39,8 +41,9 @@ function setup(rescue) {
     'token',
     'message',
     'validating_plan',
+    't',
     `${handlerCode}; return validate_plan`
-  )(store, nextTick, axios, rescue, 'fixture-token', message, validating_plan)
+  )(store, nextTick, axios, rescue, 'fixture-token', message, validating_plan, i18n.global.t)
   return { validate, message, validating_plan, loaded }
 }
 
@@ -173,12 +176,16 @@ describe('manual schedule validation', () => {
     }
   )
 
-  it('allows retry after the validation request fails', async () => {
+  it.each([
+    ['zh-CN', '验证失败: 请求失败'],
+    ['en-US', 'Validation failed: 请求失败']
+  ])('allows retry after the validation request fails in %s', async (locale, errorLabel) => {
+    i18n.global.locale.value = locale
     const { validate, message, validating_plan } = setup(false)
     axios.post.mockResolvedValueOnce({ data: {} }).mockRejectedValueOnce(new Error('请求失败'))
 
     await validate()
-    expect(message.error).toHaveBeenCalledWith('验证失败: 请求失败')
+    expect(message.error).toHaveBeenCalledWith(errorLabel)
     expect(validating_plan.value).toBe(false)
 
     axios.post.mockResolvedValue({ data: { success: true, message: '验证通过' } })

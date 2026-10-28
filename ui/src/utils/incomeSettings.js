@@ -1,20 +1,37 @@
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 export const incomeSettingsUrl = `${import.meta.env.VITE_HTTP_URL}/report/recycling_settings`
 export const incomeAlgorithms = [
-  { value: 0, label: '82 算法', ratios: { experience: 1, gold: 0.8, order: 0.2 } },
+  {
+    value: 0,
+    get label() {
+      return t('tasks.income82')
+    },
+    ratios: { experience: 1, gold: 0.8, order: 0.2 }
+  },
   {
     value: 1,
-    label: '0.245 算法（CE6 & LS6，经验 = 1）',
+    get label() {
+      return t('tasks.income0245')
+    },
     ratios: { experience: 1, gold: 0.8, order: 733 / 2990 }
   },
   {
     value: 2,
-    label: '0.23456 算法（CE6 & LS6，龙门币 = 1）',
+    get label() {
+      return t('tasks.income023456')
+    },
     ratios: { experience: 0.9568, gold: 0.76544, order: 0.23456 }
   },
-  { value: -1, label: '自定义产物系数' }
+  {
+    value: -1,
+    get label() {
+      return t('tasks.customProductRatios')
+    }
+  }
 ]
 export function incomeAlgorithmLabel(value) {
-  return incomeAlgorithms.find((row) => row.value === value)?.label || '未读取'
+  return incomeAlgorithms.find((row) => row.value === value)?.label || t('tasks.notLoaded')
 }
 export async function loadIncomeSettings(client, storage = globalThis.localStorage) {
   let value = (await client.get(incomeSettingsUrl)).data

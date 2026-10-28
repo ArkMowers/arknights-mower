@@ -1,8 +1,8 @@
 <template>
   <n-config-provider
     inline-theme-disabled
-    :locale="zhCN"
-    :date-locale="dateZhCN"
+    :locale="componentLocale"
+    :date-locale="componentDateLocale"
     class="provider"
     :theme="theme == 'dark' ? darkTheme : undefined"
     :theme-overrides="theme == 'dark' ? mowerDarkThemeOverrides : mowerLightThemeOverrides"
@@ -17,7 +17,7 @@
     <WindowTitlebar
       :active="windowShellActive"
       :title="windowShellTitle"
-      :instance-name="windowShell.metadata.instanceName || '默认实例'"
+      :instance-name="windowShell.metadata.instanceName || t('shell.defaultInstance')"
       :theme="theme"
       :control-side="windowShellControlSide"
       :maximized="windowShellState.maximized"
@@ -25,6 +25,8 @@
       :busy="windowShellBusy"
       :sidebar-collapsed="sidebarCollapsed || sidebarHidden"
       :sidebar-visible="sidebarVisible"
+      :interface-language="interfaceLanguage"
+      :language-disabled="interfaceLanguageDisabled"
       :show-sidebar-toggle="!isMobileNav"
       :mower-port="mowerPort"
       :emulator-name="emulatorName"
@@ -55,31 +57,33 @@
         <n-modal
           v-model:show="closeModal"
           preset="card"
-          title="关闭 Mower"
+          :title="t('shell.close')"
           style="max-width: 430px"
           :mask-closable="!closeBusy"
           :closable="!closeBusy"
         >
           <n-space vertical :size="16">
-            <n-text depth="3">关闭窗口不一定会停止后台调度。请选择本次操作：</n-text>
+            <n-text depth="3">{{ t('shell.closeHelp') }}</n-text>
             <n-radio-group v-model:value="closeChoice" :disabled="closeBusy">
               <n-space vertical>
-                <n-radio v-if="closeTrayAvailable" value="tray">收起到托盘（继续运行）</n-radio>
-                <n-radio value="exit">停止任务并彻底退出</n-radio>
+                <n-radio v-if="closeTrayAvailable" value="tray">{{ t('shell.tray') }}</n-radio>
+                <n-radio value="exit">{{ t('shell.exit') }}</n-radio>
               </n-space>
             </n-radio-group>
             <n-checkbox v-model:checked="closeRemember" :disabled="closeBusy">
-              记住我的选择（可在「Mower 设置 → 界面与窗口」中更改）
+              {{ t('shell.rememberClose') }}
             </n-checkbox>
             <n-alert v-if="closeError" type="error">{{ closeError }}</n-alert>
             <n-text v-if="closeStatus" depth="3">{{ closeStatus }}</n-text>
             <n-space justify="end">
-              <n-button :disabled="closeBusy" @click="closeModal = false">取消</n-button>
+              <n-button :disabled="closeBusy" @click="closeModal = false">{{
+                t('shell.cancel')
+              }}</n-button>
               <n-button
                 type="primary"
                 :loading="closeBusy"
                 @click="performWindowClose(closeChoice, closeRemember)"
-                >确定</n-button
+                >{{ t('shell.confirm') }}</n-button
               >
             </n-space>
           </n-space>
@@ -155,6 +159,16 @@
                   :rotate="-15"
                 />
                 <ConfigSaveNotice />
+                <n-alert v-if="interfaceLanguageError" type="error" role="alert">
+                  {{ interfaceLanguageError }}
+                  <n-button
+                    size="small"
+                    :disabled="appearanceBusy"
+                    data-language-retry
+                    @click="guiStore.retryInterfaceLanguage()"
+                    >{{ t('appearance.retry') }}</n-button
+                  >
+                </n-alert>
                 <CrashRecoveryNotice v-if="loaded" />
                 <router-view
                   v-if="loaded && contentRoute"
@@ -178,7 +192,7 @@
                   v-model:show="showUpdateNoticeModal"
                   preset="card"
                   style="width: min(720px, calc(100vw - 32px))"
-                  title="版本更新"
+                  :title="t('shell.versionUpdate')"
                   content-style="display: flex; flex-direction: column; overflow: hidden"
                   :mask-closable="false"
                   :close-on-esc="false"
@@ -186,13 +200,13 @@
                   @close="handleUpdateNoticeAck"
                 >
                   <div style="flex: none; font-size: 18px; font-weight: 600">
-                    {{ `已更新到 ${updateNotice.current_version}` }}
+                    {{ t('shell.updatedTo', { version: updateNotice.current_version }) }}
                   </div>
                   <div
                     v-if="updateNotice.previous_version"
                     style="flex: none; margin-top: 8px; color: var(--n-text-color-3)"
                   >
-                    {{ `从 ${updateNotice.previous_version} 更新` }}
+                    {{ t('shell.updatedFrom', { version: updateNotice.previous_version }) }}
                   </div>
                   <div
                     style="
@@ -207,7 +221,9 @@
                   <div
                     style="flex: none; margin-top: 20px; display: flex; justify-content: flex-end"
                   >
-                    <n-button type="primary" @click="handleUpdateNoticeAck">我知道了</n-button>
+                    <n-button type="primary" @click="handleUpdateNoticeAck">{{
+                      t('shell.acknowledged')
+                    }}</n-button>
                   </div>
                 </n-modal>
               </n-layout-content>
@@ -220,7 +236,7 @@
               v-model:show="mobileMenuOpen"
               placement="left"
               :width="280"
-              aria-label="全部页面"
+              :aria-label="t('shell.allPages')"
               :style="mowerCssVariables"
             >
               <div class="sidebar-drawer">
@@ -395,7 +411,9 @@ const appMenuVisible = computed(
   () => isMobileNav.value || sidebarHidden.value || !sidebarCollapsed.value
 )
 function handleViewAction(action) {
-  if (action === 'toggle-sidebar') {
+  if (action.startsWith('language:')) {
+    void guiStore.setInterfaceLanguage(action.slice('language:'.length))
+  } else if (action === 'toggle-sidebar') {
     if (isMobileNav.value) mobileMenuOpen.value = !mobileMenuOpen.value
     else sidebarHidden.value = !sidebarHidden.value
   } else if (action === 'edit-sidebar') {
@@ -455,7 +473,10 @@ function openChatBot() {
   showChatBot.value = true
 }
 
-import { darkTheme, dateZhCN, zhCN } from 'naive-ui'
+import { darkTheme, dateZhCN, dateEnUS, dateJaJP, dateZhTW, zhCN, enUS, jaJP, zhTW } from 'naive-ui'
+import { DEFAULT_LOCALE, i18n, setInterfaceLocale } from '@/i18n'
+
+const { t } = i18n.global
 
 import hljs from 'highlight.js/lib/core'
 import json from 'highlight.js/lib/languages/json'
@@ -553,7 +574,34 @@ const {
 } = storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
 const guiStore = useGuiStore()
-const { softwareVersionDisplay, watermarkVisible } = storeToRefs(guiStore)
+const {
+  softwareVersionDisplay,
+  watermarkVisible,
+  interfaceLanguage,
+  resolvedInterfaceLanguage,
+  interfaceLanguageDisabled,
+  interfaceLanguageError,
+  appearanceBusy
+} = storeToRefs(guiStore)
+const componentLocales = { 'zh-CN': zhCN, 'en-US': enUS, 'ja-JP': jaJP, 'zh-TW': zhTW }
+const componentDateLocales = {
+  'zh-CN': dateZhCN,
+  'en-US': dateEnUS,
+  'ja-JP': dateJaJP,
+  'zh-TW': dateZhTW
+}
+const componentLocale = computed(() => componentLocales[resolvedInterfaceLanguage.value] || zhCN)
+const componentDateLocale = computed(
+  () => componentDateLocales[resolvedInterfaceLanguage.value] || dateZhCN
+)
+watch(
+  resolvedInterfaceLanguage,
+  (value) => {
+    setInterfaceLocale(value ?? DEFAULT_LOCALE)
+    document.documentElement.lang = i18n.global.locale.value
+  },
+  { immediate: true, flush: 'sync' }
+)
 
 const update_notice_store = useUpdateNoticeStore()
 const { notice: updateNotice } = storeToRefs(update_notice_store)
@@ -585,7 +633,7 @@ const configProfiles = createConfigProfiles({
   beforeChange: async () => {
     await sidebarPreferences.flush()
     if (sidebarPreferences.initialized.value && sidebarPreferences.persistenceError.value) {
-      throw new Error('侧边栏布局尚未保存，请在编辑侧边栏窗口中重试后再切换档案。')
+      throw new Error(t('shell.sidebarUnsaved'))
     }
   },
   blocked: () => !loaded.value || running.value || deviceConnectionNavigation.locked.value
@@ -593,7 +641,7 @@ const configProfiles = createConfigProfiles({
 provide(configProfilesKey, configProfiles)
 const appMenuProps = computed(() => ({
   theme: theme.value,
-  instanceName: windowShell.metadata.instanceName || '默认实例',
+  instanceName: windowShell.metadata.instanceName || t('shell.defaultInstance'),
   mowerPort: mowerPort.value,
   emulatorName: emulatorName.value,
   adbPort: adbPort.value,
@@ -602,7 +650,9 @@ const appMenuProps = computed(() => ({
   profileState: configProfiles.state.value,
   profileWriteDisabled: configProfiles.writeDisabled.value,
   profileReadDisabled: configProfiles.readDisabled.value,
-  sidebarVisible: sidebarVisible.value
+  sidebarVisible: sidebarVisible.value,
+  interfaceLanguage: interfaceLanguage.value,
+  languageDisabled: interfaceLanguageDisabled.value
 }))
 const appMenuListeners = {
   'connection-action': openDeviceConnection,
@@ -631,19 +681,19 @@ function finishClosePolling(pendingKey) {
 
 async function pollCloseOperation(pending, base, pendingKey) {
   if (Date.now() - pending.startedAt > 240000) {
-    closeError.value = '等待退出超时，请检查当前实例和进程操作日志'
+    closeError.value = t('shell.exitTimeout')
     finishClosePolling(pendingKey)
     return
   }
   try {
     const data = await readProcessActionStatus({ axios, base, pending })
-    closeStatus.value = data.message || '正在停止当前实例…'
+    closeStatus.value = data.message || t('shell.stopping')
     if (data.status === 'running') {
       closePollTimer = setTimeout(() => pollCloseOperation(pending, base, pendingKey), 1000)
       return
     }
     if (data.status === 'failed') {
-      closeError.value = data.message || '彻底退出失败，请检查进程操作日志'
+      closeError.value = data.message || t('shell.exitFailed')
     }
     finishClosePolling(pendingKey)
   } catch (error) {
@@ -652,7 +702,7 @@ async function pollCloseOperation(pending, base, pendingKey) {
     } else {
       // The old HTTP server normally disappears before the desktop window
       // closes. Connection loss alone cannot prove that the exit succeeded.
-      closeStatus.value = '当前实例连接已断开，请确认托盘图标和进程已退出'
+      closeStatus.value = t('shell.disconnected')
     }
     finishClosePolling(pendingKey)
   }
@@ -661,7 +711,7 @@ async function pollCloseOperation(pending, base, pendingKey) {
 async function performWindowClose(choice, remember) {
   if (closeBusy.value) return false
   if (choice === 'tray' && !closeTrayAvailable.value) {
-    closeError.value = '未启用系统托盘，无法收起窗口'
+    closeError.value = t('shell.trayUnavailable')
     return false
   }
   closeBusy.value = true
@@ -672,18 +722,18 @@ async function performWindowClose(choice, remember) {
     const api = window.pywebview?.api
     if (api?.set_close_preference) {
       const saved = await api.set_close_preference(choice, remember)
-      if (saved !== true) throw new Error('关闭偏好保存失败')
+      if (saved !== true) throw new Error(t('shell.closePreferenceFailed'))
     }
     if (choice === 'tray') {
       const closed = await windowShell.close()
-      if (!closed) throw new Error('无法关闭当前窗口')
+      if (!closed) throw new Error(t('shell.closeFailed'))
       closeModal.value = false
       return true
     }
     const base = (import.meta.env.VITE_HTTP_URL || '') + '/process-control'
     const pendingKey = 'mower-process-control:' + base
     if (sessionStorage.getItem(pendingKey)) {
-      throw new Error('已有进程操作正在进行，请等待完成后重试')
+      throw new Error(t('shell.processBusy'))
     }
     const saves = createSaveCoordinator(config_store, plan_store)
     const { pending } = await submitProcessAction({
@@ -694,12 +744,11 @@ async function performWindowClose(choice, remember) {
       pendingKey
     })
     submitted = true
-    closeStatus.value = '彻底退出请求已提交，正在等待任务停止和实例退出…'
+    closeStatus.value = t('shell.exitSubmitted')
     void pollCloseOperation(pending, base, pendingKey)
     return true
   } catch (error) {
-    closeError.value =
-      error.response?.data?.message || error.message || '退出结果尚未确认，请检查托盘和进程操作状态'
+    closeError.value = error.response?.data?.message || error.message || t('shell.exitUnconfirmed')
     return false
   } finally {
     if (!submitted) closeBusy.value = false
@@ -731,7 +780,7 @@ async function handleWindowControl(action) {
     closeTrayAvailable.value = false
     closeChoice.value = 'exit'
     closeRemember.value = false
-    closeError.value = error.message || '读取关闭设置失败'
+    closeError.value = error.message || t('shell.closeLoadFailed')
     closeModal.value = true
     return false
   }

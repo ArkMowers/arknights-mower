@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs'
 import { compile } from '@vue/compiler-dom'
 import { compileScript, parse } from '@vue/compiler-sfc'
 import * as Vue from 'vue'
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { i18n } from '@/i18n'
+
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 
 const { descriptor } = parse(readFileSync(new URL('./App.vue', import.meta.url), 'utf8'))
 const { bindings } = compileScript(descriptor, { id: 'app-log-notices-test' })
@@ -39,25 +44,33 @@ const renderConfigNotice = new Function('Vue', configCode)({
   resolveComponent: (name) => ({ name })
 })
 
-it('keeps save failures assertive when forwarding them to the floating notification', () => {
-  const notice = renderConfigNotice(
-    {},
-    [],
-    {},
-    {
-      StatusNotification: { name: 'StatusNotification' },
-      config_save_error: '保存失败',
-      config_saving: false,
-      config: { save_config: vi.fn(async () => {}) }
-    }
-  )
-  expect(notice.props).toMatchObject({
-    show: true,
-    role: 'alert',
-    type: 'error',
-    content: '保存失败。修改仍保留在当前页面。'
-  })
-})
+it.each(['zh-CN', 'en-US'])(
+  'keeps save failures assertive and source diagnostics unchanged in %s',
+  (locale) => {
+    i18n.global.locale.value = locale
+    const notice = renderConfigNotice(
+      {},
+      [],
+      {},
+      {
+        StatusNotification: { name: 'StatusNotification' },
+        t: i18n.global.t,
+        config_save_error: '保存失败',
+        config_saving: false,
+        config: { save_config: vi.fn(async () => {}) }
+      }
+    )
+    expect(notice.props).toMatchObject({
+      show: true,
+      role: 'alert',
+      type: 'error',
+      content:
+        locale === 'zh-CN'
+          ? '保存失败。修改仍保留在当前页面。'
+          : '保存失败. Your edits are retained on this page.'
+    })
+  }
+)
 
 it('keeps the save retry available in the notification action', async () => {
   const save = vi.fn(async () => {})
@@ -67,6 +80,7 @@ it('keeps the save retry available in the notification action', async () => {
     {},
     {
       StatusNotification: { name: 'StatusNotification' },
+      t: i18n.global.t,
       config_save_error: '保存失败',
       config_saving: false,
       config: { save_config: save }

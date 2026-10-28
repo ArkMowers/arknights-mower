@@ -21,6 +21,8 @@ import App from './App.vue'
 import { configProfilesKey } from '@/composables/configProfiles'
 import { themeSelectionKey } from '@/composables/themeSelection'
 import { routes } from './routes'
+import { i18n } from './i18n'
+import { resolveInterfaceLanguage } from './i18n/languagePreference'
 
 const state = vi.hoisted(() => ({
   mounted: [],
@@ -333,6 +335,19 @@ describe('desktop page startup', () => {
     })
     state.gui = reactive({
       softwareVersionDisplay: 'version',
+      interfaceLanguage: 'zh-CN',
+      browserLanguages: ['zh-CN'],
+      get resolvedInterfaceLanguage() {
+        return resolveInterfaceLanguage(this.interfaceLanguage, this.browserLanguages)
+      },
+      interfaceLanguageDisabled: false,
+      appearanceBusy: false,
+      interfaceLanguageError: '',
+      setInterfaceLanguage: vi.fn(async (value) => {
+        state.gui.interfaceLanguage = value
+        return true
+      }),
+      retryInterfaceLanguage: vi.fn(async () => true),
       watermarkVisible: true,
       loaded: true,
       loading: false,
@@ -401,6 +416,78 @@ describe('desktop page startup', () => {
     await nextTick()
     expect(state.config.theme).toBe('dark')
     expect(document.documentElement.dataset.mowerTheme).toBe('dark')
+  })
+
+  it.each([
+    ['en-US', 'View'],
+    ['ja-JP', '表示'],
+    ['zh-TW', '檢視']
+  ])(
+    'applies %s to messages, component locales and HTML without reloading data',
+    async (language, viewLabel) => {
+      const component = await mount()
+      expect(document.documentElement.lang).toBe('zh-CN')
+      expect(component.componentLocale.value.name).toBe('zh-CN')
+      const reads = state.client.get.mock.calls.length
+      const configReads = state.config.load_config.mock.calls.length
+      component.handleViewAction(`language:${language}`)
+      await nextTick()
+      expect(state.gui.setInterfaceLanguage).toHaveBeenCalledWith(language)
+      expect(i18n.global.t('menus.view')).toBe(viewLabel)
+      expect(component.componentLocale.value.name).toBe(language)
+      expect(component.componentDateLocale.value.name).toBe(language)
+      expect(document.documentElement.lang).toBe(language)
+      expect(component.appMenuProps.value.interfaceLanguage).toBe(language)
+      expect(state.client.get).toHaveBeenCalledTimes(reads)
+      expect(state.config.load_config).toHaveBeenCalledTimes(configReads)
+      expect(state.router.push).not.toHaveBeenCalled()
+
+      state.gui.interfaceLanguage = 'zh-CN'
+      await nextTick()
+      expect(i18n.global.t('menus.view')).toBe('视图')
+      expect(document.documentElement.lang).toBe('zh-CN')
+    }
+  )
+
+  it('applies the resolved system locale while retaining system in both menus without data reloads', async () => {
+    const component = await mount()
+    const reads = state.client.get.mock.calls.length
+    const configReads = state.config.load_config.mock.calls.length
+    state.gui.browserLanguages = ['zh-Hant-HK']
+    component.handleViewAction('language:system')
+    await nextTick()
+    expect(state.gui.setInterfaceLanguage).toHaveBeenCalledExactlyOnceWith('system')
+    expect(component.appMenuProps.value.interfaceLanguage).toBe('system')
+    expect(state.gui.interfaceLanguage).toBe('system')
+    expect(component.componentLocale.value.name).toBe('zh-TW')
+    expect(component.componentDateLocale.value.name).toBe('zh-TW')
+    expect(document.documentElement.lang).toBe('zh-TW')
+    expect(i18n.global.t('menus.view')).toBe('檢視')
+    state.gui.browserLanguages = ['ja-JP']
+    await nextTick()
+    expect(component.componentLocale.value.name).toBe('ja-JP')
+    expect(component.componentDateLocale.value.name).toBe('ja-JP')
+    expect(document.documentElement.lang).toBe('ja-JP')
+    expect(i18n.global.t('menus.view')).toBe('表示')
+    expect(component.appMenuProps.value.interfaceLanguage).toBe('system')
+    expect(state.gui.setInterfaceLanguage).toHaveBeenCalledOnce()
+    expect(state.client.get).toHaveBeenCalledTimes(reads)
+    expect(state.config.load_config).toHaveBeenCalledTimes(configReads)
+    expect(state.router.push).not.toHaveBeenCalled()
+  })
+
+  it('keeps the retry button usable after the initial appearance read fails', async () => {
+    state.gui.loaded = false
+    state.gui.interfaceLanguageDisabled = true
+    state.gui.interfaceLanguageError = '界面语言读取失败，请重试。'
+    const component = await mount()
+    const html = await renderShell(component)
+    const retryButton = html.match(/<button[^>]*data-language-retry[^>]*>/)?.[0]
+    expect(retryButton).toBeTruthy()
+    expect(retryButton).not.toMatch(/\sdisabled(?:\s|=|>)/)
+    state.gui.appearanceBusy = true
+    const busyHtml = await renderShell(component)
+    expect(busyHtml.match(/<button[^>]*data-language-retry[^>]*>/)?.[0]).toMatch(/\sdisabled/)
   })
 
   it('closes a managed window directly without saving or applying a standalone exit choice', async () => {

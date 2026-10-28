@@ -1,7 +1,10 @@
+import { i18n } from '@/i18n'
 export function materialStatus(summary) {
-  if (!summary) return '待计算'
-  if (summary.available) return '材料充足'
-  return summary.craftable ? '可合成' : '材料不足'
+  if (!summary) return i18n.global.t('growth.masteryMaterials.notCalculated')
+  if (summary.available) return i18n.global.t('growth.masteryMaterials.materialsReady')
+  return summary.craftable
+    ? i18n.global.t('growth.masteryMaterials.craftable')
+    : i18n.global.t('growth.masteryMaterials.materialsMissing')
 }
 
 export function materialStatusType(summary) {
@@ -33,6 +36,16 @@ export function formatMaterialAmount(value) {
   if (!Number.isFinite(amount)) return '0'
   const rounded = Math.round(amount)
   const magnitude = Math.abs(rounded)
+  if (!['zh-CN', 'zh-TW'].includes(i18n.global.locale.value)) {
+    for (const [scale, unit] of [
+      [1000000000, 'B'],
+      [1000000, 'M'],
+      [1000, 'k']
+    ]) {
+      if (magnitude >= scale) return trimTrailingZeros((rounded / scale).toFixed(1)) + unit
+    }
+    return exactNumber.format(rounded)
+  }
   if (magnitude >= YI) return yiLabel(rounded)
   if (magnitude >= WAN) {
     const wan = rounded / WAN

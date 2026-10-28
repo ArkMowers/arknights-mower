@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 // The titlebar and Settings share one transaction: drain config/plan edits,
 // request the existing process-control action, then persist the pending job.
 // Polling/recovery stays in the existing ProcessControl component.
@@ -6,7 +8,7 @@ export async function readProcessActionStatus({ axios, base, pending }) {
     params: { id: pending.id },
     timeout: 3000
   })
-  if (!data.ok) throw new Error(data.message || '进程状态查询失败')
+  if (!data.ok) throw new Error(data.message || i18n.global.t('settings.process.statusQueryFailed'))
   return data
 }
 
@@ -22,7 +24,7 @@ export async function submitProcessAction({ axios, saves, action, base, pendingK
     )
     if (!data.ok) {
       mayHaveSubmitted = false
-      throw new Error(data.message || '进程操作已被拒绝')
+      throw new Error(data.message || i18n.global.t('settings.process.operationRejected'))
     }
     const pending = { id: data.id, action, startedAt: Date.now() }
     sessionStorage.setItem(pendingKey, JSON.stringify(pending))

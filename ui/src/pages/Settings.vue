@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
 import { storeToRefs } from 'pinia'
@@ -13,6 +14,7 @@ import { settingsSectionKey } from '@/composables/settingsNavigation'
 import { themeSelectionKey } from '@/composables/themeSelection'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
+import InterfaceLanguagePreference from '@/components/InterfaceLanguagePreference.vue'
 import VersionWatermarkPreference from '@/components/VersionWatermarkPreference.vue'
 import LogBackgroundPreference from '@/components/LogBackgroundPreference.vue'
 import SettingsSegmented from '@/components/SettingsSegmented.vue'
@@ -27,34 +29,34 @@ import SystemIcon from '@vicons/fluent/es/Desktop24Regular'
 defineOptions({ name: 'MowerSettings' })
 provide(settingsSectionKey, null)
 
-const sections = [
+const sections = computed(() => [
   {
     id: 'mower-interface',
-    title: '界面与窗口',
+    title: i18n.global.t('settings.general.appearanceWindow'),
     icon: InterfaceIcon
   },
   {
     id: 'mower-notifications',
-    title: '通知与助手',
+    title: i18n.global.t('settings.general.notificationsAssistant'),
     icon: NotifyIcon
   },
   {
     id: 'mower-profiles',
-    title: '档案与运行',
+    title: i18n.global.t('settings.general.profilesRuntime'),
     icon: DataIcon
   },
   {
     id: 'mower-updates',
-    title: '网络与更新',
+    title: i18n.global.t('settings.general.networkUpdates'),
     icon: UpdateIcon
   },
   {
     id: 'mower-data',
-    title: '数据与维护',
+    title: i18n.global.t('settings.general.dataMaintenance'),
     icon: DataIcon
   }
-]
-const section = Object.fromEntries(sections.map((item) => [item.id, item]))
+])
+const section = computed(() => Object.fromEntries(sections.value.map((item) => [item.id, item])))
 
 const config_store = useConfigStore()
 const inheritsFromManager = (key) =>
@@ -67,11 +69,11 @@ const mobile = inject('mobile')
 const { theme, webview, runtime_platform, screenshot, screenshot_archive_limit_mb } =
   storeToRefs(config_store)
 const setTheme = inject(themeSelectionKey, (value) => (theme.value = value))
-const themeOptions = [
-  { value: 'light', label: '亮色', icon: SunIcon },
-  { value: 'dark', label: '暗色', icon: MoonIcon },
-  { value: 'system', label: '跟随系统', icon: SystemIcon }
-]
+const themeOptions = computed(() => [
+  { value: 'light', label: i18n.global.t('settings.general.light'), icon: SunIcon },
+  { value: 'dark', label: i18n.global.t('settings.general.dark'), icon: MoonIcon },
+  { value: 'system', label: i18n.global.t('settings.general.followSystem'), icon: SystemIcon }
+])
 
 const archive_limit_gib = computed({
   get: () => screenshot_archive_limit_mb.value / 1024,
@@ -101,15 +103,17 @@ const desktopLaunchMode = ref('last')
 const desktopPreferenceBusy = ref(false)
 const desktopPreferenceError = ref('')
 const closeOptions = computed(() => [
-  { label: '每次询问', value: 'ask' },
-  ...(desktopTrayEnabled.value ? [{ label: '收起到托盘', value: 'tray' }] : []),
-  { label: '彻底退出', value: 'exit' }
+  { label: i18n.global.t('settings.general.askEveryTime'), value: 'ask' },
+  ...(desktopTrayEnabled.value
+    ? [{ label: i18n.global.t('settings.general.minimizeToTray'), value: 'tray' }]
+    : []),
+  { label: i18n.global.t('settings.general.exitCompletely'), value: 'exit' }
 ])
-const launchOptions = [
-  { label: '恢复上次状态', value: 'last' },
-  { label: '普通窗口', value: 'normal' },
-  { label: '最大化窗口', value: 'maximized' }
-]
+const launchOptions = computed(() => [
+  { label: i18n.global.t('settings.general.restoreLastState'), value: 'last' },
+  { label: i18n.global.t('settings.general.normalWindow'), value: 'normal' },
+  { label: i18n.global.t('settings.general.maximizedWindow'), value: 'maximized' }
+])
 
 async function loadDesktopPreferences() {
   const api = window.pywebview?.api
@@ -125,7 +129,8 @@ async function loadDesktopPreferences() {
     desktopPreferencesReady.value = true
     desktopPreferenceError.value = ''
   } catch (error) {
-    desktopPreferenceError.value = error.message || '窗口设置读取失败'
+    desktopPreferenceError.value =
+      error.message || i18n.global.t('settings.general.couldNotLoadWindowPreferences')
   }
 }
 
@@ -136,11 +141,12 @@ async function changeCloseMode(value) {
   try {
     const choice = value === 'ask' ? (desktopTrayEnabled.value ? 'tray' : 'exit') : value
     const ok = await api.set_close_preference(choice, value !== 'ask')
-    if (ok !== true) throw new Error('无法保存关闭设置')
+    if (ok !== true) throw new Error(i18n.global.t('settings.general.couldNotSaveTheCloseAction'))
     desktopCloseMode.value = value
     desktopPreferenceError.value = ''
   } catch (error) {
-    desktopPreferenceError.value = error.message || '关闭设置保存失败'
+    desktopPreferenceError.value =
+      error.message || i18n.global.t('settings.general.failedToSaveTheCloseAction')
   } finally {
     desktopPreferenceBusy.value = false
   }
@@ -152,11 +158,13 @@ async function changeLaunchMode(value) {
   desktopPreferenceBusy.value = true
   try {
     const ok = await api.set_window_launch_mode(value)
-    if (ok !== true) throw new Error('无法保存启动设置')
+    if (ok !== true)
+      throw new Error(i18n.global.t('settings.general.couldNotSaveTheStartupWindowState'))
     desktopLaunchMode.value = value
     desktopPreferenceError.value = ''
   } catch (error) {
-    desktopPreferenceError.value = error.message || '启动设置保存失败'
+    desktopPreferenceError.value =
+      error.message || i18n.global.t('settings.general.failedToSaveTheStartupWindowState')
   } finally {
     desktopPreferenceBusy.value = false
   }
@@ -172,7 +180,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
 <template>
   <div class="mower-settings-panels settings-page">
     <SettingsSection v-bind="section['mower-interface']" data-task-editor="mower-interface">
-      <n-card id="appearance-settings" title="常规">
+      <n-card id="appearance-settings" :title="i18n.global.t('settings.general.general')">
         <n-form
           class="settings-row-form"
           :label-placement="mobile ? 'top' : 'left'"
@@ -183,8 +191,10 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
           <n-form-item class="appearance-scale-row">
             <template #label>
               <span class="settings-row-copy">
-                <span>界面缩放</span>
-                <span class="settings-row-description">调整文字与控件大小，点击应用后生效。</span>
+                <span>{{ i18n.global.t('settings.general.interfaceScale') }}</span>
+                <span class="settings-row-description">{{
+                  i18n.global.t('settings.general.adjustTextAndControlSizesThenClick')
+                }}</span>
               </span>
             </template>
             <div class="desktop-scale-settings">
@@ -196,15 +206,27 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
                   :max="3.0"
                   :marks="scale_marks"
                   :format-tooltip="(x) => `${x * 100}%`"
-                  aria-label="界面缩放"
+                  :aria-label="i18n.global.t('settings.general.interfaceScale')"
                 />
               </div>
-              <div class="desktop-scale-toolbar" role="group" aria-label="应用界面缩放">
+              <div
+                class="desktop-scale-toolbar"
+                role="group"
+                :aria-label="i18n.global.t('settings.general.applyInterfaceScale')"
+              >
                 <output
                   class="desktop-scale-value"
-                  :aria-label="new_scale === webview.scale ? '当前界面缩放' : '待应用的界面缩放'"
+                  :aria-label="
+                    new_scale === webview.scale
+                      ? i18n.global.t('settings.general.currentInterfaceScale')
+                      : i18n.global.t('settings.general.pendingInterfaceScale')
+                  "
                   aria-live="polite"
-                  >{{ new_scale === webview.scale ? '当前' : '待应用' }}
+                  >{{
+                    new_scale === webview.scale
+                      ? i18n.global.t('settings.general.current')
+                      : i18n.global.t('settings.general.pending')
+                  }}
                   {{ Math.round(new_scale * 100) }}%</output
                 >
                 <n-button
@@ -212,13 +234,13 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
                   :disabled="new_scale == webview.scale"
                   @click="webview.scale = new_scale"
                 >
-                  应用
+                  {{ i18n.global.t('settings.general.apply') }}
                 </n-button>
               </div>
             </div>
           </n-form-item>
           <n-form-item
-            label="显示主题"
+            :label="i18n.global.t('settings.general.theme')"
             class="settings-appearance-row"
             v-if="runtime_platform !== 'android'"
           >
@@ -228,15 +250,20 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               emit-reselect
               :options="themeOptions"
               class="settings-theme-choices"
-              label="显示主题"
+              :label="i18n.global.t('settings.general.theme')"
             />
           </n-form-item>
+          <InterfaceLanguagePreference />
           <SoftwareVersionPreference />
           <VersionWatermarkPreference />
           <LogBackgroundPreference />
         </n-form>
       </n-card>
-      <n-card v-if="runtime_platform !== 'android'" id="window-settings" title="窗口">
+      <n-card
+        v-if="runtime_platform !== 'android'"
+        id="window-settings"
+        :title="i18n.global.t('settings.general.window')"
+      >
         <n-form
           class="settings-row-form"
           :label-placement="mobile ? 'top' : 'left'"
@@ -247,33 +274,43 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
           <n-form-item>
             <template #label>
               <span class="settings-row-copy">
-                <span>{{ runtime_platform === 'darwin' ? '隐藏菜单栏图标' : '使用托盘图标' }}</span>
+                <span>{{
+                  runtime_platform === 'darwin'
+                    ? i18n.global.t('settings.general.hideMenuBarIcon')
+                    : i18n.global.t('settings.general.useTrayIcon')
+                }}</span>
                 <span id="tray-description" class="settings-row-description">
                   <template v-if="runtime_platform === 'darwin'">
-                    重启生效。独立启动时不创建托盘进程，关闭窗口后仍在后台运行。多开管理器统一提供托盘，静默重启后也保留托盘入口。
+                    {{
+                      i18n.global.t('settings.general.takesEffectAfterRestartingAStandaloneLaunch')
+                    }}
                   </template>
-                  <template v-else>重启生效。多开管理器启动的实例统一使用管理器托盘。</template>
+                  <template v-else>{{
+                    i18n.global.t('settings.general.takesEffectAfterRestartingInstancesLaunchedBy')
+                  }}</template>
                 </span>
               </span>
             </template>
             <n-switch
               v-if="runtime_platform === 'darwin'"
               v-model:value="hide_macos_menu_bar"
-              aria-label="隐藏菜单栏图标"
+              :aria-label="i18n.global.t('settings.general.hideMenuBarIcon')"
               aria-describedby="tray-description"
             />
             <n-switch
               v-else
               v-model:value="webview.tray"
-              aria-label="使用托盘图标"
+              :aria-label="i18n.global.t('settings.general.useTrayIcon')"
               aria-describedby="tray-description"
             />
           </n-form-item>
           <n-form-item v-if="desktopPreferencesReady">
             <template #label>
               <span class="settings-row-copy"
-                ><span>关闭窗口</span
-                ><span class="settings-row-description">点击窗口关闭按钮时执行的操作。</span></span
+                ><span>{{ i18n.global.t('settings.general.closeWindow') }}</span
+                ><span class="settings-row-description">{{
+                  i18n.global.t('settings.general.chooseWhatHappensWhenYouClickThe')
+                }}</span></span
               >
             </template>
             <n-select
@@ -281,16 +318,16 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               :value="desktopCloseMode"
               :options="closeOptions"
               :disabled="desktopPreferenceBusy"
-              :input-props="{ 'aria-label': '关闭窗口' }"
+              :input-props="{ 'aria-label': i18n.global.t('settings.general.closeWindow') }"
               @update:value="changeCloseMode"
             />
           </n-form-item>
           <n-form-item v-if="desktopPreferencesReady">
             <template #label>
               <span class="settings-row-copy">
-                <span>启动时窗口状态</span>
+                <span>{{ i18n.global.t('settings.general.startupWindowState') }}</span>
                 <span id="window-launch-description" class="settings-row-description">
-                  下次打开 Mower 桌面窗口时生效。“恢复上次状态”会沿用上次的普通窗口或最大化状态。
+                  {{ i18n.global.t('settings.general.appliesTheNextTimeTheMowerDesktop') }}
                 </span>
               </span>
             </template>
@@ -300,7 +337,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               :options="launchOptions"
               :disabled="desktopPreferenceBusy"
               :input-props="{
-                'aria-label': '启动时窗口状态',
+                'aria-label': i18n.global.t('settings.general.startupWindowState'),
                 'aria-describedby': 'window-launch-description'
               }"
               @update:value="changeLaunchMode"
@@ -340,7 +377,10 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
       data-task-editor="mower-data"
     >
       <DepotHistorySettings />
-      <n-card id="archive-settings" title="截图与报错归档">
+      <n-card
+        id="archive-settings"
+        :title="i18n.global.t('settings.general.screenshotsErrorArchives')"
+      >
         <n-form
           class="settings-row-form"
           :label-placement="mobile ? 'top' : 'left'"
@@ -351,11 +391,11 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
           <n-form-item v-if="runtime_platform !== 'android'">
             <template #label>
               <span class="settings-row-copy">
-                <span>截图保存时间</span>
+                <span>{{ i18n.global.t('settings.general.screenshotRetention') }}</span>
                 <span id="screenshot-retention-description" class="settings-row-description">
-                  普通截图保留多久。设为 0 时只为报错归档保留画面。
+                  {{ i18n.global.t('settings.general.howLongOrdinaryScreenshotsAreKeptSet') }}
                   <template v-if="inheritsFromManager('screenshot')">
-                    当前使用通用设置，请在多开管理器中修改或选择使用本实例值。
+                    {{ i18n.global.t('settings.general.usingSharedSettingsChangeThemInThe') }}
                   </template>
                 </span>
               </span>
@@ -365,22 +405,21 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               :disabled="inheritsFromManager('screenshot')"
               :min="0"
               :input-props="{
-                'aria-label': '截图保存时间',
+                'aria-label': i18n.global.t('settings.general.screenshotRetention'),
                 'aria-describedby': 'screenshot-retention-description'
               }"
             >
-              <template #suffix>小时</template>
+              <template #suffix>{{ i18n.global.t('settings.general.hours') }}</template>
             </mower-input-number>
           </n-form-item>
           <n-form-item>
             <template #label>
               <span class="settings-row-copy">
-                <span>报错归档空间上限</span>
+                <span>{{ i18n.global.t('settings.general.errorArchiveSizeLimit') }}</span>
                 <span id="screenshot-archive-limit-description" class="settings-row-description">
-                  达到上限后清理较早的报错归档，0 表示不限制总容量。 单条归档仍限 512
-                  MiB，达到上限后省略后续图片或日志。
+                  {{ i18n.global.t('settings.general.olderErrorArchivesAreRemovedWhenThe') }}
                   <template v-if="inheritsFromManager('screenshot_archive_limit_mb')">
-                    当前使用通用设置，请在多开管理器中修改或选择使用本实例值。
+                    {{ i18n.global.t('settings.general.usingSharedSettingsChangeThemInThe') }}
                   </template>
                 </span>
               </span>
@@ -391,7 +430,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               :min="0"
               :precision="2"
               :input-props="{
-                'aria-label': '报错归档空间上限',
+                'aria-label': i18n.global.t('settings.general.errorArchiveSizeLimit'),
                 'aria-describedby': 'screenshot-archive-limit-description'
               }"
             >
@@ -404,22 +443,25 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
           class="archive-status"
           role="status"
         >
-          日常截图不写盘。发生需归档的异常时，保存此前 5 分钟内缓存的全部画面及后续 5
-          分钟截图；内存缓存最多 16 张、32 MiB。
+          {{ i18n.global.t('settings.general.ordinaryScreenshotsAreNotWrittenToDisk') }}
         </p>
         <p
           v-else-if="runtime_platform !== 'android' && screenshot > 0 && screenshot < 5 / 60"
           class="archive-status"
           role="status"
         >
-          截图会正常写盘，实际保存时间按 5 分钟处理。
+          {{ i18n.global.t('settings.general.screenshotsAreWrittenToDiskAndRetained') }}
         </p>
         <n-collapse class="archive-details">
-          <n-collapse-item title="截图保存说明" name="retention" data-settings-label="截图保存说明">
+          <n-collapse-item
+            :title="i18n.global.t('settings.general.screenshotRetentionDetails')"
+            name="retention"
+            :data-settings-label="i18n.global.t('settings.general.screenshotRetentionDetails')"
+          >
             <p v-if="runtime_platform !== 'android'">
-              普通截图默认保留 1 小时，可填小数；大于 0 且不足 5 分钟时按 5 分钟保留。
+              {{ i18n.global.t('settings.general.ordinaryScreenshotsAreKeptFor1Hour') }}
             </p>
-            <p>报错归档默认上限 5 GiB。普通截图仍按保存时间清理，不受此容量上限影响。</p>
+            <p>{{ i18n.global.t('settings.general.errorArchivesAreLimitedTo5Gib') }}</p>
           </n-collapse-item>
         </n-collapse>
       </n-card>

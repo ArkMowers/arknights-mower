@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { inject } from 'vue'
 
 const mobile = inject('mobile')
@@ -11,11 +14,36 @@ const store = useConfigStore()
 const { ra_timeout, sf_target } = storeToRefs(store)
 
 const target_options = [
-  { label: '1A→2A→3A→结局A', value: '结局A' },
-  { label: '1A→2A→3A→结局B', value: '结局B' },
-  { label: '1A→2A→3B→结局C', value: '结局C' },
-  { label: '1A→2B→3C→结局D', value: '结局D' },
-  { label: '1A→2B→3C→结局E', value: '结局E' }
+  {
+    get label() {
+      return t('tasks.endingRouteA')
+    },
+    value: '结局A'
+  },
+  {
+    get label() {
+      return t('tasks.endingRouteB')
+    },
+    value: '结局B'
+  },
+  {
+    get label() {
+      return t('tasks.endingRouteC')
+    },
+    value: '结局C'
+  },
+  {
+    get label() {
+      return t('tasks.endingRouteD')
+    },
+    value: '结局D'
+  },
+  {
+    get label() {
+      return t('tasks.endingRouteE')
+    },
+    value: '结局E'
+  }
 ]
 </script>
 
@@ -26,12 +54,12 @@ const target_options = [
     label-width="72"
     label-align="left"
   >
-    <n-form-item label="超时时长">
+    <n-form-item :label="t('tasks.timeout')">
       <mower-input-number v-model:value="ra_timeout">
-        <template #suffix>秒</template>
+        <template #suffix>{{ t('tasks.seconds') }}</template>
       </mower-input-number>
     </n-form-item>
-    <n-form-item label="选择路线">
+    <n-form-item :label="t('tasks.selectRoute')">
       <n-select v-model:value="sf_target" :options="target_options" />
     </n-form-item>
   </n-form>

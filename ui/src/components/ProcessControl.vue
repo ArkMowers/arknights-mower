@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
@@ -30,7 +31,11 @@ let timer
 let disposed = false
 
 function errorMessage(error) {
-  return error.response?.data?.message || error.message || '进程操作失败'
+  return (
+    error.response?.data?.message ||
+    error.message ||
+    i18n.global.t('settings.process.processOperationFailed')
+  )
 }
 
 async function poll(pending) {
@@ -38,7 +43,7 @@ async function poll(pending) {
   if (Date.now() - pending.startedAt > 240000) {
     busy.value = false
     failed.value = true
-    message.value = '操作等待超时，请检查当前实例及进程操作日志'
+    message.value = i18n.global.t('settings.process.theOperationTimedOutCheckThisInstance')
     sessionStorage.removeItem(pendingKey)
     return
   }
@@ -67,11 +72,11 @@ async function poll(pending) {
     }
     if (pending.action === 'stop') {
       busy.value = false
-      message.value = '当前实例连接已关闭，可关闭此页面'
+      message.value = i18n.global.t('settings.process.thisInstanceHasDisconnectedYouCanClose')
       sessionStorage.removeItem(pendingKey)
       return
     }
-    message.value = '当前实例正在重启，等待重新连接…'
+    message.value = i18n.global.t('settings.process.thisInstanceIsRestartingWaitingToReconnect')
   }
   if (!disposed) timer = setTimeout(() => poll(pending), 1000)
 }
@@ -140,22 +145,34 @@ onUnmounted(() => {
 
 <template>
   <template v-if="props.compact">
-    <n-text v-if="busy" depth="3" aria-live="polite">正在重启…</n-text>
+    <n-text v-if="busy" depth="3" aria-live="polite">{{
+      i18n.global.t('settings.process.restarting')
+    }}</n-text>
     <n-space v-if="failed" align="center">
       <n-text type="error" aria-live="polite">{{ message }}</n-text>
-      <n-button v-if="savesPaused" size="small" @click="reload">刷新页面</n-button>
+      <n-button v-if="savesPaused" size="small" @click="reload">{{
+        i18n.global.t('settings.process.reloadPage')
+      }}</n-button>
     </n-space>
   </template>
-  <n-card v-else title="进程操作" class="process-control">
+  <n-card v-else :title="i18n.global.t('settings.process.processControls')" class="process-control">
     <n-space vertical :size="16">
       <p class="process-control-summary">
-        仅操作当前实例{{ info?.name ? `（${info.name}）` : '' }}，其他实例和多开管理器不受影响。
+        {{ i18n.global.t('settings.process.onlyThisInstance')
+        }}{{ info?.name ? `（${info.name}）` : ''
+        }}{{ i18n.global.t('settings.process.isAffectedOtherInstancesAndTheInstance') }}
       </p>
       <div class="process-control-actions">
-        <div v-if="effectiveRunning" class="process-control-row" data-settings-label="重启续接">
+        <div
+          v-if="effectiveRunning"
+          class="process-control-row"
+          :data-settings-label="i18n.global.t('settings.process.restartResume')"
+        >
           <div class="process-control-copy">
-            <span>重启续接</span>
-            <p>保存当前配置后重启当前实例，并保留任务队列继续运行。</p>
+            <span>{{ i18n.global.t('settings.process.restartResume') }}</span>
+            <p>
+              {{ i18n.global.t('settings.process.saveTheCurrentConfigurationRestartThisInstance') }}
+            </p>
           </div>
           <n-popconfirm
             style="max-width: min(360px, calc(100vw - 32px))"
@@ -163,20 +180,20 @@ onUnmounted(() => {
           >
             <template #trigger>
               <n-button type="primary" :disabled="busy || savesPaused || !info?.supported">
-                重启续接
+                {{ i18n.global.t('settings.process.restartResume') }}
               </n-button>
             </template>
-            保存当前配置后重启当前实例，并保留任务队列继续运行。
+            {{ i18n.global.t('settings.process.saveTheCurrentConfigurationRestartThisInstance') }}
           </n-popconfirm>
         </div>
         <div
           v-if="!props.resumeOnly"
           class="process-control-row"
-          data-settings-label="重启 Mower 进程"
+          :data-settings-label="i18n.global.t('settings.process.restartMowerProcess')"
         >
           <div class="process-control-copy">
-            <span>重启 Mower 进程</span>
-            <p>保留名称、数据目录、端口和启动参数。原本运行中的任务将重置运行缓存后重新开始。</p>
+            <span>{{ i18n.global.t('settings.process.restartMowerProcess') }}</span>
+            <p>{{ i18n.global.t('settings.process.keepTheInstanceNameDataDirectoryPort') }}</p>
           </div>
           <n-popconfirm
             style="max-width: min(360px, calc(100vw - 32px))"
@@ -184,20 +201,20 @@ onUnmounted(() => {
           >
             <template #trigger>
               <n-button :disabled="busy || savesPaused || !info?.supported">
-                重启 Mower 进程
+                {{ i18n.global.t('settings.process.restartMowerProcess') }}
               </n-button>
             </template>
-            重启当前实例，保留名称、数据目录、端口和启动参数；原本运行中的任务将重置运行缓存后重新开始。
+            {{ i18n.global.t('settings.process.restartThisInstanceKeepingItsNameData') }}
           </n-popconfirm>
         </div>
         <div
           v-if="!props.resumeOnly"
           class="process-control-row"
-          data-settings-label="结束 Mower 进程"
+          :data-settings-label="i18n.global.t('settings.process.stopMowerProcess')"
         >
           <div class="process-control-copy">
-            <span>结束 Mower 进程</span>
-            <p>正常停止当前任务并结束此实例，网页连接将断开。</p>
+            <span>{{ i18n.global.t('settings.process.stopMowerProcess') }}</span>
+            <p>{{ i18n.global.t('settings.process.stopTheCurrentTaskNormallyAndExit') }}</p>
           </div>
           <n-popconfirm
             style="max-width: min(360px, calc(100vw - 32px))"
@@ -205,19 +222,21 @@ onUnmounted(() => {
           >
             <template #trigger>
               <n-button type="error" secondary :disabled="busy || savesPaused || !info?.supported">
-                结束 Mower 进程
+                {{ i18n.global.t('settings.process.stopMowerProcess') }}
               </n-button>
             </template>
-            正常停止当前任务并结束此实例，网页连接将断开。
+            {{ i18n.global.t('settings.process.stopTheCurrentTaskNormallyAndExit') }}
           </n-popconfirm>
         </div>
       </div>
       <n-text v-if="props.resumeOnly && !effectiveRunning" depth="3">
-        当前没有运行中的任务，无需重启续接。
+        {{ i18n.global.t('settings.process.noTaskIsRunningSoRestartAnd') }}
       </n-text>
       <n-alert v-if="savesPaused" type="info">
-        配置自动保存已暂停。配置导入或进程操作结束后，请刷新页面重新读取配置再编辑。
-        <n-button v-if="!busy" size="small" @click="reload">刷新页面</n-button>
+        {{ i18n.global.t('settings.process.configurationAutosaveIsPausedAfterTheImport') }}
+        <n-button v-if="!busy" size="small" @click="reload">{{
+          i18n.global.t('settings.process.reloadPage')
+        }}</n-button>
       </n-alert>
       <n-alert v-if="message" :type="failed ? 'error' : 'info'" aria-live="polite">
         {{ message }}

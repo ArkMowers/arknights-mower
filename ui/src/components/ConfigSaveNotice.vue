@@ -2,6 +2,8 @@
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import StatusNotification from '@/components/StatusNotification.vue'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 
 const config = useConfigStore()
 const { config_save_error, config_saving } = storeToRefs(config)
@@ -12,12 +14,12 @@ const { config_save_error, config_saving } = storeToRefs(config)
     :show="!!config_save_error"
     type="error"
     role="alert"
-    title="配置保存失败"
-    :content="`${config_save_error}。修改仍保留在当前页面。`"
+    :title="t('common.configSaveFailed')"
+    :content="t('common.editsRetained', { message: config_save_error })"
   >
     <template #action>
       <n-button size="small" :loading="config_saving" @click="config.save_config().catch(() => {})">
-        重试保存
+        {{ t('common.retrySave') }}
       </n-button>
     </template>
   </StatusNotification>

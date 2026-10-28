@@ -22,7 +22,9 @@
       />
 
       <div v-if="crossFormWarning" class="growth-notice" role="status">
-        <span class="gp-stamp gp-stamp--warn growth-notice__stamp">升变提醒</span>
+        <span class="gp-stamp gp-stamp--warn growth-notice__stamp">{{
+          i18n.global.t('growth.page.formChangeReminder')
+        }}</span>
         <p>{{ crossFormWarning }}</p>
       </div>
 
@@ -37,14 +39,16 @@
       />
 
       <div v-if="!store.hasData && store.error" class="gp-panel growth-blocked">
-        <span class="gp-kicker">Sync required</span>
-        <h2>还没有可规划的干员数据</h2>
+        <span class="gp-kicker">{{ i18n.global.t('growth.format.syncRequired') }}</span>
+        <h2>{{ i18n.global.t('growth.page.noOperatorDataIsAvailableForPlanning') }}</h2>
         <p>{{ store.error }}</p>
         <div class="growth-blocked__actions">
           <n-button type="primary" :loading="store.loading" @click="fetchCultivate">
-            从森空岛同步数据
+            {{ i18n.global.t('growth.page.syncDataFromSkland') }}
           </n-button>
-          <n-button quaternary @click="refreshGrowthPlanOnly">重试读取</n-button>
+          <n-button quaternary @click="refreshGrowthPlanOnly">{{
+            i18n.global.t('growth.page.retryLoading')
+          }}</n-button>
         </div>
       </div>
 
@@ -130,7 +134,7 @@
             v-if="selectedOperator"
             :operator="selectedOperator"
             :loading="detailLoading"
-            :error="detailError"
+            :error="operatorSyncMessage(detailError)"
             :skill-rows="selectedSkillRows"
             :module-rows="selectedModuleRows"
             :basic="selectedBasicState"
@@ -216,14 +220,17 @@
       >
         <template #header>
           <div class="growth-modal__head">
-            <span class="gp-kicker">Mastery routes</span>
-            <h2>通用专精路线</h2>
-            <p>按职业准备训练室协助者；具体计划按干员职业与分支独立计算，实际路线可能不同。</p>
+            <span class="gp-kicker">{{ i18n.global.t('growth.format.masteryRoutesHeading') }}</span>
+            <h2>{{ i18n.global.t('growth.page.defaultMasteryRoutes') }}</h2>
+            <p>{{ i18n.global.t('growth.page.prepareTrainingRoomAssistantsByProfessionEach') }}</p>
           </div>
         </template>
 
         <div class="growth-modal__body route-drawer">
-          <nav class="route-drawer__rail" aria-label="职业路线">
+          <nav
+            class="route-drawer__rail"
+            :aria-label="i18n.global.t('growth.page.professionMasteryRoutes')"
+          >
             <button
               v-for="prof in profKeys"
               :key="prof"
@@ -233,7 +240,7 @@
               :aria-pressed="settingsTab === prof"
               @click="settingsTab = prof"
             >
-              {{ prof }}
+              {{ professionName(prof) }}
             </button>
           </nav>
 
@@ -244,17 +251,22 @@
               :bordered="false"
               class="route-drawer__alert"
             >
-              {{ defaultsError }}
+              {{ operatorSyncMessage(defaultsError) }}
             </n-alert>
 
             <section class="route-slots">
               <header class="route-section-head">
                 <div>
-                  <h3>{{ settingsTab }} · 协助位</h3>
-                  <p>每个专精阶段一位协助者；留空则按当前默认路线执行。</p>
+                  <h3>
+                    {{ professionName(settingsTab) }}
+                    {{ i18n.global.t('growth.page.assistantSlots') }}
+                  </h3>
+                  <p>{{ i18n.global.t('growth.page.oneAssistantForEachMasteryStageLeave') }}</p>
                 </div>
                 <span class="gp-stamp gp-stamp--flat">{{
-                  routeSettings[settingsTab].optimal ? '最优' : '自选'
+                  routeSettings[settingsTab].optimal
+                    ? i18n.global.t('growth.page.optimal')
+                    : i18n.global.t('growth.page.custom')
                 }}</span>
               </header>
 
@@ -268,20 +280,27 @@
                   <div class="route-slot">
                     <div class="route-slot__line">
                       <div class="route-slot__stage gp-mono">
-                        专{{ ['一', '二', '三'][value.skill_level - 1] }}
+                        {{ i18n.global.t('growth.page.m2')
+                        }}{{
+                          [
+                            i18n.global.t('growth.page.1'),
+                            i18n.global.t('growth.page.2'),
+                            i18n.global.t('growth.page.3')
+                          ][value.skill_level - 1]
+                        }}
                       </div>
                       <n-select
                         v-model:value="value.name"
                         filterable
                         :options="operatorOptions"
-                        :filter="(p, o) => pinyin_match(o.label, p)"
+                        :filter="filterOperatorOption"
                         :render-label="render_op_label"
                         :render-option="render_op_option"
-                        placeholder="选择协助干员"
-                        aria-label="协助干员"
+                        :placeholder="i18n.global.t('growth.page.selectATrainingAssistant')"
+                        :aria-label="i18n.global.t('growth.page.trainingAssistant')"
                       />
                       <label class="route-slot__efficiency">
-                        <span>训练速度</span>
+                        <span>{{ i18n.global.t('growth.page.trainingSpeed') }}</span>
                         <mower-input-number
                           v-model:value="value.efficiency"
                           :min="0"
@@ -294,21 +313,23 @@
                       </label>
                     </div>
                     <div class="route-slot__swap">
-                      <n-checkbox v-model:checked="value.swap">中途换人</n-checkbox>
+                      <n-checkbox v-model:checked="value.swap">{{
+                        i18n.global.t('growth.page.assistantSwap')
+                      }}</n-checkbox>
                       <n-select
                         :disabled="!value.swap"
                         v-model:value="value.swap_name"
                         :options="swap_list"
                         :render-label="render_op_label"
                         :render-option="render_op_option"
-                        placeholder="接班人"
-                        aria-label="换人干员"
+                        :placeholder="i18n.global.t('growth.page.replacement')"
+                        :aria-label="i18n.global.t('growth.page.replacementAssistant')"
                       />
                       <n-select
                         :disabled="!value.swap"
                         v-model:value="value.match"
                         :options="swap_30"
-                        aria-label="换人加成"
+                        :aria-label="i18n.global.t('growth.page.swapBonus')"
                       />
                     </div>
                   </div>
@@ -316,25 +337,31 @@
               </n-dynamic-input>
 
               <div class="route-flags">
-                <n-checkbox v-model:checked="routeSettings[settingsTab].optimal"
-                  >最优协助干员</n-checkbox
-                >
-                <n-checkbox v-model:checked="routeSettings[settingsTab].half_off"
-                  >有减半加成</n-checkbox
-                >
+                <n-checkbox v-model:checked="routeSettings[settingsTab].optimal">{{
+                  i18n.global.t('growth.page.optimalTrainingAssistants')
+                }}</n-checkbox>
+                <n-checkbox v-model:checked="routeSettings[settingsTab].half_off">{{
+                  i18n.global.t('growth.page.halvingBonusAvailable')
+                }}</n-checkbox>
               </div>
             </section>
 
             <details class="route-reference">
-              <summary>各职业最优协助者（参考）</summary>
+              <summary>
+                {{ i18n.global.t('growth.page.bestAssistantsByProfessionReference') }}
+              </summary>
               <MasteryProfessionTrainers :trainers="bestTrainers" :professions="profKeys" />
             </details>
 
             <section class="route-global">
               <header class="route-section-head">
                 <div>
-                  <h3>全局参数</h3>
-                  <p>中枢加成按主排班与备用排班的中枢干员自动识别。</p>
+                  <h3>{{ i18n.global.t('growth.page.globalParameters') }}</h3>
+                  <p>
+                    {{
+                      i18n.global.t('growth.page.identifyTheControlCenterBonusAutomaticallyFrom')
+                    }}
+                  </p>
                 </div>
               </header>
               <div class="route-central">
@@ -345,19 +372,18 @@
                   :unchecked-value="0"
                 >
                   <template #checked>+5%</template>
-                  <template #unchecked>无</template>
+                  <template #unchecked>{{ i18n.global.t('growth.page.none') }}</template>
                 </n-switch>
-                <span>中枢干员加成</span>
-                <HelpText label="中枢加成来源">
-                  按主排班、备用排班中枢栏的主力及替换干员自动识别 +5%。
+                <span>{{ i18n.global.t('growth.page.controlCenterOperatorBonus') }}</span>
+                <HelpText :label="i18n.global.t('growth.page.controlCenterBonusSource')">
+                  {{ i18n.global.t('growth.page.detect5FromPrimaryAndReplacementOperators') }}
                 </HelpText>
               </div>
               <div class="route-buffers">
                 <p class="route-buffers__caption">
-                  换人缓冲时间（分钟）
-                  <HelpText label="换人缓冲说明">
-                    协助位换人时预留的安全时间，默认 10
-                    分钟；中枢加成与专二未继承减半等场景共用这一设置。
+                  {{ i18n.global.t('growthUpdates.swapBufferMinutes') }}
+                  <HelpText :label="i18n.global.t('growthUpdates.swapBufferHelpLabel')">
+                    {{ i18n.global.t('growthUpdates.swapBufferHelp') }}
                   </HelpText>
                 </p>
                 <label v-for="item in masteryBufferFields" :key="item.key" class="route-buffer">
@@ -388,21 +414,25 @@
                 :disabled="routeSaving || store.loading"
                 :loading="routeCalculating"
               >
-                计算最优
+                {{ i18n.global.t('growth.page.calculateOptimalRoutes') }}
               </n-button>
-              <HelpText label="计算最优说明">
-                先同步干员数据，再按照最新 BOX 计算最优默认专精路线，应用于全部职业。
+              <HelpText :label="i18n.global.t('growth.page.aboutOptimalRouteCalculation')">
+                {{
+                  i18n.global.t('growth.page.synchronizeOperatorDataThenCalculateOptimalDefault')
+                }}
               </HelpText>
             </div>
             <div class="growth-drawer__foot-right">
-              <n-button :disabled="routeCalculating" @click="showSettings = false">取消</n-button>
+              <n-button :disabled="routeCalculating" @click="showSettings = false">{{
+                i18n.global.t('growth.page.cancel')
+              }}</n-button>
               <n-button
                 type="primary"
                 @click="saveRouteAndClose"
                 :loading="routeSaving"
                 :disabled="routeCalculating"
               >
-                保存并关闭
+                {{ i18n.global.t('growth.page.saveClose') }}
               </n-button>
             </div>
           </div>
@@ -421,9 +451,11 @@
       >
         <template #header>
           <div class="growth-modal__head">
-            <span class="gp-kicker">Workshop lineup</span>
-            <h2>加工站干员</h2>
-            <p>按副产品概率与材料范围分配合成干员；缺口生成任务会沿用这里的名单。</p>
+            <span class="gp-kicker">{{ i18n.global.t('growth.format.workshopLineup') }}</span>
+            <h2>{{ i18n.global.t('growth.page.workshopOperators') }}</h2>
+            <p>
+              {{ i18n.global.t('growth.page.assignCraftingOperatorsByByproductProbabilityAnd') }}
+            </p>
           </div>
         </template>
 
@@ -434,8 +466,8 @@
 
           <section class="workshop-threshold">
             <div class="workshop-threshold__copy">
-              <h3>副产品概率下限</h3>
-              <p>一键设置会填入达到该下限且已解锁技能的干员，名单为空时逐档降低下限。</p>
+              <h3>{{ i18n.global.t('growth.page.minimumByproductProbabilityBonus') }}</h3>
+              <p>{{ i18n.global.t('growth.page.autoFillOperatorsWithUnlockedSkillsMeeting') }}</p>
             </div>
             <div class="workshop-threshold__controls">
               <mower-input-number
@@ -447,7 +479,9 @@
                 :step="5"
                 :show-button="false"
                 :disabled="workshopDefaultsLoading"
-                :input-props="{ 'aria-label': '副产品概率加成下限' }"
+                :input-props="{
+                  'aria-label': i18n.global.t('growth.page.minimumByproductProbabilityBonus2')
+                }"
                 style="width: 104px"
               >
                 <template #suffix>%</template>
@@ -459,7 +493,7 @@
                 @click="setWorkshopOperators"
                 :loading="workshopDefaultsLoading"
               >
-                一键设置
+                {{ i18n.global.t('growth.page.autoFill') }}
               </n-button>
             </div>
           </section>
@@ -470,51 +504,57 @@
               :disabled="workshopPolicySaving"
               @update:value="setWorkshopMaterialPolicy"
               size="small"
-              aria-label="不使用装置/固源岩进行合成"
+              :aria-label="i18n.global.t('growth.page.doNotCraftWithDevicesOrirockCubes')"
             />
-            <span>不使用装置 / 固源岩进行合成</span>
+            <span>{{ i18n.global.t('growth.page.doNotCraftWithDevicesOrirockCubes2') }}</span>
             <HelpText>
-              仅保留 T2 装置、固源岩，其他等级照常合成；开启后材料预算也不使用这两种原料。
+              {{ i18n.global.t('growth.page.reserveOnlyT2DevicesAndOrirockCubes') }}
             </HelpText>
           </section>
 
           <section class="workshop-group">
             <header>
-              <h3>非 T5 材料</h3>
-              <HelpText>缺口合成暂不使用需要额外垫刀的九色鹿，请同时选择其他加工干员。</HelpText>
+              <h3>{{ i18n.global.t('growth.page.nonT5Materials') }}</h3>
+              <HelpText>{{
+                i18n.global.t('growth.page.shortageCraftingDoesNotUseWhoseSkill')
+              }}</HelpText>
             </header>
             <slick-operator-select
               v-model="fodderOps"
               :disabled="workshopDefaultsLoading"
-              select_placeholder="选择加工干员"
+              :select_placeholder="i18n.global.t('growth.page.selectCraftingOperators')"
             />
           </section>
 
           <section class="workshop-group">
-            <header><h3>T5 材料</h3></header>
+            <header>
+              <h3>{{ i18n.global.t('growth.page.t5Materials') }}</h3>
+            </header>
             <slick-operator-select
               v-model="t5Ops"
               :disabled="workshopDefaultsLoading"
-              select_placeholder="选择干员"
+              :select_placeholder="i18n.global.t('growth.page.selectOperators')"
             />
           </section>
 
           <section class="workshop-group">
-            <header><h3>技巧概要</h3></header>
+            <header>
+              <h3>{{ i18n.global.t('growth.page.skillSummaries') }}</h3>
+            </header>
             <slick-operator-select
               v-model="bookOps"
               :disabled="workshopDefaultsLoading"
-              select_placeholder="选择干员"
+              :select_placeholder="i18n.global.t('growth.page.selectOperators')"
             />
           </section>
 
           <details class="workshop-advanced">
-            <summary>九色鹿垫刀素材设置（仅手动合成使用）</summary>
+            <summary>{{ i18n.global.t('growth.page.fodderMaterialsManualCraftingOnly') }}</summary>
             <workshop-deer-fodder v-model="deerFodder" :disabled="workshopDefaultsLoading" />
           </details>
 
           <details v-if="workshopRecommendations" class="workshop-advanced">
-            <summary>值得培养的干员</summary>
+            <summary>{{ i18n.global.t('growth.page.recommendedOperatorsToRaise') }}</summary>
             <div class="workshop-recommendations">
               <div v-for="category in workshopCategoryLabels" :key="category.key">
                 <h4>{{ category.label }}</h4>
@@ -527,7 +567,7 @@
                   }}
                 </p>
                 <p v-if="!workshopRecommendations[category.key].length" class="gp-muted">
-                  暂无推荐干员
+                  {{ i18n.global.t('growth.page.noRecommendedOperators') }}
                 </p>
               </div>
             </div>
@@ -536,14 +576,16 @@
 
         <template #footer>
           <div class="growth-modal__foot">
-            <span class="gp-muted growth-drawer__foot-note">关闭后仍保留已保存的名单</span>
+            <span class="gp-muted growth-drawer__foot-note">{{
+              i18n.global.t('growth.page.savedOperatorListsAreKeptWhenDisabled')
+            }}</span>
             <n-button
               type="primary"
               size="small"
               @click="showWorkshopSettings = false"
               :disabled="workshopDefaultsLoading"
             >
-              完成
+              {{ i18n.global.t('growth.page.done') }}
             </n-button>
           </div>
         </template>
@@ -553,6 +595,9 @@
 </template>
 
 <script setup>
+import { operatorDisplayName, skillDisplayName } from '@/i18n/gameNames'
+import { i18n } from '@/i18n'
+import { operatorSyncMessage } from '@/i18n/operatorSync'
 import {
   loadWorkshopOperators,
   loadWorkshopReference,
@@ -581,7 +626,7 @@ import GrowthOperatorGrid from '@/growth/GrowthOperatorGrid.vue'
 import GrowthOperatorDetail from '@/growth/GrowthOperatorDetail.vue'
 import GrowthMaterialsView from '@/growth/GrowthMaterialsView.vue'
 import GrowthInsightsView from '@/growth/GrowthInsightsView.vue'
-import { goalLabel } from '@/growth/growthFormatters'
+import { goalLabel, professionName } from '@/growth/growthFormatters'
 import { sumPersonalStatistics } from '@/utils/operatorStatistics'
 import '@/growth/growth.css'
 import HelpText from '@/components/HelpText.vue'
@@ -597,7 +642,7 @@ import {
   DEFAULT_MASTERY_SWAP_BUFFERS,
   normalizeMasterySwapBuffers
 } from '@/utils/masteryRoute'
-import { render_op_option, render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label, filterOperatorOption } from '@/utils/op_select'
 import { defaultSurveyFilters, operatorSurvey } from '@/utils/growthSurvey'
 import {
   hasRemainingTarget,
@@ -643,15 +688,17 @@ const rarityOptions = [
   { label: '2★', value: 2 },
   { label: '1★', value: 1 }
 ]
-const professionOptions = profKeys.map((p) => ({ label: p, value: p }))
+const professionOptions = computed(() =>
+  profKeys.map((p) => ({ label: professionName(p), value: p }))
+)
 
 const expandedOperator = ref([])
 const idleFilter = ref('all')
-const idleFilterOptions = [
-  { label: '不限', value: 'all' },
-  { label: '空闲', value: 'idle' },
-  { label: '忙碌', value: 'busy' }
-]
+const idleFilterOptions = computed(() => [
+  { label: i18n.global.t('growth.page.all'), value: 'all' },
+  { label: i18n.global.t('growth.page.idle'), value: 'idle' },
+  { label: i18n.global.t('growth.page.busy'), value: 'busy' }
+])
 const searchQuery = ref('')
 const filterRarity = ref([])
 const filterProfession = ref([])
@@ -665,7 +712,12 @@ onUnmounted(() => batchController?.abort())
 const totalGoalCount = computed(() => planEntries.value.length + store.goals.length)
 const isGoalPlanned = (cid, mid) => goalSelected(store.goals, cid, mid)
 const levelGoalFor = (op) => selectedLevelGoal(op, hasPlannedSkill(op), store.goals)
-const eliteLabel = (elite) => ['精零', '精一', '精二'][elite] || `精${elite}`
+const eliteLabel = (elite) =>
+  [
+    i18n.global.t('growth.page.elite0'),
+    i18n.global.t('growth.page.elite1'),
+    i18n.global.t('growth.page.elite2')
+  ][elite] || i18n.global.t('growth.page.elite', { value0: elite })
 function levelChoices(op) {
   return operatorLevelGoals(op)
 }
@@ -675,7 +727,7 @@ async function applyLevelTarget(op, key) {
   const choices = levelChoices(op).map((entry) => entry.key)
   const required = prerequisiteLevelGoal(op, hasPlannedSkill(op), store.goals)
   if (choice && choices.indexOf(choice.key) < choices.indexOf(required)) {
-    message.info('此等级低于已选养成项目的最低前置；移除对应项目后可降低目标。')
+    message.info(i18n.global.t('growth.page.thisLevelIsBelowASelectedGoal'))
     return
   }
   // 用实际练度判断是否达成，不能依赖材料摘要：概览/详情返回的摘要可能为空。
@@ -684,7 +736,7 @@ async function applyLevelTarget(op, key) {
     ((op.elite ?? 0) > choice.elite ||
       ((op.elite ?? 0) === choice.elite && (op.level ?? 1) >= choice.level))
   if (reached) {
-    message.info('该等级已经达成，无需再加入计划。')
+    message.info(i18n.global.t('growth.page.thisLevelHasAlreadyBeenReachedAnd'))
     return
   }
   if (choice) await toggleGoal(op, choice.key, true)
@@ -701,6 +753,7 @@ function matchesSearch(name, search) {
   return (
     !search.trim() ||
     name.toLowerCase().includes(search.trim().toLowerCase()) ||
+    operatorDisplayName(name).toLowerCase().includes(search.trim().toLowerCase()) ||
     !!pinyin_match(name, search.trim())
   )
 }
@@ -721,7 +774,7 @@ function targetFor(op, rec) {
 function targetOptions(rec) {
   return [1, 2, 3]
     .filter((level) => level > rec.current_level)
-    .map((value) => ({ value, label: `目标专${value}` }))
+    .map((value) => ({ value, label: i18n.global.t('growth.page.targetM', { value0: value }) }))
 }
 function isTargetLocked(op, rec) {
   const status = planStatus.value[planKey(op.char_id, rec.skill_index)]?.status
@@ -740,7 +793,7 @@ async function changeTarget(op, rec, value) {
     }
     targets.value[key] = value
   } catch (error) {
-    message.error(error.response?.data?.error || '目标保存失败')
+    message.error(error.response?.data?.error || i18n.global.t('growth.page.failedToSaveTheTarget'))
   } finally {
     targetSaving.value = false
   }
@@ -758,7 +811,10 @@ function moduleTarget(op, module) {
 function moduleTargetOptions(module) {
   return Array.from({ length: module.max_level || 1 }, (_, i) => i + 1)
     .filter((level) => level > module.current_level)
-    .map((level) => ({ label: `目标 ${level} 级`, value: level }))
+    .map((level) => ({
+      label: i18n.global.t('growth.page.targetLevel', { value0: level }),
+      value: level
+    }))
 }
 async function changeModuleTarget(op, module, value) {
   if (isGoalPlanned(op.char_id, module.id)) {
@@ -780,7 +836,9 @@ async function toggleGoal(op, moduleId, selected, targetLevel) {
     })
     store.goals = response.data.goals
   } catch (error) {
-    message.error(error.response?.data?.error || '养成目标保存失败')
+    message.error(
+      error.response?.data?.error || i18n.global.t('growth.page.failedToSaveTheGrowthGoal')
+    )
   } finally {
     goalSaving.value = false
   }
@@ -802,7 +860,9 @@ async function setWorkshopMaterialPolicy(value) {
     await store.fetchRecommendations()
     await refreshT3Summary()
   } catch (error) {
-    message.error(`合成设置保存失败：${error.message || error}`)
+    message.error(
+      i18n.global.t('growth.page.failedToSaveCraftingSettings', { value0: error.message || error })
+    )
   } finally {
     workshopPolicySaving.value = false
   }
@@ -819,11 +879,11 @@ const workshopRecommendations = ref(null)
 const workshopOwnedOperators = ref(null)
 const workshopDefaultsLoading = ref(false)
 const workshopDefaultsError = ref('')
-const workshopCategoryLabels = [
-  { key: 'fodder_operators', label: '非 T5 材料' },
-  { key: 't5_operators', label: 'T5 材料' },
-  { key: 'book_operators', label: '技巧概要' }
-]
+const workshopCategoryLabels = computed(() => [
+  { key: 'fodder_operators', label: i18n.global.t('growth.page.nonT5Materials') },
+  { key: 't5_operators', label: i18n.global.t('growth.page.t5Materials') },
+  { key: 'book_operators', label: i18n.global.t('growth.page.skillSummaries') }
+])
 
 async function readWorkshopDefaults(apply = false, sync = false) {
   if (workshopDefaultsLoading.value) return
@@ -842,7 +902,10 @@ async function readWorkshopDefaults(apply = false, sync = false) {
       bookOps.value = [...data.defaults.book_operators]
     }
   } catch (e) {
-    workshopDefaultsError.value = e.response?.data?.error || e.message || '加工站推荐读取失败'
+    workshopDefaultsError.value =
+      e.response?.data?.error ||
+      e.message ||
+      i18n.global.t('growth.page.failedToReadWorkshopRecommendations')
     workshopOwnedOperators.value = null
     try {
       workshopRecommendations.value = await loadWorkshopReference(
@@ -875,10 +938,10 @@ const workshopT3Summary = ref([])
 
 const emptyText = computed(() =>
   idleFilter.value === 'idle'
-    ? '没有符合当前筛选的空闲干员'
+    ? i18n.global.t('growth.page.noIdleOperatorsMatchTheFilters')
     : idleFilter.value === 'busy'
-      ? '没有符合当前筛选的忙碌干员'
-      : '没有匹配当前筛选条件的干员'
+      ? i18n.global.t('growth.page.noBusyOperatorsMatchTheFilters')
+      : i18n.global.t('growth.page.noOperatorsMatchTheCurrentFilters')
 )
 
 // ─── 计划（技能级别）───
@@ -941,16 +1004,16 @@ async function warnMaterialShortage(additions) {
       { timeout: 5000 }
     )
     const summary = response.data?.material_summary
-    if (!summary) throw new Error('材料数据不可用')
+    if (!summary) throw new Error(i18n.global.t('growth.page.materialDataUnavailable'))
     if (!summary.available) {
       message.warning(
         summary.craftable
-          ? '计划总需求超出成品库存，可由现有材料合成；仍可加入计划。'
-          : '计划总材料不足（含技巧概要），缺口可在主页查看；仍可加入计划。'
+          ? i18n.global.t('growth.page.finishedInventoryCannotCoverTheFullPlan')
+          : i18n.global.t('growth.page.theFullPlanLacksMaterialsIncludingSkill')
       )
     }
   } catch {
-    message.warning('暂时无法核对总材料库存，仍可加入计划，请稍后刷新查看。')
+    message.warning(i18n.global.t('growth.page.theTotalInventoryCouldNotBeChecked'))
   }
 }
 
@@ -974,7 +1037,7 @@ async function toggleSkillPlan(op, rec) {
           data: { id: info.id }
         })
       } catch (e) {
-        message.error(`删除失败: ${e.message}`)
+        message.error(i18n.global.t('growth.page.deletionFailed', { value0: e.message }))
         return
       }
     }
@@ -1013,15 +1076,20 @@ async function toggleSkillPlan(op, rec) {
         // 重新拉一次服务器计划让按钮/状态收敛。
         plan.value[k] = true
         await refreshPlanFromServer()
-        message.success(results[0]?.reason || '已在计划中，已安排立即开始')
+        message.success(
+          results[0]?.reason ||
+            i18n.global.t('growth.page.alreadyPlannedScheduledToStartImmediately')
+        )
       } else if (results[0]?.status === 'insufficient' || results[0]?.status === 'deferred') {
         await refreshPlanFromServer()
-        message.warning(results[0]?.reason || '材料不足，暂不开始')
+        message.warning(
+          results[0]?.reason || i18n.global.t('growth.page.insufficientMaterialsNotStartingYet')
+        )
       } else {
-        message.warning(results[0]?.reason || '添加失败')
+        message.warning(results[0]?.reason || i18n.global.t('growth.page.failedToAddThePlan'))
       }
     } catch (e) {
-      message.error(`保存失败: ${e.message}`)
+      message.error(i18n.global.t('growth.page.saveFailed', { value0: e.message }))
     }
   }
 }
@@ -1047,7 +1115,11 @@ async function addAllToPlan(op) {
   // 万一本地状态过期撞上已有计划，服务端会回 existing 而不是再建一行。
   const toAdd = recs.filter((rec) => !plan.value[planKey(op.char_id, rec.skill_index)])
   if (!toAdd.length) {
-    message.info(`${op.name} 所有推荐技能都已在计划中`)
+    message.info(
+      i18n.global.t('growth.page.allRecommendedSkillsForAreAlreadyPlanned', {
+        value0: operatorDisplayName(op.name)
+      })
+    )
     return
   }
   try {
@@ -1077,24 +1149,40 @@ async function addAllToPlan(op) {
           target_level: targetFor(op, rec),
           priority: 0
         }
-        if (res.status === 'existing') infos.push(res.reason || '已在计划中')
+        if (res.status === 'existing')
+          infos.push(res.reason || i18n.global.t('growth.page.alreadyPlanned'))
       } else if (res.status === 'insufficient' || res.status === 'deferred') {
-        infos.push(`${rec.skill_index + 1}技能：${res.reason || '材料不足，暂不开始'}`)
+        infos.push(
+          i18n.global.t('growth.page.skill', {
+            value0: rec.skill_index + 1,
+            value1: res.reason || i18n.global.t('growth.page.insufficientMaterialsNotStartingYet')
+          })
+        )
       } else {
-        errs.push(res.reason || '添加失败')
+        errs.push(res.reason || i18n.global.t('growth.page.failedToAddThePlan'))
       }
     })
     await refreshPlanFromServer()
     if (errs.length) {
-      message.warning(`${op.name} 有 ${errs.length} 项未加入: ${errs.join('；')}`)
+      message.warning(
+        i18n.global.t('growth.page.itemsWereNotAdded', {
+          value0: operatorDisplayName(op.name),
+          value1: errs.length,
+          value2: errs.join('；')
+        })
+      )
     } else if (infos.length) {
       // 材料不足 / 已有计划都明说，别静默当成「全部加入」
-      message.info(`${op.name} ${infos.join('；')}`)
+      message.info(`${operatorDisplayName(op.name)} ${infos.join('；')}`)
     } else {
-      message.success(`${op.name} 全部技能已加入计划`)
+      message.success(
+        i18n.global.t('growth.page.allSkillsForWereAddedToThe', {
+          value0: operatorDisplayName(op.name)
+        })
+      )
     }
   } catch (e) {
-    message.error(`保存失败: ${e.message}`)
+    message.error(i18n.global.t('growth.page.saveFailed', { value0: e.message }))
   }
 }
 
@@ -1115,7 +1203,7 @@ async function refreshPlanFromServer() {
     ])
     if (controller.signal.aborted || sequence !== planReadSequence) return
     if (order.error || order.data?.error) {
-      queueOrderError.value = '养成顺序读取失败，当前队列可能不是最新顺序；请重新读取。'
+      queueOrderError.value = i18n.global.t('growth.page.couldNotReadTheGrowthOrderThe')
     } else {
       queueOrderKeys.value = (order.data?.planning_items || order.data?.items || []).map(
         (item) => item.key
@@ -1204,7 +1292,7 @@ async function autoWorkshop() {
     })
     const ws = resp.data?.workshop_settings
     if (!ws) {
-      message.warning(resp.data?.error || '生成失败')
+      message.warning(resp.data?.error || i18n.global.t('growth.page.generationFailed'))
       return
     }
     configStore.apply_workshop_response(resp.data)
@@ -1217,9 +1305,9 @@ async function autoWorkshop() {
     if (!resp.data.automatic || !ws.length) {
       message.info(
         resp.data.restored
-          ? '当前可合成材料已备齐，已恢复手动合成配置'
+          ? i18n.global.t('growth.page.currentlyCraftableMaterialsAreReadyManualCrafting')
           : resp.data.crafting_status?.blockers?.[0]?.message ||
-              '当前缺口没有可执行的合成配方，请查看材料总览与加工干员设置'
+              i18n.global.t('growth.page.noExecutableRecipesCoverTheCurrentShortage')
       )
       return
     }
@@ -1255,22 +1343,32 @@ async function autoWorkshop() {
           meta_data: op
         }
       })
-      if (r.data === '添加任务成功！') {
+      if (r.data === i18n.global.t('growth.page.taskAdded')) {
         added.push(op)
       } else {
-        message.warning(`${op} 任务添加失败: ${r.data}`)
+        message.warning(
+          i18n.global.t('growth.page.couldNotAddATaskFor', { value0: op, value1: r.data })
+        )
       }
     }
 
     const parts = []
-    if (added.length) parts.push(`已添加任务: ${added.join(', ')}`)
-    if (skipped.length) parts.push(`已有任务: ${skipped.join(', ')}`)
+    if (added.length)
+      parts.push(i18n.global.t('growth.page.tasksAdded', { value0: added.join(', ') }))
+    if (skipped.length)
+      parts.push(i18n.global.t('growth.page.tasksAlreadyPresent', { value0: skipped.join(', ') }))
     if (!added.length && !skipped.length) return
     message.success(
-      `已按合成顺序生成当前缺口的合成任务${parts.length ? '，' + parts.join('；') : ''}`
+      i18n.global.t('growth.page.generatedCraftingTasksForTheCurrentShortage', {
+        value0: parts.length ? '，' + parts.join('；') : ''
+      })
     )
   } catch (e) {
-    message.error(`生成失败: ${e.response?.data?.error || e.message}`)
+    message.error(
+      i18n.global.t('growth.page.generationFailed2', {
+        value0: e.response?.data?.error || e.message
+      })
+    )
   } finally {
     workshopLoading.value = false
     ++workshopStatusRevision.value
@@ -1284,10 +1382,10 @@ const swap_list = [
   { value: '艾丽妮', label: '艾丽妮' },
   { value: '逻各斯', label: '逻各斯' }
 ]
-const swap_30 = [
-  { value: 'yes', label: '有30%速度加成' },
-  { value: 'no', label: '无训练速度加成' }
-]
+const swap_30 = computed(() => [
+  { value: 'yes', label: i18n.global.t('growth.page.30TrainingSpeedBonus') },
+  { value: 'no', label: i18n.global.t('growth.page.noTrainingSpeedBonus') }
+])
 // 全局路线设置（#91 修订）：中枢加成（0/5）+ 换人缓冲时间，存路线配置设置行，不走 conf。
 const masterySettings = reactive({
   central_bonus: 0,
@@ -1296,10 +1394,13 @@ const masterySettings = reactive({
 const masteryBufferFields = computed(() =>
   autoCentralBonus.value
     ? [
-        { key: 'central', label: '有中枢加成' },
-        { key: 'central_unhalved_m2', label: '有中枢加成 · 专二未继承减半' }
+        { key: 'central', label: i18n.global.t('growthUpdates.controlCenterBonus') },
+        {
+          key: 'central_unhalved_m2',
+          label: i18n.global.t('growthUpdates.controlCenterBonusUnhalvedM2')
+        }
       ]
-    : [{ key: 'no_central', label: '无中枢加成' }]
+    : [{ key: 'no_central', label: i18n.global.t('growth.page.noControlCenterBonus') }]
 )
 
 const defaultsCache = ref(null)
@@ -1416,7 +1517,7 @@ async function openSettings() {
   try {
     await loadRoute()
   } catch (e) {
-    defaultsError.value = '路线加载失败，请稍后重试'
+    defaultsError.value = i18n.global.t('growth.page.couldNotLoadMasteryRoutesPleaseTry')
     console.error('openSettings: loadRoute failed', e)
   }
   showSettings.value = true
@@ -1437,7 +1538,9 @@ async function discardRouteChanges() {
 watch(showSettings, (val) => {
   if (!val && (_dirtyRouteProfessions.size || _dirtyMasterySettings)) {
     discardRouteChanges()
-      .then(() => message.warning('通用专精路线修改未保存，已还原'))
+      .then(() =>
+        message.warning(i18n.global.t('growth.page.unsavedDefaultMasteryRouteChangesWereReverted'))
+      )
       .catch((e) => console.error('discard route changes failed', e))
   }
 })
@@ -1453,10 +1556,10 @@ async function saveRouteAndClose() {
     ])
     _dirtyMasterySettings = false // 已落库，关弹窗不再触发「未保存还原」
     showSettings.value = false
-    message.success('通用专精路线已保存')
+    message.success(i18n.global.t('growth.page.defaultMasteryRoutesSaved'))
   } catch (e) {
     console.error('saveRouteAndClose: failed', e)
-    message.error('保存失败')
+    message.error(i18n.global.t('growth.page.saveFailed2'))
   }
 }
 
@@ -1470,7 +1573,7 @@ async function calculateOptimalRoutes() {
     defaultsError.value = ''
     defaultsCache.value = def
     if (!profKeys.some((p) => def._jsonDefaults[p]?.length)) {
-      message.info('没有已拥有且已解锁训练技能的可用干员')
+      message.info(i18n.global.t('growth.page.noOwnedOperatorsHaveAnUnlockedTraining'))
       return
     }
     for (const p of profKeys) {
@@ -1479,9 +1582,16 @@ async function calculateOptimalRoutes() {
       routeSettings[p].optimal = false
       _dirtyRouteProfessions.add(p)
     }
-    message.success('已同步干员数据并计算全部职业的最优路线（保存并关闭后生效）')
+    message.success(i18n.global.t('growth.page.operatorDataSynchronizedAndOptimalRoutesCalculated'))
   } catch (e) {
-    message.error(e.response?.data?.message || e.response?.data?.error || e.message || '计算失败')
+    message.error(
+      operatorSyncMessage(
+        e.response?.data?.message ||
+          e.response?.data?.error ||
+          e.message ||
+          i18n.global.t('growth.page.calculationFailed')
+      )
+    )
   } finally {
     routeCalculating.value = false
   }
@@ -1545,7 +1655,7 @@ async function loadSurvey() {
     survey.value = {
       ...survey.value,
       stale: Boolean(survey.value.operators?.length),
-      error: '一图流统计暂时不可用'
+      error: i18n.global.t('growth.page.yituliuStatisticsAreTemporarilyUnavailable')
     }
   } finally {
     surveyLoading.value = false
@@ -1665,7 +1775,7 @@ async function addFilteredToPlan() {
   const warnings = new Set()
   try {
     if (skills.length) {
-      batchProgress.value = `正在添加 ${skills.length} 项技能计划`
+      batchProgress.value = i18n.global.t('growth.page.addingSkillPlans', { value0: skills.length })
       await warnMaterialShortage(skills.map((item) => planKey(item.char_id, item.skill_index)))
       if (controller.signal.aborted) return
       const { data } = await axios.post(
@@ -1691,14 +1801,23 @@ async function addFilteredToPlan() {
         ) {
           saved++
           plan.value[planKey(item.char_id, item.skill_index)] = true
-        } else failures.push(result?.reason || `${item.name}的技能计划未确认保存`)
+        } else
+          failures.push(
+            result?.reason ||
+              i18n.global.t('growth.page.theSkillPlanForWasNotConfirmed', {
+                value0: operatorDisplayName(item.name)
+              })
+          )
       })
       processed += skills.length
     }
     for (const { char_id, module_id, target_level } of goals) {
       if (controller.signal.aborted) return
       const item = { char_id, module_id, ...(target_level ? { target_level } : {}) }
-      batchProgress.value = `正在添加计划 ${processed + 1} / ${items.length}`
+      batchProgress.value = i18n.global.t('growth.page.addingPlan', {
+        value0: processed + 1,
+        value1: items.length
+      })
       const { data } = await axios.post(
         `${import.meta.env.VITE_HTTP_URL}/growth-plan`,
         { ...item, selected: true },
@@ -1710,19 +1829,30 @@ async function addFilteredToPlan() {
           (goal) => goal.char_id === item.char_id && goal.module_id === item.module_id
         )
       )
-        throw new Error('未确认养成目标保存结果')
+        throw new Error(i18n.global.t('growth.page.growthGoalSaveWasNotConfirmed'))
       store.goals = data.goals
       saved++
       processed++
     }
     for (const warning of warnings) message.warning(warning)
     if (failures.length) {
-      message.warning(`已保存 ${saved} 项计划，${failures.length} 项未加入：${failures[0]}`)
-    } else message.success(`已保存 ${saved} 项筛选计划`)
+      message.warning(
+        i18n.global.t('growth.page.savedPlansWereNotAdded', {
+          value0: saved,
+          value1: failures.length,
+          value2: failures[0]
+        })
+      )
+    } else message.success(i18n.global.t('growth.page.savedFilteredPlans', { value0: saved }))
   } catch (error) {
     if (!controller.signal.aborted) {
       message.error(
-        `已确认保存 ${saved} 项，另有 ${items.length - saved} 项未确认保存；请刷新后重试：${error.response?.data?.error || error.message || '保存失败'}`
+        i18n.global.t('growth.page.confirmedSavedOthersAreUnconfirmedRefreshAnd', {
+          value0: saved,
+          value1: items.length - saved,
+          value2:
+            error.response?.data?.error || error.message || i18n.global.t('growth.page.saveFailed2')
+        })
       )
     }
   } finally {
@@ -1770,10 +1900,11 @@ async function loadOperatorDetail(charId) {
     if (controller.signal.aborted) return
     if (data.error) throw new Error(data.error)
     const detail = data.operators?.find((op) => op.char_id === charId)
-    if (!detail) throw new Error('未找到干员详情，请刷新列表')
+    if (!detail) throw new Error(i18n.global.t('growth.page.operatorDetailsNotFoundRefreshTheList'))
     operatorDetail.value = detail
   } catch (error) {
-    if (!controller.signal.aborted) detailError.value = error.message || '材料详情读取失败'
+    if (!controller.signal.aborted)
+      detailError.value = error.message || i18n.global.t('growth.page.failedToReadMaterialDetails')
   } finally {
     if (!controller.signal.aborted) detailLoading.value = false
   }
@@ -1797,11 +1928,16 @@ async function configureChipFarming() {
     const stages = response.data.stages || []
     message.success(
       stages.length
-        ? `已开启「${response.data.active}」的库存刷关并加入 ${stages.join('、')}；芯片仍需手动合成。`
-        : '当前芯片与采购凭证库存已满足需求'
+        ? i18n.global.t('growth.page.enabledInventoryBasedFarmingForAndAdded', {
+            value0: response.data.active,
+            value1: stages.join('、')
+          })
+        : i18n.global.t('growth.page.chipAndPurchaseCertificateStocksAlreadyCover')
     )
   } catch (error) {
-    message.error(error.response?.data?.error || '芯片刷取设置失败')
+    message.error(
+      error.response?.data?.error || i18n.global.t('growth.page.failedToConfigureChipFarming')
+    )
   } finally {
     chipFarmingLoading.value = false
   }
@@ -1837,7 +1973,9 @@ async function refreshT3Summary() {
   } catch (error) {
     if (request === materialRequest) {
       planMaterials.value = null
-      materialsError.value = error.response?.data?.error || '材料计算失败，请刷新后重试'
+      materialsError.value =
+        error.response?.data?.error ||
+        i18n.global.t('growth.page.materialCalculationFailedRefreshAndTryAgain')
     }
   } finally {
     if (request === materialRequest) materialsLoading.value = false
@@ -1866,9 +2004,13 @@ async function fetchCultivate() {
   try {
     await store.fetchCultivate()
     if (store.cultivateOk) {
-      message.success(`森空岛数据同步成功 ${store.cultivateMsg}`)
+      message.success(
+        i18n.global.t('growth.page.sklandDataSynchronized', { value0: store.cultivateMsg })
+      )
     } else if (store.cultivateMsg) {
-      message.error(`森空岛同步失败: ${store.cultivateMsg}`)
+      message.error(
+        i18n.global.t('growth.page.sklandSynchronizationFailed', { value0: store.cultivateMsg })
+      )
     }
   } finally {
     cultivateSyncing.value = false
@@ -1895,11 +2037,14 @@ async function insertMasteryTask(op, rec) {
     if (data.status === 'inserted' || data.status === 'queued') {
       message.success(data.reason)
     } else {
-      message.warning(data.reason || '任务未插入，请刷新后重试')
+      message.warning(data.reason || i18n.global.t('growth.page.theTaskWasNotInsertedRefreshAnd'))
     }
     await refreshPlanFromServer()
   } catch (error) {
-    message.error(error.response?.data?.reason || `插入失败: ${error.message}`)
+    message.error(
+      error.response?.data?.reason ||
+        i18n.global.t('growth.page.insertionFailed', { value0: error.message })
+    )
   } finally {
     startingMastery.value = false
   }
@@ -1991,8 +2136,10 @@ function refreshGrowthPlanOnly() {
 const syncHint = computed(() => {
   const text = store.cultivateMsg
   if (!text) return ''
-  if (!store.cultivateOk) return '森空岛同步失败'
-  return text.length > 12 ? '森空岛已同步' : '森空岛 · ' + text
+  if (!store.cultivateOk) return i18n.global.t('growth.page.sklandSynchronizationFailed2')
+  return text.length > 12
+    ? i18n.global.t('growth.page.sklandSynchronized')
+    : i18n.global.t('growth.page.skland') + text
 })
 
 function plannedCountFor(op) {
@@ -2010,7 +2157,15 @@ const queueItems = computed(() => {
     kind: 'skill',
     char_id: entry.char_id,
     name: entry.name,
-    label: entry.skill_name + ' · 专' + ['', '一', '二', '三'][entry.target_level || 3],
+    label:
+      skillDisplayName(entry.skill_name) +
+      i18n.global.t('growth.page.m') +
+      [
+        '',
+        i18n.global.t('growth.page.1'),
+        i18n.global.t('growth.page.2'),
+        i18n.global.t('growth.page.3')
+      ][entry.target_level || 3],
     status: entry.status,
     failed_reason: entry.failed_reason
   }))
@@ -2204,21 +2359,21 @@ const selectedBasicState = computed(() => {
   const prerequisite = target.basic_skill_prerequisite
   const pieces = []
   if (target.basic_skill_summary) {
-    pieces.push('基础技能材料按干员只计算一次，升级需在游戏内手动完成。')
+    pieces.push(i18n.global.t('growth.page.basicSkillMaterialsAreCountedOncePer'))
   }
   if (prerequisite && target.elite < prerequisite.elite) {
     pieces.push(
-      '最低前置为' +
+      i18n.global.t('growth.page.minimumPrerequisite') +
         eliteLabel(prerequisite.elite) +
         ' ' +
         prerequisite.level +
-        ' 级，材料自动计入。'
+        i18n.global.t('growth.page.levelsMaterialsAreIncludedAutomatically')
     )
   }
   if ((target.max_phase || 0) >= 2) {
-    pieces.push('专精计划会自动包含此项。')
+    pieces.push(i18n.global.t('growth.page.masteryPlansIncludeThisPrerequisiteAutomatically'))
   }
-  if (!pieces.length) pieces.push('独立基础技能目标，不依赖专精计划。')
+  if (!pieces.length) pieces.push(i18n.global.t('growth.page.anIndependentBasicSkillGoalThatDoes'))
   return {
     supported: true,
     planned,

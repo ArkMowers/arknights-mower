@@ -1,4 +1,6 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 import { computed, inject, ref, watch } from 'vue'
 const show = inject('show_task')
 const isLogPage = inject('add_task') || ref(false)
@@ -35,35 +37,53 @@ const mastery_operator = ref('')
 const mastery_skill = ref(1)
 const mastery_support_mode = ref('auto')
 const workshop_operator = ref('')
-const msg = ref('')
+const rawMessage = ref('')
+const translatedMessage = ref(null)
+const msg = computed({
+  get: () => {
+    const message = translatedMessage.value
+    if (!message) return rawMessage.value
+    return t(message.key, {
+      ...message.params,
+      ...(message.statusKey ? { status: t(message.statusKey) } : {})
+    })
+  },
+  set: (value) => {
+    translatedMessage.value = null
+    rawMessage.value = value
+  }
+})
+function setMessage(key, params = {}, statusKey = null) {
+  translatedMessage.value = { key, params, statusKey }
+}
 const error = ref(false)
-const taskTypeOptions = [
-  { label: '计划暂停', value: '计划暂停' },
-  { label: '计划停止', value: '计划停止' },
-  { label: '日常任务', value: '日常任务' },
-  { label: '作战计划', value: '作战计划' },
-  { label: '集成战略 (MAA)', value: '集成战略 (MAA)' },
-  { label: '保全派驻 (MAA)', value: '保全派驻 (MAA)' },
-  { label: '生息演算 (MAA)', value: '生息演算 (MAA)' },
-  { label: '生息演算', value: '生息演算' },
-  { label: '隐秘战线', value: '隐秘战线' },
-  { label: '专精任务', value: '技能专精' },
-  { label: '加工任务', value: '加工材料' },
-  { label: '【实验性功能】分解所有重复家具', value: '分解所有重复家具' },
-  { label: '仓库扫描', value: '仓库扫描' },
-  { label: '线索任务', value: '线索任务' },
-  { label: '空任务', value: '空任务' }
-]
-const dailyTaskOptions = [
-  { label: '全部（按当前配置）', value: '日常任务' },
-  { label: '公招', value: '公招' },
-  { label: '森空岛签到', value: '森空岛签到' },
-  { label: '信用购物', value: '信用购物' },
-  { label: '领取邮件', value: '领取邮件' },
-  { label: '读取基报', value: '读取基报' },
-  { label: '访问好友', value: '访问好友' },
-  { label: '领取任务奖励', value: '领取任务奖励' }
-]
+const taskTypeOptions = computed(() => [
+  { label: t('plans.taskPause'), value: '计划暂停' },
+  { label: t('plans.taskStop'), value: '计划停止' },
+  { label: t('plans.taskDaily'), value: '日常任务' },
+  { label: t('plans.taskFight'), value: '作战计划' },
+  { label: t('plans.taskRogue'), value: '集成战略 (MAA)' },
+  { label: t('plans.taskSss'), value: '保全派驻 (MAA)' },
+  { label: t('plans.taskReclamationMaa'), value: '生息演算 (MAA)' },
+  { label: t('plans.taskReclamation'), value: '生息演算' },
+  { label: t('plans.taskSecretFront'), value: '隐秘战线' },
+  { label: t('plans.taskMastery'), value: '技能专精' },
+  { label: t('plans.taskWorkshop'), value: '加工材料' },
+  { label: t('plans.taskFurniture'), value: '分解所有重复家具' },
+  { label: t('plans.taskDepot'), value: '仓库扫描' },
+  { label: t('plans.taskClues'), value: '线索任务' },
+  { label: t('plans.taskEmpty'), value: '空任务' }
+])
+const dailyTaskOptions = computed(() => [
+  { label: t('plans.taskAllDaily'), value: '日常任务' },
+  { label: t('plans.taskRecruit'), value: '公招' },
+  { label: t('plans.taskSkland'), value: '森空岛签到' },
+  { label: t('plans.taskCreditStore'), value: '信用购物' },
+  { label: t('plans.taskMail'), value: '领取邮件' },
+  { label: t('plans.taskBaseReport'), value: '读取基报' },
+  { label: t('plans.taskFriends'), value: '访问好友' },
+  { label: t('plans.taskMissionRewards'), value: '领取任务奖励' }
+])
 const workshopOperatorOptions = computed(() => {
   return workshop_settings.value.map((s) => ({
     label: s.operator,
@@ -71,27 +91,27 @@ const workshopOperatorOptions = computed(() => {
   }))
 })
 
-const roomOptions = [
-  { label: '会客室', value: 'meeting' },
-  { label: '办公室', value: 'contact' },
-  { label: '加工站', value: 'factory' },
-  { label: '训练室', value: 'train' },
-  { label: '回收站', value: 'recycle' },
-  { label: '控制中枢', value: 'central' },
-  { label: '第一层1号房间', value: 'room_1_1' },
-  { label: '第一层2号房间', value: 'room_1_2' },
-  { label: '第一层3号房间', value: 'room_1_3' },
-  { label: '第二层1号房间', value: 'room_2_1' },
-  { label: '第二层2号房间', value: 'room_2_2' },
-  { label: '第二层3号房间', value: 'room_2_3' },
-  { label: '第三层1号房间', value: 'room_3_1' },
-  { label: '第三层2号房间', value: 'room_3_2' },
-  { label: '第三层3号房间', value: 'room_3_3' },
-  { label: '宿舍1', value: 'dormitory_1' },
-  { label: '宿舍2', value: 'dormitory_2' },
-  { label: '宿舍3', value: 'dormitory_3' },
-  { label: '宿舍4', value: 'dormitory_4' }
-]
+const roomOptions = computed(() => [
+  { label: t('plans.receptionRoom'), value: 'meeting' },
+  { label: t('plans.office'), value: 'contact' },
+  { label: t('plans.workshop'), value: 'factory' },
+  { label: t('plans.trainingRoom'), value: 'train' },
+  { label: t('plans.recycling'), value: 'recycle' },
+  { label: t('plans.controlCenter'), value: 'central' },
+  { label: t('plans.taskRoom11'), value: 'room_1_1' },
+  { label: t('plans.taskRoom12'), value: 'room_1_2' },
+  { label: t('plans.taskRoom13'), value: 'room_1_3' },
+  { label: t('plans.taskRoom21'), value: 'room_2_1' },
+  { label: t('plans.taskRoom22'), value: 'room_2_2' },
+  { label: t('plans.taskRoom23'), value: 'room_2_3' },
+  { label: t('plans.taskRoom31'), value: 'room_3_1' },
+  { label: t('plans.taskRoom32'), value: 'room_3_2' },
+  { label: t('plans.taskRoom33'), value: 'room_3_3' },
+  { label: t('plans.dormitory1'), value: 'dormitory_1' },
+  { label: t('plans.dormitory2'), value: 'dormitory_2' },
+  { label: t('plans.dormitory3'), value: 'dormitory_3' },
+  { label: t('plans.dormitory4'), value: 'dormitory_4' }
+])
 function update_tasks() {
   if (sub_plan.value != 'main' && !isLogPage.value) {
     const result = []
@@ -140,10 +160,9 @@ async function saveTasks() {
       duration_minutes.value < (task_type.value === '计划停止' ? 0 : 1) ||
       duration_minutes.value > 10080
     ) {
-      msg.value =
-        task_type.value === '计划停止'
-          ? '计划停止时长须为 0 至 10080 分钟的整数，0 表示不定时启动'
-          : '持续时长须为 1 至 10080 分钟的整数'
+      setMessage(
+        task_type.value === '计划停止' ? 'plans.taskStopDurationError' : 'plans.taskDurationError'
+      )
       error.value = true
       return
     }
@@ -160,7 +179,7 @@ async function saveTasks() {
     return
   } else if (task_type.value == '加工材料') {
     if (!workshop_operator.value) {
-      msg.value = '请先选择加工站工具人！'
+      setMessage('plans.chooseWorkshopOperator')
       error.value = true
       return
     }
@@ -172,12 +191,14 @@ async function saveTasks() {
   }
   saving.value = true
   try {
-    msg.value = (
+    const result = (
       await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, { task }, { timeout: 30000 })
     ).data
-    if (msg.value != '添加任务成功！') {
+    if (result != '添加任务成功！') {
+      msg.value = result
       error.value = true
     } else {
+      setMessage('plans.taskAdded')
       error.value = false
       get_tasks()
     }
@@ -191,21 +212,25 @@ async function saveTasks() {
 function showSubmissionError(e) {
   const detail = e.response?.data
   if ((detail?.code || detail?.error) === 'configuration_changed') {
-    msg.value = detail.message || '当前配置已切换，请刷新页面后再操作'
+    if (detail.message) msg.value = detail.message
+    else setMessage('plans.taskConfigurationChanged')
   } else {
-    msg.value = `未确认提交结果：${detail?.message || detail?.error || e.message}，请刷新计划和任务队列后重试`
+    setMessage('plans.taskSubmissionUnconfirmed', {
+      detail: detail?.message || detail?.error || e.message
+    })
   }
   error.value = true
 }
 
 async function saveMasteryTask() {
   if (!mastery_operator.value) {
-    msg.value = '请先选择要专精的干员！'
+    setMessage('plans.chooseMasteryOperator')
     error.value = true
     return
   }
   const warning = masteryTraineeWarning(mastery_operator.value, masterySchedule.value.blocked)
-  if (warning) message.warning(warning)
+  if (warning)
+    message.warning(t('plans.taskMasteryScheduleWarning', { name: mastery_operator.value }))
   try {
     const { data } = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/mastery-plan`,
@@ -224,22 +249,28 @@ async function saveMasteryTask() {
     )
     const result = data?.results?.[0]
     if (!['added', 'existing'].includes(result?.status)) {
-      msg.value = result?.reason || '添加专精计划失败'
+      if (result?.reason) msg.value = result.reason
+      else setMessage('plans.masteryPlanFailed')
       error.value = true
       return
     }
     if (result.warning) message.warning(result.warning)
-    const planStatus = result.status === 'added' ? '已加入专精计划' : '已在专精计划中'
+    const planStatus =
+      result.status === 'added' ? 'plans.masteryPlanAdded' : 'plans.masteryPlanExists'
     const task = result.task
     if (['inserted', 'queued'].includes(task?.status)) {
-      msg.value = `${planStatus}；${task.reason}`
+      setMessage('plans.masteryTaskQueued', { reason: task.reason }, planStatus)
       error.value = false
       get_tasks()
     } else if (task?.status === 'active') {
-      msg.value = `${planStatus}；${task.reason}，未重复生成任务`
+      setMessage('plans.masteryTaskActive', { reason: task.reason }, planStatus)
       error.value = false
     } else {
-      msg.value = `${planStatus}；尚未生成任务：${task?.reason || '未确认入队结果，请刷新后重试'}`
+      setMessage(
+        task?.reason ? 'plans.masteryTaskNotQueued' : 'plans.masteryTaskUnconfirmed',
+        { reason: task?.reason },
+        planStatus
+      )
       error.value = true
     }
   } catch (e) {
@@ -277,17 +308,17 @@ const operators_with_free_current = computed(() => {
 import { pinyin_match } from '@/utils/common'
 import { render_op_option, render_op_label } from '@/utils/op_select'
 
-const skill_list = [
-  { value: 1, label: '一技能' },
-  { value: 2, label: '二技能' },
-  { value: 3, label: '三技能' }
-]
+const skill_list = computed(() => [
+  { value: 1, label: t('plans.skill1') },
+  { value: 2, label: t('plans.skill2') },
+  { value: 3, label: t('plans.skill3') }
+])
 
-const level_list = [
-  { value: 1, label: '专一' },
-  { value: 2, label: '专二' },
-  { value: 3, label: '专三' }
-]
+const level_list = computed(() => [
+  { value: 1, label: t('plans.mastery1') },
+  { value: 2, label: t('plans.mastery2') },
+  { value: 3, label: t('plans.mastery3') }
+])
 </script>
 
 <template>
@@ -310,7 +341,7 @@ const level_list = [
           filterable
           :filter="(p, o) => pinyin_match(o.label, p)"
           :consistent-menu-width="false"
-          placeholder="任务类别"
+          :placeholder="t('plans.taskType')"
           class="dropdown-select"
           :style="{ width: task_type === '分解所有重复家具' ? '290px' : '190px' }"
         />
@@ -319,14 +350,14 @@ const level_list = [
           v-model:value="daily_task"
           :options="dailyTaskOptions"
           :consistent-menu-width="false"
-          placeholder="选择日常项目"
+          :placeholder="t('plans.chooseDailyTask')"
           style="width: 210px"
         />
         <n-select
           v-if="task_type == '技能专精'"
           v-model:value="mastery_operator"
           filterable
-          placeholder="选择干员"
+          :placeholder="t('plans.chooseOperator')"
           :options="operators"
           :filter="(p, o) => pinyin_match(o.label, p)"
           :render-label="render_op_label"
@@ -349,31 +380,28 @@ const level_list = [
           v-if="task_type != '技能专精'"
           v-model:value="task_time"
           type="datetime"
-          placeholder="选择时间"
+          :placeholder="t('plans.chooseTime')"
           style="width: 200px"
         />
         <help-text v-if="task_type == '技能专精'">
-          <div>选择干员、技能与目标等级，加入专精计划并生成关联的专精任务。</div>
+          <div>{{ t('plans.taskMasterySelectionHelp') }}</div>
+          <div>{{ t('plans.taskMasteryRequirementsHelp') }}</div>
+          <div>{{ t('plans.taskMasteryAutoHelp') }}</div>
+          <div>{{ t('plans.taskMasteryRouteHelp') }}</div>
           <div>
-            需开启专精自动化并运行 Mower；材料不足或训练室占用时，保留计划并显示未入队原因。
-          </div>
-          <div>自动协助按已同步 BOX 生成方案；未同步 BOX 时使用职业路线。</div>
-          <div>使用职业路线时，可在通用专精路线预览中设置协助者。</div>
-          <div>
-            参考攻略：
-            <n-button
+            {{ t('plans.referenceGuide')
+            }}<n-button
               text
               tag="a"
               href="https://www.skland.com/article?id=1915250"
               target="_blank"
               type="primary"
+              >{{ t('plans.masteryGuide') }}</n-button
             >
-              通用最速专精方案
-            </n-button>
           </div>
         </help-text>
       </div>
-      <template v-else>任务</template>
+      <template v-else>{{ t('plans.tasks') }}</template>
     </template>
     <div v-if="!isLogPage || task_type == '空任务'" class="task-list-scroll">
       <n-dynamic-input
@@ -381,14 +409,14 @@ const level_list = [
         :on-create="new_task"
         :disabled="!isLogPage && edit_locked"
       >
-        <template #create-button-default>添加任务</template>
+        <template #create-button-default>{{ t('plans.addTask') }}</template>
         <template #default="{ value }">
           <div class="task_row">
             <n-select
               v-model:value="value.room"
               :disabled="!isLogPage && edit_locked"
               :options="roomOptions"
-              placeholder="选择房间"
+              :placeholder="t('plans.chooseRoom')"
               class="dropdown-select task-room-select"
             />
             <n-dynamic-tags
@@ -420,9 +448,8 @@ const level_list = [
               v-if="value.room == 'train'"
               depth="3"
               style="font-size: 12px; margin-left: 8px"
+              >{{ t('plans.trainingPositionsHelp') }}</n-text
             >
-              左边协助位，右边训练位
-            </n-text>
           </div>
         </template>
       </n-dynamic-input>
@@ -437,7 +464,7 @@ const level_list = [
     <template v-if="isLogPage">
       <template v-if="isMaintenance">
         <div class="task_row">
-          <label>持续时长（分钟）：</label>
+          <label>{{ t('plans.taskDuration') }}</label>
           <n-input-number
             v-model:value="duration_minutes"
             :min="task_type === '计划停止' ? 0 : 1"
@@ -446,39 +473,34 @@ const level_list = [
           />
         </div>
         <div v-if="task_type === '计划暂停'" class="task_row">
-          <label>处理方式：</label>
+          <label>{{ t('plans.taskHandling') }}</label>
           <n-select
             v-model:value="maintenance_mode"
             :options="[
-              { label: '提前准备后暂停', value: 'prepare' },
-              { label: '直接暂停', value: 'pause' }
+              { label: t('plans.pausePrepare'), value: 'prepare' },
+              { label: t('plans.pauseDirect'), value: 'pause' }
             ]"
             style="width: 240px"
           />
         </div>
         <n-text depth="3">
-          <template v-if="task_type === '计划停止'">
-            计划停止会按配置提前量触发符合条件的停服更新副表；切表和准备任务完成后才会停止。填写 0
-            表示关闭进程且不定时启动。
-            <template v-if="duration_minutes > 0">
-              从所选时间停止
-              Mower，并创建在设定时长结束后继续运行的定时启动任务；期间不会提前尝试登录。
-              可在停止后取消定时启动；关闭程序会取消预约。
-            </template>
-            <template v-else>从所选时间关闭 Mower 进程，不创建定时启动任务。</template>
+          <template v-if="task_type === '计划停止'"
+            >{{ t('plans.taskStopPreparationHelp')
+            }}<template v-if="duration_minutes > 0">{{ t('plans.taskStopRestartHelp') }}</template>
+            <template v-else>{{ t('plans.taskStopNoRestartHelp') }}</template>
           </template>
-          <template v-else>
-            从所选时间开始暂停，满设定时长后继续；期间不会提前尝试登录。
-            <template v-if="maintenance_mode === 'prepare'">
-              暂停前会按现有闪断更新规则提前跑单、更换专精协助干员。
-            </template>
-            <template v-else>不为本次暂停提前跑单或换人。</template>
+          <template v-else
+            >{{ t('plans.taskPauseHelp')
+            }}<template v-if="maintenance_mode === 'prepare'">{{
+              t('plans.taskPausePrepareHelp')
+            }}</template>
+            <template v-else>{{ t('plans.taskPauseDirectHelp') }}</template>
           </template>
         </n-text>
       </template>
-      <n-text v-if="task_type === '日常任务' && daily_task === '日常任务'" depth="3">
-        按当前配置执行已启用的日常项目和作战计划，不包含长任务。
-      </n-text>
+      <n-text v-if="task_type === '日常任务' && daily_task === '日常任务'" depth="3">{{
+        t('plans.taskDailyHelp')
+      }}</n-text>
       <n-text
         v-else-if="
           !isMaintenance &&
@@ -487,25 +509,24 @@ const level_list = [
           )
         "
         depth="3"
+        >{{ t('plans.taskStandaloneHelp') }}</n-text
       >
-        按当前设置执行一次所选任务，无需开启自动执行；作战和长任务会为其他排队任务预留时间。
-      </n-text>
-      <n-text v-if="task_type == '分解所有重复家具'" depth="3">
-        进入加工站家具页，只分解超出一整套所需数量的家具；无法确认套装数量时跳过。无需选择干员，不消耗心情。
-      </n-text>
+      <n-text v-if="task_type == '分解所有重复家具'" depth="3">{{
+        t('plans.taskFurnitureHelp')
+      }}</n-text>
       <div class="task_row" v-if="task_type == '技能专精'">
-        <label>协助方式：</label>
+        <label>{{ t('plans.taskSupportMode') }}</label>
         <n-select
           v-model:value="mastery_support_mode"
           style="width: 240px"
           :options="[
-            { label: '自动协助（无 BOX 时使用职业路线）', value: 'auto' },
-            { label: '使用职业路线', value: 'route' }
+            { label: t('plans.supportAuto'), value: 'auto' },
+            { label: t('plans.supportRoute'), value: 'route' }
           ]"
         />
       </div>
       <div class="task_row" v-if="task_type == '加工材料'">
-        <label>选择干员：</label>
+        <label>{{ t('plans.taskOperator') }}</label>
         <n-select
           v-model:value="workshop_operator"
           filterable
@@ -516,9 +537,7 @@ const level_list = [
           style="width: 178px"
         />
         <help-text>
-          <div>
-            自身上限检查和子材料下限检查会有延迟，因为数据是从森空岛接口拿的，不是读取游戏内的
-          </div>
+          <div>{{ t('plans.taskWorkshopCacheHelp') }}</div>
         </help-text>
       </div>
       <div class="task_row button_row">
@@ -528,9 +547,11 @@ const level_list = [
         </div>
         <div style="display: flex; gap: 12px; margin-top: 16px">
           <n-button type="primary" :loading="saving" @click="saveTasks">
-            {{ task_type == '技能专精' ? '加入专精计划并生成任务' : '添加至任务队列' }}
+            {{ t(task_type == '技能专精' ? 'plans.addMasteryAndTask' : 'plans.addToQueue') }}
           </n-button>
-          <n-button type="error" :disabled="saving" @click="clear">清除输入</n-button>
+          <n-button type="error" :disabled="saving" @click="clear">{{
+            t('plans.clearInput')
+          }}</n-button>
         </div>
       </div>
     </template>

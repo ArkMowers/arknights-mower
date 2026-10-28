@@ -1,7 +1,11 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { computed, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
+import { navigationLabel } from '@/i18n/navigation'
 
 const props = defineProps({ groupKey: { type: String, default: null } })
 const emit = defineEmits(['close'])
@@ -20,6 +24,7 @@ const { state, catalog, persistenceError } = preferences
 const search = ref('')
 const selectedKeys = ref([])
 const error = ref('')
+const errorMessage = computed(() => (error.value ? t('runtime.addPageFailed') : ''))
 const addedKeys = computed(
   () =>
     new Set(
@@ -36,7 +41,11 @@ const addedKeys = computed(
 )
 const availableEntries = computed(() => {
   const query = search.value.trim().toLocaleLowerCase()
-  return catalog.value.filter((item) => item.label.toLocaleLowerCase().includes(query))
+  return catalog.value
+    .filter((item) =>
+      [item.label, navigationLabel(item)].some((label) => label.toLocaleLowerCase().includes(query))
+    )
+    .map((item) => ({ ...item, label: navigationLabel(item) }))
 })
 
 function clearDraft() {
@@ -61,7 +70,7 @@ function confirm() {
   const pending = selectedKeys.value.filter((key) => !addedKeys.value.has(key))
   for (const key of pending) {
     if (!preferences.addEntry(key, props.groupKey)) {
-      error.value = '暂时无法添加页面，请重试。'
+      error.value = t('runtime.addPageFailed')
       return
     }
   }
@@ -73,24 +82,24 @@ function confirm() {
   <n-modal
     :show="groupKey !== null"
     preset="card"
-    title="添加页面"
+    :title="t('runtime.addPage')"
     class="sidebar-page-dialog"
     :style="dialogStyle"
     content-style="display: flex; flex-direction: column; overflow: hidden"
-    aria-label="添加页面"
+    :aria-label="t('runtime.addPage')"
     @update:show="updateShow"
   >
     <input
       v-model="search"
       class="sidebar-customize__search"
       type="search"
-      placeholder="搜索页面"
-      aria-label="搜索页面"
+      :placeholder="t('runtime.searchPages')"
+      :aria-label="t('runtime.searchPages')"
     />
     <p v-if="persistenceError" class="sidebar-customize__error" role="alert">
-      暂时无法保存，更改仅在当前页面有效。
+      {{ t('runtime.sidebarTemporary') }}
     </p>
-    <p v-if="error" class="sidebar-customize__error" role="alert">{{ error }}</p>
+    <p v-if="error" class="sidebar-customize__error" role="alert">{{ errorMessage }}</p>
     <div class="sidebar-customize__entries">
       <label
         v-for="item in availableEntries"
@@ -104,25 +113,31 @@ function confirm() {
           type="checkbox"
           :value="item.key"
           :disabled="addedKeys.has(item.key)"
-          :aria-label="`添加${item.label}`"
+          :aria-label="t('runtime.addNamedPage', { label: item.label })"
           :data-page-key="item.key"
         />
         <n-icon :component="item.icon" aria-hidden="true" />
         <span>{{ item.label }}</span>
-        <span v-if="addedKeys.has(item.key)" class="sidebar-customize__added">已添加</span>
+        <span v-if="addedKeys.has(item.key)" class="sidebar-customize__added">{{
+          t('runtime.alreadyAdded')
+        }}</span>
       </label>
-      <p v-if="!availableEntries.length" class="sidebar-customize__empty">没有找到页面</p>
+      <p v-if="!availableEntries.length" class="sidebar-customize__empty">
+        {{ t('runtime.noPagesFound') }}
+      </p>
     </div>
     <template #footer>
       <div class="sidebar-customize__actions">
-        <n-button aria-label="取消添加页面" @click="close">取消</n-button>
+        <n-button :aria-label="t('runtime.cancelAddPages')" @click="close">{{
+          t('runtime.cancel')
+        }}</n-button>
         <n-button
           type="primary"
-          aria-label="确认添加页面"
+          :aria-label="t('runtime.confirmAddPages')"
           :disabled="!selectedKeys.length"
           @click="confirm"
         >
-          添加（{{ selectedKeys.length }}）
+          {{ t('runtime.addPagesCount', { count: selectedKeys.length }) }}
         </n-button>
       </div>
     </template>

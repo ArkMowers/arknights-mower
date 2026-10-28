@@ -1,6 +1,8 @@
 <script setup>
 import { NScrollbar } from 'naive-ui'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 
 const scrollbar = ref(null)
 const root = ref(null)
@@ -63,14 +65,14 @@ onBeforeUnmount(() => observer?.disconnect())
       <button
         class="sidebar-scroll__arrow sidebar-scroll__arrow--up"
         type="button"
-        aria-label="向上滚动侧边栏"
+        :aria-label="t('common.scrollUp')"
         :disabled="!canScrollUp"
         @click="scroll(-1)"
       />
       <button
         class="sidebar-scroll__arrow sidebar-scroll__arrow--down"
         type="button"
-        aria-label="向下滚动侧边栏"
+        :aria-label="t('common.scrollDown')"
         :disabled="!canScrollDown"
         @click="scroll(1)"
       />

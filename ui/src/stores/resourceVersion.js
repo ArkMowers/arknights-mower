@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import axios from 'axios'
+import { i18n } from '@/i18n'
 
 export const useResourceVersionStore = defineStore('resourceVersion', () => {
   const info = ref({
@@ -18,11 +19,23 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
   const job = ref({ status: 'idle' })
   const starting = ref(false)
   const installing = computed(() => starting.value || job.value.status === 'running')
-  const progress_error = ref('')
+  const progressErrorKey = ref('')
+  const progress_error = computed(() =>
+    progressErrorKey.value ? i18n.global.t(progressErrorKey.value) : ''
+  )
   let tracking = null
   let versionRequest = null
   let revision = 0
-  const install_message = ref('')
+  const installMessageKey = ref('')
+  const installMessageText = ref('')
+  const install_message = computed({
+    get: () =>
+      installMessageKey.value ? i18n.global.t(installMessageKey.value) : installMessageText.value,
+    set: (message) => {
+      installMessageKey.value = ''
+      installMessageText.value = message
+    }
+  })
   const canInstall = computed(
     () =>
       loaded.value && !loading.value && !installing.value && info.value.update_available === true
@@ -63,7 +76,9 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
           remote_version: '',
           remote_display: '',
           update_available: null,
-          error: '网络错误：无法获取资源版本'
+          get error() {
+            return i18n.global.t('updates.resourceReadFailed')
+          }
         }
       } finally {
         loading.value = false
@@ -118,17 +133,19 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
             job.value = {
               id,
               status: 'error',
-              message: '资源更新任务已改变，请重新查看当前资源版本'
+              get message() {
+                return i18n.global.t('updates.resourceJobChanged')
+              }
             }
             break
           }
           job.value = data.job
-          progress_error.value = ''
+          progressErrorKey.value = ''
         } catch {
-          progress_error.value = '资源进度连接暂时断开，正在重试'
+          progressErrorKey.value = 'updates.resourceProgressLost'
         }
       }
-      progress_error.value = ''
+      progressErrorKey.value = ''
       install_message.value = job.value.message || ''
       if (job.value.status === 'success') {
         loaded.value = false
@@ -162,7 +179,7 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
     if (installing.value) return false
     if (!canInstall.value) {
       if (!loading.value) {
-        install_message.value = '请先检查更新，发现新版本后再安装'
+        installMessageKey.value = 'updates.resourceCheckFirst'
       }
       return false
     }
@@ -172,25 +189,34 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
       id: '',
       status: 'running',
       phase: 'preparing',
-      message: '正在启动资源更新',
+      get message() {
+        return i18n.global.t('updates.resourcePreparing')
+      },
       progress: null
     }
     install_message.value = ''
-    progress_error.value = ''
+    progressErrorKey.value = ''
     try {
       const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL}/resource/install`, {
         background: true
       })
       if (!data.ok) {
-        install_message.value = data.message || '资源更新启动失败'
+        if (data.message) install_message.value = data.message
+        else installMessageKey.value = 'updates.resourceStartFailed'
         throw new Error(install_message.value)
       }
       starting.value = false
       return await trackJob(data.job)
     } catch (error) {
-      install_message.value =
-        error.response?.data?.message || install_message.value || '安装失败：网络错误'
-      job.value = { status: 'error', message: install_message.value, progress: null }
+      if (error.response?.data?.message) install_message.value = error.response.data.message
+      else if (!install_message.value) installMessageKey.value = 'updates.resourceInstallNetwork'
+      job.value = {
+        status: 'error',
+        get message() {
+          return install_message.value
+        },
+        progress: null
+      }
       return false
     } finally {
       starting.value = false

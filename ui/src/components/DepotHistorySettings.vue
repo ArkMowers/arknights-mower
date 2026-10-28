@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 
@@ -6,14 +7,14 @@ const { depot_history_limit, depot_history_keep } = storeToRefs(useConfigStore()
 </script>
 
 <template>
-  <n-card title="仓库历史">
+  <n-card :title="i18n.global.t('settings.history.depotHistory')">
     <n-form class="settings-row-form" label-placement="left" :show-feedback="false">
       <n-form-item>
         <template #label>
           <span class="settings-row-copy">
-            <span>历史条数</span>
+            <span>{{ i18n.global.t('settings.history.historyEntriesToRead') }}</span>
             <span id="depot-history-limit-description" class="settings-row-description">
-              仓库趋势、环比与快照对比最多读取的扫描记录数，不影响本地记录的保留。
+              {{ i18n.global.t('settings.history.theMaximumScanRecordsReadForDepot') }}
             </span>
           </span>
         </template>
@@ -22,7 +23,7 @@ const { depot_history_limit, depot_history_keep } = storeToRefs(useConfigStore()
           :min="1"
           :max="20000"
           :input-props="{
-            'aria-label': '历史条数',
+            'aria-label': i18n.global.t('settings.history.historyEntriesToRead'),
             'aria-describedby': 'depot-history-limit-description'
           }"
         />
@@ -30,10 +31,9 @@ const { depot_history_limit, depot_history_keep } = storeToRefs(useConfigStore()
       <n-form-item>
         <template #label>
           <span class="settings-row-copy">
-            <span>保留条数</span>
+            <span>{{ i18n.global.t('settings.history.historyEntriesToKeep') }}</span>
             <span id="depot-history-keep-description" class="settings-row-description">
-              本地最多保留的扫描记录数，超出后从最早的删除。0
-              表示一直保留；改小后在下一次扫描仓库时生效。
+              {{ i18n.global.t('settings.history.theMaximumScanRecordsKeptLocallyDelete') }}
             </span>
           </span>
         </template>
@@ -41,15 +41,14 @@ const { depot_history_limit, depot_history_keep } = storeToRefs(useConfigStore()
           v-model:value="depot_history_keep"
           :min="0"
           :input-props="{
-            'aria-label': '保留条数',
+            'aria-label': i18n.global.t('settings.history.historyEntriesToKeep'),
             'aria-describedby': 'depot-history-keep-description'
           }"
         />
       </n-form-item>
     </n-form>
     <p class="depot-history-note">
-      历史条数默认 3000 次，每 3 小时扫描一次约可查看一年。条数越多，仓库页加载越慢。保留条数默认
-      0。
+      {{ i18n.global.t('settings.history.readUpTo3000RecordsBy') }}
     </p>
   </n-card>
 </template>

@@ -2,7 +2,7 @@
   <nav
     class="mobile-tab-bar"
     :style="{ ...palette, '--tab-count': mobileTabs.length + 1 }"
-    aria-label="快捷导航"
+    :aria-label="t('navigation.quickNavigation')"
   >
     <template v-for="item in mobileTabs" :key="item.key">
       <n-popover
@@ -21,8 +21,8 @@
             class="mobile-tab-bar__item"
             :class="{ 'is-active': activeTab === item.key }"
             aria-haspopup="dialog"
-            :aria-label="`${item.label || item.title}，选择页面`"
-            :title="item.label || item.title"
+            :aria-label="t('navigation.choosePage', { label: navigationLabel(item) })"
+            :title="navigationLabel(item)"
             :aria-expanded="openTab === item.key"
             :aria-controls="`${menuId}-${item.key}`"
             @keydown.esc="openTab = null"
@@ -31,7 +31,7 @@
               <n-icon :component="item.icon" aria-hidden="true" />
             </span>
             <span class="mobile-tab-bar__label">
-              {{ item.shortLabel }}
+              {{ navigationLabel(item, true) }}
               <n-icon class="mobile-tab-bar__caret" :component="ChevronUp" aria-hidden="true" />
             </span>
           </button>
@@ -41,7 +41,7 @@
           class="mobile-tab-bar__pages"
           :style="palette"
           role="dialog"
-          :aria-label="`${item.label || item.title}页面`"
+          :aria-label="t('navigation.pagePicker', { label: navigationLabel(item) })"
         >
           <SessionLink
             v-for="page in mobileTabItems(item)"
@@ -52,7 +52,7 @@
             @click="openTab = null"
           >
             <n-icon :component="page.icon" aria-hidden="true" />
-            <span>{{ page.label }}</span>
+            <span>{{ navigationLabel(page) }}</span>
           </SessionLink>
         </div>
       </n-popover>
@@ -65,13 +65,13 @@
           'is-active': activeTab === item.key
         }"
         exact-active-class="is-active"
-        :aria-label="item.label"
-        :title="item.label"
+        :aria-label="navigationLabel(item)"
+        :title="navigationLabel(item)"
       >
         <span class="mobile-tab-bar__icon">
           <n-icon :component="item.icon" aria-hidden="true" />
         </span>
-        <span class="mobile-tab-bar__label">{{ item.shortLabel }}</span>
+        <span class="mobile-tab-bar__label">{{ navigationLabel(item, true) }}</span>
       </SessionLink>
     </template>
     <button
@@ -85,7 +85,7 @@
       <span class="mobile-tab-bar__icon">
         <n-icon :component="AppsOutline" aria-hidden="true" />
       </span>
-      <span class="mobile-tab-bar__label">更多</span>
+      <span class="mobile-tab-bar__label">{{ t('navigation.more') }}</span>
     </button>
   </nav>
 </template>
@@ -98,11 +98,14 @@ import { computed, ref, useId, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SessionLink from './SessionLink.vue'
 import { mobileTabItems, mobileTabs, navigationItems } from '@/navigation'
+import { i18n } from '@/i18n'
+import { navigationLabel } from '@/i18n/navigation'
 
 const props = defineProps({
   moreOpen: { type: Boolean, default: false }
 })
 const emit = defineEmits(['more'])
+const { t } = i18n.global
 
 const route = useRoute()
 const router = useRouter()

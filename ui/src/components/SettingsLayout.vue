@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed, inject, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import SearchIcon from '@vicons/fluent/es/Search24Regular'
 import { routeLocationKey } from 'vue-router'
@@ -273,8 +274,11 @@ onUnmounted(() => {
             v-model:value="query"
             clearable
             size="small"
-            :placeholder="`搜索${title}`"
-            :input-props="{ 'aria-label': `搜索${title}`, 'aria-controls': `${navLabel}-results` }"
+            :placeholder="i18n.global.t('settings.sidebar.search', { value0: title })"
+            :input-props="{
+              'aria-label': i18n.global.t('settings.sidebar.search', { value0: title }),
+              'aria-controls': `${navLabel}-results`
+            }"
             @keydown="searchKey"
           >
             <template #prefix><n-icon :component="SearchIcon" /></template>
@@ -295,7 +299,9 @@ onUnmounted(() => {
               <span class="settings-search-result-label">{{ entry.label }}</span>
               <span class="settings-search-result-path">{{ entry.path }}</span>
             </button>
-            <div v-if="!results.length" class="settings-search-empty">没有匹配的设置项</div>
+            <div v-if="!results.length" class="settings-search-empty">
+              {{ i18n.global.t('settings.sidebar.noMatchingSettings') }}
+            </div>
           </div>
         </div>
         <nav class="settings-nav" :aria-label="navLabel">

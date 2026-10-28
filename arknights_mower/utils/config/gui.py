@@ -353,6 +353,11 @@ def load_software_version_language() -> str:
     return value if value in ("zh", "en") else "en"
 
 
+def load_ui_language() -> str:
+    value = read_gui_data(strict=True).get("ui_language")
+    return value if value in ("zh-CN", "en-US", "ja-JP", "zh-TW", "system") else "zh-CN"
+
+
 def load_task_settings_layout() -> str:
     value = read_gui_data(strict=True).get("task_settings_layout")
     return value if value in ("checklist", "waterfall") else "checklist"
@@ -401,6 +406,11 @@ def save_appearance(changes: dict) -> dict:
             "软件版本显示方式无效",
         ),
         "software_version_language": (str, ("zh", "en"), "软件版本类型语言无效"),
+        "ui_language": (
+            str,
+            ("zh-CN", "en-US", "ja-JP", "zh-TW", "system"),
+            "界面语言无效",
+        ),
         "task_settings_layout": (
             str,
             ("checklist", "waterfall"),

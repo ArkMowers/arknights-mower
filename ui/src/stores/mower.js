@@ -3,6 +3,7 @@ import ReconnectingWebSocket from 'reconnecting-websocket'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 
 import axios from 'axios'
+import { i18n } from '@/i18n'
 
 export const useMowerStore = defineStore('mower', () => {
   const log_lines = ref([])
@@ -29,9 +30,10 @@ export const useMowerStore = defineStore('mower', () => {
   const status = ref('stopped')
   const status_label = computed(() =>
     !running.value
-      ? '已停止'
-      : ({ starting: '启动中', recovering: '等待设备恢复', sleeping: '休眠中' }[status.value] ??
-        '运行中')
+      ? i18n.global.t('runtime.statusStopped')
+      : i18n.global.t(
+          `runtime.${{ starting: 'statusStarting', recovering: 'statusRecovering', sleeping: 'statusSleeping' }[status.value] ?? 'statusRunning'}`
+        )
   )
   const scheduled_start_at = ref(null)
   const stop_after_round = ref(false)

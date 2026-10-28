@@ -1,7 +1,11 @@
 <script setup>
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { moduleDisplayName } from '@/i18n/moduleNames'
+import { i18n } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import GrowthAvatar from './GrowthAvatar.vue'
 import { eliteLabel, formatRate, masteryLabel, professionName } from './growthFormatters'
+import { skillRowDisplayName, targetDisplayName } from './growthDisplay'
 import {
   operatorSkillRows,
   recommendedTarget,
@@ -27,6 +31,7 @@ function skillTone(level) {
 const skillRows = computed(() =>
   operatorSkillRows(props.operator).map((row) => ({
     ...row,
+    name: skillRowDisplayName(row),
     rate: surveySkillRate(props.survey, row.index),
     tone: skillTone(row.current),
     highlighted: (props.survey?.skillHighlights || []).includes(row.index)
@@ -78,14 +83,16 @@ const statusLine = computed(() => {
   if (!supportsMastery.value) {
     return {
       tone: 'low',
-      text: (props.operator.modules || []).length ? '等级与模组养成' : '等级养成'
+      text: (props.operator.modules || []).length
+        ? i18n.global.t('growth.card.levelModuleGoals')
+        : i18n.global.t('growth.card.levelGoals')
     }
   }
   if (activeModule.value && moduleTarget.value) {
     const target = moduleTarget.value
     return {
       tone: target.current > 0 ? 'warn' : 'low',
-      text: target.name + ' · ' + target.current + '/' + target.target
+      text: targetDisplayName(target, props.operator) + ' · ' + target.current + '/' + target.target
     }
   }
   const row = skillRows.value[activeSkillIndex.value] || skillRows.value[0]
@@ -96,14 +103,23 @@ const activeRate = computed(() => {
   const row = skillRows.value[activeSkillIndex.value] || skillRows.value[0]
   return row?.rate ?? null
 })
-const activeRateLabel = computed(() => (activeModule.value ? '解锁率' : '专三率'))
+const activeRateLabel = computed(() =>
+  i18n.global.t(activeModule.value ? 'growthUpdates.moduleRate' : 'growth.detail.m3Rate')
+)
 const activeRateTitle = computed(() => {
-  if (activeRate.value === null || activeRate.value === undefined) return '暂无样本'
+  if (activeRate.value === null || activeRate.value === undefined)
+    return i18n.global.t('growth.format.noSample')
   if (activeModule.value && moduleTarget.value) {
-    return moduleTarget.value.name + ' · 一图流公开模组解锁率 ' + formatRate(activeRate.value)
+    return i18n.global.t('growthUpdates.publicModuleRateTitle', {
+      name: targetDisplayName(moduleTarget.value, props.operator),
+      rate: formatRate(activeRate.value)
+    })
   }
   const row = skillRows.value[activeSkillIndex.value] || skillRows.value[0]
-  return (row?.name || '') + ' · 一图流公开专三率 ' + formatRate(activeRate.value)
+  return i18n.global.t('growthUpdates.publicMasteryRateTitle', {
+    name: row?.name || '',
+    rate: formatRate(activeRate.value)
+  })
 })
 function selectSkill(index) {
   pickedByUser.value = true
@@ -126,22 +142,20 @@ const surveyMatches = computed(
 )
 const surveyMatchLabel = computed(() => {
   const labels = []
-  if (props.survey?.eliteHighlight) labels.push('精英化目标')
+  if (props.survey?.eliteHighlight) labels.push(i18n.global.t('growth.card.promotionGoal'))
   for (const row of skillRows.value) if (row.highlighted) labels.push(row.name)
   for (const module of props.operator.modules || []) {
     if ((props.survey?.moduleHighlights || []).includes(module.id))
-      labels.push(module.name || module.type || module.id)
+      labels.push(moduleDisplayName(module.id, module.name) || module.type || module.id)
   }
-  return labels.length ? '达到筛选门槛：' + labels.join('、') : ''
+  return labels.length ? i18n.global.t('growth.card.meetsFilterThresholds') + labels.join('、') : ''
 })
-const subtitle = computed(
-  () =>
-    professionName(props.operator.profession) +
-    ' · ' +
-    eliteLabel(props.operator.elite) +
-    ' ' +
-    (props.operator.level ?? 1) +
-    ' 级'
+const subtitle = computed(() =>
+  i18n.global.t('growth.format.operatorSubtitle', {
+    profession: professionName(props.operator.profession),
+    elite: eliteLabel(props.operator.elite),
+    level: props.operator.level ?? 1
+  })
 )
 
 function open() {
@@ -170,7 +184,11 @@ function stopKeydownPropagation(event) {
     ]"
     role="button"
     tabindex="0"
-    :aria-label="operator.name + ' 的养成档案' + (surveyMatchLabel ? '，' + surveyMatchLabel : '')"
+    :aria-label="
+      operatorDisplayName(operator.name) +
+      i18n.global.t('growth.card.sGrowthDossier') +
+      (surveyMatchLabel ? '，' + surveyMatchLabel : '')
+    "
     :title="surveyMatchLabel || undefined"
     @click="open"
     @keydown="keydown"
@@ -184,7 +202,7 @@ function stopKeydownPropagation(event) {
         :size="layout === 'compact' ? 46 : 58"
       />
       <div class="growth-opcard__id">
-        <h3 class="growth-opcard__name">{{ operator.name }}</h3>
+        <h3 class="growth-opcard__name">{{ operatorDisplayName(operator.name) }}</h3>
         <p class="growth-opcard__meta">
           <span class="gp-mono growth-opcard__rarity">{{ operator.rarity }}★</span>
           {{ subtitle }}
@@ -204,7 +222,7 @@ function stopKeydownPropagation(event) {
       v-if="supportsMastery"
       class="growth-opcard__progress"
       role="group"
-      aria-label="技能与模组目标"
+      :aria-label="i18n.global.t('growthUpdates.skillAndModuleTargets')"
     >
       <button
         v-for="row in skillRows"
@@ -219,7 +237,10 @@ function stopKeydownPropagation(event) {
         }"
         :aria-pressed="!activeModule && activeSkillIndex === row.index"
         :aria-label="
-          row.name + ' ' + masteryLabel(row.current) + (row.highlighted ? '，达到筛选门槛' : '')
+          row.name +
+          ' ' +
+          masteryLabel(row.current) +
+          (row.highlighted ? i18n.global.t('growth.card.meetsFilterThreshold') : '')
         "
         @click.stop="selectSkill(row.index)"
         @keydown="stopKeydownPropagation"
@@ -233,7 +254,13 @@ function stopKeydownPropagation(event) {
         :class="{ 'is-active': activeModule, 'is-partial': moduleTarget.current > 0 }"
         :aria-pressed="activeModule"
         :aria-label="
-          '模组 ' + moduleTarget.name + ' ' + moduleTarget.current + '/' + moduleTarget.target
+          i18n.global.t('growth.detail.moduleGoals') +
+          ' ' +
+          targetDisplayName(moduleTarget, operator) +
+          ' ' +
+          moduleTarget.current +
+          '/' +
+          moduleTarget.target
         "
         @click.stop="selectModule"
         @keydown="stopKeydownPropagation"
@@ -241,20 +268,26 @@ function stopKeydownPropagation(event) {
         <span class="growth-opcard__seg-bar" aria-hidden="true" />
       </button>
       <span class="growth-opcard__progress-label gp-mono">
-        专三 {{ masteredCount }}/{{ skills.length }}
-        <template v-if="moduleCount"> · 模组 {{ moduleCount }}</template>
+        {{ i18n.global.t('growth.card.m3') }} {{ masteredCount }}/{{ skills.length }}
+        <template v-if="moduleCount">
+          {{ i18n.global.t('growth.card.modules') }} {{ moduleCount }}</template
+        >
       </span>
     </div>
     <div v-else class="growth-opcard__progress growth-opcard__progress--low">
-      <span>等级 {{ eliteLabel(operator.elite) }} {{ operator.level }}</span>
+      <span
+        >{{ i18n.global.t('growth.card.level') }} {{ eliteLabel(operator.elite) }}
+        {{ operator.level }}</span
+      >
       <template v-if="moduleCount"
-        ><span> · 模组 {{ moduleCount }}</span></template
+        ><span> {{ i18n.global.t('growth.card.modules') }} {{ moduleCount }}</span></template
       >
     </div>
 
     <footer class="growth-opcard__foot">
       <span v-if="planned" class="gp-stamp gp-stamp--flat growth-opcard__stamp"
-        >计划中{{ plannedCount > 1 ? ' ' + plannedCount : '' }}</span
+        >{{ i18n.global.t('growth.card.planned')
+        }}{{ plannedCount > 1 ? ' ' + plannedCount : '' }}</span
       >
       <span
         v-else-if="activeRate !== null"
@@ -262,8 +295,12 @@ function stopKeydownPropagation(event) {
         :title="activeRateTitle"
         >{{ activeRateLabel }} {{ formatRate(activeRate) }}</span
       >
-      <span v-else class="growth-opcard__probe gp-mono">暂无样本</span>
-      <span class="growth-opcard__enter" aria-hidden="true">档案 →</span>
+      <span v-else class="growth-opcard__probe gp-mono">{{
+        i18n.global.t('growth.format.noSample')
+      }}</span>
+      <span class="growth-opcard__enter" aria-hidden="true">{{
+        i18n.global.t('growth.card.dossier')
+      }}</span>
     </footer>
   </article>
 </template>

@@ -1,4 +1,7 @@
 <script setup>
+import { operatorDisplayName, skillDisplayName } from '@/i18n/gameNames'
+import { moduleDisplayName } from '@/i18n/moduleNames'
+import { i18n } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { NButton, NCheckbox, NIcon, NTag, NTooltip } from 'naive-ui'
 import CloseOutline from '@vicons/ionicons5/es/CloseOutline'
@@ -15,6 +18,7 @@ import {
   planStatusLabel
 } from './growthFormatters'
 import { operatorSkillRows } from './growthRecommendation'
+import { skillRowDisplayName } from './growthDisplay'
 
 const props = defineProps({
   operator: { type: Object, required: true },
@@ -67,32 +71,40 @@ const surveyStats = computed(() => {
   return [
     {
       key: 'mastery',
-      label: '最高专三率',
-      detail: bestSkill ? operatorSkillRows(props.operator)[bestSkill.index]?.name || '' : '',
+      label: i18n.global.t('growthUpdates.highestMasteryRate'),
+      detail: bestSkill
+        ? skillRowDisplayName(operatorSkillRows(props.operator)[bestSkill.index])
+        : '',
       rate: bestSkill?.rate ?? null
     },
     {
       key: 'module',
-      label: '最高模组解锁率',
-      detail: moduleRow ? moduleRow.type || moduleRow.name || '' : '',
+      label: i18n.global.t('growthUpdates.highestModuleUnlockRate'),
+      detail: moduleRow
+        ? moduleRow.type || moduleDisplayName(moduleRow.id, moduleRow.name || '')
+        : '',
       rate: bestModule?.rate ?? null
     },
-    { key: 'elite2', label: '精二率', detail: '', rate: props.survey.elite2 ?? null }
+    {
+      key: 'elite2',
+      label: i18n.global.t('growth.detail.elite2Rate'),
+      detail: '',
+      rate: props.survey.elite2 ?? null
+    }
   ]
 })
 
 const subtitle = computed(() => {
   const op = props.operator
+  const label = i18n.global.t('growth.format.operatorSubtitle', {
+    profession: professionName(op.profession),
+    elite: eliteLabel(op.elite),
+    level: op.level ?? 1
+  })
   return (
-    (op.rarity ? op.rarity + '★' : '') +
-    ' · ' +
-    professionName(op.profession) +
-    ' · ' +
-    eliteLabel(op.elite) +
-    ' ' +
-    (op.level ?? 1) +
-    ' 级' +
-    (op.potential ? ' · ' + op.potential + ' 潜' : '')
+    (op.rarity ? op.rarity + '★ · ' : '') +
+    label +
+    (op.potential ? ' · ' + i18n.global.t('growth.format.potential', { level: op.potential }) : '')
   )
 })
 
@@ -144,14 +156,14 @@ function skillStatusType(status) {
     <aside
       class="growth-dossier"
       :class="{ 'growth-dossier--sheet': sheetMode }"
-      aria-label="干员养成档案"
+      :aria-label="i18n.global.t('growth.detail.operatorGrowthDossier')"
     >
       <header class="growth-dossier__head">
         <div class="growth-dossier__head-main">
           <GrowthAvatar :name="operator.name" :rarity="operator.rarity" :size="72" />
           <div class="growth-dossier__identity">
-            <span class="gp-kicker">Operator dossier</span>
-            <h2 class="growth-dossier__name">{{ operator.name }}</h2>
+            <span class="gp-kicker">{{ i18n.global.t('growth.format.operatorDossier') }}</span>
+            <h2 class="growth-dossier__name">{{ operatorDisplayName(operator.name) }}</h2>
             <p
               class="growth-dossier__subtitle"
               :class="{ 'is-highlighted': survey?.eliteHighlight }"
@@ -162,7 +174,7 @@ function skillStatusType(status) {
           <button
             type="button"
             class="growth-dossier__close"
-            aria-label="关闭干员档案"
+            :aria-label="i18n.global.t('growth.detail.closeOperatorDossier')"
             @click="emit('close')"
           >
             <n-icon :component="CloseOutline" :size="18" />
@@ -180,7 +192,7 @@ function skillStatusType(status) {
           </div>
         </div>
         <div v-else class="growth-dossier__survey growth-dossier__survey--empty">
-          暂无公开统计数据
+          {{ i18n.global.t('growth.detail.noPublicStatisticsAvailable') }}
         </div>
       </header>
 
@@ -189,10 +201,14 @@ function skillStatusType(status) {
       </div>
 
       <div v-else-if="error" class="gp-empty growth-dossier__error">
-        <p class="gp-empty__title">材料与等级详情读取失败</p>
+        <p class="gp-empty__title">
+          {{ i18n.global.t('growth.detail.couldNotLoadMaterialLevelDetails') }}
+        </p>
         <p class="gp-muted">{{ error }}</p>
         <div class="gp-empty__actions">
-          <n-button size="small" @click="emit('retry')">重试</n-button>
+          <n-button size="small" @click="emit('retry')">{{
+            i18n.global.t('growth.detail.retry')
+          }}</n-button>
         </div>
       </div>
 
@@ -212,9 +228,15 @@ function skillStatusType(status) {
 
         <section v-if="basic?.supported" class="growth-dossier__block">
           <header class="growth-dossier__block-head">
-            <h3>基础技能</h3>
+            <h3>{{ i18n.global.t('growth.detail.basicSkills') }}</h3>
             <n-tag size="small" :bordered="false" :type="basic.planned ? 'success' : 'default'">
-              {{ basic.achieved ? '已达 7 级' : basic.planned ? '计划中' : '未规划' }}
+              {{
+                basic.achieved
+                  ? i18n.global.t('growth.detail.rank7Reached')
+                  : basic.planned
+                    ? i18n.global.t('growth.detail.planned')
+                    : i18n.global.t('growth.detail.notPlanned')
+              }}
             </n-tag>
           </header>
           <n-checkbox
@@ -222,7 +244,11 @@ function skillStatusType(status) {
             :disabled="basic.disabled"
             @update:checked="emit('toggle-basic', $event)"
           >
-            {{ basic.achieved ? '基础技能已达 7 级' : '规划至基础技能 7 级' }}
+            {{
+              basic.achieved
+                ? i18n.global.t('growth.detail.basicSkillsAreAlreadyRank7')
+                : i18n.global.t('growth.detail.planBasicSkillsToRank7')
+            }}
           </n-checkbox>
           <p class="growth-dossier__note">
             {{ basic.note }}
@@ -230,14 +256,16 @@ function skillStatusType(status) {
           <MasteryMaterials
             v-if="basic.materials"
             :summary="basic.materials"
-            title="基础技能升级材料"
+            :title="i18n.global.t('growth.detail.basicSkillUpgradeMaterials')"
           />
         </section>
 
         <section v-if="availableMastery" class="growth-dossier__block">
           <header class="growth-dossier__block-head">
-            <h3>技能专精</h3>
-            <span class="growth-dossier__block-meta gp-mono">{{ skillRows.length }} 项</span>
+            <h3>{{ i18n.global.t('growth.detail.skillMastery') }}</h3>
+            <span class="growth-dossier__block-meta gp-mono"
+              >{{ skillRows.length }} {{ i18n.global.t('growth.detail.items') }}</span
+            >
           </header>
           <p v-if="operator.mastery_error" class="growth-dossier__warning">
             {{ operator.mastery_error }}
@@ -245,7 +273,7 @@ function skillStatusType(status) {
           <div v-for="row in skillRows" :key="row.rec.skill_index" class="growth-dossier__skill">
             <div class="growth-dossier__skill-head">
               <div class="growth-dossier__skill-title">
-                <b>{{ row.rec.skill_name }}</b>
+                <b>{{ skillDisplayName(row.rec.skill_name) }}</b>
                 <n-tag
                   size="small"
                   :bordered="false"
@@ -253,7 +281,7 @@ function skillStatusType(status) {
                     survey?.skillHighlights?.includes(row.rec.skill_index) ? 'warning' : 'default'
                   "
                 >
-                  专三
+                  {{ i18n.global.t('growth.detail.m3') }}
                   {{
                     formatRate(
                       survey?.skills?.find((skill) => skill.index === row.rec.skill_index)?.rate
@@ -261,8 +289,14 @@ function skillStatusType(status) {
                   }}
                 </n-tag>
                 <span class="gp-mono growth-dossier__skill-level">
-                  {{ masteryLabel(row.rec.current_level) }} → 专{{
-                    ['', '一', '二', '三'][row.target]
+                  {{ masteryLabel(row.rec.current_level) }} {{ i18n.global.t('growth.detail.m')
+                  }}{{
+                    [
+                      '',
+                      i18n.global.t('growth.detail.1'),
+                      i18n.global.t('growth.detail.2'),
+                      i18n.global.t('growth.detail.3')
+                    ][row.target]
                   }}
                 </span>
                 <n-tag
@@ -273,7 +307,9 @@ function skillStatusType(status) {
                 >
                   {{ planStatusLabel(row.status.status) }}
                 </n-tag>
-                <span v-else-if="row.planned" class="gp-stamp gp-stamp--flat">计划中</span>
+                <span v-else-if="row.planned" class="gp-stamp gp-stamp--flat">{{
+                  i18n.global.t('growth.detail.planned')
+                }}</span>
               </div>
               <div class="growth-dossier__skill-time gp-mono">
                 <template v-if="row.rec.total_time"
@@ -283,7 +319,11 @@ function skillStatusType(status) {
             </div>
 
             <div class="growth-dossier__skill-controls">
-              <div class="growth-dossier__targets" role="group" aria-label="目标专精等级">
+              <div
+                class="growth-dossier__targets"
+                role="group"
+                :aria-label="i18n.global.t('growth.detail.targetMasteryLevel')"
+              >
                 <button
                   v-for="option in row.targetOptions"
                   :key="option.value"
@@ -304,7 +344,11 @@ function skillStatusType(status) {
                 :disabled="row.disabled"
                 @click="emit('toggle-skill', row.rec)"
               >
-                {{ row.planned ? '移出计划' : '加入计划' }}
+                {{
+                  row.planned
+                    ? i18n.global.t('growth.detail.removeFromPlan')
+                    : i18n.global.t('growth.detail.addToPlan')
+                }}
               </n-button>
               <n-tooltip :disabled="!operator.mastery_error">
                 <template #trigger>
@@ -315,7 +359,7 @@ function skillStatusType(status) {
                     @click="emit('insert-task', row.rec)"
                   >
                     <template #icon><n-icon :component="FlashOutline" /></template>
-                    立即训练
+                    {{ i18n.global.t('growth.detail.trainNow') }}
                   </n-button>
                 </template>
                 {{ operator.mastery_error }}
@@ -327,38 +371,51 @@ function skillStatusType(status) {
                 @click="emit('open-supports', row.rec)"
               >
                 <template #icon><n-icon :component="PeopleOutline" /></template>
-                协助方案
+                {{ i18n.global.t('growth.detail.assistantPlan') }}
               </n-button>
             </div>
 
             <MasteryMaterials
               v-if="row.rec.skill_material_summary"
               :summary="row.rec.skill_material_summary"
-              :title="row.rec.skill_name + ' · 专精材料'"
+              :title="
+                skillDisplayName(row.rec.skill_name) +
+                i18n.global.t('growth.detail.masteryMaterials')
+              "
             />
-            <p v-else class="growth-dossier__note">读取技能目标后可查看逐级材料。</p>
+            <p v-else class="growth-dossier__note">
+              {{ i18n.global.t('growth.detail.loadSkillTargetsToViewMaterialsFor') }}
+            </p>
           </div>
           <div v-if="completedSkills.length" class="growth-dossier__completed">
-            <span class="growth-dossier__completed-title">已专三</span>
+            <span class="growth-dossier__completed-title">{{
+              i18n.global.t('growthUpdates.completedMastery')
+            }}</span>
             <span
               v-for="row in completedSkills"
               :key="row.index"
               class="growth-dossier__completed-item"
             >
-              <b>{{ row.name }}</b>
-              <span class="gp-mono">专三率 {{ formatRate(row.rate) }}</span>
+              <b>{{ skillRowDisplayName(row) }}</b>
+              <span class="gp-mono"
+                >{{ i18n.global.t('growth.detail.m3Rate') }} {{ formatRate(row.rate) }}</span
+              >
             </span>
           </div>
-          <p v-if="!skillRows.length" class="growth-dossier__note">该干员的技能已全部专三。</p>
+          <p v-if="!skillRows.length" class="growth-dossier__note">
+            {{ i18n.global.t('growth.detail.allOfThisOperatorSSkillsAre') }}
+          </p>
         </section>
 
         <section v-if="availableModules" class="growth-dossier__block">
           <header class="growth-dossier__block-head">
-            <h3>模组养成</h3>
-            <span class="growth-dossier__block-meta gp-mono">{{ moduleRows.length }} 个</span>
+            <h3>{{ i18n.global.t('growth.detail.moduleGoals') }}</h3>
+            <span class="growth-dossier__block-meta gp-mono"
+              >{{ moduleRows.length }} {{ i18n.global.t('growth.detail.modules') }}</span
+            >
           </header>
           <p class="growth-dossier__note">
-            模组默认规划至当前可用最高级；信赖与解锁任务仍需在游戏内完成。
+            {{ i18n.global.t('growth.detail.modulesDefaultToTheHighestCurrentlyAvailable') }}
           </p>
           <div v-for="row in moduleRows" :key="row.module.id" class="growth-dossier__module">
             <div class="growth-dossier__module-head">
@@ -367,7 +424,10 @@ function skillStatusType(status) {
                 :disabled="row.disabled"
                 @update:checked="emit('toggle-module', { module: row.module, value: $event })"
               >
-                <b>{{ row.module.type }} · {{ row.module.name }}</b>
+                <b
+                  >{{ row.module.type }} ·
+                  {{ moduleDisplayName(row.module.id, row.module.name) }}</b
+                >
               </n-checkbox>
               <n-tag
                 size="small"
@@ -376,8 +436,14 @@ function skillStatusType(status) {
               >
                 {{
                   row.module.current_level
-                    ? '已开启 · ' + row.module.current_level + ' 级'
-                    : '精' + row.module.elite + ' ' + row.module.level + ' 级开启'
+                    ? i18n.global.t('growth.detail.unlocked') +
+                      row.module.current_level +
+                      i18n.global.t('growth.detail.levels')
+                    : i18n.global.t('growth.detail.elite') +
+                      row.module.elite +
+                      ' ' +
+                      row.module.level +
+                      i18n.global.t('growth.detail.levelsToUnlock')
                 }}
               </n-tag>
               <n-tag
@@ -385,7 +451,7 @@ function skillStatusType(status) {
                 :bordered="false"
                 :type="survey?.moduleHighlights?.includes(row.module.id) ? 'warning' : 'default'"
               >
-                解锁
+                {{ i18n.global.t('growth.detail.unlock') }}
                 {{
                   formatRate(survey?.modules?.find((module) => module.id === row.module.id)?.rate)
                 }}
@@ -395,7 +461,11 @@ function skillStatusType(status) {
               v-if="row.module.current_level < row.module.max_level"
               class="growth-dossier__module-controls"
             >
-              <div class="growth-dossier__targets" role="group" aria-label="目标模组等级">
+              <div
+                class="growth-dossier__targets"
+                role="group"
+                :aria-label="i18n.global.t('growth.detail.targetModuleLevel')"
+              >
                 <button
                   v-for="option in row.targetOptions"
                   :key="option.value"
@@ -406,21 +476,26 @@ function skillStatusType(status) {
                   :disabled="goalSaving"
                   @click="emit('change-module-target', { module: row.module, value: option.value })"
                 >
-                  目标 {{ option.value }} 级
+                  {{ i18n.global.t('growth.detail.target') }} {{ option.value }}
+                  {{ i18n.global.t('growth.detail.levels') }}
                 </button>
               </div>
             </div>
             <p v-if="row.module.material_error" class="growth-dossier__warning">
               {{ row.module.material_error }}
             </p>
-            <MasteryMaterials v-else-if="row.summary" :summary="row.summary" title="模组升级材料" />
+            <MasteryMaterials
+              v-else-if="row.summary"
+              :summary="row.summary"
+              :title="i18n.global.t('growth.detail.moduleUpgradeMaterials')"
+            />
           </div>
         </section>
       </div>
 
       <footer v-if="!loading && !error" class="growth-dossier__foot">
         <div class="growth-dossier__foot-text">
-          <b>{{ plannedCount }}</b> 项在此干员名下
+          <b>{{ plannedCount }}</b> {{ i18n.global.t('growth.detail.goalsForThisOperator') }}
         </div>
         <n-button
           v-if="availableMastery"
@@ -429,7 +504,7 @@ function skillStatusType(status) {
           :disabled="!addable.length || goalSaving || batchAdding"
           @click="emit('add-all')"
         >
-          全部技能加入计划
+          {{ i18n.global.t('growth.detail.addAllSkillsToPlan') }}
         </n-button>
       </footer>
     </aside>

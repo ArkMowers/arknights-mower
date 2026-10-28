@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 const axios = inject('axios')
 
@@ -44,7 +47,7 @@ function sleep(ms) {
 async function test_maa() {
   if (managerOwned.value || maa_testing.value) return
   maa_testing.value = true
-  maa_msg.value = '正在测试……'
+  maa_msg.value = t('tasks.testing')
   try {
     let response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-maa`)
     let data = response.data
@@ -53,7 +56,7 @@ async function test_maa() {
       return
     }
     while (!managerOwned.value && data.status === 'running') {
-      maa_msg.value = data.message || '正在测试……'
+      maa_msg.value = data.message || t('tasks.testing')
       await sleep(1000)
       if (managerOwned.value) return
       response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/check-maa/status`)
@@ -63,9 +66,9 @@ async function test_maa() {
         return
       }
     }
-    maa_msg.value = data.message || '测试失败，请检查MAA日志！'
+    maa_msg.value = data.message || t('tasks.maaTestFailed')
   } catch (error) {
-    maa_msg.value = `测试失败：${error.message}`
+    maa_msg.value = t('tasks.testFailedMessage', { message: error.message })
   } finally {
     maa_testing.value = false
   }
@@ -82,10 +85,10 @@ async function get_maa_conn_presets() {
       maa_conn_presets.value = response.data.map((x) => ({ label: x, value: x }))
     } else {
       maa_conn_presets.value = []
-      maa_msg.value = response.data.message || '读取 MAA 连接配置失败'
+      maa_msg.value = response.data.message || t('tasks.maaConnectionConfigFailed')
     }
   } catch (error) {
-    maa_msg.value = `读取连接配置失败：${error.message}`
+    maa_msg.value = t('tasks.connectionConfigReadFailed', { message: error.message })
   }
 }
 
@@ -113,8 +116,9 @@ onUnmounted(() => {
 <template>
   <n-card class="maa-basic" content-class="maa-basic-content">
     <template v-if="showTitle" #header
-      >MAA 核心<help-text>{{
-        managerOwned ? '游戏主题恢复' : '连接、触控和游戏主题恢复'
+      >{{ t('tasks.maaCore')
+      }}<help-text>{{
+        managerOwned ? t('tasks.gameThemeRestoration') : t('tasks.connectionTouchTheme')
       }}</help-text></template
     >
     <n-form
@@ -124,66 +128,64 @@ onUnmounted(() => {
       label-width="128"
       label-align="left"
     >
-      <n-alert v-if="!managerOwned && runtime_platform === 'android'" :show-icon="false"
-        >设备连接与 MAA 路径由 Android 应用管理。</n-alert
-      >
+      <n-alert v-if="!managerOwned && runtime_platform === 'android'" :show-icon="false">{{
+        t('tasks.androidMaaManaged')
+      }}</n-alert>
       <div v-if="!managerOwned && runtime_platform === 'android'" style="margin-bottom: 16px">
-        <SessionLink to="/mowersettings#software-update"
-          >导入官方 Android MAA 核心 / 兼容 Python 接口包</SessionLink
-        >
+        <SessionLink to="/mowersettings#software-update">{{
+          t('tasks.importAndroidMaa')
+        }}</SessionLink>
       </div>
       <template v-else-if="!managerOwned">
-        <n-form-item label="MAA目录">
-          <template #label>
-            MAA目录
-            <help-text
-              >@app/MAA 表示全局 Mower 数据目录下的 MAA，所有实例共用，更新 Mower
-              时保留。也可以选择自定义目录。</help-text
-            >
+        <n-form-item :label="t('tasks.maaDirectory')">
+          <template #label
+            >{{ t('tasks.maaDirectory') }}<help-text>{{ t('tasks.maaDirectoryHelp') }}</help-text>
           </template>
           <div class="maa-field-with-action">
-            <n-input v-model:value="maa_path" :input-props="{ 'aria-label': 'MAA目录' }" />
-            <n-button @click="select_maa_dir">浏览</n-button>
+            <n-input
+              v-model:value="maa_path"
+              :input-props="{ 'aria-label': t('tasks.maaDirectory') }"
+            />
+            <n-button @click="select_maa_dir">{{ t('tasks.browse') }}</n-button>
           </div>
         </n-form-item>
-        <n-form-item label="连接配置">
+        <n-form-item :label="t('tasks.connectionConfig')">
           <div class="maa-field-with-action">
             <n-select :options="maa_conn_presets" v-model:value="maa_conn_preset" />
-            <n-button @click="get_maa_conn_presets">刷新</n-button>
+            <n-button @click="get_maa_conn_presets">{{ t('tasks.refresh') }}</n-button>
           </div>
         </n-form-item>
-        <n-form-item label="触控模式">
+        <n-form-item :label="t('tasks.touchMode')">
           <n-select v-model:value="maa_touch_option" :options="maa_touch_options" />
         </n-form-item>
       </template>
-      <n-form-item label="恢复主题">
-        <template #label>
-          恢复主题
-          <help-text label="恢复主题说明" :max-width="480">
-            恢复主题需要 MAA v6.17.3 或更高版本。在本轮 MAA
-            日常及大型任务结束后、休息前，恢复到指定主题。
-            下拉列表包含国服游戏主题，请选择账号已解锁的主题；清空选择后不恢复。
-            手动停止、异常退出或调度时间不足时跳过。
-          </help-text>
+      <n-form-item :label="t('tasks.restoreTheme')">
+        <template #label
+          >{{ t('tasks.restoreTheme')
+          }}<help-text :label="t('tasks.restoreThemeHelpTitle')" :max-width="480">{{
+            t('tasks.restoreThemeHelp')
+          }}</help-text>
         </template>
-        <n-checkbox v-model:checked="maa_restore_theme_enable">任务结束后恢复主题</n-checkbox>
+        <n-checkbox v-model:checked="maa_restore_theme_enable">{{
+          t('tasks.restoreThemeAfterTasks')
+        }}</n-checkbox>
       </n-form-item>
-      <n-form-item v-if="maa_restore_theme_enable" label="目标主题">
+      <n-form-item v-if="maa_restore_theme_enable" :label="t('tasks.targetTheme')">
         <n-select
           :value="maa_restore_theme || null"
           :options="maa_theme_options"
           filterable
           clearable
-          placeholder="请选择要恢复的主题"
+          :placeholder="t('tasks.selectTargetTheme')"
           @update:value="maa_restore_theme = $event ?? ''"
         />
       </n-form-item>
     </n-form>
     <n-divider v-if="!managerOwned" />
     <div v-if="!managerOwned" class="maa-connection-test">
-      <n-button :loading="maa_testing" :disabled="maa_testing" @click="test_maa">
-        测试连接
-      </n-button>
+      <n-button :loading="maa_testing" :disabled="maa_testing" @click="test_maa">{{
+        t('tasks.testConnection')
+      }}</n-button>
       <p v-if="maa_msg" class="maa-connection-result" role="status">{{ maa_msg }}</p>
     </div>
   </n-card>

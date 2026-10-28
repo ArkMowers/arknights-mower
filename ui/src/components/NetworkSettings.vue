@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import { copyMowerTestText } from '../utils/copyMowerTestText'
 
@@ -26,7 +27,11 @@ let saveRequest
 let revision = 0
 
 function errorMessage(err) {
-  return err.response?.data?.message || err.message || '操作失败，请重试'
+  return (
+    err.response?.data?.message ||
+    err.message ||
+    i18n.global.t('settings.network.operationFailedPleaseTryAgain')
+  )
 }
 
 function values() {
@@ -115,7 +120,9 @@ async function testConnection() {
         data.settings.http_proxy !== savedSettings.value.http_proxy ||
         data.settings.github_proxy !== savedSettings.value.github_proxy
       ) {
-        throw new Error('代理设置已被其他实例修改，请重新加载后测试')
+        throw new Error(
+          i18n.global.t('settings.network.anotherInstanceChangedTheProxySettingsReload')
+        )
       }
       results.value = data.results
     }
@@ -132,8 +139,8 @@ async function copyResult() {
     ...results.value.map((item) => `${item.label}：${item.message}（${item.elapsed_ms} ms）`)
   ].filter(Boolean)
   copyStatus.value = (await copyMowerTestText(lines.join('\n')))
-    ? '已复制'
-    : '复制失败，请手动选择文字'
+    ? i18n.global.t('settings.network.copied')
+    : i18n.global.t('settings.network.copyFailedSelectTheTextManually')
 }
 
 onMounted(load)
@@ -145,81 +152,95 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <n-card id="network-settings" title="网络与下载代理" class="network-settings">
+  <n-card
+    id="network-settings"
+    :title="i18n.global.t('settings.network.networkDownloadProxies')"
+    class="network-settings"
+  >
     <div class="network-summary">
-      <p>全部实例共享，用于后续连接。</p>
+      <p>{{ i18n.global.t('settings.network.sharedByAllInstancesAppliesToSubsequent') }}</p>
       <span class="network-save-status" role="status">
-        <template v-if="loading">正在读取…</template>
-        <template v-else-if="saving">正在保存…</template>
-        <template v-else-if="dirty && !error">等待保存…</template>
-        <span v-else-if="saved && !dirty && !error" class="network-saved">已应用到后续连接</span>
-        <template v-else>修改后自动保存</template>
+        <template v-if="loading">{{ i18n.global.t('settings.network.loading') }}</template>
+        <template v-else-if="saving">{{ i18n.global.t('settings.network.saving') }}</template>
+        <template v-else-if="dirty && !error">{{
+          i18n.global.t('settings.network.waitingToSave')
+        }}</template>
+        <span v-else-if="saved && !dirty && !error" class="network-saved">{{
+          i18n.global.t('settings.network.appliedToSubsequentConnections')
+        }}</span>
+        <template v-else>{{ i18n.global.t('settings.network.changesSaveAutomatically') }}</template>
       </span>
     </div>
     <n-alert v-if="error" type="error" class="network-error" role="alert">{{ error }}</n-alert>
     <n-form class="network-form" label-placement="top" :show-feedback="false">
-      <n-form-item label="全局网络代理">
+      <n-form-item :label="i18n.global.t('settings.network.globalNetworkProxy')">
         <n-input
           v-model:value="httpProxy"
           :input-props="{
-            'aria-label': '全局网络代理',
+            'aria-label': i18n.global.t('settings.network.globalNetworkProxy'),
             'aria-describedby': 'network-http-proxy-description',
             spellcheck: false
           }"
-          placeholder="例如 socks5h://127.0.0.1:7897"
+          :placeholder="i18n.global.t('settings.network.forExampleSocks5h127001')"
           :disabled="loading || !ready"
           clearable
           @update:value="changed"
           @blur="save"
         />
         <p id="network-http-proxy-description" class="network-description">
-          用于全局网络连接。支持 HTTP(S) 和 SOCKS5；留空沿用启动环境。
+          {{ i18n.global.t('settings.network.usedForNetworkConnectionsSupportsHttpS') }}
         </p>
       </n-form-item>
-      <n-form-item label="GitHub 下载代理站点">
+      <n-form-item :label="i18n.global.t('settings.network.githubDownloadProxy')">
         <n-input
           v-model:value="githubProxy"
           :input-props="{
-            'aria-label': 'GitHub 下载代理站点',
+            'aria-label': i18n.global.t('settings.network.githubDownloadProxy'),
             'aria-describedby': 'network-github-proxy-description',
             spellcheck: false
           }"
-          placeholder="留空时自动选择下载方式"
+          :placeholder="i18n.global.t('settings.network.leaveBlankToChooseADownloadMethod')"
           :disabled="loading || !ready"
           clearable
           @update:value="changed"
           @blur="save"
         />
         <p id="network-github-proxy-description" class="network-description">
-          用于 Mower、MAA 的 GitHub 文件下载。留空时先直连，失败后依次尝试
-          ghfast.top、gh-proxy.com、gh-proxy.org、edgeone.gh-proxy.org；填写后仅使用指定站点。
+          {{ i18n.global.t('settings.network.usedForMowerAndMaaDownloadsFrom') }}
         </p>
       </n-form-item>
     </n-form>
     <n-collapse class="network-help">
-      <n-collapse-item title="代理填写说明" name="proxy-help" data-settings-label="代理填写说明">
+      <n-collapse-item
+        :title="i18n.global.t('settings.network.proxyConfigurationHelp')"
+        name="proxy-help"
+        :data-settings-label="i18n.global.t('settings.network.proxyConfigurationHelp')"
+      >
         <dl class="network-help-list">
           <div>
-            <dt>全局网络代理</dt>
+            <dt>{{ i18n.global.t('settings.network.globalNetworkProxy') }}</dt>
             <dd>
-              支持 http://、https://、socks5:// 和 socks5h://。SOCKS 代理需要填写端口；GitHub
-              API、Git 和 Git LFS 使用此设置。
+              {{ i18n.global.t('settings.network.supportsHttpHttpsSocks5AndSocks5hSocks') }}
             </dd>
           </div>
           <div>
-            <dt>GitHub 下载代理站点</dt>
+            <dt>{{ i18n.global.t('settings.network.githubDownloadProxy') }}</dt>
             <dd>
-              用于安装包、资源包及原始文件。只填写代理站点地址，例如
-              https://ghfast.top/，程序会在其后拼接原始下载链接。填写后优先使用指定站点。
+              {{ i18n.global.t('settings.network.usedForInstallationPackagesResourcePackagesAnd') }}
             </dd>
           </div>
         </dl>
       </n-collapse-item>
     </n-collapse>
-    <div class="network-test" data-settings-label="测试连接">
+    <div
+      class="network-test"
+      :data-settings-label="i18n.global.t('settings.network.testConnection')"
+    >
       <div class="network-test-heading">
-        <span>连接测试</span>
-        <p class="network-description">测试当前设置的 GitHub 文件下载路径。</p>
+        <span>{{ i18n.global.t('settings.network.connectionTest') }}</span>
+        <p class="network-description">
+          {{ i18n.global.t('settings.network.testTheGithubDownloadRoutesUsingThe') }}
+        </p>
       </div>
       <div class="network-actions">
         <n-button
@@ -227,29 +248,33 @@ onBeforeUnmount(() => {
           :loading="testing"
           :disabled="loading || !ready || testing"
           @click="testConnection"
-          >测试连接</n-button
+          >{{ i18n.global.t('settings.network.testConnection') }}</n-button
         >
-        <n-button v-if="!ready && !loading" @click="load">重新加载</n-button>
-        <n-button v-if="error || results.length" :disabled="testing" @click="copyResult"
-          >复制结果</n-button
-        >
+        <n-button v-if="!ready && !loading" @click="load">{{
+          i18n.global.t('settings.network.reload')
+        }}</n-button>
+        <n-button v-if="error || results.length" :disabled="testing" @click="copyResult">{{
+          i18n.global.t('settings.network.copyResults')
+        }}</n-button>
         <span v-if="copyStatus" class="network-description" role="status">{{ copyStatus }}</span>
       </div>
     </div>
     <p v-if="testing" class="network-description network-testing" role="status">
-      正在测试 GitHub 文件下载路径…
+      {{ i18n.global.t('settings.network.testingGithubDownloadRoutes') }}
     </p>
     <section
       v-if="results.length"
       class="network-results"
-      aria-label="连接测试结果"
+      :aria-label="i18n.global.t('settings.network.connectionTestResults')"
       aria-live="polite"
     >
       <div v-for="result in results" :key="result.label" class="network-result">
         <div class="network-result-heading">
           <strong>{{ result.label }}</strong>
           <n-tag size="small" :bordered="false" :type="result.ok ? 'success' : 'error'">{{
-            result.ok ? '连接成功' : '连接失败'
+            result.ok
+              ? i18n.global.t('settings.network.connected')
+              : i18n.global.t('settings.network.connectionFailed')
           }}</n-tag>
           <span class="network-latency">{{ result.elapsed_ms }} ms</span>
         </div>

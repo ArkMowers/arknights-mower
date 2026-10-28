@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
@@ -13,11 +14,14 @@ const modelKey = computed({
     else ai_key.value = value
   }
 })
-const type_options = [
+const type_options = computed(() => [
   { label: 'DeepSeek', value: 'deepseek' },
-  { label: '本地模型（OpenAI 兼容）', value: 'custom-local' },
-  { label: '在线模型 / 中转商（OpenAI 兼容）', value: 'custom-online' }
-]
+  { label: i18n.global.t('settings.ai.localModelOpenaiCompatible'), value: 'custom-local' },
+  {
+    label: i18n.global.t('settings.ai.onlineProviderRelayOpenaiCompatible'),
+    value: 'custom-online'
+  }
+])
 const deepseekModels = [
   { label: 'DeepSeek Flash（deepseek-flash）', value: 'deepseek-flash' },
   { label: 'DeepSeek V4 Pro（deepseek-v4-pro）', value: 'deepseek-v4-pro' }
@@ -26,16 +30,16 @@ const selectMenuProps = { class: 'settings-select-menu' }
 </script>
 <template>
   <n-card
-    title="AI 助手与模型服务"
+    :title="i18n.global.t('settings.ai.aiAssistantModelService')"
     class="ai-settings-card"
     data-settings-keywords="DeepSeek Flash Pro OpenAI 本地模型 在线模型 中转商 接口地址 模型名称 模型 ID API 密钥"
   >
     <div class="ai-settings-summary">
-      <p>配置 AI 助手和报错分析使用的模型服务。</p>
-      <span>修改后自动保存</span>
+      <p>{{ i18n.global.t('settings.ai.configureTheModelServiceUsedByThe') }}</p>
+      <span>{{ i18n.global.t('settings.ai.changesSaveAutomatically') }}</span>
     </div>
     <n-form label-placement="top" class="model-form settings-form-stacked" :show-feedback="false">
-      <n-form-item label="模型服务">
+      <n-form-item :label="i18n.global.t('settings.ai.modelService')">
         <n-select
           v-model:value="ai_type"
           class="settings-select-wrap"
@@ -44,19 +48,22 @@ const selectMenuProps = { class: 'settings-select-menu' }
           :virtual-scroll="false"
           :menu-props="selectMenuProps"
           :consistent-menu-width="false"
-          aria-label="模型服务"
+          :aria-label="i18n.global.t('settings.ai.modelService')"
         />
         <p class="ai-field-description">
           {{
             ai_type === 'deepseek'
-              ? '选择预设或填写模型 ID，使用 DeepSeek 官方服务。'
+              ? i18n.global.t('settings.ai.selectAPresetOrEnterAModel')
               : ai_type === 'custom-local'
-                ? '连接本机或局域网中的 OpenAI 兼容服务。'
-                : '使用服务商提供的 HTTPS 接口和模型 ID。'
+                ? i18n.global.t('settings.ai.connectToAnOpenaiCompatibleServiceOn')
+                : i18n.global.t('settings.ai.useTheHttpsEndpointAndModelId')
           }}
         </p>
       </n-form-item>
-      <n-form-item v-if="ai_type === 'deepseek'" label="DeepSeek 模型">
+      <n-form-item
+        v-if="ai_type === 'deepseek'"
+        :label="i18n.global.t('settings.ai.deepseekModel')"
+      >
         <n-select
           v-model:value="ai_deepseek_model"
           class="settings-select-wrap"
@@ -65,17 +72,20 @@ const selectMenuProps = { class: 'settings-select-menu' }
           placement="bottom-end"
           :virtual-scroll="false"
           :menu-props="selectMenuProps"
-          aria-label="DeepSeek 模型"
+          :aria-label="i18n.global.t('settings.ai.deepseekModel')"
           filterable
           tag
-          placeholder="选择预设，或输入模型 ID 后回车"
+          :placeholder="i18n.global.t('settings.ai.selectAPresetOrEnterAModel2')"
         />
       </n-form-item>
       <template v-if="customModel">
-        <n-form-item label="接口地址">
+        <n-form-item :label="i18n.global.t('settings.ai.apiEndpoint')">
           <n-input
             v-model:value="ai_base_url"
-            :input-props="{ 'aria-label': '接口地址', spellcheck: false }"
+            :input-props="{
+              'aria-label': i18n.global.t('settings.ai.apiEndpoint'),
+              spellcheck: false
+            }"
             :placeholder="
               ai_type === 'custom-local'
                 ? 'http://127.0.0.1:11434/v1'
@@ -83,33 +93,44 @@ const selectMenuProps = { class: 'settings-select-menu' }
             "
           />
         </n-form-item>
-        <n-form-item label="模型名称">
+        <n-form-item :label="i18n.global.t('settings.ai.modelName')">
           <n-input
             v-model:value="ai_model"
-            :input-props="{ 'aria-label': '模型名称', spellcheck: false }"
-            placeholder="填写服务商提供的模型 ID"
+            :input-props="{
+              'aria-label': i18n.global.t('settings.ai.modelName'),
+              spellcheck: false
+            }"
+            :placeholder="i18n.global.t('settings.ai.enterTheModelIdSuppliedByYour')"
           />
         </n-form-item>
       </template>
-      <n-form-item label="API 密钥">
+      <n-form-item :label="i18n.global.t('settings.ai.apiKey')">
         <n-input
           type="password"
           v-model:value="modelKey"
-          :placeholder="ai_type === 'custom-local' ? '本地接口通常可留空' : '请输入 API 密钥'"
+          :placeholder="
+            ai_type === 'custom-local'
+              ? i18n.global.t('settings.ai.usuallyOptionalForALocalService')
+              : i18n.global.t('settings.ai.enterYourApiKey')
+          "
           show-password-on="click"
           autocomplete="off"
-          :input-props="{ 'aria-label': 'API 密钥' }"
+          :input-props="{ 'aria-label': i18n.global.t('settings.ai.apiKey') }"
         />
         <p v-if="ai_type === 'deepseek'" class="ai-field-description">
-          前往
-          <a href="https://platform.deepseek.com/api_keys" target="_blank">DeepSeek 官网</a> 获取
-          API 密钥。
+          {{ i18n.global.t('settings.ai.visit') }}
+          <a href="https://platform.deepseek.com/api_keys" target="_blank">{{
+            i18n.global.t('settings.ai.deepseekSWebsite')
+          }}</a>
+          {{ i18n.global.t('settings.ai.toObtainAnApiKey') }}
         </p>
       </n-form-item>
     </n-form>
     <div class="ai-service-note">
-      <p>所选报错的精简日志会发送到这里配置的模型服务。</p>
-      <p v-if="customModel">本地接口需兼容 OpenAI Chat Completions，在线接口必须使用 HTTPS。</p>
+      <p>{{ i18n.global.t('settings.ai.aShortenedLogForTheSelectedError') }}</p>
+      <p v-if="customModel">
+        {{ i18n.global.t('settings.ai.localServicesMustSupportOpenaiChatCompletions') }}
+      </p>
     </div>
   </n-card>
 </template>

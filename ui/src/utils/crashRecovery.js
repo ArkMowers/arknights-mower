@@ -1,10 +1,17 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { i18n } from '@/i18n'
 
 export function createCrashRecovery({ axios, base = '' }) {
   const status = ref({ active: false })
   const busy = ref(false)
   const unavailable = ref(true)
-  const error = ref('')
+  const backendError = ref('')
+  const fallbackError = ref(false)
+  const error = computed(
+    () =>
+      backendError.value ||
+      (fallbackError.value ? i18n.global.t('runtime.recoveryServiceUnavailable') : '')
+  )
   let disposed = false
 
   async function refresh() {
@@ -18,13 +25,15 @@ export function createCrashRecovery({ axios, base = '' }) {
       }
       status.value = data
       unavailable.value = false
-      error.value = ''
+      backendError.value = ''
+      fallbackError.value = false
       return true
     } catch (failure) {
       if (!disposed) {
         unavailable.value = true
         if (status.value.active) {
-          error.value = failure.response?.data?.message || '服务暂时不可用，恢复状态稍后自动刷新'
+          backendError.value = failure.response?.data?.message || ''
+          fallbackError.value = !backendError.value
         }
       }
       return false

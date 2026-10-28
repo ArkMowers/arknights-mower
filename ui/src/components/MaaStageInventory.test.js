@@ -1,11 +1,12 @@
 import { renderToString } from '@vue/server-renderer'
 import { createSSRApp, defineComponent, h, reactive, toRefs } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { i18n } from '@/i18n'
 import axios from 'axios'
 import MaaStageInventory from './MaaStageInventory.vue'
 import { WEEKDAYS } from '@/utils/maa_weekly_plan'
 
-const state = vi.hoisted(() => ({ config: null }))
+const state = vi.hoisted(() => ({ config: null, messageError: vi.fn(), tabs: [], panes: [] }))
 vi.mock('axios', () => ({ default: { get: vi.fn() } }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/stores/resourceVersion', () => ({
@@ -35,7 +36,7 @@ vi.mock('naive-ui', () => {
         ])
   })
   return {
-    useMessage: () => ({ success: vi.fn(), error: vi.fn() }),
+    useMessage: () => ({ success: vi.fn(), error: state.messageError }),
     ...Object.fromEntries(
       [
         'NAlert',
@@ -57,7 +58,23 @@ vi.mock('naive-ui', () => {
         'NTag',
         'NText'
       ].map((name) => [name, wrapper])
-    )
+    ),
+    NTabs: defineComponent({
+      ...wrapper,
+      props: ['animated'],
+      setup(props, context) {
+        state.tabs.push(props)
+        return wrapper.setup(props, context)
+      }
+    }),
+    NTabPane: defineComponent({
+      ...wrapper,
+      props: ['name', 'tab'],
+      setup(props, context) {
+        state.panes.push(props)
+        return wrapper.setup(props, context)
+      }
+    })
   }
 })
 
@@ -92,11 +109,16 @@ async function renderInventory(onChipLimitsApplied) {
     html,
     preview: html.split('今日执行预览')[1],
     execution: html.split('实际执行')[1],
-    applyChipLimits: setup.applyChipLimits
+    refreshInventory: setup.refreshInventory,
+    applyChipLimits: setup.applyChipLimits,
+    itemOptionsFor: setup.itemOptionsFor,
+    updateItem: setup.updateItem
   }
 }
 
 beforeEach(() => {
+  state.tabs = []
+  state.panes = []
   state.config = reactive({
     maa_stage_inventory_enable: false,
     maa_weekly_plan_active: '芯片',
@@ -143,6 +165,58 @@ beforeEach(() => {
 })
 
 describe('库存选关生效状态', () => {
+  afterEach(() => {
+    i18n.global.locale.value = 'zh-CN'
+  })
+  it('keeps inventory tab identities and non-animated panels while translating their labels', async () => {
+    const original = JSON.stringify(state.config)
+    for (const [locale, label] of [
+      ['zh-CN', '物品上限'],
+      ['en-US', 'Item limits'],
+      ['ja-JP', 'アイテム上限'],
+      ['zh-TW', '物品上限']
+    ]) {
+      i18n.global.locale.value = locale
+      await renderInventory()
+      expect(state.panes.findLast((props) => props.name === 'limit')).toMatchObject({ tab: label })
+      expect(JSON.stringify(state.config)).toBe(original)
+    }
+    expect(state.tabs).toHaveLength(4)
+    expect(state.tabs.every((props) => !props.animated)).toBe(true)
+    expect(axios.get).toHaveBeenCalledTimes(4)
+    expect(axios.get.mock.calls.every(([url]) => url.endsWith('/stage/inventory-rules'))).toBe(true)
+  })
+
+  it('translates the shared sync failure shown by inventory refresh', async () => {
+    const { refreshInventory } = await renderInventory()
+    const payload = { success: false, message: '未同步到干员数据，请检查森空岛账号及官服/B服选择' }
+    axios.get.mockResolvedValueOnce({ data: payload })
+    state.messageError.mockClear()
+    i18n.global.locale.value = 'ja-JP'
+    await refreshInventory()
+    expect(state.messageError).toHaveBeenCalledExactlyOnceWith(
+      'オペレーターデータを同期できませんでした。SKLand のアカウントと公式サーバー／Bilibili サーバーの選択を確認してください。'
+    )
+    expect(payload.message).toBe('未同步到干员数据，请检查森空岛账号及官服/B服选择')
+  })
+
+  it('translates item options without writing localized material names or IDs into inventory rules', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { stages: [], items: [{ value: '3231', id: '3231', label: '重装芯片' }] }
+    })
+    const { itemOptionsFor, updateItem } = await renderInventory()
+    const item = { item_id: '3231', item_name: '重装芯片', limit: 8 }
+    const originalValues = itemOptionsFor(item).map(({ value }) => value)
+    for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'zh-TW']) {
+      i18n.global.locale.value = locale
+      expect(itemOptionsFor(item).map(({ value }) => value)).toEqual(originalValues)
+      const edited = { ...item }
+      updateItem(edited, '3231')
+      expect(edited).toEqual(item)
+    }
+    i18n.global.locale.value = 'en-US'
+    expect(itemOptionsFor(item).find(({ value }) => value === '3231').label).toBe('Defender Chip')
+  })
   it('关闭总开关时按原计划执行，不显示跳过或比例选择决策', async () => {
     const plan = [...stages, 'Annihilation']
     setPlan(plan)
@@ -153,10 +227,11 @@ describe('库存选关生效状态', () => {
     expect(preview).not.toContain('达到上限')
     expect(preview).not.toContain('比例选择')
     expect(preview).not.toContain(stoppedNotice)
-    for (const [index, stage] of plan.entries()) {
+    const display = [...stages, '当期剿灭']
+    for (const [index, stage] of display.entries()) {
       expect(execution).toContain(stage)
       if (index > 0) {
-        expect(execution.indexOf(stage)).toBeGreaterThan(execution.indexOf(plan[index - 1]))
+        expect(execution.indexOf(stage)).toBeGreaterThan(execution.indexOf(display[index - 1]))
       }
     }
     expect(axios.get).toHaveBeenCalledOnce()

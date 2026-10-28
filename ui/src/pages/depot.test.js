@@ -9,6 +9,7 @@ import axios from 'axios'
 import Depot from './depot.vue'
 import { useDepotPreferencesStore } from '@/stores/depotPreferences'
 import { DEFAULT_BASELINE_CONFIG, DEFAULT_VIEW_PREFS } from '@/utils/depot_inventory'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({ depot: null }))
 vi.mock('vue', async (original) => ({
@@ -185,6 +186,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   app?.unmount()
   app = null
   vi.unstubAllGlobals()
@@ -192,6 +194,45 @@ afterEach(() => {
 })
 
 describe('depot page preference persistence', () => {
+  it.each([
+    ['en-US', 'Depot overview', 'Common resources', 'LMD', 'Unfollow', 'Item name'],
+    ['ja-JP', '倉庫の概要', '基本資源', '龍門幣', 'お気に入りから削除', 'アイテム名順'],
+    ['zh-TW', '倉庫總覽', '常用資源', '龍門幣', '取消關注', '按物品名稱']
+  ])(
+    'updates the mounted depot to %s without changing stored filters, item names or requests',
+    async (locale, title, category, itemName, favoriteLabel, sortLabel) => {
+      const preferences = mount()
+      await settle()
+      const before = clone(saved)
+      const stock = node('radio-group', (item) => item.props.name === 'stockFilter')
+      const sort = node('select')
+      const getCount = axios.get.mock.calls.length
+      const refreshCount = state.depot.loadReport.mock.calls.length
+      expect(content(root)).toContain('仓库总览')
+      i18n.global.locale.value = locale
+      await settle()
+      expect(content(root)).toContain(title)
+      expect(content(root)).toContain(category)
+      expect(content(root)).toContain(itemName)
+      expect(
+        node('button', (item) => item.props.class?.includes('card-star-btn starred')).props.title
+      ).toBe(favoriteLabel)
+      expect(stock.props.value).toBe(before.view.stockFilter)
+      expect(sort.props.value).toBe('name')
+      expect(sort.props.options.find((item) => item.value === 'name').label).toBe(sortLabel)
+      expect(preferences.favorites).toEqual(['龙门币'])
+      expect(saved).toEqual(before)
+      expect(axios.get).toHaveBeenCalledTimes(getCount)
+      expect(state.depot.loadReport).toHaveBeenCalledTimes(refreshCount)
+      expect(axios.put).not.toHaveBeenCalled()
+      expect(storage.setItem).not.toHaveBeenCalled()
+      stock.props['onUpdate:value']('owned')
+      await settle()
+      expect(axios.put.mock.lastCall[1]).toEqual({
+        depot: { view: { ...before.view, stockFilter: 'owned' } }
+      })
+    }
+  )
   it('loads saved instance preferences on mount and displays them in the actual page controls', async () => {
     const preferences = mount()
     await settle()

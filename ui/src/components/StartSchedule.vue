@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
@@ -36,14 +39,29 @@ const countdown = computed(() => {
 })
 
 const startOptions = computed(() => [
-  { label: '定时启动…', key: 'custom' },
+  {
+    get label() {
+      return t('runtime.scheduleStartOption')
+    },
+    key: 'custom'
+  },
   { type: 'divider', key: 'divider' },
   ...props.startOptions
 ])
 
 const scheduledOptions = [
-  { label: '取消定时启动', key: 'cancel' },
-  { label: '立即开始执行', key: 'start' }
+  {
+    get label() {
+      return t('runtime.cancelScheduledStart')
+    },
+    key: 'cancel'
+  },
+  {
+    get label() {
+      return t('runtime.startNow')
+    },
+    key: 'start'
+  }
 ]
 
 function openModal() {
@@ -58,7 +76,7 @@ function openModal() {
 async function schedule(delaySeconds) {
   if (busy.value || props.waiting) return
   if (!Number.isFinite(delaySeconds) || delaySeconds <= 0 || delaySeconds > 30 * 86400) {
-    message.error('请选择未来 30 天内的时间')
+    message.error(t('runtime.future30Days'))
     return
   }
   busy.value = true
@@ -71,8 +89,8 @@ async function schedule(delaySeconds) {
   } catch (error) {
     message.error(
       error.response?.status === 404
-        ? '当前 Mower 进程尚未加载定时启动功能，请更新并重启进程'
-        : error.response?.data?.error || '设置定时启动失败'
+        ? t('runtime.scheduledStartUnavailable')
+        : error.response?.data?.error || t('runtime.scheduleStartFailed')
     )
   } finally {
     busy.value = false
@@ -86,7 +104,7 @@ async function cancel() {
     await axios.delete(`${import.meta.env.VITE_HTTP_URL}/scheduled-start`)
     scheduled_start_at.value = null
   } catch (error) {
-    message.error(error.response?.data?.error || '取消定时启动失败')
+    message.error(error.response?.data?.error || t('runtime.cancelScheduledStartFailed'))
   } finally {
     busy.value = false
   }
@@ -143,26 +161,28 @@ function select(key) {
       <template #icon
         ><n-icon><play-icon /></n-icon
       ></template>
-      <span class="start-label">开始执行</span>
+      <span class="start-label">{{ t('runtime.start') }}</span>
     </n-button>
   </drop-down>
   <n-modal
     v-model:show="showModal"
     preset="card"
-    title="定时启动"
+    :title="t('runtime.scheduleStart')"
     style="width: min(420px, calc(100vw - 32px))"
   >
-    <n-text depth="3" style="display: block; margin-bottom: 12px">
-      到达预约时间后，将清空运行缓存并启动 Mower。
-    </n-text>
+    <n-text depth="3" style="display: block; margin-bottom: 12px">{{
+      t('runtime.scheduledStartHelp')
+    }}</n-text>
     <n-space vertical>
       <n-date-picker v-model:value="date" type="date" style="width: 100%" />
       <n-time-picker v-model:value="time" style="width: 100%" />
     </n-space>
     <template #footer>
       <n-space justify="end">
-        <n-button @click="showModal = false">取消</n-button>
-        <n-button type="primary" :loading="busy" @click="confirm">确定</n-button>
+        <n-button @click="showModal = false">{{ t('runtime.cancel') }}</n-button>
+        <n-button type="primary" :loading="busy" @click="confirm">{{
+          t('runtime.confirm')
+        }}</n-button>
       </n-space>
     </template>
   </n-modal>

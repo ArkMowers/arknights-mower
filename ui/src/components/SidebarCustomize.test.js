@@ -3,6 +3,7 @@ import { createSSRApp, effectScope, reactive } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SidebarCustomize from './SidebarCustomize.vue'
 import { createSidebarPreferences } from '@/composables/sidebarPreferences'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({ preferences: null }))
 vi.mock('@/composables/sidebarPreferences', async (original) => ({
@@ -53,7 +54,27 @@ describe('sidebar page dialog', () => {
     scope = effectScope()
     component = scope.run(() => SidebarCustomize.setup(props, { expose: vi.fn(), emit }))
   })
-  afterEach(() => scope.stop())
+  afterEach(() => {
+    scope.stop()
+    i18n.global.locale.value = 'zh-CN'
+  })
+
+  it('searches English page labels after a live locale change and saves original page keys only on confirmation', async () => {
+    props.groupKey = 'reports'
+    const original = JSON.stringify(state.preferences.state.value)
+    component.selectedKeys.value = ['log']
+    i18n.global.locale.value = 'en-US'
+    component.search.value = 'logs'
+    expect(component.availableEntries.value.map(({ key }) => key)).toEqual(['log'])
+    expect(component.availableEntries.value[0].label).toBe('Logs')
+    expect(component.selectedKeys.value).toEqual(['log'])
+    expect(JSON.stringify(state.preferences.state.value)).toBe(original)
+    expect(storage.setItem).not.toHaveBeenCalled()
+    expect(await render()).toContain('Add pages')
+    const add = vi.spyOn(state.preferences, 'addEntry')
+    component.confirm()
+    expect(add).toHaveBeenCalledExactlyOnceWith('log', 'reports')
+  })
 
   it('cancels through the button and modal dismissal without saving or adding pages', async () => {
     const initial = JSON.stringify(state.preferences.state.value)

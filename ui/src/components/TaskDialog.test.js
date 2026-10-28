@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
 import TaskDialog from './TaskDialog.vue'
 import axios from 'axios'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({ plan: null, config: null, mower: null }))
 vi.mock('pinia', () => ({ storeToRefs: (store) => store.refs }))
@@ -54,10 +55,13 @@ describe('manual task dialog', () => {
     scope = effectScope()
     component = scope.run(() => TaskDialog.setup({}, { expose: vi.fn() }))
   })
-  afterEach(() => scope.stop())
+  afterEach(() => {
+    scope.stop()
+    i18n.global.locale.value = 'zh-CN'
+  })
 
   it.each(additionalTypes)('submits %s at the chosen time without a stale roster', async (kind) => {
-    expect(component.taskTypeOptions.some((option) => option.value === kind)).toBe(true)
+    expect(component.taskTypeOptions.value.some((option) => option.value === kind)).toBe(true)
     component.task_type.value = kind
     component.task_time.value = 1792800000000
     component.task_list.value = [{ room: 'train', operators: ['陈'] }]
@@ -72,9 +76,9 @@ describe('manual task dialog', () => {
   })
 
   it.each(dailyTypes)('submits daily selection %s from the second selector', async (kind) => {
-    expect(component.dailyTaskOptions.some((option) => option.value === kind)).toBe(true)
+    expect(component.dailyTaskOptions.value.some((option) => option.value === kind)).toBe(true)
     if (kind !== '日常任务') {
-      expect(component.taskTypeOptions.some((option) => option.value === kind)).toBe(false)
+      expect(component.taskTypeOptions.value.some((option) => option.value === kind)).toBe(false)
     }
     component.task_type.value = '日常任务'
     component.daily_task.value = kind

@@ -5,6 +5,7 @@ import { compile, createRenderer, defineComponent, h, nextTick, ssrContextKey } 
 import { createPinia } from 'pinia'
 import axios from 'axios'
 import { useGuiStore } from '@/stores/gui'
+import { i18n } from '@/i18n'
 import VersionWatermarkPreference from './VersionWatermarkPreference.vue'
 
 vi.mock('axios', () => ({ default: { get: vi.fn(), put: vi.fn() } }))
@@ -158,6 +159,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   for (const { app, gui } of mounted.splice(0)) {
     app.unmount()
     gui.$dispose()
@@ -166,6 +168,38 @@ afterEach(() => {
 })
 
 describe('version watermark preference', () => {
+  it('switches a mounted confirmation to English and still requires the original acknowledgement', async () => {
+    const page = mount()
+    await flush()
+    await openStep(page, 5)
+    expect(text(page.modal())).toContain('请手动输入')
+
+    i18n.global.locale.value = 'en-US'
+    await nextTick()
+
+    expect(page.modal().props['data-title']).toBe('Hide Version Watermark (5/5)')
+    expect(text(page.modal())).toContain('Type the following Chinese phrase exactly:')
+    expect(text(page.modal())).toContain(confirmation)
+    expect(text(page.modal())).toContain('provide the complete version number')
+    page
+      .input()
+      .props.onInput({ target: { value: 'Always include the version when reporting problems' } })
+    await nextTick()
+    expect(page.confirm().props.disabled).toBe(true)
+    page.confirm().props.onClick()
+    expect(axios.put).not.toHaveBeenCalled()
+
+    page.input().props.onInput({ target: { value: confirmation } })
+    await nextTick()
+    page.confirm().props.onClick()
+    await flush()
+    expect(axios.put).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/\/gui\/appearance$/),
+      { watermark_visible: false, watermark_confirmation: confirmation },
+      { timeout: 5000 }
+    )
+  })
+
   it('waits for the initial read and offers retry without changing visibility', async () => {
     axios.get.mockRejectedValueOnce(new Error('offline'))
     const page = mount()

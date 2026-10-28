@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { i18n } from '@/i18n'
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 
 import {
   buildMasteryRoutePayload,
@@ -62,6 +66,17 @@ describe('mastery handoff buffers', () => {
 })
 
 describe('mastery route contracts', () => {
+  it('localizes the real empty roster failure before it reaches the optimal-route toast', async () => {
+    i18n.global.locale.value = 'ja-JP'
+    const payload = { success: false, message: '未同步到干员数据，请检查森空岛账号及官服/B服选择' }
+    const http = { get: vi.fn().mockResolvedValue({ data: payload }) }
+    await expect(syncMasteryRouteDefaults(http, '')).rejects.toThrow(
+      'オペレーターデータを同期できませんでした。SKLand のアカウントと公式サーバー／Bilibili サーバーの選択を確認してください。'
+    )
+    expect(http.get).toHaveBeenCalledExactlyOnceWith('/cultivate-fetch')
+    expect(payload.message).toBe('未同步到干员数据，请检查森空岛账号及官服/B服选择')
+  })
+
   it('waits for roster sync before asking for fresh defaults', async () => {
     let finishSync
     const sync = new Promise((resolve) => {

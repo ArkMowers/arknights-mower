@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 export function getDroppedFile(event) {
   const files = event?.dataTransfer?.files
   if (!files?.length) return null
@@ -9,10 +10,11 @@ export function getDroppedFile(event) {
 
 export function droppedUpdateFile(event) {
   const files = event?.dataTransfer?.files
-  if (files?.length !== 1) throw new Error('请一次拖入一个更新包')
+  if (files?.length !== 1) throw new Error(i18n.global.t('settings.manualUpdate.onePackage'))
   const file = getDroppedFile(event)
-  if (!file.size) throw new Error('更新包为空，请选择完整文件')
-  if (file.size > 2 * 1024 ** 3) throw new Error('更新包超过 2 GiB 限制')
+  if (!file.size) throw new Error(i18n.global.t('settings.manualUpdate.emptyPackage'))
+  if (file.size > 2 * 1024 ** 3)
+    throw new Error(i18n.global.t('settings.manualUpdate.packageTooLarge'))
   return file
 }
 
@@ -61,7 +63,7 @@ export async function updatePackageKind(file) {
   let count = 0
   try {
     for await (const entry of reader.getEntriesGenerator()) {
-      if (++count > 100000) throw new Error('更新包文件数量过多')
+      if (++count > 100000) throw new Error(i18n.global.t('settings.manualUpdate.tooManyEntries'))
       if (entry.directory) continue
       const path = entry.filename
       software ||= ['maa-python.json', 'mower-android.json', 'ota.json'].includes(path)
@@ -71,11 +73,11 @@ export async function updatePackageKind(file) {
       resource ||= path === 'arknights_mower/data/version.json'
     }
   } catch {
-    throw new Error('无法读取更新包目录，请选择完整的 Mower 安装包')
+    throw new Error(i18n.global.t('settings.manualUpdate.unreadablePackage'))
   } finally {
     await reader.close()
   }
-  if (software && resource) throw new Error('包内同时包含软件和资源更新结构，请分别上传')
+  if (software && resource) throw new Error(i18n.global.t('settings.manualUpdate.mixedPackage'))
   return software ? 'software' : resource ? 'resource' : null
 }
 

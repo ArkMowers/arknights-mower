@@ -1,19 +1,23 @@
 <template>
   <div class="mood-page">
-    <h1 class="page-title">干员心情折线表</h1>
+    <h1 class="page-title">{{ t('reports.moraleLineTitle') }}</h1>
     <div class="mood-page-tools">
-      <span>拖动卡片调整顺序；工休比报表自动同步。↓消耗 ↑恢复，单位：点/小时。</span>
-      <n-button type="primary" secondary @click="newView">＋ 新建自定义观察表</n-button>
-      <n-button v-if="board.hiddenGroups.length" secondary @click="board.restoreGroups">
-        还原隐藏窗口（{{ board.hiddenGroups.length }}）
+      <span>{{ t('reports.moraleLineHelp') }}</span>
+      <n-button type="primary" secondary @click="newView">{{
+        t('reports.newObservation')
+      }}</n-button>
+      <n-button v-if="board.hiddenGroups.length" secondary @click="board.restoreGroups"
+        >{{ t('reports.restoreHiddenPrefix') }}{{ board.hiddenGroups.length }}）
       </n-button>
     </div>
     <p v-if="historyLimited || catalogLimited" class="history-note">
-      当前历史查询接口不可用：自选表暂时只能组合默认报表中已有的干员。完整数据库查询需启用只读历史服务。
+      {{ t('reports.historyUnavailableHelp') }}
     </p>
-    <p v-if="loadError" role="alert" class="history-note">{{ loadError }}</p>
-    <p v-if="board.saveError" role="alert" class="history-note">{{ board.saveError }}</p>
-    <p v-if="formError" role="alert" class="history-note">{{ formError }}</p>
+    <p v-if="loadError" role="alert" class="history-note">{{ reportErrorMessage(loadError) }}</p>
+    <p v-if="board.saveError" role="alert" class="history-note">
+      {{ reportErrorMessage(board.saveError) }}
+    </p>
+    <p v-if="formError" role="alert" class="history-note">{{ reportErrorMessage(formError) }}</p>
 
     <mood-card-grid :groups="orderedReportData" @reorder="reorderCards">
       <template #default="{ group }">
@@ -23,43 +27,46 @@
             <n-button
               size="tiny"
               secondary
-              :aria-label="'隐藏' + group.groupName + '窗口'"
+              :aria-label="t('reports.hideGroup', { name: group.groupName })"
               @click="board.hideGroup(group.boardKey)"
+              >{{ t('reports.hide') }}</n-button
             >
-              隐藏
-            </n-button>
-            <n-button v-if="group.isCustom" size="tiny" secondary @click="editView(group.customId)">
-              编辑
-            </n-button>
+            <n-button
+              v-if="group.isCustom"
+              size="tiny"
+              secondary
+              @click="editView(group.customId)"
+              >{{ t('reports.edit') }}</n-button
+            >
             <n-button
               size="tiny"
               secondary
-              :aria-label="'全屏查看' + group.groupName"
+              :aria-label="t('reports.fullscreenGroup', { name: group.groupName })"
               @click="fullscreenKey = group.boardKey"
+              >{{ t('reports.fullscreen') }}</n-button
             >
-              全屏
-            </n-button>
           </div>
         </header>
         <div v-if="group.isCustom" class="observation-description">
-          自选观察表 · {{ group.operators.length }} 位干员
-          <span v-if="group.missing.length" class="observation-missing">
-            · {{ group.missing.join('、') }} 暂无历史
-          </span>
+          {{ t('reports.customObservationPrefix') }}{{ group.operators.length
+          }}{{ t('reports.operatorsSuffix')
+          }}<span v-if="group.missing.length" class="observation-missing">
+            · {{ group.missing.join('、') }}{{ t('reports.noHistory') }}</span
+          >
         </div>
         <div class="card-controls">
-          <span>点击彩色标签可显隐曲线</span>
-          <n-button size="tiny" secondary @click="setGroupVisibility(group.boardKey, true)">
-            显示全部
-          </n-button>
-          <n-button size="tiny" secondary @click="setGroupVisibility(group.boardKey, false)">
-            隐藏全部
-          </n-button>
+          <span>{{ t('reports.toggleCurvesHelp') }}</span>
+          <n-button size="tiny" secondary @click="setGroupVisibility(group.boardKey, true)">{{
+            t('reports.showAll')
+          }}</n-button>
+          <n-button size="tiny" secondary @click="setGroupVisibility(group.boardKey, false)">{{
+            t('reports.hideAll')
+          }}</n-button>
           <n-button
             size="tiny"
             secondary
             @click="adjustWidth(group.boardKey)"
-            title="拓宽图表以便水平滚动"
+            :title="t('reports.widenChart')"
             >↔</n-button
           >
         </div>
@@ -81,7 +88,7 @@
               :options="chartOptions"
             />
           </div>
-          <div v-else class="no-history">暂无可绘制的心情记录，等待 Mower 采样后会自动显示。</div>
+          <div v-else class="no-history">{{ t('reports.noMoraleData') }}</div>
         </div>
       </template>
     </mood-card-grid>
@@ -89,7 +96,7 @@
     <n-modal
       :show="!!fullscreenGroup"
       preset="card"
-      :title="fullscreenGroup?.groupName || '心情曲线'"
+      :title="fullscreenGroup?.groupName || t('reports.moraleCurve')"
       style="width: min(96vw, 1600px); height: 92vh"
       content-style="display:flex; flex-direction:column; min-height:0"
       @update:show="
@@ -110,7 +117,7 @@
             :data="fullscreenGroup.moodData"
             :options="chartOptions"
           />
-          <p v-else class="no-history">暂无历史记录</p>
+          <p v-else class="no-history">{{ t('reports.noHistoryRecords') }}</p>
         </div>
       </template>
     </n-modal>
@@ -125,6 +132,10 @@
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { reportErrorMessage } from '@/i18n/reports'
+const { t } = i18n.global
 import { computed, ref, onMounted } from 'vue'
 import { Line } from 'vue-chartjs'
 import 'chartjs-adapter-luxon'
@@ -284,7 +295,7 @@ function editView(id) {
 function saveView(view) {
   const id = board.upsertView(view, view.id)
   if (!id) {
-    formError.value = '保存失败：名称不可重复，每张表最多 16 位干员，最多 12 张自选表。'
+    formError.value = t('reports.observationSaveFailed')
     return
   }
   editorShow.value = false
@@ -292,7 +303,7 @@ function saveView(view) {
   formError.value = ''
 }
 function deleteView(id) {
-  if (!window.confirm('确定删除这张自定义观察表？不会删除任何历史记录。')) return
+  if (!window.confirm(t('reports.deleteObservationConfirm'))) return
   board.removeView(id)
   editorShow.value = false
   editingId.value = ''
@@ -303,7 +314,7 @@ onMounted(async () => {
   try {
     reportData.value = await getMoodRatios({ includeWorkRest: false })
   } catch {
-    loadError.value = '心情报表读取失败，请检查本地 Mower 后端。'
+    loadError.value = t('reports.moraleLoadFailed')
     return
   }
   try {
@@ -322,12 +333,26 @@ function getMoodInterval(points, index) {
 }
 
 const chartOptions = {
+  get locale() {
+    return i18n.global.locale.value
+  },
   responsive: true,
   maintainAspectRatio: false,
   animation: false,
   parsing: true,
   scales: {
-    x: { type: 'time', time: { unit: 'day' }, ticks: { maxTicksLimit: 7 } },
+    x: {
+      type: 'time',
+      time: { unit: 'day' },
+      ticks: { maxTicksLimit: 7 },
+      adapters: {
+        date: {
+          get locale() {
+            return i18n.global.locale.value
+          }
+        }
+      }
+    },
     y: { beginAtZero: true, suggestedMax: 24, ticks: { stepSize: 4 } }
   },
   plugins: {
@@ -339,13 +364,15 @@ const chartOptions = {
       titleColor: '#fff',
       bodyColor: '#fff',
       callbacks: {
+        label: (context) =>
+          `${operatorDisplayName(context.dataset?.label || '')}: ${context.formattedValue}`,
         afterLabel: (context) => {
           const lines = []
           const event = describeMoodEvent(context.raw, context.dataset?.label)
           if (event) lines.push(event)
           const interval = getMoodInterval(context.dataset?.data, context.dataIndex)
           if (interval) lines.push(describeMoodInterval(interval))
-          else if (context.raw?.moodEvent) lines.push('特殊事件点不计入常规速率')
+          else if (context.raw?.moodEvent) lines.push(t('reports.specialPointRateHelp'))
           return lines
         }
       }

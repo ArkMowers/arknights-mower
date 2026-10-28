@@ -18,6 +18,9 @@ const props = withDefaults(defineProps<{
   initialWindowHours?: 24 | 72
   initiallyCollapsed?: boolean
   overviewTarget?: HTMLElement | null
+  translate?: (key: string, params?: Record<string, unknown>) => string
+  displayOperatorName?: (name: string) => string
+  displayRoomName?: (roomId: string, originalName: string) => string
 }>(), {
   initialWindowHours: 72,
   initiallyCollapsed: false,
@@ -26,6 +29,36 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'request-simulate'): void
 }>()
+
+function localeText(key: string, fallback: string, params?: Record<string, unknown>): string {
+  return props.translate?.(key, params) ?? fallback
+}
+
+function operatorNameText(name: string): string {
+  return props.displayOperatorName?.(name) ?? name
+}
+
+function roomNameText(roomId: string, originalName: string): string {
+  return props.displayRoomName?.(roomId, originalName) ?? originalName
+}
+
+function intervalOperatorName(interval: TimelineDisplayInterval): string {
+  return interval.condensedCount
+    ? localeText('denseSwitches', `密集切换（${interval.condensedCount} 段）`, { count: interval.condensedCount })
+    : operatorNameText(interval.operatorName)
+}
+
+function intervalRoomName(interval: TimelineDisplayInterval): string {
+  return interval.condensedCount
+    ? localeText('multipleSwitches', '多次切换')
+    : roomNameText(interval.roomId, interval.roomName)
+}
+
+function roomTypeLabel(type: string): string {
+  return ['manufacture', 'trading', 'power', 'central', 'dormitory', 'meeting', 'workshop', 'office', 'training', 'recycle'].includes(type)
+    ? localeText(`roomTypes.${type}`, type)
+    : type
+}
 
 // View mode: by facility or by operator
 const viewMode = ref<'facility' | 'operator'>('facility')
@@ -87,7 +120,7 @@ const exportVolumes = computed<ExportVolume[]>(() => {
       index: i,
       start: s,
       end: e,
-      label: `第 ${i + 1} 卷：第 ${startDay}~${endDay} 天 (T+${s.toFixed(0)}h ~ T+${e.toFixed(0)}h)`,
+      label: localeText('volumeLabel', `第 ${i + 1} 卷：第 ${startDay}~${endDay} 天 (T+${s.toFixed(0)}h ~ T+${e.toFixed(0)}h)`, { volume: i + 1, startDay, endDay, start: s.toFixed(0), end: e.toFixed(0) }),
     })
   }
   return list
@@ -235,7 +268,7 @@ const quickWindowPresets = computed<QuickPreset[]>(() => {
     { key: '12', val: 12, label: '12h' },
     { key: '24', val: 24, label: '24h' },
     { key: '48', val: 48, label: '48h' },
-    { key: 'all', val: maxH, label: '全周期' },
+    { key: 'all', val: maxH, label: localeText('fullPeriod', '全周期') },
   ]
   return list.filter((p) => p.val <= maxH || p.key === 'all')
 })
@@ -302,9 +335,9 @@ const cycleOptions = computed<CycleOption[]>(() => {
     const isDayUnit = Math.abs(dur - 24) < 0.1
     let label
     if (isDayUnit) {
-      label = `第 ${i + 1} 天 (T+${s.toFixed(0)}h ~ T+${e.toFixed(0)}h)`
+      label = localeText('dayLabel', `第 ${i + 1} 天 (T+${s.toFixed(0)}h ~ T+${e.toFixed(0)}h)`, { day: i + 1, start: s.toFixed(0), end: e.toFixed(0) })
     } else {
-      label = `第 ${i + 1} 周期 (T+${s.toFixed(0)}h ~ T+${e.toFixed(0)}h)`
+      label = localeText('cycleLabel', `第 ${i + 1} 周期 (T+${s.toFixed(0)}h ~ T+${e.toFixed(0)}h)`, { cycle: i + 1, start: s.toFixed(0), end: e.toFixed(0) })
     }
     cycles.push({ index: i, label, start: s, end: e })
   }
@@ -494,12 +527,12 @@ function closeExportModal(): void {
 
 function getExportFilename(): string {
   if (exportScopeMode.value === 'volume') {
-    return `基建排班甘特图_设施分道_第${exportSelectedVolumeIndex.value + 1}卷_T+${activeExportStart.value.toFixed(0)}h-${activeExportEnd.value.toFixed(0)}h.png`
+    return localeText('volumeFilename', `基建排班甘特图_设施分道_第${exportSelectedVolumeIndex.value + 1}卷_T+${activeExportStart.value.toFixed(0)}h-${activeExportEnd.value.toFixed(0)}h.png`, { volume: exportSelectedVolumeIndex.value + 1, start: activeExportStart.value.toFixed(0), end: activeExportEnd.value.toFixed(0) })
   }
   if (exportScopeMode.value === 'custom') {
-    return `基建排班甘特图_设施分道_时段_T+${activeExportStart.value.toFixed(0)}h-${activeExportEnd.value.toFixed(0)}h.png`
+    return localeText('customFilename', `基建排班甘特图_设施分道_时段_T+${activeExportStart.value.toFixed(0)}h-${activeExportEnd.value.toFixed(0)}h.png`, { start: activeExportStart.value.toFixed(0), end: activeExportEnd.value.toFixed(0) })
   }
-  return `基建排班甘特图_设施分道_采样全周期_0h-${totalObservedHours.value.toFixed(0)}h.png`
+  return localeText('fullFilename', `基建排班甘特图_设施分道_采样全周期_0h-${totalObservedHours.value.toFixed(0)}h.png`, { end: totalObservedHours.value.toFixed(0) })
 }
 
 async function handleDownloadGanttImage(): Promise<void> {
@@ -518,10 +551,10 @@ async function handleDownloadGanttImage(): Promise<void> {
     link.download = getExportFilename()
     link.href = dataUrl
     link.click()
-    exportStatus.value = { type: 'success', message: '甘特图长图已成功导出下载！' }
+    exportStatus.value = { type: 'success', message: localeText('downloadSuccess', '甘特图长图已成功导出下载！') }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    exportStatus.value = { type: 'error', message: `导出失败: ${msg}` }
+    exportStatus.value = { type: 'error', message: localeText('exportFailed', `导出失败: ${msg}`, { message: msg }) }
   } finally {
     isExporting.value = false
   }
@@ -539,16 +572,16 @@ async function handleCopyGanttImage(): Promise<void> {
       cacheBust: true,
       backgroundColor: '#0e1319',
     })
-    if (!blob) throw new Error('无法生成图片数据')
+    if (!blob) throw new Error(localeText('imageDataFailed', '无法生成图片数据'))
     if (typeof navigator !== 'undefined' && navigator.clipboard?.write) {
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-      exportStatus.value = { type: 'success', message: '已成功将甘特图长图复制到剪贴板！' }
+      exportStatus.value = { type: 'success', message: localeText('copySuccess', '已成功将甘特图长图复制到剪贴板！') }
     } else {
-      throw new Error('当前浏览器不支持直接写入剪贴板图片')
+      throw new Error(localeText('clipboardUnsupported', '当前浏览器不支持直接写入剪贴板图片'))
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    exportStatus.value = { type: 'error', message: `复制失败: ${msg}` }
+    exportStatus.value = { type: 'error', message: localeText('copyFailed', `复制失败: ${msg}`, { message: msg }) }
   } finally {
     isExporting.value = false
   }
@@ -670,10 +703,10 @@ const filteredFacilityTracks = computed<FacilityTrack[]>(() => {
       }
     }
     if (!q) return true
-    if (track.roomName.toLowerCase().includes(q)) return true
+    if (track.roomName.toLowerCase().includes(q) || roomNameText(track.roomId, track.roomName).toLowerCase().includes(q)) return true
     if (track.roomId.toLowerCase().includes(q)) return true
     return track.slots.some((slot) =>
-      slot.intervals.some((i) => i.operatorName.toLowerCase().includes(q)),
+      slot.intervals.some((i) => (i.operatorName.toLowerCase().includes(q) || operatorNameText(i.operatorName).toLowerCase().includes(q))),
     )
   })
 })
@@ -684,9 +717,9 @@ const filteredOperatorTracks = computed<OperatorTrack[]>(() => {
   const q = searchQuery.value.trim().toLowerCase()
   return dataset.value.operatorTracks.filter((track) => {
     if (!q) return true
-    if (track.operatorName.toLowerCase().includes(q)) return true
+    if ((track.operatorName.toLowerCase().includes(q) || operatorNameText(track.operatorName).toLowerCase().includes(q))) return true
     if (track.operatorId.toLowerCase().includes(q)) return true
-    return track.intervals.some((i) => i.roomName.toLowerCase().includes(q))
+    return track.intervals.some((i) => i.roomName.toLowerCase().includes(q) || roomNameText(i.roomId, i.roomName).toLowerCase().includes(q))
   })
 })
 
@@ -785,8 +818,8 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
     <div class="gantt-header">
       <div class="gantt-title-row">
         <div class="gantt-title-group">
-          <h4 class="gantt-title">排班甘特图 / 时间轴可视化</h4>
-          <span class="gantt-subtitle">多周期离散事件演化、干员轮换在岗时段与实时工休轨迹；小于屏幕像素的连续切换会合并显示</span>
+          <h4 class="gantt-title">{{ localeText('title', '排班甘特图 / 时间轴可视化') }}</h4>
+          <span class="gantt-subtitle">{{ localeText('subtitle', '多周期离散事件演化、干员轮换在岗时段与实时工休轨迹；小于屏幕像素的连续切换会合并显示') }}</span>
         </div>
         <div class="gantt-title-actions">
           <button
@@ -797,16 +830,16 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
             aria-controls="gantt-visualization"
             @click="isTimelineExpanded = !isTimelineExpanded"
           >
-            {{ isTimelineExpanded ? '收起图表' : '展开图表' }}
+            {{ isTimelineExpanded ? localeText('collapse', '收起图表') : localeText('expand', '展开图表') }}
           </button>
           <button
             type="button"
             class="export-gantt-btn"
             data-test="export-gantt-btn"
-            title="以标准 12h 视窗导出设施分道甘特图高清图片"
+            :title="localeText('exportTooltip', '以标准 12h 视窗导出设施分道甘特图高清图片')"
             @click="openExportModal"
           >
-            📷 导出设施甘特图
+            📷 {{ localeText('export', '导出设施甘特图') }}
           </button>
           <div v-if="isTimelineExpanded" class="view-mode-toggle">
             <button
@@ -816,7 +849,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
               data-test="view-mode-facility"
               @click="viewMode = 'facility'"
             >
-              🏢 设施分道
+              🏢 {{ localeText('facilityView', '设施分道') }}
             </button>
             <button
               type="button"
@@ -825,7 +858,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
               data-test="view-mode-operator"
               @click="viewMode = 'operator'"
             >
-              👤 干员分道
+              👤 {{ localeText('operatorView', '干员分道') }}
             </button>
           </div>
         </div>
@@ -837,13 +870,13 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
         <div v-if="viewMode === 'facility'" class="filter-chips">
           <button
             v-for="[key, label] in [
-              ['all', '全部设施'],
-              ['manufacture', '制造站'],
-              ['trading', '贸易站'],
-              ['power', '发电站'],
-              ['central', '控制中枢'],
-              ['dormitory', '宿舍'],
-              ['auxiliary', '其他辅助'],
+              ['all', localeText('allFacilities', '全部设施')],
+              ['manufacture', localeText('roomTypes.manufacture', '制造站')],
+              ['trading', localeText('roomTypes.trading', '贸易站')],
+              ['power', localeText('roomTypes.power', '发电站')],
+              ['central', localeText('roomTypes.central', '控制中枢')],
+              ['dormitory', localeText('roomTypes.dormitory', '宿舍')],
+              ['auxiliary', localeText('auxiliary', '其他辅助')],
             ]"
             :key="key"
             type="button"
@@ -861,14 +894,14 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
             v-model="searchQuery"
             type="text"
             class="gantt-search-input"
-            :placeholder="viewMode === 'facility' ? '搜索设施或在岗干员...' : '搜索干员名称...'"
+            :placeholder="viewMode === 'facility' ? localeText('searchFacility', '搜索设施或在岗干员...') : localeText('searchOperator', '搜索干员名称...')"
           />
           <button v-if="searchQuery" type="button" class="search-clear-btn" @click="searchQuery = ''">✕</button>
         </div>
 
         <!-- Window Size Slider Group (Req 1) -->
         <div class="window-slider-group" data-test="window-slider-group">
-          <span class="ctrl-label">时间窗:</span>
+          <span class="ctrl-label">{{ localeText('timeWindow', '时间窗:') }}</span>
           <input
             type="range"
             class="window-size-slider"
@@ -880,7 +913,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
             @input="onWindowSliderInput"
           />
           <span class="slider-val-badge">
-            {{ windowDuration >= totalObservedHours - 0.05 ? `全周期 (${totalObservedHours.toFixed(0)}h)` : `${windowDuration.toFixed(0)}h` }}
+            {{ windowDuration >= totalObservedHours - 0.05 ? localeText('fullPeriodHours', `全周期 (${totalObservedHours.toFixed(0)}h)`, { hours: totalObservedHours.toFixed(0) }) : `${windowDuration.toFixed(0)}h` }}
           </span>
           <div class="slider-quick-chips">
             <button
@@ -899,7 +932,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
         <!-- Event markers toggle -->
         <label class="event-toggle-label">
           <input v-model="showEventMarkers" type="checkbox" />
-          <span>事件标记</span>
+          <span>{{ localeText('eventMarkers', '事件标记') }}</span>
         </label>
 
         <!-- Jump to backup plan events -->
@@ -908,10 +941,10 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
           type="button"
           class="backup-events-pill"
           data-test="jump-backup-event-btn"
-          :title="`共检测到 ${backupEvents.length} 次副表调度事件，点击跳转至下一个副表事件`"
+          :title="localeText('backupEventsTooltip', `共检测到 ${backupEvents.length} 次副表调度事件，点击跳转至下一个副表事件`, { count: backupEvents.length })"
           @click="jumpToNextBackupEvent"
         >
-          🔄 副表事件 ({{ backupEvents.length }}次) →
+          🔄 {{ localeText('backupEvents', `副表事件 (${backupEvents.length}次)`, { count: backupEvents.length }) }} →
         </button>
       </div>
 
@@ -921,17 +954,17 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
           <button
             type="button"
             class="nav-btn jump-btn"
-            title="移至最初 (T+0h)"
+            :title="localeText('jumpStartTooltip', '移至最初 (T+0h)')"
             :disabled="customWindowStart <= 0.01"
             data-test="nav-jump-start"
             @click="jumpToStart"
           >
-            ⏮ 最初
+            ⏮ {{ localeText('start', '最初') }}
           </button>
           <button
             type="button"
             class="nav-btn step-btn"
-            :title="`后退半窗 (-${(windowDuration / 2).toFixed(0)}h)`"
+            :title="localeText('stepBackTooltip', `后退半窗 (-${(windowDuration / 2).toFixed(0)}h)`, { hours: (windowDuration / 2).toFixed(0) })"
             :disabled="customWindowStart <= 0.01"
             data-test="nav-step-back"
             @click="panWindow(-windowDuration / 2)"
@@ -941,12 +974,12 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
           <button
             type="button"
             class="nav-btn pan-btn"
-            title="上一周期"
+            :title="localeText('previousCycle', '上一周期')"
             :disabled="customWindowStart <= 0.01"
             data-test="nav-prev-window"
             @click="panWindow(-windowDuration)"
           >
-            ◀ 上一周期
+            ◀ {{ localeText('previousCycle', '上一周期') }}
           </button>
 
           <!-- Cycle Dropdown Selector -->
@@ -966,17 +999,17 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
           <button
             type="button"
             class="nav-btn pan-btn"
-            title="下一周期"
+            :title="localeText('nextCycle', '下一周期')"
             :disabled="customWindowEnd >= totalObservedHours - 0.01"
             data-test="nav-next-window"
             @click="panWindow(windowDuration)"
           >
-            下一周期 ▶
+            {{ localeText('nextCycle', '下一周期') }} ▶
           </button>
           <button
             type="button"
             class="nav-btn step-btn"
-            :title="`前进半窗 (+${(windowDuration / 2).toFixed(0)}h)`"
+            :title="localeText('stepForwardTooltip', `前进半窗 (+${(windowDuration / 2).toFixed(0)}h)`, { hours: (windowDuration / 2).toFixed(0) })"
             :disabled="customWindowEnd >= totalObservedHours - 0.01"
             data-test="nav-step-forward"
             @click="panWindow(windowDuration / 2)"
@@ -986,12 +1019,12 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
           <button
             type="button"
             class="nav-btn jump-btn"
-            :title="`移至最终 (T+${totalObservedHours.toFixed(0)}h)`"
+            :title="localeText('jumpEndTooltip', `移至最终 (T+${totalObservedHours.toFixed(0)}h)`, { hours: totalObservedHours.toFixed(0) })"
             :disabled="customWindowEnd >= totalObservedHours - 0.01"
             data-test="nav-jump-end"
             @click="jumpToEnd"
           >
-            最终 ⏭
+            {{ localeText('end', '最终') }} ⏭
           </button>
         </div>
       </div>
@@ -1005,22 +1038,22 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
         >
           <div class="overview-header-row">
             <span class="overview-title">
-              全景概览（共 {{ totalObservedHours.toFixed(0) }}h / {{ (totalObservedHours / 24).toFixed(1) }} 天 · 支持拖拽滑块实时滑动预览）：
+              {{ localeText('overview', `全景概览（共 ${totalObservedHours.toFixed(0)}h / ${(totalObservedHours / 24).toFixed(1)} 天 · 支持拖拽滑块实时滑动预览）：`, { hours: totalObservedHours.toFixed(0), days: (totalObservedHours / 24).toFixed(1) }) }}
             </span>
             <span class="overview-pct">
-              视窗覆盖 {{ ((windowDuration / totalObservedHours) * 100).toFixed(0) }}% ({{ windowDuration.toFixed(1) }}h)
+              {{ localeText('windowCoverage', `视窗覆盖 ${((windowDuration / totalObservedHours) * 100).toFixed(0)}% (${windowDuration.toFixed(1)}h)`, { percent: ((windowDuration / totalObservedHours) * 100).toFixed(0), hours: windowDuration.toFixed(1) }) }}
             </span>
           </div>
           <div
             ref="overviewTrackRef"
             class="overview-track"
             role="scrollbar"
-            aria-label="甘特图时间导航"
+            :aria-label="localeText('timeNavigation', '甘特图时间导航')"
             aria-orientation="horizontal"
             :aria-valuemin="0"
             :aria-valuemax="Math.max(0, totalObservedHours - windowDuration)"
             :aria-valuenow="customWindowStart"
-            :aria-valuetext="`T+${customWindowStart.toFixed(1)}h 至 T+${customWindowEnd.toFixed(1)}h`"
+            :aria-valuetext="localeText('timeRange', `T+${customWindowStart.toFixed(1)}h 至 T+${customWindowEnd.toFixed(1)}h`, { start: customWindowStart.toFixed(1), end: customWindowEnd.toFixed(1) })"
             tabindex="0"
             @keydown.left.prevent="panWindowTo(customWindowStart - windowDuration)"
             @keydown.right.prevent="panWindowTo(customWindowStart + windowDuration)"
@@ -1059,10 +1092,10 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
 
       <!-- Time Window Info Bar -->
       <div v-if="isTimelineExpanded" class="time-window-info">
-        <span>当前视窗：<strong>T+{{ customWindowStart.toFixed(1) }}h</strong> 至 <strong>T+{{ customWindowEnd.toFixed(1) }}h</strong>（共 {{ windowDuration.toFixed(1) }} 小时 / {{ (windowDuration / 24).toFixed(1) }} 天 · 按住鼠标左键可拖拽时间轴平移）</span>
+        <span>{{ localeText('currentWindow', '当前视窗：') }}<strong>T+{{ customWindowStart.toFixed(1) }}h</strong> {{ localeText('to', '至') }} <strong>T+{{ customWindowEnd.toFixed(1) }}h</strong>{{ localeText('windowHelp', `（共 ${windowDuration.toFixed(1)} 小时 / ${(windowDuration / 24).toFixed(1)} 天 · 按住鼠标左键可拖拽时间轴平移）`, { hours: windowDuration.toFixed(1), days: (windowDuration / 24).toFixed(1) }) }}</span>
         <span class="cursor-info">
           <span v-if="cursorTime !== null">
-            🎯 光标定位：<strong>T+{{ cursorTime.toFixed(2) }}h</strong>（第 {{ Math.floor(cursorTime / 24) + 1 }} 天 {{ String(Math.floor(cursorTime % 24)).padStart(2, '0') }}:{{ String(Math.floor((cursorTime % 1) * 60)).padStart(2, '0') }}）
+            🎯 {{ localeText('cursor', '光标定位：') }}<strong>T+{{ cursorTime.toFixed(2) }}h</strong>{{ localeText('cursorDay', `（第 ${Math.floor(cursorTime / 24) + 1} 天 ${String(Math.floor(cursorTime % 24)).padStart(2, '0')}:${String(Math.floor((cursorTime % 1) * 60)).padStart(2, '0')}）`, { day: Math.floor(cursorTime / 24) + 1, time: `${String(Math.floor(cursorTime % 24)).padStart(2, '0')}:${String(Math.floor((cursorTime % 1) * 60)).padStart(2, '0')}` }) }}
           </span>
         </span>
       </div>
@@ -1071,10 +1104,10 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
     <!-- Empty State -->
     <div v-if="isTimelineExpanded && (!dataset || dataset.facilityTracks.length === 0)" id="gantt-visualization" class="gantt-empty-state">
       <div class="empty-icon">📊</div>
-      <p class="empty-title">暂无时间轴数据</p>
-      <p class="empty-desc">运行基建排班仿真计算后，系统将自动记录并呈现全周期干员工休及设施运转甘特图。</p>
+      <p class="empty-title">{{ localeText('emptyTitle', '暂无时间轴数据') }}</p>
+      <p class="empty-desc">{{ localeText('emptyDescription', '运行基建排班仿真计算后，系统将自动记录并呈现全周期干员工休及设施运转甘特图。') }}</p>
       <button type="button" class="run-sim-btn" @click="emit('request-simulate')">
-        立即运行排班模拟
+        {{ localeText('simulate', '立即运行排班模拟') }}
       </button>
     </div>
 
@@ -1084,7 +1117,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
         <!-- Ruler Row (Sticky Header) -->
         <div class="gantt-ruler-row">
           <div class="gantt-axis-label-col">
-            <span class="axis-title">{{ viewMode === 'facility' ? '设施 / 槽位' : '干员名单' }}</span>
+            <span class="axis-title">{{ viewMode === 'facility' ? localeText('facilitySlots', '设施 / 槽位') : localeText('operatorList', '干员名单') }}</span>
           </div>
           <div
             class="gantt-timeline-track ruler-track"
@@ -1164,8 +1197,8 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
               <!-- Facility Subheader -->
               <div class="facility-group-header">
                 <div class="group-title-col">
-                  <span class="facility-tag" :class="facility.roomType">{{ facility.roomType }}</span>
-                  <span class="facility-name">{{ facility.roomName }}</span>
+                  <span class="facility-tag" :class="facility.roomType">{{ roomTypeLabel(facility.roomType) }}</span>
+                  <span class="facility-name">{{ roomNameText(facility.roomId, facility.roomName) }}</span>
                   <span class="facility-eff">+{{ facility.averageEfficiency.toFixed(1) }}%</span>
                 </div>
                 <div class="group-track-spacer" />
@@ -1178,9 +1211,9 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                 class="track-row"
               >
                 <div class="track-label-col slot-label-col">
-                  <span class="slot-badge">槽位 {{ slot.slotIndex + 1 }}</span>
-                  <span v-if="slot.role === 'dorm-keeper'" class="role-badge keeper">宿管</span>
-                  <span v-else-if="slot.role === 'fiammetta'" class="role-badge fiammetta">互换</span>
+                  <span class="slot-badge">{{ localeText('slot', `槽位 ${slot.slotIndex + 1}`, { slot: slot.slotIndex + 1 }) }}</span>
+                  <span v-if="slot.role === 'dorm-keeper'" class="role-badge keeper">{{ localeText('dormKeeper', '宿管') }}</span>
+                  <span v-else-if="slot.role === 'fiammetta'" class="role-badge fiammetta">{{ localeText('swap', '互换') }}</span>
                 </div>
 
                 <div class="track-content-lane">
@@ -1207,11 +1240,11 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                       <img
                         v-if="interval.avatarUrl"
                         :src="interval.avatarUrl"
-                        :alt="interval.operatorName"
+                        :alt="intervalOperatorName(interval)"
                         class="block-avatar"
                         onerror="this.style.display='none'"
                       />
-                      <span class="block-name">{{ interval.operatorName || '空置' }}</span>
+                      <span class="block-name">{{ intervalOperatorName(interval) || localeText('vacant', '空置') }}</span>
                       <span v-if="interval.duration >= 3" class="block-duration">
                         {{ formatHour(interval.duration) }}
                       </span>
@@ -1233,14 +1266,14 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                 <img
                   v-if="op.avatarUrl"
                   :src="op.avatarUrl"
-                  :alt="op.operatorName"
+                  :alt="operatorNameText(op.operatorName)"
                   class="op-avatar"
                   onerror="this.style.display='none'"
                 />
                 <div class="op-info">
-                  <span class="op-name">{{ op.operatorName }}</span>
+                  <span class="op-name">{{ operatorNameText(op.operatorName) }}</span>
                   <span class="op-duty-badge">
-                    {{ (op.workFraction * 100).toFixed(0) }}% 工时 ({{ op.workHours.toFixed(1) }}h)
+                    {{ localeText('workShare', `${(op.workFraction * 100).toFixed(0)}% 工时 (${op.workHours.toFixed(1)}h)`, { percent: (op.workFraction * 100).toFixed(0), hours: op.workHours.toFixed(1) }) }}
                   </span>
                 </div>
               </div>
@@ -1269,7 +1302,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                     <span class="block-status-icon">
                       {{ interval.status === 'working' ? '💼' : interval.status === 'resting' ? '🛏️' : interval.status === 'exhausted' ? '⚠️' : '💤' }}
                     </span>
-                    <span class="block-name">{{ interval.condensedCount ? interval.operatorName : interval.roomName }}</span>
+                    <span class="block-name">{{ interval.condensedCount ? intervalOperatorName(interval) : intervalRoomName(interval) }}</span>
                     <span v-if="interval.duration >= 3" class="block-duration">
                       {{ formatHour(interval.duration) }}
                     </span>
@@ -1293,34 +1326,34 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
         <img
           v-if="hoveredInterval.avatarUrl"
           :src="hoveredInterval.avatarUrl"
-          :alt="hoveredInterval.operatorName"
+          :alt="intervalOperatorName(hoveredInterval)"
           class="tooltip-avatar"
         />
         <div class="tooltip-title-box">
-          <span class="tooltip-title">{{ hoveredInterval.operatorName || '空置槽位' }}</span>
-          <span class="tooltip-subtitle">{{ hoveredInterval.roomName }} · 槽位 {{ hoveredInterval.slotIndex + 1 }}</span>
+          <span class="tooltip-title">{{ intervalOperatorName(hoveredInterval) || localeText('vacantSlot', '空置槽位') }}</span>
+          <span class="tooltip-subtitle">{{ intervalRoomName(hoveredInterval) }} · {{ localeText('slot', `槽位 ${hoveredInterval.slotIndex + 1}`, { slot: hoveredInterval.slotIndex + 1 }) }}</span>
         </div>
         <span class="tooltip-status-tag" :class="hoveredInterval.status">
-          {{ hoveredInterval.condensedCount ? `${hoveredInterval.condensedCount} 段合并显示` : hoveredInterval.status === 'working' ? '在岗作业' : hoveredInterval.status === 'resting' ? '宿舍恢复' : hoveredInterval.status === 'exhausted' ? '疲劳工作' : '待机闲置' }}
+          {{ hoveredInterval.condensedCount ? localeText('mergedSegments', `${hoveredInterval.condensedCount} 段合并显示`, { count: hoveredInterval.condensedCount }) : hoveredInterval.status === 'working' ? localeText('working', '在岗作业') : hoveredInterval.status === 'resting' ? localeText('resting', '宿舍恢复') : hoveredInterval.status === 'exhausted' ? localeText('exhausted', '疲劳工作') : localeText('idle', '待机闲置') }}
         </span>
       </div>
       <div class="tooltip-body">
         <div class="tooltip-row">
-          <span class="row-label">时间区间：</span>
+          <span class="row-label">{{ localeText('interval', '时间区间：') }}</span>
           <span class="row-val">T+{{ hoveredInterval.start.toFixed(2) }}h ~ T+{{ hoveredInterval.end.toFixed(2) }}h</span>
         </div>
         <div class="tooltip-row">
-          <span class="row-label">持续时长：</span>
-          <span class="row-val highlight">{{ hoveredInterval.duration.toFixed(2) }} 小时</span>
+          <span class="row-label">{{ localeText('duration', '持续时长：') }}</span>
+          <span class="row-val highlight">{{ localeText('durationHours', `${hoveredInterval.duration.toFixed(2)} 小时`, { hours: hoveredInterval.duration.toFixed(2) }) }}</span>
         </div>
         <div v-if="hoveredInterval.startMorale !== undefined" class="tooltip-row">
-          <span class="row-label">心情演化：</span>
+          <span class="row-label">{{ localeText('morale', '心情演化：') }}</span>
           <span class="row-val">
             {{ hoveredInterval.startMorale.toFixed(1) }} → {{ hoveredInterval.endMorale?.toFixed(1) }} / 24
           </span>
         </div>
         <div v-if="hoveredInterval.efficiencyPercent !== undefined" class="tooltip-row">
-          <span class="row-label">设施效率：</span>
+          <span class="row-label">{{ localeText('efficiency', '设施效率：') }}</span>
           <span class="row-val eff-val">+{{ hoveredInterval.efficiencyPercent.toFixed(1) }}%</span>
         </div>
       </div>
@@ -1353,15 +1386,15 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
       <div class="gantt-export-modal-card">
         <div class="export-modal-header">
           <div class="export-header-left">
-            <h3 class="export-modal-title">📷 导出设施甘特图 (采样阶段完整长图)</h3>
+            <h3 class="export-modal-title">📷 {{ localeText('exportTitle', '导出设施甘特图 (采样阶段完整长图)') }}</h3>
             <span class="export-modal-subtitle">
-              全周期共 {{ totalObservedHours.toFixed(0) }} 小时（T+0h 至 T+{{ totalObservedHours.toFixed(0) }}h），以 12h 视窗标准尺度生成高清晰度设施分道排班长图
+              {{ localeText('exportDescription', `全周期共 ${totalObservedHours.toFixed(0)} 小时（T+0h 至 T+${totalObservedHours.toFixed(0)}h），以 12h 视窗标准尺度生成高清晰度设施分道排班长图`, { hours: totalObservedHours.toFixed(0) }) }}
             </span>
           </div>
           <div class="export-header-actions">
             <!-- Scope selector for long timelines (>72h) -->
             <div v-if="totalObservedHours > 72" class="scale-mode-selector scope-selector" data-test="scope-mode-selector">
-              <span class="scale-title">范围:</span>
+              <span class="scale-title">{{ localeText('scope', '范围:') }}</span>
               <button
                 type="button"
                 class="scale-btn"
@@ -1369,7 +1402,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                 data-test="scope-btn-full"
                 @click="exportScopeMode = 'full'"
               >
-                全周期总览
+                {{ localeText('fullOverview', '全周期总览') }}
               </button>
               <button
                 type="button"
@@ -1378,7 +1411,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                 data-test="scope-btn-volume"
                 @click="exportScopeMode = 'volume'"
               >
-                分卷超清 (推荐)
+                {{ localeText('volumes', '分卷超清 (推荐)') }}
               </button>
               <button
                 type="button"
@@ -1387,7 +1420,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                 data-test="scope-btn-custom"
                 @click="exportScopeMode = 'custom'"
               >
-                自定义
+                {{ localeText('custom', '自定义') }}
               </button>
             </div>
 
@@ -1403,9 +1436,9 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                 </option>
               </select>
               <select v-model.number="exportVolumeDays" class="volume-select mini" data-test="volume-days-select">
-                <option :value="2">每卷 2 天</option>
-                <option :value="3">每卷 3 天</option>
-                <option :value="7">每卷 7 天</option>
+                <option :value="2">{{ localeText('daysPerVolume', '每卷 2 天', { days: 2 }) }}</option>
+                <option :value="3">{{ localeText('daysPerVolume', '每卷 3 天', { days: 3 }) }}</option>
+                <option :value="7">{{ localeText('daysPerVolume', '每卷 7 天', { days: 7 }) }}</option>
               </select>
             </div>
 
@@ -1418,7 +1451,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
             </div>
 
             <div class="scale-mode-selector">
-              <span class="scale-title">图像比例:</span>
+              <span class="scale-title">{{ localeText('scale', '图像比例:') }}</span>
               <button
                 type="button"
                 class="scale-btn"
@@ -1426,7 +1459,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                 data-test="scale-btn-standard"
                 @click="exportScaleMode = 'standard'"
               >
-                标准 (12h视窗基准 · 100px/h)
+                {{ localeText('standardScale', '标准 (12h视窗基准 · 100px/h)') }}
               </button>
               <button
                 type="button"
@@ -1435,7 +1468,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                 data-test="scale-btn-compact"
                 @click="exportScaleMode = 'compact'"
               >
-                紧凑 (50px/h)
+                {{ localeText('compactScale', '紧凑 (50px/h)') }}
               </button>
             </div>
 
@@ -1446,7 +1479,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
               data-test="download-gantt-btn"
               @click="handleDownloadGanttImage"
             >
-              {{ isExporting ? '生成中...' : '📥 下载 PNG 长图' }}
+              {{ isExporting ? localeText('generating', '生成中...') : `📥 ${localeText('download', '下载 PNG 长图')}` }}
             </button>
             <button
               type="button"
@@ -1455,7 +1488,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
               data-test="copy-gantt-btn"
               @click="handleCopyGanttImage"
             >
-              📋 复制长图
+              📋 {{ localeText('copy', '复制长图') }}
             </button>
             <button type="button" class="export-close-btn" @click="closeExportModal">✕</button>
           </div>
@@ -1474,23 +1507,23 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
             >
               <div class="export-banner">
                 <div class="banner-title-group">
-                  <h2 class="banner-title">罗德岛基建排班甘特图 · 设施分道</h2>
+                  <h2 class="banner-title">{{ localeText('bannerTitle', '罗德岛基建排班甘特图 · 设施分道') }}</h2>
                   <span class="banner-time-badge">
-                    {{ exportScopeMode === 'volume' ? `分卷排班（第 ${exportSelectedVolumeIndex + 1} / ${exportVolumes.length} 卷）：` : exportScopeMode === 'custom' ? '自定义时段排班：' : '采样阶段全周期：' }}
-                    T+{{ activeExportStart.toFixed(1) }}h 至 T+{{ activeExportEnd.toFixed(1) }}h（共 {{ activeExportDuration.toFixed(0) }} 小时 / {{ (activeExportDuration / 24).toFixed(1) }} 天）· 比例尺：{{ exportPixelsPerHour }}px/h（以 12h 视窗为基准）
+                    {{ exportScopeMode === 'volume' ? localeText('volumeBanner', `分卷排班（第 ${exportSelectedVolumeIndex + 1} / ${exportVolumes.length} 卷）：`, { volume: exportSelectedVolumeIndex + 1, count: exportVolumes.length }) : exportScopeMode === 'custom' ? localeText('customBanner', '自定义时段排班：') : localeText('fullBanner', '采样阶段全周期：') }}
+                    {{ localeText('exportRange', `T+${activeExportStart.toFixed(1)}h 至 T+${activeExportEnd.toFixed(1)}h（共 ${activeExportDuration.toFixed(0)} 小时 / ${(activeExportDuration / 24).toFixed(1)} 天）· 比例尺：${exportPixelsPerHour}px/h（以 12h 视窗为基准）`, { start: activeExportStart.toFixed(1), end: activeExportEnd.toFixed(1), hours: activeExportDuration.toFixed(0), days: (activeExportDuration / 24).toFixed(1), pixels: exportPixelsPerHour }) }}
                   </span>
                 </div>
                 <div class="banner-legend">
-                  <span class="legend-item"><span class="legend-dot status-working" />在岗工作</span>
-                  <span class="legend-item"><span class="legend-dot status-resting" />宿舍休整</span>
-                  <span class="legend-item"><span class="legend-dot status-exhausted" />疲劳溢出</span>
+                  <span class="legend-item"><span class="legend-dot status-working" />{{ localeText('legendWorking', '在岗工作') }}</span>
+                  <span class="legend-item"><span class="legend-dot status-resting" />{{ localeText('legendResting', '宿舍休整') }}</span>
+                  <span class="legend-item"><span class="legend-dot status-exhausted" />{{ localeText('legendExhausted', '疲劳溢出') }}</span>
                 </div>
               </div>
 
               <!-- Ruler Row -->
               <div class="export-ruler-row">
                 <div class="export-axis-col">
-                  <span>设施 / 槽位</span>
+                  <span>{{ localeText('facilitySlots', '设施 / 槽位') }}</span>
                 </div>
                 <div class="export-timeline-track" :style="{ width: `${exportTrackWidthPx}px` }">
                   <div
@@ -1527,8 +1560,8 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                 >
                   <div class="facility-group-header">
                     <div class="group-title-col">
-                      <span class="facility-tag" :class="facility.roomType">{{ facility.roomType }}</span>
-                      <span class="facility-name">{{ facility.roomName }}</span>
+                      <span class="facility-tag" :class="facility.roomType">{{ roomTypeLabel(facility.roomType) }}</span>
+                      <span class="facility-name">{{ roomNameText(facility.roomId, facility.roomName) }}</span>
                       <span class="facility-eff">+{{ facility.averageEfficiency.toFixed(1) }}%</span>
                     </div>
                     <div class="group-track-spacer" />
@@ -1540,9 +1573,9 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                     class="track-row"
                   >
                     <div class="track-label-col slot-label-col">
-                      <span class="slot-badge">槽位 {{ slot.slotIndex + 1 }}</span>
-                      <span v-if="slot.role === 'dorm-keeper'" class="role-badge keeper">宿管</span>
-                      <span v-else-if="slot.role === 'fiammetta'" class="role-badge fiammetta">互换</span>
+                      <span class="slot-badge">{{ localeText('slot', `槽位 ${slot.slotIndex + 1}`, { slot: slot.slotIndex + 1 }) }}</span>
+                      <span v-if="slot.role === 'dorm-keeper'" class="role-badge keeper">{{ localeText('dormKeeper', '宿管') }}</span>
+                      <span v-else-if="slot.role === 'fiammetta'" class="role-badge fiammetta">{{ localeText('swap', '互换') }}</span>
                     </div>
 
                     <div class="track-content-lane" :style="{ width: `${exportTrackWidthPx}px` }">
@@ -1560,11 +1593,11 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
                           <img
                             v-if="interval.avatarUrl"
                             :src="interval.avatarUrl"
-                            :alt="interval.operatorName"
+                            :alt="intervalOperatorName(interval)"
                             class="block-avatar"
                             onerror="this.style.display='none'"
                           />
-                          <span class="block-name">{{ interval.operatorName || '空置' }}</span>
+                          <span class="block-name">{{ intervalOperatorName(interval) || localeText('vacant', '空置') }}</span>
                           <span v-if="interval.duration >= 0.8" class="block-duration">
                             {{ formatHour(interval.duration) }}
                           </span>
@@ -1576,8 +1609,8 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
               </div>
 
               <div class="export-canvas-footer">
-                <span>明日方舟基建排班与全动态模拟测算器 · R.I.I.C-Calculator</span>
-                <span>采样全周期甘特图 · 小于像素的连续切换合并显示</span>
+                <span>{{ localeText('attribution', '明日方舟基建排班与全动态模拟测算器 · R.I.I.C-Calculator') }}</span>
+                <span>{{ localeText('exportFooter', '采样全周期甘特图 · 小于像素的连续切换合并显示') }}</span>
               </div>
             </div>
           </div>

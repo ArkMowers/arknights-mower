@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 export function softwareVersionBadge(version, deployment = null) {
   if (deployment === 'source') return 'source'
   if (/-alpha\.\d+\.g[0-9a-f]{8}(?:\+.*)?$/.test(version)) return 'nightly'
@@ -39,7 +41,7 @@ export function resourceVersionBadge(metadata, now = Date.now()) {
   }
 }
 
-const gameTime = new Intl.DateTimeFormat('zh-CN', {
+const gameTimeOptions = {
   timeZone: 'Asia/Shanghai',
   year: 'numeric',
   month: '2-digit',
@@ -47,26 +49,29 @@ const gameTime = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit',
   minute: '2-digit',
   hourCycle: 'h23'
-})
+}
 
 export function resourceVersionHint(version, badge) {
-  const title = `资源版本 ${version}`
-  if (badge.state === 'unknown') return `${title}\n当前资源未提供有效的活动或卡池结束时间`
+  const { t, locale } = i18n.global
+  const gameTime = new Intl.DateTimeFormat(locale.value, gameTimeOptions)
+  const title = t('updates.resourceVersion', { version })
+  if (badge.state === 'unknown') return `${title}\n${t('updates.noResourceTiming')}`
 
-  const event = `${badge.kind}${badge.name ? `「${badge.name}」` : ''}`
-  const end = `${event}结束：${gameTime.format(badge.end)}（北京时间）`
-  if (badge.state === 'ended') return `${title}\n${end}\n${badge.kind}已结束`
+  const kind = t(badge.kind === '卡池' ? 'updates.gacha' : 'updates.activity')
+  const event = `${kind}${badge.name ? `「${badge.name}」` : ''}`
+  const end = t('updates.eventEnd', { event, time: gameTime.format(badge.end) })
+  if (badge.state === 'ended') return `${title}\n${end}\n${t('updates.eventEnded', { kind })}`
   if (badge.state === 'upcoming')
-    return `${title}\n${badge.kind}开始：${gameTime.format(badge.start)}（北京时间）\n${end}`
+    return `${title}\n${t('updates.eventStart', { kind, time: gameTime.format(badge.start) })}\n${end}`
 
   const minutes = Math.ceil(badge.remaining / 60000)
   const days = Math.floor(minutes / 1440)
   const hours = Math.floor((minutes % 1440) / 60)
   const rest = minutes % 60
   const remaining = days
-    ? `${days} 天 ${hours} 小时`
+    ? t('updates.daysHours', { days, hours })
     : hours
-      ? `${hours} 小时 ${rest} 分钟`
-      : `${rest} 分钟`
-  return `${title}\n${end}\n距结束还有 ${remaining}`
+      ? t('updates.hoursMinutes', { hours, minutes: rest })
+      : t('updates.minutes', { minutes: rest })
+  return `${title}\n${end}\n${t('updates.untilEnd', { remaining })}`
 }

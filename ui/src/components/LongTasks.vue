@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 defineProps({ showEnable: { type: Boolean, default: true } })
 import { computed, inject, watch } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -20,18 +23,63 @@ const longTaskEnabled = computed({
 const mobile = inject('mobile')
 
 const maa_long_task_options = [
-  { label: '集成战略 (MAA)', value: 'rogue' },
-  { label: '自动战斗／作业 (MAA)', value: 'copilot' },
-  { label: '悖论模拟 (MAA)', value: 'paradox' },
-  { label: '保全派驻 (MAA)', value: 'sss' },
-  { label: '生息演算 (MAA)', value: 'rcl' },
-  { label: '生息演算', value: 'ra' },
-  { label: '隐秘战线', value: 'sf' }
+  {
+    get label() {
+      return t('tasks.maaIntegratedStrategies')
+    },
+    value: 'rogue'
+  },
+  {
+    get label() {
+      return t('maaActivities.maaCopilot')
+    },
+    value: 'copilot'
+  },
+  {
+    get label() {
+      return t('maaActivities.maaParadox')
+    },
+    value: 'paradox'
+  },
+  {
+    get label() {
+      return t('tasks.maaSss')
+    },
+    value: 'sss'
+  },
+  {
+    get label() {
+      return t('tasks.maaReclamation')
+    },
+    value: 'rcl'
+  },
+  {
+    get label() {
+      return t('tasks.reclamationAlgorithm')
+    },
+    value: 'ra'
+  },
+  {
+    get label() {
+      return t('tasks.secretFront')
+    },
+    value: 'sf'
+  }
 ]
 
 const tool_options = [
-  { label: '荧光棒', value: '荧光棒' },
-  { label: '发电机', value: '发电机' }
+  {
+    get label() {
+      return t('tasks.glowStick')
+    },
+    value: '荧光棒'
+  },
+  {
+    get label() {
+      return t('tasks.generator')
+    },
+    value: '发电机'
+  }
 ]
 
 watch(maa_rcl_theme, (theme) => {
@@ -55,40 +103,40 @@ watch(
 
 <template>
   <n-card>
-    <template v-if="showEnable" #header>大型任务</template>
+    <template v-if="showEnable" #header>{{ t('tasks.longTasks') }}</template>
     <n-form
       class="long-task-setup"
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
     >
-      <n-form-item v-if="showEnable" label="启用大型任务">
-        <n-switch v-model:value="longTaskEnabled" aria-label="启用大型任务" />
+      <n-form-item v-if="showEnable" :label="t('tasks.enableLongTasks')">
+        <n-switch v-model:value="longTaskEnabled" :aria-label="t('tasks.enableLongTasks')" />
       </n-form-item>
-      <n-form-item label="任务类型">
+      <n-form-item :label="t('tasks.taskType')">
         <n-select
           v-model:value="maa_long_task_type"
           :options="maa_long_task_options"
           :consistent-menu-width="false"
-          aria-label="任务类型"
+          :aria-label="t('tasks.taskType')"
         />
       </n-form-item>
       <div class="long-task-time-container">
         <div class="long-task-times">
           <n-form-item label-placement="top">
-            <template #label>
-              开始时间
-              <help-text label="大型任务时段说明">
-                <div>开始与结束时间设置为相同值时全天开启。</div>
-                <div>若结束时间早于开始时间，则表示开启至次日。例如：</div>
+            <template #label
+              >{{ t('tasks.startTime')
+              }}<help-text :label="t('tasks.longTaskWindowHelpTitle')">
+                <div>{{ t('tasks.allDaySameTime') }}</div>
+                <div>{{ t('tasks.overnightWindowHelp') }}</div>
                 <ul>
-                  <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
-                  <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
+                  <li>{{ t('tasks.overnightWindowExample') }}</li>
+                  <li>{{ t('tasks.sameDayWindowExample') }}</li>
                 </ul>
               </help-text>
             </template>
             <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
           </n-form-item>
-          <n-form-item label="停止时间" label-placement="top">
+          <n-form-item :label="t('tasks.stopTime')" label-placement="top">
             <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
           </n-form-item>
         </div>
@@ -97,17 +145,17 @@ watch(
     <template v-if="maa_long_task_type == 'rcl'">
       <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
         <n-form-item>
-          <template #label>
-            主题
-            <help-text>
-              使用前建议阅读 MAA 文档：
-              <n-button
+          <template #label
+            >{{ t('tasks.theme')
+            }}<help-text
+              >{{ t('tasks.maaDocsAdvice')
+              }}<n-button
                 text
                 tag="a"
                 href="https://docs.maa.plus/zh-cn/manual/introduction/reclamation-algorithm.html"
                 target="_blank"
                 type="success"
-                >生息演算</n-button
+                >{{ t('tasks.reclamationAlgorithm') }}</n-button
               >
             </help-text>
           </template>
@@ -115,34 +163,36 @@ watch(
             v-model:value="maa_rcl_theme"
             :consistent-menu-width="false"
             :options="[
-              { label: '沙洲遗闻', value: 'Tales' },
-              { label: '重启锚点', value: 'RelaunchAnchor' }
+              { label: t('tasks.reclamationTales'), value: 'Tales' },
+              { label: t('tasks.reclamationAnchor'), value: 'RelaunchAnchor' }
             ]"
           />
         </n-form-item>
-        <n-form-item label="模式">
+        <n-form-item :label="t('tasks.mode')">
           <n-select
             v-model:value="rcl.mode"
             :consistent-menu-width="false"
             :options="
               maa_rcl_theme == 'Tales'
                 ? [
-                    { label: '默认模式（无存档）', value: 0 },
-                    { label: '制造刷点数（有存档）', value: 1 }
+                    { label: t('tasks.defaultNoSave'), value: 0 },
+                    { label: t('tasks.craftPointsSave'), value: 1 }
                   ]
                 : [
-                    { label: 'RA-1（无干员要求）', value: 16 },
-                    { label: 'RA-4（维什戴尔 可借助战）', value: 48 },
-                    { label: 'RA-15（圣聆初雪 可借助战）', value: 32 }
+                    { label: t('tasks.ra1NoOperator'), value: 16 },
+                    { label: t('tasks.ra4Support'), value: 48 },
+                    { label: t('tasks.ra15Support'), value: 32 }
                   ]
             "
           />
         </n-form-item>
         <template v-if="maa_rcl_theme == 'Tales'">
           <n-form-item v-if="rcl.mode === 0" :show-label="false">
-            <n-checkbox v-model:checked="rcl.clear_store">刷满后清空商店</n-checkbox>
+            <n-checkbox v-model:checked="rcl.clear_store">{{
+              t('maaActivities.clearStore')
+            }}</n-checkbox>
           </n-form-item>
-          <n-form-item label="支援道具名称" v-if="rcl.mode == 1">
+          <n-form-item :label="t('tasks.supportToolName')" v-if="rcl.mode == 1">
             <n-select
               v-model:value="rcl.tools_to_craft"
               :consistent-menu-width="false"
@@ -150,20 +200,20 @@ watch(
               filterable
               tag
               :options="tool_options"
-              placeholder="输入或选择道具名"
+              :placeholder="t('tasks.supportToolInput')"
             />
           </n-form-item>
-          <n-form-item label="增加方式" v-if="rcl.mode == 1">
+          <n-form-item :label="t('tasks.incrementMode')" v-if="rcl.mode == 1">
             <n-select
               v-model:value="rcl.increment_mode"
               :consistent-menu-width="false"
               :options="[
-                { label: '连点', value: 0 },
-                { label: '长按', value: 1 }
+                { label: t('tasks.repeatedTaps'), value: 0 },
+                { label: t('tasks.holdIncrease'), value: 1 }
               ]"
             />
           </n-form-item>
-          <n-form-item v-if="rcl.mode === 1" label="单次最大组装轮数">
+          <n-form-item v-if="rcl.mode === 1" :label="t('tasks.maxCraftRounds')">
             <mower-input-number v-model:value="rcl.num_craft_batches" :min="1" :max="2147483647" />
           </n-form-item>
         </template>

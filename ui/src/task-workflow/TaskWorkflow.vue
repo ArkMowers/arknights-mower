@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { computed, ref } from 'vue'
 import TaskChecklistNavigation from './TaskChecklistNavigation.vue'
 
@@ -37,7 +40,7 @@ const editor = computed(() => props.workflow.editors.find((item) => item.id === 
         @select="emit('select', $event)"
         @toggle="(id, value) => emit('toggle', id, value)"
       />
-      <section class="task-inspector" aria-label="全部设置">
+      <section class="task-inspector" :aria-label="t('tasks.allSettings')">
         <div class="inspector-content"><slot /></div>
       </section>
     </div>

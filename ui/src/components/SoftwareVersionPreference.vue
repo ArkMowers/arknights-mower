@@ -1,5 +1,6 @@
 <script setup>
-import { onMounted } from 'vue'
+import { i18n } from '@/i18n'
+import { computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import SoftwareVersionBadge from '@/components/SoftwareVersionBadge.vue'
 import SettingsSegmented from '@/components/SettingsSegmented.vue'
@@ -8,14 +9,14 @@ import { useGuiStore } from '@/stores/gui'
 const gui = useGuiStore()
 const { softwareVersionDisplay, softwareVersionLanguage, displayDisabled, saving, error } =
   storeToRefs(gui)
-const displayOptions = [
-  { value: 'version', label: '版本号' },
-  { value: 'channel', label: '版本类型' }
-]
-const languageOptions = [
-  { value: 'zh', label: '中文' },
+const displayOptions = computed(() => [
+  { value: 'version', label: i18n.global.t('settings.version.versionNumber') },
+  { value: 'channel', label: i18n.global.t('settings.version.versionType') }
+])
+const languageOptions = computed(() => [
+  { value: 'zh', label: i18n.global.t('settings.version.chinese') },
   { value: 'en', label: 'English' }
-]
+])
 const buildExamples = [
   { kind: 'alpha', version: '4.1.6-alpha.12' },
   { kind: 'nightly', version: '4.1.6-alpha.12.g8c3f2a19' },
@@ -31,7 +32,7 @@ onMounted(() => void gui.load())
     data-settings-keywords="软件版本 类型 源码部署 source alpha 公测版 nightly 开发版 stable 正式版"
   >
     <template #label>
-      <span>软件版本显示</span>
+      <span>{{ i18n.global.t('settings.version.softwareVersionDisplay') }}</span>
     </template>
     <SettingsSegmented
       class="version-display-switch"
@@ -39,24 +40,30 @@ onMounted(() => void gui.load())
       :options="displayOptions"
       :disabled="displayDisabled"
       :busy="saving"
-      label="软件版本显示"
+      :label="i18n.global.t('settings.version.softwareVersionDisplay')"
       @update:value="gui.setSoftwareVersionDisplay"
     />
   </n-form-item>
   <n-form-item class="settings-row-wide version-preview-row">
     <div class="version-preference-content">
-      <div class="version-display-preview" aria-label="软件版本显示预览">
+      <div
+        class="version-display-preview"
+        :aria-label="i18n.global.t('settings.version.softwareVersionDisplayPreview')"
+      >
         <div class="version-preview-header">
-          <span data-settings-label="软件版本显示预览">显示预览</span>
+          <span
+            :data-settings-label="i18n.global.t('settings.version.softwareVersionDisplayPreview')"
+            >{{ i18n.global.t('settings.version.preview') }}</span
+          >
           <SettingsSegmented
             class="version-preview-language"
-            data-settings-label="版本类型语言"
+            :data-settings-label="i18n.global.t('settings.version.versionTypeLanguage')"
             data-settings-keywords="版本类型语言 中文 English"
             :value="softwareVersionLanguage"
             :options="languageOptions"
             :disabled="displayDisabled"
             :busy="saving"
-            label="版本类型语言"
+            :label="i18n.global.t('settings.version.versionTypeLanguage')"
             @update:value="gui.setSoftwareVersionLanguage"
           />
         </div>
@@ -102,11 +109,13 @@ onMounted(() => void gui.load())
           </div>
         </div>
       </div>
-      <span class="version-preference-status" role="status">{{ saving ? '正在保存…' : '' }}</span>
+      <span class="version-preference-status" role="status">{{
+        saving ? i18n.global.t('settings.version.saving') : ''
+      }}</span>
       <n-alert v-if="error" type="error" :show-icon="false" role="alert">
         {{ error }}
         <n-button size="small" text :disabled="displayDisabled && gui.loading" @click="gui.retry">
-          重试
+          {{ i18n.global.t('settings.version.retry') }}
         </n-button>
       </n-alert>
     </div>

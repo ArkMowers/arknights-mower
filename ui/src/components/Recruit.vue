@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 defineOptions({ name: 'RecruitSettings' })
 defineProps({
   showEnable: { type: Boolean, default: true },
@@ -24,8 +27,8 @@ const mobile = inject('mobile')
 <template>
   <n-card>
     <template v-if="showEnable" #header>
-      <n-checkbox v-model:checked="recruit_enable" aria-label="启用公开招募">
-        <div class="card-title">公开招募</div>
+      <n-checkbox v-model:checked="recruit_enable" :aria-label="t('tasks.enableRecruitment')">
+        <div class="card-title">{{ t('tasks.recruitment') }}</div>
       </n-checkbox>
     </template>
     <n-form
@@ -36,35 +39,37 @@ const mobile = inject('mobile')
     >
       <n-form-item v-if="showInterval">
         <template #label>
-          <span>启动间隔</span>
-          <help-text>可填小数</help-text>
+          <span>{{ t('tasks.startInterval') }}</span>
+          <help-text>{{ t('tasks.decimalAllowed') }}</help-text>
         </template>
         <mower-input-number v-model:value="recruit_gap">
-          <template #suffix>小时</template>
+          <template #suffix>{{ t('tasks.hours') }}</template>
         </mower-input-number>
       </n-form-item>
       <n-form-item>
         <template #label>
-          <span>三星招募阈值</span>
-          <help-text>剩余公招券大于此阈值时招募三星干员</help-text>
+          <span>{{ t('tasks.threeStarThreshold') }}</span>
+          <help-text>{{ t('tasks.recruitmentPermitHelp') }}</help-text>
         </template>
         <mower-input-number v-model:value="recruitment_permit">
-          <template #suffix>张</template>
+          <template #suffix>{{ t('tasks.permits') }}</template>
         </mower-input-number>
       </n-form-item>
-      <n-form-item label="五星招募策略">
+      <n-form-item :label="t('tasks.fiveStarPolicy')">
         <n-radio-group v-model:value="recruit_auto_5">
           <n-space justify="start">
-            <n-radio :value="1">自动选择</n-radio>
-            <n-radio :value="2">手动选择</n-radio>
+            <n-radio :value="1">{{ t('tasks.automaticSelection') }}</n-radio>
+            <n-radio :value="2">{{ t('tasks.manualSelection') }}</n-radio>
           </n-space>
         </n-radio-group>
       </n-form-item>
       <n-form-item v-if="recruit_auto_5 === 2" :show-label="false">
-        <n-checkbox v-model:checked="recruit_auto_only5">五星词条组合唯一时自动选择</n-checkbox>
+        <n-checkbox v-model:checked="recruit_auto_only5">{{
+          t('tasks.uniqueFiveStarTags')
+        }}</n-checkbox>
       </n-form-item>
       <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="recruit_robot">保留支援机械标签</n-checkbox>
+        <n-checkbox v-model:checked="recruit_robot">{{ t('tasks.preserveRobotTags') }}</n-checkbox>
       </n-form-item>
     </n-form>
   </n-card>

@@ -3,15 +3,15 @@
   <n-modal v-model:show="showModal" v-if="props.isbuffer">
     <n-card
       style="width: min(600px, calc(100vw - 32px)); user-select: text"
-      title="特殊效果"
+      :title="t('baseSkills.specialEffects')"
       :bordered="false"
       size="huge"
       role="dialog"
       aria-modal="true"
     >
-      <div v-for="item in props.buffer" :key="item">
-        <n-card :title="buffer1[item].termName">
-          <div v-html="richText2HTML(buffer1[item].description)"></div>
+      <div v-for="item in displayedTerms" :key="item.termId">
+        <n-card :title="item.termName">
+          <div v-html="richText2HTML(item.description)"></div>
         </n-card>
       </div>
     </n-card>
@@ -19,9 +19,13 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
+import { computed, ref } from 'vue'
 import { richText2HTML, findTerm } from '@/stores/richText2HTML'
 import { useBasementSkill } from '@/stores/basementSkill'
+import { localizedBaseTerm } from '@/i18n/baseSkillDetails'
 
 defineOptions({ name: 'BasementSkillTerms' })
 
@@ -32,6 +36,9 @@ const props = defineProps({
   isbuffer: Boolean,
   buffer: Array
 })
+const displayedTerms = computed(() =>
+  (props.buffer || []).map((id) => localizedBaseTerm(id, buffer1.value[id])).filter(Boolean)
+)
 const handleTermClick = (event) => {
   const clickedTermElement = findTerm(event)
   if (clickedTermElement) {

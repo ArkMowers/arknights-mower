@@ -1,3 +1,6 @@
+import { i18n } from '@/i18n'
+import { planDisplayName } from '@/i18n/plans'
+
 export const inventory_options = [
   { label: '赤金', value: '赤金', icon: '赤金' },
   { label: '源石碎片', value: '源石碎片', icon: '源石碎片' },
@@ -9,17 +12,19 @@ export const inventory_options = [
 
 export function inventory_options_with_counts(inventory, state = 'loaded') {
   return inventory_options.map((option) => {
-    let count = '读取中…'
+    let count = i18n.global.t('plans.loadingInventory')
     if (state === 'error') {
-      count = '未知'
+      count = i18n.global.t('plans.unknown')
     } else if (state === 'loaded') {
-      count = new Intl.NumberFormat('zh-CN').format(Number(inventory[option.value] ?? 0))
+      count = new Intl.NumberFormat(i18n.global.locale.value).format(
+        Number(inventory[option.value] ?? 0)
+      )
     }
     return {
       ...option,
-      name: option.label,
+      name: planDisplayName(option.label),
       inventoryText: count,
-      label: `${option.label}（当前库存：${count}）`
+      label: i18n.global.t('plans.inventoryOption', { name: planDisplayName(option.label), count })
     }
   })
 }

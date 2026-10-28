@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed } from 'vue'
 import { getActivePinia } from 'pinia'
 import { useGuiStore } from '@/stores/gui'
@@ -26,11 +27,15 @@ const label = computed(() =>
   props.displayMode === 'channel' && badge.value ? kindLabel.value : props.version
 )
 const hint = computed(() => {
-  const kind = badge.value === 'source' ? '源码启动' : kindLabel.value
-  const detail = `软件版本 ${props.version}${kind ? ` · ${kind}` : ''}`
-  if (props.checking) return `${detail}\n正在检查软件更新…`
+  const kind =
+    badge.value === 'source' ? i18n.global.t('settings.badge.sourceStartup') : kindLabel.value
+  const detail = i18n.global.t('settings.badge.version', {
+    version: props.version,
+    kind: kind ? ` · ${kind}` : ''
+  })
+  if (props.checking) return `${detail}\n${i18n.global.t('settings.badge.checking')}`
   if (props.readOnly || props.disabled) return detail
-  return `${detail}\n点击检查软件更新`
+  return `${detail}\n${i18n.global.t('settings.badge.check')}`
 })
 
 function check() {

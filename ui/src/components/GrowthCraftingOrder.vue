@@ -1,7 +1,7 @@
 <template>
   <n-button v-if="!hideTrigger" size="small" class="plan-trigger" @click="show = true">
     <template #icon><n-icon :component="List" /></template>
-    养成计划
+    {{ i18n.global.t('growth.crafting.growthPlan') }}
     <span v-if="count" class="plan-trigger__count gp-mono">{{ count }}</span>
   </n-button>
 
@@ -23,15 +23,22 @@
     <template #header>
       <div class="plan-head">
         <div class="plan-head__main">
-          <span class="gp-kicker">Growth plan</span>
-          <h2 class="plan-head__title">养成计划</h2>
-          <p class="plan-head__sub">拖动排序；保存后同步到专精优先级与材料合成。</p>
+          <span class="gp-kicker">{{ i18n.global.t('growth.format.growthPlanHeading') }}</span>
+          <h2 class="plan-head__title">{{ i18n.global.t('growth.crafting.growthPlan') }}</h2>
+          <p class="plan-head__sub">
+            {{ i18n.global.t('growth.crafting.dragToReorderSavingUpdatesMasteryPriority') }}
+          </p>
         </div>
         <div class="plan-head__stats">
-          <span class="gp-mono">{{ draftItems.length }} 项</span>
-          <span class="gp-mono">{{ draftItems.filter((item) => item.locked).length }} 进行中</span>
+          <span class="gp-mono"
+            >{{ draftItems.length }} {{ i18n.global.t('growth.crafting.items') }}</span
+          >
+          <span class="gp-mono"
+            >{{ draftItems.filter((item) => item.locked).length }}
+            {{ i18n.global.t('growth.crafting.inProgress') }}</span
+          >
           <span v-if="draftPreparedItems.length" class="gp-stamp gp-stamp--flat"
-            >{{ draftPreparedItems.length }} 备齐</span
+            >{{ draftPreparedItems.length }} {{ i18n.global.t('growth.crafting.ready') }}</span
           >
         </div>
       </div>
@@ -40,9 +47,9 @@
     <div class="plan-body">
       <section v-if="draftPreparedItems.length" class="plan-prepared">
         <header class="plan-prepared__head">
-          <span class="gp-kicker">Ready</span>
-          <h3>材料已备齐</h3>
-          <p>完成养成并同步后移除此提示；已备齐的材料不会重复合成。</p>
+          <span class="gp-kicker">{{ i18n.global.t('growth.format.readyHeading') }}</span>
+          <h3>{{ i18n.global.t('growth.crafting.materialsReady') }}</h3>
+          <p>{{ i18n.global.t('growth.crafting.completeTheGoalAndSynchronizeToRemove') }}</p>
         </header>
         <div class="plan-prepared__list">
           <div
@@ -52,13 +59,13 @@
           >
             <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="32" round />
             <div class="plan-row__text">
-              <b>{{ item.char_name }}</b>
-              <span class="plan-row__label">{{ item.label }}</span>
+              <b>{{ operatorDisplayName(item.char_name) }}</b>
+              <span class="plan-row__label">{{ itemLabel(item) }}</span>
               <span v-if="item.reason" class="plan-row__status">{{ item.reason }}</span>
             </div>
-            <n-button size="tiny" quaternary :disabled="!editable" @click="remove(item)"
-              >移除</n-button
-            >
+            <n-button size="tiny" quaternary :disabled="!editable" @click="remove(item)">{{
+              i18n.global.t('growth.crafting.remove')
+            }}</n-button>
           </div>
         </div>
       </section>
@@ -68,8 +75,8 @@
           v-model:value="search"
           size="small"
           clearable
-          placeholder="查找计划中的干员或项目"
-          aria-label="查找养成计划"
+          :placeholder="i18n.global.t('growth.crafting.findAnOperatorOrGoalInThe')"
+          :aria-label="i18n.global.t('growth.crafting.searchGrowthPlans')"
           class="plan-search"
         />
         <div class="plan-toolbar__actions">
@@ -79,7 +86,7 @@
             :disabled="!editable || dragging || !!search.trim()"
             @click="organize"
           >
-            按职业整理
+            {{ i18n.global.t('growth.crafting.groupByProfession') }}
           </n-button>
           <n-button
             size="small"
@@ -87,17 +94,23 @@
             :disabled="!editable || dragging || !!search.trim()"
             @click="prioritizeSkills"
           >
-            专精优先
+            {{ i18n.global.t('growth.crafting.masteryFirst') }}
           </n-button>
-          <n-button size="small" quaternary :disabled="busy || dragging || dirty" @click="refresh()"
-            >刷新</n-button
+          <n-button
+            size="small"
+            quaternary
+            :disabled="busy || dragging || dirty"
+            @click="refresh()"
+            >{{ i18n.global.t('growth.crafting.refresh') }}</n-button
           >
         </div>
       </div>
 
-      <p v-if="search.trim()" class="plan-hint">搜索期间暂停拖动；清除搜索后可调整完整顺序。</p>
+      <p v-if="search.trim()" class="plan-hint">
+        {{ i18n.global.t('growth.crafting.draggingIsPausedDuringASearchClear') }}
+      </p>
       <p v-if="draftItems.some((item) => item.locked)" class="plan-hint">
-        进行中的专精固定在队首，不能移动或移除；清空仅移除其他项目。
+        {{ i18n.global.t('growth.crafting.ongoingMasteryStaysAtTheFrontAnd') }}
       </p>
 
       <n-spin :show="busy">
@@ -119,7 +132,7 @@
             :move="canDrag"
             class="crafting-order"
             role="list"
-            aria-label="养成计划顺序"
+            :aria-label="i18n.global.t('growth.crafting.growthPlanOrder')"
             @update:model-value="commitDrag"
             @start="startDrag"
             @end="finishDrag"
@@ -131,8 +144,11 @@
                   :tabindex="item.locked || !editable || !!search.trim() ? -1 : 0"
                   :aria-label="
                     item.locked
-                      ? '进行中，顺序已固定'
-                      : '拖动排序 ' + item.char_name + ' ' + item.label
+                      ? i18n.global.t('growth.crafting.inProgressOrderIsFixed')
+                      : i18n.global.t('growth.crafting.dragToReorder') +
+                        operatorDisplayName(item.char_name) +
+                        ' ' +
+                        itemLabel(item)
                   "
                   :aria-disabled="item.locked || !editable || !!search.trim()"
                   role="button"
@@ -146,7 +162,7 @@
                 <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="34" round />
                 <div class="plan-row__text">
                   <span class="plan-row__name">
-                    <b>{{ item.char_name }}</b>
+                    <b>{{ operatorDisplayName(item.char_name) }}</b>
                     <em>{{ projectText(item).name }}</em>
                   </span>
                   <span
@@ -164,7 +180,7 @@
                   quaternary
                   :disabled="!editable || item.locked"
                   @click="remove(item)"
-                  >移除</n-button
+                  >{{ i18n.global.t('growth.crafting.remove') }}</n-button
                 >
               </div>
             </template>
@@ -174,12 +190,16 @@
             v-else-if="loaded && !draftFailedItems.length && !draftPreparedItems.length"
             class="plan-empty"
           >
-            <p class="plan-empty__title">还没有养成目标</p>
-            <p class="plan-empty__text">先在干员档案里加入专精、模组或等级目标。</p>
+            <p class="plan-empty__title">{{ i18n.global.t('growth.crafting.noGrowthGoalsYet') }}</p>
+            <p class="plan-empty__text">
+              {{ i18n.global.t('growth.crafting.addMasteryModuleOrLevelGoalsFrom') }}
+            </p>
           </div>
 
           <div v-if="draftFailedItems.length" class="plan-failed">
-            <span class="plan-failed__label">失败计划</span>
+            <span class="plan-failed__label">{{
+              i18n.global.t('growth.crafting.failedPlans')
+            }}</span>
             <div
               v-for="item in draftFailedItems"
               v-show="matchesSearch(item)"
@@ -189,14 +209,14 @@
               <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="34" round />
               <div class="plan-row__text">
                 <span class="plan-row__name"
-                  ><b>{{ item.char_name }}</b
-                  ><em>{{ item.label }}</em></span
+                  ><b>{{ operatorDisplayName(item.char_name) }}</b
+                  ><em>{{ itemLabel(item) }}</em></span
                 >
                 <span class="plan-row__status is-failed">{{ item.reason }}</span>
               </div>
-              <n-button size="tiny" quaternary :disabled="!editable" @click="remove(item)"
-                >移除</n-button
-              >
+              <n-button size="tiny" quaternary :disabled="!editable" @click="remove(item)">{{
+                i18n.global.t('growth.crafting.remove')
+              }}</n-button>
             </div>
           </div>
         </div>
@@ -216,10 +236,12 @@
             !editable || (!draftItems.some((item) => !item.locked) && !draftFailedItems.length)
           "
           @click="clear"
-          >清空计划</n-button
+          >{{ i18n.global.t('growth.crafting.clearPlan') }}</n-button
         >
         <div class="plan-footer__actions">
-          <n-button size="small" :disabled="busy" @click="cancel">取消</n-button>
+          <n-button size="small" :disabled="busy" @click="cancel">{{
+            i18n.global.t('growth.crafting.cancel')
+          }}</n-button>
           <n-button
             size="small"
             type="primary"
@@ -227,7 +249,7 @@
             :disabled="!editable || !dirty || dragging"
             @click="save"
           >
-            保存变更
+            {{ i18n.global.t('growth.crafting.saveChanges') }}
           </n-button>
         </div>
       </div>
@@ -236,6 +258,10 @@
 </template>
 
 <script setup>
+import { operatorDisplayName, skillDisplayName } from '@/i18n/gameNames'
+import { moduleDisplayName } from '@/i18n/moduleNames'
+import { i18n } from '@/i18n'
+import { goalLabel, masteryLabel } from '@/growth/growthFormatters'
 import { computed, ref, watch } from 'vue'
 import axios from 'axios'
 import List from '@vicons/carbon/es/List'
@@ -318,8 +344,14 @@ async function readState() {
         plan_id: plan.id,
         char_id: plan.char_id,
         char_name: plan.name,
-        label: `${plan.skill_name} · 专${plan.target_level || 3}`,
-        reason: plan.failed_reason || '执行失败，等待重试'
+        skill_name: plan.skill_name,
+        target_level: plan.target_level || 3,
+        label: i18n.global.t('growth.crafting.m', {
+          value0: skillDisplayName(plan.skill_name),
+          value1: plan.target_level || 3
+        }),
+        reason:
+          plan.failed_reason || i18n.global.t('growth.crafting.executionFailedWaitingForRetry')
       }))
   }
 }
@@ -333,7 +365,7 @@ async function refresh(keepFeedback = false) {
   if (dirty.value) {
     stale.value = true
     failed.value = true
-    feedback.value = '计划已在其他位置变更，请取消后重新打开，再调整顺序。'
+    feedback.value = i18n.global.t('growth.crafting.thePlanChangedElsewhereCancelAndReopen')
     return
   }
   busy.value = true
@@ -346,7 +378,10 @@ async function refresh(keepFeedback = false) {
     accept(await readState())
   } catch (error) {
     failed.value = true
-    feedback.value = error.response?.data?.error || error.message || '养成计划读取失败，请重试'
+    feedback.value =
+      error.response?.data?.error ||
+      error.message ||
+      i18n.global.t('growth.crafting.couldNotReadGrowthPlansPleaseTry')
   } finally {
     busy.value = false
     await refreshIfPending()
@@ -371,23 +406,67 @@ function canDrag(event) {
   )
 }
 
+function itemLabel(item) {
+  if (item.failedPlan)
+    return i18n.global.t('growth.crafting.m', {
+      value0: skillDisplayName(item.skill_name),
+      value1: item.target_level
+    })
+  if (i18n.global.locale.value === 'zh-CN') return item.label
+  const op = props.recommendations.find((row) => row.char_id === item.char_id)
+  if (
+    item.kind === 'goal' &&
+    ['elite1', 'elite2', 'elite2_module', 'elite2_max', 'level_max', 'skill7'].includes(
+      item.module_id
+    ) &&
+    op
+  )
+    return goalLabel(op, item)
+  if (item.kind === 'skill') {
+    const match = item.label.match(/^(.*) · 专([一二三])$/)
+    if (match)
+      return (
+        skillDisplayName(match[1]) + ' · ' + masteryLabel(['一', '二', '三'].indexOf(match[2]) + 1)
+      )
+  }
+  if (item.kind === 'goal') {
+    if (item.module_id === 'skill7') return i18n.global.t('growth.format.basicSkill7')
+    const match = item.label.match(/^(.*) · 模组 (\d+) 级$/)
+    if (match)
+      return i18n.global.t('growth.format.moduleLevel', {
+        name: moduleDisplayName(item.module_id, match[1]),
+        level: Number(match[2])
+      })
+  }
+  return item.label
+}
+
 function projectText(item) {
-  const split = item.label.lastIndexOf(' · ')
+  const label = itemLabel(item)
+  const split = label.lastIndexOf(' · ')
   return split < 0
-    ? { name: item.label, target: '' }
-    : { name: item.label.slice(0, split), target: item.label.slice(split + 3) }
+    ? { name: label, target: '' }
+    : { name: label.slice(0, split), target: label.slice(split + 3) }
 }
 
 function projectStatus(item) {
-  const reason = item.reason || (item.locked ? '进行中 · 固定优先' : '待执行')
-  return item.crafting_required === false ? item.reason || '纯等级提升，不需要合成' : reason
+  const reason =
+    item.reason ||
+    (item.locked
+      ? i18n.global.t('growth.crafting.inProgressFixedPriority')
+      : i18n.global.t('growth.crafting.pending'))
+  return item.crafting_required === false
+    ? item.reason || i18n.global.t('growth.crafting.levelOnlyUpgradeNoCraftingNeeded')
+    : reason
 }
 
 function matchesSearch(item) {
   const query = search.value.trim().toLowerCase()
   return (
     !query ||
-    `${item.char_name} ${item.label}`.toLowerCase().includes(query) ||
+    `${item.char_name} ${item.label} ${operatorDisplayName(item.char_name)} ${itemLabel(item)}`
+      .toLowerCase()
+      .includes(query) ||
     !!pinyin_match(item.char_name, query)
   )
 }
@@ -494,10 +573,12 @@ async function save() {
   let deleted = 0
   try {
     for (const item of removed) {
-      if (item.locked) throw new Error('进行中的计划不能移除')
+      if (item.locked)
+        throw new Error(i18n.global.t('growth.crafting.anOngoingPlanCannotBeRemoved'))
       let response
       if (item.kind === 'skill') {
-        if (!item.plan_id) throw new Error('缺少专精计划编号，请刷新后重试')
+        if (!item.plan_id)
+          throw new Error(i18n.global.t('growth.crafting.masteryPlanIdMissingRefreshAndRetry'))
         response = await axios.delete(`${base}/mastery-plan`, { data: { id: item.plan_id } })
       } else {
         response = await axios.post(`${base}/growth-plan`, {
@@ -515,15 +596,24 @@ async function save() {
     search.value = ''
     emit('changed')
   } catch (error) {
-    const reason = error.response?.data?.error || error.message || '请求失败'
+    const reason =
+      error.response?.data?.error || error.message || i18n.global.t('growth.crafting.requestFailed')
     failed.value = true
-    const prefix = deleted ? `已确认移除 ${deleted} 项，保存未完整确认。` : '保存未完成。'
+    const prefix = deleted
+      ? i18n.global.t('growth.crafting.confirmedRemovedTheSaveIsNotFully', { value0: deleted })
+      : i18n.global.t('growth.crafting.saveIncomplete')
     try {
       accept(await readState())
-      feedback.value = `${prefix}已重新读取实际计划：${reason}`
+      feedback.value = i18n.global.t('growth.crafting.theActualPlanWasReloaded', {
+        value0: prefix,
+        value1: reason
+      })
     } catch {
       loaded.value = false
-      feedback.value = `${prefix}实际计划读取失败，请取消后重新打开核对：${reason}`
+      feedback.value = i18n.global.t('growth.crafting.couldNotReadTheActualPlanCancel', {
+        value0: prefix,
+        value1: reason
+      })
     }
     emit('changed')
   } finally {

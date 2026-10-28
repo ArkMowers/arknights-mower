@@ -20,6 +20,7 @@ import { routeLocationKey, routerKey } from 'vue-router'
 import LogPage from './Log.vue'
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
 import { useLogBackgroundStore } from '@/stores/logBackground'
+import { i18n } from '@/i18n'
 
 const { descriptor } = parse(readFileSync(new URL('./Log.vue', import.meta.url), 'utf8'))
 const script = compileScript(descriptor, { id: 'task-dialog-loading-test' })
@@ -37,6 +38,7 @@ function taskDialogHandler(component, loadTaskDialog, message) {
     'show_task',
     'db_message',
     'page',
+    't',
     `${openDialogCode}; return { openTaskDialog }`
   )(
     loadTaskDialog,
@@ -44,7 +46,8 @@ function taskDialogHandler(component, loadTaskDialog, message) {
     component.task_dialog_loading,
     component.show_task,
     message,
-    component
+    component,
+    i18n.global.t
   )
 }
 
@@ -109,6 +112,7 @@ describe('log page', () => {
   let app
 
   beforeEach(() => {
+    i18n.global.locale.value = 'zh-CN'
     setActivePinia(createPinia())
     vi.useFakeTimers()
     onMounted.mockClear()
@@ -166,6 +170,7 @@ describe('log page', () => {
   })
 
   afterEach(() => {
+    i18n.global.locale.value = 'zh-CN'
     app?.unmount()
     app = null
     state.mower.$dispose?.()
@@ -189,6 +194,38 @@ describe('log page', () => {
     expect(state.mower.stop_task_polling).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
     await nextTick()
+  })
+
+  it('updates mounted runtime controls without translating logs, task identities or action values', async () => {
+    const original = ['2026-10-27 12:00:00 原始中文日志', '用户输入 English 保留']
+    state.mower.refs.log_lines.value = [...original]
+    state.mower.refs.log.value = original.join('\n')
+    state.mower.refs.task_list.value = [
+      {
+        time: '2026-10-27T12:00:00',
+        plan: {},
+        display_name: '我的原始任务',
+        type: { display_value: '跑单' }
+      }
+    ]
+    const { find } = mountWorkspace()
+    const page = app._instance.setupState
+    const before = JSON.stringify(state.mower.refs.task_list.value)
+    expect(page.start_options.map(({ key }) => key)).toEqual(['0', '1', '2'])
+    const chinese = page.start_options[0].label
+    i18n.global.locale.value = 'en-US'
+    await nextTick()
+    expect(page.start_options[0].label).not.toBe(chinese)
+    expect(find((target) => target.props['aria-label'] === 'Runtime actions')).toBeTruthy()
+    expect(state.mower.refs.log_lines.value).toEqual(original)
+    expect(state.mower.refs.log.value).toBe(original.join('\n'))
+    expect(JSON.stringify(state.mower.refs.task_list.value)).toBe(before)
+    expect(state.client.get).not.toHaveBeenCalled()
+    state.client.get.mockResolvedValue({ data: true })
+    page.start('1')
+    page.stop()
+    await nextTick()
+    expect(state.client.get.mock.calls.map(([url]) => url)).toEqual(['/start/1', '/stop'])
   })
 
   async function mountWithStore({ hidden = false } = {}) {

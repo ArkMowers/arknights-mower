@@ -1,5 +1,59 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { confirmForceUpdate, confirmSoftwareInstall, confirmSourceVersion } from './softwareUpdate'
+import { i18n } from '@/i18n'
+
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
+
+describe('localized update confirmations', () => {
+  it('describes rollback and lost local changes in English without weakening confirmation', async () => {
+    i18n.global.locale.value = 'en-US'
+    const dialogs = { warning: vi.fn() }
+    const install = vi.fn()
+    const target = { version: 'alpha@abc1234', downgrade: true, force: true, check_id: 'selected' }
+    confirmSoftwareInstall(dialogs, 'v4.2.0', target, 2, install)
+    const options = dialogs.warning.mock.calls[0][0]
+    expect(options.title).toBe('Roll back to an earlier version?')
+    expect(options.content).toContain('alpha@abc1234')
+    expect(options.content).toContain('Restart 2 instances')
+    expect(options.content).toContain(
+      'Local changes will not be restored even if installation fails.'
+    )
+    options.onNegativeClick()
+    expect(install).not.toHaveBeenCalled()
+    target.version = 'changed'
+    await options.onPositiveClick()
+    expect(install).toHaveBeenCalledExactlyOnceWith({
+      version: 'alpha@abc1234',
+      downgrade: true,
+      force: true,
+      check_id: 'selected',
+      confirm_downgrade: true
+    })
+  })
+
+  it('keeps a backend-provided confirmation intact when the interface is English', () => {
+    i18n.global.locale.value = 'en-US'
+    const dialogs = { warning: vi.fn() }
+    confirmSoftwareInstall(
+      dialogs,
+      'v4.2.0',
+      {
+        version: 'v4.1.0',
+        confirm_title: '服务端确认标题',
+        confirm_message: '服务端提供的精确信息'
+      },
+      1,
+      vi.fn()
+    )
+    expect(dialogs.warning.mock.calls[0][0]).toMatchObject({
+      title: '服务端确认标题',
+      content: '服务端提供的精确信息',
+      positiveText: 'Confirm Install'
+    })
+  })
+})
 
 describe('release rollback confirmation', () => {
   it.each([false, true])(

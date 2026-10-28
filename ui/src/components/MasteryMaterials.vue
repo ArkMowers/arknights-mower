@@ -1,11 +1,15 @@
 <template>
   <div v-if="summary" class="mm">
     <header v-if="showHeader" class="mm__head">
-      <span class="mm__title">{{ title }}</span>
+      <span class="mm__title">{{
+        title || i18n.global.t('growth.materialDetails.materialCostsInventory')
+      }}</span>
       <span class="mm__status" :class="'is-' + statusType">{{ statusText }}</span>
     </header>
 
-    <p v-if="!summary.materials.length" class="mm__empty">无需继续准备材料</p>
+    <p v-if="!summary.materials.length" class="mm__empty">
+      {{ i18n.global.t('growth.materialDetails.noMoreMaterialsNeedPreparation') }}
+    </p>
 
     <template v-else>
       <div class="mm__grid">
@@ -15,16 +19,20 @@
           class="mm__item"
           :class="quantityClass(material)"
           :title="
-            material.name +
-            '：库存 ' +
-            material.owned.toLocaleString('zh-CN') +
-            ' / 需要 ' +
-            material.required.toLocaleString('zh-CN')
+            itemDisplayName(material.id, material.name) +
+            i18n.global.t('growth.materialDetails.owned') +
+            material.owned.toLocaleString(i18n.global.locale.value) +
+            i18n.global.t('growth.materialDetails.required') +
+            material.required.toLocaleString(i18n.global.locale.value)
           "
         >
-          <img :src="iconFor(material)" :alt="material.name" loading="lazy" />
+          <img
+            :src="iconFor(material)"
+            :alt="itemDisplayName(material.id, material.name)"
+            loading="lazy"
+          />
           <div class="mm__item-body">
-            <span class="mm__name">{{ material.name }}</span>
+            <span class="mm__name">{{ itemDisplayName(material.id, material.name) }}</span>
             <span class="mm__numbers gp-mono">
               {{ formatAmount(material.owned) }}<em>/{{ formatAmount(material.required) }}</em>
             </span>
@@ -36,29 +44,39 @@
       </div>
 
       <div v-if="showShortage && missingSkills.length" class="mm__flagged">
-        <span class="mm__flagged-label">缺料技能</span>
+        <span class="mm__flagged-label">{{
+          i18n.global.t('growth.materialDetails.skillsMissingMaterials')
+        }}</span>
         <span v-for="skill in missingSkills" :key="skill.key" class="mm__tag mm__tag--signal">
-          {{ skill.name }} · {{ skill.skill_name }}
+          {{ operatorDisplayName(skill.name) }} · {{ skillDisplayName(skill.skill_name) }}
         </span>
       </div>
 
       <div v-if="summary.manual_chips" class="mm__hint">
-        双芯片与芯片助剂需手动准备，不会生成芯片合成任务。
+        {{
+          i18n.global.t('growth.materialDetails.dualchipsAndChipCatalystsRequireManualPreparation')
+        }}
       </div>
       <div
         v-if="summary.crafting_gold"
         class="mm__hint"
         :title="
-          '加工费 ' + summary.crafting_gold.toLocaleString('zh-CN') + ' 龙门币，已计入龙门币总需求'
+          i18n.global.t('growth.materialDetails.craftingFee') +
+          summary.crafting_gold.toLocaleString(i18n.global.locale.value) +
+          i18n.global.t('growth.materialDetails.lmdIncludedInTheTotalLmdRequirement')
         "
       >
-        含加工费 {{ formatAmount(summary.crafting_gold) }} 龙门币，已计入龙门币总需求。
+        {{ i18n.global.t('growth.materialDetails.includesACraftingFeeOf') }}
+        {{ formatAmount(summary.crafting_gold) }}
+        {{ i18n.global.t('growth.materialDetails.lmdAlreadyIncludedInTheTotalLmd') }}
       </div>
 
       <details v-if="expandCrafting && summary.crafting.length" class="mm__crafting">
         <summary class="mm__summary">
-          逐级合成材料
-          <span class="gp-mono">{{ summary.crafting.length }} 种</span>
+          {{ i18n.global.t('growth.materialDetails.craftingIngredientsByTier') }}
+          <span class="gp-mono"
+            >{{ summary.crafting.length }} {{ i18n.global.t('growth.materialDetails.types') }}</span
+          >
         </summary>
         <section v-for="group in craftingGroups" :key="group.label" class="mm__group">
           <span class="mm__group-label">{{ group.label }}</span>
@@ -69,16 +87,20 @@
               class="mm__item"
               :class="quantityClass(material)"
               :title="
-                material.name +
-                '：库存 ' +
-                material.owned.toLocaleString('zh-CN') +
-                ' / 需要 ' +
-                material.required.toLocaleString('zh-CN')
+                itemDisplayName(material.id, material.name) +
+                i18n.global.t('growth.materialDetails.owned') +
+                material.owned.toLocaleString(i18n.global.locale.value) +
+                i18n.global.t('growth.materialDetails.required') +
+                material.required.toLocaleString(i18n.global.locale.value)
               "
             >
-              <img :src="iconFor(material)" :alt="material.name" loading="lazy" />
+              <img
+                :src="iconFor(material)"
+                :alt="itemDisplayName(material.id, material.name)"
+                loading="lazy"
+              />
               <div class="mm__item-body">
-                <span class="mm__name">{{ material.name }}</span>
+                <span class="mm__name">{{ itemDisplayName(material.id, material.name) }}</span>
                 <span class="mm__numbers gp-mono">
                   {{ formatAmount(material.owned) }}<em>/{{ formatAmount(material.required) }}</em>
                 </span>
@@ -89,14 +111,20 @@
       </details>
 
       <div v-if="showShortage && (blueMissing.length || otherMissing.length)" class="mm__flagged">
-        <span class="mm__flagged-label">仍缺</span>
+        <span class="mm__flagged-label">{{
+          i18n.global.t('growth.materialDetails.stillMissing')
+        }}</span>
         <span
           v-for="material in blueMissing.concat(otherMissing)"
           :key="material.id"
           class="mm__tag mm__tag--signal"
-          :title="material.name + ' ×' + material.count.toLocaleString('zh-CN')"
+          :title="
+            itemDisplayName(material.id, material.name) +
+            ' ×' +
+            material.count.toLocaleString(i18n.global.locale.value)
+          "
         >
-          {{ material.name }} ×{{ formatAmount(material.count) }}
+          {{ itemDisplayName(material.id, material.name) }} ×{{ formatAmount(material.count) }}
         </span>
       </div>
     </template>
@@ -104,6 +132,9 @@
 </template>
 
 <script setup>
+import { materialDisplayName as itemDisplayName } from '@/growth/growthFormatters'
+import { operatorDisplayName, skillDisplayName } from '@/i18n/gameNames'
+import { i18n } from '@/i18n'
 import { computed } from 'vue'
 import {
   formatMaterialAmount as formatAmount,
@@ -117,14 +148,16 @@ const props = defineProps({
   expandCrafting: Boolean,
   showShortage: { type: Boolean, default: true },
   missingSkills: { type: Array, default: () => [] },
-  title: { type: String, default: '材料消耗与库存' }
+  title: { type: String, default: '' }
 })
 const statusText = computed(() => materialStatus(props.summary))
 const statusType = computed(() => materialStatusType(props.summary) || 'ok')
 const craftingGroups = computed(() => {
   const groups = new Map()
   for (const material of props.summary?.crafting || []) {
-    const label = material.id.startsWith('330') ? '技巧概要' : 'T' + material.rarity + ' 材料'
+    const label = material.id.startsWith('330')
+      ? i18n.global.t('growth.materialDetails.skillSummaries')
+      : 'T' + material.rarity + i18n.global.t('growth.materialDetails.materials')
     if (!groups.has(label)) groups.set(label, { label, rarity: material.rarity, materials: [] })
     groups.get(label).materials.push(material)
   }

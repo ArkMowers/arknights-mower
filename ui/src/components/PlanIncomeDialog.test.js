@@ -3,6 +3,7 @@ import { effectScope, reactive, nextTick } from 'vue'
 import Dialog from './PlanIncomeDialog.vue'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { renderIncomeImage, downloadIncomeImage } from '@/riic/incomeImage'
+import { i18n } from '@/i18n'
 vi.mock('@/riic/incomeArchive', () => ({
   loadIncomeArchive: vi.fn(async () => null),
   saveIncomeArchive: vi.fn(async () => {})
@@ -77,6 +78,7 @@ beforeEach(async () => {
   await page.restoreResult()
 })
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   io.cleanup()
   scope.stop()
   vi.unstubAllGlobals()
@@ -88,6 +90,26 @@ it('reads cached ownership and stock without writing configuration', async () =>
   expect(page.settings.cachedInventory.gold).toBe(10)
   expect(page.settings.mowerWeights).toMatchObject({ exp: 0.9568, gold: 0.76544, orders: 0.23456 })
   expect(io.client.put).not.toHaveBeenCalled()
+})
+
+it('reports income dialog request failures in the current interface language without saving settings', async () => {
+  i18n.global.locale.value = 'en-US'
+  const failure = new Error('offline')
+  io.client.get.mockRejectedValue(failure)
+  await page.readCache()
+  expect(page.cacheError.value).toBe(
+    'Could not read the Skland cache. Reload it or enter values manually.'
+  )
+  await expect(page.readWeights()).rejects.toMatchObject({
+    message: 'Could not read Mower income settings. Retry or use custom weights for this run.',
+    cause: failure
+  })
+  i18n.global.locale.value = 'zh-CN'
+  expect(page.cacheError.value).toBe('森空岛缓存读取失败，可重新读取或选择手动输入')
+  expect(page.weightsError.value).toBe('Mower 收益设置读取失败，可重试或选择本次自定义')
+  expect(io.client.get).toHaveBeenCalledTimes(2)
+  expect(io.client.put).not.toHaveBeenCalled()
+  expect(io.client.post).not.toHaveBeenCalled()
 })
 it('saves the selected shared algorithm and preserves recycling efficiency', async () => {
   await page.readWeights()

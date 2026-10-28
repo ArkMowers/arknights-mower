@@ -32,8 +32,8 @@
       v-if="showSidebarToggle"
       type="button"
       class="window-titlebar__control window-titlebar__sidebar-toggle"
-      :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
-      :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+      :aria-label="sidebarCollapsed ? t('runtime.expandSidebar') : t('runtime.collapseSidebar')"
+      :title="sidebarCollapsed ? t('runtime.expandSidebar') : t('runtime.collapseSidebar')"
       :aria-expanded="!sidebarCollapsed"
       aria-controls="sidebar-navigation"
       @mousedown.stop
@@ -58,6 +58,8 @@
       :profile-write-disabled="profileWriteDisabled"
       :profile-read-disabled="profileReadDisabled"
       :sidebar-visible="sidebarVisible"
+      :interface-language="interfaceLanguage"
+      :language-disabled="languageDisabled"
       @connection-action="$emit('connection-action', $event)"
       @profile-action="(action, profileId) => $emit('profile-action', action, profileId)"
       @help-action="$emit('help-action', $event)"
@@ -87,8 +89,8 @@
         class="window-titlebar__control"
         :class="{ 'window-titlebar__control--close': control.id === 'close' }"
         type="button"
-        :aria-label="control.label"
-        :title="control.label"
+        :aria-label="controlLabel(control)"
+        :title="controlLabel(control)"
         :data-window-control="control.id"
         :disabled="busy[control.action || control.id] || control.disabled"
         @mousedown.stop
@@ -124,11 +126,23 @@
 </template>
 
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { onBeforeUnmount } from 'vue'
 import AppMenuBar from './AppMenuBar.vue'
 import { WINDOW_RESIZE_EDGES } from '@/window-shell/adapter.js'
 
 const resizeEdges = WINDOW_RESIZE_EDGES
+function controlLabel(control) {
+  const key = {
+    minimize: 'minimizeWindow',
+    maximize: 'maximizeWindow',
+    restore: 'restoreWindow',
+    close: 'closeWindow'
+  }[control.icon]
+  return key ? t(`runtime.${key}`) : control.label
+}
 const props = defineProps({
   active: { type: Boolean, required: true },
   title: { type: String, required: true },
@@ -149,6 +163,8 @@ const props = defineProps({
   profileWriteDisabled: { type: Boolean, default: true },
   profileReadDisabled: { type: Boolean, default: true },
   sidebarVisible: { type: Boolean, default: true },
+  interfaceLanguage: { type: String, default: 'zh-CN' },
+  languageDisabled: { type: Boolean, default: false },
   onControl: { type: Function, required: true },
   onToggleMaximize: { type: Function, required: true },
   resizable: { type: Boolean, required: true },

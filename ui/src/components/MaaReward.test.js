@@ -1,8 +1,9 @@
 import { renderToString } from '@vue/server-renderer'
 import { createSSRApp, defineComponent, h, reactive, toRefs } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaaReward from './MaaReward.vue'
 import { createTaskWorkflow, setTaskEnabled } from '@/task-workflow/model'
+import { i18n } from '@/i18n'
 
 const state = vi.hoisted(() => ({ config: null, checkboxes: [] }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
@@ -55,13 +56,16 @@ beforeEach(() => {
   })
   state.checkboxes = []
 })
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 
 async function renderRewards() {
   state.checkboxes = []
   return renderToString(createSSRApp(MaaReward))
 }
 function header() {
-  return state.checkboxes.find(({ label }) => label === '启用MAA 领取奖励')
+  return state.checkboxes.find(({ label }) => label === i18n.global.t('tasks.enableMaaRewards'))
 }
 function expectSelection(checked, indeterminate) {
   expect(header().props).toMatchObject({ checked, indeterminate })
@@ -128,4 +132,19 @@ describe('MAA reward card aggregate checkbox', () => {
     await renderRewards()
     expectSelection(false, false)
   })
+
+  it.each(['zh-CN', 'en-US', 'ja-JP', 'zh-TW'])(
+    'renders sign-in rewards in %s and edits only the stored sign-in choice',
+    async (locale) => {
+      i18n.global.locale.value = locale
+      const before = { ...state.config }
+      const html = await renderRewards()
+      expect(html).toContain(i18n.global.t('maaActivities.signinReward'))
+      expect(state.config).toEqual(before)
+      state.checkboxes.at(-1).update(true)
+      expect(state.config).toEqual({ ...before, maa_signinevent: true })
+      await renderRewards()
+      expectSelection(false, true)
+    }
+  )
 })

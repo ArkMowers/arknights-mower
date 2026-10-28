@@ -1,9 +1,42 @@
+import { i18n } from '@/i18n'
 export const surveyThresholds = [90, 80, 70, 60, 50, 40, 30, 20, 10, 0.325]
 export const surveyDimensions = [
-  { key: 'mastery', label: '专三率', detail: '高亮达到比例的技能' },
-  { key: 'module', label: '模组解锁率', detail: '高亮达到比例的模组' },
-  { key: 'elite1', label: '精一率', detail: '样本已达到精一或精二' },
-  { key: 'elite2', label: '精二率', detail: '高亮达到比例的干员' }
+  {
+    key: 'mastery',
+    get label() {
+      return i18n.global.t('growth.surveyHelper.m3Rate')
+    },
+    get detail() {
+      return i18n.global.t('growth.surveyHelper.highlightSkillsMeetingTheRate')
+    }
+  },
+  {
+    key: 'module',
+    get label() {
+      return i18n.global.t('growth.surveyHelper.moduleUnlockRate')
+    },
+    get detail() {
+      return i18n.global.t('growth.surveyHelper.highlightModulesMeetingTheRate')
+    }
+  },
+  {
+    key: 'elite1',
+    get label() {
+      return i18n.global.t('growth.surveyHelper.elite1Rate')
+    },
+    get detail() {
+      return i18n.global.t('growth.surveyHelper.samplesAtElite1OrElite2')
+    }
+  },
+  {
+    key: 'elite2',
+    get label() {
+      return i18n.global.t('growth.surveyHelper.elite2Rate')
+    },
+    get detail() {
+      return i18n.global.t('growth.surveyHelper.highlightOperatorsMeetingTheRate')
+    }
+  }
 ]
 
 export function defaultSurveyFilters() {
@@ -101,5 +134,7 @@ export function operatorSurvey(op, row, filters) {
 }
 
 export function formatSurveyRate(rate) {
-  return rate === null || rate === undefined ? '暂无样本' : `${rate.toFixed(1)}%`
+  return rate === null || rate === undefined
+    ? i18n.global.t('growth.surveyHelper.noSample')
+    : `${rate.toFixed(1)}%`
 }

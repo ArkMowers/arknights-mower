@@ -3,7 +3,10 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
-import { downloadCopilotScripts } from '@/utils/maaCopilotCode'
+import { copilotMessage, downloadCopilotScripts } from '@/utils/maaCopilotCode'
+import { i18n } from '@/i18n'
+
+const { t } = i18n.global
 
 const props = defineProps({ paradox: { type: Boolean, default: false } })
 const store = useConfigStore()
@@ -23,26 +26,31 @@ const options = computed(() =>
 const selected_in_queue = computed(() =>
   copilot.value.scripts.some((item) => item.id === selected.value)
 )
-const formation_options = [0, 1, 2, 3, 4].map((value) => ({
-  value,
-  label: value ? `第 ${value} 编队` : '不切换编队'
-}))
-const support_options = [
-  { label: '不使用助战', value: 0 },
-  { label: '只补一名缺失干员', value: 1 },
-  { label: '补缺失干员，否则使用指定助战', value: 2 },
-  { label: '补缺失干员，否则使用随机助战', value: 3 }
-]
-const skill_options = [0, 1, 2, 3].map((value) => ({
-  value,
-  label: value ? `${value} 技能` : '默认技能'
-}))
+const formation_options = computed(() =>
+  [0, 1, 2, 3, 4].map((value) => ({
+    value,
+    label: value
+      ? t('maaQueue.formationNumber', { number: value })
+      : t('maaQueue.noFormationSwitch')
+  }))
+)
+const support_options = computed(() =>
+  ['supportNone', 'supportOneMissing', 'supportSpecifiedFallback', 'supportRandomFallback'].map(
+    (key, value) => ({ value, label: t(`maaQueue.${key}`) })
+  )
+)
+const skill_options = computed(() =>
+  [0, 1, 2, 3].map((value) => ({
+    value,
+    label: value ? t('maaQueue.skillNumber', { number: value }) : t('maaQueue.defaultSkill')
+  }))
+)
 
 async function refresh() {
   try {
     library.value = (await axios.get(endpoint)).data.scripts
   } catch (error) {
-    message.error(error.response?.data?.message || '读取作业失败')
+    message.error(copilotMessage(error.response?.data?.message) || t('maaQueue.readFailed'))
   }
 }
 onMounted(refresh)
@@ -61,7 +69,7 @@ async function upload_blob(blob) {
   await refresh()
   selected.value = data.id
   add_script(data.id)
-  message.success('作业已导入并加入队列')
+  message.success(t('maaQueue.imported'))
 }
 async function upload({ file, onFinish, onError }) {
   loading.value = true
@@ -69,7 +77,7 @@ async function upload({ file, onFinish, onError }) {
     await upload_blob(file.file)
     onFinish()
   } catch (error) {
-    message.error(error.response?.data?.message || '作业导入失败')
+    message.error(copilotMessage(error.response?.data?.message) || t('maaQueue.importFailed'))
     onError()
   } finally {
     loading.value = false
@@ -92,10 +100,12 @@ async function download() {
     copilot.value.scripts.push(...scripts.map(({ id }) => queue_item(id)))
     selected.value = scripts.at(-1).id
     code.value = ''
-    message.success(`已导入 ${scripts.length} 份作业并加入队列`)
+    message.success(t('maaQueue.importedCount', { count: scripts.length }))
   } catch (error) {
     if (error.refreshLibrary) await refresh()
-    message.error(error.response?.data?.message || error.message || '作业下载失败，请检查网络代理')
+    message.error(
+      copilotMessage(error.response?.data?.message || error.message) || t('maaQueue.downloadFailed')
+    )
   } finally {
     loading.value = false
   }
@@ -108,7 +118,7 @@ async function delete_script() {
     selected.value = null
     await refresh()
   } catch (error) {
-    message.error(error.response?.data?.message || '删除作业失败')
+    message.error(copilotMessage(error.response?.data?.message) || t('maaQueue.deleteFailed'))
   }
 }
 function move(index, offset) {
@@ -120,7 +130,7 @@ function move(index, offset) {
 }
 function title(id) {
   const item = library.value.find((item) => item.id === id)
-  return item ? `${item.stage_name} · ${item.title}` : '作业文件缺失，请重新导入'
+  return item ? `${item.stage_name} · ${item.title}` : t('maaQueue.fileMissing')
 }
 function add_operator() {
   copilot.value.user_additional.push({ name: '', skill: 0 })
@@ -131,25 +141,26 @@ async function restart_queue() {
   ).join('')
   try {
     await store.flush_config_saves()
-    message.success('已开启新一轮作业，下次大型任务空闲时从首项执行')
+    message.success(t('maaQueue.restarted'))
   } catch (error) {
-    message.error(error.response?.data?.message || '保存重新执行请求失败')
+    message.error(copilotMessage(error.response?.data?.message) || t('maaQueue.restartSaveFailed'))
   }
 }
 </script>
 
 <template>
   <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
-    <n-form-item label="导入作业">
+    <n-form-item :label="t('tasks.importCopilot')">
       <n-flex vertical style="width: 100%">
-        <n-flex :wrap="false">
+        <n-flex :wrap="mobile">
           <n-input
             v-model:value="code"
-            placeholder="prts://作业或作业集代码、prts.plus 作业链接"
+            :style="{ flex: mobile ? '1 1 100%' : '1 1 0', minWidth: '0' }"
+            :placeholder="t('maaQueue.codePlaceholder')"
             :disabled="loading"
             @keydown.enter="download"
           />
-          <n-button :loading="loading" @click="download">下载</n-button>
+          <n-button :loading="loading" @click="download">{{ t('tasks.download') }}</n-button>
           <n-upload
             accept=".json,application/json"
             :custom-request="upload"
@@ -157,39 +168,36 @@ async function restart_queue() {
             :disabled="loading"
             style="width: auto"
           >
-            <n-button :disabled="loading">选择文件</n-button>
+            <n-button :disabled="loading">{{ t('tasks.chooseCopilotFile') }}</n-button>
           </n-upload>
         </n-flex>
-        <n-text depth="3"
-          >支持普通自动战斗作业及 prts://s
-          开头的作业集，按合集顺序追加队列。保全作业请在保全派驻中导入。单个文件最多 1 MB。</n-text
-        >
+        <n-text depth="3">{{ t('maaQueue.ordinaryImportHelp') }}</n-text>
       </n-flex>
     </n-form-item>
-    <n-form-item label="已有作业">
+    <n-form-item :label="t('maaQueue.existingScripts')">
       <n-flex vertical style="width: 100%">
         <n-select
           v-model:value="selected"
           :options="options"
           filterable
           clearable
-          placeholder="选择已导入的作业"
+          :placeholder="t('maaQueue.selectScript')"
         />
         <n-flex>
           <n-button
             :disabled="!selected || copilot.scripts.length >= 32"
             @click="add_script(selected)"
-            >加入队列</n-button
+            >{{ t('maaQueue.addToQueue') }}</n-button
           >
-          <n-button :disabled="!selected || selected_in_queue" @click="delete_script"
-            >删除未选作业</n-button
-          >
+          <n-button :disabled="!selected || selected_in_queue" @click="delete_script">{{
+            t('maaQueue.deleteUnused')
+          }}</n-button>
         </n-flex>
       </n-flex>
     </n-form-item>
-    <n-form-item label="执行队列">
+    <n-form-item :label="t('maaQueue.executionQueue')">
       <n-flex vertical style="width: 100%">
-        <n-empty v-if="!copilot.scripts.length" description="尚未选择作业" />
+        <n-empty v-if="!copilot.scripts.length" :description="t('tasks.noOperationSelected')" />
         <n-card
           v-for="(item, index) in copilot.scripts"
           :key="index"
@@ -200,75 +208,82 @@ async function restart_queue() {
             <n-input
               v-if="!paradox"
               v-model:value="item.nav_name_override"
-              placeholder="导航关卡名（留空由作业确定）"
+              :placeholder="t('maaQueue.navStagePlaceholder')"
             />
-            <n-checkbox v-if="!paradox" v-model:checked="item.is_raid">突袭模式</n-checkbox>
+            <n-checkbox v-if="!paradox" v-model:checked="item.is_raid">{{
+              t('maaQueue.raidMode')
+            }}</n-checkbox>
             <n-flex>
-              <n-button :disabled="index === 0" @click="move(index, -1)">上移</n-button>
-              <n-button :disabled="index === copilot.scripts.length - 1" @click="move(index, 1)"
-                >下移</n-button
-              >
-              <n-button @click="copilot.scripts.splice(index, 1)">移出队列</n-button>
+              <n-button :disabled="index === 0" @click="move(index, -1)">{{
+                t('maaQueue.moveUp')
+              }}</n-button>
+              <n-button :disabled="index === copilot.scripts.length - 1" @click="move(index, 1)">{{
+                t('maaQueue.moveDown')
+              }}</n-button>
+              <n-button @click="copilot.scripts.splice(index, 1)">{{
+                t('maaQueue.removeFromQueue')
+              }}</n-button>
             </n-flex>
           </n-flex>
         </n-card>
-        <n-text v-if="!paradox" depth="3"
-          >按队列顺序执行，最多 32 项。关卡导航由 MAA
-          完成；请确认作业与关卡、难度及干员练度相符。中断后从未完成项重新执行，已完成项会保存并跳过；整轮完成后停止。清缓存启动保留进度。修改执行队列会开启新一轮，调整编队或理智药设置保留已完成项。</n-text
-        >
-        <n-text v-else depth="3">
-          导入 mem_ 开头关卡的悖论模拟作业，最多 32 项。MAA 自动寻找对应干员并选择作业技能；Mower
-          会先通过导航栏进入干员列表，无需手动打开页面，请确认已解锁悖论模拟。中断后重新执行未完成项，已完成项会保存并跳过；清缓存启动保留进度。队列全部完成后等待手动重跑，修改队列开启新一轮。
-        </n-text>
-        <n-button :disabled="!copilot.scripts.length" @click="restart_queue"
-          >重新执行整份队列</n-button
-        >
+        <n-text v-if="!paradox" depth="3">{{ t('maaQueue.ordinaryQueueHelp') }}</n-text>
+        <n-text v-else depth="3">{{ t('maaQueue.paradoxQueueHelp') }}</n-text>
+        <n-button :disabled="!copilot.scripts.length" @click="restart_queue">{{
+          t('maaQueue.restart')
+        }}</n-button>
       </n-flex>
     </n-form-item>
     <n-form-item v-if="!paradox" :show-label="false"
-      ><n-checkbox v-model:checked="copilot.use_sanity_potion"
-        >允许使用理智药</n-checkbox
-      ></n-form-item
+      ><n-checkbox v-model:checked="copilot.use_sanity_potion">{{
+        t('maaQueue.allowPotion')
+      }}</n-checkbox></n-form-item
     >
     <n-form-item v-if="!paradox" :show-label="false"
-      ><n-checkbox v-model:checked="copilot.formation">自动编队</n-checkbox></n-form-item
+      ><n-checkbox v-model:checked="copilot.formation">{{
+        t('maaQueue.autoFormation')
+      }}</n-checkbox></n-form-item
     >
     <template v-if="!paradox && copilot.formation">
-      <n-form-item label="使用编队"
+      <n-form-item :label="t('maaQueue.formationLabel')"
         ><n-select v-model:value="copilot.formation_index" :options="formation_options"
       /></n-form-item>
       <n-form-item :show-label="false"
-        ><n-checkbox v-model:checked="copilot.add_trust"
-          >空位补充低信赖干员</n-checkbox
-        ></n-form-item
+        ><n-checkbox v-model:checked="copilot.add_trust">{{
+          t('maaQueue.fillTrust')
+        }}</n-checkbox></n-form-item
       >
       <n-form-item :show-label="false"
-        ><n-checkbox v-model:checked="copilot.ignore_requirements"
-          >忽略可跳过的干员练度要求</n-checkbox
-        ></n-form-item
+        ><n-checkbox v-model:checked="copilot.ignore_requirements">{{
+          t('maaQueue.ignoreRequirements')
+        }}</n-checkbox></n-form-item
       >
-      <n-form-item label="指定助战"
+      <n-form-item :label="t('maaQueue.specifiedSupport')"
         ><n-input
           v-model:value="copilot.support_unit_name"
-          placeholder="干员中文名（指定助战模式使用）"
+          :placeholder="t('maaQueue.supportNamePlaceholder')"
       /></n-form-item>
-      <n-form-item label="助战方式"
+      <n-form-item :label="t('maaQueue.supportMode')"
         ><n-select v-model:value="copilot.support_unit_usage" :options="support_options"
       /></n-form-item>
-      <n-form-item label="补充干员">
+      <n-form-item :label="t('maaQueue.additionalOperators')">
         <n-flex vertical style="width: 100%">
           <n-flex v-for="(item, index) in copilot.user_additional" :key="index" :wrap="false">
-            <n-input v-model:value="item.name" placeholder="干员中文名" />
+            <n-input
+              v-model:value="item.name"
+              :placeholder="t('maaQueue.operatorNamePlaceholder')"
+            />
             <n-select
               v-model:value="item.skill"
               :options="skill_options"
               style="min-width: 110px"
             />
-            <n-button @click="copilot.user_additional.splice(index, 1)">移除</n-button>
+            <n-button @click="copilot.user_additional.splice(index, 1)">{{
+              t('maaQueue.remove')
+            }}</n-button>
           </n-flex>
-          <n-button v-if="copilot.user_additional.length < 12" @click="add_operator"
-            >添加干员</n-button
-          >
+          <n-button v-if="copilot.user_additional.length < 12" @click="add_operator">{{
+            t('maaQueue.addOperator')
+          }}</n-button>
         </n-flex>
       </n-form-item>
     </template>

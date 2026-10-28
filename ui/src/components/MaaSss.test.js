@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
+import { i18n } from '@/i18n'
 import axios from 'axios'
 import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 import Component from './MaaSss.vue'
@@ -31,6 +32,7 @@ const first = { id: 'a'.repeat(64), stage_name: '保全关卡一', title: '作�
 const second = { id: 'b'.repeat(64), stage_name: '保全关卡二', title: '作业二' }
 beforeEach(() => {
   vi.clearAllMocks()
+  i18n.global.locale.value = 'zh-CN'
   state.config = { sss: ref({ scripts: [] }) }
   state.client = {
     get: vi.fn(async () => ({ data: { scripts: [first, second] } })),
@@ -42,7 +44,58 @@ beforeEach(() => {
 })
 afterEach(() => {
   scope.stop()
+  i18n.global.locale.value = 'zh-CN'
   vi.unstubAllGlobals()
+})
+
+describe('SSS interface languages', () => {
+  it.each([
+    ['zh-CN', '作业已导入并加入队列'],
+    ['en-US', 'Operation imported and added to the queue'],
+    ['ja-JP', '攻略ファイルをインポートしてキューに追加しました'],
+    ['zh-TW', '作業已匯入並加入佇列']
+  ])(
+    'uses %s messages while retaining script titles, IDs and round settings',
+    async (locale, imported) => {
+      state.config.sss.value = {
+        scripts: [{ id: second.id, type: 2, ec: 3, times: 9 }],
+        run_id: 'original-round'
+      }
+      await component.refresh()
+      i18n.global.locale.value = locale
+      expect(component.options.value[0]).toEqual({ value: first.id, label: '保全关卡一 · 作业一' })
+      expect(component.title(first.id)).toBe('保全关卡一 · 作业一')
+      await component.upload_blob(new Blob(['{}']))
+      expect(state.success).toHaveBeenCalledWith(imported)
+      expect(state.config.sss.value).toEqual({
+        scripts: [
+          { id: second.id, type: 2, ec: 3, times: 9 },
+          { id: first.id, type: 1, ec: 1, times: 1 }
+        ],
+        run_id: 'original-round'
+      })
+    }
+  )
+
+  it('translates the SSS backend error and leaves the response unchanged', async () => {
+    i18n.global.locale.value = 'en-US'
+    const response = {
+      data: { message: '保全作业格式无效或存储已满，请检查文件并清理不再使用的作业' }
+    }
+    state.client.post.mockRejectedValue({ response })
+    const failure = vi.fn()
+    await component.upload({
+      file: { file: new Blob(['{}']) },
+      onFinish: vi.fn(),
+      onError: failure
+    })
+    expect(state.error).toHaveBeenCalledWith(
+      'The SSS operation format is invalid or storage is full. Check the file and delete unused operations.'
+    )
+    expect(response.data.message).toBe('保全作业格式无效或存储已满，请检查文件并清理不再使用的作业')
+    expect(state.config.sss.value.scripts).toEqual([])
+    expect(failure).toHaveBeenCalledOnce()
+  })
 })
 
 describe('SSS library and per-item rounds', () => {

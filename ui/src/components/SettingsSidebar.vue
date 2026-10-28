@@ -1,4 +1,5 @@
 <script setup>
+import { i18n } from '@/i18n'
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import ArrowLeft from '@vicons/fluent/es/ArrowLeft24Regular'
 import SearchIcon from '@vicons/fluent/es/Search24Regular'
@@ -55,19 +56,27 @@ function searchKey(event) {
   <aside
     class="settings-sidebar"
     :class="{ 'settings-sidebar--embedded': embedded }"
-    aria-label="设置导航"
+    :aria-label="i18n.global.t('settings.sidebar.settingsNavigation')"
   >
     <button v-if="!embedded" class="settings-sidebar-back" type="button" @click="emit('back')">
       <n-icon :component="ArrowLeft" aria-hidden="true" />
-      <span>返回</span>
+      <span>{{ i18n.global.t('settings.sidebar.back') }}</span>
     </button>
     <div class="settings-sidebar-search settings-search" role="search">
       <n-input
         v-model:value="query"
         clearable
         :disabled="!page"
-        :placeholder="`搜索${page?.title ?? '设置'}`"
-        :input-props="{ 'aria-label': `搜索${page?.title ?? '设置'}` }"
+        :placeholder="
+          i18n.global.t('settings.sidebar.search', {
+            value0: page?.title ?? i18n.global.t('settings.sidebar.settings')
+          })
+        "
+        :input-props="{
+          'aria-label': i18n.global.t('settings.sidebar.search', {
+            value0: page?.title ?? i18n.global.t('settings.sidebar.settings')
+          })
+        }"
         @keydown="searchKey"
       >
         <template #prefix><n-icon :component="SearchIcon" /></template>
@@ -86,7 +95,9 @@ function searchKey(event) {
             <span class="settings-search-result-label">{{ entry.label }}</span>
             <span class="settings-search-result-path">{{ entry.path }}</span>
           </button>
-          <p v-if="!page.results.value.length" class="settings-search-empty">没有匹配的设置项</p>
+          <p v-if="!page.results.value.length" class="settings-search-empty">
+            {{ i18n.global.t('settings.sidebar.noMatchingSettings') }}
+          </p>
         </div>
         <nav v-else ref="categories" class="settings-nav" :aria-label="page.navLabel">
           <a

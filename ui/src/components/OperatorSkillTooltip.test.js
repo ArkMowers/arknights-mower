@@ -1,9 +1,11 @@
 import { renderToString } from '@vue/server-renderer'
 import { createSSRApp, h } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import axios from 'axios'
 import { useBasementSkill } from '@/stores/basementSkill'
 import { render_op_option } from '@/utils/op_select'
+import { i18n } from '@/i18n'
+import catalog from '../../../arknights_mower/data/building_skill.json'
 
 const tooltip = vi.hoisted(() => ({ show: null }))
 vi.mock('axios', () => ({ default: { get: vi.fn() } }))
@@ -90,8 +92,23 @@ beforeEach(() => {
     }
   ]
 })
+afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
+})
 
 describe('排班选人技能提示', () => {
+  it('renders official skill details after a locale change while preserving the raw catalog and operator option', async () => {
+    skill.value = [catalog.find((operator) => operator.name === '能天使')]
+    const original = JSON.stringify(skill.value)
+    expect(await renderOption()).toContain('物流专家')
+    i18n.global.locale.value = 'en-US'
+    const html = await renderOption()
+    expect(html).toContain('Logistics Expert')
+    expect(html).toContain('order acquisition efficiency +35%')
+    expect(html).toContain('选项：能天使')
+    expect(JSON.stringify(skill.value)).toBe(original)
+    expect(axios.get).not.toHaveBeenCalled()
+  })
   it('展开提示只读本地练度，复用持有、练度及各技能版本状态', async () => {
     const initial = await renderOption()
     expect(initial).toContain('选项：能天使')

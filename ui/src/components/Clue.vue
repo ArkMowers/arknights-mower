@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 defineOptions({ name: 'CreditSettings' })
 const props = defineProps({
   task: { type: String, default: 'all' },
@@ -33,8 +36,17 @@ import { computed, h, inject } from 'vue'
 const mobile = inject('mobile')
 const title = computed(
   () =>
-    ({ visit: '访问好友', 'credit-fight': '信用作战', shop: '信用商店' })[props.task] ||
-    '获取信用及购物'
+    ({
+      get visit() {
+        return t('tasks.visitFriends')
+      },
+      get 'credit-fight'() {
+        return t('tasks.creditFight')
+      },
+      get shop() {
+        return t('tasks.creditStore')
+      }
+    })[props.task] || t('tasks.creditAndShopping')
 )
 const mower_visit_enabled = computed(
   () => visit_friend_enable.value && visit_friend_mode.value === 'mower'
@@ -82,21 +94,44 @@ function render_label(option) {
 }
 
 const squads = [
-  { label: '第一编队', value: 1 },
-  { label: '第二编队', value: 2 },
-  { label: '第三编队', value: 3 },
-  { label: '第四编队', value: 4 }
+  {
+    get label() {
+      return t('tasks.firstSquad')
+    },
+    value: 1
+  },
+  {
+    get label() {
+      return t('tasks.secondSquad')
+    },
+    value: 2
+  },
+  {
+    get label() {
+      return t('tasks.thirdSquad')
+    },
+    value: 3
+  },
+  {
+    get label() {
+      return t('tasks.fourthSquad')
+    },
+    value: 4
+  }
 ]
 </script>
 
 <template>
   <n-card :title="title">
     <p v-if="task === 'all'">
-      线索收集与赠送在
-      <n-button text type="primary" aria-label="配置线索搜集与交流" @click="emit('configure-clue')"
-        >线索搜集与交流</n-button
-      >
-      中配置。
+      {{ t('tasks.clueSettingsBefore')
+      }}<n-button
+        text
+        type="primary"
+        :aria-label="t('tasks.configureClues')"
+        @click="emit('configure-clue')"
+        >{{ t('tasks.clueCollectionExchange') }}</n-button
+      >{{ t('tasks.configuredIn') }}
     </p>
     <n-form
       v-if="['all', 'credit-fight', 'visit'].includes(task)"
@@ -107,38 +142,38 @@ const squads = [
       <template v-if="task === 'all' || task === 'visit'">
         <n-form-item v-if="showEnable" :show-label="false">
           <n-checkbox v-model:checked="visit_friend_enable">
-            <div class="item">访问好友</div>
+            <div class="item">{{ t('tasks.visitFriends') }}</div>
           </n-checkbox>
         </n-form-item>
         <n-form-item
           v-if="visit_friend_enable || !showEnable"
-          label="处理方式"
+          :label="t('tasks.handler')"
           data-task-editor="visit"
         >
-          <n-radio-group v-model:value="visit_friend_mode" aria-label="访友执行方式">
+          <n-radio-group v-model:value="visit_friend_mode" :aria-label="t('tasks.visitRunner')">
             <n-space>
               <n-radio value="maa">MAA</n-radio>
               <n-radio value="mower">Mower</n-radio>
             </n-space>
           </n-radio-group>
           <help-text>
-            <div>MAA：在执行日常任务时由 MAA 进入好友列表拜访并收取信用。</div>
-            <div>Mower：在轮询基建调度之余由 Mower 原生进入好友列表拜访并收取信用。</div>
+            <div>{{ t('tasks.maaVisitHelp') }}</div>
+            <div>{{ t('tasks.mowerVisitHelp') }}</div>
           </help-text>
         </n-form-item>
       </template>
       <template v-if="task === 'all' || task === 'credit-fight'">
         <n-form-item v-if="showEnable" :show-label="false">
           <n-checkbox v-model:checked="maa_credit_fight">
-            <div class="item">信用作战</div>
+            <div class="item">{{ t('tasks.creditFight') }}</div>
           </n-checkbox>
         </n-form-item>
         <n-form-item data-task-editor="credit-fight">
           <template #label>
-            <span>编队</span>
-            <help-text label="信用作战编队说明">
-              <div>借助战打OF-1</div>
-              <div>使用指定编队</div>
+            <span>{{ t('tasks.squad') }}</span>
+            <help-text :label="t('tasks.creditFightSquadHelp')">
+              <div>{{ t('tasks.creditFightOF1') }}</div>
+              <div>{{ t('tasks.useSelectedSquad') }}</div>
             </help-text>
           </template>
           <n-select :options="squads" v-model:value="credit_fight.squad" />
@@ -148,20 +183,19 @@ const squads = [
     <template v-if="task === 'all' || task === 'shop'">
       <n-divider v-if="task === 'all'" />
       <n-checkbox v-if="showEnable" v-model:checked="maa_mall_enable" class="maa-shop">
-        <div class="item">信用商店购物</div>
+        <div class="item">{{ t('tasks.creditStorePurchases') }}</div>
       </n-checkbox>
       <help-text>
-        <span>性价比参考：</span>
+        <span>{{ t('tasks.valueReference') }}</span>
         <n-button
           text
           tag="a"
           href="https://github.com/Bidgecfah/Rhodes-Island-Bureau-of-Price"
           target="_blank"
           type="primary"
+          >{{ t('tasks.itemValueSite') }}</n-button
         >
-          罗德岛物价局
-        </n-button>
-        <p>注意：跑单时赤金与作战记录均大幅升值</p>
+        <p>{{ t('tasks.tradeOrderValueNotice') }}</p>
       </help-text>
       <n-form
         v-if="maa_mall_enable || !showEnable"
@@ -171,19 +205,19 @@ const squads = [
         label-width="72"
         label-align="left"
       >
-        <n-form-item label="处理方式">
-          <n-radio-group v-model:value="maa_mall_mode" aria-label="购物执行方式">
+        <n-form-item :label="t('tasks.handler')">
+          <n-radio-group v-model:value="maa_mall_mode" :aria-label="t('tasks.shoppingRunner')">
             <n-space>
               <n-radio value="maa">MAA</n-radio>
               <n-radio value="mower">Mower</n-radio>
             </n-space>
           </n-radio-group>
           <help-text>
-            <div>MAA：在执行日常任务时由 MAA 进入采购中心进行信用收取和购物。</div>
-            <div>Mower：在会客室线索流程处理完成后由 Mower 原生进入信用商店进行收取和购物。</div>
+            <div>{{ t('tasks.maaShoppingHelp') }}</div>
+            <div>{{ t('tasks.mowerShoppingHelp') }}</div>
           </help-text>
         </n-form-item>
-        <n-form-item label="购物设置" v-if="maa_mall_mode === 'mower'">
+        <n-form-item :label="t('tasks.shoppingSettings')" v-if="maa_mall_mode === 'mower'">
           <n-space align="center" :size="[24, 12]">
             <n-space align="center" :size="0">
               <n-tooltip :disabled="mower_visit_enabled">
@@ -192,18 +226,16 @@ const squads = [
                     <n-checkbox
                       v-model:checked="clue_credit_on_demand"
                       :disabled="!mower_visit_enabled"
+                      >{{ t('tasks.collectCreditOnDemand') }}</n-checkbox
                     >
-                      按需领取信用
-                    </n-checkbox>
-                  </span>
-                </template>
-                需要开启 Mower 访问好友
-              </n-tooltip>
+                  </span> </template
+                >{{ t('tasks.requiresMowerVisit') }}</n-tooltip
+              >
               <help-text>
-                <div>需同时开启 Mower 访友和 Mower 购物。</div>
-                <div>购物缺信用时再领取信息板，先领上周结算，仍不够再领本周信用。</div>
-                <div>交流能在凌晨 03:45 前结束且收入够用时，会先等交流结束。</div>
-                <div>周日会优先领取即将过期的上周结算。</div>
+                <div>{{ t('tasks.requiresVisitAndShop') }}</div>
+                <div>{{ t('tasks.creditOnDemandHelp') }}</div>
+                <div>{{ t('tasks.creditWaitClueParty') }}</div>
+                <div>{{ t('tasks.creditSundaySettlement') }}</div>
               </help-text>
             </n-space>
             <n-tooltip :disabled="mower_visit_enabled">
@@ -212,15 +244,13 @@ const squads = [
                   <n-checkbox
                     v-model:checked="credit_shop_by_value"
                     :disabled="!mower_visit_enabled"
+                    >{{ t('tasks.valueShopping') }}</n-checkbox
                   >
-                    按性价比购物
-                  </n-checkbox>
-                </span>
-              </template>
-              需要开启 Mower 访问好友
-            </n-tooltip>
+                </span> </template
+              >{{ t('tasks.requiresMowerVisit') }}</n-tooltip
+            >
             <n-space align="center" :size="8">
-              <span>阈值</span>
+              <span>{{ t('tasks.threshold') }}</span>
               <mower-input-number
                 :value="credit_shop_value_threshold"
                 @update:value="update_value_threshold"
@@ -229,57 +259,59 @@ const squads = [
                 :step="0.001"
                 :precision="3"
                 :show-button="false"
-                :input-props="{ 'aria-label': '购物性价比阈值' }"
+                :input-props="{ 'aria-label': t('tasks.shoppingValueThreshold') }"
                 style="width: 120px"
               />
-              <span>理智/信用</span>
+              <span>{{ t('tasks.sanityPerCredit') }}</span>
               <help-text>
-                <div>先买优先商品，再从非黑名单商品中按性价比挑选。</div>
-                <div>阈值越高，购买越挑剔；信用超过 300 时会计算等效性价比，减少溢出。</div>
-                <div>参考阈值：二电 0.045（默认）、三电 0.036；带线索号分别为 0.043、0.032。</div>
-                <div>优先购买建议只设招聘许可，黑名单建议只设理智价值为 0 的物品。</div>
+                <div>{{ t('tasks.shoppingPriorityHelp') }}</div>
+                <div>{{ t('tasks.shoppingThresholdHelp') }}</div>
+                <div>{{ t('tasks.shoppingThresholdReference') }}</div>
+                <div>{{ t('tasks.shoppingListAdvice') }}</div>
               </help-text>
             </n-space>
           </n-space>
         </n-form-item>
-        <n-form-item label="购物设置" v-if="maa_mall_mode === 'maa'">
+        <n-form-item :label="t('tasks.shoppingSettings')" v-if="maa_mall_mode === 'maa'">
           <n-space :size="24">
-            <n-checkbox v-model:checked="maa_mall_only_buy_discount">只购买折扣物品</n-checkbox>
-            <n-checkbox v-model:checked="maa_mall_reserve_max_credit">
-              保留最大信用点（低于 300 停止购买）
-            </n-checkbox>
+            <n-checkbox v-model:checked="maa_mall_only_buy_discount">{{
+              t('tasks.discountOnly')
+            }}</n-checkbox>
+            <n-checkbox v-model:checked="maa_mall_reserve_max_credit">{{
+              t('tasks.retainCredit300')
+            }}</n-checkbox>
           </n-space>
           <help-text>
-            <div>两个设置均仅作用于第二轮购买。</div>
+            <div>{{ t('tasks.secondRoundOnly') }}</div>
           </help-text>
         </n-form-item>
-        <n-form-item label="信用溢出">
+        <n-form-item :label="t('tasks.creditOverflow')">
           <n-radio-group
             v-model:value="maa_mall_ignore_blacklist_when_full"
             :disabled="value_shopping_enabled"
           >
             <n-space>
-              <n-radio :value="false">停止购买</n-radio>
-              <n-radio :value="true">无视黑名单继续购买，直至不再溢出</n-radio>
+              <n-radio :value="false">{{ t('tasks.stopPurchases') }}</n-radio>
+              <n-radio :value="true">{{ t('tasks.ignoreBlocklistOverflow') }}</n-radio>
             </n-space>
           </n-radio-group>
           <help-text v-if="value_shopping_enabled">
-            <div>开启按性价比购物时，此处不可设置；关闭后可继续使用原设置。</div>
+            <div>{{ t('tasks.valueShoppingOverrides') }}</div>
           </help-text>
         </n-form-item>
-        <n-form-item label="优先购买">
+        <n-form-item :label="t('tasks.priorityPurchases')">
           <n-select
             multiple
             filterable
             tag
             :options="shop_list"
             v-model:value="maa_mall_buy"
-            aria-label="优先购买"
+            :aria-label="t('tasks.priorityPurchases')"
             :render-tag="render_tag"
             :render-label="render_label"
           />
         </n-form-item>
-        <n-form-item label="黑名单">
+        <n-form-item :label="t('tasks.blocklist')">
           <n-select
             multiple
             filterable

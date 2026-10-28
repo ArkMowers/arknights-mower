@@ -1,41 +1,57 @@
 <script setup>
-import { getRoomDisplayName } from '@/riic/vendor/workbench/operatorHelpers'
+import { incomeDisplayMessage, incomeRoomName } from '@/i18n/income'
+import { operatorDisplayName } from '@/i18n/gameNames'
+import { i18n } from '@/i18n'
+const { t, locale } = i18n.global
 
 defineProps({ activity: { type: Object, required: true } })
-const format = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 3 })
+const format = (value) => Number(value).toLocaleString(locale.value, { maximumFractionDigits: 3 })
 </script>
 
 <template>
   <div class="income-activity">
-    <p>{{ activity.message }}</p>
+    <p>{{ incomeDisplayMessage(activity.message) }}</p>
     <ul v-if="activity.findings?.length">
-      <li v-for="(finding, i) in activity.findings" :key="i">{{ finding.message }}</li>
+      <li v-for="(finding, i) in activity.findings" :key="i">
+        {{ incomeDisplayMessage(finding.message) }}
+      </li>
     </ul>
     <p v-if="activity.task">
-      {{ activity.task.source === 'active' ? '当前任务' : '最近待执行任务' }}：{{
-        activity.task.label
+      {{
+        t('income.taskLabel', {
+          kind: t(activity.task.source === 'active' ? 'income.currentTask' : 'income.pendingTask'),
+          label: incomeDisplayMessage(activity.task.label)
+        })
       }}
-      {{ activity.task.metadata }} · 计划时刻 T+{{ format(activity.task.dueHours) }} 小时
+      {{ activity.task.metadata }} ·
+      {{ t('income.due', { hours: format(activity.task.dueHours) }) }}
       <span v-if="activity.task.rooms.length">
-        · {{ activity.task.rooms.map(getRoomDisplayName).join('、') }}</span
+        · {{ activity.task.rooms.map((room) => incomeRoomName(room)).join(', ') }}</span
       >
     </p>
     <ul v-if="activity.operators.length">
       <li v-for="op in activity.operators" :key="op.id">
-        {{ op.name }} · 心情 {{ format(op.morale) }} / {{ format(op.upperLimit) }} ·
-        {{ op.room ? getRoomDisplayName(op.room) : '未驻员' }} ·
-        {{ op.groups.join('、') || '未绑组' }}
+        {{ operatorDisplayName(op.name) }} ·
+        {{ t('income.morale', { value: format(op.morale), limit: format(op.upperLimit) }) }} ·
+        {{ op.room ? incomeRoomName(op.room) : t('income.noStaff') }} ·
+        {{ op.groups.join(', ') || t('income.noGroup') }}
       </li>
     </ul>
     <p v-if="activity.recentEvents.length">
-      近期活动：{{
-        activity.recentEvents.map((event) => `${event.label} ${event.count} 次`).join('；')
+      {{
+        t('income.recent', {
+          events: activity.recentEvents
+            .map((event) =>
+              t('income.occurrences', { ...event, label: incomeDisplayMessage(event.label) })
+            )
+            .join('; ')
+        })
       }}
     </p>
     <p v-if="!activity.findings?.length && !activity.task && !activity.operators.length">
-      当前观测没有具体干员或任务信息。
+      {{ t('income.noDetails') }}
     </p>
-    <p>以上为已观测记录，不能仅凭活动频次认定原因；历史校验记录不表示当前仍未解决。</p>
+    <p>{{ t('income.observedOnly') }}</p>
   </div>
 </template>
 

@@ -1,4 +1,7 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
@@ -21,38 +24,38 @@ function setRewardsEnabled(value) {
         <n-checkbox
           :checked="selection.checked"
           :indeterminate="selection.indeterminate"
-          aria-label="启用MAA 领取奖励"
+          :aria-label="t('tasks.enableMaaRewards')"
           @update:checked="setRewardsEnabled"
         />
-        <span>MAA 领取奖励</span>
+        <span>{{ t('tasks.maaRewards') }}</span>
       </n-flex>
     </template>
     <n-flex vertical>
       <n-checkbox v-model:checked="maa_mail">
-        <div class="item">领取所有邮件奖励</div>
+        <div class="item">{{ t('tasks.allMailRewards') }}</div>
       </n-checkbox>
       <n-divider />
       <n-checkbox v-model:checked="maa_recruit">
-        <div class="item">进行限定池赠送的每日免费单抽</div>
+        <div class="item">{{ t('tasks.dailyFreePull') }}</div>
       </n-checkbox>
       <n-divider />
       <n-checkbox v-model:checked="maa_orundum">
-        <div class="item">领取幸运墙的每日合成玉奖励</div>
+        <div class="item">{{ t('tasks.luckyWallOrundum') }}</div>
       </n-checkbox>
       <n-divider />
       <n-checkbox v-model:checked="maa_mining">
-        <div class="item">领取限时开采许可的每日合成玉奖励</div>
+        <div class="item">{{ t('tasks.miningOrundum') }}</div>
       </n-checkbox>
       <n-divider />
       <n-checkbox v-model:checked="maa_specialaccess">
-        <div class="item">领取赠送月卡奖励</div>
+        <div class="item">{{ t('tasks.giftMonthlyCard') }}</div>
       </n-checkbox>
       <n-divider />
       <n-flex align="center">
         <n-checkbox v-model:checked="maa_signinevent">
-          <div class="item">领取限时签到活动奖励</div>
+          <div class="item">{{ t('maaActivities.signinReward') }}</div>
         </n-checkbox>
-        <help-text>仅支持常见横向签到版型，不含新春等特殊版型。没有活动时自动跳过。</help-text>
+        <help-text>{{ t('maaActivities.signinHelp') }}</help-text>
       </n-flex>
     </n-flex>
   </n-card>

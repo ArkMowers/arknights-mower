@@ -1,4 +1,6 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
 defineOptions({ name: 'MowerPlanPage' })
 
 import { useConfigStore } from '@/stores/config'
@@ -91,7 +93,7 @@ const dialog = useDialog()
 
 function requireEditing() {
   if (edit_locked.value) {
-    message.warning('排班操作正在进行，请稍后再编辑')
+    message.warning(t('plans.busy'))
     return false
   }
   return true
@@ -111,14 +113,10 @@ async function restoreRunningPlan() {
     await config_store.load_config()
     await load_plan()
     keepPaused = false
-    message.success('已还原为当前运行排班表及高级设置')
+    message.success(t('plans.restored'))
   } catch (error) {
-    const detail = error.response?.data?.error || error.message || '还原运行排班失败'
-    message.error(
-      keepPaused
-        ? `排班及高级设置已还原，但读取失败，请刷新页面；自动保存已暂停：${detail}`
-        : detail
-    )
+    const detail = error.response?.data?.error || error.message || t('plans.restoreFailed')
+    message.error(keepPaused ? t('plans.restoreReloadFailed', { detail }) : detail)
   } finally {
     if (!keepPaused) import_saves.resume()
     restoring_running_plan.value = false
@@ -131,9 +129,9 @@ async function importMainPlan() {
     await import_saves.pauseAndDrain()
     await plan_store.import_main_plan()
     await plan_store.save_plan()
-    message.success('已复制正常主表')
+    message.success(t('plans.copiedMain'))
   } catch (error) {
-    message.error(error.response?.data?.error || error.message || '导入主表失败')
+    message.error(error.response?.data?.error || error.message || t('plans.importMainFailed'))
   } finally {
     import_saves.resume()
   }
@@ -145,9 +143,9 @@ async function clearRescueBindings() {
     await import_saves.pauseAndDrain()
     plan_store.clear_rescue_bindings()
     await plan_store.save_plan()
-    message.success('已清空绑组与普通替班，保留跑单人选及菲亚梅塔充能对象')
+    message.success(t('plans.clearedBindings'))
   } catch (error) {
-    message.error(error.response?.data?.error || error.message || '清空失败')
+    message.error(error.response?.data?.error || error.message || t('plans.clearFailed'))
   } finally {
     import_saves.resume()
   }
@@ -159,7 +157,7 @@ async function returnToSettings() {
     await drainConfigurationSaves(config_store, plan_store)
     await router.push('/maasettings')
   } catch (error) {
-    message.error(error.message || '保存排班失败，请重试')
+    message.error(error.message || t('plans.saveFailed'))
   }
 }
 
@@ -169,7 +167,7 @@ async function beforeImport() {
     await import_saves.pauseAndDrain()
     return true
   } catch (error) {
-    message.error(error.message || '排班导入前保存失败')
+    message.error(error.message || t('plans.preImportSaveFailed'))
     return false
   }
 }
@@ -216,7 +214,7 @@ onMounted(async () => {
       await Promise.all([load_plan(), plan_store.load_operators()])
       rescue_ready.value = true
     } catch (error) {
-      message.error('救急排班加载失败：' + error.message)
+      message.error(t('plans.rescueLoadFailed', { detail: error.message }))
     }
   }
   void refreshRunningStatus()
@@ -238,8 +236,7 @@ const loading_bar = useLoadingBar()
 
 import Bowser from 'bowser'
 
-import { render_op_option, render_op_label } from '@/utils/op_select'
-import { pinyin_match } from '@/utils/common'
+import { render_op_option, render_op_label, filterOperatorOption } from '@/utils/op_select'
 
 async function save() {
   await drainConfigurationSaves(config_store, plan_store)
@@ -287,7 +284,7 @@ const mobile = inject('mobile')
 const sub_plan_options = computed(() => {
   const result = [
     {
-      label: '主表',
+      label: t('plans.mainPlan'),
       value: 'main'
     }
   ]
@@ -470,7 +467,7 @@ async function validate_plan() {
       message.error(data.message)
     }
   } catch (error) {
-    message.error('验证失败: ' + error.message)
+    message.error(t('plans.validationError', { detail: error.message }))
   } finally {
     validating_plan.value = false
   }
@@ -514,27 +511,26 @@ const target_already_in_plan = computed(() => {
 function do_replace() {
   if (!requireEditing()) return
   apply_operator_replace(replace_plan_state(), replace_source.value, replace_target.value)
-  message.success('替换完成')
+  message.success(t('plans.replaced'))
   show_replace_dialog.value = false
 }
 
 function apply_replace() {
   if (!requireEditing()) return
   if (!replace_source.value || !replace_target.value) {
-    message.error('请选择源干员和目标干员')
+    message.error(t('plans.chooseReplacement'))
     return
   }
   if (replace_source.value === replace_target.value) {
-    message.error('源干员和目标干员不能相同')
+    message.error(t('plans.sameReplacement'))
     return
   }
   if (target_already_in_plan.value) {
     dialog.warning({
-      title: '目标干员已在排班中',
-      content:
-        '目标干员已存在于排班（可能来自之前的替换，如主表换过、副表没换）。仍要执行的话会继续把排班里的源干员全部换成目标干员。',
-      positiveText: '仍要替换',
-      negativeText: '取消',
+      title: t('plans.targetAlreadyExists'),
+      content: t('plans.replaceExistingConfirm'),
+      positiveText: t('plans.replaceAnyway'),
+      negativeText: t('plans.cancel'),
       onPositiveClick: do_replace
     })
     return
@@ -562,12 +558,12 @@ async function import_plan({ event }) {
       sub_plan.value = 'main'
       if (!rescue) await config_store.load_config()
       await load_plan()
-      message.success('成功导入排班表！')
+      message.success(t('plans.imported'))
     } else {
       message.error(msg)
     }
   } catch (error) {
-    message.error(error.message || '导入后读取排班失败')
+    message.error(error.message || t('plans.reloadImportedFailed'))
   } finally {
     import_saves.resume()
   }
@@ -575,7 +571,7 @@ async function import_plan({ event }) {
 
 function import_error() {
   import_saves.resume()
-  message.error('排班表上传失败')
+  message.error(t('plans.uploadFailed'))
 }
 
 const import_url = `${import.meta.env.VITE_HTTP_URL}/import${rescue ? '?rescue=1' : ''}`
@@ -615,7 +611,8 @@ async function prepareIncome() {
     incomeWorkspace(plan)
     if (generation !== income_preparation) return
     const imageTheme = theme.value
-    const label = sub_plan.value === 'main' ? '主表' : backup_plans.value[sub_plan.value].name
+    const label =
+      sub_plan.value === 'main' ? t('plans.mainPlan') : backup_plans.value[sub_plan.value].name
     facility.value = ''
     await nextTick()
     if (Bowser.getParser(window.navigator.userAgent).getEngine().name === 'WebKit') {
@@ -644,7 +641,7 @@ async function prepareIncome() {
       style: { margin: 0, padding: '8px 0' }
     })
     if (generation !== income_preparation) return
-    if (!capture) throw new Error('原排班图片生成失败')
+    if (!capture) throw new Error(t('plans.snapshotImageFailed'))
     const form = new FormData()
     form.append('img', capture)
     form.append('plan', JSON.stringify(plan))
@@ -656,7 +653,8 @@ async function prepareIncome() {
     if (generation === income_preparation)
       income_snapshot.value = { plan, image: data, theme: imageTheme, label, roomBounds, droneRoom }
   } catch (error) {
-    if (generation === income_preparation) income_error.value = error.message || '排班快照准备失败'
+    if (generation === income_preparation)
+      income_error.value = error.message || t('plans.snapshotFailed')
   } finally {
     if (generation === income_preparation) {
       preparing_income.value = false
@@ -666,12 +664,12 @@ async function prepareIncome() {
   }
 }
 
-const export_options = [
+const export_options = computed(() => [
   {
-    label: '导出JSON文件',
+    label: t('plans.exportJson'),
     key: 'json'
   }
-]
+])
 
 async function export_json() {
   await drainConfigurationSaves(config_store, plan_store)
@@ -716,14 +714,14 @@ function movePlanForward() {
     <trigger-dialog />
     <task-dialog />
     <rename-dialog />
-    <div class="plan-toolbar-viewport mx-auto mt-12" aria-label="排班操作栏">
+    <div class="plan-toolbar-viewport mx-auto mt-12" :aria-label="t('plans.toolbar')">
       <div class="plan-bar">
         <n-button-group class="plan-restore-group">
           <n-tooltip trigger="hover" placement="top">
             <template #trigger>
               <n-button
                 class="plan-restore-button"
-                :aria-label="rescue ? '返回全部设置' : '还原为当前运行排班表及高级设置'"
+                :aria-label="rescue ? t('plans.backSettings') : t('plans.restoreRunning')"
                 :disabled="edit_locked || (!rescue && !running)"
                 :loading="restoring_running_plan"
                 @click="rescue ? returnToSettings() : restoreRunningPlan()"
@@ -735,17 +733,17 @@ function movePlanForward() {
             </template>
             {{
               rescue
-                ? '返回全部设置'
+                ? t('plans.backSettings')
                 : running
-                  ? '还原为当前运行排班表及高级设置'
-                  : 'Mower 运行时可还原排班表及高级设置'
+                  ? t('plans.restoreRunning')
+                  : t('plans.restoreAvailable')
             }}
           </n-tooltip>
         </n-button-group>
         <n-button-group class="mower-sub-plan-controls plan-sort-controls">
           <n-button
-            title="副表上移"
-            aria-label="副表上移"
+            :title="t('plans.backupUp')"
+            :aria-label="t('plans.backupUp')"
             :disabled="edit_locked || sub_plan == 'main' || sub_plan == 0"
             @click="movePlanBackward"
           >
@@ -754,8 +752,8 @@ function movePlanForward() {
             </template>
           </n-button>
           <n-button
-            title="副表下移"
-            aria-label="副表下移"
+            :title="t('plans.backupDown')"
+            :aria-label="t('plans.backupDown')"
             :disabled="edit_locked || sub_plan == 'main' || sub_plan == backup_plans.length - 1"
             @click="movePlanForward"
           >
@@ -783,62 +781,61 @@ function movePlanForward() {
           </n-button>
         </n-button-group>
         <n-button-group>
-          <n-button title="新建副表" :disabled="edit_locked" @click="create_sub_plan">
+          <n-button :title="t('plans.newBackup')" :disabled="edit_locked" @click="create_sub_plan">
             <template #icon>
-              <n-icon :size="22"><plus-round /></n-icon>
-            </template>
-            新建副表
-          </n-button>
+              <n-icon :size="22"><plus-round /></n-icon> </template
+            >{{ t('plans.newBackup') }}</n-button
+          >
           <n-button
             v-if="sub_plan == 'main'"
-            title="验证排班"
+            :title="t('plans.validate')"
             :loading="validating_plan"
             :disabled="validating_plan"
             @click="validate_plan"
           >
             <template #icon>
-              <n-icon><help /></n-icon>
-            </template>
-            验证排班
-          </n-button>
+              <n-icon><help /></n-icon> </template
+            >{{ t('plans.validate') }}</n-button
+          >
           <n-button
             v-else
-            title="编辑触发条件"
+            :title="t('plans.editConditions')"
             :disabled="edit_locked"
             @click="show_trigger_editor = true"
           >
             <template #icon>
-              <n-icon><code-slash /></n-icon>
-            </template>
-            编辑触发条件
-          </n-button>
+              <n-icon><code-slash /></n-icon> </template
+            >{{ t('plans.editConditions') }}</n-button
+          >
           <n-button
             v-if="sub_plan == 'main'"
-            title="一键替换干员"
+            :title="t('plans.replaceOperators')"
             :disabled="edit_locked"
             @click="show_replace_dialog = true"
           >
             <template #icon>
-              <n-icon><refresh-round /></n-icon>
-            </template>
-            一键替换干员
-          </n-button>
-          <n-button v-else title="编辑任务" :disabled="edit_locked" @click="show_task = true">
-            <template #icon>
-              <n-icon><add-task-round /></n-icon>
-            </template>
-            编辑任务
-          </n-button>
+              <n-icon><refresh-round /></n-icon> </template
+            >{{ t('plans.replaceOperators') }}</n-button
+          >
           <n-button
-            title="删除此副表"
+            v-else
+            :title="t('plans.editTasks')"
+            :disabled="edit_locked"
+            @click="show_task = true"
+          >
+            <template #icon>
+              <n-icon><add-task-round /></n-icon> </template
+            >{{ t('plans.editTasks') }}</n-button
+          >
+          <n-button
+            :title="t('plans.deleteBackup')"
             :disabled="edit_locked || sub_plan == 'main'"
             @click="delete_sub_plan"
           >
             <template #icon>
-              <n-icon><trash-outline /></n-icon>
-            </template>
-            删除此副表
-          </n-button>
+              <n-icon><trash-outline /></n-icon> </template
+            >{{ t('plans.deleteBackup') }}</n-button
+          >
         </n-button-group>
         <component
           :is="rescue ? DropDown : 'div'"
@@ -846,7 +843,7 @@ function movePlanForward() {
             rescue
               ? {
                   select: importMainPlan,
-                  options: [{ label: '导入主表', key: 'main', disabled: edit_locked }]
+                  options: [{ label: t('plans.importMain'), key: 'main', disabled: edit_locked }]
                 }
               : {}
           "
@@ -867,26 +864,24 @@ function movePlanForward() {
             @finish="import_plan"
             @error="import_error"
           >
-            <n-button title="导入排班" :disabled="edit_locked">
+            <n-button :title="t('plans.importPlan')" :disabled="edit_locked">
               <template #icon>
-                <n-icon><document-import /></n-icon>
-              </template>
-              导入排班
-            </n-button>
+                <n-icon><document-import /></n-icon> </template
+              >{{ t('plans.importPlan') }}</n-button
+            >
           </n-upload>
         </component>
         <drop-down :select="export_json" :options="export_options">
           <n-button
-            title="导出图片"
+            :title="t('plans.exportImage')"
             @click="save"
             :loading="generating_image"
             :disabled="generating_image"
           >
             <template #icon>
-              <n-icon><document-export /></n-icon>
-            </template>
-            导出图片
-          </n-button>
+              <n-icon><document-export /></n-icon> </template
+            >{{ t('plans.exportImage') }}</n-button
+          >
         </drop-down>
       </div>
     </div>
@@ -899,16 +894,15 @@ function movePlanForward() {
     />
     <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
     <div v-if="!rescue" class="plan-advanced-actions w-980 mx-auto px-12 mw-980">
-      <n-button @click="show_advanced_settings_dialog = true">高级设置</n-button>
-      <n-button @click="show_mood_limits_dialog = true"> 设置心情上下限 </n-button>
+      <n-button @click="show_advanced_settings_dialog = true">{{ t('plans.advanced') }}</n-button>
+      <n-button @click="show_mood_limits_dialog = true">{{ t('plans.moraleLimits') }}</n-button>
       <n-button
         type="success"
         :disabled="edit_locked"
         :loading="preparing_income"
         @click="prepareIncome"
+        >{{ t('plans.calculateIncome') }}</n-button
       >
-        计算收益
-      </n-button>
       <PlanFacilityLevels class="inline-power" />
     </div>
     <PlanFacilityLevels v-if="rescue" class="w-980 mx-auto px-12 mw-980" />
@@ -916,12 +910,13 @@ function movePlanForward() {
       class="w-980 mx-auto mb-12 px-12 mw-980"
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
-      label-width="160"
+      :label-width="i18n.global.locale.value === 'en-US' ? 220 : 160"
       label-align="left"
     >
       <n-form-item v-if="!rescue">
         <template #label
-          ><span>需要回满心情的干员</span><help-text>回满目标为当前心情上限。</help-text></template
+          ><span>{{ t('plans.fullRecoveryOperators') }}</span
+          ><help-text>{{ t('plans.fullRecoveryHelp') }}</help-text></template
         >
         <PlanOperatorSelect
           :disabled="edit_locked"
@@ -932,10 +927,8 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
-          <span>需要用尽心情的干员</span>
-          <help-text>
-            用尽按当前心情下限计算， 优先取得替班；被占用时先换替班，否则叫回占用组。
-          </help-text>
+          <span>{{ t('plans.exhaustOperators') }}</span>
+          <help-text>{{ t('plans.exhaustHelp') }}</help-text>
         </template>
         <PlanOperatorSelect
           :disabled="edit_locked"
@@ -946,18 +939,11 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
-          <span>宿舍高优先级干员</span>
+          <span>{{ t('plans.highPriorityOperators') }}</span>
           <help-text>
-            <p>
-              高优干员 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
-              空闲；同级距心情上限更远者优先。
-            </p>
-            <p>
-              只影响分床和单回，不改变下班顺序。更高排名的新入住者可重分单回，已有普通床位保持不动。
-            </p>
-            <p>
-              动态选择的干员达到或超过个人心情上限后，按普通空闲级参与分床和保床；固定宿舍岗位及宿舍保留干员除外。
-            </p>
+            <p>{{ t('plans.priorityOrderHelp') }}</p>
+            <p>{{ t('plans.bedPriorityHelp') }}</p>
+            <p>{{ t('plans.fullPriorityHelp') }}</p>
           </help-text>
         </template>
         <PlanOperatorSelect
@@ -969,10 +955,8 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
-          <span>宿舍低优先级干员</span>
-          <help-text>
-            低于普通主班，高于高优替班；同级距心情上限更远者优先。需有床才能下班，不改变下班顺序。
-          </help-text>
+          <span>{{ t('plans.lowPriorityOperators') }}</span>
+          <help-text>{{ t('plans.lowPriorityHelp') }}</help-text>
         </template>
         <PlanOperatorSelect
           :disabled="edit_locked"
@@ -983,10 +967,8 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
-          <span>宿舍高优先级替班</span>
-          <help-text
-            >仅替班生效，低于低优主班、高于候补；同级距心情上限更远者优先，可接管候补床位。</help-text
-          >
+          <span>{{ t('plans.highPriorityReplacements') }}</span>
+          <help-text>{{ t('plans.highReplacementHelp') }}</help-text>
         </template>
         <PlanOperatorSelect
           :disabled="edit_locked"
@@ -997,13 +979,10 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
-          <span>宿舍休息候补干员</span>
-          <help-text>
-            任意干员均可填写，恢复优先级低于高优替班、高于普通替班，不随心情临时升为低优。
-
-            <p>
-              符合待命条件的工作主班有床休息，无床或被更高优接管后待命；需有正常优先级主班在休息，绑组随组回班，未绑组随下一批回班。待命不恢复心情；固定宿舍、用尽、回满和零心情工作规则独立生效。
-            </p>
+          <span>{{ t('plans.standbyOperators') }}</span>
+          <help-text
+            >{{ t('plans.standbyPriorityHelp') }}
+            <p>{{ t('plans.standbyHelp') }}</p>
           </help-text>
         </template>
         <PlanOperatorSelect
@@ -1015,7 +994,8 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item>
         <template #label>
-          <span>0心情工作的干员</span><help-text>心情涣散状态仍能触发技能的干员</help-text>
+          <span>{{ t('plans.zeroMoraleOperators') }}</span
+          ><help-text>{{ t('plans.zeroMoraleHelp') }}</help-text>
         </template>
         <PlanOperatorSelect
           :disabled="edit_locked"
@@ -1026,8 +1006,8 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item>
         <template #label>
-          <span>宿舍黑名单</span>
-          <help-text> 不参与动态分床和补床，固定宿舍岗位不受影响。 </help-text>
+          <span>{{ t('plans.dormBlacklist') }}</span>
+          <help-text>{{ t('plans.dormBlacklistHelp') }}</help-text>
         </template>
         <PlanOperatorSelect
           :disabled="edit_locked"
@@ -1038,14 +1018,8 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
-          <span>宿舍保留干员</span>
-          <help-text>
-            名单内干员不会被自动清退为空闲，可按恢复优先级换床、换宿舍或合法上班。
-            达到个人心情上限或令夕上限但暂时不能合法上班时继续留宿，不因回满而降低恢复优先级。
-            未配置工作主岗位的干员占用动态 Free
-            床位；切表后空闲且没有明确安排时，即使心情已满也会安排入住。
-            切出后若生效名单不再保留该干员，且没有工作主岗位或其他明确安排，则从动态床位清退为空闲，无须先回满。
-          </help-text>
+          <span>{{ t('plans.retainedDormOperators') }}</span>
+          <help-text>{{ t('plans.retainedDormHelp') }}</help-text>
         </template>
         <PlanOperatorSelect
           :disabled="edit_locked"
@@ -1056,12 +1030,13 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
-          <span>跑单时间刷新干员</span>
+          <span>{{ t('plans.refreshTradingOperators') }}</span>
           <help-text>
-            <p>贸易站外影响贸易效率的干员</p>
+            <p>{{ t('plans.refreshTradingHelp') }}</p>
             <p>
-              默认情况下，mower 只在贸易站内干员换班后重读所有贸易站的订单剩余时间。<br />
-              若有贸易站外的干员影响贸易效率，且与贸易站内的干员不在一组，则需写入此选项中。
+              {{ t('plans.refreshTradingDefaultHelp') }}<br />{{
+                t('plans.refreshTradingExternalHelp')
+              }}
             </p>
           </help-text>
         </template>
@@ -1074,10 +1049,10 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
-          <span>用尽刷新</span>
+          <span>{{ t('plans.refreshExhaustion') }}</span>
           <help-text>
-            <p>会影响用尽干员心情消耗速率的干员</p>
-            <p>在填入该选项的干员上下班后，会重新读取用尽干员的下班时间</p>
+            <p>{{ t('plans.refreshExhaustionHelp') }}</p>
+            <p>{{ t('plans.refreshExhaustionTimingHelp') }}</p>
           </help-text>
         </template>
         <PlanOperatorSelect
@@ -1089,11 +1064,8 @@ function movePlanForward() {
       </n-form-item>
       <n-form-item>
         <template #label>
-          <span>宿舍优先级排序</span>
-          <help-text>
-            默认 1→2→3→4
-            为各宿舍高优位，可手动插入低优位。未选择的低优位排在末尾。副表留空继承，覆盖生效顺序时重排宿舍；日常不反复搬床。
-          </help-text>
+          <span>{{ t('plans.dormPriority') }}</span>
+          <help-text>{{ t('plans.dormPriorityHelp') }}</help-text>
         </template>
         <slick-dorm-select
           :disabled="edit_locked"
@@ -1106,36 +1078,22 @@ function movePlanForward() {
     </n-form>
     <div v-if="rescue" class="w-980 mx-auto mb-12 px-12 mw-980">
       <n-space align="center">
-        <n-button :disabled="edit_locked" @click="clearRescueBindings">清空绑组与普通替班</n-button>
-        <span>清理救急主表及全部副表，保留跑单干员和菲亚梅塔充能对象。</span>
+        <n-button :disabled="edit_locked" @click="clearRescueBindings">{{
+          t('plans.clearBindings')
+        }}</n-button>
+        <span>{{ t('plans.clearBindingsHelp') }}</span>
       </n-space>
     </div>
     <div v-if="rescue" class="w-980 mx-auto mt-12 mb-12 px-12 mw-980">
-      <n-alert title="救急排班说明" type="info">
+      <n-alert :title="t('plans.rescueHelpTitle')" type="info">
         <n-space vertical :size="6">
-          <div>
-            此页编辑独立的救急主表和副表，修改会自动保存。开启自动救急后，仅在初始化发现多组主班低于救急线、普通轮休无法安排休息时启用。
-          </div>
-          <div>
-            救急表的普通工作设施必须与双方副表生效后的正常表完整对应，岗位数量、类型及产物必须一致；会客室、办公室和回收站不能省略或整行留空。加工站和训练室沿用专项配置与训练保护。排班校验先检查救急主副表自身的驻员、岗位数量和替换名单；有副表条件时，设施类型、等级及产物在初始化实测后按双方生效排班核对，差异会阻止进入救急。与正常主班重名的救急驻员会在启动时提示，但仍按救急表工作。
-          </div>
-          <div>
-            进入救急后立即按救急表部署全部已配置工作岗位，不因心情未知或任务预约暂缓。训练室正在训练、受保护或房态不可靠时整房跳过，也不从其他房间间接调走其驻员，其他房间继续；训练室空闲且未受保护时照常部署。后续加工及专精仍按原任务执行。
-          </div>
-          <div>
-            跑单人选、宿管及菲亚梅塔的位置和充能对象须在救急表中独立填写。Free
-            床位优先恢复正常主班，剩余空位按正常排班优先级补入替班或空闲干员。
-          </div>
-          <div>
-            救急驻员支持绑组和普通替班；组内非零心情工作干员低于下班线时，完整替班接岗后整组离岗；正常主班可预约宿舍恢复，其他驻员待命。未配置普通替班的驻员视为零心情工作干员，持续在岗，不触发下班，也不参与同组替班。跑单和菲亚充能仍使用各自的替换人选。
-          </div>
-          <div>
-            “导入排班”读取完整排班文件；右侧下拉的“导入主表”只复制正常主表，保留救急副表。“导出图片”和“导出JSON文件”均携带完整救急排班。
-          </div>
-          <div>
-            自动救急开关位于 Mower 设置 →
-            基建设置，不随正常排班导入导出。救急期间冻结正常副表，正常排班可接回周转后退出，仍需恢复的组继续休息。
-          </div>
+          <div>{{ t('plans.rescueIntroHelp') }}</div>
+          <div>{{ t('plans.rescueCompatibilityHelp') }}</div>
+          <div>{{ t('plans.rescueDeploymentHelp') }}</div>
+          <div>{{ t('plans.rescueSpecialHelp') }}</div>
+          <div>{{ t('plans.rescueReplacementHelp') }}</div>
+          <div>{{ t('plans.rescueImportHelp') }}</div>
+          <div>{{ t('plans.rescueExitHelp') }}</div>
         </n-space>
       </n-alert>
     </div>
@@ -1143,14 +1101,14 @@ function movePlanForward() {
       v-model:show="show_advanced_settings_dialog"
       :auto-focus="false"
       preset="card"
-      title="高级设置"
+      :title="t('plans.advanced')"
       :style="{ width: '800px', maxWidth: 'calc(100vw - 24px)' }"
       :content-style="{ maxHeight: '75vh', overflowY: 'auto' }"
     >
       <PlanAdvancedSettings :disabled="edit_locked" />
       <template #footer>
         <n-space justify="end">
-          <n-button @click="show_advanced_settings_dialog = false">完成</n-button>
+          <n-button @click="show_advanced_settings_dialog = false">{{ t('plans.done') }}</n-button>
         </n-space>
       </template>
     </n-modal>
@@ -1158,32 +1116,32 @@ function movePlanForward() {
       v-model:show="show_mood_limits_dialog"
       :auto-focus="false"
       preset="card"
-      title="设置心情上下限"
+      :title="t('plans.moraleLimits')"
       :style="{ width: '680px', maxWidth: 'calc(100vw - 24px)' }"
       :content-style="{ maxHeight: '70vh', overflowY: 'auto' }"
     >
       <n-form label-placement="top" :show-feedback="false">
         <n-form-item>
           <template #label>
-            <span>令夕模式</span>
+            <span>{{ t('plans.lingDuskMode') }}</span>
             <help-text>
-              <div>令夕上班时起作用</div>
-              <div>启动Mower前需要手动对齐心情</div>
-              <div>感知：夕心情-令心情=12</div>
-              <div>烟火：令心情-夕心情=12</div>
-              <div>均衡：夕令心情一样</div>
-              <div>个人设置优先于令夕模式，令夕模式优先于全体设置。</div>
+              <div>{{ t('plans.lingDuskWorkHelp') }}</div>
+              <div>{{ t('plans.lingDuskAlignHelp') }}</div>
+              <div>{{ t('plans.lingDuskPerceptionHelp') }}</div>
+              <div>{{ t('plans.lingDuskWorldHelp') }}</div>
+              <div>{{ t('plans.lingDuskBalancedHelp') }}</div>
+              <div>{{ t('plans.lingDuskPriorityHelp') }}</div>
             </help-text>
           </template>
           <n-radio-group v-model:value="current_conf.ling_xi" :disabled="edit_locked">
             <n-space>
-              <n-radio :value="1">感知信息</n-radio>
-              <n-radio :value="2">人间烟火</n-radio>
-              <n-radio :value="3">均衡模式</n-radio>
+              <n-radio :value="1">{{ t('plans.lingDuskPerception') }}</n-radio>
+              <n-radio :value="2">{{ t('plans.lingDuskWorld') }}</n-radio>
+              <n-radio :value="3">{{ t('plans.lingDuskBalanced') }}</n-radio>
             </n-space>
           </n-radio-group>
         </n-form-item>
-        <n-form-item label="自定义上下限">
+        <n-form-item :label="t('plans.customLimits')">
           <mood-limits-editor
             v-model:defaults="current_conf.mood_limits"
             v-model:overrides="current_conf.operator_mood_limits"
@@ -1195,29 +1153,27 @@ function movePlanForward() {
       </n-form>
       <template #footer>
         <n-space justify="end">
-          <n-button @click="show_mood_limits_dialog = false">完成</n-button>
+          <n-button @click="show_mood_limits_dialog = false">{{ t('plans.done') }}</n-button>
         </n-space>
       </template>
     </n-modal>
     <n-modal
       v-model:show="show_replace_dialog"
       preset="card"
-      title="一键替换干员"
+      :title="t('plans.replaceOperators')"
       :style="{ width: '560px' }"
     >
-      <n-alert title="警告" type="warning">
-        该操作会一键替换主表+副表所有干员名字，不可逆，使用前最好复制现有排班表，以防出错
-      </n-alert>
+      <n-alert :title="t('plans.warning')" type="warning">{{ t('plans.replaceWarning') }}</n-alert>
       <div class="replace-flow">
         <div class="replace-side">
-          <div class="replace-side-label">被替换干员（排班中已有）</div>
+          <div class="replace-side-label">{{ t('plans.sourceOperator') }}</div>
           <n-select
             v-model:value="replace_source"
             :disabled="edit_locked"
             :options="replace_source_options"
-            placeholder="选择排班中的干员"
+            :placeholder="t('plans.chooseSource')"
             filterable
-            :filter="(p, o) => pinyin_match(o.label, p)"
+            :filter="filterOperatorOption"
             :render-label="render_op_label"
             :render-option="render_op_option"
           />
@@ -1239,14 +1195,14 @@ function movePlanForward() {
           />
         </svg>
         <div class="replace-side">
-          <div class="replace-side-label">替换为（全部干员池）</div>
+          <div class="replace-side-label">{{ t('plans.targetOperator') }}</div>
           <n-select
             v-model:value="replace_target"
             :disabled="edit_locked"
             :options="operators"
-            placeholder="选择目标干员"
+            :placeholder="t('plans.chooseTarget')"
             filterable
-            :filter="(p, o) => pinyin_match(o.label, p)"
+            :filter="filterOperatorOption"
             :render-label="render_op_label"
             :render-option="render_op_option"
           />
@@ -1254,16 +1210,17 @@ function movePlanForward() {
       </div>
       <n-alert
         v-if="target_already_in_plan"
-        title="目标干员已在排班中"
+        :title="t('plans.targetAlreadyExists')"
         type="warning"
         class="replace-duplicate"
+        >{{ t('plans.targetAlreadyExistsHelp') }}</n-alert
       >
-        目标干员已存在于排班（可能来自之前的替换，如主表换过、副表没换）。仍可替换：点「替换」后确认即可继续。
-      </n-alert>
       <template #footer>
         <n-space justify="end">
-          <n-button @click="show_replace_dialog = false">取消</n-button>
-          <n-button type="primary" :disabled="edit_locked" @click="apply_replace">替换</n-button>
+          <n-button @click="show_replace_dialog = false">{{ t('plans.cancel') }}</n-button>
+          <n-button type="primary" :disabled="edit_locked" @click="apply_replace">{{
+            t('plans.replace')
+          }}</n-button>
         </n-space>
       </template>
     </n-modal>

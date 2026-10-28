@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope } from 'vue'
 import IncomeSettings from './IncomeSettings.vue'
+import { i18n } from '@/i18n'
 const state = vi.hoisted(() => ({ client: null }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
@@ -36,8 +37,10 @@ describe('Mower 统一收益配置', () => {
   afterEach(() => {
     scope.stop()
     vi.restoreAllMocks()
+    i18n.global.locale.value = 'zh-CN'
   })
-  it('提交算法与比例快照，保存成功后采用确认值', async () => {
+  it.each(['zh-CN', 'en-US'])('提交算法与比例快照，保存成功后采用确认值（%s）', async (locale) => {
+    i18n.global.locale.value = locale
     page.ratios.experience = 2
     const saved = { ...settings(), ratios: { ...page.ratios } }
     let complete

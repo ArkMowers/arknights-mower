@@ -6,6 +6,7 @@ import { createPinia } from 'pinia'
 import * as NaiveUI from 'naive-ui'
 import axios from 'axios'
 import { useGuiStore } from '@/stores/gui'
+import { i18n } from '@/i18n'
 import SoftwareVersionPreference from './SoftwareVersionPreference.vue'
 import SoftwareVersionBadge from './SoftwareVersionBadge.vue'
 import SettingsSegmented from './SettingsSegmented.vue'
@@ -239,6 +240,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  i18n.global.locale.value = 'zh-CN'
   for (const { app, stores } of mounted.splice(0)) {
     app.unmount()
     for (const store of stores) store.$dispose()
@@ -247,6 +249,41 @@ afterEach(() => {
 })
 
 describe('software version preference with the build workflow preview', () => {
+  it('updates a mounted interface while keeping the independently saved version type language', async () => {
+    axios.get.mockResolvedValue({
+      data: { software_version_display: 'channel', software_version_language: 'zh' }
+    })
+    const page = mount()
+    await flush()
+    expect(text(page.badges()[1])).toBe('公测版')
+
+    i18n.global.locale.value = 'en-US'
+    await nextTick()
+
+    expect(text(page.nodes()[0])).toContain('Version type')
+    expect(text(page.badges()[1])).toBe('公测版')
+    expect(page.badges()[0].props.title).toContain('Started from source')
+    expect(page.gui.softwareVersionLanguage).toBe('zh')
+    expect(page.gui.softwareVersionDisplay).toBe('channel')
+    expect(axios.put).not.toHaveBeenCalled()
+    const language = page
+      .nodes()
+      .find(
+        (element) =>
+          element.tag === 'select' && element.props['aria-label'] === 'Version Type Language'
+      )
+    expect(language.props.value).toBe('zh')
+    language.props.onChange({ target: { value: 'en' } })
+    await flush()
+    expect(axios.put).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/\/gui\/appearance$/),
+      { software_version_language: 'en' },
+      { timeout: 5000 }
+    )
+    expect(i18n.global.locale.value).toBe('en-US')
+    expect(text(page.badges()[1])).toBe('alpha')
+  })
+
   it('keeps the preview visible and its searchable language control inside the preview', async () => {
     const page = mount()
     await flush()

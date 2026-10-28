@@ -1,7 +1,11 @@
 <script setup>
+import { i18n } from '@/i18n'
+const { t } = i18n.global
+
 import { inject, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
+import { resourceUpdateMessage } from '@/utils/resourceUpdatePresentation'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
@@ -75,7 +79,7 @@ async function drop(event) {
   event.preventDefault()
   event.stopPropagation()
   if (busy.value || reading.value || resources.installing) {
-    messages.warning('正在读取或安装更新包，请等待完成')
+    messages.warning(t('runtime.updateBusy'))
     return
   }
   reading.value = true
@@ -83,7 +87,7 @@ async function drop(event) {
     const file = droppedUpdateFile(event)
     const kind = await updatePackageKind(file)
     if (disposed) return
-    if (!kind) throw new Error('未识别到 Mower 软件包或资源包')
+    if (!kind) throw new Error(t('runtime.unrecognizedUpdate'))
     if (kind === 'software') {
       pendingSoftwarePackage.value = file
       show.value = false
@@ -122,13 +126,13 @@ async function installResource() {
         plan.load_operators()
       ])
       if (refreshed.some((item) => item.status === 'rejected')) {
-        messages.warning('资源包已安装，部分页面数据刷新失败，请刷新页面')
+        messages.warning(t('runtime.resourceRefreshFailed'))
       }
     }
   } catch (error) {
     result.value = {
       ok: false,
-      message: error.response?.data?.message || error.message || '安装失败，请重试'
+      message: error.response?.data?.message || error.message || t('runtime.installationFailed')
     }
   } finally {
     busy.value = false
@@ -163,16 +167,16 @@ onUnmounted(() => {
   <Teleport to="body">
     <div v-if="dragging || reading" class="global-update-drop" aria-live="polite">
       <div class="global-update-drop__content">
-        <strong>{{ reading ? '正在读取更新包内容…' : '松开文件，准备更新' }}</strong>
-        <span>资源包 ZIP · Mower 软件安装包 ZIP、tar.gz、DMG</span>
-        <span>一次一个文件，确认后安装</span>
+        <strong>{{ reading ? t('runtime.readingUpdate') : t('runtime.releaseForUpdate') }}</strong>
+        <span>{{ t('runtime.updateFormats') }}</span>
+        <span>{{ t('runtime.oneUpdateFile') }}</span>
       </div>
     </div>
   </Teleport>
   <n-modal
     v-model:show="show"
     preset="card"
-    title="安装资源包"
+    :title="t('runtime.installResource')"
     style="width: min(560px, calc(100vw - 32px))"
     :closable="!busy"
     :mask-closable="!busy"
@@ -180,14 +184,14 @@ onUnmounted(() => {
   >
     <n-space vertical :size="16">
       <n-text style="overflow-wrap: anywhere">{{ selected?.name }}</n-text>
-      <n-text depth="3">资源包安装后直接生效，无需重启。</n-text>
+      <n-text depth="3">{{ t('runtime.resourceImmediate') }}</n-text>
       <n-progress v-if="busy" type="line" :percentage="progress" />
       <n-alert v-if="result" :type="result.ok ? 'success' : 'error'" aria-live="polite">{{
-        result.message
+        resourceUpdateMessage(result.message)
       }}</n-alert>
       <n-space justify="end">
         <n-button :disabled="busy" @click="show = false">{{
-          result?.ok ? '完成' : '取消'
+          result?.ok ? t('runtime.done') : t('runtime.cancel')
         }}</n-button>
         <n-button
           v-if="!result?.ok"
@@ -195,7 +199,7 @@ onUnmounted(() => {
           :disabled="reading"
           :loading="busy"
           @click="installResource"
-          >确认安装</n-button
+          >{{ t('runtime.confirmInstall') }}</n-button
         >
       </n-space>
     </n-space>

@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 export async function requestSoftwareUpdateCheck(axios, channel) {
   const base = `${import.meta.env.VITE_HTTP_URL || ''}/software-update`
   const { data } = await axios.post(
@@ -5,7 +7,8 @@ export async function requestSoftwareUpdateCheck(axios, channel) {
     { channel },
     { headers: { 'X-Mower-Update': '1' } }
   )
-  if (!data.ok) throw new Error(data.message || '软件检查未完成')
+  if (!data.ok)
+    throw new Error(data.message || i18n.global.t('settings.softwareUpdate.checkFailed'))
   return data
 }
 
@@ -19,12 +22,32 @@ export function confirmSoftwareInstall(
 ) {
   const target = { ...selection }
   return dialogs.warning({
-    title: target.confirm_title || (target.downgrade ? '确认回退版本？' : '确认安装并重启？'),
+    title:
+      target.confirm_title ||
+      i18n.global.t(
+        target.downgrade
+          ? 'settings.softwareUpdate.confirmRollback'
+          : 'settings.softwareUpdate.confirmInstall'
+      ),
     content:
       target.confirm_message ||
-      `${target.source_repo ? `将使用仓库 ${target.source_repo}。` : ''}${target.downgrade ? `将从 ${currentVersion} 回退到 ${target.version}。旧版可能无法兼容当前配置或运行缓存。` : `将安装 ${target.version}。`}重启同一安装目录下的 ${instanceCount} 个实例；原本运行中的实例保留已保存的心情、位置，以及跑单、专精换人等重要任务和未完成的补偿，按当前版本和排班重新生成普通任务；已停止的实例保持停止。配置、专精计划和数据库记录保留；安装失败时尝试恢复原版本。${target.force ? '将覆盖本地源码改动，不备份本地修改；即使安装失败，本地修改也不会恢复。' : ''}`,
-    positiveText: target.downgrade ? '确认回退' : '确认安装',
-    negativeText: '取消',
+      [
+        target.source_repo
+          ? i18n.global.t('settings.softwareUpdate.repository', { repository: target.source_repo })
+          : '',
+        target.downgrade
+          ? i18n.global.t('settings.softwareUpdate.rollbackWarning', {
+              currentVersion,
+              version: target.version
+            })
+          : i18n.global.t('settings.softwareUpdate.installVersion', { version: target.version }),
+        i18n.global.t('settings.softwareUpdate.restartDetails', { count: instanceCount }),
+        target.force ? i18n.global.t('settings.softwareUpdate.discardChanges') : ''
+      ].join(''),
+    positiveText: i18n.global.t(
+      target.downgrade ? 'settings.softwareUpdate.rollback' : 'settings.softwareUpdate.install'
+    ),
+    negativeText: i18n.global.t('settings.softwareUpdate.cancel'),
     autoFocus: false,
     onNegativeClick: cancel,
     onClose: cancel,
@@ -35,10 +58,13 @@ export function confirmSoftwareInstall(
 
 export function confirmForceUpdate(dialogs, version, instanceCount, install) {
   return dialogs.warning({
-    title: '确认强制更新？',
-    content: `将强制切换到 ${version}，覆盖本地源码改动，不备份本地修改，并重启同一安装目录下的 ${instanceCount} 个实例。原本运行中的实例保留已保存的心情、位置，以及跑单、专精换人等重要任务和未完成的补偿，按当前版本和排班重新生成普通任务；已停止的实例保持停止。即使安装失败，本地修改也不会恢复。`,
-    positiveText: '确认强制更新',
-    negativeText: '取消',
+    title: i18n.global.t('settings.softwareUpdate.confirmForce'),
+    content: i18n.global.t('settings.softwareUpdate.forceDetails', {
+      version,
+      count: instanceCount
+    }),
+    positiveText: i18n.global.t('settings.softwareUpdate.force'),
+    negativeText: i18n.global.t('settings.softwareUpdate.cancel'),
     autoFocus: false,
     onPositiveClick: install
   })
@@ -46,10 +72,43 @@ export function confirmForceUpdate(dialogs, version, instanceCount, install) {
 
 export function confirmSourceVersion(dialogs, target, instanceCount, install) {
   return dialogs.warning({
-    title: target.force ? '确认强制切换源码版本？' : '确认切换源码版本？',
-    content: `${target.source_repo ? `将使用仓库 ${target.source_repo}${target.source_pr ? ` 的 PR #${target.source_pr}` : ''}。` : ''}${target.base_commit ? `将以目标分支 ${target.source_branch} 的 ${target.base_commit} 合并所选 PR。` : ''}${target.source_pr ? `PR 提交为 ${target.sha}，合并成功后安装` : `将切换到提交 ${target.sha}`}，重启同一安装目录下的 ${instanceCount} 个实例，同时关闭软件自动更新。原本运行中的实例保留已保存的心情、位置，以及跑单、专精换人等重要任务和未完成的补偿，按当前版本和排班重新生成普通任务；已停止的实例保持停止。配置、专精计划和数据库记录保留；较旧版本可能无法兼容当前配置或运行缓存。${target.force ? '将覆盖本地源码改动，不备份本地修改；即使安装失败，本地修改也不会恢复。' : '安装失败时尝试恢复原版本。'}`,
-    positiveText: target.force ? '确认强制切换' : '确认切换',
-    negativeText: '取消',
+    title: i18n.global.t(
+      target.force
+        ? 'settings.softwareUpdate.confirmForceSource'
+        : 'settings.softwareUpdate.confirmSource'
+    ),
+    content: [
+      target.source_repo
+        ? i18n.global.t('settings.softwareUpdate.sourceRepository', {
+            repository: target.source_repo,
+            pull: target.source_pr
+              ? i18n.global.t('settings.softwareUpdate.pullSuffix', { number: target.source_pr })
+              : ''
+          })
+        : '',
+      target.base_commit
+        ? i18n.global.t('settings.softwareUpdate.mergeBase', {
+            branch: target.source_branch,
+            commit: target.base_commit
+          })
+        : '',
+      i18n.global.t(
+        target.source_pr
+          ? 'settings.softwareUpdate.pullCommit'
+          : 'settings.softwareUpdate.switchCommit',
+        { commit: target.sha }
+      ),
+      i18n.global.t('settings.softwareUpdate.sourceDetails', { count: instanceCount }),
+      i18n.global.t(
+        target.force
+          ? 'settings.softwareUpdate.discardChanges'
+          : 'settings.softwareUpdate.restoreVersion'
+      )
+    ].join(''),
+    positiveText: i18n.global.t(
+      target.force ? 'settings.softwareUpdate.forceSwitch' : 'settings.softwareUpdate.switch'
+    ),
+    negativeText: i18n.global.t('settings.softwareUpdate.cancel'),
     autoFocus: false,
     onPositiveClick: install
   })

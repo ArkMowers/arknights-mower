@@ -1,3 +1,6 @@
+import { i18n } from '@/i18n'
+import { planDisplayName } from '@/i18n/plans'
+const { t } = i18n.global
 import receptionTemplate from '../../../arknights_mower/resources/room/meeting.png?url'
 import officeTemplate from '../../../arknights_mower/resources/room/contact.png?url'
 import recycleTemplate from '../../../arknights_mower/resources/room/recycle.png?url'
@@ -41,7 +44,25 @@ export function incomeWorkspace(plan) {
   return workspace
 }
 export function incomeFacilities(plan) {
-  return droneFacilities(incomeWorkspace(plan))
+  const workspace = incomeWorkspace(plan)
+  return droneFacilities(workspace).map((target) => {
+    const facility = workspace.mainPlan.facilities[target.roomId]
+    const parts =
+      facility.type === 'trading'
+        ? ['贸易站']
+        : [
+            '制造站',
+            facility.product === 'exp'
+              ? '作战记录'
+              : facility.product === 'fragment'
+                ? '源石碎片'
+                : '赤金'
+          ]
+    return {
+      ...target,
+      label: `${target.label.split(' ')[0]} ${parts.map(planDisplayName).join(' · ')}`
+    }
+  })
 }
 export function inventoryRequired(plan) {
   return workspaceUsesInventoryConditions(incomeWorkspace(plan))
@@ -54,16 +75,20 @@ export function incomeRequest(plan, settings) {
     const value = settings[key]
     if (!Number.isInteger(value) || value < minimum || value > maximum) {
       throw new Error(
-        `${key === 'warmupDays' ? '预热' : '统计'}天数必须为 ${minimum}–${maximum} 的整数`
+        t('income.dayRange', {
+          period: t(key === 'warmupDays' ? 'income.warmup' : 'income.sample'),
+          min: minimum,
+          max: maximum
+        })
       )
     }
   }
   if (!Number.isSafeInteger(settings.seed) || settings.seed < 0 || settings.seed > 0xffffffff) {
-    throw new Error('随机种子必须为 0–4294967295 的整数')
+    throw new Error(t('income.seedRange'))
   }
   const workspace = incomeWorkspace(plan)
   const target = droneFacilities(workspace).find((f) => f.roomId === settings.droneRoom)
-  if (settings.droneRoom && !target) throw new Error('无人机目标不在本次排班中')
+  if (settings.droneRoom && !target) throw new Error(t('income.missingDrone'))
   const inventory = normalizeSimulationInventory(
     settings.finiteInventory || workspaceUsesInventoryConditions(workspace)
       ? incomeInitialInventory(settings)
@@ -71,20 +96,21 @@ export function incomeRequest(plan, settings) {
   )
   let operators
   if (settings.operatorMode === 'cache') {
-    if (!settings.cachedOperators)
-      throw new Error('没有可用的森空岛练度缓存，请先同步或选择其他练度来源')
+    if (!settings.cachedOperators) throw new Error(t('income.noOperatorCache'))
     const parsed = compileOperatorInventory(settings.cachedOperators)
     if (!parsed.valid || !parsed.operators.length)
       throw new Error(
-        parsed.diagnostics.map((d) => d.message).join('；') || '森空岛缓存中没有已拥有干员'
+        parsed.diagnostics.map((d) => d.message).join('；') || t('income.emptyOperatorCache')
       )
     operators = settings.cachedOperators
   } else if (settings.operatorMode === 'custom') {
     const parsed = parseOperatorInventory(settings.operatorText)
     if (!parsed.valid || !parsed.entries.length)
-      throw new Error(parsed.diagnostics.map((d) => d.message).join('；') || '请填写干员和练度')
+      throw new Error(
+        parsed.diagnostics.map((d) => d.message).join('；') || t('income.enterOperators')
+      )
     operators = parsed.entries
-  } else if (settings.operatorMode !== 'maximum') throw new Error('干员练度选项无效')
+  } else if (settings.operatorMode !== 'maximum') throw new Error(t('income.invalidOperatorMode'))
   return {
     workspace,
     options: {
@@ -123,11 +149,10 @@ export function incomeRequest(plan, settings) {
 
 export function incomeWeights(settings) {
   if (settings.weightMode === 'mower') {
-    if (!settings.mowerWeights)
-      throw new Error('Mower 收益算法尚未读取，请重试或选择本次自定义权重')
+    if (!settings.mowerWeights) throw new Error(t('income.noWeights'))
     return normalizeProductionWeights(settings.mowerWeights)
   }
-  if (settings.weightMode !== 'custom') throw new Error('产出权重来源无效')
+  if (settings.weightMode !== 'custom') throw new Error(t('income.invalidWeights'))
   return normalizeProductionWeights(settings.productionWeights)
 }
 
@@ -151,41 +176,63 @@ export function incomeGoldEquivalentLmd(summary) {
 
 export function incomeMetrics(summary, days) {
   return [
-    ['经验', summary.exp, '经验值'],
-    ['赤金等价龙门币', incomeGoldEquivalentLmd(summary), '龙门币'],
-    ['贸易龙门币', summary.orderLmd, '龙门币'],
-    ['龙门币消耗', summary.lmdConsumed, '龙门币'],
-    ['龙门币净增', summary.netLmd, '龙门币'],
-    ['源石碎片', summary.fragments, '个'],
-    ['合成玉', summary.orundum, '个'],
-    ['回收站产出', summary.recycleCount, '次'],
-    ['公招刷新', summary.recruitmentCount, '次'],
-    ...(summary.clueCount == null ? [] : [['会客室线索', summary.clueCount, '个']])
+    [t('income.experience'), summary.exp, t('income.expUnit')],
+    [t('income.goldEquivalent'), incomeGoldEquivalentLmd(summary), t('income.lmdUnit')],
+    [t('income.tradeLmd'), summary.orderLmd, t('income.lmdUnit')],
+    [t('income.lmdCost'), summary.lmdConsumed, t('income.lmdUnit')],
+    [t('income.netLmd'), summary.netLmd, t('income.lmdUnit')],
+    [t('income.fragments'), summary.fragments, t('income.itemUnit')],
+    [t('income.orundum'), summary.orundum, t('income.itemUnit')],
+    [t('income.recycle'), summary.recycleCount, t('income.countUnit')],
+    [t('income.recruitment'), summary.recruitmentCount, t('income.countUnit')],
+    ...(summary.clueCount == null
+      ? []
+      : [[t('income.clues'), summary.clueCount, t('income.itemUnit')]])
   ].map(([label, daily, unit]) => ({ label, daily: daily ?? 0, total: (daily ?? 0) * days, unit }))
 }
 
 export function incomeImageMetrics(summary, days) {
   return [
-    { key: 'exp', icon: '/product/exp3.png', daily: summary.exp, unit: '经验值' },
+    { key: 'exp', icon: '/product/exp3.png', daily: summary.exp, unit: t('income.expUnit') },
     {
       key: 'gold',
       icon: '/product/gold.png',
       daily: incomeGoldEquivalentLmd(summary),
-      unit: '龙门币'
+      unit: t('income.lmdUnit')
     },
     {
       key: 'lmd',
       icon: '/product/lmd.png',
       daily: summary.netLmd,
-      unit: '龙门币',
+      unit: t('income.lmdUnit'),
       signed: true,
       present: summary.orderLmd || summary.lmdConsumed
     },
-    { key: 'fragment', icon: '/product/orirock.png', daily: summary.fragments, unit: '个' },
-    { key: 'orundum', icon: '/product/orundum.png', daily: summary.orundum, unit: '个' },
-    { key: 'recycle', icon: recycleTemplate, daily: summary.recycleCount, unit: '次' },
-    { key: 'recruitment', icon: officeTemplate, daily: summary.recruitmentCount, unit: '次' },
-    { key: 'clue', icon: receptionTemplate, daily: summary.clueCount, unit: '个' }
+    {
+      key: 'fragment',
+      icon: '/product/orirock.png',
+      daily: summary.fragments,
+      unit: t('income.itemUnit')
+    },
+    {
+      key: 'orundum',
+      icon: '/product/orundum.png',
+      daily: summary.orundum,
+      unit: t('income.itemUnit')
+    },
+    {
+      key: 'recycle',
+      icon: recycleTemplate,
+      daily: summary.recycleCount,
+      unit: t('income.countUnit')
+    },
+    {
+      key: 'recruitment',
+      icon: officeTemplate,
+      daily: summary.recruitmentCount,
+      unit: t('income.countUnit')
+    },
+    { key: 'clue', icon: receptionTemplate, daily: summary.clueCount, unit: t('income.itemUnit') }
   ]
     .filter((row) => Math.abs(row.daily ?? 0) > 1e-8 || Math.abs(row.present ?? 0) > 1e-8)
     .map((row) => ({ ...row, daily: row.daily ?? 0, total: (row.daily ?? 0) * days }))

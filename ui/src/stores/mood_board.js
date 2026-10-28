@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import axios from 'axios'
@@ -81,7 +82,7 @@ export const useMoodBoardStore = defineStore('mood-board', () => {
         return true
       } catch {
         loadRequest = undefined
-        saveError.value = '心情报表偏好暂时无法读写 UI 配置，当前使用本地偏好，请稍后重试操作。'
+        saveError.value = i18n.global.t('reports.moralePreferencesFailed')
         return false
       } finally {
         initialized.value = true
@@ -108,7 +109,7 @@ export const useMoodBoardStore = defineStore('mood-board', () => {
         }
         saveError.value = ''
       } catch {
-        saveError.value = '心情报表偏好暂时无法读写 UI 配置，当前使用本地偏好，请稍后重试操作。'
+        saveError.value = i18n.global.t('reports.moralePreferencesFailed')
       }
     })
   }
