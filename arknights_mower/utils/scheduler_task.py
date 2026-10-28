@@ -1495,6 +1495,7 @@ def _recovery_aware_assignments(
         candidate
         for candidate in candidates
         if resting_tier(op_data, candidate[2]) != RestingTier.EXCLUDED
+        or op_data.workaholic_follows_resting_group(op_data.operators[candidate[2]])
     ]
     protected = {
         candidate[2]
@@ -1789,7 +1790,12 @@ def rebalance_plan_swap_dorms(
     plan = {}
     for _key, _order, name, _time, _position in dropped:
         op = op_data.operators[name]
-        if op.is_high() and (not op.group or op_data.is_group_shift_anchor(op)):
+        if op.is_high() and (
+            not op.group
+            or op_data.is_group_shift_anchor(op)
+            or op_data.group_is_resting(op.group)
+            and op_data.is_workaholic_group(op.group)
+        ):
             members = op_data.groups[op.group] if op.group else [name]
             _native_return(op_data, plan, members)
 

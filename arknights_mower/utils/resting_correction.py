@@ -329,14 +329,29 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
     protected = _recall_recovery_members(op_data) | off_duty_full_recovery_members(
         op_data
     )
+    protected.update(
+        name
+        for name, op in op_data.operators.items()
+        if op_data.workaholic_follows_resting_group(op) and not op.is_working()
+    )
     resting.update(protected)
-    if not resting:
+    recalling_groups = {
+        op.group
+        for room, row in fix_plan.items()
+        if not room.startswith("dorm")
+        for index, name in enumerate(row)
+        if (op := op_data.operators.get(name)) is not None
+        and op.group
+        and op_data.group_is_resting(op.group)
+        and op_data.is_workaholic_group(op.group)
+        and (op.room, op.index) == (room, index)
+    }
+    if not resting and not recalling_groups:
         return
     requested = {room: slots.copy() for room, slots in fix_plan.items()}
     reserved = _reserved_names(op_data, requested, resting)
     is_busy = cache(is_busy)
     current = {room: op_data.get_current_room(room, True) for room in fix_plan}
-    recalling_groups = set()
     for room, slots in fix_plan.items():
         if room.startswith("dorm"):
             continue
@@ -391,11 +406,13 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                     f"{name}所在组正在休息，{room}暂无可用替班，保留原纠错叫回安排"
                 )
     # 回班以组为单位覆盖之前逐槽尝试的替班结果，不能只叫回失败那一人。
-    # 宿舍固定成员交给 correct_group_dorms，训练室仍尊重调用方的保护。
+    # 全零心情组没有触发成员，连同宿舍固定成员一起形成完整回班意图。
     for group in recalling_groups:
         for name in op_data.groups[group]:
             op = op_data.operators[name]
-            if op.room.startswith("dorm"):
+            if op.room.startswith("dorm") and not op_data.is_workaholic_group(group):
+                continue
+            if op.multi_group and op_data.is_workaholic_group(group):
                 continue
             current.setdefault(op.room, op_data.get_current_room(op.room, True))
             fix_plan.setdefault(op.room, ["Current"] * len(op_data.plan[op.room]))[
@@ -433,7 +450,9 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
             == n
             for n in names
         )
-        group_resting = op_data.group_is_resting(group) and not recalling
+        group_resting = (
+            transitions.get(group, op_data.group_is_resting(group)) and not recalling
+        )
         changes = {}
         for op in residents:
             # 清缓存后当前绑定列不代表实际休息组；共享岗位检查全部绑定。

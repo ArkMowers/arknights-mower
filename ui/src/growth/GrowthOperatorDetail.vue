@@ -14,6 +14,7 @@ import {
   professionName,
   planStatusLabel
 } from './growthFormatters'
+import { operatorSkillRows } from './growthRecommendation'
 
 const props = defineProps({
   operator: { type: Object, required: true },
@@ -30,6 +31,7 @@ const props = defineProps({
   startingMastery: Boolean,
   batchAdding: Boolean,
   survey: { type: Object, default: null },
+  completedSkills: { type: Array, default: () => [] },
   plannedCount: { type: Number, default: 0 }
 })
 const emit = defineEmits([
@@ -46,22 +48,36 @@ const emit = defineEmits([
   'add-all'
 ])
 
+// 聚合值和具体目标绑定：专三率写明来自哪个技能，模组解锁率写明来自哪个模组。
 const surveyStats = computed(() => {
   if (!props.survey) return []
-  const skillRates = (props.survey.skills || [])
-    .map((skill) => skill.rate)
-    .filter((rate) => rate !== null && rate !== undefined)
-  const moduleRates = (props.survey.modules || [])
-    .map((module) => module.rate)
-    .filter((rate) => rate !== null && rate !== undefined)
+  const skills = (props.survey.skills || []).filter(
+    (skill) => skill.rate !== null && skill.rate !== undefined
+  )
+  const modules = (props.survey.modules || []).filter(
+    (module) => module.rate !== null && module.rate !== undefined
+  )
+  const bestSkill = skills.length
+    ? skills.reduce((left, right) => (right.rate > left.rate ? right : left))
+    : null
+  const bestModule = modules.length
+    ? modules.reduce((left, right) => (right.rate > left.rate ? right : left))
+    : null
+  const moduleRow = (props.operator.modules || []).find((module) => module.id === bestModule?.id)
   return [
-    { key: 'mastery', label: '专三率', rate: skillRates.length ? Math.max(...skillRates) : null },
+    {
+      key: 'mastery',
+      label: '最高专三率',
+      detail: bestSkill ? operatorSkillRows(props.operator)[bestSkill.index]?.name || '' : '',
+      rate: bestSkill?.rate ?? null
+    },
     {
       key: 'module',
-      label: '模组解锁率',
-      rate: moduleRates.length ? Math.max(...moduleRates) : null
+      label: '最高模组解锁率',
+      detail: moduleRow ? moduleRow.type || moduleRow.name || '' : '',
+      rate: bestModule?.rate ?? null
     },
-    { key: 'elite2', label: '精二率', rate: props.survey.elite2 ?? null }
+    { key: 'elite2', label: '精二率', detail: '', rate: props.survey.elite2 ?? null }
   ]
 })
 
@@ -156,6 +172,7 @@ function skillStatusType(status) {
         <div v-if="surveyStats.length" class="growth-dossier__survey">
           <div v-for="stat in surveyStats" :key="stat.key" class="growth-dossier__survey-item">
             <span class="growth-dossier__survey-label">{{ stat.label }}</span>
+            <span v-if="stat.detail" class="growth-dossier__survey-detail">{{ stat.detail }}</span>
             <span class="growth-dossier__survey-value gp-mono">{{ formatRate(stat.rate) }}</span>
             <span class="gp-meter growth-dossier__survey-meter" aria-hidden="true">
               <span :style="{ width: (stat.rate || 0) + '%' }" />
@@ -320,6 +337,17 @@ function skillStatusType(status) {
               :title="row.rec.skill_name + ' · 专精材料'"
             />
             <p v-else class="growth-dossier__note">读取技能目标后可查看逐级材料。</p>
+          </div>
+          <div v-if="completedSkills.length" class="growth-dossier__completed">
+            <span class="growth-dossier__completed-title">已专三</span>
+            <span
+              v-for="row in completedSkills"
+              :key="row.index"
+              class="growth-dossier__completed-item"
+            >
+              <b>{{ row.name }}</b>
+              <span class="gp-mono">专三率 {{ formatRate(row.rate) }}</span>
+            </span>
           </div>
           <p v-if="!skillRows.length" class="growth-dossier__note">该干员的技能已全部专三。</p>
         </section>
@@ -517,6 +545,14 @@ function skillStatusType(status) {
   letter-spacing: 0.03em;
 }
 
+.growth-dossier__survey-detail {
+  overflow: hidden;
+  color: var(--gp-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .growth-dossier__survey-value {
   font-size: 13px;
   font-weight: 700;
@@ -597,6 +633,39 @@ function skillStatusType(status) {
   color: var(--gp-muted);
   font-size: 11.5px;
   line-height: 1.6;
+}
+
+.growth-dossier__completed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--gp-hair-soft);
+}
+
+.growth-dossier__completed-title {
+  color: var(--gp-faint);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.growth-dossier__completed-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.growth-dossier__completed-item b {
+  color: var(--gp-ink-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.growth-dossier__completed-item .gp-mono {
+  color: var(--gp-muted);
+  font-size: 10px;
 }
 
 .growth-dossier__warning {

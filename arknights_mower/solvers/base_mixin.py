@@ -1508,8 +1508,10 @@ class BaseMixin:
                     if self.scene() != Scene.INFRA_MAIN:
                         if self.detect_room() == room:
                             return
-                        self.sleep(0.2)
-                        continue
+                        # 场景观测可能清除超时画面；重新确认地图锚点后再点击。
+                        if not (pos := self.find("control_central")):
+                            self.sleep(0.2)
+                            continue
                     if actions >= 5:
                         break
                     actions += 1
@@ -1540,6 +1542,9 @@ class BaseMixin:
                         self.sleep(poll_interval)
                     if self.find("connecting"):
                         break
+                    # 收取产物后仍可能停在地图，沿用本轮点击上限继续进入。
+                    if self.find("control_central") and not self.find("order_label"):
+                        continue
                     if self.scene() in (
                         Scene.INFRA_DETAILS,
                         Scene.CTRLCENTER_ASSISTANT,

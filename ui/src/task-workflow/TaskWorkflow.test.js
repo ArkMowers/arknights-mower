@@ -314,7 +314,8 @@ beforeEach(() => {
     maa_recruit: true,
     maa_orundum: false,
     maa_mining: false,
-    maa_specialaccess: false
+    maa_specialaccess: false,
+    maa_signinevent: false
   })
   state.panels = []
   state.reveals = []

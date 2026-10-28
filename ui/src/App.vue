@@ -1351,7 +1351,6 @@ html[data-window-shell-theme='dark'] {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  overflow: auto;
 }
 
 .n-card-header__main {

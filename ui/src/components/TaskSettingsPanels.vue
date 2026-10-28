@@ -944,10 +944,6 @@ const idleOptions = computed(() => [
   outline-offset: 2px;
 }
 
-.task-settings-panels :deep([data-task-editor='stage-plan'] .weekly-plan-editors .n-tab-pane) {
-  overflow-x: auto;
-}
-
 .task-settings-panels :deep([data-task-editor='long'] .n-grid) {
   column-gap: 12px !important;
 }

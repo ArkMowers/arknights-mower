@@ -46,7 +46,12 @@
     "arknights_mower.utils.operators.Operators.is_dorm_replacement_for_slot",
     "arknights_mower.utils.operators.Operators.restore_dorm_state",
     "arknights_mower.__main__.simulate",
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._pending_group_transitions"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._pending_group_transitions",
+    "arknights_mower.utils.operators.Operators.workaholic_follows_resting_group",
+    "arknights_mower.utils.operators.Operators.is_workaholic_group",
+    "arknights_mower.utils.resting_correction.prefer_resting_replacements",
+    "arknights_mower.utils.scheduler_task.rebalance_plan_swap_dorms",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_group_shift"
   ],
   "test_suites": [
     "arknights_mower/tests/protected_dorm_bed_tiers_tests.py",
@@ -92,6 +97,7 @@
     "arknights_mower/tests/completed_group_departure_tests.py",
     "arknights_mower/tests/room_retry_dispatch_tests.py",
     "arknights_mower/tests/choose_agent_filter_tests.py",
-    "arknights_mower/tests/mastery_choose_train_tests.py"
+    "arknights_mower/tests/mastery_choose_train_tests.py",
+    "arknights_mower/tests/workaholic_group_return_tests.py"
   ]
 }

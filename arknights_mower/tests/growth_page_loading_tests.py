@@ -49,6 +49,10 @@ def test_overview_has_all_operators_without_calculating_material_graphs(
     operator = next(op for op in result["operators"] if op["name"] == "能天使")
     assert [rec["skill_index"] for rec in operator["recommendations"]] == [0, 1, 2]
     assert all(rec["current_level"] == 0 for rec in operator["recommendations"])
+    # 卡片与档案需要全部技能真名给已专三技能标注，不能只靠未完成技能推荐行。
+    assert operator["skill_names"] == [
+        rec["skill_name"] for rec in operator["recommendations"]
+    ]
     assert operator["modules"]
     assert "materials" not in operator["modules"][0]
     assert operator["max_phase"] == 2

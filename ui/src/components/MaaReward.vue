@@ -6,7 +6,8 @@ import { getMaaRewardSelection, setTaskEnabled } from '@/task-workflow/model'
 
 const store = useConfigStore()
 
-const { maa_mail, maa_recruit, maa_orundum, maa_mining, maa_specialaccess } = storeToRefs(store)
+const { maa_mail, maa_recruit, maa_orundum, maa_mining, maa_specialaccess, maa_signinevent } =
+  storeToRefs(store)
 const selection = computed(() => getMaaRewardSelection(store))
 function setRewardsEnabled(value) {
   setTaskEnabled(store, 'rewards', value)
@@ -46,12 +47,13 @@ function setRewardsEnabled(value) {
       <n-checkbox v-model:checked="maa_specialaccess">
         <div class="item">领取赠送月卡奖励</div>
       </n-checkbox>
-      <!-- <n-flex>
-        <n-checkbox v-model:checked="sign_in.enable">
-          <div class="item">签到活动</div>
+      <n-divider />
+      <n-flex align="center">
+        <n-checkbox v-model:checked="maa_signinevent">
+          <div class="item">领取限时签到活动奖励</div>
         </n-checkbox>
-        <help-text>游戏内签到、矿区、限定池每日单抽等</help-text>
-      </n-flex> -->
+        <help-text>仅支持常见横向签到版型，不含新春等特殊版型。没有活动时自动跳过。</help-text>
+      </n-flex>
     </n-flex>
   </n-card>
 </template>

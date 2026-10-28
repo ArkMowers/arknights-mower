@@ -17,8 +17,10 @@ from arknights_mower.utils.recognize import Scene
 @pytest.fixture
 def native(monkeypatch, tmp_path):
     active = Event()
+    inventory_changed = Event()
     monkeypatch.setattr(record, "battle_inventory_active", active)
     monkeypatch.setattr(operation, "battle_inventory_active", active)
+    monkeypatch.setattr(record, "workshop_inventory_changed", inventory_changed)
     monkeypatch.setattr(record, "_tables_created", False)
     monkeypatch.setattr(
         record,

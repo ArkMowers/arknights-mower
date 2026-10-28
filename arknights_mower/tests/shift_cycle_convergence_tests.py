@@ -647,5 +647,12 @@ def test_required_departure_does_not_accept_exited_explicit_work(
         "op_data.operators['远牙'].is_working()", "!=", "True"
     )
     solver.op_data.backup_plans[0].task = {"central": ["薇薇安娜"]}
-    with pytest.raises(ValueError, match="保留原任务"):
-        solver._prepare_shift_cycle(task)
+    positions, time = backup.positions(solver.op_data), task.time
+    solver._prepare_shift_cycle(task)
+    final = solver.op_data.project_arrangements([task.plan])
+    assert all(final.operators[name].is_resting() for name in ("薇薇安娜", "远牙"))
+    assert final.get_current_operator("central", 0).name == "陈"
+    assert task.group_shift_transitions["红松"] is True
+    assert backup.positions(solver.op_data) == positions
+    assert task.time == time
+    assert solver.tasks == [task]

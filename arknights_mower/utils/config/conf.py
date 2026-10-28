@@ -174,12 +174,83 @@ class ExtraPart(ConfModel):
     "等待时间"
 
 
+class CopilotScriptConf(ConfModel):
+    id: str = Field(pattern=r"^[a-f0-9]{64}$")
+    nav_name_override: str = ""
+    is_raid: bool = False
+
+
+class CopilotAdditionalConf(ConfModel):
+    name: str = ""
+    skill: int = Field(default=0, ge=0, le=3)
+
+
+class CopilotConf(ConfModel):
+    run_id: str = Field(default="", max_length=64)
+    scripts: list[CopilotScriptConf] = Field(default_factory=list, max_length=32)
+    formation: bool = False
+    formation_index: int = Field(default=0, ge=0, le=4)
+    use_sanity_potion: bool = False
+    add_trust: bool = False
+    ignore_requirements: bool = False
+    support_unit_usage: int = Field(default=0, ge=0, le=3)
+    support_unit_name: str = ""
+    user_additional: list[CopilotAdditionalConf] = Field(
+        default_factory=list, max_length=12
+    )
+
+
+class RogueRecruitConf(ConfModel):
+    name: str = ""
+    use_support: bool = False
+
+
 class LongTaskPart(ConfModel):
     class RogueConf(ConfModel):
         squad: str = ""
         "分队"
         roles: str = ""
         "职业"
+        core_char_list: list[RogueRecruitConf] = Field(
+            default_factory=list, max_length=3
+        )
+        use_foldartal: bool | None = None
+        check_collapsal_paradigms: bool | None = None
+        double_check_collapsal_paradigms: bool | None = None
+        start_with_seed: str = ""
+        blackflow_strategy: Literal[
+            "", "burn", "burn_with_investment", "ending1", "ending2", "ending3"
+        ] = ""
+        blackflow_start_animals: list[
+            Literal[
+                "swaddled_cat",
+                "swaddled_dog",
+                "swaddled_cerberus",
+                "swaddled_feathered_serpent",
+            ]
+        ] = Field(default_factory=list, max_length=2)
+        blackflow_start_rewards: int = Field(default=0, ge=0, le=4095)
+        blackflow_start_utopia: bool = False
+        blackflow_start_reward_priority: list[
+            Literal[
+                "unnumbered_item",
+                "survey_advance",
+                "space_lease",
+                "regression_compensation",
+                "forest_ride",
+                "nest_parasitism",
+                "pegasus",
+                "hippogriff",
+                "dragon",
+                "hydra",
+                "bai_ze",
+                "golden_crow",
+            ]
+        ] = Field(default_factory=list)
+        collectible_mode_roles: str = ""
+        collectible_mode_core_char_list: list[RogueRecruitConf] = Field(
+            default_factory=list, max_length=3
+        )
         core_char: str = ""
         "干员"
         use_support: bool = False
@@ -234,7 +305,31 @@ class LongTaskPart(ConfModel):
         find_playtime_target: int = 1
         "目标常乐节点子类型（1=令/2=黍/3=年，仅界园刷常乐节点）"
 
+        @model_validator(mode="after")
+        def validate_blackflow_start(self):
+            if self.blackflow_start_animals.count("swaddled_feathered_serpent") > 1:
+                raise ValueError("准备局最多要求一只襁褓羽蛇")
+            priority = self.blackflow_start_reward_priority
+            if len(priority) != len(set(priority)):
+                raise ValueError("开局奖励优先级不能重复")
+            if self.mode == 30003 and self.blackflow_start_utopia:
+                if not priority:
+                    raise ValueError("凹第一层实托邦需要选择奖励优先级")
+                if 0 <= self.difficulty < 6:
+                    raise ValueError("第一层实托邦需要难度 6 及以上")
+            return self
+
+    class SSSQueueItem(ConfModel):
+        id: str = Field(pattern=r"^[a-f0-9]{64}$")
+        type: Literal[1, 2] = 1
+        ec: Literal[1, 2, 3] = 1
+        times: int = Field(default=1, ge=1, le=9999, strict=True)
+
     class SSSConf(ConfModel):
+        scripts: list["LongTaskPart.SSSQueueItem"] = Field(
+            default_factory=list, max_length=32
+        )
+        run_id: str = Field(default="", max_length=128)
         type: int = 1
         "关卡"
         ec: int = 1
@@ -249,6 +344,7 @@ class LongTaskPart(ConfModel):
         "隐秘战线结局"
 
     class RclConf(ConfModel):
+        clear_store: bool = False
         mode: int = 0
         "模式（0=Tales无存档/1=Tales有存档/16=RA1/32=RA15/48=RA4）"
         tools_to_craft: list[str] = ["荧光棒"]
@@ -261,6 +357,8 @@ class LongTaskPart(ConfModel):
     class SignInConf(ConfModel):
         enable: bool = True
         "签到活动开关"
+
+    copilot: CopilotConf = Field(default_factory=CopilotConf)
 
     maa_rg_enable: int = 0
     "大型任务"
@@ -886,6 +984,8 @@ class MaaRewardPart(ConfModel):
     "领取幸运墙的每日合成玉奖励"
     maa_mining: bool = False
     "领取限时开采许可的每日合成玉奖励"
+    maa_signinevent: bool = False
+    "领取限时签到活动奖励（常见横向版型）"
     maa_specialaccess: bool = False
     "领取赠送月卡奖励"
 
@@ -1129,6 +1229,10 @@ class Conf(
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "rogue"
 
     @property
+    def COPILOT(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "copilot"
+
+    @property
     def SSS(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sss"
 
@@ -1202,13 +1306,16 @@ class Conf(
                     self.maa_orundum,
                     self.maa_mining,
                     self.maa_specialaccess,
+                    self.maa_signinevent,
                 ]
             )
         )
 
     @property
     def has_maa_tasks(self) -> bool:
-        return self.has_maa_daily_tasks or self.RG or self.SSS or self.RCL
+        return (
+            self.has_maa_daily_tasks or self.RG or self.SSS or self.RCL or self.COPILOT
+        )
 
     @property
     def run_order_buffer_time(self):

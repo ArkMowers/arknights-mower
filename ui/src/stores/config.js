@@ -145,7 +145,19 @@ export const useConfigStore = defineStore('config', () => {
   const maa_rcl_theme = ref('Tales')
   const rcl = ref({})
   const rogue = ref({})
-  const sss = ref({})
+  const sss = ref({ type: 1, ec: 1, scripts: [], run_id: '' })
+  const copilot = ref({
+    run_id: '',
+    scripts: [],
+    formation: false,
+    formation_index: 0,
+    use_sanity_potion: false,
+    add_trust: false,
+    ignore_requirements: false,
+    support_unit_usage: 0,
+    support_unit_name: '',
+    user_additional: []
+  })
   const screenshot = ref(1)
   const screenshot_archive_limit_mb = ref(5120)
   const screenshot_interval = ref(500)
@@ -211,6 +223,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_recruit = ref(false)
   const maa_orundum = ref(false)
   const maa_mining = ref(false)
+  const maa_signinevent = ref(false)
   const maa_specialaccess = ref(false)
   const syncingWeeklyPlan = ref(false)
   const skipNextWeeklyPlanSync = ref(false)
@@ -593,7 +606,20 @@ export const useConfigStore = defineStore('config', () => {
       maa_rcl_theme.value = response.data.maa_rcl_theme
       rcl.value = response.data.rcl
       rogue.value = response.data.rogue
-      sss.value = response.data.sss
+      sss.value = { scripts: [], run_id: '', ...response.data.sss }
+      copilot.value = {
+        run_id: '',
+        scripts: [],
+        formation: false,
+        formation_index: 0,
+        use_sanity_potion: false,
+        add_trust: false,
+        ignore_requirements: false,
+        support_unit_usage: 0,
+        support_unit_name: '',
+        user_additional: [],
+        ...(response.data.copilot ?? {})
+      }
       screenshot.value = response.data.screenshot
       screenshot_archive_limit_mb.value = response.data.screenshot_archive_limit_mb ?? 5120
       screenshot_interval.value =
@@ -683,6 +709,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_recruit.value = response.data.maa_recruit
       maa_orundum.value = response.data.maa_orundum
       maa_mining.value = response.data.maa_mining
+      maa_signinevent.value = response.data.maa_signinevent ?? false
       maa_specialaccess.value = response.data.maa_specialaccess
       await load_weekly_plan_state()
       savedConfig = configSnapshot(build_config())
@@ -795,6 +822,7 @@ export const useConfigStore = defineStore('config', () => {
       rcl: rcl.value,
       rogue: rogue.value,
       sss: sss.value,
+      copilot: copilot.value,
       ...(runtime_platform.value === 'android' ? {} : { screenshot: screenshot.value }),
       screenshot_archive_limit_mb: screenshot_archive_limit_mb.value,
       screenshot_interval: screenshot_interval.value,
@@ -870,6 +898,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_recruit: maa_recruit.value,
       maa_orundum: maa_orundum.value,
       maa_mining: maa_mining.value,
+      maa_signinevent: maa_signinevent.value,
       maa_specialaccess: maa_specialaccess.value
     }
   }
@@ -1162,6 +1191,7 @@ export const useConfigStore = defineStore('config', () => {
     rcl,
     rogue,
     sss,
+    copilot,
     screenshot,
     screenshot_archive_limit_mb,
     screenshot_interval,
@@ -1228,6 +1258,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_orundum,
     maa_mining,
     maa_specialaccess,
+    maa_signinevent,
     load_weekly_plan_state,
     refresh_weekly_plan_metadata,
     update_weekly_plan_active,

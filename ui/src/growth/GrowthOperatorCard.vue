@@ -1,7 +1,13 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import GrowthAvatar from './GrowthAvatar.vue'
 import { eliteLabel, formatRate, masteryLabel, professionName } from './growthFormatters'
+import {
+  operatorSkillRows,
+  recommendedTarget,
+  remainingModuleTargets,
+  surveySkillRate
+} from './growthRecommendation'
 
 const props = defineProps({
   operator: { type: Object, required: true },
@@ -13,44 +19,61 @@ const props = defineProps({
 })
 const emit = defineEmits(['open'])
 
-const skills = computed(() => {
-  const levels = props.operator.skill_levels || []
-  const recommendations = props.operator.recommendations || []
-  const count = Math.max(levels.length, ...recommendations.map((row) => row.skill_index + 1))
-  return Array.from({ length: count }, (_, index) =>
-    Number(
-      levels[index] ?? recommendations.find((row) => row.skill_index === index)?.current_level ?? 0
-    )
-  )
-})
+function skillTone(level) {
+  if (level >= 3) return 'done'
+  if (level > 0) return 'warn'
+  return 'low'
+}
+const skillRows = computed(() =>
+  operatorSkillRows(props.operator).map((row) => ({
+    ...row,
+    rate: surveySkillRate(props.survey, row.index),
+    tone: skillTone(row.current),
+    highlighted: (props.survey?.skillHighlights || []).includes(row.index)
+  }))
+)
+const skills = computed(() => skillRows.value.map((row) => row.current))
 const supportsMastery = computed(() => {
   const maxPhase =
     props.operator.max_phase ??
     (props.operator.rarity >= 4 ? 2 : props.operator.rarity === 3 ? 1 : 0)
   return maxPhase >= 2 && skills.value.length > 0
 })
-const ordinal = ['一', '二', '三']
 const masteredCount = computed(() => skills.value.filter((level) => level >= 3).length)
-const activeSkill = ref(0)
-function skillTone(level) {
-  if (level >= 3) return 'done'
-  if (level > 0) return 'warn'
-  return 'low'
-}
-const skillRows = computed(() => {
-  const recs = props.operator.recommendations || []
-  return skills.value.map((level, index) => {
-    const rec = recs.find((item) => Number(item.skill_index) === index)
-    return {
-      index,
-      level,
-      name: rec?.skill_name || ordinal[index] + '技能',
-      tone: skillTone(level),
-      highlighted: (props.survey?.skillHighlights || []).includes(index)
-    }
-  })
+const moduleTargets = computed(() => remainingModuleTargets(props.operator, props.survey))
+const recommended = computed(() => recommendedTarget(props.operator, props.survey))
+const activeSkillIndex = ref(0)
+const activeModule = ref(false)
+// 用户点过技能段后不再自动改选中；公开样本异步到达时默认选中推荐目标。
+const pickedByUser = ref(false)
+const defaultTarget = computed(() => {
+  if (recommended.value) return recommended.value
+  const first = (props.operator.recommendations || []).find((rec) => Number(rec.current_level) < 3)
+  if (first) return { kind: 'skill', index: Number(first.skill_index) }
+  if (moduleTargets.value.length) return { kind: 'module' }
+  return { kind: 'skill', index: 0 }
 })
-// 卡片只陈述选中技能的当前状态；三个技能段各读各的，不给出猜测性的下一步文案。
+watch(
+  defaultTarget,
+  (target) => {
+    if (!target || pickedByUser.value) return
+    if (target.kind === 'module') {
+      activeModule.value = true
+    } else {
+      activeModule.value = false
+      activeSkillIndex.value = target.index
+    }
+  },
+  { immediate: true }
+)
+const moduleTarget = computed(() => {
+  if (recommended.value?.kind === 'module') return recommended.value
+  const known = moduleTargets.value
+    .filter((target) => target.rate !== null && target.rate !== undefined)
+    .sort((left, right) => right.rate - left.rate)
+  return known[0] || moduleTargets.value[0] || null
+})
+// 卡片只陈述当前选中技能的当前状态；三个技能段各读各的，不给出猜测性的下一步文案。
 const statusLine = computed(() => {
   if (!supportsMastery.value) {
     return {
@@ -58,19 +81,40 @@ const statusLine = computed(() => {
       text: (props.operator.modules || []).length ? '等级与模组养成' : '等级养成'
     }
   }
-  const row = skillRows.value[activeSkill.value] || skillRows.value[0]
-  return { tone: row.tone, text: row.name + ' · ' + masteryLabel(row.level) }
+  if (activeModule.value && moduleTarget.value) {
+    const target = moduleTarget.value
+    return {
+      tone: target.current > 0 ? 'warn' : 'low',
+      text: target.name + ' · ' + target.current + '/' + target.target
+    }
+  }
+  const row = skillRows.value[activeSkillIndex.value] || skillRows.value[0]
+  return { tone: row.tone, text: row.name + ' · ' + masteryLabel(row.current) }
+})
+const activeRate = computed(() => {
+  if (activeModule.value && moduleTarget.value) return moduleTarget.value.rate ?? null
+  const row = skillRows.value[activeSkillIndex.value] || skillRows.value[0]
+  return row?.rate ?? null
+})
+const activeRateLabel = computed(() => (activeModule.value ? '解锁率' : '专三率'))
+const activeRateTitle = computed(() => {
+  if (activeRate.value === null || activeRate.value === undefined) return '暂无样本'
+  if (activeModule.value && moduleTarget.value) {
+    return moduleTarget.value.name + ' · 一图流公开模组解锁率 ' + formatRate(activeRate.value)
+  }
+  const row = skillRows.value[activeSkillIndex.value] || skillRows.value[0]
+  return (row?.name || '') + ' · 一图流公开专三率 ' + formatRate(activeRate.value)
 })
 function selectSkill(index) {
-  activeSkill.value = index
+  pickedByUser.value = true
+  activeModule.value = false
+  activeSkillIndex.value = index
 }
-const surveyProbe = computed(() => {
-  const rates = props.survey?.skills || []
-  const known = rates.filter((skill) => skill.rate !== null && skill.rate !== undefined)
-  if (!known.length) return ''
-  const best = known.reduce((left, right) => (right.rate > left.rate ? right : left))
-  return '专三 ' + formatRate(best.rate)
-})
+function selectModule() {
+  if (!moduleTarget.value) return
+  pickedByUser.value = true
+  activeModule.value = true
+}
 const moduleCount = computed(
   () => (props.operator.modules || []).filter((module) => module.current_level > 0).length
 )
@@ -160,7 +204,7 @@ function stopKeydownPropagation(event) {
       v-if="supportsMastery"
       class="growth-opcard__progress"
       role="group"
-      aria-label="技能专精进度"
+      aria-label="技能与模组目标"
     >
       <button
         v-for="row in skillRows"
@@ -168,16 +212,30 @@ function stopKeydownPropagation(event) {
         type="button"
         class="growth-opcard__seg"
         :class="{
-          'is-active': activeSkill === row.index,
+          'is-active': !activeModule && activeSkillIndex === row.index,
           'is-highlighted': row.highlighted,
-          'is-done': row.level >= 3,
-          'is-partial': row.level > 0 && row.level < 3
+          'is-done': row.current >= 3,
+          'is-partial': row.current > 0 && row.current < 3
         }"
-        :aria-pressed="activeSkill === row.index"
+        :aria-pressed="!activeModule && activeSkillIndex === row.index"
         :aria-label="
-          row.name + ' ' + masteryLabel(row.level) + (row.highlighted ? '，达到筛选门槛' : '')
+          row.name + ' ' + masteryLabel(row.current) + (row.highlighted ? '，达到筛选门槛' : '')
         "
         @click.stop="selectSkill(row.index)"
+        @keydown="stopKeydownPropagation"
+      >
+        <span class="growth-opcard__seg-bar" aria-hidden="true" />
+      </button>
+      <button
+        v-if="moduleTarget"
+        type="button"
+        class="growth-opcard__seg growth-opcard__seg--module"
+        :class="{ 'is-active': activeModule, 'is-partial': moduleTarget.current > 0 }"
+        :aria-pressed="activeModule"
+        :aria-label="
+          '模组 ' + moduleTarget.name + ' ' + moduleTarget.current + '/' + moduleTarget.target
+        "
+        @click.stop="selectModule"
         @keydown="stopKeydownPropagation"
       >
         <span class="growth-opcard__seg-bar" aria-hidden="true" />
@@ -198,8 +256,13 @@ function stopKeydownPropagation(event) {
       <span v-if="planned" class="gp-stamp gp-stamp--flat growth-opcard__stamp"
         >计划中{{ plannedCount > 1 ? ' ' + plannedCount : '' }}</span
       >
-      <span v-else-if="surveyProbe" class="growth-opcard__probe gp-mono">{{ surveyProbe }}</span>
-      <span v-else class="growth-opcard__probe gp-mono">无公开样本</span>
+      <span
+        v-else-if="activeRate !== null"
+        class="growth-opcard__probe gp-mono"
+        :title="activeRateTitle"
+        >{{ activeRateLabel }} {{ formatRate(activeRate) }}</span
+      >
+      <span v-else class="growth-opcard__probe gp-mono">暂无样本</span>
       <span class="growth-opcard__enter" aria-hidden="true">档案 →</span>
     </footer>
   </article>
@@ -403,7 +466,7 @@ function stopKeydownPropagation(event) {
   white-space: nowrap;
 }
 
-/* 固定页脚高度：计划中印章与专三率/无公开样本互换时不改变卡片高度。 */
+/* 固定页脚高度：计划中印章与专三率/解锁率/暂无样本互换时不改变卡片高度。 */
 .growth-opcard__foot {
   display: flex;
   align-items: center;
@@ -455,6 +518,13 @@ function stopKeydownPropagation(event) {
 .growth-opcard__seg.is-highlighted .growth-opcard__seg-bar {
   outline: 1px solid var(--gp-accent);
   outline-offset: 2px;
+}
+
+/* 模组目标段：小方块和技能条区分开，点击可查看未满模组的公开解锁率。 */
+.growth-opcard__seg--module .growth-opcard__seg-bar {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
 }
 
 .growth-opcard--compact {

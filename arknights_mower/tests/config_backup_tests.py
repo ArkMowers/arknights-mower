@@ -1688,3 +1688,82 @@ def test_gap_exclusions_preserve_exact_names_and_have_isolated_defaults():
     assert second.group_mood_gap_exclusions == []
     conf = config.Conf(group_mood_gap_exclusions=[" 组一 ", "组二", " 组一 "])
     assert conf.group_mood_gap_exclusions == [" 组一 ", "组二"]
+
+
+def test_ordinary_copilot_library_and_queue_roundtrip(storage, monkeypatch):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import maa_copilot
+
+    monkeypatch.setattr(maa_copilot, "get_path", storage)
+    monkeypatch.setattr(record, "get_path", storage)
+    monkeypatch.setattr(record, "_tables_created", False)
+    info = maa_copilot.store_script(b'{"stage_name":"1-7","actions":[]}')
+    config.conf = config.Conf(
+        copilot={"scripts": [{"id": info["id"], "is_raid": True}]}
+    )
+    config.save_conf()
+    progress = {
+        "key": maa_copilot.queue_key(config.conf.copilot),
+        "next": 1,
+        "failed": False,
+    }
+    record.save_maa_copilot_progress(progress)
+    raw = backup.export_archive()
+    files = backup.read_archive(raw)
+    name = "copilots/" + info["id"] + ".json"
+    assert name in files
+    maa_copilot.script_path(info["id"]).unlink()
+    record.save_maa_copilot_progress({})
+    backup.import_configuration(raw)
+    assert record.load_maa_copilot_progress() == progress
+    assert config.conf.copilot.scripts[0].id == info["id"]
+    assert config.conf.copilot.scripts[0].is_raid is True
+    assert (
+        maa_copilot.build_copilot_params(config.conf.copilot)["copilot_list"][0][
+            "is_raid"
+        ]
+        is True
+    )
+
+
+def test_sss_library_queue_round_count_and_progress_roundtrip(storage, monkeypatch):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import maa_copilot, maa_sss
+
+    monkeypatch.setattr(maa_copilot, "get_path", storage)
+    monkeypatch.setattr(record, "get_path", storage)
+    monkeypatch.setattr(record, "_tables_created", False)
+    script = {
+        "type": "SSS",
+        "stage_name": "保全",
+        "tool_men": {},
+        "stages": [
+            {
+                "stage_name": "第一关",
+                "draw_as_possible": True,
+                "strategies": [],
+                "actions": [],
+            }
+        ],
+    }
+    info = maa_copilot.store_script(json.dumps(script).encode(), sss=True)
+    config.conf = config.Conf(
+        sss={"scripts": [{"id": info["id"], "type": 2, "ec": 3, "times": 4}]}
+    )
+    config.save_conf()
+    progress = {
+        "key": maa_copilot.queue_key(config.conf.sss),
+        "next": 0,
+        "completed": 2,
+        "failed": False,
+    }
+    record.save_maa_sss_progress(progress)
+    raw = backup.export_archive()
+    assert "sss-copilots/" + info["id"] + ".json" in backup.read_archive(raw)
+    maa_copilot.script_path(info["id"], sss=True).unlink()
+    record.save_maa_sss_progress({})
+    backup.import_configuration(raw)
+    assert record.load_maa_sss_progress() == progress
+    item = config.conf.sss.scripts[0]
+    assert item.model_dump() == {"id": info["id"], "type": 2, "ec": 3, "times": 4}
+    assert maa_sss.build_sss_params(item)["loop_times"] == 1

@@ -54,10 +54,14 @@ from arknights_mower.solvers.record import (
     battle_inventory_active,
     get_inventory_counts,
     invalidate_workshop_inventory,
+    load_maa_copilot_progress,
+    load_maa_sss_progress,
     save_agent_action,
     save_current_state,
     save_exception,
     save_log,
+    save_maa_copilot_progress,
+    save_maa_sss_progress,
     save_recycling_collection,
     update_recycling_operators,
     workshop_inventory_changed,
@@ -89,6 +93,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_candidate_mood,
     dorm_candidates,
     dorm_task_reservations,
+    product_wait_resting_replacements,
     retained_task_reservations,
     scheduling_mood_reaches,
     unstarted_product_wait,
@@ -127,7 +132,7 @@ from arknights_mower.utils.operators import (
     Operator,
     Operators,
 )
-from arknights_mower.utils.path import get_path, resolve_config_path
+from arknights_mower.utils.path import resolve_config_path
 from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.replacement_check import (
@@ -496,6 +501,8 @@ class BaseSchedulerSolver(
         self.waiting_group_shifts = []
         self.free_clue = None
         self.credit_fight = None
+        self.maa_daily_completed = {}
+        self.maa_daily_tasks = {}
         self.task_count = 0
         self.refresh_connecting = False
         self.recruit_time = None
@@ -514,6 +521,9 @@ class BaseSchedulerSolver(
         self.daily_event_sign_in_attempt = None
         self.daily_visit_friend = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_visit_friend_attempt = None
+        self.maa_copilot_progress = {}
+        self.maa_copilot_task = None
+        self.maa_sss_task = None
         self.ideal_resting_count = 4
         self.choose_error = set()
         self.drop_send = False
@@ -7287,10 +7297,16 @@ class BaseSchedulerSolver(
         ):
             logger.debug("整组成员仍在为其他组替班，暂缓下班：%s", sorted(blockers))
             return
+        already_resting = {
+            name
+            for name in [*agents, *dorm_agents]
+            if not self.op_data.operators[name].multi_group
+            and self.op_data.get_dorm_by_name(name)[0] is not None
+        }
         required = 0
         for x in agents:
             op = self.op_data.operators[x]
-            if op.workaholic or op.room.startswith("dorm"):
+            if op.workaholic or op.room.startswith("dorm") or x in already_resting:
                 continue
             required += 1
         logger.debug(f"需求:{current_resting} 当前休息")
@@ -7332,13 +7348,9 @@ class BaseSchedulerSolver(
                 logger.debug(f"干员房间出错:{agent}")
                 success = False
                 break
-            if (
-                not x.multi_group
-                and self.op_data.get_dorm_by_name(x.name)[0] is not None
-            ):
-                # 如果干员已经被安排了
-                success = False
-                break
+            if agent in already_resting:
+                # 已休息成员保留原床位和岗位替班，继续安排其余成员下班。
+                continue
 
             if self.op_data.is_auto_free_dorm_operator(x):
                 # 同组姓名只开启这张临时床；不把该姓名安排进宿舍，固定
@@ -7378,6 +7390,7 @@ class BaseSchedulerSolver(
                     return False
                 return (
                     obj not in TRADE_ORDER_AGENTS
+                    and obj not in already_resting
                     and not _is_mastery_busy(obj)
                     and obj not in protected_training
                     and (
@@ -7707,9 +7720,51 @@ class BaseSchedulerSolver(
         self._prepare_group_shift_execution_targets(task)
         self.op_data.commit_group_shifts({})
         proposed = copy.deepcopy(task.plan)
+        returning_zero_groups = {
+            op.group
+            for room, row in proposed.items()
+            if not room.startswith("dorm")
+            for index, name in enumerate(row)
+            if (op := self.op_data.operators.get(name)) is not None
+            and not op.multi_group
+            and (op.room, op.index) == (room, index)
+            and self.op_data.group_is_resting(op.group)
+            and self.op_data.is_workaholic_group(op.group)
+        }
+        for group in returning_zero_groups:
+            for name in self.op_data.shift_group_members(group):
+                op = self.op_data.operators[name]
+                if op.multi_group:
+                    continue
+                target = proposed.get(op.room, [])[op.index : op.index + 1]
+                if target in ([], ["Current"]) and (
+                    op.current_room,
+                    op.current_index,
+                ) != (op.room, op.index):
+                    proposed.setdefault(
+                        op.room, ["Current"] * len(self.op_data.plan[op.room])
+                    )[op.index] = name
         self._suppress_facility_arrangement(proposed)
+        complete_returns = self.op_data.arrangement_group_transitions(proposed)
+        incomplete_rooms = {
+            op.room
+            for group in returning_zero_groups
+            if complete_returns.get(group) is not False
+            for name in self.op_data.shift_group_members(group)
+            if not (op := self.op_data.operators[name]).multi_group
+            and proposed.get(op.room, [])[op.index : op.index + 1] != [name]
+            and not (
+                proposed.get(op.room, [])[op.index : op.index + 1] in ([], ["Current"])
+                and (op.current_room, op.current_index) == (op.room, op.index)
+            )
+        }
+        if incomplete_rooms:
+            raise ProductSwitchDeferred(
+                "全零心情组的完整回班安排尚不可用",
+                rooms=tuple(sorted(incomplete_rooms)),
+            )
         transitions = dict(getattr(task, "group_shift_transitions", {}))
-        transitions.update(self.op_data.arrangement_group_transitions(proposed))
+        transitions.update(complete_returns)
         predecessors = self._group_shift_predecessors(task, proposed, transitions)
         if predecessors:
             raise GroupShiftBlocked(predecessors=predecessors)
@@ -7794,6 +7849,40 @@ class BaseSchedulerSolver(
         """执行前同步合法取消与岗位保护，不补回已经完成的房间。"""
         if not hasattr(task, "group_shift_transitions"):
             return
+        pending_zero_returns = {}
+        for (room, index), name in getattr(task, "group_shift_expected", {}).items():
+            op = self.op_data.operators.get(name)
+            if (
+                op is not None
+                and not op.multi_group
+                and getattr(task, "group_shift_transitions", {}).get(op.group) is False
+                and self.op_data.group_is_resting(op.group)
+                and self.op_data.is_workaholic_group(op.group)
+                and (op.current_room, op.current_index) != (room, index)
+            ):
+                pending_zero_returns.setdefault(
+                    room, ["Current"] * len(self.op_data.plan[room])
+                )[index] = name
+        permitted = copy.deepcopy(pending_zero_returns)
+        self._suppress_facility_arrangement(permitted)
+        blocked_rooms = {
+            room
+            for room, row in pending_zero_returns.items()
+            for index, name in enumerate(row)
+            if name != "Current"
+            and permitted.get(room, [])[index : index + 1] != [name]
+        }
+        if blocked_rooms:
+            raise ProductSwitchDeferred(
+                "全零心情组的未完成回班岗位仍受保护",
+                rooms=tuple(sorted(blocked_rooms)),
+            )
+        for room, row in pending_zero_returns.items():
+            for index, name in enumerate(row):
+                if name != "Current":
+                    task.plan.setdefault(
+                        room, ["Current"] * len(self.op_data.plan[room])
+                    )[index] = name
         expected_plan = {}
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
             expected_plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
@@ -7806,7 +7895,9 @@ class BaseSchedulerSolver(
         self._cancel_dorm_recovery_targets(expected_plan, transitions, task=task)
         for plan in (task.plan, expected_plan):
             for index in getattr(task, "training_skipped_slots", ()):
-                if index < len(plan.get("train", [])):
+                if index < len(plan.get("train", [])) and pending_zero_returns.get(
+                    "train", []
+                )[index : index + 1] in ([], ["Current"]):
                     plan["train"][index] = "Current"
             self._suppress_facility_arrangement(plan)
         remaining_transitions = self.op_data.arrangement_group_transitions(
@@ -8130,6 +8221,16 @@ class BaseSchedulerSolver(
                         )
                     )
                 continue
+            except ProductSwitchDeferred as error:
+                task.product_shift_waiting = True
+                if error.dependencies:
+                    task.product_shift_predecessors = error.dependencies
+                self._retain_failed_task(
+                    task,
+                    str(error),
+                    error.rooms or tuple(task.plan),
+                    dependency=True,
+                )
             task.__dict__.pop("departure_recovery_names", None)
             task.__dict__.pop("departure_recovery_observation", None)
             del task.group_shift_waiting
@@ -8228,6 +8329,16 @@ class BaseSchedulerSolver(
     @_log_backup_calculation("完整换班")
     def _prepare_shift_cycle(self, task):
         """在副本中收敛换班、副表、后续轮休和补床，成功后一次提交最终安排。"""
+        preceding = getattr(task, "product_wait_return_task", None)
+        if preceding is not None and any(
+            pending is preceding for pending in self.tasks
+        ):
+            raise ProductSwitchDeferred(
+                "等待独立回班完成后继续切产物", dependencies=(preceding,)
+            )
+        if getattr(task, "product_wait_independent_return", False):
+            # 已独立推演的回班只执行自身目标，不能再次合并等待切产物的下班。
+            return
         if getattr(self, "maintenance_entry_pending", False):
             pending = [
                 queued
@@ -8240,7 +8351,11 @@ class BaseSchedulerSolver(
                     "等待停服前提前跑单及原班恢复完成后再换班", dependencies=pending
                 )
             self.maintenance_entry_pending = False
-        if task.retains_execution:
+        if task.retains_execution or (
+            getattr(task, "product_shift_locked", False)
+            and hasattr(task, "backup_shift_conditions")
+        ):
+            # 已完成副表推演的整批预约保留最终安排；仅预约槽位的任务仍需准备换班。
             return
         if (self._initial_mood_read_pending()) or getattr(
             task, "backup_shift_active", False
@@ -9304,17 +9419,30 @@ class BaseSchedulerSolver(
         )
 
     def _defer_conflicting_product_shift_slots(self, task):
-        locks = self._deferred_product_locks(exclude=task)
+        locks = [
+            lock
+            for lock in self._deferred_product_locks(exclude=task)
+            if getattr(lock, "product_wait_return_task", None) is not task
+        ]
         if not locks:
             return
-        reserved_slots = set().union(*(lock.product_lock_slots for lock in locks))
-        reserved_names = set().union(*(lock.product_lock_names for lock in locks))
+        recovering = {
+            id(lock): product_wait_resting_replacements(self.op_data, lock)
+            for lock in locks
+        }
+
+        def conflicts(lock, room, index, name):
+            return (room, index) in lock.product_lock_slots or (
+                name in lock.product_lock_names
+                and not (room.startswith("dorm") and name in recovering[id(lock)])
+            )
+
         conflicting = {
             (room, index)
             for room, names in task.plan.items()
             for index, name in enumerate(names)
             if name != "Current"
-            and ((room, index) in reserved_slots or name in reserved_names)
+            and any(conflicts(lock, room, index, name) for lock in locks)
         }
         if not conflicting:
             return
@@ -9346,14 +9474,245 @@ class BaseSchedulerSolver(
             lock
             for lock in locks
             if any(
-                slot in lock.product_lock_slots
-                or task.plan[slot[0]][slot[1]] in lock.product_lock_names
+                conflicts(lock, *slot, task.plan[slot[0]][slot[1]])
                 for slot in conflicting
             )
         ]
         raise ProductSwitchDeferred(
             "床位或替班已为切产物后的换班预留", dependencies=dependencies
         )
+
+    def _split_long_product_wait(self, task, error, baseline):
+        """实测长等待允许先完成不改变产物的回班，原对象继续持有下班责任。"""
+        if (
+            task.type != TaskTypes.SHIFT_ON
+            or getattr(task, "product_wait_return_task", None) is not None
+            or task.retains_execution
+            or getattr(task, "backup_shift_active", False)
+            or any(
+                getattr(task, field, False)
+                for field in (
+                    "group_shift_expected",
+                    "initial_staffing",
+                    "exhaust_support",
+                    "coordination_admission_plan",
+                    "urgent_recovery_request_names",
+                    "urgent_recovery_support_names",
+                )
+            )
+        ):
+            return
+        waits = error.room_deferrals or (error,)
+        threshold = datetime.now() + timedelta(minutes=15)
+        # 聚合异常给出最近进度时间；整批完成等待按所有已知房间中最晚者判断。
+        if (
+            any(wait.ready_at is None for wait in waits)
+            or max(wait.ready_at for wait in waits) <= threshold
+        ):
+            return
+        transitions = getattr(task, "group_shift_transitions", {})
+        returning = {group for group, resting in transitions.items() if not resting}
+        departing = {group for group, resting in transitions.items() if resting}
+        if not returning or not departing:
+            return
+        simulation = copy.copy(self)
+        simulation.op_data = self.op_data.project_arrangements([])
+        simulation.tasks, simulation.waiting_group_shifts = copy.deepcopy(
+            (
+                [pending for pending in self.tasks if pending is not task],
+                getattr(self, "waiting_group_shifts", []),
+            )
+        )
+        simulation._refresh_deferred_product_reservations()
+        intent = {}
+        for group in returning:
+            for name in simulation.op_data.shift_group_members(group):
+                operator = simulation.op_data.operators[name]
+                if operator.room and not operator.room.startswith("dorm"):
+                    intent.setdefault(
+                        operator.room,
+                        ["Current"] * len(simulation.op_data.plan[operator.room]),
+                    )[operator.index] = name
+        if not intent:
+            return
+        early = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=intent)
+        simulation.task = early
+        try:
+            simulation._prepare_group_shift(early)
+            simulation._prepare_shift_backup(early)
+            simulation._prepare_group_shift(early)
+            if any(getattr(early, "group_shift_transitions", {}).values()):
+                return
+            conditions = getattr(
+                early, "backup_shift_conditions", simulation.op_data.plan_condition
+            )
+            backup_group = getattr(
+                early, "backup_group", simulation.op_data.backup_group
+            )
+            if simulation.op_data.swap_plan(
+                conditions, refresh=True, backup_group=backup_group
+            ):
+                return
+            projected = simulation.op_data.project_arrangements([early.plan])
+            projected.commit_group_shifts(early.group_shift_transitions)
+            retained_dorm = {}
+            for room, names in task.plan.items():
+                if not room.startswith("dorm"):
+                    continue
+                for index, name in enumerate(names):
+                    operator = projected.operators.get(name)
+                    if operator is not None and (
+                        operator.group not in departing
+                        and not any(
+                            binding["group"] in departing
+                            for binding in operator.group_bindings
+                        )
+                        and not operator.is_working()
+                    ):
+                        retained_dorm.setdefault(room, ["Current"] * len(names))[
+                            index
+                        ] = name
+            _merge_shift_transition(early.plan, retained_dorm, projected)
+            projected = simulation.op_data.project_arrangements([early.plan])
+            projected.commit_group_shifts(early.group_shift_transitions)
+            simulation.op_data = projected
+            count = len(simulation.tasks)
+            try_add_release_dorm({}, None, projected, simulation.tasks, empty_only=True)
+            for fill in simulation.tasks[count:]:
+                _merge_shift_transition(early.plan, fill.plan, projected)
+            early.plan = prioritize_new_dorm_recovery(projected, early.plan)
+            early.plan = plan_dorm_isolation(projected, early.plan)
+            # 回班和补床也可能触发产物条件；这时两批均继续等待。
+            products, _ = self._products_after_arrangement(early.plan)
+            if products != baseline:
+                return
+            after_return = simulation.op_data.project_arrangements([early.plan])
+            after_return.commit_group_shifts(early.group_shift_transitions)
+            selection = after_return.evaluate_backup_selection()
+            if selection.conditions != conditions or selection.group_id != backup_group:
+                return
+            simulation.op_data = after_return
+            # 从原最终安排提取下班目标，再按提前回班后的真实位置重建恢复床位。
+            slots = set()
+            for room, names in task.plan.items():
+                for index, name in enumerate(names):
+                    if name == "Current":
+                        continue
+                    owner = (
+                        self.op_data.operators.get(name)
+                        if room.startswith("dorm")
+                        else self.op_data.operators.get(
+                            self.op_data.plan[room][index].agent
+                        )
+                    )
+                    if owner is not None and (
+                        owner.group in departing
+                        or any(
+                            binding["group"] in departing
+                            for binding in owner.group_bindings
+                        )
+                    ):
+                        slots.add((room, index))
+            remaining = SchedulerTask(
+                task_type=task.type,
+                task_plan=self._plan_for_slots(task.plan, slots),
+            )
+            remaining.group_shift_transitions = {group: True for group in departing}
+            remaining.coordination_request_names = [
+                name
+                for name in getattr(task, "coordination_request_names", ())
+                if (operator := after_return.operators.get(name)) is not None
+                and (
+                    operator.group in departing
+                    or any(
+                        binding["group"] in departing
+                        for binding in operator.group_bindings
+                    )
+                )
+            ]
+            if set(getattr(task, "coordination_request_names", ())) - set(
+                remaining.coordination_request_names
+            ):
+                return
+            remaining.ordinary_coordination = bool(remaining.coordination_request_names)
+            simulation.task = remaining
+            simulation.tasks = [
+                pending for pending in simulation.tasks[:count] if pending is not early
+            ]
+            simulation._prepare_group_shift(remaining)
+            simulation._prepare_shift_backup(remaining)
+            simulation._prepare_group_shift(remaining)
+            if any(
+                group not in departing or not resting
+                for group, resting in remaining.group_shift_transitions.items()
+            ):
+                return
+            final_products, _ = simulation._products_after_arrangement(remaining.plan)
+            original_products, _ = self._products_after_arrangement(task.plan)
+            if final_products != original_products:
+                return
+            final = after_return.project_arrangements([])
+            if final.swap_plan(
+                getattr(remaining, "backup_shift_conditions", final.plan_condition),
+                refresh=True,
+                backup_group=getattr(remaining, "backup_group", final.backup_group),
+            ):
+                return
+            final._apply_projected_arrangements([remaining.plan])
+            for room, names in task.plan.items():
+                for index, name in enumerate(names):
+                    if name == "Current":
+                        continue
+                    if name == "":
+                        if final.get_current_operator(room, index) is not None:
+                            return
+                        continue
+                    if name == "Free":
+                        if not any(
+                            index < len(step.plan.get(room, ()))
+                            and step.plan[room][index] != "Current"
+                            for step in (early, remaining)
+                        ):
+                            return
+                        continue
+                    if room.startswith("dorm"):
+                        if not final.operators[name].is_resting():
+                            return
+                    elif (
+                        actual := final.get_current_operator(room, index)
+                    ) is None or actual.name != name:
+                        return
+        except (ProductSwitchDeferred, ValueError):
+            # 不能证明前后两批均可执行时保留原批次，不制造新的恢复或重试时间。
+            return
+        early.product_wait_independent_return = True
+        early.execution_retained = True
+        early.dorm_fill_plan = {
+            room: list(names)
+            for room, names in early.plan.items()
+            if room.startswith("dorm")
+        }
+        for field in (
+            "backup_shift_intent",
+            "backup_shift_conditions",
+            "backup_group",
+            "backup_explicit_slots",
+            "backup_retention_releases",
+            "backup_retention_admissions",
+            "backup_retention_empty_slots",
+            "group_shift_transitions",
+            "group_shift_expected",
+            "dorm_fill_plan",
+            "ordinary_coordination",
+            "coordination_request_names",
+        ):
+            task.__dict__.pop(field, None)
+            if hasattr(remaining, field):
+                setattr(task, field, copy.deepcopy(getattr(remaining, field)))
+        task.plan = remaining.plan
+        task.product_wait_return_task = early
+        self.tasks.append(early)
+        logger.info("切产物实测等待超过15分钟，先执行不改变产物的回班：%s", early.plan)
 
     def _switch_products_before_arrangement(self, task):
         """把将由本次换班触发的切产物作为换班的前置操作。"""
@@ -9424,7 +9783,8 @@ class BaseSchedulerSolver(
             logger.info("换班前先切换产物或订单：%s", targets)
             try:
                 self.switch_base_products(switches, before_arrangement=True)
-            except ProductSwitchDeferred:
+            except ProductSwitchDeferred as error:
+                self._split_long_product_wait(task, error, baseline)
                 slots = self._product_dependent_slots(
                     task.plan, targets, baseline, products
                 )
@@ -15335,10 +15695,172 @@ class BaseSchedulerSolver(
         if not error:
             self.reload_time = datetime.now()
 
+    def _maa_daily_done(self, key):
+        today = get_server_time().date()
+        if key == "visit_friends":
+            return getattr(self, "daily_visit_friend", None) == today
+        return getattr(self, "maa_daily_completed", {}).get(key) == today
+
+    def _remember_maa_daily_task(self, task_id, chain, keys):
+        if type(task_id) is not int or task_id <= 0 or not keys:
+            return
+        if not hasattr(self, "maa_daily_tasks"):
+            self.maa_daily_tasks = {}
+        self.maa_daily_tasks[task_id] = {
+            "chain": chain,
+            "day": get_server_time().date(),
+            "keys": set(keys),
+            "failed": False,
+        }
+
+    def _record_maa_daily_callback(self, msg, details):
+        tasks = getattr(self, "maa_daily_tasks", {})
+        task_id = details.get("taskid")
+        task = tasks.get(task_id) if type(task_id) is int else None
+        if task is not None and task["chain"] == details.get("taskchain"):
+            completed = set()
+            if msg == 20000:
+                task["failed"] = True
+            elif msg == 10002 and task["chain"] == "Award" and not task["failed"]:
+                completed = set(task["keys"])
+            elif msg == 20002 and task["chain"] == "Mall":
+                inner = details.get("details")
+                node = inner.get("task") if isinstance(inner, dict) else None
+                if node in ("VisitLimited", "VisitNextBlack"):
+                    completed = {"visit_friends"} & task["keys"]
+                elif node == "StageDrops-Stars-3":
+                    completed = {"credit_fight"} & task["keys"]
+            if completed:
+                if not hasattr(self, "maa_daily_completed"):
+                    self.maa_daily_completed = {}
+                for key in completed:
+                    if key == "visit_friends":
+                        self.daily_visit_friend = task["day"]
+                    else:
+                        self.maa_daily_completed[key] = task["day"]
+                task["keys"].difference_update(completed)
+                save_current_state()
+            if msg in (10000, 10002, 10004):
+                tasks.pop(task_id, None)
+        if msg == 3:
+            tasks.clear()
+
+    def _maa_copilot_run(self, conf):
+        from arknights_mower.utils.maa_copilot import queue_key, run_key
+
+        if not getattr(self, "_maa_copilot_progress_loaded", False):
+            self.maa_copilot_progress = load_maa_copilot_progress() or getattr(
+                self, "maa_copilot_progress", {}
+            )
+            self._maa_copilot_progress_loaded = True
+        progress = self.maa_copilot_progress
+        previous = dict(progress)
+        key = queue_key(conf)
+        settings_key = run_key(conf)
+        # 兼容旧运行快照；新记录独立保存，不受清缓存启动影响。
+        if "settings_key" not in progress and progress.get("key") == settings_key:
+            progress.update(key=key, settings_key=settings_key)
+        if progress.get("key") != key:
+            progress.clear()
+            progress.update(key=key, next=0, failed=False, settings_key=settings_key)
+        elif progress.get("settings_key") != settings_key:
+            progress.update(failed=False, settings_key=settings_key)
+        if progress != previous:
+            save_maa_copilot_progress(progress)
+        return progress
+
+    def _record_maa_copilot_callback(self, msg, details):
+        task = getattr(self, "maa_copilot_task", None)
+        if (
+            task is None
+            or type(details.get("taskid")) is not int
+            or details["taskid"] != task[0]
+            or details.get("taskchain") != "Copilot"
+            or msg not in (10000, 10002, 10004)
+        ):
+            return
+        self.maa_copilot_task = None
+        progress = self.maa_copilot_progress
+        if progress.get("key") != task[1] or progress.get("next") != task[2]:
+            return
+        if msg == 10002:
+            progress["next"] = task[2] + 1
+            logger.info(f"自动战斗队列已完成 {progress['next']} 项")
+        elif msg == 10000:
+            progress["failed"] = True
+            logger.warning("自动战斗作业失败，保留进度，等待修改配置或手动重新执行")
+        else:
+            return
+        save_maa_copilot_progress(progress)
+
+    def _maa_sss_run(self, conf):
+        from arknights_mower.utils.maa_copilot import queue_key
+
+        # Read the independent record for each dispatch, including after a profile switch.
+        progress = load_maa_sss_progress()
+        key = queue_key(conf)
+        if progress.get("key") != key:
+            progress = {"key": key, "next": 0, "completed": 0, "failed": False}
+            save_maa_sss_progress(progress)
+        self.maa_sss_progress = progress
+        return progress
+
+    def _record_maa_sss_callback(self, msg, details):
+        task = getattr(self, "maa_sss_task", None)
+        if (
+            task is None
+            or type(details.get("taskid")) is not int
+            or details["taskid"] != task["id"]
+            or details.get("taskchain") != "SSSCopilot"
+        ):
+            return
+        progress = self.maa_sss_progress
+        if (
+            progress.get("key"),
+            progress.get("next"),
+            progress.get("completed"),
+        ) != task["position"]:
+            return
+        if msg == 20003:
+            if details.get("what") == "SSSGamePass":
+                task["passed"] = True
+            elif details.get("what") == "SSSSettlement":
+                task["settled"] = True
+            return
+        if msg not in (10000, 10002, 10004):
+            return
+        self.maa_sss_task = None
+        if msg == 10004:
+            return
+        if msg == 10002 and task["passed"] and not task["settled"]:
+            progress["completed"] += 1
+            logger.info(
+                f"保全队列第 {progress['next'] + 1} 项已完成 {progress['completed']}/{task['times']} 轮"
+            )
+            if progress["completed"] >= task["times"]:
+                progress["next"] += 1
+                progress["completed"] = 0
+        else:
+            progress["failed"] = True
+            logger.warning("保全作业未通关，保留进度，等待修改队列或手动重新执行")
+        save_maa_sss_progress(progress)
+
     def on_maa_callback(self, msg, details, arg):
         """MAA 回调入口：累积掉落统计、代发上报请求、输出可读日志行。"""
         d = parse_details(details)
         logger.debug("MAA 回调 %s %s", msg, d)
+        try:
+            self._record_maa_daily_callback(msg, d)
+        except Exception:
+            logger.exception("保存 MAA 每日任务完成记录失败")
+        try:
+            self._record_maa_copilot_callback(msg, d)
+        except Exception:
+            logger.exception("保存 MAA 自动战斗作业进度失败")
+        try:
+            self._record_maa_sss_callback(msg, d)
+        except Exception:
+            logger.exception("保存 MAA 保全派驻进度失败")
         if msg == 3:  # AllTasksCompleted follows the final StageDrops receipt.
             battle_inventory_active.clear()
         if msg == 20003 and d.get("what") == "StageDrops":
@@ -15469,6 +15991,9 @@ class BaseSchedulerSolver(
 
         self.maa_drop_inventory = MaaDropInventory()
         self.maa_inventory_tasks = {}
+        self.maa_daily_tasks = {}
+        self.maa_copilot_task = None
+        self.maa_sss_task = None
         battle_inventory_active.set()
 
         if os.environ.get("MOWER_ANDROID") == "1":
@@ -15598,48 +16123,60 @@ class BaseSchedulerSolver(
 
         elif type == "Mall":
             conf = config.conf
-            self.MAA.append_task(
+            params = {
+                "shopping": mall_action == "shopping"
+                if mall_action
+                else getattr(
+                    conf,
+                    "should_run_maa_mall",
+                    getattr(conf, "maa_mall_enable", True)
+                    and getattr(conf, "maa_mall_mode", "maa") == "maa",
+                ),
+                "buy_first": conf.maa_mall_buy.split(","),
+                "blacklist": conf.maa_mall_blacklist.split(","),
+                "credit_fight": not mall_action
+                and conf.maa_credit_fight
+                and "" not in self.stages
+                and self.credit_fight is None
+                and not self._maa_daily_done("credit_fight"),
+                "formation_index": max(0, min(4, conf.credit_fight.squad)),
+                "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
+                "visit_friends": mall_action == "visit_friends"
+                if mall_action
+                else getattr(
+                    conf,
+                    "should_run_maa_visit_friend",
+                    getattr(conf, "visit_friend_enable", False)
+                    and getattr(conf, "visit_friend_mode", "maa") == "maa",
+                ),
+                "only_buy_discount": conf.maa_mall_only_buy_discount,
+                "reserve_max_credit": conf.maa_mall_reserve_max_credit,
+            }
+            params["visit_friends"] = params[
+                "visit_friends"
+            ] and not self._maa_daily_done("visit_friends")
+            task_id = self.MAA.append_task("Mall", params)
+            self._remember_maa_daily_task(
+                task_id,
                 "Mall",
-                {
-                    "shopping": mall_action == "shopping"
-                    if mall_action
-                    else getattr(
-                        conf,
-                        "should_run_maa_mall",
-                        getattr(conf, "maa_mall_enable", True)
-                        and getattr(conf, "maa_mall_mode", "maa") == "maa",
-                    ),
-                    "buy_first": conf.maa_mall_buy.split(","),
-                    "blacklist": conf.maa_mall_blacklist.split(","),
-                    "credit_fight": not mall_action
-                    and conf.maa_credit_fight
-                    and "" not in self.stages
-                    and self.credit_fight is None,
-                    "formation_index": max(0, min(4, conf.credit_fight.squad)),
-                    "force_shopping_if_credit_full": conf.maa_mall_ignore_blacklist_when_full,
-                    "visit_friends": mall_action == "visit_friends"
-                    if mall_action
-                    else getattr(
-                        conf,
-                        "should_run_maa_visit_friend",
-                        getattr(conf, "visit_friend_enable", False)
-                        and getattr(conf, "visit_friend_mode", "maa") == "maa",
-                    ),
-                    "only_buy_discount": conf.maa_mall_only_buy_discount,
-                    "reserve_max_credit": conf.maa_mall_reserve_max_credit,
-                },
+                [key for key in ("visit_friends", "credit_fight") if params[key]],
             )
         elif type == "Award":
-            self.MAA.append_task(
-                "Award",
-                {
-                    "award": True,
-                    "mail": config.conf.maa_mail,
-                    "recruit": config.conf.maa_recruit,
-                    "orundum": config.conf.maa_orundum,
-                    "mining": config.conf.maa_mining,
-                    "specialaccess": config.conf.maa_specialaccess,
+            daily = ("recruit", "orundum", "mining", "specialaccess", "signinevent")
+            params = {
+                "award": True,
+                "mail": config.conf.maa_mail,
+                **{
+                    key: getattr(config.conf, f"maa_{key}", False)
+                    and not self._maa_daily_done(key)
+                    for key in daily
                 },
+            }
+            task_id = self.MAA.append_task("Award", params)
+            self._remember_maa_daily_task(
+                task_id,
+                "Award",
+                [key for key in daily if params[key]],
             )
 
     def maybe_switch_expired_activity_plan(self):
@@ -15680,6 +16217,8 @@ class BaseSchedulerSolver(
             except Exception:
                 logger.exception("关闭 MAA 工作进程失败")
         self.MAA = None
+        self.maa_copilot_task = None
+        self.maa_sss_task = None
 
     def restore_maa_theme(self):
         """本轮 MAA 任务收尾时恢复指定主题，为下次调度预留时间。"""
@@ -15780,6 +16319,7 @@ class BaseSchedulerSolver(
                     getattr(conf, "maa_orundum", False),
                     getattr(conf, "maa_mining", False),
                     getattr(conf, "maa_specialaccess", False),
+                    getattr(conf, "maa_signinevent", False),
                 ]
             )
         )
@@ -15793,6 +16333,7 @@ class BaseSchedulerSolver(
             or getattr(conf, "RG", False)
             or getattr(conf, "SSS", False)
             or getattr(conf, "RCL", False)
+            or getattr(conf, "COPILOT", False)
         )
 
     def maa_plan_solver(
@@ -15805,6 +16346,9 @@ class BaseSchedulerSolver(
         mall_action=None,
     ):
         """清日常"""
+        copilot_run = None
+        sss_run = None
+        large_task_started = False
         try:
             from arknights_mower.solvers.manual_tasks import manual_task_deadline
 
@@ -15930,9 +16474,7 @@ class BaseSchedulerSolver(
                     logger.info("记录MAA 本次执行时间")
                     self.last_execution["maa"] = datetime.now()
                     logger.info(self.last_execution["maa"])
-                    if "Mall" in tasks and self.credit_fight is None:
-                        self.credit_fight = get_server_weekday()
-                        logger.info("记录首次信用作战")
+                    if "Mall" in tasks and self._maa_daily_done("credit_fight"):
                         self.maa_stop(False)
                 elif not manual:
                     send_message("MAA单次任务停止")
@@ -15953,6 +16495,7 @@ class BaseSchedulerSolver(
                         name
                         for flag, name in (
                             ("RG", "rogue"),
+                            ("COPILOT", "copilot"),
                             ("SSS", "sss"),
                             ("RCL", "rcl"),
                             ("RA", "ra"),
@@ -15973,9 +16516,25 @@ class BaseSchedulerSolver(
                     rg_sleep = min_time < now_time < max_time
             except ValueError:
                 rg_sleep = False
-            if selected_long in ("rogue", "sss", "rcl") and (manual or not rg_sleep):
-                logger.info("准备开始：肉鸽/保全/盐酸")
-                send_message("启动 肉鸽/保全/盐酸")
+            if selected_long == "copilot" and (manual or not rg_sleep):
+                copilot_run = self._maa_copilot_run(conf.copilot)
+            if selected_long == "sss" and (manual or not rg_sleep):
+                sss_run = self._maa_sss_run(conf.sss)
+            if (
+                selected_long in ("rogue", "rcl")
+                or (
+                    sss_run is not None
+                    and not sss_run["failed"]
+                    and sss_run["next"] < len(conf.sss.scripts)
+                )
+                or (
+                    copilot_run is not None
+                    and not copilot_run["failed"]
+                    and copilot_run["next"] < len(conf.copilot.scripts)
+                )
+            ) and (manual or not rg_sleep):
+                logger.info("准备开始 MAA 大型任务")
+                send_message("启动 MAA 大型任务")
                 while True:
                     restore_theme = False
                     self.release_maa()
@@ -15983,16 +16542,6 @@ class BaseSchedulerSolver(
                     self.recog.reset_after_external_control()
                     self.back_to_index()
                     if selected_long == "rogue":
-                        # Roguelike 通用字段按协议条件下发（#264）：投资类字段仅在
-                        # investment_enabled 时下发（值内联各自的策略/主题限制，与 MAA 一致），
-                        # stop_at_final_boss 除 Phantom 外可用且仅策略 0 下发，
-                        # expected_collapsal_paradigms 仅 Sami + 策略 5 且列表非空时下发，
-                        # 烧水字段仅策略 4 下发，勾选「只凹开局干员直升精二」时
-                        # 撤销 collectible_mode_start_list，指路鳞的值内联 Mizuki 限制。
-                        # 月度小队/深入调查字段仅策略 6/7 下发（通信检查需先勾自动切换），
-                        # first_floor_foldartal 与 start_foldartal_list 仅 Sami + 策略 4
-                        # （板子列表另限生活至上分队），黑流树海字段仅刷襁褓动物模式下发，
-                        # find_playTime_target 仅界园刷常乐节点模式下发。
                         professional = conf.rogue.squad in _PROFESSIONAL_SQUADS
                         rogue_params = {
                             "theme": conf.maa_rg_theme,
@@ -16113,37 +16662,123 @@ class BaseSchedulerSolver(
                             rogue_params["find_playTime_target"] = (
                                 conf.rogue.find_playtime_target
                             )
-                        self.MAA.append_task("Roguelike", rogue_params)
-                    elif selected_long == "sss":
-                        copilot = get_path("@app/sss.json")
+                        recruits = getattr(conf.rogue, "core_char_list", [])
+                        if recruits:
+                            rogue_params["core_char_list"] = [
+                                item.model_dump() for item in recruits
+                            ]
+                        if conf.maa_rg_theme == "Sami":
+                            for key in (
+                                "use_foldartal",
+                                "check_collapsal_paradigms",
+                                "double_check_collapsal_paradigms",
+                            ):
+                                value = getattr(conf.rogue, key, None)
+                                checking = getattr(
+                                    conf.rogue, "check_collapsal_paradigms", None
+                                )
+                                if checking is None:
+                                    checking = conf.rogue.mode == 5
+                                if value is not None and (
+                                    key != "double_check_collapsal_paradigms"
+                                    or checking
+                                ):
+                                    rogue_params[key] = value
                         if (
-                            not copilot.is_file()
-                            or conf.sss.type not in [1, 2]
-                            or conf.sss.ec not in [1, 2, 3]
+                            conf.maa_rg_theme == "Sarkaz"
+                            and conf.rogue.mode == 1
+                            and conf.rogue.squad in ("点刺成锭分队", "后勤分队")
                         ):
-                            raise Exception("保全派驻配置错误")
-                        if self.to_sss():
-                            raise Exception("保全派驻导航失败")
-                        self.MAA.append_task(
-                            "SSSCopilot",
-                            {"filename": str(copilot), "loop_times": 9999999},
+                            seed = getattr(conf.rogue, "start_with_seed", "")
+                            if seed:
+                                rogue_params["start_with_seed"] = seed
+                        if conf.maa_rg_theme == "BlackFlow":
+                            strategy = getattr(conf.rogue, "blackflow_strategy", "")
+                            if conf.rogue.mode == 0 and strategy:
+                                rogue_params["blackflow_strategy"] = strategy
+                            if conf.rogue.mode == 30003:
+                                for key, default in (
+                                    ("blackflow_start_animals", []),
+                                    ("blackflow_start_rewards", 0),
+                                    ("blackflow_start_utopia", False),
+                                    ("collectible_mode_squad", ""),
+                                ):
+                                    rogue_params[key] = getattr(
+                                        conf.rogue, key, default
+                                    )
+                                if rogue_params["blackflow_start_utopia"]:
+                                    rogue_params["blackflow_start_reward_priority"] = (
+                                        conf.rogue.blackflow_start_reward_priority
+                                    )
+                                if getattr(conf.rogue, "collectible_mode_roles", ""):
+                                    rogue_params["collectible_mode_roles"] = (
+                                        conf.rogue.collectible_mode_roles
+                                    )
+                                preparation = getattr(
+                                    conf.rogue, "collectible_mode_core_char_list", []
+                                )
+                                if preparation:
+                                    rogue_params["collectible_mode_core_char_list"] = [
+                                        item.model_dump() for item in preparation
+                                    ]
+                        self.MAA.append_task("Roguelike", rogue_params)
+                    elif selected_long == "copilot":
+                        from arknights_mower.utils.maa_copilot import (
+                            build_copilot_params,
                         )
+
+                        params = build_copilot_params(conf.copilot)
+                        copilot_index = copilot_run["next"]
+                        params["copilot_list"] = [params["copilot_list"][copilot_index]]
+                        task_id = self.MAA.append_task("Copilot", params)
+                        self.maa_copilot_task = (
+                            task_id,
+                            copilot_run["key"],
+                            copilot_index,
+                        )
+                    elif selected_long == "sss":
+                        from arknights_mower.utils.maa_sss import build_sss_params
+
+                        sss_index = sss_run["next"]
+                        completed_before = sss_run["completed"]
+                        item = conf.sss.scripts[sss_index]
+                        params = build_sss_params(item)
+                        if self.to_sss(item.type, item.ec):
+                            raise ValueError("保全派驻导航失败")
+                        task_id = self.MAA.append_task("SSSCopilot", params)
+                        self.maa_sss_task = {
+                            "id": task_id,
+                            "position": (sss_run["key"], sss_index, completed_before),
+                            "times": item.times,
+                            "passed": False,
+                            "settled": False,
+                        }
                     elif selected_long == "rcl":
                         self.to_reclamation(conf.maa_rcl_theme, conf.rcl.mode)
-                        self.MAA.append_task(
-                            "Reclamation",
-                            {
-                                "theme": conf.maa_rcl_theme,
-                                "mode": conf.rcl.mode,
-                                "tools_to_craft": conf.rcl.tools_to_craft,
-                                "increment_mode": conf.rcl.increment_mode,
-                                "num_craft_batches": conf.rcl.num_craft_batches,
-                            },
-                        )
+                        rcl_params = {
+                            "theme": conf.maa_rcl_theme,
+                            "mode": conf.rcl.mode,
+                        }
+                        if conf.maa_rcl_theme == "Tales":
+                            if conf.rcl.mode == 0:
+                                rcl_params["clear_store"] = getattr(
+                                    conf.rcl, "clear_store", False
+                                )
+                            elif conf.rcl.mode == 1:
+                                for key in (
+                                    "tools_to_craft",
+                                    "increment_mode",
+                                    "num_craft_batches",
+                                ):
+                                    rcl_params[key] = getattr(conf.rcl, key)
+                        self.MAA.append_task("Reclamation", rcl_params)
                     logger.info("启动")
+                    large_task_started = True
                     self.MAA.start()
                     while self.MAA.running():
                         csleep(5)
+                        if config.stop_mower.is_set():
+                            raise MowerExit
                         self.report_maa_progress()
                         self.recog.update()
                         self.recog.save_screencap(None)
@@ -16155,7 +16790,30 @@ class BaseSchedulerSolver(
                             self.maa_stop()
                             restore_theme = True
                             break
+                    if config.stop_mower.is_set():
+                        raise MowerExit
                     self.recog.reset_after_external_control()
+                    more_copilot = (
+                        copilot_run is not None
+                        and copilot_run["next"] == copilot_index + 1
+                        and not copilot_run["failed"]
+                        and copilot_run["next"] < len(conf.copilot.scripts)
+                    )
+                    more_sss = (
+                        sss_run is not None
+                        and (sss_run["next"], sss_run["completed"])
+                        != (sss_index, completed_before)
+                        and not sss_run["failed"]
+                        and sss_run["next"] < len(conf.sss.scripts)
+                    )
+                    if (
+                        (more_copilot or more_sss)
+                        and not config.stop_maa.is_set()
+                        and not config.stop_mower.is_set()
+                        and not restore_theme
+                        and deadline() - datetime.now() > timedelta(seconds=30)
+                    ):
+                        continue
                     break
 
             elif manual or not rg_sleep:
@@ -16171,7 +16829,22 @@ class BaseSchedulerSolver(
             if restore_theme:
                 self.restore_maa_theme()
             self.release_maa()
-        except (MowerExit, DeviceRecoveryError, SharedADBError):
+        except MowerExit:
+            try:
+                try:
+                    if getattr(self, "MAA", None) is not None:
+                        self.maa_stop()
+                        logger.info("停止MAA")
+                finally:
+                    if large_task_started and config.stop_mower.is_set():
+                        try:
+                            self.device.exit_after_task_stop()
+                        except Exception:
+                            logger.exception("停止大型任务后关闭游戏失败")
+            finally:
+                self.release_maa()
+            raise
+        except (DeviceRecoveryError, SharedADBError):
             try:
                 if getattr(self, "MAA", None) is not None:
                     self.maa_stop()
@@ -16180,6 +16853,18 @@ class BaseSchedulerSolver(
                 self.release_maa()
             raise
         except Exception as e:
+            if sss_run is not None:
+                sss_run["failed"] = True
+                try:
+                    save_maa_sss_progress(sss_run)
+                except Exception:
+                    logger.exception("保存 MAA 保全派驻进度失败")
+            if copilot_run is not None:
+                copilot_run["failed"] = True
+                try:
+                    save_maa_copilot_progress(copilot_run)
+                except Exception:
+                    logger.exception("保存 MAA 自动战斗作业进度失败")
             save_exception(e)
             logger.exception(e)
             if getattr(self, "MAA", None) is not None:

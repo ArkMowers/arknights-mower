@@ -443,6 +443,69 @@ def test_enter_room_passes_configured_right_side_layout(monkeypatch):
     }
 
 
+@pytest.mark.parametrize("map_scene", [Scene.UNKNOWN, Scene.FACTORY_ROOMS])
+def test_visible_map_anchor_allows_entry_without_overview_scene(monkeypatch, map_scene):
+    room = rectangle(450, 350, 750, 600)
+    solver, _ = navigation_solver(monkeypatch, [map_frame(room), {"kind": "room"}])
+    solver.scene.return_value = map_scene
+
+    solver.enter_room(ROOM, max_attempts=1)
+
+    solver.tap.assert_called_once()
+    solver.back_to_index.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "map_scene", [Scene.INFRA_MAIN, Scene.UNKNOWN, Scene.FACTORY_ROOMS]
+)
+def test_collection_leaving_map_retries_room_click_without_home_recovery(
+    monkeypatch, map_scene
+):
+    room = rectangle(450, 350, 750, 600)
+    collected_room = rectangle(460, 350, 760, 600)
+    collected = {**map_frame(collected_room), "collected": True}
+    solver, _ = navigation_solver(
+        monkeypatch, [map_frame(room)] + [collected] * 21 + [{"kind": "room"}]
+    )
+    solver.scene.side_effect = lambda: (
+        map_scene if solver.recog.img.get("collected") else Scene.INFRA_MAIN
+    )
+    clicked_at = []
+
+    def tap(*_, **__):
+        clicked_at.append(base_mixin.perf_counter())
+        solver.recog.update()
+
+    solver.tap.side_effect = tap
+
+    solver.enter_room(ROOM, max_attempts=1)
+
+    assert clicked_at == [0, 2]
+    np.testing.assert_array_equal(solver.tap.call_args_list[0].args[0], room)
+    np.testing.assert_array_equal(solver.tap.call_args_list[1].args[0], collected_room)
+    assert solver.recog.img["kind"] == "room"
+    solver.back_to_index.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+
+
+@pytest.mark.parametrize("max_attempts", [1, 3])
+def test_unknown_map_keeps_existing_click_and_home_recovery_limits(
+    monkeypatch, max_attempts
+):
+    solver, _ = navigation_solver(
+        monkeypatch, [map_frame(rectangle(450, 350, 750, 600))]
+    )
+    solver.scene.return_value = Scene.UNKNOWN
+
+    with pytest.raises(RuntimeError, match="未成功进入房间"):
+        solver.enter_room(ROOM, max_attempts=max_attempts)
+
+    assert solver.tap.call_count == 5 * max_attempts
+    assert solver.back_to_index.call_count == max_attempts - 1
+    assert solver.back_to_infrastructure.call_count == max_attempts - 1
+
+
 @pytest.mark.parametrize("observed_room", [ROOM, "room_2_1"])
 @pytest.mark.parametrize("retain_anchor", [False, True])
 @pytest.mark.parametrize("connecting", [False, True])

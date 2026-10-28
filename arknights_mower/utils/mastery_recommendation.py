@@ -364,6 +364,12 @@ def get_mastery_recommendations(*, include_materials=True, char_id=None):
                 "skill_levels": [
                     skill.get("level") for skill in char.get("skills", [])
                 ],
+                # 全部技能真名（含已专三技能）；recommendations 只保留未专三技能，
+                # 卡片与档案需要这个字段给已练完技能标注真实名称。
+                "skill_names": [
+                    format_skill_label(index, skill.get("name"))
+                    for index, skill in enumerate(definition.get("skills", []))
+                ],
                 "mastery_error": _mastery_requirement_error(char)
                 if definition
                 else None,

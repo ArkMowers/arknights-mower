@@ -1,4 +1,4 @@
-// Roguelike 主题与模式枚举（#264）。MAA 集成协议的主题/模式值列表，界面与测试共用；
+// Roguelike 主题与模式枚举。MAA 集成协议的主题/模式值列表，界面与测试共用；
 // 主题补 BlackFlow；模式弃用 2（已移除）与 3（未开放），新增 6/7/30001 及主题限定模式
 // 10001/20001。主题限定模式用 theme 字段标注，界面按当前主题过滤。
 export const rogue_themes = [
@@ -19,15 +19,17 @@ export const mode_list = [
   { label: '刷深入调查，尽可能稳定地打更多层数', value: 7 },
   { label: '快速通过第一层', value: 10001, theme: 'Sarkaz' },
   { label: '刷常乐节点，第一层进洞，找不到需要的节点就重开', value: 20001, theme: 'JieGarden' },
+  { label: '刷开局，先打准备局再开目标局', value: 30003, theme: 'BlackFlow' },
   { label: '刷襁褓动物', value: 30001, theme: 'BlackFlow' }
 ]
 
 // 黑流树海用独立的三套策略（对照：刷等级快速飞三层 / 刷源石锭 / 刷襁褓动物），
 // 不用通用策略列表；其余主题共用通用策略并按主题追加限定策略。
 const blackflow_modes = [
-  { label: '刷等级，快速飞三层', value: 0 },
+  { label: '刷等级', value: 0 },
   { label: '刷源石锭，投资完成后自动退出', value: 1 },
-  { label: '刷襁褓动物', value: 30001 }
+  { label: '刷襁褓动物', value: 30001 },
+  { label: '刷开局，先打准备局再开目标局', value: 30003 }
 ]
 
 // 当前主题可选的策略列表：黑流树海走专属列表，其余按 theme 过滤主题限定策略，
@@ -39,7 +41,7 @@ export function modes_for_theme(theme) {
   return mode_list.filter((m) => !m.theme || m.theme === theme)
 }
 
-// 协议字段随所选主题/策略展示的条件（#264）：只在协议明确注明「仅某主题/某模式」的
+// 协议字段随所选主题/策略展示的条件：只在协议明确注明「仅某主题/某模式」的
 // 字段上做条件展示，其余字段始终展示。谓词返回 false 则界面隐藏且后端不下发该字段。
 export const field_conditions = {
   // 协议注明 stop_at_final_boss 仅适用于除 Phantom 以外的主题，且仅在其策略为 0（刷等级）时下发
@@ -53,7 +55,7 @@ export const field_conditions = {
   stop_when_investment_full: (theme, mode) => mode === 1,
   // 协议注明 collectible_mode_shopping 与 collectible_mode_squad 仅用于策略 4（刷开局）
   collectible_mode_shopping: (theme, mode) => mode === 4,
-  collectible_mode_squad: (theme, mode) => mode === 4,
+  collectible_mode_squad: (theme, mode) => mode === 4 || (theme === 'BlackFlow' && mode === 30003),
   // 协议注明 collectible_mode_start_list 仅在策略为 4（刷开局）时有效
   collectible_mode_start_list: (theme, mode) => mode === 4,
   // 协议注明 start_with_elite_two 仅适用于模式 4，MAA 在策略为 4 的主题均下发，
@@ -72,7 +74,7 @@ export const field_conditions = {
   monthly_squad_check_comms: (theme, mode) => mode === 6,
   // 协议注明 deep_exploration_auto_iterate 仅模式 7（深入调查）下发
   deep_exploration_auto_iterate: (theme, mode) => mode === 7,
-  // 协议注明 first_floor_foldartal 仅萨米刷开局模式有效（模型另限模式 4）
+  // 核心仅在萨米刷开局模式读取第一层密文板设置。
   first_floor_foldartal: (theme, mode) => theme === 'Sami' && mode === 4,
   // 协议注明 start_foldartal_list 仅萨米刷开局模式有效（模型另限生活至上分队）
   start_foldartal_list: (theme, mode) => theme === 'Sami' && mode === 4,
@@ -152,3 +154,24 @@ export function difficulty_options(theme) {
   }
   return options
 }
+
+export const blackflow_animals = [
+  { label: '襁褓猫', value: 'swaddled_cat' },
+  { label: '襁褓狗', value: 'swaddled_dog' },
+  { label: '襁褓三头犬', value: 'swaddled_cerberus' },
+  { label: '襁褓羽蛇', value: 'swaddled_feathered_serpent' }
+]
+export const blackflow_rewards = [
+  ['未编号物', 'unnumbered_item'],
+  ['调查预付款', 'survey_advance'],
+  ['空间租赁', 'space_lease'],
+  ['退行补偿', 'regression_compensation'],
+  ['林间代步', 'forest_ride'],
+  ['巢寄生', 'nest_parasitism'],
+  ['襁褓天马', 'pegasus'],
+  ['襁褓骏鹰', 'hippogriff'],
+  ['襁褓巨龙', 'dragon'],
+  ['襁褓九头蛇', 'hydra'],
+  ['襁褓白泽', 'bai_ze'],
+  ['襁褓金乌', 'golden_crow']
+].map(([label, value], index) => ({ label, value, mask: 1 << index }))
