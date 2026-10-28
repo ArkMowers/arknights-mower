@@ -34,6 +34,11 @@ TRADE_PRODUCTS = {
 DRONE_SECONDS = 3 * 60
 
 
+def product_switch_seconds(station_count: int) -> int:
+    """整批预留一分钟读数及收尾，每个站预留两分钟切换。"""
+    return 60 + 120 * station_count if station_count else 0
+
+
 def current_unit_remaining(total_remaining_seconds: int, unit_seconds: int) -> int:
     if total_remaining_seconds <= 0 or unit_seconds <= 0:
         return 0

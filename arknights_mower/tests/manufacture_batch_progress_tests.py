@@ -113,7 +113,7 @@ class ManufactureBatch:
     def select_product(self, product, *, confirm_after=None, **kwargs):
         if confirm_after is not None:
             wait = max(0, (confirm_after - Clock.now()).total_seconds())
-            assert wait <= 3
+            assert self.solver._product_batch_active
             Clock.current += timedelta(seconds=wait)
         self.events.append(("change", self.room))
         self.rooms[self.room]["product"] = product
@@ -131,119 +131,83 @@ class ManufactureBatch:
         return [event for event in self.events if event[0] == "accelerate"]
 
 
-def test_ready_room_finishes_while_another_accelerated_room_waits(batch):
+def test_remainder_order_finishes_each_room_before_next_acceleration(batch):
     scene = batch({"room_2_1": 3000, "room_2_3": 3240})
-    first, second = scene.tasks
-
-    with pytest.raises(base.ProductSwitchDeferred) as deferred:
-        scene.run()
-
-    assert scene.events[:2] == [("survey", "room_2_1"), ("survey", "room_2_3")]
-    assert sorted(scene.accelerations) == [
-        ("accelerate", "room_2_1", 16),
-        ("accelerate", "room_2_3", 18),
-    ]
-    assert scene.rooms["room_2_3"]["product"] == "gold"
-    assert scene.solver.tasks == [first]
-    assert all(task is not second for task in scene.solver.tasks)
-    assert first.time == scene.started_at
-    assert first.product_switch_progress["room_2_1"]["accelerated"] is True
-    assert deferred.value.rooms == ("room_2_1",)
-    assert deferred.value.ready_at == scene.started_at + timedelta(seconds=59)
-
-    scene.restart()
-    Clock.current = deferred.value.ready_at
     scene.run()
-
-    assert scene.rooms["room_2_1"]["product"] == "gold"
+    assert scene.events == [
+        ("survey", "room_2_1"),
+        ("survey", "room_2_3"),
+        ("accelerate", "room_2_3", 18),
+        ("change", "room_2_3"),
+        ("accelerate", "room_2_1", 16),
+        ("change", "room_2_1"),
+    ]
     assert scene.solver.tasks == []
     assert scene.available == 155
-    assert len(scene.accelerations) == 2
-    scene.solver.sleep.assert_not_called()
+    assert Clock.now() == scene.started_at + timedelta(seconds=62)
+    assert all(task.time == scene.started_at for task in scene.tasks)
+    assert all(task.product_switch_progress == {} for task in scene.tasks)
 
 
-def test_recheck_reduces_drone_count_without_blocking_other_room(batch):
+def test_recheck_reduces_drone_count_and_completes_serially(batch):
     scene = batch(
         {"room_2_1": 3060, "room_2_3": 3240},
         recheck_elapsed={"room_2_1": 16},
     )
-
-    with pytest.raises(base.ProductSwitchDeferred) as deferred:
-        scene.run()
-
-    assert scene.events[:2] == [("survey", "room_2_1"), ("survey", "room_2_3")]
-    assert sorted(scene.accelerations) == [
+    scene.run()
+    assert scene.events == [
+        ("survey", "room_2_1"),
+        ("survey", "room_2_3"),
         ("accelerate", "room_2_1", 16),
-        ("accelerate", "room_2_3", 18),
+        ("change", "room_2_1"),
+        ("accelerate", "room_2_3", 17),
+        ("change", "room_2_3"),
     ]
-    assert scene.rooms["room_2_3"]["product"] == "gold"
-    assert deferred.value.ready_at == scene.started_at + timedelta(seconds=89)
-    assert deferred.value.rooms == ("room_2_1",)
-
-    scene.restart()
-    Clock.current = deferred.value.ready_at + timedelta(seconds=5)
-    scene.run()
-
-    assert scene.rooms["room_2_1"]["product"] == "gold"
     assert scene.solver.tasks == []
-    assert len(scene.accelerations) == 2
-    assert scene.available == 155
+    assert scene.available == 156
+    assert Clock.now() == scene.started_at + timedelta(seconds=94)
 
 
-def test_each_deferred_room_keeps_its_own_deadline_after_restart(batch):
+def test_interrupted_confirmation_resumes_original_unit_without_more_drones(batch):
     scene = batch({"room_2_1": 3000, "room_2_3": 3260})
-
-    with pytest.raises(base.ProductSwitchDeferred) as first_deferred:
+    select = scene.solver._select_manufacture_product
+    scene.solver._select_manufacture_product = MagicMock(side_effect=base.MowerExit())
+    with pytest.raises(base.MowerExit):
         scene.run()
-
-    assert len(scene.accelerations) == 2
-    assert set(first_deferred.value.rooms) == {"room_2_1", "room_2_3"}
-    assert first_deferred.value.ready_at == scene.started_at + timedelta(seconds=9)
+    assert scene.accelerations == [("accelerate", "room_2_3", 18)]
     assert scene.solver.tasks == scene.tasks
-    assert all(task.time == scene.started_at for task in scene.solver.tasks)
-
+    original_times = [task.time for task in scene.tasks]
     scene.restart()
-    Clock.current = first_deferred.value.ready_at
-    with pytest.raises(base.ProductSwitchDeferred) as remaining:
-        scene.run()
-
-    assert remaining.value.rooms == ("room_2_1",)
-    assert remaining.value.ready_at == scene.started_at + timedelta(seconds=59)
-    assert [task.meta_data for task in scene.solver.tasks] == ["room_2_1,gold"]
-    assert scene.rooms["room_2_3"]["product"] == "gold"
-
-    scene.restart()
-    Clock.current = remaining.value.ready_at
+    # 原当前份已经跨过边界，新的当前份不重新加速或延长同一次切换。
+    Clock.current = scene.started_at + timedelta(seconds=20)
+    scene.solver._select_manufacture_product = select
     scene.run()
-
     assert scene.solver.tasks == []
-    assert len(scene.accelerations) == 2
+    assert scene.accelerations == [
+        ("accelerate", "room_2_3", 18),
+        ("accelerate", "room_2_1", 16),
+    ]
     assert scene.available == 155
+    assert [task.time for task in scene.tasks] == original_times
 
 
-def test_natural_only_room_does_not_block_ready_room(batch):
+def test_natural_only_room_finishes_in_same_batch_after_ready_room(batch):
     config.conf.product_switching.use_drones_when_leaving_orirock = False
     scene = batch(
         {"room_2_1": 120, "room_2_3": 3240},
         products={"room_2_1": "orirock"},
     )
-
-    with pytest.raises(base.ProductSwitchDeferred) as deferred:
-        scene.run()
-
-    assert scene.accelerations == [("accelerate", "room_2_3", 18)]
-    assert scene.rooms["room_2_3"]["product"] == "gold"
-    assert scene.solver.tasks == [scene.tasks[0]]
-    assert deferred.value.rooms == ("room_2_1",)
-    assert deferred.value.ready_at == scene.started_at + timedelta(seconds=59)
-
-    scene.restart()
-    Clock.current = deferred.value.ready_at + timedelta(seconds=5)
     scene.run()
-
+    assert scene.events == [
+        ("survey", "room_2_1"),
+        ("survey", "room_2_3"),
+        ("accelerate", "room_2_3", 18),
+        ("change", "room_2_3"),
+        ("change", "room_2_1"),
+    ]
     assert scene.solver.tasks == []
-    assert len(scene.accelerations) == 1
     assert scene.available == 171
+    assert Clock.now() == scene.started_at + timedelta(seconds=62)
 
 
 def test_batch_shortage_retains_all_rooms_without_spending(batch):
@@ -264,7 +228,7 @@ def test_batch_shortage_retains_all_rooms_without_spending(batch):
     assert all(state["product"] == "exp3" for state in scene.rooms.values())
 
 
-def test_before_arrangement_preserves_shared_owner_until_remaining_room_finishes(batch):
+def test_before_arrangement_keeps_shared_owner_and_plan_through_whole_batch(batch):
     scene = batch({"room_2_1": 3000, "room_2_3": 3240})
     owner = SchedulerTask(
         time=scene.started_at,
@@ -274,29 +238,15 @@ def test_before_arrangement_preserves_shared_owner_until_remaining_room_finishes
     original_plan = dict(owner.plan)
     scene.solver.tasks = [owner]
     scene.solver.task = owner
-
-    with pytest.raises(base.ProductSwitchDeferred) as deferred:
-        scene.solver.switch_base_products(scene.tasks, before_arrangement=True)
-
+    scene.solver.switch_base_products(scene.tasks, before_arrangement=True)
     assert scene.solver.tasks[0] is owner
     assert owner.time == scene.started_at
     assert owner.plan == original_plan
-    assert owner.product_switch_progress["room_2_1"]["accelerated"] is True
-    assert scene.rooms["room_2_3"]["product"] == "gold"
-
-    scene.restart()
-    restored = scene.solver.tasks[0]
-    scene.solver.task = restored
-    Clock.current = deferred.value.ready_at
-    scene.solver.switch_base_products(scene.tasks, before_arrangement=True)
-
-    assert scene.solver.tasks[0] is restored
-    assert restored.time == scene.started_at
-    assert restored.plan == original_plan
-    assert restored.product_switch_progress == {}
+    assert owner.product_switch_progress == {}
     assert all(state["product"] == "gold" for state in scene.rooms.values())
     assert len(scene.accelerations) == 2
     assert scene.available == 155
+    assert scene.solver._product_batch_active
 
 
 def test_unknown_timing_observation_does_not_block_other_room(batch):
@@ -325,35 +275,36 @@ def test_unknown_timing_observation_does_not_block_other_room(batch):
     assert scene.available == 171
 
 
-def test_completed_rooms_keep_absolute_confirmation_time_after_restart(batch):
+def test_completed_unit_keeps_absolute_confirmation_time_after_interruption(batch):
     config.conf.product_switching.waiting_seconds = 10
     scene = batch({"room_2_1": 3240, "room_2_3": 3240})
-    ready_at = scene.started_at + timedelta(seconds=7)
-
+    select = scene.solver._select_manufacture_product
+    scene.solver._select_manufacture_product = MagicMock(side_effect=base.MowerExit())
     for elapsed in (0, 1):
         Clock.current = scene.started_at + timedelta(seconds=elapsed)
-        with pytest.raises(base.ProductSwitchDeferred) as deferred:
+        with pytest.raises(base.MowerExit):
             scene.run()
-        assert deferred.value.ready_at == ready_at
-        assert set(deferred.value.rooms) == {"room_2_1", "room_2_3"}
-        assert len(scene.accelerations) == 2
-        for task in scene.solver.tasks:
-            state = next(iter(task.product_switch_progress.values()))
-            assert state["accelerated"] is True
-            assert state["completed_at"] == scene.started_at
-            assert task.time == scene.started_at
+        assert scene.accelerations == [("accelerate", "room_2_1", 18)]
+        state = scene.solver.tasks[0].product_switch_progress["room_2_1"]
+        assert state["completed_at"] == scene.started_at
         scene.restart()
+    scene.solver._select_manufacture_product = select
+    confirmations = []
 
-    Clock.current = ready_at
+    def record_confirmation(product, *, confirm_after=None):
+        confirmations.append((scene.room, confirm_after))
+        select(product, confirm_after=confirm_after)
+
+    scene.solver._select_manufacture_product = record_confirmation
     scene.run()
-
+    assert confirmations[0] == ("room_2_1", scene.started_at + timedelta(seconds=10))
     assert scene.solver.tasks == []
     assert len(scene.accelerations) == 2
     assert scene.available == 153
     assert all(state["product"] == "gold" for state in scene.rooms.values())
 
 
-def test_drone_shortage_does_not_block_completed_natural_room(batch):
+def test_drone_shortage_does_not_block_natural_room_in_admitted_batch(batch):
     config.conf.product_switching.use_drones_when_leaving_orirock = False
     scene = batch(
         {"room_2_1": 120, "room_2_3": 3240},
@@ -361,10 +312,6 @@ def test_drone_shortage_does_not_block_completed_natural_room(batch):
         products={"room_2_1": "orirock"},
     )
     natural, accelerated = scene.tasks
-    with pytest.raises(base.ProductSwitchDeferred):
-        scene.run()
-    scene.restart()
-    Clock.current = scene.started_at + timedelta(seconds=64)
     with pytest.raises(base.ProductSwitchDeferred) as deferred:
         scene.run()
     assert scene.rooms["room_2_1"]["product"] == "gold"
@@ -372,3 +319,8 @@ def test_drone_shortage_does_not_block_completed_natural_room(batch):
     assert deferred.value.rooms == ("room_2_3",)
     assert scene.accelerations == []
     assert natural.time == scene.started_at
+    assert Clock.now() == scene.started_at + timedelta(seconds=62)
+    scene.restart()
+    with pytest.raises(base.ProductSwitchDeferred):
+        scene.run()
+    assert scene.events.count(("change", "room_2_1")) == 1

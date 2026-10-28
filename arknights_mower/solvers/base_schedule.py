@@ -119,6 +119,7 @@ from arknights_mower.utils.manufacture_product import (
     current_unit_remaining,
     drone_plan,
     parse_product_task_meta,
+    product_switch_seconds,
     product_task_meta,
 )
 from arknights_mower.utils.mastery_support_types import TrainingObservationError
@@ -451,6 +452,10 @@ class ProductSwitchFailed(RuntimeError):
     def __init__(self, message, rooms):
         super().__init__(message)
         self.rooms = tuple(rooms)
+
+
+class ProductSwitchPriorityDeferred(Exception):
+    """整批操作尚未开始，等待已有关键任务完成后重新准入。"""
 
 
 class GroupShiftBlocked(ProductSwitchDeferred):
@@ -3254,6 +3259,12 @@ class BaseSchedulerSolver(
                 # prevent the returning groups from receiving their tasks.
                 self.plan_metadata()
                 self.skip()
+            except ProductSwitchPriorityDeferred as e:
+                for task in product_tasks or [self.task]:
+                    task.execution_retained = True
+                protect_priority_tasks(self.tasks, op_data=self.op_data)
+                logger.info(str(e))
+                self.skip()
             except ProductSwitchDeferred as e:
                 pending_ids = {id(task) for task in self.tasks}
                 deferred_tasks = [
@@ -3330,6 +3341,8 @@ class BaseSchedulerSolver(
                         elif not task.plan:
                             self.error = True
                     self.skip()
+            finally:
+                self._product_batch_active = False
             self.task = None
             if self._emergency_active() and not getattr(
                 self, "_emergency_startup_pending", False
@@ -5290,8 +5303,10 @@ class BaseSchedulerSolver(
     def _arrangement_priority_tasks(self):
         return [
             pending
-            for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
-            if pending is not self.task
+            for pending in task_view(
+                self.tasks, TaskScope.DISPATCH, getattr(self, "op_data", None)
+            )
+            if pending is not getattr(self, "task", None)
             and (
                 pending.type == TaskTypes.RUN_ORDER
                 and pending.meta_data
@@ -5305,7 +5320,7 @@ class BaseSchedulerSolver(
 
     def _read_arrangement_order_times(self, room):
         """整批换班完成后正式读单，失败保留原有独立刷新责任。"""
-        if self.task.plan:
+        if self.task.plan or getattr(self, "_product_batch_active", False):
             return False
         self.task.execution_retained = True
         self._resume_failed_tasks()
@@ -5371,7 +5386,10 @@ class BaseSchedulerSolver(
 
     def _defer_arrangement_for_priority_task(self, room, plan):
         """下一房操作可能挤占关键任务时，保留原安排并让出调度。"""
-        if not self._can_defer_arrangement():
+        if (
+            getattr(self, "_product_batch_active", False)
+            or not self._can_defer_arrangement()
+        ):
             return False
         task = self.task
         now = datetime.now()
@@ -7573,6 +7591,7 @@ class BaseSchedulerSolver(
                 "product_lock_names",
                 "product_switched_before_arrangement",
                 "product_switch_progress",
+                "product_switch_budget_seconds",
             ):
                 if hasattr(task, attr):
                     delattr(task, attr)
@@ -11289,7 +11308,7 @@ class BaseSchedulerSolver(
                     "等待新的制造站观测",
                     rooms=[observation["room"]],
                 )
-        # 加速后记录同一份产物的剩余量；自然生产期间交回调度，不反复改算省机方案。
+        # 加速后记录同一份产物的剩余量，中断恢复仍沿用原当前份。
         if drone_count:
             self._confirm_drone_count(drone_count)
         else:
@@ -11385,7 +11404,9 @@ class BaseSchedulerSolver(
                 0, math.ceil((confirm_after - datetime.now()).total_seconds())
             )
             lead = self._product_switch_entry_lead_seconds()
-            if wait_seconds > lead:
+            if wait_seconds > lead and not getattr(
+                self, "_product_batch_active", False
+            ):
                 raise ProductSwitchDeferred(
                     f"{self.translate_room(observation['room'])}当前一份尚需约"
                     f"{wait_seconds}秒，稍后进入切换确认页",
@@ -11506,15 +11527,112 @@ class BaseSchedulerSolver(
                 f"实际{TRADE_PRODUCTS[final_product].strategy_name}"
             )
 
+    def _admit_product_switch_batch(
+        self,
+        tasks,
+        before_arrangement,
+        observations=(),
+        direct_rooms=(),
+    ):
+        """读数前和消耗无人机前复核整批窗口，已开始的批次不让出调度。"""
+        if not tasks:
+            return
+        seconds = product_switch_seconds(len(tasks))
+        if not observations:
+            seconds = max(
+                seconds,
+                max(
+                    getattr(task, "product_switch_budget_seconds", 0) for task in tasks
+                ),
+            )
+        if observations:
+            now = datetime.now()
+            waits = 0
+            setting = config.conf.product_switching
+            buffer_seconds = setting.waiting_seconds if setting.grandet_mode else 0
+            for item in observations:
+                if (
+                    item["facility"] != "manufacture"
+                    or not item["needs_switch"]
+                    or item["room"] in direct_rooms
+                ):
+                    continue
+                remaining = max(
+                    0,
+                    item["current_remaining"]
+                    - item.get("drone_count", 0) * DRONE_SECONDS
+                    if "current_remaining" in item
+                    else item.get("wait_seconds", 0),
+                )
+                rate = item.get("production_rate", 1.0)
+                if (
+                    not item.get("production_rate_observed", True)
+                    or rate is None
+                    or not 0.1 <= rate <= 10
+                ):
+                    continue
+                elapsed = max(0, (now - item.get("observed_at", now)).total_seconds())
+                completed_at = item.get("switch_progress", {}).get("completed_at")
+                if completed_at is not None:
+                    waits += max(
+                        0, (completed_at - now).total_seconds() + buffer_seconds
+                    )
+                else:
+                    waits += max(0, remaining / rate - elapsed + buffer_seconds)
+            # 常规预算包含每站一分钟等待；长于该值时使用实测等待加操作时间。
+            seconds = max(seconds, 60 + 60 * len(tasks) + math.ceil(waits))
+        current = getattr(self, "task", None)
+        for task in tasks:
+            task.product_switch_budget_seconds = seconds
+        duration = timedelta(seconds=seconds)
+        if before_arrangement and current is not None:
+            current.product_switch_budget_seconds = seconds
+            staffing = copy.copy(current)
+            staffing.pending_product_targets = {}
+            staffing.product_switch_budget_seconds = 0
+            duration += estimate_task_duration(
+                staffing, op_data=getattr(self, "op_data", None)
+            )
+        has_dorm = (
+            before_arrangement
+            and current is not None
+            and any(room.startswith("dormitory_") for room in current.plan)
+        )
+        finish = datetime.now() + duration + timedelta(seconds=60 if has_dorm else 15)
+        deadline = next(
+            (
+                pending
+                for pending in self._arrangement_priority_tasks()
+                if (finish >= pending.time if has_dorm else finish > pending.time)
+            ),
+            None,
+        )
+        if deadline is not None:
+            raise ProductSwitchPriorityDeferred(
+                f"整批切产物预计需要{duration.total_seconds():.0f}秒，"
+                f"先执行{deadline.type.display_value}（{deadline.meta_data}）"
+            )
+
     def switch_base_products(
         self,
         tasks: list[SchedulerTask],
         before_arrangement: bool = False,
     ):
-        """先巡检全部目标站，再统一执行最省无人机的产物与订单计划。"""
+        """批次失败时解除连续执行状态，成功后覆盖依赖本次切换的换班。"""
+        try:
+            self._execute_product_switch_batch(tasks, before_arrangement)
+        except BaseException:
+            self._product_batch_active = False
+            raise
+        if not before_arrangement:
+            self._product_batch_active = False
+
+    def _execute_product_switch_batch(self, tasks, before_arrangement):
+        """先巡检全部目标站，再按等待余数从小到大逐站完成切换。"""
         if not self._product_switching_enabled():
             self._discard_product_switches()
             return
+        self._admit_product_switch_batch(tasks, before_arrangement)
         task_observations = []
         for task in tasks:
             room, target_product = parse_product_task_meta(task.meta_data)
@@ -11551,46 +11669,10 @@ class BaseSchedulerSolver(
                 message, [observation["room"] for _, observation in locked_trade]
             )
 
-        # 独立订单不使用无人机，在制造站等待资源前完成。
-        if not before_arrangement:
-            for _, observation in task_observations:
-                if observation["facility"] == "trade" and observation["needs_switch"]:
-                    try:
-                        self._change_trade_product(observation)
-                    except RecognizeError as error:
-                        raise ProductSwitchFailed(
-                            str(error), [observation["room"]]
-                        ) from error
-            resolved_trade = {
-                id(task)
-                for task, observation in task_observations
-                if observation["facility"] == "trade"
-            }
-            self.tasks[:] = [
-                task for task in self.tasks if id(task) not in resolved_trade
-            ]
-
-        # 配方已生效的重试仍需完成数量确认，再移除切换任务。
-        for task, observation in task_observations:
-            if (
-                observation["facility"] == "manufacture"
-                and not observation["needs_switch"]
-            ):
-                try:
-                    self._change_manufacture_product(observation)
-                except RecognizeError as error:
-                    raise ProductSwitchFailed(
-                        str(error), [observation["room"]]
-                    ) from error
-                self.tasks[:] = [other for other in self.tasks if other is not task]
-
         pending_manufacture = [
             observation
             for _, observation in task_observations
             if observation["facility"] == "manufacture" and observation["needs_switch"]
-        ]
-        natural_only = [
-            item for item in pending_manufacture if item.get("natural_only", False)
         ]
         accelerated_manufacture = [
             item for item in pending_manufacture if not item.get("natural_only", False)
@@ -11634,19 +11716,8 @@ class BaseSchedulerSolver(
                 )
                 item.clear()
                 item.update(refreshed)
-                if not item["needs_switch"]:
-                    try:
-                        self._change_manufacture_product(item)
-                    except RecognizeError as error:
-                        raise ProductSwitchFailed(str(error), [item["room"]]) from error
-                    self.tasks[:] = [
-                        task for task in self.tasks if task is not source_task
-                    ]
             pending_manufacture = [
                 item for item in pending_manufacture if item["needs_switch"]
-            ]
-            natural_only = [
-                item for item in pending_manufacture if item.get("natural_only", False)
             ]
             accelerated_manufacture = [
                 item
@@ -11676,25 +11747,67 @@ class BaseSchedulerSolver(
                 )
                 deferred_rooms.update(rooms)
 
-        if insufficient_drones and not allow_direct:
-            execution_order = []
-            direct_switch_rooms = set()
-        elif insufficient_drones:
-            logger.warning("无人机不足，按设置直接取消当前份进度并切换产物")
-            execution_order = []
-            direct_switch_rooms = {item["room"] for item in accelerated_manufacture}
-        else:
-            # 余数大的站先处理，把更快自然跨过三分钟边界的站留到后面。
-            execution_order = sorted(
-                accelerated_manufacture,
-                key=lambda item: (item["wait_seconds"], item["drone_count"]),
-                reverse=True,
-            )
-            direct_switch_rooms = set()
+        direct_switch_rooms = (
+            {item["room"] for item in accelerated_manufacture}
+            if insufficient_drones and allow_direct
+            else set()
+        )
+        self._admit_product_switch_batch(
+            tasks,
+            before_arrangement,
+            [item for _, item in task_observations],
+            direct_rooms=direct_switch_rooms,
+        )
+        self._product_batch_active = True
+        # 独立订单不使用无人机，在制造站等待资源前完成。
+        if not before_arrangement:
+            for _, observation in task_observations:
+                if observation["facility"] == "trade" and observation["needs_switch"]:
+                    try:
+                        self._change_trade_product(observation)
+                    except RecognizeError as error:
+                        raise ProductSwitchFailed(
+                            str(error), [observation["room"]]
+                        ) from error
+            resolved_trade = {
+                id(task)
+                for task, observation in task_observations
+                if observation["facility"] == "trade"
+            }
+            self.tasks[:] = [
+                task for task in self.tasks if id(task) not in resolved_trade
+            ]
 
-        for item in execution_order:
+        # 配方已生效的重试仍需完成数量确认，再移除切换任务。
+        for task, observation in task_observations:
+            if (
+                observation["facility"] == "manufacture"
+                and not observation["needs_switch"]
+            ):
+                try:
+                    self._change_manufacture_product(observation)
+                except RecognizeError as error:
+                    raise ProductSwitchFailed(
+                        str(error), [observation["room"]]
+                    ) from error
+                self.tasks[:] = [other for other in self.tasks if other is not task]
+
+        execution_order = sorted(
+            pending_manufacture,
+            key=lambda item: (
+                item.get("current_remaining", 0)
+                if item.get("natural_only")
+                else item.get("wait_seconds", 0)
+            ),
+        )
+        for observation in execution_order:
+            item = observation
+            room = item["room"]
+            if room in deferred_rooms:
+                continue
             try:
-                self._execute_manufacture_acceleration(item)
+                if not item.get("natural_only") and room not in direct_switch_rooms:
+                    self._execute_manufacture_acceleration(item)
             except ProductSwitchDeferred as error:
                 if not allow_direct or item["available_drones"] >= item["drone_count"]:
                     error.rooms = error.rooms or (item["room"],)
@@ -11709,11 +11822,6 @@ class BaseSchedulerSolver(
             except RecognizeError as error:
                 raise ProductSwitchFailed(str(error), [item["room"]]) from error
 
-        # 每个站单独确认并保留进度，一个站的自然生产不阻止其他站完成切换。
-        for observation in [*natural_only, *accelerated_manufacture]:
-            room = observation["room"]
-            if room in deferred_rooms:
-                continue
             try:
                 if observation.get("natural_only") and observation.get(
                     "current_remaining", 0
@@ -11728,21 +11836,6 @@ class BaseSchedulerSolver(
                     ):
                         raise ProductSwitchDeferred(
                             f"{self.translate_room(room)}缺少有效生产倒计时，等待新的制造站观测",
-                            rooms=[room],
-                        )
-                    setting = config.conf.product_switching
-                    buffer_seconds = (
-                        setting.waiting_seconds if setting.grandet_mode else 0
-                    )
-                    ready_at = observed_at + timedelta(
-                        seconds=observation["current_remaining"] / rate
-                        + buffer_seconds
-                        - self._product_switch_entry_lead_seconds()
-                    )
-                    if ready_at > datetime.now():
-                        raise ProductSwitchDeferred(
-                            f"{self.translate_room(room)}当前一份尚未完成",
-                            ready_at=ready_at,
                             rooms=[room],
                         )
                 if room in direct_switch_rooms:
@@ -15397,12 +15490,16 @@ class BaseSchedulerSolver(
         ):
             simplify_dorm_fill(self.task, self.tasks, op_data=self.op_data)
             if getattr(self.task, "simple_dorm_fill", False):
-                if self.task.plan and defer_dorm_before_priority_task(
-                    self.task,
-                    self.tasks,
-                    next(iter(self.task.plan)),
-                    datetime.now(),
-                    self.op_data,
+                if (
+                    self.task.plan
+                    and not getattr(self, "_product_batch_active", False)
+                    and defer_dorm_before_priority_task(
+                        self.task,
+                        self.tasks,
+                        next(iter(self.task.plan)),
+                        datetime.now(),
+                        self.op_data,
+                    )
                 ):
                     return False
                 # 任务等待期间床位可能已变化；简化补位只碰现在仍为空的床。
@@ -15451,8 +15548,12 @@ class BaseSchedulerSolver(
                 self._finish_idle_dorm_shift()
                 refresh_after_central_change(self, central_before)
                 return False
-            if (not new_plan) and defer_dorm_before_priority_task(
-                self.task, self.tasks, room, datetime.now(), self.op_data
+            if (
+                not new_plan
+                and not getattr(self, "_product_batch_active", False)
+                and defer_dorm_before_priority_task(
+                    self.task, self.tasks, room, datetime.now(), self.op_data
+                )
             ):
                 return False
             try:
