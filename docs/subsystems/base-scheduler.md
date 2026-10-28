@@ -595,6 +595,13 @@ Each invocation checks one 180-second monotonic operation budget across home sca
 
 The real reference inputs are the supplied seven-day page and its recorded receipt change, lossless crops of two 2026-10-27 seven-day panels recorded before and after paging while the fourth day was already claimed, plus frames from the [2023 ten-day activity recording](https://www.bilibili.com/video/BV1Cj421Z7qW/) showing receipt marks changing while the white progress points remain unchanged. This revision's collection and swipe behavior has offline coverage only. The fifteen-day page observed by the user has a different layout and is not adapted. No real fourteen-day page has been verified, and simulated longer lists do not establish layout compatibility.
 
+<a id="mastery-collection-screenshots"></a>
+### Mastery Collection Screenshots
+
+The default-off `save_mastery_screenshots` switch appears after the automatic mastery settings on the 全部设置 page, with its label and control on one row. Both planned collection and collection without a matching plan save at most three existing observations: the first wait for the collection button, its later appearance when observed, and the result after skipping the animation. A button visible on the first observation shares that first screenshot. The existing bounded waits remain unchanged; screenshot saving adds no capture, delay or retry.
+
+Images use `screenshot/mastery` and the existing important-screenshot queue and cleanup policy, retaining the latest 100 images even when ordinary screenshot retention is zero. Queue limits and background encoding or disk failures can still omit images. A screenshot submission failure does not interrupt collection; cancellation and Device Control recovery retain their existing propagation. Disabling automatic mastery preserves the saved screenshot preference. [Focused screenshot tests](../../arknights_mower/tests/mastery_screenshot_tests.py) cover the collection callers, waiting and retry paths, disabled saving, persistence and cleanup offline.
+
 ### Configurable dormitory bed order
 
 `dorm_order` defaults to the four high-priority options, `dormitory_1` through `dormitory_4`. Optional `dormitory_N_low` entries place that room's remaining effective Free positions anywhere in the order. Omitted low-priority entries follow the configured room order at the end. The earliest effective position is the room's high-priority bed; group transitions recompute it without adding capacity. Fixed named replacements remain excluded from recovery capacity.
