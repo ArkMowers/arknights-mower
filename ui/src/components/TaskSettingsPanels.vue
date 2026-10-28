@@ -614,15 +614,15 @@ const idleOptions = computed(() => [
               ><n-button type="primary">养成规划</n-button></SessionLink
             >
             <help-text>专精任务在养成规划中设置，加工材料在加工设置中管理。</help-text>
+            <n-space align="center" :wrap="false">
+              <n-switch v-model:value="save_mastery_screenshots" aria-label="保存专精收取截图" />
+              <span>保存专精收取截图</span>
+              <help-text>
+                保存首次等待、按钮出现和专精完成画面到 screenshot/mastery，单次最多 3 张，保留最近
+                100 张；关闭日常截图保存时仍生效。
+              </help-text>
+            </n-space>
           </div>
-          <n-space align="center" :wrap="false" style="margin-top: 16px">
-            <n-switch v-model:value="save_mastery_screenshots" aria-label="保存专精收取截图" />
-            <span>保存专精收取截图</span>
-            <help-text>
-              保存首次等待、按钮出现和专精完成画面到 screenshot/mastery，单次最多 3 张，保留最近 100
-              张；关闭日常截图保存时仍生效。
-            </help-text>
-          </n-space>
         </n-card>
       </div>
     </section>
