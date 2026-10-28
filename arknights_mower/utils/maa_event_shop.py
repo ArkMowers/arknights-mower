@@ -76,6 +76,17 @@ def select_shop(conf, now):
     )
 
 
+def weekly_plan_uses_activity(manager, activity):
+    source = manager.get_active_plan_key()
+    selected = set(manager._plan_stage_ids(manager.get_plan(source)))
+    return any(
+        stage.get("stageType") == "ACTIVITY"
+        and stage.get("zoneNameSecond") == activity
+        and (stage.get("id") or stage.get("code")) in selected
+        for stage in stage_data_full
+    )
+
+
 def shop_params(conf):
     return {
         "task_names": ["SS@Store@Begin"],

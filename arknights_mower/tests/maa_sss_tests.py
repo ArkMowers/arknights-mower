@@ -3,7 +3,6 @@ import json
 import sys
 import threading
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,6 +13,7 @@ from arknights_mower.solvers import base_schedule, record  # noqa: E402
 from arknights_mower.utils import maa_copilot as library  # noqa: E402
 from arknights_mower.utils import maa_sss  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
+from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 SCRIPT = {
     "type": "SSS",
@@ -225,7 +225,7 @@ def scheduler(monkeypatch, storage):
     solver.MAA.running.return_value = False
     solver.maa_callback = None
     solver.recog = MagicMock()
-    solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=2))]
+    solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=2))]
     solver.last_execution = {"maa": None}
     for method in (
         "back_to_index",

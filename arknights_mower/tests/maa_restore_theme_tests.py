@@ -1,7 +1,6 @@
 import sys
 import threading
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
 import pytest
@@ -12,6 +11,7 @@ import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer, Scene  # noqa: E402
+from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def solver(monkeypatch):
     instance.MAA.get_version.return_value = "v6.17.3"
     instance.MAA.append_task.return_value = 1
     instance.MAA.running.return_value = False
-    instance.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=1))]
+    instance.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=1))]
     monkeypatch.setattr(
         base_schedule.config,
         "conf",

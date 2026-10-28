@@ -659,7 +659,7 @@ class Recognizer:
             self.scene = Scene.SSS_DEVICE
         elif self.find("sss/squad_button"):
             self.scene = Scene.SSS_SQUAD
-        elif self.find("sss/deploy_button"):
+        elif self.find("sss/deploy_button") or self.find("sss/action_preparation"):
             self.scene = Scene.SSS_DEPLOY
         elif self.find("sss/redeploy_button"):
             self.scene = Scene.SSS_REDEPLOY
@@ -919,6 +919,7 @@ class Recognizer:
             return None
 
         template_matching = {
+            "sss/action_preparation": (1080, 652),
             "recycle/dashboard": ((465, 148), (682, 264)),
             "infra_collect_recycle": ((240, 980), (1920, 1080)),
             # "arrange_check_in": ((30, 300), (175, 700)),

@@ -232,7 +232,7 @@ export const useConfigStore = defineStore('config', () => {
     x: 0,
     y: 0,
     confirm_text: '',
-    blacklist: [],
+    blacklist: ['数据增补条', '数据增补仪', '家具零件'],
     switch_source: ''
   })
   const maa_event_shop = ref(eventShopDefaults())

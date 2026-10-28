@@ -21,6 +21,13 @@ function setup() {
 }
 
 describe('MAA reward and long task config', () => {
+  it('starts with an editable activity shop blacklist and optional switching disabled', () => {
+    setup()
+    expect(store.maa_event_shop.blacklist).toEqual(['数据增补条', '数据增补仪', '家具零件'])
+    expect(store.maa_event_shop.switch_source).toBe('')
+    store.maa_event_shop.blacklist = []
+    expect(store.maa_event_shop.blacklist).toEqual([])
+  })
   it('saves signin, ordered recruits, BlackFlow preparation and reclamation options', async () => {
     const loaded = setup()
     for (const key of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[key] = []

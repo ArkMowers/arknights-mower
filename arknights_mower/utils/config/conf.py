@@ -423,7 +423,8 @@ class MaaPart(ConfModel):
         y: int = Field(default=0, ge=0, lt=1080, strict=True)
         confirm_text: str = Field(default="", max_length=128)
         blacklist: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
-            default_factory=list, max_length=64
+            default_factory=lambda: ["数据增补条", "数据增补仪", "家具零件"],
+            max_length=64,
         )
         switch_source: str = Field(default="", max_length=256)
 

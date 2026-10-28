@@ -18,6 +18,9 @@ vi.mock('naive-ui', async (original) => ({
 }))
 beforeEach(() => {
   state.config = {
+    shop_list: ref([{ label: '赤金', value: '赤金' }]),
+    item_list: ref([{ label: '数据增补条', value: '数据增补条' }]),
+    load_item: vi.fn(async () => {}),
     maa_event_shop: ref({
       enable: false,
       activity: '活动',
@@ -34,15 +37,21 @@ beforeEach(() => {
   }
 })
 describe('activity shop configuration', () => {
-  it('uses the same fallback target as time switching and clears an optional source to a string', async () => {
+  it('loads activity navigation and offers searchable item choices without weekly-plan controls', async () => {
     const scope = effectScope()
     const component = scope.run(() => Component.setup({}, { expose: () => {} }))
     await component.refresh()
-    expect(component.target.value).toBe('常规')
     expect(component.selected.value.x).toBe(100)
-    component.source.value = null
-    expect(state.config.maa_event_shop.value.switch_source).toBe('')
-    expect(component.target.value).toBe('')
+    expect(component.blacklistOptions.value.map((item) => item.value)).toEqual([
+      '数据增补条',
+      '数据增补仪',
+      '家具零件',
+      '赤金'
+    ])
+    expect(state.config.load_item).toHaveBeenCalledOnce()
+    expect(state.client.get.mock.calls.every(([url]) => !url.endsWith('/weekly-plans'))).toBe(true)
+    expect(state.config.maa_event_shop.value.switch_source).toBe('活动方案')
+    expect(state.config.maa_event_shop.value.blacklist).toEqual([])
     scope.stop()
   })
   it('has its own daily task switch and preserves other settings', () => {
