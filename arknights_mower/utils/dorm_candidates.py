@@ -108,6 +108,34 @@ def unstarted_product_wait(task):
     )
 
 
+def product_wait_resting_replacements(op_data, task):
+    """尚未开始换人的切产物预约允许未接岗的普通替班临时恢复。"""
+    if not getattr(task, "product_shift_locked", False) or any(
+        getattr(task, flag, False)
+        for flag in (
+            "backup_shift_active",
+            "product_switched_before_arrangement",
+            "derived_correction_started",
+            "group_shift_expected",
+            "arrangement_retry_room",
+        )
+    ):
+        return set()
+    return {
+        name
+        for room, row in task.plan.items()
+        if not room.startswith("dorm")
+        for name in row
+        if name in getattr(task, "product_lock_names", ())
+        and name not in getattr(task, "urgent_recovery_reserved_names", ())
+        and (op := op_data.operators.get(name)) is not None
+        and callable(getattr(op, "is_high", None))
+        and callable(getattr(op, "is_working", None))
+        and not op.is_high()
+        and not op.is_working()
+    }
+
+
 def retained_task_reservations(
     op_data, tasks, *, current_task=None, returning_groups=()
 ):
@@ -230,7 +258,34 @@ def retained_task_reservations(
 def dorm_task_reservations(op_data, tasks, excluded=()):
     """规划与执行采用相同预约；待命候补的回班任务不阻止其临时恢复。"""
     tasks = [task for task in tasks if not unstarted_product_wait(task)]
-    names, retained_slots = retained_task_reservations(op_data, tasks)
+    recovering_tasks = [
+        (task, recovering)
+        for task in tasks
+        if (recovering := product_wait_resting_replacements(op_data, task))
+    ]
+    recovering_ids = {id(task) for task, _ in recovering_tasks}
+    names, retained_slots = retained_task_reservations(
+        op_data, [task for task in tasks if id(task) not in recovering_ids]
+    )
+    for task, recovering in recovering_tasks:
+        task_names, task_slots = retained_task_reservations(op_data, [task])
+        task_names.difference_update(recovering)
+        # 只释放临时恢复者的源床，原任务的目标床和其他任务预约继续生效。
+        target_slots = {
+            (room, index)
+            for room, row in task.plan.items()
+            for index, name in enumerate(row)
+            if name != "Current"
+        }
+        task_slots.difference_update(
+            (op.current_room, op.current_index)
+            for name in recovering
+            for op in (op_data.operators[name],)
+            if op.current_room.startswith("dorm")
+            and (op.current_room, op.current_index) not in target_slots
+        )
+        names.update(task_names)
+        retained_slots.update(task_slots)
     names.update(set(excluded) - {"", "Current", "Free"})
     names.update(getattr(op_data, "emergency_reserved_agents", ()))
     slots = {slot for slot in retained_slots if slot[0].startswith("dorm")}
@@ -271,13 +326,14 @@ def dorm_task_reservations(op_data, tasks, excluded=()):
             # 普通未来清退随换床后的实读重建，不为旧床预约整间宿舍。
             continue
         returning = task_type == "SHIFT_ON"
+        recovering = product_wait_resting_replacements(op_data, task)
         for room, row in task.plan.items():
             for index, name in enumerate(row):
                 if room.startswith("dorm") and name != "Current":
                     slots.add((room, index))
                 if name in ("", "Current", "Free"):
                     continue
-                if not (
+                if name not in recovering and not (
                     returning and name in op_data.operators and op_data.is_standby(name)
                 ):
                     names.add(name)
