@@ -1013,7 +1013,9 @@ class TestBaseScheduler(unittest.TestCase):
     def test_group_dorm_assignment_rolls_back_when_capacity_is_insufficient(self):
         solver = self._build_resting_solver()
         for name, index in [("泥岩", 3), ("能天使", 4)]:
-            solver.op_data.add(Operator(name, ""))
+            solver.op_data.add(
+                Operator(name, "room_3_1", index=index - 3, operator_type="high")
+            )
             op = solver.op_data.operators[name]
             op.current_room = "dormitory_1"
             op.current_index = index

@@ -7296,10 +7296,16 @@ class BaseSchedulerSolver(
         ):
             logger.debug("整组成员仍在为其他组替班，暂缓下班：%s", sorted(blockers))
             return
+        already_resting = {
+            name
+            for name in [*agents, *dorm_agents]
+            if not self.op_data.operators[name].multi_group
+            and self.op_data.get_dorm_by_name(name)[0] is not None
+        }
         required = 0
         for x in agents:
             op = self.op_data.operators[x]
-            if op.workaholic or op.room.startswith("dorm"):
+            if op.workaholic or op.room.startswith("dorm") or x in already_resting:
                 continue
             required += 1
         logger.debug(f"需求:{current_resting} 当前休息")
@@ -7341,13 +7347,9 @@ class BaseSchedulerSolver(
                 logger.debug(f"干员房间出错:{agent}")
                 success = False
                 break
-            if (
-                not x.multi_group
-                and self.op_data.get_dorm_by_name(x.name)[0] is not None
-            ):
-                # 如果干员已经被安排了
-                success = False
-                break
+            if agent in already_resting:
+                # 已休息成员保留原床位和岗位替班，继续安排其余成员下班。
+                continue
 
             if self.op_data.is_auto_free_dorm_operator(x):
                 # 同组姓名只开启这张临时床；不把该姓名安排进宿舍，固定
@@ -7387,6 +7389,7 @@ class BaseSchedulerSolver(
                     return False
                 return (
                     obj not in TRADE_ORDER_AGENTS
+                    and obj not in already_resting
                     and not _is_mastery_busy(obj)
                     and obj not in protected_training
                     and (
