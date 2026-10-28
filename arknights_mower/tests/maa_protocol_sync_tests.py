@@ -2,7 +2,6 @@ import json
 import logging
 import sys
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,6 +11,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
 from arknights_mower.utils.maa_callback import MaaCallbackLog  # noqa: E402
+from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def dispatch(monkeypatch, tmp_path):
     maa = solver.MAA
     maa.running.return_value = False
     solver.last_execution = {"maa": None}
-    solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(days=1))]
+    solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(days=1))]
     for method in (
         "back_to_index",
         "initialize_maa",

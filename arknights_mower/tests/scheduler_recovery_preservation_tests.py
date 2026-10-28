@@ -219,8 +219,9 @@ def test_depot_mastery_dispatch_keeps_source_release_available(
         solver.tasks.append(upgrade)
 
     solver.仓库扫描 = Mock(side_effect=scan)
-    solver.find_next_task = lambda task_type: next(
-        (task for task in solver.tasks if task.type == task_type), None
+    solver.find_next_task = lambda task_type=None: next(
+        (task for task in solver.tasks if task_type is None or task.type == task_type),
+        None,
     )
     dispatched = []
 

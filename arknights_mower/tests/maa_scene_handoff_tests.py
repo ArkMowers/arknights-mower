@@ -86,7 +86,7 @@ def test_blackflow_starts_without_closing_game_and_returns_fresh_state(
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.recog = recog
     solver.device = recog.device
-    solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=2))]
+    solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=2))]
     solver.last_execution = {"maa": None if daily else datetime.now()}
     solver.credit_fight = 1
     maa = MagicMock()
