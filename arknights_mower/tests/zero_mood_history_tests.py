@@ -1,4 +1,4 @@
-"""零心情保留实读，曲线展示工作设施切换和已确认耗尽。"""
+"""零心情保留实读，曲线展示工作设施换岗、离岗入宿和已确认耗尽。"""
 
 import sqlite3
 from contextlib import contextmanager
@@ -188,6 +188,48 @@ def test_zero_without_countdown_records_exhaustion(history_reader, remaining, so
     assert target.work_rate_sample_eligible is False
 
 
+@pytest.mark.parametrize("source", ["grouped", "selected"])
+@pytest.mark.parametrize("cleared_source", [False, True])
+def test_exhaust_shift_records_visible_zero_on_dorm_arrival(
+    history_reader, source, cleared_source
+):
+    solver, target, clock = history_reader
+    target.exhaust_require = True
+    seed_history(target, clock, "central")
+    solver.read_time.return_value = 537
+    observed = solver.get_agent_from_room("central", force_mood=True)[0]
+    assert observed["time"] == clock.now() + timedelta(seconds=537)
+    assert [point["y"] for point in curve_points(source, target)] == [1.2]
+
+    if cleared_source:
+        solver.read_screen.return_value = "絮雨"
+        solver.get_agent_from_room("central", force_mood=True)
+        assert target.current_room == ""
+    clock.current += timedelta(seconds=40)
+    solver.op_data.plan["dormitory_1"] = [Room(target.name, "", [])]
+    solver.find = MagicMock(return_value=None)
+    solver.read_screen.return_value = target.name
+    solver.get_agent_from_room("dormitory_1", force_mood=True)
+
+    assert target.mood == 0
+    assert target.exhaust_time is None
+    clock.current += timedelta(seconds=5)
+    solver.get_agent_from_room("dormitory_1", force_mood=True)
+    assert record._fetchall(
+        "SELECT mood, current_room, mood_event FROM agent_action "
+        'WHERE name = ? ORDER BY "current_time", rowid',
+        target.name,
+    ) == [
+        (1.2, "central", None),
+        (0, "central", None),
+        (0, "dormitory_1", None),
+        (0, "dormitory_1", None),
+    ]
+    points = curve_points(source, target)
+    assert [point["y"] for point in points] == [1.2, 0]
+    assert "moodEvent" not in points[-1]
+
+
 @pytest.mark.parametrize("remaining", [float("nan"), float("inf"), -1, "bad"])
 def test_invalid_countdown_does_not_record_observation(history_reader, remaining):
     solver, target, clock = history_reader
@@ -284,7 +326,7 @@ def test_curves_filter_stored_zero_mood_and_preserve_raw_events(
         points = record.get_mood_ratios()[0]["moodData"]["datasets"][0]["data"]
         # 零值进出设施与充能事件仍保留在原始记录中，工休比包含那一秒休息时间。
         assert record.get_work_rest_ratios()["夕"]["datasets"][0]["data"] == [1, 2]
-    assert [point["y"] for point in points] == [1.2, 0.5]
+    assert [point["y"] for point in points] == [1.2, 0, 0.5]
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT mood FROM agent_action").fetchall() == [
             (1.2,),
@@ -312,6 +354,12 @@ def test_selected_curve_filters_zero_before_sample_limit(income_db):
             ("夕", 0, "2026-09-11 12:00:30.000000", "", "contact"),
         )
         connection.execute(
+            "INSERT INTO agent_action "
+            "(name, mood, current_time, agent_current_room, current_room) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("夕", 0, "2026-09-11 12:00:45.000000", "", "dormitory_1"),
+        )
+        connection.execute(
             "INSERT INTO agent_action (name, mood, current_time, mood_event) "
             "VALUES (?, ?, ?, ?)",
             ("夕", 0, "2026-09-11 12:01:00.000000", "exhausted"),
@@ -322,7 +370,7 @@ def test_selected_curve_filters_zero_before_sample_limit(income_db):
         )
     assert [
         point["y"] for point in selected_mood_series(income_db, ["夕"])[0]["data"]
-    ] == [1.2, 0, 0]
+    ] == [1.2, 0, 0, 0]
 
 
 @pytest.mark.parametrize("include_events", [False, True])
@@ -395,7 +443,9 @@ def test_curves_preserve_working_transitions_in_legacy_history(
             "datasets"
         ][0]["data"]
     assert [point["y"] for point in points] == (
-        [1.2, 0, 0, 0, 0, 0, 0, 0, 0] if include_events else [1.2, 0, 0, 0, 0, 0, 0, 0]
+        [1.2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        if include_events
+        else [1.2, 0, 0, 0, 0, 0, 0, 0, 0]
     )
     if include_events:
         assert points[-1]["moodEvent"] == "exhausted"
@@ -436,24 +486,25 @@ def test_minimal_history_without_facility_pair_keeps_only_confirmed_zero(
 
 @pytest.mark.parametrize("source", ["grouped", "selected"])
 @pytest.mark.parametrize("include_events", [False, True])
+@pytest.mark.parametrize("destination", ["contact", "dormitory_1"])
 @pytest.mark.parametrize(
     "before,after,explicit_source,keep_zero",
     [
-        ([("central", -1)], [], "", True),
-        ([("central", -1)], [], None, True),
-        ([("dormitory_1", -1)], [], "", False),
-        ([("unknown", -1)], [], "", False),
-        ([("", -1)], [], "", False),
-        ([(None, -1)], [], "", False),
-        ([], [], "", False),
-        ([("central", -2), ("dormitory_1", -1)], [], "", False),
-        ([("central", -2), ("contact", -1)], [], "", False),
-        ([("central", 1)], [], "", False),
-        ([("central", 0)], [], "", True),
-        ([], [("central", 0)], "", False),
-        ([("central", -1)], [], "contact", False),
-        ([("central", -1)], [], "dormitory_1", False),
-        ([("dormitory_1", -1)], [], "central", True),
+        ([("central", -1)], [], "", (True, True)),
+        ([("central", -1)], [], None, (True, True)),
+        ([("dormitory_1", -1)], [], "", (False, False)),
+        ([("unknown", -1)], [], "", (False, False)),
+        ([("", -1)], [], "", (False, False)),
+        ([(None, -1)], [], "", (False, False)),
+        ([], [], "", (False, False)),
+        ([("central", -2), ("dormitory_1", -1)], [], "", (False, False)),
+        ([("central", -2), ("contact", -1)], [], "", (False, True)),
+        ([("central", 1)], [], "", (False, False)),
+        ([("central", 0)], [], "", (True, True)),
+        ([], [("central", 0)], "", (False, False)),
+        ([("central", -1)], [], "contact", (False, True)),
+        ([("central", -1)], [], "dormitory_1", (False, False)),
+        ([("dormitory_1", -1)], [], "central", (True, True)),
     ],
 )
 def test_missing_source_uses_only_nearest_prior_facility(
@@ -461,6 +512,7 @@ def test_missing_source_uses_only_nearest_prior_facility(
     monkeypatch,
     source,
     include_events,
+    destination,
     before,
     after,
     explicit_source,
@@ -495,7 +547,7 @@ def test_missing_source_uses_only_nearest_prior_facility(
 
         for room, seconds in before:
             save(room, room, 1.2, seconds)
-        save(explicit_source, "contact", 0, 0)
+        save(explicit_source, destination, 0, 0)
         for room, seconds in after:
             save(room, room, 1.2, seconds)
 
@@ -508,7 +560,7 @@ def test_missing_source_uses_only_nearest_prior_facility(
             connection.close()
 
     monkeypatch.setattr(record, "_conn", read_only_connection)
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(favorite="夕"))
     monkeypatch.setattr(config, "plan", PlanModel())
     original = database.read_bytes()
     if source == "selected":
@@ -517,6 +569,6 @@ def test_missing_source_uses_only_nearest_prior_facility(
         groups = record.get_mood_ratios(include_work_rest=False)
         points = groups[0]["moodData"]["datasets"][0]["data"] if groups else []
     assert [point["y"] for point in points if point["y"] == 0] == (
-        [0] if keep_zero else []
+        [0] if keep_zero[destination == "dormitory_1"] else []
     )
     assert database.read_bytes() == original
