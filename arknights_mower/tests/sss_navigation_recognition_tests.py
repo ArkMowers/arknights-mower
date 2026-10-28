@@ -3,6 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import cv2
 import numpy as np
 
 from arknights_mower.utils.image import loadres
@@ -24,15 +25,17 @@ def test_current_preparation_frame_reaches_sss_handoff_without_input():
 
 
 def test_old_deploy_button_still_recognized():
-    recog = Recognizer(MagicMock())
-    img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    path = Path(__file__).parent / "fixtures/sss/action_preparation_20261028.jpg"
+    recog = Recognizer(MagicMock(), path.read_bytes())
+    img = recog.img.copy()
+    # 保留完整场景背景，遮去新版标记后仅用旧版按钮验证兼容识别。
+    img[652:706, 1080:1340] = 0
     button = loadres("sss/deploy_button")
     h, w = button.shape[:2]
     img[620 : 620 + h, 1500 : 1500 + w] = button
-    import cv2
-
     recog._img, recog._gray = img, cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     recog.check_loading_time = MagicMock()
+    assert recog.find("sss/action_preparation") is None
     assert recog.get_sss_scene() == Scene.SSS_DEPLOY
 
 
