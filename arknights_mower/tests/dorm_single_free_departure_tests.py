@@ -181,7 +181,16 @@ def test_release_reallocation_requires_completed_room(solver, completed):
     )
     solver.op_data.config.operator_mood_limits = {"银灰": {"upper": 24}}
     solver.task = task
-    solver.agent_arrange = MagicMock(return_value=None if completed else False)
+
+    def arrange(plan, get_time):
+        if not completed:
+            return False
+        op = solver.op_data.operators["银灰"]
+        op._current_room, op.current_index = "", -1
+        solver.op_data.dorm[0].reset()
+        plan.clear()
+
+    solver.agent_arrange = MagicMock(side_effect=arrange)
     solver.arrange_release_dorm()
     assert len(solver.tasks) == int(completed)
     if completed:
@@ -217,6 +226,9 @@ def test_partial_release_queues_only_confirmed_single_free_event(solver):
     solver.task = task
 
     def arrange(plan, get_time):
+        op = data.operators["银灰"]
+        op._current_room, op.current_index = "", -1
+        data.dorm[0].reset()
         del plan[ROOM]
         return False
 

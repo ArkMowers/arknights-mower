@@ -2811,16 +2811,23 @@ def prioritize_new_dorm_recovery(
     *,
     reserved_names=(),
     configuration_changed=False,
+    previous_arrangements=None,
 ):
     """宿舍事件按恢复层级分配单回位及普通位，同级优先保留实际原位。
 
     配置的宿舍顺序表达各类位置的恢复速度偏好；仅心情变化不搬床。
+    执行后传入变化房间的原驻员，以当前实读阵容分床，不重放离宿意图。
     只修改投影计划，保留住客集合、预约和真实恢复标记。
     """
     from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
     from arknights_mower.utils.dorm_skills import is_single_recovery_manager
 
-    if not plan and not preceding_plan and not configuration_changed:
+    if (
+        not plan
+        and not preceding_plan
+        and not configuration_changed
+        and not previous_arrangements
+    ):
         return plan
     projected = op_data.project_arrangements([preceding_plan or {}, plan])
     beds = [
@@ -2861,7 +2868,13 @@ def prioritize_new_dorm_recovery(
         else ""
         for bed in beds
     }
-    if not configuration_changed and all(actual[b.position] == b.name for b in beds):
+    previous = {
+        bed.position: previous_arrangements[bed.position[0]][bed.position[1]]
+        if previous_arrangements and bed.position[0] in previous_arrangements
+        else actual[bed.position]
+        for bed in beds
+    }
+    if not configuration_changed and all(previous[b.position] == b.name for b in beds):
         return plan
 
     # 保留 alpha 显式高优位/低优位的完整顺序；同房普通床为一个同速组。
@@ -2959,7 +2972,7 @@ def prioritize_new_dorm_recovery(
     for group, quota in zip(groups, quotas):
         fill(group, quota, include_fillers=True)
     if any(
-        allocations[groups[index][0].position] != actual[groups[index][0].position]
+        allocations[groups[index][0].position] != previous[groups[index][0].position]
         for index in targets
     ):
         # 单回归属改变时，同级恢复者重新按缺口分配；满心情垫位保留兼容原位。

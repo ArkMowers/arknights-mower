@@ -95,7 +95,13 @@ def test_batch_ignores_invalid_person_without_cancelling_other(batch_solver, cha
         data.operators["空爆"].dorm_mood_fallback = ROOM
     else:
         instance.tasks[1].meta_data = "不存在的干员"
-    plan, _ = run_batch(instance)
+
+    def depart(plan):
+        op = data.operators["桃金娘"]
+        op._current_room, op.current_index = "", -1
+        data.dorm[0].reset()
+
+    plan, _ = run_batch(instance, depart)
     assert plan == {ROOM: ["Current"] * 3 + ["Free", "Current"]}
     if change == "protected":
         assert len(instance.tasks) == 2
