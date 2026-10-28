@@ -358,6 +358,11 @@ def load_task_settings_layout() -> str:
     return value if value in ("checklist", "waterfall") else "checklist"
 
 
+def load_base_report_mode() -> str:
+    value = read_gui_data(strict=True).get("base_report_mode")
+    return value if value in ("standard", "stock") else "standard"
+
+
 def load_watermark_visible() -> bool:
     data = read_gui_data(strict=True)
     if data.get("watermark_visible") is not False:
@@ -406,6 +411,7 @@ def save_appearance(changes: dict) -> dict:
             ("checklist", "waterfall"),
             "任务配置显示方式无效",
         ),
+        "base_report_mode": (str, ("standard", "stock"), "基建报表显示方式无效"),
         "watermark_visible": (bool, (True, False), "版本水印显示设置无效"),
     }
     if (

@@ -11,8 +11,12 @@ import {
   installPreviewBackend,
   previewWebSocket
 } from './mock.js'
+import { ORDER_PRICES, ORDER_TYPES } from '../src/utils/baseReport.js'
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 describe('offline preview', () => {
   it('loads the new shop and copilot forms without device or resource access', async () => {
@@ -123,7 +127,8 @@ describe('offline preview', () => {
       software_version_display: 'version',
       software_version_language: 'en',
       watermark_visible: true,
-      task_settings_layout: 'checklist'
+      task_settings_layout: 'checklist',
+      base_report_mode: 'standard'
     })
     await client.put('/gui/appearance', { task_settings_layout: 'waterfall' })
     await client.put('/gui/appearance', { software_version_display: 'channel' })
@@ -140,7 +145,8 @@ describe('offline preview', () => {
       software_version_display: 'channel',
       software_version_language: 'zh',
       watermark_visible: false,
-      task_settings_layout: 'waterfall'
+      task_settings_layout: 'waterfall',
+      base_report_mode: 'standard'
     })
     expect(data.config).toEqual(originalConfig)
     expect(data.appearance).not.toHaveProperty('watermark_confirmation')
@@ -148,13 +154,15 @@ describe('offline preview', () => {
       software_version_display: 'version',
       software_version_language: 'en',
       watermark_visible: true,
-      task_settings_layout: 'checklist'
+      task_settings_layout: 'checklist',
+      base_report_mode: 'standard'
     })
     expect(data.appearance).toEqual({
       software_version_display: 'version',
       software_version_language: 'en',
       watermark_visible: true,
-      task_settings_layout: 'checklist'
+      task_settings_layout: 'checklist',
+      base_report_mode: 'standard'
     })
   })
 
@@ -180,7 +188,11 @@ describe('offline preview', () => {
     { software_version_display: 'channel', watermark_visible: false },
     { software_version_display: 'channel', watermark_visible: 'true' },
     { task_settings_layout: 'waterfall', unknown: true },
-    { task_settings_layout: 'waterfall', constructor: 'channel' }
+    { task_settings_layout: 'waterfall', constructor: 'channel' },
+    { base_report_mode: 'grid' },
+    { base_report_mode: null },
+    { base_report_mode: true },
+    { base_report_mode: 'stock', task_settings_layout: 'grid' }
   ])('rejects invalid appearance update %j without partial writes', async (payload) => {
     const data = createPreviewData({})
     const original = structuredClone(data.appearance)
@@ -193,6 +205,94 @@ describe('offline preview', () => {
       response: { status: 400 }
     })
     expect(data.appearance).toEqual(original)
+  })
+
+  it('stores the base report mode preference and rejects unknown modes', async () => {
+    const data = createPreviewData({ theme: 'light' })
+    const client = axios.create({ adapter: createPreviewAdapter(data) })
+    expect((await client.get('/gui/appearance')).data.base_report_mode).toBe('standard')
+    await client.put('/gui/appearance', { base_report_mode: 'stock' })
+    expect((await client.get('/gui/appearance')).data).toMatchObject({
+      software_version_display: 'version',
+      task_settings_layout: 'checklist',
+      base_report_mode: 'stock'
+    })
+    await expect(
+      client.put('/gui/appearance', { base_report_mode: 'dividend' })
+    ).rejects.toMatchObject({ response: { status: 400 } })
+    expect((await client.get('/gui/appearance')).data.base_report_mode).toBe('stock')
+    await client.put('/gui/appearance', { base_report_mode: 'standard' })
+    expect((await client.get('/gui/appearance')).data.base_report_mode).toBe('standard')
+    expect(data.config).toEqual({ theme: 'light' })
+  })
+
+  it('opens the stock mode from the preview URL parameter', () => {
+    try {
+      vi.stubGlobal('location', { search: '?base_report_mode=stock' })
+      expect(createPreviewData({}).appearance.base_report_mode).toBe('stock')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(createPreviewData({}).appearance.base_report_mode).toBe('standard')
+  })
+
+  it('serves a self-consistent daily order mix for the base report preview', async () => {
+    const data = createPreviewData({})
+    const client = axios.create({ adapter: createPreviewAdapter(data) })
+    const report = (await client.get('/report/getReportData')).data
+    const trading = (await client.get('/report/trading_history')).data
+    expect(report).toHaveLength(30)
+    expect(trading).toHaveLength(report.length)
+    const trades = new Map(trading.map((row) => [row['日期'], row]))
+    for (const row of report) {
+      const trade = trades.get(row['日期'])
+      expect(trade, row['日期']).toBeTruthy()
+      let knownAmount = 0
+      let knownCount = 0
+      for (const type of ORDER_TYPES) {
+        const count = trade[type] ?? 0
+        expect(Number.isInteger(count) && count >= 0, `${row['日期']} ${type}`).toBe(true)
+        knownAmount += count * ORDER_PRICES[type]
+        knownCount += count
+      }
+      expect(knownAmount).toBeGreaterThan(0)
+      expect(row['龙门币订单']).toBeGreaterThanOrEqual(knownAmount)
+      expect(row['龙门币订单数']).toBeGreaterThanOrEqual(knownCount)
+      expect(row['每单获取龙门币']).toBe(Math.round(row['龙门币订单'] / row['龙门币订单数']))
+    }
+  })
+
+  it('groups recorded order samples into hourly, four-hour and game-day candles', async () => {
+    const data = createPreviewData({})
+    data.baseReport.trading = [{ 日期: '2026-10-28', 但书_2000: 1, 但书_2500: 2 }]
+    const client = axios.create({ adapter: createPreviewAdapter(data) })
+    const params = { startDate: '2026-10-28', endDate: '2026-10-28', period: '1h' }
+    const hourly = (await client.get('/report/order-candles', { params })).data
+    expect(hourly.candles).toHaveLength(24)
+    expect(hourly.candles[0]).toMatchObject({ open: 2000, close: 2000, count: 1 })
+    expect(hourly.candles[3]).toMatchObject({ open: null, mean: null, count: 0 })
+    const fourHour = (
+      await client.get('/report/order-candles', { params: { ...params, period: '4h' } })
+    ).data
+    expect(fourHour.candles).toHaveLength(6)
+    expect(fourHour.candles[0]).toMatchObject({
+      open: 2000,
+      high: 2500,
+      low: 2000,
+      close: 2500,
+      count: 3,
+      amount: 7000
+    })
+    expect(fourHour.candles[0].mean).toBeCloseTo(7000 / 3)
+    const daily = (
+      await client.get('/report/order-candles', { params: { ...params, period: 'day' } })
+    ).data
+    expect(daily.candles).toHaveLength(1)
+    expect(daily.recordedCount).toBe(3)
+    expect(daily.amount).toBe(7000)
+    await expect(
+      client.get('/report/order-candles', { params: { ...params, period: 'minute' } })
+    ).rejects.toMatchObject({ response: { status: 400 } })
   })
 
   it('omits embedded instance controls from the preview bridge', () => {

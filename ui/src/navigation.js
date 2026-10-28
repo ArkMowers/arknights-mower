@@ -10,7 +10,6 @@ import HelpCircleOutline from '@vicons/ionicons5/es/HelpCircleOutline'
 import LibraryOutline from '@vicons/ionicons5/es/LibraryOutline'
 import MedkitOutline from '@vicons/ionicons5/es/MedkitOutline'
 import PieChartOutline from '@vicons/ionicons5/es/PieChartOutline'
-import ReceiptOutline from '@vicons/ionicons5/es/ReceiptOutline'
 import SchoolOutline from '@vicons/ionicons5/es/SchoolOutline'
 import SettingsOutline from '@vicons/ionicons5/es/SettingsOutline'
 import TerminalOutline from '@vicons/ionicons5/es/TerminalOutline'
@@ -81,12 +80,6 @@ export const navigationSections = [
       { key: 'record-pie', label: '工休比报表', icon: PieChartOutline, to: '/record/pie' },
       { key: 'record-report', label: '基建报表', icon: BarChartOutline, to: '/record/report' },
       { key: 'record-depot', label: '仓库', icon: CubeOutline, to: '/record/depot' },
-      {
-        key: 'record-trading',
-        label: '贸易订单分析',
-        icon: ReceiptOutline,
-        to: '/record/trading_analysis'
-      },
       {
         key: 'record-recycling',
         label: '回收站材料统计',

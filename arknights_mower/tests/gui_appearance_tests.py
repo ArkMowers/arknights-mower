@@ -51,10 +51,12 @@ class GuiAppearanceTests(unittest.TestCase):
                 "software_version_display": "version",
                 "software_version_language": "en",
                 "task_settings_layout": "checklist",
+                "base_report_mode": "standard",
                 "watermark_visible": True,
             },
         )
         self.assertEqual(gui.load_software_version_display(), "version")
+        self.assertEqual(gui.load_base_report_mode(), "standard")
         self.assertIs(gui.load_watermark_visible(), True)
         self.assertFalse(self.path.parent.exists())
 
@@ -70,6 +72,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         **response.json,
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
+                        "base_report_mode": "standard",
                         "watermark_visible": True,
                     },
                 )
@@ -89,6 +92,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         "software_version_display": "version",
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
+                        "base_report_mode": "standard",
                         "watermark_visible": True,
                     },
                 )
@@ -150,18 +154,28 @@ class GuiAppearanceTests(unittest.TestCase):
 
     def test_both_routes_require_the_current_instance_token(self):
         for headers in ({}, {"token": "wrong-instance"}):
-            with self.subTest(headers=headers):
+            with (
+                self.subTest(headers=headers),
+                patch.object(gui, "read_gui_data") as read,
+                patch.object(gui, "update_gui_data") as update,
+                patch("arknights_mower.views.gui._request_json") as parse,
+            ):
                 self.assertEqual(
                     self.client.get("/gui/appearance", headers=headers).status_code, 403
                 )
-                self.assertEqual(
-                    self.client.put(
-                        "/gui/appearance",
-                        json={"software_version_display": "channel"},
-                        headers=headers,
-                    ).status_code,
-                    403,
-                )
+                for payload in (
+                    {"software_version_display": "channel"},
+                    {"base_report_mode": "stock"},
+                ):
+                    self.assertEqual(
+                        self.client.put(
+                            "/gui/appearance", json=payload, headers=headers
+                        ).status_code,
+                        403,
+                    )
+                read.assert_not_called()
+                update.assert_not_called()
+                parse.assert_not_called()
         self.assertFalse(self.path.exists())
 
     def test_saving_preserves_sidebar_window_and_unknown_fields_in_both_directions(
@@ -265,6 +279,99 @@ class GuiAppearanceTests(unittest.TestCase):
                 self.assertEqual(self.read().json["task_settings_layout"], "checklist")
                 self.assertEqual(self.path.read_bytes(), before)
 
+    def test_base_report_mode_round_trips_and_stays_independent_of_other_fields(self):
+        gui.save_appearance(
+            {
+                "software_version_display": "channel",
+                "software_version_language": "zh",
+                "task_settings_layout": "waterfall",
+            }
+        )
+        original = gui.read_gui_data()
+        for value in ("stock", "standard"):
+            with self.subTest(value=value):
+                response = self.client.put(
+                    "/gui/appearance",
+                    json={"base_report_mode": value},
+                    headers=self.headers,
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json, {"base_report_mode": value})
+                self.assertEqual(gui.load_base_report_mode(), value)
+                self.assertEqual(self.read().json["base_report_mode"], value)
+                self.assertEqual(
+                    gui.read_gui_data(), {**original, "base_report_mode": value}
+                )
+        response = self.client.put(
+            "/gui/appearance",
+            json={
+                "software_version_display": "version",
+                "software_version_language": "en",
+                "task_settings_layout": "checklist",
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(gui.load_base_report_mode(), "standard")
+        self.assertEqual(
+            gui.read_gui_data(),
+            {
+                **original,
+                "software_version_display": "version",
+                "software_version_language": "en",
+                "task_settings_layout": "checklist",
+                "base_report_mode": "standard",
+            },
+        )
+
+    def test_invalid_saved_base_report_modes_default_without_rewriting_the_file(self):
+        for value in (None, True, 1, [], {}, "", "STOCK", " stock ", "stock-mode"):
+            with self.subTest(value=value):
+                gui._update_gui_data(base_report_mode=value)
+                before = self.path.read_bytes()
+                self.assertEqual(gui.load_base_report_mode(), "standard")
+                response = self.read()
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json["base_report_mode"], "standard")
+                self.assertEqual(self.path.read_bytes(), before)
+
+    def test_invalid_base_report_mode_rejects_the_entire_appearance_update(self):
+        gui.save_appearance({"base_report_mode": "stock"})
+        before = self.path.read_bytes()
+        payloads = [
+            {"base_report_mode": value}
+            for value in (None, True, 1, [], {}, "", "STOCK", " stock ", "standard ")
+        ]
+        payloads.extend(
+            (
+                {"base_report_mode": "standard", "unknown_field": True},
+                {"software_version_display": "invalid", "base_report_mode": "standard"},
+                {"task_settings_layout": "grid", "base_report_mode": "stock"},
+                {"base_report_mode": "stock", "sidebar": {}},
+            )
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                with patch.object(gui, "update_gui_data") as update:
+                    response = self.client.put(
+                        "/gui/appearance", json=payload, headers=self.headers
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    self.assertFalse(response.json["ok"])
+                    update.assert_not_called()
+                    with self.assertRaises(ValueError):
+                        gui.save_appearance(payload)
+                    update.assert_not_called()
+                self.assertEqual(self.path.read_bytes(), before)
+                self.assertEqual(gui.load_base_report_mode(), "stock")
+        response = self.client.put(
+            "/gui/appearance",
+            json={"base_report_mode": "standard"},
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(gui.load_base_report_mode(), "standard")
+
     def test_mixed_appearance_updates_are_validated_before_any_write(self):
         gui.save_appearance(
             {"software_version_display": "channel", "task_settings_layout": "waterfall"}
@@ -301,6 +408,7 @@ class GuiAppearanceTests(unittest.TestCase):
             {
                 **response.json,
                 "software_version_language": "en",
+                "base_report_mode": "standard",
                 "watermark_visible": True,
             },
         )

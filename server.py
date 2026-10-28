@@ -3703,6 +3703,27 @@ def getTradingHistory():
     return record.get_trading_history(start_date, end_date)
 
 
+@app.get("/report/order-candles")
+@require_token
+def get_order_candles():
+    import sqlite3
+
+    from arknights_mower.solvers.order_candles import get_order_candles as query
+
+    try:
+        return query(
+            get_path("@app/tmp") / "data.db",
+            request.args.get("startDate"),
+            request.args.get("endDate"),
+            request.args.get("period", "4h"),
+        )
+    except (ValueError, OverflowError) as exc:
+        return {"error": str(exc)}, 400
+    except (sqlite3.Error, OSError):
+        logger.exception("订单价格记录读取失败")
+        return {"error": "订单价格记录读取失败，请检查数据库后重试"}, 503
+
+
 @app.route("/report/recycling_history")
 @require_token
 def get_recycling_history():

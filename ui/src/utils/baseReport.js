@@ -167,6 +167,130 @@ export function tradingRange(reportRows) {
   return dates.length ? { start: dates[0], end: dates.at(-1) } : null
 }
 
+/** 贸易订单类型与单笔龙门币价值：key 与后端 trading_history 的 type/price 组合一致。 */
+export const ORDER_PRICES = {
+  但书_2000: 2000,
+  但书_2500: 2500,
+  漏单_1000: 1000,
+  漏单_1500: 1500,
+  漏单_2000: 2000,
+  龙舌兰: 2500,
+  佩佩: 1000,
+  可露希尔: 1200
+}
+
+export const ORDER_TYPES = Object.keys(ORDER_PRICES)
+
+/**
+ * 订单分布图配色：标准模式明暗主题各一套，股票模式另按行情皮肤区分深色与亮色底。
+ * 亮色行情用加深后的色阶，保证浅色图例和柱段在白色背景上可分辨。
+ */
+export const ORDER_COLORS = {
+  light: {
+    但书_2000: '#80cfa9',
+    但书_2500: '#a3c1da',
+    漏单_1000: '#e57373',
+    漏单_1500: '#ffb74d',
+    漏单_2000: '#7986cb',
+    龙舌兰: '#ffd580',
+    佩佩: '#f06292',
+    可露希尔: '#34495e',
+    未知订单: '#64bfec'
+  },
+  dark: {
+    但书_2000: '#7fe0b0',
+    但书_2500: '#8fb8dd',
+    漏单_1000: '#ef7f7f',
+    漏单_1500: '#ffc266',
+    漏单_2000: '#8f9cf0',
+    龙舌兰: '#ffe099',
+    佩佩: '#f47ba6',
+    可露希尔: '#7e9bb8',
+    未知订单: '#7ccbf0'
+  },
+  stock: {
+    但书_2000: '#2ebd85',
+    但书_2500: '#4a9eda',
+    漏单_1000: '#e5484d',
+    漏单_1500: '#f0a44b',
+    漏单_2000: '#7b83eb',
+    龙舌兰: '#f0c95c',
+    佩佩: '#e05a8a',
+    可露希尔: '#6e8ca8',
+    未知订单: '#4aa8e8'
+  },
+  stockLight: {
+    但书_2000: '#1f8a63',
+    但书_2500: '#2f7fbe',
+    漏单_1000: '#c93a3a',
+    漏单_1500: '#a96a00',
+    漏单_2000: '#5a5fd0',
+    龙舌兰: '#8f6b00',
+    佩佩: '#c03a78',
+    可露希尔: '#34495e',
+    未知订单: '#1f7fa8'
+  }
+}
+
+function emptyOrderRow(date) {
+  const row = {
+    日期: date,
+    未知订单: null,
+    未知订单数: null,
+    龙门币订单: null,
+    订单数: null,
+    订单质量: null,
+    赤金: null
+  }
+  for (const type of ORDER_TYPES) row[type] = null
+  return row
+}
+
+/**
+ * 把基报与贸易订单记录对齐为订单分布图行。
+ * 金额按订单类型的单笔龙门币价值折算；未知订单取基报总额与已知金额之差。
+ * days 传入时按统计区间对齐并保持区间顺序，缺失日期不补造读数。
+ */
+export function buildOrderChartRows(reportRows, tradingRows = [], days = null) {
+  const trading = new Map(
+    asList(tradingRows)
+      .filter((row) => row && row['日期'])
+      .map((row) => [row['日期'], row])
+  )
+  const rows = asList(reportRows)
+    .filter((row) => row && row['日期'] && !isPlaceholder(row))
+    .map((row) => {
+      const date = row['日期']
+      const trade = trading.get(date) || {}
+      const amounts = {}
+      let knownAmount = 0
+      let knownCount = 0
+      for (const type of ORDER_TYPES) {
+        const count = isReading(trade[type]) ? trade[type] : 0
+        amounts[type] = count * ORDER_PRICES[type]
+        knownAmount += amounts[type]
+        knownCount += count
+      }
+      const totalAmount = reading(row['龙门币订单'])
+      const totalOrders = reading(row['龙门币订单数'])
+      return {
+        日期: date,
+        ...amounts,
+        未知订单: totalAmount === null ? null : Math.max(totalAmount - knownAmount, 0),
+        未知订单数: totalOrders === null ? null : Math.max(totalOrders - knownCount, 0),
+        龙门币订单: totalAmount,
+        订单数: totalOrders,
+        订单质量: reading(row['每单获取龙门币']),
+        赤金: reading(row['赤金'])
+      }
+    })
+    .sort((a, b) => a.日期.localeCompare(b.日期))
+  const range = asList(days)
+  if (!range.length) return rows
+  const byDate = new Map(rows.map((row) => [row.日期, row]))
+  return range.map((day) => byDate.get(day.date) || emptyOrderRow(day.date))
+}
+
 const numberFormat = new Intl.NumberFormat('zh-CN')
 
 export function formatCount(value) {

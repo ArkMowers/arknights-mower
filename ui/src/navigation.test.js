@@ -120,7 +120,6 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
       '/record/pie',
       '/record/report',
       '/record/depot',
-      '/record/trading_analysis',
       '/record/recycling',
       '/record/log-schedule'
     ])
@@ -133,7 +132,6 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
       '/record/pie',
       '/record/report',
       '/record/depot',
-      '/record/trading_analysis',
       '/record/recycling',
       '/record/log-schedule'
     ])

@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios'
 import screenshot from './screenshot.svg?raw'
 import { DEFAULT_BASELINE_CONFIG, DEFAULT_VIEW_PREFS } from '../src/utils/depot_inventory.js'
+import { ORDER_PRICES, ORDER_TYPES } from '../src/utils/baseReport.js'
 import {
   BlobReader,
   BlobWriter,
@@ -79,7 +80,20 @@ export function createPreviewConfiguration(config, theme = 'light') {
   }
 }
 
+// 订单类型的逐日示例计数：数量少且可复现，与 ORDER_PRICES 折算出的金额相符。
+const previewTradingCounts = (offset) => ({
+  但书_2000: 2 + (offset % 2),
+  但书_2500: 2 + ((offset + 1) % 2),
+  漏单_1000: 1 + ((offset + 2) % 2),
+  漏单_1500: 1 + ((offset + 3) % 2),
+  漏单_2000: offset % 2,
+  龙舌兰: 1 + ((offset + 1) % 2),
+  佩佩: (offset + 1) % 2,
+  可露希尔: offset % 3 === 0 ? 1 : 0
+})
+
 // 基建报表示例：30 天产出，按日期生成稳定的起伏，不使用随机数。
+// 贸易订单每天都有记录，金额与单数由已知订单类型加未知订单折算，保证与订单分布图自洽。
 function previewBaseReport(today) {
   const end = new Date(`${today}T00:00:00`)
   const report = []
@@ -90,22 +104,106 @@ function previewBaseReport(today) {
     day.setDate(end.getDate() - offset)
     const date = day.toLocaleDateString('sv-SE')
     const wave = Math.sin(offset / 2.3)
-    const orders = 21 + Math.round(wave * 3)
     const gold = 70000 + Math.round(wave * 8000) + (offset % 4) * 1500
+    const counts = previewTradingCounts(offset)
+    let knownAmount = 0
+    let knownCount = 0
+    for (const type of ORDER_TYPES) {
+      knownAmount += counts[type] * ORDER_PRICES[type]
+      knownCount += counts[type]
+    }
+    const unknownAmount = 3000 * ((offset % 2) + 1)
+    const unknownCount = unknownAmount / 1500
+    const orders = knownCount + unknownCount
+    const amount = knownAmount + unknownAmount
     report.push({
       日期: date,
       赤金: gold,
       作战录像: 22000 + Math.round(Math.cos(offset / 3) * 4000),
-      龙门币订单: orders * 1000 + (offset % 3) * 1500,
+      龙门币订单: amount,
       龙门币订单数: orders,
-      每单获取龙门币: Math.round((orders * 1000 + (offset % 3) * 1500) / orders)
+      每单获取龙门币: Math.round(amount / orders)
     })
     orundum.push({ 日期: date, 合成玉: offset % 5 === 0 ? 0 : 160, 合成玉订单数量: 8 })
-    if (offset % 3 === 0) trading.push({ 日期: date, 龙舌兰: 1 + (offset % 2), 可露希尔: 1 })
+    trading.push({ 日期: date, ...counts })
   }
   // 示例里保留一天未读到赤金，演示缺失读数的显示。
   report[report.length - 6].赤金 = null
   return { report, orundum, trading }
+}
+
+// 离线预览可用 ?base_report_mode=stock 直接打开股票模式；Node 测试环境没有 location。
+function previewReportMode() {
+  if (typeof location === 'undefined') return 'standard'
+  return new URLSearchParams(location.search).get('base_report_mode') === 'stock'
+    ? 'stock'
+    : 'standard'
+}
+
+// 用同一批逐日示例订单生成带记录时间的样本，再按请求周期汇总。
+function previewOrderCandles(data, { startDate, endDate, period = '4h' }) {
+  const seconds = { '1h': 3600, '4h': 14400, day: 86400 }[period]
+  const parseDay = (date) => {
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return NaN
+    const parsed = Date.parse(`${date}T04:00:00+08:00`)
+    return new Date(parsed + 14400000).toISOString().slice(0, 10) === date ? parsed / 1000 : NaN
+  }
+  const start = parseDay(startDate)
+  const end = parseDay(endDate) + 86400
+  if (
+    !seconds ||
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end <= start ||
+    end - start > 366 * 86400
+  )
+    throw new Error('订单记录查询参数无效')
+  const candles = Array.from({ length: (end - start) / seconds }, (_, index) => {
+    const time = start + index * seconds
+    return {
+      start: time,
+      end: time + seconds,
+      label: new Date((time + 28800) * 1000)
+        .toISOString()
+        .slice(0, period === 'day' ? 10 : 16)
+        .replace('T', ' '),
+      open: null,
+      high: null,
+      low: null,
+      close: null,
+      mean: null,
+      count: 0,
+      amount: 0
+    }
+  })
+  for (const day of data.baseReport.trading) {
+    let slot = 0
+    for (const type of ORDER_TYPES) {
+      for (let index = 0; index < (day[type] || 0); index++) {
+        const time = parseDay(day['日期']) + slot++ * 4260
+        if (time < start || time >= end) continue
+        const bucket = candles[Math.floor((time - start) / seconds)]
+        const price = ORDER_PRICES[type]
+        bucket.open ??= price
+        bucket.high = bucket.high === null ? price : Math.max(bucket.high, price)
+        bucket.low = bucket.low === null ? price : Math.min(bucket.low, price)
+        bucket.close = price
+        bucket.count++
+        bucket.amount += price
+        bucket.mean = bucket.amount / bucket.count
+      }
+    }
+  }
+  return {
+    period,
+    startDate,
+    endDate,
+    timezone: 'Asia/Shanghai',
+    dayStartHour: 4,
+    candles,
+    recordedCount: candles.reduce((sum, row) => sum + row.count, 0),
+    amount: candles.reduce((sum, row) => sum + row.amount, 0)
+  }
 }
 
 export function createPreviewData(config) {
@@ -178,7 +276,8 @@ export function createPreviewData(config) {
       software_version_display: 'version',
       software_version_language: 'en',
       watermark_visible: true,
-      task_settings_layout: 'checklist'
+      task_settings_layout: 'checklist',
+      base_report_mode: previewReportMode()
     }
   }
 }
@@ -415,6 +514,17 @@ export function createPreviewAdapter(data, requests = []) {
       '/report/getReportData': () => clone(data.baseReport.report),
       '/report/getOrundumData': () => clone(data.baseReport.orundum),
       '/report/trading_history': () => clone(data.baseReport.trading),
+      '/report/order-candles': () => {
+        try {
+          return previewOrderCandles(data, {
+            ...Object.fromEntries(requestUrl.searchParams),
+            ...config.params
+          })
+        } catch {
+          fail(config, '订单记录查询参数无效')
+        }
+      },
+      '/report/restore-trading-history': () => '离线示例：分析已有订单记录完成',
       '/report/recycling_settings': () => clone(data.incomeSettings),
       // 离线示例仅提供默认预设，不读取 MAA 文件或建立连接。
       '/maa-conn-preset': () => ['General'],
@@ -636,7 +746,8 @@ export function createPreviewAdapter(data, requests = []) {
         software_version_display: ['version', 'channel'],
         software_version_language: ['zh', 'en'],
         watermark_visible: [true, false],
-        task_settings_layout: ['checklist', 'waterfall']
+        task_settings_layout: ['checklist', 'waterfall'],
+        base_report_mode: ['standard', 'stock']
       }
       if (!body || typeof body !== 'object' || Array.isArray(body)) fail(config, '外观配置无效')
       const changes = { ...body }
