@@ -2722,17 +2722,21 @@ class BaseSchedulerSolver(
         task = self.task
         get_time = self.prepare_release_dorm(task)
         original_plan = copy.deepcopy(task.plan)
-        before = self.op_data.project_arrangements([])
+        before = {
+            room: self.op_data.get_current_room(room, True) for room in original_plan
+        }
         completed = False
         try:
             result = self.agent_arrange(task.plan, get_time)
             completed = result is not False
             return result, get_time
         finally:
-            released = {
+            # 成功也可能保留原住客；只用已完成房间的前后驻员触发分床。
+            previous_arrangements = {
                 room: names
-                for room, names in original_plan.items()
-                if completed or room not in task.plan
+                for room, names in before.items()
+                if (completed or room not in task.plan)
+                and names != self.op_data.get_current_room(room, True)
             }
             reserved_names, reserved_slots = dorm_task_reservations(
                 self.op_data,
@@ -2753,9 +2757,13 @@ class BaseSchedulerSolver(
                     if name != "Current"
                 )
             rearranged = prioritize_new_dorm_recovery(
-                before, released, reserved_slots, reserved_names=reserved_names
+                self.op_data,
+                {},
+                reserved_slots,
+                reserved_names=reserved_names,
+                previous_arrangements=previous_arrangements,
             )
-            if rearranged != released:
+            if rearranged:
                 self.tasks.append(
                     SchedulerTask(task_type=TaskTypes.RE_ORDER, task_plan=rearranged)
                 )
