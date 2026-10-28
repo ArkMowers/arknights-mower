@@ -121,8 +121,16 @@ function mount(overrides = {}) {
   const page = scope.run(() => StockReport.setup(props, { expose: vi.fn(), emit }))
   return { page, emit, props, scope }
 }
-function render(props) {
-  return renderToString(createSSRApp({ render: () => h(StockReport, props) }))
+function render(props, view = 'chart') {
+  const component = {
+    ...StockReport,
+    setup(props, context) {
+      const state = StockReport.setup(props, context)
+      state.navActive.value = view
+      return state
+    }
+  }
+  return renderToString(createSSRApp({ render: () => h(component, props) }))
 }
 afterEach(() => vi.unstubAllGlobals())
 
@@ -411,6 +419,18 @@ describe('StockReport 已记录订单 K 线', () => {
     expect(failed).toContain('重试读取')
     const empty = await render({ ...baseProps, metric: 'orders', orderCandles: [] })
     expect(empty).toContain('所选范围没有已记录订单')
+  })
+
+  it.each(['heat', 'list'])('%s 视图中订单加载、失败与空态保持可见', async (view) => {
+    const beforeHiddenChart = (html) => html.slice(0, html.indexOf('class="view view--charts"'))
+    const props = { ...baseProps, metric: 'orders' }
+    const loading = await render({ ...props, orderCandlesLoading: true }, view)
+    expect(beforeHiddenChart(loading)).toContain('正在读取订单记录')
+    const failed = await render({ ...props, orderCandlesError: '订单记录读取超时' }, view)
+    expect(beforeHiddenChart(failed)).toContain('订单记录读取超时')
+    expect(beforeHiddenChart(failed)).toContain('重试读取')
+    const empty = await render({ ...props, orderCandles: [] }, view)
+    expect(beforeHiddenChart(empty)).toContain('所选范围没有已记录订单')
   })
 
   it('没有基报记录时仍能查看已记录订单，订单加载失败也不被基报空态遮住', async () => {

@@ -1809,6 +1809,22 @@ const orderOption = computed(() => {
       </div>
 
       <div ref="bodyRef" class="term-body">
+        <div
+          v-if="
+            isOrders &&
+            !chartViewActive &&
+            (orderCandlesLoading || orderCandlesError || !bucketRows.some((row) => row.available))
+          "
+          class="market-state"
+          :role="orderCandlesError ? 'alert' : 'status'"
+        >
+          <template v-if="orderCandlesLoading">正在读取订单记录…</template>
+          <template v-else-if="orderCandlesError">
+            <p>{{ orderCandlesError }}</p>
+            <button type="button" @click="$emit('retry-order-candles')">重试读取</button>
+          </template>
+          <template v-else>所选范围没有已记录订单</template>
+        </div>
         <div v-show="chartViewActive" class="view view--charts">
           <div class="main-grid">
             <section class="panel chart-panel" aria-label="收益主图">
