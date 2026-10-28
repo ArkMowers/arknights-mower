@@ -1,9 +1,8 @@
-"""无损归档、历史格式兼容及单条容量限制的离线验证。"""
+"""报错归档的 JPEG 编码、历史格式兼容及单条容量限制的离线验证。"""
 
 import json
 import time
 from datetime import datetime
-from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock
 from zipfile import ZipFile
@@ -18,7 +17,7 @@ from arknights_mower.utils import diagnostics, screenshot
 
 @pytest.mark.parametrize("retention", [0, 1])
 @pytest.mark.parametrize("gray", [False, True])
-def test_archived_pixels_match_submitted_snapshot_and_export(tmp_path, retention, gray):
+def test_archived_frames_use_shared_jpeg_encoding_and_export(tmp_path, retention, gray):
     now = [time.time_ns()]
     store = screenshot.ScreenshotStore(
         tmp_path, lambda: retention, logger=Mock(), wall_time_ns=lambda: now[0]
@@ -43,10 +42,9 @@ def test_archived_pixels_match_submitted_snapshot_and_export(tmp_path, retention
             lambda: all((archive / Path(n).name).exists() for n in (before, after))
         )
         for name in (before, after):
-            assert name.endswith(".png")
+            assert name.endswith(".jpg")
             with Image.open(archive / Path(name).name) as image:
-                assert image.format == "PNG"
-                np.testing.assert_array_equal(np.array(image), expected)
+                assert image.format == "JPEG"
         events = diagnostics.error_events(tmp_path)
         assert len(events[0]["screenshots"]) == 2
         with (
@@ -58,11 +56,8 @@ def test_archived_pixels_match_submitted_snapshot_and_export(tmp_path, retention
             ) as data,
             ZipFile(data) as bundle,
         ):
-            names = [name for name in bundle.namelist() if name.endswith(".png")]
+            names = [name for name in bundle.namelist() if name.endswith(".jpg")]
             assert len(names) == 2
-            for name in names:
-                with Image.open(BytesIO(bundle.read(name))) as image:
-                    np.testing.assert_array_equal(np.array(image), expected)
     finally:
         store.close()
 
@@ -76,24 +71,21 @@ def archive_store(tmp_path, **options):
     return store, archive_id, archive
 
 
-def test_image_cap_applies_to_live_and_copied_frames_even_without_global_limit(
-    tmp_path,
-):
-    assert screenshot.MAX_ARCHIVE_IMAGES == 256
+def test_archive_does_not_limit_image_count_when_bytes_under_cap(tmp_path):
     assert screenshot.MAX_ARCHIVE_BYTES == 512 * 1024**2
     store, archive_id, archive = archive_store(tmp_path, archive_limit_mb=lambda: 0)
     try:
-        for number in range(256):
-            (archive / f"{int(archive_id) - number}.png").write_bytes(b"existing")
+        for number in range(260):
+            (archive / f"{int(archive_id) - number}.jpg").write_bytes(b"x")
         filename = store.submit(b"new image")
-        assert not store._archive_frame(store._queue[-1])
-        source = tmp_path / "1.jpg"
+        assert store._archive_frame(store._queue[-1])
+        source = tmp_path / f"{int(archive_id) + 1}.png"
         source.write_bytes(b"legacy image")
         store._copy_to_archive(source, archive / source.name)
-        assert len(list(store._images(archive))) == 256
-        assert not (archive / Path(filename).name).exists()
-        assert not (archive / source.name).exists()
-        assert json.loads((archive / "event.json").read_text())["truncated"]
+        assert len(list(store._images(archive))) == 262
+        assert (archive / Path(filename).name).exists()
+        assert (archive / source.name).exists()
+        assert not json.loads((archive / "event.json").read_text()).get("truncated")
     finally:
         store.close()
 
@@ -102,7 +94,7 @@ def test_archive_byte_cap_counts_existing_files_and_leaves_metadata_space(tmp_pa
     store, archive_id, archive = archive_store(tmp_path, archive_limit_mb=lambda: 0)
     try:
         # 稀疏文件验证真实 512 MiB 边界，不分配同等大小的内存。
-        with (archive / "1.png").open("wb") as stream:
+        with (archive / "1.jpg").open("wb") as stream:
             stream.truncate(
                 screenshot.MAX_ARCHIVE_BYTES - screenshot.ARCHIVE_METADATA_RESERVE - 128
             )
@@ -124,7 +116,6 @@ def test_archive_byte_cap_counts_existing_files_and_leaves_metadata_space(tmp_pa
 def test_archive_export_bounds_legacy_images_and_log_and_reports_omission(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(diagnostics, "MAX_ARCHIVE_IMAGES", 2)
     monkeypatch.setattr(diagnostics, "MAX_ARCHIVE_BYTES", 4096)
     monkeypatch.setattr(diagnostics, "ARCHIVE_METADATA_RESERVE", 1024)
     center = datetime.now()
@@ -132,7 +123,7 @@ def test_archive_export_bounds_legacy_images_and_log_and_reports_omission(
     archive = tmp_path / "errors" / archive_id
     archive.mkdir(parents=True)
     for number in range(3):
-        (archive / f"{int(archive_id) + number}.jpg").write_bytes(b"x" * 700)
+        (archive / f"{int(archive_id) + number}.jpg").write_bytes(b"x" * 1500)
     (archive / "logs.json").write_text(json.dumps([{"message": "x" * 3000}]))
     with diagnostics.export_bundle(
         tmp_path / "log", tmp_path, center, archive_id

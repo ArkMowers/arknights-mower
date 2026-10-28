@@ -1,7 +1,7 @@
 """截图的内存预览、后台存储和独立过期清理。
 
 识别端提交内存帧，不等待编码或磁盘。预览编码只保留一个待处理槽位，
-历史队列同时限制原始帧及无损 PNG 的数量与字节数。
+历史队列同时限制原始帧及编码后 JPEG 的数量与字节数。
 """
 
 import heapq
@@ -31,7 +31,6 @@ _ERROR_WINDOW_NS = 5 * 60 * 10**9
 _RECENT_FRAME_LIMIT = 16
 _RECENT_BYTE_LIMIT = 32 * 1024**2
 _LOG_RETENTION_NS = RUNTIME_LOG_RETENTION_HOURS * 3600 * 10**9
-MAX_ARCHIVE_IMAGES = 256
 MAX_ARCHIVE_BYTES = 512 * 1024**2
 ARCHIVE_METADATA_RESERVE = 128 * 1024
 MAX_ARCHIVE_LOG_BYTES = 8 * 1024**2
@@ -364,8 +363,7 @@ class ScreenshotStore:
             folder = sub_folder or datetime.fromtimestamp(captured_ns / 10**9).strftime(
                 "%Y%m%d-%H"
             )
-            suffix = "png" if isinstance(data, np.ndarray) else "jpg"
-            filename = f"{folder}/{captured_ns}.{suffix}"
+            filename = f"{folder}/{captured_ns}.jpg"
             frame = Screenshot(
                 filename,
                 data,
@@ -472,22 +470,16 @@ class ScreenshotStore:
             raw = frame.data
         started = self._clock()
         data = b""
-        preview_data = None
         error = None
         try:
             if self._encoding_workers is None:
                 data = bytes(self._encoder(raw))
-                preview_data = data
             else:
                 data = self._encoding_workers.encode(
                     raw,
                     preview=preview,
                     deadline=self._flush_deadline,
-                    lossless=True,
-                    with_preview=frame.preview,
                 )
-                if frame.preview:
-                    data, preview_data = data
             if not data or len(data) > 1920 * 1080 * 4:
                 raise ValueError("JPEG 编码结果为空或超过单帧上限")
         except Exception as exc:
@@ -526,14 +518,7 @@ class ScreenshotStore:
                 and not self._stop.is_set()
                 and _newer_than(self._latest, frame)
             ):
-                self._latest = Screenshot(
-                    frame.filename,
-                    preview_data,
-                    frame.captured_ns,
-                    frame.queued_at,
-                    True,
-                    frame.important,
-                )
+                self._latest = frame
             self._ready.notify_all()
         # Raise outside the encoder's except block so the new exception has no
         # __context__ pointing back to the released RGB array.
@@ -837,9 +822,6 @@ class ScreenshotStore:
         ):
             self._mark_archive_truncated_locked(protected_id)
             return False
-        if image and sum(1 for _ in self._images(destination)) >= MAX_ARCHIVE_IMAGES:
-            self._mark_archive_truncated_locked(protected_id)
-            return False
         limit = self.archive_limit_mb() * 1024**2
         if limit == 0:
             return True
@@ -884,7 +866,7 @@ class ScreenshotStore:
         if now - self._last_archive_limit_log >= 30:
             self._last_archive_limit_log = now
             self.logger.warning(
-                "报错归档达到单条图片数量、单条容量或总容量上限，部分新截图或日志未保存"
+                "报错归档达到单条容量或总容量上限，部分新截图或日志未保存"
             )
 
     def _archive_frame(self, frame: Screenshot) -> bool:
@@ -1011,7 +993,6 @@ class ScreenshotStore:
                         event = {
                             "time_ns": int(archive_id),
                             "message": message,
-                            "image_limit": MAX_ARCHIVE_IMAGES,
                             "byte_limit": MAX_ARCHIVE_BYTES,
                         }
                     else:

@@ -2,7 +2,7 @@
 
 `device.png` is the reward crop supplied on 2026-10-10.
 
-`reward_quantity_20261012.jpg` is the unchanged archived 1920×1080 reward frame from the user-authorized remote inspection on 2026-10-12 at 14:41:55 (Asia/Shanghai). It shows 装置 × 1. Replay in the remote environment reads the quantity as `1` with confidence approximately 0.94976, which the previous 0.95 threshold rejected. The regression exercises the real reader through collection persistence with two matching observations, without connecting to a device.
+`reward_quantity_20261012.jpg` is the unchanged archived 1920×1080 reward frame from the user-authorized remote inspection on 2026-10-12 at 14:41:55 (Asia/Shanghai). It shows 装置 × 1. Replay in the remote environment reads the quantity as `1` with confidence approximately 0.94976, which the previous 0.95 threshold rejected. The regression exercises the real reader through collection persistence with one complete observation, without connecting to a device.
 
 `reward_orirock_20261013.jpg` is the unchanged 1920×1080 archived reward frame supplied with the Windows failure logs for 2026-10-13 at 15:06:47 (Asia/Shanghai). It shows 固源岩组 × 1. The regression simulates `cv2.imread` returning no image while loading the real Chinese-named material icon, and exercises the real reader through collection persistence. It verifies Unicode-safe loading without requiring a Windows runtime or connecting to a device.
 
@@ -12,4 +12,4 @@
 
 The companion `九色鹿_蚀清_年材料价值计算结果.xlsx` explains Nine-Colored Deer causality, Corroserum fixed byproducts and Nian/Arene random byproducts. Its 晶体元件 value differs by 0.1 from the final calculator input. The default preserves the calculator's complete saved price snapshot, including its cached crafting values; the metadata records this discrepancy and both source hashes. No workbook macros or attached Python scripts are executed.
 
-`reward_sugar_20261027.jpg` is the unchanged 1920×1080 frame from the supplied error archive for 2026-10-27 at 12:06:50 (Asia/Shanghai). It shows 糖 × 1 and passes offline replay with the existing reader and with the alpha.13 PP-OCRv6 tiny implementation. The fixture preserves the archived JPEG bytes; it cannot establish which original uncompressed observation or validation stage failed. New archives retain lossless PNG pixels and per-stage recognition logs for that diagnosis.
+`reward_sugar_20261027.jpg` is the unchanged 1920×1080 frame from the supplied error archive for 2026-10-27 at 12:06:50 (Asia/Shanghai). It shows 糖 × 1 and passes offline replay with the existing reader and with the alpha.13 PP-OCRv6 tiny implementation. The fixture preserves the archived JPEG bytes; it cannot establish which original uncompressed observation or validation stage failed. New archives retain JPEG frames and per-stage recognition logs for that diagnosis.
