@@ -8249,7 +8249,8 @@ class BaseSchedulerSolver(
                     "等待停服前提前跑单及原班恢复完成后再换班", dependencies=pending
                 )
             self.maintenance_entry_pending = False
-        if task.retains_execution:
+        if task.retains_execution or getattr(task, "product_shift_locked", False):
+            # 切产物等待保留整批安排及其绑组状态，不能从原意图重算而丢弃合并的轮休。
             return
         if (self._initial_mood_read_pending()) or getattr(
             task, "backup_shift_active", False
@@ -8280,7 +8281,6 @@ class BaseSchedulerSolver(
                 for t in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
                 if t is not task
             )
-            or getattr(task, "product_shift_locked", False)
         ):
             self._prepare_shift_backup(task, now=projection_now)
             recovery_data = self.op_data
