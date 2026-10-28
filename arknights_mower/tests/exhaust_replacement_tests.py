@@ -16,7 +16,11 @@ from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.dorm_candidates import dorm_task_reservations  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
+from arknights_mower.utils.scheduler_task import (  # noqa: E402
+    SchedulerTask,
+    TaskTypes,
+    generate_plan_by_drom,
+)
 
 
 @pytest.fixture
@@ -678,6 +682,189 @@ def test_partially_resting_exhaust_group_retains_planning(solver):
     )
     assert solver.planned
     base_schedule.send_message.assert_not_called()
+
+
+@pytest.fixture
+def partially_resting_group(solver):
+    solver.global_plan = {
+        "default_plan": Plan(
+            {
+                "central": [
+                    Room("薇薇安娜", "红松", ["斩业星熊"]),
+                    Room("焰尾", "红松", ["诗怀雅"]),
+                ],
+                "room_1_2": [
+                    Room("远牙", "红松", ["结城理"]),
+                    Room("野鬃", "红松", ["苍苔"]),
+                    Room("灰毫", "红松", ["引星棘刺"]),
+                ],
+                "dormitory_1": [Room("冰酿", "", []), Room("闪灵", "", [])]
+                + [Room("Free", "", []) for _ in range(3)],
+                "dormitory_2": [Room("流明", "", []), Room("波登可", "", [])]
+                + [Room("Free", "", []) for _ in range(3)],
+            },
+            PlanConfig("", "薇薇安娜", ""),
+        ),
+        "backup_plans": [],
+    }
+    assert solver.initialize_operators() is None
+    for name in ("食铁兽", "酒神", "红豆"):
+        solver.op_data.add(Operator(name, ""))
+    solver.op_data = solver.op_data.project_arrangements(
+        [
+            {
+                "central": ["薇薇安娜", "焰尾"],
+                "room_1_2": ["食铁兽", "酒神", "红豆"],
+                "dormitory_1": ["冰酿", "闪灵", "野鬃", "诗怀雅", "斩业星熊"],
+                "dormitory_2": ["流明", "波登可", "灰毫", "远牙", "Free"],
+            }
+        ]
+    )
+    for op in solver.op_data.operators.values():
+        op.time_stamp, op.mood = datetime.now(), 24
+    for name, mood in (
+        ("薇薇安娜", 1.2),
+        ("焰尾", 1.7),
+        ("野鬃", 20.4),
+        ("灰毫", 20.8),
+        ("远牙", 23),
+    ):
+        solver.op_data.operators[name].mood = mood
+    for bed in solver.op_data.dorm:
+        if bed.name:
+            bed.time = datetime.now() + timedelta(hours=2)
+    solver.task = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF, meta_data="薇薇安娜")
+    return solver
+
+
+@pytest.mark.parametrize("dispatch", [False, True])
+@pytest.mark.parametrize("resting_cover", [False, True])
+def test_partially_resting_group_completes_remaining_departures(
+    partially_resting_group, dispatch, resting_cover
+):
+    solver = partially_resting_group
+    if resting_cover:
+        solver.op_data.operators["薇薇安娜"].replacement.insert(0, "野鬃")
+    residents = {"野鬃", "灰毫", "远牙"}
+    before = {
+        bed.name: (bed.position, bed.time)
+        for bed in solver.op_data.dorm
+        if bed.name in residents
+    }
+    positions = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    if dispatch:
+        solver.overtake_room()
+        (task,) = solver.tasks
+        assert task.type == TaskTypes.SHIFT_OFF
+        plan = task.plan
+        admissions = {
+            (room, index): name
+            for room, row in plan.items()
+            if room.startswith("dorm")
+            for index, name in enumerate(row)
+        }
+    else:
+        plan, admissions = {}, {}
+        assert solver.get_resting_plan(
+            list(solver.op_data.groups["红松"]),
+            [],
+            plan,
+            solver.op_data.active_high_resting_count(),
+            dorm_admissions=admissions,
+        )
+        assert before == {
+            bed.name: (bed.position, bed.time)
+            for bed in solver.op_data.dorm
+            if bed.name in residents
+        }
+    assert plan["central"] == ["斩业星熊", "诗怀雅"]
+    assert "room_1_2" not in plan
+    assert {"薇薇安娜", "焰尾"} <= set(admissions.values())
+    projected = solver.op_data.project_arrangements([plan])
+    assert all(projected.operators[name].is_resting() for name in residents)
+    assert positions == {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("shortage", ["replacement", "bed", "reservation"])
+def test_partially_resting_group_preserves_state_when_admission_fails(
+    partially_resting_group, shortage
+):
+    solver = partially_resting_group
+    if shortage == "replacement":
+        solver.op_data.operators["焰尾"].replacement = []
+    elif shortage == "bed":
+        vacant = {
+            "dormitory_1": ["Current"] * 3 + ["Free", "Free"],
+            "dormitory_2": ["Current"] * 4 + ["Free"],
+        }
+        solver.op_data = solver.op_data.project_arrangements([vacant])
+        pending = SchedulerTask(task_plan=vacant, task_type=TaskTypes.SELF_CORRECTION)
+        pending.execution_retained = True
+        solver.tasks.append(pending)
+    else:
+        pending = SchedulerTask(
+            task_plan={"room_1_2": ["Current", "野鬃", "Current"]},
+            task_type=TaskTypes.SHIFT_ON,
+        )
+        pending.execution_retained = True
+        solver.tasks.append(pending)
+    before = [(bed.name, bed.time) for bed in solver.op_data.dorm]
+    plan, replacements, admissions = {}, [], {}
+    solver.get_resting_plan(
+        list(solver.op_data.groups["红松"]),
+        replacements,
+        plan,
+        solver.op_data.active_high_resting_count(),
+        dorm_admissions=admissions,
+    )
+    assert plan == {}
+    assert replacements == []
+    assert admissions == {}
+    assert before == [(bed.name, bed.time) for bed in solver.op_data.dorm]
+
+
+@pytest.mark.parametrize("returned_in_same_room", [False, True])
+def test_partially_working_group_completes_remaining_returns(
+    partially_resting_group, returned_in_same_room
+):
+    solver = partially_resting_group
+    if returned_in_same_room:
+        solver.op_data = solver.op_data.project_arrangements(
+            [{"room_1_2": ["远牙", "Current", "Current"]}]
+        )
+    solver.op_data.commit_group_shifts({"红松": True})
+    positions = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    beds = [bed for bed in solver.op_data.dorm if bed.name in {"远牙", "野鬃", "灰毫"}]
+    (task,) = generate_plan_by_drom({datetime.now(): (beds, True)}, solver.op_data)
+    assert task.type == TaskTypes.SHIFT_ON
+    solver.task, solver.tasks = task, [task]
+    solver._prepare_group_shift(task, remember_targets=True)
+    assert task.plan["room_1_2"] == ["远牙", "野鬃", "灰毫"]
+    assert positions == {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    assert solver.op_data.group_is_resting("红松")
+    solver.op_data = solver.op_data.project_arrangements([task.plan])
+    solver.op_data.commit_group_shifts({"红松": True})
+    assert solver._complete_group_shift(task)
+    assert not solver.op_data.group_is_resting("红松")
+    assert all(
+        (op.current_room, op.current_index) == (op.room, op.index)
+        for name in solver.op_data.groups["红松"]
+        for op in [solver.op_data.operators[name]]
+    )
+    solver.enter_room.assert_not_called()
 
 
 @pytest.mark.parametrize("coordinatable", [False, True])
