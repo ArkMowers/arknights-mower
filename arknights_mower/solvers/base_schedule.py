@@ -55,12 +55,14 @@ from arknights_mower.solvers.record import (
     get_inventory_counts,
     invalidate_workshop_inventory,
     load_maa_copilot_progress,
+    load_maa_paradox_progress,
     load_maa_sss_progress,
     save_agent_action,
     save_current_state,
     save_exception,
     save_log,
     save_maa_copilot_progress,
+    save_maa_paradox_progress,
     save_maa_sss_progress,
     save_recycling_collection,
     update_recycling_operators,
@@ -522,7 +524,9 @@ class BaseSchedulerSolver(
         self.daily_visit_friend_attempt = None
         self.maa_copilot_progress = {}
         self.maa_copilot_task = None
+        self.maa_paradox_task = None
         self.maa_sss_task = None
+        self.maa_event_shop_task = None
         self.ideal_resting_count = 4
         self.choose_error = set()
         self.drop_send = False
@@ -15396,6 +15400,133 @@ class BaseSchedulerSolver(
         if msg == 3:
             tasks.clear()
 
+    def _record_maa_event_shop_callback(self, msg, details):
+        task = getattr(self, "maa_event_shop_task", None)
+        if (
+            task is None
+            or type(details.get("taskid")) is not int
+            or details["taskid"] != task["id"]
+            or details.get("taskchain") != "Custom"
+            or task["finished"]
+        ):
+            return
+        if msg == 20002 and details.get("subtask") == "ProcessTask":
+            inner = details.get("details")
+            if (
+                isinstance(inner, dict)
+                and inner.get("task") == "SS@Store@CheckUnlimited"
+            ):
+                task["finite_done"] = True
+        elif msg in (10000, 10004, 20000):
+            task["finished"] = True
+        elif msg == 10002:
+            task.update(completed=True, finished=True)
+
+    def run_maa_event_shop(self, deadline):
+        from time import monotonic
+
+        from arknights_mower.solvers.event_shop import EventShopNavigation
+        from arknights_mower.utils.config.weekly_plan_loader import (
+            get_weekly_plan_manager,
+        )
+        from arknights_mower.utils.config_backup import backup_lock
+        from arknights_mower.utils.device.io_budget import device_io_budget
+        from arknights_mower.utils.maa_event_shop import (
+            select_shop,
+            shop_params,
+            switch_after_shop,
+        )
+
+        if config.stop_mower.is_set():
+            raise MowerExit
+        if (
+            config.stop_maa.is_set()
+            or (deadline() - datetime.now()).total_seconds() <= 300
+        ):
+            return
+        with backup_lock:
+            settings = config.conf.maa_event_shop.model_copy(deep=True)
+            if not settings.enable:
+                return
+            manager = get_weekly_plan_manager()
+            shop = select_shop(settings, manager._current_server_timestamp())
+            task = {
+                "settings": settings.model_dump(),
+                "source": settings.switch_source,
+                "target": manager.get_activity_fallbacks().get(
+                    settings.switch_source, ""
+                ),
+                "revision": manager.get_active_plan_revision(),
+                "finite_done": False,
+                "completed": False,
+                "finished": False,
+            }
+        if shop is None:
+            logger.warning("活动商店尚未适配、已过期或缺少坐标与确认文字，跳过兑换")
+            return
+        self.release_maa()
+        navigation_end = monotonic() + min(
+            120, (deadline() - datetime.now()).total_seconds() - 300
+        )
+
+        def remaining():
+            seconds = navigation_end - monotonic()
+            if seconds <= 0:
+                raise TimeoutError("活动商店导航超时")
+            if config.stop_maa.is_set():
+                raise InterruptedError("活动商店导航已停止")
+            return seconds
+
+        try:
+            with device_io_budget(remaining):
+                ready = EventShopNavigation(self.device, self.recog).run(shop)
+        except (TimeoutError, InterruptedError):
+            logger.warning("活动商店导航超时或收到停止指令，跳过兑换")
+            return
+        if not ready:
+            logger.warning("未确认活动商店页面，跳过兑换")
+            return
+        if config.stop_mower.is_set():
+            raise MowerExit
+        if config.stop_maa.is_set():
+            return
+        try:
+            self.initialize_maa()
+            task["id"] = self.MAA.append_task("Custom", shop_params(settings))
+            if not task["id"]:
+                raise ValueError("MAA 未接受活动商店任务，请检查核心与资源版本")
+            self.maa_event_shop_task = task
+            if not self.MAA.start():
+                raise ValueError("MAA 活动商店任务启动失败")
+            while self.MAA.running():
+                if config.stop_mower.is_set():
+                    raise MowerExit
+                if (
+                    config.stop_maa.is_set()
+                    or (deadline() - datetime.now()).total_seconds() <= 300
+                ):
+                    self.maa_stop()
+                    return
+                csleep(1)
+            if config.stop_mower.is_set():
+                raise MowerExit
+            if not config.stop_maa.is_set():
+                self.restore_maa_theme()
+                # Close the native handle before applying a configuration change.
+                self.release_maa()
+                with backup_lock:
+                    if switch_after_shop(task, config.conf.maa_event_shop, manager):
+                        logger.info(
+                            "活动商店有限商品已兑换完毕，刷理智方案从 %s 切换为 %s",
+                            task["source"],
+                            task["target"],
+                        )
+        finally:
+            if getattr(self, "MAA", None) is not None:
+                self.maa_stop()
+            self.release_maa()
+            self.recog.reset_after_external_control()
+
     def _maa_copilot_run(self, conf):
         from arknights_mower.utils.maa_copilot import queue_key, run_key
 
@@ -15420,29 +15551,43 @@ class BaseSchedulerSolver(
             save_maa_copilot_progress(progress)
         return progress
 
-    def _record_maa_copilot_callback(self, msg, details):
-        task = getattr(self, "maa_copilot_task", None)
+    def _maa_paradox_run(self, conf):
+        from arknights_mower.utils.maa_copilot import queue_key
+
+        progress = load_maa_paradox_progress()
+        key = queue_key(conf)
+        if progress.get("key") != key:
+            progress = {"key": key, "next": 0, "failed": False}
+            save_maa_paradox_progress(progress)
+        self.maa_paradox_progress = progress
+        return progress
+
+    def _record_maa_copilot_callback(self, msg, details, *, paradox=False):
+        task_attr = "maa_paradox_task" if paradox else "maa_copilot_task"
+        chain = "ParadoxCopilot" if paradox else "Copilot"
+        name = "悖论模拟" if paradox else "自动战斗"
+        task = getattr(self, task_attr, None)
         if (
             task is None
             or type(details.get("taskid")) is not int
             or details["taskid"] != task[0]
-            or details.get("taskchain") != "Copilot"
+            or details.get("taskchain") != chain
             or msg not in (10000, 10002, 10004)
         ):
             return
-        self.maa_copilot_task = None
-        progress = self.maa_copilot_progress
+        setattr(self, task_attr, None)
+        progress = self.maa_paradox_progress if paradox else self.maa_copilot_progress
         if progress.get("key") != task[1] or progress.get("next") != task[2]:
             return
         if msg == 10002:
             progress["next"] = task[2] + 1
-            logger.info(f"自动战斗队列已完成 {progress['next']} 项")
+            logger.info(f"{name}队列已完成 {progress['next']} 项")
         elif msg == 10000:
             progress["failed"] = True
-            logger.warning("自动战斗作业失败，保留进度，等待修改配置或手动重新执行")
+            logger.warning("%s作业失败，保留进度，等待修改队列或手动重新执行", name)
         else:
             return
-        save_maa_copilot_progress(progress)
+        (save_maa_paradox_progress if paradox else save_maa_copilot_progress)(progress)
 
     def _maa_sss_run(self, conf):
         from arknights_mower.utils.maa_copilot import queue_key
@@ -15506,8 +15651,10 @@ class BaseSchedulerSolver(
             logger.exception("保存 MAA 每日任务完成记录失败")
         try:
             self._record_maa_copilot_callback(msg, d)
+            self._record_maa_copilot_callback(msg, d, paradox=True)
         except Exception:
             logger.exception("保存 MAA 自动战斗作业进度失败")
+        self._record_maa_event_shop_callback(msg, d)
         try:
             self._record_maa_sss_callback(msg, d)
         except Exception:
@@ -15644,7 +15791,9 @@ class BaseSchedulerSolver(
         self.maa_inventory_tasks = {}
         self.maa_daily_tasks = {}
         self.maa_copilot_task = None
+        self.maa_paradox_task = None
         self.maa_sss_task = None
+        self.maa_event_shop_task = None
         battle_inventory_active.set()
 
         if os.environ.get("MOWER_ANDROID") == "1":
@@ -15836,8 +15985,10 @@ class BaseSchedulerSolver(
             from arknights_mower.utils.config.weekly_plan_loader import (
                 get_weekly_plan_manager,
             )
+            from arknights_mower.utils.config_backup import backup_lock
 
-            return get_weekly_plan_manager().maybe_switch_expired_activity_plan()
+            with backup_lock:
+                return get_weekly_plan_manager().maybe_switch_expired_activity_plan()
         except Exception:
             logger.exception(
                 "检测活动结束并切换刷理智周计划失败，继续使用当前方案",
@@ -15869,7 +16020,9 @@ class BaseSchedulerSolver(
                 logger.exception("关闭 MAA 工作进程失败")
         self.MAA = None
         self.maa_copilot_task = None
+        self.maa_paradox_task = None
         self.maa_sss_task = None
+        self.maa_event_shop_task = None
 
     def restore_maa_theme(self):
         """本轮 MAA 任务收尾时恢复指定主题，为下次调度预留时间。"""
@@ -15985,6 +16138,7 @@ class BaseSchedulerSolver(
             or getattr(conf, "SSS", False)
             or getattr(conf, "RCL", False)
             or getattr(conf, "COPILOT", False)
+            or getattr(conf, "PARADOX", False)
         )
 
     def maa_plan_solver(
@@ -15998,8 +16152,12 @@ class BaseSchedulerSolver(
     ):
         """清日常"""
         copilot_run = None
+        copilot_conf = None
+        paradox = False
         sss_run = None
         large_task_started = False
+        shop_started = False
+        daily_all = tasks == "All" and not one_time
         try:
             from arknights_mower.solvers.manual_tasks import manual_task_deadline
 
@@ -16099,6 +16257,8 @@ class BaseSchedulerSolver(
                         hard_stop = True
                     else:
                         self.sleep(5)
+                if config.stop_mower.is_set():
+                    raise MowerExit
                 # MAA 运行期间只保存截图，没有连续执行 Mower 场景识别。
                 self.recog.reset_after_external_control()
                 restore_theme = not hard_stop
@@ -16122,6 +16282,11 @@ class BaseSchedulerSolver(
                         # 返回游戏主页时完成登录，空闲处理再按设置切回安卓首页。
                         self.back_to_index()
                 elif record_execution:
+                    if daily_all and getattr(
+                        getattr(config.conf, "maa_event_shop", None), "enable", False
+                    ):
+                        shop_started = True
+                        self.run_maa_event_shop(deadline)
                     logger.info("记录MAA 本次执行时间")
                     self.last_execution["maa"] = datetime.now()
                     logger.info(self.last_execution["maa"])
@@ -16147,6 +16312,7 @@ class BaseSchedulerSolver(
                         for flag, name in (
                             ("RG", "rogue"),
                             ("COPILOT", "copilot"),
+                            ("PARADOX", "paradox"),
                             ("SSS", "sss"),
                             ("RCL", "rcl"),
                             ("RA", "ra"),
@@ -16167,8 +16333,14 @@ class BaseSchedulerSolver(
                     rg_sleep = min_time < now_time < max_time
             except ValueError:
                 rg_sleep = False
-            if selected_long == "copilot" and (manual or not rg_sleep):
-                copilot_run = self._maa_copilot_run(conf.copilot)
+            paradox = selected_long == "paradox"
+            if selected_long in ("copilot", "paradox") and (manual or not rg_sleep):
+                copilot_conf = conf.paradox if paradox else conf.copilot
+                copilot_run = (
+                    self._maa_paradox_run(copilot_conf)
+                    if paradox
+                    else self._maa_copilot_run(copilot_conf)
+                )
             if selected_long == "sss" and (manual or not rg_sleep):
                 sss_run = self._maa_sss_run(conf.sss)
             if (
@@ -16181,12 +16353,16 @@ class BaseSchedulerSolver(
                 or (
                     copilot_run is not None
                     and not copilot_run["failed"]
-                    and copilot_run["next"] < len(conf.copilot.scripts)
+                    and copilot_run["next"] < len(copilot_conf.scripts)
                 )
             ) and (manual or not rg_sleep):
                 logger.info("准备开始 MAA 大型任务")
                 send_message("启动 MAA 大型任务")
                 while True:
+                    if config.stop_mower.is_set():
+                        raise MowerExit
+                    if config.stop_maa.is_set():
+                        break
                     restore_theme = False
                     self.release_maa()
                     self.initialize_maa()
@@ -16373,19 +16549,31 @@ class BaseSchedulerSolver(
                                         item.model_dump() for item in preparation
                                     ]
                         self.MAA.append_task("Roguelike", rogue_params)
-                    elif selected_long == "copilot":
+                    elif selected_long in ("copilot", "paradox"):
                         from arknights_mower.utils.maa_copilot import (
                             build_copilot_params,
+                            build_paradox_params,
                         )
 
-                        params = build_copilot_params(conf.copilot)
                         copilot_index = copilot_run["next"]
-                        params["copilot_list"] = [params["copilot_list"][copilot_index]]
-                        task_id = self.MAA.append_task("Copilot", params)
-                        self.maa_copilot_task = (
-                            task_id,
-                            copilot_run["key"],
-                            copilot_index,
+                        if paradox:
+                            params = build_paradox_params(
+                                copilot_conf.scripts[copilot_index], copilot_index
+                            )
+                        else:
+                            params = build_copilot_params(copilot_conf)
+                            params["copilot_list"] = [
+                                params["copilot_list"][copilot_index]
+                            ]
+                        task_id = self.MAA.append_task(
+                            "ParadoxCopilot" if paradox else "Copilot", params
+                        )
+                        if not task_id:
+                            raise ValueError("MAA 未接受作业，请检查核心版本和作业文件")
+                        setattr(
+                            self,
+                            "maa_paradox_task" if paradox else "maa_copilot_task",
+                            (task_id, copilot_run["key"], copilot_index),
                         )
                     elif selected_long == "sss":
                         from arknights_mower.utils.maa_sss import build_sss_params
@@ -16448,7 +16636,7 @@ class BaseSchedulerSolver(
                         copilot_run is not None
                         and copilot_run["next"] == copilot_index + 1
                         and not copilot_run["failed"]
-                        and copilot_run["next"] < len(conf.copilot.scripts)
+                        and copilot_run["next"] < len(copilot_conf.scripts)
                     )
                     more_sss = (
                         sss_run is not None
@@ -16487,7 +16675,9 @@ class BaseSchedulerSolver(
                         self.maa_stop()
                         logger.info("停止MAA")
                 finally:
-                    if large_task_started and config.stop_mower.is_set():
+                    if (
+                        large_task_started or shop_started
+                    ) and config.stop_mower.is_set():
                         try:
                             self.device.exit_after_task_stop()
                         except Exception:
@@ -16513,7 +16703,11 @@ class BaseSchedulerSolver(
             if copilot_run is not None:
                 copilot_run["failed"] = True
                 try:
-                    save_maa_copilot_progress(copilot_run)
+                    (
+                        save_maa_paradox_progress
+                        if paradox
+                        else save_maa_copilot_progress
+                    )(copilot_run)
                 except Exception:
                     logger.exception("保存 MAA 自动战斗作业进度失败")
             save_exception(e)

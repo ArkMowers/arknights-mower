@@ -20,6 +20,7 @@ import WorkshopManualSettings from '@/components/WorkshopManualSettings.vue'
 import DailyMission from '@/components/DailyMission.vue'
 import Recruit from '@/components/Recruit.vue'
 import MaaReward from '@/components/MaaReward.vue'
+import MaaEventShop from '@/components/MaaEventShop.vue'
 import Clue from '@/components/Clue.vue'
 import MaaWeekly from '@/components/MaaWeekly.vue'
 import LongTasks from '@/components/LongTasks.vue'
@@ -650,6 +651,12 @@ const idleOptions = computed(() => [
     <section data-task-editor="rewards">
       <div class="settings-card-grid">
         <MaaReward />
+      </div>
+    </section>
+
+    <section id="task-event-shop" data-task-editor="event-shop">
+      <div class="settings-card-grid">
+        <MaaEventShop />
       </div>
     </section>
 

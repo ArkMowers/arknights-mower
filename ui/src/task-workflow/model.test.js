@@ -175,7 +175,8 @@ describe('task configuration checklist', () => {
         'visit',
         'credit-fight',
         'shop',
-        'rewards'
+        'rewards',
+        'event-shop'
       ],
       combat: ['stage-plan', 'long'],
       support: ['intervals', 'runtime', 'accounts', 'maa'],

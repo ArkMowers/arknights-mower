@@ -301,6 +301,7 @@ SUB_TASK_INFO = {
 
 # ProcessTask 的原子动作。识别动作每秒多次回传，未列出的节点不产生日志行。
 PROCESS_TASK_START = {
+    "SS@Store@Begin": (logging.INFO, "开始兑换活动商店商品"),
     "SignInEventBegin": (logging.INFO, "检查限时签到活动奖励"),
     "StartButton2": (logging.INFO, "开始战斗"),
     "AnnihilationConfirm": (logging.INFO, "开始剿灭行动"),
@@ -383,6 +384,19 @@ BLACKFLOW_START_STATUS = {
 
 # ProcessTask 的完成动作，按 (任务链, 节点) 区分。
 PROCESS_TASK_COMPLETED = {
+    ("Custom", "SS@Store@CheckUnlimited"): (
+        logging.INFO,
+        "已到达无限商品，按设置视为有限商品已兑换完毕",
+    ),
+    ("Custom", "SS@Store@UnderfundedOCR"): (
+        logging.INFO,
+        "活动商店货币不足，结束本次兑换",
+    ),
+    ("Custom", "SS@Store@Underfunded"): (
+        logging.INFO,
+        "活动商店货币不足，结束本次兑换",
+    ),
+    ("Custom", "SS@Store@PurchasedConfirm"): (logging.INFO, "活动商店商品兑换成功"),
     ("Award", "SignInEventReturn"): (logging.INFO, "限时签到活动检查结束"),
     ("Infrast", "UnlockClues"): (logging.INFO, "已开启线索交流"),
     ("Roguelike", "StartExplore"): (

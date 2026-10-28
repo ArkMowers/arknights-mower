@@ -146,6 +146,7 @@ export const useConfigStore = defineStore('config', () => {
   const rcl = ref({})
   const rogue = ref({})
   const sss = ref({ type: 1, ec: 1, scripts: [], run_id: '' })
+  const paradox = ref({ scripts: [], run_id: '' })
   const copilot = ref({
     run_id: '',
     scripts: [],
@@ -224,6 +225,17 @@ export const useConfigStore = defineStore('config', () => {
   const maa_orundum = ref(false)
   const maa_mining = ref(false)
   const maa_signinevent = ref(false)
+  const eventShopDefaults = () => ({
+    enable: false,
+    activity: '',
+    custom_entry: false,
+    x: 0,
+    y: 0,
+    confirm_text: '',
+    blacklist: [],
+    switch_source: ''
+  })
+  const maa_event_shop = ref(eventShopDefaults())
   const maa_specialaccess = ref(false)
   const syncingWeeklyPlan = ref(false)
   const skipNextWeeklyPlanSync = ref(false)
@@ -607,6 +619,7 @@ export const useConfigStore = defineStore('config', () => {
       rcl.value = response.data.rcl
       rogue.value = response.data.rogue
       sss.value = { scripts: [], run_id: '', ...response.data.sss }
+      paradox.value = { scripts: [], run_id: '', ...(response.data.paradox ?? {}) }
       copilot.value = {
         run_id: '',
         scripts: [],
@@ -710,6 +723,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_orundum.value = response.data.maa_orundum
       maa_mining.value = response.data.maa_mining
       maa_signinevent.value = response.data.maa_signinevent ?? false
+      maa_event_shop.value = { ...eventShopDefaults(), ...(response.data.maa_event_shop ?? {}) }
       maa_specialaccess.value = response.data.maa_specialaccess
       await load_weekly_plan_state()
       savedConfig = configSnapshot(build_config())
@@ -823,6 +837,7 @@ export const useConfigStore = defineStore('config', () => {
       rogue: rogue.value,
       sss: sss.value,
       copilot: copilot.value,
+      paradox: paradox.value,
       ...(runtime_platform.value === 'android' ? {} : { screenshot: screenshot.value }),
       screenshot_archive_limit_mb: screenshot_archive_limit_mb.value,
       screenshot_interval: screenshot_interval.value,
@@ -899,6 +914,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_orundum: maa_orundum.value,
       maa_mining: maa_mining.value,
       maa_signinevent: maa_signinevent.value,
+      maa_event_shop: maa_event_shop.value,
       maa_specialaccess: maa_specialaccess.value
     }
   }
@@ -1192,6 +1208,7 @@ export const useConfigStore = defineStore('config', () => {
     rogue,
     sss,
     copilot,
+    paradox,
     screenshot,
     screenshot_archive_limit_mb,
     screenshot_interval,
@@ -1259,6 +1276,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_mining,
     maa_specialaccess,
     maa_signinevent,
+    maa_event_shop,
     load_weekly_plan_state,
     refresh_weekly_plan_metadata,
     update_weekly_plan_active,

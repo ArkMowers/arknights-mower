@@ -18,6 +18,7 @@ from arknights_mower.utils.res_version import (
     BUILDING_SKILL_PACKAGE_PATH,
     RES_PACKAGE_DATA,
     RES_PACKAGE_DIRS,
+    RES_PACKAGE_OPTIONAL_DATA,
     is_package_file,
 )
 from arknights_mower.utils.resource_ota import OTA_MARKER, build_ota
@@ -174,7 +175,7 @@ class TestResourceOTA(ResourcePkgTestBase):
                     target = source_root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 data = archive.read(name)
-                if crlf and name in RES_PACKAGE_DATA:
+                if crlf and name in (*RES_PACKAGE_DATA, *RES_PACKAGE_OPTIONAL_DATA):
                     data = data.replace(b"\n", b"\r\n")
                 target.write_bytes(data)
 
@@ -247,6 +248,25 @@ class TestResourceOTA(ResourcePkgTestBase):
                     self.use_bundled_base(platform, crlf=crlf)
                     self.assertTrue(rp.install_resource_pkg(self.delta))
                     self.assert_target()
+
+    def test_optional_event_shop_survives_packaged_crlf_ota_base(self):
+        name = "arknights_mower/data/event_shop.json"
+        content = b"[\n]\n"
+        self.old = rewrite(self.old, lambda files: files.update({name: content}))
+        self.new = rewrite(self.new, lambda files: files.update({name: content}))
+        self.old_path.write_bytes(self.old)
+        self.new_path.write_bytes(self.new)
+        build_ota(self.old_path, self.new_path, self.ota_path, is_package_file)
+        delta = self.ota_path.read_bytes()
+        for platform in ("desktop", "android"):
+            with self.subTest(platform=platform):
+                self.use_bundled_base(platform, crlf=True)
+                self.assertEqual(
+                    (self.builtin / "data/event_shop.json").read_bytes(), b"[\r\n]\r\n"
+                )
+                self.assertTrue(rp.install_resource_pkg(delta))
+                self.assertEqual(rp.resource_pkg_path(name).read_bytes(), content)
+                self.assert_target()
 
     def test_manual_ota_reuses_packaged_data_without_frontend_sources_or_network(self):
         for platform in ("desktop", "android"):

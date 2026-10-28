@@ -1,6 +1,7 @@
 import time
 from copy import deepcopy
 from typing import Optional
+from uuid import uuid4
 
 import yaml
 
@@ -218,6 +219,9 @@ class WeeklyPlanManager:
         if plans:
             return plans[0]
         return ""
+
+    def get_active_plan_revision(self) -> str:
+        return self._read_state().get("active_weekly_plan_revision", "")
 
     def get_plan(self, key: str) -> Optional[list[dict]]:
         if not key:
@@ -526,6 +530,7 @@ class WeeklyPlanManager:
             return False
         state = self._read_state()
         state["active_weekly_plan"] = key
+        state["active_weekly_plan_revision"] = uuid4().hex
         self._write_state(state)
         self.sync_active_plan_to_config(key)
         return True

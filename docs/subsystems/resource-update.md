@@ -12,7 +12,7 @@ Bundled reconstruction reads the historical skill entry from `arknights_mower/da
 
 Android application packaging requires the built buffer artifact and rejects missing, empty or whitespace-only input before creating an update archive. Release validation also rejects an empty buffer entry in an existing archive.
 
-Bundled files declared in `RES_PACKAGE_DATA` can contain CRLF from a Windows checkout while sharing the published LF resource version. Reconstruction converts CRLF to LF only when such a base file is larger than the declared target, within the existing input limit and at most twice the target size. The staged result still requires the exact target size and SHA-256. Base files remain unchanged; binary resources, OTA payloads and external generations retain exact byte validation.
+Bundled files declared in `RES_PACKAGE_DATA` or `RES_PACKAGE_OPTIONAL_DATA` can contain CRLF from a Windows checkout while sharing the published LF resource version. Reconstruction converts CRLF to LF only when such a base file is larger than the declared target, within the existing input limit and at most twice the target size. The staged result still requires the exact target size and SHA-256. Base files remain unchanged; binary resources, OTA payloads and external generations retain exact byte validation.
 
 ## 2. Resource Publication
 
@@ -38,3 +38,12 @@ The authenticated `/resource-version` response includes `current_metadata` from 
 `Arknights数据处理器.添加干员` converts every obtainable operator avatar into a decoded 96×96 WEBP before writing the operator directory. Missing or unreadable source images fail generation with the operator name and code. MowerResource fills missing images from a fixed `ArknightsAssets/ArknightsAssets2` `cn` commit and validates all directory avatars before publication.
 
 **Operator Avatar Completeness** governs this behavior. [Complete operator avatars](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-avatar-completeness.md) records the source repair and verification.
+
+### Activity Shop Resources
+
+<a id="activity-shop-resources"></a>
+`arknights_mower/data/event_shop.json` is optional data in the selected resource generation. Its absence in an older package yields no shop adaptation and never borrows the bundled file. Collection and resource hashing include it when present; bundled OTA reconstruction normalizes its text line endings under the existing data-file rule. It remains outside mandatory `RES_PACKAGE_DATA` so older complete packages still install.
+
+The file contains at most 128 objects. Each has `activity` matching the activity navigation name, Unix-second `start_ts` and `end_ts` for the shop's actual opening window, integer entrance coordinates `x` (0–1919) and `y` (0–1079), and a nonempty `confirm_text` visible inside the shop. Start precedes end; overlapping entries for the same activity are rejected. Coordinates use the standard 1920×1080 frame. A shop may remain open after its battle stages close, so maintainers supply the shop window independently. The bundled file currently contains an empty list; no current-event coordinates are asserted.
+
+For an open activity in stage data without an adapted shop entry, the UI allows selecting that activity and overriding coordinates and title. This fallback ends with the battle-stage window; the extended shop window requires a resource entry. Redemption and plan-switch behavior belong to [Activity Shop Redemption](maa-integration.md#12-activity-shop-redemption).

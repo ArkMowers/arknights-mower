@@ -21,6 +21,7 @@ from arknights_mower.utils.res_version import (
     RES_PACKAGE_DATA,
     RES_PACKAGE_DIRS,
     RES_PACKAGE_MODELS,
+    RES_PACKAGE_OPTIONAL_DATA,
     RES_PACKAGE_OPTIONAL_MODELS,
 )
 from arknights_mower.utils.resource_store import (
@@ -37,6 +38,7 @@ def resource_zip(
     files = {name: "{}" for name in (*RES_PACKAGE_DATA, *RES_PACKAGE_MODELS)}
     if optional:
         files.update({name: "model" for name in RES_PACKAGE_OPTIONAL_MODELS})
+        files.update({name: "[]" for name in RES_PACKAGE_OPTIONAL_DATA})
     files.update({name + "/x.webp": "WEBP" for name in RES_PACKAGE_DIRS})
     files[rp._RESOURCE_MARKER] = json.dumps(
         {"res_version": version, **(manifest or {})}
@@ -106,6 +108,7 @@ class TestSharedResourceScope(unittest.TestCase):
             for source, _ in _collect_arknights_mower_datas()
         }
         self.assertIn("arknights_mower/data/version.json", collected)
+        self.assertIn("arknights_mower/data/event_shop.json", collected)
 
 
 class TestInstallResourcePkg(ResourcePkgTestBase):
@@ -186,6 +189,16 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
             rp.install_resource_pkg(resource_zip("v2026.08.24-bbbbbbb", optional=True))
         )
         self.assertEqual(rp.resource_pkg_path(model).read_text(), "model")
+
+    def test_optional_event_shop_data_is_selected_without_builtin_fallback(self):
+        name = "arknights_mower/data/event_shop.json"
+        (self.builtin / "data/event_shop.json").write_text('[{"activity":"bundled"}]')
+        self.assertTrue(rp.install_resource_pkg(resource_zip()))
+        self.assertFalse(rp.resource_pkg_path(name).exists())
+        self.assertTrue(
+            rp.install_resource_pkg(resource_zip("v2026.08.24-bbbbbbb", optional=True))
+        )
+        self.assertEqual(rp.resource_pkg_path(name).read_text(), "[]")
 
     def test_valid_install_selects_complete_persistent_package(self):
         self.assertTrue(rp.install_resource_pkg(resource_zip()))

@@ -29,6 +29,7 @@ from arknights_mower.utils.res_version import (
     BUILDING_SKILL_DATA,
     BUILDING_SKILL_PACKAGE_PATH,
     RES_PACKAGE_DATA,
+    RES_PACKAGE_OPTIONAL_DATA,
     is_package_file,
     parse_version,
 )
@@ -479,7 +480,9 @@ def _extract_package(data, callback=None):
                 from_version=selection.manifest.get("res_version"),
                 source_file=source_file,
                 allowed_file=is_package_file,
-                normalize_base_files=RES_PACKAGE_DATA if selection.root is None else (),
+                normalize_base_files=(*RES_PACKAGE_DATA, *RES_PACKAGE_OPTIONAL_DATA)
+                if selection.root is None
+                else (),
                 callback=callback,
             )
             return validate_package(_STAGING, __version__)

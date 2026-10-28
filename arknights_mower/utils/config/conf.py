@@ -206,6 +206,17 @@ class RogueRecruitConf(ConfModel):
 
 
 class LongTaskPart(ConfModel):
+    class ParadoxQueueItem(ConfModel):
+        id: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    class ParadoxConf(ConfModel):
+        scripts: list["LongTaskPart.ParadoxQueueItem"] = Field(
+            default_factory=list, max_length=32
+        )
+        run_id: str = Field(default="", max_length=128)
+
+    paradox: ParadoxConf = Field(default_factory=ParadoxConf)
+
     class RogueConf(ConfModel):
         squad: str = ""
         "分队"
@@ -404,6 +415,20 @@ class LongTaskPart(ConfModel):
 
 
 class MaaPart(ConfModel):
+    class EventShopConf(ConfModel):
+        enable: bool = False
+        activity: str = Field(default="", max_length=256)
+        custom_entry: bool = False
+        x: int = Field(default=0, ge=0, lt=1920, strict=True)
+        y: int = Field(default=0, ge=0, lt=1080, strict=True)
+        confirm_text: str = Field(default="", max_length=128)
+        blacklist: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
+            default_factory=list, max_length=64
+        )
+        switch_source: str = Field(default="", max_length=256)
+
+    maa_event_shop: EventShopConf = Field(default_factory=EventShopConf)
+
     maa_path: str = Field(default_factory=default_maa_directory)
     maa_mirrorchyan_token: str = ""
     "Mirror酱下载 Token"
@@ -1233,6 +1258,10 @@ class Conf(
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "copilot"
 
     @property
+    def PARADOX(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "paradox"
+
+    @property
     def SSS(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sss"
 
@@ -1297,7 +1326,8 @@ class Conf(
     @property
     def has_maa_daily_tasks(self) -> bool:
         return (
-            self.should_run_maa_stage_plan
+            self.maa_event_shop.enable
+            or self.should_run_maa_stage_plan
             or self.should_run_maa_mall_task
             or any(
                 [
@@ -1314,7 +1344,12 @@ class Conf(
     @property
     def has_maa_tasks(self) -> bool:
         return (
-            self.has_maa_daily_tasks or self.RG or self.SSS or self.RCL or self.COPILOT
+            self.has_maa_daily_tasks
+            or self.RG
+            or self.SSS
+            or self.RCL
+            or self.COPILOT
+            or self.PARADOX
         )
 
     @property
