@@ -456,13 +456,29 @@ class Operators:
             {**group, "trigger": get_logic_exp(copy.deepcopy(group["trigger"]))}
             for group in self.backup_groups
         ]
-        return select_backup_plans(
-            self.backup_plans,
-            groups,
-            lambda trigger: bool(self.evaluate_expression(str(trigger))),
-            current_group=self.backup_group,
-            current=self.plan_condition,
-        )
+        now = getattr(self, "_projection_now", None) or datetime.now()
+        missing = object()
+        clocks = [
+            (obj, getattr(obj, "_projection_now", missing))
+            for obj in (self, *self.operators.values())
+        ]
+        try:
+            # 分组条件和各副表条件共用同刻心情，沿用已有的投影查询缓存。
+            for obj, _ in clocks:
+                obj._projection_now = now
+            return select_backup_plans(
+                self.backup_plans,
+                groups,
+                lambda trigger: bool(self.evaluate_expression(str(trigger))),
+                current_group=self.backup_group,
+                current=self.plan_condition,
+            )
+        finally:
+            for obj, previous in clocks:
+                if previous is missing:
+                    del obj._projection_now
+                else:
+                    obj._projection_now = previous
 
     def swap_plan(self, condition, refresh=False, *, backup_group=None):
         from arknights_mower.utils.backup_validation import validate_backup_facilities
