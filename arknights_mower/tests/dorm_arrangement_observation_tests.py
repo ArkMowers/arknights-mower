@@ -92,6 +92,10 @@ def incident(monkeypatch, offline_maintenance):
     solver.waiting_scene = []
     solver.back = MagicMock()
     solver.record_selection_success = MagicMock()
+    solver.profession_filter = MagicMock()
+    solver.switch_arrange_order = MagicMock()
+    solver.swipe_left = MagicMock(return_value=0)
+    solver.scan_agent = MagicMock(return_value=([], []))
     monkeypatch.setattr(
         base_schedule, "defer_dorm_before_priority_task", lambda *a: False
     )

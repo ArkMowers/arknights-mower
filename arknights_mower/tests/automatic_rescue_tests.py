@@ -116,6 +116,9 @@ def pending_normal_order(solver, monkeypatch):
     from arknights_mower.utils import scheduler_task
 
     selection_harness(solver, monkeypatch)
+    solver.prepare_dorm_selection = (
+        base_schedule.BaseSchedulerSolver.prepare_dorm_selection.__get__(solver)
+    )
     solver.op_data.plan["room_1_1"].pop()
     setup_startup(solver)
     config.conf.automatic_rescue_enable = True

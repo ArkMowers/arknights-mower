@@ -47,8 +47,8 @@ def test_rewritten_confirmation_target_restores_original_without_deferral(
     task.group_shift_expected = {("dormitory_1", 2): B}
     solver.task, solver.tasks = task, [task]
     before_time = task.time
-    solver.preserve_resting_crafters = lambda agents, room: agents.__setitem__(
-        2, "杜林"
+    solver.preserve_resting_crafters = lambda agents, room, **kwargs: (
+        agents.__setitem__(2, "杜林")
     )
 
     solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
@@ -99,6 +99,7 @@ def test_duplicate_filler_is_reselected_with_original_targets(
     from arknights_mower.tests.choose_agent_filter_tests import selection_solver
 
     instance, selected = selection_solver(monkeypatch, residents=[])
+    instance.refresh_dorm_selection_candidates = MagicMock(return_value=None)
     original = ["爱丽丝", "伊芙利特", "杜林"]
     task = SchedulerTask(
         task_type=TaskTypes.SHIFT_OFF, task_plan={"dormitory_1": original.copy()}
@@ -651,7 +652,7 @@ def test_fixed_dorm_target_at_personal_limit_still_requires_confirmation(solver)
     task.group_shift_transitions = {"甲": True}
     task.group_shift_expected = {("dormitory_1", 0): "塑心"}
     solver.task, solver.tasks = task, [task]
-    solver.preserve_resting_crafters = lambda agents, room: None
+    solver.preserve_resting_crafters = lambda agents, room, **kwargs: None
     solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
     assert task.plan["dormitory_1"][0] == "塑心"
     assert not solver._complete_group_shift(task)
