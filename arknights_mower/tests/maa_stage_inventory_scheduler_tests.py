@@ -10,6 +10,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 
 def _conf(
@@ -666,7 +667,7 @@ class MaaRoguelikeTests(unittest.TestCase):
         solver.recog = MagicMock()
         solver.last_execution = {"maa": None}
         solver.credit_fight = None
-        solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=1))]
+        solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=1))]
         active = Event()
         maa = MagicMock()
         maa.start.side_effect = RuntimeError("MAA start failed")
@@ -704,7 +705,7 @@ class MaaRoguelikeTests(unittest.TestCase):
         solver.recog = MagicMock()
         solver.last_execution = {"maa": None}
         solver.credit_fight = None
-        solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(days=1))]
+        solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(days=1))]
         mock_maa = MagicMock()
         # running() 立即返回 False：MAA 运行循环一次都不进，只断言 append_task 参数。
         mock_maa.running.return_value = False

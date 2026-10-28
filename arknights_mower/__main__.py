@@ -1150,6 +1150,11 @@ def simulate(saved):
                         rg_sleep = False
 
                     if not rg_sleep:
+                        from arknights_mower.solvers.manual_tasks import (
+                            long_task_deadline,
+                            resume_dorm_releases,
+                        )
+
                         if config.conf.RA:
                             from arknights_mower.solvers.reclamation_algorithm import (
                                 ReclamationAlgorithm,
@@ -1160,12 +1165,16 @@ def simulate(saved):
                             ra_solver = ReclamationAlgorithm(
                                 base_scheduler.device, base_scheduler.recog
                             )
-                            ra_solver.run(
-                                find_next_task(
-                                    base_scheduler.tasks, op_data=base_scheduler.op_data
-                                ).time
-                                - datetime.now()
-                            )
+                            try:
+                                ra_solver.run(
+                                    long_task_deadline(
+                                        base_scheduler,
+                                        datetime.now() + timedelta(hours=24),
+                                    )
+                                    - datetime.now()
+                                )
+                            finally:
+                                resume_dorm_releases(base_scheduler)
                             remaining_time = (
                                 find_next_task(
                                     base_scheduler.tasks, op_data=base_scheduler.op_data
@@ -1180,12 +1189,16 @@ def simulate(saved):
                             sf_solver = SecretFront(
                                 base_scheduler.device, base_scheduler.recog
                             )
-                            sf_solver.run(
-                                find_next_task(
-                                    base_scheduler.tasks, op_data=base_scheduler.op_data
-                                ).time
-                                - datetime.now()
-                            )
+                            try:
+                                sf_solver.run(
+                                    long_task_deadline(
+                                        base_scheduler,
+                                        datetime.now() + timedelta(hours=24),
+                                    )
+                                    - datetime.now()
+                                )
+                            finally:
+                                resume_dorm_releases(base_scheduler)
                             remaining_time = (
                                 find_next_task(
                                     base_scheduler.tasks, op_data=base_scheduler.op_data
@@ -1198,6 +1211,11 @@ def simulate(saved):
                     # announcement before dispatching another scheduler task.
                     continue
 
+            from arknights_mower.solvers.manual_tasks import (
+                run_long_task_if_dorm_pending,
+            )
+
+            run_long_task_if_dorm_pending(base_scheduler)
             base_scheduler.run()
         except RECOVERABLE_DEVICE_ERRORS as exc:
             try:

@@ -13,6 +13,7 @@ from arknights_mower.utils.config.conf import Conf  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit, csleep  # noqa: E402
 from arknights_mower.utils.device.device import Device  # noqa: E402
 from arknights_mower.utils.device.io_budget import io_timeout  # noqa: E402
+from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 
 @pytest.mark.parametrize("kind", ["rogue", "sss", "rcl"])
@@ -28,7 +29,7 @@ def test_mower_stop_cancels_large_task_closes_game_and_releases_without_wait(
     solver.MAA = MagicMock()
     solver.device = MagicMock()
     solver.recog = MagicMock()
-    solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=2))]
+    solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=2))]
     solver.last_execution = {"maa": None}
     for method in (
         "back_to_index",

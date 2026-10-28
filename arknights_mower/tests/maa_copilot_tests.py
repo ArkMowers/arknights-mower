@@ -15,6 +15,7 @@ from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.utils import maa_copilot as library  # noqa: E402
 from arknights_mower.utils.config.conf import Conf, CopilotConf  # noqa: E402
 from arknights_mower.utils.maa_callback import MaaCallbackLog  # noqa: E402
+from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 SCRIPT = {
     "stage_name": "1-7",
@@ -249,7 +250,7 @@ def scheduler(monkeypatch, files, tmp_path):
     solver.MAA.running.return_value = False
     solver.maa_callback = None
     solver.recog = MagicMock()
-    solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=2))]
+    solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=2))]
     solver.last_execution = {"maa": None}
     solver.emergency_state = None
     for method in (
@@ -399,7 +400,7 @@ def test_progress_survives_real_startup_with_or_without_runtime_cache(
     monkeypatch.setattr(record, "_tables_created", False)
     emit(scheduler, 10002, 1)
     if complete_queue:
-        scheduler.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=2))]
+        scheduler.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=2))]
         scheduler.maa_plan_solver()
         emit(scheduler, 10002, 2)
         scheduler.tasks = []
@@ -417,7 +418,7 @@ def test_progress_survives_real_startup_with_or_without_runtime_cache(
     monkeypatch.setattr(mower, "refresh_resource_at_boundary", MagicMock())
     mower.simulate({} if clear_cache else saved)
     assert scheduler.run.called
-    scheduler.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=2))]
+    scheduler.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=2))]
     calls = scheduler.MAA.append_task.call_count
     scheduler.maa_plan_solver()
     assert scheduler.maa_copilot_progress["next"] == (2 if complete_queue else 1)

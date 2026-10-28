@@ -19,6 +19,7 @@ from arknights_mower.utils.device.session import (  # noqa: E402
     SessionFailure,
 )
 from arknights_mower.utils.device.touch_backend import TouchFailure  # noqa: E402
+from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 
 class TestSchedulerTerminalDeviceFailures(unittest.TestCase):
@@ -298,7 +299,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
         solver.recog = MagicMock()
         solver.last_execution = {"maa": None}
         solver.credit_fight = None
-        solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(days=1))]
+        solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(days=1))]
         conf = SimpleNamespace(
             RG=True,
             SSS=False,

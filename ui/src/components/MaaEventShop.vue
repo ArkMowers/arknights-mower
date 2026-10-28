@@ -4,36 +4,31 @@ import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
 
-const { maa_event_shop: settings } = storeToRefs(useConfigStore())
+const store = useConfigStore()
+const { maa_event_shop: settings, shop_list, item_list } = storeToRefs(store)
 const axios = inject('axios')
 const message = useMessage()
 const base = import.meta.env.VITE_HTTP_URL || ''
 const shops = ref([])
-const fallbacks = ref({})
-const plans = ref([])
 const selected = computed(() =>
   shops.value.find((item) => item.activity === settings.value.activity)
 )
 const activityOptions = computed(() =>
   shops.value.map((item) => ({ label: item.activity, value: item.activity }))
 )
-const sourceOptions = computed(() => plans.value.map((name) => ({ label: name, value: name })))
-const source = computed({
-  get: () => settings.value.switch_source,
-  set: (value) => (settings.value.switch_source = value || '')
+const blacklistOptions = computed(() => {
+  const names = new Set(['数据增补条', '数据增补仪', '家具零件'])
+  for (const option of [...(shop_list.value || []), ...(item_list.value || [])]) {
+    names.add(option.value)
+  }
+  return [...names].map((name) => ({ label: name, value: name }))
 })
-const target = computed(() => fallbacks.value[settings.value.switch_source] || '')
 async function refresh() {
   try {
-    const [navigation, weekly] = await Promise.all([
-      axios.get(`${base}/maa-event-shop`),
-      axios.get(`${base}/weekly-plans`)
-    ])
+    const [navigation] = await Promise.all([axios.get(`${base}/maa-event-shop`), store.load_item()])
     shops.value = navigation.data.shops
-    fallbacks.value = weekly.data.activity_fallbacks || {}
-    plans.value = weekly.data.plans || []
   } catch (error) {
-    message.error(error.response?.data?.message || '读取活动商店与方案失败')
+    message.error(error.response?.data?.message || '读取活动商店设置失败')
   }
 }
 onMounted(refresh)
@@ -47,7 +42,7 @@ onMounted(refresh)
     <n-flex vertical :size="16">
       <n-alert :show-icon="false">
         MAA
-        日常结束后进入所选活动的商店，按商品顺序兑换，遇到无限商品即停止。商品黑名单中的物品不会兑换。
+        日常结束后，仅当当前理智周计划包含所选活动的关卡时，才进入对应商店兑换。按商品顺序兑换，遇到无限商品即停止。商品黑名单中的物品不会兑换。
       </n-alert>
       <n-form label-placement="top" :show-feedback="false">
         <n-form-item label="活动">
@@ -101,33 +96,21 @@ onMounted(refresh)
           >
         </n-alert>
         <n-form-item label="商品黑名单（名称关键词）">
-          <n-dynamic-tags v-model:value="settings.blacklist" :max="64" />
-        </n-form-item>
-        <n-form-item label="有限商品兑换完毕后切换的源方案">
           <n-select
-            v-model:value="source"
-            :options="sourceOptions"
-            clearable
-            placeholder="不切换方案"
-            @update:show="(show) => show && refresh()"
+            v-model:value="settings.blacklist"
+            multiple
+            filterable
+            tag
+            :options="blacklistOptions"
+            placeholder="选择商品或输入名称关键词"
+            aria-label="活动商店商品黑名单"
           />
         </n-form-item>
       </n-form>
-      <n-alert v-if="settings.switch_source" :show-icon="false" :type="target ? 'info' : 'warning'">
-        <template v-if="target"
-          >结束后方案：{{
-            target
-          }}。与刷理智中的定时切换共用此目标，任一条件先满足即切换。</template
-        >
-        <template v-else
-          >请先在刷理智中为“{{ settings.switch_source }}”选择结束后方案，否则不会切换。</template
-        >
-        仅在当前仍使用源方案时生效；任务中断、货币不足或期间已切换方案均不会再次切换。
-      </n-alert>
       <n-text depth="3"
         >入口坐标取自活动首页。确认文字应为商店内的专有标题；活动关闭后不会点击入口。尚无资源适配的活动仅在关卡开放期可选，商店延长开放期需资源包提供时间。</n-text
       >
-      <n-button @click="refresh">刷新活动与方案</n-button>
+      <n-button @click="refresh">刷新活动</n-button>
     </n-flex>
   </n-card>
 </template>

@@ -6,7 +6,12 @@ from datetime import datetime, timedelta
 
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import get_server_time
-from arknights_mower.utils.scheduler_task import TaskTypes, find_next_task
+from arknights_mower.utils.scheduler_task import (
+    TaskScope,
+    TaskTypes,
+    find_next_task,
+    task_view,
+)
 
 LONG_TASKS = {
     TaskTypes.ROGUELIKE: "rogue",
@@ -17,14 +22,82 @@ LONG_TASKS = {
 }
 
 
+def deferrable_dorm_release(task):
+    return (
+        getattr(task, "type", None) == TaskTypes.RELEASE_DORM
+        and not getattr(task, "strict_mood_limit", False)
+        and not getattr(task, "emergency_recovery_release", False)
+        and not getattr(task, "retains_execution", False)
+    )
+
+
+def resume_dorm_releases(scheduler):
+    """大型任务结束后，让已到期的普通清退从实际结束时刻继续派发。"""
+    ended_at = datetime.now()
+    for task in scheduler.tasks:
+        if deferrable_dorm_release(task) and task.time < ended_at:
+            task.time = ended_at
+
+
+def long_task_deadline(scheduler, limit):
+    current = getattr(scheduler, "task", None)
+    if getattr(current, "type", None) not in LONG_TASKS:
+        current = None
+    pending = min(
+        (
+            task
+            for task in task_view(
+                scheduler.tasks,
+                TaskScope.DISPATCH,
+                getattr(scheduler, "op_data", None),
+            )
+            if task is not current and not deferrable_dorm_release(task)
+        ),
+        key=lambda task: task.time,
+        default=None,
+    )
+    return min(pending.time, limit) if pending else limit
+
+
+def run_long_task_if_dorm_pending(scheduler):
+    pending = scheduler.find_next_task()
+    if pending is None or not deferrable_dorm_release(pending):
+        return False
+    conf = config.conf
+    if not any(
+        getattr(conf, flag, False)
+        for flag in ("RG", "COPILOT", "PARADOX", "SSS", "RCL", "RA", "SF")
+    ):
+        return False
+    now = datetime.now()
+    try:
+        start = datetime.strptime(conf.maa_rg_sleep_min, "%H:%M").time()
+        end = datetime.strptime(conf.maa_rg_sleep_max, "%H:%M").time()
+        sleeping = (
+            now.time() > start or now.time() < end
+            if end < start
+            else start < now.time() < end
+        )
+    except ValueError:
+        sleeping = False
+    if sleeping or long_task_deadline(
+        scheduler, now + timedelta(hours=24)
+    ) - now < timedelta(minutes=9):
+        return False
+    scheduler.maa_plan_solver([])
+    return True
+
+
 def manual_task_deadline(scheduler):
+    if not hasattr(scheduler.task, "manual_deadline"):
+        scheduler.task.manual_deadline = datetime.now() + timedelta(hours=24)
+    if scheduler.task.type in LONG_TASKS:
+        return long_task_deadline(scheduler, scheduler.task.manual_deadline)
     pending = find_next_task(
         [task for task in scheduler.tasks if task is not scheduler.task],
         compare_time=datetime.max,
         op_data=getattr(scheduler, "op_data", None),
     )
-    if not hasattr(scheduler.task, "manual_deadline"):
-        scheduler.task.manual_deadline = datetime.now() + timedelta(hours=24)
     return (
         min(pending.time, scheduler.task.manual_deadline)
         if pending

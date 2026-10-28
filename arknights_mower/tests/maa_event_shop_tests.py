@@ -30,7 +30,14 @@ def navigation(monkeypatch, tmp_path):
     path = tmp_path / "event_shop.json"
     path.write_text(json.dumps([ENTRY]))
     monkeypatch.setattr(shop, "resource_pkg_path", lambda _: path)
-    monkeypatch.setattr(shop, "stage_data_full", [])
+    monkeypatch.setattr(
+        shop,
+        "stage_data_full",
+        [
+            {"id": "ACT-1", "stageType": "ACTIVITY", "zoneNameSecond": "测试活动"},
+            {"id": "ACT-2", "stageType": "ACTIVITY", "zoneNameSecond": "其他活动"},
+        ],
+    )
     return path
 
 
@@ -328,3 +335,45 @@ def test_stopping_shop_navigation_does_not_start_a_following_large_task(
     ]
     scheduler.initialize_maa.assert_called_once()
     assert manager.get_active_plan_key() == "活动"
+
+
+@pytest.mark.parametrize("stages", [["1-7"], ["ACT-2"], ["UNKNOWN"], []])
+def test_shop_skips_before_navigation_without_matching_activity_in_current_weekly_plan(
+    scheduler, navigation, manager, monkeypatch, stages
+):
+    setup_shop(scheduler)
+    data = yaml.safe_load(manager.WEEKLY_PLANS_FILE.read_text())
+    data["plans"]["活动"] = [{"weekday": "周一", "stage": stages}]
+    manager.WEEKLY_PLANS_FILE.write_text(yaml.safe_dump(data, allow_unicode=True))
+    navigate = MagicMock(return_value=True)
+    monkeypatch.setattr(EventShopNavigation, "run", navigate)
+    scheduler.run_maa_event_shop(lambda: datetime.now() + timedelta(hours=1))
+    navigate.assert_not_called()
+    scheduler.initialize_maa.assert_not_called()
+    scheduler.MAA.append_task.assert_not_called()
+
+
+def test_shop_rechecks_plan_after_navigation_before_purchase(
+    scheduler, navigation, manager, monkeypatch
+):
+    setup_shop(scheduler)
+
+    def change_plan(*args):
+        manager.set_active_plan("常规")
+        return True
+
+    monkeypatch.setattr(EventShopNavigation, "run", change_plan)
+    scheduler.run_maa_event_shop(lambda: datetime.now() + timedelta(hours=1))
+    scheduler.initialize_maa.assert_not_called()
+    scheduler.MAA.append_task.assert_not_called()
+
+
+def test_matching_activity_on_another_weekday_qualifies(navigation, manager):
+    data = yaml.safe_load(manager.WEEKLY_PLANS_FILE.read_text())
+    data["plans"]["活动"] = [
+        {"weekday": "周一", "stage": ["1-7"]},
+        {"weekday": "周日", "stage": ["ACT-1"]},
+    ]
+    manager.WEEKLY_PLANS_FILE.write_text(yaml.safe_dump(data, allow_unicode=True))
+    assert shop.weekly_plan_uses_activity(manager, "测试活动")
+    assert not shop.weekly_plan_uses_activity(manager, "其他活动")

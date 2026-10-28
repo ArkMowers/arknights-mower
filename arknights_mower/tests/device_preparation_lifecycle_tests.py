@@ -106,6 +106,7 @@ class PreparationLifecycleTests(unittest.TestCase):
                 validate_backup_plans=lambda *, max_seconds=None: {"success": True},
                 config=None,
             ),
+            find_next_task=lambda: None,
             run=lambda: self.step(),
             recog=SimpleNamespace(update=lambda: self.refresh()),
             emergency_state=None,

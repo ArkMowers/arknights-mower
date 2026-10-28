@@ -15784,6 +15784,7 @@ class BaseSchedulerSolver(
             select_shop,
             shop_params,
             switch_after_shop,
+            weekly_plan_uses_activity,
         )
 
         if config.stop_mower.is_set():
@@ -15798,12 +15799,15 @@ class BaseSchedulerSolver(
             if not settings.enable:
                 return
             manager = get_weekly_plan_manager()
+            if not weekly_plan_uses_activity(manager, settings.activity):
+                logger.info("当前理智周计划不含所选活动的关卡，跳过活动商店兑换")
+                return
             shop = select_shop(settings, manager._current_server_timestamp())
             task = {
                 "settings": settings.model_dump(),
-                "source": settings.switch_source,
+                "source": manager.get_active_plan_key(),
                 "target": manager.get_activity_fallbacks().get(
-                    settings.switch_source, ""
+                    manager.get_active_plan_key(), ""
                 ),
                 "revision": manager.get_active_plan_revision(),
                 "finite_done": False,
@@ -15839,6 +15843,12 @@ class BaseSchedulerSolver(
             raise MowerExit
         if config.stop_maa.is_set():
             return
+        with backup_lock:
+            if manager.get_active_plan_revision() != task[
+                "revision"
+            ] or not weekly_plan_uses_activity(manager, settings.activity):
+                logger.info("理智周计划已更改，跳过本次活动商店兑换")
+                return
         try:
             self.initialize_maa()
             task["id"] = self.MAA.append_task("Custom", shop_params(settings))
@@ -16508,10 +16518,21 @@ class BaseSchedulerSolver(
         shop_started = False
         daily_all = tasks == "All" and not one_time
         try:
-            from arknights_mower.solvers.manual_tasks import manual_task_deadline
+            from arknights_mower.solvers.manual_tasks import (
+                long_task_deadline,
+                manual_task_deadline,
+                resume_dorm_releases,
+            )
+
+            running_long_task = False
+            long_limit = datetime.now() + timedelta(hours=24)
 
             def deadline():
-                return manual_task_deadline(self) if manual else self.tasks[0].time
+                if manual:
+                    return manual_task_deadline(self)
+                if running_long_task:
+                    return long_task_deadline(self, long_limit)
+                return self.tasks[0].time
 
             record_execution = not one_time and (
                 not manual or tasks == "All" or "Fight" in tasks
@@ -16522,6 +16543,7 @@ class BaseSchedulerSolver(
             if (
                 not one_time
                 and not manual
+                and tasks
                 and len(self.tasks) > 0
                 and (deadline() - datetime.now()).total_seconds() < 300
             ):
@@ -16672,6 +16694,9 @@ class BaseSchedulerSolver(
                     None,
                 )
             )
+            running_long_task = True
+            if selected_long and deadline() - datetime.now() < timedelta(seconds=30):
+                selected_long = None
             now_time = datetime.now().time()
             try:
                 min_time = datetime.strptime(conf.maa_rg_sleep_min, "%H:%M").time()
@@ -17051,11 +17076,17 @@ class BaseSchedulerSolver(
                 if selected_long == "ra":
                     self.back_to_index()
                     ra_solver = ReclamationAlgorithm(self.device, self.recog)
-                    ra_solver.run(deadline() - datetime.now())
+                    try:
+                        ra_solver.run(deadline() - datetime.now())
+                    finally:
+                        resume_dorm_releases(self)
                 elif selected_long == "sf":
                     self.back_to_index()
                     sf_solver = SecretFront(self.device, self.recog)
-                    sf_solver.run(deadline() - datetime.now())
+                    try:
+                        sf_solver.run(deadline() - datetime.now())
+                    finally:
+                        resume_dorm_releases(self)
 
             if restore_theme:
                 self.restore_maa_theme()
@@ -17116,6 +17147,10 @@ class BaseSchedulerSolver(
             send_message(str(e), "MAA调用出错！", level="ERROR")
             if manual:
                 raise
+            if large_task_started:
+                resume_dorm_releases(self)
+                large_task_started = False
+            running_long_task = False
             remaining_time = (deadline() - datetime.now()).total_seconds()
             if remaining_time > 0:
                 # 参照 rest_until_next_task：休眠前重置场景计时，避免 check_freeze
@@ -17128,9 +17163,14 @@ class BaseSchedulerSolver(
         else:
             # 空闲唤醒故障交回设备恢复，不能作为 MAA 任务故障报告。
             battle_inventory_active.clear()
+            if large_task_started:
+                resume_dorm_releases(self)
+                large_task_started = False
             if not manual:
                 self.rest_until_next_task()
         finally:
+            if large_task_started:
+                resume_dorm_releases(self)
             self.release_maa()
             battle_inventory_active.clear()
         return True

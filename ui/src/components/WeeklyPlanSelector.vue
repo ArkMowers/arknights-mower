@@ -20,7 +20,8 @@ const {
   maa_weekly_plan_options,
   maa_weekly_plan_activity_fallbacks,
   maa_weekly_plan_activity_switch_times,
-  maa_weekly_plan_activity_end_times
+  maa_weekly_plan_activity_end_times,
+  maa_event_shop
 } = storeToRefs(store)
 const { update_weekly_plan_active, delete_weekly_plan, update_weekly_plan_activity_fallback } =
   store
@@ -82,6 +83,16 @@ const hasFallbackTarget = computed(() => Boolean(localFallbackValue.value))
 const fallbackTimeIsCustom = computed(() =>
   Boolean(maa_weekly_plan_activity_switch_times.value?.[maa_weekly_plan_active.value])
 )
+
+const shopSwitchEnabled = computed({
+  get: () =>
+    Boolean(maa_weekly_plan_active.value) &&
+    maa_event_shop.value?.switch_source === maa_weekly_plan_active.value,
+  set: (enabled) => {
+    if (enabled) maa_event_shop.value.switch_source = maa_weekly_plan_active.value
+    else if (shopSwitchEnabled.value) maa_event_shop.value.switch_source = ''
+  }
+})
 
 function handleInputKeydown(event) {
   if (event.key === 'Enter') {
@@ -241,6 +252,17 @@ async function handleFallbackTime(value) {
     >
       {{ fallbackTimeIsCustom ? '自定' : '默认' }}
     </span>
+    <div class="weekly-plan-label fallback-label">兑换后切换</div>
+    <n-checkbox
+      v-model:checked="shopSwitchEnabled"
+      class="shop-switch"
+      :disabled="loading || (!hasFallbackTarget && !shopSwitchEnabled)"
+      aria-label="活动商店兑换完成后切换方案"
+      >有限商品兑换完毕后切换</n-checkbox
+    >
+    <div class="shop-switch-note">
+      使用上方切换目标。需启用活动商店兑换；兑换中断或货币不足时不切换。关闭此项仍保留定时切换。
+    </div>
     <div v-if="error" class="selector-error">{{ error }}</div>
   </div>
 </template>
@@ -282,6 +304,16 @@ async function handleFallbackTime(value) {
 
 .fallback-time {
   width: 100%;
+}
+
+.shop-switch,
+.shop-switch-note {
+  grid-column: 2 / 4;
+}
+
+.shop-switch-note {
+  font-size: 12px;
+  opacity: 0.65;
 }
 
 .selector-error {

@@ -35,6 +35,7 @@ function mountSetup(component) {
 beforeEach(() => {
   state.resource = reactive({ info: { current_version: 'old' } })
   state.refs = {
+    maa_event_shop: ref({ enable: false, switch_source: '', blacklist: ['家具零件'] }),
     maa_weekly_plan: ref([{ weekday: '周一', stage: ['YW-8'] }]),
     maa_weekly_plan_active: ref('活动'),
     maa_weekly_plan_options: ref(['活动', '常规']),
@@ -69,6 +70,23 @@ describe('活动数据随资源版本刷新', () => {
     )
     expect(selector.localFallbackTime).toBe(150000)
     expect(state.refs.maa_weekly_plan.value[0].stage).toEqual(['YW-8'])
+  })
+
+  it('lets the current weekly plan opt into shop completion switching independently of redemption', () => {
+    const selector = mountSetup(WeeklyPlanSelector)
+    expect(selector.shopSwitchEnabled).toBe(false)
+    selector.shopSwitchEnabled = true
+    expect(state.refs.maa_event_shop.value.switch_source).toBe('活动')
+    expect(state.refs.maa_event_shop.value.enable).toBe(false)
+    expect(state.refs.maa_event_shop.value.blacklist).toEqual(['家具零件'])
+    state.refs.maa_weekly_plan_active.value = '常规'
+    expect(selector.shopSwitchEnabled).toBe(false)
+    state.refs.maa_weekly_plan_active.value = '活动'
+    expect(selector.shopSwitchEnabled).toBe(true)
+    selector.shopSwitchEnabled = false
+    expect(state.refs.maa_event_shop.value.switch_source).toBe('')
+    expect(state.refs.maa_weekly_plan_activity_fallbacks.value).toEqual({ 活动: '常规' })
+    expect(state.refs.maa_weekly_plan_activity_switch_times.value).toEqual({})
   })
 
   it('旧库存请求迟到时保留新资源建议', async () => {
