@@ -148,6 +148,7 @@ from arknights_mower.utils.resting_priority import (
     RestingTier,
     bed_takeover_allowed,
     crafting_rest_candidates,
+    crafting_rest_order,
     has_resting_mood,
     resting_key,
     resting_mood,
@@ -12464,7 +12465,7 @@ class BaseSchedulerSolver(
                 if all(target == "Current" for target in task.plan[room]):
                     del task.plan[room]
 
-    def preserve_resting_crafters(self, agents, room):
+    def preserve_resting_crafters(self, agents, room, *, observed_candidates=()):
         """按统一层级解析 Free，并让实际选人遵守正在休息者的接管规则。"""
         if not room.startswith("dorm") or (
             getattr(getattr(self, "task", None), "type", None) == TaskTypes.FIAMMETTA
@@ -12533,6 +12534,12 @@ class BaseSchedulerSolver(
                 agents[index] = current.name
         if "Free" not in agents:
             return
+        if self.task is not None:
+            slots = getattr(self.task, "dorm_selection_free_slots", {})
+            slots.setdefault(room, set()).update(
+                index for index, name in enumerate(agents) if name == "Free"
+            )
+            self.task.dorm_selection_free_slots = slots
         now = datetime.now()
         current_resident = (
             self.task.meta_data
@@ -12545,9 +12552,22 @@ class BaseSchedulerSolver(
         mood_fallback = self.dorm_mood_fallback_candidates(agents, room, candidates)
         replacements = [
             self.op_data.operators[name]
-            for name in candidates.recovering
-            if not self.op_data.operators[name].current_room
+            for name in dict.fromkeys([*candidates.recovering, *observed_candidates])
+            if name in candidates.filling
+            and name in self.op_data.operators
+            and not self.op_data.operators[name].current_room
         ]
+        if observed_candidates:
+            names = crafting_rest_order(
+                self.op_data,
+                sorted(
+                    [op.name for op in replacements],
+                    key=lambda name: resting_key(self.op_data, name, now),
+                ),
+            )
+            replacements = [self.op_data.operators[name] for name in names]
+            if replacements:
+                mood_fallback = []
         for index, name in enumerate(agents):
             if name != "Free":
                 continue
@@ -12774,7 +12794,9 @@ class BaseSchedulerSolver(
         )
         return True
 
-    def prepare_dorm_selection(self, agents, room, *, preserve_dorm_occupants=False):
+    def prepare_dorm_selection(
+        self, agents, room, *, preserve_dorm_occupants=False, observed_candidates=()
+    ):
         """执行边界统一解析名单；解析结果同时交给单回排序和实际选人。"""
         # 充能和归位均使用肥鸭任务的明确名单；不养闲人、上限清退及
         # 普通补床不能把充能对象改成 Free，也不能用原入住者覆盖它。
@@ -12824,7 +12846,12 @@ class BaseSchedulerSolver(
                 agents[idx] = "Free"
                 logger.info("检测个人心情上限释放休息位")
         if not preserve_dorm_occupants:
-            fallback = self.preserve_resting_crafters(agents, room) or []
+            fallback = (
+                self.preserve_resting_crafters(
+                    agents, room, observed_candidates=observed_candidates
+                )
+                or []
+            )
             expected = getattr(getattr(self, "task", None), "group_shift_expected", {})
             relocated = {}
             for slot, name in list(expected.items()):
@@ -12838,6 +12865,82 @@ class BaseSchedulerSolver(
             )
             return fallback
         return []
+
+    def refresh_dorm_selection_candidates(self, agents, room):
+        """补位前只核验心情升序首屏，缓存仍有恢复者时也发现新候选。"""
+        task = getattr(self, "task", None)
+        if (
+            not room.startswith("dorm")
+            or task is None
+            or task.type == TaskTypes.FIAMMETTA
+            or getattr(self.op_data, "idle_dorm_search_exhausted", False)
+        ):
+            return None
+        slots = set(getattr(task, "dorm_selection_free_slots", {}).get(room, ()))
+        slots.update(
+            index
+            for index, name in enumerate(
+                getattr(task, "dorm_fill_plan", {}).get(room, ())
+            )
+            if name != "Current"
+        )
+        slots.update(index for index, name in enumerate(agents) if name == "Free")
+        expected = getattr(task, "group_shift_expected", {})
+        slots = {
+            index
+            for index in slots
+            if index < len(agents)
+            and (room, index) not in expected
+            and (
+                agents[index] == "Free"
+                or (op := self.op_data.operators.get(agents[index])) is not None
+                and not op.is_high()
+                and not op.current_room
+            )
+        }
+        if not slots:
+            return None
+        original = agents.copy()
+        row = task.plan.get(room)
+        original_row = row.copy() if row is not None else None
+        try:
+            # 清除本次普通补位的临时具名预约，再用共享规则筛选页面候选。
+            for index in slots:
+                agents[index] = "Free"
+                if row is not None:
+                    row[index] = "Free"
+            snapshot = self.get_dorm_candidates(agents, room=room)
+        finally:
+            agents[:] = original
+            if row is not None:
+                row[:] = original_row
+        if not snapshot.recovering:
+            return None
+        candidates = snapshot.filling
+        self.profession_filter("ALL")
+        self.switch_arrange_order("心情", room, "true")
+        self.swipe_left(1, "ALL")
+        _, page = self.scan_agent([], full_scan=True)
+        self.observe_agent_moods(
+            page, candidates, self.op_data.dorm_mood_estimates, False
+        )
+        observed = []
+        for name, _ in page:
+            if name not in candidates or name in observed:
+                continue
+            mood = dorm_candidate_mood(self.op_data, name)
+            if mood is None or mood >= getattr(
+                self.op_data.operators.get(name), "upper_limit", 24
+            ):
+                continue
+            if name not in self.op_data.operators:
+                self.op_data.add(Operator(name, ""))
+            observed.append(name)
+        for index in slots:
+            agents[index] = "Free"
+            if row is not None:
+                row[index] = "Free"
+        return observed
 
     @timed_step("selection")
     @fixed_selection_profile
@@ -12858,13 +12961,19 @@ class BaseSchedulerSolver(
         max_swipe = 50
         if getattr(getattr(self, "task", None), "emergency_staffing", False):
             fast_mode = False
+        observed_candidates = (
+            self.refresh_dorm_selection_candidates(agents, room)
+            if not preserve_dorm_occupants and not recovery_padding
+            else None
+        )
         mood_fallback = (
             self.prepare_dorm_selection(
                 agents,
                 room,
                 preserve_dorm_occupants=preserve_dorm_occupants,
+                observed_candidates=observed_candidates or (),
             )
-            if dorm_mood_candidates is None
+            if dorm_mood_candidates is None or observed_candidates is not None
             else dorm_mood_candidates
         )
         if not preserve_dorm_occupants:
@@ -14347,7 +14456,6 @@ class BaseSchedulerSolver(
         if current != expected:
             # 临时清房前先实读离开者，不能让预计回满代替离宿实测。
             self.get_agent_from_room(room, departing_plan=expected)
-            logger.info(f"宿舍单回排序：{room} 保留目标 {target.name}，暂留 {retained}")
             for attempt in range(5):
                 if self.find("confirm_blue") is not None:
                     break
@@ -14357,6 +14465,31 @@ class BaseSchedulerSolver(
                 # 会使后续循环完全没有重试操作。
                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
             try:
+                observed_candidates = self.refresh_dorm_selection_candidates(
+                    agents, room
+                )
+                if observed_candidates is not None:
+                    self.prepare_dorm_selection(
+                        agents, room, observed_candidates=observed_candidates
+                    )
+                    retained = recovery_order_plan(
+                        self.op_data,
+                        room,
+                        agents,
+                        reserved_names,
+                        group_transitions=group_transitions,
+                    )
+                    if retained is None:
+                        # 新候选尚无实读时先完成普通入住，再由正常读房确认。
+                        self.back()
+                        return True
+                    target = recovery_target(
+                        self.op_data, room, agents, group_transitions=group_transitions
+                    )
+                    vip_index = agents.index(target.name)
+                logger.info(
+                    f"宿舍单回排序：{room} 保留目标 {target.name}，暂留 {retained}"
+                )
                 record_dorm_recovery()
                 self.choose_agent(
                     retained,

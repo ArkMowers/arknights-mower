@@ -105,8 +105,9 @@ def test_newer_green_card_can_supply_padding_without_overwriting_numeric_mood(
     data = solver.op_data
     op = data.operators["黑角"]
     op.mood = measured or 24
-    op.time_stamp = datetime.now() if measured is not None else None
-    data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    now = datetime.now()
+    op.time_stamp = now - timedelta(seconds=1) if measured is not None else None
+    data.dorm_mood_estimates[op.name] = (24, now)
     read = solver.get_agent_from_room.side_effect
 
     def read_roster(*args, **kwargs):
