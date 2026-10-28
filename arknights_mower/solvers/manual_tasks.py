@@ -22,19 +22,28 @@ LONG_TASKS = {
 }
 
 
-def deferrable_dorm_task(task):
-    return getattr(task, "type", None) == TaskTypes.FILL_DORM or (
+def deferrable_dorm_release(task):
+    return (
         getattr(task, "type", None) == TaskTypes.RELEASE_DORM
         and not getattr(task, "strict_mood_limit", False)
         and not getattr(task, "emergency_recovery_release", False)
+        and not getattr(task, "retains_execution", False)
     )
+
+
+def resume_dorm_releases(scheduler):
+    """大型任务结束后，让已到期的普通清退从实际结束时刻继续派发。"""
+    ended_at = datetime.now()
+    for task in scheduler.tasks:
+        if deferrable_dorm_release(task) and task.time < ended_at:
+            task.time = ended_at
 
 
 def long_task_deadline(scheduler, limit):
     current = getattr(scheduler, "task", None)
     if getattr(current, "type", None) not in LONG_TASKS:
         current = None
-    pending = next(
+    pending = min(
         (
             task
             for task in task_view(
@@ -42,16 +51,17 @@ def long_task_deadline(scheduler, limit):
                 TaskScope.DISPATCH,
                 getattr(scheduler, "op_data", None),
             )
-            if task is not current and not deferrable_dorm_task(task)
+            if task is not current and not deferrable_dorm_release(task)
         ),
-        None,
+        key=lambda task: task.time,
+        default=None,
     )
     return min(pending.time, limit) if pending else limit
 
 
 def run_long_task_if_dorm_pending(scheduler):
     pending = scheduler.find_next_task()
-    if pending is None or not deferrable_dorm_task(pending):
+    if pending is None or not deferrable_dorm_release(pending):
         return False
     conf = config.conf
     if not any(

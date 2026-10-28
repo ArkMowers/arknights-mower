@@ -1152,6 +1152,7 @@ def simulate(saved):
                     if not rg_sleep:
                         from arknights_mower.solvers.manual_tasks import (
                             long_task_deadline,
+                            resume_dorm_releases,
                         )
 
                         if config.conf.RA:
@@ -1164,12 +1165,16 @@ def simulate(saved):
                             ra_solver = ReclamationAlgorithm(
                                 base_scheduler.device, base_scheduler.recog
                             )
-                            ra_solver.run(
-                                long_task_deadline(
-                                    base_scheduler, datetime.now() + timedelta(hours=24)
+                            try:
+                                ra_solver.run(
+                                    long_task_deadline(
+                                        base_scheduler,
+                                        datetime.now() + timedelta(hours=24),
+                                    )
+                                    - datetime.now()
                                 )
-                                - datetime.now()
-                            )
+                            finally:
+                                resume_dorm_releases(base_scheduler)
                             remaining_time = (
                                 find_next_task(
                                     base_scheduler.tasks, op_data=base_scheduler.op_data
@@ -1184,12 +1189,16 @@ def simulate(saved):
                             sf_solver = SecretFront(
                                 base_scheduler.device, base_scheduler.recog
                             )
-                            sf_solver.run(
-                                long_task_deadline(
-                                    base_scheduler, datetime.now() + timedelta(hours=24)
+                            try:
+                                sf_solver.run(
+                                    long_task_deadline(
+                                        base_scheduler,
+                                        datetime.now() + timedelta(hours=24),
+                                    )
+                                    - datetime.now()
                                 )
-                                - datetime.now()
-                            )
+                            finally:
+                                resume_dorm_releases(base_scheduler)
                             remaining_time = (
                                 find_next_task(
                                     base_scheduler.tasks, op_data=base_scheduler.op_data

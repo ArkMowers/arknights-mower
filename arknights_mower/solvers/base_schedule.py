@@ -16521,6 +16521,7 @@ class BaseSchedulerSolver(
             from arknights_mower.solvers.manual_tasks import (
                 long_task_deadline,
                 manual_task_deadline,
+                resume_dorm_releases,
             )
 
             running_long_task = False
@@ -17075,11 +17076,17 @@ class BaseSchedulerSolver(
                 if selected_long == "ra":
                     self.back_to_index()
                     ra_solver = ReclamationAlgorithm(self.device, self.recog)
-                    ra_solver.run(deadline() - datetime.now())
+                    try:
+                        ra_solver.run(deadline() - datetime.now())
+                    finally:
+                        resume_dorm_releases(self)
                 elif selected_long == "sf":
                     self.back_to_index()
                     sf_solver = SecretFront(self.device, self.recog)
-                    sf_solver.run(deadline() - datetime.now())
+                    try:
+                        sf_solver.run(deadline() - datetime.now())
+                    finally:
+                        resume_dorm_releases(self)
 
             if restore_theme:
                 self.restore_maa_theme()
@@ -17140,6 +17147,9 @@ class BaseSchedulerSolver(
             send_message(str(e), "MAA调用出错！", level="ERROR")
             if manual:
                 raise
+            if large_task_started:
+                resume_dorm_releases(self)
+                large_task_started = False
             running_long_task = False
             remaining_time = (deadline() - datetime.now()).total_seconds()
             if remaining_time > 0:
@@ -17153,9 +17163,14 @@ class BaseSchedulerSolver(
         else:
             # 空闲唤醒故障交回设备恢复，不能作为 MAA 任务故障报告。
             battle_inventory_active.clear()
+            if large_task_started:
+                resume_dorm_releases(self)
+                large_task_started = False
             if not manual:
                 self.rest_until_next_task()
         finally:
+            if large_task_started:
+                resume_dorm_releases(self)
             self.release_maa()
             battle_inventory_active.clear()
         return True
