@@ -19,6 +19,17 @@ describe('backend page fallback contract', () => {
     }
   })
 
+  it('redirects the retired trading analysis page to the base report page', () => {
+    const record = routes[0].children.find((route) => route.path === 'record')
+    const legacy = record.children.find((route) => route.path === 'trading_analysis')
+    expect(legacy.component).toBeUndefined()
+    expect(legacy.redirect({ query: { token: 'demo' }, hash: '#order-distribution' })).toEqual({
+      name: 'report',
+      query: { token: 'demo' },
+      hash: '#order-distribution'
+    })
+  })
+
   it('lists every production frontend route, including parent routes', () => {
     const paths = new Set()
     function visit(records, parent = '') {

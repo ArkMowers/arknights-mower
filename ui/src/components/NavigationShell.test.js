@@ -109,7 +109,6 @@ it.each([
       '/record/pie',
       '/record/report',
       '/record/depot',
-      '/record/trading_analysis',
       '/record/recycling',
       '/record/log-schedule'
     ],
@@ -246,7 +245,6 @@ describe('[INV-UI-04] MobileTabBar', () => {
         '/record/pie',
         '/record/report',
         '/record/depot',
-        '/record/trading_analysis',
         '/record/recycling',
         '/record/log-schedule'
       ]

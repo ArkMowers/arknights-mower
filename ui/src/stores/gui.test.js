@@ -550,3 +550,206 @@ describe('shared version watermark preference', () => {
     expect(store.watermarkDisabled).toBe(false)
   })
 })
+
+describe('shared base report mode preference', () => {
+  it('defaults to standard and keeps editing disabled before the initial read', async () => {
+    const { store } = createStore()
+    expect(store.baseReportMode).toBe('standard')
+    expect(store.reportModeSaving).toBe(false)
+    expect(store.reportModeError).toBe('')
+    expect(store.reportModeDisabled).toBe(true)
+    expect(await store.setBaseReportMode('stock')).toBe(false)
+    expect(axios.put).not.toHaveBeenCalled()
+  })
+
+  it('loads the saved report mode with the shared initial read and defaults older responses', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'channel', base_report_mode: 'stock' }
+    })
+    const saved = createStore().store
+    expect(await saved.load()).toBe(true)
+    expect(saved.baseReportMode).toBe('stock')
+    expect(saved.softwareVersionDisplay).toBe('channel')
+    expect(saved.reportModeDisabled).toBe(false)
+    expect(saved.reportModeError).toBe('')
+    const older = createStore().store
+    await older.load()
+    expect(older.baseReportMode).toBe('standard')
+    expect(older.reportModeDisabled).toBe(false)
+    expect(axios.put).not.toHaveBeenCalled()
+  })
+
+  it.each(['grid', 'checklist', null, 0, false, ['stock'], { mode: 'stock' }])(
+    'keeps editing disabled after an invalid loaded report mode %j',
+    async (value) => {
+      axios.get.mockResolvedValueOnce({
+        data: { software_version_display: 'channel', base_report_mode: value }
+      })
+      const { store } = createStore()
+      expect(await store.load()).toBe(false)
+      expect(store.baseReportMode).toBe('standard')
+      expect(store.reportModeDisabled).toBe(true)
+      expect(store.reportModeError).toContain('读取失败')
+      expect(store.error).toContain('读取失败')
+      expect(await store.setBaseReportMode('stock')).toBe(false)
+      expect(axios.put).not.toHaveBeenCalled()
+    }
+  )
+
+  it('saves only the report mode, shares it immediately and serializes appearance edits', async () => {
+    const { pinia, store } = createStore()
+    await store.load()
+    const save = deferred()
+    axios.put.mockReturnValueOnce(save.promise)
+    const pending = store.setBaseReportMode('stock')
+    expect(useGuiStore(pinia).baseReportMode).toBe('stock')
+    expect(store.reportModeSaving).toBe(true)
+    expect(store.reportModeDisabled).toBe(true)
+    expect(store.displayDisabled).toBe(true)
+    expect(await store.setBaseReportMode('standard')).toBe(false)
+    expect(await store.setTaskSettingsLayout('waterfall')).toBe(false)
+    expect(await store.setWatermarkVisible(false, '反馈问题时务必说明具体版本')).toBe(false)
+    expect(axios.put).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/\/gui\/appearance$/),
+      { base_report_mode: 'stock' },
+      { timeout: 5000 }
+    )
+    save.resolve({ data: { base_report_mode: 'stock' } })
+    expect(await pending).toBe(true)
+    expect(store.baseReportMode).toBe('stock')
+    expect(store.reportModeSaving).toBe(false)
+    expect(store.displayDisabled).toBe(false)
+    expect(store.reportModeError).toBe('')
+    expect(store.softwareVersionDisplay).toBe('version')
+    expect(store.softwareVersionLanguage).toBe('en')
+    expect(store.taskSettingsLayout).toBe('checklist')
+    expect(store.watermarkVisible).toBe(true)
+    expect(await store.setBaseReportMode('stock')).toBe(true)
+    expect(await store.setBaseReportMode('checklist')).toBe(false)
+    expect(axios.put).toHaveBeenCalledOnce()
+  })
+
+  it.each(['rejected', 'unconfirmed'])(
+    'rolls back a %s report mode save and retries the requested mode',
+    async (failure) => {
+      const { store } = createStore()
+      await store.load()
+      if (failure === 'rejected') axios.put.mockRejectedValueOnce(new Error('offline'))
+      else axios.put.mockResolvedValueOnce({ data: { base_report_mode: 'standard' } })
+      expect(await store.setBaseReportMode('stock')).toBe(false)
+      expect(store.baseReportMode).toBe('standard')
+      expect(store.reportModeSaving).toBe(false)
+      expect(store.reportModeDisabled).toBe(false)
+      expect(store.reportModeError).toContain('已恢复原来的显示')
+      expect(store.error).toBe('')
+      expect(store.layoutError).toBe('')
+      expect(await store.retryReportMode()).toBe(true)
+      expect(store.baseReportMode).toBe('stock')
+      expect(store.reportModeError).toBe('')
+      expect(axios.put.mock.calls.map(([, payload]) => payload)).toEqual([
+        { base_report_mode: 'stock' },
+        { base_report_mode: 'stock' }
+      ])
+    }
+  )
+
+  it('keeps editing disabled after a read failure and retries the initial read', async () => {
+    axios.get.mockRejectedValueOnce(new Error('offline'))
+    const { store } = createStore()
+    expect(await store.load()).toBe(false)
+    expect(store.baseReportMode).toBe('standard')
+    expect(store.reportModeDisabled).toBe(true)
+    expect(store.reportModeError).toContain('读取失败')
+    expect(await store.setBaseReportMode('stock')).toBe(false)
+    expect(axios.put).not.toHaveBeenCalled()
+
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', base_report_mode: 'stock' }
+    })
+    expect(await store.retryReportMode()).toBe(true)
+    expect(store.baseReportMode).toBe('stock')
+    expect(store.reportModeDisabled).toBe(false)
+    expect(store.reportModeError).toBe('')
+    expect(axios.get).toHaveBeenCalledTimes(2)
+  })
+
+  it('avoids writes for invalid values and an unchanged saved mode', async () => {
+    const { store } = createStore()
+    await store.load()
+    expect(await store.setBaseReportMode('standard')).toBe(true)
+    for (const value of ['checklist', 'stock 2', null, undefined, 1]) {
+      expect(await store.setBaseReportMode(value)).toBe(false)
+    }
+    expect(store.baseReportMode).toBe('standard')
+    expect(axios.put).not.toHaveBeenCalled()
+  })
+
+  it('saves the report mode without overwriting other appearance preferences', async () => {
+    const saved = {
+      software_version_display: 'channel',
+      software_version_language: 'zh',
+      task_settings_layout: 'waterfall',
+      watermark_visible: false,
+      base_report_mode: 'standard'
+    }
+    axios.get.mockImplementation(async () => ({ data: { ...saved } }))
+    axios.put.mockImplementation(async (_url, payload) => {
+      Object.assign(saved, payload)
+      return { data: { ...payload } }
+    })
+    const { store } = createStore()
+    await store.load()
+    expect(await store.setBaseReportMode('stock')).toBe(true)
+    expect(axios.put.mock.calls.map(([, payload]) => payload)).toEqual([
+      { base_report_mode: 'stock' }
+    ])
+    expect(saved).toEqual({
+      software_version_display: 'channel',
+      software_version_language: 'zh',
+      task_settings_layout: 'waterfall',
+      watermark_visible: false,
+      base_report_mode: 'stock'
+    })
+  })
+
+  it('keeps the shared report mode when saving another appearance preference', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', base_report_mode: 'stock' }
+    })
+    const { store } = createStore()
+    await store.load()
+    expect(await store.setTaskSettingsLayout('waterfall')).toBe(true)
+    expect(store.baseReportMode).toBe('stock')
+    expect(axios.put).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/\/gui\/appearance$/),
+      { task_settings_layout: 'waterfall' },
+      { timeout: 5000 }
+    )
+  })
+
+  it('restores the saved report mode in a new application store after a reload', async () => {
+    const saved = {
+      software_version_display: 'version',
+      software_version_language: 'en',
+      task_settings_layout: 'checklist',
+      watermark_visible: true,
+      base_report_mode: 'standard'
+    }
+    axios.get.mockImplementation(async () => ({ data: { ...saved } }))
+    axios.put.mockImplementation(async (_url, payload) => {
+      Object.assign(saved, payload)
+      return { data: { ...payload } }
+    })
+    const first = createStore().store
+    await first.load()
+    expect(await first.setBaseReportMode('stock')).toBe(true)
+    const reloaded = createStore().store
+    expect(reloaded.baseReportMode).toBe('standard')
+    expect(await reloaded.load()).toBe(true)
+    expect(reloaded.baseReportMode).toBe('stock')
+    expect(reloaded.softwareVersionDisplay).toBe('version')
+    expect(reloaded.softwareVersionLanguage).toBe('en')
+    expect(reloaded.taskSettingsLayout).toBe('checklist')
+    expect(reloaded.watermarkVisible).toBe(true)
+  })
+})

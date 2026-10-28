@@ -105,8 +105,7 @@ export const routes = [
           },
           {
             path: 'trading_analysis',
-            component: () => import('@/pages/trading_analysis.vue'),
-            meta: { title: '贸易订单分析' },
+            redirect: (to) => ({ name: 'report', query: to.query, hash: to.hash }),
             name: 'trading_analysis'
           },
           {

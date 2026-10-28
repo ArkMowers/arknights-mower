@@ -3,12 +3,15 @@ defineOptions({ name: 'BaseReportPage' })
 
 import PageLayout from '@/components/PageLayout.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import BaseReportHelp from '@/components/report/BaseReportHelp.vue'
+import StockReport from '@/components/report/StockReport.vue'
 import { registerTheme, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
 import { LabelLayout } from 'echarts/features'
 import {
   AriaComponent,
+  DatasetComponent,
   GridComponent,
   LegendComponent,
   MarkLineComponent,
@@ -18,7 +21,7 @@ import {
 import VChart, { THEME_KEY } from 'vue-echarts'
 import dark from './theme/dark.json'
 import roma from './theme/roma.json'
-import { computed, inject, onMounted, provide, reactive, ref } from 'vue'
+import { computed, inject, onMounted, onScopeDispose, provide, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import TrendingUpOutline from '@vicons/ionicons5/es/TrendingUpOutline'
 import TrendingDownOutline from '@vicons/ionicons5/es/TrendingDownOutline'
@@ -27,9 +30,11 @@ import TrophyOutline from '@vicons/ionicons5/es/TrophyOutline'
 import ChevronBackOutline from '@vicons/ionicons5/es/ChevronBackOutline'
 import ChevronForwardOutline from '@vicons/ionicons5/es/ChevronForwardOutline'
 import { useConfigStore } from '@/stores/config'
+import { useGuiStore } from '@/stores/gui'
 import { useReportStore } from '@/stores/report'
 import { useResolvedTheme } from '@/composables/theme'
 import { useCountUp } from '@/composables/useCountUp'
+import { orderCandleQuery } from '@/utils/reportMarket'
 import {
   loadIncomeSettings,
   incomeAlgorithmLabel,
@@ -39,7 +44,11 @@ import {
 import {
   CLOSURE_GOLD,
   ORUNDUM_PER_PULL,
+  ORDER_COLORS,
+  ORDER_PRICES,
+  ORDER_TYPES,
   TEQUILA_GOLD,
+  buildOrderChartRows,
   buildReportDays,
   formatCount,
   formatDay,
@@ -58,6 +67,7 @@ use([
   AriaComponent,
   BarChart,
   CanvasRenderer,
+  DatasetComponent,
   GridComponent,
   LegendComponent,
   LabelLayout,
@@ -77,7 +87,26 @@ provide(
   computed(() => (theme.value === 'dark' ? 'dark' : 'roma'))
 )
 const isDark = computed(() => theme.value === 'dark')
-const { getReportData, getOrundumData, getTradingHistory } = useReportStore()
+const gui = useGuiStore()
+const { getReportData, getOrundumData, getTradingHistory, getOrderCandles, restoreTradingHistory } =
+  useReportStore()
+
+// ---- 显示模式：标准卡片布局或跟随主题的行情终端 ----
+const isStock = computed(() => gui.baseReportMode === 'stock')
+const modeOptions = [
+  { value: 'standard', label: '标准' },
+  { value: 'stock', label: '股票' }
+]
+const modeDisabled = computed(() => gui.reportModeDisabled)
+
+async function switchMode(value) {
+  if (value === gui.baseReportMode || modeDisabled.value) return
+  await gui.setBaseReportMode(value)
+}
+
+function retryMode() {
+  return gui.retryReportMode()
+}
 
 // ---- 收益算法 ----
 const valuation = ref(null)
@@ -165,13 +194,98 @@ async function load() {
   } finally {
     if (version === loadVersion) loading.value = false
   }
+  if (version === loadVersion && marketMetric.value === 'orders') await loadOrderCandles()
 }
-onMounted(load)
+onMounted(async () => {
+  await Promise.all([gui.load(), load()])
+})
+
+// ---- 恢复历史：重新分析已有贸易订单截图并刷新本页 ----
+const restoreBusy = ref(false)
+const restoreError = ref('')
+
+async function restoreHistory() {
+  if (restoreBusy.value) return
+  restoreBusy.value = true
+  restoreError.value = ''
+  try {
+    await restoreTradingHistory()
+    await load()
+  } catch (error) {
+    restoreError.value = error.response?.data?.error || '恢复历史失败，请稍后重试'
+  } finally {
+    restoreBusy.value = false
+  }
+}
+
+// ---- 终端内帮助：股票模式收起页头后，用弹窗承载完整说明 ----
+const showTerminalHelp = ref(false)
+async function openTerminalHelp(close) {
+  if (typeof close === 'function') await close()
+  showTerminalHelp.value = true
+}
 
 // ---- 派生数据 ----
 const range = ref('14')
+const marketMetric = ref('income')
+const orderPeriod = ref('4h')
+const orderCandles = ref([])
+const orderCandlesLoading = ref(false)
+const orderCandlesError = ref('')
+const orderCandleRange = ref(null)
+let orderLoadVersion = 0
+
+async function loadOrderCandles() {
+  if (marketMetric.value !== 'orders') return
+  const version = ++orderLoadVersion
+  const period = orderPeriod.value
+  const query = orderCandleQuery(range.value)
+  orderCandleRange.value = query
+  orderCandles.value = []
+  orderCandlesLoading.value = true
+  orderCandlesError.value = ''
+  try {
+    const data = await getOrderCandles(query.startDate, query.endDate, period)
+    if (version !== orderLoadVersion) return
+    if (data?.period !== period || !Array.isArray(data.candles)) throw new Error()
+    orderCandles.value = data.candles
+  } catch (error) {
+    if (version !== orderLoadVersion) return
+    orderCandlesError.value = error.response?.data?.error || '已记录订单质量读取失败，请重试。'
+  } finally {
+    if (version === orderLoadVersion) orderCandlesLoading.value = false
+  }
+}
+
+async function setMarketMetric(value) {
+  if (!['income', 'orders'].includes(value) || value === marketMetric.value) return
+  marketMetric.value = value
+  if (value === 'orders') await loadOrderCandles()
+  else {
+    orderLoadVersion++
+    orderCandlesLoading.value = false
+  }
+}
+
+async function setOrderPeriod(value) {
+  if (!['1h', '4h', 'day'].includes(value) || value === orderPeriod.value) return
+  orderPeriod.value = value
+  await loadOrderCandles()
+}
+
+watch(range, () => {
+  if (marketMetric.value === 'orders') void loadOrderCandles()
+})
+onScopeDispose(() => {
+  loadVersion++
+  orderLoadVersion++
+})
+
 const chartView = ref('income')
 const rangeOptions = reportRanges.map((row) => ({ value: row.value, label: row.label }))
+const rangeLabel = computed(
+  () => rangeOptions.find((option) => option.value === range.value)?.label ?? ''
+)
 const allDays = computed(() =>
   valuation.value
     ? withIncome(
@@ -184,6 +298,19 @@ const days = computed(() => selectRange(allDays.value, range.value))
 const summary = computed(() => summarize(days.value))
 const ready = computed(() => !loading.value && !loadError.value && Boolean(valuation.value))
 const hasData = computed(() => days.value.length > 0)
+// 读取完成后即提供终端指标切换，允许没有基报的实例查看已记录订单。
+const stockFill = computed(() => isStock.value && (hasData.value || ready.value))
+
+// ---- 订单分布：按贸易订单记录拆分的龙门币订单金额 ----
+const orderRows = computed(() =>
+  buildOrderChartRows(reportRows.value, tradingRows.value, days.value)
+)
+const orderColors = computed(() => ORDER_COLORS[isDark.value ? 'dark' : 'light'])
+const unknownOrderTotal = computed(() => {
+  const values = orderRows.value.map((row) => row['未知订单']).filter(isReading)
+  return values.length ? values.reduce((total, value) => total + value, 0) : null
+})
+
 // 产物配色在明暗主题下分别校准，保证与卡片背景的对比度。
 const palette = computed(() =>
   isDark.value
@@ -602,7 +729,7 @@ const orundumOption = computed(() => {
   }
 })
 
-const orderOption = computed(() => {
+const tradingOption = computed(() => {
   const colors = palette.value
   return {
     backgroundColor: 'transparent',
@@ -657,6 +784,126 @@ const orderOption = computed(() => {
         color: colors.gold,
         connectNulls: false,
         data: days.value.map((day) => day.perOrder)
+      }
+    ]
+  }
+})
+
+const orderOption = computed(() => {
+  const colors = palette.value
+  const typeColors = orderColors.value
+  return {
+    backgroundColor: 'transparent',
+    aria: { enabled: true },
+    animationDuration: 700,
+    animationEasing: 'cubicOut',
+    toolbox: chartToolbox('订单分布'),
+    grid: { top: 56, right: 12, bottom: 4, left: 4, containLabel: true },
+    legend: {
+      top: 0,
+      left: 0,
+      right: 30,
+      type: 'scroll',
+      icon: 'roundRect',
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: colors.axis },
+      selected: { 赤金: false, 订单质量: true }
+    },
+    dataset: {
+      dimensions: [
+        '日期',
+        ...ORDER_TYPES,
+        '未知订单',
+        '订单质量',
+        '赤金',
+        '龙门币订单',
+        '订单数',
+        '未知订单数'
+      ],
+      source: orderRows.value
+    },
+    tooltip: {
+      ...tooltipBase(),
+      axisPointer: { type: 'shadow', shadowStyle: { color: colors.grid } },
+      formatter(params) {
+        const row = orderRows.value[params[0]?.dataIndex]
+        if (!row) return ''
+        const typeRows = ORDER_TYPES.filter((type) => isReading(row[type]))
+          .map((type) =>
+            tooltipRow(
+              typeColors[type],
+              type,
+              `${formatCount(row[type])}（${formatCount(row[type] / ORDER_PRICES[type])} 单）`
+            )
+          )
+          .join('')
+        const unknown = isReading(row['未知订单'])
+          ? `${formatCount(row['未知订单'])}（${formatCount(row['未知订单数'])} 单）`
+          : '—'
+        return `<div style="min-width:220px">
+          <div style="font-weight:600;margin-bottom:4px">${row['日期']}</div>
+          ${tooltipRow(colors.axis, '总订单数', formatCount(row['订单数']))}
+          ${tooltipRow(colors.order, '龙门币订单', formatCount(row['龙门币订单']))}
+          ${typeRows}
+          ${tooltipRow(typeColors['未知订单'], '未知订单', unknown)}
+          ${tooltipRow(colors.income, '订单质量', formatCount(row['订单质量']))}
+          ${tooltipRow(colors.gold, '赤金', formatCount(row['赤金']))}
+        </div>`
+      }
+    },
+    xAxis: { type: 'category', ...axisBase(), splitLine: { show: false } },
+    yAxis: [
+      { type: 'value', ...axisBase() },
+      { type: 'value', ...axisBase(), splitLine: { show: false } }
+    ],
+    series: [
+      {
+        name: '赤金',
+        type: 'bar',
+        barMaxWidth: 22,
+        color: colors.gold,
+        itemStyle: { borderRadius: [4, 4, 0, 0] },
+        emphasis: { focus: 'series' },
+        encode: { x: '日期', y: '赤金' }
+      },
+      ...ORDER_TYPES.map((type) => ({
+        name: type,
+        type: 'bar',
+        stack: '订单金额',
+        barMaxWidth: 22,
+        color: typeColors[type],
+        emphasis: { focus: 'series' },
+        encode: { x: '日期', y: type }
+      })),
+      {
+        name: '未知订单',
+        type: 'bar',
+        stack: '订单金额',
+        barMaxWidth: 22,
+        color: typeColors['未知订单'],
+        emphasis: { focus: 'series' },
+        encode: { x: '日期', y: '未知订单' }
+      },
+      {
+        name: '订单质量',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: 0.3,
+        symbol: 'circle',
+        symbolSize: 6,
+        showAllSymbol: true,
+        label: {
+          ...lineLabel(formatCount),
+          // dataset 系列的 label 参数是整行数据，需要取出订单质量再格式化。
+          formatter: ({ data }) =>
+            data && isReading(data['订单质量']) ? formatCount(data['订单质量']) : ''
+        },
+        labelLayout: { hideOverlap: true },
+        color: colors.income,
+        lineStyle: { width: 2 },
+        connectNulls: false,
+        encode: { x: '日期', y: '订单质量' }
       }
     ]
   }
@@ -717,22 +964,12 @@ function cell(day, key) {
 </script>
 
 <template>
-  <PageLayout max-width="1280px">
+  <PageLayout max-width="1280px" :fill="stockFill">
     <template #header>
       <PageHeader>
         基建报表
         <help-text>
-          <p>数据来自每日任务「读取基报」，每天读取一次并写入 tmp 文件夹中的 report.csv。</p>
-          <p>日期为产出日，即读取基报的前一天。</p>
-          <p>
-            赤金使用游戏基报中的制造价值，例如 123 根赤金对应 61,500。龙门币订单单独记录订单收入。
-          </p>
-          <p>
-            统计范围从最近一条基报的产出日期向前计算。平均每单收入只统计订单金额和数量均已读到的日期。
-          </p>
-          <p>
-            收益按当前保存的基报收益算法折算，单位为万；特殊赤金来自贸易订单记录中的龙舌兰和可露希尔订单。
-          </p>
+          <BaseReportHelp />
         </help-text>
         <template #actions>
           <div class="report-actions">
@@ -745,6 +982,23 @@ function cell(day, key) {
             >
               <n-radio-button
                 v-for="option in rangeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </n-radio-button>
+            </n-radio-group>
+            <n-radio-group
+              :value="gui.baseReportMode"
+              size="small"
+              name="report-mode"
+              aria-label="基建报表显示模式"
+              title="标准：卡片布局；股票：行情终端布局"
+              :disabled="modeDisabled"
+              @update:value="switchMode"
+            >
+              <n-radio-button
+                v-for="option in modeOptions"
                 :key="option.value"
                 :value="option.value"
               >
@@ -773,13 +1027,29 @@ function cell(day, key) {
             >
               <template #icon><n-icon :component="RefreshOutline" /></template>
             </n-button>
+            <n-button
+              secondary
+              size="small"
+              :loading="restoreBusy"
+              :disabled="restoreBusy"
+              @click="restoreHistory"
+            >
+              恢复历史
+            </n-button>
+            <help-text>
+              <p>重新分析已有的贸易订单截图，完成后刷新报表，请勿重复发送请求。</p>
+              <p>截图较多时需要等待较长时间。</p>
+            </help-text>
             <SessionLink to="/settings#task-accounts">管理收益设置</SessionLink>
           </div>
         </template>
       </PageHeader>
     </template>
 
-    <div class="report" :class="{ 'is-dark': isDark }">
+    <div
+      class="report"
+      :class="{ 'is-dark': isDark, 'is-stock': isStock, 'is-stock-fill': stockFill }"
+    >
       <n-card v-if="showCustomAlgorithm" size="small" title="自定义收益系数" class="custom-card">
         <n-space align="center" wrap>
           <label v-for="field in customFields" :key="field.key" class="custom-field">
@@ -816,6 +1086,23 @@ function cell(day, key) {
         <n-button size="small" secondary class="retry" @click="load">重试</n-button>
       </n-alert>
       <n-alert v-if="partialWarning" type="warning">{{ partialWarning }}</n-alert>
+      <n-alert v-if="restoreError" type="error" closable @close="restoreError = ''">
+        {{ restoreError }}
+      </n-alert>
+      <n-alert v-if="gui.reportModeError" type="warning" closable @close="gui.reportModeError = ''">
+        {{ gui.reportModeError }}
+        <n-button size="small" secondary class="retry" @click="retryMode">重试</n-button>
+      </n-alert>
+
+      <n-modal
+        v-model:show="showTerminalHelp"
+        preset="card"
+        title="基建报表说明"
+        class="report-help-modal"
+        style="width: min(560px, calc(100vw - 24px))"
+      >
+        <BaseReportHelp />
+      </n-modal>
 
       <div v-if="loading && !hasData" class="skeleton" aria-busy="true" aria-label="正在读取基报">
         <n-skeleton class="skeleton__overview" />
@@ -825,274 +1112,351 @@ function cell(day, key) {
         </div>
       </div>
 
-      <section v-else-if="ready && !hasData" class="empty reveal">
+      <section v-else-if="ready && !hasData && !isStock" class="empty reveal">
         <h2>还没有基报记录</h2>
         <p>在每日任务中启用「读取基报」，Mower 每天会读取一次基建报告。</p>
         <p>读取后即可查看每天的产出和收益。</p>
       </section>
 
-      <template v-else-if="hasData">
-        <section class="overview reveal" :aria-busy="loading">
-          <div class="overview__day">
-            <div class="overview__label">
-              {{ formatDay(selectedDay.date) }} 收益
-              <span v-if="selectedDay.date === summary.latest.date" class="tag">最新记录</span>
-            </div>
-            <div class="overview__value">
-              <span class="overview__number">{{ formatIncome(animatedIncome) }}</span>
-              <span class="overview__unit">万</span>
-              <span
-                v-if="isReading(incomeCompare.change)"
-                class="delta delta--pill"
-                :class="deltaClass(incomeCompare)"
+      <template v-else-if="hasData || (isStock && ready)">
+        <StockReport
+          v-if="isStock"
+          :days="days"
+          :summary="summary"
+          :selected-day="selectedDay"
+          :previous-day="previousDay"
+          :order-rows="orderRows"
+          :history-days="allDays"
+          :algorithm-label="algorithmShortLabel"
+          :range-label="rangeLabel"
+          :range="range"
+          :metric="marketMetric"
+          :order-period="orderPeriod"
+          :order-candles="orderCandles"
+          :order-candles-loading="orderCandlesLoading"
+          :order-candles-error="orderCandlesError"
+          :order-candle-range="orderCandleRange"
+          :algorithm-options="algorithmOptions"
+          :algorithm-value="valuation ? valuation.base_algorithm : null"
+          :loading="loading"
+          :refreshing="loading"
+          :restore-busy="restoreBusy"
+          :mode-disabled="modeDisabled"
+          :dark="isDark"
+          @select="selectDay"
+          @change-range="range = $event"
+          @change-metric="setMarketMetric"
+          @change-order-period="setOrderPeriod"
+          @retry-order-candles="loadOrderCandles"
+          @change-mode="switchMode"
+          @refresh="load"
+          @select-algorithm="selectAlgorithm"
+          @restore-history="restoreHistory"
+        >
+          <template #menu-extra="{ close }">
+            <div class="term-menu-extra">
+              <button type="button" class="term-menu-extra__item" @click="openTerminalHelp(close)">
+                帮助说明
+              </button>
+              <SessionLink class="term-menu-extra__link" to="/settings#task-accounts"
+                >管理收益设置</SessionLink
               >
-                <n-icon
-                  :component="incomeCompare.delta >= 0 ? TrendingUpOutline : TrendingDownOutline"
-                  aria-hidden="true"
-                />
-                {{ formatPercent(incomeCompare.change) }}
-              </span>
             </div>
-            <p class="overview__caption">
-              按{{ algorithmShortLabel }}计算<template v-if="isReading(incomeCompare.delta)"
-                >，较 {{ formatDay(previousDay.date) }}
-                {{ deltaText(incomeCompare, 2) }} 万</template
-              ><template v-if="selectedDay.income.partial"
-                >；{{ incomeNote(selectedDay.income) }}</template
-              >
-            </p>
-          </div>
-          <dl class="overview__facts">
-            <div>
-              <dt>日均收益</dt>
-              <dd>{{ formatIncome(summary.averageIncome) }}<small>万</small></dd>
-            </div>
-            <div>
-              <dt>总收益</dt>
-              <dd>{{ formatIncome(summary.totalIncome, 1) }}<small>万</small></dd>
-            </div>
-            <div v-if="summary.best">
-              <dt><n-icon :component="TrophyOutline" aria-hidden="true" /> 收益最高</dt>
-              <dd>
-                <button type="button" class="link" @click="selectDay(summary.best.date)">
-                  {{ formatDay(summary.best.date) }}
-                </button>
-                <span class="overview__best">{{ formatIncome(summary.best.income.total) }} 万</span>
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <div class="main-grid">
-          <section class="panel reveal" style="--delay: 60ms">
-            <header class="panel__head panel__head--chart">
-              <div>
-                <h2>{{ chartView === 'production' ? '每日产出' : '每日收益' }}</h2>
-                <p v-if="chartView === 'income'">
-                  按{{ algorithmShortLabel }}计算，虚线表示平均收益。点击柱子查看当天详情。
-                </p>
-                <p v-else>赤金按基报制造价值显示，作战记录按经验值显示。点击柱子查看当天详情。</p>
+          </template>
+        </StockReport>
+        <template v-else>
+          <section class="overview reveal" :aria-busy="loading">
+            <div class="overview__day">
+              <div class="overview__label">
+                {{ formatDay(selectedDay.date) }} 收益
+                <span v-if="selectedDay.date === summary.latest.date" class="tag">最新记录</span>
               </div>
-              <n-radio-group
-                v-model:value="chartView"
-                size="small"
-                name="report-chart"
-                aria-label="图表内容"
-              >
-                <n-radio-button value="income">折算收益</n-radio-button>
-                <n-radio-button value="production">基报产出</n-radio-button>
-              </n-radio-group>
-            </header>
-            <v-chart
-              class="chart chart--main"
-              :option="mainChartOption"
-              autoresize
-              @click="onChartClick"
-            />
-          </section>
-
-          <section
-            ref="detailPanel"
-            class="panel day reveal"
-            style="--delay: 120ms"
-            aria-labelledby="report-day-title"
-          >
-            <header class="day__head">
-              <n-button
-                quaternary
-                circle
-                size="small"
-                :disabled="selectedIndex <= 0"
-                aria-label="上一条记录"
-                @click="stepDay(-1)"
-              >
-                <template #icon><n-icon :component="ChevronBackOutline" /></template>
-              </n-button>
-              <div class="day__title">
-                <h2 id="report-day-title">{{ formatDay(selectedDay.date) }}</h2>
-                <p>
-                  {{ previousDay ? `对比 ${formatDay(previousDay.date)}` : '没有更早的记录' }}
-                </p>
-              </div>
-              <n-button
-                quaternary
-                circle
-                size="small"
-                :disabled="selectedIndex >= days.length - 1"
-                aria-label="下一条记录"
-                @click="stepDay(1)"
-              >
-                <template #icon><n-icon :component="ChevronForwardOutline" /></template>
-              </n-button>
-            </header>
-
-            <ul class="items" aria-label="当天产出">
-              <li v-for="row in detailRows" :key="row.key" class="item">
-                <span class="item__icon">
-                  <img
-                    v-if="!failedIcons.has(row.icon)"
-                    :src="`/depot/${encodeURIComponent(row.icon)}.webp`"
-                    alt=""
-                    @error="failedIcons.add(row.icon)"
+              <div class="overview__value">
+                <span class="overview__number">{{ formatIncome(animatedIncome) }}</span>
+                <span class="overview__unit">万</span>
+                <span
+                  v-if="isReading(incomeCompare.change)"
+                  class="delta delta--pill"
+                  :class="deltaClass(incomeCompare)"
+                >
+                  <n-icon
+                    :component="incomeCompare.delta >= 0 ? TrendingUpOutline : TrendingDownOutline"
+                    aria-hidden="true"
                   />
-                </span>
-                <span class="item__body">
-                  <span class="item__label">{{ row.label }}</span>
-                  <span v-if="row.note" class="item__note">{{ row.note }}</span>
-                </span>
-                <span class="item__figures">
-                  <strong>{{ formatCount(row.value) }}</strong>
-                  <span v-if="deltaText(row)" class="delta" :class="deltaClass(row)">
-                    {{ deltaText(row) }}
-                  </span>
-                </span>
-              </li>
-            </ul>
-
-            <div class="split">
-              <div class="split__head">
-                <h3>各项收益（万）</h3>
-                <span v-if="previousDay" class="split__legend">
-                  <i class="is-day" aria-hidden="true" />当天
-                  <i class="is-base" aria-hidden="true" />上次记录
+                  {{ formatPercent(incomeCompare.change) }}
                 </span>
               </div>
-              <ul>
-                <li v-for="row in incomeRows" :key="row.key" class="split__row">
-                  <span class="split__label">{{ row.label }}</span>
-                  <span class="split__bars" aria-hidden="true">
-                    <span
-                      class="split__bar"
-                      :style="{ width: `${row.width}%`, background: row.color }"
-                    />
-                    <span
-                      v-if="previousDay"
-                      class="split__bar split__bar--base"
-                      :style="{ width: `${row.baseWidth}%` }"
-                    />
-                  </span>
-                  <span class="split__value">{{ formatIncome(row.value, 3) }}</span>
-                  <span class="delta" :class="deltaClass(row)">{{ deltaText(row, 3) }}</span>
-                </li>
-              </ul>
-              <div class="split__row split__row--total">
-                <span class="split__label">合计</span>
-                <span />
-                <span class="split__value">{{ formatIncome(incomeCompare.value, 3) }}</span>
-                <span class="delta" :class="deltaClass(incomeCompare)">
-                  {{ deltaText(incomeCompare, 3) }}
-                </span>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <div class="panels">
-          <section class="panel reveal" style="--delay: 180ms">
-            <header class="panel__head">
-              <div>
-                <h2>贸易订单</h2>
-                <p>订单收入和平均每单收入</p>
-              </div>
-              <span class="panel__stat">
-                平均每单 <strong>{{ formatCount(summary.perOrder) }}</strong> 龙门币
-              </span>
-            </header>
-            <v-chart class="chart" :option="orderOption" autoresize @click="onChartClick" />
-          </section>
-          <section class="panel reveal" style="--delay: 220ms">
-            <header class="panel__head">
-              <div>
-                <h2>合成玉</h2>
-                <p>每天获得的合成玉</p>
-              </div>
-              <span v-if="isReading(summary.pulls)" class="panel__stat">
-                合计约 <strong>{{ summary.pulls.toFixed(1) }}</strong> 抽
-              </span>
-            </header>
-            <v-chart
-              v-if="isReading(summary.orundum)"
-              class="chart"
-              :option="orundumOption"
-              autoresize
-              @click="onChartClick"
-            />
-            <div v-else class="panel__empty">没有可用的合成玉数据</div>
-          </section>
-        </div>
-
-        <section class="panel reveal" style="--delay: 260ms">
-          <header class="panel__head">
-            <div>
-              <h2>逐日明细</h2>
-              <p>
-                点击一行查看详情。「—」表示未读到数据或无法计算<template v-if="summary.missingDays">
-                  ，有 {{ summary.missingDays }} 天的收益数据不完整</template
+              <p class="overview__caption">
+                按{{ algorithmShortLabel }}计算<template v-if="isReading(incomeCompare.delta)"
+                  >，较 {{ formatDay(previousDay.date) }}
+                  <span class="delta" :class="deltaClass(incomeCompare)">{{
+                    deltaText(incomeCompare, 2)
+                  }}</span>
+                  万</template
+                ><template v-if="selectedDay.income.partial"
+                  >；{{ incomeNote(selectedDay.income) }}</template
                 >
               </p>
             </div>
-          </header>
-          <div class="table-wrap" tabindex="0" role="region" aria-label="逐日明细">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th v-for="column in tableColumns" :key="column.key" scope="col">
-                    {{ column.label }}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="day in tableRows"
-                  :key="day.date"
-                  tabindex="0"
-                  :class="{ 'is-selected': day.date === selectedDay.date }"
-                  :aria-current="day.date === selectedDay.date ? 'true' : undefined"
-                  @click="pickRow(day.date)"
-                  @keydown.enter.prevent="pickRow(day.date)"
-                  @keydown.space.prevent="pickRow(day.date)"
-                >
-                  <td
-                    v-for="column in tableColumns"
-                    :key="column.key"
-                    :class="[`col-${column.key}`, column.key === 'change' && changeClass(day.date)]"
+            <dl class="overview__facts">
+              <div>
+                <dt>日均收益</dt>
+                <dd>{{ formatIncome(summary.averageIncome) }}<small>万</small></dd>
+              </div>
+              <div>
+                <dt>总收益</dt>
+                <dd>{{ formatIncome(summary.totalIncome, 1) }}<small>万</small></dd>
+              </div>
+              <div v-if="summary.best">
+                <dt><n-icon :component="TrophyOutline" aria-hidden="true" /> 收益最高</dt>
+                <dd>
+                  <button type="button" class="link" @click="selectDay(summary.best.date)">
+                    {{ formatDay(summary.best.date) }}
+                  </button>
+                  <span class="overview__best"
+                    >{{ formatIncome(summary.best.income.total) }} 万</span
                   >
-                    <template v-if="column.key === 'date'">
-                      {{ cell(day, 'date') }}
-                      <n-icon
-                        v-if="day.date === bestDate"
-                        :component="TrophyOutline"
-                        class="best-mark"
-                        aria-label="收益最高"
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <div class="main-grid">
+            <section class="panel reveal" style="--delay: 60ms">
+              <header class="panel__head panel__head--chart">
+                <div>
+                  <h2>{{ chartView === 'production' ? '每日产出' : '每日收益' }}</h2>
+                  <p v-if="chartView === 'income'">
+                    按{{ algorithmShortLabel }}计算，虚线表示平均收益。点击柱子查看当天详情。
+                  </p>
+                  <p v-else>赤金按基报制造价值显示，作战记录按经验值显示。点击柱子查看当天详情。</p>
+                </div>
+                <n-radio-group
+                  v-model:value="chartView"
+                  size="small"
+                  name="report-chart"
+                  aria-label="图表内容"
+                >
+                  <n-radio-button value="income">折算收益</n-radio-button>
+                  <n-radio-button value="production">基报产出</n-radio-button>
+                </n-radio-group>
+              </header>
+              <v-chart
+                class="chart chart--main"
+                :option="mainChartOption"
+                autoresize
+                @click="onChartClick"
+              />
+            </section>
+
+            <section
+              ref="detailPanel"
+              class="panel day reveal"
+              style="--delay: 120ms"
+              aria-labelledby="report-day-title"
+            >
+              <header class="day__head">
+                <n-button
+                  quaternary
+                  circle
+                  size="small"
+                  :disabled="selectedIndex <= 0"
+                  aria-label="上一条记录"
+                  @click="stepDay(-1)"
+                >
+                  <template #icon><n-icon :component="ChevronBackOutline" /></template>
+                </n-button>
+                <div class="day__title">
+                  <h2 id="report-day-title">{{ formatDay(selectedDay.date) }}</h2>
+                  <p>
+                    {{ previousDay ? `对比 ${formatDay(previousDay.date)}` : '没有更早的记录' }}
+                  </p>
+                </div>
+                <n-button
+                  quaternary
+                  circle
+                  size="small"
+                  :disabled="selectedIndex >= days.length - 1"
+                  aria-label="下一条记录"
+                  @click="stepDay(1)"
+                >
+                  <template #icon><n-icon :component="ChevronForwardOutline" /></template>
+                </n-button>
+              </header>
+
+              <ul class="items" aria-label="当天产出">
+                <li v-for="row in detailRows" :key="row.key" class="item">
+                  <span class="item__icon">
+                    <img
+                      v-if="!failedIcons.has(row.icon)"
+                      :src="`/depot/${encodeURIComponent(row.icon)}.webp`"
+                      alt=""
+                      @error="failedIcons.add(row.icon)"
+                    />
+                  </span>
+                  <span class="item__body">
+                    <span class="item__label">{{ row.label }}</span>
+                    <span v-if="row.note" class="item__note">{{ row.note }}</span>
+                  </span>
+                  <span class="item__figures">
+                    <strong>{{ formatCount(row.value) }}</strong>
+                    <span v-if="deltaText(row)" class="delta" :class="deltaClass(row)">
+                      {{ deltaText(row) }}
+                    </span>
+                  </span>
+                </li>
+              </ul>
+
+              <div class="split">
+                <div class="split__head">
+                  <h3>各项收益（万）</h3>
+                  <span v-if="previousDay" class="split__legend">
+                    <i class="is-day" aria-hidden="true" />当天
+                    <i class="is-base" aria-hidden="true" />上次记录
+                  </span>
+                </div>
+                <ul>
+                  <li v-for="row in incomeRows" :key="row.key" class="split__row">
+                    <span class="split__label">{{ row.label }}</span>
+                    <span class="split__bars" aria-hidden="true">
+                      <span
+                        class="split__bar"
+                        :style="{ width: `${row.width}%`, background: row.color }"
                       />
-                    </template>
-                    <template v-else>{{ cell(day, column.key) }}</template>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                      <span
+                        v-if="previousDay"
+                        class="split__bar split__bar--base"
+                        :style="{ width: `${row.baseWidth}%` }"
+                      />
+                    </span>
+                    <span class="split__value">{{ formatIncome(row.value, 3) }}</span>
+                    <span class="delta" :class="deltaClass(row)">{{ deltaText(row, 3) }}</span>
+                  </li>
+                </ul>
+                <div class="split__row split__row--total">
+                  <span class="split__label">合计</span>
+                  <span />
+                  <span class="split__value">{{ formatIncome(incomeCompare.value, 3) }}</span>
+                  <span class="delta" :class="deltaClass(incomeCompare)">
+                    {{ deltaText(incomeCompare, 3) }}
+                  </span>
+                </div>
+              </div>
+            </section>
           </div>
-        </section>
+
+          <div class="panels">
+            <section class="panel reveal" style="--delay: 180ms">
+              <header class="panel__head">
+                <div>
+                  <h2>贸易订单</h2>
+                  <p>订单收入和平均每单收入</p>
+                </div>
+                <span class="panel__stat">
+                  平均每单 <strong>{{ formatCount(summary.perOrder) }}</strong> 龙门币
+                </span>
+              </header>
+              <v-chart class="chart" :option="tradingOption" autoresize @click="onChartClick" />
+            </section>
+            <section class="panel reveal" style="--delay: 220ms">
+              <header class="panel__head">
+                <div>
+                  <h2>合成玉</h2>
+                  <p>每天获得的合成玉</p>
+                </div>
+                <span v-if="isReading(summary.pulls)" class="panel__stat">
+                  合计约 <strong>{{ summary.pulls.toFixed(1) }}</strong> 抽
+                </span>
+              </header>
+              <v-chart
+                v-if="isReading(summary.orundum)"
+                class="chart"
+                :option="orundumOption"
+                autoresize
+                @click="onChartClick"
+              />
+              <div v-else class="panel__empty">没有可用的合成玉数据</div>
+            </section>
+          </div>
+
+          <section class="panel reveal" style="--delay: 260ms">
+            <header class="panel__head">
+              <div>
+                <h2>订单分布</h2>
+                <p>按贸易订单记录拆分龙门币订单金额，折线为每单龙门币。点击柱子查看当天详情。</p>
+              </div>
+              <span class="panel__stat">
+                未知订单合计 <strong>{{ formatCount(unknownOrderTotal) }}</strong> 龙门币
+              </span>
+            </header>
+            <v-chart
+              v-if="orderRows.length"
+              class="chart chart--order"
+              :option="orderOption"
+              autoresize
+              @click="onChartClick"
+            />
+            <div v-else class="panel__empty">没有可用的贸易订单记录</div>
+          </section>
+
+          <section class="panel reveal" style="--delay: 300ms">
+            <header class="panel__head">
+              <div>
+                <h2>逐日明细</h2>
+                <p>
+                  点击一行查看详情。「—」表示未读到数据或无法计算<template
+                    v-if="summary.missingDays"
+                  >
+                    ，有 {{ summary.missingDays }} 天的收益数据不完整</template
+                  >
+                </p>
+              </div>
+            </header>
+            <div class="table-wrap" tabindex="0" role="region" aria-label="逐日明细">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th v-for="column in tableColumns" :key="column.key" scope="col">
+                      {{ column.label }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="day in tableRows"
+                    :key="day.date"
+                    tabindex="0"
+                    :class="{ 'is-selected': day.date === selectedDay.date }"
+                    :aria-current="day.date === selectedDay.date ? 'true' : undefined"
+                    @click="pickRow(day.date)"
+                    @keydown.enter.prevent="pickRow(day.date)"
+                    @keydown.space.prevent="pickRow(day.date)"
+                  >
+                    <td
+                      v-for="column in tableColumns"
+                      :key="column.key"
+                      :class="[
+                        `col-${column.key}`,
+                        column.key === 'change' && changeClass(day.date)
+                      ]"
+                    >
+                      <template v-if="column.key === 'date'">
+                        {{ cell(day, 'date') }}
+                        <n-icon
+                          v-if="day.date === bestDate"
+                          :component="TrophyOutline"
+                          class="best-mark"
+                          aria-label="收益最高"
+                        />
+                      </template>
+                      <template v-else>{{ cell(day, column.key) }}</template>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </template>
       </template>
     </div>
   </PageLayout>
@@ -1105,13 +1469,65 @@ function cell(day, key) {
   --line: var(--mower-divider, rgba(31, 34, 37, 0.09));
   --surface: var(--mower-surface, #fff);
   --accent: var(--mower-primary, #18a058);
-  --up: var(--mower-success-text, #18a058);
-  --down: var(--mower-error-text, #d03050);
+  --up: var(--mower-error-text, #d03050);
+  --down: var(--mower-success-text, #18a058);
   display: flex;
   flex-direction: column;
   gap: 16px;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+}
+
+/* 有行情时股票模式才占满内容区：页头让位给终端顶栏，页面自身不滚动。 */
+.report.is-stock-fill {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  gap: 0;
+}
+
+.report.is-stock-fill > .n-alert,
+.report.is-stock-fill > .custom-card {
+  flex: 0 0 auto;
+  margin: 8px 12px 0;
+}
+
+.term-menu-extra {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--term-line);
+}
+
+.term-menu-extra .term-menu-extra__item,
+.term-menu-extra__link {
+  display: block;
+  width: 100%;
+  padding: 4px 0;
+  color: var(--term-cyan);
+  font-size: 11px;
+  text-align: left;
+  text-decoration: none;
+}
+
+.term-menu-extra .term-menu-extra__item:hover,
+.term-menu-extra .term-menu-extra__item:focus-visible,
+.term-menu-extra__link:hover,
+.term-menu-extra__link:focus-visible {
+  color: var(--term-strong, #fff);
+  text-decoration: underline;
+}
+
+@media (max-width: 720px) {
+  .term-menu-extra .term-menu-extra__item,
+  .term-menu-extra__link {
+    display: flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 8px 0;
+  }
 }
 
 .custom-card {
@@ -1306,11 +1722,11 @@ function cell(day, key) {
 }
 
 .delta--pill.is-up {
-  background: var(--mower-success-block, rgba(24, 160, 88, 0.12));
+  background: var(--mower-error-block, rgba(208, 48, 80, 0.12));
 }
 
 .delta--pill.is-down {
-  background: var(--mower-error-block, rgba(208, 48, 80, 0.12));
+  background: var(--mower-success-block, rgba(24, 160, 88, 0.12));
 }
 
 /* ---- 面板 ---- */
@@ -1382,6 +1798,10 @@ function cell(day, key) {
 
 .chart--main {
   height: 420px;
+}
+
+.chart--order {
+  height: 320px;
 }
 
 /* ---- 单日详情 ---- */
@@ -1741,6 +2161,10 @@ function cell(day, key) {
 
   .chart {
     height: 220px;
+  }
+
+  .chart--order {
+    height: 280px;
   }
 }
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ORDER_COLORS,
+  ORDER_PRICES,
+  ORDER_TYPES,
+  buildOrderChartRows,
   buildReportDays,
   dayIncome,
   formatDay,
@@ -163,5 +167,132 @@ describe('基建报表数据模型', () => {
     expect(formatPercent(0.0512)).toBe('+5.1%')
     expect(formatPercent(-0.25)).toBe('−25%')
     expect(formatPercent(null)).toBe('')
+  })
+})
+describe('贸易订单分布模型', () => {
+  const orderTypes = [
+    '但书_2000',
+    '但书_2500',
+    '漏单_1000',
+    '漏单_1500',
+    '漏单_2000',
+    '龙舌兰',
+    '佩佩',
+    '可露希尔'
+  ]
+
+  it('订单类型与单价覆盖后端记录组合，四套配色都有定义', () => {
+    expect(ORDER_TYPES).toEqual(orderTypes)
+    expect(ORDER_PRICES).toEqual({
+      但书_2000: 2000,
+      但书_2500: 2500,
+      漏单_1000: 1000,
+      漏单_1500: 1500,
+      漏单_2000: 2000,
+      龙舌兰: 2500,
+      佩佩: 1000,
+      可露希尔: 1200
+    })
+    for (const mode of ['light', 'dark', 'stock', 'stockLight']) {
+      for (const name of [...orderTypes, '未知订单']) {
+        expect(ORDER_COLORS[mode][name]).toMatch(/^#[0-9a-f]{6}$/i)
+      }
+    }
+  })
+
+  it('把订单计数折算为金额并计算未知订单', () => {
+    const [row] = buildOrderChartRows(
+      [
+        {
+          日期: '2026-10-12',
+          赤金: 1000,
+          龙门币订单: 10000,
+          龙门币订单数: 5,
+          每单获取龙门币: 2000
+        }
+      ],
+      [{ 日期: '2026-10-12', 但书_2000: 2, 龙舌兰: 1, 可露希尔: 2 }]
+    )
+    expect(row).toMatchObject({
+      日期: '2026-10-12',
+      但书_2000: 4000,
+      但书_2500: 0,
+      龙舌兰: 2500,
+      可露希尔: 2400,
+      龙门币订单: 10000,
+      订单数: 5,
+      订单质量: 2000,
+      赤金: 1000,
+      未知订单: 1100,
+      未知订单数: 0
+    })
+  })
+
+  it('缺少贸易记录时全部订单金额记为未知', () => {
+    const [row] = buildOrderChartRows(
+      [{ 日期: '2026-10-12', 龙门币订单: 10000, 龙门币订单数: 4 }],
+      []
+    )
+    expect(row['未知订单']).toBe(10000)
+    expect(row['未知订单数']).toBe(4)
+    expect(row['但书_2000']).toBe(0)
+    expect(buildOrderChartRows([], [])).toEqual([])
+  })
+
+  it('未知订单不为负，读数缺失保持未知且不产生 NaN', () => {
+    const rows = buildOrderChartRows(
+      [
+        { 日期: '2026-10-11', 龙门币订单: 1000, 龙门币订单数: 1 },
+        { 日期: '2026-10-12', 龙门币订单: null, 龙门币订单数: null, 赤金: null }
+      ],
+      [
+        { 日期: '2026-10-11', 但书_2000: 3, 龙舌兰: 2 },
+        { 日期: '2026-10-12', 漏单_1000: 1 }
+      ]
+    )
+    expect(rows[0]['未知订单']).toBe(0)
+    expect(rows[0]['未知订单数']).toBe(0)
+    expect(rows[1]['未知订单']).toBeNull()
+    expect(rows[1]['未知订单数']).toBeNull()
+    expect(rows[1]['漏单_1000']).toBe(1000)
+    expect(rows[1]['龙门币订单']).toBeNull()
+    expect(rows[1]['赤金']).toBeNull()
+    for (const value of Object.values(rows[1])) {
+      expect(value === null || Number.isNaN(value)).toBe(value === null)
+    }
+  })
+
+  it('按统计区间对齐日期并丢弃占位行', () => {
+    const reportRows = [
+      { 日期: '2026-10-13', 龙门币订单: 5000, 龙门币订单数: 2, 作战录像: 1 },
+      { 日期: '2026-10-12', 龙门币订单: 9000, 龙门币订单数: 3, 作战录像: 1 },
+      { 日期: '2026-10-11', 赤金: '-', 作战录像: '-', 龙门币订单: '-' }
+    ]
+    const days = [{ date: '2026-10-12' }, { date: '2026-10-13' }, { date: '2026-10-14' }]
+    const rows = buildOrderChartRows(reportRows, [], days)
+    expect(rows.map((row) => row['日期'])).toEqual(['2026-10-12', '2026-10-13', '2026-10-14'])
+    expect(rows[0]['未知订单']).toBe(9000)
+    expect(rows[2]).toMatchObject({
+      日期: '2026-10-14',
+      未知订单: null,
+      龙门币订单: null,
+      赤金: null
+    })
+    expect(rows[2]['但书_2000']).toBeNull()
+    expect(buildOrderChartRows(reportRows, [], []).map((row) => row['日期'])).toEqual([
+      '2026-10-12',
+      '2026-10-13'
+    ])
+  })
+
+  it('非数值订单计数按零处理，忽略没有日期的记录', () => {
+    const [row] = buildOrderChartRows(
+      [{ 日期: '2026-10-12', 龙门币订单: 0, 龙门币订单数: 0 }],
+      [{ 日期: '2026-10-12', 但书_2000: '2', 龙舌兰: null }, { 但书_2000: 9 }]
+    )
+    expect(row['但书_2000']).toBe(0)
+    expect(row['龙舌兰']).toBe(0)
+    expect(row['未知订单']).toBe(0)
+    expect(row['未知订单数']).toBe(0)
   })
 })
