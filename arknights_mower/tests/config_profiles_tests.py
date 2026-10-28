@@ -1560,6 +1560,40 @@ def test_sss_queue_files_and_round_progress_follow_long_task_profile_group(
     )
 
 
+@pytest.mark.parametrize("inherit", [[], ["long"], ["other_settings"]])
+def test_paradox_queue_files_and_progress_follow_long_profile_group(
+    storage, monkeypatch, inherit
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import maa_copilot
+
+    monkeypatch.setattr(maa_copilot, "get_path", storage)
+    monkeypatch.setattr(record, "get_path", storage)
+    monkeypatch.setattr(record, "_tables_created", False)
+    script = maa_copilot.store_script(
+        b'{"stage_name":"mem_test_1","actions":[]}', paradox=True
+    )
+    config.conf.paradox = config.Conf(
+        paradox={"scripts": [{"id": script["id"]}]}
+    ).paradox
+    config.save_conf()
+    progress = {
+        "key": maa_copilot.queue_key(config.conf.paradox),
+        "next": 1,
+        "failed": False,
+    }
+    record.save_maa_paradox_progress(progress)
+    original = profiles.list_profiles()["active_id"]
+    path = maa_copilot.script_path(script["id"], paradox=True)
+    _create("悖论配置", inherit)
+    assert bool(config.conf.paradox.scripts) is ("long" in inherit)
+    assert path.is_file() is ("long" in inherit)
+    assert record.load_maa_paradox_progress() == (progress if "long" in inherit else {})
+    _activate(original)
+    assert record.load_maa_paradox_progress() == progress
+    assert path.is_file()
+
+
 @pytest.mark.parametrize("inherit", [[], ["daily"], ["long"]])
 def test_event_shop_settings_follow_daily_profile_group(storage, inherit):
     config.conf.maa_event_shop = config.Conf(

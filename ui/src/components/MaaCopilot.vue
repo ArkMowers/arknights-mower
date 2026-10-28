@@ -5,12 +5,14 @@ import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
 import { downloadCopilotScripts } from '@/utils/maaCopilotCode'
 
+const props = defineProps({ paradox: { type: Boolean, default: false } })
 const store = useConfigStore()
-const { copilot } = storeToRefs(store)
+const configs = storeToRefs(store)
+const copilot = computed(() => (props.paradox ? configs.paradox.value : configs.copilot.value))
 const axios = inject('axios')
 const mobile = inject('mobile')
 const message = useMessage()
-const endpoint = `${import.meta.env.VITE_HTTP_URL || ''}/maa-copilot`
+const endpoint = `${import.meta.env.VITE_HTTP_URL || ''}/${props.paradox ? 'maa-paradox' : 'maa-copilot'}`
 const library = ref([])
 const selected = ref(null)
 const code = ref('')
@@ -45,9 +47,12 @@ async function refresh() {
 }
 onMounted(refresh)
 
+function queue_item(id) {
+  return props.paradox ? { id } : { id, nav_name_override: '', is_raid: false }
+}
 function add_script(id) {
   if (!id || copilot.value.scripts.length >= 32) return
-  copilot.value.scripts.push({ id, nav_name_override: '', is_raid: false })
+  copilot.value.scripts.push(queue_item(id))
 }
 async function upload_blob(blob) {
   const form = new FormData()
@@ -84,9 +89,7 @@ async function download() {
     if (copilot.value.scripts.length + scripts.length > 32) {
       throw new Error('队列已变更且剩余容量不足。队列未改变，已入库作业可从已有作业中选择')
     }
-    copilot.value.scripts.push(
-      ...scripts.map(({ id }) => ({ id, nav_name_override: '', is_raid: false }))
-    )
+    copilot.value.scripts.push(...scripts.map(({ id }) => queue_item(id)))
     selected.value = scripts.at(-1).id
     code.value = ''
     message.success(`已导入 ${scripts.length} 份作业并加入队列`)
@@ -195,10 +198,11 @@ async function restart_queue() {
         >
           <n-flex vertical>
             <n-input
+              v-if="!paradox"
               v-model:value="item.nav_name_override"
               placeholder="导航关卡名（留空由作业确定）"
             />
-            <n-checkbox v-model:checked="item.is_raid">突袭模式</n-checkbox>
+            <n-checkbox v-if="!paradox" v-model:checked="item.is_raid">突袭模式</n-checkbox>
             <n-flex>
               <n-button :disabled="index === 0" @click="move(index, -1)">上移</n-button>
               <n-button :disabled="index === copilot.scripts.length - 1" @click="move(index, 1)"
@@ -208,24 +212,28 @@ async function restart_queue() {
             </n-flex>
           </n-flex>
         </n-card>
-        <n-text depth="3"
+        <n-text v-if="!paradox" depth="3"
           >按队列顺序执行，最多 32 项。关卡导航由 MAA
           完成；请确认作业与关卡、难度及干员练度相符。中断后从未完成项重新执行，已完成项会保存并跳过；整轮完成后停止。清缓存启动保留进度。修改执行队列会开启新一轮，调整编队或理智药设置保留已完成项。</n-text
         >
+        <n-text v-else depth="3">
+          导入 mem_ 开头关卡的悖论模拟作业，最多 32 项。MAA 自动寻找对应干员并选择作业技能；Mower
+          会先通过导航栏进入干员列表，无需手动打开页面，请确认已解锁悖论模拟。中断后重新执行未完成项，已完成项会保存并跳过；清缓存启动保留进度。队列全部完成后等待手动重跑，修改队列开启新一轮。
+        </n-text>
         <n-button :disabled="!copilot.scripts.length" @click="restart_queue"
           >重新执行整份队列</n-button
         >
       </n-flex>
     </n-form-item>
-    <n-form-item :show-label="false"
+    <n-form-item v-if="!paradox" :show-label="false"
       ><n-checkbox v-model:checked="copilot.use_sanity_potion"
         >允许使用理智药</n-checkbox
       ></n-form-item
     >
-    <n-form-item :show-label="false"
+    <n-form-item v-if="!paradox" :show-label="false"
       ><n-checkbox v-model:checked="copilot.formation">自动编队</n-checkbox></n-form-item
     >
-    <template v-if="copilot.formation">
+    <template v-if="!paradox && copilot.formation">
       <n-form-item label="使用编队"
         ><n-select v-model:value="copilot.formation_index" :options="formation_options"
       /></n-form-item>
