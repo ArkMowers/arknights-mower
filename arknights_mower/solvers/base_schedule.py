@@ -7716,9 +7716,51 @@ class BaseSchedulerSolver(
         self._prepare_group_shift_execution_targets(task)
         self.op_data.commit_group_shifts({})
         proposed = copy.deepcopy(task.plan)
+        returning_zero_groups = {
+            op.group
+            for room, row in proposed.items()
+            if not room.startswith("dorm")
+            for index, name in enumerate(row)
+            if (op := self.op_data.operators.get(name)) is not None
+            and not op.multi_group
+            and (op.room, op.index) == (room, index)
+            and self.op_data.group_is_resting(op.group)
+            and self.op_data.is_workaholic_group(op.group)
+        }
+        for group in returning_zero_groups:
+            for name in self.op_data.shift_group_members(group):
+                op = self.op_data.operators[name]
+                if op.multi_group:
+                    continue
+                target = proposed.get(op.room, [])[op.index : op.index + 1]
+                if target in ([], ["Current"]) and (
+                    op.current_room,
+                    op.current_index,
+                ) != (op.room, op.index):
+                    proposed.setdefault(
+                        op.room, ["Current"] * len(self.op_data.plan[op.room])
+                    )[op.index] = name
         self._suppress_facility_arrangement(proposed)
+        complete_returns = self.op_data.arrangement_group_transitions(proposed)
+        incomplete_rooms = {
+            op.room
+            for group in returning_zero_groups
+            if complete_returns.get(group) is not False
+            for name in self.op_data.shift_group_members(group)
+            if not (op := self.op_data.operators[name]).multi_group
+            and proposed.get(op.room, [])[op.index : op.index + 1] != [name]
+            and not (
+                proposed.get(op.room, [])[op.index : op.index + 1] in ([], ["Current"])
+                and (op.current_room, op.current_index) == (op.room, op.index)
+            )
+        }
+        if incomplete_rooms:
+            raise ProductSwitchDeferred(
+                "全零心情组的完整回班安排尚不可用",
+                rooms=tuple(sorted(incomplete_rooms)),
+            )
         transitions = dict(getattr(task, "group_shift_transitions", {}))
-        transitions.update(self.op_data.arrangement_group_transitions(proposed))
+        transitions.update(complete_returns)
         predecessors = self._group_shift_predecessors(task, proposed, transitions)
         if predecessors:
             raise GroupShiftBlocked(predecessors=predecessors)
@@ -7803,6 +7845,40 @@ class BaseSchedulerSolver(
         """执行前同步合法取消与岗位保护，不补回已经完成的房间。"""
         if not hasattr(task, "group_shift_transitions"):
             return
+        pending_zero_returns = {}
+        for (room, index), name in getattr(task, "group_shift_expected", {}).items():
+            op = self.op_data.operators.get(name)
+            if (
+                op is not None
+                and not op.multi_group
+                and getattr(task, "group_shift_transitions", {}).get(op.group) is False
+                and self.op_data.group_is_resting(op.group)
+                and self.op_data.is_workaholic_group(op.group)
+                and (op.current_room, op.current_index) != (room, index)
+            ):
+                pending_zero_returns.setdefault(
+                    room, ["Current"] * len(self.op_data.plan[room])
+                )[index] = name
+        permitted = copy.deepcopy(pending_zero_returns)
+        self._suppress_facility_arrangement(permitted)
+        blocked_rooms = {
+            room
+            for room, row in pending_zero_returns.items()
+            for index, name in enumerate(row)
+            if name != "Current"
+            and permitted.get(room, [])[index : index + 1] != [name]
+        }
+        if blocked_rooms:
+            raise ProductSwitchDeferred(
+                "全零心情组的未完成回班岗位仍受保护",
+                rooms=tuple(sorted(blocked_rooms)),
+            )
+        for room, row in pending_zero_returns.items():
+            for index, name in enumerate(row):
+                if name != "Current":
+                    task.plan.setdefault(
+                        room, ["Current"] * len(self.op_data.plan[room])
+                    )[index] = name
         expected_plan = {}
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
             expected_plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
@@ -7815,7 +7891,9 @@ class BaseSchedulerSolver(
         self._cancel_dorm_recovery_targets(expected_plan, transitions, task=task)
         for plan in (task.plan, expected_plan):
             for index in getattr(task, "training_skipped_slots", ()):
-                if index < len(plan.get("train", [])):
+                if index < len(plan.get("train", [])) and pending_zero_returns.get(
+                    "train", []
+                )[index : index + 1] in ([], ["Current"]):
                     plan["train"][index] = "Current"
             self._suppress_facility_arrangement(plan)
         remaining_transitions = self.op_data.arrangement_group_transitions(
@@ -8139,6 +8217,16 @@ class BaseSchedulerSolver(
                         )
                     )
                 continue
+            except ProductSwitchDeferred as error:
+                task.product_shift_waiting = True
+                if error.dependencies:
+                    task.product_shift_predecessors = error.dependencies
+                self._retain_failed_task(
+                    task,
+                    str(error),
+                    error.rooms or tuple(task.plan),
+                    dependency=True,
+                )
             task.__dict__.pop("departure_recovery_names", None)
             task.__dict__.pop("departure_recovery_observation", None)
             del task.group_shift_waiting
