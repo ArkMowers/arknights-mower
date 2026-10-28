@@ -35,8 +35,6 @@ _DB_TABLE_STMTS = (
     "mood_event TEXT"
     ")",
     "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)",
-    "CREATE TABLE IF NOT EXISTS maa_paradox_progress ("
-    "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_sss_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_copilot_progress ("
@@ -406,23 +404,6 @@ def save_maa_copilot_progress(progress):
     with _conn() as connection:
         connection.execute(
             "INSERT OR REPLACE INTO maa_copilot_progress VALUES (1, ?)",
-            (json.dumps(progress),),
-        )
-        connection.commit()
-
-
-def load_maa_paradox_progress():
-    with _conn() as connection:
-        row = connection.execute(
-            "SELECT payload FROM maa_paradox_progress WHERE id = 1"
-        ).fetchone()
-    return json.loads(row[0]) if row else {}
-
-
-def save_maa_paradox_progress(progress):
-    with _conn() as connection:
-        connection.execute(
-            "INSERT OR REPLACE INTO maa_paradox_progress VALUES (1, ?)",
             (json.dumps(progress),),
         )
         connection.commit()

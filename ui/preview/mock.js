@@ -419,7 +419,6 @@ export function createPreviewAdapter(data, requests = []) {
       // 离线示例仅提供默认预设，不读取 MAA 文件或建立连接。
       '/maa-conn-preset': () => ['General'],
       '/maa-event-shop': () => ({ shops: [] }),
-      '/maa-paradox': () => ({ scripts: [] }),
       '/maa-copilot': () => ({ scripts: [] }),
       '/sss-copilot': () => ({
         scripts: [

@@ -1,4 +1,4 @@
-"""Validate and store ordinary, paradox and SSS scripts in separate libraries."""
+"""Validate and store ordinary and SSS scripts in separate libraries."""
 
 import hashlib
 import json
@@ -28,22 +28,17 @@ def queue_key(conf):
     ).hexdigest()
 
 
-def script_root(*, sss=False, paradox=False):
-    name = "sss-copilots" if sss else "paradox-copilots" if paradox else "copilots"
-    return get_path(f"@app/config/{name}")
-
-
-def script_path(script_id, *, sss=False, paradox=False):
+def script_path(script_id, *, sss=False):
     if not isinstance(script_id, str) or not re.fullmatch(r"[a-f0-9]{64}", script_id):
         raise ValueError("作业标识无效")
-    root = script_root(sss=sss, paradox=paradox)
+    root = get_path("@app/config/sss-copilots" if sss else "@app/config/copilots")
     path = root / f"{script_id}.json"
     if root.is_symlink() or path.is_symlink():
         raise ValueError("作业目录或文件不能使用符号链接")
     return path
 
 
-def parse_script(raw, *, sss=False, paradox=False):
+def parse_script(raw, *, sss=False):
     if len(raw) > MAX_SCRIPT_BYTES:
         raise ValueError("作业文件不能超过 1 MB")
     try:
@@ -72,11 +67,6 @@ def parse_script(raw, *, sss=False, paradox=False):
             or not all(isinstance(item, dict) for item in data[key])
         ):
             raise ValueError(f"作业的 {key} 必须是对象列表")
-    is_paradox = bool(re.fullmatch(r"mem_[A-Za-z0-9_]+_[1-3]", stage))
-    if paradox and not is_paradox:
-        raise ValueError("请导入悖论模拟作业，关卡名称应为 mem_ 开头的关卡标识")
-    if not paradox and is_paradox:
-        raise ValueError("悖论模拟作业应在悖论模拟中导入")
     return data
 
 
@@ -98,8 +88,8 @@ def script_info(script_id, data, *, sss=False):
     return info
 
 
-def list_scripts(*, sss=False, paradox=False):
-    root = script_root(sss=sss, paradox=paradox)
+def list_scripts(*, sss=False):
+    root = get_path("@app/config/sss-copilots" if sss else "@app/config/copilots")
     if root.is_symlink():
         raise ValueError("作业目录不能使用符号链接")
     paths = sorted(root.glob("*.json"))
@@ -108,22 +98,20 @@ def list_scripts(*, sss=False, paradox=False):
     result = []
     for path in paths:
         script_id = path.stem
-        path = script_path(script_id, sss=sss, paradox=paradox)
+        path = script_path(script_id, sss=sss)
         with path.open("rb") as stream:
-            data = parse_script(
-                stream.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox
-            )
+            data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1), sss=sss)
         result.append(script_info(script_id, data, sss=sss))
     return result
 
 
-def store_script(raw, *, sss=False, paradox=False):
-    data = parse_script(raw, sss=sss, paradox=paradox)
+def store_script(raw, *, sss=False):
+    data = parse_script(raw, sss=sss)
     content = json.dumps(data, ensure_ascii=False, allow_nan=False).encode("utf-8")
     if len(content) > MAX_SCRIPT_BYTES:
         raise ValueError("作业文件不能超过 1 MB")
     script_id = hashlib.sha256(content).hexdigest()
-    path = script_path(script_id, sss=sss, paradox=paradox)
+    path = script_path(script_id, sss=sss)
     files = list(path.parent.glob("*.json"))
     if not path.exists() and (
         len(files) >= MAX_SCRIPTS
@@ -166,10 +154,3 @@ def build_copilot_params(conf):
                 raise ValueError("请填写指定助战干员的中文名")
             params["support_unit_name"] = conf.support_unit_name.strip()
     return params
-
-
-def build_paradox_params(item, index):
-    path = script_path(item.id, paradox=True)
-    with path.open("rb") as stream:
-        parse_script(stream.read(MAX_SCRIPT_BYTES + 1), paradox=True)
-    return {"list": [{"id": index, "filename": str(path)}]}

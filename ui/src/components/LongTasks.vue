@@ -22,7 +22,6 @@ const mobile = inject('mobile')
 const maa_long_task_options = [
   { label: '集成战略 (MAA)', value: 'rogue' },
   { label: '自动战斗／作业 (MAA)', value: 'copilot' },
-  { label: '悖论模拟 (MAA)', value: 'paradox' },
   { label: '保全派驻 (MAA)', value: 'sss' },
   { label: '生息演算 (MAA)', value: 'rcl' },
   { label: '生息演算', value: 'ra' },
@@ -170,8 +169,7 @@ watch(
       </n-form>
     </template>
     <maa-rogue v-else-if="maa_long_task_type == 'rogue'" />
-    <maa-copilot v-else-if="maa_long_task_type == 'copilot'" :key="'copilot'" />
-    <maa-copilot v-else-if="maa_long_task_type == 'paradox'" :key="'paradox'" paradox />
+    <maa-copilot v-else-if="maa_long_task_type == 'copilot'" />
     <maa-sss v-else-if="maa_long_task_type == 'sss'" />
     <reclamation-algorithm v-else-if="maa_long_task_type == 'ra'" />
     <secret-front v-else-if="maa_long_task_type == 'sf'" />

@@ -18,7 +18,6 @@ describe('offline preview', () => {
   it('loads the new shop and copilot forms without device or resource access', async () => {
     const client = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
     expect((await client.get('/maa-event-shop')).data).toEqual({ shops: [] })
-    expect((await client.get('/maa-paradox')).data).toEqual({ scripts: [] })
     expect((await client.get('/maa-copilot')).data).toEqual({ scripts: [] })
     await expect(client.post('/maa-event-shop', {})).rejects.toMatchObject({
       response: { status: 405 }

@@ -146,7 +146,6 @@ export const useConfigStore = defineStore('config', () => {
   const rcl = ref({})
   const rogue = ref({})
   const sss = ref({ type: 1, ec: 1, scripts: [], run_id: '' })
-  const paradox = ref({ scripts: [], run_id: '' })
   const copilot = ref({
     run_id: '',
     scripts: [],
@@ -619,7 +618,6 @@ export const useConfigStore = defineStore('config', () => {
       rcl.value = response.data.rcl
       rogue.value = response.data.rogue
       sss.value = { scripts: [], run_id: '', ...response.data.sss }
-      paradox.value = { scripts: [], run_id: '', ...(response.data.paradox ?? {}) }
       copilot.value = {
         run_id: '',
         scripts: [],
@@ -837,7 +835,6 @@ export const useConfigStore = defineStore('config', () => {
       rogue: rogue.value,
       sss: sss.value,
       copilot: copilot.value,
-      paradox: paradox.value,
       ...(runtime_platform.value === 'android' ? {} : { screenshot: screenshot.value }),
       screenshot_archive_limit_mb: screenshot_archive_limit_mb.value,
       screenshot_interval: screenshot_interval.value,
@@ -1208,7 +1205,6 @@ export const useConfigStore = defineStore('config', () => {
     rogue,
     sss,
     copilot,
-    paradox,
     screenshot,
     screenshot_archive_limit_mb,
     screenshot_interval,

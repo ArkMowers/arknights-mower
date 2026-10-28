@@ -39,7 +39,6 @@ describe('MAA reward and long task config', () => {
       collectible_mode_core_char_list: [{ name: '机械师', use_support: false }]
     }
     store.rcl = { mode: 0, clear_store: true }
-    store.paradox = { scripts: [{ id: 'a'.repeat(64) }], run_id: 'new-round' }
     store.maa_event_shop = {
       enable: true,
       activity: '测试活动',
@@ -56,7 +55,6 @@ describe('MAA reward and long task config', () => {
       maa_signinevent: true,
       rogue: store.rogue,
       rcl: store.rcl,
-      paradox: store.paradox,
       maa_event_shop: store.maa_event_shop
     })
     loaded.value = false
@@ -79,7 +77,6 @@ describe('MAA reward and long task config', () => {
     expect(store.maa_signinevent).toBe(true)
     expect(store.rogue.blackflow_start_animals).toEqual(['swaddled_cat', 'swaddled_cat'])
     expect(store.rcl.clear_store).toBe(true)
-    expect(store.paradox.scripts).toEqual([{ id: 'a'.repeat(64) }])
     expect(store.maa_event_shop.switch_source).toBe('活动方案')
   })
   it('defaults missing signin switch to off when loading old config', async () => {
@@ -101,7 +98,6 @@ describe('MAA reward and long task config', () => {
     }))
     await store.load_config()
     expect(store.maa_signinevent).toBe(false)
-    expect(store.paradox).toEqual({ scripts: [], run_id: '' })
     expect(store.maa_event_shop.enable).toBe(false)
     expect(axios.patch).not.toHaveBeenCalled()
   })

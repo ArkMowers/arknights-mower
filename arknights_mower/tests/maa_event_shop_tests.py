@@ -309,12 +309,10 @@ def test_stopping_shop_navigation_does_not_start_a_following_large_task(
 
     setup_shop(scheduler)
     conf = base_schedule.config.conf
-    script = maa_copilot.store_script(
-        b'{"stage_name":"mem_test_1","actions":[]}', paradox=True
-    )
+    script = maa_copilot.store_script(b'{"stage_name":"1-7","actions":[]}')
     conf.maa_rg_enable = 1
-    conf.maa_long_task_type = "paradox"
-    conf.paradox = Conf(paradox={"scripts": [{"id": script["id"]}]}).paradox
+    conf.maa_long_task_type = "copilot"
+    conf.copilot = Conf(copilot={"scripts": [{"id": script["id"]}]}).copilot
 
     def stop_navigation(*args):
         base_schedule.config.stop_maa.set()

@@ -206,17 +206,6 @@ class RogueRecruitConf(ConfModel):
 
 
 class LongTaskPart(ConfModel):
-    class ParadoxQueueItem(ConfModel):
-        id: str = Field(pattern=r"^[a-f0-9]{64}$")
-
-    class ParadoxConf(ConfModel):
-        scripts: list["LongTaskPart.ParadoxQueueItem"] = Field(
-            default_factory=list, max_length=32
-        )
-        run_id: str = Field(default="", max_length=128)
-
-    paradox: ParadoxConf = Field(default_factory=ParadoxConf)
-
     class RogueConf(ConfModel):
         squad: str = ""
         "分队"
@@ -1258,10 +1247,6 @@ class Conf(
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "copilot"
 
     @property
-    def PARADOX(self):
-        return self.maa_rg_enable == 1 and self.maa_long_task_type == "paradox"
-
-    @property
     def SSS(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sss"
 
@@ -1344,12 +1329,7 @@ class Conf(
     @property
     def has_maa_tasks(self) -> bool:
         return (
-            self.has_maa_daily_tasks
-            or self.RG
-            or self.SSS
-            or self.RCL
-            or self.COPILOT
-            or self.PARADOX
+            self.has_maa_daily_tasks or self.RG or self.SSS or self.RCL or self.COPILOT
         )
 
     @property

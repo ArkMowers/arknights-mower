@@ -285,17 +285,3 @@ describe('ordinary Copilot library and queue', () => {
     expect(state.config.copilot.value.scripts).toEqual(scripts)
   })
 })
-
-describe('ParadoxCopilot queue', () => {
-  it('imports through the paradox endpoint and only records the script id', async () => {
-    state.config.paradox = ref({ scripts: [], run_id: '' })
-    const paradox = scope.run(() => Component.setup({ paradox: true }, { expose: () => {} }))
-    await paradox.upload_blob(new Blob(['{"stage_name":"mem_test_1","actions":[]}']))
-    expect(state.client.post).toHaveBeenCalledWith(
-      expect.stringMatching(/\/maa-paradox$/),
-      expect.any(FormData)
-    )
-    expect(state.config.paradox.value.scripts).toEqual([{ id: first.id }])
-    expect(state.config.copilot.value.scripts).toEqual([])
-  })
-})
