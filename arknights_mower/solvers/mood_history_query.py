@@ -15,6 +15,7 @@ from arknights_mower.data import base_room_list
 MAX_OPERATORS = 16
 MAX_NAME_LENGTH = 40
 MAX_SAMPLES_PER_OPERATOR = 600
+_ROOMS_SQL = ", ".join("'" + room.replace("'", "''") + "'" for room in base_room_list)
 _WORKING_ROOMS_SQL = ", ".join(
     "'" + room.replace("'", "''") + "'"
     for room in base_room_list
@@ -35,7 +36,7 @@ FIAMMETTA_CURVE_FILTER = """
 
 
 def mood_curve_filter(columns):
-    """共用曲线过滤；零值仅展示工作设施切换或已确认耗尽。"""
+    """共用曲线过滤；零值展示工作设施换岗、离岗入宿或已确认耗尽。"""
     retained = ["a.mood <> 0"]
     if "mood_event" in columns:
         retained.append("a.mood_event = 'exhausted'")
@@ -52,7 +53,7 @@ def mood_curve_filter(columns):
         """
         retained.append(
             f"""
-            (a.current_room IN ({_WORKING_ROOMS_SQL})
+            (a.current_room IN ({_ROOMS_SQL})
              AND NULLIF(({previous_room}), a.current_room) IN ({_WORKING_ROOMS_SQL}))
             """
         )
