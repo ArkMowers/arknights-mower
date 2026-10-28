@@ -93,6 +93,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_candidate_mood,
     dorm_candidates,
     dorm_task_reservations,
+    product_wait_resting_replacements,
     retained_task_reservations,
     scheduling_mood_reaches,
     unstarted_product_wait,
@@ -8237,6 +8238,16 @@ class BaseSchedulerSolver(
     @_log_backup_calculation("完整换班")
     def _prepare_shift_cycle(self, task):
         """在副本中收敛换班、副表、后续轮休和补床，成功后一次提交最终安排。"""
+        preceding = getattr(task, "product_wait_return_task", None)
+        if preceding is not None and any(
+            pending is preceding for pending in self.tasks
+        ):
+            raise ProductSwitchDeferred(
+                "等待独立回班完成后继续切产物", dependencies=(preceding,)
+            )
+        if getattr(task, "product_wait_independent_return", False):
+            # 已独立推演的回班只执行自身目标，不能再次合并等待切产物的下班。
+            return
         if getattr(self, "maintenance_entry_pending", False):
             pending = [
                 queued
@@ -8249,8 +8260,11 @@ class BaseSchedulerSolver(
                     "等待停服前提前跑单及原班恢复完成后再换班", dependencies=pending
                 )
             self.maintenance_entry_pending = False
-        if task.retains_execution or getattr(task, "product_shift_locked", False):
-            # 切产物等待保留整批安排及其绑组状态，不能从原意图重算而丢弃合并的轮休。
+        if task.retains_execution or (
+            getattr(task, "product_shift_locked", False)
+            and hasattr(task, "backup_shift_conditions")
+        ):
+            # 已完成副表推演的整批预约保留最终安排；仅预约槽位的任务仍需准备换班。
             return
         if (self._initial_mood_read_pending()) or getattr(
             task, "backup_shift_active", False
@@ -8281,6 +8295,7 @@ class BaseSchedulerSolver(
                 for t in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
                 if t is not task
             )
+            or getattr(task, "product_shift_locked", False)
         ):
             self._prepare_shift_backup(task, now=projection_now)
             recovery_data = self.op_data
@@ -9313,17 +9328,30 @@ class BaseSchedulerSolver(
         )
 
     def _defer_conflicting_product_shift_slots(self, task):
-        locks = self._deferred_product_locks(exclude=task)
+        locks = [
+            lock
+            for lock in self._deferred_product_locks(exclude=task)
+            if getattr(lock, "product_wait_return_task", None) is not task
+        ]
         if not locks:
             return
-        reserved_slots = set().union(*(lock.product_lock_slots for lock in locks))
-        reserved_names = set().union(*(lock.product_lock_names for lock in locks))
+        recovering = {
+            id(lock): product_wait_resting_replacements(self.op_data, lock)
+            for lock in locks
+        }
+
+        def conflicts(lock, room, index, name):
+            return (room, index) in lock.product_lock_slots or (
+                name in lock.product_lock_names
+                and not (room.startswith("dorm") and name in recovering[id(lock)])
+            )
+
         conflicting = {
             (room, index)
             for room, names in task.plan.items()
             for index, name in enumerate(names)
             if name != "Current"
-            and ((room, index) in reserved_slots or name in reserved_names)
+            and any(conflicts(lock, room, index, name) for lock in locks)
         }
         if not conflicting:
             return
@@ -9355,14 +9383,245 @@ class BaseSchedulerSolver(
             lock
             for lock in locks
             if any(
-                slot in lock.product_lock_slots
-                or task.plan[slot[0]][slot[1]] in lock.product_lock_names
+                conflicts(lock, *slot, task.plan[slot[0]][slot[1]])
                 for slot in conflicting
             )
         ]
         raise ProductSwitchDeferred(
             "床位或替班已为切产物后的换班预留", dependencies=dependencies
         )
+
+    def _split_long_product_wait(self, task, error, baseline):
+        """实测长等待允许先完成不改变产物的回班，原对象继续持有下班责任。"""
+        if (
+            task.type != TaskTypes.SHIFT_ON
+            or getattr(task, "product_wait_return_task", None) is not None
+            or task.retains_execution
+            or getattr(task, "backup_shift_active", False)
+            or any(
+                getattr(task, field, False)
+                for field in (
+                    "group_shift_expected",
+                    "initial_staffing",
+                    "exhaust_support",
+                    "coordination_admission_plan",
+                    "urgent_recovery_request_names",
+                    "urgent_recovery_support_names",
+                )
+            )
+        ):
+            return
+        waits = error.room_deferrals or (error,)
+        threshold = datetime.now() + timedelta(minutes=15)
+        # 聚合异常给出最近进度时间；整批完成等待按所有已知房间中最晚者判断。
+        if (
+            any(wait.ready_at is None for wait in waits)
+            or max(wait.ready_at for wait in waits) <= threshold
+        ):
+            return
+        transitions = getattr(task, "group_shift_transitions", {})
+        returning = {group for group, resting in transitions.items() if not resting}
+        departing = {group for group, resting in transitions.items() if resting}
+        if not returning or not departing:
+            return
+        simulation = copy.copy(self)
+        simulation.op_data = self.op_data.project_arrangements([])
+        simulation.tasks, simulation.waiting_group_shifts = copy.deepcopy(
+            (
+                [pending for pending in self.tasks if pending is not task],
+                getattr(self, "waiting_group_shifts", []),
+            )
+        )
+        simulation._refresh_deferred_product_reservations()
+        intent = {}
+        for group in returning:
+            for name in simulation.op_data.shift_group_members(group):
+                operator = simulation.op_data.operators[name]
+                if operator.room and not operator.room.startswith("dorm"):
+                    intent.setdefault(
+                        operator.room,
+                        ["Current"] * len(simulation.op_data.plan[operator.room]),
+                    )[operator.index] = name
+        if not intent:
+            return
+        early = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=intent)
+        simulation.task = early
+        try:
+            simulation._prepare_group_shift(early)
+            simulation._prepare_shift_backup(early)
+            simulation._prepare_group_shift(early)
+            if any(getattr(early, "group_shift_transitions", {}).values()):
+                return
+            conditions = getattr(
+                early, "backup_shift_conditions", simulation.op_data.plan_condition
+            )
+            backup_group = getattr(
+                early, "backup_group", simulation.op_data.backup_group
+            )
+            if simulation.op_data.swap_plan(
+                conditions, refresh=True, backup_group=backup_group
+            ):
+                return
+            projected = simulation.op_data.project_arrangements([early.plan])
+            projected.commit_group_shifts(early.group_shift_transitions)
+            retained_dorm = {}
+            for room, names in task.plan.items():
+                if not room.startswith("dorm"):
+                    continue
+                for index, name in enumerate(names):
+                    operator = projected.operators.get(name)
+                    if operator is not None and (
+                        operator.group not in departing
+                        and not any(
+                            binding["group"] in departing
+                            for binding in operator.group_bindings
+                        )
+                        and not operator.is_working()
+                    ):
+                        retained_dorm.setdefault(room, ["Current"] * len(names))[
+                            index
+                        ] = name
+            _merge_shift_transition(early.plan, retained_dorm, projected)
+            projected = simulation.op_data.project_arrangements([early.plan])
+            projected.commit_group_shifts(early.group_shift_transitions)
+            simulation.op_data = projected
+            count = len(simulation.tasks)
+            try_add_release_dorm({}, None, projected, simulation.tasks, empty_only=True)
+            for fill in simulation.tasks[count:]:
+                _merge_shift_transition(early.plan, fill.plan, projected)
+            early.plan = prioritize_new_dorm_recovery(projected, early.plan)
+            early.plan = plan_dorm_isolation(projected, early.plan)
+            # 回班和补床也可能触发产物条件；这时两批均继续等待。
+            products, _ = self._products_after_arrangement(early.plan)
+            if products != baseline:
+                return
+            after_return = simulation.op_data.project_arrangements([early.plan])
+            after_return.commit_group_shifts(early.group_shift_transitions)
+            selection = after_return.evaluate_backup_selection()
+            if selection.conditions != conditions or selection.group_id != backup_group:
+                return
+            simulation.op_data = after_return
+            # 从原最终安排提取下班目标，再按提前回班后的真实位置重建恢复床位。
+            slots = set()
+            for room, names in task.plan.items():
+                for index, name in enumerate(names):
+                    if name == "Current":
+                        continue
+                    owner = (
+                        self.op_data.operators.get(name)
+                        if room.startswith("dorm")
+                        else self.op_data.operators.get(
+                            self.op_data.plan[room][index].agent
+                        )
+                    )
+                    if owner is not None and (
+                        owner.group in departing
+                        or any(
+                            binding["group"] in departing
+                            for binding in owner.group_bindings
+                        )
+                    ):
+                        slots.add((room, index))
+            remaining = SchedulerTask(
+                task_type=task.type,
+                task_plan=self._plan_for_slots(task.plan, slots),
+            )
+            remaining.group_shift_transitions = {group: True for group in departing}
+            remaining.coordination_request_names = [
+                name
+                for name in getattr(task, "coordination_request_names", ())
+                if (operator := after_return.operators.get(name)) is not None
+                and (
+                    operator.group in departing
+                    or any(
+                        binding["group"] in departing
+                        for binding in operator.group_bindings
+                    )
+                )
+            ]
+            if set(getattr(task, "coordination_request_names", ())) - set(
+                remaining.coordination_request_names
+            ):
+                return
+            remaining.ordinary_coordination = bool(remaining.coordination_request_names)
+            simulation.task = remaining
+            simulation.tasks = [
+                pending for pending in simulation.tasks[:count] if pending is not early
+            ]
+            simulation._prepare_group_shift(remaining)
+            simulation._prepare_shift_backup(remaining)
+            simulation._prepare_group_shift(remaining)
+            if any(
+                group not in departing or not resting
+                for group, resting in remaining.group_shift_transitions.items()
+            ):
+                return
+            final_products, _ = simulation._products_after_arrangement(remaining.plan)
+            original_products, _ = self._products_after_arrangement(task.plan)
+            if final_products != original_products:
+                return
+            final = after_return.project_arrangements([])
+            if final.swap_plan(
+                getattr(remaining, "backup_shift_conditions", final.plan_condition),
+                refresh=True,
+                backup_group=getattr(remaining, "backup_group", final.backup_group),
+            ):
+                return
+            final._apply_projected_arrangements([remaining.plan])
+            for room, names in task.plan.items():
+                for index, name in enumerate(names):
+                    if name == "Current":
+                        continue
+                    if name == "":
+                        if final.get_current_operator(room, index) is not None:
+                            return
+                        continue
+                    if name == "Free":
+                        if not any(
+                            index < len(step.plan.get(room, ()))
+                            and step.plan[room][index] != "Current"
+                            for step in (early, remaining)
+                        ):
+                            return
+                        continue
+                    if room.startswith("dorm"):
+                        if not final.operators[name].is_resting():
+                            return
+                    elif (
+                        actual := final.get_current_operator(room, index)
+                    ) is None or actual.name != name:
+                        return
+        except (ProductSwitchDeferred, ValueError):
+            # 不能证明前后两批均可执行时保留原批次，不制造新的恢复或重试时间。
+            return
+        early.product_wait_independent_return = True
+        early.execution_retained = True
+        early.dorm_fill_plan = {
+            room: list(names)
+            for room, names in early.plan.items()
+            if room.startswith("dorm")
+        }
+        for field in (
+            "backup_shift_intent",
+            "backup_shift_conditions",
+            "backup_group",
+            "backup_explicit_slots",
+            "backup_retention_releases",
+            "backup_retention_admissions",
+            "backup_retention_empty_slots",
+            "group_shift_transitions",
+            "group_shift_expected",
+            "dorm_fill_plan",
+            "ordinary_coordination",
+            "coordination_request_names",
+        ):
+            task.__dict__.pop(field, None)
+            if hasattr(remaining, field):
+                setattr(task, field, copy.deepcopy(getattr(remaining, field)))
+        task.plan = remaining.plan
+        task.product_wait_return_task = early
+        self.tasks.append(early)
+        logger.info("切产物实测等待超过15分钟，先执行不改变产物的回班：%s", early.plan)
 
     def _switch_products_before_arrangement(self, task):
         """把将由本次换班触发的切产物作为换班的前置操作。"""
@@ -9433,7 +9692,8 @@ class BaseSchedulerSolver(
             logger.info("换班前先切换产物或订单：%s", targets)
             try:
                 self.switch_base_products(switches, before_arrangement=True)
-            except ProductSwitchDeferred:
+            except ProductSwitchDeferred as error:
+                self._split_long_product_wait(task, error, baseline)
                 slots = self._product_dependent_slots(
                     task.plan, targets, baseline, products
                 )

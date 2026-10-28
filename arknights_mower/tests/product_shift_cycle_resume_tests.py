@@ -176,7 +176,8 @@ def test_product_wait_preserves_rotation_until_dependency_releases(
     assert task.group_shift_transitions == {"红松": False, "深海": True}
 
 
-def test_shared_cover_survives_complete_rotation_product_wait(solver, monkeypatch):
+@pytest.fixture
+def shared_product_cycle(solver, monkeypatch):
     monkeypatch.setattr(config.conf.product_switching, "enable", True)
     data = Operators(
         {
@@ -215,12 +216,19 @@ def test_shared_cover_survives_complete_rotation_product_wait(solver, monkeypatc
                         "op_data.operators['令'].is_working()", "==", "False"
                     ),
                     products={"room_1_2": "exp3"},
-                )
+                ),
+                Plan(
+                    {},
+                    PlanConfig("", "", ""),
+                    trigger=backup.LogicExpression(
+                        "op_data.operators['森蚺'].is_resting()", "==", "True"
+                    ),
+                ),
             ],
         }
     )
     assert data.init_and_validate() is None
-    assert data.swap_plan([True], refresh=True) is None
+    assert data.swap_plan([True, False], refresh=True) is None
     for op in data.operators.values():
         op._current_room, op.current_index = (
             (op.room, op.index) if op.is_high() else ("", -1)
@@ -244,6 +252,19 @@ def test_shared_cover_survives_complete_rotation_product_wait(solver, monkeypatc
         task_type=TaskTypes.SHIFT_ON, task_plan={"central": ["Current", "令"]}
     )
     solver.tasks, solver.task = [task], task
+    solver.plan_metadata = MagicMock()
+    solver.agent_arrange = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+    return solver, task
+
+
+@pytest.mark.parametrize("serialized", [False, True])
+def test_shared_cover_survives_complete_rotation_product_wait(
+    shared_product_cycle, serialized
+):
+    import jsonpickle
+
+    solver, task = shared_product_cycle
     solver._prepare_group_shift(task)
     solver._prepare_shift_cycle(task)
     expected_plan = copy.deepcopy(task.plan)
@@ -259,8 +280,21 @@ def test_shared_cover_survives_complete_rotation_product_wait(solver, monkeypatc
     with pytest.raises(base.ProductSwitchDeferred):
         solver._switch_products_before_arrangement(task)
     assert task.product_shift_locked
-    solver._prepare_group_shift(task)
-    solver._prepare_shift_cycle(task)
+    if serialized:
+        task = jsonpickle.decode(jsonpickle.encode(task))
+        solver.task, solver.tasks = task, [task]
+    for _ in range(3):
+        solver._prepare_group_shift(task)
+        solver._prepare_shift_cycle(task)
+        assert not solver.op_data.group_is_resting("自动化")
+        assert solver.op_data.operators["森蚺"].is_working()
+        assert solver.op_data.evaluate_backup_selection().conditions == [True, False]
+        assert solver.op_data.plan_condition == [True, False]
+        assert task.backup_shift_conditions == [False, True]
+        assert solver.backup_plan_solver() is False
+        assert task.plan == expected_plan
+        assert task.time == expected_time
+    solver.agent_arrange.assert_not_called()
     assert task.plan == expected_plan
     assert task.time == expected_time
     solver._prepare_group_shift(task, remember_targets=True)
@@ -270,3 +304,54 @@ def test_shared_cover_survives_complete_rotation_product_wait(solver, monkeypatc
         for room, row in task.plan.items()
         if room.startswith("dorm")
     )
+
+
+def test_waiting_product_reserves_cover_until_arrangement_finishes(
+    shared_product_cycle,
+):
+    solver, task = shared_product_cycle
+    task.time = datetime.now() - timedelta(minutes=3)
+    ready_at = datetime.now() - timedelta(seconds=1)
+    solver.switch_base_products = MagicMock(
+        side_effect=base.ProductSwitchDeferred("等待制造完成", ready_at=ready_at)
+    )
+    solver.infra_main()
+    assert task.product_shift_locked
+    original = copy.deepcopy(task.plan)
+    assert "虎狼丸" in task.product_lock_names
+    other = SchedulerTask(
+        time=ready_at,
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={"room_1_2": ["虎狼丸"]},
+    )
+    solver.tasks.append(other)
+    solver.task = other
+    solver.infra_main()
+    assert other in solver.tasks and other.execution_failure
+    assert other.product_shift_predecessors == (task,)
+    assert task.plan == original and task.time == ready_at
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert other.execution_failure
+        assert other.time == ready_at
+        assert not solver.op_data.group_is_resting("自动化")
+        assert solver.op_data.evaluate_backup_selection().conditions == [True, False]
+    solver.agent_arrange.assert_not_called()
+
+    def arrange(plan, *args, **kwargs):
+        solver.op_data = solver.op_data.project_arrangements([plan])
+        return True
+
+    solver.agent_arrange.side_effect = arrange
+    solver.switch_base_products.side_effect = lambda tasks, **kwargs: (
+        solver.op_data.update_facility_state("room_1_2", "manufacture", "gold")
+    )
+    solver.task = task
+    solver.infra_main()
+    assert task not in solver.tasks
+    assert solver.op_data.group_is_resting("自动化")
+    assert solver.op_data.operators["虎狼丸"].current_room == "meeting"
+    assert solver.op_data.evaluate_backup_selection().conditions == [False, True]
+    solver._resume_failed_tasks()
+    assert other in solver.tasks and other.time == ready_at
+    assert not getattr(other, "execution_failure", None)
