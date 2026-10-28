@@ -1374,6 +1374,29 @@ class Operators:
                     transitions[op.group] = False
                 elif name in op.replacement:
                     transitions.setdefault(op.group, True)
+        # 全组切为零心情工作后没有触发成员；仅完整回岗安排能结束原休息状态。
+        for group, resting in getattr(self, "group_shift_state", {}).items():
+            if not resting or not self.is_workaholic_group(group):
+                continue
+            members = [
+                self.operators[name]
+                for name in self.shift_group_members(group)
+                if not self.operators[name].multi_group
+            ]
+            explicit_return = any(
+                not op.room.startswith("dorm")
+                and plan.get(op.room, [])[op.index : op.index + 1] == [op.name]
+                for op in members
+            )
+            if explicit_return and all(
+                plan.get(op.room, [])[op.index : op.index + 1] == [op.name]
+                or (
+                    plan.get(op.room, [])[op.index : op.index + 1] in ([], ["Current"])
+                    and (op.current_room, op.current_index) == (op.room, op.index)
+                )
+                for op in members
+            ):
+                transitions[group] = False
         return {**(group_transitions or {}), **transitions}
 
     def resting_binding_groups(self, operator, transitions=None):
@@ -2288,6 +2311,30 @@ class Operators:
             and not op.room.startswith("dorm")
             and not self._can_standby(op)
         )
+
+    def workaholic_follows_resting_group(self, op):
+        """零心情成员不触发换班，但仍等待普通工作主班所在组回班。"""
+        return bool(
+            op.workaholic
+            and op.group
+            and not op.multi_group
+            and not op.room.startswith("dorm")
+            and self.group_is_resting(op.group)
+            and any(
+                self.is_group_shift_anchor(self.operators[name])
+                for name in self.groups.get(op.group, ())
+            )
+        )
+
+    def is_workaholic_group(self, group):
+        """只含零心情固定工作主班的组无需继续等待普通恢复触发。"""
+        workers = [
+            self.operators[name]
+            for name in self.shift_group_members(group)
+            if not self.operators[name].room.startswith("dorm")
+            and not self.operators[name].multi_group
+        ]
+        return bool(workers) and all(op.workaholic for op in workers)
 
     def resting_threshold_for(self, op):
         override = getattr(self.config, "resting_threshold_override", None)
