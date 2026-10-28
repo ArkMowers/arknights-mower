@@ -1,9 +1,8 @@
-"""无损归档、历史格式兼容及单条容量限制的离线验证。"""
+"""报错归档的 JPEG 编码、历史格式兼容及单条容量限制的离线验证。"""
 
 import json
 import time
 from datetime import datetime
-from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock
 from zipfile import ZipFile
@@ -18,7 +17,7 @@ from arknights_mower.utils import diagnostics, screenshot
 
 @pytest.mark.parametrize("retention", [0, 1])
 @pytest.mark.parametrize("gray", [False, True])
-def test_archived_pixels_match_submitted_snapshot_and_export(tmp_path, retention, gray):
+def test_archived_frames_use_shared_jpeg_encoding_and_export(tmp_path, retention, gray):
     now = [time.time_ns()]
     store = screenshot.ScreenshotStore(
         tmp_path, lambda: retention, logger=Mock(), wall_time_ns=lambda: now[0]

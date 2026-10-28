@@ -264,9 +264,7 @@ def export_bundle(
                 size = image.stat().st_size
             except FileNotFoundError:
                 continue
-            if (
-                image_bytes + size > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE
-            ):
+            if image_bytes + size > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE:
                 truncated = True
                 continue
             selected[timestamp] = (image, relative)

@@ -404,6 +404,35 @@ def test_unknown_rewards_without_notifications_at_reward_height_add_no_wait(
     assert result["records"][0]["materials"] is None
 
 
+def test_incomplete_first_reading_retries_on_a_fresh_frame_and_records_success(
+    db, monkeypatch
+):
+    solver = collection_solver()
+    solver.recog.img = reward_frame()
+    solver._recycling_pending = {"id": "retry-complete", "at": at(18, 19)}
+    solver.scene = Mock(side_effect=[Scene.MATERIEL, Scene.INFRA_MAIN])
+    reader = Mock(side_effect=[None, {"装置": 1}])
+    monkeypatch.setattr(recycling, "read_recycling_materials", reader)
+    refreshed = []
+
+    def refresh(interval):
+        assert interval == 0.3
+        refreshed.append(interval)
+        solver.recog.img = reward_frame()
+
+    solver.sleep.side_effect = refresh
+
+    solver._finish_recycling_collection()
+
+    assert reader.call_count == 2
+    assert refreshed == [0.3]
+    solver.recog.save_screencap.assert_not_called()
+    result = record.get_recycling_history("2026-10-18", "2026-10-18")
+    assert result["total"] == 1
+    assert result["records"][0]["materials"] == {"装置": 1}
+    assert solver._recycling_pending is None
+
+
 def test_cancellation_while_waiting_for_covered_rewards_preserves_event(
     db, monkeypatch
 ):
@@ -490,9 +519,7 @@ def test_collection_hands_report_the_observed_snapshot(
     assert solver._recycling_pending is None
 
 
-def test_archived_borderline_quantity_is_recorded(
-    db, real_ocr, monkeypatch
-):
+def test_archived_borderline_quantity_is_recorded(db, real_ocr, monkeypatch):
     monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
     solver = collection_solver()
     path = Path(__file__).parent / "fixtures/recycling/reward_quantity_20261012.jpg"

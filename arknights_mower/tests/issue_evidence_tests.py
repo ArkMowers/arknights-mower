@@ -124,6 +124,28 @@ def test_archived_logs_and_screenshots_survive_normal_retention(feedback):
     assert "范围外隐私内容" not in attachments["runtime.txt"].decode()
 
 
+def test_legacy_png_archive_screenshots_remain_available(feedback):
+    logs, images, sent = feedback
+    stamp = int(datetime(2026, 10, 20, 12, 0, 10).timestamp() * 10**9)
+    archive = images / "errors" / "123"
+    archive.mkdir(parents=True)
+    (archive / f"{stamp}.png").write_bytes(b"legacy png failure")
+    (archive / "logs.json").write_text(
+        json.dumps(
+            [
+                {
+                    "time": "2026-10-20 12:00:10",
+                    "message": "2026-10-20 12:00:10 solver.py:1 ERROR 选人失败",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    write_logs(logs, [(10, "INFO", "正常运行")])
+    assert submit() == "邮件发送成功！"
+    assert b"legacy png failure" in parts(sent).values()
+
+
 def test_image_count_size_and_stale_frame_limits(feedback):
     logs, images, sent = feedback
     for second in range(10, 16):

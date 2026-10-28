@@ -31,7 +31,7 @@ def _images(folder, start, end):
         for archive in sorted(archives.iterdir()):
             if not archive.name.isascii() or not archive.name.isdigit():
                 continue
-            for image in archive.glob("*.jpg"):
+            for image in archive.iterdir():
                 stamp = screenshot_timestamp(image.name)
                 if (
                     stamp is not None

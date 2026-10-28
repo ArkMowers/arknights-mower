@@ -1,7 +1,7 @@
 """截图的内存预览、后台存储和独立过期清理。
 
 识别端提交内存帧，不等待编码或磁盘。预览编码只保留一个待处理槽位，
-历史队列同时限制原始帧及无损 PNG 的数量与字节数。
+历史队列同时限制原始帧及编码后 JPEG 的数量与字节数。
 """
 
 import heapq
@@ -866,7 +866,7 @@ class ScreenshotStore:
         if now - self._last_archive_limit_log >= 30:
             self._last_archive_limit_log = now
             self.logger.warning(
-                "报错归档达到单条图片数量、单条容量或总容量上限，部分新截图或日志未保存"
+                "报错归档达到单条容量或总容量上限，部分新截图或日志未保存"
             )
 
     def _archive_frame(self, frame: Screenshot) -> bool:
