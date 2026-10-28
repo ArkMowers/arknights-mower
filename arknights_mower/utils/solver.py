@@ -249,6 +249,7 @@ class BaseSolver:
         self,
         name: Literal[
             "index",
+            "operator",
             "terminal",
             "infrastructure",
             "recruit",
@@ -260,6 +261,7 @@ class BaseSolver:
     ):
         pos = {
             "index": (140, 365),  # 首页
+            "operator": (460, 365),  # 干员
             "terminal": (793, 163),  # 终端
             "infrastructure": (1030, 163),  # 基建
             "recruit": (1435, 365),  # 公开招募
@@ -636,6 +638,32 @@ class BaseSolver:
             elif not self.tap_element("nav_button"):
                 return False
             retry_times -= 1
+
+    def to_operator_list(self) -> bool:
+        """通过导航栏进入干员列表，确认排序页签后交接设备。"""
+        from arknights_mower.utils import rapidocr
+
+        if not self.get_navigation():
+            return False
+        self.tap_nav_element("operator")
+        if not self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2):
+            return False
+        if self.find("nav_bar") or self.find("connecting"):
+            return False
+        if rapidocr.engine is None:
+            rapidocr.initialize_ocr()
+        # 对应 MAA 干员列表排序页签的标准画面区域。
+        result, _ = rapidocr.engine(
+            self.recog.img[0:204, 1174:1436],
+            use_det=True,
+            use_cls=False,
+            use_rec=True,
+        )
+        return any(
+            str(item[1]).strip() in {"等级", "稀有度", "获取时间"}
+            and float(item[2]) >= 0.8
+            for item in result or []
+        )
 
     def back_to_infrastructure(self):
         if hasattr(self, "scene_graph_navigation"):

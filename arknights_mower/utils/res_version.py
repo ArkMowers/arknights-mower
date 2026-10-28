@@ -29,6 +29,7 @@ RES_PACKAGE_MODELS = (
 )
 # Older resource packages do not contain this model; runtime OCR remains available.
 RES_PACKAGE_OPTIONAL_MODELS = ("arknights_mower/models/mastery_panel.model",)
+RES_PACKAGE_OPTIONAL_DATA = ("arknights_mower/data/event_shop.json",)
 BUILDING_SKILL_DATA = "arknights_mower/data/building_skill.json"
 BUILDING_SKILL_PACKAGE_PATH = "ui/src/pages/basement_skill/skill.json"
 RES_PACKAGE_DATA = (
@@ -53,7 +54,12 @@ def is_package_file(name: str) -> bool:
     return (
         name == "arknights_mower/data/version.json"
         or name
-        in (*RES_PACKAGE_DATA, *RES_PACKAGE_MODELS, *RES_PACKAGE_OPTIONAL_MODELS)
+        in (
+            *RES_PACKAGE_DATA,
+            *RES_PACKAGE_OPTIONAL_DATA,
+            *RES_PACKAGE_MODELS,
+            *RES_PACKAGE_OPTIONAL_MODELS,
+        )
         or any(name.startswith(directory + "/") for directory in RES_PACKAGE_DIRS)
     )
 
@@ -66,7 +72,12 @@ def package_file_paths(root) -> list:
         d = root / rel
         if d.is_dir():
             rels.extend(p.relative_to(root) for p in d.rglob("*") if p.is_file())
-    for rel in RES_PACKAGE_MODELS + RES_PACKAGE_OPTIONAL_MODELS + RES_PACKAGE_DATA:
+    for rel in (
+        RES_PACKAGE_MODELS
+        + RES_PACKAGE_OPTIONAL_MODELS
+        + RES_PACKAGE_DATA
+        + RES_PACKAGE_OPTIONAL_DATA
+    ):
         p = root / rel
         if rel == BUILDING_SKILL_PACKAGE_PATH and not p.is_file():
             p = root / BUILDING_SKILL_DATA
@@ -79,7 +90,7 @@ def content_hash(root, rels) -> str:
     """对相对路径文件集算聚合 sha256（含路径，结果与顺序无关）。
 
     Windows 检出（core.autocrlf）会把文本文件的 LF 转成 CRLF。仅对
-    RES_PACKAGE_DATA 声明的文本资源归一化到 LF；模型、图片及其他文件均按
+    必需和可选文本资源归一化到 LF；模型、图片及其他文件均按
     原字节参与，不通过 NUL 字节猜测文件类型。分块读取避免一次载入整文件。
     共享技能源使用历史归档路径参与排序、路径摘要及文本归一化。
     """
@@ -98,7 +109,7 @@ def content_hash(root, rels) -> str:
         digest.update(archive_name.encode("utf-8"))
         digest.update(b"\0")
         with open(root / rel, "rb") as f:
-            normalize = archive_name in RES_PACKAGE_DATA
+            normalize = archive_name in (*RES_PACKAGE_DATA, *RES_PACKAGE_OPTIONAL_DATA)
             _update_digest(digest, f, normalize)
     return digest.hexdigest()
 

@@ -39,11 +39,16 @@ const editorDefinitions = [
   ['recruit', '公开招募', '设置三星招募阈值、五星招募策略和支援机械标签处理。'],
   ['depot', '仓库物品混合读取', '设置仓库读取，扫描结果用于材料库存与养成计划。'],
   ['stage-plan', '刷理智', '选择执行方式、每日关卡、理智药和库存规则。'],
+  [
+    'event-shop',
+    '活动商店兑换',
+    'MAA 日常结束后兑换活动商店；有限商品兑换完毕后可切换刷理智方案。'
+  ],
   ['rewards', 'MAA 领取奖励', '任务奖励随 MAA 日常领取，邮件、免费单抽与活动奖励分别勾选。'],
   [
     'long',
     '空闲长任务',
-    '选择集成战略、保全派驻、生息演算、隐秘战线或普通自动战斗作业，并设置参数与每天可启动的时段。'
+    '选择集成战略、保全派驻、生息演算、隐秘战线、悖论模拟或普通自动战斗作业，并设置参数与每天可启动的时段。'
   ],
   ['idle', '空闲动作', '设置等待下一项任务时如何处理游戏与模拟器。']
 ]
@@ -66,6 +71,7 @@ const taskDefinitions = [
   ['credit-fight', 'daily'],
   ['shop', 'daily'],
   ['rewards', 'daily'],
+  ['event-shop', 'daily'],
   ['stage-plan', 'combat'],
   ['long', 'combat'],
   ['intervals', 'support'],
@@ -112,12 +118,14 @@ const editorKeywords = {
   shop: '购物 采购 商店 处理方式 购物执行方式 按需领取信用 按性价比购物 购物性价比阈值 理智/信用 只购买折扣物品 保留最大信用点（低于 300 停止购买） 停止购买 无视黑名单继续购买，直至不再溢出 优先购买 黑名单 信用溢出 Mower MAA',
   'stage-plan':
     '刷图 关卡 战斗 周计划 理智药 临期 药 有效期 库存 上报至企鹅物流 上报至一图流 关卡体力默认值 每次吃药 MAA Mower',
+  'event-shop':
+    '活动 商店 兑换 Custom 坐标 确认文字 商品黑名单 有限商品 无限商品 结束后方案 定时切换',
   rewards: '邮件奖励 免费单抽 幸运墙 合成玉 限时开采许可 赠送月卡 五周年月卡 限时签到活动奖励',
   long: [
     '集成战略 保全派驻 生息演算 隐秘战线 肉鸽主题 开局分队 开局职业组 开局干员 难度 策略 开始时间 停止时间',
     '凹开局干员直升精二 只凹开局干员直升精二，不进行作战 开局干员使用助战 开局干员使用非好友助战 月度小队自动切换 将月度小队通信也作为切换依据 深入调查自动切换 刷新商店（指路鳞） 坍缩范式',
     '到达险路恶敌前停止 肉鸽等级刷满后停止 投资源石锭 源石锭投资满时停止 投资模式启用购物、招募、进2层 烧水时启用购物 烧水分队 第一层远见板子 凹开局板子 刷开局期望奖励 目标襁褓动物 目标常乐节点',
-    '关卡 导能单元 导入作业 作业信息 普通自动战斗 Copilot 作业编号 作业队列 突袭 自动编队 助战',
+    '关卡 导能单元 导入作业 作业信息 普通自动战斗 悖论模拟 ParadoxCopilot Copilot 作业编号 作业队列 突袭 自动编队 助战',
     '沙洲遗闻 重启锚点 支援道具名称 增加方式 单次最大组装轮数',
     '超时时长 选择路线'
   ].join(' ')
@@ -193,13 +201,20 @@ export function createTaskWorkflow(config) {
         searchKeywords: editor.searchKeywords,
         group,
         mode:
-          id === 'rewards' ? 'aggregate' : Object.hasOwn(taskSwitches, id) ? 'switch' : 'automatic',
+          id === 'event-shop'
+            ? 'switch'
+            : id === 'rewards'
+              ? 'aggregate'
+              : Object.hasOwn(taskSwitches, id)
+                ? 'switch'
+                : 'automatic',
         ...(id === 'rewards' ? { indeterminate: rewardSelection.indeterminate } : {})
       }
     })
   const workshopSettings = config.workshop_manual_settings ?? config.workshop_settings ?? []
   const statuses = Object.fromEntries(
     tasks.map((task) => {
+      if (task.id === 'event-shop') return [task.id, Boolean(config.maa_event_shop?.enable)]
       if (task.id === 'long')
         return [task.id, config.maa_rg_enable === true || config.maa_rg_enable === 1]
       if (Object.hasOwn(taskSwitches, task.id))
@@ -213,6 +228,10 @@ export function createTaskWorkflow(config) {
 }
 
 export function setTaskEnabled(config, id, value) {
+  if (id === 'event-shop') {
+    config.maa_event_shop = { ...(config.maa_event_shop ?? {}), enable: Boolean(value) }
+    return true
+  }
   if (id === 'rewards') {
     for (const key of maaRewardFields) config[key] = Boolean(value)
     return true

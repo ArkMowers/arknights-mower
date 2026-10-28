@@ -234,3 +234,25 @@ class TestDisplayVersion(unittest.TestCase):
     def test_空表返回空(self):
         self.assertEqual(display_version({}), "")
         self.assertEqual(display_version({"activity": {}, "gacha": {}}), "")
+
+
+def test_event_shop_is_optional_packaged_data_with_normalized_line_endings(tmp_path):
+    from arknights_mower.utils.res_version import (
+        RES_PACKAGE_OPTIONAL_DATA,
+        is_package_file,
+        package_file_paths,
+    )
+
+    name = "arknights_mower/data/event_shop.json"
+    path = tmp_path / name
+    path.parent.mkdir(parents=True)
+    assert name in RES_PACKAGE_OPTIONAL_DATA
+    assert name not in RES_PACKAGE_DATA
+    assert is_package_file(name)
+    assert Path(name) not in package_file_paths(tmp_path)
+    path.write_bytes(b"[\n]\n")
+    paths = package_file_paths(tmp_path)
+    assert Path(name) in paths
+    before = content_hash(tmp_path, paths)
+    path.write_bytes(b"[\r\n]\r\n")
+    assert content_hash(tmp_path, paths) == before
