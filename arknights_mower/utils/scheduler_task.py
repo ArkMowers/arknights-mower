@@ -20,6 +20,10 @@ from arknights_mower.utils.furniture_task import (
     FURNITURE_RUN_SECONDS,
 )
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.manufacture_product import (
+    parse_product_task_meta,
+    product_switch_seconds,
+)
 from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
 from arknights_mower.utils.operation_timing import (
     estimate_dorm_minutes,
@@ -369,6 +373,24 @@ def protect_priority_tasks(
     # 保留任务只在临时副本上计算避让时间，派发队列仍使用原任务和原时间。
     originals = {}
     tasks = active
+    # 到期切换共用一次巡检和执行窗口，不能把其中几个站塞到关键任务前。
+    batch = [
+        task
+        for task in tasks
+        if task.type == TaskTypes.SWITCH_PRODUCT and task.time <= now
+    ]
+    product_batch = None
+    if len(batch) > 1:
+        product_batch = copy.copy(min(batch, key=lambda task: task.time))
+        product_batch.pending_product_targets = dict(
+            parse_product_task_meta(task.meta_data) for task in batch
+        )
+        product_batch.product_switch_budget_seconds = max(
+            getattr(task, "product_switch_budget_seconds", 0) for task in batch
+        )
+        product_batch.execution_retained = any(task.retains_execution for task in batch)
+        batch_ids = {id(task) for task in batch}
+        tasks = [task for task in tasks if id(task) not in batch_ids] + [product_batch]
     for index, task in enumerate(tasks):
         if task.retains_execution:
             projected = copy.copy(task)
@@ -399,7 +421,17 @@ def protect_priority_tasks(
         op_data,
     )
     _sort_dispatch_tasks(tasks, now, op_data)
-    dispatch_queue[:] = [originals.get(id(task), task) for task in tasks] + waiting
+    expanded = []
+    for task in tasks:
+        original = originals.get(id(task), task)
+        if original is product_batch:
+            for member in batch:
+                if not member.retains_execution:
+                    member.time = task.time
+            expanded.extend(batch)
+        else:
+            expanded.append(original)
+    dispatch_queue[:] = expanded + waiting
 
 
 def _advance_support_swaps_for_maintenance(
@@ -947,14 +979,29 @@ def estimate_dorm_task_minutes(task, room, op_data=None, execution_time=0.75):
 
 def estimate_task_duration(task, execution_time=None, op_data=None):
     """Estimate queued work from room occupancy and bounded measurements."""
+    switching = getattr(
+        getattr(config.conf, "product_switching", None), "enable", False
+    )
+    targets = getattr(task, "pending_product_targets", {}) if switching else {}
+    count = len(targets)
+    if switching and task.type == TaskTypes.SWITCH_PRODUCT:
+        count = max(1, count)
+    product_seconds = product_switch_seconds(count)
+    if count:
+        product_seconds = max(
+            product_seconds, getattr(task, "product_switch_budget_seconds", 0)
+        )
+    product_duration = timedelta(seconds=product_seconds)
+    if switching and task.type == TaskTypes.SWITCH_PRODUCT:
+        return product_duration
     if task.type == TaskTypes.FURNITURE:
         return timedelta(seconds=FURNITURE_RUN_SECONDS + FURNITURE_EXIT_SECONDS)
     if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY):
         return timedelta(minutes=3)
     if not task.plan:
-        return timedelta(minutes=1)
+        return product_duration + timedelta(minutes=1)
     if execution_time is not None:
-        return timedelta(
+        return product_duration + timedelta(
             minutes=sum(
                 estimate_dorm_task_minutes(task, room, op_data, execution_time)
                 if room.startswith("dormitory_")
@@ -979,7 +1026,7 @@ def estimate_task_duration(task, execution_time=None, op_data=None):
                 )
             )
         seconds += 15 if unchanged else estimate_work_minutes(room) * 60
-    return timedelta(seconds=seconds)
+    return product_duration + timedelta(seconds=seconds)
 
 
 def independent_room_plans(task, op_data):

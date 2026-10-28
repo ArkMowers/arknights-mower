@@ -605,3 +605,70 @@ def test_failed_final_read_checks_order_deadline_before_next_refresh(staffed_ord
     assert task.plan == {} and task.time == original_time
     assert len(reads(ui, "room_3_3")) == 1
     assert all(queued is not other for queued in solver.tasks)
+
+
+def test_admitted_product_batch_finishes_staffing_without_yielding_midway(
+    staffed_order, monkeypatch
+):
+    ui = staffed_order
+    solver = ui.solver
+    ui.config.conf.product_switching.enable = True
+    task = correction(ui)
+    deadline = ui.task(
+        time=ui.clock.now() + timedelta(minutes=10),
+        task_type=ui.task_type.RUN_ORDER,
+        meta_data="room_1_1",
+    )
+    solver.tasks.append(deadline)
+    product_task = ui.task(
+        task_type=ui.task_type.SWITCH_PRODUCT, meta_data="room_2_2,gold"
+    )
+    observation = {
+        "room": "room_2_2",
+        "facility": "manufacture",
+        "current_product": "exp3",
+        "target_product": "gold",
+        "needs_switch": True,
+        "current_remaining": 360,
+        "drone_count": 2,
+        "available_drones": 100,
+        "wait_seconds": 0,
+    }
+    solver._survey_manufacture_switch = MagicMock(return_value=observation)
+    solver._execute_manufacture_acceleration = MagicMock(return_value=0)
+    solver._change_manufacture_product = MagicMock()
+    solver.switch_base_products([product_task], before_arrangement=True)
+    # 模拟设备操作慢于估算，已开始的切产物及人员安排仍完成后才交回调度。
+    ui.clock.current = deadline.time - timedelta(seconds=10)
+
+    assert solver.agent_arrange(task.plan) is not False
+    assert task.plan == {}
+    assert ui.occupants["room_2_2"] == ["图耶"]
+    assert not reads(ui)
+    solver.accept_order.assert_not_called()
+
+
+def test_product_batch_waits_before_switching_if_staffing_would_cross_order(
+    staffed_order,
+):
+    ui = staffed_order
+    solver = ui.solver
+    ui.config.conf.product_switching.enable = True
+    task = correction(ui)
+    deadline = ui.task(
+        time=ui.clock.now() + timedelta(minutes=4),
+        task_type=ui.task_type.RUN_ORDER,
+        meta_data="room_1_1",
+    )
+    solver.tasks.append(deadline)
+    product_task = ui.task(
+        task_type=ui.task_type.SWITCH_PRODUCT, meta_data="room_2_2,gold"
+    )
+    solver._survey_manufacture_switch = MagicMock()
+
+    with pytest.raises(ui.base.ProductSwitchPriorityDeferred):
+        solver.switch_base_products([product_task], before_arrangement=True)
+
+    solver._survey_manufacture_switch.assert_not_called()
+    assert set(task.plan) == {"room_1_1", "room_2_2", "dormitory_1"}
+    assert not ui.events
