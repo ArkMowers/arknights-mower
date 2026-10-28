@@ -236,13 +236,10 @@ onUnmounted(() => {
   outline-offset: -2px;
 }
 .sidebar-brand-versions {
-  display: grid;
-  grid-template-rows: 1fr;
+  /* WKWebView can retain narrow-width grid row heights after the sider expands.
+     Let this block follow the wrapped version badges' intrinsic height. */
   overflow: hidden;
   margin: 8px 0 0 38px;
-  transition:
-    grid-template-rows 0.24s,
-    opacity 0.16s;
 }
 .sidebar-brand-version-lines {
   display: flex;
@@ -356,10 +353,7 @@ onUnmounted(() => {
   transform: translateX(-4px);
 }
 .sidebar-brand--collapsed .sidebar-brand-versions {
-  grid-template-rows: 0fr;
-  margin-top: 0;
-  visibility: hidden;
-  opacity: 0;
+  display: none;
 }
 .sidebar-brand--collapsed .sidebar-brand-toggle {
   position: absolute;
@@ -389,7 +383,6 @@ onUnmounted(() => {
   .sidebar-brand-home img,
   .sidebar-brand-name,
   .sidebar-brand-toggle svg,
-  .sidebar-brand-versions,
   .sidebar-brand-resource {
     transition: none;
   }
