@@ -565,6 +565,22 @@ def _install_hook(
                 # instead of finished, so the latch cannot outlive its loop.
                 shell_owns_modal_loop = False
             if message == wm_windowposchanged:
+                if user32.IsIconic(hwnd):
+                    # WinForms updates client bounds after the nested WM_SIZE.
+                    # Keep DockStyle.Fill from shrinking WebView2 to the iconic
+                    # rectangle, which can remain visible during restore until
+                    # the throttled renderer paints the page at its restored size.
+                    form = _winforms_window(window)
+                    form.SuspendLayout()
+                    try:
+                        return call_window_proc(
+                            original_proc, message_hwnd, message, w_param, l_param
+                        )
+                    finally:
+                        try:
+                            form.ResumeLayout(False)
+                        except Exception:
+                            logger.exception("Failed to resume minimized window layout")
                 result = call_window_proc(
                     original_proc, message_hwnd, message, w_param, l_param
                 )

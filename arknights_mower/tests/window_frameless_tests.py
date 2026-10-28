@@ -6,8 +6,9 @@ windows_frameless 在导入时就要 ctypes.wintypes，Linux 上不存在这个�
 
 import os
 import unittest
+from contextlib import ExitStack
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 
 @unittest.skipUnless(os.name == "nt", "WinForms 窗口样式只在 Windows 上组合")
@@ -217,6 +218,152 @@ class TestTitlebarHitTest(unittest.TestCase):
                             expected,
                             f"scale={scale}, relative point=({x}, {y})",
                         )
+
+
+@unittest.skipUnless(os.name == "nt", "WinForms layout messages require Windows")
+class TestMinimizedWindowLayout(unittest.TestCase):
+    def setUp(self):
+        from arknights_mower.utils import windows_frameless
+
+        self.module = windows_frameless
+        self.window = SimpleNamespace(uid="offline-minimized-layout-test")
+        self.form = Mock()
+        self.user32 = Mock()
+        self.user32.GetDpiForWindow = None
+        self.user32.GetWindowLongPtrW.return_value = 1
+        self.user32.SetWindowLongPtrW.return_value = 1
+        self.user32.CallWindowProcW.return_value = 73
+        self.user32.IsZoomed.return_value = False
+        self.user32.IsIconic.return_value = False
+        self.user32.SetWindowPos.return_value = True
+        self.rect = (100, 100, 1300, 900)
+
+        def get_window_rect(hwnd, pointer):
+            rect = pointer._obj
+            rect.left, rect.top, rect.right, rect.bottom = self.rect
+            return True
+
+        self.user32.GetWindowRect.side_effect = get_window_rect
+        patches = ExitStack()
+        self.addCleanup(patches.close)
+        for name, value in (
+            ("_winforms_hwnd", lambda window: 0x1234),
+            ("_winforms_window", lambda window: self.form),
+            ("_user32", lambda: self.user32),
+            ("_apply_dwm_window_chrome", Mock()),
+            ("window_dpi_scale", lambda hwnd: 1),
+        ):
+            patches.enter_context(patch.object(self.module, name, value))
+        patches.enter_context(patch.dict(self.module._hooks, clear=True))
+        self.module._install_hook(
+            self.window,
+            self.module.WindowSize(1200, 800),
+            self.module.WindowSize(600, 400),
+        )
+        self.callback = self.module._hooks[self.window.uid][0]
+        self.user32.reset_mock()
+
+    def test_minimized_position_message_suspends_layout_before_native_dispatch(self):
+        self.user32.IsIconic.return_value = True
+        order = Mock()
+        order.attach_mock(self.form.SuspendLayout, "suspend")
+        order.attach_mock(self.user32.CallWindowProcW, "dispatch")
+        order.attach_mock(self.form.ResumeLayout, "resume")
+
+        def dispatch(original, hwnd, message, w_param, l_param):
+            if message == 0x0047:
+                self.callback(hwnd, 0x0005, 1, (26 << 16) | 158)
+            return 73
+
+        self.user32.CallWindowProcW.side_effect = dispatch
+
+        self.assertEqual(self.callback(0x1234, 0x0047, 0, 0), 73)
+
+        self.assertEqual(
+            order.mock_calls,
+            [
+                call.suspend(),
+                call.dispatch(1, 0x1234, 0x0047, 0, 0),
+                call.dispatch(1, 0x1234, 0x0005, 1, (26 << 16) | 158),
+                call.resume(False),
+            ],
+        )
+        self.user32.GetWindowRect.assert_not_called()
+        self.user32.SetWindowPos.assert_not_called()
+
+    def test_visible_position_messages_keep_normal_layout(self):
+        for maximized in (False, True):
+            with self.subTest(maximized=maximized):
+                self.user32.IsZoomed.return_value = maximized
+                self.user32.GetWindowRect.reset_mock()
+                self.user32.CallWindowProcW.reset_mock()
+
+                self.assertEqual(self.callback(0x1234, 0x0047, 0, 0), 73)
+
+                self.user32.CallWindowProcW.assert_called_once_with(
+                    1, 0x1234, 0x0047, 0, 0
+                )
+                self.form.SuspendLayout.assert_not_called()
+                self.form.ResumeLayout.assert_not_called()
+                self.assertEqual(self.user32.GetWindowRect.call_count, not maximized)
+        self.user32.SetWindowPos.assert_not_called()
+
+    def test_minimizing_a_maximized_window_preserves_the_normal_restore_rect(self):
+        self.rect = (200, 150, 1400, 950)
+        self.callback(0x1234, 0x0047, 0, 0)
+        self.user32.IsZoomed.return_value = True
+        self.callback(0x1234, 0x0005, 2, 0)
+        self.user32.IsZoomed.return_value = False
+        self.user32.IsIconic.return_value = True
+        self.rect = (-32000, -32000, -31842, -31974)
+        self.callback(0x1234, 0x0047, 0, 0)
+        self.callback(0x1234, 0x0005, 1, 0)
+        self.user32.IsIconic.return_value = False
+        self.user32.IsZoomed.return_value = True
+        self.callback(0x1234, 0x0005, 2, 0)
+        self.callback(0x1234, 0x0047, 0, 0)
+        self.user32.IsZoomed.return_value = False
+        self.callback(0x1234, 0x0005, 0, 0)
+        self.callback(0x1234, 0x8001, 0, 0)
+
+        self.user32.PostMessageW.assert_called_once_with(0x1234, 0x8001, 0, 0)
+        self.user32.SetWindowPos.assert_called_once_with(
+            0x1234, None, 200, 150, 1200, 800, 0x0014
+        )
+        self.form.SuspendLayout.assert_called_once_with()
+        self.form.ResumeLayout.assert_called_once_with(False)
+
+    def test_failed_layout_suspension_still_forwards_the_native_message(self):
+        self.user32.IsIconic.return_value = True
+        self.form.SuspendLayout.side_effect = RuntimeError("Layout unavailable")
+
+        with patch.object(self.module.logger, "exception"):
+            self.assertEqual(self.callback(0x1234, 0x0047, 0, 0), 73)
+
+        self.user32.CallWindowProcW.assert_called_once_with(1, 0x1234, 0x0047, 0, 0)
+        self.form.ResumeLayout.assert_not_called()
+
+    def test_failed_layout_resume_does_not_repeat_the_native_message(self):
+        self.user32.IsIconic.return_value = True
+        self.form.ResumeLayout.side_effect = RuntimeError("Layout unavailable")
+
+        with patch.object(self.module.logger, "exception") as log_error:
+            self.assertEqual(self.callback(0x1234, 0x0047, 0, 0), 73)
+
+        self.form.SuspendLayout.assert_called_once_with()
+        self.form.ResumeLayout.assert_called_once_with(False)
+        self.user32.CallWindowProcW.assert_called_once_with(1, 0x1234, 0x0047, 0, 0)
+        log_error.assert_called_once()
+
+    def test_native_dispatch_failure_still_releases_layout_suspension(self):
+        self.user32.IsIconic.return_value = True
+        self.user32.CallWindowProcW.side_effect = [RuntimeError("Dispatch failed"), 73]
+
+        with patch.object(self.module.logger, "exception"):
+            self.assertEqual(self.callback(0x1234, 0x0047, 0, 0), 73)
+
+        self.form.SuspendLayout.assert_called_once_with()
+        self.form.ResumeLayout.assert_called_once_with(False)
 
 
 @unittest.skipUnless(os.name == "nt", "DWM window attributes require Windows")
