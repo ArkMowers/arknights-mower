@@ -16,6 +16,7 @@ const props = defineProps({
   nextUp: { type: Object, default: null },
   operators: { type: Array, default: () => [] },
   autoMastery: { type: Boolean, default: false },
+  saveMasteryScreenshots: { type: Boolean, default: false },
   loading: Boolean,
   syncing: Boolean,
   syncHint: { type: String, default: '' },
@@ -23,7 +24,14 @@ const props = defineProps({
   readyGoals: { type: Number, default: 0 },
   compact: Boolean
 })
-const emit = defineEmits(['update:autoMastery', 'add-target', 'open-plan', 'refresh', 'sync'])
+const emit = defineEmits([
+  'update:autoMastery',
+  'update:saveMasteryScreenshots',
+  'add-target',
+  'open-plan',
+  'refresh',
+  'sync'
+])
 
 const roster = computed(() => props.operators.filter((op) => op?.name).slice(0, 24))
 
@@ -129,6 +137,20 @@ const syncLabel = computed(() => {
             <span>全自动专精</span>
             <HelpText label="全自动专精范围">
               开启后自动执行已排队的专精并合成养成材料；精英化、基础技能升级与模组开启仍需在游戏内手动完成后同步。
+            </HelpText>
+          </div>
+          <div class="growth-hero__toggle">
+            <n-switch
+              class="gp-switch"
+              size="small"
+              :value="saveMasteryScreenshots"
+              aria-label="保存专精收取截图"
+              @update:value="emit('update:saveMasteryScreenshots', $event)"
+            />
+            <span>保存专精收取截图</span>
+            <HelpText label="专精收取截图保存规则">
+              保存首次等待、按钮出现和专精完成画面到 screenshot/mastery，单次最多 3 张，保留最近 100
+              张；关闭日常截图保存时仍生效。
             </HelpText>
           </div>
           <span class="growth-hero__meta-sep" aria-hidden="true" />

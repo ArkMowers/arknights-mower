@@ -209,6 +209,7 @@ export const useConfigStore = defineStore('config', () => {
   const fia_fool = ref(true)
   const assistant_follows_schedule = ref(false)
   const enable_mastery = ref(true)
+  const save_mastery_screenshots = ref(false)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
   const mumu12IPC = ref(false)
@@ -695,6 +696,7 @@ export const useConfigStore = defineStore('config', () => {
       fia_fool.value = response.data.fia_fool
       assistant_follows_schedule.value = response.data.assistant_follows_schedule
       enable_mastery.value = response.data.enable_mastery ?? true
+      save_mastery_screenshots.value = response.data.save_mastery_screenshots ?? false
       right_side_room_order.value =
         response.data.right_side_room_order ??
         (response.data.swap_contact_train
@@ -888,6 +890,7 @@ export const useConfigStore = defineStore('config', () => {
       fia_fool: fia_fool.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
       enable_mastery: enable_mastery.value,
+      save_mastery_screenshots: save_mastery_screenshots.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
       mumu12IPC: mumu12IPC.value,
@@ -1259,6 +1262,7 @@ export const useConfigStore = defineStore('config', () => {
     fia_fool,
     assistant_follows_schedule,
     enable_mastery,
+    save_mastery_screenshots,
     sign_in,
     droidcast,
     mumu12IPC,

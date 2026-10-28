@@ -835,6 +835,8 @@ class RIICPart(ConfModel):
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
     enable_mastery: bool = True
     "全自动专精全局开关：OFF 时禁用全部训练室动作/通知/守卫，仅保留仓库材料扫描"
+    save_mastery_screenshots: bool = False
+    "保存专精收取期间的截图"
 
     # 中枢加成（0/5）与换人缓冲时间已迁到路线配置全局设置行（见 mastery-route.json），
     # 不再存 conf

@@ -1887,6 +1887,18 @@ def _tap_finish_mark(solver):
     solver.tap((solver.recog.w * 0.05, solver.recog.h * 0.95), interval=0.5)
 
 
+def _save_collect_screenshot(solver):
+    if config.conf.save_mastery_screenshots:
+        try:
+            solver.recog.save_screencap("mastery")
+        except (MowerExit, DeviceRecoveryError):
+            raise
+        except Exception as exc:
+            logger.warning(
+                f"专精收取截图保存失败：{exc}", extra={"archive_screenshots": False}
+            )
+
+
 def _wait_collect_button(solver, retries=6):
     """等横幅页出现 skill_collect_confirm（领奖/跳动画按钮），返回位置或 None。
 
@@ -1896,6 +1908,8 @@ def _wait_collect_button(solver, retries=6):
     """
     for _ in range(retries):
         pos = solver.find("skill_collect_confirm")
+        if _ == 0 or pos:
+            _save_collect_screenshot(solver)
         if pos:
             return pos
         solver.sleep(1)
@@ -1904,6 +1918,7 @@ def _wait_collect_button(solver, retries=6):
         for _ in range(retries):
             pos = solver.find("skill_collect_confirm")
             if pos:
+                _save_collect_screenshot(solver)
                 return pos
             solver.sleep(1)
     return None
@@ -1947,6 +1962,7 @@ def collect_flow(solver, plan, panel: RoomPanel):
     solver.sleep(1)
     solver.recog.update()
     screenshot = solver.recog.img
+    _save_collect_screenshot(solver)
 
     tier = panel.mastery_tier
     if tier == 3 and plan is not None:

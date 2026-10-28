@@ -394,6 +394,7 @@ class ScreenshotStore:
             # destination is only the encoded pre-error memory cache.
             persist = (
                 save_history
+                or sub_folder == "mastery"
                 or isinstance(data, np.ndarray)
                 or self._in_error_window(captured_ns)
             )
@@ -1271,7 +1272,10 @@ class ScreenshotStore:
                 write_started = None
                 write_enabled = False
                 try:
-                    save_history = self.retention_hours() > 0
+                    save_history = (
+                        self.retention_hours() > 0
+                        or frame.filename.startswith("mastery/")
+                    )
                     encoded = self._encode(frame)
                     try:
                         if encoded is None:
