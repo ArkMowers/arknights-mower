@@ -559,7 +559,10 @@ class BaseSchedulerSolver(
         self._register_network_wait_observer()
 
     def _register_network_wait_observer(self):
-        get_network_adaptation(self.recog).set_observation_callback(
+        owner = getattr(self, "recog", None)
+        if owner is None:
+            return
+        get_network_adaptation(owner).set_observation_callback(
             self._on_network_wait_observed
         )
 
@@ -1249,7 +1252,7 @@ class BaseSchedulerSolver(
                 and not getattr(dispatched_task, "run_order_restore_pending", False)
                 and not any(task is dispatched_task for task in self.tasks)
             ):
-                finish_run_order_network(dispatched_task, self.recog)
+                finish_run_order_network(dispatched_task, getattr(self, "recog", None))
 
     def _fill_empty_dorms(self, *, primary_planned=False):
         """统一空床入口：日常规划和调度前均检查，不等待五分钟空档或跑单延期事件。"""
@@ -15863,7 +15866,7 @@ class BaseSchedulerSolver(
         if restoring_order:
             del self.task.run_order_original_roster
             del self.task.run_order_restore_pending
-            finish_run_order_network(self.task, self.recog)
+            finish_run_order_network(self.task, getattr(self, "recog", None))
             if getattr(self.task, "maintenance_replacement_run", False):
                 self.maintenance_entry_pending = True
         if (
@@ -15969,7 +15972,9 @@ class BaseSchedulerSolver(
                             )
                         del self.task.run_order_original_roster
                         del self.task.run_order_restore_pending
-                        finish_run_order_network(self.task, self.recog)
+                        finish_run_order_network(
+                            self.task, getattr(self, "recog", None)
+                        )
                         if getattr(self.task, "maintenance_replacement_run", False):
                             self.maintenance_entry_pending = True
                 else:

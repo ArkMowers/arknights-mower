@@ -247,23 +247,38 @@ def run_order_network_scope(solver):
     """挂入本次派发及原班恢复的参数，退出调用不消费任务快照。"""
     from arknights_mower.utils import config
 
-    task = solver.task
-    owner = solver.recog
-    if owner.__dict__.get("_run_order_network_dispatch_task") is task:
+    task = getattr(solver, "task", None)
+    owner = getattr(solver, "recog", None)
+    if owner is None:
+        yield
+        return
+    is_run_order = getattr(task, "type", None) == TaskTypes.RUN_ORDER
+    if is_run_order:
+        if owner.__dict__.get("_run_order_network_dispatch_task") is task:
+            yield
+            return
+    elif owner.__dict__.get("_run_order_network_active") is not True:
         yield
         return
     keys = (
-        "_run_order_network_dispatch_task",
-        "_run_order_network_task",
-        "_run_order_network_solver",
-        "_run_order_network_active",
-        "_run_order_network_compensation",
-    )
+        (
+            "_run_order_network_dispatch_task",
+            "_run_order_network_task",
+            "_run_order_network_solver",
+        )
+        if is_run_order
+        else ()
+    ) + ("_run_order_network_active", "_run_order_network_compensation")
     missing = object()
     previous = {key: owner.__dict__.get(key, missing) for key in keys}
-    owner._run_order_network_dispatch_task = task
+    if is_run_order:
+        owner._run_order_network_dispatch_task = task
     try:
-        timing = begin_run_order_network(task, owner, config.conf, datetime.now())
+        timing = (
+            begin_run_order_network(task, owner, config.conf, datetime.now())
+            if is_run_order
+            else None
+        )
         if timing is None:
             owner._run_order_network_active = False
             owner._run_order_network_compensation = 0

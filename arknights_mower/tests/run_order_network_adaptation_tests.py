@@ -570,6 +570,58 @@ def test_nested_unbound_task_does_not_inherit_another_solvers_allowance(
         assert run_order_network_compensation(owner, conf) == 30
 
 
+@pytest.mark.parametrize(
+    "task_type", [TaskTypes.SHIFT_OFF, TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER]
+)
+def test_decorated_arrangement_without_recognizer_keeps_its_existing_contract(
+    task_type,
+):
+    task = SchedulerTask(
+        NOW,
+        {ROOM: ["图耶"]},
+        task_type,
+        ROOM if task_type == TaskTypes.RUN_ORDER else "",
+    )
+    solver = SimpleNamespace(task=task, tasks=[task])
+    calls = []
+
+    @with_run_order_network
+    def arrange(subject, plan):
+        assert subject.task is task
+        calls.append(plan)
+        return "arranged"
+
+    assert arrange(solver, task.plan) == "arranged"
+    assert calls == [{ROOM: ["图耶"]}]
+    assert not hasattr(solver, "recog")
+    assert not hasattr(task, "run_order_network_timing")
+    assert not hasattr(task, "run_order_network_started")
+
+
+def test_nested_non_run_order_suppresses_shared_recognizer_compensation(
+    planned, monkeypatch
+):
+    conf, owner, task = planned
+    monkeypatch.setattr(config, "conf", conf)
+    observe(owner)
+    bind_run_order_network([task], owner, conf, NOW)
+    outer = SimpleNamespace(task=task, recog=owner)
+    shift = SchedulerTask(NOW, {ROOM: ["图耶"]}, TaskTypes.SHIFT_OFF)
+    inner = SimpleNamespace(task=shift, recog=owner)
+
+    @with_run_order_network
+    def arrange(subject):
+        assert run_order_network_compensation(subject.recog, conf) == 0
+        assert subject.recog._run_order_network_dispatch_task is task
+
+    with run_order_network_scope(outer):
+        assert run_order_network_compensation(owner, conf) == 30
+        arrange(inner)
+        assert run_order_network_compensation(owner, conf) == 30
+        assert owner._run_order_network_dispatch_task is task
+    assert "_run_order_network_active" not in owner.__dict__
+
+
 def test_nested_scope_and_failed_restoration_keep_binding_until_explicit_finish(
     planned, monkeypatch
 ):
