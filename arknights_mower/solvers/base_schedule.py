@@ -15441,12 +15441,24 @@ class BaseSchedulerSolver(
                             raise RoomArrangementDeferred(room, e) from e
                         raise e
                 continue
-        if len(new_plan) != 1:
+        if len(new_plan) != 1 or config.conf.run_order_buffer_time <= 0:
             self.back(0.5)
-        else:
-            if config.conf.run_order_buffer_time <= 0:
-                self.back(0.5)
+            self._wait_for_room_exit()
         return new_plan
+
+    def _wait_for_room_exit(self):
+        """确认已发送的返回键生效，再把地图交给下一次房间操作。"""
+        profile = self.performance_profile
+        deadline = monotonic() + profile.transition_timeout
+        poll_interval = profile.screenshot_interval / 1000
+        while True:
+            self.recog.update()
+            if self.scene() == Scene.INFRA_MAIN:
+                return
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise RecognizeError("换人后未确认返回基建全局视角")
+            self.sleep(min(poll_interval, remaining))
 
     def accept_order(self):
         task = getattr(self, "task", None)

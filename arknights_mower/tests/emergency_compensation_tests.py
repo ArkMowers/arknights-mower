@@ -29,7 +29,10 @@ def selection_harness(solver, monkeypatch, *, primary=PRIMARY[0], add_slot=True)
     solver.op_data.operators[primary]._current_room = ""
     solver.op_data.add(Operator("但书", ""))
     solver._selection_profile_snapshot = SimpleNamespace(
-        mode="xhigh", low_frame_rate=False
+        mode="xhigh",
+        low_frame_rate=False,
+        transition_timeout=config.conf.selection_transition_timeout,
+        screenshot_interval=config.conf.screenshot_interval,
     )
     solver.recog = SimpleNamespace(w=1920, h=1080, img=object(), update=MagicMock())
     solver.last_room = ""
