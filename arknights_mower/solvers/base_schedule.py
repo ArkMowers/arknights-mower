@@ -850,7 +850,12 @@ class BaseSchedulerSolver(
         pending = [
             (task, failure)
             for task in self.tasks
-            if task.type in ordinary
+            if (
+                task.type in ordinary
+                or task.type == TaskTypes.RUN_ORDER
+                and getattr(task, "run_order_restore_pending", False)
+                and not task.meta_data
+            )
             and (failure := getattr(task, "execution_failure", None))
             and failure.get("reason", "").startswith("干员确认")
         ]
