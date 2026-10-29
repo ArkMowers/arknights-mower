@@ -1427,6 +1427,86 @@ def test_stuck_record_at_entry_stops_after_real_navigation(board_navigation, ent
     scheduler.tap.assert_called_once_with((960, 540))
 
 
+@pytest.mark.parametrize("kind", [TaskTypes.CLUE, TaskTypes.CLUE_PARTY])
+@pytest.mark.parametrize("defer_credit", [False, True])
+@pytest.mark.parametrize("appears_during_preparation", [False, True])
+def test_opened_settlement_failure_retains_dispatched_clue_task(
+    board_navigation, monkeypatch, kind, defer_credit, appears_during_preparation
+):
+    scheduler, _, state, ui, _ = board_navigation
+    board_io = {
+        name: getattr(scheduler, name)
+        for name in ("scene", "find", "tap", "back", "sleep", "enter_room")
+    }
+    prepare_empty_clue_workflow(scheduler)
+    clock = prepare_clue_dispatch(scheduler, state, monkeypatch)
+    del scheduler._open_clue_message_board
+    for name, method in board_io.items():
+        setattr(scheduler, name, method)
+    original_find = scheduler.find
+    scheduler.find = lambda name, **kwargs: (
+        True if name == "control_central" else original_find(name, **kwargs)
+    )
+    original_enter = scheduler.enter_room.side_effect
+
+    def enter_room(room):
+        if ui.panel == "record":
+            raise RuntimeError("Room entry cannot cross an unchanged settlement")
+        original_enter(room)
+
+    scheduler.enter_room.side_effect = enter_room
+
+    def navigate(scene):
+        if state.scene == Scene.CLUE_ACCESS_RECORD:
+            return SceneGraphSolver.scene_graph_navigation(scheduler, scene)
+        state.scene = scene
+
+    scheduler.scene_graph_navigation = MagicMock(side_effect=navigate)
+    scheduler._run_clue_shop = MagicMock()
+    scheduler.skip = MagicMock()
+    scheduler.handle_error = MagicMock()
+    scheduler.planned = True
+    scheduler.todo_task = True
+    scheduler.collect_notification = True
+    scheduler.op_data = None
+    scheduler._clue_credit_enabled = MagicMock(return_value=defer_credit)
+    ui.access_record = ui.record_stuck = True
+    if appears_during_preparation:
+
+        def show_record():
+            ui.panel = "record"
+            state.scene = Scene.CLUE_ACCESS_RECORD
+
+        scheduler.wait_product_complete.side_effect = show_record
+    monkeypatch.setattr(base_schedule, "get_server_weekday", lambda: 6)
+    task = SchedulerTask(time=clock.now() - timedelta(minutes=20), task_type=kind)
+    original_time = task.time
+    scheduler.task = task
+    scheduler.tasks = [task]
+    scheduler.last_clue = previous_check = clock.now() - timedelta(hours=2)
+    scheduler.party_time = party_end = clock.now() - timedelta(minutes=10)
+
+    scheduler.infra_main()
+
+    assert scheduler.tasks == [task]
+    assert scheduler.tasks[0] is task
+    assert task.time == original_time
+    assert task.execution_failure["dependency"] is True
+    assert task.clue_access_record_pending is True
+    assert scheduler.last_clue == previous_check
+    assert scheduler.party_time == party_end
+    assert ui.events == ([] if appears_during_preparation else ["open"]) + [
+        "dismiss_record"
+    ]
+    assert state.current == 300
+    scheduler.enter_room.assert_called_once_with("meeting")
+    scheduler._run_clue_shop.assert_not_called()
+    scheduler.skip.assert_not_called()
+    assert scheduler.scene_graph_navigation.call_count == (
+        2 if appears_during_preparation and defer_credit else 1
+    )
+
+
 def test_already_open_board_is_not_activated_again(board_navigation):
     scheduler, _, state, ui, _ = board_navigation
     ui.panel = "board"

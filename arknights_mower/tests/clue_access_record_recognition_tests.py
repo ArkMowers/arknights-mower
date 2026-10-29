@@ -287,6 +287,7 @@ def test_graph_navigation_does_not_click_record_again_after_interrupted_observat
     assert state.clicks == [(960, 540)]
     assert interruption in state.observed
     assert state.observed[-1] == Scene.CLUE_ACCESS_RECORD
+    assert solver._clue_access_record_exhausted is True
     assert solver.recog.update.call_count <= 4
     if not brief_board:
         assert solver.recog.update.call_count == 4

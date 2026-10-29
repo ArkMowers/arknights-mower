@@ -478,6 +478,7 @@ class SceneGraphSolver(BaseSolver):
                 self._clue_access_record_exhausted = False
             if current == Scene.CLUE_ACCESS_RECORD:
                 if access_record_dismissed:
+                    self._clue_access_record_exhausted = True
                     logger.warning(
                         "访问记录关闭后再次出现，结束本次导航",
                         extra={"archive_screenshots": True},

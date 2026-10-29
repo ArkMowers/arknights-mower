@@ -10362,8 +10362,22 @@ class BaseSchedulerSolver(
                                 settlement_checked = self._collect_clue_message_board(
                                     collect_current=False
                                 )
+                                if (
+                                    getattr(
+                                        self, "_clue_access_record_exhausted", False
+                                    )
+                                    and not self._clue_access_record_cleared()
+                                ):
+                                    return False
                                 if not settlement_checked:
                                     self.scene_graph_navigation(Scene.INFRA_MAIN)
+                                    if (
+                                        getattr(
+                                            self, "_clue_access_record_exhausted", False
+                                        )
+                                        and not self._clue_access_record_cleared()
+                                    ):
+                                        return False
                                     self.enter_room("meeting")
                             else:
                                 self._prepare_clue_room()
@@ -10394,6 +10408,11 @@ class BaseSchedulerSolver(
                                 if self.scene() == Scene.INFRA_DETAILS:
                                     break
                                 self.sleep(0.5)
+                        if (
+                            getattr(self, "_clue_access_record_exhausted", False)
+                            and not self._clue_access_record_cleared()
+                        ):
+                            return False
                         ctm.complete("message_board")
                     elif ctm.task == "party_time":
                         self.wait_product_complete()
@@ -10664,6 +10683,11 @@ class BaseSchedulerSolver(
 
                 else:
                     self.scene_graph_navigation(Scene.INFRA_MAIN)
+                    if (
+                        getattr(self, "_clue_access_record_exhausted", False)
+                        and not self._clue_access_record_cleared()
+                    ):
+                        return False
                     self.enter_room("meeting")
             if self._clue_credit_enabled():
                 shop_result = self._run_clue_shop(settlement_checked=settlement_checked)
