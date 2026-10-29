@@ -495,6 +495,7 @@ Res = Literal[
     "sss/deploy_button",
     "sss/redeploy_button",
     "sss/squad_button",
+    "sss/start_action",
     "recruit/agent_token",
     "recruit/agent_token_first",
     "recruit/available_level",
