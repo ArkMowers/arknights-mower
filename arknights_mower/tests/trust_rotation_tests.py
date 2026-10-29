@@ -436,7 +436,10 @@ def test_activity_replacement_verifies_real_selector_and_room_name_crops(monkeyp
     obj.tap.side_effect = tap
     monkeypatch.setattr(trust.rapidocr, "engine", Mock(side_effect=AssertionError))
     assert obj._replace("activity", 200) == "replaced"
-    assert obj.tap.call_args_list[-1].args == ((1575, 1025),)
+    assert [call.args[0] for call in obj.tap.call_args_list] == [
+        ((570, 120), (754, 514)),
+        (1575, 1025),
+    ]
 
 
 @pytest.mark.parametrize(
