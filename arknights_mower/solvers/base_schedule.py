@@ -13568,6 +13568,19 @@ class BaseSchedulerSolver(
                     agents, ordered=False, observation=observation
                 )
             if exists is None:
+                if fast_mode and room.startswith("room") and agents:
+                    self.require_agent_selection_page()
+                    logger.info("生产房差量选人名单不符，在当前选人页完整重选一次")
+                    return self.choose_agent(
+                        agents,
+                        room,
+                        fast_mode=False,
+                        train_index=train_index,
+                        preserve_dorm_occupants=preserve_dorm_occupants,
+                        choose_error=choose_error,
+                        dorm_mood_candidates=mood_fallback,
+                        recovery_padding=recovery_padding,
+                    )
                 raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
             # 蓝框只说明卡片被选中；返回名单按页面位置排序，不能由此推断
