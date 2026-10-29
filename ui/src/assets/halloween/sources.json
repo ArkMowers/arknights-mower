@@ -1,0 +1,41 @@
+{
+  "rope-witch.png": {
+    "character": "暗索",
+    "outfit": "小鬼当家",
+    "collection": "巫异盛宴",
+    "source": "https://prts.wiki/w/暗索",
+    "collectionSource": "https://prts.wiki/w/时装回廊/巫异盛宴",
+    "atlas": "https://torappu.prts.wiki/assets/char_spine/char_236_rope/char_236_rope_witch_1/build/build_char_236_rope_witch_1.atlas",
+    "texture": "https://torappu.prts.wiki/assets/char_spine/char_236_rope/char_236_rope_witch_1/build/build_char_236_rope_witch_1.png",
+    "export": "PRTS Spine Viewer 基建模型静帧，移除透明边距",
+    "rights": "《明日方舟》游戏美术资产，版权归鹰角网络等原权利人所有。PRTS 提供展示。"
+  },
+  "nightingale-witch.png": {
+    "character": "夜莺",
+    "outfit": "挽歌",
+    "collection": "巫异盛宴",
+    "source": "https://prts.wiki/w/夜莺",
+    "atlas": "https://torappu.prts.wiki/assets/char_spine/char_179_cgbird/char_179_cgbird_witch_1/build/build_char_179_cgbird_witch_1.atlas",
+    "texture": "https://torappu.prts.wiki/assets/char_spine/char_179_cgbird/char_179_cgbird_witch_1/build/build_char_179_cgbird_witch_1.png",
+    "export": "PRTS Spine Viewer 基建模型静帧，移除透明边距",
+    "rights": "《明日方舟》游戏美术资产，版权归鹰角网络等原权利人所有。PRTS 提供展示。"
+  },
+  "shamare-feast.png": {
+    "character": "巫恋",
+    "outfit": "魔城回响",
+    "collection": "巫异盛宴",
+    "source": "https://prts.wiki/w/时装回廊/巫异盛宴#魔城回响",
+    "export": "PRTS 时装回廊提供的透明立绘缩略图",
+    "rights": "《明日方舟》游戏美术资产，版权归鹰角网络等原权利人所有。PRTS 提供展示。"
+  },
+  "svg": {
+    "files": [
+      "lantern.svg",
+      "witch-hat.svg",
+      "moon-bats.svg",
+      "gothic-sidebar.svg",
+      "gothic-titlebar.svg"
+    ],
+    "source": "为 Mower 万圣节装饰绘制的原创 SVG"
+  }
+}

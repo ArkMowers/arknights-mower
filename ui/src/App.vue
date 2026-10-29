@@ -10,9 +10,16 @@
     :style="{ userSelect: 'none', ...mowerCssVariables }"
     :class="{
       'provider--dark': theme === 'dark',
+      'provider--halloween': halloweenActive,
       'provider--window-shell': windowShellActive
     }"
   >
+    <HalloweenBackdrop
+      v-if="halloweenActive"
+      :sidebar-width="isMobileNav || sidebarHidden ? 0 : sidebarCollapsed ? 64 : 210"
+      :header-height="windowShellActive || (fallbackAppMenu && appMenuVisible) ? 36 : 0"
+      :native-header="windowShellActive && windowShellCapabilities.controls === 'native'"
+    />
     <n-global-style />
     <WindowTitlebar
       :active="windowShellActive"
@@ -104,6 +111,7 @@
               <n-layout-sider
                 v-if="!isMobileNav"
                 v-show="!sidebarHidden"
+                :class="{ 'halloween-shell': halloweenActive }"
                 :bordered="!windowShellActive"
                 collapse-mode="width"
                 :collapsed-width="64"
@@ -223,7 +231,8 @@
               aria-label="全部页面"
               :style="mowerCssVariables"
             >
-              <div class="sidebar-drawer">
+              <div class="sidebar-drawer" :class="{ 'halloween-shell': halloweenActive }">
+                <HalloweenBackdrop v-if="halloweenActive" :sidebar-width="280" :header-height="0" />
                 <SidebarUpdateChecks
                   :collapsible="false"
                   :version="softwareVersion"
@@ -289,12 +298,14 @@ import MobileTabBar from '@/components/MobileTabBar.vue'
 import WindowTitlebar from '@/components/WindowTitlebar.vue'
 import AppMenuBar from '@/components/AppMenuBar.vue'
 import HelpDialog from '@/components/HelpDialog.vue'
+import HalloweenBackdrop from '@/components/HalloweenBackdrop.vue'
 import ConfigProfilesController from '@/components/ConfigProfilesController.vue'
 import SidebarUpdateChecks from '@/components/SidebarUpdateChecks.vue'
 import SidebarEditor from '@/components/SidebarEditor.vue'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
 import { useResolvedTheme } from '@/composables/theme'
 import { themeSelectionKey, useThemeSelection } from '@/composables/themeSelection'
+import { provideHalloweenSeason } from '@/composables/halloween'
 import {
   mowerDarkCssVariables,
   mowerDarkThemeOverrides,
@@ -303,6 +314,7 @@ import {
 } from '@/theme/mower'
 import '@/theme/mower.css'
 import '@/styles/breakpoints.css'
+import '@/styles/halloween.css'
 import {
   createWindowShellAdapter,
   formatWindowTitle,
@@ -326,6 +338,7 @@ import {
 } from '@/composables/deviceConnectionNavigation'
 import { installModalDragging } from '@/utils/modal-drag.js'
 
+const halloweenActive = provideHalloweenSeason()
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
 const windowShell = createWindowShellAdapter({
   onCloseRequested: () => handleWindowControl('close')
