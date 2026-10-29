@@ -201,6 +201,7 @@ def test_single_recovery_submission_timeout_restarts_reads_and_restores_roster(
         "login": base.Scene.LOGIN_START,
     }[state["page"]]
     solver.enter_room.side_effect = lambda room: state.update(page="details")
+    solver.back.side_effect = lambda *args, **kwargs: state.update(page="infra")
     solver.find.side_effect = lambda name, **kwargs: (
         (100, 100)
         if (name, state["page"])
