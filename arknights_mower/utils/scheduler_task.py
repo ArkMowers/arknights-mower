@@ -526,6 +526,8 @@ def _advance_mood_limit_releases(
     tasks, run_order_delay, execution_time, now, op_data=None
 ):
     """上限是离宿截止时间；提前腾出操作窗口，不等阻塞任务结束。"""
+    from arknights_mower.utils.run_order_network import run_order_entry_seconds
+
     releases = [
         task
         for task in tasks
@@ -576,7 +578,10 @@ def _advance_mood_limit_releases(
             if task.type == TaskTypes.RUN_ORDER:
                 # 跑单时间已扣除进站提前量，还需预留确认、收单和归位。
                 minutes = (
-                    max(run_order_delay, config.conf.run_order_delay)
+                    max(
+                        run_order_delay,
+                        run_order_entry_seconds(task, config.conf) / 60,
+                    )
                     + 2 * execution_time
                 )
             elif task.type == TaskTypes.SWAP_SUPPORT:

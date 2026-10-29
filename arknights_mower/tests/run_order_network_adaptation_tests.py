@@ -32,6 +32,7 @@ from arknights_mower.utils.scheduler_task import (
     TaskTypes,
     blocked_run_order_ids,
     run_order_end_time,
+    scheduling,
 )
 
 NOW = datetime(2026, 10, 28, 19, 50)
@@ -70,6 +71,46 @@ def observe(owner, seconds=30, *, now=NOW, timed_out=True):
         observed_at=now,
         timed_out=timed_out,
     )
+
+
+def test_mood_limit_release_clears_adapted_order_window_without_time_drift(
+    planned, monkeypatch, offline_maintenance
+):
+    conf, owner, task = planned
+    conf.run_order_delay = 5
+    conf.run_order_grandet_mode.buffer_time = 90
+    monkeypatch.setattr(config, "conf", conf)
+    task.time = NOW + timedelta(minutes=10)
+    observe(owner, 90)
+    bind_run_order_network([task], owner, conf, NOW)
+    assert run_order_entry_seconds(task, conf) == 480
+    order_start = task.time
+    deadline = order_start + timedelta(seconds=510)
+    release = SchedulerTask(
+        deadline,
+        {"dormitory_2": ["Current", "Current", "Free", "Current", "Current"]},
+        TaskTypes.RELEASE_DORM,
+        "令",
+        strict_mood_limit=True,
+        mood_limit=12,
+    )
+    tasks = [task, release]
+
+    scheduling(tasks, execution_time=0.75, time_now=NOW)
+
+    assert release.time + timedelta(seconds=90) < order_start
+    assert release.mood_limit_deadline == deadline
+    assert task.time == order_start
+    assert tasks[0] is release
+    reserved_start = release.time
+    for seconds in (1, 2, 3):
+        scheduling(
+            tasks, execution_time=0.75, time_now=NOW + timedelta(seconds=seconds)
+        )
+        assert tasks == [release, task]
+        assert release.time == reserved_start
+        assert release.mood_limit_deadline == deadline
+        assert task.time == order_start
 
 
 def test_callback_binds_all_twenty_minute_runs_including_temporarily_blocked(planned):
