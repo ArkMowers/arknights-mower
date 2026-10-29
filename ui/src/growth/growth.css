@@ -75,7 +75,7 @@ html[data-mower-theme='dark'] {
      工作区压回视口高度，背景在滚动后被截断露出白色底板。禁止收缩，让纸张背景
      始终覆盖完整内容高度。 */
   flex-shrink: 0;
-  padding: 20px 24px 108px;
+  padding: 20px 24px 24px;
   box-sizing: border-box;
   color: var(--gp-ink);
   font-family: var(--gp-font);
@@ -487,7 +487,7 @@ html[data-mower-theme='dark'] {
 /* ── 响应式 ────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .growth-workspace {
-    padding: 14px 16px 100px;
+    padding: 14px 16px 20px;
   }
   .growth-workspace__inner {
     gap: 14px;
@@ -496,7 +496,7 @@ html[data-mower-theme='dark'] {
 
 @media (max-width: 720px) {
   .growth-workspace {
-    padding: 10px 10px 92px;
+    padding: 10px 10px 16px;
     font-size: 13.5px;
   }
   .gp-panel,

@@ -64,6 +64,15 @@ const elitePercent = computed(() =>
     ? Math.round((props.rosterStats.elite2 / props.rosterStats.owned) * 100)
     : 0
 )
+const pickDescription = computed(
+  () =>
+    ({
+      mastery: '按未专三技能的最高公开专三率排序，高的在前。',
+      module: '按未满级模组的最高公开解锁率排序，高的在前。',
+      rarity: '按干员星级从高到低排序。',
+      level: '先比较精英阶段，再按等级从高到低排序。'
+    })[props.pickSort]
+)
 
 function statusTone(status) {
   if (status === 'training' || status === 'arranging' || status === 'waiting_collect') return 'warn'
@@ -292,7 +301,6 @@ function formatCount(value) {
             <span :style="{ width: elitePercent + '%' }" />
           </div>
         </div>
-        <p class="gp-overview__roster-note">按本地已同步练度统计，未同步的干员不计入。</p>
       </section>
 
       <section class="gp-panel gp-overview__pick" aria-labelledby="growth-pick-title">
@@ -300,7 +308,7 @@ function formatCount(value) {
           <div class="gp-overview__pick-head">
             <span class="gp-kicker">Suggested next</span>
             <h2 id="growth-pick-title" class="gp-section-head__title">值得练</h2>
-            <p class="gp-overview__pick-sub">按剩余专三率排序，点开档案核对材料与前置。</p>
+            <p class="gp-overview__pick-sub">{{ pickDescription }}</p>
           </div>
           <div class="gp-overview__pick-actions">
             <n-select
@@ -703,14 +711,6 @@ function formatCount(value) {
 
 .gp-overview__roster-meter .gp-meter {
   height: 6px;
-}
-
-.gp-overview__roster-note {
-  margin: auto 0 0;
-  padding-top: 12px;
-  color: var(--gp-faint);
-  font-size: 10.5px;
-  line-height: 1.5;
 }
 
 .gp-overview__pick {

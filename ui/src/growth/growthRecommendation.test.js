@@ -228,8 +228,8 @@ describe('剩余比例与排序', () => {
       'level'
     ])
     expect(RECOMMEND_SORT_OPTIONS.map((option) => option.label)).toEqual([
-      '剩余专三率',
-      '剩余模组解锁率',
+      '专三率优先',
+      '模组解锁率优先',
       '稀有度',
       '等级'
     ])

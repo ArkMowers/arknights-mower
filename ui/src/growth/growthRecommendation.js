@@ -2,8 +2,8 @@ const ORDINALS = ['一', '二', '三']
 
 // 值得练的排序条件：只用“还没练完的目标”的公开比例，已练完的目标不参与。
 export const RECOMMEND_SORT_OPTIONS = [
-  { label: '剩余专三率', value: 'mastery' },
-  { label: '剩余模组解锁率', value: 'module' },
+  { label: '专三率优先', value: 'mastery' },
+  { label: '模组解锁率优先', value: 'module' },
   { label: '稀有度', value: 'rarity' },
   { label: '等级', value: 'level' }
 ]

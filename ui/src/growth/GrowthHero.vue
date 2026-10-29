@@ -239,7 +239,6 @@ const syncLabel = computed(() => {
           :name="op.name"
           :rarity="op.rarity"
           :size="26"
-          muted
         />
       </div>
     </div>

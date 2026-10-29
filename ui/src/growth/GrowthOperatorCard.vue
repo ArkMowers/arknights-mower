@@ -373,12 +373,13 @@ function stopKeydownPropagation(event) {
   min-width: 0;
 }
 
-/* 每个技能段都是独立命中区：24x18 的按钮里放 22x4 的横条，hover 不改变任何盒尺寸。 */
+/* 技能段用透明伪元素扩大命中范围，横条和按钮的布局尺寸保持不变。 */
 .growth-opcard__seg {
   /* 光晕取色：未专精中性、专一/二琥珀、专三绿色，与等级节点共用同一套发光语言。 */
   /* 未专精用 --gp-hair：浅色主题即 rgba(24,25,28,0.15)，深色主题自动转为浅色光。 */
   --seg-glow: var(--gp-hair);
   --seg-inset: 0 0 transparent;
+  position: relative;
   display: inline-grid;
   flex: none;
   place-items: center;
@@ -389,6 +390,20 @@ function stopKeydownPropagation(event) {
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
+}
+
+.growth-opcard__seg::before {
+  position: absolute;
+  inset: -8px -1.5px;
+  content: '';
+}
+
+.growth-opcard__seg:first-child::before {
+  left: -6px;
+}
+
+.growth-opcard__seg:last-of-type::before {
+  right: -6px;
 }
 
 .growth-opcard__seg.is-partial {
