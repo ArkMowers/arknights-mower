@@ -172,19 +172,26 @@ class CalculatedMood:
         return projected
 
     def _input_signature(self):
-        return json.dumps(
-            [
-                self.rooms,
-                self.stages,
-                self.single_targets,
-                self.versions,
-                self.automatic_targets,
-            ],
-            sort_keys=True,
+        inputs = (
+            self.rooms,
+            self.stages,
+            self.single_targets,
+            self.versions,
+            self.automatic_targets,
         )
+        cached = getattr(_runtime, "input_signature", None)
+        if cached is not None and inputs == cached[0]:
+            return cached[1]
+        signature = json.dumps(inputs, sort_keys=True)
+        _runtime.input_signature = (copy.deepcopy(inputs), signature)
+        return signature
 
     def _signature(self, source):
-        thresholds = getattr(self, "thresholds", ())
+        inputs = self._input_signature()
+        thresholds = tuple(getattr(self, "thresholds", ()))
+        cached = getattr(_runtime, "mood_bands", None)
+        if cached is not None and cached[0] == thresholds and cached[1] == source:
+            return inputs, cached[2]
         upper = tuple(threshold + 1e-8 for threshold in thresholds)
         bands = []
         for name, value in sorted(source.items()):
@@ -195,7 +202,9 @@ class CalculatedMood:
             elif index and abs(value - thresholds[index - 1]) <= 1e-8:
                 near = index - 1
             bands.append((name, bisect_left(upper, value), near))
-        return self._input_signature(), tuple(bands)
+        bands = tuple(bands)
+        _runtime.mood_bands = (thresholds, source.copy(), bands)
+        return inputs, bands
 
     def _rates(self, moods=None):
         source = self.moods if moods is None else moods

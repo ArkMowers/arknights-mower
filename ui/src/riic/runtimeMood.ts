@@ -3,6 +3,7 @@ import { OPERATORS } from './vendor/domain/operators'
 import { selectUnlockedSkills } from './vendor/domain/operatorInventory'
 import { currentMoraleRates } from './vendor/engine/morale'
 import { evaluateDormitoryRecovery } from './vendor/engine/dormitoryRecovery'
+import { buildRiicGlobalContext, type RiicGlobalContext } from './vendor/engine/globalContext'
 import { eligibleSingleRecoveryTargets, hasSingleRecoverySkill } from './vendor/engine/singleRecoveryEligibility'
 import { MORALE_SKILL_THRESHOLDS, MORALE_RATE_EPSILON, retainedRecoveryTarget } from './vendor/engine/moraleThresholds'
 import { importMowerJson } from './vendor/workbench/compat/mowerJson'
@@ -75,12 +76,15 @@ export function rates(input: any) {
   const resting = new Set(config.facilityOperatorIds.dormitories.flat())
   config.zeroMoraleOperatorIds = Object.entries(config.operatorMorale).filter(([id, mood]) => !resting.has(id) && mood <= 0).map(([id]) => id)
   let result = currentMoraleRates(config)
+  let adjusted = false
   for (const [id, mood] of Object.entries(config.operatorMorale)) {
     if (MORALE_SKILL_THRESHOLDS.some(threshold => Math.abs(mood - threshold) < MORALE_RATE_EPSILON)) {
-      config.operatorMorale[id] = mood + (resting.has(id) ? 1 : -Math.sign(result.rates[id] ?? 0)) * MORALE_RATE_EPSILON * 2
+      const updated = mood + (resting.has(id) ? 1 : -Math.sign(result.rates[id] ?? 0)) * MORALE_RATE_EPSILON * 2
+      config.operatorMorale[id] = updated
+      adjusted ||= updated !== mood
     }
   }
-  result = currentMoraleRates(config)
+  if (adjusted) result = currentMoraleRates(config)
   const values = new Map(Object.entries(config.operatorMorale))
   const targets = new Map<string, string>()
   for (const [provider, target] of Object.entries(input.singleTargets ?? {})) {
@@ -88,8 +92,10 @@ export function rates(input: any) {
     if (p && t) targets.set(p.charId, t.charId)
   }
   const automaticTargets: Record<string, any> = {}
+  let recoveryContext: RiicGlobalContext | undefined
   for (let index = 0; index < 4; index++) {
     if (!config.facilities.dormitories[index]) continue
+    recoveryContext ??= buildRiicGlobalContext(config, undefined, values)
     const room = `dormitory_${index + 1}`
     const occupants = config.facilityOperatorIds.dormitories[index].map(id => config.operatorRecords![id]!)
     const position = (id: string) => `${room}:${occupants.findIndex(operator => operator.charId === id)}:${input.versions?.[names.get(id) ?? ''] ?? 0}`
@@ -104,7 +110,7 @@ export function rates(input: any) {
         }
       }
     }
-    const recovery = evaluateDormitoryRecovery(config, index, values, config.facilities.dormitories[index] * 1000, targets)
+    const recovery = evaluateDormitoryRecovery(config, index, values, config.facilities.dormitories[index] * 1000, targets, false, recoveryContext)
     for (const [id, rate] of recovery.rates) result.rates[id] = -rate
     result.unquantified.push(...recovery.unquantified)
   }
