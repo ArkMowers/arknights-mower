@@ -27,9 +27,6 @@
             </n-icon>
             <span>仓库总览</span>
           </div>
-          <n-tag v-if="parsed.ok" size="small" :bordered="false" round class="hero-count-tag">
-            已登记 {{ allItems.length }} 种物品
-          </n-tag>
         </div>
 
         <div class="hero-actions">
@@ -157,11 +154,6 @@
               <span class="draw-tier-val">{{ formatCompact(tier.value) }} 抽</span>
             </button>
           </div>
-
-          <div class="draw-tier-hint">
-            <span class="hint-prefix">当前口径：</span>
-            <span>{{ activeDrawTier?.detail || activeDrawTier?.hint || '暂无数据' }}</span>
-          </div>
         </div>
 
         <!-- 右侧：重点资源 / 关注物资存量看板 -->
@@ -190,25 +182,20 @@
             </div>
 
             <!-- 右侧操作 / 分页 -->
-            <div class="showcase-controls">
-              <template v-if="showcaseTab === 'core'">
-                <span class="panel-subtitle">最近存量及基准差额</span>
-              </template>
-              <template v-else>
-                <!-- 关注物品有超过1页时提供翻页 -->
-                <div v-if="totalFavPages > 1" class="fav-pager">
-                  <button type="button" class="pager-arrow" title="上一页" @click="prevFavPage">
-                    ‹
-                  </button>
-                  <span class="pager-indicator">{{ favPage + 1 }} / {{ totalFavPages }}</span>
-                  <button type="button" class="pager-arrow" title="下一页" @click="nextFavPage">
-                    ›
-                  </button>
-                </div>
-                <span v-else-if="favoriteHighlights.length" class="panel-subtitle">
-                  已关注 {{ favoriteHighlights.length }} 项物资
-                </span>
-              </template>
+            <div v-if="showcaseTab === 'favorites'" class="showcase-controls">
+              <!-- 关注物品有超过1页时提供翻页 -->
+              <div v-if="totalFavPages > 1" class="fav-pager">
+                <button type="button" class="pager-arrow" title="上一页" @click="prevFavPage">
+                  ‹
+                </button>
+                <span class="pager-indicator">{{ favPage + 1 }} / {{ totalFavPages }}</span>
+                <button type="button" class="pager-arrow" title="下一页" @click="nextFavPage">
+                  ›
+                </button>
+              </div>
+              <span v-else-if="favoriteHighlights.length" class="panel-subtitle">
+                已关注 {{ favoriteHighlights.length }} 项物资
+              </span>
             </div>
           </div>
 
@@ -791,7 +778,7 @@
           class="detail-derived-alert"
           :bordered="false"
         >
-          此项目属于聚合计算派生值（非游戏内独立实体道具），无独立扫描记录。您可在其基础组成材料（如合成玉、寻访凭证等）中查看各自的真实库存历史走势。
+          此项按每次仓库快照中的组成物料折算，展示折算值随时间的变化，并非独立道具的扫描记录。
         </n-alert>
 
         <template v-if="detailPoints.length >= 2">
@@ -832,11 +819,7 @@
         <n-empty
           v-else
           class="detail-empty-view"
-          :description="
-            detailItem.derived
-              ? '计算值不记录独立历史走势'
-              : '该物品的历史快照记录少于 2 次，暂无法生成趋势曲线'
-          "
+          description="有效历史记录少于 2 次，暂无法生成趋势曲线"
         />
 
         <template #footer>
@@ -1464,7 +1447,6 @@ const sparklines = computed(() => {
 
   const recent = history.value.slice(-SPARKLINE_SNAPSHOTS)
   for (const item of sortedItems.value) {
-    if (item.derived) continue
     const points = buildItemHistory(recent, item.name)
     if (points.length < 2) continue
 
@@ -1771,7 +1753,7 @@ function openDetailByName(name) {
 }
 
 const detailPoints = computed(() => {
-  if (!detailItem.value || detailItem.value.derived) return []
+  if (!detailItem.value) return []
   return buildItemHistory(history.value, detailItem.value.name)
 })
 
@@ -2006,10 +1988,6 @@ onUnmounted(() => {
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.02em;
-}
-
-.hero-count-tag {
-  font-size: 11px;
 }
 
 .hero-actions {
@@ -2307,19 +2285,6 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-.draw-tier-hint {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--mower-segment-muted);
-  margin-top: auto;
-  padding-top: 4px;
-}
-
-.hint-prefix {
-  font-weight: 600;
-  opacity: 0.85;
 }
 
 /* 右侧：重点资源栅格（无彩色描边，上下分行保证数值不溢出） */

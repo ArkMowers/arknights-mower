@@ -158,6 +158,13 @@ export function flattenItems(categories) {
 /** 参与折算的原始物料；一个都没有时说明这条快照根本没有抽数，不该补 0。 */
 const DRAW_SOURCE_KEYS = ['合成玉', '寻访凭证', '十连寻访凭证', '至纯源石', '源石碎片', '固源岩']
 
+const EXP_SOURCE_WEIGHTS = {
+  基础作战记录: 200,
+  初级作战记录: 400,
+  中级作战记录: 1000,
+  高级作战记录: 2000
+}
+
 /**
  * 单条快照的抽数：优先读后端写入的派生项。
  *
@@ -536,17 +543,28 @@ export function buildDeltaDetail(snapshots, startKey = 'previous', endKey = 'lat
  * 部分快照（扫仓库）只记录识别到的物品，缺名字代表"这次没扫到"，跳过，避免把未观测
  * 的物料误记成 0 造成虚假下跌。完整库存快照（后端按森空岛+数据库记录的）相反：没列
  * 出来就是真的 0，必须补一个 0 点，否则物品耗尽后曲线会停在最后一个非零点上。
+ * 折算项优先使用快照已有值；缺值时按该次快照的组成物料补算，沿用上述缺项规则。
  */
 export function buildItemHistory(snapshots, itemName) {
   const points = []
+  const drawTier = DRAW_TIERS.some((tier) => tier.key === itemName)
   for (const entry of usableSnapshots(snapshots)) {
     const items = entry.items || {}
-    if (Object.prototype.hasOwnProperty.call(items, itemName)) {
-      const value = Number(items[itemName])
-      if (Number.isFinite(value)) points.push({ at: entry.at, value })
-      continue
+    const hasItem = (name) => Object.prototype.hasOwnProperty.call(items, name)
+    let value
+    if (hasItem(itemName)) {
+      value = Number(items[itemName])
+    } else if (drawTier && DRAW_SOURCE_KEYS.some(hasItem)) {
+      value = computeDrawCount(items, itemName)
+    } else if (itemName === '全部经验（计算）' && Object.keys(EXP_SOURCE_WEIGHTS).some(hasItem)) {
+      value = Object.entries(EXP_SOURCE_WEIGHTS).reduce(
+        (total, [name, weight]) => total + Number(items[name] ?? 0) * weight,
+        0
+      )
+    } else if (entry.complete === true) {
+      value = 0
     }
-    if (entry.complete === true) points.push({ at: entry.at, value: 0 })
+    if (Number.isFinite(value)) points.push({ at: entry.at, value })
   }
   return points
 }

@@ -422,6 +422,67 @@ describe('buildDeltaDetail', () => {
 })
 
 describe('buildItemHistory', () => {
+  it.each([
+    ['玉+卷', 0.1, 20],
+    ['玉+卷+石', 0.2, 23],
+    ['额外+碎片', 0.3, 23.3],
+    ['额外+碎片+土', 0.4, 23.7]
+  ])(
+    'builds %s history using saved values before falling back to raw materials',
+    (name, saved, converted) => {
+      expect(
+        buildItemHistory(
+          [
+            { at: 100, items: { [name]: saved, 合成玉: 600 } },
+            { at: 200, items: { 龙门币: 1000 } },
+            {
+              at: 300,
+              items: {
+                合成玉: 3600,
+                寻访凭证: 4,
+                十连寻访凭证: 1,
+                至纯源石: 10,
+                源石碎片: 20,
+                固源岩: 40
+              }
+            },
+            { at: 400, items: {}, complete: true }
+          ],
+          name
+        )
+      ).toEqual([
+        { at: 100, value: saved },
+        { at: 300, value: converted },
+        { at: 400, value: 0 }
+      ])
+    }
+  )
+
+  it('converts all four battle record types into experience and distinguishes missing scans from empty inventory', () => {
+    expect(
+      buildItemHistory(
+        [
+          { at: 100, items: { '全部经验（计算）': 15000, 基础作战记录: 1 } },
+          {
+            at: 200,
+            items: { 基础作战记录: 1, 初级作战记录: 2, 中级作战记录: 3, 高级作战记录: 4 }
+          },
+          { at: 300, items: { 高级作战记录: 2 } },
+          { at: 400, items: { 龙门币: 1000 } },
+          { at: 500, items: {}, complete: true },
+          { at: 600, items: { 基础作战记录: 0 } }
+        ],
+        '全部经验（计算）'
+      )
+    ).toEqual([
+      { at: 100, value: 15000 },
+      { at: 200, value: 12000 },
+      { at: 300, value: 4000 },
+      { at: 500, value: 0 },
+      { at: 600, value: 0 }
+    ])
+  })
+
   it('emits an ascending series and skips missing scans instead of injecting fake zero', () => {
     const points = buildItemHistory(
       [
