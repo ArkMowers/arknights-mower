@@ -104,8 +104,8 @@ function updateRate(key, rate) {
 }
 const sortOptions = [
   { label: '默认排序', value: 'default' },
-  { label: '剩余专三率优先', value: 'recommendation' },
-  { label: '剩余模组解锁率优先', value: 'module' },
+  { label: '专三率优先', value: 'recommendation' },
+  { label: '模组解锁率优先', value: 'module' },
   { label: '等级从高到低', value: 'level' }
 ]
 function update(key, value) {

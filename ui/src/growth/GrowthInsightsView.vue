@@ -45,7 +45,6 @@ const surveyNote = computed(() => {
           <span class="gp-kicker">Local archive</span>
           <h2 class="gp-section-head__title">养成统计</h2>
         </div>
-        <span class="gp-muted growth-insights__hint">本页读取本地已同步练度计算统计。</span>
       </header>
       <OperatorStatistics v-if="statistics" :statistics="statistics" :history="history" />
       <div v-else class="gp-empty">
@@ -112,10 +111,6 @@ const surveyNote = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.growth-insights__hint {
-  font-size: 11.5px;
 }
 
 .growth-insights__survey-body {

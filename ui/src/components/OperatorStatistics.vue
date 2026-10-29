@@ -3,7 +3,6 @@
     <div class="stat-toolbar">
       <div class="stat-toolbar__title">
         <h3>本地练度档案</h3>
-        <p>已同步 {{ format(totals.owned) }} 位干员 · 统计口径按星级筛选</p>
       </div>
       <n-checkbox-group v-model:value="rarities">
         <n-space :size="12">
@@ -25,7 +24,6 @@
             <strong class="gp-num"
               >{{ format(totals.owned) }}<small>/ {{ format(totals.available) }}</small></strong
             >
-            <em>资源收录 {{ rarities.length }} 个星级合计</em>
           </div>
           <div class="stat-kpi">
             <span>精二干员</span>
@@ -33,17 +31,14 @@
               >{{ format(totals.elite2)
               }}<small>{{ percent(totals.elite2, totals.owned) }}</small></strong
             >
-            <em>占已招募</em>
           </div>
           <div class="stat-kpi">
             <span>专三技能</span>
             <strong class="gp-num">{{ format(totals.skills[3]) }}</strong>
-            <em>仅计已专三</em>
           </div>
           <div class="stat-kpi">
             <span>已开启模组</span>
             <strong class="gp-num">{{ format(openedModules) }}</strong>
-            <em>按已开启数量</em>
           </div>
         </div>
 
@@ -435,12 +430,6 @@ const historyChart = computed(() => ({
   font-weight: 700;
 }
 
-.stat-toolbar__title p {
-  margin: 3px 0 0;
-  color: var(--stat-muted);
-  font-size: 11.5px;
-}
-
 .stat-tabs :deep(.n-tabs-nav) {
   margin-bottom: 4px;
 }
@@ -493,12 +482,6 @@ const historyChart = computed(() => ({
   color: var(--stat-muted);
   font-size: 12px;
   font-weight: 500;
-}
-
-.stat-kpi em {
-  color: var(--gp-faint);
-  font-size: 10px;
-  font-style: normal;
 }
 
 .stat-table {

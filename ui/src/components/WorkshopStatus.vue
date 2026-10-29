@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
-import { NButton, NSpace, NText } from 'naive-ui'
+import { NButton, NSpace, NSpin, NText } from 'naive-ui'
 import { useMowerStore } from '@/stores/mower'
 import { createWorkshopStatus } from '@/utils/workshopStatus'
 
@@ -42,6 +42,35 @@ onUnmounted(model.stop)
     <n-text v-for="(block, index) in data?.blockers || []" :key="index" depth="3">
       {{ block.operator ? `${block.operator}：` : '' }}{{ block.message }}
     </n-text>
-    <n-button size="tiny" text :loading="loading" @click="model.refresh">刷新合成状态</n-button>
+    <n-button
+      size="tiny"
+      text
+      :disabled="loading"
+      :aria-busy="loading"
+      aria-label="刷新合成状态"
+      @click="model.refresh"
+    >
+      <span class="workshop-status__refresh">
+        <span :style="{ visibility: loading ? 'hidden' : undefined }">刷新合成状态</span>
+        <span v-if="loading" class="workshop-status__spinner" aria-hidden="true">
+          <n-spin :size="12" />
+        </span>
+      </span>
+    </n-button>
   </n-space>
 </template>
+
+<style scoped>
+.workshop-status__refresh {
+  position: relative;
+  display: inline-flex;
+}
+
+.workshop-status__spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+</style>
