@@ -4,12 +4,13 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from math import isfinite
+from typing import Callable
 
-ADAPTIVE_WAIT_SCENES = frozenset({"CONNECTING", "LOADING", "LOGIN_LOADING"})
-NETWORK_EVIDENCE_SCENES = frozenset({"CONNECTING", "LOGIN_CONNECTING"})
+ADAPTIVE_WAIT_SCENES = frozenset({"CONNECTING", "LOADING"})
+NETWORK_EVIDENCE_SCENES = frozenset({"CONNECTING"})
 OBSERVATION_TTL = timedelta(minutes=15)
 MAX_OBSERVATIONS = 1024
-MAX_COMPENSATION_SECONDS = 120.0
+MAX_COMPENSATION_SECONDS = 90.0
 COMPENSATION_RATIO = 0.5
 
 
@@ -30,13 +31,18 @@ class SlowNetworkEvent:
 
 
 class NetworkAdaptation:
-    """Retain one-use evidence independently for run orders and scene waiting."""
+    """Share recent network facts while consuming each ordinary wait once."""
 
     def __init__(self):
         self._observations: deque[SlowNetworkEvent] = deque(maxlen=MAX_OBSERVATIONS)
-        self._run_order_used: set[int] = set()
         self._waiting_used: set[int] = set()
         self._next_event_id = 1
+        self._observation_callback: Callable[[SlowNetworkEvent], None] | None = None
+
+    def set_observation_callback(
+        self, callback: Callable[[SlowNetworkEvent], None] | None
+    ) -> None:
+        self._observation_callback = callback
 
     @property
     def observations(self) -> tuple[SlowNetworkEvent, ...]:
@@ -52,7 +58,6 @@ class NetworkAdaptation:
             maxlen=MAX_OBSERVATIONS,
         )
         retained = {event.event_id for event in self._observations}
-        self._run_order_used.intersection_update(retained)
         self._waiting_used.intersection_update(retained)
 
     def record(
@@ -85,28 +90,35 @@ class NetworkAdaptation:
         self._next_event_id += 1
         self._observations.append(event)
         self._prune(observed_at)
+        if self._observation_callback is not None:
+            self._observation_callback(event)
         return event
 
-    def _latest_qualifying(self, now: datetime, base_seconds: float):
+    def _largest_qualifying(
+        self, now: datetime, base_seconds: float, *, unused_wait_only: bool = False
+    ):
         self._prune(now)
         if not isfinite(base_seconds) or base_seconds <= 0:
             return None
-        return next(
+        return max(
             (
                 event
                 for event in reversed(self._observations)
-                if event.duration_seconds >= base_seconds * COMPENSATION_RATIO
+                if event.duration_seconds > base_seconds * COMPENSATION_RATIO
+                and (not unused_wait_only or event.event_id not in self._waiting_used)
             ),
-            None,
+            key=lambda event: (
+                event.duration_seconds,
+                event.observed_at,
+                event.event_id,
+            ),
+            default=None,
         )
 
     def peek_run_order(
         self, now: datetime, *, base_seconds: float
     ) -> SlowNetworkEvent | None:
-        event = self._latest_qualifying(now, base_seconds)
-        if event is not None and event.event_id not in self._run_order_used:
-            return event
-        return None
+        return self._largest_qualifying(now, base_seconds)
 
     def take_run_order(
         self, now: datetime, event_id: int | None = None, *, base_seconds: float
@@ -114,7 +126,6 @@ class NetworkAdaptation:
         event = self.peek_run_order(now, base_seconds=base_seconds)
         if event is None or event_id is not None and event.event_id != event_id:
             return None
-        self._run_order_used.add(event.event_id)
         return event
 
     def take_wait(
@@ -122,8 +133,8 @@ class NetworkAdaptation:
     ) -> SlowNetworkEvent | None:
         if scene not in ADAPTIVE_WAIT_SCENES:
             return None
-        event = self._latest_qualifying(now, base_seconds)
-        if event is not None and event.event_id not in self._waiting_used:
+        event = self._largest_qualifying(now, base_seconds, unused_wait_only=True)
+        if event is not None:
             self._waiting_used.add(event.event_id)
             return event
         return None

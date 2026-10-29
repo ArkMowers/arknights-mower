@@ -182,7 +182,7 @@ class Recognizer:
             return (min_loc[0] + 960 + 42, min_loc[1] + 42)
 
     def _network_wait_is_managed(self):
-        if self.scene not in (Scene.CONNECTING, Scene.LOADING, Scene.LOGIN_LOADING):
+        if self.scene not in (Scene.CONNECTING, Scene.LOADING):
             self.__dict__.pop("_network_wait_episode", None)
             return False
         return isinstance(getattr(self, "_network_wait_guard", None), NetworkWaitGuard)

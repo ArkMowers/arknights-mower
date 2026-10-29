@@ -17,7 +17,11 @@ from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.network_adaptation import get_network_adaptation
+from arknights_mower.utils.network_adaptation import (
+    ADAPTIVE_WAIT_SCENES,
+    MAX_COMPENSATION_SECONDS,
+    get_network_adaptation,
+)
 from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.recognize import (
     NetworkWaitGuard,
@@ -964,25 +968,25 @@ class BaseSolver:
         sleep_time, wait_count = getattr(
             config.conf.waiting_scene, scene_list[str(scene)]["label"]
         )
-        run_wait = self.recog.__dict__.get(
-            "_run_order_network_active"
-        ) is True and scene in (Scene.CONNECTING, Scene.LOADING, Scene.LOGIN_LOADING)
+        run_allowance = 0
+        if scene in (Scene.CONNECTING, Scene.LOADING):
+            from arknights_mower.utils.run_order_network import (
+                run_order_network_compensation,
+            )
+
+            run_allowance = min(
+                run_order_network_compensation(self.recog, config.conf),
+                MAX_COMPENSATION_SECONDS,
+            )
         adaptive_wait = (
             getattr(config.conf, "waiting_scene_network_adaptive", False) is True
-            or run_wait
         )
-        observe_network = adaptive_wait or (
-            getattr(config.conf, "run_order_network_adaptive", False) is True
+        observe_network = (
+            adaptive_wait
+            or run_allowance > 0
+            or (getattr(config.conf, "run_order_network_adaptive", False) is True)
         )
-        run_allowance = self.recog.__dict__.get("_run_order_network_compensation", 0)
-        if type(run_allowance) not in (int, float) or scene != Scene.CONNECTING:
-            run_allowance = 0
-        run_allowance = max(0, min(run_allowance, 120)) if observe_network else 0
-        if observe_network and scene in (
-            Scene.CONNECTING,
-            Scene.LOADING,
-            Scene.LOGIN_LOADING,
-        ):
+        if observe_network and scene in (Scene.CONNECTING, Scene.LOADING):
             if self._wait_for_network_scene(
                 scene,
                 sleep_time,
@@ -992,6 +996,7 @@ class BaseSolver:
             ):
                 return True
         else:
+            self.recog.__dict__.pop("_network_wait_episode", None)
             for _ in range(wait_count):
                 self.sleep(sleep_time)
                 if self.scene() != scene:
@@ -1008,8 +1013,6 @@ class BaseSolver:
     def _network_wait_source(self, scene):
         if scene == Scene.CONNECTING:
             return "CONNECTING"
-        if scene == Scene.LOGIN_LOADING and self.find("login_connecting") is not None:
-            return "LOGIN_CONNECTING"
         return None
 
     def _wait_for_network_scene(
@@ -1036,7 +1039,7 @@ class BaseSolver:
             )
             scene_budgets = {
                 name: float(interval * count)
-                for name in ("CONNECTING", "LOADING", "LOGIN_LOADING")
+                for name in ADAPTIVE_WAIT_SCENES
                 for interval, count in (getattr(config.conf.waiting_scene, name),)
             }
             episode = NetworkWaitGuard(
@@ -1072,9 +1075,9 @@ class BaseSolver:
                 (
                     getattr(config.conf, "run_order_network_adaptive", False) is True
                     and config.conf.run_order_buffer_time > 0
-                    and elapsed >= config.conf.run_order_buffer_time / 2
+                    and elapsed > config.conf.run_order_buffer_time / 2
                 )
-                or (adaptive and elapsed >= network_base_seconds / 2)
+                or (adaptive and elapsed > network_base_seconds / 2)
                 or timed_out
             ):
                 seconds = f"{elapsed:.1f}".removesuffix(".0")
@@ -1116,7 +1119,6 @@ class BaseSolver:
                 if not protected or current_scene not in (
                     Scene.CONNECTING,
                     Scene.LOADING,
-                    Scene.LOGIN_LOADING,
                 ):
                     self.recog.__dict__.pop("_network_wait_episode", None)
                     return True

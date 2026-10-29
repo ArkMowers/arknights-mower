@@ -623,10 +623,6 @@ def _resume_device_dispatch(scheduler=None, failure=None):
 
 
 def _next_scheduler_task():
-    if getattr(config.conf, "run_order_network_adaptive", False) or any(
-        hasattr(task, "run_order_network_timing") for task in base_scheduler.tasks
-    ):
-        return base_scheduler.find_next_task()
     return find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
 
 

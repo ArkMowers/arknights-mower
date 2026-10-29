@@ -5,7 +5,10 @@ from unittest.mock import Mock
 import pytest
 
 from arknights_mower.utils import recognize, solver
-from arknights_mower.utils.network_adaptation import get_network_adaptation
+from arknights_mower.utils.network_adaptation import (
+    MAX_COMPENSATION_SECONDS,
+    get_network_adaptation,
+)
 from arknights_mower.utils.recognize import Recognizer, Scene
 
 
@@ -139,7 +142,7 @@ def test_protected_wait_owns_freeze_and_loading_restart_decisions(waiting, resta
     waiting.check_loading = True
 
     assert waiting.solver.waiting_solver(restart_on_timeout=restart) is False
-    assert waiting.clock.seconds == 130
+    assert waiting.clock.seconds == 10 + MAX_COMPENSATION_SECONDS
     assert waiting.device.exit.call_count == int(restart)
     assert "_network_wait_guard" not in waiting.recog.__dict__
     assert waiting.recog.last_scene_time == waiting.clock.now()
@@ -153,11 +156,13 @@ def test_continuous_network_scene_switch_does_not_renew_budget(waiting):
 
     assert waiting.solver.waiting_solver(restart_on_timeout=False) is False
     assert waiting.clock.seconds == 100
-    latest = get_network_adaptation(waiting.recog).peek_run_order(
-        waiting.clock.now(), base_seconds=waiting.conf.run_order_buffer_time
-    )
+    latest = get_network_adaptation(waiting.recog).observations[-1]
     assert latest.scene == "CONNECTING"
     assert latest.duration_seconds == 15
+    assert set(waiting.recog._network_wait_episode.scene_budgets) == {
+        "CONNECTING",
+        "LOADING",
+    }
 
     assert waiting.solver.waiting_solver(restart_on_timeout=False) is False
     assert waiting.clock.seconds == 100
@@ -178,11 +183,7 @@ def test_rebuilt_solver_and_game_restart_keep_recent_network_event(waiting):
     assert rebuilt.waiting_solver() is True
     assert waiting.clock.seconds == 20
     assert (
-        get_network_adaptation(waiting.recog)
-        .peek_run_order(
-            waiting.clock.now(), base_seconds=waiting.conf.run_order_buffer_time
-        )
-        .event_id
+        get_network_adaptation(waiting.recog).observations[-1].event_id
         != event.event_id
     )
 
@@ -346,13 +347,11 @@ def test_ordinary_loading_never_creates_network_evidence(waiting, scene):
     waiting.device.exit.assert_not_called()
 
 
-@pytest.mark.parametrize("scene", [Scene.LOADING, Scene.LOGIN_LOADING])
-def test_loading_can_use_network_evidence_without_renewing_it(waiting, scene):
+def test_loading_can_use_network_evidence_without_renewing_it(waiting):
     evidence = remember(waiting, 30)
-    label = "LOADING" if scene == Scene.LOADING else "LOGIN_LOADING"
-    setattr(waiting.conf.waiting_scene, label, (1, 10))
-    waiting.recog.scene = scene
-    waiting.scene_at = lambda elapsed: Scene.INDEX if elapsed >= 25 else scene
+    waiting.conf.waiting_scene.LOADING = (1, 10)
+    waiting.recog.scene = Scene.LOADING
+    waiting.scene_at = lambda elapsed: Scene.INDEX if elapsed >= 25 else Scene.LOADING
 
     assert waiting.solver.waiting_solver() is True
     assert waiting.clock.seconds == 25
@@ -372,75 +371,57 @@ def test_loading_can_use_network_evidence_without_renewing_it(waiting, scene):
     waiting.device.exit.assert_not_called()
 
 
-def test_login_logo_then_one_second_connecting_records_only_one_raw_second(waiting):
-    waiting.conf.waiting_scene.LOGIN_LOADING = (1, 50)
-    waiting.recog.scene = Scene.LOGIN_LOADING
-    waiting.scene_at = lambda elapsed: (
-        Scene.INDEX if elapsed >= 31 else Scene.LOGIN_LOADING
-    )
-    waiting.login_connecting_at = lambda elapsed: 30 <= elapsed < 31
-
-    assert waiting.solver.waiting_solver() is True
-    assert waiting.clock.seconds == 31
-    adaptation = get_network_adaptation(waiting.recog)
-    assert len(adaptation.observations) == 1
-    event = adaptation.observations[0]
-    assert event.scene == "LOGIN_CONNECTING"
-    assert event.duration_seconds == 1
-    assert event.base_seconds == 50
-    assert (
-        adaptation.take_wait("LOGIN_LOADING", waiting.clock.now(), base_seconds=50)
-        is None
-    )
-    assert adaptation.peek_run_order(waiting.clock.now(), base_seconds=15) is None
-    solver.logger.debug.assert_not_called()
-
-
-@pytest.mark.parametrize("run_enabled", [False, True])
-def test_login_network_phase_records_its_own_duration_and_logs_only_qualified_use(
-    waiting, run_enabled
+@pytest.mark.parametrize("scene", [Scene.LOGIN_LOADING, Scene.UNKNOWN])
+@pytest.mark.parametrize("run_active", [False, True])
+@pytest.mark.parametrize("finish", [None, 6])
+def test_login_and_unknown_keep_original_wait_without_evidence_or_allowance(
+    waiting, scene, run_active, finish
 ):
-    waiting.conf.run_order_network_adaptive = run_enabled
-    waiting.conf.waiting_scene.LOGIN_LOADING = (1, 50)
-    waiting.recog.scene = Scene.LOGIN_LOADING
+    evidence = remember(waiting, 30)
+    waiting.conf.run_order_network_adaptive = True
+    waiting.conf.waiting_scene.LOGIN_LOADING = (1, 10)
+    waiting.recog._run_order_network_active = run_active
+    waiting.recog._run_order_network_compensation = 30
+    waiting.recog.scene = scene
+    waiting.login_connecting_at = lambda elapsed: True
     waiting.scene_at = lambda elapsed: (
-        Scene.INDEX if elapsed >= 31 else Scene.LOGIN_LOADING
+        Scene.INDEX if finish is not None and elapsed >= finish else scene
     )
-    waiting.login_connecting_at = lambda elapsed: 20 <= elapsed < 31
 
-    assert waiting.solver.waiting_solver() is True
+    assert waiting.solver.waiting_solver(restart_on_timeout=False) is (
+        finish is not None
+    )
+    assert waiting.clock.seconds == (finish if finish is not None else 10)
     adaptation = get_network_adaptation(waiting.recog)
-    events = adaptation.observations
-    assert len(events) == 1
-    assert events[0].scene == "LOGIN_CONNECTING"
-    assert events[0].duration_seconds == 11
-    assert events[0].base_seconds == 50
-    assert events[0].timed_out is False
+    assert adaptation.observations == (evidence,)
     assert (
-        adaptation.take_wait("LOGIN_LOADING", waiting.clock.now(), base_seconds=50)
-        is None
+        adaptation.take_wait("CONNECTING", waiting.clock.now(), base_seconds=10)
+        == evidence
     )
-    assert solver.logger.debug.call_count == int(run_enabled)
-
-
-def test_two_short_login_network_phases_are_not_added_together(waiting):
-    waiting.conf.waiting_scene.LOGIN_LOADING = (1, 20)
-    waiting.recog.scene = Scene.LOGIN_LOADING
-    waiting.scene_at = lambda elapsed: (
-        Scene.INDEX if elapsed >= 14 else Scene.LOGIN_LOADING
-    )
-    waiting.login_connecting_at = lambda elapsed: elapsed < 6 or 8 <= elapsed < 14
-
-    assert waiting.solver.waiting_solver() is True
-    assert waiting.clock.seconds == 14
-    adaptation = get_network_adaptation(waiting.recog)
-    assert [event.duration_seconds for event in adaptation.observations] == [6, 6]
-    assert all(event.scene == "LOGIN_CONNECTING" for event in adaptation.observations)
-    assert (
-        adaptation.take_wait("LOGIN_LOADING", waiting.clock.now(), base_seconds=20)
-        is None
-    )
+    waiting.solver.find.assert_not_called()
+    solver.logger.info.assert_not_called()
     solver.logger.debug.assert_not_called()
+    waiting.device.exit.assert_not_called()
+
+
+@pytest.mark.parametrize("scene", [Scene.LOGIN_LOADING, Scene.UNKNOWN])
+def test_login_or_unknown_transition_ends_the_protected_episode(waiting, scene):
+    remember(waiting, 30)
+    waiting.conf.waiting_scene.LOGIN_LOADING = (1, 20)
+    waiting.conf.waiting_scene.UNKNOWN = (1, 20)
+    waiting.scene_at = lambda elapsed: scene if elapsed >= 15 else Scene.CONNECTING
+
+    assert waiting.solver.waiting_solver(restart_on_timeout=False) is True
+    assert waiting.clock.seconds == 15
+    assert "_network_wait_episode" not in waiting.recog.__dict__
+    assert "_network_wait_guard" not in waiting.recog.__dict__
+    observations = get_network_adaptation(waiting.recog).observations
+    assert observations[-1].scene == "CONNECTING"
+    assert observations[-1].duration_seconds == 15
+
+    assert waiting.solver.waiting_solver(restart_on_timeout=False) is False
+    assert waiting.clock.seconds == 35
+    assert get_network_adaptation(waiting.recog).observations == observations
 
 
 def test_network_phases_separated_by_loading_are_not_added_together(waiting):
@@ -563,7 +544,25 @@ def test_raw_wait_below_half_is_retained_without_debug_or_consumption(waiting):
         adaptation.take_wait("CONNECTING", waiting.clock.now(), base_seconds=4) is None
     )
     assert (
-        adaptation.take_wait("CONNECTING", waiting.clock.now(), base_seconds=2) == event
+        adaptation.take_wait("CONNECTING", waiting.clock.now(), base_seconds=1) == event
+    )
+    solver.logger.debug.assert_not_called()
+    solver.logger.info.assert_not_called()
+
+
+def test_connecting_wait_at_exact_half_is_recorded_without_qualifying(waiting):
+    waiting.scene_at = lambda elapsed: Scene.INDEX if elapsed >= 5 else Scene.CONNECTING
+
+    assert waiting.solver.waiting_solver() is True
+    adaptation = get_network_adaptation(waiting.recog)
+    assert len(adaptation.observations) == 1
+    event = adaptation.observations[0]
+    assert event.duration_seconds == 5
+    assert (
+        adaptation.take_wait("CONNECTING", waiting.clock.now(), base_seconds=10) is None
+    )
+    assert (
+        adaptation.take_wait("CONNECTING", waiting.clock.now(), base_seconds=9) == event
     )
     solver.logger.debug.assert_not_called()
     solver.logger.info.assert_not_called()
@@ -610,8 +609,29 @@ def test_nine_seconds_extends_ten_second_wait_to_nineteen_with_exact_info(waitin
     solver.logger.debug.assert_not_called()
 
 
-@pytest.mark.parametrize("duration,extra", [(4.9, 0), (5, 5), (5.1, 5.1)])
-def test_half_of_original_wait_timeout_is_inclusive_and_does_not_consume_below(
+def test_independent_waits_take_the_largest_remaining_network_records(waiting):
+    first = remember(waiting, 60)
+    second = remember(waiting, 9)
+    waiting.conf.waiting_scene.LOADING = (1, 10)
+    waiting.recog.scene = Scene.LOADING
+    waiting.scene_at = lambda elapsed: Scene.LOADING
+
+    assert waiting.solver.waiting_solver(restart_on_timeout=False) is False
+    assert waiting.clock.seconds == 70
+    waiting.recog.scene = Scene.INDEX
+    assert waiting.solver.scene() == Scene.INDEX
+    waiting.recog.scene = Scene.LOADING
+
+    assert waiting.solver.waiting_solver(restart_on_timeout=False) is False
+    assert waiting.clock.seconds == 89
+    adaptation = get_network_adaptation(waiting.recog)
+    assert adaptation.observations == (first, second)
+    assert adaptation.take_wait("LOADING", waiting.clock.now(), base_seconds=10) is None
+    assert solver.logger.info.call_count == 2
+
+
+@pytest.mark.parametrize("duration,extra", [(4.9, 0), (5, 0), (5.1, 5.1)])
+def test_wait_timeout_requires_strictly_more_than_half_and_preserves_other_records(
     waiting, duration, extra
 ):
     waiting.conf.waiting_scene.LOADING = (1, 10)
@@ -652,8 +672,8 @@ def test_recorded_source_base_and_debug_threshold_do_not_use_widened_timeout(wai
     )
 
 
-@pytest.mark.parametrize("active,expected", [(False, 10), (True, 19)])
-def test_run_scope_can_take_half_qualified_wait_evidence_with_zero_run_compensation(
+@pytest.mark.parametrize("active,expected", [(False, 10), (True, 10)])
+def test_run_scope_without_binding_does_not_enable_global_wait_compensation(
     waiting, active, expected
 ):
     waiting.conf.run_order_network_adaptive = True
@@ -667,19 +687,12 @@ def test_run_scope_can_take_half_qualified_wait_evidence_with_zero_run_compensat
 
     assert waiting.solver.waiting_solver(restart_on_timeout=False) is False
     assert waiting.clock.seconds == expected
-    assert solver.logger.info.call_count == int(active)
+    solver.logger.info.assert_not_called()
     adaptation = get_network_adaptation(waiting.recog)
     assert adaptation.peek_run_order(waiting.clock.now(), base_seconds=15) == event
-    if active:
-        assert (
-            adaptation.take_wait("LOADING", waiting.clock.now(), base_seconds=10)
-            is None
-        )
-    else:
-        assert (
-            adaptation.take_wait("LOADING", waiting.clock.now(), base_seconds=10)
-            == event
-        )
+    assert (
+        adaptation.take_wait("LOADING", waiting.clock.now(), base_seconds=10) == event
+    )
 
 
 def test_selected_run_compensation_protects_connecting_even_below_scene_half(waiting):
@@ -702,13 +715,20 @@ def test_selected_run_compensation_protects_connecting_even_below_scene_half(wai
     )
 
 
-@pytest.mark.parametrize("scene", [Scene.LOADING, Scene.LOGIN_LOADING])
-def test_selected_run_compensation_does_not_force_ordinary_loading_below_its_half(
-    waiting, scene
+@pytest.mark.parametrize(
+    "scene,expected",
+    [(Scene.LOADING, 39), (Scene.LOGIN_LOADING, 30), (Scene.UNKNOWN, 30)],
+)
+def test_bound_run_compensation_extends_only_the_two_supported_scenes(
+    waiting, scene, expected
 ):
     waiting.conf.run_order_network_adaptive = True
     waiting.conf.waiting_scene_network_adaptive = False
-    label = "LOADING" if scene == Scene.LOADING else "LOGIN_LOADING"
+    label = {
+        Scene.LOADING: "LOADING",
+        Scene.LOGIN_LOADING: "LOGIN_LOADING",
+        Scene.UNKNOWN: "UNKNOWN",
+    }[scene]
     setattr(waiting.conf.waiting_scene, label, (1, 30))
     remember(waiting, 9)
     waiting.recog._run_order_network_active = True
@@ -717,13 +737,13 @@ def test_selected_run_compensation_does_not_force_ordinary_loading_below_its_hal
     waiting.scene_at = lambda elapsed: scene
 
     assert waiting.solver.waiting_solver(restart_on_timeout=False) is False
-    assert waiting.clock.seconds == 30
-    solver.logger.info.assert_not_called()
+    assert waiting.clock.seconds == expected
+    assert solver.logger.info.call_count == int(scene == Scene.LOADING)
     solver.logger.debug.assert_not_called()
 
 
 @pytest.mark.parametrize("inside_scope", [False, True])
-def test_real_run_scope_protects_waiting_without_qualifying_for_buffer_compensation(
+def test_real_bound_run_scope_protects_waiting_with_global_adaptation_disabled(
     waiting, monkeypatch, inside_scope
 ):
     from arknights_mower.utils import run_order_network
@@ -731,8 +751,7 @@ def test_real_run_scope_protects_waiting_without_qualifying_for_buffer_compensat
 
     waiting.conf.run_order_network_adaptive = True
     waiting.conf.waiting_scene_network_adaptive = False
-    waiting.conf.run_order_buffer_time = 50
-    remember(waiting, 9)
+    remember(waiting, 30)
     original_time = waiting.clock.now() + timedelta(minutes=1)
     task = SchedulerTask(
         original_time, {"room_1_1": ["但书"]}, TaskTypes.RUN_ORDER, "room_1_1"
@@ -741,15 +760,18 @@ def test_real_run_scope_protects_waiting_without_qualifying_for_buffer_compensat
     waiting.solver.tasks = [task]
     waiting.solver.op_data = SimpleNamespace()
     monkeypatch.setattr(run_order_network, "datetime", waiting.clock)
+    run_order_network.bind_run_order_network(
+        waiting.solver.tasks, waiting.recog, waiting.conf, waiting.clock.now()
+    )
+    bound_time = task.time
     waiting.scene_at = lambda elapsed: (
-        Scene.INDEX if elapsed >= 15 else Scene.CONNECTING
+        Scene.INDEX if elapsed >= 20 else Scene.CONNECTING
     )
 
     @run_order_network.with_run_order_network
     def arrange(subject):
         assert subject.recog._run_order_network_active is True
-        assert subject.recog._run_order_network_compensation == 0
-        assert not hasattr(task, "run_order_network_timing")
+        assert subject.recog._run_order_network_compensation == 30
         return subject.waiting_solver(restart_on_timeout=False)
 
     result = (
@@ -759,10 +781,69 @@ def test_real_run_scope_protects_waiting_without_qualifying_for_buffer_compensat
     )
 
     assert result is inside_scope
-    assert waiting.clock.seconds == (15 if inside_scope else 10)
-    assert waiting.conf.run_order_buffer_time == 50
-    assert task.time == original_time
-    assert not hasattr(task, "run_order_network_timing")
+    assert waiting.clock.seconds == (20 if inside_scope else 10)
+    assert waiting.conf.run_order_buffer_time == 15
+    assert task.time == bound_time
     assert "_run_order_network_active" not in waiting.recog.__dict__
     assert "_run_order_network_compensation" not in waiting.recog.__dict__
+    waiting.device.exit.assert_not_called()
+
+
+def test_protected_run_records_new_actual_connecting_wait_without_capping_raw_duration(
+    waiting,
+):
+    waiting.conf.waiting_scene_network_adaptive = False
+    waiting.conf.run_order_network_adaptive = True
+    waiting.conf.waiting_scene.CONNECTING = (1, 120)
+    first_event = remember(waiting, 30)
+    waiting.recog._run_order_network_active = True
+    waiting.recog._run_order_network_compensation = 30
+    adaptation = get_network_adaptation(waiting.recog)
+    during_record = []
+    adaptation.set_observation_callback(
+        lambda event: during_record.append(
+            (
+                event,
+                waiting.recog._run_order_network_compensation,
+                waiting.recog._network_wait_guard,
+            )
+        )
+    )
+    waiting.scene_at = lambda elapsed: (
+        Scene.INDEX if elapsed >= 130 else Scene.CONNECTING
+    )
+
+    assert waiting.solver.waiting_solver(restart_on_timeout=False) is True
+    assert waiting.clock.seconds == 130
+    assert len(during_record) == 1
+    event, active_allowance, guard = during_record[0]
+    assert event is adaptation.observations[-1]
+    assert event.event_id != first_event.event_id
+    assert event.duration_seconds == 130
+    assert event.compensation_seconds == MAX_COMPENSATION_SECONDS == 90
+    assert event.timed_out is False
+    assert active_allowance == 30
+    assert guard is not None
+    assert "_network_wait_guard" not in waiting.recog.__dict__
+
+
+@pytest.mark.parametrize("scene", [Scene.CONNECTING, Scene.LOADING])
+def test_each_independent_wait_in_a_run_inherits_the_frozen_allowance(waiting, scene):
+    waiting.conf.waiting_scene_network_adaptive = False
+    waiting.conf.run_order_network_adaptive = True
+    waiting.conf.waiting_scene.LOADING = (1, 10)
+    waiting.recog._run_order_network_active = True
+    waiting.recog._run_order_network_compensation = 30
+    waiting.recog.scene = scene
+    waiting.scene_at = lambda elapsed: Scene.INDEX if elapsed >= 25 else scene
+
+    assert waiting.solver.waiting_solver(restart_on_timeout=False) is True
+    assert waiting.clock.seconds == 25
+    waiting.recog.scene = scene
+    waiting.scene_at = lambda elapsed: Scene.INDEX if elapsed >= 50 else scene
+
+    assert waiting.solver.waiting_solver(restart_on_timeout=False) is True
+    assert waiting.clock.seconds == 50
+    assert waiting.recog._run_order_network_compensation == 30
+    assert solver.logger.info.call_count == 2
     waiting.device.exit.assert_not_called()

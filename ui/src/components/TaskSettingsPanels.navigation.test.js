@@ -213,10 +213,10 @@ let frames
 let observers
 const renderer = createRenderer({
   createElement: node,
-  createText: () => node('#text'),
+  createText: (text) => ({ ...node('#text'), text }),
   createComment: () => node('#comment'),
-  setText() {},
-  setElementText() {},
+  setText: (element, text) => (element.text = text),
+  setElementText: (element, text) => (element.text = text),
   patchProp: (element, key, _old, value) => (element.props[key] = value),
   parentNode: (element) => element.parent,
   nextSibling: (element) =>
@@ -364,7 +364,7 @@ afterEach(() => {
 })
 
 describe('continuous settings directory and scroll selection', () => {
-  it('uses runtime scene names for waiting-setting input labels', async () => {
+  it('uses the log scene names for waiting-setting input labels', async () => {
     const { config } = await mount()
     const scenes = JSON.parse(
       readFileSync(new URL('../../../arknights_mower/data/scene.json', import.meta.url), 'utf8')
@@ -372,14 +372,42 @@ describe('continuous settings directory and scroll selection', () => {
     const waitingScenes = [scenes['9'], scenes['9998'], scenes['104']]
     config.waiting_scene = Object.fromEntries(waitingScenes.map(({ label }) => [label, [3, 10]]))
     await flush()
-    const inputLabels = all(panels('runtime')[0]).map(
-      (element) => element.props['input-props']?.['aria-label']
-    )
+    const fields = all(panels('runtime')[0])
+    const inputLabels = fields.map((element) => element.props['input-props']?.['aria-label'])
     for (const { comment } of waitingScenes) {
       expect(inputLabels).toContain(`${comment}截图间隔（秒）`)
       expect(inputLabels).toContain(`${comment}等待次数`)
     }
+    expect(fields.some((element) => element.props.label === '查看场景跳转等待说明')).toBe(false)
   })
+
+  it.each([false, true])(
+    'explains the current network adaptation rules for managed instance %s',
+    async (managed) => {
+      const { config } = await mount()
+      config.manager_owned_device = managed
+      await flush()
+      const textOf = (editor) =>
+        panels(editor)
+          .flatMap(all)
+          .map((element) => element.text || '')
+          .join('\n')
+      const orderHelp = textOf('runorder')
+      const waitingHelp = managed ? orderHelp : textOf('runtime')
+      expect(orderHelp).toContain('未来20分钟内所有未开始的跑单分别计算补偿')
+      expect(orderHelp).toContain('严格超过原缓冲一半的最长等待，等于一半不触发')
+      expect(orderHelp).toContain('本次前置时间也增加整段临时缓冲')
+      expect(orderHelp).toContain('恢复原班后清除，不影响其他跑单')
+      expect(waitingHelp).toContain(
+        '仅延长“正在提交反馈至神经”和“场景跳转时的等待界面”；“登录中”和“未知”不参与'
+      )
+      expect(waitingHelp).toContain('尚未用于普通等待、且严格超过原上限一半的最长记录')
+      expect(waitingHelp).toContain('开始使用时消费；两种场景相互切换不重新增加补偿')
+      expect(waitingHelp).toContain('即使此开关关闭也生效；两项补偿取较大值，不相加')
+      const limits = [...`${orderHelp}\n${managed ? '' : waitingHelp}`.matchAll(/最多补偿(\d+)秒/g)]
+      expect(limits.map((match) => Number(match[1]))).toEqual([90, 90])
+    }
+  )
 
   it('exposes per-instance waiting adaptation for managed instances while runtime stays hidden', async () => {
     const page = await mount()

@@ -123,6 +123,7 @@ from arknights_mower.utils.manufacture_product import (
     product_task_meta,
 )
 from arknights_mower.utils.mastery_support_types import TrainingObservationError
+from arknights_mower.utils.network_adaptation import get_network_adaptation
 from arknights_mower.utils.operation_timing import (
     estimate_dorm_minutes,
     record_dorm_recovery,
@@ -156,10 +157,13 @@ from arknights_mower.utils.resting_priority import (
     resting_tier,
 )
 from arknights_mower.utils.run_order_network import (
-    refresh_run_order_network,
+    bind_run_order_network,
+    finish_run_order_network,
+    reconcile_run_order_network,
     run_order_buffer_seconds,
     run_order_entry_seconds,
     run_order_network_allowance,
+    run_order_network_scope,
     with_run_order_network,
 )
 from arknights_mower.utils.scheduler_task import (
@@ -552,6 +556,22 @@ class BaseSchedulerSolver(
         self._startup_run_order_check_pending = True
         self._startup_mood_observations = {}
         workshop_inventory_changed.set()
+        self._register_network_wait_observer()
+
+    def _register_network_wait_observer(self):
+        get_network_adaptation(self.recog).set_observation_callback(
+            self._on_network_wait_observed
+        )
+
+    def _on_network_wait_observed(self, event):
+        # 只更新待执行任务的参数，队列仍由下一次正常调度排序。
+        bind_run_order_network(
+            self.tasks,
+            self.recog,
+            config.conf,
+            event.observed_at,
+            op_data=getattr(self, "op_data", None),
+        )
 
     def find_next_task(
         self,
@@ -568,19 +588,6 @@ class BaseSchedulerSolver(
             tasks: 任务列表
             compare_time: 截止时间
         """
-        if getattr(config.conf, "run_order_network_adaptive", False) or any(
-            hasattr(task, "run_order_network_timing") for task in self.tasks
-        ):
-            previous_times = [(task, task.time) for task in self.tasks]
-            refresh_run_order_network(
-                self.tasks,
-                self.recog,
-                config.conf,
-                datetime.now(),
-                op_data=getattr(self, "op_data", None),
-            )
-            if any(task.time != old_time for task, old_time in previous_times):
-                scheduling(self.tasks, op_data=getattr(self, "op_data", None))
         return find_next_task(
             self.tasks,
             compare_time,
@@ -1158,6 +1165,7 @@ class BaseSchedulerSolver(
 
         if config.stop_mower.is_set():
             raise MowerExit
+        self._register_network_wait_observer()
         if config.maintenance_recheck.is_set():
             return
         self._discard_legacy_mood_control_tasks()
@@ -1188,6 +1196,7 @@ class BaseSchedulerSolver(
                 self._queue_missing_run_order_reads()
             self._resume_waiting_group_shifts()
             self._fill_empty_dorms()
+            reconcile_run_order_network(self.tasks, config.conf)
             scheduling(self.tasks, op_data=getattr(self, "op_data", None))
             self.task = self.find_next_task()
             if self.task is None:
@@ -1230,7 +1239,17 @@ class BaseSchedulerSolver(
         save_log(logMsg, "{}" if not self.task else str(self.task), level="INFO")
         if config.maintenance_recheck.is_set():
             return
-        return super().run()
+        dispatched_task = self.task
+        try:
+            with run_order_network_scope(self):
+                return super().run()
+        finally:
+            if (
+                dispatched_task is not None
+                and not getattr(dispatched_task, "run_order_restore_pending", False)
+                and not any(task is dispatched_task for task in self.tasks)
+            ):
+                finish_run_order_network(dispatched_task, self.recog)
 
     def _fill_empty_dorms(self, *, primary_planned=False):
         """统一空床入口：日常规划和调度前均检查，不等待五分钟空档或跑单延期事件。"""
@@ -15844,6 +15863,7 @@ class BaseSchedulerSolver(
         if restoring_order:
             del self.task.run_order_original_roster
             del self.task.run_order_restore_pending
+            finish_run_order_network(self.task, self.recog)
             if getattr(self.task, "maintenance_replacement_run", False):
                 self.maintenance_entry_pending = True
         if (
@@ -15949,6 +15969,7 @@ class BaseSchedulerSolver(
                             )
                         del self.task.run_order_original_roster
                         del self.task.run_order_restore_pending
+                        finish_run_order_network(self.task, self.recog)
                         if getattr(self.task, "maintenance_replacement_run", False):
                             self.maintenance_entry_pending = True
                 else:
