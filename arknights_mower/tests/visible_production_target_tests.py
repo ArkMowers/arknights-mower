@@ -194,12 +194,15 @@ def test_missing_target_resets_filter_then_searches_left(
 def test_missing_final_target_prevents_confirmation_even_after_visible_click(
     monkeypatch,
 ):
-    solver, _, events = production_solver(monkeypatch, final_missing=True)
-    with pytest.raises(Exception, match="检测到干员选择错误"):
+    solver, selected, events = production_solver(monkeypatch, final_missing=True)
+    with pytest.raises(base_mixin.AgentSelectionNotReady, match="可识别干员列不足"):
         solver.choose_agent(["鸿雪", "但书"], "room_2_1")
         solver.tap_confirm("room_2_1", {})
     assert any(event[:2] == ("select", "但书") for event in events)
     assert any(event[:3] == ("filter", "ALL", "final") for event in events)
+    assert selected == ["鸿雪"]
+    assert events.count(("clear",)) == 1
+    assert not any(event[0] == "reselect" for event in events)
     solver.tap_confirm.assert_not_called()
 
 
