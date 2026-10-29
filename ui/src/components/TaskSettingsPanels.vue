@@ -225,8 +225,8 @@ function reset_launch_command() {
 const scene_name = {
   CONNECTING: '正在提交反馈至神经',
   UNKNOWN: '未知',
-  LOADING: '加载中',
-  LOGIN_LOADING: '场景跳转时的等待界面',
+  LOADING: '场景跳转时的等待界面',
+  LOGIN_LOADING: '登录中',
   LOGIN_MAIN_NOENTRY: '登录页面（无按钮入口）',
   OPERATOR_ONGOING: '代理作战'
 }
