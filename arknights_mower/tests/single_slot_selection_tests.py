@@ -1,4 +1,4 @@
-"""单岗位设施通过已选卡片取消暂选，不点击不存在的清空按钮。"""
+"""无清空按钮的选人页面通过已选卡片取消暂选，回收站仍用清空按钮。"""
 
 import sys
 from pathlib import Path
@@ -54,12 +54,12 @@ def test_captured_single_slot_selection_border(selection_module, cleared):
             room,
             targets,
             initial,
-            1,
+            2 if room == "train" else 1,
             profession,
             events,
             id=f"{room}-{case}",
         )
-        for room in (ROOM, "contact", "factory")
+        for room in (ROOM, "contact", "factory", "train")
         for targets, initial, profession, events, case in (
             (
                 ["图耶"],
@@ -89,7 +89,16 @@ def test_captured_single_slot_selection_border(selection_module, cleared):
             "ALL",
             ["clear", "cleared", ("select", "图耶")],
             id="multiple-slots-clear-button",
-        )
+        ),
+        pytest.param(
+            "recycle",
+            ["图耶"],
+            ["但书"],
+            2,
+            "ALL",
+            ["clear", "cleared", ("select", "图耶")],
+            id="recycling-clear-button",
+        ),
     ],
 )
 @pytest.mark.parametrize("mode", ["xhigh", "high", "medium", "low"])
@@ -164,7 +173,9 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
     def tap(point, **_):
         nonlocal clear_pending
         if isinstance(point[0], (int, float)) and point[1] == 1026:
-            assert capacity > 1, "单岗位页面没有清空按钮，不能点击 (729, 1026)"
+            assert room == "recycle" or (room == ROOM and capacity > 1), (
+                "当前选人页面没有清空按钮，不能点击 (729, 1026)"
+            )
             clear_pending = 3
             events.append("clear")
             refresh()
@@ -284,12 +295,12 @@ def test_captured_workshop_single_slot_selection_border(selection_module):
     )
 
 
-@pytest.mark.parametrize("room", ["factory", "contact"])
-@pytest.mark.parametrize("plan_count", [None, 0, 1])
-def test_right_side_single_slot_clear_uses_captured_card_without_static_staff(
+@pytest.mark.parametrize("room", ["factory", "contact", "train"])
+@pytest.mark.parametrize("plan_count", [None, 0, 1, 2])
+def test_right_side_single_selection_clear_without_static_staff(
     monkeypatch, selection_module, room, plan_count
 ):
-    """加工站实图提供蓝框和坐标；无蓝框反馈由已有贸易站样本模拟。"""
+    """各房间调用复用加工站蓝框与坐标；取消反馈用贸易站样本模拟。"""
     from arknights_mower.utils.character_recognize import operator_list
 
     fixture_dir = Path(__file__).parent / "fixtures/selection"
@@ -335,15 +346,15 @@ def test_right_side_single_slot_clear_uses_captured_card_without_static_staff(
     assert solver.recog.img is cleared_image
 
 
-def test_training_selection_keeps_legacy_clear(selection_module):
+def test_recycling_selection_keeps_clear_button(selection_module):
     solver = selection_module.BaseMixin()
-    solver.op_data = SimpleNamespace(plan={"train": [object()]})
+    solver.op_data = SimpleNamespace(plan={"recycle": [object(), object()]})
     solver.recog = SimpleNamespace(w=1920, h=1080)
     solver.tap = Mock()
     solver.switch_arrange_order = Mock()
     solver.wait_for_cleared_selection = Mock()
 
-    solver.clear_agent_selection("train")
+    solver.clear_agent_selection("recycle")
 
     solver.tap.assert_called_once()
     assert solver.tap.call_args.args == ((729.6, 1026.0),)
