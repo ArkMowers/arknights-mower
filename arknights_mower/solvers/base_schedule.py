@@ -623,6 +623,8 @@ class BaseSchedulerSolver(
 
     def _task_failure_snapshot(self, task, rooms):
         """失败任务仅由新观测或相关安排变化重新准入，不使用时钟计时。"""
+        if getattr(task, "clue_access_record_pending", False):
+            return {"access_record_visible": self._clue_access_record_visible()}
         if task.type in MANUAL_TASK_TYPES:
             from arknights_mower.solvers.manual_tasks import manual_task_snapshot
 
@@ -1007,6 +1009,11 @@ class BaseSchedulerSolver(
         self._discard_legacy_run_order_waits()
         for task in list(self.tasks):
             failure = getattr(task, "execution_failure", None)
+            if failure and getattr(task, "clue_access_record_pending", False):
+                if self._clue_access_record_cleared():
+                    del task.execution_failure
+                    del task.clue_access_record_pending
+                continue
             predecessors = getattr(task, "product_shift_predecessors", ())
             if failure and predecessors:
                 dispatch = task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
@@ -3180,10 +3187,10 @@ class BaseSchedulerSolver(
                 ):
                     remove_current_task = self.overtake_room() is not False
                 elif self.task.type == TaskTypes.CLUE_PARTY:
-                    self._run_clue_flow()
+                    remove_current_task = self._run_clue_flow() is not False
                 elif self.task.type == TaskTypes.CLUE:
                     # 手动触发的会客室任务，与定时触发走同一条路径
-                    self._run_clue_flow()
+                    remove_current_task = self._run_clue_flow() is not False
                 elif self.task.type == TaskTypes.REFRESH_TIME:
                     self.plan_run_order(self.task.meta_data)
                     self.skip(["todo_task", "collect_notification"])
@@ -3440,8 +3447,8 @@ class BaseSchedulerSolver(
                 and self.no_pending_task(3)
                 and self._clue_flow_resume_time() is None
             ):
-                self.clue_new()
-                self.last_clue = datetime.now()
+                if self.clue_new() is not False:
+                    self.last_clue = datetime.now()
             if (
                 self.drone_room not in self.op_data.run_order_rooms
                 and (
@@ -10184,18 +10191,23 @@ class BaseSchedulerSolver(
         """跑一次完整会客室流程。
 
         定时趴体（线索交流结束后触发）和手动「线索任务」共用这一条路径。
-        先清掉缓存的线索交流结束时间，让 clue_new() 从界面上重新读取；跑完
-        刷新 last_clue，把下一次定时触发顺延一小时。
+        clue_new() 根据界面更新线索交流结束时间；未读到新结果时保留已有观测。
+        完成后刷新 last_clue，失败时保留原任务和检查时间。
         """
-        self.party_time = None
-        self.clue_new()
+        if self.clue_new() is False:
+            task = getattr(self, "task", None)
+            if task is not None and task.type in (TaskTypes.CLUE, TaskTypes.CLUE_PARTY):
+                task.clue_access_record_pending = True
+                self._retain_failed_task(
+                    task, "访问记录关闭未确认", ("meeting",), dependency=True
+                )
+            return False
         self.last_clue = datetime.now()
         self.skip(["collect_notification"])
 
     def _run_clue_shop(self, *, settlement_checked=None):
         if self._clue_credit_enabled():
-            self._run_on_demand_clue_shop(settlement_checked=settlement_checked)
-            return
+            return self._run_on_demand_clue_shop(settlement_checked=settlement_checked)
         conf = config.conf
         if getattr(
             conf,
@@ -10225,10 +10237,20 @@ class BaseSchedulerSolver(
         )
 
     def clue_new(self):
+        if getattr(self, "_clue_access_record_exhausted", False):
+            self.recog.update()
+            if not self._clue_access_record_cleared():
+                return False
+            self._clue_access_record_exhausted = False
         try:
             settlement_checked = None
             logger.info("基建：线索")
             self.scene_graph_navigation(Scene.INFRA_MAIN)
+            if (
+                getattr(self, "_clue_access_record_exhausted", False)
+                and not self._clue_access_record_cleared()
+            ):
+                return False
             self.enter_room("meeting")
 
             clue_size = (162, 216)
@@ -10340,8 +10362,22 @@ class BaseSchedulerSolver(
                                 settlement_checked = self._collect_clue_message_board(
                                     collect_current=False
                                 )
+                                if (
+                                    getattr(
+                                        self, "_clue_access_record_exhausted", False
+                                    )
+                                    and not self._clue_access_record_cleared()
+                                ):
+                                    return False
                                 if not settlement_checked:
                                     self.scene_graph_navigation(Scene.INFRA_MAIN)
+                                    if (
+                                        getattr(
+                                            self, "_clue_access_record_exhausted", False
+                                        )
+                                        and not self._clue_access_record_cleared()
+                                    ):
+                                        return False
                                     self.enter_room("meeting")
                             else:
                                 self._prepare_clue_room()
@@ -10372,6 +10408,11 @@ class BaseSchedulerSolver(
                                 if self.scene() == Scene.INFRA_DETAILS:
                                     break
                                 self.sleep(0.5)
+                        if (
+                            getattr(self, "_clue_access_record_exhausted", False)
+                            and not self._clue_access_record_cleared()
+                        ):
+                            return False
                         ctm.complete("message_board")
                     elif ctm.task == "party_time":
                         self.wait_product_complete()
@@ -10406,6 +10447,11 @@ class BaseSchedulerSolver(
                     else:
                         # 点击左下角，关闭进驻信息，进入线索界面
                         self.tap((330, 1000))
+
+                elif scene == Scene.CLUE_ACCESS_RECORD:
+                    if not self._wait_clue_message_board():
+                        self._clue_access_record_exhausted = True
+                        return False
 
                 elif scene == Scene.CLUE_MESSAGE_BOARD:
                     # 停在信息板页面上：退回房间详情，后面的任务都在那里继续。
@@ -10637,11 +10683,18 @@ class BaseSchedulerSolver(
 
                 else:
                     self.scene_graph_navigation(Scene.INFRA_MAIN)
+                    if (
+                        getattr(self, "_clue_access_record_exhausted", False)
+                        and not self._clue_access_record_cleared()
+                    ):
+                        return False
                     self.enter_room("meeting")
             if self._clue_credit_enabled():
-                self._run_clue_shop(settlement_checked=settlement_checked)
+                shop_result = self._run_clue_shop(settlement_checked=settlement_checked)
             else:
-                self._run_clue_shop()
+                shop_result = self._run_clue_shop()
+            if shop_result is False:
+                return False
         except (MowerExit, DeviceRecoveryError, SharedADBError):
             raise
         except Exception as e:
