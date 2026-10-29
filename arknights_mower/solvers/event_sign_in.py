@@ -413,6 +413,15 @@ class EventSignInSolver(SceneGraphSolver):
         gray = cv2.cvtColor(band, cv2.COLOR_RGB2GRAY)
         return cv2.resize(gray, (96, 160) if whole else (48, 64))
 
+    def _card_match_score(self, before, anchor, after, card, *, whole=False):
+        signature = self._card_signature(before, anchor, whole=whole)
+        candidate = self._card_signature(after, card, whole=whole)
+        # 卡片区域取整后可能错开少量像素，允许归一化图像在一像素内对齐。
+        scores = cv2.matchTemplate(
+            candidate, signature[1:-1, 1:-1], cv2.TM_CCOEFF_NORMED
+        )
+        return cv2.minMaxLoc(scores)[1]
+
     def _move_page(self, page, direction, *, retry=False):
         if len(page.cards) < 2:
             return None
@@ -465,29 +474,21 @@ class EventSignInSolver(SceneGraphSolver):
             if matched:
                 return self._retain_page_offset(page, after, anchor, matched[0]), True
         if anchor.claimed:
-            signature = self._card_signature(page, anchor)
             matches = []
             for card in candidates:
                 if not card.claimed:
                     continue
-                score = cv2.matchTemplate(
-                    self._card_signature(after, card), signature, cv2.TM_CCOEFF_NORMED
-                )[0, 0]
+                score = self._card_match_score(page, anchor, after, card)
                 if score >= 0.85:
                     matches.append(card)
             if len(matches) == 1:
                 return self._retain_page_offset(page, after, anchor, matches[0]), True
             if len(matches) > 1:
-                signature = self._card_signature(page, anchor, whole=True)
                 scored = sorted(
                     (
                         (
-                            float(
-                                cv2.matchTemplate(
-                                    self._card_signature(after, card, whole=True),
-                                    signature,
-                                    cv2.TM_CCOEFF_NORMED,
-                                )[0, 0]
+                            self._card_match_score(
+                                page, anchor, after, card, whole=True
                             ),
                             index,
                         )
