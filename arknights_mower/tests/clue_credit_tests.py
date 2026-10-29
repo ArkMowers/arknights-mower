@@ -1,4 +1,5 @@
 import itertools
+import pickle
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -6,11 +7,7 @@ from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import cv2
-import numpy as np
 import pytest
-
-from arknights_mower.utils.rapidocr import create_engine
 
 with pytest.MonkeyPatch.context() as import_context:
     import_context.setitem(sys.modules, "arknights_mower.utils.skland", MagicMock())
@@ -22,7 +19,7 @@ from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils import datetime as server_datetime
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.image import bytes2img
+from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.recognize import Recognizer
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
@@ -271,6 +268,223 @@ def prepare_clue_dispatch(scheduler, state, monkeypatch):
     scheduler.find = MagicMock(return_value=True)
     scheduler._refresh_deferred_product_reservations = MagicMock()
     return LocalClock
+
+
+def prepare_stuck_access_record_dispatch(scheduler, state, monkeypatch):
+    prepare_empty_clue_workflow(scheduler)
+    resumed_scene = scheduler.scene
+    clock = prepare_clue_dispatch(scheduler, state, monkeypatch)
+    popup = SimpleNamespace(visible=True, in_room=False)
+    scheduler.scene = lambda: (
+        Scene.CLUE_ACCESS_RECORD
+        if popup.visible
+        else resumed_scene()
+        if popup.in_room
+        else Scene.INFRA_MAIN
+    )
+    scheduler.find = lambda name, **_: (
+        ((850, 180), (1075, 360))
+        if name == "clue/access_record" and popup.visible
+        else True
+        if name == "control_central"
+        else None
+    )
+    scheduler.scene_graph_navigation = MagicMock(
+        side_effect=lambda _: setattr(popup, "in_room", False)
+    )
+    scheduler.enter_room = MagicMock(
+        side_effect=lambda _: setattr(popup, "in_room", True)
+    )
+    scheduler._run_clue_shop = MagicMock()
+    scheduler.skip = MagicMock()
+    scheduler.planned = True
+    scheduler.todo_task = True
+    scheduler.collect_notification = True
+    scheduler.handle_error = MagicMock()
+    monkeypatch.setattr(base_schedule, "get_server_weekday", lambda: 0)
+    return clock, popup
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.CLUE, TaskTypes.CLUE_PARTY])
+def test_stuck_access_record_retains_dispatched_clue_task(shopping, monkeypatch, kind):
+    scheduler, _, state = shopping
+    clock, popup = prepare_stuck_access_record_dispatch(scheduler, state, monkeypatch)
+    task = SchedulerTask(time=clock.now() - timedelta(minutes=20), task_type=kind)
+    original_time = task.time
+    scheduler.task = task
+    scheduler.tasks = [task]
+    scheduler.last_clue = previous_check = clock.now() - timedelta(hours=2)
+    scheduler.party_time = party_end = clock.now() - timedelta(minutes=10)
+
+    scheduler.infra_main()
+
+    assert scheduler.tasks == [task]
+    assert scheduler.tasks[0] is task
+    assert task.time == original_time
+    assert task.execution_failure["dependency"] is True
+    assert scheduler.last_clue == previous_check
+    assert scheduler.party_time == party_end
+    scheduler.skip.assert_not_called()
+    assert [call.args[0] for call in scheduler.tap.call_args_list] == [(960, 540)]
+
+    for _ in range(2):
+        state.now += timedelta(minutes=5)
+        scheduler.task = task
+        scheduler.infra_main()
+        scheduler._resume_failed_tasks()
+        assert scheduler.tasks == [task]
+        assert task.time == original_time
+        assert task.execution_failure
+        assert scheduler.last_clue == previous_check
+        assert scheduler.party_time == party_end
+        assert scheduler.tap.call_count == 1
+    assert scheduler.clue_new() is False
+    assert scheduler.tap.call_count == 1
+    scheduler.enter_room.assert_called_once_with("meeting")
+
+    popup.visible = False
+    popup.in_room = False
+    scheduler._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
+    assert scheduler.tasks[0] is task
+    assert task.time == original_time
+    scheduler.task = task
+
+    scheduler.infra_main()
+
+    assert scheduler.tasks == []
+    assert scheduler.last_clue == clock.now()
+    scheduler.read_party_time.assert_called_once_with()
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.CLUE, TaskTypes.CLUE_PARTY])
+def test_access_record_dependency_survives_task_pickle_round_trip(
+    shopping, monkeypatch, kind
+):
+    scheduler, _, state = shopping
+    clock, popup = prepare_stuck_access_record_dispatch(scheduler, state, monkeypatch)
+    task = SchedulerTask(time=clock.now() - timedelta(minutes=20), task_type=kind)
+    scheduler.task = task
+    scheduler.tasks = [task]
+    scheduler.last_clue = previous_check = clock.now() - timedelta(hours=2)
+    scheduler.party_time = party_end = clock.now() - timedelta(minutes=10)
+    scheduler.infra_main()
+
+    restored = pickle.loads(pickle.dumps(task))
+    assert restored is not task
+    assert restored.time == task.time
+    assert restored.type == kind
+    assert restored.clue_access_record_pending is True
+    assert restored.execution_failure == task.execution_failure
+    scheduler.task = restored
+    scheduler.tasks = [restored]
+    scheduler._resume_failed_tasks()
+    assert restored.execution_failure
+
+    popup.visible = False
+    for scene in (Scene.UNKNOWN, Scene.LOADING):
+        scheduler.scene = lambda: scene
+        scheduler._resume_failed_tasks()
+        assert restored.execution_failure
+        assert restored.clue_access_record_pending is True
+        assert scheduler.tasks[0] is restored
+        assert restored.time == task.time
+        assert scheduler.last_clue == previous_check
+        assert scheduler.party_time == party_end
+        assert scheduler.tap.call_count == 1
+
+    scheduler.scene = lambda: Scene.INFRA_MAIN
+    scheduler._resume_failed_tasks()
+
+    assert not getattr(restored, "execution_failure", None)
+    assert not getattr(restored, "clue_access_record_pending", False)
+    assert scheduler.tasks[0] is restored
+    assert restored.time == task.time
+    assert scheduler.tap.call_count == 1
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.CLUE, TaskTypes.CLUE_PARTY])
+@pytest.mark.parametrize("party_active", [False, True])
+def test_clue_dispatch_retains_task_when_final_shopping_cannot_close_record(
+    shopping, monkeypatch, kind, party_active
+):
+    scheduler, _, state = shopping
+    clock, popup = prepare_stuck_access_record_dispatch(scheduler, state, monkeypatch)
+    popup.visible = False
+    task = SchedulerTask(time=clock.now() - timedelta(minutes=20), task_type=kind)
+    original_time = task.time
+    scheduler.task = task
+    scheduler.tasks = [task]
+    scheduler.last_clue = previous_check = clock.now() - timedelta(hours=2)
+    scheduler.party_time = clock.now() - timedelta(minutes=10)
+    observed_party_time = clock.now() + timedelta(minutes=20) if party_active else None
+    scheduler.read_party_time.return_value = observed_party_time
+
+    def shopping_failure(**_kwargs):
+        popup.visible = True
+        scheduler._clue_access_record_exhausted = True
+        return False
+
+    scheduler._run_clue_shop.side_effect = shopping_failure
+
+    scheduler.infra_main()
+
+    scheduler.read_party_time.assert_called_once_with()
+    scheduler._run_clue_shop.assert_called_once_with(settlement_checked=None)
+    assert any(queued is task for queued in scheduler.tasks)
+    assert scheduler.tasks[0] is task
+    assert task.time == original_time
+    assert task.execution_failure["dependency"] is True
+    assert task.clue_access_record_pending is True
+    assert scheduler.last_clue == previous_check
+    assert scheduler.party_time == observed_party_time
+    scheduler.skip.assert_not_called()
+
+
+def test_periodic_stuck_access_record_preserves_interval_and_other_work(
+    shopping, monkeypatch
+):
+    scheduler, _, state = shopping
+    clock, popup = prepare_stuck_access_record_dispatch(scheduler, state, monkeypatch)
+    scheduler.task = None
+    scheduler.tasks = []
+    scheduler.op_data = SimpleNamespace(run_order_rooms={})
+    scheduler.todo_task = False
+    scheduler.enable_party = True
+    scheduler.last_clue = previous_check = clock.now() - timedelta(hours=2)
+    scheduler.party_time = party_end = clock.now() - timedelta(minutes=10)
+    scheduler.drone_room = "room_1_1"
+    scheduler.drone_time = scheduler.reload_time = None
+    scheduler.drone = MagicMock()
+    scheduler.reload = MagicMock()
+
+    scheduler.infra_main()
+
+    assert scheduler.last_clue == previous_check
+    assert scheduler.party_time == party_end
+    assert scheduler.tasks == []
+    assert scheduler.tap.call_count == 1
+    scheduler.drone.assert_called_once_with("room_1_1")
+    scheduler.reload.assert_called_once_with()
+    assert scheduler.todo_task is True
+
+    for _ in range(2):
+        state.now += timedelta(minutes=5)
+        scheduler.todo_task = False
+        scheduler.infra_main()
+        assert scheduler.last_clue == previous_check
+        assert scheduler.party_time == party_end
+        assert scheduler.tasks == []
+        assert scheduler.tap.call_count == 1
+    scheduler.enter_room.assert_called_once_with("meeting")
+
+    popup.visible = False
+    popup.in_room = False
+    scheduler.todo_task = False
+    scheduler.infra_main()
+
+    assert scheduler.last_clue == clock.now()
+    scheduler.read_party_time.assert_called_once_with()
 
 
 @pytest.mark.parametrize("kind", [TaskTypes.CLUE_PARTY, TaskTypes.CLUE])
@@ -973,13 +1187,7 @@ def board_navigation(shopping, monkeypatch):
         access_record=False,
         record_auto_closes=False,
         record_stuck=False,
-        record_words=[
-            ("访问记录", 0.99),
-            ("ACCESS RECORDS", 0.99),
-            ("2026.08.10——2026.08.17", 0.99),
-            ("会客室上周共接待了32人", 0.99),
-            ("总计获得300信用", 0.99),
-        ],
+        record_visible=True,
         unknown_on_open=False,
         popup_stuck=False,
         claim_works=True,
@@ -999,7 +1207,7 @@ def board_navigation(shopping, monkeypatch):
             "room": Scene.INFRA_DETAILS,
             "board": Scene.CLUE_MESSAGE_BOARD,
             "reward": Scene.MATERIEL,
-            "record": Scene.UNKNOWN,
+            "record": Scene.CLUE_ACCESS_RECORD,
             "unknown": Scene.UNKNOWN,
         }[panel]
 
@@ -1016,15 +1224,10 @@ def board_navigation(shopping, monkeypatch):
             show("board") if ui.panel == "record" and ui.record_auto_closes else None
         )
     )
-    scheduler.recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
-
-    def ocr(_image, **_kwargs):
-        words = ui.record_words if ui.panel == "record" else []
-        return [[[], text, confidence] for text, confidence in words], None
-
-    monkeypatch.setattr(base_schedule.rapidocr, "engine", ocr)
 
     def find(name):
+        if name == "clue/access_record" and ui.panel == "record" and ui.record_visible:
+            return ((600, 140), (1320, 650))
         if name == "clue/message_board" and ui.panel == "room" and ui.entry_visible:
             return (500, 500)
         if name == "materiel_ico" and ui.panel == "reward":
@@ -1139,6 +1342,89 @@ def test_legacy_workflow_uses_real_board_open_and_preserves_claim_policy(
         ["claim", "dismiss", "back"] if opened else []
     )
     assert state.current == (0 if opened else 300)
+
+
+@pytest.mark.parametrize("defer_credit", [False, True])
+@pytest.mark.parametrize("stuck", [False, True])
+def test_clue_workflow_resumes_from_access_record(
+    board_navigation, monkeypatch, defer_credit, stuck
+):
+    scheduler, _, state, ui, _ = board_navigation
+    board_io = {
+        name: getattr(scheduler, name)
+        for name in ("scene", "find", "tap", "back", "sleep")
+    }
+    prepare_empty_clue_workflow(scheduler)
+    del scheduler._open_clue_message_board
+    for name, method in board_io.items():
+        setattr(scheduler, name, method)
+    scheduler._clue_credit_enabled = MagicMock(return_value=defer_credit)
+    monkeypatch.setattr(base_schedule, "get_server_weekday", lambda: 0)
+    ui.record_stuck = stuck
+    state.current = 60
+
+    def enter_room(_room):
+        if scheduler.enter_room.call_count > 1:
+            pytest.fail("Recognized access record must not restart room navigation")
+        ui.panel = "record"
+        state.scene = Scene.CLUE_ACCESS_RECORD
+
+    scheduler.enter_room = MagicMock(side_effect=enter_room)
+    original_tap = scheduler.tap.side_effect
+
+    def tap(position):
+        if position == (330, 1000):
+            if stuck:
+                pytest.fail("An unchanged access record must stop the clue workflow")
+            # 后续每日线索入口说明初始弹窗已处理，信息板任务仍按原规则执行。
+            raise MowerExit
+        original_tap(position)
+
+    scheduler.tap.side_effect = tap
+    if stuck:
+        assert scheduler.clue_new() is False
+    else:
+        with pytest.raises(MowerExit):
+            scheduler.clue_new()
+
+    assert ui.events == (
+        ["dismiss_record"]
+        if stuck
+        else ["dismiss_record", "back"]
+        + ([] if defer_credit else ["open", "claim", "dismiss", "back"])
+    )
+    assert ui.entry_actions == ([] if stuck or defer_credit else ["activate", "open"])
+    assert state.current == (60 if stuck or defer_credit else 0)
+    scheduler.enter_room.assert_called_once_with("meeting")
+
+
+@pytest.mark.parametrize("entry", ["clue_new", "visit_message_board"])
+def test_stuck_record_at_entry_stops_after_real_navigation(board_navigation, entry):
+    scheduler, _, state, ui, _ = board_navigation
+    ui.panel = "record"
+    ui.record_stuck = True
+    state.scene = Scene.CLUE_ACCESS_RECORD
+    scheduler.scene_graph_navigation = MagicMock(
+        wraps=SceneGraphSolver.scene_graph_navigation.__get__(scheduler)
+    )
+    scheduler.enter_room = MagicMock(
+        side_effect=lambda *_: pytest.fail(
+            "A confirmed unchanged access record must prevent room input"
+        )
+    )
+
+    result = (
+        scheduler.clue_new()
+        if entry == "clue_new"
+        else scheduler._visit_clue_message_board(collect_current=False)
+    )
+
+    assert result is False
+    assert ui.events == ["dismiss_record"]
+    assert ui.entry_actions == []
+    scheduler.enter_room.assert_not_called()
+    scheduler.scene_graph_navigation.assert_called_once_with(Scene.INFRA_MAIN)
+    scheduler.tap.assert_called_once_with((960, 540))
 
 
 def test_already_open_board_is_not_activated_again(board_navigation):
@@ -1351,28 +1637,6 @@ def test_settlement_popup_may_cover_a_recognizable_board(board_navigation):
     assert state.current == 300
 
 
-@pytest.mark.parametrize(
-    "filename,resize,expected",
-    [
-        ("clue_access_record_video.png", False, True),
-        ("clue_access_record_video.png", True, True),
-        ("clue_live_room_details.png", False, False),
-    ],
-)
-def test_access_record_real_ocr_on_screenshots(monkeypatch, filename, resize, expected):
-    frame = bytes2img(
-        (Path(__file__).parent / "fixtures" / "clue" / filename).read_bytes()
-    )
-    if resize:
-        # 视频截帧并非标准画面帧；额外验证缩放到运行时尺寸后的识别。
-        frame = cv2.resize(frame, (1920, 1080), interpolation=cv2.INTER_AREA)
-    monkeypatch.setattr(rapidocr, "engine", create_engine())
-    scheduler = object.__new__(base_schedule.BaseSchedulerSolver)
-    scheduler.recog = SimpleNamespace(img=frame)
-
-    assert scheduler._clue_access_record_visible() is expected
-
-
 @pytest.mark.parametrize("automatic", [False, True])
 def test_access_record_waits_or_dismisses_without_claiming_current(
     board_navigation, automatic
@@ -1404,22 +1668,79 @@ def test_access_record_is_checked_before_underlying_board(board_navigation):
     assert ui.events == ["open", "dismiss_record", "back"]
 
 
-@pytest.mark.parametrize("title", ["访 问 记 录", "Access Records"])
-def test_access_record_does_not_depend_on_date_or_credit_amount(
-    board_navigation, title
+@pytest.mark.parametrize("misclassified_scene", [Scene.INFRA_MAIN, Scene.FACTORY_ROOM])
+def test_access_record_is_checked_despite_background_scene(
+    board_navigation, misclassified_scene
 ):
-    scheduler, _, _, ui, _ = board_navigation
+    scheduler, _, state, ui, _ = board_navigation
     ui.access_record = True
-    ui.record_words = [
-        (title, 0.95),
-        ("2027.01.04——2027.01.11", 0.9),
-        ("会客室 上周 共接待了 99 人", 0.95),
-        ("总计 获得 600 信用", 0.9),
-    ]
+    state.previous = 300
+    state.current = 60
+    scheduler.scene = lambda: (
+        misclassified_scene if ui.panel == "record" else state.scene
+    )
 
     assert scheduler._collect_clue_message_board(collect_current=False) is True
 
+    assert state.balance == 300
+    assert state.current == 60
     assert ui.events == ["open", "dismiss_record", "back"]
+
+
+@pytest.mark.parametrize("scene", [Scene.UNKNOWN, Scene.INFRA_MAIN, Scene.FACTORY_ROOM])
+def test_already_visible_access_record_resumes_without_furniture_input(
+    board_navigation, scene
+):
+    scheduler, _, state, ui, _ = board_navigation
+    ui.panel = "record"
+    state.scene = scene
+    state.current = 60
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is True
+
+    assert state.current == 60
+    assert ui.entry_actions == []
+    assert ui.events == ["dismiss_record", "back"]
+
+
+@pytest.mark.parametrize("already_open", [False, True])
+def test_access_record_original_frame_replays_collection(
+    board_navigation, monkeypatch, already_open
+):
+    scheduler, _, state, ui, _ = board_navigation
+    frames = Path(__file__).parent / "fixtures" / "clue"
+    record = Recognizer(
+        SimpleNamespace(check_current_focus=lambda: False),
+        (frames / "clue_access_record_20261029.jpg").read_bytes(),
+    )
+    ocr = MagicMock(
+        side_effect=AssertionError("Access-record recognition must not use OCR")
+    )
+    monkeypatch.setattr(rapidocr, "engine", ocr)
+    original_find = scheduler.find
+    scheduler.find = lambda name: (
+        record.find(name)
+        if name == "clue/access_record" and ui.panel == "record"
+        else original_find(name)
+    )
+    scheduler.scene = lambda: (
+        record.get_scene() if ui.panel == "record" else state.scene
+    )
+    ui.access_record = True
+    state.current = 60
+    state.previous = 0 if already_open else 300
+    state.balance = 300 if already_open else 0
+    if already_open:
+        ui.panel = "record"
+
+    assert record.get_scene() == Scene.CLUE_ACCESS_RECORD
+    assert scheduler._collect_clue_message_board(collect_current=False) is True
+
+    assert state.balance == 300
+    assert state.current == 60
+    assert ui.events == ([] if already_open else ["open"]) + ["dismiss_record", "back"]
+    assert ui.entry_actions == ([] if already_open else ["activate", "open"])
+    ocr.assert_not_called()
 
 
 def test_access_record_and_material_reward_can_both_be_closed(board_navigation):
@@ -1460,26 +1781,28 @@ def test_shopping_uses_credit_after_access_record_without_claiming_current(
     assert ui.events == ["open", "dismiss_record", "back"]
 
 
-@pytest.mark.parametrize(
-    "words",
-    [
-        [("访问记录", 0.99)],
-        [("会客室上周共接待了32人", 0.99), ("总计获得300信用", 0.99)],
-        [("访问人次 本周2 本日2", 0.99), ("每周可获取访客信用0/300", 0.99)],
-        [("访问记录", 0.99), ("一个人访问你，就能攒30信用点每周上限是300", 0.99)],
-        [
-            ("访问记录", 0.4),
-            ("会客室上周共接待了32人", 0.99),
-            ("总计获得300信用", 0.99),
-        ],
-    ],
-)
-def test_incomplete_or_uncertain_access_record_text_does_not_trigger_clicks(
-    board_navigation, words
-):
-    scheduler, _, _, ui, _ = board_navigation
+def test_shopping_stops_after_access_record_cannot_be_closed(board_navigation):
+    scheduler, shop, state, ui, _ = board_navigation
     ui.access_record = True
-    ui.record_words = words
+    ui.record_stuck = True
+    state.products = [product()]
+    shop.run = MagicMock(wraps=shop.run)
+
+    assert scheduler._run_clue_shop() is False
+    assert scheduler._run_clue_shop() is False
+
+    shop.run.assert_called_once_with(on_demand=True)
+    assert ui.events == ["open", "dismiss_record"]
+    assert state.current == 300
+    assert state.purchased == []
+
+
+@pytest.mark.parametrize("scene", [Scene.UNKNOWN, Scene.INFRA_MAIN])
+def test_unconfirmed_access_record_does_not_trigger_clicks(board_navigation, scene):
+    scheduler, _, state, ui, _ = board_navigation
+    ui.access_record = True
+    ui.record_visible = False
+    scheduler.scene = lambda: scene if ui.panel == "record" else state.scene
 
     assert scheduler._collect_clue_message_board(collect_current=False) is False
 

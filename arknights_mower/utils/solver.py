@@ -672,6 +672,26 @@ class BaseSolver:
         self.back_to_index()
         self.tap_index_element("infrastructure")
 
+    def dismiss_clue_access_record(self):
+        """关闭已确认的访问记录一次，在有限帧内核实弹窗消失。"""
+        if self.scene() != Scene.CLUE_ACCESS_RECORD:
+            return True
+        if getattr(self, "_clue_access_record_exhausted", False):
+            return False
+        self.tap((960, 540))
+        for _ in range(4):
+            self.recog.update()
+            scene = self.scene()
+            if scene != Scene.CLUE_ACCESS_RECORD and scene not in self.waiting_scene:
+                return True
+            self.sleep(0.5)
+        logger.warning(
+            "访问记录关闭后仍未消失，结束本次返回",
+            extra={"archive_screenshots": True},
+        )
+        self._clue_access_record_exhausted = True
+        return False
+
     def back_to_index(self):
         """
         返回主页
@@ -679,9 +699,21 @@ class BaseSolver:
         logger.info("back to index")
         retry_times = config.MAX_RETRYTIME
         pre_scene = None
+        access_record_dismissed = False
         while retry_times and (scene := self.scene()) != Scene.INDEX:
             try:
-                if self.get_navigation():
+                if (
+                    scene != Scene.CLUE_ACCESS_RECORD
+                    and scene not in self.waiting_scene
+                ):
+                    self._clue_access_record_exhausted = False
+                if scene == Scene.CLUE_ACCESS_RECORD:
+                    if access_record_dismissed:
+                        break
+                    access_record_dismissed = True
+                    if not self.dismiss_clue_access_record():
+                        break
+                elif self.get_navigation():
                     self.tap_nav_element("index")
                 elif scene == Scene.RIIC_REPORT:
                     self.tap((100, 60))

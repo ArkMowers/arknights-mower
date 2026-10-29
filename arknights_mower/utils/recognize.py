@@ -198,6 +198,8 @@ class Recognizer:
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+        elif self.find("clue/access_record"):
+            self.scene = Scene.CLUE_ACCESS_RECORD
         # 导航栏会覆盖在原场景上；下层的制造站收取等特征仍可能可见。
         elif self.find("nav_bar"):
             self.scene = Scene.NAVIGATION_BAR
@@ -752,6 +754,32 @@ class Recognizer:
         """check if the current scene is all black"""
         return np.max(self.gray[:, 105:-105]) < 16
 
+    def find_clue_access_record(self):
+        """在固定区域比较完整标题字形，不读取文字或比较背景纹理。"""
+        title = self.img[250:365, 800:1120].astype(np.int16)
+        foreground = (
+            (title.min(axis=2) >= 190) & (title.max(axis=2) - title.min(axis=2) <= 40)
+        ).astype(np.uint8) * 255
+        template = loadres("clue/access_record_title", True)
+        # 两种标题尺寸分别来自标准截图和已有视频素材的标准化画面。
+        for scale_x, scale_y in ((1, 1), (0.85, 0.95)):
+            shape = cv2.resize(
+                template,
+                (
+                    round(template.shape[1] * scale_x),
+                    round(template.shape[0] * scale_y),
+                ),
+                interpolation=cv2.INTER_NEAREST,
+            )
+            result = cv2.matchTemplate(foreground, shape, cv2.TM_CCOEFF_NORMED)
+            _, score, _, (x, y) = cv2.minMaxLoc(result)
+            if score >= 0.68:
+                return (
+                    (800 + x, 250 + y),
+                    (800 + x + shape.shape[1], 250 + y + shape.shape[0]),
+                )
+        return None
+
     def find(
         self,
         res: tp.Res,
@@ -778,6 +806,8 @@ class Recognizer:
         """
         if score is not None:
             threshold = score
+        if res == "clue/access_record":
+            return self.find_clue_access_record()
         normalized_res = str(res).replace("\\", "/")
         force_feature_match = "navigation/stage/" in normalized_res
 

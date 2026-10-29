@@ -2,6 +2,13 @@
 
 Recognition consumes standard canvas frames and their crops. [Device Control](device-control.md#4-capture-frame-contract--storage) owns acquisition and screenshot storage; this subsystem owns model input preparation and OCR execution.
 
+<a id="clue-access-records"></a>
+## Clue Access Records
+
+`Recognizer.get_scene` identifies the reception room's Access Records overlay as `CLUE_ACCESS_RECORD`, before navigation-bar and facility features visible behind the overlay. Recognition compares the complete title's binary foreground shape within its fixed search region, without depending on the orange header bar. The shipped title resource contains only the foreground silhouette; background texture, dates, visitor counts, credit amounts and the optional credit item do not participate. This scene does not initialize or call OCR. Standard-frame fixtures cover the original screenshot and the existing video example after normalization to 1920×1080.
+
+The [Access Records recognition tests](../../arknights_mower/tests/clue_access_record_recognition_tests.py) verify scene classification, changed backgrounds, incomplete foreground rejection and navigation. The [credit workflow tests](../../arknights_mower/tests/clue_credit_tests.py) verify settlement dismissal and preservation of the current-week collection policy. These offline checks do not establish successful game collection.
+
 ## OCR Models and Results
 
 The production factory uses RapidOCR 3.10.0 with the bundled PP-OCRv6 tiny detection and recognition models. Direction classification uses the SDK's bundled legacy classifier. All three model paths are explicit and checked before engine construction; a missing file fails initialization rather than downloading a replacement. [Model provenance and licenses](../../arknights_mower/models/rapidocr/README.md) identify the shipped bytes. Desktop packaging collects the SDK configuration and classifier plus Mower's tiny models; it excludes the SDK's unused small models. Android and source deployments use the same factory and bundled tiny files.

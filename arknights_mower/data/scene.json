@@ -251,6 +251,10 @@
     "label": "TRADE_STRATEGY_SELECT",
     "comment": "贸易站选择订单类型"
   },
+  "233": {
+    "label": "CLUE_ACCESS_RECORD",
+    "comment": "会客室访问记录"
+  },
   "301": {
     "label": "BUSINESS_CARD",
     "comment": "个人名片"

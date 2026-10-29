@@ -357,6 +357,11 @@ def upgrade(solver: BaseSolver):
 # 基建
 
 
+@edge(Scene.CLUE_ACCESS_RECORD, Scene.CLUE_MESSAGE_BOARD)
+def clue_access_record(solver: BaseSolver):
+    return solver.dismiss_clue_access_record()
+
+
 @edge(Scene.INFRA_TODOLIST, Scene.INFRA_MAIN)
 def todo_complete(solver: BaseSolver):
     solver.tap((1840, 140))
@@ -464,7 +469,21 @@ class SceneGraphSolver(BaseSolver):
 
         unknown_count = 0
         cancelled_login_attempts = 0
+        access_record_dismissed = False
         while (current := self.scene()) != scene:
+            if (
+                current != Scene.CLUE_ACCESS_RECORD
+                and current not in self.waiting_scene
+            ):
+                self._clue_access_record_exhausted = False
+            if current == Scene.CLUE_ACCESS_RECORD:
+                if access_record_dismissed:
+                    logger.warning(
+                        "访问记录关闭后再次出现，结束本次导航",
+                        extra={"archive_screenshots": True},
+                    )
+                    return
+                access_record_dismissed = True
             if current == Scene.LOGIN_CANCELLED:
                 cancelled_login_attempts += 1
                 self.retry_cancelled_login(cancelled_login_attempts)
@@ -511,7 +530,9 @@ class SceneGraphSolver(BaseSolver):
                     else "task"
                 )
                 with input_reconciliation_scope(mode):
-                    transition(self)
+                    completed = transition(self)
+                    if current == Scene.CLUE_ACCESS_RECORD and completed is False:
+                        return
                 error_count = 0
             except TouchFailure as exc:
                 if exc.reconciliation != "scene" or exc.cleanup_failed:

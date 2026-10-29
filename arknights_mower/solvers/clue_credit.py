@@ -3,10 +3,9 @@
 from datetime import datetime, timedelta
 
 from arknights_mower.solvers.shop import CreditShop
-from arknights_mower.utils import config, rapidocr
+from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.datetime import get_server_time
-from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 
@@ -35,6 +34,10 @@ class ClueCreditMixin:
         """线索流程结束后购物；不发起访友，也不安排额外购物任务。"""
         if config.stop_mower.is_set():
             raise MowerExit
+        if getattr(self, "_clue_access_record_exhausted", False):
+            if not self._clue_access_record_cleared():
+                return False
+            self._clue_access_record_exhausted = False
         visit_day = get_server_time().date()
         if visit_day not in (
             getattr(self, "daily_visit_friend", None),
@@ -53,7 +56,12 @@ class ClueCreditMixin:
                 settlement_checked = self._visit_clue_message_board(
                     collect_current=False
                 )
-                # 打开板子可能已自动到账；页面未确认时也读取真实余额。
+                # 打开板子可能已自动到账；访问记录未能关闭时保留本轮任务。
+                if (
+                    getattr(self, "_clue_access_record_exhausted", False)
+                    and not self._clue_access_record_cleared()
+                ):
+                    return False
                 shop.run(on_demand=True)
             if settlement_checked and self._needs_clue_credit(shop):
                 logger.info(
@@ -61,6 +69,11 @@ class ClueCreditMixin:
                     shop.credit_deficit,
                 )
                 self._visit_clue_message_board(collect_current=True)
+                if (
+                    getattr(self, "_clue_access_record_exhausted", False)
+                    and not self._clue_access_record_cleared()
+                ):
+                    return False
                 shop.run(on_demand=True)
         self.scene_graph_navigation(Scene.INFRA_MAIN)
 
@@ -76,9 +89,19 @@ class ClueCreditMixin:
 
     def _visit_clue_message_board(self, *, collect_current):
         self.scene_graph_navigation(Scene.INFRA_MAIN)
+        if (
+            getattr(self, "_clue_access_record_exhausted", False)
+            and not self._clue_access_record_cleared()
+        ):
+            return False
         self.enter_room("meeting")
         completed = self._collect_clue_message_board(collect_current=collect_current)
-        # 打开信息板就可能有信用到账；页面未确认时也先退出，再由商店读取余额。
+        if (
+            getattr(self, "_clue_access_record_exhausted", False)
+            and not self._clue_access_record_cleared()
+        ):
+            return False
+        # 打开信息板就可能有信用到账；其他未确认页面仍先退出，再由商店读取余额。
         self.scene_graph_navigation(Scene.INFRA_MAIN)
         return completed
 
@@ -93,7 +116,10 @@ class ClueCreditMixin:
     def _open_clue_message_board(self):
         """唤出家具交互入口后打开信息板，仅在确认仍在房间时补救一次。"""
         self.recog.update()
-        if self.scene() == Scene.CLUE_MESSAGE_BOARD:
+        if (
+            self.scene() == Scene.CLUE_MESSAGE_BOARD
+            or self._clue_access_record_visible()
+        ):
             return self._wait_clue_message_board()
         if self.scene() != Scene.INFRA_DETAILS:
             return False
@@ -148,30 +174,22 @@ class ClueCreditMixin:
         return False
 
     def _clue_access_record_visible(self):
-        """联合识别访问记录标题和上周结算正文，排除普通信息板。"""
-        if rapidocr.engine is None:
-            rapidocr.initialize_ocr()
-        # 使用中央标题和正文，避开头像、右下角领取按钮以及画面底部。
-        result = rapidocr.engine(
-            cropimg(self.recog.img, ((600, 140), (1320, 650))),
-            use_det=True,
-            use_cls=False,
-            use_rec=True,
-        )[0]
-        text = "".join(
-            "".join(item[1].split()) for item in result or [] if item[2] >= 0.8
-        ).upper()
-        return (
-            ("访问记录" in text or "ACCESSRECORDS" in text)
-            and "会客室" in text
-            and "上周" in text
-            and "接待" in text
-            and "总计获得" in text
-            and "信用" in text
+        """核对访问记录固定前景，排除背景和结算数值。"""
+        return bool(self.find("clue/access_record"))
+
+    def _clue_access_record_cleared(self):
+        return not self._clue_access_record_visible() and self.scene() not in (
+            *self.waiting_scene,
+            Scene.CLUE_ACCESS_RECORD,
         )
 
     def _wait_clue_message_board(self, *, confirm_collection=False):
         """处理已识别的结算和奖励页，等待信息板并核实领取按钮状态。"""
+        if getattr(self, "_clue_access_record_exhausted", False):
+            self.recog.update()
+            if not self._clue_access_record_cleared():
+                return False
+            self._clue_access_record_exhausted = False
         reward_dismissed = False
         record_dismissed = False
         record_frames = 0
@@ -187,16 +205,8 @@ class ClueCreditMixin:
                     logger.info("关闭信息板领取物资提示")
                     self.tap((960, 960))
                     reward_dismissed = True
-            elif (
-                scene
-                in (
-                    Scene.UNKNOWN,
-                    Scene.CLUE_MESSAGE_BOARD,
-                    Scene.INFRA_DETAILS,
-                    Scene.CLUE_SUMMARY,
-                )
-                and self._clue_access_record_visible()
-            ):
+            # 固定前景独立核实，避免背景场景的误判阻止关闭弹窗。
+            elif self._clue_access_record_visible():
                 cleared_frames = 0
                 record_frames += 1
                 # 先等结算页自行消失；下一帧仍确认存在时才点击一次中央空白处。
@@ -219,6 +229,8 @@ class ClueCreditMixin:
                 cleared_frames = 0
                 record_frames = 0
             self.sleep(0.5)
+        if record_dismissed:
+            self._clue_access_record_exhausted = True
         logger.warning(
             "信息板%s，保留现场截图",
             "领取未确认" if confirm_collection else "页面未确认",
