@@ -17,8 +17,14 @@ from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.network_adaptation import get_network_adaptation
 from arknights_mower.utils.operation_timing import timed_step
-from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.recognize import (
+    NetworkWaitGuard,
+    RecognizeError,
+    Recognizer,
+    Scene,
+)
 from arknights_mower.utils.swipe import noinertia_path
 from arknights_mower.utils.traceback import caller_info
 
@@ -193,6 +199,7 @@ class BaseSolver:
         self.recog.check_current_focus()
 
     def restart_game(self):
+        self.recog.__dict__.pop("_network_wait_episode", None)
         self.device.exit()
         self.device.launch()
         self.recog.update()
@@ -957,17 +964,174 @@ class BaseSolver:
         sleep_time, wait_count = getattr(
             config.conf.waiting_scene, scene_list[str(scene)]["label"]
         )
-        for _ in range(wait_count):
-            self.sleep(sleep_time)
-            if self.scene() != scene:
+        run_wait = self.recog.__dict__.get(
+            "_run_order_network_active"
+        ) is True and scene in (Scene.CONNECTING, Scene.LOADING, Scene.LOGIN_LOADING)
+        adaptive_wait = (
+            getattr(config.conf, "waiting_scene_network_adaptive", False) is True
+            or run_wait
+        )
+        observe_network = adaptive_wait or (
+            getattr(config.conf, "run_order_network_adaptive", False) is True
+        )
+        run_allowance = self.recog.__dict__.get("_run_order_network_compensation", 0)
+        if type(run_allowance) not in (int, float) or scene != Scene.CONNECTING:
+            run_allowance = 0
+        run_allowance = max(0, min(run_allowance, 120)) if observe_network else 0
+        if observe_network and scene in (
+            Scene.CONNECTING,
+            Scene.LOADING,
+            Scene.LOGIN_LOADING,
+        ):
+            if self._wait_for_network_scene(
+                scene,
+                sleep_time,
+                wait_count,
+                adaptive=adaptive_wait,
+                run_allowance=run_allowance,
+            ):
                 return True
+        else:
+            for _ in range(wait_count):
+                self.sleep(sleep_time)
+                if self.scene() != scene:
+                    return True
         logger.warning("相同场景等待超时")
         if not restart_on_timeout:
             return False
+        self.recog.__dict__.pop("_network_wait_episode", None)
         self.device.exit()
         csleep(3)
         self.check_current_focus()
         return False
+
+    def _network_wait_source(self, scene):
+        if scene == Scene.CONNECTING:
+            return "CONNECTING"
+        if scene == Scene.LOGIN_LOADING and self.find("login_connecting") is not None:
+            return "LOGIN_CONNECTING"
+        return None
+
+    def _wait_for_network_scene(
+        self, scene, sleep_time, wait_count, *, adaptive, run_allowance
+    ):
+        observations = get_network_adaptation(self.recog)
+        started = time.monotonic()
+        label = scene_list[str(scene)]["label"]
+        base_seconds = sleep_time * wait_count
+        network_source = self._network_wait_source(scene)
+        network_started = started
+        network_base_seconds = base_seconds
+        network_comment = scene_list[str(scene)]["comment"]
+        protected = adaptive or run_allowance > 0
+        episode = self.recog.__dict__.get("_network_wait_episode")
+        if not protected or not isinstance(episode, NetworkWaitGuard):
+            event = (
+                observations.take_wait(label, datetime.now(), base_seconds=base_seconds)
+                if adaptive
+                else None
+            )
+            allowance = max(
+                run_allowance, event.compensation_seconds if event is not None else 0
+            )
+            scene_budgets = {
+                name: float(interval * count)
+                for name in ("CONNECTING", "LOADING", "LOGIN_LOADING")
+                for interval, count in (getattr(config.conf.waiting_scene, name),)
+            }
+            episode = NetworkWaitGuard(
+                started + sum(scene_budgets.values()) + allowance,
+                scene_budgets,
+                allowance,
+            )
+            if allowance > 0:
+                logger.info(
+                    "近15分钟内出现过网络卡顿，本次【%s】的等待上限由%s秒延长至%s秒。",
+                    scene_list[str(scene)]["comment"],
+                    f"{base_seconds:g}",
+                    f"{base_seconds + allowance:g}",
+                )
+            if protected:
+                self.recog._network_wait_episode = episode
+        previous_guard = self.recog.__dict__.get("_network_wait_guard")
+        if protected:
+            self.recog._network_wait_guard = episode
+
+        def record(*, timed_out=False):
+            if network_source is None:
+                return
+            elapsed = time.monotonic() - network_started
+            event = observations.record(
+                network_source,
+                elapsed_seconds=elapsed,
+                base_seconds=network_base_seconds,
+                observed_at=datetime.now(),
+                timed_out=timed_out,
+            )
+            if event is not None and (
+                (
+                    getattr(config.conf, "run_order_network_adaptive", False) is True
+                    and config.conf.run_order_buffer_time > 0
+                    and elapsed >= config.conf.run_order_buffer_time / 2
+                )
+                or (adaptive and elapsed >= network_base_seconds / 2)
+                or timed_out
+            ):
+                seconds = f"{elapsed:.1f}".removesuffix(".0")
+                if timed_out:
+                    logger.debug(f"【{network_comment}】等待超时，已等待{seconds}秒。")
+                else:
+                    logger.debug(f"【{network_comment}】等待结束，耗时{seconds}秒。")
+
+        try:
+            while (
+                remaining := min(
+                    episode.deadline - time.monotonic(),
+                    episode.scene_budgets[label] + episode.allowance_remaining,
+                )
+            ) > 0:
+                sample_started = time.monotonic()
+                self.sleep(min(sleep_time, remaining))
+                current_scene = self.scene()
+                elapsed = max(0, time.monotonic() - sample_started)
+                base_used = min(episode.scene_budgets[label], elapsed)
+                episode.scene_budgets[label] -= base_used
+                episode.allowance_remaining = max(
+                    0, episode.allowance_remaining - (elapsed - base_used)
+                )
+                current_source = self._network_wait_source(current_scene)
+                if current_source != network_source:
+                    record()
+                    network_source = current_source
+                    network_started = time.monotonic()
+                    if current_source is not None:
+                        network_label = scene_list[str(current_scene)]["label"]
+                        interval, count = getattr(
+                            config.conf.waiting_scene, network_label
+                        )
+                        network_base_seconds = interval * count
+                        network_comment = scene_list[str(current_scene)]["comment"]
+                if current_scene == scene:
+                    continue
+                if not protected or current_scene not in (
+                    Scene.CONNECTING,
+                    Scene.LOADING,
+                    Scene.LOGIN_LOADING,
+                ):
+                    self.recog.__dict__.pop("_network_wait_episode", None)
+                    return True
+                scene = current_scene
+                label = scene_list[str(scene)]["label"]
+                sleep_time, wait_count = getattr(config.conf.waiting_scene, label)
+                base_seconds = sleep_time * wait_count
+            record(timed_out=True)
+            return False
+        finally:
+            if protected:
+                if previous_guard is None:
+                    self.recog.__dict__.pop("_network_wait_guard", None)
+                else:
+                    self.recog._network_wait_guard = previous_guard
 
     def wait_for_scene_stable(
         self,

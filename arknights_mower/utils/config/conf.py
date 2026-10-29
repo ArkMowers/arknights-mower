@@ -172,6 +172,8 @@ class ExtraPart(ConfModel):
     "报错归档磁盘上限（MiB），0 不限制"
     waiting_scene: WaitingSceneConf = Field(default_factory=WaitingSceneConf)
     "等待时间"
+    waiting_scene_network_adaptive: bool = False
+    "等待场景网络自适应"
 
 
 class CopilotScriptConf(ConfModel):
@@ -699,6 +701,8 @@ class RIICPart(ConfModel):
         default_factory=lambda: default_performance_profile().run_order_delay
     )
     "跑单前置延时"
+    run_order_network_adaptive: bool = False
+    "跑单网络自适应"
     resting_threshold: float = Field(default=0.65, ge=0.35, le=1, allow_inf_nan=False)
     "心情阈值"
     group_resting_thresholds: dict[

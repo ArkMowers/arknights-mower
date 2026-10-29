@@ -76,6 +76,7 @@ export const useConfigStore = defineStore('config', () => {
   const custom_smtp_server = ref({})
   const package_type = ref('official')
   const run_order_delay = ref(10)
+  const run_order_network_adaptive = ref(false)
   const low_frame_rate_mode = ref(false)
   const performance_mode = ref('auto')
   const performance_effective_mode = ref('xhigh')
@@ -221,6 +222,7 @@ export const useConfigStore = defineStore('config', () => {
   const resource_update_auto_update = ref(false)
   const notification_level = ref('INFO')
   const waiting_scene = ref({})
+  const waiting_scene_network_adaptive = ref(false)
   const maa_mail = ref(false)
   const maa_recruit = ref(false)
   const maa_orundum = ref(false)
@@ -582,6 +584,7 @@ export const useConfigStore = defineStore('config', () => {
       custom_smtp_server.value = response.data.custom_smtp_server
       package_type.value = response.data.package_type == 1 ? 'official' : 'bilibili'
       run_order_delay.value = response.data.run_order_delay ?? fallbackProfile.runOrderDelay
+      run_order_network_adaptive.value = response.data.run_order_network_adaptive ?? false
 
       start_automatically.value = response.data.start_automatically
       maa_mall_buy.value =
@@ -720,6 +723,7 @@ export const useConfigStore = defineStore('config', () => {
       resource_update_auto_update.value = response.data.resource_update?.auto_update ?? false
       notification_level.value = response.data.notification_level
       waiting_scene.value = response.data.waiting_scene
+      waiting_scene_network_adaptive.value = response.data.waiting_scene_network_adaptive ?? false
       maa_mail.value = response.data.maa_mail
       maa_recruit.value = response.data.maa_recruit
       maa_orundum.value = response.data.maa_orundum
@@ -789,6 +793,7 @@ export const useConfigStore = defineStore('config', () => {
       timezone_offset: timezone_offset.value,
       custom_smtp_server: custom_smtp_server.value,
       run_order_delay: run_order_delay.value,
+      run_order_network_adaptive: run_order_network_adaptive.value,
       low_frame_rate_mode: performanceProfile(performance_mode.value).lowFrameRateMode,
       performance_mode: performance_mode.value,
       selection_poll_interval: selection_poll_interval.value,
@@ -912,6 +917,7 @@ export const useConfigStore = defineStore('config', () => {
       },
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
+      waiting_scene_network_adaptive: waiting_scene_network_adaptive.value,
       maa_mail: maa_mail.value,
       maa_recruit: maa_recruit.value,
       maa_orundum: maa_orundum.value,
@@ -1153,6 +1159,7 @@ export const useConfigStore = defineStore('config', () => {
     custom_smtp_server,
     package_type,
     run_order_delay,
+    run_order_network_adaptive,
     low_frame_rate_mode,
     performance_mode,
     performance_effective_mode,
@@ -1274,6 +1281,7 @@ export const useConfigStore = defineStore('config', () => {
     resource_update_auto_update,
     notification_level,
     waiting_scene,
+    waiting_scene_network_adaptive,
     maa_mail,
     maa_recruit,
     maa_orundum,

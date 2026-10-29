@@ -205,6 +205,8 @@ Focused offline checks cover the merged read model and order distribution in [`b
 
 ### Task Configuration
 
+The run-order controls expose 跑单网络自适应, and the waiting-time controls expose 等待场景网络自适应. Manager-launched instances expose the per-instance waiting switch in the run-order panel because the manager owns their hidden base runtime controls. Both switches default to off and load and save independently through the configuration store, including old configurations without either key. They preserve the user's base timing inputs. The [run-order rules](base-scheduler.md#run-order-network-adaptation) and [scene-wait rules](recognition.md#network-adaptive-waits) own the temporary compensation and its bounds.
+
 The running log contains screenshot preview when available, the task list, log output and shared bottom toolbar in one workspace. Its transparent task table appears only when the backend queue is nonempty, uses 时间 and 任务 columns, and has a maximum width of 600px. Rows retain backend order, execution times, room assignments, available task details and the distinct automatic-rescue labels. The screenshot and task table keep their resize controls.
 
 On mobile, the screenshot initially fills the log viewport width at its natural aspect ratio, independently of the desktop's restored height. A manual screenshot resize overrides this automatic fit for the current visit and still saves the height. Short windows scroll the screenshot, task table and log within the log pane while keeping the action bar and bottom navigation visible. A 44px control in the pane's upper-right corner collapses or expands the entire task table and its resize control; it appears only when the queue is nonempty and exposes its target and expanded state to assistive technology.

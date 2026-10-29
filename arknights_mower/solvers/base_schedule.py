@@ -155,6 +155,13 @@ from arknights_mower.utils.resting_priority import (
     resting_mood,
     resting_tier,
 )
+from arknights_mower.utils.run_order_network import (
+    refresh_run_order_network,
+    run_order_buffer_seconds,
+    run_order_entry_seconds,
+    run_order_network_allowance,
+    with_run_order_network,
+)
 from arknights_mower.utils.scheduler_task import (
     MAINTENANCE_TASK_TYPES,
     MANUAL_TASK_TYPES,
@@ -561,6 +568,19 @@ class BaseSchedulerSolver(
             tasks: 任务列表
             compare_time: 截止时间
         """
+        if getattr(config.conf, "run_order_network_adaptive", False) or any(
+            hasattr(task, "run_order_network_timing") for task in self.tasks
+        ):
+            previous_times = [(task, task.time) for task in self.tasks]
+            refresh_run_order_network(
+                self.tasks,
+                self.recog,
+                config.conf,
+                datetime.now(),
+                op_data=getattr(self, "op_data", None),
+            )
+            if any(task.time != old_time for task, old_time in previous_times):
+                scheduling(self.tasks, op_data=getattr(self, "op_data", None))
         return find_next_task(
             self.tasks,
             compare_time,
@@ -3046,7 +3066,9 @@ class BaseSchedulerSolver(
                         and config.conf.run_order_buffer_time > 0
                         and datetime.now() + timedelta(seconds=45)
                         < self.task.time
-                        + timedelta(minutes=config.conf.run_order_delay)
+                        + timedelta(
+                            seconds=run_order_entry_seconds(self.task, config.conf)
+                        )
                     ):
                         # 有45秒冗余时间才返回基地主界面
                         logger.info("跑单前返回主界面以保持登录状态")
@@ -10755,6 +10777,8 @@ class BaseSchedulerSolver(
                 meta_data=room,
                 op_data=self.op_data,
             ):
+                # 实读是新的订单截止依据，即使时间数值相同也不能复用旧预览。
+                task.__dict__.pop("run_order_network_timing", None)
                 task.time = task_time
                 logger.info(
                     f"房间 {room} 无人机加速后接单时间为 {task_time.strftime('%H:%M:%S')}"
@@ -12167,8 +12191,8 @@ class BaseSchedulerSolver(
                         getattr(self.task, "run_order_calibrated_time", self.task.time)
                         - datetime.now()
                     ).total_seconds()
-                    + config.conf.run_order_delay * 60
-                    - config.conf.run_order_buffer_time
+                    + run_order_entry_seconds(self.task, config.conf)
+                    - run_order_buffer_seconds(self.task, config.conf)
                     - capture_seconds
                 ),
                 1,
@@ -15210,11 +15234,19 @@ class BaseSchedulerSolver(
                         )
                     ):
                         remaining_time = self.get_order_remaining_time()
-                        if 0 < remaining_time < (config.conf.run_order_delay + 10) * 60:
+                        if (
+                            0
+                            < remaining_time
+                            < run_order_entry_seconds(self.task, config.conf) + 600
+                        ):
                             calibrated = (
                                 datetime.now()
                                 + timedelta(seconds=remaining_time)
-                                - timedelta(minutes=config.conf.run_order_delay)
+                                - timedelta(
+                                    seconds=run_order_entry_seconds(
+                                        self.task, config.conf
+                                    )
+                                )
                             )
                             if self.task.retains_execution:
                                 self.task.run_order_calibrated_time = calibrated
@@ -15560,6 +15592,7 @@ class BaseSchedulerSolver(
             self.tasks.append(self.task)
         return False
 
+    @with_run_order_network
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
         if (
             self.task.type == TaskTypes.FIAMMETTA
@@ -15842,7 +15875,14 @@ class BaseSchedulerSolver(
                     # 此时才进入订单页读倒计时，避免换人前往返进入房间。
                     wait_time = self.get_order_remaining_time()
                     logger.debug(f"订单剩余时间 {wait_time} 秒")
-                    if 0 < wait_time < config.conf.run_order_delay * 60:
+                    if (
+                        0
+                        < wait_time
+                        < (
+                            run_order_entry_seconds(self.task, config.conf)
+                            + run_order_network_allowance(self.task)
+                        )
+                    ):
                         logger.info(f"停止{wait_time}秒等待订单完成")
                         self.sleep(wait_time)
                         # 等待服务器交互

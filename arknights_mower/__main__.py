@@ -622,6 +622,14 @@ def _resume_device_dispatch(scheduler=None, failure=None):
     return device
 
 
+def _next_scheduler_task():
+    if getattr(config.conf, "run_order_network_adaptive", False) or any(
+        hasattr(task, "run_order_network_timing") for task in base_scheduler.tasks
+    ):
+        return base_scheduler.find_next_task()
+    return find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
+
+
 def simulate(saved):
     """
     具体调用方法可见各个函数的参数说明
@@ -959,20 +967,14 @@ def simulate(saved):
                     )
                 ):
                     continue
-            if (
-                find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
-                is not None
-            ):
+            if _next_scheduler_task() is not None:
                 # 维护避让先于日常任务和等待预算，包含从存档恢复的专精换人。
                 protect_priority_tasks(
                     base_scheduler.tasks,
                     op_data=getattr(base_scheduler, "op_data", None),
                 )
                 remaining_time = (
-                    find_next_task(
-                        base_scheduler.tasks, op_data=base_scheduler.op_data
-                    ).time
-                    - datetime.now()
+                    _next_scheduler_task().time - datetime.now()
                 ).total_seconds()
                 if remaining_time > 540:
                     from arknights_mower.solvers.trust_rotation import (
@@ -982,9 +984,7 @@ def simulate(saved):
                     run_trust_rotation(
                         base_scheduler.device,
                         base_scheduler.recog,
-                        find_next_task(
-                            base_scheduler.tasks, op_data=base_scheduler.op_data
-                        ).time,
+                        _next_scheduler_task().time,
                     )
                     if base_scheduler.daily_visit_friend < get_server_time().date():
                         visit_day = (
@@ -1068,21 +1068,13 @@ def simulate(saved):
                             base_scheduler.tasks,
                             op_data=base_scheduler.op_data,
                         )
-                    if (
-                        find_next_task(
-                            base_scheduler.tasks, op_data=base_scheduler.op_data
-                        )
-                        is not None
-                    ):
+                    if _next_scheduler_task() is not None:
                         protect_priority_tasks(
                             base_scheduler.tasks,
                             op_data=getattr(base_scheduler, "op_data", None),
                         )
                         remaining_time = (
-                            find_next_task(
-                                base_scheduler.tasks, op_data=base_scheduler.op_data
-                            ).time
-                            - datetime.now()
+                            _next_scheduler_task().time - datetime.now()
                         ).total_seconds()
                     else:
                         remaining_time = 0
@@ -1176,10 +1168,7 @@ def simulate(saved):
                             finally:
                                 resume_dorm_releases(base_scheduler)
                             remaining_time = (
-                                find_next_task(
-                                    base_scheduler.tasks, op_data=base_scheduler.op_data
-                                ).time
-                                - datetime.now()
+                                _next_scheduler_task().time - datetime.now()
                             ).total_seconds()
                         elif config.conf.SF:
                             from arknights_mower.solvers.secret_front import SecretFront
@@ -1200,10 +1189,7 @@ def simulate(saved):
                             finally:
                                 resume_dorm_releases(base_scheduler)
                             remaining_time = (
-                                find_next_task(
-                                    base_scheduler.tasks, op_data=base_scheduler.op_data
-                                ).time
-                                - datetime.now()
+                                _next_scheduler_task().time - datetime.now()
                             ).total_seconds()
 
                     base_scheduler.rest_until_next_task()

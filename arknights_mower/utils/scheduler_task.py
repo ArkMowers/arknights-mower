@@ -611,7 +611,8 @@ def _support_swap_duration(task, execution_time=None, op_data=None):
 
 
 def _advance_swap_before_orders(tasks, swap, now, execution_time, op_data=None):
-    entry_delay = timedelta(minutes=config.conf.run_order_delay)
+    from arknights_mower.utils.run_order_network import run_order_entry_seconds
+
     order_operations = timedelta(
         minutes=2 * (0.75 if execution_time is None else execution_time)
     )
@@ -631,6 +632,7 @@ def _advance_swap_before_orders(tasks, swap, now, execution_time, op_data=None):
         reverse=True,
     )
     for task in orders:
+        entry_delay = timedelta(seconds=run_order_entry_seconds(task, config.conf))
         start = max(now, task.time)
         # 已流逝的提前量不再占用后续时间，过期任务仍预留进驻与归位。
         finish = max(start, task.time + entry_delay) + order_operations
@@ -1196,13 +1198,15 @@ def _future_dorm_deferrals(task, following, op_data):
 
 def run_order_end_time(task, start, execution_time=None, op_data=None, *, conf=None):
     """沿用跑单关键窗口，包含提前进站后的订单等待和原班恢复。"""
+    from arknights_mower.utils.run_order_network import run_order_entry_seconds
+
     conf = conf or config.conf
     if getattr(task, "run_order_restore_pending", False):
         return start + estimate_task_duration(task, execution_time, op_data)
     if conf.run_order_buffer_time > 0 and not task.adjusted:
         return max(
             start + timedelta(seconds=45),
-            task.time + timedelta(minutes=conf.run_order_delay),
+            task.time + timedelta(seconds=run_order_entry_seconds(task, conf)),
         ) + timedelta(seconds=45)
     return start + timedelta(seconds=90)
 
@@ -1449,10 +1453,14 @@ def adjust_run_order_for_maintenance(
         reverse=True,
     ):
         if daily_reset:
-            entry_delay = timedelta(minutes=config.conf.run_order_delay)
+            from arknights_mower.utils.run_order_network import run_order_entry_seconds
+
             deadline = st - timedelta(minutes=max(config.conf.run_order_delay, 5))
             daily_orders = []
             for task in sorted(orders, key=lambda task: task.time):
+                entry_delay = timedelta(
+                    seconds=run_order_entry_seconds(task, config.conf)
+                )
                 expected_end = task.time + entry_delay
                 if (
                     task.time >= st

@@ -174,6 +174,7 @@ const plan_store = usePlanStore()
 const mobile = inject('mobile', ref(false))
 const {
   run_order_delay,
+  run_order_network_adaptive,
   selection_poll_interval,
   selection_transition_timeout,
   drone_room,
@@ -193,6 +194,7 @@ const {
   fix_mumu12_adb_disconnect,
   maa_gap,
   waiting_scene,
+  waiting_scene_network_adaptive,
   enable_party,
   leifeng_mode,
   item_list,
@@ -480,6 +482,50 @@ const idleOptions = computed(() => [
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
             </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="run_order_network_adaptive" aria-label="跑单网络自适应">
+                跑单网络自适应
+              </n-checkbox>
+              <help-text>
+                <div>仅用于普通葛朗台跑单，默认关闭。</div>
+                <div>
+                  记录本实例“正在提交反馈至神经”和登录联网提示的实际等待耗时，保留15分钟；普通加载不产生记录。
+                </div>
+                <div>
+                  取近15分钟内最近一条达到原“葛朗台缓冲时间”一半的记录，每条在跑单中只用一次；门槛固定，等于一半也生效。
+                </div>
+                <div>将这次耗时临时加到缓冲时间上，最多增加120秒，不改原设置。</div>
+                <div>例如原缓冲15秒、联网9秒，下次临时用24秒；原缓冲50秒时，9秒不触发。</div>
+                <div>必要时同步提前进站；跑单确认时的联网等待也可使用本次补偿。</div>
+              </help-text>
+            </n-form-item>
+            <n-form-item v-if="config_store.manager_owned_device" :show-label="false">
+              <n-checkbox
+                v-model:checked="waiting_scene_network_adaptive"
+                aria-label="等待场景网络自适应"
+              >
+                等待场景网络自适应
+              </n-checkbox>
+              <help-text>
+                <div>
+                  默认关闭，仅延长“正在提交反馈至神经”“加载中”和“场景跳转时的等待界面”这三项。
+                </div>
+                <div>
+                  记录本实例“正在提交反馈至神经”和登录联网提示的实际等待耗时，保留15分钟；普通加载不产生记录。
+                </div>
+                <div>
+                  原等待上限是该场景的截图间隔乘以等待次数。该功能取近15分钟内最近一条达到原上限一半的记录；门槛固定，等于一半也生效。
+                </div>
+                <div>
+                  将这次耗时临时加到下一次等待上限，最多增加120秒，每条记录在场景等待中只用一次。
+                </div>
+                <div>例如原上限30秒、联网9秒，仍用30秒；原上限10秒时临时用19秒。</div>
+                <div>
+                  与跑单分别使用记录，不改原截图间隔和等待次数；页面恢复后立即继续，不会强制等满。
+                </div>
+                <div>跑单确认时还可沿用该次跑单的联网补偿，两种补偿取较大值，不相加。</div>
+              </help-text>
+            </n-form-item>
             <n-form-item>
               <template #label>
                 <span>葛朗台缓冲时间</span>
@@ -749,6 +795,33 @@ const idleOptions = computed(() => [
               >
                 <template #suffix>秒</template>
               </mower-input-number>
+            </n-form-item>
+            <n-form-item :show-label="false" class="task-panel-field-wide">
+              <n-checkbox
+                v-model:checked="waiting_scene_network_adaptive"
+                aria-label="等待场景网络自适应"
+              >
+                等待场景网络自适应
+              </n-checkbox>
+              <help-text>
+                <div>
+                  默认关闭，仅延长“正在提交反馈至神经”“加载中”和“场景跳转时的等待界面”这三项。
+                </div>
+                <div>
+                  记录本实例“正在提交反馈至神经”和登录联网提示的实际等待耗时，保留15分钟；普通加载不产生记录。
+                </div>
+                <div>
+                  原等待上限是该场景的截图间隔乘以等待次数。该功能取近15分钟内最近一条达到原上限一半的记录；门槛固定，等于一半也生效。
+                </div>
+                <div>
+                  将这次耗时临时加到下一次等待上限，最多增加120秒，每条记录在场景等待中只用一次。
+                </div>
+                <div>例如原上限30秒、联网9秒，仍用30秒；原上限10秒时临时用19秒。</div>
+                <div>
+                  与跑单分别使用记录，不改原截图间隔和等待次数；页面恢复后立即继续，不会强制等满。
+                </div>
+                <div>跑单确认时还可沿用该次跑单的联网补偿，两种补偿取较大值，不相加。</div>
+              </help-text>
             </n-form-item>
             <n-form-item label="等待时间" class="task-panel-field-wide">
               <div class="task-waiting-scroll" tabindex="0" role="region" aria-label="场景等待参数">

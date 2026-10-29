@@ -381,6 +381,53 @@ describe('continuous settings directory and scroll selection', () => {
     }
   })
 
+  it('exposes per-instance waiting adaptation for managed instances while runtime stays hidden', async () => {
+    const page = await mount()
+    page.config.manager_owned_device = true
+    await flush()
+    expect(panels('runtime')).toHaveLength(0)
+    const waitingSwitch = all(panels('runorder')[0]).find(
+      (element) => element.props['aria-label'] === '等待场景网络自适应'
+    )
+    expect(waitingSwitch.props.checked).toBe(false)
+    waitingSwitch.props['onUpdate:checked'](true)
+    await flush()
+    expect(page.config.waiting_scene_network_adaptive).toBe(true)
+    expect(page.config.run_order_network_adaptive).toBe(false)
+  })
+  it('binds both adaptive switches independently without changing base timing values', async () => {
+    const { config } = await mount()
+    config.run_order_delay = 3.75
+    config.run_order_grandet_mode = { enable: true, buffer_time: 22, back_to_index: false }
+    config.waiting_scene = { CONNECTING: [3, 10] }
+    await flush()
+    const findSwitch = (editor, label) =>
+      all(panels(editor)[0]).find((element) => element.props['aria-label'] === label)
+    let orderSwitch = findSwitch('runorder', '跑单网络自适应')
+    let waitingSwitch = findSwitch('runtime', '等待场景网络自适应')
+    expect(orderSwitch.props.checked).toBe(false)
+    expect(waitingSwitch.props.checked).toBe(false)
+    orderSwitch.props['onUpdate:checked'](true)
+    await flush()
+    expect(config.run_order_network_adaptive).toBe(true)
+    expect(config.waiting_scene_network_adaptive).toBe(false)
+    waitingSwitch = findSwitch('runtime', '等待场景网络自适应')
+    waitingSwitch.props['onUpdate:checked'](true)
+    await flush()
+    orderSwitch = findSwitch('runorder', '跑单网络自适应')
+    orderSwitch.props['onUpdate:checked'](false)
+    await flush()
+    expect(config.run_order_network_adaptive).toBe(false)
+    expect(config.waiting_scene_network_adaptive).toBe(true)
+    expect(config.run_order_delay).toBe(3.75)
+    expect(config.run_order_grandet_mode).toEqual({
+      enable: true,
+      buffer_time: 22,
+      back_to_index: false
+    })
+    expect(config.waiting_scene).toEqual({ CONNECTING: [3, 10] })
+  })
+
   it('displays the scheduler idle-action priority for old conflicting flags and saves one choice', async () => {
     const { config } = await mount()
     config.close_simulator_when_idle = true
