@@ -1,7 +1,7 @@
 """按联网等待为普通葛朗台任务绑定临时确认时间。"""
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from functools import wraps
 from math import isfinite
@@ -27,6 +27,9 @@ class RunOrderNetworkTiming:
     base_buffer_seconds: float
     started: bool = False
 
+    def __reduce__(self):
+        return dict, (asdict(self),)
+
 
 def _grandet(task, conf):
     return (
@@ -47,7 +50,18 @@ def _enabled(task, conf):
 
 def _timing(task):
     timing = getattr(task, "run_order_network_timing", None)
-    return timing if isinstance(timing, RunOrderNetworkTiming) else None
+    if isinstance(timing, RunOrderNetworkTiming):
+        return timing
+    if not isinstance(timing, dict):
+        return None
+    try:
+        values = dict(timing)
+        values["event"] = SlowNetworkEvent(**values["event"])
+        restored = RunOrderNetworkTiming(**values)
+    except (KeyError, TypeError):
+        return None
+    task.run_order_network_timing = restored
+    return restored
 
 
 def clear_run_order_network(task, *, restore_time=True):

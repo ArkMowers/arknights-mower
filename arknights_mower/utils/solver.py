@@ -1049,7 +1049,7 @@ class BaseSolver:
             )
             if allowance > 0:
                 logger.info(
-                    "近15分钟内出现过网络卡顿，本次【%s】的等待上限由%s秒延长至%s秒。",
+                    "本次【%s】使用联网等待补偿，等待上限由%s秒延长至%s秒。",
                     scene_list[str(scene)]["comment"],
                     f"{base_seconds:g}",
                     f"{base_seconds + allowance:g}",

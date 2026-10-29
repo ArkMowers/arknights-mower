@@ -1,5 +1,8 @@
 """联网观测只在结束时绑定任务，执行与原班恢复沿用任务快照。"""
 
+import copy
+import io
+import pickle
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
@@ -33,6 +36,16 @@ from arknights_mower.utils.scheduler_task import (
 
 NOW = datetime(2026, 10, 28, 19, 50)
 ROOM = "room_1_1"
+
+
+class WithoutNetworkModules(pickle.Unpickler):
+    def find_class(self, module, name):
+        if module in {
+            "arknights_mower.utils.network_adaptation",
+            "arknights_mower.utils.run_order_network",
+        }:
+            raise AssertionError(f"Saved tasks require unavailable module: {module}")
+        return super().find_class(module, name)
 
 
 def order(at, room=ROOM):
@@ -676,3 +689,112 @@ def test_real_insertion_uses_bound_window_and_restores_original_roster(
     assert ui.occupants[ROOM] == ["图耶"]
     assert not hasattr(task, "run_order_restore_pending")
     assert "_run_order_network_compensation" not in solver.recog.__dict__
+
+
+def test_pickled_task_snapshots_load_without_network_modules_and_preserve_plain_tasks(
+    planned,
+):
+    conf, owner, task = planned
+    conf.run_order_delay = 1
+    original = task.time
+    observe(owner, 90)
+    bind_run_order_network([task], owner, conf, NOW)
+    get_network_adaptation(owner).set_observation_callback(lambda event: None)
+    plain = order(NOW + timedelta(minutes=8), "room_2_1")
+
+    payload = pickle.dumps({"tasks": [task, plain]}, protocol=pickle.HIGHEST_PROTOCOL)
+    restored, plain_restored = WithoutNetworkModules(io.BytesIO(payload)).load()[
+        "tasks"
+    ]
+
+    assert type(restored.run_order_network_timing) is dict
+    assert type(restored.run_order_network_timing["event"]) is dict
+    assert restored.time == task.time == original - timedelta(seconds=105)
+    assert restored.plan == task.plan
+    assert restored.meta_data == task.meta_data
+    assert vars(plain_restored) == vars(plain)
+    assert not hasattr(plain_restored, "run_order_network_timing")
+    assert run_order_entry_seconds(restored, conf) == 165
+    assert run_order_buffer_seconds(restored, conf) == 105
+    second_payload = pickle.dumps({"tasks": [restored]})
+    second = WithoutNetworkModules(io.BytesIO(second_payload)).load()["tasks"][0]
+    assert type(second.run_order_network_timing) is dict
+    assert second.time == restored.time
+
+
+def test_deepcopied_binding_hydrates_independently_and_preserves_original_deadline(
+    planned,
+):
+    conf, owner, task = planned
+    conf.run_order_delay = 1
+    original = task.time
+    observe(owner)
+    bind_run_order_network([task], owner, conf, NOW)
+    timing = task.run_order_network_timing
+
+    projected = copy.deepcopy(task)
+
+    assert type(projected.run_order_network_timing) is dict
+    assert projected.time == task.time == original - timedelta(seconds=45)
+    assert run_order_entry_seconds(projected, conf) == 105
+    assert run_order_buffer_seconds(projected, conf) == 45
+    assert projected.run_order_network_timing is not timing
+    assert projected.run_order_network_timing.event is not timing.event
+    projected.plan[ROOM][0] = "龙舌兰"
+    assert task.plan[ROOM] == ["但书"]
+    projected.adjusted = True
+    reconcile_run_order_network([projected], conf)
+    assert projected.time == original
+    assert not hasattr(projected, "run_order_network_timing")
+    assert task.time == original - timedelta(seconds=45)
+    assert task.run_order_network_timing is timing
+    assert timing.started is False
+
+
+def test_pickled_restoration_restarts_with_expired_source_without_losing_roster(
+    planned, monkeypatch
+):
+    conf, owner, task = planned
+    monkeypatch.setattr(config, "conf", conf)
+    observe(owner)
+    bind_run_order_network([task], owner, conf, NOW)
+    begin_run_order_network(task, owner, conf, NOW)
+    task.run_order_original_roster = {ROOM: ["图耶"]}
+    task.run_order_restore_pending = True
+    task.prepare_run_order_restoration()
+    original_time = task.time
+    payload = pickle.dumps({"tasks": [task]})
+    restored = WithoutNetworkModules(io.BytesIO(payload)).load()["tasks"][0]
+    later = NOW + timedelta(minutes=30)
+    assert get_network_adaptation(owner).peek_run_order(later, base_seconds=15) is None
+    resumed_owner = SimpleNamespace()
+    resumed_adaptation = get_network_adaptation(resumed_owner)
+    listener = Mock()
+    resumed_adaptation.set_observation_callback(listener)
+
+    timing = begin_run_order_network(restored, resumed_owner, conf, later)
+
+    assert timing.started
+    assert timing.event.observed_at == NOW
+    assert restored.time == original_time
+    assert restored.run_order_original_roster == {ROOM: ["图耶"]}
+    assert restored.plan == {ROOM: ["图耶"]}
+    assert restored.meta_data == ""
+    assert resumed_adaptation.observations == ()
+    solver = SimpleNamespace(task=restored, recog=resumed_owner)
+    with pytest.raises(RuntimeError, match="restore interrupted"):
+        with run_order_network_scope(solver):
+            assert run_order_network_compensation(resumed_owner, conf) == 30
+            assert run_order_network_allowance(restored, conf) == 30
+            raise RuntimeError("restore interrupted")
+    assert restored.run_order_restore_pending is True
+    assert restored.time == original_time
+    with run_order_network_scope(solver):
+        assert run_order_network_compensation(resumed_owner, conf) == 30
+        del restored.run_order_original_roster
+        del restored.run_order_restore_pending
+        finish_run_order_network(restored, resumed_owner)
+        assert run_order_network_compensation(resumed_owner, conf) == 0
+    assert not hasattr(restored, "run_order_network_timing")
+    assert restored.time == original_time
+    listener.assert_not_called()

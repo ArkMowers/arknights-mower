@@ -108,7 +108,7 @@ def test_next_same_scene_uses_base_plus_observation_without_extra_margin(waiting
         "【正在提交反馈至神经】等待结束，耗时30秒。"
     )
     solver.logger.info.assert_called_once_with(
-        "近15分钟内出现过网络卡顿，本次【%s】的等待上限由%s秒延长至%s秒。",
+        "本次【%s】使用联网等待补偿，等待上限由%s秒延长至%s秒。",
         "正在提交反馈至神经",
         "10",
         "40",
@@ -601,7 +601,7 @@ def test_nine_seconds_extends_ten_second_wait_to_nineteen_with_exact_info(waitin
     assert adaptation.peek_run_order(waiting.clock.now(), base_seconds=15) == event
     assert adaptation.take_wait("LOADING", waiting.clock.now(), base_seconds=10) is None
     solver.logger.info.assert_called_once_with(
-        "近15分钟内出现过网络卡顿，本次【%s】的等待上限由%s秒延长至%s秒。",
+        "本次【%s】使用联网等待补偿，等待上限由%s秒延长至%s秒。",
         "场景跳转时的等待界面",
         "10",
         "19",
@@ -708,7 +708,7 @@ def test_selected_run_compensation_protects_connecting_even_below_scene_half(wai
     assert waiting.solver.waiting_solver(restart_on_timeout=False) is False
     assert waiting.clock.seconds == 39
     solver.logger.info.assert_called_once_with(
-        "近15分钟内出现过网络卡顿，本次【%s】的等待上限由%s秒延长至%s秒。",
+        "本次【%s】使用联网等待补偿，等待上限由%s秒延长至%s秒。",
         "正在提交反馈至神经",
         "30",
         "39",
@@ -786,6 +786,55 @@ def test_real_bound_run_scope_protects_waiting_with_global_adaptation_disabled(
     assert task.time == bound_time
     assert "_run_order_network_active" not in waiting.recog.__dict__
     assert "_run_order_network_compensation" not in waiting.recog.__dict__
+    waiting.device.exit.assert_not_called()
+
+
+def test_bound_run_wait_after_source_expiry_logs_its_frozen_allowance(
+    waiting, monkeypatch
+):
+    from arknights_mower.utils import run_order_network
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    waiting.conf.run_order_network_adaptive = True
+    waiting.conf.waiting_scene_network_adaptive = False
+    observed_at = waiting.clock.now()
+    remember(waiting, 30)
+    task = SchedulerTask(
+        observed_at + timedelta(minutes=17),
+        {"room_2_1": ["但书"]},
+        TaskTypes.RUN_ORDER,
+        "room_2_1",
+    )
+    waiting.solver.task = task
+    waiting.solver.tasks = [task]
+    waiting.solver.op_data = SimpleNamespace()
+    monkeypatch.setattr(run_order_network, "datetime", waiting.clock)
+    run_order_network.bind_run_order_network(
+        waiting.solver.tasks, waiting.recog, waiting.conf, observed_at
+    )
+    waiting.clock.seconds = (task.time - observed_at).total_seconds()
+    assert waiting.clock.seconds > 15 * 60
+    adaptation = get_network_adaptation(waiting.recog)
+    assert adaptation.peek_run_order(waiting.clock.now(), base_seconds=15) is None
+    assert adaptation.observations == ()
+    finish_at = waiting.clock.seconds + 20
+    waiting.scene_at = lambda elapsed: (
+        Scene.INDEX if elapsed >= finish_at else Scene.CONNECTING
+    )
+
+    @run_order_network.with_run_order_network
+    def arrange(subject):
+        assert subject.recog._run_order_network_compensation == 30
+        return subject.waiting_solver(restart_on_timeout=False)
+
+    assert arrange(waiting.solver) is True
+    assert waiting.clock.seconds == finish_at
+    solver.logger.info.assert_called_once_with(
+        "本次【%s】使用联网等待补偿，等待上限由%s秒延长至%s秒。",
+        "正在提交反馈至神经",
+        "10",
+        "40",
+    )
     waiting.device.exit.assert_not_called()
 
 
