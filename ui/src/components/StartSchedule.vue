@@ -5,6 +5,32 @@ import { useMessage } from 'naive-ui'
 import AlarmOutline from '@vicons/ionicons5/es/AlarmOutline'
 import PlayIcon from '@vicons/ionicons5/es/Play'
 import { useMowerStore } from '@/stores/mower'
+import HalloweenDecor from '@/components/HalloweenDecor.vue'
+import { useHalloweenSeason } from '@/composables/halloween'
+
+const halloweenActive = useHalloweenSeason()
+const halloweenButtonTheme = computed(() =>
+  halloweenActive.value
+    ? {
+        colorPrimary: '#f0bb76',
+        colorHoverPrimary: '#facd90',
+        colorPressedPrimary: '#dca45e',
+        colorFocusPrimary: '#facd90',
+        textColorPrimary: '#35291f',
+        textColorHoverPrimary: '#35291f',
+        textColorPressedPrimary: '#35291f',
+        textColorFocusPrimary: '#35291f',
+        textColorGhostPrimary: '#b77b38',
+        textColorGhostHoverPrimary: '#986127',
+        textColorGhostPressedPrimary: '#825020',
+        borderPrimary: '1px solid #c89351',
+        borderHoverPrimary: '1px solid #d9a15c',
+        borderPressedPrimary: '1px solid #b57d39',
+        borderFocusPrimary: '1px solid #d9a15c',
+        rippleColorPrimary: '#dca45e'
+      }
+    : undefined
+)
 
 const props = defineProps({
   start: { type: Function, required: true },
@@ -115,37 +141,45 @@ function select(key) {
 </script>
 
 <template>
-  <drop-down
-    :select="select"
-    :options="scheduled_start_at ? scheduledOptions : startOptions"
-    type="primary"
-    :up="true"
-  >
-    <n-button
-      v-if="scheduled_start_at"
+  <n-config-provider :theme-overrides="{ Button: halloweenButtonTheme }" class="start-schedule">
+    <drop-down
+      :select="select"
+      :options="scheduled_start_at ? scheduledOptions : startOptions"
       type="primary"
-      :loading="busy"
-      :disabled="busy"
-      @click="openModal"
+      :up="true"
+      :class="{ 'halloween-start': halloweenActive }"
     >
-      <template #icon
-        ><n-icon><alarm-outline /></n-icon
-      ></template>
-      <span>{{ countdown }}</span>
-    </n-button>
-    <n-button
-      v-else
-      type="primary"
-      @click="start('0')"
-      :loading="waiting || busy"
-      :disabled="waiting || busy"
-    >
-      <template #icon
-        ><n-icon><play-icon /></n-icon
-      ></template>
-      <span class="start-label">开始执行</span>
-    </n-button>
-  </drop-down>
+      <n-button
+        v-if="scheduled_start_at"
+        type="primary"
+        :loading="busy"
+        :disabled="busy"
+        :theme-overrides="halloweenButtonTheme"
+        @click="openModal"
+      >
+        <template #icon
+          ><n-icon><alarm-outline /></n-icon
+        ></template>
+        <span>{{ countdown }}</span>
+      </n-button>
+      <n-button
+        v-else
+        type="primary"
+        @click="start('0')"
+        :loading="waiting || busy"
+        :disabled="waiting || busy"
+        :theme-overrides="halloweenButtonTheme"
+        :class="{ 'halloween-start__button': halloweenActive }"
+        aria-label="开始执行"
+      >
+        <template #icon
+          ><HalloweenDecor v-if="halloweenActive" kind="lantern" /><n-icon v-else
+            ><play-icon /></n-icon
+        ></template>
+        <span class="start-label">开始执行</span>
+      </n-button>
+    </drop-down>
+  </n-config-provider>
   <n-modal
     v-model:show="showModal"
     preset="card"
@@ -169,6 +203,34 @@ function select(key) {
 </template>
 
 <style scoped>
+.start-schedule {
+  display: inline-flex;
+}
+.halloween-start__button {
+  box-shadow:
+    inset 0 1px 0 #ffe5b680,
+    0 2px 8px #c58b2926;
+}
+.halloween-start__button :deep(.n-button__icon) {
+  width: 26px;
+  height: 26px;
+  margin-right: 7px;
+}
+.halloween-start__button :deep(.n-icon-slot) {
+  width: 26px;
+  height: 26px;
+}
+.halloween-start__button :deep(.halloween-lantern) {
+  transition: transform 180ms ease;
+}
+.halloween-start__button:enabled:hover :deep(.halloween-lantern) {
+  transform: rotate(-9deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .halloween-start__button :deep(.halloween-lantern) {
+    transition: none;
+  }
+}
 @container main-content (max-width: 500px) {
   .start-label {
     display: none;

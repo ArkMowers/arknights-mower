@@ -36,7 +36,10 @@
         @keydown.esc="setMenuOpen('brand', false)"
         @keydown.tab="setMenuOpen('brand', false)"
       >
-        <span>Mower</span>
+        <span class="app-menu-bar__wordmark">
+          Mower
+          <HalloweenDecor v-if="halloweenActive" kind="wordmark" />
+        </span>
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <path d="m4 6 4 4 4-4" />
         </svg>
@@ -81,6 +84,10 @@
 <script setup>
 import { NDropdown } from 'naive-ui'
 import { computed, h, ref, useId, watch } from 'vue'
+import HalloweenDecor from '@/components/HalloweenDecor.vue'
+import { useHalloweenSeason } from '@/composables/halloween'
+
+const halloweenActive = useHalloweenSeason()
 
 const titlebarDropdownTheme = {
   borderRadius: '10px',
@@ -480,6 +487,10 @@ watch(
   font-weight: 600;
   line-height: 1.3;
   cursor: pointer;
+}
+
+.app-menu-bar__wordmark {
+  position: relative;
 }
 
 .app-menu-bar__brand-trigger svg {

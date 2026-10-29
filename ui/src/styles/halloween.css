@@ -1,0 +1,69 @@
+.provider.provider--halloween {
+  position: relative;
+  isolation: isolate;
+}
+
+.provider.provider--halloween.provider--window-shell,
+.provider.provider--halloween .outer-layout,
+.provider.provider--halloween .app-menu-header,
+.provider.provider--halloween .n-layout-sider.halloween-shell,
+.sidebar-drawer.halloween-shell,
+.provider.provider--halloween .window-titlebar.window-titlebar--halloween {
+  background: transparent;
+}
+
+.halloween-shell {
+  --halloween-ink: #725638;
+  --halloween-accent: #855a2b;
+  --halloween-active: #b4843f25;
+  --halloween-hover: #b4843f15;
+}
+
+.sidebar-drawer.halloween-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+html[data-mower-theme='dark'] .halloween-shell {
+  --halloween-ink: #d4bd9b;
+  --halloween-accent: #f2d5a6;
+  --halloween-active: #c9a2692b;
+  --halloween-hover: #c9a26915;
+}
+
+.halloween-shell .sidebar-brand {
+  padding-bottom: 12px;
+}
+
+.halloween-shell .sidebar-brand::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  bottom: 0;
+  left: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #bc945c7a, transparent);
+  pointer-events: none;
+}
+
+.halloween-shell .app-sidebar .app-sidebar__link.is-active {
+  color: var(--halloween-accent);
+  background: var(--halloween-active);
+  box-shadow: inset 2px 0 #c49b61;
+}
+
+.halloween-shell .app-sidebar .app-sidebar__link:hover:not(.is-active) {
+  background: var(--halloween-hover);
+}
+
+.halloween-shell .app-sidebar__heading-text {
+  color: var(--halloween-ink);
+}
+
+.provider .window-titlebar.window-titlebar--halloween {
+  --window-titlebar-muted: #846b54;
+}
+
+.provider .window-titlebar.window-titlebar--halloween.window-titlebar--dark {
+  --window-titlebar-muted: #ccbda7;
+}

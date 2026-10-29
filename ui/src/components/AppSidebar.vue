@@ -212,6 +212,7 @@
         </template>
       </draggable>
     </component>
+    <HalloweenDecor v-if="halloweenActive && !collapsed" kind="sidebar" />
     <div class="app-sidebar__footer">
       <div class="app-sidebar__items app-sidebar__footer-items">
         <component
@@ -263,12 +264,15 @@ import { computed, ref, useId, watch } from 'vue'
 import SessionLink from './SessionLink.vue'
 import SidebarCustomize from './SidebarCustomize.vue'
 import SidebarScroll from './SidebarScroll.vue'
+import HalloweenDecor from './HalloweenDecor.vue'
+import { useHalloweenSeason } from '@/composables/halloween'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
 import { useCollapsedTips } from '@/composables/useCollapsedTips'
 import { normalizeSortablePreview } from '@/utils/sortablePreview'
 import '@/styles/sidebar.css'
 import '@/styles/drag.css'
 
+const halloweenActive = useHalloweenSeason()
 const props = defineProps({
   collapsed: { type: Boolean, default: false },
   mobile: { type: Boolean, default: false }

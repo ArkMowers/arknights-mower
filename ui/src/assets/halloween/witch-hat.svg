@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 64" fill="none">
+  <defs>
+    <linearGradient id="felt" x1="24" y1="8" x2="51" y2="54" gradientUnits="userSpaceOnUse"><stop stop-color="#566379"/><stop offset=".42" stop-color="#303647"/><stop offset="1" stop-color="#161d2c"/></linearGradient>
+    <linearGradient id="ribbon" x1="24" y1="38" x2="57" y2="48" gradientUnits="userSpaceOnUse"><stop stop-color="#b86a32"/><stop offset=".55" stop-color="#efb566"/><stop offset="1" stop-color="#b76c39"/></linearGradient>
+  </defs>
+  <path d="M21 47C26 35 27 18 38 7c7-7 17-4 23-2-10 2-13 6-13 11 0 8 8 15 11 29Z" fill="url(#felt)" stroke="#7c8698" stroke-width="1.2"/>
+  <path d="M31 35c2-11 3-18 10-24m4 7c-2 8 0 15 4 22" stroke="#8f9bab" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+  <path d="m25 37 29-2 4 9-35 5Z" fill="url(#ribbon)"/>
+  <path d="m40 37 10-1 1 10-10 1Z" fill="#ffda94" stroke="#9c632f" stroke-width="1.4"/>
+  <path d="m43 39 4-.4.4 5-4 .4Z" fill="#343a47"/>
+  <path d="M5 52c1-6 19-10 36-11s34 1 34 7-18 11-35 12S4 58 5 52Z" fill="url(#felt)" stroke="#7c8698" stroke-width="1.3"/>
+  <path d="M12 52c15 4 41 1 56-4" stroke="#9eabc0" stroke-opacity=".4" stroke-width="1.3" stroke-linecap="round"/>
+</svg>

@@ -6,6 +6,7 @@
       `window-titlebar--controls-${controlSide}`,
       {
         'window-titlebar--dark': theme === 'dark',
+        'window-titlebar--halloween': halloweenActive,
         'window-titlebar--maximized': maximized,
         'window-titlebar--native-controls': nativeControls
       }
@@ -27,6 +28,7 @@
       @dblclick.stop="onTitlebarDoubleClick"
     >
       <img class="window-titlebar__brand-mark" :src="'/favicon.ico'" alt="" draggable="false" />
+      <HalloweenDecor v-if="halloweenActive" kind="hat" />
     </div>
     <button
       v-if="showSidebarToggle"
@@ -78,6 +80,7 @@
           >{{ emulatorName }}{{ adbPort ? `@${adbPort}` : '' }}</span
         >
       </span>
+      <HalloweenDecor v-if="halloweenActive" kind="titlebar" />
     </div>
 
     <div v-if="!nativeControls" class="window-titlebar__controls" data-window-controls>
@@ -126,8 +129,11 @@
 <script setup>
 import { onBeforeUnmount } from 'vue'
 import AppMenuBar from './AppMenuBar.vue'
+import HalloweenDecor from './HalloweenDecor.vue'
+import { useHalloweenSeason } from '@/composables/halloween'
 import { WINDOW_RESIZE_EDGES } from '@/window-shell/adapter.js'
 
+const halloweenActive = useHalloweenSeason()
 const resizeEdges = WINDOW_RESIZE_EDGES
 const props = defineProps({
   active: { type: Boolean, required: true },
@@ -268,6 +274,18 @@ onBeforeUnmount(stopWatchingDrag)
   align-items: center;
   min-width: 0;
   height: 22px;
+  flex: 1 1 auto;
+}
+
+.window-titlebar--halloween {
+  background: linear-gradient(90deg, #d9a25908, transparent 34%, #d9a2590d);
+}
+
+.window-titlebar__brand > :deep(.halloween-hat) {
+  top: -7px;
+  left: 7px;
+  width: 24px;
+  height: 20px;
 }
 
 .window-titlebar__separator {
