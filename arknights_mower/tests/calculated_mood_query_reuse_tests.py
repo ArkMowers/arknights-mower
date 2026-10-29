@@ -1,5 +1,7 @@
 """同刻查询和分段目标到达复用已知速率，保留观测及技能边界。"""
 
+import copy
+import json
 import pickle
 import threading
 from datetime import datetime, timedelta
@@ -43,6 +45,16 @@ def test_current_value_reuses_valid_rates_without_copy_or_mutation(monkeypatch):
         calculated_mood.CalculatedMood,
         "__deepcopy__",
         lambda *args: pytest.fail("同刻已知速率不应复制模型"),
+    )
+    monkeypatch.setattr(
+        calculated_mood.json,
+        "dumps",
+        lambda *args, **kwargs: pytest.fail("输入未变时不应重复序列化"),
+    )
+    monkeypatch.setattr(
+        calculated_mood,
+        "bisect_left",
+        lambda *args: pytest.fail("心情和阈值未变时不应重复计算区间"),
     )
     assert value.value("worker", NOW) == 24
     assert len(calls) == 1
@@ -94,3 +106,74 @@ def test_recovery_helpers_read_the_projection_clock_without_advancing_live_time(
     assert has_resting_mood(op)
     assert resting_mood(op) == 24
     assert pickle.dumps(value) == before
+
+
+@pytest.mark.parametrize(
+    "field, path, replacement",
+    [
+        ("rooms", ("central", "roster"), []),
+        ("stages", ("provider", 0), 0),
+        ("single_targets", ("provider",), "other"),
+        ("versions", ("provider",), 1),
+        ("automatic_targets", ("provider", "target"), "other"),
+    ],
+)
+def test_input_signature_detects_mutation_without_changing_saved_model(
+    monkeypatch, field, path, replacement
+):
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    value = calculated_mood.CalculatedMood()
+    value.rooms = {"central": {"roster": ["provider"], "level": 5}}
+    value.stages = {"provider": [2, 80]}
+    value.single_targets = {"provider": "worker"}
+    value.versions = {"provider": 0}
+    value.automatic_targets = {"provider": {"target": "worker"}}
+    before = pickle.dumps(value)
+    original = value._input_signature()
+    assert value._input_signature() == original
+    assert pickle.dumps(value) == before
+    changed = getattr(value, field)
+    for key in path[:-1]:
+        changed = changed[key]
+    changed[path[-1]] = replacement
+    mutated = pickle.dumps(value)
+    expected = json.dumps(
+        [
+            value.rooms,
+            value.stages,
+            value.single_targets,
+            value.versions,
+            value.automatic_targets,
+        ],
+        sort_keys=True,
+    )
+    assert value._input_signature() == expected
+    assert expected != original
+    assert pickle.dumps(value) == mutated
+
+
+def test_forecast_input_cache_keeps_live_and_projected_rosters_independent(monkeypatch):
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    value = calculated_mood.CalculatedMood()
+    value.at = NOW
+    value.moods = {"阿米娅": 24, "桃金娘": 24}
+    value.rooms = {
+        "central": {"roster": ["阿米娅"], "level": 5},
+        "room_1_1": {"roster": ["桃金娘"], "facility": "trade", "level": 3},
+    }
+    value.stages = {"阿米娅": (2, 80), "桃金娘": (2, 70)}
+    future = NOW + timedelta(hours=1)
+    before = pickle.dumps(value)
+    assert value.value("桃金娘", future) == pytest.approx(23.3)
+    assert pickle.dumps(value) == before
+    projected = copy.deepcopy(value)
+    projected.rooms["central"]["roster"].clear()
+    projected_before = pickle.dumps(projected)
+    assert projected.value("桃金娘", future) == pytest.approx(23.25)
+    assert pickle.dumps(projected) == projected_before
+    assert value.value("桃金娘", future) == pytest.approx(23.3)
+    assert pickle.dumps(value) == before
+    value.rooms["central"]["roster"].clear()
+    mutated = pickle.dumps(value)
+    assert value.value("桃金娘", future) == pytest.approx(23.25)
+    assert pickle.dumps(value) == mutated
