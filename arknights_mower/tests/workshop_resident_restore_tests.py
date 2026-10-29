@@ -108,6 +108,12 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
         "record_selection_success",
     ):
         setattr(solver, name, MagicMock())
+    solver.enter_room.side_effect = lambda *args, **kwargs: setattr(
+        solver.scene, "return_value", Scene.INFRA_DETAILS
+    )
+    solver.back.side_effect = lambda *args, **kwargs: setattr(
+        solver.scene, "return_value", Scene.INFRA_MAIN
+    )
 
     def arrange_and_update_actual(plan, get_time=False):
         requested = deepcopy(plan)

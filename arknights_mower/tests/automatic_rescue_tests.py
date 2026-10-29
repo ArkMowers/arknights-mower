@@ -1010,6 +1010,7 @@ def test_handoff_uses_real_arrangement_with_its_own_task_context(solver, previou
     )
     solver.back = MagicMock()
     solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
+    solver.recog = SimpleNamespace(update=MagicMock())
     solver.run_order_solver = MagicMock()
     solver.plan_metadata = MagicMock()
 

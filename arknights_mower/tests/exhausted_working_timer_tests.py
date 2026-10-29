@@ -573,9 +573,14 @@ def test_fiammetta_arrangement_requests_both_mood_indexes(already_arranged):
     solver.get_agent_from_room = MagicMock(
         return_value=[{"agent": "伊内丝"}, {"agent": "菲亚梅塔"}]
     )
-    solver.scene = MagicMock()
+    solver.scene = MagicMock(return_value=Scene.INFRA_DETAILS)
     solver.waiting_scene = []
-    solver.back = MagicMock()
+    solver.back = MagicMock(
+        side_effect=lambda *args, **kwargs: setattr(
+            solver.scene, "return_value", Scene.INFRA_MAIN
+        )
+    )
+    solver.recog = SimpleNamespace(update=MagicMock())
 
     plan = solver.task.plan
     expected = ["伊内丝", "菲亚梅塔"]

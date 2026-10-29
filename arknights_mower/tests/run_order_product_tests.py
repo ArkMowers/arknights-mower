@@ -534,6 +534,7 @@ def test_paused_order_reconciles_empty_room_despite_recent_occupancy_cache(
             ),
         )
         arrangement.setattr(solver, "scene", MagicMock(return_value=Scene.INFRA_MAIN))
+        arrangement.setattr(solver.recog, "update", MagicMock(), raising=False)
         arrangement.setattr(solver, "choose_agent", MagicMock())
 
         def confirm_staffing(room, new_plan):

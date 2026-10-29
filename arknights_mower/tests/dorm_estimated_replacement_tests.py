@@ -181,7 +181,11 @@ def test_dorm_three_execution_does_not_skip_low_card_replacement(
     if not registered:
         screen_only(instance, [name])
     instance.enter_room = MagicMock()
-    instance.back = MagicMock()
+    instance.back = MagicMock(
+        side_effect=lambda *args, **kwargs: setattr(
+            instance.scene, "return_value", Scene.INFRA_MAIN
+        )
+    )
     instance.turn_on_room_detail = MagicMock()
     instance.refresh_current_room = MagicMock()
     instance.find = MagicMock(

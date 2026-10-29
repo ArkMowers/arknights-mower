@@ -94,8 +94,13 @@ def shift_observation(solver, monkeypatch):
         Clock.current += timedelta(seconds=seconds)
         solver.recog.update()
 
+    def back(*args, **kwargs):
+        if solver.page in ("details", "selection"):
+            change_page("map")
+
     solver.tap = MagicMock(side_effect=tap)
     solver.sleep = MagicMock(side_effect=sleep)
+    solver.back = MagicMock(side_effect=back)
     solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
     solver.prepare_dorm_selection = MagicMock(return_value=[])
     original_confirm = solver.tap_confirm.side_effect
@@ -162,6 +167,9 @@ def test_confirmed_selection_page_restarts_room_timeout(shift_observation):
     solver.choose_agent.side_effect = choose
     solver.agent_arrange_room({}, ROOM, solver.task.plan, skip_enter=True)
     assert solver.physical == target
+    assert solver.recog.last_scene == Scene.INFRA_MAIN
+    change_page("details")
+    assert solver.scene() == Scene.INFRA_DETAILS
     assert solver.recog.last_scene == Scene.INFRA_DETAILS
     observed_at = solver.recog.last_scene_time
     clock.current = observed_at + timedelta(seconds=270)

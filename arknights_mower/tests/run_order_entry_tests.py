@@ -107,7 +107,10 @@ def test_ready_page_keeps_original_button_matching_and_adds_no_wait(
     solver.choose_agent.assert_called_once()
     solver.tap_confirm.assert_called_once()
     solver.sleep.assert_not_called()
-    solver.recog.update.assert_not_called()
+    if restoration:
+        solver.recog.update.assert_called_once_with()
+    else:
+        solver.recog.update.assert_not_called()
     solver.waiting_solver.assert_not_called()
     assert ROOM not in task.plan
     for call in solver.find.call_args_list:
@@ -128,7 +131,11 @@ def test_unknown_page_waits_for_new_normal_observation_before_selection(
         restoration=restoration,
     )
     solver._selection_profile_snapshot = SimpleNamespace(
-        mode="xhigh", low_frame_rate=False, transition_timeout=1, poll_interval=0.25
+        mode="xhigh",
+        low_frame_rate=False,
+        transition_timeout=1,
+        poll_interval=0.25,
+        screenshot_interval=100,
     )
     original_time = task.time
 

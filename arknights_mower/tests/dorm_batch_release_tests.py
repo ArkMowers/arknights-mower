@@ -269,7 +269,11 @@ def test_arrange_room_resolves_selection_before_recovery_and_after_observation(s
     instance, selected = solver
     instance.op_data.operators["红"].mood = 10
     instance.enter_room = MagicMock()
-    instance.back = MagicMock()
+    instance.back = MagicMock(
+        side_effect=lambda *args, **kwargs: setattr(
+            instance.scene, "return_value", Scene.INFRA_MAIN
+        )
+    )
     instance.turn_on_room_detail = MagicMock()
     instance.refresh_current_room = MagicMock()
     instance.find = MagicMock(
