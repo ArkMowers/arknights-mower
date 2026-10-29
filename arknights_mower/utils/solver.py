@@ -808,16 +808,11 @@ class BaseSolver:
                 elif scene == Scene.SSS_DEVICE:
                     self.tap((1824, 1026))
                 elif scene == Scene.SSS_SQUAD:
-                    if self.find("sss/start_action"):
-                        self.back()
-                    else:
-                        self.tap_element("sss/squad_button")
+                    self.tap_element("sss/squad_button")
                 elif scene == Scene.SSS_GUIDE:
                     self.tap_element("sss/close_button")
                 elif scene == Scene.SSS_CONFIRM:
                     self.tap_element("sss/confirm")
-                elif scene == Scene.UNKNOWN and self.find("sss/action_preparation"):
-                    return "保全已进入战斗内的行动前调整，请返回开始部署页后重新执行"
                 else:
                     self.sleep()
             except MowerExit:

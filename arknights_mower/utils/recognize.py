@@ -655,10 +655,6 @@ class Recognizer:
             self.scene = Scene.SSS_DEPLOY
         elif self.find("sss/redeploy_button"):
             self.scene = Scene.SSS_REDEPLOY
-        elif self.find("sss/start_action"):
-            self.scene = Scene.SSS_SQUAD
-        elif self.find("sss/action_preparation"):
-            self.scene = Scene.UNKNOWN
         elif self.find("sss/main"):
             self.scene = Scene.SSS_MAIN
         elif self.find("sss/start_button"):
@@ -669,6 +665,8 @@ class Recognizer:
             self.scene = Scene.SSS_DEVICE
         elif self.find("sss/squad_button"):
             self.scene = Scene.SSS_SQUAD
+        elif self.find("sss/action_preparation"):
+            self.scene = Scene.SSS_DEPLOY
         elif self.find("sss/confirm"):
             self.scene = Scene.SSS_CONFIRM
         elif self.find("sss/loading"):
@@ -958,8 +956,6 @@ class Recognizer:
             "sss/redeploy_button": ((1450, 850), (1920, 1080)),
             "sss/device_button": ((1450, 850), (1920, 1080)),
             "sss/next_step_button": ((1450, 850), (1920, 1080)),
-            "sss/squad_button": ((1450, 850), (1920, 1080)),
-            "sss/start_action": ((1450, 850), (1920, 1080)),
             "recycle/dashboard": ((465, 148), (682, 264)),
             "infra_collect_recycle": ((240, 980), (1920, 1080)),
             # "arrange_check_in": ((30, 300), (175, 700)),
