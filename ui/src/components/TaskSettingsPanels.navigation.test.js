@@ -364,6 +364,23 @@ afterEach(() => {
 })
 
 describe('continuous settings directory and scroll selection', () => {
+  it('uses runtime scene names for waiting-setting input labels', async () => {
+    const { config } = await mount()
+    const scenes = JSON.parse(
+      readFileSync(new URL('../../../arknights_mower/data/scene.json', import.meta.url), 'utf8')
+    )
+    const waitingScenes = [scenes['9'], scenes['9998'], scenes['104']]
+    config.waiting_scene = Object.fromEntries(waitingScenes.map(({ label }) => [label, [3, 10]]))
+    await flush()
+    const inputLabels = all(panels('runtime')[0]).map(
+      (element) => element.props['input-props']?.['aria-label']
+    )
+    for (const { comment } of waitingScenes) {
+      expect(inputLabels).toContain(`${comment}截图间隔（秒）`)
+      expect(inputLabels).toContain(`${comment}等待次数`)
+    }
+  })
+
   it('displays the scheduler idle-action priority for old conflicting flags and saves one choice', async () => {
     const { config } = await mount()
     config.close_simulator_when_idle = true
