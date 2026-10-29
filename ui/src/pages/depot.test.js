@@ -35,7 +35,16 @@ vi.mock('echarts/components', () => ({
   DataZoomComponent: {},
   MarkLineComponent: {}
 }))
-vi.mock('vue-echarts', () => ({ default: () => null, THEME_KEY: Symbol('chart-theme') }))
+vi.mock('vue-echarts', async () => {
+  const { h } = await import('vue')
+  return {
+    default: {
+      props: ['option', 'autoresize'],
+      setup: (props) => () => h('chart', { option: props.option })
+    },
+    THEME_KEY: Symbol('chart-theme')
+  }
+})
 vi.mock('@/components/HelpText.vue', () => ({ default: () => null }))
 vi.mock('@/components/DepotBaselinePicker.vue', async () => {
   const { h } = await import('vue')
@@ -135,8 +144,14 @@ function mount() {
   for (const name of ['radio-group', 'radio-button', 'select', 'checkbox', 'input']) {
     app.component(`n-${name}`, wrapper(name))
   }
-  app.component('n-drawer', { setup: () => () => null })
-  app.component('n-drawer-content', wrapper('aside'))
+  app.component('n-drawer', {
+    props: ['show'],
+    setup:
+      (props, { slots }) =>
+      () =>
+        props.show ? h('drawer', slots.default?.()) : null
+  })
+  app.component('n-drawer-content', wrapper('drawer-content'))
   app.mount(root)
   return useDepotPreferencesStore()
 }
@@ -251,5 +266,114 @@ describe('depot page preference persistence', () => {
     ])
     expect(storage.setItem).not.toHaveBeenCalled()
     expect(storage.removeItem).not.toHaveBeenCalled()
+  })
+})
+
+describe('depot derived item trends', () => {
+  const expectedSeries = {
+    '玉+卷': [0.1, 1.1],
+    '玉+卷+石': [0.2, 2.2],
+    '额外+碎片': [0.3, 3.3],
+    '额外+碎片+土': [0.4, 4.4],
+    '全部经验（计算）': [15600, 3200]
+  }
+
+  function prepareDerivedItems() {
+    const categories = state.depot.report.depot[0]
+    for (const [name, values] of Object.entries(expectedSeries)) {
+      const category = name === '全部经验（计算）' ? 'B 作战记录' : 'A 常用资源'
+      categories[category] ||= {}
+      categories[category][name] = { number: values[1], sort: 100 }
+    }
+    state.depot.history = [
+      {
+        at: 100,
+        items: {
+          合成玉: 600,
+          '玉+卷': 0.1,
+          '玉+卷+石': 0.2,
+          '额外+碎片': 0.3,
+          '额外+碎片+土': 0.4,
+          基础作战记录: 2,
+          初级作战记录: 3,
+          中级作战记录: 4,
+          高级作战记录: 5
+        },
+        complete: true
+      },
+      {
+        at: 200,
+        items: {
+          合成玉: 600,
+          '玉+卷': 1.1,
+          '玉+卷+石': 2.2,
+          '额外+碎片': 3.3,
+          '额外+碎片+土': 4.4,
+          基础作战记录: 1,
+          中级作战记录: 1,
+          高级作战记录: 1
+        },
+        complete: true
+      }
+    ]
+  }
+
+  function derivedCard(name) {
+    return node(
+      'article',
+      (item) =>
+        item.props.class?.includes('is-derived') &&
+        descendants(item).some((child) => child.props.title === name)
+    )
+  }
+
+  it('renders sparklines and opens the recorded series from all five derived item cards', async () => {
+    prepareDerivedItems()
+    mount()
+    await settle()
+
+    for (const [name, values] of Object.entries(expectedSeries)) {
+      const card = derivedCard(name)
+      expect(descendants(card).some((item) => item.type === 'polyline')).toBe(true)
+      card.props.onClick()
+      await settle()
+      expect(node('drawer-content').props.title).toBe(name)
+      expect(node('chart').props.option.series[0]).toMatchObject({ name, data: values })
+    }
+  })
+
+  it('shows exhausted experience as zero and omits an unrelated partial scan', async () => {
+    prepareDerivedItems()
+    state.depot.history = [
+      state.depot.history[0],
+      { at: 150, items: { 龙门币: 100 } },
+      { at: 200, items: {}, complete: true }
+    ]
+    mount()
+    await settle()
+    node('div', (item) => item.props.class?.includes('asset-card-exp')).props.onClick()
+    await settle()
+
+    const option = node('chart').props.option
+    expect(option.series[0].data).toEqual([15600, 0])
+    expect(option.xAxis.data).toHaveLength(2)
+  })
+
+  it('shows an empty state when fewer than two experience observations are available', async () => {
+    prepareDerivedItems()
+    state.depot.history = [state.depot.history[0], { at: 200, items: { 龙门币: 100 } }]
+    mount()
+    await settle()
+
+    expect(
+      descendants(derivedCard('全部经验（计算）')).some((item) => item.type === 'polyline')
+    ).toBe(false)
+    node('div', (item) => item.props.class?.includes('asset-card-exp')).props.onClick()
+    await settle()
+
+    expect(node('chart')).toBeUndefined()
+    expect(
+      node('empty', (item) => item.props.class === 'detail-empty-view').props.description
+    ).toBe('有效历史记录少于 2 次，暂无法生成趋势曲线')
   })
 })
