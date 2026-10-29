@@ -29,6 +29,24 @@ function freeze(value) {
 }
 
 describe('task configuration checklist', () => {
+  it('finds waiting adaptation in run-order settings for a managed instance', () => {
+    const workflow = createTaskWorkflow({ manager_owned_device: true })
+    const matches = workflow.tasks.filter((task) =>
+      matchesSettingsSearch('等待场景网络自适应', task.title, task.description, task.searchKeywords)
+    )
+    expect(matches.map(({ id }) => id)).toEqual(['runorder'])
+  })
+  it.each([
+    ['跑单网络自适应', 'runorder'],
+    ['等待场景网络自适应', 'runtime']
+  ])('finds the independent network adaptive editor for %s', (query, expected) => {
+    const workflow = createTaskWorkflow({})
+    const matches = workflow.tasks.filter((task) =>
+      matchesSettingsSearch(query, task.title, task.description, task.searchKeywords)
+    )
+    expect(matches.map(({ id }) => id)).toEqual([expected])
+  })
+
   it.each([
     ['限时签到', 'rewards'],
     ['Copilot', 'long'],

@@ -174,6 +174,7 @@ const plan_store = usePlanStore()
 const mobile = inject('mobile', ref(false))
 const {
   run_order_delay,
+  run_order_network_adaptive,
   selection_poll_interval,
   selection_transition_timeout,
   drone_room,
@@ -193,6 +194,7 @@ const {
   fix_mumu12_adb_disconnect,
   maa_gap,
   waiting_scene,
+  waiting_scene_network_adaptive,
   enable_party,
   leifeng_mode,
   item_list,
@@ -480,6 +482,54 @@ const idleOptions = computed(() => [
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
             </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="run_order_network_adaptive" aria-label="跑单网络自适应">
+                跑单网络自适应
+              </n-checkbox>
+              <help-text>
+                <div>仅用于普通葛朗台跑单，默认关闭。</div>
+                <div>
+                  只记录本实例“正在提交反馈至神经”的实际连续等待耗时，保留15分钟，不截断原始记录。
+                </div>
+                <div>
+                  等待结束或超时后，为未来20分钟内所有未开始的跑单分别计算补偿，取近15分钟内严格超过原缓冲一半的最长等待，等于一半不触发。
+                </div>
+                <div>将补偿临时加到葛朗台缓冲时间，最多补偿90秒，不改原设置。</div>
+                <div>
+                  临时缓冲达到原跑单前置时间的一半时，本次前置时间也增加整段临时缓冲，跑单相应提前；重复计算不累加。
+                </div>
+                <div>
+                  开始后固定本次补偿，期间“正在提交反馈至神经”和“场景跳转时的等待界面”的每段等待都可使用，恢复原班后清除，不影响其他跑单。
+                </div>
+              </help-text>
+            </n-form-item>
+            <n-form-item v-if="config_store.manager_owned_device" :show-label="false">
+              <n-checkbox
+                v-model:checked="waiting_scene_network_adaptive"
+                aria-label="等待场景网络自适应"
+              >
+                等待场景网络自适应
+              </n-checkbox>
+              <help-text>
+                <div>
+                  默认关闭，仅延长“正在提交反馈至神经”和“场景跳转时的等待界面”；“登录中”和“未知”不参与。
+                </div>
+                <div>
+                  只记录“正在提交反馈至神经”的实际连续等待耗时，保留15分钟，不截断原始记录。
+                </div>
+                <div>
+                  原等待上限＝截图间隔 ×
+                  等待次数。取近15分钟内尚未用于普通等待、且严格超过原上限一半的最长记录，等于一半不触发。
+                </div>
+                <div>
+                  最多补偿90秒，仅用于下一段连续等待，开始使用时消费；两种场景相互切换不重新增加补偿。
+                </div>
+                <div>
+                  被补偿的跑单期间直接沿用本单补偿，即使此开关关闭也生效；两项补偿取较大值，不相加。
+                </div>
+                <div>不改原截图间隔和等待次数；页面恢复后立即继续，不会强制等满。</div>
+              </help-text>
+            </n-form-item>
             <n-form-item>
               <template #label>
                 <span>葛朗台缓冲时间</span>
@@ -749,6 +799,33 @@ const idleOptions = computed(() => [
               >
                 <template #suffix>秒</template>
               </mower-input-number>
+            </n-form-item>
+            <n-form-item :show-label="false" class="task-panel-field-wide">
+              <n-checkbox
+                v-model:checked="waiting_scene_network_adaptive"
+                aria-label="等待场景网络自适应"
+              >
+                等待场景网络自适应
+              </n-checkbox>
+              <help-text>
+                <div>
+                  默认关闭，仅延长“正在提交反馈至神经”和“场景跳转时的等待界面”；“登录中”和“未知”不参与。
+                </div>
+                <div>
+                  只记录“正在提交反馈至神经”的实际连续等待耗时，保留15分钟，不截断原始记录。
+                </div>
+                <div>
+                  原等待上限＝截图间隔 ×
+                  等待次数。取近15分钟内尚未用于普通等待、且严格超过原上限一半的最长记录，等于一半不触发。
+                </div>
+                <div>
+                  最多补偿90秒，仅用于下一段连续等待，开始使用时消费；两种场景相互切换不重新增加补偿。
+                </div>
+                <div>
+                  被补偿的跑单期间直接沿用本单补偿，即使此开关关闭也生效；两项补偿取较大值，不相加。
+                </div>
+                <div>不改原截图间隔和等待次数；页面恢复后立即继续，不会强制等满。</div>
+              </help-text>
             </n-form-item>
             <n-form-item label="等待时间" class="task-panel-field-wide">
               <div class="task-waiting-scroll" tabindex="0" role="region" aria-label="场景等待参数">

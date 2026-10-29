@@ -1,4 +1,5 @@
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
 from typing import List, Optional, Tuple
@@ -27,6 +28,13 @@ from arknights_mower.utils.vector import va
 
 class RecognizeError(Exception):
     pass
+
+
+@dataclass
+class NetworkWaitGuard:
+    deadline: float
+    scene_budgets: dict[str, float] = field(default_factory=dict)
+    allowance_remaining: float = 0
 
 
 class Recognizer:
@@ -116,6 +124,7 @@ class Recognizer:
 
     def reset_after_external_control(self) -> None:
         """重新开始连续观测时，丢弃旧标准画面帧及场景停留计时。"""
+        self.__dict__.pop("_network_wait_episode", None)
         self.update()
         self.last_scene = None
         self.last_scene_time = datetime.now()
@@ -149,6 +158,8 @@ class Recognizer:
         return False
 
     def check_loading_time(self):
+        if self._network_wait_is_managed():
+            return
         if self.scene == Scene.CONNECTING:
             self.loading_time += 1
             if self.loading_time > 1:
@@ -170,7 +181,18 @@ class Recognizer:
         if min_val < 0.02:
             return (min_loc[0] + 960 + 42, min_loc[1] + 42)
 
+    def _network_wait_is_managed(self):
+        if self.scene not in (Scene.CONNECTING, Scene.LOADING):
+            self.__dict__.pop("_network_wait_episode", None)
+            return False
+        return isinstance(getattr(self, "_network_wait_guard", None), NetworkWaitGuard)
+
     def check_freeze(self, current_time):
+        # 等待函数按同一截止时间决定是否重启，此处不提前关闭游戏。
+        if self._network_wait_is_managed():
+            self.last_scene = self.scene
+            self.last_scene_time = current_time
+            return
         if self.scene != self.last_scene:
             self.last_scene_time = current_time
             self.last_scene = self.scene

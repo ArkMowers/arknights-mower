@@ -5,7 +5,7 @@ CONF_GROUPS = {
         "adb custom_screenshot device droidcast fix_mumu12_adb_disconnect maa_adb_path mumu12IPC package_type simulator tap_to_launch_game touch_method".split()
     ),
     "runtime": set(
-        "close_simulator_when_idle exit_game_when_idle low_frame_rate_mode performance_mode return_home_when_idle screenshot_interval selection_poll_interval selection_transition_timeout start_automatically waiting_scene".split()
+        "close_simulator_when_idle exit_game_when_idle low_frame_rate_mode performance_mode return_home_when_idle screenshot_interval selection_poll_interval selection_transition_timeout start_automatically waiting_scene waiting_scene_network_adaptive".split()
     ),
     "daily": set(
         "check_mail_enable event_sign_in_enable mail_skip_clear_read maa_depot_enable maa_enable maa_event_shop maa_gap maa_mail maa_mining maa_orundum maa_recruit maa_signinevent maa_specialaccess report_enable sign_in skland_enable".split()
@@ -44,7 +44,11 @@ CONF_GROUPS = {
     "base": set(
         "assistant_follows_schedule dorm_isolation enable_mastery favorite fia_fool fia_threshold free_blacklist free_room group_mood_gap_exclusions group_mood_gap_max_extra_wait_hours group_mood_gap_threshold_minutes group_rest_in_full_on_mood_gap group_resting_thresholds merge_interval product_switching rescue_threshold resting_threshold right_side_room_order save_mastery_screenshots swap_contact_train test_mood_calculation version_update_resting_threshold version_update_threshold_advance_hours".split()
     ),
-    "runorder": {"run_order_delay", "run_order_grandet_mode"},
+    "runorder": {
+        "run_order_delay",
+        "run_order_grandet_mode",
+        "run_order_network_adaptive",
+    },
     "drone": {"drone_count_limit", "drone_interval", "drone_room"},
     "workshop": set(
         "book_operators fodder_operators growth_crafting_order t5_operators workshop_auto_active workshop_deer_fodder workshop_generation workshop_manual_backup workshop_manual_revision workshop_manual_settings workshop_manual_settings_revision workshop_min_bonus workshop_preset_migrated workshop_protect_t2_device_rock workshop_settings".split()
