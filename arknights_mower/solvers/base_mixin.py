@@ -385,12 +385,12 @@ class BaseMixin:
 
     def clear_agent_selection(self, room=None):
         """取消暂选，确认可见卡片的旧蓝框消失后才继续选人。"""
-        if (
+        if room in ("factory", "contact") or (
             room
             and room.startswith("room")
             and len(self.op_data.plan.get(room, ())) == 1
         ):
-            # 单岗位生产房没有清空按钮；刷新已选置顶后取消实读蓝框卡片。
+            # 单岗位设施没有清空按钮；刷新已选置顶后取消实读蓝框卡片。
             self.require_agent_selection_page()
             self.switch_arrange_order("技能", room)
             page = self.wait_for_agent_page()

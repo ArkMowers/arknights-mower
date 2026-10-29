@@ -1,4 +1,4 @@
-"""单岗位生产房通过已选卡片取消暂选，不点击不存在的清空按钮。"""
+"""单岗位设施通过已选卡片取消暂选，不点击不存在的清空按钮。"""
 
 import sys
 from pathlib import Path
@@ -48,27 +48,48 @@ def test_captured_single_slot_selection_border(selection_module, cleared):
 
 
 @pytest.mark.parametrize(
-    "targets,initial,capacity,initial_profession,expected_events",
+    "room,targets,initial,capacity,initial_profession,expected_events",
     [
-        (
+        pytest.param(
+            room,
+            targets,
+            initial,
+            1,
+            profession,
+            events,
+            id=f"{room}-{case}",
+        )
+        for room in (ROOM, "contact", "factory")
+        for targets, initial, profession, events, case in (
+            (
+                ["图耶"],
+                ["但书"],
+                "ALL",
+                [("cancel", "但书"), "cleared", ("select", "图耶")],
+                "replace-selected",
+            ),
+            ([""], ["但书"], "ALL", [("cancel", "但书"), "cleared"], "leave-empty"),
+            (
+                [""],
+                ["但书"],
+                "MEDIC",
+                [("cancel", "但书"), "cleared"],
+                "clear-hidden-selected-card",
+            ),
+            (["图耶"], [], "ALL", [("select", "图耶")], "select-from-empty"),
+            ([""], [], "ALL", [], "already-empty"),
+        )
+    ]
+    + [
+        pytest.param(
+            ROOM,
             ["图耶"],
             ["但书"],
-            1,
+            3,
             "ALL",
-            [("cancel", "但书"), "cleared", ("select", "图耶")],
-        ),
-        ([""], ["但书"], 1, "ALL", [("cancel", "但书"), "cleared"]),
-        pytest.param(
-            [""],
-            ["但书"],
-            1,
-            "MEDIC",
-            [("cancel", "但书"), "cleared"],
-            id="clear-hidden-selected-card",
-        ),
-        (["图耶"], [], 1, "ALL", [("select", "图耶")]),
-        ([""], [], 1, "ALL", []),
-        (["图耶"], ["但书"], 3, "ALL", ["clear", "cleared", ("select", "图耶")]),
+            ["clear", "cleared", ("select", "图耶")],
+            id="multiple-slots-clear-button",
+        )
     ],
 )
 @pytest.mark.parametrize("mode", ["xhigh", "high", "medium", "low"])
@@ -76,6 +97,7 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
     monkeypatch,
     selection_module,
     mode,
+    room,
     targets,
     initial,
     capacity,
@@ -97,7 +119,7 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
     solver.last_room = ""
     solver.choose_error = set()
     solver.op_data = SimpleNamespace(
-        plan={ROOM: [SimpleNamespace(agent="图耶")] * capacity},
+        plan={room: [SimpleNamespace(agent="图耶")] * capacity},
         operators={},
         profession_filter=set(),
         dorm_mood_estimates={},
@@ -181,7 +203,7 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
     )
     refresh()
 
-    solver.choose_agent(targets.copy(), ROOM, fast_mode=False, choose_error=1)
+    solver.choose_agent(targets.copy(), room, fast_mode=False, choose_error=1)
 
     assert selected == [name for name in targets if name]
     assert events == expected_events
@@ -236,6 +258,97 @@ def test_single_slot_clear_uses_captured_card_and_observes_feedback(
 
     assert solver.tap.call_count == (0 if already_clear else 1)
     assert solver.recog.img is images["cleared"]
+
+
+def test_captured_workshop_single_slot_selection_border(selection_module):
+    from arknights_mower.utils.character_recognize import operator_list
+
+    image = np.array(
+        Image.open(
+            Path(__file__).parent
+            / "fixtures/selection/workshop_single_selected_20261029.jpg"
+        )
+    )
+    page = operator_list(image)
+
+    assert page[0][0] == "特克诺"
+    assert "年" in [name for name, _ in page]
+    assert [
+        name
+        for name, scope in page
+        if selection_module.agent_card_selected(image, scope) is True
+    ] == ["特克诺"]
+    assert all(
+        selection_module.agent_card_selected(image, scope) is not None
+        for _, scope in page
+    )
+
+
+@pytest.mark.parametrize("room", ["factory", "contact"])
+@pytest.mark.parametrize("plan_count", [None, 0, 1])
+def test_right_side_single_slot_clear_uses_captured_card_without_static_staff(
+    monkeypatch, selection_module, room, plan_count
+):
+    """加工站实图提供蓝框和坐标；无蓝框反馈由已有贸易站样本模拟。"""
+    from arknights_mower.utils.character_recognize import operator_list
+
+    fixture_dir = Path(__file__).parent / "fixtures/selection"
+    selected_image = np.array(
+        Image.open(fixture_dir / "workshop_single_selected_20261029.jpg")
+    )
+    cleared_image = np.array(
+        Image.open(fixture_dir / "trade_single_cleared_20261021.jpg")
+    )
+    monkeypatch.setattr(config, "conf", config.Conf(performance_mode="high"))
+    solver = selection_module.BaseMixin()
+    plan = {} if plan_count is None else {room: [object()] * plan_count}
+    solver.op_data = SimpleNamespace(plan=plan)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=selected_image)
+    solver.find = Mock(return_value=False)
+    solver.switch_arrange_order = Mock()
+    scope = operator_list(selected_image)[0][1]
+    pending = 0
+    events = []
+
+    def update():
+        nonlocal pending
+        if pending:
+            pending -= 1
+            if not pending:
+                solver.recog.img = cleared_image
+                events.append("cleared")
+
+    def tap(point, **_):
+        nonlocal pending
+        assert point == scope, "单岗位设施必须点击实读蓝框卡片"
+        pending = 3
+        events.append(("cancel", "特克诺"))
+
+    solver.recog.update = Mock(side_effect=update)
+    solver.wait_for_next_observation = Mock(side_effect=lambda *_: update())
+    solver.tap = Mock(side_effect=tap)
+
+    solver.clear_agent_selection(room)
+
+    assert events == [("cancel", "特克诺"), "cleared"]
+    assert solver.tap.call_count == 1
+    assert solver.recog.img is cleared_image
+
+
+def test_training_selection_keeps_legacy_clear(selection_module):
+    solver = selection_module.BaseMixin()
+    solver.op_data = SimpleNamespace(plan={"train": [object()]})
+    solver.recog = SimpleNamespace(w=1920, h=1080)
+    solver.tap = Mock()
+    solver.switch_arrange_order = Mock()
+    solver.wait_for_cleared_selection = Mock()
+
+    solver.clear_agent_selection("train")
+
+    solver.tap.assert_called_once()
+    assert solver.tap.call_args.args == ((729.6, 1026.0),)
+    solver.wait_for_cleared_selection.assert_called_once_with()
+    solver.switch_arrange_order.assert_not_called()
 
 
 @pytest.mark.parametrize("problem", ["unknown", "multiple", "exited", "name"])
