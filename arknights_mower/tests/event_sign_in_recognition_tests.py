@@ -529,3 +529,70 @@ def test_real_claimed_four_day_prefix_can_be_rechecked_without_reward_clicks(
     solver.tap.assert_not_called()
     assert solver.claimed_days == set()
     assert solver.attempted_days == set()
+
+
+def test_real_claimed_six_day_prefix_keeps_overlap_despite_card_crop_rounding(
+    local_ocr, monkeypatch
+):
+    from arknights_mower.solvers import event_sign_in as sign_in
+    from arknights_mower.utils import config
+
+    solver = object.__new__(sign_in.EventSignInSolver)
+    solver.deadline = time.monotonic() + 180
+    solver.activity_days = 7
+    solver.claimed_days = set()
+    solver.attempted_days = set()
+    solver.swipe_noinertia = Mock()
+    solver.tap = Mock()
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(rapidocr, "engine", local_ocr)
+    # 回放 2026-10-29 15:04:40、15:04:43 的奖励卡片；日志已确认七日进度。
+    # 归档 JPEG 的进度圆点不能稳定重放，本测试只隔离该输入，保留真实 OCR 和翻页判断。
+    progress = Progress(
+        7,
+        6,
+        tuple((x, 248) for x in (696, 874, 1050, 1226, 1404, 1580, 1756)),
+        ((661, 343), (1806, 718)),
+        ((661, 343), (1806, 918)),
+        510,
+        1.0,
+    )
+    monkeypatch.setattr(sign_in, "detect_progress", lambda _: progress)
+    pages = []
+    for side in ("right", "left"):
+        crop = cv2.cvtColor(
+            cv2.imdecode(
+                np.fromfile(
+                    FIXTURES / f"seven_day_six_claimed_{side}_20261029.png", np.uint8
+                ),
+                cv2.IMREAD_COLOR,
+            ),
+            cv2.COLOR_BGR2RGB,
+        )
+        image = np.zeros((1080, 1920, 3), np.uint8)
+        image[343:918, 661:1806] = crop
+        solver.recog = SimpleNamespace(
+            img=image, check_announcement=lambda: (1875, 152)
+        )
+        page = solver._panel_states()
+        assert page is not None
+        pages.append(page)
+    before, after = pages
+    assert before.first_day == 4
+    assert [(card.day, card.claimed) for card in before.cards] == [
+        (4, True),
+        (5, True),
+        (6, True),
+        (7, False),
+    ]
+    assert after.first_day is None
+    assert len(after.cards) == 4
+    assert all(card.day is None and card.claimed for card in after.cards)
+    solver._wait_panel = Mock(side_effect=[after, before])
+
+    assert solver._collect_activity(before) is True
+
+    assert solver.swipe_noinertia.call_count == 2
+    solver.tap.assert_not_called()
+    assert solver.claimed_days == set()
+    assert solver.attempted_days == set()
