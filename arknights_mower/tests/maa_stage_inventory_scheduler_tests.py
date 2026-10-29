@@ -84,7 +84,7 @@ class MaaFightMedicineExpireDaysTests(unittest.TestCase):
         weekday = overrides.pop("weekday", 0)
         with (
             patch.object(solver, "maybe_switch_expired_activity_plan"),
-            # 本类只测 medicine_expire_days 取值，绕过库存选关（不注入快照、不依赖 depot）
+            # 协议参数测试使用空库存，不读取共享数据库。
             patch.object(
                 base_schedule.config, "conf", _conf(enabled=False, **overrides)
             ),
@@ -94,6 +94,10 @@ class MaaFightMedicineExpireDaysTests(unittest.TestCase):
                 return_value=weekday,
             ),
             patch.object(base_schedule, "cultivateDepotSolver"),
+            patch(
+                "arknights_mower.utils.maa_stage_inventory.load_inventory_snapshot",
+                return_value=({}, None),
+            ),
         ):
             solver.append_maa_task("Fight")
         return solver.MAA.append_task.call_args
@@ -133,6 +137,10 @@ class MaaFightYituliuTests(unittest.TestCase):
             ),
             patch.object(base_schedule, "get_server_weekday", return_value=0),
             patch.object(base_schedule, "cultivateDepotSolver"),
+            patch(
+                "arknights_mower.utils.maa_stage_inventory.load_inventory_snapshot",
+                return_value=({}, None),
+            ),
         ):
             solver.append_maa_task("Fight")
         return solver.MAA.append_task.call_args
@@ -172,6 +180,10 @@ class MaaFightPenguinTests(unittest.TestCase):
             ),
             patch.object(base_schedule, "get_server_weekday", return_value=0),
             patch.object(base_schedule, "cultivateDepotSolver"),
+            patch(
+                "arknights_mower.utils.maa_stage_inventory.load_inventory_snapshot",
+                return_value=({}, None),
+            ),
         ):
             solver.append_maa_task("Fight")
         return solver.MAA.append_task.call_args
@@ -471,6 +483,10 @@ class MaaClientTypeTests(unittest.TestCase):
             ),
             patch.object(base_schedule, "get_server_weekday", return_value=0),
             patch.object(base_schedule, "cultivateDepotSolver"),
+            patch(
+                "arknights_mower.utils.maa_stage_inventory.load_inventory_snapshot",
+                return_value=({}, None),
+            ),
         ):
             solver.append_maa_task(task_type)
         return solver.MAA.append_task.call_args
