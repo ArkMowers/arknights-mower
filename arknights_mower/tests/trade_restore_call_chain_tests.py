@@ -161,14 +161,14 @@ def run_order_screen(monkeypatch, selection_modules, mode, *, readback_works=Tru
     solver.turn_on_room_detail = Mock(side_effect=enter)
     solver.find = Mock(side_effect=find)
     solver.scene = Mock(
-        side_effect=lambda: (
-            Scene.INFRA_ARRANGE_ORDER
-            if phase["page"] == "selection"
-            else Scene.INFRA_DETAILS
-        )
+        side_effect=lambda: {
+            "selection": Scene.INFRA_ARRANGE_ORDER,
+            "details": Scene.INFRA_DETAILS,
+            "map": Scene.INFRA_MAIN,
+        }[phase["page"]]
     )
     solver.tap = Mock(side_effect=tap)
-    solver.back = Mock(side_effect=lambda *args, **kwargs: phase.update(page="details"))
+    solver.back = Mock(side_effect=lambda *args, **kwargs: phase.update(page="map"))
     solver.get_agent_from_room = Mock(side_effect=read)
     solver.accept_order = Mock(side_effect=collect_order)
     capture()
