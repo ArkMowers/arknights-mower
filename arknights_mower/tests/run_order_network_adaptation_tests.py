@@ -3,7 +3,7 @@
 import copy
 import io
 import pickle
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
@@ -76,13 +76,18 @@ def observe(owner, seconds=30, *, now=NOW, timed_out=True):
 def test_mood_limit_release_clears_adapted_order_window_without_time_drift(
     planned, monkeypatch, offline_maintenance
 ):
+    now = (
+        datetime(2026, 10, 28, 12, tzinfo=timezone(timedelta(hours=8)))
+        .astimezone()
+        .replace(tzinfo=None)
+    )
     conf, owner, task = planned
     conf.run_order_delay = 5
     conf.run_order_grandet_mode.buffer_time = 90
     monkeypatch.setattr(config, "conf", conf)
-    task.time = NOW + timedelta(minutes=10)
-    observe(owner, 90)
-    bind_run_order_network([task], owner, conf, NOW)
+    task.time = now + timedelta(minutes=10)
+    observe(owner, 90, now=now)
+    bind_run_order_network([task], owner, conf, now)
     assert run_order_entry_seconds(task, conf) == 480
     order_start = task.time
     deadline = order_start + timedelta(seconds=510)
@@ -96,7 +101,7 @@ def test_mood_limit_release_clears_adapted_order_window_without_time_drift(
     )
     tasks = [task, release]
 
-    scheduling(tasks, execution_time=0.75, time_now=NOW)
+    scheduling(tasks, execution_time=0.75, time_now=now)
 
     assert release.time + timedelta(seconds=90) < order_start
     assert release.mood_limit_deadline == deadline
@@ -105,7 +110,7 @@ def test_mood_limit_release_clears_adapted_order_window_without_time_drift(
     reserved_start = release.time
     for seconds in (1, 2, 3):
         scheduling(
-            tasks, execution_time=0.75, time_now=NOW + timedelta(seconds=seconds)
+            tasks, execution_time=0.75, time_now=now + timedelta(seconds=seconds)
         )
         assert tasks == [release, task]
         assert release.time == reserved_start
