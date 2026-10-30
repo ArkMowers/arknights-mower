@@ -6,7 +6,12 @@ import { createRecruitmentObservation } from './incomeRecruitment'
 import { createClueObservation } from './incomeClues'
 import { buildTimelineData } from './vendor/workbench/timeline/timelineModel'
 import { MOWER_FIAMMETTA_INITIAL_MORALE } from './vendor/scheduler/mowerInitialMorale'
-import sourceManifest from './vendor/source.json'
+import {
+  revision,
+  mowerReference,
+  mowerCheckedRevision,
+  schedulingSync
+} from './vendor/source.json'
 
 export function calculateIncome(plan, settings, onProgress) {
   const { workspace, options } = incomeRequest(plan, settings)
@@ -66,10 +71,10 @@ export function calculateIncome(plan, settings, onProgress) {
     success: true,
     initialConditions: { fiammettaMorale: MOWER_FIAMMETTA_INITIAL_MORALE },
     modelProvenance: {
-      calculatorBaseRevision: sourceManifest.revision,
-      calculatorSyncRevision: sourceManifest.schedulingSync.calculatorRevision,
-      mowerBaseReference: sourceManifest.mowerReference,
-      mowerCheckedRevision: sourceManifest.mowerCheckedRevision,
+      calculatorBaseRevision: revision,
+      calculatorSyncRevision: schedulingSync.calculatorRevision,
+      mowerBaseReference: mowerReference,
+      mowerCheckedRevision: mowerCheckedRevision,
       moodControlStrategyVersion: simulation.assumptions.moodControlStrategyVersion,
       predictiveMoodControl: simulation.assumptions.predictiveMoodControl
     },

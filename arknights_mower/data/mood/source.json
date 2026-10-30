@@ -1,9 +1,11 @@
 {
   "runtime": "quickjs-ng==0.17.0.2",
-  "sha256": "17596fb60c290e3f4985b16b23c69025e850acfbfa938de6a2f8df8d9de82bd7",
+  "sha256": "80d8c0c53fe146066ceca7d549bd202c690dc362d94d93bb15c55ebcacce0891",
+  "catalog_sha256": "c30fab2816ace895ae54bf84e5e8bf268151bb6571df3d0af87652b4390ac460",
+  "rules_sha256": "3f960c916e9210ccf83b827416ebdbac04ebd535511ab74059224288c38dabbb",
   "files": {
+    "arknights_mower/data/riic/operators.json": "c30fab2816ace895ae54bf84e5e8bf268151bb6571df3d0af87652b4390ac460",
     "ui/src/riic/runtimeMood.ts": "d4ca5d01971f64c6ccdedac70862e7163ab449905c30bccc4a0148553ae81bbf",
-    "ui/src/riic/vendor/data/operators.generated.json": "c63e372a237a6c80194360536c4c5673f0db729cab7c77d778878aa54349e930",
     "ui/src/riic/vendor/data/riic-term-evidence.json": "2554416a3e3bfa10e48a338b33279e3cb5bfd2b72861de70eb10166bb8e4d2b5",
     "ui/src/riic/vendor/domain/defaults.ts": "7323b6604de2a5eccb263b721ffbff1985bb4e182f4ef1e115f0ff7ed30da4b6",
     "ui/src/riic/vendor/domain/droneCapacity.ts": "058e2288354c30583abef0085a4f8696ca3ab1eee0f2a5510e41497fc2329090",
@@ -13,7 +15,7 @@
     "ui/src/riic/vendor/domain/operatorContext.ts": "43eda0f1852538dfd25abc5ddf74be28e72635a00d989fe6bd267504773b0d7b",
     "ui/src/riic/vendor/domain/operatorIdentifiers.ts": "7f36a30e1913df69899fd8910177ea8f41fbfd8e0a32cc3b2390f3fe53c74a3a",
     "ui/src/riic/vendor/domain/operatorInventory.ts": "13642cfdb9bc58d7f773f6874d6e51dcffede2b357c50529dc4d67fa0888e601",
-    "ui/src/riic/vendor/domain/operators.ts": "ab491d95f934b91702339296e28e6c2949a5ad535327836a5226ce06b5041fed",
+    "ui/src/riic/vendor/domain/operators.ts": "616b1817ceab9aa941b37b799c042c79ce3844cbd014e24181a54c1efd387ee3",
     "ui/src/riic/vendor/domain/riicIdentity.ts": "7af984b60d414b483e852e757010762a37d10f9bdeab62f9fe541f1d32515678",
     "ui/src/riic/vendor/domain/riicTags.ts": "e03b0b9ebd4200afbbb85bae57781906389abcd325be3d88b88d5810a658fe75",
     "ui/src/riic/vendor/domain/roster.ts": "de8451bc5052c2bc0cae4cd25af3fa76585ed8b8ef68ac0f4c6f041a3d0920ea",

@@ -1,20 +1,18 @@
 """Compile promotion, basic skill and module costs from game resource tables."""
 
+from arknights_mower.utils.operator_data import operator_profile
+
 
 def compile_growth_data(characters, equips, constants, patch_infos=None):
     result = {}
     for cid, char in characters.items():
         if not cid.startswith("char_") or char.get("isNotObtainable"):
             continue
-        rarity = char["rarity"]
-        rarity = (
-            int(rarity.removeprefix("TIER_")) if isinstance(rarity, str) else rarity + 1
-        )
+        profile = operator_profile(char, cid)
         result[cid] = {
-            "name": char["name"],
-            "rarity": rarity,
-            "profession": char["profession"],
-            "subProfessionId": char["subProfessionId"],
+            key: profile[key]
+            for key in ("name", "rarity", "profession", "subProfessionId")
+        } | {
             "integrated_strategy": char.get("spTargetType") == "ROGUE",
             "phases": [
                 {

@@ -15,14 +15,15 @@ def verify(root):
         expected = patches.get(name, {}).get("sha256", source_hash)
         if (
             not path.is_file()
-            or hashlib.sha256(path.read_bytes()).hexdigest() != expected
+            or hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+            != expected
         ):
             errors.append(name)
     recorded = set(manifest["files"]) | {"source.json", "THIRD_PARTY_MOWER_LICENSE"}
     errors.extend(
-        str(p.relative_to(vendor))
+        p.relative_to(vendor).as_posix()
         for p in vendor.rglob("*")
-        if p.is_file() and str(p.relative_to(vendor)) not in recorded
+        if p.is_file() and p.relative_to(vendor).as_posix() not in recorded
     )
     if errors:
         raise SystemExit("Calculator source mismatch: " + ", ".join(errors))

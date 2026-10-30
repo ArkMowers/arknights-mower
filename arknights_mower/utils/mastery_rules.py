@@ -6,6 +6,8 @@ Descriptions are interpreted only at resource-generation time, never in the sche
 
 import re
 
+from arknights_mower.utils.operator_data import operator_profile
+
 BRANCHES = {
     "行医": "wandermedic",
     "链愈师": "chainhealer",
@@ -117,8 +119,9 @@ def compile_training_data(characters, building):
                 )
             if any(v["effects"] for v in versions):
                 groups.append(versions)
+        profile = operator_profile(char, cid)
         operators[cid] = {
-            key: char.get(key)
+            key: profile[key]
             for key in (
                 "name",
                 "profession",

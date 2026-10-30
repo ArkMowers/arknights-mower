@@ -30,6 +30,7 @@ function fixture(ending = '\n') {
   }
   write('scripts/build_mood_runtime.mjs', fs.readFileSync(builder))
   write('ui/package.json', '{}\n')
+  write('arknights_mower/data/riic/operators.json', '{"operators":[]}\n')
   write(entry, 'globalThis.mowerMoodRates = () => 1\n')
   write('ui/src/riic/vendor/THIRD_PARTY_MOWER_LICENSE', `Fixture license${ending}`)
   if (fs.existsSync(attributes)) write('.gitattributes', fs.readFileSync(attributes))
@@ -170,4 +171,31 @@ it('rejects stale artifacts without writing and regenerates actual source change
   )
   const checked = project.build('--check')
   expect(checked.status, checked.stderr).toBe(0)
+})
+
+it('loads the shared catalog separately and changes rule identity when only data changes', () => {
+  const project = fixture()
+  const catalogPath = 'arknights_mower/data/riic/operators.json'
+  project.write(catalogPath, '{"operators":[{"name":"独立目录测试"}]}\n')
+  project.write(
+    entry,
+    `import catalog from '../../../arknights_mower/data/riic/operators.json'
+globalThis.mowerMoodRates = () => catalog.operators.length
+`
+  )
+  project.generate()
+  const code = project.read('runtime.js')
+  const before = JSON.parse(project.read('source.json'))
+  expect(code).not.toContain('独立目录测试')
+  expect(code).toContain('__mowerOperatorCatalog')
+  project.write(catalogPath, '{"operators":[]}\n')
+  const stale = project.build('--check')
+  expect(stale.status).not.toBe(0)
+  expect(stale.stderr).toContain('Mood runtime is stale: source.json')
+  project.generate()
+  const after = JSON.parse(project.read('source.json'))
+  expect(project.read('runtime.js')).toBe(code)
+  expect(after.sha256).toBe(before.sha256)
+  expect(after.catalog_sha256).not.toBe(before.catalog_sha256)
+  expect(after.rules_sha256).not.toBe(before.rules_sha256)
 })
