@@ -34,7 +34,7 @@ Ordinary export opens a separate start/end range initialized to one hour before 
 
 ### Diagnostic Export Contents
 
-Both ordinary and error-archive exports contain `日志.txt`, `说明.txt` and `排班表.json`. Error-archive exports also accept `screenshots=0|1`, defaulting to `1`; other values return HTTP 400 before file access. Both representations retain the [local log-read boundary](#local-log-read-boundary), including configured-token checks. The text-only actions skip ordinary and archived screenshots. A batch download contains the selected archive ZIPs, each with its own Scheduling Plan attachment.
+Both ordinary and error-archive exports contain `日志.txt`, `说明.txt` and `plan.json`. Error-archive exports also accept `screenshots=0|1`, defaulting to `1`; other values return HTTP 400 before file access. Both representations retain the [local log-read boundary](#local-log-read-boundary), including configured-token checks. The text-only actions skip ordinary and archived screenshots. A batch download contains the selected archive ZIPs, each with its own Scheduling Plan attachment.
 
 The Scheduling Plan is the saved configuration at export time, including master and backup plans and the advanced settings carried by the existing JSON plan export. It is not a historical snapshot or the scheduler's effective arrangement. The bundle does not include unrelated instance settings or credentials. The page states that every log export includes the current saved Scheduling Plan.
 

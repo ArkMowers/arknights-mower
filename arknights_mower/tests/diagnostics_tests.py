@@ -830,12 +830,12 @@ def test_export_contents_include_current_plan(
                 bundle.read("日志.txt").decode()
                 == (saved_message if archived else message) + "\n"
             )
-            exported_plan = json.loads(bundle.read("排班表.json"))
+            exported_plan = json.loads(bundle.read("plan.json"))
             assert exported_plan == client.get("/export-json", headers=headers).json
             assert exported_plan["conf"]["exhaust_require"] == "能天使"
             assert exported_plan["backup_plans"][0]["name"] == "测试副表"
             assert exported_plan["advanced_settings"]["resting_threshold"] == 0.6
-            assert "private-token" not in bundle.read("排班表.json").decode()
+            assert "private-token" not in bundle.read("plan.json").decode()
             images = [name for name in bundle.namelist() if name.startswith("截图/")]
             assert len(images) == (0 if screenshots == "0" else (1 if archived else 2))
             assert "当前保存" in bundle.read("说明.txt").decode()

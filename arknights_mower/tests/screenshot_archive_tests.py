@@ -137,7 +137,7 @@ def test_archive_export_bounds_legacy_images_and_log_and_reports_omission(
                 2 if plan is None else 1
             )
             if plan is not None:
-                assert json.loads(bundle.read("排班表.json")) == plan
+                assert json.loads(bundle.read("plan.json")) == plan
             assert "部分截图或日志已省略" in bundle.read("说明.txt").decode()
 
 

@@ -312,7 +312,7 @@ def export_bundle(
                     log_bytes += len(data)
                     count += 1
             if plan_contents is not None:
-                bundle.writestr("排班表.json", plan_contents)
+                bundle.writestr("plan.json", plan_contents)
             image_count = 0
             for _, (image, relative) in sorted(images.items()):
                 try:
