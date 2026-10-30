@@ -1,5 +1,6 @@
 """换人返回后的新帧须确认地图，再继续同房跑单。"""
 
+import copy
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -20,7 +21,179 @@ from arknights_mower.tests.run_order_restoration_tests import (
     prepare_order,
 )
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.adb_client.server import SharedADBError
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.recognize import RecognizeError, Scene
+
+
+def restoration_exit_screen(solver, monkeypatch, *, confirmation_failed=False):
+    task, place = prepare_order(solver, monkeypatch)
+    task.meta_data = ""
+    task.plan = {ROOM: ORIGINAL.copy()}
+    task.run_order_original_roster = copy.deepcopy(task.plan)
+    task.run_order_restore_pending = True
+    place(["但书", COVERS[1]] if confirmation_failed else ORIGINAL)
+    solver._selection_profile_snapshot = SimpleNamespace(
+        mode="xhigh",
+        low_frame_rate=False,
+        transition_timeout=0.25,
+        screenshot_interval=100,
+    )
+    state = {"page": "map", "clock": 0.0, "exits": 0, "exit_recovers": True}
+    events = []
+
+    def back(*args, **kwargs):
+        assert task.run_order_original_roster == {ROOM: ORIGINAL}
+        if not task.meta_data:
+            assert task.plan == {ROOM: ORIGINAL}
+        events.append(("exit" if args else "recover", state["page"]))
+        if args == (0.5,):
+            state["exits"] += 1
+            if state["exits"] == 1 or not state["exit_recovers"]:
+                return
+        state["page"] = "map"
+
+    def sleep(interval=1):
+        state["clock"] += interval
+        assert state["clock"] < 10, "房间退出恢复必须有界"
+
+    def observe(room, *args, **kwargs):
+        assert state["page"] == "room"
+        events.append(("read", solver.op_data.get_current_room(room, True)))
+        return [{"agent": name} for name in solver.op_data.get_current_room(room, True)]
+
+    def confirm(*args, **kwargs):
+        place(ORIGINAL)
+        raise RecognizeError("干员确认点击未生效，返回房间重试")
+
+    solver.enter_room.side_effect = lambda room: state.update(page="room")
+    solver.scene.side_effect = lambda: (
+        Scene.INFRA_MAIN if state["page"] == "map" else Scene.INFRA_DETAILS
+    )
+    solver.find.side_effect = lambda name, *args, **kwargs: (
+        ((1724, 990), (1813, 1041)) if name == "confirm_blue" else None
+    )
+    solver.back.side_effect = back
+    solver.sleep.side_effect = sleep
+    solver.get_agent_from_room.side_effect = observe
+    solver.tap_confirm.side_effect = confirm
+    monkeypatch.setattr(base_schedule, "monotonic", lambda: state["clock"])
+    return task, state, events
+
+
+@pytest.mark.parametrize("confirmation_failed", [False, True])
+def test_restored_roster_finishes_after_room_exit_recovery(
+    solver, monkeypatch, confirmation_failed
+):
+    task, state, events = restoration_exit_screen(
+        solver, monkeypatch, confirmation_failed=confirmation_failed
+    )
+    original_time = task.time
+
+    solver.agent_arrange(task.plan)
+
+    assert state["page"] == "map" and state["exits"] == 2
+    first_exit = events.index(("exit", "room"))
+    assert ("read", ORIGINAL) in events[first_exit + 1 :]
+    assert solver.task is task and task.time == original_time
+    assert task.plan == {}
+    assert not getattr(task, "execution_failure", None)
+    assert not getattr(task, "run_order_restore_pending", False)
+    assert not hasattr(task, "run_order_original_roster")
+    assert solver.choose_agent.call_count == int(confirmation_failed)
+    assert solver.tap_confirm.call_count == int(confirmation_failed)
+    solver.accept_order.assert_not_called()
+    solver.drone.assert_not_called()
+    solver.get_order_remaining_time.assert_not_called()
+
+
+def test_persistent_restoration_exit_failure_retains_original_task_with_a_bound(
+    solver, monkeypatch
+):
+    task, state, _ = restoration_exit_screen(solver, monkeypatch)
+    original_time = task.time
+    state["exit_recovers"] = False
+
+    with pytest.raises(RecognizeError, match="返回基建全局视角"):
+        solver.agent_arrange(task.plan)
+
+    assert state["exits"] == 4
+    assert solver.task is task and solver.tasks == [task]
+    assert task.time == original_time and task.plan == {ROOM: ORIGINAL}
+    assert task.run_order_original_roster == {ROOM: ORIGINAL}
+    assert task.run_order_restore_pending
+    assert task.execution_failure["reason"] == "换人后未确认返回基建全局视角"
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    solver.accept_order.assert_not_called()
+    solver.drone.assert_not_called()
+
+
+@pytest.mark.parametrize("error_type", [MowerExit, DeviceRecoveryError, SharedADBError])
+def test_restoration_exit_terminal_error_keeps_unfinished_plan(
+    solver, monkeypatch, error_type
+):
+    task, _, _ = restoration_exit_screen(solver, monkeypatch)
+    original_time = task.time
+    failure = error_type("停止房间返回")
+
+    def update():
+        if solver.recog.update.call_count == 1:
+            raise failure
+
+    solver.recog.update.side_effect = update
+
+    with pytest.raises(error_type) as raised:
+        solver.agent_arrange(task.plan)
+
+    assert raised.value is failure
+    assert task.time == original_time and task.plan == {ROOM: ORIGINAL}
+    assert task.run_order_original_roster == {ROOM: ORIGINAL}
+    assert task.run_order_restore_pending
+    assert not getattr(task, "execution_failure", None)
+    solver.back.assert_called_once_with(0.5)
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+
+
+@pytest.mark.parametrize("confirmation_failed", [False, True])
+def test_inline_run_order_restoration_recovers_failed_exit_without_reinsertion(
+    solver, monkeypatch, confirmation_failed
+):
+    task, state, events = restoration_exit_screen(solver, monkeypatch)
+    task.meta_data = ROOM
+    task.plan = {ROOM: ["但书", COVERS[1]]}
+    del task.run_order_restore_pending
+    del task.run_order_original_roster
+    original_time = task.time
+    confirmed = []
+
+    def confirm(room, new_plan):
+        row = solver.choose_agent.call_args.args[0].copy()
+        confirmed.append(row)
+        for op in solver.op_data.operators.values():
+            if op.current_room == room:
+                op._current_room, op.current_index = "", -1
+        for index, name in enumerate(row):
+            op = solver.op_data.operators[name]
+            op._current_room, op.current_index = room, index
+        if confirmation_failed and len(confirmed) == 2:
+            raise RecognizeError("干员确认点击未生效，返回房间重试")
+
+    solver.tap_confirm.side_effect = confirm
+
+    solver.agent_arrange(task.plan)
+
+    assert confirmed == [["但书", COVERS[1]], ORIGINAL]
+    assert state["page"] == "map" and state["exits"] == 2
+    first_exit = events.index(("exit", "room"))
+    assert ("read", ORIGINAL) in events[first_exit + 1 :]
+    assert solver.task is task and task.time == original_time
+    assert not getattr(task, "execution_failure", None)
+    assert not getattr(task, "run_order_restore_pending", False)
+    assert not hasattr(task, "run_order_original_roster")
+    solver.drone.assert_called_once()
+    solver.accept_order.assert_not_called()
 
 
 @pytest.mark.parametrize("adjusted,buffer", [(False, 0), (True, 1)])
