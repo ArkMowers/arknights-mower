@@ -246,6 +246,87 @@ def local_trust_ocr():
 
 
 @pytest.fixture
+def captured_assistant_selection(local_trust_ocr, monkeypatch):
+    obj = solver()
+    path = Path(__file__).parent / "fixtures" / "trust_selected_koromaru_20261030.jpg"
+    obj.recog.img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    monkeypatch.setattr(trust.rapidocr, "engine", local_trust_ocr)
+    return obj
+
+
+def test_captured_assistant_selection_reads_blue_frame_and_neighbors(
+    captured_assistant_selection,
+):
+    obj = captured_assistant_selection
+    cards = obj._cards(badges=False)
+    assert [(item.trust, item.selected) for item in cards] == [
+        (200, True),
+        (105, False),
+        (183, False),
+        (200, False),
+        (200, False),
+        (77, False),
+        (115, False),
+        (200, False),
+        (200, False),
+        (200, False),
+    ]
+    assert obj._name(obj.SELECTOR_NAME) == "虎狼丸"
+    obj.tap.assert_not_called()
+
+
+def test_captured_incumbent_passes_replacement_selection_check(
+    captured_assistant_selection,
+):
+    obj = captured_assistant_selection
+    obj._find_candidate = Mock(return_value="full")
+    assert obj._replace("assistant", 200, index=2) == "full"
+    obj._find_candidate.assert_called_once_with("assistant")
+    obj.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("offset", [-1, 6, 12])
+def test_selection_border_tolerates_trust_text_box_offsets(
+    captured_assistant_selection,
+    offset,
+):
+    obj = captured_assistant_selection
+    read_ocr = obj._ocr
+
+    def shifted_text(scope):
+        return [
+            ([[x + offset, y] for x, y in box], text, score)
+            for box, text, score in read_ocr(scope)
+        ]
+
+    obj._ocr = shifted_text
+    selected = [item for item in obj._cards(badges=False) if item.selected]
+    assert len(selected) == 1
+    assert selected[0].trust == 200
+    obj.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("edges", ["left", "left_bottom", "sides"])
+def test_partial_blue_edges_cannot_authorize_replacement(edges):
+    obj = solver()
+    obj.recog.img.fill(50)
+    if edges in ("left", "left_bottom", "sides"):
+        obj.recog.img[113:525, 565:572] = (0, 180, 230)
+    if edges == "left_bottom":
+        obj.recog.img[518:525, 565:769] = (0, 180, 230)
+    if edges == "sides":
+        obj.recog.img[113:525, 762:769] = (0, 180, 230)
+    obj._ocr = Mock(
+        return_value=[([[66, 13], [141, 13], [141, 50], [66, 50]], "200%", 0.99)]
+    )
+    obj._find_candidate = Mock()
+    with pytest.raises(trust.TrustReadingError, match="当前选中状态"):
+        obj._replace("assistant", 200, index=2)
+    obj._find_candidate.assert_not_called()
+    obj.tap.assert_not_called()
+
+
+@pytest.fixture
 def activity_69_frame():
     image = cv2.imread(
         str(Path(__file__).parent / "fixtures" / "trust_activity_b106_69.jpg")
