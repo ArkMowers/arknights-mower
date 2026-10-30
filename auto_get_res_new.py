@@ -4,6 +4,7 @@ import os
 import pickle
 import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -15,6 +16,12 @@ from arknights_mower.utils.furniture_data import (
     write_furniture_data,
 )
 from arknights_mower.utils.image import loadimg, thres2
+from arknights_mower.utils.operator_data import (
+    OPERATOR_CATALOG_DATA,
+    compile_operator_catalog,
+    operator_profile,
+    write_operator_catalog,
+)
 from arknights_mower.utils.res_version import (
     content_hash,
     package_file_paths,
@@ -201,14 +208,10 @@ class Arknights数据处理器:
         print()
 
     def 添加干员(self):
-        干员_名称列表 = []
-        干员_职业列表 = {}
         for 干员代码, 干员数据 in self.干员表.items():
             if not 干员数据["itemObtainApproach"]:
                 continue
             干员名 = 干员数据["name"]
-            干员_名称列表.append(干员名)
-            干员_职业列表[干员名] = 干员数据["profession"]
             干员头像路径 = f"./ArknightsGameResource/avatar/{干员代码}.png"
             目标路径 = f"./ui/public/avatar/{干员数据['name']}.webp"
             print(f"{干员名}: {干员代码}")
@@ -218,13 +221,29 @@ class Arknights数据处理器:
                     png_image.save(目标路径, "WEBP")
             except (OSError, ValueError) as ex:
                 raise RuntimeError(f"干员头像生成失败：{干员名} ({干员代码})") from ex
-        干员_名称列表.sort(key=len)
-        with open(
-            "./arknights_mower/data/agent_profession.json", "w", encoding="utf-8"
-        ) as f:
-            json.dump(干员_职业列表, f, ensure_ascii=False)
-        with open("./arknights_mower/data/agent.json", "w", encoding="utf-8") as f:
-            json.dump(干员_名称列表, f, ensure_ascii=False)
+        previous = Path(OPERATOR_CATALOG_DATA)
+        order = (
+            [
+                record["charId"]
+                for record in json.loads(previous.read_text("utf-8"))["operators"]
+            ]
+            if previous.is_file()
+            else ()
+        )
+        version_file = Path("ArknightsGameResource/version")
+        source_version = (
+            version_file.read_text("utf-8").strip()
+            if version_file.is_file()
+            else "unknown"
+        )
+        write_operator_catalog(
+            compile_operator_catalog(
+                self.干员表,
+                getattr(self, "基建表", {}),
+                source_version,
+                order=order,
+            )
+        )
         print()
 
     def 读取卡池(self):
@@ -1016,16 +1035,11 @@ class Arknights数据处理器:
                 skipped += 1
                 continue
 
-            rarity = char_info["rarity"]
-            if isinstance(rarity, str):
-                rarity = int(rarity.removeprefix("TIER_"))
-            else:
-                rarity = int(rarity) + 1
+            profile = operator_profile(char_info, char_id)
             characters[char_id] = {
-                "name": char_info.get("name", char_id),
-                "rarity": rarity,
-                "profession": char_info.get("profession", ""),
-                "subProfessionId": char_info["subProfessionId"],
+                key: profile[key]
+                for key in ("name", "rarity", "profession", "subProfessionId")
+            } | {
                 "skills": skills,
             }
             skill_count += len(skills)

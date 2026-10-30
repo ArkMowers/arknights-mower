@@ -43,10 +43,20 @@ class TestResourceCacheReload(unittest.TestCase):
         originals = {name: deepcopy(value) for name, value in containers.items()}
 
         try:
-            with patch.object(
-                data,
-                "_read_resource_json",
-                side_effect=lambda name, expected_type: deepcopy(targets[name]),
+            with (
+                patch.object(
+                    data,
+                    "_read_resource_json",
+                    side_effect=lambda name, expected_type: deepcopy(targets[name]),
+                ),
+                patch.object(
+                    data,
+                    "_agent_views",
+                    return_value=(
+                        targets["agent.json"],
+                        targets["agent_profession.json"],
+                    ),
+                ),
             ):
                 data.reload_resource_data()
 

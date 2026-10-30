@@ -1,12 +1,14 @@
 """共享心情引擎的边界、持久化和首次确认离线验证。"""
 
 import copy
+import hashlib
 import json
 import os
 import pickle
 import shutil
 import subprocess
 import sys
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -253,7 +255,10 @@ def test_collected_package_resources_run_with_crlf_without_node(tmp_path):
     collected = build_assets._collect_arknights_mower_datas()
     package = tmp_path / "arknights_mower"
     for source, destination in collected:
-        if destination != "arknights_mower/data/mood":
+        if destination != "arknights_mower/data/mood" and not (
+            destination == "arknights_mower/data/riic"
+            and Path(source).name == "operators.json"
+        ):
             continue
         target = tmp_path / destination / Path(source).name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -279,6 +284,34 @@ print(json.dumps(module.shared_rates({'moods':{'能天使':24},'rooms':{'room_1_
         check=True,
     )
     assert json.loads(result.stdout)["能天使"] == 1
+
+
+def test_changed_bundled_catalog_is_rejected_before_runtime_initialization(
+    tmp_path, monkeypatch
+):
+    mood = tmp_path / "mood"
+    shutil.copytree(calculated_mood._DATA, mood)
+    catalog = tmp_path / "riic/operators.json"
+    catalog.parent.mkdir()
+    source = calculated_mood._DATA.parent / "riic/operators.json"
+    catalog.write_text(source.read_text("utf-8") + " ", encoding="utf-8")
+    monkeypatch.setattr(calculated_mood, "_DATA", mood)
+    monkeypatch.setattr(calculated_mood, "_runtime", threading.local())
+    with pytest.raises(RuntimeError, match="心情计算资源校验失败"):
+        calculated_mood._shared_runtime()
+    assert not hasattr(calculated_mood._runtime, "context")
+
+
+def test_catalog_change_alone_invalidates_saved_calculated_mood(tmp_path, monkeypatch):
+    value = model({"桃金娘": 20})
+    manifest = json.loads((calculated_mood._DATA / "source.json").read_text("utf-8"))
+    code = (calculated_mood._DATA / "runtime.js").read_text("utf-8").encode("utf-8")
+    changed_catalog = b'{"operators":[]}'
+    manifest["catalog_sha256"] = hashlib.sha256(changed_catalog).hexdigest()
+    manifest["rules_sha256"] = hashlib.sha256(code + changed_catalog).hexdigest()
+    (tmp_path / "source.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(calculated_mood, "_DATA", tmp_path)
+    assert value.restore().moods == {}
 
 
 def test_initialization_reads_all_staffed_facilities_once_despite_recent_cache(

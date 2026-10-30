@@ -2,12 +2,36 @@ import json
 from pathlib import Path
 
 from .. import __rootdir__
+from ..utils.operator_data import OPERATOR_CATALOG_DATA, operator_views
 from ..utils.resource_pkg import register_resource_reload, resource_pkg_path
 
 
 def _data_path(name: str) -> Path:
     """读取本实例在任务边界选定的完整资源版本。"""
     return resource_pkg_path(f"arknights_mower/data/{name}")
+
+
+def _read_resource_json(name: str, expected_type: type):
+    value = json.loads(_data_path(name).read_text("utf-8"))
+    if not isinstance(value, expected_type):
+        raise ValueError(f"资源数据 {name} 类型错误")
+    return value
+
+
+def _agent_views():
+    names = _data_path("agent.json")
+    catalog = resource_pkg_path(OPERATOR_CATALOG_DATA)
+    if catalog.parent.parent == names.parent:
+        try:
+            content = json.loads(catalog.read_text("utf-8"))
+        except FileNotFoundError:
+            pass
+        else:
+            return operator_views(content)
+    return (
+        _read_resource_json("agent.json", list),
+        _read_resource_json("agent_profession.json", dict),
+    )
 
 
 def stage_data_path() -> Path:
@@ -29,9 +53,7 @@ class StageData:
 stage_data_full = StageData()
 
 # agents list in Arknights
-agent_list = json.loads(_data_path("agent.json").read_text("utf-8"))
-
-agent_profession = json.loads(_data_path("agent_profession.json").read_text("utf-8"))
+agent_list, agent_profession = _agent_views()
 workshop_formula = json.loads(_data_path("workshop_formula.json").read_text("utf-8"))
 
 stage_order = json.loads(_data_path("stage_order.json").read_text("utf-8"))
@@ -117,19 +139,11 @@ def _replace_dict(target: dict, source: dict) -> None:
     target.update(source)
 
 
-def _read_resource_json(name: str, expected_type: type):
-    value = json.loads(_data_path(name).read_text("utf-8"))
-    if not isinstance(value, expected_type):
-        raise ValueError(f"资源数据 {name} 类型错误")
-    return value
-
-
 @register_resource_reload
 def reload_resource_data() -> None:
     """资源包切换后原位刷新数据，保留各调用模块已经导入的对象引用。"""
     new_stage_data_base = _read_resource_json("stage_data_full.json", list)
-    new_agent_list = _read_resource_json("agent.json", list)
-    new_agent_profession = _read_resource_json("agent_profession.json", dict)
+    new_agent_list, new_agent_profession = _agent_views()
     new_workshop_formula = _read_resource_json("workshop_formula.json", dict)
     new_stage_order = _read_resource_json("stage_order.json", list)
     new_recruit_agent = _read_resource_json("recruit.json", dict)

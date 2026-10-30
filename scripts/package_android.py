@@ -28,6 +28,7 @@ REQUIRED = (
     "arknights_mower/__init__.py",
     "arknights_mower/data/version.json",
     "arknights_mower/data/building_skill.json",
+    "arknights_mower/data/riic/operators.json",
     "ui/dist/index.html",
     "ui/dist/pages/basement_skill/buffer.json",
     "server.py",
@@ -47,7 +48,11 @@ def package(
     for name in REQUIRED:
         if not (root / name).is_file():
             raise ValueError(f"missing build input: {name}")
-    for name in ("CHANGELOG.md", "ui/dist/pages/basement_skill/buffer.json"):
+    for name in (
+        "CHANGELOG.md",
+        "ui/dist/pages/basement_skill/buffer.json",
+        "arknights_mower/data/riic/operators.json",
+    ):
         if not (root / name).read_text(encoding="utf-8").strip():
             raise ValueError(f"empty build input: {name}")
     source = (root / "arknights_mower/__init__.py").read_text()

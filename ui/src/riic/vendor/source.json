@@ -739,6 +739,10 @@
     "scheduler/backupExpression.ts": {
       "sha256": "37122f6954f5d39d16ca417fe737577e3491c9baa52e737009c095ebf60d437a",
       "reason": "支持维护条件按总停止时长比较；时长缺失或为零时不匹配任何时长比较，保留原提前量及停服开始截止。"
+    },
+    "domain/operators.ts": {
+      "sha256": "616b1817ceab9aa941b37b799c042c79ce3844cbd014e24181a54c1efd387ee3",
+      "reason": "从后端共享生成目录读取干员资料，并从完整技能槽派生最终技能；公共接口和技能解锁语义保持一致。"
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

@@ -194,6 +194,13 @@ class TestResourceOTA(ResourcePkgTestBase):
         (source_root / "arknights_mower/__init__.py").write_text(
             '__version__ = "4.2.0"\n', encoding="utf-8"
         )
+        catalog = source_root / "arknights_mower/data/riic/operators.json"
+        if not catalog.exists():
+            catalog.parent.mkdir(parents=True, exist_ok=True)
+            catalog.write_text(
+                '{"schemaVersion":1,"operatorCount":0,"operators":[]}',
+                encoding="utf-8",
+            )
         copy_script = Path(__file__).resolve().parents[2] / "ui/copy.js"
         subprocess.run(
             [shutil.which("node"), str(copy_script)],

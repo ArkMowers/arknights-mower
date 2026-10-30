@@ -124,6 +124,7 @@ class AndroidPackageTests(unittest.TestCase):
         for missing in (
             "arknights_mower/data/building_skill.json",
             "ui/dist/pages/basement_skill/buffer.json",
+            "arknights_mower/data/riic/operators.json",
         ):
             with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
@@ -136,17 +137,28 @@ class AndroidPackageTests(unittest.TestCase):
                     package(root, root / "out", "4.2.0", "a" * 40)
                 self.assertFalse((root / "out").exists())
 
-    def test_empty_ota_buffer_prevents_packaging(self):
-        for content in ("", " \n"):
-            with self.subTest(content=content), tempfile.TemporaryDirectory() as temp:
+    def test_empty_ota_buffer_or_operator_catalog_prevents_packaging(self):
+        for name, content in (
+            (name, content)
+            for name in (
+                "ui/dist/pages/basement_skill/buffer.json",
+                "arknights_mower/data/riic/operators.json",
+            )
+            for content in ("", " \n")
+        ):
+            with (
+                self.subTest(name=name, content=content),
+                tempfile.TemporaryDirectory() as temp,
+            ):
                 root = Path(temp)
-                for name in REQUIRED:
-                    target = root / name
+                for required in REQUIRED:
+                    target = root / required
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text("payload")
-                (root / "ui/dist/pages/basement_skill/buffer.json").write_text(content)
-                with self.assertRaisesRegex(ValueError, "empty build input: .*buffer"):
+                (root / name).write_text(content)
+                with self.assertRaises(ValueError) as caught:
                     package(root, root / "out", "4.2.0", "a" * 40)
+                self.assertEqual(str(caught.exception), f"empty build input: {name}")
                 self.assertFalse((root / "out").exists())
 
     def test_missing_or_empty_changelog_cannot_publish_an_update(self):

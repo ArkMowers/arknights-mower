@@ -1,4 +1,4 @@
-import data from '../data/operators.generated.json'
+import data from '../../../../../arknights_mower/data/riic/operators.json'
 
 export type GameRoomType =
   | 'MANUFACTURE'
@@ -43,12 +43,18 @@ interface OperatorPayload {
   sourceVersion: string
   operatorCount: number
   skillCount: number
-  operators: OperatorRecord[]
+  operators: Omit<OperatorRecord, 'skills'>[]
 }
 
 const payload = data as OperatorPayload
 
-export const OPERATORS = payload.operators
+export const OPERATORS: OperatorRecord[] = payload.operators.map(operator => ({
+  ...operator,
+  skills: (operator.skillSlots ?? []).flatMap(slot => {
+    const last = slot[slot.length - 1]
+    return last ? [{ ...last }] : []
+  }),
+}))
 export const OPERATOR_MAP = new Map(OPERATORS.map((operator) => [operator.charId, operator]))
 export const GAME_DATA_VERSION = payload.sourceVersion
 export const OPERATOR_PROFILE_COUNT = payload.operatorCount

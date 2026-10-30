@@ -30,6 +30,19 @@ The authenticated `/resource-version` response includes `current_metadata` from 
 
 ## 4. Resource Generation
 
+### Shared Operator Catalog
+
+<a id="shared-operator-catalog"></a>
+`auto_get_res_new.py` generates `arknights_mower/data/riic/operators.json` from the character and building tables. The catalog contains operator IDs, basic profiles, upstream order and complete building-skill slots. It omits the derived maximum-stage `skills` array. The generator retains existing calculator order for known IDs, appends new IDs, and exports the historical `agent.json` and `agent_profession.json` views for existing resource clients. Promotion, mastery and training compilation reuse the same profile conversion.
+
+The backend derives bundled operator names and professions from the catalog. Selected external resource generations use their own historical exports; no individual file is borrowed from the bundled data. Resource changes refresh the existing imported containers in place at the task boundary. A malformed present bundled catalog fails loading rather than silently substituting its exports.
+
+The shared catalog is a software asset outside `RES_PACKAGE_DATA` and `RES_PACKAGE_OPTIONAL_DATA`: existing resource clients reject unknown archive members. Resource publication retains the historical exports and content-hash identity. The calculator and native mood engine use their software-bundled catalog together with their matching rules. Resource OTA does not replace that calculation input. The native runtime verifies the code and catalog digests, and its saved-state identity covers both. Desktop and Android packages include the catalog independently of frontend sources; Android packaging rejects missing or blank catalog input.
+
+The frontend calculator derives maximum-stage skills as separate objects from the final stage of each slot. Personal ownership, progression and inventory remain in the existing account snapshot and inventory services. The display catalog and its historical `skill.json` archive identity keep their existing owner below. The [shared catalog decision](../../.agents/notes/implemented/simplification/2026-10-30-shared-operator-catalog.md) records the compatibility and packaging choices.
+
+### Building Skill Display Data
+
 `Arknights数据处理器.获得干员基建描述` retains every upstream building skill. Known room codes use their display labels, including `RECYCLE` as 回收站; unknown room codes remain unchanged in `roomType` and do not abort generation. Skill descriptions, icons and phase conditions retain their upstream values. The frontend derives facility filters from the generated data.
 
 <a id="building-skill-facility-preservation"></a>**Building Skill Facility Preservation** governs this behavior. [Building skill facility preservation](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-facility-preservation.md) records the repair and verification.

@@ -83,6 +83,7 @@ jobs:
               - 'ui/**'
               - 'scripts/build_mood_runtime.mjs'
               - 'arknights_mower/data/mood/**'
+              - 'arknights_mower/data/riic/operators.json'
               - '{.node-version,.nvmrc,.npmrc}'
               - '.github/workflows/format-check-and-test.yml'
               - '.github/actions/**'
