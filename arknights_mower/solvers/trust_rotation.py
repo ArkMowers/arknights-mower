@@ -350,7 +350,7 @@ class TrustRotationSolver(SceneGraphSolver):
                     for box, text, _ in badge_rows[top]
                     if left <= min(p[0] for p in box) + 560 < right
                 )
-                frame = self.recog.img[top - 8 : bottom + 10, left - 8 : right + 12]
+                frame = self.recog.img[top - 8 : bottom + 16, left - 12 : right + 24]
                 blue = (
                     cv2.inRange(
                         cv2.cvtColor(frame, cv2.COLOR_RGB2HSV),
@@ -359,7 +359,12 @@ class TrustRotationSolver(SceneGraphSolver):
                     )
                     > 0
                 )
-                selected = blue[:, :8].mean() > 0.45
+                # 信赖文字仅用于估算卡片位置；在边缘附近寻找连续蓝线，
+                # 同时确认左右两侧和下沿，避免文字框偏移或局部蓝色造成误判。
+                left_edge = blue[24:-24, :24].mean(axis=0).max()
+                right_edge = blue[24:-24, -24:].mean(axis=0).max()
+                lower_edge = blue[-24:, 24:-24].mean(axis=1).max()
+                selected = min(left_edge, right_edge, lower_edge) > 0.8
                 assistant = bool(re.search(r"ASSISTANT|中枢|B[1-4](?!\d)", badge, re.I))
                 activity = bool(re.search(r"ACTIVITY|B\d{3}|活动", badge, re.I))
                 cards.append(TrustCard(trust, scope, selected, assistant, activity))
