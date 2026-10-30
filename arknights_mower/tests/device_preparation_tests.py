@@ -3,7 +3,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 
@@ -154,6 +154,34 @@ class BoundTargetPreparationTests(unittest.TestCase):
         size.assert_not_called()
         frame.assert_not_called()
         self.assertEqual(self.locks.held, set())
+
+    def test_helper_cleanup_recovery_holds_lease_before_display_and_frame_reads(self):
+        device = self.control.start().unwrap()
+        device.close = Mock(
+            side_effect=[OSError("helper retained"), OSError("helper retained"), None]
+        )
+        self.assertFalse(self.control.close().ok)
+        self.assertEqual(self.locks.held, set())
+        observed = []
+
+        def display(adb_path, serial, timeout):
+            observed.append((serial, set(self.locks.held)))
+            return self.adb.size
+
+        def frame(adb_path, serial, timeout):
+            observed.append((serial, set(self.locks.held)))
+            return (1920, 1080)
+
+        with (
+            patch.object(self.adb, "display_size", side_effect=display),
+            patch.object(self.adb, "standard_frame_size", side_effect=frame),
+            patch.object(self.adb, "frame_size", side_effect=frame),
+        ):
+            recovered = self.control.recover()
+        self.assertTrue(recovered.ok, recovered.error)
+        self.assertTrue(observed)
+        self.assertEqual(observed, [(self.serial, {self.serial})] * len(observed))
+        self.assertEqual(device.close.call_count, 3)
 
     def test_failed_lease_release_blocks_new_endpoint_until_cleanup_succeeds(self):
         self.conf.device.last_serial = self.serial

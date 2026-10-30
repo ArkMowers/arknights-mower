@@ -1411,6 +1411,7 @@ class DeviceControl(Generic[D]):
                             frame_probe=getattr(
                                 self._session.adb, "standard_frame_size", None
                             ),
+                            prepare_target=self._prepare_target,
                         )
                         if self._shutdown.is_set() or self._pending_close.is_set():
                             raise MowerExit("设备会话正在关闭")
