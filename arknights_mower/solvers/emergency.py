@@ -7,6 +7,8 @@ from arknights_mower.data import base_room_list
 from arknights_mower.solvers.record import emergency_mood_history, save_current_state
 from arknights_mower.utils import config, detector
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.adb_client.server import SharedADBError
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.dorm_candidates import (
     dorm_candidate_mood,
     dorm_task_reservations,
@@ -81,6 +83,19 @@ class EmergencyRecoveryMixin:
             and not state.get("dorm_replan_pending")
             else {}
         )
+        retained_members = {
+            name
+            for task in self.tasks
+            if task.retains_execution
+            and getattr(task, "emergency_staffing", False)
+            and getattr(task, "emergency_recovery_release", False)
+            for name in getattr(task, "emergency_staffing_members", ())
+        }
+        targets = {
+            name: target
+            for name, target in targets.items()
+            if name not in retained_members
+        }
         releases = plan_mood_limit_releases(
             self.op_data, recovery_targets=targets, previous_tasks=self.tasks
         )
@@ -1169,15 +1184,7 @@ class EmergencyRecoveryMixin:
         """正常查询或预计换人时读取相关宿舍；初始化读数直接复用。"""
         state = self.emergency_state
 
-        failed_rooms = {
-            room
-            for task in self.tasks
-            if getattr(task, "emergency_staffing", False)
-            for room in (getattr(task, "execution_failure", None) or {}).get(
-                "rooms", ()
-            )
-        }
-        if state.pop("observed_at", None) is not None and not failed_rooms:
+        if state.pop("observed_at", None) is not None:
             return True
         rotation_rooms = {
             room
@@ -1209,7 +1216,6 @@ class EmergencyRecoveryMixin:
                 for index, candidates in enumerate(rows)
             )
         )
-        rooms.update(failed_rooms)
         if "pending_read_rooms" not in state:
             state["read_collection_pending"] = True
             state["pending_read_rooms"] = sorted(rooms)
@@ -1280,6 +1286,10 @@ class EmergencyRecoveryMixin:
                 TaskTypes.DEPOT,
             )
             or getattr(completed_task, "emergency_dorm", False)
+            or (
+                getattr(completed_task, "emergency_recovery_release", False)
+                and getattr(completed_task, "emergency_staffing", False)
+            )
             or getattr(completed_task, "strict_mood_limit", False)
         )
         plan_due = read_due or staffing_completed or specialized_completed
@@ -1464,6 +1474,11 @@ class EmergencyRecoveryMixin:
             or state["phase"] == "returning"
             or any(
                 getattr(task, "emergency_staffing", False)
+                and getattr(task, "emergency_recovery_release", False)
+                for task in self.tasks
+            )
+            or any(
+                getattr(task, "emergency_staffing", False)
                 or hasattr(task, "emergency_original_roster")
                 or getattr(task, "run_order_restore_pending", False)
                 or task.plan
@@ -1581,15 +1596,29 @@ class EmergencyRecoveryMixin:
         self.task.emergency_staffing = True
         self.task.emergency_recovery_release = True
         self.task.emergency_staffing_members = sorted(members)
+        release_task = self.task
+        release_task.execution_retained = True
+        self.tasks.append(release_task)
         try:
-            self.agent_arrange(self.task.plan, get_time=True)
-        except MowerExit:
+            self._emergency_save()
+            deferred = self.agent_arrange(self.task.plan, get_time=True) is False
+        except (MowerExit, DeviceRecoveryError, SharedADBError):
             raise
-        except Exception:
-            self._emergency_defer_read()
-            raise
+        except Exception as exc:
+            from arknights_mower.solvers.base_schedule import RoomArrangementDeferred
+
+            rooms = (
+                [exc.room]
+                if isinstance(exc, RoomArrangementDeferred)
+                else self.task.plan
+            )
+            self._retain_failed_task(release_task, str(exc), rooms)
+            self._emergency_save()
+            return False
         finally:
             self.task = previous_task
+        if not release_task.plan:
+            self.tasks[:] = [task for task in self.tasks if task is not release_task]
         for name in members:
             op = self.op_data.operators[name]
             if not op.current_room and scheduling_mood_reaches(
@@ -1608,10 +1637,10 @@ class EmergencyRecoveryMixin:
             state.pop("release_members", None)
         else:
             state["release_members"] = sorted(remaining)
-        if remaining:
+        if remaining and not release_task.plan:
             self._emergency_defer_read()
         self._emergency_save()
-        return True
+        return not deferred or bool(ready & members)
 
     def _emergency_ready(self):
         if not self.emergency_state.get("staffing_complete"):

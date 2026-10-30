@@ -281,6 +281,14 @@ def test_partial_release_retains_unfinished_obligations_after_state_reload(
     solver.emergency_state = pickle.loads(pickle.dumps(episode.state))
     solver.op_data = pickle.loads(pickle.dumps(solver.op_data))
     solver.agent_arrange.side_effect = episode.place
+    pending = next(
+        task for task in solver.tasks if getattr(task, "emergency_staffing", False)
+    )
+    original_time = pending.time
+    assert not solver._emergency_release_ready()
+    solver.agent_arrange(pending.plan, get_time=True)
+    solver.tasks.remove(pending)
+    assert pending.time == original_time
 
     assert solver._emergency_release_ready()
 

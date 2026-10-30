@@ -49,17 +49,22 @@ def test_multiroom_staffing_failure_must_stop_outer_arrangement(staffing, monkey
     solver.back = MagicMock()
     solver.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     solver._emergency_read_rooms = MagicMock()
+    solver.get_agent_from_room = MagicMock(
+        side_effect=lambda room, *args, **kwargs: [
+            {"agent": name} for name in solver.op_data.get_current_room(room, True)
+        ]
+    )
+    solver.record_selection_failure = MagicMock()
     monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
     monkeypatch.setattr(
         base_schedule, "defer_dorm_before_priority_task", lambda *args: False
     )
-    assert (
+    with pytest.raises(base_schedule.RoomArrangementDeferred):
         base_schedule.BaseSchedulerSolver.agent_arrange(
             solver, task.plan, get_time=True
         )
-        is False
-    )
-    assert solver.enter_room.call_count == 1
+    assert solver.enter_room.call_count == 4
+    assert task.plan
 
 
 def test_uncertain_departure_retains_reachable_recovery_obligation(group_return):
@@ -147,6 +152,12 @@ def test_multiroom_release_failure_must_stop_outer_arrangement(
     solver.back = MagicMock()
     solver.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     solver._emergency_read_rooms = MagicMock()
+    solver.get_agent_from_room = MagicMock(
+        side_effect=lambda room, *args, **kwargs: [
+            {"agent": name} for name in solver.op_data.get_current_room(room, True)
+        ]
+    )
+    solver.record_selection_failure = MagicMock()
     monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
     monkeypatch.setattr(
         base_schedule, "defer_dorm_before_priority_task", lambda *args: False
@@ -155,8 +166,9 @@ def test_multiroom_release_failure_must_stop_outer_arrangement(
         solver
     )
     solver._emergency_release_ready()
-    assert solver.enter_room.call_count == 1
+    assert solver.enter_room.call_count == 4
     assert solver.task is None
+    assert any(getattr(task, "execution_failure", None) for task in solver.tasks)
 
 
 @pytest.mark.parametrize("recalculate", [True, False])
@@ -261,7 +273,6 @@ def test_deferred_release_prunes_queued_admission_before_budget_return(group_ret
 def test_release_failure_retains_observation_dependency_before_distant_order(
     group_return, failure
 ):
-    from arknights_mower.solvers.emergency import RESUME_META
     from arknights_mower.utils.scheduler_task import TaskTypes
 
     solver = group_return.solver
@@ -272,16 +283,16 @@ def test_release_failure_retains_observation_dependency_before_distant_order(
     solver.tasks.append(distant)
     if failure == "exception":
         solver.agent_arrange = MagicMock(side_effect=RuntimeError("selection failed"))
-        with pytest.raises(RuntimeError, match="selection failed"):
-            solver._emergency_release_ready()
+        assert solver._emergency_release_ready() is False
     else:
         solver.agent_arrange = MagicMock(return_value=False)
         solver._emergency_release_ready()
     assert solver.task is original_task
     assert solver.emergency_state["release_members"]
-    retry = next(t for t in solver.tasks if t.meta_data == RESUME_META)
+    retry = next(t for t in solver.tasks if getattr(t, "emergency_staffing", False))
     assert retry.time == NOW
-    assert retry.execution_failure["dependency"]
+    assert retry.plan
+    assert bool(getattr(retry, "execution_failure", None)) == (failure == "exception")
     assert distant in solver.tasks
 
 

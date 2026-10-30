@@ -116,6 +116,7 @@ def test_measured_target_releases_then_plans_new_resident(rotation):
         assert plan["dormitory_1"][2] == ""
         op._current_room, op.current_index = "", -1
         bed.reset()
+        plan.clear()
 
     scheduler._emergency_read_rooms = MagicMock(side_effect=observe)
     scheduler.agent_arrange.side_effect = arrange
