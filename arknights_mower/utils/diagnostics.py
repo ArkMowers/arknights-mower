@@ -214,6 +214,7 @@ def export_bundle(
     start=None,
     end=None,
     include_screenshots=True,
+    scheduling_plan=None,
 ):
     """打包时间窗口内的完整日志和仍可读取的截图。调用方负责关闭返回的文件。"""
     archive_root = screenshot_folder / "errors"
@@ -255,8 +256,13 @@ def export_bundle(
                 if archive_id is not None or timestamp not in images:
                     images[timestamp] = (image, relative)
 
+    plan_contents = (
+        json.dumps(scheduling_plan, ensure_ascii=False, indent=2).encode("utf-8")
+        if scheduling_plan is not None
+        else None
+    )
     truncated = False
-    image_bytes = 0
+    payload_bytes = len(plan_contents or b"")
     if archive_id is not None:
         selected = {}
         for timestamp, (image, relative) in sorted(images.items()):
@@ -264,11 +270,11 @@ def export_bundle(
                 size = image.stat().st_size
             except FileNotFoundError:
                 continue
-            if image_bytes + size > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE:
+            if payload_bytes + size > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE:
                 truncated = True
                 continue
             selected[timestamp] = (image, relative)
-            image_bytes += size
+            payload_bytes += size
         images = selected
         try:
             event = json.loads(
@@ -297,7 +303,7 @@ def export_bundle(
                 for row in rows:
                     data = (row["message"] + "\n").encode("utf-8")
                     if archive_id is not None and (
-                        image_bytes + log_bytes + len(data)
+                        payload_bytes + log_bytes + len(data)
                         > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE
                     ):
                         truncated = True
@@ -305,6 +311,8 @@ def export_bundle(
                     stream.write(data)
                     log_bytes += len(data)
                     count += 1
+            if plan_contents is not None:
+                bundle.writestr("plan.json", plan_contents)
             image_count = 0
             for _, (image, relative) in sorted(images.items()):
                 try:
@@ -319,6 +327,7 @@ def export_bundle(
                 f"{end:%Y-%m-%d %H:%M:%S}\n"
                 f"日志：{count} 条\n截图：{image_count} 张\n"
                 f"包含截图：{'是' if include_screenshots else '否'}\n"
+                "排班表为导出时当前保存的配置，不代表日志发生时的排班。\n"
                 "截图按采集时间排序；已过期或尚未写入的文件无法导出。\n"
                 + ("归档达到上限，部分截图或日志已省略。\n" if truncated else ""),
             )

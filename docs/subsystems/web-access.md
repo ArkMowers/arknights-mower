@@ -32,6 +32,12 @@ Ordinary export opens a separate start/end range initialized to one hour before 
 
 `GET /diagnostics/export?at=<milliseconds>&start=<milliseconds>&end=<milliseconds>&screenshots=0|1` exports an explicit interval under the same log-read boundary. Start and end must be supplied together, start must be nonnegative and earlier than end, and the interval must not exceed seven days. End and the identifying `at` time may be at most one hour in the future. Invalid input returns HTTP 400 before file access. Omitting both range bounds preserves the legacy ten-minute export; omitting `screenshots` includes images. Retained error-archive images in the requested interval supplement ordinary images even after ordinary cleanup.
 
+### Diagnostic Export Contents
+
+Both ordinary and error-archive exports contain `日志.txt`, `说明.txt` and `plan.json`. Error-archive exports also accept `screenshots=0|1`, defaulting to `1`; other values return HTTP 400 before file access. Both representations retain the [local log-read boundary](#local-log-read-boundary), including configured-token checks. The text-only actions skip ordinary and archived screenshots. A batch download contains the selected archive ZIPs, each with its own Scheduling Plan attachment.
+
+The Scheduling Plan is the saved configuration at export time, including master and backup plans and the advanced settings carried by the existing JSON plan export. It is not a historical snapshot or the scheduler's effective arrangement. The bundle does not include unrelated instance settings or credentials. The page states that every log export includes the current saved Scheduling Plan.
+
 ## 4. Subsystem Invariants
 
 - <a id="frontend-navigation-dispatch"></a>**Frontend Navigation Dispatch**: Known frontend page navigation resolves before API dispatch according to the [frontend navigation contract](#6-frontend-navigation).

@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
+import pytest
+
 from arknights_mower.utils.diagnostics import (
     archive_window,
     error_events,
@@ -772,3 +774,83 @@ class DiagnosticTimelineTests(unittest.TestCase):
                             exported_log = bundle.read("日志.txt").decode("utf-8")
                             self.assertIn(expected_log, exported_log)
                             self.assertNotIn("窗口外", exported_log)
+
+
+@pytest.mark.parametrize("archived", [False, True])
+@pytest.mark.parametrize("screenshots", [None, "0", "1"])
+def test_export_contents_include_current_plan(
+    tmp_path, monkeypatch, archived, screenshots
+):
+    import server
+    from arknights_mower.utils.config.conf import Conf
+    from arknights_mower.utils.config.plan import PlanModel
+
+    center = datetime.now().replace(microsecond=0)
+    timestamp = int(center.timestamp() * 10**9)
+    shots = tmp_path / "screenshot"
+    ordinary = shots / center.strftime("%Y%m%d-%H")
+    archive = shots / "errors" / str(timestamp)
+    logs = tmp_path / "log"
+    for folder in (ordinary, archive, logs):
+        folder.mkdir(parents=True)
+    (ordinary / f"{timestamp}.jpg").write_bytes(b"ordinary")
+    (archive / f"{timestamp + 1}.jpg").write_bytes(b"archived")
+    (archive / "event.json").write_text(
+        json.dumps({"time_ns": timestamp}), encoding="utf-8"
+    )
+    saved_message = "归档的完整日志\n  异常详情"
+    (archive / "logs.json").write_text(
+        json.dumps([{"message": saved_message}], ensure_ascii=False), encoding="utf-8"
+    )
+    message = f"{center:%Y-%m-%d %H:%M:%S} task.py:1 INFO 当前日志\n  更多说明"
+    (logs / "runtime.log").write_text(message + "\n", encoding="utf-8")
+    plan = PlanModel.model_validate(
+        {"conf": {"exhaust_require": "能天使"}, "backup_plans": [{"name": "测试副表"}]}
+    )
+    conf = Conf()
+    conf.resting_threshold = 0.6
+    conf.webview.token = "private-token"
+    monkeypatch.setattr(server.config, "plan", plan)
+    monkeypatch.setattr(server.config, "conf", conf)
+    monkeypatch.setattr(server, "get_path", lambda name: tmp_path / name[5:])
+    monkeypatch.setattr(server.app, "token", "diagnostics-test", raising=False)
+    headers = {"token": "diagnostics-test"}
+    client = server.app.test_client()
+    path = (
+        f"/diagnostics/errors/{timestamp}/export?"
+        if archived
+        else f"/diagnostics/export?at={int(center.timestamp() * 1000)}&"
+    )
+    if screenshots is not None:
+        path += f"screenshots={screenshots}"
+    with client.get(path, headers=headers) as response:
+        assert response.status_code == 200
+        with ZipFile(BytesIO(response.data)) as bundle:
+            assert (
+                bundle.read("日志.txt").decode()
+                == (saved_message if archived else message) + "\n"
+            )
+            exported_plan = json.loads(bundle.read("plan.json"))
+            assert exported_plan == client.get("/export-json", headers=headers).json
+            assert exported_plan["conf"]["exhaust_require"] == "能天使"
+            assert exported_plan["backup_plans"][0]["name"] == "测试副表"
+            assert exported_plan["advanced_settings"]["resting_threshold"] == 0.6
+            assert "private-token" not in bundle.read("plan.json").decode()
+            images = [name for name in bundle.namelist() if name.startswith("截图/")]
+            assert len(images) == (0 if screenshots == "0" else (1 if archived else 2))
+            assert "当前保存" in bundle.read("说明.txt").decode()
+
+
+def test_text_export_skips_screenshot_enumeration(tmp_path):
+    with patch(
+        "arknights_mower.utils.diagnostics.screenshots_between",
+        side_effect=AssertionError("不应扫描截图"),
+    ):
+        with export_bundle(
+            tmp_path / "log",
+            tmp_path / "screenshot",
+            datetime.now(),
+            include_screenshots=False,
+        ) as data:
+            with ZipFile(data) as bundle:
+                assert bundle.read("日志.txt") == b""

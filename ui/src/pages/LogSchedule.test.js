@@ -179,9 +179,46 @@ describe('log schedule browsing', () => {
     await page.beginExport()
     expect(state.client.get.mock.calls.at(-1)).toEqual([
       '/diagnostics/errors/123/export',
-      { params: undefined, responseType: 'blob' }
+      { params: { screenshots: '1' }, responseType: 'blob' }
     ])
     expect(page.showExportDialog.value).toBe(false)
+    expect(link.click).toHaveBeenCalledOnce()
+  })
+
+  it('opens the text export with screenshots off and resets the choice for a full export', async () => {
+    const center = 1791604800000
+    state.client.get.mockResolvedValue({ data: { logs: [] } })
+    await page.loadWindow(center)
+    page.beginExport(false)
+    expect(page.showExportDialog.value).toBe(true)
+    expect(page.includeScreenshots.value).toBe(false)
+    const link = { click: vi.fn(), remove: vi.fn() }
+    vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:test', revokeObjectURL: vi.fn() })
+    await page.exportWindow()
+    expect(state.client.get.mock.calls.at(-1)).toEqual([
+      '/diagnostics/export',
+      {
+        params: { at: center, start: center - 3600000, end: center + 300000, screenshots: '0' },
+        responseType: 'blob'
+      }
+    ])
+    expect(link.click).toHaveBeenCalledOnce()
+    page.beginExport(true)
+    expect(page.includeScreenshots.value).toBe(true)
+  })
+
+  it('exports only checked archive logs without screenshots', async () => {
+    page.events.value = [event, { ...event, id: '456' }]
+    page.toggleEvent('123', true)
+    state.client.get.mockResolvedValue({ data: new Blob(['text archive']) })
+    const link = { click: vi.fn(), remove: vi.fn() }
+    vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:test', revokeObjectURL: vi.fn() })
+    await page.exportSelected(false)
+    expect(state.client.get.mock.calls).toEqual([
+      ['/diagnostics/errors/123/export', { params: { screenshots: '0' }, responseType: 'blob' }]
+    ])
     expect(link.click).toHaveBeenCalledOnce()
   })
 
@@ -395,8 +432,8 @@ describe('log schedule browsing', () => {
     pending.resolve({ data: new Blob(['archive 123']) })
     await exporting
     expect(state.client.get.mock.calls).toEqual([
-      ['/diagnostics/errors/123/export', { responseType: 'blob' }],
-      ['/diagnostics/errors/789/export', { responseType: 'blob' }]
+      ['/diagnostics/errors/123/export', { params: { screenshots: '1' }, responseType: 'blob' }],
+      ['/diagnostics/errors/789/export', { params: { screenshots: '1' }, responseType: 'blob' }]
     ])
     expect(link.click).toHaveBeenCalledOnce()
     const reader = new ZipReader(new BlobReader(downloaded), { useWebWorkers: false })
