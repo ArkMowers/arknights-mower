@@ -15,6 +15,7 @@ import SettingsSection from '@/components/SettingsSection.vue'
 import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
 import VersionWatermarkPreference from '@/components/VersionWatermarkPreference.vue'
 import LogBackgroundPreference from '@/components/LogBackgroundPreference.vue'
+import HalloweenPreference from '@/components/HalloweenPreference.vue'
 import SettingsSegmented from '@/components/SettingsSegmented.vue'
 import InterfaceIcon from '@vicons/fluent/es/PaintBrush24Regular'
 import NotifyIcon from '@vicons/fluent/es/Alert24Regular'
@@ -231,6 +232,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               label="显示主题"
             />
           </n-form-item>
+          <HalloweenPreference />
           <SoftwareVersionPreference />
           <VersionWatermarkPreference />
           <LogBackgroundPreference />

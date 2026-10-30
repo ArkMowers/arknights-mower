@@ -7,6 +7,7 @@ const validDisplay = (value) => value === 'version' || value === 'channel'
 const validLanguage = (value) => value === 'zh' || value === 'en'
 const validLayout = (value) => value === 'checklist' || value === 'waterfall'
 const validReportMode = (value) => value === 'standard' || value === 'stock'
+const validHalloweenMode = (value) => value === 'auto' || value === 'on' || value === 'off'
 
 export const useGuiStore = defineStore('gui', () => {
   const softwareVersionDisplay = ref('version')
@@ -14,16 +15,19 @@ export const useGuiStore = defineStore('gui', () => {
   const taskSettingsLayout = ref('checklist')
   const watermarkVisible = ref(true)
   const baseReportMode = ref('standard')
+  const halloweenMode = ref('auto')
   const loaded = ref(false)
   const loading = ref(false)
   const saving = ref(false)
   const layoutSaving = ref(false)
   const watermarkSaving = ref(false)
   const reportModeSaving = ref(false)
+  const halloweenSaving = ref(false)
   const error = ref('')
   const layoutError = ref('')
   const watermarkError = ref('')
   const reportModeError = ref('')
+  const halloweenError = ref('')
   const displayDisabled = computed(
     () =>
       !loaded.value ||
@@ -31,17 +35,20 @@ export const useGuiStore = defineStore('gui', () => {
       saving.value ||
       layoutSaving.value ||
       watermarkSaving.value ||
-      reportModeSaving.value
+      reportModeSaving.value ||
+      halloweenSaving.value
   )
   const layoutDisabled = displayDisabled
   const watermarkDisabled = displayDisabled
   const reportModeDisabled = displayDisabled
+  const halloweenDisabled = displayDisabled
   let loadRequest = null
   let failedDisplay = null
   let failedLanguage = null
   let failedLayout = null
   let failedWatermark = null
   let failedReportMode = null
+  let failedHalloweenMode = null
 
   async function load() {
     if (loadRequest) return loadRequest
@@ -51,6 +58,7 @@ export const useGuiStore = defineStore('gui', () => {
     layoutError.value = ''
     watermarkError.value = ''
     reportModeError.value = ''
+    halloweenError.value = ''
     loadRequest = (async () => {
       try {
         const { data } = await axios.get(appearanceUrl, { timeout: 5000 })
@@ -66,11 +74,14 @@ export const useGuiStore = defineStore('gui', () => {
           throw new Error()
         if (data.base_report_mode !== undefined && !validReportMode(data.base_report_mode))
           throw new Error()
+        if (data.halloween_mode !== undefined && !validHalloweenMode(data.halloween_mode))
+          throw new Error()
         softwareVersionDisplay.value = data.software_version_display
         softwareVersionLanguage.value = data.software_version_language ?? 'en'
         taskSettingsLayout.value = data.task_settings_layout ?? 'checklist'
         watermarkVisible.value = data.watermark_visible ?? true
         baseReportMode.value = data.base_report_mode ?? 'standard'
+        halloweenMode.value = data.halloween_mode ?? 'auto'
         loaded.value = true
         return true
       } catch {
@@ -78,6 +89,7 @@ export const useGuiStore = defineStore('gui', () => {
         layoutError.value = '全部设置显示偏好读取失败，请重试。'
         watermarkError.value = '版本水印设置读取失败，请重试。'
         reportModeError.value = '基建报表显示偏好读取失败，请重试。'
+        halloweenError.value = '万圣节装饰设置读取失败，请重试。'
         return false
       } finally {
         loading.value = false
@@ -209,6 +221,32 @@ export const useGuiStore = defineStore('gui', () => {
     return loaded.value ? setBaseReportMode(failedReportMode) : load()
   }
 
+  async function setHalloweenMode(value) {
+    if (halloweenDisabled.value || !validHalloweenMode(value)) return false
+    if (value === halloweenMode.value) return true
+    const previous = halloweenMode.value
+    halloweenMode.value = value
+    halloweenSaving.value = true
+    halloweenError.value = ''
+    failedHalloweenMode = null
+    try {
+      const { data } = await axios.put(appearanceUrl, { halloween_mode: value }, { timeout: 5000 })
+      if (data?.halloween_mode !== value) throw new Error()
+      return true
+    } catch {
+      halloweenMode.value = previous
+      failedHalloweenMode = value
+      halloweenError.value = '万圣节装饰设置保存失败，已恢复原来的显示。请重试。'
+      return false
+    } finally {
+      halloweenSaving.value = false
+    }
+  }
+
+  function retryHalloweenMode() {
+    return loaded.value ? setHalloweenMode(failedHalloweenMode) : load()
+  }
+
   async function setWatermarkVisible(value, confirmation = '') {
     if (watermarkDisabled.value || typeof value !== 'boolean') return false
     if (value === watermarkVisible.value) return true
@@ -247,29 +285,35 @@ export const useGuiStore = defineStore('gui', () => {
     taskSettingsLayout,
     watermarkVisible,
     baseReportMode,
+    halloweenMode,
     loaded,
     loading,
     saving,
     layoutSaving,
     watermarkSaving,
     reportModeSaving,
+    halloweenSaving,
     error,
     layoutError,
     watermarkError,
     reportModeError,
+    halloweenError,
     displayDisabled,
     layoutDisabled,
     watermarkDisabled,
     reportModeDisabled,
+    halloweenDisabled,
     load,
     setSoftwareVersionDisplay,
     setSoftwareVersionLanguage,
     setTaskSettingsLayout,
     setBaseReportMode,
+    setHalloweenMode,
     setWatermarkVisible,
     retry,
     retryTaskSettingsLayout,
     retryReportMode,
+    retryHalloweenMode,
     retryWatermarkVisible
   }
 })

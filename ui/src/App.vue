@@ -338,7 +338,6 @@ import {
 } from '@/composables/deviceConnectionNavigation'
 import { installModalDragging } from '@/utils/modal-drag.js'
 
-const halloweenActive = provideHalloweenSeason()
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
 const windowShell = createWindowShellAdapter({
   onCloseRequested: () => handleWindowControl('close')
@@ -566,7 +565,8 @@ const {
 } = storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
 const guiStore = useGuiStore()
-const { softwareVersionDisplay, watermarkVisible } = storeToRefs(guiStore)
+const { softwareVersionDisplay, watermarkVisible, halloweenMode } = storeToRefs(guiStore)
+const halloweenActive = provideHalloweenSeason(halloweenMode)
 
 const update_notice_store = useUpdateNoticeStore()
 const { notice: updateNotice } = storeToRefs(update_notice_store)

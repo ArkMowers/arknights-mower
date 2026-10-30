@@ -69,6 +69,7 @@ def appearance():
         "software_version_language": gui.load_software_version_language(),
         "task_settings_layout": gui.load_task_settings_layout(),
         "base_report_mode": gui.load_base_report_mode(),
+        "halloween_mode": gui.load_halloween_mode(),
         "watermark_visible": gui.load_watermark_visible(),
     }
 

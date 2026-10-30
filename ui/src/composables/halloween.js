@@ -1,14 +1,18 @@
-import { inject, onBeforeUnmount, onMounted, provide, readonly, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, provide, readonly, ref, toValue } from 'vue'
 import { isHalloweenSeason } from '@/utils/halloween'
 
 const halloweenSeasonKey = Symbol('halloween-season')
 
-export function provideHalloweenSeason() {
-  const active = ref(isHalloweenSeason())
+export function provideHalloweenSeason(preference = 'auto') {
+  const inSeason = ref(isHalloweenSeason())
+  const active = computed(() => {
+    const mode = toValue(preference)
+    return mode === 'on' || (mode !== 'off' && inSeason.value)
+  })
   let midnightTimer = null
 
   function refresh() {
-    active.value = isHalloweenSeason()
+    inSeason.value = isHalloweenSeason()
     const nextMidnight = new Date()
     nextMidnight.setHours(24, 0, 0, 0)
     clearTimeout(midnightTimer)

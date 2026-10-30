@@ -277,7 +277,8 @@ export function createPreviewData(config) {
       software_version_language: 'en',
       watermark_visible: true,
       task_settings_layout: 'checklist',
-      base_report_mode: previewReportMode()
+      base_report_mode: previewReportMode(),
+      halloween_mode: 'auto'
     }
   }
 }
@@ -747,7 +748,8 @@ export function createPreviewAdapter(data, requests = []) {
         software_version_language: ['zh', 'en'],
         watermark_visible: [true, false],
         task_settings_layout: ['checklist', 'waterfall'],
-        base_report_mode: ['standard', 'stock']
+        base_report_mode: ['standard', 'stock'],
+        halloween_mode: ['auto', 'on', 'off']
       }
       if (!body || typeof body !== 'object' || Array.isArray(body)) fail(config, '外观配置无效')
       const changes = { ...body }

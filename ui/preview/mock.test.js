@@ -128,7 +128,8 @@ describe('offline preview', () => {
       software_version_language: 'en',
       watermark_visible: true,
       task_settings_layout: 'checklist',
-      base_report_mode: 'standard'
+      base_report_mode: 'standard',
+      halloween_mode: 'auto'
     })
     await client.put('/gui/appearance', { task_settings_layout: 'waterfall' })
     await client.put('/gui/appearance', { software_version_display: 'channel' })
@@ -146,7 +147,8 @@ describe('offline preview', () => {
       software_version_language: 'zh',
       watermark_visible: false,
       task_settings_layout: 'waterfall',
-      base_report_mode: 'standard'
+      base_report_mode: 'standard',
+      halloween_mode: 'auto'
     })
     expect(data.config).toEqual(originalConfig)
     expect(data.appearance).not.toHaveProperty('watermark_confirmation')
@@ -155,14 +157,16 @@ describe('offline preview', () => {
       software_version_language: 'en',
       watermark_visible: true,
       task_settings_layout: 'checklist',
-      base_report_mode: 'standard'
+      base_report_mode: 'standard',
+      halloween_mode: 'auto'
     })
     expect(data.appearance).toEqual({
       software_version_display: 'version',
       software_version_language: 'en',
       watermark_visible: true,
       task_settings_layout: 'checklist',
-      base_report_mode: 'standard'
+      base_report_mode: 'standard',
+      halloween_mode: 'auto'
     })
   })
 
@@ -192,7 +196,16 @@ describe('offline preview', () => {
     { base_report_mode: 'grid' },
     { base_report_mode: null },
     { base_report_mode: true },
-    { base_report_mode: 'stock', task_settings_layout: 'grid' }
+    { base_report_mode: 'stock', task_settings_layout: 'grid' },
+    { halloween_mode: null },
+    { halloween_mode: true },
+    { halloween_mode: 1 },
+    { halloween_mode: [] },
+    { halloween_mode: {} },
+    { halloween_mode: 'ON', software_version_display: 'channel' },
+    { halloween_mode: ' off ' },
+    { halloween_mode: 'disabled' },
+    { halloween_mode: 'on', software_version_display: 'invalid' }
   ])('rejects invalid appearance update %j without partial writes', async (payload) => {
     const data = createPreviewData({})
     const original = structuredClone(data.appearance)
@@ -205,6 +218,25 @@ describe('offline preview', () => {
       response: { status: 400 }
     })
     expect(data.appearance).toEqual(original)
+  })
+
+  it('stores each Halloween mode independently of other preferences', async () => {
+    const data = createPreviewData({ theme: 'light' })
+    const original = structuredClone(data.appearance)
+    const client = axios.create({ adapter: createPreviewAdapter(data) })
+    for (const mode of ['off', 'on', 'auto']) {
+      await expect(client.put('/gui/appearance', { halloween_mode: mode })).resolves.toMatchObject({
+        data: { halloween_mode: mode }
+      })
+      expect((await client.get('/gui/appearance')).data).toEqual({
+        ...original,
+        halloween_mode: mode
+      })
+    }
+    await client.put('/gui/appearance', { halloween_mode: 'off' })
+    await client.put('/gui/appearance', { software_version_language: 'zh' })
+    expect((await client.get('/gui/appearance')).data.halloween_mode).toBe('off')
+    expect(data.config).toEqual({ theme: 'light' })
   })
 
   it('stores the base report mode preference and rejects unknown modes', async () => {

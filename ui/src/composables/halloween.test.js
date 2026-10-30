@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createRenderer, defineComponent, h } from 'vue'
+import { createRenderer, defineComponent, h, nextTick, ref } from 'vue'
 import { provideHalloweenSeason, useHalloweenSeason } from './halloween'
 
 const node = (tag) => ({ tag, text: '', children: [], parent: null })
@@ -33,7 +33,7 @@ const renderer = createRenderer({
 let mounted
 let documentTarget
 
-function mountConsumers(withProvider = true) {
+function mountConsumers(withProvider = true, preference) {
   const consumers = []
   let provided
   const Consumer = defineComponent({
@@ -46,7 +46,7 @@ function mountConsumers(withProvider = true) {
   const root = node('root')
   mounted = renderer.createApp({
     setup() {
-      if (withProvider) provided = provideHalloweenSeason()
+      if (withProvider) provided = provideHalloweenSeason(preference)
       return () => h('div', [h(Consumer), h(Consumer), h(Consumer)])
     }
   })
@@ -75,6 +75,47 @@ afterEach(() => {
 })
 
 describe('shared Halloween season', () => {
+  it.each([
+    ['outside the season', new Date(2026, 6, 1, 12), false],
+    ['during the season', new Date(2026, 9, 31, 12), true]
+  ])(
+    'applies explicit choices immediately %s and restores automatic dates',
+    async (_name, date, automatic) => {
+      vi.setSystemTime(date)
+      const preference = ref('auto')
+      const state = mountConsumers(true, preference)
+      expect(state.values()).toEqual([automatic, automatic, automatic])
+      for (const [mode, expected] of [
+        ['on', true],
+        ['off', false],
+        ['auto', automatic]
+      ]) {
+        preference.value = mode
+        await nextTick()
+        expect(state.values()).toEqual([expected, expected, expected])
+        expect(state.rendered()).toEqual([String(expected), String(expected), String(expected)])
+        expect(vi.getTimerCount()).toBe(1)
+      }
+    }
+  )
+
+  it.each([
+    ['on', true],
+    ['off', false]
+  ])(
+    'keeps %s across midnight and resynchronizes when returning to auto',
+    async (mode, expected) => {
+      vi.setSystemTime(new Date(2026, 10, 1, 23, 59, 59))
+      const preference = ref(mode)
+      const state = mountConsumers(true, preference)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(state.values()).toEqual([expected, expected, expected])
+      preference.value = 'auto'
+      await nextTick()
+      expect(state.values()).toEqual([false, false, false])
+    }
+  )
+
   it.each([
     ['October 24', new Date(2026, 9, 23, 23, 59, 59), false, true],
     ['November 1', new Date(2026, 9, 31, 23, 59, 59), true, true],

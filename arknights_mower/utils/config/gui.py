@@ -363,6 +363,11 @@ def load_base_report_mode() -> str:
     return value if value in ("standard", "stock") else "standard"
 
 
+def load_halloween_mode() -> str:
+    value = read_gui_data(strict=True).get("halloween_mode")
+    return value if value in ("auto", "on", "off") else "auto"
+
+
 def load_watermark_visible() -> bool:
     data = read_gui_data(strict=True)
     if data.get("watermark_visible") is not False:
@@ -412,6 +417,7 @@ def save_appearance(changes: dict) -> dict:
             "任务配置显示方式无效",
         ),
         "base_report_mode": (str, ("standard", "stock"), "基建报表显示方式无效"),
+        "halloween_mode": (str, ("auto", "on", "off"), "万圣节装饰显示方式无效"),
         "watermark_visible": (bool, (True, False), "版本水印显示设置无效"),
     }
     if (
