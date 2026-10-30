@@ -1,6 +1,7 @@
 """Shared game profiles preserve resource selection and existing operator views."""
 
 import json
+import shutil
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -250,3 +251,51 @@ def test_catalog_reload_updates_existing_references_and_rejects_invalid_data(
             else:
                 target.clear()
                 target.update(value)
+
+
+@pytest.mark.parametrize(
+    ("name", "invalid"),
+    [("agent.json", {"错误姓名": "WARRIOR"}), ("agent_profession.json", [])],
+)
+def test_external_profile_type_error_preserves_loaded_resource_data(
+    tmp_path, monkeypatch, name, invalid
+):
+    selected = tmp_path / "selected"
+    folder = selected / "arknights_mower/data"
+    folder.mkdir(parents=True)
+    for source in data._data_path("agent.json").parent.glob("*.json"):
+        shutil.copyfile(source, folder / source.name)
+    (folder / name).write_text(json.dumps(invalid), encoding="utf-8")
+    containers = {
+        name: getattr(data, name)
+        for name in (
+            "_stage_data_base",
+            "agent_list",
+            "agent_profession",
+            "workshop_formula",
+            "stage_order",
+            "recruit_agent",
+            "recruit_result",
+            "key_mapping",
+            "recruit_tag",
+            "agent_with_tags",
+            "result_template_list",
+        )
+    }
+    original = deepcopy(containers)
+    monkeypatch.setattr(
+        resource_pkg, "_selection", lambda: SimpleNamespace(root=selected)
+    )
+    try:
+        with pytest.raises(ValueError, match=f"资源数据 {name} 类型错误"):
+            data.reload_resource_data()
+        for key, container in containers.items():
+            assert getattr(data, key) is container
+            assert container == original[key]
+    finally:
+        for key, container in containers.items():
+            if isinstance(container, list):
+                container[:] = original[key]
+            else:
+                container.clear()
+                container.update(original[key])

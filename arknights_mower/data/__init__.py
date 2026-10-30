@@ -11,6 +11,13 @@ def _data_path(name: str) -> Path:
     return resource_pkg_path(f"arknights_mower/data/{name}")
 
 
+def _read_resource_json(name: str, expected_type: type):
+    value = json.loads(_data_path(name).read_text("utf-8"))
+    if not isinstance(value, expected_type):
+        raise ValueError(f"资源数据 {name} 类型错误")
+    return value
+
+
 def _agent_views():
     names = _data_path("agent.json")
     catalog = resource_pkg_path(OPERATOR_CATALOG_DATA)
@@ -22,8 +29,8 @@ def _agent_views():
         else:
             return operator_views(content)
     return (
-        json.loads(names.read_text("utf-8")),
-        json.loads(_data_path("agent_profession.json").read_text("utf-8")),
+        _read_resource_json("agent.json", list),
+        _read_resource_json("agent_profession.json", dict),
     )
 
 
@@ -130,13 +137,6 @@ def _replace_list(target: list, source: list) -> None:
 def _replace_dict(target: dict, source: dict) -> None:
     target.clear()
     target.update(source)
-
-
-def _read_resource_json(name: str, expected_type: type):
-    value = json.loads(_data_path(name).read_text("utf-8"))
-    if not isinstance(value, expected_type):
-        raise ValueError(f"资源数据 {name} 类型错误")
-    return value
 
 
 @register_resource_reload
