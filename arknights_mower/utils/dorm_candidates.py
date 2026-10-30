@@ -292,7 +292,12 @@ def dorm_task_reservations(op_data, tasks, excluded=()):
     for task in tasks:
         if task is None or getattr(task, "run_order_staffing_wait", False):
             continue
-        names.update(getattr(task, "emergency_staffing_members", ()))
+        if not (
+            getattr(task, "emergency_staffing", False)
+            and task.retains_execution
+            and not getattr(task, "emergency_recovery_release", False)
+        ):
+            names.update(getattr(task, "emergency_staffing_members", ()))
         names.update(
             name
             for row in getattr(task, "run_order_original_roster", {}).values()
