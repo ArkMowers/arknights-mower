@@ -170,7 +170,15 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     solver.task = SchedulerTask()
     solver.tasks = []
     solver.waiting_scene = []
-    solver.scene.return_value = Scene.INFRA_DETAILS
+    solver.performance_profile = SimpleNamespace(
+        transition_timeout=1, screenshot_interval=100
+    )
+    solver._complete_room_arrangement.side_effect = MethodType(
+        BaseSchedulerSolver._complete_room_arrangement, solver
+    )
+    solver._wait_for_room_exit.side_effect = MethodType(
+        BaseSchedulerSolver._wait_for_room_exit, solver
+    )
     solver.ensure_dorm_recovery_order.return_value = False
     solver._can_refresh_idle_dorm_search.return_value = False
     solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
@@ -195,6 +203,9 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     solver.recog.w, solver.recog.h = 1920, 1080
     solver.get_color.return_value = np.array([255, 255, 255])
     state = [initial]
+    solver.scene.side_effect = lambda: (
+        Scene.INFRA_MAIN if state[0] == "map" else Scene.INFRA_DETAILS
+    )
     detail_button = ((30, 350), (150, 450))
 
     def find(name, **kwargs):
@@ -215,7 +226,9 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
 
     solver.find.side_effect = find
     solver.tap.side_effect = tap
-    solver.back.side_effect = lambda *args: state.__setitem__(0, "room")
+    solver.back.side_effect = lambda *args: state.__setitem__(
+        0, "map" if args == (0.5,) else "room"
+    )
     solver.turn_on_room_detail.side_effect = MethodType(
         BaseSchedulerSolver.turn_on_room_detail, solver
     )
@@ -236,7 +249,7 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     solver.op_data.update_detail.side_effect = update
     plan = {"recycle": ["芬", "香草"]}
     assert BaseSchedulerSolver.agent_arrange_room(solver, {}, "recycle", plan) == {}
-    assert state[0] == "room"
+    assert state[0] == "map"
     assert solver.turn_on_room_detail.call_count == 3
     assert solver.op_data.plan == original_plan
     assert solver.read_accurate_mood.call_count == 4

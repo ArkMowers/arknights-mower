@@ -98,6 +98,20 @@ def test_actual_workshop_arrangement_confirms_staff_without_plan_entry(
     solver.tasks = [solver.task]
     solver.waiting_scene = []
     solver.scene.return_value = Scene.INFRA_DETAILS
+    solver.performance_profile = SimpleNamespace(
+        transition_timeout=1, screenshot_interval=100
+    )
+    solver._complete_room_arrangement.side_effect = MethodType(
+        BaseSchedulerSolver._complete_room_arrangement, solver
+    )
+    solver._wait_for_room_exit.side_effect = MethodType(
+        BaseSchedulerSolver._wait_for_room_exit, solver
+    )
+
+    def back(*args):
+        solver.scene.return_value = Scene.INFRA_MAIN
+
+    solver.back.side_effect = back
     solver.ensure_dorm_recovery_order.return_value = False
     solver._can_refresh_idle_dorm_search.return_value = False
     solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)

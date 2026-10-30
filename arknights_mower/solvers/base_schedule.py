@@ -14822,6 +14822,7 @@ class BaseSchedulerSolver(
         self._suppress_facility_arrangement(plan)
         if room not in plan:
             return new_plan
+        restoring_order = getattr(self.task, "run_order_restore_pending", False)
         finished = False
         # 延期重试也先读实际驻员，避免确认已成功却重复选人／充能。
         choose_error = int(getattr(self.task, "arrangement_retry_room", None) == room)
@@ -14956,6 +14957,7 @@ class BaseSchedulerSolver(
                                 self.back()
                                 return new_plan
                         self._prepare_group_shift_execution_targets(self.task)
+                skip_enter = False
                 self.turn_on_room_detail(room)
                 if room == "recycle":
                     self.get_agent_from_room(room)
@@ -14993,12 +14995,10 @@ class BaseSchedulerSolver(
                         for current, target in zip(actual, plan[room])
                     ):
                         logger.info(f"{room} 确认后实际驻员已符合目标，结束排班")
+                        self._complete_room_arrangement(new_plan, room, plan)
                         if selection_was_attempted:
                             self.record_selection_success()
                         finished = True
-                        if room in getattr(self.task, "dorm_recovery_restore", []):
-                            self.task.dorm_recovery_restore.remove(room)
-                        del plan[room]
                         break
                 error_count = 0
                 if not checked:
@@ -15384,24 +15384,17 @@ class BaseSchedulerSolver(
                             **observation_context,
                         )
                     logger.info(f"任务与当前房间相同，跳过安排{room}人员")
-                if selection_attempted or choose_error > 0:
-                    self.record_selection_success()
-                finished = True
-                skip_enter = False
-                if room in getattr(self.task, "dorm_recovery_restore", []):
-                    self.task.dorm_recovery_restore.remove(room)
-                if getattr(self.task, "arrangement_retry_room", None) == room:
-                    del self.task.arrangement_retry_room
-                    del self.task.arrangement_retry_count
-                # 如果完成则移除该任务
-                del plan[room]
-                # back to 基地主界面
                 if self.scene() in self.waiting_scene:
                     if not self.waiting_solver():
                         return
+                self._complete_room_arrangement(new_plan, room, plan)
+                if selection_attempted or choose_error > 0:
+                    self.record_selection_success()
+                finished = True
             except (
                 MowerExit,
                 DeviceRecoveryError,
+                SharedADBError,
                 RoomArrangementDeferred,
                 MoodArrangementChanged,
                 RunOrderMissed,
@@ -15437,6 +15430,7 @@ class BaseSchedulerSolver(
                 if (
                     getattr(self.task, "run_order_restore_pending", False)
                     and self.task.meta_data
+                    and not restoring_order
                 ):
                     # 首次换入失败交回任务补偿边界，后续只恢复实测原班。
                     raise
@@ -15500,10 +15494,19 @@ class BaseSchedulerSolver(
                             raise RoomArrangementDeferred(room, e) from e
                         raise e
                 continue
+        return new_plan
+
+    def _complete_room_arrangement(self, new_plan, room, plan):
+        # 收尾返回仍属本轮安排；超时交回房间恢复，实读复核后再提交完成。
         if len(new_plan) != 1 or config.conf.run_order_buffer_time <= 0:
             self.back(0.5)
             self._wait_for_room_exit()
-        return new_plan
+        if room in getattr(self.task, "dorm_recovery_restore", []):
+            self.task.dorm_recovery_restore.remove(room)
+        if getattr(self.task, "arrangement_retry_room", None) == room:
+            del self.task.arrangement_retry_room
+            del self.task.arrangement_retry_count
+        del plan[room]
 
     def _wait_for_room_exit(self):
         """确认已发送的返回键生效，再把地图交给下一次房间操作。"""
