@@ -1361,3 +1361,146 @@ def test_stopped_reset_still_skips_old_snapshot_on_ordinary_start(
     assert not saved.get("tasks")
     assert saved == {}
     offline.io.assert_not_called()
+
+
+@pytest.mark.parametrize("start", ["reset", "recovery"])
+def test_startup_room_recognition_retry_checkpoints_before_dispatch(
+    offline, notice, observed_scheduler, monkeypatch, start
+):
+    from arknights_mower.utils.recognize import RecognizeError
+
+    solver = observed_scheduler
+    solver.op_data.plan = {
+        room: solver.op_data.plan[room] for room in ("central", "contact")
+    }
+    future = pending_tasks()[1]
+    solver.tasks = [future]
+    saved = offline.record.current_state()
+    assert offline.record.save_state_to_db(saved)
+    if start == "reset":
+        runtime.write_json(notice, {"active": False, "phase": "resolved"})
+        crash_recovery.request_resume("2")
+        prepared = {}
+    else:
+        prepared = crash_recovery.prepare_resume(saved)
+        crash_recovery.begin()
+    configure_simulate(offline, monkeypatch, solver)
+    events = []
+    attempts = 0
+
+    def read(room, **kwargs):
+        nonlocal attempts
+        assert kwargs == {"force_mood": True, "strict_observation": True}
+        assert not solver._state_restore_complete
+        events.append(room)
+        if room == "central":
+            attempts += 1
+            if attempts == 1:
+                raise RecognizeError("房间名单滚动六次仍未到达边界")
+        for index, planned in enumerate(solver.op_data.plan[room]):
+            operator = solver.op_data.operators[planned.agent]
+            operator.current_room, operator.current_index = room, index
+            operator.time_stamp, operator.mood = datetime.now(), 19
+
+    solver._read_room_mood = Mock(side_effect=read)
+    checkpoint = Mock(wraps=offline.record.save_current_state)
+    monkeypatch.setattr(offline.record, "save_current_state", checkpoint)
+
+    def dispatch():
+        assert events == ["central", "central", "contact"]
+        assert solver.back_to_infrastructure.call_count == 2
+        assert [call.args[0] for call in solver.enter_room.call_args_list] == events
+        checkpoint.assert_called_once()
+        assert solver._state_restore_complete
+        assert crash_recovery.pending_start_type() is None
+        assert not crash_recovery.status()["active"]
+        loaded = offline.record.load_state(strict=True)
+        assert loaded["operators"]["夕"].current_room == "central"
+        assert loaded["operators"]["夕"].mood == 19
+        assert loaded["operators"]["絮雨"].current_room == "contact"
+        if start == "recovery":
+            assert loaded["tasks"][0].time == future.time
+        raise MowerExit
+
+    boundary = Mock(side_effect=dispatch)
+    monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", boundary)
+    offline.main.simulate(prepared)
+    boundary.assert_called_once()
+    offline.io.assert_not_called()
+
+
+@pytest.mark.parametrize("start", ["reset", "recovery"])
+def test_startup_room_recognition_exhaustion_preserves_checkpoint_and_intent(
+    offline, notice, observed_scheduler, start
+):
+    from arknights_mower.utils.recognize import RecognizeError
+
+    solver = observed_scheduler
+    future = pending_tasks()[1]
+    solver.tasks = [future]
+    assert offline.record.save_current_state()
+    with offline.record._conn() as connection:
+        original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    if start == "reset":
+        runtime.write_json(notice, {"active": False, "phase": "resolved"})
+        crash_recovery.request_resume("2")
+        observe = crash_recovery.checkpoint_start
+    else:
+        crash_recovery.begin()
+        observe = crash_recovery.reconcile_scheduler
+    fault = RecognizeError("房间名单滚动六次仍未到达边界")
+    solver._read_room_mood = Mock(side_effect=fault)
+
+    with pytest.raises(RecognizeError, match="central") as raised:
+        observe(solver)
+
+    assert raised.value.__cause__ is fault
+    assert solver._read_room_mood.call_count == 3
+    assert solver.enter_room.call_count == 3
+    assert solver.tasks == [future] and solver.tasks[0] is future
+    assert not solver._state_restore_complete
+    if start == "reset":
+        assert crash_recovery.reset_observation_pending()
+        crash_recovery.request_resume("0")
+        assert crash_recovery.pending_start_type() == "2"
+    else:
+        assert crash_recovery.status()["active"]
+    with offline.record._conn() as connection:
+        assert (
+            connection.execute("SELECT state FROM saved_state").fetchone()[0]
+            == original
+        )
+    offline.io.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["stop", "device", "unexpected"])
+def test_startup_room_retry_preserves_cancellation_and_other_error_boundaries(
+    offline, notice, observed_scheduler, failure
+):
+    from arknights_mower.utils.recognize import RecognizeError
+
+    solver = observed_scheduler
+    runtime.write_json(notice, {"active": False, "phase": "resolved"})
+    crash_recovery.request_resume("2")
+    fault = {
+        "stop": RecognizeError("识别失败时用户停止"),
+        "device": DeviceRecoveryError("设备断线"),
+        "unexpected": RuntimeError("非识别错误"),
+    }[failure]
+
+    def read(*args, **kwargs):
+        if failure == "stop":
+            config.stop_mower.set()
+        raise fault
+
+    solver._read_room_mood = Mock(side_effect=read)
+    with pytest.raises(MowerExit if failure == "stop" else type(fault)) as raised:
+        crash_recovery.checkpoint_start(solver)
+    if failure != "stop":
+        assert raised.value is fault
+    solver._read_room_mood.assert_called_once()
+    solver.enter_room.assert_called_once_with("central")
+    assert not solver._state_restore_complete
+    assert crash_recovery.reset_observation_pending()
+    assert offline.record.load_state(strict=True) is None
+    offline.io.assert_not_called()
