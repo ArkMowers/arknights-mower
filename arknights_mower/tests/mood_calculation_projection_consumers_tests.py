@@ -1,4 +1,4 @@
-"""救急周转与共享替班召回使用隔离的心情模型预演。"""
+"""分床、救急周转与共享替班召回使用隔离的心情预演。"""
 
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -238,3 +238,83 @@ def test_projection_never_notifies_real_clock_position_setters(solver, monkeypat
     assert projected.operators[PRIMARY[0]].current_room == "dormitory_1"
     assert solver.op_data.mood_model.at == NOW
     assert solver.op_data.operators[PRIMARY[0]].current_room == "room_1_1"
+
+
+@pytest.mark.parametrize("calculated", [False, True])
+def test_projected_admission_allocates_by_current_mood(solver, monkeypatch, calculated):
+    from arknights_mower.utils.scheduler_task import prioritize_new_dorm_recovery
+
+    data = solver.op_data
+    first, second = (data.operators[name] for name in PRIMARY[:2])
+    first.mood, first.time_stamp, first.depletion_rate = 19, NOW - timedelta(hours=2), 1
+    second.mood, second.time_stamp, second.depletion_rate = (
+        18.5,
+        NOW - timedelta(minutes=30),
+        1,
+    )
+    if calculated:
+        enable(data, NOW, monkeypatch)
+        data.mood_model.observe(first.name, 17, NOW)
+        data.mood_model.observe(second.name, 18, NOW)
+    before = observations(data), deepcopy(vars(data.mood_model))
+    plan = {"dormitory_1": ["Current", "Current", second.name, first.name, "Free"]}
+
+    for _ in range(3):
+        result = prioritize_new_dorm_recovery(data, deepcopy(plan))
+        assert result["dormitory_1"][2:4] == [first.name, second.name]
+    assert (observations(data), vars(data.mood_model)) == before
+    solver.enter_room.assert_not_called()
+
+
+def test_empirical_mood_survives_nested_position_projections(solver):
+    from arknights_mower.utils.dorm_candidates import scheduling_mood_observation
+
+    data = solver.op_data
+    worker = data.operators[PRIMARY[0]]
+    worker.mood, worker.time_stamp, worker.depletion_rate = (
+        19,
+        NOW - timedelta(hours=2),
+        1,
+    )
+    resident = data.operators["闪灵"]
+    resident.mood, resident.time_stamp, resident.depletion_rate = (
+        12,
+        NOW - timedelta(hours=2),
+        1,
+    )
+    before = observations(data)
+    projected = data.project_arrangements(
+        [{"dormitory_1": ["Current", "Current", worker.name, "Free", "Free"]}], now=NOW
+    )
+    nested = projected.project_arrangements([{worker.room: [resident.name]}], now=NOW)
+    assert nested.swap_plan([]) is None
+    for name in (worker.name, resident.name):
+        expected = scheduling_mood_observation(data, name, NOW)
+        assert scheduling_mood_observation(projected, name) == expected
+        assert scheduling_mood_observation(nested, name) == expected
+        assert projected.operators[name].mood == data.operators[name].mood
+        assert projected.operators[name].time_stamp == data.operators[name].time_stamp
+    assert observations(data) == before
+
+
+@pytest.mark.parametrize("kind", ["unknown", "predicted", "future", "card"])
+def test_empirical_projection_preserves_observation_validity(solver, kind):
+    from arknights_mower.utils.dorm_candidates import scheduling_mood_observation
+
+    data = solver.op_data
+    op = data.operators[PRIMARY[0]]
+    if kind == "unknown":
+        op.time_stamp = None
+    elif kind == "predicted":
+        op.mood_is_prediction = True
+    elif kind == "future":
+        op.time_stamp = NOW + timedelta(seconds=1)
+    else:
+        op.time_stamp = NOW - timedelta(hours=2)
+        data.dorm_mood_estimates[op.name] = (10, NOW - timedelta(seconds=1))
+    projected = data.project_arrangements(
+        [{"dormitory_1": ["Current", "Current", op.name, "Free", "Free"]}], now=NOW
+    )
+    assert scheduling_mood_observation(projected, op.name) == (
+        (10, NOW - timedelta(seconds=1)) if kind == "card" else None
+    )

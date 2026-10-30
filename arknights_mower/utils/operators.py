@@ -2212,6 +2212,8 @@ class Operators:
                 operator.replacement = list(
                     operator.replacements_for_group(exist.group)
                 )
+            if hasattr(exist, "_projected_mood_resting"):
+                operator._projected_mood_resting = exist._projected_mood_resting
             operator.mood = exist.mood
             operator.time_stamp = exist.time_stamp
             operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
@@ -2552,6 +2554,10 @@ class Operators:
             self.mood_model.advance(now)
         if getattr(self, "_projection_now", None) is not None:
             self._projection_deadlines = {}
+        for op in self.operators.values():
+            # 位置预演保留原心情的房间状态，不把入宿意图当作实读。
+            if not hasattr(op, "_projected_mood_resting"):
+                op._projected_mood_resting = op.is_resting()
         for plan in plans:
             previous_positions = {
                 name: (op.current_room, op.current_index)
