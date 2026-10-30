@@ -8,7 +8,13 @@ from unittest.mock import patch
 import numpy as np
 
 from arknights_mower.tests.device_preflight_tests import PreflightIO
-from arknights_mower.tests.device_session_tests import Adapter
+from arknights_mower.tests.device_session_tests import (
+    ADB,
+    Adapter,
+    Clock,
+    Preflight,
+    Simulator,
+)
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.application import DeviceControl
@@ -55,6 +61,183 @@ class DisplayIO(PreflightIO):
 
     def input_surface(self, adb_path, serial):
         return self.surface
+
+
+class BoundTargetPreparationTests(unittest.TestCase):
+    def setUp(self):
+        from arknights_mower.utils.device.preparation import PreparationSession
+        from arknights_mower.utils.device.preparation_store import RecoveryStore
+        from arknights_mower.utils.device.session import DeviceSession
+
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.clock, self.adb, self.simulator = Clock(), ADB(), Simulator()
+        self.io, self.locks = DisplayIO(), SerialLocks()
+        self.store = RecoveryStore(Path(directory.name))
+        self.preparation = PreparationSession(self.io, self.store, self.locks)
+        self.serial = "127.0.0.1:16416"
+        self.simulator.state, self.simulator.serial = "running", self.serial
+        self.adb.rows, self.adb.boot = [(self.serial, "device")], "1"
+        self.io.targets = list(self.adb.rows)
+        self.conf = Conf(
+            device={
+                "preset_id": "windows.mumu12",
+                "instance_id": "1",
+                "last_serial": "",
+                "adb_path": "manual-adb",
+                "screenshot_backend": "mumu_ipc",
+                "touch_backend": "mumu_ipc",
+            }
+        )
+        self.session = DeviceSession(self.adb, self.simulator, clock=self.clock)
+        self.control = DeviceControl(
+            lambda: self.conf,
+            Adapter(),
+            preflight=Preflight(),
+            session=self.session,
+            preparation=self.preparation,
+        )
+        self.addCleanup(self.control.close)
+
+    def test_start_owns_confirmed_endpoint_without_saving_it(self):
+        for saved_serial in ("", "127.0.0.1:16384"):
+            with self.subTest(saved_serial=saved_serial):
+                self.conf.device.last_serial = saved_serial
+                before = self.conf.model_dump()
+
+                def frame(adb_path, serial, timeout):
+                    self.assertEqual(serial, self.serial)
+                    self.assertEqual(self.locks.held, {self.serial})
+                    return (1920, 1080)
+
+                try:
+                    with patch.object(self.adb, "frame_size", side_effect=frame):
+                        result = self.control.start()
+                    self.assertTrue(result.ok, result.error)
+                    self.assertEqual(result.serial, self.serial)
+                    self.assertEqual(self.locks.held, {self.serial})
+                    self.assertEqual(self.conf.model_dump(), before)
+                finally:
+                    self.assertTrue(self.control.close().ok)
+                self.assertEqual(self.locks.held, set())
+
+    def test_recovery_moves_lease_before_reading_new_endpoint_frame(self):
+        self.conf.device.last_serial = self.serial
+        self.assertTrue(self.control.start().ok)
+        self.serial = "127.0.0.1:16448"
+        self.simulator.serial = self.serial
+        self.adb.rows = [(self.serial, "device")]
+        before = self.conf.model_dump()
+
+        def frame(adb_path, serial, timeout):
+            self.assertEqual(serial, self.serial)
+            self.assertEqual(self.locks.held, {self.serial})
+            return (1920, 1080)
+
+        with patch.object(self.adb, "frame_size", side_effect=frame):
+            result = self.control.recover()
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.serial, self.serial)
+        self.assertEqual(self.locks.held, {self.serial})
+        self.assertEqual(self.conf.model_dump(), before)
+
+    def test_preparation_failure_prevents_display_reads_and_releases_lease(self):
+        self.conf.device.last_serial = self.serial
+        with (
+            patch.object(self.store, "load", side_effect=OSError("store unreadable")),
+            patch.object(self.adb, "display_size", wraps=self.adb.display_size) as size,
+            patch.object(self.adb, "frame_size", wraps=self.adb.frame_size) as frame,
+        ):
+            result = self.control.start()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "preparation_failed")
+        size.assert_not_called()
+        frame.assert_not_called()
+        self.assertEqual(self.locks.held, set())
+
+    def test_failed_lease_release_blocks_new_endpoint_until_cleanup_succeeds(self):
+        self.conf.device.last_serial = self.serial
+        self.assertTrue(self.control.start().ok)
+        original_serial = self.serial
+        self.serial = "127.0.0.1:16448"
+        self.simulator.serial = self.serial
+        self.adb.rows = [(self.serial, "device")]
+        lease = self.preparation._lease
+        with (
+            patch.object(lease, "close", side_effect=OSError("lease held")),
+            patch.object(self.adb, "display_size", wraps=self.adb.display_size) as size,
+            patch.object(self.adb, "frame_size", wraps=self.adb.frame_size) as frame,
+        ):
+            for _ in range(2):
+                result = self.control.recover()
+                self.assertFalse(result.ok)
+                self.assertEqual(result.error.code, "recovery_pending")
+                self.assertEqual(self.locks.held, {original_serial})
+                self.assertIs(self.preparation._lease, lease)
+        size.assert_not_called()
+        frame.assert_not_called()
+        recovered = self.control.recover()
+        self.assertTrue(recovered.ok, recovered.error)
+        self.assertEqual(self.locks.held, {self.serial})
+
+    def test_actual_endpoint_pending_restore_precedes_display_reads(self):
+        from arknights_mower.tests.device_preparation_store_tests import recovery_record
+
+        self.io.physical, self.io.override = [1440, 2560], [1080, 1920]
+        self.store.save(recovery_record(self.serial))
+
+        def display(adb_path, serial, timeout):
+            self.assertEqual(self.io.writes, [(self.serial, None)])
+            self.assertIsNone(self.store.load(self.serial))
+            return self.adb.size
+
+        with patch.object(self.adb, "display_size", side_effect=display):
+            result = self.control.start()
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(self.locks.held, {self.serial})
+
+    def test_authorized_physical_preparation_is_reused_until_frame_ready(self):
+        self.conf = Conf(
+            device={
+                "preset_id": "manual.physical",
+                "last_serial": self.serial,
+                "adb_path": "manual-adb",
+                "screenshot_backend": "adb_gzip",
+            }
+        )
+        self.simulator.state, self.simulator.serial = "unknown", None
+        self.io.paths.add("verified-adb")
+        self.control._preflight = PreflightService(self.io)
+        observations = []
+        before = self.conf.model_dump()
+
+        def frame(adb_path, serial, timeout):
+            self.assertEqual(self.io.override, [1920, 1080])
+            self.assertEqual(self.locks.held, {self.serial})
+            observations.append(serial)
+            return None if len(observations) == 1 else (1920, 1080)
+
+        with (
+            patch.object(self.adb, "frame_size", side_effect=frame),
+            patch.object(self.store, "load", wraps=self.store.load) as load,
+        ):
+            result = self.control.start(preparation_serial=self.serial)
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(observations, [self.serial, self.serial])
+        self.assertEqual(self.io.writes, [(self.serial, [1920, 1080])])
+        load.assert_called_once_with(self.serial)
+        self.assertEqual(self.conf.model_dump(), before)
+        self.assertTrue(self.control.close().ok)
+        self.assertEqual(
+            self.io.writes, [(self.serial, [1920, 1080]), (self.serial, None)]
+        )
+
+    def test_readiness_observation_does_not_acquire_preparation(self):
+        self.session.bind(self.conf.device)
+        observed = self.control.readiness()
+        self.assertEqual(observed.state, "ready")
+        self.assertEqual(self.locks.held, set())
+        self.assertEqual(self.io.writes, [])
 
 
 class PhysicalPreparationTests(unittest.TestCase):
