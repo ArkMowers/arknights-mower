@@ -540,6 +540,8 @@ def preserve_backup_replacements(
     is_busy,
     reserved_names=(),
     reserved_slots=(),
+    *,
+    failure_reasons=None,
 ):
     """切产物或替班优先保留主班状态；替班不足时召回可用主班。"""
     from arknights_mower.utils.exhaust_replacement import match_replacements
@@ -578,6 +580,10 @@ def preserve_backup_replacements(
             # 开放床位时保留已有入住者；不以 Free 清走休息中的干员。
             if actual is None:
                 if position in reserved_slots:
+                    if failure_reasons is not None:
+                        failure_reasons.append(
+                            f"{name}离岗后的宿舍位置已被其他任务预约：{position}"
+                        )
                     return False
                 changes[position] = "Free"
             continue
@@ -585,6 +591,8 @@ def preserve_backup_replacements(
             if actual is not None and actual.name in owner.replacement:
                 reserved.add(actual.name)
                 continue
+            if failure_reasons is not None:
+                failure_reasons.append(f"{name}的主班岗位已被其他任务预约：{position}")
             return False
         options[name] = []
         movable.add(position)
@@ -648,6 +656,14 @@ def preserve_backup_replacements(
             candidates.append(name)
     matching = match_replacements(options, preferred=preferred)
     if matching is None:
+        if failure_reasons is not None:
+            matched = match_replacements(
+                options, preferred=preferred, allow_partial=True
+            )
+            missing = [name for name in options if name not in matched]
+            failure_reasons.append(
+                f"无法为{'、'.join(missing)}匹配替班或召回主班；可用人选：{options}"
+            )
         logger.debug("副表替班与主班均不可用，暂缓切表：%s", options)
         return False
     changes.update({owners[name]: candidate for name, candidate in matching.items()})

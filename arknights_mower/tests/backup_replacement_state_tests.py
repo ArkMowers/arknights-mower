@@ -83,7 +83,7 @@ def test_entry_and_exit_preserve_primary_state(solver, working):
     assert recovery(solver) == before
 
 
-def test_unavailable_cover_and_protected_primary_roll_back(solver, monkeypatch):
+def test_unavailable_cover_and_protected_primary_roll_back(solver, monkeypatch, caplog):
     monkeypatch.setattr(
         multi_group.base_schedule, "_is_mastery_busy", lambda n: n == SHARED
     )
@@ -99,6 +99,7 @@ def test_unavailable_cover_and_protected_primary_roll_back(solver, monkeypatch):
     assert solver.op_data.operators[SHARED].replacement == ["红"]
     assert solver.tasks == [pending]
     assert recovery(solver) == before
+    assert f"无法为{SHARED}匹配替班或召回主班" in caplog.text
 
 
 @pytest.mark.parametrize("column", [0, 1])

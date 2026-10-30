@@ -6120,7 +6120,9 @@ class BaseSchedulerSolver(
             logger.info("副表产物先切换%s：%s", self.translate_room(room), target)
         return not waiting
 
-    def _complete_departed_recovery(self, plan, names, *, reserved_slots=()):
+    def _complete_departed_recovery(
+        self, plan, names, *, reserved_slots=(), failure_reasons=None
+    ):
         """在隔离投影中补齐离岗者的床位；不足时不提交部分换班。"""
         projected = self.op_data.project_arrangements([plan])
         missing = [
@@ -6144,7 +6146,11 @@ class BaseSchedulerSolver(
             projected,
             [task for task in self.tasks if task is not getattr(self, "task", None)],
         )
-        if reserved_names.intersection(missing):
+        if reserved := reserved_names.intersection(missing):
+            if failure_reasons is not None:
+                failure_reasons.append(
+                    "副表离岗成员已被其他任务预约：" + "、".join(sorted(reserved))
+                )
             return False
         occupied.update(reserved_slots)
         occupied.update(
@@ -6161,6 +6167,11 @@ class BaseSchedulerSolver(
             reserved_slots=occupied,
         )
         if beds is None:
+            if failure_reasons is not None:
+                failure_reasons.append(
+                    "宿舍床位无法满足副表离岗成员的休息安排："
+                    + "、".join(sorted(missing))
+                )
             return False
         for bed in beds:
             room, index = bed.position
@@ -6177,6 +6188,8 @@ class BaseSchedulerSolver(
         previous_dorms,
         previous_dorm_layout,
         previous_retention_names=(),
+        *,
+        failure_reasons=None,
     ):
         """普通切表与换班推演共用最终岗位、显式任务和宿舍迁移规则。"""
         self._backup_departure_waiting_names = ()
@@ -6193,6 +6206,7 @@ class BaseSchedulerSolver(
                 previous_dorms,
                 previous_dorm_layout,
                 previous_retention_names,
+                failure_reasons=failure_reasons,
             )
             self._backup_departure_waiting_names = (
                 simulation._backup_departure_waiting_names
@@ -6271,7 +6285,9 @@ class BaseSchedulerSolver(
             and transition_plan.get(room, [])[index : index + 1] == [name]
             and owner.name not in self._protected_facility_names()
         }
-        if not self._complete_departed_recovery(transition_plan, departing):
+        if not self._complete_departed_recovery(
+            transition_plan, departing, failure_reasons=failure_reasons
+        ):
             self._backup_departure_waiting_names = tuple(sorted(departing))
             return None
 
@@ -6314,6 +6330,7 @@ class BaseSchedulerSolver(
             _is_mastery_busy,
             reserved_names,
             reserved_slots,
+            failure_reasons=failure_reasons,
         ):
             return None
         if joining_resting:
@@ -6347,6 +6364,7 @@ class BaseSchedulerSolver(
                     dorm_admissions=admissions,
                     excluded_names=reserved_names,
                     reserved_slots=reserved_slots | explicit_dorm_slots,
+                    failure_reasons=failure_reasons,
                 ):
                     return None
                 for (room, index), name in admissions.items():
@@ -6424,24 +6442,36 @@ class BaseSchedulerSolver(
         suppress_completed_dorm_returns(self.op_data, transition_plan)
         if preserved:
             projected = self.op_data.project_arrangements([transition_plan])
-            if any(
-                (
+            moved = [
+                name
+                for name, position in preserved.items()
+                if (
                     projected.operators[name].current_room,
                     projected.operators[name].current_index,
                 )
                 != position
-                for name, position in preserved.items()
-            ):
+            ]
+            if moved:
+                if failure_reasons is not None:
+                    failure_reasons.append(
+                        f"无法保留休息成员的位置：{'、'.join(sorted(moved))}"
+                    )
                 return None
             projected_recovery = {
                 bed.name: (bed.position, bed.time)
                 for bed in projected.all_dorms()
                 if bed.name in preserved
             }
-            if any(
-                projected_recovery.get(name) not in (expected, (expected[0], None))
+            changed = [
+                name
                 for name, expected in recovery.items()
-            ):
+                if projected_recovery.get(name) not in (expected, (expected[0], None))
+            ]
+            if changed:
+                if failure_reasons is not None:
+                    failure_reasons.append(
+                        f"无法保留休息成员的床位和恢复时间：{'、'.join(sorted(changed))}"
+                    )
                 return None
         transition_plan = {
             room: names
@@ -6467,6 +6497,11 @@ class BaseSchedulerSolver(
                     | set(self.op_data.config.free_room_exclusions)
                 )
             )
+            if failure_reasons is not None:
+                failure_reasons.append(
+                    "无法安置宿舍保留干员："
+                    + "、".join(self._backup_departure_waiting_names)
+                )
             return None
         transition_plan = prioritize_new_dorm_recovery(
             self.op_data,
@@ -7077,6 +7112,7 @@ class BaseSchedulerSolver(
                 task.type in (TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM)
                 for task in self.tasks
             )
+            failure_reasons = []
             transition_plan = self._backup_transition_plan(
                 previous_plan,
                 original,
@@ -7084,11 +7120,13 @@ class BaseSchedulerSolver(
                 previous_dorms,
                 previous_dorm_layout,
                 previous_data.config.free_room_exclusions,
+                failure_reasons=failure_reasons,
             )
             if transition_plan is None:
-                timing.result = "替班暂不可用，保留原排班"
+                reason = "；".join(failure_reasons) or "无法完成副表驻员与休息安排"
+                timing.result = "切换暂缓，保留原排班"
                 self.op_data = previous_data
-                logger.info("副表替班暂不可用，保留原排班和休息状态")
+                logger.info("副表切换暂缓：%s；保留原排班和休息状态", reason)
                 return False
             self._cancel_stale_retention_admissions()
             self._invalidate_changed_exhaust_tasks(previous_exhaust)
@@ -7323,6 +7361,7 @@ class BaseSchedulerSolver(
         dorm_admissions=None,
         excluded_names=(),
         reserved_slots=(),
+        failure_reasons=None,
     ):
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
@@ -7330,6 +7369,8 @@ class BaseSchedulerSolver(
         if protected_training:
             agents = [name for name in agents if name not in protected_training]
         if not agents:
+            if failure_reasons is not None:
+                failure_reasons.append("待休息成员均受训练岗位保护")
             return
         self._refresh_deferred_product_reservations()
         retained_names, retained_slots = retained_task_reservations(
@@ -7342,6 +7383,11 @@ class BaseSchedulerSolver(
             | set(excluded_names)
         )
         if any(name in reserved_names for name in agents):
+            if failure_reasons is not None:
+                failure_reasons.append(
+                    "待休息成员已被其他任务预约："
+                    + "、".join(sorted(set(agents) & reserved_names))
+                )
             logger.debug(
                 "整组含保留任务或延期切产物换班预约干员，保留当前安排：%s", agents
             )
@@ -7365,6 +7411,10 @@ class BaseSchedulerSolver(
         if blockers := self.op_data.working_replacement_blockers(
             [*agents, *dorm_agents], plan
         ):
+            if failure_reasons is not None:
+                failure_reasons.append(
+                    "待休息成员仍在为其他组替班：" + "、".join(sorted(blockers))
+                )
             logger.debug("整组成员仍在为其他组替班，暂缓下班：%s", sorted(blockers))
             return
         already_resting = {
@@ -7412,9 +7462,13 @@ class BaseSchedulerSolver(
                 x.room,
                 x.index,
             ) in retained_slots:
+                if failure_reasons is not None:
+                    failure_reasons.append(f"{agent}的主班岗位已被其他任务预约")
                 success = False
                 break
             if x.room not in base_room_list:
+                if failure_reasons is not None:
+                    failure_reasons.append(f"{agent}的主班房间无效：{x.room}")
                 logger.debug(f"干员房间出错:{agent}")
                 success = False
                 break
@@ -7490,6 +7544,11 @@ class BaseSchedulerSolver(
             if assignments is None:
                 matched = match_replacements(replacement_options, allow_partial=True)
                 missing = [name for name in replacement_options if name not in matched]
+                if failure_reasons is not None:
+                    failure_reasons.append(
+                        f"无法为{'、'.join(missing)}匹配完整替班；"
+                        f"可用替班：{replacement_options}"
+                    )
                 logger.debug(
                     "整组替班不足，暂缓下班：%s；缺%s名替班，未匹配成员：%s；可用替班：%s",
                     agents,
@@ -7535,6 +7594,10 @@ class BaseSchedulerSolver(
                         replacement_options, preferred=working
                     )
                     if assignments is None:
+                        if failure_reasons is not None:
+                            failure_reasons.append(
+                                f"保留恢复床位时无法匹配完整替班：{replacement_options}"
+                            )
                         return
                 assigned_covers = set(assignments.values())
                 resting_agents = [
@@ -7580,6 +7643,10 @@ class BaseSchedulerSolver(
                     dorms = [actual_beds[bed.position] for bed in dorms]
                     break
             else:
+                if failure_reasons is not None:
+                    failure_reasons.append(
+                        "宿舍床位无法满足休息安排：" + "、".join(resting_agents)
+                    )
                 return
             for agent, replacement in assignments.items():
                 x = self.op_data.operators[agent]
@@ -9191,6 +9258,7 @@ class BaseSchedulerSolver(
                 conditions = selection.conditions
                 seen.clear()
                 continue
+            failure_reasons = []
             transition = simulation._backup_transition_plan(
                 self.op_data.plan,
                 original,
@@ -9198,6 +9266,7 @@ class BaseSchedulerSolver(
                 copy.deepcopy(seed.all_dorms()),
                 dorm_rebalance_signature(seed),
                 self.op_data.config.free_room_exclusions,
+                failure_reasons=failure_reasons,
             )
             if transition is None:
                 if simulation._backup_departure_waiting_names:
@@ -9205,7 +9274,9 @@ class BaseSchedulerSolver(
                         recovery_names=simulation._backup_departure_waiting_names
                     )
                 raise ProductSwitchDeferred(
-                    "副表替班暂不可用，保留原换班安排",
+                    "副表换班暂缓："
+                    + ("；".join(failure_reasons) or "无法完成副表驻员与休息安排")
+                    + "；保留原换班安排",
                     rooms=tuple(simulation.op_data.plan),
                 )
             entry_slots = {
