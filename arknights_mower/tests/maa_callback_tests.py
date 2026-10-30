@@ -560,6 +560,46 @@ class MaaCallbackLogTests(unittest.TestCase):
             line, MaaLogLine(logging.WARNING, "理智作战：SomeFutureTask 出错")
         )
 
+    def test_process_task_probe_errors_have_no_progress_line(self):
+        for chain, node in (
+            ("Fight", "LastBattleStageName"),
+            ("Fight", "Annihilation"),
+            ("Mall", "LastBattleStageName"),
+            ("SSSCopilot", "SSSDrawCard"),
+            ("SSSCopilot", "SSSHalfTimeDropsBegin"),
+            ("SSSCopilot", "SSSDropRecruitmentConfirm"),
+            ("Award", "OtherOptionalProbe"),
+            ("SomeFutureChain", "SomeFutureProbe"),
+        ):
+            with self.subTest(chain=chain, node=node):
+                self.assertIsNone(
+                    self.log.describe(
+                        20000,
+                        {
+                            "taskchain": chain,
+                            "subtask": "ProcessTask",
+                            "first": [node],
+                            "pre_task": "",
+                            "details": {},
+                        },
+                    )
+                )
+
+    def test_missing_process_task_definition_remains_an_error(self):
+        line = self.log.describe(
+            20000,
+            {
+                "taskchain": "Fight",
+                "subtask": "ProcessTask",
+                "what": "UnknownTask",
+                "details": {"tasks": ["MissingTask"]},
+            },
+        )
+        self.assertEqual(
+            line,
+            MaaLogLine(logging.ERROR, "MAA 任务定义缺失，请检查核心和资源版本是否匹配"),
+        )
+
     def test_subtask_stopped_is_not_reported(self):
         self.assertIsNone(
             self.log.describe(20004, {"taskchain": "Fight", "subtask": "ProcessTask"})
@@ -677,6 +717,87 @@ class MaaSchedulerLoggingTests(unittest.TestCase):
     def test_on_maa_callback_survives_an_empty_payload(self):
         with self.assertLogs(LOG_NAME, level="DEBUG"):
             self.solver.on_maa_callback(0, None, None)
+
+    def test_probe_errors_keep_debug_payload_and_successful_task_progress(self):
+        for chain, text, nodes in (
+            ("Fight", "理智作战", ["LastBattleStageName", "Annihilation"]),
+            ("Mall", "信用收支", ["LastBattleStageName"]),
+            (
+                "SSSCopilot",
+                "SSS 自动战斗",
+                ["SSSDrawCard", "SSSHalfTimeDropsBegin", "SSSDropRecruitmentConfirm"],
+            ),
+            ("StartUp", "开始唤醒", ["OtherOptionalProbe"]),
+            ("Award", "领取奖励", ["OtherOptionalProbe"]),
+            ("Recruit", "自动公招", ["OtherOptionalProbe"]),
+            ("Roguelike", "自动肉鸽", ["OtherOptionalProbe"]),
+            ("Copilot", "自动战斗", ["OtherOptionalProbe"]),
+            ("Reclamation", "生息演算", ["OtherOptionalProbe"]),
+            ("SwitchTheme", "更换主题", ["OtherOptionalProbe"]),
+            ("SomeFutureChain", "SomeFutureChain", ["SomeFutureProbe"]),
+        ):
+            with self.subTest(chain=chain):
+                with self.assertLogs(LOG_NAME, level="DEBUG") as captured:
+                    self.solver.on_maa_callback(10001, payload(taskchain=chain), None)
+                    for _ in range(3):
+                        for node in nodes:
+                            self.solver.on_maa_callback(
+                                20000,
+                                payload(
+                                    taskchain=chain,
+                                    subtask="ProcessTask",
+                                    first=[node],
+                                    pre_task="",
+                                    details={},
+                                ),
+                                None,
+                            )
+                    self.solver.on_maa_callback(10002, payload(taskchain=chain), None)
+                    self.solver.on_maa_callback(3, payload(taskchain=chain), None)
+                self.assertFalse(
+                    any(
+                        record.levelno >= logging.WARNING for record in captured.records
+                    )
+                )
+                for node in nodes:
+                    self.assertTrue(
+                        any(
+                            record.levelno == logging.DEBUG
+                            and "MAA 回调 20000" in record.getMessage()
+                            and node in record.getMessage()
+                            for record in captured.records
+                        )
+                    )
+                self.assertEqual(
+                    [
+                        record.getMessage()
+                        for record in captured.records
+                        if record.levelno == logging.INFO
+                    ],
+                    [
+                        f"开始任务：{text}",
+                        f"完成任务：{text}",
+                        f"MAA 全部任务完成（最后：{text}）",
+                    ],
+                )
+                self.assertEqual(self.solver.maa_callback.taskchain, "")
+
+    def test_failed_task_chain_is_reported_after_process_probe_failure(self):
+        with self.assertLogs(LOG_NAME, level="WARNING") as captured:
+            self.solver.on_maa_callback(
+                20000,
+                payload(taskchain="Fight", subtask="ProcessTask", details={}),
+                None,
+            )
+            self.solver.on_maa_callback(
+                10000,
+                payload(taskchain="Fight", details={"error": "OpenCVException"}),
+                None,
+            )
+        self.assertEqual(
+            [(record.levelno, record.getMessage()) for record in captured.records],
+            [(logging.ERROR, "任务出错：理智作战（OpenCVException）")],
+        )
 
     def test_on_maa_callback_ignores_malformed_stage_drops(self):
         """[INV-MAA-01]：畸形掉落负载不得抛错，也不得污染掉落统计。"""
