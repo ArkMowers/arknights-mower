@@ -52,11 +52,13 @@ class GuiAppearanceTests(unittest.TestCase):
                 "software_version_language": "en",
                 "task_settings_layout": "checklist",
                 "base_report_mode": "standard",
+                "halloween_mode": "auto",
                 "watermark_visible": True,
             },
         )
         self.assertEqual(gui.load_software_version_display(), "version")
         self.assertEqual(gui.load_base_report_mode(), "standard")
+        self.assertEqual(gui.load_halloween_mode(), "auto")
         self.assertIs(gui.load_watermark_visible(), True)
         self.assertFalse(self.path.parent.exists())
 
@@ -73,6 +75,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
                         "base_report_mode": "standard",
+                        "halloween_mode": "auto",
                         "watermark_visible": True,
                     },
                 )
@@ -93,6 +96,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
                         "base_report_mode": "standard",
+                        "halloween_mode": "auto",
                         "watermark_visible": True,
                     },
                 )
@@ -166,6 +170,7 @@ class GuiAppearanceTests(unittest.TestCase):
                 for payload in (
                     {"software_version_display": "channel"},
                     {"base_report_mode": "stock"},
+                    {"halloween_mode": "off"},
                 ):
                     self.assertEqual(
                         self.client.put(
@@ -372,6 +377,82 @@ class GuiAppearanceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(gui.load_base_report_mode(), "standard")
 
+    def test_halloween_modes_round_trip_without_changing_other_preferences(self):
+        gui.save_appearance(
+            {"software_version_display": "channel", "base_report_mode": "stock"}
+        )
+        gui.save_window_mode("maximized")
+        original = gui.read_gui_data()
+        for value in ("off", "on", "auto"):
+            with self.subTest(value=value):
+                response = self.client.put(
+                    "/gui/appearance",
+                    json={"halloween_mode": value},
+                    headers=self.headers,
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json, {"halloween_mode": value})
+                self.assertEqual(gui.load_halloween_mode(), value)
+                self.assertEqual(self.read().json["halloween_mode"], value)
+                self.assertEqual(
+                    gui.read_gui_data(), {**original, "halloween_mode": value}
+                )
+        gui.save_appearance({"halloween_mode": "off"})
+        self.save("version")
+        self.assertEqual(gui.load_halloween_mode(), "off")
+
+    def test_invalid_saved_halloween_modes_default_without_rewriting_the_file(self):
+        for value in (None, True, 1, [], {}, "", "ON", " off ", "disabled"):
+            with self.subTest(value=value):
+                gui._update_gui_data(halloween_mode=value)
+                before = self.path.read_bytes()
+                self.assertEqual(gui.load_halloween_mode(), "auto")
+                response = self.read()
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json["halloween_mode"], "auto")
+                self.assertEqual(self.path.read_bytes(), before)
+
+    def test_invalid_halloween_mode_rejects_the_entire_update_before_writing(self):
+        gui.save_appearance({"halloween_mode": "off"})
+        before = self.path.read_bytes()
+        payloads = [
+            {"halloween_mode": value, "software_version_display": "channel"}
+            for value in (None, True, 1, [], {}, "", "ON", " off ", "disabled")
+        ]
+        payloads.extend(
+            (
+                {"halloween_mode": "on", "unknown_field": True},
+                {"halloween_mode": "auto", "software_version_display": "invalid"},
+            )
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                with patch.object(gui, "update_gui_data") as update:
+                    response = self.client.put(
+                        "/gui/appearance", json=payload, headers=self.headers
+                    )
+                    self.assertEqual(response.status_code, 400)
+                    self.assertFalse(response.json["ok"])
+                    update.assert_not_called()
+                    with self.assertRaises(ValueError):
+                        gui.save_appearance(payload)
+                    update.assert_not_called()
+                self.assertEqual(self.path.read_bytes(), before)
+                self.assertEqual(gui.load_halloween_mode(), "off")
+
+    def test_failed_halloween_mode_save_keeps_the_previous_choice(self):
+        gui.save_appearance({"halloween_mode": "off"})
+        before = self.path.read_bytes()
+        with patch.object(gui, "atomic_write", side_effect=OSError("disk unavailable")):
+            response = self.client.put(
+                "/gui/appearance",
+                json={"halloween_mode": "on"},
+                headers=self.headers,
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(self.read().json["halloween_mode"], "off")
+
     def test_mixed_appearance_updates_are_validated_before_any_write(self):
         gui.save_appearance(
             {"software_version_display": "channel", "task_settings_layout": "waterfall"}
@@ -409,6 +490,7 @@ class GuiAppearanceTests(unittest.TestCase):
                 **response.json,
                 "software_version_language": "en",
                 "base_report_mode": "standard",
+                "halloween_mode": "auto",
                 "watermark_visible": True,
             },
         )

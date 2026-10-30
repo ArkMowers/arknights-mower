@@ -155,6 +155,14 @@ The former `/mowersettings` address redirects to `/settings`, preserving query p
 
 The display theme defaults to `light` and accepts `light`, `dark` or `system`. Explicit light and dark selections retain their appearance when the operating system changes. `system` follows the current system color preference through [`useResolvedTheme`](../../ui/src/composables/theme.js), without rewriting the saved preference, and releases its media-query listener when its owning scope is disposed. Providers, teleported editors, navigation, charts and the embedded guide use that effective appearance. Image exports capture an explicit light or dark appearance.
 
+### Halloween Decorations
+
+全部设置 → 界面与窗口 → 常规 provides 万圣节装饰 through [`HalloweenPreference`](../../ui/src/components/HalloweenPreference.vue). 自动 is the default and displays the title-bar, sidebar, wordmark and run-button decorations from October 24 through November 1 in the local calendar. 开启 displays them throughout the year; 关闭 hides them throughout the year. The shared [`GUI store`](../../ui/src/stores/gui.js) updates the mounted application immediately. [`provideHalloweenSeason`](../../ui/src/composables/halloween.js) retains one local-midnight timer and a visibility listener, so automatic mode remains current after midnight or after the page becomes visible; explicit modes retain their selection across those events. Unmounting the provider releases both resources.
+
+`GET /gui/appearance` returns `halloween_mode`; `PUT /gui/appearance` accepts only `auto`, `on` or `off`. The current instance saves this interface preference in `config/gui.yml`, independently of saved profiles. Missing or invalid stored values read as `auto` without modifying files. Both methods retain the current instance token requirement, GUI storage lock and atomic writes. Editing stays disabled until the initial appearance read succeeds and during any appearance save. A failed save restores the previous mode and offers an explicit retry.
+
+Focused offline checks cover mode persistence, whole-update validation, authentication and write failure in [`gui_appearance_tests.py`](../../arknights_mower/tests/gui_appearance_tests.py), shared state and save recovery in [`gui.test.js`](../../ui/src/stores/gui.test.js), and date overrides, midnight updates and resource cleanup in [`halloween.test.js`](../../ui/src/composables/halloween.test.js).
+
 ### Running Log Background
 
 界面与窗口 provides 运行日志背景图 with 选择图片 and 恢复默认. Selection and reset update the shared frontend state immediately, including an already mounted settings page; opening 运行日志 uses that state without refreshing the page. A failed save keeps the displayed image and exposes the failure for retry.
