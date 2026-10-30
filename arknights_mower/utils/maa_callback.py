@@ -718,6 +718,15 @@ class MaaCallbackLog:
     def _sub_task(message: int, details: dict) -> MaaLogLine | None:
         subtask = _key(details.get("subtask"))
         if message == 20000:
+            if subtask == "ProcessTask":
+                if details.get("what") == "UnknownTask":
+                    return MaaLogLine(
+                        logging.ERROR,
+                        "MAA 任务定义缺失，请检查核心和资源版本是否匹配",
+                    )
+                # 可选画面探测未命中也发此消息；原始负载保留在调试日志。
+                # 整条任务链失败由 TaskChainError 单独报告。
+                return None
             entry = SUB_TASK_ERROR.get(subtask)
             if entry is None:
                 entry = (logging.WARNING, f"{_chain(details)}：{subtask} 出错")

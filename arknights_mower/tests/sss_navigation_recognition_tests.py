@@ -74,3 +74,45 @@ def test_unrelated_frame_is_not_a_navigation_button(button):
     recog._img = np.zeros((1080, 1920, 3), dtype=np.uint8)
     recog._gray = np.zeros((1080, 1920), dtype=np.uint8)
     assert recog.find(f"sss/{button}") is None
+
+
+@pytest.mark.parametrize("seed", range(40))
+@pytest.mark.parametrize(
+    "frame,scene",
+    [
+        ("conduction_20261030.jpg", Scene.SSS_EC),
+        ("equipment_20261030.jpg", Scene.SSS_DEVICE),
+    ],
+)
+def test_preparation_pages_are_not_the_map_selection_page(seed, frame, scene):
+    cv2.setRNGSeed(seed)
+    path = Path(__file__).parent / "fixtures/sss" / frame
+    recog = Recognizer(MagicMock(), path.read_bytes())
+    assert recog.find("sss/main") is None
+    assert recog.get_sss_scene() == scene
+
+
+def test_real_map_selection_page_still_recognized():
+    path = Path(__file__).parent / "fixtures/sss/main_20261030.jpg"
+    recog = Recognizer(MagicMock(), path.read_bytes())
+    assert recog.find("sss/main") is not None
+    assert recog.get_sss_scene() == Scene.SSS_MAIN
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_equipment_navigation_only_confirms_existing_choices(seed):
+    cv2.setRNGSeed(seed)
+    root = Path(__file__).parent / "fixtures/sss"
+    device = MagicMock()
+    recog = Recognizer(device, (root / "equipment_20261030.jpg").read_bytes())
+    solver = object.__new__(BaseSolver)
+    solver.device, solver.recog = device, recog
+
+    def advance_frame(interval=1):
+        solver.recog = Recognizer(
+            device, (root / "deployment_20261029.jpg").read_bytes()
+        )
+
+    solver.sleep = advance_frame
+    assert solver.to_sss(2, 1) is None
+    device.tap.assert_called_once_with((1824, 1026))
