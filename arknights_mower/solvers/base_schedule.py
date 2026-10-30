@@ -2971,6 +2971,8 @@ class BaseSchedulerSolver(
             blocked_orders = blocked_run_order_ids(
                 self.tasks, getattr(self, "op_data", None)
             )
+            from arknights_mower.utils.group_recovery import mood_limit_release_yields
+
             if (
                 self.task.time > datetime.now()
                 or id(self.task) in blocked_orders
@@ -2978,6 +2980,9 @@ class BaseSchedulerSolver(
                 or (
                     self.tasks
                     and self.tasks[0] is not self.task
+                    and not mood_limit_release_yields(
+                        self.op_data, self.tasks[0], self.task
+                    )
                     and (
                         getattr(self.tasks[0], "emergency_takeover", False)
                         or getattr(self.tasks[0], "strict_mood_limit", False)
@@ -5358,12 +5363,17 @@ class BaseSchedulerSolver(
         return True
 
     def _arrangement_priority_tasks(self):
+        from arknights_mower.utils.group_recovery import mood_limit_release_yields
+
         return [
             pending
             for pending in task_view(
                 self.tasks, TaskScope.DISPATCH, getattr(self, "op_data", None)
             )
             if pending is not getattr(self, "task", None)
+            and not mood_limit_release_yields(
+                self.op_data, pending, getattr(self, "task", None)
+            )
             and (
                 pending.type == TaskTypes.RUN_ORDER
                 and pending.meta_data
