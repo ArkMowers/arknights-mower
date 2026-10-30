@@ -244,9 +244,17 @@ class DeviceSession:
                 or failure.restart_binding != self._restart_binding()
             ):
                 raise SessionFailure(self.last, "设备绑定已改变，不能重连原故障端点。")
+
+            def confirm_original_target(adb_path, observed_serial):
+                if not serial or observed_serial != serial:
+                    raise SessionFailure(
+                        self.last, "无法确认原实例端点，已拒绝清理前重连。"
+                    )
+
             observation = self.observe(
                 deadline,
                 frame_probe=getattr(self.adb, "standard_frame_size", None),
+                prepare_target=confirm_original_target,
             )
             self._check_observation(observation)
             if (
@@ -270,6 +278,7 @@ class DeviceSession:
         *,
         deadline: float,
         frame_probe=None,
+        prepare_target=None,
     ) -> ReadinessResult:
         """已确认的界面失活只允许对故障发生时绑定的实例发出一次关闭。"""
         from arknights_mower.utils.device.session_io import MANAGED_INSTANCE_PRESETS
@@ -330,7 +339,12 @@ class DeviceSession:
                 lambda timeout: self._restart_after_stop(failure, deadline), deadline
             )
 
-        return self._wait_ready(deadline, connect=True, frame_probe=frame_probe)
+        return self._wait_ready(
+            deadline,
+            connect=True,
+            frame_probe=frame_probe,
+            prepare_target=prepare_target,
+        )
 
     def _restart_after_stop(self, failure, deadline):
         if not self._await_stopped(deadline):
@@ -441,12 +455,14 @@ class DeviceSession:
         return remaining
 
     def observe(
-        self, deadline: float | None = None, *, frame_probe=None
+        self, deadline: float | None = None, *, frame_probe=None, prepare_target=None
     ) -> ReadinessResult:
         if self._shutdown.is_set():
             raise MowerExit("设备会话正在关闭")
         try:
-            result = self._observe(deadline, frame_probe=frame_probe)
+            result = self._observe(
+                deadline, frame_probe=frame_probe, prepare_target=prepare_target
+            )
         except (MowerExit, SessionFailure):
             raise
         except SharedADBError as exc:
@@ -541,7 +557,7 @@ class DeviceSession:
             logger.info(human_text)
 
     def _observe(
-        self, deadline: float | None = None, *, frame_probe=None
+        self, deadline: float | None = None, *, frame_probe=None, prepare_target=None
     ) -> ReadinessResult:
         if self.profile is None:
             raise RuntimeError("设备实例尚未绑定")
@@ -645,6 +661,10 @@ class DeviceSession:
                 )
                 state = "ready" if boot.strip() == "1" else "booting"
                 if state == "ready":
+                    if prepare_target is not None:
+                        with device_io_budget(lambda: self._remaining(deadline)):
+                            prepare_target(self.adb_path, serial)
+                        self._remaining(deadline)
                     return self._confirm_display(
                         serial, instance.state, deadline, frame_probe
                     )
@@ -714,7 +734,7 @@ class DeviceSession:
         return True, "", ""
 
     def ensure_ready(
-        self, *, deadline: float | None = None, frame_probe=None
+        self, *, deadline: float | None = None, frame_probe=None, prepare_target=None
     ) -> ReadinessResult:
         """One transaction; every action and wait uses this single deadline."""
         if deadline is None or deadline != self._deadline:
@@ -724,7 +744,7 @@ class DeviceSession:
             f"最大重试 {self.policy.attempts} 次"
         )
         try:
-            ready = self._ensure_ready(deadline, frame_probe)
+            ready = self._ensure_ready(deadline, frame_probe, prepare_target)
         except SessionFailure as exc:
             logger.error(f"设备未能成功就绪：{exc}")
             raise
@@ -746,7 +766,9 @@ class DeviceSession:
         )
         return ready
 
-    def _ensure_ready(self, deadline: float, frame_probe=None) -> ReadinessResult:
+    def _ensure_ready(
+        self, deadline: float, frame_probe=None, prepare_target=None
+    ) -> ReadinessResult:
         if (
             self.profile.preset_id == "macos.mumu_pro"
             and self.profile.topology_fingerprint
@@ -760,13 +782,17 @@ class DeviceSession:
                         "offline", "", self.adb_path, code=exc.code, message=str(exc)
                     )
                     raise SessionFailure(self.last, str(exc)) from exc
-        observation = self.observe(deadline, frame_probe=frame_probe)
+        observation = self.observe(
+            deadline, frame_probe=frame_probe, prepare_target=prepare_target
+        )
         self._check_observation(observation)
         # No verified manager state means no lifecycle or reconnect authority.
         # Read-only retries use time without spending the recovery action count.
         while observation.code == "manager_timeout":
             self.clock.sleep(min(self.policy.poll_interval, self._remaining(deadline)))
-            observation = self.observe(deadline, frame_probe=frame_probe)
+            observation = self.observe(
+                deadline, frame_probe=frame_probe, prepare_target=prepare_target
+            )
             self._check_observation(observation)
         if observation.state == "ready":
             return observation
@@ -800,7 +826,12 @@ class DeviceSession:
                 )
                 raise SessionFailure(self.last, self.last.message)
             # Explicit launch consent is never reused for a full restart.
-            return self._wait_ready(deadline, connect=True, frame_probe=frame_probe)
+            return self._wait_ready(
+                deadline,
+                connect=True,
+                frame_probe=frame_probe,
+                prepare_target=prepare_target,
+            )
         if observation.instance_state == "stopped":
             # One state change reads as one sentence: the launch completes the
             # observation instead of a counter-heavy retry line following it.
@@ -812,7 +843,12 @@ class DeviceSession:
                 deadline,
                 starting=True,
             )
-            return self._wait_ready(deadline, connect=True, frame_probe=frame_probe)
+            return self._wait_ready(
+                deadline,
+                connect=True,
+                frame_probe=frame_probe,
+                prepare_target=prepare_target,
+            )
         # Reserve one action for a complete restart only when the manager has
         # positively identified this running/starting instance. A canvas that
         # is not there yet never justifies one.
@@ -851,7 +887,9 @@ class DeviceSession:
                 # Waiting is also an attempt; it cannot create an unbounded
                 # sequence when no endpoint is available yet.
                 self._action(lambda timeout: True, deadline)
-            observation = self._wait_local(deadline, frame_probe=frame_probe)
+            observation = self._wait_local(
+                deadline, frame_probe=frame_probe, prepare_target=prepare_target
+            )
             if observation.state == "ready":
                 return observation
         if restartable and self._launched_at is not None:
@@ -859,7 +897,10 @@ class DeviceSession:
             if self.clock.monotonic() < protected_until:
                 logger.info("模拟器仍在启动保护时间内，等待设备就绪后再判断是否重启")
                 observation = self._wait_local(
-                    deadline, until=protected_until, frame_probe=frame_probe
+                    deadline,
+                    until=protected_until,
+                    frame_probe=frame_probe,
+                    prepare_target=prepare_target,
                 )
                 if observation.state == "ready":
                     return observation
@@ -880,7 +921,12 @@ class DeviceSession:
                 deadline,
                 starting=True,
             )
-            return self._wait_ready(deadline, connect=True, frame_probe=frame_probe)
+            return self._wait_ready(
+                deadline,
+                connect=True,
+                frame_probe=frame_probe,
+                prepare_target=prepare_target,
+            )
         frame_only = observation.code == "frame_failed" and bool(observation.serial)
         if (
             restartable
@@ -906,7 +952,12 @@ class DeviceSession:
                 return self._launch(self._remaining(deadline))
 
             self._action(restart, deadline)
-            return self._wait_ready(deadline, connect=True, frame_probe=frame_probe)
+            return self._wait_ready(
+                deadline,
+                connect=True,
+                frame_probe=frame_probe,
+                prepare_target=prepare_target,
+            )
         raise SessionFailure(
             observation,
             "设备未能就绪："
@@ -949,12 +1000,16 @@ class DeviceSession:
         self._launched_at = self.clock.monotonic()
         return self.simulator.start(self.profile, timeout)
 
-    def _wait_local(self, deadline, *, until=None, frame_probe=None):
+    def _wait_local(
+        self, deadline, *, until=None, frame_probe=None, prepare_target=None
+    ):
         if until is None:
             until = self.clock.monotonic() + self.policy.local_wait
         until = min(deadline, until)
         while True:
-            observation = self.observe(deadline, frame_probe=frame_probe)
+            observation = self.observe(
+                deadline, frame_probe=frame_probe, prepare_target=prepare_target
+            )
             self._check_observation(observation)
             if observation.state == "ready" or (
                 observation.code != "manager_timeout"
@@ -1022,11 +1077,15 @@ class DeviceSession:
             raise SessionFailure(self.last, "设备恢复命令失败")
         return succeeded
 
-    def _wait_ready(self, deadline, *, connect=False, frame_probe=None):
+    def _wait_ready(
+        self, deadline, *, connect=False, frame_probe=None, prepare_target=None
+    ):
         connected = set()
         while True:
             try:
-                observation = self.observe(deadline, frame_probe=frame_probe)
+                observation = self.observe(
+                    deadline, frame_probe=frame_probe, prepare_target=prepare_target
+                )
                 self._check_observation(observation)
                 if observation.state == "ready":
                     return observation
@@ -1054,7 +1113,9 @@ class DeviceSession:
                         connected.add(observation.serial)
                     else:
                         observation = self._wait_local(
-                            deadline, frame_probe=frame_probe
+                            deadline,
+                            frame_probe=frame_probe,
+                            prepare_target=prepare_target,
                         )
                         if observation.state == "ready":
                             return observation

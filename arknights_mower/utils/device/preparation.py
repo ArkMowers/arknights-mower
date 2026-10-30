@@ -31,13 +31,39 @@ class PreparationSession:
         self._adb_path = ""
         self._serial = ""
         self._status = None
+        self._closing = False
 
     @property
     def prepared_size(self):
         return self._target_size
 
+    @property
+    def cleanup_pending(self):
+        return self._closing and self._lease is not None
+
     def status(self):
         return dict(self._status) if self._status else None
+
+    def ensure(self, profile, authorized_serial=None):
+        """Retain preparation only for the same verified transport endpoint."""
+        endpoint = (profile.adb_path, profile.last_serial.strip())
+        if self._lease is not None:
+            if endpoint == (self._adb_path, self._serial) and not self.cleanup_pending:
+                return
+            if self.prepared_size is not None:
+                raise PreparationError(
+                    "preparation_interrupted",
+                    "设备端点已改变，请结束本次临时整备并重新授权启动。",
+                )
+            try:
+                self.close()
+            except MowerExit:
+                raise
+            except Exception as exc:
+                raise PreparationError(
+                    "recovery_pending", f"原设备准备资源尚未释放：{exc}"
+                ) from exc
+        self.begin(profile, authorized_serial)
 
     def begin(self, profile, authorized_serial=None):
         serial = profile.last_serial.strip()
@@ -239,6 +265,7 @@ class PreparationSession:
     def close(self):
         if self._lease is None:
             return
+        self._closing = True
         try:
             if self._record is not None:
                 # Cancellation and an exhausted startup budget must not prevent
@@ -254,11 +281,12 @@ class PreparationSession:
                 with device_io_budget(remaining):
                     self._restore()
         finally:
-            lease, self._lease = self._lease, None
+            self._lease.close()
+            self._lease = None
             self._record = None
             self._target_size = None
             self._physical = None
-            lease.close()
+            self._closing = False
 
     @staticmethod
     def _now():

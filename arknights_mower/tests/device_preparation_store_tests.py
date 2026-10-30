@@ -130,6 +130,27 @@ class RecoveryStoreTests(unittest.TestCase):
 
 
 class SerialLockTests(unittest.TestCase):
+    def test_failed_handle_close_is_retried_before_lease_is_released(self):
+        with tempfile.TemporaryDirectory() as folder:
+            lease = SerialLocks(Path(folder)).acquire("USB_123")
+            handle = lease._handle
+            try:
+                with patch.object(handle, "close", side_effect=OSError("close failed")):
+                    with self.assertRaises(OSError):
+                        lease.close()
+                try:
+                    lease.close()
+                except OSError:
+                    # The initial unlock may already have succeeded. Closing
+                    # the retained handle must still finish on the next call.
+                    pass
+                self.assertTrue(handle.closed)
+                lease.close()
+                next_lease = SerialLocks(Path(folder)).acquire("USB_123")
+                next_lease.close()
+            finally:
+                handle.close()
+
     def child_attempt(self, root, serial, *, crash=False):
         program = """
 import os

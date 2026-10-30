@@ -754,7 +754,7 @@ class DeviceSessionTests(unittest.TestCase):
         store = Mock()
 
         def load(serial):
-            observed.append(io_timeout(100))
+            observed.append(("preparation", io_timeout(100)))
             self.clock.sleep(5)
             return None
 
@@ -763,17 +763,26 @@ class DeviceSessionTests(unittest.TestCase):
         original_inspect = self.simulator.inspect
 
         def inspect(profile, timeout):
-            observed.append(timeout)
+            observed.append(("binding", timeout))
             return original_inspect(profile, timeout)
 
         self.simulator.inspect = inspect
+        original_frame = self.adb.frame_size
+
+        def frame(adb_path, serial, timeout):
+            observed.append(("frame", timeout))
+            return original_frame(adb_path, serial, timeout)
+
+        self.adb.frame_size = frame
         with self.control.run():
             result = self.control.start()
             self.assertTrue(result.ok, result.error)
-            self.assertEqual(observed, [12, 7])
+            self.assertEqual(
+                observed, [("binding", 12), ("preparation", 12), ("frame", 7)]
+            )
             self.assertEqual(self.session.remaining(), 7)
 
-    def test_preparation_exhaustion_stops_before_device_probes(self):
+    def test_preparation_exhaustion_stops_before_display_probes(self):
         self.adb.rows, self.adb.boot = [("USB-A", "device")], "1"
         store, locks = Mock(), Mock()
 
@@ -783,11 +792,14 @@ class DeviceSessionTests(unittest.TestCase):
 
         store.load.side_effect = load
         self.control._preparation = PreparationSession(Mock(), store, locks)
+        self.adb.display_size = Mock(wraps=self.adb.display_size)
+        self.adb.frame_size = Mock(wraps=self.adb.frame_size)
         with self.control.run():
             result = self.control.start()
             self.assertFalse(result.ok)
             self.assertEqual(result.error.code, "recovery_exhausted")
-            self.assertEqual(self.simulator.bindings, [])
+            self.adb.display_size.assert_not_called()
+            self.adb.frame_size.assert_not_called()
             self.assertEqual(self.adb.actions, [])
             locks.acquire.return_value.close.assert_called_once()
 

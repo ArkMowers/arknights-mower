@@ -286,7 +286,9 @@ def test_input_only_repair_preserves_preparation_capture_and_adb(cancellation):
     device = control.start().unwrap()
     device.input_alive = Mock(side_effect=[False, True])
     device.rebuild_input = Mock(return_value=True)
-    preparation = SimpleNamespace(prepared_size=(1920, 1080), close=Mock())
+    preparation = SimpleNamespace(
+        prepared_size=(1920, 1080), ensure=Mock(), close=Mock()
+    )
     control._preparation = preparation
     capture, client = object(), object()
     device.capture, device.client = capture, client
@@ -294,6 +296,8 @@ def test_input_only_repair_preserves_preparation_capture_and_adb(cancellation):
     assert control.recover().unwrap() is device
     device.rebuild_input.assert_called_once_with()
     adapter.rebind.assert_not_called()
+    preparation.ensure.assert_called_once()
+    assert preparation.ensure.call_args.args[0].last_serial == "USB-A"
     preparation.close.assert_not_called()
     assert device.capture is capture
     assert device.client is client

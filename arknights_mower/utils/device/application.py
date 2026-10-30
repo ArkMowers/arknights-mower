@@ -1009,9 +1009,15 @@ class DeviceControl(Generic[D]):
                     except Exception as exc:
                         raise PreflightRejected(str(exc), "missing_adb") from exc
                     profile = profile.model_copy(update={"adb_path": resolved_adb})
-                    self._preparation.begin(profile, preparation_serial)
+                    if self._session is None:
+                        self._preparation.begin(profile, preparation_serial)
             if self._session is not None:
-                ready = self._session.ensure_ready(deadline=deadline)
+                ready = self._session.ensure_ready(
+                    deadline=deadline,
+                    prepare_target=lambda adb_path, serial: self._prepare_target(
+                        adb_path, serial, authorization=preparation_serial
+                    ),
+                )
                 self._serial = ready.serial
                 profile = profile.model_copy(
                     update={"last_serial": ready.serial, "adb_path": ready.adb_path}
@@ -1086,6 +1092,14 @@ class DeviceControl(Generic[D]):
             readiness=self._readiness,
             helpers_rebuilt=True,
         )
+
+    def _prepare_target(self, adb_path, serial, *, authorization=None):
+        if self._preparation is None:
+            return
+        profile = self._session.profile.model_copy(
+            update={"adb_path": adb_path, "last_serial": serial}
+        )
+        self._preparation.ensure(profile, authorization)
 
     def _check_profile(self, profile):
         capture_options = {}
@@ -1397,6 +1411,7 @@ class DeviceControl(Generic[D]):
                             frame_probe=getattr(
                                 self._session.adb, "standard_frame_size", None
                             ),
+                            prepare_target=self._prepare_target,
                         )
                         if self._shutdown.is_set() or self._pending_close.is_set():
                             raise MowerExit("设备会话正在关闭")
@@ -1465,7 +1480,9 @@ class DeviceControl(Generic[D]):
                         self._session.adb, "standard_frame_size", None
                     )
                 ready = self._session.ensure_ready(
-                    deadline=deadline, frame_probe=frame_probe
+                    deadline=deadline,
+                    frame_probe=frame_probe,
+                    prepare_target=self._prepare_target,
                 )
                 if (
                     self._shutdown.is_set()
@@ -1512,10 +1529,6 @@ class DeviceControl(Generic[D]):
                             "adb_path": ready.adb_path,
                         }
                     )
-                    if self._preparation is not None and ready.serial != self.serial:
-                        self._preparation.close()
-                        with self._io_budget():
-                            self._preparation.begin(profile)
                     with self._io_budget():
                         check_profile = (
                             profile.model_copy(
@@ -1627,13 +1640,11 @@ class DeviceControl(Generic[D]):
                     failure,
                     deadline=deadline,
                     frame_probe=getattr(self._session.adb, "standard_frame_size", None),
+                    prepare_target=self._prepare_target,
                 )
                 profile = self._session.profile.model_copy(
                     update={"last_serial": ready.serial, "adb_path": ready.adb_path}
                 )
-                if self._preparation is not None and ready.serial != self.serial:
-                    self._preparation.close()
-                    self._preparation.begin(profile)
                 result = self._check_profile(profile)
                 self._last_preflight = result
                 if not result.ok:
@@ -1824,7 +1835,11 @@ class DeviceControl(Generic[D]):
         self._deferred_close = False
         self._session_error = None
         self._dispatch_pause = None
-        if self._close_result is not None and self._cleanup_device is None:
+        if (
+            self._close_result is not None
+            and self._cleanup_device is None
+            and not getattr(self._preparation, "cleanup_pending", False)
+        ):
             self._pending_close.clear()
             return self._close_result
         self._serial = self.serial

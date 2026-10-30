@@ -111,6 +111,58 @@ def fail_ui(env):
     return operation
 
 
+def test_cleanup_reconnect_rejects_changed_endpoint_before_display_reads(
+    ui_session, monkeypatch
+):
+    env = ui_session
+    fail_ui(env)
+    env.handle.close_error = RuntimeError("retained handle")
+    env.simulator.serial = "USB-B"
+    env.session.adb.rows = [("USB-B", "device")]
+    display, frame = Mock(), Mock()
+    monkeypatch.setattr(env.session.adb, "display_size", display)
+    monkeypatch.setattr(env.session.adb, "standard_frame_size", frame)
+
+    result = env.control.recover()
+
+    assert not result.ok
+    assert env.control._cleanup_device is env.handle
+    assert not env.handle.closed
+    assert env.events == ["close"]
+    assert env.simulator.actions == []
+    display.assert_not_called()
+    frame.assert_not_called()
+
+
+def test_ui_restart_prepares_new_endpoint_before_its_first_frame(
+    ui_session, monkeypatch, tmp_path
+):
+    from arknights_mower.tests.device_preparation_tests import DisplayIO, SerialLocks
+    from arknights_mower.utils.device.preparation import PreparationSession
+    from arknights_mower.utils.device.preparation_store import RecoveryStore
+
+    env = ui_session
+    locks = SerialLocks()
+    preparation = PreparationSession(DisplayIO(), RecoveryStore(tmp_path), locks)
+    env.control._preparation = preparation
+    preparation.begin(
+        env.conf.device.model_copy(update={"adb_path": env.session.adb_path})
+    )
+    fail_ui(env)
+
+    def frame(adb_path, serial, timeout):
+        assert serial == "USB-B"
+        assert locks.held == {serial}
+        return (1920, 1080)
+
+    monkeypatch.setattr(env.session.adb, "standard_frame_size", frame)
+    result = env.control.recover()
+    assert result.ok, result.error
+    assert result.serial == "USB-B"
+    assert locks.held == {"USB-B"}
+    assert env.conf.device.last_serial == "USB-A"
+
+
 def test_restart_releases_handles_rebinds_same_device_and_preserves_input_pause(
     ui_session,
 ):
