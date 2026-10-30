@@ -1866,7 +1866,9 @@ class BaseSchedulerSolver(
                     continue
                 required = (
                     {name}
-                    if op.rest_in_full or self.op_data.has_rest_mood_limit(name)
+                    if op.rest_in_full
+                    or self.op_data.has_rest_mood_limit(name)
+                    and getattr(task, "mood_limit_return_name", None) != name
                     else set()
                 )
                 if op.group:
@@ -3006,6 +3008,12 @@ class BaseSchedulerSolver(
                 self.task = None
                 self.skip()
                 return True
+            if not self._emergency_frozen() and not initial_fia_pending:
+                from arknights_mower.utils.group_recovery import mood_limit_group_return
+
+                returning = mood_limit_group_return(self.op_data, self.task, self.tasks)
+                if returning is not None:
+                    self.task = returning
             product_tasks = []
             remove_current_task = True
             arrangement_deferred = False

@@ -69,6 +69,8 @@ export class MowerTask {
  arrangementRetryRoom?:string;arrangementRetryCount?:number
  dormMoodResidents:string[]=[];idleDormSearchNames:Record<string,string[]>={};idleDormShiftGroups?:Record<string,string[]>
  releaseTargets?:Record<string,[string,number]>;releaseStartMicros?:number
+ moodLimitReturnAttempted=false
+ moodLimitSource?:string
  moodLimitDeadlineMicros?:number;advanceSupportSwap=false
  productLockNames:Set<string>=new Set();productLockSlots:Set<string>=new Set()
  constructor(options:MowerTaskOptions={},now=0){this.timeMicros=toMowerMicros(options.time??now);this.type=setMowerTaskType(options.type);this.plan=options.plan??{};this.metadata=options.metadata??'';this.adjusted=options.adjusted??false;this.strictMoodLimit=options.strictMoodLimit??false;this.moodLimit=options.moodLimit}

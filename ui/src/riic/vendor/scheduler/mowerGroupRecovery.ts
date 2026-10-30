@@ -1,5 +1,7 @@
+import {admitMowerDerivedTasks} from './mowerTaskDerivation'
+import {generateMowerDormTasks} from './mowerDormTasks'
 import {mowerDormCandidateMood,mowerSchedulingMoodObservation} from './mowerSchedulingMood'
-import {type MowerOperatorState} from './mowerOperatorState'
+import {restingThresholdFor,type MowerOperatorState} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {toMowerMicros,roundMowerMicros,MowerTask,MOWER_TASK_TYPES as T} from './mowerTaskQueue'
 import {mowerArrangementGroupTransitions} from './mowerSharedGroups'
@@ -107,4 +109,42 @@ export function mowerUnfinishedReturnMembers(data:MowerSchedulingData,task:Mower
   if(op.group)for(const member of mowerGroupRecoveryDeadline(data,op.group).requiredNames)required.add(member)
  })
  return new Set([...required].filter(name=>!mowerRecoveryReady(data,data.operators[name],options)))
+}
+
+/** Project recovery only for the return threshold, without confirming full recovery. */
+function returningMood(data:MowerSchedulingData,op:MowerOperatorState):number|undefined {
+ const observation=mowerSchedulingMoodObservation(data,op.name)
+ if(!observation)return
+ const [mood,observedAt]=observation
+ if(!op.isResting()||observedAt!==op.timeStampMicros||mood>=op.upperLimit)return mood
+ const due=mowerObservedRecoveryDeadline(data,op)
+ if(due===undefined||due<=observedAt)return mood
+ return Math.min(op.upperLimit,mood+(op.upperLimit-mood)*(data.nowMicros-observedAt)/(due-observedAt))
+}
+
+/** Prefer an existing group return while retaining the mandatory departure as fallback. */
+export function mowerMoodLimitGroupReturn(data:MowerSchedulingData,release:MowerTask,tasks:MowerTask[],options:MowerTaskSchedulingOptions={}):MowerTask|undefined {
+ const untouched=(task:MowerTask)=>!task.retainsExecution&&!task.arrangementStarted&&!task.backupShiftActive&&!task.productShiftLocked&&!task.backupExplicitSlots.size&&!task.backupShiftIntent&&!task.dormRecoveryRestore.length&&!task.arrangementRetryRoom
+ if(!data.alpha||release.type!==T.RELEASE_DORM||!release.strictMoodLimit||release.timeMicros>data.nowMicros||!tasks.includes(release)||!untouched(release)||release.moodLimitReturnAttempted)return
+ const op=data.operators[release.metadata]
+ if(!op?.isHigh()||!op.group||op.room.startsWith('dorm')||op.workaholic||data.canStandby(op)||op.multiGroup||op.independentRest||!data.groupIsResting(op.group)||!op.restMoodLimit||data.freeRoomExcluded(op.name)||release.moodLimit!==undefined&&release.moodLimit!==op.upperLimit)return
+ const target=release.releaseDormTargets()[op.name]
+ if(!target||target[0]!==op.currentRoom||target[1]!==op.currentIndex)return
+ for(const existing of tasks){
+  if(existing.type!==T.SHIFT_ON||!untouched(existing)||existing.plan[op.room]?.[op.index]!==op.name)continue
+  const bed=data.getDormByName(op.name)?.[1]
+  if(!bed)return
+  const task=admitMowerDerivedTasks(data,tasks,generateMowerDormTasks([{timeMicros:data.nowMicros,dorms:[bed],restInFull:false}],data)).find(candidate=>candidate.plan[op.room]?.[op.index]===op.name)
+  if(!task)continue
+  const rooms=Object.keys(task.plan).filter(room=>!room.startsWith('dorm'))
+  const duration=toMowerMicros((rooms.indexOf(op.room)+1)*Math.max(.75,options.executionMinutes??.75)/60)
+  if(data.nowMicros+duration>(release.moodLimitDeadlineMicros??release.timeMicros))continue
+  const returning=Object.entries(task.plan).flatMap(([room,row])=>room.startsWith('dorm')?[]:row.flatMap((name,index)=>{const member=data.operators[name];return member&&member.room===room&&member.index===index?[member]:[]}))
+  const groups=new Set(returning.map(member=>member.group).filter(Boolean))
+  if([...groups].some(group=>{const recovery=mowerGroupRecoveryDeadline(data,group);return recovery.requiredNames.length||recovery.timeMicros!==undefined}))continue
+  if(returning.some(member=>{const mood=returningMood(data,member);const line=member.lowerLimit+(member.upperLimit-member.lowerLimit)*restingThresholdFor(member,data.policy);return member.restInFull||!member.workaholic&&!data.canStandby(member)&&(mood===undefined||mood<=(member.customMoodLimit?line:Math.floor(line)))}))continue
+  release.moodLimitReturnAttempted=true
+  tasks.push(task)
+  return task
+ }
 }
