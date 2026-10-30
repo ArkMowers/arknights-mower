@@ -341,6 +341,8 @@ def observe_scheduler(scheduler):
     from arknights_mower.solvers.record import save_current_state
     from arknights_mower.utils import config
     from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.log import logger
+    from arknights_mower.utils.recognize import RecognizeError
 
     def check_cancel():
         if config.stop_mower.is_set():
@@ -387,16 +389,35 @@ def observe_scheduler(scheduler):
             and getattr(scheduler, "_recycle_unavailable", False) is True
         ):
             continue
-        scheduler.enter_room(room)
-        if room == "train":
-            from arknights_mower.solvers.mastery_reader import read_room_state
+        for attempt in range(1, 4):
+            check_cancel()
+            try:
+                if attempt > 1:
+                    scheduler.recog.update()
+                    scheduler.back_to_infrastructure()
+                    check_cancel()
+                scheduler.enter_room(room)
+                check_cancel()
+                scheduler.recog.update()
+                if room == "train":
+                    from arknights_mower.solvers.mastery_reader import read_room_state
 
-            observed = read_room_state(scheduler, enter=False)
-            if observed.read_failed:
-                raise RuntimeError("训练室实际状态暂不可读取，等待重新检查")
-            scheduler.train_room_state = observed
-        scheduler._read_room_mood(room, force_mood=True, strict_observation=True)
-        scheduler.back()
+                    observed = read_room_state(scheduler, enter=False)
+                    if observed.read_failed:
+                        raise RuntimeError("训练室实际状态暂不可读取，等待重新检查")
+                    scheduler.train_room_state = observed
+                scheduler._read_room_mood(
+                    room, force_mood=True, strict_observation=True
+                )
+                scheduler.back()
+                break
+            except RecognizeError as exc:
+                check_cancel()
+                logger.warning(f"重新观察房间 {room} 第 {attempt}/3 轮识别失败：{exc}")
+                if attempt == 3:
+                    raise RecognizeError(
+                        f"房间 {room} 观察 3 轮仍未完成：{exc}"
+                    ) from exc
     check_cancel()
     scheduler._initial_mood_refresh_rooms = set()
     replan_dynamic_tasks(scheduler)
