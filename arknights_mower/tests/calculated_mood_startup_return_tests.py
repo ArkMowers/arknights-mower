@@ -24,7 +24,7 @@ def startup(solver, monkeypatch):
     monkeypatch.setattr(emergency, "datetime", base_schedule.datetime)
     monkeypatch.setattr(emergency, "save_current_state", lambda: True)
     monkeypatch.setattr(record, "save_agent_action", MagicMock())
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
+    solver.op_data.facility_levels["train"] = 0
     for name in ("冰酿", "闪灵"):
         data.operators[name].current_room = ""
         data.operators[name].current_index = -1

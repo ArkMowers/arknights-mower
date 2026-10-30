@@ -1,6 +1,7 @@
 """本体离线回放共享替班的交接、恢复和等待释放。"""
 
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -10,8 +11,9 @@ from arknights_mower.tests import (
     multi_group_individual_rest_tests,
     multi_group_shift_tests,
 )
+from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.operators import Operator
-from arknights_mower.utils.plan import Room
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.replacement_coordination import (
     plan_replacement_handoff,
     recall_can_sustain,
@@ -19,6 +21,7 @@ from arknights_mower.utils.replacement_coordination import (
 from arknights_mower.utils.scheduler_task import TaskTypes
 
 solver = exhaust_replacement_tests.solver
+base = exhaust_replacement_tests.base_schedule
 backup_solver = backup_rest_schedule_tests.solver
 shared_solver = multi_group_shift_tests.solver
 
@@ -947,3 +950,137 @@ def test_ordinary_recall_preserves_prerequisite_until_all_covers_are_released(
     assert s._coordination_admission(after_first, ["机械师", "能天使"]) is None
     plan = s._plan_exhaust_support(["机械师", "能天使"])
     assert plan == {"room_2_2": ["苍苔"], "contact": ["絮雨"]}
+
+
+@pytest.mark.usefixtures("offline_maintenance")
+@pytest.mark.parametrize("enabled", [False, True])
+def test_failed_training_entry_recovers_handoff_at_next_patrol(
+    solver, monkeypatch, enabled
+):
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+    from arknights_mower.solvers import mastery_reader
+    from arknights_mower.utils import config, operators
+
+    Clock.current = Clock(2026, 10, 30, 0)
+    monkeypatch.setattr(base, "datetime", Clock)
+    monkeypatch.setattr(operators, "datetime", Clock)
+    monkeypatch.setattr(config.conf, "enable_mastery", enabled)
+    monkeypatch.setattr(operators.Operators, "current_room_changed_callback", None)
+    solver.global_plan = {
+        "default_plan": Plan(
+            {
+                "central": [
+                    Room("歌蕾蒂娅", "深海", ["夕"]),
+                    Room("森蚺", "自动化", ["诗怀雅"]),
+                ],
+                "train": [
+                    Room("褐果", "自动化", ["梅尔"]),
+                    Room("桃金娘", "自动化", ["赫默"]),
+                ],
+                "dormitory_1": [
+                    Room("冰酿", "", []),
+                    Room("琴柳", "深海", ["赫默"]),
+                    *[Room("Free", "", []) for _ in range(3)],
+                ],
+                "dormitory_2": [
+                    Room("杜林", "", []),
+                    Room("闪灵", "", []),
+                    *[Room("Free", "", []) for _ in range(3)],
+                ],
+            },
+            PlanConfig("", "", ""),
+        ),
+        "backup_plans": [
+            Plan(
+                {},
+                PlanConfig("", "", ""),
+                trigger=LogicExpression("False", "==", "True"),
+            )
+        ],
+    }
+    assert solver.initialize_operators() is None
+    solver.op_data = solver.op_data.project_arrangements(
+        [
+            {
+                "central": ["歌蕾蒂娅", "诗怀雅"],
+                "train": ["梅尔", "赫默"],
+                "dormitory_1": ["冰酿", "琴柳", "森蚺", "Free", "Free"],
+            }
+        ]
+    )
+    for op in solver.op_data.operators.values():
+        op.mood, op.time_stamp, op.depletion_rate = 24, Clock.now(), 0
+    solver.op_data.operators["歌蕾蒂娅"].mood = 0
+    solver.op_data.commit_group_shifts({"自动化": True, "深海": False})
+    for bed in solver.op_data.dorm:
+        if bed.name:
+            bed.time = Clock.now() + timedelta(hours=4)
+    for name in ("梅尔", "赫默"):
+        solver.op_data.operators[name].time_stamp -= timedelta(hours=3)
+    solver.tasks, solver.task = [], None
+    solver.check_fia = lambda: ({}, None)
+    solver.skip = lambda: None
+    solver.enter_room = MagicMock(side_effect=RuntimeError("未成功进入房间 train"))
+    solver.back_to_infrastructure = MagicMock()
+    solver.back = MagicMock()
+    solver._read_room_mood = MagicMock()
+    monkeypatch.setattr(mastery_reader, "reconcile_short", MagicMock())
+    solver._read_agent_mood()
+    solver._read_agent_mood()
+    solver.enter_room.assert_called_once_with("train", max_attempts=1)
+    assert solver.tasks == []
+
+    Clock.current += timedelta(hours=2.5)
+    solver.enter_room.side_effect = None
+    observed = mastery_reader.RoomState("empty", slots_read=True, slots_reliable=True)
+    moods = [{"agent": name, "mood": 24} for name in ("梅尔", "赫默")]
+    monkeypatch.setattr(
+        mastery_reader,
+        "read_room_state",
+        lambda *args, **kwargs: (observed, moods) if enabled else observed,
+    )
+    solver.get_agent_from_room = MagicMock(return_value=moods)
+    solver._read_agent_mood()
+    assert solver.enter_room.call_args_list.count(call("train", max_attempts=1)) == 2
+    assert solver.last_train_mood_read == Clock.now()
+
+    from arknights_mower.utils.scheduler_task import SchedulerTask
+
+    request = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF, meta_data="歌蕾蒂娅")
+    solver.task = request
+    solver.overtake_room()
+    support = next(
+        task for task in solver.tasks if getattr(task, "exhaust_support", False)
+    )
+    assert support.plan["train"] == ["褐果", "桃金娘"]
+    before = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    solver.task = support
+    solver._prepare_group_shift(support)
+    solver._prepare_shift_cycle(support)
+    assert support.plan["train"] == ["褐果", "桃金娘"]
+    assert solver._coordination_support_valid(
+        support.plan, support.coordination_request_names
+    )
+    assert before == {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    assert solver.op_data.operators["赫默"].current_room == "train"
+    solver.op_data = solver.op_data.project_arrangements([support.plan])
+    assert solver.op_data.operators["赫默"].current_room == ""
+    solver.tasks, solver.task = [request], request
+    solver.overtake_room()
+    departure = next(task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF)
+    assert departure.plan["dormitory_1"][1] == "赫默"
+    assert any(
+        "歌蕾蒂娅" in row
+        for room, row in departure.plan.items()
+        if room.startswith("dorm")
+    )

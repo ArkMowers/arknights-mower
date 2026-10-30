@@ -213,7 +213,6 @@ def training_return(solver, monkeypatch, request):
     plan["train"][request.param] = Room("森蚺", "自动化", ["夕"])
     assert solver.initialize_operators() is None
     del solver._suppress_train_correction
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
     monkeypatch.setattr(mastery_db, "get_active_plan", lambda: None)
     solver._notify_train_correction_skipped = MagicMock()
     for op in solver.op_data.operators.values():
@@ -230,7 +229,7 @@ def training_return(solver, monkeypatch, request):
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("follow", [False, True])
 @pytest.mark.parametrize(
-    "protection", ["none", "database", "queue", "observed", "protected", "scan"]
+    "protection", ["none", "database", "queue", "observed", "protected"]
 )
 def test_training_only_observed_return_respects_actual_protection(
     training_return, monkeypatch, enabled, follow, protection
@@ -251,10 +250,8 @@ def test_training_only_observed_return_respects_actual_protection(
         s.train_room_state = mastery_reader.RoomState("training")
     elif protection == "protected":
         s.train_room_state = mastery_reader.RoomState("empty", protected=True)
-    elif protection == "scan":
-        monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
     worker = s.op_data.operators["森蚺"]
-    allowed = protection != "scan" and (not enabled or protection == "none")
+    allowed = not enabled or protection == "none"
     pending = list(s.tasks)
     result = s.agent_get_mood()
     assert s.op_data.group_is_resting("自动化")

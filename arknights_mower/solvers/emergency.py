@@ -305,6 +305,8 @@ class EmergencyRecoveryMixin:
         if yield_to_releases:
             if state is not None:
                 rooms = state.setdefault("pending_read_rooms", rooms)
+        facility_levels = getattr(self.op_data, "facility_levels", {})
+        rooms[:] = [room for room in rooms if facility_levels.get(room) != 0]
         for room in list(rooms):
             if yield_to_releases and not self._emergency_operation_fits(
                 estimate_dorm_minutes(room, 1.5) * 60

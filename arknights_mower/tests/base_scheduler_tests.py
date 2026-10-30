@@ -1142,7 +1142,7 @@ class TestBaseScheduler(unittest.TestCase):
         solver.planned = False
         solver.defer_backup_plan_until_mood_read = True
         with (
-            patch.object(base_schedule, "_training_room_scan_disabled", True),
+            patch.dict(solver.op_data.facility_levels, {"train": 0}),
             patch.object(BaseSchedulerSolver, "_read_initial_card_mood"),
             patch.object(BaseSchedulerSolver, "find", return_value=True),
             patch.object(BaseSchedulerSolver, "enter_room") as enter,
@@ -1179,7 +1179,7 @@ class TestBaseScheduler(unittest.TestCase):
         solver.planned = False
         solver.defer_backup_plan_until_mood_read = True
         with (
-            patch.object(base_schedule, "_training_room_scan_disabled", True),
+            patch.dict(solver.op_data.facility_levels, {"train": 0}),
             patch.object(BaseSchedulerSolver, "_read_initial_card_mood"),
             patch.object(BaseSchedulerSolver, "find", return_value=True),
             patch.object(BaseSchedulerSolver, "enter_room") as enter,

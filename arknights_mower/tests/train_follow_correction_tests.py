@@ -26,7 +26,6 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noq
 @pytest.fixture
 def solver(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
     monkeypatch.setattr(mastery_db, "get_active_plan", lambda: None)
     plan = Plan(
         {"train": [Room("褐果", "", []), Room("桃金娘", "", [])]},

@@ -38,7 +38,6 @@ def paused_restoration(scheduler, monkeypatch):
     monkeypatch.setattr(config, "wake_scheduler", Event())
     config.conf.enable_mastery = False
     config.conf.close_simulator_when_idle = False
-    monkeypatch.setattr(base, "_training_room_scan_disabled", True)
     monkeypatch.setattr(Operators, "current_room_changed_callback", None)
     monkeypatch.setattr(base, "save_exception", Mock())
     monkeypatch.setattr(record, "save_agent_action", Mock())
@@ -72,6 +71,7 @@ def paused_restoration(scheduler, monkeypatch):
     resident.mood = 23.69
     data.room_observations[ROOM] = 1
     solver.op_data = data
+    data.facility_levels["train"] = 0
     restore = SchedulerTask(ORIGINAL_TIME, {ROOM: ["图耶"]}, TaskTypes.RUN_ORDER)
     restore.run_order_original_roster = copy.deepcopy(restore.plan)
     restore.run_order_restore_pending = True
@@ -443,3 +443,16 @@ def test_saved_restoration_gets_one_observation_when_worker_starts(
     assert restore.execution_failure
     assert solver.read_screen.call_count == read_count
     case.scheduler.io.assert_not_called()
+
+
+def test_zero_level_restoration_room_does_not_create_false_observation(
+    paused_restoration,
+):
+    case = paused_restoration
+    case.solver.op_data.facility_levels[ROOM] = 0
+    case.solver._idle_sleep(60)
+    before = case.solver.op_data.room_observations[ROOM]
+    patrol(case)
+    case.solver.enter_room.assert_not_called()
+    assert case.solver.op_data.room_observations[ROOM] == before
+    assert_retained(case)

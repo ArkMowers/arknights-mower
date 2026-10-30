@@ -253,7 +253,7 @@ def use_order_pages(solver, order_states):
 
 
 def use_mood_pages(solver, monkeypatch, occupants):
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
+    solver.op_data.facility_levels["train"] = 0
     monkeypatch.setattr(base_schedule, "try_workshop_tasks", MagicMock())
     solver.back = MagicMock()
     solver._plan_dorm_recovery = MagicMock(return_value=True)

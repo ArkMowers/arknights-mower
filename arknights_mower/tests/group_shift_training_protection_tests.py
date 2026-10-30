@@ -26,7 +26,6 @@ def training_group(solver, monkeypatch):
         op.time_stamp = datetime.now()
     del solver._suppress_train_correction
     config.conf.enable_mastery = True
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
     monkeypatch.setattr(mastery_db, "get_active_plan", lambda: None)
     return solver
 
@@ -388,7 +387,6 @@ def shared_training_group(solver, monkeypatch):
         op._current_room, op.current_index = op.room, op.index
         op.time_stamp = datetime.now()
     config.conf.enable_mastery = True
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
     monkeypatch.setattr(mastery_db, "get_active_plan", lambda: None)
     s.train_room_state = mastery_reader.RoomState("training")
     return s

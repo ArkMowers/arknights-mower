@@ -56,7 +56,7 @@ def observation_solver(legacy_solver, monkeypatch):
     state["phase"] = "staffing"
     state["next_read"] = NOW
     data = solver.op_data
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
+    solver.op_data.facility_levels["train"] = 0
     # These cases resume an unfinished initialization/final reconciliation.
     state["pending_read_rooms"] = sorted(data.plan)
     state["read_collection_pending"] = True
@@ -899,3 +899,44 @@ def test_running_resume_retains_same_task_after_dispatch_cleanup(observation_sol
     assert retries[0].time == NOW
     assert current.execution_failure["dependency"]
     assert release in solver.tasks
+
+
+@pytest.mark.parametrize(
+    "room",
+    [
+        "train",
+        "meeting",
+        "contact",
+        "factory",
+        "recycle",
+        "central",
+        "dormitory_1",
+        "room_1_1",
+    ],
+)
+@pytest.mark.parametrize("saved", [False, True])
+def test_zero_level_facilities_are_removed_from_pending_emergency_observations(
+    observation_solver, room, saved
+):
+    solver, state = observation_solver.solver, observation_solver.state
+    data = solver.op_data
+    other = next(name for name in data.plan if name != room and name != "train")
+    rooms = sorted({room, other})
+    data.facility_levels[room] = 0
+    data.plan.setdefault(room, [])
+    if saved:
+        state["pending_read_rooms"] = rooms.copy()
+    else:
+        state.pop("pending_read_rooms", None)
+    solver.enter_room = MagicMock()
+    solver.get_agent_from_room = MagicMock()
+    solver.back = MagicMock()
+    solver._emergency_operation_fits = lambda *args: True
+    solver._emergency_replan_releases = MagicMock()
+    solver._emergency_save = MagicMock()
+
+    assert solver._emergency_read_rooms(rooms, yield_to_releases=True)
+
+    solver.enter_room.assert_called_once_with(other)
+    solver.get_agent_from_room.assert_called_once_with(other, None, force_mood=True)
+    assert "pending_read_rooms" not in state
