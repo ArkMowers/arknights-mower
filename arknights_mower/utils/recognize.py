@@ -973,6 +973,7 @@ class Recognizer:
             return None
 
         template_matching = {
+            "sss/main": ((1450, 180), (1920, 370)),
             "sss/action_preparation": (1080, 652),
             "sss/deploy_button": ((1450, 850), (1920, 1080)),
             "sss/redeploy_button": ((1450, 850), (1920, 1080)),
