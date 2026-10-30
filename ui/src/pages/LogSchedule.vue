@@ -289,8 +289,9 @@ function setExportHours(hours) {
   ]
 }
 
-function beginExport() {
+function beginExport(withScreenshots = true) {
   if (!canExport.value || exporting.value) return
+  includeScreenshots.value = withScreenshots
   if (activeEvent.value) return exportWindow()
   exportCenter.value = loadedAt.value
   setExportHours(1)
@@ -307,7 +308,7 @@ async function exportWindow() {
   const center = event ? Math.floor(event.time_ns / 1000000) : exportCenter.value
   const path = event ? `/diagnostics/errors/${event.id}/export` : '/diagnostics/export'
   const params = event
-    ? undefined
+    ? { screenshots: includeScreenshots.value ? '1' : '0' }
     : {
         at: center,
         start: exportRange.value[0],
@@ -354,7 +355,7 @@ function toggleAllEvents(checked) {
   selectedEventIds.value = checked ? events.value.map((event) => event.id) : []
 }
 
-async function exportSelected() {
+async function exportSelected(withScreenshots = true) {
   if (archiveBusy.value || eventLoading.value || !selectedEvents.value.length) return
   const targets = [...selectedEvents.value]
   exporting.value = true
@@ -366,7 +367,7 @@ async function exportSelected() {
     for (const event of targets) {
       const response = await axios.get(
         `${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}/export`,
-        { responseType: 'blob' }
+        { params: { screenshots: withScreenshots ? '1' : '0' }, responseType: 'blob' }
       )
       await writer.add(`异常归档-${event.id}.zip`, new BlobReader(response.data), { level: 0 })
     }
@@ -531,16 +532,14 @@ onMounted(() => {
         @click="refreshLogs"
         >刷新日志</n-button
       >
-      <n-button
-        v-if="browseMode === 'time'"
-        class="export-button"
-        secondary
-        :disabled="!canExport"
-        :loading="exporting"
-        @click="beginExport"
-      >
-        导出日志与截图
-      </n-button>
+      <n-space v-if="browseMode === 'time'" class="export-button">
+        <n-button secondary :disabled="!canExport" :loading="exporting" @click="beginExport(true)">
+          导出日志与截图
+        </n-button>
+        <n-button secondary :disabled="!canExport" :loading="exporting" @click="beginExport(false)">
+          仅导出日志
+        </n-button>
+      </n-space>
       <div v-else class="archive-actions">
         <n-button
           secondary
@@ -554,12 +553,21 @@ onMounted(() => {
           secondary
           :disabled="eventLoading || archiveBusy || !selectedEvents.length"
           :loading="exporting"
-          @click="exportSelected"
+          @click="exportSelected(true)"
         >
           导出选中
         </n-button>
+        <n-button
+          secondary
+          :disabled="eventLoading || archiveBusy || !selectedEvents.length"
+          :loading="exporting"
+          @click="exportSelected(false)"
+        >
+          仅导出选中日志
+        </n-button>
       </div>
     </section>
+    <p class="export-hint">所有日志导出均附带当前保存的排班表 JSON。</p>
     <p v-if="exportError && !showExportDialog" class="export-error" role="alert">
       {{ exportError }}
     </p>

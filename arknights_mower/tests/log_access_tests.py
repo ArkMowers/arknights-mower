@@ -5,6 +5,7 @@ import unittest
 from threading import Thread
 from unittest.mock import patch
 
+import pytest
 from simple_websocket import Client
 from werkzeug.serving import make_server
 
@@ -311,3 +312,92 @@ class LocalLogAccessTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.mark.parametrize("archived", [False, True])
+@pytest.mark.parametrize("screenshots", ["0", "1"])
+def test_export_modes_preserve_log_read_boundary(
+    tmp_path, monkeypatch, archived, screenshots
+):
+    from datetime import datetime
+
+    center = datetime.now()
+    timestamp = int(center.timestamp() * 10**9)
+    archive = tmp_path / "screenshot" / "errors" / str(timestamp)
+    archive.mkdir(parents=True)
+    (archive / "event.json").write_text("{}", encoding="utf-8")
+    path = (
+        f"/diagnostics/errors/{timestamp}/export?screenshots={screenshots}"
+        if archived
+        else f"/diagnostics/export?at={int(center.timestamp() * 1000)}&screenshots={screenshots}"
+    )
+    monkeypatch.setattr(server.app, "token", "runtime-secret", raising=False)
+    monkeypatch.setitem(server.app.config, "WEBVIEW_LOCAL_ONLY_NO_TOKEN", True)
+    client = server.app.test_client()
+    local_headers = {
+        "Host": "127.0.0.1:58000",
+        "Origin": "http://127.0.0.1:58000",
+        "Sec-Fetch-Site": "same-origin",
+    }
+    with (
+        patch.object(
+            server, "get_path", side_effect=AssertionError("未授权时不可读取文件")
+        ),
+        patch.object(
+            server, "export_bundle", side_effect=AssertionError("未授权时不可打包")
+        ),
+    ):
+        for headers, remote in (
+            ({**local_headers, "Origin": "https://other.example"}, "127.0.0.1"),
+            ({**local_headers, "Host": "other.example"}, "127.0.0.1"),
+            ({**local_headers, "Sec-Fetch-Site": "cross-site"}, "127.0.0.1"),
+            (local_headers, "192.0.2.1"),
+        ):
+            response = client.get(
+                path, headers=headers, environ_base={"REMOTE_ADDR": remote}
+            )
+            assert response.status_code == 403
+        monkeypatch.setitem(server.app.config, "WEBVIEW_LOCAL_ONLY_NO_TOKEN", False)
+        for token in (None, "wrong"):
+            headers = {**local_headers, **({"token": token} if token else {})}
+            assert client.get(path, headers=headers).status_code == 403
+    with (
+        patch.object(server, "get_path", side_effect=lambda name: tmp_path / name[5:]),
+        patch.object(
+            server, "_send_diagnostic_bundle", return_value={"export": True}
+        ) as send,
+    ):
+        assert client.get(
+            path, headers={**local_headers, "token": "runtime-secret"}
+        ).json == {"export": True}
+        monkeypatch.setitem(server.app.config, "WEBVIEW_LOCAL_ONLY_NO_TOKEN", True)
+        assert client.get(path, headers=local_headers).json == {"export": True}
+        assert send.call_count == 2
+
+
+@pytest.mark.parametrize("archived", [False, True])
+@pytest.mark.parametrize("screenshots", ["", "false", "2"])
+def test_invalid_screenshot_option_rejected_before_packing(
+    monkeypatch, screenshots, archived
+):
+    import time
+
+    monkeypatch.setattr(server.app, "token", "runtime-secret", raising=False)
+    with (
+        patch.object(
+            server, "get_path", side_effect=AssertionError("无效选项不可读取文件")
+        ),
+        patch.object(
+            server, "export_bundle", side_effect=AssertionError("无效选项不可打包")
+        ),
+    ):
+        path = (
+            f"/diagnostics/errors/123/export?screenshots={screenshots}"
+            if archived
+            else f"/diagnostics/export?at={int(time.time() * 1000)}&screenshots={screenshots}"
+        )
+        response = server.app.test_client().get(
+            path,
+            headers={"token": "runtime-secret"},
+        )
+        assert response.status_code == 400

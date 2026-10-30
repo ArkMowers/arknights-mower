@@ -113,8 +113,9 @@ def test_archive_byte_cap_counts_existing_files_and_leaves_metadata_space(tmp_pa
         store.close()
 
 
+@pytest.mark.parametrize("plan", [None, {"description": "x" * 1500}])
 def test_archive_export_bounds_legacy_images_and_log_and_reports_omission(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, plan
 ):
     monkeypatch.setattr(diagnostics, "MAX_ARCHIVE_BYTES", 4096)
     monkeypatch.setattr(diagnostics, "ARCHIVE_METADATA_RESERVE", 1024)
@@ -126,13 +127,17 @@ def test_archive_export_bounds_legacy_images_and_log_and_reports_omission(
         (archive / f"{int(archive_id) + number}.jpg").write_bytes(b"x" * 1500)
     (archive / "logs.json").write_text(json.dumps([{"message": "x" * 3000}]))
     with diagnostics.export_bundle(
-        tmp_path / "log", tmp_path, center, archive_id
+        tmp_path / "log", tmp_path, center, archive_id, scheduling_plan=plan
     ) as data:
         data.seek(0, 2)
         assert data.tell() <= 4096
         data.seek(0)
         with ZipFile(data) as bundle:
-            assert len([n for n in bundle.namelist() if n.endswith(".jpg")]) == 2
+            assert len([n for n in bundle.namelist() if n.endswith(".jpg")]) == (
+                2 if plan is None else 1
+            )
+            if plan is not None:
+                assert json.loads(bundle.read("排班表.json")) == plan
             assert "部分截图或日志已省略" in bundle.read("说明.txt").decode()
 
 
