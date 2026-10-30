@@ -34,6 +34,22 @@ def test_four_white_nodes_and_three_black_nodes_retain_all_seven_days(page):
     assert abs(progress.points[-1][0] - 1757) <= 3
 
 
+def test_supplied_last_day_highlight_preserves_the_complete_seven_day_row():
+    # 2026-10-30 11:39:09 的现场截图裁剪，保留进度行及奖励卡片。
+    image = frame("seven_day_seven_unclaimed_right_20261030")
+
+    progress = detect_progress(image)
+
+    assert progress is not None
+    assert (progress.total_days, progress.unlocked_days) == (7, 7)
+    np.testing.assert_allclose(
+        progress.points,
+        [(x, 248) for x in (698, 875, 1051, 1228, 1404, 1581, 1757)],
+        atol=3,
+        rtol=0,
+    )
+
+
 @pytest.mark.parametrize(
     "segments",
     [
