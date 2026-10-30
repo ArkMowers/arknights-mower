@@ -655,7 +655,7 @@ def test_failed_exhaust_preview_retains_original_ordinary_request(
     s.tasks, s.task = [task], task
     original = deepcopy(task.__dict__)
 
-    def failed_preview(solver, *args):
+    def failed_preview(solver, *args, failure_reasons=None):
         solver._backup_departure_waiting_names = set()
         return None
 
