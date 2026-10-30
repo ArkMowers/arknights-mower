@@ -166,7 +166,7 @@ def test_latest_mood_wins_and_estimate_expiry_keeps_unknown(solver):
 
 
 def test_legacy_probe_room_is_really_read_despite_recent_cache(solver, monkeypatch):
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
+    solver.op_data.facility_levels["train"] = 0
     solver._initial_mood_refresh_rooms = {ROOM}
     for op in solver.op_data.operators.values():
         op.need_to_refresh = lambda: False

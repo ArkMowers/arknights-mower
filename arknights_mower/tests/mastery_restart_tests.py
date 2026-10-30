@@ -21,9 +21,6 @@ class MasteryRestartTests(unittest.TestCase):
     def setUp(self):
         for method in ("get_maintenance", "get_daily_reset"):
             self.enterContext(patch.object(NewsChecker, method, return_value=None))
-        self.enterContext(
-            patch.object(base_schedule, "_training_room_scan_disabled", False)
-        )
         folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.db_path = folder / "data.db"
 
@@ -777,12 +774,11 @@ class MasteryRestartTests(unittest.TestCase):
                 self.assertIsNone(solver.last_train_mood_read)
                 self.assertEqual(solver.tasks, [])
 
-    def test_unbuilt_training_room_disables_scan_for_entire_process(self):
+    def test_failed_training_entry_uses_patrol_interval_without_disabling_new_solver(
+        self,
+    ):
         for enabled in (False, True):
-            with (
-                self.subTest(enabled=enabled),
-                patch.object(base_schedule, "_training_room_scan_disabled", False),
-            ):
+            with self.subTest(enabled=enabled):
                 solver = self.mood_solver()
                 solver.enter_room.side_effect = RuntimeError("未成功进入房间 train")
                 with (
@@ -793,15 +789,16 @@ class MasteryRestartTests(unittest.TestCase):
                     self.read_mood(solver)
                 solver.enter_room.assert_called_once_with("train", max_attempts=1)
                 solver.back_to_infrastructure.assert_called_once()
-                solver.back.assert_not_called()
                 read.assert_not_called()
-                self.assertTrue(base_schedule._training_room_scan_disabled)
+                self.assertIsNone(solver.last_train_mood_read)
                 self.assertEqual(solver.tasks, [])
-                # 超过限频时间、进房恢复正常，也不再尝试。
-                solver.last_train_mood_read = datetime.now() - timedelta(hours=3)
+                solver.last_train_mood_attempt -= timedelta(hours=3)
                 solver.enter_room.side_effect = None
-                solver.get_agent_from_room.return_value = []
-                room = reader.RoomState(state="empty")
+                solver.get_agent_from_room.return_value = [
+                    {"agent": "", "mood": -1},
+                    {"agent": "", "mood": -1},
+                ]
+                room = reader.RoomState("empty", slots_read=True, slots_reliable=True)
                 with (
                     patch.object(reader.config.conf, "enable_mastery", enabled),
                     patch.object(
@@ -813,10 +810,15 @@ class MasteryRestartTests(unittest.TestCase):
                 ):
                     self.read_mood(solver)
                     restarted_solver = self.mood_solver()
+                    restarted_solver.get_agent_from_room.return_value = (
+                        solver.get_agent_from_room.return_value
+                    )
                     self.read_mood(restarted_solver)
-                    restarted_solver.enter_room.assert_not_called()
-                solver.enter_room.assert_called_once_with("train", max_attempts=1)
-                self.assertTrue(base_schedule._training_room_scan_disabled)
+                    restarted_solver.enter_room.assert_called_once_with(
+                        "train", max_attempts=1
+                    )
+                self.assertEqual(solver.enter_room.call_count, 2)
+                self.assertIsInstance(solver.last_train_mood_read, datetime)
 
     def test_unavailable_training_does_not_block_other_rooms_or_create_correction(self):
         solver = self.mood_solver(count=2)

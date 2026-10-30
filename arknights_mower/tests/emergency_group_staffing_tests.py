@@ -153,13 +153,11 @@ def test_rescue_training_protection_skips_without_delaying_other_rooms(
     from types import SimpleNamespace
     from unittest.mock import MagicMock
 
-    from arknights_mower.solvers import base_schedule
     from arknights_mower.utils import config
     from arknights_mower.utils.operators import Operator
 
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf, "assistant_follows_schedule", follows)
-    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
     solver, state = staffing.solver, staffing.state
     solver._train_mastery_active = MagicMock(return_value=True)
     solver._train_protected = MagicMock(return_value=False)

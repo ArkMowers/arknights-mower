@@ -24,7 +24,6 @@ class Clock(datetime):
 def solver(monkeypatch):
     monkeypatch.setattr(base, "datetime", Clock)
     monkeypatch.setattr(Clock, "current", Clock(2026, 10, 13, 10))
-    monkeypatch.setattr(base, "_training_room_scan_disabled", False)
     monkeypatch.setattr(base.config.conf, "enable_mastery", True)
     monkeypatch.setattr(reader, "reconcile_short", Mock())
     s = object.__new__(base.BaseSchedulerSolver)
@@ -84,7 +83,6 @@ def test_failed_observation_preserves_success_time_and_normal_patrol_interval(
 
     assert solver.last_train_mood_read == old
     assert solver.last_train_mood_attempt == Clock.now()
-    assert not base._training_room_scan_disabled
     attempt = Clock.now()
     for elapsed in (
         timedelta(),
@@ -246,19 +244,21 @@ def test_recent_successful_read_throttles_patrol_after_an_older_attempt(
     solver.enter_room.assert_not_called()
 
 
-def test_failed_entry_retains_process_scan_disable(solver, monkeypatch):
+def test_failed_entry_retries_only_at_normal_patrol_interval(solver, monkeypatch):
     solver.enter_room.side_effect = RuntimeError("unbuilt training room")
     read = Mock()
     monkeypatch.setattr(reader, "read_room_state", read)
     old = solver.last_train_mood_read
 
     solver._read_agent_mood()
-    Clock.current += timedelta(hours=3)
+    solver._read_agent_mood()
+    assert solver.enter_room.call_count == 1
+    assert solver.tasks == []
+    Clock.current += timedelta(hours=2.5)
     solver._read_agent_mood()
 
     assert solver.last_train_mood_read == old
-    assert base._training_room_scan_disabled
-    assert solver.enter_room.call_count == 1
+    assert solver.enter_room.call_count == 2
     read.assert_not_called()
 
 
@@ -279,7 +279,6 @@ def test_device_or_stop_interruption_does_not_become_observation_retry(
 
     assert solver.last_train_mood_read == old
     assert solver.last_train_mood_attempt == old_attempt
-    assert not base._training_room_scan_disabled
     solver.back_to_infrastructure.assert_not_called()
 
     good = reader.RoomState("training", slots_read=True, slots_reliable=True)
@@ -289,3 +288,95 @@ def test_device_or_stop_interruption_does_not_become_observation_retry(
     solver._read_agent_mood()
     assert read.call_count == (2 if failure_site == "reading" else 1)
     assert solver.last_train_mood_read == Clock.now()
+
+
+@pytest.mark.parametrize(
+    "room",
+    [
+        "train",
+        "meeting",
+        "contact",
+        "factory",
+        "recycle",
+        "central",
+        "dormitory_1",
+        "room_1_1",
+    ],
+)
+@pytest.mark.parametrize("level", [0, 1, None])
+@pytest.mark.parametrize("force", [False, True])
+def test_patrol_skips_only_explicit_zero_level_facilities(
+    solver, monkeypatch, room, level, force
+):
+    solver.op_data.plan = {room: [Room("艾丽妮", "", [])]}
+    solver.op_data.facility_levels = {"train": 0}
+    if level is None:
+        solver.op_data.facility_levels.pop(room, None)
+    else:
+        solver.op_data.facility_levels[room] = level
+    op = solver.op_data.operators["艾丽妮"]
+    op.room = op._current_room = room
+    op.current_index = 0
+    solver._read_room_mood = Mock()
+    solver._initial_mood_refresh_rooms = {room} if force else set()
+    observed = reader.RoomState("empty", slots_read=True, slots_reliable=True)
+    monkeypatch.setattr(reader, "read_room_state", Mock(return_value=(observed, [])))
+    previous = (op.current_room, op.time_stamp, op.mood)
+
+    solver._read_agent_mood()
+
+    if level == 0:
+        solver.enter_room.assert_not_called()
+        solver._read_room_mood.assert_not_called()
+        assert room not in solver._initial_mood_refresh_rooms
+    elif room == "train":
+        solver.enter_room.assert_called_once_with("train", max_attempts=1)
+    else:
+        solver.enter_room.assert_called_once_with(room)
+        solver._read_room_mood.assert_called_once_with(room, force_mood=force)
+    assert previous == (op.current_room, op.time_stamp, op.mood)
+    assert solver.tasks == []
+
+
+def test_zero_level_can_resume_patrol_after_configuration_change(solver, monkeypatch):
+    solver.op_data.facility_levels = {"train": 0}
+    read = Mock(
+        return_value=(
+            reader.RoomState("empty", slots_read=True, slots_reliable=True),
+            [],
+        )
+    )
+    monkeypatch.setattr(reader, "read_room_state", read)
+    solver._read_agent_mood()
+    solver.enter_room.assert_not_called()
+    solver.op_data.facility_levels["train"] = 1
+    solver._read_agent_mood()
+    solver.enter_room.assert_called_once_with("train", max_attempts=1)
+    read.assert_called_once()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_initial_mood_observation_skips_all_explicit_zero_level_rooms(
+    solver, monkeypatch, enabled
+):
+    from arknights_mower.data import base_room_list
+
+    solver.op_data.mood_calculation_enabled = True
+    solver.op_data.facility_levels = dict.fromkeys(base_room_list, 0)
+    monkeypatch.setattr(base.config.conf, "enable_mastery", enabled)
+    monkeypatch.setattr(solver, "_initial_mood_read_pending", lambda: True)
+    before = solver.last_train_mood_attempt
+
+    solver._read_agent_mood()
+
+    solver.enter_room.assert_not_called()
+    assert solver._initial_mood_refresh_rooms == set()
+    assert solver._initial_mood_room_observations == set()
+    assert solver.last_train_mood_attempt == before
+
+
+def test_initial_card_observation_does_not_use_zero_level_facility(solver):
+    solver.op_data.plan = {"meeting": [Room("艾丽妮", "", [])]}
+    solver.op_data.facility_levels = {"meeting": 0}
+    solver._scan_card_moods()
+    solver.enter_room.assert_not_called()

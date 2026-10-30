@@ -200,8 +200,6 @@ from arknights_mower.utils.workshop_ui import (
     scale_point,
 )
 
-# 只保留在当前进程；进房失败后即使重建调度器，也不再自动巡检训练室。
-_training_room_scan_disabled = False
 _backup_timing_runtime = threading.local()
 
 
@@ -3555,7 +3553,6 @@ class BaseSchedulerSolver(
 
     def _read_agent_mood(self):
         """只刷新实际位置、心情及训练室状态，不按当前排班生成纠错。"""
-        global _training_room_scan_disabled
         # 暂时规定纠错只适用于主班表
         need_read = {
             v.room
@@ -3624,7 +3621,7 @@ class BaseSchedulerSolver(
             force_rooms.discard(room)
             need_read.discard(room)
 
-        # 正常心情刷新始终检查训练室，包含未启用专精时的手动训练。
+        # 正常心情刷新检查未设为 0 级的训练室，包含未启用专精时的手动训练。
         # 实际扫描仍受房间级 2.5 小时限频保护。
         if (
             not getattr(self.op_data, "mood_calculation_enabled", False)
@@ -3632,7 +3629,12 @@ class BaseSchedulerSolver(
         ):
             need_read.add("train")
 
+        facility_levels = getattr(self.op_data, "facility_levels", {})
         for room in sorted(need_read):
+            if facility_levels.get(room) == 0:
+                force_rooms.discard(room)
+                restoration_observations.pop(room, None)
+                continue
             if (
                 room == "recycle"
                 and getattr(self, "_recycle_unavailable", False) is True
@@ -3640,9 +3642,6 @@ class BaseSchedulerSolver(
                 force_rooms.discard(room)
                 continue
             if room == "train":
-                if _training_room_scan_disabled:
-                    force_rooms.discard(room)
-                    continue
                 last_read = max(
                     (
                         observed_at
@@ -3804,20 +3803,10 @@ class BaseSchedulerSolver(
                     raise
                 except Exception as e:
                     if room == "train":
-                        # 巡检不要求账号已建造训练室。进房本身已有有限重试，
-                        # 失败后不能再由心情读取／纠错重复进入同一未建造房间。
-                        if not room_entered:
-                            _training_room_scan_disabled = True
-                            logger.warning(
-                                f"训练室未建造或进房失败，本次进程停用训练室巡检，继续其他房间：{e}"
-                            )
-                        else:
-                            from arknights_mower.solvers.mastery_reader import RoomState
+                        from arknights_mower.solvers.mastery_reader import RoomState
 
-                            self.train_room_state = RoomState(
-                                "unknown", read_failed=True
-                            )
-                            logger.warning(f"训练室本次读取失败，跳过本轮巡检：{e}")
+                        self.train_room_state = RoomState("unknown", read_failed=True)
+                        logger.warning(f"训练室本次进房或读取失败，跳过本轮巡检：{e}")
                         self.last_train_mood_attempt = datetime.now()
                         self.back_to_infrastructure()
                         skip_room_exit = True
@@ -3915,6 +3904,7 @@ class BaseSchedulerSolver(
                 room
                 for room, slots in self.op_data.plan.items()
                 if slots
+                and getattr(self.op_data, "facility_levels", {}).get(room) != 0
                 and not room.startswith("dorm")
                 and room not in ("train", "factory")
             ),
@@ -4159,7 +4149,6 @@ class BaseSchedulerSolver(
                 and (mood := dorm_candidate_mood(self.op_data, k)) is not None
                 and mood < v.upper_limit
             )
-            and not (v.room == "train" and _training_room_scan_disabled)
             and not (v.group and v.room.startswith("dorm"))
             and not v.multi_group
             and not self.op_data.is_standby(k)
@@ -4464,11 +4453,7 @@ class BaseSchedulerSolver(
 
     def _suppress_train_correction(self, fix_plan: dict) -> None:
         """纠错使用统一训练室保护范围。"""
-        if (
-            "train" in fix_plan
-            and not _training_room_scan_disabled
-            and not config.conf.enable_mastery
-        ):
+        if "train" in fix_plan and not config.conf.enable_mastery:
             self.train_room_state = None
         if self._suppress_facility_arrangement(fix_plan):
             self._notify_train_correction_skipped()
@@ -4548,8 +4533,6 @@ class BaseSchedulerSolver(
 
     def _suppress_train_arrangement(self, fix_plan: dict) -> bool:
         """保护生效时排除整房及相关驻员，其他岗位继续安排和确认。"""
-        if _training_room_scan_disabled:
-            fix_plan.pop("train", None)
         protected = self._protected_training_names()
         if not protected and (
             "train" not in fix_plan or not self._train_scheduling_protected()
@@ -6044,7 +6027,6 @@ class BaseSchedulerSolver(
                     and self.op_data.group_is_resting(slot.group)
                     and (not owner.current_room or owner.is_resting())
                     and owner.name not in self._protected_facility_names()
-                    and not (room == "train" and _training_room_scan_disabled)
                 ):
                     # 切表恢复的离岗成员跟随组内休息，不能以新岗位召回整组。
                     replacement_positions.add((room, index))

@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from arknights_mower.solvers import base_schedule as base
 from arknights_mower.solvers import mastery_reader
 from arknights_mower.tests import shift_backup_convergence_tests as backup
 from arknights_mower.utils import config, mastery_db
@@ -21,7 +20,6 @@ solver = backup.solver
 def training_solver(solver, monkeypatch):
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf, "assistant_follows_schedule", False)
-    monkeypatch.setattr(base, "_training_room_scan_disabled", False)
     monkeypatch.setattr(mastery_db, "get_active_plan", lambda: None)
     monkeypatch.setattr(mastery_db, "is_operator_busy", lambda name: False)
     solver._notify_train_correction_skipped = MagicMock()

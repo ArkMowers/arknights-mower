@@ -318,12 +318,10 @@ def test_initialization_reads_all_staffed_facilities_once_despite_recent_cache(
     solver, monkeypatch
 ):
     from arknights_mower.data import base_room_list
-    from arknights_mower.solvers import base_schedule as base
     from arknights_mower.solvers import mastery_reader
 
     enable(solver, monkeypatch)
     config.conf.enable_mastery = True
-    monkeypatch.setattr(base, "_training_room_scan_disabled", False)
     solver.defer_backup_plan_until_mood_read = True
     solver._initial_mood_refresh_rooms = set()
     solver._read_room_mood = MagicMock()
