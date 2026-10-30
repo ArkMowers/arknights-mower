@@ -1317,7 +1317,7 @@ def test_selection_rechecks_card_mood_and_preserves_actual_readings(
         assert solver.op_data.dorm_mood_estimates[name][0] == mood
 
 
-def test_rejected_staffing_candidate_cancels_only_failed_room_and_requests_repair(
+def test_rejected_staffing_candidate_retains_remaining_plan_after_bounded_retries(
     solver, monkeypatch
 ):
     from arknights_mower.solvers import base_schedule
@@ -1328,24 +1328,43 @@ def test_rejected_staffing_candidate_cancels_only_failed_room_and_requests_repai
     state["staffing_plan"] = {room: names.copy() for room, names in plan.items()}
     solver.task = SchedulerTask(task_plan=plan)
     solver.task.emergency_staffing = True
+    solver.tasks = [solver.task]
+    original_time = solver.task.time
+    original_read_time = state["next_read"]
     solver.enter_room = MagicMock()
     solver.turn_on_room_detail = MagicMock()
     solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
     solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
     solver.find = MagicMock(return_value=True)
-    solver.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
+    solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.get_agent_from_room = MagicMock(
+        side_effect=lambda room, *args, **kwargs: [
+            {"agent": name} for name in solver.op_data.get_current_room(room, True)
+        ]
+    )
     solver.choose_agent = MagicMock(side_effect=AgentSelectionNotReady("心情不足"))
     solver.back_to_infrastructure = MagicMock()
     solver._emergency_read_rooms = MagicMock()
     solver._emergency_save = MagicMock()
     monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
-    assert solver.agent_arrange_room({}, "room_1_1", plan) is False
-    assert state["staffing_plan"] == {"room_1_2": [COVERS[1]]}
-    assert plan == {"room_1_2": [COVERS[1]]}
-    assert state["next_read"] == NOW
-    solver.choose_agent.assert_called_once()
-    solver._emergency_read_rooms.assert_called_once_with(["room_1_1"])
-    solver._emergency_save.assert_called_once()
+    with pytest.raises(base_schedule.RoomArrangementDeferred) as raised:
+        solver.agent_arrange_room({}, "room_1_1", plan)
+    assert raised.value.room == "room_1_1"
+    assert (
+        state["staffing_plan"]
+        == plan
+        == {
+            "room_1_1": [COVERS[0]],
+            "room_1_2": [COVERS[1]],
+        }
+    )
+    assert solver.tasks == [solver.task]
+    assert solver.task.time == original_time
+    assert state["next_read"] == original_read_time
+    assert solver.choose_agent.call_count == 4
+    solver._emergency_read_rooms.assert_not_called()
+    solver._emergency_save.assert_not_called()
 
 
 @pytest.mark.parametrize("path", ["planner", "selection"])

@@ -2,6 +2,7 @@
 
 import copy
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,6 +26,7 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 def reject_room(solver, task, room, monkeypatch):
     solver.task = task
+    solver.recog = SimpleNamespace(update=MagicMock())
     solver.enter_room = MagicMock()
     solver.turn_on_room_detail = MagicMock()
     solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
@@ -36,10 +38,25 @@ def reject_room(solver, task, room, monkeypatch):
     )
     solver.back_to_infrastructure = MagicMock()
     solver._emergency_read_rooms = MagicMock()
+    solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
+    solver.get_agent_from_room = MagicMock(
+        return_value=[
+            {"agent": name} for name in solver.op_data.get_current_room(room, True)
+        ]
+    )
+    solver.record_selection_failure = MagicMock()
+    solver.back = MagicMock()
     monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
-    assert solver.agent_arrange_room({}, room, task.plan) is False
-    assert not task.plan
-    solver.tasks.remove(task)
+    original = copy.deepcopy(task.plan)
+    with pytest.raises(base_schedule.RoomArrangementDeferred) as failure:
+        solver.agent_arrange_room({}, room, task.plan)
+    solver._retain_failed_task(task, str(failure.value), [room])
+    assert set(task.plan) == set(original)
+    assert all(
+        name == "Current" or task.plan[room][index] == name
+        for room, row in original.items()
+        for index, name in enumerate(row)
+    )
     solver.task = None
 
 

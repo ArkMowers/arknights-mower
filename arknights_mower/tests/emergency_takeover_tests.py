@@ -209,6 +209,11 @@ def test_failed_takeover_observes_due_rooms_without_recreating_task(
 
     solver.get_agent_from_room = MagicMock(side_effect=read)
     solver._emergency_tick()
+    solver.get_agent_from_room.assert_not_called()
+    assert task.execution_failure
+    # 正常读房提供新观测；失败本身不再请求强制读房并重开自己的派发。
+    solver._emergency_read_rooms(original)
+    solver._resume_failed_tasks()
     assert {call.args[0] for call in solver.get_agent_from_room.call_args_list} == set(
         original
     )

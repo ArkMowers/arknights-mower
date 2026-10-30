@@ -169,6 +169,29 @@ def test_post_battle_boundary_keeps_external_control_and_staffing_protected(case
     assert case.signal.is_set() and solver.tasks == [task]
 
 
+@pytest.mark.parametrize("release", [False, True])
+def test_post_battle_boundary_refreshes_during_retained_staffing_failure(
+    case, monkeypatch, release
+):
+    record.apply_workshop_inventory({"技巧概要·卷2": 7})
+    solver = object.__new__(base_schedule.BaseSchedulerSolver)
+    solver.op_data, solver.tasks, solver.MAA = case.data, case.tasks, None
+    task = SchedulerTask(task_plan={"dormitory_1": ["Current", ""]})
+    task.emergency_staffing = True
+    task.emergency_recovery_release = release
+    task.execution_retained = True
+    task.execution_failure = {"reason": "选人失败", "rooms": ("dormitory_1",)}
+    solver.tasks.append(task)
+    solver.find_next_task = MagicMock(return_value=object())
+
+    solver._refresh_workshop_inventory()
+
+    assert not case.signal.is_set()
+    assert config.conf.workshop_settings
+    assert solver.tasks == [task]
+    assert task.execution_failure
+
+
 @pytest.mark.parametrize(
     "mood,expected",
     [(10, True), (2, True), (1, False), (0, False), (-1, False), (None, False)],

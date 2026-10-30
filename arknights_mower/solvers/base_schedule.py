@@ -3022,8 +3022,9 @@ class BaseSchedulerSolver(
                 elif getattr(self.task, "replacement_check", None):
                     remove_current_task = run_replacement_check(self, self.task)
                     self.skip(["todo_task", "collect_notification"])
-                elif self.task.meta_data == RESUME_META or getattr(
-                    self.task, "emergency_recovery_release", False
+                elif self.task.meta_data == RESUME_META or (
+                    getattr(self.task, "emergency_recovery_release", False)
+                    and not getattr(self.task, "emergency_staffing", False)
                 ):
                     if self._emergency_active():
                         self._emergency_tick()
@@ -15403,22 +15404,6 @@ class BaseSchedulerSolver(
             except Exception as e:
                 save_exception(e)
                 logger.exception(e)
-                if getattr(self.task, "emergency_staffing", False) and isinstance(
-                    e, AgentSelectionNotReady
-                ):
-                    self.back_to_infrastructure()
-                    self._emergency_read_rooms([room])
-                    if getattr(self.task, "emergency_recovery_release", False):
-                        plan.clear()
-                    elif getattr(self.task, "emergency_staffing_members", ()):
-                        self.emergency_state["staffing_complete"] = False
-                        plan.clear()
-                    else:
-                        self.emergency_state.get("staffing_plan", {}).pop(room, None)
-                        plan.pop(room, None)
-                    self.emergency_state["next_read"] = datetime.now()
-                    self._emergency_save()
-                    return False
                 record_selection_retry()
                 if selection_attempted and (
                     isinstance(e, AgentSelectionNotReady)
@@ -18436,9 +18421,9 @@ class BaseSchedulerSolver(
             or getattr(self, "op_data", None) is None
             or any(
                 getattr(task, "emergency_staffing", False)
-                or (task.type == TaskTypes.WORKSHOP and task.plan)
-                for task in self.tasks
+                for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
             )
+            or any(task.type == TaskTypes.WORKSHOP and task.plan for task in self.tasks)
         ):
             return
         if not refresh_workshop_after_inventory_change():
