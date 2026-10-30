@@ -148,3 +148,147 @@ def group_recovery_deadline(data, group, *, now=None):
             latest = max(known)
             deadlines.append(min(latest, cap) if cap is not None else latest)
     return required, max(now, *deadlines) if deadlines else None
+
+
+def _returning_mood(data, op, now):
+    """仅为回班门槛推算已恢复心情，不写入实读或回满证据。"""
+    from arknights_mower.utils.dorm_candidates import scheduling_mood_observation
+
+    observation = scheduling_mood_observation(data, op.name, now)
+    if observation is None:
+        return None
+    mood, observed_at = observation
+    if (
+        getattr(data, "mood_calculation_enabled", False)
+        or not op.is_resting()
+        or observed_at != op.time_stamp
+        or mood >= op.upper_limit
+    ):
+        return mood
+    due = observed_recovery_deadline(data, op.name, now)
+    if due is None or due <= observed_at:
+        return mood
+    return min(
+        op.upper_limit,
+        mood + (op.upper_limit - mood) * (now - observed_at) / (due - observed_at),
+    )
+
+
+def mood_limit_group_return(data, release, tasks, *, now=None):
+    """上限离宿先尝试已有整组回班，原清退保留期限及失败后的执行责任。"""
+    from arknights_mower.utils.dorm_candidates import retained_task_reservations
+    from arknights_mower.utils.operation_timing import estimate_work_minutes
+    from arknights_mower.utils.scheduler_task import TaskTypes, generate_plan_by_drom
+
+    now = now or datetime.now()
+
+    def untouched(task):
+        return not (
+            task.retains_execution
+            or getattr(task, "backup_shift_active", False)
+            or getattr(task, "product_shift_locked", False)
+            or getattr(task, "group_shift_expected", {})
+            or getattr(task, "backup_explicit_slots", ())
+            or getattr(task, "mood_physical_started", False)
+            or getattr(task, "dorm_recovery_restore", ())
+        )
+
+    if (
+        release.type != TaskTypes.RELEASE_DORM
+        or not getattr(release, "strict_mood_limit", False)
+        or release.time > now
+        or not any(task is release for task in tasks)
+        or not untouched(release)
+        or getattr(release, "mood_limit_return_attempted", False)
+    ):
+        return None
+    op = data.operators.get(release.meta_data)
+    if (
+        op is None
+        or not op.is_high()
+        or not op.group
+        or op.room.startswith("dorm")
+        or op.workaholic
+        or data._can_standby(op)
+        or op.multi_group
+        or op.independent_rest
+        or not data.group_is_resting(op.group)
+        or not data.has_rest_mood_limit(op.name)
+        or data.is_free_room_excluded(op.name)
+        or release.release_dorm_targets().get(op.name)
+        != (op.current_room, op.current_index)
+        or getattr(release, "mood_limit", None) not in (None, op.upper_limit)
+    ):
+        return None
+    for task in tasks:
+        if task.type != TaskTypes.SHIFT_ON or not untouched(task):
+            continue
+        if task.plan.get(op.room, [])[op.index : op.index + 1] != [op.name]:
+            continue
+        # 只提取本组正常回班，不能把同批其他组的回班一并提前。
+        _, bed = data.get_dorm_by_name(op.name)
+        if bed is None:
+            continue
+        candidates = generate_plan_by_drom({now: ([bed], False)}, data, now=now)
+        task = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.plan.get(op.room, [])[op.index : op.index + 1] == [op.name]
+            ),
+            None,
+        )
+        if task is None:
+            continue
+        names, slots = retained_task_reservations(
+            data, tasks, returning_groups=[op.group]
+        )
+        if any(
+            name != "Current" and ((room, index) in slots or name in names)
+            for room, row in task.plan.items()
+            for index, name in enumerate(row)
+        ):
+            continue
+        # 工作站先执行；必须给清退对象所在房间及之前的工作站留足操作时间。
+        rooms = [room for room in task.plan if not room.startswith("dorm")]
+        if op.room not in rooms:
+            continue
+        seconds = sum(
+            estimate_work_minutes(room) * 60
+            for room in rooms[: rooms.index(op.room) + 1]
+        )
+        deadline = getattr(release, "mood_limit_deadline", release.time)
+        if now + timedelta(seconds=seconds) > deadline:
+            continue
+        returning = [
+            member
+            for room, row in task.plan.items()
+            if not room.startswith("dorm")
+            for index, name in enumerate(row)
+            if (member := data.operators.get(name)) is not None
+            and (member.room, member.index) == (room, index)
+        ]
+        groups = {member.group for member in returning if member.group}
+        if any(
+            required or due is not None
+            for required, due in (
+                group_recovery_deadline(data, group, now=now) for group in groups
+            )
+        ):
+            continue
+        if any(
+            member.rest_in_full
+            or not member.workaholic
+            and not data._can_standby(member)
+            and (
+                (mood := _returning_mood(data, member, now)) is None
+                or mood <= data.resting_mood_threshold(member)
+            )
+            for member in returning
+        ):
+            continue
+        release.mood_limit_return_attempted = True
+        task.mood_limit_return_name = op.name
+        tasks.append(task)
+        return task
+    return None

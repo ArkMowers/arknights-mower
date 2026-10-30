@@ -1,8 +1,10 @@
+import {planMowerMetadata,planMowerMoodLimitReleases} from './mowerMetadata'
+import {MowerShiftPreviewError} from './mowerNativeErrors'
 import { describe, expect, it } from 'vitest'
 import { advanceRoster, createRosterRuntime, settleRoster, type RuntimeConfig } from './rosterRuntime'
 import { getMowerSourceRuntime } from './mowerSourceRuntime'
 import { mowerCorrectionPlan, planMowerCorrection } from './mowerCorrection'
-import { mowerGroupRecoveryDeadline } from './mowerGroupRecovery'
+import { mowerGroupRecoveryDeadline, mowerMoodLimitGroupReturn } from './mowerGroupRecovery'
 import { mowerHasMeasuredDormDeparture, projectMowerArrangements } from './mowerObservations'
 import { MowerOperatorState } from './mowerOperatorState'
 import { MowerTask, MOWER_TASK_TYPES as T, toMowerMicros } from './mowerTaskQueue'
@@ -699,4 +701,139 @@ describe('independent rooms in a combined recovery task',()=>{
   expect(f.state.occupants.room_1_2_0).toBe('S')
   expect(f.source.queue.tasks.filter(t=>t.plan.central?.includes('C'))).toHaveLength(0)
  })
+})
+
+describe('personal cap group return', () => {
+  function capped() {
+    const f = fixture(11.95)
+    f.task.backupShiftActive = false
+    f.task.strictMoodLimit = true
+    f.task.moodLimit = 12
+    f.task.moodLimitDeadlineMicros = toMowerMicros(1 + 1 / 60)
+    const a = f.source.data.operators.A!, b = f.source.data.operators.B!
+    a.restMoodLimit = true; a.restingPriority = 'low'; a.timeStampMicros = toMowerMicros(1)
+    b.mood = f.state.morale.B = 21; b.timeStampMicros = toMowerMicros(1)
+    f.source.data.dorms[0]!.timeMicros = f.task.moodLimitDeadlineMicros
+    f.source.data.dorms[1]!.timeMicros = toMowerMicros(2)
+    const returning = new MowerTask({time: 1.5, type: T.SHIFT_ON, plan: {room_1_1: ['A'], room_1_2: ['B']}})
+    f.source.queue.tasks = [f.task, returning]
+    return {...f, returning}
+  }
+
+  it('returns the capped group without moving the ordinary return timestamp', () => {
+    const f = capped(), at = f.returning.timeMicros
+    for(let i=0;i<8;i++){finish(f);advanceRoster(f.state,.5/3600,rates)}
+    expect(f.source.data.operators.A!.currentRoom).toBe('room_1_1')
+    expect(f.source.data.operators.B!.currentRoom).toBe('room_1_2')
+    expect(f.source.data.groupIsResting('g')).toBe(false)
+    expect(f.returning.timeMicros).toBe(at)
+    expect(f.source.trace.some(t => t.type === 'RELEASE_DORM')).toBe(false)
+    expect(f.task.moodLimitDeadlineMicros).toBe(toMowerMicros(1 + 1 / 60))
+  })
+
+  it('keeps other merged targets at their original time', () => {
+    const f=capped(),at=f.returning.timeMicros
+    f.returning.plan.factory=['Incoming']
+    const before=structuredClone(f.returning.plan)
+    const candidate=mowerMoodLimitGroupReturn(f.source.data,f.task,f.source.queue.tasks)
+    expect(candidate).toBeDefined()
+    expect(candidate!.plan.factory).toBeUndefined()
+    expect(f.returning.plan).toEqual(before)
+    expect(f.returning.timeMicros).toBe(at)
+  })
+
+  it.each(['bed','unknown','newer','predicted'] as const)('counts elapsed recovery for return thresholds with %s evidence', evidence => {
+    const f=capped(),data=f.source.data,op=data.operators.B!,bed=data.dorms[1]!
+    op.mood=10;op.timeStampMicros=0;op.depletionRate=1
+    bed.timeMicros=toMowerMicros(1+5/60)
+    f.state.morale.B=10+14/(1+5/60)
+    if(evidence==='unknown')bed.timeMicros=undefined
+    if(evidence==='newer')data.dormMoodEstimates.set(op.name,[5,data.nowMicros])
+    if(evidence==='predicted')op.moodIsPrediction=true
+    const original=[op.mood,op.timeStampMicros,op.depletionRate,bed.timeMicros,f.returning.timeMicros]
+    const candidate=mowerMoodLimitGroupReturn(data,f.task,f.source.queue.tasks)
+    expect(!!candidate).toBe(evidence==='bed')
+    expect([op.mood,op.timeStampMicros,op.depletionRate,bed.timeMicros,f.returning.timeMicros]).toEqual(original)
+  })
+
+  it('dispatches a group recovered beyond its stale observation', () => {
+    const f=capped(),data=f.source.data,op=data.operators.B!
+    op.mood=10;op.timeStampMicros=0;op.depletionRate=1
+    data.dorms[1]!.timeMicros=toMowerMicros(1+5/60)
+    f.state.morale.B=10+14/(1+5/60)
+    for(let i=0;i<8;i++){finish(f);advanceRoster(f.state,.5/3600,rates)}
+    expect(data.operators.A!.currentRoom).toBe('room_1_1')
+    expect(op.currentRoom).toBe('room_1_2')
+    expect(f.source.trace.some(t=>t.type==='RELEASE_DORM')).toBe(false)
+  })
+
+  it('preserves retained slot reservations and the mandatory departure', () => {
+    const f=capped()
+    const retained=new MowerTask({type:T.SELF_CORRECTION,plan:{room_1_2:['S']}})
+    retained.executionRetained=true
+    f.source.queue.tasks.push(retained)
+    expect(mowerMoodLimitGroupReturn(f.source.data,f.task,f.source.queue.tasks)).toBeUndefined()
+    expect(f.task.moodLimitReturnAttempted).toBe(false)
+    expect(f.source.queue.tasks).toEqual(expect.arrayContaining([f.task,retained,f.returning]))
+  })
+
+  it('ignores a cap release removed by entry replanning', () => {
+    const f=capped()
+    f.source.queue.consume(f.task)
+    expect(mowerMoodLimitGroupReturn(f.source.data,f.task,f.source.queue.tasks)).toBeUndefined()
+    expect(f.source.queue.tasks).toEqual([f.returning])
+  })
+
+  it('retains the departure attempt across unchanged metadata rebuilds', () => {
+    const f=capped()
+    const release=planMowerMoodLimitReleases(f.source.data)[0]!
+    release.timeMicros=f.source.data.nowMicros
+    release.moodLimitDeadlineMicros=f.task.moodLimitDeadlineMicros
+    f.source.queue.tasks=[release,f.returning]
+    const candidate=mowerMoodLimitGroupReturn(f.source.data,release,f.source.queue.tasks)
+    expect(candidate).toBeDefined()
+    for(let i=0;i<3;i++){
+      planMowerMetadata(f.source.data,f.source.queue)
+      expect(f.source.queue.tasks).toContain(release)
+      expect(mowerMoodLimitGroupReturn(f.source.data,release,f.source.queue.tasks)).toBeUndefined()
+    }
+    expect(release.moodLimitDeadlineMicros).toBe(toMowerMicros(1+1/60))
+  })
+
+  it('executes the original release after failed preview and resumes retained work on new evidence', () => {
+    const f=capped()
+    let calls=0,failed=true
+    f.state.mowerShiftModel={count:1,evaluate:d=>{calls++;if(failed)throw new MowerShiftPreviewError('blocked return');return d.planConditions},swap:d=>d,transition:()=>({}),activate:()=>{}}
+    for(let i=0;i<8;i++){finish(f);advanceRoster(f.state,.5/3600,rates)}
+    expect(f.source.trace.some(t=>t.type==='RELEASE_DORM')).toBe(true)
+    expect(f.source.data.operators.A!.currentRoom).toBe('')
+    const retained=f.source.queue.tasks.find(t=>t.executionFailure&&t.type===T.SHIFT_ON)!
+    expect(retained).toBeDefined()
+    const at=retained.timeMicros,attempts=calls
+    const independent=new MowerTask({time:f.state.time,type:T.NOT_SPECIFIC})
+    f.source.queue.tasks.push(independent)
+    for(let i=0;i<3;i++)finish(f)
+    expect(calls).toBe(attempts)
+    expect(f.source.queue.tasks).not.toContain(independent)
+    expect(retained.timeMicros).toBe(at)
+    failed=false
+    f.source.data.operators.B!.timeStampMicros++
+    for(let i=0;i<8;i++){finish(f);advanceRoster(f.state,.5/3600,rates)}
+    expect(f.source.data.operators.B!.currentRoom).toBe('room_1_2')
+    expect(retained.timeMicros).toBe(at)
+  })
+
+  it.each(['explicit', 'gap', 'threshold', 'late', 'started', 'identity'])('preserves departure when return is blocked by %s', reason => {
+    const f = capped()
+    if(reason === 'explicit') f.source.data.operators.B!.restInFull = true
+    if(reason === 'gap') f.source.data.groupRecoveryFullMembers.g = ['A', 'B']
+    if(reason === 'threshold') f.source.data.operators.B!.mood = f.state.morale.B = 5
+    if(reason === 'late') f.task.moodLimitDeadlineMicros = toMowerMicros(1 + 10 / 3600)
+    if(reason === 'started') f.returning.arrangementStarted = true
+    if(reason === 'identity') f.task.metadata = 'B'
+    finish(f)
+    expect(f.source.trace.some(t => t.type === 'RELEASE_DORM')).toBe(true)
+    expect(f.source.data.operators.B!.isResting()).toBe(true)
+    expect(f.source.data.groupIsResting('g')).toBe(true)
+  })
 })

@@ -38,7 +38,7 @@ pytest arknights_mower/tests/config_backup_tests.py -k 'income or recycling_plan
 
 AI 知识与试排修改执行 `arknights_mower/tests/riic_assistant_tests.py`，涉及真实工具注册或调用再加入 `ai_feature_tests.py`。按需要运行前端生产构建一次，确认独立 Worker 产物；不要在快速迭代中反复构建。
 
-同轮入住预约执行 `npm test -- src/riic/incomeDormReservations.test.js src/riic/vendor/scheduler/mowerSharedGroups.spec.ts`，确认后续组规划不清除较早组的临时床位，完整普通下班规划仍将两组主班送入宿舍并保留工作替班。 普通换人前沿用本体 `departing_plan` 读取离开者心情，确认离宿后保留达标实测并停止旧恢复速度；已恢复组员让床不召回仍在休息的必需成员。追加 `src/riic/vendor/scheduler/mowerCompletedDeparture.spec.ts`，核验期限等号、单人及合并清退、未来恢复期限和个人心情上限。
+同轮入住预约执行 `npm test -- src/riic/incomeDormReservations.test.js src/riic/vendor/scheduler/mowerSharedGroups.spec.ts`，确认后续组规划不清除较早组的临时床位，完整普通下班规划仍将两组主班送入宿舍并保留工作替班。 普通换人前沿用本体 `departing_plan` 读取离开者心情，确认离宿后保留达标实测并停止旧恢复速度；明确回满或整组回满要求未满足时，已恢复组员让床不召回仍在休息的必需成员；个人上限离宿可单独安排本组正常回班，失败时原离宿期限继续有效。追加 `src/riic/vendor/scheduler/mowerCompletedDeparture.spec.ts`，核验期限等号、单人及合并清退、未来恢复期限和个人心情上限。
 
 核对甘特图采样起点、设施及干员分道、窗口导航、筛选和图片导出，并用相同输入比较区间记录开启和关闭时的产出。核对完成后不自动下载、手动导出使用冻结结果，以及取消、创建失败、消息反序、页面卸载和导出失败重试；核对关闭、刷新后恢复上次成功演算，保存不将完整报告转换为单个 JSON 字符串，去除嵌套 Vue 代理后保留共享对象和图片；核对大规模共享报告、输入隔离及旧记录兼容。存储失败保留旧记录、旧窗口保存不覆盖新结果，排班变更后仍导出原快照，以及浅深主题下加高图片的完整二维码回导。用可手算场景验证数量，用代表性完整窗口验证调度和资源。测试通过不能证明真实设备收益。
 
