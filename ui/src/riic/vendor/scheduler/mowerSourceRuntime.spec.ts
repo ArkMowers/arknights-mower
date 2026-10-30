@@ -1,7 +1,8 @@
 import {describe,it,expect} from 'vitest'
 import {createRosterRuntime,settleRoster,advanceRoster,nextRosterActionHours,type RuntimeConfig,type RuntimeState} from './rosterRuntime'
 import {getMowerSourceRuntime,makeMowerSchedulingData} from './mowerSourceRuntime'
-import {mowerUpdateDetail} from './mowerObservations'
+import {mowerUpdateDetail,projectMowerArrangements} from './mowerObservations'
+import {mowerSchedulingMoodObservation} from './mowerSchedulingMood'
 import {alphaRestingTier} from './mowerAlphaDorm'
 import {MowerTask,MOWER_TASK_TYPES as T} from './mowerTaskQueue'
 import {evaluateBackupExpression} from './backupPlans'
@@ -12,6 +13,15 @@ function fixture():RuntimeConfig {
  return {positions:[{id:'room_1_1_0',roomId:'room_1_1',primary:'A',candidates:['R'],lowerLimit:0,upperLimit:24,shiftOffThreshold:15},...keepers.map((name,i)=>({id:'dormitory_1_'+i,roomId:'dormitory_1',primary:name,candidates:[],permanent:true,dormitory:true}))],beds:[{id:'dormitory_1_4',roomId:'dormitory_1',vip:true}],initialMorale:{A:16,R:24},idleOperators:[],mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},mowerSourcePlan:{room_1_1:[{agent:'A',group:'',replacement:['R']}],dormitory_1:[...keepers.map(name=>({agent:name,group:'',replacement:[]})),{agent:'Free',group:'',replacement:[]}]},mowerSourceRules:{workaholic:[],exhaustRequire:[],restInFull:[],lowPriority:[],refreshDrained:[],lingMode:0}}
 }
 describe('integrated Mower source scheduler',()=>{
+ it('retains source mood context when effective rules rebuild a position projection',()=>{
+  const state=createRosterRuntime({...fixture(),mowerAlpha:true}),source=getMowerSourceRuntime(state)
+  source.data.nowMicros=3_600_000_000
+  Object.assign(source.data.operators.A!,{currentRoom:'room_1_1',currentIndex:0,mood:19,timeStampMicros:0,depletionRate:1})
+  const projected=projectMowerArrangements(source.data,[{dormitory_1:['Current','Current','Current','Current','A']}])
+  const rebuilt=makeMowerSchedulingData(state,{data:projected});rebuilt.nowMicros=source.data.nowMicros
+  expect(mowerSchedulingMoodObservation(rebuilt,'A')).toEqual([18,0])
+  expect(mowerSchedulingMoodObservation(source.data,'A')).toEqual([18,0])
+ })
  it('keeps ordinary primaries working above their normal departure threshold in either mood mode',()=>{
   for(const enabled of [false,true]){
    const config=fixture();config.mowerAlpha=true

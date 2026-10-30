@@ -3,6 +3,7 @@
 import {toMowerMicros,fromMowerMicros} from './mowerTaskQueue'
 export interface MowerGroupBinding {group:string;replacement:string[]}
 export interface MowerOperatorOptions {
+ projectedMoodResting?:boolean
  groupBindings?:MowerGroupBinding[]
  alpha?:boolean;temporaryDormFill?:boolean;dormMoodFallback?:string;restMoodReleaseLimit?:number;moodIsPrediction?:boolean
  dormMoodPeers?:Record<string,unknown>
@@ -15,6 +16,8 @@ export interface MowerOperatorOptions {
 }
 export type MowerRecoveryManager=[name:string,index:number,positionVersion:number]
 export class MowerOperatorState {
+ /** Position-only projections retain the room context of the source mood. */
+ projectedMoodResting:boolean|undefined
  temporaryDormFill=false;dormMoodFallback='';restMoodReleaseLimit:number|undefined;moodIsPrediction=false
  customMoodLimit=false
  dormMoodPeers:Record<string,unknown>={}
@@ -30,6 +33,7 @@ export class MowerOperatorState {
  lowerLimit:number;upperLimit:number;workaholic:boolean;exhaustRequire:boolean;restInFull:boolean;restMoodLimit:boolean;workshop:boolean
  constructor(o:MowerOperatorOptions){
   let currentRoom:string|undefined,currentIndex=-1
+  this.projectedMoodResting=o.projectedMoodResting
   this.alpha=o.alpha??false
   this.groupBindings=(o.groupBindings??[]).map(binding=>({group:binding.group,replacement:[...binding.replacement]}))
   this.setProjectedPosition=(room,index)=>{currentRoom=room;this.currentIndex=index}

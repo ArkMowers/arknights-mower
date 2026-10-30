@@ -319,6 +319,8 @@ const excludedGroupOptions = computed(() =>
       <n-form-item v-if="group_rest_in_full_on_mood_gap" label="组内恢复时间差阈值">
         <mower-input-number
           v-model:value="group_mood_gap_threshold_minutes"
+          clearable
+          placeholder="自动：两电90，其余60"
           :min="1"
           :max="1440"
           :step="5"

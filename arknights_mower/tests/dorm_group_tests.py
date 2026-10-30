@@ -2351,7 +2351,7 @@ def test_group_recovery_spread_uses_extremes_and_configured_minutes(
             and "伊内丝" in [name for names in task.plan.values() for name in names]
         )
 
-    assert config.conf.group_mood_gap_threshold_minutes == 60
+    config.conf.group_mood_gap_threshold_minutes = 60
     delayed = return_time()
     assert delayed == max(bed.time for bed in beds)
     config.conf.group_mood_gap_threshold_minutes = 68
@@ -2428,3 +2428,29 @@ def test_completed_group_keeps_personal_release_when_return_is_deferred(
     assert returning.time == now + timedelta(hours=5)
     assert returning.plan["meeting"] == ["伊内丝", "银灰"]
     assert returning.plan["contact"] == ["讯使"]
+
+
+@pytest.mark.parametrize(
+    "power_plants, spread, delayed",
+    [(2, 90, False), (2, 91, True), (3, 60, False), (3, 61, True)],
+)
+def test_group_recovery_default_depends_on_power_plants(
+    solver, power_plants, spread, delayed
+):
+    shift_off(solver)
+    data = solver.op_data
+    data.power_plant_count = power_plants
+    assert config.conf.group_mood_gap_threshold_minutes is None
+    now = datetime.now()
+    beds = [bed for bed in data.dorm if data.operators[bed.name].is_high()]
+    for bed, minutes in zip(beds, (0, 30, spread)):
+        bed.time = now + timedelta(hours=2, minutes=minutes)
+    task = next(
+        task
+        for task in plan_metadata(data, [])
+        if task.type == TaskTypes.SHIFT_ON
+        and "伊内丝" in [name for names in task.plan.values() for name in names]
+    )
+    latest = max(bed.time for bed in beds)
+    assert (task.time == latest) is delayed
+    assert config.conf.group_mood_gap_threshold_minutes is None

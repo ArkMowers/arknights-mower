@@ -49,7 +49,12 @@ def scheduling_mood_observation(op_data, name, now=None, *, estimates=None):
         return (value, now) if value is not None else None
     op = op_data.operators.get(name)
     measured = (
-        (op.mood if op.is_resting() else resting_mood(op, now), op.time_stamp)
+        (
+            op.mood
+            if getattr(op, "_projected_mood_resting", op.is_resting())
+            else resting_mood(op, now),
+            op.time_stamp,
+        )
         if has_resting_mood(op, now)
         and not getattr(op, "mood_is_prediction", False)
         and op.time_stamp <= now
