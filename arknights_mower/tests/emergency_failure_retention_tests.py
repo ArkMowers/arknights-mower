@@ -17,9 +17,11 @@ from arknights_mower.tests.emergency_group_return_tests import (
     legacy_solver as legacy_solver,
 )
 from arknights_mower.tests.emergency_group_staffing_tests import staffing as staffing
+from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.scheduler_recovery_preservation_tests import (
     scheduler as scheduler,
 )
+from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskScope,
@@ -205,6 +207,68 @@ def test_retained_release_is_not_replaced_by_new_reminders(release_failure):
     solver.agent_arrange.assert_called_once()
 
 
+@pytest.mark.parametrize("relation", ["independent", "shared_group", "shared_slot"])
+@pytest.mark.parametrize("saved", [False, True])
+def test_failed_release_protects_only_related_departures(
+    recovery_fixture,  # noqa: F811
+    relation,
+    saved,
+):
+    solver = recovery_fixture.solver
+    state = solver.emergency_state
+    names = list(state["targets"])
+    state["staffing_complete"] = False
+    solver.op_data.operators[names[1]].mood = state["targets"][names[1]] - 1
+
+    def fail(plan, **kwargs):
+        assert set(plan) == {"dormitory_1"}
+        raise base_schedule.RoomArrangementDeferred(
+            "dormitory_1", RuntimeError("返回失败")
+        )
+
+    solver.agent_arrange = Mock(side_effect=fail)
+    assert solver._emergency_release_ready() is False
+    if saved:
+        solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+    retained = next(task for task in solver.tasks if task.emergency_staffing)
+    when, remaining = retained.time, copy.deepcopy(retained.plan)
+    member = names[1] if relation == "shared_group" else names[2]
+    if relation == "shared_slot":
+        roster = solver.op_data.get_current_room("dormitory_1", True)
+        roster[2] = member
+        solver.op_data = solver.op_data.project_arrangements([{"dormitory_1": roster}])
+    op = solver.op_data.operators[member]
+    solver.op_data.update_detail(
+        member, state["targets"][member], op.current_room, op.current_index, True
+    )
+
+    def complete(plan, **kwargs):
+        assert set(plan) == {"dormitory_2"}
+        assert state["release_plan"] == remaining | plan
+        solver.op_data = solver.op_data.project_arrangements([copy.deepcopy(plan)])
+        plan.clear()
+        return True
+
+    solver.agent_arrange = Mock(side_effect=complete)
+    if relation == "independent":
+        assert solver._emergency_release_ready()
+        solver.agent_arrange.assert_called_once()
+        assert not solver.op_data.operators[member].current_room
+        assert member in state["ready_members"]
+    else:
+        assert solver._emergency_release_ready() is False
+        solver.agent_arrange.assert_not_called()
+        assert solver.op_data.operators[member].is_resting()
+    solver.agent_arrange.reset_mock()
+    for _ in range(3):
+        assert solver._emergency_release_ready() is False
+        assert solver.tasks == [retained]
+        assert retained.time == when and retained.plan == remaining
+        assert retained.execution_failure
+        assert state["release_plan"] == remaining
+    solver.agent_arrange.assert_not_called()
+
+
 @pytest.mark.parametrize("partial", [False, True])
 def test_deferred_release_survives_replanning_and_restart(recovery_fixture, partial):  # noqa: F811
     solver = recovery_fixture.solver
@@ -240,6 +304,236 @@ def test_deferred_release_survives_replanning_and_restart(recovery_fixture, part
     assert find_next_task(solver.tasks) is critical
     assert restored.plan == remaining
     assert restored.time == when
+
+
+@pytest.mark.parametrize("kind", ["release", "staffing"])
+@pytest.mark.parametrize("saved", [False, True])
+@pytest.mark.parametrize("shared_candidate", [False, True])
+def test_failed_arrangement_allows_independent_worker_rotation(
+    recovery_fixture,  # noqa: F811
+    kind,
+    saved,
+    shared_candidate,
+):
+    solver = recovery_fixture.solver
+    state = solver.emergency_state
+    data = solver.op_data
+    if kind == "release":
+        data.operators[PRIMARY[1]].mood = 8
+        solver.agent_arrange = Mock(
+            side_effect=base_schedule.RoomArrangementDeferred(
+                "dormitory_1", RuntimeError("返回失败")
+            )
+        )
+        assert solver._emergency_release_ready() is False
+    else:
+        failed_room = data.operators[PRIMARY[0]].room
+        data.add(Operator("芬", "", mood=24, time_stamp=NOW))
+        state["rescue_plan"][failed_room] = ["芬"]
+        state["staffing_plan"] = {failed_room: ["芬"]}
+        state["staffing_complete"] = False
+        state["takeover_complete"] = True
+        failed = SchedulerTask(task_plan=copy.deepcopy(state["staffing_plan"]))
+        failed.emergency_staffing = True
+        failed.emergency_staffing_members = list(state["targets"])
+        solver.tasks.append(failed)
+        solver._retain_failed_task(failed, "选人失败", [failed_room])
+    if saved:
+        state, solver.tasks = jsonpickle.decode(
+            jsonpickle.encode((state, solver.tasks))
+        )
+        solver.emergency_state = state
+    retained = next(task for task in solver.tasks if task.emergency_staffing)
+    when, remaining = retained.time, copy.deepcopy(retained.plan)
+    temporary = copy.deepcopy(state["temporary_roster"])
+    data.add(Operator("年", "", mood=24, time_stamp=NOW))
+    room = data.operators[PRIMARY[2]].room
+    candidate = (
+        (PRIMARY[0] if kind == "release" else "芬") if shared_candidate else "年"
+    )
+    state["worker_replacements"] = {room: [[candidate]]}
+    data.operators[COVERS[2]].mood = 0
+
+    assert solver._emergency_schedule_staffing()
+
+    if shared_candidate:
+        assert solver.tasks == [retained]
+        assert state["rescue_plan"][room] == [COVERS[2]]
+        assert state["temporary_roster"] == temporary
+        assert retained.time == when and retained.plan == remaining
+        assert retained.execution_failure
+        return
+    rotation = next(
+        task
+        for task in solver.tasks
+        if task is not retained and getattr(task, "emergency_staffing", False)
+    )
+    assert rotation.plan == {room: ["年"]}
+    assert state["staffing_plan"] == (
+        ({room: ["年"]}) if kind == "release" else remaining | {room: ["年"]}
+    )
+    assert state["temporary_roster"] == temporary
+    for _ in range(3):
+        solver._emergency_schedule_staffing()
+        assert solver.tasks == [retained, rotation]
+        assert retained.time == when and retained.plan == remaining
+        assert retained.execution_failure
+
+    solver.op_data = data.project_arrangements([rotation.plan])
+    solver.tasks.remove(rotation)
+    completed = solver._emergency_reconcile_staffing()
+    assert completed == (kind == "release")
+    assert state["staffing_complete"] == (kind == "release")
+    assert state["staffing_plan"] == ({} if kind == "release" else remaining)
+    assert solver.op_data.get_current_room(room, True) == ["年"]
+    assert retained.time == when and retained.plan == remaining
+    assert retained.execution_failure
+
+
+@pytest.mark.parametrize("manager", ["闪灵", "菲亚梅塔"])
+@pytest.mark.parametrize("boundary", ["tick", "fixed_plan"])
+def test_pending_release_protects_fixed_manager_target_slot(
+    recovery_fixture,  # noqa: F811
+    manager,
+    boundary,
+):
+    solver = recovery_fixture.solver
+    data, state = solver.op_data, solver.emergency_state
+    data.add(Operator("芬", "", mood=24, time_stamp=NOW))
+    if manager not in data.operators:
+        data.add(Operator(manager, "", mood=24, time_stamp=NOW))
+    current = data.get_current_room("dormitory_1", True)
+    data = solver.op_data = data.project_arrangements(
+        [{"dormitory_1": [*current[:2], PRIMARY[1], "芬", PRIMARY[0]]}]
+    )
+    data.operators[PRIMARY[1]].mood = 8
+    data.operators[manager]._current_room = "train"
+    data.operators[manager].current_index = 1
+    state["dorm_layout"] = {
+        "dormitory_1": ["Free"] * 4 + [manager],
+        "dormitory_2": ["Free"] * 5,
+    }
+    state["staffing_complete"] = False
+    solver.agent_arrange = Mock(
+        side_effect=base_schedule.RoomArrangementDeferred(
+            "dormitory_1", RuntimeError("返回失败")
+        )
+    )
+    assert solver._emergency_release_ready() is False
+    retained = next(task for task in solver.tasks if task.emergency_staffing)
+    remaining, when = copy.deepcopy(retained.plan), retained.time
+    assert remaining == {"dormitory_1": ["Current"] * 4 + [""]}
+    data.operators[manager]._current_room = ""
+    data.operators[manager].current_index = -1
+    state["staffing_complete"] = True
+    solver.plan_metadata = Mock()
+    solver._emergency_read_rooms = Mock(return_value=True)
+    solver._emergency_collect = Mock()
+    solver._emergency_update_targets = Mock()
+    if boundary == "tick":
+        solver._emergency_tick(completed_task=SchedulerTask(task_type=TaskTypes.DEPOT))
+    else:
+        data.plan["dormitory_1"][4].agent = manager
+        solver._emergency_plan_beds(state)
+    assert all(
+        task.plan.get("dormitory_1", ["Current"] * 5)[4] == "Current"
+        for task in solver.tasks
+        if getattr(task, "emergency_dorm", False)
+    )
+    assert retained.time == when and retained.plan == remaining
+    assert retained.execution_failure
+
+
+@pytest.mark.parametrize("saved", [False, True])
+def test_failed_release_tick_fills_independent_empty_bed(
+    recovery_fixture,  # noqa: F811
+    monkeypatch,
+    saved,
+):
+    solver = recovery_fixture.solver
+    state = solver.emergency_state
+    names = list(state["targets"])
+    solver.op_data.operators[names[1]].mood = 8
+    solver.agent_arrange = Mock(
+        side_effect=base_schedule.RoomArrangementDeferred(
+            "dormitory_1", RuntimeError("返回失败")
+        )
+    )
+    assert solver._emergency_release_ready() is False
+    if saved:
+        state, solver.tasks = jsonpickle.decode(
+            jsonpickle.encode((state, solver.tasks))
+        )
+        solver.emergency_state = state
+    retained = next(task for task in solver.tasks if task.emergency_staffing)
+    when, remaining = retained.time, copy.deepcopy(retained.plan)
+    roster = solver.op_data.get_current_room("dormitory_2", True)
+    roster[2] = ""
+    solver.op_data = solver.op_data.project_arrangements([{"dormitory_2": roster}])
+    waiting = names[2]
+    solver.op_data.operators[waiting].mood = 8
+    clock = {"now": emergency.datetime.now()}
+
+    class Clock(emergency.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"]
+
+    monkeypatch.setattr(emergency, "datetime", Clock)
+    solver.plan_metadata = Mock()
+    solver._emergency_read_rooms = Mock(return_value=True)
+    solver._emergency_collect = Mock()
+    solver._emergency_update_targets = Mock()
+    solver._emergency_save = Mock(return_value=True)
+    workshop = Mock()
+    monkeypatch.setattr(emergency, "try_workshop_tasks", workshop)
+    solver.agent_arrange.reset_mock()
+    deadline = state["next_read"]
+
+    solver._emergency_tick(completed_task=SchedulerTask(task_type=TaskTypes.DEPOT))
+
+    fill = next(task for task in solver.tasks if getattr(task, "emergency_dorm", False))
+    assert set(fill.plan) == {"dormitory_2"}
+    assert waiting in fill.plan["dormitory_2"]
+    assert state["release_plan"] == remaining
+    assert state["next_read"] == deadline
+    workshop.assert_called_once_with(solver.op_data, solver.tasks)
+    solver.run_order_solver.assert_called_once()
+    continuation = next(
+        task for task in solver.tasks if getattr(task, "emergency_continuation", False)
+    )
+    continuation_time, fill_time = continuation.time, fill.time
+    pending_tasks = list(solver.tasks)
+    observations = solver._emergency_read_rooms.call_count
+    for _ in range(3):
+        clock["now"] += timedelta(minutes=1)
+        solver._emergency_tick()
+        assert [
+            task for task in solver.tasks if getattr(task, "emergency_dorm", False)
+        ] == [fill]
+        assert fill.time == fill_time
+        assert continuation.time == continuation_time
+        assert retained.time == when and retained.plan == remaining
+        assert retained.execution_failure
+        assert state["next_read"] == deadline
+        assert solver.tasks == pending_tasks
+        assert solver._emergency_read_rooms.call_count == observations
+    solver.agent_arrange.assert_not_called()
+
+    solver.op_data = solver.op_data.project_arrangements([copy.deepcopy(fill.plan)])
+    solver.tasks.remove(fill)
+    solver._emergency_tick(completed_task=fill)
+    assert solver.op_data.operators[waiting].current_room == "dormitory_2"
+    assert retained.execution_failure and retained.plan == remaining
+    assert state["release_plan"] == remaining
+    assert not any(getattr(task, "emergency_dorm", False) for task in solver.tasks)
+    solver.op_data.room_observations["dormitory_1"] = (
+        solver.op_data.room_observations.get("dormitory_1", 0) + 1
+    )
+    solver._resume_failed_tasks()
+    assert not getattr(retained, "execution_failure", None)
+    assert retained in task_view(solver.tasks, TaskScope.DISPATCH, solver.op_data)
+    assert retained.time == when and retained.plan == remaining
 
 
 def test_saved_release_reenters_real_executor_and_finishes(

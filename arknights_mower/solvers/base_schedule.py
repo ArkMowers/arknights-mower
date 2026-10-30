@@ -18421,9 +18421,9 @@ class BaseSchedulerSolver(
             or getattr(self, "op_data", None) is None
             or any(
                 getattr(task, "emergency_staffing", False)
-                or (task.type == TaskTypes.WORKSHOP and task.plan)
-                for task in self.tasks
+                for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
             )
+            or any(task.type == TaskTypes.WORKSHOP and task.plan for task in self.tasks)
         ):
             return
         if not refresh_workshop_after_inventory_change():
