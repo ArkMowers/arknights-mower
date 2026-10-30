@@ -84,7 +84,7 @@ def test_success_is_recorded_once_for_its_starting_game_day(dispatch):
     runner.run.assert_called_once_with()
 
 
-def test_failed_attempt_keeps_work_due_and_releases_unchanged_dispatch(dispatch):
+def test_failed_attempt_remains_due_for_later_normal_dispatch(dispatch):
     scheduler, runner, _, saved, now = dispatch
     runner.run.return_value = False
     original_date = scheduler.daily_event_sign_in
@@ -92,16 +92,28 @@ def test_failed_attempt_keeps_work_due_and_releases_unchanged_dispatch(dispatch)
     for hour in (13, 18, 23):
         now.value = datetime(2026, 10, 25, hour)
         assert scheduler.event_sign_in_plan_solver() is False
-    runner.run.assert_called_once_with()
-    saved.assert_called_once_with()
+    assert runner.run.call_count == 4
+    assert saved.call_count == 4
     assert scheduler.daily_event_sign_in == original_date
     assert scheduler.daily_event_sign_in_attempt == date(2026, 10, 25)
 
     now.value = datetime(2026, 10, 26, 5)
     runner.run.return_value = True
     assert scheduler.event_sign_in_plan_solver() is True
-    assert runner.run.call_count == 2
+    assert runner.run.call_count == 5
     assert scheduler.daily_event_sign_in == date(2026, 10, 26)
+
+
+def test_successful_game_day_is_skipped_without_an_attempt_record(dispatch):
+    scheduler, runner, factory, saved, now = dispatch
+    scheduler.daily_event_sign_in = now.value.date()
+    scheduler.daily_event_sign_in_attempt = None
+
+    assert scheduler.event_sign_in_plan_solver() is False
+
+    runner.run.assert_not_called()
+    factory.assert_not_called()
+    saved.assert_not_called()
 
 
 def test_reenabling_releases_failed_attempt_without_a_timer(dispatch):
@@ -219,7 +231,9 @@ def test_main_dispatches_event_after_mail_and_continues_other_work(
     main.simulate(None)
     assert actions.mock_calls == (
         ([call.mail()] if mail_enabled else [])
-        + [call.event(), call.recruit(), call.recruit()]
+        + [call.event(), call.recruit()]
+        + ([] if completed else [call.event()])
+        + [call.recruit()]
     )
     assert runtime.daily_event_sign_in == (
         date(2026, 10, 25) if completed else date(2026, 10, 24)
@@ -260,3 +274,66 @@ def test_event_daily_state_round_trips_and_old_snapshots_remain_due(
     assert runtime.daily_event_sign_in_attempt == (
         None if legacy else date(2026, 10, 25)
     )
+
+
+@pytest.mark.parametrize("completed", [False, True])
+def test_restored_daily_result_only_skips_a_successful_game_day(
+    monkeypatch, dispatch, tmp_path, completed
+):
+    scheduler, runner, _, _, now = dispatch
+    runtime = main_runtime(monkeypatch, scheduler)
+    runtime.daily_event_sign_in = (
+        now.value.date() if completed else now.value.date() - timedelta(days=1)
+    )
+    runtime.daily_event_sign_in_attempt = now.value.date()
+    runtime.tasks = [SchedulerTask(time=datetime.now() + timedelta(minutes=20))]
+    database = tmp_path / "restored-event-state.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE saved_state (time TEXT, state BLOB)")
+    monkeypatch.setattr(record, "_conn", lambda: sqlite3.connect(database))
+    assert record.save_current_state()
+    saved = record.load_state(strict=True)
+    runtime.daily_event_sign_in = date.min
+    runtime.daily_event_sign_in_attempt = None
+    runtime.rest_until_next_task.side_effect = MowerExit
+
+    main.simulate(saved)
+
+    assert runner.run.call_count == (0 if completed else 1)
+    assert runtime.daily_event_sign_in == now.value.date()
+    assert runtime.daily_event_sign_in_attempt == now.value.date()
+    runtime.recruit_plan_solver.assert_called_once_with()
+
+
+def test_next_normal_dispatch_recovers_without_repeating_a_success(
+    monkeypatch, dispatch
+):
+    scheduler, runner, _, _, now = dispatch
+    runtime = main_runtime(monkeypatch, scheduler)
+    runner.run.side_effect = [False, True]
+    runtime.has_maa_tasks.return_value = True
+    actions = Mock()
+    actions.attach_mock(runner.run, "event")
+    actions.attach_mock(runtime.recruit_plan_solver, "recruit")
+    actions.attach_mock(runtime.maa_plan_solver, "maa")
+
+    def schedule():
+        runtime.tasks = [SchedulerTask(time=datetime.now() + timedelta(minutes=20))]
+
+    runtime.run.side_effect = schedule
+    runtime.rest_until_next_task.side_effect = [None, None, MowerExit]
+
+    main.simulate(None)
+
+    assert actions.mock_calls == [
+        call.event(),
+        call.recruit(),
+        call.maa(),
+        call.event(),
+        call.recruit(),
+        call.maa(),
+        call.recruit(),
+        call.maa(),
+    ]
+    assert runtime.daily_event_sign_in == now.value.date()
+    assert runtime.daily_event_sign_in_attempt == now.value.date()
