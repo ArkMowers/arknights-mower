@@ -84,8 +84,17 @@ def detect_progress(image):
             )
     if not candidates:
         return None
-    candidates.extend((x, y, 0) for x, y in _colored_centers(band, origin))
-    edges = cv2.Canny(gray, 50, 120)
+    circle_candidates = tuple(candidates)
+    tolerance = max(3, height * 0.005)
+    for x, y in _colored_centers(band, origin):
+        # 同一进度行已有圆心时，不再将彩色光圈的碎片补成新圆点。
+        if not any(
+            abs(y - cy) <= tolerance and abs(x - cx) <= 2 * radius
+            for cx, cy, radius in circle_candidates
+        ):
+            candidates.append((x, y, 0))
+    # 抑制细线边缘的像素抖动，避免同一条进度线被拆成短段。
+    edges = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), 50, 120)
     lines = cv2.HoughLinesP(
         edges,
         1,
@@ -102,7 +111,6 @@ def detect_progress(image):
         if abs(y1 - y0) <= max(2, height * 0.003)
     ]
     rows = []
-    tolerance = max(3, height * 0.005)
     for _, center_y, _ in candidates:
         nearby_lines = [
             line for line in horizontal if abs(line[2] - center_y) <= tolerance
@@ -268,15 +276,8 @@ def supplement_day_numbers(image, progress, result, recognize):
             for row in overlaps
         ):
             continue
-        glyph = cv2.copyMakeBorder(
-            band[y : y + height, x : x + width],
-            8,
-            8,
-            8,
-            8,
-            cv2.BORDER_CONSTANT,
-            value=(255, 255, 255),
-        )
+        # 保留字形周边的实际背景，避免白色边框与浅色数字连成一片。
+        glyph = cropimg(band, _scope(x - 8, y - 8, x + width + 8, y + height + 8, band))
         reading = recognize(glyph, use_det=False)
         if not reading or len(reading) != 1:
             continue

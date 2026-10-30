@@ -25,7 +25,7 @@ FIXTURES = Path(__file__).parent / "fixtures/event_sign_in"
 
 
 def frame(name):
-    suffix = "png" if name.startswith("seven_day_four") else "jpg"
+    suffix = "png" if name.startswith("seven_day_") else "jpg"
     image = cv2.cvtColor(
         cv2.imdecode(
             np.fromfile(FIXTURES / f"{name}.{suffix}", np.uint8), cv2.IMREAD_COLOR
@@ -196,6 +196,7 @@ def test_complete_light_and_dark_day_glyphs_are_read_without_mutating_the_frame(
     assert day_positions(rows, progress) == {4: (138, 60)}
     assert recognize.call_count == 1
     assert recognize.call_args.kwargs == {"use_det": False}
+    np.testing.assert_array_equal(recognize.call_args.args[0][0, 0], image[0, 0])
     np.testing.assert_array_equal(image, before)
 
 
@@ -483,6 +484,38 @@ def test_actual_solver_assembles_real_panel_geometry_and_receipts(
     assert page is not None
     assert page.first_day == 1
     assert [(card.day, card.claimed) for card in page.cards] == expected
+
+
+def test_actual_solver_confirms_the_supplied_panel_with_day_seven_unclaimed(
+    local_ocr, monkeypatch
+):
+    from arknights_mower.solvers.event_sign_in import EventSignInSolver
+    from arknights_mower.utils import config
+
+    solver = object.__new__(EventSignInSolver)
+    solver.deadline = time.monotonic() + 180
+    solver.activity_days = None
+    solver.sleep = Mock()
+    solver.recog = SimpleNamespace(
+        img=frame("seven_day_seven_unclaimed_right_20261030"),
+        check_announcement=lambda: (1875, 152),
+        update=Mock(),
+    )
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(rapidocr, "engine", local_ocr)
+
+    page = solver._wait_panel()
+
+    assert page is not None
+    assert (page.progress.total_days, page.progress.unlocked_days) == (7, 7)
+    assert page.first_day == 4
+    assert [(card.day, card.claimed) for card in page.cards] == [
+        (4, True),
+        (5, True),
+        (6, True),
+        (7, False),
+    ]
+    assert solver.recog.update.call_count == 2
 
 
 def test_real_claimed_four_day_prefix_can_be_rechecked_without_reward_clicks(
