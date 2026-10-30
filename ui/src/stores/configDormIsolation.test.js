@@ -70,9 +70,9 @@ describe('宿舍隔离配置', () => {
   })
 })
 
-it('组内恢复时间差默认60分钟，修改后保存并参与排班导出', async () => {
+it('组内恢复时间差未设置时自动选择默认值，显式值保存并参与排班导出', async () => {
   setup()
-  expect(store.group_mood_gap_threshold_minutes).toBe(60)
+  expect(store.group_mood_gap_threshold_minutes).toBeNull()
   axios.get.mockResolvedValue({ data: { ...response, group_mood_gap_threshold_minutes: 75 } })
   await store.load_config()
   expect(store.group_mood_gap_threshold_minutes).toBe(75)
@@ -86,7 +86,8 @@ it('组内恢复时间差默认60分钟，修改后保存并参与排班导出',
   )
   axios.get.mockResolvedValue({ data: response })
   await store.load_config()
-  expect(store.group_mood_gap_threshold_minutes).toBe(60)
+  expect(store.group_mood_gap_threshold_minutes).toBeNull()
+  expect(store.build_advanced_settings().group_mood_gap_threshold_minutes).toBeNull()
 })
 
 it('额外等待上限读取旧值并随修改保存和排班导出', async () => {

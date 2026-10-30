@@ -763,8 +763,8 @@ class RIICPart(ConfModel):
     "使用共用技能规则计算心情，并预测调控普通基建轮班"
     group_rest_in_full_on_mood_gap: bool = True
     "组内高优先干员预计恢复时间差过大时，等待整组回满"
-    group_mood_gap_threshold_minutes: int = Field(default=60, ge=1, le=1440)
-    "组内预计恢复时间差触发延后回班的阈值（分钟）"
+    group_mood_gap_threshold_minutes: int | None = Field(default=None, ge=1, le=1440)
+    "组内预计恢复时间差阈值（分钟）；未设置时两电90，其余60"
     group_mood_gap_max_extra_wait_hours: float = Field(default=0, ge=0, le=24)
     "组内恢复时间差过大时最多额外等待的小时数；0 表示不限时"
     group_mood_gap_exclusions: list[str] = Field(default_factory=list)

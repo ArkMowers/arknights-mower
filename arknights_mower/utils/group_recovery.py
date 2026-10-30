@@ -109,7 +109,10 @@ def group_recovery_deadline(data, group, *, now=None):
         ]
     elif conf.group_rest_in_full_on_mood_gap:
         times = [at for op in gap_workers if (at := completed_at(op)) is not None]
-        limit = timedelta(minutes=conf.group_mood_gap_threshold_minutes)
+        threshold = conf.group_mood_gap_threshold_minutes
+        if threshold is None:
+            threshold = 90 if data.power_plant_count == 2 else 60
+        limit = timedelta(minutes=threshold)
         if len(times) > 1 and max(times) - min(times) > limit:
             latches[group] = [op.name for op in gap_workers]
     gap_names = latches.get(group, [])

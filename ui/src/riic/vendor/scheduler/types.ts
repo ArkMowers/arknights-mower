@@ -24,7 +24,7 @@ export interface SimulationAssumptions {
   dormOrder?: string
   dormIsolation?: string[][]
   groupRestInFullOnMoodGap?: boolean
-  groupMoodGapThresholdMinutes?: number
+  groupMoodGapThresholdMinutes?: number | null
   groupMoodGapMaxExtraWaitHours?: number
   groupMoodGapExclusions?: string[]
   mergeIntervalMinutes?: number
