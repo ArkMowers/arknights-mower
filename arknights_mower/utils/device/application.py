@@ -1834,7 +1834,11 @@ class DeviceControl(Generic[D]):
         self._deferred_close = False
         self._session_error = None
         self._dispatch_pause = None
-        if self._close_result is not None and self._cleanup_device is None:
+        if (
+            self._close_result is not None
+            and self._cleanup_device is None
+            and not getattr(self._preparation, "cleanup_pending", False)
+        ):
             self._pending_close.clear()
             return self._close_result
         self._serial = self.serial

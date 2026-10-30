@@ -196,6 +196,65 @@ class BoundTargetPreparationTests(unittest.TestCase):
         self.assertTrue(result.ok, result.error)
         self.assertEqual(self.locks.held, {self.serial})
 
+    def test_close_retries_retained_preparation_lease_after_release_failure(self):
+        self.assertTrue(self.control.start().ok)
+        lease = self.preparation._lease
+        with patch.object(lease, "close", side_effect=OSError("release failed")):
+            self.assertFalse(self.control.close().ok)
+        self.assertIs(self.preparation._lease, lease)
+        self.assertTrue(self.control.close().ok)
+        self.assertIsNone(self.preparation._lease)
+        self.assertEqual(self.locks.held, set())
+
+    def test_recovery_reacquires_same_endpoint_after_partial_lease_release(self):
+        self.assertTrue(self.control.start().ok)
+        lease = self.preparation._lease
+
+        def partial_release():
+            self.locks.held.discard(self.serial)
+            raise OSError("release acknowledgement failed")
+
+        with patch.object(lease, "close", side_effect=partial_release):
+            self.assertFalse(self.control.close().ok)
+        self.assertEqual(self.locks.held, set())
+
+        def frame(adb_path, serial, timeout):
+            self.assertEqual(self.locks.held, {serial})
+            return (1920, 1080)
+
+        with patch.object(self.adb, "frame_size", side_effect=frame):
+            result = self.control.recover()
+        self.assertTrue(result.ok, result.error)
+        self.assertIsNot(self.preparation._lease, lease)
+        self.assertEqual(self.locks.held, {self.serial})
+
+    def test_pending_physical_cleanup_requires_fresh_authorization(self):
+        self.conf = Conf(
+            device={
+                "preset_id": "manual.physical",
+                "last_serial": self.serial,
+                "adb_path": "manual-adb",
+                "screenshot_backend": "adb_gzip",
+            }
+        )
+        self.simulator.state, self.simulator.serial = "unknown", None
+        self.io.paths.add("verified-adb")
+        self.control._preflight = PreflightService(self.io)
+        self.assertTrue(self.control.start(preparation_serial=self.serial).ok)
+        lease = self.preparation._lease
+        with patch.object(lease, "close", side_effect=OSError("release failed")):
+            self.assertFalse(self.control.close().ok)
+
+        with patch.object(self.adb, "frame_size", wraps=self.adb.frame_size) as frame:
+            recovered = self.control.recover()
+        self.assertFalse(recovered.ok)
+        self.assertEqual(recovered.error.code, "preparation_interrupted")
+        frame.assert_not_called()
+        self.assertIsNone(self.io.override)
+        self.assertEqual(self.locks.held, set())
+        self.assertTrue(self.control.close().ok)
+        self.assertTrue(self.control.start(preparation_serial=self.serial).ok)
+
     def test_authorized_physical_preparation_is_reused_until_frame_ready(self):
         self.conf = Conf(
             device={

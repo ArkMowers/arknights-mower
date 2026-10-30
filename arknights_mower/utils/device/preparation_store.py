@@ -154,7 +154,6 @@ class _SerialLease:
         handle = self._handle
         if handle is None:
             return
-        self._handle = None
         try:
             if os.name == "nt":
                 import msvcrt
@@ -167,6 +166,7 @@ class _SerialLease:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         finally:
             handle.close()
+            self._handle = None
 
 
 class SerialLocks:
