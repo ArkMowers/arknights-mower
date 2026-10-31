@@ -16,7 +16,7 @@ from arknights_mower.tests.multi_group_shift_tests import (
     working_shared_covers as working_shared_covers,
 )
 from arknights_mower.utils.plan import Room
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes, try_reorder
 
 pytestmark = pytest.mark.usefixtures("offline_maintenance")
 
@@ -27,6 +27,11 @@ def test_queued_shift_waits_for_working_primary_covers(working_shared_covers):
     s.op_data = deepcopy(live)
     admitted, queued_plan = shift_off(s, "乙")
     assert admitted
+    for name in (SHARED, "清道夫"):
+        op = s.op_data.operators[name]
+        queued_plan.setdefault(op.current_room, ["Current"] * 5)[op.current_index] = (
+            name
+        )
     s.op_data = live
     assert shift_off(s, "甲")[0]
     s.op_data.commit_group_shifts({"甲": True})
@@ -76,7 +81,8 @@ def test_same_arrangement_must_release_every_working_cover(working_shared_covers
     assert shift_off(s, "甲")[0]
     data = s.op_data
     release = {
-        "central": [A, "Current", *["Current"] * (len(data.plan["central"]) - 2)]
+        "central": [A, "Current", *["Current"] * (len(data.plan["central"]) - 2)],
+        "dormitory_2": ["Current", "Current", "清道夫", "Current", "Current"],
     }
     before = deepcopy(release)
     assert not s.get_resting_plan(data.groups["乙"].copy(), [], release, 0)
@@ -90,6 +96,35 @@ def test_same_arrangement_must_release_every_working_cover(working_shared_covers
     projected = data.project_arrangements([task.plan])
     assert projected.operators[A].current_room == "central"
     assert projected.operators["陈"].current_room == "central"
+
+
+def test_queued_compatible_group_keeps_working_covers(working_shared_covers):
+    s = working_shared_covers
+    assert shift_off(s, "甲")[0]
+    plan, covers = {}, []
+    assert s.get_resting_plan(s.op_data.groups["乙"].copy(), covers, plan, 0)
+    plan.update(try_reorder(s.op_data, plan))
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=plan)
+    original_time = task.time
+    s.task, s.tasks = task, [task]
+    for _ in range(3):
+        s._prepare_group_shift(task)
+        assert task.time == original_time
+        assert s.tasks == [task]
+        assert s.op_data.arrangement_group_transitions(task.plan) == {"乙": True}
+        assert not any(
+            name in (SHARED, "清道夫")
+            for room, row in task.plan.items()
+            if room.startswith("dorm")
+            for name in row
+        )
+    s._prepare_group_shift(task, remember_targets=True)
+    apply(s, task.plan)
+    assert s._complete_group_shift(task)
+    assert s.op_data.group_is_resting("甲")
+    assert s.op_data.group_is_resting("乙")
+    assert s.op_data.operators[B].is_resting()
+    assert s.op_data.operators[SHARED].current_room == "central"
 
 
 @pytest.mark.parametrize("dorm_first", [False, True])

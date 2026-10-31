@@ -25,6 +25,34 @@ function fixture(dorm=false){
 }
 function apply(data:MowerSchedulingData,plan:MowerTaskPlan){expect(normalizeMowerSharedArrangement(data,plan)).toBe(true);return projectMowerArrangements(data,[plan])}
 describe('October 13 shared group bindings and fixed-primary swaps',()=>{
+ it.each([false,true])('keeps a shared working cover while another compatible group rests, observed=%s',observed=>{
+  let data=fixture();data.operators.A!.replacement=['F'];data.operators.F!.groupBindings[1]!.replacement=['C','D']
+  let plan:MowerTaskPlan={},covers:string[]=[]
+  expect(mowerGetRestingPlan(data,data.shiftGroupMembers('a'),covers,plan)).toBe(true)
+  expect(plan.room_1_1).toEqual(['F'])
+  if(observed){data=projectMowerArrangements(data,[plan,mowerTryReorder(data,plan)!]);plan={};covers=[]}
+  expect(mowerGetRestingPlan(data,data.shiftGroupMembers('b'),covers,plan)).toBe(true)
+  if(observed)expect(mowerArrangementGroupTransitions(data,plan)).toEqual({b:true})
+  else expect(plan.room_1_1).toEqual(['F'])
+  expect(plan.room_1_2).toEqual(['Y']);expect(plan.room_1_3).toEqual(['C'])
+  const beds=mowerTryReorder(data,plan)!
+  expect(Object.values(beds).flat()).not.toContain('F')
+  const both=projectMowerArrangements(data,[plan,beds])
+  expect(both.groupIsResting('a')).toBe(true);expect(both.groupIsResting('b')).toBe(true)
+  expect(both.operators.F!.currentRoom).toBe('room_1_1');expect(both.operators.B!.isResting()).toBe(true)
+  expect(covers.length).toBe(new Set(covers).size)
+ })
+ it.each(['intersection','duplicate','departure'])('rejects %s conflicts while retaining a working cover',conflict=>{
+  let data=fixture();data.operators.A!.replacement=['F'];data.operators.F!.groupBindings[1]!.replacement=['C','D']
+  const first:MowerTaskPlan={};expect(mowerGetRestingPlan(data,data.shiftGroupMembers('a'),[],first)).toBe(true)
+  data=projectMowerArrangements(data,[first,mowerTryReorder(data,first)!])
+  if(conflict==='intersection')data.operators.F!.groupBindings[1]!.replacement=['E']
+  if(conflict==='duplicate')data.operators.B!.replacement=['F']
+  const plan:MowerTaskPlan=conflict==='departure'?{dormitory_1:['Current','Current','F','Current','Current']}:{},before=structuredClone(plan),beds=data.dorms.map(b=>b.name)
+  expect(mowerGetRestingPlan(data,data.shiftGroupMembers('b'),[],plan)).toBe(false)
+  expect(plan).toEqual(before);expect(data.dorms.map(b=>b.name)).toEqual(beds)
+  expect(data.operators.F!.currentRoom).toBe('room_1_1')
+ })
  it('keeps a full fixed dorm cover when only its concrete shared binding is resting',()=>{
   const data=fixture(true);data.freeRoom=true
   data.operators.F!.groupBindings[1]!.replacement=['C']

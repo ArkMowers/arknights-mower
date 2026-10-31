@@ -1463,8 +1463,8 @@ class Operators:
         }
         self.commit_group_shifts({})
 
-    def working_replacement_blockers(self, names, plan=None):
-        """其他组仍占用成员的工作替班岗位时，整组等待岗位释放。"""
+    def working_replacement_assignments(self, names, plan=None):
+        """取得本次成员仍承担的其他主班工作岗位。"""
         names = set(names)
         plan = plan or {}
         sources = {}
@@ -1486,7 +1486,7 @@ class Operators:
                 if name in names
             }
         )
-        groups = set()
+        assignments = {}
         for (room, index), name in sources.items():
             op = self.operators[name]
             slots = self.plan.get(room, [])
@@ -1498,8 +1498,24 @@ class Operators:
                 and owner.name not in names
                 and self.is_same_group_primary_replacement(owner, name)
             ):
-                groups.add(owner.group)
-        return groups
+                assignments[owner.name] = name
+        return assignments
+
+    def working_replacement_blockers(self, names, plan=None):
+        """共享成员保留工作替班岗位；实际离岗仍须完成交接。"""
+        plan = plan or {}
+        return {
+            self.operators[owner].group
+            for owner, name in self.working_replacement_assignments(names, plan).items()
+            if not self.operators[name].multi_group
+            or any(
+                target == name
+                and (room, index)
+                != (self.operators[owner].room, self.operators[owner].index)
+                for room, row in plan.items()
+                for index, target in enumerate(row)
+            )
+        }
 
     def normalize_shared_arrangement(
         self,

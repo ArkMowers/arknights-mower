@@ -355,12 +355,12 @@
       "reason": "Keep failed work pending while allowing notification collection, and avoid deriving order wakes without a future observed completion, from calculator ebb743c11964898046d2d00dddf8e96bcf09a522."
     },
     "scheduler/mowerSharedGroups.spec.ts": {
-      "sha256": "45bbb6090a5943ce048ef02bb406a475cc85be42da09c2759300829c5242a2ed",
-      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+      "sha256": "453616664179669f99e9af2b79d0dc0ac2fd915e6814c90a1ea8fb4cde41dd27",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Verify compatible concurrent rest with observed and same-round working covers, unchanged owner-group intent, unique assignment and conflict preservation."
     },
     "scheduler/mowerSharedGroups.ts": {
-      "sha256": "b54fae082304f178a02ff03d76e719f99194957c10b0eb6d36c8cfeba985e28f",
-      "reason": "Synchronize personal recovery through one empty binding from calculator e7e8966330d351539684b1daba82e9ccead48fa1, following the working-primary behavior in Mower alpha 9995754f702d05b0661c9214d7abc62585366027; retain existing bundled recovery and replacement coordination. Restore the configurable extra-wait cap for spread-triggered group recovery, preserving explicit full recovery, completed-member idle release, and cycle-scoped timing across replanning and projections."
+      "sha256": "963c3af6bf3d2ce9ee453ca5658ae340545ddc02ad8ff85f7828694eed167c26",
+      "reason": "Synchronize personal recovery through one empty binding from calculator e7e8966330d351539684b1daba82e9ccead48fa1, following the working-primary behavior in Mower alpha 9995754f702d05b0661c9214d7abc62585366027; retain existing bundled recovery and replacement coordination. Restore the configurable extra-wait cap for spread-triggered group recovery, preserving explicit full recovery, completed-member idle release, and cycle-scoped timing across replanning and projections. Retain compatible shared working covers while other bound groups rest; require a source handoff for explicit moves, including assignments selected in the same planning round."
     },
     "scheduler/mowerGroupFullRecovery.spec.ts": {
       "sha256": "96bbdafc0ed0e249cfb71ef8dc725463ce6efaa0a57895ea76e4aa1bc71013ac",
@@ -583,8 +583,8 @@
       "reason": "Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. Apply saved per-group resting thresholds to ordinary shifts, rescue lines and planning wakes; retain the global fallback for ungrouped and shared primaries and isolate policy mappings. Carry source resting context through nested position-only projections without overwriting measured mood."
     },
     "scheduler/mowerOrdinaryPlanning.ts": {
-      "sha256": "7f332ca3d0749111126b2a02805fc73a8fc704e207190e165f3c3220dede913b",
-      "reason": "Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. Ordinary rescue recall requires connected working operators to stay above personal mood floors until resting primaries reach their personal upper limits; future observations do not shorten this admission horizon. Apply saved per-group resting thresholds to ordinary shifts, rescue lines and planning wakes; retain the global fallback for ungrouped and shared primaries and isolate policy mappings."
+      "sha256": "2d59875dc6428938616b27965b8b50dc0e33df5479fa626135465e7f60dbd9e0",
+      "reason": "Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. Ordinary rescue recall requires connected working operators to stay above personal mood floors until resting primaries reach their personal upper limits; future observations do not shorten this admission horizon. Apply saved per-group resting thresholds to ordinary shifts, rescue lines and planning wakes; retain the global fallback for ungrouped and shared primaries and isolate policy mappings. Include retained working covers in complete matching and exclude them from recovery-bed demand; observed unchanged sources do not introduce group transitions."
     },
     "scheduler/mowerTaskQueue.ts": {
       "sha256": "5d8fae1e629974283464683a2899b7c49a5f6a312c233e77ace507e105d44d48",

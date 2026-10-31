@@ -36,17 +36,25 @@ export function commitMowerGroupShifts(data:MowerSchedulingData,transitions:Mowe
   if(resting.length){op.group=resting.includes(op.group)?op.group:resting[0]!;op.replacement=[...op.replacementsForGroup(op.group)]}
  }
 }
-/** A primary covering another group's working slot cannot leave until that slot is released. */
-export function mowerWorkingReplacementBlocked(data:MowerSchedulingData,names:Iterable<string>,plan:MowerTaskPlan={}):boolean {
- const departing=new Set(names)
+export function mowerWorkingReplacementAssignments(data:MowerSchedulingData,names:Iterable<string>,plan:MowerTaskPlan={}):Record<string,string> {
+ const departing=new Set(names),sources=new Map<string,string>(),assignments:Record<string,string>={}
  for(const name of departing){
-  const op=data.operators[name];if(!op?.currentRoom||op.isResting()||op.currentRoom===op.room&&op.currentIndex===op.index)continue
+  const op=data.operators[name];if(!op?.currentRoom||op.isResting())continue
   const target=plan[op.currentRoom]?.[op.currentIndex]
-  if(target&&target!=='Current'&&target!==name)continue
-  const owner=data.operators[data.plan[op.currentRoom]?.[op.currentIndex]??'']
-  if(owner&&!departing.has(owner.name)&&mowerSameGroupPrimaryReplacement(data,owner,name))return true
+  if(!target||target==='Current'||target===name)sources.set(alphaPosition(op.currentRoom,op.currentIndex),name)
  }
- return false
+ for(const [room,row] of Object.entries(plan))if(!room.startsWith('dorm'))row.forEach((name,index)=>{if(departing.has(name))sources.set(alphaPosition(room,index),name)})
+ for(const [position,name] of sources){
+  const [room,index]=position.split('\0'),op=data.operators[name]!
+  if(room===op.room&&Number(index)===op.index)continue
+  const owner=data.operators[data.plan[room!]?.[Number(index)]??'']
+  if(owner&&!departing.has(owner.name)&&mowerSameGroupPrimaryReplacement(data,owner,name))assignments[owner.name]=name
+ }
+ return assignments
+}
+/** Shared followers may retain their working cover; a move still requires source handoff. */
+export function mowerWorkingReplacementBlocked(data:MowerSchedulingData,names:Iterable<string>,plan:MowerTaskPlan={}):boolean {
+ return Object.entries(mowerWorkingReplacementAssignments(data,names,plan)).some(([owner,name])=>!data.operators[name]!.multiGroup||Object.entries(plan).some(([room,row])=>row.some((target,index)=>target===name&&(room!==data.operators[owner]!.room||index!==data.operators[owner]!.index))))
 }
 /** Mutates only the caller's plan, and only after every shared cover has a matching. */
 export function normalizeMowerSharedArrangement(data:MowerSchedulingData,plan:MowerTaskPlan,transitions=mowerArrangementGroupTransitions(data,plan),explicitSlots:ReadonlySet<string>=new Set()):boolean {
