@@ -724,8 +724,6 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      }
      if(task.exhaustSupport&&task.coordinationRequestNames.length){
       const effective=task.backupShiftConditions?model.swap(projectMowerArrangements(data,[]),task.backupShiftConditions,task.backupGroup):data
-      const projected=projectMowerArrangements(data,[task.plan]),recalls=Object.values(data.operators).some(op=>op.isHigh()&&op.isResting()&&projected.operators[op.name]?.currentRoom===op.room&&!op.room.startsWith('dorm'))
-      if(recalls&&task.ordinaryCoordination&&task.backupShiftConditions&&JSON.stringify(task.backupShiftConditions)!==JSON.stringify(data.planConditions))throw new MowerShiftPreviewError('副表改变召回条件，保留任务等待实际配置确认')
       if(!validateMowerCoordinationSupport(effective,task.plan,task.coordinationRequestNames,options()))throw new MowerShiftPreviewError('替班交接条件已变化，保留原任务等待依赖释放')
      }
      if(task.preferredReplacementRestore&&task.backupShiftConditions){

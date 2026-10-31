@@ -112,9 +112,11 @@ describe('exhaust support dispatch preserves native recovery capacity',()=>{
 
 
 describe('urgent support backup dependencies',()=>{
- it.each([false,true])('validates the final backup before recall (replacement removed=%s)',blocked=>{
+ it.each([[false,false],[true,false],[false,true],[true,true]])('validates the final backup before recall (replacement removed=%s, ordinary=%s)',(blocked,ordinary)=>{
   const {state,source,data,support,retry}=generatedSupport(true),time=retry.timeMicros
-  data.groupRecoveryFullMembers.resting=['B','D']
+  support.ordinaryCoordination=ordinary;retry.ordinaryCoordination=ordinary
+  if(ordinary){data.operators.A!.exhaustRequire=false;state.config.mowerSourceRules!.exhaustRequire=[]}
+  if(!ordinary)data.groupRecoveryFullMembers.resting=['B','D']
   data.planConditions=[false]
   const activations:boolean[][]=[]
   state.mowerShiftModel={...model,count:1,evaluate:d=>[d.operators.B!.currentRoom==='room_1_2'],swap:(d,conditions)=>{
