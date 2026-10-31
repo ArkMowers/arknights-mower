@@ -43,6 +43,58 @@ def test_exhausted_worker_still_respects_explicit_full_recovery(solver):
     assert solver._plan_exhaust_support(["机械师"], urgent=True) is None
 
 
+@pytest.mark.parametrize("urgent", [False, True])
+def test_coordination_keeps_existing_shared_follower_cover(solver, urgent):
+    from datetime import datetime
+
+    from arknights_mower.utils.plan import Room
+
+    plan = solver.global_plan["default_plan"].plan
+    plan["room_3_3"][0].group = "请求组"
+    plan["contact"][0] = Room(
+        "絮雨",
+        "请求组",
+        ["斥罪"],
+        group_bindings=[{"group": "感知", "replacement": ["斥罪"]}],
+    )
+    assert solver.initialize_operators() is None
+    solver.op_data = solver.op_data.project_arrangements(
+        [
+            {
+                "room_3_3": ["机械师"],
+                "room_2_2": ["槐琥"],
+                "contact": ["斥罪"],
+                "meeting": ["能天使"],
+                "dormitory_1": ["冰酿", "闪灵", "苍苔", "Free", "Free"],
+            }
+        ]
+    )
+    now = datetime.now()
+    for op in solver.op_data.operators.values():
+        op.mood, op.time_stamp = 24, now
+    solver.op_data.operators["机械师"].mood = 0
+    solver.op_data.operators["苍苔"].mood = 12
+    solver.check_fia = MagicMock(return_value=([], None))
+    solver.skip = MagicMock()
+    assert solver._plan_exhaust_support(["机械师", "絮雨"], urgent=urgent) == {
+        "room_2_2": ["引星棘刺"]
+    }
+    solver.op_data.reserved_product_replacements.add("斥罪")
+    assert solver._plan_exhaust_support(["机械师", "絮雨"], urgent=urgent) is None
+    solver.op_data.reserved_product_replacements.clear()
+    original = solver.task
+    solver.overtake_room()
+    support = next(
+        task for task in solver.tasks if getattr(task, "exhaust_support", False)
+    )
+    assert support.plan == {"room_2_2": ["引星棘刺"]}
+    assert original in solver.tasks
+    solver.task = support
+    assert solver._coordination_support_valid(support.plan, ["机械师", "絮雨"])
+    assert solver.op_data.get_current_operator("contact", 0).name == "斥罪"
+    solver.enter_room.assert_not_called()
+
+
 def test_failed_support_is_reused_without_rebuilding_request(solver):
     solver.check_fia = MagicMock(return_value=([], None))
     solver.skip = MagicMock()

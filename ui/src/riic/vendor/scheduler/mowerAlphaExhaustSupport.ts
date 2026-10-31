@@ -67,7 +67,7 @@ function planMowerAlphaExhaustAttempt(original:MowerSchedulingData,candidates:st
   const op=state.operators[name],sameGroup=mowerCoordinationPrimaryReplacement(state,target,name,required)
   return !!op&&(!forced.names.has(name)||op.currentRoom===target.room&&op.currentIndex===target.index)&&(!op.isHigh()||sameGroup)&&!protectedNames.has(name)&&!options.reservedSlots?.has(op.currentRoom+'\0'+op.currentIndex)&&!selected.has(name)&&(!required.has(name)||sameGroup)&&!state.excludedCandidates.has(name)&&(op.currentRoom===target.room&&op.currentIndex===target.index||!state.dormReplacementForSlot(name,op.currentRoom,op.currentIndex))&&(target.room.startsWith('dorm')||!state.replacementExhausted(name,target))&&!options.isMasteryBusy?.(name)
  }
- const available=(state:MowerSchedulingData,name:string,target:MowerOperatorState)=>{const op=state.operators[name];return !!op&&eligible(state,name,target)&&(!op.currentRoom||op.isResting()||required.has(name)&&mowerCoordinationPrimaryReplacement(state,target,name,required)&&op.currentRoom===op.room&&op.currentIndex===op.index)}
+ const available=(state:MowerSchedulingData,name:string,target:MowerOperatorState)=>{const op=state.operators[name];return !!op&&eligible(state,name,target)&&(!op.currentRoom||op.isResting()||op.currentRoom===target.room&&op.currentIndex===target.index||required.has(name)&&mowerCoordinationPrimaryReplacement(state,target,name,required)&&op.currentRoom===op.room&&op.currentIndex===op.index)}
  const protectedRest=(state:MowerSchedulingData,name:string)=>{
   const op=state.operators[name]!
   if(!op.isResting())return false

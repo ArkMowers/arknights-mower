@@ -3,14 +3,16 @@ import {advanceRoster,createRosterRuntime,nextRosterActionHours,type RuntimeConf
 import {getMowerSourceRuntime,settleMowerSource} from './mowerSourceRuntime'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,type MowerTaskPlan} from './mowerTaskQueue'
 import {MowerDormState} from './mowerSchedulingData'
+import {validateMowerCoordinationSupport} from './mowerAlphaExhaustSupport'
 import {coalesceMowerBackupTransition,prepareMowerShiftCycle,type MowerShiftModel} from './mowerShiftCycle'
 import {projectMowerArrangements} from './mowerObservations'
 import * as ordinaryPlanning from './mowerOrdinaryPlanning'
 
 const model:MowerShiftModel={count:0,evaluate:data=>data.planConditions,swap:data=>data,transition:()=>({}),activate:()=>{}}
 const rates={workRate:()=>1,recoveryRate:()=>4,forecastRates:(state:RuntimeState)=>({work:Object.fromEntries(Object.keys(state.morale).map(name=>[name,1])),recovery:Object.fromEntries(Object.keys(state.morale).map(name=>[name,4]))})}
-function generatedSupport(recall=false,holdMode?:'while_active'|'forced',requestGroup=false){
+function generatedSupport(recall=false,holdMode?:'while_active'|'forced',requestGroup=false,sharedFollower=false){
  const rows={room_1_1:[{agent:'A',group:requestGroup?'requested':'',replacement:['X']}],room_1_2:[{agent:'B',group:'resting',replacement:recall?['X']:['X','Y']}],room_1_3:[{agent:'C',group:'',replacement:['Z']}],contact:[{agent:'D',group:'resting',replacement:['W']}],dormitory_1:[...['K1','K2'].map(agent=>({agent,group:'',replacement:[]})),...['Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]}))]}
+ if(sharedFollower){rows.room_1_1[0]!.group='requested';Object.assign(rows.contact[0]!,{group:'requested',groupBindings:[{group:'requested',replacement:['W']},{group:'resting',replacement:['W']}]})}
  const config:RuntimeConfig={
   mowerAlpha:true,mowerSourcePlan:rows,
   positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((slot,index)=>slot.agent==='Free'?[]:[{id:room+'_'+index,roomId:room,primary:slot.agent,candidates:slot.replacement,group:slot.group,permanent:room.startsWith('dorm'),dormitory:room.startsWith('dorm')}])),
@@ -30,7 +32,7 @@ function generatedSupport(recall=false,holdMode?:'while_active'|'forced',request
  Object.assign(data.operators.W!,{currentRoom:'contact',currentIndex:0,mood:24,timeStampMicros:0})
  data.dorms=[new MowerDormState(['dormitory_1',2],'B',toMowerMicros(5)),new MowerDormState(['dormitory_1',3],'D',toMowerMicros(5)),new MowerDormState(['dormitory_1',4])]
  if(recall)for(const name of ['B','C','D']){state.morale[name]=20;Object.assign(data.operators[name]!,{mood:20,timeStampMicros:0,depletionRate:1})}
- const exhausted=new MowerTask({type:T.EXHAUST_OFF,metadata:'A'})
+ const exhausted=new MowerTask({type:T.EXHAUST_OFF,metadata:sharedFollower?'A,D':'A'})
  if(holdMode||requestGroup){
   const groupTasks=[[{group:requestGroup?'requested':'resting',action:'off' as const,mode:holdMode??'while_active' as const}]]
   data.backupGroupTasks=groupTasks;data.planConditions=[true]
@@ -54,6 +56,21 @@ function generatedSupport(recall=false,holdMode?:'while_active'|'forced',request
 
 afterEach(()=>vi.restoreAllMocks())
 describe('exhaust support dispatch preserves native recovery capacity',()=>{
+ it('keeps an existing shared-follower cover while releasing another cover',()=>{
+  const {state,source,data,support}=generatedSupport(false,undefined,false,true)
+  expect(support.plan).toEqual({room_1_2:['Y']})
+  expect(validateMowerCoordinationSupport(data,support.plan,['A','D'],{urgentExhaust:true,reservedNames:new Set(['W'])})).toBe(false)
+  for(let n=0;n<40&&!Object.values(state.bedOccupants).includes('A');n++){
+   settleMowerSource(state,rates)
+   if(!Object.values(state.bedOccupants).includes('A'))advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  expect(Object.values(state.bedOccupants)).toContain('A')
+  expect(state.occupants.room_1_1_0).toBe('X')
+  expect(state.occupants.room_1_2_0).toBe('Y')
+  expect(state.occupants.contact_0).toBe('W')
+  expect(source.queue.tasks).not.toContain(support)
+  expect(data.operators.B!.currentRoom).toBe('dormitory_1')
+ })
  for(const recall of [false,true])it(`keeps the last bed available after ${recall?'group recall':'cover swap'} from real runtime generation`,()=>{
   const {data,queue,support,retry}=generatedSupport(recall),original=structuredClone(support.plan),before=JSON.stringify(data),time=support.timeMicros
   prepareMowerShiftCycle(data,support,queue,model)

@@ -240,6 +240,7 @@ def _plan_exhaust_support_attempt(
         return eligible(state, name, target) and (
             not op.current_room
             or op.is_resting()
+            or (op.current_room, op.current_index) == (target.room, target.index)
             or state.is_same_group_primary_replacement(target, name)
             and name in required
             and (op.current_room, op.current_index) == (op.room, op.index)
