@@ -1,4 +1,5 @@
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
+import type {MowerBackupGroupTask} from './mowerBackupGroupTasks'
 import {isTradeRunOrderOperator} from '../domain/shiftRunPolicy'
 import {mowerRestingBindingGroups,mowerSharedReplacements,mowerSameGroupPrimaryReplacement} from './mowerSharedGroups'
 // Decision state for the pinned Mower port. Reservations do not imply physical occupancy.
@@ -11,6 +12,7 @@ export class MowerDormState {
  reset(){this.name='';this.timeMicros=undefined}
 }
 export interface MowerSchedulingDataOptions {
+ backupGroupTasks?:readonly (readonly MowerBackupGroupTask[])[]
  backupExplicitTasks?:readonly MowerTaskPlan[]
  adjustForRunOrders?:boolean
  dormIsolation?:string[][]
@@ -30,6 +32,7 @@ export interface MowerSchedulingDataOptions {
  reservedProductReplacements?:Set<string>;reservedProductBeds?:Map<string,string>;emergencyDormAgents?:Set<string>
 }
 export class MowerSchedulingData {
+ backupGroupTasks:readonly (readonly MowerBackupGroupTask[])[]
  backupExplicitTasks:readonly MowerTaskPlan[]
  adjustForRunOrders:boolean|undefined
  /** Runtime uses October 3 alpha; frozen September fixtures retain their source contract. */
@@ -52,6 +55,7 @@ export class MowerSchedulingData {
  reservedProductReplacements:Set<string>;reservedProductBeds:Map<string,string>;emergencyDormAgents:Set<string>
  constructor(o:MowerSchedulingDataOptions){
   this.backupExplicitTasks=o.backupExplicitTasks??[]
+  this.backupGroupTasks=o.backupGroupTasks??[]
   this.dormIsolation=(o.dormIsolation??[]).map(group=>[...group])
   this.adjustForRunOrders=o.adjustForRunOrders
   this.alpha=o.alpha??false;this.priorityReplacement=o.priorityReplacement??[];this.freeRoomExclusions=o.freeRoomExclusions??[];this.dormOrder=o.dormOrder??[]

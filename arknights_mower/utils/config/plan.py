@@ -278,6 +278,20 @@ class BackupGroup(BaseModel):
     trigger: Trigger | FunctionTrigger = Field(default_factory=Trigger)
 
 
+class GroupTask(BaseModel):
+    group: str = Field(min_length=1)
+    action: Literal["on", "off"] = "off"
+    mode: Literal["once", "while_active", "forced"] = "once"
+
+    @model_validator(mode="after")
+    def validate_mode(self):
+        if not self.group.strip() or self.group != self.group.strip():
+            raise ValueError("绑组任务须填写有效组名")
+        if self.action == "on" and self.mode != "once":
+            raise ValueError("上班任务只执行一次，后续沿用正常轮换")
+        return self
+
+
 class BackupPlan(BaseModel):
     group_ids: list[str] = Field(default_factory=lambda: ["default"], min_length=1)
 
@@ -292,8 +306,16 @@ class BackupPlan(BaseModel):
     conf: BackupPlanConf = Field(default_factory=BackupPlanConf)
     plan: Plan1 = Field(default_factory=Plan1)
     task: Task = Field(default_factory=Task)
+    group_tasks: list[GroupTask] = Field(default_factory=list)
     trigger: Trigger | FunctionTrigger = Field(default_factory=Trigger)
     name: str = "plan"
+
+    @model_validator(mode="after")
+    def unique_group_tasks(self):
+        groups = [task.group for task in self.group_tasks]
+        if len(groups) != len(set(groups)):
+            raise ValueError("同一副表不能重复安排同一绑组")
+        return self
 
 
 class PlanModel(BaseModel):
@@ -331,6 +353,27 @@ class PlanModel(BaseModel):
             for group_id in backup.group_ids:
                 if group_id not in ids:
                     raise ValueError(f"副表 {backup.name} 的分组不存在：{group_id}")
+        return self
+
+    @model_validator(mode="after")
+    def validate_group_task_names(self):
+        known = set()
+        for table in [self.plan1, *(backup.plan for backup in self.backup_plans)]:
+            for room in table.model_dump().values():
+                if not isinstance(room, dict):
+                    continue
+                for slot in room.get("plans", []):
+                    known.add(slot.get("group", ""))
+                    known.update(
+                        binding.get("group", "")
+                        for binding in slot.get("group_bindings", [])
+                    )
+        for backup in self.backup_plans:
+            for task in backup.group_tasks:
+                if task.group not in known:
+                    raise ValueError(
+                        f"副表 {backup.name} 的绑组任务组名不存在：{task.group}"
+                    )
         return self
 
     # 全局运行设置随排班导出；旧排班没有此字段时保留本机现有设置。

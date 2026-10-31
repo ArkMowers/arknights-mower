@@ -157,6 +157,57 @@ describe('manual task dialog', () => {
     expect(state.plan.refs.backup_plans.value[0].task).toEqual({ meeting: ['Free', 'Current'] })
   })
 
+  it('edits backup group modes separately and preserves room tasks', async () => {
+    state.addTask.value = false
+    state.plan.all_groups = ['红松']
+    state.plan.refs.sub_plan.value = 0
+    state.plan.refs.backup_plans.value = [
+      {
+        task: { contact: ['Current'] },
+        group_tasks: [{ group: '红松', action: 'off', mode: 'while_active' }]
+      }
+    ]
+    await nextTick()
+    expect(component.groupTaskOptions.value).toEqual([{ label: '红松', value: '红松' }])
+    component.update_group_task(0, { mode: 'forced' })
+    await nextTick()
+    expect(state.plan.refs.backup_plans.value[0].group_tasks[0].mode).toBe('forced')
+    expect(state.plan.refs.backup_plans.value[0].task).toEqual({ contact: ['Current'] })
+    component.update_group_task(0, { action: 'on' })
+    await nextTick()
+    expect(state.plan.refs.backup_plans.value[0].group_tasks[0]).toEqual({
+      group: '红松',
+      action: 'on',
+      mode: 'once'
+    })
+  })
+
+  it('synchronizes externally replaced group tasks and edits only the selected backup', async () => {
+    state.addTask.value = false
+    state.plan.refs.backup_plans.value = [
+      { task: {}, group_tasks: [{ group: '红松', action: 'off', mode: 'while_active' }] },
+      { task: {}, group_tasks: [{ group: '感知', action: 'off', mode: 'once' }] }
+    ]
+    state.plan.refs.sub_plan.value = 0
+    await nextTick()
+    state.plan.refs.backup_plans.value[0].group_tasks = [
+      { group: '自动化', action: 'off', mode: 'forced' }
+    ]
+    await nextTick()
+    expect(component.group_task_list.value[0].group).toBe('自动化')
+    state.plan.refs.sub_plan.value = 1
+    await nextTick()
+    component.update_group_task(0, { mode: 'while_active' })
+    expect(state.plan.refs.backup_plans.value.map((backup) => backup.group_tasks)).toEqual([
+      [{ group: '自动化', action: 'off', mode: 'forced' }],
+      [{ group: '感知', action: 'off', mode: 'while_active' }]
+    ])
+    component.edit_locked.value = true
+    component.update_group_task(0, { action: 'on' })
+    expect(component.group_task_list.value[0].action).toBe('off')
+    expect(state.plan.refs.backup_plans.value[1].group_tasks[0].action).toBe('off')
+  })
+
   it.each(additionalTypes)('submits %s at the chosen time without a stale roster', async (kind) => {
     expect(component.taskTypeOptions.some((option) => option.value === kind)).toBe(true)
     component.task_type.value = kind

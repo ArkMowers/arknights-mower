@@ -334,6 +334,7 @@ def build_global_plan(
                 backup_config,
                 trigger=backup_trigger,
                 task=backup_task,
+                group_tasks=i.get("group_tasks", []),
                 name=i.get("name"),
                 products=backup_products,
                 group_ids=i["group_ids"],
@@ -875,6 +876,12 @@ class Operators:
             if room and room[0].product == BaseProduct.Electricity
         )
         self.refresh_dorm_manager_flags(force=True)
+        from arknights_mower.utils.backup_group_tasks import validate_group_tasks
+
+        try:
+            validate_group_tasks(self)
+        except ValueError as error:
+            return str(error)
 
     def refresh_dorm_manager_flags(self, *, force=False):
         """标记配置中的宿舍成员及其替班；资源未变时不再匹配。"""
@@ -3198,6 +3205,9 @@ class Operators:
             and self.is_effective_free_slot(bed)
             and (op := self.operators[bed.name]).is_high()
             and self.is_group_shift_anchor(op)
+            and (op.current_room, op.current_index) == bed.position
+            and has_resting_mood(op)
+            and resting_mood(op) < op.upper_limit
             and not self.rest_mood_complete(op.name)
             and (group is None or op.group == group)
             for bed in self.all_dorms()
@@ -3215,18 +3225,25 @@ class Operators:
             and 0 <= op.mood < op.upper_limit
             and op.current_mood() < op.upper_limit
         }
+
+        def has_anchor(group):
+            return bool(group) and (
+                group in anchor_groups or self.has_resting_anchor(group)
+            )
+
         return {
             name
             for name in names
             if self._can_standby(self.operators[name])
             and (
-                self.operators[name].group in anchor_groups
+                has_anchor(self.operators[name].group)
                 or self.operators[name].independent_rest
                 and any(
-                    binding["group"] in anchor_groups
+                    has_anchor(binding["group"])
                     for binding in self.operators[name].group_bindings
                 )
                 or not self.operators[name].group
+                and not self.operators[name].independent_rest
                 and self.has_resting_anchor()
             )
         }
@@ -3344,6 +3361,14 @@ class Operators:
             json.dumps(vars(self.config), sort_keys=True, default=sorted),
             tuple(sorted(self.products.items())),
             tuple(sorted(self.maintenance_primary_slots)),
+            tuple(
+                sorted(
+                    (task["group"], task["action"], task.get("mode", "once"))
+                    for backup, active in zip(self.backup_plans, self.plan_condition)
+                    if active
+                    for task in backup.group_tasks
+                )
+            ),
         )
 
     def validate_backup_plans(

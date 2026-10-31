@@ -223,6 +223,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       for (let b of backup_plans.value) {
         b.group_ids ??= ['default']
         b.type ??= 'global'
+        b.group_tasks ??= []
         b.conf.mood_limits ??= null
         b.conf.operator_mood_limits ??= {}
         b.conf.removed_operators = Object.fromEntries(

@@ -66,10 +66,17 @@ def coordination_reservations(data, tasks, current=None):
 
 
 def _eligible(data, owner, name, protected, slots, is_busy, required=()):
+    from arknights_mower.utils.backup_group_tasks import forced_group_cover_reservations
+
     op = data.operators.get(name)
+    forced, _ = forced_group_cover_reservations(data)
     same_group = data.is_same_group_primary_replacement(owner, name)
     return (
         op is not None
+        and (
+            name not in forced
+            or (op.current_room, op.current_index) == (owner.room, owner.index)
+        )
         and (not op.is_high() or same_group)
         and (name not in required or same_group)
         and name not in protected
@@ -269,6 +276,13 @@ def recall_can_sustain(
     if set(recalled) & active_urgent_recovery(
         original
     ).keys() or urgent_support_blocked(original, candidates):
+        return False
+    from arknights_mower.utils.backup_group_tasks import held_rest_groups
+
+    if any(
+        original.operators[name].group in held_rest_groups(original, forced_only=True)
+        for name in recalled
+    ):
         return False
     now = now or datetime.now()
     for name in recalled:

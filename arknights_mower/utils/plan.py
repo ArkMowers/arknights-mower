@@ -280,6 +280,7 @@ class Plan:
         group_ids: Optional[list[str]] = None,
         backup_type: str = "global",
         group_triggers=None,
+        group_tasks=None,
     ):
         """
         Args:
@@ -295,6 +296,7 @@ class Plan:
         self.backup_type = backup_type
         self.group_triggers = group_triggers or {}
         self.task = task
+        self.group_tasks = copy.deepcopy(group_tasks or [])
         self.name = name
         self.products = products or {}
 

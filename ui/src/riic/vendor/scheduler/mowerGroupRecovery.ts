@@ -1,3 +1,4 @@
+import {mowerHeldRestGroups} from './mowerBackupGroupTasks'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
 import {generateMowerDormTasks} from './mowerDormTasks'
 import {mowerDormCandidateMood,mowerSchedulingMoodObservation} from './mowerSchedulingMood'
@@ -127,7 +128,7 @@ export function mowerMoodLimitGroupReturn(data:MowerSchedulingData,release:Mower
  const untouched=(task:MowerTask)=>!task.retainsExecution&&!task.arrangementStarted&&!task.backupShiftActive&&!task.productShiftLocked&&!task.backupExplicitSlots.size&&!task.backupShiftIntent&&!task.dormRecoveryRestore.length&&!task.arrangementRetryRoom
  if(!data.alpha||release.type!==T.RELEASE_DORM||!release.strictMoodLimit||release.timeMicros>data.nowMicros||!tasks.includes(release)||!untouched(release)||release.moodLimitReturnAttempted)return
  const op=data.operators[release.metadata]
- if(!op?.isHigh()||!op.group||op.room.startsWith('dorm')||op.workaholic||data.canStandby(op)||op.multiGroup||op.independentRest||!data.groupIsResting(op.group)||!op.restMoodLimit||data.freeRoomExcluded(op.name)||release.moodLimit!==undefined&&release.moodLimit!==op.upperLimit)return
+ if(!op?.isHigh()||!op.group||mowerHeldRestGroups(data).has(op.group)||op.room.startsWith('dorm')||op.workaholic||data.canStandby(op)||op.multiGroup||op.independentRest||!data.groupIsResting(op.group)||!op.restMoodLimit||data.freeRoomExcluded(op.name)||release.moodLimit!==undefined&&release.moodLimit!==op.upperLimit)return
  const target=release.releaseDormTargets()[op.name]
  if(!target||target[0]!==op.currentRoom||target[1]!==op.currentIndex)return
  for(const existing of tasks){

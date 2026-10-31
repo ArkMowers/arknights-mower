@@ -513,8 +513,9 @@ def test_ungrouped_standby_does_not_create_independent_return(ungrouped_standby)
 def test_ungrouped_standby_does_not_join_release_only_batch(ungrouped_standby):
     solver, primary, _, anchor, bed = ungrouped_standby
     anchor.operator_type = "low"
-    solver.op_data.operators[DEEP[0]].current_room = "dormitory_2"
     other_bed = solver.op_data.dorm[3]
+    primary_anchor = solver.op_data.operators[DEEP[0]]
+    primary_anchor.current_room, primary_anchor.current_index = other_bed.position
     other_bed.name, other_bed.time = DEEP[0], None
     solver.op_data.config.free_room = True
     assert solver.op_data.is_standby(primary.name)

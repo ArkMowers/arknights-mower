@@ -770,6 +770,9 @@ def simulate(saved):
             base_scheduler.op_data.urgent_recovery_supporters = copy.deepcopy(
                 saved.get("urgent_recovery_supporters", {})
             )
+            base_scheduler.backup_group_task_issued = set(
+                saved.get("backup_group_task_issued", ())
+            )
             base_scheduler.waiting_group_shifts = merge_restored_waiting_shifts(
                 saved.get("waiting_group_shifts", [])
             )

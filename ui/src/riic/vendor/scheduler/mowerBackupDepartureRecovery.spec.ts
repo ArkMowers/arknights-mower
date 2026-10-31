@@ -1,3 +1,4 @@
+import {mowerStandbyCandidates} from './mowerDormAssignment'
 import {completeMowerBackupDepartureRecovery,mowerCoveredRecoveryPending,MowerBackupRecoveryBlocked} from './mowerBackupDepartureRecovery'
 import {describe,it,expect} from 'vitest'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
@@ -252,5 +253,63 @@ describe('projected bed waits require actual recovery evidence',()=>{
   if(invalid==='moved'){resident.currentRoom='';resident.currentIndex=-1}
   expect(parkMowerBackupDepartureRecovery({data,queue},task,failure!)).toBe(false)
   expect(queue.tasks).toContain(task);expect(task.timeMicros).toBe(0)
+ })
+})
+
+describe('existing group recovery supplies standby departure timing',()=>{
+ function restingStandby(){
+  const result=fixture(1),{data}=result
+  data.operators.A!.exhaustRequire=false;data.operators.A!.restingPriority='standby'
+  data.operators.B!.currentRoom='dormitory_1';data.operators.B!.currentIndex=1;data.operators.B!.mood=2
+  data.operators.S!.currentRoom='meeting';data.operators.S!.currentIndex=0
+  data.dorms[0]!.name='B';data.dorms[0]!.timeMicros=3_600_000_000
+  data.groupShiftState.g=true
+  return result
+ }
+ it('completes the real backup preview without a second bed or recalling its resting anchor',()=>{
+  const {data,model,task,queue}=restingStandby()
+  for(let i=0;i<3;i++){
+   prepareMowerShiftCycle(data,task,queue,model)
+   const projected=projectMowerArrangements(data,[task.plan])
+   expect(projected.currentOperator('central',0)?.name).toBe('R')
+   expect(projected.operators.A!.currentRoom).toBe('')
+   expect(projected.operators.B!.isResting()).toBe(true)
+   expect(queue.tasks).toEqual([task]);expect(task.timeMicros).toBe(0)
+   expect(data.currentOperator('central',0)?.name).toBe('A')
+   expect(data.dorms[0]!.name).toBe('B')
+  }
+ })
+ it.each(['restInFull','exhaustRequire','retained'] as const)('keeps the %s bed requirement despite an existing anchor',protection=>{
+  const {data}=restingStandby()
+  if(protection==='retained')data.freeRoomExclusions.push('A')
+  else data.operators.A![protection]=true
+  expect(completeMowerBackupDepartureRecovery(data,{central:['R']},new Set(['central\0'+0]))).toBeUndefined()
+  expect(data.currentOperator('central',0)?.name).toBe('A')
+  expect(data.dorms[0]!.name).toBe('B')
+ })
+ it.each(['full','other','absent','shared','unknown','moved'] as const)('still requires a bed when the existing anchor is %s',invalid=>{
+  const {data}=restingStandby(),op=data.operators.B!
+  if(invalid==='full')op.mood=op.upperLimit
+  if(invalid==='other')op.group='h'
+  if(invalid==='absent'){data.dorms[0]!.reset();op.currentRoom='';op.currentIndex=-1}
+  if(invalid==='unknown')op.timeStampMicros=undefined
+  if(invalid==='moved'){op.currentRoom='';op.currentIndex=-1}
+  if(invalid==='shared')op.groupBindings=[{group:'g',replacement:['S']},{group:'h',replacement:['S']}]
+  // Reserve the bed independently, so a full or absent anchor cannot supply a vacancy.
+  expect(completeMowerBackupDepartureRecovery(data,{central:['R']},new Set(['central\0'+0]),new Set(['dormitory_1\0'+1]))).toBeUndefined()
+ })
+})
+
+
+describe('independent standby recovery anchors',()=>{
+ it.each(['same','other','full'] as const)('uses only unfinished anchors from its named bindings: %s',kind=>{
+  const {data}=fixture(1),op=data.operators.A!,anchor=data.operators.B!
+  op.exhaustRequire=false;op.restingPriority='standby';op.group=''
+  op.groupBindings=[{group:'g',replacement:['R']},{group:'',replacement:['R']}]
+  anchor.currentRoom='dormitory_1';anchor.currentIndex=1;anchor.mood=2
+  data.dorms[0]!.name='B';data.dorms[0]!.timeMicros=3_600_000_000
+  if(kind==='other')anchor.group='h'
+  if(kind==='full')anchor.mood=24
+  expect([...mowerStandbyCandidates(data,['A'])]).toEqual(kind==='same'?['A']:[])
  })
 })

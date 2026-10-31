@@ -7,7 +7,7 @@ export type MowerExhaustRoomContext=Readonly<Record<string,readonly unknown[]>>
 export function mowerExhaustTaskSignatures(data:MowerSchedulingData,tasks:readonly MowerTask[],rooms:MowerExhaustRoomContext={}):Map<MowerTask,string>{
  const signatures=new Map<MowerTask,string>()
  for(const task of tasks){
-  if(task.type!==T.EXHAUST_OFF||Object.keys(task.plan).length||task.retainsExecution)continue
+  if(task.type!==T.EXHAUST_OFF||task.backupGroupRequest||Object.keys(task.plan).length||task.retainsExecution)continue
   const names=new Set(task.metadata.split(','))
   for(const name of [...names]){const op=data.operators[name];if(op?.group)data.group(op.group).forEach(member=>names.add(member))}
   signatures.set(task,JSON.stringify([...names].sort().map(name=>{

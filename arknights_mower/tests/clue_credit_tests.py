@@ -719,6 +719,7 @@ def main_runtime(monkeypatch):
     runtime.op_data.idle_dorm_search_stopped_at = None
     runtime.op_data.party_time = None
     runtime.waiting_group_shifts = []
+    runtime.backup_group_task_issued = set()
     runtime._initial_mood_refresh_rooms = set()
     runtime.emergency_state = None
     runtime.tasks = []
