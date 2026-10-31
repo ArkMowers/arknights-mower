@@ -29,8 +29,15 @@ const activity = () => ({
   ],
   recentEvents: [{ label: '副表切换：鸿雪下班', count: 2 }]
 })
-const render = (value) =>
-  renderToString(createSSRApp({ render: () => h(IncomeActivity, { activity: value }) }))
+const render = (value, historical = false) =>
+  renderToString(createSSRApp({ render: () => h(IncomeActivity, { activity: value, historical }) }))
+it('does not label a finished observation as still running', async () => {
+  const value = { ...activity(), message: '演算正在推进。' }
+  expect(await render(value)).toContain('演算正在推进')
+  const html = await render(value, true)
+  expect(html).not.toContain('演算正在推进')
+  expect(html).toContain('替补干员 斯卡蒂')
+})
 it('renders actual findings, task labels, operators and events in the live and historical observation view', async () => {
   const html = await render(activity())
   expect(html).toContain('替补干员 斯卡蒂')

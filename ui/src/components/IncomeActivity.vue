@@ -1,15 +1,18 @@
 <script setup>
 import { getRoomDisplayName } from '@/riic/vendor/workbench/operatorHelpers'
+import { incomeDiagnosticMessage } from '@/riic/incomeDiagnostics'
 
-defineProps({ activity: { type: Object, required: true } })
+defineProps({ activity: { type: Object, required: true }, historical: Boolean })
 const format = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 3 })
 </script>
 
 <template>
   <div class="income-activity">
-    <p>{{ activity.message }}</p>
+    <p v-if="!historical">{{ activity.message }}</p>
     <ul v-if="activity.findings?.length">
-      <li v-for="(finding, i) in activity.findings" :key="i">{{ finding.message }}</li>
+      <li v-for="(finding, i) in activity.findings" :key="i">
+        {{ incomeDiagnosticMessage(finding) }}
+      </li>
     </ul>
     <p v-if="activity.task">
       {{ activity.task.source === 'active' ? '当前任务' : '最近待执行任务' }}：{{

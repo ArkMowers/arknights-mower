@@ -309,6 +309,24 @@ it('reports storage failure while keeping the completed result exportable', asyn
   await page.exportImage()
   expect(downloadIncomeImage).toHaveBeenCalledOnce()
 })
+it('shows failed-attempt diagnostics separately from the retained successful result', async () => {
+  await page.readCache()
+  await page.start()
+  const saved = { ...success(), diagnostics: [{ code: 'OLD_MODEL', message: '旧结果模型说明' }] }
+  workers[0].onmessage({ data: { type: 'complete', result: saved } })
+  await page.start()
+  const diagnostics = [
+    { code: 'SIMULATION_EVENT_LIMIT', message: '达到 200000 个积分区间，结果未完成' }
+  ]
+  workers[1].onmessage({
+    data: { type: 'complete', result: { success: false, error: '演算未完成', diagnostics } }
+  })
+  expect(page.state.result.diagnostics).toEqual(saved.diagnostics)
+  expect(page.attemptDetails.value).toEqual(diagnostics)
+  expect(page.outcomeLabel.value).toBe('演算未完成')
+  expect(page.activeTab.value).toBe('logs')
+  expect(saveIncomeArchive).toHaveBeenCalledTimes(1)
+})
 it('does not let a late archive read replace a new calculation or a closed dialog', async () => {
   let done
   loadIncomeArchive.mockImplementationOnce(

@@ -1,6 +1,7 @@
 import { runCalculationBridge } from './vendor/workbench/calculationBridge'
 import { incomeRequest } from './income'
 import { incomeEventLog } from './incomeLogs'
+import { incomeFailureMessage } from './incomeDiagnostics'
 import { incomeOrderDistribution } from './incomeOrders'
 import { createRecruitmentObservation } from './incomeRecruitment'
 import { createClueObservation } from './incomeClues'
@@ -39,6 +40,7 @@ export function calculateIncome(plan, settings, onProgress) {
     .slice(0, 200)
     .map((d) => ({
       code: d.code,
+      severity: d.severity,
       message:
         (d.code === 'MOWER_CLUE_OBSERVATION_MODEL'
           ? '线索产量按交流固定开启计算；调度侧 Party Time 仍为空，不执行线索待办及交流任务。'
@@ -50,7 +52,7 @@ export function calculateIncome(plan, settings, onProgress) {
   if (!result.success || !result.report)
     return {
       success: false,
-      error: result.error || diagnostics.map((d) => d.message).join('；') || '演算未完成',
+      error: incomeFailureMessage(result, diagnostics, settings),
       diagnostics
     }
   const days = simulation.observedHours / 24

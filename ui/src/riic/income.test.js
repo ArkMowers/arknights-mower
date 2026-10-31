@@ -82,6 +82,19 @@ describe('income export calculation', () => {
     expect(modelSettings()).toEqual(settings)
   })
   it.each([
+    ['warmupDays', 3, 28, 200000],
+    ['warmupDays', 3, 90, 600000],
+    ['warmupDays', 30, 90, 774194],
+    ['warmupDays', 0, 1, 200000]
+  ])(
+    'bounds the calculation allowance for %s=%s and %s sampled days',
+    (_, warmupDays, sampleDays, limit) => {
+      const { options } = incomeRequest(plan(), { ...modelSettings(), warmupDays, sampleDays })
+      expect(options.simulationOptions.maxEvents).toBe(limit)
+      expect(options.simulationOptions.maxStepHours).toBe(0.25)
+    }
+  )
+  it.each([
     ['warmupDays', -1],
     ['warmupDays', 31],
     ['sampleDays', 0],
