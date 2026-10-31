@@ -1,15 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, ref } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import TaskDialog from './TaskDialog.vue'
 import axios from 'axios'
+import { apply_operator_replace, collect_plan_operators } from '@/utils/plan_edit'
 
-const state = vi.hoisted(() => ({ plan: null, config: null, mower: null }))
+const state = vi.hoisted(() => ({
+  plan: null,
+  config: null,
+  mower: null,
+  show: null,
+  addTask: null
+}))
 vi.mock('pinia', () => ({ storeToRefs: (store) => store.refs }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
   inject: (key, fallback) => {
-    if (key === 'show_task' || key === 'add_task') return ref(true)
+    if (key === 'show_task') return state.show
+    if (key === 'add_task') return state.addTask
     if (key === 'planStore') return state.plan
     return fallback
   }
@@ -44,6 +52,8 @@ describe('manual task dialog', () => {
   let scope
   let component
   beforeEach(() => {
+    state.show = ref(true)
+    state.addTask = ref(true)
     state.plan = {
       plan: {},
       refs: { sub_plan: ref('main'), backup_plans: ref([]), operators: ref([]) }
@@ -55,6 +65,97 @@ describe('manual task dialog', () => {
     component = scope.run(() => TaskDialog.setup({}, { expose: vi.fn() }))
   })
   afterEach(() => scope.stop())
+
+  it('副表任务随一键替换和任务重新载入更新，后续编辑保留新名字', async () => {
+    state.show.value = false
+    state.addTask.value = false
+    state.plan.refs.sub_plan.value = 0
+    state.plan.refs.backup_plans.value = [
+      { task: { central: ['凯尔希·思衡托', '凯尔希', 'Current'], meeting: ['Free'] } },
+      { task: { contact: ['凯尔希·思衡托'] } }
+    ]
+    await nextTick()
+    state.show.value = true
+    await nextTick()
+    expect(component.task_list.value[0].operators).toEqual(['凯尔希·思衡托', '凯尔希', 'Current'])
+    state.show.value = false
+    state.plan.refs.sub_plan.value = 'main'
+    await nextTick()
+
+    // 模拟重新载入排班：任务编辑器不能继续持有上一份任务数组。
+    state.plan.refs.backup_plans.value = JSON.parse(
+      JSON.stringify(state.plan.refs.backup_plans.value)
+    )
+    const planState = { backup_plans: state.plan.refs.backup_plans.value }
+    expect(collect_plan_operators(planState)).toContain('凯尔希·思衡托')
+    apply_operator_replace(planState, '凯尔希·思衡托', '阿米娅')
+    expect(planState.backup_plans[0].task.central).toEqual(['阿米娅', '凯尔希', 'Current'])
+    expect(planState.backup_plans[1].task.contact).toEqual(['阿米娅'])
+
+    state.plan.refs.sub_plan.value = 0
+    await nextTick()
+    expect(component.task_list.value).toEqual([
+      { room: 'central', operators: ['阿米娅', '凯尔希', 'Current'] },
+      { room: 'meeting', operators: ['Free'] }
+    ])
+    component.update_task(1, { operators: ['Free', '能天使'] })
+    await nextTick()
+    expect(planState.backup_plans[0].task).toEqual({
+      central: ['阿米娅', '凯尔希', 'Current'],
+      meeting: ['Free', '能天使']
+    })
+    expect(planState.backup_plans[1].task).toEqual({ contact: ['阿米娅'] })
+    expect(collect_plan_operators(planState)).not.toContain('凯尔希·思衡托')
+  })
+
+  it('打开的副表任务随外部数据更新，切换副表不会写回旧任务', async () => {
+    state.show.value = false
+    state.addTask.value = false
+    state.plan.refs.backup_plans.value = [
+      { task: { central: ['凯尔希·思衡托'] } },
+      { task: { meeting: ['能天使'] } }
+    ]
+    state.plan.refs.sub_plan.value = 0
+    await nextTick()
+    state.show.value = true
+    await nextTick()
+    expect(component.task_list.value).toEqual([{ room: 'central', operators: ['凯尔希·思衡托'] }])
+    state.plan.refs.backup_plans.value[0].task = { central: ['阿米娅'] }
+    await nextTick()
+    expect(component.task_list.value).toEqual([{ room: 'central', operators: ['阿米娅'] }])
+
+    state.plan.refs.sub_plan.value = 1
+    await nextTick()
+    expect(component.task_list.value).toEqual([{ room: 'meeting', operators: ['能天使'] }])
+    component.update_task(0, { room: 'contact' })
+    await nextTick()
+    expect(state.plan.refs.backup_plans.value.map((backup) => backup.task)).toEqual([
+      { central: ['阿米娅'] },
+      { contact: ['能天使'] }
+    ])
+  })
+
+  it('保留未选房间的多行草稿，并通过编辑事件增删任务和更改干员', async () => {
+    state.addTask.value = false
+    state.plan.refs.backup_plans.value = [{ task: {} }]
+    state.plan.refs.sub_plan.value = 0
+    component.task_list.value = [component.new_task(), component.new_task()]
+    await nextTick()
+    expect(component.task_list.value).toHaveLength(2)
+    component.update_task(0, { room: 'central', operators: ['凯尔希·思衡托'] })
+    component.update_task(1, { room: 'meeting', operators: ['Free', 'Current'] })
+    await nextTick()
+    expect(state.plan.refs.backup_plans.value[0].task).toEqual({
+      central: ['凯尔希·思衡托'],
+      meeting: ['Free', 'Current']
+    })
+    component.task_list.value = component.task_list.value.slice(1)
+    expect(state.plan.refs.backup_plans.value[0].task).toEqual({ meeting: ['Free', 'Current'] })
+    component.edit_locked.value = true
+    component.update_task(0, { operators: ['阿米娅'] })
+    expect(component.task_list.value[0].operators).toEqual(['Free', 'Current'])
+    expect(state.plan.refs.backup_plans.value[0].task).toEqual({ meeting: ['Free', 'Current'] })
+  })
 
   it.each(additionalTypes)('submits %s at the chosen time without a stale roster', async (kind) => {
     expect(component.taskTypeOptions.some((option) => option.value === kind)).toBe(true)

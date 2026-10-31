@@ -4,6 +4,7 @@ import { createPinia } from 'pinia'
 import axios from 'axios'
 import { usePlanStore, useRescuePlanStore } from './plan'
 import { createSaveCoordinator } from '@/utils/configPersistence'
+import { apply_operator_replace } from '@/utils/plan_edit'
 
 vi.mock('axios', () => ({ default: { post: vi.fn(), get: vi.fn() } }))
 
@@ -38,6 +39,44 @@ function setup() {
 }
 
 describe('schedule save coalescing', () => {
+  it('一键替换副表任务后自动保存新名字，重新载入保留任务位置与占位符', async () => {
+    const { normal, loaded } = setup()
+    axios.get.mockResolvedValue({
+      data: {
+        conf: {},
+        plan1: {},
+        backup_plans: [
+          {
+            conf: {},
+            plan: {},
+            task: { central: ['凯尔希·思衡托', '凯尔希', 'Current'], meeting: ['Free'] }
+          },
+          { conf: {}, plan: {}, task: { contact: ['凯尔希·思衡托'] } }
+        ]
+      }
+    })
+    await normal.load_plan()
+    loaded.value = true
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledOnce())
+    apply_operator_replace(
+      { main_plan: normal.plan, backup_plans: normal.backup_plans },
+      '凯尔希·思衡托',
+      '阿米娅'
+    )
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
+    const payload = axios.post.mock.lastCall[1]
+    expect(payload.backup_plans.map((backup) => backup.task)).toEqual([
+      { central: ['阿米娅', '凯尔希', 'Current'], meeting: ['Free'] },
+      { contact: ['阿米娅'] }
+    ])
+    loaded.value = false
+    axios.get.mockResolvedValue({ data: structuredClone(payload) })
+    await normal.load_plan()
+    expect(normal.build_plan().backup_plans.map((backup) => backup.task)).toEqual(
+      payload.backup_plans.map((backup) => backup.task)
+    )
+  })
+
   it('serializes and sends only the first and latest of eight edits while a request is pending', async () => {
     const { normal, loaded } = setup()
     const first = deferred()
