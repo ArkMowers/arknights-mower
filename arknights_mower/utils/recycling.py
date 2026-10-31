@@ -72,6 +72,25 @@ def _unconfirmed(reason, **details):
     return None
 
 
+def _label_evidence(labels):
+    evidence = []
+    for box, text, confidence in labels[:8]:
+        try:
+            score = float(confidence)
+        except (TypeError, ValueError, OverflowError):
+            score = None
+        try:
+            points = (
+                None
+                if box is None
+                else [[float(point[0]), float(point[1])] for point in box[:4]]
+            )
+        except (TypeError, ValueError, IndexError, OverflowError):
+            points = None
+        evidence.append({"text": str(text)[:80], "confidence": score, "box": points})
+    return evidence
+
+
 def read_recycling_materials(image):
     """Return complete name/count observations, or None on uncertainty.
 
@@ -92,7 +111,9 @@ def read_recycling_materials(image):
             image[top:bottom, 1410:] = 0
     labels = _ocr(image[640:705])
     if not 1 <= len(labels) <= 8:
-        return _unconfirmed("名称数量无效", labels=len(labels))
+        return _unconfirmed(
+            "名称数量无效", labels=len(labels), candidates=_label_evidence(labels)
+        )
     circles = cv2.HoughCircles(
         cv2.cvtColor(image[280:850], cv2.COLOR_RGB2GRAY),
         cv2.HOUGH_GRADIENT,
@@ -108,6 +129,7 @@ def read_recycling_materials(image):
             "奖励圆与名称数量不一致",
             labels=len(labels),
             circles=0 if circles is None else len(circles[0]),
+            candidates=_label_evidence(labels),
         )
     centers = sorted(float(circle[0]) for circle in circles[0])
     # 提示遮住奖励行时，可见材料仍须围绕屏幕中央排列；只剩左侧几件时
