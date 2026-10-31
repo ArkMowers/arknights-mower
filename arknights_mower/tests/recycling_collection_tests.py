@@ -175,7 +175,7 @@ def test_archived_sugar_reward_name_icon_and_quantity(real_ocr, monkeypatch):
     assert recycling.read_recycling_materials(image) == {"糖": 1}
 
 
-def test_multiple_rewards_require_every_label(real_ocr, monkeypatch):
+def test_multiple_rewards_require_every_icon_and_quantity(real_ocr, monkeypatch):
     monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
     image = np.zeros((1080, 1920, 3), dtype=np.uint8)
     crop = reward_frame()[415:705, 820:1100]
@@ -183,6 +183,8 @@ def test_multiple_rewards_require_every_label(real_ocr, monkeypatch):
     image[415:705, 1000:1280] = crop
     assert recycling.read_recycling_materials(image) == {"装置": 2}
     image[640:705, 1000:1280] = 0
+    assert recycling.read_recycling_materials(image) == {"装置": 2}
+    image[570:625, 1000:1280] = 0
     assert recycling.read_recycling_materials(image) is None
 
 
@@ -193,13 +195,22 @@ def test_wrong_icon_does_not_confirm_ocr_name(real_ocr, monkeypatch):
     assert recycling.read_recycling_materials(image) is None
 
 
-def test_unknown_name_and_inexact_quantity_reject(monkeypatch):
+def material_ocr_readings(name="装置", count="1", *, name_score=1.0, count_score=1.0):
     box = [[925, 12], [997, 12], [997, 48], [925, 48]]
-    monkeypatch.setattr(recycling, "_ocr", Mock(return_value=[(box, "不明物品", 1)]))
-    assert recycling.read_recycling_materials(reward_frame()) is None
-    monkeypatch.setattr(
-        recycling, "_ocr", Mock(side_effect=[[(box, "装置", 1)], [(box, "1.2万", 1)]])
-    )
+
+    def read(image, *, use_det=True):
+        if use_det:
+            return [(box, name, name_score)]
+        assert image.ndim == 2
+        return [(None, count, count_score)]
+
+    return Mock(side_effect=read)
+
+
+def test_unknown_name_uses_the_icon_but_inexact_quantity_rejects(monkeypatch):
+    monkeypatch.setattr(recycling, "_ocr", material_ocr_readings(name="不明物品"))
+    assert recycling.read_recycling_materials(reward_frame()) == {"装置": 1}
+    monkeypatch.setattr(recycling, "_ocr", material_ocr_readings(count="1.2万"))
     assert recycling.read_recycling_materials(reward_frame()) is None
 
 
@@ -302,6 +313,8 @@ def test_multiple_rewards_remain_complete_beside_notifications(real_ocr, monkeyp
     image[:, 1410:] = notification_reward_frame()[:, 1410:]
     assert recycling.read_recycling_materials(image) == {"装置": 2}
     image[640:705, 1000:1280] = 0
+    assert recycling.read_recycling_materials(image) == {"装置": 2}
+    image[570:625, 1000:1280] = 0
     assert recycling.read_recycling_materials(image) is None
 
 
@@ -558,7 +571,13 @@ def test_windows_unicode_icon_failure_still_records_archived_reward(
     recycling._material_icon.cache_clear()
     solver._recycling_pending = {"id": "windows-unicode-icon"}
     solver.scene = Mock(return_value=Scene.INFRA_MAIN)
-    solver._finish_recycling_collection()
+    with monkeypatch.context() as pool_patch:
+        pool_patch.setattr(
+            recycling,
+            "recycling_model",
+            lambda: {"ordinary": [{"name": "固源岩组"}], "extra": []},
+        )
+        solver._finish_recycling_collection()
     result = record.get_recycling_history("2000-01-01", "2100-01-01")
     assert result["total"] == 1
     assert result["records"][0]["materials"] == {"固源岩组": 1}
@@ -578,8 +597,7 @@ def test_unavailable_material_icon_preserves_unknown_collection(
         )
     elif content is not None:
         (tmp_path / "装置.webp").write_bytes(content)
-    box = [[925, 12], [997, 12], [997, 48], [925, 48]]
-    monkeypatch.setattr(recycling, "_ocr", Mock(return_value=[(box, "装置", 1)]))
+    monkeypatch.setattr(recycling, "_ocr", material_ocr_readings())
     monkeypatch.setattr(recycling, "_icon_directory", lambda: tmp_path)
     recycling._material_icon.cache_clear()
     solver = collection_solver()
@@ -597,23 +615,29 @@ def test_unavailable_material_icon_preserves_unknown_collection(
 @pytest.mark.parametrize(
     "name_score,count_score,icon_score,expected",
     [
-        (0.90, 0.90, 0.90, {"装置": 1}),
-        (0.89, 1.0, 1.0, None),
+        (0.90, 0.90, 0.91, {"装置": 1}),
+        (0.89, 1.0, 1.0, {"装置": 1}),
         (1.0, 0.89, 1.0, None),
         (1.0, 1.0, 0.89, None),
     ],
 )
-def test_relaxed_confidence_requires_name_icon_and_quantity(
+def test_confidence_requires_icon_and_quantity_but_not_name(
     monkeypatch, name_score, count_score, icon_score, expected
 ):
-    box = [[925, 12], [997, 12], [997, 48], [925, 48]]
     monkeypatch.setattr(
         recycling,
         "_ocr",
-        Mock(side_effect=[[(box, "装置", name_score)], [(box, "1", count_score)]]),
+        material_ocr_readings(name_score=name_score, count_score=count_score),
     )
     monkeypatch.setattr(
-        recycling.cv2, "minMaxLoc", Mock(return_value=(0.0, icon_score, (0, 0), (0, 0)))
+        recycling,
+        "recycling_model",
+        lambda: {"ordinary": [{"name": "装置"}], "extra": []},
+    )
+    monkeypatch.setattr(
+        recycling.cv2,
+        "minMaxLoc",
+        Mock(return_value=(0.0, icon_score, (0, 0), (30, 5))),
     )
     assert recycling.read_recycling_materials(reward_frame()) == expected
 
@@ -1033,7 +1057,7 @@ def test_excel_download_route_authentication_dates_and_attachment(db, monkeypatc
 @pytest.mark.parametrize(
     "name,count,confidence,reason",
     [
-        ("不明物品", "1", 1.0, "材料名称未确认"),
+        ("不明物品", "I", 1.0, "材料数量未确认"),
         ("装置", "1", 0.89, "材料数量未确认"),
         ("装置", "I", 1.0, "材料数量未确认"),
     ],
@@ -1041,18 +1065,17 @@ def test_excel_download_route_authentication_dates_and_attachment(db, monkeypatc
 def test_rejected_observation_logs_stage_and_ocr_evidence(
     monkeypatch, name, count, confidence, reason
 ):
-    box = [[925, 12], [997, 12], [997, 48], [925, 48]]
     monkeypatch.setattr(
         recycling,
         "_ocr",
-        Mock(side_effect=[[(box, name, 1.0)], [(box, count, confidence)]]),
+        material_ocr_readings(name=name, count=count, count_score=confidence),
     )
     log = Mock()
     monkeypatch.setattr(recycling, "logger", log)
     assert recycling.read_recycling_materials(reward_frame()) is None
     args = log.debug.call_args.args
     assert args[1] == reason
-    assert args[2]["name"] == name
+    assert args[2]["name"] == "装置"
     if reason == "材料数量未确认":
         assert args[2]["text"] == count
         assert args[2]["confidence"] == confidence

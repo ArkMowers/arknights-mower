@@ -42,7 +42,7 @@ def background_text_frame(centers=(960,)):
 
 
 @pytest.mark.parametrize("centers", [(960,), (780, 1140)])
-def test_real_ocr_extra_text_keeps_the_complete_batch_unknown(centers):
+def test_real_ocr_extra_text_without_an_icon_does_not_veto_the_batch(centers):
     image = background_text_frame(centers)
     before = image.copy()
     raw_labels = recycling._ocr(image[640:705])
@@ -50,7 +50,7 @@ def test_real_ocr_extra_text_keeps_the_complete_batch_unknown(centers):
     assert texts.count("HELLO") == 1
     assert texts.count("装置") == len(centers)
 
-    assert recycling.read_recycling_materials(image) is None
+    assert recycling.read_recycling_materials(image) == {"装置": len(centers)}
 
     assert np.array_equal(image, before)
 
@@ -76,9 +76,13 @@ def test_missing_circle_cannot_hide_a_second_real_name_plate(monkeypatch):
         maxRadius=105,
     )
     assert observed is not None and observed.shape[1] == 2
-    monkeypatch.setattr(
-        recycling.cv2, "HoughCircles", lambda *_args, **_kwargs: observed[:, :1]
-    )
+
+    def miss_one_in_the_full_row(gray, *args, **kwargs):
+        if gray.shape == (570, 1920):
+            return observed[:, :1]
+        return circles(gray, *args, **kwargs)
+
+    monkeypatch.setattr(recycling.cv2, "HoughCircles", miss_one_in_the_full_row)
 
     assert recycling.read_recycling_materials(image) is None
 
@@ -98,7 +102,8 @@ def missing_right_geometry_frame(monkeypatch):
     right_plate = image[640:705, 1000:1280]
     bright_text = cv2.cvtColor(right_plate, cv2.COLOR_RGB2GRAY) > 180
     right_plate[~bright_text] = 0
-    observed = recycling.cv2.HoughCircles(
+    circles = recycling.cv2.HoughCircles
+    observed = circles(
         cv2.cvtColor(image[280:850], cv2.COLOR_RGB2GRAY),
         cv2.HOUGH_GRADIENT,
         1.2,
@@ -110,9 +115,13 @@ def missing_right_geometry_frame(monkeypatch):
     )
     assert observed is not None and observed.shape[1] == 2
     left_circle = observed[:, [int(np.argmin(observed[0, :, 0]))]]
-    monkeypatch.setattr(
-        recycling.cv2, "HoughCircles", lambda *_args, **_kwargs: left_circle
-    )
+
+    def miss_one_in_the_full_row(gray, *args, **kwargs):
+        if gray.shape == (570, 1920):
+            return left_circle
+        return circles(gray, *args, **kwargs)
+
+    monkeypatch.setattr(recycling.cv2, "HoughCircles", miss_one_in_the_full_row)
     return image
 
 
@@ -157,19 +166,24 @@ def test_unknown_second_reward_cannot_be_discarded_with_its_missing_geometry(
     assert recycling.read_recycling_materials(image) is None
 
 
-def test_conflicting_names_on_one_plate_remain_unknown_with_ocr_evidence(monkeypatch):
+def test_uncertain_icon_preserves_conflicting_name_candidates(monkeypatch):
     box = [[925, 12], [997, 12], [997, 48], [925, 48]]
     ocr = Mock(return_value=[(box, "装置", 0.99), (box, "糖", 0.98)])
     monkeypatch.setattr(recycling, "_ocr", ocr)
+    monkeypatch.setattr(
+        recycling.cv2,
+        "HoughCircles",
+        lambda *_args, **_kwargs: np.array([[[960, 250, 95]]]),
+    )
     log = Mock()
     monkeypatch.setattr(recycling, "logger", log)
 
-    assert recycling.read_recycling_materials(reward_frame()) is None
+    image = reward_frame()
+    image[415:570] = 0
+    assert recycling.read_recycling_materials(image) is None
 
     ocr.assert_called_once()
     details = log.debug.call_args.args[2]
-    assert details["labels"] == 2
-    assert details["circles"] == 1
     assert details["candidates"] == [
         {"text": "装置", "confidence": 0.99, "box": box},
         {"text": "糖", "confidence": 0.98, "box": box},
@@ -178,15 +192,21 @@ def test_conflicting_names_on_one_plate_remain_unknown_with_ocr_evidence(monkeyp
 
 def test_rejected_ocr_candidates_have_bounded_text_and_coordinates(monkeypatch):
     box = np.arange(12, dtype=np.float32).reshape(6, 2)
-    labels = [(box, str(index) + "字" * 120, np.float32(0.95)) for index in range(10)]
+    labels = [(box, str(index) + "字" * 120, np.float32(0.95)) for index in range(65)]
     monkeypatch.setattr(recycling, "_ocr", Mock(return_value=labels))
+    monkeypatch.setattr(
+        recycling.cv2,
+        "HoughCircles",
+        lambda *_args, **_kwargs: np.array([[[960, 250, 95]]]),
+    )
     log = Mock()
     monkeypatch.setattr(recycling, "logger", log)
 
-    assert recycling.read_recycling_materials(reward_frame()) is None
+    image = reward_frame()
+    image[415:570] = 0
+    assert recycling.read_recycling_materials(image) is None
 
     details = log.debug.call_args.args[2]
-    assert details["labels"] == 10
     candidates = details["candidates"]
     assert len(candidates) == 8
     for index, candidate in enumerate(candidates):

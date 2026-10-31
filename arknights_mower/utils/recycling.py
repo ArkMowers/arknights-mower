@@ -91,12 +91,26 @@ def _label_evidence(labels):
     return evidence
 
 
+def _best_material_icon(image, center, icons):
+    left, right = max(0, round(center) - 140), min(1920, round(center) + 140)
+    if right - left < 220:
+        return None
+    region = cv2.cvtColor(image[415:575, left:right], cv2.COLOR_RGB2BGR)
+    best = None
+    for name, (template, mask) in icons.items():
+        scores = cv2.matchTemplate(region, template, cv2.TM_CCORR_NORMED, mask=mask)
+        _, score, _, location = cv2.minMaxLoc(scores)
+        if np.isfinite(score) and (best is None or score > best[1]):
+            best = (name, score, left + location[0] + 110, location[1] - 5)
+    return best
+
+
 def read_recycling_materials(image):
     """Return complete name/count observations, or None on uncertainty.
 
     The caller confirms the material scene and collection source. The supplied
-    standard popup has one row of name plates at y=640..705; unsupported rows,
-    unknown names, absent icons and uncertain counts do not produce estimates.
+    standard popup has one reward row. Each circle selects its highest-scoring
+    material icon; absent icons and uncertain counts do not produce estimates.
     """
     if (
         not isinstance(image, np.ndarray)
@@ -109,11 +123,6 @@ def read_recycling_materials(image):
         image = image.copy()
         for top, bottom in notifications:
             image[top:bottom, 1410:] = 0
-    labels = _ocr(image[640:705])
-    if not 1 <= len(labels) <= 8:
-        return _unconfirmed(
-            "名称数量无效", labels=len(labels), candidates=_label_evidence(labels)
-        )
     circles = cv2.HoughCircles(
         cv2.cvtColor(image[280:850], cv2.COLOR_RGB2GRAY),
         cv2.HOUGH_GRADIENT,
@@ -124,9 +133,13 @@ def read_recycling_materials(image):
         minRadius=85,
         maxRadius=105,
     )
-    if circles is None or len(circles[0]) != len(labels):
+    labels = _ocr(image[640:705])
+    if len(labels) > 64:
+        logger.debug("回收站名称候选仅处理前 64 条：%s", len(labels))
+        labels = labels[:64]
+    if circles is None or not 1 <= len(circles[0]) <= 8:
         return _unconfirmed(
-            "奖励圆与名称数量不一致",
+            "奖励圆数量无效",
             labels=len(labels),
             circles=0 if circles is None else len(circles[0]),
             candidates=_label_evidence(labels),
@@ -139,47 +152,115 @@ def read_recycling_materials(image):
         return _unconfirmed("提示遮挡后的奖励未居中", centers=centers)
     if any(not 515 <= circle[1] + 280 <= 545 for circle in circles[0]):
         return _unconfirmed("奖励圆纵向位置无效", circles=circles[0].tolist())
-    materials = {}
-    matched_centers = set()
-    for box, text, confidence in labels:
+    if any(not 125 <= center <= 1795 for center in centers):
+        return _unconfirmed("奖励圆横向位置无效", centers=centers)
+    try:
+        model = recycling_model()
+        names = {row["name"] for row in model["ordinary"] + model["extra"]}
+    except (OSError, ValueError, KeyError, TypeError):
+        names = set()
+    names = {
+        name
+        for name in names
+        if isinstance(name, str)
+        and (entry := key_mapping.get(name)) is not None
+        and entry[3] == "MATERIAL"
+    }
+    required_names = names.copy()
+    for _, text, _ in labels:
         name = re.sub(r"\s", "", text)
         entry = key_mapping.get(name)
-        if (
-            not np.isfinite(confidence)
-            or confidence < 0.90
-            or entry is None
-            or entry[3] != "MATERIAL"
-        ):
-            return _unconfirmed("材料名称未确认", name=name[:80], confidence=confidence)
-        center = round(
-            (min(point[0] for point in box) + max(point[0] for point in box)) / 2
-        )
-        if center < 140 or center > 1780:
-            return _unconfirmed("名称位置超出范围", center=center)
-        if row_occluded and center + 140 > 1410:
-            return _unconfirmed("收取提示遮挡材料", name=name, center=center)
-        nearest = min(centers, key=lambda value: abs(value - center))
-        if abs(nearest - center) > 15 or nearest in matched_centers:
+        if entry is not None and entry[3] == "MATERIAL":
+            names.add(name)
+    directory = str(_icon_directory())
+    icons = {}
+    for name in sorted(names):
+        icon = _material_icon(directory, name)
+        if icon is None and name in required_names:
+            return _unconfirmed("材料图标缺失", name=name, directory=directory)
+        if icon is not None:
+            icons[name] = icon
+    rewards = []
+    for center in centers:
+        best = _best_material_icon(image, center, icons)
+        if best is None or best[1] <= 0.90:
             return _unconfirmed(
-                "名称与奖励圆位置不匹配", name=name, center=center, nearest=nearest
+                "材料图标未确认",
+                center=center,
+                match=best,
+                candidates=_label_evidence(labels),
             )
-        matched_centers.add(nearest)
-        icon = _material_icon(str(_icon_directory()), name)
-        if icon is None:
+        name, score, icon_center, vertical_offset = best
+        if not 140 <= icon_center <= 1780 or abs(icon_center - center) > 15:
             return _unconfirmed(
-                "材料图标缺失", name=name, directory=str(_icon_directory())
+                "材料图标与奖励圆位置不匹配",
+                name=name,
+                center=icon_center,
+                circle=center,
+                confidence=score,
             )
-        template, mask = icon
-        region = cv2.cvtColor(
-            image[415:575, center - 140 : center + 140], cv2.COLOR_RGB2BGR
+        if row_occluded and icon_center + 140 > 1410:
+            return _unconfirmed("收取提示遮挡材料", name=name, center=icon_center)
+        rewards.append((name, icon_center, vertical_offset))
+    checked_centers = set()
+    for box, _, _ in labels:
+        try:
+            if len(box) != 4 or any(len(point) != 2 for point in box):
+                continue
+            points = np.asarray(box, dtype=float)
+            if not np.isfinite(points).all():
+                continue
+            left, top = points.min(axis=0)
+            right, bottom = points.max(axis=0)
+            if not (0 <= left < right <= 1920 and 0 <= top < bottom <= 65):
+                continue
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if any(value - 140 <= left < right <= value + 140 for value in centers):
+            continue
+        center = round((left + right) / 2)
+        if center in checked_centers:
+            continue
+        checked_centers.add(center)
+        left, right = max(0, center - 140), min(1920, center + 140)
+        local_circles = cv2.HoughCircles(
+            cv2.cvtColor(image[400:660, left:right], cv2.COLOR_RGB2GRAY),
+            cv2.HOUGH_GRADIENT,
+            1.2,
+            160,
+            param1=100,
+            param2=50,
+            minRadius=85,
+            maxRadius=105,
         )
-        scores = cv2.matchTemplate(region, template, cv2.TM_CCORR_NORMED, mask=mask)
-        score = cv2.minMaxLoc(scores)[1]
-        if not np.isfinite(score) or score < 0.90:
-            return _unconfirmed("材料图标不匹配", name=name, confidence=score)
-        # 数量位置由已确认的名称与奖励圆确定，避免再次检测把单个数字旋斜。
+        if local_circles is None:
+            continue
+        for x, y, radius in local_circles[0]:
+            if not (
+                radius <= x <= right - left - radius and radius <= y <= 260 - radius
+            ):
+                continue
+            x, y = float(x + left), float(y + 400)
+            if (
+                125 <= x <= 1795
+                and 515 <= y <= 545
+                and min(abs(value - x) for value in centers) > 15
+            ):
+                return _unconfirmed(
+                    "存在未定位的奖励圆",
+                    circle=(x, y, float(radius)),
+                    circles=centers,
+                    candidates=_label_evidence(labels),
+                )
+    materials = {}
+    for name, center, vertical_offset in rewards:
+        # 图标模板在标准奖励中的顶边为 y=420，数量区域随其实际位置平移。
         quantity = cv2.cvtColor(
-            image[570:625, center + 10 : center + 90], cv2.COLOR_RGB2GRAY
+            image[
+                570 + vertical_offset : 625 + vertical_offset,
+                center + 10 : center + 90,
+            ],
+            cv2.COLOR_RGB2GRAY,
         )
         quantity = cv2.threshold(quantity, 200, 255, cv2.THRESH_BINARY)[1]
         counts = _ocr(quantity, use_det=False)
