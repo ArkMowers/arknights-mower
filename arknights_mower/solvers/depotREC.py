@@ -150,6 +150,12 @@ class depotREC(SceneGraphSolver):
     def 读取龙门币数字(self, 数字图片):
         """Read a complete LMD amount, including its displayed unit."""
         try:
+            # 标准画面帧中数字位于这段高度内，图标笔画延伸到上下边界。
+            # 保留整行宽度，只去除与上下边界连通的图标和背景。
+            _, 数字图片 = cv2.threshold(数字图片[12:46, :], 180, 255, cv2.THRESH_BINARY)
+            _, 连通区域 = cv2.connectedComponents(数字图片)
+            边界区域 = np.unique(np.concatenate((连通区域[0], 连通区域[-1])))
+            数字图片[np.isin(连通区域, 边界区域)] = 0
             if rapidocr.engine is None:
                 rapidocr.initialize_ocr()
             result, _ = rapidocr.engine(
