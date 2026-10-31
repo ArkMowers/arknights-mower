@@ -526,6 +526,7 @@ class BaseSchedulerSolver(
         self.task = None
         self.tasks = []
         self.waiting_group_shifts = []
+        self.backup_group_task_issued = set()
         self.free_clue = None
         self.credit_fight = None
         self.maa_daily_completed = {}
