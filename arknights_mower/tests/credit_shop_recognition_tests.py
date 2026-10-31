@@ -1,4 +1,4 @@
-"""信用商店数字未知时结束购物，不购买或推导信用缺口。"""
+"""信用商店保留未完成的识别，未知数字不参与购买或信用缺口计算。"""
 
 from pathlib import Path
 from threading import Event
@@ -11,7 +11,7 @@ import pytest
 
 from arknights_mower.solvers import clue_credit
 from arknights_mower.solvers import shop as shop_module
-from arknights_mower.solvers.shop import CreditShop
+from arknights_mower.solvers.shop import CreditShop, CreditShopIncomplete
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.scene import Scene
@@ -178,7 +178,7 @@ def test_unreliable_match_never_becomes_a_digit(shopping, monkeypatch, score):
         ("shop_particles_20261031_071524.jpg", 582),
     ],
 )
-def test_archived_particle_frames_end_shopping_without_purchase(
+def test_archived_particle_frames_without_action_remain_unconfirmed(
     shopping, filename, balance
 ):
     image = cv2.imread(str(FIXTURES / filename), cv2.IMREAD_GRAYSCALE)
@@ -189,7 +189,8 @@ def test_archived_particle_frames_end_shopping_without_purchase(
     assert shopping.number(PRICE_SCOPE, thres=180) is None
     assert shopping.product_info() is False
     shopping.on_demand = True
-    assert shopping.transition() is True
+    with pytest.raises(CreditShopIncomplete):
+        shopping.transition()
     assert_no_purchase_or_recovery(shopping)
 
 
@@ -267,7 +268,7 @@ def test_particle_instead_of_skill_book_volume_invalidates_product_list(
 
 @pytest.mark.parametrize("field", ["discount", "price", "volume"])
 @pytest.mark.parametrize("by_value,on_demand", POLICIES)
-def test_unknown_product_field_stops_each_shopping_policy(
+def test_unknown_product_field_retains_each_shopping_policy(
     shopping, monkeypatch, field, by_value, on_demand
 ):
     skill_book_card(shopping, monkeypatch)
@@ -279,7 +280,8 @@ def test_unknown_product_field_stops_each_shopping_policy(
     config.conf.credit_shop_by_value = by_value
     shopping.on_demand = on_demand
     assert shopping.product_info() is False
-    assert shopping.transition() is True
+    with pytest.raises(CreditShopIncomplete):
+        shopping.transition()
     assert_no_purchase_or_recovery(shopping)
 
 
@@ -311,14 +313,15 @@ def test_incomplete_product_reading_exposes_no_partial_or_previous_list(
 
 
 @pytest.mark.parametrize("by_value,on_demand", POLICIES)
-def test_unknown_balance_ends_before_product_or_purchase_decisions(
+def test_unknown_balance_remains_unfinished_without_purchase_decisions(
     shopping, by_value, on_demand
 ):
     shopping.product_info = Mock(return_value=True)
     config.conf.credit_shop_by_value = by_value
     shopping.on_demand = on_demand
     assert shopping.credit_remain() is None
-    assert shopping.transition() is True
+    with pytest.raises(CreditShopIncomplete):
+        shopping.transition()
     shopping.product_info.assert_not_called()
     assert_no_purchase_or_recovery(shopping)
 
@@ -339,9 +342,10 @@ def test_on_demand_caller_does_not_collect_board_credit_for_unknown_readings(
     caller._visit_clue_message_board = Mock()
     caller.scene_graph_navigation = Mock()
 
-    caller._run_on_demand_clue_shop()
+    with pytest.raises(CreditShopIncomplete):
+        caller._run_on_demand_clue_shop()
 
     assert_no_purchase_or_recovery(shopping)
     caller._visit_clue_message_board.assert_not_called()
-    caller.scene_graph_navigation.assert_called_once_with(Scene.INFRA_MAIN)
+    caller.scene_graph_navigation.assert_not_called()
     assert not config.stop_mower.is_set()

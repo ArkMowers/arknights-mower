@@ -1,3 +1,6 @@
+from copy import deepcopy
+from time import monotonic
+
 import cv2
 
 from arknights_mower.models import noto_sans, riic_base_digits, shop
@@ -7,6 +10,8 @@ from arknights_mower.utils.credit_shop import (
     select_value_product,
     value_purchase_deficit,
 )
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.growth_value import price_catalog
 from arknights_mower.utils.image import cropimg, thres2
@@ -24,16 +29,162 @@ for i in range(2):
         card_list.append((left + j * (card_w + gap), top + i * (card_h + gap)))
 
 
+class CreditShopIncomplete(Exception):
+    """购物尚未完成，保留已发送操作及最后观测供原任务续行。"""
+
+    def __init__(self, message, pending_reward=None, observation=None):
+        super().__init__(message)
+        self.pending_reward = deepcopy(pending_reward)
+        self.observation = deepcopy(observation or {})
+        self.continuation = {}
+
+
 class CreditShop(SceneGraphSolver):
-    def run(self, *, on_demand=False):
+    REWARD_TIMEOUT = 10.0
+    REWARD_POLL_INTERVAL = 0.25
+
+    def run(self, *, on_demand=False, resume=None):
         self.on_demand = on_demand
         self.credit_deficit = None
         self.selected_product = None
         self.rejected_product = None
         self.purchase_rechecks = 0
         self.value_catalog = None
+        self.pending_reward = deepcopy(resume)
+        self.selected_balance = None
+        self.selected_slot = None
+        self.selected_game_day = None
+        self.selected_catalog = None
         logger.info("Start: 信用商店购物")
-        super().run()
+        result = super().run()
+        if result is not True:
+            self._incomplete("信用商店流程尚未完成", self._shop_observation())
+        return result
+
+    def _select_product(self, product, balance):
+        self.selected_product = product
+        self.selected_balance = balance
+        self.selected_slot = self.products.index(product)
+        self.selected_game_day = get_server_time().date().isoformat()
+        self.selected_catalog = self._catalog(self.products)
+        self.tap(product["touch"])
+
+    @staticmethod
+    def _catalog(products):
+        return [
+            {key: product[key] for key in ("name", "price", "discount")}
+            if product is not None
+            else None
+            for product in products
+        ]
+
+    def _shop_observation(self, scene=None):
+        scene = self.scene() if scene is None else scene
+        observation = {
+            "scene": scene,
+            "balance": None,
+            "products": None,
+            "collectable": False,
+        }
+        if scene == Scene.SHOP_CREDIT:
+            observation["game_day"] = get_server_time().date().isoformat()
+            observation["collectable"] = bool(self.find("shop_collect"))
+            observation["balance"] = self.credit_remain()
+            if observation["balance"] is not None and self.product_info():
+                observation["products"] = deepcopy(self.products)
+            elif observation["balance"] is None:
+                self.products = []
+        elif scene == Scene.SHOP_CREDIT_CONFIRM:
+            observation["cart_available"] = bool(self.find("shop_cart"))
+        return observation
+
+    @staticmethod
+    def _reward_complete(observation, reward):
+        if (
+            observation["scene"] != Scene.SHOP_CREDIT
+            or observation["balance"] is None
+            or observation["products"] is None
+        ):
+            return False
+        if (
+            reward.get("dismissed")
+            and reward.get("game_day") is not None
+            and observation.get("game_day") is not None
+            and reward["game_day"] != observation["game_day"]
+            and (
+                observation["collectable"]
+                or (
+                    reward.get("catalog") is not None
+                    and CreditShop._catalog(observation["products"])
+                    != reward["catalog"]
+                )
+            )
+        ):
+            return True
+        if reward["kind"] == "collect":
+            return not observation["collectable"]
+        slot = reward.get("slot")
+        return slot is None or (
+            0 <= slot < len(observation["products"])
+            and observation["products"][slot] is None
+        )
+
+    @classmethod
+    def can_resume(cls, recog, pending):
+        reader = object.__new__(cls)
+        reader.recog = recog
+        observation = reader._shop_observation()
+        if observation == pending["observation"]:
+            return False
+        reward = pending.get("reward")
+        if reward is not None:
+            if observation["scene"] == Scene.MATERIEL and not reward["dismissed"]:
+                return True
+            if reader._reward_complete(observation, reward):
+                reward["dismissed"] = True
+                return True
+            return False
+        return (
+            observation["scene"] == Scene.SHOP_CREDIT
+            and observation["balance"] is not None
+            and observation["products"] is not None
+        ) or (
+            observation["scene"] == Scene.SHOP_CREDIT_CONFIRM
+            and observation["cart_available"]
+        )
+
+    def _incomplete(self, message, observation):
+        self.credit_deficit = None
+        raise CreditShopIncomplete(
+            message,
+            pending_reward=getattr(self, "pending_reward", None),
+            observation=observation,
+        )
+
+    def _finish_reward(self):
+        deadline = monotonic() + self.REWARD_TIMEOUT
+        observation = {}
+        attempts = int(self.REWARD_TIMEOUT / self.REWARD_POLL_INTERVAL) + 1
+        for _ in range(attempts):
+            if config.stop_mower.is_set():
+                raise MowerExit
+            observation = self._shop_observation()
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            if observation["scene"] == Scene.MATERIEL:
+                if not self.pending_reward["dismissed"]:
+                    # 关闭输入只发送一次；尚未退页时继续观察同一操作结果。
+                    self.pending_reward["dismissed"] = True
+                    self.tap((960, 960))
+                    continue
+            elif self.pending_reward["dismissed"] and self._reward_complete(
+                observation, self.pending_reward
+            ):
+                self.pending_reward = None
+                return observation
+            self.sleep(min(self.REWARD_POLL_INTERVAL, remaining))
+        self._incomplete("信用商店物资领取尚未确认完成", observation)
 
     def _can_afford(self, remain, price):
         return remain >= price if self.on_demand else remain > price
@@ -79,8 +230,7 @@ class CreditShop(SceneGraphSolver):
                 remain,
             )
             return True
-        self.selected_product = product
-        self.tap(product["touch"])
+        self._select_product(product, remain)
 
     def number(
         self,
@@ -212,15 +362,23 @@ class CreditShop(SceneGraphSolver):
         return True
 
     def transition(self):
-        if (scene := self.scene()) == Scene.SHOP_CREDIT:
+        observation = None
+        if getattr(self, "pending_reward", None) is not None:
+            observation = self._finish_reward()
+        scene = self.scene() if observation is None else observation["scene"]
+        if scene == Scene.SHOP_CREDIT:
             if pos := self.find("shop_collect"):
-                self.tap(pos)
+                self.tap(pos, interval=0)
+                self.pending_reward = {
+                    "kind": "collect",
+                    "dismissed": False,
+                    "game_day": get_server_time().date().isoformat(),
+                }
                 return
-            remain = self.credit_remain()
-            if remain is None or not self.product_info():
-                self.credit_deficit = None
-                logger.warning("信用商店余额或商品信息未确认，结束本次购物")
-                return True
+            observation = observation or self._shop_observation(scene)
+            remain = observation["balance"]
+            if remain is None or observation["products"] is None:
+                self._incomplete("信用商店余额或商品信息未确认", observation)
             if self.on_demand and self.rejected_product is not None:
                 rejected = next(
                     (
@@ -245,8 +403,7 @@ class CreditShop(SceneGraphSolver):
                     and product["name"] in priority_names
                     and self._can_afford(remain, product["price"])
                 ):
-                    self.selected_product = product
-                    self.tap(product["touch"])
+                    self._select_product(product, remain)
                     return
             for product in self.products:
                 if (
@@ -254,14 +411,12 @@ class CreditShop(SceneGraphSolver):
                     and product["name"] not in blacklist
                     and self._can_afford(remain, product["price"])
                 ):
-                    self.selected_product = product
-                    self.tap(product["touch"])
+                    self._select_product(product, remain)
                     return
             if remain > 300 and config.conf.maa_mall_ignore_blacklist_when_full:
                 for product in self.products:
                     if product and self._can_afford(remain, product["price"]):
-                        self.selected_product = product
-                        self.tap(product["touch"])
+                        self._select_product(product, remain)
                         return
             if self.on_demand:
                 self.credit_deficit = max(
@@ -288,7 +443,28 @@ class CreditShop(SceneGraphSolver):
                     return
                 return True
             else:
-                self.tap_element("shop_cart")
+                if not self.tap_element("shop_cart", interval=0):
+                    self._incomplete(
+                        "信用商店购买确认按钮未找到", self._shop_observation(scene)
+                    )
+                self.pending_reward = {
+                    "kind": "purchase",
+                    "dismissed": False,
+                    "slot": getattr(self, "selected_slot", None),
+                    "touch": (
+                        self.selected_product["touch"]
+                        if self.selected_product is not None
+                        else None
+                    ),
+                    "before_balance": getattr(self, "selected_balance", None),
+                    "game_day": getattr(self, "selected_game_day", None),
+                    "catalog": getattr(self, "selected_catalog", None),
+                    "price": (
+                        self.selected_product["price"]
+                        if self.selected_product is not None
+                        else None
+                    ),
+                }
         elif scene in self.waiting_scene:
             self.waiting_solver()
         else:
