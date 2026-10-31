@@ -405,3 +405,88 @@ def test_latest_card_cap_removes_priority_without_fabricating_real_reading(incid
     assert resting_tier(data, op.name) == RestingTier.IDLE
     assert op.mood == 15.17
     assert not resting_priority.is_full_dorm_filler(data, op.name)
+
+
+@pytest.mark.parametrize("upper", [12, 24])
+def test_full_retained_primary_takes_completed_filler_bed(incident, upper):
+    data = incident
+    primary = data.operators["银灰"]
+    primary.upper_limit = primary.mood = upper
+    primary.resting_priority = "standby"
+    data.config.resting_standby = [primary.name]
+    data.config.free_room_exclusions = [primary.name]
+    data.operators["斑点"].current_room = "meeting"
+    data.operators["斑点"].current_index = 0
+    primary.current_room, primary.current_index = "meeting", 0
+    beds = data.assign_dorm_group([primary.name])
+    assert beds is not None
+    assert [bed.position for bed in beds] == [(ROOM, 4)]
+    assert data.operators["九色鹿"].current_room == ROOM
+
+
+@pytest.mark.parametrize(
+    "restriction",
+    ["primary", "priority_replacement", "retained", "excluded", "unknown"],
+)
+def test_full_retained_primary_keeps_resident_protections(incident, restriction):
+    data = incident
+    primary = data.operators["银灰"]
+    primary.resting_priority = "standby"
+    data.config.resting_standby = [primary.name]
+    data.config.free_room_exclusions = [primary.name, "九色鹿"]
+    if restriction == "primary":
+        data.operators["Mon3tr"].operator_type = "high"
+        data.operators["Mon3tr"].mood = 14
+        data.operators["Mon3tr"].room = "meeting"
+    elif restriction == "priority_replacement":
+        data.config.resting_priority_replacement = ["Mon3tr"]
+        data.operators["Mon3tr"].mood = 14
+    elif restriction == "unknown":
+        primary.time_stamp = None
+    elif restriction == "retained":
+        data.config.free_room_exclusions.append("Mon3tr")
+    else:
+        data.config.free_blacklist.append(primary.name)
+    assert data.assign_dorm_group([primary.name]) is None
+
+
+@pytest.mark.parametrize("mood", [5, 24])
+@pytest.mark.parametrize("requester_priority", ["high", "standby"])
+def test_retained_full_primary_uses_existing_takeover_tiers(
+    incident, mood, requester_priority
+):
+    data = incident
+    primary = data.operators["银灰"]
+    primary.resting_priority = requester_priority
+    data.config.resting_standby = ["Mon3tr"]
+    data.config.free_room_exclusions = [primary.name, "九色鹿"]
+    data.operators["Mon3tr"].mood = mood
+    beds = data.assign_dorm_group([primary.name])
+    if requester_priority == "standby" and mood < 24:
+        assert beds is None
+    else:
+        assert beds is not None
+        assert [bed.position for bed in beds] == [(ROOM, 4)]
+
+
+@pytest.mark.parametrize("mood", [5, 24])
+def test_retained_full_standby_can_displace_lower_tier(incident, mood):
+    data = incident
+    primary = data.operators["银灰"]
+    primary.resting_priority = "standby"
+    data.config.resting_standby = [primary.name]
+    data.config.free_room_exclusions = [primary.name, "九色鹿"]
+    data.operators["Mon3tr"].mood = mood
+    beds = data.assign_dorm_group([primary.name])
+    assert beds is not None
+    assert [bed.position for bed in beds] == [(ROOM, 4)]
+
+
+def test_retained_full_primary_respects_reserved_bed(incident):
+    data = incident
+    primary = data.operators["银灰"]
+    data.config.free_room_exclusions = [primary.name, "九色鹿"]
+    assert (
+        data.assign_dorm_group([primary.name], reserved_slots={(ROOM, 3), (ROOM, 4)})
+        is None
+    )

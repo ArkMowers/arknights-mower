@@ -29,7 +29,7 @@ function snapshot(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,roo
  })
  const correctionGroups=task.derivedCorrection&&task.type===T.SELF_CORRECTION?new Set(Object.entries(task.plan).flatMap(([room,row])=>row.flatMap((name,index)=>name==='Current'?[]:[name,data.plan[room]?.[index]]).flatMap(name=>{const op=name?data.operators[name]:undefined;return op?[op.group,...op.groupBindings.map(binding=>binding.group)]:[]})).filter(Boolean)):new Set<string>()
  return {
-  intent:JSON.stringify({plan:task.plan,metadata:task.metadata,
+  intent:JSON.stringify({plan:task.plan,metadata:task.metadata,backupGroupTasks:data.backupGroupTasks.filter((_,i)=>data.planConditions[i]),
    backupRetentionAdmissions:task.backupRetentionAdmissions.map(name=>[name,data.freeRoomExcluded(name),data.operators[name]?.room]),
    correctionGroups:[...correctionGroups].sort().map(group=>[group,data.groupIsResting(group)]),
    effectivePlan:Object.fromEntries(rooms.map(room=>[room,state.config.mowerSourcePlan?.[room]])),

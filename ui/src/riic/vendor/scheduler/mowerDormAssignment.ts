@@ -64,9 +64,11 @@ export function mowerFindDormSlot(data:MowerSchedulingData,name:string,used:Set<
  })
 }
 export function mowerStandbyCandidates(data:MowerSchedulingData,names:string[]):Set<string> {
- const anchors=new Set(names.map(n=>data.operators[n]!).filter(op=>op.group&&op.isHigh()&&(data.alpha?!data.canStandby(op):op.restingPriority==='high')&&!op.workaholic&&(data.alpha||data.policy.experimentalDormLogic||!op.workshop)&&!op.room.startsWith('dorm')&&op.mood>=0&&op.mood<op.upperLimit&&op.currentMood(data.nowMicros)<op.upperLimit).map(op=>op.group))
- const hasAnchor=data.dorms.some(b=>{const op=data.operators[b.name];return !!op&&data.effectiveFreeSlot(b)&&op.isHigh()&&(data.alpha?!data.canStandby(op)&&!data.restMoodComplete(op.name):op.restingPriority==='high')})
- return new Set(names.filter(n=>{const op=data.operators[n]!;return data.canStandby(op)&&(anchors.has(op.group)||op.independentRest&&op.groupBindings.some(binding=>!!binding.group&&anchors.has(binding.group))||!op.group&&hasAnchor)}))
+ const anchors=new Set(names.map(n=>data.operators[n]!).filter(op=>op.group&&op.isHigh()&&(data.alpha?!op.multiGroup&&!data.canStandby(op):op.restingPriority==='high')&&!op.workaholic&&(data.alpha||data.policy.experimentalDormLogic||!op.workshop)&&!op.room.startsWith('dorm')&&op.mood>=0&&op.mood<op.upperLimit&&op.currentMood(data.nowMicros)<op.upperLimit).map(op=>op.group))
+ const restingAnchors=data.dorms.flatMap(b=>{const op=data.operators[b.name];return op&&data.effectiveFreeSlot(b)&&op.isHigh()&&(data.alpha?!op.multiGroup&&!op.workaholic&&!op.room.startsWith('dorm')&&!data.canStandby(op)&&op.currentRoom===b.position[0]&&op.currentIndex===b.position[1]&&hasRestingMood(op,data.nowMicros)&&restingMood(op,data.nowMicros)<op.upperLimit&&!data.restMoodComplete(op.name):op.restingPriority==='high')?[op]:[]})
+ if(data.alpha)for(const op of restingAnchors)if(op.group)anchors.add(op.group)
+ const hasAnchor=restingAnchors.length>0
+ return new Set(names.filter(n=>{const op=data.operators[n]!;return data.canStandby(op)&&(anchors.has(op.group)||op.independentRest&&op.groupBindings.some(binding=>!!binding.group&&anchors.has(binding.group))||!op.group&&!op.independentRest&&hasAnchor)}))
 }
 /** Alpha group admission follows Operators.assign_dorm_group at Mower
  * 617aef56f233381426107087437262fb6a802287: keep the ordered greedy choices;

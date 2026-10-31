@@ -1,3 +1,4 @@
+import {mowerHeldRestGroups} from './mowerBackupGroupTasks'
 import {restingThresholdFor} from './mowerOperatorState'
 import {admitMowerDerivedTasks,type MowerDependencyReturnAdmission} from './mowerTaskDerivation'
 // Port of default plan_metadata and plan_mood_limit_releases, Mower alpha.
@@ -68,7 +69,9 @@ export function planMowerMetadata(data:MowerSchedulingData,queue:MowerTaskQueue,
  }
  const newTasks=new Map<number,MowerDormBatch>()
  const add=(timeMicros:number,dorms:MowerDormState[],restInFull:boolean)=>{const previous=newTasks.get(timeMicros);if(previous){previous.dorms.push(...dorms);previous.restInFull=!!(previous.restInFull||restInFull)}else newTasks.set(timeMicros,{timeMicros,dorms:[...dorms],restInFull})}
+ const held=mowerHeldRestGroups(data)
  for(const [group,dorms] of grouped){
+  if(held.has(group))continue
   const highPriority=dorms.filter(b=>data.operators[b.name]!.isHigh()&&data.operators[b.name]!.restingPriority==='high')
   const ordinary=dorms.filter(b=>data.operators[b.name]!.isHigh()&&data.operators[b.name]!.restingPriority!=='standby')
   const high=highPriority.length?highPriority:ordinary.length?ordinary:dorms.filter(b=>data.operators[b.name]!.isHigh()&&!(group&&data.canStandby(data.operators[b.name]!)))
@@ -112,7 +115,7 @@ export function planMowerMetadata(data:MowerSchedulingData,queue:MowerTaskQueue,
  const generated=admitMowerDerivedTasks(data,queue.tasks,generateMowerDormTasks([...newTasks.values(),...releases.values()],data,existingTargets),dependencyReturn);queue.tasks.push(...generated)
  const returning=new Set(generated.flatMap(t=>Object.values(t.plan).flat())),busy=data.busyRestingNames
  for(const op of Object.values(data.operators)){
-  if(!op.isHigh()||op.room.startsWith('dorm')||op.currentRoom||op.group&&data.canStandby(op)||!data.restMoodComplete(op.name))continue
+  if(!op.isHigh()||held.has(op.group)||op.room.startsWith('dorm')||op.currentRoom||op.group&&data.canStandby(op)||!data.restMoodComplete(op.name))continue
   const members=op.group?data.group(op.group):[op.name]
   if(members.some(name=>returning.has(name)||busy.has(name)))continue
   const workers=members.map(name=>data.operators[name]!).filter(worker=>!worker.room.startsWith('dorm')&&!worker.workaholic&&!(worker.group&&data.canStandby(worker)))

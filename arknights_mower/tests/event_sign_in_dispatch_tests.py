@@ -158,6 +158,7 @@ def test_stop_or_device_recovery_does_not_mark_an_attempt_or_completion(
 
 def main_runtime(monkeypatch, scheduler):
     runtime = MagicMock()
+    runtime.backup_group_task_issued = set()
     runtime.initialize_operators.return_value = None
     runtime.op_data.validate_backup_plans.return_value = {"success": True}
     runtime.op_data.mood_calculation_enabled = False

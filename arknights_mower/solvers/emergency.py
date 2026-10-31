@@ -498,6 +498,7 @@ class EmergencyRecoveryMixin:
                     task
                     for task in self.tasks
                     if task.type not in ORDINARY_SHIFTS - {TaskTypes.SWITCH_PRODUCT}
+                    or getattr(task, "backup_group_request", None)
                 ]
                 self.tasks.append(
                     SchedulerTask(

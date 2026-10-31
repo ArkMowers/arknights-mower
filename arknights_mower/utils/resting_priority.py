@@ -115,7 +115,7 @@ def is_full_dorm_filler(op_data, name, now=None):
 
 
 def bed_takeover_allowed(op_data, requester, resident):
-    """先让实读回满补位者腾床；未完成恢复者沿用层级和八成门槛。"""
+    """先让实读回满补位者腾床；保留申请者沿用层级，不受心情门槛限制。"""
     now = getattr(op_data, "_projection_now", None) or datetime.now()
     requester_tier = resting_tier(op_data, requester, now)
     resident_tier = resting_tier(op_data, resident, now)
@@ -130,13 +130,20 @@ def bed_takeover_allowed(op_data, requester, resident):
 
     op = op_data.operators.get(requester)
     mood = dorm_candidate_mood(op_data, requester, now)
+    retained = op_data.is_free_room_excluded(requester)
     if is_full_dorm_filler(op_data, resident, now):
-        return op is not None and mood is not None and mood < op.upper_limit
+        return (
+            op is not None and mood is not None and (retained or mood < op.upper_limit)
+        )
     if not requester_tier < resident_tier < RestingTier.EXCLUDED:
         return False
     if requester_tier <= RestingTier.PRIORITY_REPLACEMENT:
         return True
-    return op is not None and mood is not None and mood <= op.upper_limit * 0.8
+    return (
+        op is not None
+        and mood is not None
+        and (retained or mood <= op.upper_limit * 0.8)
+    )
 
 
 def has_resting_mood(op, now=None):

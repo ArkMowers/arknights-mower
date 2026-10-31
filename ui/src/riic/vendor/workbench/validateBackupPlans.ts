@@ -1,3 +1,4 @@
+import {readMowerBackupGroupTasks} from '../scheduler/mowerBackupGroupTasks'
 import {resolveOperatorCharId} from '../domain/operatorIdentifiers'
 import {parseProduct} from '../domain/mowerProducts'
 import {assertMowerBackupRoomOwners, assertMowerBackupTaskRooms, mowerBackupRoomCapacity, prepareMowerBackupRoom} from '../domain/mowerBackupFacilities'
@@ -12,6 +13,11 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
  */
 export function validateBackupPlans(workspace: RosterWorkspace, validate: (workspace: RosterWorkspace) => ValidationResult): ValidationIssue[] {
   const issues: ValidationIssue[] = []
+  const declaredGroups=new Set(Object.values(workspace.mainPlan.facilities).flatMap(facility=>facility.slots.flatMap(slot=>[slot.groupId,...(slot.groupBindings??[]).map(binding=>binding.groupId)]).filter(Boolean)))
+  for(const raw of workspace.compatibility.backupPlans)if(record(raw)&&record(raw.plan))for(const room of Object.values(raw.plan))if(record(room)&&Array.isArray(room.plans))for(const slot of room.plans)if(record(slot)){
+    if(typeof slot.group==='string')declaredGroups.add(slot.group)
+    if(Array.isArray(slot.group_bindings))for(const binding of slot.group_bindings)if(record(binding)&&typeof binding.group==='string')declaredGroups.add(binding.group)
+  }
   for (const [index, raw] of workspace.compatibility.backupPlans.entries()) {
     const label = record(raw) && typeof raw.name === 'string' ? raw.name : String(index + 1)
     let roomId: MowerRoomId = 'central'
@@ -41,6 +47,8 @@ export function validateBackupPlans(workspace: RosterWorkspace, validate: (works
         })
       }
       mergeMowerBackupConfig(effective.mainPlan.conf, record(raw.conf) ? raw.conf : {})
+      const groupTasks=readMowerBackupGroupTasks(raw.group_tasks)
+      for(const task of groupTasks)if(!declaredGroups.has(task.group))throw new Error(`绑组任务组名不存在：${task.group}`)
       const task: Record<string, string[]> = {}
       for (const [room, targets] of Object.entries(record(raw.task) ? raw.task : {})) {
         roomId = room as MowerRoomId

@@ -225,6 +225,7 @@ def mood_limit_group_return(data, release, tasks, *, now=None):
     from arknights_mower.utils.scheduler_task import TaskTypes, generate_plan_by_drom
 
     now = now or datetime.now()
+    from arknights_mower.utils.backup_group_tasks import held_rest_groups
 
     def untouched(task):
         return not (
@@ -257,6 +258,7 @@ def mood_limit_group_return(data, release, tasks, *, now=None):
         or op.multi_group
         or op.independent_rest
         or not data.group_is_resting(op.group)
+        or op.group in held_rest_groups(data)
         or not data.has_rest_mood_limit(op.name)
         or data.is_free_room_excluded(op.name)
         or release.release_dorm_targets().get(op.name)

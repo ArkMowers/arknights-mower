@@ -1,3 +1,4 @@
+import {mowerHeldRestGroups} from './mowerBackupGroupTasks'
 import {planMowerPreferredReplacementRestore,mowerReplacementDependencyNames,mowerReplacementReservations} from './mowerReplacementCoordination'
 import {mowerRestingBindingGroups,normalizeMowerSharedArrangement} from './mowerSharedGroups'
 import {mowerGroupRecoveryDeadline} from './mowerGroupRecovery'
@@ -33,7 +34,9 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
  }
  const batches=new Map<number,MowerDormBatch>(),releases=new Map<number,MowerDormBatch>()
  const add=(time:number,beds:MowerDormState[],full:boolean)=>{const previous=batches.get(time);if(previous){previous.dorms.push(...beds);previous.restInFull=!!(previous.restInFull||full)}else batches.set(time,{timeMicros:time,dorms:[...beds],restInFull:full})}
+ const held=mowerHeldRestGroups(data)
  for(const [group,beds] of grouped){
+  if(held.has(group))continue
   const priority=beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest)&&data.operators[b.name]!.isHigh()&&data.operators[b.name]!.restingPriority==='high'),ordinary=beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest)&&data.operators[b.name]!.isHigh()&&data.operators[b.name]!.restingPriority!=='standby')
   const high=priority.length?priority:ordinary.length?ordinary:beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest)&&data.operators[b.name]!.isHigh()&&!(group&&data.canStandby(data.operators[b.name]!)))
   if(group){
@@ -52,7 +55,7 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
  const generated=admitMowerDerivedTasks(actual,queue.tasks,generateMowerDormTasks([...batches.values(),...releases.values()],data,existing,pending),dependencyReturn);queue.tasks.push(...generated)
  const returning=new Set(generated.flatMap(t=>Object.values(t.plan).flat()))
  for(const op of Object.values(data.operators)){
-  if(!op.isHigh()||waitingForActualGroup(op.name)||op.multiGroup&&(!op.independentRest||mowerRestingBindingGroups(data,op).length)||op.room.startsWith('dorm')||op.currentRoom||op.group&&data.canStandby(op))continue
+  if(!op.isHigh()||held.has(op.group)||waitingForActualGroup(op.name)||op.multiGroup&&(!op.independentRest||mowerRestingBindingGroups(data,op).length)||op.room.startsWith('dorm')||op.currentRoom||op.group&&data.canStandby(op))continue
   const recovery=op.group?mowerGroupRecoveryDeadline(data,op.group):undefined
   const strict=!!recovery?.requiredNames.length||recovery?.timeMicros!==undefined
   const recoveredPrimaryGroup=!!op.group&&data.groupRestInFullOnMoodGap&&data.groupIsResting(op.group)&&hasObservedFullMood(op)&&!op.moodIsPrediction

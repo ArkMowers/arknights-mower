@@ -107,6 +107,9 @@ def _plan_exhaust_support_attempt(
     dependency=lambda name: None,
 ):
     """返回能让用尽组取得替班和床位的前置安排；失败不改变真实状态。"""
+    from arknights_mower.utils.backup_group_tasks import forced_group_cover_reservations
+
+    forced, _ = forced_group_cover_reservations(op_data)
     protected = set(protected) | set(op_data.reserved_product_replacements)
     required = set(candidates)
     cover_names = {
@@ -211,6 +214,10 @@ def _plan_exhaust_support_attempt(
         return (
             op is not None
             and (
+                name not in forced
+                or (op.current_room, op.current_index) == (target.room, target.index)
+            )
+            and (
                 not op.is_high()
                 or state.is_same_group_primary_replacement(target, name)
             )
@@ -233,6 +240,7 @@ def _plan_exhaust_support_attempt(
         return eligible(state, name, target) and (
             not op.current_room
             or op.is_resting()
+            or (op.current_room, op.current_index) == (target.room, target.index)
             or state.is_same_group_primary_replacement(target, name)
             and name in required
             and (op.current_room, op.current_index) == (op.room, op.index)
@@ -251,6 +259,10 @@ def _plan_exhaust_support_attempt(
         op = state.operators[name]
         if not op.is_resting():
             return False
+        from arknights_mower.utils.backup_group_tasks import held_rest_groups
+
+        if op.group in held_rest_groups(state, forced_only=True):
+            return True
         now = getattr(state, "_projection_now", None) or datetime.now()
         if op.rest_in_full and not recovery_ready_for_arrangement(
             state, name, sampled_after=None, now=now

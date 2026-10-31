@@ -133,6 +133,7 @@ def replan_update_tasks(saved):
         TaskTypes.NOT_SPECIFIC,
     }
     protected_flags = (
+        "backup_group_request",
         "strict_mood_limit",
         "initial_fia",
         "run_order_restore_pending",
@@ -2276,6 +2277,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
         t
         for t in tasks
         if t.type not in [TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM]
+        or getattr(t, "backup_group_request", None)
         or id(t) in locked_ids
     ]
     _, reserved_slots = dorm_task_reservations(
@@ -2441,8 +2443,13 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
                 and not op_data.skip_idle_dorm_release(dorm.name)
             ):
                 free_rooms.append(dorm)
+    from arknights_mower.utils.backup_group_tasks import held_rest_groups
+
+    held = held_rest_groups(op_data)
     new_task = {}
     for group_name, dorms in grouped_dorms.items():
+        if group_name in held:
+            continue
         logger.debug(f"开始计算:{group_name}")
         logger.debug(f"开始计算:{dorms}")
         task_time = datetime.max
@@ -2576,6 +2583,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
         if (
             not op.is_high()
             or op.name in excluded_names
+            or op.group in held
             or op.multi_group
             and (not op.independent_rest or op_data.resting_binding_groups(op))
             or op.group

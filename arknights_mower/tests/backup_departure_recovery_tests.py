@@ -326,3 +326,156 @@ def test_partial_backup_departure_keeps_full_peers_until_scheduled_group_return(
     projected = data.project_arrangements([task.plan])
     assert projected.operators["歌蕾蒂娅"].current_room == "central"
     assert projected.operators["令"].current_room == "contact"
+
+
+@pytest.fixture
+def resting_standby_solver(solver):
+    from datetime import datetime, timedelta
+
+    from arknights_mower.utils.logic_expression import LogicExpression
+    from arknights_mower.utils.operators import Operators
+    from arknights_mower.utils.plan import Plan, PlanConfig, Room
+
+    solver.op_data = Operators(
+        {
+            "default_plan": Plan(
+                {
+                    "central": [Room("歌蕾蒂娅", "深海", ["夕"])],
+                    "recycle": [Room("旅骨", "深海", ["星源"])],
+                    "meeting": [Room("跃跃", "其他", ["虎狼丸"])],
+                    "dormitory_1": [
+                        Room(name, "", [])
+                        for name in ("杜林", "芬", "梓兰", "Free", "Free")
+                    ],
+                },
+                PlanConfig("", "", "", resting_standby="歌蕾蒂娅"),
+            ),
+            "backup_plans": [
+                Plan(
+                    {},
+                    PlanConfig("", "", ""),
+                    trigger=LogicExpression(
+                        "op_data.operators['歌蕾蒂娅'].current_room == 'central'",
+                        "and",
+                        "True",
+                    ),
+                    task={"central": ["夕"]},
+                )
+            ],
+        }
+    )
+    data = solver.op_data
+    assert data.init_and_validate() is None
+    for op in data.operators.values():
+        op._current_room, op.current_index = "", -1
+        op.mood, op.time_stamp, op.depletion_rate = 5, datetime.now(), 0
+    for name, room, index in [
+        ("歌蕾蒂娅", "central", 0),
+        ("星源", "recycle", 0),
+        ("虎狼丸", "meeting", 0),
+        ("杜林", "dormitory_1", 0),
+        ("芬", "dormitory_1", 1),
+        ("梓兰", "dormitory_1", 2),
+        ("旅骨", "dormitory_1", 3),
+        ("跃跃", "dormitory_1", 4),
+    ]:
+        data.operators[name]._current_room, data.operators[name].current_index = (
+            room,
+            index,
+        )
+    for bed, name in zip(data.dorm, ("旅骨", "跃跃")):
+        bed.name, bed.time = name, datetime.now() + timedelta(hours=4)
+    data.commit_group_shifts({"深海": True, "其他": True})
+    data.first_init = False
+    return solver
+
+
+def test_full_backup_cycle_accepts_standby_with_existing_group_recovery(
+    resting_standby_solver,
+):
+    solver = resting_standby_solver
+    task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan={})
+    solver.task, solver.tasks = task, [task]
+    before = fixtures.projection_source_state(solver.op_data), task.time
+    for _ in range(3):
+        solver._prepare_shift_cycle(task)
+        assert task.plan["central"] == ["夕"]
+        projected = solver.op_data.project_arrangements([task.plan])
+        assert projected.operators["歌蕾蒂娅"].current_room == ""
+        assert projected.operators["旅骨"].current_room == "dormitory_1"
+        assert solver.tasks == [task]
+        assert (fixtures.projection_source_state(solver.op_data), task.time) == before
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "anchor", ["same", "full", "other", "absent", "shared", "unknown", "moved"]
+)
+@pytest.mark.parametrize("independent", [False, True])
+def test_existing_recovery_anchor_requires_a_matching_unfinished_primary(
+    resting_standby_solver, anchor, independent
+):
+    data = resting_standby_solver.op_data
+    standby, primary = data.operators["歌蕾蒂娅"], data.operators["旅骨"]
+    if independent:
+        standby.group = ""
+        standby.group_bindings = [
+            {"group": "独立", "replacement": ["夕"]},
+            {"group": "深海", "replacement": ["夕"]},
+            {"group": "", "replacement": ["夕"]},
+        ]
+    if anchor == "full":
+        primary.mood = primary.upper_limit
+    elif anchor == "other":
+        primary.group = "其他"
+    elif anchor == "absent":
+        data.dorm[0].reset()
+        primary._current_room, primary.current_index = "", -1
+    elif anchor == "unknown":
+        primary.time_stamp = None
+    elif anchor == "moved":
+        primary._current_room, primary.current_index = "", -1
+    elif anchor == "shared":
+        primary.group_bindings = [
+            {"group": "深海", "replacement": ["星源"]},
+            {"group": "其他", "replacement": ["星源"]},
+        ]
+    assert data.standby_candidates([standby.name]) == (
+        {standby.name} if anchor == "same" else set()
+    )
+
+
+@pytest.mark.parametrize(
+    "protection",
+    ["rest_in_full", "exhaust_require", "free_room_exclusions", "reservation"],
+)
+def test_existing_anchor_keeps_mandatory_beds_and_reservations(
+    resting_standby_solver, protection
+):
+    from arknights_mower.solvers.base_schedule import GroupShiftBlocked
+
+    solver = resting_standby_solver
+    data = solver.op_data
+    if protection != "reservation":
+        getattr(data.global_plan["default_plan"].config, protection).append("歌蕾蒂娅")
+        data.swap_plan([False])
+    task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan={})
+    solver.task, solver.tasks = task, [task]
+    if protection == "reservation":
+        from datetime import datetime, timedelta
+
+        reservation = SchedulerTask(
+            time=datetime.now() + timedelta(hours=1),
+            task_type=TaskTypes.SHIFT_OFF,
+            task_plan={
+                "dormitory_1": ["Current", "Current", "Current", "歌蕾蒂娅", "Current"]
+            },
+        )
+        solver.tasks.append(reservation)
+    before = fixtures.projection_source_state(data), copy.deepcopy(task.plan), task.time
+    for _ in range(2):
+        with pytest.raises(GroupShiftBlocked):
+            solver._prepare_shift_cycle(task)
+        assert (fixtures.projection_source_state(data), task.plan, task.time) == before
+        assert solver.tasks[0] is task
+    solver.enter_room.assert_not_called()

@@ -7,7 +7,11 @@ import {
   alphaPrioritizeRecovery
 } from './vendor/scheduler/mowerAlphaDorm'
 import { projectMowerArrangements } from './vendor/scheduler/mowerObservations'
-import { mowerResting, mowerTryReorder } from './vendor/scheduler/mowerOrdinaryPlanning'
+import {
+  mowerResting,
+  mowerTryReorder,
+  mowerGetRestingPlan
+} from './vendor/scheduler/mowerOrdinaryPlanning'
 import { planMowerDormIsolation } from './vendor/scheduler/mowerDormIsolation'
 import { MowerTaskQueue } from './vendor/scheduler/mowerTaskQueue'
 
@@ -310,4 +314,83 @@ it('retains existing beds when displaced and resident peers have equal priority 
     ])
   }
   expect(final.currentOperator('dormitory_2', 4)?.name).toBe('冬时')
+})
+
+it.each([12, 24])(
+  'admits a retained full primary at cap %s through a completed filler bed',
+  (upper) => {
+    const data = fixture(false)
+    for (const [index, bed] of data.dorms.entries())
+      resident(data, '住客' + index, ...bed.position, index === 5 ? 24 : 14)
+    const primary = data.operators.绮良
+    primary.mood = primary.upperLimit = upper
+    primary.restingPriority = 'standby'
+    data.standbyNames = [primary.name]
+    data.freeRoomExclusions = [primary.name]
+    const plan = {}
+    expect(mowerGetRestingPlan(data, [primary.name], [], plan)).toBe(true)
+    const final = projectMowerArrangements(data, [plan, mowerTryReorder(data, plan) ?? {}])
+    expect(final.operators.绮良.isResting()).toBe(true)
+    expect(final.operators.住客5.currentRoom).toBe('')
+    expect(final.currentOperator('room_1_1', 0)?.name).toBe('R0')
+    expect(final.operators.住客0.isResting()).toBe(true)
+  }
+)
+
+it.each(['primary', 'retained', 'excluded', 'reserved', 'unknown'])(
+  'preserves %s protection for a full retained applicant',
+  (restriction) => {
+    const data = fixture(false)
+    for (const [index, bed] of data.dorms.entries())
+      resident(data, '住客' + index, ...bed.position, index === 5 ? 24 : 14)
+    const primary = data.operators.绮良
+    primary.mood = 24
+    primary.restingPriority = 'standby'
+    data.standbyNames = [primary.name]
+    data.freeRoomExclusions = [primary.name]
+    if (restriction === 'primary') data.operators.住客5.mood = 14
+    if (restriction === 'unknown') primary.timeStampMicros = undefined
+    if (restriction === 'retained') data.freeRoomExclusions.push('住客5')
+    if (restriction === 'excluded') data.freeBlacklist.push(primary.name)
+    const plan = {}
+    const reservedSlots =
+      restriction === 'reserved' ? new Set([alphaPosition(...data.dorms[5].position)]) : new Set()
+    mowerGetRestingPlan(data, [primary.name], [], plan, { reservedSlots })
+    expect(plan).toEqual({})
+    expect(data.operators.住客5.isResting()).toBe(true)
+  }
+)
+
+it.each(['high', 'standby'])(
+  'keeps %s applicant priority when a retained full primary requests a standby bed',
+  (priority) => {
+    for (const mood of [5, 24]) {
+      const data = fixture(false)
+      for (const [index, bed] of data.dorms.entries())
+        resident(data, '住客' + index, ...bed.position, 14)
+      const primary = data.operators.绮良
+      primary.mood = 24
+      primary.restingPriority = priority
+      data.standbyNames = ['住客5', ...(priority === 'standby' ? [primary.name] : [])]
+      data.freeRoomExclusions = [primary.name]
+      data.operators.住客5.mood = mood
+      expect(alphaFindDormSlot(data, primary.name, new Set())).toBe(
+        priority === 'high' || mood === 24 ? 5 : undefined
+      )
+    }
+  }
+)
+
+it.each([5, 24])('admits a retained full standby over a lower-tier resident at mood %s', (mood) => {
+  const data = fixture(false)
+  for (const [index, bed] of data.dorms.entries())
+    resident(data, '住客' + index, ...bed.position, 14)
+  const primary = data.operators.绮良
+  primary.mood = 24
+  primary.restingPriority = 'standby'
+  data.standbyNames = [primary.name]
+  data.freeRoomExclusions = [primary.name]
+  data.operators.住客5.mood = mood
+  data.operators.住客5.operatorType = 'low'
+  expect(alphaFindDormSlot(data, primary.name, new Set())).toBe(5)
 })

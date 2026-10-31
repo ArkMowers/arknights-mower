@@ -1,4 +1,5 @@
 import type {MowerTaskFailureSnapshot} from './mowerTaskFailure'
+import type {MowerBackupGroupRequest} from './mowerBackupGroupTasks'
 // Port of ArkMowers/arknights-mower scheduler_task.py and base_schedule.py handle_error.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 export interface MowerTaskType {readonly key:string;readonly value:string;readonly displayValue:string;readonly priority:1|2}
@@ -27,6 +28,7 @@ export type MowerTaskPlan=Record<string,string[]>
 export interface MowerBackupRefreshRule {drained:boolean;trading:[boolean,string[]]}
 export interface MowerTaskOptions {time?:number;type?:MowerTaskType|string|null;plan?:MowerTaskPlan;metadata?:string;adjusted?:boolean;strictMoodLimit?:boolean;moodLimit?:number}
 export class MowerTask {
+ backupGroupRequest?:MowerBackupGroupRequest
  timeMicros:number;type:MowerTaskType;plan:MowerTaskPlan;metadata:string;adjusted:boolean;strictMoodLimit:boolean;moodLimit:number|undefined
  observedOrderDueMicros?:number;wakeOnlyCompletion=false
  executionFailure?:{reason:string;rooms:string[];snapshot:MowerTaskFailureSnapshot}
@@ -103,7 +105,7 @@ export class MowerTaskQueue {
  /** infra_main removes every reference to the completed object, not every equal task. */
  consume(task:MowerTask):void {this.tasks=this.tasks.filter(t=>t!==task);delete task.backupRefreshRules}
  /** plan_metadata rebuilds these types; active arrangements and experimental locks retain identity. */
- removeDerived(experimental=false):void {this.tasks=this.tasks.filter(t=>t.retainsExecution||t.backupShiftActive||![MOWER_TASK_TYPES.SHIFT_ON,MOWER_TASK_TYPES.RELEASE_DORM].includes(t.type)||experimental&&t.productShiftLocked)}
+ removeDerived(experimental=false):void {this.tasks=this.tasks.filter(t=>t.backupGroupRequest||t.retainsExecution||t.backupShiftActive||![MOWER_TASK_TYPES.SHIFT_ON,MOWER_TASK_TYPES.RELEASE_DORM].includes(t.type)||experimental&&t.productShiftLocked)}
  /** Default handle_error branch: any queued task strictly inside 2.5h suppresses a fallback. */
  ensureFallback(now:number,options:{adjustForRunOrders?:boolean}={}):MowerTask|undefined {
   if(this.find({time:now+2.5,ignoreRunOrders:options.adjustForRunOrders===false}))return undefined

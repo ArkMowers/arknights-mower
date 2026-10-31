@@ -51,6 +51,10 @@ The [scheduling contract](base-scheduler.md#211-multiple-group-bindings) defines
 
 The [shared color decision](../../.agents/notes/implemented/simplification/2026-10-06-shared-plan-group-colors.md) defines color assignment and rendering.
 
+### Backup Group Task Editor
+
+The backup task dialog edits room assignments and group requests separately. Group names come from all main and backup operator bindings. The writer chooses a complete-group on-duty or off-duty request. On-duty requests execute once; off-duty requests offer one execution, a coordinated hold, or a forced hold throughout activation. The dialog explains dependency coordination and ordinary return after deactivation. JSON import and export preserve `group_tasks` without changing advanced settings. Runtime behavior follows [Backup Group Tasks](base-scheduler.md#backup-group-tasks).
+
 ## 6. Backup Facility Import
 
 The backup facility toolbar copies the selected main-plan facility, including its type, product, primary operators and all group/replacement bindings. The copy replaces only that facility in the selected backup and shares no mutable rows or replacement lists with the main plan. Backup conditions, explicit staffing tasks, other facilities and other backups remain unchanged. The button is hidden on the main plan and disabled by the edit lock.
