@@ -1,0 +1,663 @@
+{
+  "_meta": {
+    "source": "SS 活动估值 · 九色鹿／蚀清／年（计算表快照）",
+    "algorithm_url": "https://ark.yituliu.cn/docs/item-value-algorithm",
+    "values_url": "https://ark.yituliu.cn/material/value",
+    "algorithm_reference": "https://github.com/Arknights-yituliu/frontend-v2-plus/blob/66f769e9ca9ba4c517279b2a42a80120d7eb5dc2/src/utils/item/itemValue.js",
+    "retrieved_at": "2026-10-12",
+    "pricing_mode": "ss_activity",
+    "pricing_config": {
+      "useActivityAverageStage": true,
+      "useActivityStage": false,
+      "useActivityAverageStageAndUnlimitedItem": true,
+      "lmdCoefficient": 1,
+      "expCoefficient": 0.9568,
+      "lmdPricingStrategy": "LMD_PRICING_CE-6",
+      "expPricingStrategy": "EXP_PRICING_LS-6",
+      "base_algorithm": 2,
+      "customItem": [
+        {
+          "itemId": "30073",
+          "itemValue": 1.8
+        },
+        {
+          "itemId": "30083",
+          "itemValue": 2.16
+        },
+        {
+          "itemId": "30093",
+          "itemValue": 2.52
+        },
+        {
+          "itemId": "30103",
+          "itemValue": 2.88
+        }
+      ],
+      "workshopStrategy": {
+        "eliteMaterialT1toT2": {
+          "strategy": "SUPPLIED_CALCULATOR_SNAPSHOT"
+        },
+        "eliteMaterialT2toT3": {
+          "strategy": "NINE_COLORED_DEER_SIMULTANEOUS_EQUATIONS",
+          "causalityValue": 0.4920881261849738,
+          "byproductRate": 0.1
+        },
+        "eliteMaterialT3toT4": {
+          "strategy": "CORROSERUM_FIXED_BYPRODUCT",
+          "byproductRate": 0.18,
+          "byproductItemId": "30043"
+        },
+        "eliteMaterialT4toT5": {
+          "strategy": "NIAN_OR_ARENE_RANDOM_BYPRODUCT",
+          "byproductRate": 0.2
+        }
+      },
+      "estimatedActivityDropRates": {
+        "31113": 0.7
+      }
+    },
+    "license_url": "https://creativecommons.org/licenses/by-nc/4.0/deed.zh",
+    "method": "Offline supplied calculator snapshot: CE6 LMD; CE6/LS6 EXP, base-report algorithm 0.23456; SideStory pricing includes token-to-LMD value, four retired materials use token-equivalent LMD. Green materials use Nine-Colored Deer simultaneous equations with causality value 0.4920881261849738; blue-to-purple uses Corroserum with 18% fixed Oriron Cluster byproducts; purple-to-gold uses Nian/Arene with 20% random byproducts. White materials and other prices retain the supplied calculator values. EXP uses intermediate battle record / 1000; inventory is not deducted; unknown items are excluded.",
+    "snapshot": {
+      "archive": "准备发给果果.zip",
+      "workbook": "mower默认旅骨效率计算器.xlsx",
+      "sha256": "5f481da7a5378c4821a3abb80f8250d16bd43d57373f08f01229839866c08578",
+      "sheet": "在此导入",
+      "range": "A3:D149",
+      "crafting_workbook": "九色鹿_蚀清_年材料价值计算结果.xlsx",
+      "crafting_sha256": "392904c30e63c4006cf60704c3f8316f2e56694ddcce506548c1c1fe8930e246",
+      "green_solver": "deepseek_python_20261012_c15b58.py",
+      "discrepancy": "晶体元件 is 23.666794038975926 in the calculator input and 23.5667940389759 in the crafting workbook. Preserve the final calculator snapshot without recomputing its other cached prices."
+    }
+  },
+  "items": {
+    "30145": {
+      "name": "晶体电子单元",
+      "value": 243.31303122934833
+    },
+    "30155": {
+      "name": "烧结核凝晶",
+      "value": 258.88598916982784
+    },
+    "30115": {
+      "name": "聚合剂",
+      "value": 211.2126163556313
+    },
+    "30135": {
+      "name": "D32钢",
+      "value": 121.54503714588637
+    },
+    "30125": {
+      "name": "双极纳米片",
+      "value": 93.28204620845828
+    },
+    "30165": {
+      "name": "重相位对映体",
+      "value": 304.11023290125274
+    },
+    "31094": {
+      "name": "手性屈光体",
+      "value": 74.23487490831094
+    },
+    "31104": {
+      "name": "液化醚吸聚体",
+      "value": 66.22889883482078
+    },
+    "31114": {
+      "name": "聚能动力单元",
+      "value": 84.97047325811323
+    },
+    "30044": {
+      "name": "异铁块",
+      "value": 95.5133448104402
+    },
+    "31084": {
+      "name": "环烃预制体",
+      "value": 87.08184569892875
+    },
+    "30054": {
+      "name": "酮阵列",
+      "value": 65.80233280357913
+    },
+    "30064": {
+      "name": "改量装置",
+      "value": 63.34287711806284
+    },
+    "30104": {
+      "name": "RMA70-24",
+      "value": 55.70236870832409
+    },
+    "30094": {
+      "name": "五水研磨石",
+      "value": 55.04482495650135
+    },
+    "31074": {
+      "name": "固化纤维板",
+      "value": 79.78211951397577
+    },
+    "30024": {
+      "name": "糖聚块",
+      "value": 61.04984546327338
+    },
+    "31034": {
+      "name": "晶体电路",
+      "value": 76.00560763475653
+    },
+    "31024": {
+      "name": "炽合金块",
+      "value": 53.480203712320225
+    },
+    "31044": {
+      "name": "精炼溶剂",
+      "value": 74.15828812361315
+    },
+    "31054": {
+      "name": "切削原液",
+      "value": 49.68340635276951
+    },
+    "31064": {
+      "name": "转质盐聚块",
+      "value": 72.10948869810568
+    },
+    "31014": {
+      "name": "聚合凝胶",
+      "value": 62.52535100527259
+    },
+    "30084": {
+      "name": "三水锰矿",
+      "value": 22.021325609334536
+    },
+    "30034": {
+      "name": "聚酸酯块",
+      "value": 60.68984546327338
+    },
+    "30014": {
+      "name": "提纯源岩",
+      "value": 61.120420869885585
+    },
+    "30074": {
+      "name": "白马醇",
+      "value": 20.58132560933453
+    },
+    "31083": {
+      "name": "环烃聚质",
+      "value": 31.876479670612458
+    },
+    "31093": {
+      "name": "类凝结核",
+      "value": 26.457069628363946
+    },
+    "31103": {
+      "name": "液化高能气体",
+      "value": 29.772151898734176
+    },
+    "31113": {
+      "name": "电极单元",
+      "value": 26.544
+    },
+    "30063": {
+      "name": "全新装置",
+      "value": 31.871012006861065
+    },
+    "30103": {
+      "name": "RMA70-12",
+      "value": 2.88
+    },
+    "31073": {
+      "name": "褐素纤维",
+      "value": 28.67849976848279
+    },
+    "31063": {
+      "name": "转质盐组",
+      "value": 29.74355690731551
+    },
+    "30093": {
+      "name": "研磨石",
+      "value": 2.52
+    },
+    "31053": {
+      "name": "化合切削液",
+      "value": 26.453302961275625
+    },
+    "31013": {
+      "name": "凝胶",
+      "value": 24.4570696283639
+    },
+    "31043": {
+      "name": "半自然溶剂",
+      "value": 26.464606181455636
+    },
+    "30083": {
+      "name": "轻锰矿",
+      "value": 2.16
+    },
+    "30053": {
+      "name": "酮凝集组",
+      "value": 23.8705035971223
+    },
+    "30043": {
+      "name": "异铁组",
+      "value": 23.8705035971223
+    },
+    "30073": {
+      "name": "扭转醇",
+      "value": 1.8
+    },
+    "31023": {
+      "name": "炽合金",
+      "value": 22.30588235294118
+    },
+    "30033": {
+      "name": "聚酸酯组",
+      "value": 19.118016256816546
+    },
+    "30023": {
+      "name": "糖组",
+      "value": 19.118016256816546
+    },
+    "31033": {
+      "name": "晶体元件",
+      "value": 23.666794038975926
+    },
+    "30013": {
+      "name": "固源岩组",
+      "value": 16.0842778793419
+    },
+    "30062": {
+      "name": "装置",
+      "value": 8.142283
+    },
+    "30052": {
+      "name": "酮凝集",
+      "value": 6.142156
+    },
+    "30042": {
+      "name": "异铁",
+      "value": 6.142156
+    },
+    "30032": {
+      "name": "聚酸酯",
+      "value": 4.954034
+    },
+    "30022": {
+      "name": "糖",
+      "value": 4.954034
+    },
+    "30012": {
+      "name": "固源岩",
+      "value": 3.35648
+    },
+    "30061": {
+      "name": "破损装置",
+      "value": 2.8119507214931354
+    },
+    "30051": {
+      "name": "双酮",
+      "value": 2.1392001456152934
+    },
+    "30041": {
+      "name": "异铁碎片",
+      "value": 2.140505911037983
+    },
+    "30031": {
+      "name": "酯原料",
+      "value": 1.7425054888494869
+    },
+    "30021": {
+      "name": "代糖",
+      "value": 1.742689472617984
+    },
+    "30011": {
+      "name": "源岩",
+      "value": 1.1934262253069277
+    },
+    "2004": {
+      "name": "高级作战记录",
+      "value": 6.888959999999999
+    },
+    "2003": {
+      "name": "中级作战记录",
+      "value": 3.4444799999999995
+    },
+    "2002": {
+      "name": "初级作战记录",
+      "value": 1.377792
+    },
+    "2001": {
+      "name": "基础作战记录",
+      "value": 0.688896
+    },
+    "4001": {
+      "name": "龙门币",
+      "value": 0.0036
+    },
+    "3301": {
+      "name": "技巧概要·卷1",
+      "value": 1.6219214229739152
+    },
+    "3302": {
+      "name": "技巧概要·卷2",
+      "value": 4.013384790687139
+    },
+    "3303": {
+      "name": "技巧概要·卷3",
+      "value": 10.12552033975421
+    },
+    "3003": {
+      "name": "赤金",
+      "value": 1.377792
+    },
+    "3261": {
+      "name": "医疗芯片",
+      "value": 17.2224
+    },
+    "3271": {
+      "name": "辅助芯片",
+      "value": 17.2224
+    },
+    "3211": {
+      "name": "先锋芯片",
+      "value": 17.2224
+    },
+    "3281": {
+      "name": "特种芯片",
+      "value": 17.2224
+    },
+    "3221": {
+      "name": "近卫芯片",
+      "value": 17.2224
+    },
+    "3231": {
+      "name": "重装芯片",
+      "value": 17.2224
+    },
+    "3241": {
+      "name": "狙击芯片",
+      "value": 17.2224
+    },
+    "3251": {
+      "name": "术师芯片",
+      "value": 17.2224
+    },
+    "3262": {
+      "name": "医疗芯片组",
+      "value": 34.4448
+    },
+    "3272": {
+      "name": "辅助芯片组",
+      "value": 34.4448
+    },
+    "3212": {
+      "name": "先锋芯片组",
+      "value": 34.4448
+    },
+    "3282": {
+      "name": "特种芯片组",
+      "value": 34.4448
+    },
+    "3222": {
+      "name": "近卫芯片组",
+      "value": 34.4448
+    },
+    "3232": {
+      "name": "重装芯片组",
+      "value": 34.4448
+    },
+    "3242": {
+      "name": "狙击芯片组",
+      "value": 34.4448
+    },
+    "3252": {
+      "name": "术师芯片组",
+      "value": 34.4448
+    },
+    "3263": {
+      "name": "医疗双芯片",
+      "value": 191.90706179047623
+    },
+    "3273": {
+      "name": "辅助双芯片",
+      "value": 191.90706179047623
+    },
+    "3213": {
+      "name": "先锋双芯片",
+      "value": 191.90706179047623
+    },
+    "3283": {
+      "name": "特种双芯片",
+      "value": 191.90706179047623
+    },
+    "3223": {
+      "name": "近卫双芯片",
+      "value": 191.90706179047623
+    },
+    "3233": {
+      "name": "重装双芯片",
+      "value": 191.90706179047623
+    },
+    "3243": {
+      "name": "狙击双芯片",
+      "value": 191.90706179047623
+    },
+    "3253": {
+      "name": "术师双芯片",
+      "value": 191.90706179047623
+    },
+    "4003": {
+      "name": "合成玉",
+      "value": 0.9225
+    },
+    "7003": {
+      "name": "寻访凭证",
+      "value": 553.5
+    },
+    "7004": {
+      "name": "十连寻访凭证",
+      "value": 5535
+    },
+    "4002": {
+      "name": "至纯源石",
+      "value": 166.05
+    },
+    "classic_gacha": {
+      "name": "中坚寻访凭证",
+      "value": 463.3953488372093
+    },
+    "classic_gacha_10": {
+      "name": "十连中坚寻访凭证",
+      "value": 4633.9534883720935
+    },
+    "7001": {
+      "name": "招聘许可",
+      "value": 39.49157906976745
+    },
+    "4006": {
+      "name": "采购凭证",
+      "value": 1.366857142857143
+    },
+    "32001": {
+      "name": "芯片助剂",
+      "value": 123.01714285714287
+    },
+    "mod_unlock_token": {
+      "name": "模组数据块",
+      "value": 164.02285714285716
+    },
+    "STORY_REVIEW_COIN": {
+      "name": "事相碎片",
+      "value": 27.337142857142858
+    },
+    "4004": {
+      "name": "高级凭证 ",
+      "value": 81.5232558139535
+    },
+    "4005": {
+      "name": "资质凭证",
+      "value": 0.8
+    },
+    "7002": {
+      "name": "加急许可",
+      "value": 0
+    },
+    "base_ap": {
+      "name": "无人机",
+      "value": 0.057407999999999994
+    },
+    "3112": {
+      "name": "碳",
+      "value": 0.6888191135474839
+    },
+    "3113": {
+      "name": "碳素",
+      "value": 1.0585230384642426
+    },
+    "3114": {
+      "name": "碳素组",
+      "value": 1.2467319261174168
+    },
+    "3401": {
+      "name": "家具零件",
+      "value": 0
+    },
+    "AP_GAMEPLAY": {
+      "name": "理智",
+      "value": 1
+    },
+    "voucher_levelmax_4": {
+      "name": "专业干员特训装置",
+      "value": 2142.510624
+    },
+    "voucher_levelmax_5": {
+      "name": "资深干员特训装置",
+      "value": 3315.5784
+    },
+    "voucher_levelmax_6": {
+      "name": "高级资深干员特训装置",
+      "value": 5265.197999999999
+    },
+    "voucher_elite_II_4": {
+      "name": "专业干员特训邀请函",
+      "value": 2000.2306369276407
+    },
+    "voucher_elite_II_5": {
+      "name": "资深干员特训邀请函",
+      "value": 3601.913958788823
+    },
+    "voucher_elite_II_6": {
+      "name": "高级资深干员特训邀请函",
+      "value": 5420.2890355626805
+    },
+    "voucher_skill_specialLevelMax_4": {
+      "name": "专业干员技巧集",
+      "value": 1063.73818662029
+    },
+    "voucher_skill_specialLevelMax_5": {
+      "name": "资深干员技巧集",
+      "value": 1712.4965126298835
+    },
+    "voucher_skill_specialLevelMax_6": {
+      "name": "高级资深干员技巧集",
+      "value": 3037.9220051332663
+    },
+    "voucher_skin": {
+      "name": "时装自选凭证",
+      "value": 2988.9
+    },
+    "skin_15": {
+      "name": "15源石时装",
+      "value": 2490.75
+    },
+    "skin_18": {
+      "name": "18源石时装",
+      "value": 2988.9
+    },
+    "skin_21": {
+      "name": "21源石时装",
+      "value": 3487.05
+    },
+    "skin_24": {
+      "name": "24源石时装",
+      "value": 3985.2000000000003
+    },
+    "skin_27": {
+      "name": "27源石时装",
+      "value": 4483.35
+    },
+    "voucher_chipPackage": {
+      "name": "自助芯片组印刻仪",
+      "value": 361.6704
+    },
+    "voucher_5chipPackage": {
+      "name": "自助芯片印刻仪",
+      "value": 86.112
+    },
+    "ap_supply_lt_80": {
+      "name": "应急理智加强剂",
+      "value": 80
+    },
+    "avatar_special": {
+      "name": "头像",
+      "value": 0
+    },
+    "theme_scene": {
+      "name": "主题场景",
+      "value": 1992.6000000000001
+    },
+    "UI_Theme": {
+      "name": "界面主题",
+      "value": 1992.6000000000001
+    },
+    "theme_scene+UI_Theme": {
+      "name": "主题场景+界面主题",
+      "value": 3985.2000000000003
+    },
+    "business_card_theme": {
+      "name": "名片主题",
+      "value": 2988.9
+    },
+    "premium_material_issue_voucher": {
+      "name": "特级材料提货券",
+      "value": 95.35881694448189
+    },
+    "advanced_material_issue_voucher": {
+      "name": "高级材料提货券",
+      "value": 31.883777100242543
+    },
+    "rare_material_issue_voucher": {
+      "name": "稀有材料提货券",
+      "value": 302.3452050038262
+    },
+    "itempack_main": {
+      "name": "罗德岛补给箱",
+      "value": 21.28
+    },
+    "mod_update_token_2": {
+      "name": "数据增补仪",
+      "value": 0
+    },
+    "mod_update_token_1": {
+      "name": "数据增补条",
+      "value": 0
+    },
+    "voucher_item_pick6": {
+      "name": "高级干员调用凭证(已废弃)",
+      "value": 0
+    },
+    "voucher_recruitR6_pick": {
+      "name": "高级干员调用凭证",
+      "value": 0
+    },
+    "voucher_recruitR5_pick": {
+      "name": "资深干员调用凭证",
+      "value": 0
+    },
+    "voucher_class_pick6": {
+      "name": "中坚高级干员调用凭证",
+      "value": 0
+    },
+    "recruitment10": {
+      "name": "新年寻访凭证",
+      "value": 0
+    }
+  }
+}

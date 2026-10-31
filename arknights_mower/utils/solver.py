@@ -2,6 +2,7 @@ import random
 import sys
 import time
 from abc import abstractmethod
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Literal, Optional, Tuple
 
@@ -13,14 +14,23 @@ from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.const import KeyCode
-from arknights_mower.utils.device.adb_client.session import Session
 from arknights_mower.utils.device.device import Device
-from arknights_mower.utils.device.scrcpy import Scrcpy
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
-from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.network_adaptation import (
+    ADAPTIVE_WAIT_SCENES,
+    MAX_COMPENSATION_SECONDS,
+    get_network_adaptation,
+)
+from arknights_mower.utils.operation_timing import timed_step
+from arknights_mower.utils.recognize import (
+    NetworkWaitGuard,
+    RecognizeError,
+    Recognizer,
+    Scene,
+)
+from arknights_mower.utils.swipe import noinertia_path
 from arknights_mower.utils.traceback import caller_info
 
 
@@ -28,6 +38,10 @@ class StrategyError(Exception):
     """Strategy Error"""
 
     pass
+
+
+class ObservationTimeout(RecognizeError):
+    """本轮操作结果观察已达到调用方给定的截止时间。"""
 
 
 class BaseSolver:
@@ -47,6 +61,8 @@ class BaseSolver:
         self,
         device: Device | None = None,
         recog: Recognizer | None = None,
+        *,
+        connection_retries: int = 3,
     ) -> None:
         # self.device = device if device is not None else (recog.device if recog is not None else Device())
         if device is None and recog is not None:
@@ -54,23 +70,7 @@ class BaseSolver:
         if device is not None:
             self.device = device
         else:
-            while True:
-                try:
-                    self.device = Device()
-                    self.device.client.check_server_alive()
-                    Session().connect(config.conf.adb)
-                    if not self.device.check_resolution():
-                        raise MowerExit
-                    if config.conf.droidcast.enable:
-                        self.device.start_droidcast()
-                    if config.conf.touch_method == "scrcpy":
-                        self.device.control.scrcpy = Scrcpy(self.device.client)
-                    break
-                except MowerExit:
-                    raise
-                except Exception as e:
-                    logger.exception(e)
-                    restart_simulator()
+            self.device = Device.create(connection_retries=connection_retries)
 
         self.recog = recog if recog is not None else Recognizer(self.device)
 
@@ -95,7 +95,10 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.exception(f"识别出了点小差错 qwq: {e}")
+                logger.exception(
+                    f"识别出了点小差错 qwq: {e}",
+                    extra={"archive_screenshots": False},
+                )
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -103,6 +106,10 @@ class BaseSolver:
                 logger.exception(e)
                 raise e
             retry_times = config.MAX_RETRYTIME
+            # transition() 既没点屏幕也没等待就返回时，缓存不会被清掉（清理写在
+            # sleep 里）。下一次 get_scene 仍返回旧场景，比如 tap_element 找不到
+            # 元素直接返回 False，while 就会一直空转下去。这里补上清理。
+            self.recog.update()
 
     @abstractmethod
     def transition(self) -> bool:
@@ -143,10 +150,38 @@ class BaseSolver:
             x, y = poly
         return (int(x), int(y))
 
+    @contextmanager
+    def observation_deadline(self, deadline):
+        """让嵌套读屏、等待和必要导航共用一个单调截止时间。"""
+        previous = self.__dict__.get("_observation_deadline")
+        self._observation_deadline = (
+            deadline if previous is None else min(previous, deadline)
+        )
+        try:
+            yield
+        finally:
+            if previous is None:
+                self.__dict__.pop("_observation_deadline", None)
+            else:
+                self._observation_deadline = previous
+
+    def _observation_remaining(self):
+        deadline = self.__dict__.get("_observation_deadline")
+        if deadline is None:
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ObservationTimeout("操作结果观察已超时")
+        return remaining
+
     def sleep(self, interval: float = 1) -> None:
         """sleeping for a interval"""
+        remaining = self._observation_remaining()
+        if remaining is not None:
+            interval = min(interval, remaining)
         csleep(interval)
         self.recog.update()
+        self._observation_remaining()
 
     def input(self, referent: str, input_area: tp.Scope, text: str = None) -> None:
         """input text"""
@@ -168,8 +203,10 @@ class BaseSolver:
         strict: bool = False,
         score=0.0,
     ) -> tp.Scope:
+        self._observation_remaining()
         return self.recog.find(res, draw, scope, thres, judge, strict, score)
 
+    @timed_step("tap")
     def tap(
         self,
         poly: tp.Location,
@@ -180,6 +217,7 @@ class BaseSolver:
         """tap"""
         if config.stop_mower.is_set():
             raise MowerExit
+        self._observation_remaining()
         pos = self.get_pos(poly, x_rate, y_rate)
         self.device.tap(pos)
         if interval > 0:
@@ -200,6 +238,7 @@ class BaseSolver:
         self.recog.check_current_focus()
 
     def restart_game(self):
+        self.recog.__dict__.pop("_network_wait_episode", None)
         self.device.exit()
         self.device.launch()
         self.recog.update()
@@ -214,14 +253,13 @@ class BaseSolver:
         draw: bool = False,
         scope: tp.Scope = None,
         judge: bool = True,
-        detected: bool = False,
         thres: Optional[int] = None,
     ) -> bool:
-        """tap element"""
+        """tap element，找不到时返回 False 而不报错"""
         element = self.find(
             element_name, draw, scope, judge=judge, score=score, thres=thres
         )
-        if detected and element is None:
+        if element is None:
             return False
         self.tap(element, x_rate, y_rate, interval)
         return True
@@ -257,6 +295,7 @@ class BaseSolver:
         self,
         name: Literal[
             "index",
+            "operator",
             "terminal",
             "infrastructure",
             "recruit",
@@ -268,6 +307,7 @@ class BaseSolver:
     ):
         pos = {
             "index": (140, 365),  # 首页
+            "operator": (460, 365),  # 干员
             "terminal": (793, 163),  # 终端
             "infrastructure": (1030, 163),  # 基建
             "recruit": (1435, 365),  # 公开招募
@@ -353,33 +393,40 @@ class BaseSolver:
     #     if interval > 0:
     #         self.sleep(interval, rebuild)
 
+    @timed_step("swipe")
     def swipe_noinertia(
         self,
         start: tp.Coordinate,
         movement: tp.Coordinate,
         duration: int = 20,
         interval: float = 0.2,
+        *,
+        retry: bool = False,
+        capture: bool = False,
     ) -> None:
-        """swipe with no inertia (movement should be vertical)"""
+        """无惯性滑动；调用方确认未生效后可用 retry=True 延长拖动。
+
+        本接口只执行一次手势，不根据截图差异自动重复操作。
+        """
         if config.stop_mower.is_set():
             raise MowerExit
-        points = [start]
-        if movement[0] == 0:
-            dis = abs(movement[1])
-            points.append((start[0] + 100, start[1]))
-            points.append((start[0] + 100, start[1] + movement[1]))
-            points.append((start[0], start[1] + movement[1]))
-        else:
-            dis = abs(movement[0])
-            points.append((start[0], start[1] + 100))
-            points.append((start[0] + movement[0], start[1] + 100))
-            points.append((start[0] + movement[0], start[1]))
-        self.device.swipe_ext(points, durations=[200, dis * duration // 100, 200])
+        points, durations = noinertia_path(start, movement, duration, retry=retry)
+        frame = self.device.swipe_ext(
+            points,
+            durations=durations,
+            up_wait=400,
+            **({"capture": True} if capture else {}),
+        )
         if interval > 0:
             self.sleep(interval)
+        else:
+            self.recog.update()
+        if capture:
+            self.recog.set_frame(frame)
 
     def back(self, interval: float = 1) -> None:
         """send back keyevent"""
+        self._observation_remaining()
         self.device.send_keyevent(KeyCode.KEYCODE_BACK)
         self.sleep(interval)
 
@@ -426,6 +473,10 @@ class BaseSolver:
     def solve_captcha(self, refresh=False):
         th = thres2(self.recog.gray, 254)
         pos = np.nonzero(th)
+        if pos[0].size == 0:
+            # 启动页的图案偶尔误命中验证码特征；此时没有白色验证码面板。
+            logger.info("验证码画面已消失，等待场景重新识别")
+            return
         offset_x = pos[1].min()
         offset_y = pos[0].min()
         img_scope = ((offset_x, offset_y), (pos[1].max(), pos[0].max()))
@@ -520,14 +571,30 @@ class BaseSolver:
         x, y, w, h = rect[0]
         self.tap(((x, y), (x + w, y + h)))
 
+    def retry_cancelled_login(self, attempt: int) -> None:
+        if attempt > config.MAX_RETRYTIME:
+            raise StrategyError("登录被取消，已达到本轮重试登录次数上限")
+        if not (
+            self.find("double_confirm/main")
+            and self.find("double_confirm/login_cancelled")
+            and (button := self.find("double_confirm/retry_login"))
+        ):
+            raise RecognizeError("登录取消弹窗或重试登录按钮已变化")
+        logger.info("登录被取消，第 %s 次重试登录", attempt)
+        self.tap(button)
+
     def login(self):
         """
         登录进游戏
         """
         retry_times = config.MAX_RETRYTIME
+        cancelled_login_attempts = 0
         while retry_times and not self.is_login():
             try:
-                if (scene := self.scene()) == Scene.LOGIN_START:
+                if (scene := self.scene()) == Scene.LOGIN_CANCELLED:
+                    cancelled_login_attempts += 1
+                    self.retry_cancelled_login(cancelled_login_attempts)
+                elif scene == Scene.LOGIN_START:
                     # 应对两种情况：
                     # 1. 点击左上角“网络检测”后出现“您即将进行一次网络拨测，该操作将采集您的网络状态并上报，点击确认继续”，点x
                     # 2. 点击左上角“清除缓存”之后取消
@@ -592,7 +659,10 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.exception(f"识别出了点小差错 qwq: {e}")
+                logger.exception(
+                    f"识别出了点小差错 qwq: {e}",
+                    extra={"archive_screenshots": False},
+                )
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -612,9 +682,35 @@ class BaseSolver:
         while retry_times:
             if self.scene() == Scene.NAVIGATION_BAR:
                 return True
-            elif not self.tap_element("nav_button", detected=True):
+            elif not self.tap_element("nav_button"):
                 return False
             retry_times -= 1
+
+    def to_operator_list(self) -> bool:
+        """通过导航栏进入干员列表，确认排序页签后交接设备。"""
+        from arknights_mower.utils import rapidocr
+
+        if not self.get_navigation():
+            return False
+        self.tap_nav_element("operator")
+        if not self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2):
+            return False
+        if self.find("nav_bar") or self.find("connecting"):
+            return False
+        if rapidocr.engine is None:
+            rapidocr.initialize_ocr()
+        # 对应 MAA 干员列表排序页签的标准画面区域。
+        result, _ = rapidocr.engine(
+            self.recog.img[0:204, 1174:1436],
+            use_det=True,
+            use_cls=False,
+            use_rec=True,
+        )
+        return any(
+            str(item[1]).strip() in {"等级", "稀有度", "获取时间"}
+            and float(item[2]) >= 0.8
+            for item in result or []
+        )
 
     def back_to_infrastructure(self):
         if hasattr(self, "scene_graph_navigation"):
@@ -623,6 +719,26 @@ class BaseSolver:
         self.back_to_index()
         self.tap_index_element("infrastructure")
 
+    def dismiss_clue_access_record(self):
+        """关闭已确认的访问记录一次，在有限帧内核实弹窗消失。"""
+        if self.scene() != Scene.CLUE_ACCESS_RECORD:
+            return True
+        if getattr(self, "_clue_access_record_exhausted", False):
+            return False
+        self.tap((960, 540))
+        for _ in range(4):
+            self.recog.update()
+            scene = self.scene()
+            if scene != Scene.CLUE_ACCESS_RECORD and scene not in self.waiting_scene:
+                return True
+            self.sleep(0.5)
+        logger.warning(
+            "访问记录关闭后仍未消失，结束本次返回",
+            extra={"archive_screenshots": True},
+        )
+        self._clue_access_record_exhausted = True
+        return False
+
     def back_to_index(self):
         """
         返回主页
@@ -630,9 +746,21 @@ class BaseSolver:
         logger.info("back to index")
         retry_times = config.MAX_RETRYTIME
         pre_scene = None
+        access_record_dismissed = False
         while retry_times and (scene := self.scene()) != Scene.INDEX:
             try:
-                if self.get_navigation():
+                if (
+                    scene != Scene.CLUE_ACCESS_RECORD
+                    and scene not in self.waiting_scene
+                ):
+                    self._clue_access_record_exhausted = False
+                if scene == Scene.CLUE_ACCESS_RECORD:
+                    if access_record_dismissed:
+                        break
+                    access_record_dismissed = True
+                    if not self.dismiss_clue_access_record():
+                        break
+                elif self.get_navigation():
                     self.tap_nav_element("index")
                 elif scene == Scene.RIIC_REPORT:
                     self.tap((100, 60))
@@ -679,7 +807,10 @@ class BaseSolver:
             except MowerExit:
                 raise
             except RecognizeError as e:
-                logger.exception(f"识别出了点小差错 qwq: {e}")
+                logger.exception(
+                    f"识别出了点小差错 qwq: {e}",
+                    extra={"archive_screenshots": False},
+                )
                 retry_times -= 1
                 self.sleep(3)
                 continue
@@ -691,8 +822,10 @@ class BaseSolver:
         if self.scene() != Scene.INDEX:
             raise StrategyError
 
-    def to_sss(self):
+    def to_sss(self, stage_type=None, ec=None):
         """保全导航"""
+        stage_type = config.conf.sss.type if stage_type is None else stage_type
+        ec = config.conf.sss.ec if ec is None else ec
         logger.info("保全导航")
         start_time = datetime.now()
 
@@ -707,13 +840,13 @@ class BaseSolver:
                 elif scene == Scene.TERMINAL_REGULAR:
                     self.tap((1548, 870))
                 elif scene == Scene.SSS_MAIN:
-                    self.tap((384, 324) if config.conf.sss.type == 1 else (768, 648))
+                    self.tap((384, 324) if stage_type == 1 else (768, 648))
                 elif scene == Scene.SSS_START:
                     self.tap_element("sss/start_button")
                 elif scene == Scene.SSS_EC:
-                    if config.conf.sss.ec == 1:
+                    if ec == 1:
                         ec_x = 576
-                    elif config.conf.sss.ec == 2:
+                    elif ec == 2:
                         ec_x = 960
                     else:
                         ec_x = 1860
@@ -793,11 +926,11 @@ class BaseSolver:
                         logger.info("生息演算导航完成（ra/start_button）")
                         return
                     logger.info("匹配到 continue_button（非当前模式预期）")
-                    send_message("生息演算（Maa）导航失败：未正确选择模式")
-                    raise Exception("生息演算（Maa）导航失败：未正确选择模式")
+                    send_message("生息演算（MAA）导航失败：未正确选择模式")
+                    raise Exception("生息演算（MAA）导航失败：未正确选择模式")
                 self.sleep(1)
             else:
-                raise Exception("生息演算（Maa）导航失败：未识别到开始/继续按钮")
+                raise Exception("生息演算（MAA）导航失败：未识别到开始/继续按钮")
 
         # RelaunchAnchor 主题
         elif theme == "RelaunchAnchor":
@@ -865,21 +998,188 @@ class BaseSolver:
                     logger.warning(f"RelaunchAnchor 导航第{attempt + 1}次失败，重试")
             raise Exception("无法找到指定的 RelaunchAnchor 模式")
 
-    def waiting_solver(self):
-        """需要等待的页面解决方法。触发超时重启会返回False"""
+    def waiting_solver(self, *, restart_on_timeout: bool = True):
+        """等待当前场景变化；超时返回 False，可由调用方禁止重启。"""
+        self._observation_remaining()
         scene = self.scene()
+        self._observation_remaining()
         sleep_time, wait_count = getattr(
             config.conf.waiting_scene, scene_list[str(scene)]["label"]
         )
-        for _ in range(wait_count):
-            self.sleep(sleep_time)
-            if self.scene() != scene:
+        run_allowance = 0
+        if scene in (Scene.CONNECTING, Scene.LOADING):
+            from arknights_mower.utils.run_order_network import (
+                run_order_network_compensation,
+            )
+
+            run_allowance = min(
+                run_order_network_compensation(self.recog, config.conf),
+                MAX_COMPENSATION_SECONDS,
+            )
+        adaptive_wait = (
+            getattr(config.conf, "waiting_scene_network_adaptive", False) is True
+        )
+        observe_network = (
+            adaptive_wait
+            or run_allowance > 0
+            or (getattr(config.conf, "run_order_network_adaptive", False) is True)
+        )
+        if observe_network and scene in (Scene.CONNECTING, Scene.LOADING):
+            if self._wait_for_network_scene(
+                scene,
+                sleep_time,
+                wait_count,
+                adaptive=adaptive_wait,
+                run_allowance=run_allowance,
+            ):
                 return True
+        else:
+            self.recog.__dict__.pop("_network_wait_episode", None)
+            for _ in range(wait_count):
+                self.sleep(sleep_time)
+                if self.scene() != scene:
+                    return True
+        self._observation_remaining()
         logger.warning("相同场景等待超时")
+        if not restart_on_timeout:
+            return False
+        self.recog.__dict__.pop("_network_wait_episode", None)
         self.device.exit()
         csleep(3)
         self.check_current_focus()
         return False
+
+    def _network_wait_source(self, scene):
+        if scene == Scene.CONNECTING:
+            return "CONNECTING"
+        return None
+
+    def _wait_for_network_scene(
+        self, scene, sleep_time, wait_count, *, adaptive, run_allowance
+    ):
+        observations = get_network_adaptation(self.recog)
+        started = time.monotonic()
+        label = scene_list[str(scene)]["label"]
+        base_seconds = sleep_time * wait_count
+        network_source = self._network_wait_source(scene)
+        network_started = started
+        network_base_seconds = base_seconds
+        network_comment = scene_list[str(scene)]["comment"]
+        protected = adaptive or run_allowance > 0
+        episode = self.recog.__dict__.get("_network_wait_episode")
+        if not protected or not isinstance(episode, NetworkWaitGuard):
+            event = (
+                observations.take_wait(label, datetime.now(), base_seconds=base_seconds)
+                if adaptive
+                else None
+            )
+            allowance = max(
+                run_allowance, event.compensation_seconds if event is not None else 0
+            )
+            scene_budgets = {
+                name: float(interval * count)
+                for name in ADAPTIVE_WAIT_SCENES
+                for interval, count in (getattr(config.conf.waiting_scene, name),)
+            }
+            episode = NetworkWaitGuard(
+                started + sum(scene_budgets.values()) + allowance,
+                scene_budgets,
+                allowance,
+            )
+            if allowance > 0:
+                logger.info(
+                    "本次【%s】使用联网等待补偿，等待上限由%s秒延长至%s秒。",
+                    scene_list[str(scene)]["comment"],
+                    f"{base_seconds:g}",
+                    f"{base_seconds + allowance:g}",
+                )
+            if protected:
+                self.recog._network_wait_episode = episode
+        previous_guard = self.recog.__dict__.get("_network_wait_guard")
+        observation_deadline = self.__dict__.get("_observation_deadline", float("inf"))
+        if protected:
+            self.recog._network_wait_guard = episode
+
+        def record(*, timed_out=False):
+            if network_source is None:
+                return
+            elapsed = time.monotonic() - network_started
+            event = observations.record(
+                network_source,
+                elapsed_seconds=elapsed,
+                base_seconds=network_base_seconds,
+                observed_at=datetime.now(),
+                timed_out=timed_out,
+            )
+            if event is not None and (
+                (
+                    getattr(config.conf, "run_order_network_adaptive", False) is True
+                    and config.conf.run_order_buffer_time > 0
+                    and elapsed > config.conf.run_order_buffer_time / 2
+                )
+                or (adaptive and elapsed > network_base_seconds / 2)
+                or timed_out
+            ):
+                seconds = f"{elapsed:.1f}".removesuffix(".0")
+                if timed_out:
+                    logger.debug(f"【{network_comment}】等待超时，已等待{seconds}秒。")
+                else:
+                    logger.debug(f"【{network_comment}】等待结束，耗时{seconds}秒。")
+
+        try:
+            while (
+                remaining := min(
+                    episode.deadline - time.monotonic(),
+                    observation_deadline - time.monotonic(),
+                    episode.scene_budgets[label] + episode.allowance_remaining,
+                )
+            ) > 0:
+                sample_started = time.monotonic()
+                try:
+                    self.sleep(min(sleep_time, remaining))
+                    current_scene = self.scene()
+                finally:
+                    elapsed = max(0, time.monotonic() - sample_started)
+                    base_used = min(episode.scene_budgets[label], elapsed)
+                    episode.scene_budgets[label] -= base_used
+                    episode.allowance_remaining = max(
+                        0, episode.allowance_remaining - (elapsed - base_used)
+                    )
+                current_source = self._network_wait_source(current_scene)
+                if current_source != network_source:
+                    record()
+                    network_source = current_source
+                    network_started = time.monotonic()
+                    if current_source is not None:
+                        network_label = scene_list[str(current_scene)]["label"]
+                        interval, count = getattr(
+                            config.conf.waiting_scene, network_label
+                        )
+                        network_base_seconds = interval * count
+                        network_comment = scene_list[str(current_scene)]["comment"]
+                if current_scene == scene:
+                    continue
+                if not protected or current_scene not in (
+                    Scene.CONNECTING,
+                    Scene.LOADING,
+                ):
+                    self.recog.__dict__.pop("_network_wait_episode", None)
+                    return True
+                scene = current_scene
+                label = scene_list[str(scene)]["label"]
+                sleep_time, wait_count = getattr(config.conf.waiting_scene, label)
+                base_seconds = sleep_time * wait_count
+            record(timed_out=True)
+            return False
+        except ObservationTimeout:
+            record(timed_out=True)
+            raise
+        finally:
+            if protected:
+                if previous_guard is None:
+                    self.recog.__dict__.pop("_network_wait_guard", None)
+                else:
+                    self.recog._network_wait_guard = previous_guard
 
     def wait_for_scene_stable(
         self,
@@ -896,7 +1196,8 @@ class BaseSolver:
                 if (scene := self.scene()) == target_scene:
                     return True
                 if scene in self.waiting_scene:
-                    self.waiting_solver()
+                    if not self.waiting_solver():
+                        return False
                 else:
                     self.sleep(interval)
             return False

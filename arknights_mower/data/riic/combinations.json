@@ -1,0 +1,366 @@
+[
+  {
+    "id": "builtin-run-order",
+    "title": "跑单干员",
+    "facility": "贸易",
+    "core": [
+      "但书",
+      "龙舌兰",
+      "佩佩",
+      "可露希尔"
+    ],
+    "coreTitle": "跑单干员",
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-smoke",
+    "title": "人间烟火",
+    "facility": "通用",
+    "core": [
+      "重岳",
+      "桑葚",
+      "乌有"
+    ],
+    "support": [
+      "令",
+      "夕",
+      "截云",
+      "黍",
+      "望"
+    ],
+    "accessory": [
+      "余",
+      "年"
+    ],
+    "note": "同时有5名岁干员在工作设施，如在意公招效率，不推荐使用",
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-perception",
+    "title": "感知信息",
+    "facility": "通用",
+    "core": [
+      "迷迭香",
+      "黑键",
+      "絮雨",
+      "令"
+    ],
+    "support": [
+      "夕",
+      "塑心",
+      "车尔尼",
+      "爱丽丝",
+      "琴柳"
+    ],
+    "note": "如在意公招效率，不推荐使用",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-lgd",
+    "title": "龙门近卫局",
+    "facility": "通用",
+    "core": [
+      "斩业星熊",
+      "诗怀雅"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-monster-hunter",
+    "title": "怪物猎人小队",
+    "facility": "通用",
+    "core": [
+      "火龙S黑角",
+      "麒麟R夜刀",
+      "泰拉大陆调查团"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-automation",
+    "title": "自动化",
+    "facility": "金属",
+    "core": [
+      "森蚺",
+      "温蒂",
+      "承曦格雷伊",
+      "清流",
+      "冬时"
+    ],
+    "support": [
+      "流明"
+    ],
+    "accessory": [
+      "Lancet-2"
+    ],
+    "memberNotes": {
+      "清流": "非153",
+      "冬时": "3电",
+      "Lancet-2": "0心情"
+    },
+    "note": ""
+  },
+  {
+    "id": "builtin-abyss",
+    "title": "深海猎人",
+    "facility": "通用",
+    "core": [
+      "歌蕾蒂娅",
+      "斯卡蒂",
+      "幽灵鲨",
+      "乌尔比安",
+      "安哲拉"
+    ],
+    "support": [
+      "深巡"
+    ],
+    "note": "",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-redpine",
+    "title": "红松林",
+    "facility": "经验",
+    "core": [
+      "薇薇安娜",
+      "焰尾",
+      "远牙",
+      "灰毫",
+      "野鬃",
+      "砾"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-tianmao",
+    "title": "精英干员",
+    "facility": "通用",
+    "core": [
+      "凯尔希·思衡托",
+      "机械师",
+      "烛煌"
+    ],
+    "support": [
+      "真言"
+    ],
+    "accessory": [
+      "迷迭香",
+      "煌",
+      "逻各斯",
+      "电弧"
+    ],
+    "memberNotes": {
+      "真言": "目前5精干35%贸易"
+    },
+    "note": "至少5名精英干员位于不同设施"
+  },
+  {
+    "id": "builtin-nasti",
+    "title": "莱茵科技",
+    "facility": "金属",
+    "core": [
+      "娜斯提",
+      "缪尔赛思"
+    ],
+    "support": [
+      "多萝西"
+    ],
+    "accessory": [
+      "赫默",
+      "伊芙利特",
+      "塞雷娅",
+      "白面鸮",
+      "梅尔",
+      "麦哲伦",
+      "星源"
+    ],
+    "note": "需要5名莱茵生命干员（不含缪尔赛思）",
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-makoto",
+    "title": "结城理·S.E.E.S.",
+    "facility": "通用",
+    "core": [
+      "结城理",
+      "埃癸斯"
+    ],
+    "accessory": [
+      "岳羽由加莉",
+      "虎狼丸"
+    ],
+    "note": "",
+    "support": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-pozy",
+    "title": "鸿雪杜林组",
+    "facility": "贸易",
+    "core": [
+      "鸿雪",
+      "图耶"
+    ],
+    "support": [
+      "绮良",
+      "褐果"
+    ],
+    "accessory": [
+      "杜林",
+      "桃金娘",
+      "至简",
+      "特克诺"
+    ],
+    "memberNotes": {
+      "绮良": "4赤使用",
+      "杜林": "不可0心情",
+      "桃金娘": "不可0心情",
+      "至简": "不可0心情",
+      "褐果": "不可0心情",
+      "特克诺": "不可0心情"
+    },
+    "note": ""
+  },
+  {
+    "id": "builtin-siracusa",
+    "title": "叙拉古",
+    "facility": "贸易",
+    "core": [
+      "伺夜",
+      "贝洛内",
+      "八幡海铃"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-exusiai",
+    "title": "能天使",
+    "facility": "贸易",
+    "core": [
+      "能天使",
+      "蕾缪安"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-glasgow",
+    "title": "格拉斯哥帮",
+    "facility": "贸易",
+    "core": [
+      "摩根",
+      "推进之王",
+      "戴菲恩"
+    ],
+    "support": [
+      "维娜·维多利亚"
+    ],
+    "note": "",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-karlan",
+    "title": "喀兰贸易",
+    "facility": "贸易",
+    "core": [
+      "孑",
+      "银灰",
+      "琳琅诗怀雅",
+      "灵知"
+    ],
+    "support": [
+      "崖心",
+      "锏"
+    ],
+    "note": "",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-gold",
+    "title": "金属工艺",
+    "facility": "金属",
+    "core": [
+      "苍苔",
+      "引星棘刺",
+      "砾"
+    ],
+    "support": [
+      "斑点",
+      "夜烟",
+      "温米"
+    ],
+    "note": "",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-bubble",
+    "title": "泡泡仓库",
+    "facility": "通用",
+    "core": [
+      "泡泡",
+      "火神"
+    ],
+    "support": [
+      "圣约送葬人",
+      "贝娜"
+    ],
+    "memberNotes": {
+      "圣约送葬人": "经验"
+    },
+    "note": "",
+    "accessory": []
+  },
+  {
+    "id": "builtin-cloud",
+    "title": "红云经验",
+    "facility": "经验",
+    "core": [
+      "红云",
+      "稀音"
+    ],
+    "support": [
+      "帕拉斯",
+      "刻俄柏"
+    ],
+    "note": "",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-standardization",
+    "title": "黑钢标准化",
+    "facility": "通用",
+    "core": [
+      "水月",
+      "杰西卡",
+      "香草",
+      "涤火杰西卡"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  }
+]

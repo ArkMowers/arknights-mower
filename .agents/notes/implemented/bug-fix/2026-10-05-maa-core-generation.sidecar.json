@@ -1,0 +1,33 @@
+{
+  "title": "MAA Core Generation Validation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-05",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-MAA-11]",
+    "[INV-UPD-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.maa_runtime.load_verified_maa",
+    "arknights_mower.utils.maa_runtime.MaaCoreRestartRequired",
+    "arknights_mower.utils.maa_update.clear_loaded_maa_cache",
+    "arknights_mower.utils.maa_update.read_installed_version",
+    "server._run_maa_update",
+    "server._run_maa_resource_update"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_runtime_tests.py",
+    "arknights_mower/tests/maa_error_no_exit_tests.py",
+    "arknights_mower/tests/maa_runtime_native_tests.py",
+    "arknights_mower/tests/maa_update_tests.py",
+    "arknights_mower/tests/maa_check_tests.py",
+    "arknights_mower/tests/adb_shared_transport_tests.py",
+    "arknights_mower/tests/maa_admission_tests.py",
+    "arknights_mower/tests/maa_callback_tests.py",
+    "arknights_mower/tests/maa_navigation_tests.py",
+    "arknights_mower/tests/maa_update_route_tests.py"
+  ]
+}

@@ -1,0 +1,577 @@
+/* 设置目录由侧栏承载，右侧按分类展示设置组。 */
+.settings-page {
+  --settings-radius: 16px;
+  --settings-control-width: 28rem;
+  --settings-number-width: 14rem;
+  --settings-card-border: color-mix(in srgb, var(--mower-border) 85%, transparent);
+  --settings-card-shadow-hover:
+    0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px -12px rgba(16, 24, 40, 0.18);
+  --settings-accent-soft: color-mix(in srgb, var(--mower-primary) 12%, transparent);
+  --settings-accent-ring: color-mix(in srgb, var(--mower-primary) 28%, transparent);
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 48px 40px 80px;
+  box-sizing: border-box;
+  color: var(--mower-text);
+}
+
+/* ---------- 页头 ---------- */
+.settings-page-header {
+  margin-bottom: 44px;
+}
+
+.settings-page-header h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--mower-text) 88%, transparent);
+  letter-spacing: -0.02em;
+}
+
+.settings-page-header p {
+  max-width: 640px;
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--mower-text-muted);
+}
+
+/* ---------- 布局 ---------- */
+.settings-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+
+.settings-aside {
+  position: sticky;
+  top: 20px;
+}
+
+.settings-search {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.settings-search-results {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max(100%, 320px);
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  padding: 4px;
+  box-sizing: border-box;
+  border: 1px solid var(--settings-card-border);
+  border-radius: 10px;
+  background: var(--mower-surface);
+  box-shadow: var(--settings-card-shadow-hover);
+}
+
+.settings-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  text-align: left;
+  color: var(--mower-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.settings-search-result:hover,
+.settings-search-result:focus-visible {
+  outline: none;
+  background: var(--mower-control-hover);
+}
+
+.settings-search-result-label {
+  font-size: 13.5px;
+  line-height: 20px;
+}
+
+.settings-search-result-path,
+.settings-search-empty {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--mower-text-muted);
+}
+
+.settings-search-empty {
+  padding: 8px 10px;
+}
+
+/* 搜索定位后短暂高亮目标设置项 */
+.settings-search-hit {
+  border-radius: 8px;
+  animation: settings-search-hit 1.6s ease-out;
+}
+
+@keyframes settings-search-hit {
+  0%,
+  40% {
+    box-shadow: 0 0 0 3px var(--settings-accent-ring);
+    background-color: var(--settings-accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+    background-color: transparent;
+  }
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--mower-text-muted);
+  text-decoration: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.settings-nav-item .n-icon {
+  flex: none;
+  opacity: 0.8;
+}
+
+.settings-nav-item:hover {
+  color: var(--mower-text);
+  background: var(--mower-control-hover);
+}
+
+.settings-nav-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--settings-accent-ring);
+}
+
+.settings-nav-item.is-active {
+  font-weight: 550;
+  color: var(--mower-text);
+  background: var(--mower-control-surface);
+}
+
+.settings-nav-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--mower-primary);
+}
+
+.settings-nav-item.is-active .n-icon {
+  color: var(--mower-primary);
+  opacity: 1;
+}
+
+.settings-content {
+  min-width: 0;
+}
+
+/* 外层侧栏承载设置目录时，内容区只保留设置本身。 */
+.settings-page--shell {
+  max-width: 1008px;
+  padding: 48px 40px 80px;
+}
+
+.settings-page--shell .settings-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ---------- 分区 ---------- */
+.settings-section {
+  scroll-margin-top: 20px;
+}
+
+.settings-section + .settings-section {
+  margin-top: 44px;
+}
+
+.settings-page--shell .settings-section + .settings-section {
+  margin-top: 0;
+}
+
+.settings-section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.settings-section-icon {
+  display: none;
+}
+
+.settings-section-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.5;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+.settings-section-heading p {
+  margin: -4px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--mower-text-muted);
+}
+
+.settings-card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+
+.settings-card-grid > * {
+  min-width: 0;
+}
+
+.settings-card-wide,
+.settings-card-grid > :only-child {
+  grid-column: 1 / -1;
+}
+
+/* ---------- 卡片 ---------- */
+.provider .settings-page .n-card:not(.n-card--embedded):not(.n-modal) {
+  --n-border-radius: var(--settings-radius) !important;
+  --n-border-color: var(--settings-card-border) !important;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings-page .settings-card-grid .n-card > .n-card-header {
+  padding: 0 0 16px;
+}
+
+.settings-page .settings-card-grid .n-card > .n-card-header .n-card-header__main {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.settings-page .settings-card-grid .n-card > .n-card-content {
+  padding: 20px 24px;
+  border: 1px solid var(--settings-card-border);
+  border-radius: var(--settings-radius);
+  background: var(--mower-surface);
+}
+
+.settings-page .settings-card-grid .n-card > .n-card-content:empty {
+  display: none;
+}
+
+.settings-page .settings-card-grid .n-card > .n-card__footer,
+.settings-page .settings-card-grid .n-card > .n-card__action {
+  padding: 16px 0 0;
+}
+
+.settings-page .settings-card-grid .n-card > .n-card__action {
+  background: transparent;
+}
+
+.settings-page .settings-card-grid .card-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* 普通设置按行排列；表格、设备向导与列表保留各自的布局。 */
+.settings-page .n-form > .n-form-item {
+  margin: 0;
+  padding: 14px 0;
+}
+
+.settings-page .n-form > .n-form-item:first-child {
+  padding-top: 0;
+}
+
+.settings-page .n-form > .n-form-item:last-child {
+  padding-bottom: 0;
+}
+
+.settings-page .n-form > .n-form-item + .n-form-item {
+  border-top: 1px solid var(--settings-card-border);
+}
+
+.settings-page .n-form > .n-form-item--left-labelled,
+.settings-page .settings-row-form > .n-form-item {
+  grid-template-columns: 180px minmax(0, 1fr);
+  grid-template-areas: 'label blank' 'label feedback';
+  grid-template-rows: auto auto;
+  column-gap: 20px;
+  align-items: start;
+}
+
+.settings-page .n-form > .n-form-item--left-labelled > .n-form-item-label,
+.settings-page .settings-row-form > .n-form-item > .n-form-item-label {
+  width: auto !important;
+  min-width: 0;
+  min-height: var(--n-blank-height);
+  padding: 4px 0;
+  line-height: 1.5;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.settings-page .n-form > .n-form-item--left-labelled > .n-form-item-blank,
+.settings-page .settings-row-form > .n-form-item > .n-form-item-blank {
+  min-width: 0;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-page .n-form > .n-form-item:not(:has(> .n-form-item-label)) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'blank' 'feedback';
+}
+
+.settings-page .n-form > .n-form-item:not(:has(> .n-form-item-label)) > .n-form-item-blank {
+  justify-content: flex-start;
+}
+
+.settings-page .n-form-item-feedback-wrapper:empty {
+  display: none;
+}
+
+.settings-field {
+  width: 100%;
+  max-width: var(--settings-control-width);
+  min-width: 0;
+}
+
+.settings-page
+  .n-form-item-blank
+  > :is(.n-input, .n-select, .n-dynamic-input, .n-input-group, .n-date-picker, .n-time-picker),
+.settings-page .desktop-scale-settings {
+  width: 100%;
+  max-width: var(--settings-control-width);
+}
+
+.settings-page .n-form-item-blank > .n-input-number,
+.settings-page .settings-field > .n-input-number {
+  width: 100%;
+  max-width: var(--settings-number-width);
+}
+
+.settings-page .n-form-item-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--mower-text);
+}
+
+.settings-row-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-row-description {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--mower-text-muted);
+}
+
+.settings-page .settings-card-grid .n-card .n-form.settings-form-stacked > .n-form-item {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'label' 'blank' 'feedback';
+  grid-template-rows: auto auto auto;
+  gap: 8px 0;
+  padding: 0;
+  border-top: 0;
+}
+
+.settings-page
+  .settings-card-grid
+  .n-card
+  .n-form.settings-form-stacked
+  > .n-form-item
+  > .n-form-item-label {
+  min-height: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+.settings-page
+  .settings-card-grid
+  .n-card
+  .n-form.settings-form-stacked
+  > .n-form-item
+  > .n-form-item-blank {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  justify-self: stretch;
+  gap: 8px;
+  width: 100%;
+  max-width: none;
+}
+
+.settings-page
+  .settings-card-grid
+  .n-card
+  .n-form.settings-form-stacked
+  .n-form-item-blank
+  > :is(.n-input, .n-select, .n-dynamic-input) {
+  width: 100%;
+  max-width: none;
+}
+
+.settings-page .n-alert {
+  border-radius: 10px;
+}
+
+.settings-page a[href^='#']:not(.settings-nav-item) {
+  color: var(--mower-primary);
+  text-underline-offset: 4px;
+}
+
+/* ---------- 响应式 ---------- */
+@container main-content (max-width: 860px) {
+  .settings-page {
+    padding: 32px 24px 64px;
+  }
+
+  .settings-page-header {
+    margin-bottom: 32px;
+  }
+
+  .settings-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .settings-aside {
+    top: 0;
+    z-index: 5;
+    margin: 0 -24px;
+    padding: 8px 24px;
+    background: color-mix(in srgb, var(--mower-surface) 82%, transparent);
+    backdrop-filter: saturate(1.6) blur(12px);
+    border-bottom: 1px solid var(--settings-card-border);
+  }
+
+  .settings-search {
+    margin-bottom: 8px;
+  }
+
+  .settings-search-results {
+    width: 100%;
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .settings-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-nav-item {
+    flex: none;
+    padding: 6px 12px;
+    border-radius: 999px;
+  }
+
+  .settings-nav-item.is-active::before {
+    display: none;
+  }
+
+  .settings-section {
+    scroll-margin-top: 64px;
+  }
+}
+
+@container main-content (max-width: 720px) {
+  .settings-page .n-form > .n-form-item--left-labelled,
+  .settings-page .settings-row-form > .n-form-item {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'label' 'blank' 'feedback';
+    row-gap: 8px;
+  }
+
+  .settings-page .n-form > .n-form-item--left-labelled > .n-form-item-label,
+  .settings-page .settings-row-form > .n-form-item > .n-form-item-label {
+    min-height: 0;
+    padding: 0;
+  }
+
+  .settings-page .n-form > .n-form-item--left-labelled > .n-form-item-blank,
+  .settings-page .settings-row-form > .n-form-item > .n-form-item-blank {
+    justify-content: flex-start;
+  }
+}
+
+@container main-content (max-width: 480px) {
+  .settings-page {
+    padding: 24px 16px 48px;
+  }
+
+  .settings-page-header h1 {
+    font-size: 25px;
+  }
+
+  .settings-page .settings-card-grid .n-card > .n-card-content {
+    padding: 18px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-search-hit {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--settings-accent-ring);
+  }
+
+  .settings-nav-item,
+  .provider .settings-page .n-card:not(.n-card--embedded) {
+    transition: none;
+  }
+}
+
+.settings-checkbox-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settings-checkbox-title {
+  display: block;
+}
+
+.settings-checkbox-description {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--mower-text-muted);
+  overflow-wrap: anywhere;
+}

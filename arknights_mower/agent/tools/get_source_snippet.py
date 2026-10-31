@@ -1,8 +1,48 @@
 import json
-import os
 from dataclasses import asdict
+from pathlib import Path
 
 from arknights_mower.agent.tools.debuginfo import DebugInfo
+
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+_PROJECT_ROOT = _PACKAGE_ROOT.parent
+_SOURCE_SUFFIXES = {".py", ".js", ".ts", ".vue", ".java", ".cs"}
+_MAX_SOURCE_BYTES = 1024 * 1024
+_MAX_CONTEXT = 50
+
+
+def _allowed_source_path(file_path: str) -> Path:
+    if not isinstance(file_path, str) or not file_path or "\0" in file_path:
+        raise ValueError("不允许读取此文件")
+    supplied = Path(file_path)
+    candidates = (
+        [supplied]
+        if supplied.is_absolute()
+        else [
+            _PROJECT_ROOT / supplied,
+            _PACKAGE_ROOT / supplied,
+        ]
+    )
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if not resolved.is_file() or resolved.suffix.lower() not in _SOURCE_SUFFIXES:
+            continue
+        in_package = (
+            resolved.is_relative_to(_PACKAGE_ROOT) and resolved.suffix.lower() == ".py"
+        )
+        in_ui = resolved.is_relative_to(_PROJECT_ROOT / "ui" / "src")
+        root_source = resolved in {
+            _PROJECT_ROOT / "server.py",
+            _PROJECT_ROOT / "webview_ui.py",
+        }
+        if (
+            in_package or in_ui or root_source
+        ) and resolved.stat().st_size <= _MAX_SOURCE_BYTES:
+            return resolved
+    raise ValueError("不允许读取此文件")
 
 
 def get_source_snippet(file_path: str, line_number: int, context: int = 10) -> str:
@@ -10,18 +50,12 @@ def get_source_snippet(file_path: str, line_number: int, context: int = 10) -> s
     提取指定文件中某一行上下文的源代码段，自动基于项目目录修正路径。
     """
     try:
-        # 基于项目根路径修正路径（例如运行目录或 app 跟路径）
-        project_root = os.path.abspath(os.getcwd())  # 或使用 os.path.dirname(__file__)
-        abs_path = file_path
-
-        if not os.path.exists(file_path):
-            # 尝试从相对路径恢复绝对路径
-            rel_path = os.path.relpath(file_path, start="/")
-            candidate = os.path.join(project_root, rel_path)
-            if os.path.exists(candidate):
-                abs_path = candidate
-
-        with open(abs_path, "r", encoding="utf-8") as f:
+        if type(line_number) is not int or line_number < 1:
+            raise ValueError("行号无效")
+        if type(context) is not int or not 0 <= context <= _MAX_CONTEXT:
+            raise ValueError("上下文行数无效")
+        source_path = _allowed_source_path(file_path)
+        with source_path.open("r", encoding="utf-8") as f:
             lines = f.readlines()
 
         start = max(0, line_number - context - 1)
@@ -29,7 +63,7 @@ def get_source_snippet(file_path: str, line_number: int, context: int = 10) -> s
         snippet = "".join(lines[start:end])
 
         info = DebugInfo(
-            file_path=abs_path, line_number=line_number, source_code=snippet
+            file_path=str(source_path), line_number=line_number, source_code=snippet
         )
         return json.dumps(asdict(info))
 
@@ -48,9 +82,10 @@ get_source_snippet_tool_def = {
         "name": "get_source_snippet",
         "description": (
             "根据文件路径和行号提取报错行及其上下文的源代码，用于错误定位。"
-            "extract_stack_paths 工具提取的文件路径和行号必须调用此工具获取源代码片段。"
-            "如果 extract_stack_paths 工具返回多个文件路径和行号，则你自行分析最相关的文件和行号。"
-            "该工具不能直接调用，必须在 extract_stack_paths 工具返回结果后调用。"
+            "使用用户明确提供或 extract_stack_paths 提取的有效文件路径和正整数行号，不猜测行号。"
+            "仅支持当前安装目录允许的项目源文件，上下文行数为0到50，默认10。"
+            "返回包含 source_code 的 JSON；读取失败时如实说明，不声称已读取源码。"
+            "多个栈帧优先读取与异常最相关的位置。"
         ),
         "parameters": {
             "type": "object",

@@ -1,0 +1,24 @@
+{
+  "title": "Scheduler CI Fixtures",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-09]",
+    "[INV-SCHED-20]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_ready",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.arrange_release_dorm"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "arknights_mower/tests/resting_priority_tests.py",
+    "arknights_mower/tests/mastery_restart_tests.py",
+    "arknights_mower/tests/workshop_inflight_tests.py"
+  ]
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<VirtualBox xmlns="http://www.innotek.de/VirtualBox-settings" version="1.16-windows">
+  <Machine uuid="{5e1aaadc-7991-419d-a2b6-f030b497b282}" name="Nox_2">
+    <Hardware><Network><Adapter slot="0" enabled="true"><NAT>
+      <Forwarding name="adb" proto="1" hostip="127.0.0.1" hostport="62125" guestport="5555"/>
+    </NAT></Adapter></Network></Hardware>
+  </Machine>
+</VirtualBox>

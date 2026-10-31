@@ -1,0 +1,25 @@
+{
+  "title": "Recoverable Device Cleanup",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-22]",
+    "[INV-03]",
+    "[INV-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.application.DeviceControl",
+    "arknights_mower.utils.device.device.Device",
+    "arknights_mower.utils.device.droidcast.DroidCastSession"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_droidcast_tests.py",
+    "arknights_mower/tests/device_owned_resources_tests.py",
+    "arknights_mower/tests/device_application_tests.py",
+    "arknights_mower/tests/device_maatouch_tests.py"
+  ]
+}

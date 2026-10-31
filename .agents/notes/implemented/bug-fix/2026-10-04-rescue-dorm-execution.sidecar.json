@@ -1,0 +1,21 @@
+{
+  "title": "Rescue Dormitory Execution",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.dorm_recovery.compact_dorm_vacancies",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_release_ready"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_release_failure_tests.py",
+    "arknights_mower/tests/emergency_group_staffing_tests.py"
+  ]
+}

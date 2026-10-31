@@ -1,10 +1,11 @@
 <script setup>
-import Close from '@vicons/ionicons5/Close'
+import Close from '@vicons/ionicons5/es/Close'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
+import { useResourceVersionStore } from '@/stores/resourceVersion'
 
-const props = defineProps({
+defineProps({
   compact: {
     type: Boolean,
     default: false
@@ -12,12 +13,35 @@ const props = defineProps({
 })
 
 const store = useConfigStore()
-const { maa_weekly_plan, maa_weekly_plan_active, maa_weekly_plan_options } = storeToRefs(store)
-const { update_weekly_plan_active, delete_weekly_plan } = store
+const resourceVersion = useResourceVersionStore()
+const {
+  maa_weekly_plan,
+  maa_weekly_plan_active,
+  maa_weekly_plan_options,
+  maa_weekly_plan_activity_fallbacks,
+  maa_weekly_plan_activity_switch_times,
+  maa_weekly_plan_activity_end_times,
+  maa_event_shop
+} = storeToRefs(store)
+const { update_weekly_plan_active, delete_weekly_plan, update_weekly_plan_activity_fallback } =
+  store
+
+watch(
+  () => resourceVersion.info.current_version,
+  async () => {
+    try {
+      await store.refresh_weekly_plan_metadata()
+    } catch {
+      error.value = '活动结束时间读取失败，请重新打开周计划'
+    }
+  }
+)
 
 const loading = ref(false)
 const error = ref('')
 const localValue = ref('')
+const localFallbackValue = ref(null)
+const localFallbackTime = ref(null)
 
 watch(
   maa_weekly_plan_active,
@@ -25,6 +49,21 @@ watch(
     localValue.value = value || ''
   },
   { immediate: true }
+)
+
+watch(
+  [
+    maa_weekly_plan_active,
+    maa_weekly_plan_activity_fallbacks,
+    maa_weekly_plan_activity_switch_times,
+    maa_weekly_plan_activity_end_times
+  ],
+  ([active, fallbacks, switchTimes, endTimes]) => {
+    localFallbackValue.value = fallbacks?.[active] || null
+    const timestamp = switchTimes?.[active] || endTimes?.[active]
+    localFallbackTime.value = timestamp ? timestamp * 1000 : null
+  },
+  { immediate: true, deep: true }
 )
 
 const options = computed(() =>
@@ -37,6 +76,23 @@ const options = computed(() =>
 const canDelete = computed(
   () => maa_weekly_plan_options.value.length > 1 && Boolean(maa_weekly_plan_active.value)
 )
+const fallbackOptions = computed(() =>
+  options.value.filter((option) => option.value !== maa_weekly_plan_active.value)
+)
+const hasFallbackTarget = computed(() => Boolean(localFallbackValue.value))
+const fallbackTimeIsCustom = computed(() =>
+  Boolean(maa_weekly_plan_activity_switch_times.value?.[maa_weekly_plan_active.value])
+)
+
+const shopSwitchEnabled = computed({
+  get: () =>
+    Boolean(maa_weekly_plan_active.value) &&
+    maa_event_shop.value?.switch_source === maa_weekly_plan_active.value,
+  set: (enabled) => {
+    if (enabled) maa_event_shop.value.switch_source = maa_weekly_plan_active.value
+    else if (shopSwitchEnabled.value) maa_event_shop.value.switch_source = ''
+  }
+})
 
 function handleInputKeydown(event) {
   if (event.key === 'Enter') {
@@ -97,6 +153,43 @@ async function handleDelete() {
     loading.value = false
   }
 }
+
+async function handleFallback(value) {
+  loading.value = true
+  error.value = ''
+  try {
+    await update_weekly_plan_activity_fallback(value || '')
+    localFallbackValue.value = value || null
+  } catch (e) {
+    error.value = e?.response?.data?.error || e?.message || String(e)
+    localFallbackValue.value =
+      maa_weekly_plan_activity_fallbacks.value?.[maa_weekly_plan_active.value] || null
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleFallbackTime(value) {
+  if (!localFallbackValue.value) {
+    return
+  }
+  loading.value = true
+  error.value = ''
+  try {
+    await update_weekly_plan_activity_fallback(
+      localFallbackValue.value,
+      value == null ? null : Math.floor(value / 1000)
+    )
+  } catch (e) {
+    error.value = e?.response?.data?.error || e?.message || String(e)
+    const timestamp =
+      maa_weekly_plan_activity_switch_times.value?.[maa_weekly_plan_active.value] ||
+      maa_weekly_plan_activity_end_times.value?.[maa_weekly_plan_active.value]
+    localFallbackTime.value = timestamp ? timestamp * 1000 : null
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <template>
@@ -126,6 +219,50 @@ async function handleDelete() {
         <n-icon :component="Close" />
       </template>
     </n-button>
+    <div class="weekly-plan-label fallback-label">切换方案</div>
+    <n-select
+      :value="localFallbackValue"
+      class="weekly-plan-input"
+      :options="fallbackOptions"
+      :loading="loading"
+      :disabled="!fallbackOptions.length"
+      clearable
+      :placeholder="fallbackOptions.length ? '自动切换到方案' : '请先创建另一个方案'"
+      @update:value="handleFallback"
+    />
+    <span
+      class="fallback-note"
+      title="当前方案包含的资源活动关卡全部结束后，在实际刷理智前自动切换"
+    >
+      自动
+    </span>
+    <div class="weekly-plan-label fallback-label">切换时间</div>
+    <n-date-picker
+      :value="localFallbackTime"
+      class="weekly-plan-input fallback-time"
+      type="datetime"
+      clearable
+      :disabled="!hasFallbackTarget || loading"
+      placeholder="未检测到活动结束时间"
+      @update:value="handleFallbackTime"
+    />
+    <span
+      class="fallback-note"
+      title="界面按设备本地时区显示；实际切换使用活动时间戳，并用已获取的服务器时钟偏移修正设备时间误差。清空后恢复活动结束时间。"
+    >
+      {{ fallbackTimeIsCustom ? '自定' : '默认' }}
+    </span>
+    <div class="weekly-plan-label fallback-label">兑换后切换</div>
+    <n-checkbox
+      v-model:checked="shopSwitchEnabled"
+      class="shop-switch"
+      :disabled="loading || (!hasFallbackTarget && !shopSwitchEnabled)"
+      aria-label="活动商店兑换完成后切换方案"
+      >有限商品兑换完毕后切换</n-checkbox
+    >
+    <div class="shop-switch-note">
+      使用上方切换目标。需启用活动商店兑换；兑换中断或货币不足时不切换。关闭此项仍保留定时切换。
+    </div>
     <div v-if="error" class="selector-error">{{ error }}</div>
   </div>
 </template>
@@ -140,7 +277,7 @@ async function handleDelete() {
 }
 
 .weekly-plan-row.compact {
-  grid-template-columns: 40px minmax(0, 1fr) 32px;
+  grid-template-columns: 48px minmax(0, 1fr) 32px;
 }
 
 .weekly-plan-label {
@@ -153,6 +290,30 @@ async function handleDelete() {
 
 .delete-plan-button {
   justify-self: end;
+}
+
+.fallback-label,
+.fallback-note {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.fallback-note {
+  text-align: center;
+}
+
+.fallback-time {
+  width: 100%;
+}
+
+.shop-switch,
+.shop-switch-note {
+  grid-column: 2 / 4;
+}
+
+.shop-switch-note {
+  font-size: 12px;
+  opacity: 0.65;
 }
 
 .selector-error {

@@ -1,0 +1,24 @@
+{
+  "title": "Daily Trust Rotation",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-11",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-48]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.trust_rotation.TrustRotationSolver",
+    "arknights_mower.solvers.trust_rotation.run_trust_rotation",
+    "arknights_mower.utils.character_recognize.match_operator_name"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/trust_rotation_tests.py",
+    "ui/src/components/TrustSettings.test.js",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/name_template_cache_tests.py",
+    "arknights_mower/tests/character_name_roi_tests.py"
+  ]
+}

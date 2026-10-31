@@ -1,0 +1,22 @@
+{
+  "title": "Intelligent Rescue Measured Release and Compensation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_replan_releases",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_read_rooms",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.handle_error"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_observation_budget_tests.py",
+    "arknights_mower/tests/emergency_compensation_tests.py"
+  ]
+}

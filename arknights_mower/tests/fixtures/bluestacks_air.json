@@ -1,0 +1,7 @@
+{
+  "not_installed": {"installed": false, "before": [], "after": [], "reply": "cannot connect", "ok": false, "code": "missing_installation"},
+  "adb_disabled": {"installed": true, "before": [], "after": [], "reply": "failed to connect to 127.0.0.1:5555", "ok": false, "code": "air_adb_unavailable"},
+  "stale_candidate": {"installed": true, "before": [], "after": [], "reply": "connected to 127.0.0.1:5555", "ok": false, "code": "air_adb_unavailable"},
+  "ready": {"installed": true, "before": [], "after": [["127.0.0.1:5555", "device"]], "reply": "connected to 127.0.0.1:5555", "ok": true},
+  "multiple_devices": {"installed": true, "before": [["phone", "device"], ["127.0.0.1:5555", "device"]], "after": [], "reply": "", "ok": false, "code": "multiple_devices"}
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Configured Rescue Schedule",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.emergency_plan.effective_rescue_plan",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_schedule_staffing"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_plan_tests.py",
+    "arknights_mower/tests/rescue_plan_route_tests.py",
+    "arknights_mower/tests/emergency_group_staffing_tests.py"
+  ]
+}

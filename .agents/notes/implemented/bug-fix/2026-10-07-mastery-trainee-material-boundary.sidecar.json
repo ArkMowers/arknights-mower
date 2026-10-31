@@ -1,0 +1,26 @@
+{
+  "title": "Mastery Trainee and Material Boundaries",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-29]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.mastery_reader._protected_trainee_matches",
+    "arknights_mower.utils.mastery_db.get_material_waiting_plan",
+    "arknights_mower.utils.mastery_db.retry_failed_plans",
+    "arknights_mower.utils.mastery_recommendation.compute_workshop_config",
+    "arknights_mower.utils.mastery_recommendation.auto_schedule_mastery_tasks",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._dispatch_scan_start_tasks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/mastery_protection_tests.py",
+    "arknights_mower/tests/mastery_db_tests.py",
+    "arknights_mower/tests/workshop_readiness_tests.py",
+    "arknights_mower/tests/workshop_finished_plan_tests.py"
+  ]
+}

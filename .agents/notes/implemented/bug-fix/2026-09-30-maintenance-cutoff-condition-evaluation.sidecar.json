@@ -1,0 +1,22 @@
+{
+  "title": "Maintenance Cutoff and Condition Evaluation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-11]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.major_maintenance_remaining_hours",
+    "arknights_mower.utils.operators.Operators.next_major_maintenance_check",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.backup_plan_solver"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maintenance_run_order_tests.py",
+    "arknights_mower/tests/backup_condition_tests.py",
+    "arknights_mower/tests/initial_dorm_mood_tests.py"
+  ]
+}

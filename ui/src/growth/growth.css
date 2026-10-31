@@ -1,0 +1,619 @@
+/* 养成规划工作区：墨与纸的训练档案视觉。
+   仅作用于 .growth-workspace 子树，不改全局主题；明暗两套用 html[data-mower-theme] 切换。 */
+:root {
+  /* 主背景贴近应用壳层的浅灰白，暖色收进卡片与局部面板，避免整页偏黄。 */
+  --gp-page: #f6f4ef;
+  --gp-page-edge: #faf9f7;
+  --gp-page-edge-soft: rgba(250, 249, 247, 0.92);
+  --gp-surface: #fffdf9;
+  --gp-surface-2: #f6f2e9;
+  --gp-surface-3: #ece7db;
+  --gp-ink: #18191c;
+  --gp-ink-2: #3a3b40;
+  --gp-muted: #726f67;
+  --gp-faint: #96938a;
+  --gp-hair: rgba(24, 25, 28, 0.15);
+  --gp-hair-soft: rgba(24, 25, 28, 0.08);
+  --gp-accent: var(--mower-primary, #18a058);
+  --gp-accent-ink: #0c6c39;
+  --gp-accent-block: rgba(24, 160, 88, 0.1);
+  --gp-signal: #c4472e;
+  --gp-signal-block: rgba(196, 71, 46, 0.1);
+  --gp-warn: #b87a12;
+  --gp-warn-block: rgba(184, 122, 18, 0.12);
+  --gp-info: #2a6f9e;
+  --gp-info-block: rgba(42, 111, 158, 0.1);
+  --gp-ink-panel: #16171b;
+  --gp-ink-panel-2: #1f2126;
+  --gp-paper-on-ink: #f4f0e5;
+  --gp-muted-on-ink: rgba(244, 240, 229, 0.62);
+  --gp-hair-on-ink: rgba(244, 240, 229, 0.16);
+  --gp-accent-on-ink: #7fe0b0;
+  --gp-r-lg: 24px;
+  --gp-r: 16px;
+  --gp-r-sm: 10px;
+  --gp-r-xs: 6px;
+  --gp-font:
+    'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif;
+  --gp-display:
+    Bahnschrift, 'DIN Alternate', 'Segoe UI Variable Display', 'Arial Narrow', 'Microsoft YaHei UI',
+    sans-serif;
+  --gp-mono: 'Cascadia Mono', 'JetBrains Mono', Consolas, 'Microsoft YaHei UI', monospace;
+  --gp-shadow-float: 0 26px 60px -36px rgba(18, 18, 20, 0.55);
+  --gp-ease: cubic-bezier(0.22, 0.68, 0.24, 1);
+}
+
+html[data-mower-theme='dark'] {
+  --gp-page: #0d0e10;
+  --gp-page-edge: #121317;
+  --gp-page-edge-soft: rgba(18, 19, 23, 0.9);
+  --gp-surface: #17181c;
+  --gp-surface-2: #1e2025;
+  --gp-surface-3: #26282e;
+  --gp-ink: #f2efe6;
+  --gp-ink-2: #d3d0c7;
+  --gp-muted: #a09d94;
+  --gp-faint: #7d7a72;
+  --gp-hair: rgba(242, 239, 230, 0.18);
+  --gp-hair-soft: rgba(242, 239, 230, 0.09);
+  --gp-accent: var(--mower-primary, #63e2b7);
+  --gp-accent-ink: #8ef0cb;
+  --gp-accent-block: rgba(99, 226, 183, 0.14);
+  --gp-signal: #e07a63;
+  --gp-signal-block: rgba(224, 122, 99, 0.14);
+  --gp-warn: #e5bd6d;
+  --gp-warn-block: rgba(229, 189, 109, 0.14);
+  --gp-info: #7fb6dc;
+  --gp-info-block: rgba(127, 182, 220, 0.14);
+  --gp-shadow-float: 0 26px 60px -30px rgba(0, 0, 0, 0.75);
+}
+
+.growth-workspace {
+  width: 100%;
+  min-height: 100%;
+  /* 布局内容区是列向 flex 滚动容器；页面内容高于视口时，默认 flex-shrink 会把
+     工作区压回视口高度，背景在滚动后被截断露出白色底板。禁止收缩，让纸张背景
+     始终覆盖完整内容高度。 */
+  flex-shrink: 0;
+  padding: 20px 24px 24px;
+  box-sizing: border-box;
+  color: var(--gp-ink);
+  font-family: var(--gp-font);
+  font-size: 14px;
+  line-height: 1.5;
+  /* 顶部/左侧从应用壳层的白色过渡进纸色，避免白色侧栏、标题栏旁突然出现整片暖黄。 */
+  background:
+    linear-gradient(180deg, var(--gp-page-edge-soft) 0, rgba(0, 0, 0, 0) 180px),
+    linear-gradient(90deg, var(--gp-page-edge) 0, rgba(0, 0, 0, 0) 120px), var(--gp-page);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+.growth-workspace *,
+.growth-workspace *::before,
+.growth-workspace *::after {
+  box-sizing: border-box;
+}
+
+.growth-workspace__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ── 排版工具 ─────────────────────────────────────────────── */
+.gp-display {
+  font-family: var(--gp-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.gp-mono {
+  font-family: var(--gp-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.gp-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--gp-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gp-muted);
+}
+
+.gp-kicker::before {
+  content: '';
+  width: 18px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.gp-num {
+  font-family: var(--gp-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+}
+
+.gp-muted {
+  color: var(--gp-muted);
+}
+
+.gp-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.gp-section-head__title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.gp-section-head__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--gp-muted);
+  font-size: 12.5px;
+}
+
+.gp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gp-ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--gp-hair);
+  text-underline-offset: 4px;
+}
+
+.gp-link:hover {
+  color: var(--gp-accent-ink);
+  text-decoration-color: currentColor;
+}
+
+.gp-link:focus-visible {
+  outline: 2px solid var(--gp-accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* ── 面板与纸张 ───────────────────────────────────────────── */
+.gp-panel {
+  background: var(--gp-surface);
+  border-radius: var(--gp-r-lg);
+  padding: 22px 24px;
+  min-width: 0;
+}
+
+.gp-panel--tight {
+  padding: 16px 18px;
+  border-radius: var(--gp-r);
+}
+
+.gp-panel--ink {
+  background: var(--gp-ink-panel);
+  color: var(--gp-paper-on-ink);
+}
+
+.gp-sheet {
+  position: relative;
+  background: var(--gp-surface);
+  border-radius: var(--gp-r-lg);
+  padding: 24px;
+}
+
+.gp-sheet::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
+  pointer-events: none;
+}
+
+/* ── 印章 ────────────────────────────────────────────────── */
+.gp-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  color: var(--gp-accent-ink);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1.5;
+  white-space: nowrap;
+  transform: rotate(-2.5deg);
+}
+
+.gp-stamp--signal {
+  color: var(--gp-signal);
+}
+
+.gp-stamp--warn {
+  color: var(--gp-warn);
+}
+
+.gp-stamp--info {
+  color: var(--gp-info);
+}
+
+.gp-stamp--ink {
+  color: var(--gp-ink-2);
+}
+
+.gp-stamp--flat {
+  transform: none;
+}
+
+/* ── 标签块（材料/技能等） ───────────────────────────────── */
+.gp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--gp-surface-2);
+  color: var(--gp-ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gp-chip--accent {
+  background: var(--gp-accent-block);
+  color: var(--gp-accent-ink);
+}
+
+.gp-chip--signal {
+  background: var(--gp-signal-block);
+  color: var(--gp-signal);
+}
+
+.gp-chip--warn {
+  background: var(--gp-warn-block);
+  color: var(--gp-warn);
+}
+
+/* ── 进度条 ──────────────────────────────────────────────── */
+.gp-meter {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--gp-surface-3);
+  overflow: hidden;
+}
+
+.gp-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gp-accent);
+  transition: width 640ms var(--gp-ease);
+}
+
+.gp-meter--signal > span {
+  background: var(--gp-signal);
+}
+
+/* ── 空状态 / 骨架 ──────────────────────────────────────── */
+.gp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 34px 28px;
+  border-radius: var(--gp-r);
+  background: var(--gp-surface-2);
+  color: var(--gp-muted);
+}
+
+.gp-empty__title {
+  margin: 0;
+  color: var(--gp-ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.gp-empty__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.gp-skeleton {
+  border-radius: var(--gp-r);
+  background: var(--gp-surface-2);
+  animation: gp-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes gp-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* ── 页面固定装饰 ──────────────────────────────────────── */
+.gp-crop {
+  position: relative;
+}
+
+.gp-crop::before,
+.gp-crop::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--gp-hair);
+  border-style: solid;
+  pointer-events: none;
+}
+
+.gp-crop::before {
+  top: 10px;
+  left: 10px;
+  border-width: 1px 0 0 1px;
+}
+
+.gp-crop::after {
+  right: 10px;
+  bottom: 10px;
+  border-width: 0 1px 1px 0;
+}
+
+/* ── 入场动画 ──────────────────────────────────────────── */
+.gp-rise {
+  animation: gp-rise 0.6s var(--gp-ease) both;
+  animation-delay: calc(var(--gp-delay, 0) * 55ms);
+}
+
+@keyframes gp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── naive-ui 局部外观 ─────────────────────────────────── */
+.growth-workspace .n-card {
+  --n-border-radius: 18px;
+  --n-color: var(--gp-surface);
+  --n-color-embedded: var(--gp-surface-2);
+  --n-border-color: transparent;
+  --n-title-text-color: var(--gp-ink);
+  --n-text-color: var(--gp-ink-2);
+}
+
+.growth-workspace .n-tag {
+  --n-border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.growth-workspace .n-input,
+.growth-workspace .n-base-selection {
+  --n-border-radius: 10px;
+}
+
+.growth-workspace .n-button {
+  --n-border-radius: 9px;
+  font-weight: 600;
+}
+
+.growth-workspace .gp-btn--paper.n-button {
+  --n-color: var(--gp-paper-on-ink);
+  --n-color-hover: #fffdf3;
+  --n-color-pressed: #e4dfd1;
+  --n-color-focus: var(--gp-paper-on-ink);
+  --n-text-color: #15161a;
+  --n-text-color-hover: #15161a;
+  --n-text-color-pressed: #15161a;
+  --n-text-color-focus: #15161a;
+  --n-border: 0;
+  --n-border-hover: 0;
+  --n-border-pressed: 0;
+  --n-border-focus: 0;
+  --n-height: 38px;
+  --n-padding: 0 18px;
+  box-shadow: none;
+}
+
+.growth-workspace .gp-btn--ghost-ink.n-button {
+  --n-color: transparent;
+  --n-color-hover: rgba(244, 240, 229, 0.1);
+  --n-color-pressed: rgba(244, 240, 229, 0.16);
+  --n-color-focus: transparent;
+  --n-text-color: var(--gp-paper-on-ink);
+  --n-text-color-hover: var(--gp-paper-on-ink);
+  --n-text-color-pressed: var(--gp-paper-on-ink);
+  --n-text-color-focus: var(--gp-paper-on-ink);
+  --n-border: 1px solid var(--gp-hair-on-ink);
+  --n-border-hover: 1px solid rgba(244, 240, 229, 0.36);
+  --n-border-pressed: 1px solid rgba(244, 240, 229, 0.42);
+  --n-border-focus: 1px solid var(--gp-hair-on-ink);
+  --n-height: 38px;
+  --n-padding: 0 16px;
+  box-shadow: none;
+}
+
+.growth-workspace .gp-switch.n-switch {
+  --n-rail-color: rgba(244, 240, 229, 0.24);
+  --n-rail-color-active: var(--gp-accent-on-ink);
+  --n-button-color: #16171b;
+}
+
+/* 主视图容器 */
+.gp-view {
+  min-height: 320px;
+}
+
+/* ── 响应式 ────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .growth-workspace {
+    padding: 14px 16px 20px;
+  }
+  .growth-workspace__inner {
+    gap: 14px;
+  }
+}
+
+@media (max-width: 720px) {
+  .growth-workspace {
+    padding: 10px 10px 16px;
+    font-size: 13.5px;
+  }
+  .gp-panel,
+  .gp-sheet {
+    padding: 16px;
+    border-radius: 18px;
+  }
+  .gp-section-head__title {
+    font-size: 18px;
+  }
+}
+
+/* ── 滚动条 ────────────────────────────────────────────── */
+/* 纸面滚动条：内容区、干员档案与筛选浮层统一用 ::-webkit-scrollbar 自绘。
+   Chromium 121+ 只要元素上出现非 auto 的 scrollbar-width / scrollbar-color，
+   就会忽略下面的 webkit 定制，回退成系统原生滚动条（白底、带上下箭头按钮，
+   和纸张视觉非常割裂）。所以这些容器必须显式把标准属性恢复成 auto。
+   页面滚动由内容区承担，文档级滚动条直接隐藏。 */
+.layout-content-container:has(.growth-workspace) .n-layout-scroll-container {
+  /* 滚动条槽与纸张同色：否则右侧会露出一条应用壳层的白底竖带。 */
+  background: var(--gp-page);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+.layout-content-container:has(.growth-workspace) .n-layout-scroll-container::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+.layout-content-container:has(.growth-workspace)
+  .n-layout-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.layout-content-container:has(.growth-workspace)
+  .n-layout-scroll-container::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  background: var(--gp-hair);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+
+.layout-content-container:has(.growth-workspace)
+  .n-layout-scroll-container::-webkit-scrollbar-thumb:hover {
+  background-color: var(--gp-faint);
+}
+
+.layout-content-container:has(.growth-workspace)
+  .n-layout-scroll-container::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.layout-content-container:has(.growth-workspace)
+  .n-layout-scroll-container::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 干员档案正文与筛选浮层原本已有 webkit 规则，但同样被标准属性压住；
+   这里补回 auto，并隐藏按钮与角落，让已有的细滚动条真正生效。
+   选择器带 html 前缀是为压过组件 scoped 规则里的 scrollbar-width: thin。 */
+html .growth-workspace .growth-dossier__body,
+html .growth-dossier--sheet .growth-dossier__body,
+html .n-popover .growth-filters__popover {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+html .growth-workspace .growth-dossier__body::-webkit-scrollbar-button,
+html .growth-dossier--sheet .growth-dossier__body::-webkit-scrollbar-button,
+html .n-popover .growth-filters__popover::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html .growth-workspace .growth-dossier__body::-webkit-scrollbar-corner,
+html .growth-dossier--sheet .growth-dossier__body::-webkit-scrollbar-corner,
+html .n-popover .growth-filters__popover::-webkit-scrollbar-corner,
+html .n-popover .growth-filters__popover::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html:has(.growth-workspace) {
+  background: var(--gp-page);
+  scrollbar-width: none;
+}
+
+html:has(.growth-workspace)::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* naive tabs 的横向滚动容器在缩放环境下会多出 1px 竖向溢出，锁死纵向滚动。 */
+.growth-workspace .v-x-scroll {
+  overflow-y: hidden;
+}
+
+.growth-workspace .v-x-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gp-rise {
+    animation: none;
+  }
+  .gp-meter > span {
+    transition: none;
+  }
+  .growth-level__rail-fill,
+  .growth-level__node-dot {
+    transition: none;
+  }
+}
