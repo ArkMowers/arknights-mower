@@ -6,7 +6,7 @@
 
 ## 2. Quantity Contract
 
-LMD uses the shared OCR client on the complete quantity band, as specified by [Independent Shared OCR](recognition.md#independent-shared-ocr). A single result with confidence at least 0.90 accepts ASCII digits, an optional decimal fraction and an optional 万 or 亿 suffix after Unicode width and whitespace normalization. Decimal arithmetic applies multipliers of 10,000 and 100,000,000 and accepts only integral results. Missing, malformed, low-confidence or failed OCR returns `None`; the scan skips that item without template fallback. Other items retain template matching. Cloud inventory reads complete integer counts directly and do not strip display units.
+LMD uses the shared OCR client on the complete quantity text, as specified by [Independent Shared OCR](recognition.md#independent-shared-ocr). Before OCR, the reader removes adjacent icon and background components crossing the text band's top or bottom edge while retaining its full horizontal width, including digits and units at either side. A single result with confidence at least 0.90 accepts ASCII digits, an optional decimal fraction and an optional 万 or 亿 suffix after Unicode width and whitespace normalization. Decimal arithmetic applies multipliers of 10,000 and 100,000,000 and accepts only integral results. Missing, malformed, low-confidence or failed OCR returns `None`; the scan skips that item without template fallback. Other items retain template matching. Cloud inventory reads complete integer counts directly and do not strip display units.
 
 ## 3. Subsystem Invariants
 
@@ -25,6 +25,6 @@ After successful confirmation, the scan CSV, database and merged history are wri
 
 ## 4. Verification
 
-`pytest arknights_mower/tests/depot_quantity_tests.py arknights_mower/tests/recognition_model_tests.py` covers conversion, rejection and reader selection offline. OCR accuracy on game pixels requires recorded quantity bands. The [decision](../../.agents/notes/implemented/bug-fix/2026-10-13-depot-lmd-units.md) records the template limitation and existing engine reuse.
+`pytest arknights_mower/tests/depot_quantity_tests.py arknights_mower/tests/recognition_model_tests.py` covers conversion, rejection and reader selection offline. `pytest arknights_mower/tests/depot_lmd_pixel_tests.py` runs the real category scan on the recorded basic-items frame, matches the LMD item in an earlier frame, and uses constructed quantity bands for a true leading digit and a longer amount. All use the local OCR engine to verify that the adjacent icon does not become a digit and the complete amount survives preprocessing. The [decision](../../.agents/notes/implemented/bug-fix/2026-10-13-depot-lmd-units.md) records the template limitation, OCR reuse and image-preprocessing rationale.
 
 `pytest arknights_mower/tests/depot_scene_tests.py` exercises the scan and its scheduling caller offline, covering login recovery after a restart, complete rescanning without partial-result duplication, restart exhaustion, scene and stability failures, preservation of prior snapshots, successful scans and explicitly empty categories.
