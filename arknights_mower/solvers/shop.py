@@ -88,8 +88,8 @@ class CreditShop(SceneGraphSolver):
         font: str = "noto",
         height: int | None = None,
         thres: int | None = 127,
-    ):
-        """基于模板匹配的数字识别
+    ) -> int | None:
+        """基于模板匹配读取数字，无法确认完整数字时返回 None。
 
         Args:
             scope: 识别区域
@@ -97,6 +97,8 @@ class CreditShop(SceneGraphSolver):
             height: 高度
         """
         img = cropimg(self.recog.gray, scope)
+        if not img.size:
+            return None
 
         if font == "riic_base":
             templates = riic_base_digits
@@ -113,35 +115,53 @@ class CreditShop(SceneGraphSolver):
         rect = [cv2.boundingRect(c) for c in contours]
         rect.sort(key=lambda c: c[0])
 
-        value = 0
+        value = None
 
         for x, y, w, h in rect:
+            # 独立微点不参与数字拼接。
+            if w <= 4 and h <= 4:
+                continue
             digit = cropimg(img, ((x, y), (x + w, y + h)))
+            if img.shape[0] < default_height:
+                if h * 3 < img.shape[0] * 2:
+                    return None
+                # 卷数等较小区域使用同一字体，按实际字高与模板对齐。
+                scale = default_height / h
+                digit = cv2.resize(digit, None, fx=scale, fy=scale)
             digit = cv2.copyMakeBorder(
                 digit, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,)
             )
-            score = []
+            best_score = 0.5
+            best_digit = None
             for i in range(10):
                 im = templates[i]
+                if digit.shape[0] < im.shape[0] or digit.shape[1] < im.shape[1]:
+                    continue
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-                score.append(min_val)
-            value = value * 10 + score.index(min(score))
+                min_val = cv2.minMaxLoc(result)[0]
+                if min_val < best_score:
+                    best_score = min_val
+                    best_digit = i
+            if best_digit is None:
+                # 不能丢弃无法识别的数字后，把剩余部分当成完整读数。
+                return None
+            value = (0 if value is None else value) * 10 + best_digit
 
         return value
 
-    def credit_remain(self):
+    def credit_remain(self) -> int | None:
         credits = self.number(((1700, 39), (1800, 75)), "riic_base", thres=180)
         logger.debug(f"{credits=}")
         return credits
 
-    def product_info(self):
+    def product_info(self) -> bool:
         self.products = []
+        products = []
         for idx in range(10):
             pos = card_list[idx]
             x, y = va(pos, (30, 30))
             if self.recog.gray[y][x] > 110:
-                self.products.append(None)
+                products.append(None)
                 continue
             touch_scope = (pos, va(pos, (card_w, card_h)))
             x, y = va(pos, (6, 60))
@@ -149,8 +169,12 @@ class CreditShop(SceneGraphSolver):
             if self.recog.gray[y][x] < 150:
                 discount_scope = sa(((27, 65), (66, 95)), pos)
                 discount = self.number(discount_scope, "riic_base")
+                if discount is None:
+                    return False
             price_scope = sa(((15, 300), (340, 333)), pos)
             price = self.number(price_scope, thres=180)
+            if price is None:
+                return False
 
             score = 1
             item_name = None
@@ -167,12 +191,15 @@ class CreditShop(SceneGraphSolver):
                     score = min_val
                     item_name = name
             if item_name == "技巧概要":
-                if self.number(sa(((252, 14), (270, 40)), pos)) == 1:
+                volume = self.number(sa(((252, 14), (270, 40)), pos))
+                if volume not in (1, 2):
+                    return False
+                if volume == 1:
                     item_name += "·卷1"
                 else:
                     item_name += "·卷2"
 
-            self.products.append(
+            products.append(
                 {
                     "name": item_name,
                     "touch": touch_scope,
@@ -180,7 +207,9 @@ class CreditShop(SceneGraphSolver):
                     "price": price,
                 }
             )
+        self.products = products
         logger.debug(self.products)
+        return True
 
     def transition(self):
         if (scene := self.scene()) == Scene.SHOP_CREDIT:
@@ -188,7 +217,10 @@ class CreditShop(SceneGraphSolver):
                 self.tap(pos)
                 return
             remain = self.credit_remain()
-            self.product_info()
+            if remain is None or not self.product_info():
+                self.credit_deficit = None
+                logger.warning("信用商店余额或商品信息未确认，结束本次购物")
+                return True
             if self.on_demand and self.rejected_product is not None:
                 rejected = next(
                     (

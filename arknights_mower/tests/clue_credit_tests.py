@@ -870,6 +870,7 @@ def shopping(monkeypatch):
             for product in state.products
             if product["name"] not in state.purchased
         ]
+        return True
 
     def tap(position):
         if position == (1, 1):

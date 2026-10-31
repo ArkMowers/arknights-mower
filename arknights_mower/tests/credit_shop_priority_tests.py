@@ -66,6 +66,7 @@ def shopping(monkeypatch, income_db):
             p if p and p["touch"] not in state.purchased else None
             for p in state.products
         ]
+        return True
 
     def tap(position):
         if position == (999, 999):
