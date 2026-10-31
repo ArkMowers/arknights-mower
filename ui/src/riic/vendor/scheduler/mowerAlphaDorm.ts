@@ -41,9 +41,10 @@ export function alphaBedTakeoverAllowed(data:MowerSchedulingData,requester:strin
  const requesterTier=alphaRestingTier(data,requester),residentTier=alphaRestingTier(data,resident)
  if(alphaFullDynamicCandidate(data,requester)||requesterTier===7||residentTier<=3)return false
  const incoming=data.operators[requester],mood=mowerDormCandidateMood(data,requester)
- if(alphaFullDormFiller(data,resident))return !!incoming&&mood!==undefined&&mood<incoming.upperLimit
+ const retained=data.freeRoomExcluded(requester)
+ if(alphaFullDormFiller(data,resident))return !!incoming&&mood!==undefined&&(retained||mood<incoming.upperLimit)
  if(!(requesterTier<residentTier&&residentTier<7))return false
- return requesterTier<=3||!!incoming&&mood!==undefined&&mood<=incoming.upperLimit*.8
+ return requesterTier<=3||!!incoming&&mood!==undefined&&(retained||mood<=incoming.upperLimit*.8)
 }
 export function alphaRestingKey(data:MowerSchedulingData,name:string):[number,number]{return [alphaRestingTier(data,name),(mowerDormCandidateMood(data,name)??24)-(data.operators[name]?.upperLimit??24)]}
 export const compareAlphaKeys=(a:readonly number[],b:readonly number[])=>a[0]!-b[0]!||a[1]!-b[1]!
