@@ -1290,11 +1290,12 @@ def test_navigation_strategy_failure_returns_false(activity):
 
 @pytest.mark.parametrize("stage", ["initialize", "recognize"])
 @pytest.mark.parametrize("failure", [TimeoutError, RuntimeError, ConnectionError])
-def test_daily_dispatch_retains_due_date_and_does_not_replay_failed_real_ocr_run(
+def test_daily_dispatch_rechecks_after_the_ocr_service_recovers(
     activity, monkeypatch, stage, failure
 ):
     solver, state, _ = activity
     name = "initialize_ocr" if stage == "initialize" else "engine"
+    original = getattr(sign_in.rapidocr, name)
     engine = Mock(side_effect=failure("OCR service unavailable"))
     monkeypatch.setattr(sign_in.rapidocr, name, engine)
     scheduler, factory, saved = daily_scheduler(monkeypatch, solver)
@@ -1302,14 +1303,20 @@ def test_daily_dispatch_retains_due_date_and_does_not_replay_failed_real_ocr_run
     assert scheduler.event_sign_in_plan_solver() is False
     assert scheduler.daily_event_sign_in_attempt == date(2026, 10, 25)
     assert scheduler.daily_event_sign_in == date(2026, 10, 24)
-    assert scheduler.event_sign_in_plan_solver() is False
-
     solver.run.assert_called_once_with()
     factory.assert_called_once_with(scheduler.device, scheduler.recog)
     engine.assert_called_once()
     saved.assert_called_once_with()
-    assert scheduler.daily_event_sign_in == date(2026, 10, 24)
     assert state.inputs == []
+
+    monkeypatch.setattr(sign_in.rapidocr, name, original)
+    assert scheduler.event_sign_in_plan_solver() is True
+    assert scheduler.event_sign_in_plan_solver() is False
+    assert solver.run.call_count == 2
+    assert factory.call_count == 2
+    assert saved.call_count == 2
+    assert scheduler.daily_event_sign_in == date(2026, 10, 25)
+    assert state.claimed == [2]
 
 
 @pytest.mark.parametrize("presentation", ["operator", "operator_first", "costume"])
@@ -1616,7 +1623,7 @@ def test_persistent_empty_presentation_ocr_stops_without_another_claim(
 
 @pytest.mark.parametrize("presentation", ["costume_animation", "costume"])
 @pytest.mark.parametrize("failure", [TimeoutError, RuntimeError])
-def test_daily_dispatch_does_not_replay_a_claim_after_presentation_ocr_service_failure(
+def test_later_dispatch_rechecks_receipts_after_presentation_ocr_service_failure(
     activity, monkeypatch, presentation, failure
 ):
     solver, state, _ = activity
@@ -1635,8 +1642,6 @@ def test_daily_dispatch_does_not_replay_a_claim_after_presentation_ocr_service_f
     scheduler, factory, saved = daily_scheduler(monkeypatch, solver)
 
     assert scheduler.event_sign_in_plan_solver() is False
-    assert scheduler.event_sign_in_plan_solver() is False
-
     solver.run.assert_called_once_with()
     factory.assert_called_once_with(scheduler.device, scheduler.recog)
     saved.assert_called_once_with()
@@ -1645,6 +1650,16 @@ def test_daily_dispatch_does_not_replay_a_claim_after_presentation_ocr_service_f
     assert scheduler.daily_event_sign_in_attempt == date(2026, 10, 25)
     assert state.inputs == [((172, 160), "index"), ((1100, 430), "panel")]
     assert state.claimed == []
+
+    # 下次进入时，游戏已显示这次领取对应的领取标记。
+    state.states[1] = "claimed"
+    assert scheduler.event_sign_in_plan_solver() is True
+    assert scheduler.event_sign_in_plan_solver() is False
+    assert solver.run.call_count == 2
+    assert saved.call_count == 2
+    assert scheduler.daily_event_sign_in == date(2026, 10, 25)
+    assert failed_requests == [2]
+    assert state.inputs.count(((1100, 430), "panel")) == 1
 
 
 def test_late_presentation_cannot_extend_past_the_global_deadline(

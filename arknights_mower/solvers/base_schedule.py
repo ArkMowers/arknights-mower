@@ -18220,10 +18220,7 @@ class BaseSchedulerSolver(
                 save_current_state()
             return False
         today = get_server_time().date()
-        if (
-            self.daily_event_sign_in >= today
-            or self.daily_event_sign_in_attempt == today
-        ):
+        if self.daily_event_sign_in >= today:
             return False
 
         from arknights_mower.solvers.event_sign_in import EventSignInSolver
