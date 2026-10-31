@@ -2,7 +2,7 @@ import {restingThresholdFor} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerDependencyReturnAdmission} from './mowerTaskDerivation'
 import {mowerExhaustGroups} from './mowerExhaustPolicy'
-import {mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
+import {mowerWorkingReplacementAssignments,mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 // Port of default plan_solver/resting/_get_resting_plan_legacy/try_reorder.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import {MowerExitError} from './mowerNativeErrors'
@@ -85,7 +85,7 @@ function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:st
    const x=data.operators[a]!,y=data.operators[b]!,fia=options.fiaTargets??[]
    return Number(x.room.startsWith('dorm'))-Number(y.room.startsWith('dorm'))||Number(!fia.includes(a))-Number(!fia.includes(b))||Number(['factory','train'].includes(x.currentRoom))-Number(['factory','train'].includes(y.currentRoom))||(x.currentMood(data.nowMicros)-x.lowerLimit)-(y.currentMood(data.nowMicros)-y.lowerLimit)
   })
-  const choices:Record<string,string[]>={},next:MowerTaskPlan={}
+  const choices:Record<string,string[]>=Object.fromEntries(Object.entries(mowerWorkingReplacementAssignments(data,names,plan)).filter(([,name])=>data.operators[name]!.multiGroup).map(([owner,name])=>[owner,[name]])),next:MowerTaskPlan={}
   const supersededCovers=new Set(shared.flatMap(op=>{
    const previous=plan[op.room]?.[op.index]
    return previous&&op.groupBindings.some(binding=>binding.group in transitions)&&!mowerSharedReplacements(op,mowerRestingBindingGroups(data,op,transitions)).includes(previous)?[previous]:[]
@@ -102,11 +102,11 @@ function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:st
    })
   }
   const match=mowerMatchReplacements(choices);if(!match)return false
-  for(const [name,cover] of Object.entries(match)){const op=data.operators[name]!;(next[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=cover}
+  for(const [name,cover] of Object.entries(match)){const op=data.operators[name]!,target=data.operators[cover]!;if(!names.includes(name)&&target.currentRoom===op.room&&target.currentIndex===op.index)continue;(next[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=cover}
   const combined=structuredClone(plan);for(const [room,row] of Object.entries(next)){const target=combined[room]??=Array(data.plan[room]!.length).fill('Current');row.forEach((name,index)=>{if(name!=='Current')target[index]=name})}
   if(!normalizeMowerSharedArrangement(data,combined,transitions))return false
   if(Object.values(data.operators).some(op=>op.multiGroup))Object.assign(next,combined)
-  const assignedCovers=new Set(Object.values(next).flat())
+  const assignedCovers=new Set([...Object.values(match),...Object.values(next).flat()])
   const reservedResting=new Set(options.dormAdmissions?.values())
   const resting=agents.filter(name=>!data.operators[name]!.workaholic&&!data.operators[name]!.room.startsWith('dorm')&&!assignedCovers.has(name)&&!data.getDormByName(name)&&!reservedResting.has(name))
   // Apply selected covers in isolation so their departing beds are available in this shift.

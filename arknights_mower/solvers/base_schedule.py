@@ -7492,7 +7492,13 @@ class BaseSchedulerSolver(
             agents = [name for name in agents if name not in dorm_agents]
         __replacement = []
         __plan = {}
-        replacement_options = {}
+        replacement_options = {
+            owner: [name]
+            for owner, name in self.op_data.working_replacement_assignments(
+                [*agents, *dorm_agents], plan
+            ).items()
+            if self.op_data.operators[name].multi_group
+        }
         active_groups = {
             self.op_data.operators[name].group
             for name in [*agents, *dorm_agents]
@@ -7741,11 +7747,22 @@ class BaseSchedulerSolver(
             for agent, replacement in assignments.items():
                 x = self.op_data.operators[agent]
                 __replacement.append(replacement)
+                cover = self.op_data.operators[replacement]
+                if agent not in agents and (
+                    cover.current_room,
+                    cover.current_index,
+                ) == (
+                    x.room,
+                    x.index,
+                ):
+                    continue
                 __plan.setdefault(x.room, ["Current"] * len(self.op_data.plan[x.room]))[
                     x.index
                 ] = replacement
             logger.debug(f"当前替换{__replacement}")
-            exist_replacement.extend(__replacement)
+            exist_replacement.extend(
+                name for name in __replacement if name not in exist_replacement
+            )
             logger.debug(dorms)
             for k, v in __plan.items():
                 if k not in plan.keys():

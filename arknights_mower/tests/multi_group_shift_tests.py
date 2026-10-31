@@ -118,7 +118,9 @@ def working_shared_covers(solver, request):
 
 
 @pytest.mark.parametrize("observed", [False, True], ids=["same-round", "observed"])
-def test_other_group_waits_for_working_shared_covers(working_shared_covers, observed):
+def test_other_group_rests_while_shared_covers_keep_working(
+    working_shared_covers, observed
+):
     s = working_shared_covers
     first, covers = {}, []
     assert s.get_resting_plan(s.op_data.groups["甲"].copy(), covers, first, 0)
@@ -127,33 +129,24 @@ def test_other_group_waits_for_working_shared_covers(working_shared_covers, obse
         apply(s, first)
         first, covers = {}, []
     data = s.op_data
-    before_plan, before_covers = deepcopy(first), covers.copy()
-    before_beds, before_groups = deepcopy(data.dorm), deepcopy(data.group_shift_state)
-    before_positions = {
-        n: (op.current_room, op.current_index) for n, op in data.operators.items()
-    }
-    assert not s.get_resting_plan(data.groups["乙"].copy(), covers, first, 0)
-    assert first == before_plan and covers == before_covers
-    assert [(b.name, b.time) for b in data.dorm] == [
-        (b.name, b.time) for b in before_beds
-    ]
-    assert data.group_shift_state == before_groups
-    assert {
-        n: (op.current_room, op.current_index) for n, op in data.operators.items()
-    } == before_positions
+    before_groups = deepcopy(data.group_shift_state)
+    assert s.get_resting_plan(data.groups["乙"].copy(), covers, first, 0)
     if not observed:
-        apply(s, first)
-    apply(
-        s,
-        {
-            "central": [
-                A,
-                "陈",
-                *([SHARED, "清道夫"] if len(data.plan["central"]) == 4 else []),
-            ]
-        },
-    )
-    assert shift_off(s, "乙")[0]
+        assert first["central"][:2] == [SHARED, "清道夫"]
+    else:
+        assert data.arrangement_group_transitions(first) == {"乙": True}
+    assert first["meeting"] == ["初雪"]
+    assert not any(b.name in (SHARED, "清道夫") for b in data.dorm)
+    assert len(covers) == len(set(covers))
+    assert data.group_shift_state == before_groups
+    beds = try_reorder(data, first)
+    apply(s, first)
+    apply(s, beds)
+    assert s.op_data.operators[B].is_resting()
+    assert s.op_data.operators[SHARED].current_room == "central"
+    assert s.op_data.operators["清道夫"].current_room == "central"
+    assert s.op_data.group_is_resting("甲")
+    assert s.op_data.group_is_resting("乙")
 
 
 def test_ordinary_resting_preserves_other_groups_working_covers(
@@ -163,13 +156,41 @@ def test_ordinary_resting_preserves_other_groups_working_covers(
     assert shift_off(s, "甲")[0]
     s.total_agent = list(s.op_data.operators.values())
     s.op_data.operators[B].mood = 0
-    before_beds = [(bed.name, bed.time) for bed in s.op_data.dorm]
-    assert s.resting() == {}
-    assert s.tasks == []
+    plan = s.resting()
+    assert plan["meeting"] == ["初雪"]
+    assert s.op_data.arrangement_group_transitions(plan) == {"乙": True}
+    assert not any(b.name in (SHARED, "清道夫") for b in s.op_data.dorm)
     assert not [record for record in caplog.records if record.levelno >= 30]
-    assert [(bed.name, bed.time) for bed in s.op_data.dorm] == before_beds
     assert s.op_data.operators[SHARED].current_room == "central"
     assert s.op_data.operators["清道夫"].current_room == "central"
+
+
+@pytest.mark.parametrize(
+    "conflict", ["intersection", "unavailable", "duplicate", "departure"]
+)
+def test_retained_working_covers_require_complete_arrangement(
+    working_shared_covers, conflict
+):
+    s = working_shared_covers
+    assert shift_off(s, "甲")[0]
+    data = s.op_data
+    if conflict == "intersection":
+        data.operators[SHARED].group_bindings[0]["replacement"] = ["黑角"]
+    elif conflict == "unavailable":
+        data.operators["红"]._current_room = "factory"
+        data.operators["红"].current_index = 0
+    elif conflict == "duplicate":
+        data.operators[B].replacement = [SHARED]
+    plan = (
+        {"dormitory_2": ["Current", "Current", SHARED, "Current", "Current"]}
+        if conflict == "departure"
+        else {}
+    )
+    before, beds = deepcopy(plan), [(bed.name, bed.time) for bed in data.dorm]
+    assert not s.get_resting_plan(data.groups["乙"].copy(), [], plan, 0)
+    assert plan == before
+    assert [(bed.name, bed.time) for bed in data.dorm] == beds
+    assert data.operators[SHARED].current_room == "central"
 
 
 @pytest.mark.parametrize("compatible", [False, True])
