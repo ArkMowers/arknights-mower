@@ -137,6 +137,18 @@ def test_paired_return_survives_dispatch_reentry_and_restart(cap_return, monkeyp
     assert not scheduler.op_data.group_is_resting("联动")
 
 
+def test_uninitialized_roster_keeps_paired_release_priority(cap_return):
+    scheduler, release, _, now = cap_return
+    returning = mood_limit_group_return(
+        scheduler.op_data, release, scheduler.tasks, now=now
+    )
+    assert returning is not None
+    scheduler.task = returning
+    del scheduler.op_data
+
+    assert release in scheduler._arrangement_priority_tasks()
+
+
 @pytest.mark.parametrize("kind", ["late", "slow", "unpaired", "bed", "target"])
 def test_room_boundary_rechecks_paired_release_admission(cap_return, monkeypatch, kind):
     from arknights_mower.utils import operation_timing

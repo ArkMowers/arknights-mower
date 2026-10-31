@@ -5365,14 +5365,13 @@ class BaseSchedulerSolver(
     def _arrangement_priority_tasks(self):
         from arknights_mower.utils.group_recovery import mood_limit_release_yields
 
+        data = getattr(self, "op_data", None)
         return [
             pending
-            for pending in task_view(
-                self.tasks, TaskScope.DISPATCH, getattr(self, "op_data", None)
-            )
+            for pending in task_view(self.tasks, TaskScope.DISPATCH, data)
             if pending is not getattr(self, "task", None)
             and not mood_limit_release_yields(
-                self.op_data, pending, getattr(self, "task", None)
+                data, pending, getattr(self, "task", None)
             )
             and (
                 pending.type == TaskTypes.RUN_ORDER

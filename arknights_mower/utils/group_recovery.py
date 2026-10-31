@@ -183,7 +183,8 @@ def mood_limit_release_yields(data, release, returning, *, now=None):
     pair = getattr(returning, "mood_limit_return_pair", None)
     name = getattr(returning, "mood_limit_return_name", None)
     if (
-        not pair
+        data is None
+        or not pair
         or pair != getattr(release, "mood_limit_return_pair", None)
         or returning.type != TaskTypes.SHIFT_ON
         or getattr(returning, "execution_failure", None)
