@@ -3205,6 +3205,9 @@ class Operators:
             and self.is_effective_free_slot(bed)
             and (op := self.operators[bed.name]).is_high()
             and self.is_group_shift_anchor(op)
+            and (op.current_room, op.current_index) == bed.position
+            and has_resting_mood(op)
+            and resting_mood(op) < op.upper_limit
             and not self.rest_mood_complete(op.name)
             and (group is None or op.group == group)
             for bed in self.all_dorms()
@@ -3222,18 +3225,25 @@ class Operators:
             and 0 <= op.mood < op.upper_limit
             and op.current_mood() < op.upper_limit
         }
+
+        def has_anchor(group):
+            return bool(group) and (
+                group in anchor_groups or self.has_resting_anchor(group)
+            )
+
         return {
             name
             for name in names
             if self._can_standby(self.operators[name])
             and (
-                self.operators[name].group in anchor_groups
+                has_anchor(self.operators[name].group)
                 or self.operators[name].independent_rest
                 and any(
-                    binding["group"] in anchor_groups
+                    has_anchor(binding["group"])
                     for binding in self.operators[name].group_bindings
                 )
                 or not self.operators[name].group
+                and not self.operators[name].independent_rest
                 and self.has_resting_anchor()
             )
         }

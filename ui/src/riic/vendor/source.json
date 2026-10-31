@@ -489,7 +489,7 @@
       "sha256": "efe9af5e8cfe1d04b98f41fe8501401f578efc5548058b46f89186eefecebe66"
     },
     "scheduler/mowerBackupDepartureRecovery.spec.ts": {
-      "sha256": "b2be967d8fae2fbef86d408a0c231daf0863f2708f991112fb18a3d094937cb0",
+      "sha256": "80350ed3f3f484e9ecd2d2f6c7eef5a31acfd71c7ea97ec17f68489c1eb0ddfb",
       "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Verify departure-bed dependencies against the failed effective projection and retain same-slot mood rereads without recalling resting peers, from calculator 0b40f8bed3e8c07df848bed7eb1338ed9214c663."
     },
     "scheduler/mowerBackupReplacements.ts": {
@@ -637,8 +637,8 @@
       "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points. Exclude explicit backup positions before choosing replacements for resting operators, so incidental correction cannot recall their entire group before explicit staffing is restored."
     },
     "scheduler/mowerDormAssignment.ts": {
-      "sha256": "7eed7cf02727f5c3cfcc5ce2524c443497d016cc078fb475187db0b2cfaec53d",
-      "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points. Exclude unknown and nonfinite mood from ordinary staffing averages."
+      "sha256": "fa130d64bca4a8f3cb9135040bb4edbd3e455265edc69b3a2e1bf7c470d2abe6",
+      "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points. Exclude unknown and nonfinite mood from ordinary staffing averages. Recognize matching unfinished fixed primaries already occupying effective recovery beds when admitting standby departures in backup previews. Exclude completed, unknown, moved and shared anchors, and keep independent standby admission within named bindings."
     },
     "scheduler/mowerDormIsolation.ts": {
       "sha256": "ea82342dfeff1b6b77fb51b9966ececd5f584a0c14fde1dca386f56aa684f1c2",
