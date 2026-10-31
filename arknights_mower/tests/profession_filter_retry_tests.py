@@ -102,6 +102,7 @@ class FilterPanel:
 def filter_solver(monkeypatch, *, solver=None, **panel_options):
     panel = FilterPanel(**panel_options)
     solver = BaseMixin() if solver is None else solver
+    solver._observation_remaining = BaseSolver._observation_remaining.__get__(solver)
     solver.device = SimpleNamespace(tap=MagicMock(side_effect=panel.tap))
     solver.tap = BaseSolver.tap.__get__(solver)
     solver.get_pos = BaseSolver.get_pos

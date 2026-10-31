@@ -68,6 +68,7 @@ class ArrayRecognizer:
 
 def solver_for(monkeypatch, frames):
     solver = BaseMixin()
+    solver._observation_remaining = BaseSolver._observation_remaining.__get__(solver)
     solver.recog = LazyRecognizer(frames)
     solver.find = MagicMock(side_effect=lambda *args: bool(solver.recog.img) and False)
     solver.tap = MagicMock(side_effect=lambda *args, **kwargs: solver.recog.update())

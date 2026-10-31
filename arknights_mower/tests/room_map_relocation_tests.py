@@ -874,6 +874,7 @@ def test_room_entry_stops_at_first_frame_after_deadline_with_slow_capture(
     solver = BaseMixin()
     solver.recog = Recognizer(device)
     solver.sleep = BaseSolver.sleep.__get__(solver)
+    solver._observation_remaining = BaseSolver._observation_remaining.__get__(solver)
 
     def find(name):
         frame = solver.recog.img[0, 0, 0]
