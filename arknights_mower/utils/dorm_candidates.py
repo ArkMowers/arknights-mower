@@ -193,6 +193,13 @@ def retained_task_reservations(
                     slots.add((room, index))
                 if name not in ("", "Current", "Free"):
                     names.add(name)
+        pending = getattr(task, "run_order_confirmation_pending", None)
+        if pending and pending["submitted"]:
+            names.update(
+                name
+                for name in pending["target"]
+                if name not in ("", "Current", "Free")
+            )
         for position, name in getattr(task, "group_shift_expected", {}).items():
             if name != "Current":
                 slots.add(position)

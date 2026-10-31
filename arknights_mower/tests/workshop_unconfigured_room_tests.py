@@ -107,6 +107,9 @@ def test_actual_workshop_arrangement_confirms_staff_without_plan_entry(
     solver._wait_for_room_exit.side_effect = MethodType(
         BaseSchedulerSolver._wait_for_room_exit, solver
     )
+    solver._verify_run_order_confirmation.side_effect = MethodType(
+        BaseSchedulerSolver._verify_run_order_confirmation, solver
+    )
 
     def back(*args):
         solver.scene.return_value = Scene.INFRA_MAIN

@@ -68,6 +68,7 @@ def test_zero_remaining_wait_still_honors_stop(monkeypatch):
     solver = BaseMixin()
     solver.recog = MagicMock()
     solver.sleep = BaseSolver.sleep.__get__(solver)
+    solver._observation_remaining = BaseSolver._observation_remaining.__get__(solver)
     monkeypatch.setattr(base_mixin.config.stop_mower, "is_set", lambda: True)
     with pytest.raises(MowerExit):
         solver.wait_for_next_observation(2)

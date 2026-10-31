@@ -179,6 +179,9 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     solver._wait_for_room_exit.side_effect = MethodType(
         BaseSchedulerSolver._wait_for_room_exit, solver
     )
+    solver._verify_run_order_confirmation.side_effect = MethodType(
+        BaseSchedulerSolver._verify_run_order_confirmation, solver
+    )
     solver.ensure_dorm_recovery_order.return_value = False
     solver._can_refresh_idle_dorm_search.return_value = False
     solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)

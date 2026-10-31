@@ -698,6 +698,14 @@ def blocked_run_order_ids(tasks, op_data=None):
         for name in row
         if name not in ("", "Free", "Current")
     }
+    reserved.update(
+        name
+        for task in restorations
+        if (pending := getattr(task, "run_order_confirmation_pending", None))
+        and pending["submitted"]
+        for name in pending["target"]
+        if name not in ("", "Free", "Current")
+    )
     conflicting_rooms = set(rooms)
     if op_data is not None:
         conflicting_rooms.update(
@@ -3746,9 +3754,12 @@ class SchedulerTask:
     @property
     def retains_execution(self):
         """失败任务与重新准入的剩余执行均保留原对象、安排和时间。"""
+        pending = getattr(self, "run_order_confirmation_pending", None)
         return bool(
             getattr(self, "execution_failure", None)
             or getattr(self, "execution_retained", False)
+            or pending
+            and pending["submitted"]
         )
 
     def __init__(
