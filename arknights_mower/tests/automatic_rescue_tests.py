@@ -2729,3 +2729,51 @@ def test_rescue_training_selection_never_reads_card_mood(solver, monkeypatch):
     ) == {name}
     assert estimates == {name: (24, NOW)}
     read.assert_not_called()
+
+
+def test_startup_handoff_preserves_pending_once_group_departure(solver):
+    from arknights_mower.utils.backup_group_tasks import sync_group_tasks
+    from arknights_mower.utils.plan import Plan, PlanConfig
+
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    target = data.operators[PRIMARY[2]]
+    target.group = "待下班组"
+    data.groups[target.group] = [target.name]
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+    data.operators[COVERS[0]].mood = 24
+    backup = Plan(
+        {},
+        PlanConfig("", "", ""),
+        group_tasks=[{"group": target.group, "action": "off", "mode": "once"}],
+    )
+    data.backup_plans = [backup]
+    data.global_plan["backup_plans"] = [backup]
+    data.plan_condition = [True]
+    sync_group_tasks(solver, now=NOW)
+    request = next(
+        task for task in solver.tasks if getattr(task, "backup_group_request", None)
+    )
+    assert request.type == TaskTypes.EXHAUST_OFF and request.plan == {}
+    assert request.backup_group_request in solver.backup_group_task_issued
+    solver.op_data = data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", *PRIMARY[:2], "Free"]}]
+    )
+    solver._emergency_startup()
+    handoff = next(
+        task for task in solver.tasks if task.meta_data == "初始化正常轮休交接"
+    )
+    projected = solver.op_data.project_arrangements([handoff.plan])
+    assert projected.operators[target.name].is_working()
+    assert not projected.group_is_resting(target.group)
+    assert any(task is request for task in solver.tasks)
+    assert request.time == NOW and request.plan == {}
+    for _ in range(4):
+        sync_group_tasks(solver, now=NOW + timedelta(hours=1))
+    assert [
+        task for task in solver.tasks if getattr(task, "backup_group_request", None)
+    ] == [request]
+    assert request.time == NOW
+    solver.enter_room.assert_not_called()
