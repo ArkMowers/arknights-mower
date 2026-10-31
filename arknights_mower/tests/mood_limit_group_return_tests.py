@@ -3,6 +3,7 @@
 import pickle
 from copy import deepcopy
 from datetime import datetime, timedelta
+from unittest.mock import Mock
 
 import pytest
 
@@ -51,6 +52,160 @@ def test_cap_dispatch_returns_whole_group_without_changing_return_timestamp(cap_
     assert not scheduler.op_data.group_is_resting("联动")
     assert returning.time == at
     assert release.mood_limit_deadline > release.time
+
+
+def real_room_dispatch(scheduler, monkeypatch, *, fail=False):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.tests.dorm_group_tests import apply_plan
+
+    scheduler.global_plan["default_plan"].config.operator_mood_limits["伊内丝"] = {
+        "lower": 0,
+        "upper": 12,
+    }
+    monkeypatch.setattr(
+        scheduler, "agent_arrange", BaseSchedulerSolver.agent_arrange.__get__(scheduler)
+    )
+
+    def arrange(new_plan, room, plan, **kwargs):
+        if fail and scheduler.task.type == TaskTypes.SHIFT_ON:
+            return False
+        for index, name in enumerate(plan[room]):
+            if name == "Free":
+                occupant = scheduler.op_data.get_current_operator(room, index)
+                if occupant is not None:
+                    occupant.current_room, occupant.current_index = "", -1
+        apply_plan(scheduler, {room: plan[room]})
+        del plan[room]
+        return new_plan
+
+    monkeypatch.setattr(scheduler, "agent_arrange_room", Mock(side_effect=arrange))
+
+
+def test_cap_dispatch_keeps_real_room_priority_checks(cap_return, monkeypatch):
+    scheduler, release, ordinary, _ = cap_return
+    real_room_dispatch(scheduler, monkeypatch)
+    at, deadline = ordinary.time, release.mood_limit_deadline
+
+    scheduler.infra_main()
+
+    assert scheduler.agent_arrange_room.call_count >= 2
+    assert scheduler.op_data.operators["伊内丝"].current_room == "meeting"
+    assert scheduler.op_data.operators["讯使"].current_room == "contact"
+    assert not scheduler.op_data.group_is_resting("联动")
+    assert ordinary.time == at
+    assert release.mood_limit_deadline == deadline
+
+
+def test_failed_room_return_still_dispatches_original_release(cap_return, monkeypatch):
+    scheduler, release, ordinary, _ = cap_return
+    real_room_dispatch(scheduler, monkeypatch, fail=True)
+    deadline, at = release.mood_limit_deadline, ordinary.time
+
+    scheduler.infra_main()
+
+    assert scheduler.agent_arrange_room.call_count == 1
+    assert scheduler.agent_arrange_room.call_args.args[1] == "meeting"
+    assert scheduler.op_data.operators["伊内丝"].is_resting()
+    scheduler.task = release
+    scheduler.infra_main()
+    assert scheduler.op_data.operators["伊内丝"].current_room == ""
+    assert scheduler.op_data.operators["讯使"].is_resting()
+    assert scheduler.op_data.group_is_resting("联动")
+    assert release.mood_limit_deadline == deadline
+    assert ordinary.time == at
+    assert not any(task is release for task in scheduler.tasks)
+
+
+def test_paired_return_survives_dispatch_reentry_and_restart(cap_return, monkeypatch):
+    scheduler, release, _, now = cap_return
+    real_room_dispatch(scheduler, monkeypatch)
+    returning = mood_limit_group_return(
+        scheduler.op_data, release, scheduler.tasks, now=now
+    )
+    assert returning is not None
+    scheduler.tasks = pickle.loads(pickle.dumps(scheduler.tasks))
+    scheduler.task = next(
+        task
+        for task in scheduler.tasks
+        if getattr(task, "mood_limit_return_name", None)
+    )
+
+    scheduler.infra_main()
+
+    assert scheduler.agent_arrange_room.call_count >= 2
+    assert scheduler.op_data.operators["讯使"].current_room == "contact"
+    assert not scheduler.op_data.group_is_resting("联动")
+
+
+def test_uninitialized_roster_keeps_paired_release_priority(cap_return):
+    scheduler, release, _, now = cap_return
+    returning = mood_limit_group_return(
+        scheduler.op_data, release, scheduler.tasks, now=now
+    )
+    assert returning is not None
+    scheduler.task = returning
+    del scheduler.op_data
+
+    assert release in scheduler._arrangement_priority_tasks()
+
+
+@pytest.mark.parametrize("kind", ["late", "slow", "unpaired", "bed", "target"])
+def test_room_boundary_rechecks_paired_release_admission(cap_return, monkeypatch, kind):
+    from arknights_mower.utils import operation_timing
+
+    scheduler, release, _, now = cap_return
+    real_room_dispatch(scheduler, monkeypatch)
+    returning = mood_limit_group_return(
+        scheduler.op_data, release, scheduler.tasks, now=now
+    )
+    assert returning is not None
+    scheduler.task = returning
+    if kind == "late":
+        release.mood_limit_deadline = datetime.now() + timedelta(seconds=10)
+    elif kind == "slow":
+        monkeypatch.setitem(operation_timing._work_durations, "meeting", [120])
+    elif kind == "unpaired":
+        release.mood_limit_return_pair = "other-departure"
+    elif kind == "bed":
+        scheduler.op_data.operators["伊内丝"].current_index += 1
+    else:
+        returning.plan["meeting"][0] = "Current"
+
+    assert scheduler.agent_arrange(returning.plan) is False
+    scheduler.agent_arrange_room.assert_not_called()
+    assert any(task is release for task in scheduler.tasks)
+    assert scheduler.op_data.operators["讯使"].is_resting()
+
+
+@pytest.mark.parametrize("kind", ["strict", "run_order", "support"])
+def test_paired_return_still_yields_to_other_priority_work(cap_return, kind):
+    from arknights_mower.utils.scheduler_task import SchedulerTask
+
+    scheduler, release, _, now = cap_return
+    returning = mood_limit_group_return(
+        scheduler.op_data, release, scheduler.tasks, now=now
+    )
+    assert returning is not None
+    scheduler.task = returning
+    pending = SchedulerTask(
+        time=now,
+        task_plan={"dormitory_1": ["Current", "Current", "Current", "Free", "Current"]},
+        task_type={
+            "strict": TaskTypes.RELEASE_DORM,
+            "run_order": TaskTypes.RUN_ORDER,
+            "support": TaskTypes.SWAP_SUPPORT,
+        }[kind],
+        meta_data="银灰" if kind == "strict" else "meeting",
+        strict_mood_limit=kind == "strict",
+    )
+    config.conf.enable_mastery = kind == "support"
+    scheduler.tasks.append(pending)
+
+    assert release not in scheduler._arrangement_priority_tasks()
+    assert pending in scheduler._arrangement_priority_tasks()
+    assert scheduler._defer_arrangement_for_priority_task("meeting", returning.plan)
+    assert scheduler.op_data.operators["伊内丝"].is_resting()
+    assert any(task is release for task in scheduler.tasks)
 
 
 @pytest.mark.parametrize("evidence", ["bed", "unknown", "newer", "predicted"])

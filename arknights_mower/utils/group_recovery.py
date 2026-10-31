@@ -1,6 +1,7 @@
 """工作主班的回满要求与本轮延迟回班期限。"""
 
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 from arknights_mower.utils import config
 
@@ -174,6 +175,49 @@ def _returning_mood(data, op, now):
     )
 
 
+def mood_limit_release_yields(data, release, returning, *, now=None):
+    """获准回班只越过配对清退，逐房复核本人离宿所需的剩余时间。"""
+    from arknights_mower.utils.operation_timing import estimate_work_minutes
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    pair = getattr(returning, "mood_limit_return_pair", None)
+    name = getattr(returning, "mood_limit_return_name", None)
+    if (
+        data is None
+        or not pair
+        or pair != getattr(release, "mood_limit_return_pair", None)
+        or returning.type != TaskTypes.SHIFT_ON
+        or getattr(returning, "execution_failure", None)
+        or release.type != TaskTypes.RELEASE_DORM
+        or not getattr(release, "strict_mood_limit", False)
+        or not getattr(release, "mood_limit_return_attempted", False)
+        or release.meta_data != name
+    ):
+        return False
+    op = data.operators.get(name)
+    targets = release.release_dorm_targets()
+    if (
+        op is None
+        or op.room.startswith("dorm")
+        or set(targets) != {name}
+        or getattr(release, "mood_limit", None) not in (None, op.upper_limit)
+    ):
+        return False
+    if (op.current_room, op.current_index) == (op.room, op.index):
+        return True
+    if targets[name] != (op.current_room, op.current_index) or returning.plan.get(
+        op.room, []
+    )[op.index : op.index + 1] != [name]:
+        return False
+    rooms = [room for room in returning.plan if not room.startswith("dorm")]
+    seconds = sum(
+        estimate_work_minutes(room) * 60 for room in rooms[: rooms.index(op.room) + 1]
+    )
+    return (now or datetime.now()) + timedelta(seconds=seconds) <= getattr(
+        release, "mood_limit_deadline", release.time
+    )
+
+
 def mood_limit_group_return(data, release, tasks, *, now=None):
     """上限离宿先尝试已有整组回班，原清退保留期限及失败后的执行责任。"""
     from arknights_mower.utils.dorm_candidates import retained_task_reservations
@@ -289,6 +333,7 @@ def mood_limit_group_return(data, release, tasks, *, now=None):
             continue
         release.mood_limit_return_attempted = True
         task.mood_limit_return_name = op.name
+        task.mood_limit_return_pair = release.mood_limit_return_pair = uuid4().hex
         tasks.append(task)
         return task
     return None
