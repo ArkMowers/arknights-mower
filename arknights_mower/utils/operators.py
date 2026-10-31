@@ -334,6 +334,7 @@ def build_global_plan(
                 backup_config,
                 trigger=backup_trigger,
                 task=backup_task,
+                group_tasks=i.get("group_tasks", []),
                 name=i.get("name"),
                 products=backup_products,
                 group_ids=i["group_ids"],
@@ -875,6 +876,12 @@ class Operators:
             if room and room[0].product == BaseProduct.Electricity
         )
         self.refresh_dorm_manager_flags(force=True)
+        from arknights_mower.utils.backup_group_tasks import validate_group_tasks
+
+        try:
+            validate_group_tasks(self)
+        except ValueError as error:
+            return str(error)
 
     def refresh_dorm_manager_flags(self, *, force=False):
         """标记配置中的宿舍成员及其替班；资源未变时不再匹配。"""
@@ -3344,6 +3351,14 @@ class Operators:
             json.dumps(vars(self.config), sort_keys=True, default=sorted),
             tuple(sorted(self.products.items())),
             tuple(sorted(self.maintenance_primary_slots)),
+            tuple(
+                sorted(
+                    (task["group"], task["action"], task.get("mode", "once"))
+                    for backup, active in zip(self.backup_plans, self.plan_condition)
+                    if active
+                    for task in backup.group_tasks
+                )
+            ),
         )
 
     def validate_backup_plans(

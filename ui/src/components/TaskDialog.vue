@@ -58,6 +58,48 @@ const task_list = computed({
     }
   }
 })
+const backup_group_task_list = ref([])
+watch(
+  [sub_plan, () => selected_backup.value?.group_tasks],
+  ([selection, tasks], [previous_selection]) => {
+    if (
+      selection !== previous_selection ||
+      JSON.stringify(tasks ?? []) !== JSON.stringify(backup_group_task_list.value)
+    ) {
+      backup_group_task_list.value = (tasks ?? []).map((task) => ({ ...task }))
+    }
+  },
+  { immediate: true, deep: true, flush: 'sync' }
+)
+const group_task_list = computed({
+  get: () => backup_group_task_list.value,
+  set(rows) {
+    if (!isLogPage.value && !edit_locked.value && selected_backup.value) {
+      backup_group_task_list.value = rows.map((task) => ({ ...task }))
+      selected_backup.value.group_tasks = rows.map((task) => ({ ...task }))
+    }
+  }
+})
+const groupTaskOptions = computed(() =>
+  (plan_store.all_groups || []).map((group) => ({ label: group, value: group }))
+)
+const groupActionOptions = [
+  { label: '整组下班', value: 'off' },
+  { label: '整组上班', value: 'on' }
+]
+const groupModeOptions = [
+  { label: '生效时执行一次', value: 'once' },
+  { label: '生效期间保持，允许协调回班', value: 'while_active' },
+  { label: '生效期间强制保持，禁止协调回班', value: 'forced' }
+]
+function new_group_task() {
+  return { group: '', action: 'off', mode: 'once' }
+}
+function update_group_task(index, changes) {
+  group_task_list.value = group_task_list.value.map((row, i) =>
+    i === index ? { ...row, ...changes, ...(changes.action === 'on' ? { mode: 'once' } : {}) } : row
+  )
+}
 const task_time = ref(new Date().getTime())
 const task_type = ref('空任务')
 const duration_minutes = ref(10)
@@ -385,6 +427,48 @@ const level_list = [
       <template v-else>任务</template>
     </template>
     <div v-if="!isLogPage || task_type == '空任务'" class="task-list-scroll">
+      <template v-if="!isLogPage">
+        <n-text>绑组任务</n-text>
+        <n-dynamic-input
+          v-model:value="group_task_list"
+          :on-create="new_group_task"
+          :disabled="edit_locked"
+        >
+          <template #create-button-default>添加绑组任务</template>
+          <template #default="{ value, index }">
+            <div class="task_row group_task_row">
+              <n-select
+                :value="value.group"
+                @update:value="(group) => update_group_task(index, { group })"
+                :options="groupTaskOptions"
+                :disabled="edit_locked"
+                filterable
+                placeholder="选择绑组"
+                style="width: 150px"
+              />
+              <n-select
+                :value="value.action"
+                :options="groupActionOptions"
+                :disabled="edit_locked"
+                @update:value="(action) => update_group_task(index, { action })"
+                style="width: 130px"
+              />
+              <n-select
+                :value="value.mode"
+                @update:value="(mode) => update_group_task(index, { mode })"
+                :options="value.action === 'off' ? groupModeOptions : groupModeOptions.slice(0, 1)"
+                :disabled="edit_locked"
+                style="width: 310px"
+                :consistent-menu-width="false"
+              />
+            </div>
+          </template>
+        </n-dynamic-input>
+        <n-text depth="3" style="display: block; margin: 8px 0">
+          下班任务使用整组替班和恢复床位。允许协调时，其他组可按需召回；强制保持时，其他组须另找替班，否则保留任务等待。副表退出后恢复正常回班条件。上班任务执行一次，仍遵守恢复和任务保护。
+        </n-text>
+        <n-divider>房间任务</n-divider>
+      </template>
       <n-dynamic-input
         v-model:value="task_list"
         :on-create="new_task"
@@ -439,7 +523,18 @@ const level_list = [
       </n-dynamic-input>
       <n-card style="margin-top: 8px" content-style="padding: 8px" embedded>
         <n-code
-          :code="JSON.stringify(isLogPage ? task_list : backup_plans[sub_plan].task, null, 2)"
+          :code="
+            JSON.stringify(
+              isLogPage
+                ? task_list
+                : {
+                    task: backup_plans[sub_plan].task,
+                    group_tasks: backup_plans[sub_plan].group_tasks || []
+                  },
+              null,
+              2
+            )
+          "
           language="json"
           word-wrap
         />
@@ -564,6 +659,10 @@ const level_list = [
 }
 
 .task_header {
+  flex-wrap: wrap;
+}
+
+.group_task_row {
   flex-wrap: wrap;
 }
 

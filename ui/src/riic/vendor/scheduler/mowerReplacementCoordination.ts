@@ -1,3 +1,4 @@
+import {mowerForcedGroupCoverReservations,mowerHeldRestGroups} from './mowerBackupGroupTasks'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
 import {alphaPosition,mowerMatchReplacements} from './mowerAlphaDorm'
@@ -21,7 +22,7 @@ export function mowerCoordinationPrimaryReplacement(data:MowerSchedulingData,own
 }
 function eligible(data:MowerSchedulingData,name:string,owner:MowerOperatorState,options:MowerRestingOptions,required:ReadonlySet<string>=new Set()):boolean {
  const cover=data.operators[name]
- return !!cover&&(!cover.isHigh()||mowerCoordinationPrimaryReplacement(data,owner,name,required))&&!data.busyRestingNames.has(name)&&!options.reservedNames?.has(name)&&!data.reservedProductReplacements.has(name)&&!data.excludedCandidates.has(name)&&!options.isMasteryBusy?.(name)&&!data.dormReplacementForSlot(name,cover.currentRoom,cover.currentIndex)&&!options.reservedSlots?.has(alphaPosition(cover.currentRoom,cover.currentIndex))&&(owner.room.startsWith('dorm')||!data.replacementExhausted(name,owner))
+ return !!cover&&(!mowerForcedGroupCoverReservations(data).names.has(name)||cover.currentRoom===owner.room&&cover.currentIndex===owner.index)&&(!cover.isHigh()||mowerCoordinationPrimaryReplacement(data,owner,name,required))&&!data.busyRestingNames.has(name)&&!options.reservedNames?.has(name)&&!data.reservedProductReplacements.has(name)&&!data.excludedCandidates.has(name)&&!options.isMasteryBusy?.(name)&&!data.dormReplacementForSlot(name,cover.currentRoom,cover.currentIndex)&&!options.reservedSlots?.has(alphaPosition(cover.currentRoom,cover.currentIndex))&&(owner.room.startsWith('dorm')||!data.replacementExhausted(name,owner))
 }
 function coveredOwner(data:MowerSchedulingData,name:string):MowerOperatorState|undefined {
  const cover=data.operators[name]
@@ -122,6 +123,7 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
  if(recalled.size&&(mowerUrgentRecallBlocked(original,candidates,options.urgentRecoveryPendingSupporters)||[...recalled].some(name=>name in original.urgentRecoverySupporters)))return false
  for(const name of recalled){
   const op=original.operators[name];if(!op||!op.isResting())continue
+  if(mowerHeldRestGroups(original,true).has(op.group))return false
   if(op.restInFull&&!mowerRecoveryReady(original,op,options.priorityScheduling))return false
   if(op.group){const recovery=mowerGroupRecoveryDeadline(projectMowerArrangements(original,[]),op.group);if(recovery.requiredNames.length&&(recovery.requiredNames.some(member=>(!options.urgentExhaust||original.operators[member]!.restInFull)&&!mowerRecoveryReady(original,original.operators[member],options.priorityScheduling))))return false}
  }

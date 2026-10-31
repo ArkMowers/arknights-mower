@@ -721,7 +721,10 @@ class BaseSchedulerSolver(
                 for binding in op.group_bindings
                 if binding["group"]
             }
+        from arknights_mower.utils.backup_group_tasks import active_group_tasks
+
         snapshot = {
+            "backup_group_tasks": tuple(active_group_tasks(data)),
             "plan": task.plan,
             "meta_data": task.meta_data,
             "correction_groups": {
@@ -1240,6 +1243,13 @@ class BaseSchedulerSolver(
             config.maintenance_recheck.set()
             return
         self.error = False
+        from arknights_mower.utils.backup_group_tasks import (
+            filter_held_returns,
+            sync_group_tasks,
+        )
+
+        sync_group_tasks(self)
+        filter_held_returns(self.op_data, self.tasks)
         self._refresh_observed_recovery_tasks()
         sync_replacement_checks(self)
         self._resume_failed_tasks()
@@ -1494,6 +1504,8 @@ class BaseSchedulerSolver(
             for field in PENDING_FIELDS:
                 if hasattr(self.task, field):
                     setattr(task, field, copy.deepcopy(getattr(self.task, field)))
+            if hasattr(self.task, "backup_group_request"):
+                task.backup_group_request = self.task.backup_group_request
             self.tasks.append(task)
         else:
             support = self._plan_exhaust_support(
@@ -1506,6 +1518,8 @@ class BaseSchedulerSolver(
                     task_plan=support, task_type=TaskTypes.SELF_CORRECTION
                 )
                 support_task.exhaust_support = True
+                if hasattr(self.task, "backup_group_request"):
+                    support_task.backup_group_request = self.task.backup_group_request
                 support_task.ordinary_coordination = getattr(
                     self.task, "ordinary_coordination", False
                 )
@@ -1656,9 +1670,34 @@ class BaseSchedulerSolver(
             for index, name in enumerate(row)
         ):
             return False
+        from arknights_mower.utils.backup_group_tasks import (
+            forced_group_cover_reservations,
+        )
+
+        forced_names, forced_slots = forced_group_cover_reservations(data)
+        if any(
+            name != "Current"
+            and ((room, index) in forced_slots or name in forced_names)
+            and (
+                (actual := data.get_current_operator(room, index)) is None
+                or actual.name != name
+            )
+            for room, row in plan.items()
+            for index, name in enumerate(row)
+        ):
+            return False
         supported = data.project_arrangements([plan])
         admitted = self._coordination_admission(supported, candidates)
         if admitted is None:
+            return False
+        if any(
+            (
+                admitted.operators[name].current_room,
+                admitted.operators[name].current_index,
+            )
+            != (data.operators[name].current_room, data.operators[name].current_index)
+            for name in forced_names
+        ):
             return False
         recalled = {
             op.name
@@ -2662,6 +2701,9 @@ class BaseSchedulerSolver(
             self.tasks,
             excluded_names=self._protected_facility_names() | waiting_names,
         )
+        from arknights_mower.utils.backup_group_tasks import filter_held_returns
+
+        filter_held_returns(self.op_data, self.tasks)
         self._resume_waiting_group_shifts()
         sync_replacement_checks(self)
 
@@ -2893,6 +2935,13 @@ class BaseSchedulerSolver(
         if self.find("control_central") is None:
             self.back()
             return
+        from arknights_mower.utils.backup_group_tasks import (
+            filter_held_returns,
+            sync_group_tasks,
+        )
+
+        sync_group_tasks(self)
+        filter_held_returns(self.op_data, self.tasks)
         self._refresh_observed_recovery_tasks()
         sync_replacement_checks(self)
         self._resume_failed_tasks()
@@ -6870,7 +6919,11 @@ class BaseSchedulerSolver(
         """动态用尽预约依赖生效岗位和组配置，不依赖临时驻员或心情读数。"""
         signatures = {}
         for task in task_view(self.tasks if tasks is None else tasks, TaskScope.REPLAN):
-            if task.type != TaskTypes.EXHAUST_OFF or task.plan:
+            if (
+                task.type != TaskTypes.EXHAUST_OFF
+                or task.plan
+                or getattr(task, "backup_group_request", None)
+            ):
                 continue
             names = set(task.meta_data.split(","))
             for name in tuple(names):
@@ -8010,6 +8063,8 @@ class BaseSchedulerSolver(
             )
         transitions = dict(getattr(task, "group_shift_transitions", {}))
         transitions.update(complete_returns)
+        from arknights_mower.utils.backup_group_tasks import held_rest_groups
+
         predecessors = self._group_shift_predecessors(task, proposed, transitions)
         if predecessors:
             raise GroupShiftBlocked(predecessors=predecessors)
@@ -8058,6 +8113,16 @@ class BaseSchedulerSolver(
         predecessors = self._group_shift_predecessors(task, proposed, transitions)
         if predecessors:
             raise GroupShiftBlocked(predecessors=predecessors)
+        forced = held_rest_groups(self.op_data, forced_only=True)
+        if any(
+            not resting and group in forced for group, resting in transitions.items()
+        ) and not (
+            getattr(task, "mood_physical_started", False)
+            or getattr(task, "group_shift_expected", {})
+        ):
+            raise ProductSwitchDeferred(
+                "副表要求整组强制下班，等待副表退出", rooms=tuple(proposed)
+            )
         task.plan = proposed
         task.group_shift_transitions = transitions
         if getattr(task, "exhaust_support", False):

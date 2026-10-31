@@ -1,5 +1,6 @@
 import {mowerExhaustTaskSignatures,invalidateMowerExhaustTasks,type MowerExhaustRoomContext} from './mowerExhaustReservations'
 import type {BackupSelection} from './backupGroups'
+import type {MowerBackupGroupTask} from './mowerBackupGroupTasks'
 import {completeMowerBackupDepartureRecovery} from './mowerBackupDepartureRecovery'
 import {mowerStandbyCandidates} from './mowerDormAssignment'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
@@ -22,6 +23,7 @@ import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,type MowerT
 
 export interface MowerShiftModel {
  count:number
+ groupTasks?:readonly (readonly MowerBackupGroupTask[])[]
  exhaustRoomContext?(data:MowerSchedulingData):MowerExhaustRoomContext
  observationNames?:readonly string[]
  conditionObservationNames?:readonly (readonly string[])[]

@@ -9,8 +9,8 @@ import * as ordinaryPlanning from './mowerOrdinaryPlanning'
 
 const model:MowerShiftModel={count:0,evaluate:data=>data.planConditions,swap:data=>data,transition:()=>({}),activate:()=>{}}
 const rates={workRate:()=>1,recoveryRate:()=>4,forecastRates:(state:RuntimeState)=>({work:Object.fromEntries(Object.keys(state.morale).map(name=>[name,1])),recovery:Object.fromEntries(Object.keys(state.morale).map(name=>[name,4]))})}
-function generatedSupport(recall=false){
- const rows={room_1_1:[{agent:'A',group:'',replacement:['X']}],room_1_2:[{agent:'B',group:'resting',replacement:recall?['X']:['X','Y']}],room_1_3:[{agent:'C',group:'',replacement:['Z']}],contact:[{agent:'D',group:'resting',replacement:['W']}],dormitory_1:[...['K1','K2'].map(agent=>({agent,group:'',replacement:[]})),...['Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]}))]}
+function generatedSupport(recall=false,holdMode?:'while_active'|'forced',requestGroup=false){
+ const rows={room_1_1:[{agent:'A',group:requestGroup?'requested':'',replacement:['X']}],room_1_2:[{agent:'B',group:'resting',replacement:recall?['X']:['X','Y']}],room_1_3:[{agent:'C',group:'',replacement:['Z']}],contact:[{agent:'D',group:'resting',replacement:['W']}],dormitory_1:[...['K1','K2'].map(agent=>({agent,group:'',replacement:[]})),...['Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]}))]}
  const config:RuntimeConfig={
   mowerAlpha:true,mowerSourcePlan:rows,
   positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((slot,index)=>slot.agent==='Free'?[]:[{id:room+'_'+index,roomId:room,primary:slot.agent,candidates:slot.replacement,group:slot.group,permanent:room.startsWith('dorm'),dormitory:room.startsWith('dorm')}])),
@@ -31,12 +31,23 @@ function generatedSupport(recall=false){
  data.dorms=[new MowerDormState(['dormitory_1',2],'B',toMowerMicros(5)),new MowerDormState(['dormitory_1',3],'D',toMowerMicros(5)),new MowerDormState(['dormitory_1',4])]
  if(recall)for(const name of ['B','C','D']){state.morale[name]=20;Object.assign(data.operators[name]!,{mood:20,timeStampMicros:0,depletionRate:1})}
  const exhausted=new MowerTask({type:T.EXHAUST_OFF,metadata:'A'})
- source.queue.tasks=[exhausted]
+ if(holdMode||requestGroup){
+  const groupTasks=[[{group:requestGroup?'requested':'resting',action:'off' as const,mode:holdMode??'while_active' as const}]]
+  data.backupGroupTasks=groupTasks;data.planConditions=[true]
+  state.mowerShiftModel={...model,count:1,groupTasks}
+ }
+ source.queue.tasks=requestGroup?[]:[exhausted]
  settleMowerSource(state,rates)
- expect(source.queue.tasks).toContain(exhausted)
- expect(exhausted.executionFailure).toBeDefined();expect(exhausted.timeMicros).toBe(0)
+ const requested=requestGroup?source.queue.tasks.find(t=>t.backupGroupRequest&&t.type===T.EXHAUST_OFF)!:exhausted
+ if(requestGroup)for(let n=0;n<30&&!requested.executionFailure&&!Object.values(state.bedOccupants).includes('A');n++){
+  settleMowerSource(state,rates)
+  advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+ }
+ expect(source.queue.tasks).toContain(requested)
+ expect(requested.executionFailure).toBeDefined();expect(requested.timeMicros).toBe(0)
  const support=source.queue.tasks.find(task=>task.type===T.SELF_CORRECTION)!,retry=source.queue.tasks.find(task=>task.type===T.EXHAUST_OFF)!
- expect(support).toBeDefined();expect(retry).toBe(exhausted)
+ if(holdMode==='forced'){expect(support).toBeUndefined();return {state,source,data:source.data,queue:source.queue,support,retry}}
+ expect(support).toBeDefined();expect(retry).toBe(requested)
  expect(support.plan).toEqual(recall?{room_1_2:['B'],contact:['D']}:{room_1_2:['Y']})
  return {state,source,data:source.data,queue:source.queue,support,retry}
 }
@@ -270,4 +281,68 @@ describe('urgent recall with a shared dormitory manager',()=>{
   expect(Object.values(state.bedOccupants)).toEqual(expect.arrayContaining(['B','M']))
  })
 
+})
+
+describe('backup group requests in real dispatch',()=>{
+ it('protects the occupied cover of a forced group even when an alternate could keep the group resting',()=>{
+  const {state,source,retry}=generatedSupport(false,'forced')
+  for(let n=0;n<8;n++)settleMowerSource(state,rates)
+  expect(source.queue.tasks.some(task=>task.exhaustSupport)).toBe(false)
+  expect(source.queue.tasks).toContain(retry)
+  expect(state.occupants.room_1_2_0).toBe('X')
+  expect(Object.values(state.bedOccupants)).toEqual(expect.arrayContaining(['B','D']))
+ })
+ it.each(['while_active','forced'] as const)('allows dependency recall only with coordinated hold (%s)',mode=>{
+  const {state,source,support,retry}=generatedSupport(true,mode)
+  const deadline=retry.timeMicros
+  for(let n=0;n<50&&mode!=='forced'&&!Object.values(state.bedOccupants).includes('A');n++){
+   settleMowerSource(state,rates)
+   advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  if(mode==='while_active'){
+   expect(Object.values(state.bedOccupants)).toContain('A')
+   expect(state.occupants.room_1_2_0).toBe('B')
+   const admission=state.time
+   for(let n=0;n<400&&!source.data.operators.B!.isResting();n++){
+    settleMowerSource(state,rates)
+    advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+   }
+   expect(source.data.operators.B!.isResting()).toBe(true)
+   expect(source.data.groupIsResting('resting')).toBe(true)
+   expect(state.time-admission).toBeGreaterThan(1)
+  }else{
+   expect(retry.executionFailure).toBeDefined()
+   const failure=retry.executionFailure,time=retry.timeMicros
+   for(let n=0;n<8;n++)settleMowerSource(state,rates)
+   expect(retry.executionFailure).toBe(failure);expect(retry.timeMicros).toBe(time)
+   expect(source.queue.tasks).toContain(retry);expect(retry.timeMicros).toBe(deadline)
+   expect(state.occupants.room_1_2_0).toBe('X')
+   const unrelated=new MowerTask({time:state.time,type:T.NOT_SPECIFIC})
+   source.queue.tasks.push(unrelated)
+   for(let n=0;n<30&&source.queue.tasks.includes(unrelated);n++){
+    settleMowerSource(state,rates)
+    advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+   }
+   expect(source.queue.tasks).not.toContain(unrelated)
+   source.data.planConditions=[false]
+   for(let n=0;n<60&&!Object.values(state.bedOccupants).includes('A');n++){
+    settleMowerSource(state,rates)
+    advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+   }
+   expect(Object.values(state.bedOccupants)).toContain('A')
+  }
+ })
+ it('creates a group departure request and preserves its owner through cover handoff',()=>{
+  const {state,source}=generatedSupport(false,undefined,true)
+  const request=source.queue.tasks.find(t=>t.type===T.EXHAUST_OFF&&t.backupGroupRequest)!
+  expect(request).toBeDefined()
+  const support=source.queue.tasks.find(t=>t.exhaustSupport)!
+  expect(support).toBeDefined();expect(support.backupGroupRequest).toEqual(request.backupGroupRequest)
+  for(let n=0;n<50&&!Object.values(state.bedOccupants).includes('A');n++){
+   settleMowerSource(state,rates)
+   advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  expect(Object.values(state.bedOccupants)).toContain('A')
+  expect(source.data.groupIsResting('requested')).toBe(true)
+ })
 })

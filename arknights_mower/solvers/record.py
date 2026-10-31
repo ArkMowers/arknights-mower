@@ -284,6 +284,9 @@ def current_state():
         "dorm": data.all_dorms(),
         "tasks": tasks,
         "waiting_group_shifts": getattr(base_scheduler, "waiting_group_shifts", []),
+        "backup_group_task_issued": getattr(
+            base_scheduler, "backup_group_task_issued", set()
+        ),
         "party_time": data.party_time,
         "operators": data.operators,
         "calculated_mood": copy.deepcopy(vars(data.mood_model))

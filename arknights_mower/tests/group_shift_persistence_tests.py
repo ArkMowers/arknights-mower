@@ -269,3 +269,30 @@ def test_save_failure_keeps_running_and_reports_non_durable_task(
     assert "已保存" not in error.call_args.args[0]
     save.assert_called_once()
     error.assert_called_once()
+
+
+def test_group_task_request_and_activation_survive_real_snapshot(solver, monkeypatch):
+    for attr in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, attr, datetime.now().date())
+    solver.task_count = 7
+    token = (0, "红松", "on", "once")
+    solver.backup_group_task_issued = {token}
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON, task_plan={"meeting": ["伊内丝", "银灰"]}
+    )
+    task.backup_group_request = token
+    solver.tasks = [task]
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(mower, "base_scheduler", solver)
+    saved = copy.deepcopy(record.current_state())
+    assert saved["backup_group_task_issued"] == {token}
+    monkeypatch.setattr(mower, "initialize", lambda *a, **kw: solver)
+    monkeypatch.setattr(mower.NewsChecker, "get_maintenance", lambda: None)
+    monkeypatch.setattr(mower, "refresh_resource_at_boundary", lambda: None)
+    solver.emergency_state = None
+    solver.tasks, solver.task = [], None
+    solver.backup_group_task_issued = set()
+    solver.run = MagicMock(side_effect=base_schedule.MowerExit)
+    mower.simulate(saved)
+    assert solver.backup_group_task_issued == {token}
+    assert solver.tasks[0].backup_group_request == token

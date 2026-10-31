@@ -24,6 +24,7 @@ import { compiledScheduleToRuntimeConfig } from './scheduleAdapter'
 import {normalizeMowerRecoveryBeds} from './mowerRecoveryBeds'
 import type { CompiledSchedule } from './types'
 import type { RuntimeState } from './rosterRuntime'
+import {validateMowerGroupTasks,readMowerBackupGroupTasks,type MowerBackupGroupTask} from './mowerBackupGroupTasks'
 import { compileBackupExpression } from './backupExpression'
 import {getMowerSourceRuntime,makeMowerSchedulingData} from './mowerSourceRuntime'
 import {projectMowerArrangements} from './mowerObservations'
@@ -67,6 +68,7 @@ interface BackupPlan {
   slots: { room: MowerRoomId; index: number; agent: string; group: string | null; replacements: string[]; groupBindings?: MowerGroupBinding[] }[]
   products: Partial<Record<MowerRoomId, {product: MowerProduct; rawProduct: unknown}>>
   task: Record<string, string[]>
+  groupTasks:MowerBackupGroupTask[]
 }
 function parsePlans(workspace: RosterWorkspace, participants: Set<string>, diagnostics: BackupDiagnostic[] = []): BackupPlan[] {
   const known = (value: unknown) => { const id = operator(value); participants.add(id); return id }
@@ -102,7 +104,7 @@ function parsePlans(workspace: RosterWorkspace, participants: Set<string>, diagn
       const usesFacilityProduct = compiledCondition.usesFacilityProduct
       if (compiledCondition.skipped) {
         diagnostics.push({ code: 'BACKUP_EXTERNAL_CONDITION_SKIPPED', message: `副表 ${name}（#${index + 1}）：跳过依赖 ${compiledCondition.skipped} 的整张副表；未执行其岗位、策略与任务` })
-        return { ...selectionFields, name, timing: 'AFTER_PLANNING' as const, exitTiming: 'AFTER_PLANNING' as const, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, ownMajorMaintenance, maintenanceGroups, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms: {}, slots: [], products: {}, task: {},conf:{} }
+        return { ...selectionFields, name, timing: 'AFTER_PLANNING' as const, exitTiming: 'AFTER_PLANNING' as const, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, ownMajorMaintenance, maintenanceGroups, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms: {}, slots: [], products: {}, task: {},groupTasks:[],conf:{} }
       }
       const timing = typeof raw.trigger_timing === 'string' ? raw.trigger_timing.toUpperCase() : ''
       const slots: BackupPlan['slots'] = [], task: BackupPlan['task'] = {}, products: BackupPlan['products'] = {}, rooms: BackupPlan['rooms'] = {}
@@ -139,7 +141,7 @@ function parsePlans(workspace: RosterWorkspace, participants: Set<string>, diagn
       }
       const entry = timing in BACKUP_TIMINGS ? timing as BackupTiming : 'AFTER_PLANNING'
       const exit = typeof raw.exit_trigger_timing === 'string' && raw.exit_trigger_timing ? raw.exit_trigger_timing.toUpperCase() : undefined
-      return { ...selectionFields, name, timing: entry, exitTiming: exit ? exit in BACKUP_TIMINGS ? exit as BackupTiming : 'AFTER_PLANNING' : entry, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, ownMajorMaintenance, maintenanceGroups, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms, slots, products, task,conf:record(raw.conf)?raw.conf:{} }
+      return { ...selectionFields, name, timing: entry, exitTiming: exit ? exit in BACKUP_TIMINGS ? exit as BackupTiming : 'AFTER_PLANNING' : entry, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, ownMajorMaintenance, maintenanceGroups, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms, slots, products, task,groupTasks:readMowerBackupGroupTasks(raw.group_tasks),conf:record(raw.conf)?raw.conf:{} }
     } catch (error) { return fail(`${name}：${error instanceof Error ? error.message : String(error)}`) }
   })
 }
@@ -222,6 +224,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   }
   const alphaModel:MowerShiftModel={
     count:plans.length,
+    groupTasks:plans.map(plan=>plan.groupTasks),
     exhaustRoomContext(data){const {compiled}=alphaConfiguration(data.planConditions,data.backupGroup);return Object.fromEntries(Object.entries(compiled.sourceWorkspace.mainPlan.facilities).map(([room,facility])=>[room,[facility.type,facility.product]]))},
     observationNames:[...new Set([...plans,...groups].flatMap(plan=>plan.conditionNames))],
     conditionObservationNames:plans.map(plan=>plan.conditionWaitable&&groups.every(group=>group.observedOperatorDependenciesOnly)?[...new Set([...plan.conditionNames,...groups.flatMap(group=>group.conditionNames)])]:[]),
@@ -233,7 +236,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     nextIdleConditionWakeMicros:data=>[...plans,...groups].some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours!==undefined&&data.nowMicros<=base.assumptions.majorMaintenanceStartHours*3_600_000_000?data.nowMicros+1_000_000:undefined,
     select(data){return selectionFor({...state,time:data.nowMicros/3_600_000_000,mowerSource:{...getMowerSourceRuntime(state),data}},data.backupGroup,data.planConditions)},
     evaluate(data){return alphaModel.select!(data).conditions},
-    swap(data,conditions,groupId){const {config}=alphaConfiguration(conditions,groupId??data.backupGroup);const next=makeMowerSchedulingData({...state,time:data.nowMicros/3_600_000_000,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];next.backupGroup=groupId??data.backupGroup;return next},
+    swap(data,conditions,groupId){const {config}=alphaConfiguration(conditions,groupId??data.backupGroup);const next=makeMowerSchedulingData({...state,time:data.nowMicros/3_600_000_000,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];next.backupGroup=groupId??data.backupGroup;validateMowerGroupTasks(next);return next},
     transition(previous,next,original,conditions,recovery=previous,pendingTasks,intent={}){
       const transition:Record<string,string[]>={},groupPositions=new Set<string>(),replacementPositions:[string,number][]=[],restored=new Set<string>(),joiningResting=new Set<string>()
       const protectedTraining=new Set([...previous.busyRestingNames,...next.busyRestingNames])
@@ -293,7 +296,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       captureMowerBackupRefreshRules(task,previous,getMowerSourceRuntime(state).data,oldDrained,state.config.mowerSourceRules?.refreshDrained??[])
     },
   }
-  if(state.config.mowerAlpha){state.mowerShiftModel=alphaModel;getMowerSourceRuntime(state).data.planConditions=[...active];getMowerSourceRuntime(state).data.backupExplicitTasks=alphaModel.explicitTasks??[]}
+  if(state.config.mowerAlpha){state.mowerShiftModel=alphaModel;getMowerSourceRuntime(state).data.planConditions=[...active];getMowerSourceRuntime(state).data.backupExplicitTasks=alphaModel.explicitTasks??[];getMowerSourceRuntime(state).data.backupGroupTasks=alphaModel.groupTasks??[]}
   function evaluateAlpha(timing:BackupTiming):boolean{
     const source=getMowerSourceRuntime(state),queue=source.queue,data=source.data
     if(queue.tasks.some(t=>!t.executionFailure&&(t.backupShiftActive||t.type===T.FIAMMETTA&&t.timeMicros<=data.nowMicros))||source.activeTask?.type===T.FIAMMETTA)return false
