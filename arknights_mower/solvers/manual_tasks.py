@@ -203,7 +203,7 @@ def _run_single(scheduler, kind):
     from arknights_mower.solvers.mission import MissionSolver
     from arknights_mower.solvers.recruit import RecruitSolver
     from arknights_mower.solvers.report import ReportSolver
-    from arknights_mower.solvers.shop import CreditShop
+    from arknights_mower.solvers.shop import CreditShop, CreditShopIncomplete
 
     conf = config.conf
     today = get_server_time().date()
@@ -232,7 +232,26 @@ def _run_single(scheduler, kind):
             return scheduler.maa_plan_solver(
                 ["Mall"], manual=True, mall_action="shopping"
             )
-        CreditShop(scheduler.device, scheduler.recog).run()
+        task = getattr(scheduler, "task", None)
+        continuation = getattr(task, "credit_shop_continuation", None)
+        reward = continuation.get("reward") if continuation else None
+        shop = CreditShop(scheduler.device, scheduler.recog)
+        try:
+            if reward is None:
+                shop.run()
+            else:
+                shop.run(resume=reward)
+        except CreditShopIncomplete as error:
+            error.continuation = {
+                "on_demand": False,
+                "stage": 0,
+                "settlement_checked": None,
+                "reward": error.pending_reward,
+            }
+            raise
+        if task is not None:
+            task.__dict__.pop("credit_shop_pending", None)
+            task.__dict__.pop("credit_shop_continuation", None)
     elif kind == TaskTypes.MISSION:
         MissionSolver(scheduler.device, scheduler.recog).run()
     elif kind == TaskTypes.STAGE_PLAN:

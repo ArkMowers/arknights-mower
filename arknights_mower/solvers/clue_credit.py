@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta
 
-from arknights_mower.solvers.shop import CreditShop
+from arknights_mower.solvers.shop import CreditShop, CreditShopIncomplete
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.datetime import get_server_time
@@ -30,7 +30,7 @@ class ClueCreditMixin:
             return reset_time.astimezone().replace(tzinfo=None)
         return None
 
-    def _run_on_demand_clue_shop(self, *, settlement_checked=None):
+    def _run_on_demand_clue_shop(self, *, settlement_checked=None, resume=None):
         """线索流程结束后购物；不发起访友，也不安排额外购物任务。"""
         if config.stop_mower.is_set():
             raise MowerExit
@@ -39,16 +39,50 @@ class ClueCreditMixin:
                 return False
             self._clue_access_record_exhausted = False
         visit_day = get_server_time().date()
-        if visit_day not in (
+        if resume is None and visit_day not in (
             getattr(self, "daily_visit_friend", None),
             getattr(self, "daily_visit_friend_attempt", None),
         ):
             logger.info("本游戏日尚未尝试访友，等待后续线索流程购物")
             return
+        stage = resume.get("stage", 0) if resume else 0
+        reward = resume.get("reward") if resume else None
+        if resume:
+            settlement_checked = resume.get("settlement_checked")
         shop = CreditShop(self.device, self.recog)
-        shop.run(on_demand=True)
-        if self._needs_clue_credit(shop):
-            if settlement_checked is None:
+
+        def update_resume():
+            if resume is not None:
+                resume.update(
+                    {
+                        "on_demand": True,
+                        "stage": stage,
+                        "settlement_checked": settlement_checked,
+                        "reward": reward,
+                    }
+                )
+
+        def run_shop():
+            nonlocal reward
+            try:
+                if reward is None:
+                    shop.run(on_demand=True)
+                else:
+                    shop.run(on_demand=True, resume=reward)
+            except CreditShopIncomplete as error:
+                error.continuation = {
+                    "on_demand": True,
+                    "stage": stage,
+                    "settlement_checked": settlement_checked,
+                    "reward": error.pending_reward,
+                }
+                raise
+            reward = None
+            update_resume()
+
+        run_shop()
+        if stage < 2 and self._needs_clue_credit(shop):
+            if stage == 0 and settlement_checked is None:
                 logger.info(
                     "购物还差 %s 信用，准备打开信息板尝试领取上周结算，本次不领取本周信用",
                     shop.credit_deficit,
@@ -56,25 +90,29 @@ class ClueCreditMixin:
                 settlement_checked = self._visit_clue_message_board(
                     collect_current=False
                 )
+                stage = 1
+                update_resume()
                 # 打开板子可能已自动到账；访问记录未能关闭时保留本轮任务。
                 if (
                     getattr(self, "_clue_access_record_exhausted", False)
                     and not self._clue_access_record_cleared()
                 ):
                     return False
-                shop.run(on_demand=True)
+                run_shop()
             if settlement_checked and self._needs_clue_credit(shop):
                 logger.info(
                     "购物仍差 %s 信用，准备打开信息板领取本周信用",
                     shop.credit_deficit,
                 )
                 self._visit_clue_message_board(collect_current=True)
+                stage = 2
+                update_resume()
                 if (
                     getattr(self, "_clue_access_record_exhausted", False)
                     and not self._clue_access_record_cleared()
                 ):
                     return False
-                shop.run(on_demand=True)
+                run_shop()
         self.scene_graph_navigation(Scene.INFRA_MAIN)
 
     def _needs_clue_credit(self, shop):

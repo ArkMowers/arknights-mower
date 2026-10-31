@@ -71,7 +71,7 @@ from arknights_mower.solvers.record import (
 from arknights_mower.solvers.recruit import RecruitSolver
 from arknights_mower.solvers.report import ReportSolver
 from arknights_mower.solvers.secret_front import SecretFront
-from arknights_mower.solvers.shop import CreditShop
+from arknights_mower.solvers.shop import CreditShop, CreditShopIncomplete
 from arknights_mower.solvers.skland import SKLand
 from arknights_mower.utils import config, detector, rapidocr, round_stop, segment
 from arknights_mower.utils import typealias as tp
@@ -651,6 +651,8 @@ class BaseSchedulerSolver(
 
     def _task_failure_snapshot(self, task, rooms):
         """失败任务仅由新观测或相关安排变化重新准入，不使用时钟计时。"""
+        if pending := getattr(task, "credit_shop_pending", None):
+            return copy.deepcopy(pending["observation"])
         if getattr(task, "clue_access_record_pending", False):
             return {"access_record_visible": self._clue_access_record_visible()}
         if task.type in MANUAL_TASK_TYPES:
@@ -863,6 +865,30 @@ class BaseSchedulerSolver(
         log = logger.info if dependency else logger.error
         log("%s；保留原任务及时间，相关观测或安排更新后复核", reason)
 
+    def _retain_credit_shop_failure(self, task, error):
+        pending = copy.deepcopy(
+            {"reward": error.pending_reward, "observation": error.observation}
+        )
+        continuation = copy.deepcopy(getattr(error, "continuation", None) or {})
+        continuation.setdefault("on_demand", False)
+        continuation["reward"] = pending["reward"]
+        task.credit_shop_pending = pending
+        task.credit_shop_continuation = continuation
+        self._retain_failed_task(task, str(error), (), dependency=True)
+
+    def _clear_credit_shop_pending(self, task=None):
+        task = task if task is not None else getattr(self, "task", None)
+        if task is not None:
+            task.__dict__.pop("credit_shop_pending", None)
+            task.__dict__.pop("credit_shop_continuation", None)
+
+    def _has_pending_clue_shop(self):
+        return any(
+            task.type in (TaskTypes.CLUE, TaskTypes.CLUE_PARTY)
+            and getattr(task, "credit_shop_continuation", None) is not None
+            for task in self.tasks
+        )
+
     def _observe_failed_arrangement_confirmation(self):
         """确认失败后只补一次完整实读，任务阶段仍由原执行流程处理。"""
         ordinary = {
@@ -1042,6 +1068,10 @@ class BaseSchedulerSolver(
         self._discard_legacy_run_order_waits()
         for task in list(self.tasks):
             failure = getattr(task, "execution_failure", None)
+            if failure and (pending := getattr(task, "credit_shop_pending", None)):
+                if CreditShop.can_resume(self.recog, pending):
+                    del task.execution_failure
+                continue
             if failure and getattr(task, "clue_access_record_pending", False):
                 if self._clue_access_record_cleared():
                     del task.execution_failure
@@ -3005,6 +3035,7 @@ class BaseSchedulerSolver(
                 return True
             if (
                 self.task.type in (TaskTypes.CLUE_PARTY, TaskTypes.CLUE)
+                and getattr(self.task, "credit_shop_continuation", None) is None
                 and (resume_time := self._clue_flow_resume_time()) is not None
             ):
                 # 执行前再次检查，覆盖旧存档及被其他任务拖延的线索任务。
@@ -3382,6 +3413,9 @@ class BaseSchedulerSolver(
                     )
                 )
                 self.skip()
+            except CreditShopIncomplete as e:
+                self._retain_credit_shop_failure(self.task, e)
+                self.skip()
             except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
             except Exception as e:
@@ -3507,9 +3541,18 @@ class BaseSchedulerSolver(
                 )
                 and self.no_pending_task(3)
                 and self._clue_flow_resume_time() is None
+                and not self._has_pending_clue_shop()
             ):
-                if self.clue_new() is not False:
-                    self.last_clue = datetime.now()
+                clue_started_at = datetime.now()
+                try:
+                    clue_result = self.clue_new()
+                except CreditShopIncomplete as e:
+                    task = SchedulerTask(time=clue_started_at, task_type=TaskTypes.CLUE)
+                    self.tasks.append(task)
+                    self._retain_credit_shop_failure(task, e)
+                else:
+                    if clue_result is not False:
+                        self.last_clue = datetime.now()
             if (
                 self.drone_room not in self.op_data.run_order_rooms
                 and (
@@ -10314,9 +10357,15 @@ class BaseSchedulerSolver(
         clue_new() 根据界面更新线索交流结束时间；未读到新结果时保留已有观测。
         完成后刷新 last_clue，失败时保留原任务和检查时间。
         """
-        if self.clue_new() is False:
-            task = getattr(self, "task", None)
+        task = getattr(self, "task", None)
+        continuation = getattr(task, "credit_shop_continuation", None)
+        if continuation is not None:
+            result = self._run_clue_shop(resume=continuation)
+        else:
+            result = self.clue_new()
+        if result is False:
             if task is not None and task.type in (TaskTypes.CLUE, TaskTypes.CLUE_PARTY):
+                task.__dict__.pop("credit_shop_pending", None)
                 task.clue_access_record_pending = True
                 self._retain_failed_task(
                     task, "访问记录关闭未确认", ("meeting",), dependency=True
@@ -10325,9 +10374,18 @@ class BaseSchedulerSolver(
         self.last_clue = datetime.now()
         self.skip(["collect_notification"])
 
-    def _run_clue_shop(self, *, settlement_checked=None):
-        if self._clue_credit_enabled():
-            return self._run_on_demand_clue_shop(settlement_checked=settlement_checked)
+    def _run_clue_shop(self, *, settlement_checked=None, resume=None):
+        on_demand = (
+            resume["on_demand"] if resume is not None else self._clue_credit_enabled()
+        )
+        if on_demand:
+            kwargs = {"settlement_checked": settlement_checked}
+            if resume is not None:
+                kwargs["resume"] = resume
+            result = self._run_on_demand_clue_shop(**kwargs)
+            if result is not False:
+                self._clear_credit_shop_pending()
+            return result
         conf = config.conf
         if getattr(
             conf,
@@ -10336,8 +10394,16 @@ class BaseSchedulerSolver(
             and getattr(conf, "maa_mall_mode", "maa") == "mower",
         ):
             shop_solver = CreditShop(self.device, self.recog)
-            shop_solver.run()
+            try:
+                if resume is None:
+                    shop_solver.run()
+                else:
+                    shop_solver.run(resume=resume.get("reward"))
+            except CreditShopIncomplete as e:
+                e.continuation = {"on_demand": False, "reward": e.pending_reward}
+                raise
             self.scene_graph_navigation(Scene.INFRA_MAIN)
+        self._clear_credit_shop_pending()
 
     def _clue_receive_credit_capped(self):
         """确认接收页底部显示今日接受信用已达上限。"""
@@ -10815,6 +10881,8 @@ class BaseSchedulerSolver(
                 shop_result = self._run_clue_shop()
             if shop_result is False:
                 return False
+        except CreditShopIncomplete:
+            raise
         except (MowerExit, DeviceRecoveryError, SharedADBError):
             raise
         except Exception as e:

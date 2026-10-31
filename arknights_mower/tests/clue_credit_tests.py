@@ -866,25 +866,29 @@ def shopping(monkeypatch):
 
     def product_info():
         shop.products = [
-            product
+            product if product["name"] not in state.purchased else None
             for product in state.products
-            if product["name"] not in state.purchased
         ]
+        return True
 
-    def tap(position):
+    def tap(position, **_kwargs):
         if position == (1, 1):
             state.balance += state.daily
             state.daily = 0
+            state.scene = Scene.MATERIEL
+        elif position == (960, 960):
+            state.scene = Scene.SHOP_CREDIT
         else:
             state.selected = next(p for p in state.products if p["touch"] == position)
             state.scene = Scene.SHOP_CREDIT_CONFIRM
 
-    def confirm(name):
+    def confirm(name, **_kwargs):
         assert name == "shop_cart"
         assert state.balance >= state.selected["price"]
         state.balance -= state.selected["price"]
         state.purchased.append(state.selected["name"])
-        state.scene = Scene.SHOP_CREDIT
+        state.scene = Scene.MATERIEL
+        return True
 
     shop.product_info = product_info
     shop.tap = tap
@@ -916,7 +920,7 @@ def shopping(monkeypatch):
 
 
 def product(name="招聘许可", price=120, touch=(50, 100)):
-    return {"name": name, "price": price, "touch": touch}
+    return {"name": name, "price": price, "touch": touch, "discount": 0}
 
 
 @pytest.fixture

@@ -66,21 +66,27 @@ def shopping(monkeypatch, income_db):
             p if p and p["touch"] not in state.purchased else None
             for p in state.products
         ]
+        return True
 
-    def tap(position):
+    def tap(position, **_kwargs):
         if position == (999, 999):
             state.balance += state.daily
             state.daily = 0
+            state.scene = Scene.MATERIEL
+            return
+        if position == (960, 960):
+            state.scene = Scene.SHOP_CREDIT
             return
         state.selected = next(p for p in state.products if p and p["touch"] == position)
         state.scene = Scene.SHOP_CREDIT_CONFIRM
 
-    def confirm(name):
+    def confirm(name, **_kwargs):
         assert name == "shop_cart"
         assert state.balance >= state.selected["price"]
         state.balance -= state.selected["price"]
         state.purchased.append(state.selected["touch"])
-        state.scene = Scene.SHOP_CREDIT
+        state.scene = Scene.MATERIEL
+        return True
 
     shop.find = find
     shop.product_info = product_info
