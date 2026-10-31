@@ -2,6 +2,7 @@ import random
 import sys
 import time
 from abc import abstractmethod
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Literal, Optional, Tuple
 
@@ -37,6 +38,10 @@ class StrategyError(Exception):
     """Strategy Error"""
 
     pass
+
+
+class ObservationTimeout(RecognizeError):
+    """本轮操作结果观察已达到调用方给定的截止时间。"""
 
 
 class BaseSolver:
@@ -145,10 +150,38 @@ class BaseSolver:
             x, y = poly
         return (int(x), int(y))
 
+    @contextmanager
+    def observation_deadline(self, deadline):
+        """让嵌套读屏、等待和必要导航共用一个单调截止时间。"""
+        previous = self.__dict__.get("_observation_deadline")
+        self._observation_deadline = (
+            deadline if previous is None else min(previous, deadline)
+        )
+        try:
+            yield
+        finally:
+            if previous is None:
+                self.__dict__.pop("_observation_deadline", None)
+            else:
+                self._observation_deadline = previous
+
+    def _observation_remaining(self):
+        deadline = self.__dict__.get("_observation_deadline")
+        if deadline is None:
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ObservationTimeout("操作结果观察已超时")
+        return remaining
+
     def sleep(self, interval: float = 1) -> None:
         """sleeping for a interval"""
+        remaining = self._observation_remaining()
+        if remaining is not None:
+            interval = min(interval, remaining)
         csleep(interval)
         self.recog.update()
+        self._observation_remaining()
 
     def input(self, referent: str, input_area: tp.Scope, text: str = None) -> None:
         """input text"""
@@ -170,6 +203,7 @@ class BaseSolver:
         strict: bool = False,
         score=0.0,
     ) -> tp.Scope:
+        self._observation_remaining()
         return self.recog.find(res, draw, scope, thres, judge, strict, score)
 
     @timed_step("tap")
@@ -183,6 +217,7 @@ class BaseSolver:
         """tap"""
         if config.stop_mower.is_set():
             raise MowerExit
+        self._observation_remaining()
         pos = self.get_pos(poly, x_rate, y_rate)
         self.device.tap(pos)
         if interval > 0:
@@ -391,6 +426,7 @@ class BaseSolver:
 
     def back(self, interval: float = 1) -> None:
         """send back keyevent"""
+        self._observation_remaining()
         self.device.send_keyevent(KeyCode.KEYCODE_BACK)
         self.sleep(interval)
 
@@ -964,7 +1000,9 @@ class BaseSolver:
 
     def waiting_solver(self, *, restart_on_timeout: bool = True):
         """等待当前场景变化；超时返回 False，可由调用方禁止重启。"""
+        self._observation_remaining()
         scene = self.scene()
+        self._observation_remaining()
         sleep_time, wait_count = getattr(
             config.conf.waiting_scene, scene_list[str(scene)]["label"]
         )
@@ -1001,6 +1039,7 @@ class BaseSolver:
                 self.sleep(sleep_time)
                 if self.scene() != scene:
                     return True
+        self._observation_remaining()
         logger.warning("相同场景等待超时")
         if not restart_on_timeout:
             return False
@@ -1057,6 +1096,7 @@ class BaseSolver:
             if protected:
                 self.recog._network_wait_episode = episode
         previous_guard = self.recog.__dict__.get("_network_wait_guard")
+        observation_deadline = self.__dict__.get("_observation_deadline", float("inf"))
         if protected:
             self.recog._network_wait_guard = episode
 
@@ -1090,18 +1130,21 @@ class BaseSolver:
             while (
                 remaining := min(
                     episode.deadline - time.monotonic(),
+                    observation_deadline - time.monotonic(),
                     episode.scene_budgets[label] + episode.allowance_remaining,
                 )
             ) > 0:
                 sample_started = time.monotonic()
-                self.sleep(min(sleep_time, remaining))
-                current_scene = self.scene()
-                elapsed = max(0, time.monotonic() - sample_started)
-                base_used = min(episode.scene_budgets[label], elapsed)
-                episode.scene_budgets[label] -= base_used
-                episode.allowance_remaining = max(
-                    0, episode.allowance_remaining - (elapsed - base_used)
-                )
+                try:
+                    self.sleep(min(sleep_time, remaining))
+                    current_scene = self.scene()
+                finally:
+                    elapsed = max(0, time.monotonic() - sample_started)
+                    base_used = min(episode.scene_budgets[label], elapsed)
+                    episode.scene_budgets[label] -= base_used
+                    episode.allowance_remaining = max(
+                        0, episode.allowance_remaining - (elapsed - base_used)
+                    )
                 current_source = self._network_wait_source(current_scene)
                 if current_source != network_source:
                     record()
@@ -1128,6 +1171,9 @@ class BaseSolver:
                 base_seconds = sleep_time * wait_count
             record(timed_out=True)
             return False
+        except ObservationTimeout:
+            record(timed_out=True)
+            raise
         finally:
             if protected:
                 if previous_guard is None:

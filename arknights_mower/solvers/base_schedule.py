@@ -6,6 +6,7 @@ import pathlib
 import re
 import threading
 from collections import defaultdict, deque
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta
 from functools import wraps
 from time import monotonic, perf_counter
@@ -192,6 +193,7 @@ from arknights_mower.utils.scheduler_task import (
 )
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.skland_log import redact_signing_text
+from arknights_mower.utils.solver import ObservationTimeout
 from arknights_mower.utils.trading_order import TradingOrder
 from arknights_mower.utils.workshop_ui import (
     CONFIRM_OPERATOR,
@@ -409,6 +411,14 @@ class RunOrderMissed(Exception):
 
     def __init__(self, room):
         super().__init__("检测到漏单！")
+        self.room = room
+
+
+class RunOrderConfirmationUnresolved(RecognizeError):
+    """换人提交仍未核实，保留原任务的原班恢复责任。"""
+
+    def __init__(self, room):
+        super().__init__(f"干员确认结果仍未确定：{room}，等待新的驻员观测")
         self.room = room
 
 
@@ -837,6 +847,22 @@ class BaseSchedulerSolver(
                 room: data.get_current_room(room, bypass=True) for room in rooms
             }
             snapshot["run_order_eligible"] = data.is_run_order_room(task.meta_data)
+        if pending := getattr(task, "run_order_confirmation_pending", None):
+            # 同名单的新时间戳不证明迟到提交已结束，不能重启已耗尽的观察。
+            snapshot["observations"] = {}
+            snapshot["room_observations"] = {}
+            snapshot.pop("card_moods", None)
+            snapshot["staffing"] = {
+                room: data.get_current_room(room, bypass=True) for room in rooms
+            }
+            snapshot["facilities"] = {
+                room: {
+                    key: getattr(data, "facility_states", {}).get(room, {}).get(key)
+                    for key in ("facility", "product")
+                }
+                for room in rooms
+            }
+            snapshot["confirmation_target"] = pending["target"]
         return copy.deepcopy(snapshot)
 
     def _run_mastery_with_recovery(self, action):
@@ -3280,6 +3306,10 @@ class BaseSchedulerSolver(
                 # 漏单结束本次插拔；新订单使用正常读单流程，不保留失效时间。
                 self.tasks[:] = [task for task in self.tasks if task is not self.task]
                 self._queue_order_refresh(e.room)
+                self.skip()
+                self.back_to_infrastructure()
+            except RunOrderConfirmationUnresolved as e:
+                self._retain_run_order_restoration(failure=str(e))
                 self.skip()
                 self.back_to_infrastructure()
             except TrainingObservationError as e:
@@ -12267,8 +12297,167 @@ class BaseSchedulerSolver(
         else:
             return False, ["技能", "false"]
 
+    def _prepare_run_order_confirmation(self, room, target):
+        if getattr(self.task, "run_order_confirmation_pending", None):
+            raise RunOrderConfirmationUnresolved(room)
+        allowance = run_order_network_allowance(self.task, config.conf)
+        if (
+            not getattr(config.conf, "run_order_network_adaptive", False)
+            or allowance <= 0
+            or self._emergency_frozen()
+        ):
+            return
+        self.task.run_order_confirmation_pending = {
+            "room": room,
+            "target": list(target),
+            "restoring": list(target)
+            == getattr(self.task, "run_order_original_roster", {}).get(room),
+            "allowance": allowance,
+            "submitted": False,
+            "expires_at": None,
+            "exhausted": False,
+        }
+
+    def _run_order_confirmation_deadline(self, *, start=False):
+        pending = self.task.run_order_confirmation_pending
+        if pending["expires_at"] is None:
+            if not start:
+                return None
+            pending["expires_at"] = datetime.now() + timedelta(
+                seconds=pending["allowance"]
+            )
+            recovery = getattr(self.task, "confirmation_recovery_rooms", {})
+            recovery[pending["room"]] = "consumed"
+            self.task.confirmation_recovery_rooms = recovery
+            # 单调期限只保存在本次进程，存档仅保存绝对时间与未决责任。
+            self._run_order_confirmation_clock = (
+                pending,
+                monotonic() + pending["allowance"],
+            )
+            try:
+                if save_current_state() is False:
+                    raise RecognizeError("无法保存干员确认观察期限，保留原任务")
+            except BaseException:
+                pending["exhausted"] = True
+                raise
+            logger.info(
+                "%s 干员确认结果尚未核实，追加最多%s秒观察，页面变化不重新计时",
+                pending["room"],
+                f"{pending['allowance']:g}",
+            )
+        clock = self.__dict__.get("_run_order_confirmation_clock")
+        if clock is None or clock[0] is not pending:
+            remaining = max(
+                0,
+                min(
+                    pending["allowance"],
+                    (pending["expires_at"] - datetime.now()).total_seconds(),
+                ),
+            )
+            clock = (pending, monotonic() + remaining)
+            self._run_order_confirmation_clock = clock
+        return clock[1]
+
+    @contextmanager
+    def _run_order_confirmation_observation(self):
+        pending = self.task.run_order_confirmation_pending
+        deadline = self._run_order_confirmation_deadline(start=True)
+        try:
+            if pending["exhausted"] or monotonic() >= deadline:
+                raise ObservationTimeout("干员确认观察已超时")
+            with self.observation_deadline(deadline):
+                yield deadline
+        except ObservationTimeout as exc:
+            pending["exhausted"] = True
+            raise RunOrderConfirmationUnresolved(pending["room"]) from exc
+
+    def _observe_run_order_confirmation(self, room, template, observation):
+        pending = getattr(self.task, "run_order_confirmation_pending", None)
+        if not pending or not pending["submitted"] or pending["room"] != room:
+            return False
+        deadline = observation.enter_context(self._run_order_confirmation_observation())
+        while True:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise ObservationTimeout("干员确认观察已超时")
+            if self.find("connecting"):
+                if not self.waiting_solver(restart_on_timeout=False):
+                    raise ObservationTimeout("干员确认联网观察已超时")
+                continue
+            if any(
+                self.find(other, score=0.9)
+                for other in ("confirm_blue", "confirm_train", "arrange_confirm")
+                if other != template
+            ) or self.find("room_detail"):
+                return True
+            if self.find(template, score=0.9):
+                # 原按钮仍在时回房读结果；按钮已消失则等待迟到的二次确认。
+                self.back(interval=min(0.2, remaining))
+                return True
+            self.sleep(
+                min(self.performance_profile.screenshot_interval / 1000, remaining)
+            )
+
+    def _verify_run_order_confirmation(self, room, current):
+        pending = getattr(self.task, "run_order_confirmation_pending", None)
+        if not pending or pending["room"] != room:
+            return current
+        if not pending["submitted"]:
+            self.task.__dict__.pop("run_order_confirmation_pending", None)
+            return current
+
+        def confirmed(rows):
+            return (
+                len(rows) == len(pending["target"])
+                and all(item.get("observed", True) for item in rows)
+                and [item["agent"] for item in rows] == pending["target"]
+            )
+
+        if not confirmed(current):
+            with self._run_order_confirmation_observation() as deadline:
+                while not confirmed(current):
+                    remaining = deadline - monotonic()
+                    if remaining <= 0:
+                        raise ObservationTimeout("干员确认观察已超时")
+                    self.sleep(
+                        min(
+                            self.performance_profile.screenshot_interval / 1000,
+                            remaining,
+                        )
+                    )
+                    if self.find("connecting"):
+                        if not self.waiting_solver(restart_on_timeout=False):
+                            raise ObservationTimeout("干员确认联网观察已超时")
+                    current = self.get_agent_from_room(room)
+        self.task.__dict__.pop("run_order_confirmation_pending", None)
+        self.__dict__.pop("_run_order_confirmation_clock", None)
+        logger.info("%s 已实读确认提交的目标驻员", room)
+        return current
+
+    @contextmanager
+    def _read_run_order_confirmation(self):
+        pending = getattr(self.task, "run_order_confirmation_pending", None)
+        if pending and pending["expires_at"] is not None and not pending["exhausted"]:
+            with self._run_order_confirmation_observation():
+                yield
+        else:
+            yield
+
     @timed_step("confirm")
     def tap_confirm(self, room, new_plan=None):
+        try:
+            with ExitStack() as observation:
+                return self._tap_confirm(room, new_plan, observation)
+        except RunOrderConfirmationUnresolved:
+            # 追加观察已结束，沿用一次正常退页实读；不再获得额外等待。
+            if self.find("room_detail"):
+                return
+            if self.scene() == Scene.INFRA_ARRANGE:
+                self.back(interval=0.2)
+                return
+            raise
+
+    def _tap_confirm(self, room, new_plan, observation):
         if new_plan is None:
             new_plan = {}
         self.recog.update()
@@ -12349,6 +12538,10 @@ class BaseSchedulerSolver(
                     self.sleep(0.2)
                     continue
                 if clicks >= 4:
+                    if self._observe_run_order_confirmation(
+                        room, template, observation
+                    ):
+                        break
                     raise RecognizeError("干员确认点击未生效，返回房间重试")
                 target = (
                     (self.recog.w // 3 * 2, self.recog.h - 10)
@@ -12366,10 +12559,23 @@ class BaseSchedulerSolver(
                         self.task.mood_physical_started = False
                         self.task.execution_retained = False
                         raise RecognizeError("无法保存换班执行状态，取消首次提交")
+                pending = getattr(self.task, "run_order_confirmation_pending", None)
+                if pending and not pending["submitted"]:
+                    pending["submitted"] = True
+                    try:
+                        if save_current_state() is False:
+                            raise RecognizeError(
+                                "无法保存干员确认提交状态，取消本次提交"
+                            )
+                    except BaseException:
+                        pending["submitted"] = False
+                        raise
                 self.tap(target, interval=0.2)
                 clicks += 1
                 retry_ready = False
             else:
+                if self._observe_run_order_confirmation(room, template, observation):
+                    continue
                 raise RecognizeError("干员确认画面仍未稳定，返回房间重试")
 
     def _open_check_in_detail(self):
@@ -15040,6 +15246,12 @@ class BaseSchedulerSolver(
                 observation_context = (
                     {"expected_agents": plan[room]} if room.startswith("dorm") else {}
                 )
+                if restoring_order and getattr(
+                    self.task, "run_order_confirmation_pending", None
+                ):
+                    # 旧换入的目标独立于恢复计划；旧原班不能证明换入已取消。
+                    actual = self.get_agent_from_room(room)
+                    self._verify_run_order_confirmation(room, actual)
                 if reconcile_after_confirmation:
                     refresh_indexes = []
                     if (
@@ -15402,6 +15614,7 @@ class BaseSchedulerSolver(
                                 dorm_mood_candidates=dorm_mood_candidates,
                             )
                         confirmation_pending = True
+                        self._prepare_run_order_confirmation(room, plan[room])
                         self.tap_confirm(room, new_plan)
                     if room.startswith("dorm") and not fia_arrangement:
                         # 换人也会改变未移动住客的同住加成，最终阵容全部重新计时。
@@ -15414,17 +15627,19 @@ class BaseSchedulerSolver(
                     if len(new_plan) > 1:
                         self.op_data.operators["菲亚梅塔"].time_stamp = None
                         self.op_data.operators[plan[room][0]].time_stamp = None
-                    if related_operators:
-                        current = self.get_agent_from_room(
-                            room,
-                            read_time_index,
-                            related_operators,
-                            **observation_context,
-                        )
-                    else:
-                        current = self.get_agent_from_room(
-                            room, read_time_index, **observation_context
-                        )
+                    with self._read_run_order_confirmation():
+                        if related_operators:
+                            current = self.get_agent_from_room(
+                                room,
+                                read_time_index,
+                                related_operators,
+                                **observation_context,
+                            )
+                        else:
+                            current = self.get_agent_from_room(
+                                room, read_time_index, **observation_context
+                            )
+                    current = self._verify_run_order_confirmation(room, current)
                     for idx, name in enumerate(plan[room]):
                         if current[idx]["agent"] != name and name not in (
                             "Free",
@@ -15469,9 +15684,13 @@ class BaseSchedulerSolver(
                 RoomArrangementDeferred,
                 MoodArrangementChanged,
                 RunOrderMissed,
+                RunOrderConfirmationUnresolved,
             ):
                 raise
             except Exception as e:
+                pending = getattr(self.task, "run_order_confirmation_pending", None)
+                if pending and not pending["submitted"]:
+                    self.task.__dict__.pop("run_order_confirmation_pending", None)
                 save_exception(e)
                 logger.exception(e)
                 record_selection_retry()
@@ -15671,8 +15890,16 @@ class BaseSchedulerSolver(
     def _retain_run_order_restoration(self, *, failure=None):
         """保留实测原班，后续调度仅恢复驻员，不重复插拔。"""
         self.task.prepare_run_order_restoration()
+        pending = getattr(self.task, "run_order_confirmation_pending", None)
+        if pending and not pending["submitted"]:
+            self.task.__dict__.pop("run_order_confirmation_pending", None)
+            pending = None
+        if pending and pending["exhausted"]:
+            failure = str(RunOrderConfirmationUnresolved(pending["room"]))
         if failure is not None:
-            self._retain_failed_task(self.task, failure, self.task.plan)
+            self._retain_failed_task(
+                self.task, failure, self.task.plan, dependency=bool(pending)
+            )
         if not any(task is self.task for task in self.tasks):
             self.tasks.append(self.task)
         return False
