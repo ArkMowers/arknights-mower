@@ -88,8 +88,52 @@ export function remainingModuleRate(operator, survey) {
   return topRate(remainingModuleTargets(operator, survey))
 }
 
-// 模组排序只陈述未满模组；其他排序优先陈述未专三技能，再回退到未满模组。
+export function remainingLevelTarget(operator) {
+  if (!operator) return null
+  const fullGoal = (operator.level_goals || []).find((goal) =>
+    ['elite2_max', 'level_max'].includes(goal.id)
+  )
+  const rarity = Number(operator.rarity)
+  const legacyCap = {
+    1: { elite: 0, level: 30 },
+    2: { elite: 0, level: 30 },
+    3: { elite: 1, level: 55 },
+    4: { elite: 2, level: 70 },
+    5: { elite: 2, level: 80 },
+    6: { elite: 2, level: 90 }
+  }[rarity]
+  const validCap = (elite, level) =>
+    Number.isInteger(elite) && elite >= 0 && Number.isInteger(level) && level > 0
+  // 接口的资源上限优先；旧快照其次使用满级目标，最后兼容已知星级上限。
+  const resourceElite = Number(operator.max_phase ?? NaN)
+  const resourceLevel = Number(operator.max_level ?? NaN)
+  const goalElite = Number(fullGoal?.elite ?? NaN)
+  const goalLevel = Number(fullGoal?.level ?? NaN)
+  const cap = validCap(resourceElite, resourceLevel)
+    ? { elite: resourceElite, level: resourceLevel }
+    : validCap(goalElite, goalLevel)
+      ? { elite: goalElite, level: goalLevel }
+      : legacyCap
+  if (!cap) return null
+  const currentElite = Number(operator.elite) || 0
+  const currentLevel = Number(operator.level) || 1
+  if (currentElite > cap.elite || (currentElite === cap.elite && currentLevel >= cap.level))
+    return null
+  return {
+    kind: 'level',
+    id: fullGoal?.id || (cap.elite >= 2 ? 'elite2_max' : 'level_max'),
+    name: '满级',
+    elite: cap.elite,
+    level: cap.level,
+    currentElite,
+    currentLevel,
+    rate: null
+  }
+}
+
+// 等级与模组排序陈述对应的剩余目标；其他排序优先陈述未专三技能，再回退到未满模组。
 export function recommendedTarget(operator, survey, sort = 'mastery') {
+  if (sort === 'level') return remainingLevelTarget(operator)
   if (sort !== 'module') {
     const skills = remainingSkillTargets(operator, survey)
       .filter((target) => target.rate !== null && target.rate !== undefined)
@@ -106,8 +150,9 @@ export function recommendationScore(operator, survey, sort = 'mastery') {
   return recommendedTarget(operator, survey, sort)?.rate ?? null
 }
 
-// 只要还有没练完的目标就保留在值得练里；公开样本缺失时排在有样本的干员之后。
-export function hasRemainingTarget(operator) {
+// 等级排序只保留未满级干员；其他排序沿用技能或模组尚未完成的候选。
+export function hasRemainingTarget(operator, sort = 'mastery') {
+  if (sort === 'level') return remainingLevelTarget(operator) !== null
   return remainingSkillTargets(operator).length > 0 || remainingModuleTargets(operator).length > 0
 }
 

@@ -1,31 +1,44 @@
 <script setup>
 import { computed } from 'vue'
-import { growthGameIcon } from './growthGameIcons'
+import { growthGameIcon, moduleBadge } from './growthGameIcons'
 
 const props = defineProps({
   kind: { type: String, required: true },
-  value: { type: [String, Number], default: null }
+  value: { type: [String, Number], default: null },
+  moduleId: { type: String, default: '' }
 })
 
 const icon = computed(() => growthGameIcon(props.kind, props.value))
-const iconStyle = computed(() =>
-  icon.value.src ? { '--growth-game-icon': `url("${icon.value.src}")` } : undefined
+const originalImage = computed(() => props.kind === 'mastery' || props.kind === 'elite')
+const badge = computed(() =>
+  props.kind === 'module' ? moduleBadge(props.value, props.moduleId) : null
 )
+const iconStyle = computed(() => {
+  if (badge.value) return { color: badge.value.color }
+  if (icon.value.src && !originalImage.value)
+    return { '--growth-game-icon': `url("${icon.value.src}")` }
+  return undefined
+})
 </script>
 
 <template>
   <span
     class="growth-game-icon"
     :class="{
-      'growth-game-icon--fallback': !icon.src,
-      'growth-game-icon--luminance': kind === 'mastery' || kind === 'profession'
+      'growth-game-icon--fallback': !icon.src && !badge,
+      'growth-game-icon--luminance': kind === 'profession',
+      'growth-game-icon--image': originalImage,
+      'growth-game-icon--module': !!badge
     }"
     :style="iconStyle"
     :data-icon-kind="kind"
     :data-icon-value="value"
     aria-hidden="true"
-    >{{ !icon.src ? icon.fallback : '' }}</span
   >
+    <span v-if="badge" class="growth-game-icon__module-label">{{ badge.label }}</span>
+    <img v-else-if="originalImage && icon.src" :src="icon.src" alt="" draggable="false" />
+    <template v-else-if="!icon.src">{{ icon.fallback }}</template>
+  </span>
 </template>
 
 <style scoped>
@@ -41,6 +54,32 @@ const iconStyle = computed(() =>
 
 .growth-game-icon--luminance {
   mask-mode: luminance;
+}
+
+.growth-game-icon--image,
+.growth-game-icon--module {
+  background: none;
+  mask: none;
+}
+
+.growth-game-icon--image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.growth-game-icon--module {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.growth-game-icon__module-label {
+  font-family: var(--gp-display);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .growth-game-icon--fallback {

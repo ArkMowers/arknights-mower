@@ -843,6 +843,67 @@ describe('养成工作区派生数据', () => {
     expect(axios.delete).not.toHaveBeenCalled()
   })
 
+  it('等级推荐排除各星级满级干员，保留只差等级与尚可晋升的未计划干员', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    const mastered = (char_id, rarity, elite, level, extra = {}) => ({
+      char_id,
+      name: char_id,
+      rarity,
+      elite,
+      level,
+      skill_levels: [3],
+      recommendations: [],
+      modules: [],
+      ...extra
+    })
+    store.recommendations = [
+      ...[
+        [1, 0, 30],
+        [2, 0, 30],
+        [3, 1, 55],
+        [4, 2, 70],
+        [5, 2, 80],
+        [6, 2, 90]
+      ].map(([rarity, elite, level]) =>
+        mastered('full_' + rarity, rarity, elite, level, {
+          recommendations: [{ skill_index: 0, current_level: 0 }],
+          modules: [{ id: 'mod_x', current_level: 0, max_level: 3 }]
+        })
+      ),
+      mastered('resource_cap', 6, 2, 70, {
+        max_phase: 2,
+        max_level: 70,
+        recommendations: [{ skill_index: 0, current_level: 0 }]
+      }),
+      mastered('only_level', 6, 2, 89, { max_phase: 2, max_level: 90 }),
+      mastered('can_promote', 6, 1, 80, { max_phase: 2, max_level: 90 }),
+      mastered('planned_level', 6, 2, 88, { max_phase: 2, max_level: 90 })
+    ]
+    store.goals = [{ char_id: 'planned_level', module_id: 'elite2_max' }]
+    page.pickSort.value = 'level'
+    expect(page.recommendedCards.value.map((card) => card.operator.char_id)).toEqual([
+      'only_level',
+      'can_promote'
+    ])
+    expect(page.recommendedCards.value[0].target).toMatchObject({
+      kind: 'level',
+      elite: 2,
+      level: 90,
+      currentElite: 2,
+      currentLevel: 89
+    })
+    page.pickSort.value = 'mastery'
+    expect(
+      page.recommendedCards.value.every(
+        (card) =>
+          card.operator.char_id.startsWith('full_') || card.operator.char_id === 'resource_cap'
+      )
+    ).toBe(true)
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.delete).not.toHaveBeenCalled()
+  })
+
   it('推荐卡只按未练完技能算比例，已专三技能不再作为推荐理由', () => {
     const page = setup()
     const store = useMasteryStore()

@@ -332,7 +332,7 @@ describe('干员卡模组目标', () => {
     stop()
   })
 
-  it('渲染全部模组图标和已解锁等级角标，姓名旁显示精英化图标与等级', async () => {
+  it('渲染原色专精与精英化图片和全部文字模组，不附加小数字', async () => {
     const html = await renderToString(
       createSSRApp(GrowthOperatorCard, {
         operator: operator({
@@ -346,11 +346,33 @@ describe('干员卡模组目标', () => {
       })
     )
     expect(html.match(/growth-opcard__seg--module/g)).toHaveLength(3)
-    expect(html.match(/growth-opcard__module-level/g)).toHaveLength(2)
+    expect(html).not.toContain('growth-opcard__module-level')
+    expect(html).not.toContain('growth-opcard__skill-index')
     expect(html).toContain('aria-label="模组 EXE-Y 未解锁"')
     expect(html).toContain('aria-label="精二 90 级"')
     expect(html).toContain('growth-opcard__profession')
+    expect(html.match(/growth-game-icon--module/g)).toHaveLength(3)
+    for (const label of ['X', 'Y', 'Δ']) {
+      expect(html).toMatch(
+        new RegExp('class="growth-game-icon__module-label"[^>]*>' + label + '</span>')
+      )
+    }
+    expect(html).not.toContain('<svg')
+    expect(html).toMatch(/<img[^>]+mastery-0\.png/)
+    expect(html).toMatch(/<img[^>]+elite-elite_2\.png/)
+    expect(html).not.toMatch(/<img[^>]+module-/)
     expect(html).not.toContain('专三 0/3')
+  })
+
+  it('保留页脚专三率百分比，只移除专三技能计数', async () => {
+    const html = await renderToString(
+      createSSRApp(GrowthOperatorCard, {
+        operator: fullOperator(),
+        survey: surveyRates([30, 99, 60])
+      })
+    )
+    expect(html).toContain('专三率 60.0%')
+    expect(html).not.toContain('专三 1/3')
   })
 
   it('低星干员的已满级模组依然可见且可选', () => {
@@ -366,6 +388,48 @@ describe('干员卡模组目标', () => {
     component.selectModule('mod_a')
     expect(component.statusLine.value).toEqual({ tone: 'done', text: 'ORIGINAL · 1 级' })
     stop()
+  })
+})
+
+describe('干员卡等级目标', () => {
+  it('等级排序默认显示剩余升级目标，点击技能后仍可查看专三率', () => {
+    const { component, stop } = setup({
+      operator: operator({
+        max_phase: 2,
+        max_level: 90,
+        level: 60,
+        skill_levels: [3, 0],
+        recommendations: [recommendation(1, '二技能', 0)]
+      }),
+      survey: surveyRates([99, 70]),
+      recommendationSort: 'level'
+    })
+    expect(component.activeLevel.value).toBe(true)
+    expect(component.statusLine.value.text).toBe('精二 60 → 精二 90')
+    expect(component.levelProgress.value).toBe('距满级 30 级')
+    expect(component.activeRate.value).toBeNull()
+    component.selectSkill(1)
+    expect(component.activeLevel.value).toBe(false)
+    expect(component.activeRateLabel.value).toBe('专三率')
+    expect(component.activeRate.value).toBe(70)
+    stop()
+  })
+
+  it('仅差晋升和等级的干员显示资源上限，不把阶段满级当成最终满级', async () => {
+    const html = await renderToString(
+      createSSRApp(GrowthOperatorCard, {
+        operator: operator({
+          elite: 1,
+          level: 80,
+          max_phase: 2,
+          max_level: 90,
+          skill_levels: [3, 3, 3]
+        }),
+        recommendationSort: 'level'
+      })
+    )
+    expect(html).toContain('精一 80 → 精二 90')
+    expect(html).toContain('目标 精二 90 级')
   })
 })
 

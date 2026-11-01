@@ -1,9 +1,13 @@
 # 养成规划游戏图标
 
-游戏素材版权归鹰角网络所有。本目录保存用于干员卡片的职业、精英化、技能专精和模组型号原图，随前端构建打包。
+本目录保存从 [PRTS](https://prts.wiki/)文件页下载的职业、精英化和专精原图，随前端构建打包。游戏素材版权归鹰角网络所有；Wiki 上传文件的作者和使用条款以对应文件页为准，参见 [PRTS 版权说明](https://prts.wiki/w/PRTS:%E7%89%88%E6%9D%83)。
 
-- 精英化和专精图标来自 [MooncellWiki/prts-design 的游戏素材](https://github.com/MooncellWiki/prts-design/tree/31627426def7509cbcdc04fc1f654c41f9a7b915/preview/assets)。素材用途见其[精英化图标](https://mooncellwiki.github.io/prts-design/arknights/elite)和[专精图标](https://mooncellwiki.github.io/prts-design/arknights/potential)说明。
-- `profession-*.png` 来自 [PRTS 游戏资源库](https://torappu.prts.wiki/)的 `profession_large_icon/icon_profession_{职业}_large.png`。这些原图为黑底白色图形，通过亮度蒙版显示职业图案。
-- `module-*.png` 来自 [PRTS 游戏资源库](https://torappu.prts.wiki/assets/uniequip_type/)的 `uniequip_type` 目录，文件名保留游戏型号。资源清单通过 [文件搜索接口](https://torappu.prts.wiki/api/v1/files?path=raw%2Funiequip_type%2F&limit=200)取得，下载日期为 2026-11-01。
+- `mastery-0.png` 至 `mastery-3.png` 对应 Wiki 的 `专精_0.png` 至 `专精_3.png`，使用 96×87 的透明三角形专精徽记。专精与精英化直接显示原图颜色，不使用亮度滤镜、单色蒙版或额外底板。
+- `elite-elite_0.png` 至 `elite-elite_2.png` 对应 Wiki 的 `精英_0.png` 至 `精英_2.png`。
+- `profession-*.png` 对应 Wiki 的 `图标_职业_{职业}_大图.png`，以亮度蒙版显示原图中的白色职业图案。
 
-本目录未引入 PRTS Design 的组件、样式、字体或其他代码。素材版权不受该项目的代码许可证替代。
+[sources.json](sources.json) 记录每张原图的 Wiki 文件页、下载地址和 SHA-256。下载日期为 2026-11-01。
+
+模组直接显示 X、Y、Δ、α、β 等文字字母。[module-colors.json](module-colors.json) 从游戏 `uniequip_table.json` 的 `equipShiningColor` 字段保存每个模组的颜色类别，并记录固定版本来源；颜色值使用 PRTS 调色板。同型号在不同干员上可能有不同颜色，因此以模组 ID 查询，未知 ID 使用中性灰色。更新游戏数据时可从快照记录的来源同步此表。
+
+未解锁模组降低不透明度，已解锁模组使用同色柔光，选中、悬停或键盘聚焦时加强。技能序号与模组等级角标省略；模组完整型号、名称和当前等级保留在按钮提示中，点击模组也会显示其等级。
