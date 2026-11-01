@@ -284,6 +284,8 @@ def test_navigation_confirms_shop_title_after_entering_selected_activity(
 
     solver = object.__new__(EventShopNavigation)
     solver.recog = MagicMock()
+    monkeypatch.setattr(solver, "sleep", MagicMock())
+    monkeypatch.setattr(solver, "enter_activity_from_terminal", lambda: False)
     order = []
     for name in (
         "scene_graph_navigation",
@@ -305,8 +307,9 @@ def test_navigation_confirms_shop_title_after_entering_selected_activity(
         MagicMock(return_value=([[[], title, 0.99]], None)),
     )
     assert solver.run(ENTRY) is ready
-    assert order[2] == ("find_stage_image_and_enter", ("测试活动",))
-    assert order[3] == ("tap", ((1200, 500),))
+    assert order[2] == ("tap", ((490, 1014),))
+    assert order[5] == ("find_stage_image_and_enter", ("测试活动",))
+    assert order[6] == ("tap", ((1200, 500),))
 
 
 def test_stopping_shop_navigation_does_not_start_a_following_large_task(

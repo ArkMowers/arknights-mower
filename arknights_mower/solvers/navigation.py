@@ -293,20 +293,46 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         logger.debug("在线构建失败，终止本次导航")
         return False
 
+    def enter_activity_from_terminal(self) -> bool:
+        """用活动名称识别终端左侧横幅，只进入唯一且可信的当前活动。"""
+        zone = (self.stage_meta or {}).get("zoneNameSecond")
+        if not zone or self.scene() != Scene.TERMINAL_MAIN:
+            return False
+        pattern = rf"[<＜《〈]?{re.escape(zone)}[>＞》〉]?(?:活动已开放[。.]?)?"
+        matches = [
+            candidate
+            for candidate in self.collect_terminal_ocr_candidates()
+            if candidate["score"] >= 0.8
+            and 0 <= candidate["center"][0] < 700
+            and 750 <= candidate["center"][1] < 950
+            and re.fullmatch(pattern, re.sub(r"\s+", "", candidate["text"]))
+        ]
+        if len(matches) != 1:
+            return False
+        candidate = matches[0]
+        return self.tap_and_detect_page_move(
+            candidate["center"], candidate["text"], record_step=False
+        )
+
     def try_quick_entry_from_main(self) -> bool:
         if self.scene() != Scene.TERMINAL_MAIN:
-            return False
-        if self.should_use_llm_navigation():
-            logger.debug(
-                "skip quick entry and use llm navigation | target=%s | stageType=%s | endTs=%s",
-                self.name,
-                self.stageType,
-                self._activity_end_ts(),
-            )
             return False
         prev_suppress = self._suppress_nav_recording
         self._suppress_nav_recording = True
         try:
+            if self.stageType == "ACTIVITY" and self.enter_activity_from_terminal():
+                self.click_subtitle_if_needed()
+                if self.is_stage_code(self.name):
+                    return self.find_target_stage_after_entry(self.name, max_swipes=3)
+                return True
+            if self.should_use_llm_navigation():
+                logger.debug(
+                    "skip quick entry and use llm navigation | target=%s | stageType=%s | endTs=%s",
+                    self.name,
+                    self.stageType,
+                    self._activity_end_ts(),
+                )
+                return False
             # Quick entry is runtime-only and should not be persisted into trie steps.
             logger.debug(
                 "尝试快速入口: stageType=%s zone=%s",

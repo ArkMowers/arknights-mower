@@ -36,14 +36,26 @@ class EventShopNavigation(NavigationSolver):
         self.nav_steps = []
         self._suppress_nav_recording = True
         self.scene_graph_navigation(Scene.TERMINAL_MAIN)
-        if not self.open_activity_overview_until_ready(max_taps=8):
-            return False
-        if not self.find_stage_image_and_enter(self.name, max_swipes=10):
-            return False
+        if not self.enter_activity_from_terminal():
+            self.scene_graph_navigation(Scene.TERMINAL_MAIN)
+            self.tap((490, 1014), interval=0.2)
+            self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
+            if not self.open_activity_overview_until_ready(max_taps=8):
+                return False
+            if not self.find_stage_image_and_enter(self.name, max_swipes=10):
+                return False
         self.tap((shop["x"], shop["y"]))
         self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
-        result, _ = rapidocr.engine(
-            self.recog.img, use_det=True, use_cls=False, use_rec=True
-        )
-        texts = [str(item[1]).strip() for item in result or [] if float(item[2]) >= 0.8]
-        return any(shop["confirm_text"] == text for text in texts)
+        for attempt in range(3):
+            self.recog.update()
+            result, _ = rapidocr.engine(
+                self.recog.img, use_det=True, use_cls=False, use_rec=True
+            )
+            if any(
+                str(item[1]).strip() == shop["confirm_text"] and float(item[2]) >= 0.8
+                for item in result or []
+            ):
+                return True
+            if attempt < 2:
+                self.sleep(0.2)
+        return False

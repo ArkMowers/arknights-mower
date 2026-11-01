@@ -4,7 +4,7 @@ import importlib.util
 import json
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -66,6 +66,7 @@ def test_generated_entry_reaches_navigation_click_and_title_confirmation(
     selected = runtime.select_shop(conf, 1793487601)
     solver = object.__new__(event_shop.EventShopNavigation)
     solver.recog = MagicMock()
+    monkeypatch.setattr(solver, "enter_activity_from_terminal", lambda: False)
     for method in (
         "scene_graph_navigation",
         "open_activity_overview_until_ready",
@@ -83,7 +84,10 @@ def test_generated_entry_reaches_navigation_click_and_title_confirmation(
     solver.find_stage_image_and_enter.assert_called_once_with(
         "时间啊，向前！", max_swipes=10
     )
-    solver.tap.assert_called_once_with((1461, 255))
+    assert solver.tap.call_args_list == [
+        call((490, 1014), interval=0.2),
+        call((1461, 255)),
+    ]
 
 
 def test_real_studio_dump_regenerates_the_button_layout(tmp_path):
