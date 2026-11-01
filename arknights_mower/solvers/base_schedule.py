@@ -1231,6 +1231,11 @@ class BaseSchedulerSolver(
 
         if config.stop_mower.is_set():
             raise MowerExit
+        from arknights_mower.solvers.mastery_reader import (
+            discard_completed_mastery_tasks,
+        )
+
+        discard_completed_mastery_tasks(self)
         self._register_network_wait_observer()
         if config.maintenance_recheck.is_set():
             return
@@ -1262,6 +1267,7 @@ class BaseSchedulerSolver(
         while True:
             if config.stop_mower.is_set():
                 raise MowerExit
+            discard_completed_mastery_tasks(self)
             if config.maintenance_recheck.is_set():
                 return
             self._sync_run_order_tasks()
@@ -18877,6 +18883,11 @@ class BaseSchedulerSolver(
         一份几乎相同的实现，其中两份漏掉了 `sleeping`，正是 /status 卡在
         working 的根因。现在全部收口到这里，只有 `_idle_sleep` 一个状态写入点。
         """
+        from arknights_mower.solvers.mastery_reader import (
+            discard_completed_mastery_tasks,
+        )
+
+        discard_completed_mastery_tasks(self)
         self._refresh_workshop_inventory()
         self._refresh_observed_recovery_tasks()
         if any(getattr(task, "execution_failure", None) for task in self.tasks):

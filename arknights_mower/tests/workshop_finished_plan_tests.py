@@ -1,5 +1,6 @@
 """Finished BOX targets cannot leave stale automatic workshop jobs running."""
 
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -11,7 +12,11 @@ from arknights_mower.utils.config.conf import RIICPart
 
 
 @pytest.fixture
-def finished_queue(monkeypatch, tmp_path):
+def finished_queue(monkeypatch, tmp_path, income_db):
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(record, "workshop_inventory_changed", Event())
+    monkeypatch.setattr(auto, "_refresh_error", None)
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "save_conf", MagicMock())
     monkeypatch.setattr(mastery_db, "_tables_created", set())

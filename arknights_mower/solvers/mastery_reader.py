@@ -1109,6 +1109,53 @@ def _plan_label(plan) -> str:
 # --- 调度原语 ---
 
 
+def discard_completed_mastery_tasks(solver):
+    """Drop completed-plan work on the scheduler thread without game operations."""
+    from arknights_mower.utils.mastery_db import (
+        get_completed_mastery_plan,
+        get_plan_by_id,
+    )
+
+    completed = set()
+    checked = set()
+    tasks = list(solver.tasks)
+    current = getattr(solver, "task", None)
+    if current is not None and all(current is not task for task in tasks):
+        tasks.append(current)
+    for task in tasks:
+        if task.type not in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT):
+            continue
+        key = getattr(task, "plan_key", None)
+        if key is None or str(key) in checked:
+            continue
+        checked.add(str(key))
+        try:
+            plan = get_plan_by_id(int(key))
+        except (TypeError, ValueError):
+            continue
+        if plan and plan["status"] == "completed":
+            completed.add(str(key))
+
+    def obsolete(task):
+        return (
+            task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+            and str(getattr(task, "plan_key", None)) in completed
+        )
+
+    solver.tasks[:] = [task for task in solver.tasks if not obsolete(task)]
+    if current is not None and obsolete(current):
+        solver.task = None
+    if str(getattr(solver, "amiya_pending_plan_id", None)) in completed:
+        solver.amiya_pending_plan_id = None
+    room = getattr(solver, "train_room_state", None)
+    if room is not None and room.panel.operator_name and room.panel.skill_name:
+        index = resolve_panel_skill(room.panel.operator_name, room.panel.skill_name)
+        if index is not None:
+            plan = get_completed_mastery_plan(room.panel.operator_name, index)
+            if plan is not None and _can_recover_plan(plan, room):
+                solver.train_room_state = None
+
+
 def _find_plan_task(solver, plan_key):
     """队列中该 plan_key 的一条 SKILL_UPGRADE 任务（排除当前 dispatch），无则 None。
 

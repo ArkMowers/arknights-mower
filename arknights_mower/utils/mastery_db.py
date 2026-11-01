@@ -429,6 +429,67 @@ def complete_satisfied_idle_plans(levels, path: Optional[str] = None) -> int:
         return cursor.rowcount
 
 
+def _synced_mastery_keys(box):
+    return [
+        (char["id"], index)
+        for char in box.get("characters", [])
+        if isinstance(char, dict)
+        and isinstance(char.get("id"), str)
+        and isinstance(char.get("skills"), list)
+        for index, skill in enumerate(char["skills"][:3])
+        if isinstance(skill, dict)
+        and type(skill.get("level")) is int
+        and skill["level"] == 3
+    ]
+
+
+def has_synced_mastery_completion(box) -> bool:
+    """Check whether this snapshot requires recalibrating a collected plan's stock."""
+    known = set(_synced_mastery_keys(box))
+    if not known:
+        return False
+    with _conn() as conn:
+        return any(
+            (row["char_id"], row["skill_index"]) in known
+            for row in conn.execute(
+                "SELECT char_id, skill_index FROM mastery_plan "
+                "WHERE status!='completed' AND target_level=3"
+            )
+        )
+
+
+def complete_synced_mastery_plans(box, path=None) -> int:
+    """Fresh mastery three confirms that the matching training was collected."""
+    known = _synced_mastery_keys(box)
+    if not known:
+        return 0
+    with _conn(path) as conn:
+        cursor = conn.executemany(
+            "UPDATE mastery_plan SET status='completed', failed_reason=NULL, "
+            "expires_at=NULL, swap_frozen=0, support_runtime=NULL "
+            "WHERE status IN ('idle', 'arranging', 'training', 'waiting_collect', 'failed') "
+            "AND target_level=3 AND char_id=? AND skill_index=?",
+            known,
+        )
+        conn.commit()
+        return cursor.rowcount
+
+
+def get_completed_mastery_plan(char_name, skill_index):
+    """Find a completed mastery-three plan matching a cached room identity."""
+    try:
+        with _conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM mastery_plan WHERE status='completed' AND target_level=3 "
+                "AND char_name=? AND skill_index=? ORDER BY id DESC LIMIT 1",
+                (char_name, skill_index),
+            ).fetchone()
+            return dict(row) if row else None
+    except sqlite3.Error:
+        logger.exception("已完成专精计划读取失败，保留训练室缓存")
+        return None
+
+
 def get_active_plan(path: Optional[str] = None) -> Optional[dict]:
     try:
         with _conn(path) as conn:
@@ -550,11 +611,13 @@ def update_plan_status(
                 fields.append("swap_frozen=?")
                 values.append(swap_frozen)
             values.append(plan_id)
-            conn.execute(
-                f"UPDATE mastery_plan SET {', '.join(fields)} WHERE id=?", values
+            cursor = conn.execute(
+                f"UPDATE mastery_plan SET {', '.join(fields)} WHERE id=? "
+                "AND (status!='completed' OR ?='completed')",
+                [*values, status],
             )
             conn.commit()
-            return True
+            return cursor.rowcount > 0
     except Exception as e:
         logger.error(f"update_plan_status failed: {e}")
         return False

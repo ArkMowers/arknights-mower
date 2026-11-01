@@ -1866,6 +1866,7 @@ async function fetchCultivate() {
   try {
     await store.fetchCultivate()
     if (store.cultivateOk) {
+      await refreshPlanFromServer()
       message.success(`森空岛数据同步成功 ${store.cultivateMsg}`)
     } else if (store.cultivateMsg) {
       message.error(`森空岛同步失败: ${store.cultivateMsg}`)

@@ -103,12 +103,19 @@ class cultivate:
                     remove_completed_goals,
                     save_statistics,
                 )
+                from arknights_mower.utils.mastery_db import (
+                    complete_synced_mastery_plans,
+                    has_synced_mastery_completion,
+                )
                 from arknights_mower.utils.mastery_recommendation import get_skill_data
 
                 skills = get_skill_data()
                 completed = completed_manual_goals(resp["data"], skills, load_goals())
+                calibrate = bool(completed) or has_synced_mastery_completion(
+                    resp["data"]
+                )
                 if force_inventory and items is None:
-                    if completed:
+                    if calibrate:
                         from arknights_mower.solvers.record import save_inventory_counts
 
                         save_inventory_counts(
@@ -135,7 +142,7 @@ class cultivate:
                     )
                 except (OSError, ValueError, KeyError):
                     logger.exception("养成统计缓存保存失败")
-                if completed or items is not None:
+                if calibrate or items is not None:
                     from arknights_mower.solvers.record import save_inventory_counts
                     from arknights_mower.utils.depot import cloud_inventory_snapshot
 
@@ -144,12 +151,19 @@ class cultivate:
                         counts,
                         scanned_counts={},
                         cloud_counts=counts,
-                        cloud_at=observed_at if completed else timestamp,
-                        force_cloud=force_inventory or bool(completed),
-                        invalidate_missing=bool(completed),
+                        cloud_at=observed_at if calibrate else timestamp,
+                        force_cloud=force_inventory or calibrate,
+                        invalidate_missing=calibrate,
                     )
                 if completed:
                     remove_completed_goals(resp["data"], skills)
+                if complete_synced_mastery_plans(resp["data"]):
+                    from arknights_mower.solvers.record import (
+                        workshop_inventory_changed,
+                    )
+
+                    workshop_inventory_changed.set()
+                    config.wake_scheduler.set()
                 updated = True
                 from arknights_mower.utils.yituliu_sync import sync_after_cultivate
 
