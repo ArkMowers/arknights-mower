@@ -52,7 +52,7 @@ class WorkshopSelection:
             bonus = self.bonus(name, material, recipe)
             if bonus is None:
                 continue
-            exception = name == "九色鹿" or (name == "蚀清" and bonus >= 80)
+            exception = name == "九色鹿" or (name in T4_PREFERRED and bonus >= 80)
             if exception or bonus >= max(1, threshold):
                 bonuses[name] = bonus
         return bonuses
@@ -86,7 +86,7 @@ class WorkshopSelection:
             )
             if matches_specialty(self.unlocked[name], material, recipe) and bonus >= 80:
                 entry["specialist"] = True
-            if name == "蚀清":
+            if name in T4_PREFERRED and name != "九色鹿":
                 entry["material_scope"] = "t4"
             entry["materials"].append(material)
             entry["bonuses"][material] = bonus

@@ -309,8 +309,8 @@
       "reason": "Verify runtime exhaustion-support generation, recovery capacity, required backups, task cloning and coalescing boundaries. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Apply due exhaustion priority while preserving explicit full recovery, validate final backup admission and retain failed support identities. Synchronize shared-follower recall normalization and same-slot dorm cover retention from calculator 5473efd934db64d4a8c34fe321d6a7732da7cba0; retain explicit group recovery requirements and original pending tasks. Support backup group shift requests with once, coordinated off-duty holds and forced off-duty holds; preserve complete-group dependencies, failure identity, ordinary return after deactivation and unchanged advanced settings. Cover ordinary recall across backup changes, including legal final admission, changed replacements, unchanged failure retention and released dependencies. Preserve an eligible working cover already in its owner slot during coordination matching; verify shared followers, alternate-cover priority and reservation protection."
     },
     "engine/dormitoryRecovery.ts": {
-      "sha256": "1617e43ca2122da6b34bda6a178d0669f9104fce9efcb775580309cd02772871",
-      "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Reuse a caller-provided immutable global context for the same recovery-rate calculation; direct callers still build their own context."
+      "sha256": "1e3b087af2f23bd14e4786d4ced1059efbf0abb86e80d0e2195f8a0e7091f7b8",
+      "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Reuse a caller-provided immutable global context for the same recovery-rate calculation; direct callers still build their own context. Evaluate Tocka through the existing unfinished-resident group-recovery rule, with a 0.1 base instead of 0.2; take the maximum complete all-room amount across providers."
     },
     "scheduler/mowerDroneOperations.ts": {
       "sha256": "ede7f1ae46261f588f800b9ecd0aec962642d48d84b63cd416fa3818e6c3a186",
@@ -553,8 +553,8 @@
       "reason": "Preserve bundled regression cases alongside the synchronized source tests."
     },
     "engine/operatorRules.ts": {
-      "reason": "Apply position-session trade-quality warmup to dynamic evaluations while retaining static peak estimates.",
-      "sha256": "5ac09e6378f5b401a7407c869bb1a2f2ef5dd83db6c344c0d309197515c35cd6"
+      "sha256": "776796096b454a85ebf7bbeaf6b14e5fc73d65f8aefc0c012c4350e7d162906b",
+      "reason": "Apply position-session trade-quality warmup to dynamic evaluations while retaining static peak estimates. Recognize 冻河 trade skill stages through the existing coworker-count rules used by 火哨 and 吉星; preserve awake-peer and unlocked-stage semantics."
     },
     "engine/timeDependentSkills.ts": {
       "reason": "Model trade-quality warmup with an explicit linear approximation to alpha at three hours and beta at five hours; expose temporal boundaries.",
@@ -783,6 +783,10 @@
     "scheduler/mowerBackupGroupTasks.ts": {
       "sha256": "53d0e4cf58c0029c16357052d2216af309166a4649628dd0c47b5a7ca87457d9",
       "reason": "Support backup group shift requests with once, coordinated off-duty holds and forced off-duty holds; preserve complete-group dependencies, failure identity, ordinary return after deactivation and unchanged advanced settings."
+    },
+    "engine/supportFacilities/recycle.ts": {
+      "sha256": "1a72cd77a9f0f5cb0d5f59e5744b4a7b8cf3434d6cf4240152c67ddb51bc9947",
+      "reason": "Accept the pinned 行铃 and 国度 recycling skill IDs and exact descriptions; preserve stage-specific conversion bonuses and keep 国度 mood reduction in the shared mood rules."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

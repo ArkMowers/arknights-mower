@@ -1,12 +1,12 @@
 # 房间干员姓名字体
 
 `NotoSansHans-Medium-room.otf` 是游戏内 `NotoSansHans-Medium` 字体的字符子集，
-只保留 `arknights_mower/data/agent.json` 中姓名用到的 579 个字符。
+只保留 `arknights_mower/data/agent.json` 中姓名用到的 585 个字符。
 来源为明日方舟国服 Android 2.7.71 的 Unity `sharedassets1.assets` Font 对象。
 完整字体的 SHA-256 为
 `25033438cfa41f1873d4902b8555956557b765117756bcef96406e023e49578c`；
 子集的 SHA-256 为
-`be5f1cebcca68bae419ad89940ec98695df33835a9e58bdac4ad9ed2d7bd7cfe`。
+`903030c16087acb32ab48f5055d41e3896077434f0cfd49b2c25491c8dc22305`。
 
 该字体的内嵌版权信息为 Adobe Systems Incorporated (2014)，
 使用 Apache License 2.0；许可文本见 `LICENSE-APACHE-2.0.txt`。

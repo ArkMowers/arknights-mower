@@ -7,6 +7,10 @@ from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("offline_maintenance")
+
 
 class FakeTimer:
     instances = []

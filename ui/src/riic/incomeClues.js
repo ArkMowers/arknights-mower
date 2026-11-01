@@ -70,6 +70,15 @@ export function clueEfficiency(config, phases, tenure = new Map()) {
             bonus += sami ? 5 : skill.buffId === 'meet_spd&sami[100]' ? 15 : 20
           break
         }
+        case 'meet_spd&sami[210]':
+          if (
+            awake.some(
+              (peer) =>
+                peer !== id && matchesRiicIdentity(operatorFor(config, peer), 'teamId', 'student')
+            )
+          )
+            bonus += 20
+          break
         case 'meet_spd&bd[000]':
         case 'meet_spd&bd[010]':
           if (awake.includes('char_2012_typhon')) bonus += 15

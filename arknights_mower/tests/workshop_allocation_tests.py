@@ -120,7 +120,7 @@ def test_full_roster_config_orders_every_shared_recipe_by_bonus(game, minimum):
         result = allocate_sample_recipes(**defaults)
     recipe_bonuses = defaultdict(list)
     for entry in result:
-        if entry["operator"] in {"九色鹿", "蚀清"}:
+        if entry["operator"] in {"九色鹿", "蚀清", "镜匠"}:
             continue  # Explicit T4 preferences override probability ordering.
         for task in entry["items"]:
             for material in task["item_names"]:

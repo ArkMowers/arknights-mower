@@ -54,7 +54,7 @@ def test_curated_recommendations_have_independent_material_and_book_floors(
     assert set(sesa["bonuses"].values()) == {80}
     for category, entries in result["recommendations"].items():
         for entry in entries:
-            if entry["name"] not in {"九色鹿", "蚀清"}:
+            if entry["name"] not in {"九色鹿", "蚀清", "镜匠"}:
                 assert min(entry["bonuses"].values()) >= (
                     80 if category == "book_operators" else 90
                 )

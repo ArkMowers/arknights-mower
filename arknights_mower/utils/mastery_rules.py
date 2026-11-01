@@ -17,6 +17,8 @@ BRANCHES = {
     "攻城手": "siegesniper",
     "驭法铁卫": "artsprotector",
     "游击手": "supportiveranger",
+    "本源近卫": "primguard",
+    "本源术师": "primcaster",
 }
 GROUPS = {
     "深海猎人": "abyssal",
@@ -59,10 +61,28 @@ def _speed_effect(text, buff):
             amount = re.search(r"训练速度\+(\d+)%", text)
             effect.update(bonus=0, extra=int(amount[1]))
     if branch:
-        if branch[1] not in BRANCHES:
+        names = branch[1].split("或")
+        if any(name not in BRANCHES for name in names):
             raise ValueError(f"未识别的干员分支: {branch[1]}")
-        effect["branch"] = BRANCHES[branch[1]]
-    return effect
+        if not re.search(r"训练速度\+\d+%", text):
+            effect["bonus"] = 0  # A branch-only extra has no unconditional bonus.
+        if len(names) == 1:
+            return [{**effect, "branch": BRANCHES[names[0]]}]
+        effects = []
+        if effect["bonus"]:
+            effects.append(
+                {
+                    key: value
+                    for key, value in effect.items()
+                    if key not in ("extra", "stage")
+                }
+            )
+        # Keep version-1 single-branch effects readable by existing resource clients.
+        effects.extend(
+            {**effect, "bonus": 0, "branch": BRANCHES[name]} for name in names
+        )
+        return effects
+    return [effect]
 
 
 def _training_effects(text, buff):
@@ -74,7 +94,7 @@ def _training_effects(text, buff):
             {"kind": "environment", "group": "fireworks", "bonus": 1, "cap": 10000}
         )
     elif "训练速度" in text:
-        effects.append(_speed_effect(text, buff))
+        effects.extend(_speed_effect(text, buff))
     if "下次训练所需时间-50%" in text and "5小时" in text:
         effects.append({"kind": "halve"})
     if "武道" in text:

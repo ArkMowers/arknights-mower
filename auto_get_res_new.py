@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from arknights_mower.utils.building_skill_data import write_building_skill_data
+from arknights_mower.utils.event_shop_data import write_event_shop_data
 from arknights_mower.utils.furniture_data import (
     FURNITURE_DATA_PATH,
     write_furniture_data,
@@ -1263,6 +1264,8 @@ if __name__ == "__main__":
     数据处理器.读取卡池()
 
     数据处理器.读取活动关卡()
+
+    write_event_shop_data(数据处理器.活动表)
 
     # 和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置
     数据处理器.批量训练并保存扫仓库模型()
