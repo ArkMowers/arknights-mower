@@ -685,7 +685,7 @@
       "reason": "Verify unknown and nonfinite mood do not distort ordinary staffing averages."
     },
     "workbench/timeline/timelineModel.spec.ts": {
-      "sha256": "6e11707d8049d26a518d77cde664b39134f81b954926243efc20ca236218b88e",
+      "sha256": "340c2a809a377bf0628a771d66a5f85d89857d15edf65bb89313ace855d7e7bb",
       "reason": "Declare mood-control provenance in existing report fixtures."
     },
     "scheduler/mowerTodoTask.ts": {
@@ -795,6 +795,10 @@
     "scheduler/mowerUrgentRecovery.spec.ts": {
       "reason": "Verify explicit independent recovery owners retain their request and supporter dependency through further support of a prepared departure.",
       "sha256": "acfb7deb9593898c1e913eb4f3b9ae53298663f591c3b15d6a8b34c7d20c43ba"
+    },
+    "workbench/timeline/timelineModel.ts": {
+      "reason": "Verify operator timeline intervals reuse known trading facility types from attached schedules or report room metadata. Reuse known facility types for operator interval labels so trading and power rooms do not fall back to manufacture.",
+      "sha256": "50a4d7d7ca2c8de5afd3a9809aa89d8c4dd8e60bf656e977ba1964afcc8efc45"
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

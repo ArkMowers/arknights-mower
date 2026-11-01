@@ -3,6 +3,17 @@ import { buildTimelineData } from './timelineModel'
 import type { ScheduleSimulationReport } from '../../simulator/scheduleSimulation'
 
 describe('timelineModel', () => {
+  it.each([true,false])('uses the known trading room type in operator tracks, with schedule=%s', attached => {
+    const roomId='room_1_1',operatorId='char_4137_udflow'
+    const report={observedHours:1,assumptions:{warmupHours:0},operators:[],events:[],rooms:[{roomId,roomType:'trading',averageEfficiencyPercent:100}],
+      inputs:attached?{schedule:{rooms:[{roomId,type:'trading',level:3,slots:[{slotIndex:0,role:'work'}]}]}}:undefined,
+      segments:[{start:0,end:1,occupants:{room_1_1_0:operatorId},bedOccupants:{},morale:{[operatorId]:24},efficiencyPercent:{room_1_1:100}}]} as unknown as ScheduleSimulationReport
+    const data=buildTimelineData(report),interval=data.operatorTracks.find(track=>track.operatorId===operatorId)!.intervals[0]!
+    expect(interval.roomType).toBe('trading')
+    expect(interval.roomName).toBe('B101 (贸易站)')
+    expect(data.facilityTracks[0]!.roomName).toBe(interval.roomName)
+  })
+
   it('handles empty report gracefully', () => {
     const report: ScheduleSimulationReport = {
       schemaVersion: 1,
