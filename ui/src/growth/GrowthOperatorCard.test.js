@@ -332,7 +332,7 @@ describe('干员卡模组目标', () => {
     stop()
   })
 
-  it('渲染原色专精与精英化图片和全部文字模组，不附加小数字', async () => {
+  it('渲染原色养成图片、紧凑三模组与已解锁等级下标，省略技能序号', async () => {
     const html = await renderToString(
       createSSRApp(GrowthOperatorCard, {
         operator: operator({
@@ -346,7 +346,8 @@ describe('干员卡模组目标', () => {
       })
     )
     expect(html.match(/growth-opcard__seg--module/g)).toHaveLength(3)
-    expect(html).not.toContain('growth-opcard__module-level')
+    expect(html).toContain('growth-opcard--three-modules')
+    expect(html.match(/growth-opcard__module-level/g)).toHaveLength(2)
     expect(html).not.toContain('growth-opcard__skill-index')
     expect(html).toContain('aria-label="模组 EXE-Y 未解锁"')
     expect(html).toContain('aria-label="精二 90 级"')

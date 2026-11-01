@@ -207,7 +207,11 @@ function stopKeydownPropagation(event) {
     class="growth-opcard"
     :class="[
       'growth-opcard--' + layout,
-      { 'is-planned': planned, 'is-survey-match': surveyMatches }
+      {
+        'is-planned': planned,
+        'is-survey-match': surveyMatches,
+        'growth-opcard--three-modules': moduleRows.length >= 3
+      }
     ]"
     role="button"
     tabindex="0"
@@ -320,6 +324,9 @@ function stopKeydownPropagation(event) {
           @keydown="stopKeydownPropagation"
         >
           <GrowthGameIcon kind="module" :value="module.type" :module-id="module.id" />
+          <sub v-if="module.current" class="growth-opcard__module-level" aria-hidden="true">{{
+            module.current
+          }}</sub>
         </button>
       </div>
       <span v-if="!supportsMastery && !moduleRows.length" class="growth-opcard__progress-note"
@@ -490,6 +497,7 @@ function stopKeydownPropagation(event) {
   max-width: 100%;
 }
 .growth-opcard__modules {
+  gap: 1px;
   margin-left: auto;
 }
 .growth-opcard__skills + .growth-opcard__modules {
@@ -520,11 +528,20 @@ function stopKeydownPropagation(event) {
   height: 24px;
 }
 .growth-opcard__seg--module {
-  width: 38px;
+  width: 26px;
 }
 .growth-opcard__seg--module > .growth-game-icon {
-  width: 36px;
+  width: 26px;
   height: 32px;
+}
+.growth-opcard__module-level {
+  position: absolute;
+  right: 1px;
+  bottom: 7px;
+  font-family: var(--gp-mono);
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1;
 }
 .growth-opcard__seg.is-partial {
   color: var(--gp-warn);
@@ -643,11 +660,37 @@ function stopKeydownPropagation(event) {
     height: 22px;
   }
   .growth-opcard__seg--module {
-    width: 32px;
+    width: 26px;
   }
   .growth-opcard__seg--module > .growth-game-icon {
-    width: 30px;
+    width: 26px;
     height: 26px;
+  }
+  .growth-opcard--three-modules .growth-opcard__progress {
+    gap: 3px;
+  }
+  .growth-opcard--three-modules .growth-opcard__skills + .growth-opcard__modules {
+    padding-left: 3px;
+  }
+  .growth-opcard--three-modules .growth-opcard__seg {
+    width: 21px;
+  }
+  .growth-opcard--three-modules .growth-opcard__seg--module > .growth-game-icon {
+    width: 23px;
+  }
+}
+@media (max-width: 380px) {
+  .growth-opcard--three-modules .growth-opcard__progress {
+    gap: 2px;
+  }
+  .growth-opcard--three-modules .growth-opcard__skills + .growth-opcard__modules {
+    padding-left: 2px;
+  }
+  .growth-opcard--three-modules .growth-opcard__seg {
+    width: 19px;
+  }
+  .growth-opcard--three-modules .growth-opcard__seg--module > .growth-game-icon {
+    width: 21px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
