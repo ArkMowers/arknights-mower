@@ -39,12 +39,12 @@ const iconStyle = computed(() => {
     <template v-if="badge">
       <svg class="growth-game-icon__module-texture" aria-hidden="true" focusable="false">
         <defs>
-          <pattern :id="textureId + '-dots'" width="6" height="6" patternUnits="userSpaceOnUse">
-            <path fill="currentColor" d="M1 1h2v2H1zM4 4h2v2H4z" />
+          <pattern :id="textureId + '-dots'" width="3" height="3" patternUnits="userSpaceOnUse">
+            <path fill="currentColor" d="M.5 .5h1v1h-1zM2 2h1v1H2z" />
           </pattern>
           <filter :id="textureId + '-spread'" x="-100%" y="-100%" width="300%" height="300%">
-            <feMorphology operator="dilate" radius="3" />
-            <feGaussianBlur stdDeviation="1.2" />
+            <feMorphology operator="dilate" radius="1.5" />
+            <feGaussianBlur stdDeviation="2.2" />
           </filter>
           <mask :id="textureId + '-shape'" maskUnits="userSpaceOnUse">
             <text
