@@ -41,11 +41,7 @@ def retained_recovery_may_return(op_data, task, group):
             if (
                 op is not None
                 and op.name in members
-                and (
-                    not room.startswith("dorm")
-                    or not op_data._can_standby(op)
-                    or explicit
-                )
+                and (not room.startswith("dorm") or explicit)
             ):
                 return False
             current = op_data.get_current_operator(room, index)

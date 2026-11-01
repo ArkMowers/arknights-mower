@@ -429,12 +429,12 @@
       "reason": "Synchronize retained incidental dorm moves and shared replacement dependency observations from calculator e7e8966330d351539684b1daba82e9ccead48fa1; preserve explicit staffing and the original failed request. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
     },
     "scheduler/mowerRetainedRecovery.ts": {
-      "sha256": "fbc18d1d631a72b928af06980f09f54f7eddaaeaa50c7f7be358063dc0c52f56",
-      "reason": "Synchronize retained incidental dorm moves and shared replacement dependency observations from calculator e7e8966330d351539684b1daba82e9ccead48fa1; preserve explicit staffing and the original failed request. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
+      "sha256": "427cd3d63b8f734728c616734e4fd89901faaf0a0d56bf92509089801ea9328b",
+      "reason": "Synchronize retained incidental dorm moves and shared replacement dependency observations from calculator e7e8966330d351539684b1daba82e9ccead48fa1; preserve explicit staffing and the original failed request. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions. Local repair releases incidental dormitory moves for ordinary and exhausted primaries after observed group return, preserving explicit staffing and protected arrangements."
     },
     "scheduler/mowerRetainedRecovery.spec.ts": {
-      "sha256": "c884b59b8b37f6e0f4b1a464c22c0bb4884e307f02f32f9a2265ecba8fec1ad8",
-      "reason": "Synchronize retained incidental dorm moves and shared replacement dependency observations from calculator e7e8966330d351539684b1daba82e9ccead48fa1; preserve explicit staffing and the original failed request. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
+      "sha256": "ad128111a711e10e03f37379aa019f9289375211197b34ab55b4a0f35a6f4a50",
+      "reason": "Synchronize retained incidental dorm moves and shared replacement dependency observations from calculator e7e8966330d351539684b1daba82e9ccead48fa1; preserve explicit staffing and the original failed request. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions. Local repair releases incidental dormitory moves for ordinary and exhausted primaries after observed group return, preserving explicit staffing and protected arrangements."
     },
     "scheduler/mowerMetadata.ts": {
       "sha256": "610377726ca08913b79fe36b371d486c72a8a2690694c3f294db1300303c7887",

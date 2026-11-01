@@ -7,9 +7,9 @@ import {MowerTask,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {planMowerMetadata} from './mowerMetadata'
 import {retainMowerFailedTask,resumeMowerFailedTasks} from './mowerTaskFailure'
 import {mowerUpdateDetail} from './mowerObservations'
-function fixture(){
+function fixture(kind:'standby'|'primary'|'exhausted'='standby'){
  const rows:NonNullable<RuntimeConfig['mowerSourcePlan']>={room_1_1:[{agent:'A',group:'a',replacement:['X']}],room_1_2:[{agent:'B',group:'b',replacement:['Y']},{agent:'S',group:'b',replacement:['Z']}],dormitory_1:['K0','K1','Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]}))}
- const config:RuntimeConfig={mowerAlpha:true,positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((p,index)=>p.agent==='Free'?[]:[{id:room+'_'+index,roomId:room,primary:p.agent,candidates:p.replacement,group:p.group,dormitory:room.startsWith('dorm'),permanent:room.startsWith('dorm')}])),beds:[2,3,4].map(index=>({id:'dormitory_1_'+index,roomId:'dormitory_1',vip:index===2})),mowerSourcePlan:rows,mowerSourceRules:{workaholic:[],exhaustRequire:[],restInFull:[],lowPriority:[],refreshDrained:[],standby:['S'],lingMode:0},mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},initialMorale:{A:0,B:24,S:24},idleOperators:['I0','I1','I2'],mowerRunLoopClock:{minimumClockStepMicros:1,notificationSleepMicros:1_000_000}}
+ const config:RuntimeConfig={mowerAlpha:true,positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((p,index)=>p.agent==='Free'?[]:[{id:room+'_'+index,roomId:room,primary:p.agent,candidates:p.replacement,group:p.group,dormitory:room.startsWith('dorm'),permanent:room.startsWith('dorm')}])),beds:[2,3,4].map(index=>({id:'dormitory_1_'+index,roomId:'dormitory_1',vip:index===2})),mowerSourcePlan:rows,mowerSourceRules:{workaholic:[],exhaustRequire:kind==='exhausted'?['S']:[],restInFull:kind==='exhausted'?['S']:[],lowPriority:[],refreshDrained:[],standby:kind==='standby'?['S']:[],lingMode:0},mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},initialMorale:{A:0,B:24,S:24},idleOperators:['I0','I1','I2'],mowerRunLoopClock:{minimumClockStepMicros:1,notificationSleepMicros:1_000_000}}
  const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data,queue=source.queue
  source.initial=false
  for(const p of config.positions){const op=data.operators[p.primary]!;Object.assign(op,{currentRoom:p.roomId,currentIndex:Number(p.id.slice(p.id.lastIndexOf('_')+1)),mood:state.morale[op.name]??24,timeStampMicros:0})}
@@ -27,6 +27,34 @@ function fixture(){
 }
 const returned=(tasks:MowerTask[])=>tasks.find(t=>t.type===T.SHIFT_ON&&t.plan.room_1_2?.includes('B'))
 describe('failed incidental dorm moves release normal recovered-group returns',()=>{
+ it.each(['primary','exhausted'] as const)('does not replay an incidental bed move after a %s worker returns',kind=>{
+  const {state,data,queue,task}=fixture(kind),time=task.timeMicros
+  task.backupShiftIntent=structuredClone(task.plan)
+  task.dormFillPlan={dormitory_1:['Current','Current','Current','Current','S']}
+  for(let attempt=0;attempt<3;attempt++){
+   expect(resumeMowerFailedTasks(state,data,queue)).toBe(false)
+   expect(task.plan.dormitory_1![4]).toBe('S')
+  }
+  mowerUpdateDetail(data,'B',24,'room_1_2',0,true)
+  mowerUpdateDetail(data,'S',24,'room_1_2',1,true)
+  state.occupants.room_1_2_0='B';state.occupants.room_1_2_1='S'
+  delete state.bedOccupants.dormitory_1_2;delete state.bedOccupants.dormitory_1_3
+  expect(resumeMowerFailedTasks(state,data,queue)).toBe(true)
+  expect(queue.tasks).toContain(task);expect(task.timeMicros).toBe(time)
+  expect(task.plan.dormitory_1![4]).toBe('Current')
+  expect(task.backupShiftIntent.dormitory_1![4]).toBe('Current')
+  expect(task.dormFillPlan).toEqual({})
+  const rates={workRate:()=>1,recoveryRate:()=>4}
+  for(let attempt=0;attempt<35&&!Object.values(state.bedOccupants).includes('A');attempt++){
+   settleRoster(state,rates)
+   if(!Object.values(state.bedOccupants).includes('A'))advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  expect(state.occupants.room_1_2_0).toBe('B');expect(state.occupants.room_1_2_1).toBe('S')
+  expect(Object.values(state.bedOccupants)).toContain('A')
+  expect(Object.values(state.bedOccupants)).not.toContain('S')
+  expect(task.timeMicros).toBe(time)
+ })
+
  it('admits the complete normal return without replaying or changing the retained main request',()=>{
   const {data,queue,task,state}=fixture(),before=structuredClone(task.plan)
   planMowerMetadata(data,queue)
@@ -61,8 +89,8 @@ describe('failed incidental dorm moves release normal recovered-group returns',(
   expect(task.backupShiftIntent?.dormitory_1![2]).toBe('A')
   expect(task.timeMicros).toBe(time);expect(queue.tasks).toContain(task)
  })
- it.each(['primary-intent','explicit-slot','active-arrangement','product-lock'])('keeps %s protected',kind=>{
-  const {data,queue,task}=fixture()
+ it.each((['standby','primary','exhausted'] as const).flatMap(worker=>['primary-intent','explicit-slot','active-arrangement','product-lock'].map(kind=>[worker,kind] as const)))('keeps %s worker %s protected',(worker,kind)=>{
+  const {data,queue,task}=fixture(worker)
   if(kind==='primary-intent')task.plan.room_1_2=['Y','Current']
   if(kind==='explicit-slot')task.backupExplicitSlots.add('dormitory_1\0'+4)
   if(kind==='active-arrangement')task.backupShiftActive=true
