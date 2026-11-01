@@ -207,6 +207,7 @@ function stopKeydownPropagation(event) {
     class="growth-opcard"
     :class="[
       'growth-opcard--' + layout,
+      'growth-opcard--rarity-' + (operator.rarity ?? 0),
       {
         'is-planned': planned,
         'is-survey-match': surveyMatches,
@@ -231,14 +232,17 @@ function stopKeydownPropagation(event) {
       <GrowthAvatar
         :name="operator.name"
         :rarity="operator.rarity"
-        :size="layout === 'compact' ? 42 : 58"
+        :size="layout === 'compact' ? 42 : 'var(--opcard-avatar-size, 58px)'"
       />
       <div class="growth-opcard__id">
         <div class="growth-opcard__identity">
           <h3 class="growth-opcard__name" :title="operator.name">{{ operator.name }}</h3>
           <span class="growth-opcard__level gp-mono" :title="levelLabel" :aria-label="levelLabel">
             <GrowthGameIcon kind="elite" :value="operator.elite ?? 0" />
-            <span>{{ operator.level ?? 1 }}</span>
+            <span class="growth-opcard__level-text">
+              <span class="growth-opcard__level-prefix">Lv</span>
+              <span>{{ operator.level ?? 1 }}</span>
+            </span>
           </span>
         </div>
         <p class="growth-opcard__meta">
@@ -355,6 +359,7 @@ function stopKeydownPropagation(event) {
 
 <style scoped>
 .growth-opcard {
+  --opcard-surface: var(--gp-surface);
   position: relative;
   isolation: isolate;
   display: flex;
@@ -364,7 +369,7 @@ function stopKeydownPropagation(event) {
   overflow: hidden;
   padding: 14px 15px 12px;
   border-radius: 16px;
-  background: var(--gp-surface);
+  background: var(--opcard-surface);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
   text-align: left;
   cursor: pointer;
@@ -372,6 +377,20 @@ function stopKeydownPropagation(event) {
     transform 220ms var(--gp-ease),
     box-shadow 220ms var(--gp-ease),
     background 220ms var(--gp-ease);
+}
+.growth-opcard--rarity-6 {
+  --opcard-surface: var(--gp-rarity-surface-6);
+}
+.growth-opcard--rarity-5 {
+  --opcard-surface: var(--gp-rarity-surface-5);
+}
+.growth-opcard--rarity-4 {
+  --opcard-surface: var(--gp-rarity-surface-4);
+}
+.growth-opcard--rarity-3,
+.growth-opcard--rarity-2,
+.growth-opcard--rarity-1 {
+  --opcard-surface: var(--gp-rarity-surface-low);
 }
 .growth-opcard:hover {
   transform: translateY(-2px);
@@ -433,6 +452,14 @@ function stopKeydownPropagation(event) {
   width: 20px;
   height: 20px;
   filter: drop-shadow(0 1px 1.5px rgb(24 25 28 / 35%));
+}
+.growth-opcard__level-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+}
+.growth-opcard__level-prefix {
+  font-size: 0.8em;
 }
 .growth-opcard__meta {
   display: flex;
@@ -498,7 +525,6 @@ function stopKeydownPropagation(event) {
 }
 .growth-opcard__modules {
   gap: 1px;
-  margin-left: auto;
 }
 .growth-opcard__skills + .growth-opcard__modules {
   padding-left: 7px;
@@ -616,7 +642,7 @@ function stopKeydownPropagation(event) {
   pointer-events: none;
 }
 .growth-opcard.is-planned {
-  background: var(--gp-surface-2);
+  background: color-mix(in srgb, var(--opcard-surface) 96%, var(--gp-ink));
 }
 .growth-opcard.is-survey-match {
   box-shadow: inset 0 0 0 1px var(--gp-accent);
@@ -642,6 +668,23 @@ function stopKeydownPropagation(event) {
   height: 17px;
 }
 @media (max-width: 520px) {
+  .growth-opcard {
+    --opcard-avatar-size: 42px;
+  }
+  .growth-opcard__head {
+    gap: 8px;
+  }
+  .growth-opcard__identity {
+    gap: 3px;
+  }
+  .growth-opcard__level {
+    gap: 2px;
+    font-size: 10px;
+  }
+  .growth-opcard__level .growth-game-icon {
+    width: 17px;
+    height: 17px;
+  }
   .growth-opcard__progress {
     gap: 4px;
   }

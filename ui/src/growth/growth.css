@@ -8,6 +8,10 @@
   --gp-surface: #fffdf9;
   --gp-surface-2: #f6f2e9;
   --gp-surface-3: #ece7db;
+  --gp-rarity-surface-6: #f6e4cc;
+  --gp-rarity-surface-5: #fcfae7;
+  --gp-rarity-surface-4: #f6f1fb;
+  --gp-rarity-surface-low: #ffffff;
   --gp-ink: #18191c;
   --gp-ink-2: #3a3b40;
   --gp-muted: #726f67;
@@ -50,6 +54,10 @@ html[data-mower-theme='dark'] {
   --gp-surface: #17181c;
   --gp-surface-2: #1e2025;
   --gp-surface-3: #26282e;
+  --gp-rarity-surface-6: #2c241b;
+  --gp-rarity-surface-5: #24241b;
+  --gp-rarity-surface-4: #201c27;
+  --gp-rarity-surface-low: #17181c;
   --gp-ink: #f2efe6;
   --gp-ink-2: #d3d0c7;
   --gp-muted: #a09d94;
