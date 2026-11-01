@@ -128,6 +128,80 @@ def arrange(solver, agents=None):
     solver.agent_arrange_room({}, ROOM, solver.task.plan)
 
 
+@pytest.mark.parametrize("retained", [False, True])
+@pytest.mark.parametrize(
+    "role, locked",
+    [
+        ("priority", True),
+        ("main", True),
+        ("low_main", True),
+        ("priority_replacement", True),
+        ("standby", False),
+        ("replacement", False),
+        ("idle", False),
+    ],
+)
+def test_recovery_setup_requires_protected_tier_without_retention(
+    solver, monkeypatch, role, locked, retained
+):
+    from arknights_mower.utils import operation_timing
+    from arknights_mower.utils.scheduler_task import estimate_task_duration
+
+    monkeypatch.setattr(
+        operation_timing, "_dorm_durations", defaultdict(lambda: deque(maxlen=8))
+    )
+    plan = solver.global_plan["default_plan"]
+    plan.config = PlanConfig(
+        "",
+        "",
+        "银灰" if role == "low_main" else "",
+        ope_resting_priority="银灰" if role == "priority" else "",
+        resting_standby="银灰" if role == "standby" else "",
+        resting_priority_replacement="银灰" if role == "priority_replacement" else "",
+        free_room_exclusions="银灰" if retained else "",
+    )
+    plan.plan[ROOM][2] = Room("红", "", [])
+    plan.plan["meeting"] = [Room("银灰", "", ["黑角"])]
+    if role in ("priority_replacement", "replacement", "idle"):
+        plan.plan["meeting"] = [
+            Room("黑角", "", ["银灰"] if role != "idle" else ["安德切尔"])
+        ]
+    assert solver.initialize_operators() is None
+    if "银灰" not in solver.op_data.operators:
+        solver.op_data.add(Operator("银灰", ""))
+    solver.op_data.add(Operator("陈", ""))
+    for op in solver.op_data.operators.values():
+        op.mood = 5 if op.name in ("银灰", "陈") else 24
+        op.time_stamp = datetime.now()
+    solver.get_agent_from_room()
+    locked = locked and not retained
+    before = pickle.dumps(solver.op_data)
+
+    assert estimate_task_duration(
+        solver.task, op_data=solver.op_data
+    ).total_seconds() == (85 if locked else 70)
+    assert pickle.dumps(solver.op_data) == before
+    arrange(solver)
+
+    assert solver.physical == FINAL
+    assert len(solver.confirms) == (2 if locked else 1)
+    assert solver.confirms[-1] == FINAL
+    assert solver.op_data.operators["银灰"].dorm_recovery_room == (
+        ROOM if locked else ""
+    )
+    assert {3, 4}.issubset(solver.reads[-1])
+
+
+def test_retention_change_still_completes_pending_roster_restoration(solver):
+    assert solver.ensure_dorm_recovery_order(ROOM, FINAL.copy())
+    solver.op_data.config.free_room_exclusions = ["银灰"]
+
+    arrange(solver)
+
+    assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
+    assert ROOM not in solver.task.dorm_recovery_restore
+
+
 def test_admission_uses_full_recovery_budget_then_remaining_arrangement(
     solver, monkeypatch
 ):
@@ -495,6 +569,7 @@ def test_single_manager_in_later_slots_keeps_final_position(solver, manager_inde
     solver.op_data.add(Operator("芬", ""))
     solver.op_data.operators["芬"].mood = 24
     solver.op_data.operators["芬"].time_stamp = datetime.now()
+    solver.op_data.config.ope_resting_priority = ["陈"]
     updated = ["杜林", "黑角", "银灰", "陈"]
     updated.insert(manager_index, "琴柳")
     managers = recovery_managers(solver.op_data, ROOM, updated)
@@ -697,6 +772,7 @@ def test_old_pickle_index_remains_compatible():
 
 def test_changing_target_clears_previous_single_recovery_recipient(solver):
     arrange(solver)
+    solver.op_data.config.ope_resting_priority = ["陈"]
     new_plan = ["杜林", "琴柳", "红", "陈", "银灰"]
     arrange(solver, new_plan)
     assert solver.confirms[-2] == ["杜林", "琴柳", "黑角", "陈", ""]
