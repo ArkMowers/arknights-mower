@@ -335,6 +335,20 @@
         "NORMAL",
         10205
     ],
+    "LMTGS_COIN_7901": [
+        "LMTGS_COIN_7901",
+        "LMTGS_COIN_7901",
+        "寻访数据契约",
+        "NORMAL",
+        10327
+    ],
+    "寻访数据契约": [
+        "LMTGS_COIN_7901",
+        "LMTGS_COIN_7901",
+        "寻访数据契约",
+        "NORMAL",
+        10327
+    ],
     "EPGS_COIN": [
         "EPGS_COIN",
         "EPGS_COIN",
@@ -413,11 +427,11 @@
         20001
     ],
     "ID信息更新卡": [
-        "renamingCard_30_073",
+        "renamingCard_30_079",
         "renamingCard",
         "ID信息更新卡",
         "CONSUME",
-        20030
+        20032
     ],
     "renamingCard_0_018": [
         "renamingCard_0_018",
@@ -573,6 +587,20 @@
         "CONSUME",
         20030
     ],
+    "renamingCard_0_079": [
+        "renamingCard_0_079",
+        "renamingCard",
+        "ID信息更新卡",
+        "CONSUME",
+        20031
+    ],
+    "renamingCard_30_079": [
+        "renamingCard_30_079",
+        "renamingCard",
+        "ID信息更新卡",
+        "CONSUME",
+        20032
+    ],
     "ap_supply_lt_100": [
         "ap_supply_lt_100",
         "ap_supply_lt_100",
@@ -656,6 +684,20 @@
         "十连寻访凭证",
         "NORMAL",
         40001
+    ],
+    "LIMITED_TKT_GACHA_10_7901": [
+        "LIMITED_TKT_GACHA_10_7901",
+        "LIMITED_TKT_GACHA_10_7901",
+        "故土新程寻访凭证",
+        "NORMAL",
+        40003
+    ],
+    "故土新程寻访凭证": [
+        "LIMITED_TKT_GACHA_10_7901",
+        "LIMITED_TKT_GACHA_10_7901",
+        "故土新程寻访凭证",
+        "NORMAL",
+        40003
     ],
     "7003": [
         "7003",
@@ -742,11 +784,11 @@
         50004
     ],
     "感谢庆典干员凭证": [
-        "voucher_item_pick6701",
+        "voucher_item_pick7901",
         "voucher_recruitR6_g",
         "感谢庆典干员凭证",
         "CONSUME",
-        50015
+        50017
     ],
     "voucher_item_pick1803": [
         "voucher_item_pick1803",
@@ -846,6 +888,13 @@
         "CONSUME",
         50016
     ],
+    "voucher_item_pick7901": [
+        "voucher_item_pick7901",
+        "voucher_recruitR6_g",
+        "感谢庆典干员凭证",
+        "CONSUME",
+        50017
+    ],
     "voucher_class_pick5601": [
         "voucher_class_pick5601",
         "voucher_class_pick5601",
@@ -854,11 +903,11 @@
         50031
     ],
     "中坚高级干员调用凭证": [
-        "voucher_class_pick7301",
+        "voucher_class_pick7901",
         "voucher_class_pick6101",
         "中坚高级干员调用凭证",
         "CONSUME",
-        50034
+        50035
     ],
     "voucher_class_pick6101": [
         "voucher_class_pick6101",
@@ -880,6 +929,13 @@
         "中坚高级干员调用凭证",
         "CONSUME",
         50034
+    ],
+    "voucher_class_pick7901": [
+        "voucher_class_pick7901",
+        "voucher_class_pick6101",
+        "中坚高级干员调用凭证",
+        "CONSUME",
+        50035
     ],
     "voucher_recruitR5_pick1803": [
         "voucher_recruitR5_pick1803",
@@ -1861,6 +1917,20 @@
         "CONSUME",
         60124
     ],
+    "randomMaterial_act55side": [
+        "randomMaterial_act55side",
+        "randomMaterial_act55side",
+        "乌萨斯汇编集",
+        "CONSUME",
+        60123
+    ],
+    "乌萨斯汇编集": [
+        "randomMaterial_act55side",
+        "randomMaterial_act55side",
+        "乌萨斯汇编集",
+        "CONSUME",
+        60123
+    ],
     "randomMaterial_7d5": [
         "randomMaterial_7d5",
         "randomMaterial_4",
@@ -1874,6 +1944,20 @@
         "2026感谢庆典物资补给",
         "CONSUME",
         60125
+    ],
+    "randomMaterial_message5": [
+        "randomMaterial_message5",
+        "randomMaterial_message5",
+        "“雪烬”",
+        "CONSUME",
+        60126
+    ],
+    "“雪烬”": [
+        "randomMaterial_message5",
+        "randomMaterial_message5",
+        "“雪烬”",
+        "CONSUME",
+        60126
     ],
     "2001": [
         "2001",
@@ -5277,6 +5361,20 @@
         "MATERIAL",
         800059
     ],
+    "p_char_4170_hdbell": [
+        "p_char_4170_hdbell",
+        "p_char_4170_hdbell",
+        "行铃的信物",
+        "MATERIAL",
+        800060
+    ],
+    "行铃的信物": [
+        "p_char_4170_hdbell",
+        "p_char_4170_hdbell",
+        "行铃的信物",
+        "MATERIAL",
+        800060
+    ],
     "p_char_128_plosis": [
         "p_char_128_plosis",
         "p_char_128_plosis",
@@ -8049,6 +8147,34 @@
         "MATERIAL",
         700197
     ],
+    "p_char_4245_alga": [
+        "p_char_4245_alga",
+        "p_char_4245_alga",
+        "奥尔佳的信物",
+        "MATERIAL",
+        700198
+    ],
+    "奥尔佳的信物": [
+        "p_char_4245_alga",
+        "p_char_4245_alga",
+        "奥尔佳的信物",
+        "MATERIAL",
+        700198
+    ],
+    "p_char_4169_caledo": [
+        "p_char_4169_caledo",
+        "p_char_4169_caledo",
+        "镜匠的信物",
+        "MATERIAL",
+        700199
+    ],
+    "镜匠的信物": [
+        "p_char_4169_caledo",
+        "p_char_4169_caledo",
+        "镜匠的信物",
+        "MATERIAL",
+        700199
+    ],
     "p_char_103_angel": [
         "p_char_103_angel",
         "p_char_103_angel",
@@ -9966,6 +10092,48 @@
         "克莱门莎的信物",
         "MATERIAL",
         600137
+    ],
+    "p_char_4247_oxi": [
+        "p_char_4247_oxi",
+        "p_char_4247_oxi",
+        "塔露拉的信物",
+        "MATERIAL",
+        600138
+    ],
+    "塔露拉的信物": [
+        "p_char_4247_oxi",
+        "p_char_4247_oxi",
+        "塔露拉的信物",
+        "MATERIAL",
+        600138
+    ],
+    "p_char_4244_tocka": [
+        "p_char_4244_tocka",
+        "p_char_4244_tocka",
+        "冻河的信物",
+        "MATERIAL",
+        600139
+    ],
+    "冻河的信物": [
+        "p_char_4244_tocka",
+        "p_char_4244_tocka",
+        "冻河的信物",
+        "MATERIAL",
+        600139
+    ],
+    "p_char_4246_dminon": [
+        "p_char_4246_dminon",
+        "p_char_4246_dminon",
+        "国度的信物",
+        "MATERIAL",
+        600140
+    ],
+    "国度的信物": [
+        "p_char_4246_dminon",
+        "p_char_4246_dminon",
+        "国度的信物",
+        "MATERIAL",
+        600140
     ],
     "class_p_char_123_fang": [
         "class_p_char_123_fang",
