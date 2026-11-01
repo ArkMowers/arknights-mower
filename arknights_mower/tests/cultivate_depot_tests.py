@@ -14,7 +14,14 @@ from arknights_mower.solvers import cultivate_depot as module  # noqa: E402
 
 @pytest.fixture
 def syncer(tmp_path, monkeypatch):
-    from arknights_mower.utils import growth
+    from arknights_mower.utils import growth, mastery_db
+
+    monkeypatch.setattr(mastery_db, "_tables_created", set())
+    monkeypatch.setattr(
+        mastery_db,
+        "get_path",
+        lambda name: tmp_path / "mastery.db" if name.endswith(".db") else tmp_path,
+    )
 
     monkeypatch.setattr(
         growth, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]

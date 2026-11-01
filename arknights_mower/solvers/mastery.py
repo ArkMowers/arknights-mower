@@ -443,6 +443,8 @@ def run_mastery_task(solver):
             scan_plan = get_plan_by_id(int(plan_key))
         except (TypeError, ValueError):
             scan_plan = None
+        if scan_plan is not None and scan_plan["status"] == "completed":
+            return
 
     logger.debug("[mastery] 训练室动作 触发源=定时任务 动作=dispatch")
     try:
@@ -1643,7 +1645,7 @@ def _read_swap_panel(solver, plan):
 def run_swap_support(solver):
     """确认训练与协助位后换人；读取或安排失败保留当前任务。"""
     from arknights_mower.utils import config
-    from arknights_mower.utils.mastery_db import get_active_plan
+    from arknights_mower.utils.mastery_db import get_active_plan, get_plan_by_id
     from arknights_mower.utils.mastery_support_data import actual_central_bonus
 
     logger.debug("[mastery] 训练室动作 触发源=定时任务 动作=swap")
@@ -1652,6 +1654,14 @@ def run_swap_support(solver):
         return
     if config.conf.assistant_follows_schedule:
         return
+    key = getattr(getattr(solver, "task", None), "plan_key", None)
+    if key is not None:
+        try:
+            task_plan = get_plan_by_id(int(key))
+        except (TypeError, ValueError):
+            task_plan = None
+        if task_plan is not None and task_plan["status"] == "completed":
+            return
 
     if isinstance(getattr(solver, "amiya_pending_plan_id", None), int):
         from arknights_mower.solvers.mastery_reader import read_room_state

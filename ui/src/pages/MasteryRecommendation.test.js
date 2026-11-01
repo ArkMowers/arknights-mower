@@ -746,6 +746,38 @@ describe('养成工作区派生数据', () => {
     expect(store.goals).toEqual([])
   })
 
+  it('同步后重读专精状态并释放已收取专三的训练卡片', async () => {
+    const page = setup()
+    const store = useMasteryStore()
+    const op = {
+      char_id: 'char_a',
+      name: '甲',
+      recommendations: [{ skill_index: 0, skill_name: '技能一', current_level: 2 }],
+      modules: [],
+      level_goals: []
+    }
+    store.recommendations = [op]
+    axios.get.mockResolvedValue({
+      data: { plans: [{ ...savedPlan(1, 'char_a'), status: 'training', target_level: 3 }] }
+    })
+    await page.refreshPlanFromServer()
+    expect(page.trainingCard.value).not.toBeNull()
+    axios.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/cultivate-fetch')
+        ? { success: true }
+        : url.endsWith('/mastery-recommendation')
+          ? { operators: [op], goals: [], has_data: true }
+          : url.endsWith('/mastery-plan')
+            ? { plans: [{ ...savedPlan(1, 'char_a'), status: 'completed', target_level: 3 }] }
+            : { planning_items: [] }
+    }))
+    await page.fetchCultivate()
+    expect(page.planStatus.value.char_a_0.status).toBe('completed')
+    expect(page.trainingCard.value).toBeNull()
+    expect(page.queueItems.value).toEqual([])
+    expect(page.queueOrderKeys.value).toEqual([])
+  })
+
   it('推荐卡跳过已计划干员，并按公开样本排序', () => {
     const page = setup()
     const store = useMasteryStore()
