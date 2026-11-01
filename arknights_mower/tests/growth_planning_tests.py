@@ -3,6 +3,7 @@
 import copy
 import json
 from collections import Counter
+from threading import Event
 
 import pytest
 
@@ -483,3 +484,126 @@ def test_module_target_update_and_remove_use_goal_identity(
         {"char_id": "char_test", "module_id": "module", "target_level": 2}
     ]
     assert growth.set_goal("char_test", "module", False, box, skills) == []
+
+
+@pytest.mark.parametrize(
+    "module_id,target_level,progress,completed",
+    [
+        ("elite1", None, {"evolvePhase": 1, "level": 1}, True),
+        ("elite2", None, {"evolvePhase": 1, "level": 80}, False),
+        ("elite2", None, {"evolvePhase": 2, "level": 1}, True),
+        ("elite2_module", None, {"evolvePhase": 2, "level": 59}, False),
+        ("elite2_module", None, {"evolvePhase": 2, "level": 60}, True),
+        ("elite2_max", None, {"evolvePhase": 2, "level": 89}, False),
+        ("elite2_max", None, {"evolvePhase": 2, "level": 90}, True),
+        ("skill7", None, {"mainSkillLevel": 6}, False),
+        ("skill7", None, {"mainSkillLevel": 7}, True),
+        ("module", 2, {"equips": [{"id": "module", "level": 1}]}, False),
+        ("module", 2, {"equips": [{"id": "module", "level": 2}]}, True),
+        ("module", None, {"equips": [{"id": "module", "level": 2}]}, False),
+        ("module", None, {"equips": [{"id": "module", "level": 3}]}, True),
+        ("unknown", None, {"evolvePhase": 2, "level": 90}, False),
+        ("elite1", None, {"evolvePhase": 1, "level": None}, False),
+        ("skill7", None, {"mainSkillLevel": None}, False),
+        ("module", 2, {"equips": None}, False),
+    ],
+)
+def test_completed_manual_goal_cleanup_preserves_unfinished_and_unknown_targets(
+    growth_case, tmp_path, monkeypatch, module_id, target_level, progress, completed
+):
+    from arknights_mower.solvers import record
+
+    changed = Event()
+    monkeypatch.setattr(record, "workshop_inventory_changed", changed)
+    box, skills = growth_case
+    module = skills["growth"]["characters"]["char_test"]["modules"][0]
+    module["levels"] = [{"level": level} for level in (1, 2, 3)]
+    box["characters"][0].update(progress)
+    goal = {"char_id": "char_test", "module_id": module_id}
+    if target_level is not None:
+        goal["target_level"] = target_level
+    missing = {"char_id": "char_missing", "module_id": "skill7"}
+    path = tmp_path / "goals.json"
+    path.write_text(json.dumps([goal, missing]))
+    monkeypatch.setattr(growth, "get_path", lambda _: path)
+    growth.remove_completed_goals(box, skills)
+    expected = [missing] if completed else [goal, missing]
+    assert growth.load_goals() == expected
+    assert changed.is_set() is completed
+    changed.clear()
+    with monkeypatch.context() as context:
+        context.setattr(
+            growth,
+            "atomic_write",
+            lambda *args: pytest.fail("unchanged goals were rewritten"),
+        )
+        growth.remove_completed_goals(box, skills)
+    assert growth.load_goals() == expected
+    assert not changed.is_set()
+
+
+@pytest.mark.parametrize("phase,maximum", [(0, 30), (1, 55)])
+def test_low_rarity_level_goal_clears_only_at_maximum(
+    growth_case, tmp_path, monkeypatch, phase, maximum
+):
+    box, skills = growth_case
+    definition = skills["growth"]["characters"]["char_test"]
+    definition["phases"] = definition["phases"][: phase + 1]
+    definition["phases"][phase]["max_level"] = maximum
+    char = box["characters"][0]
+    char.update(evolvePhase=phase, level=maximum - 1)
+    goal = {"char_id": "char_test", "module_id": "level_max"}
+    path = tmp_path / "goals.json"
+    path.write_text(json.dumps([goal]))
+    monkeypatch.setattr(growth, "get_path", lambda _: path)
+    growth.remove_completed_goals(box, skills)
+    assert growth.load_goals() == [goal]
+    char["level"] = maximum
+    growth.remove_completed_goals(box, skills)
+    assert growth.load_goals() == []
+
+
+def test_completed_goal_write_failure_keeps_saved_plan(
+    growth_case, tmp_path, monkeypatch
+):
+    from arknights_mower.solvers import record
+
+    changed = Event()
+    monkeypatch.setattr(record, "workshop_inventory_changed", changed)
+    box, skills = growth_case
+    box["characters"][0]["mainSkillLevel"] = 7
+    path = tmp_path / "goals.json"
+    path.write_text('[{"char_id": "char_test", "module_id": "skill7"}]')
+    previous = path.read_bytes()
+    monkeypatch.setattr(growth, "get_path", lambda _: path)
+    from arknights_mower.utils import config
+
+    def fail_replace(*args):
+        raise OSError("write failed")
+
+    monkeypatch.setattr(config.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="write failed"):
+        growth.remove_completed_goals(box, skills)
+    assert path.read_bytes() == previous
+    assert not changed.is_set()
+
+
+@pytest.mark.parametrize("module_id", ["elite2", "module"])
+def test_missing_target_resources_never_confirm_goal_completion(
+    growth_case, tmp_path, monkeypatch, module_id
+):
+    box, skills = growth_case
+    box["characters"][0].update(
+        evolvePhase=2, level=90, equips=[{"id": "module", "level": 3}]
+    )
+    definition = skills["growth"]["characters"]["char_test"]
+    if module_id == "elite2":
+        definition["phases"] = []
+    else:
+        definition["modules"] = [{"id": "module"}]
+    goal = {"char_id": "char_test", "module_id": module_id}
+    path = tmp_path / "goals.json"
+    path.write_text(json.dumps([goal]))
+    monkeypatch.setattr(growth, "get_path", lambda _: path)
+    growth.remove_completed_goals(box, skills)
+    assert growth.load_goals() == [goal]

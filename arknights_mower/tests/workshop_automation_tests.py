@@ -99,6 +99,8 @@ def test_fully_paid_training_restores_manual_settings_without_replacing_backup(
 def test_restore_only_when_whole_queue_materials_are_ready(
     next_skill, scan, book_count, restored
 ):
+    from arknights_mower.solvers.record import _conn, save_inventory_counts
+
     scan()
     next_skill.cultivate.write_text(
         json.dumps(
@@ -112,6 +114,10 @@ def test_restore_only_when_whole_queue_materials_are_ready(
             }
         )
     )
+    with _conn() as conn:
+        conn.execute("DELETE FROM inventory")
+        conn.commit()
+    save_inventory_counts({"技巧概要·卷3": book_count})
     scan()
     assert (not config.conf.workshop_auto_active) == restored
     if restored:

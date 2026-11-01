@@ -17,6 +17,7 @@ from arknights_mower.utils import workshop_recommendation as workshop  # noqa: E
 
 @pytest.fixture
 def next_skill(monkeypatch, tmp_path, income_db):
+    from arknights_mower.solvers.record import save_inventory_counts
     from arknights_mower.utils import workshop_config
 
     monkeypatch.setattr(config, "conf", config.Conf())
@@ -41,6 +42,9 @@ def next_skill(monkeypatch, tmp_path, income_db):
         for key, item in data["items"].items()
         if item.get("rarity") == 3 or key == "3302"
     ]
+    save_inventory_counts(
+        {data["items"][item["id"]]["name"]: item["count"] for item in stock}
+    )
     cultivate.write_text(
         json.dumps(
             {

@@ -47,9 +47,11 @@ def inventory_counts(box, skills, *, local=False, local_counts=None):
         from arknights_mower.solvers.record import get_inventory_counts
 
         counts = get_inventory_counts() if local_counts is None else local_counts
-        for iid, info in skills.get("items", {}).items():
-            if info["name"] in counts:
-                stock[iid] = counts[info["name"]]
+        stock = {
+            iid: counts[info["name"]]
+            for iid, info in skills.get("items", {}).items()
+            if info["name"] in counts
+        }
     stock["growth_exp"] = sum(
         stock.get(iid, 0) * amount
         for iid, amount in (
@@ -213,6 +215,74 @@ def load_goals():
     if not isinstance(data, list):
         raise ValueError("养成计划文件格式错误")
     return data
+
+
+def _goal_completed(goal, char, definition):
+    mid = goal["module_id"]
+    if mid in LEVEL_GOALS:
+        target = level_goal_targets(definition).get(mid)
+        current = (char.get("evolvePhase"), char.get("level"))
+        return bool(
+            target
+            and all(type(value) is int and value >= 0 for value in current)
+            and current >= target
+        )
+    if mid == "skill7":
+        level = char.get("mainSkillLevel")
+        return type(level) is int and level == 7
+    module = next((m for m in definition.get("modules", []) if m["id"] == mid), None)
+    if module is None:
+        return False
+    levels = module.get("levels")
+    if levels:
+        maximum = max(entry["level"] for entry in levels)
+    elif isinstance(module.get("materials"), list):
+        maximum = 1
+    else:
+        return False
+    target = goal.get("target_level", maximum)
+    if type(target) is not int or not 1 <= target <= maximum:
+        return False
+    equips = char.get("equips")
+    if not isinstance(equips, list):
+        return False
+    return any(
+        isinstance(equip, dict)
+        and equip.get("id") == mid
+        and type(equip.get("level")) is int
+        and equip["level"] >= target
+        for equip in equips
+    )
+
+
+def completed_manual_goals(box, skills, goals):
+    """Select goals whose actual progression confirms manual completion."""
+    chars = {char["id"]: char for char in box.get("characters", [])}
+    definitions = growth_data(skills).get("characters", {})
+    return [
+        goal
+        for goal in goals
+        if goal["char_id"] in chars
+        and _goal_completed(
+            goal, chars[goal["char_id"]], definitions.get(goal["char_id"], {})
+        )
+    ]
+
+
+def remove_completed_goals(box, skills):
+    """Remove manual goals only when synchronized progression confirms completion."""
+    with _lock:
+        goals = load_goals()
+        completed = completed_manual_goals(box, skills, goals)
+        remaining = [goal for goal in goals if goal not in completed]
+        if remaining != goals:
+            atomic_write(
+                get_path("@app/config/growth_plan.json"),
+                lambda file: json.dump(remaining, file, ensure_ascii=False),
+            )
+            from arknights_mower.solvers.record import workshop_inventory_changed
+
+            workshop_inventory_changed.set()
 
 
 def set_goal(char_id, module_id, selected, box, skills, target_level=None):

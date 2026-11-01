@@ -712,6 +712,40 @@ describe('养成工作区派生数据', () => {
     })
   })
 
+  it('同步确认手动养成完成后自动清空总览队列和目标计数', async () => {
+    const page = setup()
+    const store = useMasteryStore()
+    store.recommendations = [
+      {
+        char_id: 'char_a',
+        name: '甲',
+        recommendations: [],
+        modules: [],
+        level_goals: []
+      }
+    ]
+    store.goals = [
+      { char_id: 'char_a', module_id: 'elite1' },
+      { char_id: 'char_a', module_id: 'skill7' }
+    ]
+    expect(page.queueItems.value).toHaveLength(2)
+    expect(page.totalGoalCount.value).toBe(2)
+    axios.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/cultivate-fetch')
+        ? { success: true, message: '已同步' }
+        : { operators: store.recommendations, goals: [], has_data: true }
+    }))
+    await page.fetchCultivate()
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/cultivate-fetch'))
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/mastery-recommendation'), {
+      params: { materials: 0 },
+      timeout: 30000
+    })
+    expect(page.queueItems.value).toEqual([])
+    expect(page.totalGoalCount.value).toBe(0)
+    expect(store.goals).toEqual([])
+  })
+
   it('推荐卡跳过已计划干员，并按公开样本排序', () => {
     const page = setup()
     const store = useMasteryStore()

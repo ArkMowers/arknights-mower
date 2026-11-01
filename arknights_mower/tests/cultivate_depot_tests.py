@@ -14,6 +14,11 @@ from arknights_mower.solvers import cultivate_depot as module  # noqa: E402
 
 @pytest.fixture
 def syncer(tmp_path, monkeypatch):
+    from arknights_mower.utils import growth
+
+    monkeypatch.setattr(
+        growth, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
+    )
     monkeypatch.setattr(module, "get_path", lambda _: tmp_path / "cultivate.json")
     monkeypatch.setattr(
         module.config.conf,
@@ -671,3 +676,170 @@ def test_manual_refresh_calibrates_existing_70_to_cloud_7(
         response = server.app.test_client().get("/cultivate-fetch").json
     assert response["success"] is True
     assert stock_db.get_inventory_counts()[name] == 7
+
+
+@pytest.mark.parametrize(
+    "module_id,target_level", [("elite1", None), ("skill7", None), ("module", 2)]
+)
+def test_successful_sync_removes_only_confirmed_completed_manual_goals(
+    syncer, monkeypatch, module_id, target_level
+):
+    from arknights_mower.utils import growth, mastery_recommendation
+
+    goal = {"char_id": "char_test", "module_id": module_id}
+    if target_level is not None:
+        goal["target_level"] = target_level
+    remaining = {"char_id": "char_other", "module_id": "elite2"}
+    path = growth.get_path("@app/config/growth_plan.json")
+    path.write_text(json.dumps([goal, remaining]))
+    skills = {
+        "growth": {
+            "characters": {
+                "char_test": {
+                    "phases": [{"max_level": 50}, {"max_level": 80}, {"max_level": 90}],
+                    "modules": [
+                        {"id": "module", "levels": [{"level": n} for n in (1, 2, 3)]}
+                    ],
+                }
+            }
+        }
+    }
+    monkeypatch.setattr(mastery_recommendation, "get_skill_data", lambda: skills)
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [
+                {
+                    "id": "char_test",
+                    "evolvePhase": 2,
+                    "level": 1,
+                    "mainSkillLevel": 7,
+                    "equips": [{"id": "module", "level": 2}],
+                }
+            ]
+        },
+    }
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = payload
+        assert syncer.start()
+    assert growth.load_goals() == [remaining]
+    assert json.loads(syncer.record_path.read_text()) == payload
+
+
+def test_failed_sync_keeps_saved_manual_goals(syncer):
+    from arknights_mower.utils import growth
+
+    path = growth.get_path("@app/config/growth_plan.json")
+    path.write_text('[{"char_id": "char_test", "module_id": "elite1"}]')
+    previous = path.read_bytes()
+    with patch.object(
+        module, "request_with_retry", side_effect=RuntimeError("offline")
+    ):
+        with pytest.raises(RuntimeError, match="offline"):
+            syncer.start()
+    assert path.read_bytes() == previous
+
+
+@pytest.fixture
+def completed_manual_goal(syncer, monkeypatch):
+    from arknights_mower.utils import growth
+
+    path = growth.get_path("@app/config/growth_plan.json")
+    path.write_text('[{"char_id": "char_test", "module_id": "skill7"}]')
+    monkeypatch.setattr(module, "time", lambda: 200)
+    return {
+        "code": 0,
+        "data": {
+            "characters": [
+                {"id": "char_test", "evolvePhase": 2, "level": 1, "mainSkillLevel": 7}
+            ],
+            "items": [{"id": "3303", "count": "7"}],
+        },
+    }
+
+
+def test_completed_manual_goal_calibrates_old_stock_and_invalidates_unreported_counts(
+    syncer, stock_db, completed_manual_goal
+):
+    from arknights_mower.utils import growth
+
+    stock_db.save_inventory_counts({"技巧概要·卷3": 70, "龙门币": 999})
+    with patch.object(stock_db, "datetime") as clock:
+        clock.now.return_value.timestamp.return_value = 100
+        stock_db.apply_workshop_inventory({"技巧概要·卷3": 6})
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = completed_manual_goal
+        assert syncer.start()
+    current = stock_db.get_inventory_counts()
+    assert current["技巧概要·卷3"] == 7
+    assert "龙门币" not in current
+    assert growth.load_goals() == []
+    stock_db.save_inventory_counts(
+        {"龙门币": 999}, scanned_counts={"龙门币": 999}, scanned_at=150
+    )
+    assert "龙门币" not in stock_db.get_inventory_counts()
+
+
+@pytest.mark.parametrize("force_inventory", [False, True])
+def test_completion_without_inventory_never_keeps_old_counts_as_confirmed(
+    syncer, stock_db, completed_manual_goal, force_inventory
+):
+    from arknights_mower.utils import growth
+
+    del completed_manual_goal["data"]["items"]
+    stock_db.save_inventory_counts({"技巧概要·卷3": 70, "龙门币": 999})
+    syncer.record_path.write_text('{"previous": true}')
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = completed_manual_goal
+        if force_inventory:
+            with pytest.raises(ValueError, match="未返回库存"):
+                syncer.start(force_inventory=True)
+            assert json.loads(syncer.record_path.read_text()) == {"previous": True}
+            assert growth.load_goals() == [
+                {"char_id": "char_test", "module_id": "skill7"}
+            ]
+        else:
+            assert syncer.start()
+            assert growth.load_goals() == []
+    assert stock_db.get_inventory_counts() == {}
+
+
+def test_completion_calibration_preserves_changes_confirmed_during_request(
+    syncer, stock_db, completed_manual_goal, monkeypatch
+):
+    stock_db.save_inventory_counts({"技巧概要·卷3": 70, "龙门币": 999})
+
+    def respond(*args, **kwargs):
+        if "/cultivate/player" in args[1]:
+            with patch.object(stock_db, "datetime") as clock:
+                clock.now.return_value.timestamp.return_value = 201
+                stock_db.apply_workshop_inventory({"技巧概要·卷3": 6, "龙门币": -10})
+        return SimpleNamespace(json=lambda: completed_manual_goal)
+
+    monkeypatch.setattr(module, "request_with_retry", respond)
+    assert syncer.start()
+    current = stock_db.get_inventory_counts()
+    assert current["技巧概要·卷3"] == 76
+    assert current["龙门币"] == 989
+
+
+def test_unknown_shared_stock_never_falls_back_to_old_cultivate_materials(
+    syncer, stock_db, completed_manual_goal
+):
+    from arknights_mower.utils import growth
+
+    stock_db.save_inventory_counts({"技巧概要·卷3": 70})
+    syncer.record_path.write_text(
+        json.dumps({"data": {"items": [{"id": "3303", "count": 70}]}})
+    )
+    del completed_manual_goal["data"]["items"]
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = completed_manual_goal
+        with pytest.raises(ValueError, match="未返回库存"):
+            syncer.start(force_inventory=True)
+    cached = json.loads(syncer.record_path.read_text())["data"]
+    skills = {"items": {"3303": {"name": "技巧概要·卷3"}}}
+    assert "3303" not in growth.inventory_counts(cached, skills, local=True)
+    assert "3303" not in growth.inventory_counts(
+        cached, skills, local=True, local_counts={}
+    )
