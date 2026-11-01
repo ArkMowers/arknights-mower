@@ -96,7 +96,11 @@ export function incomeRequest(plan, settings) {
         warmupHours: settings.warmupDays * 24,
         sampleHours: settings.sampleDays * 24,
         maxStepHours: 0.25,
-        maxEvents: 200000,
+        // Preserve the default 31-day allowance per simulated day, including warmup.
+        maxEvents: Math.max(
+          200000,
+          Math.ceil(((settings.warmupDays + settings.sampleDays) / 31) * 200000)
+        ),
         warmupModel: 'hourly',
         recordSegments: true,
         operatorInventory: operators,

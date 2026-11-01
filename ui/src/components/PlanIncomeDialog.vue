@@ -16,13 +16,9 @@ import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
 import IncomeTimeline from './IncomeTimeline.vue'
 import IncomeActivity from './IncomeActivity.vue'
+import IncomeDiagnostics from './IncomeDiagnostics.vue'
 import { validateRosterWorkspace } from '@/riic/vendor/workbench/validate'
-import {
-  renderIncomeImage,
-  downloadIncomeImage,
-  incomeReportLines,
-  incomeImageFilename
-} from '@/riic/incomeImage'
+import { renderIncomeImage, downloadIncomeImage, incomeImageFilename } from '@/riic/incomeImage'
 import { MOWER_INVENTORY_ITEMS } from '@/riic/vendor/domain/simulationInventory'
 
 const props = defineProps({ snapshot: Object, preparing: Boolean, prepareError: String })
@@ -146,16 +142,6 @@ const filteredEvents = computed(() =>
 const visibleEvents = computed(() =>
   filteredEvents.value.slice((logPage.value - 1) * 50, logPage.value * 50)
 )
-const reportLines = computed(() =>
-  state.result?.success
-    ? incomeReportLines(
-        state.result,
-        state.input.settings,
-        state.input.plan,
-        completedSnapshot.value?.label
-      )
-    : []
-)
 let started = 0
 let lastProgress = 0
 let exportGeneration = 0
@@ -180,6 +166,20 @@ const metrics = computed(() =>
   state.result?.success ? incomeMetrics(state.result.summary, state.result.observedHours / 24) : []
 )
 const summary = computed(() => state.bottleneck?.slowest ?? state.bottleneck?.latest)
+const attemptDetails = computed(() => {
+  // A failed attempt owns its diagnostics even while an older successful result remains visible.
+  const diagnostics = state.error ? attemptDiagnostics.value : (state.result?.diagnostics ?? [])
+  return diagnostics.length ? diagnostics : (state.bottleneck?.diagnostics ?? [])
+})
+const outcomeLabel = computed(
+  () =>
+    ({
+      completed: '演算已完成',
+      failed: '演算未完成',
+      cancelled: '演算已停止',
+      changed: '排班已变更'
+    })[state.bottleneck?.outcome] ?? '演算已结束'
+)
 const planIssues = computed(() =>
   props.snapshot ? validateRosterWorkspace(incomeWorkspace(props.snapshot.plan)).issues : []
 )
@@ -281,6 +281,7 @@ async function start() {
   if (archiveLoading.value || submitting.value || state.running || exporting.value) return
   submitting.value = true
   state.error = null
+  state.bottleneck = null
   attemptDiagnostics.value = []
   try {
     if (settings.weightMode === 'mower') await readWeights()
@@ -405,7 +406,6 @@ onBeforeUnmount(() => {
       </n-alert>
       <n-alert v-if="state.error" ref="errorAlert" role="alert" class="notice" type="error">
         {{ state.error }}
-        <p v-for="(d, i) in attemptDiagnostics" :key="i">{{ d.message }}</p>
       </n-alert>
       <n-alert v-if="exportError" class="notice" type="error"
         >图片导出失败：{{ exportError }}。计算结果已保留，可以重新导出。</n-alert
@@ -419,12 +419,7 @@ onBeforeUnmount(() => {
             </ul>
           </n-alert>
           <n-alert class="notice" type="info">
-            使用打开窗口时的完整排班快照；预热不计收益。演算采用固定版本的离线模型和理想跑单，结果不代表实测收入。
-            点击开始演算时自动校验排班，校验通过后才启动；全员满练与手动练度不校验森空岛名单。
-            菲亚梅塔初始心情固定为 16，其他干员默认从各自心情上限开始，未设置上限时为
-            24；设施等级读取排班保存值，未设置时推断；宿舍氛围按等级上限。导入收益图可恢复完整排班及高级设置。
-            指定回满的主班须全部达标，多绑组也须遵守；同组恢复时间差触发延迟回班后，还须等单绑非候补主班回满。候补、替班及多绑组不延长这项组内等待，本体与演算均按排班中的额外等待上限限制这项等待，0
-            表示不限时；指定回满要求不受该上限限制。开启不养闲人后，先回满的成员可按原有清退规则离宿，其余成员继续休息。
+            使用打开窗口时的排班，校验通过后开始演算。预热不计收益，结果为离线估算。
           </n-alert>
           <n-form
             :disabled="state.running || exporting || submitting || weightsBusy"
@@ -730,19 +725,8 @@ onBeforeUnmount(() => {
                   </tbody></n-table
                 >
               </n-collapse-item>
-              <n-collapse-item title="本次参数与模型说明" name="assumptions"
-                ><p v-for="line in reportLines" :key="line">{{ line }}</p></n-collapse-item
-              >
             </n-collapse>
-            <n-collapse class="notice"
-              ><n-collapse-item
-                :title="`演算诊断（${state.result.diagnostics.length} 条）`"
-                name="diagnostics"
-                ><p v-for="(d, i) in state.result.diagnostics" :key="i">
-                  {{ d.message }}
-                </p></n-collapse-item
-              ></n-collapse
-            >
+            <IncomeDiagnostics class="notice" :diagnostics="state.result.diagnostics" />
           </template>
         </n-tab-pane>
         <n-tab-pane name="timeline" tab="工作记录" display-directive="show:lazy">
@@ -778,16 +762,26 @@ onBeforeUnmount(() => {
             title="本次演算观察"
           >
             <p>
-              已用 {{ format(state.bottleneck.elapsedSeconds) }} 秒；{{
+              {{ outcomeLabel }}。已用
+              {{ format(state.bottleneck.elapsedSeconds) }} 秒；最后进度：{{
                 state.bottleneck.progressLabel
               }}。
             </p>
             <p v-if="state.bottleneck.silence">
               结束前 {{ state.bottleneck.silence.seconds }} 秒未收到进度；尚不能确定原因。
             </p>
-            <IncomeActivity v-if="summary" :activity="summary.activity" />
-            <p v-for="(item, i) in state.bottleneck.diagnostics" :key="i">{{ item.message }}</p>
+            <n-collapse v-if="summary">
+              <n-collapse-item
+                :title="
+                  state.bottleneck.slowest ? '运行期间最慢时段的观察' : '结束前的任务与干员观察'
+                "
+                name="activity"
+              >
+                <IncomeActivity :activity="summary.activity" historical />
+              </n-collapse-item>
+            </n-collapse>
           </n-alert>
+          <IncomeDiagnostics v-if="!state.running" class="notice" :diagnostics="attemptDetails" />
 
           <n-collapse v-if="progressLog.length" class="notice"
             ><n-collapse-item title="计算进度记录（最近 200 条）" name="progress"
