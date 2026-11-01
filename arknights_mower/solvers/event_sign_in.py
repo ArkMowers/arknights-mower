@@ -40,7 +40,7 @@ def sign_in_entries(result):
     rows = {}
     for box, text, score in result or []:
         text = "".join(text.split())
-        if score < 0.9:
+        if not np.isfinite(score) or score < 0.9:
             continue
         points = np.asarray(box)
         x, y = (points.min(axis=0) + points.max(axis=0)) / 2
@@ -293,7 +293,9 @@ class EventSignInSolver(SceneGraphSolver):
             observed_slots.update(slot for slot, _, _ in entries)
             pending_slots = set()
             for box, text, score in result or []:
-                if "签到" not in "".join(text.split()) or score >= 0.9:
+                if "签到" not in "".join(text.split()) or (
+                    np.isfinite(score) and score >= 0.9
+                ):
                     continue
                 points = np.asarray(box)
                 y = (points[:, 1].min() + points[:, 1].max()) / 2
