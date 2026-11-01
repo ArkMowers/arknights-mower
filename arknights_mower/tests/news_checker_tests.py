@@ -56,7 +56,7 @@ class NewsCheckerTests(unittest.TestCase):
         self.assertEqual(info.update_type, "major")
         self.assertEqual(info.start, datetime(2026, 9, 4, 6))
         self.assertEqual(info.end, datetime(2026, 9, 4, 12))
-        self.assertEqual(info.resume_at, datetime(2026, 9, 4, 11, 30))
+        self.assertEqual(info.resume_at, datetime(2026, 9, 4, 11))
 
     def test_flash_update_is_hot_update_without_early_resume(self):
         item = {
@@ -90,7 +90,7 @@ class NewsCheckerTests(unittest.TestCase):
         )
 
         self.assertEqual(info.update_type, "hot")
-        self.assertEqual(info.resume_at, datetime(2026, 9, 12, 17, 30))
+        self.assertEqual(info.resume_at, datetime(2026, 9, 12, 17))
 
     def test_24_hour_end_rolls_into_next_day(self):
         item = {
@@ -108,7 +108,7 @@ class NewsCheckerTests(unittest.TestCase):
 
         self.assertEqual(info.end, datetime(2026, 9, 12, 0, 0))
 
-    def test_major_update_window_ends_half_an_hour_early(self):
+    def test_major_update_window_ends_one_hour_early(self):
         info = MaintenanceInfo(
             start=datetime(2026, 9, 4, 6),
             end=datetime(2026, 9, 4, 12),
@@ -119,9 +119,32 @@ class NewsCheckerTests(unittest.TestCase):
         )
 
         self.assertTrue(info.active_at(datetime(2026, 9, 4, 6)))
-        self.assertTrue(info.active_at(datetime(2026, 9, 4, 11, 29, 59)))
-        self.assertFalse(info.active_at(datetime(2026, 9, 4, 11, 30)))
-        self.assertEqual(info.resume_at, info.end - timedelta(minutes=30))
+        self.assertTrue(info.active_at(datetime(2026, 9, 4, 10, 59, 59)))
+        self.assertFalse(info.active_at(datetime(2026, 9, 4, 11)))
+        self.assertEqual(info.resume_at, datetime(2026, 9, 4, 11))
+
+        with patch.object(NewsChecker, "get_maintenance", return_value=info):
+            self.assertEqual(
+                NewsChecker.get_update_time(),
+                (datetime(2026, 9, 4, 6), datetime(2026, 9, 4, 11)),
+            )
+        with patch.object(mower_main, "_stop_for_major_update") as stop:
+            self.assertFalse(
+                mower_main._handle_maintenance(info, Mock(), datetime(2026, 9, 4, 11))
+            )
+        stop.assert_not_called()
+
+    def test_early_login_does_not_precede_maintenance_start(self):
+        info = MaintenanceInfo(
+            start=datetime(2026, 9, 4, 11, 30),
+            end=datetime(2026, 9, 4, 12),
+            update_type="hot",
+            title="服务器停机维护公告",
+            url="https://example.test/news/1",
+            announcement_id="1",
+        )
+
+        self.assertEqual(info.resume_at, datetime(2026, 9, 4, 11, 30))
 
     def test_major_update_stops_instead_of_sleeping(self):
         info = MaintenanceInfo(
@@ -571,7 +594,7 @@ class NewsCheckerTests(unittest.TestCase):
             patch.object(mower_main, "csleep") as sleep,
         ):
             retried = mower_main._wait_before_early_login_retry(
-                datetime(2026, 9, 4, 11, 30)
+                datetime(2026, 9, 4, 11)
             )
 
         self.assertTrue(retried)
@@ -610,7 +633,7 @@ class NewsCheckerTests(unittest.TestCase):
             patch.object(mower_main, "csleep") as sleep,
         ):
             retried = mower_main._wait_before_early_login_retry(
-                datetime(2026, 8, 8, 17, 30)
+                datetime(2026, 8, 8, 17)
             )
 
         self.assertTrue(retried)
