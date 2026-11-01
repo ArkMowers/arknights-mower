@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 import { growthGameIcon, moduleBadge } from './growthGameIcons'
 
 const props = defineProps({
@@ -13,6 +13,7 @@ const originalImage = computed(() => props.kind === 'mastery' || props.kind === 
 const badge = computed(() =>
   props.kind === 'module' ? moduleBadge(props.value, props.moduleId) : null
 )
+const textureId = 'growth-module-' + useId()
 const iconStyle = computed(() => {
   if (badge.value) return { color: badge.value.color }
   if (icon.value.src && !originalImage.value)
@@ -35,7 +36,39 @@ const iconStyle = computed(() => {
     :data-icon-value="value"
     aria-hidden="true"
   >
-    <span v-if="badge" class="growth-game-icon__module-label">{{ badge.label }}</span>
+    <template v-if="badge">
+      <svg class="growth-game-icon__module-texture" aria-hidden="true" focusable="false">
+        <defs>
+          <pattern :id="textureId + '-dots'" width="6" height="6" patternUnits="userSpaceOnUse">
+            <path fill="currentColor" d="M1 1h2v2H1zM4 4h2v2H4z" />
+          </pattern>
+          <filter :id="textureId + '-spread'" x="-100%" y="-100%" width="300%" height="300%">
+            <feMorphology operator="dilate" radius="3" />
+            <feGaussianBlur stdDeviation="1.2" />
+          </filter>
+          <mask :id="textureId + '-shape'" maskUnits="userSpaceOnUse">
+            <text
+              class="growth-game-icon__module-shape"
+              x="50%"
+              y="50%"
+              text-anchor="middle"
+              dominant-baseline="central"
+              fill="white"
+              :filter="'url(#' + textureId + '-spread)'"
+            >
+              {{ badge.label }}
+            </text>
+          </mask>
+        </defs>
+        <rect
+          width="100%"
+          height="100%"
+          :fill="'url(#' + textureId + '-dots)'"
+          :mask="'url(#' + textureId + '-shape)'"
+        />
+      </svg>
+      <span class="growth-game-icon__module-label">{{ badge.label }}</span>
+    </template>
     <img v-else-if="originalImage && icon.src" :src="icon.src" alt="" draggable="false" />
     <template v-else-if="!icon.src">{{ icon.fallback }}</template>
   </span>
@@ -76,18 +109,22 @@ const iconStyle = computed(() => {
   justify-content: center;
 }
 
-.growth-game-icon--module::before {
+.growth-game-icon__module-texture {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle, currentColor 0.8px, transparent 1px) center / 3px 3px;
-  mask: radial-gradient(ellipse, #000 20%, transparent 72%);
+  width: 100%;
+  height: 100%;
+  overflow: visible;
   opacity: var(--module-pattern-opacity, 0.45);
-  content: '';
   pointer-events: none;
 }
 
 .growth-game-icon__module-label {
   position: relative;
+}
+
+.growth-game-icon__module-label,
+.growth-game-icon__module-shape {
   font-family: var(--gp-display);
   font-size: 16px;
   font-weight: 700;

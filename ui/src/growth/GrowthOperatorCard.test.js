@@ -357,7 +357,7 @@ describe('干员卡模组目标', () => {
         new RegExp('class="growth-game-icon__module-label"[^>]*>' + label + '</span>')
       )
     }
-    expect(html).not.toContain('<svg')
+    expect(html.match(/class="growth-game-icon__module-texture"/g)).toHaveLength(3)
     expect(html).toMatch(/<img[^>]+mastery-0\.png/)
     expect(html).toMatch(/<img[^>]+elite-elite_2\.png/)
     expect(html).not.toMatch(/<img[^>]+module-/)

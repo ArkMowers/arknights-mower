@@ -425,6 +425,7 @@ function stopKeydownPropagation(event) {
 .growth-opcard__level .growth-game-icon {
   width: 20px;
   height: 20px;
+  filter: drop-shadow(0 1px 1.5px rgb(24 25 28 / 35%));
 }
 .growth-opcard__meta {
   display: flex;
