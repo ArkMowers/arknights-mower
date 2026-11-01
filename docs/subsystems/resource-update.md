@@ -54,6 +54,8 @@ The frontend calculator derives maximum-stage skills as separate objects from th
 
 **Operator Avatar Completeness** governs this behavior. [Complete operator avatars](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-avatar-completeness.md) records the source repair and verification.
 
+Every bundled catalog entry has a decoded 96×96 WEBP avatar, and every referenced building-skill icon has a decoded WEBP resource. Room, selection and training name models cover all bundled operator names. The [bundled operator resource tests](../../arknights_mower/tests/bundled_operator_resources_tests.py) check these files independently of the resource-version digest; a matching digest alone does not establish coverage.
+
 ### Activity Shop Resources
 
 <a id="activity-shop-resources"></a>

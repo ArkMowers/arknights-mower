@@ -1,10 +1,10 @@
 {
   "runtime": "quickjs-ng==0.17.0.2",
   "sha256": "257026caf748b99f32602af9e88ca2446d442099255e282c98d07f83176aa332",
-  "catalog_sha256": "5d61d521b48f379b158fd7e8d3c5c267a12e62e9c71bcd90ae98a21490c7ddcb",
-  "rules_sha256": "b040bbf2521630865f7b568fb36d3bf44ad2437578e0f90f5e4ddef4292075a8",
+  "catalog_sha256": "84ea4980941281d3586a68e88c0bd48d8aaa48750ef10e963388c86c6438e9b7",
+  "rules_sha256": "e9a68cb25de396d244675c159a9d4caace4eb89e480d95ebda946a9b72b6fd6c",
   "files": {
-    "arknights_mower/data/riic/operators.json": "5d61d521b48f379b158fd7e8d3c5c267a12e62e9c71bcd90ae98a21490c7ddcb",
+    "arknights_mower/data/riic/operators.json": "84ea4980941281d3586a68e88c0bd48d8aaa48750ef10e963388c86c6438e9b7",
     "ui/src/riic/runtimeMood.ts": "d4ca5d01971f64c6ccdedac70862e7163ab449905c30bccc4a0148553ae81bbf",
     "ui/src/riic/vendor/data/riic-term-evidence.json": "2554416a3e3bfa10e48a338b33279e3cb5bfd2b72861de70eb10166bb8e4d2b5",
     "ui/src/riic/vendor/domain/defaults.ts": "7323b6604de2a5eccb263b721ffbff1985bb4e182f4ef1e115f0ff7ed30da4b6",

@@ -13,6 +13,17 @@ description: 更新 Arknights Mower 新干员及基建技能数据，核对收�
 - 同一快照读取 `character_table.json`、`building_data.json`、`data_version.txt`，记录仓库、commit 及文件摘要。当前随软件发布的来源保存在 `arknights_mower/data/riic/operators.json` 的 `sourceVersion` 和 `source`。比较新增、删除及既有干员技能变更，不能只查新增姓名。
 - 按[共享干员目录说明](../../../docs/subsystems/resource-update.md#shared-operator-catalog)维护数据。游戏定义、用户持有和练度各有自己的来源；缺少个人练度不能补成满练，未取得图片或完整资源时不能声称已更新完整资源包。
 
+## 自动生成与人工适配
+
+| 对象 | 既有生成路径 | 需要人工核对或修复的情况 |
+| --- | --- | --- |
+| 姓名、职业、技能描述、解锁条件及完整养成数据 | 游戏表经 `auto_get_res_new.py` 生成共享目录、兼容导出和 `skill_data.json` | 输入表不齐或仅局部生成时，逐项说明未更新内容；不能从训练规则更新推定技能真名、材料和耗时已更新 |
+| 头像、技能图标及姓名识别产物 | MowerResource 抓取图片，生成姓名模板和识别模型 | 上游缺图、字体缺字或游戏显示变化导致生成或识别失败时，修复对应来源和生成步骤；不逐人手填生成文件 |
+| 收益、心情、加工和专精技能机制 | 已支持的机制由已有规则处理 | 新条件、叠加关系、技能语法、分支或成员范围需要扩展解析和计算规则，并从实际入口验证 |
+| 加工优先级、默认专精路线和固定名单 | 现有策略读取 `workshop_recipes.py`、`workshop_selection.py`、`mastery.py` 和 `mastery_support_types.py` 等维护配置 | 新技能改变策略时核对是否调整；例如特殊加工优先级和 `CONTROL_TRAINERS`，不能因角色表新增就假定已同步 |
+
+共享目录和配套演算、原生心情代码随软件发布；资源 OTA 不替换这些计算输入。MowerResource 自动出包不代表主仓库内置文件或软件规则已自动提交更新。
+
 ## 生成与适配
 
 - 用 [`compile_operator_catalog`、`write_operator_catalog`](../../../arknights_mower/utils/operator_data.py) 从快照生成共享目录及姓名、职业兼容导出。`order` 传入旧目录的 `charId` 顺序；新干员追加，不手填技能槽或复制最终技能数组。写入实际 `sourceVersion`，保留可追溯的 `source`。前端从技能槽派生满练技能，不更新已不被读取的固定旧目录。
@@ -32,7 +43,7 @@ description: 更新 Arknights Mower 新干员及基建技能数据，核对收�
 ```bash
 pytest arknights_mower/tests/operator_data_tests.py arknights_mower/tests/workshop_rules_tests.py
 pytest arknights_mower/tests/mastery_operator_update_tests.py arknights_mower/tests/mastery_support_rules_tests.py arknights_mower/tests/mastery_support_optimizer_tests.py arknights_mower/tests/mastery_support_preview_tests.py
-pytest arknights_mower/tests/resource_version_tests.py arknights_mower/tests/res_version_tests.py
+pytest arknights_mower/tests/bundled_operator_resources_tests.py arknights_mower/tests/resource_version_tests.py arknights_mower/tests/res_version_tests.py
 npm --prefix ui test -- src/riic/operatorCatalog.test.js src/riic/incomeOperatorUpdate.test.js
 python .agents/skills/mower-riic/scripts/verify_calculator.py
 node scripts/build_mood_runtime.mjs --check
