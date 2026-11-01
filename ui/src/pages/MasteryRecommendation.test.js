@@ -786,6 +786,63 @@ describe('养成工作区派生数据', () => {
     ])
   })
 
+  it('值得练按精英阶段与阶段内等级降序排列，切换排序不写养成计划', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    store.recommendations = [
+      {
+        char_id: 'char_elite1',
+        name: '精一满级',
+        rarity: 6,
+        elite: 1,
+        level: 80,
+        skill_levels: [0],
+        recommendations: [{ skill_index: 0, current_level: 0 }],
+        modules: []
+      },
+      {
+        char_id: 'char_elite2_low',
+        name: '精二低级',
+        rarity: 6,
+        elite: 2,
+        level: 1,
+        skill_levels: [0],
+        recommendations: [{ skill_index: 0, current_level: 0 }],
+        modules: []
+      },
+      {
+        char_id: 'char_elite2_high',
+        name: '精二高级',
+        rarity: 4,
+        elite: 2,
+        level: 60,
+        skill_levels: [0],
+        recommendations: [{ skill_index: 0, current_level: 0 }],
+        modules: []
+      }
+    ]
+    page.survey.value = {
+      operators: [
+        { charId: 'char_elite1', own: 100, skill1: { 0: 1, 3: 99 } },
+        { charId: 'char_elite2_low', own: 100, skill1: { 0: 20, 3: 80 } },
+        { charId: 'char_elite2_high', own: 100, skill1: { 0: 90, 3: 10 } }
+      ]
+    }
+    expect(page.recommendedCards.value.map((card) => card.operator.char_id)).toEqual([
+      'char_elite1',
+      'char_elite2_low',
+      'char_elite2_high'
+    ])
+    page.pickSort.value = 'level'
+    expect(page.recommendedCards.value.map((card) => card.operator.char_id)).toEqual([
+      'char_elite2_high',
+      'char_elite2_low',
+      'char_elite1'
+    ])
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.delete).not.toHaveBeenCalled()
+  })
+
   it('推荐卡只按未练完技能算比例，已专三技能不再作为推荐理由', () => {
     const page = setup()
     const store = useMasteryStore()
@@ -856,6 +913,14 @@ describe('养成工作区派生数据', () => {
       'char_module',
       'char_skill'
     ])
+    expect(page.recommendedCards.value[0].target).toMatchObject({
+      kind: 'module',
+      id: 'mod_x',
+      rate: 90
+    })
+    expect(page.recommendedCards.value[0].score).toBe(90)
+    expect(page.recommendedCards.value[1].target).toBeNull()
+    expect(page.recommendedCards.value[1].score).toBeNull()
   })
 
   it('详情派生技能目标、模组目标与基础技能状态', () => {

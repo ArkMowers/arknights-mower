@@ -2,8 +2,8 @@ const ORDINALS = ['一', '二', '三']
 
 // 值得练的排序条件：只用“还没练完的目标”的公开比例，已练完的目标不参与。
 export const RECOMMEND_SORT_OPTIONS = [
-  { label: '专三率优先', value: 'mastery' },
-  { label: '模组解锁率优先', value: 'module' },
+  { label: '剩余专三率', value: 'mastery' },
+  { label: '剩余模组解锁率', value: 'module' },
   { label: '稀有度', value: 'rarity' },
   { label: '等级', value: 'level' }
 ]
@@ -88,20 +88,22 @@ export function remainingModuleRate(operator, survey) {
   return topRate(remainingModuleTargets(operator, survey))
 }
 
-// 推荐目标：优先取还没专三技能里公开专三率最高的一个；技能全部专三后再看未满模组。
-export function recommendedTarget(operator, survey) {
-  const skills = remainingSkillTargets(operator, survey)
-    .filter((target) => target.rate !== null)
-    .sort((left, right) => right.rate - left.rate || left.index - right.index)
-  if (skills.length) return skills[0]
+// 模组排序只陈述未满模组；其他排序优先陈述未专三技能，再回退到未满模组。
+export function recommendedTarget(operator, survey, sort = 'mastery') {
+  if (sort !== 'module') {
+    const skills = remainingSkillTargets(operator, survey)
+      .filter((target) => target.rate !== null && target.rate !== undefined)
+      .sort((left, right) => right.rate - left.rate || left.index - right.index)
+    if (skills.length) return skills[0]
+  }
   const modules = remainingModuleTargets(operator, survey)
-    .filter((target) => target.rate !== null)
+    .filter((target) => target.rate !== null && target.rate !== undefined)
     .sort((left, right) => right.rate - left.rate)
   return modules[0] || null
 }
 
-export function recommendationScore(operator, survey) {
-  return recommendedTarget(operator, survey)?.rate ?? null
+export function recommendationScore(operator, survey, sort = 'mastery') {
+  return recommendedTarget(operator, survey, sort)?.rate ?? null
 }
 
 // 只要还有没练完的目标就保留在值得练里；公开样本缺失时排在有样本的干员之后。

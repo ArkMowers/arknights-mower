@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { effectScope, reactive } from 'vue'
+import { createSSRApp, effectScope, reactive } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import GrowthOperatorCard from './GrowthOperatorCard.vue'
 
 vi.mock('vue', async (original) => ({
@@ -36,6 +37,7 @@ function setup(overrides = {}) {
     plannedCount: 0,
     rank: null,
     layout: 'grid',
+    recommendationSort: 'mastery',
     ...overrides
   })
   const scope = effectScope()
@@ -61,7 +63,7 @@ const surveyRates = (rates, extra = {}) => ({
 })
 
 describe('干员卡技能段读数', () => {
-  it('只为干员实际拥有的技能显示进度和专三计数', () => {
+  it('只为干员实际拥有的技能显示专精进度', () => {
     const { component, stop } = setup({
       operator: operator({
         rarity: 5,
@@ -71,7 +73,6 @@ describe('干员卡技能段读数', () => {
     })
     expect(component.skillRows.value.map((row) => row.name)).toEqual(['一技能', '二技能'])
     expect(component.skills.value).toEqual([3, 3])
-    expect(component.masteredCount.value).toBe(2)
     stop()
   })
 
@@ -215,12 +216,6 @@ describe('干员卡技能段读数', () => {
     stop()
   })
 
-  it('聚合读数沿用专三计数，供「专三 x/3」标签使用', () => {
-    const { component, stop } = setup({ operator: operator({ skill_levels: [3, 2, 3] }) })
-    expect(component.masteredCount.value).toBe(2)
-    stop()
-  })
-
   it('每个技能段暴露状态 tone，供选中/悬停发光按专精等级取色', () => {
     const { component, stop } = setup({ operator: operator({ skill_levels: [3, 2, 0] }) })
     expect(component.skillRows.value.map((row) => row.tone)).toEqual(['done', 'warn', 'low'])
@@ -247,7 +242,7 @@ describe('干员卡模组目标', () => {
       }
     })
     expect(component.moduleTarget.value).toMatchObject({ id: 'mod_x', rate: 71.5 })
-    expect(component.statusLine.value).toEqual({ tone: 'low', text: 'EXE-X · 0/3' })
+    expect(component.statusLine.value).toEqual({ tone: 'low', text: 'EXE-X · 未解锁' })
     expect(component.activeRate.value).toBe(71.5)
     expect(component.activeRateLabel.value).toBe('解锁率')
     stop()
@@ -267,6 +262,109 @@ describe('干员卡模组目标', () => {
     component.selectModule()
     expect(component.activeRateLabel.value).toBe('解锁率')
     expect(component.activeRate.value).toBe(71.5)
+    stop()
+  })
+
+  it('保留所有模组并分别读取已满级、部分解锁和未解锁模组的状态与比例', () => {
+    const { component, stop } = setup({
+      operator: operator({
+        modules: [
+          { id: 'mod_x', type: 'EXE-X', current_level: 3, max_level: 3 },
+          { id: 'mod_y', type: 'EXE-Y', current_level: 1, max_level: 3 },
+          { id: 'mod_d', type: 'EXE-Δ', current_level: 0, max_level: 3 }
+        ]
+      }),
+      survey: {
+        modules: [
+          { id: 'mod_x', rate: 90 },
+          { id: 'mod_y', rate: 60 }
+        ]
+      }
+    })
+    expect(component.moduleRows.value.map((row) => row.id)).toEqual(['mod_x', 'mod_y', 'mod_d'])
+    component.selectModule('mod_x')
+    expect(component.statusLine.value).toEqual({ tone: 'done', text: 'EXE-X · 3 级' })
+    expect(component.activeRate.value).toBe(90)
+    component.selectModule('mod_y')
+    expect(component.statusLine.value).toEqual({ tone: 'warn', text: 'EXE-Y · 1 级' })
+    expect(component.activeRate.value).toBe(60)
+    component.selectModule('mod_d')
+    expect(component.statusLine.value).toEqual({ tone: 'low', text: 'EXE-Δ · 未解锁' })
+    expect(component.activeRate.value).toBe(null)
+    stop()
+  })
+
+  it('模组排序默认展示剩余模组，切换排序后同步目标，用户点击仍能切换读数', async () => {
+    const { component, props, stop } = setup({
+      operator: fullOperator(),
+      survey: surveyRates([30, 99, 60], { modules: [{ id: 'mod_x', rate: 72 }] })
+    })
+    props.operator.modules = [{ id: 'mod_x', type: 'EXE-X', current_level: 0, max_level: 3 }]
+    component.selectSkill(0)
+    props.recommendationSort = 'module'
+    await Promise.resolve()
+    expect(component.activeModule.value).toBe(true)
+    expect(component.activeModuleId.value).toBe('mod_x')
+    expect(component.activeRateLabel.value).toBe('解锁率')
+    expect(component.activeRate.value).toBe(72)
+    component.selectSkill(1)
+    expect(component.activeRate.value).toBe(99)
+    props.recommendationSort = 'mastery'
+    await Promise.resolve()
+    expect(component.activeSkillIndex.value).toBe(2)
+    expect(component.activeRate.value).toBe(60)
+    stop()
+  })
+
+  it('模组排序缺少模组样本时显示未知比例，没有待养成模组时不拿技能冒充', () => {
+    const { component, props, stop } = setup({
+      operator: fullOperator(),
+      survey: surveyRates([30, 99, 60]),
+      recommendationSort: 'module'
+    })
+    expect(component.activeModule.value).toBe(true)
+    expect(component.activeRate.value).toBe(null)
+    expect(component.statusLine.value.text).toBe('暂无待养成模组')
+    props.operator.modules = [{ id: 'mod_x', type: 'EXE-X', current_level: 0, max_level: 3 }]
+    component.selectModule('mod_x')
+    expect(component.activeRate.value).toBe(null)
+    expect(component.statusLine.value.text).toBe('EXE-X · 未解锁')
+    stop()
+  })
+
+  it('渲染全部模组图标和已解锁等级角标，姓名旁显示精英化图标与等级', async () => {
+    const html = await renderToString(
+      createSSRApp(GrowthOperatorCard, {
+        operator: operator({
+          level: 90,
+          modules: [
+            { id: 'mod_x', type: 'EXE-X', current_level: 3, max_level: 3 },
+            { id: 'mod_y', type: 'EXE-Y', current_level: 0, max_level: 3 },
+            { id: 'mod_d', type: 'EXE-Δ', current_level: 1, max_level: 3 }
+          ]
+        })
+      })
+    )
+    expect(html.match(/growth-opcard__seg--module/g)).toHaveLength(3)
+    expect(html.match(/growth-opcard__module-level/g)).toHaveLength(2)
+    expect(html).toContain('aria-label="模组 EXE-Y 未解锁"')
+    expect(html).toContain('aria-label="精二 90 级"')
+    expect(html).toContain('growth-opcard__profession')
+    expect(html).not.toContain('专三 0/3')
+  })
+
+  it('低星干员的已满级模组依然可见且可选', () => {
+    const { component, stop } = setup({
+      operator: operator({
+        rarity: 1,
+        max_phase: 0,
+        modules: [{ id: 'mod_a', type: 'ORIGINAL', current_level: 1, max_level: 1 }]
+      })
+    })
+    expect(component.supportsMastery.value).toBe(false)
+    expect(component.moduleRows.value).toHaveLength(1)
+    component.selectModule('mod_a')
+    expect(component.statusLine.value).toEqual({ tone: 'done', text: 'ORIGINAL · 1 级' })
     stop()
   })
 })

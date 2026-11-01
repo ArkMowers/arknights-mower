@@ -2093,7 +2093,7 @@ const recommendedCards = computed(() => {
   const cards = store.recommendations
     .map((op) => {
       const survey = surveyFor(op) || {}
-      const target = recommendedTarget(op, survey)
+      const target = recommendedTarget(op, survey, pickSort.value)
       return {
         operator: op,
         survey,

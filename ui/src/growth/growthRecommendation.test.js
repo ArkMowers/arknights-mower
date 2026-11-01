@@ -109,6 +109,41 @@ describe('剩余目标', () => {
 })
 
 describe('推荐目标', () => {
+  it('模组排序只推荐剩余模组，即使技能的专三率更高', () => {
+    const op = operator({
+      recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 0 }],
+      modules: [
+        { id: 'mod_done', type: 'EXE-X', current_level: 3, max_level: 3 },
+        { id: 'mod_y', type: 'EXE-Y', current_level: 0, max_level: 3 },
+        { id: 'mod_d', type: 'EXE-D', current_level: 1, max_level: 3 }
+      ]
+    })
+    const samples = survey({
+      skills: [{ index: 0, rate: 99 }],
+      modules: [
+        { id: 'mod_done', rate: 98 },
+        { id: 'mod_y', rate: 40 },
+        { id: 'mod_d', rate: 70 }
+      ]
+    })
+    expect(recommendedTarget(op, samples, 'module')).toMatchObject({
+      kind: 'module',
+      id: 'mod_d',
+      current: 1,
+      rate: 70
+    })
+    expect(recommendationScore(op, samples, 'module')).toBe(70)
+  })
+
+  it('模组排序缺少模组样本时不使用技能专三率', () => {
+    const op = operator({
+      recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 0 }],
+      modules: [{ id: 'mod_y', type: 'EXE-Y', current_level: 0, max_level: 3 }]
+    })
+    expect(recommendedTarget(op, survey(), 'module')).toBeNull()
+    expect(recommendationScore(op, survey(), 'module')).toBeNull()
+  })
+
   it('取未专三技能里公开专三率最高者，而不是全部技能里的最高值', () => {
     const op = operator({
       skill_levels: [0, 3, 0],
@@ -228,8 +263,8 @@ describe('剩余比例与排序', () => {
       'level'
     ])
     expect(RECOMMEND_SORT_OPTIONS.map((option) => option.label)).toEqual([
-      '专三率优先',
-      '模组解锁率优先',
+      '剩余专三率',
+      '剩余模组解锁率',
       '稀有度',
       '等级'
     ])
