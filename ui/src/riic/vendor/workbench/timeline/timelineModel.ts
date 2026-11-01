@@ -274,7 +274,7 @@ export function buildTimelineData(report: ScheduleSimulationReport): TimelineDat
           let location = slotDetails.get(cacheKey)
           if (!location) {
             const roomId = key.replace(/_\d+$/, '')
-            const roomType = resolveRoomType(roomId)
+            const roomType = resolveRoomType(roomId, roomTracksMap.get(roomId)?.roomType)
             location = { slotKey: key, roomId, isDorm, roomType, roomName: getRoomDisplayName(roomId, roomType) }
             slotDetails.set(cacheKey, location)
           }

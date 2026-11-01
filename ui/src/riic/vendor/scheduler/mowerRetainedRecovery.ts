@@ -12,7 +12,7 @@ export function mowerRetainedRecoveryMayReturn(data:MowerSchedulingData,task:Mow
   const explicit=task.backupExplicitSlots.has(alphaPosition(room,index))
   // Actual primary shifts and explicitly requested backup positions remain owned.
   if(owner&&members.has(owner.name)&&(!room.startsWith('dorm')||owner.room===room&&owner.index===index))return false
-  if(op&&members.has(op.name)&&(!room.startsWith('dorm')||!data.canStandby(op)||explicit))return false
+  if(op&&members.has(op.name)&&(!room.startsWith('dorm')||explicit))return false
   if(explicit&&members.has(data.currentOperator(room,index)?.name??''))return false
  }
  return true

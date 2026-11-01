@@ -18,6 +18,7 @@ export interface MowerRestingOptions {
  urgentExhaust?:boolean
  urgentRecoveryPendingSupporters?:ReadonlySet<string>
  dependencyReturn?:MowerDependencyReturnAdmission
+ coordinationMoods?:Readonly<Record<string,number>>
  coordinationRates?:(data:MowerSchedulingData)=>import('./mowerReplacementCoordination').MowerCoordinationRates|undefined
  returning?:Set<string>;returningGroups?:Set<string>;tasks?:MowerTask[]
  fiaTargets?:string[];hasActiveMastery?:boolean;isMasteryBusy?:(name:string)=>boolean

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from arknights_mower.tests import dorm_release_tests
+from arknights_mower.tests import dorm_release_tests, mass_mood_recovery_tests
 from arknights_mower.tests.resting_priority_tests import set_tier
 from arknights_mower.utils.dorm_candidates import retained_task_reservations
 from arknights_mower.utils.plan import Room
@@ -13,6 +13,7 @@ from arknights_mower.utils.resting_priority import RestingTier
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 op_data = dorm_release_tests.op_data
+native_solver = mass_mood_recovery_tests.solver
 ROOM = "dormitory_1"
 
 
@@ -77,8 +78,13 @@ def test_incidental_reservations_release_only_requested_return(retained):
 @pytest.mark.parametrize(
     "protection", ["primary", "explicit", "active", "product", "restore", "resumed"]
 )
-def test_normal_return_does_not_release_explicit_or_active_work(retained, protection):
+@pytest.mark.parametrize("primary", [False, True])
+def test_normal_return_does_not_release_explicit_or_active_work(
+    retained, protection, primary
+):
     data, task = retained
+    if primary:
+        set_tier(data, "讯使", RestingTier.MAIN, 24)
     if protection == "primary":
         task.plan["contact"] = ["陈", "Current"]
     elif protection == "explicit":
@@ -204,3 +210,64 @@ def test_explicit_release_target_remains_reserved(retained):
     task.release_targets = {"讯使": (ROOM, 4)}
     task.plan[ROOM][4] = "Free"
     assert not retained_recovery_may_return(data, task, "乙组")
+
+
+@pytest.mark.parametrize("exhausted", [False, True])
+def test_primary_bed_move_releases_return_and_is_pruned_after_observation(
+    retained, exhausted
+):
+    from arknights_mower.utils.retained_recovery import reconcile_retained_recovery
+
+    data, task = retained
+    primary = set_tier(data, "讯使", RestingTier.MAIN, 24)
+    primary.exhaust_require = exhausted
+    primary.rest_in_full = exhausted
+    task.backup_shift_intent = copy.deepcopy(task.plan)
+    task.dorm_fill_plan = {ROOM: ["Current"] * 4 + ["讯使"]}
+    task.group_shift_expected = {(ROOM, 4): "讯使", ("meeting", 0): "红"}
+    task.group_shift_transitions = {"甲组": True, "乙组": True}
+    before, time, failure = copy.deepcopy(task.plan), task.time, task.execution_failure
+    for _ in range(3):
+        assert reconcile_retained_recovery(data, task) == set()
+        assert task.plan == before
+    names, slots = retained_task_reservations(data, [task], returning_groups={"乙组"})
+    assert not {"伊内丝", "讯使"} & names
+    assert not {(ROOM, 3), (ROOM, 4), ("contact", 0), ("contact", 1)} & slots
+    observed_return(data, "伊内丝", "讯使")
+    assert reconcile_retained_recovery(data, task) == {"乙组"}
+    assert task.plan[ROOM] == ["Current", "Current", "银灰", "Current", "Current"]
+    assert task.backup_shift_intent[ROOM][4] == "Current"
+    assert task.dorm_fill_plan == {}
+    assert task.group_shift_expected == {("meeting", 0): "红"}
+    assert task.group_shift_transitions == {"甲组": True}
+    assert task.plan["meeting"] == ["红"]
+    assert task.time is time and task.execution_failure is failure
+
+
+@pytest.mark.parametrize("exhausted", [False, True])
+def test_scheduler_resume_prunes_a_returned_primary_without_replacing_task(
+    retained, native_solver, exhausted
+):
+    from arknights_mower.utils.scheduler_task import find_next_task
+
+    data, task = retained
+    primary = set_tier(data, "讯使", RestingTier.MAIN, 24)
+    primary.exhaust_require = exhausted
+    primary.rest_in_full = exhausted
+    native_solver.op_data = data
+    independent = SchedulerTask(datetime.now(), task_type=TaskTypes.WORKSHOP)
+    native_solver.tasks, native_solver.task = [task, independent], None
+    native_solver._retain_failed_task(task, "替班冲突", list(task.plan))
+    time, before = task.time, copy.deepcopy(task.plan)
+    for _ in range(3):
+        native_solver._resume_failed_tasks()
+        assert task.execution_failure
+        assert task.plan == before
+        assert find_next_task(native_solver.tasks) is independent
+    observed_return(data, "伊内丝", "讯使")
+    native_solver._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
+    assert any(pending is task for pending in native_solver.tasks)
+    assert task.time is time
+    assert task.plan[ROOM][4] == "Current"
+    assert task.plan["meeting"] == ["红"]

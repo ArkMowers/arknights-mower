@@ -9,7 +9,7 @@ import {mowerReplacementReservations} from './mowerReplacementCoordination'
 import {mowerDormTaskReservations} from './mowerAlphaCandidates'
 import {projectMowerArrangements} from './mowerObservations'
 import {cloneMowerShiftTask,coalesceMowerBackupTransition} from './mowerShiftCycle'
-import {reconcileMowerUrgentRecovery,mowerUrgentRecallBlocked,recordMowerUrgentRecovery} from './mowerUrgentRecovery'
+import {reconcileMowerUrgentRecovery,mowerUrgentRecallBlocked,recordMowerUrgentRecovery,recordMowerUrgentSupport} from './mowerUrgentRecovery'
 
 const rates={workRate:()=>1,recoveryRate:()=>4,forecastRates:(state:RuntimeState)=>({work:Object.fromEntries(Object.keys(state.morale).map(name=>[name,1])),recovery:Object.fromEntries(Object.keys(state.morale).map(name=>[name,4]))})}
 function fixture(two=false,fixed=false){
@@ -87,6 +87,19 @@ describe('urgent dependency recall and observed recovery ownership',()=>{
   expect(request.timeMicros).toBe(0)
   drive(state,()=>Object.values(state.bedOccupants).includes('A'))
   expect(source.data.urgentRecoverySupporters.A).toContain('B')
+ })
+ it('keeps an explicit independent recovery owner after its prepared departure receives further support',()=>{
+  const {source,request}=fixture(),data=projectMowerArrangements(source.data,[{room_1_2:['B']}])
+  Object.assign(data.operators.A!,{group:'',groupBindings:[{group:'',replacement:['X']},{group:'c',replacement:['X']}]})
+  request.type=T.SHIFT_OFF;request.metadata='';request.urgentRecoveryRequestNames=['A']
+  const support=new MowerTask({type:T.SELF_CORRECTION,plan:{room_1_2:['B']}})
+  support.exhaustSupport=true;support.coordinationRequestNames=['A']
+  recordMowerUrgentSupport(data,support,[request],{B:['dormitory_1',2]})
+  expect(request.urgentRecoverySupportNames).toContain('B')
+  expect(request.urgentRecoveryRequestNames).toEqual(['A'])
+  Object.assign(data.operators.A!,{currentRoom:'dormitory_1',currentIndex:3,moodIsPrediction:false})
+  recordMowerUrgentRecovery(data,request,[])
+  expect(data.urgentRecoverySupporters.A).toContain('B')
  })
  it('allows low recalled workers to wait without reversing the completed rescue',()=>{
   const {state,source}=fixture()
