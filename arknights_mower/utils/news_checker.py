@@ -63,9 +63,9 @@ class MaintenanceInfo:
 
     @property
     def resume_at(self) -> datetime:
-        """Try downtime maintenance half an hour before the announced end."""
+        """Try downtime maintenance one hour before the announced end."""
         if self.allows_early_login:
-            return max(self.start, self.end - timedelta(minutes=30))
+            return max(self.start, self.end - timedelta(hours=1))
         return self.end
 
     def active_at(self, now: datetime) -> bool:
@@ -309,7 +309,7 @@ class NewsChecker:
     def get_update_time(cls):
         """Return the maintenance interval used by task scheduling.
 
-        Downtime maintenance deliberately ends 30 minutes before the announced
+        Downtime maintenance deliberately ends one hour before the announced
         time so Mower may attempt to enter an early-opened server. Flash updates
         still use their full announced interval.
         """
