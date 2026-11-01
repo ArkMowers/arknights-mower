@@ -224,6 +224,138 @@ def configure_idle_action(action):
     conf.close_simulator_when_idle = action == "close"
 
 
+@pytest.mark.parametrize("phase", ["initialize", "append", "start", "running"])
+@pytest.mark.parametrize("action", ["idle", "home", "exit", "close"])
+@pytest.mark.parametrize("remaining", [0, 300, 301, 3600])
+def test_failed_daily_run_follows_idle_settings(
+    daily_handoff, monkeypatch, phase, action, remaining
+):
+    solver, clock = daily_handoff.solver, daily_handoff.clock
+    configure_idle_action(action)
+    started = clock.now()
+    pending = solver.tasks[0]
+    # 先通过日常任务准入，再模拟调用耗时，使收尾时覆盖临界值和已到期任务。
+    pending.time = started + timedelta(hours=2)
+    expected_deadline = pending.time
+    failed_at = expected_deadline - timedelta(seconds=remaining)
+    failure = RuntimeError("模拟 MAA 调用失败")
+
+    def fail(*args, **kwargs):
+        clock.current = failed_at
+        raise failure
+
+    target = {
+        "initialize": solver.initialize_maa,
+        "append": solver.append_maa_task,
+        "start": daily_handoff.engine.start,
+        "running": daily_handoff.engine.running,
+    }[phase]
+    target.side_effect = fail
+    archive = MagicMock()
+    monkeypatch.setattr(base_schedule, "save_exception", archive)
+
+    assert solver.maa_plan_solver(tasks=["Fight"])
+
+    archive.assert_called_once_with(failure)
+    base_schedule.send_message.assert_any_call(
+        str(failure), "MAA调用出错！", level="ERROR"
+    )
+    daily_handoff.engine.close.assert_called_once()
+    assert solver.MAA is None
+    assert solver.last_execution["maa"] is None
+    assert solver.tasks == [pending]
+    assert pending.time == expected_deadline
+    assert clock.now() == pending.time
+    if remaining <= 0:
+        solver._idle_sleep.assert_not_called()
+        assert solver.task_count == 0
+    else:
+        solver._idle_sleep.assert_called_once_with(remaining, round_end=True)
+        assert solver.task_count == 1
+    effective = action if remaining > 300 else "home" if action == "home" else "idle"
+    for selected, event in (
+        ("close", "close_simulator"),
+        ("exit", "exit"),
+        ("home", "android_home"),
+    ):
+        assert daily_handoff.events.count((event, failed_at)) == int(
+            remaining > 0 and effective == selected
+        )
+    solver.device.check_current_focus.assert_not_called()
+    solver.back_to_index.assert_called_once()
+
+
+def test_failed_manual_run_returns_error_without_idle_actions(
+    daily_handoff, monkeypatch
+):
+    solver = daily_handoff.solver
+    configure_idle_action("close")
+    failure = RuntimeError("模拟手动 MAA 初始化失败")
+    solver.initialize_maa.side_effect = failure
+    monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
+
+    with pytest.raises(RuntimeError) as raised:
+        solver.maa_plan_solver(tasks=["Fight"], manual=True)
+
+    assert raised.value is failure
+    assert not any(event == "close_simulator" for event, _ in daily_handoff.events)
+    solver._idle_sleep.assert_not_called()
+    assert solver.task_count == 0
+    assert solver.last_execution["maa"] is None
+    daily_handoff.engine.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "failure_type",
+    [MowerExit, base_schedule.DeviceRecoveryError, base_schedule.SharedADBError],
+)
+def test_device_failure_or_stop_skips_automatic_idle(
+    daily_handoff, monkeypatch, failure_type
+):
+    solver = daily_handoff.solver
+    configure_idle_action("close")
+    failure = failure_type()
+    solver.initialize_maa.side_effect = failure
+    archive = MagicMock()
+    monkeypatch.setattr(base_schedule, "save_exception", archive)
+
+    with pytest.raises(failure_type) as raised:
+        solver.maa_plan_solver(tasks=["Fight"])
+
+    assert raised.value is failure
+    solver._idle_sleep.assert_not_called()
+    assert not any(event == "close_simulator" for event, _ in daily_handoff.events)
+    archive.assert_not_called()
+    assert solver.task_count == 0
+    daily_handoff.engine.close.assert_called_once()
+
+
+def test_wake_failure_after_maa_error_propagates_without_second_error_report(
+    daily_handoff, monkeypatch
+):
+    solver = daily_handoff.solver
+    failure = RuntimeError("模拟 MAA 初始化失败")
+    solver.initialize_maa.side_effect = failure
+    wake_failure = ConnectionError("模拟空闲唤醒失败")
+    solver._idle_sleep.side_effect = wake_failure
+    archive = MagicMock()
+    monkeypatch.setattr(base_schedule, "save_exception", archive)
+
+    with pytest.raises(ConnectionError) as raised:
+        solver.maa_plan_solver(tasks=["Fight"])
+
+    assert raised.value is wake_failure
+    archive.assert_called_once_with(failure)
+    errors = [
+        call
+        for call in base_schedule.send_message.call_args_list
+        if call.kwargs.get("level") == "ERROR"
+    ]
+    assert len(errors) == 1
+    assert errors[0].args == (str(failure), "MAA调用出错！")
+    daily_handoff.engine.close.assert_called_once()
+
+
 @pytest.mark.parametrize("action", ["idle", "home", "exit", "close"])
 @pytest.mark.parametrize("remaining", [115, 300, 301])
 def test_daily_stop_waits_before_following_actual_idle_action(

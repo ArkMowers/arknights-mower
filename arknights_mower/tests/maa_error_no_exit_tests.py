@@ -134,12 +134,7 @@ class TestSchedulerTerminalDeviceFailures(unittest.TestCase):
 
 
 class MaaErrorNoExitTests(unittest.TestCase):
-    """#259：MAA 调用出错时异常路径不再调用 device.exit() 关闭游戏。
-
-    原行为是 maa_plan_solver 里任何异常都落到 except Exception → device.exit()
-    关游戏再重拉。修正后保留「瞬时错误不杀游戏、确认真死才重启」原则：出错时
-    只释放 MAA（self.MAA = None）、记录错误、通知用户、本轮跳过，交给下个调度周期。
-    """
+    """MAA 异常清理不额外关闭游戏，清理后由统一收尾执行用户的空闲设置。"""
 
     def setUp(self):
         # 未预期的异常必须使测试失败，不能进入真实休眠或被吞掉后假通过。
@@ -177,10 +172,14 @@ class MaaErrorNoExitTests(unittest.TestCase):
                     maa_touch_option="maatouch",
                     maa_conn_preset="General",
                 )
+                # 先载入工作进程模块，再保存模块快照，避免后续用例使用旧模块引用。
                 with (
                     patch.object(base_schedule.config, "conf", conf),
                     patch.dict(base_schedule.os.environ, {"MOWER_ANDROID": "0"}),
                     patch.object(sys, "path", list(sys.path)),
+                    patch(
+                        "arknights_mower.utils.maa_process.MaaProcess", fake_sdk_worker
+                    ),
                     patch.dict(
                         sys.modules,
                         {
@@ -195,9 +194,6 @@ class MaaErrorNoExitTests(unittest.TestCase):
                     patch.object(base_schedule.requests, "get", return_value=response),
                     patch.object(base_schedule, "guard_adb") as guard,
                     patch(
-                        "arknights_mower.utils.maa_process.MaaProcess", fake_sdk_worker
-                    ),
-                    patch(
                         "arknights_mower.utils.maa_runtime.read_installed_version",
                         return_value="v6.19.0-beta.1",
                     ),
@@ -211,7 +207,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_initialize_maa_failure_does_not_exit_game(self):
-        # 初始化连不上 MAA（initialize_maa 抛错）→ 异常路径不得关闭游戏
+        # 初始化失败只清理和通知；空闲动作交给统一收尾。
         solver = BaseSchedulerSolver()
         solver.device = MagicMock()
         solver.recog = MagicMock()
@@ -223,7 +219,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
             patch.object(
                 solver, "initialize_maa", side_effect=RuntimeError("MAA 连接失败")
             ),
-            patch.object(solver, "_idle_sleep"),
+            patch.object(solver, "rest_until_next_task") as rest,
             patch.object(base_schedule, "send_message") as send_message,
             patch.object(base_schedule, "save_exception"),
         ):
@@ -231,6 +227,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
 
         solver.device.exit.assert_not_called()
         solver.device.check_current_focus.assert_not_called()
+        rest.assert_called_once_with()
         # 出错的 MAA 实例被释放
         self.assertIsNone(solver.MAA)
         # 仍然通知用户（原有错误通知保留）
@@ -238,7 +235,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_task_dispatch_failure_does_not_exit_game(self):
-        # 任务中途下发出错（append_maa_task 抛错）→ 同样不关闭游戏
+        # 下发失败同样不在异常清理中重启游戏。
         solver = BaseSchedulerSolver()
         solver.device = MagicMock()
         solver.recog = MagicMock()
@@ -251,7 +248,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
             patch.object(
                 solver, "append_maa_task", side_effect=RuntimeError("任务下发失败")
             ),
-            patch.object(solver, "_idle_sleep"),
+            patch.object(solver, "rest_until_next_task") as rest,
             patch.object(base_schedule, "send_message") as send_message,
             patch.object(base_schedule, "save_exception"),
         ):
@@ -259,12 +256,12 @@ class MaaErrorNoExitTests(unittest.TestCase):
 
         solver.device.exit.assert_not_called()
         solver.device.check_current_focus.assert_not_called()
+        rest.assert_called_once_with()
         send_message.assert_any_call("任务下发失败", "MAA调用出错！", level="ERROR")
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
-    def test_error_path_resets_scene_timer_before_idle_sleep(self):
-        # 评审 P2：异常路径在 _idle_sleep 前必须重置 recog.last_scene，否则休眠会被
-        # check_freeze 当成「同一场景超时」再次 device.exit() 关闭游戏（参照 rest_until_next_task）。
+    def test_error_path_resets_scene_timer_before_idle_handoff(self):
+        # 旧场景观测在异常收尾前失效，空闲期间不沿用旧场景计时。
         solver = BaseSchedulerSolver()
         solver.device = MagicMock()
         solver.recog = MagicMock()
@@ -273,7 +270,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
         solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=1))]
         captured = {}
 
-        def _capture(remaining_time):
+        def _capture():
             captured["last_scene"] = solver.recog.last_scene
 
         with (
@@ -282,7 +279,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
             patch.object(
                 solver, "initialize_maa", side_effect=RuntimeError("MAA 连接失败")
             ),
-            patch.object(solver, "_idle_sleep", side_effect=_capture),
+            patch.object(solver, "rest_until_next_task", side_effect=_capture),
             patch.object(base_schedule, "send_message"),
             patch.object(base_schedule, "save_exception"),
         ):

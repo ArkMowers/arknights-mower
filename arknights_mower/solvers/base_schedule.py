@@ -17977,16 +17977,8 @@ class BaseSchedulerSolver(
             if large_task_started:
                 resume_dorm_releases(self)
                 large_task_started = False
-            running_long_task = False
-            remaining_time = (deadline() - datetime.now()).total_seconds()
-            if remaining_time > 0:
-                # 参照 rest_until_next_task：休眠前重置场景计时，避免 check_freeze
-                # 把这段休眠当成「同一场景超时」而再次调用 device.exit() 关闭游戏。
-                self.recog.last_scene = None
-                logger.info(
-                    f"休息 {format_time(remaining_time)}，到{deadline().strftime('%H:%M:%S')}开始工作"
-                )
-                self._idle_sleep(remaining_time)
+            self.recog.last_scene = None
+            self.rest_until_next_task()
         else:
             # 空闲唤醒故障交回设备恢复，不能作为 MAA 任务故障报告。
             battle_inventory_active.clear()
