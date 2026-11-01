@@ -5,6 +5,13 @@ import os
 import sys
 from pathlib import Path
 
+# The copied manager executable also serves as the detached software updater.
+if __name__ == "__main__" and sys.argv[1:2] == ["--software-update-worker"]:
+    from arknights_mower.utils.software_update_worker import main as update_main
+
+    update_main(sys.argv[2])
+    sys.exit()
+
 import webview
 
 from arknights_mower.utils import manager_common
