@@ -70,14 +70,26 @@ const iconStyle = computed(() => {
 }
 
 .growth-game-icon--module {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
+.growth-game-icon--module::before {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, currentColor 0.8px, transparent 1px) center / 3px 3px;
+  mask: radial-gradient(ellipse, #000 20%, transparent 72%);
+  opacity: var(--module-pattern-opacity, 0.45);
+  content: '';
+  pointer-events: none;
+}
+
 .growth-game-icon__module-label {
+  position: relative;
   font-family: var(--gp-display);
-  font-size: 21px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1;
 }

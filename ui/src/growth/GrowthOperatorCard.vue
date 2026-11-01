@@ -496,7 +496,6 @@ function stopKeydownPropagation(event) {
   border-left: 1px solid var(--gp-hair-soft);
 }
 .growth-opcard__seg {
-  --skill-glow: var(--gp-muted);
   position: relative;
   display: inline-flex;
   flex: none;
@@ -527,42 +526,28 @@ function stopKeydownPropagation(event) {
   height: 32px;
 }
 .growth-opcard__seg.is-partial {
-  --skill-glow: var(--gp-warn);
   color: var(--gp-warn);
 }
 .growth-opcard__seg.is-done {
-  --skill-glow: var(--gp-accent-ink);
   color: var(--gp-accent-ink);
 }
 .growth-opcard__seg--module.is-locked > .growth-game-icon {
   opacity: 0.3;
 }
 .growth-opcard__seg--module:not(.is-locked) > .growth-game-icon {
-  text-shadow: 0 0 8px currentColor;
+  --module-pattern-opacity: 0.55;
 }
 .growth-opcard__seg--module:not(.is-locked):hover > .growth-game-icon,
 .growth-opcard__seg--module:not(.is-locked):focus-visible > .growth-game-icon,
 .growth-opcard__seg--module.is-active:not(.is-locked) > .growth-game-icon {
-  text-shadow:
-    0 0 4px currentColor,
-    0 0 10px currentColor;
+  --module-pattern-opacity: 0.85;
 }
 .growth-opcard__seg:hover,
 .growth-opcard__seg:focus-visible {
   color: var(--gp-ink);
 }
 .growth-opcard__skills .growth-opcard__seg.is-active > .growth-game-icon {
-  filter: drop-shadow(0 0 4px var(--skill-glow));
-}
-.growth-opcard__seg--module.is-active::after {
-  position: absolute;
-  right: 9px;
-  bottom: 1px;
-  left: 9px;
-  height: 2px;
-  border-radius: 2px;
-  background: currentColor;
-  content: '';
+  filter: drop-shadow(0 0 4px rgb(160 164 171 / 85%));
 }
 .growth-opcard__seg:focus-visible {
   outline: 2px solid var(--gp-accent);
