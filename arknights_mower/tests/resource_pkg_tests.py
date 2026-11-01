@@ -234,6 +234,78 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
         self.assertFalse(rp.install_resource_pkg(package.getvalue()))
         self.assertFalse((self.base / "outside").exists())
 
+    def test_unregistered_files_and_directories_are_not_extracted(self):
+        package = io.BytesIO(resource_zip(optional=True))
+        ignored = (
+            "arknights_mower/data/event_shop.json",
+            "arknights_mower/utils/future.py",
+            "future/empty/",
+        )
+        with zipfile.ZipFile(package, "a") as archive:
+            for name in ignored[1:]:
+                archive.writestr(name, "fixture")
+        allowed = rp.is_package_file
+        events = []
+        with patch.object(
+            rp,
+            "is_package_file",
+            side_effect=lambda name: name != ignored[0] and allowed(name),
+        ):
+            self.assertTrue(
+                rp.install_resource_pkg(
+                    package.getvalue(), callback=lambda **values: events.append(values)
+                )
+            )
+        root = rp.resource_pkg_path(rp._RESOURCE_MARKER).parents[2]
+        for name in ignored:
+            self.assertFalse((root / name).exists())
+        self.assertEqual(self.installed_version(), "v2026.08.23-aaaaaaa")
+        self.assertEqual(rp.resource_pkg_path(RES_PACKAGE_DATA[0]).read_text(), "{}")
+        self.assertEqual(
+            [event["progress"] for event in events if event["phase"] == "extracting"][
+                -1
+            ],
+            94,
+        )
+
+    def test_reinstall_after_client_update_keeps_both_resource_generations(self):
+        name = "arknights_mower/data/event_shop.json"
+        package = resource_zip(optional=True)
+        allowed = rp.is_package_file
+        with patch.object(
+            rp,
+            "is_package_file",
+            side_effect=lambda path: path != name and allowed(path),
+        ):
+            self.assertTrue(rp.install_resource_pkg(package))
+        previous = rp.resource_pkg_path(name)
+        self.assertFalse(previous.exists())
+        self.assertTrue(rp.install_resource_pkg(package))
+        selected = rp.resource_pkg_path(name)
+        self.assertEqual(selected.read_text(), "[]")
+        self.assertNotEqual(selected, previous)
+        self.assertFalse(previous.exists())
+        self.assertEqual(len(read_index(self.overlay)), 2)
+        with patch.object(rp, "_active_resource", None):
+            self.assertEqual(rp.resource_pkg_path(name), selected)
+
+    def test_unknown_unsafe_entries_still_preserve_current_resources(self):
+        self.assertTrue(rp.install_resource_pkg(resource_zip()))
+        before = (self.overlay / "index.json").read_bytes()
+        for name, symlink in (("../outside", False), ("future/link", True)):
+            with self.subTest(name=name):
+                package = io.BytesIO(resource_zip("v2026.08.24-bbbbbbb"))
+                member = zipfile.ZipInfo(name)
+                if symlink:
+                    member.create_system = 3
+                    member.external_attr = 0o120777 << 16
+                with zipfile.ZipFile(package, "a") as archive:
+                    archive.writestr(member, "target")
+                self.assertFalse(rp.install_resource_pkg(package.getvalue()))
+                self.assertEqual((self.overlay / "index.json").read_bytes(), before)
+                self.assertEqual(self.installed_version(), "v2026.08.23-aaaaaaa")
+                self.assertFalse(rp._STAGING.exists())
+
     def test_older_package_cannot_override_newer_builtin(self):
         self.assertFalse(rp.install_resource_pkg(resource_zip("v2026.08.21-aaaaaaa")))
         self.assertEqual(self.installed_version(), "v2026.08.22-0000000")
