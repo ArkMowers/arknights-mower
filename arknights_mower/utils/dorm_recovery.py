@@ -5,6 +5,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_candidates,
     full_dorm_candidate,
 )
+from arknights_mower.utils.resting_priority import RestingTier, resting_tier
 
 
 class DormRecoveryPaddingUnavailable(Exception):
@@ -101,7 +102,11 @@ def recovery_order_target(op_data, room, agents, *, group_transitions=None):
     target = recovery_target(
         op_data, room, agents, manager_names, group_transitions=group_transitions
     )
-    if target is None:
+    if (
+        target is None
+        or target.name in op_data.config.free_room_exclusions
+        or resting_tier(op_data, target.name) > RestingTier.PRIORITY_REPLACEMENT
+    ):
         return None
     target_index = agents.index(target.name)
     if (

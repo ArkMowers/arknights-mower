@@ -207,14 +207,16 @@ def test_real_card_scan_keeps_full_fixed_occupants_in_temporary_roster(
         data.operators[fixed].time_stamp = None
     sample = data.operators[fixed].time_stamp
     monkeypatch.setattr(base_schedule, "agent_card_selected", lambda img, scope: False)
-    monkeypatch.setattr(base_schedule, "estimate_agent_mood", lambda img, scope: 24)
+    monkeypatch.setattr(
+        base_schedule, "estimate_agent_mood", lambda img, scope: 5 if scope == 0 else 24
+    )
     monkeypatch.setattr(base_schedule, "monotonic", lambda: 0)
     solver.recog.w, solver.recog.h = 1920, 1080
     solver.tap = MagicMock()
     solver.no_pending_task = MagicMock(return_value=True)
     solver.swipe_left = MagicMock()
     solver.switch_arrange_order = MagicMock()
-    solver.wait_for_agent_page = MagicMock(return_value=[("黑角", 0)])
+    solver.wait_for_agent_page = MagicMock(return_value=[("银灰", 0), ("黑角", 1)])
     solver.back_to_infrastructure = MagicMock()
 
     solver._scan_card_moods()
