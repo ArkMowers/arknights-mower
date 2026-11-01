@@ -273,6 +273,58 @@ it('retains recovery progress while disconnected and closes it after resolution'
   expect(client.post).not.toHaveBeenCalled()
 })
 
+it('shows suspended worker recovery on first load and after remounting', async () => {
+  client.get.mockResolvedValue({
+    data: recoveryStatus({
+      automatic: false,
+      phase: 'failed',
+      message: '同一故障恢复后仍然出现',
+      trigger_message: '房间读取失败'
+    })
+  })
+  await mount()
+  expect(state.create).toHaveBeenCalledOnce()
+  const entry = state.create.mock.results[0].value
+  expect(entry).toMatchObject({ type: 'warning', title: '自动恢复已暂停' })
+  expect(contents(entry.content())).toContain(
+    '多次恢复后仍然失败，已保留未完成任务。检查错误后，可使用开始按钮继续。'
+  )
+  expect(contents(entry.content())).toContain('同一故障恢复后仍然出现')
+  expect(contents(entry.content())).toContain('触发原因：房间读取失败')
+  expect(contents(entry.content())).not.toContain('任务已停止。')
+
+  await findButton(entry.action()).props.onClick()
+  await settle()
+  expect(state.create).toHaveBeenCalledOnce()
+  app.unmount()
+  app = undefined
+  await mount()
+  expect(state.create).toHaveBeenCalledTimes(2)
+  expect(state.create.mock.results[1].value.title).toBe('自动恢复已暂停')
+  expect(client.post).not.toHaveBeenCalled()
+})
+
+it('updates ongoing recovery to a suspended failure without presenting a user stop', async () => {
+  client.get.mockResolvedValue({ data: recoveryStatus() })
+  await mount()
+  const entry = state.create.mock.results[0].value
+
+  client.get.mockResolvedValue({
+    data: recoveryStatus({
+      automatic: false,
+      phase: 'failed',
+      message: '同一故障恢复后仍然出现'
+    })
+  })
+  await vi.advanceTimersByTimeAsync(3000)
+  await settle()
+  expect(state.create).toHaveBeenCalledOnce()
+  expect(entry).toMatchObject({ type: 'warning', title: '自动恢复已暂停' })
+  expect(contents(entry.content())).toContain('已保留未完成任务')
+  expect(contents(entry.content())).not.toContain('任务已停止。')
+  expect(client.post).not.toHaveBeenCalled()
+})
+
 it('does not announce a stopped historical recovery when loading or remounting the page', async () => {
   client.get.mockResolvedValue({
     data: recoveryStatus({ automatic: false, phase: 'stopped', message: '已停止自动恢复' })

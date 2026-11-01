@@ -13,7 +13,7 @@ date: 2026-10-12
 
 ## Problem
 
-A native main-process exit bypasses Python task recovery. Ordinary Python worker exceptions need their existing failure handling without initiating a complete process-recovery observation. Recovery must preserve explicit Stop, configuration-space ownership and the existing high-level task and compensation boundaries.
+A native main-process exit bypasses Python task recovery. An ordinary Python worker exception can leave HTTP healthy while automation has exited. Recovering every such failure without a repeated-failure limit can repeatedly restart observation, while stopping all failed workers prevents unattended recovery from temporary faults. Recovery must preserve explicit Stop, configuration-space ownership and the existing high-level task and compensation boundaries.
 
 ## Decision
 
@@ -23,7 +23,9 @@ The [process recovery contract](../../../../docs/subsystems/process-recovery.md)
 
 ## Recovery
 
-The supervisor restores service after a native main-process failure. The initial design also admitted ordinary Python worker failures through the persistent recovery controller because a surviving HTTP service cannot repair an exited automation worker by itself. This revision excludes ordinary Python worker exceptions from initiating or reopening process recovery: applying the full recovery observation to them can repeatedly interrupt an otherwise live instance. The persistent recovery controller continues an existing supervisor episode after temporary startup, snapshot or observation failures. Legacy worker-exception notices do not authorize retries, while a later genuine supervisor fault receives its own original cause. Recovery automatically observes actual room occupancy, mood and relevant task state, saves a checkpoint, then returns to existing solver recovery. Ordinary Stop cancels that intent; an accepted ordinary Start enables it again. No separate acknowledgement, manual completed-task disposition or new action-receipt system is required.
+The supervisor restores service after a native main-process failure. The initial design also admitted ordinary Python worker failures through the persistent recovery controller because a surviving HTTP service cannot repair an exited automation worker by itself. A later restriction stopped ordinary failed workers to prevent repeated full observations after memory-allocation failure. That restriction also removed recovery opportunities for temporary worker faults. The current boundary reuses the same controller for eligible failures of independently supervised desktop workers and records repeated failures separately from observation progress. Game recovery restarts the game before state reconciliation; memory recovery restarts the owned Mower process without cancelling task-run intent. Repeated unchanged worker faults suspend recovery and use the configured error notification rather than indefinitely rebuilding the instance. Unsupported entry points retain a diagnostic stopping fallback instead of assuming that closing their HTTP process will restart it.
+
+The persistent recovery controller continues an existing supervisor episode after temporary startup, snapshot or observation failures. Legacy worker-exception notices do not authorize retries; a new genuine fault receives its own original cause. Recovery automatically observes actual room occupancy, mood and relevant task state, saves a checkpoint, then returns to existing solver recovery. Ordinary Stop cancels that intent; an accepted ordinary Start enables it again and clears the repeated-failure count. No separate acknowledgement, manual completed-task disposition or new action-receipt system is required.
 
 Due dynamic trade orders and Fiammetta charging need replanning because the interrupted effect can already have completed. Existing task types provide that reentry, while saved roster compensation and future appointments remain available. Existing Workshop stock records become unverified until depot observation supplies required counts; this delays crafting while other scheduling continues. Quiet logs during a healthy service do not establish a hang. This boundary does not establish exactly-once irreversible actions, reconstruct a roster held only on the interrupted Python stack or repair a confirmed invalid configuration.
 
@@ -35,7 +37,7 @@ WinSW manages Windows services and failure restarts, but a service deployment ch
 
 ## Consequences
 
-Unexpected exits and sustained HTTP unavailability receive continuing attempts; recovery waits for fresh observations and checkpointing rather than replaying uncertain input. The supervisor has its own memory cost and does not establish scheduler progress while HTTP remains healthy. Durable user reset or queue-clear choices remain active through failed recovery attempts; a successful new checkpoint replaces the original SQLite snapshot.
+Unexpected exits and sustained HTTP unavailability receive continuing attempts; worker faults receive bounded recovery rather than immediately cancelling the user's run intent. Recovery waits for fresh observations and checkpointing rather than replaying uncertain input. The repeated-failure record remains after observation succeeds and through a supervised process restart, preventing a fault immediately after reconciliation from continually receiving a fresh retry budget. The supervisor has its own memory cost and does not establish scheduler progress while HTTP remains healthy. Durable user reset or queue-clear choices remain active through failed recovery attempts; a successful new checkpoint replaces the original SQLite snapshot.
 
 ## Verification Status
 

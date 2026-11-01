@@ -62,6 +62,44 @@ def test_crash_restores_one_child_after_backoff_and_removes_auto_resume(
     assert not list(directory.glob("child-*.json"))
 
 
+@pytest.mark.parametrize("blocked", [False, True])
+def test_internal_worker_restart_retains_failure_history(isolated_runtime, blocked):
+    directory = isolated_runtime
+    failure = {
+        "worker_failure_fingerprint": "MemoryError:recognize.py:read:42",
+        "worker_failure_count": 4 if blocked else 2,
+        "worker_failure_at": "2026-11-01T00:00:00+00:00",
+        "worker_failure_blocked": blocked,
+        "recovery_action": "restart_process",
+    }
+    runtime.write_json(
+        directory / "recovery.json",
+        {
+            "active": True,
+            "phase": "failed" if blocked else "waiting",
+            "reason": "worker_recovery",
+            "message": "连续恢复仍失败" if blocked else "内存不足，重启助手",
+            "resume_requested": not blocked,
+            **failure,
+        },
+    )
+    command = child_script(
+        directory,
+        "child_report(desired_running=True)\n"
+        "if len(events) == 1: child_exit('worker_memory')\n"
+        "else: child_exit('window')\n",
+    )
+    assert (
+        supervisor.supervise(command, directory, delays=(0,), poll_interval=0.01) == 0
+    )
+    current = runtime.read_json(directory / "recovery.json")
+    assert {key: current.get(key) for key in failure} == failure
+    assert current["resume_requested"] is (not blocked)
+    if blocked:
+        assert current["phase"] == "failed"
+        assert current["message"] == "连续恢复仍失败"
+
+
 @pytest.mark.parametrize(
     "mode, active, pending_reset",
     [("1", True, False), ("2", True, False), ("2", False, False), ("2", False, True)],

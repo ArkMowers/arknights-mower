@@ -1997,7 +1997,7 @@ def _valid_preparation_serial(serial):
 
 
 def _run_mower_worker(saved_state, preparation_serial=None):
-    """Stop failed workers; only an existing process recovery may retry them."""
+    """Recover failed workers through the existing saved-task boundary."""
     from arknights_mower.__main__ import main
     from arknights_mower.utils import crash_recovery
     from arknights_mower.utils.csleep import MowerExit
@@ -2035,19 +2035,49 @@ def _run_mower_worker(saved_state, preparation_serial=None):
             _request_mower_stop()
             logger.exception("工作线程已停止，请检查错误后手动启动")
             return
-        if not shutdown.closing and not config.stop_mower.is_set():
-            if crash_recovery.status().get("automatic"):
-                crash_recovery.activate(f"恢复期间工作线程发生异常：{exc}")
-                logger.exception("进程恢复尚未完成，保留任务等待后续恢复尝试")
-            else:
-                from arknights_mower.utils.instance_supervisor import task_intent
+        if shutdown.closing:
+            return
+        try:
+            action = crash_recovery.worker_failed(exc)
+        except Exception:
+            logger.exception("记录工作线程恢复失败，保留原任务和诊断")
+            action = None
+        if config.stop_mower.is_set() or crash_recovery.cancelled():
+            return
+        if action == "restart_game":
+            logger.exception("工作线程发生异常，保留任务，重启游戏并重新观察后接续")
+            return
+        supervised = bool(
+            os.environ.get("MOWER_SUPERVISOR_CHILD_REPORT")
+            and os.environ.get("MOWER_SUPERVISOR_GENERATION")
+        )
+        if action == "restart_process" and supervised:
+            logger.exception("助手内存申请失败，保留任务并请求监督进程重启助手")
+            shutdown.request("worker_memory")
+            return
+        if action == "restart_process":
+            crash_recovery._update(
+                phase="failed",
+                message="当前入口没有独立监督进程，保留任务等待手动启动。",
+                resume_requested=False,
+                worker_failure_blocked=True,
+            )
+        config.stop_mower.set()
+        message = (
+            f"同一故障连续自动恢复仍未解决，已暂停本次运行并保留任务。"
+            f"请检查错误后点击开始重试。错误：{exc}"
+            if action == "stop"
+            else f"工作线程发生异常，当前入口无法自动恢复，已保留任务。"
+            f"请检查错误后手动启动。错误：{exc}"
+        )
+        # Pausing a failed run does not withdraw the user's run intent.
+        from arknights_mower.utils.email import send_message
 
-                config.stop_mower.set()
-                try:
-                    task_intent(False)
-                except Exception:
-                    logger.exception("记录任务停止意图失败，工作线程已停止")
-                logger.exception("工作线程发生异常，本次任务运行已停止")
+        logger.exception("%s", message)
+        try:
+            send_message(message, subject="Mower 自动恢复未完成", level="ERROR")
+        except Exception:
+            logger.exception("发送工作线程故障通知失败")
     finally:
         round_stop.cancel()
         if saved_state.get("_process_crash_recovery"):
@@ -2352,7 +2382,9 @@ def register_shutdown(lifecycle):
 
     def wait_worker():
         reason = getattr(lifecycle, "reason", "")
-        internal_fault = isinstance(reason, str) and reason.startswith("device_")
+        internal_fault = isinstance(reason, str) and (
+            reason.startswith("device_") or reason == "worker_memory"
+        )
         stopped = (
             _stop_mower(timeout=10, preserve_run_intent=True)
             if internal_fault
