@@ -7,6 +7,10 @@ export const RECYCLE_RULES = rules.recycle
 const RECYCLE_SKILL_BONUSES: Readonly<Record<string, number>> = {
   'recycle_spd&cost[000]': 20,
   'recycle_spd&cost[010]': 30,
+  'recycle_spd&cost[001]': 20,
+  'recycle_spd&cost[011]': 30,
+  'recycle_spd&cost[100]': 20,
+  'recycle_spd&cost[110]': 30,
 }
 
 export interface RecycleEfficiency {
@@ -37,8 +41,10 @@ export function evaluateRecycleEfficiency(
     for (const skill of operator.skills) {
       if (skill.roomType !== 'RECYCLE') continue
       const value = RECYCLE_SKILL_BONUSES[skill.buffId]
+      const moodReduction = ['recycle_spd&cost[100]', 'recycle_spd&cost[110]'].includes(skill.buffId)
+        ? '，心情每小时消耗-0.1' : ''
       // A percentage regex alone could silently erase a future skill's prerequisite.
-      if (value === undefined || skill.description !== `进驻回收站时，材料转化效率+${value}%`) {
+      if (value === undefined || skill.description !== `进驻回收站时，材料转化效率+${value}%${moodReduction}`) {
         throw new Error(`Unquantified recycle skill: ${id}/${skill.buffId}`)
       }
       efficiencyPercent += value

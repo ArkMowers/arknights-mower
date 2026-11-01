@@ -41,7 +41,7 @@ export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,mora
     dynamicAll=(b==='dorm_powToRecAll[010]'?.15:.1)+.05*global.effectivePowerStations.count
   }
   if(b.startsWith('dorm_hireToRecAll['))dynamicAll=(b==='dorm_hireToRecAll[000]'?.15:.1)+(b==='dorm_hireToRecAll[021]'?.1:.05)*Math.max(0,config.facilities.office-1)
-  if(b==='dorm_rec_all&unfull[001]')dynamicAll=.2+.01*operators.filter(o=>mood(o.charId)<24).length
+  if(b==='dorm_rec_all&unfull[001]'||b==='dorm_rec_all&unfull[100]')dynamicAll=(b==='dorm_rec_all&unfull[001]'?.2:.1)+.01*operators.filter(o=>mood(o.charId)<24).length
   if(b==='dorm_rec_all&lv[100]')dynamicAll=.15+.02*level
   if(b==='dorm_rec_all&bd[000]')dynamicAll=.2+.01*Math.floor(global.silentResonance.effective/5)
   if(b==='dorm_rec_all&group[000]')dynamicAll=.06*Math.min(4,global.presentOperators.filter(o=>matchesRiicFaction(o,'sui')).length)

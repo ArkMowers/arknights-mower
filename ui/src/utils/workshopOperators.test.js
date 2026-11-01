@@ -337,6 +337,16 @@ describe('workshop owned defaults', () => {
       })
     ).toBe('休谟斯：仅合成 T3 材料，副产品概率加成 +90%')
   })
+  it('explains 镜匠 T4 scope, T3 byproduct and priority after 蚀清', () => {
+    expect(
+      workshopRecommendationText({
+        name: '镜匠',
+        material_scope: 't4',
+        materials: ['糖聚块'],
+        bonuses: { 糖聚块: 80 }
+      })
+    ).toBe('镜匠：仅 T4 材料，副产品概率加成 +80%，T3 副产品固定为酮凝集组（优先级在蚀清之后）')
+  })
 })
 
 describe('workshop cultivation reference', () => {

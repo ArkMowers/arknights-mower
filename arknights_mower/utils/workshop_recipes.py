@@ -10,7 +10,7 @@ from arknights_mower.utils.workshop_material_policy import (
     workshop_recipe_allowed,
 )
 
-T4_PREFERRED = ("九色鹿", "蚀清")
+T4_PREFERRED = ("九色鹿", "蚀清", "镜匠")
 SCOPED_OPERATORS = (*T4_PREFERRED, "莱伊", "旅骨")
 
 

@@ -1,5 +1,259 @@
 [
   {
+    "key": 438,
+    "name": "行铃",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "梅里塔精拣",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻回收站时，材料转化效率<@cc.vup>+20%</>",
+        "roomType": "回收站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_recycle_spd&cost1",
+        "buffColor": "#6ccbcb",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "花椰菜甄选",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻回收站时，材料转化效率<@cc.vup>+30%</>",
+        "roomType": "回收站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_recycle_spd&cost2",
+        "buffColor": "#6ccbcb",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 437,
+    "name": "镜匠",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "制镜基本功·α",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>精英材料</>时，副产品的产出概率提升<@cc.vup>75%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_evolve2",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "制镜基本功·β",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>精英材料</>时，副产品的产出概率提升<@cc.vup>80%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_evolve3",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "浸剂回收",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>精英材料</>产出<@cc.kw>T3</>品质的副产品时，副产品必定为<@cc.kw>酮凝集组</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_drop_aketon",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 436,
+    "name": "奥尔佳",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "外交禀赋",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，线索搜集速度提升<@cc.vup>10%</>",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd1",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "群策群力",
+        "buffer": true,
+        "buffer_des": [
+          "cc_g_ussg"
+        ],
+        "des": "进驻会客室时，线索搜集速度提升<@cc.vup>10%</>，与其他<$cc.g.ussg><@cc.kw>乌萨斯学生自治团</></>干员进驻会客室一起工作时，线索搜集速度额外提升<@cc.vup>20%</>",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd&ussg1",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 435,
+    "name": "国度",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "无差别回收",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻回收站时，材料转化效率<@cc.vup>+20%</>，心情每小时消耗<@cc.vup>-0.1</>",
+        "roomType": "回收站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_recycle_spd&cost4",
+        "buffColor": "#6ccbcb",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "无差别转化",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻回收站时，材料转化效率<@cc.vup>+30%</>，心情每小时消耗<@cc.vup>-0.1</>",
+        "roomType": "回收站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_recycle_spd&cost5",
+        "buffColor": "#6ccbcb",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "人造物之畏",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻发电站时，无人机充能速度<@cc.vup>+15%</>",
+        "roomType": "发电站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_pow_spd2",
+        "buffColor": "#8fc31f",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 434,
+    "name": "冻河",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "“无用的人脉”",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，贸易站内除自身以外每名处于工作状态的干员<@cc.vup>+15%</>订单获取效率",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_share4",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "“真有用？”",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻贸易站时，贸易站内除自身以外每名处于工作状态的干员<@cc.vup>+20%</>订单获取效率",
+        "roomType": "贸易站",
+        "buffCategory": "OUTPUT",
+        "skillIcon": "bskill_tra_share5",
+        "buffColor": "#0075a9",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "微小的帮助",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内所有干员的心情每小时恢复<@cc.vup>+0.1</>；同时该宿舍每有<@cc.kw>1</>名心情未满的干员，则恢复效果额外<@cc.vup>+0.01</>（同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_unfull2",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 433,
+    "name": "塔露拉",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "剑与昔时",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，<@cc.kw>近卫</>与<@cc.kw>术师</>干员的专精技能训练速度<@cc.vup>+30%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_caster&vanguard1",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "火旁新事",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻训练室协助位时，如果训练位干员分支为<@cc.kw>本源近卫</>或<@cc.kw>本源术师</>，则专精技能训练速度额外<@cc.vup>+45%</>",
+        "roomType": "训练室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_train_branches1",
+        "buffColor": "#7d0022",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
     "key": 432,
     "name": "旅骨",
     "span": 3,

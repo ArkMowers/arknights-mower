@@ -828,10 +828,10 @@ export function evaluateOperators(
           const count = Math.min(5, globalContext.suiFacilities)
           applied = count * 4
           facilityDetail = `Sui facilities ${count}`
-        } else if (skill.buffId === 'trade_ord_spd&share[000]') {
+        } else if (skill.buffId === 'trade_ord_spd&share[000]' || skill.buffId === 'trade_ord_spd&share[100]') {
           applied = Math.max(0, staffCount - 1) * 15
-        } else if (skill.buffId === 'trade_ord_spd&share[002]' || skill.buffId === 'trade_ord_spd&share[001]') {
-          const rate = skill.buffId.endsWith('[002]') ? 20 : 10
+        } else if (skill.buffId === 'trade_ord_spd&share[002]' || skill.buffId === 'trade_ord_spd&share[001]' || skill.buffId === 'trade_ord_spd&share[110]') {
+          const rate = skill.buffId.endsWith('[001]') ? 10 : 20
           applied = Math.max(0, staffCount - 1) * rate
 
         } else if (skill.buffId === 'trade_ord_spd_bd[100]') {
