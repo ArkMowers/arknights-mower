@@ -243,7 +243,7 @@ async function handleFallbackTime(value) {
       type="datetime"
       clearable
       :disabled="!hasFallbackTarget || loading"
-      placeholder="未检测到活动结束时间"
+      placeholder="所选关卡无活动结束时间"
       @update:value="handleFallbackTime"
     />
     <span
@@ -252,16 +252,16 @@ async function handleFallbackTime(value) {
     >
       {{ fallbackTimeIsCustom ? '自定' : '默认' }}
     </span>
-    <div class="weekly-plan-label fallback-label">兑换后切换</div>
-    <n-checkbox
-      v-model:checked="shopSwitchEnabled"
-      class="shop-switch"
-      :disabled="loading || (!hasFallbackTarget && !shopSwitchEnabled)"
-      aria-label="活动商店兑换完成后切换方案"
-      >有限商品兑换完毕后切换</n-checkbox
-    >
-    <div class="shop-switch-note">
-      使用上方切换目标。需启用活动商店兑换；兑换中断或货币不足时不切换。关闭此项仍保留定时切换。
+    <div class="shop-switch-row">
+      <n-checkbox
+        v-model:checked="shopSwitchEnabled"
+        :disabled="loading || (!hasFallbackTarget && !shopSwitchEnabled)"
+        aria-label="活动商店兑换完成后切换方案"
+        >有限商品兑换完毕后切换</n-checkbox
+      >
+      <div class="shop-switch-note">
+        使用上方切换目标。需启用活动商店兑换；兑换中断或货币不足时不切换。关闭此项仍保留定时切换。
+      </div>
     </div>
     <div v-if="error" class="selector-error">{{ error }}</div>
   </div>
@@ -306,9 +306,12 @@ async function handleFallbackTime(value) {
   width: 100%;
 }
 
-.shop-switch,
-.shop-switch-note {
+.shop-switch-row {
   grid-column: 2 / 4;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .shop-switch-note {

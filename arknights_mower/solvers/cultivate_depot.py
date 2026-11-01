@@ -86,8 +86,6 @@ class cultivate:
                         "_mower_player": {key: i[key] for key in player_fields},
                     }
                 items = resp.get("data", {}).get("items")
-                if force_inventory and items is None:
-                    raise ValueError("森空岛未返回库存，无法完成库存同步")
                 if items is not None:
                     if not isinstance(items, list) or any(
                         not isinstance(entry, dict)
@@ -99,24 +97,45 @@ class cultivate:
                     # Use request start, not completion: a concurrent craft must win.
                     resp = {**resp, "_mower_inventory_observed_at": observed_at}
 
+                from arknights_mower.utils.growth import (
+                    completed_manual_goals,
+                    load_goals,
+                    remove_completed_goals,
+                    save_statistics,
+                )
+                from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+                skills = get_skill_data()
+                completed = completed_manual_goals(resp["data"], skills, load_goals())
+                if force_inventory and items is None:
+                    if completed:
+                        from arknights_mower.solvers.record import save_inventory_counts
+
+                        save_inventory_counts(
+                            {},
+                            scanned_counts={},
+                            cloud_counts={},
+                            cloud_at=observed_at,
+                            force_cloud=True,
+                            invalidate_missing=True,
+                        )
+                    raise ValueError("森空岛未返回库存，无法完成库存同步")
+
                 def dump(file):
                     json.dump(resp, file, ensure_ascii=False, indent=4)
 
                 # Manual refresh and warehouse tasks share this atomic cache write.
                 atomic_write(self.record_path, dump)
-                from arknights_mower.utils.growth import save_statistics
-                from arknights_mower.utils.mastery_recommendation import get_skill_data
-
                 try:
                     save_statistics(
                         resp,
                         self.record_path.with_name("growth_history.json"),
                         observed_at,
-                        get_skill_data(),
+                        skills,
                     )
                 except (OSError, ValueError, KeyError):
                     logger.exception("养成统计缓存保存失败")
-                if items is not None:
+                if completed or items is not None:
                     from arknights_mower.solvers.record import save_inventory_counts
                     from arknights_mower.utils.depot import cloud_inventory_snapshot
 
@@ -125,9 +144,12 @@ class cultivate:
                         counts,
                         scanned_counts={},
                         cloud_counts=counts,
-                        cloud_at=timestamp,
-                        force_cloud=force_inventory,
+                        cloud_at=observed_at if completed else timestamp,
+                        force_cloud=force_inventory or bool(completed),
+                        invalidate_missing=bool(completed),
                     )
+                if completed:
+                    remove_completed_goals(resp["data"], skills)
                 updated = True
                 from arknights_mower.utils.yituliu_sync import sync_after_cultivate
 

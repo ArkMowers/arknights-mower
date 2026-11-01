@@ -1118,6 +1118,7 @@ def save_inventory_counts(
     cloud_counts=None,
     cloud_at=0,
     force_cloud=False,
+    invalidate_missing=False,
 ):
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -1134,6 +1135,29 @@ def save_inventory_counts(
                 "SELECT item_name, baseline, directions FROM workshop_inventory_pending"
             )
         }
+        invalidated = set()
+        if invalidate_missing and cloud_at > 0 and not battle_inventory_active.is_set():
+            invalidated = {
+                name
+                for name in current.keys() - (cloud_counts or {}).keys()
+                if protected.get(name, 0) < cloud_at
+            }
+            conn.executemany(
+                "DELETE FROM inventory WHERE item_name = ?",
+                [(name,) for name in invalidated],
+            )
+            conn.executemany(
+                "DELETE FROM workshop_inventory_pending WHERE item_name = ?",
+                [(name,) for name in invalidated],
+            )
+            conn.executemany(
+                "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
+                "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
+                [(name, cloud_at) for name in invalidated],
+            )
+            for name in invalidated:
+                effective.pop(name, None)
+                current.pop(name, None)
         if scanned_counts is not None:
             for name in protected.keys() | (cloud_counts or {}).keys():
                 observed_at = protected.get(name, 0)
@@ -1242,8 +1266,13 @@ def save_inventory_counts(
                     if name in effective and effective[name] == count:
                         observed[name] = max(timestamp, observed.get(name, 0))
         clear_workshop_recipe_rejections(observed)
-        if any(current.get(name) != count for name, count in effective.items()) or any(
-            timestamp > protected.get(name, 0) for name, timestamp in observed.items()
+        if (
+            invalidated
+            or any(current.get(name) != count for name, count in effective.items())
+            or any(
+                timestamp > protected.get(name, 0)
+                for name, timestamp in observed.items()
+            )
         ):
             workshop_inventory_changed.set()
         return effective
