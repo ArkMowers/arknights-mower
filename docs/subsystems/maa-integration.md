@@ -131,6 +131,8 @@ Native settlement accounting and per-batch cap handling follow the [local operat
 
 ## 5. Activity Weekly Plans
 
+Latest-activity recommendations select the three highest-numbered ordinary stages with at least one `MATERIAL` drop marked `NORMAL`, then add ordinary stages dropping 固源岩 or 装置 without duplicating stage codes. Stages with only first-clear rewards, activity items or no material drops do not occupy the three recommendation slots. [`select_latest_activity_stages`](../../arknights_mower/utils/weekly_stage.py) supplies both weekly-plan options and inventory binding suggestions; [focused tests](../../arknights_mower/tests/weekly_stage_tests.py) cover a final stage without repeatable material drops displacing a farming stage.
+
 <a id="expired-source-plan-cleanup"></a>**Expired Source Plan Cleanup** governs automatic activity fallback. After selecting the destination successfully, the manager removes source-plan selections whose observed or cached stage end times have passed according to the calibrated server clock. The destination, ordinary stages, still-open activity stages, daily row settings and inventory rules remain unchanged. A failed destination selection causes no selection cleanup. Without stage-specific end-time evidence, the manager preserves selections.
 
 Selected activity end times are cached per plan and stage, retained across resource-window removal, refreshed from current data and pruned when selections change. The existing atomic weekly-plan writer persists cleanup and removes obsolete plan-end metadata. Manual plan selection does not perform expiry cleanup.

@@ -11,7 +11,7 @@ difficulty。id 即关卡代号（如 TO-9、TO-S-4）。
    为 {startTs,endTs}）的关的 startTs 最大者为「最新开启的活动」；
 2. 只取活动的「普通关」：剔 突袭/挑战版（difficulty=FOUR_STAR 或代号含「突袭」后缀）
    与 MO 关 / S 关 / EX 关（代号含 `-MO-`/`-S-`/`-EX-` 段）；
-3. 后三关：关卡代号尾部数字最大的 3 个；
+3. 后三关：有 MATERIAL 常规掉落的普通关中，关卡代号尾部数字最大的 3 个；
 4. + 所有掉落固源岩(30012) 或 装置(30062) 的关；
 5. 不卡数量上限、不去重（同关同时满足两者只保留一次，因下拉 value 不能重复）。
 
@@ -168,10 +168,13 @@ def select_latest_activity_stages(stages, key_mapping, now) -> list[dict]:
         code = _stage_code(stage)
         if not code:
             continue
+        materials = _materials(stage, key_mapping)
+        if not materials:
+            continue
         entries.append(
             {
                 "code": code,
-                "materials": _materials(stage, key_mapping),
+                "materials": materials,
                 "_num": _trailing_number(code),
                 "_target": _drops_target(stage),
             }
