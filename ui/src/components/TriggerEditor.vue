@@ -51,12 +51,34 @@ function update_right(value) {
   else right.value = value
 }
 
-function generate() {
-  const result = function_name.value
+function current_expression() {
+  return function_name.value
     ? { function: function_name.value, args: args.value.map((arg) => arg.value) }
     : { left: left.value, operator: operator.value, right: right.value }
-  emit('update', result)
 }
+
+function expression_key(data) {
+  return JSON.stringify(data, ['function', 'args', 'left', 'operator', 'right'])
+}
+
+function generate() {
+  const result = current_expression()
+  if (expression_key(result) !== expression_key(props.data)) emit('update', result)
+}
+
+watch(
+  () => props.data,
+  (data) => {
+    if (expression_key(current_expression()) === expression_key(data)) return
+    left.value = data.left
+    operator.value = data.operator
+    right.value = data.right
+    function_name.value = data.function
+    args.value = (data.args || []).map((value) => ({ id: next_argument_id++, value }))
+    duration_hours.value = parse_maintenance_expression(data.left)?.hours ?? 6
+  },
+  { deep: true }
+)
 
 watch(
   [left, operator, right, function_name, args],
