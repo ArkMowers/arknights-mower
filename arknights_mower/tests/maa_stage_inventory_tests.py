@@ -295,9 +295,7 @@ class MaaStageInventoryTests(unittest.TestCase):
             for number, item in [(7, "31043"), (8, "31083"), (9, "31113"), (10, None)]
         ]
         weekly_plan = [{"weekday": "周一", "stage": ["TL-10"]}]
-        with patch(
-            "arknights_mower.utils.maa_stage_inventory.stage_data_full", stages
-        ):
+        with patch("arknights_mower.utils.maa_stage_inventory.stage_data_full", stages):
             options, suggestion = build_stage_options(weekly_plan=weekly_plan, now=1500)
 
         self.assertEqual(

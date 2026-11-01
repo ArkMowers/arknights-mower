@@ -171,9 +171,7 @@ class TestSelectLatestActivityStages(unittest.TestCase):
         self.assertEqual(
             by_code["BS-2"]["materials"], [{"id": "30012", "name": "固源岩"}]
         )
-        self.assertEqual(
-            by_code["BS-3"]["materials"], [{"id": "30031", "name": "糖"}]
-        )
+        self.assertEqual(by_code["BS-3"]["materials"], [{"id": "30031", "name": "糖"}])
         self.assertEqual(
             by_code["BS-5"]["materials"], [{"id": "30041", "name": "异铁"}]
         )
