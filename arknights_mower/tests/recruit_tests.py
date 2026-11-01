@@ -47,6 +47,43 @@ class TestRecruitCal(unittest.TestCase):
             )
         )
 
+    def test_roberta_is_available_with_supporter_and_defense_tags(self):
+        results = self.test_class.recruit_cal(["辅助干员", "防护"])
+        by_tags = {item["tag"]: item["result"] for item in results[4]}
+
+        self.assertEqual(
+            by_tags[("辅助干员", "防护")],
+            [{"id": "char_484_robrta", "name": "罗比菈塔", "star": 4}],
+        )
+
+    def test_mulberry_is_available_with_senior_medic_tags(self):
+        results = self.test_class.recruit_cal(["资深干员", "医疗干员"])
+        by_tags = {item["tag"]: item["result"] for item in results[5]}
+
+        self.assertIn(
+            {"id": "char_473_mberry", "name": "桑葚", "star": 5},
+            by_tags[("资深干员", "医疗干员")],
+        )
+
+    def test_saileach_requires_top_operator_tag(self):
+        results = self.test_class.recruit_cal(["高级资深干员", "先锋干员", "支援"])
+        by_tags = {item["tag"]: item["result"] for item in results[6]}
+
+        self.assertEqual(
+            by_tags[("高级资深干员", "先锋干员", "支援")],
+            [{"id": "char_479_sleach", "name": "琴柳", "star": 6}],
+        )
+        without_top_operator = self.test_class.recruit_cal(["先锋干员", "支援"])
+        self.assertEqual(without_top_operator[6], [])
+        self.assertTrue(
+            all(
+                agent["id"] != "char_479_sleach"
+                for candidates in without_top_operator.values()
+                for item in candidates
+                for agent in item["result"]
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

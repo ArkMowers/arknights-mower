@@ -17,6 +17,22 @@ def _model(name):
         return pickle.load(file)
 
 
+def test_recruit_data_and_name_templates_cover_the_same_operators():
+    operators = json.loads((ROOT / "data/recruit.json").read_text(encoding="utf-8"))
+    groups = json.loads((ROOT / "data/recruit_result.json").read_text(encoding="utf-8"))
+    grouped_ids = [operator for group in groups.values() for operator in group]
+    templates = _model("recruit_result.pkl")
+
+    assert len(grouped_ids) == len(set(grouped_ids))
+    assert set(grouped_ids) == operators.keys() == templates.keys()
+    for length, group in groups.items():
+        for operator in group:
+            name_length = len(operators[operator]["name"])
+            assert int(length) == (name_length if name_length <= 4 else -1)
+            assert templates[operator].ndim == 2
+            assert templates[operator].max() > 0
+
+
 def _rank(image, templates):
     return sorted(
         (
