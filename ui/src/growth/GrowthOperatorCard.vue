@@ -496,6 +496,7 @@ function stopKeydownPropagation(event) {
   border-left: 1px solid var(--gp-hair-soft);
 }
 .growth-opcard__seg {
+  --skill-glow: var(--gp-muted);
   position: relative;
   display: inline-flex;
   flex: none;
@@ -526,9 +527,11 @@ function stopKeydownPropagation(event) {
   height: 32px;
 }
 .growth-opcard__seg.is-partial {
+  --skill-glow: var(--gp-warn);
   color: var(--gp-warn);
 }
 .growth-opcard__seg.is-done {
+  --skill-glow: var(--gp-accent-ink);
   color: var(--gp-accent-ink);
 }
 .growth-opcard__seg--module.is-locked > .growth-game-icon {
@@ -548,7 +551,10 @@ function stopKeydownPropagation(event) {
 .growth-opcard__seg:focus-visible {
   color: var(--gp-ink);
 }
-.growth-opcard__seg.is-active::after {
+.growth-opcard__skills .growth-opcard__seg.is-active > .growth-game-icon {
+  filter: drop-shadow(0 0 4px var(--skill-glow));
+}
+.growth-opcard__seg--module.is-active::after {
   position: absolute;
   right: 9px;
   bottom: 1px;
