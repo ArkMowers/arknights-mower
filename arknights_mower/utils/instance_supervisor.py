@@ -403,6 +403,21 @@ def supervise(
             if wanted is not None:
                 notice["resume_requested"] = wanted
             if isinstance(previous, dict):
+                for key in (
+                    "worker_failure_fingerprint",
+                    "worker_failure_count",
+                    "worker_failure_at",
+                    "worker_failure_blocked",
+                    "recovery_action",
+                ):
+                    if key in previous:
+                        notice[key] = previous[key]
+                if previous.get("worker_failure_blocked"):
+                    notice.update(
+                        phase="failed",
+                        resume_requested=False,
+                        message=previous.get("message", "自动恢复失败，等待手动开始。"),
+                    )
                 if previous.get("reset_observation_pending"):
                     notice["start_type"] = "2"
                     notice["reset_observation_pending"] = True

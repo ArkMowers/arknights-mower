@@ -14,6 +14,8 @@ _completed_episodes = 0
 _cancelled = False
 _progress = {}
 RETRY_DELAYS = (2.0, 5.0, 15.0, 60.0, 300.0)
+WORKER_RECOVERY_LIMIT = 3
+WORKER_FAILURE_WINDOW = timedelta(minutes=15)
 
 
 def notice_path():
@@ -44,6 +46,8 @@ def status():
         automatic = (
             value["active"]
             and value.get("reason") != "worker_exception"
+            and value.get("phase") != "failed"
+            and not value.get("worker_failure_blocked")
             and value.get(
                 "resume_requested", os.environ.get("MOWER_RECOVERY_RUN") != "0"
             )
@@ -57,8 +61,11 @@ def status():
             "automatic": bool(automatic),
         }
         if result["active"]:
-            result.update(_progress)
-            if not automatic:
+            if result.get("worker_failure_blocked"):
+                result.update(phase="failed", next_retry_at=None)
+            elif result.get("phase") != "failed":
+                result.update(_progress)
+            if not automatic and result.get("phase") != "failed":
                 result.update(
                     phase="stopped",
                     message="任务已停止，后台不会自动启动任务。",
@@ -95,6 +102,8 @@ def begin():
 def failed(message="设备观察或恢复尚未完成；后台退避后自动重试。", **values):
     path = notice_path()
     raw = runtime.read_json(path) if path is not None else None
+    if isinstance(raw, dict) and raw.get("phase") == "failed":
+        return
     if isinstance(raw, dict) and raw.get("active") is True:
         _update(phase="waiting", message=message, **values)
     else:
@@ -115,11 +124,14 @@ def cancel():
         path = notice_path()
         raw = runtime.read_json(path) if path is not None else None
         if isinstance(raw, dict) and raw.get("active") is True:
+            blocked = raw.get("phase") == "failed" or raw.get("worker_failure_blocked")
             _update(
                 resume_requested=False,
-                phase="stopped",
+                phase="failed" if blocked else "stopped",
                 next_retry_at=None,
-                message="任务已停止，后台不会自动启动任务。",
+                message=raw.get("message", "自动恢复已停止。")
+                if blocked
+                else "任务已停止，后台不会自动启动任务。",
             )
 
 
@@ -150,13 +162,19 @@ def initialize_intent(wanted, *, startup=False, start_type="0"):
     """Resolve an unready launch from its actual startup policy, honoring Stop."""
     with _lock:
         wanted = bool(wanted) and not _cancelled
-        os.environ["MOWER_RECOVERY_RUN"] = "1" if wanted else "0"
         path = notice_path()
         raw = runtime.read_json(path) if path is not None else None
         raw = _retire_worker_failure(path, raw)
+        blocked = isinstance(raw, dict) and (
+            raw.get("phase") == "failed" or raw.get("worker_failure_blocked")
+        )
+        os.environ["MOWER_RECOVERY_RUN"] = "1" if wanted else "0"
         if isinstance(raw, dict) and raw.get("active") is True:
-            values = {"resume_requested": wanted, "startup": startup}
-            if startup and wanted:
+            values = {
+                "resume_requested": wanted and not blocked,
+                "startup": startup and not blocked,
+            }
+            if startup and wanted and not blocked:
                 values["start_type"] = (
                     "2" if start_type == "2" else pending_start_type() or start_type
                 )
@@ -216,6 +234,10 @@ def request_resume(start_type="0"):
                 else None,
                 phase="waiting",
                 message="正在重新观察设备、驻员和心情，按所选启动方式继续调度。",
+                worker_failure_count=0,
+                worker_failure_fingerprint=None,
+                worker_failure_at=None,
+                worker_failure_blocked=False,
             )
         else:
             path = notice_path()
@@ -225,6 +247,13 @@ def request_resume(start_type="0"):
                 raw["pending_start_type"] = (
                     start_type if start_type in ("1", "2", "3") else None
                 )
+                for key in (
+                    "worker_failure_count",
+                    "worker_failure_fingerprint",
+                    "worker_failure_at",
+                    "worker_failure_blocked",
+                ):
+                    raw.pop(key, None)
                 runtime.write_json(path, raw, sync=True)
 
 
@@ -312,6 +341,115 @@ def activate(message):
             sync=True,
         )
         _progress.clear()
+
+
+def is_memory_error(exc):
+    """Identify allocation failures through wrappers without loading image libraries."""
+    pending, seen = [exc], set()
+    while pending:
+        error = pending.pop()
+        if error is None or id(error) in seen:
+            continue
+        seen.add(id(error))
+        if isinstance(error, MemoryError) or (
+            type(error).__module__.split(".")[0] == "cv2"
+            and getattr(error, "code", None) == -4
+        ):
+            return True
+        pending.extend(
+            nested
+            for nested in (
+                error.__cause__,
+                error.__context__,
+                getattr(error, "cause", None),
+                getattr(error, "fallback", None),
+            )
+            if isinstance(nested, BaseException)
+        )
+    return False
+
+
+def worker_failed(exc):
+    """Reuse saved-state recovery, stopping after repeated failures at one source."""
+    from arknights_mower.utils import config
+
+    path = notice_path()
+    with _lock:
+        if path is None or _cancelled or config.stop_mower.is_set():
+            return None
+        raw = runtime.read_json(path)
+        if path.exists() and (
+            not isinstance(raw, dict) or type(raw.get("active")) is not bool
+        ):
+            return None
+        raw = dict(raw or {"active": False, "phase": "resolved"})
+        if raw.get("phase") == "failed" or raw.get("worker_failure_blocked"):
+            return "stop"
+        error_type = type(exc)
+        fingerprint = f"{error_type.__module__}.{error_type.__qualname__}"
+        trace = exc.__traceback__
+        if trace is not None:
+            while trace.tb_next is not None:
+                trace = trace.tb_next
+            code = trace.tb_frame.f_code
+            fingerprint += f":{code.co_filename}:{code.co_name}:{trace.tb_lineno}"
+        now = datetime.now(timezone.utc)
+        try:
+            previous_at = datetime.fromisoformat(raw.get("worker_failure_at", ""))
+            repeated = (
+                raw.get("worker_failure_fingerprint") == fingerprint
+                and timedelta(0) <= now - previous_at <= WORKER_FAILURE_WINDOW
+            )
+        except (TypeError, ValueError):
+            repeated = False
+        previous_count = raw.get("worker_failure_count", 0)
+        count = (
+            previous_count + 1
+            if repeated and type(previous_count) is int and previous_count >= 0
+            else 1
+        )
+        action = "restart_process" if is_memory_error(exc) else "restart_game"
+        exhausted = count > WORKER_RECOVERY_LIMIT
+        detail = f"工作线程发生异常：{exc}"
+        previous = {**raw, "startup": False}
+        if previous.get("reason") == "worker_exception":
+            previous["active"] = False
+        if not previous["active"]:
+            raw.pop("exit_code", None)
+        details = runtime.recovery_failure_details(
+            previous, reason="worker_recovery", message=detail
+        )
+        if previous["active"] and "reason" not in previous:
+            details.pop("reason", None)
+        start_type = (
+            "2"
+            if raw.get("reset_observation_pending")
+            else raw.get("pending_start_type")
+            or (raw.get("start_type", "0") if raw["active"] else "0")
+        )
+        raw.update(
+            active=True,
+            startup=False,
+            phase="failed" if exhausted else "waiting",
+            resume_requested=not exhausted,
+            start_type=start_type,
+            recovery_action=action,
+            worker_failure_fingerprint=fingerprint,
+            worker_failure_count=count,
+            worker_failure_at=now.isoformat(),
+            worker_failure_blocked=exhausted,
+            next_retry_at=None,
+            message=(
+                "同一故障连续恢复三次后仍出现，已保留任务并停止自动恢复。"
+                if exhausted
+                else "工作线程发生异常，正在恢复运行；核实设备状态后接续已保存任务。"
+            ),
+            **details,
+        )
+        runtime.write_json(path, raw, sync=True)
+        _progress.clear()
+        _state_changed.notify_all()
+        return "stop" if exhausted else action
 
 
 def complete():
@@ -561,6 +699,7 @@ def prepare_resume(saved):
     result["_process_crash_recovery"] = True
     result["_process_crash_no_snapshot"] = saved is None
     result["_process_crash_occurred_at"] = status().get("occurred_at")
+    result["_restart_game"] = status().get("recovery_action") == "restart_game"
     return result
 
 

@@ -121,7 +121,7 @@ class DeviceShutdownTests(unittest.TestCase):
             ReadinessResult("offline", "USB-A", code="recovery_exhausted"),
             "设备恢复命令失败：模拟器启动命令被拒绝（退出码 -506）",
         )
-        for fault in (verdict, RuntimeError("unrelated")):
+        for fault in (verdict, RuntimeError("unrelated"), MemoryError("full")):
             with self.subTest(fault=type(fault).__name__):
                 config.stop_mower.clear()
                 with (
@@ -137,9 +137,14 @@ class DeviceShutdownTests(unittest.TestCase):
                     self.assertFalse(crash_recovery.status()["automatic"])
                 run.assert_called_once_with({"tasks": []}, preparation_serial="USB-123")
                 activate.assert_not_called()
-                intent.assert_called_once_with(False)
+                intent.assert_not_called()
                 self.assertTrue(config.stop_mower.is_set())
-                self.assertIs(logs.records[0].exc_info[1], fault)
+                self.assertTrue(
+                    any(
+                        entry.exc_info and entry.exc_info[1] is fault
+                        for entry in logs.records
+                    )
+                )
                 self.assertTrue(any(str(fault) in line for line in logs.output))
 
 

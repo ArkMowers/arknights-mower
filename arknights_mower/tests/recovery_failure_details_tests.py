@@ -40,7 +40,7 @@ def test_worker_retry_preserves_first_trigger_after_progress_and_finally(
     assert current["reason"] == "process_exit" and current["exit_code"] == 23
     assert current["automatic"]
     assert "训练室读取失败" in current["last_failure_message"]
-    assert current["last_failure_reason"] == "worker_exception"
+    assert current["last_failure_reason"] == "worker_recovery"
     assert current["phase"] == "waiting"
     offline.io.assert_not_called()
 

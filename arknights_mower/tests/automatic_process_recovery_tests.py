@@ -325,7 +325,7 @@ def test_fia_saved_return_roster_is_immediate_before_next_charge(
 
 @pytest.mark.parametrize("error", [RuntimeError, MemoryError, RecognizeError])
 @pytest.mark.parametrize("start_type", ["0", "1", "2", "3"])
-def test_normal_python_worker_exception_does_not_create_process_recovery(
+def test_normal_python_worker_exception_preserves_intent_for_recovery(
     offline, notice, monkeypatch, error, start_type
 ):
     from arknights_mower.utils import update_runtime as runtime
@@ -336,16 +336,29 @@ def test_normal_python_worker_exception_does_not_create_process_recovery(
     monkeypatch.setattr(
         offline.main, "main", Mock(side_effect=error("initial OCR failed"))
     )
+    request_exit = Mock()
+    monkeypatch.setattr(
+        offline.server, "shutdown", SimpleNamespace(closing=False, request=request_exit)
+    )
+    monkeypatch.setenv(
+        "MOWER_SUPERVISOR_CHILD_REPORT", str(notice.parent / "child.json")
+    )
+    monkeypatch.setenv("MOWER_SUPERVISOR_GENERATION", "worker-test")
     intent = Mock()
     monkeypatch.setattr(instance_supervisor, "task_intent", intent)
 
     offline.server._run_mower_worker({})
 
-    assert not crash_recovery.status()["active"]
-    assert not crash_recovery.status()["automatic"]
-    assert notice.read_bytes() == original
-    intent.assert_called_once_with(False)
-    assert config.stop_mower.is_set()
+    assert crash_recovery.status()["active"]
+    assert crash_recovery.status()["automatic"]
+    assert crash_recovery.status()["reason"] == "worker_recovery"
+    assert notice.read_bytes() != original
+    assert not any(call.args[0] is False for call in intent.call_args_list)
+    assert not config.stop_mower.is_set()
+    if error is MemoryError:
+        request_exit.assert_called_once_with("worker_memory")
+    else:
+        request_exit.assert_not_called()
     assert crash_recovery.pending_start_type() == (
         start_type if start_type in ("1", "2", "3") else None
     )
@@ -589,7 +602,7 @@ def test_repeated_worker_failure_in_same_episode_keeps_retry_sequence(
     offline.io.assert_not_called()
 
 
-def test_explicit_start_after_stop_does_not_enable_worker_recovery(
+def test_explicit_start_after_stop_enables_new_worker_recovery(
     offline, notice, monkeypatch, tmp_path
 ):
     from arknights_mower.utils import update_runtime as runtime
@@ -608,18 +621,19 @@ def test_explicit_start_after_stop_does_not_enable_worker_recovery(
         offline.main, "main", Mock(side_effect=RuntimeError("new worker failure"))
     )
     offline.server._run_mower_worker({})
-    assert not crash_recovery.status()["automatic"]
-    assert not crash_recovery.status()["active"]
+    assert crash_recovery.status()["automatic"]
+    assert crash_recovery.status()["active"]
     assert crash_recovery.pending_start_type() == "2"
     offline.io.assert_not_called()
 
 
+@pytest.mark.parametrize("reason", ["device_recovery_failed", "worker_memory"])
 def test_internal_fatal_shutdown_preserves_intent_but_user_stop_cancels(
-    offline, notice, monkeypatch
+    offline, notice, monkeypatch, reason
 ):
     resources = {}
     lifecycle = SimpleNamespace(
-        reason="device_recovery_failed",
+        reason=reason,
         own=lambda name, close, phase: resources.update({name: close}),
         watch=lambda: None,
     )

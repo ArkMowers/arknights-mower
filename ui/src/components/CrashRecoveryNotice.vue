@@ -22,7 +22,9 @@ watch(status, (current) => {
     }
     lastOccurrence = current.occurred_at
   }
-  if (current.active && current.automatic !== false) notificationVisible.value = true
+  if (current.active && (current.automatic !== false || current.phase === 'failed')) {
+    notificationVisible.value = true
+  }
 })
 
 let timer
@@ -45,19 +47,24 @@ onUnmounted(() => {
   <StatusNotification
     :key="notificationKey"
     :show="notificationVisible"
-    :type="status.automatic === false ? 'warning' : 'info'"
+    :type="status.phase === 'failed' || status.automatic === false ? 'warning' : 'info'"
     :title="
-      status.startup
-        ? status.automatic === false
-          ? '启动已停止'
-          : '正在启动'
-        : status.automatic === false
-          ? '自动恢复已停止'
-          : '正在自动恢复'
+      status.phase === 'failed'
+        ? '自动恢复已暂停'
+        : status.startup
+          ? status.automatic === false
+            ? '启动已停止'
+            : '正在启动'
+          : status.automatic === false
+            ? '自动恢复已停止'
+            : '正在自动恢复'
     "
   >
     <n-space vertical :size="8">
-      <n-text v-if="status.automatic !== false && status.startup">
+      <n-text v-if="status.phase === 'failed'">
+        多次恢复后仍然失败，已保留未完成任务。检查错误后，可使用开始按钮继续。
+      </n-text>
+      <n-text v-else-if="status.automatic !== false && status.startup">
         启动前正在重新读取设备、驻员和心情，保存后按所选方式开始调度；暂时失败时会等待并重试。
       </n-text>
       <n-text v-else-if="status.automatic !== false">

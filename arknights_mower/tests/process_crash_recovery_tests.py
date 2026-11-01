@@ -1201,11 +1201,14 @@ def test_initial_reset_failure_cannot_reload_previous_urgent_handoff(
         offline.main, "main", Mock(side_effect=RuntimeError("observation unavailable"))
     )
     offline.server._run_mower_worker(saved)
-    assert not offline.server._retry_after_process_crash()
+    assert offline.server._retry_after_process_crash()
     assert crash_recovery.pending_start_type() == "2"
     assert offline.server._start_mower("0")
     retried = create.call_args.kwargs["args"][0]
-    assert retried == {}
+    assert retried["tasks"] == []
+    assert retried["_process_crash_recovery"]
+    assert retried["_process_crash_no_snapshot"]
+    assert retried["_restart_game"]
     assert "urgent_recovery_supporters" not in retried
     assert "waiting_group_shifts" not in retried
     with offline.record._conn() as connection:
@@ -1359,7 +1362,12 @@ def test_stopped_reset_still_skips_old_snapshot_on_ordinary_start(
     assert crash_recovery.reset_observation_pending()
     saved = create.call_args.kwargs["args"][0]
     assert not saved.get("tasks")
-    assert saved == {}
+    if failed_before_stop:
+        assert saved["_process_crash_recovery"]
+        assert saved["_process_crash_no_snapshot"]
+        assert saved["_restart_game"]
+    else:
+        assert saved == {}
     offline.io.assert_not_called()
 
 
