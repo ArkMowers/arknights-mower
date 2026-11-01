@@ -16,7 +16,7 @@ description: 维护 Mower AI 基建知识、只读主班试排、排班收益演
 
 ## 收益演算维护
 
-更新游戏表或接入新干员时，使用[新干员数据接入](../mower-operator-data/SKILL.md)核对共享目录、演算机制和自动合成。
+更新游戏表或接入新干员时，使用[游戏版本更新](../mower-version-update/SKILL.md)核对共享目录、演算与心情、自动合成、专精协助者及配套资源。
 
 读取[维护与验证](references/maintenance.md)。固定引擎保留上游相对目录和来源摘要；适配层负责 Mower 输入、参数、Worker 生命周期及图表。不要为了修补 UI 改写计算公式或压缩掉原排班中的未知字段。
 
