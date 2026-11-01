@@ -14,7 +14,7 @@ MAX_BYTES = 512 * 1024**2
 MAX_MANIFEST_BYTES = 16 * 1024**2
 
 
-def safe_name(name, allowed_file):
+def safe_name(name, allowed_file=None):
     if not isinstance(name, str) or not name or len(name) > 1024:
         raise ValueError("资源 OTA 路径无效")
     path = PurePosixPath(name)
@@ -26,7 +26,8 @@ def safe_name(name, allowed_file):
         or any(ord(char) < 32 for char in name)
         or any(part.rstrip(" .") != part for part in path.parts)
         or path.as_posix() != name
-        or not allowed_file(name)
+        or allowed_file is not None
+        and not allowed_file(name)
     ):
         raise ValueError(f"资源 OTA 包含未允许的路径：{name}")
     return name
@@ -150,7 +151,7 @@ def apply_ota(
     callback=None,
     normalize_base_files=(),
 ):
-    """Reconstruct and verify every target file in an empty staging directory."""
+    """Reconstruct and verify registered target files in empty staging."""
     report = callback or (lambda **values: None)
     members = _members(archive)
     if OTA_MARKER not in members or members[OTA_MARKER].file_size > MAX_MANIFEST_BYTES:
@@ -180,7 +181,7 @@ def apply_ota(
         raise ValueError("资源 OTA 文件清单无效")
     total = 0
     for name, info in files.items():
-        safe_name(name, allowed_file)
+        safe_name(name)
         if (
             not isinstance(info, dict)
             or set(info) != {"size", "sha256"}
@@ -200,6 +201,8 @@ def apply_ota(
     for name in changed:
         if members["payload/" + name].file_size != files[name]["size"]:
             raise ValueError("资源 OTA 文件大小不符")
+    files = {name: info for name, info in files.items() if allowed_file(name)}
+    total = sum(info["size"] for info in files.values())
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=False)
     completed = 0

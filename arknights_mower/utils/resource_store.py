@@ -147,6 +147,11 @@ def select_resource(root: Path, builtin: Path, mower_version: str) -> ResourceSe
             candidate = validate_package(package, mower_version)
         except (OSError, ValueError, TypeError):
             continue
-        if resource_newer(candidate, selected.manifest, allow_same_day=allow_same_day):
+        if (
+            selected.root is not None
+            and candidate["res_version"] == selected.manifest.get("res_version")
+        ) or resource_newer(
+            candidate, selected.manifest, allow_same_day=allow_same_day
+        ):
             selected = ResourceSelection(package, candidate)
     return selected

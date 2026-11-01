@@ -377,17 +377,6 @@ class TestResourceOTA(ResourcePkgTestBase):
                     {"../outside": {"size": 0, "sha256": "0" * 64}}
                 ),
             ),
-            change_manifest(
-                self.delta,
-                lambda m: m["files"].update(
-                    {
-                        "arknights_mower/utils/runtime.py": {
-                            "size": 0,
-                            "sha256": "0" * 64,
-                        }
-                    }
-                ),
-            ),
             rewrite(self.delta, lambda files: files.update({"unexpected": b"x"})),
             change_manifest(
                 self.delta,
@@ -407,6 +396,86 @@ class TestResourceOTA(ResourcePkgTestBase):
                 self.assertFalse(rp.install_resource_pkg(invalid))
                 self.assertEqual(self.installed_version(), BASE)
                 self.assertFalse(rp._STAGING.exists())
+
+    def test_unregistered_base_file_is_ignored_without_reading_it(self):
+        name = "arknights_mower/utils/future.py"
+        delta = change_manifest(
+            self.delta,
+            lambda manifest: manifest["files"].update(
+                {name: {"size": 0, "sha256": "0" * 64}}
+            ),
+        )
+        self.assertTrue(rp.install_resource_pkg(delta))
+        self.assert_target()
+        self.assertFalse(rp.resource_pkg_path(name).exists())
+
+    def test_ota_builder_still_rejects_unregistered_source_files(self):
+        self.new_path.write_bytes(
+            rewrite(
+                self.new,
+                lambda files: files.update(
+                    {"arknights_mower/utils/future.py": b"fixture"}
+                ),
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "未允许的路径"):
+            build_ota(self.old_path, self.new_path, self.ota_path, is_package_file)
+
+    def test_unregistered_ota_entries_still_require_valid_metadata(self):
+        name = "future/data.json"
+        for info in ({"size": -1, "sha256": "0" * 64}, {"size": 0, "sha256": "bad"}):
+            with self.subTest(info=info):
+                invalid = change_manifest(
+                    self.delta,
+                    lambda manifest: manifest["files"].update({name: info}),
+                )
+                before = (self.overlay / "index.json").read_bytes()
+                self.assertFalse(rp.install_resource_pkg(invalid))
+                self.assertEqual((self.overlay / "index.json").read_bytes(), before)
+                self.assertEqual(self.installed_version(), BASE)
+
+    def test_older_client_skips_new_resource_in_changed_and_unchanged_ota(self):
+        name = "arknights_mower/data/event_shop.json"
+        allowed = rp.is_package_file
+        for unchanged in (False, True):
+            with self.subTest(unchanged=unchanged):
+                old = rewrite(self.old, lambda files: files.update({name: b"[\n]\n"}))
+                new = rewrite(
+                    self.new,
+                    lambda files: files.update(
+                        {name: b"[\n]\n" if unchanged else b"[]"}
+                    ),
+                )
+                self.old_path.write_bytes(old)
+                self.new_path.write_bytes(new)
+                build_ota(self.old_path, self.new_path, self.ota_path, is_package_file)
+                # The publisher knows the resource; this client has an older file list.
+                with patch.object(
+                    rp,
+                    "is_package_file",
+                    side_effect=lambda path: path != name and allowed(path),
+                ):
+                    rp._write_index([])
+                    rp._active_resource = None
+                    self.assertTrue(rp.install_resource_pkg(old))
+                    self.assertFalse(rp.resource_pkg_path(name).exists())
+                    events = []
+                    self.assertTrue(
+                        rp.install_resource_pkg(
+                            self.ota_path.read_bytes(),
+                            callback=lambda **values: events.append(values),
+                        )
+                    )
+                self.assert_target()
+                self.assertFalse(rp.resource_pkg_path(name).exists())
+                self.assertEqual(
+                    [
+                        event["progress"]
+                        for event in events
+                        if event["phase"] == "extracting"
+                    ][-1],
+                    94,
+                )
 
     def test_ota_installed_in_background_waits_for_task_boundary(self):
         from threading import Thread

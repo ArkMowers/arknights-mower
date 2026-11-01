@@ -501,9 +501,11 @@ def _extract_package(data, callback=None):
                 or stat.S_ISLNK(item.external_attr >> 16)
             ):
                 raise ValueError("资源包含非法路径或符号链接")
-            if not item.is_dir() and not is_package_file(name):
-                raise ValueError(f"资源包包含未声明文件：{name}")
-        members = archive.infolist()
+        members = [
+            item
+            for item in archive.infolist()
+            if not item.is_dir() and is_package_file(item.filename)
+        ]
         total = sum(member.file_size for member in members) or 1
         extracted = 0
         for member in members:
@@ -538,7 +540,16 @@ def install_resource_pkg(data, callback=None):
                 previous = _selection()
                 index = read_index_state(RESOURCE_OVERLAY)
                 packages = index["packages"]
-                name = hashlib.sha256(data).hexdigest()
+                digest = hashlib.sha256(data)
+                # Client versions may install different subsets of the same ZIP.
+                # Include retained paths so an upgrade never reuses a filtered set.
+                for path in sorted(_STAGING.rglob("*")):
+                    if path.is_file():
+                        digest.update(
+                            b"\0"
+                            + path.relative_to(_STAGING).as_posix().encode("utf-8")
+                        )
+                name = digest.hexdigest()
                 target = RESOURCE_OVERLAY / "packages" / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if not target.exists():

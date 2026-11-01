@@ -4,7 +4,9 @@
 
 MowerResource publishes `resource-update.json` with a complete-package size and SHA-256, and direct OTA assets from up to four retained starting versions. OTA assets contain `resource-ota.json`, all target file sizes and SHA-256 values, and only changed files under `payload/`. Files absent from the target list are excluded from the reconstructed generation. OTA assets at least 85 percent of the complete ZIP size are omitted. The complete `resource.zip` remains available to older clients.
 
-The client selects an OTA only for its exact current resource version and only when smaller than the complete package. All download URLs derive from fixed MowerResource release paths. It verifies asset size and SHA-256, reconstructs in staging, verifies every target file and target version, then retains existing compatibility, install-lock, immutable-publication and task-boundary loading rules. Metadata absence falls back to the legacy full-package URL. An online OTA failure falls back to the same target release’s full asset once. A manually uploaded OTA uses no network and rejects an unmatched base. Both external and bundled resources can provide unchanged base files.
+The client selects an OTA only for its exact current resource version and only when smaller than the complete package. All download URLs derive from fixed MowerResource release paths. It verifies asset size and SHA-256, reconstructs registered files in staging, verifies every retained target file and target version, then retains existing compatibility, install-lock, immutable-publication and task-boundary loading rules. Metadata absence falls back to the legacy full-package URL. An online OTA failure falls back to the same target release’s full asset once. A manually uploaded OTA uses no network and rejects an unmatched base. Both external and bundled resources can provide unchanged base files.
+
+Full-package and OTA installation discard files not registered by the running client's `is_package_file`. Unknown files are never written; unchanged unknown OTA files require no local base. All archive entries still undergo path, type, duplicate and size checks, and OTA inventory and payload membership remain validated before filtering. Required registered files, retained-file digests and software compatibility remain mandatory. The producer still rejects unregistered archive files when building an OTA. This behavior requires a client software update; a resource package cannot change an older client's installer.
 
 [Verified resource OTA](../../.agents/notes/implemented/architecture/2026-10-09-resource-ota.md) records scope and verification.
 
@@ -18,6 +20,8 @@ Bundled files declared in `RES_PACKAGE_DATA` or `RES_PACKAGE_OPTIONAL_DATA` can 
 
 OTA reconstruction writes only staging files. The resource installer validates the target package against the running Mower version, rejects older resources, publishes an immutable version directory under the process and cross-process install locks, and updates the package index atomically. Cache loading retains task-boundary ownership and restores the previous index and selection on failure. Old generation directories remain available to instances that still use them.
 
+Generation directory names hash the downloaded archive and the sorted retained file paths. Reinstalling the same archive after a client update that registers additional files publishes a separate generation, preserving the filtered generation used by older instances. Among eligible external generations with the same resource version, the last installed generation takes precedence, including after restart.
+
 ### Installed Resource Metadata
 
 The authenticated `/resource-version` response includes `current_metadata` from the installed `data/version.json`: `activity` and `gacha` retain their names, opening timestamps (`time`) and ending timestamps (`endTime`), while `last_updated` identifies the upstream source snapshot. Activity and gacha timestamps use Unix seconds; neither the resource build date nor `last_updated` defines an expiry date. Missing activity or gacha metadata returns an empty object, and a missing source snapshot returns an empty string. Local-only reads and every remote-check result, including failures, preserve this installed metadata; remote or cached metadata never substitutes for it.
@@ -26,7 +30,7 @@ The authenticated `/resource-version` response includes `current_metadata` from 
 
 - <a id="operator-avatar-completeness"></a>**Operator Avatar Completeness**: Generation and publication reject missing or unreadable obtainable-operator avatars; section 4 owns conversion and source rules.
 
-- <a id="resource-ota-reconstruction"></a>**Resource OTA Reconstruction**: An OTA package reconstructs a complete compatible resource generation from an exact starting version, verifies target file digests and publishes through the existing immutable installer.
+- <a id="resource-ota-reconstruction"></a>**Resource OTA Reconstruction**: An OTA package reconstructs a complete compatible generation of the running client's registered resources from an exact starting version, verifies retained target file digests and publishes through the existing immutable installer.
 
 ## 4. Resource Generation
 
@@ -39,7 +43,7 @@ The bundled catalog records its game-table version in `sourceVersion`; `source`,
 
 The backend derives bundled operator names and professions from the catalog. Selected external resource generations use their own historical exports; no individual file is borrowed from the bundled data. Resource changes refresh the existing imported containers in place at the task boundary. A malformed present bundled catalog fails loading rather than silently substituting its exports.
 
-The shared catalog is a software asset outside `RES_PACKAGE_DATA` and `RES_PACKAGE_OPTIONAL_DATA`: existing resource clients reject unknown archive members. Resource publication retains the historical exports and content-hash identity. The calculator and native mood engine use their software-bundled catalog together with their matching rules. Resource OTA does not replace that calculation input. The native runtime verifies the code and catalog digests, and its saved-state identity covers both. Desktop and Android packages include the catalog independently of frontend sources; Android packaging rejects missing or blank catalog input.
+The shared catalog is a software asset outside `RES_PACKAGE_DATA` and `RES_PACKAGE_OPTIONAL_DATA`. Clients predating unknown-file filtering reject it in resource archives; current clients discard it as unregistered. Resource publication retains the historical exports and content-hash identity. The calculator and native mood engine use their software-bundled catalog together with their matching rules. Resource OTA does not replace that calculation input. The native runtime verifies the code and catalog digests, and its saved-state identity covers both. Desktop and Android packages include the catalog independently of frontend sources; Android packaging rejects missing or blank catalog input.
 
 The frontend calculator derives maximum-stage skills as separate objects from the final stage of each slot. Personal ownership, progression and inventory remain in the existing account snapshot and inventory services. The display catalog and its historical `skill.json` archive identity keep their existing owner below. The [shared catalog decision](../../.agents/notes/implemented/simplification/2026-10-30-shared-operator-catalog.md) records the compatibility and packaging choices.
 
