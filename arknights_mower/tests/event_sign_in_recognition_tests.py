@@ -25,14 +25,14 @@ FIXTURES = Path(__file__).parent / "fixtures/event_sign_in"
 
 
 def frame(name):
-    suffix = "png" if name.startswith("seven_day_") else "jpg"
+    suffix = "png" if name.startswith(("seven_day_", "celebration_")) else "jpg"
     image = cv2.cvtColor(
         cv2.imdecode(
             np.fromfile(FIXTURES / f"{name}.{suffix}", np.uint8), cv2.IMREAD_COLOR
         ),
         cv2.COLOR_BGR2RGB,
     )
-    if name.startswith("seven"):
+    if name.startswith(("seven", "celebration_")):
         height, width, x, y = 1080, 1920, 650, 205
     elif name.endswith("video_border"):
         height, width, x, y = 716, 1272, 475, 180
@@ -60,6 +60,40 @@ def observe(image, local_ocr):
     )
     assert result is not None
     return progress, read_cards(image, progress, result)
+
+
+@pytest.mark.parametrize(
+    "name,first_day,expected",
+    [
+        ("before", 1, [(1, False), (2, False), (3, False), (4, False)]),
+        ("claimed", 1, [(1, True), (2, False), (3, False), (4, False)]),
+        ("middle", 4, [(4, False), (5, False), (6, False)]),
+        ("right", 7, [(7, False), (8, False), (9, False), (10, False)]),
+        ("right_settled", 7, [(7, False), (8, False), (9, False), (10, False)]),
+    ],
+)
+def test_actual_solver_reads_celebration_pages_captured_on_device(
+    name, first_day, expected, local_ocr, monkeypatch
+):
+    from arknights_mower.solvers.event_sign_in import EventSignInSolver
+    from arknights_mower.utils import config
+
+    solver = object.__new__(EventSignInSolver)
+    solver.deadline = time.monotonic() + 180
+    solver.activity_days = None
+    solver.recog = SimpleNamespace(
+        img=frame(f"celebration_{name}"), check_announcement=lambda: (1870, 152)
+    )
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(rapidocr, "engine", local_ocr)
+
+    page = solver._panel_states()
+
+    assert page is not None
+    assert page.progress.total_days == 10
+    assert page.progress.unlocked_days == 1
+    assert page.first_day == first_day
+    assert [(card.day, card.claimed) for card in page.cards] == expected
 
 
 @pytest.mark.parametrize(

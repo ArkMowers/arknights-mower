@@ -214,6 +214,40 @@ def day_positions(result, progress):
     return positions
 
 
+def _plain_day_glyph(image, scale, light):
+    lower, upper = (
+        ((180, 180, 180), (255, 255, 255))
+        if light
+        else (
+            (0, 0, 0),
+            (180, 180, 180),
+        )
+    )
+    foreground = image[cv2.inRange(image, lower, upper) != 0]
+    if not len(foreground):
+        return None
+    color = np.median(foreground, axis=0)
+    mask = cv2.inRange(image, np.maximum(color - 40, 0), np.minimum(color + 40, 255))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+    components = [
+        index
+        for index in range(1, count)
+        if stats[index, cv2.CC_STAT_HEIGHT] >= max(12, 60 * scale)
+    ]
+    if not 1 <= len(components) <= 2:
+        return None
+    mask = np.isin(labels, components).astype(np.uint8) * 255
+    x, y, width, height = cv2.boundingRect(cv2.findNonZero(mask))
+    glyph = 255 - mask[y : y + height, x : x + width]
+    glyph = cv2.resize(
+        glyph,
+        (max(1, round(width * 48 / height)), 48),
+        interpolation=cv2.INTER_AREA,
+    )
+    glyph = cv2.copyMakeBorder(glyph, 8, 8, 8, 8, cv2.BORDER_CONSTANT, value=255)
+    return cv2.cvtColor(glyph, cv2.COLOR_GRAY2RGB)
+
+
 def supplement_day_numbers(image, progress, result, recognize):
     """Supplement missed complete numerals without replacing detected identities."""
     result = list(result or [])
@@ -223,9 +257,11 @@ def supplement_day_numbers(image, progress, result, recognize):
     band = cropimg(image, progress.day_scope)
     header = band[: min(band.shape[0], round(190 * progress.scale))]
     glyphs = []
-    for lower, upper in (
-        ((0, 0, 0), (180, 180, 180)),
-        ((180, 180, 180), (255, 255, 255)),
+    for light, (lower, upper) in enumerate(
+        (
+            ((0, 0, 0), (180, 180, 180)),
+            ((180, 180, 180), (255, 255, 255)),
+        )
     ):
         mask = cv2.inRange(header, lower, upper)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -239,16 +275,17 @@ def supplement_day_numbers(image, progress, result, recognize):
                 and y > 0
                 and y + height < header.shape[0]
             ):
-                glyphs.append((x, y, width, height))
+                glyphs.append((x, y, width, height, light))
     if len(glyphs) > progress.total_days * 2:
         return None
     merged = []
-    for x, y, width, height in sorted(glyphs):
+    for x, y, width, height, light in sorted(glyphs):
         if merged:
-            px, py, pw, ph = merged[-1]
+            px, py, pw, ph, previous_light = merged[-1]
             if (
-                0 <= x - px - pw <= min(height, ph) * 0.6
-                and x + width - px <= min(height, ph) * 2
+                light == previous_light
+                and 0 <= x - px - pw <= min(height, ph) * 0.6
+                and x + width - px <= (max(y + height, py + ph) - min(y, py)) * 2
                 and abs(y - py) <= min(height, ph) * 0.15
                 and abs(y + height - py - ph) <= min(height, ph) * 0.15
             ):
@@ -257,13 +294,14 @@ def supplement_day_numbers(image, progress, result, recognize):
                     min(y, py),
                     x + width - px,
                     max(y + height, py + ph) - min(y, py),
+                    light,
                 )
                 continue
-        merged.append((x, y, width, height))
+        merged.append((x, y, width, height, light))
     glyphs = merged
     if len(glyphs) > progress.total_days:
         return None
-    for x, y, width, height in glyphs:
+    for x, y, width, height, light in glyphs:
         overlaps = [
             row
             for row in accepted
@@ -279,10 +317,20 @@ def supplement_day_numbers(image, progress, result, recognize):
         # 保留字形周边的实际背景，避免白色边框与浅色数字连成一片。
         glyph = cropimg(band, _scope(x - 8, y - 8, x + width + 8, y + height + 8, band))
         reading = recognize(glyph, use_det=False)
+        box = [[x, y], [x + width, y], [x + width, y + height], [x, y + height]]
+        if (
+            not reading
+            or len(reading) != 1
+            or not day_positions([(box, *reading[0])], progress)
+        ):
+            plain = _plain_day_glyph(
+                band[y : y + height, x : x + width], progress.scale, light
+            )
+            if plain is not None:
+                reading = recognize(plain, use_det=False)
         if not reading or len(reading) != 1:
             continue
         text, score = reading[0]
-        box = [[x, y], [x + width, y], [x + width, y + height], [x, y + height]]
         row = (box, text, score)
         if not day_positions([row], progress):
             continue

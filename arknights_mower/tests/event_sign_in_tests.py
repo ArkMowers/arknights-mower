@@ -132,6 +132,11 @@ def test_login_and_unconfirmed_activity_labels_are_not_sign_in_candidates(label,
     assert sign_in.sign_in_entries([ocr_entry(0, label, score=score)]) == []
 
 
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_confidence_activity_labels_are_not_sign_in_candidates(score):
+    assert sign_in.sign_in_entries([ocr_entry(0, score=score)]) == []
+
+
 @pytest.fixture
 def activity(monkeypatch):
     stopped = Event()
@@ -963,6 +968,36 @@ def test_persistent_low_confidence_sign_in_entry_remains_incomplete(activity):
     assert state.inputs == []
     assert state.entry_reads <= 8
     assert state.now < 5
+
+
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_sign_in_entry_remains_incomplete_without_input(activity, score):
+    solver, state, _ = activity
+    state.entry_script = [[ocr_entry(0, score=score)]] * 20
+
+    result = solver.run()
+
+    assert state.inputs == []
+    assert result is False
+    assert state.entry_reads <= 8
+    assert state.now < 5
+
+
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_second_sign_in_cannot_complete_a_partial_list(activity, score):
+    solver, state, _ = activity
+    state.activities = [
+        {"label": "前瞻签到", "states": ["claimed", *("locked",) * 6]},
+        {"label": "限时签到", "states": ["available", *("locked",) * 6]},
+    ]
+    state.entry_script = [[ocr_entry(0), ocr_entry(1, "限时签到", score=score)]] * 20
+
+    result = solver.run()
+
+    assert state.inputs == []
+    assert state.opened_slots == []
+    assert result is False
+    assert state.entry_reads <= 8
 
 
 def test_two_sign_in_activities_are_checked_top_to_bottom_even_with_the_same_label(
