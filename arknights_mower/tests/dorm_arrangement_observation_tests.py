@@ -152,9 +152,9 @@ def test_generated_idle_release_preserves_resting_group(
     incident, single_target, sample
 ):
     solver, physical, snapshots = incident
-    if not single_target:
-        solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
     data = solver.op_data
+    if single_target:
+        data.config.ope_resting_priority.append("陈")
     before = [
         (t, t.time, deepcopy(t.plan))
         for t in solver.tasks

@@ -241,12 +241,15 @@ def test_page_exit_preserves_original_task_identity_and_named_plan(solver, monke
 
 
 @pytest.mark.parametrize("previous_mood", [None, 18])
-def test_single_target_preparation_observes_new_candidate_before_confirmation(
-    solver, monkeypatch, previous_mood
+@pytest.mark.parametrize("priority_target", [False, True])
+def test_recovery_preparation_observes_candidates_with_tier_appropriate_confirmation(
+    solver, monkeypatch, previous_mood, priority_target
 ):
     instance, selected = solver
     cached_idle(instance, monkeypatch)
     data = instance.op_data
+    if priority_target:
+        data.config.ope_resting_priority = ["陈"]
     if previous_mood is not None:
         data.add(
             Operator("伊芙利特", "", mood=previous_mood, time_stamp=datetime.now())
@@ -264,16 +267,18 @@ def test_single_target_preparation_observes_new_candidate_before_confirmation(
     instance.back = MagicMock()
     instance.tap_confirm = MagicMock()
 
-    assert instance.ensure_dorm_recovery_order(ROOM, plan)
-    instance.choose_agent(plan, ROOM, preserve_dorm_occupants=True)
+    recovery_ordered = instance.ensure_dorm_recovery_order(ROOM, plan)
+    assert recovery_ordered == priority_target
+    instance.choose_agent(plan, ROOM, preserve_dorm_occupants=recovery_ordered)
 
-    assert plan == selected and plan[-1] == "伊芙利特"
+    target = "陈" if priority_target else "伊芙利特"
+    assert plan == selected and plan[-1] == target
     assert observations.count([]) == 1
-    assert data.operators["伊芙利特"].dorm_recovery_room == (
-        ROOM if previous_mood is not None else ""
+    assert data.operators[target].dorm_recovery_room == (
+        ROOM if priority_target else ""
     )
-    if previous_mood is None:
-        instance.tap_confirm.assert_not_called()
-        instance.back.assert_called_once()
-    else:
+    if priority_target:
         instance.tap_confirm.assert_called_once()
+    else:
+        instance.tap_confirm.assert_not_called()
+    instance.back.assert_not_called()
