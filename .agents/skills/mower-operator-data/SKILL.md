@@ -20,6 +20,7 @@ description: 更新 Arknights Mower 新干员及基建技能数据，核对收�
 - 逐条核对新增与变更技能的设施、解锁阶段、对象、条件和叠加规则，再检查 `ui/src/riic/vendor/engine/`、`incomeClues.js` 与 `incomeRecruitment.js`。相同机制复用已有分支；未知技能不编造效率。群回先计算该技能的完整值，再在群回之间取最高；不能把其中的人数加成另叠加一次。技能术语明确的成员名单不能替换成国籍判断。
 - 加工站核对 `workshop_rules.py`、`workshop_selection.py`、`workshop_recipes.py` 和实际分配入口。新增干员须同时满足持有、已解锁、未被排班占用、配方范围和心情条件。特殊副产品可能需要明确的优先级和材料范围，按用户要求与[养成规划说明](../../../docs/subsystems/growth-planning.md)确定；不能仅凭固定概率把该干员放入通用排序。培养参考、默认候选和实际执行副本须一致，旧手动配置不得被重写。
 - 修改固定演算源码后更新 `ui/src/riic/vendor/source.json` 中对应 `localPatches` 摘要及理由，保留原始来源摘要。共享心情规则或目录变化后执行 `node scripts/build_mood_runtime.mjs`，软件附带的规则和数据一起更新；资源 OTA 不替换演算目录。
+- 资源抓取、完整生成和发布沿用 [MowerResource](https://github.com/ArkMowers/MowerResource) 的流程；`auto_get_res_new.py` 在生成结束时自动写入资源版本，不另建一套发布或定时更新流程。若本次只在主仓库局部更新资源文件，提交前用 `res_version.py` 的 `package_file_paths` 与 `content_hash` 同步 `arknights_mower/data/version.json` 的内容摘要，保留原有日期前缀、上游版本、活动和卡池字段。不能因为没有发布完整资源包，就保留与实际内置文件不符的摘要。
 
 ## 定向验证与交付
 
@@ -29,6 +30,7 @@ description: 更新 Arknights Mower 新干员及基建技能数据，核对收�
 
 ```bash
 pytest arknights_mower/tests/operator_data_tests.py arknights_mower/tests/workshop_rules_tests.py
+pytest arknights_mower/tests/resource_version_tests.py arknights_mower/tests/res_version_tests.py
 npm --prefix ui test -- src/riic/operatorCatalog.test.js src/riic/incomeOperatorUpdate.test.js
 python .agents/skills/mower-riic/scripts/verify_calculator.py
 node scripts/build_mood_runtime.mjs --check

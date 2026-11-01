@@ -21,7 +21,7 @@ pytestmark = pytest.mark.usefixtures("offline_maintenance")
 
 
 @pytest.fixture
-def resume(solver, monkeypatch):
+def resume(solver, monkeypatch, offline_maintenance):
     import arknights_mower.__main__ as main
 
     data = solver.op_data
