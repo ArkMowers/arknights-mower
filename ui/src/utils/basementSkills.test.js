@@ -59,6 +59,11 @@ const snapshot = {
 }
 
 describe('基建技能持有与解锁筛选', () => {
+  it.each(['lv', 'LV', 'lvgu', 'lügu'])('干员名称用 %s 搜到旅骨', (name) => {
+    const items = annotateBasementSkills([{ ...catalog[1], name: '旅骨' }], null)
+    expect(filterBasementSkills(items, { name }).map((item) => item.avatar)).toEqual(['旅骨'])
+  })
+
   it.each([
     null,
     { has_data: false, operators: snapshot.operators },

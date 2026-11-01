@@ -1,4 +1,4 @@
-import { match } from 'pinyin-pro'
+import { pinyin_match } from './common'
 import { builtinGroups } from '@/data/baseGroups'
 
 export const groupFacilities = [...new Set(builtinGroups.map((group) => group.facility))]
@@ -34,7 +34,8 @@ export function filterGroups(
       ...group.accessory,
       ...Object.values(group.memberNotes)
     ].join(' ')
-    if (query && !text.includes(query) && !match(text, query, { precision: 'every' })) return false
+    if (query && !text.includes(query) && !pinyin_match(text, query, { precision: 'every' }))
+      return false
     const members = groupMembers(group, items)
     if (ownership === 'core-owned')
       return members

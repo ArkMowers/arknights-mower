@@ -6,6 +6,19 @@ import { filterGroups, groupFacilities, groupMembers } from './baseGroups'
 const automation = builtinGroups.find((group) => group.title === '自动化')
 
 describe('只读基建组合', () => {
+  it.each(['lv', 'LV', 'lvgu', 'lügu'])('按 %s 搜到包含旅骨的组合', (search) => {
+    const group = {
+      ...automation,
+      title: '测试组合',
+      note: '',
+      core: ['旅骨'],
+      support: [],
+      accessory: [],
+      memberNotes: {}
+    }
+    expect(filterGroups([group], [], { search })).toEqual([group])
+  })
+
   it('预置顺序、分类与名称保持可解析，跑单干员置顶', () => {
     const names = new Set(catalog.map((operator) => operator.name))
     expect(builtinGroups.map((group) => group.title)).toEqual([

@@ -1,4 +1,4 @@
-import { match } from 'pinyin-pro'
+import { pinyin_match } from './common'
 
 export const ownershipLabels = { owned: '已拥有', unowned: '未拥有' }
 export const skillStatusLabels = {
@@ -49,7 +49,7 @@ export function annotateBasementSkills(catalog, snapshot) {
 }
 
 function matches(text, query, precision) {
-  return !query || text.includes(query) || Boolean(match(text, query, { precision }))
+  return !query || text.includes(query) || Boolean(pinyin_match(text, query, { precision }))
 }
 
 export function filterBasementSkills(items, filters) {
