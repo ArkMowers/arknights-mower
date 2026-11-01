@@ -676,7 +676,7 @@ class MaaRoguelikeTests(unittest.TestCase):
     """Roguelike 下发补齐通用字段；协议注明「仅某主题/某模式」的字段按条件省略。"""
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
-    def test_failed_maa_releases_inventory_guard_before_idle_sleep(self):
+    def test_failed_maa_releases_inventory_guard_before_idle_handoff(self):
         from arknights_mower.solvers import record
 
         solver = BaseSchedulerSolver()
@@ -692,9 +692,9 @@ class MaaRoguelikeTests(unittest.TestCase):
             solver.MAA = maa
             active.set()
 
-        def sleep_after_release(seconds):
+        def rest_after_release():
             self.assertFalse(active.is_set())
-            self.assertGreater(seconds, 0)
+            self.assertIsNone(solver.MAA)
 
         with (
             patch.object(base_schedule, "battle_inventory_active", active),
@@ -703,9 +703,8 @@ class MaaRoguelikeTests(unittest.TestCase):
             patch.object(solver, "back_to_index"),
             patch.object(solver, "initialize_maa", side_effect=initialize),
             patch.object(solver, "append_maa_task"),
-            patch.object(solver, "rest_until_next_task"),
             patch.object(
-                solver, "_idle_sleep", side_effect=sleep_after_release
+                solver, "rest_until_next_task", side_effect=rest_after_release
             ) as idle,
             patch.object(base_schedule, "get_server_weekday", return_value=1),
             patch.object(base_schedule, "send_message"),

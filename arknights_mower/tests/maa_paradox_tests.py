@@ -199,15 +199,15 @@ def test_failed_navigation_preserves_queue_and_blocks_unchanged_dispatch(
     else:
         scheduler.to_operator_list.return_value = outcome
     original = scheduler.tasks[0]
-    for _ in range(3):
+    for attempt in range(1, 4):
         scheduler.maa_plan_solver()
+        assert scheduler.rest_until_next_task.call_count == attempt
     scheduler.to_operator_list.assert_called_once_with()
     scheduler.initialize_maa.assert_not_called()
     scheduler.MAA.append_task.assert_not_called()
     assert record.load_maa_paradox_progress()["next"] == 0
     assert record.load_maa_paradox_progress()["failed"] is True
     assert scheduler.tasks == [original]
-    assert scheduler.rest_until_next_task.call_count == 2
     scheduler.to_operator_list.side_effect = None
     scheduler.to_operator_list.return_value = True
     conf.paradox.run_id = "manual-retry"
