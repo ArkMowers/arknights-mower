@@ -2674,18 +2674,41 @@ class BaseSchedulerSolver(
         self.plan_metadata()
         self._recovery_plan_dirty = False
 
-    def _waiting_shift_reservations(self, *, returning_groups=()):
+    def _waiting_shift_reservations(self, *, returning_groups=(), returning_names=()):
         """等待任务保留目标，但不阻止其依赖组回班释放替班。"""
-        names = {
-            name
-            for task in getattr(self, "waiting_group_shifts", ())
-            if not set(returning_groups).intersection(
+        names = set()
+        for task in getattr(self, "waiting_group_shifts", ()):
+            if set(returning_groups).intersection(
                 getattr(task, "group_shift_waiting", ())
+            ):
+                continue
+            released = set()
+            if not task.retains_execution and not any(
+                getattr(task, flag, False)
+                for flag in (
+                    "mood_physical_started",
+                    "derived_correction_started",
+                    "group_shift_expected",
+                    "product_shift_locked",
+                )
+            ):
+                # 副表生效不等于已经换人；相同回班目标可先独立执行并释放床位。
+                for name in returning_names:
+                    op = self.op_data.operators.get(name)
+                    if (
+                        op is not None
+                        and op.room
+                        and not op.room.startswith("dorm")
+                        and task.plan.get(op.room, [])[op.index : op.index + 1]
+                        == [name]
+                    ):
+                        released.add(name)
+            names.update(
+                name
+                for row in task.plan.values()
+                for name in row
+                if name in self.op_data.operators and name not in released
             )
-            for row in task.plan.values()
-            for name in row
-            if name in self.op_data.operators
-        }
         slots = {
             (op.current_room, op.current_index)
             for name in names
@@ -2701,7 +2724,16 @@ class BaseSchedulerSolver(
         waiting_names = set()
         for task in getattr(self, "waiting_group_shifts", ()):
             if task.type == TaskTypes.SHIFT_ON:
-                waiting_names.update(name for row in task.plan.values() for name in row)
+                dependencies = set(getattr(task, "group_shift_waiting", ()))
+                waiting_names.update(
+                    name
+                    for row in task.plan.values()
+                    for name in row
+                    if not (
+                        (op := self.op_data.operators.get(name)) is not None
+                        and op.group in dependencies
+                    )
+                )
                 waiting_names.update(getattr(task, "group_shift_expected", {}).values())
         self.tasks = plan_metadata(
             self.op_data,
@@ -8428,6 +8460,24 @@ class BaseSchedulerSolver(
             },
             task.plan,
         )
+        if (
+            any(transitions.values())
+            and not task.retains_execution
+            and not any(
+                getattr(task, flag, False)
+                for flag in (
+                    "mood_physical_started",
+                    "derived_correction_started",
+                    "group_shift_expected",
+                    "product_shift_locked",
+                )
+            )
+        ):
+            groups.update(
+                group
+                for group, resting in transitions.items()
+                if not resting and self.op_data.group_is_resting(group)
+            )
         explicit = getattr(task, "backup_explicit_slots", ())
         for op in self.op_data.operators.values():
             if (
@@ -8642,6 +8692,36 @@ class BaseSchedulerSolver(
             if all(name == "Current" for name in row):
                 del plan[room]
 
+    def _waiting_return_can_progress(self, task):
+        """只放行与挂起整批目标一致、且不占用其余预约的正常回班。"""
+        if task.type != TaskTypes.SHIFT_ON:
+            return False
+        returning_names = {
+            name
+            for room, row in task.plan.items()
+            if not room.startswith("dorm")
+            for index, name in enumerate(row)
+            if (op := self.op_data.operators.get(name)) is not None
+            and (op.room, op.index) == (room, index)
+        }
+        original_names, _ = self._waiting_shift_reservations()
+        returning_groups = {
+            group
+            for group, resting in self.op_data.arrangement_group_transitions(
+                task.plan,
+                group_transitions=getattr(task, "group_shift_transitions", {}),
+            ).items()
+            if not resting and self.op_data.group_is_resting(group)
+        }
+        names, slots = self._waiting_shift_reservations(
+            returning_groups=returning_groups, returning_names=returning_names
+        )
+        return bool(original_names - names) and not any(
+            name != "Current" and (name in names or (room, index) in slots)
+            for room, row in task.plan.items()
+            for index, name in enumerate(row)
+        )
+
     @log_mood_calculation("完整换班")
     @_log_backup_calculation("完整换班")
     def _prepare_shift_cycle(self, task):
@@ -8681,6 +8761,23 @@ class BaseSchedulerSolver(
         projection_now = getattr(self.op_data, "_projection_now", None)
         if projection_now is None and self.op_data.mood_calculation_enabled:
             projection_now = datetime.now()
+        if self._waiting_return_can_progress(task):
+            prepared = copy.copy(task)
+            prepared.plan = copy.deepcopy(task.plan)
+            self._prepare_shift_backup(prepared, now=projection_now)
+            if (
+                getattr(
+                    prepared, "backup_shift_conditions", self.op_data.plan_condition
+                )
+                == self.op_data.plan_condition
+                and getattr(prepared, "backup_group", self.op_data.backup_group)
+                == self.op_data.backup_group
+                and self._waiting_return_can_progress(prepared)
+            ):
+                # 先完成这份回班，实际释放床位后再重验挂起的整批换班。
+                # 不把其他普通轮休并入前置回班，避免重新占用刚释放的床位。
+                task.__dict__.update(prepared.__dict__)
+                return
         if getattr(task, "exhaust_support", False):
             # 先确认前置接岗，再由原用尽任务重算下班；普通轮休不能在此抢床。
             self._prepare_shift_backup(task, now=projection_now)
