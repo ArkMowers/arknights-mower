@@ -90,7 +90,13 @@ class TestSelectLatestActivityStages(unittest.TestCase):
                 end=4000,
                 drops=[_drop("30012", "MATERIAL")],
             ),  # 固源岩
-            _stage("BS-3", "新活动", start=3000, end=4000, drops=[]),
+            _stage(
+                "BS-3",
+                "新活动",
+                start=3000,
+                end=4000,
+                drops=[_drop("30031", "MATERIAL")],
+            ),
             # BS-4 同时是「旧三关之一」且掉装置
             _stage(
                 "BS-4",
@@ -99,7 +105,13 @@ class TestSelectLatestActivityStages(unittest.TestCase):
                 end=4000,
                 drops=[_drop("30062", "MATERIAL")],
             ),  # 装置
-            _stage("BS-5", "新活动", start=3000, end=4000, drops=[]),
+            _stage(
+                "BS-5",
+                "新活动",
+                start=3000,
+                end=4000,
+                drops=[_drop("30041", "MATERIAL")],
+            ),
             # 特化子 zone（MO/S/EX）与突袭/挑战版都应被排除
             _stage(
                 "BS-MO-1",
@@ -159,8 +171,12 @@ class TestSelectLatestActivityStages(unittest.TestCase):
         self.assertEqual(
             by_code["BS-2"]["materials"], [{"id": "30012", "name": "固源岩"}]
         )
-        self.assertEqual(by_code["BS-3"]["materials"], [])
-        self.assertEqual(by_code["BS-5"]["materials"], [])
+        self.assertEqual(
+            by_code["BS-3"]["materials"], [{"id": "30031", "name": "糖"}]
+        )
+        self.assertEqual(
+            by_code["BS-5"]["materials"], [{"id": "30041", "name": "异铁"}]
+        )
 
     def test_no_window_stages_returns_empty(self):
         got = select_latest_activity_stages(
@@ -209,8 +225,50 @@ class TestSelectLatestActivityStages(unittest.TestCase):
             ],
         )
         got = select_latest_activity_stages([s], self.km, 500)
-        self.assertEqual(len(got), 1)
-        self.assertEqual(got[0]["materials"], [])
+        self.assertEqual(got, [])
+
+    def test_clear_only_final_stage_does_not_displace_material_stage(self):
+        material_ids = {4: "30012", 5: "30062", 7: "31043", 8: "31083", 9: "31113"}
+        stages = [
+            _stage(
+                f"TL-{number}",
+                "时间啊，向前！",
+                start=1000,
+                end=2000,
+                drops=[_drop(material_id, "MATERIAL")],
+            )
+            for number, material_id in material_ids.items()
+        ]
+        km = _km(
+            ("30012", "固源岩"),
+            ("30062", "装置"),
+            ("31043", "半自然溶剂"),
+            ("31083", "环烃聚质"),
+            ("31113", "电极单元"),
+        )
+        final_stage_drops = (
+            None,
+            [],
+            [_drop("act55side_token_record", "ACTIVITY_ITEM")],
+            [_drop("31043", "MATERIAL", dropType="COMPLETE")],
+            [
+                _drop("act55side_token_record", "ACTIVITY_ITEM", dropType="COMPLETE"),
+                _drop("4002", "DIAMOND", dropType="COMPLETE"),
+            ],
+        )
+
+        for drops in final_stage_drops:
+            with self.subTest(drops=drops):
+                final_stage = _stage(
+                    "TL-10", "时间啊，向前！", start=1000, end=2000, drops=drops
+                )
+                got = select_latest_activity_stages([*stages, final_stage], km, 1500)
+                self.assertEqual(
+                    [entry["code"] for entry in got],
+                    ["TL-9", "TL-8", "TL-7", "TL-5", "TL-4"],
+                )
+                options = build_options(got, {"31043": 17})
+                self.assertEqual(options[2]["label"], "TL-7:半自然溶剂(库存:17)")
 
     def test_to_style_event_normal_last3_plus_material(self):
         # 复刻真实结构：一场活动有主关 TO-1..9、EX-1..8、S-1..4、MO-1。

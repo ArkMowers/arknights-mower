@@ -280,6 +280,39 @@ class MaaStageInventoryTests(unittest.TestCase):
         self.assertEqual(suggestion["members"][0]["item_id"], "NEW")
         self.assertEqual(suggestion["members"][0]["ratio"], 0)
 
+    def test_activity_bindings_skip_clear_only_stage_and_keep_saved_selection(self):
+        stages = [
+            {
+                "id": f"TL-{number}",
+                "stageType": "ACTIVITY",
+                "zoneNameSecond": "时间啊，向前！",
+                "difficulty": "NORMAL",
+                "endTs": {"startTs": 1000, "endTs": 2000},
+                "drop": [{"id": item, "type": "MATERIAL", "dropType": "NORMAL"}]
+                if item
+                else [{"id": "4002", "type": "DIAMOND", "dropType": "COMPLETE"}],
+            }
+            for number, item in [(7, "31043"), (8, "31083"), (9, "31113"), (10, None)]
+        ]
+        weekly_plan = [{"weekday": "周一", "stage": ["TL-10"]}]
+        with patch(
+            "arknights_mower.utils.maa_stage_inventory.stage_data_full", stages
+        ):
+            options, suggestion = build_stage_options(weekly_plan=weekly_plan, now=1500)
+
+        self.assertEqual(
+            [option["code"] for option in options if option["activity"]],
+            ["TL-9", "TL-8", "TL-7"],
+        )
+        self.assertEqual(
+            [member["stage"] for member in suggestion["members"]],
+            ["TL-9", "TL-8", "TL-7"],
+        )
+        saved_option = next(option for option in options if option["code"] == "TL-10")
+        self.assertFalse(saved_option["activity"])
+        self.assertEqual(saved_option["materials"], [])
+        self.assertEqual(weekly_plan, [{"weekday": "周一", "stage": ["TL-10"]}])
+
     def test_limit_is_applied_before_ratio(self):
         result = select_stages_by_inventory(
             ["ACT-A", "ACT-B", "1-7"],
