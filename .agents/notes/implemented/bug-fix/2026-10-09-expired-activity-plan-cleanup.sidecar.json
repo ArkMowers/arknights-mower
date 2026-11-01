@@ -1,0 +1,21 @@
+{
+  "title": "Expired Source Plan Cleanup",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-MAA-06]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.config.weekly_plan_loader.WeeklyPlanManager.maybe_switch_expired_activity_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/weekly_plan_tests.py",
+    "ui/src/components/ActivityResourceRefresh.test.js",
+    "ui/src/components/MaaWeekly.test.js",
+    "ui/src/stores/config.test.js"
+  ]
+}

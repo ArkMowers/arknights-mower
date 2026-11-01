@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import functools
+import os
 import socket
 import struct
 import threading
 import time
-import traceback
 from typing import Optional, Tuple
 
 import numpy as np
@@ -13,11 +12,22 @@ import numpy as np
 from arknights_mower import __rootdir__
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.socket import Socket
+from arknights_mower.utils.device.io_budget import (
+    budget_sleep,
+    device_io_budget,
+    touch_release_budget,
+)
 from arknights_mower.utils.device.scrcpy import const
 from arknights_mower.utils.device.scrcpy.control import ControlSender
 from arknights_mower.utils.log import logger
 
 SCR_PATH = "/data/local/tmp/minitouch"
+
+
+class ScrcpyCleanupError(RuntimeError):
+    """Do not replace a server whose owned resources could not be closed."""
+
+    cleanup_failed = True
 
 
 class Client:
@@ -50,6 +60,7 @@ class Client:
 
         # User accessible
         self.client = client
+        self.owner_pid = os.getpid()
         self.last_frame: Optional[np.ndarray] = None
         self.resolution: Optional[Tuple[int, int]] = None
         self.device_name: Optional[str] = None
@@ -70,12 +81,18 @@ class Client:
         self.__server_stream: Optional[Socket] = None
         self.__video_socket: Optional[Socket] = None
         self.control_socket: Optional[Socket] = None
-        self.control_socket_lock = threading.Lock()
+        self.control_socket_lock = threading.RLock()
+        self._resources_lock = threading.RLock()
+        self._interrupted = False
+        self._cleanup_error = None
 
         self.start()
 
     def __del__(self) -> None:
-        self.stop()
+        try:
+            self.stop()
+        except Exception:
+            pass
 
     def __start_server(self) -> None:
         """
@@ -84,7 +101,7 @@ class Client:
         cmdline = f"CLASSPATH={SCR_PATH} app_process /data/local/tmp com.genymobile.scrcpy.Server 1.21 log_level=verbose control=true tunnel_forward=true"
         if self.displayid is not None:
             cmdline += f" display_id={self.displayid}"
-        self.__server_stream: Socket = self.client.stream_shell(cmdline)
+        self._own_stream("_Client__server_stream", self.client.stream_shell(cmdline))
         # Wait for server to start
         response = self.__server_stream.recv(100)
         logger.debug(response)
@@ -113,91 +130,155 @@ class Client:
         This method will set: video_socket, control_socket, resolution variables
         """
         try:
-            self.__video_socket = self.client.stream("localabstract:scrcpy")
+            self._own_stream(
+                "_Client__video_socket", self.client.stream("localabstract:scrcpy")
+            )
         except socket.timeout:
             raise ConnectionError("Failed to connect scrcpy-server")
 
-        dummy_byte = self.__video_socket.recv(1)
+        dummy_byte = self.__video_socket.recv_exactly(1)
         if not len(dummy_byte) or dummy_byte != b"\x00":
             raise ConnectionError("Did not receive Dummy Byte!")
 
         try:
-            self.control_socket = self.client.stream("localabstract:scrcpy")
+            self._own_stream(
+                "control_socket", self.client.stream("localabstract:scrcpy")
+            )
         except socket.timeout:
             raise ConnectionError("Failed to connect scrcpy-server")
 
-        self.device_name = self.__video_socket.recv(64).decode("utf-8")
+        self.device_name = self.__video_socket.recv_exactly(64).decode("utf-8")
         self.device_name = self.device_name.rstrip("\x00")
         if not len(self.device_name):
             raise ConnectionError("Did not receive Device Name!")
 
-        res = self.__video_socket.recv(4)
+        res = self.__video_socket.recv_exactly(4)
         self.resolution = struct.unpack(">HH", res)
         # self.__video_socket.setblocking(False)
 
     def start(self) -> None:
-        """
-        Start listening video stream
-        """
-        try_count = 0
-        while try_count < 3:
+        """只建立一次连接；失败交由设备恢复入口统一重试。"""
+        with self.control_socket_lock:
+            if self.owner_pid != os.getpid() or self._interrupted:
+                raise ConnectionError("scrcpy 会话已关闭或所有权不匹配")
+            self.stop()
+            deadline = time.monotonic() + self.connection_timeout / 1000
+
+            def remaining():
+                if self._interrupted:
+                    raise ConnectionError("scrcpy 会话已关闭")
+                seconds = deadline - time.monotonic()
+                if seconds <= 0:
+                    raise TimeoutError("scrcpy startup timed out")
+                return seconds
+
             try:
-                self.__deploy_server()
-                time.sleep(0.5)
-                self.__init_server_connection()
-                break
-            except ConnectionError:
-                logger.debug(traceback.format_exc())
-                logger.warning("Failed to connect scrcpy-server.")
+                with device_io_budget(remaining):
+                    budget_sleep(0)
+                    self.__deploy_server()
+                    budget_sleep(0.5)
+                    self.__init_server_connection()
+            except Exception:
                 self.stop()
-                logger.warning("Try again in 10 seconds...")
-                time.sleep(10)
-                try_count += 1
-        else:
-            raise RuntimeError("Failed to connect scrcpy-server.")
+                raise
 
     def stop(self) -> None:
         """
         Stop listening (both threaded and blocked)
         """
-        if self.__server_stream is not None:
-            self.__server_stream.close()
-            self.__server_stream = None
-        if self.control_socket is not None:
-            self.control_socket.close()
-            self.control_socket = None
-        if self.__video_socket is not None:
-            self.__video_socket.close()
-            self.__video_socket = None
+        if self.owner_pid != os.getpid():
+            return
+        with self._resources_lock:
+            streams = self.control_socket, self.__video_socket, self.__server_stream
+            self.control_socket = self.__video_socket = self.__server_stream = None
+            self.resolution = self.device_name = None
+            errors = []
+            for stream in streams:
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except Exception as error:
+                        errors.append(error)
+            if errors:
+                self._cleanup_error = ScrcpyCleanupError(
+                    "; ".join(str(error) for error in errors)
+                )
+                raise self._cleanup_error from errors[0]
+            if self._cleanup_error is not None:
+                raise self._cleanup_error
+
+    def _own_stream(self, name, stream):
+        with self._resources_lock:
+            if self._interrupted:
+                stream.close()
+                raise ConnectionError("scrcpy 会话已关闭")
+            setattr(self, name, stream)
+            return stream
+
+    def interrupt(self):
+        """Cancel socket I/O without releasing the server before restoration."""
+        if self.owner_pid != os.getpid():
+            return
+        with self._resources_lock:
+            if self._interrupted:
+                return
+            self._interrupted = True
+            streams = self.control_socket, self.__video_socket, self.__server_stream
+        errors = []
+        for stream in streams:
+            if stream is not None:
+                try:
+                    stream.interrupt()
+                except Exception as exc:
+                    errors.append(exc)
+        if errors:
+            for error in errors[1:]:
+                errors[0].add_note(str(error))
+            raise errors[0]
 
     def check_adb_alive(self) -> bool:
         """check if adb server alive"""
         return self.client.check_server_alive()
 
-    def stable(f):
-        @functools.wraps(f)
-        def inner(self: Client, *args, **kwargs):
-            try_count = 0
-            while try_count < 3:
-                try:
-                    f(self, *args, **kwargs)
-                    break
-                except (ConnectionResetError, BrokenPipeError):
-                    self.stop()
-                    time.sleep(1)
-                    self.check_adb_alive()
-                    self.start()
-                    try_count += 1
-            else:
-                raise RuntimeError("Failed to start scrcpy-server.")
+    def check_control_alive(self) -> bool:
+        """Detect control EOF without consuming data or sending input."""
+        budget_sleep(0)
+        if not self.control_socket_lock.acquire(blocking=False):
+            raise TimeoutError("scrcpy 输入连接探测锁忙，连接状态未确认")
+        try:
+            if self.owner_pid != os.getpid() or self._interrupted:
+                raise ConnectionError("scrcpy 会话已关闭或所有权不匹配")
+            stream = self.control_socket
+            connection = stream.sock if stream is not None else None
+            if connection is None or connection.fileno() < 0:
+                return False
+            timeout = connection.gettimeout()
+            try:
+                connection.settimeout(0)
+                alive = bool(connection.recv(1, socket.MSG_PEEK))
+            except BlockingIOError:
+                alive = True
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                alive = False
+            except OSError:
+                if connection.fileno() >= 0:
+                    raise
+                alive = False
+            finally:
+                if connection.fileno() >= 0:
+                    try:
+                        connection.settimeout(timeout)
+                    except OSError:
+                        if connection.fileno() >= 0:
+                            raise
+            budget_sleep(0)
+            return alive and connection.fileno() >= 0
+        finally:
+            self.control_socket_lock.release()
 
-        return inner
-
-    @stable
     def tap(self, x: int, y: int) -> None:
         self.control.tap(x, y)
 
-    @stable
     def swipe(
         self,
         x0,
@@ -208,32 +289,38 @@ class Client:
         hold_before_release: float = 0,
         fall: bool = True,
         lift: bool = True,
+        before_release=None,
     ):
-        frame_time = 1 / 60
+        with self.control.input_operation():
+            frame_time = 1 / 60
 
-        start_time = time.perf_counter()
-        end_time = start_time + move_duraion
-        fall and self.control.touch(x0, y0, const.ACTION_DOWN)
-        t1 = time.perf_counter()
-        step_time = t1 - start_time
-        if step_time < frame_time:
-            time.sleep(frame_time - step_time)
-        while True:
-            t0 = time.perf_counter()
-            if t0 > end_time:
-                break
-            time_progress = (t0 - start_time) / move_duraion
-            path_progress = time_progress
-            self.control.touch(
-                int(x0 + (x1 - x0) * path_progress),
-                int(y0 + (y1 - y0) * path_progress),
-                const.ACTION_MOVE,
-            )
-            t1 = time.perf_counter()
-            step_time = t1 - t0
+            start_time = time.perf_counter()
+            end_time = start_time + move_duraion
+            fall and self.control.touch(x0, y0, const.ACTION_DOWN)
+            step_time = time.perf_counter() - start_time
             if step_time < frame_time:
-                time.sleep(frame_time - step_time)
-        self.control.touch(x1, y1, const.ACTION_MOVE)
-        if hold_before_release > 0:
-            time.sleep(hold_before_release)
-        lift and self.control.touch(x1, y1, const.ACTION_UP)
+                budget_sleep(frame_time - step_time)
+            while True:
+                step_start = time.perf_counter()
+                if step_start > end_time:
+                    break
+                time_progress = (step_start - start_time) / move_duraion
+                self.control.touch(
+                    int(x0 + (x1 - x0) * time_progress),
+                    int(y0 + (y1 - y0) * time_progress),
+                    const.ACTION_MOVE,
+                )
+                step_time = time.perf_counter() - step_start
+                if step_time < frame_time:
+                    budget_sleep(frame_time - step_time)
+            self.control.touch(x1, y1, const.ACTION_MOVE)
+            if before_release is None:
+                if hold_before_release > 0:
+                    budget_sleep(hold_before_release)
+                lift and self.control.touch(x1, y1, const.ACTION_UP)
+            elif lift:
+                try:
+                    before_release()
+                finally:
+                    with touch_release_budget():
+                        self.control.touch(x1, y1, const.ACTION_UP)

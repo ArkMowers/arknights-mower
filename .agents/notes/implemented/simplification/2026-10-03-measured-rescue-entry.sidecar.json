@@ -1,0 +1,20 @@
+{
+  "title": "Measured Intelligent Rescue Entry",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_startup",
+    "arknights_mower.utils.emergency_recovery.native_opportunity"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/mass_mood_recovery_tests.py"
+  ]
+}

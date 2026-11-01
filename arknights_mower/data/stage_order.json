@@ -130,6 +130,11 @@
         "sortWithinYear": 10
     },
     {
+        "name": "时间啊，向前！",
+        "sortByYear": 8,
+        "sortWithinYear": 5
+    },
+    {
         "name": "吾导先路",
         "sortByYear": 3,
         "sortWithinYear": 10
@@ -283,6 +288,11 @@
         "name": "出苍白海",
         "sortByYear": 6,
         "sortWithinYear": 6
+    },
+    {
+        "name": "昨日海",
+        "sortByYear": 8,
+        "sortWithinYear": 4
     },
     {
         "name": "沃伦姆德的薄暮",

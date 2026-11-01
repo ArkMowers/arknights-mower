@@ -1,0 +1,22 @@
+{
+  "title": "Local Inventory Execution",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-MAA-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.maa_inventory.MaaDropInventory",
+    "arknights_mower.utils.maa_stage_inventory.maa_fight_drop_targets",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.refresh_maa_inventory_targets"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_inventory_tests.py",
+    "arknights_mower/tests/maa_stage_inventory_scheduler_tests.py",
+    "arknights_mower/tests/workshop_limits_tests.py"
+  ]
+}

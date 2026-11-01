@@ -1,0 +1,7 @@
+{
+  "ready": {"state": "device", "android_id": "0123456789abcdef"},
+  "stopped": {"state": null, "android_id": null},
+  "stale": {"state": "device", "android_id": "1111111111111111"},
+  "offline": {"state": "offline", "android_id": null},
+  "unauthorized": {"state": "unauthorized", "android_id": null}
+}

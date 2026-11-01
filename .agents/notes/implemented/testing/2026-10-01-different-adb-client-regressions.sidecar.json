@@ -1,0 +1,26 @@
+{
+  "title": "Different ADB Client Regressions",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-03]",
+    "[INV-05]",
+    "[INV-DEV-19]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/adb_client/shared.py",
+    "arknights_mower/utils/device/adb_client/server.py",
+    "arknights_mower/utils/device/session_io.py",
+    "arknights_mower/utils/device/application.py"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/adb_shared_server_tests.py",
+    "arknights_mower/tests/adb_server_tests.py",
+    "arknights_mower/tests/device_adb_recovery_tests.py"
+  ]
+}

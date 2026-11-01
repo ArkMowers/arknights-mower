@@ -1,0 +1,22 @@
+{
+  "title": "Dormitory Blacklist Convergence",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-13]",
+    "[INV-SCHED-25]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task._recovery_aware_assignments",
+    "arknights_mower.utils.scheduler_task.rebalance_plan_swap_dorms",
+    "arknights_mower.utils.scheduler_task.rebalance_closing_dorm_slots",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._complete_group_shift"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_blacklist_convergence_tests.py"
+  ]
+}

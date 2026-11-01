@@ -1,5 +1,3 @@
-import time
-
 from arknights_mower.utils.device.maatouch.session import Session
 from arknights_mower.utils.log import logger
 
@@ -42,9 +40,10 @@ class CommandBuilder:
         self.commit()
         logger.debug("send operation: %s" % self.content.replace("\n", "\\n"))
         session.send(self.content)
-        time.sleep(self.delay / 1000 + DEFAULT_DELAY)
+        session.wait(self.delay / 1000 + DEFAULT_DELAY)
         self.reset()
 
     def reset(self):
         """clear current commands"""
         self.content = ""
+        self.delay = 0

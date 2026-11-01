@@ -1,105 +1,91 @@
-<script setup lang="jsx">
+<script setup>
 import { useConfigStore } from '@/stores/config'
-import { usePlanStore } from '@/stores/plan'
+import { useMowerStore } from '@/stores/mower'
 import { storeToRefs } from 'pinia'
-import { computed, inject } from 'vue'
+import { computed, inject, onMounted, onUnmounted, provide, ref } from 'vue'
+import ChatBotSetting from '@/components/ChatBotSetting.vue'
+import SoftwareUpdate from '@/components/SoftwareUpdate.vue'
+import MaaUpdates from '@/components/MaaUpdates.vue'
+import NetworkSettings from '@/components/NetworkSettings.vue'
+import ConfigBackup from '@/components/ConfigBackup.vue'
+import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
+import { settingsSectionKey } from '@/composables/settingsNavigation'
+import { themeSelectionKey } from '@/composables/themeSelection'
+import SettingsSection from '@/components/SettingsSection.vue'
+import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
+import VersionWatermarkPreference from '@/components/VersionWatermarkPreference.vue'
+import LogBackgroundPreference from '@/components/LogBackgroundPreference.vue'
+import HalloweenPreference from '@/components/HalloweenPreference.vue'
+import SettingsSegmented from '@/components/SettingsSegmented.vue'
+import InterfaceIcon from '@vicons/fluent/es/PaintBrush24Regular'
+import NotifyIcon from '@vicons/fluent/es/Alert24Regular'
+import UpdateIcon from '@vicons/fluent/es/CloudSync24Regular'
+import DataIcon from '@vicons/fluent/es/Database24Regular'
+import SunIcon from '@vicons/fluent/es/WeatherSunny24Regular'
+import MoonIcon from '@vicons/fluent/es/WeatherMoon24Regular'
+import SystemIcon from '@vicons/fluent/es/Desktop24Regular'
 
-import { pinyin_match } from '@/utils/common'
+defineOptions({ name: 'MowerSettings' })
+provide(settingsSectionKey, null)
 
-import { folder_dialog } from '@/utils/dialog'
+const sections = [
+  {
+    id: 'mower-interface',
+    title: '界面与窗口',
+    icon: InterfaceIcon
+  },
+  {
+    id: 'mower-notifications',
+    title: '通知与助手',
+    icon: NotifyIcon
+  },
+  {
+    id: 'mower-profiles',
+    title: '档案与运行',
+    icon: DataIcon
+  },
+  {
+    id: 'mower-updates',
+    title: '网络与更新',
+    icon: UpdateIcon
+  },
+  {
+    id: 'mower-data',
+    title: '数据与维护',
+    icon: DataIcon
+  }
+]
+const section = Object.fromEntries(sections.map((item) => [item.id, item]))
 
 const config_store = useConfigStore()
-const plan_store = usePlanStore()
-
+const inheritsFromManager = (key) =>
+  config_store.manager_owned_device && config_store.manager_inherited_settings?.includes(key)
+const showExtraSettings = computed(
+  () => !config_store.manager_owned_device || config_store.extra_settings_visible === true
+)
+const { updates_enabled, running } = storeToRefs(useMowerStore())
 const mobile = inject('mobile')
+const { theme, webview, runtime_platform, screenshot, screenshot_archive_limit_mb } =
+  storeToRefs(config_store)
+const setTheme = inject(themeSelectionKey, (value) => (theme.value = value))
+const themeOptions = [
+  { value: 'light', label: '亮色', icon: SunIcon },
+  { value: 'dark', label: '暗色', icon: MoonIcon },
+  { value: 'system', label: '跟随系统', icon: SystemIcon }
+]
 
-const {
-  run_order_delay,
-  dorm_order,
-  drone_room,
-  drone_count_limit,
-  drone_interval,
-  reload_room,
-  start_automatically,
-  adb,
-  package_type,
-  simulator,
-  theme,
-  resting_threshold,
-  fia_threshold,
-  rescue_threshold,
-  favorite,
-  tap_to_launch_game,
-  exit_game_when_idle,
-  return_home_when_idle,
-  close_simulator_when_idle,
-  screenshot,
-  screenshot_interval,
-  run_order_grandet_mode,
-  webview,
-  fix_mumu12_adb_disconnect,
-  touch_method,
-  free_room,
-  merge_interval,
-  fia_fool,
-  refresh_backup_plan_after_mood,
-  assistant_follows_schedule,
-  droidcast,
-  mumu12IPC,
-  maa_adb_path,
-  maa_gap,
-  custom_screenshot,
-  check_for_updates,
-  waiting_scene,
-  enable_party,
-  leifeng_mode,
-  item_list,
-  workshop_settings,
-  ai_type,
-  ai_key
-} = storeToRefs(config_store)
-
-const { operators } = storeToRefs(plan_store)
-
-const { left_side_facility } = plan_store
-
-const facility_with_empty = computed(() => {
-  return [{ label: '（加速任意贸易站）', value: '' }].concat(left_side_facility)
+const archive_limit_gib = computed({
+  get: () => screenshot_archive_limit_mb.value / 1024,
+  set: (value) => {
+    if (Number.isFinite(value))
+      screenshot_archive_limit_mb.value = Math.max(0, Math.round(value * 1024))
+  }
 })
 
-const simulator_types = [
-  { label: '夜神', value: '夜神' },
-  { label: '蓝叠模拟器Air（macOS）', value: 'BlueStacksAir' },
-  { label: 'MuMu模拟器12', value: 'MuMu12' },
-  { label: 'Waydroid', value: 'Waydroid' },
-  { label: '雷电模拟器9', value: '雷电9' },
-  { label: 'ReDroid', value: 'ReDroid' },
-  { label: 'MuMu模拟器Pro', value: 'MuMuPro' },
-  { label: 'Genymotion', value: 'Genymotion' },
-  { label: '其它', value: '' }
-]
-
-const launch_options = [
-  { label: '使用adb命令启动', value: 'adb' },
-  { label: '点击屏幕启动', value: 'tap' },
-  { label: '自定义命令启动', value: 'custom' }
-]
-
-const defaultLaunchCommand =
-  'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n {package}/{activity}'
-
-function reset_launch_command() {
-  tap_to_launch_game.value.command = defaultLaunchCommand
-}
-
-async function select_simulator_folder() {
-  const folder_path = await folder_dialog()
-  if (folder_path) {
-    simulator.value.simulator_folder = folder_path
-  }
-}
-
-import { render_op_label } from '@/utils/op_select'
+const hide_macos_menu_bar = computed({
+  get: () => !webview.value.tray,
+  set: (hidden) => (webview.value.tray = !hidden)
+})
 
 const scale_marks = {}
 const display_marks = [0.5, 1.0, 1.5, 2.0, 3.0]
@@ -109,937 +95,455 @@ for (let i = 0.5; i <= 3.0; i += 0.25) {
 
 const new_scale = ref(webview.value.scale)
 
-import { file_dialog } from '@/utils/dialog'
-
-async function select_maa_adb_path() {
-  const file_path = await file_dialog()
-  if (file_path) {
-    maa_adb_path.value = file_path
-  }
-}
-
-const screenshot_method = computed({
-  get() {
-    let result = 'adb_gzip'
-    if (droidcast.value.enable) {
-      result = 'droidcast'
-    } else if (custom_screenshot.value.enable) {
-      result = 'custom'
-    } else if (mumu12IPC.value) {
-      result = 'mumu12IPC'
-    }
-    if (result === 'mumu12IPC' && simulator.value.name !== 'MuMu12') {
-      return 'adb_gzip'
-    }
-    return result
-  },
-  set(value) {
-    droidcast.value.enable = false
-    custom_screenshot.value.enable = false
-    mumu12IPC.value = false
-    if (value == 'droidcast') {
-      droidcast.value.enable = true
-    } else if (value == 'custom') {
-      custom_screenshot.value.enable = true
-    } else if (value == 'mumu12IPC' && simulator.value.name === 'MuMu12') {
-      mumu12IPC.value = true
-    }
-  }
-})
-
-const tested = ref(false)
-const image = ref('')
-const elapsed = ref(0)
-const loading = ref(false)
-const axios = inject('axios')
-
-const scene_name = {
-  CONNECTING: '正在提交反馈至神经',
-  UNKNOWN: '未知',
-  LOADING: '加载中',
-  LOGIN_LOADING: '场景跳转时的等待界面',
-  LOGIN_MAIN_NOENTRY: '登录页面（无按钮入口）',
-  OPERATOR_ONGOING: '代理作战'
-}
-
-const onSelectionChange = (newValue) => {
-  if (newValue === '夜神') {
-    simulator.value.index = '-1'
-  } else {
-    simulator.value.index = '0'
-  }
-}
-import { ref } from 'vue'
-import ChatBotSetting from '../components/ChatBotSetting.vue'
-
-const showSettingModal = ref(false)
-const editingIndex = ref(null)
-
-const tempSetting = ref({
-  operator: '',
-  items: []
-})
-const deepClone = (obj) => JSON.parse(JSON.stringify(obj))
-const openEdit = (index) => {
-  tempSetting.value = workshop_settings.value[index]
-  editingIndex.value = index
-  showSettingModal.value = true
-}
-
-const workshop_setting_close = () => {
-  if (editingIndex.value === null) {
-    workshop_settings.value.push(deepClone(tempSetting.value))
-  } else {
-    workshop_settings.value[editingIndex.value] = deepClone(tempSetting.value)
-  }
-  showSettingModal.value = false
-  editingIndex.value = null
-}
-function createNewItem() {
-  return {
-    item_names: [],
-    children_lower_limit: 20,
-    self_upper_limit: 20
-  }
-}
-
-const idleAction = ref('') // 'idle' | 'home' | 'exit' | 'close'
-
-const idleOptions = [
-  { label: '无操作', value: 'idle' },
-  { label: '返回首页', value: 'home' },
-  { label: '退出游戏', value: 'exit' },
-  { label: '关闭模拟器', value: 'close' }
+const desktopPreferencesReady = ref(false)
+const desktopTrayEnabled = ref(true)
+const desktopCloseMode = ref('ask')
+const desktopLaunchMode = ref('last')
+const desktopPreferenceBusy = ref(false)
+const desktopPreferenceError = ref('')
+const closeOptions = computed(() => [
+  { label: '每次询问', value: 'ask' },
+  ...(desktopTrayEnabled.value ? [{ label: '收起到托盘', value: 'tray' }] : []),
+  { label: '彻底退出', value: 'exit' }
+])
+const launchOptions = [
+  { label: '恢复上次状态', value: 'last' },
+  { label: '普通窗口', value: 'normal' },
+  { label: '最大化窗口', value: 'maximized' }
 ]
 
-watch(idleAction, (val) => {
-  if (val == 'idle') {
-    return_home_when_idle.value = false
-    exit_game_when_idle.value = false
-    close_simulator_when_idle.value = false
-    return
+async function loadDesktopPreferences() {
+  const api = window.pywebview?.api
+  if (!api?.get_close_preference || !api?.get_window_launch_mode) return
+  try {
+    const [close, launch] = await Promise.all([
+      api.get_close_preference(),
+      api.get_window_launch_mode()
+    ])
+    desktopTrayEnabled.value = close.tray_enabled !== false
+    desktopCloseMode.value = close.remember ? close.choice : 'ask'
+    desktopLaunchMode.value = launch
+    desktopPreferencesReady.value = true
+    desktopPreferenceError.value = ''
+  } catch (error) {
+    desktopPreferenceError.value = error.message || '窗口设置读取失败'
   }
-  return_home_when_idle.value = val === 'home'
-  exit_game_when_idle.value = val === 'exit'
-  close_simulator_when_idle.value = val === 'close'
-})
-
-watch(
-  [return_home_when_idle, exit_game_when_idle, close_simulator_when_idle],
-  ([home, exit, close]) => {
-    if (home) idleAction.value = 'home'
-    else if (exit) idleAction.value = 'exit'
-    else if (close) idleAction.value = 'close'
-    else idleAction.value = 'idle'
-  }
-)
-
-if (return_home_when_idle.value) {
-  idleAction.value = 'home'
-} else if (exit_game_when_idle.value) {
-  idleAction.value = 'exit'
-} else if (close_simulator_when_idle.value) {
-  idleAction.value = 'close'
-} else {
-  idleAction.value = 'idle'
 }
+
+async function changeCloseMode(value) {
+  const api = window.pywebview?.api
+  if (!api?.set_close_preference || desktopPreferenceBusy.value) return
+  desktopPreferenceBusy.value = true
+  try {
+    const choice = value === 'ask' ? (desktopTrayEnabled.value ? 'tray' : 'exit') : value
+    const ok = await api.set_close_preference(choice, value !== 'ask')
+    if (ok !== true) throw new Error('无法保存关闭设置')
+    desktopCloseMode.value = value
+    desktopPreferenceError.value = ''
+  } catch (error) {
+    desktopPreferenceError.value = error.message || '关闭设置保存失败'
+  } finally {
+    desktopPreferenceBusy.value = false
+  }
+}
+
+async function changeLaunchMode(value) {
+  const api = window.pywebview?.api
+  if (!api?.set_window_launch_mode || desktopPreferenceBusy.value) return
+  desktopPreferenceBusy.value = true
+  try {
+    const ok = await api.set_window_launch_mode(value)
+    if (ok !== true) throw new Error('无法保存启动设置')
+    desktopLaunchMode.value = value
+    desktopPreferenceError.value = ''
+  } catch (error) {
+    desktopPreferenceError.value = error.message || '启动设置保存失败'
+  } finally {
+    desktopPreferenceBusy.value = false
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('pywebviewready', loadDesktopPreferences)
+  void loadDesktopPreferences()
+})
+onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPreferences))
 </script>
 
 <template>
-  <div class="grid-two">
-    <div class="grid-left">
-      <div>
-        <n-card title="Mower设置">
-          <n-form
-            :label-placement="mobile ? 'top' : 'left'"
-            :show-feedback="false"
-            label-width="120"
-            label-align="left"
+  <div class="mower-settings-panels settings-page">
+    <SettingsSection v-bind="section['mower-interface']" data-task-editor="mower-interface">
+      <n-card id="appearance-settings" title="常规">
+        <n-form
+          class="settings-row-form"
+          :label-placement="mobile ? 'top' : 'left'"
+          :show-feedback="false"
+          label-width="120"
+          label-align="left"
+        >
+          <n-form-item class="appearance-scale-row">
+            <template #label>
+              <span class="settings-row-copy">
+                <span>界面缩放</span>
+                <span class="settings-row-description">调整文字与控件大小，点击应用后生效。</span>
+              </span>
+            </template>
+            <div class="desktop-scale-settings">
+              <div class="desktop-scale-controls">
+                <n-slider
+                  v-model:value="new_scale"
+                  :step="0.25"
+                  :min="0.5"
+                  :max="3.0"
+                  :marks="scale_marks"
+                  :format-tooltip="(x) => `${x * 100}%`"
+                  aria-label="界面缩放"
+                />
+              </div>
+              <div class="desktop-scale-toolbar" role="group" aria-label="应用界面缩放">
+                <output
+                  class="desktop-scale-value"
+                  :aria-label="new_scale === webview.scale ? '当前界面缩放' : '待应用的界面缩放'"
+                  aria-live="polite"
+                  >{{ new_scale === webview.scale ? '当前' : '待应用' }}
+                  {{ Math.round(new_scale * 100) }}%</output
+                >
+                <n-button
+                  class="scale-apply"
+                  :disabled="new_scale == webview.scale"
+                  @click="webview.scale = new_scale"
+                >
+                  应用
+                </n-button>
+              </div>
+            </div>
+          </n-form-item>
+          <n-form-item
+            label="显示主题"
+            class="settings-appearance-row"
+            v-if="runtime_platform !== 'android'"
           >
-            <n-form-item label="服务器">
-              <n-radio-group v-model:value="package_type">
-                <n-space>
-                  <n-radio value="official">官服</n-radio>
-                  <n-radio value="bilibili">BiliBili服</n-radio>
-                </n-space>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>ADB路径</span>
-                <help-text>
-                  <div>MuMu12：<code>模拟器路径\\shell\\adb.exe</code></div>
-                  <div>
-                    蓝叠Air（macOS）：Homebrew 安装后通常位于
-                    <code>/opt/homebrew/bin/adb</code>（Intel 机器为
-                    <code>/usr/local/bin/adb</code>）
-                  </div>
-                </help-text>
-              </template>
-              <n-input type="textarea" :autosize="true" v-model:value="maa_adb_path" />
-              <n-button @click="select_maa_adb_path" class="dialog-btn">...</n-button>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>ADB连接地址</span>
-                <help-text>
-                  <div>不同模拟器adb地址不同。如不填，系统会自动去寻找adb device中的第一个。</div>
-                  <div>夜神：<code>127.0.0.1:62001</code></div>
-                  <div>蓝叠Air：<code>127.0.0.1:5555</code></div>
-                </help-text>
-              </template>
-              <n-input v-model:value="adb" />
-            </n-form-item>
-            <n-form-item label="触控方案">
-              <n-radio-group v-model:value="touch_method">
-                <n-space>
-                  <n-radio value="scrcpy">scrcpy-1.21-novideo</n-radio>
-                  <n-radio value="maatouch">MaaTouch-1.1.0</n-radio>
-                </n-space>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item label="模拟器">
-              <n-select
-                v-model:value="simulator.name"
-                :options="simulator_types"
-                @update:value="onSelectionChange"
-              />
-            </n-form-item>
-            <n-form-item v-if="simulator.name">
-              <template #label>
-                <span>模拟器文件夹</span>
-                <help-text>
-                  <div>夜神：写到bin文件夹</div>
-                  <div>MuMu12: 写到nx_main文件夹</div>
-                </help-text>
-              </template>
-              <n-input
-                v-model:value="simulator.simulator_folder"
-                type="textarea"
-                :autosize="true"
-              />
-              <n-button @click="select_simulator_folder" class="dialog-btn">...</n-button>
-            </n-form-item>
-            <n-form-item v-if="simulator.name">
-              <template #label>
-                <span>多开编号</span>
-                <help-text>
-                  <div>除夜神单开选择-1以外，其他的按照改模拟器多开器中的序号。</div>
-                </help-text>
-              </template>
-              <n-input v-model:value="simulator.index" />
-            </n-form-item>
-            <n-form-item label="模拟器启动时间" v-if="simulator.name">
-              <n-input-number v-model:value="simulator.wait_time">
-                <template #suffix>秒</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item v-if="simulator.name">
-              <template #label>
-                <span>模拟器老板键</span>
-                <help-text>
-                  <div>启动模拟器后按此快捷键</div>
-                  <div>若不需要此功能，请留空</div>
-                  <div>加号分隔按键，不要空格</div>
-                  <div>
-                    按键名参考
-                    <n-button
-                      text
-                      tag="a"
-                      href="https://pyautogui.readthedocs.io/en/latest/keyboard.html#keyboard-keys"
-                      target="_blank"
-                      type="primary"
-                    >
-                      KEYBOARD_KEYS
-                    </n-button>
-                  </div>
-                </help-text>
-              </template>
-              <n-input
-                v-model:value="simulator.hotkey"
-                placeholder="输入模拟器的老板键，组合键用分号隔开，或留空以停用"
-              />
-            </n-form-item>
-            <n-form-item label="启动游戏">
-              <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
-            </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'tap'" label="点击坐标">
-              <span class="coord-label">X:</span>
-              <n-input-number v-model:value="tap_to_launch_game.x" />
-              <span class="coord-label">Y:</span>
-              <n-input-number v-model:value="tap_to_launch_game.y" />
-            </n-form-item>
-            <n-form-item v-if="tap_to_launch_game.mode == 'custom'">
-              <template #label>
-                <span>启动命令</span>
-                <help-text>
-                  <div>
-                    在 Android shell 中执行，支持 <code>{package}</code> 和 <code>{activity}</code>
-                  </div>
-                </help-text>
-              </template>
-              <n-input
-                v-model:value="tap_to_launch_game.command"
-                type="textarea"
-                :autosize="true"
-              />
-              <n-button class="dialog-btn" @click="reset_launch_command">预设</n-button>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>任务结束后</span>
-                <help-text>
-                  <div>返回首页：降低功耗</div>
-                  <div>退出游戏：降低功耗</div>
-                  <div>关闭模拟器：减少空闲时的资源占用、避免模拟器长时间运行出现问题</div>
-                </help-text>
-              </template>
-
-              <n-select v-model:value="idleAction" :options="idleOptions" />
-            </n-form-item>
-            <n-form-item
-              :show-label="false"
-              v-if="simulator.name == 'MuMu12' && close_simulator_when_idle"
-            >
-              <n-checkbox v-model:checked="fix_mumu12_adb_disconnect">
-                关闭MuMu模拟器12时结束adb进程
-                <help-text>
-                  <div>运行命令<code>taskkill /f /t /im adb.exe</code></div>
-                  <div>使用MuMu模拟器12时，若遇到adb断连问题，可尝试开启此选项</div>
-                </help-text>
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="check_for_updates">检查版本更新</n-checkbox>
-            </n-form-item>
-            <n-form-item label="截图方案">
-              <n-radio-group v-model:value="screenshot_method">
-                <n-flex>
-                  <n-radio value="adb_gzip">
-                    ADB+Gzip<help-text>无损压缩，兼容性好</help-text>
-                  </n-radio>
-                  <n-radio value="droidcast">
-                    DroidCast<help-text>有损压缩，速度更快</help-text>
-                  </n-radio>
-                  <n-radio v-if="simulator.name === 'MuMu12'" value="mumu12IPC">
-                    MuMu 截图增强<help-text>如果选择，则强制使用MuMu自带的触控方案</help-text>
-                  </n-radio>
-                  <n-radio value="custom">
-                    自定义命令<help-text>向<code>STDOUT</code>打印图像</help-text>
-                  </n-radio>
-                </n-flex>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item label="旋转截图" v-if="droidcast.enable">
-              <n-radio-group v-model:value="droidcast.rotate">
-                <n-flex>
-                  <n-radio :value="false">不旋转</n-radio>
-                  <n-radio :value="true">旋转180度</n-radio>
-                </n-flex>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item label="截图命令" v-if="custom_screenshot.enable">
-              <n-input v-model:value="custom_screenshot.command" type="textarea" :autosize="true" />
-              <n-button class="dialog-btn" @click="test_screenshot" :loading="loading">
-                测试
-              </n-button>
-            </n-form-item>
-            <n-form-item v-if="custom_screenshot.enable && tested" :show-label="false">
-              <n-flex vertical>
-                <n-image :src="'data:image/jpeg;base64,' + image" width="100%" />
-                <div>（截图用时{{ elapsed }}ms）</div>
-              </n-flex>
-            </n-form-item>
-            <n-form-item label="截图最短间隔">
-              <n-input-number v-model:value="screenshot_interval" :precision="0">
-                <template #suffix>毫秒</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>截图保存时间</span>
-                <help-text>可填小数</help-text>
-              </template>
-              <n-input-number v-model:value="screenshot">
-                <template #suffix>小时</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item label="等待时间">
-              <n-table size="small" class="waiting-table">
-                <thead>
-                  <tr>
-                    <th>场景</th>
-                    <th>截图间隔</th>
-                    <th>等待次数</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(value, key) in waiting_scene">
-                    <td>{{ scene_name[key] }}</td>
-                    <td>
-                      <n-input-number v-model:value="value[0]" :show-button="false" :precision="0">
-                        <template #suffix>秒</template>
-                      </n-input-number>
-                    </td>
-                    <td>
-                      <n-input-number v-model:value="value[1]" :show-button="false" :precision="0">
-                        <template #suffix>次</template>
-                      </n-input-number>
-                    </td>
-                  </tr>
-                </tbody>
-              </n-table>
-              <!-- {{ waiting_scene }} -->
-            </n-form-item>
-            <n-form-item label="界面缩放">
-              <n-slider
-                v-model:value="new_scale"
-                :step="0.25"
-                :min="0.5"
-                :max="3.0"
-                :marks="scale_marks"
-                :format-tooltip="(x) => `${x * 100}%`"
-              />
-              <n-button
-                class="scale-apply"
-                :disabled="new_scale == webview.scale"
-                @click="webview.scale = new_scale"
-              >
-                应用
-              </n-button>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="webview.tray">
-                使用托盘图标
-                <help-text>重启生效</help-text>
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item label="显示主题">
-              <n-radio-group v-model:value="theme">
-                <n-space>
-                  <n-radio value="light">亮色</n-radio>
-                  <n-radio value="dark">暗色</n-radio>
-                </n-space>
-              </n-radio-group>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>日常任务间隔</span>
-                <help-text>
-                  <div>可填小数</div>
-                  <div>清理智、日常/周常任务领取、借助战打OF-1</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="maa_gap">
-                <template #suffix>小时</template>
-              </n-input-number>
-            </n-form-item>
-          </n-form>
-        </n-card>
-      </div>
-      <div>
-        <SKLand />
-      </div>
-      <div>
-        <Depotswitch />
-      </div>
-      <div>
-        <DailyMission />
-      </div>
-    </div>
-
-    <div class="grid-right">
-      <div>
-        <n-card title="基建设置">
-          <n-form
-            :label-placement="mobile ? 'top' : 'left'"
-            :show-feedback="false"
-            label-width="140"
-            label-align="left"
-          >
-            <n-form-item>
-              <n-flex>
-                <n-checkbox v-model:checked="enable_party">
-                  <div class="item">线索收集</div>
-                </n-checkbox>
-                <n-checkbox v-model:checked="leifeng_mode">
-                  雷锋模式
-                  <help-text>
-                    <div>开启时，向好友赠送多余的线索；</div>
-                    <div>关闭则超过9个线索才送好友。</div>
-                  </help-text>
-                </n-checkbox>
-              </n-flex>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>跑单前置延时</span>
-                <help-text>
-                  <div>推荐范围5-10</div>
-                  <div>可填小数</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="run_order_delay">
-                <template #suffix>分钟</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
-            </n-form-item>
-            <n-form-item v-if="run_order_grandet_mode.enable">
-              <template #label>
-                <span>葛朗台缓冲时间</span>
-                <help-text>推荐范围：15-30</help-text>
-              </template>
-              <n-input-number v-model:value="run_order_grandet_mode.buffer_time">
-                <template #suffix>秒</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item v-if="run_order_grandet_mode.enable" :show-label="false">
-              <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
-                跑单前返回主界面以保持登录状态
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无人机使用房间</span>
-                <help-text>
-                  <div>加速制造站为指定制造站加速</div>
-                  <div>（加速任意贸易站）只会加速有跑单人员作备班的站</div>
-                  <div>例：没填龙舌兰但书的卖玉站 （加速任意贸易站） 不会被加速</div>
-                  <div>如需要加速特定某个贸易站请指定对应房间</div>
-                </help-text>
-              </template>
-              <n-select :options="facility_with_empty" v-model:value="drone_room" />
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无人机使用阈值</span>
-                <help-text>
-                  <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
-                  <div>如加速制造，推荐大于 贸易站数*10</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="drone_count_limit" />
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无人机加速间隔</span>
-                <help-text>
-                  <div>可填小数</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="drone_interval">
-                <template #suffix>小时</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item label="搓玉补货房间">
-              <n-select
-                multiple
-                filterable
-                tag
-                :options="left_side_facility"
-                v-model:value="reload_room"
-              />
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>心情阈值</span>
-                <help-text>
-                  <div>2电站推荐不低于65%</div>
-                  <div>3电站推荐不低于50%</div>
-                  <div>即将大更新推荐设置成80%</div>
-                </help-text>
-              </template>
-              <div class="threshold">
-                <n-slider
-                  v-model:value="resting_threshold"
-                  :step="5"
-                  :min="50"
-                  :max="80"
-                  :format-tooltip="(v) => `${v}%`"
-                />
-                <n-input-number v-model:value="resting_threshold" :step="5" :min="50" :max="80">
-                  <template #suffix>%</template>
-                </n-input-number>
-              </div>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="free_room">
-                宿舍不养闲人
-                <help-text>干员心情回满后，立即释放宿舍空位</help-text>
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item v-if="free_room">
-              <template #label>
-                <span>任务合并间隔</span>
-                <help-text>
-                  <div>可填小数</div>
-                  <div>将不养闲人任务合并至下一个指定间隔内的任务</div>
-                </help-text>
-              </template>
-              <n-input-number v-model:value="merge_interval">
-                <template #suffix>分钟</template>
-              </n-input-number>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="fia_fool">
-                菲亚防呆
-                <help-text
-                  >当菲亚替换干员心情均超过90%时菲亚等待半小时，不确定菲亚替换心情消耗请启用本选项</help-text
-                >
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="refresh_backup_plan_after_mood">
-                读取心情后先刷新副表
-                <help-text
-                  >开启后，仅在缓存清零重启时，Mower
-                  会先读取心情并按载入心情数据模式自动重启，再触发副表和后续排班。</help-text
-                >
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="assistant_follows_schedule">
-                训练室协助位总是跟随排班
-                <help-text
-                  >勾选后专精时的协助位不会使用设置的专精工具人，在基建排班时会根据排班表来替换训练室的协助位。</help-text
-                >
-              </n-checkbox>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>宿舍优先级排序</span>
-                <help-text>
-                  <div>正常情况千万不需要，除非你有特殊情况</div>
-                </help-text>
-              </template>
-              <slick-dorm-select v-model="dorm_order"></slick-dorm-select>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>菲亚阈值</span>
-                <help-text>
-                  <div>开启防呆设计时，菲亚只充心情在90%以下的干员，且此处设置无效</div>
-                  <div>
-                    不开启防呆设计时，菲亚优先充心情在该阈值以下的干员，若心情均高于该阈值则充心情最低者
-                  </div>
-                </help-text>
-              </template>
-              <div class="threshold">
-                <n-slider
-                  v-model:value="fia_threshold"
-                  :step="5"
-                  :min="50"
-                  :max="90"
-                  :format-tooltip="(v) => `${v}%`"
-                />
-                <n-input-number v-model:value="fia_threshold" :step="5" :min="50" :max="90">
-                  <template #suffix>%</template>
-                </n-input-number>
-              </div>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>急救阈值</span>
-                <help-text>
-                  <div>整体心情低于换班阈值乘急救阈值后，将忽视高优人数安排休息任务。</div>
-                </help-text>
-              </template>
-              <div class="threshold">
-                <n-slider
-                  v-model:value="rescue_threshold"
-                  :step="5"
-                  :min="0"
-                  :max="90"
-                  :format-tooltip="(v) => `${v}%`"
-                />
-                <n-input-number v-model:value="rescue_threshold" :step="5" :min="0" :max="90">
-                  <template #suffix>%</template>
-                </n-input-number>
-              </div>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>替换组心情监视</span>
-                <help-text>填入需要查看心情曲线的替换组干员</help-text>
-              </template>
-              <slick-operator-select v-model="favorite"></slick-operator-select>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无缝合成材料设置</span>
-                <help-text>想看攻略嘛？去Q群精华消息</help-text>
-              </template>
-              <n-button
-                type="primary"
-                @click="
-                  () => {
-                    tempSetting = { operator: '', items: [], enabled: true }
-                    editingIndex = null
-                    showSettingModal = true
-                  }
-                "
-                >新增设置</n-button
-              >
-              <n-list bordered>
-                <n-list-item v-for="(setting, idx) in workshop_settings" :key="idx">
-                  <div class="flex justify-between w-full">
-                    <div>
-                      <strong>干员:</strong> {{ setting.operator }}, 启用: {{ setting.enabled
-                      }}<br />
-                      <ul>
-                        <li v-for="(item, i) in setting.items" :key="i">
-                          {{ item.item_names }} - 子项下限: {{ item.children_lower_limit }},
-                          自身上限: {{ item.self_upper_limit }}
-                        </li>
-                      </ul>
-                    </div>
-                    <n-button @click="openEdit(idx)" style="margin-right: 20px">编辑</n-button>
-                    <n-button type="error" @click="workshop_settings.splice(idx, 1)">删除</n-button>
-                  </div>
-                </n-list-item>
-              </n-list>
-            </n-form-item>
-            <n-modal
-              style="width: 500px"
-              v-model:show="showSettingModal"
-              preset="dialog"
-              title="新增干员设置"
-              :mask-closable="false"
-              @update:show="workshop_setting_close"
-            >
-              <div style="display: flex; align-items: center; gap: 12px">
-                <span style="font-size: 12px; white-space: nowrap">干员：</span>
-                <n-select
-                  filterable
-                  :options="operators"
-                  class="operator-select"
-                  v-model:value="tempSetting.operator"
-                  :filter="(p, o) => pinyin_match(o.label, p)"
-                  :render-label="render_op_label"
-                />
-                <span style="font-size: 12px; white-space: nowrap">启用：</span>
-                <n-switch v-model:value="tempSetting.enabled" />
-              </div>
-              <n-form :model="tempSetting">
-                <n-dynamic-input v-model:value="tempSetting.items" :on-create="createNewItem">
-                  <template #default="{ value }">
-                    <div>
-                      <div style="display: flex; flex-direction: row; align-self: center">
-                        <span style="white-space: nowrap; margin-top: 5px">合成材料： </span>
-                        <n-select
-                          multiple
-                          tag
-                          :options="item_list"
-                          v-model:value="value.item_names"
-                          :filter="(p, o) => pinyin_match(o.label, p)"
-                          filterable
-                        />
-                        <help-text>
-                          <div>加工站干员合成材料的白名单</div>
-                        </help-text>
-                      </div>
-                      <div style="display: flex; flex-direction: row; align-self: center">
-                        <span style="white-space: nowrap; margin-top: 5px">合成数量上限： </span>
-                        <n-input-number
-                          v-model:value="value.self_upper_limit"
-                          :min="0"
-                          placeholder="自身上限"
-                        />
-                        <help-text>
-                          <div>设置占位，可能没用</div>
-                        </help-text>
-                      </div>
-                      <div style="display: flex; flex-direction: row; align-self: center">
-                        <span style="white-space: nowrap; margin-top: 5px">子材料数量下限： </span>
-                        <n-input-number
-                          v-model:value="value.children_lower_limit"
-                          :min="0"
-                          placeholder="子项下限"
-                        />
-                        <help-text>
-                          <div>设置占位，可能没用</div>
-                        </help-text>
-                      </div>
-                    </div>
+            <SettingsSegmented
+              :value="theme"
+              @update:value="setTheme"
+              emit-reselect
+              :options="themeOptions"
+              class="settings-theme-choices"
+              label="显示主题"
+            />
+          </n-form-item>
+          <HalloweenPreference />
+          <SoftwareVersionPreference />
+          <VersionWatermarkPreference />
+          <LogBackgroundPreference />
+        </n-form>
+      </n-card>
+      <n-card v-if="runtime_platform !== 'android'" id="window-settings" title="窗口">
+        <n-form
+          class="settings-row-form"
+          :label-placement="mobile ? 'top' : 'left'"
+          :show-feedback="false"
+          label-width="140"
+          label-align="left"
+        >
+          <n-form-item>
+            <template #label>
+              <span class="settings-row-copy">
+                <span>{{ runtime_platform === 'darwin' ? '隐藏菜单栏图标' : '使用托盘图标' }}</span>
+                <span id="tray-description" class="settings-row-description">
+                  <template v-if="runtime_platform === 'darwin'">
+                    重启生效。独立启动时不创建托盘进程，关闭窗口后仍在后台运行。多开管理器统一提供托盘，静默重启后也保留托盘入口。
                   </template>
-                </n-dynamic-input>
-              </n-form>
-            </n-modal>
-          </n-form>
-        </n-card>
-      </div>
-      <div>
-        <Recruit />
-      </div>
-      <div>
-        <email />
-      </div>
-      <div>
-        <ChatBotSetting />
-      </div>
-    </div>
+                  <template v-else>重启生效。多开管理器启动的实例统一使用管理器托盘。</template>
+                </span>
+              </span>
+            </template>
+            <n-switch
+              v-if="runtime_platform === 'darwin'"
+              v-model:value="hide_macos_menu_bar"
+              aria-label="隐藏菜单栏图标"
+              aria-describedby="tray-description"
+            />
+            <n-switch
+              v-else
+              v-model:value="webview.tray"
+              aria-label="使用托盘图标"
+              aria-describedby="tray-description"
+            />
+          </n-form-item>
+          <n-form-item v-if="desktopPreferencesReady">
+            <template #label>
+              <span class="settings-row-copy"
+                ><span>关闭窗口</span
+                ><span class="settings-row-description">点击窗口关闭按钮时执行的操作。</span></span
+              >
+            </template>
+            <n-select
+              :consistent-menu-width="false"
+              :value="desktopCloseMode"
+              :options="closeOptions"
+              :disabled="desktopPreferenceBusy"
+              :input-props="{ 'aria-label': '关闭窗口' }"
+              @update:value="changeCloseMode"
+            />
+          </n-form-item>
+          <n-form-item v-if="desktopPreferencesReady">
+            <template #label>
+              <span class="settings-row-copy">
+                <span>启动时窗口状态</span>
+                <span id="window-launch-description" class="settings-row-description">
+                  下次打开 Mower 桌面窗口时生效。“恢复上次状态”会沿用上次的普通窗口或最大化状态。
+                </span>
+              </span>
+            </template>
+            <n-select
+              :consistent-menu-width="false"
+              :value="desktopLaunchMode"
+              :options="launchOptions"
+              :disabled="desktopPreferenceBusy"
+              :input-props="{
+                'aria-label': '启动时窗口状态',
+                'aria-describedby': 'window-launch-description'
+              }"
+              @update:value="changeLaunchMode"
+            />
+          </n-form-item>
+          <n-alert v-if="desktopPreferenceError" type="error" :show-icon="false">{{
+            desktopPreferenceError
+          }}</n-alert>
+        </n-form>
+      </n-card>
+    </SettingsSection>
+    <SettingsSection v-bind="section['mower-notifications']" data-task-editor="mower-notifications">
+      <email />
+      <ChatBotSetting />
+    </SettingsSection>
+    <SettingsSection v-bind="section['mower-profiles']" data-task-editor="mower-profiles">
+      <ConfigProfilesSettings />
+      <ProcessControl
+        v-if="runtime_platform !== 'android'"
+        :running="running"
+        :resume-only="!showExtraSettings"
+      />
+    </SettingsSection>
+    <SettingsSection
+      v-if="showExtraSettings"
+      v-bind="section['mower-updates']"
+      data-task-editor="mower-updates"
+    >
+      <SoftwareUpdate v-if="updates_enabled === true" />
+      <ResourceUpdate v-if="updates_enabled === true" />
+      <div v-if="updates_enabled === true" class="settings-card-wide"><MaaUpdates /></div>
+      <div class="settings-card-wide"><NetworkSettings /></div>
+    </SettingsSection>
+    <SettingsSection
+      v-if="showExtraSettings"
+      v-bind="section['mower-data']"
+      data-task-editor="mower-data"
+    >
+      <DepotHistorySettings />
+      <n-card id="archive-settings" title="截图与报错归档">
+        <n-form
+          class="settings-row-form"
+          :label-placement="mobile ? 'top' : 'left'"
+          :show-feedback="false"
+          label-width="140"
+          label-align="left"
+        >
+          <n-form-item v-if="runtime_platform !== 'android'">
+            <template #label>
+              <span class="settings-row-copy">
+                <span>截图保存时间</span>
+                <span id="screenshot-retention-description" class="settings-row-description">
+                  普通截图保留多久。设为 0 时只为报错归档保留画面。
+                  <template v-if="inheritsFromManager('screenshot')">
+                    当前使用通用设置，请在多开管理器中修改或选择使用本实例值。
+                  </template>
+                </span>
+              </span>
+            </template>
+            <mower-input-number
+              v-model:value="screenshot"
+              :disabled="inheritsFromManager('screenshot')"
+              :min="0"
+              :input-props="{
+                'aria-label': '截图保存时间',
+                'aria-describedby': 'screenshot-retention-description'
+              }"
+            >
+              <template #suffix>小时</template>
+            </mower-input-number>
+          </n-form-item>
+          <n-form-item>
+            <template #label>
+              <span class="settings-row-copy">
+                <span>报错归档空间上限</span>
+                <span id="screenshot-archive-limit-description" class="settings-row-description">
+                  达到上限后清理较早的报错归档，0 表示不限制总容量。 单条归档仍限 512
+                  MiB，达到上限后省略后续图片或日志。
+                  <template v-if="inheritsFromManager('screenshot_archive_limit_mb')">
+                    当前使用通用设置，请在多开管理器中修改或选择使用本实例值。
+                  </template>
+                </span>
+              </span>
+            </template>
+            <mower-input-number
+              v-model:value="archive_limit_gib"
+              :disabled="inheritsFromManager('screenshot_archive_limit_mb')"
+              :min="0"
+              :precision="2"
+              :input-props="{
+                'aria-label': '报错归档空间上限',
+                'aria-describedby': 'screenshot-archive-limit-description'
+              }"
+            >
+              <template #suffix>GiB</template>
+            </mower-input-number>
+          </n-form-item>
+        </n-form>
+        <p
+          v-if="runtime_platform !== 'android' && screenshot === 0"
+          class="archive-status"
+          role="status"
+        >
+          日常截图不写盘。发生需归档的异常时，保存此前 5 分钟内缓存的全部画面及后续 5
+          分钟截图；内存缓存最多 16 张、32 MiB。
+        </p>
+        <p
+          v-else-if="runtime_platform !== 'android' && screenshot > 0 && screenshot < 5 / 60"
+          class="archive-status"
+          role="status"
+        >
+          截图会正常写盘，实际保存时间按 5 分钟处理。
+        </p>
+        <n-collapse class="archive-details">
+          <n-collapse-item title="截图保存说明" name="retention" data-settings-label="截图保存说明">
+            <p v-if="runtime_platform !== 'android'">
+              普通截图默认保留 1 小时，可填小数；大于 0 且不足 5 分钟时按 5 分钟保留。
+            </p>
+            <p>报错归档默认上限 5 GiB。普通截图仍按保存时间清理，不受此容量上限影响。</p>
+          </n-collapse-item>
+        </n-collapse>
+      </n-card>
+      <ConfigBackup />
+    </SettingsSection>
   </div>
 </template>
 
 <style scoped lang="scss">
-.threshold {
+.mower-settings-panels {
+  display: grid;
+  gap: 28px;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mower-settings-panels :deep(.settings-section) {
+  margin: 0;
+}
+
+#appearance-settings {
+  container: appearance-settings / inline-size;
+}
+
+.desktop-scale-settings {
+  width: 100%;
+  min-width: 0;
+}
+
+#appearance-settings :deep(.appearance-scale-row > .n-form-item-blank) {
+  width: 340px;
+  max-width: 100%;
+}
+
+.desktop-scale-controls {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 16px 0;
+
+  .n-slider {
+    width: 100%;
+  }
+}
+
+.desktop-scale-toolbar {
   display: flex;
   align-items: center;
-  gap: 14px;
-  width: 100%;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 12px;
+  margin-top: 8px;
 }
 
-.mower-basic {
-  width: 100%;
-
-  td:nth-child(1) {
-    width: 120px;
-  }
-
-  td:nth-child(3) {
-    padding-left: 6px;
-    width: 40px;
-  }
-}
-
-.riic-conf {
-  width: 100%;
-
-  td {
-    &:nth-child(1) {
-      width: 130px;
-    }
-
-    &:nth-child(3) {
-      padding-left: 12px;
-      width: 120px;
-    }
-  }
-}
-
-.coord {
-  td {
-    width: 120px;
-
-    &:nth-child(1),
-    &:nth-child(3) {
-      width: 30px;
-    }
-
-    &:nth-child(2) {
-      padding-right: 30px;
-    }
-  }
-}
-
-.coord-label {
-  width: 40px;
-  padding-left: 8px;
-}
-
-p {
-  margin: 0 0 8px 0;
-}
-
-h4 {
-  margin: 12px 0 10px 0;
-}
-
-.time-table {
-  width: 100%;
-  margin-bottom: 12px;
-
-  td:nth-child(1) {
-    width: 40px;
-  }
-}
-
-.scale {
-  width: 60px;
-  text-align: right;
+.desktop-scale-value {
+  min-width: 0;
+  color: var(--mower-text-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .scale-apply {
-  margin-left: 24px;
+  flex: none;
 }
 
-.waiting-table {
-  th,
-  td {
-    padding: 4px;
-    min-width: 70px;
-    width: 100px;
-
-    &:first-child {
-      width: auto;
-      padding: 4px 8px;
-    }
-  }
-}
-</style>
-
-<style>
-/*小于1400的内容！*/
-@media (max-width: 1399px) {
-  .grid-two {
-    margin: 0 0 -10px 0;
-    width: 100%;
-    max-width: 600px;
-  }
-
-  .grid-left {
-    display: grid;
-    row-gap: 10px;
-    grid-template-columns: 100%;
-  }
-
-  .grid-right {
-    display: grid;
-    row-gap: 10px;
-    grid-template-columns: 100%;
-    margin-top: 10px;
-  }
+#appearance-settings
+  :deep(:is(.settings-appearance-row, .software-version-preference) > .n-form-item-blank) {
+  width: 340px;
+  max-width: 100%;
 }
 
-/*双栏 大于1400的内容 */
-@media (min-width: 1400px) {
-  .grid-two {
-    display: grid;
-    grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr);
-    align-items: flex-start;
-    gap: 5px;
-  }
+#appearance-settings :deep(.version-preview-row) {
+  grid-template-areas: 'blank' 'feedback';
+  row-gap: 0;
+  padding-top: 0;
+  border-top: 0;
+}
 
-  .grid-left {
-    display: grid;
-    gap: 5px;
-    grid-template-columns: 100%;
-    max-width: 600px;
-  }
+.archive-status,
+.archive-details {
+  margin-top: 16px;
+  color: var(--mower-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
 
-  .grid-right {
-    display: grid;
-    gap: 5px;
-    grid-template-columns: 100%;
-    max-width: 600px;
+#archive-settings :deep(.n-form > .n-form-item:has(> .n-form-item-label)) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'label blank' 'feedback feedback';
+  column-gap: 20px;
+}
+
+#archive-settings :deep(.n-form > .n-form-item > .n-form-item-blank) {
+  width: auto;
+  max-width: 128px;
+}
+
+.archive-details :deep(.n-collapse-item) {
+  padding: 0;
+  background: transparent;
+}
+
+.archive-details p {
+  margin: 0 0 8px;
+}
+
+@container appearance-settings (max-width: 400px) {
+  .desktop-scale-controls :deep(.n-slider-mark) {
+    font-size: 12px;
   }
 }
 
-.n-divider:not(.n-divider--vertical) {
-  margin: 14px 0 8px;
-}
+@container appearance-settings (max-width: 280px) {
+  .desktop-scale-controls {
+    padding-inline: 14px;
+  }
 
-/* .results {
-  display: grid;
-  grid-template-rows: masonry;
-  grid-template-columns: repeat(2, 600px);
-  gap: 10px 10px ;
-  justify-content: center;
-} */
-/* 实验性瀑布流（firefox nightly） */
+  .desktop-scale-controls :deep(.n-slider-mark) {
+    font-size: 11px;
+  }
+}
 </style>

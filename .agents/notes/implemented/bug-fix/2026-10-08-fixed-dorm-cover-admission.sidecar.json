@@ -1,0 +1,20 @@
+{
+  "title": "Fixed Dormitory Cover Admission",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-22]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._get_resting_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/fixed_dorm_cover_admission_tests.py",
+    "arknights_mower/tests/dorm_group_tests.py",
+    "arknights_mower/tests/same_group_dorm_replacement_tests.py"
+  ]
+}

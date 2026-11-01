@@ -1,76 +1,146 @@
 <script setup>
-import { inject, ref, watch, computed, h } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 const show = inject('show_task')
 const isLogPage = inject('add_task') || ref(false)
+const edit_locked = inject('planEditLocked', ref(false))
+watch(edit_locked, (locked) => {
+  if (locked && !isLogPage.value) show.value = false
+})
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
 import { useConfigStore } from '@/stores/config'
 import axios from 'axios'
+import { useMessage } from 'naive-ui'
+import { masteryScheduleContext, masteryTraineeWarning } from '@/utils/masterySupport'
+const message = useMessage()
 const config_store = useConfigStore()
-const plan_store = usePlanStore()
+const plan_store = inject('planStore', null) || usePlanStore()
 const { sub_plan, backup_plans, operators } = storeToRefs(plan_store)
+const masterySchedule = computed(() => masteryScheduleContext(plan_store.plan, backup_plans.value))
 
 import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
-const { get_task_id } = storeToRefs(mower_store)
 const { get_tasks } = mower_store
 const { workshop_settings } = storeToRefs(config_store)
-const task_list = ref([])
+const manual_task_list = ref([])
+const backup_task_list = ref([])
+const selected_backup = computed(() =>
+  isLogPage.value ? null : backup_plans.value[sub_plan.value]
+)
+function task_from_rows(rows) {
+  return Object.fromEntries(rows.map(({ room, operators }) => [room, [...operators]]))
+}
+watch(
+  [sub_plan, () => selected_backup.value?.task],
+  ([selection, task], [previous_selection]) => {
+    if (
+      selection !== previous_selection ||
+      JSON.stringify(task ?? {}) !== JSON.stringify(task_from_rows(backup_task_list.value))
+    ) {
+      backup_task_list.value = Object.entries(task ?? {}).map(([room, operators]) => ({
+        room,
+        operators: [...(operators ?? [])]
+      }))
+    }
+  },
+  { immediate: true, deep: true, flush: 'sync' }
+)
+const task_list = computed({
+  get() {
+    return isLogPage.value ? manual_task_list.value : backup_task_list.value
+  },
+  set(rows) {
+    if (isLogPage.value) {
+      manual_task_list.value = rows
+    } else if (!edit_locked.value && selected_backup.value) {
+      backup_task_list.value = rows
+      selected_backup.value.task = task_from_rows(rows)
+    }
+  }
+})
+const backup_group_task_list = ref([])
+watch(
+  [sub_plan, () => selected_backup.value?.group_tasks],
+  ([selection, tasks], [previous_selection]) => {
+    if (
+      selection !== previous_selection ||
+      JSON.stringify(tasks ?? []) !== JSON.stringify(backup_group_task_list.value)
+    ) {
+      backup_group_task_list.value = (tasks ?? []).map((task) => ({ ...task }))
+    }
+  },
+  { immediate: true, deep: true, flush: 'sync' }
+)
+const group_task_list = computed({
+  get: () => backup_group_task_list.value,
+  set(rows) {
+    if (!isLogPage.value && !edit_locked.value && selected_backup.value) {
+      backup_group_task_list.value = rows.map((task) => ({ ...task }))
+      selected_backup.value.group_tasks = rows.map((task) => ({ ...task }))
+    }
+  }
+})
+const groupTaskOptions = computed(() =>
+  (plan_store.all_groups || []).map((group) => ({ label: group, value: group }))
+)
+const groupActionOptions = [
+  { label: '整组下班', value: 'off' },
+  { label: '整组上班', value: 'on' }
+]
+const groupModeOptions = [
+  { label: '生效时执行一次', value: 'once' },
+  { label: '生效期间保持，允许协调回班', value: 'while_active' },
+  { label: '生效期间强制保持，禁止协调回班', value: 'forced' }
+]
+function new_group_task() {
+  return { group: '', action: 'off', mode: 'once' }
+}
+function update_group_task(index, changes) {
+  group_task_list.value = group_task_list.value.map((row, i) =>
+    i === index ? { ...row, ...changes, ...(changes.action === 'on' ? { mode: 'once' } : {}) } : row
+  )
+}
 const task_time = ref(new Date().getTime())
 const task_type = ref('空任务')
-const train_job = ref('术师')
-const skill_level = ref(1)
-const upgrade_support = ref([])
+const duration_minutes = ref(10)
+const maintenance_mode = ref('prepare')
+const isMaintenance = computed(() => ['计划暂停', '计划停止'].includes(task_type.value))
+const daily_task = ref('日常任务')
+const saving = ref(false)
+const mastery_target_level = ref(1)
+const mastery_operator = ref('')
+const mastery_skill = ref(1)
+const mastery_support_mode = ref('auto')
 const workshop_operator = ref('')
 const msg = ref('')
 const error = ref(false)
-const half_off = ref(true)
-const optimal = ref(false)
 const taskTypeOptions = [
+  { label: '计划暂停', value: '计划暂停' },
+  { label: '计划停止', value: '计划停止' },
+  { label: '日常任务', value: '日常任务' },
+  { label: '作战计划', value: '作战计划' },
+  { label: '集成战略 (MAA)', value: '集成战略 (MAA)' },
+  { label: '保全派驻 (MAA)', value: '保全派驻 (MAA)' },
+  { label: '生息演算 (MAA)', value: '生息演算 (MAA)' },
+  { label: '生息演算', value: '生息演算' },
+  { label: '隐秘战线', value: '隐秘战线' },
   { label: '专精任务', value: '技能专精' },
   { label: '加工任务', value: '加工材料' },
+  { label: '【实验性功能】分解所有重复家具', value: '分解所有重复家具' },
+  { label: '仓库扫描', value: '仓库扫描' },
+  { label: '线索任务', value: '线索任务' },
   { label: '空任务', value: '空任务' }
 ]
-const train_ope = {
-  先锋: { name: '嵯峨', speed: 60 },
-  近卫: { name: '史尔特尔', speed: 60 },
-  重装: { name: '星熊', speed: 60 },
-  狙击: { name: '黑', speed: 60 },
-  术师: { name: '卡涅利安', speed: 60 },
-  医疗: { name: '阿', speed: 60 },
-  辅助: { name: '铃兰', speed: 60 },
-  特种: { name: '傀影', speed: 60 }
-}
-const train_ope_1 = {
-  先锋: { name: '夜半', speed: 75 },
-  近卫: { name: '赤冬', speed: 75 },
-  重装: { name: '极光', speed: 75 },
-  狙击: { name: '假日威龙陈', speed: 95 },
-  术师: { name: '特米米', speed: 75 },
-  医疗: { name: '阿', speed: 60 },
-  辅助: { name: '铃兰', speed: 60 },
-  特种: { name: '罗宾', speed: 75 }
-}
-const train_ope_2 = {
-  先锋: { name: '缄默德克萨斯', speed: 80 },
-  近卫: { name: '燧石', speed: 75 },
-  重装: { name: '暴雨', speed: 75 },
-  狙击: { name: '埃拉托', speed: 75 },
-  术师: { name: '薄绿', speed: 75 },
-  医疗: { name: '濯尘芙蓉', speed: 75 },
-  辅助: { name: '铃兰', speed: 60 },
-  特种: { name: '缄默德克萨斯', speed: 80 }
-}
-const train_ope_3 = {
-  先锋: { name: '嵯峨', speed: 60 },
-  近卫: { name: '百炼嘉维尔', speed: 95 },
-  重装: { name: '星熊', speed: 60 },
-  狙击: { name: 'W', speed: 95 },
-  术师: { name: '死芒', speed: 95 },
-  医疗: { name: '阿', speed: 60 },
-  辅助: { name: '浊心斯卡蒂', speed: 95 },
-  特种: { name: '归溟幽灵鲨', speed: 95 }
-}
+const dailyTaskOptions = [
+  { label: '全部（按当前配置）', value: '日常任务' },
+  { label: '公招', value: '公招' },
+  { label: '森空岛签到', value: '森空岛签到' },
+  { label: '信用购物', value: '信用购物' },
+  { label: '领取邮件', value: '领取邮件' },
+  { label: '读取基报', value: '读取基报' },
+  { label: '访问好友', value: '访问好友' },
+  { label: '领取任务奖励', value: '领取任务奖励' }
+]
 const workshopOperatorOptions = computed(() => {
   return workshop_settings.value.map((s) => ({
     label: s.operator,
@@ -83,6 +153,7 @@ const roomOptions = [
   { label: '办公室', value: 'contact' },
   { label: '加工站', value: 'factory' },
   { label: '训练室', value: 'train' },
+  { label: '回收站', value: 'recycle' },
   { label: '控制中枢', value: 'central' },
   { label: '第一层1号房间', value: 'room_1_1' },
   { label: '第一层2号房间', value: 'room_1_2' },
@@ -98,14 +169,8 @@ const roomOptions = [
   { label: '宿舍3', value: 'dormitory_3' },
   { label: '宿舍4', value: 'dormitory_4' }
 ]
-function update_tasks() {
-  if (sub_plan.value != 'main' && !isLogPage.value) {
-    const result = []
-    Object.entries(backup_plans.value[sub_plan.value].task).forEach(([room, operators]) => {
-      result.push({ room, operators })
-    })
-    task_list.value = result
-  }
+function update_task(index, changes) {
+  task_list.value = task_list.value.map((row, i) => (i === index ? { ...row, ...changes } : row))
 }
 
 function new_task() {
@@ -114,69 +179,22 @@ function new_task() {
     operators: []
   }
 }
-function new_support() {
-  if (optimal.value) {
-    return {
-      name:
-        upgrade_support.value.length + 1 == 1
-          ? train_ope_1[train_job.value].name
-          : upgrade_support.value.length + 1 == 2
-            ? train_ope_2[train_job.value].name
-            : upgrade_support.value.length + 1 == 3
-              ? train_ope_3[train_job.value].name
-              : train_ope[train_job.value].name,
-      skill_level: upgrade_support.value.length + 1,
-      efficiency:
-        upgrade_support.value.length + 1 == 1
-          ? train_ope_1[train_job.value].speed
-          : upgrade_support.value.length + 1 == 2
-            ? train_ope_2[train_job.value].speed
-            : upgrade_support.value.length + 1 == 3
-              ? train_ope_3[train_job.value].speed
-              : train_ope[train_job.value].speed,
-      swap: true,
-      swap_name: ['近卫', '狙击'].includes(train_job.value) ? '艾丽妮' : '逻各斯',
-      match: ['近卫', '狙击', '术师', '辅助'].includes(train_job.value) ? true : false,
-      half_off: true
-    }
-  } else {
-    return {
-      name:
-        upgrade_support.value.length + 1 == 1
-          ? train_ope[train_job.value].name
-          : upgrade_support.value.length + 1 == 2
-            ? train_ope[train_job.value].name
-            : upgrade_support.value.length + 1 == 3
-              ? train_ope_3[train_job.value].name
-              : train_ope[train_job.value].name,
-      skill_level: upgrade_support.value.length + 1,
-      efficiency:
-        upgrade_support.value.length + 1 == 1
-          ? train_ope[train_job.value].speed
-          : upgrade_support.value.length + 1 == 2
-            ? train_ope[train_job.value].speed
-            : upgrade_support.value.length + 1 == 3
-              ? train_ope_3[train_job.value].speed
-              : train_ope[train_job.value].speed,
-      swap: true,
-      swap_name: ['近卫', '狙击'].includes(train_job.value) ? '艾丽妮' : '逻各斯',
-      match: ['近卫', '狙击', '术师', '辅助'].includes(train_job.value) ? true : false,
-      half_off: true
-    }
-  }
-}
 function clear() {
   task_list.value = []
   task_time.value = new Date().getTime()
   task_type.value = '空任务'
-  skill_level.value = 1
-  upgrade_support.value = []
+  duration_minutes.value = 10
+  maintenance_mode.value = 'prepare'
+  daily_task.value = '日常任务'
+  mastery_target_level.value = 1
+  mastery_operator.value = ''
+  mastery_skill.value = 1
+  mastery_support_mode.value = 'auto'
   msg.value = ''
 }
 
-import { deepcopy } from '@/utils/deepcopy'
-
 async function saveTasks() {
+  if (saving.value || (!isLogPage.value && edit_locked.value)) return
   const plan = {}
   for (const i of task_list.value) {
     plan[i.room] = i.operators
@@ -184,26 +202,33 @@ async function saveTasks() {
   const task = {
     time: new Date(task_time.value),
     plan,
-    task_type: task_type.value,
+    task_type: task_type.value === '日常任务' ? daily_task.value : task_type.value,
     meta_data: ''
   }
-  var data = []
-  if (task_type.value == '技能专精') {
-    task.meta_data = skill_level.value + ''
-    task.plan = {}
-    upgrade_support.value.sort((a, b) => a.skill_level - b.skill_level)
-    if (upgrade_support.value[0].skill_level != 1) {
-      upgrade_support.value[0].half_off = half_off.value
-      // 如果第一个不是1技能，则更新 是否减半
-    } else upgrade_support.value[0].half_off = false
-    data = deepcopy(upgrade_support.value)
-    for (const value of data) {
-      if (!value.swap) {
-        value.swap_name = value.name
-        value.match = false
-      }
-      delete value.swap
+  if (isMaintenance.value) {
+    if (
+      !Number.isInteger(duration_minutes.value) ||
+      duration_minutes.value < (task_type.value === '计划停止' ? 0 : 1) ||
+      duration_minutes.value > 10080
+    ) {
+      msg.value =
+        task_type.value === '计划停止'
+          ? '计划停止时长须为 0 至 10080 分钟的整数，0 表示不定时启动'
+          : '持续时长须为 1 至 10080 分钟的整数'
+      error.value = true
+      return
     }
+    task.duration_minutes = duration_minutes.value
+    task.maintenance_mode = task_type.value === '计划停止' ? 'prepare' : maintenance_mode.value
+    task.plan = {}
+  } else if (task_type.value == '技能专精') {
+    saving.value = true
+    try {
+      await saveMasteryTask()
+    } finally {
+      saving.value = false
+    }
+    return
   } else if (task_type.value == '加工材料') {
     if (!workshop_operator.value) {
       msg.value = '请先选择加工站工具人！'
@@ -212,37 +237,86 @@ async function saveTasks() {
     }
     task.meta_data = workshop_operator.value
     task.plan = {}
+  } else if (task_type.value !== '空任务') {
+    // 独立任务不携带房间排班。
+    task.plan = {}
   }
-  const req = { task, upgrade_support: data }
-  msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, req)).data
-  if (msg.value != '添加任务成功！') {
-    error.value = true
-  } else {
-    error.value = false
-    clearTimeout(get_task_id.value)
-    get_tasks()
+  saving.value = true
+  try {
+    msg.value = (
+      await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, { task }, { timeout: 30000 })
+    ).data
+    if (msg.value != '添加任务成功！') {
+      error.value = true
+    } else {
+      error.value = false
+      get_tasks()
+    }
+  } catch (e) {
+    showSubmissionError(e)
+  } finally {
+    saving.value = false
   }
 }
 
-watch(
-  task_list,
-  () => {
-    const result = {}
-    for (const i of task_list.value) {
-      result[i.room] = i.operators
-    }
-    if (!isLogPage.value) {
-      backup_plans.value[sub_plan.value].task = result
-    }
-  },
-  { deep: true }
-)
-
-watch(show, (new_value) => {
-  if (new_value) {
-    update_tasks()
+function showSubmissionError(e) {
+  const detail = e.response?.data
+  if ((detail?.code || detail?.error) === 'configuration_changed') {
+    msg.value = detail.message || '当前配置已切换，请刷新页面后再操作'
+  } else {
+    msg.value = `未确认提交结果：${detail?.message || detail?.error || e.message}，请刷新计划和任务队列后重试`
   }
-})
+  error.value = true
+}
+
+async function saveMasteryTask() {
+  if (!mastery_operator.value) {
+    msg.value = '请先选择要专精的干员！'
+    error.value = true
+    return
+  }
+  const warning = masteryTraineeWarning(mastery_operator.value, masterySchedule.value.blocked)
+  if (warning) message.warning(warning)
+  try {
+    const { data } = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/mastery-plan`,
+      {
+        create_task: true,
+        items: [
+          {
+            name: mastery_operator.value,
+            skill_index: mastery_skill.value - 1,
+            target_level: mastery_target_level.value,
+            support_mode: mastery_support_mode.value
+          }
+        ]
+      },
+      { timeout: 30000 }
+    )
+    const result = data?.results?.[0]
+    if (!['added', 'existing'].includes(result?.status)) {
+      msg.value = result?.reason || '添加专精计划失败'
+      error.value = true
+      return
+    }
+    if (result.warning) message.warning(result.warning)
+    const planStatus = result.status === 'added' ? '已加入专精计划' : '已在专精计划中'
+    const task = result.task
+    if (['inserted', 'queued'].includes(task?.status)) {
+      msg.value = `${planStatus}；${task.reason}`
+      error.value = false
+      get_tasks()
+    } else if (task?.status === 'active') {
+      msg.value = `${planStatus}；${task.reason}，未重复生成任务`
+      error.value = false
+    } else {
+      msg.value = `${planStatus}；尚未生成任务：${task?.reason || '未确认入队结果，请刷新后重试'}`
+      error.value = true
+    }
+  } catch (e) {
+    showSubmissionError(e)
+  }
+}
 
 const operators_with_free_current = computed(() => {
   return [
@@ -252,18 +326,7 @@ const operators_with_free_current = computed(() => {
 })
 
 import { pinyin_match } from '@/utils/common'
-import { render_op_label } from '@/utils/op_select'
-
-const job_list = [
-  { value: '先锋', label: '先锋' },
-  { value: '近卫', label: '近卫' },
-  { value: '重装', label: '重装' },
-  { value: '狙击', label: '狙击' },
-  { value: '术师', label: '术师' },
-  { value: '医疗', label: '医疗' },
-  { value: '辅助', label: '辅助' },
-  { value: '特种', label: '特种' }
-]
+import { render_op_option, render_op_label } from '@/utils/op_select'
 
 const skill_list = [
   { value: 1, label: '一技能' },
@@ -276,65 +339,77 @@ const level_list = [
   { value: 2, label: '专二' },
   { value: 3, label: '专三' }
 ]
-
-const swap_list = [
-  { value: '艾丽妮', label: '艾丽妮' },
-  { value: '逻各斯', label: '逻各斯' }
-]
-
-const swap_30 = [
-  { value: true, label: '有30%速度加成' },
-  { value: false, label: '无训练速度加成' }
-]
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" transform-origin="center" style="width: auto">
+  <n-modal
+    v-model:show="show"
+    preset="card"
+    transform-origin="center"
+    :style="{ width: isLogPage ? 'auto' : 'max-content', maxWidth: '90vw' }"
+    :content-style="
+      !isLogPage || task_type === '空任务'
+        ? 'display: flex; flex-direction: column; overflow: hidden'
+        : undefined
+    "
+  >
     <template #header>
-      <div v-if="isLogPage" class="task_row" style="width: auto">
+      <div v-if="isLogPage" class="task_row task_header" style="width: auto">
         <n-select
           v-model:value="task_type"
           :options="taskTypeOptions"
+          filterable
+          :filter="(p, o) => pinyin_match(o.label, p)"
+          :consistent-menu-width="false"
           placeholder="任务类别"
           class="dropdown-select"
-          style="width: 120px"
+          :style="{ width: task_type === '分解所有重复家具' ? '290px' : '190px' }"
+        />
+        <n-select
+          v-if="task_type === '日常任务'"
+          v-model:value="daily_task"
+          :options="dailyTaskOptions"
+          :consistent-menu-width="false"
+          placeholder="选择日常项目"
+          style="width: 210px"
         />
         <n-select
           v-if="task_type == '技能专精'"
-          v-model:value="skill_level"
+          v-model:value="mastery_operator"
+          filterable
+          placeholder="选择干员"
+          :options="operators"
+          :filter="(p, o) => pinyin_match(o.label, p)"
+          :render-label="render_op_label"
+          :render-option="render_op_option"
+          style="width: 150px"
+        />
+        <n-select
+          v-if="task_type == '技能专精'"
+          v-model:value="mastery_skill"
           :options="skill_list"
           style="width: 100px"
         />
         <n-select
           v-if="task_type == '技能专精'"
-          v-model:value="train_job"
-          :options="job_list"
+          v-model:value="mastery_target_level"
+          :options="level_list"
           style="width: 100px"
         />
         <n-date-picker
+          v-if="task_type != '技能专精'"
           v-model:value="task_time"
           type="datetime"
           placeholder="选择时间"
           style="width: 200px"
         />
         <help-text v-if="task_type == '技能专精'">
-          <div>不支持阿斯卡纶</div>
+          <div>选择干员、技能与目标等级，加入专精计划并生成关联的专精任务。</div>
           <div>
-            训练速度需手动输入，可使用<n-button
-              text
-              tag="a"
-              href="https://arkntools.app/#/riic"
-              target="_blank"
-              type="primary"
-            >
-              明日方舟工具箱 </n-button
-            >查询
+            需开启专精自动化并运行 Mower；材料不足或训练室占用时，保留计划并显示未入队原因。
           </div>
-          <div>任务开启前，请手动把待专精干员放入训练室（Mower暂时不支持训练室换人）</div>
-          <div>排班表需要填写协助位和训练位，可以写不用的人，如巡林者+安德切尔。</div>
-          <div>训练室排班表纠错暂时关闭，有需要纠错的朋友，请绑大组</div>
-          <div>自动计算时暂时默认2，3专精获得小鸟/狗剩增益效果</div>
-          <div>如果开启专精时未获得减半增益（非专1-3），取消勾选【有减半加成】</div>
+          <div>自动协助按已同步 BOX 生成方案；未同步 BOX 时使用职业路线。</div>
+          <div>使用职业路线时，可在通用专精路线预览中设置协助者。</div>
           <div>
             参考攻略：
             <n-button
@@ -351,25 +426,77 @@ const swap_30 = [
       </div>
       <template v-else>任务</template>
     </template>
-    <n-scrollbar
-      v-if="!isLogPage || task_type == '空任务'"
-      style="max-height: 80vh; margin-top: 8px"
-    >
-      <n-dynamic-input v-model:value="task_list" :on-create="new_task">
+    <div v-if="!isLogPage || task_type == '空任务'" class="task-list-scroll">
+      <template v-if="!isLogPage">
+        <n-text>绑组任务</n-text>
+        <n-dynamic-input
+          v-model:value="group_task_list"
+          :on-create="new_group_task"
+          :disabled="edit_locked"
+        >
+          <template #create-button-default>添加绑组任务</template>
+          <template #default="{ value, index }">
+            <div class="task_row group_task_row">
+              <n-select
+                :value="value.group"
+                @update:value="(group) => update_group_task(index, { group })"
+                :options="groupTaskOptions"
+                :disabled="edit_locked"
+                filterable
+                placeholder="选择绑组"
+                style="width: 150px"
+              />
+              <n-select
+                :value="value.action"
+                :options="groupActionOptions"
+                :disabled="edit_locked"
+                @update:value="(action) => update_group_task(index, { action })"
+                style="width: 130px"
+              />
+              <n-select
+                :value="value.mode"
+                @update:value="(mode) => update_group_task(index, { mode })"
+                :options="value.action === 'off' ? groupModeOptions : groupModeOptions.slice(0, 1)"
+                :disabled="edit_locked"
+                style="width: 310px"
+                :consistent-menu-width="false"
+              />
+            </div>
+          </template>
+        </n-dynamic-input>
+        <n-text depth="3" style="display: block; margin: 8px 0">
+          下班任务使用整组替班和恢复床位。允许协调时，其他组可按需召回；强制保持时，其他组须另找替班，否则保留任务等待。副表退出后恢复正常回班条件。上班任务执行一次，仍遵守恢复和任务保护。
+        </n-text>
+        <n-divider>房间任务</n-divider>
+      </template>
+      <n-dynamic-input
+        v-model:value="task_list"
+        :on-create="new_task"
+        :disabled="!isLogPage && edit_locked"
+      >
         <template #create-button-default>添加任务</template>
-        <template #default="{ value }">
+        <template #default="{ value, index }">
           <div class="task_row">
             <n-select
-              v-model:value="value.room"
+              :value="value.room"
+              @update:value="(room) => update_task(index, { room })"
+              :disabled="!isLogPage && edit_locked"
               :options="roomOptions"
               placeholder="选择房间"
-              class="dropdown-select"
-              style="width: 160px"
+              class="dropdown-select task-room-select"
             />
-            <n-dynamic-tags v-model:value="value.operators" :max="5" size="large">
+            <n-dynamic-tags
+              :value="value.operators"
+              @update:value="(operators) => update_task(index, { operators })"
+              :disabled="!isLogPage && edit_locked"
+              :max="5"
+              size="large"
+              style="justify-content: flex-end"
+            >
               <template #input="{ submit, deactivate }">
                 <n-select
-                  v-model:value="value.operators"
+                  :value="null"
+                  :disabled="!isLogPage && edit_locked"
                   filterable
                   :options="operators_with_free_current"
                   :on-update:value="
@@ -380,6 +507,7 @@ const swap_30 = [
                   :on-blur="deactivate"
                   :filter="(p, o) => pinyin_match(o.label, p)"
                   :render-label="render_op_label"
+                  :render-option="render_op_option"
                 />
               </template>
             </n-dynamic-tags>
@@ -395,67 +523,93 @@ const swap_30 = [
       </n-dynamic-input>
       <n-card style="margin-top: 8px" content-style="padding: 8px" embedded>
         <n-code
-          :code="JSON.stringify(isLogPage ? task_list : backup_plans[sub_plan].task, null, 2)"
+          :code="
+            JSON.stringify(
+              isLogPage
+                ? task_list
+                : {
+                    task: backup_plans[sub_plan].task,
+                    group_tasks: backup_plans[sub_plan].group_tasks || []
+                  },
+              null,
+              2
+            )
+          "
           language="json"
           word-wrap
         />
       </n-card>
-    </n-scrollbar>
+    </div>
     <template v-if="isLogPage">
-      <n-scrollbar v-if="task_type == '技能专精'" style="max-height: 80vh; margin-top: 8px">
-        <n-dynamic-input v-model:value="upgrade_support" :on-create="new_support" :max="3">
-          <template #create-button-default>添加专精工具人</template>
-          <template #default="{ value }">
-            <div class="outer">
-              <n-select
-                v-model:value="value.skill_level"
-                :options="level_list"
-                style="width: 80px"
-              />
-              <div class="inner">
-                <div class="task-col">
-                  <label>协助位</label>
-                  <n-select
-                    v-model:value="value.name"
-                    filterable
-                    :options="operators"
-                    :filter="(p, o) => pinyin_match(o.label, p)"
-                    :render-label="render_op_label"
-                    style="width: 178px"
-                  />
-                  <label class="ml">训练速度</label>
-                  <n-input-number
-                    v-model:value="value.efficiency"
-                    :min="30"
-                    :max="100"
-                    style="width: 80px"
-                    :show-button="false"
-                    placeholder=""
-                  >
-                    <template #suffix>%</template>
-                  </n-input-number>
-                </div>
-                <div class="task-col">
-                  <n-checkbox v-model:checked="value.swap">中途换人</n-checkbox>
-                  <n-select
-                    :disabled="!value.swap"
-                    v-model:value="value.swap_name"
-                    :options="swap_list"
-                    :render-label="render_op_label"
-                    style="width: 140px"
-                  />
-                  <n-select
-                    :disabled="!value.swap"
-                    v-model:value="value.match"
-                    :options="swap_30"
-                    style="width: 160px"
-                  />
-                </div>
-              </div>
-            </div>
+      <template v-if="isMaintenance">
+        <div class="task_row">
+          <label>持续时长（分钟）：</label>
+          <n-input-number
+            v-model:value="duration_minutes"
+            :min="task_type === '计划停止' ? 0 : 1"
+            :max="10080"
+            :precision="0"
+          />
+        </div>
+        <div v-if="task_type === '计划暂停'" class="task_row">
+          <label>处理方式：</label>
+          <n-select
+            v-model:value="maintenance_mode"
+            :options="[
+              { label: '提前准备后暂停', value: 'prepare' },
+              { label: '直接暂停', value: 'pause' }
+            ]"
+            style="width: 240px"
+          />
+        </div>
+        <n-text depth="3">
+          <template v-if="task_type === '计划停止'">
+            计划停止会按配置提前量触发符合条件的停服更新副表；切表和准备任务完成后才会停止。填写 0
+            表示关闭进程且不定时启动。
+            <template v-if="duration_minutes > 0">
+              从所选时间停止
+              Mower，并创建在设定时长结束后继续运行的定时启动任务；期间不会提前尝试登录。
+              可在停止后取消定时启动；关闭程序会取消预约。
+            </template>
+            <template v-else>从所选时间关闭 Mower 进程，不创建定时启动任务。</template>
           </template>
-        </n-dynamic-input>
-      </n-scrollbar>
+          <template v-else>
+            从所选时间开始暂停，满设定时长后继续；期间不会提前尝试登录。
+            <template v-if="maintenance_mode === 'prepare'">
+              暂停前会按现有闪断更新规则提前跑单、更换专精协助干员。
+            </template>
+            <template v-else>不为本次暂停提前跑单或换人。</template>
+          </template>
+        </n-text>
+      </template>
+      <n-text v-if="task_type === '日常任务' && daily_task === '日常任务'" depth="3">
+        按当前配置执行已启用的日常项目和作战计划，不包含长任务。
+      </n-text>
+      <n-text
+        v-else-if="
+          !isMaintenance &&
+          !['空任务', '技能专精', '加工材料', '仓库扫描', '线索任务', '分解所有重复家具'].includes(
+            task_type
+          )
+        "
+        depth="3"
+      >
+        按当前设置执行一次所选任务，无需开启自动执行；作战和长任务会为其他排队任务预留时间。
+      </n-text>
+      <n-text v-if="task_type == '分解所有重复家具'" depth="3">
+        进入加工站家具页，只分解超出一整套所需数量的家具；无法确认套装数量时跳过。无需选择干员，不消耗心情。
+      </n-text>
+      <div class="task_row" v-if="task_type == '技能专精'">
+        <label>协助方式：</label>
+        <n-select
+          v-model:value="mastery_support_mode"
+          style="width: 240px"
+          :options="[
+            { label: '自动协助（无 BOX 时使用职业路线）', value: 'auto' },
+            { label: '使用职业路线', value: 'route' }
+          ]"
+        />
+      </div>
       <div class="task_row" v-if="task_type == '加工材料'">
         <label>选择干员：</label>
         <n-select
@@ -464,6 +618,7 @@ const swap_30 = [
           :options="workshopOperatorOptions"
           :filter="(p, o) => pinyin_match(o.label, p)"
           :render-label="render_op_label"
+          :render-option="render_op_option"
           style="width: 178px"
         />
         <help-text>
@@ -478,24 +633,10 @@ const swap_30 = [
           <label v-if="!error" style="color: green">{{ msg }}</label>
         </div>
         <div style="display: flex; gap: 12px; margin-top: 16px">
-          <n-checkbox
-            v-if="task_type == '技能专精'"
-            v-model:checked="optimal"
-            :default-checked="false"
-            >最优协助干员
-            <help-text>
-              <div>不勾选该选项时默认使用60或专三95速度协助位</div>
-              <div>勾选后根据专精等级和职业使用对应加成干员</div>
-            </help-text>
-          </n-checkbox>
-          <n-checkbox
-            v-if="task_type == '技能专精'"
-            v-model:checked="half_off"
-            :default-checked="true"
-            >有减半加成
-          </n-checkbox>
-          <n-button type="primary" @click="saveTasks">添加至任务队列</n-button>
-          <n-button type="error" @click="clear">清除输入</n-button>
+          <n-button type="primary" :loading="saving" @click="saveTasks">
+            {{ task_type == '技能专精' ? '加入专精计划并生成任务' : '添加至任务队列' }}
+          </n-button>
+          <n-button type="error" :disabled="saving" @click="clear">清除输入</n-button>
         </div>
       </div>
     </template>
@@ -503,8 +644,26 @@ const swap_30 = [
 </template>
 
 <style scoped lang="scss">
-.button_row {
+.task-list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 80vh;
   margin-top: 8px;
+  overflow-y: auto;
+}
+
+.button_row {
+  flex: none;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.task_header {
+  flex-wrap: wrap;
+}
+
+.group_task_row {
+  flex-wrap: wrap;
 }
 
 .task_row {
@@ -512,37 +671,21 @@ const swap_30 = [
   align-items: center;
   gap: 8px;
   width: 100%;
+  padding: 2px;
 
   .n-input {
     width: 140px;
   }
 }
 
-.outer {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 18px;
-}
-
-.inner {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.task-col {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  align-items: center;
-}
-
 .n-dynamic-tags {
   align-items: center;
+  flex: 1;
+  min-width: 0;
 }
-
-.ml {
-  margin-left: 16px;
+.task-room-select {
+  width: 160px;
+  min-width: 160px;
+  flex: 0 0 160px;
 }
 </style>

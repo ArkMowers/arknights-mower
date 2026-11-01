@@ -1,0 +1,24 @@
+{
+  "title": "Reuse Existing Recovery and Configuration Owners",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-04]",
+    "[INV-DEV-07]",
+    "[INV-REC-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.application.DeviceControl.capture",
+    "arknights_mower.utils.solver.BaseSolver.restart_game"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_screenshot_backend_tests.py",
+    "arknights_mower/tests/scene_graph_recovery_tests.py",
+    "ui/src/components/DeviceSettings.test.js"
+  ]
+}

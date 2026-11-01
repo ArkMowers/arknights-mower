@@ -1,0 +1,20 @@
+{
+  "title": "Shared Backup Condition Parser",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-11]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.plan.Plan.uses_condition"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/rescue_backup_condition_tests.py",
+    "arknights_mower/tests/maintenance_run_order_tests.py"
+  ]
+}

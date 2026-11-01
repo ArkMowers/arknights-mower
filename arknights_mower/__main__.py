@@ -1,25 +1,460 @@
+import copy
 import os
-from datetime import datetime
+from dataclasses import replace
+from datetime import datetime, timedelta
+from threading import Event, Lock, Timer
+from typing import TYPE_CHECKING
 
-from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
-from arknights_mower.solvers.secret_front import SecretFront
+from arknights_mower.data import base_room_list
 from arknights_mower.utils import config, path, rapidocr
-from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.crash_recovery import is_memory_error
+from arknights_mower.utils.csleep import MowerExit, cancellation_scope, csleep
 from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.depot import 创建csv, 创建json
-from arknights_mower.utils.device.adb_client.session import Session
-from arknights_mower.utils.device.scrcpy import Scrcpy
-from arknights_mower.utils.email import send_message
+from arknights_mower.utils.device.application import (
+    RECOVERABLE_DEVICE_ERRORS,
+    create_device_control,
+)
+from arknights_mower.utils.device.recovery import wait_for_recovery
+from arknights_mower.utils.device.touch_backend import TouchFailure
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.maa_check import is_maa_connectivity_check_enabled
-from arknights_mower.utils.news_checker import NewsChecker
+from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
-from arknights_mower.utils.simulator import restart_simulator
+from arknights_mower.utils.resource_pkg import (
+    refresh_resource_at_boundary,
+    resource_task_session,
+)
+from arknights_mower.utils.scheduler_task import (
+    MAINTENANCE_TASK_TYPES,
+    find_next_task,
+    merge_restored_waiting_shifts,
+    protect_priority_tasks,
+)
+
+if TYPE_CHECKING:
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
 base_scheduler = None
+_startup_maintenance_tasks = ()
+_manual_pause = None
+_manual_pause_lock = Lock()
+
+
+def get_manual_pause():
+    with _manual_pause_lock:
+        if _manual_pause is None or _manual_pause[1].is_set():
+            return None
+        info, _ = _manual_pause
+        return {"id": info.announcement_id, "end": info.end.astimezone().isoformat()}
+
+
+def cancel_manual_pause(pause_id):
+    with _manual_pause_lock:
+        if _manual_pause is None or _manual_pause[0].announcement_id != pause_id:
+            return False
+        _manual_pause[1].set()
+        return True
+
+
+def _wait_for_maintenance(info, scheduler, remaining_time):
+    global _manual_pause
+    pause = (info, Event()) if info.manual else None
+    if pause is not None:
+        with _manual_pause_lock:
+            _manual_pause = pause
+    try:
+        if scheduler is None:
+
+            def cancelled():
+                return config.stop_mower.is_set() or (
+                    pause is not None and pause[1].is_set()
+                )
+
+            try:
+                with cancellation_scope(cancelled):
+                    csleep(remaining_time)
+            except MowerExit:
+                if config.stop_mower.is_set() or pause is None or not pause[1].is_set():
+                    return True
+        else:
+            scheduler.handle_idle_action(remaining_time)
+            options = {"cancelled": pause[1].is_set} if pause is not None else {}
+            scheduler._idle_sleep(remaining_time, allow_wakeup=False, **options)
+        return False
+    finally:
+        if pause is not None:
+            if pause[1].is_set():
+                tasks = (
+                    scheduler.tasks
+                    if scheduler is not None
+                    else _startup_maintenance_tasks
+                )
+                for task in list(tasks):
+                    if (
+                        task.type in MAINTENANCE_TASK_TYPES
+                        and task.maintenance_info.announcement_id
+                        == info.announcement_id
+                    ):
+                        tasks.remove(task)
+                logger.info("已取消本次闪断暂停，继续执行待办任务")
+            with _manual_pause_lock:
+                if _manual_pause is pause:
+                    _manual_pause = None
+
+
+def _manual_maintenances():
+    from arknights_mower.utils.scheduler_task import MAINTENANCE_TASK_TYPES
+
+    tasks = base_scheduler.tasks if base_scheduler else _startup_maintenance_tasks
+    windows = [
+        task.maintenance_info for task in tasks if task.type in MAINTENANCE_TASK_TYPES
+    ]
+    if base_scheduler is None:
+        # 启动时先等完闪断，不登录补做准备；原队列仍保留未完成责任。
+        windows = [
+            replace(info, preparation_pending=False)
+            if info.update_type == "hot"
+            else info
+            for info in windows
+        ]
+    return windows
+
+
+NewsChecker.manual_maintenance_provider = staticmethod(_manual_maintenances)
+
+device_control = create_device_control()
+_maintenance_timer = None
+_maintenance_timer_key = None
+_maintenance_timer_lock = Lock()
+_notified_maintenance_ids = set()
+_flash_probe_ids = set()
+
+
+def _close_device_session():
+    if device_control.shutdown_requested:
+        # Application shutdown joins this worker before restoring preparation.
+        return device_control.status()
+    result = device_control.close()
+    if not result.ok:
+        logger.error(f"关闭设备会话失败：{result.error.message}")
+    return result
+
+
+_ADB_CONNECTION_FAILURES = {
+    "Can't start adb server",
+    "ADB server is not working",
+    "Device connection failure",
+}
+
+
+def _is_adb_connection_failure(error: Exception) -> bool:
+    return isinstance(error, ConnectionError) or (
+        isinstance(error, RuntimeError) and str(error) in _ADB_CONNECTION_FAILURES
+    )
+
+
+def _stop_for_major_update(info: MaintenanceInfo):
+    """Stop the automation thread and tell the user to update the game client."""
+    from arknights_mower.solvers.record import save_current_state
+    from arknights_mower.utils.email import send_message
+
+    message = (
+        "检测到明日方舟大版本更新，Mower 已停止运行。\n"
+        "本次维护需要更新游戏客户端，请完成更新后再启动 Mower。\n"
+        f"维护时间：{info.start:%Y-%m-%d %H:%M} - {info.end:%Y-%m-%d %H:%M}\n"
+        f"官方公告：{info.url}"
+    )
+    with _maintenance_timer_lock:
+        notify = info.announcement_id not in _notified_maintenance_ids
+        _notified_maintenance_ids.add(info.announcement_id)
+    logger.warning(message)
+    try:
+        # A client update always needs human intervention, so it must also pass
+        # configurations that only deliver ERROR-level notifications.
+        if notify:
+            send_message(message, subject="明日方舟客户端需要更新", level="ERROR")
+    except Exception:
+        logger.exception("发送明日方舟客户端更新提醒失败")
+    finally:
+        try:
+            save_current_state()
+        finally:
+            config.stop_mower.set()
+
+
+def _save_manual_update_state(info: MaintenanceInfo, saved_state):
+    from arknights_mower.solvers.record import save_current_state, save_state_to_db
+    from arknights_mower.utils.scheduler_task import MAINTENANCE_TASK_TYPES
+
+    restored = base_scheduler is not None and getattr(
+        base_scheduler, "_state_restore_complete", True
+    )
+    tasks = base_scheduler.tasks if restored else saved_state.get("tasks", [])
+    original = list(tasks)
+    if not info.restart_after_update:
+        tasks[:] = [
+            task
+            for task in tasks
+            if task.type not in MAINTENANCE_TASK_TYPES
+            or task.maintenance_info.announcement_id != info.announcement_id
+        ]
+    try:
+        if restored:
+            saved = save_current_state()
+        elif not info.restart_after_update:
+            saved = save_state_to_db({**saved_state, "tasks": tasks})
+        else:
+            return
+        if not saved:
+            raise RuntimeError("停服更新前保存任务状态失败，请检查数据库后手动启动")
+    except Exception:
+        tasks[:] = original
+        raise
+
+
+def _cancel_maintenance_timer():
+    global _maintenance_timer, _maintenance_timer_key
+    with _maintenance_timer_lock:
+        if _maintenance_timer is not None:
+            _maintenance_timer.cancel()
+        _maintenance_timer = None
+        _maintenance_timer_key = None
+
+
+def _arm_maintenance_timer(
+    info: MaintenanceInfo, now=None, *, major_info=None, announced_info=None
+):
+    """Wake for threshold activation, then react exactly when maintenance starts."""
+    global _maintenance_timer, _maintenance_timer_key
+    now = now or datetime.now()
+    events = [(info.start, "maintenance", info)] if now < info.start else []
+    for major in (major_info or info, announced_info):
+        if major is None or major.update_type != "major":
+            continue
+        if now < major.start:
+            events.append((major.start, "maintenance", major))
+        threshold_at = major.start - timedelta(
+            hours=config.conf.version_update_threshold_advance_hours
+        )
+        if now < threshold_at:
+            events.append((threshold_at, "threshold", major))
+    if not events:
+        return
+    target, action, owner = min(
+        events, key=lambda event: (event[0], event[1] == "threshold", event[2].manual)
+    )
+    delay = (target - now).total_seconds()
+    key = (owner.announcement_id, target, action)
+    with _maintenance_timer_lock:
+        if _maintenance_timer_key == key and _maintenance_timer is not None:
+            return
+        if _maintenance_timer is not None:
+            _maintenance_timer.cancel()
+
+        def begin_maintenance():
+            global _maintenance_timer, _maintenance_timer_key
+            with _maintenance_timer_lock:
+                if _maintenance_timer_key != key:
+                    return
+                _maintenance_timer = None
+                _maintenance_timer_key = None
+            if (
+                action == "maintenance"
+                and owner.update_type == "major"
+                and not owner.manual
+            ):
+                _stop_for_major_update(owner)
+            else:
+                _arm_maintenance_timer(
+                    info, major_info=major_info, announced_info=announced_info
+                )
+                config.maintenance_recheck.set()
+                config.wake_scheduler.set()
+
+        timer = Timer(delay, begin_maintenance)
+        timer.daemon = True
+        _maintenance_timer = timer
+        _maintenance_timer_key = key
+        timer.start()
+        action_name = (
+            "启用版本维护心情阈值" if action == "threshold" else "响应服务器维护"
+        )
+        logger.info(f"已安排在 {target:%Y-%m-%d %H:%M} {action_name}")
+
+
+def _apply_version_update_resting_threshold(info, scheduler, now=None):
+    """Hot-apply the effective threshold to active and future plan switches."""
+    if scheduler is None:
+        return False
+    now = now or datetime.now()
+    advance = timedelta(hours=config.conf.version_update_threshold_advance_hours)
+    active = (
+        info is not None
+        and info.update_type == "major"
+        and info.start - advance <= now < info.start
+    )
+    desired = (
+        config.conf.version_update_resting_threshold
+        if active
+        else config.conf.resting_threshold
+    )
+    targets = []
+    global_plan = getattr(scheduler, "global_plan", None)
+    if isinstance(global_plan, dict):
+        default_plan = global_plan.get("default_plan")
+        if default_plan is not None:
+            targets.append(default_plan.config)
+        targets.extend(plan.config for plan in global_plan.get("backup_plans", []))
+    op_data = getattr(scheduler, "op_data", None)
+    if op_data is not None and getattr(op_data, "config", None) is not None:
+        targets.append(op_data.config)
+    changed = False
+    for target in targets:
+        group_thresholds = config.conf.group_resting_thresholds
+        override = desired if active else None
+        if (
+            getattr(target, "group_resting_thresholds", {}) != group_thresholds
+            or getattr(target, "resting_threshold_override", None) != override
+        ):
+            changed = True
+        target.group_resting_thresholds = dict(group_thresholds)
+        target.resting_threshold_override = override
+        if target.resting_threshold != desired:
+            target.resting_threshold = desired
+            changed = True
+    if changed:
+        label = "版本维护" if active else "日常"
+        logger.info(f"已即时应用{label}心情阈值：{desired:.0%}")
+    return changed
+
+
+def _has_recent_task(scheduler, reference_time, window_minutes=10):
+    if scheduler is None:
+        return False
+    deadline = reference_time + timedelta(minutes=window_minutes)
+    tasks = getattr(scheduler, "tasks", None)
+    try:
+        iterator = iter(tasks)
+    except TypeError:
+        return False
+    for task in iterator:
+        task_time = getattr(task, "time", None)
+        if isinstance(task_time, datetime) and task_time <= deadline:
+            return True
+    return False
+
+
+def _handle_maintenance(
+    info: MaintenanceInfo, scheduler, now=None
+) -> bool | MaintenanceInfo:
+    """Return manual downtime to the worker host for a stopped, scheduled restart."""
+    now = now or datetime.now()
+    if not info.active_at(now):
+        return False
+    announced = NewsChecker.get_maintenance()
+    if (
+        info.manual
+        and announced is not None
+        and announced.update_type == "major"
+        and announced.active_at(now)
+    ):
+        _stop_for_major_update(announced)
+        return True
+    if info.update_type == "major" and not info.manual:
+        _stop_for_major_update(info)
+        return True
+    if (
+        info.manual
+        and info.prepare
+        and scheduler is not None
+        and not scheduler._prepare_manual_maintenance(info)
+    ):
+        return False
+    if info.update_type == "major" and info.manual:
+        config.stop_mower.set()
+        return info
+    if now >= info.resume_at:
+        return False
+
+    flash_probe_at = min(info.end, info.start + timedelta(minutes=2))
+    flash_probe_pending = False
+    if not info.manual and info.is_flash_update:
+        if info.announcement_id in _flash_probe_ids:
+            return False
+        probe_reference = max(now, flash_probe_at)
+        if _has_recent_task(scheduler, probe_reference):
+            if now >= flash_probe_at:
+                _flash_probe_ids.add(info.announcement_id)
+                logger.info("闪断更新已进行 2 分钟且有近期任务，尝试进入游戏一次")
+                return False
+            resume_at = flash_probe_at
+            flash_probe_pending = True
+        else:
+            resume_at = info.end
+    else:
+        resume_at = info.resume_at
+    next_server_update = min(
+        (
+            candidate
+            for candidate in [announced, *NewsChecker.get_manual_maintenances(now)]
+            if candidate is not None
+            and candidate.update_type == "major"
+            and now <= candidate.start <= resume_at
+        ),
+        key=lambda candidate: (candidate.start, candidate.manual),
+        default=None,
+    )
+    if next_server_update is not None:
+        resume_at = next_server_update.start
+        flash_probe_pending = False
+    remaining_time = (resume_at - now).total_seconds()
+    logger.info("==============================================")
+    logger.info("ザ・ワールド！時よ止まれ！！（The World!~ 时间暂停！）——DIO")
+    logger.info("WRYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY!")
+    logger.info("服务器维护/热更新中，DIO大人已为你暂停一切行动。")
+    logger.info("==============================================")
+    if _wait_for_maintenance(info, scheduler, remaining_time):
+        return True
+    if next_server_update is not None:
+        return _handle_maintenance(next_server_update, scheduler)
+    if flash_probe_pending:
+        _flash_probe_ids.add(info.announcement_id)
+    logger.info("时间开始流动了……DIO大人贴心为你重启时间！")
+    return False
+
+
+def _wait_before_early_login_retry(now=None):
+    """Wait out a failed flash probe or retry early downtime entry in five minutes."""
+    now = now or datetime.now()
+    info = NewsChecker.get_effective_maintenance()
+    if (
+        info is not None
+        and info.is_flash_update
+        and info.announcement_id in _flash_probe_ids
+        and now < info.end
+    ):
+        delay = (info.end - now).total_seconds()
+        logger.warning("闪断更新提前尝试未成功，等待公告结束后恢复")
+        try:
+            csleep(delay)
+        except MowerExit:
+            pass
+        return True
+    if (
+        info is None
+        or not info.allows_early_login
+        or not (info.resume_at <= now < info.end)
+    ):
+        return False
+    delay = min(300, (info.end - now).total_seconds())
+    logger.warning(f"停机维护可能尚未提前开服，{delay / 60:g} 分钟后再次尝试进入游戏")
+    try:
+        csleep(delay)
+    except MowerExit:
+        pass
+    return True
 
 
 def _read_depot_scan_timestamp(path):
@@ -31,36 +466,95 @@ def _read_depot_scan_timestamp(path):
 
 
 # 执行自动排班
-def main(saved_state, restart_after_mood_read=False):
+def main(saved_state, *, preparation_serial=None):
+    global base_scheduler, _startup_maintenance_tasks
+    config.maintenance_recheck.clear()
+    try:
+        with (
+            device_control.run(preparation_serial=preparation_serial),
+            resource_task_session(),
+        ):
+            result = _main(saved_state)
+            if isinstance(result, MaintenanceInfo):
+                _save_manual_update_state(result, saved_state)
+            return result
+    except Exception:
+        if base_scheduler is not None and getattr(
+            base_scheduler, "_state_restore_complete", False
+        ):
+            try:
+                from arknights_mower.solvers.record import save_current_state
+
+                save_current_state()
+            except Exception:
+                logger.exception("工作线程退出前保存运行缓存失败，保留原缓存")
+        raise
+    finally:
+        _close_device_session()
+        _cancel_maintenance_timer()
+        base_scheduler = None
+        _startup_maintenance_tasks = ()
+
+
+def _main(saved_state):
+    global _startup_maintenance_tasks
+
+    _startup_maintenance_tasks = saved_state.get("tasks", ()) if saved_state else ()
     logger.info("开始运行Mower")
+    from arknights_mower.utils.recycling_report import start_recycling_reports
+
+    start_recycling_reports()
+    while (maintenance := NewsChecker.get_effective_maintenance()) is not None:
+        _arm_maintenance_timer(
+            maintenance,
+            major_info=NewsChecker.get_major_maintenance(),
+            announced_info=NewsChecker.get_maintenance(),
+        )
+        # Check before connecting to the game. A Mower started during maintenance
+        # may otherwise fail device/game initialization before reaching the loop.
+        if result := _handle_maintenance(maintenance, None):
+            return result
+        if not (maintenance.manual and maintenance.start <= datetime.now()):
+            break
     rapidocr.initialize_ocr()
     data = None
     if saved_state != {}:
         data = saved_state
-    result = simulate(data, restart_after_mood_read)
-    if result == "restart_after_mood_read":
-        from arknights_mower.solvers.record import load_state
-
-        logger.info("正在按载入心情数据模式重启Mower")
-        saved_state = load_state() or {}
-        saved_state["tasks"] = []
-        simulate(saved_state)
+    return simulate(data)
 
 
 def initialize(
-    tasks: list, scheduler: BaseSchedulerSolver | None = None
-) -> BaseSchedulerSolver:
+    tasks: list,
+    scheduler: "BaseSchedulerSolver | None" = None,
+    *,
+    connection_retries: int = 3,
+) -> "BaseSchedulerSolver":
     if scheduler:
         scheduler.handle_error(True)
         return scheduler
 
-    base_scheduler = BaseSchedulerSolver()
+    if not device_control.run_active:
+        _close_device_session().unwrap()
+    try:
+        device = device_control.start(connection_retries=connection_retries).unwrap()
+        return _initialize_scheduler(tasks, device)
+    except BaseException:
+        _close_device_session()
+        raise
+
+
+def _initialize_scheduler(tasks, device):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+    base_scheduler = BaseSchedulerSolver(device=device)
+    base_scheduler._state_restore_complete = False
     from arknights_mower.utils.operators import build_global_plan
 
-    plan = build_global_plan()
+    plan, source_plan = build_global_plan(include_source=True)
 
     logger.debug(plan)
     base_scheduler.global_plan = plan
+    base_scheduler.source_plan = source_plan
     base_scheduler.tasks = tasks
     base_scheduler.enable_party = config.conf.enable_party == 1  # 是否使用线索
     base_scheduler.leifeng_mode = config.conf.leifeng_mode == 1  # 是否有额外线索就送出
@@ -74,123 +568,444 @@ def initialize(
     base_scheduler.drone_room = (
         None if config.conf.drone_room == "" else config.conf.drone_room
     )
-    base_scheduler.reload_room = list(
-        filter(None, config.conf.reload_room.replace("，", ",").split(","))
-    )
-
     # 关闭游戏次数计数器
     base_scheduler.task_count = 0
 
     return base_scheduler
 
 
-def simulate(saved, restart_after_mood_read=False):
+def _resume_device_dispatch(scheduler=None, failure=None):
+    if is_memory_error(failure):
+        raise failure
+    uncertain = isinstance(failure, TouchFailure) and failure.delivery_unknown
+    abandon_old_session = uncertain
+    if uncertain and scheduler is not None:
+        scheduler._process_recovery_occurred_at = datetime.now().isoformat()
+
+    def resume():
+        nonlocal abandon_old_session
+        if device_control.shutdown_requested or config.stop_mower.is_set():
+            raise MowerExit
+        if abandon_old_session:
+            # Keep the existing owner if cleanup is temporarily unsuccessful.
+            # A new session never reuses the interrupted touch callback.
+            device_control.close().unwrap()
+            abandon_old_session = False
+        device = device_control.recover().unwrap()
+        if scheduler is not None:
+            scheduler.device = device
+            scheduler.recog.device = device
+            if uncertain or getattr(scheduler, "_idle_observation_pending", False):
+                from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+                BaseSchedulerSolver._complete_idle_observation(scheduler)
+            else:
+                scheduler.recog.update()
+        return device
+
+    csleep(30)
+    device = wait_for_recovery(resume, retry_errors=RECOVERABLE_DEVICE_ERRORS)
+    if uncertain and scheduler is not None:
+        from arknights_mower.utils.crash_recovery import observe_scheduler
+
+        logger.warning("输入结果不确定：保留任务与补偿，重新观察后由原任务流程接续")
+        while not config.stop_mower.is_set():
+            try:
+                observe_scheduler(scheduler)
+                return device
+            except MowerExit:
+                raise
+            except Exception as exc:
+                if is_memory_error(exc):
+                    raise
+                logger.exception("输入中断后的观察暂未完成，稍后自动重试")
+                csleep(30)
+                device = wait_for_recovery(
+                    resume, retry_errors=RECOVERABLE_DEVICE_ERRORS
+                )
+        raise MowerExit
+    return device
+
+
+def _next_scheduler_task():
+    return find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
+
+
+def simulate(saved):
     """
     具体调用方法可见各个函数的参数说明
     """
     logger.info(f"正在使用全局配置空间: {path.global_space}")
-    tasks = saved["tasks"] if saved else []
-    reconnect_max_tries = 10
-    reconnect_tries = 0
+    tasks = (
+        [
+            task
+            for task in saved.get("tasks", [])
+            if not getattr(task, "mood_control_event", None)
+        ]
+        if saved
+        else []
+    )
+    connection_retries = 1
     global base_scheduler
+    if config.stop_mower.is_set():
+        return
     success = False
     while not success:
         try:
-            base_scheduler = initialize([])
-            base_scheduler.restart_after_mood_read = restart_after_mood_read
+            if config.stop_mower.is_set():
+                raise MowerExit
+            base_scheduler = initialize([], connection_retries=connection_retries)
+            if saved and saved.get("_restart_game"):
+                base_scheduler.restart_game()
+                saved["_restart_game"] = False
+            base_scheduler._process_recovery_occurred_at = (
+                saved.get("_process_crash_occurred_at") if saved else None
+            )
+            # saved 为空表示没有可载入的运行缓存。此时干员 current_room 尚未读取，
+            # 首轮任务开始前必须暂缓副表判断，避免把“未知”误判成“不在工作”。
+            base_scheduler.defer_backup_plan_until_mood_read = (
+                not saved
+                or bool(saved.get("_process_crash_recovery"))
+                or bool(saved.get("initial_mood_pending", False))
+                or config.conf.automatic_rescue_enable
+                or config.conf.test_mood_calculation
+                or bool(saved and saved.get("automatic_rescue_state"))
+            )
+            base_scheduler._initial_staffing_pending = (
+                not saved
+                or bool(saved.get("_process_crash_no_snapshot"))
+                or bool(saved.get("initial_staffing_pending", False))
+            )
+            base_scheduler._initial_mood_refresh_rooms = set(
+                saved.get("initial_mood_refresh_rooms", ()) if saved else ()
+            ) | set(saved.get("initial_mood_probe_layout", {}) if saved else {})
+            if config.conf.test_mood_calculation:
+                # 重启及首次启用都先核实实际驻员，计算快照不能替代启动实读。
+                base_scheduler._initial_mood_refresh_rooms.update(
+                    room for room in base_room_list if not room.startswith("gaming")
+                )
             success = True
+        except RECOVERABLE_DEVICE_ERRORS as exc:
+            try:
+                _resume_device_dispatch(failure=exc)
+            except MowerExit:
+                return
+            continue
         except MowerExit:
             return
         except Exception as e:
+            if is_memory_error(e):
+                raise
             logger.exception(e)
-            reconnect_tries += 1
-            if reconnect_tries < 3:
-                restart_simulator()
-                base_scheduler.device.client.check_server_alive()
-                Session().connect(config.conf.adb)
-                if config.conf.droidcast.enable:
-                    base_scheduler.device.start_droidcast()
-                if config.conf.touch_method == "scrcpy":
-                    base_scheduler.device.control.scrcpy = Scrcpy(
-                        base_scheduler.device.client
-                    )
+            if config.stop_mower.is_set():
+                return
+            if _wait_before_early_login_retry():
+                if config.stop_mower.is_set():
+                    return
+                connection_retries = 3
                 continue
-            else:
-                raise e
-    if is_maa_connectivity_check_enabled():
-        try:
-            base_scheduler.check_maa_connectivity("启动预检")
-        except RuntimeError as e:
-            message = str(e)
-            logger.error(message)
-            send_message(
-                message,
-                "Mower启动中止：Maa连接测试失败",
-                level="ERROR",
-            )
-            return
+            # Session startup owns the shared recovery budget. Initialization
+            # failures (including recognition errors) must not open a new one.
+            raise
     # base_scheduler.仓库扫描() #别删了 方便我找
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
         logger.error(validation_msg)
         return
-    validation_msg = base_scheduler.op_data.validate_backup_plans()
-    if not validation_msg["success"]:
-        logger.error(f"备用计划验证失败: {validation_msg['message']}")
+    validation_msg = base_scheduler.op_data.validate_backup_plans(max_seconds=5)
+    if validation_msg.get("status") == "incomplete":
+        logger.warning(f"排班校验未完成: {validation_msg['message']}")
+    elif not validation_msg["success"]:
+        logger.error(f"排班验证失败: {validation_msg['message']}")
         return
-    if saved:
+    _apply_version_update_resting_threshold(
+        NewsChecker.get_major_maintenance(), base_scheduler
+    )
+    if saved and not saved.get("_process_crash_no_snapshot"):
         try:
             for k, v in saved["operators"].items():
                 if k not in base_scheduler.op_data.operators:
                     base_scheduler.op_data.add(Operator(k, ""))
                     # 只复制心情数据
+                base_scheduler.op_data.select_group_binding(k, v.group)
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
                 base_scheduler.op_data.operators[k].current_room = v.current_room
                 base_scheduler.op_data.operators[k].current_index = v.current_index
-            base_scheduler.op_data.dorm = saved["dorm"]
+                base_scheduler.op_data.operators[k].dorm_position_version = getattr(
+                    v, "dorm_position_version", 0
+                )
+                base_scheduler.op_data.operators[k].dorm_recovery_room = getattr(
+                    v, "dorm_recovery_room", ""
+                )
+                base_scheduler.op_data.operators[k].dorm_recovery_index = getattr(
+                    v, "dorm_recovery_index", -1
+                )
+                base_scheduler.op_data.operators[k].resting_from_train = getattr(
+                    v, "resting_from_train", False
+                )
+                for attr, default in (
+                    ("mood_is_prediction", False),
+                    ("rest_mood_release_limit", None),
+                    ("dorm_mood_fallback", ""),
+                    ("dorm_mood_peers", {}),
+                    ("idle_rest_check", None),
+                    ("temporary_dorm_fill", False),
+                    ("recall_work_rate", None),
+                    ("recall_work_rate_checked", False),
+                ):
+                    setattr(
+                        base_scheduler.op_data.operators[k],
+                        attr,
+                        copy.deepcopy(getattr(v, attr, default)),
+                    )
+                base_scheduler.op_data.operators[k].dorm_recovery_fixed = getattr(
+                    v, "dorm_recovery_fixed", ()
+                )
+            if saved.get("calculated_mood") is not None:
+                from arknights_mower.utils.calculated_mood import CalculatedMood
+
+                restored_mood = CalculatedMood()
+                restored_mood.__dict__.update(copy.deepcopy(saved["calculated_mood"]))
+                base_scheduler.op_data.mood_model = restored_mood.restore()
+            if base_scheduler.op_data.mood_calculation_enabled:
+                for operator in base_scheduler.op_data.operators.values():
+                    operator._mood_model = base_scheduler.op_data.mood_model
+            base_scheduler.op_data.restore_group_shift_state(
+                saved.get("group_shift_state"),
+                saved.get("group_recovery_full_members"),
+                saved.get("group_recovery_return_time"),
+            )
+            base_scheduler.op_data.urgent_recovery_supporters = copy.deepcopy(
+                saved.get("urgent_recovery_supporters", {})
+            )
+            base_scheduler.backup_group_task_issued = set(
+                saved.get("backup_group_task_issued", ())
+            )
+            base_scheduler.waiting_group_shifts = merge_restored_waiting_shifts(
+                saved.get("waiting_group_shifts", [])
+            )
+            from arknights_mower.utils.config.plan import migrate_backup_tasks
+
+            retired_backups = (
+                bool(saved.get("rescue_state"))
+                or config.retired_backup_migrated
+                or bool(
+                    set(saved.get("backup_plan_names", []))
+                    - {backup.name for backup in base_scheduler.op_data.backup_plans}
+                )
+            )
+            restored_tasks, restored_predecessors, restored_pairs = [], {}, []
+            for task in tasks:
+                migrated = migrate_backup_tasks(
+                    [task],
+                    saved.get("backup_plan_names", []),
+                    [backup.name for backup in base_scheduler.op_data.backup_plans],
+                    config.retired_backup_indices,
+                    retired=retired_backups,
+                )
+                if migrated:
+                    restored_predecessors[id(task)] = migrated[0]
+                    restored_pairs.append((task, migrated[0]))
+                    restored_tasks.extend(migrated)
+            base_scheduler.tasks = restored_tasks
+            restored_pairs.extend(
+                (task, task) for task in base_scheduler.waiting_group_shifts
+            )
+            for original, task in restored_pairs:
+                for attribute in (
+                    "group_shift_predecessors",
+                    "product_shift_predecessors",
+                ):
+                    if hasattr(original, attribute):
+                        setattr(
+                            task,
+                            attribute,
+                            tuple(
+                                restored_predecessors.get(id(previous), previous)
+                                for previous in getattr(original, attribute)
+                            ),
+                        )
+            base_scheduler.op_data.restore_dorm_state(
+                saved["dorm"],
+                group_transitions=base_scheduler._pending_group_transitions(),
+            )
+            base_scheduler.op_data.facility_states = copy.deepcopy(
+                saved.get("facility_states", {})
+            )
+            base_scheduler.op_data.room_observations = copy.deepcopy(
+                saved.get("room_observations", {})
+            )
+            base_scheduler.op_data.recall_recovery_rates = copy.deepcopy(
+                saved.get("recall_recovery_rates", {})
+            )
+            base_scheduler.emergency_state = copy.deepcopy(
+                saved.get("automatic_rescue_state")
+            )
+            if isinstance(base_scheduler.emergency_state, dict):
+                base_scheduler._emergency_validate_state()
+                state = base_scheduler.emergency_state
+                previous = dict(
+                    zip(
+                        state.get("handoff_names", state["backup_names"]),
+                        state.get("handoff_conditions", state["frozen_conditions"]),
+                    )
+                )
+                names = [backup.name for backup in base_scheduler.op_data.backup_plans]
+                error = base_scheduler.op_data.swap_plan(
+                    [previous.get(name, False) for name in names], refresh=True
+                )
+                if error:
+                    raise ValueError(error)
+            base_scheduler.op_data.idle_dorm_search_exhausted = saved.get(
+                "idle_dorm_search_exhausted", False
+            )
+            base_scheduler.op_data.idle_dorm_search_stopped_at = saved.get(
+                "idle_dorm_search_stopped_at"
+            )
             base_scheduler.party_time = saved["party_time"]
+            base_scheduler.maa_copilot_progress = dict(
+                saved.get("maa_copilot_progress", {})
+            )
             base_scheduler.daily_visit_friend = saved["daily_visit_friend"]
+            base_scheduler.maa_daily_completed = dict(
+                saved.get("maa_daily_completed", {})
+            )
+            base_scheduler.daily_visit_friend_attempt = saved.get(
+                "daily_visit_friend_attempt"
+            )
             base_scheduler.daily_report = saved["daily_report"]
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
+            base_scheduler.daily_event_sign_in = saved.get(
+                "daily_event_sign_in", get_server_time().date() - timedelta(days=1)
+            )
+            base_scheduler.daily_event_sign_in_attempt = saved.get(
+                "daily_event_sign_in_attempt"
+            )
             base_scheduler.task_count = saved["task_count"]
-            base_scheduler.op_data.skill_upgrade_supports = saved[
-                "skill_upgrade_supports"
-            ]
-            base_scheduler.tasks = tasks
-            if len(base_scheduler.op_data.backup_plans) > 0:
+            if len(base_scheduler.op_data.backup_plans) > 0 and not saved.get(
+                "_process_crash_recovery"
+            ):
                 # 启动的时候按照条件触发副表
                 base_scheduler.backup_plan_solver()
         except Exception as ex:
+            if is_memory_error(ex) or saved.get("_process_crash_recovery"):
+                raise
             logger.exception(ex)
+    from arknights_mower.solvers.emergency import RESUME_META
+    from arknights_mower.utils.emergency_recovery import ORDINARY_SHIFTS
+    from arknights_mower.utils.scheduler_task import SchedulerTask
+
+    if saved and saved.get("rescue_state"):
+        base_scheduler.tasks[:] = [
+            task
+            for task in base_scheduler.tasks
+            if task.type not in ORDINARY_SHIFTS
+            and not getattr(task, "backup_shift_active", False)
+        ]
+    if (
+        config.conf.automatic_rescue_enable
+        or config.conf.test_mood_calculation
+        or isinstance(base_scheduler.emergency_state, dict)
+        or bool(saved and saved.get("initial_mood_pending"))
+    ):
+        base_scheduler._emergency_startup_pending = True
+        base_scheduler.defer_backup_plan_until_mood_read = True
+        base_scheduler.tasks[:] = [
+            task for task in base_scheduler.tasks if task.meta_data != RESUME_META
+        ]
+        if not (saved and saved.get("initial_mood_pending")):
+            base_scheduler._initial_mood_refresh_rooms.update(
+                {room for room in base_scheduler.op_data.plan if room in base_room_list}
+            )
+        base_scheduler.tasks.insert(0, SchedulerTask(time=datetime.now()))
     while True:
         try:
-            st, et = NewsChecker.get_update_time()
-            if st is not None and et is not None:
-                if et > datetime.now() > st:
-                    remaining_time = (et - datetime.now()).total_seconds()
-                    logger.info("==============================================")
-                    logger.info(
-                        "ザ・ワールド！時よ止まれ！！（The World!~ 时间暂停！）——DIO"
+            if saved and saved.get("_process_crash_recovery"):
+                from arknights_mower.utils.crash_recovery import reconcile_scheduler
+
+                reconcile_scheduler(base_scheduler)
+            else:
+                from arknights_mower.utils import crash_recovery
+
+                crash_recovery.checkpoint_start(base_scheduler)
+            break
+        except RECOVERABLE_DEVICE_ERRORS as exc:
+            # 恢复前的房间读取也由原设备会话处理，保留已还原的任务和调度器。
+            try:
+                _resume_device_dispatch(base_scheduler, exc)
+            except MowerExit:
+                return
+        except MowerExit:
+            return
+    base_scheduler._state_restore_complete = True
+    if saved:
+        base_scheduler._request_run_order_restoration_observations()
+    task_failures = 0
+    while True:
+        try:
+            config.maintenance_recheck.clear()
+            refresh_resource_at_boundary()
+            from arknights_mower.utils.scheduler_task import MAINTENANCE_TASK_TYPES
+
+            base_scheduler.tasks[:] = [
+                task
+                for task in base_scheduler.tasks
+                if task.type not in MAINTENANCE_TASK_TYPES
+                or datetime.now() < task.maintenance_info.end
+                or task.maintenance_info.active_at(datetime.now())
+            ]
+            maintenance = NewsChecker.get_effective_maintenance()
+            major_maintenance = NewsChecker.get_major_maintenance()
+            _apply_version_update_resting_threshold(major_maintenance, base_scheduler)
+            if maintenance is not None:
+                _arm_maintenance_timer(
+                    maintenance,
+                    major_info=major_maintenance,
+                    announced_info=NewsChecker.get_maintenance(),
+                )
+                if result := _handle_maintenance(maintenance, base_scheduler):
+                    return result
+                if (
+                    maintenance.manual
+                    and maintenance.start <= datetime.now()
+                    and not any(
+                        getattr(task, "maintenance_preparation_pending", False)
+                        for task in base_scheduler.tasks
                     )
-                    logger.info("WRYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY!")
-                    logger.info("服务器维护中，DIO大人已为你暂停一切行动。")
-                    logger.info("==============================================")
-                    base_scheduler.handle_idle_action(remaining_time)
-                    # 服务器维护期间 mower 完全空闲，同样走休眠收口点，让 /status 显示休眠
-                    base_scheduler._idle_sleep(remaining_time)
-                    logger.info("时间开始流动了……DIO大人贴心为你重启时间！")
-            if len(base_scheduler.tasks) > 0:
-                (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
+                ):
+                    continue
+            if _next_scheduler_task() is not None:
+                # 维护避让先于日常任务和等待预算，包含从存档恢复的专精换人。
+                protect_priority_tasks(
+                    base_scheduler.tasks,
+                    op_data=getattr(base_scheduler, "op_data", None),
+                )
                 remaining_time = (
-                    base_scheduler.tasks[0].time - datetime.now()
+                    _next_scheduler_task().time - datetime.now()
                 ).total_seconds()
                 if remaining_time > 540:
+                    from arknights_mower.solvers.trust_rotation import (
+                        run_trust_rotation,
+                    )
+
+                    run_trust_rotation(
+                        base_scheduler.device,
+                        base_scheduler.recog,
+                        _next_scheduler_task().time,
+                    )
                     if base_scheduler.daily_visit_friend < get_server_time().date():
+                        visit_day = (
+                            get_server_time().date()
+                            if config.conf.should_defer_clue_credit
+                            else None
+                        )
                         if base_scheduler.visit_friend_plan_solver():
-                            base_scheduler.daily_visit_friend = get_server_time().date()
+                            base_scheduler.daily_visit_friend = (
+                                visit_day or get_server_time().date()
+                            )
 
                     if base_scheduler.daily_report < get_server_time().date():
                         if base_scheduler.report_plan_solver():
@@ -210,10 +1025,12 @@ def simulate(saved, restart_after_mood_read=False):
                         if base_scheduler.mail_plan_solver():
                             base_scheduler.daily_mail = get_server_time().date()
 
+                    base_scheduler.event_sign_in_plan_solver()
+
                     if config.conf.recruit_enable:
                         base_scheduler.recruit_plan_solver()
 
-                    # 应该在maa任务之后
+                    # 应该在MAA任务之后
                     def _is_depotscan():
                         path = get_path("@app/tmp/depotresult.csv")
                         if os.path.exists(path):
@@ -257,17 +1074,68 @@ def simulate(saved, restart_after_mood_read=False):
                         base_scheduler.run()
                         from arknights_mower.utils.scheduler_task import scheduling
 
-                        scheduling(base_scheduler.tasks)
-                    if config.conf.maa_enable != 1:
+                        scheduling(
+                            base_scheduler.tasks,
+                            op_data=base_scheduler.op_data,
+                        )
+                    if _next_scheduler_task() is not None:
+                        protect_priority_tasks(
+                            base_scheduler.tasks,
+                            op_data=getattr(base_scheduler, "op_data", None),
+                        )
+                        remaining_time = (
+                            _next_scheduler_task().time - datetime.now()
+                        ).total_seconds()
+                    else:
+                        remaining_time = 0
+
+                    if remaining_time > 0 and config.conf.should_run_mower_stage_plan:
                         base_scheduler.mower_plan_solver()
-                    elif config.conf.maa_enable == 1:
-                        subject = f"下次任务在{base_scheduler.tasks[0].time.strftime('%H:%M:%S')}"
-                        context = f"下一次任务:{base_scheduler.tasks[0].plan}"
+
+                    if (
+                        find_next_task(
+                            base_scheduler.tasks, op_data=base_scheduler.op_data
+                        )
+                        is not None
+                    ):
+                        protect_priority_tasks(
+                            base_scheduler.tasks,
+                            op_data=getattr(base_scheduler, "op_data", None),
+                        )
+                        remaining_time = (
+                            find_next_task(
+                                base_scheduler.tasks, op_data=base_scheduler.op_data
+                            ).time
+                            - datetime.now()
+                        ).total_seconds()
+                    else:
+                        remaining_time = 0
+
+                    if remaining_time >= 540 and base_scheduler.has_maa_tasks():
+                        subject = f"下次任务在{find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data).time.strftime('%H:%M:%S')}"
+                        context = f"下一次任务:{find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data).plan}"
                         logger.info(context)
                         logger.info(subject)
                         base_scheduler.maa_plan_solver()
 
-                elif remaining_time > 0:
+                if (
+                    find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
+                    is not None
+                ):
+                    protect_priority_tasks(
+                        base_scheduler.tasks,
+                        op_data=getattr(base_scheduler, "op_data", None),
+                    )
+                    remaining_time = (
+                        find_next_task(
+                            base_scheduler.tasks, op_data=base_scheduler.op_data
+                        ).time
+                        - datetime.now()
+                    ).total_seconds()
+                else:
+                    remaining_time = 0
+
+                if remaining_time > 0:
                     now_time = datetime.now().time()
                     try:
                         min_time = datetime.strptime(
@@ -284,77 +1152,135 @@ def simulate(saved, restart_after_mood_read=False):
                         rg_sleep = False
 
                     if not rg_sleep:
+                        from arknights_mower.solvers.manual_tasks import (
+                            long_task_deadline,
+                            resume_dorm_releases,
+                        )
+
                         if config.conf.RA:
+                            from arknights_mower.solvers.reclamation_algorithm import (
+                                ReclamationAlgorithm,
+                            )
+
                             base_scheduler.recog.update()
                             base_scheduler.back_to_index()
                             ra_solver = ReclamationAlgorithm(
                                 base_scheduler.device, base_scheduler.recog
                             )
-                            ra_solver.run(base_scheduler.tasks[0].time - datetime.now())
+                            try:
+                                ra_solver.run(
+                                    long_task_deadline(
+                                        base_scheduler,
+                                        datetime.now() + timedelta(hours=24),
+                                    )
+                                    - datetime.now()
+                                )
+                            finally:
+                                resume_dorm_releases(base_scheduler)
                             remaining_time = (
-                                base_scheduler.tasks[0].time - datetime.now()
+                                _next_scheduler_task().time - datetime.now()
                             ).total_seconds()
                         elif config.conf.SF:
+                            from arknights_mower.solvers.secret_front import SecretFront
+
                             base_scheduler.recog.update()
                             base_scheduler.back_to_index()
                             sf_solver = SecretFront(
                                 base_scheduler.device, base_scheduler.recog
                             )
-                            sf_solver.run(base_scheduler.tasks[0].time - datetime.now())
+                            try:
+                                sf_solver.run(
+                                    long_task_deadline(
+                                        base_scheduler,
+                                        datetime.now() + timedelta(hours=24),
+                                    )
+                                    - datetime.now()
+                                )
+                            finally:
+                                resume_dorm_releases(base_scheduler)
                             remaining_time = (
-                                base_scheduler.tasks[0].time - datetime.now()
+                                _next_scheduler_task().time - datetime.now()
                             ).total_seconds()
 
                     base_scheduler.rest_until_next_task()
+                    task_failures = 0
+                    # A maintenance timer may have ended this sleep. Recheck the
+                    # announcement before dispatching another scheduler task.
+                    continue
 
-            result = base_scheduler.run()
-            if result == "restart_after_mood_read":
-                from arknights_mower.solvers.record import save_current_state
+            from arknights_mower.solvers.manual_tasks import (
+                run_long_task_if_dorm_pending,
+            )
 
-                if save_current_state():
-                    return result
-                logger.warning("心情数据保存失败，继续当前Mower流程")
-            reconnect_tries = 0
+            run_long_task_if_dorm_pending(base_scheduler)
+            base_scheduler.run()
+            task_failures = 0
+        except RECOVERABLE_DEVICE_ERRORS as exc:
+            try:
+                _resume_device_dispatch(base_scheduler, exc)
+            except MowerExit:
+                return
+            continue
         except MowerExit:
             return
         except (ConnectionError, ConnectionAbortedError, AttributeError) as e:
-            logger.exception(e)
-            reconnect_tries += 1
-            if reconnect_tries < reconnect_max_tries:
-                logger.warning("出现错误.尝试重启Mower")
-                connected = False
-                while not connected:
-                    try:
-                        base_scheduler = initialize([], base_scheduler)
-                        break
-                    except MowerExit:
-                        raise
-                    except Exception as e:
-                        logger.exception(e)
-                        restart_simulator()
-                        base_scheduler.device.client.check_server_alive()
-                        Session().connect(config.conf.adb)
-                        if config.conf.droidcast.enable:
-                            base_scheduler.device.start_droidcast()
-                        if config.conf.touch_method == "scrcpy":
-                            base_scheduler.device.control.scrcpy = Scrcpy(
-                                base_scheduler.device.client
-                            )
-                        continue
+            if is_memory_error(e):
+                raise
+            task_failures += 1
+            if task_failures > 1:
+                raise
+            logger.exception(
+                "设备连接或页面识别失败：%s",
+                e,
+                extra={"archive_screenshots": not _is_adb_connection_failure(e)},
+            )
+            if _wait_before_early_login_retry():
+                if config.stop_mower.is_set():
+                    return
                 continue
-            else:
-                raise e
+            try:
+                _resume_device_dispatch(base_scheduler, e)
+            except MowerExit:
+                return
+            continue
         except RuntimeError as e:
-            logger.exception(f"程序出错-尝试重启模拟器->{e}")
-            restart_simulator()
-            base_scheduler.device.client.check_server_alive()
-            Session().connect(config.conf.adb)
-            if config.conf.droidcast.enable:
-                base_scheduler.device.start_droidcast()
-            if config.conf.touch_method == "scrcpy":
-                base_scheduler.device.control.scrcpy = Scrcpy(
-                    base_scheduler.device.client
-                )
+            if is_memory_error(e):
+                raise
+            task_failures += 1
+            if task_failures > 1:
+                raise
+            logger.exception(
+                "运行时发生错误，正在尝试恢复设备连接：%s",
+                e,
+                extra={"archive_screenshots": not _is_adb_connection_failure(e)},
+            )
+            if _wait_before_early_login_retry():
+                if config.stop_mower.is_set():
+                    return
+                continue
+            try:
+                _resume_device_dispatch(base_scheduler, e)
+            except MowerExit:
+                return
         except Exception as e:
-            logger.exception(f"程序出错--->{e}")
-            base_scheduler.recog.update()
+            if is_memory_error(e):
+                raise
+            task_failures += 1
+            if task_failures > 1:
+                raise
+            logger.exception(
+                "任务执行失败，正在刷新画面后继续：%s",
+                e,
+                extra={"archive_screenshots": True},
+            )
+            if _wait_before_early_login_retry():
+                if config.stop_mower.is_set():
+                    return
+                continue
+            try:
+                base_scheduler.recog.update()
+            except RECOVERABLE_DEVICE_ERRORS as exc:
+                try:
+                    _resume_device_dispatch(base_scheduler, exc)
+                except MowerExit:
+                    return

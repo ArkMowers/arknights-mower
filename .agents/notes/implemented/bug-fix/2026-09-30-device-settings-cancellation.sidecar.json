@@ -1,0 +1,23 @@
+{
+  "title": "Device Settings Cancellation Isolation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-15]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/csleep.py",
+    "arknights_mower/utils/device/application.py",
+    "server.py",
+    "ui/src/utils/deviceSettings.js"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/csleep_tests.py",
+    "arknights_mower/tests/device_start_bound_tests.py",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

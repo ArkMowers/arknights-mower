@@ -1,0 +1,247 @@
+"""宿舍候选、分床和重排共用的排班身份与心情排序。"""
+
+from datetime import datetime
+from enum import IntEnum
+from itertools import zip_longest
+
+from arknights_mower.data import agent_list
+
+
+def unregistered_idle_candidates(op_data, excluded=()):
+    """沿用 Free 选人的全名单兜底，实际持有者由游戏选人页确认。"""
+    excluded = (
+        set(excluded)
+        | set(op_data.config.free_blacklist)
+        | set(op_data.config.workaholic)
+    )
+    return [
+        name
+        for name in agent_list
+        if name not in op_data.operators and name not in excluded
+    ]
+
+
+class RestingTier(IntEnum):
+    PRIORITY = 0
+    MAIN = 1
+    LOW_MAIN = 2
+    PRIORITY_REPLACEMENT = 3
+    STANDBY = 4
+    REPLACEMENT = 5
+    IDLE = 6
+    EXCLUDED = 7
+
+
+def _replacement_tier(op_data, name):
+    if name in getattr(op_data.config, "resting_priority_replacement", ()):
+        return RestingTier.PRIORITY_REPLACEMENT
+    return RestingTier.REPLACEMENT
+
+
+def resting_tier(op_data, name, now=None, *, replacement_names=None):
+    op = op_data.operators.get(name)
+    if name in op_data.config.free_blacklist or (op is not None and op.workaholic):
+        return RestingTier.EXCLUDED
+    if is_full_dynamic_candidate(op_data, name, now):
+        return RestingTier.IDLE
+    if name in op_data.config.ope_resting_priority:
+        return RestingTier.PRIORITY
+    if name in op_data.config.resting_standby:
+        return RestingTier.STANDBY
+    if op is not None:
+        if (op.room == "train" and op.index == 0) or (
+            op.current_room == "train" and op.current_index == 0
+        ):
+            return _replacement_tier(op_data, name)
+        if op.is_high():
+            return {
+                "high": RestingTier.MAIN,
+                "low": RestingTier.LOW_MAIN,
+                "standby": RestingTier.STANDBY,
+            }[op.resting_priority]
+        if getattr(op, "resting_from_train", False):
+            return _replacement_tier(op_data, name)
+    # 菲亚梅塔的名单是充能目标，不是普通替班。
+    if (
+        any(
+            name in slot.all_replacements
+            for slots in op_data.plan.values()
+            for slot in slots
+            if slot.agent != "菲亚梅塔"
+        )
+        if replacement_names is None
+        else name in replacement_names
+    ):
+        return _replacement_tier(op_data, name)
+    return RestingTier.IDLE
+
+
+def is_full_dynamic_candidate(op_data, name, now=None):
+    """达到个人上限的动态候选不享受恢复优先级，宿舍保留名单除外。"""
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
+    op = op_data.operators.get(name)
+    if (
+        op is None
+        or op.is_high()
+        and op.room.startswith("dorm")
+        or name in op_data.config.free_room_exclusions
+    ):
+        return False
+    mood = dorm_candidate_mood(op_data, name, now)
+    return mood is not None and mood >= op.upper_limit
+
+
+def is_full_dorm_filler(op_data, name, now=None):
+    """实读回满的动态住客优先腾床，固定宿舍岗位和保留名单除外。"""
+    now = now or getattr(op_data, "_projection_now", None) or datetime.now()
+    op = op_data.operators.get(name)
+    return bool(
+        op is not None
+        and op.current_room.startswith("dorm")
+        and is_full_dynamic_candidate(op_data, name, now)
+        and RestingTier.PRIORITY_REPLACEMENT
+        < resting_tier(op_data, name, now)
+        < RestingTier.EXCLUDED
+        and has_resting_mood(op, now)
+        and (
+            getattr(op_data, "mood_calculation_enabled", False)
+            or op.time_stamp is not None
+            and op.time_stamp <= now
+            and not getattr(op, "mood_is_prediction", False)
+            and op.mood >= op.upper_limit
+        )
+    )
+
+
+def bed_takeover_allowed(op_data, requester, resident):
+    """先让实读回满补位者腾床；保留申请者沿用层级，不受心情门槛限制。"""
+    now = getattr(op_data, "_projection_now", None) or datetime.now()
+    requester_tier = resting_tier(op_data, requester, now)
+    resident_tier = resting_tier(op_data, resident, now)
+    if is_full_dynamic_candidate(op_data, requester, now):
+        return False
+    if (
+        requester_tier == RestingTier.EXCLUDED
+        or resident_tier <= RestingTier.PRIORITY_REPLACEMENT
+    ):
+        return False
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
+    op = op_data.operators.get(requester)
+    mood = dorm_candidate_mood(op_data, requester, now)
+    retained = op_data.is_free_room_excluded(requester)
+    if is_full_dorm_filler(op_data, resident, now):
+        return (
+            op is not None and mood is not None and (retained or mood < op.upper_limit)
+        )
+    if not requester_tier < resident_tier < RestingTier.EXCLUDED:
+        return False
+    if requester_tier <= RestingTier.PRIORITY_REPLACEMENT:
+        return True
+    return (
+        op is not None
+        and mood is not None
+        and (retained or mood <= op.upper_limit * 0.8)
+    )
+
+
+def has_resting_mood(op, now=None):
+    """是否有当前模式可用于恢复计时的有效心情。"""
+    now = now or getattr(op, "_projection_now", None)
+    if (
+        op is not None
+        and (model := getattr(op, "_mood_model", None)) is not None
+        and model.enabled
+        and getattr(getattr(op, "_mood_conf", None), "test_mood_calculation", False)
+        and op.current_room != "train"
+    ):
+        return model.value(op.name, now) is not None
+    return (
+        op is not None
+        and op.time_stamp is not None
+        and 0 <= op.mood <= 24
+        and 0 <= op.current_mood(now) <= 24
+    )
+
+
+def resting_mood(op, now=None):
+    """没有有效缓存时沿用默认 24 心情，读到实际心情后再更新。"""
+    now = now or getattr(op, "_projection_now", None)
+    if (
+        op is not None
+        and (model := getattr(op, "_mood_model", None)) is not None
+        and model.enabled
+        and getattr(getattr(op, "_mood_conf", None), "test_mood_calculation", False)
+        and op.current_room != "train"
+    ):
+        value = model.value(op.name, now)
+        return value if value is not None else -1
+    return op.current_mood(now) if has_resting_mood(op, now) else 24
+
+
+def resting_key(op_data, name, now=None, *, replacement_names=None):
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
+    op = op_data.operators.get(name)
+    mood = dorm_candidate_mood(op_data, name, now)
+    mood = 24 if mood is None else mood
+    # 同级按尚需恢复的心情点数降序；恢复速度不按个人上下限成比例。
+    mood -= op.upper_limit if op is not None else 24
+    return resting_tier(op_data, name, now, replacement_names=replacement_names), mood
+
+
+def crafting_rest_candidates(op_data, names, *, replacement_names=None):
+    """按加工顺序返回本轮符合条件的普通空闲候选。"""
+    from arknights_mower.utils import config
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
+    conf = getattr(op_data, "runtime_conf", None) or config.conf
+    if not (conf.enable_mastery and conf.workshop_auto_active):
+        return []
+    present = set(names)
+    configured = dict.fromkeys(
+        name
+        for row in zip_longest(
+            conf.fodder_operators, conf.t5_operators, conf.book_operators
+        )
+        for name in row
+        if name
+    )
+    return [
+        name
+        for name in configured
+        if name in present
+        and resting_tier(op_data, name, replacement_names=replacement_names)
+        == RestingTier.IDLE
+        and not op_data.rest_mood_complete(name)
+        and (mood := dorm_candidate_mood(op_data, name)) is not None
+        and mood < getattr(op_data.operators.get(name), "upper_limit", 24)
+    ]
+
+
+def crafting_rest_order(op_data, names, *, replacement_names=None):
+    """只交换已排序名单中普通空闲加工干员的位置，不提升整个加工层。"""
+    names = list(names)
+    ordered = crafting_rest_candidates(
+        op_data, names, replacement_names=replacement_names
+    )
+    positions = [index for index, name in enumerate(names) if name in ordered]
+    for index, name in zip(positions, ordered):
+        names[index] = name
+    return names
+
+
+def busy_resting_names():
+    """每次候选扫描只读一次专精状态，不为全部干员逐个查询数据库。"""
+    from arknights_mower.utils import config
+
+    if not config.conf.enable_mastery:
+        return set()
+    from arknights_mower.utils.mastery_db import _resolve_char_name, get_active_plan
+
+    active = get_active_plan()
+    if active is None:
+        return set()
+    name = active.get("char_name") or _resolve_char_name(active["char_id"])
+    return {name} if name else set()

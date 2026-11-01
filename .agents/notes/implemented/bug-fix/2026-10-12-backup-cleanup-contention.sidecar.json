@@ -1,0 +1,21 @@
+{
+  "title": "Backup Cleanup Contention",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-12",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UPD-10]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.update_runtime.LockBusyError",
+    "arknights_mower.utils.update_runtime.submission_lock",
+    "arknights_mower.utils.software_update_worker.retry_backup_cleanup"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/update_runtime_tests.py",
+    "arknights_mower/tests/update_backup_tests.py"
+  ]
+}

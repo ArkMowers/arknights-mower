@@ -1,0 +1,21 @@
+{
+  "title": "Shared Idle Dormitory Candidate Pipeline",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-13]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.dorm_candidates.dorm_candidates",
+    "arknights_mower.utils.dorm_candidates.dorm_task_reservations",
+    "arknights_mower.utils.scheduler_task.try_add_release_dorm"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_unknown_selection_tests.py",
+    "arknights_mower/tests/dorm_vacancy_planning_tests.py"
+  ]
+}
