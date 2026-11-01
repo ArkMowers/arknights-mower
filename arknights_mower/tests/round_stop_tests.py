@@ -180,6 +180,38 @@ def test_request_during_normal_rest_stops_before_device_wakeup(
     assert base.send_message.call_args.args[1] == "本轮任务结束，已按要求停止"
 
 
+def test_maa_failure_finishes_requested_round_before_sleep(
+    production_idle_scheduler, monkeypatch, stop_state
+):
+    solver, clock = production_idle_scheduler.solver, production_idle_scheduler.clock
+    started = clock.now()
+    solver.last_execution = {"maa": None}
+    solver.MAA = engine = Mock()
+    solver.back_to_index = Mock()
+    failure = RuntimeError("模拟 MAA 初始化失败")
+    solver.initialize_maa = Mock(side_effect=failure)
+    archive = Mock()
+    monkeypatch.setattr(base, "save_exception", archive)
+    tasks = [(task, task.time) for task in solver.tasks]
+    round_stop.request_stop()
+
+    with pytest.raises(MowerExit):
+        solver.maa_plan_solver(tasks=["Fight"])
+
+    archive.assert_called_once_with(failure)
+    engine.close.assert_called_once_with()
+    stop_state.save.assert_called_once_with()
+    stop_state.intent.assert_called_once_with(False)
+    assert config.stop_mower.is_set()
+    assert not round_stop.pending()
+    assert solver.MAA is None
+    assert solver.last_execution["maa"] is None
+    assert clock.now() == started
+    assert [(task, task.time) for task in solver.tasks] == tasks
+    assert base.send_message.call_args.args[1] == "本轮任务结束，已按要求停止"
+    solver.device.check_current_focus.assert_not_called()
+
+
 @pytest.mark.parametrize("allow_wakeup", [True, False])
 def test_other_idle_waits_do_not_fulfill_round_stop(
     production_idle_scheduler, stop_state, allow_wakeup
