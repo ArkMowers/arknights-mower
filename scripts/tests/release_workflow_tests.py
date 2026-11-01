@@ -2,7 +2,11 @@
 
 import ast
 import io
+import os
+import shlex
+import subprocess
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -106,6 +110,8 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             {
                 "prepare",
                 "validate-release",
+                "validate-python",
+                "validate-frontend",
                 "build-windows",
                 "build-linux",
                 "build-macos",
@@ -123,20 +129,25 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         )
 
     def test_release_tag_is_tested_before_building(self):
-        validation = self.jobs["validate-release"]
-        self.assertEqual(validation["needs"], "prepare")
-        self.assertEqual(
-            find_step(validation, "Checkout tested commit")["with"]["ref"], RELEASE_SHA
-        )
-        self.assertIn(VERSION, find_step(validation, "Inject release version")["run"])
-        names = {step.get("name") for step in validation["steps"]}
+        for name in ("validate-python", "validate-frontend"):
+            validation = self.jobs[name]
+            self.assertEqual(validation["needs"], "prepare")
+            self.assertEqual(
+                find_step(validation, "Checkout tested commit")["with"]["ref"],
+                RELEASE_SHA,
+            )
+            self.assertIn(
+                VERSION, find_step(validation, "Inject release version")["run"]
+            )
+        frontend_names = {
+            step.get("name") for step in self.jobs["validate-frontend"]["steps"]
+        }
         self.assertTrue(
             {
                 "Check Python formatting and lint",
-                "Run Python regression tests",
                 "Check GitHub Actions workflows",
                 "Run frontend regressions and build",
-            }.issubset(names)
+            }.issubset(frontend_names)
         )
         for job_name in (
             "build-windows",
@@ -147,6 +158,71 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 set(self.jobs[job_name]["needs"]), {"prepare", "validate-release"}
             )
+
+    def test_release_gate_rejects_failed_skipped_and_cancelled_groups(self):
+        gate = self.jobs["validate-release"]
+        self.assertEqual(set(gate["needs"]), {"validate-python", "validate-frontend"})
+        self.assertEqual(gate["if"], "${{ always() }}")
+        step = find_step(gate, "Require every release validation group to pass")
+        self.assertEqual(
+            step["env"],
+            {
+                "PYTHON_RESULT": "${{ needs.validate-python.result }}",
+                "FRONTEND_RESULT": "${{ needs.validate-frontend.result }}",
+            },
+        )
+        for python in ("success", "failure", "skipped", "cancelled", ""):
+            for frontend in ("success", "failure", "skipped", "cancelled", ""):
+                with self.subTest(python=python, frontend=frontend):
+                    result = subprocess.run(
+                        ["bash", "-e", "-c", step["run"]],
+                        env={
+                            **os.environ,
+                            "PYTHON_RESULT": python,
+                            "FRONTEND_RESULT": frontend,
+                        },
+                        check=False,
+                    )
+                    self.assertEqual(
+                        result.returncode == 0,
+                        python == frontend == "success",
+                    )
+
+    def test_release_shards_select_every_regression_once(self):
+        job = self.jobs["validate-python"]
+        self.assertFalse(job["strategy"]["fail-fast"])
+        select = find_step(job, "Select Python regression files")
+        self.assertEqual(select["env"], {"SHARD": "${{ matrix.shard }}"})
+        expected = {
+            path.relative_to(REPO_ROOT).as_posix()
+            for directory in ("arknights_mower/tests", "scripts/tests")
+            for path in (REPO_ROOT / directory).rglob("*.py")
+            if path.name.endswith("_tests.py") or path.name.startswith("test_")
+        }
+        groups = []
+        with tempfile.TemporaryDirectory() as directory:
+            for shard in job["strategy"]["matrix"]["shard"]:
+                # Run the workflow command; only substitute the local interpreter.
+                command = select["run"].replace(
+                    "./venv/bin/python", shlex.quote(sys.executable)
+                )
+                subprocess.run(
+                    ["bash", "-e", "-c", command],
+                    cwd=REPO_ROOT,
+                    env={**os.environ, "SHARD": str(shard), "RUNNER_TEMP": directory},
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                group = (
+                    (Path(directory) / "release-test-files.txt")
+                    .read_text()
+                    .splitlines()
+                )
+                self.assertTrue(group)
+                groups.extend(group)
+        self.assertEqual(set(groups), expected)
+        self.assertEqual(len(groups), len(expected))
 
     def test_version_is_validated_and_controls_release_type(self):
         prepare = self.jobs["prepare"]

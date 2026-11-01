@@ -159,9 +159,13 @@ jobs:
             body.md
             CHANGELOG.md
 
-  validate-release:
-    name: Test release commit
+  validate-python:
+    name: Release Python regressions (${{ matrix.shard }})
     needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -175,6 +179,64 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
+      - name: Set up Node 24 for cross-language regressions
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Inject release version
+        run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
+      - name: Install QR recognition system library
+        run: sudo apt-get update && sudo apt-get install -y libzbar0
+      - name: Install Python dependencies
+        run: |
+          python -m venv venv
+          ./venv/bin/python -m pip install -r requirements.txt pytest setuptools wheel
+          ./venv/bin/python -m pip check
+          ./venv/bin/python scripts/prune_opencv.py
+      - name: Select Python regression files
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          ./venv/bin/python scripts/ci_test_scope.py tests --shard "$SHARD" --count 3 \
+            > "${RUNNER_TEMP}/release-test-files.txt"
+          cat "${RUNNER_TEMP}/release-test-files.txt"
+      - name: Run Python regression tests
+        shell: bash
+        run: |
+          mapfile -t tests < "${RUNNER_TEMP}/release-test-files.txt"
+          status=0
+          timeout --signal=TERM --kill-after=30s 25m \
+            ./venv/bin/python -u -m pytest -q --durations=0 --durations-min=0.1 \
+            --junitxml="${RUNNER_TEMP}/release-regressions.xml" \
+            -o faulthandler_timeout=60 "${tests[@]}" \
+            > "${RUNNER_TEMP}/release-regressions.log" 2>&1 || status=$?
+          tail -n 200 "${RUNNER_TEMP}/release-regressions.log"
+          exit "${status}"
+      - name: Save release regression diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-regressions-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/release-test-files.txt
+            ${{ runner.temp }}/release-regressions.log
+            ${{ runner.temp }}/release-regressions.xml
+          retention-days: 7
+
+  validate-frontend:
+    name: Release frontend and static checks
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
@@ -183,19 +245,12 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - name: Inject release version
         run: python scripts/inject_version.py "${{ needs.prepare.outputs.version }}"
-      - name: Install QR recognition system library
-        run: sudo apt-get update && sudo apt-get install -y libzbar0
-      - name: Install Python dependencies
-        run: |
-          python -m pip install -r requirements.txt pytest ruff setuptools wheel
-          python -m pip check
-          python scripts/prune_opencv.py
+      - name: Install Ruff
+        run: python -m pip install ruff
       - name: Check Python formatting and lint
         run: |
           python -m ruff check .
           python -m ruff format --check .
-      - name: Run Python regression tests
-        run: python -m pytest -q -o faulthandler_timeout=60
       - name: Check GitHub Actions workflows
         uses: rhysd/actionlint@v1.7.12
       - name: Install frontend dependencies
@@ -204,6 +259,18 @@ jobs:
       - name: Run frontend regressions and build
         working-directory: ui
         run: npm test && npm run build
+
+  validate-release:
+    name: Test release commit
+    needs: [validate-python, validate-frontend]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every release validation group to pass
+        env:
+          PYTHON_RESULT: ${{ needs.validate-python.result }}
+          FRONTEND_RESULT: ${{ needs.validate-frontend.result }}
+        run: test "$PYTHON_RESULT" = success && test "$FRONTEND_RESULT" = success
 
   build-windows:
     name: Build Windows x64
@@ -226,6 +293,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Overwrite changelog with generated
         shell: bash
@@ -336,6 +405,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: arknights-mower_${{ needs.prepare.outputs.version }}_windows_x64
+          compression-level: 0
           path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_windows_x64.zip
 
   build-linux:
@@ -367,6 +437,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.in
 
       - name: Overwrite changelog with generated
         run: cp release-metadata/CHANGELOG.md CHANGELOG.md
@@ -507,6 +579,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: arknights-mower_${{ needs.prepare.outputs.version }}_linux_${{ matrix.arch }}
+          compression-level: 0
           path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_linux_${{ matrix.arch }}.tar.gz
 
   build-macos:
@@ -537,6 +610,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.in
 
       - name: Overwrite changelog with generated
         run: cp release-metadata/CHANGELOG.md CHANGELOG.md
@@ -664,6 +739,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: arknights-mower_${{ needs.prepare.outputs.version }}_macos_${{ matrix.arch }}
+          compression-level: 0
           path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_macos_${{ matrix.arch }}.dmg
 
   build-android:
@@ -705,6 +781,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: arknights-mower_${{ needs.prepare.outputs.version }}_android_arm64
+          compression-level: 0
           path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_android_arm64.zip
           if-no-files-found: error
 
