@@ -109,11 +109,11 @@ export function mowerRecallMoodAdmissible(data:MowerSchedulingData,recalled:Read
   return mood!==undefined
  })
 }
-function materializeCoordinationMoods(original:MowerSchedulingData,shadow:MowerSchedulingData):boolean {
+function materializeCoordinationMoods(original:MowerSchedulingData,shadow:MowerSchedulingData,knownMoods?:Readonly<Record<string,number>>):boolean {
  for(const op of Object.values(shadow.operators)){
   const source=original.operators[op.name]
-  const mood=source?mowerDormCandidateMood(original,source.name):undefined
-  if(op.currentRoom&&mood===undefined)return false
+  const mood=knownMoods?.[op.name]??(source?mowerDormCandidateMood(original,source.name):undefined)
+  if(op.currentRoom&&(mood===undefined||!Number.isFinite(mood)||mood<0||mood>24))return false
   op.mood=mood??op.mood;op.timeStampMicros=shadow.nowMicros;op.depletionRate=0
  }
  return true
@@ -135,7 +135,7 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
  for(const bed of admitted.allDorms())if(bed.name&&admitted.operators[bed.name]?.isHigh())connected.add(bed.name)
  connected=mowerReplacementDependencyNames(original,connected)
  const shadow=projectMowerArrangements(admitted,[])
- if(!materializeCoordinationMoods(original,shadow))return false
+ if(!materializeCoordinationMoods(original,shadow,options.coordinationMoods))return false
  const waiting=[...connected].map(name=>shadow.operators[name]).filter((op):op is MowerOperatorState=>!!op?.isHigh()&&op.isResting()&&!op.workaholic&&!op.room.startsWith('dorm'))
  if(!waiting.length)return false
  // Fixed staffing is deliberately conservative: no hypothetical future rescue is credited.

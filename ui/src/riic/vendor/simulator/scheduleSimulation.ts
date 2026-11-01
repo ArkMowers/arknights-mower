@@ -299,6 +299,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   }
  }
   const rates:RuntimeRates={workRate:id=>{updateRates();return cachedWork[id]??0},recoveryRate:id=>{updateRates();return cachedRecovery[id]??0},snapshotRates:()=>{updateRates();return {work:cachedWork,recovery:cachedRecovery}},thresholds:()=>[...MORALE_SKILL_THRESHOLDS]}
+  rates.forecastMoods=physical=>({...physical.morale})
   rates.forecastRates=projected=>{
    const config=projectScheduleState(schedule,projected,currentProducts())
    config.operatorRecords=operatorRecords;Object.assign(config.efficiencyResources,options.efficiencyResources)

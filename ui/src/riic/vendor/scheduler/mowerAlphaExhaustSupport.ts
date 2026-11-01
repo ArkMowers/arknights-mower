@@ -9,7 +9,7 @@ import {projectMowerArrangements} from './mowerObservations'
 import {mowerGetRestingPlan,mowerTryReorder,type MowerRestingOptions} from './mowerOrdinaryPlanning'
 import {alphaRebalanceClosingDorms,mowerMatchReplacements} from './mowerAlphaDorm'
 import type {MowerTaskPlan} from './mowerTaskQueue'
-import {mowerArrangementGroupTransitions,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement} from './mowerSharedGroups'
+import {mowerArrangementGroupTransitions,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerSameGroupPrimaryReplacement} from './mowerSharedGroups'
 
 /** Search only dependencies encountered by failed admission, with fewest returned units first. */
 export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candidates:string[],options:MowerRestingOptions={}):MowerTaskPlan|undefined {
@@ -84,6 +84,10 @@ function planMowerAlphaExhaustAttempt(original:MowerSchedulingData,candidates:st
   const trial=structuredClone(previous)
   for(const member of members){
    const worker=state.operators[member]!
+   if(working(worker)&&worker.currentRoom!==worker.room){
+    const owner=state.operators[state.plan[worker.currentRoom]?.[worker.currentIndex]??'']
+    if(!owner||!members.has(owner.name)||!mowerSameGroupPrimaryReplacement(state,owner,member))return
+   }
    if(worker.independentRest&&(!names.includes(member)||mowerRestingBindingGroups(state,worker).length))continue
    if(worker.currentRoom!==worker.room||worker.currentIndex!==worker.index)(trial[worker.room]??=Array(state.plan[worker.room]!.length).fill('Current'))[worker.index]=member
   }
@@ -93,7 +97,7 @@ function planMowerAlphaExhaustAttempt(original:MowerSchedulingData,candidates:st
   const blocked=(n:string)=>{
    const worker=state.operators[n]!
    const followingRequest=worker.multiGroup&&(!worker.independentRest||!worker.currentRoom&&state.canStandby(worker))&&candidates.some(other=>other!==n&&state.isGroupShiftAnchor(state.operators[other]!)&&worker.groupBindings.some(binding=>binding.group===state.operators[other]!.group))
-   return required.has(n)&&!followingRequest||protectedNames.has(n)||options.reservedSlots?.has(worker.room+'\0'+worker.index)||options.isMasteryBusy?.(n)||protectedRest(state,n)||working(worker)&&worker.currentRoom!==worker.room
+   return required.has(n)&&!followingRequest||protectedNames.has(n)||options.reservedSlots?.has(worker.room+'\0'+worker.index)||options.isMasteryBusy?.(n)||protectedRest(state,n)
   }
   if([...returning].some(blocked))return
   const shadow=projectMowerArrangements(state,[])

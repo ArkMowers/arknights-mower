@@ -35,6 +35,17 @@ describe('replacement recall forecast covers the connected recovery cycle',()=>{
   expect(allowed(original,admit(),data=>{const rates=fixed(data);return {...rates,work:{X:1}}})).toBe(false)
   expect(allowed(original,admit(),data=>{const rates=fixed(data);return {...rates,work:{...rates.work,A:0}}})).toBe(true)
  })
+ it('uses explicit physical simulation moods without changing room observations',()=>{
+  const {original,admit}=fixture(20)
+  original.plan.train=['K'];original.operators.K=new MowerOperatorState({name:'K',room:'train',index:0,currentRoom:'train',currentIndex:0,mood:24})
+  const before=JSON.stringify(original),admitted=admit(),options={coordinationRates:fixed,coordinationMoods:{K:24}}
+  expect(allowed(original,admitted,fixed)).toBe(false)
+  expect(mowerRecallCanSustain(original,admitted,new Set(['A']),['B'],options)).toBe(true)
+  expect(mowerRecallCanSustain(original,admitted,new Set(['A']),['B'],{...options,coordinationMoods:{K:NaN}})).toBe(false)
+  expect(mowerRecallCanSustain(original,admitted,new Set(['A']),['B'],{...options,coordinationMoods:{K:25}})).toBe(false)
+  expect(JSON.stringify(original)).toBe(before)
+  expect(admitted.operators.K!.timeStampMicros).toBeUndefined()
+ })
  it('clamps an exhausted cached prediction instead of reusing the old positive mood',()=>{
   const {original,admit}=fixture(4);original.nowMicros=toMowerMicros(10)
   expect(allowed(original,admit(),fixed)).toBe(false)
