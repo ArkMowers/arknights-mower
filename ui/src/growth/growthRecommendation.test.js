@@ -6,6 +6,7 @@ import {
   recommendationScore,
   hasRemainingTarget,
   recommendedTarget,
+  remainingLevelTarget,
   remainingModuleRate,
   remainingModuleTargets,
   remainingSkillRate,
@@ -108,7 +109,99 @@ describe('剩余目标', () => {
   })
 })
 
+describe('剩余等级目标', () => {
+  it.each([
+    [1, 0, 30],
+    [2, 0, 30],
+    [3, 1, 55],
+    [4, 2, 70],
+    [5, 2, 80],
+    [6, 2, 90]
+  ])('%i 星干员满级后退出等级推荐，少一级时仍有等级目标', (rarity, elite, level) => {
+    expect(remainingLevelTarget(operator({ rarity, elite, level }))).toBeNull()
+    const unfinished = operator({ rarity, elite, level: level - 1, skill_levels: [3] })
+    expect(remainingLevelTarget(unfinished)).toMatchObject({
+      kind: 'level',
+      elite,
+      level,
+      currentElite: elite,
+      currentLevel: level - 1
+    })
+    expect(hasRemainingTarget(unfinished, 'level')).toBe(true)
+    expect(hasRemainingTarget(unfinished, 'mastery')).toBe(false)
+  })
+
+  it('优先使用资源的最终精英阶段及等级上限，而不是套用星级或较低的阶段上限', () => {
+    expect(
+      remainingLevelTarget(
+        operator({ rarity: 6, elite: 2, level: 70, max_phase: 2, max_level: 70 })
+      )
+    ).toBeNull()
+    expect(
+      remainingLevelTarget(
+        operator({ rarity: 6, elite: 1, level: 80, max_phase: 2, max_level: 90 })
+      )
+    ).toMatchObject({ elite: 2, level: 90 })
+    expect(
+      remainingLevelTarget(
+        operator({ rarity: 1, elite: 0, level: 30, max_phase: 0, max_level: 30 })
+      )
+    ).toBeNull()
+  })
+
+  it('旧快照优先读满级目标，未知星级且没有资源上限时不猜测', () => {
+    const op = operator({
+      rarity: 6,
+      elite: 2,
+      level: 75,
+      level_goals: [{ id: 'elite2_max', elite: 2, level: 75 }]
+    })
+    expect(remainingLevelTarget(op)).toBeNull()
+    expect(remainingLevelTarget(operator({ max_phase: null, max_level: 90 }))).toMatchObject({
+      elite: 2,
+      level: 90
+    })
+    expect(remainingLevelTarget(operator({ rarity: 0 }))).toBeNull()
+    expect(remainingLevelTarget(null)).toBeNull()
+  })
+})
+
 describe('推荐目标', () => {
+  it('模组排序只推荐剩余模组，即使技能的专三率更高', () => {
+    const op = operator({
+      recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 0 }],
+      modules: [
+        { id: 'mod_done', type: 'EXE-X', current_level: 3, max_level: 3 },
+        { id: 'mod_y', type: 'EXE-Y', current_level: 0, max_level: 3 },
+        { id: 'mod_d', type: 'EXE-D', current_level: 1, max_level: 3 }
+      ]
+    })
+    const samples = survey({
+      skills: [{ index: 0, rate: 99 }],
+      modules: [
+        { id: 'mod_done', rate: 98 },
+        { id: 'mod_y', rate: 40 },
+        { id: 'mod_d', rate: 70 }
+      ]
+    })
+    expect(recommendedTarget(op, samples, 'module')).toMatchObject({
+      kind: 'module',
+      id: 'mod_d',
+      current: 1,
+      rate: 70
+    })
+    expect(recommendationScore(op, samples, 'module')).toBe(70)
+  })
+
+  it('模组排序缺少模组样本时不使用技能专三率', () => {
+    const op = operator({
+      recommendations: [{ skill_index: 0, skill_name: '技能', current_level: 0 }],
+      modules: [{ id: 'mod_y', type: 'EXE-Y', current_level: 0, max_level: 3 }]
+    })
+    expect(recommendedTarget(op, survey(), 'module')).toBeNull()
+    expect(recommendationScore(op, survey(), 'module')).toBeNull()
+  })
+
   it('取未专三技能里公开专三率最高者，而不是全部技能里的最高值', () => {
     const op = operator({
       skill_levels: [0, 3, 0],
@@ -228,8 +321,8 @@ describe('剩余比例与排序', () => {
       'level'
     ])
     expect(RECOMMEND_SORT_OPTIONS.map((option) => option.label)).toEqual([
-      '专三率优先',
-      '模组解锁率优先',
+      '剩余专三率',
+      '剩余模组解锁率',
       '稀有度',
       '等级'
     ])

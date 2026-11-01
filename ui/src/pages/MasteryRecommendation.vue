@@ -2093,7 +2093,7 @@ const recommendedCards = computed(() => {
   const cards = store.recommendations
     .map((op) => {
       const survey = surveyFor(op) || {}
-      const target = recommendedTarget(op, survey)
+      const target = recommendedTarget(op, survey, pickSort.value)
       return {
         operator: op,
         survey,
@@ -2103,8 +2103,8 @@ const recommendedCards = computed(() => {
         score: target?.rate ?? null
       }
     })
-    // 完成度只看本地剩余目标：已专三技能不再作为上榜理由；全部练完或已在计划中的干员不出现。
-    .filter((card) => hasRemainingTarget(card.operator) && !card.plannedCount)
+    // 候选按排序目标检查本地完成度；等级排序只保留未满级干员，已计划干员不出现。
+    .filter((card) => hasRemainingTarget(card.operator, pickSort.value) && !card.plannedCount)
   return sortRecommendedCards(cards, pickSort.value).slice(0, 4)
 })
 

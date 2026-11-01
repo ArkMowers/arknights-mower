@@ -70,7 +70,7 @@ const pickDescription = computed(
       mastery: '按未专三技能的最高公开专三率排序，高的在前。',
       module: '按未满级模组的最高公开解锁率排序，高的在前。',
       rarity: '按干员星级从高到低排序。',
-      level: '先比较精英阶段，再按等级从高到低排序。'
+      level: '未满级干员按精英阶段、等级从高到低排序。'
     })[props.pickSort]
 )
 
@@ -335,6 +335,7 @@ function formatCount(value) {
             layout="compact"
             :operator="card.operator"
             :survey="card.survey"
+            :recommendation-sort="pickSort"
             :planned="card.planned"
             :planned-count="card.plannedCount"
             :rank="index + 1"
@@ -743,7 +744,7 @@ function formatCount(value) {
 
 .gp-overview__cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
 }
 

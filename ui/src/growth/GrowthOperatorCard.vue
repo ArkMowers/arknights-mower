@@ -1,11 +1,15 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import GrowthAvatar from './GrowthAvatar.vue'
+import GrowthGameIcon from './GrowthGameIcon.vue'
+import { moduleBadge } from './growthGameIcons'
 import { eliteLabel, formatRate, masteryLabel, professionName } from './growthFormatters'
 import {
   operatorSkillRows,
   recommendedTarget,
+  remainingLevelTarget,
   remainingModuleTargets,
+  surveyModuleRate,
   surveySkillRate
 } from './growthRecommendation'
 
@@ -15,7 +19,8 @@ const props = defineProps({
   planned: Boolean,
   plannedCount: { type: Number, default: 0 },
   rank: { type: [Number, String], default: null },
-  layout: { type: String, default: 'grid' }
+  layout: { type: String, default: 'grid' },
+  recommendationSort: { type: String, default: 'mastery' }
 })
 const emit = defineEmits(['open'])
 
@@ -39,26 +44,47 @@ const supportsMastery = computed(() => {
     (props.operator.rarity >= 4 ? 2 : props.operator.rarity === 3 ? 1 : 0)
   return maxPhase >= 2 && skills.value.length > 0
 })
-const masteredCount = computed(() => skills.value.filter((level) => level >= 3).length)
 const moduleTargets = computed(() => remainingModuleTargets(props.operator, props.survey))
-const recommended = computed(() => recommendedTarget(props.operator, props.survey))
+const moduleRows = computed(() =>
+  (props.operator.modules || []).map((module) => ({
+    ...module,
+    current: Number(module.current_level) || 0,
+    target: Number(module.max_level) || 3,
+    label: module.type || module.name || '模组',
+    badge: moduleBadge(module.type, module.id),
+    rate: surveyModuleRate(props.survey, module.id),
+    highlighted: (props.survey?.moduleHighlights || []).includes(module.id)
+  }))
+)
+const recommended = computed(() =>
+  recommendedTarget(props.operator, props.survey, props.recommendationSort)
+)
 const activeSkillIndex = ref(0)
+const activeLevel = ref(false)
+const levelTarget = computed(() => remainingLevelTarget(props.operator))
 const activeModule = ref(false)
+const activeModuleId = ref(null)
 // 用户点过技能段后不再自动改选中；公开样本异步到达时默认选中推荐目标。
 const pickedByUser = ref(false)
 const defaultTarget = computed(() => {
   if (recommended.value) return recommended.value
+  if (props.recommendationSort === 'module') {
+    return moduleTargets.value[0] || { kind: 'module', id: null }
+  }
   const first = (props.operator.recommendations || []).find((rec) => Number(rec.current_level) < 3)
   if (first) return { kind: 'skill', index: Number(first.skill_index) }
-  if (moduleTargets.value.length) return { kind: 'module' }
+  if (moduleTargets.value.length) return moduleTargets.value[0]
   return { kind: 'skill', index: 0 }
 })
 watch(
-  defaultTarget,
-  (target) => {
-    if (!target || pickedByUser.value) return
+  [defaultTarget, () => props.recommendationSort],
+  ([target, sort], [, previousSort] = []) => {
+    if (!target || (pickedByUser.value && sort === previousSort)) return
+    pickedByUser.value = false
+    activeLevel.value = target.kind === 'level'
     if (target.kind === 'module') {
       activeModule.value = true
+      activeModuleId.value = target.id
     } else {
       activeModule.value = false
       activeSkillIndex.value = target.index
@@ -67,57 +93,71 @@ watch(
   { immediate: true }
 )
 const moduleTarget = computed(() => {
-  if (recommended.value?.kind === 'module') return recommended.value
-  const known = moduleTargets.value
-    .filter((target) => target.rate !== null && target.rate !== undefined)
-    .sort((left, right) => right.rate - left.rate)
-  return known[0] || moduleTargets.value[0] || null
+  if (!activeModuleId.value) return null
+  return moduleRows.value.find((row) => row.id === activeModuleId.value) || null
 })
-// 卡片只陈述当前选中技能的当前状态；三个技能段各读各的，不给出猜测性的下一步文案。
+// 卡片分别显示选中的等级目标、技能或模组状态。
 const statusLine = computed(() => {
+  if (activeLevel.value && levelTarget.value) {
+    const target = levelTarget.value
+    return {
+      tone: 'low',
+      text:
+        eliteLabel(target.currentElite) +
+        ' ' +
+        target.currentLevel +
+        ' → ' +
+        eliteLabel(target.elite) +
+        ' ' +
+        target.level
+    }
+  }
+  if (activeModule.value) {
+    const target = moduleTarget.value
+    if (!target) return { tone: 'low', text: '暂无待养成模组' }
+    return {
+      tone: skillTone(target.current >= target.target ? 3 : target.current),
+      text: target.label + ' · ' + (target.current ? target.current + ' 级' : '未解锁')
+    }
+  }
   if (!supportsMastery.value) {
     return {
       tone: 'low',
       text: (props.operator.modules || []).length ? '等级与模组养成' : '等级养成'
     }
   }
-  if (activeModule.value && moduleTarget.value) {
-    const target = moduleTarget.value
-    return {
-      tone: target.current > 0 ? 'warn' : 'low',
-      text: target.name + ' · ' + target.current + '/' + target.target
-    }
-  }
   const row = skillRows.value[activeSkillIndex.value] || skillRows.value[0]
   return { tone: row.tone, text: row.name + ' · ' + masteryLabel(row.current) }
 })
 const activeRate = computed(() => {
-  if (activeModule.value && moduleTarget.value) return moduleTarget.value.rate ?? null
+  if (activeLevel.value) return null
+  if (activeModule.value) return moduleTarget.value?.rate ?? null
+  if (!supportsMastery.value) return null
   const row = skillRows.value[activeSkillIndex.value] || skillRows.value[0]
   return row?.rate ?? null
 })
 const activeRateLabel = computed(() => (activeModule.value ? '解锁率' : '专三率'))
 const activeRateTitle = computed(() => {
-  if (activeRate.value === null || activeRate.value === undefined) return '暂无样本'
+  if (activeRate.value === null || activeRate.value === undefined) return '暂无公开样本'
   if (activeModule.value && moduleTarget.value) {
-    return moduleTarget.value.name + ' · 一图流公开模组解锁率 ' + formatRate(activeRate.value)
+    return moduleTarget.value.label + ' · 一图流公开模组解锁率 ' + formatRate(activeRate.value)
   }
   const row = skillRows.value[activeSkillIndex.value] || skillRows.value[0]
   return (row?.name || '') + ' · 一图流公开专三率 ' + formatRate(activeRate.value)
 })
 function selectSkill(index) {
   pickedByUser.value = true
+  activeLevel.value = false
   activeModule.value = false
   activeSkillIndex.value = index
 }
-function selectModule() {
-  if (!moduleTarget.value) return
+function selectModule(id = moduleTargets.value[0]?.id || moduleRows.value[0]?.id) {
+  if (!moduleRows.value.some((row) => row.id === id)) return
   pickedByUser.value = true
+  activeLevel.value = false
   activeModule.value = true
+  activeModuleId.value = id
 }
-const moduleCount = computed(
-  () => (props.operator.modules || []).filter((module) => module.current_level > 0).length
-)
 const surveyMatches = computed(
   () =>
     Boolean(props.survey?.eliteHighlight) ||
@@ -134,15 +174,16 @@ const surveyMatchLabel = computed(() => {
   }
   return labels.length ? '达到筛选门槛：' + labels.join('、') : ''
 })
-const subtitle = computed(
-  () =>
-    professionName(props.operator.profession) +
-    ' · ' +
-    eliteLabel(props.operator.elite) +
-    ' ' +
-    (props.operator.level ?? 1) +
-    ' 级'
+const levelLabel = computed(
+  () => eliteLabel(props.operator.elite) + ' ' + (props.operator.level ?? 1) + ' 级'
 )
+const levelProgress = computed(() => {
+  const target = levelTarget.value
+  if (!target) return ''
+  if (target.currentElite === target.elite)
+    return '距满级 ' + (target.level - target.currentLevel) + ' 级'
+  return '目标 ' + eliteLabel(target.elite) + ' ' + target.level + ' 级'
+})
 
 function open() {
   emit('open', props.operator)
@@ -166,7 +207,12 @@ function stopKeydownPropagation(event) {
     class="growth-opcard"
     :class="[
       'growth-opcard--' + layout,
-      { 'is-planned': planned, 'is-survey-match': surveyMatches }
+      'growth-opcard--rarity-' + (operator.rarity ?? 0),
+      {
+        'is-planned': planned,
+        'is-survey-match': surveyMatches,
+        'growth-opcard--three-modules': moduleRows.length >= 3
+      }
     ]"
     role="button"
     tabindex="0"
@@ -175,19 +221,35 @@ function stopKeydownPropagation(event) {
     @click="open"
     @keydown="keydown"
   >
+    <GrowthGameIcon
+      kind="profession"
+      :value="operator.profession"
+      class="growth-opcard__profession"
+    />
     <span v-if="rank" class="growth-opcard__rank gp-num" aria-hidden="true">{{ rank }}</span>
 
     <div class="growth-opcard__head">
       <GrowthAvatar
         :name="operator.name"
         :rarity="operator.rarity"
-        :size="layout === 'compact' ? 46 : 58"
+        :size="layout === 'compact' ? 42 : 'var(--opcard-avatar-size, 58px)'"
       />
       <div class="growth-opcard__id">
-        <h3 class="growth-opcard__name">{{ operator.name }}</h3>
+        <div class="growth-opcard__identity">
+          <h3 class="growth-opcard__name" :title="operator.name">{{ operator.name }}</h3>
+          <span class="growth-opcard__level gp-mono" :title="levelLabel" :aria-label="levelLabel">
+            <GrowthGameIcon kind="elite" :value="operator.elite ?? 0" />
+            <span class="growth-opcard__level-text">
+              <span class="growth-opcard__level-prefix">Lv</span>
+              <span>{{ operator.level ?? 1 }}</span>
+            </span>
+          </span>
+        </div>
         <p class="growth-opcard__meta">
           <span class="gp-mono growth-opcard__rarity">{{ operator.rarity }}★</span>
-          {{ subtitle }}
+          <span class="growth-opcard__profession-label">{{
+            professionName(operator.profession)
+          }}</span>
         </p>
       </div>
     </div>
@@ -200,55 +262,79 @@ function stopKeydownPropagation(event) {
       <span class="growth-opcard__skill-text">{{ statusLine.text }}</span>
     </p>
 
-    <div
-      v-if="supportsMastery"
-      class="growth-opcard__progress"
-      role="group"
-      aria-label="技能与模组目标"
-    >
-      <button
-        v-for="row in skillRows"
-        :key="row.index"
-        type="button"
-        class="growth-opcard__seg"
-        :class="{
-          'is-active': !activeModule && activeSkillIndex === row.index,
-          'is-highlighted': row.highlighted,
-          'is-done': row.current >= 3,
-          'is-partial': row.current > 0 && row.current < 3
-        }"
-        :aria-pressed="!activeModule && activeSkillIndex === row.index"
-        :aria-label="
-          row.name + ' ' + masteryLabel(row.current) + (row.highlighted ? '，达到筛选门槛' : '')
-        "
-        @click.stop="selectSkill(row.index)"
-        @keydown="stopKeydownPropagation"
+    <div class="growth-opcard__progress">
+      <div
+        v-if="supportsMastery"
+        class="growth-opcard__skills"
+        role="group"
+        aria-label="技能专精进度"
       >
-        <span class="growth-opcard__seg-bar" aria-hidden="true" />
-      </button>
-      <button
-        v-if="moduleTarget"
-        type="button"
-        class="growth-opcard__seg growth-opcard__seg--module"
-        :class="{ 'is-active': activeModule, 'is-partial': moduleTarget.current > 0 }"
-        :aria-pressed="activeModule"
-        :aria-label="
-          '模组 ' + moduleTarget.name + ' ' + moduleTarget.current + '/' + moduleTarget.target
-        "
-        @click.stop="selectModule"
-        @keydown="stopKeydownPropagation"
+        <button
+          v-for="row in skillRows"
+          :key="row.index"
+          type="button"
+          class="growth-opcard__seg"
+          :class="{
+            'is-active': !activeLevel && !activeModule && activeSkillIndex === row.index,
+            'is-highlighted': row.highlighted,
+            'is-done': row.current >= 3,
+            'is-partial': row.current > 0 && row.current < 3,
+            'is-locked': row.current === 0
+          }"
+          :aria-pressed="!activeLevel && !activeModule && activeSkillIndex === row.index"
+          :aria-label="
+            row.name + ' ' + masteryLabel(row.current) + (row.highlighted ? '，达到筛选门槛' : '')
+          "
+          :title="row.name + ' · ' + masteryLabel(row.current)"
+          @click.stop="selectSkill(row.index)"
+          @keydown="stopKeydownPropagation"
+        >
+          <GrowthGameIcon kind="mastery" :value="row.current" />
+        </button>
+      </div>
+      <div
+        v-if="moduleRows.length"
+        class="growth-opcard__modules"
+        role="group"
+        aria-label="全部模组进度"
       >
-        <span class="growth-opcard__seg-bar" aria-hidden="true" />
-      </button>
-      <span class="growth-opcard__progress-label gp-mono">
-        专三 {{ masteredCount }}/{{ skills.length }}
-        <template v-if="moduleCount"> · 模组 {{ moduleCount }}</template>
-      </span>
-    </div>
-    <div v-else class="growth-opcard__progress growth-opcard__progress--low">
-      <span>等级 {{ eliteLabel(operator.elite) }} {{ operator.level }}</span>
-      <template v-if="moduleCount"
-        ><span> · 模组 {{ moduleCount }}</span></template
+        <button
+          v-for="module in moduleRows"
+          :key="module.id"
+          type="button"
+          class="growth-opcard__seg growth-opcard__seg--module"
+          :style="{ color: module.badge.color }"
+          :class="{
+            'is-active': activeModule && activeModuleId === module.id,
+            'is-highlighted': module.highlighted,
+            'is-done': module.current >= module.target,
+            'is-partial': module.current > 0 && module.current < module.target,
+            'is-locked': module.current === 0
+          }"
+          :aria-pressed="activeModule && activeModuleId === module.id"
+          :aria-label="
+            '模组 ' +
+            module.label +
+            ' ' +
+            (module.current ? module.current + ' 级' : '未解锁') +
+            (module.highlighted ? '，达到筛选门槛' : '')
+          "
+          :title="
+            [module.type, module.name, module.current ? module.current + ' 级' : '未解锁']
+              .filter(Boolean)
+              .join(' · ')
+          "
+          @click.stop="selectModule(module.id)"
+          @keydown="stopKeydownPropagation"
+        >
+          <GrowthGameIcon kind="module" :value="module.type" :module-id="module.id" />
+          <sub v-if="module.current" class="growth-opcard__module-level" aria-hidden="true">{{
+            module.current
+          }}</sub>
+        </button>
+      </div>
+      <span v-if="!supportsMastery && !moduleRows.length" class="growth-opcard__progress-note"
+        >暂不支持专精与模组</span
       >
     </div>
 
@@ -256,6 +342,9 @@ function stopKeydownPropagation(event) {
       <span v-if="planned" class="gp-stamp gp-stamp--flat growth-opcard__stamp"
         >计划中{{ plannedCount > 1 ? ' ' + plannedCount : '' }}</span
       >
+      <span v-else-if="activeLevel && levelTarget" class="growth-opcard__probe gp-mono">{{
+        levelProgress
+      }}</span>
       <span
         v-else-if="activeRate !== null"
         class="growth-opcard__probe gp-mono"
@@ -270,14 +359,17 @@ function stopKeydownPropagation(event) {
 
 <style scoped>
 .growth-opcard {
+  --opcard-surface: var(--gp-surface);
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  overflow: hidden;
   padding: 14px 15px 12px;
   border-radius: 16px;
-  background: var(--gp-surface);
+  background: var(--opcard-surface);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
   text-align: left;
   cursor: pointer;
@@ -286,31 +378,58 @@ function stopKeydownPropagation(event) {
     box-shadow 220ms var(--gp-ease),
     background 220ms var(--gp-ease);
 }
-
+.growth-opcard--rarity-6 {
+  --opcard-surface: var(--gp-rarity-surface-6);
+}
+.growth-opcard--rarity-5 {
+  --opcard-surface: var(--gp-rarity-surface-5);
+}
+.growth-opcard--rarity-4 {
+  --opcard-surface: var(--gp-rarity-surface-4);
+}
+.growth-opcard--rarity-3,
+.growth-opcard--rarity-2,
+.growth-opcard--rarity-1 {
+  --opcard-surface: var(--gp-rarity-surface-low);
+}
 .growth-opcard:hover {
   transform: translateY(-2px);
   box-shadow:
     inset 0 0 0 1px var(--gp-hair),
     0 18px 34px -28px rgba(20, 20, 22, 0.55);
 }
-
 .growth-opcard:focus-visible {
   outline: 2px solid var(--gp-accent);
   outline-offset: 2px;
 }
-
+.growth-opcard__profession {
+  position: absolute;
+  z-index: -1;
+  top: -10px;
+  right: -14px;
+  width: 124px;
+  height: 124px;
+  color: var(--gp-ink);
+  opacity: 0.045;
+  pointer-events: none;
+}
 .growth-opcard__head {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   min-width: 0;
 }
-
 .growth-opcard__id {
+  flex: 1;
   min-width: 0;
 }
-
+.growth-opcard__identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .growth-opcard__name {
+  min-width: 0;
   margin: 0;
   overflow: hidden;
   color: var(--gp-ink);
@@ -320,168 +439,171 @@ function stopKeydownPropagation(event) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.growth-opcard__meta {
-  margin: 3px 0 0;
-  overflow: hidden;
-  color: var(--gp-muted);
-  font-size: 11.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.growth-opcard__level {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  color: var(--gp-ink-2);
+  font-size: 11px;
+  line-height: 1;
 }
-
+.growth-opcard__level .growth-game-icon {
+  width: 20px;
+  height: 20px;
+  filter: drop-shadow(0 1px 1.5px rgb(24 25 28 / 35%));
+}
+.growth-opcard__level-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+}
+.growth-opcard__level-prefix {
+  font-size: 0.8em;
+}
+.growth-opcard__meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0 0;
+  color: var(--gp-muted);
+  font-size: 11px;
+}
 .growth-opcard__rarity {
   color: var(--gp-ink-2);
   font-weight: 700;
 }
-
+.growth-opcard__profession-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .growth-opcard__skill {
   display: flex;
   align-items: center;
-  gap: 4px;
+  min-height: 18px;
   margin: 0;
   overflow: hidden;
   color: var(--gp-ink-2);
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
   white-space: nowrap;
 }
-
 .growth-opcard__skill-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .growth-opcard__skill--done {
   color: var(--gp-accent-ink);
   font-weight: 650;
 }
-
 .growth-opcard__skill--warn {
   color: var(--gp-warn);
   font-weight: 650;
 }
-
 .growth-opcard__skill--low {
   color: var(--gp-muted);
 }
-
 .growth-opcard__progress {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 34px;
+}
+.growth-opcard__skills,
+.growth-opcard__modules {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 3px;
-  min-width: 0;
+  max-width: 100%;
 }
-
-/* 技能段用透明伪元素扩大命中范围，横条和按钮的布局尺寸保持不变。 */
+.growth-opcard__modules {
+  gap: 1px;
+}
+.growth-opcard__skills + .growth-opcard__modules {
+  padding-left: 7px;
+  border-left: 1px solid var(--gp-hair-soft);
+}
 .growth-opcard__seg {
-  /* 光晕取色：未专精中性、专一/二琥珀、专三绿色，与等级节点共用同一套发光语言。 */
-  /* 未专精用 --gp-hair：浅色主题即 rgba(24,25,28,0.15)，深色主题自动转为浅色光。 */
-  --seg-glow: var(--gp-hair);
-  --seg-inset: 0 0 transparent;
   position: relative;
-  display: inline-grid;
+  display: inline-flex;
   flex: none;
-  place-items: center;
-  width: 24px;
-  height: 18px;
-  padding: 0;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 34px;
+  padding: 3px 3px 6px;
   border: 0;
   border-radius: 6px;
+  color: var(--gp-muted);
   background: transparent;
   cursor: pointer;
+  transition:
+    color 160ms var(--gp-ease),
+    background 160ms var(--gp-ease),
+    box-shadow 160ms var(--gp-ease);
 }
-
-.growth-opcard__seg::before {
+.growth-opcard__seg > .growth-game-icon {
+  width: 24px;
+  height: 24px;
+}
+.growth-opcard__seg--module {
+  width: 26px;
+}
+.growth-opcard__seg--module > .growth-game-icon {
+  width: 26px;
+  height: 32px;
+}
+.growth-opcard__module-level {
   position: absolute;
-  inset: -8px -1.5px;
-  content: '';
+  right: 1px;
+  bottom: 7px;
+  font-family: var(--gp-mono);
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1;
 }
-
-.growth-opcard__seg:first-child::before {
-  left: -6px;
-}
-
-.growth-opcard__seg:last-of-type::before {
-  right: -6px;
-}
-
 .growth-opcard__seg.is-partial {
-  --seg-glow: var(--gp-warn-block);
-  --seg-inset: inset 0 0 0 1px var(--gp-warn);
+  color: var(--gp-warn);
 }
-
 .growth-opcard__seg.is-done {
-  --seg-glow: var(--gp-accent-block);
+  color: var(--gp-accent-ink);
 }
-
+.growth-opcard__seg--module.is-locked > .growth-game-icon {
+  opacity: 0.3;
+}
+.growth-opcard__seg--module:not(.is-locked) > .growth-game-icon {
+  --module-pattern-opacity: 0.55;
+}
+.growth-opcard__seg--module:not(.is-locked):hover > .growth-game-icon,
+.growth-opcard__seg--module:not(.is-locked):focus-visible > .growth-game-icon,
+.growth-opcard__seg--module.is-active:not(.is-locked) > .growth-game-icon {
+  --module-pattern-opacity: 0.85;
+}
+.growth-opcard__seg:hover,
+.growth-opcard__seg:focus-visible {
+  color: var(--gp-ink);
+}
+.growth-opcard__skills .growth-opcard__seg.is-active > .growth-game-icon {
+  filter: drop-shadow(0 0 4px rgb(160 164 171 / 85%));
+}
 .growth-opcard__seg:focus-visible {
   outline: 2px solid var(--gp-accent);
   outline-offset: 1px;
 }
-
-.growth-opcard__seg-bar {
-  width: 22px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--gp-surface-3);
-  box-shadow: var(--seg-inset);
-  opacity: 0.92;
-  transition:
-    background-color 160ms var(--gp-ease),
-    box-shadow 160ms var(--gp-ease),
-    opacity 160ms var(--gp-ease);
+.growth-opcard__seg.is-highlighted {
+  box-shadow: inset 0 0 0 1px var(--gp-accent);
 }
-
-/* 光晕只用模糊层，没有硬边扩散：hover 单层，选中两层，hover 选中段略强。 */
-.growth-opcard__seg:hover .growth-opcard__seg-bar,
-.growth-opcard__seg:focus-visible .growth-opcard__seg-bar {
-  box-shadow:
-    var(--seg-inset),
-    0 0 5px 2px var(--seg-glow);
-  opacity: 1;
-}
-
-.growth-opcard__seg.is-active .growth-opcard__seg-bar {
-  box-shadow:
-    var(--seg-inset),
-    0 0 6px 2px var(--seg-glow),
-    0 0 12px 4px var(--seg-glow);
-}
-
-.growth-opcard__seg.is-active:hover .growth-opcard__seg-bar,
-.growth-opcard__seg.is-active:focus-visible .growth-opcard__seg-bar {
-  box-shadow:
-    var(--seg-inset),
-    0 0 8px 3px var(--seg-glow),
-    0 0 14px 5px var(--seg-glow);
-}
-
-.growth-opcard__seg.is-partial .growth-opcard__seg-bar {
-  background: var(--gp-warn-block);
-}
-
-.growth-opcard__seg.is-done .growth-opcard__seg-bar {
-  background: var(--gp-accent);
-}
-
-.growth-opcard__progress--low {
-  min-height: 18px;
+.growth-opcard__progress-note {
   color: var(--gp-muted);
   font-size: 10.5px;
 }
-
-.growth-opcard__progress-label {
-  min-width: 0;
-  margin-left: 6px;
-  overflow: hidden;
-  color: var(--gp-muted);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 固定页脚高度：计划中印章与专三率/解锁率/暂无样本互换时不改变卡片高度。 */
 .growth-opcard__foot {
   display: flex;
   align-items: center;
@@ -490,17 +612,14 @@ function stopKeydownPropagation(event) {
   height: 22px;
   margin-top: auto;
 }
-
 .growth-opcard__probe {
   color: var(--gp-muted);
   font-size: 10.5px;
   letter-spacing: 0.02em;
 }
-
 .growth-opcard__stamp {
   font-size: 9.5px;
 }
-
 .growth-opcard__enter {
   margin-left: auto;
   color: var(--gp-faint);
@@ -508,53 +627,119 @@ function stopKeydownPropagation(event) {
   font-weight: 600;
   transition: color 160ms var(--gp-ease);
 }
-
 .growth-opcard:hover .growth-opcard__enter {
   color: var(--gp-accent-ink);
 }
-
 .growth-opcard__rank {
   position: absolute;
-  top: 10px;
+  z-index: -1;
+  top: 51px;
   right: 12px;
-  color: var(--gp-surface-3);
+  color: var(--gp-ink);
+  opacity: 0.08;
   font-size: 30px;
   line-height: 1;
+  pointer-events: none;
 }
-
 .growth-opcard.is-planned {
-  background: var(--gp-surface-2);
+  background: color-mix(in srgb, var(--opcard-surface) 96%, var(--gp-ink));
 }
-
 .growth-opcard.is-survey-match {
   box-shadow: inset 0 0 0 1px var(--gp-accent);
 }
-
-.growth-opcard__seg.is-highlighted .growth-opcard__seg-bar {
-  outline: 1px solid var(--gp-accent);
-  outline-offset: 2px;
-}
-
-/* 模组目标段：小方块和技能条区分开，点击可查看未满模组的公开解锁率。 */
-.growth-opcard__seg--module .growth-opcard__seg-bar {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-}
-
 .growth-opcard--compact {
   padding: 12px 13px 10px;
 }
-
 .growth-opcard--compact .growth-opcard__skill {
   font-size: 11.5px;
 }
-
+.growth-opcard--compact .growth-opcard__head {
+  gap: 8px;
+}
+.growth-opcard--compact .growth-opcard__name {
+  font-size: 14px;
+}
+.growth-opcard--compact .growth-opcard__level {
+  gap: 3px;
+  font-size: 10px;
+}
+.growth-opcard--compact .growth-opcard__level .growth-game-icon {
+  width: 17px;
+  height: 17px;
+}
+@media (max-width: 520px) {
+  .growth-opcard {
+    --opcard-avatar-size: 42px;
+  }
+  .growth-opcard__head {
+    gap: 8px;
+  }
+  .growth-opcard__identity {
+    gap: 3px;
+  }
+  .growth-opcard__level {
+    gap: 2px;
+    font-size: 10px;
+  }
+  .growth-opcard__level .growth-game-icon {
+    width: 17px;
+    height: 17px;
+  }
+  .growth-opcard__progress {
+    gap: 4px;
+  }
+  .growth-opcard__skills,
+  .growth-opcard__modules {
+    gap: 1px;
+  }
+  .growth-opcard__skills + .growth-opcard__modules {
+    padding-left: 4px;
+  }
+  .growth-opcard__seg {
+    width: 24px;
+  }
+  .growth-opcard__seg > .growth-game-icon {
+    width: 22px;
+    height: 22px;
+  }
+  .growth-opcard__seg--module {
+    width: 26px;
+  }
+  .growth-opcard__seg--module > .growth-game-icon {
+    width: 26px;
+    height: 26px;
+  }
+  .growth-opcard--three-modules .growth-opcard__progress {
+    gap: 3px;
+  }
+  .growth-opcard--three-modules .growth-opcard__skills + .growth-opcard__modules {
+    padding-left: 3px;
+  }
+  .growth-opcard--three-modules .growth-opcard__seg {
+    width: 21px;
+  }
+  .growth-opcard--three-modules .growth-opcard__seg--module > .growth-game-icon {
+    width: 23px;
+  }
+}
+@media (max-width: 380px) {
+  .growth-opcard--three-modules .growth-opcard__progress {
+    gap: 2px;
+  }
+  .growth-opcard--three-modules .growth-opcard__skills + .growth-opcard__modules {
+    padding-left: 2px;
+  }
+  .growth-opcard--three-modules .growth-opcard__seg {
+    width: 19px;
+  }
+  .growth-opcard--three-modules .growth-opcard__seg--module > .growth-game-icon {
+    width: 21px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .growth-opcard,
   .growth-opcard__enter,
-  .growth-opcard__seg,
-  .growth-opcard__seg-bar {
+  .growth-opcard__seg {
     transition: none;
   }
   .growth-opcard:hover {
