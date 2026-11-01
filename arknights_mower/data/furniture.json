@@ -14502,6 +14502,252 @@
       "quantity": 1,
       "canBeDestroy": false
     },
+    "furni_tsarPalace_column_01": {
+      "name": "“睡吧，小熊”",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_shelf_01": {
+      "name": "翡绿伞架",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_sofa_01": {
+      "name": "翡绿沙发",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_footrest_01": {
+      "name": "翡绿搁脚凳",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_stool_01": {
+      "name": "翡绿鞋凳",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_ceilinglamp_01": {
+      "name": "垂式烛台吊灯",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 2,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_carpet_01": {
+      "name": "粗绒纹样地毯",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_plant_01": {
+      "name": "“新生”",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_mirror_01": {
+      "name": "斑驳铜镜",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_ceilinglamp_02": {
+      "name": "悬式烛台吊灯",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_fireplace_01": {
+      "name": "“梦中人？”",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_shelf_02": {
+      "name": "“属于明日”",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_coffeeTable_01": {
+      "name": "“只余一人”",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_table_01": {
+      "name": "念诗处",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_wardrobe_01": {
+      "name": "冬衣陈列柜",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_carpet_02": {
+      "name": "细绒纹样地毯",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_plant_02": {
+      "name": "翡绿花瓶",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_recordplayer_01": {
+      "name": "公用唱片机",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_wallpaper_01": {
+      "name": "乌萨斯行宫壁纸",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_tsarPalace_floor_01": {
+      "name": "白桦木地板",
+      "themeId": "furni_set_tsarPalace",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_talulahCabin_toolRack_01": {
+      "name": "“播种”",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_bucketBasket_01": {
+      "name": "饮水处",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_longTable_01": {
+      "name": "“烛火与回忆”",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_produceCage_01": {
+      "name": "“只能放南瓜！”",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_hayRack_01": {
+      "name": "无轮稻草车",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_toolRack_02": {
+      "name": "“第二次尝试”",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_bench_01": {
+      "name": "“信与信”",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_chair_01": {
+      "name": "“在我身边”",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_coatRack_01": {
+      "name": "木制挂衣架",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_cabinet_01": {
+      "name": "木制杂物柜",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_trackLight_01": {
+      "name": "可调滑轨灯",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_sofa_01": {
+      "name": "“在你身边”",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_carpet_01": {
+      "name": "碎布地毯",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_coffeeTable_01": {
+      "name": "“礼物”",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_ceilinglamp_01": {
+      "name": "羽兽笼吊灯",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_scarecrow_01": {
+      "name": "“一位同伴”",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_candlestick_01": {
+      "name": "可手持烛台",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_firewoodRack_01": {
+      "name": "木制置物架",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_fireplace_01": {
+      "name": "简易面包炉",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_wallpaper_01": {
+      "name": "农庄印象壁纸",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
+    "furni_talulahCabin_floor_01": {
+      "name": "拼接木地板",
+      "themeId": "furni_set_talulahCabin",
+      "quantity": 1,
+      "canBeDestroy": true
+    },
     "furni_oct1st_deckChair_01": {
       "name": "一体式休闲座舱",
       "themeId": "",
@@ -16086,6 +16332,12 @@
       "quantity": 0,
       "canBeDestroy": false
     },
+    "furni_terracommericials_FeaturedCannedMeat_01": {
+      "name": "饰牌《罐头》",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
     "furni_contract_s0_01": {
       "name": "荒芜之旗",
       "themeId": "",
@@ -17246,6 +17498,12 @@
     },
     "furni_act73d4_projectionModel_01": {
       "name": "“再起蓝图”",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_act79d3_bear_01": {
+      "name": "“梦之圆舞曲”",
       "themeId": "",
       "quantity": 0,
       "canBeDestroy": false
@@ -20342,6 +20600,57 @@
         "furni_clmsRoom_equiplight_01": 1,
         "furni_clmsRoom_wallpaper_01": 1,
         "furni_clmsRoom_floor_01": 1
+      }
+    },
+    "furni_set_tsarPalace": {
+      "name": "行宫一隅",
+      "counts": {
+        "furni_tsarPalace_column_01": 1,
+        "furni_tsarPalace_shelf_01": 1,
+        "furni_tsarPalace_sofa_01": 1,
+        "furni_tsarPalace_footrest_01": 1,
+        "furni_tsarPalace_stool_01": 1,
+        "furni_tsarPalace_ceilinglamp_01": 2,
+        "furni_tsarPalace_carpet_01": 1,
+        "furni_tsarPalace_plant_01": 1,
+        "furni_tsarPalace_mirror_01": 1,
+        "furni_tsarPalace_ceilinglamp_02": 1,
+        "furni_tsarPalace_fireplace_01": 1,
+        "furni_tsarPalace_shelf_02": 1,
+        "furni_tsarPalace_coffeeTable_01": 1,
+        "furni_tsarPalace_table_01": 1,
+        "furni_tsarPalace_wardrobe_01": 1,
+        "furni_tsarPalace_carpet_02": 1,
+        "furni_tsarPalace_plant_02": 1,
+        "furni_tsarPalace_recordplayer_01": 1,
+        "furni_tsarPalace_wallpaper_01": 1,
+        "furni_tsarPalace_floor_01": 1
+      }
+    },
+    "furni_set_talulahCabin": {
+      "name": "“并肩之人”",
+      "counts": {
+        "furni_talulahCabin_toolRack_01": 1,
+        "furni_talulahCabin_bucketBasket_01": 1,
+        "furni_talulahCabin_longTable_01": 1,
+        "furni_talulahCabin_produceCage_01": 1,
+        "furni_talulahCabin_hayRack_01": 1,
+        "furni_talulahCabin_toolRack_02": 1,
+        "furni_talulahCabin_bench_01": 1,
+        "furni_talulahCabin_chair_01": 1,
+        "furni_talulahCabin_coatRack_01": 1,
+        "furni_talulahCabin_cabinet_01": 1,
+        "furni_talulahCabin_trackLight_01": 1,
+        "furni_talulahCabin_sofa_01": 1,
+        "furni_talulahCabin_carpet_01": 1,
+        "furni_talulahCabin_coffeeTable_01": 1,
+        "furni_talulahCabin_ceilinglamp_01": 1,
+        "furni_talulahCabin_scarecrow_01": 1,
+        "furni_talulahCabin_candlestick_01": 1,
+        "furni_talulahCabin_firewoodRack_01": 1,
+        "furni_talulahCabin_fireplace_01": 1,
+        "furni_talulahCabin_wallpaper_01": 1,
+        "furni_talulahCabin_floor_01": 1
       }
     },
     "furniM_set_basicRoom": {

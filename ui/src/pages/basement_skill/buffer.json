@@ -389,6 +389,12 @@
     "description": "包括结城理、埃癸斯、岳羽由加莉、虎狼丸",
     "buffer": []
   },
+  "ba_dt_rampage2": {
+    "termId": "ba.dt.rampage2",
+    "termName": "狂躁损伤·我方",
+    "description": "累计满时爆发（普通、精英敌人1000点、领袖2000点累计值），敌人攻击速度+20，但每秒受到逐渐提升的元素伤害（最多2110）。15秒冷却",
+    "buffer": []
+  },
   "cc_bd_A_1": {
     "termId": "cc.bd_A_1",
     "termName": "念力",
