@@ -126,7 +126,7 @@ const iconStyle = computed(() => {
 .growth-game-icon__module-label,
 .growth-game-icon__module-shape {
   font-family: var(--gp-display);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1;
 }

@@ -2,14 +2,63 @@
   "source_url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/63c7cec73c3858d0ae913f85cc89af3cef4d744f/zh_CN/gamedata/excel/uniequip_table.json",
   "source_commit": "63c7cec73c3858d0ae913f85cc89af3cef4d744f",
   "snapshot_date": "2026-11-01",
-  "palette_source_url": "https://github.com/MooncellWiki/prts-design/blob/31627426def7509cbcdc04fc1f654c41f9a7b915/packages/css/src/tokens.css",
+  "palette_sampling": {
+    "color_filter": "alpha>=32; max(R,G,B)-min(R,G,B)>=25 (excludes transparent RGB and neutral/white glyphs)",
+    "grey_filter": "alpha>=32; max(R,G,B)<200; max(R,G,B)-min(R,G,B)<20 (excludes transparent and white glyphs)",
+    "representative_rgb": "most frequent exact RGB among eligible pixels, independent of alpha; not an invented blended color",
+    "sample_pixel": "actual pixel matching representative RGB whose alpha is nearest the median alpha among that RGB"
+  },
+  "palette_sources": {
+    "grey": {
+      "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_TRP-D_%E5%B0%8F%E5%9B%BE.png",
+      "url": "https://media.prts.wiki/4/4e/%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_TRP-D_%E5%B0%8F%E5%9B%BE.png",
+      "sha256": "2ad11ae2bb47477cb186225b3ee3c6afa6eb9104e885d75c0f67e3ad4305ab4f",
+      "position": [22, 11],
+      "rgba": [142, 142, 142, 57]
+    },
+    "red": {
+      "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_LOR-X_%E5%B0%8F%E5%9B%BE.png",
+      "url": "https://media.prts.wiki/6/68/%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_LOR-X_%E5%B0%8F%E5%9B%BE.png",
+      "sha256": "01b1b5c660634c92cb8bbd363ce5e79b518cd2da58c8955ada41a52c336ade9b",
+      "position": [52, 32],
+      "rgba": [222, 49, 41, 54]
+    },
+    "blue": {
+      "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_GUA-X_%E5%B0%8F%E5%9B%BE.png",
+      "url": "https://media.prts.wiki/4/4d/%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_GUA-X_%E5%B0%8F%E5%9B%BE.png",
+      "sha256": "6b2db3b0a0611b42c22a143c97e3a096029698dbcd98615a80222dc324794798",
+      "position": [50, 22],
+      "rgba": [43, 125, 183, 59]
+    },
+    "green": {
+      "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_CHG-X_%E5%B0%8F%E5%9B%BE.png",
+      "url": "https://media.prts.wiki/d/df/%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_CHG-X_%E5%B0%8F%E5%9B%BE.png",
+      "sha256": "9f933c005adb44b9ae28ab5e1248a9924b8ac86b924a2a2c49181cd68067c2cf",
+      "position": [22, 11],
+      "rgba": [132, 174, 42, 57]
+    },
+    "yellow": {
+      "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_GUA-Y_%E5%B0%8F%E5%9B%BE.png",
+      "url": "https://media.prts.wiki/6/66/%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_GUA-Y_%E5%B0%8F%E5%9B%BE.png",
+      "sha256": "2e9bf24a1b09a8f68f8a86eb9d899e4b28a2dc9443968afbbb0120499b4fdbd7",
+      "position": [16, 20],
+      "rgba": [232, 133, 34, 43]
+    },
+    "purple": {
+      "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_ISW-A_%E5%B0%8F%E5%9B%BE.png",
+      "url": "https://media.prts.wiki/7/71/%E6%A8%A1%E7%BB%84%E7%B1%BB%E5%9E%8B_ISW-A_%E5%B0%8F%E5%9B%BE.png",
+      "sha256": "22798085480bf0deff8fcdecaec93249adb63124510221ffa0f51e35d4b88a1d",
+      "position": [14, 26],
+      "rgba": [117, 101, 191, 54]
+    }
+  },
   "palette": {
-    "grey": "#626262",
-    "red": "#c82a36",
-    "blue": "#0098dc",
-    "green": "#2fac78",
-    "yellow": "#ffc90e",
-    "purple": "#9266b2"
+    "grey": "#8e8e8e",
+    "red": "#de3129",
+    "blue": "#2b7db7",
+    "green": "#84ae2a",
+    "yellow": "#e88522",
+    "purple": "#7565bf"
   },
   "colors": {
     "uniequip_001_absin": "grey",

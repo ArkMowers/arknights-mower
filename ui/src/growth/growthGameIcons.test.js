@@ -33,13 +33,13 @@ describe('养成规划游戏图标', () => {
   })
 
   it('按模组 ID 使用游戏颜色，保留同型号不同干员的差异', () => {
-    expect(moduleBadge('SUM-X', 'uniequip_002_mgllan').color).toBe('#626262')
-    expect(moduleBadge('SUM-X', 'uniequip_002_lasher').color).toBe('#c82a36')
-    expect(moduleBadge('BEA-X', 'uniequip_002_myrtle').color).toBe('#626262')
-    expect(moduleBadge('BEA-X', 'uniequip_002_jcinta').color).toBe('#ffc90e')
-    expect(moduleBadge('EXE-X', 'uniequip_002_phatom').color).toBe('#626262')
-    expect(moduleBadge('EXE-X', 'uniequip_002_acspec').color).toBe('#c82a36')
-    expect(moduleBadge('SUM-X', 'unknown').color).toBe('#626262')
+    expect(moduleBadge('SUM-X', 'uniequip_002_mgllan').color).toBe('#8e8e8e')
+    expect(moduleBadge('SUM-X', 'uniequip_002_lasher').color).toBe('#de3129')
+    expect(moduleBadge('BEA-X', 'uniequip_002_myrtle').color).toBe('#8e8e8e')
+    expect(moduleBadge('BEA-X', 'uniequip_002_jcinta').color).toBe('#e88522')
+    expect(moduleBadge('EXE-X', 'uniequip_002_phatom').color).toBe('#8e8e8e')
+    expect(moduleBadge('EXE-X', 'uniequip_002_acspec').color).toBe('#de3129')
+    expect(moduleBadge('SUM-X', 'unknown').color).toBe('#8e8e8e')
   })
 
   it('特限模组直接显示希腊字母，并保留未知型号的字母', () => {
@@ -56,10 +56,21 @@ describe('养成规划游戏图标', () => {
 
   it('模组颜色快照记录固定来源，每个模组颜色均可在调色板中解析', () => {
     expect(moduleColors.source_url).toContain(moduleColors.source_commit)
-    expect(moduleColors.palette_source_url).toMatch(/^https:\/\/github\.com\/MooncellWiki\//)
     expect(Object.keys(moduleColors.colors).length).toBeGreaterThan(900)
     for (const color of Object.values(moduleColors.colors)) {
       expect(moduleColors.palette[color]).toMatch(/^#[0-9a-f]{6}$/)
+    }
+    for (const [color, source] of Object.entries(moduleColors.palette_sources)) {
+      expect(source.page).toMatch(/^https:\/\/prts\.wiki\/w\//)
+      expect(source.url).toMatch(/^https:\/\/media\.prts\.wiki\//)
+      expect(source.sha256).toMatch(/^[0-9a-f]{64}$/)
+      const sampledRgb =
+        '#' +
+        source.rgba
+          .slice(0, 3)
+          .map((value) => value.toString(16).padStart(2, '0'))
+          .join('')
+      expect(moduleColors.palette[color]).toBe(sampledRgb)
     }
   })
 
