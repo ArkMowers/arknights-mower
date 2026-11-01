@@ -32,10 +32,17 @@ const config_store = useConfigStore()
 const { product_switching } = storeToRefs(config_store)
 const product_switching_enabled = computed(() => product_switching.value.enable === true)
 
-const data = ref(props.data)
+const data = ref(props.data ?? '')
+
+watch(
+  () => props.data,
+  (value) => {
+    data.value = value ?? ''
+  }
+)
 
 watch(data, () => {
-  emit('update', data.value)
+  if (data.value !== (props.data ?? '')) emit('update', data.value)
 })
 
 const op_data = computed(() => {
@@ -474,7 +481,7 @@ function render_custom_tip(option) {
   </help-text>
   <template v-if="op_type == 'op'">
     <n-select
-      :default-value="op_data.operator"
+      :value="op_data.operator"
       filterable
       :options="operators"
       :on-update:value="update_op"
@@ -484,7 +491,7 @@ function render_custom_tip(option) {
       style="min-width: 220px"
     />
     <n-select
-      :default-value="op_data.type"
+      :value="op_data.type"
       :options="op_options"
       :on-update:value="update_type"
       style="min-width: 120px"
@@ -492,7 +499,7 @@ function render_custom_tip(option) {
   </template>
   <n-select
     v-if="op_type == 'inventory'"
-    :default-value="op_data.item"
+    :value="op_data.item"
     :options="inventory_select_options"
     :on-update:value="update_inventory"
     :render-label="render_inventory_option"
@@ -516,7 +523,7 @@ function render_custom_tip(option) {
   />
   <n-select
     v-if="op_type == 'facility'"
-    :default-value="op_data.room"
+    :value="op_data.room"
     :options="facility_select_options"
     :on-update:value="update_facility"
     :consistent-menu-width="false"
@@ -524,7 +531,7 @@ function render_custom_tip(option) {
   />
   <n-select
     v-if="op_type == 'facility'"
-    :default-value="op_data.status"
+    :value="op_data.status"
     :options="facility_status_options"
     :on-update:value="update_facility_status"
     :consistent-menu-width="false"
@@ -532,7 +539,7 @@ function render_custom_tip(option) {
   />
   <n-select
     v-if="op_type == 'facility_stat'"
-    :default-value="op_data.status"
+    :value="op_data.status"
     :options="facility_stat_options"
     :on-update:value="update_facility_stat"
     :consistent-menu-width="false"
@@ -540,7 +547,7 @@ function render_custom_tip(option) {
   />
   <n-select
     v-if="op_type == 'facility_stat' && op_data.status == 'product_count'"
-    :default-value="op_data.product"
+    :value="op_data.product"
     :options="facility_product_stat_options"
     :on-update:value="update_facility_stat_product"
     :consistent-menu-width="false"
