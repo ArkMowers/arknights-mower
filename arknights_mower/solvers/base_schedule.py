@@ -1097,9 +1097,12 @@ class BaseSchedulerSolver(
         self._discard_legacy_ordinary_requests()
         self._discard_legacy_recovery_checks()
         self._discard_legacy_run_order_waits()
+        waiting_for_initial_charge = getattr(
+            self, "_initial_fia_checked", False
+        ) and any(getattr(task, "initial_fia", False) for task in self.tasks)
         for task in list(self.tasks):
-            if self._is_startup_priority_task(task):
-                # 旧门控曾让初始化所等待的任务反过来等待初始化。
+            if waiting_for_initial_charge or self._is_startup_priority_task(task):
+                # 实读完成或任务本身是读取前置时，不保留旧门控的观察挂起。
                 task.__dict__.pop("startup_observation_pending", None)
             failure = getattr(task, "execution_failure", None)
             if failure and (pending := getattr(task, "credit_shop_pending", None)):
@@ -3060,28 +3063,25 @@ class BaseSchedulerSolver(
         self._initialize_startup_facilities()
         self._reconcile_initial_staffing()
         initial_fia_pending = any(
-            getattr(task, "initial_fia", False)
-            and not getattr(task, "execution_failure", None)
-            for task in self.tasks
-        ) and not any(
-            getattr(task, "emergency_takeover", False) and task.time <= datetime.now()
-            for task in self.tasks
+            getattr(task, "initial_fia", False) for task in self.tasks
         )
         if initial_fia_pending:
             protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
-            candidate = self.tasks[0]
-            if candidate.time <= datetime.now() and (
-                getattr(candidate, "initial_fia", False)
-                or getattr(candidate, "strict_mood_limit", False)
-                or any(task is candidate for task in self._startup_priority_tasks())
+            candidate = next(
+                iter(task_view(self.tasks, TaskScope.DISPATCH, self.op_data)), None
+            )
+            if (
+                candidate is not None
+                and candidate.time <= datetime.now()
+                and getattr(candidate, "initial_fia", False)
             ):
                 self.task = candidate
-            else:
-                self.task = None
-                self.skip()
-                return True
         if (
             getattr(self, "_emergency_startup_pending", False)
+            # 初始充能只在实读完成后入队；等待充能结果不再阻挡独立任务。
+            and not (
+                initial_fia_pending and getattr(self, "_initial_fia_checked", False)
+            )
             and not (
                 self._emergency_continuation_checkpoint() is not None
                 and self.task is not None
@@ -3159,7 +3159,9 @@ class BaseSchedulerSolver(
                 self.task = None
                 self.skip()
                 return True
-            if not self._emergency_frozen() and not initial_fia_pending:
+            if not self._emergency_frozen() and not getattr(
+                self.task, "initial_fia", False
+            ):
                 from arknights_mower.utils.group_recovery import mood_limit_group_return
 
                 returning = mood_limit_group_return(self.op_data, self.task, self.tasks)

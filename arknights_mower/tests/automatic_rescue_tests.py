@@ -2223,6 +2223,30 @@ def test_initial_full_fia_without_cached_task_precedes_rescue_evaluation(solver)
     solver._read_agent_mood.assert_called_once()
     assert solver._emergency_startup_pending
 
+    task.time = NOW + timedelta(minutes=2)
+    refresh = SchedulerTask(
+        NOW - timedelta(seconds=1),
+        task_type=TaskTypes.REFRESH_TIME,
+        meta_data="room_1_1",
+    )
+    solver.tasks.append(refresh)
+    solver.task = refresh
+    solver.find = MagicMock(return_value=True)
+    solver.plan_run_order = MagicMock()
+    solver.infra_main()
+    solver.plan_run_order.assert_called_once_with("room_1_1")
+    assert refresh not in solver.tasks
+    assert task in solver.tasks and task.time == NOW + timedelta(minutes=2)
+    solver._read_agent_mood.assert_called_once()
+    solver._emergency_schedule_staffing.assert_not_called()
+    assert solver._emergency_startup_pending
+
+    # 充能流程结束后，原初始化继续并重新评估普通排班。
+    solver.tasks.remove(task)
+    solver._emergency_startup()
+    assert not solver._emergency_startup_pending
+    solver.backup_plan_solver.assert_called_once()
+
 
 @pytest.mark.parametrize("normal_cover_available", [False, True])
 def test_startup_checks_normal_coverage_for_low_primaries_already_resting(
