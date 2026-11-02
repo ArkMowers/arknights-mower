@@ -928,6 +928,9 @@ def simulate(saved):
                 {room for room in base_scheduler.op_data.plan if room in base_room_list}
             )
         base_scheduler.tasks.insert(0, SchedulerTask(time=datetime.now()))
+    elif startup_mastery_read:
+        # 训练室实读由基建入口执行，已有远期任务不应推迟首次核对。
+        base_scheduler.tasks.insert(0, SchedulerTask(time=datetime.now()))
     while True:
         try:
             if saved and saved.get("_process_crash_recovery"):
@@ -938,23 +941,9 @@ def simulate(saved):
                 from arknights_mower.utils import crash_recovery
 
                 crash_recovery.checkpoint_start(base_scheduler)
-            if startup_mastery_read:
-                base_scheduler._read_agent_mood(rooms={"train"})
-                if (
-                    getattr(
-                        getattr(base_scheduler, "train_room_state", None),
-                        "slots_reliable",
-                        False,
-                    )
-                    is True
-                ):
-                    base_scheduler._startup_mood_observations = {
-                        **getattr(base_scheduler, "_startup_mood_observations", {}),
-                        "train": base_scheduler._room_mood_signature("train"),
-                    }
             break
         except RECOVERABLE_DEVICE_ERRORS as exc:
-            # 恢复前的房间读取也由原设备会话处理，保留已还原的任务和调度器。
+            # 恢复检查沿用原设备会话，保留已还原的任务和调度器。
             try:
                 _resume_device_dispatch(base_scheduler, exc)
             except MowerExit:

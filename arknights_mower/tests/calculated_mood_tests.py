@@ -318,12 +318,14 @@ def test_initialization_reads_all_staffed_facilities_once_despite_recent_cache(
     solver, monkeypatch
 ):
     from arknights_mower.data import base_room_list
-    from arknights_mower.solvers import mastery_reader
+    from arknights_mower.solvers import base_schedule, mastery_reader
 
     enable(solver, monkeypatch)
     config.conf.enable_mastery = True
     solver.defer_backup_plan_until_mood_read = True
-    solver._initial_mood_refresh_rooms = set()
+    solver._initial_mood_refresh_rooms = {
+        room for room in base_room_list if not room.startswith("gaming_")
+    }
     solver.op_data.run_order_rooms = {"room_1_1": {}}
     read_order = []
 
@@ -334,7 +336,7 @@ def test_initialization_reads_all_staffed_facilities_once_despite_recent_cache(
     solver.enter_room = MagicMock()
     solver.back = MagicMock()
     solver.back_to_infrastructure = MagicMock()
-    solver.last_train_mood_read = NOW
+    solver.last_train_mood_read = base_schedule.datetime(2026, 9, 30, 8)
     state = mastery_reader.RoomState("empty", slots_read=True)
     read_train = MagicMock(
         side_effect=lambda *args, **kwargs: (read_order.append("train"), (state, []))[1]

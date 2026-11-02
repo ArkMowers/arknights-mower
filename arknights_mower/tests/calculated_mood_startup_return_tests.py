@@ -253,3 +253,81 @@ def test_startup_completion_snapshot_releases_retained_task_hold(startup, monkey
     retained = next(task for task in tasks if task.type == TaskTypes.SHIFT_ON)
     assert retained.retains_execution
     assert retained in task_view(tasks, TaskScope.DISPATCH, solver.op_data)
+
+
+@pytest.mark.parametrize("reliable", [False, True])
+@pytest.mark.parametrize("yielding", [False, True])
+def test_startup_training_uses_initial_priority_read_once_before_other_facilities(
+    startup, monkeypatch, reliable, yielding
+):
+    from arknights_mower.solvers import mastery_reader
+
+    class Clock(base_schedule.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls.fromisoformat(NOW.isoformat())
+
+    monkeypatch.setattr(base_schedule, "datetime", Clock)
+    monkeypatch.setattr(emergency, "datetime", Clock)
+    solver, _, _, reads = startup
+    solver._state_restore_complete = True
+    solver._initial_mood_refresh_rooms = {"train", "dormitory_1"}
+    solver.op_data.facility_levels["train"] = 3
+    solver.last_train_mood_read = NOW
+    solver.last_train_mood_attempt = NOW
+    monkeypatch.setattr(emergency.config.conf, "enable_mastery", True)
+    observations = []
+
+    def read_room(*args, **kwargs):
+        assert solver._state_restore_complete is True
+        assert "dormitory_1" not in reads
+        reads.append("train")
+        observations.append("train")
+        return mastery_reader.RoomState(
+            "empty" if reliable else "unknown",
+            slots_reliable=reliable,
+            read_failed=not reliable,
+        ), []
+
+    monkeypatch.setattr(mastery_reader, "read_room_state", read_room)
+    monkeypatch.setattr(mastery_reader, "reconcile_short", MagicMock())
+    if yielding:
+        special = SchedulerTask(
+            NOW + timedelta(seconds=30), task_type=TaskTypes.SWAP_SUPPORT
+        )
+        solver.tasks.append(special)
+        for _ in range(3):
+            assert solver._read_agent_mood() is False
+            assert observations == ["train"]
+            assert "dormitory_1" in solver._initial_mood_refresh_rooms
+        solver.tasks.remove(special)
+    assert solver.infra_main() is True
+    assert observations == ["train"]
+    assert reads.index("train") < reads.index("dormitory_1")
+    assert "train" not in solver._initial_mood_refresh_rooms
+    assert not solver._emergency_startup_pending
+
+
+def test_startup_facilities_validate_restored_recovery_before_training_read(
+    startup, monkeypatch
+):
+    from arknights_mower.solvers import mastery_reader
+
+    solver, _, _, _ = startup
+    solver._initial_mood_refresh_rooms = {"train", "dormitory_1"}
+    solver.op_data.facility_levels["train"] = 3
+    solver.emergency_state = {}
+    events = []
+    solver._emergency_validate_state = MagicMock(
+        side_effect=lambda: events.append("validate")
+    )
+    monkeypatch.setattr(emergency.config.conf, "enable_mastery", True)
+
+    def read_room(*args, **kwargs):
+        events.append("train")
+        return mastery_reader.RoomState("empty", slots_reliable=True), []
+
+    monkeypatch.setattr(mastery_reader, "read_room_state", read_room)
+    monkeypatch.setattr(mastery_reader, "reconcile_short", MagicMock())
+    assert solver.infra_main() is True
+    assert events == ["validate", "train"]

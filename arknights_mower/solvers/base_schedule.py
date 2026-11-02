@@ -3054,20 +3054,7 @@ class BaseSchedulerSolver(
                 )
                 self.skip()
                 return True
-        self._check_startup_run_orders()
-        if getattr(self, "_emergency_startup_pending", False):
-            if (
-                self.task is not None
-                and self.task.type == TaskTypes.NOT_SPECIFIC
-                and not self.task.plan
-                and not self.task.meta_data
-            ):
-                self.tasks[:] = [task for task in self.tasks if task is not self.task]
-                self.task = None
-            self._emergency_startup()
-            self._refresh_observed_recovery_tasks()
-            if self._emergency_active() and not self._emergency_startup_pending:
-                self._emergency_tick()
+        self._initialize_startup_facilities()
         self._reconcile_initial_staffing()
         initial_fia_pending = any(
             getattr(task, "initial_fia", False)
@@ -3823,7 +3810,8 @@ class BaseSchedulerSolver(
             for room in getattr(self, "_initial_mood_refresh_rooms", ())
             if (room in self.op_data.plan or room == "train") and room in base_room_list
         }
-        force_rooms.update(initial_rooms)
+        # 训练室的首次强制读取由启动待办负责，续行不重新追加。
+        force_rooms.update(initial_rooms - {"train"})
         self._initial_mood_refresh_rooms = force_rooms
         need_read.update(force_rooms)
         current_failures = {
@@ -4078,6 +4066,12 @@ class BaseSchedulerSolver(
                     continue
             if not skip_room_exit:
                 self.back()
+            if (
+                room == "train"
+                and initial_calculation
+                and getattr(self.train_room_state, "slots_reliable", False) is True
+            ):
+                self._startup_mood_observations[room] = self._room_mood_signature(room)
             force_rooms.discard(room)
             if getattr(self, "_emergency_startup_pending", False):
                 self._emergency_replan_releases()
@@ -5649,11 +5643,30 @@ class BaseSchedulerSolver(
             for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
         )
 
+    def _initialize_startup_facilities(self):
+        """进入基建后统一检查启动设施，沿用完整初始化及救急恢复顺序。"""
+        if not getattr(self, "_state_restore_complete", True):
+            return
+        self._check_startup_run_orders()
+        if getattr(self, "_emergency_startup_pending", False):
+            if (
+                self.task is not None
+                and self.task.type == TaskTypes.NOT_SPECIFIC
+                and not self.task.plan
+                and not self.task.meta_data
+            ):
+                self.tasks[:] = [task for task in self.tasks if task is not self.task]
+                self.task = None
+            self._emergency_startup()
+            self._refresh_observed_recovery_tasks()
+            if self._emergency_active() and not self._emergency_startup_pending:
+                self._emergency_tick()
+        elif "train" in getattr(self, "_initial_mood_refresh_rooms", ()):
+            self._read_agent_mood(rooms={"train"} | set(self.op_data.run_order_rooms))
+
     def _check_startup_run_orders(self):
         """启动时检查一次订单；临时读数只发布保护窗口内的跑单任务。"""
         if not getattr(self, "_startup_run_order_check_pending", False):
-            return
-        if not getattr(self, "_state_restore_complete", True):
             return
         self._startup_run_order_check_pending = False
         if any(task.type == TaskTypes.RUN_ORDER for task in self.tasks):
