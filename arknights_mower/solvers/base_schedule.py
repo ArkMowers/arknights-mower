@@ -3612,7 +3612,11 @@ class BaseSchedulerSolver(
                     # 才进房复核；缓存清零后 time_stamp 为空，会自然触发全量读取。
                     if getattr(self, "defer_backup_plan_until_mood_read", False):
                         # 首次读取不生成主表纠错；副表确定后才按最终排班规划。
-                        self._read_agent_mood()
+                        if self._read_agent_mood() is False:
+                            # 跑单或训练换人进入临近窗口时，保留初始化门闸，
+                            # 先让高优先级任务执行，下一轮继续剩余房间观测。
+                            self.skip(["planned", "todo_task", "collect_notification"])
+                            return True
                         self._initial_card_scan_required = True
                         self._read_initial_card_mood()
                         self.defer_backup_plan_until_mood_read = False
@@ -3808,6 +3812,8 @@ class BaseSchedulerSolver(
         ):
             need_read.add("train")
 
+        initial_observation = initial_calculation or self._initial_mood_read_pending()
+
         facility_levels = getattr(self.op_data, "facility_levels", {})
         # 初始化先读取跑单设施与训练室，尽早取得会影响派单和训练冲突判断的实测状态。
         # 其余设施保持稳定排序，避免同一轮初始化的访问顺序漂移。
@@ -3815,8 +3821,9 @@ class BaseSchedulerSolver(
         priority_rooms = sorted(need_read & run_order_rooms)
         if "train" in need_read:
             priority_rooms.append("train")
+        priority_room_set = set(priority_rooms)
         ordered_rooms = priority_rooms + sorted(need_read - set(priority_rooms))
-        for room in ordered_rooms:
+        for room_index, room in enumerate(ordered_rooms):
             if facility_levels.get(room) == 0:
                 force_rooms.discard(room)
                 restoration_observations.pop(room, None)
@@ -4018,6 +4025,40 @@ class BaseSchedulerSolver(
             if not skip_room_exit:
                 self.back()
             force_rooms.discard(room)
+            if initial_observation and room in priority_room_set:
+                completed_priority = {
+                    candidate for candidate in ordered_rooms[: room_index + 1]
+                }
+                imminent_priority_task = any(
+                    getattr(task, "type", None)
+                    in (
+                        TaskTypes.RUN_ORDER,
+                        TaskTypes.SKILL_UPGRADE,
+                        TaskTypes.SWAP_SUPPORT,
+                    )
+                    and getattr(task, "time", None) is not None
+                    and task.time <= datetime.now() + timedelta(minutes=1)
+                    and not getattr(task, "execution_failure", None)
+                    for task in (
+                        *getattr(self, "tasks", ()),
+                        *(
+                            (self.task,)
+                            if getattr(self, "task", None) is not None
+                            and all(
+                                queued is not self.task
+                                for queued in getattr(self, "tasks", ())
+                            )
+                            else ()
+                        ),
+                    )
+                )
+                if (
+                    not priority_room_set - completed_priority
+                    and imminent_priority_task
+                ):
+                    logger.info("跑单或训练换人临近，暂停初始化其余设施读取")
+                    self.back_to_infrastructure()
+                    return False
             if getattr(self, "_emergency_startup_pending", False):
                 self._emergency_replan_releases()
                 protect_priority_tasks(
