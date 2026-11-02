@@ -83,9 +83,10 @@ def test_waiting_third_group_precedes_first_cover_restoration(solver):
 
 
 @pytest.mark.parametrize("calculated", [False, True])
-@pytest.mark.parametrize("mood", [0.05, 11.9, 12])
-def test_preferred_cover_finishes_dorm_recovery_before_restoration(
-    solver, monkeypatch, calculated, mood
+@pytest.mark.parametrize("mood", [2.05, 4.99, 5, 5.01, 12])
+@pytest.mark.parametrize("rest_in_full", [False, True])
+def test_preferred_cover_reaches_rescue_line_before_restoration(
+    solver, monkeypatch, calculated, mood, rest_in_full
 ):
     from arknights_mower.utils import config
     from arknights_mower.utils.calculated_mood import sync_model
@@ -101,7 +102,11 @@ def test_preferred_cover_finishes_dorm_recovery_before_restoration(
     )
     data._projection_now = now
     cover = data.operators["槐琥"]
-    cover.upper_limit = 12
+    cover.lower_limit, cover.upper_limit = 2, 12
+    cover.rest_in_full = rest_in_full
+    data.config.resting_threshold = 0.6
+    monkeypatch.setattr(config.conf, "rescue_threshold", 0.5)
+    target = 12 if rest_in_full else 5
     for op in data.operators.values():
         op.time_stamp = now
         op.mood = mood if op is cover else 12
@@ -119,19 +124,19 @@ def test_preferred_cover_finishes_dorm_recovery_before_restoration(
 
     for _ in range(3):
         solver._plan_preferred_replacements()
-        if mood < 12:
+        if mood < target:
             assert solver.tasks == []
         else:
             assert len(solver.tasks) == 1
             assert solver.tasks[0].plan == {"room_2_2": ["槐琥"]}
     assert data.get_current_operator("room_2_2", 0).name == "引星棘刺"
     assert cover.current_room == "dormitory_1"
-    if mood < 12:
+    if mood < target:
         observed_at = now + timedelta(seconds=1)
-        cover.mood, cover.time_stamp = 12, observed_at
+        cover.mood, cover.time_stamp = target, observed_at
         data._projection_now = observed_at
         if calculated:
-            data.mood_model.observe(cover.name, 12, observed_at)
+            data.mood_model.observe(cover.name, target, observed_at)
         solver._plan_preferred_replacements()
         assert len(solver.tasks) == 1
         assert solver.tasks[0].plan == {"room_2_2": ["槐琥"]}

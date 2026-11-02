@@ -2,7 +2,7 @@ import {mowerForcedGroupCoverReservations,mowerHeldRestGroups} from './mowerBack
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
 import {alphaPosition,mowerMatchReplacements} from './mowerAlphaDorm'
-import {mowerGroupRecoveryDeadline,mowerRecoveryMoodComplete,mowerRecoveryReady} from './mowerGroupRecovery'
+import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import {hasObservedFullMood,mowerReplacementCandidates,rescueMoodThreshold,MowerOperatorState} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerRestingOptions} from './mowerOrdinaryPlanning'
@@ -72,7 +72,7 @@ export function planMowerPreferredReplacementRestore(data:MowerSchedulingData,pr
    if(!owner.isHigh()||owner.room.startsWith('dorm')||owner.currentRoom&&!owner.isResting()||protectedNames.has(owner.name)||state.busyRestingNames.has(owner.name)||protectedSlots.has(alphaPosition(owner.room,owner.index)))continue
    const current=state.currentOperator(owner.room,owner.index),ordered=replacements(state,owner),index=current?ordered.indexOf(current.name):-1
    if(index<=0||!current||protectedNames.has(current.name)||!eligible(state,current.name,owner,{}))continue
-   const preferred=ordered.slice(0,index).find(name=>!protectedNames.has(name)&&eligible(state,name,owner,{reservedSlots:protectedSlots})&&(!state.operators[name]!.currentRoom||state.operators[name]!.isResting()&&mowerRecoveryMoodComplete(state,state.operators[name])))
+   const preferred=ordered.slice(0,index).find(name=>!protectedNames.has(name)&&eligible(state,name,owner,{reservedSlots:protectedSlots})&&(!state.operators[name]!.currentRoom||state.operators[name]!.isResting()&&(mowerDormCandidateMood(state,name)??-Infinity)>=(state.operators[name]!.restInFull?state.operators[name]!.upperLimit:rescueMoodThreshold(state.operators[name]!,state.policy))))
    if(!preferred)continue
    ;(plan[owner.room]??=Array(state.plan[owner.room]!.length).fill('Current'))[owner.index]=preferred
    state=projectMowerArrangements(data,[plan]);changed=true

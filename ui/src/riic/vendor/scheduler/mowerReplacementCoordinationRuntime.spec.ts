@@ -68,24 +68,26 @@ function dispatchUntil(state:RuntimeState,done:()=>boolean,maxSteps=50,activeRat
 }
 
 describe('replacement coordination through source runtime',()=>{
- it.each([0.05,11.9,12])('keeps a preferred cover recovering until its personal limit: %s',mood=>{
+ it.each([false,true].flatMap(restInFull=>[2.05,4.99,5,5.01,12].map(mood=>({restInFull,mood}))))('restores preferred covers at the rescue line unless full recovery is required: $mood, full=$restInFull',({mood,restInFull})=>{
   const {state,source}=fixture(['Y']),data=source.data
+  const target=restInFull?12:5
+  Object.assign(data.policy,{restingThreshold:.6,rescueThreshold:.5})
   state.occupants.room_1_1_0='Y';state.bedOccupants.dormitory_1_3='X'
   Object.assign(data.operators.Y!,{currentRoom:'room_1_1',currentIndex:0,mood:12,timeStampMicros:0})
-  Object.assign(data.operators.X!,{currentRoom:'dormitory_1',currentIndex:3,mood,upperLimit:12,timeStampMicros:0})
+  Object.assign(data.operators.X!,{currentRoom:'dormitory_1',currentIndex:3,mood,lowerLimit:2,upperLimit:12,restInFull,timeStampMicros:0})
   state.morale.X=mood
   data.dorms[1]=new MowerDormState(['dormitory_1',3],'X',toMowerMicros(12-mood))
   source.queue.tasks=[]
   for(let attempt=0;attempt<3;attempt++){
    planMowerAlphaMetadata(data,source.queue,[])
    const restores=source.queue.tasks.filter(task=>task.preferredReplacementRestore)
-   expect(restores).toHaveLength(mood<12?0:1)
-   if(mood===12)expect(restores[0]!.plan).toEqual({room_1_1:['X']})
+   expect(restores).toHaveLength(mood<target?0:1)
+   if(mood>=target)expect(restores[0]!.plan).toEqual({room_1_1:['X']})
   }
   expect(data.currentOperator('room_1_1',0)?.name).toBe('Y')
   expect(data.operators.X!.currentRoom).toBe('dormitory_1')
-  if(mood<12){
-   data.operators.X!.mood=12;state.morale.X=12
+  if(mood<target){
+   data.operators.X!.mood=target;state.morale.X=target
    planMowerAlphaMetadata(data,source.queue,[])
    expect(source.queue.tasks.find(task=>task.preferredReplacementRestore)?.plan).toEqual({room_1_1:['X']})
   }
