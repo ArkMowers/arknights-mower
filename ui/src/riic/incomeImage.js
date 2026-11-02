@@ -52,6 +52,8 @@ export function incomeReportLines(result, settings, plan, label) {
       ? '本次演算固定为无未完成训练计划且未在训练，不模拟训练进度或计划完成时刻。'
       : `历史演算的未完成训练计划：${settings.masteryPlanPresent ? '有' : '无'}，整段演算保持此条件，不模拟训练完成。`,
     '赤金等价龙门币为制造赤金 × 500 加特殊订单溢价，不扣除交付消耗的赤金；该项不是实际龙门币入账。',
+    '制造配方默认已解锁，当前制造站等级不限制配方；各站容量及材料库存仍按本次配置计算。',
+    '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期实际开工批次计算，包含尚未完成的批次，预热期已支付的材料不重复计入。',
     `收益权重（${settings.weightMode === 'mower' ? incomeAlgorithmLabel(settings.mowerAlgorithm) : '本次自定义'}）：${Object.entries(
       incomeWeights(settings)
     )
@@ -229,12 +231,27 @@ export async function renderIncomeImage(
       lmd: ['#087ead', '#ffffff'],
       gold: ['#f36c3e', '#ffffff'],
       fragment: ['#9d7940', '#ffffff'],
+      lmdCost: ['#735456', '#ffffff'],
+      orirockCost: ['#735456', '#ffffff'],
+      deviceCost: ['#735456', '#ffffff'],
       orundum: ['#be4c51', '#ffffff'],
       recycle: ['#398d83', '#ffffff'],
       recruitment: ['#657385', '#ffffff'],
       clue: ['#756791', '#ffffff']
     }
-    const order = ['exp', 'lmd', 'gold', 'fragment', 'orundum', 'clue', 'recruitment', 'recycle']
+    const order = [
+      'exp',
+      'lmd',
+      'gold',
+      'fragment',
+      'orundum',
+      'clue',
+      'recruitment',
+      'recycle',
+      'lmdCost',
+      'orirockCost',
+      'deviceCost'
+    ]
     metrics
       .map((metric, index) => ({ ...metric, image: icons[index] }))
       .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
@@ -286,10 +303,20 @@ export async function renderIncomeImage(
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 24 * scale, 24 * scale)
         }
-        const value = `${compactIncomeNumber(metric.daily)}${metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''}`
+        const negative = metric.daily < 0
+        const value = `${compactIncomeNumber(Math.abs(metric.daily))}${metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''}`
         ctx.font = `${14 * scale}px sans-serif`
         ctx.fillStyle = color
-        ctx.fillText(value, (x + 30) * scale, (y + 17) * scale, 89 * scale)
+        const baseline = (y + 17) * scale
+        let valueX = (x + 30) * scale
+        if (negative) {
+          const digits = ctx.measureText('0')
+          const center =
+            baseline - (digits.actualBoundingBoxAscent - digits.actualBoundingBoxDescent) / 2
+          ctx.fillRect(valueX, center - 0.5 * scale, 6 * scale, scale)
+          valueX += 10 * scale
+        }
+        ctx.fillText(value, valueX, baseline, (negative ? 79 : 89) * scale)
       })
     annotationLines.forEach((line, index) => {
       write(line, 28, annotationTop + 16 + index * 16, 10, muted)
