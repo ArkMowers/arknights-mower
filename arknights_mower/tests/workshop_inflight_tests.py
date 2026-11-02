@@ -35,6 +35,8 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
         auto.stamp_workshop_task(task)
     solver = object.__new__(base.BaseSchedulerSolver)
     solver._plan_dorm_recovery = MagicMock(return_value=True)
+    # 此套件隔离配置取消；卡片观测由加工心情测试覆盖。
+    solver._workshop_card_moods_scanned_this_run = True
     solver.task = task
     solver.tasks = [task]
     solver._refresh_deferred_product_reservations = MagicMock()

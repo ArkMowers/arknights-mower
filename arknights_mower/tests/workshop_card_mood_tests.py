@@ -1,4 +1,4 @@
-"""加工准入复用满心情卡牌预估，实际加工仍使用进站读数。"""
+"""加工准入和执行复用保守卡牌预算，实读与预估分别保存。"""
 
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -103,15 +103,13 @@ def test_full_card_allows_status_queue_and_pre_move_check_without_measured_cache
     assert data.dorm_mood_estimates == estimates
 
 
-@pytest.mark.parametrize("reason", ["expired", "future", "yellow", "red", "missing"])
+@pytest.mark.parametrize("reason", ["expired", "future", "missing"])
 def test_unusable_full_card_blocks_status_and_dispatch(case, reason):
     estimates = case.data.dorm_mood_estimates
     if reason == "expired":
         estimates["赫拉格"] = (24, datetime.now() - timedelta(hours=1))
     elif reason == "future":
         estimates["赫拉格"] = (24, datetime.now() + timedelta(minutes=1))
-    elif reason in ("yellow", "red"):
-        estimates["赫拉格"] = (23.9 if reason == "yellow" else 0, datetime.now())
     else:
         estimates.clear()
     status = workshop_status(case.solver, running=True)
@@ -369,12 +367,13 @@ def test_missing_workshop_scan_keeps_post_scan_observation_until_relevant_change
     assert solver._read_missing_workshop_moods() is True
 
     assert solver.op_data.dorm_mood_estimates["红"][0] == 3
-    assert workshop_candidate_mood(solver.op_data, "红") is None
+    assert workshop_candidate_mood(solver.op_data, "红") == 3
     assert vars(solver.op_data.operators["红"]) == before
     solver._workshop_card_moods_scanned_this_run = False
     assert solver._read_missing_workshop_moods() is None
     solver.enter_room.assert_called_once_with("factory", max_attempts=1)
     solver.op_data.operators["红"].current_room = "meeting"
+    solver.op_data.dorm_mood_estimates["红"] = (3, datetime.now() - timedelta(hours=2))
     assert solver._read_missing_workshop_moods() is True
     assert solver.enter_room.call_count == 2
     solver.tap_confirm.assert_not_called()
@@ -595,19 +594,36 @@ def test_first_workshop_scans_later_unknown_worker_before_any_move_and_batches(
         ("craft", "赫拉格"),
         ("craft", "年"),
     ]
-    if all_known:
-        solver.wait_for_agent_page.assert_not_called()
-    else:
-        assert events[:3] == [
-            ("enter", "factory"),
-            ("scan", "年"),
-            ("cancel", "factory"),
-        ]
-        solver.wait_for_agent_page.assert_called_once()
-        assert events[3:5] == [
-            ("enter", "factory"),
-            ("arrange", {"factory": ["赫拉格"]}),
-        ]
+    assert events[:3] == [
+        ("enter", "factory"),
+        ("scan", "年"),
+        ("cancel", "factory"),
+    ]
+    solver.wait_for_agent_page.assert_called_once()
+    assert events[3:5] == [
+        ("enter", "factory"),
+        ("arrange", {"factory": ["赫拉格"]}),
+    ]
     assert events[-1] == ("arrange", {"factory": ["特克诺"]})
     assert solver.tasks == []
     solver.tap_confirm.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "estimate, budget", [(0, 0), (1.9, 1), (2.9, 2), (22.9, 22), (23.9, 23)]
+)
+def test_card_budget_rounds_down_and_preserves_manual_threshold(case, estimate, budget):
+    case.data.dorm_mood_estimates["赫拉格"] = (estimate, datetime.now())
+    before = deepcopy(vars(case.data.operators["赫拉格"]))
+
+    assert workshop_candidate_mood(case.data, "赫拉格") == budget
+    scheduler_task.try_workshop_tasks(case.data, case.solver.tasks)
+
+    expected = budget >= 2 if case.setting.source == "mastery" else budget > 22
+    assert bool(case.solver.tasks) is expected
+    assert vars(case.data.operators["赫拉格"]) == before
+    if not expected:
+        assert (
+            workshop_status(case.solver, running=True)["blockers"][0]["code"]
+            == "mood_insufficient"
+        )

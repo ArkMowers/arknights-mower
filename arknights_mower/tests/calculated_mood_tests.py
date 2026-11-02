@@ -535,7 +535,7 @@ def test_unrecognized_occupied_facility_keeps_rate_and_scheduling_mood_unknown(
 
 @pytest.mark.parametrize("readback", [22, None])
 @pytest.mark.parametrize("save_ok", [True, False])
-def test_real_workshop_batch_persists_once_then_calibrates_actual_mood(
+def test_real_workshop_batch_persists_conservative_budget_until_normal_observation(
     solver, monkeypatch, readback, save_ok
 ):
     from arknights_mower.solvers import base_schedule as base
@@ -560,7 +560,7 @@ def test_real_workshop_batch_persists_once_then_calibrates_actual_mood(
             "泥岩", "", current_room="factory", current_index=0, mood=24, time_stamp=NOW
         )
     )
-    data.mood_model.observe("泥岩", 24, NOW)
+    data.mood_model.observe("泥岩", 24, NOW - timedelta(microseconds=1))
     sync_model(data, NOW)
     snapshot = SimpleNamespace(settings=[setting], is_current=lambda: True)
     monkeypatch.setattr(workshop_automation, "restore_if_no_plans", lambda: None)
@@ -608,13 +608,7 @@ def test_real_workshop_batch_persists_once_then_calibrates_actual_mood(
     costs = MagicMock(wraps=workshop_mood.operator_mood_rules)
     monkeypatch.setattr(workshop_mood, "operator_mood_rules", costs)
 
-    def observe_factory(*args, **kwargs):
-        assert "泥岩" not in data.mood_model.moods
-        if readback is not None:
-            data.update_detail("泥岩", readback, "factory", 0, True)
-        return [{"agent": "泥岩", "mood": readback}]
-
-    solver.get_agent_from_room = MagicMock(side_effect=observe_factory)
+    solver.get_agent_from_room = MagicMock()
     solver.generate_product("泥岩", snapshot=snapshot)
     produce = (1920 * 0.88, 1080 * 0.88)
     submissions = [
@@ -635,10 +629,15 @@ def test_real_workshop_batch_persists_once_then_calibrates_actual_mood(
     assert data.mood_model.event.call_args.args[1] == {"泥岩": -6}
     assert len(data.mood_model.events) == 1
     assert not data.mood_model.pending_events
-    assert "泥岩" not in saved[1].moods
-    solver.get_agent_from_room.assert_called_once_with("factory", force_mood=True)
+    assert saved[1].moods["泥岩"] == 18
+    solver.get_agent_from_room.assert_not_called()
+    solver.turn_on_room_detail.assert_not_called()
+    assert data.calculated_mood("泥岩", NOW) == 18
+    assert data.operators["泥岩"].mood == 24
+    if readback is not None:
+        data.update_detail("泥岩", readback, "factory", 0, True)
     if readback is None:
-        assert data.calculated_mood("泥岩", NOW) is None
+        assert data.calculated_mood("泥岩", NOW) == 18
         assert data.operators["泥岩"].mood == 24
     else:
         assert data.calculated_mood("泥岩", NOW) == 22

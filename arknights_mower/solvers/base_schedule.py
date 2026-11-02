@@ -2471,7 +2471,11 @@ class BaseSchedulerSolver(
 
     def craft_material(self):
         first_task = self.task
-        if self._read_missing_workshop_moods():
+        if (
+            first_task.type == TaskTypes.WORKSHOP
+            and not first_task.plan
+            and self._read_missing_workshop_moods(refresh=True)
+        ):
             try_workshop_tasks(self.op_data, self.tasks)
         restore_plan = {}
         last_agent = None
@@ -2619,7 +2623,10 @@ class BaseSchedulerSolver(
         previous_selection_target = getattr(self, "_workshop_selection_target", None)
         self._workshop_selection_target = task.meta_data
         try:
-            self.agent_arrange({"factory": [task.meta_data]})
+            if not (
+                previous_restore_plan and agent_room == "factory" and agent_index == 0
+            ):
+                self.agent_arrange({"factory": [task.meta_data]})
         except WorkshopSelectionBlocked as reason:
             restore_plan.clear()
             restore_plan.update(previous_restore_plan)
@@ -4157,8 +4164,8 @@ class BaseSchedulerSolver(
         if getattr(self, "_card_moods_scanned_this_run", False):
             self._missing_mood_scan_attempt = observation
 
-    def _read_missing_workshop_moods(self):
-        """首轮加工前在加工站补读未知候选，相同缺项与观测不重复扫描。"""
+    def _read_missing_workshop_moods(self, *, refresh=False):
+        """加工前统一读取候选卡片；日常补读仅处理变化后的未知候选。"""
         from arknights_mower.utils.workshop_limits import workshop_candidate_mood
 
         if (
@@ -4171,10 +4178,13 @@ class BaseSchedulerSolver(
             setting.operator
             for setting in config.conf.workshop_settings
             if setting.enabled
-            and workshop_candidate_mood(self.op_data, setting.operator) is None
             and (
-                not getattr(self.op_data, "mood_calculation_enabled", False)
-                or setting.operator not in self.op_data.mood_model.moods
+                refresh
+                or workshop_candidate_mood(self.op_data, setting.operator) is None
+                and (
+                    not getattr(self.op_data, "mood_calculation_enabled", False)
+                    or setting.operator not in self.op_data.mood_model.moods
+                )
             )
         }
         if not missing:
@@ -4197,7 +4207,9 @@ class BaseSchedulerSolver(
                 if workshop_candidate_mood(self.op_data, name) is None
             )
 
-        if observation() == getattr(self, "_missing_workshop_mood_scan_attempt", None):
+        if not refresh and observation() == getattr(
+            self, "_missing_workshop_mood_scan_attempt", None
+        ):
             return
         self._scan_card_moods(workshop=True)
         if getattr(self, "_workshop_card_moods_scanned_this_run", False):
@@ -5017,6 +5029,7 @@ class BaseSchedulerSolver(
             deer_batch_limit,
             recipe_quantities,
             reject_workshop_recipe,
+            workshop_candidate_mood,
         )
         from arknights_mower.utils.workshop_mood import mood_cost, operator_mood_rules
 
@@ -5052,18 +5065,15 @@ class BaseSchedulerSolver(
                 logger.info(f"{agent}没有符合材料范围的加工配置，跳过")
                 return
             operator = self.op_data.operators[agent]
-            mood_budget = max(
-                0,
-                min(
-                    24,
-                    operator.current_mood()
-                    if getattr(self.op_data, "mood_calculation_enabled", False)
-                    else operator.mood,
-                ),
-            )
+            mood = workshop_candidate_mood(self.op_data, agent)
+            mood_budget = max(0, min(24, mood)) if mood is not None else 0
             if mood_budget < 1:
                 logger.info(f"{agent}心情不足1点，跳过加工任务")
                 return
+            if getattr(self.op_data, "mood_calculation_enabled", False):
+                # 卡片下界只收紧预测，不写入房间实读或刷新观测时间。
+                self.op_data.mood_model.moods[agent] = mood_budget
+                self.op_data.mood_model.revision += 1
             restore_if_no_plans()
             if not snapshot.is_current():
                 return
@@ -5305,8 +5315,7 @@ class BaseSchedulerSolver(
                             apply_workshop_inventory(delta)
                             if getattr(self.op_data, "mood_calculation_enabled", False):
                                 self.op_data.mood_model.event(mood_event_id, mood_delta)
-                                # 条件减耗或返还由本次正常进房实读确定，预算不保存为实际心情。
-                                self.op_data.mood_model.moods.pop(agent, None)
+                                # 固定成本给出保守预测；条件减耗与返还留待正常读房校准。
                                 save_current_state()
                         except Exception:
                             if submission_attempted:
@@ -5346,15 +5355,7 @@ class BaseSchedulerSolver(
                         inventory_data = get_inventory_counts()
                         blocked_materials.clear()
                         mood_budget = max(0, mood_budget - batches * per_craft_mood)
-                        if getattr(self.op_data, "mood_calculation_enabled", False):
-                            # 配方预算可能未量化条件减耗或返还；本次加工结束页面关闭后实读校准。
-                            self.back()
-                            self.turn_on_room_detail("factory")
-                            self.get_agent_from_room("factory", force_mood=True)
-                            mood_budget = max(0, min(24, operator.current_mood()))
-                            save_current_state()
-                            self.back()
-                        else:
+                        if not getattr(self.op_data, "mood_calculation_enabled", False):
                             operator.mood = mood_budget
                             operator.time_stamp = datetime.now()
                             operator.mood_is_prediction = True
@@ -13942,6 +13943,7 @@ class BaseSchedulerSolver(
             return
         observed_at = datetime.now()
         self.op_data.dorm_mood_estimates[name] = (mood, observed_at)
+        mood = int(mood)
         if getattr(self.op_data, "mood_calculation_enabled", False):
             self.op_data.mood_model.observe(name, mood, observed_at)
         snapshot = workshop_task_snapshot(self.task)

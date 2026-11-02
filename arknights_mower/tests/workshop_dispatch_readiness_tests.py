@@ -117,7 +117,7 @@ def test_automatic_crafting_reports_operator_block_reason(queue, caplog, reason)
         expected = "年加工跳过：心情不足（当前 20.0，需大于 22）"
     elif reason == "unknown":
         data.operators["年"].current_mood = lambda: -1
-        expected = "年加工跳过：缺少可用心情读数或满心情卡牌预估"
+        expected = "年加工跳过：缺少可用心情读数或卡牌预估"
     else:
         tasks.append(
             SchedulerTask(task_plan={"meeting": ["年"]}, task_type=TaskTypes.SHIFT_ON)
