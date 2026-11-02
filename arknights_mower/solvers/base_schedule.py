@@ -3601,7 +3601,9 @@ class BaseSchedulerSolver(
                 return True
             try:
                 # 如果有任何type 则会最后修正
-                if not self.no_pending_task(1):
+                if not self._initial_mood_read_pending() and not self.no_pending_task(
+                    1
+                ):
                     self.skip(["planned", "todo_task", "collect_notification"])
                 else:
                     # 正常运行保留原有心情读取间隔：缓存未过期直接信任，过期
@@ -4033,41 +4035,47 @@ class BaseSchedulerSolver(
         return mood_data
 
     def _read_initial_card_mood(self):
-        """首次规划复用选人卡片预估，不选人或确认换班；失败仍继续启动。"""
-        if getattr(self.op_data, "mood_calculation_enabled", False):
-            self._scan_card_moods()
-            return
-        targets = {
-            slot.agent
-            for slots in self.op_data.plan.values()
-            for slot in slots
-            if slot.agent not in ("", "Free")
-        } | set(self.op_data.config.resting_priority_replacement)
-        missing = {
-            name
-            for name in targets
-            if (op := self.op_data.operators.get(name)) is not None
-            and name != "菲亚梅塔"
-            and op.room != "train"
-            and resting_tier(self.op_data, name) != RestingTier.EXCLUDED
-            and dorm_candidate_mood(self.op_data, name) is None
-        }
-        if not missing and config.conf.automatic_rescue_enable:
-            from arknights_mower.utils.emergency_plan import configured_rescue_names
+        """初始化必须尝试有界选人页扫描，不选人或确认换班。"""
+        self._scan_card_moods(initial=True)
 
-            missing = any(
-                dorm_candidate_mood(self.op_data, name) is None
-                for name in configured_rescue_names(config.rescue_plan)
+    def _read_missing_calculated_moods(self):
+        """候选缺少演算基线时补扫一次；相同缺项与位置不重复尝试。"""
+        if (
+            not getattr(self.op_data, "mood_calculation_enabled", False)
+            or self._initial_mood_read_pending()
+            or getattr(self, "_card_moods_scanned_this_run", False)
+        ):
+            return
+        model = self.op_data.mood_model
+        targets = set(self.op_data.operators) | {
+            item.operator for item in config.conf.workshop_settings if item.enabled
+        }
+        missing = targets - model.moods.keys()
+        if not missing:
+            return
+        observation = tuple(
+            (
+                name,
+                model.observed.get(name),
+                model.barriers.get(name),
+                model.positions.get(name),
             )
-        if missing:
-            self._scan_card_moods()
+            for name in sorted(missing)
+        )
+        if observation == getattr(self, "_missing_mood_scan_attempt", None):
+            return
+        self._scan_card_moods(missing_calculated=missing)
+        if getattr(self, "_card_moods_scanned_this_run", False):
+            self._missing_mood_scan_attempt = observation
 
     @fixed_selection_profile
-    def _scan_card_moods(self):
+    def _scan_card_moods(self, *, missing_calculated=(), initial=False):
         """每轮真实规划共用一次升序扫描，首个绿色后的姓名按 24 预估。"""
+        initial = initial or self._initial_mood_read_pending()
         if (
             getattr(self.op_data, "mood_calculation_enabled", False)
-            and not self._initial_mood_read_pending()
+            and not initial
+            and not missing_calculated
         ):
             return
         if getattr(self, "_card_moods_scanned_this_run", False):
@@ -4084,11 +4092,32 @@ class BaseSchedulerSolver(
             ),
             None,
         )
-        if room is None or not self.no_pending_task(1):
+        if room is None:
+            if initial:
+                logger.warning("初始化选人页心情扫描未执行：没有可进入的普通设施")
+            return
+        if not initial and not self.no_pending_task(1):
             return
         self._card_moods_scanned_this_run = True
+        if initial:
+            logger.info("开始初始化选人页心情扫描")
+        known_calculated = (
+            set(self.op_data.mood_model.moods)
+            if (
+                getattr(self.op_data, "mood_calculation_enabled", False) and not initial
+            )
+            else set()
+        )
+        protected = (
+            getattr(self, "_initial_mood_room_observations", set())
+            if initial
+            else known_calculated
+        )
         deadline = monotonic() + 45
         estimates = self.op_data.dorm_mood_estimates
+        scan_complete = False
+        incomplete_reason = "未观测到满心情卡牌"
+        unreadable_names = set()
         try:
             self.enter_room(room, max_attempts=1)
             self.turn_on_room_detail(room)
@@ -4096,6 +4125,7 @@ class BaseSchedulerSolver(
                 if self.find("confirm_blue") is not None:
                     break
                 if monotonic() >= deadline:
+                    incomplete_reason = "进入选人页超过 45 秒上限"
                     return
                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
             else:
@@ -4109,7 +4139,10 @@ class BaseSchedulerSolver(
             observation = None
             observed_names = set()
             for page_index in range(20):
-                if monotonic() >= deadline or not self.no_pending_task(1):
+                if monotonic() >= deadline or (
+                    not initial and not self.no_pending_task(1)
+                ):
+                    incomplete_reason = "达到扫描时间上限或临近任务"
                     break
                 page = self.wait_for_agent_page(
                     before=previous, observation=observation
@@ -4117,6 +4150,7 @@ class BaseSchedulerSolver(
                 if previous is not None and self.same_agent_page(
                     page, previous, allow_unknown=True
                 ):
+                    incomplete_reason = "翻页后页面未变化"
                     break
                 observed_at = datetime.now()
                 full_card = False
@@ -4131,17 +4165,18 @@ class BaseSchedulerSolver(
                     mood = estimate_agent_mood(self.recog.img, scope)
                     if name:
                         if mood is None:
+                            unreadable_names.add(name)
                             if first_observation:
                                 if not getattr(
                                     self.op_data, "mood_calculation_enabled", False
                                 ):
                                     estimates.pop(name, None)
                         else:
+                            unreadable_names.discard(name)
                             estimates[name] = (mood, observed_at)
-                            if getattr(
-                                self.op_data, "mood_calculation_enabled", False
-                            ) and name not in getattr(
-                                self, "_initial_mood_room_observations", set()
+                            if (
+                                getattr(self.op_data, "mood_calculation_enabled", False)
+                                and name not in protected
                             ):
                                 self.op_data.mood_model.observe(name, mood, observed_at)
                     if mood == 24:
@@ -4156,20 +4191,20 @@ class BaseSchedulerSolver(
                             for candidate in agent_list:
                                 if (
                                     candidate not in observed_names
-                                    and candidate
-                                    not in getattr(
-                                        self, "_initial_mood_room_observations", set()
-                                    )
+                                    and candidate not in protected
                                 ):
                                     self.op_data.mood_model.observe(
                                         candidate, 24, observed_at
                                     )
                         full_card = True
+                        scan_complete = True
                         logger.info(
                             "心情升序遇到绿色笑脸，停止翻页，其余干员按 24 预估"
                         )
                         break
                 if full_card or page_index == 19 or monotonic() >= deadline:
+                    if not full_card:
+                        incomplete_reason = "达到 20 页或 45 秒扫描上限"
                     break
                 previous = page
                 _, observation = self.swipe_agent_page(
@@ -4183,8 +4218,19 @@ class BaseSchedulerSolver(
         ):
             raise
         except Exception as e:
+            incomplete_reason = str(e)
             logger.warning(f"卡牌心情预估未完成，继续正常巡检：{e}")
         finally:
+            if initial and unreadable_names:
+                logger.warning(
+                    "初始化选人页有 %s 名干员心情无法识别，未使用满值预估覆盖",
+                    len(unreadable_names),
+                )
+            if initial and not scan_complete:
+                logger.warning(
+                    "初始化选人页心情扫描未完成：%s；保留已取得的观测，其余保持未知",
+                    incomplete_reason,
+                )
             self._recovery_plan_dirty = True
             self.back_to_infrastructure()
 
@@ -4614,16 +4660,56 @@ class BaseSchedulerSolver(
         )
 
     def _train_protected(self) -> bool:
-        """训练室是否受保护：协助位（槽0）是逻各斯/艾丽妮（§4.4）。
-
-        铁律 10/§7.3：enable_mastery OFF 时保护全停、排班照常排训练室，故先按开关门控。
-        用 op_data 缓存判定（深读训练室浮窗会让纠错生成阶段反复进出训练室，反而放大
-        本票要消除的问题）；缓存漏过保护时，执行闸门 agent_arrange_room 在
-        enable_mastery ON 路径读 room_state.protected 兜底（OFF 时保护本就全停，不兜底）。
-        """
+        """复用可靠的空闲保护深读；缺少当前观察时按协助位保守保护。"""
         if not config.conf.enable_mastery:
             return False
+        state = getattr(self, "train_room_state", None)
+        # 空闲房间的保护结论来自本次可靠的两槽读取和技能深读。此时不能再用
+        # op_data 中的旧协助位推断保护，否则专精已结束仍会把训练位锁作替班。
+        if (
+            getattr(state, "state", None) == "empty"
+            and getattr(state, "slots_read", False) is True
+            and getattr(state, "slots_reliable", False) is True
+            and getattr(state, "read_failed", False) is not True
+            and self._training_observation_matches(state)
+        ):
+            return getattr(state, "protected", False) is True
         return self.op_data.get_train_support() in ("逻各斯", "艾丽妮")
+
+    def _training_observation_matches(self, state) -> bool:
+        """两槽观察必须仍对应实际缓存，换人后的旧空闲观察不能继续放行。"""
+        observed = (
+            getattr(state, "support_slot", ""),
+            getattr(state, "train_slot", ""),
+        )
+        occupants = [
+            op for op in self.op_data.operators.values() if op.current_room == "train"
+        ]
+        return len(occupants) == sum(bool(name) for name in observed) and all(
+            op.current_index in (0, 1) and observed[op.current_index] == op.name
+            for op in occupants
+        )
+
+    def _training_idle_replacement_allowed(self, operator) -> bool:
+        """可靠确认训练室空闲且槽位仍与缓存一致时允许普通替班。"""
+        if operator.current_room != "train":
+            return False
+        if any(
+            slot.agent == operator.name for slot in self.op_data.plan.get("train", [])
+        ):
+            return False
+        state = getattr(self, "train_room_state", None)
+        if not (
+            config.conf.enable_mastery
+            and getattr(state, "state", None) == "empty"
+            and getattr(state, "slots_read", False) is True
+            and getattr(state, "slots_reliable", False) is True
+            and getattr(state, "read_failed", False) is not True
+            and not self._train_scheduling_protected()
+            and self._training_observation_matches(state)
+        ):
+            return False
+        return True
 
     def _suppress_train_correction(self, fix_plan: dict) -> None:
         """纠错使用统一训练室保护范围。"""
@@ -5908,6 +5994,8 @@ class BaseSchedulerSolver(
         ):
             logger.info("肥鸭任务已到期，充能回岗后再规划下班")
             return
+        if scan_moods:
+            self._read_missing_calculated_moods()
         # 准备数据
         logger.debug(self.op_data.print())
         # 根据剩余心情排序
@@ -7680,6 +7768,7 @@ class BaseSchedulerSolver(
                     replacement.current_room
                     and not replacement.is_resting()
                     and not in_slot
+                    and not self._training_idle_replacement_allowed(replacement)
                     and not (
                         same_group_cover
                         and obj in agents
@@ -13028,6 +13117,16 @@ class BaseSchedulerSolver(
         excluded, _ = dorm_task_reservations(
             self.op_data, [self.task, *getattr(self, "tasks", [])], agents
         )
+        # 当轮回班目标尚未落位时，宿舍补位不能把它当作候补占用。
+        current_task = getattr(self, "task", None)
+        if current_task is not None and current_task.type == TaskTypes.SHIFT_ON:
+            excluded.update(
+                name
+                for target_room, row in current_task.plan.items()
+                if not target_room.startswith("dorm")
+                for name in row
+                if name not in ("", "Current", "Free")
+            )
         excluded.update(getattr(self.task, "backup_retention_releases", ()))
         residents = set(current_resident.split(",")) | set(
             getattr(self.task, "dorm_mood_residents", ())
@@ -18987,6 +19086,7 @@ class BaseSchedulerSolver(
         if not refresh_workshop_after_inventory_change():
             return
         if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
+            self._read_missing_calculated_moods()
             try_workshop_tasks(self.op_data, self.tasks)
             scheduling(self.tasks, op_data=self.op_data)
 

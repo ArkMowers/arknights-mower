@@ -14,7 +14,12 @@ from arknights_mower.tests.group_resting_capacity_tests import (
 from arknights_mower.tests.group_resting_capacity_tests import (
     solver as standby_solver,  # noqa: F401
 )
-from arknights_mower.utils.scheduler_task import TaskTypes, plan_metadata, try_reorder
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    plan_metadata,
+    try_reorder,
+)
 
 
 @pytest.fixture
@@ -152,3 +157,26 @@ def test_combined_group_unavailable_dorm_cover_leaves_beds_unchanged(combined_so
     assert plan == {}
     assert replacements == []
     assert [(bed.name, bed.time) for bed in data.dorm] == before
+
+
+def test_active_shift_target_is_not_reused_for_dorm_fill(combined_solver):
+    """当前回班目标仍待进工作间时，宿舍 Free 不得临时选中该目标。"""
+    solver = combined_solver
+    data = solver.op_data
+    occupy_beds(solver, "low")
+    shift_off(solver)
+    target = DEEP[1]
+    assert data.is_standby(target)
+    data.operators[target].mood = 5
+    data.operators[target].time_stamp = datetime.now()
+    row = ["Free", "Current", "Current", "Current", "Current"]
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={"meeting": [target, "Current"], "dormitory_1": row},
+    )
+    solver.task, solver.tasks = task, [task]
+
+    candidates = solver.get_dorm_candidates(row, room="dormitory_1")
+    assert target not in candidates.filling
+    solver.prepare_dorm_selection(row, "dormitory_1")
+    assert target not in row

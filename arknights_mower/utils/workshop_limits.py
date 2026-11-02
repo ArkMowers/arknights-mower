@@ -270,7 +270,9 @@ def workshop_material_block_reason(
 
 
 def workshop_candidate_mood(op_data, operator):
-    """加工准入优先使用数值心情，未知时接受有效的满心情卡牌预估。"""
+    """返回加工准入心情；演算模式只接受模型值，普通模式允许满心情卡牌兜底。"""
+    if getattr(op_data, "mood_calculation_enabled", False):
+        return op_data.calculated_mood(operator)
     op = op_data.operators.get(operator)
     mood = (
         op.current_mood() if hasattr(op, "current_mood") else getattr(op, "mood", None)

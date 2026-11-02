@@ -1,6 +1,8 @@
 """加工入队核验心情和任务预约，避免宿舍换班前借走干员。"""
 
 from datetime import datetime
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -8,6 +10,10 @@ from arknights_mower.tests import workshop_queue_tests
 from arknights_mower.utils import config, scheduler_task
 from arknights_mower.utils.config.conf import WorkShopItem
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+from arknights_mower.utils.workshop_limits import (
+    workshop_candidate_mood,
+    workshop_operator_block_reason,
+)
 
 queue = workshop_queue_tests.queue
 
@@ -19,6 +25,44 @@ def test_prediction_blocks_operator_whose_cached_mood_is_full(queue):
     scheduler_task.try_workshop_tasks(data, tasks)
 
     assert [task.meta_data for task in tasks] == ["泥岩"]
+
+
+def test_calculated_workshop_mood_uses_model_for_operator_missing_from_cache():
+    calculated = Mock(return_value=17)
+    data = SimpleNamespace(
+        operators={},
+        mood_calculation_enabled=True,
+        calculated_mood=calculated,
+    )
+
+    assert workshop_candidate_mood(data, "演算干员") == 17
+    calculated.assert_called_once_with("演算干员")
+
+
+def test_calculated_workshop_admission_accepts_model_value_without_operator_object():
+    data = SimpleNamespace(
+        operators={},
+        mood_calculation_enabled=True,
+        calculated_mood=Mock(return_value=24),
+    )
+
+    assert (
+        workshop_operator_block_reason(
+            data, "演算干员", minimum_mood=22, require_known_mood=True
+        )
+        is None
+    )
+
+
+def test_calculated_workshop_mood_does_not_fall_back_to_stale_operator_or_card():
+    data = SimpleNamespace(
+        operators={"演算干员": SimpleNamespace(mood=24, current_mood=lambda: -1)},
+        mood_calculation_enabled=True,
+        calculated_mood=Mock(return_value=None),
+        dorm_mood_estimates={"演算干员": (24, datetime.now())},
+    )
+
+    assert workshop_candidate_mood(data, "演算干员") is None
 
 
 def test_dorm_admission_reservation_blocks_workshop_borrowing(queue):
