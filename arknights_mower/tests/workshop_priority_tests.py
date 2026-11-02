@@ -122,3 +122,28 @@ def test_t4_preferences_precede_specialists_without_broadening_other_generalists
         "蚀清",
         "号角",
     ]
+
+
+def test_preferred_operators_cover_every_t4_before_material_specialists(game):
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.tests.workshop_fixtures import SPECIALISTS
+
+    meta, ids = game
+    names = ["九色鹿", "镜匠", "蚀清"] + [name for name, *_ in SPECIALISTS]
+    formulas = {
+        name: formula
+        for name, formula in workshop_formula.items()
+        if formula.get("tab") == "精英材料" and formula.get("apCost") == 4
+    }
+    roster = owned(ids, *names)
+    available = workshop.available_operators(roster, meta)
+    defaults = workshop.recommend_workshop_operators(roster, meta, formulas)
+    assert defaults["defaults"]["fodder_operators"][:3] == ["九色鹿", "镜匠", "蚀清"]
+    for material in formulas:
+        allocated = workshop.allocate_workshop_items(
+            [("fodder_operators", names, [item(material)])],
+            available=available,
+            formulas=formulas,
+        )
+        workers = [entry["operator"] for entry in allocated if entry["items"]]
+        assert workers[:3] == ["九色鹿", "镜匠", "蚀清"], material

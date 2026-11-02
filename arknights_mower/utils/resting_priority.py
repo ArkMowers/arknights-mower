@@ -192,13 +192,17 @@ def resting_key(op_data, name, now=None, *, replacement_names=None):
 
 
 def crafting_rest_candidates(op_data, names, *, replacement_names=None):
-    """按加工顺序返回本轮符合条件的普通空闲候选。"""
+    """已配置的普通空闲加工候选按当前所需配方的加成排序。"""
     from arknights_mower.utils import config
     from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 
     conf = getattr(op_data, "runtime_conf", None) or config.conf
     if not (conf.enable_mastery and conf.workshop_auto_active):
         return []
+    from arknights_mower.utils.workshop_recommendation import (
+        prioritize_workshop_settings,
+    )
+
     present = set(names)
     configured = dict.fromkeys(
         name
@@ -207,6 +211,24 @@ def crafting_rest_candidates(op_data, names, *, replacement_names=None):
         )
         for name in row
         if name
+    )
+    # 自动配置只保留当前缺口配方；空配方或停用配置不提供加工优先级。
+    settings = [
+        entry for entry in conf.workshop_settings if entry.enabled and entry.items
+    ]
+    pending = {
+        entry.operator: index
+        for index, entry in enumerate(
+            prioritize_workshop_settings(settings, prefer_t4=False) if settings else []
+        )
+        if entry.items
+    }
+    configured = sorted(
+        configured,
+        key=lambda name: (
+            name not in pending,
+            pending.get(name, 0),
+        ),
     )
     return [
         name

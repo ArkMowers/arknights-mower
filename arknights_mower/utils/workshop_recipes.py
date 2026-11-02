@@ -10,7 +10,7 @@ from arknights_mower.utils.workshop_material_policy import (
     workshop_recipe_allowed,
 )
 
-T4_PREFERRED = ("九色鹿", "蚀清", "镜匠")
+T4_PREFERRED = ("九色鹿", "镜匠", "蚀清")
 SCOPED_OPERATORS = (*T4_PREFERRED, "莱伊", "旅骨")
 
 
@@ -161,8 +161,8 @@ def exclusive_specialists(bonuses, specialists):
     )
 
 
-def operator_priority(name, bonus, *, t5=False, effects=()):
-    # T4 exceptions precede probability; all other preferences only break ties.
+def operator_priority(name, bonus, *, t5=False, effects=(), prefer_t4=True):
+    # Execution can prefer T4 exceptions; recovery compares bonuses directly.
     preference = 2
     if bonus == 80:
         if name == "蜜莓":
@@ -170,7 +170,9 @@ def operator_priority(name, bonus, *, t5=False, effects=()):
         elif name == "缇缇" and t5:
             preference = 1
     return (
-        T4_PREFERRED.index(name) if name in T4_PREFERRED else len(T4_PREFERRED),
+        T4_PREFERRED.index(name)
+        if prefer_t4 and name in T4_PREFERRED
+        else len(T4_PREFERRED),
         -bonus,
         not any(effect["kind"] == "dormitory" for effect in effects),
         preference,
