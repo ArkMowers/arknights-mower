@@ -6,6 +6,7 @@ import {MowerOperatorState} from './mowerOperatorState'
 import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
 import {MowerTask,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {nextMowerMoodPlanningWake} from './mowerPlanningWake'
+import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
 
 function sameGroupRecallFixture(sameGroup=true,ordinary=false){
  const rows:NonNullable<RuntimeConfig['mowerSourcePlan']>={
@@ -67,6 +68,28 @@ function dispatchUntil(state:RuntimeState,done:()=>boolean,maxSteps=50,activeRat
 }
 
 describe('replacement coordination through source runtime',()=>{
+ it.each([0.05,11.9,12])('keeps a preferred cover recovering until its personal limit: %s',mood=>{
+  const {state,source}=fixture(['Y']),data=source.data
+  state.occupants.room_1_1_0='Y';state.bedOccupants.dormitory_1_3='X'
+  Object.assign(data.operators.Y!,{currentRoom:'room_1_1',currentIndex:0,mood:12,timeStampMicros:0})
+  Object.assign(data.operators.X!,{currentRoom:'dormitory_1',currentIndex:3,mood,upperLimit:12,timeStampMicros:0})
+  state.morale.X=mood
+  data.dorms[1]=new MowerDormState(['dormitory_1',3],'X',toMowerMicros(12-mood))
+  source.queue.tasks=[]
+  for(let attempt=0;attempt<3;attempt++){
+   planMowerAlphaMetadata(data,source.queue,[])
+   const restores=source.queue.tasks.filter(task=>task.preferredReplacementRestore)
+   expect(restores).toHaveLength(mood<12?0:1)
+   if(mood===12)expect(restores[0]!.plan).toEqual({room_1_1:['X']})
+  }
+  expect(data.currentOperator('room_1_1',0)?.name).toBe('Y')
+  expect(data.operators.X!.currentRoom).toBe('dormitory_1')
+  if(mood<12){
+   data.operators.X!.mood=12;state.morale.X=12
+   planMowerAlphaMetadata(data,source.queue,[])
+   expect(source.queue.tasks.find(task=>task.preferredReplacementRestore)?.plan).toEqual({room_1_1:['X']})
+  }
+ })
  it.each([false,true].flatMap(predictiveMoodControl=>['patrol','planning'].map(recheck=>({predictiveMoodControl,recheck}))))('requires full-recovery endurance despite $recheck with saved mood mode=$predictiveMoodControl',({predictiveMoodControl,recheck})=>{
   const {state,source}=fixture([],recheck==='planning'?'working':undefined)
   state.config.mowerPolicy!.predictiveMoodControl=predictiveMoodControl
@@ -166,6 +189,7 @@ describe('replacement coordination through source runtime',()=>{
  })
  it('keeps the released preferred cover available for a third waiting group before restoring it',()=>{
   const {state,source}=fixture(['Y'],'chain')
+  state.config.freeBlacklist=['X'];source.data.freeBlacklist=['X']
   state.occupants.room_1_3_0='C';delete state.bedOccupants.dormitory_1_3
   Object.assign(source.data.operators.C!,{currentRoom:'room_1_3',currentIndex:0,mood:24,replacement:['X']});state.morale.C=24
   Object.assign(source.data.operators.Y!,{currentRoom:'',currentIndex:-1});source.data.dorms[1]!.reset()
@@ -249,6 +273,7 @@ describe('replacement coordination through source runtime',()=>{
  })
  it('revalidates a queued restoration when a backup changes candidate order before dispatch',()=>{
   const {state,source}=fixture()
+  state.config.freeBlacklist=['X'];source.data.freeBlacklist=['X']
   dispatchUntil(state,()=>state.occupants.room_1_1_0==='Y'&&state.occupants.room_1_2_0==='X'&&Object.values(state.bedOccupants).includes('B'))
   dispatchUntil(state,()=>state.occupants.room_1_2_0==='B',100)
   const queued=source.queue.tasks.find(task=>task.exhaustSupport&&task.plan.room_1_1?.[0]==='X')
@@ -262,6 +287,8 @@ describe('replacement coordination through source runtime',()=>{
  })
  it.each([false,true])('restores according to the effective replacement order after B returns (backup changed=%s)',changed=>{
   const {state,source}=fixture()
+  // Keep the released cover idle; dormitory recovery admission is covered separately.
+  state.config.freeBlacklist=['X'];source.data.freeBlacklist=['X']
   settleMowerSource(state,rates)
   expect(source.queue.tasks.find(task=>task.exhaustSupport)?.plan).toEqual({room_1_1:['Y']})
   dispatchUntil(state,()=>state.occupants.room_1_1_0==='Y'&&state.occupants.room_1_2_0==='X'&&Object.values(state.bedOccupants).includes('B'))
