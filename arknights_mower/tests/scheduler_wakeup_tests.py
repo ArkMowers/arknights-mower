@@ -134,6 +134,7 @@ def test_invalid_run_order_is_removed_before_scheduling(scheduler, during_wait):
     solver = scheduler.solver
     solver.op_data.run_order_rooms = {"room_1_1": {}} if during_wait else {}
     solver.op_data.refresh_run_order_rooms = MagicMock()
+    solver.op_data.is_order_collection_room = MagicMock(return_value=False)
     solver._sync_run_order_tasks = (
         base_schedule.BaseSchedulerSolver._sync_run_order_tasks.__get__(solver)
     )

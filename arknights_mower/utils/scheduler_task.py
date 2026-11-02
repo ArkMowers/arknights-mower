@@ -1454,6 +1454,7 @@ def adjust_run_order_for_maintenance(
         task
         for task in task_view(tasks, TaskScope.REPLAN)
         if task.type == TaskTypes.RUN_ORDER
+        and not getattr(task, "run_order_collect_only", False)
         and not getattr(task, "run_order_restore_pending", False)
         and id(task) not in blocked_orders
     ]

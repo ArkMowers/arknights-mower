@@ -296,6 +296,7 @@ def test_run_order_waits_for_returned_map_before_real_drone_navigation(
         side_effect=lambda: "" if state["page"] == "map" else ROOM
     )
     solver._handle_room_entry_reward = MagicMock(return_value=False)
+    solver._read_trade_product_card = MagicMock(return_value=("lmd", True))
     solver._tap_drone_accelerate = MagicMock(side_effect=accelerate)
     solver.scene_graph_navigation = MagicMock(
         side_effect=lambda target: state.update(page="map")

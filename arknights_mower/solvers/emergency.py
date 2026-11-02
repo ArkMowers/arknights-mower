@@ -1032,6 +1032,8 @@ class EmergencyRecoveryMixin:
     def _emergency_run_order_available(self, room, plan=None):
         if not self._emergency_frozen():
             return True
+        if self.op_data.is_order_collection_room(room):
+            return not self.op_data.run_order_paused
         configured = {
             name
             for row in self.op_data.run_order_replacements(room)

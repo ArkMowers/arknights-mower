@@ -2765,7 +2765,8 @@ class TestDroneAccelerate(unittest.TestCase):
                 solver = object.__new__(BaseSchedulerSolver)
                 solver.recog = SimpleNamespace(w=1920, h=1080, gray="gray")
                 solver.op_data = SimpleNamespace(
-                    run_order_rooms=["room_1_1"] if has_run_orders else []
+                    run_order_rooms=["room_1_1"] if has_run_orders else [],
+                    is_orundum_trade_room=lambda room: False,
                 )
                 solver.digit_reader = MagicMock()
                 solver.digit_reader.get_drone.return_value = available
@@ -2916,6 +2917,7 @@ class TestDroneAccelerate(unittest.TestCase):
         solver.recog.gray = "gray"
         solver.op_data = MagicMock()
         solver.op_data.run_order_rooms = []
+        solver.op_data.is_orundum_trade_room.return_value = False
         solver.digit_reader = MagicMock()
         solver.digit_reader.get_drone.return_value = 150
         accelerate_scope = ((100, 100), (200, 200))
