@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from arknights_mower.data import agent_list
+from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.character_recognize import match_operator_name
 from arknights_mower.utils.csleep import MowerExit
@@ -135,12 +136,15 @@ def run_trust_rotation(device, recog, next_task_time):
     except (MowerExit, *RECOVERABLE_DEVICE_ERRORS):
         raise
     except Exception:
+        logger.exception(
+            "自动切换信赖未完成，下次日常窗口重试",
+            extra={"archive_screenshots": True},
+        )
         solver.discard_pending_selection()
-        logger.exception("自动切换信赖未完成，下次日常窗口重试")
         return False
 
 
-class TrustRotationSolver(SceneGraphSolver):
+class TrustRotationSolver(SceneGraphSolver, BaseMixin):
     SELECTOR_NAME = ((20, 160), (350, 205))
     ACTIVITY_NAME = ((1440, 650), (1690, 695))
 
@@ -186,6 +190,11 @@ class TrustRotationSolver(SceneGraphSolver):
         self._check_ready()
         return super().swipe(*args, **kwargs)
 
+    def sleep(self, interval=1):
+        self._check_budget()
+        super().sleep(min(interval, max(0, self.deadline - monotonic())))
+        self._check_budget()
+
     def _ocr(self, scope):
         self._check_ready()
         # These game fields are upright; classification can rotate 69% into %69.
@@ -226,7 +235,7 @@ class TrustRotationSolver(SceneGraphSolver):
         rapidocr.initialize_ocr()
         self.discard_pending_selection()
         self.back_to_infrastructure()
-        self._enter_control_center()
+        self.enter_room("central")
         self._require("基建副手", ((15, 530), (210, 720)))
         self.tap((95, 625))
         self._require("罗德岛基建副手", ((750, 170), (1220, 300)))
@@ -275,20 +284,6 @@ class TrustRotationSolver(SceneGraphSolver):
             logger.warning("信赖检查页面未确认，停止退出输入")
         finally:
             self.deadline = deadline
-
-    def _enter_control_center(self):
-        self._require("进驻总览", ((25, 120), (360, 245)))
-        for _ in range(5):
-            labels = self._ocr(((360, 100), (1720, 370)))
-            for box, text, _ in labels:
-                if "控制中枢" in text:
-                    x = round(sum(p[0] for p in box) / 4) + 360
-                    y = round(sum(p[1] for p in box) / 4) + 100
-                    self.tap((x, y + 40))
-                    self._require("控制中枢", ((630, 15), (1010, 100)))
-                    return
-            self.swipe((450, 520), (1150, 0), duration=500)
-        raise TrustReadingError("平移后仍无法确认控制中枢位置")
 
     def _leave_selection(self):
         self._require("确认", ((1350, 970), (1770, 1075)))

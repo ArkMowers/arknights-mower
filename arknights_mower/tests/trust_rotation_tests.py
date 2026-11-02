@@ -1,6 +1,7 @@
 """Offline contracts for daily Trust Rotation; no device or network access."""
 
 import json
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Event
@@ -16,6 +17,7 @@ from arknights_mower.solvers import trust_rotation as trust
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.scene import Scene
 
 
 def card(value, x=570, y=120, **flags):
@@ -102,6 +104,137 @@ def solver():
 
 
 @pytest.fixture
+def control_center_navigation(monkeypatch):
+    from arknights_mower.solvers import base_mixin
+    from arknights_mower.utils import solver as solver_module
+
+    obj = solver()
+    del obj._require
+    state = SimpleNamespace(now=0, page="map", clicks=0, ignore_all=False, hidden=False)
+    stopped = Event()
+    monkeypatch.setattr(config, "stop_mower", stopped)
+    monkeypatch.setattr(trust, "monotonic", lambda: state.now)
+    monkeypatch.setattr(base_mixin, "perf_counter", lambda: state.now)
+    monkeypatch.setattr(trust.rapidocr, "initialize_ocr", Mock())
+    obj.ASSISTANT_POINTS = ()
+    obj.discard_pending_selection = Mock()
+    obj.back_to_infrastructure = Mock()
+    obj._return_from_assistants = Mock()
+    obj._activity_rooms = Mock()
+    obj.back_to_index = Mock(side_effect=lambda: setattr(state, "hidden", False))
+    obj.adjust_room = Mock(return_value=((1038, 255), (1224, 370)))
+    obj.detect_room = Mock(
+        side_effect=lambda: "central" if state.page == "central" else ""
+    )
+    obj._selection_profile_snapshot = SimpleNamespace(
+        screenshot_interval=100, transition_timeout=1
+    )
+    monkeypatch.setattr(base_mixin.segment, "base", Mock(return_value={"central": ()}))
+    obj._ocr = Mock(
+        return_value=[
+            ([[600, 150], [800, 150], [800, 250], [600, 250]], "控制中枢", 1.0)
+        ]
+    )
+    labels = {
+        "map": "进驻总览",
+        "central": "控制中枢 基建副手",
+        "assistants": "罗德岛基建副手",
+    }
+    obj._text = Mock(side_effect=lambda scope: labels[state.page])
+
+    def scene():
+        obj._check_budget()
+        return Scene.INFRA_MAIN if state.page == "map" else Scene.CTRLCENTER_ASSISTANT
+
+    def tap(point, *args, **kwargs):
+        if state.page == "map":
+            state.clicks += 1
+            if state.clicks >= 2 and not state.ignore_all:
+                state.page = "central"
+        elif point == (95, 625):
+            state.page = "assistants"
+
+    def sleep(interval):
+        state.now = round(state.now + interval, 6)
+
+    obj.scene = Mock(side_effect=scene)
+    obj.recog.find = Mock(
+        side_effect=lambda name, *args, **kwargs: (
+            ((1038, 255), (1224, 370))
+            if name == "control_central" and state.page == "map" and not state.hidden
+            else None
+        )
+    )
+    obj.tap.side_effect = tap
+    obj.recog.update = Mock()
+    monkeypatch.setattr(solver_module, "csleep", sleep)
+    return obj, state, stopped
+
+
+def test_inspection_retries_control_center_entry_before_opening_assistants(
+    control_center_navigation,
+):
+    obj, state, _ = control_center_navigation
+
+    obj.run(seconds=20)
+
+    assert state.clicks == 2
+    assert state.page == "assistants"
+    obj._activity_rooms.assert_called_once()
+
+
+@pytest.mark.parametrize("hidden", [False, True])
+def test_control_center_navigation_keeps_original_budget(
+    control_center_navigation, hidden
+):
+    obj, state, _ = control_center_navigation
+    state.ignore_all = True
+    state.hidden = hidden
+
+    with pytest.raises(trust.TrustReadingError, match="时间预算"):
+        obj.run(seconds=3)
+
+    assert state.now == obj.deadline == 3
+    assert state.page == "map"
+    assert all(call.args[0] != (95, 625) for call in obj.tap.call_args_list)
+    obj._activity_rooms.assert_not_called()
+
+
+def test_control_center_navigation_relocates_when_map_anchor_is_offscreen(
+    control_center_navigation,
+):
+    obj, state, _ = control_center_navigation
+    state.hidden = True
+
+    obj.run(seconds=20)
+
+    obj.back_to_index.assert_called_once()
+    assert obj.back_to_infrastructure.call_count == 2
+    assert state.page == "assistants"
+    obj._activity_rooms.assert_called_once()
+
+
+def test_control_center_navigation_propagates_stop_before_opening_assistants(
+    control_center_navigation,
+):
+    obj, state, stopped = control_center_navigation
+    tap = obj.tap.side_effect
+
+    def stop_after_click(*args, **kwargs):
+        tap(*args, **kwargs)
+        stopped.set()
+
+    obj.tap.side_effect = stop_after_click
+
+    with pytest.raises(MowerExit):
+        obj.run(seconds=20)
+
+    assert state.clicks == 1
+    assert state.page == "map"
+    obj._activity_rooms.assert_not_called()
+
+
+@pytest.fixture
 def connecting_inspection(monkeypatch):
     obj = solver()
     del obj.tap, obj._require
@@ -157,7 +290,7 @@ def connecting_inspection(monkeypatch):
     for name in (
         "discard_pending_selection",
         "back_to_infrastructure",
-        "_enter_control_center",
+        "enter_room",
         "_return_from_assistants",
         "_activity_rooms",
     ):
@@ -535,7 +668,7 @@ def test_logged_incumbent_does_not_block_activity_inspection(name_frame, monkeyp
     for name in (
         "discard_pending_selection",
         "back_to_infrastructure",
-        "_enter_control_center",
+        "enter_room",
         "_leave_selection",
         "_return_from_assistants",
         "_activity_rooms",
@@ -858,6 +991,42 @@ def test_failed_daily_inspection_remains_due(daily):
     mocked.run.side_effect = trust.TrustReadingError("unknown")
     assert not trust.run_trust_rotation(None, None, datetime.now() + timedelta(hours=1))
     assert not path.exists()
+
+
+def test_failed_inspection_requests_archive_before_discarding_selection(
+    daily, monkeypatch
+):
+    from arknights_mower.utils import log
+
+    path, mocked = daily
+    mocked.run.side_effect = trust.TrustReadingError("unverified selection")
+    store = Mock()
+    monkeypatch.setattr(log, "get_screenshot_store", lambda: store)
+    records = []
+
+    class ArchiveHandler(logging.Handler):
+        def emit(self, record):
+            self.format(record)
+            records.append(record)
+            log.whlr.emit(record)
+
+    inspection_logger = logging.Logger("trust-inspection-test")
+    handler = ArchiveHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    inspection_logger.addHandler(handler)
+    monkeypatch.setattr(trust, "logger", inspection_logger)
+
+    def discard():
+        store.mark_error.assert_called_once()
+        assert records[0].exc_info[1] is mocked.run.side_effect
+
+    mocked.discard_pending_selection.side_effect = discard
+
+    assert not trust.run_trust_rotation(None, None, datetime.now() + timedelta(hours=1))
+
+    assert not path.exists()
+    mocked.discard_pending_selection.assert_called_once()
+    assert log.should_archive_record(records[0])
 
 
 def test_daily_stop_propagates_without_completion(daily):
