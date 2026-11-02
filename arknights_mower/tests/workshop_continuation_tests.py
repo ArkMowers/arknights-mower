@@ -172,6 +172,7 @@ def test_project_advances_continue_until_both_operators_use_all_mood(
     solver.craft_material()
     assert batches == [(0, "年", 1), (1, "年", 2), (2, "年", 1), (2, "空爆", 4)]
     assert stock == {"技巧概要·卷3": 8, "技巧概要·卷2": 0}
+    assert batch.arrangements.count({"factory": ["年"]}) == 1
     assert all(solver.op_data.operators[name].mood == 0 for name in names)
     assert solver.tasks == []
     assert batch.arrangements[-1]["factory"] == ["特克诺"]

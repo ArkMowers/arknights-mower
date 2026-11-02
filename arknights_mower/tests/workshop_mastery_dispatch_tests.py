@@ -164,16 +164,24 @@ def upgrades(crafting):
 
 
 @pytest.mark.parametrize("mood", [-1, 0, 1])
-def test_full_card_never_supplies_actual_crafting_budget(crafting, mood):
+def test_full_card_cannot_raise_known_low_mood_but_can_supply_missing_budget(
+    crafting, mood
+):
     crafting.solver.op_data.operators["赫拉格"].mood = mood
     crafting.solver.op_data.dorm_mood_estimates = {"赫拉格": (24, datetime.now())}
     before = record.get_inventory_counts()
 
     crafting.run()
 
-    assert record.get_inventory_counts() == before
-    crafting.solver.tap.assert_not_called()
-    assert upgrades(crafting) == []
+    if mood < 0:
+        assert record.get_inventory_counts()["技巧概要·卷3"] == 2
+        assert record.get_inventory_counts()["技巧概要·卷2"] == 24
+        assert len(upgrades(crafting)) == 1
+    else:
+        assert record.get_inventory_counts() == before
+        crafting.solver.tap.assert_not_called()
+        assert upgrades(crafting) == []
+    crafting.errors.assert_not_called()
 
 
 def test_confirmed_output_dispatches_once_before_next_scan(crafting):
