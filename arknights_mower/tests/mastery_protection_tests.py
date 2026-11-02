@@ -10,6 +10,8 @@ from arknights_mower.solvers import mastery
 from arknights_mower.solvers import mastery_reader as reader
 from arknights_mower.utils.scene import Scene
 
+pytestmark = pytest.mark.usefixtures("bundled_mastery_skills")
+
 
 def plan(index=1, **values):
     result = {

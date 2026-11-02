@@ -27,7 +27,7 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noq
 
 
 @pytest.fixture
-def serial(tmp_path, monkeypatch):
+def serial(tmp_path, monkeypatch, bundled_mastery_skills):
     monkeypatch.setattr(config, "conf", config.Conf(enable_mastery=True))
     db_path = tmp_path / "data.db"
 

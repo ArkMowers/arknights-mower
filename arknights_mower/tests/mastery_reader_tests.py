@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, call, patch
 
 import numpy as np
+import pytest
 
 from arknights_mower.solvers import mastery_reader as reader
 from arknights_mower.utils import skill_label as skill_label_mod
@@ -3331,6 +3332,7 @@ class TestReconcileProtectedRelease(unittest.TestCase):
         self.assertIsNone(result[0])
 
 
+@pytest.mark.usefixtures("bundled_mastery_skills")
 class TestTrainSlotHasMastery(unittest.TestCase):
     """深读技能页保护判定：确保进入技能页后在 finally 必定 back 回主界面。"""
 
