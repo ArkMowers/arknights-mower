@@ -411,6 +411,161 @@ def test_initialization_finishes_priority_reads_before_imminent_task_yield(
     assert solver.defer_backup_plan_until_mood_read
 
 
+@pytest.fixture
+def cached_priority_reader(solver):
+    from arknights_mower.solvers import base_schedule
+
+    solver.defer_backup_plan_until_mood_read = True
+    solver._initial_mood_refresh_rooms = {"room_1_1", "room_1_2"}
+    solver.op_data.run_order_rooms = {"room_1_1": {}}
+    solver.op_data.facility_levels["train"] = 3
+    solver.last_train_mood_read = base_schedule.datetime(2026, 9, 30, 7, 50)
+    solver._read_room_mood = MagicMock()
+    solver.enter_room = MagicMock()
+    solver.back = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+    return solver
+
+
+def set_priority_cache(solver, cache):
+    if cache == "attempt":
+        solver.last_train_mood_attempt = solver.last_train_mood_read
+        solver.last_train_mood_read = None
+    elif cache == "occupants":
+        solver.last_train_mood_read = None
+        operator = solver.op_data.operators["陈"]
+        operator._current_room, operator.current_index = "train", 0
+    elif cache == "run_order_occupants":
+        solver._initial_mood_refresh_rooms.discard("room_1_1")
+        solver.op_data.operators["伊内丝"].time_stamp = NOW - timedelta(
+            hours=2, minutes=10
+        )
+        solver.op_data.facility_levels["train"] = 0
+
+
+@pytest.mark.parametrize(
+    "cache", ["read", "attempt", "occupants", "run_order_occupants"]
+)
+@pytest.mark.parametrize("task_type", ["RUN_ORDER", "SKILL_UPGRADE", "SWAP_SUPPORT"])
+@pytest.mark.parametrize("current_task", [False, True])
+def test_cached_priority_rooms_yield_before_other_initial_reads(
+    cached_priority_reader, cache, task_type, current_task
+):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    solver = cached_priority_reader
+    set_priority_cache(solver, cache)
+    task = SchedulerTask(NOW + timedelta(seconds=30), task_type=TaskTypes[task_type])
+    if current_task:
+        solver.task = task
+    else:
+        solver.tasks = [task]
+
+    assert solver._read_agent_mood() is False
+
+    assert [call.args[0] for call in solver._read_room_mood.call_args_list] == (
+        [] if cache == "run_order_occupants" else ["room_1_1"]
+    )
+    assert all(call.args[0] != "train" for call in solver.enter_room.call_args_list)
+    assert solver._initial_mood_refresh_rooms == {"room_1_2"}
+    assert solver.defer_backup_plan_until_mood_read
+    assert solver.task is (task if current_task else None)
+    assert solver.tasks == ([] if current_task else [task])
+    assert task.time == NOW + timedelta(seconds=30)
+    solver.back_to_infrastructure.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "case", ["none", "later", "failed", "ordinary", "normal_refresh"]
+)
+def test_cached_priority_rooms_continue_without_imminent_initial_work(
+    cached_priority_reader, case
+):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    solver = cached_priority_reader
+    if case != "none":
+        task = SchedulerTask(
+            NOW + timedelta(seconds=61 if case == "later" else 30),
+            task_type=TaskTypes.WORKSHOP if case == "ordinary" else TaskTypes.RUN_ORDER,
+        )
+        if case == "failed":
+            task.execution_failure = {"reason": "unresolved"}
+        if case == "normal_refresh":
+            solver.defer_backup_plan_until_mood_read = False
+        solver.tasks = [task]
+
+    assert solver._read_agent_mood() is None
+
+    assert [call.args[0] for call in solver._read_room_mood.call_args_list] == [
+        "room_1_1",
+        "room_1_2",
+    ]
+    assert solver._initial_mood_refresh_rooms == set()
+    solver.back_to_infrastructure.assert_not_called()
+
+
+def test_cached_priority_yield_retains_unfinished_reads_until_task_finishes(
+    cached_priority_reader,
+):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    solver = cached_priority_reader
+    task = SchedulerTask(NOW + timedelta(seconds=30), task_type=TaskTypes.RUN_ORDER)
+    solver.tasks = [task]
+    for _ in range(2):
+        assert solver._read_agent_mood() is False
+        assert solver._initial_mood_refresh_rooms == {"room_1_2"}
+        assert solver.tasks == [task]
+        assert task.time == NOW + timedelta(seconds=30)
+    solver._read_room_mood.assert_called_once_with("room_1_1", force_mood=True)
+
+    solver.tasks.remove(task)
+    assert solver._read_agent_mood() is None
+    assert solver._initial_mood_refresh_rooms == set()
+    assert solver._read_room_mood.call_args.args == ("room_1_2",)
+    assert solver._read_room_mood.call_count == 2
+
+
+def test_cached_last_priority_room_yields_even_without_other_rooms_to_read(
+    cached_priority_reader,
+):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    solver = cached_priority_reader
+    solver._initial_mood_refresh_rooms.discard("room_1_2")
+    solver.tasks = [
+        SchedulerTask(NOW + timedelta(minutes=1), task_type=TaskTypes.RUN_ORDER)
+    ]
+
+    assert solver._read_agent_mood() is False
+
+    solver._read_room_mood.assert_called_once_with("room_1_1", force_mood=True)
+    assert solver._initial_mood_refresh_rooms == set()
+    assert solver.defer_backup_plan_until_mood_read
+    solver.back_to_infrastructure.assert_called_once()
+
+
+def test_startup_training_read_leaves_other_pending_facilities_untouched(
+    cached_priority_reader, monkeypatch
+):
+    from arknights_mower.solvers import mastery_reader
+
+    solver = cached_priority_reader
+    solver._initial_mood_refresh_rooms.add("train")
+    state = mastery_reader.RoomState("empty", slots_read=True, slots_reliable=True)
+    read = MagicMock(return_value=(state, []))
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    monkeypatch.setattr(mastery_reader, "read_room_state", read)
+    monkeypatch.setattr(mastery_reader, "reconcile_short", MagicMock())
+
+    assert solver._read_agent_mood(rooms={"train"}) is None
+
+    solver.enter_room.assert_called_once_with("train", max_attempts=1)
+    solver._read_room_mood.assert_not_called()
+    assert solver._initial_mood_refresh_rooms == {"room_1_1", "room_1_2"}
+
+
 def test_initial_cards_seed_multiple_pages_without_overwriting_actual_room_mood(
     solver, monkeypatch
 ):

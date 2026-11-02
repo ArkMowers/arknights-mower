@@ -533,6 +533,13 @@ class MasteryRestartTests(unittest.TestCase):
         solver._read_room_mood = (
             base_schedule.BaseSchedulerSolver._read_room_mood.__get__(solver)
         )
+        solver._initial_mood_read_pending = (
+            base_schedule.BaseSchedulerSolver._initial_mood_read_pending.__get__(solver)
+        )
+        solver._yield_initial_mood_to_priority_task = base_schedule.BaseSchedulerSolver._yield_initial_mood_to_priority_task.__get__(
+            solver
+        )
+        solver.defer_backup_plan_until_mood_read = False
         solver.task = None
         solver.tasks = []
         solver.last_train_mood_read = None
@@ -574,6 +581,53 @@ class MasteryRestartTests(unittest.TestCase):
                     self.assertEqual(solver.tasks[0].type, TaskTypes.SKILL_UPGRADE)
                     self.assertEqual(solver.tasks[0].time, self.room.panel.countdown)
                     self.assertEqual(solver.tasks[0].plan_key, str(self.plan_id))
+
+    def test_startup_read_restores_training_task_despite_recent_cache(self):
+        for count in (None, 0, 2):
+            for cache in ("read", "attempt", "occupants"):
+                with self.subTest(roster_size=count, cache=cache):
+                    mastery_db.update_plan_status(
+                        self.plan_id, "training", swap_frozen=1
+                    )
+                    solver = self.mood_solver(count)
+                    solver.defer_backup_plan_until_mood_read = True
+                    solver._initial_mood_refresh_rooms = {"train"}
+                    observed_at = datetime.now()
+                    solver.op_data.operators = {
+                        "测试干员": SimpleNamespace(
+                            name="测试干员",
+                            room="",
+                            current_room="train",
+                            time_stamp=observed_at,
+                            need_to_refresh=lambda: False,
+                        )
+                    }
+                    if cache == "read":
+                        solver.last_train_mood_read = observed_at
+                    elif cache == "attempt":
+                        solver.last_train_mood_attempt = observed_at
+                    with patch.object(
+                        reader, "read_room_state", return_value=(self.room, [])
+                    ) as read:
+                        self.assertIsNone(solver._read_agent_mood(rooms={"train"}))
+                        task = solver.tasks[0] if solver.tasks else None
+                        solver._read_agent_mood()
+                    read.assert_called_once_with(solver, enter=False, want_mood=True)
+                    self.assertEqual(solver._initial_mood_refresh_rooms, set())
+                    self.assertEqual(len(solver.tasks), 1)
+                    self.assertIs(solver.tasks[0], task)
+                    self.assertEqual(task.type, TaskTypes.SKILL_UPGRADE)
+                    self.assertEqual(task.plan_key, str(self.plan_id))
+                    self.assertEqual(task.time, self.room.panel.countdown)
+
+    def test_startup_zero_level_training_skips_entry_and_completes_pending_read(self):
+        solver = self.mood_solver()
+        solver._initial_mood_refresh_rooms = {"train"}
+        solver.op_data.facility_levels = {"train": 0}
+        self.assertIsNone(solver._read_agent_mood())
+        solver.enter_room.assert_not_called()
+        self.assertEqual(solver._initial_mood_refresh_rooms, set())
+        self.assertEqual(solver.tasks, [])
 
     def test_mood_scan_recovers_swap_from_idle_and_failed_without_roster(self):
         route = {
@@ -821,37 +875,44 @@ class MasteryRestartTests(unittest.TestCase):
                 self.assertIsInstance(solver.last_train_mood_read, datetime)
 
     def test_unavailable_training_does_not_block_other_rooms_or_create_correction(self):
-        solver = self.mood_solver(count=2)
-        op = SimpleNamespace(
-            name="干员",
-            room="meeting",
-            need_to_refresh=lambda: True,
-            current_room="meeting",
-            time_stamp=None,
-            not_valid=lambda: False,
-        )
-        solver.op_data.operators = {"干员": op}
-        solver.op_data.plan["meeting"] = [SimpleNamespace(agent="干员")]
-        solver.op_data.get_current_room.side_effect = lambda room, *args: (
-            ["干员"] if room == "meeting" else ["", ""]
-        )
-        solver.op_data.true_exhaust_room = set()
+        for initializing in (False, True):
+            with self.subTest(initializing=initializing):
+                solver = self.mood_solver(count=2)
+                solver.defer_backup_plan_until_mood_read = initializing
+                op = SimpleNamespace(
+                    name="干员",
+                    room="meeting",
+                    need_to_refresh=lambda: True,
+                    current_room="meeting",
+                    time_stamp=None,
+                    not_valid=lambda: False,
+                )
+                solver.op_data.operators = {"干员": op}
+                solver.op_data.plan["meeting"] = [SimpleNamespace(agent="干员")]
+                solver.op_data.get_current_room.side_effect = lambda room, *args: (
+                    ["干员"] if room == "meeting" else ["", ""]
+                )
+                solver.op_data.true_exhaust_room = set()
 
-        def enter(room, **kwargs):
-            if room == "train":
-                raise RuntimeError("未成功进入房间 train")
+                def enter(room, **kwargs):
+                    if room == "train":
+                        raise RuntimeError("未成功进入房间 train")
 
-        solver.enter_room.side_effect = enter
-        solver.get_agent_from_room.return_value = [{"agent": "干员", "mood": 12}]
-        solver._suppress_train_correction.side_effect = lambda plan: (
-            base_schedule.BaseSchedulerSolver._suppress_train_correction(solver, plan)
-        )
-        with patch.object(reader.config.conf, "enable_mastery", False):
-            plan = base_schedule.BaseSchedulerSolver.agent_get_mood(
-                solver, return_plan=True
-            )
-        solver.get_agent_from_room.assert_called_once_with("meeting", None)
-        self.assertNotIn("train", plan)
+                solver.enter_room.side_effect = enter
+                solver.get_agent_from_room.return_value = [
+                    {"agent": "干员", "mood": 12}
+                ]
+                solver._suppress_train_correction.side_effect = lambda plan: (
+                    base_schedule.BaseSchedulerSolver._suppress_train_correction(
+                        solver, plan
+                    )
+                )
+                with patch.object(reader.config.conf, "enable_mastery", False):
+                    plan = base_schedule.BaseSchedulerSolver.agent_get_mood(
+                        solver, return_plan=True
+                    )
+                solver.get_agent_from_room.assert_called_once_with("meeting", None)
+                self.assertNotIn("train", plan)
 
     def test_mood_scan_leaves_protected_trainee_to_automatic_mastery(self):
         mastery_db.update_plan_status(self.plan_id, "completed")

@@ -679,6 +679,13 @@ def simulate(saved):
             base_scheduler._initial_mood_refresh_rooms = set(
                 saved.get("initial_mood_refresh_rooms", ()) if saved else ()
             ) | set(saved.get("initial_mood_probe_layout", {}) if saved else {})
+            startup_mastery_read = False
+            if config.conf.enable_mastery:
+                from arknights_mower.utils.mastery_db import get_reconcile_plans
+
+                startup_mastery_read = bool(get_reconcile_plans())
+                if startup_mastery_read:
+                    base_scheduler._initial_mood_refresh_rooms.add("train")
             if config.conf.test_mood_calculation:
                 # 重启及首次启用都先核实实际驻员，计算快照不能替代启动实读。
                 base_scheduler._initial_mood_refresh_rooms.update(
@@ -931,6 +938,20 @@ def simulate(saved):
                 from arknights_mower.utils import crash_recovery
 
                 crash_recovery.checkpoint_start(base_scheduler)
+            if startup_mastery_read:
+                base_scheduler._read_agent_mood(rooms={"train"})
+                if (
+                    getattr(
+                        getattr(base_scheduler, "train_room_state", None),
+                        "slots_reliable",
+                        False,
+                    )
+                    is True
+                ):
+                    base_scheduler._startup_mood_observations = {
+                        **getattr(base_scheduler, "_startup_mood_observations", {}),
+                        "train": base_scheduler._room_mood_signature("train"),
+                    }
             break
         except RECOVERABLE_DEVICE_ERRORS as exc:
             # 恢复前的房间读取也由原设备会话处理，保留已还原的任务和调度器。

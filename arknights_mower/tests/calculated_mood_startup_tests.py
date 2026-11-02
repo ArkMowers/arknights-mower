@@ -51,17 +51,59 @@ def test_enabled_resume_reads_all_facilities_and_preserves_started_task(
     assert retained.retains_execution and retained.mood_physical_started
 
 
-def test_disabled_resume_keeps_original_startup_observation_policy(resume, monkeypatch):
+@pytest.mark.parametrize("queued", [False, True])
+@pytest.mark.parametrize(
+    "enabled,status,required",
+    [
+        (False, None, False),
+        (False, "training", False),
+        (True, None, False),
+        (True, "idle", True),
+        (True, "arranging", True),
+        (True, "training", True),
+        (True, "waiting_collect", True),
+        (True, "failed", True),
+    ],
+)
+def test_ordinary_resume_requires_training_read_only_for_mastery_plans(
+    resume, monkeypatch, enabled, status, required, queued
+):
     from arknights_mower import __main__ as main
+    from arknights_mower.utils import mastery_db
 
     solver, load = resume
     monkeypatch.setattr(config.conf, "test_mood_calculation", False)
+    monkeypatch.setattr(config.conf, "enable_mastery", enabled)
+    monkeypatch.setattr(
+        mastery_db,
+        "get_reconcile_plans",
+        lambda: [{"id": 1, "status": status}] if status else [],
+    )
+    task = SchedulerTask(
+        time=datetime(2026, 10, 1, 9), task_type=TaskTypes.SKILL_UPGRADE
+    )
+    solver.tasks = [task] if queued else []
     saved = pickle.loads(pickle.dumps(record.current_state()))
     saved["initial_mood_pending"] = False
     saved["initial_mood_refresh_rooms"] = []
     load(saved)
     assert not main.base_scheduler.defer_backup_plan_until_mood_read
-    assert main.base_scheduler._initial_mood_refresh_rooms == set()
+    assert main.base_scheduler._initial_mood_refresh_rooms == (
+        {"train"} if required else set()
+    )
+    if required:
+        main.base_scheduler._read_agent_mood.assert_called_once_with(rooms={"train"})
+        calls = [call[0] for call in main.base_scheduler.mock_calls]
+        assert calls.index("_read_agent_mood") < calls.index("run")
+    else:
+        main.base_scheduler._read_agent_mood.assert_not_called()
+    if queued:
+        restored = next(
+            task
+            for task in main.base_scheduler.tasks
+            if task.type == TaskTypes.SKILL_UPGRADE
+        )
+        assert restored.time == datetime(2026, 10, 1, 9)
 
 
 def test_saved_state_remains_readable_without_calculation_module(
