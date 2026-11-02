@@ -302,10 +302,20 @@ export async function renderIncomeImage(
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 24 * scale, 24 * scale)
         }
-        const value = `${compactIncomeNumber(metric.daily)}${metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''}`
+        const negative = metric.daily < 0
+        const value = `${compactIncomeNumber(Math.abs(metric.daily))}${metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''}`
         ctx.font = `${14 * scale}px sans-serif`
         ctx.fillStyle = color
-        ctx.fillText(value, (x + 30) * scale, (y + 17) * scale, 89 * scale)
+        const baseline = (y + 17) * scale
+        let valueX = (x + 30) * scale
+        if (negative) {
+          const digits = ctx.measureText('0')
+          const center =
+            baseline - (digits.actualBoundingBoxAscent - digits.actualBoundingBoxDescent) / 2
+          ctx.fillRect(valueX, center - 0.5 * scale, 6 * scale, scale)
+          valueX += 10 * scale
+        }
+        ctx.fillText(value, valueX, baseline, (negative ? 79 : 89) * scale)
       })
     annotationLines.forEach((line, index) => {
       write(line, 28, annotationTop + 16 + index * 16, 10, muted)
