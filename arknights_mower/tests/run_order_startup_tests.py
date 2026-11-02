@@ -282,8 +282,9 @@ def test_stale_startup_mood_does_not_bypass_normal_refresh(staffed_order, monkey
     }
 
 
+@pytest.mark.parametrize("queued_order", [False, True])
 def test_startup_training_read_follows_order_checks_before_staffing(
-    staffed_order, monkeypatch
+    staffed_order, monkeypatch, queued_order
 ):
     from arknights_mower.solvers import mastery_reader
 
@@ -298,12 +299,20 @@ def test_startup_training_read_follows_order_checks_before_staffing(
     observed = []
     enter_room = solver.enter_room.side_effect
     solver.enter_room.side_effect = lambda room, **kwargs: enter_room(room)
+    if queued_order:
+        solver.tasks.append(
+            ui.task(
+                ui.clock.now() + timedelta(hours=1),
+                task_type=ui.task_type.RUN_ORDER,
+                meta_data="room_1_1",
+            )
+        )
 
     def read_room(*args, **kwargs):
         assert solver._state_restore_complete is True
         assert solver._startup_run_order_check_pending is False
-        assert len(admission.reads(ui)) == 1
-        assert len(admission.reads(ui, "room_2_2")) == 1
+        assert len(admission.reads(ui)) == (0 if queued_order else 1)
+        assert len(admission.reads(ui, "room_2_2")) == (0 if queued_order else 1)
         assert not any(event[0] == "staffed" for event in ui.events)
         observed.append("train")
         return room_state, []
@@ -326,6 +335,16 @@ def test_startup_training_waits_for_confirmed_base_overview(staffed_order):
     solver._initial_mood_refresh_rooms = {"train"}
     solver.find.side_effect = lambda *args, **kwargs: None
     solver.infra_main()
+    solver.enter_room.assert_not_called()
+    assert solver._initial_mood_refresh_rooms == {"train"}
+    assert solver._startup_run_order_check_pending is True
+
+
+def test_startup_facilities_wait_for_completed_state_restoration(staffed_order):
+    solver = prepare(staffed_order)
+    solver._state_restore_complete = False
+    solver._initial_mood_refresh_rooms = {"train"}
+    solver._initialize_startup_facilities()
     solver.enter_room.assert_not_called()
     assert solver._initial_mood_refresh_rooms == {"train"}
     assert solver._startup_run_order_check_pending is True

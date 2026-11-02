@@ -306,3 +306,28 @@ def test_startup_training_uses_initial_priority_read_once_before_other_facilitie
     assert reads.index("train") < reads.index("dormitory_1")
     assert "train" not in solver._initial_mood_refresh_rooms
     assert not solver._emergency_startup_pending
+
+
+def test_startup_facilities_validate_restored_recovery_before_training_read(
+    startup, monkeypatch
+):
+    from arknights_mower.solvers import mastery_reader
+
+    solver, _, _, _ = startup
+    solver._initial_mood_refresh_rooms = {"train", "dormitory_1"}
+    solver.op_data.facility_levels["train"] = 3
+    solver.emergency_state = {}
+    events = []
+    solver._emergency_validate_state = MagicMock(
+        side_effect=lambda: events.append("validate")
+    )
+    monkeypatch.setattr(emergency.config.conf, "enable_mastery", True)
+
+    def read_room(*args, **kwargs):
+        events.append("train")
+        return mastery_reader.RoomState("empty", slots_reliable=True), []
+
+    monkeypatch.setattr(mastery_reader, "read_room_state", read_room)
+    monkeypatch.setattr(mastery_reader, "reconcile_short", MagicMock())
+    assert solver.infra_main() is True
+    assert events == ["validate", "train"]
