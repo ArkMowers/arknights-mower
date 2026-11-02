@@ -359,8 +359,9 @@ def test_initialization_reads_all_staffed_facilities_once_despite_recent_cache(
     read_train.assert_not_called()
 
 
+@pytest.mark.parametrize("train_level", [0, 3])
 def test_initialization_finishes_priority_reads_before_imminent_task_yield(
-    solver, monkeypatch
+    solver, monkeypatch, train_level
 ):
     from arknights_mower.solvers import mastery_reader
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
@@ -370,6 +371,7 @@ def test_initialization_finishes_priority_reads_before_imminent_task_yield(
     solver.defer_backup_plan_until_mood_read = True
     solver._initial_mood_refresh_rooms = set()
     solver.op_data.run_order_rooms = {"room_1_1": {}}
+    solver.op_data.facility_levels["train"] = train_level
     read_order = []
     solver._read_room_mood = MagicMock(
         side_effect=lambda room, **_: read_order.append(room)
@@ -398,7 +400,13 @@ def test_initialization_finishes_priority_reads_before_imminent_task_yield(
     ]
 
     assert solver._read_agent_mood() is False
-    assert read_order == ["room_1_1", "train"]
+    assert read_order == (["room_1_1", "train"] if train_level else ["room_1_1"])
+    read_train = mastery_reader.read_room_state
+    if train_level:
+        read_train.assert_called_once()
+    else:
+        read_train.assert_not_called()
+        assert all(call.args[0] != "train" for call in solver.enter_room.call_args_list)
     assert "factory" not in read_order
     assert solver.defer_backup_plan_until_mood_read
 

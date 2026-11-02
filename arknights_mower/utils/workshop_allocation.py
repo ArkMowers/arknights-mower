@@ -16,6 +16,22 @@ from arknights_mower.utils.workshop_recipes import (
 )
 
 
+def setting_recipe_bonus(entry, available, formulas):
+    """按当前配方取最高已解锁副产品加成；缺少配方或练度时不比较。"""
+    data = entry.model_dump() if hasattr(entry, "model_dump") else entry
+    if data["operator"] not in available:
+        return None
+    return max(
+        (
+            recipe_bonus(available[data["operator"]], material, formulas[material])
+            for item in data["items"]
+            for material in item["item_names"]
+            if material in formulas
+        ),
+        default=None,
+    )
+
+
 def setting_priority(entry, available, formulas, *, prefer_t4=True):
     data = entry.model_dump() if hasattr(entry, "model_dump") else entry
     name = data["operator"]
@@ -23,13 +39,7 @@ def setting_priority(entry, available, formulas, *, prefer_t4=True):
         return operator_priority(name, 0, prefer_t4=prefer_t4)
     materials = [material for item in data["items"] for material in item["item_names"]]
     effects = available[name]
-    bonus = max(
-        (
-            recipe_bonus(effects, material, formulas.get(material, {}))
-            for material in materials
-        ),
-        default=0,
-    )
+    bonus = setting_recipe_bonus(entry, available, formulas) or 0
     t5 = any(
         recipe_category(formulas.get(material, {})) == "t5_operators"
         for material in materials

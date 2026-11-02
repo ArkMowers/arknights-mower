@@ -135,6 +135,19 @@ def bed_takeover_allowed(op_data, requester, resident):
         return (
             op is not None and mood is not None and (retained or mood < op.upper_limit)
         )
+    if requester_tier == resident_tier == RestingTier.IDLE:
+        configured = _crafting_rest_names(op_data)
+        return (
+            requester in configured
+            and op is not None
+            and mood is not None
+            and mood < op.upper_limit
+            and not op_data.rest_mood_complete(requester)
+            and (
+                resident not in configured
+                or _crafting_bonus_takeover(op_data, requester, resident)
+            )
+        )
     if not requester_tier < resident_tier < RestingTier.EXCLUDED:
         return False
     if requester_tier <= RestingTier.PRIORITY_REPLACEMENT:
@@ -191,27 +204,78 @@ def resting_key(op_data, name, now=None, *, replacement_names=None):
     return resting_tier(op_data, name, now, replacement_names=replacement_names), mood
 
 
+def _crafting_rest_names(op_data):
+    from arknights_mower.utils import config
+
+    conf = getattr(op_data, "runtime_conf", None) or config.conf
+    configured = []
+    if conf.enable_mastery and conf.workshop_auto_active:
+        configured.extend(
+            name
+            for row in zip_longest(
+                conf.fodder_operators, conf.t5_operators, conf.book_operators
+            )
+            for name in row
+            if name
+        )
+    configured.extend(
+        entry.operator
+        for entry in conf.workshop_settings
+        if entry.enabled and entry.items and entry.source == "manual"
+    )
+    return list(dict.fromkeys(configured))
+
+
+def _crafting_bonus_takeover(op_data, requester, resident):
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils import config
+    from arknights_mower.utils.workshop_allocation import (
+        scope_setting,
+        setting_recipe_bonus,
+    )
+    from arknights_mower.utils.workshop_recommendation import (
+        WorkshopRecommendationError,
+        available_operators,
+    )
+
+    conf = getattr(op_data, "runtime_conf", None) or config.conf
+    entries = [
+        scope_setting(entry, workshop_formula)
+        for entry in conf.workshop_settings
+        if entry.enabled and entry.operator in (requester, resident)
+    ]
+    assigned = {entry.operator for entry in entries if entry.items}
+    if not {requester, resident} <= assigned:
+        return False
+    try:
+        available = available_operators()
+    except WorkshopRecommendationError:
+        return False
+    bonuses = {}
+    for entry in entries:
+        bonus = setting_recipe_bonus(entry, available, workshop_formula)
+        if bonus is not None:
+            bonuses[entry.operator] = max(bonuses.get(entry.operator, bonus), bonus)
+    return (
+        requester in bonuses
+        and resident in bonuses
+        and bonuses[requester] > bonuses[resident]
+    )
+
+
 def crafting_rest_candidates(op_data, names, *, replacement_names=None):
     """已配置的普通空闲加工候选按当前所需配方的加成排序。"""
     from arknights_mower.utils import config
     from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
-
-    conf = getattr(op_data, "runtime_conf", None) or config.conf
-    if not (conf.enable_mastery and conf.workshop_auto_active):
-        return []
     from arknights_mower.utils.workshop_recommendation import (
         prioritize_workshop_settings,
     )
 
+    configured = _crafting_rest_names(op_data)
+    if not configured:
+        return []
+    conf = getattr(op_data, "runtime_conf", None) or config.conf
     present = set(names)
-    configured = dict.fromkeys(
-        name
-        for row in zip_longest(
-            conf.fodder_operators, conf.t5_operators, conf.book_operators
-        )
-        for name in row
-        if name
-    )
     # 自动配置只保留当前缺口配方；空配方或停用配置不提供加工优先级。
     settings = [
         entry for entry in conf.workshop_settings if entry.enabled and entry.items
@@ -243,12 +307,21 @@ def crafting_rest_candidates(op_data, names, *, replacement_names=None):
 
 
 def crafting_rest_order(op_data, names, *, replacement_names=None):
-    """只交换已排序名单中普通空闲加工干员的位置，不提升整个加工层。"""
+    """普通空闲加工候选先于其他空闲候选，保留其他排班身份的位置。"""
     names = list(names)
     ordered = crafting_rest_candidates(
         op_data, names, replacement_names=replacement_names
     )
-    positions = [index for index, name in enumerate(names) if name in ordered]
+    if not ordered:
+        return names
+    positions = [
+        index
+        for index, name in enumerate(names)
+        if resting_tier(op_data, name, replacement_names=replacement_names)
+        == RestingTier.IDLE
+    ]
+    candidates = set(ordered)
+    ordered += [names[index] for index in positions if names[index] not in candidates]
     for index, name in zip(positions, ordered):
         names[index] = name
     return names
