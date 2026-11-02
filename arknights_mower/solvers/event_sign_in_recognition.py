@@ -95,12 +95,13 @@ def detect_progress(image):
             candidates.append((x, y, 0))
     # 抑制细线边缘的像素抖动，避免同一条进度线被拆成短段。
     edges = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), 50, 120)
+    # 明暗进度线的边缘可能不共线；短的已登录段也须参与后续连续性检查。
     lines = cv2.HoughLinesP(
         edges,
         1,
         np.pi / 180,
-        max(20, round(width * 0.08)),
-        minLineLength=round(width * 0.25),
+        max(20, round(width * 0.04)),
+        minLineLength=round(width * 0.05),
         maxLineGap=round(height * 0.037),
     )
     if lines is None:

@@ -50,6 +50,33 @@ def test_supplied_last_day_highlight_preserves_the_complete_seven_day_row():
     )
 
 
+@pytest.mark.parametrize("days", [7, 10])
+@pytest.mark.parametrize("jpeg", [False, True], ids=["rgb", "jpeg"])
+def test_short_white_prefix_retains_first_day_when_line_edges_change(days, jpeg):
+    image = np.zeros((1080, 1920, 3), np.uint8)
+    image[222:275, 680:1794] = 80
+    centers = [round(x) for x in np.linspace(697, 1757, days)]
+    # The reached and unreached strokes have different edges in captured frames.
+    cv2.line(image, (centers[1], 248), (1757, 248), (0, 0, 0), 6, cv2.LINE_AA)
+    cv2.line(image, (697, 248), (centers[1], 248), (255, 255, 255), 4, cv2.LINE_AA)
+    for index, x in enumerate(centers):
+        color = (255, 255, 255) if index < 2 else (0, 0, 0)
+        cv2.circle(image, (x, 248), 11, color, -1, cv2.LINE_AA)
+        if index in (1, 2, 5, days - 1):
+            cv2.circle(image, (x, 248), 18, color, 3, cv2.LINE_AA)
+    if jpeg:
+        encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 90])[1]
+        image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+
+    progress = detect_progress(image)
+
+    assert progress is not None
+    assert (progress.total_days, progress.unlocked_days) == (days, 2)
+    np.testing.assert_allclose(
+        progress.points, [(x, 248) for x in centers], atol=3, rtol=0
+    )
+
+
 @pytest.mark.parametrize(
     "segments",
     [
