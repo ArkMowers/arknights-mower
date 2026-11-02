@@ -1098,6 +1098,9 @@ class BaseSchedulerSolver(
         self._discard_legacy_recovery_checks()
         self._discard_legacy_run_order_waits()
         for task in list(self.tasks):
+            if self._is_startup_priority_task(task):
+                # 旧门控曾让初始化所等待的任务反过来等待初始化。
+                task.__dict__.pop("startup_observation_pending", None)
             failure = getattr(task, "execution_failure", None)
             if failure and (pending := getattr(task, "credit_shop_pending", None)):
                 if CreditShop.can_resume(self.recog, pending):
@@ -3064,19 +3067,13 @@ class BaseSchedulerSolver(
             getattr(task, "emergency_takeover", False) and task.time <= datetime.now()
             for task in self.tasks
         )
-        blocked_orders = blocked_run_order_ids(
-            self.tasks, getattr(self, "op_data", None)
-        )
         if initial_fia_pending:
             protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
             candidate = self.tasks[0]
             if candidate.time <= datetime.now() and (
                 getattr(candidate, "initial_fia", False)
                 or getattr(candidate, "strict_mood_limit", False)
-                or candidate.type == TaskTypes.RUN_ORDER
-                and id(candidate) not in blocked_orders
-                or config.conf.enable_mastery
-                and candidate.type == TaskTypes.SWAP_SUPPORT
+                or any(task is candidate for task in self._startup_priority_tasks())
             ):
                 self.task = candidate
             else:
@@ -3103,15 +3100,7 @@ class BaseSchedulerSolver(
         ) and not (
             getattr(self.task, "strict_mood_limit", False)
             or getattr(self.task, "initial_fia", False)
-            or getattr(self.task, "type", None) == TaskTypes.RUN_ORDER
-            and id(self.task) not in blocked_orders
-            or initial_fia_pending
-            and (
-                getattr(self.task, "type", None) == TaskTypes.RUN_ORDER
-                and id(self.task) not in blocked_orders
-                or config.conf.enable_mastery
-                and getattr(self.task, "type", None) == TaskTypes.SWAP_SUPPORT
-            )
+            or any(task is self.task for task in self._startup_priority_tasks())
         ):
             if self.task is not None:
                 # 保留旧安排供实读后重算，但不让它反复派发或挡住独立任务。
@@ -4087,24 +4076,27 @@ class BaseSchedulerSolver(
         ):
             return False
 
+    def _is_startup_priority_task(self, task):
+        return task.type == TaskTypes.RUN_ORDER or (
+            config.conf.enable_mastery
+            and task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+        )
+
+    def _startup_priority_tasks(self):
+        tasks = list(getattr(self, "tasks", ()))
+        current = getattr(self, "task", None)
+        if current is not None and all(task is not current for task in tasks):
+            tasks.append(current)
+        return [
+            task
+            for task in task_view(tasks, TaskScope.DISPATCH, self.op_data)
+            if self._is_startup_priority_task(task)
+        ]
+
     def _yield_initial_mood_to_priority_task(self):
         imminent_priority_task = any(
-            getattr(task, "type", None)
-            in (TaskTypes.RUN_ORDER, TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
-            and getattr(task, "time", None) is not None
-            and task.time <= datetime.now() + timedelta(minutes=1)
-            and not getattr(task, "execution_failure", None)
-            for task in (
-                *getattr(self, "tasks", ()),
-                *(
-                    (self.task,)
-                    if getattr(self, "task", None) is not None
-                    and all(
-                        queued is not self.task for queued in getattr(self, "tasks", ())
-                    )
-                    else ()
-                ),
-            )
+            task.time <= datetime.now() + timedelta(minutes=1)
+            for task in self._startup_priority_tasks()
         )
         if not imminent_priority_task:
             return False
@@ -5634,9 +5626,7 @@ class BaseSchedulerSolver(
         return not any(
             pending.time <= datetime.now() + timedelta(minutes=1)
             and (
-                pending.type == TaskTypes.RUN_ORDER
-                or pending.type == TaskTypes.SWAP_SUPPORT
-                and config.conf.enable_mastery
+                self._is_startup_priority_task(pending)
                 or getattr(pending, "strict_mood_limit", False)
                 and pending.plan
             )

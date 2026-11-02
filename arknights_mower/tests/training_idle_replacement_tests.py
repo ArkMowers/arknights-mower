@@ -19,7 +19,7 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
 @pytest.fixture
-def solver(monkeypatch):
+def solver(monkeypatch, bundled_mastery_skills):
     instance = group_solver.__wrapped__(monkeypatch)
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(mastery_db, "get_active_plan", lambda: None)

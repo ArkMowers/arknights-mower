@@ -164,6 +164,12 @@ class EmergencyRecoveryMixin:
             or task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
             and task.plan
         ]
+        if getattr(self, "_emergency_startup_pending", False):
+            dependencies.extend(
+                task
+                for task in self._startup_priority_tasks()
+                if all(existing is not task for existing in dependencies)
+            )
         rooms.update(room for task in dependencies for room in task.plan)
         probe = SchedulerTask()
         return {

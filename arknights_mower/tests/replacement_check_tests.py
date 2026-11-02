@@ -110,6 +110,9 @@ def replacement_solver(clock, monkeypatch):
     solver._resume_failed_tasks = MethodType(
         base.BaseSchedulerSolver._resume_failed_tasks, solver
     )
+    solver._is_startup_priority_task = MethodType(
+        base.BaseSchedulerSolver._is_startup_priority_task, solver
+    )
     solver._discard_legacy_ordinary_requests = MethodType(
         base.BaseSchedulerSolver._discard_legacy_ordinary_requests, solver
     )

@@ -10,7 +10,7 @@ import pytest
 
 from arknights_mower.solvers import mastery, mastery_reader, record
 from arknights_mower.tests.mastery_support_fixtures import database as database
-from arknights_mower.utils import email, mastery_db, mastery_recommendation
+from arknights_mower.utils import email, mastery_db, mastery_recommendation, skill_label
 from arknights_mower.utils.scene import Scene
 
 pytestmark = pytest.mark.usefixtures("income_db")
@@ -42,6 +42,7 @@ def training(monkeypatch):
             }
         },
     }
+    monkeypatch.setattr(skill_label, "_name_to_char_id_cache", None)
     monkeypatch.setattr(mastery_recommendation, "get_skill_data", lambda: data)
     monkeypatch.setattr(record, "workshop_inventory_changed", Event())
     monkeypatch.setattr(record, "battle_inventory_active", Event())

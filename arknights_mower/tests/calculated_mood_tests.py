@@ -414,9 +414,10 @@ def test_initialization_finishes_priority_reads_before_imminent_task_yield(
 
 
 @pytest.fixture
-def cached_priority_reader(solver):
+def cached_priority_reader(solver, monkeypatch):
     from arknights_mower.solvers import base_schedule
 
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
     solver.defer_backup_plan_until_mood_read = True
     solver._initial_mood_refresh_rooms = {"room_1_1", "room_1_2"}
     solver.op_data.run_order_rooms = {"room_1_1": {}}
