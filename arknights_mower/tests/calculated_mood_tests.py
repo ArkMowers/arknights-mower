@@ -324,13 +324,21 @@ def test_initialization_reads_all_staffed_facilities_once_despite_recent_cache(
     config.conf.enable_mastery = True
     solver.defer_backup_plan_until_mood_read = True
     solver._initial_mood_refresh_rooms = set()
-    solver._read_room_mood = MagicMock()
+    solver.op_data.run_order_rooms = {"room_1_1": {}}
+    read_order = []
+
+    def read_room(room, **kwargs):
+        read_order.append(room)
+
+    solver._read_room_mood = MagicMock(side_effect=read_room)
     solver.enter_room = MagicMock()
     solver.back = MagicMock()
     solver.back_to_infrastructure = MagicMock()
     solver.last_train_mood_read = NOW
     state = mastery_reader.RoomState("empty", slots_read=True)
-    read_train = MagicMock(return_value=(state, []))
+    read_train = MagicMock(
+        side_effect=lambda *args, **kwargs: (read_order.append("train"), (state, []))[1]
+    )
     monkeypatch.setattr(mastery_reader, "read_room_state", read_train)
     monkeypatch.setattr(mastery_reader, "reconcile_short", MagicMock())
     solver._read_agent_mood()
@@ -340,6 +348,7 @@ def test_initialization_reads_all_staffed_facilities_once_despite_recent_cache(
         call.kwargs["force_mood"] for call in solver._read_room_mood.call_args_list
     )
     read_train.assert_called_once()
+    assert read_order[:2] == ["room_1_1", "train"]
     assert "factory" not in solver.op_data.plan
     assert "factory" in expected
     solver.defer_backup_plan_until_mood_read = False

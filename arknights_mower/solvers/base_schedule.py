@@ -3809,7 +3809,14 @@ class BaseSchedulerSolver(
             need_read.add("train")
 
         facility_levels = getattr(self.op_data, "facility_levels", {})
-        for room in sorted(need_read):
+        # 初始化先读取跑单设施与训练室，尽早取得会影响派单和训练冲突判断的实测状态。
+        # 其余设施保持稳定排序，避免同一轮初始化的访问顺序漂移。
+        run_order_rooms = set(getattr(self.op_data, "run_order_rooms", ()) or ())
+        priority_rooms = sorted(need_read & run_order_rooms)
+        if "train" in need_read:
+            priority_rooms.append("train")
+        ordered_rooms = priority_rooms + sorted(need_read - set(priority_rooms))
+        for room in ordered_rooms:
             if facility_levels.get(room) == 0:
                 force_rooms.discard(room)
                 restoration_observations.pop(room, None)
@@ -4041,7 +4048,7 @@ class BaseSchedulerSolver(
         """初始化必须尝试有界选人页扫描，不选人或确认换班。"""
         required = getattr(self, "_initial_card_scan_required", False)
         self._initial_card_scan_required = False
-        # 自动救急启动沿用其按需扫描契约；普通初始化和演算初始化仍由调用方
+        # 自动救急启动沿用其按需扫描约定；普通初始化和演算初始化仍由调用方
         # 固定尝试扫描，确保排班基线不会因临近任务而缺失。
         if (
             not required
