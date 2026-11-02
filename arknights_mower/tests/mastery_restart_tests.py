@@ -533,6 +533,13 @@ class MasteryRestartTests(unittest.TestCase):
         solver._read_room_mood = (
             base_schedule.BaseSchedulerSolver._read_room_mood.__get__(solver)
         )
+        solver._initial_mood_read_pending = (
+            base_schedule.BaseSchedulerSolver._initial_mood_read_pending.__get__(solver)
+        )
+        solver._yield_initial_mood_to_priority_task = base_schedule.BaseSchedulerSolver._yield_initial_mood_to_priority_task.__get__(
+            solver
+        )
+        solver.defer_backup_plan_until_mood_read = False
         solver.task = None
         solver.tasks = []
         solver.last_train_mood_read = None
@@ -821,37 +828,44 @@ class MasteryRestartTests(unittest.TestCase):
                 self.assertIsInstance(solver.last_train_mood_read, datetime)
 
     def test_unavailable_training_does_not_block_other_rooms_or_create_correction(self):
-        solver = self.mood_solver(count=2)
-        op = SimpleNamespace(
-            name="干员",
-            room="meeting",
-            need_to_refresh=lambda: True,
-            current_room="meeting",
-            time_stamp=None,
-            not_valid=lambda: False,
-        )
-        solver.op_data.operators = {"干员": op}
-        solver.op_data.plan["meeting"] = [SimpleNamespace(agent="干员")]
-        solver.op_data.get_current_room.side_effect = lambda room, *args: (
-            ["干员"] if room == "meeting" else ["", ""]
-        )
-        solver.op_data.true_exhaust_room = set()
+        for initializing in (False, True):
+            with self.subTest(initializing=initializing):
+                solver = self.mood_solver(count=2)
+                solver.defer_backup_plan_until_mood_read = initializing
+                op = SimpleNamespace(
+                    name="干员",
+                    room="meeting",
+                    need_to_refresh=lambda: True,
+                    current_room="meeting",
+                    time_stamp=None,
+                    not_valid=lambda: False,
+                )
+                solver.op_data.operators = {"干员": op}
+                solver.op_data.plan["meeting"] = [SimpleNamespace(agent="干员")]
+                solver.op_data.get_current_room.side_effect = lambda room, *args: (
+                    ["干员"] if room == "meeting" else ["", ""]
+                )
+                solver.op_data.true_exhaust_room = set()
 
-        def enter(room, **kwargs):
-            if room == "train":
-                raise RuntimeError("未成功进入房间 train")
+                def enter(room, **kwargs):
+                    if room == "train":
+                        raise RuntimeError("未成功进入房间 train")
 
-        solver.enter_room.side_effect = enter
-        solver.get_agent_from_room.return_value = [{"agent": "干员", "mood": 12}]
-        solver._suppress_train_correction.side_effect = lambda plan: (
-            base_schedule.BaseSchedulerSolver._suppress_train_correction(solver, plan)
-        )
-        with patch.object(reader.config.conf, "enable_mastery", False):
-            plan = base_schedule.BaseSchedulerSolver.agent_get_mood(
-                solver, return_plan=True
-            )
-        solver.get_agent_from_room.assert_called_once_with("meeting", None)
-        self.assertNotIn("train", plan)
+                solver.enter_room.side_effect = enter
+                solver.get_agent_from_room.return_value = [
+                    {"agent": "干员", "mood": 12}
+                ]
+                solver._suppress_train_correction.side_effect = lambda plan: (
+                    base_schedule.BaseSchedulerSolver._suppress_train_correction(
+                        solver, plan
+                    )
+                )
+                with patch.object(reader.config.conf, "enable_mastery", False):
+                    plan = base_schedule.BaseSchedulerSolver.agent_get_mood(
+                        solver, return_plan=True
+                    )
+                solver.get_agent_from_room.assert_called_once_with("meeting", None)
+                self.assertNotIn("train", plan)
 
     def test_mood_scan_leaves_protected_trainee_to_automatic_mastery(self):
         mastery_db.update_plan_status(self.plan_id, "completed")
