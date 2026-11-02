@@ -13,12 +13,12 @@ vi.mock('./vendor/simulator/productionTimeline', async (importOriginal) => {
 
 afterEach(() => vi.restoreAllMocks())
 
-function plan(product, level = 1, unlockLevel = 3) {
+function plan(product, level = 1, otherLevel = 3) {
   return {
     default: 'plan1',
     conf: {},
     backup_plans: [],
-    facility_levels: { room_1_1: unlockLevel, room_3_3: level, room_1_3: 3, room_2_3: 3 },
+    facility_levels: { room_1_1: otherLevel, room_3_3: level, room_1_3: 3, room_2_3: 3 },
     plan1: {
       room_1_1: { name: '制造站', product: 'gold', plans: [] },
       room_3_3: { name: '制造站', product, plans: [] },
@@ -37,7 +37,7 @@ const settings = {
   weightMode: 'custom'
 }
 
-describe('manufacturing formulas unlocked across the base', () => {
+describe('manufacturing formulas assumed already unlocked', () => {
   it.each([1, 2, 3])(
     'requires the selling trading post itself to be level three (level %s)',
     (level) => {
@@ -80,20 +80,21 @@ describe('manufacturing formulas unlocked across the base', () => {
   )
 
   it.each(['orirock', 'orirock_device', 'exp'])(
-    'does not unlock %s through a level-three power plant or trading post',
+    'produces %s when every manufacturing facility is only level one or two',
     (product) => {
-      const source = plan(product, 2, 2)
-      source.plan1.room_2_1 = { name: '贸易站', product: 'lmd', plans: [] }
-      source.facility_levels.room_2_1 = 3
-      source.facility_levels.room_1_3 = 3
-      const result = calculateIncome(source, settings)
-      expect(result.success).toBe(false)
-      expect(result.diagnostics.some((d) => d.code === 'MANUFACTURE_FORMULA_LEVEL')).toBe(true)
+      for (const level of [1, 2]) {
+        const source = plan(product, level, level)
+        const result = calculateIncome(source, settings)
+        expect(result.success, result.error).toBe(true)
+        expect(
+          result.simulationReport.production.sample.inflows[product === 'exp' ? 'exp' : 'fragment']
+        ).toBe(product === 'exp' ? 8000 : 24)
+      }
     }
   )
 
   it('retains finite material constraints after the recipe is unlocked', () => {
-    const result = calculateIncome(plan('orirock', 2), {
+    const result = calculateIncome(plan('orirock', 2, 1), {
       ...settings,
       finiteInventory: true,
       initialInventory: { orirock: 2, lmd: 1600 }
@@ -134,7 +135,7 @@ describe('manufacturing formulas unlocked across the base', () => {
   it.each(['orirock', 'orirock_device', 'exp3'])(
     'switches a low-level factory from gold to %s through a backup plan',
     (product) => {
-      const source = plan('gold', 2)
+      const source = plan('gold', 2, 1)
       source.advanced_settings = {
         product_switching: {
           enable: true,

@@ -52,6 +52,7 @@ export function incomeReportLines(result, settings, plan, label) {
       ? '本次演算固定为无未完成训练计划且未在训练，不模拟训练进度或计划完成时刻。'
       : `历史演算的未完成训练计划：${settings.masteryPlanPresent ? '有' : '无'}，整段演算保持此条件，不模拟训练完成。`,
     '赤金等价龙门币为制造赤金 × 500 加特殊订单溢价，不扣除交付消耗的赤金；该项不是实际龙门币入账。',
+    '制造配方默认已解锁，当前制造站等级不限制配方；各站容量及材料库存仍按本次配置计算。',
     '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期实际开工批次计算，包含尚未完成的批次，预热期已支付的材料不重复计入。',
     `收益权重（${settings.weightMode === 'mower' ? incomeAlgorithmLabel(settings.mowerAlgorithm) : '本次自定义'}）：${Object.entries(
       incomeWeights(settings)

@@ -13,7 +13,7 @@ import {getOrderDistribution,selectBaseOrder,type SpecialCapture,type OrderMode}
 import {startOrder,advanceOrder,finishOrder,type ActiveOrder} from './orderTimeline'
 import {createLedger,type ResourceAmounts,type ResourceKind} from './resourceLedger'
 import {createDroneState,generateDrones,spendDrones} from './droneTimeline'
-import {MANUFACTURING_FORMULAS,startManufacturing,authorizeManufacturingBatch,advanceManufacturing,collectManufacturing,nextManufacturingEvent,updateManufacturingCapacity,type ManufacturingFormulaId,type ManufacturingState} from './manufacturingTimeline'
+import {startManufacturing,authorizeManufacturingBatch,advanceManufacturing,collectManufacturing,nextManufacturingEvent,updateManufacturingCapacity,type ManufacturingFormulaId,type ManufacturingState} from './manufacturingTimeline'
 import { evaluateRecycleEfficiency } from '../engine/supportFacilitySkills'
 import { createRecycleTimeline, type RecycleProduction } from './recycleTimeline'
 
@@ -128,8 +128,6 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   for(const t of trades.values())if(includeTrade&&(roomId===undefined||roomId===t.roomId)){let count=0;while(t.pending.length&&count++<orderLimit){const o=t.pending[0]!,delta={gold:unlimitedMaterials?0:-o.goldCost,fragment:unlimitedMaterials?0:-o.fragmentCost,lmd:o.lmdReward,orundum:o.orundumReward};if(!transact(delta,`collect-order:${o.id}`))break;materialsConsumed.gold=(materialsConsumed.gold??0)+o.goldCost;materialsConsumed.fragment=(materialsConsumed.fragment??0)+o.fragmentCost;if(observationMarked&&o.completedAt<=warmupHours){warmupReceipts.lmd=(warmupReceipts.lmd??0)+o.lmdReward;warmupReceipts.orundum=(warmupReceipts.orundum??0)+o.orundumReward}t.pending.shift();t.collectedOrders++;record('order-collected',{roomId:t.roomId,orderId:o.id,order:o})}}
  }
  const rng=(t:TradeRoom)=>{t.rng=(Math.imul(1664525,t.rng)+1013904223)>>>0;return t.rng/4294967296}
- // Formula unlocks are base-wide; each factory retains its own storage capacity.
- const formulaUnlocked=(frame:ProductionFrame,formula:ManufacturingFormulaId)=>frame.config.rooms.some(room=>room.type==='manufacture'&&room.level>=MANUFACTURING_FORMULAS[formula].requiredRoomLevel)
  const synchronize=(frame:ProductionFrame)=>{
   if(frame.config.facilities.recycle&&!recycle)recycle=createRecycleTimeline(frame.config.facilities.recycle)
   for(const room of frame.config.rooms){
@@ -137,7 +135,6 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    if(room.type==='manufacture'){
     let m=manufactures.get(room.id)
     if(!m){const formula:ManufacturingFormulaId=room.product==='exp'?'exp-medium':room.product==='fragment'?(options.fragmentFormulaByRoom?.[room.id]??(schedule.sourceWorkspace.compatibility.facilityMetadata?.[room.id]?.rawProduct==='orirock_device'?'fragment-device':'fragment-orirock')):'gold'
-     if(!formulaUnlocked(frame,formula)){unsupported('MANUFACTURE_FORMULA_LEVEL',`${room.id}：基建中没有满足配方解锁等级的制造站，未计产出`);continue}
      m={completedByProduct:{},roomId:room.id,state:startManufacturing({formula,capacityWeight:0,paymentAuthorized:false}),blockedHours:0,blockedMaterialHours:0,collectedItems:0};manufactures.set(room.id,m)}
     // The same efficiency snapshot has stable staffing and capacity-relevant mood boundaries.
     let capacities=capacityByEvaluation.get(frame.evaluations)
@@ -174,7 +171,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    const target=frame.desiredProducts[m.roomId]??manufacturingProductId(m.state.formula.id)
    if(target===manufacturingProductId(m.state.formula.id)){delete m.pendingSwitch;continue}
    const formula=MOWER_MANUFACTURING_FORMULAS[target]
-   if(!formula||!formulaUnlocked(frame,formula)){reject(m.roomId,target,'切换目标配方未知或基建中没有满足配方解锁等级的制造站');delete m.pendingSwitch;continue}
+   if(!formula){reject(m.roomId,target,'切换目标配方未知');delete m.pendingSwitch;continue}
    if(m.pendingSwitch?.target!==target)m.pendingSwitch={target,accelerated:false}
    if(m.state.awaitingPayment){
     // An unfunded idle facility has no current unit to finish.
@@ -360,6 +357,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   if(switchSettings.enable)diagnostic('PRODUCT_SWITCH_SIMULATION_MODEL','切产物按当前份基础工作量、共享无人机库存及配置的损耗和等待规则推进；旧产物先收取，已有贸易订单保留。确认缓冲按暂停开工建模，未模拟设备识别、页面操作及换班前批量切换的驻场等待。')
   if(switchSettings.enable&&switchSettings.direct_when_drones_insufficient)diagnostic('PRODUCT_SWITCH_CANCEL_COST_MODEL','直接取消当前制造份时不计完成产物，保留已发生的开工扣料；游戏取消时的材料返还规则未实测。')
   if(potential)diagnostic('POTENTIAL_OUTPUT_MODEL','直观产出模式：忽略材料库存不足，设施容量与收取按 Mower 排班执行，完成即计产出；账本为测算辅助，不代表实际到账。无人机仍按所选策略及实际生成量使用。')
+  diagnostic('MANUFACTURING_RECIPES_UNLOCKED','制造配方默认已解锁，不根据当前制造站等级推断历史解锁状态。')
   diagnostic('IDEAL_RUN_ORDER_ASSUMPTIONS','理想跑单按已解锁的佩佩/可露希尔候选决定新单模式，在普通订单完成时应用 U-Official/但书/龙舌兰效果；保留 Mower 任务读取、排序与唤醒，不临时换人、不等待、不消耗跑单干员心情或无人机。常规排班和无人机目标策略仍执行。')
   diagnostic('DRONE_ALLOCATION_POLICY',nativeScheduler?`无人机由 Mower 的任务阶段使用：每 ${schedule.assumptions.droneIntervalHours ?? 3} 小时待办检查、${schedule.assumptions.droneCountLimit ?? 100} 架判断门槛；按所选设施加速，不额外消耗跑单无人机。`:`无人机采用满仓及每日彻底清空加速${options.droneRoomId&&target!=='none'?`设施(${options.droneRoomId})`:target==='gold'?'赤金':target==='exp'?'作战记录':target==='trading'?`贸易站(${options.droneTradingRoomId??'默认'})`:'关闭'}、保留 ${reserve} 架策略，以保证计算稳定。`)
 

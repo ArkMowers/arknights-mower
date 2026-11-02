@@ -261,8 +261,8 @@
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
-      "sha256": "1b45bfb1481dba3a7a065c4e9a2e954df146a2858171b57455dd0d06f28f2fc0",
-      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances. Capture warmup-adjusted quality probabilities only at new-order acquisition. Finalize successful sampling by collecting completed manufacturing output, payable trade orders and recycling counts without opening new work or spending drones. Attribute delayed warmup receipts separately without altering physical inventory. Resolve manufacturing recipe unlocks across all built manufacturing rooms for initial production and product switching, while retaining each room's own storage capacity."
+      "sha256": "cc05a09c19cc69fdcce2b86b935777e6b31bf5ba5b19e0bbb32eb8327377f20e",
+      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances. Capture warmup-adjusted quality probabilities only at new-order acquisition. Finalize successful sampling by collecting completed manufacturing output, payable trade orders and recycling counts without opening new work or spending drones. Attribute delayed warmup receipts separately without altering physical inventory. Assume manufacturing recipes are already unlocked for initial production and product switching, independently of current facility levels; preserve unknown switch-target rejection and each room's own storage capacity."
     },
     "simulator/scheduleSimulation.ts": {
       "sha256": "671f1266302bdf25127d3fa7c340b4f1e85303b6e5e70b8195c23efc267bd092",
@@ -801,8 +801,8 @@
       "sha256": "50a4d7d7ca2c8de5afd3a9809aa89d8c4dd8e60bf656e977ba1964afcc8efc45"
     },
     "simulator/manufacturingTimeline.ts": {
-      "sha256": "a03bfbaf931a2512324db50ec9f379b41865332f42e73d748f007b330ddc74d9",
-      "reason": "Match the game table requirement that formula 3 (item 2003) needs one level-three manufacturing room in the base."
+      "sha256": "3b7d2d63412f5cca62714fc62ad62f16b03ced81e21effc737573cbbf102de39",
+      "reason": "Remove per-recipe room-level requirements because simulation assumes recipes already unlocked, including after facility downgrades."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

@@ -569,7 +569,6 @@ it('does not count ordinary gold delivery as gold income or deduct it from manuf
   expect(rows.find((row) => row.label === '赤金等价龙门币').daily).toBeCloseTo(10000, 8)
   expect(rows.some((row) => ['赤金产量', '赤金消耗', '赤金净增'].includes(row.label))).toBe(false)
   source.plan1.room_1_1.product = 'exp'
-  source.facility_levels = { room_1_1: 3 }
   const noGold = calculateIncome(source, {
     ...modelSettings(),
     finiteInventory: true,
