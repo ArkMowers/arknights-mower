@@ -1,3 +1,4 @@
+import { incomeManufacturingCosts } from './incomeManufacturingCosts'
 import { runCalculationBridge } from './vendor/workbench/calculationBridge'
 import { incomeRequest } from './income'
 import { incomeEventLog } from './incomeLogs'
@@ -57,17 +58,10 @@ export function calculateIncome(plan, settings, onProgress) {
     }
   const days = simulation.observedHours / 24
   const production = simulation.production
-  const potentialLmdCost = production.events
-    .filter(
-      (e) =>
-        e.type === 'manufacture-cost' &&
-        e.time >= simulation.assumptions.warmupHours &&
-        e.time <= simulation.elapsedHours
-    )
-    .reduce((sum, e) => sum - (e.delta?.lmd ?? 0), 0)
+  const manufacturingCosts = incomeManufacturingCosts(simulation)
   const netLmd =
     production.assumptions.outputMode === 'potential'
-      ? result.report.summary.orderLmd - potentialLmdCost / days
+      ? result.report.summary.orderLmd - manufacturingCosts.lmdConsumed
       : (production.sample.net.lmd ?? 0) / days
   return {
     success: true,
@@ -98,10 +92,7 @@ export function calculateIncome(plan, settings, onProgress) {
       netLmd,
       recruitmentCount: recruitment.result().completed / days,
       clueCount: clues.result().completed / days,
-      lmdConsumed:
-        production.assumptions.outputMode === 'potential'
-          ? potentialLmdCost / days
-          : (production.sample.outflows.lmd ?? 0) / days,
+      ...manufacturingCosts,
       recycleCount:
         (simulation.production?.recycle?.sampleCompletedItems ?? 0) /
         (simulation.observedHours / 24)

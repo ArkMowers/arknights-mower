@@ -157,8 +157,10 @@ export function incomeMetrics(summary, days) {
   return [
     ['经验', summary.exp, '经验值'],
     ['赤金等价龙门币', incomeGoldEquivalentLmd(summary), '龙门币'],
-    ['贸易龙门币', summary.orderLmd, '龙门币'],
-    ['龙门币消耗', summary.lmdConsumed, '龙门币'],
+    ['龙门币产出', summary.orderLmd, '龙门币'],
+    ['制造源石碎片消耗龙门币', summary.lmdConsumed, '龙门币'],
+    ...(summary.orirockConsumed == null ? [] : [['消耗固源岩', summary.orirockConsumed, '个']]),
+    ...(summary.deviceConsumed == null ? [] : [['消耗装置', summary.deviceConsumed, '个']]),
     ['龙门币净增', summary.netLmd, '龙门币'],
     ['源石碎片', summary.fragments, '个'],
     ['合成玉', summary.orundum, '个'],
@@ -180,10 +182,26 @@ export function incomeImageMetrics(summary, days) {
     {
       key: 'lmd',
       icon: '/product/lmd.png',
-      daily: summary.netLmd,
-      unit: '龙门币',
-      signed: true,
-      present: summary.orderLmd || summary.lmdConsumed
+      daily: summary.orderLmd,
+      unit: '龙门币'
+    },
+    {
+      key: 'lmdCost',
+      icon: '/product/lmd.png',
+      daily: -summary.lmdConsumed,
+      unit: '龙门币'
+    },
+    {
+      key: 'orirockCost',
+      icon: '/depot/固源岩.webp',
+      daily: -summary.orirockConsumed,
+      unit: '个'
+    },
+    {
+      key: 'deviceCost',
+      icon: '/depot/装置.webp',
+      daily: -summary.deviceConsumed,
+      unit: '个'
     },
     { key: 'fragment', icon: '/product/orirock.png', daily: summary.fragments, unit: '个' },
     { key: 'orundum', icon: '/product/orundum.png', daily: summary.orundum, unit: '个' },
@@ -191,6 +209,6 @@ export function incomeImageMetrics(summary, days) {
     { key: 'recruitment', icon: officeTemplate, daily: summary.recruitmentCount, unit: '次' },
     { key: 'clue', icon: receptionTemplate, daily: summary.clueCount, unit: '个' }
   ]
-    .filter((row) => Math.abs(row.daily ?? 0) > 1e-8 || Math.abs(row.present ?? 0) > 1e-8)
+    .filter((row) => Math.abs(row.daily ?? 0) > 1e-8)
     .map((row) => ({ ...row, daily: row.daily ?? 0, total: (row.daily ?? 0) * days }))
 }

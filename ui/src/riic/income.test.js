@@ -292,7 +292,7 @@ it('reports recycling counts without material inventory or score', () => {
   )
 })
 
-it('reports manufactured and premium gold as LMD equivalent while retaining net LMD', () => {
+it('separates daily LMD income and manufacturing material costs in image metrics', () => {
   const rows = incomeImageMetrics(
     {
       exp: 1000,
@@ -302,6 +302,8 @@ it('reports manufactured and premium gold as LMD equivalent while retaining net 
       virtualGoldCount: 1.4,
       orderLmd: 4000,
       lmdConsumed: 4000,
+      orirockConsumed: 5,
+      deviceConsumed: 2,
       netLmd: 0,
       fragments: 0,
       orundum: 0,
@@ -309,7 +311,14 @@ it('reports manufactured and premium gold as LMD equivalent while retaining net 
     },
     28
   )
-  expect(rows.map((row) => row.key)).toEqual(['exp', 'gold', 'lmd'])
+  expect(rows.map((row) => row.key)).toEqual([
+    'exp',
+    'gold',
+    'lmd',
+    'lmdCost',
+    'orirockCost',
+    'deviceCost'
+  ])
   expect(rows[1]).toMatchObject({
     daily: 5700,
     total: 159600,
@@ -317,7 +326,10 @@ it('reports manufactured and premium gold as LMD equivalent while retaining net 
     icon: '/product/gold.png'
   })
   expect(rows[1].signed).toBeUndefined()
-  expect(rows[2]).toMatchObject({ daily: 0, total: 0 })
+  expect(rows[2]).toMatchObject({ daily: 4000, total: 112000 })
+  expect(rows[3]).toMatchObject({ daily: -4000, total: -112000 })
+  expect(rows[4]).toMatchObject({ daily: -5, total: -140, icon: '/depot/固源岩.webp' })
+  expect(rows[5]).toMatchObject({ daily: -2, total: -56, icon: '/depot/装置.webp' })
 })
 it.each([
   ['orirock', 1600],
@@ -344,6 +356,11 @@ it.each([
   expect(funded.success, funded.error).toBe(true)
   expect(result.summary.netLmd).toBeCloseTo(funded.summary.netLmd, 6)
   expect(result.summary.netLmd).toBe(-result.summary.lmdConsumed)
+  const batches = result.summary.lmdConsumed / cost
+  expect(result.summary.orirockConsumed).toBeCloseTo(product === 'orirock' ? batches * 2 : 0, 6)
+  expect(result.summary.deviceConsumed).toBeCloseTo(product === 'orirock_device' ? batches : 0, 6)
+  expect(result.summary.orirockConsumed).toBeCloseTo(funded.summary.orirockConsumed, 6)
+  expect(result.summary.deviceConsumed).toBeCloseTo(funded.summary.deviceConsumed, 6)
 })
 it('reports actual sample LMD balance changes and drone rooms with event logs', () => {
   const source = plan()
@@ -799,3 +816,31 @@ it.each([null, '组名', [''], ['  '], [123]])('模拟拒绝无效的延后回�
     })
   )
 })
+
+it.each([
+  ['orirock', 38400, 48, 0],
+  ['orirock_device', 24000, 0, 24]
+])(
+  'reports manufacturing resource costs for an unstaffed %s factory',
+  (product, lmdConsumed, orirockConsumed, deviceConsumed) => {
+    const source = plan()
+    source.plan1.room_1_1.product = product
+    source.facility_levels = { room_1_1: 3 }
+    for (const finiteInventory of [false, true]) {
+      const result = calculateIncome(source, {
+        ...modelSettings(),
+        finiteInventory,
+        warmupDays: 0,
+        sampleDays: 1,
+        initialInventory: { lmd: 1000000, orirock: 1000, device: 1000 }
+      })
+      expect(result.success, result.error).toBe(true)
+      expect(result.summary).toMatchObject({ lmdConsumed, orirockConsumed, deviceConsumed })
+      const metrics = incomeMetrics(result.summary, 1)
+      expect(metrics.find((row) => row.label === '龙门币产出').daily).toBe(0)
+      expect(metrics.find((row) => row.label === '制造源石碎片消耗龙门币').daily).toBe(lmdConsumed)
+      expect(metrics.find((row) => row.label === '消耗固源岩').daily).toBe(orirockConsumed)
+      expect(metrics.find((row) => row.label === '消耗装置').daily).toBe(deviceConsumed)
+    }
+  }
+)

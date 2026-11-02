@@ -1,4 +1,5 @@
 import { toRaw } from 'vue'
+import { incomeManufacturingCosts } from './incomeManufacturingCosts'
 
 const DATABASE = 'mower-income-results'
 const STORE = 'results'
@@ -63,6 +64,10 @@ export async function loadIncomeArchive() {
     !Array.isArray(record.progressLog)
   )
     throw new Error('已保存的收益记录格式不兼容')
+  const costs = incomeManufacturingCosts(record.result.simulationReport)
+  if (costs && record.result.summary) {
+    record.result.summary = { ...costs, ...record.result.summary }
+  }
   return record
 }
 export function saveIncomeArchive(record) {

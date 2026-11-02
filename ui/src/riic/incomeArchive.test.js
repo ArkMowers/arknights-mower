@@ -124,3 +124,42 @@ it('returns no result for empty storage and reports incompatible data', async ()
   stored = { ...record(), version: 99 }
   await expect(loadIncomeArchive()).rejects.toThrow('格式不兼容')
 })
+
+it.each(['potential', 'settled'])(
+  'recovers material costs from a saved %s report without changing prior income',
+  async (outputMode) => {
+    const data = record()
+    data.result.summary = { orderLmd: 8000, totalScore82: 123, lmdConsumed: 1600 }
+    data.result.simulationReport = {
+      observedHours: 48,
+      elapsedHours: 72,
+      assumptions: { warmupHours: 24 },
+      production: {
+        assumptions: { outputMode },
+        sample: { outflows: { lmd: 3200, orirock: 4, device: 2 } },
+        events: [
+          { type: 'manufacture-cost', time: 0, delta: { lmd: -1600, orirock: -2 } },
+          { type: 'manufacture-cost', time: 24, delta: { lmd: -3200, orirock: -4, device: -2 } },
+          { type: 'manufacture-cost', time: 73, delta: { device: -99 } }
+        ]
+      }
+    }
+    await saveIncomeArchive(data)
+    const loaded = await loadIncomeArchive()
+    expect(loaded.result.summary).toEqual({
+      orderLmd: 8000,
+      totalScore82: 123,
+      lmdConsumed: 1600,
+      orirockConsumed: 2,
+      deviceConsumed: 1
+    })
+    expect(stored.result.summary).toEqual(data.result.summary)
+  }
+)
+
+it('leaves unknown material costs absent when an old result has no production report', async () => {
+  const data = record()
+  data.result.summary = { orderLmd: 8000, lmdConsumed: 1600 }
+  await saveIncomeArchive(data)
+  expect((await loadIncomeArchive()).result.summary).toEqual(data.result.summary)
+})
