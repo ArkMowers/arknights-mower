@@ -3841,9 +3841,15 @@ class BaseSchedulerSolver(
         )
         if "train" in need_read and facility_levels.get("train") != 0:
             priority_rooms.append("train")
-        priority_room_set = set(priority_rooms)
         ordered_rooms = priority_rooms + sorted(need_read - set(priority_rooms))
         for room_index, room in enumerate(ordered_rooms):
+            # 优先设施实读或复用近期结果后，统一检查是否该先执行临近任务。
+            if (
+                initial_observation
+                and room_index == len(priority_rooms)
+                and self._yield_initial_mood_to_priority_task()
+            ):
+                return False
             if facility_levels.get(room) == 0:
                 force_rooms.discard(room)
                 restoration_observations.pop(room, None)
@@ -4045,46 +4051,44 @@ class BaseSchedulerSolver(
             if not skip_room_exit:
                 self.back()
             force_rooms.discard(room)
-            if initial_observation and room in priority_room_set:
-                completed_priority = {
-                    candidate for candidate in ordered_rooms[: room_index + 1]
-                }
-                imminent_priority_task = any(
-                    getattr(task, "type", None)
-                    in (
-                        TaskTypes.RUN_ORDER,
-                        TaskTypes.SKILL_UPGRADE,
-                        TaskTypes.SWAP_SUPPORT,
-                    )
-                    and getattr(task, "time", None) is not None
-                    and task.time <= datetime.now() + timedelta(minutes=1)
-                    and not getattr(task, "execution_failure", None)
-                    for task in (
-                        *getattr(self, "tasks", ()),
-                        *(
-                            (self.task,)
-                            if getattr(self, "task", None) is not None
-                            and all(
-                                queued is not self.task
-                                for queued in getattr(self, "tasks", ())
-                            )
-                            else ()
-                        ),
-                    )
-                )
-                if (
-                    not priority_room_set - completed_priority
-                    and imminent_priority_task
-                ):
-                    logger.info("跑单或训练换人临近，暂停初始化其余设施读取")
-                    self.back_to_infrastructure()
-                    return False
             if getattr(self, "_emergency_startup_pending", False):
                 self._emergency_replan_releases()
                 protect_priority_tasks(
                     self.tasks, op_data=getattr(self, "op_data", None)
                 )
                 self._emergency_save()
+
+        if (
+            initial_observation
+            and len(ordered_rooms) == len(priority_rooms)
+            and self._yield_initial_mood_to_priority_task()
+        ):
+            return False
+
+    def _yield_initial_mood_to_priority_task(self):
+        imminent_priority_task = any(
+            getattr(task, "type", None)
+            in (TaskTypes.RUN_ORDER, TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+            and getattr(task, "time", None) is not None
+            and task.time <= datetime.now() + timedelta(minutes=1)
+            and not getattr(task, "execution_failure", None)
+            for task in (
+                *getattr(self, "tasks", ()),
+                *(
+                    (self.task,)
+                    if getattr(self, "task", None) is not None
+                    and all(
+                        queued is not self.task for queued in getattr(self, "tasks", ())
+                    )
+                    else ()
+                ),
+            )
+        )
+        if not imminent_priority_task:
+            return False
+        logger.info("跑单或训练换人临近，暂停初始化其余设施读取")
+        self.back_to_infrastructure()
+        return True
 
     def _read_room_mood(self, room, *, force_mood=False, strict_observation=False):
         """实读普通房间的驻员与心情，清除已离开房间的缓存驻员。"""
