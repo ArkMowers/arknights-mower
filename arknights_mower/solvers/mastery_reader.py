@@ -759,15 +759,22 @@ def _read_slots_checked(solver):
     return scan[0].get("agent", ""), scan[1].get("agent", ""), scan, reliable
 
 
-def _train_slot_has_mastery(solver) -> bool:
+def _train_slot_has_mastery(solver, train_slot) -> bool:
     """§5.2 空闲保护深读：进技能选择页读训练位干员所有技能。
 
+    只读训练位干员实际拥有的技能，避免把空技能槽背景当成专精亮点。
     有专一/专二 → True（保护，不能动）；全专三或专0 → False（可动）；
-    进不去技能页 / 读不到档位 → 保守 True（保护）。
+    技能数量未知、进不去技能页或读不到档位 → 保守 True（保护）。
     进入技能选择页后，finally 保证必定 back 回 TRAIN_MAIN 并等待转场。
     """
     entered_skill_select = False
     try:
+        from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+        char_id = _resolve_operator_char_id(train_slot)
+        skills = get_skill_data().get("characters", {}).get(char_id, {}).get("skills")
+        if not isinstance(skills, list) or not 1 <= len(skills) <= len(SKILL_SLOT_PIPS):
+            return True
         scene = solver.train_scene()
         if scene == Scene.TRAIN_MAIN:
             solver.tap((solver.recog.w * 0.05, solver.recog.h * 0.95), interval=0.5)
@@ -786,7 +793,7 @@ def _train_slot_has_mastery(solver) -> bool:
         if solver.train_scene() != Scene.TRAIN_SKILL_SELECT:
             return True
 
-        for idx in (0, 1, 2):
+        for idx in range(len(skills)):
             tier = _read_slot_mastery_tier(solver, idx)
             if tier is None:
                 return True  # 读不到 → 保守保护
@@ -831,7 +838,7 @@ def _compute_protected(solver, room, scan_plan=None) -> bool:
     if room.state == "empty":
         if not room.train_slot:
             return False
-        return _train_slot_has_mastery(solver)
+        return _train_slot_has_mastery(solver, room.train_slot)
     return False
 
 

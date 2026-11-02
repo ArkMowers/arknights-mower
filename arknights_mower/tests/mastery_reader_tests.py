@@ -2506,7 +2506,7 @@ class TestComputeProtected(unittest.TestCase):
             is_protected = reader._compute_protected(self.solver, room, scan_plan=plan)
 
         self.assertTrue(is_protected)
-        mock_has_mastery.assert_called_once_with(self.solver)
+        mock_has_mastery.assert_called_once_with(self.solver, room.train_slot)
 
     @patch.object(reader, "_train_slot_has_mastery", return_value=True)
     def test_deep_read_when_train_slot_mismatches_scan_plan(self, mock_has_mastery):
@@ -2517,7 +2517,7 @@ class TestComputeProtected(unittest.TestCase):
             is_protected = reader._compute_protected(self.solver, room, scan_plan=plan)
 
         self.assertTrue(is_protected)
-        mock_has_mastery.assert_called_once_with(self.solver)
+        mock_has_mastery.assert_called_once_with(self.solver, room.train_slot)
 
     @patch.object(reader, "_train_slot_has_mastery", return_value=True)
     def test_deep_read_when_scan_plan_is_none(self, mock_has_mastery):
@@ -2527,7 +2527,7 @@ class TestComputeProtected(unittest.TestCase):
             is_protected = reader._compute_protected(self.solver, room, scan_plan=None)
 
         self.assertTrue(is_protected)
-        mock_has_mastery.assert_called_once_with(self.solver)
+        mock_has_mastery.assert_called_once_with(self.solver, room.train_slot)
 
     @patch.object(reader, "_fill_slots_and_protection")
     @patch.object(reader, "_classify_panel", return_value="empty")
@@ -3352,7 +3352,7 @@ class TestTrainSlotHasMastery(unittest.TestCase):
             scenes.pop(0) if scenes else Scene.TRAIN_MAIN
         )
 
-        res = reader._train_slot_has_mastery(self.solver)
+        res = reader._train_slot_has_mastery(self.solver, "能天使")
         self.assertFalse(res, "全专0不保护")
         self.solver.tap.assert_called_once()
         self.solver.back.assert_called_once()
@@ -3369,7 +3369,7 @@ class TestTrainSlotHasMastery(unittest.TestCase):
             scenes.pop(0) if scenes else Scene.TRAIN_MAIN
         )
 
-        res = reader._train_slot_has_mastery(self.solver)
+        res = reader._train_slot_has_mastery(self.solver, "能天使")
         self.assertTrue(res, "异常保守保护")
         self.solver.back.assert_called_once()
 
@@ -3377,7 +3377,7 @@ class TestTrainSlotHasMastery(unittest.TestCase):
         # 点击后卡在主界面未成功跳转，不应在主界面执行 back 误退房间
         self.solver.train_scene.return_value = Scene.TRAIN_MAIN
 
-        res = reader._train_slot_has_mastery(self.solver)
+        res = reader._train_slot_has_mastery(self.solver, "能天使")
         self.assertTrue(res, "超时保守保护")
         self.solver.back.assert_not_called()
 
