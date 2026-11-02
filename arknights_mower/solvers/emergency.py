@@ -394,6 +394,7 @@ class EmergencyRecoveryMixin:
             self._emergency_startup_pending = True
             self._emergency_defer_read()
             return
+        self._initial_card_scan_required = True
         self._read_initial_card_mood()
         if self._queue_initial_fia():
             return

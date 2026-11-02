@@ -57,11 +57,12 @@ def solver(op_data, monkeypatch):
     return instance
 
 
-def test_startup_scans_cards_without_selection_or_occupancy_changes(solver):
+@pytest.mark.parametrize("task_type", [TaskTypes.SKILL_UPGRADE, TaskTypes.RUN_ORDER])
+def test_startup_scans_cards_without_selection_or_occupancy_changes(solver, task_type):
     data = solver.op_data
     before = copy.deepcopy(data.operators)
     beds = copy.deepcopy([vars(bed) for bed in data.all_dorms()])
-    task = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE)
+    task = SchedulerTask(task_type=task_type)
     solver.tasks = [task]
     solver._read_initial_card_mood()
     assert dorm_candidate_mood(data, "银灰") == 3
@@ -111,17 +112,29 @@ def test_partial_estimates_survive_cancelled_scan(solver, error):
     solver.back_to_infrastructure.assert_called_once()
 
 
-@pytest.mark.parametrize("reason", ["all_measured", "no_facility", "imminent"])
-def test_no_selection_page_when_not_needed_or_unavailable(solver, reason):
+@pytest.mark.parametrize("reason", ["all_measured", "imminent"])
+def test_initialization_requires_card_scan_despite_cached_mood_or_imminent_work(
+    solver, reason
+):
     if reason == "all_measured":
         for op in solver.op_data.operators.values():
             op.time_stamp = datetime.now()
-    elif reason == "no_facility":
-        solver.op_data.plan = {ROOM: solver.op_data.plan[ROOM]}
     else:
         solver.no_pending_task.return_value = False
     solver._read_initial_card_mood()
+    solver.enter_room.assert_called_once()
+    solver.wait_for_agent_page.assert_called_once()
+    solver.no_pending_task.assert_not_called()
+    solver.back_to_infrastructure.assert_called_once()
+
+
+def test_initialization_reports_missing_scan_facility(solver, monkeypatch):
+    warning = MagicMock()
+    monkeypatch.setattr(base_schedule.logger, "warning", warning)
+    solver.op_data.plan = {ROOM: solver.op_data.plan[ROOM]}
+    solver._read_initial_card_mood()
     solver.enter_room.assert_not_called()
+    assert "没有可进入的普通设施" in warning.call_args.args[0]
 
 
 def test_startup_card_scan_has_time_budget(solver, monkeypatch):
@@ -141,12 +154,18 @@ def test_startup_card_scan_has_page_budget(solver):
     solver.back_to_infrastructure.assert_called_once()
 
 
-def test_deadline_preserves_partial_estimates(solver):
-    solver.no_pending_task.side_effect = [True, True, False]
+def test_initialization_reports_incomplete_scan_and_keeps_partial_estimates(
+    solver, monkeypatch
+):
+    warning = MagicMock()
+    monkeypatch.setattr(base_schedule.logger, "warning", warning)
+    solver.same_agent_page = MagicMock(return_value=True)
     solver.wait_for_agent_page.return_value = [("银灰", 0)]
     solver._read_initial_card_mood()
-    assert solver.wait_for_agent_page.call_count == 1
+    assert solver.wait_for_agent_page.call_count == 2
     assert dorm_candidate_mood(solver.op_data, "银灰") == 3
+    assert dorm_candidate_mood(solver.op_data, "红") is None
+    assert warning.call_args.args[1] == "翻页后页面未变化"
 
 
 def test_latest_mood_wins_and_estimate_expiry_keeps_unknown(solver):
@@ -304,6 +323,30 @@ def test_failed_actual_initial_read_keeps_gate_closed(solver):
     assert solver.defer_backup_plan_until_mood_read
     solver._read_initial_card_mood.assert_not_called()
     solver.backup_plan_solver.assert_not_called()
+
+
+def test_initial_planning_scans_before_yielding_to_imminent_work(solver):
+    solver.planned = False
+    solver.skip = MagicMock()
+    solver.no_pending_task.return_value = False
+    solver._read_agent_mood = MagicMock()
+    solver._queue_initial_fia = MagicMock(return_value=False)
+    solver.backup_plan_solver = MagicMock()
+    solver.queue_product_switches = MagicMock()
+    solver.agent_get_mood = MagicMock()
+    solver.run_order_solver = MagicMock()
+    solver.plan_solver = MagicMock()
+
+    assert solver.infra_main() is True
+
+    solver._read_agent_mood.assert_called_once()
+    solver.wait_for_agent_page.assert_called_once()
+    assert not solver.defer_backup_plan_until_mood_read
+    assert dorm_candidate_mood(solver.op_data, "银灰") == 3
+    solver.agent_get_mood.assert_not_called()
+    solver.run_order_solver.assert_not_called()
+    solver.plan_solver.assert_not_called()
+    solver.skip.assert_called_with(["planned", "todo_task", "collect_notification"])
 
 
 def test_low_card_estimate_preserves_startup_occupancy_correction_order(monkeypatch):
@@ -547,3 +590,93 @@ def test_real_primary_planning_propagates_scan_transport_failures(solver, error)
     with pytest.raises(type(error)):
         solver._plan_primary_recovery()
     solver.resting.assert_not_called()
+
+
+def calculated_missing(solver, monkeypatch, missing="红"):
+    from arknights_mower.utils import config
+
+    monkeypatch.setattr(config.conf, "test_mood_calculation", True)
+    now = datetime.now()
+    for name in solver.op_data.operators:
+        if name != missing:
+            solver.op_data.mood_model.observe(name, 12, now)
+    solver.defer_backup_plan_until_mood_read = False
+    solver._initial_mood_room_observations = {missing}
+    return solver.op_data.mood_model
+
+
+def test_normal_planning_replenishes_missing_calculated_baseline(solver, monkeypatch):
+    model = calculated_missing(solver, monkeypatch)
+    solver.find_next_task = MagicMock(return_value=None)
+    solver.resting = MagicMock(return_value={})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args, **kwargs: {})
+
+    assert solver._plan_primary_recovery() is True
+
+    assert model.moods["红"] == 24
+    assert model.moods["银灰"] == 12
+    assert solver.op_data.operators["红"].time_stamp is None
+    solver.enter_room.assert_called_once()
+    solver.tap_confirm.assert_not_called()
+    solver.back_to_infrastructure.assert_called_once()
+
+
+def test_missing_calculated_scan_yields_to_due_work_and_retries_when_idle(
+    solver, monkeypatch
+):
+    model = calculated_missing(solver, monkeypatch)
+    task = SchedulerTask(datetime.now(), {"meeting": ["银灰"]}, TaskTypes.SHIFT_ON)
+    solver.tasks = [task]
+    original_time = task.time
+    solver.no_pending_task.return_value = False
+    solver._read_missing_calculated_moods()
+    solver.enter_room.assert_not_called()
+    solver.no_pending_task.return_value = True
+    solver._read_missing_calculated_moods()
+    assert model.moods["红"] == 24
+    assert solver.tasks == [task]
+    assert task.time == original_time
+
+
+def test_failed_missing_scan_requires_changed_observation_before_retry(
+    solver, monkeypatch
+):
+    model = calculated_missing(solver, monkeypatch)
+    solver.wait_for_agent_page.side_effect = RuntimeError("unreadable page")
+    solver._read_missing_calculated_moods()
+    assert "红" not in model.moods
+    solver._card_moods_scanned_this_run = False
+    solver._read_missing_calculated_moods()
+    solver.enter_room.assert_called_once()
+    # 时间流逝不构成新的观测；位置变化后才允许再次补齐。
+    model.at = datetime.now() + timedelta(seconds=1)
+    solver._read_missing_calculated_moods()
+    solver.enter_room.assert_called_once()
+    model.positions["红"] = ("", -1)
+    solver.wait_for_agent_page.side_effect = None
+    solver._read_missing_calculated_moods()
+    assert solver.enter_room.call_count == 2
+    assert model.moods["红"] == 24
+
+
+def test_complete_calculated_cache_does_not_open_selection(solver, monkeypatch):
+    calculated_missing(solver, monkeypatch, missing="")
+    solver._read_missing_calculated_moods()
+    solver.enter_room.assert_not_called()
+
+
+def test_enabled_unregistered_crafter_gets_missing_calculated_baseline(
+    solver, monkeypatch
+):
+    from arknights_mower.utils import config
+
+    model = calculated_missing(solver, monkeypatch, missing="")
+    monkeypatch.setattr(
+        config.conf, "workshop_settings", [config.Conf.WorkShopSetting(operator="年")]
+    )
+    assert "年" not in solver.op_data.operators
+    solver._read_missing_calculated_moods()
+    assert model.moods["年"] == 24
+    solver._card_moods_scanned_this_run = False
+    solver._read_missing_calculated_moods()
+    solver.enter_room.assert_called_once()

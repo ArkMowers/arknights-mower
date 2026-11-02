@@ -34,6 +34,7 @@ from arknights_mower.utils.resting_priority import (
     RestingTier,
     bed_takeover_allowed,
     busy_resting_names,
+    crafting_rest_candidates,
     crafting_rest_order,
     has_resting_mood,
     is_full_dorm_filler,
@@ -3435,6 +3436,9 @@ def try_add_release_dorm(
             if not recovery_names:
                 return
         recovering = recovery_names.copy()
+        estimated_crafters = set(
+            crafting_rest_candidates(op_data, candidates.estimated_recovering)
+        )
         waiting = next(iter(recovering), None)
         full = [
             name
@@ -3487,6 +3491,7 @@ def try_add_release_dorm(
                         for name in recovering
                         if (
                             name in candidates.recovering
+                            or name in estimated_crafters
                             or resting_tier(op_data, name)
                             <= RestingTier.PRIORITY_REPLACEMENT
                             or is_full_dorm_filler(op_data, occupant.name, now)

@@ -33,6 +33,10 @@ class WorkshopBlock:
         return asdict(self)
 
 
+class WorkshopSelectionBlocked(Exception):
+    """当前加工卡片已确认不满足加工条件，取消选人。"""
+
+
 def _recipe_stock(name, inventory):
     from arknights_mower.data import workshop_formula
     from arknights_mower.utils import config
@@ -270,14 +274,21 @@ def workshop_material_block_reason(
 
 
 def workshop_candidate_mood(op_data, operator):
-    """加工准入优先使用数值心情，未知时接受有效的满心情卡牌预估。"""
+    """返回加工准入心情；演算模式只接受模型值，普通模式允许满心情卡牌兜底。"""
+    if getattr(op_data, "mood_calculation_enabled", False):
+        return op_data.calculated_mood(operator)
     op = op_data.operators.get(operator)
     mood = (
         op.current_mood() if hasattr(op, "current_mood") else getattr(op, "mood", None)
     )
-    if mood is not None and mood >= 0:
-        return mood
     estimate = card_mood_estimate(op_data, operator)
+    if mood is not None and mood >= 0:
+        observed = getattr(op, "time_stamp", None)
+        if estimate is not None and (
+            observed is None or op_data.dorm_mood_estimates[operator][1] > observed
+        ):
+            return min(mood, estimate)
+        return mood
     return 24 if estimate == 24 else None
 
 
