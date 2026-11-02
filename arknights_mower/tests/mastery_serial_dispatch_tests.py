@@ -3,9 +3,11 @@
 import json
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import cv2
 import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
@@ -25,7 +27,7 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noq
 
 
 @pytest.fixture
-def serial(tmp_path, monkeypatch):
+def serial(tmp_path, monkeypatch, bundled_mastery_skills):
     monkeypatch.setattr(config, "conf", config.Conf(enable_mastery=True))
     db_path = tmp_path / "data.db"
 
@@ -106,6 +108,48 @@ def serial(tmp_path, monkeypatch):
 def dispatch(serial):
     ready = mastery_recommendation.auto_schedule_mastery_tasks()["scheduled"]
     serial.solver._dispatch_scan_start_tasks(ready)
+
+
+def test_empty_chestnut_skill_releases_material_ready_start(serial, monkeypatch):
+    image = cv2.imread(
+        str(
+            Path(__file__).parent / "fixtures/training_chestnut_skill_list_20261102.jpg"
+        )
+    )
+    solver = serial.solver
+    solver.recog = SimpleNamespace(img=cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    solver.train_scene.return_value = mastery_reader.Scene.TRAIN_SKILL_SELECT
+    monkeypatch.setattr(mastery_reader, "_back_to_train_main", lambda _: True)
+    room = mastery_reader.RoomState(
+        "empty",
+        panel=mastery_reader.RoomPanel(idle_marker=True),
+        support_slot="逻各斯",
+        train_slot="褐果",
+        slots_reliable=True,
+    )
+    room.protected = mastery_reader._compute_protected(solver, room)
+    solver.train_room_state = room
+    independent = SchedulerTask(task_type=TaskTypes.NOT_SPECIFIC)
+    solver.tasks = [independent]
+    before = mastery_db.get_all_plans()
+    dispatch(serial)
+    assert not room.protected
+    assert len(solver.tasks) == 2
+    task = solver.tasks[1]
+    assert task.plan_key == str(serial.ids[0])
+    original_time = task.time
+    for _ in range(3):
+        dispatch(serial)
+    assert solver.tasks == [independent, task]
+    assert task.time == original_time
+    assert mastery_db.get_all_plans() == before
+    monkeypatch.setattr(mastery_reader, "read_room_state", lambda *_a, **_k: room)
+    start = MagicMock()
+    monkeypatch.setattr(mastery, "_start_new_training", start)
+    solver.task = task
+    mastery.run_mastery_task(solver)
+    start.assert_called_once()
+    assert start.call_args.args[1]["id"] == serial.ids[0]
 
 
 def test_many_ready_plans_admit_only_first_without_refreshing_queued_start(serial):
@@ -384,7 +428,7 @@ def test_observed_no_partial_mastery_allows_replacing_trainee(
     room = mastery_reader.RoomState(
         state="empty",
         support_slot="逻各斯",
-        train_slot="计划外干员",
+        train_slot="能天使",
         slots_reliable=True,
     )
     solver.train_scene.return_value = mastery_reader.Scene.TRAIN_SKILL_SELECT

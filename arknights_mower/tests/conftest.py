@@ -4,6 +4,18 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture
+def bundled_mastery_skills(monkeypatch):
+    """Use bundled skill data with isolated resource and name-lookup caches."""
+    from arknights_mower.utils import mastery_recommendation, skill_label
+
+    path = Path(__file__).parents[1] / "data/skill_data.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    monkeypatch.setattr(mastery_recommendation, "_skill_data_cache", data)
+    monkeypatch.setattr(skill_label, "_name_to_char_id_cache", None)
+    return data
+
+
 def pytest_generate_tests(metafunc):
     if "contained_skill_roster" not in metafunc.fixturenames:
         return

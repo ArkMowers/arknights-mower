@@ -1,12 +1,16 @@
 """Protected training preserves the trainee without restricting their skill."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import cv2
 import pytest
 
 from arknights_mower.solvers import mastery
 from arknights_mower.solvers import mastery_reader as reader
 from arknights_mower.utils.scene import Scene
+
+pytestmark = pytest.mark.usefixtures("bundled_mastery_skills")
 
 
 def plan(index=1, **values):
@@ -37,6 +41,72 @@ def protected_room(state="empty", skill_name=""):
     )
 
 
+def test_empty_third_skill_does_not_protect_chestnut():
+    image = cv2.imread(
+        str(
+            Path(__file__).parent / "fixtures/training_chestnut_skill_list_20261102.jpg"
+        )
+    )
+    solver = MagicMock()
+    solver.recog.img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    solver.train_scene.return_value = Scene.TRAIN_SKILL_SELECT
+    room = protected_room()
+    room.train_slot = "褐果"
+    with (
+        patch.object(reader.config.conf, "enable_mastery", True),
+        patch.object(reader, "_back_to_train_main", return_value=True) as back,
+    ):
+        assert not reader._compute_protected(solver, room)
+    back.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "name,tiers,protected",
+    [
+        ("褐果", [0, 0], False),
+        ("褐果", [0, 1], True),
+        ("褐果", [2, 0], True),
+        ("褐果", [3, 3], False),
+        ("能天使", [0, 0, 1], True),
+        ("能天使", [3, 3, 3], False),
+        ("褐果", [0, None], True),
+    ],
+)
+def test_protection_checks_existing_skills_only(name, tiers, protected):
+    solver = MagicMock()
+    solver.train_scene.return_value = Scene.TRAIN_SKILL_SELECT
+    with (
+        patch.object(reader, "_read_slot_mastery_tier", side_effect=tiers),
+        patch.object(reader, "_back_to_train_main", return_value=True) as back,
+    ):
+        assert reader._train_slot_has_mastery(solver, name) is protected
+    back.assert_called_once()
+
+
+@pytest.mark.parametrize("name", ["", "未知训练干员"])
+def test_unknown_trainee_keeps_protection_without_navigation(name):
+    solver = MagicMock()
+    with patch.object(reader, "_read_slot_mastery_tier") as read:
+        assert reader._train_slot_has_mastery(solver, name)
+    read.assert_not_called()
+    solver.tap.assert_not_called()
+    solver.back.assert_not_called()
+
+
+@pytest.mark.parametrize("skills", [None, [], "技能", [{"name": "技能"}] * 4])
+def test_unknown_skill_count_keeps_protection(skills):
+    solver = MagicMock()
+    with (
+        patch.object(reader, "_resolve_operator_char_id", return_value="char_test"),
+        patch(
+            "arknights_mower.utils.mastery_recommendation.get_skill_data",
+            return_value={"characters": {"char_test": {"skills": skills}}},
+        ),
+    ):
+        assert reader._train_slot_has_mastery(solver, "测试干员")
+    solver.train_scene.assert_not_called()
+
+
 @pytest.mark.parametrize("tiers", [[0, 1, 3], [1, 2, 0], [0, None, 0]])
 @pytest.mark.parametrize("requested", [0, 1, 2])
 def test_restart_protected_room_admits_any_skill_of_same_trainee(tiers, requested):
@@ -47,6 +117,9 @@ def test_restart_protected_room_admits_any_skill_of_same_trainee(tiers, requeste
     candidate = plan(requested)
     with (
         patch.object(reader.config.conf, "enable_mastery", True),
+        patch.object(
+            reader, "_resolve_operator_char_id", return_value="char_103_angel"
+        ),
         patch.object(reader, "_read_slot_mastery_tier", side_effect=tiers),
         patch.object(reader, "_back_to_train_main") as back,
         patch.object(reader, "_next_idle_to_start", return_value=None),
@@ -81,7 +154,7 @@ def test_no_partial_mastery_releases_protection(tiers):
         patch.object(reader, "_read_slot_mastery_tier", side_effect=tiers),
         patch.object(reader, "_back_to_train_main") as back,
     ):
-        assert not reader._train_slot_has_mastery(solver)
+        assert not reader._train_slot_has_mastery(solver, "能天使")
     back.assert_called_once()
 
 
