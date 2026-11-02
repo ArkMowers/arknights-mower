@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import { createWindowShellAdapter, formatEmulatorLabel } from './adapter.js'
+import {
+  createWindowShellAdapter,
+  formatEmulatorLabel,
+  readWindowShellMetadata
+} from './adapter.js'
 
 // These mirror the bridge contract the Python side serves via get_platform();
 // the adapter must agree with whatever the backend reports, not with these.
@@ -48,6 +52,12 @@ function makeNativeBridge(platform = 'linux', resize = 'html') {
 describe('window shell adapter', () => {
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('does not read the removed instance name URL parameter', () => {
+    const metadata = readWindowShellMetadata({ search: '?window_shell=1&instance_name=untrusted' })
+
+    expect(metadata).toEqual({ requested: true, version: '', bootstrapTheme: 'light' })
   })
 
   it('leaves a normal browser inactive with no user-agent guessing', async () => {

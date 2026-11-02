@@ -111,7 +111,6 @@ export function readWindowShellMetadata(locationObject) {
   return Object.freeze({
     requested: params.get('window_shell') === '1',
     version: params.get('mower_version') || '',
-    instanceName: params.get('instance_name') || '',
     bootstrapTheme: ['light', 'dark'].includes(bootstrapTheme) ? bootstrapTheme : 'light'
   })
 }

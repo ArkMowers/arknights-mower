@@ -19,6 +19,28 @@ from arknights_mower.views.process_control import process_control_bp
 
 
 class ProcessControlTests(unittest.TestCase):
+    def test_info_returns_registered_instance_name_only_with_current_token(self):
+        app = Flask(__name__)
+        app.token = "current-instance"
+        app.register_blueprint(process_control_bp)
+
+        with patch.object(
+            control,
+            "info",
+            return_value={"ok": True, "supported": True, "name": "夜莺"},
+        ) as get_info:
+            client = app.test_client()
+            denied = client.get("/process-control/info", headers={"token": "wrong"})
+            self.assertEqual(denied.status_code, 403)
+            get_info.assert_not_called()
+
+            response = client.get(
+                "/process-control/info", headers={"token": "current-instance"}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json["name"], "夜莺")
+            get_info.assert_called_once_with()
+
     def test_reset_start_skips_saved_state(self):
         import server
 
