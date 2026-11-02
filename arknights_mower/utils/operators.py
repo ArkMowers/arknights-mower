@@ -1744,14 +1744,51 @@ class Operators:
         return (
             not self.run_order_paused
             and room.startswith("room")
-            and self.products.get(room) != "orundum"
-            and self.facility_states.get(room, {}).get("product") != "orundum"
-            and any(
-                name in replacements
-                for replacements in self.run_order_replacements(room)
-                for name in TRADE_ORDER_AGENTS
+            and (
+                self.is_order_collection_room(room)
+                or not self.is_orundum_trade_room(room)
+                and any(
+                    name in replacements
+                    for replacements in self.run_order_replacements(room)
+                    for name in TRADE_ORDER_AGENTS
+                )
             )
         )
+
+    def is_orundum_trade_room(self, room: str) -> bool:
+        return (
+            self.products.get(room) == "orundum"
+            or self.facility_states.get(room, {}).get("product") == "orundum"
+        )
+
+    def is_order_collection_room(self, room: str) -> bool:
+        """实际进驻精零孑的贸易站按订单完成时间收单。"""
+        jaye = self.operators.get("孑")
+        if jaye is None or jaye.current_room != room or not room.startswith("room"):
+            return False
+        state = self.facility_states.get(room, {})
+        if state.get("facility") not in (None, "trade"):
+            return False
+        if (
+            state.get("facility") != "trade"
+            and self.products.get(room) not in TRADE_PRODUCTS
+        ):
+            return False
+        from arknights_mower.utils.mastery_recommendation import (
+            get_cultivate_characters,
+        )
+
+        char = (get_cultivate_characters() or {}).get("char_272_strong", {})
+        phase = char.get("evolvePhase")
+        return type(phase) is int and phase == 0
+
+    def run_order_plan(self, room: str) -> list[str]:
+        if self.is_order_collection_room(room):
+            return ["Current"] * len(self.plan[room])
+        return [
+            next((name for name in choices if name in TRADE_ORDER_AGENTS), "Current")
+            for choices in self.run_order_replacements(room)
+        ]
 
     def refresh_run_order_rooms(self):
         self.run_order_rooms = {

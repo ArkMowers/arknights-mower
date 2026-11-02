@@ -37,6 +37,7 @@ def _grandet(task, conf):
         and conf.run_order_buffer_time > 0
         and task.type == TaskTypes.RUN_ORDER
         and not task.adjusted
+        and not getattr(task, "run_order_collect_only", False)
     )
 
 
@@ -99,6 +100,8 @@ def reconcile_run_order_network(tasks, conf):
 
 
 def run_order_entry_seconds(task, conf):
+    if getattr(task, "run_order_collect_only", False):
+        return 0
     timing = _timing(task)
     if timing is not None and _grandet(task, conf):
         if timing.started or _enabled(task, conf):
@@ -107,6 +110,8 @@ def run_order_entry_seconds(task, conf):
 
 
 def run_order_buffer_seconds(task, conf):
+    if getattr(task, "run_order_collect_only", False):
+        return 0
     timing = _timing(task)
     if timing is not None and _grandet(task, conf):
         if timing.started or _enabled(task, conf):

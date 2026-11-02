@@ -5238,7 +5238,12 @@ class BaseSchedulerSolver(
             for task in task_view(self.tasks, TaskScope.REPLAN)
             if task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
             and task.meta_data
-            and task.meta_data not in op_data.run_order_rooms
+            and (
+                task.meta_data not in op_data.run_order_rooms
+                or task.type == TaskTypes.RUN_ORDER
+                and bool(getattr(task, "run_order_collect_only", False))
+                != op_data.is_order_collection_room(task.meta_data)
+            )
         }
         self._invalidate_order_estimates(invalid_rooms)
 
@@ -5406,24 +5411,7 @@ class BaseSchedulerSolver(
                 self._sync_run_order_tasks()
                 if execute_time is None or room not in self.op_data.run_order_rooms:
                     continue
-                replacements = self.op_data.run_order_replacements(room)
-                plan = {
-                    room: [
-                        next(
-                            (name for name in choices if name in TRADE_ORDER_AGENTS),
-                            "Current",
-                        )
-                        for choices in replacements
-                    ]
-                }
-                provisional.append(
-                    SchedulerTask(
-                        time=execute_time,
-                        task_plan=plan,
-                        task_type=TaskTypes.RUN_ORDER,
-                        meta_data=room,
-                    )
-                )
+                provisional.append(self._new_run_order_task(room, execute_time))
             except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
             except Exception as e:
@@ -5457,6 +5445,16 @@ class BaseSchedulerSolver(
                     )
                 ]
 
+    def _new_run_order_task(self, room, execute_time):
+        task = SchedulerTask(
+            time=execute_time,
+            task_plan={room: self.op_data.run_order_plan(room)},
+            task_type=TaskTypes.RUN_ORDER,
+            meta_data=room,
+        )
+        task.run_order_collect_only = self.op_data.is_order_collection_room(room)
+        return task
+
     @log_mood_calculation("跑单规划")
     def plan_run_order(self, room):
         """按实际订单倒计时规划跑单。"""
@@ -5474,7 +5472,6 @@ class BaseSchedulerSolver(
         self._sync_run_order_tasks()
         if room not in self.op_data.run_order_rooms:
             return
-        replacements = self.op_data.run_order_replacements(room)
         if self.find_next_task(
             meta_data=room, task_type=TaskTypes.RUN_ORDER, scope=TaskScope.PENDING
         ):
@@ -5484,13 +5481,8 @@ class BaseSchedulerSolver(
         )
         if refresh is not None and getattr(refresh, "execution_failure", None):
             return
-        in_out_plan = {room: ["Current"] * len(replacements)}
-        for idx, choices in enumerate(replacements):
-            in_out_plan[room][idx] = next(
-                (name for name in choices if name in TRADE_ORDER_AGENTS), "Current"
-            )
         execute_time = self.get_run_order_time(room)
-        # 读取订单页可能首次发现实际仍在卖玉，不能据此创建空转任务。
+        # 实读可能改变订单类型，按最新状态决定收单或插拔。
         self._sync_run_order_tasks()
         if execute_time is None:
             # 暂停订单已实读驻员，空岗位由普通纠错接管，不等待有效倒计时。
@@ -5513,14 +5505,7 @@ class BaseSchedulerSolver(
             return True
         if room not in self.op_data.run_order_rooms:
             return
-        self.tasks.append(
-            SchedulerTask(
-                time=execute_time,
-                task_plan=in_out_plan,
-                task_type=TaskTypes.RUN_ORDER,
-                meta_data=room,
-            )
-        )
+        self.tasks.append(self._new_run_order_task(room, execute_time))
         return True
 
     def _arrangement_priority_tasks(self):
@@ -5872,7 +5857,12 @@ class BaseSchedulerSolver(
             return None
         # Only trade order runs can be Drone Acceleration targets.
         run_orders = [
-            t for t in adj_tasks if t.type == TaskTypes.RUN_ORDER and t.meta_data
+            t
+            for t in adj_tasks
+            if t.type == TaskTypes.RUN_ORDER
+            and t.meta_data
+            and not getattr(t, "run_order_collect_only", False)
+            and not self.op_data.is_orundum_trade_room(t.meta_data)
         ]
         if len(run_orders) != 2:
             return run_orders[0].meta_data if len(run_orders) == 1 else None
@@ -10366,9 +10356,8 @@ class BaseSchedulerSolver(
             # 读取失败不能回退为当前时间，否则会误创建立即执行的跑单任务。
             raise RecognizeError("无法读取贸易站订单倒计时，未确认订单暂停")
         execute_time = datetime.now() + timedelta(seconds=remaining)
-        execute_time = execute_time - timedelta(
-            seconds=(60 * config.conf.run_order_delay)
-        )
+        if not self.op_data.is_order_collection_room(room):
+            execute_time -= timedelta(minutes=config.conf.run_order_delay)
         logger.info("下一次进行插拔的时间为：" + execute_time.strftime("%H:%M:%S"))
         self.scene_graph_navigation(Scene.INFRA_MAIN)
         return execute_time
@@ -12366,6 +12355,9 @@ class BaseSchedulerSolver(
         skip_enter=False,
         order_tasks=None,
     ):
+        if self.op_data.is_orundum_trade_room(room):
+            logger.info("卖玉贸易站不使用无人机加速：%s", room)
+            return False
         logger.info("基建：无人机加速" if not adjust_time else "开始调整订单时间")
         retain_reserve = not not_customize
         # 点击进入该房间
@@ -12399,6 +12391,11 @@ class BaseSchedulerSolver(
                 self.tap(all_in_scope)
                 self.tap(accelerate, y_rate=1)
         else:
+            product, _ = self._read_trade_product_card()
+            self.op_data.update_facility_state(room, "trade", product)
+            if self.op_data.is_orundum_trade_room(room):
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
+                return False
             accelerate = self.find("bill_accelerate")
             while accelerate and not adjust_time:
                 logger.info("贸易站加速")
@@ -16062,7 +16059,7 @@ class BaseSchedulerSolver(
             self.recog.update()
             self.sleep(0.5)
             wait += 1
-        not_take = True
+        not_take = not getattr(task, "run_order_collect_only", False)
         while self.find("order_ready", scope=((450, 675), (600, 750))) is not None:
             if not_take:
                 # 动画过渡防抖：若首帧已充分定格则直接放行，否则最多等待 2 次采样 (~0.3s)
@@ -16178,6 +16175,27 @@ class BaseSchedulerSolver(
             plan = self.task.plan
         if id(self.task) in blocked_run_order_ids(self.tasks, self.op_data):
             return False
+        if (
+            self.task.type == TaskTypes.RUN_ORDER
+            and getattr(self.task, "run_order_collect_only", False)
+            and not restoring_order
+        ):
+            room = self.task.meta_data
+            self.enter_room(room)
+            self._read_room_mood(room, force_mood=True, strict_observation=True)
+            if (
+                not self.op_data.run_order_paused
+                and self.op_data.is_order_collection_room(room)
+            ):
+                self._wait_drone_interface(
+                    interval=1,
+                    accelerate_template="bill_accelerate",
+                    page_template="order_label",
+                )
+                self.accept_order()
+            self.scene_graph_navigation(Scene.INFRA_MAIN)
+            plan.clear()
+            return True
         if self._emergency_frozen():
             if (
                 self.task.type == TaskTypes.RUN_ORDER

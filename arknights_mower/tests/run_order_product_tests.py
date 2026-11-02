@@ -1,5 +1,6 @@
-"""测试跑单准入：卖玉或订单暂停不跑单，正常扫描与换班继续。"""
+"""测试订单准入、精零孑收单及卖玉贸易站的无人机加速限制。"""
 
+import pickle
 import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -11,7 +12,11 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule, mastery_reader  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
-from arknights_mower.utils import config, scheduler_task  # noqa: E402
+from arknights_mower.utils import (  # noqa: E402
+    config,
+    mastery_recommendation,  # noqa: E402
+    scheduler_task,
+)
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
@@ -21,6 +26,7 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noq
 
 @pytest.fixture
 def solver(monkeypatch):
+    monkeypatch.setattr(mastery_recommendation, "get_cultivate_characters", lambda: {})
     monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.enable_mastery = False
     monkeypatch.setattr(
@@ -63,6 +69,278 @@ def solver(monkeypatch):
     instance.queue_product_switches = MagicMock()
     instance._suppress_train_correction = MagicMock()
     return instance
+
+
+def place_jaye(solver, monkeypatch, phase=0, product="orundum"):
+    data = solver.op_data
+    data.operators["鸿雪"].current_room = ""
+    data.operators["孑"].current_room = "room_1_1"
+    data.operators["孑"].current_index = 0
+    data.products["room_1_1"] = product
+    data.plan["room_1_1"][0].replacement = []
+    monkeypatch.setattr(
+        mastery_recommendation,
+        "get_cultivate_characters",
+        lambda: {"char_272_strong": {"evolvePhase": phase}},
+    )
+
+
+@pytest.mark.parametrize("phase", [0, 1, 2, None, False])
+@pytest.mark.parametrize("product", ["lmd", "orundum"])
+def test_only_observed_elite_zero_jaye_creates_collection(
+    solver, monkeypatch, phase, product
+):
+    place_jaye(solver, monkeypatch, phase, product)
+    solver.plan_run_order("room_1_1")
+    if type(phase) is int and phase == 0:
+        assert len(solver.tasks) == 1
+        task = solver.tasks[0]
+        assert task.type == TaskTypes.RUN_ORDER
+        assert task.run_order_collect_only
+        assert task.plan == {"room_1_1": ["Current"]}
+        assert task.time == solver.get_run_order_time.return_value
+        solver.plan_run_order("room_1_1")
+        assert solver.tasks == [task]
+    else:
+        assert solver.tasks == []
+        solver.get_run_order_time.assert_not_called()
+
+
+def test_collection_requires_actual_jaye_and_stops_when_he_leaves(solver, monkeypatch):
+    place_jaye(solver, monkeypatch)
+    solver.plan_run_order("room_1_1")
+    assert len(solver.tasks) == 1
+    solver.op_data.operators["孑"].current_room = "dormitory_1"
+    solver._sync_run_order_tasks()
+    assert solver.tasks == []
+    solver.plan_run_order("room_1_1")
+    assert solver.tasks == []
+
+
+@pytest.mark.parametrize("source", ["plan", "observed"])
+@pytest.mark.parametrize("order", ["first", "second", "both"])
+def test_conflict_adjustment_never_accelerates_orundum(solver, source, order):
+    rooms = ("room_1_1", "room_2_2")
+    excluded = rooms if order == "both" else (rooms[order == "second"],)
+    for room in excluded:
+        if source == "plan":
+            solver.op_data.products[room] = "orundum"
+        else:
+            solver.op_data.update_facility_state(room, "trade", "orundum")
+    solver.drone_room = excluded[0]
+    tasks = [
+        SchedulerTask(task_type=TaskTypes.RUN_ORDER, meta_data=room) for room in rooms
+    ]
+    expected = next((room for room in rooms if room not in excluded), None)
+    assert solver.get_run_order_adjust_room(tasks) == expected
+
+
+@pytest.mark.parametrize("adjust_time", [True, False])
+def test_drone_entry_rejects_orundum_without_navigation(solver, adjust_time):
+    solver.op_data.products["room_1_1"] = "orundum"
+    solver.enter_room = MagicMock()
+    solver.tap = MagicMock()
+    assert solver.drone("room_1_1", adjust_time=adjust_time) is False
+    solver.enter_room.assert_not_called()
+    solver.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("product", ["lmd", "orundum"])
+@pytest.mark.parametrize("buffer", [0, 1])
+def test_jaye_order_runs_at_completion_and_collects_without_staffing_or_drones(
+    solver, monkeypatch, product, buffer
+):
+    place_jaye(solver, monkeypatch, product=product)
+    use_order_pages(solver, {"room_1_1": "active"})
+    use_mood_pages(solver, monkeypatch, {"room_1_1": ["孑"]})
+    config.conf.run_order_grandet_mode.enable = bool(buffer)
+    config.conf.run_order_grandet_mode.buffer_time = buffer
+    before = datetime.now()
+    solver.plan_run_order("room_1_1")
+    after = datetime.now()
+    task = solver.tasks[0]
+    assert before + timedelta(hours=1) <= task.time <= after + timedelta(hours=1)
+    solver.task = task
+    solver.accept_order = MagicMock()
+    solver.agent_arrange_room = MagicMock(side_effect=AssertionError("收单不能换人"))
+    solver.drone = MagicMock(side_effect=AssertionError("收单不能加速"))
+
+    assert solver.agent_arrange(task.plan)
+
+    solver.accept_order.assert_called_once_with()
+    solver.agent_arrange_room.assert_not_called()
+    solver.drone.assert_not_called()
+    assert solver.op_data.get_current_room("room_1_1", True) == ["孑"]
+    assert task.plan == {}
+    assert not hasattr(task, "run_order_original_roster")
+
+
+@pytest.mark.parametrize("phase", [1, 2, None])
+def test_jaye_collection_rechecks_progression_at_execution(solver, monkeypatch, phase):
+    place_jaye(solver, monkeypatch)
+    solver.plan_run_order("room_1_1")
+    solver.task = solver.tasks[0]
+    place_jaye(solver, monkeypatch, phase=phase)
+    use_order_pages(solver, {"room_1_1": "active"})
+    use_mood_pages(solver, monkeypatch, {"room_1_1": ["孑"]})
+    solver.accept_order = MagicMock()
+    solver.agent_arrange_room = MagicMock()
+    solver.drone = MagicMock()
+    assert solver.agent_arrange(solver.task.plan)
+    solver.accept_order.assert_not_called()
+    solver.agent_arrange_room.assert_not_called()
+    solver.drone.assert_not_called()
+
+
+def test_startup_publishes_jaye_collection_without_advancing_for_maintenance(
+    solver, monkeypatch
+):
+    place_jaye(solver, monkeypatch)
+    use_order_pages(solver, {"room_1_1": "active", "room_2_2": "active"})
+    solver.read_time.return_value = 120
+    solver._startup_run_order_check_pending = True
+    solver._check_startup_run_orders()
+    task = next(task for task in solver.tasks if task.meta_data == "room_1_1")
+    assert task.run_order_collect_only
+    assert task.plan == {"room_1_1": ["Current"]}
+    original_time = task.time
+    monkeypatch.setattr(
+        scheduler_task.NewsChecker,
+        "get_update_time",
+        lambda: (
+            original_time + timedelta(minutes=1),
+            original_time + timedelta(hours=1),
+        ),
+    )
+    assert scheduler_task.adjust_run_order_for_maintenance([task]) == []
+    assert task.time == original_time
+    assert not task.adjusted
+
+
+def test_drone_rejects_actual_orundum_discovered_on_order_page(solver):
+    use_order_pages(solver, {"room_1_1": "active"})
+    config.conf.product_switching.enable = False
+    solver._read_trade_product_card = MagicMock(return_value=("orundum", True))
+    solver._tap_drone_accelerate = MagicMock()
+    solver.adjust_order_time = MagicMock()
+    assert solver.drone("room_1_1", adjust_time=True) is False
+    solver._tap_drone_accelerate.assert_not_called()
+    solver.adjust_order_time.assert_not_called()
+
+
+def test_jaye_collection_survives_saved_queue_and_rechecks_actual_occupants(
+    solver, monkeypatch
+):
+    place_jaye(solver, monkeypatch)
+    solver.plan_run_order("room_1_1")
+    task = pickle.loads(pickle.dumps(solver.tasks[0]))
+    assert task.run_order_collect_only
+    assert task.plan == {"room_1_1": ["Current"]}
+    use_order_pages(solver, {"room_1_1": "active"})
+    use_mood_pages(solver, monkeypatch, {"room_1_1": ["鸿雪"]})
+    solver.task = task
+    solver.accept_order = MagicMock()
+    solver.agent_arrange_room = MagicMock()
+    solver.drone = MagicMock()
+    assert solver.agent_arrange(task.plan)
+    solver.accept_order.assert_not_called()
+    solver.agent_arrange_room.assert_not_called()
+    solver.drone.assert_not_called()
+    assert task.plan == {}
+
+
+def test_collection_does_not_advance_for_network_adaptation(solver, monkeypatch):
+    from arknights_mower.utils.network_adaptation import get_network_adaptation
+    from arknights_mower.utils.run_order_network import (
+        bind_run_order_network,
+        run_order_buffer_seconds,
+        run_order_entry_seconds,
+    )
+
+    place_jaye(solver, monkeypatch)
+    solver.plan_run_order("room_1_1")
+    task = solver.tasks[0]
+    config.conf.run_order_network_adaptive = True
+    config.conf.run_order_grandet_mode.enable = True
+    config.conf.run_order_grandet_mode.buffer_time = 15
+    now = datetime.now()
+    task.time = now + timedelta(minutes=2)
+    original_time = task.time
+    owner = SimpleNamespace()
+    get_network_adaptation(owner).record(
+        "CONNECTING",
+        elapsed_seconds=30,
+        base_seconds=30,
+        observed_at=now,
+        timed_out=True,
+    )
+    # 复用正常绑定入口；收单任务不能获得临时提前时间。
+    bind_run_order_network([task], owner, config.conf, now, op_data=solver.op_data)
+    assert task.time == original_time
+    assert not hasattr(task, "run_order_network_timing")
+    assert run_order_entry_seconds(task, config.conf) == 0
+    assert run_order_buffer_seconds(task, config.conf) == 0
+
+
+def test_jaye_collection_keeps_maintenance_pause(solver, monkeypatch):
+    place_jaye(solver, monkeypatch)
+    solver.op_data.maintenance_primary_slots = {("room_1_1", 0)}
+    solver.plan_run_order("room_1_1")
+    assert solver.tasks == []
+    solver.get_run_order_time.assert_not_called()
+
+
+def test_collection_respects_pending_original_roster_restoration(solver, monkeypatch):
+    place_jaye(solver, monkeypatch)
+    solver.plan_run_order("room_1_1")
+    collection = solver.tasks[0]
+    restoration = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER, task_plan={"room_1_1": ["鸿雪"]}
+    )
+    restoration.run_order_original_roster = {"room_1_1": ["鸿雪"]}
+    restoration.run_order_restore_pending = True
+    solver.tasks.append(restoration)
+    solver.task = collection
+    solver.enter_room = MagicMock()
+    original_time = collection.time
+    assert solver.agent_arrange(collection.plan) is False
+    solver.enter_room.assert_not_called()
+    assert collection.time == original_time
+    assert collection.plan == {"room_1_1": ["Current"]}
+    assert solver.tasks == [collection, restoration]
+
+
+def test_drone_unreadable_trade_type_cannot_open_acceleration(solver):
+    use_order_pages(solver, {"room_1_1": "active"})
+    solver._read_trade_product_card = MagicMock(
+        side_effect=RecognizeError("订单类型未确认")
+    )
+    solver._tap_drone_accelerate = MagicMock()
+    with pytest.raises(RecognizeError, match="订单类型未确认"):
+        solver.drone("room_1_1")
+    solver._tap_drone_accelerate.assert_not_called()
+
+
+def test_collection_accepts_ready_order_without_run_order_buff_or_missed_report(
+    solver, monkeypatch
+):
+    place_jaye(solver, monkeypatch)
+    solver.plan_run_order("room_1_1")
+    solver.task = solver.tasks[0]
+    solver.recog = SimpleNamespace(
+        w=1920, h=1080, update=MagicMock(), save_screencap=MagicMock()
+    )
+    solver._cache_facility_state_from_current_page = MagicMock()
+    solver.find = MagicMock(side_effect=[True, True, None])
+    solver.tap = MagicMock()
+    solver.order_reader = MagicMock()
+
+    solver.accept_order()
+
+    solver.tap.assert_called_once_with((480, 270), interval=0.5)
+    solver.order_reader.get_buff_scores.assert_not_called()
+    solver.order_reader.save.assert_not_called()
+    solver.recog.save_screencap.assert_not_called()
 
 
 @pytest.mark.parametrize("source", ["plan", "observed"])
