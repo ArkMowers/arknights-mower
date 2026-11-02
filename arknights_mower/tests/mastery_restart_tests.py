@@ -582,6 +582,53 @@ class MasteryRestartTests(unittest.TestCase):
                     self.assertEqual(solver.tasks[0].time, self.room.panel.countdown)
                     self.assertEqual(solver.tasks[0].plan_key, str(self.plan_id))
 
+    def test_startup_read_restores_training_task_despite_recent_cache(self):
+        for count in (None, 0, 2):
+            for cache in ("read", "attempt", "occupants"):
+                with self.subTest(roster_size=count, cache=cache):
+                    mastery_db.update_plan_status(
+                        self.plan_id, "training", swap_frozen=1
+                    )
+                    solver = self.mood_solver(count)
+                    solver.defer_backup_plan_until_mood_read = True
+                    solver._initial_mood_refresh_rooms = {"train"}
+                    observed_at = datetime.now()
+                    solver.op_data.operators = {
+                        "测试干员": SimpleNamespace(
+                            name="测试干员",
+                            room="",
+                            current_room="train",
+                            time_stamp=observed_at,
+                            need_to_refresh=lambda: False,
+                        )
+                    }
+                    if cache == "read":
+                        solver.last_train_mood_read = observed_at
+                    elif cache == "attempt":
+                        solver.last_train_mood_attempt = observed_at
+                    with patch.object(
+                        reader, "read_room_state", return_value=(self.room, [])
+                    ) as read:
+                        self.assertIsNone(solver._read_agent_mood(rooms={"train"}))
+                        task = solver.tasks[0] if solver.tasks else None
+                        solver._read_agent_mood()
+                    read.assert_called_once_with(solver, enter=False, want_mood=True)
+                    self.assertEqual(solver._initial_mood_refresh_rooms, set())
+                    self.assertEqual(len(solver.tasks), 1)
+                    self.assertIs(solver.tasks[0], task)
+                    self.assertEqual(task.type, TaskTypes.SKILL_UPGRADE)
+                    self.assertEqual(task.plan_key, str(self.plan_id))
+                    self.assertEqual(task.time, self.room.panel.countdown)
+
+    def test_startup_zero_level_training_skips_entry_and_completes_pending_read(self):
+        solver = self.mood_solver()
+        solver._initial_mood_refresh_rooms = {"train"}
+        solver.op_data.facility_levels = {"train": 0}
+        self.assertIsNone(solver._read_agent_mood())
+        solver.enter_room.assert_not_called()
+        self.assertEqual(solver._initial_mood_refresh_rooms, set())
+        self.assertEqual(solver.tasks, [])
+
     def test_mood_scan_recovers_swap_from_idle_and_failed_without_roster(self):
         route = {
             "operator": "协助干员",

@@ -3750,7 +3750,7 @@ class BaseSchedulerSolver(
 
         return room
 
-    def _read_agent_mood(self):
+    def _read_agent_mood(self, *, rooms=None):
         """只刷新实际位置、心情及训练室状态，不按当前排班生成纠错。"""
         # 暂时规定纠错只适用于主班表
         need_read = {
@@ -3796,7 +3796,7 @@ class BaseSchedulerSolver(
         force_rooms = {
             room
             for room in getattr(self, "_initial_mood_refresh_rooms", ())
-            if room in self.op_data.plan and room in base_room_list
+            if (room in self.op_data.plan or room == "train") and room in base_room_list
         }
         force_rooms.update(initial_rooms)
         self._initial_mood_refresh_rooms = force_rooms
@@ -3827,6 +3827,9 @@ class BaseSchedulerSolver(
             or self._initial_mood_read_pending()
         ):
             need_read.add("train")
+
+        if rooms is not None:
+            need_read.intersection_update(rooms)
 
         initial_observation = initial_calculation or self._initial_mood_read_pending()
 

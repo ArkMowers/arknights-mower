@@ -546,6 +546,26 @@ def test_cached_last_priority_room_yields_even_without_other_rooms_to_read(
     solver.back_to_infrastructure.assert_called_once()
 
 
+def test_startup_training_read_leaves_other_pending_facilities_untouched(
+    cached_priority_reader, monkeypatch
+):
+    from arknights_mower.solvers import mastery_reader
+
+    solver = cached_priority_reader
+    solver._initial_mood_refresh_rooms.add("train")
+    state = mastery_reader.RoomState("empty", slots_read=True, slots_reliable=True)
+    read = MagicMock(return_value=(state, []))
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    monkeypatch.setattr(mastery_reader, "read_room_state", read)
+    monkeypatch.setattr(mastery_reader, "reconcile_short", MagicMock())
+
+    assert solver._read_agent_mood(rooms={"train"}) is None
+
+    solver.enter_room.assert_called_once_with("train", max_attempts=1)
+    solver._read_room_mood.assert_not_called()
+    assert solver._initial_mood_refresh_rooms == {"room_1_1", "room_1_2"}
+
+
 def test_initial_cards_seed_multiple_pages_without_overwriting_actual_room_mood(
     solver, monkeypatch
 ):
