@@ -4,7 +4,7 @@
 
 `webview_ui.run_desktop` binds the service to `127.0.0.1` when the Web UI token is empty. It generates a runtime credential for protected HTTP endpoints and AI WebSocket access. Configuring a Web UI token binds the service to `0.0.0.0` and requires that token for protected requests.
 
-Browser launch URLs carry the session token without the client instance name. The embedded desktop window adds its instance name only to its own URL for title display; browser fallbacks use the original browser URL.
+Browser launch URLs carry the session token without the client instance name, and a browser page does not trust an `instance_name` URL parameter for its title. After a managed instance's page loads, the browser reads the current process registration through the protected process-control information endpoint and uses its registered manager instance name in the document title. The embedded desktop window adds its instance name to its own URL for title display; an invalid token or unavailable registration leaves the ordinary browser title unchanged. The process-control information endpoint returns the current registration's name only after the instance token check succeeds.
 
 `GET /status` and its HEAD representation require the current instance token before reading operational state, including scheduling, recovery and deployment information. Browser polling uses the shared authenticated client. The process supervisor checks HTTP responsiveness without a token and treats this endpoint's 403 response as an available service; it does not read protected status data or persist the session token. Other HTTP errors retain the existing failed-probe behavior.
 

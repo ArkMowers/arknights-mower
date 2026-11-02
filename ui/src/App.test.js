@@ -294,6 +294,7 @@ describe('desktop page startup', () => {
       theme: 'light',
       webview: { scale: 1 },
       simulator: {},
+      manager_owned_device: false,
       adb: '',
       load_config: vi.fn(async () => {}),
       load_shop: vi.fn(async () => {}),
@@ -392,6 +393,79 @@ describe('desktop page startup', () => {
   it('shares the title-bar profile controller with settings actions', async () => {
     const component = await mount()
     expect(provide).toHaveBeenCalledWith(configProfilesKey, component.configProfiles)
+  })
+
+  it('uses the authenticated manager instance name in the browser title', async () => {
+    window.location.search = '?token=valid-session&instance_name=伪造名称'
+    document.location.search = window.location.search
+    state.config.manager_owned_device = true
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/process-control/info')) {
+        return { data: { ok: true, supported: true, name: '夜莺' } }
+      }
+      return {
+        data: {
+          ok: true,
+          active_id: 'default',
+          generation: '0',
+          profiles: [{ id: 'default', name: '默认配置' }],
+          groups: [],
+          busy: false
+        }
+      }
+    })
+
+    await mount()
+
+    expect(state.client.get).toHaveBeenCalledWith('/process-control/info')
+    expect(state.client.defaults.headers.common.token).toBe('valid-session')
+    await vi.waitFor(() => expect(document.title).toBe('夜莺 - arknights-mower'))
+  })
+
+  it('keeps the ordinary browser title when the instance info token is rejected', async () => {
+    window.location.search = '?token=invalid-session&instance_name=伪造名称'
+    document.location.search = window.location.search
+    state.config.manager_owned_device = true
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/process-control/info')) {
+        const error = new Error('unauthorized')
+        error.response = { status: 403 }
+        throw error
+      }
+      return {
+        data: {
+          ok: true,
+          active_id: 'default',
+          generation: '0',
+          profiles: [{ id: 'default', name: '默认配置' }],
+          groups: [],
+          busy: false
+        }
+      }
+    })
+
+    await mount()
+
+    expect(document.title).toBe('arknights-mower')
+  })
+
+  it('does not request manager title information for a standalone instance', async () => {
+    window.location.search = '?token=valid-session'
+    document.location.search = '?token=valid-session'
+
+    await mount()
+
+    expect(state.client.get).not.toHaveBeenCalledWith('/process-control/info')
+  })
+
+  it('uses the embedded window name without requesting browser title information', async () => {
+    state.shellMetadata.requested = true
+    state.shellMetadata.instanceName = '桌面实例'
+
+    await mount()
+
+    expect(document.title).toBe('桌面实例 - arknights-mower')
+    expect(state.client.get).not.toHaveBeenCalledWith('/process-control/info')
   })
 
   it('shares theme selection with settings while retaining direct configuration updates', async () => {

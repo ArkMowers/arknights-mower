@@ -848,6 +848,19 @@ async function loadStartupUpdateNotice() {
   }
 }
 
+async function loadAuthenticatedInstanceTitle(token) {
+  if (!token || !config_store.manager_owned_device || windowShell.metadata.requested) return
+  try {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL || ''}/process-control/info`)
+    const name = response.data?.name
+    if (response.data?.ok !== true || typeof name !== 'string' || !name.trim()) return
+    document.title = `${name.trim()} - arknights-mower`
+  } catch {
+    // An invalid token or an unavailable process-control endpoint keeps the
+    // ordinary browser title and must not affect application startup.
+  }
+}
+
 const operators_with_free_current = computed(() => {
   return [
     { value: 'Current', label: 'Current' },
@@ -865,7 +878,6 @@ onMounted(async () => {
 
   const params = new URLSearchParams(document.location.search)
   const token = params.get('token')
-  const instanceName = params.get('instance_name')
   provide('token', token)
   axios.defaults.headers.common['token'] = token
   void guiStore.load()
@@ -885,11 +897,15 @@ onMounted(async () => {
   })
   await Promise.all([load_config(), load_plan(), load_operators(), get_running()])
 
-  document.title = instanceName
-    ? `${instanceName} - arknights-mower`
+  const desktopInstanceName = windowShell.metadata.requested
+    ? windowShell.metadata.instanceName
+    : ''
+  document.title = desktopInstanceName
+    ? `${desktopInstanceName} - arknights-mower`
     : simulator.value?.name
       ? `${simulator.value.name} - arknights-mower`
       : 'arknights-mower'
+  void loadAuthenticatedInstanceTitle(token)
 
   if (updates_enabled.value === true)
     axios
