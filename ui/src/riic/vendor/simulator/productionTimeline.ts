@@ -128,6 +128,8 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   for(const t of trades.values())if(includeTrade&&(roomId===undefined||roomId===t.roomId)){let count=0;while(t.pending.length&&count++<orderLimit){const o=t.pending[0]!,delta={gold:unlimitedMaterials?0:-o.goldCost,fragment:unlimitedMaterials?0:-o.fragmentCost,lmd:o.lmdReward,orundum:o.orundumReward};if(!transact(delta,`collect-order:${o.id}`))break;materialsConsumed.gold=(materialsConsumed.gold??0)+o.goldCost;materialsConsumed.fragment=(materialsConsumed.fragment??0)+o.fragmentCost;if(observationMarked&&o.completedAt<=warmupHours){warmupReceipts.lmd=(warmupReceipts.lmd??0)+o.lmdReward;warmupReceipts.orundum=(warmupReceipts.orundum??0)+o.orundumReward}t.pending.shift();t.collectedOrders++;record('order-collected',{roomId:t.roomId,orderId:o.id,order:o})}}
  }
  const rng=(t:TradeRoom)=>{t.rng=(Math.imul(1664525,t.rng)+1013904223)>>>0;return t.rng/4294967296}
+ // Formula unlocks are base-wide; each factory retains its own storage capacity.
+ const formulaUnlocked=(frame:ProductionFrame,formula:ManufacturingFormulaId)=>frame.config.rooms.some(room=>room.type==='manufacture'&&room.level>=MANUFACTURING_FORMULAS[formula].requiredRoomLevel)
  const synchronize=(frame:ProductionFrame)=>{
   if(frame.config.facilities.recycle&&!recycle)recycle=createRecycleTimeline(frame.config.facilities.recycle)
   for(const room of frame.config.rooms){
@@ -135,7 +137,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    if(room.type==='manufacture'){
     let m=manufactures.get(room.id)
     if(!m){const formula:ManufacturingFormulaId=room.product==='exp'?'exp-medium':room.product==='fragment'?(options.fragmentFormulaByRoom?.[room.id]??(schedule.sourceWorkspace.compatibility.facilityMetadata?.[room.id]?.rawProduct==='orirock_device'?'fragment-device':'fragment-orirock')):'gold'
-     if(room.level<MANUFACTURING_FORMULAS[formula].requiredRoomLevel){unsupported('MANUFACTURE_FORMULA_LEVEL',`${room.id}：所选配方不满足设施等级，未计产出`);continue}
+     if(!formulaUnlocked(frame,formula)){unsupported('MANUFACTURE_FORMULA_LEVEL',`${room.id}：基建中没有满足配方解锁等级的制造站，未计产出`);continue}
      m={completedByProduct:{},roomId:room.id,state:startManufacturing({formula,capacityWeight:0,paymentAuthorized:false}),blockedHours:0,blockedMaterialHours:0,collectedItems:0};manufactures.set(room.id,m)}
     // The same efficiency snapshot has stable staffing and capacity-relevant mood boundaries.
     let capacities=capacityByEvaluation.get(frame.evaluations)
@@ -171,8 +173,8 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   for(const m of manufactures.values()){
    const target=frame.desiredProducts[m.roomId]??manufacturingProductId(m.state.formula.id)
    if(target===manufacturingProductId(m.state.formula.id)){delete m.pendingSwitch;continue}
-   const formula=MOWER_MANUFACTURING_FORMULAS[target],room=frame.config.rooms.find(r=>r.id===m.roomId)!
-   if(!formula||room.level<MANUFACTURING_FORMULAS[formula].requiredRoomLevel){reject(m.roomId,target,'切换目标配方未知或设施等级不足');delete m.pendingSwitch;continue}
+   const formula=MOWER_MANUFACTURING_FORMULAS[target]
+   if(!formula||!formulaUnlocked(frame,formula)){reject(m.roomId,target,'切换目标配方未知或基建中没有满足配方解锁等级的制造站');delete m.pendingSwitch;continue}
    if(m.pendingSwitch?.target!==target)m.pendingSwitch={target,accelerated:false}
    if(m.state.awaitingPayment){
     // An unfunded idle facility has no current unit to finish.

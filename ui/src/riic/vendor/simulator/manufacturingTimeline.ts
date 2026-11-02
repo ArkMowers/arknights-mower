@@ -18,7 +18,7 @@ const deviceCosts: readonly ManufacturingCost[] = Object.freeze([{ id: '30062', 
 
 /** Source: building_data.manufactFormulas (v076 baseline raw GameData). */
 export const MANUFACTURING_FORMULAS: Readonly<Record<ManufacturingFormulaId, ManufacturingFormula>> = Object.freeze({
-  'exp-medium': Object.freeze({ id: 'exp-medium', product: 'exp', sourceFormulaId: '3', itemId: '2003', batchSize: 1, baseMinutes: 180, storageWeight: 5, requiredRoomLevel: 1, costs: noCosts }),
+  'exp-medium': Object.freeze({ id: 'exp-medium', product: 'exp', sourceFormulaId: '3', itemId: '2003', batchSize: 1, baseMinutes: 180, storageWeight: 5, requiredRoomLevel: 3, costs: noCosts }),
   gold: Object.freeze({ id: 'gold', product: 'gold', sourceFormulaId: '4', itemId: '3003', batchSize: 1, baseMinutes: 72, storageWeight: 2, requiredRoomLevel: 1, costs: noCosts }),
   'fragment-orirock': Object.freeze({ id: 'fragment-orirock', product: 'fragment', sourceFormulaId: '13', itemId: '3141', batchSize: 1, baseMinutes: 60, storageWeight: 3, requiredRoomLevel: 3, costs: orirockCosts }),
   'fragment-device': Object.freeze({ id: 'fragment-device', product: 'fragment', sourceFormulaId: '14', itemId: '3141', batchSize: 1, baseMinutes: 60, storageWeight: 3, requiredRoomLevel: 3, costs: deviceCosts }),
