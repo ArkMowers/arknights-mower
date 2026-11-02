@@ -565,6 +565,7 @@ class BaseSchedulerSolver(
         self._emergency_startup_pending = False
         self._startup_run_order_check_pending = True
         self._startup_mood_observations = {}
+        self._initial_train_mood_attempted = False
         workshop_inventory_changed.set()
         self._register_network_wait_observer()
 
@@ -3055,6 +3056,11 @@ class BaseSchedulerSolver(
                 self.skip()
                 return True
         self._check_startup_run_orders()
+        if not getattr(
+            self, "_emergency_startup_pending", False
+        ) and "train" in getattr(self, "_initial_mood_refresh_rooms", ()):
+            # 完整初始化已有优先设施读取；普通恢复在同一基建入口补读训练室。
+            self._read_agent_mood(rooms={"train"})
         if getattr(self, "_emergency_startup_pending", False):
             if (
                 self.task is not None
@@ -3815,6 +3821,9 @@ class BaseSchedulerSolver(
             if initial_calculation
             else set()
         )
+        if getattr(self, "_initial_train_mood_attempted", False) is True:
+            # 续行不重新强制已尝试的训练室，失败后仍沿用房间级限频。
+            initial_rooms.discard("train")
         if getattr(self.op_data, "mood_calculation_enabled", False):
             need_read = initial_rooms
 
@@ -4078,6 +4087,12 @@ class BaseSchedulerSolver(
                     continue
             if not skip_room_exit:
                 self.back()
+            if room == "train" and initial_calculation:
+                self._initial_train_mood_attempted = True
+                if getattr(self.train_room_state, "slots_reliable", False) is True:
+                    self._startup_mood_observations[room] = self._room_mood_signature(
+                        room
+                    )
             force_rooms.discard(room)
             if getattr(self, "_emergency_startup_pending", False):
                 self._emergency_replan_releases()

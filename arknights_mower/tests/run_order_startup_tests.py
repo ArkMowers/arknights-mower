@@ -280,3 +280,52 @@ def test_stale_startup_mood_does_not_bypass_normal_refresh(staffed_order, monkey
         "room_1_1",
         "room_2_2",
     }
+
+
+def test_startup_training_read_follows_order_checks_before_staffing(
+    staffed_order, monkeypatch
+):
+    from arknights_mower.solvers import mastery_reader
+
+    ui = staffed_order
+    solver = prepare(ui)
+    monkeypatch.setattr(ui.config.conf, "enable_mastery", True)
+    solver._initial_mood_refresh_rooms = {"train"}
+    solver.last_train_mood_read = ui.clock.now()
+    solver.last_train_mood_attempt = ui.clock.now()
+    solver.op_data.facility_levels = {"train": 3}
+    room_state = mastery_reader.RoomState("empty", slots_reliable=True)
+    observed = []
+    enter_room = solver.enter_room.side_effect
+    solver.enter_room.side_effect = lambda room, **kwargs: enter_room(room)
+
+    def read_room(*args, **kwargs):
+        assert solver._state_restore_complete is True
+        assert solver._startup_run_order_check_pending is False
+        assert len(admission.reads(ui)) == 1
+        assert len(admission.reads(ui, "room_2_2")) == 1
+        assert not any(event[0] == "staffed" for event in ui.events)
+        observed.append("train")
+        return room_state, []
+
+    monkeypatch.setattr(mastery_reader, "read_room_state", read_room)
+    monkeypatch.setattr(mastery_reader, "reconcile_short", MagicMock())
+    task = admission.correction(ui)
+    original_time = task.time
+    solver.infra_main()
+    assert observed == ["train"]
+    assert "train" not in solver._initial_mood_refresh_rooms
+    assert task.time == original_time
+    solver.infra_main()
+    assert observed == ["train"]
+
+
+def test_startup_training_waits_for_confirmed_base_overview(staffed_order):
+    ui = staffed_order
+    solver = prepare(ui)
+    solver._initial_mood_refresh_rooms = {"train"}
+    solver.find.side_effect = lambda *args, **kwargs: None
+    solver.infra_main()
+    solver.enter_room.assert_not_called()
+    assert solver._initial_mood_refresh_rooms == {"train"}
+    assert solver._startup_run_order_check_pending is True
