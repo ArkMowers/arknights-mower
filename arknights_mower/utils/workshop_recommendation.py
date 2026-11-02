@@ -84,13 +84,18 @@ def _manual_available(available):
         return None
 
 
-def prioritize_workshop_settings(settings, *, available=None, formulas=None):
-    """Scope and order execution copies, preserving saved configurations/limits."""
+def prioritize_workshop_settings(
+    settings, *, available=None, formulas=None, prefer_t4=True
+):
+    """Scope/order copies; recovery can omit fixed T4 execution preferences."""
     available = _manual_available(available) or {}
     formulas = _formulas(formulas)
     scoped = [scope_setting(entry, formulas) for entry in settings]
     return sorted(
-        scoped, key=lambda entry: setting_priority(entry, available, formulas)
+        scoped,
+        key=lambda entry: setting_priority(
+            entry, available, formulas, prefer_t4=prefer_t4
+        ),
     )
 
 

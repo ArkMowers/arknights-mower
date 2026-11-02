@@ -1,4 +1,4 @@
-"""自动合成仅对普通空闲层提供交错名单休息顺序。"""
+"""自动合成按当前配方加成排列已配置的普通空闲加工干员。"""
 
 import pytest
 
@@ -8,6 +8,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.dorm_candidates import dorm_candidates
 from arknights_mower.utils.resting_priority import (
     RestingTier,
+    crafting_rest_candidates,
     crafting_rest_order,
     resting_key,
     resting_tier,
@@ -32,7 +33,7 @@ def crafting(op_data, monkeypatch):
     return op_data
 
 
-def test_crafting_lists_interleave_without_promoting_crafters(crafting):
+def test_no_pending_recipe_retains_fallback_order_without_promoting_crafters(crafting):
     names = ["九色鹿", "年", "赫拉格", "号角", "蜜莓", "司霆惊蛰"]
     baseline = ["年", "芬", "赫拉格", "司霆惊蛰", "香草", "九色鹿", "蜜莓", "号角"]
     for mood, name in enumerate(baseline, 1):
@@ -253,3 +254,176 @@ def test_crafting_order_preserves_existing_targets_and_global_order(crafting, oc
     )
     assert projected.get_current_operator(room, 4).name == "赫拉格"
     assert set(result) == ({room} if occupied else {room, other})
+
+
+def test_highest_recipe_bonus_precedes_configured_t4_preferences(crafting, monkeypatch):
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    names = ["九色鹿", "镜匠", "蚀清", "年", "号角"]
+    available = workshop.available_operators(owned(ids, *names), metadata)
+    monkeypatch.setattr(workshop, "available_operators", lambda: available)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    settings = workshop.allocate_workshop_items(
+        [("fodder_operators", names, [{"item_names": ["炽合金块"]}])],
+        available=available,
+    )
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [RIICPart.WorkShopSetting(**entry) for entry in settings],
+    )
+    for name in names:
+        set_tier(crafting, name, RestingTier.IDLE, 0).current_room = ""
+    crafting.operators["号角"].mood = 20
+    assert crafting_rest_candidates(crafting, names) == [
+        "号角",
+        "镜匠",
+        "蚀清",
+        "九色鹿",
+        "年",
+    ]
+    assert [entry["operator"] for entry in settings if entry["items"]] == [
+        "九色鹿",
+        "镜匠",
+        "蚀清",
+        "号角",
+    ]
+
+
+def test_unconfigured_special_operators_receive_no_crafting_rest_priority(
+    crafting, monkeypatch
+):
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+
+    monkeypatch.setattr(config.conf, "fodder_operators", ["蜜莓"])
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator="蜜莓", items=[WorkShopItem(item_names=["糖聚块"])]
+            )
+        ],
+    )
+    names = ["镜匠", "蜜莓", "蚀清", "九色鹿", "年"]
+    for name in names:
+        set_tier(crafting, name, RestingTier.IDLE, 5)
+    assert crafting_rest_candidates(crafting, names) == ["蜜莓"]
+    assert crafting_rest_order(crafting, names) == names
+
+
+@pytest.mark.parametrize(
+    "material,expected",
+    [
+        ("炽合金块", ["号角", "空爆", "蜜莓"]),
+        ("糖聚块", ["蜜莓", "空爆", "号角"]),
+    ],
+)
+def test_current_recipe_bonus_precedes_lowest_mood_in_real_fill_task(
+    crafting, monkeypatch, material, expected
+):
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    names = ["空爆", "蜜莓", "号角"]
+    available = workshop.available_operators(owned(ids, *names), metadata)
+    monkeypatch.setattr(workshop, "available_operators", lambda: available)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    settings = workshop.allocate_workshop_items(
+        [("fodder_operators", names, [{"item_names": [material]}])],
+        available=available,
+    )
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [RIICPart.WorkShopSetting(**entry) for entry in settings],
+    )
+    for name, mood in zip(names, [0, 3, 20]):
+        op = set_tier(crafting, name, RestingTier.IDLE, mood)
+        op.current_room = ""
+    assert crafting_rest_order(crafting, names) == expected
+    crafting.dorm[0].reset()
+    crafting.operators["红"].current_room = "meeting"
+    for name in ["九色鹿", "年", "赫拉格", "司霆惊蛰", "芬", "香草"]:
+        crafting.operators[name].mood = 24
+    tasks = []
+    try_add_release_dorm({}, None, crafting, tasks)
+    assert tasks[0].plan[dorm_release_tests.ROOM][4] == expected[0]
+
+
+def test_current_assignments_and_unlocks_are_read_again_after_recipe_changes(
+    crafting, monkeypatch
+):
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    names = ["空爆", "蜜莓", "号角"]
+    roster = owned(ids, "空爆", "号角") + owned(ids, "蜜莓", elite=0)
+    available = workshop.available_operators(roster, metadata)
+    monkeypatch.setattr(workshop, "available_operators", lambda: available)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    for name in names:
+        set_tier(crafting, name, RestingTier.IDLE, 5).current_room = ""
+    settings = [
+        RIICPart.WorkShopSetting(
+            operator=name, items=[WorkShopItem(item_names=["炽合金块"])]
+        )
+        for name in names
+    ]
+    runtime_conf = config.conf.model_copy(deep=True)
+    runtime_conf.workshop_settings = settings
+    crafting.runtime_conf = runtime_conf
+    assert crafting_rest_order(crafting, names) == ["号角", "空爆", "蜜莓"]
+    for entry in settings:
+        entry.items = [WorkShopItem(item_names=["糖聚块"])]
+    assert crafting_rest_order(crafting, names) == ["空爆", "蜜莓", "号角"]
+    settings[0].enabled = False
+    assert crafting_rest_order(crafting, names) == ["蜜莓", "号角", "空爆"]
+    settings[1].items = []
+    assert crafting_rest_order(crafting, names) == ["号角", "空爆", "蜜莓"]
+
+
+def test_pending_recipe_fallback_does_not_require_a_cached_roster(
+    crafting, monkeypatch
+):
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+
+    def unavailable():
+        raise workshop.WorkshopRecommendationError("没有缓存的干员数据")
+
+    monkeypatch.setattr(workshop, "available_operators", unavailable)
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator="蜜莓", items=[WorkShopItem(item_names=["糖聚块"])]
+            )
+        ],
+    )
+    assert crafting_rest_order(crafting, ["号角", "芬", "蜜莓"]) == [
+        "蜜莓",
+        "芬",
+        "号角",
+    ]
