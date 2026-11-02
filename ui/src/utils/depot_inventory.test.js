@@ -14,6 +14,7 @@ import {
   buildFavoriteHighlights,
   buildHighlights,
   buildItemHistory,
+  buildTrainingForecast,
   computeDrawCount,
   countByTier,
   DEFAULT_VIEW_PREFS,
@@ -27,6 +28,7 @@ import {
   formatRelative,
   formatTimestamp,
   groupItemsByTier,
+  GARRISON_TARGETS,
   isDerivedItem,
   isTokenItem,
   isValidBaselineRange,
@@ -1270,5 +1272,62 @@ describe('formatting helpers', () => {
     const fixedNow = new Date('2026-09-24T17:30:00')
     expect(formatLocalDateTime(fixedNow)).toBe('2026-09-24 17:30:00')
     expect(buildDepotExportFilename(null, 'all', fixedNow)).toContain('20260924_173000')
+  })
+})
+
+describe('training forecast', () => {
+  it('gives exp-only, lmd-only and combined counts per target', () => {
+    const forecast = buildTrainingForecast(2811086, 3000000)
+    expect(forecast.exp).toBe(2811086)
+    expect(forecast.lmd).toBe(3000000)
+    expect(
+      forecast.rows.map((row) => [row.label, row.target, row.expCount, row.lmdCount, row.joint])
+    ).toEqual([
+      ['六星', '精二 90', 2, 2, 2],
+      ['五星', '精二 80', 3, 2, 2],
+      ['四星', '精二 70', 4, 3, 3]
+    ])
+  })
+
+  it('counts the lmd-only case without an exp reading', () => {
+    const forecast = buildTrainingForecast(null, 3000000)
+    expect(forecast.exp).toBe(0)
+    expect(forecast.lmd).toBe(3000000)
+    expect(forecast.rows.map((row) => row.lmdCount)).toEqual([2, 2, 3])
+    expect(forecast.rows.every((row) => row.expCount === 0)).toBe(true)
+  })
+
+  it('leaves lmd counts unknown without an lmd reading', () => {
+    const forecast = buildTrainingForecast(2811086)
+    expect(forecast.lmd).toBeNull()
+    expect(forecast.rows.every((row) => row.lmdCount === null && row.joint === null)).toBe(true)
+    expect(forecast.rows.map((row) => row.expCount)).toEqual([2, 3, 4])
+  })
+
+  it('uses the garrison targets when they are supplied', () => {
+    const forecast = buildTrainingForecast(2811086, 3000000, GARRISON_TARGETS)
+    expect(
+      forecast.rows.map((row) => [row.label, row.target, row.expCount, row.lmdCount, row.joint])
+    ).toEqual([
+      ['六星', '精二 60', 4, 3, 3],
+      ['五星', '精二 50', 5, 4, 4],
+      ['四星', '精二 40', 6, 4, 4]
+    ])
+  })
+
+  it('treats zero as a real reading and missing numbers as unknown', () => {
+    const zero = buildTrainingForecast(0, 0)
+    expect(zero.exp).toBe(0)
+    expect(zero.lmd).toBe(0)
+    expect(
+      zero.rows.every((row) => row.expCount === 0 && row.lmdCount === 0 && row.joint === 0)
+    ).toBe(true)
+
+    for (const total of [undefined, null, '', 'abc', -5]) {
+      const forecast = buildTrainingForecast(total, total)
+      expect(forecast.exp).toBe(0)
+      expect(forecast.lmd).toBeNull()
+      expect(forecast.rows.every((row) => row.expCount === 0)).toBe(true)
+    }
   })
 })

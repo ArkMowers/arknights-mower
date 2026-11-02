@@ -165,6 +165,49 @@ const EXP_SOURCE_WEIGHTS = {
   高级作战记录: 2000
 }
 
+/** 拉满练度：六星到四星的"满练"。 */
+export const TRAINING_TARGETS = [
+  { key: 'six', label: '六星', target: '精二 90', exp: 1111400, lmd: 1334796 },
+  { key: 'five', label: '五星', target: '精二 80', exp: 856400, lmd: 1037219 },
+  { key: 'four', label: '四星', target: '精二 70', exp: 695200, lmd: 865603 }
+]
+
+/** 卫戍练度：六/五/四星模组各自要求等级。 */
+export const GARRISON_TARGETS = [
+  { key: 'six', label: '六星', target: '精二 60', exp: 588286, lmd: 761409 },
+  { key: 'five', label: '五星', target: '精二 50', exp: 512161, lmd: 694514 },
+  { key: 'four', label: '四星', target: '精二 40', exp: 454136, lmd: 648106 }
+]
+
+/**
+ * 按折算经验与龙门币估算还能养几个干员。
+ *
+ * 每一行同时给出三个口径：`expCount` 只看经验、`lmdCount` 只看龙门币、
+ * `joint` 两项都够才计入（取两者能养数量的较小值）。三者都按整数个向下取整：
+ * 材料不能拆分给两个干员，余数留在账上。
+ * 0 是有效读数（会算出 0 个）；只有没传、null 或非数字才算"没读到"：
+ * 经验记 0，龙门币记 null，由页面显示占位符，避免把"没扫到"当成"没有"。
+ */
+export function buildTrainingForecast(totalExp, totalLmd, targets = TRAINING_TARGETS) {
+  const expValue =
+    totalExp === null || totalExp === undefined || totalExp === '' ? NaN : Number(totalExp)
+  const lmdValue =
+    totalLmd === null || totalLmd === undefined || totalLmd === '' ? NaN : Number(totalLmd)
+  const exp = Number.isFinite(expValue) && expValue >= 0 ? expValue : 0
+  const lmd = Number.isFinite(lmdValue) && lmdValue >= 0 ? lmdValue : null
+  const per = (total, cost) => Math.floor(total / cost)
+  return {
+    exp,
+    lmd,
+    rows: targets.map((tier) => ({
+      ...tier,
+      expCount: per(exp, tier.exp),
+      lmdCount: lmd === null ? null : per(lmd, tier.lmd),
+      joint: lmd === null ? null : Math.min(per(exp, tier.exp), per(lmd, tier.lmd))
+    }))
+  }
+}
+
 /**
  * 单条快照的抽数：优先读后端写入的派生项。
  *

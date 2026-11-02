@@ -319,6 +319,26 @@
         </div>
       </div>
 
+      <!-- 顶部总览：经验与龙门币共同结算，两项都够才计入 -->
+      <div v-if="expForecast" class="exp-training-strip hero-exp-forecast">
+        <div class="exp-training-head">
+          <span class="exp-training-title">预计可培养</span>
+          <div class="exp-training-aside">
+            <span class="exp-training-total">{{ targetCostText }}</span>
+            <button type="button" class="exp-training-toggle" @click="toggleTrainingMode">
+              {{ trainingMode === 'max' ? '拉满练度' : '卫戍练度' }}
+            </button>
+          </div>
+        </div>
+        <div class="exp-training-list">
+          <div v-for="tier in expForecast.rows" :key="tier.key" class="exp-training-item">
+            <span class="exp-training-label">{{ tier.label }}</span>
+            <span class="exp-training-count">{{ tier.joint === null ? '—' : tier.joint }}</span>
+            <span class="exp-training-sub">{{ tier.target }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- 底部状态条：扫描时间、快照状态与森空岛 -->
       <div class="hero-status-footer">
         <div class="status-items">
@@ -822,6 +842,40 @@
           description="有效历史记录少于 2 次，暂无法生成趋势曲线"
         />
 
+        <!-- 全部经验可培养数量：放在详情末尾 -->
+        <div v-if="expDetailForecast" class="exp-training-strip exp-training-bottom">
+          <div class="exp-training-head">
+            <span class="exp-training-title">预计可培养（仅按经验）</span>
+            <span class="exp-training-total">{{ formatNumber(expDetailForecast.exp) }} 经验</span>
+          </div>
+          <div class="exp-training-list">
+            <div v-for="tier in expDetailForecast.rows" :key="tier.key" class="exp-training-item">
+              <span class="exp-training-label">{{ tier.label }}</span>
+              <span class="exp-training-count">{{ tier.expCount }}</span>
+              <span class="exp-training-sub">{{ tier.target }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 龙门币可培养数量：口径同上，只按龙门币算 -->
+        <div v-if="lmdDetailForecast" class="exp-training-strip exp-training-bottom">
+          <div class="exp-training-head">
+            <span class="exp-training-title">预计可培养（仅按龙门币）</span>
+            <span class="exp-training-total">
+              {{ formatNumber(lmdDetailForecast.lmd) }} 龙门币
+            </span>
+          </div>
+          <div class="exp-training-list">
+            <div v-for="tier in lmdDetailForecast.rows" :key="tier.key" class="exp-training-item">
+              <span class="exp-training-label">{{ tier.label }}</span>
+              <span class="exp-training-count">{{
+                tier.lmdCount === null ? '—' : tier.lmdCount
+              }}</span>
+              <span class="exp-training-sub">{{ tier.target }}</span>
+            </div>
+          </div>
+        </div>
+
         <template #footer>
           <n-space justify="space-between" style="width: 100%">
             <n-button size="small" secondary @click="copyName(detailItem.name)">
@@ -1044,6 +1098,7 @@ import {
   buildFavoriteHighlights,
   buildHighlights,
   buildItemHistory,
+  buildTrainingForecast,
   computeDrawCount,
   countByTier,
   DEFAULT_BASELINE_CONFIG,
@@ -1056,11 +1111,13 @@ import {
   formatRelative,
   formatTimestamp,
   groupItemsByTier,
+  GARRISON_TARGETS,
   itemIconUrl,
   parseDepotResponse,
   resolveCopyText,
   sortItems,
   summarizeItemHistory,
+  TRAINING_TARGETS,
   usableSnapshots
 } from '@/utils/depot_inventory'
 
@@ -1125,6 +1182,14 @@ const activeDrawKey = ref('')
 const activeTier = ref('')
 const detailItem = ref(null)
 const detailOpen = ref(false)
+const trainingMode = ref('max')
+const trainingTargets = computed(() =>
+  trainingMode.value === 'garrison' ? GARRISON_TARGETS : TRAINING_TARGETS
+)
+
+function toggleTrainingMode() {
+  trainingMode.value = trainingMode.value === 'max' ? 'garrison' : 'max'
+}
 
 // 关注物品管理
 const favorites = computed(() => preferences.favorites)
@@ -1233,6 +1298,36 @@ const deltaDetail = computed(() => {
 const deltaMap = computed(() => deltaDetail.value.deltas)
 const unobservedItems = computed(() => deltaDetail.value.unobserved)
 const highlights = computed(() => buildHighlights(parsed.value.categories))
+
+// 顶部总览：折算经验加上当前龙门币还能养几个干员，两项都够才计入。
+const expForecast = computed(() => {
+  const exp = highlights.value.exp
+  if (!exp) return null
+  const lmd = highlights.value.currencies.find((item) => item.name === '龙门币')
+  return buildTrainingForecast(exp.number, lmd ? lmd.number : null, trainingTargets.value)
+})
+
+// 右上角按算出来的数量反过来标出预计消耗：取各档"能养几个 × 单价"里最大的那个。
+const targetCostText = computed(() => {
+  const forecast = expForecast.value
+  if (!forecast) return ''
+  if (forecast.rows.some((row) => row.joint === null)) return '预计消耗 —经验/—龙门币'
+  const maxExp = Math.max(...forecast.rows.map((row) => row.joint * row.exp))
+  const maxLmd = Math.max(...forecast.rows.map((row) => row.joint * row.lmd))
+  return `预计消耗 ${formatNumber(maxExp)}经验/${formatNumber(maxLmd)}龙门币`
+})
+
+// 详情里只按经验算一份，方便对照单个目标消耗。
+const expDetailForecast = computed(() => {
+  if (detailItem.value?.name !== '全部经验（计算）') return null
+  return buildTrainingForecast(detailItem.value.number, null, trainingTargets.value)
+})
+
+// 龙门币详情同理：只按龙门币算一份。
+const lmdDetailForecast = computed(() => {
+  if (detailItem.value?.name !== '龙门币') return null
+  return buildTrainingForecast(null, detailItem.value.number, trainingTargets.value)
+})
 
 // 关注高亮看板与分页
 const favoriteHighlights = computed(() => {
@@ -2370,6 +2465,112 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
+/* 「全部经验（计算）」详情里的可培养数量 */
+.exp-training-strip {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--mower-control-surface);
+  border: var(--depot-hairline);
+  margin-bottom: 16px;
+}
+
+.exp-training-bottom {
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
+/* 顶部总览里的那一份：整张卡片宽度，和上面的两栏面板留出间距 */
+.hero-exp-forecast {
+  margin-top: 16px;
+  padding: 12px 14px;
+}
+
+.exp-training-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+}
+
+.exp-training-title {
+  font-size: 11px;
+  color: var(--mower-segment-muted);
+}
+
+.exp-training-total {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mower-segment-muted);
+}
+
+.exp-training-aside {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.exp-training-toggle {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--mower-primary) 45%, transparent);
+  background: color-mix(in srgb, var(--mower-primary) 10%, transparent);
+  color: var(--mower-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.exp-training-toggle:hover {
+  background: var(--mower-primary);
+  border-color: var(--mower-primary);
+  color: var(--mower-primary-text, #fff);
+}
+
+.exp-training-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 6px;
+}
+
+.exp-training-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.exp-training-label {
+  font-size: 10px;
+  color: var(--mower-segment-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.exp-training-count {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.exp-training-sub {
+  font-size: 9px;
+  color: var(--mower-segment-muted);
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .asset-delta {
   font-size: 10px;
   font-weight: 600;
@@ -2946,6 +3147,20 @@ onUnmounted(() => {
   .items-card-grid {
     grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
     gap: 8px;
+  }
+
+  /* 手机上让各档位均分整行；目标数量变化时也不会留空列 */
+  .exp-training-list {
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: 4px;
+  }
+
+  .exp-training-count {
+    font-size: 16px;
+  }
+
+  .hero-exp-forecast {
+    padding: 10px 12px;
   }
 
   .inventory-card {
