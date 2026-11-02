@@ -58,6 +58,12 @@ describe('optional component updates', () => {
     expect(state.client.get).toHaveBeenCalledWith('/component')
     expect(state.client.post).not.toHaveBeenCalled()
   })
+  it('does not poll the interface after mounting', async () => {
+    await Promise.all(state.mounted.map((fn) => fn()))
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000)
+    expect(state.client.get).toHaveBeenCalledTimes(1)
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
   it('sends the same update intent header used by shared update routes', async () => {
     await component.run({ action: 'check' })
     expect(state.client.post).toHaveBeenCalledWith(

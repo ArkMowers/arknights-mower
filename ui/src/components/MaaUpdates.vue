@@ -585,15 +585,11 @@ async function check_maa_update() {
     return
   maa_combined_checking.value = true
   try {
-    // Keep the MAA result and check_id separate from optional Android components.
-    // A failed check must not hide an available update in the other component.
-    const [core] = await Promise.allSettled([
-      check_maa_core_update(),
-      ...(runtime_platform.value === 'android'
-        ? maa_component_controls.value.map((component) => component.check())
-        : [])
-    ])
-    return core.status === 'fulfilled' && core.value
+    const checked = await check_maa_core_update()
+    if (checked && maa_update_check.value.available && runtime_platform.value === 'android') {
+      await Promise.allSettled(maa_component_controls.value.map((component) => component.check()))
+    }
+    return checked
   } finally {
     maa_combined_checking.value = false
   }

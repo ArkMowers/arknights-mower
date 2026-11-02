@@ -172,7 +172,7 @@ describe('MAA core and resource updates', () => {
     }
   )
 
-  it('starts both checks concurrently and preserves the core check token', async () => {
+  it('checks the companion after finding a core update and preserves the core check token', async () => {
     let complete
     state.client.post.mockImplementation(
       () =>
@@ -183,12 +183,13 @@ describe('MAA core and resource updates', () => {
     const check = vi.fn(async () => {})
     component.maa_component_controls.value = [{ check }]
     const pending = component.check_maa_update()
-    expect(check).toHaveBeenCalledOnce()
+    expect(check).not.toHaveBeenCalled()
     expect(component.maa_combined_checking.value).toBe(true)
     complete({
       data: { ok: true, available: true, latest: { tag: 'v6.19.0' }, check_id: 'maa-only' }
     })
     await pending
+    expect(check).toHaveBeenCalledOnce()
     expect(component.maa_update_check.value.id).toBe('maa-only')
     expect(component.maa_combined_checking.value).toBe(false)
   })
@@ -224,14 +225,26 @@ describe('MAA core and resource updates', () => {
     await component.check_maa_update()
     expect(component.maa_update_check.value.available).toBe(true)
   })
-  it('a core failure still checks the companion', async () => {
+  it('a core failure skips the companion', async () => {
     state.client.post.mockRejectedValue(new Error('core offline'))
     const check = vi.fn(async () => {})
     component.maa_component_controls.value = [{ check }]
     await component.check_maa_update()
-    expect(check).toHaveBeenCalledOnce()
+    expect(check).not.toHaveBeenCalled()
     expect(component.maa_update_check.value.status).toBe('error')
   })
+  it.each([
+    { ok: true, available: false },
+    { ok: false, message: 'core check failed' },
+    { ok: true, available: true, latest: { tag: 'v6.18.0' }, installed_version: 'v6.18.0' }
+  ])('skips the companion without a confirmed core update: %j', async (result) => {
+    state.client.post.mockResolvedValueOnce({ data: result })
+    const check = vi.fn()
+    component.maa_component_controls.value = [{ check }]
+    await component.check_maa_update()
+    expect(check).not.toHaveBeenCalled()
+  })
+
   it('uses Mirror for Android resources while keeping the core on GitHub', async () => {
     state.config.maa_mirrorchyan_token.value = 'fixture-cdk'
     component.maa_resource_source.value = 'mirrorchyan'
@@ -299,6 +312,21 @@ describe('MAA core and resource updates', () => {
     component.maa_update_supported.value = true
     component.maa_resource_update_supported.value = true
   }
+
+  it.each(['core', 'resource'])(
+    'checks the companion only after an automatic core update is found, with %s enabled',
+    async (kind) => {
+      mockAvailableUpdates()
+      const check = vi.fn()
+      component.maa_component_controls.value = [{ check }]
+      state.config[
+        kind === 'core' ? 'maa_auto_check_update' : 'maa_resource_auto_check_update'
+      ].value = true
+      await nextTick()
+      await component.auto_check_updates()
+      expect(check).toHaveBeenCalledTimes(kind === 'core' ? 1 : 0)
+    }
+  )
 
   it.each(['core', 'resource'])(
     'automatically checks only the enabled %s component',
