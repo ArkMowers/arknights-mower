@@ -3093,6 +3093,8 @@ class BaseSchedulerSolver(
         ) and not (
             getattr(self.task, "strict_mood_limit", False)
             or getattr(self.task, "initial_fia", False)
+            or getattr(self.task, "type", None) == TaskTypes.RUN_ORDER
+            and id(self.task) not in blocked_orders
             or initial_fia_pending
             and (
                 getattr(self.task, "type", None) == TaskTypes.RUN_ORDER
@@ -3611,6 +3613,7 @@ class BaseSchedulerSolver(
                     if getattr(self, "defer_backup_plan_until_mood_read", False):
                         # 首次读取不生成主表纠错；副表确定后才按最终排班规划。
                         self._read_agent_mood()
+                        self._initial_card_scan_required = True
                         self._read_initial_card_mood()
                         self.defer_backup_plan_until_mood_read = False
                         if self._queue_initial_fia():
@@ -4036,6 +4039,24 @@ class BaseSchedulerSolver(
 
     def _read_initial_card_mood(self):
         """初始化必须尝试有界选人页扫描，不选人或确认换班。"""
+        required = getattr(self, "_initial_card_scan_required", False)
+        self._initial_card_scan_required = False
+        # 自动救急启动沿用其按需扫描契约；普通初始化和演算初始化仍由调用方
+        # 固定尝试扫描，确保排班基线不会因临近任务而缺失。
+        if (
+            not required
+            and not getattr(self.op_data, "mood_calculation_enabled", False)
+            and not getattr(self, "defer_backup_plan_until_mood_read", False)
+        ):
+            if not config.conf.automatic_rescue_enable:
+                return
+            from arknights_mower.utils.emergency_plan import configured_rescue_names
+
+            if not any(
+                name not in self.op_data.dorm_mood_estimates
+                for name in configured_rescue_names(config.rescue_plan)
+            ):
+                return
         self._scan_card_moods(initial=True)
 
     def _read_missing_calculated_moods(self):
@@ -4072,6 +4093,12 @@ class BaseSchedulerSolver(
     def _scan_card_moods(self, *, missing_calculated=(), initial=False):
         """每轮真实规划共用一次升序扫描，首个绿色后的姓名按 24 预估。"""
         initial = initial or self._initial_mood_read_pending()
+        # 启动恢复的离线调用可能只构造了排班数据而没有设备识别器；此时
+        # 保留已恢复任务，待真实设备启动后再由完整初始化执行扫描。
+        if getattr(self, "recog", None) is None:
+            if initial:
+                logger.info("初始化选人页心情扫描暂缓：设备识别器尚未就绪")
+            return
         if (
             getattr(self.op_data, "mood_calculation_enabled", False)
             and not initial
