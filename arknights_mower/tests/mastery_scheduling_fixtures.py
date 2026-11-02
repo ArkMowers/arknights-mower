@@ -49,7 +49,9 @@ def pair():
 def make_solver(tasks):
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.tasks = tasks
-    solver.op_data = SimpleNamespace(operators={})
+    solver.op_data = SimpleNamespace(
+        operators={}, is_orundum_trade_room=lambda room: False
+    )
     solver.drone_room = "room_1_1"
     solver.recog = SimpleNamespace(gray=None, w=1920, h=1080)
     solver.digit_reader = MagicMock()

@@ -10,6 +10,7 @@ import pytest
 
 from arknights_mower.tests import mass_mood_recovery_tests as native
 from arknights_mower.tests import scheduler_recovery_preservation_tests as recovery
+from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
@@ -873,6 +874,8 @@ def test_failed_order_before_roster_capture_is_not_regenerated(
     now = scheduler.clock.now()
     solver.op_data.run_order_rooms = {ROOM, "room_1_2"}
     solver.op_data.run_order_replacements = Mock(return_value=[["但书"]])
+    solver.op_data.is_order_collection_room = Mock(return_value=False)
+    solver.op_data.run_order_plan = Operators.run_order_plan.__get__(solver.op_data)
     solver._emergency_run_order_available = Mock(return_value=True)
     solver.get_run_order_time = Mock(return_value=now + timedelta(minutes=10))
     task = SchedulerTask(now, {ROOM: ["但书"]}, TaskTypes.RUN_ORDER, meta_data=ROOM)

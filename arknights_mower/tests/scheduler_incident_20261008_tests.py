@@ -73,6 +73,7 @@ def repeated_exhaust(clock, monkeypatch, *, retain_deadline=False):
         groups={},
         run_order_rooms={"room_2_1": []},
         refresh_run_order_rooms=lambda: None,
+        is_order_collection_room=lambda room: False,
         active_high_resting_count=lambda: 0,
         print=lambda: "offline operator fixture",
     )
