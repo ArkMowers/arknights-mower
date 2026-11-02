@@ -802,7 +802,7 @@ def test_roster_requires_facility_title_and_uses_two_actual_slots(visible):
     result = BaseSchedulerSolver._read_recycling_operators(solver)
     assert result == (["旅骨", "阿米娅"] if visible else None)
     assert solver.read_screen.call_count == (2 if visible else 0)
-    solver.enter_room.assert_called_once_with("recycle", max_attempts=1)
+    solver.enter_room.assert_called_once_with("recycle")
 
 
 @pytest.mark.parametrize("empty", [True, False])
@@ -856,13 +856,54 @@ def test_archived_occupants_complete_collection_without_toggling_panel(db, monke
 
     result = record.get_recycling_history("2000-01-01", "2100-01-01")
     assert result["records"][0]["operators"] == ["旅骨", "岳羽由加莉"]
-    solver.enter_room.assert_called_once_with("recycle", max_attempts=1)
+    solver.enter_room.assert_called_once_with("recycle")
     solver.tap.assert_not_called()
     assert solver._recycling_pending is None
 
 
-@pytest.mark.parametrize("settles", [True, False])
-def test_roster_waits_for_opening_panel_and_checks_last_frame(settles):
+def test_collection_retries_ignored_panel_click_and_records_actual_occupants(
+    db, monkeypatch, report_submission
+):
+    solver = collection_solver()
+    del solver._read_recycling_operators
+    solver.enter_room = Mock()
+    solver.detect_room = Mock(return_value="recycle")
+    solver.scene = Mock(return_value=Scene.INFRA_MAIN)
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver._recycling_pending = {"id": "ignored-panel-click", "at": at(18, 19)}
+    state = {"clicks": 0, "opened": False}
+
+    def find(name, **kwargs):
+        if name == "room_detail":
+            return state["opened"]
+        if name == "arrange_check_in":
+            return (102, 418)
+        return False
+
+    def tap(*args, **kwargs):
+        state["clicks"] += 1
+        state["opened"] = state["clicks"] >= 2
+
+    solver.find = Mock(side_effect=find)
+    solver.tap.side_effect = tap
+    solver.get_color = Mock(return_value=np.array([255, 255, 255]))
+    solver.read_screen = Mock(side_effect=["国度", "行铃"])
+    monkeypatch.setattr(
+        recycling, "read_recycling_materials", Mock(return_value={"环烃聚质": 1})
+    )
+
+    solver._finish_recycling_collection()
+
+    result = record.get_recycling_history("2026-10-18", "2026-10-18")
+    assert result["records"][0]["operators"] == ["国度", "行铃"]
+    assert result["records"][0]["materials"] == {"环烃聚质": 1}
+    assert state["clicks"] == 2
+    solver.enter_room.assert_called_once_with("recycle")
+    report_submission.assert_called_once_with("ignored-panel-click")
+    assert solver._recycling_pending is None
+
+
+def test_roster_waits_for_opening_panel_without_toggling_it():
     solver = collection_solver()
     solver.enter_room = Mock()
     solver.detect_room = Mock(return_value="recycle")
@@ -874,20 +915,88 @@ def test_roster_waits_for_opening_panel_and_checks_last_frame(settles):
         )
     )
     solver.get_color = Mock(
-        side_effect=lambda pos: np.array(
-            [255 if settles and state["waits"] == 4 else 10] * 3
-        )
+        side_effect=lambda pos: np.array([255 if state["waits"] == 4 else 10] * 3)
     )
     solver.tap.side_effect = lambda *args, **kwargs: state.update(opened=True)
-    solver.sleep.side_effect = lambda *args: state.update(waits=state["waits"] + 1)
+    solver.sleep.side_effect = lambda *args, **kwargs: state.update(
+        waits=state["waits"] + 1
+    )
     solver.read_screen = Mock(side_effect=["旅骨", "岳羽由加莉"])
 
     result = BaseSchedulerSolver._read_recycling_operators(solver)
 
-    assert result == (["旅骨", "岳羽由加莉"] if settles else None)
-    assert solver.read_screen.call_count == (2 if settles else 0)
+    assert result == ["旅骨", "岳羽由加莉"]
+    assert solver.read_screen.call_count == 2
     solver.tap.assert_called_once()
     assert state["waits"] == 4
+
+
+def test_exhausted_shared_panel_recovery_preserves_materials_with_unknown_occupants(
+    db, monkeypatch, report_submission
+):
+    solver = collection_solver()
+    del solver._read_recycling_operators
+    solver.enter_room = Mock()
+    solver.detect_room = Mock(return_value="recycle")
+    solver.scene = Mock(return_value=Scene.INFRA_MAIN)
+    solver.find = Mock(
+        side_effect=lambda name, **kwargs: (
+            name in ("arrange_check_in", "control_central")
+        )
+    )
+    solver.reset_room_time = Mock()
+    solver.read_screen = Mock()
+    solver._recycling_pending = {"id": "unopened-panel", "at": at(18, 19)}
+    monkeypatch.setattr(
+        recycling, "read_recycling_materials", Mock(return_value={"装置": 1})
+    )
+
+    solver._finish_recycling_collection()
+
+    result = record.get_recycling_history("2026-10-18", "2026-10-18")
+    assert result["total"] == 1
+    assert result["records"][0]["materials"] == {"装置": 1}
+    assert result["records"][0]["operators"] is None
+    assert solver.enter_room.call_count > 1
+    solver.read_screen.assert_not_called()
+    report_submission.assert_called_once_with("unopened-panel")
+    assert solver._recycling_pending is None
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        base_schedule.MowerExit,
+        base_schedule.DeviceRecoveryError,
+        base_schedule.SharedADBError,
+    ],
+)
+def test_roster_cancellation_and_device_errors_keep_pending_collection(
+    db, monkeypatch, report_submission, error_type
+):
+    solver = collection_solver()
+    del solver._read_recycling_operators
+    solver.enter_room = Mock()
+    solver.detect_room = Mock(return_value="recycle")
+    solver.turn_on_room_detail = Mock(side_effect=error_type("interrupted"))
+    solver.read_screen = Mock()
+    solver.scene = Mock(return_value=Scene.INFRA_MAIN)
+    solver._recycling_pending = {"id": "interrupted-roster", "at": at(18, 19)}
+    monkeypatch.setattr(
+        recycling, "read_recycling_materials", Mock(return_value={"装置": 1})
+    )
+
+    with pytest.raises(error_type, match="interrupted"):
+        solver._finish_recycling_collection()
+
+    result = record.get_recycling_history("2026-10-18", "2026-10-18")
+    assert result["total"] == 1
+    assert result["records"][0]["materials"] == {"装置": 1}
+    assert result["records"][0]["operators"] is None
+    assert solver._recycling_pending["id"] == "interrupted-roster"
+    assert solver._recycling_pending["recorded"] is True
+    solver.read_screen.assert_not_called()
+    report_submission.assert_not_called()
 
 
 @pytest.mark.parametrize("ready", [True, False])

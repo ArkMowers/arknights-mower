@@ -10695,36 +10695,10 @@ class BaseSchedulerSolver(
         if getattr(self, "_recycle_unavailable", False) is True:
             return None
         self.scene_graph_navigation(Scene.INFRA_MAIN)
-        self.enter_room("recycle", max_attempts=1)
+        self.enter_room("recycle")
         if self.detect_room() != "recycle":
             return None
-        opened = False
-        for attempt in range(6):
-            if self.find("recycle/dashboard"):
-                if attempt == 5:
-                    return None
-                self.back()
-                opened = False
-                continue
-            detail = self.find("room_detail")
-            # 取面板内部的白色，避开左边缘；标题出现后仍可能处于展开动画中。
-            if detail and all(self.get_color((1250, 1)) > [252] * 3):
-                break
-            if attempt == 5:
-                return None
-            if (
-                not detail
-                and not opened
-                and (
-                    pos := self.find("arrange_check_in")
-                    or self.find("arrange_check_in_small")
-                )
-            ):
-                self.tap(pos, interval=0.2)
-                opened = True
-            else:
-                # 进驻按钮也会在展开动画中命中，再次点击会把已打开的面板关闭。
-                self.sleep(0.2)
+        self.turn_on_room_detail("recycle")
         names = []
         tops = (
             (135,) if getattr(self.op_data, "recycle_capacity", 2) == 1 else (135, 344)
@@ -10787,7 +10761,7 @@ class BaseSchedulerSolver(
             names = self._read_recycling_operators()
         except (MowerExit, DeviceRecoveryError, SharedADBError):
             raise
-        except (RecognizeError, RuntimeError) as exc:
+        except Exception as exc:
             logger.warning(f"回收站进驻干员读取失败，保留未知：{exc}")
             names = None
         if names is not None:
@@ -14621,7 +14595,8 @@ class BaseSchedulerSolver(
                     # 材料转化页没有进驻信息按钮，先回到房间视图。
                     self.back()
                 elif pos := self.find("room_detail"):
-                    if all(self.get_color((1233, 1)) > [252] * 3):
+                    # 取面板内部的白色，避开左边缘；标题出现后仍可能处于展开动画中。
+                    if all(self.get_color((1250, 1)) > [252] * 3):
                         return
                     logger.info("等待动画")
                     self.sleep(interval=0.5)
@@ -14639,7 +14614,7 @@ class BaseSchedulerSolver(
             if (
                 not self.find("connecting")
                 and self.find("room_detail")
-                and all(self.get_color((1233, 1)) > [252] * 3)
+                and all(self.get_color((1250, 1)) > [252] * 3)
             ):
                 return
             for back_time in range(3):
