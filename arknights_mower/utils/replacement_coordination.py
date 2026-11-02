@@ -172,6 +172,8 @@ def plan_replacement_handoff(data, candidates, is_busy, protected=(), slots=()):
 
 
 def preferred_replacement_restore(data, is_busy, protected=(), slots=()):
+    from arknights_mower.utils.dorm_candidates import scheduling_mood_reaches
+
     plan, protected, slots = {}, set(protected), set(slots)
     shadow = data
     while True:
@@ -204,6 +206,13 @@ def preferred_replacement_restore(data, is_busy, protected=(), slots=()):
                     and (
                         not shadow.operators[name].current_room
                         or shadow.operators[name].is_resting()
+                        and scheduling_mood_reaches(
+                            shadow,
+                            name,
+                            shadow.operators[name].upper_limit
+                            if shadow.operators[name].rest_in_full
+                            else shadow.rescue_mood_threshold(shadow.operators[name]),
+                        )
                     )
                 ),
                 None,

@@ -3292,7 +3292,19 @@ class BaseSchedulerSolver(
                         TaskTypes.RE_ORDER,
                         TaskTypes.SELF_CORRECTION,
                     ):
-                        if getattr(self.task, "preferred_replacement_restore", False):
+                        if (
+                            getattr(self.task, "preferred_replacement_restore", False)
+                            and not self.task.retains_execution
+                            and not any(
+                                getattr(self.task, flag, False)
+                                for flag in (
+                                    "mood_physical_started",
+                                    "backup_shift_active",
+                                    "group_shift_expected",
+                                    "product_shift_locked",
+                                )
+                            )
+                        ):
                             from arknights_mower.utils.replacement_coordination import (
                                 coordination_reservations,
                                 preferred_replacement_restore,
@@ -3317,6 +3329,12 @@ class BaseSchedulerSolver(
                             self.task.plan = preferred_replacement_restore(
                                 self.op_data, _is_mastery_busy, protected, slots
                             )
+                            if not self.task.plan:
+                                self.tasks[:] = [
+                                    t for t in self.tasks if t is not self.task
+                                ]
+                                self.skip()
+                                return True
                         if unstarted_product_wait(self.task):
                             # 依赖解除后重新复核整条准备流程；尚未派发时仍保留清理保护。
                             self.task.execution_retained = False

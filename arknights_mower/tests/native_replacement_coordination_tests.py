@@ -11,6 +11,7 @@ from arknights_mower.tests import (
     multi_group_individual_rest_tests,
     multi_group_shift_tests,
 )
+from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
@@ -18,7 +19,7 @@ from arknights_mower.utils.replacement_coordination import (
     plan_replacement_handoff,
     recall_can_sustain,
 )
-from arknights_mower.utils.scheduler_task import TaskTypes
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 solver = exhaust_replacement_tests.solver
 base = exhaust_replacement_tests.base_schedule
@@ -79,6 +80,128 @@ def test_waiting_third_group_precedes_first_cover_restoration(solver):
     solver.tasks = []
     solver._plan_preferred_replacements()
     assert solver.tasks[0].plan == {"room_2_2": ["槐琥"]}
+
+
+@pytest.mark.parametrize("calculated", [False, True])
+@pytest.mark.parametrize("mood", [2.05, 4.99, 5, 5.01, 12])
+@pytest.mark.parametrize("rest_in_full", [False, True])
+def test_preferred_cover_reaches_rescue_line_before_restoration(
+    solver, monkeypatch, calculated, mood, rest_in_full
+):
+    from arknights_mower.utils import config
+    from arknights_mower.utils.calculated_mood import sync_model
+
+    now = datetime.now()
+    data = solver.op_data.project_arrangements(
+        [
+            {
+                "room_2_2": ["引星棘刺"],
+                "dormitory_1": ["冰酿", "闪灵", "苍苔", "絮雨", "槐琥"],
+            }
+        ]
+    )
+    data._projection_now = now
+    cover = data.operators["槐琥"]
+    cover.lower_limit, cover.upper_limit = 2, 12
+    cover.rest_in_full = rest_in_full
+    data.config.resting_threshold = 0.6
+    monkeypatch.setattr(config.conf, "rescue_threshold", 0.5)
+    target = 12 if rest_in_full else 5
+    for op in data.operators.values():
+        op.time_stamp = now
+        op.mood = mood if op is cover else 12
+    monkeypatch.setattr(config.conf, "test_mood_calculation", calculated)
+    monkeypatch.setattr(
+        "arknights_mower.utils.mastery_recommendation.get_cultivate_snapshot",
+        lambda: None,
+    )
+    if calculated:
+        for op in data.operators.values():
+            data.mood_model.observe(op.name, op.mood, now)
+        sync_model(data, now)
+    assert dorm_candidate_mood(data, cover.name) == pytest.approx(mood)
+    solver.op_data, solver.tasks, solver.task = data, [], None
+
+    for _ in range(3):
+        solver._plan_preferred_replacements()
+        if mood < target:
+            assert solver.tasks == []
+        else:
+            assert len(solver.tasks) == 1
+            assert solver.tasks[0].plan == {"room_2_2": ["槐琥"]}
+    assert data.get_current_operator("room_2_2", 0).name == "引星棘刺"
+    assert cover.current_room == "dormitory_1"
+    if mood < target:
+        observed_at = now + timedelta(seconds=1)
+        cover.mood, cover.time_stamp = target, observed_at
+        data._projection_now = observed_at
+        if calculated:
+            data.mood_model.observe(cover.name, target, observed_at)
+        solver._plan_preferred_replacements()
+        assert len(solver.tasks) == 1
+        assert solver.tasks[0].plan == {"room_2_2": ["槐琥"]}
+
+
+def test_queued_preferred_restore_rechecks_current_dorm_recovery(solver):
+    solver.op_data = solver.op_data.project_arrangements([{"room_2_2": ["引星棘刺"]}])
+    solver.tasks, solver.task = [], None
+    solver._plan_preferred_replacements()
+    (task,) = solver.tasks
+    solver.task = task
+    solver.op_data = solver.op_data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", "苍苔", "絮雨", "槐琥"]}]
+    )
+    cover = solver.op_data.operators["槐琥"]
+    cover.mood, cover.time_stamp = 0.05, datetime.now()
+    _prepare_dispatch(solver)
+
+    solver.infra_main()
+
+    assert task not in solver.tasks
+    assert not any("槐琥" in row for row in task.plan.values())
+    assert cover.current_room == "dormitory_1"
+    assert solver.op_data.get_current_operator("room_2_2", 0).name == "引星棘刺"
+    solver.agent_arrange.assert_not_called()
+
+    independent = SchedulerTask(task_type=TaskTypes.CLUE_PARTY)
+    solver.tasks.append(independent)
+    solver.task = independent
+    solver._run_clue_flow = MagicMock(return_value=True)
+    solver.infra_main()
+    solver._run_clue_flow.assert_called_once_with()
+    assert independent not in solver.tasks
+    assert not any(
+        getattr(pending, "preferred_replacement_restore", False)
+        for pending in solver.tasks
+    )
+
+
+def test_retained_preferred_restore_preserves_remaining_arrangement(solver):
+    class ReachedArrangement(BaseException):
+        pass
+
+    solver.op_data = solver.op_data.project_arrangements([{"room_2_2": ["引星棘刺"]}])
+    solver.tasks, solver.task = [], None
+    solver._plan_preferred_replacements()
+    (task,) = solver.tasks
+    solver.task = task
+    original_time = task.time
+    task.execution_retained = True
+    task.mood_physical_started = True
+    solver.op_data = solver.op_data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", "苍苔", "絮雨", "槐琥"]}]
+    )
+    cover = solver.op_data.operators["槐琥"]
+    cover.mood, cover.time_stamp = 0.05, datetime.now()
+    _prepare_dispatch(solver)
+    solver.agent_arrange = MagicMock(side_effect=ReachedArrangement)
+
+    with pytest.raises(ReachedArrangement):
+        solver.infra_main()
+
+    assert task in solver.tasks
+    assert task.time == original_time
+    assert solver.agent_arrange.call_args.args[0]["room_2_2"] == ["槐琥"]
 
 
 def test_multi_hop_cover_handoff_uses_complete_matching(solver):
