@@ -371,11 +371,10 @@ def webview_window(
     startup_mode_lock = Lock()
     windows_layout_ready = not windows_native
 
-    window_url = append_query_param(url, "instance_name", instance_name)
     window_url = (
-        append_query_param(window_url, "window_shell", "1")
+        append_query_param(url, "window_shell", "1")
         if shell_enabled
-        else window_url
+        else url
     )
     window_url = append_query_param(window_url, "window_theme", theme)
     window_url = append_query_param(window_url, "mower_version", title_version())

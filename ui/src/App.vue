@@ -24,7 +24,7 @@
     <WindowTitlebar
       :active="windowShellActive"
       :title="windowShellTitle"
-      :instance-name="windowShell.metadata.instanceName || '默认实例'"
+      :instance-name="authenticatedInstanceName || '默认实例'"
       :theme="theme"
       :control-side="windowShellControlSide"
       :maximized="windowShellState.maximized"
@@ -342,6 +342,7 @@ const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
 const windowShell = createWindowShellAdapter({
   onCloseRequested: () => handleWindowControl('close')
 })
+const authenticatedInstanceName = ref('')
 const closeModal = ref(false)
 const closeBusy = ref(false)
 const closeTrayAvailable = ref(true)
@@ -526,11 +527,11 @@ watchPostEffect(() => {
 const windowShellTitle = computed(() =>
   formatWindowTitle({
     version: windowTitleVersion.value,
-    instanceName: windowShell.metadata.instanceName
+    instanceName: authenticatedInstanceName.value
   })
 )
 
-// 标题栏副信息：实例@端口 与 模拟器@adb端口。实例名已写进系统窗口标题（formatWindowTitle），
+// 标题栏副信息：实例@端口 与 模拟器@adb端口。实例名由受保护的实例信息接口提供，
 // 这里标题栏内再补两个 @端口：mower 端口 = 前端服务所在端口（webview 与后端同源），
 // adb 端口 = ADB 连接地址（形如 127.0.0.1:62001）的端口段。
 const mowerPort = computed(() => window.location.port || '')
@@ -606,7 +607,7 @@ const configProfiles = createConfigProfiles({
 provide(configProfilesKey, configProfiles)
 const appMenuProps = computed(() => ({
   theme: theme.value,
-  instanceName: windowShell.metadata.instanceName || '默认实例',
+  instanceName: authenticatedInstanceName.value || '默认实例',
   mowerPort: mowerPort.value,
   emulatorName: emulatorName.value,
   adbPort: adbPort.value,
@@ -849,12 +850,13 @@ async function loadStartupUpdateNotice() {
 }
 
 async function loadAuthenticatedInstanceTitle(token) {
-  if (!token || !config_store.manager_owned_device || windowShell.metadata.requested) return
+  if (!token || (!config_store.manager_owned_device && !windowShell.metadata.requested)) return
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL || ''}/process-control/info`)
     const name = response.data?.name
     if (response.data?.ok !== true || typeof name !== 'string' || !name.trim()) return
-    document.title = `${name.trim()} - arknights-mower`
+    authenticatedInstanceName.value = name.trim()
+    document.title = `${authenticatedInstanceName.value} - arknights-mower`
   } catch {
     // An invalid token or an unavailable process-control endpoint keeps the
     // ordinary browser title and must not affect application startup.
@@ -897,11 +899,9 @@ onMounted(async () => {
   })
   await Promise.all([load_config(), load_plan(), load_operators(), get_running()])
 
-  const desktopInstanceName = windowShell.metadata.requested
-    ? windowShell.metadata.instanceName
-    : ''
-  document.title = desktopInstanceName
-    ? `${desktopInstanceName} - arknights-mower`
+  const instanceName = authenticatedInstanceName.value
+  document.title = instanceName
+    ? `${instanceName} - arknights-mower`
     : simulator.value?.name
       ? `${simulator.value.name} - arknights-mower`
       : 'arknights-mower'

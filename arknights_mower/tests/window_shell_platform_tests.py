@@ -446,7 +446,7 @@ def desktop_url_window(monkeypatch, windows_frameless_module):
         ("unknown", False),
     ],
 )
-def test_desktop_window_keeps_encoded_instance_name_in_its_own_url(
+def test_desktop_window_keeps_instance_name_out_of_its_url(
     desktop_url_window, backend, shell_enabled
 ):
     fixture = desktop_url_window
@@ -459,13 +459,13 @@ def test_desktop_window_keeps_encoded_instance_name_in_its_own_url(
     )
     query = {
         "token": ["offline-session"],
-        "instance_name": [fixture.instance_name],
         "window_theme": ["dark"],
         "mower_version": ["offline-version"],
     }
     if shell_enabled:
         query["window_shell"] = ["1"]
     assert parse_qs(urlsplit(args[1]).query) == query
+    assert "instance_name" not in urlsplit(args[1]).query
     assert kwargs["frameless"] is shell_enabled
     if backend == "winforms":
         fixture.install_windows_resize.assert_called_once_with(

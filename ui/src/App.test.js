@@ -251,7 +251,7 @@ describe('desktop page startup', () => {
     state.loadWatermark.mockResolvedValue('mower')
     state.client.get.mockReset()
     state.client.patch.mockReset().mockResolvedValue({ data: {} })
-    state.shellMetadata = { version: '', instanceName: '' }
+    state.shellMetadata = { version: '' }
     state.shellActive = false
     state.shellConnected = ref(false)
     state.route = reactive({ meta: {} })
@@ -395,35 +395,42 @@ describe('desktop page startup', () => {
     expect(provide).toHaveBeenCalledWith(configProfilesKey, component.configProfiles)
   })
 
-  it('uses the authenticated manager instance name in the browser title', async () => {
-    window.location.search = '?token=valid-session&instance_name=伪造名称'
-    document.location.search = window.location.search
-    state.config.manager_owned_device = true
-    state.client.get.mockImplementation(async (url) => {
-      if (url.endsWith('/process-control/info')) {
-        return { data: { ok: true, supported: true, name: '夜莺' } }
-      }
-      return {
-        data: {
-          ok: true,
-          active_id: 'default',
-          generation: '0',
-          profiles: [{ id: 'default', name: '默认配置' }],
-          groups: [],
-          busy: false
+  it.each([
+    [false, true, '浏览器实例'],
+    [true, false, '桌面实例']
+  ])(
+    'uses the authenticated instance name with shell requested=%s and manager owned=%s',
+    async (shellRequested, managerOwned, instanceName) => {
+      window.location.search = '?token=valid-session&instance_name=伪造名称'
+      document.location.search = window.location.search
+      state.shellMetadata.requested = shellRequested
+      state.config.manager_owned_device = managerOwned
+      state.client.get.mockImplementation(async (url) => {
+        if (url.endsWith('/process-control/info')) {
+          return { data: { ok: true, supported: true, name: instanceName } }
         }
-      }
-    })
+        return {
+          data: {
+            ok: true,
+            active_id: 'default',
+            generation: '0',
+            profiles: [{ id: 'default', name: '默认配置' }],
+            groups: [],
+            busy: false
+          }
+        }
+      })
 
-    await mount()
+      await mount()
 
-    expect(state.client.get).toHaveBeenCalledWith('/process-control/info')
-    expect(state.client.defaults.headers.common.token).toBe('valid-session')
-    await vi.waitFor(() => expect(document.title).toBe('夜莺 - arknights-mower'))
-  })
+      expect(state.client.get).toHaveBeenCalledWith('/process-control/info')
+      expect(state.client.defaults.headers.common.token).toBe('valid-session')
+      await vi.waitFor(() => expect(document.title).toBe(`${instanceName} - arknights-mower`))
+    }
+  )
 
   it('keeps the ordinary browser title when the instance info token is rejected', async () => {
-    window.location.search = '?token=invalid-session&instance_name=伪造名称'
+    window.location.search = '?token=invalid-session'
     document.location.search = window.location.search
     state.config.manager_owned_device = true
     state.client.get.mockImplementation(async (url) => {
@@ -458,13 +465,11 @@ describe('desktop page startup', () => {
     expect(state.client.get).not.toHaveBeenCalledWith('/process-control/info')
   })
 
-  it('uses the embedded window name without requesting browser title information', async () => {
+  it('does not request instance title information without an authenticated session', async () => {
     state.shellMetadata.requested = true
-    state.shellMetadata.instanceName = '桌面实例'
 
     await mount()
 
-    expect(document.title).toBe('桌面实例 - arknights-mower')
     expect(state.client.get).not.toHaveBeenCalledWith('/process-control/info')
   })
 
