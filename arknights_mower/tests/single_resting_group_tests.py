@@ -262,3 +262,42 @@ def test_working_swap_waits_for_real_capacity_without_opening_other_group_beds(s
     assert s.get_resting_plan([A], [], plan, 0)
     assert plan["meeting"][0] == SHARED
     assert s.op_data.arrangement_group_transitions(plan) == {"甲": True}
+
+
+def test_mixed_zero_mood_group_preserves_unique_shared_primary_recovery(single):
+    from arknights_mower.tests.multi_group_shift_tests import B
+    from arknights_mower.utils.resting_correction import prefer_resting_replacements
+
+    s = single
+    primary = s.global_plan["default_plan"]
+    primary.plan["meeting"][1].group = "乙"
+    primary.config.workaholic = [B]
+    assert s.initialize_operators() is None
+    Operators.current_room_changed_callback = None
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    apply(
+        s,
+        {
+            "meeting": ["Current", "初雪"],
+            "contact": ["黑角"],
+            "dormitory_1": ["Current", "Current", SHARED, "Current", "Current"],
+        },
+    )
+    data = s.op_data
+    data.operators[SHARED].mood = 1
+    bed = data.get_dorm_by_name(SHARED)[1]
+    bed.time = datetime.now() + timedelta(hours=4)
+    before = (bed.position, bed.time, data.group_shift_state.copy())
+    fix = {"meeting": ["Current", B]}
+    prefer_resting_replacements(data, fix, lambda _: False)
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan=fix)
+    s._prepare_group_shift(task)
+    assert SHARED not in {name for row in task.plan.values() for name in row}
+    assert SHARED not in {name for row in fix.values() for name in row}
+    assert s.agent_get_mood(read_rooms=False, return_plan=True) == {}
+    assert not data.is_workaholic_group("乙")
+    assert (bed.position, bed.time, data.group_shift_state) == before

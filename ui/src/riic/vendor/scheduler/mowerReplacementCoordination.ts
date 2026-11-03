@@ -98,7 +98,7 @@ function recallMood(data:MowerSchedulingData,op:MowerOperatorState):number|undef
 }
 /** Ordinary recall starts at the requester's rescue line and requires observed target mood for its endurance forecast. */
 export function mowerRecallMoodAdmissible(data:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[]):boolean {
- const anchor=(op:MowerOperatorState)=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.canStandby(op)&&(!op.multiGroup||candidates.length===1&&op.independentRest)
+ const anchor=(op:MowerOperatorState)=>data.isGroupShiftAnchor(op)||candidates.length===1&&op.isHigh()&&op.independentRest&&!op.workaholic&&!op.room.startsWith('dorm')&&!data.canStandby(op)
  const requesters=candidates.map(name=>data.operators[name]).filter((op):op is MowerOperatorState=>!!op&&anchor(op)&&!!op.currentRoom&&!op.isResting())
  const reached=(op:MowerOperatorState,limit:number)=>{const mood=recallMood(data,op);return mood!==undefined&&mood<=limit}
  if(!requesters.some(op=>reached(op,rescueMoodThreshold(op,data.policy))))return false
@@ -186,6 +186,7 @@ export function mowerReplacementReservations(data:MowerSchedulingData,tasks:read
 /** Another committed shift can satisfy a retained request before its own task resumes. */
 export function mowerCoordinationRequestFulfilled(data:MowerSchedulingData,names:readonly string[]):boolean {
  const requested=[...new Set(names.flatMap(name=>{const op=data.operators[name];return op?.group?data.shiftGroupMembers(op.group):op?[name]:[]}))]
- const anchors=requested.map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&(!op.multiGroup||op.independentRest))
+ const groups=new Set(data.shiftRequestGroups(names))
+ const anchors=requested.map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&(!op.multiGroup||op.independentRest||!!op.shiftGroup&&groups.has(op.shiftGroup)))
  return anchors.length>0&&anchors.every(op=>op.isResting()||data.isStandby(op.name)||!op.currentRoom&&hasObservedFullMood(op))
 }

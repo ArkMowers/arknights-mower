@@ -2,7 +2,6 @@
 
 import sys
 from datetime import datetime
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,6 +11,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 from arknights_mower.solvers import base_schedule as base  # noqa: E402
 from arknights_mower.utils import config, operators, scheduler_task  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
+from arknights_mower.utils.plan import Plan, PlanConfig  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
     TaskTypes,
@@ -45,7 +45,10 @@ def solver(monkeypatch):
         )
         for index, name in enumerate(("歌蕾蒂娅", "幽灵鲨"))
     }
-    instance.op_data = SimpleNamespace(
+    instance.op_data = operators.Operators(
+        {"default_plan": Plan({}, PlanConfig("", "", "")), "backup_plans": []}
+    )
+    instance.op_data.__dict__.update(
         operators=members,
         exhaust_agent=["歌蕾蒂娅"],
         rest_in_full_group=[],

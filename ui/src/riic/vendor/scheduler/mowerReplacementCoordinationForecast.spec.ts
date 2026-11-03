@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest'
 import {MowerOperatorState,rescueMoodThreshold} from './mowerOperatorState'
 import {MowerDormState,MowerSchedulingData} from './mowerSchedulingData'
 import {projectMowerArrangements} from './mowerObservations'
-import {mowerRecallCanSustain,type MowerCoordinationRates} from './mowerReplacementCoordination'
+import {mowerRecallCanSustain,mowerCoordinationRequestFulfilled,type MowerCoordinationRates} from './mowerReplacementCoordination'
 import {MowerTask,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {planMowerExhaustSupport} from './mowerExhaustPlanning'
 import {validateMowerCoordinationSupport} from './mowerAlphaExhaustSupport'
@@ -248,4 +248,19 @@ describe('ordinary recall rescue admission',()=>{
   original.operators.B!.mood=14
   expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],{urgentExhaust:true})).toBe(true)
  })
+})
+
+it.each([false,true])('ordinary rescue recall includes a unique normal resting group (multi=%s)',multi=>{
+ const {original}=fixture(20),requester=original.operators.B!
+ requester.group='b'
+ original.plan.room_1_3=['W']
+ original.operators.W=new MowerOperatorState({name:'W',room:'room_1_3',index:0,currentRoom:'room_1_3',currentIndex:0,operatorType:'high',group:'w',replacement:multi?['B']:['Z'],mood:24,timeStampMicros:0})
+ original.operators.Z=new MowerOperatorState({name:'Z',mood:24,timeStampMicros:0})
+ if(multi)requester.groupBindings=[{group:'b',replacement:['X']},{group:'w',replacement:['Z']}]
+ const data=new MowerSchedulingData({...original})
+ expect(data.isGroupShiftAnchor(data.operators.B!,'b')).toBe(true)
+ expect(planMowerExhaustSupport(data,['B'],{coordinationRates:fixed})).toEqual({room_1_1:['A']})
+ expect(mowerCoordinationRequestFulfilled(data,['B'])).toBe(false)
+ const completed=projectMowerArrangements(data,[{room_1_1:['A'],room_1_2:['X'],dormitory_1:['Free','B','Free']}])
+ expect(mowerCoordinationRequestFulfilled(completed,['B'])).toBe(true)
 })

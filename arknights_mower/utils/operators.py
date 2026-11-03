@@ -2463,7 +2463,10 @@ class Operators:
             self.operators[name]
             for name in self.shift_group_members(group)
             if not self.operators[name].room.startswith("dorm")
-            and not self.operators[name].multi_group
+            and (
+                not self.operators[name].multi_group
+                or self.operators[name].shift_group == group
+            )
         ]
         return bool(workers) and all(op.workaholic for op in workers)
 
