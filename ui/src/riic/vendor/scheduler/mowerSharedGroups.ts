@@ -10,7 +10,8 @@ export function mowerArrangementGroupTransitions(data:MowerSchedulingData,plan:M
  for(const [room,row] of Object.entries(plan))row.forEach((name,index)=>{
   const op=data.operators[data.plan[room]?.[index]??'']
   if(!op?.group||!data.isGroupShiftAnchor(op)||['','Current','Free'].includes(name))return
-  if(name===op.name)transitions[op.group]=false
+  if(op.multiGroup&&Object.keys(mowerWorkingReplacementAssignments(data,[op.name],plan)).length)return
+  if(name===op.name){if(!op.multiGroup||data.groupIsResting(op.group))transitions[op.group]=false}
   else if(op.replacement.includes(name))transitions[op.group]??=true
  })
  return transitions
@@ -32,6 +33,7 @@ export function commitMowerGroupShifts(data:MowerSchedulingData,transitions:Mowe
  Object.assign(data.groupShiftState,transitions)
  for(const op of Object.values(data.operators))if(op.multiGroup){
   if(op.independentRest){op.group='';op.replacement=[...op.replacementsForGroup('')];continue}
+  if(op.shiftGroup){op.group=op.shiftGroup;op.replacement=[...op.replacementsForGroup(op.group)];continue}
   const resting=mowerRestingBindingGroups(data,op)
   if(resting.length){op.group=resting.includes(op.group)?op.group:resting[0]!;op.replacement=[...op.replacementsForGroup(op.group)]}
  }

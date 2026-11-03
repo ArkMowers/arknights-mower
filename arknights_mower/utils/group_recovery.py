@@ -73,6 +73,7 @@ def group_recovery_workers(data, group):
         if op.is_high()
         and not op.room.startswith("dorm")
         and not op.independent_rest
+        and (not op.shift_group or op.group == group)
         and not op.workaholic
         and not data._can_standby(op)
         and (op.is_resting() or not op.current_room)
@@ -84,7 +85,7 @@ def group_recovery_deadline(data, group, *, now=None):
     now = now or getattr(data, "_projection_now", None) or datetime.now()
     conf = getattr(data, "runtime_conf", None) or config.conf
     workers = group_recovery_workers(data, group)
-    gap_workers = [op for op in workers if not op.multi_group]
+    gap_workers = [op for op in workers if data.is_group_shift_anchor(op, group)]
     latches = getattr(data, "group_recovery_full_members", None)
     if latches is None:
         latches = data.group_recovery_full_members = {}
@@ -255,7 +256,7 @@ def mood_limit_group_return(data, release, tasks, *, now=None):
         or op.room.startswith("dorm")
         or op.workaholic
         or data._can_standby(op)
-        or op.multi_group
+        or (op.multi_group and not op.shift_group)
         or op.independent_rest
         or not data.group_is_resting(op.group)
         or op.group in held_rest_groups(data)

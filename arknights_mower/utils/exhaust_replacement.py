@@ -129,12 +129,7 @@ def _plan_exhaust_support_attempt(
     selected = set()
     data = op_data.project_arrangements([plan])
 
-    request_groups = {
-        op_data.operators[name].group
-        for name in candidates
-        if op_data.operators[name].group
-        and op_data.is_group_shift_anchor(op_data.operators[name])
-    }
+    request_groups = op_data.shift_request_groups(candidates)
     transitions = dict.fromkeys(request_groups, True)
 
     def covers(state, worker):
@@ -161,7 +156,7 @@ def _plan_exhaust_support_attempt(
                 (
                     name
                     for name in state.shift_group_members(group)
-                    if state.is_group_shift_anchor(state.operators[name])
+                    if state.is_group_shift_anchor(state.operators[name], group)
                     and state.operators[name].is_resting()
                 ),
                 None,

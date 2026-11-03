@@ -37,7 +37,7 @@ export function validateMowerGroupTasks(data:MowerSchedulingData):void {
  data.backupGroupTasks.forEach((tasks,i)=>{if(data.planConditions[i])for(const task of tasks){
   if(directions.has(task.group)&&directions.get(task.group)!==task.action)throw new Error('生效副表对同一绑组安排了相反的上下班任务：'+task.group)
   directions.set(task.group,task.action)
-  if(!data.shiftGroupMembers(task.group).some(name=>data.isGroupShiftAnchor(data.operators[name]!)))throw new Error('绑组任务找不到工作主班：'+task.group)
+  if(!data.shiftGroupMembers(task.group).some(name=>data.isGroupShiftAnchor(data.operators[name]!,task.group)))throw new Error('绑组任务找不到工作主班：'+task.group)
  }})
 }
 export interface MowerBackupGroupTaskState {issued:Set<string>}
@@ -56,7 +56,7 @@ export function syncMowerBackupGroupTasks(data:MowerSchedulingData,queue:MowerTa
  for(const old of state.issued)if(!active.has(old))state.issued.delete(old)
  validateMowerGroupTasks(data)
  for(const request of requests){
-  const token=key(request),members=data.shiftGroupMembers(request.group),anchors=members.filter(name=>data.isGroupShiftAnchor(data.operators[name]!))
+  const token=key(request),members=data.shiftGroupMembers(request.group),anchors=members.filter(name=>data.isGroupShiftAnchor(data.operators[name]!,request.group))
   if(!anchors.length)throw new Error('绑组任务找不到工作主班：'+request.group)
   if([...queue.tasks,...parked].some(task=>task.backupGroupRequest?.group===request.group&&task.backupGroupRequest.action===request.action))continue
   if(request.mode==='once'&&state.issued.has(token))continue

@@ -21,6 +21,7 @@ export class MowerOperatorState {
  temporaryDormFill=false;dormMoodFallback='';restMoodReleaseLimit:number|undefined;moodIsPrediction=false
  customMoodLimit=false
  dormMoodPeers:Record<string,unknown>={}
+ shiftGroup:string|undefined
  groupBindings:MowerGroupBinding[]=[]
  get multiGroup(){return this.groupBindings.length>1}
  get independentRest(){return this.multiGroup&&!this.room.startsWith('dorm')&&this.groupBindings.some(binding=>!binding.group)}
@@ -65,7 +66,7 @@ export function hasObservedFullMood(op:MowerOperatorState|undefined):boolean {re
 export function hasRestingMood(op:MowerOperatorState|undefined,nowMicros:number):boolean {return !!op&&op.timeStampMicros!==undefined&&op.mood>=0&&op.mood<=24&&op.currentMood(nowMicros)>=0&&op.currentMood(nowMicros)<=24}
 export const restingMood=(op:MowerOperatorState|undefined,nowMicros:number)=>op&&hasRestingMood(op,nowMicros)?op.currentMood(nowMicros):24
 export interface MowerMoodPolicy {predictiveMoodControl?:boolean;restingThreshold:number;groupRestingThresholds?:Record<string,number>;rescueThreshold:number;experimentalDormLogic?:boolean;alpha?:boolean}
-export const restingThresholdFor=(op:{group?:string;multiGroup?:boolean},policy:Pick<MowerMoodPolicy,'restingThreshold'|'groupRestingThresholds'>)=>op.group&&!op.multiGroup&&policy.groupRestingThresholds&&Object.hasOwn(policy.groupRestingThresholds,op.group)?policy.groupRestingThresholds[op.group]!:policy.restingThreshold
+export const restingThresholdFor=(op:{group?:string;multiGroup?:boolean;shiftGroup?:string},policy:Pick<MowerMoodPolicy,'restingThreshold'|'groupRestingThresholds'>)=>op.group&&(!op.multiGroup||op.shiftGroup)&&policy.groupRestingThresholds&&Object.hasOwn(policy.groupRestingThresholds,op.group)?policy.groupRestingThresholds[op.group]!:policy.restingThreshold
 export const rescueMoodThreshold=(op:MowerOperatorState,policy:MowerMoodPolicy)=>op.lowerLimit+(op.upperLimit-op.lowerLimit)*restingThresholdFor(op,policy)*policy.rescueThreshold
 export function mowerReplacementCandidates(op:MowerOperatorState,operators:Record<string,MowerOperatorState>,policy:MowerMoodPolicy,nowMicros:number):string[] {
  const complete=(name:string)=>{const candidate=operators[name];return !!candidate&&candidate.restMoodLimit&&hasRestingMood(candidate,nowMicros)&&restingMood(candidate,nowMicros)>=candidate.upperLimit}

@@ -357,3 +357,29 @@ def test_rescue_validation_accepts_one_empty_column(individual, empty_first):
     )
     with pytest.raises(ValueError, match="空绑组最多填写一次"):
         validate_rescue_schedule(individual.op_data, schedule)
+
+
+def test_personal_resting_primary_remains_available_as_working_cover(individual):
+    s = individual
+    s.global_plan["default_plan"].plan["meeting"][0].replacement = [SHARED]
+    assert s.initialize_operators() is None
+    Operators.current_room_changed_callback = None
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    apply(
+        s,
+        {
+            "contact": ["砾"],
+            "dormitory_1": ["Current", "Current", SHARED, "Current", "Current"],
+        },
+    )
+    s.op_data.operators[SHARED].mood = 10
+    s.op_data.get_dorm_by_name(SHARED)[1].time = datetime.now() + timedelta(hours=4)
+    admitted, plan = shift_off(s, "甲")
+    assert admitted
+    assert plan["meeting"][0] == SHARED
+    assert plan["contact"] == ["红"]
+    assert s.op_data.operators[SHARED].current_room == "meeting"
+    assert s.op_data.get_dorm_by_name(SHARED)[1] is None
+    assert s.op_data.operators[SHARED].group == ""

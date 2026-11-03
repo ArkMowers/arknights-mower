@@ -1996,6 +1996,7 @@ def generate_plan_by_drom(
             op = op_data.operators[room.name]
             if (
                 op.multi_group
+                and not op.shift_group
                 and rest_in_full is not None
                 and (not op.independent_rest or op_data.resting_binding_groups(op))
             ):
@@ -2331,7 +2332,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
             for v in op_data.operators.values()
             if v.is_high()
             and v.name not in excluded_names
-            and not v.multi_group
+            and (not v.multi_group or v.shift_group)
             and (not v.group or op_data.is_group_shift_anchor(v))
             and not v.room.startswith("dorm")
             and not v.is_resting()
@@ -2387,7 +2388,8 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
                     (name, existing_targets.get(name, (op.room, op.index)), op.group)
                     for name in members
                     for op in [op_data.operators[name]]
-                    if not operator.group or op_data.is_group_shift_anchor(op)
+                    if not operator.group
+                    or op_data.is_group_shift_anchor(op, operator.group)
                 )
             ),
         )
@@ -2432,7 +2434,11 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
                 dorm.name not in return_names | set(excluded_names)
                 and operator.group not in return_groups
                 and dorm.position not in return_slots
-                and (not operator.multi_group or operator.independent_rest)
+                and (
+                    not operator.multi_group
+                    or operator.independent_rest
+                    or operator.shift_group
+                )
                 and (not operator.group or op_data.is_group_shift_anchor(operator))
             ):
                 grouped_dorms[operator.group].append(dorm)
@@ -2587,6 +2593,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
             or op.name in excluded_names
             or op.group in held
             or op.multi_group
+            and not op.shift_group
             and (not op.independent_rest or op_data.resting_binding_groups(op))
             or op.group
             and not op_data.is_group_shift_anchor(op)
@@ -2641,7 +2648,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
         workers = [
             op_data.operators[name]
             for name in members
-            if op_data.is_group_shift_anchor(op_data.operators[name])
+            if op_data.is_group_shift_anchor(op_data.operators[name], op.group)
         ]
         if (
             not required

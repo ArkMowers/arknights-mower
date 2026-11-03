@@ -12,12 +12,12 @@ import {toMowerMicros,MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 
 export interface MowerCoordinationRates {work:Readonly<Record<string,number>>;recovery:Readonly<Record<string,number>>}
 function replacements(data:MowerSchedulingData,op:MowerOperatorState,required:ReadonlySet<string>=new Set()):string[]{
- const transitions=Object.fromEntries([...required].map(name=>data.operators[name]!).filter(worker=>worker.group&&data.isGroupShiftAnchor(worker)).map(worker=>[worker.group,true]))
+ const transitions=Object.fromEntries(data.shiftRequestGroups([...required]).map(group=>[group,true]))
  return op.multiGroup?mowerSharedReplacements(op,mowerRestingBindingGroups(data,op,transitions)):op.replacement
 }
 /** Keep the native same-group primary exception; unrelated primaries remain unavailable. */
 export function mowerCoordinationPrimaryReplacement(data:MowerSchedulingData,owner:MowerOperatorState,name:string,required:ReadonlySet<string>):boolean {
- const transitions=Object.fromEntries([...required].map(id=>data.operators[id]!).filter(op=>op?.group&&data.isGroupShiftAnchor(op)).map(op=>[op.group,true]))
+ const transitions=Object.fromEntries(data.shiftRequestGroups([...required]).map(group=>[group,true]))
  return (owner.multiGroup?mowerRestingBindingGroups(data,owner,transitions):[owner.group]).some(group=>mowerSameGroupPrimaryReplacement(data,owner,name,group))
 }
 function eligible(data:MowerSchedulingData,name:string,owner:MowerOperatorState,options:MowerRestingOptions,required:ReadonlySet<string>=new Set()):boolean {

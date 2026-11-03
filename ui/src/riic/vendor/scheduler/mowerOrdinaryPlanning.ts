@@ -74,7 +74,7 @@ export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],exis
 }
 function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:string[],plan:MowerTaskPlan,options:MowerRestingOptions):boolean{
  if(names.some(name=>data.reservedProductReplacements.has(name)||options.reservedNames?.has(name))||mowerWorkingReplacementBlocked(data,names,plan))return false
- const transitions={...mowerArrangementGroupTransitions(data,plan),...Object.fromEntries(names.map(name=>data.operators[name]!).filter(op=>data.isGroupShiftAnchor(op)&&op.group).map(op=>[op.group,true]))}
+ const transitions={...mowerArrangementGroupTransitions(data,plan),...Object.fromEntries(data.shiftRequestGroups(names).map(group=>[group,true]))}
  const shared=Object.values(data.operators).filter(op=>op.multiGroup),previousState=data.groupShiftState
  const previousBindings=shared.map(op=>({op,group:op.group,replacement:op.replacement}))
  try {
@@ -158,7 +158,7 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
    if(highDone&&!standby.size&&!canPreempt&&!groupBed)continue
    if(!standby.size&&!canPreempt&&!groupBed&&current+replacements.length>=ideal&&mowerAvailableFree(data)===0){highDone=true;continue}
   }else if(mowerAvailableFree(data,'low')===0)break
-  if(op.multiGroup&&(!op.independentRest||mowerRestingBindingGroups(data,op).length)||op.workaholic||op.isResting()||data.isStandby(op.name)||op.currentRoom==='factory'||op.room==='factory'||options.hasActiveMastery&&[op.room,op.currentRoom].includes('train'))continue
+  if(op.multiGroup&&!op.shiftGroup&&(!op.independentRest||mowerRestingBindingGroups(data,op).length)||op.workaholic||op.isResting()||data.isStandby(op.name)||op.currentRoom==='factory'||op.room==='factory'||options.hasActiveMastery&&[op.room,op.currentRoom].includes('train'))continue
   const mood=moods.get(op.name)!
   if((data.alpha?op.customMoodLimit:op.restMoodLimit)?mood>=op.upperLimit:op.upperLimit-mood<2)continue
   const threshold=(op.upperLimit-op.lowerLimit)*restingThresholdFor(op,data.policy)+op.lowerLimit

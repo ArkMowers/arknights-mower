@@ -271,7 +271,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
         for name in primary_names(data):
             op = data.operators[name]
             if (
-                op.multi_group
+                (op.multi_group and not op.shift_group)
                 or op.group
                 and not data.is_group_shift_anchor(op)
                 or op.is_resting()
@@ -359,7 +359,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             event_id = ("bed", bed.name, bed.position)
             if (
                 op is None
-                or op.multi_group
+                or (op.multi_group and not op.shift_group)
                 or op.group
                 and not data.is_group_shift_anchor(op)
                 or event_id in used

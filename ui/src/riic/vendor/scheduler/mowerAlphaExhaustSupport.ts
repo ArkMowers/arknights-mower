@@ -29,7 +29,7 @@ export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candid
 function planMowerAlphaExhaustAttempt(original:MowerSchedulingData,candidates:string[],options:MowerRestingOptions,seeds:string[],dependency:(name:string)=>void):MowerTaskPlan|undefined {
  const forced=mowerForcedGroupCoverReservations(original)
  const protectedNames=new Set([...original.busyRestingNames,...original.reservedProductReplacements,...options.reservedNames??[]]),required=new Set(candidates)
- const transitions=Object.fromEntries(candidates.map(n=>original.operators[n]!).filter(op=>op.group&&original.isGroupShiftAnchor(op)).map(op=>[op.group,true]))
+ const transitions=Object.fromEntries(original.shiftRequestGroups(candidates).map(group=>[group,true]))
  const replacements=(state:MowerSchedulingData,op:MowerOperatorState)=>op.multiGroup?mowerSharedReplacements(op,mowerRestingBindingGroups(state,op,required.has(op.name)?transitions:{})):op.replacement
  const covers=(state:MowerSchedulingData,op:MowerOperatorState)=>mowerReplacementCandidates(Object.assign(new MowerOperatorState(op),{replacement:replacements(state,op)}),state.operators,state.policy,state.nowMicros)
  const coverNames=new Set(candidates.flatMap(n=>replacements(original,original.operators[n]!).filter(n=>n!=='Free')))
