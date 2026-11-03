@@ -136,14 +136,12 @@ def maa_solver(scheduler, monkeypatch):
     solver.device = MagicMock()
     solver.last_execution = {"maa": None}
     solver.recog = MagicMock()
-    solver.scene = MagicMock(return_value=base_schedule.Scene.TERMINAL_MAIN)
     solver.MAA = MagicMock()
     solver.MAA.running.side_effect = [True, True]
     maa = solver.MAA
     solver.initialize_maa = MagicMock(side_effect=lambda: setattr(solver, "MAA", maa))
     for name in (
         "back_to_index",
-        "scene_graph_navigation",
         "release_maa",
         "report_maa_progress",
         "maa_stop",

@@ -250,13 +250,11 @@ def scheduler(monkeypatch, files, tmp_path):
     solver.MAA.running.return_value = False
     solver.maa_callback = None
     solver.recog = MagicMock()
-    solver.scene = MagicMock(return_value=base_schedule.Scene.TERMINAL_MAIN)
     solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=2))]
     solver.last_execution = {"maa": None}
     solver.emergency_state = None
     for method in (
         "back_to_index",
-        "scene_graph_navigation",
         "initialize_maa",
         "release_maa",
         "restore_maa_theme",

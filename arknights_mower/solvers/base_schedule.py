@@ -18095,9 +18095,7 @@ class BaseSchedulerSolver(
                         break
                     restore_theme = False
                     self.release_maa()
-                    if not paradox:
-                        self.initialize_maa()
-                    if selected_long not in ("sss", "rcl"):
+                    if paradox:
                         from arknights_mower.utils.device.io_budget import (
                             device_io_budget,
                         )
@@ -18115,7 +18113,7 @@ class BaseSchedulerSolver(
                                 raise InterruptedError
                             seconds = navigation_end - monotonic()
                             if seconds <= 0:
-                                raise TimeoutError("MAA 大型任务启动前导航超时")
+                                raise TimeoutError("悖论模拟干员列表导航超时")
                             return min(
                                 seconds,
                                 (deadline() - datetime.now()).total_seconds() - 30,
@@ -18125,24 +18123,13 @@ class BaseSchedulerSolver(
                             with device_io_budget(navigation_remaining):
                                 self.recog.reset_after_external_control()
                                 self.back_to_index()
-                                if paradox:
-                                    ready = self.to_operator_list()
-                                else:
-                                    self.scene_graph_navigation(Scene.TERMINAL_MAIN)
-                                    ready = self.scene() == Scene.TERMINAL_MAIN
+                                ready = self.to_operator_list()
                                 navigation_remaining()
                                 if not ready:
-                                    if paradox:
-                                        raise ValueError(
-                                            "未确认干员列表，未启动悖论模拟"
-                                        )
-                                    raise ValueError(
-                                        "未确认终端首页，未启动 MAA 大型任务"
-                                    )
+                                    raise ValueError("未确认干员列表，未启动悖论模拟")
                         except InterruptedError:
                             break
-                        if paradox:
-                            self.initialize_maa()
+                        self.initialize_maa()
                         if config.stop_mower.is_set():
                             raise MowerExit
                         if (
@@ -18151,6 +18138,7 @@ class BaseSchedulerSolver(
                         ):
                             break
                     else:
+                        self.initialize_maa()
                         self.recog.reset_after_external_control()
                         self.back_to_index()
                     if selected_long == "rogue":
