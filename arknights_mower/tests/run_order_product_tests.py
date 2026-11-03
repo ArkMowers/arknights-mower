@@ -87,12 +87,18 @@ def place_jaye(solver, monkeypatch, phase=0, product="orundum"):
 
 @pytest.mark.parametrize("phase", [0, 1, 2, None, False])
 @pytest.mark.parametrize("product", ["lmd", "orundum"])
+@pytest.mark.parametrize("with_replacements", [False, True])
+@pytest.mark.parametrize("source", ["plan", "observed"])
 def test_only_observed_elite_zero_jaye_creates_collection(
-    solver, monkeypatch, phase, product
+    solver, monkeypatch, phase, product, with_replacements, source
 ):
-    place_jaye(solver, monkeypatch, phase, product)
+    place_jaye(solver, monkeypatch, phase, product if source == "plan" else "lmd")
+    if source == "observed":
+        solver.op_data.update_facility_state("room_1_1", "trade", product)
+    if with_replacements:
+        solver.op_data.plan["room_1_1"][0].replacement = ["但书"]
     solver.plan_run_order("room_1_1")
-    if type(phase) is int and phase == 0:
+    if product == "orundum" and type(phase) is int and phase == 0:
         assert len(solver.tasks) == 1
         task = solver.tasks[0]
         assert task.type == TaskTypes.RUN_ORDER
@@ -101,6 +107,12 @@ def test_only_observed_elite_zero_jaye_creates_collection(
         assert task.time == solver.get_run_order_time.return_value
         solver.plan_run_order("room_1_1")
         assert solver.tasks == [task]
+    elif product == "lmd" and with_replacements:
+        assert len(solver.tasks) == 1
+        task = solver.tasks[0]
+        assert task.type == TaskTypes.RUN_ORDER
+        assert not task.run_order_collect_only
+        assert task.plan == {"room_1_1": ["但书"]}
     else:
         assert solver.tasks == []
         solver.get_run_order_time.assert_not_called()
@@ -145,12 +157,11 @@ def test_drone_entry_rejects_orundum_without_navigation(solver, adjust_time):
     solver.tap.assert_not_called()
 
 
-@pytest.mark.parametrize("product", ["lmd", "orundum"])
 @pytest.mark.parametrize("buffer", [0, 1])
 def test_jaye_order_runs_at_completion_and_collects_without_staffing_or_drones(
-    solver, monkeypatch, product, buffer
+    solver, monkeypatch, buffer
 ):
-    place_jaye(solver, monkeypatch, product=product)
+    place_jaye(solver, monkeypatch)
     use_order_pages(solver, {"room_1_1": "active"})
     use_mood_pages(solver, monkeypatch, {"room_1_1": ["孑"]})
     config.conf.run_order_grandet_mode.enable = bool(buffer)
@@ -173,6 +184,71 @@ def test_jaye_order_runs_at_completion_and_collects_without_staffing_or_drones(
     assert solver.op_data.get_current_room("room_1_1", True) == ["孑"]
     assert task.plan == {}
     assert not hasattr(task, "run_order_original_roster")
+
+
+@pytest.mark.parametrize("buffer", [0, 1])
+def test_elite_zero_jaye_in_lmd_room_keeps_run_order_entry_delay(
+    solver, monkeypatch, buffer
+):
+    place_jaye(solver, monkeypatch, product="lmd")
+    solver.op_data.plan["room_1_1"][0].replacement = ["但书"]
+    use_order_pages(solver, {"room_1_1": "active"})
+    config.conf.run_order_grandet_mode.enable = bool(buffer)
+    before = datetime.now()
+    solver.plan_run_order("room_1_1")
+    after = datetime.now()
+    task = solver.tasks[0]
+    expected = timedelta(hours=1, minutes=-config.conf.run_order_delay)
+    assert before + expected <= task.time <= after + expected
+    assert not task.run_order_collect_only
+    assert task.plan == {"room_1_1": ["但书"]}
+
+
+@pytest.mark.parametrize("product", ["lmd", "orundum"])
+@pytest.mark.parametrize("persisted", [False, True])
+def test_jaye_product_change_rebuilds_order_task_mode(
+    solver, monkeypatch, product, persisted
+):
+    previous = "orundum" if product == "lmd" else "lmd"
+    place_jaye(solver, monkeypatch, product=previous)
+    solver.op_data.plan["room_1_1"][0].replacement = ["但书"]
+    solver.plan_run_order("room_1_1")
+    if persisted:
+        solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
+    old = solver.tasks[0]
+    solver.op_data.products["room_1_1"] = product
+    solver.op_data.update_facility_state("room_1_1", "trade", product)
+    solver.plan_run_order("room_1_1")
+    assert len(solver.tasks) == 1
+    task = solver.tasks[0]
+    assert task is not old
+    assert task.run_order_collect_only == (product == "orundum")
+    assert task.plan == {"room_1_1": ["Current"] if product == "orundum" else ["但书"]}
+
+
+def test_saved_lmd_collection_task_does_not_collect_and_replans_normal_order(
+    solver, monkeypatch
+):
+    place_jaye(solver, monkeypatch, product="lmd")
+    solver.op_data.plan["room_1_1"][0].replacement = ["但书"]
+    task = SchedulerTask(
+        task_plan={"room_1_1": ["Current"]},
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data="room_1_1",
+    )
+    task.run_order_collect_only = True
+    solver.task = pickle.loads(pickle.dumps(task))
+    use_order_pages(solver, {"room_1_1": "active"})
+    use_mood_pages(solver, monkeypatch, {"room_1_1": ["孑"]})
+    solver.accept_order = MagicMock()
+    assert solver.agent_arrange(solver.task.plan)
+    solver.accept_order.assert_not_called()
+    assert solver.task.plan == {}
+    solver.task = None
+    solver.plan_run_order("room_1_1")
+    assert len(solver.tasks) == 1
+    assert not solver.tasks[0].run_order_collect_only
+    assert solver.tasks[0].plan == {"room_1_1": ["但书"]}
 
 
 @pytest.mark.parametrize("phase", [1, 2, None])

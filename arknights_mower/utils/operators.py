@@ -1830,9 +1830,14 @@ class Operators:
         )
 
     def is_order_collection_room(self, room: str) -> bool:
-        """实际进驻精零孑的贸易站按订单完成时间收单。"""
+        """实际进驻精零孑的卖玉贸易站按订单完成时间收单。"""
         jaye = self.operators.get("孑")
-        if jaye is None or jaye.current_room != room or not room.startswith("room"):
+        if (
+            jaye is None
+            or jaye.current_room != room
+            or not room.startswith("room")
+            or not self.is_orundum_trade_room(room)
+        ):
             return False
         state = self.facility_states.get(room, {})
         if state.get("facility") not in (None, "trade"):
