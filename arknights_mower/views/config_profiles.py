@@ -11,9 +11,10 @@ from flask import Blueprint, abort, current_app, request, send_file
 
 from arknights_mower.utils import config_profiles as profiles
 from arknights_mower.utils.config_backup import (
-    MAX_BACKUP_BYTES,
     LocalConfigError,
+    backup_limit_label,
     backup_lock,
+    get_backup_limit_bytes,
 )
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.web_auth import (
@@ -25,6 +26,14 @@ from arknights_mower.utils.web_auth import (
 config_profiles_bp = Blueprint(
     "config_profiles", __name__, url_prefix="/config-profiles"
 )
+
+
+@config_profiles_bp.errorhandler(413)
+def upload_too_large(error):
+    return {
+        "ok": False,
+        "message": f"备份文件不能超过 {backup_limit_label()}，可在运行日志的数据库管理中调整备份大小上限",
+    }, 413
 
 
 @config_profiles_bp.before_request
@@ -44,7 +53,7 @@ def authorize_operation():
         origin = request.headers.get("Origin")
         if origin and not origin_allowed(origin):
             abort(403)
-        limit = MAX_BACKUP_BYTES + (
+        limit = get_backup_limit_bytes() + (
             65536 if request.mimetype == "multipart/form-data" else 0
         )
         if request.content_length and request.content_length > limit:
@@ -177,8 +186,8 @@ def import_profile():
         uploaded = request.files.get("backup")
         if uploaded is None:
             raise ValueError("缺少备份文件")
-        raw = uploaded.stream.read(MAX_BACKUP_BYTES + 1)
-        if len(raw) > MAX_BACKUP_BYTES:
+        raw = uploaded.stream.read(get_backup_limit_bytes() + 1)
+        if len(raw) > get_backup_limit_bytes():
             abort(413)
         try:
             keep = json.loads(request.form.get("keep", "[]"))

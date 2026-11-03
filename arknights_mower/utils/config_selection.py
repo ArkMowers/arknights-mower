@@ -99,8 +99,8 @@ def _database_connection(path, deadline, *, readonly=False):
         timeout=1,
     )
     conn.execute("PRAGMA trusted_schema=OFF")
-    conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, backup.MAX_BACKUP_BYTES)
-    conn.setlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH, backup.MAX_BACKUP_BYTES)
+    conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, backup.get_backup_limit_bytes())
+    conn.setlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH, backup.get_backup_limit_bytes())
     conn.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
     conn.set_progress_handler(lambda: int(monotonic() >= deadline), 1000)
     return conn
@@ -174,6 +174,7 @@ def merge_databases(incoming, current, selected):
     """Copy complete ordinary tables under one deadline without executing triggers."""
     if incoming is None and current is None:
         return None
+    limit = backup.get_backup_limit_bytes()
     deadline = monotonic() + 10
     try:
         with TemporaryDirectory() as directory, ExitStack() as stack:
@@ -182,7 +183,7 @@ def merge_databases(incoming, current, selected):
             for key, content in (("incoming", incoming), ("current", current)):
                 if content is None:
                     continue
-                if len(content) > backup.MAX_BACKUP_BYTES or not content.startswith(
+                if len(content) > limit or not content.startswith(
                     b"SQLite format 3\x00"
                 ):
                     raise ValueError("配置中的 data.db 不是有效的 SQLite 数据库")
@@ -243,9 +244,11 @@ def merge_databases(incoming, current, selected):
                         if (
                             writer.execute("PRAGMA page_count").fetchone()[0]
                             * writer.execute("PRAGMA page_size").fetchone()[0]
-                            > backup.MAX_BACKUP_BYTES
+                            > limit
                         ):
-                            raise ValueError("合并后的配置数据库不能超过 16 MB")
+                            raise ValueError(
+                                f"合并后的配置数据库不能超过 {backup.backup_limit_label()}"
+                            )
                     for index, owner, sql in schemas[key][1]:
                         if owner == name:
                             _schema_statement(writer, sql, table=name, index=index)
@@ -269,8 +272,10 @@ def merge_databases(incoming, current, selected):
                                 (name, row[0]),
                             )
             content = target.read_bytes()
-            if len(content) > backup.MAX_BACKUP_BYTES:
-                raise ValueError("合并后的配置数据库不能超过 16 MB")
+            if len(content) > limit:
+                raise ValueError(
+                    f"合并后的配置数据库不能超过 {backup.backup_limit_label()}"
+                )
             return content
     except sqlite3.Error as exc:
         raise ValueError("配置数据库无法安全合并，请检查备份内容") from exc
@@ -411,8 +416,8 @@ def combine_archives(incoming_raw, current_raw, selected):
     if cultivate is not None:
         tmp["cultivate.json"] = cultivate
     total = sum(map(len, files.values())) + sum(map(len, tmp.values()))
-    if total > backup.MAX_BACKUP_BYTES:
-        raise ValueError("合并后的配置和数据不能超过 16 MB")
+    if total > backup.get_backup_limit_bytes():
+        raise ValueError(f"合并后的配置和数据不能超过 {backup.backup_limit_label()}")
     raw = backup._archive_bytes(files, tmp)
     backup._validate_configuration(files)
     return raw

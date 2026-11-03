@@ -1106,7 +1106,9 @@ def test_route_rejects_invalid_database_without_writing_configuration(client, st
 
 
 def test_oversized_import_is_rejected(client, monkeypatch):
-    monkeypatch.setattr("arknights_mower.views.config_backup.MAX_BACKUP_BYTES", 32)
+    monkeypatch.setattr(
+        "arknights_mower.views.config_backup.get_backup_limit_bytes", lambda: 32
+    )
     assert (
         client.post(
             "/config-backup/import",

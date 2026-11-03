@@ -87,6 +87,15 @@ describe('backup import save boundary', () => {
     expect(axios.post).not.toHaveBeenCalled()
   })
 
+  it('accepts a ZIP above 16 MiB for validation against the instance limit on the server', async () => {
+    const file = new File(['zip'], 'large.zip')
+    Object.defineProperty(file, 'size', { value: 32 * 1024 * 1024 })
+    await component.selectFile({ target: { files: [file], value: 'selected' } })
+    expect(component.selected.value).toBe(file)
+    expect(component.showConfirm.value).toBe(true)
+    expect(component.error.value).toBe('')
+  })
+
   it('drains a pending rescue-plan save before importing and keeps every store paused', async () => {
     let finish
     axios.post.mockImplementationOnce(

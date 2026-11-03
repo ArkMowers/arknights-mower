@@ -482,6 +482,12 @@ const db_sel = ref({})
 const db_dialog = useDialog()
 const db_message = useMessage()
 const show_db_admin = ref(false)
+const db_maintenance = ref(null)
+const db_limit = ref(null)
+const db_busy = ref(false)
+const db_loading = ref(false)
+const db_error = ref('')
+const db_result = ref('')
 for (const g of db_groups) for (const k of g.items) db_sel.value[k] = false
 const db_group = computed(() => {
   const out = {}
@@ -500,13 +506,51 @@ const db_all = computed(() => {
 })
 const db_any_selected = computed(() => Object.values(db_sel.value).some(Boolean))
 
-function db_load_stats() {
-  axios
-    .get(`${import.meta.env.VITE_HTTP_URL}/db-admin/stats`)
-    .then((resp) => {
-      db_stats.value = resp.data || {}
-    })
-    .catch(() => {}) // 后端未启动/接口不可用时静默（卡片仍显示 0 条）
+async function db_load_stats() {
+  if (db_loading.value) return
+  db_loading.value = true
+  db_error.value = ''
+  try {
+    const [counts, maintenance] = await Promise.all([
+      axios.get(`${import.meta.env.VITE_HTTP_URL}/db-admin/stats`),
+      axios.get(`${import.meta.env.VITE_HTTP_URL}/db-admin/maintenance`)
+    ])
+    db_stats.value = counts.data || {}
+    db_maintenance.value = maintenance.data
+    db_limit.value = maintenance.data.backup_limit_mib
+  } catch (e) {
+    db_maintenance.value = null
+    db_error.value = `读取数据库信息失败：${e?.response?.data?.message || e.message || ''}`
+  } finally {
+    db_loading.value = false
+  }
+}
+function db_format_size(bytes) {
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`
+}
+async function db_maintain(operation) {
+  if (db_busy.value || db_loading.value) return
+  db_busy.value = true
+  db_error.value = ''
+  db_result.value = ''
+  try {
+    const base = `${import.meta.env.VITE_HTTP_URL}/db-admin`
+    const options = { headers: { 'X-Mower-Settings': '1' } }
+    const { data } =
+      operation === 'compact'
+        ? await axios.post(`${base}/compact`, {}, options)
+        : await axios.put(`${base}/backup-limit`, { backup_limit_mib: db_limit.value }, options)
+    db_maintenance.value = data
+    db_limit.value = data.backup_limit_mib
+    db_result.value =
+      operation === 'compact'
+        ? `整理完成：${db_format_size(data.before_bytes)} → ${db_format_size(data.after_bytes)}`
+        : `备份大小上限已保存为 ${data.backup_limit_mib} MiB`
+  } catch (e) {
+    db_error.value = e?.response?.data?.message || e.message || '数据库维护失败，请重试'
+  } finally {
+    db_busy.value = false
+  }
 }
 function db_toggle_panel() {
   show_display_options.value = false
@@ -539,13 +583,17 @@ function db_confirm_delete() {
   })
 }
 async function db_delete(keys) {
+  if (db_busy.value) return
+  db_busy.value = true
   try {
     await axios.post(`${import.meta.env.VITE_HTTP_URL}/db-admin/delete`, { categories: keys })
-    db_load_stats()
+    await db_load_stats()
     keys.forEach((k) => (db_sel.value[k] = false))
     db_message.success('删除成功')
   } catch (e) {
     db_message.error(`删除失败：${e?.response?.data?.error || e.message || ''}`)
+  } finally {
+    db_busy.value = false
   }
 }
 </script>
@@ -808,11 +856,66 @@ async function db_delete(keys) {
       v-model:show="show_db_admin"
       preset="card"
       transform-origin="center"
-      style="width: min(480px, calc(100vw - 32px))"
+      style="width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 48px)"
+      content-style="overflow: auto"
     >
       <template #header>
         <div>数据库管理</div>
       </template>
+      <div class="db-maintenance">
+        <template v-if="db_maintenance">
+          <p>
+            数据库 {{ db_format_size(db_maintenance.database_bytes) }}， 空闲页
+            {{ db_format_size(db_maintenance.reclaimable_bytes) }}。
+          </p>
+          <p>
+            删除记录后可整理数据库以回收空闲空间，保留现有记录。请先停止任务，整理可能需要一分钟。
+          </p>
+          <n-button
+            :loading="db_busy"
+            :disabled="db_busy || db_loading || running || db_maintenance.busy"
+            @click="db_maintain('compact')"
+            >整理数据库</n-button
+          >
+          <label class="db-limit-label" for="db-backup-limit">备份大小上限（MiB）</label>
+          <div class="db-limit-actions">
+            <n-input-number
+              v-model:value="db_limit"
+              :input-props="{ id: 'db-backup-limit' }"
+              :min="1"
+              :max="db_maintenance.max_backup_limit_mib"
+              :precision="0"
+              :disabled="db_busy || db_loading || running || db_maintenance.busy"
+            />
+            <n-button
+              :loading="db_busy"
+              :disabled="
+                db_busy ||
+                db_loading ||
+                running ||
+                db_maintenance.busy ||
+                !db_limit ||
+                db_limit === db_maintenance.backup_limit_mib
+              "
+              @click="db_maintain('limit')"
+              >保存上限</n-button
+            >
+          </div>
+          <p>
+            默认 16 MiB，可设为 1–{{ db_maintenance.max_backup_limit_mib }} MiB。 同时限制
+            ZIP、解压后的配置与数据总量，以及恢复前备份；调大上限会增加内存占用。
+            设置仅用于当前实例，恢复备份或切换档案后仍保留。
+          </p>
+          <p v-if="running || db_maintenance.busy">
+            请等待任务和其他维护操作结束后再整理或调整上限。
+          </p>
+        </template>
+        <n-alert v-if="db_result" type="success" aria-live="polite">{{ db_result }}</n-alert>
+        <n-alert v-if="db_error" type="error" aria-live="polite">{{ db_error }}</n-alert>
+        <n-button :loading="db_loading" :disabled="db_busy || db_loading" @click="db_load_stats"
+          >刷新数据库信息</n-button
+        >
+      </div>
       <div class="db-admin-body">
         <div class="db-admin-group" v-for="g in db_groups" :key="g.key">
           <n-checkbox
@@ -844,7 +947,7 @@ async function db_delete(keys) {
           <n-button
             type="error"
             size="small"
-            :disabled="!db_any_selected"
+            :disabled="db_busy || db_loading || !db_any_selected"
             @click="db_confirm_delete"
           >
             删除选中
@@ -1250,6 +1353,33 @@ async function db_delete(keys) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.db-maintenance {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+
+  p {
+    margin: 0;
+    color: var(--mower-text-muted);
+    font-size: 12px;
+    line-height: 1.65;
+  }
+}
+
+.db-limit-label {
+  font-size: 14px;
+}
+
+.db-limit-actions {
+  display: flex;
+  gap: 12px;
+
+  .n-input-number {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 .toggle-table-collapse-btn {

@@ -30,6 +30,7 @@ from arknights_mower.utils.path import get_path
 from arknights_mower.utils.workshop_config import workshop_lock
 
 MAX_BACKUP_BYTES = 16 * 1024 * 1024
+MAX_BACKUP_LIMIT_MIB = 1024
 MAX_ARCHIVE_ENTRIES = 1024
 backup_lock = RLock()
 IMPORT_PRESERVED_FILES = {
@@ -60,6 +61,10 @@ class LocalConfigError(ValueError):
     """The destination directory cannot be backed up safely."""
 
 
+class BackupSizeError(ValueError):
+    """The uploaded archive exceeds the current instance's backup limit."""
+
+
 EXPORT_EXCLUDED_FILES = {
     "manager-common.json",
     "state.json",
@@ -69,8 +74,26 @@ EXPORT_EXCLUDED_FILES = {
 }
 
 
+def get_backup_limit_bytes():
+    """Read the instance-local limit preserved by configuration restoration."""
+    try:
+        with config.gui_path.open("r", encoding="utf-8") as stream:
+            data = yaml.load(stream, Loader=CoreLoader)
+        value = data.get("backup_limit_mib") if isinstance(data, dict) else None
+        if type(value) is int and 1 <= value <= MAX_BACKUP_LIMIT_MIB:
+            return value * 1024 * 1024
+    except (OSError, ValueError, yaml.YAMLError):
+        pass
+    return MAX_BACKUP_BYTES
+
+
+def backup_limit_label():
+    return f"{get_backup_limit_bytes() / (1024 * 1024):g} MiB"
+
+
 def _local_snapshot():
     """Read originals and index file/directory names with one directory walk."""
+    limit = get_backup_limit_bytes()
     root = config.conf_path.parent
     files, names = {}, {}
     total = 0
@@ -86,15 +109,18 @@ def _local_snapshot():
         if len(files) >= MAX_ARCHIVE_ENTRIES:
             raise LocalConfigError("本机配置文件数量超过 1024 个，请整理后重试")
         with path.open("rb") as stream:
-            content = stream.read(MAX_BACKUP_BYTES - total + 1)
+            content = stream.read(limit - total + 1)
         total += len(content)
-        if total > MAX_BACKUP_BYTES:
-            raise LocalConfigError("本机配置内容超过 16 MB，无法生成备份")
+        if total > limit:
+            raise LocalConfigError(
+                f"本机配置内容超过 {backup_limit_label()}，无法生成备份"
+            )
         files[name] = content
     return files, names
 
 
 def _copy_database(source, destination):
+    limit = get_backup_limit_bytes()
     deadline = monotonic() + 10
     with (
         closing(
@@ -104,14 +130,18 @@ def _copy_database(source, destination):
     ):
         page_size = reader.execute("PRAGMA page_size").fetchone()[0]
         page_count = reader.execute("PRAGMA page_count").fetchone()[0]
-        if page_count * page_size > MAX_BACKUP_BYTES:
-            raise LocalConfigError("本机数据库超过 16 MB，无法生成备份")
+        if page_count * page_size > limit:
+            raise LocalConfigError(
+                f"本机数据库超过 {backup_limit_label()}，无法生成备份；请在运行日志的数据库管理中整理数据库或调整备份大小上限"
+            )
 
         def progress(status, remaining, total):
             if status == sqlite3.SQLITE_DONE:
                 return
-            if total * page_size > MAX_BACKUP_BYTES:
-                raise LocalConfigError("本机数据库超过 16 MB，无法生成备份")
+            if total * page_size > limit:
+                raise LocalConfigError(
+                    f"本机数据库超过 {backup_limit_label()}，无法生成备份"
+                )
             if monotonic() >= deadline:
                 raise sqlite3.OperationalError("数据库备份超时，请停止写入后重试")
 
@@ -119,6 +149,7 @@ def _copy_database(source, destination):
 
 
 def _tmp_snapshot(total):
+    limit = get_backup_limit_bytes()
     root = get_path("@app/tmp")
     files = {}
     if root.is_symlink():
@@ -157,16 +188,19 @@ def _tmp_snapshot(total):
                 ) from exc
         else:
             with path.open("rb") as stream:
-                content = stream.read(MAX_BACKUP_BYTES - total + 1)
+                content = stream.read(limit - total + 1)
         total += len(content)
-        if total > MAX_BACKUP_BYTES:
-            raise LocalConfigError("本机配置和数据内容超过 16 MB，无法生成备份")
+        if total > limit:
+            raise LocalConfigError(
+                f"本机配置和数据内容超过 {backup_limit_label()}，无法生成备份"
+            )
         files[name] = content
     return files
 
 
 def _obsolete_config_snapshot(files, previous, previous_tmp):
     """Keep rollback originals for legacy paths whose destination is being cleared."""
+    limit = get_backup_limit_bytes()
     root = config.conf_path.parent
     tmp_root = get_path("@app/tmp")
     captured = {root / name for name in previous} | {
@@ -188,22 +222,23 @@ def _obsolete_config_snapshot(files, previous, previous_tmp):
             raise LocalConfigError("待清理的旧配置必须是普通文件")
         if not legacy.exists():
             continue
-        if legacy.stat().st_size > MAX_BACKUP_BYTES - total:
+        if legacy.stat().st_size > limit - total:
             raise LocalConfigError(
-                "本机配置和待清理的旧配置内容超过 16 MB，无法安全切换档案"
+                f"本机配置和待清理的旧配置内容超过 {backup_limit_label()}，无法安全切换档案"
             )
         with legacy.open("rb") as stream:
-            content = stream.read(MAX_BACKUP_BYTES - total + 1)
+            content = stream.read(limit - total + 1)
         total += len(content)
-        if total > MAX_BACKUP_BYTES:
+        if total > limit:
             raise LocalConfigError(
-                "本机配置和待清理的旧配置内容超过 16 MB，无法安全切换档案"
+                f"本机配置和待清理的旧配置内容超过 {backup_limit_label()}，无法安全切换档案"
             )
         originals[legacy] = content
     return originals
 
 
 def _archive_bytes(files, tmp_files):
+    limit = get_backup_limit_bytes()
     if len(files) + len(tmp_files) > MAX_ARCHIVE_ENTRIES:
         raise LocalConfigError("本机配置和数据文件数量超过 1024 个，请整理后重试")
     output = BytesIO()
@@ -215,8 +250,10 @@ def _archive_bytes(files, tmp_files):
         for name, content in tmp_files.items():
             archive.writestr(f"tmp/{name}", content)
     raw = output.getvalue()
-    if len(raw) > MAX_BACKUP_BYTES:
-        raise LocalConfigError("本机配置生成的 ZIP 超过 16 MB，无法导出或生成恢复备份")
+    if len(raw) > limit:
+        raise LocalConfigError(
+            f"本机配置生成的 ZIP 超过 {backup_limit_label()}，无法导出或生成恢复备份"
+        )
     return raw
 
 
@@ -234,8 +271,9 @@ def export_archive(*, include_tmp=True):
 
 def read_archive(raw, *, include_tmp=False):
     """Read bounded regular files without extracting ZIP paths to the filesystem."""
-    if len(raw) > MAX_BACKUP_BYTES:
-        raise ValueError("备份文件不能超过 16 MB")
+    limit = get_backup_limit_bytes()
+    if len(raw) > limit:
+        raise BackupSizeError(f"备份文件不能超过 {backup_limit_label()}")
     try:
         with ZipFile(BytesIO(raw)) as archive:
             infos = archive.infolist()
@@ -243,8 +281,10 @@ def read_archive(raw, *, include_tmp=False):
                 info.filename in {"config/", "tmp/"} for info in infos
             ):
                 raise ValueError("压缩包文件数量过多")
-            if sum(info.file_size for info in infos) > MAX_BACKUP_BYTES:
-                raise ValueError("解压后的配置和数据不能超过 16 MB")
+            if sum(info.file_size for info in infos) > limit:
+                raise BackupSizeError(
+                    f"解压后的配置和数据不能超过 {backup_limit_label()}"
+                )
             files, seen, kinds = {}, set(), {}
             tmp_files = {}
             for info in infos:

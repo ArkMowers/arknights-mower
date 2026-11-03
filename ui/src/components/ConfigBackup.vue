@@ -57,7 +57,6 @@ async function selectFile(event) {
   busy.value = true
   selected.value = null
   try {
-    if (file.size > 16 * 1024 * 1024) throw new Error('备份文件不能超过 16 MB')
     if (!/\.zip$/i.test(file.name)) throw new Error('请选择包含 config 文件夹的 ZIP 备份')
     selected.value = file
     filename.value = file.name
