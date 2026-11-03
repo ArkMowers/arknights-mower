@@ -1,4 +1,4 @@
-"""受保护训练室交由自动专精，普通排班跳过整房。"""
+"""专精接管训练位，协助位按跟随设置参与普通排班。"""
 
 import sys
 from datetime import datetime
@@ -67,7 +67,7 @@ def test_active_plan_correction_respects_follow_switch(
         solver.tasks = [SchedulerTask(task_type=TaskTypes.SWAP_SUPPORT)]
     plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
     if enabled and source != "none":
-        assert plan == {}
+        assert plan == ({"train": ["褐果", "Current"]} if follow else {})
     else:
         assert plan == {"train": ["褐果", "桃金娘"]}
     solver._notify_train_correction_skipped.assert_not_called()
@@ -80,14 +80,12 @@ def test_no_database_plan_uses_observed_training_state(solver, state, follow):
     config.conf.assistant_follows_schedule = follow
     solver.train_room_state = mastery_reader.RoomState(state)
     plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
-    assert plan == {}
+    assert plan == ({"train": ["褐果", "Current"]} if follow else {})
 
 
 @pytest.mark.parametrize("protected_by", ["occupant", "snapshot"])
 @pytest.mark.parametrize("follow", [False, True])
-def test_protected_assistant_is_skipped_regardless_of_follow(
-    solver, protected_by, follow
-):
+def test_protected_assistant_respects_follow_setting(solver, protected_by, follow):
     config.conf.enable_mastery = True
     config.conf.assistant_follows_schedule = follow
     solver.train_room_state = mastery_reader.RoomState(
@@ -99,8 +97,8 @@ def test_protected_assistant_is_skipped_regardless_of_follow(
             "逻各斯", "", current_room="train", current_index=0
         )
     plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
-    assert plan == {}
-    assert solver._notify_train_correction_skipped.called
+    assert plan == ({"train": ["褐果", "Current"]} if follow else {})
+    assert solver._notify_train_correction_skipped.called is (not follow)
 
 
 def test_only_trainee_mismatch_does_not_leave_empty_correction(solver, monkeypatch):
@@ -121,7 +119,7 @@ def test_mastery_off_ignores_stale_locked_snapshot(solver, enabled, follow):
     solver.train_room_state = mastery_reader.RoomState("training")
     plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
     if enabled:
-        assert plan == {}
+        assert plan == ({"train": ["褐果", "Current"]} if follow else {})
     else:
         assert plan == {"train": ["褐果", "桃金娘"]}
         assert solver.train_room_state is None
@@ -153,8 +151,8 @@ def test_execution_keeps_live_trainee_and_off_does_not_run_mastery(
     reconcile = MagicMock(return_value=False)
     monkeypatch.setattr(mastery_reader, "reconcile_short", reconcile)
     solver.agent_arrange_room({}, "train", plan)
-    assert reconcile.called is (enabled and state == "empty")
-    if state != "empty" and enabled:
+    assert reconcile.called is (enabled and (state == "empty" or follow))
+    if state != "empty" and enabled and not follow:
         solver.turn_on_room_detail.assert_not_called()
     else:
         solver.turn_on_room_detail.assert_called_once_with("train")
@@ -368,11 +366,13 @@ def test_training_retry_accepts_observed_targets_and_placeholders(
 @pytest.mark.parametrize(
     "state", ["training", "waiting_collect", "protected", "unknown"]
 )
-def test_training_retry_skips_entire_protected_room(
-    arrangement_solver, monkeypatch, state
+@pytest.mark.parametrize("follow", [False, True])
+def test_training_retry_skips_only_owned_positions(
+    arrangement_solver, monkeypatch, state, follow
 ):
     solver, plan = arrangement_solver
-    config.conf.enable_mastery = config.conf.assistant_follows_schedule = True
+    config.conf.enable_mastery = True
+    config.conf.assistant_follows_schedule = follow
     room_state = (
         None
         if state == "unknown"
@@ -388,8 +388,8 @@ def test_training_retry_skips_entire_protected_room(
 
     solver.agent_arrange_room({}, "train", plan)
 
-    assert targets == ["褐果", "桃金娘"]
-    solver.turn_on_room_detail.assert_not_called()
+    assert targets == (["褐果", "Current"] if follow else ["Current", "Current"])
+    assert solver.turn_on_room_detail.called is follow
     solver.choose_train.assert_not_called()
     solver.record_selection_failure.assert_not_called()
     assert plan == {}

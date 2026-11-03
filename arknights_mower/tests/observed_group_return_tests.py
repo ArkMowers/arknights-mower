@@ -251,7 +251,7 @@ def test_training_only_observed_return_respects_actual_protection(
     elif protection == "protected":
         s.train_room_state = mastery_reader.RoomState("empty", protected=True)
     worker = s.op_data.operators["森蚺"]
-    allowed = not enabled or protection == "none"
+    allowed = not enabled or protection == "none" or follow and worker.index == 0
     pending = list(s.tasks)
     result = s.agent_get_mood()
     assert s.op_data.group_is_resting("自动化")

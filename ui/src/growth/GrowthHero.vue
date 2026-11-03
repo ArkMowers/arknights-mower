@@ -128,7 +128,7 @@ const syncLabel = computed(() => {
             />
             <span>全自动专精</span>
             <HelpText label="全自动专精范围">
-              开启后自动执行已排队的专精并合成养成材料；精英化、基础技能升级与模组开启仍需在游戏内手动完成后同步。
+              推荐先清空排班表中的训练室，或编写专精副表，再开启此功能。开启后自动执行已排队的专精并合成养成材料；精英化、基础技能升级与模组开启仍需在游戏内手动完成后同步。
             </HelpText>
           </div>
           <span class="growth-hero__meta-sep" aria-hidden="true" />

@@ -1527,7 +1527,9 @@ def adjust_run_order_for_maintenance(
     return list(adjusted.values())
 
 
-def _native_return(op_data, plan, names, *, excluded_names=()):
+def _native_return(
+    op_data, plan, names, *, excluded_names=(), excluded_replacements=None
+):
     """把需要结束休息的干员按当前排班写回原岗位。"""
     for name in names:
         if name in excluded_names:
@@ -1538,7 +1540,9 @@ def _native_return(op_data, plan, names, *, excluded_names=()):
         slots = plan.setdefault(op.room, ["Current"] * len(op_data.plan[op.room]))
         if slots[op.index] in ("Current", name):
             slots[op.index] = name
-    op_data.normalize_shared_arrangement(plan, excluded_names=excluded_names)
+    op_data.normalize_shared_arrangement(
+        plan, excluded_names=excluded_names, excluded_replacements=excluded_replacements
+    )
 
 
 def _active_recovery_room(op_data, name):
@@ -1952,6 +1956,7 @@ def generate_plan_by_drom(
     pending_arrangements=(),
     *,
     excluded_names=(),
+    excluded_replacements=None,
     now=None,
 ):
     # 同时刻的回班与释放床位必须分别保留类型，并共用一次未来状态演算。
@@ -2101,7 +2106,10 @@ def generate_plan_by_drom(
         if rest_in_full is not None:
             transitions = op_data.arrangement_group_transitions(plan)
             if not op_data.normalize_shared_arrangement(
-                plan, transitions, excluded_names=excluded_names
+                plan,
+                transitions,
+                excluded_names=excluded_names,
+                excluded_replacements=excluded_replacements,
             ):
                 continue
             # Shared primaries kept off shift still participate in later returns.
@@ -2171,7 +2179,9 @@ def generate_plan_by_drom(
     return result
 
 
-def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
+def plan_metadata(
+    op_data, tasks, *, excluded_names=(), excluded_replacements=None, now=None
+):
     now = now or getattr(op_data, "_projection_now", None) or datetime.now()
     conf = getattr(op_data, "runtime_conf", None) or config.conf
     for task in tasks:
@@ -2561,6 +2571,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
         release_tasks=release_tasks,
         pending_arrangements=pending_arrangements,
         excluded_names=excluded_names,
+        excluded_replacements=excluded_replacements,
         now=now,
     )
     for task in generated:
@@ -2667,7 +2678,13 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
         ):
             continue
         plan = {}
-        _native_return(op_data, plan, members, excluded_names=excluded_names)
+        _native_return(
+            op_data,
+            plan,
+            members,
+            excluded_names=excluded_names,
+            excluded_replacements=excluded_replacements,
+        )
         recalled = rebalance_closing_dorm_slots(
             op_data.project_arrangements([]), plan, members
         )
@@ -2707,13 +2724,25 @@ def plan_metadata(op_data, tasks, *, excluded_names=(), now=None):
         ):
             continue
         return_plan = {}
-        _native_return(op_data, return_plan, [op.name], excluded_names=excluded_names)
+        _native_return(
+            op_data,
+            return_plan,
+            [op.name],
+            excluded_names=excluded_names,
+            excluded_replacements=excluded_replacements,
+        )
         earliest = _after_pending_arrangements(return_plan, pending_resources)
         for task in return_tasks:
             slots = task.plan.get(op.room, ["Current"] * len(op_data.plan[op.room]))
             if task.time < earliest or slots[op.index] != "Current":
                 continue
-            _native_return(op_data, task.plan, [op.name], excluded_names=excluded_names)
+            _native_return(
+                op_data,
+                task.plan,
+                [op.name],
+                excluded_names=excluded_names,
+                excluded_replacements=excluded_replacements,
+            )
             returning.add(op.name)
             break
     tasks.extend(limited_releases)

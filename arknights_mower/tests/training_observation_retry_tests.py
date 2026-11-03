@@ -208,7 +208,7 @@ def test_failed_scan_keeps_previously_confirmed_training_protection(
 
     solver._read_agent_mood()
 
-    assert solver._train_scheduling_protected()
+    assert solver._protected_training_slots()
     assert solver.op_data.operators["艾丽妮"].current_room == "train"
 
 

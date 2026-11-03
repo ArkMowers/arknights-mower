@@ -461,7 +461,9 @@ def test_training_protection_blocks_partial_zero_group_and_releases_original_tas
     cover._current_room, cover.current_index = "train", 0
     protected = [True]
     config.conf.enable_mastery = True
-    monkeypatch.setattr(solver, "_train_scheduling_protected", lambda: protected[0])
+    monkeypatch.setattr(
+        solver, "_protected_training_slots", lambda: {0, 1} if protected[0] else set()
+    )
     monkeypatch.setattr(solver, "_train_mastery_active", lambda: protected[0])
     monkeypatch.setattr(solver, "_train_protected", lambda: False)
     plan = {"contact": ["芬"]}

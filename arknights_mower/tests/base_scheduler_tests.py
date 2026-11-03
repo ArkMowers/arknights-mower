@@ -1795,7 +1795,7 @@ class TestBaseScheduler(unittest.TestCase):
     def test_agent_get_mood_freezes_trainee_slot_when_locked_and_following_schedule(
         self,
     ):
-        # 保护生效后整房跳过，协助位跟随不保留纠错目标。
+        # 开启跟随后，协助位保留纠错目标，训练位仍跳过。
         solver = self._train_mismatch_solver(["褐果", "桃金娘"])
         locked_room = mastery_reader.RoomState(
             "training", mastery_reader.RoomPanel(countdown_state="active")
@@ -1817,7 +1817,8 @@ class TestBaseScheduler(unittest.TestCase):
         task = next(
             (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
         )
-        self.assertIsNone(task)
+        self.assertIsNotNone(task)
+        self.assertEqual(task.plan, {"train": ["褐果", "Current"]})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_train_mastery_active_signals(self):
@@ -2151,7 +2152,7 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_locked_room_skips_when_following_schedule(self):
+    def test_locked_room_keeps_assistant_following_schedule(self):
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         with (
@@ -2164,10 +2165,13 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
             patch("arknights_mower.solvers.mastery_reader.reconcile_short"),
         ):
             result = solver.agent_arrange_room({}, "train", plan)
-        solver.back.assert_called_once_with()
         solver.refresh_current_room.assert_not_called()
-        solver.choose_train.assert_not_called()
-        solver.turn_on_room_detail.assert_not_called()
+        solver.choose_train.assert_called_once_with(
+            ["干员A", "Current"], fast_mode=True, choose_error=0
+        )
+        solver.turn_on_room_detail.assert_called_once_with("train")
+        self.assertEqual(solver.task.training_skipped_slots, {1})
+        self.assertEqual(plan, {})
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
@@ -2364,8 +2368,8 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_gate_read_failure_skips_room_when_following(self):
-        """训练室读取失败时跳过整房。"""
+    def test_gate_read_failure_keeps_assistant_following(self):
+        """训练室读取失败时保留协助位跟随，跳过训练位。"""
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         with (
@@ -2378,7 +2382,11 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         ):
             result = solver.agent_arrange_room({}, "train", plan)
         solver.refresh_current_room.assert_not_called()
-        solver.choose_train.assert_not_called()
+        solver.choose_train.assert_called_once_with(
+            ["干员A", "Current"], fast_mode=True, choose_error=0
+        )
+        self.assertEqual(solver.task.training_skipped_slots, {1})
+        self.assertEqual(plan, {})
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
@@ -2646,6 +2654,7 @@ class TestDormShiftOffMerge(unittest.TestCase):
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_plan_solver_keeps_work_and_dorm_in_one_shift_off_task(self):
         solver = BaseSchedulerSolver()
+        solver._protected_training_slots = lambda: set()
         solver.op_data = SimpleNamespace(
             config=SimpleNamespace(free_room=False),
             operators={},
@@ -2957,6 +2966,7 @@ class TestDroneAccelerate(unittest.TestCase):
             adjusted=True,  # 强制走「开始插拔」无人机跑单分支
         )
         solver = BaseSchedulerSolver()
+        solver._protected_training_slots = lambda: set()
         solver.error = False
         solver.tasks = [task]
         solver.op_data = SimpleNamespace(
@@ -3149,6 +3159,7 @@ class TestSchedulerDispatchDeviceFailure(unittest.TestCase):
 class TestRunOrderCountdownTiming(unittest.TestCase):
     def setUp(self):
         self.conf = SimpleNamespace(
+            enable_mastery=False,
             run_order_buffer_time=30,
             run_order_delay=1,
         )

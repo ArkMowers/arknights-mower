@@ -1751,6 +1751,8 @@ class BaseSchedulerSolver(
         )
         from arknights_mower.utils.urgent_recovery import urgent_support_blocked
 
+        excluded = self._protected_facility_names()
+        candidates = [name for name in candidates if name not in excluded]
         recall_blocked = urgent_support_blocked(
             self.op_data, candidates, self.tasks, getattr(self, "task", None)
         )
@@ -1786,7 +1788,7 @@ class BaseSchedulerSolver(
         protected, slots = coordination_reservations(
             self.op_data, self.tasks, getattr(self, "task", None)
         )
-        protected.update(self._protected_facility_names())
+        protected.update(self._protected_facility_names(include_configured=False))
         fia, _ = self.check_fia()
         return plan_exhaust_support(
             self.op_data,
@@ -1799,6 +1801,7 @@ class BaseSchedulerSolver(
             urgent=urgent,
             recall_blocked=recall_blocked,
             recall_viability=can_rest,
+            excluded_names=excluded,
         )
 
     def _schedule_group_coordination(self, candidates):
@@ -2157,7 +2160,7 @@ class BaseSchedulerSolver(
         protected, slots = coordination_reservations(
             self.op_data, self.tasks, getattr(self, "task", None)
         )
-        protected.update(self._protected_facility_names())
+        protected.update(self._protected_facility_names(include_configured=False))
         for task in self.tasks:
             if task.type == TaskTypes.EXHAUST_OFF and task.time <= datetime.now():
                 protected.update(
@@ -2790,6 +2793,10 @@ class BaseSchedulerSolver(
             self.op_data,
             self.tasks,
             excluded_names=self._protected_facility_names() | waiting_names,
+            excluded_replacements=self._protected_facility_names(
+                include_configured=False
+            )
+            | waiting_names,
         )
         from arknights_mower.utils.backup_group_tasks import filter_held_returns
 
@@ -3314,7 +3321,9 @@ class BaseSchedulerSolver(
                             protected, slots = coordination_reservations(
                                 self.op_data, self.tasks, self.task
                             )
-                            protected.update(self._protected_facility_names())
+                            protected.update(
+                                self._protected_facility_names(include_configured=False)
+                            )
                             for pending in self.tasks:
                                 if (
                                     pending is not self.task
@@ -4790,6 +4799,9 @@ class BaseSchedulerSolver(
             transitions=self.op_data.arrangement_group_transitions(changed_plan),
             explicit_slots=explicit_slots,
             excluded_names=self._protected_facility_names(),
+            excluded_replacements=self._protected_facility_names(
+                include_configured=False
+            ),
         ):
             logger.debug("多绑组纠错替班暂不可用，保留当前安排")
             return {} if return_plan else None
@@ -4895,8 +4907,8 @@ class BaseSchedulerSolver(
             for op in occupants
         )
 
-    def _training_idle_replacement_allowed(self, operator) -> bool:
-        """可靠确认训练室空闲且槽位仍与缓存一致时允许普通替班。"""
+    def _training_replacement_allowed(self, operator) -> bool:
+        """可靠观察允许未被专精接管的训练室岗位参与普通替班。"""
         if operator.current_room != "train":
             return False
         if any(
@@ -4906,11 +4918,12 @@ class BaseSchedulerSolver(
         state = getattr(self, "train_room_state", None)
         if not (
             config.conf.enable_mastery
-            and getattr(state, "state", None) == "empty"
+            and getattr(state, "state", None)
+            in ("empty", "training", "waiting_collect")
             and getattr(state, "slots_read", False) is True
             and getattr(state, "slots_reliable", False) is True
             and getattr(state, "read_failed", False) is not True
-            and not self._train_scheduling_protected()
+            and operator.current_index not in self._protected_training_slots()
             and self._training_observation_matches(state)
         ):
             return False
@@ -4923,15 +4936,14 @@ class BaseSchedulerSolver(
         if self._suppress_facility_arrangement(fix_plan):
             self._notify_train_correction_skipped()
 
-    def _train_scheduling_protected(self) -> bool:
-        """自动专精拥有受保护训练室；排班不再区分协助位跟随开关。"""
+    def _protected_training_slots(self):
+        """专精接管的岗位不参与普通排班；开启跟随时保留协助位。"""
         if not config.conf.enable_mastery:
-            return False
+            return set()
         state = getattr(self, "train_room_state", None)
-        return (
+        protected = (
             self._train_mastery_active()
             or self._train_protected()
-            or getattr(state, "state", None) in ("training", "waiting_collect")
             or any(
                 getattr(state, field, False) is True
                 for field in (
@@ -4944,18 +4956,28 @@ class BaseSchedulerSolver(
             or getattr(state, "slots_read", False) is True
             and getattr(state, "slots_reliable", False) is not True
         )
+        if not protected:
+            return set()
+        if getattr(state, "amiya_form_waiting", False) is True:
+            return {0, 1}
+        return {1} if config.conf.assistant_follows_schedule else {0, 1}
 
-    def _protected_training_names(self):
-        names = {
+    def _protected_training_names(self, *, include_configured=True):
+        """换班可排除配置岗位成员；替班禁用只取实际训练室驻员。"""
+        slots = self._protected_training_slots()
+        return {
             op.name
             for op in self.op_data.operators.values()
-            if op.room == "train" or op.current_room == "train"
+            if op.current_room == "train"
+            and op.current_index in slots
+            or include_configured
+            and op.room == "train"
+            and op.index in slots
         }
-        return names if names and self._train_scheduling_protected() else set()
 
-    def _protected_facility_names(self):
-        """训练室保护及本轮停用的回收站驻员不参与其他房间换人。"""
-        names = self._protected_training_names()
+    def _protected_facility_names(self, *, include_configured=True):
+        """返回训练室及本轮停用回收站在对应判断中的保护名单。"""
+        names = self._protected_training_names(include_configured=include_configured)
         if getattr(self, "_recycle_unavailable", False) is True:
             names.update(
                 op.name
@@ -4986,7 +5008,7 @@ class BaseSchedulerSolver(
         if getattr(self, "_recycle_unavailable", False) is not True:
             return notify_training
         plan.pop("recycle", None)
-        protected = self._protected_facility_names()
+        protected = self._protected_facility_names(include_configured=False)
         for room, names in list(plan.items()):
             for index, name in enumerate(names):
                 actual = self.op_data.get_current_operator(room, index)
@@ -4997,18 +5019,23 @@ class BaseSchedulerSolver(
         return notify_training
 
     def _suppress_train_arrangement(self, fix_plan: dict) -> bool:
-        """保护生效时排除整房及相关驻员，其他岗位继续安排和确认。"""
-        protected = self._protected_training_names()
-        if not protected and (
-            "train" not in fix_plan or not self._train_scheduling_protected()
-        ):
+        """排除被接管的训练岗位与实际驻员，其他岗位继续换班。"""
+        slots = self._protected_training_slots()
+        if not slots:
             return False
-        removed = fix_plan.pop("train", None) is not None
+        protected = self._protected_training_names(include_configured=False)
+        removed = "train" in fix_plan and slots == {0, 1}
         for room, names in list(fix_plan.items()):
             changed = False
             for index, name in enumerate(names):
                 actual = self.op_data.get_current_operator(room, index)
-                if name in protected or actual is not None and actual.name in protected:
+                if (
+                    room == "train"
+                    and index in slots
+                    or name in protected
+                    or actual is not None
+                    and actual.name in protected
+                ):
                     names[index] = "Current"
                     changed = True
             if changed and all(name == "Current" for name in names):
@@ -7781,7 +7808,6 @@ class BaseSchedulerSolver(
                 plan,
                 current_resting,
                 dorm_admissions=dorm_admissions,
-                excluded_names=excluded,
             )
         transitions = self.op_data.arrangement_group_transitions(plan)
         transitions.update({group: True for group in groups})
@@ -7842,7 +7868,6 @@ class BaseSchedulerSolver(
                 plan,
                 current_resting,
                 dorm_admissions=dorm_admissions,
-                excluded_names=excluded,
             )
         finally:
             self.op_data.group_shift_state = previous_state
@@ -7867,9 +7892,10 @@ class BaseSchedulerSolver(
     ):
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
-        protected_training = self._protected_facility_names()
-        if protected_training:
-            agents = [name for name in agents if name not in protected_training]
+        excluded = self._protected_facility_names()
+        if excluded:
+            agents = [name for name in agents if name not in excluded]
+        protected_training = self._protected_facility_names(include_configured=False)
         if not agents:
             if failure_reasons is not None:
                 failure_reasons.append("待休息成员均受训练岗位保护")
@@ -8011,7 +8037,7 @@ class BaseSchedulerSolver(
                     replacement.current_room
                     and not replacement.is_resting()
                     and not in_slot
-                    and not self._training_idle_replacement_allowed(replacement)
+                    and not self._training_replacement_allowed(replacement)
                     and not (
                         same_group_cover
                         and obj in agents
@@ -8444,6 +8470,9 @@ class BaseSchedulerSolver(
                 reserved_replacements=reserved,
                 explicit_slots=getattr(task, "backup_explicit_slots", ()),
                 excluded_names=self._protected_facility_names(),
+                excluded_replacements=self._protected_facility_names(
+                    include_configured=False
+                ),
             ):
                 raise GroupShiftBlocked(self._shared_shift_blockers(task, transitions))
             self._complete_ordinary_group_targets(task, proposed, transitions)
@@ -8455,6 +8484,9 @@ class BaseSchedulerSolver(
                 reserved_replacements=reserved,
                 explicit_slots=getattr(task, "backup_explicit_slots", ()),
                 excluded_names=self._protected_facility_names(),
+                excluded_replacements=self._protected_facility_names(
+                    include_configured=False
+                ),
             )
             or task.retains_execution
             and any(
@@ -8556,9 +8588,9 @@ class BaseSchedulerSolver(
                     )[index] = name
         expected_plan = {}
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
-            expected_plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
-                index
-            ] = name
+            expected_plan.setdefault(
+                room, ["Current"] * len(self.op_data.get_current_room(room, True))
+            )[index] = name
         original_transitions = self.op_data.arrangement_group_transitions(expected_plan)
         transitions = self.op_data.arrangement_group_transitions(
             task.plan, group_transitions=task.group_shift_transitions
@@ -8736,7 +8768,7 @@ class BaseSchedulerSolver(
             arrangement = copy.deepcopy(pending.plan)
             for (room, index), name in expected.items():
                 arrangement.setdefault(
-                    room, ["Current"] * len(self.op_data.plan[room])
+                    room, ["Current"] * len(self.op_data.get_current_room(room, True))
                 )[index] = name
             owned = footprint(
                 arrangement, getattr(pending, "group_shift_transitions", {})
@@ -8945,9 +8977,9 @@ class BaseSchedulerSolver(
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
             actual = self.op_data.get_current_operator(room, index)
             if actual is None or actual.name != name:
-                missing.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
-                    index
-                ] = name
+                missing.setdefault(
+                    room, ["Current"] * len(self.op_data.get_current_room(room, True))
+                )[index] = name
                 differences.append(
                     {
                         "room": room,
@@ -9259,6 +9291,9 @@ class BaseSchedulerSolver(
                     combined,
                     explicit_slots=combined_explicit,
                     excluded_names=self._protected_facility_names(),
+                    excluded_replacements=self._protected_facility_names(
+                        include_configured=False
+                    ),
                 ):
                     continue
                 intent = combined
@@ -9588,14 +9623,23 @@ class BaseSchedulerSolver(
                 set(self.op_data.config.free_room_exclusions)
                 | set(getattr(task, "backup_retention_releases", ()))
             ) - set(simulation.op_data.config.free_room_exclusions)
-            for room, slots in simulation.op_data.plan.items():
-                for index in range(len(slots)):
+            room_sizes = {
+                room: len(slots) for room, slots in simulation.op_data.plan.items()
+            }
+            # 副表可显式安排未配入主表的右侧设施，最终差异仍需保留。
+            for room, _ in explicit_slots:
+                if room in RIGHT_SIDE_ROOM_CAPACITY:
+                    room_sizes.setdefault(
+                        room, len(simulation.op_data.get_current_room(room, True))
+                    )
+            for room, size in room_sizes.items():
+                for index in range(size):
                     old = self.op_data.get_current_operator(room, index)
                     new = simulation.op_data.get_current_operator(room, index)
                     old_name = old.name if old else ""
                     new_name = new.name if new else ""
                     if old_name != new_name or (room, index) in unresolved:
-                        final.setdefault(room, ["Current"] * len(slots))[index] = (
+                        final.setdefault(room, ["Current"] * size)[index] = (
                             new_name or ("" if old_name in retention_exits else "Free")
                         )
             if required_names:
@@ -15760,12 +15804,12 @@ class BaseSchedulerSolver(
                                 )
 
                                 self.train_room_state = RoomState(read_failed=True)
-                            if self._train_scheduling_protected():
-                                self.task.training_skipped_slots.update(
-                                    range(len(plan[room]))
-                                )
-                                self._suppress_facility_arrangement(plan)
-                                self._prepare_group_shift_execution_targets(self.task)
+                            self.task.training_skipped_slots.update(
+                                self._protected_training_slots()
+                            )
+                            self._suppress_facility_arrangement(plan)
+                            self._prepare_group_shift_execution_targets(self.task)
+                            if room not in plan:
                                 self.back()
                                 return new_plan
                         if getattr(room_state, "amiya_form_waiting", False) is True:
@@ -15811,38 +15855,22 @@ class BaseSchedulerSolver(
                                 self.train_room_state = (
                                     room_state if config.conf.enable_mastery else None
                                 )
-                        # 关闭自动专精时协助位正常排班；实测不可用的训练位单独跳过。
-                        if (
-                            room_state is None
-                            or room_state.locked
-                            or (config.conf.enable_mastery and room_state.protected)
-                        ):
-                            self.train_room_state = (
-                                room_state if config.conf.enable_mastery else None
+                        if config.conf.enable_mastery:
+                            self.task.training_skipped_slots.update(
+                                self._protected_training_slots()
                             )
-                            if (
-                                not config.conf.enable_mastery
-                                or config.conf.assistant_follows_schedule
-                            ):
-                                if len(plan[room]) > 1:
-                                    plan[room][1] = "Current"
-                                    self.task.training_skipped_slots.add(1)
-                                if all(name == "Current" for name in plan[room]):
-                                    del plan[room]
-                                    self._prepare_group_shift_execution_targets(
-                                        self.task
-                                    )
-                                    self.back()
-                                    return new_plan
-                            else:
-                                self.task.training_skipped_slots.update(
-                                    range(len(plan[room]))
-                                )
+                            self._suppress_facility_arrangement(plan)
+                        elif room_state is None or room_state.locked:
+                            # 未启用专精时也不能替换正在训练的训练位。
+                            if len(plan[room]) > 1:
+                                plan[room][1] = "Current"
+                                self.task.training_skipped_slots.add(1)
+                            if all(name == "Current" for name in plan[room]):
                                 del plan[room]
-                                self._prepare_group_shift_execution_targets(self.task)
-                                self.back()
-                                return new_plan
                         self._prepare_group_shift_execution_targets(self.task)
+                        if room not in plan:
+                            self.back()
+                            return new_plan
                 skip_enter = False
                 self.turn_on_room_detail(room)
                 if room == "recycle":

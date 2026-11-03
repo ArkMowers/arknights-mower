@@ -1600,6 +1600,7 @@ class Operators:
         reserved_replacements=None,
         explicit_slots=(),
         excluded_names=(),
+        excluded_replacements=None,
     ):
         """Keep shared covers until all dependent groups return; reject conflicts.
 
@@ -1608,6 +1609,9 @@ class Operators:
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
         excluded_names = set(excluded_names)
+        excluded_replacements = set(
+            excluded_names if excluded_replacements is None else excluded_replacements
+        )
         transitions = (
             self.arrangement_group_transitions(plan)
             if transitions is None
@@ -1629,7 +1633,7 @@ class Operators:
             and op.name not in excluded_names
             and not (
                 (actual := self.get_current_operator(op.room, op.index)) is not None
-                and actual.name in excluded_names
+                and actual.name in excluded_replacements
             )
             and (op.room, op.index) not in explicit_slots
             and (
@@ -1659,7 +1663,7 @@ class Operators:
                 if reserved_replacements is None
                 else reserved_replacements
             )
-            | excluded_names
+            | excluded_replacements
         )
         for op in followers:
             target = plan.get(op.room, [])[op.index : op.index + 1]

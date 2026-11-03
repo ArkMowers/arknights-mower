@@ -278,7 +278,7 @@ def test_restored_training_member_does_not_block_other_recovery(
     for op in s.op_data.operators.values():
         op._current_room, op.current_index = op.room, op.index
         op.mood, op.time_stamp = 22, datetime.now()
-    monkeypatch.setattr(s, "_train_scheduling_protected", lambda: True)
+    monkeypatch.setattr(s, "_protected_training_slots", lambda: {0, 1})
     prepare_group_before_backup_exit(s)
     before = recovery(s)
     task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)

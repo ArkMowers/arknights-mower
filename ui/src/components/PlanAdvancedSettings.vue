@@ -360,7 +360,8 @@ const excludedGroupOptions = computed(() =>
         <n-checkbox v-model:checked="assistant_follows_schedule">
           训练室协助位总是跟随排班
           <help-text
-            >勾选后专精时的协助位不会使用设置的专精工具人，在基建排班时会根据排班表来替换训练室的协助位。</help-text
+            >开启后，训练室协助位按排班表换班，不使用专精计划配置的工具人；训练位仍由专精管理。若将挂件干员安排在协助位，请确认其基建技能在
+            0 心情时仍然生效。</help-text
           >
         </n-checkbox>
       </n-form-item>
