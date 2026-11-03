@@ -55,7 +55,8 @@ def test_protected_training_does_not_requeue_but_other_targets_still_confirm(
     else:
         s.train_room_state = mastery_reader.RoomState("training")
     s._prepare_group_shift(task, remember_targets=True)
-    assert not any(room == "train" for room, _ in task.group_shift_expected)
+    assert (("train", 0) in task.group_shift_expected) is follow
+    assert ("train", 1) not in task.group_shift_expected
     observed = {}
     if other_confirmed:
         observed.update(
@@ -79,7 +80,7 @@ def test_protected_training_does_not_requeue_but_other_targets_still_confirm(
             assert ("train", 0) not in task.group_shift_expected
 
 
-def test_assistant_follow_does_not_retain_protected_targets(training_group):
+def test_assistant_follow_requires_confirmation_of_ordinary_targets(training_group):
     s = training_group
     config.conf.assistant_follows_schedule = True
     s.train_room_state = mastery_reader.RoomState("training")
@@ -88,10 +89,16 @@ def test_assistant_follow_does_not_retain_protected_targets(training_group):
     )
     s.task, s.tasks = task, [task]
     s._prepare_group_shift(task, remember_targets=True)
+    assert task.plan["train"] == ["望", "Current"]
+    task.plan.clear()
+    assert not s._complete_group_shift(task)
+    assert task.plan["train"] == ["望", "Current"]
+    projected = s.op_data.project_arrangements([task.plan])
+    s.op_data.operators, s.op_data.dorm = projected.operators, projected.dorm
     task.plan.clear()
     assert s._complete_group_shift(task)
     assert not task.plan
-    assert not s.op_data.group_is_resting("甲")
+    assert s.op_data.group_is_resting("甲")
 
 
 def test_training_only_skipped_transition_does_not_commit_group(training_group):
@@ -127,7 +134,7 @@ def test_partial_group_targets_skip_protected_training_without_waiting(
     s._prepare_group_shift(task, remember_targets=True)
     assert task.time == before
     assert ("train", 1) not in task.group_shift_expected
-    assert ("train", 0) not in task.group_shift_expected
+    assert (("train", 0) in task.group_shift_expected) is follow
     projected = s.op_data.project_arrangements([task.plan])
     projected.group_shift_state = dict(s.op_data.group_shift_state)
     s.op_data = projected
@@ -276,15 +283,20 @@ def test_protected_training_does_not_require_replacements_or_beds(
     s = training_group
     config.conf.assistant_follows_schedule = follow
     s.train_room_state = mastery_reader.RoomState("training")
-    for name in ("褐果", "桃金娘"):
+    s.op_data.operators["褐果"].mood = 5
+    for name in ("桃金娘",) if follow else ("褐果", "桃金娘"):
         s.op_data.operators[name].replacement = []
     result = {}
     s.get_resting_plan(s.op_data.shift_group_members("甲"), [], result, 0)
     assert result["meeting"][0] == "陈"
-    assert "train" not in result
-    assert all(
-        name not in ("褐果", "桃金娘") for row in result.values() for name in row
-    )
+    if follow:
+        assert result["train"] == ["望", "Current"]
+        assert "褐果" in {bed.name for bed in s.op_data.dorm}
+    else:
+        assert "train" not in result
+        assert all("褐果" not in row for row in result.values())
+    assert "桃金娘" not in {bed.name for bed in s.op_data.dorm}
+    assert all("桃金娘" not in row for row in result.values())
     assert s.op_data.get_current_room("train", True) == ["褐果", "桃金娘"]
 
 
@@ -310,7 +322,8 @@ def test_protected_source_occupant_is_skipped_in_other_room_and_confirmation(
     s.task, s.tasks = task, [task]
     before = task.time
     s._prepare_group_shift(task, remember_targets=True)
-    assert not task.plan
+    assert task.plan == {"train": ["褐果", "Current"]}
+    task.plan.clear()
     assert s._complete_group_shift(task)
     assert not task.group_shift_expected
     assert task.time == before

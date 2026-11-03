@@ -2151,7 +2151,7 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_locked_room_skips_when_following_schedule(self):
+    def test_locked_room_keeps_assistant_following_schedule(self):
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         with (
@@ -2164,10 +2164,13 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
             patch("arknights_mower.solvers.mastery_reader.reconcile_short"),
         ):
             result = solver.agent_arrange_room({}, "train", plan)
-        solver.back.assert_called_once_with()
         solver.refresh_current_room.assert_not_called()
-        solver.choose_train.assert_not_called()
-        solver.turn_on_room_detail.assert_not_called()
+        solver.choose_train.assert_called_once_with(
+            ["干员A", "Current"], fast_mode=True, choose_error=0
+        )
+        solver.turn_on_room_detail.assert_called_once_with("train")
+        self.assertEqual(solver.task.training_skipped_slots, {1})
+        self.assertEqual(plan, {})
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
@@ -2364,8 +2367,8 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_gate_read_failure_skips_room_when_following(self):
-        """训练室读取失败时跳过整房。"""
+    def test_gate_read_failure_keeps_assistant_following(self):
+        """训练室读取失败时保留协助位跟随，跳过训练位。"""
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         with (
@@ -2378,7 +2381,11 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         ):
             result = solver.agent_arrange_room({}, "train", plan)
         solver.refresh_current_room.assert_not_called()
-        solver.choose_train.assert_not_called()
+        solver.choose_train.assert_called_once_with(
+            ["干员A", "Current"], fast_mode=True, choose_error=0
+        )
+        self.assertEqual(solver.task.training_skipped_slots, {1})
+        self.assertEqual(plan, {})
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)

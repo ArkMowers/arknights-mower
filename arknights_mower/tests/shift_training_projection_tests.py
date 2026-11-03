@@ -75,18 +75,17 @@ def test_backup_training_actions_match_protection_before_dorm_filling(
     final = s.op_data.project_arrangements([task.plan])
     assert "dormitory_1" in task.plan
     if enabled:
-        assert final.get_train_support() == "艾丽妮"
+        assert final.get_train_support() == ("望" if follow else "艾丽妮")
         assert final.operators["克莱门莎"].current_room == "train"
-        assert "艾丽妮" not in task.plan.get("dormitory_1", [])
-        assert "train" not in task.plan
+        if follow:
+            assert task.plan["train"] == ["望", "Current"]
+        else:
+            assert "艾丽妮" not in task.plan.get("dormitory_1", [])
+            assert "train" not in task.plan
     else:
         assert "艾丽妮" in task.plan["dormitory_1"]
-        if configured:
-            assert final.get_train_support() == "望"
-            if enabled:
-                assert final.operators["克莱门莎"].current_room == "train"
-            else:
-                assert final.operators["克莱门莎"].current_room != "train"
+        assert final.get_train_support() == "望"
+        assert final.operators["克莱门莎"].current_room != "train"
     s._notify_train_correction_skipped.assert_not_called()
 
 
@@ -121,7 +120,10 @@ def test_initial_intent_is_filtered_before_backup_condition_evaluation(
     assert task.backup_shift_conditions == [True]
     assert backup.positions(s.op_data) == before
     assert getattr(s, "train_room_state", None) is room_state
-    assert "train" not in task.plan
+    if follow:
+        assert task.plan["train"] == ["望", "Current"]
+    else:
+        assert "train" not in task.plan
     s._notify_train_correction_skipped.assert_not_called()
 
 

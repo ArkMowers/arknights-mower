@@ -203,3 +203,33 @@ def test_old_idle_observation_does_not_release_training_arrangement(solver, slot
 
     assert plan == {}
     assert solver.op_data.operators["赫默"].current_room == "train"
+
+
+@pytest.mark.parametrize("state", ["training", "waiting_collect"])
+@pytest.mark.parametrize("follow", [False, True])
+def test_following_assistant_can_cover_other_room_without_moving_trainee(
+    solver, state, follow
+):
+    config.conf.assistant_follows_schedule = follow
+    solver.train_room_state.state = state
+    solver.op_data.operators[MEMBERS[1]].replacement = ["斥罪"]
+    before = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+
+    plan, replacements = request_group_rest(solver)
+
+    if follow:
+        assert plan["central"] == ["逻各斯"]
+        assert plan["contact"] == ["斥罪"]
+        assert "赫默" not in replacements
+    else:
+        assert plan == {}
+        assert replacements == []
+    assert "train" not in plan
+    assert {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    } == before
+    solver.enter_room.assert_not_called()

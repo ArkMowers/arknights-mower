@@ -705,7 +705,7 @@ class MasteryRestartTests(unittest.TestCase):
         self.assertTrue(observed.slots_read)
         self.assertFalse(observed.slots_reliable)
         self.assertTrue(
-            base_schedule.BaseSchedulerSolver._train_scheduling_protected(
+            base_schedule.BaseSchedulerSolver._protected_training_slots(
                 SimpleNamespace(
                     train_room_state=observed,
                     _train_mastery_active=lambda: False,

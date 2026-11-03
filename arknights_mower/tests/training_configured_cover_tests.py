@@ -1,5 +1,6 @@
 """训练室配置身份不占用空闲替班，真实专精驻员仍受保护。"""
 
+from copy import deepcopy
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -246,3 +247,58 @@ def test_training_departure_reopens_original_failure_without_timed_retry(
     assert departure.plan["dormitory_1"][1] == "桃金娘"
     assert "令" in departure.plan["dormitory_1"]
     assert independent in s.tasks
+
+
+@pytest.mark.parametrize("follow", [False, True])
+def test_follow_setting_only_removes_owned_training_positions(training_cover, follow):
+    s = training_cover
+    config.conf.assistant_follows_schedule = follow
+    saved_plan = deepcopy(
+        {room: [vars(slot) for slot in row] for room, row in s.op_data.plan.items()}
+    )
+    plan = {
+        "train": ["褐果", "桃金娘"],
+        "central": ["百炼嘉维尔"],
+        "dormitory_1": ["Current", "桃金娘", "佩佩", "Current", "Current"],
+    }
+    s._suppress_facility_arrangement(plan)
+    if follow:
+        assert plan["train"] == ["褐果", "Current"]
+        assert plan["central"] == ["百炼嘉维尔"]
+    else:
+        assert "train" not in plan
+        assert "central" not in plan
+    assert plan["dormitory_1"][1:3] == ["桃金娘", "Current"]
+    assert {
+        room: [vars(slot) for slot in row] for room, row in s.op_data.plan.items()
+    } == saved_plan
+
+
+def test_following_assistant_can_rest_with_group_while_trainee_stays(training_cover):
+    s = training_cover
+    config.conf.assistant_follows_schedule = True
+    after_deep_sea_return(s)
+    s.op_data = s.op_data.project_arrangements([{"train": ["褐果", "佩佩"]}])
+    original_plan = deepcopy(
+        {room: [vars(slot) for slot in row] for room, row in s.op_data.plan.items()}
+    )
+    plan = {}
+    s.get_resting_plan(["令", "褐果", "桃金娘"], [], plan, 0)
+    assert plan["central"] == ["重岳"]
+    assert plan["train"] == ["余", "Current"]
+    assert plan["dormitory_1"][1] == "桃金娘"
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=plan)
+    s.task, s.tasks = task, [task]
+    s._prepare_group_shift(task, remember_targets=True)
+    assert task.group_shift_expected["train", 0] == "余"
+    assert ("train", 1) not in task.group_shift_expected
+    s.op_data = s.op_data.project_arrangements([task.plan])
+    task.plan.clear()
+    assert s._complete_group_shift(task)
+    assert s.op_data.group_is_resting("感知")
+    assert s.op_data.operators["褐果"].is_resting()
+    assert s.op_data.operators["佩佩"].current_room == "train"
+    assert s.op_data.operators["佩佩"].current_index == 1
+    assert {
+        room: [vars(slot) for slot in row] for room, row in s.op_data.plan.items()
+    } == original_plan
