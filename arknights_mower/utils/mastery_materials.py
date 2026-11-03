@@ -117,7 +117,8 @@ class MaterialBudget:
                 continue
             item = self.items.get(key, {})
             owned = stock.get(key, 0)
-            floor = max(0, self.ingredient_reserves.get(key, 0) - reserved.get(key, 0))
+            # Direct goals can also use new stock retained for the ingredient floor.
+            floor = max(0, self.ingredient_reserves.get(key, 0) - direct[key])
             extra_used = min(count - reserved.get(key, 0), max(0, owned - floor))
             stock[key] = owned - extra_used
             used = extra_used + reserved.get(key, 0)

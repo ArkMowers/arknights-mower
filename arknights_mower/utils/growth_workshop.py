@@ -96,29 +96,14 @@ def next_recipe(
         while pending:
             iid = max(pending, key=lambda key: (budget.depths.get(key, 0), key))
             pending.remove(iid)
-            used = min(
-                max(
-                    0,
-                    available[iid]
-                    - max(
-                        0,
-                        budget.ingredient_reserves.get(iid, 0)
-                        - held[iid]
-                        - reserved.get(iid, 0),
-                    ),
-                ),
-                demand[iid],
+            floor = max(
+                0, budget.ingredient_reserves.get(iid, 0) - held[iid] - direct[iid]
             )
+            used = min(max(0, available[iid] - floor), demand[iid])
             available[iid] -= used
             shortage = demand[iid] - used
             if demand[iid] > direct[iid] - reserved.get(iid, 0):
-                shortage += max(
-                    0,
-                    budget.ingredient_reserves.get(iid, 0)
-                    - held[iid]
-                    - reserved.get(iid, 0)
-                    - available[iid],
-                )
+                shortage += max(0, floor - available[iid])
             if shortage <= 0 or iid not in budget.recipes or iid not in formula_ids:
                 continue
             costs, output = budget.recipes[iid]
