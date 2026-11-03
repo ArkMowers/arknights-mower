@@ -87,7 +87,7 @@ def dispatch_solver(replacement_solver):
     instance._initial_mood_read_pending = lambda: False
     instance._emergency_frozen = lambda: False
     instance._emergency_active = lambda: False
-    instance._protected_training_names = lambda: set()
+    instance._protected_training_names = lambda *, include_configured=True: set()
     instance._discard_product_switches = MagicMock()
     instance._refresh_deferred_product_reservations = MagicMock()
     instance.backup_plan_solver = MagicMock(return_value=False)

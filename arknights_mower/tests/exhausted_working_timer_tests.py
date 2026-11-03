@@ -537,6 +537,7 @@ def test_fiammetta_swap_writes_both_operators_one_second_apart(
 @pytest.mark.parametrize("already_arranged", [False, True])
 def test_fiammetta_arrangement_requests_both_mood_indexes(already_arranged):
     solver = object.__new__(BaseSchedulerSolver)
+    solver._protected_training_slots = lambda: set()
     solver.task = SchedulerTask(
         task_plan={"dormitory_1": ["伊内丝", "菲亚梅塔"]},
         task_type=TaskTypes.FIAMMETTA,

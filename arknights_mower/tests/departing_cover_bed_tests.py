@@ -30,7 +30,7 @@ def solver(op_data, monkeypatch):
     data.dorm[0].name = cover.name
     instance = object.__new__(base_schedule.BaseSchedulerSolver)
     instance.op_data, instance.tasks, instance.task = data, [], None
-    instance._protected_training_names = lambda: set()
+    instance._protected_training_names = lambda *, include_configured=True: set()
     instance._refresh_deferred_product_reservations = lambda: None
     instance.check_fia = lambda: (None, None)
     return instance

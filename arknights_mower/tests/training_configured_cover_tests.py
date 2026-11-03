@@ -302,3 +302,70 @@ def test_following_assistant_can_rest_with_group_while_trainee_stays(training_co
     assert {
         room: [vars(slot) for slot in row] for room, row in s.op_data.plan.items()
     } == original_plan
+
+
+@pytest.mark.parametrize("first_group", ["深海", "感知"])
+@pytest.mark.parametrize("entry", ["metadata", "execution"])
+def test_idle_training_cover_stays_until_last_shared_group_returns(
+    training_cover, first_group, entry
+):
+    s = training_cover
+    data = s.op_data
+    shared = data.operators["撷英调香师"]
+    shared.replacement = ["桃金娘"]
+    shared.group_bindings[0]["replacement"] = ["桃金娘"]
+    # 两组共用同一替班，桃金娘只具有训练室配置身份，实际在固定宿舍位。
+    s.op_data = data.project_arrangements(
+        [
+            {
+                "central": ["重岳"],
+                "contact": ["夕"],
+                "dormitory_1": ["冰酿", "桃金娘", "令", "歌蕾蒂娅", "Free"],
+            }
+        ]
+    )
+    data = s.op_data
+    now = datetime.now()
+    first = "歌蕾蒂娅" if first_group == "深海" else "令"
+    last = "令" if first_group == "深海" else "歌蕾蒂娅"
+    for name, hours in ((first, 1), (last, 2)):
+        op = data.operators[name]
+        op.mood = 10
+        data.get_dorm_by_name(name)[1].time = now + timedelta(hours=hours)
+    s.tasks, s.task = [], None
+
+    s.plan_metadata()
+
+    returns = sorted(
+        (task for task in s.tasks if task.type == TaskTypes.SHIFT_ON),
+        key=lambda task: task.time,
+    )
+    assert len(returns) == 2
+    first_task, last_task = returns
+    original_time = first_task.time
+    if entry == "metadata":
+        assert first_task.plan.get("dormitory_1", ["Current", "Current"])[1] in (
+            "Current",
+            "桃金娘",
+        )
+    else:
+        # 旧版本已生成的错误目标也必须在执行准备时重新整理。
+        first_task.plan.setdefault("dormitory_1", ["Current"] * 5)[1] = "撷英调香师"
+    s.task = first_task
+    s._prepare_group_shift(first_task, remember_targets=True)
+    assert first_task.plan.get("dormitory_1", ["Current", "Current"])[1] in (
+        "Current",
+        "桃金娘",
+    )
+    assert first_task.time == original_time
+    s.op_data = data.project_arrangements([first_task.plan])
+    first_task.plan.clear()
+    assert s._complete_group_shift(first_task)
+    assert s.op_data.get_current_operator("dormitory_1", 1).name == "桃金娘"
+    assert s.op_data.group_is_resting("感知" if first_group == "深海" else "深海")
+    s.task, s.tasks = last_task, [last_task]
+    s._prepare_group_shift(last_task, remember_targets=True)
+    final = s.op_data.project_arrangements([last_task.plan])
+    assert final.get_current_operator("dormitory_1", 1).name == "撷英调香师"
+    assert data.operators["百炼嘉维尔"].current_room == "train"
+    assert data.operators["佩佩"].current_room == "train"

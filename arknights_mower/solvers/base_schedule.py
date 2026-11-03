@@ -7890,7 +7890,8 @@ class BaseSchedulerSolver(
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
         excluded = self._protected_facility_names()
-        agents = [name for name in agents if name not in excluded]
+        if excluded:
+            agents = [name for name in agents if name not in excluded]
         protected_training = self._protected_facility_names(include_configured=False)
         if not agents:
             if failure_reasons is not None:
@@ -8584,9 +8585,9 @@ class BaseSchedulerSolver(
                     )[index] = name
         expected_plan = {}
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
-            expected_plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
-                index
-            ] = name
+            expected_plan.setdefault(
+                room, ["Current"] * len(self.op_data.get_current_room(room, True))
+            )[index] = name
         original_transitions = self.op_data.arrangement_group_transitions(expected_plan)
         transitions = self.op_data.arrangement_group_transitions(
             task.plan, group_transitions=task.group_shift_transitions
@@ -8764,7 +8765,7 @@ class BaseSchedulerSolver(
             arrangement = copy.deepcopy(pending.plan)
             for (room, index), name in expected.items():
                 arrangement.setdefault(
-                    room, ["Current"] * len(self.op_data.plan[room])
+                    room, ["Current"] * len(self.op_data.get_current_room(room, True))
                 )[index] = name
             owned = footprint(
                 arrangement, getattr(pending, "group_shift_transitions", {})
@@ -8973,9 +8974,9 @@ class BaseSchedulerSolver(
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
             actual = self.op_data.get_current_operator(room, index)
             if actual is None or actual.name != name:
-                missing.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
-                    index
-                ] = name
+                missing.setdefault(
+                    room, ["Current"] * len(self.op_data.get_current_room(room, True))
+                )[index] = name
                 differences.append(
                     {
                         "room": room,

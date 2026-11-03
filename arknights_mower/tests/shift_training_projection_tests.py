@@ -145,3 +145,43 @@ def test_cycle_without_backup_filters_training_intent(training_solver):
     assert "艾丽妮" not in task.plan.get("dormitory_1", [])
     assert "train" not in task.plan
     s._notify_train_correction_skipped.assert_not_called()
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_following_unconfigured_assistant_confirms_with_ordinary_group_shift(
+    training_solver, configured
+):
+    s = training_solver
+    config.conf.assistant_follows_schedule = True
+    s.train_room_state = mastery_reader.RoomState("training")
+    if configured:
+        s.op_data.plan["train"] = [Room("望", "", []), Room("余", "", [])]
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"central": ["陈"], "train": ["望", "余"]},
+    )
+    s.task, s.tasks = task, [task]
+    before = backup.positions(s.op_data)
+
+    s._prepare_group_shift(task, remember_targets=True)
+
+    assert task.plan["train"] == ["望", "Current"]
+    assert task.group_shift_expected["train", 0] == "望"
+    assert ("train", 1) not in task.group_shift_expected
+    assert backup.positions(s.op_data) == before
+    original_time = task.time
+    task.plan.clear()
+    assert not s._complete_group_shift(task)
+    assert task.time == original_time
+    assert task.plan["train"] == ["望", "Current"]
+    following = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+    assert s._group_shift_predecessors(
+        following, {"central": ["陈"]}, {"红松": True}
+    ) == [task]
+    s._prepare_group_shift(task, remember_targets=True)
+    projected = s.op_data.project_arrangements([task.plan])
+    s.op_data.operators, s.op_data.dorm = projected.operators, projected.dorm
+    task.plan.clear()
+    assert s._complete_group_shift(task)
+    assert s.op_data.get_train_support() == "望"
+    assert s.op_data.operators["克莱门莎"].current_room == "train"

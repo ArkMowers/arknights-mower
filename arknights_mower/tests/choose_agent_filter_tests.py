@@ -420,6 +420,7 @@ def test_high_clear_wait_applies_to_empty_fixed_and_free_selection(
 
 def selection_solver(monkeypatch, residents=None):
     solver = object.__new__(BaseSchedulerSolver)
+    solver._protected_training_slots = lambda: set()
     solver.task = None
     solver.wait_for_cleared_selection = MagicMock()
     current = list(RESIDENTS if residents is None else residents)
