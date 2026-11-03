@@ -138,7 +138,7 @@ const difficulty_max = {
   Sami: 15,
   Sarkaz: 18,
   JieGarden: 18,
-  BlackFlow: 15
+  BlackFlow: 16
 }
 
 // 难度下拉：不切换(-1)、最高难度(MAX)、N0..当前主题最高难度（如 N15/N18）。

@@ -236,6 +236,8 @@ def actual_maa(manual):
     engine.get_version.return_value = "v6.17.3"
     solver.initialize_maa = Mock(side_effect=lambda: setattr(solver, "MAA", engine))
     solver.back_to_index = Mock()
+    solver.scene_graph_navigation = Mock()
+    solver.scene = Mock(return_value=manual.module.Scene.TERMINAL_MAIN)
     solver.rest_until_next_task = Mock()
     solver.restore_maa_theme = Mock()
     solver.to_reclamation = Mock()

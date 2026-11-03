@@ -245,7 +245,7 @@ describe('roguelike_options', () => {
       JieGarden: 19,
       Phantom: 16,
       Sami: 16,
-      BlackFlow: 16
+      BlackFlow: 17
     }
     for (const [theme, count] of Object.entries(rows)) {
       expect(difficulty_options(theme).map((o) => o.value)).toEqual([
