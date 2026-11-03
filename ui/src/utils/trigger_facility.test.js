@@ -65,6 +65,11 @@ describe('设施状态副表表达式', () => {
       room: 'train',
       status: 'training'
     })
+    expect(facility_expression('train', 'protected')).toBe("op_data.facility_is_protected('train')")
+    expect(parse_facility_expression("op_data.facility_is_protected('train')")).toEqual({
+      room: 'train',
+      status: 'protected'
+    })
   })
 
   it('生成并解析生产设施统计', () => {

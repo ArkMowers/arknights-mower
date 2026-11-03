@@ -212,7 +212,7 @@ function update_facility(room) {
   const supportsMastery = room == 'train'
   const status =
     (op_data.value.status == 'product' && !supportsProduct) ||
-    (['mastery_plan', 'training'].includes(op_data.value.status) && !supportsMastery)
+    (['mastery_plan', 'training', 'protected'].includes(op_data.value.status) && !supportsMastery)
       ? 'operator_count'
       : op_data.value.status
   data.value = facility_expression(room, status)
@@ -348,6 +348,7 @@ const facility_status_options = computed(() => {
     return [
       { label: `是否存在专精计划（${planCount}）`, value: 'mastery_plan' },
       { label: `是否正在训练（${training}）`, value: 'training' },
+      { label: '是否受训练室保护（运行时判断）', value: 'protected' },
       { label: '当前干员数量', value: 'operator_count' }
     ]
   }
