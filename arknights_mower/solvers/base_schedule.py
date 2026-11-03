@@ -17758,7 +17758,7 @@ class BaseSchedulerSolver(
         self.maa_event_shop_task = None
 
     def restore_maa_theme(self):
-        """本轮 MAA 任务收尾时恢复指定主题，为下次调度预留时间。"""
+        """本轮 MAA 日常任务收尾时恢复指定主题，为下次调度预留时间。"""
         conf = config.conf
         if not conf.maa_restore_theme_enable or self.MAA is None:
             return
@@ -17797,7 +17797,7 @@ class BaseSchedulerSolver(
                 logger.info("距离下次调度时间过近，跳过恢复主题")
                 return
 
-            # 大型任务可能被调度器中断；清空原队列后只运行恢复任务。
+            # 清空原队列后只运行恢复主题任务。
             self.MAA.stop()
             if config.stop_maa.is_set() or config.stop_mower.is_set():
                 return
@@ -17908,6 +17908,14 @@ class BaseSchedulerSolver(
                 if running_long_task:
                     return long_task_deadline(self, long_limit)
                 return self.tasks[0].time
+
+            def large_task_start_allowed():
+                if config.stop_mower.is_set():
+                    raise MowerExit
+                return (
+                    not config.stop_maa.is_set()
+                    and (deadline() - datetime.now()).total_seconds() > 30
+                )
 
             record_execution = not one_time and (
                 not manual or tasks == "All" or "Fight" in tasks
@@ -18123,7 +18131,9 @@ class BaseSchedulerSolver(
                         break
                     restore_theme = False
                     self.release_maa()
-                    if paradox:
+                    if not paradox:
+                        self.initialize_maa()
+                    if selected_long not in ("sss", "rcl"):
                         from arknights_mower.utils.device.io_budget import (
                             device_io_budget,
                         )
@@ -18141,7 +18151,7 @@ class BaseSchedulerSolver(
                                 raise InterruptedError
                             seconds = navigation_end - monotonic()
                             if seconds <= 0:
-                                raise TimeoutError("悖论模拟干员列表导航超时")
+                                raise TimeoutError("MAA 大型任务启动前导航超时")
                             return min(
                                 seconds,
                                 (deadline() - datetime.now()).total_seconds() - 30,
@@ -18151,13 +18161,51 @@ class BaseSchedulerSolver(
                             with device_io_budget(navigation_remaining):
                                 self.recog.reset_after_external_control()
                                 self.back_to_index()
-                                ready = self.to_operator_list()
+                                if paradox:
+                                    ready = self.to_operator_list()
+                                else:
+                                    self.scene_graph_navigation(Scene.TERMINAL_MAIN)
+                                    navigation_remaining()
+                                    if selected_long == "copilot":
+                                        from arknights_mower.utils.maa_copilot import (
+                                            copilot_navigation_target,
+                                        )
+
+                                        target = copilot_navigation_target(
+                                            copilot_conf.scripts[copilot_run["next"]]
+                                        )
+                                        ready = NavigationSolver(
+                                            self.device, self.recog
+                                        ).run(target)
+                                        navigation_remaining()
+                                        if ready:
+                                            self.recog.update()
+                                            self.scene_graph_navigation(
+                                                Scene.OPERATOR_CHOOSE_LEVEL
+                                            )
+                                            ready = (
+                                                self.scene()
+                                                == Scene.OPERATOR_CHOOSE_LEVEL
+                                            )
+                                    else:
+                                        ready = self.scene() == Scene.TERMINAL_MAIN
                                 navigation_remaining()
                                 if not ready:
-                                    raise ValueError("未确认干员列表，未启动悖论模拟")
+                                    if paradox:
+                                        raise ValueError(
+                                            "未确认干员列表，未启动悖论模拟"
+                                        )
+                                    if selected_long == "copilot":
+                                        raise ValueError(
+                                            "未确认作业关卡地图，请检查导航关卡名与 Mower AI 配置"
+                                        )
+                                    raise ValueError(
+                                        "未确认终端首页，未启动 MAA 大型任务"
+                                    )
                         except InterruptedError:
                             break
-                        self.initialize_maa()
+                        if paradox:
+                            self.initialize_maa()
                         if config.stop_mower.is_set():
                             raise MowerExit
                         if (
@@ -18166,9 +18214,11 @@ class BaseSchedulerSolver(
                         ):
                             break
                     else:
-                        self.initialize_maa()
                         self.recog.reset_after_external_control()
                         self.back_to_index()
+                    if not large_task_start_allowed():
+                        break
+                    large_task_interrupted = False
                     if selected_long == "rogue":
                         professional = conf.rogue.squad in _PROFESSIONAL_SQUADS
                         rogue_params = {
@@ -18368,6 +18418,8 @@ class BaseSchedulerSolver(
                                 if not flight_prefix:
                                     rogue_params["core_char"] = "机械师"
                                     rogue_params["use_support"] = False
+                        if not large_task_start_allowed():
+                            break
                         task_id = self.MAA.append_task("Roguelike", rogue_params)
                         if blackflow_run is not None:
                             self.maa_blackflow_task = (task_id, blackflow_run)
@@ -18387,6 +18439,9 @@ class BaseSchedulerSolver(
                             params["copilot_list"] = [
                                 params["copilot_list"][copilot_index]
                             ]
+                            params["copilot_list"][0]["nav_name_override"] = target
+                        if not large_task_start_allowed():
+                            break
                         task_id = self.MAA.append_task(
                             "ParadoxCopilot" if paradox else "Copilot", params
                         )
@@ -18406,6 +18461,8 @@ class BaseSchedulerSolver(
                         params = build_sss_params(item)
                         if self.to_sss(item.type, item.ec):
                             raise ValueError("保全派驻导航失败")
+                        if not large_task_start_allowed():
+                            break
                         task_id = self.MAA.append_task("SSSCopilot", params)
                         self.maa_sss_task = {
                             "id": task_id,
@@ -18432,7 +18489,12 @@ class BaseSchedulerSolver(
                                     "num_craft_batches",
                                 ):
                                     rcl_params[key] = getattr(conf.rcl, key)
+                        if not large_task_start_allowed():
+                            break
                         self.MAA.append_task("Reclamation", rcl_params)
+                    if not large_task_start_allowed():
+                        self.maa_stop()
+                        break
                     logger.info("启动")
                     large_task_started = True
                     self.MAA.start()
@@ -18449,7 +18511,7 @@ class BaseSchedulerSolver(
                             or config.stop_mower.is_set()
                         ):
                             self.maa_stop()
-                            restore_theme = True
+                            large_task_interrupted = True
                             break
                     if config.stop_mower.is_set():
                         raise MowerExit
@@ -18471,7 +18533,7 @@ class BaseSchedulerSolver(
                         (more_copilot or more_sss)
                         and not config.stop_maa.is_set()
                         and not config.stop_mower.is_set()
-                        and not restore_theme
+                        and not large_task_interrupted
                         and deadline() - datetime.now() > timedelta(seconds=30)
                     ):
                         continue
@@ -18479,6 +18541,7 @@ class BaseSchedulerSolver(
 
             elif manual or not rg_sleep:
                 if selected_long == "ra":
+                    restore_theme = False
                     self.back_to_index()
                     ra_solver = ReclamationAlgorithm(self.device, self.recog)
                     try:
@@ -18486,6 +18549,7 @@ class BaseSchedulerSolver(
                     finally:
                         resume_dorm_releases(self)
                 elif selected_long == "sf":
+                    restore_theme = False
                     self.back_to_index()
                     sf_solver = SecretFront(self.device, self.recog)
                     try:

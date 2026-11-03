@@ -250,11 +250,22 @@ def scheduler(monkeypatch, files, tmp_path):
     solver.MAA.running.return_value = False
     solver.maa_callback = None
     solver.recog = MagicMock()
+    solver.device = MagicMock()
+    solver.scene = MagicMock(
+        side_effect=lambda: (
+            base_schedule.Scene.OPERATOR_CHOOSE_LEVEL
+            if base_schedule.config.conf.maa_long_task_type == "copilot"
+            else base_schedule.Scene.TERMINAL_MAIN
+        )
+    )
+    monkeypatch.setattr(base_schedule, "NavigationSolver", MagicMock())
+    base_schedule.NavigationSolver.return_value.run.return_value = True
     solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=2))]
     solver.last_execution = {"maa": None}
     solver.emergency_state = None
     for method in (
         "back_to_index",
+        "scene_graph_navigation",
         "initialize_maa",
         "release_maa",
         "restore_maa_theme",
@@ -306,6 +317,14 @@ def test_resume_skips_completed_item_and_whole_run_waits_for_manual_restart(
     first = calls[0].args[1]["copilot_list"][0]["filename"]
     second = calls[1].args[1]["copilot_list"][0]["filename"]
     assert first != second
+    assert [
+        call.args[0]
+        for call in base_schedule.NavigationSolver.return_value.run.call_args_list
+    ] == ["1-7", "CE-6"]
+    assert [call.args[1]["copilot_list"][0]["nav_name_override"] for call in calls] == [
+        "1-7",
+        "CE-6",
+    ]
     assert scheduler.maa_copilot_progress["next"] == 1
 
     def finish_remaining():
@@ -315,6 +334,7 @@ def test_resume_skips_completed_item_and_whole_run_waits_for_manual_restart(
     scheduler.MAA.running.side_effect = finish_remaining
     scheduler.maa_plan_solver()
     assert scheduler.MAA.append_task.call_count == 3
+    base_schedule.NavigationSolver.return_value.run.assert_called_with("CE-6")
     assert (
         scheduler.MAA.append_task.call_args.args[1]["copilot_list"][0]["filename"]
         == second
@@ -565,7 +585,7 @@ def test_large_task_real_dispatch_has_no_daily_or_repeat_parameters(scheduler):
     scheduler.restore_maa_theme.assert_not_called()
 
 
-def test_scheduled_preemption_stops_and_restores_without_losing_task(
+def test_scheduled_preemption_stops_without_theme_restoration_or_lost_task(
     scheduler, monkeypatch
 ):
     original = scheduler.tasks[0]
@@ -577,7 +597,7 @@ def test_scheduled_preemption_stops_and_restores_without_losing_task(
     )
     scheduler.maa_plan_solver()
     scheduler.maa_stop.assert_called_once_with()
-    scheduler.restore_maa_theme.assert_called_once_with()
+    scheduler.restore_maa_theme.assert_not_called()
     assert scheduler.tasks[0] is original
 
 
@@ -669,3 +689,42 @@ def test_mower_stop_closes_game_and_keeps_completed_queue_items(scheduler, monke
     scheduler.restore_maa_theme.assert_not_called()
     scheduler.rest_until_next_task.assert_not_called()
     scheduler.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "stage,override,expected",
+    [
+        ("1-7", "", "1-7"),
+        ("main_01-07", "", "1-7"),
+        ("internal_stage", "TL-10", "TL-10"),
+        ("tl-ex-8", "", "TL-EX-8"),
+    ],
+)
+def test_navigation_target_uses_explicit_stage_and_supported_identifiers(
+    files, stage, override, expected
+):
+    info = upload({**SCRIPT, "stage_name": stage})
+    item = CopilotConf(
+        scripts=[{"id": info["id"], "nav_name_override": override}]
+    ).scripts[0]
+    assert library.copilot_navigation_target(item) == expected
+
+
+def test_unknown_internal_navigation_target_requires_stage_override(files):
+    info = upload({**SCRIPT, "stage_name": "unmapped_internal_stage"})
+    item = CopilotConf(scripts=[{"id": info["id"]}]).scripts[0]
+    with pytest.raises(ValueError, match="导航关卡名"):
+        library.copilot_navigation_target(item)
+
+
+@pytest.mark.parametrize("failure", ["route", "wrong_page"])
+def test_copilot_does_not_start_without_confirmed_stage_map(scheduler, failure):
+    if failure == "route":
+        base_schedule.NavigationSolver.return_value.run.return_value = False
+    else:
+        scheduler.scene.side_effect = None
+        scheduler.scene.return_value = base_schedule.Scene.TERMINAL_MAIN
+    scheduler.maa_plan_solver([])
+    scheduler.MAA.append_task.assert_not_called()
+    scheduler.MAA.start.assert_not_called()
+    assert scheduler.maa_copilot_progress["failed"] is True

@@ -141,8 +141,10 @@ def setup_plan(solver, monkeypatch):
     solver.last_execution = {"maa": None}
     solver.credit_fight = 1
     solver.recog = MagicMock()
+    solver.scene = MagicMock(return_value=base_schedule.Scene.TERMINAL_MAIN)
     for name in [
         "back_to_index",
+        "scene_graph_navigation",
         "append_maa_task",
         "initialize_maa",
         "restore_maa_theme",
@@ -194,7 +196,7 @@ def test_no_restore_without_completed_daily_work(solver, monkeypatch, reason):
 
 
 @pytest.mark.parametrize("ended_early", [False, True])
-def test_long_task_restores_after_scheduled_stop_but_not_core_completion(
+def test_long_task_never_restores_theme_after_stop_or_core_completion(
     solver, monkeypatch, ended_early
 ):
     setup_plan(solver, monkeypatch)
@@ -218,5 +220,23 @@ def test_long_task_restores_after_scheduled_stop_but_not_core_completion(
     solver.maa_plan_solver()
     assert order.mock_calls[0].args[0] == "Roguelike"
     assert order.mock_calls[1:] == (
-        [call.idle()] if ended_early else [call.stop(), call.restore(), call.idle()]
+        [call.idle()] if ended_early else [call.stop(), call.idle()]
     )
+    solver.restore_maa_theme.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "kind,executor", [("ra", "ReclamationAlgorithm"), ("sf", "SecretFront")]
+)
+def test_native_large_task_does_not_inherit_daily_theme_restore(
+    solver, monkeypatch, kind, executor
+):
+    setup_plan(solver, monkeypatch)
+    maa = solver.MAA
+    solver.initialize_maa.side_effect = lambda: setattr(solver, "MAA", maa)
+    native = MagicMock()
+    monkeypatch.setattr(base_schedule, executor, MagicMock(return_value=native))
+    solver.task = SchedulerTask(time=datetime.now())
+    solver.maa_plan_solver(["Fight"], manual=True, long_task=kind)
+    native.run.assert_called_once()
+    solver.restore_maa_theme.assert_not_called()
