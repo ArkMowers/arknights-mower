@@ -521,6 +521,7 @@ class EmergencyRecoveryMixin:
             logger.info("原生轮休检查未完成，不启动自动救急：%s", projection.reason)
             return
         try:
+            data.training_scheduling_protected = bool(self._protected_training_slots())
             resolved = effective_rescue_plan(data, config.rescue_plan)
         except ValueError as exc:
             logger.warning("自动救急未启动：%s，请在设置旁填写救急主表", exc)

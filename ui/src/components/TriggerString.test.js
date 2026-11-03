@@ -90,6 +90,18 @@ function mount(provide, data, onUpdate) {
 }
 
 describe('副表绑组心情选择', () => {
+  it('训练室保护条件可选择并在切换到其他设施时恢复合法选项', async () => {
+    const { provide } = setup()
+    const state = mount(provide, "op_data.facility_is_protected('train')")
+    expect(state.facility_status_options).toContainEqual({
+      label: '是否受训练室保护（运行时判断）',
+      value: 'protected'
+    })
+    expect(state.op_data.status).toBe('protected')
+    state.update_facility('central')
+    await nextTick()
+    expect(state.data).toBe("op_data.facility_operator_count('central')")
+  })
   it.each([false, true])('空副表仍显示主表及其他副表的完整绑组（救急=%s）', async (rescue) => {
     const { plan, provide } = setup(rescue)
     const before = JSON.stringify([plan.plan, plan.backup_plans])

@@ -52,7 +52,7 @@ function tokenize(text: string): Token[] {
   for (let rest = text.trim(); rest; rest = rest.trimStart()) {
     if (tokens.length >= 1024) return fail('条件文本超过限制')
     const worker = /^op_data\.operators\[['"]([^'"\[\]]+)['"]\]\.(is_resting\(\)|is_working\(\)|current_mood\(\)|current_room|current_index|room|index|mood|upper_limit|lower_limit|group|workaholic|exhaust_require|rest_in_full|operator_type|resting_priority)\b/.exec(rest) ?? /^op_data\.operators\[['"]([^'"\[\]]+)['"]\]\.(is_resting\(\)|is_working\(\)|current_mood\(\))/.exec(rest)
-    const query = /^op_data\.(major_maintenance_remaining_hours|group_min_mood|group_max_mood|facility_has_mastery_plan|facility_is_training|inventory_count|facility_product_count|facility_product_type_count|facility_product)\b/.exec(rest)
+    const query = /^op_data\.(major_maintenance_remaining_hours|group_min_mood|group_max_mood|facility_has_mastery_plan|facility_is_training|facility_is_protected|inventory_count|facility_product_count|facility_product_type_count|facility_product)\b/.exec(rest)
     const external = /^op_data\.party_time\b/.exec(rest)
     const quoted = /^(['"])((?:\\.|(?!\1)[^\\])*)\1/.exec(rest)
     const number = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(rest)
@@ -205,9 +205,9 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
             return Object.prototype.hasOwnProperty.call(products, name) ? products[name] ?? null : null
           }
         }
-        if (token.member === 'facility_has_mastery_plan' || token.member === 'facility_is_training') {
+        if (token.member === 'facility_has_mastery_plan' || token.member === 'facility_is_training' || token.member === 'facility_is_protected') {
           if (name !== 'train') return fail(`不支持的训练室位置：${name}`)
-          // Local simulation assumes no unfinished training plan or active training.
+          // Local simulation assumes no unfinished training plan, active training or room protection.
           return () => false
         }
         // Alpha _group_moods uses the current effective group and only fixed work anchors.
@@ -316,7 +316,7 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
     observedOperatorDependenciesOnly:tokens.some(token=>token.kind==='worker')&&tokens.every(token=>token.kind==='operator'||token.kind==='value'||token.kind==='worker'&&['is_working()','is_resting()','current_room','current_index','room','index','current_mood()','mood'].includes(token.member!)),
     usesInventory: tokens.some(token=>token.kind==='query'&&token.member==='inventory_count'),
     usesFacilityProduct: tokens.some(token=>token.kind==='query'&&['facility_product','facility_product_count','facility_product_type_count'].includes(token.member!)),
-    usesMasteryPlan: tokens.some(token=>token.kind==='query'&&['facility_has_mastery_plan','facility_is_training'].includes(token.member!)),
+    usesMasteryPlan: tokens.some(token=>token.kind==='query'&&['facility_has_mastery_plan','facility_is_training','facility_is_protected'].includes(token.member!)),
     usesCurrentMood: tokens.some(token=>token.kind==='worker'&&token.member==='current_mood()'||token.kind==='query'&&['group_min_mood','group_max_mood'].includes(token.member!)),
   }
 }

@@ -405,6 +405,7 @@ class Operators:
         self.current_room_changed_callback = None
         self.party_time = None
         self.facility_states = {}
+        self.training_scheduling_protected = False
         self.room_observations = {}
         self.reserved_product_beds = {}
         self.reserved_product_replacements = set()
@@ -432,6 +433,7 @@ class Operators:
                 "facility_product_type_count",
                 "facility_has_mastery_plan",
                 "facility_is_training",
+                "facility_is_protected",
                 "major_maintenance_remaining_hours",
                 "group_min_mood",
                 "group_max_mood",
@@ -1917,6 +1919,11 @@ class Operators:
 
         plan = get_active_plan()
         return plan is not None and plan.get("status") == "training"
+
+    def facility_is_protected(self, room: str) -> bool:
+        """返回调度器在副表求值前同步的训练室保护状态。"""
+        self._validate_training_room(room)
+        return getattr(self, "training_scheduling_protected", False) is True
 
     def facility_product_count(self, product: str) -> int:
         """返回当前生产指定产物或订单类型的设施数量。"""

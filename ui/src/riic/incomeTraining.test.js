@@ -32,6 +32,12 @@ it('calculates the imported no-training schedule and retains its training-room s
 }, 30000)
 
 it.each([
+  "op_data.facility_is_protected('room_1_1')",
+  'op_data.facility_is_protected()',
+  'op_data.facility_is_protected(1)',
+  "op_data.facility_is_protected('train', 'train')",
+  "op_data.facility_is_protected('train').constructor",
+  "op_data.facility_is_protected('train')()",
   "op_data.facility_is_training('room_1_1')",
   "op_data.facility_is_training('dormitory_1')",
   'op_data.facility_is_training()',
@@ -42,3 +48,39 @@ it.each([
 ])('rejects invalid training query %s', (source) => {
   expect(() => compileBackupExpression(source, new Set())).toThrow('副表：')
 })
+
+it('calculates idle training staffing with the protection condition', () => {
+  const source = structuredClone(plan)
+  const backup = source.backup_plans.find((entry) => entry.name === '无训练计划')
+  backup.trigger = {
+    left: "op_data.facility_is_training('train')",
+    operator: '==',
+    right: 'False'
+  }
+  backup.trigger = {
+    left: backup.trigger,
+    operator: 'and',
+    right: {
+      left: "op_data.facility_is_protected('train')",
+      operator: '==',
+      right: 'False'
+    }
+  }
+  const result = calculateIncome(source, {
+    ...defaultIncomeSettings(),
+    operatorMode: 'maximum',
+    inventorySource: 'manual',
+    weightMode: 'custom',
+    warmupDays: 0,
+    sampleDays: 1
+  })
+  expect(result.success, result.error).toBe(true)
+  expect(
+    result.eventLog.entries.some(
+      (event) => event.type === '副表切换' && event.detail === '无训练计划（启用）'
+    )
+  ).toBe(true)
+  expect(
+    result.diagnostics.find((item) => item.code === 'MOWER_MASTERY_PLAN_ASSUMPTION')?.message
+  ).toContain('训练室不受保护')
+}, 30000)

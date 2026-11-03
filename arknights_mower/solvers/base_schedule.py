@@ -1216,7 +1216,7 @@ class BaseSchedulerSolver(
             for task in windows:
                 task.maintenance_preparation_pending = True
             self.backup_plan_solver()
-            selection = self.op_data.evaluate_backup_selection()
+            selection = self._evaluate_backup_selection()
             pending = pending or (
                 selection.conditions != self.op_data.plan_condition
                 or selection.group_id != self.op_data.backup_group
@@ -4936,6 +4936,13 @@ class BaseSchedulerSolver(
         if self._suppress_facility_arrangement(fix_plan):
             self._notify_train_correction_skipped()
 
+    def _evaluate_backup_selection(self, data=None):
+        """副表条件和驻员过滤共用当前训练室保护判断。"""
+        if data is None:
+            data = self.op_data
+        data.training_scheduling_protected = bool(self._protected_training_slots())
+        return data.evaluate_backup_selection()
+
     def _protected_training_slots(self):
         """专精接管的岗位不参与普通排班；开启跟随时保留协助位。"""
         if not config.conf.enable_mastery:
@@ -7562,7 +7569,7 @@ class BaseSchedulerSolver(
                 return False
 
             selection_started = perf_counter()
-            selection = self.op_data.evaluate_backup_selection()
+            selection = self._evaluate_backup_selection()
             selection_elapsed = perf_counter() - selection_started
             initial_conditions = selection.conditions
             original_group = self.op_data.backup_group
@@ -7636,7 +7643,7 @@ class BaseSchedulerSolver(
                     )
                     return False
                 current = conditions
-                selection = self.op_data.evaluate_backup_selection()
+                selection = self._evaluate_backup_selection()
                 conditions = selection.conditions
 
             timing.result = "已收敛"
@@ -8373,7 +8380,7 @@ class BaseSchedulerSolver(
 
         seen = {tuple(projected.plan_condition)}
         while projected.backup_plans:
-            selection = projected.evaluate_backup_selection()
+            selection = self._evaluate_backup_selection(projected)
             conditions = selection.conditions
             if conditions == projected.plan_condition:
                 break
@@ -9857,7 +9864,7 @@ class BaseSchedulerSolver(
         self._suppress_facility_arrangement(intent)
         seed = self.op_data.project_arrangements([intent], now=projection_now)
         seed.commit_group_shifts(getattr(task, "group_shift_transitions", {}))
-        selection = seed.evaluate_backup_selection()
+        selection = self._evaluate_backup_selection(seed)
         conditions = selection.conditions
         seen = set()
         for _ in range(64):
@@ -9896,7 +9903,7 @@ class BaseSchedulerSolver(
                         for group in ordinary_policy.ordinary_exhaust_blocked_groups
                     }
                 )
-                selection = seed.evaluate_backup_selection()
+                selection = self._evaluate_backup_selection(seed)
                 conditions = selection.conditions
                 seen.clear()
                 continue
@@ -9987,7 +9994,7 @@ class BaseSchedulerSolver(
             if projection_now is not None:
                 projected._projection_deadlines.clear()
             projected._apply_projected_arrangements([merged])
-            next_selection = projected.evaluate_backup_selection()
+            next_selection = self._evaluate_backup_selection(projected)
             next_conditions = next_selection.conditions
             if (
                 next_conditions == conditions
@@ -10372,7 +10379,7 @@ class BaseSchedulerSolver(
                 return
             after_return = simulation.op_data.project_arrangements([early.plan])
             after_return.commit_group_shifts(early.group_shift_transitions)
-            selection = after_return.evaluate_backup_selection()
+            selection = self._evaluate_backup_selection(after_return)
             if selection.conditions != conditions or selection.group_id != backup_group:
                 return
             simulation.op_data = after_return
