@@ -1,11 +1,53 @@
+import asyncio
 import json
 import time
+from contextlib import suppress
 
+import httpx
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from arknights_mower.agent.tools.pick_activity_entry import pick_activity_entry
 from arknights_mower.utils import config
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
+
+
+def _invoke_with_budget(api_key, messages):
+    from arknights_mower.agent.agent import build_llm
+
+    deadline = time.monotonic() + io_timeout(90)
+
+    def remaining():
+        if config.stop_mower.is_set():
+            raise MowerExit
+        seconds = min(deadline - time.monotonic(), io_timeout(90))
+        if seconds <= 0:
+            raise TimeoutError("导航模型请求超时")
+        return seconds
+
+    async def invoke():
+        async with httpx.AsyncClient(timeout=remaining()) as client:
+            llm = build_llm(
+                api_key,
+                with_tools=False,
+                timeout=remaining(),
+                max_retries=0,
+                http_async_client=client,
+            )
+            request = asyncio.create_task(llm.ainvoke(messages))
+            try:
+                while not request.done():
+                    await asyncio.wait({request}, timeout=min(0.1, remaining()))
+                remaining()
+                return request.result()
+            finally:
+                if not request.done():
+                    request.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await request
+
+    return asyncio.run(invoke())
 
 
 def _normalize_indices(indices, max_len):
@@ -91,10 +133,7 @@ def rank_activity_entries_with_agent(
     ]
     logger.info("rank_activity_entries_with_agent: invoke single-shot")
     try:
-        from arknights_mower.agent.agent import build_llm
-
-        llm = build_llm(api_key, with_tools=False)
-        response = llm.invoke(messages)
+        response = _invoke_with_budget(api_key, messages)
         text = response.content if isinstance(response.content, str) else ""
         parsed = json.loads(text)
         indices = parsed.get("indices", [])
@@ -108,7 +147,12 @@ def rank_activity_entries_with_agent(
             f"rank_activity_entries_with_agent: empty indices, use fallback, elapsed={time.perf_counter() - start:.2f}s"
         )
         return fallback_indices
+    except (MowerExit, InterruptedError):
+        raise
     except Exception:
+        if config.stop_mower.is_set():
+            raise MowerExit
+        io_timeout(0)
         logger.info(
             f"rank_activity_entries_with_agent: response is not strict JSON, use fallback, elapsed={time.perf_counter() - start:.2f}s"
         )

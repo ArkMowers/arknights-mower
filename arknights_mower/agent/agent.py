@@ -115,7 +115,9 @@ tool_message_map = {
 }
 
 
-def build_llm(api_key, with_tools=False):
+def build_llm(
+    api_key, with_tools=False, *, timeout=90, max_retries=1, http_async_client=None
+):
     ai_type = config.conf.ai_type
     if ai_type == "deepseek":
         model = config.conf.ai_deepseek_model.strip()
@@ -148,9 +150,11 @@ def build_llm(api_key, with_tools=False):
         base_url=base_url,
         api_key=api_key,
         temperature=0,
-        timeout=90,
-        max_retries=1,
+        timeout=timeout,
+        max_retries=max_retries,
     )
+    if http_async_client is not None:
+        kwargs["http_async_client"] = http_async_client
     if ai_type == "deepseek" and model == "deepseek-v4-pro":
         kwargs["reasoning_effort"] = "high"
         kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
