@@ -741,7 +741,7 @@ def test_real_workshop_batch_persists_conservative_budget_until_normal_observati
     solver.item_list = lambda: [("固源岩", ((10, 10), (20, 20)), True)]
     solver.item_valid = lambda: True
     solver.sleep = MagicMock()
-    stock = {"固源岩": 0, "源岩": 9}
+    stock = {"固源岩": 0, "源岩": 109}
     monkeypatch.setattr(base, "get_inventory_counts", lambda: dict(stock))
     monkeypatch.setattr(
         base,
@@ -788,6 +788,8 @@ def test_real_workshop_batch_persists_conservative_budget_until_normal_observati
     assert len(data.mood_model.events) == 1
     assert not data.mood_model.pending_events
     assert saved[1].moods["泥岩"] == 18
+    assert stock["固源岩"] == 3
+    assert stock["源岩"] == 100
     solver.get_agent_from_room.assert_not_called()
     solver.turn_on_room_detail.assert_not_called()
     assert data.calculated_mood("泥岩", NOW) == 18

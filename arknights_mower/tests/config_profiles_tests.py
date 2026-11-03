@@ -773,6 +773,43 @@ def test_event_sign_in_follows_daily_profile_group(storage, enabled, inherit):
     assert saved.event_sign_in_enable is expected
 
 
+@pytest.mark.parametrize("operation", ["create", "activate", "import"])
+@pytest.mark.parametrize("selected", [[], ["workshop"], ["other_settings"]])
+def test_workshop_reserves_follow_workshop_profile_group(storage, operation, selected):
+    config.conf.workshop_t1_reserve = 17
+    config.conf.workshop_t2_reserve = 41
+    config.save_conf()
+    original = profiles.list_profiles()["active_id"]
+    incoming = backup.export_archive()
+    if operation == "activate":
+        _create("目标配置")
+    config.conf.workshop_t1_reserve = 0
+    config.conf.workshop_t2_reserve = 230
+    config.save_conf()
+
+    if operation == "create":
+        _create("加工保留量配置", selected)
+    elif operation == "activate":
+        _activate(original, selected)
+    else:
+        profiles.import_profile(
+            incoming,
+            "加工保留量配置",
+            selected,
+            expected_generation=profiles.current_generation(),
+        )
+
+    expected = (100, 100) if operation == "create" else (17, 41)
+    if "workshop" in selected:
+        expected = (0, 230)
+    assert (
+        config.conf.workshop_t1_reserve,
+        config.conf.workshop_t2_reserve,
+    ) == expected
+    saved = config.Conf(**yaml.safe_load(config.conf_path.read_text(encoding="utf-8")))
+    assert (saved.workshop_t1_reserve, saved.workshop_t2_reserve) == expected
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("operation", ["create", "activate", "import"])
 @pytest.mark.parametrize("selected", [[], ["base"], ["other_settings"]])

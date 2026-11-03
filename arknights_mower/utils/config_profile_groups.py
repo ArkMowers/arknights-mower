@@ -51,7 +51,7 @@ CONF_GROUPS = {
     },
     "drone": {"drone_count_limit", "drone_interval", "drone_room"},
     "workshop": set(
-        "book_operators fodder_operators growth_crafting_order t5_operators workshop_auto_active workshop_deer_fodder workshop_generation workshop_manual_backup workshop_manual_revision workshop_manual_settings workshop_manual_settings_revision workshop_min_bonus workshop_preset_migrated workshop_protect_t2_device_rock workshop_settings".split()
+        "book_operators fodder_operators growth_crafting_order t5_operators workshop_auto_active workshop_deer_fodder workshop_generation workshop_manual_backup workshop_manual_revision workshop_manual_settings workshop_manual_settings_revision workshop_min_bonus workshop_preset_migrated workshop_protect_t2_device_rock workshop_settings workshop_t1_reserve workshop_t2_reserve".split()
     ),
 }
 
