@@ -137,6 +137,42 @@ def test_latest_explicit_snapshot_count_wins_without_inventing_missing_zero(cach
     assert cached.db.get_inventory_counts() == {"龙门币": 1000, "赤金": 3}
 
 
+@pytest.mark.parametrize("invalidated", [False, True])
+def test_unordered_csv_uses_each_items_latest_time_even_across_invalidation(
+    cached, monkeypatch, invalidated
+):
+    cached.syncer.record_path.unlink()
+    if invalidated:
+        cached.db.save_inventory_counts({"龙门币": 800})
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                cached.db,
+                "datetime",
+                SimpleNamespace(now=lambda: SimpleNamespace(timestamp=lambda: 200)),
+            )
+            cached.db.invalidate_workshop_inventory(["龙门币"])
+    with (cached.path / "depotmerged.csv").open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["Timestamp", "Data", "json"])
+        for at, counts in [
+            (300, {"龙门币": 600}),
+            (250, {"赤金": 5}),
+            (100, {"龙门币": 1000, "赤金": 3}),
+        ]:
+            writer.writerow([at, json.dumps(counts), "{}"])
+    assert cached.module.BaseSchedulerSolver.仓库扫描(cached.solver) is False
+    assert cached.db.get_inventory_counts() == {"龙门币": 600, "赤金": 5}
+    with cached.db._conn() as conn:
+        observed = dict(
+            conn.execute(
+                "SELECT item_name, observed_at FROM workshop_inventory_updates"
+            )
+        )
+    assert observed == {"龙门币": 300, "赤金": 250}
+
+
 def test_active_battle_does_not_seed_a_baseline_from_an_old_cache(cached, monkeypatch):
     monkeypatch.setattr(
         cached.db, "battle_inventory_active", SimpleNamespace(is_set=lambda: True)

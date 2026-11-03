@@ -64,7 +64,23 @@ def restore_cached_inventory():
             and 0 < timestamp <= now
         )
 
-    snapshots = []
+    latest = {}
+
+    def remember(timestamp, counts):
+        if not usable_time(timestamp):
+            return
+        for name, count in counts.items():
+            if (
+                name not in key_mapping
+                or 是信物(name)
+                or type(count) is not int
+                or count < 0
+            ):
+                continue
+            name = key_mapping[name][2]
+            if name not in latest or timestamp > latest[name][0]:
+                latest[name] = (timestamp, count)
+
     path = get_path("@app/tmp/cultivate.json")
     try:
         with open(path, encoding="utf-8") as stream:
@@ -79,29 +95,17 @@ def restore_cached_inventory():
         ):
             raise ValueError("缓存库存格式无效")
         counts, timestamp = cloud_inventory_snapshot(payload)
-        if usable_time(timestamp):
-            snapshots.append((timestamp, counts))
+        remember(timestamp, counts)
     except FileNotFoundError:
         pass
     except (OSError, ValueError, TypeError, KeyError):
         logger.warning("仓库扫描: 森空岛本地缓存不可用，保留现有库存")
     for filename in ("depotresult.csv", "depotmerged.csv"):
-        for timestamp, counts, _ in reversed(
-            _读取历史行(get_path(f"@app/tmp/{filename}"))
-        ):
-            if not usable_time(timestamp):
-                continue
-            valid = {
-                key_mapping[name][2]: count
-                for name, count in counts.items()
-                if name in key_mapping
-                and not 是信物(name)
-                and type(count) is int
-                and count >= 0
-            }
-            if valid:
-                snapshots.append((timestamp, valid))
-                break
+        for timestamp, counts, _ in _读取历史行(get_path(f"@app/tmp/{filename}")):
+            remember(timestamp, counts)
+    snapshots = [
+        (timestamp, {name: count}) for name, (timestamp, count) in latest.items()
+    ]
     restored = restore_cached_inventory_counts(snapshots)
     if snapshots:
         cached_at = datetime.fromtimestamp(max(at for at, _ in snapshots)).isoformat(
