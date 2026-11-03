@@ -404,8 +404,8 @@ const stop_options = computed(() => [
   {
     label: '应用排班',
     key: 'apply_schedule',
-    disabled: !process_control.value?.canRunProcessAction,
-    props: { title: '保存配置并重启当前实例，保留心情和位置，按当前排班重新生成任务。' }
+    disabled: !process_control.value?.canApplySchedule,
+    props: { title: '保存配置并停止当前任务，保留心情和位置，按当前排班重新生成任务。' }
   },
   {
     label: '重启续接',
@@ -419,8 +419,11 @@ function select_stop_action(key) {
   if (key === 'immediate') return stop()
   if (key === 'after_round') return toggle_round_stop()
   if (key === 'maa') return stop_maa()
+  if (key === 'apply_schedule') {
+    if (process_control.value?.canApplySchedule) return process_control.value.applySchedule()
+    return
+  }
   if (!process_control.value?.canRunProcessAction) return
-  if (key === 'apply_schedule') return process_control.value.applySchedule()
   if (key === 'restart_resume') return process_control.value.restartResume()
 }
 const start_options = [

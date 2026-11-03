@@ -2310,6 +2310,44 @@ def stop(*, user_requested=True):
     return str(_stop_mower()).lower()
 
 
+@app.post("/plan/apply")
+@require_token
+def apply_schedule():
+    from arknights_mower.solvers.record import current_state, save_state_to_db
+
+    if (
+        shutdown.closing
+        or active_job()
+        or not mower_thread
+        or not mower_thread.is_alive()
+        or config.stop_mower.is_set()
+        or _performance_test_status()["status"] == "running"
+    ):
+        return {
+            "ok": False,
+            "message": "当前任务无法应用排班，请确认任务正在运行且没有其他操作",
+        }, 409
+    saved = current_state()
+    if not _stop_mower():
+        return {"ok": False, "message": "任务尚未停止，未启动新任务，请稍后重试"}, 409
+    if saved is not None and not save_state_to_db(saved):
+        return {
+            "ok": False,
+            "message": "运行状态保存失败，任务已停止，请检查日志后重试",
+        }, 500
+    try:
+        started = _start_mower("1")
+    except Exception:
+        logger.exception("应用排班时启动任务失败")
+        return {"ok": False, "message": "任务启动失败，请检查日志后手动启动"}, 500
+    if not started:
+        return {
+            "ok": False,
+            "message": "任务已停止，但新任务未能启动，请检查当前状态后手动启动",
+        }, 409
+    return {"ok": True, "message": "已按当前排班启动任务"}
+
+
 def _request_mower_stop(*, preserve_run_intent=False):
     """Signal a stop without joining the calling worker."""
     from arknights_mower.utils import crash_recovery

@@ -19,12 +19,16 @@ const savesPaused = saves.paused
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/process-control`
 const info = ref(null)
 const busy = ref(false)
+const applyingSchedule = ref(false)
 const message = ref('')
 const failed = ref(false)
 const pendingKey = `mower-process-control:${base}`
 const effectiveRunning = computed(() => props.running ?? info.value?.running ?? false)
 const canRunProcessAction = computed(
   () => !!(effectiveRunning.value && info.value?.supported && !busy.value && !savesPaused.value)
+)
+const canApplySchedule = computed(
+  () => !!(effectiveRunning.value && !busy.value && !savesPaused.value)
 )
 let timer
 let disposed = false
@@ -97,15 +101,38 @@ async function submit(action) {
   }
 }
 
-function applySchedule() {
-  if (canRunProcessAction.value) return submit('apply_schedule')
+async function applySchedule() {
+  if (!canApplySchedule.value) return
+  busy.value = true
+  applyingSchedule.value = true
+  failed.value = false
+  message.value = '正在停止任务并应用排班…'
+  let submitted = false
+  try {
+    await saves.pauseAndDrain()
+    submitted = true
+    const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL || ''}/plan/apply`)
+    if (!data.ok) {
+      submitted = false
+      throw new Error(data.message || '应用排班失败')
+    }
+    message.value = data.message
+    saves.resume()
+  } catch (error) {
+    if (!submitted || error.response) saves.resume()
+    failed.value = true
+    message.value = errorMessage(error)
+  } finally {
+    applyingSchedule.value = false
+    busy.value = false
+  }
 }
 
 function restartResume() {
   if (canRunProcessAction.value) return submit('restart_resume')
 }
 
-defineExpose({ canRunProcessAction, applySchedule, restartResume })
+defineExpose({ canRunProcessAction, canApplySchedule, applySchedule, restartResume })
 
 function reload() {
   window.location.reload()
@@ -140,7 +167,9 @@ onUnmounted(() => {
 
 <template>
   <template v-if="props.compact">
-    <n-text v-if="busy" depth="3" aria-live="polite">正在重启…</n-text>
+    <n-text v-if="busy" depth="3" aria-live="polite">{{
+      applyingSchedule ? '正在应用排班…' : '正在重启…'
+    }}</n-text>
     <n-space v-if="failed" align="center">
       <n-text type="error" aria-live="polite">{{ message }}</n-text>
       <n-button v-if="savesPaused" size="small" @click="reload">刷新页面</n-button>

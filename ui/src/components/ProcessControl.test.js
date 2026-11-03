@@ -221,49 +221,134 @@ describe('process-control recovery across page navigation', () => {
     expect(session.size).toBe(0)
   })
 
-  it.each(['restart_resume', 'apply_schedule'])(
-    'uses the existing save and pending-job flow for %s',
-    async (action) => {
-      state.client.get.mockImplementation(async (url) => ({
-        data: url.endsWith('/info')
-          ? { ok: true, supported: true, running: true }
-          : { ok: true, status: 'succeeded', message: '续接完成' }
-      }))
-      await mount()
-      await component.submit(action)
-      expect(state.client.post).toHaveBeenCalledWith(
-        '/process-control/action',
-        { action },
-        { headers: { 'X-Mower-Control': '1' } }
-      )
-      expect(state.config.autosave_paused).toBe(true)
-      expect(state.plan.autosave_paused).toBe(true)
-      expect(window.location.reload).toHaveBeenCalledOnce()
-      expect(session.size).toBe(0)
-    }
-  )
-
-  it.each([
-    ['applySchedule', 'apply_schedule'],
-    ['restartResume', 'restart_resume']
-  ])('allows %s only while running and ready', async (method, action) => {
-    props.compact = true
-    props.running = false
+  it('uses the existing save and pending-job flow for continuation', async () => {
+    const action = 'restart_resume'
+    state.client.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/info')
+        ? { ok: true, supported: true, running: true }
+        : { ok: true, status: 'succeeded', message: '续接完成' }
+    }))
     await mount()
-    expect(exposed.canRunProcessAction.value).toBe(false)
-    await exposed[method]()
-    expect(state.client.post).not.toHaveBeenCalled()
-
-    props.running = true
-    await nextTick()
-    expect(exposed.canRunProcessAction.value).toBe(true)
-    await exposed[method]()
+    await component.submit(action)
     expect(state.client.post).toHaveBeenCalledWith(
       '/process-control/action',
       { action },
       { headers: { 'X-Mower-Control': '1' } }
     )
+    expect(state.config.autosave_paused).toBe(true)
+    expect(state.plan.autosave_paused).toBe(true)
+    expect(window.location.reload).toHaveBeenCalledOnce()
+    expect(session.size).toBe(0)
   })
+
+  it('allows continuation only while running and ready', async () => {
+    props.compact = true
+    props.running = false
+    await mount()
+    expect(exposed.canRunProcessAction.value).toBe(false)
+    await exposed.restartResume()
+    expect(state.client.post).not.toHaveBeenCalled()
+
+    props.running = true
+    await nextTick()
+    expect(exposed.canRunProcessAction.value).toBe(true)
+    await exposed.restartResume()
+    expect(state.client.post).toHaveBeenCalledWith(
+      '/process-control/action',
+      { action: 'restart_resume' },
+      { headers: { 'X-Mower-Control': '1' } }
+    )
+  })
+
+  it('applies the plan through the task endpoint instead of replacing the process', async () => {
+    props.running = true
+    await mount()
+
+    await exposed.applySchedule()
+
+    expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/plan/apply')
+    expect(window.location.reload).not.toHaveBeenCalled()
+    expect(component.savesPaused.value).toBe(false)
+  })
+
+  it('applies the plan after saving without requiring process control or reloading the page', async () => {
+    props.compact = true
+    props.running = true
+    state.client.get.mockResolvedValue({ data: { ok: true, supported: false } })
+    state.client.post.mockResolvedValue({ data: { ok: true, message: '已按当前排班启动任务' } })
+    await mount()
+    const order = []
+    state.config.flush_config_saves.mockImplementation(async () => order.push('config'))
+    state.plan.wait_for_plan_save.mockImplementation(async () => order.push('plan'))
+    state.client.post.mockImplementation(async (url) => {
+      order.push(url)
+      return { data: { ok: true, message: '已按当前排班启动任务' } }
+    })
+    expect(exposed.canRunProcessAction.value).toBe(false)
+    expect(exposed.canApplySchedule.value).toBe(true)
+
+    await exposed.applySchedule()
+
+    expect(order).toEqual(['config', 'plan', 'config', '/plan/apply'])
+    expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/plan/apply')
+    expect(state.client.get).toHaveBeenCalledTimes(1)
+    expect(window.location.reload).not.toHaveBeenCalled()
+    expect(session.size).toBe(0)
+    expect(state.config.autosave_paused).toBe(false)
+    expect(state.plan.autosave_paused).toBe(false)
+    expect(component.message.value).toBe('已按当前排班启动任务')
+    props.running = false
+    await nextTick()
+    expect(exposed.canApplySchedule.value).toBe(false)
+    await exposed.applySchedule()
+    expect(state.client.post).toHaveBeenCalledOnce()
+  })
+
+  it('waits for application and prevents duplicate requests while showing task progress', async () => {
+    props.compact = true
+    props.running = true
+    await mount()
+    let resolve
+    state.client.post.mockImplementation(() => new Promise((done) => (resolve = done)))
+    const applying = exposed.applySchedule()
+    await vi.waitFor(() => expect(state.client.post).toHaveBeenCalledOnce())
+    expect(await render()).toContain('正在应用排班…')
+    expect(exposed.canApplySchedule.value).toBe(false)
+    await exposed.applySchedule()
+    expect(state.client.post).toHaveBeenCalledOnce()
+    resolve({ data: { ok: true, message: '已启动' } })
+    await applying
+    expect(component.busy.value).toBe(false)
+  })
+
+  it('does not stop tasks when saving fails', async () => {
+    props.running = true
+    await mount()
+    state.plan.wait_for_plan_save.mockRejectedValueOnce(new Error('保存失败'))
+    await exposed.applySchedule()
+    expect(state.client.post).not.toHaveBeenCalled()
+    expect(component.message.value).toBe('保存失败')
+    expect(component.savesPaused.value).toBe(false)
+  })
+
+  it.each(['rejected', 'lost response'])(
+    'reports application %s without process polling or page reload',
+    async (failure) => {
+      props.running = true
+      await mount()
+      const error = new Error('应用失败')
+      if (failure === 'rejected')
+        error.response = { status: 409, data: { message: '任务尚未停止' } }
+      state.client.post.mockRejectedValueOnce(error)
+      await exposed.applySchedule()
+      expect(component.failed.value).toBe(true)
+      expect(component.savesPaused.value).toBe(failure === 'lost response')
+      expect(component.message.value).toBe(failure === 'rejected' ? '任务尚未停止' : '应用失败')
+      expect(state.client.get).toHaveBeenCalledTimes(1)
+      expect(window.location.reload).not.toHaveBeenCalled()
+      expect(session.size).toBe(0)
+    }
+  )
 
   it('leaves saving enabled after an explicit rejection and remount', async () => {
     state.client.post.mockResolvedValueOnce({ data: { ok: false, message: '已拒绝' } })

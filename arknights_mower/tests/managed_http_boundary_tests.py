@@ -240,7 +240,7 @@ class ManagedHttpBoundaryTests(unittest.TestCase):
                     )
                     self.assertEqual(response.status_code, 403)
             action.assert_not_called()
-            for selected in ("restart", "stop", "restart_resume", "apply_schedule"):
+            for selected in ("restart", "stop", "restart_resume"):
                 response = self.client.post(
                     "/process-control/action",
                     headers=self.headers,
@@ -250,10 +250,10 @@ class ManagedHttpBoundaryTests(unittest.TestCase):
                     response.status_code,
                     403 if selected in {"restart", "stop"} else 200,
                 )
-            self.assertEqual(action.call_count, 2)
+            self.assertEqual(action.call_count, 1)
             self.assertEqual(
                 [call.args[0] for call in action.call_args_list],
-                ["restart_resume", "apply_schedule"],
+                ["restart_resume"],
             )
 
     def test_enabled_maintenance_allows_maa_updates_but_keeps_connection_in_manager(
