@@ -36,7 +36,7 @@ def held_rest_groups(data, *, forced_only=False):
 def validate_group_tasks(data):
     for task in active_group_tasks(data).values():
         if not any(
-            data.is_group_shift_anchor(data.operators[name])
+            data.is_group_shift_anchor(data.operators[name], task["group"])
             for name in data.shift_group_members(task["group"])
         ):
             raise ValueError(f"绑组任务找不到工作主班：{task['group']}")
@@ -86,7 +86,9 @@ def sync_group_tasks(solver, *, now=None):
         group, action, mode = token[1:]
         members = data.shift_group_members(group)
         anchors = [
-            name for name in members if data.is_group_shift_anchor(data.operators[name])
+            name
+            for name in members
+            if data.is_group_shift_anchor(data.operators[name], group)
         ]
         if not anchors:
             raise ValueError(f"绑组任务找不到工作主班：{group}")

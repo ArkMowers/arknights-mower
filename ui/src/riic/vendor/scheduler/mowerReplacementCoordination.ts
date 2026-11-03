@@ -12,12 +12,12 @@ import {toMowerMicros,MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 
 export interface MowerCoordinationRates {work:Readonly<Record<string,number>>;recovery:Readonly<Record<string,number>>}
 function replacements(data:MowerSchedulingData,op:MowerOperatorState,required:ReadonlySet<string>=new Set()):string[]{
- const transitions=Object.fromEntries([...required].map(name=>data.operators[name]!).filter(worker=>worker.group&&data.isGroupShiftAnchor(worker)).map(worker=>[worker.group,true]))
+ const transitions=Object.fromEntries(data.shiftRequestGroups([...required]).map(group=>[group,true]))
  return op.multiGroup?mowerSharedReplacements(op,mowerRestingBindingGroups(data,op,transitions)):op.replacement
 }
 /** Keep the native same-group primary exception; unrelated primaries remain unavailable. */
 export function mowerCoordinationPrimaryReplacement(data:MowerSchedulingData,owner:MowerOperatorState,name:string,required:ReadonlySet<string>):boolean {
- const transitions=Object.fromEntries([...required].map(id=>data.operators[id]!).filter(op=>op?.group&&data.isGroupShiftAnchor(op)).map(op=>[op.group,true]))
+ const transitions=Object.fromEntries(data.shiftRequestGroups([...required]).map(group=>[group,true]))
  return (owner.multiGroup?mowerRestingBindingGroups(data,owner,transitions):[owner.group]).some(group=>mowerSameGroupPrimaryReplacement(data,owner,name,group))
 }
 function eligible(data:MowerSchedulingData,name:string,owner:MowerOperatorState,options:MowerRestingOptions,required:ReadonlySet<string>=new Set()):boolean {
@@ -98,8 +98,9 @@ function recallMood(data:MowerSchedulingData,op:MowerOperatorState):number|undef
 }
 /** Ordinary recall starts at the requester's rescue line and requires observed target mood for its endurance forecast. */
 export function mowerRecallMoodAdmissible(data:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[]):boolean {
- const anchor=(op:MowerOperatorState)=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.canStandby(op)&&(!op.multiGroup||candidates.length===1&&op.independentRest)
- const requesters=candidates.map(name=>data.operators[name]).filter((op):op is MowerOperatorState=>!!op&&anchor(op)&&!!op.currentRoom&&!op.isResting())
+ const anchor=(op:MowerOperatorState)=>data.isGroupShiftAnchor(op)||candidates.length===1&&op.isHigh()&&op.independentRest&&!op.workaholic&&!op.room.startsWith('dorm')&&!data.canStandby(op)
+ const requestGroups=new Set(data.shiftRequestGroups(candidates))
+ const requesters=candidates.map(name=>data.operators[name]).filter((op):op is MowerOperatorState=>!!op&&anchor(op)&&(!op.group||requestGroups.has(op.group))&&!!op.currentRoom&&!op.isResting())
  const reached=(op:MowerOperatorState,limit:number)=>{const mood=recallMood(data,op);return mood!==undefined&&mood<=limit}
  if(!requesters.some(op=>reached(op,rescueMoodThreshold(op,data.policy))))return false
  return [...recalled].map(name=>data.operators[name]).every(op=>{
@@ -185,7 +186,8 @@ export function mowerReplacementReservations(data:MowerSchedulingData,tasks:read
 
 /** Another committed shift can satisfy a retained request before its own task resumes. */
 export function mowerCoordinationRequestFulfilled(data:MowerSchedulingData,names:readonly string[]):boolean {
- const requested=[...new Set(names.flatMap(name=>{const op=data.operators[name];return op?.group?data.shiftGroupMembers(op.group):op?[name]:[]}))]
- const anchors=requested.map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&(!op.multiGroup||op.independentRest))
+ const groups=new Set(data.shiftRequestGroups(names))
+ const requested=[...new Set(names.flatMap(name=>{const op=data.operators[name];return op?.group?groups.has(op.group)?data.shiftGroupMembers(op.group):[]:op?[name]:[]}))]
+ const anchors=requested.map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&(!op.multiGroup||op.independentRest||!!op.shiftGroup&&groups.has(op.shiftGroup)))
  return anchors.length>0&&anchors.every(op=>op.isResting()||data.isStandby(op.name)||!op.currentRoom&&hasObservedFullMood(op))
 }

@@ -61,6 +61,14 @@ export class MowerSchedulingData {
   this.alpha=o.alpha??false;this.priorityReplacement=o.priorityReplacement??[];this.freeRoomExclusions=o.freeRoomExclusions??[];this.dormOrder=o.dormOrder??[]
   this.standbyNames=o.standbyNames??[];Object.values(o.operators).forEach(op=>{op.alpha=this.alpha})
   this.plan=o.plan;this.operators=o.operators;this.dorms=o.dorms;this.nowMicros=o.nowMicros;this.partyTime=o.partyTime;this.runOrderRooms=o.runOrderRooms??{}
+  if(this.alpha)for(const op of Object.values(this.operators)){
+   op.shiftGroup=undefined
+   if(!op.multiGroup||op.room.startsWith('dorm'))continue
+   if(op.independentRest){op.group='';op.replacement=[...op.replacementsForGroup('')]}
+   const resting=op.groupBindings.filter(binding=>!binding.group||!Object.values(this.operators).some(owner=>owner.isHigh()&&!owner.room.startsWith('dorm')&&(owner.multiGroup?owner.groupBindings.some(item=>item.group===binding.group):owner.group===binding.group)&&mowerSameGroupPrimaryReplacement(this,owner,op.name,binding.group)))
+   if(!resting.length&&!op.workaholic)throw new Error(op.name+'的多绑组至少需要一个正常下班组（可使用空绑组）')
+   if(resting.length===1){op.shiftGroup=resting[0]!.group;if(op.shiftGroup){op.group=op.shiftGroup;op.replacement=[...op.replacementsForGroup(op.group)]}}
+  }
   this.policy={restingThreshold:.65,rescueThreshold:.75,experimentalDormLogic:false,...o.policy,alpha:this.alpha,groupRestingThresholds:{...o.policy?.groupRestingThresholds}}
   this.freeRoom=o.freeRoom??false;this.powerPlantCount=o.powerPlantCount??2;this.planConditions=o.planConditions??[];this.backupGroup=o.backupGroup??'default'
   this.urgentRecoverySupporters=Object.fromEntries(Object.entries(o.urgentRecoverySupporters??{}).map(([name,supporters])=>[name,[...supporters]]))
@@ -115,7 +123,11 @@ export class MowerSchedulingData {
   const anchors=op.group?this.group(op.group).map(name=>this.operators[name]!):Object.values(this.operators)
   return anchors.some(other=>other.isHigh()&&(this.alpha?!this.canStandby(other):other.restingPriority==='high')&&!other.room.startsWith('dorm')&&!other.workaholic&&(this.alpha||this.policy.experimentalDormLogic||!other.workshop)&&other.isResting()&&!!this.getDormByName(other.name))
  }
- isGroupShiftAnchor(op:MowerOperatorState):boolean{return op.isHigh()&&!op.multiGroup&&!op.workaholic&&!op.room.startsWith('dorm')&&!this.canStandby(op)}
+ isGroupShiftAnchor(op:MowerOperatorState,group?:string):boolean{return op.isHigh()&&(!op.multiGroup||!!op.shiftGroup)&&(group===undefined||op.group===group)&&!op.workaholic&&!op.room.startsWith('dorm')&&!this.canStandby(op)}
+ shiftRequestGroups(names:readonly string[]):string[]{
+  const members=names.map(name=>this.operators[name]!)
+  return [...new Set(members.filter(op=>op.group&&this.isGroupShiftAnchor(op)&&!(op.multiGroup&&members.some(other=>other.group!==op.group&&this.isGroupShiftAnchor(other)&&mowerSameGroupPrimaryReplacement(this,other,op.name)))).map(op=>op.group))]
+ }
  shiftGroupMembers(group:string):string[]{return Object.values(this.operators).filter(op=>op.multiGroup?op.groupBindings.some(binding=>binding.group===group):op.group===group).map(op=>op.name)}
  groupIsResting(group:string):boolean{return this.groupShiftState[group]??this.group(group).some(name=>{const op=this.operators[name]!;return this.isGroupShiftAnchor(op)&&op.isResting()})}
  effectiveFreeSlot(bed:MowerDormState,inactiveGroups=new Set<string>(),activeGroups=new Set<string>()):boolean {

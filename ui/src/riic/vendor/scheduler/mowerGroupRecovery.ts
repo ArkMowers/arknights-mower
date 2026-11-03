@@ -22,7 +22,7 @@ export function mowerObservedRecoveryDeadline(data:MowerSchedulingData,op:MowerO
 }
 /** Work primaries participating in group recovery, excluding standby and personal rest. */
 export function mowerGroupRecoveryWorkers(data:MowerSchedulingData,group:string):MowerOperatorState[]{
- return data.shiftGroupMembers(group).map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!op.independentRest&&!data.canStandby(op)&&(op.isResting()||!op.currentRoom))
+ return data.shiftGroupMembers(group).map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!op.independentRest&&(!op.shiftGroup||op.group===group)&&!data.canStandby(op)&&(op.isResting()||!op.currentRoom))
 }
 function completedAt(data:MowerSchedulingData,op:MowerOperatorState):number|undefined {
  if(mowerRecoveryMoodComplete(data,op)||!op.currentRoom&&!op.moodIsPrediction&&data.restMoodComplete(op.name))return data.nowMicros
@@ -30,7 +30,7 @@ function completedAt(data:MowerSchedulingData,op:MowerOperatorState):number|unde
 }
 /** The extra-wait cap limits only the gap wait; explicit full recovery remains binding. */
 export function mowerGroupRecoveryDeadline(data:MowerSchedulingData,group:string):{requiredNames:string[];timeMicros:number|undefined}{
- const workers=mowerGroupRecoveryWorkers(data,group),gapWorkers=workers.filter(op=>!op.multiGroup)
+ const workers=mowerGroupRecoveryWorkers(data,group),gapWorkers=workers.filter(op=>data.isGroupShiftAnchor(op,group))
  if(data.groupMoodGapExclusions.includes(group)){delete data.groupRecoveryFullMembers[group];delete data.groupRecoveryReturnMicros[group]}
  else if(data.groupRecoveryFullMembers[group])data.groupRecoveryFullMembers[group]=gapWorkers.filter(op=>op.isResting()||data.groupRecoveryFullMembers[group]!.includes(op.name)).map(op=>op.name)
  if(data.groupRestInFullOnMoodGap&&!data.groupMoodGapExclusions.includes(group)&&!data.groupRecoveryFullMembers[group]){
@@ -128,7 +128,7 @@ export function mowerMoodLimitGroupReturn(data:MowerSchedulingData,release:Mower
  const untouched=(task:MowerTask)=>!task.retainsExecution&&!task.arrangementStarted&&!task.backupShiftActive&&!task.productShiftLocked&&!task.backupExplicitSlots.size&&!task.backupShiftIntent&&!task.dormRecoveryRestore.length&&!task.arrangementRetryRoom
  if(!data.alpha||release.type!==T.RELEASE_DORM||!release.strictMoodLimit||release.timeMicros>data.nowMicros||!tasks.includes(release)||!untouched(release)||release.moodLimitReturnAttempted)return
  const op=data.operators[release.metadata]
- if(!op?.isHigh()||!op.group||mowerHeldRestGroups(data).has(op.group)||op.room.startsWith('dorm')||op.workaholic||data.canStandby(op)||op.multiGroup||op.independentRest||!data.groupIsResting(op.group)||!op.restMoodLimit||data.freeRoomExcluded(op.name)||release.moodLimit!==undefined&&release.moodLimit!==op.upperLimit)return
+ if(!op?.isHigh()||!op.group||mowerHeldRestGroups(data).has(op.group)||op.room.startsWith('dorm')||op.workaholic||data.canStandby(op)||op.multiGroup&&!op.shiftGroup||op.independentRest||!data.groupIsResting(op.group)||!op.restMoodLimit||data.freeRoomExcluded(op.name)||release.moodLimit!==undefined&&release.moodLimit!==op.upperLimit)return
  const target=release.releaseDormTargets()[op.name]
  if(!target||target[0]!==op.currentRoom||target[1]!==op.currentIndex)return
  for(const existing of tasks){

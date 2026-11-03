@@ -1461,6 +1461,8 @@ class BaseSchedulerSolver(
             and not self.op_data.operators[name].workaholic
             and (
                 not self.op_data.operators[name].multi_group
+                or self.op_data.operators[name].shift_group
+                in self.op_data.shift_request_groups(candidates)
                 or len(candidates) == 1
                 and self.op_data.operators[name].independent_rest
             )
@@ -1573,6 +1575,8 @@ class BaseSchedulerSolver(
             and not self.op_data.operators[name].workaholic
             and (
                 not self.op_data.operators[name].multi_group
+                or self.op_data.operators[name].shift_group
+                in self.op_data.shift_request_groups(candidates)
                 or len(candidates) == 1
                 and self.op_data.operators[name].independent_rest
             )
@@ -1863,6 +1867,7 @@ class BaseSchedulerSolver(
                 or not op.is_high()
                 or op.multi_group
                 and not op.independent_rest
+                and not op.shift_group
                 or op.group
                 and not self.op_data.is_group_shift_anchor(op)
                 or op.is_resting()
@@ -6290,7 +6295,7 @@ class BaseSchedulerSolver(
             op
             for op in self.total_agent
             if op.is_high()
-            and (not op.multi_group or op.independent_rest)
+            and (not op.multi_group or op.independent_rest or op.shift_group)
             and (not op.group or self.op_data.is_group_shift_anchor(op))
         ]
         # 宿舍的普通空闲者统一交给补床入口，不依赖不养闲人开关；否则先预约
@@ -7708,14 +7713,7 @@ class BaseSchedulerSolver(
         excluded = self._protected_facility_names()
         if excluded:
             agents = [name for name in agents if name not in excluded]
-        groups = list(
-            dict.fromkeys(
-                self.op_data.operators[name].group
-                for name in agents
-                if self.op_data.is_group_shift_anchor(self.op_data.operators[name])
-                and self.op_data.operators[name].group
-            )
-        )
+        groups = self.op_data.shift_request_groups(agents)
         followers = {
             name
             for group in groups
@@ -7863,7 +7861,8 @@ class BaseSchedulerSolver(
             self.op_data.operators[name].group
             for name in [*agents, *dorm_agents]
             if self.op_data.operators[name].group
-        }
+            and not self.op_data.operators[name].shift_group
+        } | set(self.op_data.shift_request_groups([*agents, *dorm_agents]))
         if blockers := self.op_data.working_replacement_blockers(
             [*agents, *dorm_agents], plan
         ):

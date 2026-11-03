@@ -80,7 +80,7 @@ function filterExhaustedOrdinaryIntent(data:MowerSchedulingData,rules:MowerSched
  const exhausted=mowerExhaustGroups(rules),blocked=new Set<string>(),blockedGroups=new Set<string>()
  for(const name of task.coordinationRequestNames){
   const op=rules.operators[name]
-  if(!op||op.multiGroup&&!op.independentRest||!op.exhaustRequire&&!exhausted.has(op.group))continue
+  if(!op||op.multiGroup&&!op.independentRest&&!op.shiftGroup||!op.exhaustRequire&&!exhausted.has(op.group))continue
   const members=op.group?data.shiftGroupMembers(op.group):[name]
   if(members.some(member=>{const original=data.operators[member];return !!original&&explicitSlots.has(alphaPosition(original.currentRoom,original.currentIndex))||Object.entries(intent).some(([room,row])=>row.some((assigned,index)=>assigned===member&&explicitSlots.has(alphaPosition(room,index))))}))continue
   if(op.group)blockedGroups.add(op.group)

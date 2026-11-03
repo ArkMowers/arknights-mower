@@ -64,8 +64,8 @@ export function mowerFindDormSlot(data:MowerSchedulingData,name:string,used:Set<
  })
 }
 export function mowerStandbyCandidates(data:MowerSchedulingData,names:string[]):Set<string> {
- const anchors=new Set(names.map(n=>data.operators[n]!).filter(op=>op.group&&op.isHigh()&&(data.alpha?!op.multiGroup&&!data.canStandby(op):op.restingPriority==='high')&&!op.workaholic&&(data.alpha||data.policy.experimentalDormLogic||!op.workshop)&&!op.room.startsWith('dorm')&&op.mood>=0&&op.mood<op.upperLimit&&op.currentMood(data.nowMicros)<op.upperLimit).map(op=>op.group))
- const restingAnchors=data.dorms.flatMap(b=>{const op=data.operators[b.name];return op&&data.effectiveFreeSlot(b)&&op.isHigh()&&(data.alpha?!op.multiGroup&&!op.workaholic&&!op.room.startsWith('dorm')&&!data.canStandby(op)&&op.currentRoom===b.position[0]&&op.currentIndex===b.position[1]&&hasRestingMood(op,data.nowMicros)&&restingMood(op,data.nowMicros)<op.upperLimit&&!data.restMoodComplete(op.name):op.restingPriority==='high')?[op]:[]})
+ const anchors=new Set(names.map(n=>data.operators[n]!).filter(op=>op.group&&op.isHigh()&&(data.alpha?(!op.multiGroup||!!op.shiftGroup)&&!data.canStandby(op):op.restingPriority==='high')&&!op.workaholic&&(data.alpha||data.policy.experimentalDormLogic||!op.workshop)&&!op.room.startsWith('dorm')&&op.mood>=0&&op.mood<op.upperLimit&&op.currentMood(data.nowMicros)<op.upperLimit).map(op=>op.group))
+ const restingAnchors=data.dorms.flatMap(b=>{const op=data.operators[b.name];return op&&data.effectiveFreeSlot(b)&&op.isHigh()&&(data.alpha?(!op.multiGroup||!!op.shiftGroup)&&!op.workaholic&&!op.room.startsWith('dorm')&&!data.canStandby(op)&&op.currentRoom===b.position[0]&&op.currentIndex===b.position[1]&&hasRestingMood(op,data.nowMicros)&&restingMood(op,data.nowMicros)<op.upperLimit&&!data.restMoodComplete(op.name):op.restingPriority==='high')?[op]:[]})
  if(data.alpha)for(const op of restingAnchors)if(op.group)anchors.add(op.group)
  const hasAnchor=restingAnchors.length>0
  return new Set(names.filter(n=>{const op=data.operators[n]!;return data.canStandby(op)&&(anchors.has(op.group)||op.independentRest&&op.groupBindings.some(binding=>!!binding.group&&anchors.has(binding.group))||!op.group&&!op.independentRest&&hasAnchor)}))
@@ -99,7 +99,7 @@ export function mowerAssignDorm(data:MowerSchedulingData,name:string,used=new Se
 export function mowerAverageMood(data:MowerSchedulingData):number {
  let current=0,total=0
  for(const op of Object.values(data.operators)){
-  if(op.isResting()||op.group&&op.room.startsWith('dorm')||!op.isHigh()||op.workaholic||op.group&&data.canStandby(op)||data.isStandby(op.name))continue
+  if(op.isResting()||data.alpha&&op.multiGroup&&!op.shiftGroup||op.group&&op.room.startsWith('dorm')||!op.isHigh()||op.workaholic||op.group&&data.canStandby(op)||data.isStandby(op.name))continue
   const mood=op.currentMood(data.nowMicros);if(!Number.isFinite(mood)||mood<0||mood>24)continue
   current+=mood-op.lowerLimit;total+=op.upperLimit-op.lowerLimit
  }

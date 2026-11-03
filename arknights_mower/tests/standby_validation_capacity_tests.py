@@ -112,7 +112,7 @@ def test_group_without_shift_anchor_is_rejected_even_with_enough_beds(
     error = Operators(plan).init_and_validate()
     assert error == (
         f"{GROUP} 缺少决定上下班的工作主班：至少需要一名非宿舍、"
-        "非零心情工作、非多绑组且非候补的主班"
+        "非零心情工作、非候补且只有一个正常下班组的主班"
     )
 
 

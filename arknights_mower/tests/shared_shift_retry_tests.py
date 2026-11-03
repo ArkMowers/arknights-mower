@@ -27,11 +27,9 @@ def test_queued_shift_waits_for_working_primary_covers(working_shared_covers):
     s.op_data = deepcopy(live)
     admitted, queued_plan = shift_off(s, "乙")
     assert admitted
-    for name in (SHARED, "清道夫"):
-        op = s.op_data.operators[name]
-        queued_plan.setdefault(op.current_room, ["Current"] * 5)[op.current_index] = (
-            name
-        )
+    queued_plan["dormitory_2"] = ["Current", "Current", "Current", "Current", SHARED]
+    op = s.op_data.operators["清道夫"]
+    queued_plan.setdefault(op.current_room, ["Current"] * 5)[op.current_index] = op.name
     s.op_data = live
     assert shift_off(s, "甲")[0]
     s.op_data.commit_group_shifts({"甲": True})

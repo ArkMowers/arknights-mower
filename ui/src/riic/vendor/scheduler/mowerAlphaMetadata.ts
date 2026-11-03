@@ -29,7 +29,7 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
  for(const bed of data.allDorms()){
   const op=data.operators[bed.name]
   if(!op||!data.groupDorms.includes(bed)&&!data.effectiveFreeSlot(bed)||names.has(op.name)||groups.has(op.group)||slots.has(alphaPosition(...bed.position)))continue
-  if(!waitingForActualGroup(op.name)&&(!op.multiGroup||op.independentRest)&&(!op.group||data.isGroupShiftAnchor(op)||op.isHigh()&&!op.workaholic&&!op.room.startsWith('dorm')&&data.groupRecoveryFullMembers[op.group]?.includes(op.name)))grouped.set(op.group,[...(grouped.get(op.group)??[]),bed])
+  if(!waitingForActualGroup(op.name)&&(!op.multiGroup||op.independentRest||!!op.shiftGroup)&&(!op.group||data.isGroupShiftAnchor(op)||op.isHigh()&&!op.workaholic&&!op.room.startsWith('dorm')&&data.groupRecoveryFullMembers[op.group]?.includes(op.name)))grouped.set(op.group,[...(grouped.get(op.group)??[]),bed])
   if(data.dorms.includes(bed)&&!op.restMoodLimit&&!data.skipIdleDormRelease(op.name))free.push(bed)
  }
  const batches=new Map<number,MowerDormBatch>(),releases=new Map<number,MowerDormBatch>()
@@ -37,8 +37,8 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
  const held=mowerHeldRestGroups(data)
  for(const [group,beds] of grouped){
   if(held.has(group))continue
-  const priority=beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest)&&data.operators[b.name]!.isHigh()&&data.operators[b.name]!.restingPriority==='high'),ordinary=beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest)&&data.operators[b.name]!.isHigh()&&data.operators[b.name]!.restingPriority!=='standby')
-  const high=priority.length?priority:ordinary.length?ordinary:beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest)&&data.operators[b.name]!.isHigh()&&!(group&&data.canStandby(data.operators[b.name]!)))
+  const priority=beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest||!!data.operators[b.name]!.shiftGroup)&&data.operators[b.name]!.isHigh()&&data.operators[b.name]!.restingPriority==='high'),ordinary=beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest||!!data.operators[b.name]!.shiftGroup)&&data.operators[b.name]!.isHigh()&&data.operators[b.name]!.restingPriority!=='standby')
+  const high=priority.length?priority:ordinary.length?ordinary:beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest||!!data.operators[b.name]!.shiftGroup)&&data.operators[b.name]!.isHigh()&&!(group&&data.canStandby(data.operators[b.name]!)))
   if(group){
    const recovery=mowerGroupRecoveryDeadline(data,group)
    if(data.groupRecoveryFullMembers[group]&&data.groupIsResting(group)&&actual.groupIsResting(group)){actual.groupRecoveryFullMembers[group]=[...data.groupRecoveryFullMembers[group]!];if(data.groupRecoveryReturnMicros[group]!==undefined)actual.groupRecoveryReturnMicros[group]=data.groupRecoveryReturnMicros[group]!}
@@ -55,7 +55,7 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
  const generated=admitMowerDerivedTasks(actual,queue.tasks,generateMowerDormTasks([...batches.values(),...releases.values()],data,existing,pending),dependencyReturn);queue.tasks.push(...generated)
  const returning=new Set(generated.flatMap(t=>Object.values(t.plan).flat()))
  for(const op of Object.values(data.operators)){
-  if(!op.isHigh()||held.has(op.group)||waitingForActualGroup(op.name)||op.multiGroup&&(!op.independentRest||mowerRestingBindingGroups(data,op).length)||op.room.startsWith('dorm')||op.currentRoom||op.group&&data.canStandby(op))continue
+  if(!op.isHigh()||held.has(op.group)||waitingForActualGroup(op.name)||op.multiGroup&&!op.shiftGroup&&(!op.independentRest||mowerRestingBindingGroups(data,op).length)||op.room.startsWith('dorm')||op.currentRoom||op.group&&data.canStandby(op))continue
   const recovery=op.group?mowerGroupRecoveryDeadline(data,op.group):undefined
   const strict=!!recovery?.requiredNames.length||recovery?.timeMicros!==undefined
   const recoveredPrimaryGroup=!!op.group&&data.groupRestInFullOnMoodGap&&data.groupIsResting(op.group)&&hasObservedFullMood(op)&&!op.moodIsPrediction
@@ -64,7 +64,7 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
   if(strict&&recovery!.timeMicros===undefined)continue
   const members=op.group?data.shiftGroupMembers(op.group).filter(name=>!data.operators[name]!.independentRest):[op.name]
   if(groups.has(op.group)||members.some(n=>returning.has(n)||names.has(n)||data.busyRestingNames.has(n)))continue
-  const workers=members.map(n=>data.operators[n]!).filter(o=>!o.multiGroup&&!o.room.startsWith('dorm')&&!o.workaholic&&!(o.group&&data.canStandby(o)))
+  const workers=members.map(n=>data.operators[n]!).filter(o=>data.isGroupShiftAnchor(o,op.group))
   if(!strict&&!workers.every(o=>!o.currentRoom&&(data.canStandby(o)||hasRestingMood(o,now)&&o.currentMood(now)>=o.upperLimit)))continue
   const plan:MowerTaskPlan={}
   for(const name of members){const member=data.operators[name]!;if(member.room&&data.plan[member.room]){const row=plan[member.room]??=Array(data.plan[member.room]!.length).fill('Current');if(['Current',name].includes(row[member.index]!))row[member.index]=name}}

@@ -26,7 +26,7 @@ function fixture(dorm=false){
 function apply(data:MowerSchedulingData,plan:MowerTaskPlan){expect(normalizeMowerSharedArrangement(data,plan)).toBe(true);return projectMowerArrangements(data,[plan])}
 describe('October 13 shared group bindings and fixed-primary swaps',()=>{
  it.each([false,true])('keeps a shared working cover while another compatible group rests, observed=%s',observed=>{
-  let data=fixture();data.operators.A!.replacement=['F'];data.operators.F!.groupBindings[1]!.replacement=['C','D']
+  let data=fixture();data.operators.A!.replacement=['F'];data.operators.F!.groupBindings[1]!.replacement=['C','D'];data.operators.F!.workaholic=true
   let plan:MowerTaskPlan={},covers:string[]=[]
   expect(mowerGetRestingPlan(data,data.shiftGroupMembers('a'),covers,plan)).toBe(true)
   expect(plan.room_1_1).toEqual(['F'])
