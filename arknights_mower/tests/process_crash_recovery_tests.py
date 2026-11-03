@@ -627,7 +627,7 @@ def test_queue_reset_start_keeps_mode_until_its_first_checkpoint(
     offline.io.assert_not_called()
 
 
-@pytest.mark.parametrize("replacement", ["restart_resume", "apply_schedule", "update"])
+@pytest.mark.parametrize("replacement", ["restart", "restart_resume", "update"])
 @pytest.mark.parametrize("user_requested", [False, True])
 def test_user_stop_after_job_admission_overrides_captured_running_state(
     offline, monkeypatch, tmp_path, replacement, user_requested
