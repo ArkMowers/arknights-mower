@@ -140,7 +140,7 @@ describe('统一养成计划编辑', () => {
     stop()
   })
 
-  it('搜索时禁止拖拽和职业整理；按项目文本及拼音匹配', async () => {
+  it('搜索时禁止拖拽和协助干员整理；按项目文本及拼音匹配', async () => {
     const { page, stop } = setup()
     await open(page)
     page.search.value = '模组'
@@ -280,17 +280,17 @@ describe('统一养成计划编辑', () => {
     stop()
   })
 
-  it('职业整理和专精优先保留锁定前缀、完整项目与真实状态', async () => {
+  it('协助干员整理和专精优先保留锁定前缀、完整项目与真实状态', async () => {
     const { page, props, stop } = setup()
-    props.recommendations = [
-      { char_id: 'next', profession: 'WARRIOR' },
-      { char_id: 'module', profession: 'WARRIOR' },
-      { char_id: 'level', profession: 'MEDIC' }
+    failures = [
+      { id: 1, support_plan: { stages: [{ level: 1, operator: '甲协助' }] } },
+      { id: 2, support_plan: { stages: [{ level: 1, operator: '甲协助' }] } }
     ]
+    props.recommendations = [{ char_id: 'next', profession: 'WARRIOR' }]
     await open(page)
     page.organize()
-    expect(keys(page)).toEqual(['skill:active', 'skill:next', 'goal:level', 'goal:module'])
-    expect(page.draftItems.value[2].crafting_required).toBe(false)
+    expect(keys(page)).toEqual(['skill:active', 'goal:module', 'skill:next', 'goal:level'])
+    expect(page.draftItems.value[3].crafting_required).toBe(false)
     drop(page, 3, 1)
     page.prioritizeSkills()
     expect(keys(page)[0]).toBe('skill:active')

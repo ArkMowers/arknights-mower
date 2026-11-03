@@ -1,5 +1,6 @@
 """Exercise real assistant preparation and slot reading through the start scene loop."""
 
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -26,6 +27,13 @@ from arknights_mower.utils.scene import Scene
 
 def scene_solver(transient, readable, support_name="艾丽妮"):
     solver = MagicMock()
+    solver.op_data = SimpleNamespace(
+        operators={},
+        dorm_mood_estimates={
+            name: (24, datetime.now())
+            for name in ("艾丽妮", "逻各斯", "能天使", "假日威龙陈", "W")
+        },
+    )
     solver.recog.w, solver.recog.h = 1920, 1080
     current = [Scene.TRAIN_MAIN]
     events = []
@@ -86,7 +94,11 @@ def test_start_waits_for_main_before_real_preparation(
     _, ids = context_game
     stage = support.stage_route(stat("艾丽妮", 30, True), None, StageSpec(1, 8))
     pid = db.insert_plan(
-        ids["能天使"], 0, 3, char_name="能天使", support_plan={"stages": [stage]}
+        ids["能天使"],
+        0,
+        3,
+        char_name="能天使",
+        support_plan={"stages": [dict(stage, level=level) for level in (1, 2, 3)]},
     )
     plan = db.get_plan_by_id(pid)
     solver, events = scene_solver(

@@ -1,4 +1,6 @@
-"""Order mastery plans by operator, alternating professions where possible."""
+"""Order mastery plans by operator, separating shared assistants where possible."""
+
+from .mastery_support_types import IGNORED_NAMES, decode_json
 
 
 def mastery_groups(plans, levels):
@@ -102,9 +104,30 @@ def halving_successor(plan, level, *, plans=None, levels=None):
     )
 
 
-def interleave_mastery_plans(
-    plans: list[dict], professions: dict[str, str]
-) -> list[dict]:
+def mastery_assistants(plan):
+    """Read remaining assistant occupants from the saved and executing stages."""
+    support = decode_json(plan.get("support_plan")) or {}
+    runtime = decode_json(plan.get("support_runtime")) or {}
+    if "carry_from_skill" in runtime:
+        runtime = {}
+    current = runtime.get("level", 1)
+    target = plan.get("target_level", 3)
+    stages = {
+        stage["level"]: stage
+        for stage in support.get("stages", [])
+        if current <= stage["level"] <= target
+    }
+    if runtime and current <= target:
+        stages[current] = {**stages.get(current, {}), **runtime}
+    return frozenset(
+        name
+        for stage in stages.values()
+        for field in ("operator", "swap_target", "working_operator")
+        if (name := stage.get(field)) and name not in IGNORED_NAMES
+    )
+
+
+def interleave_mastery_plans(plans: list[dict]) -> list[dict]:
     active_groups: dict[str, list[dict]] = {}
     idle_groups: dict[str, list[dict]] = {}
     failed: list[dict] = []
@@ -116,24 +139,26 @@ def interleave_mastery_plans(
         groups = idle_groups if status == "idle" else active_groups
         groups.setdefault(plan["char_id"], []).append(plan)
 
-    ordered: list[dict] = []
-    previous = None
-    for char_id, group in active_groups.items():
-        ordered.extend(group)
-        ordered.extend(idle_groups.pop(char_id, []))
-        previous = professions.get(char_id) or "unknown"
+    def assistants(group):
+        return frozenset().union(*(mastery_assistants(plan) for plan in group))
 
-    queues: dict[str, list[list[dict]]] = {}
-    for char_id, group in idle_groups.items():
-        profession = professions.get(char_id) or "unknown"
-        queues.setdefault(profession, []).append(group)
+    ordered: list[dict] = []
+    previous = frozenset()
+    for char_id, group in active_groups.items():
+        group = group + idle_groups.pop(char_id, [])
+        ordered.extend(group)
+        previous = assistants(group)
+
+    queues: dict[frozenset, list[list[dict]]] = {}
+    for group in idle_groups.values():
+        queues.setdefault(assistants(group), []).append(group)
 
     while queues:
-        candidates = [key for key in queues if key != previous] or list(queues)
-        # max keeps the first-seen profession when remaining group counts tie.
-        profession = max(candidates, key=lambda key: len(queues[key]))
-        ordered.extend(queues[profession].pop(0))
-        if not queues[profession]:
-            del queues[profession]
-        previous = profession
+        # Prefer fewer shared assistants, then the largest remaining queue.
+        # Insertion order preserves the first appearance when both counts tie.
+        names = min(queues, key=lambda key: (len(key & previous), -len(queues[key])))
+        ordered.extend(queues[names].pop(0))
+        if not queues[names]:
+            del queues[names]
+        previous = names
     return ordered + failed

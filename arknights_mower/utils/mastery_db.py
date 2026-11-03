@@ -678,19 +678,11 @@ def reordered_plan_priorities(skill_order, locked_keys, path=None):
 def auto_interleave_new_plans(
     new_plan_ids: list[int],
     path: Optional[str] = None,
-    professions: Optional[dict[str, str]] = None,
     order=(),
 ) -> bool:
     """Append new plans to saved order, or alternate default operator groups."""
     if not new_plan_ids:
         return True
-    if professions is None and not order:
-        from arknights_mower.utils.mastery_recommendation import get_skill_data
-
-        professions = {
-            char_id: info.get("profession", "")
-            for char_id, info in get_skill_data().get("characters", {}).items()
-        }
     try:
         with _conn(path) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -720,7 +712,7 @@ def auto_interleave_new_plans(
                     ),
                 )
             else:
-                ordered = interleave_mastery_plans(plans, professions)
+                ordered = interleave_mastery_plans(plans)
             conn.executemany(
                 "UPDATE mastery_plan SET priority=? WHERE id=?",
                 (

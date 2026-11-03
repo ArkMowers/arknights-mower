@@ -79,7 +79,7 @@
             :disabled="!editable || dragging || !!search.trim()"
             @click="organize"
           >
-            按职业整理
+            错开协助干员
           </n-button>
           <n-button
             size="small"
@@ -308,6 +308,17 @@ async function readState() {
   )
   return {
     ...order.data,
+    planning_items: (order.data.planning_items || order.data.items || []).map((item) => {
+      const plan = (plans.data.plans || []).find((plan) => plan.id === item.plan_id)
+      return plan
+        ? {
+            ...item,
+            ...Object.fromEntries(
+              ['support_plan', 'support_runtime', 'target_level'].map((key) => [key, plan[key]])
+            )
+          }
+        : item
+    }),
     failed_items: (plans.data.plans || [])
       .filter((plan) => plan.status === 'failed' && !planned.has(plan.id))
       .map((plan) => ({
@@ -448,18 +459,15 @@ function clear() {
 
 function organize() {
   if (!editable.value || search.value.trim()) return
-  const movable = sortableItems.value.filter((item) => !item.locked)
-  const byKey = new Map(movable.map((item) => [item.key, item]))
-  const ordered = interleaveMasteryPlans(
-    movable.map((item) => ({
-      ...item,
-      status: 'idle',
-      profession:
-        item.profession ||
-        props.recommendations.find((op) => op.char_id === item.char_id)?.profession
-    }))
-  ).map((item) => byKey.get(item.key))
-  commitDrag([...sortableItems.value.filter((item) => item.locked), ...ordered])
+  const sortable = sortableItems.value
+  const byKey = new Map(sortable.map((item) => [item.key, item]))
+  const movable = interleaveMasteryPlans(
+    sortable.map((item) => ({ ...item, status: item.locked ? 'training' : 'idle' }))
+  ).filter((item) => !item.locked)
+  commitDrag([
+    ...sortable.filter((item) => item.locked),
+    ...movable.map((item) => byKey.get(item.key))
+  ])
 }
 
 function prioritizeSkills() {

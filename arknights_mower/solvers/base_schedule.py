@@ -1108,6 +1108,21 @@ class BaseSchedulerSolver(
                 # 实读完成或任务本身是读取前置时，不保留旧门控的观察挂起。
                 task.__dict__.pop("startup_observation_pending", None)
             failure = getattr(task, "execution_failure", None)
+            if failure and (waiting := getattr(task, "mastery_mood_wait", None)):
+                from arknights_mower.utils.mastery_mood import (
+                    support_mood_context,
+                    support_mood_shortages,
+                )
+
+                changed = support_mood_context(waiting["plan_id"]) != waiting["context"]
+                if not changed and support_mood_shortages(
+                    self.op_data, waiting["required"]
+                ):
+                    continue
+                del task.execution_failure
+                del task.mastery_mood_wait
+                task.execution_retained = True
+                continue
             if failure and (pending := getattr(task, "credit_shop_pending", None)):
                 if CreditShop.can_resume(self.recog, pending):
                     del task.execution_failure

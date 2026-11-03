@@ -776,6 +776,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
         _read_slot_mastery_tier,
     )
     from arknights_mower.utils.mastery_db import update_plan_status
+    from arknights_mower.utils.mastery_mood import SupportMoodWait
     from arknights_mower.utils.mastery_recommendation import (
         get_mastery_requirement_error,
     )
@@ -936,11 +937,20 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 return
             if support_level_to_prepare is not None:
                 from arknights_mower.solvers.mastery_support_runtime import (
+                    prepare_legacy_support_mood,
                     prepare_plan_supports,
                 )
 
                 try:
-                    prepare_plan_supports(solver, plan, support_level_to_prepare)
+                    prepare = (
+                        prepare_plan_supports
+                        if plan.get("support_plan")
+                        else prepare_legacy_support_mood
+                    )
+                    prepare(solver, plan, support_level_to_prepare)
+                except SupportMoodWait as exc:
+                    _defer_support_mood(solver, plan, exc)
+                    return
                 except SupportPlanError as exc:
                     _exit_failed(
                         solver, plan, str(exc), step_level=support_level_to_prepare
@@ -1052,7 +1062,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 if support_prepared and tier + 1 != step_level:
                     _exit_failed(solver, plan, "协助方案校验后专精档位发生变化，请重试")
                     return
-                if plan.get("support_plan") and not support_prepared:
+                if not support_prepared:
                     support_level_to_prepare = tier + 1
                     solver.back()  # The next TRAIN_MAIN iteration validates the route.
                     continue
@@ -1060,7 +1070,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
             height = (skill_index - 1) * 0.3 + 0.32
             solver.ctap((solver.recog.w * 0.33, solver.recog.h * height))
         elif scene == Scene.TRAIN_SKILL_UPGRADE:
-            if plan.get("support_plan") and not support_prepared:
+            if not support_prepared:
                 _exit_failed(solver, plan, "尚未完成协助方案校验，停止开训")
                 return
             tracker.mark_upgrade()
@@ -1098,6 +1108,23 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 solver, plan, tracker.format_stats(), tracker.stuck_scene()
             )
             return
+
+
+def _defer_support_mood(solver, plan, error):
+    """Retain the start task until its assistants can cover the complete skill."""
+    from arknights_mower.utils.mastery_db import update_plan_status
+    from arknights_mower.utils.mastery_mood import support_mood_context
+
+    update_plan_status(plan["id"], "idle", failed_reason=str(error))
+    task = getattr(solver, "task", None)
+    if task is not None:
+        task.mastery_mood_wait = {
+            "required": error.required,
+            "plan_id": plan["id"],
+            "context": support_mood_context(plan["id"]),
+        }
+        solver._retain_failed_task(task, str(error), (), dependency=True)
+    solver.back_to_infrastructure()
 
 
 def _defer_amiya_form(solver, plan, room, available):
