@@ -126,11 +126,26 @@ def test_no_usable_t4_stops_without_more_fodder(deer, inventory):
 
 
 def test_rejected_first_fodder_uses_configured_fallback_in_the_same_visit(deer):
+    from arknights_mower.utils.workshop_ui import FORMULA_TABS
+
     solver, state, base, update, _ = deer
     config.conf.workshop_settings[0].items[1].self_upper_limit = 24
     original = solver.item_list
+    original_tap = solver.tap
+    state.scrolled = False
+    chip = FORMULA_TABS["芯片"]
+
+    def tap(pos, **kwargs):
+        if pos == (chip[0] * 1920, chip[1] * 1080):
+            state.scrolled = False
+        original_tap(pos, **kwargs)
+
+    solver.tap = tap
+    solver.swipe_noinertia = lambda *a, **kw: setattr(state, "scrolled", True)
 
     def items():
+        if state.scrolled:
+            return []
         return [
             (name, pos, False if name == "固源岩组" else valid)
             for name, pos, valid in original()

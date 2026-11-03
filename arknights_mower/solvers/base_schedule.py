@@ -5509,6 +5509,7 @@ class BaseSchedulerSolver(
                             # The first candidate may have been rejected on screen.
                             # Rebuild in saved order so this visit can use its fallback.
                             tab_queue = deque(available_groups().items())
+                            reset_scan = True
 
                 elif scene == Scene.FACTORY_PRODUCT_COLLECT:
                     self.recog.save_screencap("workshop")
