@@ -9,9 +9,13 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from arknights_mower.solvers import mastery, mastery_support_runtime
+from arknights_mower.tests.mastery_support_fixtures import context_game as context_game
 from arknights_mower.tests.mastery_support_fixtures import database as database
+from arknights_mower.tests.mastery_support_fixtures import game as game
+from arknights_mower.tests.mastery_support_fixtures import owned
 from arknights_mower.tests.mastery_support_start_tests import scene_solver
 from arknights_mower.utils import mastery_db as db
+from arknights_mower.utils import mastery_support_data
 from arknights_mower.utils.mastery_mood import (
     SupportMoodWait,
     require_support_mood,
@@ -84,11 +88,15 @@ def test_unknown_or_invalid_list_mood_does_not_allow_training(value):
         require_support_mood(SimpleNamespace(op_data=moods(快教官=value)), [stage(1)])
 
 
+@pytest.mark.parametrize(
+    "follow,replacement_mood", [(False, None), (True, 24), (True, 1), (False, 24)]
+)
 def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
-    database, monkeypatch
+    database, monkeypatch, follow, replacement_mood
 ):
     monkeypatch.setitem(sys.modules, "arknights_mower.utils.skland", MagicMock())
     from arknights_mower.solvers import base_schedule
+    from arknights_mower.utils.operators import Operator
 
     route = stage(1, "艾丽妮", 30)
     pid = db.insert_plan(
@@ -96,7 +104,21 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
     )
     plan = db.get_plan_by_id(pid)
     solver, events = scene_solver(Scene.TRAIN_MAIN, True)
-    solver.op_data = moods(艾丽妮=1)
+    solver.op_data = moods(艾丽妮=1, 新协助=1)
+    solver.op_data.operators = {
+        "艾丽妮": Operator("艾丽妮", "", current_room="train", current_index=0),
+        "新协助": Operator("新协助", ""),
+    }
+    occupant = ["艾丽妮"]
+    read_slots = solver.get_agent_from_room.side_effect
+
+    def observed_slots(room):
+        rows = read_slots(room)
+        if rows:
+            rows[0]["agent"] = occupant[0]
+        return rows
+
+    solver.get_agent_from_room.side_effect = observed_slots
     at = datetime.now() - timedelta(minutes=1)
     task = SchedulerTask(at, task_type=TaskTypes.SKILL_UPGRADE)
     task.plan_key = str(pid)
@@ -120,7 +142,11 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
                 "艾丽妮": {
                     level: {"name": "艾丽妮", "efficiency": 30, "halves": True}
                     for level in (1, 2, 3)
-                }
+                },
+                "新协助": {
+                    level: {"name": "新协助", "efficiency": 100, "halves": False}
+                    for level in (1, 2, 3)
+                },
             },
             5,
         ),
@@ -143,7 +169,7 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
         ),
         patch(
             "arknights_mower.utils.config.conf",
-            SimpleNamespace(assistant_follows_schedule=False),
+            SimpleNamespace(assistant_follows_schedule=follow),
         ),
         patch.object(
             mastery, "_confirm_training_started", return_value="started"
@@ -168,7 +194,44 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
         solver.op_data.dorm_mood_estimates["其他干员"] = (24, datetime.now())
         resume()
         assert task.execution_failure
-        solver.op_data = moods(艾丽妮=8 / 1.35)
+        if replacement_mood is not None:
+            solver.op_data.operators["艾丽妮"].current_room = ""
+            solver.op_data.operators["艾丽妮"].current_index = -1
+            solver.op_data.operators["新协助"].current_room = "train"
+            solver.op_data.operators["新协助"].current_index = 0
+            solver.op_data.dorm_mood_estimates["新协助"] = (
+                replacement_mood,
+                datetime.now(),
+            )
+            occupant[0] = "新协助"
+            resume()
+            if follow:
+                assert not hasattr(task, "execution_failure")
+                assert task.time == at and solver.tasks == [task, other]
+                mastery._start_new_training(solver, db.get_plan_by_id(pid), room=room)
+                if replacement_mood == 24:
+                    confirm.assert_called_once()
+                    return
+                assert set(task.mastery_mood_wait["required"]) == {"新协助"}
+                assert task.mastery_mood_wait["required"]["新协助"] == pytest.approx(
+                    8 / 2.05
+                )
+                for _ in range(3):
+                    resume()
+                    assert task.execution_failure and task.time == at
+                    assert task_view(solver.tasks, TaskScope.DISPATCH) == [other]
+                solver.op_data.dorm_mood_estimates["新协助"] = (
+                    8 / 2.05,
+                    datetime.now(),
+                )
+            else:
+                assert task.execution_failure
+                solver.op_data.dorm_mood_estimates["艾丽妮"] = (
+                    8 / 1.35,
+                    datetime.now(),
+                )
+        else:
+            solver.op_data.dorm_mood_estimates["艾丽妮"] = (8 / 1.35, datetime.now())
         resume()
         assert not hasattr(task, "execution_failure")
         assert task.time == at and solver.tasks == [task, other]
@@ -263,3 +326,59 @@ def test_central_speed_is_excluded_while_explicit_swap_margin_is_preserved():
     assert required["快教官"] == pytest.approx(
         (16 - (5 + 40 / 60) * 1.35) / 2.05, abs=0.001
     )
+
+
+@pytest.mark.parametrize(
+    "first_manual,second_manual,first_name,second_name,allowed",
+    [
+        (False, True, "假日威龙陈", "左乐", True),
+        (True, False, "左乐", "假日威龙陈", True),
+        (True, False, "左乐", "左乐", False),
+    ],
+)
+def test_each_remaining_stage_uses_its_own_candidate_policy(
+    database,
+    context_game,
+    monkeypatch,
+    first_manual,
+    second_manual,
+    first_name,
+    second_name,
+    allowed,
+):
+    _, ids = context_game
+    roster = [owned(ids[name]) for name in ("能天使", "假日威龙陈", "左乐")]
+    monkeypatch.setattr(mastery_support_data, "owned_roster", lambda: roster)
+    monkeypatch.setattr(
+        "arknights_mower.utils.config.conf",
+        SimpleNamespace(assistant_follows_schedule=False),
+    )
+    monkeypatch.setattr(
+        mastery_support_runtime, "_observed_support", lambda _: (first_name, "能天使")
+    )
+    plan = {
+        "id": 1,
+        "char_id": ids["能天使"],
+        "char_name": "能天使",
+        "target_level": 2,
+        "support_plan": {
+            "stages": [
+                stage(1, first_name, manual=first_manual),
+                stage(2, second_name, manual=second_manual),
+            ]
+        },
+    }
+    solver = SimpleNamespace(op_data=moods(假日威龙陈=24, 左乐=24))
+    save = Mock()
+    monkeypatch.setattr(mastery_support_runtime, "save_runtime", save)
+    if not allowed:
+        with pytest.raises(
+            mastery_support_runtime.SupportPlanError, match="计划协助者已不可用"
+        ):
+            mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+        save.assert_not_called()
+        return
+    mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+    assert save.call_args.args[1]["operator"] == first_name
+    mastery_support_runtime.prepare_plan_supports(solver, plan, 2)
+    assert save.call_args.args[1]["operator"] == second_name

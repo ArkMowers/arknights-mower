@@ -1121,7 +1121,7 @@ def _defer_support_mood(solver, plan, error):
         task.mastery_mood_wait = {
             "required": error.required,
             "plan_id": plan["id"],
-            "context": support_mood_context(plan["id"]),
+            "context": support_mood_context(plan["id"], solver.op_data),
         }
         solver._retain_failed_task(task, str(error), (), dependency=True)
     solver.back_to_infrastructure()

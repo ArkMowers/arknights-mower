@@ -153,10 +153,11 @@ def prepare_plan_supports(solver, plan, level):
     route = next((s for s in saved["stages"] if s["level"] == level), None)
     if route is None:
         raise SupportPlanError("专精阶段与协助方案不一致，请重新添加计划")
+    inputs = TrainingInputs(schedule=schedule_context())
     options, central = candidates(
         plan["char_id"],
         include_dynamic=route.get("manual", False),
-        inputs=TrainingInputs(schedule=schedule_context()),
+        inputs=inputs,
     )
     from arknights_mower.utils import config
 
@@ -199,9 +200,14 @@ def prepare_plan_supports(solver, plan, level):
         )
         if next_route is None:
             raise SupportPlanError("协助方案缺少后续专精阶段，请重新添加计划")
+        next_options, _ = candidates(
+            plan["char_id"],
+            include_dynamic=next_route.get("manual", False),
+            inputs=inputs,
+        )
         next_first, next_swap = _follow_schedule(
-            _stage_trainers(options, next_route, next_level),
-            options,
+            _stage_trainers(next_options, next_route, next_level),
+            next_options,
             next_level,
             occupants[0],
         )
@@ -210,12 +216,12 @@ def prepare_plan_supports(solver, plan, level):
             and next_level == plan["target_level"]
         ):
             if basic_mastery_successor(plan, next_level):
-                next_first, next_swap = _non_reducer(options, next_level), None
+                next_first, next_swap = _non_reducer(next_options, next_level), None
             elif halving_successor(plan, next_level):
                 next_swap = max(
                     (
                         stats[next_level]
-                        for stats in options.values()
+                        for stats in next_options.values()
                         if stats[next_level]["halves"]
                     ),
                     key=lambda item: item["efficiency"],

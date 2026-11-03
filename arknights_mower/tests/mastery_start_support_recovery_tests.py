@@ -21,6 +21,9 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 def starting_support(database, monkeypatch):
     draft, panel, _, options = swap_case()
     panel.operator_name = "能天使"
+    route = draft["support_plan"]["stages"][0]
+    draft["support_plan"]["stages"].append({**route, "level": 3})
+    options = {name: {**levels, 3: levels[2]} for name, levels in options.items()}
     pid = mastery_db.insert_plan(
         "target", 0, 3, "一技能·测试", "能天使", support_plan=draft["support_plan"]
     )
@@ -30,6 +33,10 @@ def starting_support(database, monkeypatch):
     task = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE)
     task.plan_key = str(pid)
     solver = MagicMock(tasks=[task], task=task)
+    solver.op_data = SimpleNamespace(
+        operators={},
+        dorm_mood_estimates={name: (24, datetime.now()) for name in options},
+    )
     solver.recog.w, solver.recog.h = 1920, 1080
     room = mastery_reader.RoomState(
         "empty", train_slot="能天使", slots_read=True, slots_reliable=True
@@ -170,11 +177,17 @@ def test_route_none_during_confirmed_start_preserves_pending_support(
     case.plan["expires_at"] = case.panel.countdown.isoformat()
     reads = MagicMock(return_value=("快教官", "能天使", [], True))
     monkeypatch.setattr(mastery_reader, "_read_slots_checked", reads)
-    monkeypatch.setattr(
-        mastery,
-        "_get_plan_route",
-        MagicMock(side_effect=[None] if when == "initial_assistant" else [route, None]),
-    )
+
+    def confirmed_route_loss(*args):
+        monkeypatch.setattr(
+            mastery,
+            "_get_plan_route",
+            MagicMock(
+                side_effect=[None] if when == "initial_assistant" else [route, None]
+            ),
+        )
+
+    monkeypatch.setattr(runtime, "prepare_legacy_support_mood", confirmed_route_loss)
     mastery.run_mastery_task(case.solver)
     saved = mastery_db.get_plan_by_id(case.plan["id"])
     assert saved["status"] == "training"

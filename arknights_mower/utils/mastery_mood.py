@@ -84,7 +84,7 @@ def require_support_mood(solver, routes, *, inherited=False):
         raise SupportMoodWait(required, shortages)
 
 
-def support_mood_context(plan_id):
+def support_mood_context(plan_id, op_data):
     """Changes to the plan, successor or assistant policy require a fresh budget."""
     from . import config
     from .mastery_db import (
@@ -107,6 +107,15 @@ def support_mood_context(plan_id):
             for p in get_all_plans()
         ],
         "follow_schedule": config.conf.assistant_follows_schedule,
+        "support_slot": tuple(
+            sorted(
+                name
+                for name, op in op_data.operators.items()
+                if op.current_room == "train" and op.current_index == 0
+            )
+        )
+        if config.conf.assistant_follows_schedule
+        else None,
         "routes": get_all_routes() if plan and not plan.get("support_plan") else None,
         "settings": get_route_settings()
         if plan and not plan.get("support_plan")

@@ -31,6 +31,12 @@ def scheduling_reader_fixtures():
 
     with ExitStack() as patches:
         patches.enter_context(patch.object(config_mod, "plan", {}))
+        # Scene convergence assumes assistant admission; endurance has its own suite.
+        patches.enter_context(
+            patch(
+                "arknights_mower.solvers.mastery_support_runtime.prepare_legacy_support_mood"
+            )
+        )
         patches.enter_context(
             patch.object(
                 mastery,
@@ -466,6 +472,14 @@ class TestArrangingConvergence(unittest.TestCase):
             self.run_arranging(solver, plan, advance=timedelta(minutes=1))
             mock_close.assert_called_once_with(solver)
 
+    def test_upgrade_without_assistant_admission_does_not_confirm(self):
+        solver = self.make_solver(scene=Scene.TRAIN_SKILL_UPGRADE)
+        _, update = self.run_arranging(solver, make_plan())
+        solver.tap.assert_not_called()
+        failed = [call for call in update.call_args_list if call.args[1] == "failed"]
+        self.assertEqual(len(failed), 1)
+        self.assertIn("尚未完成协助方案校验", failed[0].kwargs["failed_reason"])
+
     # --- 空闲训练室 → 正常开始 ---
     def test_free_room_starts_normally(self):
         read_count = {"n": 0}
@@ -479,7 +493,9 @@ class TestArrangingConvergence(unittest.TestCase):
         scenes = [
             Scene.TRAIN_MAIN,  # 迭代1：读倒计时(无) → 读槽位(空) → back
             Scene.TRAIN_MAIN,  # 迭代2：tap 选择技能（身份确认）
-            Scene.TRAIN_SKILL_SELECT,  # 迭代3：读档位(0) → ctap 技能
+            Scene.TRAIN_SKILL_SELECT,  # Read the tier before assistant admission.
+            Scene.TRAIN_MAIN,  # Prepare assistants in the main scene.
+            Scene.TRAIN_SKILL_SELECT,  # Return to the verified skill.
             Scene.TRAIN_SKILL_UPGRADE,  # 迭代4：tap 确认 → 进入确认流程
         ]
         solver = self.make_solver(scenes=scenes, scene_fallback=Scene.TRAIN_MAIN)
@@ -499,6 +515,10 @@ class TestArrangingConvergence(unittest.TestCase):
         solver = MagicMock()
         solver.find.return_value = skill_confirm_pos
         solver.train_scene.side_effect = [
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_SKILL_SELECT,
             Scene.TRAIN_SKILL_UPGRADE,
             Scene.TRAIN_MAIN,
         ]
@@ -511,13 +531,23 @@ class TestArrangingConvergence(unittest.TestCase):
         plan = make_plan()
         with (
             patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(
+                mastery, "_read_train_countdown3", return_value=("failed", None)
+            ),
+            patch.object(mastery_reader, "_read_slot_mastery_tier", return_value=0),
             patch("arknights_mower.utils.mastery_db.update_plan_status"),
             patch("arknights_mower.utils.email.send_message"),
             patch.object(mastery, "_arrange_support"),
             patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
             patch.object(mastery, "_schedule_collect"),
         ):
-            mastery._start_new_training(solver, plan)
+            mastery._start_new_training(
+                solver,
+                plan,
+                room=mastery_reader.RoomState(
+                    "empty", train_slot="测试干员", slots_reliable=True
+                ),
+            )
         tap_calls = [c.args[0] for c in solver.tap.call_args_list]
         self.assertIn(
             skill_confirm_pos, tap_calls, "确认按钮应该用 skill_confirm 模板位置点"
@@ -536,6 +566,10 @@ class TestArrangingConvergence(unittest.TestCase):
         solver = MagicMock()
         solver.find.return_value = ((1563, 832), (1880, 1048))  # skill_confirm
         solver.train_scene.side_effect = [
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_SKILL_SELECT,
+            Scene.TRAIN_MAIN,
+            Scene.TRAIN_SKILL_SELECT,
             Scene.TRAIN_SKILL_UPGRADE,  # 确认页 → tap 确认
             Scene.TRAIN_SKILL_SELECT,  # 确认后自动退回技能选择页 → back
             Scene.TRAIN_MAIN,  # back 回主页面 → 读倒计时确认开始
@@ -549,13 +583,23 @@ class TestArrangingConvergence(unittest.TestCase):
         plan = make_plan()
         with (
             patch.object(mastery, "datetime", FixedDateTime),
+            patch.object(
+                mastery, "_read_train_countdown3", return_value=("failed", None)
+            ),
+            patch.object(mastery_reader, "_read_slot_mastery_tier", return_value=0),
             patch("arknights_mower.utils.mastery_db.update_plan_status") as upd,
             patch("arknights_mower.utils.email.send_message"),
             patch.object(mastery, "_arrange_support"),
             patch.object(mastery, "_schedule_swap_if_needed", return_value=None),
             patch.object(mastery, "_schedule_collect"),
         ):
-            mastery._start_new_training(solver, plan)
+            mastery._start_new_training(
+                solver,
+                plan,
+                room=mastery_reader.RoomState(
+                    "empty", train_slot="测试干员", slots_reliable=True
+                ),
+            )
         training_calls = [c for c in upd.call_args_list if c.args[1] == "training"]
         self.assertTrue(
             training_calls, "确认后 back 回主页面读到有效倒计时也应确认训练开始"
@@ -652,7 +696,9 @@ class TestArrangingConvergence(unittest.TestCase):
 
         scenes = [
             Scene.TRAIN_MAIN,  # 读倒计时(无) → 核验训练位(凛御银灰，已匹配) → 点开技能选择页（身份确认）
-            Scene.TRAIN_SKILL_SELECT,  # 读档位(0) → ctap 技能
+            Scene.TRAIN_SKILL_SELECT,  # Read the tier before assistant admission.
+            Scene.TRAIN_MAIN,  # Prepare assistants in the main scene.
+            Scene.TRAIN_SKILL_SELECT,  # Return to the verified skill.
             Scene.TRAIN_SKILL_UPGRADE,  # tap 确认 → 确认开训
         ]
         solver = self.make_solver(scenes=scenes, scene_fallback=Scene.TRAIN_MAIN)
@@ -690,7 +736,9 @@ class TestArrangingConvergence(unittest.TestCase):
             Scene.TRAIN_SKILL_SELECT,  # 未确认身份进入 219 → 触发自愈，back 回主页
             Scene.TRAIN_MAIN,  # 等待转场轮询命中 TRAIN_MAIN
             Scene.TRAIN_MAIN,  # 主界面读倒计时(无) → 核验槽位 → 身份确认，点开技能选择页
-            Scene.TRAIN_SKILL_SELECT,  # 已确认身份 → 读档位(0) → ctap 技能
+            Scene.TRAIN_SKILL_SELECT,  # Read the tier before assistant admission.
+            Scene.TRAIN_MAIN,  # Prepare assistants in the main scene.
+            Scene.TRAIN_SKILL_SELECT,  # Return to the verified skill.
             Scene.TRAIN_SKILL_UPGRADE,  # tap 确认 → 确认开训
         ]
         solver = self.make_solver(scenes=scenes, scene_fallback=Scene.TRAIN_MAIN)
@@ -961,7 +1009,7 @@ class TestArrangingConvergence(unittest.TestCase):
     def test_arranging_no_wrong_start_on_mismatch(self):
         """#69/B2 全流程（#72 真实页面模型）：219 经训练位确认进入、不读面板文字，
         确认页读到陌生干员面板 → 计划 failed，绝不写 training。"""
-        reads = iter([None, None, 7200])
+        reads = iter([None, None, None, 7200])
 
         def fake_read(*args, **kwargs):
             return next(reads, 0)
@@ -969,7 +1017,9 @@ class TestArrangingConvergence(unittest.TestCase):
         scenes = [
             Scene.TRAIN_MAIN,  # 读占用(无) → 读槽位(空) → back
             Scene.TRAIN_MAIN,  # tap 选择技能（身份确认）
-            Scene.TRAIN_SKILL_SELECT,  # 读档位(0) → ctap 技能
+            Scene.TRAIN_SKILL_SELECT,  # Read the tier before assistant admission.
+            Scene.TRAIN_MAIN,  # Prepare assistants in the main scene.
+            Scene.TRAIN_SKILL_SELECT,  # Return to the verified skill.
             Scene.TRAIN_SKILL_UPGRADE,  # tap 确认 → 确认页读到陌生干员面板
         ]
         solver = self.make_solver(scenes=scenes, scene_fallback=Scene.TRAIN_MAIN)

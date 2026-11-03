@@ -1114,7 +1114,10 @@ class BaseSchedulerSolver(
                     support_mood_shortages,
                 )
 
-                changed = support_mood_context(waiting["plan_id"]) != waiting["context"]
+                changed = (
+                    support_mood_context(waiting["plan_id"], self.op_data)
+                    != waiting["context"]
+                )
                 if not changed and support_mood_shortages(
                     self.op_data, waiting["required"]
                 ):
