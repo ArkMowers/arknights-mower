@@ -5491,6 +5491,7 @@ class BaseSchedulerSolver(
                                     else:
                                         if not valid:
                                             reject_workshop_recipe(item, inventory_data)
+                                            blocked_materials.add(item)
                                         logger.info(f"检测到{item}不满足条件，跳过")
                                         item_list.remove(item)
                             scan_round += 1
@@ -5499,6 +5500,15 @@ class BaseSchedulerSolver(
                                 (0, -700),
                                 interval=1,
                             )
+                        if (
+                            is_9colored
+                            and tasks
+                            and tasks[0] == "select"
+                            and not item_list
+                        ):
+                            # The first candidate may have been rejected on screen.
+                            # Rebuild in saved order so this visit can use its fallback.
+                            tab_queue = deque(available_groups().items())
 
                 elif scene == Scene.FACTORY_PRODUCT_COLLECT:
                     self.recog.save_screencap("workshop")

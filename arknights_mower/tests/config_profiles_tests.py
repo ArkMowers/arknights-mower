@@ -775,7 +775,10 @@ def test_event_sign_in_follows_daily_profile_group(storage, enabled, inherit):
 
 @pytest.mark.parametrize("operation", ["create", "activate", "import"])
 @pytest.mark.parametrize("selected", [[], ["workshop"], ["other_settings"]])
-def test_workshop_reserves_follow_workshop_profile_group(storage, operation, selected):
+@pytest.mark.parametrize("current", [(0, 230), (500, 500)])
+def test_workshop_reserves_follow_workshop_profile_group(
+    storage, operation, selected, current
+):
     config.conf.workshop_t1_reserve = 17
     config.conf.workshop_t2_reserve = 41
     config.save_conf()
@@ -783,8 +786,7 @@ def test_workshop_reserves_follow_workshop_profile_group(storage, operation, sel
     incoming = backup.export_archive()
     if operation == "activate":
         _create("目标配置")
-    config.conf.workshop_t1_reserve = 0
-    config.conf.workshop_t2_reserve = 230
+    config.conf.workshop_t1_reserve, config.conf.workshop_t2_reserve = current
     config.save_conf()
 
     if operation == "create":
@@ -801,7 +803,7 @@ def test_workshop_reserves_follow_workshop_profile_group(storage, operation, sel
 
     expected = (100, 100) if operation == "create" else (17, 41)
     if "workshop" in selected:
-        expected = (0, 230)
+        expected = current
     assert (
         config.conf.workshop_t1_reserve,
         config.conf.workshop_t2_reserve,

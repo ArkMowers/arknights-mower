@@ -40,12 +40,18 @@ def crafting_gold_cost(budget, materials, formulas=None):
     demand = Counter()
     for material in materials:
         demand[material["id"]] += material["count"]
+    direct = demand.copy()
     pending = set(demand)
     total = 0
     while pending:
         iid = max(pending, key=lambda key: (budget.depths.get(key, 0), key))
         pending.remove(iid)
-        shortage = max(0, demand[iid] - budget.inventory.get(iid, 0))
+        reserve = (
+            max(0, budget.ingredient_reserves.get(iid, 0) - direct[iid])
+            if demand[iid] > direct[iid]
+            else 0
+        )
+        shortage = max(0, demand[iid] + reserve - budget.inventory.get(iid, 0))
         if not shortage or iid.startswith("32") or iid not in budget.recipes:
             continue
         costs, output = budget.recipes[iid]
@@ -76,6 +82,7 @@ def next_recipe(
         if f.get("output_name", name) in recipe_names
         and f.get("tab") in ("精英材料", "技巧概要")
     }
+    held = Counter()
     for cid, materials in entries:
         direct = Counter()
         for material in materials:
@@ -94,13 +101,24 @@ def next_recipe(
                     0,
                     available[iid]
                     - max(
-                        0, budget.ingredient_reserves.get(iid, 0) - reserved.get(iid, 0)
+                        0,
+                        budget.ingredient_reserves.get(iid, 0)
+                        - held[iid]
+                        - reserved.get(iid, 0),
                     ),
                 ),
                 demand[iid],
             )
             available[iid] -= used
             shortage = demand[iid] - used
+            if demand[iid] > direct[iid] - reserved.get(iid, 0):
+                shortage += max(
+                    0,
+                    budget.ingredient_reserves.get(iid, 0)
+                    - held[iid]
+                    - reserved.get(iid, 0)
+                    - available[iid],
+                )
             if shortage <= 0 or iid not in budget.recipes or iid not in formula_ids:
                 continue
             costs, output = budget.recipes[iid]
@@ -111,6 +129,7 @@ def next_recipe(
                 pending.add(child)
         if not crafts:
             stock.subtract(reserved)
+            held.update(reserved)
             continue
         for iid in sorted(crafts, key=lambda key: (budget.depths.get(key, 0), key)):
             if recipe_filter and not recipe_filter(formulas[formula_ids[iid]]):
@@ -124,7 +143,10 @@ def next_recipe(
                         stock[child]
                         - max(
                             reserved.get(child, 0),
-                            budget.ingredient_reserves.get(child, 0),
+                            max(
+                                0,
+                                budget.ingredient_reserves.get(child, 0) - held[child],
+                            ),
                         ),
                     )
                     // count

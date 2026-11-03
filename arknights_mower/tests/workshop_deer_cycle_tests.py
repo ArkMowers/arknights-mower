@@ -125,6 +125,24 @@ def test_no_usable_t4_stops_without_more_fodder(deer, inventory):
     base.save_exception.assert_not_called()
 
 
+def test_rejected_first_fodder_uses_configured_fallback_in_the_same_visit(deer):
+    solver, state, base, update, _ = deer
+    config.conf.workshop_settings[0].items[1].self_upper_limit = 24
+    original = solver.item_list
+
+    def items():
+        return [
+            (name, pos, False if name == "固源岩组" else valid)
+            for name, pos, valid in original()
+        ]
+
+    solver.item_list = items
+    solver.generate_product("九色鹿")
+    base.save_exception.assert_not_called()
+    assert state.crafts == [("家具零件_碳素组", 2), ("异铁块", 1)]
+    update.assert_called_once()
+
+
 def test_random_byproduct_does_not_advance_causality_or_change_inventory(
     deer, inventory, monkeypatch
 ):

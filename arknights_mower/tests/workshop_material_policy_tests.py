@@ -90,6 +90,7 @@ def test_budget_excludes_protected_t2_and_t1_routes_but_uses_t3_stock(
             "t2": {"name": name, "rarity": 2},
             "t3": {"name": "蓝材料", "rarity": 3},
             "t4": {"name": "紫材料", "rarity": 4},
+            "4001": {"name": "龙门币", "rarity": 0},
         },
         "composite": {
             "t2": {"pathway": [{"id": "t1", "count": 3}]},
@@ -99,7 +100,7 @@ def test_budget_excludes_protected_t2_and_t1_routes_but_uses_t3_stock(
     }
     calculator = MaterialBudget(
         data,
-        {"t1": 300, "t2": 100, "t3": 1},
+        {"t1": 300, "t2": 100, "t3": 1, "4001": 10000},
         blocked_materials=protected_workshop_materials(),
     )
     result = calculator.calculate_plan([("skill", [{"id": "t4", "count": 1}])])
