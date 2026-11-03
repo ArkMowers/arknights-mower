@@ -19067,10 +19067,23 @@ class BaseSchedulerSolver(
             return True
 
     def 仓库扫描(self):
+        from arknights_mower.utils.depot import restore_cached_inventory
+
+        def keep_cached_inventory():
+            logger.warning("仓库扫描: 森空岛同步未成功，沿用缓存并跳过本次扫描")
+            restore_cached_inventory()
+            return False
+
         try:
-            if not cultivateDepotSolver().start(force_inventory=True):
-                logger.warning("仓库扫描: 森空岛同步未成功，保留现有库存并跳过本次扫描")
-                return False
+            try:
+                synchronized = cultivateDepotSolver().start(force_inventory=True)
+            except (MowerExit, DeviceRecoveryError, SharedADBError):
+                raise
+            except Exception:
+                logger.warning("仓库扫描: 森空岛同步异常，尝试沿用本地库存")
+                return keep_cached_inventory()
+            if not synchronized:
+                return keep_cached_inventory()
             if not DepotSolver(self.device, self.recog).run():
                 return False
             self._auto_schedule_mastery_after_scan()

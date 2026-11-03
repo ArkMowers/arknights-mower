@@ -48,6 +48,75 @@ def cloud_inventory_snapshot(payload):
     return counts, observed_at
 
 
+def restore_cached_inventory():
+    """Reuse timestamped local files after sync failure without claiming a fresh scan."""
+    import math
+
+    from arknights_mower.solvers.record import restore_cached_inventory_counts
+    from arknights_mower.utils.workshop_data import parse_roster
+
+    now = datetime.now().timestamp()
+
+    def usable_time(timestamp):
+        return (
+            type(timestamp) in (int, float)
+            and math.isfinite(timestamp)
+            and 0 < timestamp <= now
+        )
+
+    snapshots = []
+    path = get_path("@app/tmp/cultivate.json")
+    try:
+        with open(path, encoding="utf-8") as stream:
+            payload = json.load(stream)
+        parse_roster(payload)
+        items = payload["data"].get("items")
+        if not isinstance(items, list) or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("id"), str)
+            or not str(item.get("count", "")).isdigit()
+            for item in items
+        ):
+            raise ValueError("缓存库存格式无效")
+        counts, timestamp = cloud_inventory_snapshot(payload)
+        if usable_time(timestamp):
+            snapshots.append((timestamp, counts))
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, TypeError, KeyError):
+        logger.warning("仓库扫描: 森空岛本地缓存不可用，保留现有库存")
+    for filename in ("depotresult.csv", "depotmerged.csv"):
+        for timestamp, counts, _ in reversed(
+            _读取历史行(get_path(f"@app/tmp/{filename}"))
+        ):
+            if not usable_time(timestamp):
+                continue
+            valid = {
+                key_mapping[name][2]: count
+                for name, count in counts.items()
+                if name in key_mapping
+                and not 是信物(name)
+                and type(count) is int
+                and count >= 0
+            }
+            if valid:
+                snapshots.append((timestamp, valid))
+                break
+    restored = restore_cached_inventory_counts(snapshots)
+    if snapshots:
+        cached_at = datetime.fromtimestamp(max(at for at, _ in snapshots)).isoformat(
+            timespec="seconds"
+        )
+        logger.warning(
+            "仓库扫描: 沿用本地库存，缓存记录时间 %s，补充 %s 项缺失读数",
+            cached_at,
+            len(restored),
+        )
+    else:
+        logger.warning("仓库扫描: 沿用本地库存，无可用的带时间缓存，缺失数量仍为未知")
+    return restored
+
+
 def 折算抽数(合成玉数量, 寻访凭证数量, 源石数量, 源石碎片, 土数量):
     """把仓库物料折算成四档寻访抽数，返回 {档位: 抽数}。
 
