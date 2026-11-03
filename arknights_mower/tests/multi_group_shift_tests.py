@@ -87,6 +87,7 @@ def shift_off(solver, group):
 @pytest.fixture(params=[False, True], ids=["cross-room", "same-room"])
 def working_shared_covers(solver, request):
     solver.global_plan["default_plan"].config.resting_standby = ["清道夫"]
+    solver.global_plan["default_plan"].config.workaholic = [SHARED]
     plans = solver.global_plan["default_plan"].plan
     plans["central"] = [Room(A, "甲", [SHARED]), Room("陈", "甲", ["清道夫"])]
     plans["meeting"] = [Room(B, "乙", ["初雪"])]

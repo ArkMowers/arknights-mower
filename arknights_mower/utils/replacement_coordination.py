@@ -21,13 +21,7 @@ def replacement_dependencies(data, names):
 
 
 def replacements(data, op, required=()):
-    transitions = {
-        worker.group: True
-        for name in required
-        if (worker := data.operators.get(name)) is not None
-        and worker.group
-        and data.is_group_shift_anchor(worker)
-    }
+    transitions = dict.fromkeys(data.shift_request_groups(required), True)
     return (
         data.shared_replacements(op, data.resting_binding_groups(op, transitions))
         if op.multi_group
@@ -247,11 +241,13 @@ def ordinary_recall_mood_admissible(data, recalled, candidates, *, now=None):
     def mood(op):
         return dorm_candidate_mood(data, op.name, now)
 
+    request_groups = set(data.shift_request_groups(candidates))
     request_moods = [
         (op, value)
         for name in candidates
         if (op := data.operators.get(name)) is not None
         and anchor(op)
+        and (not op.group or op.group in request_groups)
         and op.is_working()
         and (value := mood(op)) is not None
     ]

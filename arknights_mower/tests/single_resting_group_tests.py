@@ -301,3 +301,52 @@ def test_mixed_zero_mood_group_preserves_unique_shared_primary_recovery(single):
     assert s.agent_get_mood(read_rooms=False, return_plan=True) == {}
     assert not data.is_workaholic_group("乙")
     assert (bed.position, bed.time, data.group_shift_state) == before
+
+
+def test_ordinary_recall_uses_only_the_requested_normal_group_mood(single):
+    from arknights_mower.tests.multi_group_shift_tests import B
+    from arknights_mower.utils import config
+    from arknights_mower.utils.replacement_coordination import (
+        ordinary_recall_mood_admissible,
+    )
+
+    data = single.op_data
+    data.runtime_conf = config.Conf(rescue_threshold=0.75)
+    data.config.resting_threshold = 0.65
+    data.operators[A].mood = 15
+    data.operators[SHARED].mood = 10
+    assert data.shift_request_groups([A, SHARED]) == ["甲"]
+    assert not ordinary_recall_mood_admissible(data, {B}, [A, SHARED])
+    data.operators[A].mood = 7
+    assert ordinary_recall_mood_admissible(data, {B}, [A, SHARED])
+
+
+def test_unique_normal_departure_waits_for_working_cover_handoff(single):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    s = single
+    first = {}
+    assert s.get_resting_plan([A], [], first, 0)
+    beds = try_reorder(s.op_data, first)
+    apply(s, first)
+    apply(s, beds)
+    s.op_data.operators[SHARED].mood = 0
+    original = SchedulerTask(
+        time=datetime.now() - timedelta(minutes=5),
+        task_type=TaskTypes.EXHAUST_OFF,
+        meta_data=SHARED,
+    )
+    s.tasks, s.task = [original], original
+    at = original.time
+    for _ in range(2):
+        plan = {}
+        assert not s.get_resting_plan([SHARED], [], plan, 1)
+        assert plan == {}
+        assert s.tasks == [original] and original.time == at
+        assert not s.op_data.group_is_resting("乙")
+    apply(s, {"meeting": [A, "Current"], "contact": [SHARED]})
+    plan = {}
+    assert s.get_resting_plan([SHARED], [], plan, 0)
+    assert plan["contact"] == ["黑角"]
+    assert s.op_data.arrangement_group_transitions(plan) == {"乙": True}
+    assert s.tasks == [original] and original.time == at

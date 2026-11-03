@@ -1574,11 +1574,15 @@ class Operators:
 
     def working_replacement_blockers(self, names, plan=None):
         """共享成员保留工作替班岗位；实际离岗仍须完成交接。"""
+        names = list(names)
+        request_groups = set(self.shift_request_groups(names))
         plan = plan or {}
         return {
             self.operators[owner].group
             for owner, name in self.working_replacement_assignments(names, plan).items()
             if not self.operators[name].multi_group
+            or self.is_group_shift_anchor(self.operators[name])
+            and self.operators[name].group in request_groups
             or any(
                 target == name
                 and (room, index)

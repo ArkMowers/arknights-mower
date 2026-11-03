@@ -344,6 +344,7 @@ describe('resumed supported departures keep their original recovery ownership',(
   state.morale.B=8;state.occupants.room_1_2_0='B';delete state.bedOccupants.dormitory_1_2
   Object.assign(data.operators.X!,{currentRoom:'',currentIndex:-1})
   shared.groupBindings=[{group:'b',replacement:['W']},{group:'a',replacement:['W']}]
+  shared.workaholic=true;state.config.mowerSourceRules!.workaholic.push('D')
   Object.assign(state.config.mowerSourcePlan!.room_1_2![0]!,{group:'a',replacement:['D']})
   state.config.mowerSourcePlan!.room_2_1![0]!.groupBindings=shared.groupBindings
   Object.assign(state.config.positions.find(p=>p.primary==='B')!,{group:'a',candidates:['D']})

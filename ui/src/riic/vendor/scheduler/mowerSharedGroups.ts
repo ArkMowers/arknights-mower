@@ -56,7 +56,8 @@ export function mowerWorkingReplacementAssignments(data:MowerSchedulingData,name
 }
 /** Shared followers may retain their working cover; a move still requires source handoff. */
 export function mowerWorkingReplacementBlocked(data:MowerSchedulingData,names:Iterable<string>,plan:MowerTaskPlan={}):boolean {
- return Object.entries(mowerWorkingReplacementAssignments(data,names,plan)).some(([owner,name])=>!data.operators[name]!.multiGroup||Object.entries(plan).some(([room,row])=>row.some((target,index)=>target===name&&(room!==data.operators[owner]!.room||index!==data.operators[owner]!.index))))
+ const members=[...names],groups=new Set(data.shiftRequestGroups(members))
+ return Object.entries(mowerWorkingReplacementAssignments(data,members,plan)).some(([owner,name])=>!data.operators[name]!.multiGroup||data.isGroupShiftAnchor(data.operators[name]!)&&groups.has(data.operators[name]!.group)||Object.entries(plan).some(([room,row])=>row.some((target,index)=>target===name&&(room!==data.operators[owner]!.room||index!==data.operators[owner]!.index))))
 }
 /** Mutates only the caller's plan, and only after every shared cover has a matching. */
 export function normalizeMowerSharedArrangement(data:MowerSchedulingData,plan:MowerTaskPlan,transitions=mowerArrangementGroupTransitions(data,plan),explicitSlots:ReadonlySet<string>=new Set()):boolean {

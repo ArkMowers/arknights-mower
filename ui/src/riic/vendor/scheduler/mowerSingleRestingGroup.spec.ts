@@ -1,7 +1,7 @@
 import {expect,it} from 'vitest'
 import {MowerOperatorState,restingThresholdFor} from './mowerOperatorState'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
-import {mowerResting,mowerTryReorder} from './mowerOrdinaryPlanning'
+import {mowerResting,mowerTryReorder,mowerGetRestingPlan} from './mowerOrdinaryPlanning'
 import {mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 import {projectMowerArrangements} from './mowerObservations'
 import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
@@ -67,4 +67,20 @@ it('allows an individually resting primary to cover another working group',()=>{
  expect(plan.meeting).toEqual(['F']);expect(plan.contact).toEqual(['X'])
  data=projectMowerArrangements(data,[plan])
  expect(data.operators.F!.currentRoom).toBe('meeting');expect(data.getDormByName('F')).toBeUndefined()
+})
+
+it('retains a unique normal departure until its other working cover is released',()=>{
+ let data=fixture();data.operators.A!.mood=0
+ const first=mowerResting(data,new MowerTaskQueue()),beds=mowerTryReorder(data,first)
+ data=projectMowerArrangements(data,[first,...(beds?[beds]:[])])
+ data.operators.F!.mood=0
+ for(let n=0;n<2;n++){
+  const plan={}
+  expect(mowerGetRestingPlan(data,['F'],[],plan)).toBe(false);expect(plan).toEqual({})
+  expect(data.groupIsResting('b')).toBe(false)
+ }
+ data=projectMowerArrangements(data,[{meeting:['A'],contact:['F']}])
+ const plan={}
+ expect(mowerGetRestingPlan(data,['F'],[],plan)).toBe(true)
+ expect(mowerArrangementGroupTransitions(data,plan)).toEqual({b:true})
 })
