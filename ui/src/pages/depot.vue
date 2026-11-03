@@ -2529,9 +2529,9 @@ onUnmounted(() => {
 }
 
 .exp-training-toggle:hover {
-  background: var(--mower-primary);
+  background: color-mix(in srgb, var(--mower-primary) 80%, black);
   border-color: var(--mower-primary);
-  color: var(--mower-primary-text, #fff);
+  color: var(--mower-primary-contrast, #fff);
 }
 
 .exp-training-list {
