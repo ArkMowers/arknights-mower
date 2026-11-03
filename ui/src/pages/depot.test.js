@@ -355,7 +355,7 @@ describe('depot derived item trends', () => {
     const overviewText = content(overview)
     expect(overviewText).toContain('预计可培养')
     // 右上角是这一组目标的养成消耗，不是库存总量。
-    expect(overviewText).toContain('预计消耗 2,222,800经验/2,669,592龙门币')
+    expect(overviewText).toContain('预计消耗 2,420,000经验/2,669,592龙门币')
     expect(overviewText).not.toContain('2,811,086经验')
     expect(overviewText).toContain('六星')
     expect(overviewText).toContain('精二 90')
@@ -399,7 +399,7 @@ describe('depot derived item trends', () => {
     expect(content(overview)).toContain('精二 50')
     expect(content(overview)).toContain('精二 40')
     expect(content(overview)).not.toContain('精二 90')
-    expect(content(overview)).toContain('预计消耗 2,048,644经验/2,778,056龙门币')
+    expect(content(overview)).toContain('预计消耗 2,672,296经验/2,909,566龙门币')
   })
 
   it('shows an lmd-only capacity list in the lmd detail', async () => {

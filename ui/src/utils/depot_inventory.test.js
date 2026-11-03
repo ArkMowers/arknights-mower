@@ -1284,8 +1284,8 @@ describe('training forecast', () => {
       forecast.rows.map((row) => [row.label, row.target, row.expCount, row.lmdCount, row.joint])
     ).toEqual([
       ['六星', '精二 90', 2, 2, 2],
-      ['五星', '精二 80', 3, 2, 2],
-      ['四星', '精二 70', 4, 3, 3]
+      ['五星', '精二 80', 3, 3, 3],
+      ['四星', '精二 70', 5, 6, 5]
     ])
   })
 
@@ -1293,7 +1293,7 @@ describe('training forecast', () => {
     const forecast = buildTrainingForecast(null, 3000000)
     expect(forecast.exp).toBe(0)
     expect(forecast.lmd).toBe(3000000)
-    expect(forecast.rows.map((row) => row.lmdCount)).toEqual([2, 2, 3])
+    expect(forecast.rows.map((row) => row.lmdCount)).toEqual([2, 3, 6])
     expect(forecast.rows.every((row) => row.expCount === 0)).toBe(true)
   })
 
@@ -1301,7 +1301,7 @@ describe('training forecast', () => {
     const forecast = buildTrainingForecast(2811086)
     expect(forecast.lmd).toBeNull()
     expect(forecast.rows.every((row) => row.lmdCount === null && row.joint === null)).toBe(true)
-    expect(forecast.rows.map((row) => row.expCount)).toEqual([2, 3, 4])
+    expect(forecast.rows.map((row) => row.expCount)).toEqual([2, 3, 5])
   })
 
   it('uses the garrison targets when they are supplied', () => {
@@ -1310,8 +1310,8 @@ describe('training forecast', () => {
       forecast.rows.map((row) => [row.label, row.target, row.expCount, row.lmdCount, row.joint])
     ).toEqual([
       ['六星', '精二 60', 4, 3, 3],
-      ['五星', '精二 50', 5, 4, 4],
-      ['四星', '精二 40', 6, 4, 4]
+      ['五星', '精二 50', 7, 6, 6],
+      ['四星', '精二 40', 11, 11, 11]
     ])
   })
 

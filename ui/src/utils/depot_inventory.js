@@ -168,15 +168,15 @@ const EXP_SOURCE_WEIGHTS = {
 /** 拉满练度：六星到四星的"满练"。 */
 export const TRAINING_TARGETS = [
   { key: 'six', label: '六星', target: '精二 90', exp: 1111400, lmd: 1334796 },
-  { key: 'five', label: '五星', target: '精二 80', exp: 856400, lmd: 1037219 },
-  { key: 'four', label: '四星', target: '精二 70', exp: 695200, lmd: 865603 }
+  { key: 'five', label: '五星', target: '精二 80', exp: 734400, lmd: 819325 },
+  { key: 'four', label: '四星', target: '精二 70', exp: 484000, lmd: 482003 }
 ]
 
 /** 卫戍练度：六/五/四星模组各自要求等级。 */
 export const GARRISON_TARGETS = [
   { key: 'six', label: '六星', target: '精二 60', exp: 588286, lmd: 761409 },
-  { key: 'five', label: '五星', target: '精二 50', exp: 512161, lmd: 694514 },
-  { key: 'four', label: '四星', target: '精二 40', exp: 454136, lmd: 648106 }
+  { key: 'five', label: '五星', target: '精二 50', exp: 390161, lmd: 476260 },
+  { key: 'four', label: '四星', target: '精二 40', exp: 242936, lmd: 264506 }
 ]
 
 /**
