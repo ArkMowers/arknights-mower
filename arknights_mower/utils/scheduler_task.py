@@ -3318,7 +3318,7 @@ def next_workshop_task_time(tasks, earliest=None):
     return candidate
 
 
-def try_workshop_tasks(op_data, tasks, *, minimum_mood=22):
+def try_workshop_tasks(op_data, tasks, *, minimum_mood=22, completed_task=None):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.utils.workshop_automation import (
         refresh_workshop_after_inventory_change,
@@ -3339,12 +3339,36 @@ def try_workshop_tasks(op_data, tasks, *, minimum_mood=22):
     pending_operators = {
         task.meta_data
         for task in tasks
-        if task.type == TaskTypes.WORKSHOP and workshop_task_current(task)
+        if task is not completed_task
+        and task.type == TaskTypes.WORKSHOP
+        and workshop_task_current(task)
     }
+    deer_first = config.conf.workshop_auto_active and any(
+        setting.operator == "九色鹿" for setting in config.conf.workshop_settings
+    )
     inventory_data = get_inventory_counts()
+    if deer_first and any(
+        item.operator in pending_operators
+        and workshop_admission_block(
+            op_data, item, inventory_data, tasks, minimum_mood=0
+        )
+        is None
+        for item in config.conf.workshop_settings
+        if item.enabled
+    ):
+        return
     if config.conf.workshop_settings and inventory_data:
         for item in prioritize_workshop_settings(config.conf.workshop_settings):
             if item.operator in pending_operators:
+                continue
+            if (
+                deer_first
+                and completed_task is not None
+                and item.operator == completed_task.meta_data
+                and workshop_task_current(completed_task)
+            ):
+                # The same quota just stopped. Let later workers continue until
+                # changed stock or configuration produces a new generation.
                 continue
             if not item.enabled:
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
@@ -3372,6 +3396,8 @@ def try_workshop_tasks(op_data, tasks, *, minimum_mood=22):
             stamp_workshop_task(task)
             tasks.append(task)
             pending_operators.add(item.operator)
+            if deer_first:
+                break
     else:
         if not config.conf.workshop_settings:
             logger.debug("未配置加工站任务，跳过任务生成")

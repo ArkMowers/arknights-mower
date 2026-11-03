@@ -48,7 +48,7 @@ def test_t4_scopes_apply_to_old_category_lists_and_keep_deer_building_fodder(
         result = workshop.allocate_workshop_items(
             groups, formulas=formulas, fodder_items=[item("碳素")]
         )
-    assert [entry["operator"] for entry in result] == ["九色鹿", "蚀清", "莱伊"]
+    assert [entry["operator"] for entry in result] == names
     scopes = {
         entry["operator"]: {
             material for task in entry["items"] for material in task["item_names"]
@@ -76,7 +76,7 @@ def test_deer_fodder_scope_keeps_books_and_green_materials():
         name
         for entry in scope_workshop_items("九色鹿", items, formulas)
         for name in entry["item_names"]
-    ] == ["技巧概要·卷3", "糖", "碳素"]
+    ] == ["技巧概要·卷3", "糖", "糖组", "碳素"]
 
 
 @pytest.mark.parametrize("missing_box", [False, True])

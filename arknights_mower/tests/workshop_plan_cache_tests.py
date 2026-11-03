@@ -91,7 +91,13 @@ def test_changed_selection_and_order_invalidate(planning):
 
 @pytest.mark.parametrize(
     "field,value",
-    [("workshop_min_bonus", 90), ("workshop_protect_t2_device_rock", True)],
+    [
+        ("workshop_min_bonus", 90),
+        ("workshop_protect_t2_device_rock", True),
+        ("workshop_t1_reserve", 0),
+        ("workshop_t2_reserve", 200),
+        ("workshop_deer_fodder", []),
+    ],
 )
 def test_saved_material_and_operator_policy_recalculate(planning, field, value):
     calculate(planning)

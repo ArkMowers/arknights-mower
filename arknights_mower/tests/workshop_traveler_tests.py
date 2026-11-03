@@ -197,9 +197,9 @@ def test_nian_keeps_higher_bonus_priority_and_traveler_keeps_t5_scope(
         for entry in result
     }
     assert mapping[TRAVELER] == {T5}
-    assert (T5 in mapping["蜜莓"]) is with_nian
+    assert T5 in mapping["蜜莓"]
     if with_nian:
-        assert result[0]["operator"] == "年"
+        assert [entry["operator"] for entry in result] == names
         assert T5 in mapping["年"]
         assert workshop.recipe_bonus(available["年"], T5, formulas[T5]) > 90
     else:

@@ -602,7 +602,7 @@ def test_unconfigured_special_operators_receive_no_crafting_rest_priority(
 @pytest.mark.parametrize(
     "material,expected",
     [
-        ("炽合金块", ["号角", "空爆", "蜜莓"]),
+        ("炽合金块", ["号角", "蜜莓", "空爆"]),
         ("糖聚块", ["蜜莓", "空爆", "号角"]),
     ],
 )

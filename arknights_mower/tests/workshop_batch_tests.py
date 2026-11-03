@@ -81,6 +81,10 @@ def batch(monkeypatch):
     crafts = []
 
     def arrange(plan, get_time=False):
+        if plan == {"factory": [solver.task.meta_data]} and not get_time:
+            assert solver._workshop_room_handoff is True
+        else:
+            assert not getattr(solver, "_workshop_room_handoff", False)
         arrangements.append(deepcopy(plan))
         for room, names in plan.items():
             for i, name in enumerate(names):
@@ -126,6 +130,7 @@ def test_consecutive_operators_restore_factory_and_shared_dorm_only_once(batch):
     assert batch.solver.tasks == []
     batch.solver.get_agent_from_room.assert_called_once_with("factory")
     assert batch.solver.task is None
+    assert not batch.solver._workshop_room_handoff
     for room, names in batch.solver.op_data.plan.items():
         for i, name in enumerate(names):
             op = batch.solver.op_data.operators[name]

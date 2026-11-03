@@ -178,6 +178,10 @@ def save_user_config(req):
                 "book_operators",
                 "workshop_min_bonus",
                 "workshop_protect_t2_device_rock",
+                "workshop_t1_reserve",
+                "workshop_t2_reserve",
+                "workshop_deer_fodder",
+                "workshop_manual_revision",
             )
         ):
             from arknights_mower.solvers.record import workshop_inventory_changed

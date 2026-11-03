@@ -11,7 +11,13 @@ from arknights_mower.utils.workshop_material_policy import (
 )
 
 T4_PREFERRED = ("九色鹿", "镜匠", "蚀清")
-SCOPED_OPERATORS = (*T4_PREFERRED, "莱伊", "旅骨")
+SCOPED_OPERATORS = (*T4_PREFERRED, "莱伊", "旅骨", "瑕光")
+
+
+def is_deer_fodder(recipe):
+    return recipe.get("tab") in {"基建材料", "技巧概要"} or (
+        recipe.get("tab") == "精英材料" and recipe.get("apCost") in {1, 2}
+    )
 
 
 def recipe_category(recipe):
@@ -24,6 +30,8 @@ def recipe_category(recipe):
 
 def operator_recipe_allowed(name, recipe, *, fodder=False):
     """Apply user material scopes using original recipe cost, before reductions."""
+    if name == "瑕光":
+        return recipe.get("tab") == "精英材料" and recipe.get("apCost") in {1, 2}
     if name == "旅骨":
         return (
             recipe_category(recipe) == "t5_operators"
@@ -31,14 +39,7 @@ def operator_recipe_allowed(name, recipe, *, fodder=False):
         )
     t4 = recipe.get("tab") == "精英材料" and recipe.get("apCost") == 4
     if name in T4_PREFERRED:
-        deer_fodder = (
-            name == "九色鹿"
-            and fodder
-            and (
-                recipe.get("tab") in {"基建材料", "技巧概要"}
-                or (recipe.get("tab") == "精英材料" and recipe.get("apCost") == 1)
-            )
-        )
+        deer_fodder = name == "九色鹿" and fodder and is_deer_fodder(recipe)
         return t4 or deer_fodder
     return name != "莱伊" or not t4
 

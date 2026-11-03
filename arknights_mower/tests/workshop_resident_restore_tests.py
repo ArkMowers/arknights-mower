@@ -44,6 +44,7 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
     solver.recog = MagicMock()
     solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
     solver.op_data.config = SimpleNamespace(free_room=False)
+    solver.op_data.dorm_mood_estimates = {}
     solver.op_data.run_order_rooms = {}
     solver.op_data.all_dorms = lambda: []
     for name, operator in solver.op_data.operators.items():
@@ -61,6 +62,7 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
 
     def craft_with_observed_mood(name, snapshot):
         assert solver.op_data.operators[name].mood == 24
+        assert solver.scene() == Scene.INFRA_DETAILS
         return craft(name, snapshot)
 
     solver.generate_product.side_effect = craft_with_observed_mood
@@ -143,6 +145,24 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
     )
     batch.errors.assert_not_called()
     assert solver.tasks == []
+
+
+@pytest.mark.parametrize("keep", [False, True])
+def test_room_completion_retains_workshop_only_for_crafting_handoff(keep, monkeypatch):
+    from arknights_mower.utils import config
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    monkeypatch.setattr(config.conf, "run_order_delay", 0)
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.task = SchedulerTask(task_type=TaskTypes.WORKSHOP)
+    solver._workshop_room_handoff = keep
+    solver.back = MagicMock()
+    solver._wait_for_room_exit = MagicMock()
+    plan = {"factory": ["九色鹿"]}
+    solver._complete_room_arrangement({}, "factory", plan)
+    assert plan == {}
+    assert solver.back.call_count == (0 if keep else 1)
+    assert solver._wait_for_room_exit.call_count == (0 if keep else 1)
 
 
 def test_crafting_restores_borrowed_operator_through_real_room_arrangement(

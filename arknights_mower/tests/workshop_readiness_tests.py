@@ -82,7 +82,7 @@ def test_protected_ingredients_do_not_unlock_automatic_preparation(
         {"materials": [{"id": "30014", "count": 1}]}
     ]
     rec._find_skill_data().write_text(json.dumps(resources))
-    set_stock(next_skill, {"30012": 20, "4001": 10000})
+    set_stock(next_skill, {"30012": 120, "4001": 10000})
     assert any(
         item["items"]
         for item in auto.calculate_workshop_plan(

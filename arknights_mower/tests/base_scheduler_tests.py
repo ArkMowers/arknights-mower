@@ -3021,7 +3021,7 @@ class TestWorkshopMaterialScope(unittest.TestCase):
         from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
 
         for name, material in [
-            ("九色鹿", "糖组"),
+            ("九色鹿", "双极纳米片"),
             ("蚀清", "双极纳米片"),
             ("莱伊", "糖聚块"),
         ]:

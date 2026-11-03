@@ -19,7 +19,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils import workshop_recommendation as workshop
 
 
-def test_highest_bonus_precedes_honeyberry_then_titi_in_t5(game):
+def test_recommendations_rank_bonus_but_execution_preserves_manual_t5_order(game):
     meta, ids = game
     roster = owned(ids, "空爆", "缇缇", "蜜莓", "年", "号角")
     recommendations = workshop.recommend_workshop_operators(roster, meta)
@@ -29,7 +29,7 @@ def test_highest_bonus_precedes_honeyberry_then_titi_in_t5(game):
         [("t5_operators", ["空爆", "缇缇", "蜜莓", "年"], [item("双极纳米片")])],
         available=workshop.available_operators(roster, meta),
     )
-    assert [entry["operator"] for entry in result] == ["年", "蜜莓", "缇缇", "空爆"]
+    assert [entry["operator"] for entry in result] == ["空爆", "缇缇", "蜜莓", "年"]
     # Titi's mood savings do not make ordinary T5 recipes exclusive to her.
     assert all(entry["items"] == [item("双极纳米片")] for entry in result)
 
@@ -42,13 +42,11 @@ def test_unlocked_80_percent_is_required_for_honeyberry_preference(game):
         available=workshop.available_operators(roster, meta),
         min_bonus=75,
     )
-    assert [entry["operator"] for entry in result] == ["缇缇", "空爆", "蜜莓"]
+    assert [entry["operator"] for entry in result] == ["蜜莓", "空爆", "缇缇"]
 
 
 @pytest.mark.parametrize("nian_mood", [24, 20])
-def test_scheduler_prioritizes_existing_configs_and_respects_existing_mood_gate(
-    game, nian_mood
-):
+def test_scheduler_uses_saved_order_and_respects_existing_mood_gate(game, nian_mood):
     from types import SimpleNamespace
 
     from arknights_mower.data import workshop_formula
@@ -78,11 +76,9 @@ def test_scheduler_prioritizes_existing_configs_and_respects_existing_mood_gate(
         patch.object(workshop, "available_operators", return_value=available),
     ):
         scheduler_task.try_workshop_tasks(SimpleNamespace(operators=operators), tasks)
-    assert [task.meta_data for task in tasks] == (["年"] if nian_mood > 22 else []) + [
-        "蜜莓",
-        "缇缇",
-        "空爆",
-    ]
+    assert [task.meta_data for task in tasks] == ["空爆", "缇缇", "蜜莓"] + (
+        ["年"] if nian_mood > 22 else []
+    )
     assert [entry.operator for entry in settings] == names
     assert all(
         (later.time - earlier.time).total_seconds() >= 2
@@ -118,9 +114,10 @@ def test_t4_preferences_precede_specialists_without_broadening_other_generalists
         min_bonus=90,
     )
     assert [entry["operator"] for entry in allocated if entry["items"]] == [
-        "九色鹿",
-        "蚀清",
+        "蜜莓",
         "号角",
+        "蚀清",
+        "九色鹿",
     ]
 
 

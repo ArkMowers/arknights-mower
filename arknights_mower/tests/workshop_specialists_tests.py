@@ -151,7 +151,7 @@ def test_specialist_alone_never_gets_unrelated_materials_even_without_box(
     assert result[0]["items"] == [item(material)]
 
 
-def test_best_specialists_exclude_generalists_but_keep_same_material_specialists(game):
+def test_manual_choices_keep_generalists_and_scoped_specialists(game):
     meta, ids = game
     names = ["蜜莓", "熔泉", "折桠", "休谟斯", "维荻", "九色鹿"]
     result = workshop.allocate_workshop_items(
@@ -169,15 +169,17 @@ def test_best_specialists_exclude_generalists_but_keep_same_material_specialists
         for entry in result
     }
     assert {name for name, materials in mapping.items() if "异铁组" in materials} == {
+        "蜜莓",
         "熔泉",
         "折桠",
         "休谟斯",
     }
     assert {name for name, materials in mapping.items() if "酮凝集组" in materials} == {
+        "蜜莓",
         "休谟斯",
         "维荻",
     }
-    assert mapping["蜜莓"] == {"糖聚块"}
+    assert mapping["蜜莓"] == {"异铁组", "酮凝集组", "糖聚块"}
     assert mapping["九色鹿"] == {"糖聚块"}
     assert [entry["operator"] for entry in result].index("休谟斯") < [
         entry["operator"] for entry in result
@@ -193,11 +195,8 @@ def test_specialist_reservation_never_overrides_a_higher_generic_bonus(game, wit
         [("t5_operators", names, [item("晶体电子单元")])],
         available=workshop.available_operators(roster, meta),
     )
-    if with_nian:
-        assert result[0]["operator"] == "年"
-        assert result[0]["items"] == [item("晶体电子单元")]
-    else:
-        assert [entry["operator"] for entry in result if entry["items"]] == ["特克诺"]
+    assert [entry["operator"] for entry in result] == names
+    assert all(entry["items"] == [item("晶体电子单元")] for entry in result)
     recommended = workshop.recommend_workshop_operators(
         roster, meta, {"晶体电子单元": recipe(8), "糖聚块": recipe()}
     )

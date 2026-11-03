@@ -44,6 +44,8 @@ beforeEach(() => {
     state: () => ({
       workshop_min_bonus: 80,
       workshop_protect_t2_device_rock: true,
+      workshop_t1_reserve: 100,
+      workshop_t2_reserve: 100,
       workshop_deer_fodder: [],
       fodder_operators: [],
       t5_operators: [],

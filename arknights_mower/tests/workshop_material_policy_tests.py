@@ -28,6 +28,8 @@ def test_switch_defaults_off_and_round_trips():
 @pytest.mark.parametrize("enabled", [False, True])
 def test_only_exact_t2_ingredients_are_blocked_at_execution(monkeypatch, enabled):
     monkeypatch.setattr(config.conf, "workshop_protect_t2_device_rock", enabled)
+    monkeypatch.setattr(config.conf, "workshop_t1_reserve", 0)
+    monkeypatch.setattr(config.conf, "workshop_t2_reserve", 0)
     setting = WorkShopItem(self_upper_limit=1, children_lower_limit=0)
     for name in (
         "固源岩组",
@@ -88,6 +90,7 @@ def test_budget_excludes_protected_t2_and_t1_routes_but_uses_t3_stock(
             "t2": {"name": name, "rarity": 2},
             "t3": {"name": "蓝材料", "rarity": 3},
             "t4": {"name": "紫材料", "rarity": 4},
+            "4001": {"name": "龙门币", "rarity": 0},
         },
         "composite": {
             "t2": {"pathway": [{"id": "t1", "count": 3}]},
@@ -97,7 +100,7 @@ def test_budget_excludes_protected_t2_and_t1_routes_but_uses_t3_stock(
     }
     calculator = MaterialBudget(
         data,
-        {"t1": 300, "t2": 100, "t3": 1},
+        {"t1": 300, "t2": 100, "t3": 1, "4001": 10000},
         blocked_materials=protected_workshop_materials(),
     )
     result = calculator.calculate_plan([("skill", [{"id": "t4", "count": 1}])])

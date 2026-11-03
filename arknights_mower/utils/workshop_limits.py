@@ -11,7 +11,10 @@ from arknights_mower.utils.dorm_candidates import (
     card_mood_estimate,
     dorm_task_reservations,
 )
-from arknights_mower.utils.workshop_material_policy import workshop_recipe_allowed
+from arknights_mower.utils.workshop_material_policy import (
+    ingredient_reserve,
+    workshop_recipe_allowed,
+)
 
 # Process-local observations; recipe names bound the cache to the resource catalog.
 _rejected_recipes = {}
@@ -105,7 +108,13 @@ def recipe_quantities(name, metadata):
     return recipe["output_name"], count, costs
 
 
-def batch_limit(name, metadata, setting, inventory):
+def crafting_lmd_cost(metadata, operator=None):
+    if operator == "瑕光" and metadata.get("tab") == "精英材料":
+        return 0
+    return int(metadata.get("goldCost") or 0)
+
+
+def batch_limit(name, metadata, setting, inventory, *, operator=None):
     if not workshop_recipe_allowed(metadata):
         return 0
     quantities = recipe_quantities(name, metadata)
@@ -114,7 +123,7 @@ def batch_limit(name, metadata, setting, inventory):
     output, count, costs = quantities
     if any(name not in inventory for name in (output, *costs)):
         return 0  # Unknown stock must be read from the depot before spending it.
-    gold_cost = int(metadata.get("goldCost") or 0)
+    gold_cost = crafting_lmd_cost(metadata, operator)
     gold_limit = (
         inventory["龙门币"] // gold_cost
         if gold_cost > 0 and "龙门币" in inventory
@@ -127,7 +136,11 @@ def batch_limit(name, metadata, setting, inventory):
             gold_limit,
             (setting.self_upper_limit - inventory[output]) // count,
             *(
-                (inventory[child] - setting.children_lower_limit) // required
+                (
+                    inventory[child]
+                    - ingredient_reserve(child, setting.children_lower_limit)
+                )
+                // required
                 for child, required in costs.items()
             ),
         ),
@@ -173,7 +186,7 @@ def workshop_material_block_reason(
                 )
                 continue
             metadata = workshop_formula[name]
-            if batch_limit(name, metadata, item, inventory) > 0:
+            if batch_limit(name, metadata, item, inventory, operator=operator) > 0:
                 required_mood = mood_cost(name, metadata, rules, known)
                 if check_mood and mood < required_mood:
                     blocked.append(
@@ -228,11 +241,13 @@ def workshop_material_block_reason(
                     )
                 else:
                     shortages = [
-                        f"{mat}库存 {inventory[mat]}，需 {required}，保留 {item.children_lower_limit}"
+                        f"{mat}库存 {inventory[mat]}，需 {required}，保留 {ingredient_reserve(mat, item.children_lower_limit)}"
                         for mat, required in costs.items()
-                        if inventory[mat] - item.children_lower_limit < required
+                        if inventory[mat]
+                        - ingredient_reserve(mat, item.children_lower_limit)
+                        < required
                     ]
-                    gold_cost = int(metadata.get("goldCost") or 0)
+                    gold_cost = crafting_lmd_cost(metadata, operator)
                     if gold_cost and inventory.get("龙门币", gold_cost) < gold_cost:
                         shortages.append(
                             f"龙门币库存 {inventory['龙门币']}，加工费需 {gold_cost}"
@@ -241,7 +256,9 @@ def workshop_material_block_reason(
                         (
                             mat
                             for mat, required in costs.items()
-                            if inventory[mat] - item.children_lower_limit < required
+                            if inventory[mat]
+                            - ingredient_reserve(mat, item.children_lower_limit)
+                            < required
                         ),
                         None,
                     )
@@ -253,7 +270,9 @@ def workshop_material_block_reason(
                             child or "龙门币",
                             inventory.get(child or "龙门币"),
                             costs[child] if child else gold_cost,
-                            item.children_lower_limit if child else 0,
+                            ingredient_reserve(child, item.children_lower_limit)
+                            if child
+                            else 0,
                         )
                     )
     if not available:
@@ -268,10 +287,21 @@ def workshop_material_block_reason(
                 "deer_fodder", "缺少可加工的垫刀材料（小于 4 心情或基建材料）", operator
             )
         if not any(
-            entry["apCost"] == 4 and entry["tab"] != "基建材料" for entry in available
+            entry["apCost"] == 4 and entry["tab"] == "精英材料" for entry in available
         ):
             return WorkshopBlock("deer_elite", "缺少可加工的 4 心情精英材料", operator)
     return None
+
+
+def deer_recipe_ready(recipe, gap):
+    """Fodder and the guaranteed T4 byproduct alternate at the observed counter."""
+    if not 0 <= gap <= 40:
+        return False
+    if gap <= 4:
+        return recipe.get("tab") == "精英材料" and recipe.get("apCost") == 4
+    from arknights_mower.utils.workshop_recipes import is_deer_fodder
+
+    return is_deer_fodder(recipe)
 
 
 def workshop_candidate_mood(op_data, operator):
@@ -385,13 +415,13 @@ def deer_batch_limit(gap, ap_cost):
     return max(1, (gap - 1) // ap_cost)
 
 
-def batch_delta(name, metadata, batches):
+def batch_delta(name, metadata, batches, *, operator=None):
     """Account only for guaranteed main outputs; ignore all random byproducts."""
     output, count, costs = recipe_quantities(name, metadata)
     if not isinstance(batches, int) or batches <= 0:
         raise ValueError("加工次数无效")
     delta = {child: -amount * batches for child, amount in costs.items()}
     delta[output] = delta.get(output, 0) + count * batches
-    if gold_cost := int(metadata.get("goldCost") or 0):
+    if gold_cost := crafting_lmd_cost(metadata, operator):
         delta["龙门币"] = delta.get("龙门币", 0) - gold_cost * batches
     return delta

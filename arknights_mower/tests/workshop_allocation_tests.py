@@ -14,7 +14,6 @@ from arknights_mower.tests.workshop_fixtures import (
     item,
     owned,
 )
-from arknights_mower.utils import config
 from arknights_mower.utils import workshop_recommendation as workshop
 
 
@@ -37,6 +36,7 @@ def test_allocator_matches_specific_recipes_and_merges_same_operator(game):
     mapping = {entry["operator"]: entry["items"] for entry in result}
     assert mapping["号角"] == [item("炽合金块")]
     assert mapping["空爆"] == [
+        item("炽合金块"),
         item("聚酸酯块"),
         item("双极纳米片"),
         item("技巧概要·卷3"),
@@ -101,10 +101,9 @@ def test_default_config_merges_duplicate_operator_even_without_new_resources():
 
 
 @pytest.mark.parametrize("minimum", [50, 80])
-def test_full_roster_config_orders_every_shared_recipe_by_bonus(game, minimum):
-    from collections import defaultdict
-
-    from arknights_mower.data import workshop_formula
+def test_full_roster_keeps_saved_category_order_and_merges_duplicate_workers(
+    game, minimum
+):
     from arknights_mower.tests.workshop_fixtures import allocate_sample_recipes
 
     meta, ids = game
@@ -113,24 +112,11 @@ def test_full_roster_config_orders_every_shared_recipe_by_bonus(game, minimum):
     defaults = workshop.recommend_workshop_operators(roster, meta, min_bonus=minimum)[
         "defaults"
     ]
-    with (
-        patch.object(workshop, "available_operators", return_value=available),
-        patch.object(config.conf, "workshop_min_bonus", minimum),
-    ):
-        result = allocate_sample_recipes(**defaults)
-    recipe_bonuses = defaultdict(list)
-    for entry in result:
-        if entry["operator"] in {"九色鹿", "蚀清", "镜匠"}:
-            continue  # Explicit T4 preferences override probability ordering.
-        for task in entry["items"]:
-            for material in task["item_names"]:
-                recipe_bonuses[material].append(
-                    workshop.recipe_bonus(
-                        available[entry["operator"]],
-                        material,
-                        workshop_formula[material],
-                    )
-                )
-    assert all(
-        bonuses == sorted(bonuses, reverse=True) for bonuses in recipe_bonuses.values()
+    # Reverse every saved category to expose any execution-time bonus sorting.
+    selected = {key: list(reversed(names)) for key, names in defaults.items()}
+    with patch.object(workshop, "available_operators", return_value=available):
+        result = allocate_sample_recipes(**selected)
+    expected = list(
+        dict.fromkeys(name for names in selected.values() for name in names)
     )
+    assert [entry["operator"] for entry in result] == expected

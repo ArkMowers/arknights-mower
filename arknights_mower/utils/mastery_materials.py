@@ -9,6 +9,11 @@ class MaterialBudget:
         self, skill_data, inventory, workshop_formula=None, *, blocked_materials=()
     ):
         self.items = skill_data.get("items", {})
+        from arknights_mower.utils.workshop_material_policy import (
+            workshop_material_reserves,
+        )
+
+        self.ingredient_reserves = workshop_material_reserves(self.items)
         self.formulas = workshop_formula
         self.inventory = {key: max(0, int(value)) for key, value in inventory.items()}
         ids = {item["name"]: key for key, item in self.items.items()}
@@ -49,8 +54,12 @@ class MaterialBudget:
             )
         return self.depths[key]
 
-    def _consume(self, key, count, stock, trace=None):
-        used = min(stock.get(key, 0), count)
+    def _consume(
+        self, key, count, stock, trace=None, *, ingredient=False, reserves=None
+    ):
+        reserves = self.ingredient_reserves if reserves is None else reserves
+        floor = reserves.get(key, 0) if ingredient else 0
+        used = min(max(0, stock.get(key, 0) - floor), count)
         if trace is not None and used:
             # Show inventory actually spent, not intermediates made during crafting.
             trace[key] += used
@@ -62,24 +71,26 @@ class MaterialBudget:
         if not recipe:
             return False
         costs, output = recipe
-        batches = ceil(count / output)
+        batches = ceil((count + max(0, floor - stock.get(key, 0))) / output)
         for child, cost in costs.items():
-            if not self._consume(child, cost * batches, stock, trace):
+            if not self._consume(
+                child, cost * batches, stock, trace, ingredient=True, reserves=reserves
+            ):
                 return False
         stock[key] += batches * output - count
         return True
 
-    def _craft_available(self, key, count, stock, trace):
+    def _craft_available(self, key, count, stock, trace, reserves=None):
         # Whole batches only. Failed probes must not consume shared ingredients.
         low, high = 0, count
         while low < high:
             middle = (low + high + 1) // 2
-            if self._consume(key, middle, dict(stock)):
+            if self._consume(key, middle, dict(stock), reserves=reserves):
                 low = middle
             else:
                 high = middle - 1
         if low:
-            self._consume(key, low, stock, trace)
+            self._consume(key, low, stock, trace, reserves=reserves)
         return low
 
     def calculate(self, materials):
@@ -91,6 +102,10 @@ class MaterialBudget:
         reserved = {key: min(count, stock.get(key, 0)) for key, count in direct.items()}
         for key, count in reserved.items():
             stock[key] = stock.get(key, 0) - count
+        ingredient_reserves = {
+            key: max(0, count - reserved.get(key, 0))
+            for key, count in self.ingredient_reserves.items()
+        }
         rows, missing = [], []
         lower_demand = Counter()
         pending = set(demand)
@@ -102,10 +117,16 @@ class MaterialBudget:
                 continue
             item = self.items.get(key, {})
             owned = stock.get(key, 0)
-            extra_used = min(count - reserved.get(key, 0), owned)
+            # Direct goals can also use new stock retained for the ingredient floor.
+            floor = max(0, self.ingredient_reserves.get(key, 0) - direct[key])
+            extra_used = min(count - reserved.get(key, 0), max(0, owned - floor))
             stock[key] = owned - extra_used
             used = extra_used + reserved.get(key, 0)
             shortage = count - used
+            if count > direct[key]:
+                deficit = max(0, floor - stock[key])
+                count += deficit
+                shortage += deficit
             row = {
                 "id": key,
                 "name": item.get("name", key),
@@ -132,7 +153,9 @@ class MaterialBudget:
                     pending.add(child)
             else:
                 crafted = (
-                    self._craft_available(key, shortage, stock, lower_demand)
+                    self._craft_available(
+                        key, shortage, stock, lower_demand, ingredient_reserves
+                    )
                     if recipe
                     else 0
                 )
