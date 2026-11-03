@@ -3,8 +3,7 @@
 from .mastery_support_types import IGNORED_NAMES, decode_json
 
 
-def mastery_groups(plans, levels):
-    """Group trainable skills only when at least one already has mastery."""
+def _operator_skill_groups(plans, levels):
     groups = {}
     for plan in plans:
         key = (plan["char_id"], plan["skill_index"])
@@ -17,12 +16,22 @@ def mastery_groups(plans, levels):
         cid: group
         for cid, group in groups.items()
         if len({p["skill_index"] for p in group}) > 1
-        and any(levels.get((cid, p["skill_index"]), 0) >= 1 for p in group)
     }
 
 
-def consecutive_mastery_plans(plans, levels):
-    groups = mastery_groups(plans, levels)
+def mastery_groups(plans, levels):
+    """Group trainable skills only when at least one already has mastery."""
+    return {
+        cid: group
+        for cid, group in _operator_skill_groups(plans, levels).items()
+        if any(levels.get((cid, p["skill_index"]), 0) >= 1 for p in group)
+    }
+
+
+def consecutive_mastery_plans(plans, levels, *, consecutive_skills=False):
+    groups = (_operator_skill_groups if consecutive_skills else mastery_groups)(
+        plans, levels
+    )
     ordered, seen = [], set()
     active = [
         p
@@ -127,38 +136,73 @@ def mastery_assistants(plan):
     )
 
 
-def interleave_mastery_plans(plans: list[dict]) -> list[dict]:
-    active_groups: dict[str, list[dict]] = {}
-    idle_groups: dict[str, list[dict]] = {}
-    failed: list[dict] = []
+def mastery_current_level(plan):
+    """Use saved progress only when the synchronized skill level is unavailable."""
+    support = decode_json(plan.get("support_plan")) or {}
+    runtime = decode_json(plan.get("support_runtime")) or {}
+    confirmed = runtime.get("level", 1) - 1 if "carry_from_skill" not in runtime else 0
+    return max(support.get("current", 0), confirmed)
+
+
+def interleave_mastery_plans(
+    plans: list[dict], levels=None, *, consecutive_skills=False
+) -> list[dict]:
+    if levels is None:
+        levels = {
+            (p["char_id"], p["skill_index"]): mastery_current_level(p) for p in plans
+        }
+    groups = (_operator_skill_groups if consecutive_skills else mastery_groups)(
+        plans, levels
+    )
+    active, idle, failed = [], [], []
+    seen = set()
     for plan in plans:
-        status = plan["status"]
-        if status == "failed":
+        if plan["status"] == "failed":
             failed.append(plan)
             continue
-        groups = idle_groups if status == "idle" else active_groups
-        groups.setdefault(plan["char_id"], []).append(plan)
+        if plan["id"] in seen:
+            continue
+        group = groups.get(plan["char_id"], [])
+        unit = (
+            consecutive_mastery_plans(group, levels, consecutive_skills=True)
+            if plan in group
+            else [plan]
+        )
+        seen.update(p["id"] for p in unit)
+        (idle if all(p["status"] == "idle" for p in unit) else active).append(unit)
 
     def assistants(group):
         return frozenset().union(*(mastery_assistants(plan) for plan in group))
 
-    ordered: list[dict] = []
-    previous = frozenset()
-    for char_id, group in active_groups.items():
-        group = group + idle_groups.pop(char_id, [])
-        ordered.extend(group)
-        previous = assistants(group)
+    ordered = []
+    previous, recent = frozenset(), {}
+    for unit in active:
+        ordered.extend(unit)
+        previous = assistants(unit)
+        recent[unit[0]["char_id"]] = len(ordered)
 
-    queues: dict[frozenset, list[list[dict]]] = {}
-    for group in idle_groups.values():
-        queues.setdefault(assistants(group), []).append(group)
+    queues = {}
+    for unit in idle:
+        queues.setdefault(assistants(unit), []).append(unit)
 
     while queues:
-        # Prefer fewer shared assistants, then the largest remaining queue.
-        # Insertion order preserves the first appearance when both counts tie.
-        names = min(queues, key=lambda key: (len(key & previous), -len(queues[key])))
-        ordered.extend(queues[names].pop(0))
+        choices = [
+            (names, max(queue, key=lambda unit: recent.get(unit[0]["char_id"], -1)))
+            for names, queue in queues.items()
+        ]
+        # Assistant separation takes precedence over same-trainee proximity.
+        names, unit = min(
+            choices,
+            key=lambda item: (
+                len(item[0] & previous),
+                -recent.get(item[1][0]["char_id"], -1),
+                -len(queues[item[0]]),
+            ),
+        )
+        ordered.extend(unit)
+        queues[names].remove(unit)
         if not queues[names]:
             del queues[names]
         previous = names
+        recent[unit[0]["char_id"]] = len(ordered)
     return ordered + failed

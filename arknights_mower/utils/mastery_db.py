@@ -5,7 +5,10 @@ from contextlib import contextmanager
 from typing import Optional
 
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.mastery_order import interleave_mastery_plans
+from arknights_mower.utils.mastery_order import (
+    interleave_mastery_plans,
+    mastery_current_level,
+)
 from arknights_mower.utils.mastery_support_types import (
     DEFAULT_SWAP_BUFFER_MINUTES,
     DEFAULT_SWAP_BUFFERS,
@@ -528,7 +531,11 @@ def normalize_mastery_queue(levels, path=None):
                 "ORDER BY priority, id"
             )
         ]
-        ordered = consecutive_mastery_plans(plans, levels)
+        from . import config
+
+        ordered = consecutive_mastery_plans(
+            plans, levels, consecutive_skills=config.conf.mastery_consecutive_skills
+        )
         conn.executemany(
             "UPDATE mastery_plan SET priority=? WHERE id=?",
             [
@@ -712,7 +719,21 @@ def auto_interleave_new_plans(
                     ),
                 )
             else:
-                ordered = interleave_mastery_plans(plans)
+                from . import config
+                from .mastery_recommendation import get_current_mastery_level
+
+                levels = {}
+                for plan in plans:
+                    key = (plan["char_id"], plan["skill_index"])
+                    current = get_current_mastery_level(*key)
+                    levels[key] = (
+                        current if current is not None else mastery_current_level(plan)
+                    )
+                ordered = interleave_mastery_plans(
+                    plans,
+                    levels,
+                    consecutive_skills=config.conf.mastery_consecutive_skills,
+                )
             conn.executemany(
                 "UPDATE mastery_plan SET priority=? WHERE id=?",
                 (

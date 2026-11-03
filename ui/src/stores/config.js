@@ -211,6 +211,7 @@ export const useConfigStore = defineStore('config', () => {
   const group_mood_gap_exclusions = ref([])
   const fia_fool = ref(true)
   const assistant_follows_schedule = ref(false)
+  const mastery_consecutive_skills = ref(false)
   const enable_mastery = ref(true)
   const save_mastery_screenshots = ref(false)
   const sign_in = ref({ enable: true })
@@ -701,6 +702,7 @@ export const useConfigStore = defineStore('config', () => {
       group_mood_gap_exclusions.value = [...(response.data.group_mood_gap_exclusions ?? [])]
       fia_fool.value = response.data.fia_fool
       assistant_follows_schedule.value = response.data.assistant_follows_schedule
+      mastery_consecutive_skills.value = response.data.mastery_consecutive_skills ?? false
       enable_mastery.value = response.data.enable_mastery ?? true
       save_mastery_screenshots.value = response.data.save_mastery_screenshots ?? false
       right_side_room_order.value =
@@ -899,6 +901,7 @@ export const useConfigStore = defineStore('config', () => {
       group_mood_gap_exclusions: [...group_mood_gap_exclusions.value],
       fia_fool: fia_fool.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
+      mastery_consecutive_skills: mastery_consecutive_skills.value,
       enable_mastery: enable_mastery.value,
       save_mastery_screenshots: save_mastery_screenshots.value,
       sign_in: sign_in.value,
@@ -1277,6 +1280,7 @@ export const useConfigStore = defineStore('config', () => {
     group_mood_gap_exclusions,
     fia_fool,
     assistant_follows_schedule,
+    mastery_consecutive_skills,
     enable_mastery,
     save_mastery_screenshots,
     sign_in,

@@ -5,12 +5,13 @@ const plan = (key, assistant, status = 'idle', charId = key) => ({
   key,
   char_id: charId,
   support_plan: { stages: [{ level: 1, operator: assistant }] },
-  status
+  status,
+  skill_index: key
 })
 const keys = (entries) => entries.map((entry) => entry.key)
 
 describe('interleaveMasteryPlans', () => {
-  it('keeps one operator together and separates different operators of the same assistant', () => {
+  it('separates unstarted skills with shared assistants by default', () => {
     const entries = [
       plan('a1', 'WARRIOR', 'idle', 'a'),
       plan('a2', 'WARRIOR', 'idle', 'a'),
@@ -19,7 +20,7 @@ describe('interleaveMasteryPlans', () => {
       plan('b2', 'SNIPER'),
       plan('c1', 'MEDIC')
     ]
-    expect(keys(interleaveMasteryPlans(entries))).toEqual(['a1', 'a2', 'b1', 'a3', 'b2', 'c1'])
+    expect(keys(interleaveMasteryPlans(entries))).toEqual(['a1', 'b1', 'a2', 'b2', 'a3', 'c1'])
     expect(keys(entries)).toEqual(['a1', 'a2', 'a3', 'b1', 'b2', 'c1'])
   })
 
@@ -41,6 +42,41 @@ describe('interleaveMasteryPlans', () => {
     ]
     entries[2].support_plan.stages[0].swap_target = 'y'
     expect(keys(interleaveMasteryPlans(entries))).toEqual(['active', 'a2', 'c', 'b'])
+  })
+
+  it('keeps unstarted same-operator skills together when enabled', () => {
+    const entries = [plan('a1', 'x', 'idle', 'a'), plan('b', 'y'), plan('a2', 'x', 'idle', 'a')]
+    expect(keys(interleaveMasteryPlans(entries))).toEqual(['a1', 'b', 'a2'])
+    expect(keys(interleaveMasteryPlans(entries, { consecutiveSkills: true }))).toEqual([
+      'a1',
+      'a2',
+      'b'
+    ])
+  })
+
+  it('keeps a skill with existing mastery in the original lower-level-first group', () => {
+    const entries = [plan('a1', 'x', 'idle', 'a'), plan('b', 'y'), plan('a2', 'x', 'idle', 'a')]
+    entries[0].current_level = 2
+    expect(keys(interleaveMasteryPlans(entries))).toEqual(['a2', 'a1', 'b'])
+    entries[0].status = 'training'
+    expect(keys(interleaveMasteryPlans(entries))).toEqual(['a1', 'a2', 'b'])
+  })
+
+  it('prefers proximity only after separating assistants', () => {
+    const entries = [plan('a1', 'x', 'idle', 'a'), plan('b', 'y'), plan('a2', 'z', 'idle', 'a')]
+    expect(keys(interleaveMasteryPlans(entries))).toEqual(['a1', 'a2', 'b'])
+    entries[2].support_plan.stages[0].operator = 'x'
+    expect(keys(interleaveMasteryPlans(entries))).toEqual(['a1', 'b', 'a2'])
+  })
+
+  it('does not count a manual goal as a gap between shared training assistants', () => {
+    const entries = [
+      plan('a1', 'x', 'idle', 'a'),
+      { key: 'goal', char_id: 'g', kind: 'goal', status: 'idle' },
+      plan('a2', 'x', 'idle', 'a'),
+      plan('b', 'y')
+    ]
+    expect(keys(interleaveMasteryPlans(entries))).toEqual(['a1', 'goal', 'b', 'a2'])
   })
 
   it('uses the effective runtime and excludes past and out-of-target stages', () => {
@@ -72,7 +108,7 @@ describe('interleaveMasteryPlans', () => {
       plan('b1', 'SNIPER'),
       plan('failed', 'MEDIC', 'failed')
     ]
-    expect(keys(interleaveMasteryPlans(entries))).toEqual(['active', 'a1', 'b1', 'failed'])
+    expect(keys(interleaveMasteryPlans(entries))).toEqual(['active', 'b1', 'a1', 'failed'])
   })
 
   it('starts with a different assistant after the active operator when available', () => {

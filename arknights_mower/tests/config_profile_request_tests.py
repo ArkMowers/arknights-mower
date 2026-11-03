@@ -239,8 +239,9 @@ def test_legacy_request_remains_valid_before_first_activation(
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize("token", [None, "wrong"])
 def test_invalid_token_is_rejected_before_generation_lookup(
-    guarded_server, monkeypatch
+    guarded_server, monkeypatch, token
 ):
     _, profiles, client = guarded_server
 
@@ -250,7 +251,13 @@ def test_invalid_token_is_rejected_before_generation_lookup(
         )
 
     monkeypatch.setattr(profiles, "check_generation", forbidden)
-    assert client.patch("/conf", headers={"token": "wrong"}, json={}).status_code == 403
+    headers = {"token": token} if token is not None else {}
+    assert (
+        client.patch(
+            "/conf", headers=headers, json={"mastery_consecutive_skills": True}
+        ).status_code
+        == 403
+    )
 
 
 def test_damaged_registry_refuses_writes(guarded_server, monkeypatch):
@@ -926,3 +933,25 @@ def test_custom_screenshot_failure_releases_profile_admission(
     assert api.server.configuration_test_active_requests == 0
     assert not api.server.configuration_profiles_busy()
     assert _replace_configuration(api, "create").status_code == 200
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_mastery_continuity_setting_patch_preserves_assistant_policy(
+    storage, guarded_server, enabled
+):
+    server, _, client = guarded_server
+    server.config.conf.mastery_consecutive_skills = not enabled
+    server.config.conf.assistant_follows_schedule = True
+    server.config.save_conf()
+    response = client.patch(
+        "/conf",
+        json={"mastery_consecutive_skills": enabled},
+        headers={
+            "token": "profile-test-token",
+            "X-Mower-Config-Generation": "active-generation",
+        },
+    )
+    assert response.status_code == 200, response.json
+    assert response.json["mastery_consecutive_skills"] is enabled
+    assert server.config.conf.mastery_consecutive_skills is enabled
+    assert server.config.conf.assistant_follows_schedule is True
