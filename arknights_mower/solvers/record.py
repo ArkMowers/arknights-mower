@@ -1278,6 +1278,49 @@ def save_inventory_counts(
         return effective
 
 
+def restore_cached_inventory_counts(snapshots):
+    """Seed missing baselines without rebasing current stock or renewing observations."""
+    restored = {}
+    with _conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if battle_inventory_active.is_set():
+            return restored
+        current = dict(conn.execute("SELECT item_name, count FROM inventory"))
+        protected = dict(
+            conn.execute(
+                "SELECT item_name, observed_at FROM workshop_inventory_updates"
+            )
+        )
+        for timestamp, counts in sorted(
+            snapshots, key=lambda entry: entry[0], reverse=True
+        ):
+            for name, count in counts.items():
+                if (
+                    name in current
+                    or name in restored
+                    or timestamp <= protected.get(name, 0)
+                ):
+                    continue
+                conn.execute(
+                    "INSERT INTO inventory (item_name, count) VALUES (?, ?)",
+                    (name, count),
+                )
+                conn.execute(
+                    "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
+                    "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
+                    (name, timestamp),
+                )
+                conn.execute(
+                    "DELETE FROM workshop_inventory_pending WHERE item_name = ?",
+                    (name,),
+                )
+                restored[name] = count
+        conn.commit()
+    if restored:
+        workshop_inventory_changed.set()
+    return restored
+
+
 def get_inventory_counts(item_names: list[str] | None = None):
     with _conn() as conn:
         cursor = conn.cursor()

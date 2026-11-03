@@ -428,8 +428,14 @@ def test_failed_warehouse_sync_never_scans_or_dispatches_using_cached_stock(
     syncer, stock_db, monkeypatch, failure
 ):
     from arknights_mower.solvers import base_schedule
+    from arknights_mower.utils import depot
 
     stock_db.save_inventory_counts({"技巧概要·卷3": 70})
+    monkeypatch.setattr(
+        depot,
+        "get_path",
+        lambda name: syncer.record_path.with_name(name.rsplit("/", 1)[-1]),
+    )
     monkeypatch.setattr(base_schedule, "cultivateDepotSolver", lambda: syncer)
     scan = MagicMock()
     monkeypatch.setattr(base_schedule, "DepotSolver", scan)
