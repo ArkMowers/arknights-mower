@@ -141,8 +141,10 @@ def setup_plan(solver, monkeypatch):
     solver.last_execution = {"maa": None}
     solver.credit_fight = 1
     solver.recog = MagicMock()
+    solver.scene = MagicMock(return_value=base_schedule.Scene.TERMINAL_MAIN)
     for name in [
         "back_to_index",
+        "scene_graph_navigation",
         "append_maa_task",
         "initialize_maa",
         "restore_maa_theme",

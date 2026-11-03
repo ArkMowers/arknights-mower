@@ -55,6 +55,7 @@ from arknights_mower.solvers.record import (
     battle_inventory_active,
     get_inventory_counts,
     invalidate_workshop_inventory,
+    load_maa_blackflow_progress,
     load_maa_copilot_progress,
     load_maa_paradox_progress,
     load_maa_sss_progress,
@@ -62,6 +63,7 @@ from arknights_mower.solvers.record import (
     save_current_state,
     save_exception,
     save_log,
+    save_maa_blackflow_progress,
     save_maa_copilot_progress,
     save_maa_paradox_progress,
     save_maa_sss_progress,
@@ -554,6 +556,7 @@ class BaseSchedulerSolver(
         self.maa_copilot_task = None
         self.maa_paradox_task = None
         self.maa_sss_task = None
+        self.maa_blackflow_task = None
         self.maa_event_shop_task = None
         self.ideal_resting_count = 4
         self.choose_error = set()
@@ -17221,6 +17224,32 @@ class BaseSchedulerSolver(
             save_maa_copilot_progress(progress)
         return progress
 
+    def _maa_blackflow_run(self, conf):
+        from arknights_mower.utils.maa_long_task import blackflow_start_run_key
+
+        key = blackflow_start_run_key(conf)
+        progress = load_maa_blackflow_progress()
+        if progress.get("key") != key:
+            progress = {"key": key, "completed": False}
+            save_maa_blackflow_progress(progress)
+        return progress
+
+    def _record_maa_blackflow_callback(self, msg, details):
+        task = getattr(self, "maa_blackflow_task", None)
+        if (
+            task is None
+            or type(details.get("taskid")) is not int
+            or details["taskid"] != task[0]
+            or details.get("taskchain") != "Roguelike"
+            or msg != 20003
+            or details.get("what") != "BlackFlowStartRun"
+        ):
+            return
+        inner = details.get("details")
+        if isinstance(inner, dict) and inner.get("status") == "completed":
+            task[1]["completed"] = True
+            save_maa_blackflow_progress(task[1])
+
     def _maa_paradox_run(self, conf):
         from arknights_mower.utils.maa_copilot import queue_key
 
@@ -17329,6 +17358,10 @@ class BaseSchedulerSolver(
             self._record_maa_sss_callback(msg, d)
         except Exception:
             logger.exception("保存 MAA 保全派驻进度失败")
+        try:
+            self._record_maa_blackflow_callback(msg, d)
+        except Exception:
+            logger.exception("保存 MAA 黑流树海刷开局完成记录失败")
         if msg == 3:  # AllTasksCompleted follows the final StageDrops receipt.
             battle_inventory_active.clear()
         if msg == 20003 and d.get("what") == "StageDrops":
@@ -17463,6 +17496,7 @@ class BaseSchedulerSolver(
         self.maa_copilot_task = None
         self.maa_paradox_task = None
         self.maa_sss_task = None
+        self.maa_blackflow_task = None
         self.maa_event_shop_task = None
         battle_inventory_active.set()
 
@@ -17692,6 +17726,7 @@ class BaseSchedulerSolver(
         self.maa_copilot_task = None
         self.maa_paradox_task = None
         self.maa_sss_task = None
+        self.maa_blackflow_task = None
         self.maa_event_shop_task = None
 
     def restore_maa_theme(self):
@@ -17825,6 +17860,7 @@ class BaseSchedulerSolver(
         copilot_conf = None
         paradox = False
         sss_run = None
+        blackflow_run = None
         large_task_started = False
         shop_started = False
         daily_all = tasks == "All" and not one_time
@@ -18019,6 +18055,15 @@ class BaseSchedulerSolver(
             except ValueError:
                 rg_sleep = False
             paradox = selected_long == "paradox"
+            if (
+                selected_long == "rogue"
+                and conf.maa_rg_theme == "BlackFlow"
+                and conf.rogue.mode == 30003
+                and (manual or not rg_sleep)
+            ):
+                blackflow_run = self._maa_blackflow_run(conf.rogue)
+                if blackflow_run["completed"]:
+                    selected_long = None
             if selected_long in ("copilot", "paradox") and (manual or not rg_sleep):
                 copilot_conf = conf.paradox if paradox else conf.copilot
                 copilot_run = (
@@ -18050,7 +18095,9 @@ class BaseSchedulerSolver(
                         break
                     restore_theme = False
                     self.release_maa()
-                    if paradox:
+                    if not paradox:
+                        self.initialize_maa()
+                    if selected_long not in ("sss", "rcl"):
                         from arknights_mower.utils.device.io_budget import (
                             device_io_budget,
                         )
@@ -18068,7 +18115,7 @@ class BaseSchedulerSolver(
                                 raise InterruptedError
                             seconds = navigation_end - monotonic()
                             if seconds <= 0:
-                                raise TimeoutError("悖论模拟干员列表导航超时")
+                                raise TimeoutError("MAA 大型任务启动前导航超时")
                             return min(
                                 seconds,
                                 (deadline() - datetime.now()).total_seconds() - 30,
@@ -18078,13 +18125,24 @@ class BaseSchedulerSolver(
                             with device_io_budget(navigation_remaining):
                                 self.recog.reset_after_external_control()
                                 self.back_to_index()
-                                ready = self.to_operator_list()
+                                if paradox:
+                                    ready = self.to_operator_list()
+                                else:
+                                    self.scene_graph_navigation(Scene.TERMINAL_MAIN)
+                                    ready = self.scene() == Scene.TERMINAL_MAIN
                                 navigation_remaining()
                                 if not ready:
-                                    raise ValueError("未确认干员列表，未启动悖论模拟")
+                                    if paradox:
+                                        raise ValueError(
+                                            "未确认干员列表，未启动悖论模拟"
+                                        )
+                                    raise ValueError(
+                                        "未确认终端首页，未启动 MAA 大型任务"
+                                    )
                         except InterruptedError:
                             break
-                        self.initialize_maa()
+                        if paradox:
+                            self.initialize_maa()
                         if config.stop_mower.is_set():
                             raise MowerExit
                         if (
@@ -18093,7 +18151,6 @@ class BaseSchedulerSolver(
                         ):
                             break
                     else:
-                        self.initialize_maa()
                         self.recog.reset_after_external_control()
                         self.back_to_index()
                     if selected_long == "rogue":
@@ -18276,7 +18333,28 @@ class BaseSchedulerSolver(
                                     rogue_params["collectible_mode_core_char_list"] = [
                                         item.model_dump() for item in preparation
                                     ]
-                        self.MAA.append_task("Roguelike", rogue_params)
+                            flight_prefix = None
+                            if conf.rogue.mode == 0 and getattr(
+                                conf.rogue, "blackflow_fast_flight", False
+                            ):
+                                flight_prefix = ""
+                                rogue_params.pop("blackflow_strategy", None)
+                            elif conf.rogue.mode == 30003 and getattr(
+                                conf.rogue, "blackflow_start_run_fast_flight", False
+                            ):
+                                flight_prefix = "collectible_mode_"
+                            if flight_prefix is not None:
+                                rogue_params[flight_prefix + "squad"] = "特勤分队"
+                                rogue_params[flight_prefix + "roles"] = "稳扎稳打"
+                                rogue_params[flight_prefix + "core_char_list"] = [
+                                    {"name": "机械师", "use_support": False}
+                                ]
+                                if not flight_prefix:
+                                    rogue_params["core_char"] = "机械师"
+                                    rogue_params["use_support"] = False
+                        task_id = self.MAA.append_task("Roguelike", rogue_params)
+                        if blackflow_run is not None:
+                            self.maa_blackflow_task = (task_id, blackflow_run)
                     elif selected_long in ("copilot", "paradox"):
                         from arknights_mower.utils.maa_copilot import (
                             build_copilot_params,

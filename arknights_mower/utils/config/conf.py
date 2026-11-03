@@ -234,6 +234,9 @@ class LongTaskPart(ConfModel):
         blackflow_strategy: Literal[
             "", "burn", "burn_with_investment", "ending1", "ending2", "ending3"
         ] = ""
+        blackflow_fast_flight: bool = False
+        blackflow_start_run_fast_flight: bool = False
+        blackflow_start_run_id: str = Field(default="", max_length=128)
         blackflow_start_animals: list[
             Literal[
                 "swaddled_cat",

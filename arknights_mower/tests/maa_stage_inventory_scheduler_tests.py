@@ -701,6 +701,10 @@ class MaaRoguelikeTests(unittest.TestCase):
             patch.object(record, "battle_inventory_active", active),
             patch.object(base_schedule.config, "conf", _rg_conf()),
             patch.object(solver, "back_to_index"),
+            patch.object(solver, "scene_graph_navigation"),
+            patch.object(
+                solver, "scene", return_value=base_schedule.Scene.TERMINAL_MAIN
+            ),
             patch.object(solver, "initialize_maa", side_effect=initialize),
             patch.object(solver, "append_maa_task"),
             patch.object(
@@ -731,6 +735,10 @@ class MaaRoguelikeTests(unittest.TestCase):
         with (
             patch.object(base_schedule.config, "conf", _rg_conf(**overrides)),
             patch.object(solver, "back_to_index"),
+            patch.object(solver, "scene_graph_navigation"),
+            patch.object(
+                solver, "scene", return_value=base_schedule.Scene.TERMINAL_MAIN
+            ),
             patch.object(solver, "initialize_maa", side_effect=_init_maa),
             patch.object(solver, "append_maa_task"),
             patch.object(solver, "rest_until_next_task"),

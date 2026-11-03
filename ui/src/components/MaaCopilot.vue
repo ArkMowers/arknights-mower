@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
 import { downloadCopilotScripts } from '@/utils/maaCopilotCode'
+import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
 const props = defineProps({ paradox: { type: Boolean, default: false } })
 const store = useConfigStore()
@@ -140,6 +141,9 @@ async function restart_queue() {
 
 <template>
   <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
+    <n-form-item label="目前状态">
+      <MaaTaskStatus :kind="paradox ? 'paradox' : 'copilot'" :settings="copilot" />
+    </n-form-item>
     <n-form-item label="导入作业">
       <n-flex vertical style="width: 100%">
         <n-flex :wrap="false">

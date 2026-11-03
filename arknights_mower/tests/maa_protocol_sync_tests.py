@@ -16,6 +16,10 @@ from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 @pytest.fixture
 def dispatch(monkeypatch, tmp_path):
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(record, "get_path", lambda value: tmp_path / value[5:])
+    monkeypatch.setattr(record, "_tables_created", False)
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.recog = MagicMock()
     solver.MAA = MagicMock()
@@ -25,6 +29,7 @@ def dispatch(monkeypatch, tmp_path):
     solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(days=1))]
     for method in (
         "back_to_index",
+        "scene_graph_navigation",
         "initialize_maa",
         "release_maa",
         "rest_until_next_task",
@@ -33,6 +38,9 @@ def dispatch(monkeypatch, tmp_path):
     ):
         monkeypatch.setattr(solver, method, MagicMock())
     monkeypatch.setattr(solver, "to_sss", MagicMock(return_value=False))
+    monkeypatch.setattr(
+        solver, "scene", MagicMock(return_value=base_schedule.Scene.TERMINAL_MAIN)
+    )
     monkeypatch.setattr(base_schedule, "send_message", MagicMock())
 
     def run(kind="rogue", **kwargs):
@@ -43,6 +51,59 @@ def dispatch(monkeypatch, tmp_path):
         return maa.append_task.call_args.args
 
     return run
+
+
+@pytest.mark.parametrize("mode", [0, 30003])
+def test_blackflow_fast_flight_uses_mechanic_without_changing_saved_opening(
+    dispatch, mode
+):
+    _, params = dispatch(
+        maa_rg_theme="BlackFlow",
+        rogue={
+            "mode": mode,
+            "squad": "指挥分队",
+            "roles": "取长补短",
+            "core_char_list": [{"name": "棘刺", "use_support": True}],
+            "blackflow_strategy": "ending3",
+            "blackflow_fast_flight": True,
+            "blackflow_start_run_fast_flight": True,
+            "collectible_mode_squad": "后勤分队",
+            "collectible_mode_roles": "坚不可摧",
+            "collectible_mode_core_char_list": [{"name": "桃金娘"}],
+        },
+    )
+    prefix = "collectible_mode_" if mode == 30003 else ""
+    assert params[prefix + "squad"] == "特勤分队"
+    assert params[prefix + "roles"] == "稳扎稳打"
+    assert params[prefix + "core_char_list"] == [
+        {"name": "机械师", "use_support": False}
+    ]
+    assert "blackflow_strategy" not in params
+    if mode == 30003:
+        assert params["squad"] == "指挥分队"
+        assert params["roles"] == "取长补短"
+        assert params["core_char_list"] == [{"name": "棘刺", "use_support": True}]
+    assert base_schedule.config.conf.rogue.squad == "指挥分队"
+    assert base_schedule.config.conf.rogue.collectible_mode_squad == "后勤分队"
+
+
+@pytest.mark.parametrize(
+    "theme,mode", [("BlackFlow", 1), ("BlackFlow", 30001), ("Sami", 0)]
+)
+def test_fast_flight_does_not_replace_unrelated_openings(dispatch, theme, mode):
+    _, params = dispatch(
+        maa_rg_theme=theme,
+        rogue={
+            "mode": mode,
+            "squad": "指挥分队",
+            "roles": "取长补短",
+            "blackflow_fast_flight": True,
+            "blackflow_start_run_fast_flight": True,
+        },
+    )
+    assert params["squad"] == "指挥分队"
+    assert params["roles"] == "取长补短"
+    assert "collectible_mode_roles" not in params
 
 
 def test_ordered_recruitment_and_sami_switches_reach_real_dispatch(dispatch):

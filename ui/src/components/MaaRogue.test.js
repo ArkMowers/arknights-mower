@@ -47,4 +47,31 @@ describe('BlackFlow opening configuration', () => {
     component.set_animal(0, null)
     expect(state.config.rogue.value.blackflow_start_animals).toEqual(['swaddled_cat'])
   })
+  it('applies flight controls only to their own mode and preserves custom openings', () => {
+    const component = setup()
+    const rogue = state.config.rogue.value
+    rogue.squad = '指挥分队'
+    rogue.blackflow_fast_flight = true
+    rogue.blackflow_start_run_fast_flight = true
+    expect(component.prep_flight.value).toBe(true)
+    expect(component.exp_flight.value).toBe(false)
+    rogue.mode = 0
+    expect(component.exp_flight.value).toBe(true)
+    expect(component.prep_flight.value).toBe(false)
+    rogue.blackflow_fast_flight = false
+    expect(component.exp_flight.value).toBe(false)
+    expect(rogue.squad).toBe('指挥分队')
+    state.config.maa_rg_theme.value = 'Sami'
+    expect(component.exp_flight.value).toBe(false)
+    expect(component.prep_flight.value).toBe(false)
+  })
+  it('starts a new opening round only through an explicit request', () => {
+    const component = setup()
+    expect(state.config.rogue.value.blackflow_start_run_id).toBeUndefined()
+    component.restart_blackflow()
+    const first = state.config.rogue.value.blackflow_start_run_id
+    expect(first).toMatch(/^[a-f0-9]{32}$/)
+    component.restart_blackflow()
+    expect(state.config.rogue.value.blackflow_start_run_id).not.toBe(first)
+  })
 })

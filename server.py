@@ -2818,6 +2818,19 @@ def import_from_image():
     return "排班已加载"
 
 
+@app.route("/maa-long-task-status")
+@require_token
+def maa_long_task_status():
+    from arknights_mower.utils.maa_long_task import completion_status
+
+    with backup_lock:
+        try:
+            return completion_status(config.conf)
+        except Exception:
+            logger.exception("读取 MAA 大型任务完成状态失败")
+            return {"message": "读取大型任务状态失败"}, 500
+
+
 @app.route("/maa-copilot", methods=["GET", "POST"])
 @require_token
 def maa_copilot_library():

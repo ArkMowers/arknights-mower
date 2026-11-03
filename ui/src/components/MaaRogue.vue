@@ -9,6 +9,24 @@ const mobile = inject('mobile')
 const config_store = useConfigStore()
 
 const { maa_rg_theme, rogue } = storeToRefs(config_store)
+const exp_flight = computed(
+  () =>
+    maa_rg_theme.value === 'BlackFlow' &&
+    rogue.value.mode === 0 &&
+    rogue.value.blackflow_fast_flight
+)
+const prep_flight = computed(
+  () =>
+    maa_rg_theme.value === 'BlackFlow' &&
+    rogue.value.mode === 30003 &&
+    rogue.value.blackflow_start_run_fast_flight
+)
+function restart_blackflow() {
+  rogue.value.blackflow_start_run_id = Array.from(
+    crypto.getRandomValues(new Uint32Array(4)),
+    (value) => value.toString(16).padStart(8, '0')
+  ).join('')
+}
 
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
@@ -16,6 +34,7 @@ const { operators } = storeToRefs(plan_store)
 import { pinyin_match } from '@/utils/common'
 import { render_op_option, render_op_label } from '@/utils/op_select'
 import HelpText from '@/components/HelpText.vue'
+import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 import {
   blackflow_animals,
   blackflow_rewards,
@@ -388,10 +407,10 @@ const find_playtime_options = [
       <n-select v-model:value="maa_rg_theme" :options="rogue_themes" />
     </n-form-item>
     <n-form-item label="开局分队">
-      <n-select v-model:value="rogue.squad" :options="squad[maa_rg_theme]" />
+      <n-select v-model:value="rogue.squad" :options="squad[maa_rg_theme]" :disabled="exp_flight" />
     </n-form-item>
     <n-form-item label="开局职业组">
-      <n-select v-model:value="rogue.roles" :options="roles" />
+      <n-select v-model:value="rogue.roles" :options="roles" :disabled="exp_flight" />
     </n-form-item>
     <n-form-item>
       <template #label>
@@ -405,13 +424,15 @@ const find_playtime_options = [
         clearable
         :options="operators"
         v-model:value="rogue.core_char"
+        :disabled="exp_flight"
         :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
         :render-option="render_op_option"
       />
     </n-form-item>
     <n-form-item label="开局招募顺位">
-      <maa-rogue-recruit v-model="rogue.core_char_list" :options="operators" />
+      <maa-rogue-recruit v-if="!exp_flight" v-model="rogue.core_char_list" :options="operators" />
+      <n-text v-else>机械师（自有）</n-text>
     </n-form-item>
     <n-form-item
       v-if="elite_two_visible(maa_rg_theme, rogue.mode, rogue.squad)"
@@ -430,7 +451,9 @@ const find_playtime_options = [
       >
     </n-form-item>
     <n-form-item :show-label="false">
-      <n-checkbox v-model:checked="rogue.use_support">开局干员使用助战</n-checkbox>
+      <n-checkbox v-model:checked="rogue.use_support" :disabled="exp_flight"
+        >开局干员使用助战</n-checkbox
+      >
     </n-form-item>
     <n-form-item
       v-if="
@@ -471,8 +494,17 @@ const find_playtime_options = [
     >
       <n-input v-model:value="rogue.start_with_seed" placeholder="留空不使用种子" />
     </n-form-item>
+    <n-form-item v-if="maa_rg_theme === 'BlackFlow' && rogue.mode === 0" label="快速飞三层">
+      <n-flex vertical>
+        <n-checkbox v-model:checked="rogue.blackflow_fast_flight">刷等级时开启</n-checkbox>
+        <n-text depth="3"
+          >需满天赋机械师；本次使用特勤分队、稳扎稳打和自有机械师开局，快速到达第三层后重开。</n-text
+        >
+      </n-flex>
+    </n-form-item>
     <n-form-item v-if="maa_rg_theme === 'BlackFlow' && rogue.mode === 0" label="刷等级路线">
       <n-select
+        :disabled="rogue.blackflow_fast_flight"
         v-model:value="rogue.blackflow_strategy"
         :options="[
           { label: '跟随 MAA 默认', value: '' },
@@ -485,6 +517,25 @@ const find_playtime_options = [
       />
     </n-form-item>
     <template v-if="maa_rg_theme === 'BlackFlow' && rogue.mode === 30003">
+      <n-form-item label="目前状态">
+        <MaaTaskStatus kind="blackflow" :settings="rogue" />
+      </n-form-item>
+      <n-form-item label="刷开局完成后">
+        <n-flex vertical>
+          <n-text
+            >命中目标后保留该局，保存完成状态并停止自动重跑；修改开局设置或点击按钮可开启新一轮。</n-text
+          >
+          <n-button @click="restart_blackflow">重新刷开局</n-button>
+        </n-flex>
+      </n-form-item>
+      <n-form-item label="准备局快速飞三层">
+        <n-flex vertical>
+          <n-checkbox v-model:checked="rogue.blackflow_start_run_fast_flight">开启</n-checkbox>
+          <n-text depth="3"
+            >需满天赋机械师；准备局使用特勤分队、稳扎稳打和自有机械师，目标局沿用开局配置。有动物要求时先完成培育。</n-text
+          >
+        </n-flex>
+      </n-form-item>
       <n-form-item label="准备局动物">
         <n-flex vertical style="width: 100%">
           <n-select
@@ -528,13 +579,19 @@ const find_playtime_options = [
         <n-select
           clearable
           :value="rogue.collectible_mode_roles"
+          :disabled="prep_flight"
           @update:value="rogue.collectible_mode_roles = $event ?? ''"
           :options="roles"
           placeholder="沿用开局职业组"
         />
       </n-form-item>
       <n-form-item label="准备局招募顺位">
-        <maa-rogue-recruit v-model="rogue.collectible_mode_core_char_list" :options="operators" />
+        <maa-rogue-recruit
+          v-if="!prep_flight"
+          v-model="rogue.collectible_mode_core_char_list"
+          :options="operators"
+        />
+        <n-text v-else>机械师（自有）</n-text>
       </n-form-item>
     </template>
     <n-form-item
@@ -621,7 +678,11 @@ const find_playtime_options = [
       v-if="is_field_enabled('collectible_mode_squad', maa_rg_theme, rogue.mode)"
       :label="rogue.mode === 30003 ? '准备局分队' : '烧水分队'"
     >
-      <n-select v-model:value="rogue.collectible_mode_squad" :options="collectible_squad_options" />
+      <n-select
+        v-model:value="rogue.collectible_mode_squad"
+        :options="collectible_squad_options"
+        :disabled="prep_flight"
+      />
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('first_floor_foldartal', maa_rg_theme, rogue.mode)"
