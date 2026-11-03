@@ -931,6 +931,7 @@ describe('log page', () => {
 
     component.process_control.value = {
       canRunProcessAction: true,
+      canApplySchedule: true,
       applySchedule,
       restartResume
     }
@@ -956,6 +957,26 @@ describe('log page', () => {
 
     component.select_stop_action('maa')
     expect(state.client.get).toHaveBeenCalledWith('/stop-maa')
+  })
+
+  it('allows applying a plan when desktop process control is unavailable', async () => {
+    state.mower.refs.running.value = true
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    const applySchedule = vi.fn()
+    component.process_control.value = {
+      canApplySchedule: true,
+      canRunProcessAction: false,
+      applySchedule
+    }
+    await nextTick()
+    expect(
+      component.stop_options.value.find((option) => option.key === 'apply_schedule').disabled
+    ).toBe(false)
+    expect(
+      component.stop_options.value.find((option) => option.key === 'restart_resume').disabled
+    ).toBe(true)
+    component.select_stop_action('apply_schedule')
+    expect(applySchedule).toHaveBeenCalledOnce()
   })
 
   it('mounts the task form on first opening and retains it after closing', async () => {
