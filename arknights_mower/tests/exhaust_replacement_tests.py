@@ -573,7 +573,7 @@ def test_alternate_does_not_take_another_exhausted_members_cover(solver):
     assert {"机械师", "阿罗玛"} <= set(task.plan["dormitory_1"])
 
 
-def test_training_protection_prevents_partial_group_recall(solver):
+def test_protected_training_slot_does_not_block_other_group_members_returning(solver):
     config.conf.enable_mastery = True
     solver._train_mastery_active = MagicMock(return_value=True)
     solver._train_protected = MagicMock(return_value=False)
@@ -586,12 +586,22 @@ def test_training_protection_prevents_partial_group_recall(solver):
         group="感知",
         replacement=["赫默"],
         operator_type="high",
+        current_room="train",
+        current_index=0,
     )
     data.add(op)
     data.groups["感知"].append("逻各斯")
     data.operators["苍苔"].replacement = ["槐琥"]
-    original = run_retained(solver)
-    assert solver.tasks == [original]
+    solver.check_fia = MagicMock(return_value=([], None))
+    solver.skip = MagicMock()
+    original = solver.task
+    solver.overtake_room()
+    support, pending = solver.tasks
+    assert pending is original
+    assert support.plan == {"room_2_2": ["苍苔"], "contact": ["絮雨"]}
+    assert data.operators["逻各斯"].current_room == "train"
+    solver.task = support
+    assert solver._coordination_support_valid(support.plan, ["机械师"])
 
 
 def test_unknown_recall_keeps_temporary_dorm_slot_and_occupant(solver):

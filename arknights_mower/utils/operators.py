@@ -1600,6 +1600,7 @@ class Operators:
         reserved_replacements=None,
         explicit_slots=(),
         excluded_names=(),
+        excluded_replacements=None,
     ):
         """Keep shared covers until all dependent groups return; reject conflicts.
 
@@ -1659,7 +1660,11 @@ class Operators:
                 if reserved_replacements is None
                 else reserved_replacements
             )
-            | excluded_names
+            | set(
+                excluded_names
+                if excluded_replacements is None
+                else excluded_replacements
+            )
         )
         for op in followers:
             target = plan.get(op.room, [])[op.index : op.index + 1]
