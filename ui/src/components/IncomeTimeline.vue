@@ -1,20 +1,29 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
+import { pinyin_match } from '@/utils/common'
 import ScheduleTimelineGantt from '@/riic/vendor/components/workbench/ScheduleTimelineGantt.vue'
 import IncomeHorizontalScroll from './IncomeHorizontalScroll.vue'
 
 const props = defineProps({ report: Object, timelineData: Object })
 const overviewPage = ref(1)
+const operatorSearch = ref('')
 const navigationTarget = ref(null)
-const operators = computed(() => props.report?.operators ?? [])
+const operators = computed(() => {
+  const operators = props.report?.operators ?? []
+  const query = operatorSearch.value.trim().toLowerCase()
+  return query
+    ? operators.filter(
+        (operator) =>
+          operator.operatorName.toLowerCase().includes(query) ||
+          pinyin_match(operator.operatorName, query)
+      )
+    : operators
+})
 const overviewRows = computed(() =>
   operators.value.slice((overviewPage.value - 1) * 20, overviewPage.value * 20)
 )
-watch(
-  () => props.report,
-  () => (overviewPage.value = 1)
-)
+watch([() => props.report, operatorSearch], () => (overviewPage.value = 1))
 const hours = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 const theme = useThemeVars()
 const colors = computed(() => ({
@@ -43,6 +52,13 @@ const colors = computed(() => ({
           小时，不含预热。工作、休息、空闲和心情涣散驻岗分别统计，主班和替班工时不含心情涣散驻岗。
         </p>
         <p>工作占比 = 工作时长 / 采样时长；工休比 = 工作时长 / 休息时长，无休息时显示 —。</p>
+        <n-input
+          v-model:value="operatorSearch"
+          class="time-overview-search"
+          placeholder="按干员名称检索"
+          :input-props="{ 'aria-label': '检索时间总览中的干员' }"
+          clearable
+        />
         <IncomeHorizontalScroll selector=".time-overview-table" label="干员时间总览横向滚动">
           <div class="time-overview-table">
             <n-table size="small">
@@ -61,6 +77,11 @@ const colors = computed(() => ({
                 </tr>
               </thead>
               <tbody>
+                <tr v-if="!overviewRows.length">
+                  <td colspan="10">
+                    {{ operatorSearch.trim() ? '没有匹配的干员' : '暂无干员数据' }}
+                  </td>
+                </tr>
                 <tr v-for="operator in overviewRows" :key="operator.operatorId">
                   <td>{{ operator.operatorName }}</td>
                   <td>{{ hours(operator.workFraction * 100) }}%</td>
@@ -151,6 +172,11 @@ const colors = computed(() => ({
 }
 .time-overview :deep(.n-pagination) {
   margin-top: 12px;
+}
+.time-overview-search {
+  width: 280px;
+  max-width: 100%;
+  margin-bottom: 12px;
 }
 .time-overview-table {
   overflow-x: auto;
