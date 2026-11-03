@@ -423,7 +423,7 @@
           <div class="growth-modal__head">
             <span class="gp-kicker">Workshop lineup</span>
             <h2>加工站干员</h2>
-            <p>按副产品概率与材料范围分配合成干员；缺口生成任务会沿用这里的名单。</p>
+            <p>拖动名单调整加工优先级，执行时沿用手动顺序；一键设置按副产品概率推荐初始顺序。</p>
           </div>
         </template>
 
@@ -478,10 +478,31 @@
             </HelpText>
           </section>
 
+          <section class="workshop-reserves">
+            <label v-for="tier in [1, 2]" :key="tier">
+              <span>T{{ tier }} 子材料保留量</span>
+              <mower-input-number
+                :value="tier === 1 ? workshopT1Reserve : workshopT2Reserve"
+                @update:value="setWorkshopReserve(tier, $event ?? 100)"
+                :min="0"
+                :max="999999"
+                :precision="0"
+                :show-button="false"
+                :input-props="{ 'aria-label': `T${tier} 子材料保留量` }"
+              />
+            </label>
+            <p>合成和九色鹿垫刀都保留这些库存；垫刀分组设置更高下限时，沿用更高值。</p>
+          </section>
+
           <section class="workshop-group">
             <header>
               <h3>非 T5 材料</h3>
-              <HelpText>缺口合成暂不使用需要额外垫刀的九色鹿，请同时选择其他加工干员。</HelpText>
+              <HelpText
+                >先使用排在九色鹿之前的干员，再由九色鹿优先使用养成所需的 T2/T3
+                材料或技巧概要垫刀，不足时使用已配置的垫刀素材。垫刀完成后必须加工 T4
+                才继续；养成没有可用 T4 时，从无缝材料合成的九色鹿设置中加工一个。瑕光仅加工
+                T2/T3，可按 CE-6 龙门币价值自行前置。</HelpText
+              >
             </header>
             <slick-operator-select
               v-model="fodderOps"
@@ -509,7 +530,7 @@
           </section>
 
           <details class="workshop-advanced">
-            <summary>九色鹿垫刀素材设置（仅手动合成使用）</summary>
+            <summary>九色鹿垫刀素材设置</summary>
             <workshop-deer-fodder v-model="deerFodder" :disabled="workshopDefaultsLoading" />
           </details>
 
@@ -788,12 +809,19 @@ async function toggleGoal(op, moduleId, selected, targetLevel) {
 const {
   workshop_min_bonus: workshopMinBonus,
   workshop_protect_t2_device_rock: workshopProtectT2,
+  workshop_t1_reserve: workshopT1Reserve,
+  workshop_t2_reserve: workshopT2Reserve,
   workshop_deer_fodder: deerFodder,
   fodder_operators: fodderOps,
   t5_operators: t5Ops,
   book_operators: bookOps
 } = storeToRefs(configStore)
 const workshopPolicySaving = ref(false)
+function setWorkshopReserve(tier, value) {
+  if (tier === 1) workshopT1Reserve.value = value
+  else workshopT2Reserve.value = value
+  return setWorkshopMaterialPolicy(workshopProtectT2.value)
+}
 async function setWorkshopMaterialPolicy(value) {
   workshopProtectT2.value = value
   workshopPolicySaving.value = true
@@ -809,7 +837,17 @@ async function setWorkshopMaterialPolicy(value) {
 }
 const workshopStatusRevision = ref(0)
 watch(
-  [() => configStore.workshop_settings_generation, workshopProtectT2, fodderOps, t5Ops, bookOps],
+  [
+    () => configStore.workshop_settings_generation,
+    () => configStore.workshop_manual_settings_revision,
+    workshopProtectT2,
+    workshopT1Reserve,
+    workshopT2Reserve,
+    deerFodder,
+    fodderOps,
+    t5Ops,
+    bookOps
+  ],
   () => ++workshopStatusRevision.value,
   { deep: true }
 )
@@ -2680,6 +2718,22 @@ async function loadOperators() {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 12px;
+}
+.workshop-reserves {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.workshop-reserves label {
+  display: grid;
+  gap: 8px;
+}
+.workshop-reserves p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--gp-muted);
   font-size: 12px;
 }
 

@@ -33,7 +33,7 @@ def queue(monkeypatch):
     monkeypatch.setattr(scheduler_task, "get_inventory_counts", lambda: {"糖": 100})
     from arknights_mower.utils import workshop_limits, workshop_recommendation
 
-    monkeypatch.setattr(workshop_limits, "batch_limit", lambda *args: 1)
+    monkeypatch.setattr(workshop_limits, "batch_limit", lambda *args, **kwargs: 1)
     monkeypatch.setattr(
         workshop_recommendation, "prioritize_workshop_settings", lambda items: items
     )

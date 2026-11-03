@@ -1745,6 +1745,8 @@ class BaseMixin:
 
     def item_list(self):
         try:
+            from arknights_mower.utils.workshop_ui import furniture_formula_name
+
             offset_x = 370
             offset_y = 125
             img = self.recog.img[offset_y:1040, offset_x:1860]
@@ -1755,28 +1757,19 @@ class BaseMixin:
                 use_rec=True,
             )
             res = []
-            furniture_start_index = -1
-            furniture_keys = [
-                "家具零件_碳素",
-                "家具零件_碳素组",
-                "家具零件_基础加固建材",
-                "家具零件_进阶加固建材",
-                "家具零件_高级加固建材",
-                "家具零件_碳",
-            ]
-            base_idx = 0
             for idx, item in enumerate(ocr_result[0]):
-                if item[1] == "家具零件" and furniture_start_index == -1:
-                    furniture_start_index = base_idx
                 if (
                     len(item) > 2
                     and item[1] in workshop_formula.keys()
                     or item[1] == "家具零件"
                 ):
                     name = item[1]
-                    if name == "家具零件" and furniture_start_index in range(6):
-                        name = furniture_keys[base_idx]
                     box = item[0]
+                    box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
+                    if name == "家具零件":
+                        name = furniture_formula_name(self.recog.img, box_global)
+                        if name is None:
+                            continue
                     base_px = int(box[0][0]) + 15
                     base_py = int(box[0][1]) + 75
                     sample_points = [(base_px + i * 155, base_py) for i in range(3)]
@@ -1792,12 +1785,16 @@ class BaseMixin:
                             if not np.all((color >= 40) & (color <= 80)):
                                 valid = float("-inf ")
                                 break
-                    box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
                     # 等于 0 则出界了
                     if valid != 0:
+                        if name.startswith("家具零件_"):
+                            left = 1120 if box_global[0][0] > 1100 else 376
+                            top = min(point[1] for point in box_global)
+                            box_global = [
+                                [left + 20, top + 45],
+                                [left + 230, top + 195],
+                            ]
                         res.append((name, box_global, valid > 0))
-                    if base_idx < 5:
-                        base_idx += 1
             return res
         except Exception as e:
             logger.exception(e)

@@ -24,8 +24,16 @@ def crafting_gold_cost(budget, materials, formulas=None):
         from arknights_mower.data import workshop_formula
 
         formulas = workshop_formula
+    from arknights_mower.utils import config
+    from arknights_mower.utils.workshop_limits import crafting_lmd_cost
+    from arknights_mower.utils.workshop_recipes import operator_recipe_allowed
+
+    blemishine = "瑕光" in config.conf.fodder_operators
     fees = {
-        recipe.get("output_name", name): int(recipe.get("goldCost") or 0)
+        recipe.get("output_name", name): crafting_lmd_cost(
+            recipe,
+            "瑕光" if blemishine and operator_recipe_allowed("瑕光", recipe) else None,
+        )
         for name, recipe in formulas.items()
         if recipe.get("tab") in ("精英材料", "技巧概要")
     }
@@ -49,7 +57,9 @@ def crafting_gold_cost(budget, materials, formulas=None):
     return total
 
 
-def next_recipe(entries, skills, inventory, formulas, blocked=()):
+def next_recipe(
+    entries, skills, inventory, formulas, blocked=(), *, recipe_filter=None
+):
     """Reserve earlier projects, then finish the first outstanding recipe.
 
     Only a single recipe receives a bounded quota. The caller recalculates after
@@ -79,7 +89,16 @@ def next_recipe(entries, skills, inventory, formulas, blocked=()):
         while pending:
             iid = max(pending, key=lambda key: (budget.depths.get(key, 0), key))
             pending.remove(iid)
-            used = min(available[iid], demand[iid])
+            used = min(
+                max(
+                    0,
+                    available[iid]
+                    - max(
+                        0, budget.ingredient_reserves.get(iid, 0) - reserved.get(iid, 0)
+                    ),
+                ),
+                demand[iid],
+            )
             available[iid] -= used
             shortage = demand[iid] - used
             if shortage <= 0 or iid not in budget.recipes or iid not in formula_ids:
@@ -94,11 +113,21 @@ def next_recipe(entries, skills, inventory, formulas, blocked=()):
             stock.subtract(reserved)
             continue
         for iid in sorted(crafts, key=lambda key: (budget.depths.get(key, 0), key)):
+            if recipe_filter and not recipe_filter(formulas[formula_ids[iid]]):
+                continue
             costs, output = budget.recipes[iid]
             batches = min(
                 crafts[iid],
                 *(
-                    max(0, stock[child] - reserved.get(child, 0)) // count
+                    max(
+                        0,
+                        stock[child]
+                        - max(
+                            reserved.get(child, 0),
+                            budget.ingredient_reserves.get(child, 0),
+                        ),
+                    )
+                    // count
                     for child, count in costs.items()
                 ),
             )
@@ -157,9 +186,95 @@ def growth_workshop_config(
     if not items:
         return result
     category = recipe_category(formulas[items[0]["item_names"][0]])
-    # Missing-only preparation cannot add unrelated fodder to build causality.
     names = [name for name in operators[category] if name != "九色鹿"]
     groups = [(category, names, items)]
     result.settings = allocate_workshop_items(groups, formulas=formulas)
+    if "九色鹿" in operators["fodder_operators"]:
+        from arknights_mower.utils.workshop_recipes import is_deer_fodder
+
+        # Use only admitted demand; aggregate it once so shared ingredients and
+        # direct reservations bound both the fodder and the T4 quota.
+        demand = Counter()
+        for _, materials in entries:
+            for material in materials:
+                demand[material["id"]] += material["count"]
+        combined = [(key, [{"id": iid, "count": n} for iid, n in demand.items()])]
+        _, fodder = next_recipe(
+            combined, skills, inventory, formulas, blocked, recipe_filter=is_deer_fodder
+        )
+        _, elite = next_recipe(
+            combined,
+            skills,
+            inventory,
+            formulas,
+            blocked,
+            recipe_filter=lambda recipe: (
+                recipe.get("tab") == "精英材料" and recipe.get("apCost") == 4
+            ),
+        )
+        planned_elite = elite
+        if fodder or elite:
+            from arknights_mower.utils.workshop_fodder import (
+                deer_fodder_items,
+                deer_manual_t4,
+            )
+
+            budget = MaterialBudget(
+                skills, inventory, formulas, blocked_materials=blocked
+            )
+            stock, reserved = dict(inventory), Counter()
+            for iid, count in demand.items():
+                budget._consume(iid, count, stock, reserved)
+            reserved_names = {
+                skills["items"][iid]["name"]: count for iid, count in reserved.items()
+            }
+            named_inventory = {
+                skills["items"].get(iid, {}).get("name", iid): count
+                for iid, count in inventory.items()
+            }
+            if not elite:
+                elite = deer_manual_t4(named_inventory, reserved_names, formulas)
+            if not elite:
+                result.recipe = items[0]["item_names"][0]
+                return result
+            fallback = [
+                {
+                    **item,
+                    "children_lower_limit": max(
+                        [
+                            item["children_lower_limit"],
+                            *(
+                                reserved_names.get(child, 0)
+                                for name in item["item_names"]
+                                for child in formulas.get(name, {}).get("items", [])
+                            ),
+                        ]
+                    ),
+                }
+                for item in deer_fodder_items()
+            ]
+            before_deer = operators["fodder_operators"][
+                : operators["fodder_operators"].index("九色鹿")
+            ]
+            preceding = allocate_workshop_items(
+                [("fodder_operators", before_deer, fodder + planned_elite)],
+                formulas=formulas,
+            )
+            preceding_names = {entry["operator"] for entry in preceding}
+            result.settings = (
+                preceding
+                + [
+                    {
+                        "operator": "九色鹿",
+                        "enabled": True,
+                        "items": fodder + fallback + elite,
+                    }
+                ]
+                + [
+                    entry
+                    for entry in result.settings
+                    if entry["operator"] not in preceding_names
+                ]
+            )
     result.recipe = items[0]["item_names"][0]
     return result

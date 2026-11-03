@@ -80,6 +80,9 @@ export function usesLegacyWorkshopDefaults(settings) {
 export function workshopRecommendationText(operator, unowned = false) {
   const name = unowned ? `${operator.name}（未持有）` : operator.name
   if (operator.causality) return name
+  if (operator.name === '瑕光') {
+    return `${name}：仅合成 T2/T3 材料，免龙门币加工费；认可 CE-6 龙门币价值时，可手动排在九色鹿之前`
+  }
   const materials = operator.materials || []
   const bonus = [...new Set(Object.values(operator.bonuses || {}))].sort((a, b) => a - b)
   const amount = bonus.length > 1 ? `${bonus[0]}～${bonus.at(-1)}` : bonus[0]
@@ -93,9 +96,9 @@ export function workshopRecommendationText(operator, unowned = false) {
           : `${materials.slice(0, 3).join('、')}${materials.length > 3 ? `等 ${materials.length} 种材料` : ''}`
   const extra =
     operator.name === '蚀清'
-      ? '，T3 副产品固定为异铁组（优先级仅次于九色鹿）'
+      ? '，T3 副产品固定为异铁组（可手动调整优先级）'
       : operator.name === '镜匠'
-        ? '，T3 副产品固定为酮凝集组（优先级在蚀清之后）'
+        ? '，T3 副产品固定为酮凝集组（可手动调整优先级）'
         : ''
   return `${name}：${scope}，副产品概率加成 +${amount}%${extra}`
 }

@@ -1,10 +1,8 @@
-"""Allocate recipe tasks and sort scoped copies of saved workshop settings."""
+"""Allocate permitted recipes in the user-selected operator order."""
 
 from arknights_mower.utils.workshop_material_policy import protected_workshop_materials
 from arknights_mower.utils.workshop_recipes import (
     SCOPED_OPERATORS,
-    T4_PREFERRED,
-    exclusive_specialists,
     matches_specialty,
     operator_priority,
     operator_recipe_allowed,
@@ -105,38 +103,13 @@ class WorkshopAllocation:
             and (not specialist_only or name in specialists)
         ]
 
-    def retained(self, candidates, material):
-        if self.available is None:
-            return candidates
-        recipe = self.formulas.get(material, {})
-        bonuses = {
-            name: recipe_bonus(self.available.get(name, []), material, recipe)
-            for name in candidates
-        }
-        highest = max(bonuses.values(), default=0)
-        specialists = self.specialists(candidates, material)
-        exclusive = exclusive_specialists(
-            bonuses, self.specialists(candidates, material, byproduct=True)
-        )
-        return [
-            name
-            for name in candidates
-            if (not exclusive or name in exclusive or name in T4_PREFERRED)
-            and (
-                name in T4_PREFERRED
-                or name in specialists
-                or bonuses[name] >= max(1, self.min_bonus)
-                or bonuses[name] == highest
-            )
-        ]
-
     def add_items(self, names, items, *, specialist_only=False):
         for item in items:
             for material in item["item_names"]:
                 candidates = self.candidates(
                     names, material, specialist_only=specialist_only
                 )
-                for name in self.retained(candidates, material):
+                for name in candidates:
                     self.result[name]["items"].append(
                         {**item, "item_names": [material]}
                     )

@@ -60,7 +60,7 @@ def test_caledo_requires_owned_unlocked_and_unscheduled_skills(game):
     assert workshop.recipe_bonus(effects, "炽合金块", recipe()) == 75
 
 
-def test_caledo_execution_copies_keep_priority_and_t4_scope(game):
+def test_caledo_execution_copies_keep_manual_order_and_t4_scope(game):
     meta, ids = game
     names = ["号角", "镜匠", "蚀清", "九色鹿"]
     available = workshop.available_operators(owned(ids, *names), meta)
@@ -76,7 +76,7 @@ def test_caledo_execution_copies_keep_priority_and_t4_scope(game):
         available=available,
         formulas={"炽合金块": recipe(), "双极纳米片": recipe(8), "糖组": recipe(2)},
     )
-    assert [entry["operator"] for entry in result] == ["九色鹿", "镜匠", "蚀清", "号角"]
+    assert [entry["operator"] for entry in result] == names
     assert result[1]["items"] == [item("炽合金块")]
     assert settings[1]["items"] == [item("炽合金块"), item("双极纳米片"), item("糖组")]
     allocated = workshop.allocate_workshop_items(
@@ -85,9 +85,4 @@ def test_caledo_execution_copies_keep_priority_and_t4_scope(game):
         formulas={"炽合金块": recipe()},
         min_bonus=90,
     )
-    assert [entry["operator"] for entry in allocated] == [
-        "九色鹿",
-        "镜匠",
-        "蚀清",
-        "号角",
-    ]
+    assert [entry["operator"] for entry in allocated] == names

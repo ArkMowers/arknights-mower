@@ -353,7 +353,7 @@ def test_remaining_mood_selects_only_affordable_materials_and_stops_without_resc
     config.conf.workshop_settings[0].items.append(
         WorkShopItem(item_names=["固源岩"], self_upper_limit=10, children_lower_limit=0)
     )
-    inventory.save_inventory_counts({"固源岩": 0, "源岩": 99})
+    inventory.save_inventory_counts({"固源岩": 0, "源岩": 199})
     solver.item_list = MagicMock(wraps=solver.item_list)
     solver.generate_product("蜜莓")
     base.save_exception.assert_not_called()

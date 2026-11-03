@@ -166,4 +166,4 @@ def test_dorm_metadata_tracks_unlocks_without_adding_dorm_only_operators():
             for entry in workshop.prioritize_workshop_settings(
                 configs, available=workshop.available_operators(roster, meta)
             )
-        ] == expected
+        ] == ["A", "Z"]

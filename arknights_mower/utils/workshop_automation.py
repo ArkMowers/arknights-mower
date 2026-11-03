@@ -126,6 +126,17 @@ def calculate_workshop_plan(conf, *, local_stock=None, **operators):
                 selected,
                 sorted(protected),
                 conf.growth_crafting_order,
+                conf.workshop_t1_reserve,
+                conf.workshop_t2_reserve,
+                [item.model_dump() for item in conf.workshop_deer_fodder],
+                [
+                    entry.model_dump()
+                    for entry in (
+                        conf.workshop_manual_backup
+                        if conf.workshop_manual_backup is not None
+                        else conf.workshop_settings
+                    )
+                ],
                 config.conf.workshop_min_bonus,
                 workshop_formula,
                 released,

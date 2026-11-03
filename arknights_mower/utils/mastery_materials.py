@@ -9,6 +9,11 @@ class MaterialBudget:
         self, skill_data, inventory, workshop_formula=None, *, blocked_materials=()
     ):
         self.items = skill_data.get("items", {})
+        from arknights_mower.utils.workshop_material_policy import (
+            workshop_material_reserves,
+        )
+
+        self.ingredient_reserves = workshop_material_reserves(self.items)
         self.formulas = workshop_formula
         self.inventory = {key: max(0, int(value)) for key, value in inventory.items()}
         ids = {item["name"]: key for key, item in self.items.items()}
@@ -49,8 +54,9 @@ class MaterialBudget:
             )
         return self.depths[key]
 
-    def _consume(self, key, count, stock, trace=None):
-        used = min(stock.get(key, 0), count)
+    def _consume(self, key, count, stock, trace=None, *, ingredient=False):
+        floor = self.ingredient_reserves.get(key, 0) if ingredient else 0
+        used = min(max(0, stock.get(key, 0) - floor), count)
         if trace is not None and used:
             # Show inventory actually spent, not intermediates made during crafting.
             trace[key] += used
@@ -64,7 +70,7 @@ class MaterialBudget:
         costs, output = recipe
         batches = ceil(count / output)
         for child, cost in costs.items():
-            if not self._consume(child, cost * batches, stock, trace):
+            if not self._consume(child, cost * batches, stock, trace, ingredient=True):
                 return False
         stock[key] += batches * output - count
         return True
@@ -102,7 +108,8 @@ class MaterialBudget:
                 continue
             item = self.items.get(key, {})
             owned = stock.get(key, 0)
-            extra_used = min(count - reserved.get(key, 0), owned)
+            floor = max(0, self.ingredient_reserves.get(key, 0) - reserved.get(key, 0))
+            extra_used = min(count - reserved.get(key, 0), max(0, owned - floor))
             stock[key] = owned - extra_used
             used = extra_used + reserved.get(key, 0)
             shortage = count - used

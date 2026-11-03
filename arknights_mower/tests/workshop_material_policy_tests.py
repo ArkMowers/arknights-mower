@@ -28,6 +28,8 @@ def test_switch_defaults_off_and_round_trips():
 @pytest.mark.parametrize("enabled", [False, True])
 def test_only_exact_t2_ingredients_are_blocked_at_execution(monkeypatch, enabled):
     monkeypatch.setattr(config.conf, "workshop_protect_t2_device_rock", enabled)
+    monkeypatch.setattr(config.conf, "workshop_t1_reserve", 0)
+    monkeypatch.setattr(config.conf, "workshop_t2_reserve", 0)
     setting = WorkShopItem(self_upper_limit=1, children_lower_limit=0)
     for name in (
         "固源岩组",

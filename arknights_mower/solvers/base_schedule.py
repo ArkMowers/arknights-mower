@@ -2628,11 +2628,14 @@ class BaseSchedulerSolver(
             )[agent_index] = task.meta_data
         previous_selection_target = getattr(self, "_workshop_selection_target", None)
         self._workshop_selection_target = task.meta_data
+        previous_handoff = getattr(self, "_workshop_room_handoff", False) is True
+        self._workshop_room_handoff = True
         try:
             if not (
                 previous_restore_plan and agent_room == "factory" and agent_index == 0
             ):
-                self.agent_arrange({"factory": [task.meta_data]})
+                if self.agent_arrange({"factory": [task.meta_data]}) is False:
+                    return
         except WorkshopSelectionBlocked as reason:
             restore_plan.clear()
             restore_plan.update(previous_restore_plan)
@@ -2641,12 +2644,23 @@ class BaseSchedulerSolver(
             return
         finally:
             self._workshop_selection_target = previous_selection_target
+            self._workshop_room_handoff = previous_handoff
         if self.generate_product(task.meta_data, snapshot=snapshot) is False:
             raise RuntimeError("加工执行失败，停止本轮连续换人")
-        if config.conf.workshop_auto_active and not snapshot.is_current():
+        deer_first = config.conf.workshop_auto_active and any(
+            setting.operator == "九色鹿" for setting in snapshot.settings
+        )
+        if config.conf.workshop_auto_active and (
+            not snapshot.is_current() or deer_first
+        ):
             # A confirmed batch advances the recipe generation. Continue with
             # remaining mood instead of waiting for the normal fresh-task gate.
-            try_workshop_tasks(self.op_data, self.tasks, minimum_mood=0)
+            if deer_first:
+                try_workshop_tasks(
+                    self.op_data, self.tasks, minimum_mood=0, completed_task=task
+                )
+            else:
+                try_workshop_tasks(self.op_data, self.tasks, minimum_mood=0)
         return task.meta_data
 
     def _discard_legacy_recovery_checks(self):
@@ -5040,6 +5054,7 @@ class BaseSchedulerSolver(
             batch_limit,
             blocked_workshop_recipes,
             deer_batch_limit,
+            deer_recipe_ready,
             recipe_quantities,
             reject_workshop_recipe,
             workshop_candidate_mood,
@@ -5116,10 +5131,11 @@ class BaseSchedulerSolver(
                             name, metadata, mood_rules, mood_rules_known
                         )
             blocked_materials = set()
+            gap = None
 
             def available_groups():
                 rejected = blocked_workshop_recipes(inventory_data)
-                return {
+                eligible_groups = {
                     tab: eligible
                     for tab, entries in group.items()
                     if (
@@ -5128,14 +5144,28 @@ class BaseSchedulerSolver(
                             for name, setting in entries.items()
                             if name not in blocked_materials
                             and name not in rejected
+                            and (
+                                not is_9colored
+                                or gap is None
+                                or deer_recipe_ready(workshop_formula[name], gap)
+                            )
                             and recipe_moods[name] <= mood_budget
                             and batch_limit(
-                                name, workshop_formula[name], setting, inventory_data
+                                name,
+                                workshop_formula[name],
+                                setting,
+                                inventory_data,
+                                operator=agent,
                             )
                             > 0
                         }
                     )
                 }
+                if is_9colored and eligible_groups:
+                    tab, entries = next(iter(eligible_groups.items()))
+                    name, setting = next(iter(entries.items()))
+                    return {tab: {name: setting}}
+                return eligible_groups
 
             tab_queue = deque(available_groups().items())
             reset_scan = True
@@ -5152,7 +5182,6 @@ class BaseSchedulerSolver(
             current_name = None
             tasks = ["enter", "select", "process"]
             inf_material = "基建材料"
-            gap = 0
             start_time = datetime.now()
             while tasks:
                 if not snapshot.is_current():
@@ -5185,6 +5214,16 @@ class BaseSchedulerSolver(
                             logger.debug(f"初次记录九色鹿技能差值{gap}")
                         del tasks[0]
                     elif tasks[0] == "select":
+                        if is_9colored:
+                            gap = deer_gap()
+                            if gap is None:
+                                return
+                            tab_queue = deque(available_groups().items())
+                            if not tab_queue:
+                                logger.info(
+                                    "九色鹿当前因果阶段没有可加工材料，结束加工"
+                                )
+                                break
                         self.tap(scale_point(self.recog, OPEN_FORMULA), interval=0.5)
                     else:
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
@@ -5194,6 +5233,7 @@ class BaseSchedulerSolver(
                             current_material,
                             group[current_material["tab"]][current_name],
                             inventory_data,
+                            operator=agent,
                         )
                         if batch_count == 0:
                             tasks.insert(0, "select")
@@ -5228,7 +5268,7 @@ class BaseSchedulerSolver(
                             if gap > 40:
                                 logger.error("识别九色鹿阈值出错拉!任务停止")
                                 return
-                            if 0 < gap < 5:
+                            if 0 <= gap < 5:
                                 if mood >= 4:
                                     if not is_crit:
                                         tasks.insert(0, "select")
@@ -5249,8 +5289,10 @@ class BaseSchedulerSolver(
                                     reset_scan = True
                                     logger.info("切换成垫刀材料")
                                     continue
-                            batch_count = min(
-                                batch_count, deer_batch_limit(gap, ap_cost)
+                            batch_count = (
+                                1
+                                if is_crit
+                                else min(batch_count, deer_batch_limit(gap, ap_cost))
                             )
                         produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
                         batch_count = int(batch_count)
@@ -5324,7 +5366,9 @@ class BaseSchedulerSolver(
                             else:
                                 raise ValueError("未确认加工完成")
                             self.recog.save_screencap("workshop")
-                            delta = batch_delta(current_name, current_material, batches)
+                            delta = batch_delta(
+                                current_name, current_material, batches, operator=agent
+                            )
                             apply_workshop_inventory(delta)
                             if getattr(self.op_data, "mood_calculation_enabled", False):
                                 self.op_data.mood_model.event(mood_event_id, mood_delta)
@@ -5342,7 +5386,10 @@ class BaseSchedulerSolver(
                                     level="WARNING",
                                 )
                             raise
-                        if config.conf.enable_mastery:
+                        # Finish Deer's current fodder/T4 cycle before replacing
+                        # its bounded quota or dispatching prepared training.
+                        finish_deer_cycle = is_9colored and not is_crit
+                        if config.conf.enable_mastery and not finish_deer_cycle:
                             from arknights_mower.utils.mastery_recommendation import (
                                 auto_schedule_mastery_tasks,
                             )
@@ -5356,7 +5403,7 @@ class BaseSchedulerSolver(
                                 raise
                             except Exception:
                                 logger.exception("加工库存已确认，但专精任务派发失败")
-                        if config.conf.workshop_auto_active:
+                        if config.conf.workshop_auto_active and not finish_deer_cycle:
                             from arknights_mower.utils.workshop_automation import (
                                 update_workshop_config,
                             )
@@ -5368,6 +5415,8 @@ class BaseSchedulerSolver(
                         inventory_data = get_inventory_counts()
                         blocked_materials.clear()
                         mood_budget = max(0, mood_budget - batches * per_craft_mood)
+                        if is_9colored:
+                            gap = None
                         if not getattr(self.op_data, "mood_calculation_enabled", False):
                             operator.mood = mood_budget
                             operator.time_stamp = datetime.now()
@@ -5422,18 +5471,9 @@ class BaseSchedulerSolver(
                                 if item in item_list:
                                     good_to_go = True
                                     if is_9colored:
-                                        if 0 < gap < 5:
-                                            good_to_go = (
-                                                workshop_formula[item]["apCost"] == 4
-                                                and workshop_formula[item]["tab"]
-                                                != inf_material
-                                            )
-                                        else:
-                                            good_to_go = (
-                                                0 < workshop_formula[item]["apCost"] < 4
-                                                or workshop_formula[item]["tab"]
-                                                == inf_material
-                                            )
+                                        good_to_go = deer_recipe_ready(
+                                            workshop_formula[item], gap
+                                        )
                                     if valid and good_to_go:
                                         logger.info(f"检测到{item}满足条件，开始加工")
                                         self.tap(
@@ -16329,7 +16369,12 @@ class BaseSchedulerSolver(
 
     def _complete_room_arrangement(self, new_plan, room, plan):
         # 收尾返回仍属本轮安排；超时交回房间恢复，实读复核后再提交完成。
-        if len(new_plan) != 1 or config.conf.run_order_buffer_time <= 0:
+        keep_workshop = room == "factory" and (
+            getattr(self, "_workshop_room_handoff", False) is True
+        )
+        if not keep_workshop and (
+            len(new_plan) != 1 or config.conf.run_order_buffer_time <= 0
+        ):
             self.back(0.5)
             self._wait_for_room_exit()
         if room in getattr(self.task, "dorm_recovery_restore", []):
@@ -16728,6 +16773,7 @@ class BaseSchedulerSolver(
             rooms
             and not new_plan
             and self.task.type not in (TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA)
+            and getattr(self, "_workshop_room_handoff", False) is not True
         ):
             self._read_arrangement_order_times(room)
         self._finish_idle_dorm_shift()
@@ -16891,7 +16937,8 @@ class BaseSchedulerSolver(
             # 急速换班
             self.skip()
         refresh_after_central_change(self, central_before)
-        logger.info("返回基建主界面")
+        if getattr(self, "_workshop_room_handoff", False) is not True:
+            logger.info("返回基建主界面")
 
     def skip(self, task_names="All"):
         if task_names == "All":

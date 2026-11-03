@@ -46,13 +46,14 @@ class WorkshopSelection:
             return None
         return recipe_bonus(self.eligible[name], material, recipe)
 
-    def qualifying_bonuses(self, pool, material, recipe, *, threshold):
+    def qualifying_bonuses(self, pool, material, recipe, *, threshold, curated=False):
         bonuses = {}
         for name in pool:
             bonus = self.bonus(name, material, recipe)
             if bonus is None:
                 continue
             exception = name == "九色鹿" or (name in T4_PREFERRED and bonus >= 80)
+            exception |= curated and name == "瑕光"
             if exception or bonus >= max(1, threshold):
                 bonuses[name] = bonus
         return bonuses
@@ -88,6 +89,8 @@ class WorkshopSelection:
                 entry["specialist"] = True
             if name in T4_PREFERRED and name != "九色鹿":
                 entry["material_scope"] = "t4"
+            if name == "瑕光":
+                entry["material_scope"] = "t2_t3"
             entry["materials"].append(material)
             entry["bonuses"][material] = bonus
 
@@ -107,7 +110,7 @@ class WorkshopSelection:
         entries = {}
         for material, recipe in self.recipes[category]:
             bonuses = self.qualifying_bonuses(
-                pool, material, recipe, threshold=threshold
+                pool, material, recipe, threshold=threshold, curated=curated
             )
             self.add_material(entries, bonuses, material, recipe, curated=curated)
         return entries

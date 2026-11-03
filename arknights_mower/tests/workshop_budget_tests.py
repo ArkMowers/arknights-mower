@@ -24,6 +24,7 @@ def test_recipe_changes_share_budget_without_batch_room_readback(
     config.conf.test_mood_calculation = calculated
     config.conf.enable_mastery = False
     config.conf.workshop_auto_active = False
+    config.conf.workshop_t2_reserve = 0
     setting = RIICPart.WorkShopSetting(
         operator="空爆",
         items=[

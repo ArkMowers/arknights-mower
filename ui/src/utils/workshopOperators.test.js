@@ -337,7 +337,12 @@ describe('workshop owned defaults', () => {
       })
     ).toBe('休谟斯：仅合成 T3 材料，副产品概率加成 +90%')
   })
-  it('explains 镜匠 T4 scope, T3 byproduct and priority after 蚀清', () => {
+  it('explains optional Blemishine T2/T3 scope and CE-6 valuation', () => {
+    expect(workshopRecommendationText({ name: '瑕光' })).toBe(
+      '瑕光：仅合成 T2/T3 材料，免龙门币加工费；认可 CE-6 龙门币价值时，可手动排在九色鹿之前'
+    )
+  })
+  it('explains 镜匠 T4 scope, T3 byproduct and editable priority', () => {
     expect(
       workshopRecommendationText({
         name: '镜匠',
@@ -345,7 +350,7 @@ describe('workshop owned defaults', () => {
         materials: ['糖聚块'],
         bonuses: { 糖聚块: 80 }
       })
-    ).toBe('镜匠：仅 T4 材料，副产品概率加成 +80%，T3 副产品固定为酮凝集组（优先级在蚀清之后）')
+    ).toBe('镜匠：仅 T4 材料，副产品概率加成 +80%，T3 副产品固定为酮凝集组（可手动调整优先级）')
   })
 })
 

@@ -87,15 +87,16 @@ def _manual_available(available):
 def prioritize_workshop_settings(
     settings, *, available=None, formulas=None, prefer_t4=True
 ):
-    """Scope/order copies; recovery can omit fixed T4 execution preferences."""
-    available = _manual_available(available) or {}
+    """Keep the saved execution order while filtering disallowed recipes."""
     formulas = _formulas(formulas)
     scoped = [scope_setting(entry, formulas) for entry in settings]
+    if prefer_t4:
+        return scoped
+    # Dormitory recovery retains its independent current-recipe bonus ordering.
+    available = _manual_available(available) or {}
     return sorted(
         scoped,
-        key=lambda entry: setting_priority(
-            entry, available, formulas, prefer_t4=prefer_t4
-        ),
+        key=lambda entry: setting_priority(entry, available, formulas, prefer_t4=False),
     )
 
 

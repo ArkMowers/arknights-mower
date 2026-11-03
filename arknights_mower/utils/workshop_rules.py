@@ -11,6 +11,8 @@ def compile_workshop_buff(buff):
     text = re.sub(r"<[^>]*>", "", buff["description"])
     if "累积40点因果必定产出一次副产品" in text:
         return [{"kind": "causality"}]
+    if text == "进驻加工站加工精英材料时，减免龙门币消耗":
+        return [{"kind": "free_lmd", "categories": ["material"]}]
     reduction = re.match(
         r"进驻加工站加工精英材料时，心情消耗为(\d+)的配方全部-(\d+)心情消耗", text
     )

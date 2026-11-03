@@ -17,7 +17,7 @@ def custom_fodder():
     )
 
 
-def test_options_include_books_and_green_materials_but_not_higher_tiers(next_skill):
+def test_options_include_books_t2_t3_and_carbon_but_not_t4(next_skill):
     import server
     from arknights_mower.data import workshop_formula
 
@@ -29,11 +29,12 @@ def test_options_include_books_and_green_materials_but_not_higher_tiers(next_ski
     assert "技巧概要·卷2" in response.json
     assert "技巧概要·卷3" in response.json
     assert "糖" in response.json
-    assert "糖组" not in response.json
+    assert "糖组" in response.json
+    assert "糖聚块" not in response.json
     assert all(
         recipe["tab"] == "基建材料"
         or recipe["tab"] == "技巧概要"
-        or (recipe["tab"] == "精英材料" and recipe["apCost"] == 1)
+        or (recipe["tab"] == "精英材料" and recipe["apCost"] in {1, 2})
         for recipe in (workshop_formula[name] for name in response.json)
     )
     assert set(response.json) < set(client.get("/item").json)
