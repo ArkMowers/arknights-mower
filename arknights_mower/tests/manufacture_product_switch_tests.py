@@ -342,7 +342,10 @@ def test_product_mapping_overrides_current_slots_and_restores_default():
     assert operators.products == {room: "gold"}
 
 
-def test_shift_projection_sees_hongxue_leaving_before_changing_real_staff():
+def test_shift_projection_sees_hongxue_leaving_before_changing_real_staff(monkeypatch):
+    monkeypatch.setattr(
+        "arknights_mower.utils.mastery_db.get_active_plan", lambda: None
+    )
     conf = PlanConfig("", "", "")
     plan = {
         "default_plan": Plan(
@@ -366,6 +369,7 @@ def test_shift_projection_sees_hongxue_leaving_before_changing_real_staff():
     }
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = Operators(plan)
+    solver.tasks = []
     solver.op_data.init_and_validate()
     hongxue = solver.op_data.operators["鸿雪"]
     hongxue._current_room = "room_1_1"
