@@ -29,12 +29,10 @@ def test_mower_stop_cancels_large_task_closes_game_and_releases_without_wait(
     solver.MAA = MagicMock()
     solver.device = MagicMock()
     solver.recog = MagicMock()
-    solver.scene = MagicMock(return_value=base_schedule.Scene.TERMINAL_MAIN)
     solver.tasks = [SchedulerTask(time=datetime.now() + timedelta(hours=2))]
     solver.last_execution = {"maa": None}
     for method in (
         "back_to_index",
-        "scene_graph_navigation",
         "initialize_maa",
         "release_maa",
         "maa_stop",
