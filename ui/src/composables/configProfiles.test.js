@@ -376,10 +376,7 @@ describe('configuration profile operations', () => {
     expect(controller.error.value).toBe('下载请求失败')
   })
 
-  it.each([
-    ['config.txt', 4, 'ZIP'],
-    ['oversize.zip', 16 * 1024 * 1024 + 1, '16 MB']
-  ])(
+  it.each([['config.txt', 4, 'ZIP']])(
     'discards the previous ZIP when replacement %s is rejected',
     async (filename, size, reason) => {
       const { controller, axios, config } = await setup()
@@ -399,6 +396,16 @@ describe('configuration profile operations', () => {
       expect(config.autosave_paused).toBe(false)
     }
   )
+
+  it('lets the server apply the saved size limit to ZIP imports above 16 MiB', async () => {
+    const { controller } = await setup()
+    controller.open('import')
+    const file = new File(['zip'], 'large.zip')
+    Object.defineProperty(file, 'size', { value: 32 * 1024 * 1024 })
+    controller.selectFile({ target: { files: [file], value: 'selected' } })
+    expect(controller.file.value).toBe(file)
+    expect(controller.error.value).toBe('')
+  })
 
   it('rejects empty names and unsupported upload files before pausing or submitting', async () => {
     const { controller, axios, config } = await setup()

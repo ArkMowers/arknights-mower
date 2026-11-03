@@ -58,6 +58,48 @@ installation settings outside the current instance directory remain outside the 
 Import preserves both local lock files, even when an older archive includes
 them, so an active OS lock continues to protect the same file.
 
+<a id="database-maintenance"></a>
+## Database Maintenance and Backup Limits
+
+The running log's 数据库管理 dialog displays the database's allocated size
+and free-page space. Deleting records leaves reusable pages in SQLite; 整理数据库
+checks database integrity, runs `VACUUM` and truncates the WAL through a checkpoint.
+It preserves retained records and table definitions and returns the allocated
+size before and after compaction. A failed integrity check prevents `VACUUM`.
+SQLite execution has a sixty-second progress deadline and a five-second lock wait;
+an error or timeout releases the connection and maintenance locks for a later
+explicit retry. External readers can prevent WAL truncation after compaction;
+that incomplete reclamation returns an error rather than a success message.
+
+The dialog saves an integer backup limit from 1 to 1024 MiB, defaulting to 16 MiB.
+The limit covers compressed ZIP bytes, total expanded configuration and persistent
+data, SQLite snapshots, profile combination and pre-import recovery snapshots.
+The existing entry-count and ten-second SQLite backup bounds remain independent.
+Increasing the limit permits larger in-memory snapshots. Reducing it does not
+invalidate the saved-profile registry; operating on an oversized snapshot requires
+raising the limit again. Plan-only upload requests retain their separate bound.
+
+`backup_limit_mib` is stored in the current instance's protected `config/gui.yml`.
+Restoring configuration and activating a saved profile preserve the local setting.
+Frontend file selection leaves size validation to the backend's current limit.
+
+`GET /db-admin/maintenance` returns allocated and free-page bytes, the selected
+limit, its maximum and busy status. `POST /db-admin/compact` performs compaction;
+`PUT /db-admin/backup-limit` accepts `{backup_limit_mib: integer}`. All three
+interfaces require the existing instance token. Both writes require
+`X-Mower-Settings: 1` and the existing permitted-origin boundary. They share the
+configuration backup and profile-maintenance locks and refuse changes while
+scheduling, device operations, update work, AI requests, recycling reports or
+shutdown prevent configuration maintenance. Invalid limits return 400 without
+writing preferences; busy operations return 409, and storage or SQLite failures
+return 503. Successful writes return refreshed maintenance status.
+
+Focused offline checks are in
+[`db_maintenance_tests.py`](../../arknights_mower/tests/db_maintenance_tests.py),
+alongside the existing backup and profile suites. They cover reclamation followed
+by export, retained rows, WAL databases, authentication, busy refusal, configured
+ZIP and expanded-data limits and local-setting preservation.
+
 ## 3. Subsystem Invariants
 
 - <a id="configuration-data-cohesion"></a>**Configuration Data Cohesion**: Configuration imports validate all archive members before writing, restore included persistent tmp data with configuration, preserve local access settings, clear saved scheduling state, and roll back file changes if any write or database restore fails.

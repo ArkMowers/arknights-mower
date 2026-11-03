@@ -159,10 +159,6 @@ export function createConfigProfiles({
     if (!chosen) return
     file.value = null
     error.value = ''
-    if (chosen.size > 16 * 1024 * 1024) {
-      error.value = '备份文件不能超过 16 MB'
-      return
-    }
     if (!/\.zip$/i.test(chosen.name)) {
       error.value = '请选择包含 config 文件夹的 ZIP 备份'
       return

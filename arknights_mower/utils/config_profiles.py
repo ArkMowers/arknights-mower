@@ -98,7 +98,8 @@ def _read_registry():
                 "active_id"
             )
             if (not path.exists() and not initial_active) or (
-                path.exists() and path.stat().st_size > backup.MAX_BACKUP_BYTES
+                path.exists()
+                and path.stat().st_size > backup.MAX_BACKUP_LIMIT_MIB * 1024 * 1024
             ):
                 raise ValueError()
             ids.add(identifier)
@@ -125,7 +126,9 @@ def _write_registry(data):
 
 
 def _state():
-    raw = _regular_bytes(config.app_state_path, backup.MAX_BACKUP_BYTES, optional=True)
+    raw = _regular_bytes(
+        config.app_state_path, backup.get_backup_limit_bytes(), optional=True
+    )
     if raw is None:
         return None, {}
     try:
@@ -152,9 +155,11 @@ def export_current_archive():
         ).encode("utf-8")
         if (
             sum(map(len, files.values())) + sum(map(len, tmp.values()))
-            > backup.MAX_BACKUP_BYTES
+            > backup.get_backup_limit_bytes()
         ):
-            raise backup.LocalConfigError("本机配置和数据内容超过 16 MB，无法生成备份")
+            raise backup.LocalConfigError(
+                f"本机配置和数据内容超过 {backup.backup_limit_label()}，无法生成备份"
+            )
         return backup._archive_bytes(files, tmp)
 
 
@@ -248,7 +253,7 @@ def import_backup(raw, *, expected_generation=None):
         snapshot_path = _profile_path(data["active_id"])
         previous_index = _regular_bytes(index_path, MAX_INDEX_BYTES, optional=True)
         previous_snapshot = _regular_bytes(
-            snapshot_path, backup.MAX_BACKUP_BYTES, optional=True
+            snapshot_path, backup.get_backup_limit_bytes(), optional=True
         )
 
         def commit():
@@ -279,7 +284,7 @@ def _activate(data, identifier, raw, outgoing):
     index_path, target_path = _root() / "index.json", _profile_path(identifier)
     previous_index = _regular_bytes(index_path, MAX_INDEX_BYTES)
     previous_snapshot = _regular_bytes(
-        target_path, backup.MAX_BACKUP_BYTES, optional=True
+        target_path, backup.get_backup_limit_bytes(), optional=True
     )
     previous_state, state = _state()
     selected = _weekly_selection(raw)
@@ -363,7 +368,9 @@ def activate_profile(identifier, keep, *, expected_generation):
         selected = validate_groups(keep)
         if identifier == data["active_id"]:
             return _public(data)
-        incoming = _regular_bytes(_profile_path(identifier), backup.MAX_BACKUP_BYTES)
+        incoming = _regular_bytes(
+            _profile_path(identifier), backup.get_backup_limit_bytes()
+        )
         outgoing = export_current_archive()
         combined = combine_archives(incoming, outgoing, selected)
         return _activate(data, identifier, combined, outgoing)

@@ -5,12 +5,17 @@
 删除只影响行数据，不动表结构。表白名单硬编码，未知键直接拒绝（防注入 + 防误删其它表）。
 """
 
-from functools import wraps
+import sqlite3
+from contextlib import nullcontext
+from time import monotonic
 
 from flask import Blueprint, abort, current_app, request
 
 from arknights_mower.solvers import record
+from arknights_mower.utils import config_backup as backup
+from arknights_mower.utils.config import gui
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.web_auth import origin_allowed, require_token
 from arknights_mower.views.mastery import _purge_plan_tasks
 
 db_admin_bp = Blueprint("db_admin", __name__)
@@ -35,17 +40,6 @@ CATEGORY_TABLES = {
 _ACTIVE_PLAN_STATUSES = ("arranging", "training", "waiting_collect")
 
 
-def _require_token(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        token = getattr(current_app, "token", None)
-        if token and request.headers.get("token", "") != token:
-            abort(403)
-        return f(*args, **kwargs)
-
-    return wrapper
-
-
 def _count(conn, table):
     """统计某表行数；表尚未创建（全新安装从未用过该模块）→ 按 0 处理。"""
     try:
@@ -55,7 +49,7 @@ def _count(conn, table):
 
 
 @db_admin_bp.route("/db-admin/stats", methods=["GET"])
-@_require_token
+@require_token
 def stats():
     """返回每类可删数据的行数（SELECT COUNT(*)，几乎零成本）。"""
     counts = {}
@@ -81,7 +75,7 @@ def stats():
 
 
 @db_admin_bp.route("/db-admin/delete", methods=["POST"])
-@_require_token
+@require_token
 def delete():
     """按白名单类删行（DELETE FROM，绝不 DROP TABLE）。返回各类实际删除的行数。"""
     data = request.get_json(silent=True) or {}
@@ -121,3 +115,105 @@ def delete():
         _purge_plan_tasks(pid)
     logger.info(f"[db-admin] 删除 {len(keys)} 类数据 {deleted}")
     return {"deleted": deleted}
+
+
+def _database_size(conn):
+    page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+    pages = conn.execute("PRAGMA page_count").fetchone()[0]
+    free = conn.execute("PRAGMA freelist_count").fetchone()[0]
+    return {"database_bytes": pages * page_size, "reclaimable_bytes": free * page_size}
+
+
+def _maintenance_status():
+    with record._conn() as conn:
+        size = _database_size(conn)
+    busy = current_app.config.get(
+        "CONFIG_PROFILES_BUSY",
+        current_app.config.get("CONFIG_BACKUP_BUSY", lambda: False),
+    )()
+    return {
+        **size,
+        "backup_limit_mib": backup.get_backup_limit_bytes() // (1024 * 1024),
+        "max_backup_limit_mib": backup.MAX_BACKUP_LIMIT_MIB,
+        "busy": bool(busy),
+    }
+
+
+def _compact_database():
+    with record._conn() as conn:
+        deadline = monotonic() + 60
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.set_progress_handler(lambda: int(monotonic() >= deadline), 1000)
+        try:
+            if conn.execute("PRAGMA integrity_check(1)").fetchone() != ("ok",):
+                raise sqlite3.DatabaseError("数据库完整性检查未通过，未执行整理")
+            before = _database_size(conn)["database_bytes"]
+            conn.execute("VACUUM")
+            # WAL databases retain vacuum output until the checkpoint finishes.
+            if conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]:
+                raise sqlite3.OperationalError("数据库仍被占用，未完成空间回收")
+            after = _database_size(conn)["database_bytes"]
+            return {"before_bytes": before, "after_bytes": after}
+        finally:
+            conn.set_progress_handler(None, 0)
+
+
+def _maintenance(action=None):
+    if action is not None:
+        if request.headers.get("X-Mower-Settings") != "1":
+            abort(403)
+        origin = request.headers.get("Origin")
+        if origin and not origin_allowed(origin):
+            abort(403)
+    factory = current_app.config.get("CONFIG_PROFILES_LOCKS")
+    locks = (
+        factory()
+        if factory
+        else current_app.config.get("CONFIG_BACKUP_MAINTENANCE_LOCK", nullcontext())
+    )
+    try:
+        with backup.backup_lock, locks:
+            status = _maintenance_status()
+            if action is None:
+                return {"ok": True, **status}
+            if status["busy"]:
+                return {
+                    "message": "请先停止 Mower，并等待设备操作、更新任务、AI 回复和回收站上报结束"
+                }, 409
+            result = action()
+            return {"ok": True, **_maintenance_status(), **result}
+    except ValueError as exc:
+        return {"message": str(exc)}, 400
+    except (OSError, sqlite3.Error) as exc:
+        logger.exception("数据库维护失败")
+        return {
+            "message": f"数据库维护未完成：{exc}。请检查数据库占用、磁盘空间和目录权限后重试"
+        }, 503
+
+
+@db_admin_bp.get("/db-admin/maintenance")
+@require_token
+def maintenance_status():
+    return _maintenance()
+
+
+@db_admin_bp.post("/db-admin/compact")
+@require_token
+def compact():
+    return _maintenance(_compact_database)
+
+
+@db_admin_bp.put("/db-admin/backup-limit")
+@require_token
+def set_backup_limit():
+    def save():
+        body = request.get_json(silent=True)
+        value = body.get("backup_limit_mib") if isinstance(body, dict) else None
+        if type(value) is not int or not 1 <= value <= backup.MAX_BACKUP_LIMIT_MIB:
+            raise ValueError(
+                f"备份大小上限需要是 1 至 {backup.MAX_BACKUP_LIMIT_MIB} MiB 的整数"
+            )
+        gui.update_gui_data(lambda data: data.update(backup_limit_mib=value))
+        return {}
+
+    return _maintenance(save)
