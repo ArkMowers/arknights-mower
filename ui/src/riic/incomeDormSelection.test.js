@@ -139,6 +139,8 @@ describe('income dorm selection follows the native execution order', () => {
       operators.Cover.mood = 3
       operators.Target.mood = 9
       operators.Target.room = 'room_1_1'
+      operators.Target.operatorType = 'high'
+      operators.Target.restingPriority = 'high'
       const names = ['Manager', 'Keeper', 'Cover', 'Target', 'Free']
       const data = new MowerSchedulingData({
         alpha: true,
