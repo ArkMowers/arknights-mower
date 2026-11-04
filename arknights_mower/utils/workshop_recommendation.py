@@ -3,7 +3,6 @@
 from arknights_mower.utils.workshop_allocation import (
     WorkshopAllocation,
     scope_setting,
-    setting_priority,
 )
 from arknights_mower.utils.workshop_data import (
     WorkshopRecommendationError,
@@ -84,20 +83,10 @@ def _manual_available(available):
         return None
 
 
-def prioritize_workshop_settings(
-    settings, *, available=None, formulas=None, prefer_t4=True
-):
+def prioritize_workshop_settings(settings, *, available=None, formulas=None):
     """Keep the saved execution order while filtering disallowed recipes."""
     formulas = _formulas(formulas)
-    scoped = [scope_setting(entry, formulas) for entry in settings]
-    if prefer_t4:
-        return scoped
-    # Dormitory recovery retains its independent current-recipe bonus ordering.
-    available = _manual_available(available) or {}
-    return sorted(
-        scoped,
-        key=lambda entry: setting_priority(entry, available, formulas, prefer_t4=False),
-    )
+    return [scope_setting(entry, formulas) for entry in settings]
 
 
 def recommend_workshop_operators(

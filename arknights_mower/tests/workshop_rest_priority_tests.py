@@ -1,4 +1,4 @@
-"""自动合成按当前配方加成排列已配置的普通空闲加工干员。"""
+"""待加工配方沿用用户保存的干员收益偏好安排普通空闲恢复。"""
 
 import pytest
 
@@ -528,7 +528,9 @@ def test_crafting_order_preserves_existing_targets_and_global_order(crafting, oc
     assert set(result) == ({room} if occupied else {room, other})
 
 
-def test_highest_recipe_bonus_precedes_configured_t4_preferences(crafting, monkeypatch):
+def test_current_t4_assignments_keep_saved_order_before_unassigned_workers(
+    crafting, monkeypatch
+):
     from arknights_mower.tests.workshop_fixtures import owned
     from arknights_mower.utils import workshop_recommendation as workshop
     from arknights_mower.utils.config.conf import RIICPart
@@ -555,10 +557,10 @@ def test_highest_recipe_bonus_precedes_configured_t4_preferences(crafting, monke
         set_tier(crafting, name, RestingTier.IDLE, 0).current_room = ""
     crafting.operators["号角"].mood = 20
     assert crafting_rest_candidates(crafting, names) == [
-        "号角",
+        "九色鹿",
         "镜匠",
         "蚀清",
-        "九色鹿",
+        "号角",
         "年",
     ]
     assert [entry["operator"] for entry in settings if entry["items"]] == [
@@ -602,12 +604,14 @@ def test_unconfigured_special_operators_receive_no_crafting_rest_priority(
 @pytest.mark.parametrize(
     "material,expected",
     [
-        ("炽合金块", ["号角", "蜜莓", "空爆"]),
-        ("糖聚块", ["蜜莓", "空爆", "号角"]),
+        ("炽合金块", ["空爆", "蜜莓", "号角"]),
+        ("糖聚块", ["空爆", "蜜莓", "号角"]),
     ],
 )
-def test_current_recipe_bonus_precedes_lowest_mood_in_real_fill_task(
-    crafting, monkeypatch, material, expected
+@pytest.mark.parametrize("moods", [[0, 3, 20], [20, 3, 0]])
+@pytest.mark.parametrize("automatic", [False, True])
+def test_current_recipe_saved_order_reaches_real_fill_task(
+    crafting, monkeypatch, material, expected, moods, automatic
 ):
     from arknights_mower.tests.workshop_fixtures import owned
     from arknights_mower.utils import workshop_recommendation as workshop
@@ -623,6 +627,8 @@ def test_current_recipe_bonus_precedes_lowest_mood_in_real_fill_task(
     monkeypatch.setattr(config.conf, "fodder_operators", names)
     monkeypatch.setattr(config.conf, "t5_operators", [])
     monkeypatch.setattr(config.conf, "book_operators", [])
+    monkeypatch.setattr(config.conf, "enable_mastery", automatic)
+    monkeypatch.setattr(config.conf, "workshop_auto_active", automatic)
     settings = workshop.allocate_workshop_items(
         [("fodder_operators", names, [{"item_names": [material]}])],
         available=available,
@@ -630,9 +636,14 @@ def test_current_recipe_bonus_precedes_lowest_mood_in_real_fill_task(
     monkeypatch.setattr(
         config.conf,
         "workshop_settings",
-        [RIICPart.WorkShopSetting(**entry) for entry in settings],
+        [
+            RIICPart.WorkShopSetting(
+                **entry, source="mastery" if automatic else "manual"
+            )
+            for entry in settings
+        ],
     )
-    for name, mood in zip(names, [0, 3, 20]):
+    for name, mood in zip(names, moods):
         op = set_tier(crafting, name, RestingTier.IDLE, mood)
         op.current_room = ""
     assert crafting_rest_order(crafting, names) == expected
@@ -645,9 +656,7 @@ def test_current_recipe_bonus_precedes_lowest_mood_in_real_fill_task(
     assert tasks[0].plan[dorm_release_tests.ROOM][4] == expected[0]
 
 
-def test_current_assignments_and_unlocks_are_read_again_after_recipe_changes(
-    crafting, monkeypatch
-):
+def test_runtime_assignments_and_manual_edits_are_read_again(crafting, monkeypatch):
     from arknights_mower.tests.workshop_fixtures import owned
     from arknights_mower.utils import workshop_recommendation as workshop
     from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
@@ -671,14 +680,64 @@ def test_current_assignments_and_unlocks_are_read_again_after_recipe_changes(
     runtime_conf = config.conf.model_copy(deep=True)
     runtime_conf.workshop_settings = settings
     crafting.runtime_conf = runtime_conf
-    assert crafting_rest_order(crafting, names) == ["号角", "空爆", "蜜莓"]
+    assert crafting_rest_order(crafting, names) == names
+    runtime_conf.workshop_settings = settings = [settings[1], settings[2], settings[0]]
+    assert crafting_rest_order(crafting, names) == ["蜜莓", "号角", "空爆"]
     for entry in settings:
         entry.items = [WorkShopItem(item_names=["糖聚块"])]
-    assert crafting_rest_order(crafting, names) == ["空爆", "蜜莓", "号角"]
-    settings[0].enabled = False
     assert crafting_rest_order(crafting, names) == ["蜜莓", "号角", "空爆"]
-    settings[1].items = []
+    settings[0].enabled = False
     assert crafting_rest_order(crafting, names) == ["号角", "空爆", "蜜莓"]
+    settings[1].items = []
+    assert crafting_rest_order(crafting, names) == ["空爆", "蜜莓", "号角"]
+
+
+@pytest.mark.parametrize("earlier,later", [("空爆", "号角"), ("九色鹿", "号角")])
+def test_later_higher_bonus_crafter_cannot_take_the_earlier_workers_bed(
+    crafting, monkeypatch, earlier, later
+):
+    from datetime import datetime, timedelta
+
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    names = [earlier, later]
+    available = workshop.available_operators(owned(ids, *names), metadata)
+    monkeypatch.setattr(workshop, "available_operators", lambda: available)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator=name, items=[WorkShopItem(item_names=["炽合金块"])]
+            )
+            for name in names
+        ],
+    )
+    for op in crafting.operators.values():
+        op.mood, op.current_room = 24, ""
+    crafting.operators["红"].current_room = "meeting"
+    room = dorm_release_tests.ROOM
+    resident = crafting.operators[earlier]
+    resident.mood, resident.current_room, resident.current_index = 1, room, 4
+    crafting.operators[later].mood = 23
+    crafting.dorm[0].name = earlier
+    crafting.dorm[0].time = datetime.now() + timedelta(hours=5)
+    tasks = []
+
+    try_add_release_dorm({}, None, crafting, tasks)
+
+    assert tasks == []
+    assert crafting.get_current_operator(room, 4).name == earlier
+    assert crafting.operators[later].current_room == ""
 
 
 def test_pending_recipe_fallback_does_not_require_a_cached_roster(
@@ -705,3 +764,26 @@ def test_pending_recipe_fallback_does_not_require_a_cached_roster(
         "号角",
         "芬",
     ]
+
+
+def test_repeated_operator_keeps_its_first_saved_recipe_position(crafting, monkeypatch):
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+
+    monkeypatch.setattr(config.conf, "fodder_operators", ["号角", "蜜莓"])
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator=name, items=[WorkShopItem(item_names=[material])]
+            )
+            for name, material in [
+                ("蜜莓", "糖聚块"),
+                ("号角", "炽合金块"),
+                ("蜜莓", "炽合金块"),
+            ]
+        ],
+    )
+    assert crafting_rest_candidates(crafting, ["号角", "蜜莓"]) == ["蜜莓", "号角"]
