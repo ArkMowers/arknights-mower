@@ -39,7 +39,7 @@ interface ManufactureRoom {completedByProduct:Record<string,number>;pendingSwitc
 interface TradeRoom {product:string;roomId:string;active:ActiveOrder|null;pending:CompletedOrder[];completedOrders:number;collectedOrders:number;blockedHours:number;limit:number|null;disabled:boolean;rng:number}
 export interface ProductionReport {
  recycle?: RecycleProduction
- success:boolean;ledger:ReturnType<typeof createLedger>;sample:{completed:{exp:number;gold:number;orderLmd:number};warmupReceipts?:ResourceAmounts;opening:ResourceAmounts;closing:ResourceAmounts;inflows:ResourceAmounts;outflows:ResourceAmounts;net:ResourceAmounts}
+ success:boolean;ledger:ReturnType<typeof createLedger>;sample:{completed:{exp:number;gold:number;fragments:number;orderLmd:number};warmupReceipts?:ResourceAmounts;opening:ResourceAmounts;closing:ResourceAmounts;inflows:ResourceAmounts;outflows:ResourceAmounts;net:ResourceAmounts}
  materialsConsumed:ResourceAmounts
  drones:ReturnType<typeof createDroneState>
  manufacturing:{roomId:string;product:string;completedItems:number;sampleCompletedItems:number;pendingItems:number;remainingBaseMinutes:number;blockedHours:number;blockedMaterialHours:number}[]
@@ -95,12 +95,12 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   for(const [key,n] of Object.entries(delta)){const k=key as ResourceKind;ledger.balances[k]=(ledger.balances[k]??0)+n;const totals=n>=0?ledger.inflows:ledger.outflows;totals[k]=(totals[k]??0)+Math.abs(n)}
   const id=`${++serial}:${reason}`;ledger.entries.push({reason:id,delta:{...delta}});ledger.appliedReasons.push(id);record(reason,{delta},time);return true
  }
- const completedTotals=()=>({exp:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.exp??0)*1000,0),gold:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.gold??0),0),orderLmd:events.filter(e=>e.type==='order-completed').reduce((n,e)=>n+(e.order?.lmdReward??0),0)})
- let openingCompleted={exp:0,gold:0,orderLmd:0}
+ const completedTotals=()=>({exp:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.exp??0)*1000,0),gold:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.gold??0),0),fragments:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.fragment??0),0),orderLmd:events.filter(e=>e.type==='order-completed').reduce((n,e)=>n+(e.order?.lmdReward??0),0)})
+ let openingCompleted={exp:0,gold:0,fragments:0,orderLmd:0}
  let openingManufactured=new Map<string,number>()
  let observationMarked=false
  const openingPendingManufacture=new Map<string,{product:string;quantity:number}>(),warmupReceipts:ResourceAmounts={}
- const completedSample=()=>{const total=completedTotals();return {exp:total.exp-openingCompleted.exp,gold:total.gold-openingCompleted.gold,orderLmd:total.orderLmd-openingCompleted.orderLmd}}
+ const completedSample=()=>{const total=completedTotals();return {exp:total.exp-openingCompleted.exp,gold:total.gold-openingCompleted.gold,fragments:total.fragments-openingCompleted.fragments,orderLmd:total.orderLmd-openingCompleted.orderLmd}}
  const markObservation=()=>{if(state.time<warmupHours-EPS||observationMarked)return
   if(!opening){opening={...ledger.balances};openingIn={...ledger.inflows};openingOut={...ledger.outflows};openingCompleted=completedTotals();openingManufactured=new Map([...manufactures].map(([id,m])=>[id,m.state.lifetimeItems]));recycle?.markObservation()}
   for(const m of manufactures.values())if(m.state.pendingItems)openingPendingManufacture.set(m.roomId,{product:m.state.formula.product,quantity:m.state.pendingItems})

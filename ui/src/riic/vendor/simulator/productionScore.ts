@@ -21,9 +21,8 @@ export function simulationOutputAmounts(report:ScheduleSimulationReport):Complet
    fragments:amount('fragment'),orundum:amount('orundum'),virtualGold}
  }
  // Completed items include potential output that has not yet been collected.
- const fragments=p.manufacturing.filter(r=>r.product==='fragment').reduce((n,r)=>n+r.sampleCompletedItems,0)
  const orundum=orders.reduce((n,order)=>n+(order.orundumReward??0),0)
- return {...p.sample.completed,virtualGold,fragments,orundum}
+ return {...p.sample.completed,virtualGold,orundum}
 }
 
 /** Score the selected output mode without counting initial inventory as income. */

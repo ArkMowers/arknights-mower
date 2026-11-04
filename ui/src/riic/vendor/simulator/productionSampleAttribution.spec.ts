@@ -68,3 +68,37 @@ describe('sample income attribution for delayed warmup collections',()=>{
   expect(scoreSimulationProduction(report).total).toBe(0)
  })
 })
+
+describe('sample output attribution across manufacturing product switches',()=>{
+ it.each(['potential','settled'] as const)('counts only completed fragments in %s mode regardless of the final product',mode=>{
+  const ws=workspace('fragment')
+  ws.compatibility.unrecognizedFields.advanced_settings={product_switching:{enable:true}}
+  const schedule=compileRosterSchedule(ws,{idleOperators:[]}),state=createRosterRuntime(compiledScheduleToRuntimeConfig(schedule))
+  let desiredProduct='orirock'
+  const frame=():ProductionFrame=>{
+   const config=projectScheduleState(schedule,state),active=new Set(Object.keys(state.morale)),morale=new Map(Object.entries(state.morale))
+   return {time:state.time,config,active,morale,desiredProducts:{room_1_1:desiredProduct},evaluations:Object.fromEntries(config.rooms.map(room=>[room.id,{...evaluateOperators(room,config,active,morale),efficiencyPercent:100}]))}
+  }
+  const production=createProductionTimeline(schedule,state,{outputMode:mode,inventoryMode:'finite',droneTarget:'none',initialResources:{lmd:10000,orirock:10,fragment:100}},1,()=>{},true)
+  const advance=(hours:number,settle=true)=>{production.advance(hours,frame());state.time+=hours;if(settle)production.settle(frame)}
+  production.settle(frame)
+  advance(1)
+  advance(1,false)
+  desiredProduct='gold';production.settle(frame)
+  advance(1.2,false)
+  // Potential output includes completed products before collection. Settled output receives them first.
+  if(mode==='settled')production.finalize(frame())
+  let report=reportFor(production.report(),1,3.2)
+  expect(report.production!.manufacturing[0]!.product).toBe('gold')
+  expect(simulationOutputAmounts(report)).toMatchObject({fragments:1,gold:1})
+  report.inputs.options.productionWeights={exp:0,gold:0,orders:0,fragments:10,orundum:0}
+  expect(scoreSimulationProduction(report).weightedFragments).toBeCloseTo(10*24/2.2,8)
+
+  desiredProduct='orirock';production.settle(frame)
+  advance(1,false)
+  if(mode==='settled')production.finalize(frame())
+  report=reportFor(production.report(),1,4.2)
+  expect(report.production!.manufacturing[0]!.product).toBe('fragment')
+  expect(simulationOutputAmounts(report)).toMatchObject({fragments:2,gold:1})
+ })
+})
