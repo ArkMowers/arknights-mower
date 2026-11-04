@@ -382,3 +382,63 @@ def test_each_remaining_stage_uses_its_own_candidate_policy(
     assert save.call_args.args[1]["operator"] == first_name
     mastery_support_runtime.prepare_plan_supports(solver, plan, 2)
     assert save.call_args.args[1]["operator"] == second_name
+
+
+@pytest.mark.parametrize("follow", [False, True])
+@pytest.mark.parametrize("blocked_level", [1, 2])
+@pytest.mark.parametrize("occupant", ["假日威龙陈", "左乐"])
+@pytest.mark.parametrize("mood", [1, 24])
+def test_follow_schedule_ignores_saved_assistants_but_checks_occupant_mood(
+    database, context_game, monkeypatch, follow, blocked_level, occupant, mood
+):
+    _, ids = context_game
+    roster = [owned(ids[name]) for name in ("能天使", "假日威龙陈", "左乐", "艾丽妮")]
+    monkeypatch.setattr(mastery_support_data, "owned_roster", lambda: roster)
+    monkeypatch.setattr(
+        mastery_support_runtime,
+        "schedule_context",
+        lambda: ({"艾丽妮": {"room_1_1"}}, 0),
+    )
+    monkeypatch.setattr(
+        "arknights_mower.utils.config.conf",
+        SimpleNamespace(assistant_follows_schedule=follow),
+    )
+    monkeypatch.setattr(
+        mastery_support_runtime, "_observed_support", lambda _: (occupant, "能天使")
+    )
+    plan = {
+        "id": 1,
+        "char_id": ids["能天使"],
+        "char_name": "能天使",
+        "target_level": 2,
+        "support_plan": {
+            "stages": [
+                stage(
+                    level,
+                    "艾丽妮" if level == blocked_level else "假日威龙陈",
+                    manual=False,
+                )
+                for level in (1, 2)
+            ]
+        },
+    }
+    solver = SimpleNamespace(op_data=moods(**{occupant: mood}))
+    save = Mock()
+    monkeypatch.setattr(mastery_support_runtime, "save_runtime", save)
+    if not follow:
+        with pytest.raises(
+            mastery_support_runtime.SupportPlanError, match="计划协助者已不可用"
+        ):
+            mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+        save.assert_not_called()
+    elif mood == 1:
+        with pytest.raises(SupportMoodWait) as wait:
+            mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+        assert set(wait.value.required) == {occupant}
+        assert wait.value.required[occupant] > 1
+        save.assert_not_called()
+    else:
+        mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+        prepared = save.call_args.args[1]
+        assert prepared["operator"] == occupant
+        assert prepared["swap_target"] is None

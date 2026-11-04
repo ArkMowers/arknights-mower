@@ -38,27 +38,22 @@ def _observed_support(solver):
     if not reliable:
         raise SupportPlanError("无法确认当前训练室协助者，请重试")
     # This is the existing occupant, not necessarily the planned assistant.
-    # candidates() filters the assistants used by _stage_trainers/_follow_schedule.
+    # candidates() filters the assistants used by _stage_trainers.
     return support, trainee
 
 
-def _stage_trainers(options, route, level):
-    first = options.get(route["operator"], {}).get(level)
-    if first is None:
-        raise SupportPlanError("计划协助者已不可用或已加入非训练室排班，请修改协助方案")
-    swap = options.get(route.get("swap_target"), {}).get(level)
-    return first, swap
-
-
-def _follow_schedule(trainers, options, level, support):
+def _stage_trainers(options, route, level, support):
     from arknights_mower.utils import config
 
-    first, swap = trainers
     if config.conf.assistant_follows_schedule:
         first = options.get(support, {}).get(level)
         if first is None:
             raise SupportPlanError("协助位跟随排班时，需要先安排可用协助者")
-        swap = None
+        return first, None
+    first = options.get(route["operator"], {}).get(level)
+    if first is None:
+        raise SupportPlanError("计划协助者已不可用或已加入非训练室排班，请修改协助方案")
+    swap = options.get(route.get("swap_target"), {}).get(level)
     return first, swap
 
 
@@ -147,6 +142,8 @@ def route_without_unusable_reducer(plan, level, route):
 
 def prepare_plan_supports(solver, plan, level):
     """Validate the stage and carried halving without changing occupants."""
+    from arknights_mower.utils import config
+
     saved = decode_supports(plan)
     if not saved:
         return
@@ -156,22 +153,20 @@ def prepare_plan_supports(solver, plan, level):
     inputs = TrainingInputs(schedule=schedule_context())
     options, central = candidates(
         plan["char_id"],
-        include_dynamic=route.get("manual", False),
+        include_dynamic=config.conf.assistant_follows_schedule
+        or route.get("manual", False),
         inputs=inputs,
     )
-    from arknights_mower.utils import config
-
     exclude_reducer = (
         not config.conf.assistant_follows_schedule
         and basic_mastery_successor(plan, level)
     )
-    trainers = (
+    occupants = _observed_support(solver)
+    first, swap = (
         (_non_reducer(options, level), None)
         if exclude_reducer
-        else _stage_trainers(options, route, level)
+        else _stage_trainers(options, route, level, occupants[0])
     )
-    occupants = _observed_support(solver)
-    first, swap = _follow_schedule(trainers, options, level, occupants[0])
     if not config.conf.assistant_follows_schedule and level >= plan["target_level"]:
         if halving_successor(plan, level):
             reducers = [
@@ -202,14 +197,12 @@ def prepare_plan_supports(solver, plan, level):
             raise SupportPlanError("协助方案缺少后续专精阶段，请重新添加计划")
         next_options, _ = candidates(
             plan["char_id"],
-            include_dynamic=next_route.get("manual", False),
+            include_dynamic=config.conf.assistant_follows_schedule
+            or next_route.get("manual", False),
             inputs=inputs,
         )
-        next_first, next_swap = _follow_schedule(
-            _stage_trainers(next_options, next_route, next_level),
-            next_options,
-            next_level,
-            occupants[0],
+        next_first, next_swap = _stage_trainers(
+            next_options, next_route, next_level, occupants[0]
         )
         if (
             not config.conf.assistant_follows_schedule

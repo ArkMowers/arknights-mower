@@ -144,8 +144,9 @@ def test_preparation_recalculates_buffer_from_observed_previous_stage(
         ),
         patch.object(runtime, "schedule_context", return_value=({}, 5)),
         patch.object(runtime, "_observed_support", return_value=("艾丽妮", "学员")),
-        patch.object(
-            runtime, "_follow_schedule", side_effect=lambda trainers, *_: trainers
+        patch(
+            "arknights_mower.utils.config.conf",
+            SimpleNamespace(assistant_follows_schedule=False),
         ),
         patch.object(runtime, "save_runtime") as save,
     ):
