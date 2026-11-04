@@ -131,6 +131,9 @@ def test_basic_successor_replaces_even_the_fastest_reducer(
     monkeypatch.setattr(runtime, "_observed_support", lambda _: ("逻各斯", "学员"))
     monkeypatch.setattr(runtime, "schedule_context", lambda: ({}, 0))
     solver = MagicMock(tasks=[], task=None)
+    solver.op_data = SimpleNamespace(
+        operators={}, dorm_mood_estimates={"普通教官": (24, datetime.now())}
+    )
     if not running:
         current["support_runtime"] = dict(
             level=2,
@@ -210,6 +213,9 @@ def test_removed_basic_successor_restores_reducer_protection(
         mastery_reader, "_read_slots_checked", lambda _: ("逻各斯", "学员", [], True)
     )
     solver = MagicMock(tasks=[], task=None)
+    solver.op_data = SimpleNamespace(
+        operators={}, dorm_mood_estimates={"普通教官": (24, datetime.now())}
+    )
     assert not runtime.recover(solver, current, room)
     assert not stage_for(db.get_plan_by_id(first_id), 3)["exclude_reducer"]
     assert not solver.tasks
@@ -371,6 +377,12 @@ def test_final_stage_gets_reducer_and_is_scheduled(database, monkeypatch):
     )
     monkeypatch.setattr(runtime, "_observed_support", lambda _: ("快教官", "学员"))
     solver = SimpleNamespace(tasks=[], task=None)
+    solver.op_data = SimpleNamespace(
+        operators={},
+        dorm_mood_estimates={
+            name: (24, datetime.now()) for name in ("快教官", "艾丽妮")
+        },
+    )
     runtime.prepare_plan_supports(solver, current, 3)
     route = stage_for(current, 3)
     assert route["swap_target"] == "艾丽妮"

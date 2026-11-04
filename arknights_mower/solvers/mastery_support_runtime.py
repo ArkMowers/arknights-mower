@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from arknights_mower.utils.mastery_mood import require_support_mood
 from arknights_mower.utils.mastery_order import (
     basic_mastery_successor,
     halving_successor,
@@ -37,27 +38,22 @@ def _observed_support(solver):
     if not reliable:
         raise SupportPlanError("无法确认当前训练室协助者，请重试")
     # This is the existing occupant, not necessarily the planned assistant.
-    # candidates() filters the assistants used by _stage_trainers/_follow_schedule.
+    # candidates() filters the assistants used by _stage_trainers.
     return support, trainee
 
 
-def _stage_trainers(options, route, level):
-    first = options.get(route["operator"], {}).get(level)
-    if first is None:
-        raise SupportPlanError("计划协助者已不可用或已加入非训练室排班，请修改协助方案")
-    swap = options.get(route.get("swap_target"), {}).get(level)
-    return first, swap
-
-
-def _follow_schedule(trainers, options, level, support):
+def _stage_trainers(options, route, level, support):
     from arknights_mower.utils import config
 
-    first, swap = trainers
     if config.conf.assistant_follows_schedule:
         first = options.get(support, {}).get(level)
         if first is None:
             raise SupportPlanError("协助位跟随排班时，需要先安排可用协助者")
-        swap = None
+        return first, None
+    first = options.get(route["operator"], {}).get(level)
+    if first is None:
+        raise SupportPlanError("计划协助者已不可用或已加入非训练室排班，请修改协助方案")
+    swap = options.get(route.get("swap_target"), {}).get(level)
     return first, swap
 
 
@@ -146,30 +142,31 @@ def route_without_unusable_reducer(plan, level, route):
 
 def prepare_plan_supports(solver, plan, level):
     """Validate the stage and carried halving without changing occupants."""
+    from arknights_mower.utils import config
+
     saved = decode_supports(plan)
     if not saved:
         return
     route = next((s for s in saved["stages"] if s["level"] == level), None)
     if route is None:
         raise SupportPlanError("专精阶段与协助方案不一致，请重新添加计划")
+    inputs = TrainingInputs(schedule=schedule_context())
     options, central = candidates(
         plan["char_id"],
-        include_dynamic=route.get("manual", False),
-        inputs=TrainingInputs(schedule=schedule_context()),
+        include_dynamic=config.conf.assistant_follows_schedule
+        or route.get("manual", False),
+        inputs=inputs,
     )
-    from arknights_mower.utils import config
-
     exclude_reducer = (
         not config.conf.assistant_follows_schedule
         and basic_mastery_successor(plan, level)
     )
-    trainers = (
+    occupants = _observed_support(solver)
+    first, swap = (
         (_non_reducer(options, level), None)
         if exclude_reducer
-        else _stage_trainers(options, route, level)
+        else _stage_trainers(options, route, level, occupants[0])
     )
-    occupants = _observed_support(solver)
-    first, swap = _follow_schedule(trainers, options, level, occupants[0])
     if not config.conf.assistant_follows_schedule and level >= plan["target_level"]:
         if halving_successor(plan, level):
             reducers = [
@@ -191,7 +188,87 @@ def prepare_plan_supports(solver, plan, level):
     )
     prepared = _prepare_stage(first, swap, spec, carry)
     prepared["exclude_reducer"] = exclude_reducer
+    remaining = [prepared]
+    for next_level in range(level + 1, plan["target_level"] + 1):
+        next_route = next(
+            (s for s in saved["stages"] if s["level"] == next_level), None
+        )
+        if next_route is None:
+            raise SupportPlanError("协助方案缺少后续专精阶段，请重新添加计划")
+        next_options, _ = candidates(
+            plan["char_id"],
+            include_dynamic=config.conf.assistant_follows_schedule
+            or next_route.get("manual", False),
+            inputs=inputs,
+        )
+        next_first, next_swap = _stage_trainers(
+            next_options, next_route, next_level, occupants[0]
+        )
+        if (
+            not config.conf.assistant_follows_schedule
+            and next_level == plan["target_level"]
+        ):
+            if basic_mastery_successor(plan, next_level):
+                next_first, next_swap = _non_reducer(next_options, next_level), None
+            elif halving_successor(plan, next_level):
+                next_swap = max(
+                    (
+                        stats[next_level]
+                        for stats in next_options.values()
+                        if stats[next_level]["halves"]
+                    ),
+                    key=lambda item: item["efficiency"],
+                    default=None,
+                )
+            else:
+                next_swap = None
+        remaining.append(
+            {
+                **next_route,
+                "operator": next_first["name"],
+                "efficiency": next_first["efficiency"],
+                "first_halves": next_first["halves"],
+                "swap_target": next_swap["name"] if next_swap else None,
+                "swap_efficiency": next_swap["efficiency"] if next_swap else 0,
+                "swap_halves": next_swap["halves"] if next_swap else False,
+            }
+        )
+    require_support_mood(solver, remaining, inherited=bool(carry))
     save_runtime(plan, prepared)
+
+
+def prepare_legacy_support_mood(solver, plan, level):
+    """Budget legacy manual routes through the same endurance boundary."""
+    from arknights_mower.solvers.mastery import _get_plan_route
+    from arknights_mower.utils import config
+
+    occupants = _observed_support(solver)
+    carry = _carried_halving(plan, level, occupants)
+    options = None
+    if config.conf.assistant_follows_schedule:
+        options, _ = candidates(plan["char_id"], include_dynamic=True)
+    routes = []
+    for stage_level in range(level, plan["target_level"] + 1):
+        route = _get_plan_route(plan, stage_level)
+        if not route or not route.get("operator"):
+            raise SupportPlanError("无法确认完整协助方案，停止开训")
+        route = {
+            **route,
+            "level": stage_level,
+            "swap_efficiency": 30 if route.get("job_match") else 0,
+        }
+        if options is not None:
+            trainer = options.get(occupants[0], {}).get(stage_level)
+            if trainer is None:
+                raise SupportPlanError("无法确认排班协助干员，停止开训")
+            route.update(
+                operator=trainer["name"],
+                efficiency=trainer["efficiency"],
+                first_halves=trainer["halves"],
+                swap_target=None,
+            )
+        routes.append(route)
+    require_support_mood(solver, routes, inherited=bool(carry))
 
 
 def recover(solver, plan, room):

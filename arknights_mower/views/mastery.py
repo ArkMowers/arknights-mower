@@ -457,16 +457,12 @@ class MasteryPlanView(MethodView):
                     name, char_id, skill_index, skill_name, None, "auto", path=None
                 )
                 _record(result, target, is_new, char_id)
-        # Quick-add preserves saved order, or uses profession alternation by default.
+        # Quick-add preserves saved order, or separates shared assistants by default.
         auto_order = items is None or all("priority" not in item for item in items)
         if added_plan_ids and auto_order:
             auto_interleave_new_plans(
                 added_plan_ids,
                 order=config.conf.growth_crafting_order,
-                professions={
-                    char_id: info.get("profession", "")
-                    for char_id, info in char_table.items()
-                },
             )
         for result, char_id, skill_index, target_level in manual_starts:
             result["task"] = _start_mastery_task(char_id, skill_index, target_level)

@@ -846,6 +846,8 @@ class RIICPart(ConfModel):
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
     enable_mastery: bool = True
     "全自动专精全局开关：OFF 时禁用全部训练室动作/通知/守卫，仅保留仓库材料扫描"
+    mastery_consecutive_skills: bool = False
+    "同干员技能接续训练"
     save_mastery_screenshots: bool = False
     "保存专精收取期间的截图"
 

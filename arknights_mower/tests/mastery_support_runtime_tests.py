@@ -11,6 +11,9 @@ from arknights_mower.tests.mastery_support_fixtures import (
     context_game as context_game,
 )
 from arknights_mower.tests.mastery_support_fixtures import (
+    database as database,
+)
+from arknights_mower.tests.mastery_support_fixtures import (
     game as game,
 )
 from arknights_mower.tests.mastery_support_fixtures import (
@@ -18,6 +21,8 @@ from arknights_mower.tests.mastery_support_fixtures import (
 )
 from arknights_mower.utils import mastery_support as support
 from arknights_mower.utils.mastery_support_types import StageSpec
+
+pytestmark = pytest.mark.usefixtures("database")
 
 
 @pytest.mark.parametrize("scheduled_trainee", [False, True])
@@ -31,9 +36,18 @@ def test_preflight_preserves_planned_reducer_without_changing_occupants(
         "char_id": ids["能天使"],
         "char_name": "能天使",
         "target_level": 3,
-        "support_plan": {"stages": [route]},
+        "support_plan": {
+            "stages": [dict(route, level=level) for level in range(route["level"], 4)]
+        },
     }
     solver = MagicMock()
+    solver.op_data = SimpleNamespace(
+        operators={},
+        dorm_mood_estimates={
+            "艾丽妮": (24, datetime.now()),
+            "逻各斯": (24, datetime.now()),
+        },
+    )
     with (
         patch.object(
             runtime,
@@ -70,12 +84,21 @@ def test_preflight_still_rejects_scheduled_assistant_in_use(
         "char_id": ids["能天使"],
         "char_name": "能天使",
         "target_level": 3,
-        "support_plan": {"stages": [route]},
+        "support_plan": {
+            "stages": [dict(route, level=level) for level in range(route["level"], 4)]
+        },
     }
     # In automatic mode the planned assistant conflicts. In follow-schedule mode
     # the planned assistant is available, but the occupant to be retained conflicts.
     blocked_name = "逻各斯" if follow_schedule else "艾丽妮"
     solver = MagicMock()
+    solver.op_data = SimpleNamespace(
+        operators={},
+        dorm_mood_estimates={
+            "艾丽妮": (24, datetime.now()),
+            "逻各斯": (24, datetime.now()),
+        },
+    )
     with (
         patch.object(
             runtime, "schedule_context", return_value=({blocked_name: {"room_3_2"}}, 0)
@@ -106,7 +129,9 @@ def test_waiting_collection_time_does_not_earn_five_hour_credit(context_game):
         "char_id": ids["能天使"],
         "char_name": "能天使",
         "target_level": 3,
-        "support_plan": {"stages": [route]},
+        "support_plan": {
+            "stages": [dict(route, level=level) for level in range(route["level"], 4)]
+        },
         "support_runtime": {
             "level": 1,
             "working_operator": "艾丽妮",
@@ -116,6 +141,13 @@ def test_waiting_collection_time_does_not_earn_five_hour_credit(context_game):
         },
     }
     solver = MagicMock()
+    solver.op_data = SimpleNamespace(
+        operators={},
+        dorm_mood_estimates={
+            "艾丽妮": (24, datetime.now()),
+            "逻各斯": (24, datetime.now()),
+        },
+    )
     with (
         patch.object(runtime, "schedule_context", return_value=({}, 0)),
         patch.object(runtime, "save_runtime") as persist,
@@ -140,13 +172,22 @@ def test_recovery_uses_saved_route_without_solving_or_reading_roster():
     plan = {
         "id": 1,
         "target_level": 3,
-        "support_plan": {"stages": [route]},
+        "support_plan": {
+            "stages": [dict(route, level=level) for level in range(route["level"], 4)]
+        },
         "support_runtime": {**route, "working_operator": "教官"},
     }
     panel = SimpleNamespace(
         mastery_tier=2, countdown=datetime.now() + timedelta(hours=8)
     )
     solver = MagicMock()
+    solver.op_data = SimpleNamespace(
+        operators={},
+        dorm_mood_estimates={
+            "艾丽妮": (24, datetime.now()),
+            "逻各斯": (24, datetime.now()),
+        },
+    )
     solver.tasks = []
     with (
         patch.object(runtime, "refresh_end"),

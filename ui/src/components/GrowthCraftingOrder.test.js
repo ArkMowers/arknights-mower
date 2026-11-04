@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, reactive } from 'vue'
 import GrowthCraftingOrder from './GrowthCraftingOrder.vue'
 
+const continuity = vi.hoisted(() => ({ mastery_consecutive_skills: false }))
+vi.mock('@/stores/config', () => ({ useConfigStore: () => continuity }))
+
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), delete: vi.fn(), post: vi.fn() }))
 vi.mock('axios', () => ({ default: api }))
 vi.mock('vue', async (original) => ({
@@ -83,6 +86,7 @@ function orderReads() {
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  continuity.mastery_consecutive_skills = false
   current = response()
   failures = []
   api.get.mockImplementation(async (url) =>
@@ -140,7 +144,7 @@ describe('统一养成计划编辑', () => {
     stop()
   })
 
-  it('搜索时禁止拖拽和职业整理；按项目文本及拼音匹配', async () => {
+  it('搜索时禁止拖拽和协助干员整理；按项目文本及拼音匹配', async () => {
     const { page, stop } = setup()
     await open(page)
     page.search.value = '模组'
@@ -280,16 +284,16 @@ describe('统一养成计划编辑', () => {
     stop()
   })
 
-  it('职业整理和专精优先保留锁定前缀、完整项目与真实状态', async () => {
+  it('协助干员整理和专精优先保留锁定前缀、完整项目与真实状态', async () => {
     const { page, props, stop } = setup()
-    props.recommendations = [
-      { char_id: 'next', profession: 'WARRIOR' },
-      { char_id: 'module', profession: 'WARRIOR' },
-      { char_id: 'level', profession: 'MEDIC' }
+    failures = [
+      { id: 1, support_plan: { stages: [{ level: 1, operator: '甲协助' }] } },
+      { id: 2, support_plan: { stages: [{ level: 1, operator: '甲协助' }] } }
     ]
+    props.recommendations = [{ char_id: 'next', profession: 'WARRIOR' }]
     await open(page)
     page.organize()
-    expect(keys(page)).toEqual(['skill:active', 'skill:next', 'goal:level', 'goal:module'])
+    expect(keys(page)).toEqual(['skill:active', 'goal:module', 'goal:level', 'skill:next'])
     expect(page.draftItems.value[2].crafting_required).toBe(false)
     drop(page, 3, 1)
     page.prioritizeSkills()
@@ -297,6 +301,72 @@ describe('统一养成计划编辑', () => {
     expect(keys(page)[1]).toBe('skill:next')
     expect(new Set(keys(page)).size).toBe(4)
     expect(api.put).not.toHaveBeenCalled()
+    stop()
+  })
+
+  it('默认错开同干员技能，开启接续后连续，已专二组合保留原规则', async () => {
+    const { page, props, stop } = setup()
+    const rows = [
+      { key: 'a1', char_id: 'a', kind: 'skill', plan_id: 1 },
+      { key: 'b', char_id: 'b', kind: 'skill', plan_id: 2 },
+      { key: 'a2', char_id: 'a', kind: 'skill', plan_id: 3 }
+    ]
+    current.data.planning_items = rows
+    failures = rows.map((row, index) => ({
+      id: row.plan_id,
+      skill_index: index,
+      support_plan: {
+        current: 0,
+        stages: [{ level: 1, operator: row.char_id === 'a' ? '甲协助' : '乙协助' }]
+      }
+    }))
+    await open(page)
+    expect(continuity.mastery_consecutive_skills).toBe(false)
+    page.organize()
+    expect(keys(page)).toEqual(['a1', 'b', 'a2'])
+    continuity.mastery_consecutive_skills = true
+    page.organize()
+    expect(keys(page)).toEqual(['a1', 'a2', 'b'])
+    continuity.mastery_consecutive_skills = false
+    props.recommendations = [
+      {
+        char_id: 'a',
+        recommendations: [
+          { skill_index: 0, current_level: 2 },
+          { skill_index: 2, current_level: 0 }
+        ]
+      }
+    ]
+    page.organize()
+    expect(keys(page)).toEqual(['a2', 'a1', 'b'])
+    expect(api.put).not.toHaveBeenCalled()
+    stop()
+  })
+
+  it('模组目标不隔断专精协助者的比较，保存的技能顺序仍错开', async () => {
+    const { page, stop } = setup()
+    current.data.planning_items = [
+      { key: 'a1', char_id: 'a', kind: 'skill', plan_id: 1 },
+      { key: 'goal', char_id: 'g', kind: 'goal', module_id: 'mod' },
+      { key: 'a2', char_id: 'a', kind: 'skill', plan_id: 2 },
+      { key: 'b', char_id: 'b', kind: 'skill', plan_id: 3 }
+    ]
+    failures = [
+      { id: 1, skill_index: 0, support_plan: { stages: [{ level: 1, operator: '甲协助' }] } },
+      { id: 2, skill_index: 1, support_plan: { stages: [{ level: 1, operator: '甲协助' }] } },
+      { id: 3, skill_index: 0, support_plan: { stages: [{ level: 1, operator: '乙协助' }] } }
+    ]
+    await open(page)
+    page.organize()
+    expect(
+      page.draftItems.value.filter((item) => item.kind === 'skill').map((item) => item.key)
+    ).toEqual(['a1', 'b', 'a2'])
+    await page.save()
+    expect(api.put.mock.calls[0][1].order.filter((key) => key !== 'goal')).toEqual([
+      'a1',
+      'b',
+      'a2'
+    ])
     stop()
   })
 

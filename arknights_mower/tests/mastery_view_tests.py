@@ -335,9 +335,7 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertEqual(res["status"], "added")
         self.assertEqual(res["id"], 5)
         self.assertEqual(insert.call_args.kwargs["target_level"], 3)
-        self.auto_order.assert_called_once_with(
-            [5], order=[], professions={"char_001": ""}
-        )
+        self.auto_order.assert_called_once_with([5], order=[])
 
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
@@ -376,7 +374,6 @@ class TestMasteryPlanView(unittest.TestCase):
             self.auto_order.assert_called_once_with(
                 [7],
                 order=["skill:existing:0", "module:existing:x"],
-                professions={"char_001": "CASTER"},
             )
             return {"scheduled": [], "skipped": []}
 
@@ -1074,3 +1071,33 @@ class TestMasteryPlanView(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMasteryPlanToken(unittest.TestCase):
+    def test_post_requires_instance_token_before_reading_or_ordering(self):
+        app = Flask(__name__)
+        app.token = "current-token"
+        app.register_blueprint(mastery_bp)
+        with (
+            patch(
+                "arknights_mower.views.mastery.get_skill_data", return_value={}
+            ) as read,
+            patch("arknights_mower.views.mastery.auto_interleave_new_plans") as order,
+            patch("arknights_mower.views.mastery.refresh_workshop_after_plan_change"),
+        ):
+            client = app.test_client()
+            for headers in ({}, {"token": "incorrect"}):
+                response = client.post(
+                    "/mastery-plan",
+                    data="not-json",
+                    content_type="application/json",
+                    headers=headers,
+                )
+                self.assertEqual(response.status_code, 403)
+            read.assert_not_called()
+            order.assert_not_called()
+            response = client.post(
+                "/mastery-plan", json={"items": []}, headers={"token": "current-token"}
+            )
+            self.assertEqual(response.status_code, 200)
+            read.assert_called_once()

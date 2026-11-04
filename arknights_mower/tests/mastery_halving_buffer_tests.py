@@ -130,23 +130,31 @@ def test_preparation_recalculates_buffer_from_observed_previous_stage(
         "char_id": "target",
         "char_name": "学员",
         "target_level": 3,
-        "support_plan": {"stages": [planned]},
+        "support_plan": {"stages": [planned, {**planned, "level": 3}]},
         "support_runtime": previous,
     }
     with (
         patch.object(
             runtime,
             "candidates",
-            return_value=({"教官": {2: first}, "艾丽妮": {2: reducer}}, 5),
+            return_value=(
+                {"教官": {2: first, 3: first}, "艾丽妮": {2: reducer, 3: reducer}},
+                5,
+            ),
         ),
         patch.object(runtime, "schedule_context", return_value=({}, 5)),
         patch.object(runtime, "_observed_support", return_value=("艾丽妮", "学员")),
-        patch.object(
-            runtime, "_follow_schedule", side_effect=lambda trainers, *_: trainers
+        patch(
+            "arknights_mower.utils.config.conf",
+            SimpleNamespace(assistant_follows_schedule=False),
         ),
         patch.object(runtime, "save_runtime") as save,
     ):
-        runtime.prepare_plan_supports(MagicMock(), plan, 2)
+        solver = MagicMock()
+        solver.op_data = SimpleNamespace(
+            operators={}, dorm_mood_estimates={"教官": (24, now), "艾丽妮": (24, now)}
+        )
+        runtime.prepare_plan_supports(solver, plan, 2)
     saved = save.call_args.args[1]
     assert saved["half_inherited"] is actual_inherited
     assert saved["mastery_swap_buffer"] == 10

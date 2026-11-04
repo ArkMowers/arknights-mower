@@ -79,7 +79,7 @@
             :disabled="!editable || dragging || !!search.trim()"
             @click="organize"
           >
-            按职业整理
+            错开协助干员
           </n-button>
           <n-button
             size="small"
@@ -93,6 +93,20 @@
             >刷新</n-button
           >
         </div>
+      </div>
+
+      <div class="plan-continuity">
+        <n-switch
+          v-model:value="config.mastery_consecutive_skills"
+          size="small"
+          :disabled="!editable || dragging"
+          aria-label="同干员技能接续训练"
+        />
+        <span>同干员技能接续训练</span>
+        <help-text label="查看同干员技能接续训练说明">
+          默认关闭。开启后，同一干员的技能连续安排。连续训练容易导致共用协助干员来不及恢复心情，后续技能可能因心情不足等待。
+          关闭时优先错开共用协助干员；若同干员待训练技能中已有技能达到专一或专二，仍按原规则优先训练较低专精等级的技能，衔接减半训练。
+        </help-text>
       </div>
 
       <p v-if="search.trim()" class="plan-hint">搜索期间暂停拖动；清除搜索后可调整完整顺序。</p>
@@ -237,6 +251,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useConfigStore } from '@/stores/config'
 import axios from 'axios'
 import List from '@vicons/carbon/es/List'
 import draggable from 'vuedraggable'
@@ -256,6 +271,7 @@ const props = defineProps({
   hideTrigger: Boolean
 })
 const emit = defineEmits(['changed'])
+const config = useConfigStore()
 const show = ref(false)
 const items = ref([])
 const draftItems = ref([])
@@ -308,6 +324,20 @@ async function readState() {
   )
   return {
     ...order.data,
+    planning_items: (order.data.planning_items || order.data.items || []).map((item) => {
+      const plan = (plans.data.plans || []).find((plan) => plan.id === item.plan_id)
+      return plan
+        ? {
+            ...item,
+            ...Object.fromEntries(
+              ['support_plan', 'support_runtime', 'target_level', 'skill_index'].map((key) => [
+                key,
+                plan[key]
+              ])
+            )
+          }
+        : item
+    }),
     failed_items: (plans.data.plans || [])
       .filter((plan) => plan.status === 'failed' && !planned.has(plan.id))
       .map((plan) => ({
@@ -448,18 +478,22 @@ function clear() {
 
 function organize() {
   if (!editable.value || search.value.trim()) return
-  const movable = sortableItems.value.filter((item) => !item.locked)
-  const byKey = new Map(movable.map((item) => [item.key, item]))
-  const ordered = interleaveMasteryPlans(
-    movable.map((item) => ({
+  const sortable = sortableItems.value
+  const byKey = new Map(sortable.map((item) => [item.key, item]))
+  const movable = interleaveMasteryPlans(
+    sortable.map((item) => ({
       ...item,
-      status: 'idle',
-      profession:
-        item.profession ||
-        props.recommendations.find((op) => op.char_id === item.char_id)?.profession
-    }))
-  ).map((item) => byKey.get(item.key))
-  commitDrag([...sortableItems.value.filter((item) => item.locked), ...ordered])
+      status: item.locked ? 'training' : 'idle',
+      current_level: props.recommendations
+        .find((op) => op.char_id === item.char_id)
+        ?.recommendations?.find((skill) => skill.skill_index === item.skill_index)?.current_level
+    })),
+    { consecutiveSkills: config.mastery_consecutive_skills }
+  ).filter((item) => !item.locked)
+  commitDrag([
+    ...sortable.filter((item) => item.locked),
+    ...movable.map((item) => byKey.get(item.key))
+  ])
 }
 
 function prioritizeSkills() {
@@ -639,6 +673,15 @@ defineExpose({ open })
   gap: 2px;
   max-height: 148px;
   overflow-y: auto;
+}
+
+.plan-continuity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 12px;
 }
 
 .plan-toolbar {
