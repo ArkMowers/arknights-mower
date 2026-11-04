@@ -17348,7 +17348,6 @@ class BaseSchedulerSolver(
             if config.stop_mower.is_set():
                 raise MowerExit
             if not config.stop_maa.is_set():
-                self.restore_maa_theme()
                 # Close the native handle before applying a configuration change.
                 self.release_maa()
                 with backup_lock:
@@ -17893,8 +17892,8 @@ class BaseSchedulerSolver(
         self.maa_blackflow_task = None
         self.maa_event_shop_task = None
 
-    def restore_maa_theme(self):
-        """本轮 MAA 日常任务收尾时恢复指定主题，为下次调度预留时间。"""
+    def append_maa_theme_task(self):
+        """将主题恢复追加到当前队列，由调用者统一启动并处理停止。"""
         conf = config.conf
         if not conf.maa_restore_theme_enable or self.MAA is None:
             return
@@ -17904,15 +17903,6 @@ class BaseSchedulerSolver(
             return
         if config.stop_maa.is_set() or config.stop_mower.is_set():
             return
-
-        def next_task_time():
-            if getattr(getattr(self, "task", None), "type", None) in MANUAL_TASK_TYPES:
-                from arknights_mower.solvers.manual_tasks import manual_task_deadline
-
-                return manual_task_deadline(self)
-            return self.tasks[0].time
-
-        queued = False
         try:
             version = self.MAA.get_version()
             try:
@@ -17924,48 +17914,14 @@ class BaseSchedulerSolver(
                     f"恢复主题需要 MAA v6.17.3 或更高版本，当前为 {version}，跳过恢复"
                 )
                 return
-
-            deadline = min(
-                datetime.now() + timedelta(seconds=120),
-                next_task_time() - timedelta(seconds=5),
-            )
-            if (deadline - datetime.now()).total_seconds() < 10:
-                logger.info("距离下次调度时间过近，跳过恢复主题")
-                return
-
-            # 清空原队列后只运行恢复主题任务。
-            self.MAA.stop()
-            if config.stop_maa.is_set() or config.stop_mower.is_set():
-                return
-            task_id = self.MAA.append_task("SwitchTheme", {"themes": [theme]})
-            if not task_id:
+            if not self.MAA.append_task("SwitchTheme", {"themes": [theme]}):
                 logger.warning("添加恢复主题任务失败，请检查 MAA 核心及配套资源版本")
                 return
-            queued = True
-            if not self.MAA.start():
-                logger.warning("恢复主题任务启动失败")
-                return
-            logger.info(f"开始恢复游戏主题：{theme}")
-            while self.MAA.running():
-                if config.stop_maa.is_set():
-                    logger.info("收到停止指令，停止恢复主题")
-                    return
-                if (
-                    datetime.now() >= deadline
-                    or (next_task_time() - datetime.now()).total_seconds() <= 5
-                ):
-                    logger.warning("恢复主题超时或即将开始下次调度，停止恢复")
-                    return
-                csleep(1)
-            logger.info("恢复主题任务结束，具体切换结果请查看 MAA 日志")
+            logger.info(f"已将恢复游戏主题加入 MAA 任务队列：{theme}")
         except MowerExit:
             raise
         except Exception:
-            logger.exception("恢复主题失败，继续原定调度")
-        finally:
-            if queued:
-                self.MAA.stop()
-                self.recog.reset_after_external_control()
+            logger.exception("添加恢复主题任务失败，继续原定任务")
 
     def has_maa_daily_tasks(self) -> bool:
         conf = config.conf
@@ -18057,7 +18013,6 @@ class BaseSchedulerSolver(
                 not manual or tasks == "All" or "Fight" in tasks
             )
             self.drop_send = False
-            restore_theme = False
             conf = config.conf
             if (
                 not one_time
@@ -18118,6 +18073,7 @@ class BaseSchedulerSolver(
                         self.append_maa_task(maa_task, mall_action=mall_action)
                     else:
                         self.append_maa_task(maa_task)
+                self.append_maa_theme_task()
                 self.MAA.start()
                 stop_time = None
                 if one_time:
@@ -18151,7 +18107,6 @@ class BaseSchedulerSolver(
                     raise MowerExit
                 # MAA 运行期间只保存截图，没有连续执行 Mower 场景识别。
                 self.recog.reset_after_external_control()
-                restore_theme = not hard_stop
                 if hard_stop and manual:
                     return False
                 if hard_stop:
@@ -18265,7 +18220,6 @@ class BaseSchedulerSolver(
                         raise MowerExit
                     if config.stop_maa.is_set():
                         break
-                    restore_theme = False
                     self.release_maa()
                     if not paradox:
                         self.initialize_maa()
@@ -18677,7 +18631,6 @@ class BaseSchedulerSolver(
 
             elif manual or not rg_sleep:
                 if selected_long == "ra":
-                    restore_theme = False
                     self.back_to_index()
                     ra_solver = ReclamationAlgorithm(self.device, self.recog)
                     try:
@@ -18685,7 +18638,6 @@ class BaseSchedulerSolver(
                     finally:
                         resume_dorm_releases(self)
                 elif selected_long == "sf":
-                    restore_theme = False
                     self.back_to_index()
                     sf_solver = SecretFront(self.device, self.recog)
                     try:
@@ -18693,8 +18645,6 @@ class BaseSchedulerSolver(
                     finally:
                         resume_dorm_releases(self)
 
-            if restore_theme:
-                self.restore_maa_theme()
             self.release_maa()
         except MowerExit:
             try:
