@@ -346,10 +346,13 @@ class RecruitSolver(SceneGraphSolver):
         img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
         img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
 
+        # 统一姓名模板宽度，让短姓名的评分也包含右侧文字，避免只匹配长姓名的一部分。
+        width = max(res.shape[1] for res in recruit_res_template.values())
         score = {}
         for id in recruit_res_template:
             res = recruit_res_template[id]
-            result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
+            res = np.pad(res, ((0, 0), (0, width - res.shape[1])))
+            result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED)
             _, max_val, _, _ = cv2.minMaxLoc(result)
             score[id] = max_val
         self.result_agent[self.recruit_index] = recruit_agent[
