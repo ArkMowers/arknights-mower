@@ -131,7 +131,6 @@ export async function renderIncomeImage(
     const scale = width / 980
     const algorithmLines = incomeImageAlgorithmLines(settings)
     const days = result.observedHours / 24
-    const contentBottom = Math.max(100, 28 + Math.ceil(metrics.length / 3) * 24)
     const canvas = document.createElement('canvas')
     canvas.width = width
     const ctx = canvas.getContext('2d')
@@ -150,7 +149,7 @@ export async function renderIncomeImage(
     const orders = result.orderDistribution ?? incomeOrderDistribution(result.simulationReport)
     const annotationTop = Math.max(73 + weightLines.length * 14, orders?.other ? 100 : 87)
     const headerHeight = Math.ceil(
-      Math.max(contentBottom, annotationTop + annotationLines.length * 16 + 3) * scale
+      Math.max(100, annotationTop + annotationLines.length * 16 + 3) * scale
     )
     const dark = theme === 'dark'
     const planTop = headerHeight - imageTopWhitespace(source, scale, dark)
@@ -239,25 +238,26 @@ export async function renderIncomeImage(
       recruitment: ['#657385', '#ffffff'],
       clue: ['#756791', '#ffffff']
     }
-    const order = [
-      'exp',
-      'lmd',
-      'gold',
-      'fragment',
-      'orundum',
-      'clue',
-      'recruitment',
-      'recycle',
-      'lmdCost',
-      'orirockCost',
-      'deviceCost'
-    ]
-    metrics
-      .map((metric, index) => ({ ...metric, image: icons[index] }))
-      .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
-      .forEach((metric, index) => {
-        const x = 570 + (index % 3) * 130
-        const y = 28 + Math.floor(index / 3) * 24
+    const withIcons = new Map(
+      metrics.map((metric, index) => [metric.key, { ...metric, image: icons[index] }])
+    )
+    const pick = (keys) => keys.map((key) => withIcons.get(key)).filter(Boolean)
+    const products = pick(['exp', 'lmd', 'gold'])
+    const originium = pick(['fragment', 'orundum'])
+    const costs = pick(['lmdCost', 'orirockCost', 'deviceCost'])
+    const bottomHasRoom = !(withIcons.has('orirockCost') && withIcons.has('deviceCost'))
+    if (originium[0]?.key === 'fragment' && bottomHasRoom) costs.unshift(originium.shift())
+    const productVacancies = 3 - products.length
+    products.push(...originium.splice(-productVacancies, productVacancies))
+    const rows = [originium, products, pick(['clue', 'recruitment', 'recycle']), costs]
+    rows
+      .flatMap((metrics, row) =>
+        metrics.map((metric, index) => ({ ...metric, row, column: index + (row === 0 ? 1 : 0) }))
+      )
+      .forEach((metric) => {
+        const { column, row } = metric
+        const x = 570 + column * 130
+        const y = 4 + row * 24
         const [background, color] = colors[metric.key]
         ctx.fillStyle = background
         ctx.fillRect((x + 12) * scale, (y + 3) * scale, 110 * scale, 18 * scale)
@@ -314,9 +314,9 @@ export async function renderIncomeImage(
           const center =
             baseline - (digits.actualBoundingBoxAscent - digits.actualBoundingBoxDescent) / 2
           ctx.fillRect(valueX, center - 0.5 * scale, 6 * scale, scale)
-          valueX += 10 * scale
+          valueX += 8 * scale
         }
-        ctx.fillText(value, valueX, baseline, (negative ? 79 : 89) * scale)
+        ctx.fillText(value, valueX, baseline, (negative ? 81 : 89) * scale)
       })
     annotationLines.forEach((line, index) => {
       write(line, 28, annotationTop + 16 + index * 16, 10, muted)

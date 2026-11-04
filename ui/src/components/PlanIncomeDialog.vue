@@ -35,6 +35,7 @@ let cachedInventoryOverrides = preferences.cachedInventoryOverrides
 let cachedInventoryBaseline = null
 let cachedInventoryValues = null
 let applyingPreferences = false
+let initializedDroneSnapshot = null
 const axios = inject('axios')
 const cacheLoading = ref(false)
 const cacheError = ref('')
@@ -189,6 +190,7 @@ watch(
         preferred === '' || targets.value.some((target) => target.value === preferred)
           ? preferred
           : defaultDroneRoom()
+      initializedDroneSnapshot = snapshot
     } finally {
       applyingPreferences = false
     }
@@ -201,7 +203,8 @@ function defaultDroneRoom() {
 }
 function persistPreferences() {
   if (applyingPreferences) return
-  preferences.settings.droneRoom = settings.droneRoom
+  if (props.snapshot && props.snapshot === initializedDroneSnapshot)
+    preferences.settings.droneRoom = settings.droneRoom
   if (cachedInventoryBaseline && settings.cachedInventory) {
     for (const { resource } of MOWER_INVENTORY_ITEMS) {
       const value = settings.cachedInventory[resource] ?? 0
@@ -211,7 +214,10 @@ function persistPreferences() {
     }
     cachedInventoryValues = { ...settings.cachedInventory }
   }
-  preferencesError.value = saveIncomePreferences(settings, cachedInventoryOverrides)
+  preferencesError.value = saveIncomePreferences(
+    { ...settings, droneRoom: preferences.settings.droneRoom },
+    cachedInventoryOverrides
+  )
     ? ''
     : '参数修改未能保存到本浏览器，当前窗口仍可使用。'
 }
