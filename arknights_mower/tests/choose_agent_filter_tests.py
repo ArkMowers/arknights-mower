@@ -335,6 +335,107 @@ def test_resting_operator_tail_search_retains_wait_before_scan(
 
 
 @pytest.mark.parametrize("mode", ["high", "xhigh"])
+@pytest.mark.parametrize(
+    "normal_pages",
+    [(0, 0), (1, 1), (0, 1), None],
+    ids=["first", "middle", "separate", "absent"],
+)
+@pytest.mark.parametrize("normal_first", [False, True])
+def test_same_profession_normal_targets_precede_tail_search(
+    monkeypatch, mode, normal_pages, normal_first
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    solver.op_data.operators["伊芙利特"] = SimpleNamespace(
+        mood=10, upper_limit=24, room="dormitory_1", is_resting=lambda: True
+    )
+    state = {"page": 0, "scans": 0}
+    events = []
+    scan = solver.scan_agent.side_effect
+    positions = {
+        "伊芙利特": 2,
+        "特米米": normal_pages[0] if normal_pages else None,
+        "深靛": normal_pages[1] if normal_pages else None,
+    }
+
+    def scan_page(names, **kwargs):
+        state["scans"] += 1
+        page = state["page"]
+        visible = (
+            []
+            if state["scans"] == 1
+            else [name for name in names if positions[name] == page]
+        )
+        found, _ = scan(visible, **kwargs)
+        for name in found:
+            names.remove(name)
+            events.append(("select", name))
+        return found, [(str(page), ((630, 488), (818, 520)))]
+
+    def rewind(*args, **kwargs):
+        state["page"] = 0
+        events.append(("rewind",))
+        return (0, None) if kwargs.get("return_page") else 0
+
+    def next_page(*args, **kwargs):
+        state["page"] = min(state["page"] + 1, 2)
+        return (1, None)
+
+    def jump_tail(*args, **kwargs):
+        assert {"特米米", "深靛"} <= set(selected)
+        state["page"] = 2
+        events.append(("tail",))
+
+    solver.scan_agent.side_effect = scan_page
+    solver.swipe_left.side_effect = rewind
+    solver.swipe_agent_page.side_effect = next_page
+    solver.swipe_noinertia.side_effect = jump_tail
+    agents = (
+        ["特米米", "伊芙利特", "深靛"]
+        if normal_first
+        else ["伊芙利特", "特米米", "深靛"]
+    )
+    expected = agents.copy()
+
+    if normal_pages is None:
+        with pytest.raises(base_mixin.AgentSelectionNotReady, match="末尾"):
+            solver.choose_agent(agents, "dormitory_1")
+        solver.swipe_noinertia.assert_not_called()
+        assert selected == ["伊芙利特"]
+        assert agents == expected
+        return
+
+    solver.choose_agent(agents, "dormitory_1")
+
+    assert selected == agents == expected
+    assert events.index(("select", "特米米")) < events.index(("tail",))
+    assert events.index(("select", "深靛")) < events.index(("tail",))
+    assert events.index(("tail",)) < events.index(("select", "伊芙利特"))
+    assert solver.swipe_noinertia.call_count == 3
+    assert solver.swipe_agent_page.call_count == max(normal_pages)
+    assert events.count(("rewind",)) == 1
+
+
+def test_other_profession_does_not_delay_resting_operator_tail_search(monkeypatch):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "xhigh")
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    solver.op_data.operators["伊芙利特"] = SimpleNamespace(
+        mood=10, upper_limit=24, room="dormitory_1", is_resting=lambda: True
+    )
+
+    def jump_tail(*args, **kwargs):
+        assert "闪灵" not in selected
+
+    solver.swipe_noinertia.side_effect = jump_tail
+    agents = ["伊芙利特", "闪灵"]
+
+    solver.choose_agent(agents, "dormitory_1")
+
+    assert selected == agents == ["伊芙利特", "闪灵"]
+    assert solver.swipe_noinertia.call_count == 3
+
+
+@pytest.mark.parametrize("mode", ["high", "xhigh"])
 @pytest.mark.parametrize("target_page", [1, 2, None], ids=["middle", "tail", "absent"])
 @pytest.mark.parametrize("tail_companion", [False, True])
 def test_resting_operator_tail_miss_searches_from_first_page(
@@ -345,6 +446,10 @@ def test_resting_operator_tail_miss_searches_from_first_page(
     solver.op_data.operators["伊芙利特"] = SimpleNamespace(
         mood=10, upper_limit=24, room="dormitory_1", is_resting=lambda: True
     )
+    if tail_companion:
+        solver.op_data.operators["特米米"] = SimpleNamespace(
+            mood=10, upper_limit=24, room="dormitory_1", is_resting=lambda: True
+        )
     state = {"page": 0}
     observed_pages = []
     scan = solver.scan_agent.side_effect
