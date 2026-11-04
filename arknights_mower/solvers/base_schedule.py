@@ -5144,15 +5144,18 @@ class BaseSchedulerSolver(
                 return
             settings = snapshot.settings
             is_9colored = agent == "九色鹿"
+            deer_page_changed = object()
 
             def deer_gap():
                 for attempt in range(3):
-                    self.recog.update()
+                    if attempt:
+                        self.sleep()
+                        self.recog.update()
+                        if self.factory_scene() != Scene.FACTORY_DASHBOARD:
+                            return deer_page_changed
                     causality = self.digit_reader.get_deer_causality(self.recog.gray)
                     if causality is not None:
                         return 40 - causality
-                    if attempt < 2:
-                        self.sleep()
                 logger.error("九色鹿因果数字模板匹配失败，停止加工")
                 return None
 
@@ -5267,12 +5270,19 @@ class BaseSchedulerSolver(
                 ):  # 检测是否超过 5 分钟
                     raise Exception("循环运行时间超过 5 分钟，可能卡死")
                 scene = self.factory_scene()
+                if tasks[0] == "open_formula" and scene in (
+                    Scene.FACTORY_ROOM,
+                    Scene.INFRA_MAIN,
+                ):
+                    tasks[0] = "select"
                 if scene == Scene.UNKNOWN:
                     unknown_cnt += 1
                     if unknown_cnt > 5:
                         unknown_cnt = 0
                         self.back_to_infrastructure()
                         self.enter_room("factory")
+                        if tasks[0] == "open_formula":
+                            tasks[0] = "select"
                     else:
                         self.sleep()
                 elif scene == Scene.CONNECTING:
@@ -5284,14 +5294,20 @@ class BaseSchedulerSolver(
                 elif scene == Scene.FACTORY_DASHBOARD:
                     if tasks[0] == "enter":
                         if is_9colored:
-                            gap = deer_gap()
+                            observed_gap = deer_gap()
+                            if observed_gap is deer_page_changed:
+                                continue
+                            gap = observed_gap
                             if gap is None:
                                 return
                             logger.debug(f"初次记录九色鹿技能差值{gap}")
                         del tasks[0]
                     elif tasks[0] == "select":
                         if is_9colored:
-                            gap = deer_gap()
+                            observed_gap = deer_gap()
+                            if observed_gap is deer_page_changed:
+                                continue
+                            gap = observed_gap
                             if gap is None:
                                 return
                             tab_queue = deque(available_groups().items())
@@ -5301,6 +5317,10 @@ class BaseSchedulerSolver(
                                 )
                                 break
                         self.tap(scale_point(self.recog, OPEN_FORMULA), interval=0.5)
+                        tasks[0] = "open_formula"
+                    elif tasks[0] == "open_formula":
+                        # 点击后迟到的工作台帧只继续现有观察，不重复输入或读因果。
+                        pass
                     else:
                         add_btn = (self.recog.w * 0.84, self.recog.h * 0.4)
                         inventory_data = get_inventory_counts()
@@ -5337,7 +5357,10 @@ class BaseSchedulerSolver(
                                 )
                                 else self.op_data.operators[agent].mood
                             )
-                            gap = deer_gap()
+                            observed_gap = deer_gap()
+                            if observed_gap is deer_page_changed:
+                                continue
+                            gap = observed_gap
                             if gap is None:
                                 return
                             logger.debug(f"九色鹿技能差值{gap}")
@@ -5506,6 +5529,8 @@ class BaseSchedulerSolver(
                         tasks.insert(0, "select")
                         reset_scan = True
                 elif scene == Scene.FACTORY_FORMULA:
+                    if tasks[0] == "open_formula":
+                        tasks[0] = "select"
                     if tasks[0] in ["enter", "process"]:
                         self.back()
                     else:
