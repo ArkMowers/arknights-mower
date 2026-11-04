@@ -147,7 +147,7 @@ def maa_solver(scheduler, monkeypatch):
         "release_maa",
         "report_maa_progress",
         "maa_stop",
-        "restore_maa_theme",
+        "append_maa_theme_task",
         "rest_until_next_task",
     ):
         setattr(solver, name, MagicMock())

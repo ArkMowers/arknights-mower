@@ -268,7 +268,7 @@ def scheduler(monkeypatch, files, tmp_path):
         "scene_graph_navigation",
         "initialize_maa",
         "release_maa",
-        "restore_maa_theme",
+        "append_maa_theme_task",
         "rest_until_next_task",
         "maa_stop",
         "_idle_sleep",
@@ -582,7 +582,7 @@ def test_large_task_real_dispatch_has_no_daily_or_repeat_parameters(scheduler):
     assert len(params["copilot_list"]) == 1
     assert scheduler.last_execution["maa"] is None
     scheduler.rest_until_next_task.assert_called_once()
-    scheduler.restore_maa_theme.assert_not_called()
+    scheduler.append_maa_theme_task.assert_not_called()
 
 
 def test_scheduled_preemption_stops_without_theme_restoration_or_lost_task(
@@ -597,7 +597,7 @@ def test_scheduled_preemption_stops_without_theme_restoration_or_lost_task(
     )
     scheduler.maa_plan_solver()
     scheduler.maa_stop.assert_called_once_with()
-    scheduler.restore_maa_theme.assert_not_called()
+    scheduler.append_maa_theme_task.assert_not_called()
     assert scheduler.tasks[0] is original
 
 
@@ -686,7 +686,7 @@ def test_mower_stop_closes_game_and_keeps_completed_queue_items(scheduler, monke
     assert scheduler.maa_copilot_progress["next"] == 1
     scheduler.device.exit_after_task_stop.assert_called_once_with()
     scheduler.maa_stop.assert_called_once_with()
-    scheduler.restore_maa_theme.assert_not_called()
+    scheduler.append_maa_theme_task.assert_not_called()
     scheduler.rest_until_next_task.assert_not_called()
     scheduler.sleep.assert_not_called()
 

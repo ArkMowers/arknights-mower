@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 import yaml
@@ -212,6 +212,39 @@ def test_stale_completion_cannot_override_later_choices(
     assert manager.get_active_plan_key() == {"time": "常规", "manual": "其他"}.get(
         change, "活动"
     )
+
+
+def test_daily_then_shop_restores_theme_only_in_daily_queue(
+    scheduler, navigation, manager, monkeypatch
+):
+    setup_shop(scheduler)
+    conf = base_schedule.config.conf
+    conf.maa_restore_theme_enable = True
+    conf.maa_restore_theme = "夜间"
+    scheduler.MAA.get_version.return_value = "v6.17.3"
+    monkeypatch.setattr(
+        scheduler,
+        "append_maa_theme_task",
+        base_schedule.BaseSchedulerSolver.append_maa_theme_task.__get__(scheduler),
+    )
+    monkeypatch.setattr(EventShopNavigation, "run", MagicMock(return_value=True))
+    order = MagicMock()
+    order.attach_mock(scheduler.MAA.append_task, "append")
+    order.attach_mock(scheduler.MAA.start, "start")
+    scheduler.MAA.start.return_value = True
+    scheduler.maa_plan_solver()
+    assert [entry.args[0] for entry in scheduler.MAA.append_task.call_args_list] == [
+        "StartUp",
+        "Award",
+        "SwitchTheme",
+        "Custom",
+    ]
+    assert order.mock_calls[2:4] == [
+        call.append("SwitchTheme", {"themes": ["夜间"]}),
+        call.start(),
+    ]
+    assert order.mock_calls[-1] == call.start()
+    assert scheduler.MAA.start.call_count == 2
 
 
 @pytest.mark.parametrize("ready,expired", [(False, False), (True, True)])

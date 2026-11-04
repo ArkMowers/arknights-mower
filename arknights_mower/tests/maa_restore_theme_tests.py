@@ -10,7 +10,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
-from arknights_mower.utils.recognize import Recognizer, Scene  # noqa: E402
+from arknights_mower.utils.recognize import Recognizer  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 
@@ -45,68 +45,109 @@ def test_config_defaults_and_roundtrip():
     assert restored.maa_restore_theme == "夜间"
 
 
+@pytest.mark.parametrize("mode", ["daily", "single", "manual"])
+def test_real_daily_queue_ends_with_theme_and_starts_once(solver, monkeypatch, mode):
+    setup_plan(solver, monkeypatch)
+    monkeypatch.setattr(
+        solver,
+        "append_maa_theme_task",
+        base_schedule.BaseSchedulerSolver.append_maa_theme_task.__get__(solver),
+    )
+    monkeypatch.setattr(
+        solver,
+        "append_maa_task",
+        base_schedule.BaseSchedulerSolver.append_maa_task.__get__(solver),
+    )
+    conf = base_schedule.config.conf
+    conf.stage_plan_enable = False
+    conf.maa_mall_enable = False
+    conf.maa_credit_fight = False
+    conf.visit_friend_enable = False
+    conf.maa_mail = True
+    solver._maa_daily_done = MagicMock(return_value=False)
+    solver._remember_maa_daily_task = MagicMock()
+    solver.find_next_task = MagicMock(return_value=solver.tasks[0])
+    maa = solver.MAA
+    order = MagicMock()
+    order.attach_mock(maa.append_task, "append")
+    order.attach_mock(maa.start, "start")
+    assert (
+        solver.maa_plan_solver(
+            "All" if mode == "daily" else ["StartUp", "Award"],
+            one_time=mode == "single",
+            manual=mode == "manual",
+        )
+        is True
+    )
+    assert [entry.args[0] for entry in maa.append_task.call_args_list] == [
+        "StartUp",
+        "Award",
+        "SwitchTheme",
+    ]
+    maa.start.assert_called_once()
+    assert order.mock_calls[-2:] == [
+        call.append("SwitchTheme", {"themes": ["夜间"]}),
+        call.start(),
+    ]
+
+
 @pytest.mark.parametrize("version", ["v6.17.3", "6.17.4", "v6.18.0-beta.1"])
-def test_supported_core_clears_queue_and_restores_one_theme(solver, version):
+def test_supported_core_appends_without_starting_or_clearing_queue(solver, version):
     solver.MAA.get_version.return_value = version
-    solver.recog.scene = solver.recog.last_scene = Scene.INDEX
-    solver.recog.last_scene_time = datetime.now() - timedelta(hours=1)
-    solver.restore_maa_theme()
+    solver.append_maa_theme_task()
     assert solver.MAA.method_calls == [
         call.get_version(),
-        call.stop(),
         call.append_task("SwitchTheme", {"themes": ["夜间"]}),
-        call.start(),
-        call.running(),
-        call.stop(),
     ]
-    assert solver.recog.last_scene is None
-    solver.recog.scene = Scene.INDEX
-    assert solver.recog.get_scene() == Scene.INDEX
-    solver.device.exit.assert_not_called()
 
 
 @pytest.mark.parametrize("version", ["v6.17.2", "v6.17.3-beta.1", "DEBUG VERSION", ""])
 def test_old_or_unverifiable_core_skips_restore(solver, version):
     solver.MAA.get_version.return_value = version
-    solver.restore_maa_theme()
+    solver.append_maa_theme_task()
     solver.MAA.append_task.assert_not_called()
     solver.MAA.stop.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "reason", ["disabled", "empty", "stopped", "mower_stopped", "urgent"]
-)
-def test_skip_conditions_do_not_start_a_task(solver, reason):
+@pytest.mark.parametrize("reason", ["disabled", "empty", "stopped", "mower_stopped"])
+def test_skip_conditions_do_not_append_a_task(solver, reason):
     if reason == "disabled":
         base_schedule.config.conf.maa_restore_theme_enable = False
     elif reason == "empty":
         base_schedule.config.conf.maa_restore_theme = "  "
     elif reason == "stopped":
         base_schedule.config.stop_maa.set()
-    elif reason == "mower_stopped":
-        base_schedule.config.stop_mower.set()
     else:
-        solver.tasks[0].time = datetime.now() + timedelta(seconds=8)
-    solver.restore_maa_theme()
+        base_schedule.config.stop_mower.set()
+    solver.append_maa_theme_task()
     solver.MAA.append_task.assert_not_called()
     solver.MAA.start.assert_not_called()
 
 
-@pytest.mark.parametrize("failure", ["append", "start", "exception"])
-def test_restore_failure_is_contained(solver, failure):
+@pytest.mark.parametrize("failure", ["append", "exception"])
+def test_restore_submission_failure_keeps_daily_queue(solver, failure):
     if failure == "append":
         solver.MAA.append_task.return_value = 0
-    elif failure == "start":
-        solver.MAA.start.return_value = False
     else:
-        solver.MAA.running.side_effect = RuntimeError("core error")
-    solver.restore_maa_theme()
-    assert solver.MAA.stop.call_count == (1 if failure == "append" else 2)
+        solver.MAA.append_task.side_effect = RuntimeError("core error")
+    solver.append_maa_theme_task()
+    solver.MAA.stop.assert_not_called()
+    solver.MAA.start.assert_not_called()
 
 
-@pytest.mark.parametrize("reason", ["stop", "schedule", "timeout", "exit"])
-def test_restore_can_be_interrupted(solver, monkeypatch, reason):
-    solver.MAA.running.return_value = True
+@pytest.mark.parametrize("reason", ["stop", "mower_stop", "schedule", "single_timeout"])
+def test_daily_queue_with_theme_uses_existing_stop_boundary(
+    solver, monkeypatch, reason
+):
+    setup_plan(solver, monkeypatch)
+    solver.task = SchedulerTask(time=datetime.now())
+    monkeypatch.setattr(
+        solver,
+        "append_maa_theme_task",
+        base_schedule.BaseSchedulerSolver.append_maa_theme_task.__get__(solver),
+    )
+    maa = solver.MAA
+    maa.running.side_effect = [True, True, False]
     now = datetime.now()
 
     class Clock:
@@ -120,21 +161,27 @@ def test_restore_can_be_interrupted(solver, monkeypatch, reason):
         nonlocal now
         if reason == "stop":
             base_schedule.config.stop_maa.set()
+        elif reason == "mower_stop":
+            base_schedule.config.stop_mower.set()
         elif reason == "schedule":
             solver.tasks[0].time = now
-        elif reason == "timeout":
-            now += timedelta(seconds=121)
         else:
-            raise MowerExit
+            now += timedelta(minutes=6)
 
-    monkeypatch.setattr(base_schedule, "csleep", tick)
-    if reason == "exit":
+    solver.sleep.side_effect = tick
+    if reason == "mower_stop":
         with pytest.raises(MowerExit):
-            solver.restore_maa_theme()
+            solver.maa_plan_solver(manual=True)
     else:
-        solver.restore_maa_theme()
-    assert solver.MAA.stop.call_count == 2
-    assert solver.recog.last_scene is None
+        assert (
+            solver.maa_plan_solver(manual=True, one_time=reason == "single_timeout")
+            is False
+        )
+    maa.append_task.assert_called_once_with("SwitchTheme", {"themes": ["夜间"]})
+    maa.start.assert_called_once()
+    assert solver.maa_stop.call_count == (2 if reason == "mower_stop" else 1)
+    assert solver.last_execution["maa"] is None
+    assert solver.MAA is None
 
 
 def setup_plan(solver, monkeypatch):
@@ -147,7 +194,7 @@ def setup_plan(solver, monkeypatch):
         "scene_graph_navigation",
         "append_maa_task",
         "initialize_maa",
-        "restore_maa_theme",
+        "append_maa_theme_task",
         "rest_until_next_task",
         "sleep",
         "maa_stop",
@@ -157,15 +204,13 @@ def setup_plan(solver, monkeypatch):
 
 
 @pytest.mark.parametrize("one_time", [False, True])
-def test_daily_and_single_run_restore_after_work_before_idle(
-    solver, monkeypatch, one_time
-):
+def test_daily_and_single_run_queue_theme_before_start(solver, monkeypatch, one_time):
     setup_plan(solver, monkeypatch)
     solver.find_next_task = MagicMock(return_value=solver.tasks[0])
     order = MagicMock()
     order.attach_mock(solver.append_maa_task, "append")
     order.attach_mock(solver.MAA.start, "start")
-    order.attach_mock(solver.restore_maa_theme, "restore")
+    order.attach_mock(solver.append_maa_theme_task, "restore")
     order.attach_mock(solver.rest_until_next_task, "idle")
     solver.maa_plan_solver(one_time=one_time)
     assert order.mock_calls == [
@@ -173,18 +218,20 @@ def test_daily_and_single_run_restore_after_work_before_idle(
         call.append("Fight"),
         call.append("Mall"),
         call.append("Award"),
-        call.start(),
         call.restore(),
+        call.start(),
         call.idle(),
     ]
 
 
-@pytest.mark.parametrize("reason", ["not_due", "hard_stop", "error"])
-def test_no_restore_without_completed_daily_work(solver, monkeypatch, reason):
+@pytest.mark.parametrize("reason", ["not_due", "urgent", "error"])
+def test_no_theme_queue_when_daily_run_is_skipped_or_initialization_fails(
+    solver, monkeypatch, reason
+):
     setup_plan(solver, monkeypatch)
     if reason == "not_due":
         solver.last_execution["maa"] = datetime.now()
-    elif reason == "hard_stop":
+    elif reason == "urgent":
         solver.MAA.running.side_effect = [True, False]
         solver.tasks[0].time = datetime.now() + timedelta(minutes=2)
     else:
@@ -192,7 +239,7 @@ def test_no_restore_without_completed_daily_work(solver, monkeypatch, reason):
         solver._idle_sleep = MagicMock()
         monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
     solver.maa_plan_solver()
-    solver.restore_maa_theme.assert_not_called()
+    solver.append_maa_theme_task.assert_not_called()
 
 
 @pytest.mark.parametrize("ended_early", [False, True])
@@ -203,7 +250,7 @@ def test_long_task_never_restores_theme_after_stop_or_core_completion(
     base_schedule.config.conf.maa_rg_enable = 1
     base_schedule.config.conf.maa_rg_theme = "BlackFlow"
     maa = solver.MAA
-    maa.running.side_effect = [False, False] if ended_early else [False, True]
+    maa.running.side_effect = [False] if ended_early else [True]
     solver.initialize_maa.side_effect = lambda: setattr(solver, "MAA", maa)
     monkeypatch.setattr(
         base_schedule,
@@ -215,14 +262,14 @@ def test_long_task_never_restores_theme_after_stop_or_core_completion(
     order = MagicMock()
     order.attach_mock(maa.append_task, "append")
     order.attach_mock(solver.maa_stop, "stop")
-    order.attach_mock(solver.restore_maa_theme, "restore")
+    order.attach_mock(solver.append_maa_theme_task, "restore")
     order.attach_mock(solver.rest_until_next_task, "idle")
-    solver.maa_plan_solver()
+    solver.maa_plan_solver([])
     assert order.mock_calls[0].args[0] == "Roguelike"
     assert order.mock_calls[1:] == (
         [call.idle()] if ended_early else [call.stop(), call.idle()]
     )
-    solver.restore_maa_theme.assert_not_called()
+    solver.append_maa_theme_task.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -237,6 +284,27 @@ def test_native_large_task_does_not_inherit_daily_theme_restore(
     native = MagicMock()
     monkeypatch.setattr(base_schedule, executor, MagicMock(return_value=native))
     solver.task = SchedulerTask(time=datetime.now())
-    solver.maa_plan_solver(["Fight"], manual=True, long_task=kind)
+    solver.maa_plan_solver([], manual=True, long_task=kind)
     native.run.assert_called_once()
-    solver.restore_maa_theme.assert_not_called()
+    solver.append_maa_theme_task.assert_not_called()
+
+
+def test_daily_theme_precedes_following_large_task_without_restore_after_it(
+    solver, monkeypatch
+):
+    setup_plan(solver, monkeypatch)
+    monkeypatch.setattr(
+        solver,
+        "append_maa_theme_task",
+        base_schedule.BaseSchedulerSolver.append_maa_theme_task.__get__(solver),
+    )
+    base_schedule.config.conf.maa_rg_enable = 1
+    base_schedule.config.conf.maa_rg_theme = "BlackFlow"
+    maa = solver.MAA
+    solver.initialize_maa.side_effect = lambda: setattr(solver, "MAA", maa)
+    solver.maa_plan_solver()
+    assert [entry.args[0] for entry in maa.append_task.call_args_list] == [
+        "SwitchTheme",
+        "Roguelike",
+    ]
+    assert maa.start.call_count == 2

@@ -34,7 +34,7 @@ def dispatch(monkeypatch, tmp_path):
         "release_maa",
         "rest_until_next_task",
         "to_reclamation",
-        "restore_maa_theme",
+        "append_maa_theme_task",
     ):
         monkeypatch.setattr(solver, method, MagicMock())
     monkeypatch.setattr(solver, "to_sss", MagicMock(return_value=False))

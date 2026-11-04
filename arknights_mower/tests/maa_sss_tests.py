@@ -231,7 +231,7 @@ def scheduler(monkeypatch, storage):
         "back_to_index",
         "initialize_maa",
         "release_maa",
-        "restore_maa_theme",
+        "append_maa_theme_task",
         "rest_until_next_task",
         "maa_stop",
         "_idle_sleep",

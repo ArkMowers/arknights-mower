@@ -151,6 +151,6 @@ def test_large_task_does_not_restore_theme_even_when_enabled(
     monkeypatch.setattr(base_schedule, "csleep", tick)
     scheduler.maa_plan_solver([])
     scheduler.MAA.start.assert_called_once()
-    scheduler.restore_maa_theme.assert_not_called()
+    scheduler.append_maa_theme_task.assert_not_called()
     if preempted:
         scheduler.maa_stop.assert_called_once()

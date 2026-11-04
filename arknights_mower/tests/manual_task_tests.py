@@ -239,7 +239,7 @@ def actual_maa(manual):
     solver.scene_graph_navigation = Mock()
     solver.scene = Mock(return_value=manual.module.Scene.TERMINAL_MAIN)
     solver.rest_until_next_task = Mock()
-    solver.restore_maa_theme = Mock()
+    solver.append_maa_theme_task = Mock()
     solver.to_reclamation = Mock()
     solver.stages = []
     solver.local_operation_followup_time = None

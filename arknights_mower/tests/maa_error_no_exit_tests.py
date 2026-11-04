@@ -306,6 +306,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
             maa_rg_sleep_min="12:00",
             maa_rg_sleep_max="12:00",
             maa_rg_theme="Sami",
+            maa_restore_theme_enable=False,
             rogue=SimpleNamespace(
                 squad="",
                 roles="",
