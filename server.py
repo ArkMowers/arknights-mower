@@ -1809,6 +1809,7 @@ def read_depot():
 
 
 @app.route("/depot/history")
+@require_token
 def depot_history():
     """仓库快照序列，供仓库页做环比与趋势。
 

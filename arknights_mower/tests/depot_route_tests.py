@@ -1,11 +1,36 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+
+import pytest
 
 import server
 from arknights_mower.utils import depot
 from arknights_mower.utils import resource_pkg as rp
+
+
+@pytest.mark.parametrize(
+    "path,reader",
+    [("/depot/readdepot", "读取仓库"), ("/depot/history", "读取仓库历史")],
+)
+@pytest.mark.parametrize("method", ["get", "head"])
+@pytest.mark.parametrize("token", [None, "wrong", "current-instance"])
+def test_depot_inventory_requires_token_before_reading(
+    monkeypatch, tmp_path, path, reader, method, token
+):
+    monkeypatch.setattr(server.app, "token", "current-instance", raising=False)
+    monkeypatch.setattr(server, "get_path", lambda _: tmp_path / "absent")
+    read = Mock(return_value=[])
+    monkeypatch.setattr(depot, reader, read)
+    headers = {} if token is None else {"token": token}
+
+    with getattr(server.app.test_client(), method)(path, headers=headers) as response:
+        assert response.status_code == (200 if token == "current-instance" else 403)
+    if token == "current-instance":
+        read.assert_called_once()
+    else:
+        read.assert_not_called()
 
 
 class DepotRouteTests(unittest.TestCase):

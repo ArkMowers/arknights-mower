@@ -131,8 +131,7 @@ export function flattenItems(categories) {
     if (!items || typeof items !== 'object') continue
     const tier = tierOf(categoryName)
     for (const [name, data] of Object.entries(items)) {
-      // 过滤信物类物品，不予在仓库中展示
-      if (isTokenItem(name)) continue
+      if (isTokenItem(name) && !(Number(data?.number ?? 0) > 0)) continue
       // 同名条目理论上归属唯一分类；真出现重复时保留首个，避免 grid key 冲突。
       if (used.has(name)) continue
       used.set(name, true)

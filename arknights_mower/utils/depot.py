@@ -15,15 +15,6 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 
-def 是信物(name):
-    """信物是升星/潜能的凭证，不是可消耗的仓库物资，页面与历史对比都不展示。
-
-    这个判断原先在云端快照、当前库存、历史快照里各写了一遍字符串包含，
-    少改一处就会出现"页面上没有、触发条件里还有"的错位，统一从这里取。
-    """
-    return isinstance(name, str) and "信物" in name
-
-
 def cloud_inventory_snapshot(payload):
     """Only a successful sync made by this version can replace local crafting counts."""
     observed_at = payload.get("_mower_inventory_observed_at", 0)
@@ -39,11 +30,11 @@ def cloud_inventory_snapshot(payload):
     counts = {
         name: 0
         for name, entry in key_mapping.items()
-        if name == entry[2] and entry[3] == "MATERIAL" and not 是信物(name)
+        if name == entry[2] and entry[3] == "MATERIAL"
     }
     for item in items:
         entry = key_mapping.get(item["id"])
-        if entry is not None and not 是信物(entry[2]):
+        if entry is not None:
             counts[entry[2]] = int(item["count"])
     return counts, observed_at
 
@@ -70,12 +61,7 @@ def restore_cached_inventory():
         if not usable_time(timestamp):
             return
         for name, count in counts.items():
-            if (
-                name not in key_mapping
-                or 是信物(name)
-                or type(count) is not int
-                or count < 0
-            ):
+            if name not in key_mapping or type(count) is not int or count < 0:
                 continue
             name = key_mapping[name][2]
             if name not in latest or timestamp > latest[name][0]:
@@ -283,9 +269,7 @@ def 记录合并快照(at, 物品):
     path = _合并历史路径()
     counts = {}
     for name, count in 物品.items():
-        # 信物不进历史：调用方（读取仓库）已经筛过一遍，这里再挡一次，免得以后换个
-        # 调用点就把信物写进文件，回头还要靠读取端兜。
-        if not isinstance(name, str) or 是信物(name):
+        if not isinstance(name, str):
             continue
         try:
             number = int(count)
@@ -428,11 +412,7 @@ def 读取仓库(记录快照时刻=None):
         cloud_counts=cloud_counts,
         cloud_at=cloud_at,
     )
-    新物品 = {
-        name: count
-        for name, count in db_dict.items()
-        if name in key_mapping and not 是信物(name)
-    }
+    新物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
     新物品json = {key_mapping[name][0]: count for name, count in 新物品.items()}
     sort = {
         "A常用": [
@@ -591,8 +571,7 @@ def 读取仓库(记录快照时刻=None):
             "icon": "寻访凭证",
         }
 
-    # 新物品 是页面看到的同一份合并库存（森空岛 + 数据库 + 本次扫描，已去掉信物，
-    # 也没掺派生条目），直接拿它当"完整库存快照"的内容，两边口径不会分叉。
+    # 合并库存包含信物，不包含页面派生条目。
     if 记录快照时刻 is not None:
         记录合并快照(记录快照时刻, 新物品)
 
@@ -681,7 +660,7 @@ def 读取仓库历史(limit=60):
         记录 = 逐条[at]
         items = {}
         for name, count in 记录["items"].items():
-            if not isinstance(name, str) or 是信物(name):
+            if not isinstance(name, str):
                 continue
             try:
                 # 与 读取仓库 一致：取整，反向解析出的浮点值（"1.2万"）向下取整。
