@@ -1,6 +1,7 @@
 """换人返回后的新帧须确认地图，再继续同房跑单。"""
 
 import copy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -105,6 +106,188 @@ def test_restored_roster_finishes_after_room_exit_recovery(
     solver.accept_order.assert_not_called()
     solver.drone.assert_not_called()
     solver.get_order_remaining_time.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "sample",
+    [
+        "captain_central_20261103",
+        "captain_central_20261104",
+        "captain_manufacture_20261104",
+        "zhanbai_manufacture_20261103",
+        "zhanbai_central_20261104",
+    ],
+)
+def test_matching_roster_waits_for_entry_motion_before_its_only_back(
+    solver, monkeypatch, sample, caplog
+):
+    task, state, _ = restoration_exit_screen(solver, monkeypatch)
+    solver.__dict__.pop("_wait_for_room_entry_before_exit", None)
+    path = Path(__file__).parent / "fixtures/room_entry_exit/ceiling_frames.npz"
+    with np.load(path) as archive:
+        frames = archive[sample]
+    observed = []
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+
+    def capture():
+        index = min(len(observed), len(frames) - 1)
+        solver.recog.gray[120:300, 230:1200] = frames[index]
+        observed.append(index)
+
+    def back(*args, **kwargs):
+        if not args or observed and observed[-1] == 2:
+            state["page"] = "map"
+
+    solver.recog.update.side_effect = capture
+    solver.detect_room = MagicMock(return_value=ROOM)
+    solver.back.side_effect = back
+
+    solver.agent_arrange(task.plan)
+
+    assert observed[:3] == [0, 1, 2]
+    solver.back.assert_called_once_with(0.5)
+    assert state["page"] == "map" and task.plan == {}
+    assert not any(record.levelname == "ERROR" for record in caplog.records)
+    solver.choose_agent.assert_not_called()
+
+
+@pytest.mark.parametrize("room", [ROOM, "central"])
+@pytest.mark.parametrize("blocked_by", ["motion", "other_room", "popup"])
+def test_unconfirmed_entry_keeps_roster_and_sends_no_back(
+    solver, monkeypatch, room, blocked_by
+):
+    task, state, _ = restoration_exit_screen(solver, monkeypatch)
+    solver.__dict__.pop("_wait_for_room_entry_before_exit", None)
+    plan = {room: ORIGINAL.copy()}
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver.detect_room = MagicMock(
+        return_value="room_9_9" if blocked_by == "other_room" else room
+    )
+    solver.scene.return_value = (
+        Scene.DOUBLE_CONFIRM if blocked_by == "popup" else Scene.INFRA_DETAILS
+    )
+    solver.scene.side_effect = None
+
+    def capture():
+        if blocked_by == "motion":
+            solver.recog.gray[120:300, 230:1200] ^= 255
+
+    solver.recog.update.side_effect = capture
+    original_time = task.time
+
+    with pytest.raises(RecognizeError, match="进场动画"):
+        solver._complete_room_arrangement({}, room, plan, settle_entry=True)
+
+    solver.back.assert_not_called()
+    assert plan == {room: ORIGINAL} and task.time == original_time
+    assert task.run_order_original_roster == {ROOM: ORIGINAL}
+    assert task.run_order_restore_pending
+    assert state["clock"] == pytest.approx(0.25)
+
+
+def test_entry_and_exit_observations_share_one_transition_deadline(solver, monkeypatch):
+    task, state, _ = restoration_exit_screen(solver, monkeypatch)
+    solver.__dict__.pop("_wait_for_room_entry_before_exit", None)
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver.detect_room = MagicMock(return_value=ROOM)
+    solver.scene.side_effect = None
+    solver.scene.return_value = Scene.INFRA_DETAILS
+    solver._selection_profile_snapshot.transition_timeout = 1
+    solver.back.side_effect = lambda *args: state.update(clock=state["clock"] + 0.5)
+
+    with pytest.raises(RecognizeError, match="返回基建全局视角"):
+        solver._complete_room_arrangement({}, ROOM, task.plan, settle_entry=True)
+
+    solver.back.assert_called_once_with(0.5)
+    assert state["clock"] == pytest.approx(1)
+    assert task.plan == {ROOM: ORIGINAL}
+    assert task.run_order_restore_pending
+
+
+@pytest.mark.parametrize("interruption", ["other_room", "popup"])
+def test_entry_stability_restarts_after_another_room_or_popup(
+    solver, monkeypatch, interruption
+):
+    _, state, _ = restoration_exit_screen(solver, monkeypatch)
+    solver.__dict__.pop("_wait_for_room_entry_before_exit", None)
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver.scene.side_effect = (
+        [
+            Scene.INFRA_DETAILS,
+            Scene.DOUBLE_CONFIRM,
+            Scene.INFRA_DETAILS,
+            Scene.INFRA_DETAILS,
+        ]
+        if interruption == "popup"
+        else None
+    )
+    solver.scene.return_value = Scene.INFRA_DETAILS
+    solver.detect_room = MagicMock(
+        side_effect=[ROOM, "room_9_9", ROOM, ROOM]
+        if interruption == "other_room"
+        else None,
+        return_value=ROOM,
+    )
+
+    assert solver._wait_for_room_entry_before_exit(ROOM, deadline=1)
+
+    assert solver.recog.update.call_count == 4
+    assert state["clock"] == pytest.approx(0.3)
+    solver.back.assert_not_called()
+
+
+def test_expired_entry_capture_cannot_send_back_after_stability_match(
+    solver, monkeypatch
+):
+    task, state, _ = restoration_exit_screen(solver, monkeypatch)
+    solver.__dict__.pop("_wait_for_room_entry_before_exit", None)
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver.scene.side_effect = None
+    solver.scene.return_value = Scene.INFRA_DETAILS
+    solver.detect_room = MagicMock(return_value=ROOM)
+    solver.recog.update.side_effect = lambda: state.update(clock=state["clock"] + 0.13)
+
+    with pytest.raises(RecognizeError, match="进场动画"):
+        solver._complete_room_arrangement({}, ROOM, task.plan, settle_entry=True)
+
+    solver.back.assert_not_called()
+    assert task.plan == {ROOM: ORIGINAL}
+    assert task.run_order_restore_pending
+
+
+@pytest.mark.parametrize("cancel_at", ["capture", "sleep"])
+def test_entry_observation_cancellation_preserves_roster_before_any_back(
+    solver, monkeypatch, cancel_at
+):
+    task, _, _ = restoration_exit_screen(solver, monkeypatch)
+    solver.__dict__.pop("_wait_for_room_entry_before_exit", None)
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver.detect_room = MagicMock(return_value=ROOM)
+    solver.scene.side_effect = None
+    solver.scene.return_value = Scene.INFRA_DETAILS
+    cancellation = MowerExit()
+    operation = solver.recog.update if cancel_at == "capture" else solver.sleep
+    operation.side_effect = cancellation
+
+    with pytest.raises(MowerExit) as raised:
+        solver._complete_room_arrangement({}, ROOM, task.plan, settle_entry=True)
+
+    assert raised.value is cancellation
+    solver.back.assert_not_called()
+    assert task.plan == {ROOM: ORIGINAL}
+    assert task.run_order_restore_pending
+
+
+def test_entry_observation_already_on_map_completes_without_back(solver, monkeypatch):
+    task, _, _ = restoration_exit_screen(solver, monkeypatch)
+    solver.__dict__.pop("_wait_for_room_entry_before_exit", None)
+    solver.scene.side_effect = None
+    solver.scene.return_value = Scene.INFRA_MAIN
+
+    solver._complete_room_arrangement({}, ROOM, task.plan, settle_entry=True)
+
+    solver.back.assert_not_called()
+    assert task.plan == {}
 
 
 def test_persistent_restoration_exit_failure_retains_original_task_with_a_bound(
