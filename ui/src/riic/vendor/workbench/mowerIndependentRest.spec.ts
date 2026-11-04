@@ -3,6 +3,50 @@ import {createDefaultWorkspace} from './defaults'
 import {validateRosterWorkspace} from './validate'
 import {exportMowerJson,importMowerJson} from './compat/mowerJson'
 describe('alpha shared group validation', () => {
+  const uniqueRestingGroup = () => {
+    const ws = createDefaultWorkspace()
+    ws.mainPlan.facilities.dormitory_4.slots = Array.from({length: 5}, () => ({occupant: {kind: 'free' as const}, groupId: null, replacements: []}))
+    ws.mainPlan.facilities.room_1_1.slots[0] = {occupant: {kind: 'operator', operatorId: 'char_123_fang'}, groupId: '红松', replacements: ['char_192_falco'], groupBindings: [{groupId: '工作换位', replacements: ['char_192_falco']}]}
+    ws.mainPlan.facilities.room_1_2.slots[0] = {occupant: {kind: 'operator', operatorId: 'char_240_wyvern'}, groupId: '工作换位', replacements: ['char_123_fang']}
+    return ws
+  }
+
+  it('accepts a group whose only mood anchor has one normal resting binding', () => {
+    const ws = uniqueRestingGroup(), before = structuredClone(ws)
+    expect(validateRosterWorkspace(ws).criticalErrors).toEqual([])
+    expect(ws).toEqual(before)
+    ws.compatibility.backupPlans = [{name: '正常下班组', trigger: 'True', plan: {room_1_1: JSON.parse(exportMowerJson(ws)).plan1.room_1_1}}]
+    expect(validateRosterWorkspace(ws).criticalErrors).toEqual([])
+  })
+
+  it('counts empty bindings and excludes standby primaries from group mood anchors', () => {
+    const ws = uniqueRestingGroup(), slot = ws.mainPlan.facilities.room_1_1.slots[0]!
+    slot.groupBindings!.push({groupId: '', replacements: ['char_500_noirc']})
+    expect(validateRosterWorkspace(ws).criticalErrors.some(e => e.message.startsWith('红松 缺少决定上下班'))).toBe(true)
+    slot.groupBindings!.pop()
+    ws.mainPlan.conf.resting_standby = ['char_123_fang']
+    expect(validateRosterWorkspace(ws).criticalErrors.some(e => e.message.startsWith('红松 缺少决定上下班'))).toBe(true)
+  })
+
+  it('requires a normal resting binding unless the shared primary works at zero mood', () => {
+    const ws = uniqueRestingGroup()
+    ws.mainPlan.facilities.room_2_1.slots[0] = {occupant: {kind: 'operator', operatorId: 'char_286_cast3'}, groupId: '红松', replacements: ['char_123_fang']}
+    expect(validateRosterWorkspace(ws).criticalErrors.some(e => e.message.includes('至少需要一个正常下班组'))).toBe(true)
+    ws.mainPlan.conf.workaholic = ['char_123_fang']
+    expect(validateRosterWorkspace(ws).criticalErrors).toEqual([])
+  })
+
+  it('allows a dorm without ordinary Free slots while checking group-managed recovery capacity', () => {
+    const ws = createDefaultWorkspace()
+    const names = ['char_151_myrtle', 'char_147_shining', 'char_436_whispr', 'char_4042_lumen', 'char_131_flamebr']
+    ws.mainPlan.facilities.dormitory_4.slots = names.map(operatorId => ({occupant: {kind: 'operator' as const, operatorId}, groupId: null, replacements: []}))
+    expect(validateRosterWorkspace(ws).criticalErrors).toEqual([])
+    ws.mainPlan.facilities.central.slots[0] = {occupant: {kind: 'operator', operatorId: 'char_123_fang'}, groupId: 'g', replacements: ['char_240_wyvern']}
+    expect(validateRosterWorkspace(ws).criticalErrors.some(e => e.message.includes('床位不足'))).toBe(true)
+    Object.assign(ws.mainPlan.facilities.dormitory_4.slots[0]!, {groupId: 'g', replacements: ['Free']})
+    expect(validateRosterWorkspace(ws).criticalErrors).toEqual([])
+  })
+
   it('allows same-group working primaries as replacements but rejects self and foreign groups', () => {
     const ws = createDefaultWorkspace()
     ws.mainPlan.facilities.dormitory_4.slots = Array.from({length: 5}, () => ({occupant: {kind: 'free' as const}, groupId: null, replacements: []}))

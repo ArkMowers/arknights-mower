@@ -44,8 +44,8 @@ function snapshot(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,roo
 }
 
 /** Retain remaining work and its deadline; only the dispatch view is suspended. */
-export function retainMowerFailedTask(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,reason:string,rooms=Object.keys(task.plan)):void {
- task.executionFailure={reason,rooms:[...rooms],snapshot:snapshot(state,data,task,rooms)}
+export function retainMowerFailedTask(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,reason:string,rooms=Object.keys(task.plan),kind?:'resource-wait'):void {
+ task.executionFailure={...(kind?{kind}:{}),reason,rooms:[...rooms],snapshot:snapshot(state,data,task,rooms)}
 }
 
 /** Clock/prediction changes cannot admit an exhausted failure. */

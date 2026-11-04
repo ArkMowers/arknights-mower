@@ -384,11 +384,11 @@ def test_failed_plan_save_restores_plan_dorm_order(monkeypatch, tmp_path):
     assert config.plan.conf.dorm_order == ",".join(reversed(DEFAULT))
 
 
-@pytest.mark.parametrize("fixed", [0, 1, 2, 3, 4])
+@pytest.mark.parametrize("fixed", [0, 1, 2, 3, 4, 5])
 def test_dorm_capacity_uses_actual_free_slots(saved, fixed):
     from arknights_mower.utils.operators import Operator
 
-    names = ["杜林", "琴柳", "红", "陈"][:fixed]
+    names = ["杜林", "琴柳", "红", "陈", "星源"][:fixed]
     data = Operators(
         {
             "default_plan": Plan(
@@ -406,8 +406,8 @@ def test_dorm_capacity_uses_actual_free_slots(saved, fixed):
     assert [bed.position for bed in data.dorm] == [
         ("dormitory_1", index) for index in range(fixed, 5)
     ]
-    assert data.available_free("high") == 1
-    assert data.available_free("low") == 4 - fixed
+    assert data.available_free("high") == int(fixed < 5)
+    assert data.available_free("low") == max(0, 4 - fixed)
     assigned = set()
     for name in ["银灰", "黑角", "芬", "翎羽", "米格鲁"][: 5 - fixed]:
         data.add(Operator(name, ""))
@@ -420,12 +420,15 @@ def test_dorm_capacity_uses_actual_free_slots(saved, fixed):
     assert data.assign_dorm("斑点") is None
 
 
-def test_dorm_without_free_slot_still_rejected(saved):
+def test_dorm_without_free_slot_has_no_ordinary_recovery_capacity(saved):
     data = operators()
     data.plan["dormitory_1"] = [
         Room(name, "", []) for name in ["冰酿", "闪灵", "至简", "红", "陈"]
     ]
-    assert data.init_and_validate() == "宿舍必须安排至少一个Free"
+    assert data.init_and_validate() is None
+    assert [bed.position for bed in data.dorm] == [
+        ("dormitory_2", index) for index in (2, 3, 4)
+    ]
 
 
 def test_backup_can_change_between_zero_one_and_three_managers(saved):

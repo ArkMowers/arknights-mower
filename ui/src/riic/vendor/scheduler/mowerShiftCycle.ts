@@ -10,7 +10,7 @@ import {inheritMowerBackupRefreshRules} from './mowerBackupRefresh'
 import {normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts,mowerSameGroupPrimaryReplacement} from './mowerSharedGroups'
 // Complete in-memory arrangement replay, Mower alpha b2d9ac8 (MIT).
 import type {MowerSchedulingData} from './mowerSchedulingData'
-import {MowerShiftPreviewError} from './mowerNativeErrors'
+import {MowerResourceWaitError,MowerShiftPreviewError} from './mowerNativeErrors'
 import {simplifyMowerAlphaDormFill} from './mowerAlphaTaskProtection'
 import {mowerAlphaFillPlan,mowerDormTaskReservations} from './mowerAlphaCandidates'
 export {mowerAlphaFillPlan} from './mowerAlphaCandidates'
@@ -165,7 +165,7 @@ export function prepareMowerShiftBackup(data:MowerSchedulingData,task:MowerTask,
   mergeMowerShiftTransition(merged,transition,simulation)
   const effective=model.swap(projectMowerArrangements(data,[]),conditions,selection.groupId),reserved=mowerDormTaskReservations(effective,finalPending)
   const completed=completeMowerBackupDepartureRecovery(effective,merged,entrySlots,reserved.slots,finalPending,false,true)
-  if(!completed)throw new MowerShiftPreviewError('副表下班干员尚无可用恢复床位，保留原任务')
+  if(!completed)throw new MowerResourceWaitError('副表下班干员尚无可用恢复床位，保留原任务')
   for(const [room,row] of Object.entries(completed))if(room.startsWith('dorm'))row.forEach((name,index)=>{
    const op=effective.operators[name]
    if(!op||!entrySlots.has(alphaPosition(op.room,op.index))||!op.replacement.includes(merged[op.room]?.[op.index]??'')||merged[room]?.[index]===name)return
@@ -283,9 +283,9 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
   step.backupExplicitSlots.forEach(slot=>explicitSlots.add(slot))
   const reserved=mowerDormTaskReservations(simulation,effectivePending.filter(t=>t.type!==T.SHIFT_ON||t.backupShiftActive||t.productShiftLocked||t.dormRecoveryRestore.length))
   const completed=completeMowerBackupDepartureRecovery(simulation,step.plan,explicitSlots,reserved.slots,effectivePending,false,true)
-  if(!completed)throw new MowerShiftPreviewError('副表下班干员尚无可用恢复床位，保留原任务')
+  if(!completed)throw new MowerResourceWaitError('副表下班干员尚无可用恢复床位，保留原任务')
   step.plan=planMowerDormIsolation(simulation,completed,new Set([...reserved.slots,...explicitSlots]),reserved.names)
-  if(!normalizeMowerSharedArrangement(simulation,step.plan,undefined,explicitSlots))throw new MowerShiftPreviewError('绑组共享替班冲突，保留原任务并等待岗位释放')
+  if(!normalizeMowerSharedArrangement(simulation,step.plan,undefined,explicitSlots))throw new MowerResourceWaitError('绑组共享替班冲突，保留原任务并等待岗位释放')
   let returnPlan=step.plan
   if(initialCorrection){
    returnPlan=explicitPlan(step.plan,explicitSlots)

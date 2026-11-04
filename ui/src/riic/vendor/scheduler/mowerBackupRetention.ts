@@ -1,12 +1,12 @@
 import {alphaPosition} from './mowerAlphaDorm'
 import {mowerDormTaskReservations} from './mowerAlphaCandidates'
 import {mowerAssignDormGroup} from './mowerDormAssignment'
-import {MowerShiftPreviewError} from './mowerNativeErrors'
+import {MowerResourceWaitError} from './mowerNativeErrors'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan} from './mowerTaskQueue'
 
-export class MowerBackupRetentionBlocked extends MowerShiftPreviewError {
+export class MowerBackupRetentionBlocked extends MowerResourceWaitError {
  constructor(readonly names:string[],readonly rooms:string[]){super('副表宿舍保留安排尚无可用床位，保留原任务')}
 }
 

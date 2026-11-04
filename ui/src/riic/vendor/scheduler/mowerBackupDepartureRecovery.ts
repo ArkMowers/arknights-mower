@@ -1,5 +1,5 @@
 import {isTradeRunOrderOperator} from '../domain/shiftRunPolicy'
-import {MowerShiftPreviewError} from './mowerNativeErrors'
+import {MowerResourceWaitError} from './mowerNativeErrors'
 import {mowerStandbyCandidates} from './mowerDormAssignment'
 import {mowerRestingBindingGroups,mowerSharedReplacements} from './mowerSharedGroups'
 import {mowerAssignDormGroup} from './mowerDormAssignment'
@@ -8,7 +8,7 @@ import {projectMowerArrangements} from './mowerObservations'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import type {MowerTask,MowerTaskPlan} from './mowerTaskQueue'
 
-export class MowerBackupRecoveryBlocked extends MowerShiftPreviewError {
+export class MowerBackupRecoveryBlocked extends MowerResourceWaitError {
  constructor(readonly names:string[],readonly projection:MowerSchedulingData,readonly explicitSlots:ReadonlySet<string>,readonly reservedSlots:ReadonlySet<string>){super('副表下班干员尚无可用恢复床位，保留原任务')}
 }
 
@@ -32,10 +32,16 @@ export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,pl
   if(primary.currentRoom===room&&primary.currentIndex===index||mowerCoveredRecoveryPending(data,primary))required.add(primary.name)
  }
  if(repairIdle)for(const op of Object.values(data.operators))if(!op.currentRoom&&mowerCoveredRecoveryPending(data,op)&&!projected.operators[op.name]!.currentRoom)required.add(op.name)
+ for(const op of Object.values(data.operators)){
+  if(!op.isResting()||!data.dynamicDormPosition(op.currentRoom,op.currentIndex,op.name)||projected.operators[op.name]?.currentRoom)continue
+  const target=plan[op.currentRoom]?.[op.currentIndex]
+  if(target&&target!=='Current'&&target!==op.name&&data.freeRoomExcluded(op.name))required.add(op.name)
+ }
  for(const name of displaced)if(!projected.operators[name]?.currentRoom)required.add(name)
  if(!required.size)return structuredClone(plan)
  const combined=structuredClone(plan)
- const admissions=mowerAssignDormGroup(projected,[...required],new Set([...required].map(name=>projected.operators[name]!.group).filter(Boolean)),undefined,{},new Set([...reservedSlots,...explicitSlots]))
+ const targets=Object.entries(plan).flatMap(([room,row])=>room.startsWith('dorm')?row.flatMap((name,index)=>!['Current','Free',''].includes(name)?[room+'\0'+index]:[]):[])
+ const admissions=mowerAssignDormGroup(projected,[...required],new Set([...required].map(name=>projected.operators[name]!.group).filter(Boolean)),undefined,{},new Set([...reservedSlots,...explicitSlots,...targets]))
  if(admissions===undefined){if(blockOnMissingBed)throw new MowerBackupRecoveryBlocked([...required],projected,new Set(explicitSlots),new Set(reservedSlots));return undefined}
  for(const bed of admissions){const [room,index]=bed.position;(combined[room]??=Array(projected.plan[room]!.length).fill('Current'))[index]=bed.name}
  const final=projectMowerArrangements(data,[combined]),optional=mowerStandbyCandidates(projected,[...required])

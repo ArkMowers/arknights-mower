@@ -54,6 +54,7 @@ describe('group transitions follow the physical arrangement lifecycle',()=>{
   settleRoster(state,rates)
   expect(source.queue.tasks).toContain(task)
   expect(task.executionFailure?.reason).toContain('共享替班冲突')
+  expect(task.executionFailure?.kind).toBe('resource-wait')
   expect(task.plan).toEqual(original)
   expect(state.occupants.room_1_1_0).toBe('A')
   expect(state.occupants.room_1_2_0).toBe('B')

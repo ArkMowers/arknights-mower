@@ -16,6 +16,11 @@ function returnTask(data:MowerSchedulingData){const queue=new MowerTaskQueue();p
 function releaseFull(data:MowerSchedulingData,name:string){const op=data.operators[name]!;data.dorms.find(b=>b.name===name)!.reset();op.currentRoom='';op.currentIndex=-1;op.mood=op.upperLimit;op.timeStampMicros=data.nowMicros;op.depletionRate=0}
 
 describe('strict grouped recovery in the alpha simulator',()=>{
+ it('does not use a nearly full standby resident as the ordinary group return clock',()=>{
+  const data=fixture([{name:'worker',hours:2},{name:'office',hours:.05,options:{mood:23.9,restingPriority:'standby'}}])
+  expect(data.isGroupShiftAnchor(data.operators.office!)).toBe(false)
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(2-8/60))
+ })
  it('does not restore an old gap requirement after actual return and temporary regrouping',()=>{
   const data=fixture([{name:'A',hours:1},{name:'B',hours:4}],true)
   expect(mowerGroupRecoveryDeadline(data,'G').requiredNames).toEqual(['A','B'])

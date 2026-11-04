@@ -778,8 +778,6 @@ class Operators:
                     added.append(dorm + str(_idx))
                     free_found = True
                     continue
-            if not free_found:
-                return "宿舍必须安排至少一个Free"
         # 稳定逻辑保留原先的“每间宿舍首张 Free 优先”排序。
         for dorm in dorm_names:
             for _idx, _dorm in enumerate(bed_plan[dorm]):

@@ -24,6 +24,24 @@ function fixture(beds=2){
  return {data,model,task,queue}
 }
 describe('backup departure recovery completion',()=>{
+ it.each([true,false])('keeps a retained resident housed when its shared fixed manager returns (vacancy=%s)',vacancy=>{
+  const operators={
+   A:new MowerOperatorState({name:'A',room:'room_1_1',index:0,group:'g',replacement:['R'],operatorType:'high',currentRoom:'dormitory_1',currentIndex:0,mood:24,timeStampMicros:0}),
+   R:new MowerOperatorState({name:'R',currentRoom:'room_1_1',currentIndex:0,mood:24,timeStampMicros:0}),
+   M:new MowerOperatorState({name:'M',room:'dormitory_1',index:0,group:'a',replacement:['Free'],groupBindings:[{group:'a',replacement:['Free']},{group:'b',replacement:['Free']}],operatorType:'high',mood:24,timeStampMicros:0}),
+  }
+  const data=new MowerSchedulingData({alpha:true,operators,plan:{room_1_1:['A'],dormitory_1:['M',...(vacancy?['Free']:[])]},dorms:[new MowerDormState(['dormitory_1',0],'A',undefined,true),...(vacancy?[new MowerDormState(['dormitory_1',1])]:[])],freeRoomExclusions:['A'],groupShiftState:{a:false,b:false,g:true}})
+  const plan={dormitory_1:['M',...(vacancy?['Current']:[])]},before=structuredClone(plan)
+  if(vacancy){
+   const completed=completeMowerBackupDepartureRecovery(data,plan,new Set(),new Set(),[],false,true)!
+   const projected=projectMowerArrangements(data,[completed])
+   expect(projected.currentOperator('dormitory_1',0)?.name).toBe('M')
+   expect(projected.currentOperator('dormitory_1',1)?.name).toBe('A')
+  }else expect(()=>completeMowerBackupDepartureRecovery(data,plan,new Set(),new Set(),[],false,true)).toThrow(MowerBackupRecoveryBlocked)
+  expect(plan).toEqual(before)
+  expect(data.currentOperator('dormitory_1',0)?.name).toBe('A')
+ })
+
  it('completes a self-deactivating explicit departure with a bed without departing the untouched peer',()=>{
   const {data,model,task,queue}=fixture()
   prepareMowerShiftCycle(data,task,queue,model)
