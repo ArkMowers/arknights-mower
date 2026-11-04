@@ -5728,19 +5728,20 @@ class BaseSchedulerSolver(
         self.reset_room_time(room)
 
     def _queue_missing_run_order_reads(self):
-        """换班等待或失败让出调度后，保留尚未读取订单的独立责任。"""
+        """补齐订单读取责任；初始化或维护尚未就绪时返回 False。"""
         if self._initial_mood_read_pending() or getattr(
             self, "_initial_staffing_pending", False
         ):
-            return
+            return False
         if getattr(self, "maintenance_entry_pending", False) or any(
             getattr(task, "maintenance_replacement_run", False) for task in self.tasks
         ):
-            return
+            return False
         self._sync_run_order_tasks()
         for room in self.op_data.run_order_rooms:
             if self._emergency_run_order_available(room):
                 self._queue_order_refresh(room)
+        return True
 
     def _room_mood_signature(self, room):
         return tuple(
@@ -5941,6 +5942,11 @@ class BaseSchedulerSolver(
         for order_room in self.op_data.run_order_rooms:
             if self._emergency_run_order_available(order_room):
                 self._queue_order_refresh(order_room)
+        self._read_pending_order_times(room)
+        return False
+
+    def _read_pending_order_times(self, room=None):
+        """消费可执行的订单读取任务，失败保留原任务并让出调度。"""
         refreshes = [
             refresh
             for refresh in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
@@ -5964,7 +5970,7 @@ class BaseSchedulerSolver(
             except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
             except Exception as e:
-                logger.warning("入驻后读取订单失败，保留独立刷新任务：%s", e)
+                logger.warning("读取订单失败，保留独立刷新任务：%s", e)
                 self._retain_failed_task(refresh, str(e), [refresh.meta_data])
                 self.back_to_infrastructure()
                 continue
@@ -5972,7 +5978,6 @@ class BaseSchedulerSolver(
                 self.tasks[:] = [task for task in self.tasks if task is not refresh]
         if observed_any:
             scheduling(self.tasks, op_data=self.op_data)
-        return False
 
     def _arrangement_room_budget(self, room, plan):
         operation = SchedulerTask(
