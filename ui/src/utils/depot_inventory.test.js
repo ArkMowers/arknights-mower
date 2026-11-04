@@ -170,13 +170,19 @@ describe('flattenItems', () => {
     expect(rows[0].tier).toBe('A')
   })
 
-  it('filters out token items from display', () => {
+  it('shows owned tokens and hides only unowned tokens', () => {
     const categories = {
       A常用: { 合成玉: item(600, 1) },
-      K未分类: { 阿米娅的信物: item(1, 3), 先锋皇家信物: item(4, 4), 纯金: item(50, 2) }
+      K未分类: {
+        阿米娅的信物: item(1, 3),
+        先锋皇家信物: item(4, 4),
+        'Lancet-2的信物': item(0, 5),
+        未知信物: {},
+        纯金: item(50, 2)
+      }
     }
     const rows = flattenItems(categories)
-    expect(rows.map((row) => row.name)).toEqual(['合成玉', '纯金'])
+    expect(rows.map((row) => row.name)).toEqual(['合成玉', '纯金', '阿米娅的信物', '先锋皇家信物'])
   })
 
   it('skips malformed buckets without throwing', () => {

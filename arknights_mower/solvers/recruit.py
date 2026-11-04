@@ -16,6 +16,7 @@ from arknights_mower.utils.email import recruit_rarity, recruit_template, send_m
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
 from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
@@ -277,6 +278,10 @@ class RecruitSolver(SceneGraphSolver):
                     self.get_recruit_time("minute"),
                 ]
 
+                if recruit_time[1] and now_time[0] != recruit_time[0]:
+                    self.choose_time(now_time[0], recruit_time[0], mode="hour")
+                    return
+
                 if now_time[1] != recruit_time[1]:
                     self.choose_time(now_time[1], recruit_time[1], mode="minute")
                     return
@@ -362,16 +367,30 @@ class RecruitSolver(SceneGraphSolver):
 
     def recruit_tags(self, tags):
         tem_res = self.recruit_cal(sorted(tags))
+        robot_choice = None
+        if (
+            config.conf.recruit_auto_robot
+            and "支援机械" in tags
+            and tem_res[3]
+            and not any(tem_res[level] for level in (4, 5, 6))
+        ):
+            robot_choice = self.unfinished_robot_choice(tem_res[1])
         recruit_cal_result = None
         recruit_result_level = -1
 
-        for index in self.recruit_order:
-            if tem_res[index]:
-                recruit_result_level = index
-                break
+        if robot_choice is not None:
+            recruit_result_level = 1
+            recruit_cal_result = [robot_choice]
+        else:
+            for index in self.recruit_order:
+                if tem_res[index]:
+                    recruit_result_level = index
+                    break
         if recruit_result_level == -1:
             logger.error("筛选结果为 {}".format(tem_res))
             raise ValueError("筛选tag失败")
+        elif robot_choice is not None:
+            logger.info("支援机械候选均未满潜，自动招募")
         elif recruit_result_level != 3 and self.all_same_res(
             tem_res, recruit_result_level
         ):
@@ -390,7 +409,9 @@ class RecruitSolver(SceneGraphSolver):
                 "出稀有标签辣",
                 "WARNING",
             )
-            if recruit_result_level == 6 or recruit_result_level == 1:
+            if recruit_result_level == 6 or (
+                recruit_result_level == 1 and robot_choice is None
+            ):
                 logger.debug(f"{recruit_result_level}星稀有tag  ,不选")
                 self.recruit_index = self.recruit_index + 1
                 self.back()
@@ -425,6 +446,50 @@ class RecruitSolver(SceneGraphSolver):
         }
 
         return
+
+    def unfinished_robot_choice(self, choices):
+        snapshot = get_cultivate_snapshot()
+        if not snapshot:
+            return None
+        characters = {char["id"]: char for char in snapshot["data"]["characters"]}
+        items = snapshot["data"].get("items")
+        if not isinstance(items, list) or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("id"), str)
+            or not str(item.get("count", "")).isdigit()
+            for item in items
+        ):
+            return None
+        tokens = {item["id"]: int(item["count"]) for item in items}
+        if len(tokens) != len(items):
+            return None
+        reserved = {}
+        for choice in self.agent_choose.values():
+            if choice["level"] == 1 and choice["choosed"]:
+                for agent in choice["result"]:
+                    reserved[agent["id"]] = reserved.get(agent["id"], 0) + 1
+        unfinished = {
+            char_id
+            for char_id, char in characters.items()
+            if type(char.get("potentialRank")) is int
+            and 0 <= char["potentialRank"] < 5
+            and char["potentialRank"]
+            + tokens.get(f"p_{char_id}", 0)
+            + reserved.get(char_id, 0)
+            < 5
+        }
+        eligible = [
+            choice
+            for choice in choices
+            if "支援机械" in choice["tag"]
+            and choice["result"]
+            and all(agent["id"] in unfinished for agent in choice["result"])
+        ]
+        return min(
+            eligible,
+            key=lambda choice: (len(choice["result"]), len(choice["tag"])),
+            default=None,
+        )
 
     def all_same_res(self, recruit_cal_res, index):
         tmp_list = recruit_cal_res[index]
@@ -658,35 +723,11 @@ class RecruitSolver(SceneGraphSolver):
 
         return value
 
-    def choose_time(self, now_time: int, to_time: int, mode="hour" or "minute"):
-        subtract_time = now_time - to_time
-
-        click_time = 0
-        max_click = 0
-        tap_pos = 0
+    def choose_time(self, now_time: int, to_time: int, mode="hour"):
         if mode == "minute":
-            click_time = int(abs(subtract_time) / 10)
-            tap_pos = 0.5
-            [self.tap_element("one_hour", tap_pos, 0.8, 0.1) for _ in range(click_time)]
-            return
-
-        if mode == "hour":
-            click_time = abs(subtract_time)
-            max_click = 9
-            tap_pos = 0.2
-
-        if abs(subtract_time) > (max_click / 2):
-            if subtract_time > 0:
-                [self.tap_element("one_hour", 0.2, 0.2, 0.1) for _ in range(click_time)]
-            else:
-                [
-                    self.tap_element("one_hour", 0.2, 0.8, 0.1)
-                    for _ in range(max_click - click_time)
-                ]
+            step, tap_pos = 10, 0.5
         else:
-            if subtract_time < 0:
-                [self.tap_element("one_hour", 0.2, 0.2, 0.1) for _ in range(click_time)]
-            else:
-                [self.tap_element("one_hour", 0.2, 0.8, 0.1) for _ in range(click_time)]
-
-        return
+            step, tap_pos = 1, 0.2
+        direction = 0.2 if to_time > now_time else 0.8
+        for _ in range(abs(to_time - now_time) // step):
+            self.tap_element("one_hour", tap_pos, direction, 0.1)

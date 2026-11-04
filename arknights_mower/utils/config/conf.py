@@ -486,6 +486,8 @@ class RecruitPart(ConfModel):
     "公招开关"
     recruit_robot: bool = True
     "保留支援机械标签"
+    recruit_auto_robot: bool = False
+    "自动招募未满潜支援机械"
     recruitment_permit: int = 30
     "三星招募阈值"
     recruit_gap: float = 9

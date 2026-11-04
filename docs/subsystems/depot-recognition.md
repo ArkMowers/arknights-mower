@@ -6,6 +6,8 @@
 
 ## 2. Quantity Contract
 
+Cloud inventory, local restoration, current inventory and history preserve operator-specific and generic tokens, including zero counts supplied by the material snapshot. The warehouse page shows owned tokens and hides only tokens whose quantity is zero or unknown; display filtering does not remove them from stored or exported inventory. Current inventory and history APIs require the existing instance token before reading user data.
+
 LMD uses the shared OCR client on the complete quantity text, as specified by [Independent Shared OCR](recognition.md#independent-shared-ocr). Before OCR, the reader removes adjacent icon and background components crossing the text band's top or bottom edge while retaining its full horizontal width, including digits and units at either side. A single result with confidence at least 0.90 accepts ASCII digits, an optional decimal fraction and an optional 万 or 亿 suffix after Unicode width and whitespace normalization. Decimal arithmetic applies multipliers of 10,000 and 100,000,000 and accepts only integral results. Missing, malformed, low-confidence or failed OCR returns `None`; the scan skips that item without template fallback. Other items retain template matching. Cloud inventory reads complete integer counts directly and do not strip display units.
 
 ## 3. Subsystem Invariants

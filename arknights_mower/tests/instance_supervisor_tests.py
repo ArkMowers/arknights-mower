@@ -603,10 +603,27 @@ def test_initial_ready_publishing_preserves_accepted_user_start(
 
 
 def test_http_nonresponsiveness_recycles_only_owned_instance(isolated_runtime):
+    healthy = isolated_runtime / "replacement-healthy"
     command = child_script(
         isolated_runtime,
-        "from arknights_mower.utils.instance_supervisor import task_intent\ntask_intent(True)\nchild_report(port=58991)\nif len(events)==1: time.sleep(5)\nchild_exit('window')\n",
+        "from arknights_mower.utils.instance_supervisor import task_intent\n"
+        "task_intent(True)\nchild_report(port=58991)\n"
+        "if len(events)==1: time.sleep(5)\n"
+        "else:\n"
+        " deadline=time.monotonic()+5\n"
+        f" while not Path({str(healthy)!r}).exists():\n"
+        "  if time.monotonic()>=deadline: raise TimeoutError('replacement not probed')\n"
+        "  time.sleep(.005)\n"
+        "child_exit('window')\n",
     )
+
+    def probe(port, timeout):
+        assert port == 58991
+        if len(runtime.read_json(isolated_runtime / "trace.json") or []) < 2:
+            return False
+        healthy.touch()
+        return True
+
     innocent = subprocess.Popen(
         [sys.executable, "-c", "import sys;sys.stdin.read()"], stdin=subprocess.PIPE
     )
@@ -619,11 +636,12 @@ def test_http_nonresponsiveness_recycles_only_owned_instance(isolated_runtime):
                 poll_interval=0.01,
                 health_interval=0.02,
                 health_failure_window=0.06,
-                health_probe=lambda port, timeout: False,
+                health_probe=probe,
             )
             == 0
         )
         assert innocent.poll() is None
+        assert healthy.exists(), "replacement HTTP service was not checked"
         notice = runtime.read_json(isolated_runtime / "recovery.json")
         assert notice["reason"] == "http_unresponsive" and notice["resume_requested"]
         assert len(runtime.read_json(isolated_runtime / "trace.json")) == 2

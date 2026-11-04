@@ -395,8 +395,7 @@ def test_numeric_string_counts_are_coerced(history_path):
     assert isinstance(items["至纯源石"], int)
 
 
-def test_tokens_are_excluded_from_history(history_path):
-    """信物类物品不应出现在仓库历史快照中。"""
+def test_tokens_are_preserved_in_history(history_path):
     write_rows(
         history_path,
         [
@@ -411,11 +410,11 @@ def test_tokens_are_excluded_from_history(history_path):
     items = module.读取仓库历史()[0]["items"]
 
     assert "合成玉" in items
-    assert "阿米娅的信物" not in items
-    assert "先锋皇家信物" not in items
+    assert items["阿米娅的信物"] == 1
+    assert items["先锋皇家信物"] == 4
 
 
-def test_tokens_are_excluded_from_cloud_snapshot():
+def test_tokens_are_preserved_in_cloud_snapshot():
     payload = {
         "_mower_inventory_observed_at": 1789895956,
         "data": {
@@ -429,8 +428,51 @@ def test_tokens_are_excluded_from_cloud_snapshot():
     assert observed_at == 1789895956
     assert "固源岩" in counts
     assert counts["固源岩"] == 100
-    assert "阿米娅的信物" not in counts
-    assert not any("信物" in name for name in counts)
+    assert counts["阿米娅的信物"] == 1
+    assert counts["Lancet-2的信物"] == 0
+
+
+def test_token_counts_survive_database_current_inventory_and_history(
+    tmp_path, monkeypatch, income_db
+):
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(
+        module, "get_path", lambda key: tmp_path / key.rsplit("/", 1)[-1]
+    )
+    payload = {
+        "_mower_inventory_observed_at": 1789895956,
+        "data": {"items": [{"id": "p_char_285_medic2", "count": "2"}]},
+    }
+    (tmp_path / "cultivate.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    categories, raw, _ = module.读取仓库(记录快照时刻=1789895956)
+
+    assert record.get_inventory_counts(["Lancet-2的信物"])["Lancet-2的信物"] == 2
+    assert categories["K未分类"]["Lancet-2的信物"]["number"] == 2
+    assert json.loads(raw)["p_char_285_medic2"] == 2
+    assert module.读取仓库历史()[0]["items"]["Lancet-2的信物"] == 2
+
+
+def test_token_counts_restore_from_local_cache(tmp_path, monkeypatch, income_db):
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(
+        module, "get_path", lambda key: tmp_path / key.rsplit("/", 1)[-1]
+    )
+    payload = {
+        "_mower_inventory_observed_at": 1789895956,
+        "data": {
+            "characters": [{"id": "char_285_medic2"}],
+            "items": [{"id": "p_char_285_medic2", "count": "2"}],
+        },
+    }
+    (tmp_path / "cultivate.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    restored = module.restore_cached_inventory()
+
+    assert restored["Lancet-2的信物"] == 2
+    assert record.get_inventory_counts(["Lancet-2的信物"])["Lancet-2的信物"] == 2
 
 
 class TestDepotHistoryRoute:

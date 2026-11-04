@@ -12,6 +12,7 @@ const {
   recruit_enable,
   recruitment_permit,
   recruit_robot,
+  recruit_auto_robot,
   recruit_gap,
   recruit_auto_5,
   recruit_auto_only5
@@ -62,6 +63,12 @@ const mobile = inject('mobile')
       </n-form-item>
       <n-form-item v-if="recruit_auto_5 === 2" :show-label="false">
         <n-checkbox v-model:checked="recruit_auto_only5">五星词条组合唯一时自动选择</n-checkbox>
+      </n-form-item>
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="recruit_auto_robot">自动招募未满潜支援机械</n-checkbox>
+        <help-text>
+          需要森空岛干员及库存缓存。当前词条最高仅三星，且组合内所有一星候选的潜能、对应信物及本轮已启动招募合计仍不足满潜时，自动招募3小时50分，不受三星招募阈值及保留支援机械标签的限制。跨轮次未同步的结果仍可能影响判断。
+        </help-text>
       </n-form-item>
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="recruit_robot">保留支援机械标签</n-checkbox>
