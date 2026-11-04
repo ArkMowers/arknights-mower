@@ -212,6 +212,7 @@ def test_proxy_entry_reuses_shared_file_and_rejects_stale_and_corrupt_data(
     changed = {
         "http_proxy": "http://127.0.0.1:7890",
         "github_proxy": "https://proxy.example/",
+        "github_token": "github_pat_test",
     }
     assert manager.save_network_settings(changed, original) == changed
     assert json.loads(path.read_text()) == changed

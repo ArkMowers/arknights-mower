@@ -197,13 +197,17 @@ class ProxySettingsTests(ProxySettingsBase):
         client.get.assert_called_once_with(url)
 
     def test_settings_round_trip_and_clear(self):
-        self.assertEqual(network.get_settings(), {"http_proxy": "", "github_proxy": ""})
+        self.assertEqual(
+            network.get_settings(),
+            {"http_proxy": "", "github_proxy": "", "github_token": ""},
+        )
         self.save(" http://127.0.0.1:7897/ ", " https://ghfast.top ")
         self.assertEqual(
             network.get_settings(),
             {
                 "http_proxy": "http://127.0.0.1:7897",
                 "github_proxy": "https://ghfast.top/",
+                "github_token": "",
             },
         )
         self.assertEqual(github.get_proxy(), "https://ghfast.top/")
@@ -809,7 +813,13 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         root = self.folder / "source"
         root.mkdir()
         state = self.folder / "state"
-        self.save("http://127.0.0.1:7897", "https://ghfast.top/")
+        network.save_settings(
+            {
+                "http_proxy": "http://127.0.0.1:7897",
+                "github_proxy": "https://ghfast.top/",
+                "github_token": "github_pat_test",
+            }
+        )
         plan = {
             "deployment": "source",
             "channel": "dev",
@@ -833,6 +843,7 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         job = runtime.read_json(work / "job.json")
         self.assertEqual(job["proxy"], "http://127.0.0.1:7897")
         self.assertEqual(job["github_proxy"], "https://ghfast.top/")
+        self.assertEqual(job["github_token"], "github_pat_test")
         self.assertTrue((work / "github_download.py").is_file())
         # Copied worker must import without access to the application package.
         env = os.environ.copy()
@@ -854,3 +865,258 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GithubTokenTests(ProxySettingsBase):
+    def token_settings(self):
+        return network.save_settings(
+            {
+                "http_proxy": "",
+                "github_proxy": "https://mirror.invalid/",
+                "github_token": "github_pat_test",
+            }
+        )
+
+    def test_saved_token_bypasses_every_mirror_and_preserves_headers(self):
+        self.token_settings()
+        for url in (
+            resource_pkg.RESOURCE_ZIP_URL,
+            resource_version.RESOURCE_VERSION_URL,
+            GITHUB_RESOURCE_ARCHIVE_URL,
+            "https://codeload.github.com/ArkMowers/MowerResource/zip/main",
+        ):
+            with self.subTest(url=url):
+                client = Mock()
+                headers = {"Range": "bytes=0-9"}
+                response, selected = github.request_download(
+                    client, "get", url, headers=headers, timeout=3
+                )
+                self.assertEqual(selected, url)
+                self.assertIs(response, client.get.return_value)
+                self.assertEqual(
+                    client.get.call_args.kwargs["headers"],
+                    {"Range": "bytes=0-9", "Authorization": "Bearer github_pat_test"},
+                )
+                self.assertEqual(headers, {"Range": "bytes=0-9"})
+                self.assertEqual(github.download_urls(url), (url,))
+                client.get.assert_called_once()
+
+    def test_failed_authenticated_download_never_tries_a_mirror(self):
+        self.token_settings()
+        for failure in (requests.ConnectionError(), requests.Timeout(), 401, 403, 503):
+            client = Mock()
+            if isinstance(failure, int):
+                client.get.return_value.status_code = failure
+                client.get.return_value.raise_for_status.side_effect = (
+                    requests.HTTPError()
+                )
+            else:
+                client.get.side_effect = failure
+            with self.assertRaises(requests.RequestException):
+                github.request_download(client, "get", resource_pkg.RESOURCE_ZIP_URL)
+            client.get.assert_called_once()
+
+    def test_token_only_goes_to_exact_official_https_hosts(self):
+        self.token_settings()
+        for url in (
+            "http://github.com/a",
+            "https://github.com:444/a",
+            "https://user@github.com/a",
+            "https://github.com.attacker.test/a",
+            "https://mirror.invalid/https://github.com/a",
+            "https://api.maa.plus/a",
+            "https://mirrorchyan.com/a",
+            "https://release-assets.githubusercontent.com/a",
+        ):
+            client = Mock()
+            github.request_github(client, "get", url, headers={"Range": "bytes=0-9"})
+            self.assertNotIn("Authorization", client.get.call_args.kwargs["headers"])
+        client = Mock()
+        github.request_github(
+            client, "get", "https://api.github.com/repos/ArkMowers/MowerResource"
+        )
+        self.assertEqual(
+            client.get.call_args.kwargs["headers"]["Authorization"],
+            "Bearer github_pat_test",
+        )
+
+    def test_requests_redirect_removes_token_before_external_cdn(self):
+        seen = []
+
+        class Adapter(requests.adapters.BaseAdapter):
+            def send(self, request, **kwargs):
+                seen.append(request)
+                response = requests.Response()
+                response.request = request
+                response.url = request.url
+                response._content = b""
+                response._content_consumed = True
+                response.status_code = 302 if len(seen) == 1 else 200
+                if len(seen) == 1:
+                    response.headers["Location"] = "https://cdn.example.test/file"
+                return response
+
+            def close(self):
+                pass
+
+        with requests.Session() as client:
+            client.trust_env = False
+            client.mount("https://", Adapter())
+            response, _ = github.request_download(
+                client, "get", resource_pkg.RESOURCE_ZIP_URL, token="github_pat_test"
+            )
+            response.close()
+        self.assertEqual(seen[0].headers["Authorization"], "Bearer github_pat_test")
+        self.assertNotIn("Authorization", seen[1].headers)
+
+    def test_setting_compatibility_clear_and_private_storage(self):
+        self.token_settings()
+        self.assertEqual(
+            network.get_effective_settings()["github_token"], "github_pat_test"
+        )
+        self.save(http="http://127.0.0.1:7890")
+        self.assertEqual(github.get_token(), "github_pat_test")
+        if os.name != "nt":
+            self.assertEqual(network.settings_path().stat().st_mode & 0o777, 0o600)
+        for token in (
+            None,
+            123,
+            "ghp_bad\r\nInjected",
+            "https://github.com/token",
+            "a" * 256,
+        ):
+            with self.assertRaises(ValueError):
+                network.save_settings(
+                    {"http_proxy": "", "github_proxy": "", "github_token": token}
+                )
+            self.assertEqual(github.get_token(), "github_pat_test")
+        network.save_settings(
+            {"http_proxy": "", "github_proxy": "", "github_token": ""}
+        )
+        self.assertEqual(github.get_token(), "")
+        self.assertEqual(len(github.download_urls(resource_pkg.RESOURCE_ZIP_URL)), 5)
+
+    def test_git_credentials_are_scoped_and_preserve_existing_environment(self):
+        base = {
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "http.sslVerify",
+            "GIT_CONFIG_VALUE_0": "true",
+        }
+        env = github.git_environment(base, "github_pat_test")
+        self.assertEqual(base["GIT_CONFIG_COUNT"], "1")
+        self.assertEqual(env["GIT_CONFIG_COUNT"], "2")
+        for url, expected in (
+            (
+                "https://github.com/ArkMowers/repo.git",
+                "Authorization: Basic eC1hY2Nlc3MtdG9rZW46Z2l0aHViX3BhdF90ZXN0",
+            ),
+            ("https://github.com.attacker.test/repo.git", ""),
+            ("https://mirror.invalid/repo.git", ""),
+        ):
+            result = subprocess.run(
+                ["git", "config", "--get-urlmatch", "http.extraHeader", url],
+                env={**os.environ, **env},
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            self.assertEqual(result.stdout.strip(), expected)
+
+    def test_routes_reject_tokens_before_read_save_or_network(self):
+        app = Flask(__name__)
+        app.token = "instance_token"
+        app.register_blueprint(network_bp)
+        client = app.test_client()
+        with (
+            patch.object(network, "get_settings") as read,
+            patch.object(network, "save_settings") as save,
+            patch.object(requests, "get") as get,
+        ):
+            for credential in ({}, {"token": "wrong"}):
+                for method, path in (
+                    (client.get, "/network/settings"),
+                    (client.head, "/network/settings"),
+                    (client.post, "/network/settings"),
+                    (client.post, "/network/test"),
+                ):
+                    self.assertEqual(
+                        method(
+                            path,
+                            headers={**credential, "X-Mower-Settings": "1"},
+                            json={},
+                        ).status_code,
+                        403,
+                    )
+            read.assert_not_called()
+            save.assert_not_called()
+            get.assert_not_called()
+        settings = self.token_settings()
+        from unittest.mock import MagicMock
+
+        response = MagicMock(status_code=401)
+        response.__enter__.return_value = response
+        with (
+            patch(
+                "arknights_mower.views.network._probe_connection",
+                return_value={"ok": True},
+            ),
+            patch.object(requests, "get", return_value=response) as get,
+        ):
+            tested = client.post(
+                "/network/test",
+                json={},
+                headers={"token": app.token, "X-Mower-Settings": "1"},
+            ).get_json()
+        self.assertFalse(tested["results"][1]["ok"])
+        self.assertIn("无效", tested["results"][1]["message"])
+        self.assertNotIn(settings["github_token"], str(tested["results"]))
+        self.assertEqual(
+            get.call_args.kwargs["headers"]["Authorization"], "Bearer github_pat_test"
+        )
+
+    def test_real_software_check_uses_token(self):
+        self.token_settings()
+        response = Mock(status_code=200)
+        response.json.return_value = {"tag_name": "v1.0.0"}
+        with patch.object(requests, "get", return_value=response) as get:
+            self.assertEqual(
+                software_update.github("/releases/latest"), {"tag_name": "v1.0.0"}
+            )
+        self.assertEqual(
+            get.call_args.kwargs["headers"]["Authorization"], "Bearer github_pat_test"
+        )
+
+    def test_maa_channel_checks_use_official_api_with_token(self):
+        from unittest.mock import MagicMock
+
+        from arknights_mower.utils import maa_update
+
+        self.token_settings()
+        payload = {
+            "tag_name": "v6.21.4",
+            "assets": [
+                {
+                    "name": "MAAComponent-v6.21.4-android-arm64.tar.gz",
+                    "browser_download_url": "https://github.com/MaaAssistantArknights/MaaAssistantArknights/releases/download/v6.21.4/MAAComponent-v6.21.4-android-arm64.tar.gz",
+                    "size": 193639461,
+                    "digest": "sha256:" + "a" * 64,
+                }
+            ],
+        }
+        for channel in ("stable", "beta"):
+            client = MagicMock()
+            client.get.return_value.__enter__.return_value.json.return_value = (
+                payload if channel == "stable" else [{"draft": True}, payload]
+            )
+            release = maa_update.get_latest_release(
+                client, system="android", machine="arm64", channel=channel
+            )
+            self.assertEqual(release.tag, "v6.21.4")
+            self.assertTrue(
+                client.get.call_args.args[0].startswith("https://api.github.com/")
+            )
+            self.assertEqual(
+                client.get.call_args.kwargs["headers"]["Authorization"],
+                "Bearer github_pat_test",
+            )
+            client.get.assert_called_once()

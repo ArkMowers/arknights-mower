@@ -133,15 +133,21 @@ class ManagerTools:
             "github_proxy": network_settings.normalize_proxy(
                 raw.get("github_proxy", "")
             ),
+            "github_token": network_settings.normalize_token(
+                raw.get("github_token", "")
+            ),
         }
 
     def save_network_settings(self, values, original):
         from . import network_settings
 
-        if not isinstance(values, dict) or set(values) != {
-            "http_proxy",
-            "github_proxy",
-        }:
+        if not isinstance(values, dict) or set(values) not in (
+            {
+                "http_proxy",
+                "github_proxy",
+            },
+            {"http_proxy", "github_proxy", "github_token"},
+        ):
             raise ValueError("网络配置格式不正确")
         with self._operation():
             if self.get_network_settings() != original:

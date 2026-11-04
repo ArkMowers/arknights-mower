@@ -5,7 +5,7 @@ import os
 import threading
 from urllib.parse import urlsplit
 
-from arknights_mower.utils.github_download import normalize_proxy
+from arknights_mower.utils.github_download import normalize_proxy, normalize_token
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.update_runtime import write_json
 
@@ -71,15 +71,19 @@ def get_settings():
         return {
             "http_proxy": normalize_http_proxy(data.get("http_proxy", "")),
             "github_proxy": normalize_proxy(data.get("github_proxy", "")),
+            "github_token": normalize_token(data.get("github_token", "")),
         }
     except (OSError, ValueError, AttributeError):
-        return {"http_proxy": "", "github_proxy": ""}
+        return {"http_proxy": "", "github_proxy": "", "github_token": ""}
 
 
 def save_settings(data):
     settings = {
         "http_proxy": normalize_http_proxy(data["http_proxy"]),
         "github_proxy": normalize_proxy(data["github_proxy"]),
+        "github_token": normalize_token(
+            data.get("github_token", get_settings()["github_token"])
+        ),
     }
     with _environment_lock:
         apply_http_proxy()

@@ -301,7 +301,9 @@ validate_proxy = network_settings.normalize_http_proxy
 
 def github(path, proxy="", *, repo=REPO):
     proxies = {"http": proxy, "https": proxy} if proxy else None
-    response = requests.get(
+    response = github_download.request_github(
+        requests,
+        "get",
         f"https://api.github.com/repos/{repo}" + path,
         timeout=30,
         proxies=proxies,
@@ -1325,6 +1327,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
             "background": bool(background),
             "force": force,
             "github_proxy": github_download.get_proxy(),
+            "github_token": github_download.get_token(),
             "proxy": network_settings.get_effective_settings()["http_proxy"],
         }
         if uploaded:

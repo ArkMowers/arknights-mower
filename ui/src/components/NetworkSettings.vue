@@ -7,7 +7,8 @@ const base = `${import.meta.env.VITE_HTTP_URL || ''}/network`
 const headers = { 'X-Mower-Settings': '1' }
 const httpProxy = ref('')
 const githubProxy = ref('')
-const savedSettings = ref({ http_proxy: '', github_proxy: '' })
+const githubToken = ref('')
+const savedSettings = ref({ http_proxy: '', github_proxy: '', github_token: '' })
 const loading = ref(true)
 const ready = ref(false)
 const saving = ref(false)
@@ -19,7 +20,8 @@ const copyStatus = ref('')
 const dirty = computed(
   () =>
     httpProxy.value !== savedSettings.value.http_proxy ||
-    githubProxy.value !== savedSettings.value.github_proxy
+    githubProxy.value !== savedSettings.value.github_proxy ||
+    githubToken.value !== savedSettings.value.github_token
 )
 let timer
 let saveRequest
@@ -30,13 +32,22 @@ function errorMessage(err) {
 }
 
 function values() {
-  return { http_proxy: httpProxy.value, github_proxy: githubProxy.value }
+  return {
+    http_proxy: httpProxy.value,
+    github_proxy: githubProxy.value,
+    github_token: githubToken.value
+  }
 }
 
 function apply(data) {
   httpProxy.value = data.http_proxy
   githubProxy.value = data.github_proxy
-  savedSettings.value = { http_proxy: data.http_proxy, github_proxy: data.github_proxy }
+  githubToken.value = data.github_token || ''
+  savedSettings.value = {
+    http_proxy: data.http_proxy,
+    github_proxy: data.github_proxy,
+    github_token: data.github_token || ''
+  }
 }
 
 async function load() {
@@ -79,7 +90,11 @@ async function save() {
     try {
       const { data } = await axios.post(`${base}/settings`, submitted, { headers })
       if (!data.ok) throw new Error(data.message)
-      savedSettings.value = { http_proxy: data.http_proxy, github_proxy: data.github_proxy }
+      savedSettings.value = {
+        http_proxy: data.http_proxy,
+        github_proxy: data.github_proxy,
+        github_token: data.github_token || ''
+      }
       // A slower response must never overwrite text entered after it was sent.
       if (revision === submittedRevision) {
         apply(data)
@@ -113,7 +128,8 @@ async function testConnection() {
     if (revision === testedRevision) {
       if (
         data.settings.http_proxy !== savedSettings.value.http_proxy ||
-        data.settings.github_proxy !== savedSettings.value.github_proxy
+        data.settings.github_proxy !== savedSettings.value.github_proxy ||
+        (data.settings.github_token || '') !== savedSettings.value.github_token
       ) {
         throw new Error('代理设置已被其他实例修改，请重新加载后测试')
       }
@@ -192,7 +208,40 @@ onBeforeUnmount(() => {
         />
         <p id="network-github-proxy-description" class="network-description">
           用于 Mower、MAA 的 GitHub 文件下载。留空时先直连，失败后依次尝试
-          ghfast.top、gh-proxy.com、gh-proxy.org、edgeone.gh-proxy.org；填写后仅使用指定站点。
+          ghfast.top、gh-proxy.com、gh-proxy.org、edgeone.gh-proxy.org；填写后仅使用指定站点。设置
+          GitHub Token 后此项暂停生效。
+        </p>
+      </n-form-item>
+      <n-form-item label="GitHub Token">
+        <n-input
+          v-model:value="githubToken"
+          type="password"
+          show-password-on="click"
+          :input-props="{
+            'aria-label': 'GitHub Token',
+            'aria-describedby': 'network-github-token-description',
+            autocomplete: 'off',
+            spellcheck: false
+          }"
+          placeholder="可选，用于 GitHub 检查与下载"
+          :disabled="loading || !ready"
+          clearable
+          @update:value="changed"
+          @blur="save"
+        />
+        <p id="network-github-token-description" class="network-description">
+          填写后，GitHub
+          更新检查和文件下载直接访问官方地址，不经过下载代理站点，也不回退到镜像；全局网络代理仍生效。留空恢复原有下载方式。
+        </p>
+        <p class="network-description">
+          <a
+            href="https://github.com/settings/personal-access-tokens/new"
+            target="_blank"
+            rel="noopener noreferrer"
+            >创建 GitHub Token</a
+          >： 登录后填写名称和有效期，Repository access 选择 Public
+          repositories，不添加额外权限，生成后复制到此处。 也可使用不勾选任何 scope 的 classic
+          token。Token 保存在本机共享网络配置中，请勿分享。
         </p>
       </n-form-item>
     </n-form>
@@ -219,7 +268,9 @@ onBeforeUnmount(() => {
     <div class="network-test" data-settings-label="测试连接">
       <div class="network-test-heading">
         <span>连接测试</span>
-        <p class="network-description">测试当前设置的 GitHub 文件下载路径。</p>
+        <p class="network-description">
+          测试当前设置的 GitHub 文件下载路径；填写 Token 时同时验证 GitHub API 认证。
+        </p>
       </div>
       <div class="network-actions">
         <n-button
