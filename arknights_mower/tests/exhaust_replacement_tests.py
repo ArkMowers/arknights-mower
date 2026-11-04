@@ -71,6 +71,37 @@ def solver(monkeypatch):
     return instance
 
 
+def test_exhausted_primary_replaces_unfinished_priority_replacement(solver):
+    data = solver.op_data
+    data.add(Operator("夜烟", ""))
+    data.operators["夜烟"].mood = 24
+    data.operators["夜烟"].time_stamp = datetime.now()
+    data.operators["机械师"].replacement = ["夜烟"]
+    data.plan["room_3_3"][0].replacement = ["夜烟"]
+    resident = data.operators["陈"]
+    data.config.resting_priority_replacement = [resident.name]
+    resident.current_room, resident.current_index = "dormitory_1", 4
+    resident.mood = 12
+    data.dorm[-1].name = resident.name
+    data.dorm[-1].time = datetime.now() + timedelta(hours=4)
+    original_time = solver.task.time
+
+    solver.overtake_room()
+
+    assert len(solver.tasks) == 1
+    shift = solver.tasks[0]
+    assert shift.type == TaskTypes.SHIFT_OFF
+    assert shift.plan["room_3_3"] == ["夜烟"]
+    assert shift.plan["dormitory_1"][4] == "机械师"
+    assert not getattr(solver.task, "execution_failure", None)
+    assert solver.task.time == original_time
+    assert resident.current_room == "dormitory_1"
+    assert data.operators["机械师"].current_room == "room_3_3"
+    projected = data.project_arrangements([shift.plan])
+    assert projected.get_current_operator("dormitory_1", 4).name == "机械师"
+    assert projected.operators[resident.name].current_room == ""
+
+
 def run_retained(solver):
     """无法交接时保留原请求和实际驻员，不发送重复通知。"""
     original = solver.task

@@ -18,6 +18,7 @@ export function alphaRestingTier(data:MowerSchedulingData,name:string,referenced
  if(alphaFullDynamicCandidate(data,name))return 6
  if(data.restingPriorityNames.includes(name))return 0
  if(data.standbyNames.includes(name))return 4
+ if(data.lowPriorityNames.includes(name))return 2
  const replacement=data.priorityReplacement.includes(name)?3:5
  if(op){
   if(op.room==='train'&&op.index===0||op.currentRoom==='train'&&op.currentIndex===0)return replacement
@@ -39,7 +40,7 @@ export function alphaFullDormFiller(data:MowerSchedulingData,name:string):boolea
 }
 export function alphaBedTakeoverAllowed(data:MowerSchedulingData,requester:string,resident:string):boolean {
  const requesterTier=alphaRestingTier(data,requester),residentTier=alphaRestingTier(data,resident)
- if(alphaFullDynamicCandidate(data,requester)||requesterTier===7||residentTier<=3)return false
+ if(alphaFullDynamicCandidate(data,requester)||requesterTier===7||residentTier<=2)return false
  const incoming=data.operators[requester],mood=mowerDormCandidateMood(data,requester)
  const retained=data.freeRoomExcluded(requester)
  if(alphaFullDormFiller(data,resident))return !!incoming&&mood!==undefined&&(retained||mood<incoming.upperLimit)

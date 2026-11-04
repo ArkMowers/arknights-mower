@@ -8,7 +8,7 @@ import pytest
 from arknights_mower.tests import dorm_release_tests
 from arknights_mower.utils import config
 from arknights_mower.utils.operators import Dormitory, Operator
-from arknights_mower.utils.plan import Room
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     has_resting_mood,
@@ -65,7 +65,8 @@ def test_cross_tier_takeover_matrix(op_data, incoming, occupant, upper, offset):
     data.dorm[0].time = datetime.now() + timedelta(hours=4)
     expected = (
         incoming < occupant
-        and occupant > RestingTier.PRIORITY_REPLACEMENT
+        and occupant
+        not in (RestingTier.PRIORITY, RestingTier.MAIN, RestingTier.LOW_MAIN)
         and (
             incoming <= RestingTier.PRIORITY_REPLACEMENT
             or offset is not None
@@ -318,6 +319,111 @@ def test_priority_replacement_never_overrides_exclusions(
     op_data.operators["红"].workaholic = False
     op_data.config.free_blacklist.append("红")
     assert resting_tier(op_data, "红") == RestingTier.EXCLUDED
+
+
+@pytest.mark.parametrize(
+    "identity", ["replacement", "priority_replacement", "training", "idle"]
+)
+def test_low_priority_list_promotes_replacements_without_changing_identity(
+    op_data, identity
+):
+    tier = {
+        "priority_replacement": RestingTier.PRIORITY_REPLACEMENT,
+        "idle": RestingTier.IDLE,
+    }.get(identity, RestingTier.REPLACEMENT)
+    op = set_tier(
+        op_data,
+        "陈" if identity == "idle" else "红",
+        tier,
+        10,
+    )
+    if identity == "training":
+        op.room, op.index = "train", 0
+    original = (op.operator_type, op.room, op.index, op.current_room)
+    op_data.config.resting_priority = [op.name]
+
+    assert resting_tier(op_data, op.name) == RestingTier.LOW_MAIN
+    assert (op.operator_type, op.room, op.index, op.current_room) == original
+    assert not op.is_high()
+    op_data.config.resting_priority = []
+    assert resting_tier(op_data, op.name) == tier
+
+
+@pytest.mark.parametrize("incoming", [RestingTier.PRIORITY, RestingTier.MAIN])
+def test_low_priority_replacement_resident_keeps_unfinished_bed(op_data, incoming):
+    resident = set_tier(op_data, "空爆", RestingTier.REPLACEMENT, 12)
+    op_data.config.resting_priority = [resident.name]
+    set_tier(op_data, "红", incoming, 1)
+
+    assert op_data.assign_dorm("红") is None
+    assert op_data.dorm[0].name == resident.name
+
+
+@pytest.mark.parametrize("empty_only", [False, True])
+def test_low_priority_replacement_can_take_priority_replacement_bed(
+    op_data, empty_only
+):
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+
+    resident = set_tier(op_data, "空爆", RestingTier.PRIORITY_REPLACEMENT, 12)
+    op_data.config.resting_priority = ["红"]
+    tasks = []
+
+    try_add_release_dorm({}, None, op_data, tasks, empty_only=empty_only)
+
+    assert len(tasks) == 1
+    assert tasks[0].plan[ROOM][4] == "红"
+    assert resident.current_room == ROOM
+    assert not op_data.operators["红"].is_high()
+
+
+@pytest.mark.parametrize(
+    "override", ["high", "standby", "blacklist", "workaholic", "full"]
+)
+def test_low_priority_replacement_preserves_existing_overrides(op_data, override):
+    op = op_data.operators["红"]
+    op_data.config.resting_priority = [op.name]
+    if override == "high":
+        op_data.config.ope_resting_priority = [op.name]
+        expected = RestingTier.PRIORITY
+    elif override == "standby":
+        op_data.config.resting_standby = [op.name]
+        expected = RestingTier.STANDBY
+    elif override == "blacklist":
+        op_data.config.free_blacklist = [op.name]
+        expected = RestingTier.EXCLUDED
+    elif override == "workaholic":
+        op.workaholic = True
+        expected = RestingTier.EXCLUDED
+    else:
+        op.mood = op.upper_limit
+        expected = RestingTier.IDLE
+
+    assert resting_tier(op_data, op.name) == expected
+
+
+def test_backup_low_priority_replacement_restores_tier_and_observed_occupancy(op_data):
+    op_data.global_plan["backup_plans"] = [Plan({}, PlanConfig("", "", "红"))]
+    op_data.backup_plans = op_data.global_plan["backup_plans"]
+    resident = op_data.operators["红"]
+    resident.current_room, resident.current_index = ROOM, 4
+    op_data.dorm[0].name = resident.name
+    op_data.dorm[0].time = datetime.now() + timedelta(hours=3)
+    before = (resident.current_room, resident.current_index, op_data.dorm[0].time)
+
+    for active, expected in (
+        (True, RestingTier.LOW_MAIN),
+        (False, RestingTier.REPLACEMENT),
+    ):
+        assert op_data.swap_plan([active], refresh=True) is None
+        current = op_data.operators[resident.name]
+        assert resting_tier(op_data, current.name) == expected
+        assert not current.is_high()
+        assert (
+            current.current_room,
+            current.current_index,
+            op_data.dorm[0].time,
+        ) == before
 
 
 def test_fiammetta_targets_are_not_promoted_to_priority_replacements(op_data):

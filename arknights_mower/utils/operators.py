@@ -3021,8 +3021,8 @@ class Operators:
     def dorm_capacity_allows(
         self, name, position, *, active_groups=None, plan=None, group_transitions=None
     ):
-        """绑组 Free 按数量供同组工作主班及后三层使用，不绑定物理位置。"""
-        if resting_tier(self, name) > RestingTier.PRIORITY_REPLACEMENT:
+        """绑组 Free 按数量供同组工作主班、替班、候补和空闲者使用。"""
+        if resting_tier(self, name) > RestingTier.LOW_MAIN:
             return True
         if not any(
             slot.agent != "Free" and "Free" in slot.all_replacements
@@ -3090,11 +3090,11 @@ class Operators:
                 if (
                     resident in self.operators
                     and resident != slot.agent
-                    and resting_tier(self, resident) <= RestingTier.PRIORITY_REPLACEMENT
+                    and resting_tier(self, resident) <= RestingTier.LOW_MAIN
                 ):
                     residents.add(resident)
 
-        # 给受保护住员匹配额度；后三层可使用任意剩余额度。
+        # 给受保护层级匹配额度；高优替班、候补、普通替班和空闲者可用剩余额度。
         # 复用替班匹配，使跨组主班让出普通额度，不受实际床号影响。
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
@@ -3119,7 +3119,7 @@ class Operators:
                     and not op.room.startswith("dorm")
                     and groups.intersection(allowed)
                 ],
-                # 同组主班优先计入绑组动态额度，普通额度留给其他前四层。
+                # 同组主班优先计入绑组动态额度，普通额度留给其他受保护申请者。
                 key=lambda index: capacities[index] is None,
             )
         return (

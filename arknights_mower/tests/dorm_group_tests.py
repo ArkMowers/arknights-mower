@@ -923,11 +923,11 @@ def test_grouped_free_capacity_guards_real_admission_paths(
     else:
         plan = emergency_dorm_plan(data, {"targets": {incoming.name: 24}})
         admitted = any(incoming.name in row for row in plan.values())
-    assert admitted is same_group
+    assert admitted is (same_group or entry == "planner")
     assert [vars(bed) for bed in data.dorm] == before
 
 
-@pytest.mark.parametrize("priority", ["explicit", "main", "low", "replacement"])
+@pytest.mark.parametrize("priority", ["explicit", "main", "low", "low_replacement"])
 def test_grouped_free_capacity_cannot_admit_outside_protected_tiers(
     grouped_free_capacity, priority
 ):
@@ -938,15 +938,19 @@ def test_grouped_free_capacity_cannot_admit_outside_protected_tiers(
         data.config.ope_resting_priority.append(incoming.name)
     elif priority == "low":
         incoming.resting_priority = "low"
-    elif priority == "replacement":
+    elif priority == "low_replacement":
         incoming.operator_type = "low"
-        data.config.resting_priority_replacement.append(incoming.name)
+        data.config.resting_priority.append(incoming.name)
         data.plan["meeting"][0].replacement.append(incoming.name)
     assert data.assign_dorm(incoming.name) is None
 
 
-@pytest.mark.parametrize("tier", ["standby", "replacement", "idle"])
-def test_grouped_free_capacity_admits_lower_three_tiers(grouped_free_capacity, tier):
+@pytest.mark.parametrize(
+    "tier", ["priority_replacement", "standby", "replacement", "idle"]
+)
+def test_grouped_free_capacity_admits_replacements_standby_and_idle(
+    grouped_free_capacity, tier
+):
     data = grouped_free_capacity.op_data
     incoming = data.operators["银灰"]
     incoming.group = "外组"
@@ -954,8 +958,10 @@ def test_grouped_free_capacity_admits_lower_three_tiers(grouped_free_capacity, t
         incoming.resting_priority = "standby"
     else:
         incoming.operator_type = "low"
-        if tier == "replacement":
+        if tier in ("replacement", "priority_replacement"):
             data.plan["meeting"][0].replacement.append(incoming.name)
+        if tier == "priority_replacement":
+            data.config.resting_priority_replacement.append(incoming.name)
     assert data.assign_dorm(incoming.name) is not None
 
 
@@ -974,6 +980,24 @@ def test_same_group_primary_can_use_group_capacity_from_ordinary_bed(
     incoming = data.operators["银灰"]
     incoming.group = "外组"
     assert data.assign_dorm(incoming.name) is not None
+
+
+def test_priority_replacement_resident_does_not_consume_protected_capacity(
+    grouped_free_capacity,
+):
+    data = grouped_free_capacity.op_data
+    resident = data.operators["年"]
+    resident.operator_type = "low"
+    data.plan["meeting"][0].replacement.append(resident.name)
+    data.config.resting_priority_replacement.append(resident.name)
+    data.operators["银灰"].group = "外组"
+
+    bed = data.assign_dorm("银灰")
+
+    assert bed is not None
+    assert bed.position == ("dormitory_1", 0)
+    assert resident.current_room == "dormitory_1"
+    assert resident.current_index == 4
 
 
 def test_grouped_free_capacity_keeps_same_group_protected_resident(

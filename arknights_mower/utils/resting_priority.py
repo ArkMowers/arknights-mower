@@ -48,6 +48,8 @@ def resting_tier(op_data, name, now=None, *, replacement_names=None):
         return RestingTier.PRIORITY
     if name in op_data.config.resting_standby:
         return RestingTier.STANDBY
+    if name in op_data.config.resting_priority:
+        return RestingTier.LOW_MAIN
     if op is not None:
         if (op.room == "train" and op.index == 0) or (
             op.current_room == "train" and op.current_index == 0
@@ -121,10 +123,7 @@ def bed_takeover_allowed(op_data, requester, resident):
     resident_tier = resting_tier(op_data, resident, now)
     if is_full_dynamic_candidate(op_data, requester, now):
         return False
-    if (
-        requester_tier == RestingTier.EXCLUDED
-        or resident_tier <= RestingTier.PRIORITY_REPLACEMENT
-    ):
+    if requester_tier == RestingTier.EXCLUDED or resident_tier <= RestingTier.LOW_MAIN:
         return False
     from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 

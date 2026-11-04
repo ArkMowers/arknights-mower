@@ -18,7 +18,7 @@ export interface MowerSchedulingDataOptions {
  backupExplicitTasks?:readonly MowerTaskPlan[]
  adjustForRunOrders?:boolean
  dormIsolation?:string[][]
- alpha?:boolean;priorityReplacement?:string[];freeRoomExclusions?:string[];dormOrder?:string[];standbyNames?:string[]
+ alpha?:boolean;priorityReplacement?:string[];freeRoomExclusions?:string[];dormOrder?:string[];standbyNames?:string[];lowPriorityNames?:string[]
  plan:Record<string,string[]>;operators:Record<string,MowerOperatorState>;dorms:MowerDormState[];nowMicros:number;partyTime?:MowerDateTimeValue|boolean|null;runOrderRooms?:Record<string,Record<string,never>>
  policy?:Partial<MowerMoodPolicy>;freeRoom?:boolean;powerPlantCount?:number;planConditions?:boolean[];backupGroup?:string
  urgentRecoverySupporters?:Record<string,string[]>
@@ -42,7 +42,7 @@ export class MowerSchedulingData {
  /** Runtime uses October 3 alpha; frozen September fixtures retain their source contract. */
  dormIsolation:string[][]
  alpha:boolean;priorityReplacement:string[];freeRoomExclusions:string[];dormOrder:string[]
- standbyNames:string[]
+ standbyNames:string[];lowPriorityNames:string[]
  plan:Record<string,string[]>;operators:Record<string,MowerOperatorState>;dorms:MowerDormState[];nowMicros:number;partyTime?:MowerDateTimeValue|boolean|null;runOrderRooms:Record<string,Record<string,never>>
  recoveryOrderVersion=0
  policy:MowerMoodPolicy;freeRoom:boolean;powerPlantCount:number;planConditions:boolean[];backupGroup:string
@@ -65,7 +65,7 @@ export class MowerSchedulingData {
   this.dormIsolation=(o.dormIsolation??[]).map(group=>[...group])
   this.adjustForRunOrders=o.adjustForRunOrders
   this.alpha=o.alpha??false;this.priorityReplacement=o.priorityReplacement??[];this.freeRoomExclusions=o.freeRoomExclusions??[];this.dormOrder=o.dormOrder??[]
-  this.standbyNames=o.standbyNames??[];Object.values(o.operators).forEach(op=>{op.alpha=this.alpha})
+  this.standbyNames=o.standbyNames??[];this.lowPriorityNames=[...(o.lowPriorityNames??[])];Object.values(o.operators).forEach(op=>{op.alpha=this.alpha})
   this.plan=o.plan;this.operators=o.operators;this.dorms=o.dorms;this.nowMicros=o.nowMicros;this.partyTime=o.partyTime;this.runOrderRooms=o.runOrderRooms??{}
   if(this.alpha)for(const op of Object.values(this.operators)){
    op.shiftGroup=undefined

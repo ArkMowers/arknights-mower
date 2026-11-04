@@ -949,7 +949,7 @@ function movePlanForward() {
           <span>宿舍高优先级干员</span>
           <help-text>
             <p>
-              高优干员 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
+              高优干员 → 普通主班 → 低优干员 → 高优替班 → 候补 → 普通替班 →
               空闲；同级距心情上限更远者优先。
             </p>
             <p>
@@ -971,7 +971,8 @@ function movePlanForward() {
         <template #label>
           <span>宿舍低优先级干员</span>
           <help-text>
-            低于普通主班，高于高优替班；同级距心情上限更远者优先。需有床才能下班，不改变下班顺序。
+            适用于主班、替班和空闲干员，低于普通主班、高于高优替班；同级距心情上限更远者优先。已入住的未恢复床位受保护，替班仍保留原有身份，仅使用普通
+            Free 容量。主班需有床才能下班，不改变下班顺序。
           </help-text>
         </template>
         <PlanOperatorSelect
@@ -985,7 +986,9 @@ function movePlanForward() {
         <template #label>
           <span>宿舍高优先级替班</span>
           <help-text
-            >仅替班生效，低于低优主班、高于候补；同级距心情上限更远者优先，可接管候补床位。</help-text
+            >仅替班生效，低于低优主班、高于候补；同级距心情上限更远者优先。可使用已开放的绑组动态
+            Free
+            床位，也可接管候补、普通替班和空闲干员的床位。更高优先级的恢复申请者可将其换出，同级保留原住客；固定驻员、宿舍保留和任务预约规则继续生效。</help-text
           >
         </template>
         <PlanOperatorSelect
