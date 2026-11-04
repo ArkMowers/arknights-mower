@@ -16558,7 +16558,7 @@ class BaseSchedulerSolver(
             len(new_plan) != 1 or config.conf.run_order_buffer_time <= 0
         ):
             if settle_entry and (room == "central" or room.startswith("room_")):
-                # 入场观察和退出共用一次预算，不在已观察到的相机运动中返回。
+                # 返回前复核当前房间，和退出确认共用一次预算。
                 deadline = monotonic() + self.performance_profile.transition_timeout
                 if self._wait_for_room_entry_before_exit(room, deadline=deadline):
                     self.back(0.5)
@@ -16574,32 +16574,21 @@ class BaseSchedulerSolver(
         del plan[room]
 
     def _wait_for_room_entry_before_exit(self, room, *, deadline):
-        """跳过换人时，等待同一房间的顶壁连续两帧一致。"""
-        previous = None
+        """跳过换人时，一次新帧确认目标房间即可返回。"""
         poll_interval = self.performance_profile.screenshot_interval / 1000
         while True:
             self.recog.update()
             scene = self.scene()
             if scene == Scene.INFRA_MAIN:
                 return False
-            settled = False
-            if (
+            confirmed = (
                 scene in (Scene.INFRA_DETAILS, Scene.CTRLCENTER_ASSISTANT)
                 and self.detect_room() == room
-            ):
-                # 顶壁避开入住倒计时、地面干员及制造机械的持续动画。
-                ceiling = self.recog.gray[120:300, 230:1200]
-                settled = (
-                    previous is not None
-                    and cv2.norm(previous, ceiling, cv2.NORM_INF) == 0
-                )
-                previous = ceiling.copy()
-            else:
-                previous = None
+            )
             remaining = deadline - monotonic()
             if remaining <= 0:
-                raise RecognizeError("房间进场动画仍未确认结束，保留本房间安排")
-            if settled:
+                raise RecognizeError("返回前未确认目标房间，保留本房间安排")
+            if confirmed:
                 return True
             self.sleep(min(poll_interval, remaining))
 
