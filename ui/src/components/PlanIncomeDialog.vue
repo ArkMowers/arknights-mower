@@ -10,6 +10,11 @@ import {
   applyMowerIncomeSettings
 } from '@/riic/income'
 import { applyIncomeCache } from '@/riic/incomeCache'
+import {
+  loadIncomePreferences,
+  saveIncomePreferences,
+  clearIncomePreferences
+} from '@/riic/incomePreferences'
 import { incomeAlgorithms, incomeAlgorithmLabel, incomeSettingsUrl } from '@/utils/incomeSettings'
 import { createIncomeSession } from '@/riic/incomeSession'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
@@ -23,7 +28,13 @@ import { MOWER_INVENTORY_ITEMS } from '@/riic/vendor/domain/simulationInventory'
 
 const props = defineProps({ snapshot: Object, preparing: Boolean, prepareError: String })
 const emit = defineEmits(['close'])
-const settings = reactive(defaultIncomeSettings())
+const preferences = loadIncomePreferences()
+const settings = reactive({ ...defaultIncomeSettings(), ...preferences.settings })
+const preferencesError = ref('')
+let cachedInventoryOverrides = preferences.cachedInventoryOverrides
+let cachedInventoryBaseline = null
+let cachedInventoryValues = null
+let applyingPreferences = false
 const axios = inject('axios')
 const cacheLoading = ref(false)
 const cacheError = ref('')
@@ -42,7 +53,7 @@ const weightValues = computed(() =>
   settings.weightMode === 'mower' ? settings.mowerWeights : settings.productionWeights
 )
 const cachedRosterCount = computed(() => settings.cachedOperators?.length ?? 0)
-async function readCache() {
+async function readCache({ preserveOverrides = false } = {}) {
   cacheLoading.value = true
   cacheError.value = ''
   try {
@@ -50,7 +61,20 @@ async function readCache() {
       timeout: 15000,
       signal: controller.signal
     })
-    if (alive) applyIncomeCache(settings, data)
+    if (alive) {
+      applyingPreferences = true
+      try {
+        if (!preserveOverrides) cachedInventoryOverrides = {}
+        applyIncomeCache(settings, data)
+        cachedInventoryBaseline = settings.cachedInventory ? { ...settings.cachedInventory } : null
+        if (settings.cachedInventory)
+          Object.assign(settings.cachedInventory, cachedInventoryOverrides)
+        cachedInventoryValues = settings.cachedInventory ? { ...settings.cachedInventory } : null
+      } finally {
+        applyingPreferences = false
+      }
+      persistPreferences()
+    }
   } catch {
     if (alive) cacheError.value = '森空岛缓存读取失败，可重新读取或选择手动输入'
   } finally {
@@ -70,8 +94,8 @@ async function readWeights() {
       sharedRatios = data.ratios
     }
   } catch (error) {
-    if (alive) weightsError.value = 'Mower 收益设置读取失败，可重试或选择本次自定义'
-    throw new Error('Mower 收益设置读取失败，可重试或选择本次自定义', { cause: error })
+    if (alive) weightsError.value = 'Mower 收益设置读取失败，可重试或选择自定义权重'
+    throw new Error('Mower 收益设置读取失败，可重试或选择自定义权重', { cause: error })
   } finally {
     if (alive) weightsBusy.value = false
   }
@@ -105,7 +129,9 @@ async function selectAlgorithm(value) {
     if (alive) weightsBusy.value = false
   }
 }
-onMounted(() => Promise.allSettled([readCache(), readWeights(), restoreResult()]))
+onMounted(() =>
+  Promise.allSettled([readCache({ preserveOverrides: true }), readWeights(), restoreResult()])
+)
 const state = reactive({
   running: false,
   result: null,
@@ -156,12 +182,63 @@ watch(
   () => props.snapshot,
   (snapshot) => {
     if (!snapshot) return
-    settings.droneRoom = targets.value.some((target) => target.value === snapshot.droneRoom)
-      ? snapshot.droneRoom
-      : ''
+    const preferred = preferences.settings.droneRoom
+    applyingPreferences = true
+    try {
+      settings.droneRoom =
+        preferred === '' || targets.value.some((target) => target.value === preferred)
+          ? preferred
+          : defaultDroneRoom()
+    } finally {
+      applyingPreferences = false
+    }
   },
   { immediate: true }
 )
+function defaultDroneRoom() {
+  const target = props.snapshot?.droneRoom
+  return targets.value.some((item) => item.value === target) ? target : ''
+}
+function persistPreferences() {
+  if (applyingPreferences) return
+  preferences.settings.droneRoom = settings.droneRoom
+  if (cachedInventoryBaseline && settings.cachedInventory) {
+    for (const { resource } of MOWER_INVENTORY_ITEMS) {
+      const value = settings.cachedInventory[resource] ?? 0
+      if (value === cachedInventoryValues?.[resource]) continue
+      if (value === cachedInventoryBaseline[resource]) delete cachedInventoryOverrides[resource]
+      else cachedInventoryOverrides[resource] = value
+    }
+    cachedInventoryValues = { ...settings.cachedInventory }
+  }
+  preferencesError.value = saveIncomePreferences(settings, cachedInventoryOverrides)
+    ? ''
+    : '参数修改未能保存到本浏览器，当前窗口仍可使用。'
+}
+function resetSettings() {
+  if (state.running || exporting.value || submitting.value || weightsBusy.value) return
+  applyingPreferences = true
+  try {
+    const current = {
+      cachedOperators: settings.cachedOperators,
+      cachedInventory: cachedInventoryBaseline ? { ...cachedInventoryBaseline } : null,
+      cacheObservedAt: settings.cacheObservedAt,
+      mowerWeights: settings.mowerWeights,
+      mowerAlgorithm: settings.mowerAlgorithm,
+      droneRoom: defaultDroneRoom()
+    }
+    Object.assign(settings, defaultIncomeSettings(), current)
+    delete preferences.settings.droneRoom
+    cachedInventoryOverrides = {}
+    cachedInventoryValues = current.cachedInventory ? { ...current.cachedInventory } : null
+  } finally {
+    applyingPreferences = false
+  }
+  preferencesError.value = clearIncomePreferences()
+    ? ''
+    : '本次已恢复默认，浏览器中保留的参数未能清除。'
+}
+watch(settings, persistPreferences, { deep: true, flush: 'sync' })
 const metrics = computed(() =>
   state.result?.success ? incomeMetrics(state.result.summary, state.result.observedHours / 24) : []
 )
@@ -412,6 +489,18 @@ onBeforeUnmount(() => {
       >
       <n-tabs v-model:value="activeTab" type="line" animated>
         <n-tab-pane name="settings" tab="参数配置">
+          <div class="settings-actions">
+            <span>参数修改会保留在本浏览器，下次打开继续使用。</span>
+            <n-button
+              size="small"
+              :disabled="state.running || exporting || submitting || weightsBusy"
+              @click="resetSettings"
+              >恢复默认</n-button
+            >
+          </div>
+          <n-alert v-if="preferencesError" type="warning" class="notice">{{
+            preferencesError
+          }}</n-alert>
           <n-alert v-if="planIssues.length" class="notice" type="warning" title="排班校验提示">
             <p>副表单独生效的警告仅供检查，实际组合仍在切表前校验。</p>
             <ul>
@@ -512,7 +601,7 @@ onBeforeUnmount(() => {
               <p v-if="settings.inventorySource === 'cache'">
                 {{
                   settings.cachedInventory
-                    ? '未提供的数量按 0 计算，可手动修改。重新读取会替换本次缓存修改。'
+                    ? '未提供的数量按 0 计算，可手动修改。重新读取会清除手动修改并使用最新缓存。'
                     : '没有可用库存缓存，请同步或选择手动设定。'
                 }}
                 {{
@@ -556,7 +645,7 @@ onBeforeUnmount(() => {
                     v-model:value="settings.weightMode"
                     :options="[
                       { label: '同步 Mower 基报算法', value: 'mower' },
-                      { label: '本次自定义', value: 'custom' }
+                      { label: '自定义', value: 'custom' }
                     ]"
                 /></n-form-item>
                 <template v-if="settings.weightMode === 'mower'">
@@ -655,7 +744,7 @@ onBeforeUnmount(() => {
               权重：{{
                 state.input.settings.weightMode === 'mower'
                   ? incomeAlgorithmLabel(state.input.settings.mowerAlgorithm)
-                  : '本次自定义'
+                  : '自定义'
               }}；回收站仅计产出次数。
             </p>
             <p>
@@ -900,6 +989,14 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   align-items: start;
   gap: 12px;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 14px;
 }
 .n-form-item {
   margin: 0 0 12px;
