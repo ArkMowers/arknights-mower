@@ -5,7 +5,7 @@ import type {MowerTaskPlan} from './mowerTaskQueue'
 
 /** Group-managed Free capacity belongs to that group's primaries, independent of physical bed. */
 export function mowerDormCapacityAllows(data:MowerSchedulingData,name:string,position:readonly [string,number],plan:MowerTaskPlan={},activeGroups:ReadonlySet<string>=new Set()):boolean {
- if(alphaRestingTier(data,name)>3)return true
+ if(alphaRestingTier(data,name)>2)return true
  if(!Object.entries(data.plan).some(([room,row])=>room.startsWith('dorm')&&row.some(owner=>owner!=='Free'&&(data.operators[owner]?.replacement.includes('Free')||data.operators[owner]?.groupBindings.some(binding=>binding.replacement.includes('Free'))))))return true
  const transitions={...data.pendingGroupTransitions,...mowerArrangementGroupTransitions(data,plan),...Object.fromEntries([...activeGroups].map(group=>[group,true]))}
  const active=new Set(Object.keys(transitions).filter(group=>transitions[group])),inactive=new Set(Object.keys(transitions).filter(group=>!transitions[group]))
@@ -19,7 +19,7 @@ export function mowerDormCapacityAllows(data:MowerSchedulingData,name:string,pos
   let resident=plan[room]?.[index]??'Current'
   if(resident==='Current'){resident=data.currentOperator(room,index)?.name??'';if(moving.has(resident))resident=''}
   if(alphaPosition(room,index)===alphaPosition(...position))resident=name
-  if(data.operators[resident]&&resident!==ownerName&&alphaRestingTier(data,resident)<=3)residents.add(resident)
+  if(data.operators[resident]&&resident!==ownerName&&alphaRestingTier(data,resident)<=2)residents.add(resident)
  }
  residents.add(name)
  const choices=Object.fromEntries([...residents].sort().map(resident=>{

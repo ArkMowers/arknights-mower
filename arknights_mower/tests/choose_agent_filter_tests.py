@@ -438,6 +438,7 @@ def selection_solver(monkeypatch, residents=None):
         config=SimpleNamespace(
             free_blacklist=[],
             ope_resting_priority=[],
+            resting_priority=[],
             resting_standby=[],
             free_room_exclusions=[],
         ),

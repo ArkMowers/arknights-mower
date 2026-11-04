@@ -34,4 +34,22 @@ describe('group Free capacity is shared by count rather than bed identity',()=>{
   expect(mowerDormCapacityAllows(data,'A',['dormitory_1',1],{work:['A','Current'],dormitory_1:['Current','B']})).toBe(true)
   expect(mowerDormCapacityAllows(data,'B',['dormitory_1',0],{work:['A','Current'],dormitory_1:['Current','A']})).toBe(false)
  })
+ it('admits a priority replacement into an open grouped Free bed',()=>{
+  const data=fixture();data.plan.dormitory_1=['K'];data.dorms.splice(1)
+  data.priorityReplacement=['R'];data.operators.A!.replacement=['R']
+  expect(mowerAssignDormGroup(data,['R'])?.map(bed=>bed.position)).toEqual([['dormitory_1',0]])
+ })
+ it('does not reserve ordinary capacity for an existing priority replacement',()=>{
+  const data=fixture();data.priorityReplacement=['R'];data.operators.A!.replacement=['R']
+  data.operators.R!.currentRoom='dormitory_1';data.operators.R!.currentIndex=1
+  data.dorms[1]!.name='R'
+  expect(mowerAssignDormGroup(data,['B'])?.map(bed=>bed.position)).toEqual([['dormitory_1',0]])
+  expect(data.operators.R!.currentRoom).toBe('dormitory_1')
+ })
+ it('keeps explicitly low-priority replacements within ordinary capacity',()=>{
+  const data=fixture();data.plan.dormitory_1=['K'];data.dorms.splice(1)
+  data.priorityReplacement=['R'];data.lowPriorityNames=['R'];data.operators.A!.replacement=['R']
+  expect(mowerAssignDormGroup(data,['R'])).toBeUndefined()
+  expect(data.dorms[0]!.name).toBe('')
+ })
 })

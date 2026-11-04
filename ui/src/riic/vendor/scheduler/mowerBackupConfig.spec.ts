@@ -6,6 +6,8 @@ import {compileRosterSchedule} from './compileRosterSchedule'
 import {compiledScheduleToRuntimeConfig} from './scheduleAdapter'
 import {createRosterRuntime} from './rosterRuntime'
 import {createBackupPlanController} from './backupPlans'
+import {alphaRestingTier} from './mowerAlphaDorm'
+import {projectMowerArrangements} from './mowerObservations'
 
 const fields = ['rest_in_full', 'exhaust_require', 'workaholic', 'resting_priority', 'resting_priority_replacement', 'free_room_exclusions', 'resting_standby', 'free_blacklist', 'refresh_trading', 'refresh_drained', 'ope_resting_priority'] as const
 function setup(conf: Record<string, unknown>, backups: Record<string, unknown>[]) {
@@ -22,6 +24,22 @@ function setup(conf: Record<string, unknown>, backups: Record<string, unknown>[]
 }
 
 describe('Mower alpha backup config layering', () => {
+  it('applies and removes low-priority replacement protection through runtime rebuilding', () => {
+    const {state, activate} = setup({}, [{resting_priority: '香草'}])
+    const name = id('香草'), source = getMowerSourceRuntime(state)
+    source.data.operators[name]!.mood = 10; source.data.operators[name]!.timeStampMicros = 0
+    expect(alphaRestingTier(source.data, name)).toBe(5)
+    activate([true])
+    const active = getMowerSourceRuntime(state).data
+    expect(alphaRestingTier(active, name)).toBe(2)
+    expect(active.operators[name]!.isHigh()).toBe(false)
+    const projected = projectMowerArrangements(active, [])
+    expect(alphaRestingTier(projected, name)).toBe(2)
+    projected.lowPriorityNames.length = 0
+    expect(alphaRestingTier(active, name)).toBe(2)
+    activate([false])
+    expect(alphaRestingTier(getMowerSourceRuntime(state).data, name)).toBe(5)
+  })
   it.each(fields)('adds then removes %s entries, permits later re-addition and restores earlier layers', field => {
     const {base, state, controller, activate} = setup({[field]: ['芬']}, [
       {[field]: '香草,芬', removed_operators: {[field]: '芬,香草'}},

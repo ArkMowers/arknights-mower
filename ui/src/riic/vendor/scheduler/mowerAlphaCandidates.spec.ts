@@ -3,6 +3,7 @@ import { prepareMowerRelease } from './mowerRelease'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mowerAlphaDormCandidates, mowerAlphaFillPlan, planMowerAlphaDormFill } from './mowerAlphaCandidates'
 import * as dorm from './mowerAlphaDorm'
+import { mowerAssignDormGroup } from './mowerDormAssignment'
 import { MowerTask, MowerTaskQueue, MOWER_TASK_TYPES as T, toMowerMicros } from './mowerTaskQueue'
 import { MowerOperatorState } from './mowerOperatorState'
 import { MowerSchedulingData, MowerDormState } from './mowerSchedulingData'
@@ -67,6 +68,36 @@ function takeoverData() {
 
 
 describe('native priority replacement bed takeover', () => {
+  it('lets an explicitly low-priority replacement take a priority replacement bed', () => {
+    const data = takeoverData()
+    data.standbyNames = []; data.operators.S!.operatorType = 'low'; data.operators.S!.mood = 12
+    data.operators.owner!.replacement.push('S'); data.priorityReplacement.push('S')
+    data.lowPriorityNames = ['R']
+    expect(planMowerAlphaDormFill(data, new MowerTaskQueue(), true)?.plan.dormitory_1).toEqual(['R'])
+    expect(data.operators.R!.isHigh()).toBe(false)
+  })
+  it('protects an explicitly low-priority replacement resident from higher tiers', () => {
+    const data = takeoverData()
+    data.lowPriorityNames = ['R']; data.operators.R!.mood = 12
+    data.operators.R!.currentRoom = 'dormitory_1'; data.operators.R!.currentIndex = 0
+    data.operators.S!.currentRoom = ''; data.operators.owner!.mood = 0
+    data.dorms[0]!.name = 'R'
+    expect(mowerAssignDormGroup(data, ['owner'])).toBeUndefined()
+    expect(data.dorms[0]!.name).toBe('R')
+  })
+  it.each(['high', 'low', 'explicit'] as const)('lets a %s primary take an unfinished priority replacement bed', priority => {
+    const data = takeoverData(), primary = data.operators.owner!, resident = data.operators.R!
+    primary.mood = 0
+    primary.restingPriority = priority === 'low' ? 'low' : 'high'
+    if (priority === 'explicit') data.restingPriorityNames.push(primary.name)
+    resident.mood = 12
+    resident.currentRoom = 'dormitory_1'; resident.currentIndex = 0
+    data.operators.S!.currentRoom = ''
+    data.dorms[0]!.name = resident.name
+    expect(mowerAssignDormGroup(data, [primary.name])?.map(bed => bed.name)).toEqual([primary.name])
+    expect(resident.currentRoom).toBe('dormitory_1')
+    expect(primary.currentRoom).toBe('room_1_1')
+  })
   it.each([false, true])('takes a standby bed with free room disabled (emptyOnly=%s)', emptyOnly => {
     const data = takeoverData(), queue = new MowerTaskQueue()
     const task = planMowerAlphaDormFill(data, queue, emptyOnly)

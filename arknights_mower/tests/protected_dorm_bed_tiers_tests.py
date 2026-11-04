@@ -31,7 +31,6 @@ PROTECTED = (
     RestingTier.PRIORITY,
     RestingTier.MAIN,
     RestingTier.LOW_MAIN,
-    RestingTier.PRIORITY_REPLACEMENT,
 )
 
 
@@ -65,11 +64,11 @@ def add_standby_anchor(data, incoming):
     assert data.is_standby(incoming.name)
 
 
-@pytest.mark.parametrize("tier", PROTECTED)
+@pytest.mark.parametrize("tier", (*PROTECTED, RestingTier.PRIORITY_REPLACEMENT))
 @pytest.mark.parametrize("reading", ["unfinished", "full", "unknown", "predicted"])
 @pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("entry", ["planner", "selection"])
-def test_protected_residents_yield_only_after_confirmed_cap(
+def test_resident_protection_and_priority_replacement_yield_at_planning_and_selection(
     op_data, tier, reading, free_room, entry
 ):
     data = op_data
@@ -88,16 +87,17 @@ def test_protected_residents_yield_only_after_confirmed_cap(
     bed.time = datetime.now() - timedelta(minutes=1)
     before = deepcopy(vars(bed))
     tasks = []
+    yields = reading == "full" or tier == RestingTier.PRIORITY_REPLACEMENT
 
     if entry == "planner":
         try_add_release_dorm({}, None, data, tasks)
-        assert bool(tasks) is (reading == "full")
+        assert bool(tasks) is yields
         if tasks:
             assert incoming.name in tasks[0].plan[ROOM]
     else:
         row = ["Current"] * 4 + ["Free"]
         selection_solver(data).preserve_resting_crafters(row, ROOM)
-        assert (row[-1] != resident.name) is (reading == "full")
+        assert (row[-1] != resident.name) is yields
 
     assert vars(bed) == before
     assert resident.is_resting()
@@ -105,7 +105,7 @@ def test_protected_residents_yield_only_after_confirmed_cap(
 
 
 @pytest.mark.parametrize("tier", PROTECTED)
-def test_protected_priority_replacement_does_not_yield_in_rescue(op_data, tier):
+def test_protected_resident_does_not_yield_in_rescue(op_data, tier):
     data = op_data
     resident = set_tier(data, "空爆", tier, 12)
     resident.current_room, resident.current_index = ROOM, 4
@@ -113,6 +113,22 @@ def test_protected_priority_replacement_does_not_yield_in_rescue(op_data, tier):
     data.emergency_dorm_agents = {resident.name}
     incoming = set_tier(data, "红", RestingTier.PRIORITY, 5)
     assert not data._slot_takable(data.dorm[0], requester=incoming.name)
+
+
+@pytest.mark.parametrize("low_priority", [False, True])
+def test_rescue_priority_replacement_yields_unless_explicitly_low(
+    op_data, low_priority
+):
+    data = op_data
+    resident = set_tier(data, "空爆", RestingTier.PRIORITY_REPLACEMENT, 12)
+    resident.current_room, resident.current_index = ROOM, 4
+    if low_priority:
+        data.config.resting_priority.append(resident.name)
+    data.rescue_mode = True
+    data.emergency_dorm_agents = {resident.name}
+    incoming = set_tier(data, "红", RestingTier.MAIN, 5)
+
+    assert data._slot_takable(data.dorm[0], requester=incoming.name) is not low_priority
 
 
 @pytest.mark.parametrize(
@@ -263,6 +279,7 @@ def test_queued_named_fill_rechecks_newly_protected_resident(op_data, tier):
 def test_personal_mood_limit_still_releases_a_protected_resident(op_data, strict_task):
     data = op_data
     resident = set_tier(data, "空爆", RestingTier.PRIORITY_REPLACEMENT, 12)
+    data.config.resting_priority.append(resident.name)
     resident.current_room, resident.current_index = ROOM, 4
     resident.upper_limit = 12
     data.config.operator_mood_limits = {resident.name: {"lower": 0, "upper": 12}}
