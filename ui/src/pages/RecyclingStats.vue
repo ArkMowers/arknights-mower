@@ -582,7 +582,10 @@ onUnmounted(() => {
   --soft: #f5f8f7;
   --line: rgba(27, 51, 42, 0.08);
   --accent: #238570;
-  max-width: 1480px;
+  width: 100%;
+  min-width: 0;
+  max-width: 932px;
+  box-sizing: border-box;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
