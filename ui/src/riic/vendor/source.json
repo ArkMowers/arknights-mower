@@ -267,8 +267,8 @@
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
-      "sha256": "cc05a09c19cc69fdcce2b86b935777e6b31bf5ba5b19e0bbb32eb8327377f20e",
-      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances. Capture warmup-adjusted quality probabilities only at new-order acquisition. Finalize successful sampling by collecting completed manufacturing output, payable trade orders and recycling counts without opening new work or spending drones. Attribute delayed warmup receipts separately without altering physical inventory. Assume manufacturing recipes are already unlocked for initial production and product switching, independently of current facility levels; preserve unknown switch-target rejection and each room's own storage capacity."
+      "sha256": "2e3fb21a594309ccbdc513fe084a30f91b811e82ab649de843d9c13a81aa77e7",
+      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances. Capture warmup-adjusted quality probabilities only at new-order acquisition. Finalize successful sampling by collecting completed manufacturing output, payable trade orders and recycling counts without opening new work or spending drones. Attribute delayed warmup receipts separately without altering physical inventory. Assume manufacturing recipes are already unlocked for initial production and product switching, independently of current facility levels; preserve unknown switch-target rejection and each room's own storage capacity. Track completed fragments by product across formula switches and exclude warmup completions from sampled output."
     },
     "simulator/scheduleSimulation.ts": {
       "sha256": "1d6d87b55468227a25b9d85d3cb135ab6cf606324ef10c5d7025ddd3798986fa",
@@ -731,20 +731,20 @@
       "sha256": "70ea21f8d2ef01145425553a59a664296c73bf9fed1384675127596ed0ae537d"
     },
     "simulator/productionScore.ts": {
-      "sha256": "e165de19bd9ba0484013835ce2032cac1715127fc608eccac68167e0b826cce1",
-      "reason": "Exclude delayed warmup receipts and special-order premiums from sampled income; score completed output only."
+      "sha256": "80ffeb38b971a91983de14e2a26edb84212f9739c2af0320ff37913f395bf04f",
+      "reason": "Exclude delayed warmup receipts and special-order premiums from sampled income; score completed output only. Use sampled fragment completion totals across formula switches instead of attributing all facility output to its final product."
     },
     "simulator/productionCompletion.spec.ts": {
       "sha256": "64d5ddadad8d23314f6d3c8ea247a4b57fc26cc238eba3f0f9f7d55326ea144f",
       "reason": "Verify successful endpoint collection, exact and unfinished work boundaries, finite payment constraints, no new manufacturing costs, recycling counts, idempotency and incomplete-run isolation."
     },
     "simulator/productionSampleAttribution.spec.ts": {
-      "sha256": "27c48c0cdb62964bf9896d3e52f88944959fc80a64719e96cdfc7d72f71bde3c",
-      "reason": "Verify that delayed warmup manufacturing and trade receipts remain in physical inventory while their output and premiums are excluded from sampled income; unfinished work has no reporting value."
+      "sha256": "11fcd14e2b287b5f38b60aea2bd4fa737d22c5c349450733c3942a9fa4227188",
+      "reason": "Verify that delayed warmup manufacturing and trade receipts remain in physical inventory while their output and premiums are excluded from sampled income; unfinished work has no reporting value. Verify fragment attribution across gold and fragment switches in potential and settled modes, excluding warmup and initial stock while retaining uncollected potential output."
     },
     "workbench/inventorySimulationBridge.spec.ts": {
-      "sha256": "0f8b9fe2413e0c3efffc3d623a68b1ae8c43268896a508f315a3d04ad5aef52b",
-      "reason": "Keep sampled order completion timestamps consistent with the selected settled or potential output fixture."
+      "sha256": "e5d1a834ed0129c97d0f2ab2b7cd8f77e3bbcee6623744d74d15550a87a53d9f",
+      "reason": "Keep sampled order completion timestamps consistent with the selected settled or potential output fixture. Provide product-specific sampled fragment completions in the synthetic scoring report."
     },
     "scheduler/backupExpression.ts": {
       "sha256": "44200a6b63b0aaa29c5acd7e3fc26ae8a98eb70759133343a5d5a1f30015330d",

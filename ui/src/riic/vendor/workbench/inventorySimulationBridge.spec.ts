@@ -123,7 +123,7 @@ function scoringReport(mode: 'settled' | 'potential') {
   const production = report.production!
   production.assumptions.outputMode = mode
   production.ledger.initial = { exp: 1000000, gold: 1000, lmd: 1000000, fragment: 100, orundum: 1000 }
-  production.sample.completed = { exp: 9000, gold: 9, orderLmd: 2250 }
+  production.sample.completed = { exp: 9000, gold: 9, fragments: 8, orderLmd: 2250 }
   production.sample.inflows = { exp: 1000, gold: 2, lmd: 2500, fragment: 3, orundum: 20 }
   production.sample.outflows = { gold: 4, fragment: 2 }
   production.manufacturing = [{ roomId: 'room_1_1', product: 'fragment', completedItems: 12, sampleCompletedItems: 8, pendingItems: 5, remainingBaseMinutes: 0, blockedHours: 0, blockedMaterialHours: 0 }]
