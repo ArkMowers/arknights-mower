@@ -48,7 +48,11 @@ function completeMowerDepartedRecovery(data:MowerSchedulingData,plan:MowerTaskPl
 }
 export function mowerNotValid(data:MowerSchedulingData,op:MowerOperatorState):boolean {
  if(!op.isHigh())return false
- if(data.alpha&&op.isResting()){const mood=mowerDormCandidateMood(data,op.name);if(mood!==undefined&&mood<op.upperLimit)return false}
+ if(data.alpha&&op.isResting()){
+  const mood=mowerDormCandidateMood(data,op.name)
+  if(mood!==undefined&&mood<op.upperLimit)return false
+  if(data.policy.predictiveMoodControl&&data.calculatedMoodSnapshot&&mood!==undefined&&!op.workaholic&&!op.room.startsWith('dorm'))return mood>=op.upperLimit
+ }
  if(mowerCoveredRecoveryPending(data,op))return false
  if(op.workaholic)return op.currentRoom!==op.room||op.currentIndex!==op.index
  if(!op.room.startsWith('dorm')&&op.isResting())return op.mood===-1||op.mood===24

@@ -31,6 +31,7 @@ export class MowerTask {
  backupGroupRequest?:MowerBackupGroupRequest
  timeMicros:number;type:MowerTaskType;plan:MowerTaskPlan;metadata:string;adjusted:boolean;strictMoodLimit:boolean;moodLimit:number|undefined
  observedOrderDueMicros?:number;wakeOnlyCompletion=false
+ runOrderCollectOnly=false
  executionFailure?:{kind?:'resource-wait';reason:string;rooms:string[];snapshot:MowerTaskFailureSnapshot}
  executionRetained=false
  /** Only observation-derived corrections may be rebuilt before physical execution. */

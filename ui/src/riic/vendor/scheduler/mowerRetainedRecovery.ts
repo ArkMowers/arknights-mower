@@ -1,10 +1,23 @@
 import type {MowerSchedulingData} from './mowerSchedulingData'
-import type {MowerTask,MowerTaskPlan} from './mowerTaskQueue'
+import {MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 import {alphaPosition} from './mowerAlphaDorm'
+
+const unstartedFailed=(task:MowerTask)=>!!task.executionFailure&&!task.backupShiftActive&&!task.arrangementStarted&&!task.productShiftLocked&&!task.dormRecoveryRestore.length
+
+/** Actual recovery admission completes an ordinary request without replaying incidental moves. */
+export function mowerCompletedOrdinaryRestRequest(data:MowerSchedulingData,task:MowerTask):boolean {
+ if(!unstartedFailed(task)||!task.ordinaryCoordination||task.exhaustSupport||task.backupExplicitSlots.size||task.backupGroupRequest||![T.SHIFT_OFF,T.EXHAUST_OFF].includes(task.type))return false
+ const requested=task.coordinationRequestNames
+ if(!requested.length||requested.some(name=>!data.operators[name]))return false
+ const groups=new Set(data.shiftRequestGroups(requested))
+ const names=new Set([...groups].flatMap(group=>data.shiftGroupMembers(group)).concat(requested.filter(name=>!data.operators[name]!.group)))
+ const required=[...names].map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.canStandby(op)&&(!op.multiGroup||!!op.shiftGroup&&groups.has(op.shiftGroup)||requested.length===1&&op.independentRest))
+ return required.length>0&&required.every(op=>op.isResting()&&data.currentOperator(op.currentRoom,op.currentIndex)===op)
+}
 
 /** A failed preview's incidental bed moves do not own another group's completed recovery. */
 export function mowerRetainedRecoveryMayReturn(data:MowerSchedulingData,task:MowerTask,group:string):boolean {
- if(!task.executionFailure||task.backupShiftActive||task.arrangementStarted||task.productShiftLocked||task.dormRecoveryRestore.length)return false
+ if(!unstartedFailed(task))return false
  const intent=task.backupShiftIntent??task.plan,members=new Set(data.shiftGroupMembers(group))
  for(const [room,row] of Object.entries(intent))for(const [index,name] of row.entries()){
   if(['Current',''].includes(name))continue
@@ -16,6 +29,16 @@ export function mowerRetainedRecoveryMayReturn(data:MowerSchedulingData,task:Mow
   if(explicit&&members.has(data.currentOperator(room,index)?.name??''))return false
  }
  return true
+}
+
+/** A failed, unstarted admission may wait for its current bed occupant's normal return. */
+export function mowerRetainedBedAllowsReturn(data:MowerSchedulingData,task:MowerTask,name:string):boolean {
+ if(!unstartedFailed(task))return false
+ const op=data.operators[name]
+ if(!op?.isHigh()||op.group||!op.room||op.room.startsWith('dorm')||!op.isResting()||op.multiGroup&&op.groupBindings.some(binding=>binding.group&&data.groupIsResting(binding.group))||name in task.releaseDormTargets())return false
+ const bed=data.getDormByName(name)?.[1],target=task.plan[op.currentRoom]?.[op.currentIndex]
+ if(!bed||bed.position[0]!==op.currentRoom||bed.position[1]!==op.currentIndex||!target||!data.operators[target]||target===name)return false
+ return [task.backupShiftIntent??task.plan,task.plan].every(plan=>!Object.values(plan).some(row=>row.includes(name))&&(plan[op.room]?.[op.index]===undefined||plan[op.room]?.[op.index]==='Current'))
 }
 
 /** Reconcile only after an observed return; preserve the original task and unrelated remaining work. */

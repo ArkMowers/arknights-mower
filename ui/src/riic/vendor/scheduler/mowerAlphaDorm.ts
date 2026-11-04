@@ -35,7 +35,7 @@ export function alphaFullDynamicCandidate(data:MowerSchedulingData,name:string):
 }
 export function alphaFullDormFiller(data:MowerSchedulingData,name:string):boolean {
  const op=data.operators[name],tier=alphaRestingTier(data,name)
- return !!op&&op.isResting()&&alphaFullDynamicCandidate(data,name)&&tier>3&&tier<7&&hasRestingMood(op,data.nowMicros)&&op.timeStampMicros!<=data.nowMicros&&!op.moodIsPrediction&&op.mood>=op.upperLimit
+ return !!op&&op.isResting()&&alphaFullDynamicCandidate(data,name)&&tier>3&&tier<7&&hasRestingMood(op,data.nowMicros)&&(data.policy.predictiveMoodControl&&data.calculatedMoodSnapshot!==undefined||op.timeStampMicros!<=data.nowMicros&&!op.moodIsPrediction&&op.mood>=op.upperLimit)
 }
 export function alphaBedTakeoverAllowed(data:MowerSchedulingData,requester:string,resident:string):boolean {
  const requesterTier=alphaRestingTier(data,requester),residentTier=alphaRestingTier(data,resident)

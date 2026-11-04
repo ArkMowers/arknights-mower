@@ -166,6 +166,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   // Supported run orders are ideal production events and reserve no roster time.
   runtimeConfig.mowerTaskScheduling={...runtimeConfig.mowerTaskScheduling,adjustForRunOrders:false}
   runtimeConfig.mowerAlpha=schedulingModel==='mower-alpha'
+  runtimeConfig.mowerJayeElite0=!!options.jayeElite0||inventory?.operators.some(op=>op.charId==='char_272_strong'&&op.elitePhase===0)===true
   runtimeConfig.mowerSingleRecoverySkillNames=OPERATORS.filter(op=>hasSingleRecoverySkill(operatorFor({operatorRecords},op.charId))).map(op=>op.charId)
   normalizeMowerRecoveryBeds(runtimeConfig)
   // Mower scans unregistered global cards too. The imported library is the idle-card pool;

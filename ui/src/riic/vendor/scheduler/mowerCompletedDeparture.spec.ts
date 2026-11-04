@@ -98,6 +98,8 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
 
   it.each([12, 24])('retains completed departure through temporary single recovery ordering at limit %s', upperLimit => {
     const f = fixture(upperLimit, upperLimit), op = f.source.data.operators.A!
+    f.source.data.restingPriorityNames = ['Incoming']
+    f.state.config.mowerPolicy!.opeRestingPriority = ['Incoming']
     f.source.data.operators.K1!.singleRecoveryManager = true
     f.source.data.operators.Incoming!.mood = 2
     f.source.data.operators.Incoming!.timeStampMicros = 0
@@ -122,6 +124,8 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
 
   it('reads actual below-limit mood before temporary ordering and restores the unfinished resident', () => {
     const f = fixture(11), op = f.source.data.operators.A!
+    f.source.data.restingPriorityNames = ['Incoming']
+    f.state.config.mowerPolicy!.opeRestingPriority = ['Incoming']
     f.task.type = T.SELF_CORRECTION
     f.source.data.operators.K1!.singleRecoveryManager = true
     f.source.data.operators.Incoming!.mood = 2

@@ -1,6 +1,7 @@
 // Port of dorm_recovery.py and default ensure_dorm_recovery_order, Mower alpha.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import {MowerArrangementError} from './mowerArrangementError'
+import {alphaRestingTier} from './mowerAlphaDorm'
 import {hasRestingMood,restingMood,type MowerOperatorState,type MowerRecoveryManager} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskQueue} from './mowerTaskQueue'
@@ -40,7 +41,7 @@ function fullPadding(data:MowerSchedulingData,excluded:Set<string>,room:string):
  }).sort((a,b)=>restingMood(a,data.nowMicros)-restingMood(b,data.nowMicros)||tier(data,a.name)-tier(data,b.name)).map(op=>op.name)
 }
 export function mowerRecoveryOrderPlan(data:MowerSchedulingData,room:string,names:string[],reserved:string[]=[]):string[]|undefined {
- const target=mowerRecoveryTarget(data,room,names);if(!target)return undefined
+ const target=mowerRecoveryTarget(data,room,names);if(!target||data.freeRoomExclusions.includes(target.name)||alphaRestingTier(data,target.name)>3)return undefined
  const managers=mowerRecoveryManagers(data,room,names);if(!managers.length)return undefined
  const index=names.indexOf(target.name)
  if(active(target,room,index)&&sameManagers(target.dormRecoveryFixed,managers)&&managers.every(([name,i])=>data.operators[name]!.currentRoom===room&&data.operators[name]!.currentIndex===i))return undefined

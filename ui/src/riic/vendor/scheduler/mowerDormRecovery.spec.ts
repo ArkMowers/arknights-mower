@@ -31,6 +31,20 @@ function fixture(groupHole=false,padding='known'){
  return {room,agents,data,task,queue,operators,trace,ensure,marker,restore:()=>{physical=[...agents];observe()}}
 }
 describe('actual alpha default dorm recovery ordering',()=>{
+ it.each(['priority','primary','low-primary','priority-replacement','standby','replacement','idle','retained'] as const)('limits extra single-target ordering to protected recovery tiers, role=%s',role=>{
+  const f=fixture(),op=f.operators.H!
+  if(role==='priority')f.data.restingPriorityNames=['H']
+  if(role==='low-primary')op.restingPriority='low'
+  if(['priority-replacement','replacement','idle'].includes(role)){op.operatorType='low';op.room=''}
+  if(role==='priority-replacement')f.data.priorityReplacement=['H']
+  if(['priority-replacement','replacement'].includes(role))f.operators.M1!.replacement=['H']
+  if(role==='standby')f.data.standbyNames=['H']
+  if(role==='retained')f.data.freeRoomExclusions=['H']
+  const ordered=['priority','primary','low-primary','priority-replacement'].includes(role)
+  expect(mowerRecoveryTarget(f.data,f.room,f.agents)?.name).toBe('H')
+  expect(f.ensure()).toBe(ordered)
+  if(!ordered){expect(f.trace).toEqual([]);expect(f.task.dormRecoveryRestore).toEqual([]);expect(mowerConfirmedRecoveryTargets(f.data).size).toBe(0)}
+ })
  it.each([false,true])('never proactively targets a single-recovery provider, sole unfinished recipient=%s',sole=>{
   const f=fixture();f.ensure();f.restore();f.operators.H!.singleRecoveryManager=true
   if(sole)for(const name of ['R','Q'])f.operators[name]!.mood=24
@@ -60,11 +74,11 @@ describe('actual alpha default dorm recovery ordering',()=>{
   f.restore()
   expect(mowerConfirmedRecoveryTargets(f.data).get(f.room)).toEqual(new Map([['M0','H']]))
  })
- it('skips the selected provider in a recovery bed and confirms the next eligible resident',()=>{
+ it('recognizes the next natural recipient without forcing ordering for an ordinary replacement',()=>{
   const f=fixture();f.operators.M0!.singleRecoveryManager=false;f.operators.H!.singleRecoveryManager=true
   expect(mowerRecoveryTarget(f.data,f.room,f.agents)?.name).toBe('R')
-  expect(f.ensure()).toBe(true)
-  expect(f.operators.R!.dormRecoveryFixed).toEqual([['H',2,2]])
+  expect(f.ensure()).toBe(false)
+  expect(f.operators.R!.dormRecoveryFixed).toEqual([])
   expect(f.operators.H!.dormRecoveryRoom).toBe('')
  })
  it('keeps a fifth-slot manager at its final position while filling the temporary gap',()=>{

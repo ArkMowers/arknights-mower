@@ -1,7 +1,7 @@
 import {restingThresholdFor} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerDependencyReturnAdmission} from './mowerTaskDerivation'
-import {mowerExhaustGroups} from './mowerExhaustPolicy'
+import {mowerExhaustGroups,mowerPendingExhaustDeparture} from './mowerExhaustPolicy'
 import {mowerWorkingReplacementAssignments,mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 // Port of default plan_solver/resting/_get_resting_plan_legacy/try_reorder.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
@@ -167,6 +167,7 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
   if(op.group&&exhaustGroups.has(op.group))continue
   if((data.alpha||data.adjustForRunOrders===false)&&op.group){if(attempted.has(op.group))continue;attempted.add(op.group)}
   const members=op.group?data.shiftGroupMembers(op.group):[op.name]
+  if(mowerPendingExhaustDeparture(data,[...new Set([...queue.tasks,...options.tasks??[]])],members))continue
   if(!mowerGetRestingPlan(data,[...members],replacements,plan,{...options,tasks:queue.tasks})){
    options.onBlocked?.(members)
    if(data.alpha&&!queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&members.some(name=>task.metadata.split(',').includes(name)))){

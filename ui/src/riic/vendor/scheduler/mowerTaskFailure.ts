@@ -1,5 +1,5 @@
 import {prepareMowerCorrectionRecovery,refreshMowerDerivedCorrection} from './mowerCorrection'
-import {reconcileMowerRetainedRecovery} from './mowerRetainedRecovery'
+import {mowerCompletedOrdinaryRestRequest,reconcileMowerRetainedRecovery} from './mowerRetainedRecovery'
 // Port of base_schedule task failure snapshots, Mower alpha 3ad69f15 (MIT).
 import {mowerReplacementDependencyNames,mowerReplacementReservations} from './mowerReplacementCoordination'
 import {MOWER_TASK_TYPES as T} from './mowerTaskQueue'
@@ -51,9 +51,10 @@ export function retainMowerFailedTask(state:RuntimeState,data:MowerSchedulingDat
 /** Clock/prediction changes cannot admit an exhausted failure. */
 export function resumeMowerFailedTasks(state:RuntimeState,data:MowerSchedulingData,queue:MowerTaskQueue):boolean {
  let changed=false
- for(const task of queue.tasks){
+ for(const task of [...queue.tasks]){
   const failure=task.executionFailure
   if(!failure)continue
+  if(mowerCompletedOrdinaryRestRequest(data,task)){queue.consume(task);changed=true;continue}
   if(task.workingReplacementCheck)continue
   if((failure.reason.startsWith('组员尚未确认回满心情')||failure.reason.startsWith('需要回满的主班心情尚未满足要求'))&&prepareMowerCorrectionRecovery(data,task,queue.tasks)){
    delete task.executionFailure;task.coordinationDependencyWait=false;task.executionRetained=false;changed=true

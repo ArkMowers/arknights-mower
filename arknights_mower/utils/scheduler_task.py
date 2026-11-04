@@ -2231,9 +2231,23 @@ def plan_metadata(
         if name in op_data.operators and op_data.operators[name].group
     }
 
-    def recovery_reservations(group):
+    def recovery_reservations(group, returning_names=()):
         names, slots = retained_task_reservations(
-            actual_data, locked_tasks, returning_groups=[group] if group else ()
+            actual_data,
+            locked_tasks,
+            returning_groups=[group] if group else (),
+            returning_names=[
+                name
+                for name in returning_names
+                if existing_targets.get(
+                    name,
+                    (
+                        actual_data.operators[name].room,
+                        actual_data.operators[name].index,
+                    ),
+                )
+                == (actual_data.operators[name].room, actual_data.operators[name].index)
+            ],
         )
         for pending in locked_tasks:
             names.update(getattr(pending, "product_lock_names", ()))
@@ -2438,12 +2452,16 @@ def plan_metadata(
         if dorm.name and dorm.name in op_data.operators:
             operator = op_data.operators[dorm.name]
             return_names, return_slots, return_groups = recovery_reservations(
-                operator.group
+                operator.group, [operator.name] if not operator.group else ()
             )
             if (
                 dorm.name not in return_names | set(excluded_names)
                 and operator.group not in return_groups
                 and dorm.position not in return_slots
+                and (
+                    operator.group
+                    or (operator.room, operator.index) not in return_slots
+                )
                 and (
                     not operator.multi_group
                     or operator.independent_rest
@@ -2668,6 +2686,7 @@ def plan_metadata(
                 not worker.current_room
                 and (
                     op_data._can_standby(worker)
+                    or op_data.rest_mood_complete(worker.name)
                     or (
                         has_resting_mood(worker)
                         and worker.current_mood() >= worker.upper_limit

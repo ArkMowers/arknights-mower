@@ -27,7 +27,7 @@ export function advanceMowerMaintenanceOrders(tasks: MowerTask[], nowMicros: num
   const gap = toMowerMicros(Math.max((options.runOrderDelayMinutes ?? 5) * 2, 10) / 60)
   for (const [start, end] of mowerMaintenanceWindows(nowMicros, options, 'orders')) {
     const deadline = start - gap
-    const affected = tasks.filter(task => task.type === T.RUN_ORDER && deadline < task.timeMicros && task.timeMicros < end + gap).sort((a, b) => a.timeMicros - b.timeMicros)
+    const affected = tasks.filter(task => task.type === T.RUN_ORDER && !task.runOrderCollectOnly && deadline < task.timeMicros && task.timeMicros < end + gap).sort((a, b) => a.timeMicros - b.timeMicros)
     affected.forEach((task, index) => { task.timeMicros = deadline - (index + 1) * second; task.adjusted = true })
   }
 }

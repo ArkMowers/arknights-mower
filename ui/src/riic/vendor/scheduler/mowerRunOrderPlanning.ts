@@ -12,6 +12,7 @@ export interface RunOrderPlanningState {
  runOrderRooms:readonly string[]
  queue:MowerTaskQueue
  configuredDelayMinutes:number
+ isCollectionOnlyRoom?:(room:string)=>boolean
  droneRoom:string|null
  flags:{planned:boolean;todoTask:boolean;collectNotification:boolean}
 }
@@ -19,6 +20,7 @@ export type RunOrderIORequest=
  |{kind:'enter-room';room:string}
  |{kind:'wait-interface';room:string;requestedIntervalMicros:1_000_000}
  |{kind:'read-order';room:string;useDigitReader:true}
+ |{kind:'accept-order';room:string}
  |{kind:'return-main';room:string}
 export interface RunOrderIOObservation {
  observedAtMicros:number
@@ -43,23 +45,36 @@ export function* observeNativeRunOrderTime(state:RunOrderPlanningState,seam:RunO
  const read=yield* step(seam,{kind:'read-order',room,useDigitReader:true})
  if(read.absoluteDueMicros===undefined||!Number.isSafeInteger(read.absoluteDueMicros))
   throw new Error('Native absolute order deadline observation is required')
- const executeTime=read.absoluteDueMicros-toMowerMicros(state.configuredDelayMinutes/60)
+ const executeTime=read.absoluteDueMicros-toMowerMicros((state.isCollectionOnlyRoom?.(room)?0:state.configuredDelayMinutes)/60)
  yield* step(seam,{kind:'return-main',room})
  return executeTime
 }
 export function* planDefaultRunOrder(state:RunOrderPlanningState,seam:RunOrderPlanningSeam,room:string):RunOrderGenerator<MowerTask|undefined>{
+ if(state.isCollectionOnlyRoom?.(room)&&state.queue.tasks.some(task=>task.metadata===room&&(task.type===T.RUN_ORDER||task.type===T.REFRESH_TIME&&!!task.executionFailure)))return
  if(state.queue.find({type:T.RUN_ORDER,metadata:room}))return
  if(!state.plan[room])throw new Error('Native run-order room is absent from the plan: '+room)
  const timeMicros=yield* observeNativeRunOrderTime(state,seam,room)
- const dueMicros=timeMicros+toMowerMicros(state.configuredDelayMinutes/60)
+ const collectOnly=state.isCollectionOnlyRoom?.(room)??false
+ const dueMicros=timeMicros+toMowerMicros((collectOnly?0:state.configuredDelayMinutes)/60)
  // A ready order or a full queue has no future completion to wake for. Leave
  // its collection/resource dependency to production and the notification phase.
  if(dueMicros<=seam.nowMicros())return
  const task=new MowerTask({type:T.RUN_ORDER,metadata:room})
  task.timeMicros=timeMicros
  task.observedOrderDueMicros=dueMicros
+ task.runOrderCollectOnly=collectOnly
  state.queue.tasks.push(task)
  return task
+}
+export function* dispatchMowerCollectionOrder(state:RunOrderPlanningState,seam:RunOrderPlanningSeam,task:MowerTask):RunOrderGenerator<void>{
+ const room=task.metadata
+ if(state.isCollectionOnlyRoom?.(room)){
+  yield* step(seam,{kind:'enter-room',room})
+  yield* step(seam,{kind:'wait-interface',room,requestedIntervalMicros:1_000_000})
+  yield* step(seam,{kind:'accept-order',room})
+  yield* step(seam,{kind:'return-main',room})
+ }
+ state.queue.consume(task)
 }
 export function* runDefaultTradeSegment(state:RunOrderPlanningState,seam:RunOrderPlanningSeam):RunOrderGenerator<{tailShouldRun:true}>{
  if(state.runOrderRooms.length){

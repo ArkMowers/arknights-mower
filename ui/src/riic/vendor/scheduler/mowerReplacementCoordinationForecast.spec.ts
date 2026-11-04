@@ -46,6 +46,20 @@ describe('replacement recall forecast covers the connected recovery cycle',()=>{
   expect(JSON.stringify(original)).toBe(before)
   expect(admitted.operators.K!.timeStampMicros).toBeUndefined()
  })
+ it('advances materialized forecast moods independently of the current calculated snapshot',()=>{
+  const {original,admit}=fixture(20)
+  original.policy.predictiveMoodControl=true
+  original.calculatedMoodSnapshot=Object.freeze({timeMicros:0,values:Object.freeze({A:20,B:0,X:24})})
+  for(const op of Object.values(original.operators))op.calculatedMoodSnapshot=original.calculatedMoodSnapshot
+  const before=JSON.stringify(original),admitted=admit()
+  const rates=(data:MowerSchedulingData)=>{
+   for(const op of Object.values(data.operators))expect(op.currentMood(data.nowMicros)).toBe(op.mood)
+   expect(data.calculatedMoodSnapshot).toBeUndefined()
+   return fixed(data)
+  }
+  expect(allowed(original,admitted,rates)).toBe(true)
+  expect(JSON.stringify(original)).toBe(before)
+ })
  it('clamps an exhausted cached prediction instead of reusing the old positive mood',()=>{
   const {original,admit}=fixture(4);original.nowMicros=toMowerMicros(10)
   expect(allowed(original,admit(),fixed)).toBe(false)

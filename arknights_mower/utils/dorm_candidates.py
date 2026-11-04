@@ -142,12 +142,15 @@ def product_wait_resting_replacements(op_data, task):
 
 
 def retained_task_reservations(
-    op_data, tasks, *, current_task=None, returning_groups=()
+    op_data, tasks, *, current_task=None, returning_groups=(), returning_names=()
 ):
     """保留执行预约目标、当前驻员和整组成员，规划与纠错共用。"""
     tasks = [task for task in tasks if not unstarted_product_wait(task)]
-    if returning_groups:
-        from arknights_mower.utils.retained_recovery import retained_recovery_may_return
+    if returning_groups or returning_names:
+        from arknights_mower.utils.retained_recovery import (
+            retained_bed_allows_return,
+            retained_recovery_may_return,
+        )
 
         names, slots = set(), set()
         for task in tasks:
@@ -165,6 +168,11 @@ def retained_task_reservations(
                 if retained_recovery_may_return(op_data, task, group)
                 for name in op_data.shift_group_members(group)
             }
+            released.update(
+                name
+                for name in returning_names
+                if retained_bed_allows_return(op_data, task, name)
+            )
             task_names.difference_update(released)
             task_slots.difference_update(
                 position

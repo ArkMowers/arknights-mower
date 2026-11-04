@@ -210,7 +210,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     const ruleErrors=validateMowerRosterRules(workspace);if(ruleErrors.length)fail(ruleErrors.map(error=>error.message).join('；'))
     const compiled=compileRosterSchedule(workspace,{...base.assumptions,dormOrder:''});compiled.assumptions.defaultsApplied=[...base.assumptions.defaultsApplied]
     if(compiled.diagnostics.some(d=>d.severity==='error'||d.code==='UNKNOWN_OPERATOR'))fail(compiled.diagnostics.map(d=>d.message).join('；'))
-    const config=compiledScheduleToRuntimeConfig(compiled);config.mowerAlpha=true;config.mowerDormOrder=roomOrder;config.availableIdleOperators=state.config.availableIdleOperators;config.mowerSingleRecoverySkillNames=state.config.mowerSingleRecoverySkillNames
+    const config=compiledScheduleToRuntimeConfig(compiled);config.mowerAlpha=true;config.mowerDormOrder=roomOrder;config.availableIdleOperators=state.config.availableIdleOperators;config.mowerSingleRecoverySkillNames=state.config.mowerSingleRecoverySkillNames;config.mowerJayeElite0=state.config.mowerJayeElite0
     for(const key of ['adjustForRunOrders','maintenance','maintenanceEndMicros','firstDailyResetMicros'] as const){
       const value=state.config.mowerTaskScheduling?.[key]
       if(value!==undefined)config.mowerTaskScheduling={...config.mowerTaskScheduling,[key]:value}
@@ -393,6 +393,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     }
     config.availableIdleOperators = state.config.availableIdleOperators
     config.mowerSingleRecoverySkillNames = state.config.mowerSingleRecoverySkillNames
+    config.mowerJayeElite0 = state.config.mowerJayeElite0
     // Default alpha init_and_validate(update=True) keeps the original recovery pool.
     // Newly exposed Free slots remain real idle positions, without a group timer.
     for (const bed of config.beds) {
