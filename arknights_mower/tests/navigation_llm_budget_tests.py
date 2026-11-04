@@ -1,6 +1,5 @@
-import asyncio
+import json
 import threading
-from contextlib import nullcontext
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -9,14 +8,13 @@ import httpx
 import pytest
 
 from arknights_mower.agent import agent
-from arknights_mower.agent import rank_activity_entries as ranking
+from arknights_mower.agent import navigation_process as worker
 from arknights_mower.solvers import base_schedule, manual_tasks
 from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.tests import maa_copilot_tests as helpers
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.device.io_budget import device_io_budget
 
 files = helpers.files
 scheduler = helpers.scheduler
@@ -25,42 +23,29 @@ CANDIDATES = [{"text": "进入活动", "score": 0.9, "center": (100, 200)}]
 
 @pytest.fixture
 def stalled_model(monkeypatch):
-    state = SimpleNamespace(
-        elapsed=0.0, cancelled=False, started=False, tick=lambda: None
-    )
-    response = SimpleNamespace(content='{"indices":[0]}')
-
-    def sync_invoke(_):
-        state.started = True
-        state.elapsed += 90
-        return response
-
-    async def async_invoke(_):
-        state.started = True
-        try:
-            await asyncio.Event().wait()
-        finally:
-            state.cancelled = True
-
-    model = SimpleNamespace(invoke=sync_invoke, ainvoke=async_invoke)
-    factory = MagicMock(return_value=model)
-    monkeypatch.setattr(agent, "build_llm", factory)
     monkeypatch.setattr(
-        ranking,
-        "time",
-        SimpleNamespace(
-            monotonic=lambda: state.elapsed, perf_counter=lambda: state.elapsed
-        ),
+        agent,
+        "build_llm",
+        MagicMock(side_effect=AssertionError("model requests belong in the worker")),
     )
-    wait = asyncio.wait
+    state = SimpleNamespace(elapsed=0.0, cancelled=False, tick=lambda: None)
+    process = MagicMock(pid=123)
+    process.is_alive.side_effect = lambda: not state.cancelled
+    process.kill.side_effect = lambda: setattr(state, "cancelled", True)
 
-    async def advance(tasks, *, timeout):
-        await asyncio.sleep(0)
-        state.elapsed = round(state.elapsed + timeout, 6)
-        state.tick()
-        return await wait(tasks, timeout=0)
+    def join(timeout):
+        if not state.cancelled:
+            state.elapsed = round(state.elapsed + timeout, 6)
+            state.tick()
 
-    monkeypatch.setattr(asyncio, "wait", advance)
+    process.join.side_effect = join
+    channel = MagicMock()
+    factory = MagicMock(return_value=(process, channel))
+    monkeypatch.setattr(worker, "_start_worker", factory)
+    monkeypatch.setattr(worker, "_unreaped", [])
+    monkeypatch.setattr(
+        worker, "time", SimpleNamespace(monotonic=lambda: state.elapsed)
+    )
     return state, factory
 
 
@@ -91,51 +76,36 @@ def test_copilot_model_wait_consumes_navigation_budget(
         nav.rank_activity_candidates(CANDIDATES)
     )
 
-    if manual and remaining > 90:
-        with pytest.raises(TimeoutError, match="导航超时"):
-            scheduler.maa_plan_solver([], manual=manual, long_task="copilot")
-    else:
-        scheduler.maa_plan_solver([], manual=manual, long_task="copilot")
+    def start_when_allowed():
+        assert remaining - state.elapsed > 30
+        return True
+
+    scheduler.MAA.start.side_effect = start_when_allowed
+    scheduler.maa_plan_solver([], manual=manual, long_task="copilot")
 
     budget = min(60, remaining - 30)
     assert state.elapsed <= budget
     assert state.cancelled
-    assert factory.call_args.kwargs["timeout"] <= budget
-    assert factory.call_args.kwargs["max_retries"] == 0
-    assert factory.call_args.kwargs["http_async_client"].is_closed
-    scheduler.MAA.append_task.assert_not_called()
-    scheduler.MAA.start.assert_not_called()
+    assert factory.call_args.args[3] <= budget
+    factory.return_value[0].close.assert_called_once()
+    factory.return_value[1].close.assert_called_once()
+    scheduler.MAA.append_task.assert_called_once()
+    scheduler.MAA.start.assert_called_once()
     assert scheduler.tasks == [pending]
     assert scheduler.maa_copilot_progress["next"] == 0
-    assert scheduler.maa_copilot_progress["failed"] is (remaining > 90)
+    assert scheduler.maa_copilot_progress["failed"] is False
 
 
-@pytest.mark.parametrize(
-    "outcome",
-    ["success", "network_error", "invalid_json", "stop", "deadline", "late_success"],
-)
-def test_real_model_async_transport_is_closed_without_retries(monkeypatch, outcome):
-    monkeypatch.setattr(config, "stop_mower", threading.Event())
-    monkeypatch.setattr(
-        config, "conf", Conf(ai_type="deepseek", ai_key="transport-test-key")
-    )
-    state = SimpleNamespace(expired=False, cancelled=False, requests=0)
+@pytest.mark.parametrize("outcome", ["success", "network_error", "oversized"])
+def test_model_worker_closes_client_and_disables_retries(monkeypatch, outcome):
+    monkeypatch.setattr(config, "conf", Conf(ai_type="deepseek"))
+    calls = []
 
-    async def handle(request):
-        state.requests += 1
+    def handle(request):
+        calls.append(request)
         if outcome == "network_error":
             raise httpx.ReadTimeout("fixture timeout", request=request)
-        if outcome in {"stop", "deadline"}:
-            if outcome == "stop":
-                config.stop_mower.set()
-            else:
-                state.expired = True
-            try:
-                await asyncio.Event().wait()
-            finally:
-                state.cancelled = True
-        if outcome == "late_success":
-            state.expired = True
+        content = "x" * 5000 if outcome == "oversized" else '{"indices":[1,0]}'
         return httpx.Response(
             200,
             json={
@@ -147,43 +117,38 @@ def test_real_model_async_transport_is_closed_without_retries(monkeypatch, outco
                     {
                         "index": 0,
                         "finish_reason": "stop",
-                        "message": {
-                            "role": "assistant",
-                            "content": "invalid JSON"
-                            if outcome == "invalid_json"
-                            else '{"indices":[1,0]}',
-                        },
+                        "message": {"role": "assistant", "content": content},
                     }
                 ],
             },
         )
 
-    clients = []
+    client = httpx.Client(transport=httpx.MockTransport(handle))
+    model_class = agent.ChatOpenAI
 
-    def client_factory(**kwargs):
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handle), **kwargs)
-        clients.append(client)
-        return client
+    def model_factory(**kwargs):
+        assert kwargs["timeout"] == 5
+        assert kwargs["max_retries"] == 0
+        return model_class(**kwargs, http_client=client)
 
-    monkeypatch.setattr(ranking, "httpx", SimpleNamespace(AsyncClient=client_factory))
-
-    def remaining():
-        if state.expired:
-            raise InterruptedError("fixture deadline")
-        return 5
-
-    expected = (
-        pytest.raises(MowerExit if outcome == "stop" else InterruptedError)
-        if outcome in {"stop", "deadline", "late_success"}
-        else nullcontext()
+    monkeypatch.setattr(agent, "ChatOpenAI", model_factory)
+    channel = MagicMock()
+    settings = {
+        key: getattr(config.conf, key)
+        for key in ("ai_type", "ai_deepseek_model", "ai_model", "ai_base_url")
+    }
+    worker._model_worker(
+        channel,
+        settings,
+        "transport-test-key",
+        [{"role": "user", "content": "rank"}],
+        5,
     )
-    with expected, device_io_budget(remaining):
-        result = ranking.rank_activity_entries_with_agent("1-7", {}, CANDIDATES * 2)
-        if outcome not in {"stop", "deadline", "late_success"}:
-            assert result == ([1, 0] if outcome == "success" else [0, 1])
-    assert state.requests == 1
-    assert all(client.is_closed for client in clients)
-    assert state.cancelled is (outcome in {"stop", "deadline"})
+    response = json.loads(channel.send_bytes.call_args.args[0])
+    assert ("text" in response) is (outcome == "success")
+    assert len(calls) == 1
+    assert client.is_closed
+    channel.close.assert_called_once()
 
 
 @pytest.mark.parametrize("stop", ["stop_maa", "stop_mower"])
@@ -210,7 +175,102 @@ def test_stop_during_model_wait_cancels_request_and_preserves_task(
         assert scheduler.maa_copilot_progress["failed"] is False
     assert state.elapsed <= 0.1
     assert state.cancelled
-    assert factory.call_args.kwargs["http_async_client"].is_closed
+    factory.return_value[0].close.assert_called_once()
+    factory.return_value[1].close.assert_called_once()
     assert scheduler.tasks == [pending]
     scheduler.MAA.start.assert_not_called()
     scheduler.MAA.append_task.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "outcome", ["success", "network_error", "invalid_json", "late"]
+)
+def test_worker_response_preserves_budget_checked_rule_fallback(monkeypatch, outcome):
+    from arknights_mower.agent import rank_activity_entries as ranking
+    from arknights_mower.utils.device.io_budget import device_io_budget
+
+    monkeypatch.setattr(
+        config, "conf", Conf(ai_type="deepseek", ai_key="offline-test-key")
+    )
+    monkeypatch.setattr(config, "stop_mower", threading.Event())
+    monkeypatch.setattr(
+        agent,
+        "build_llm",
+        MagicMock(side_effect=AssertionError("model requests belong in the worker")),
+    )
+    process = MagicMock(pid=123)
+    process.is_alive.return_value = False
+    channel = MagicMock()
+    factory = MagicMock(return_value=(process, channel))
+    monkeypatch.setattr(worker, "_start_worker", factory)
+    state = SimpleNamespace(expired=False)
+
+    def response(_):
+        state.expired = outcome == "late"
+        payload = {
+            "text": "invalid JSON" if outcome == "invalid_json" else '{"indices":[1,0]}'
+        }
+        if outcome == "network_error":
+            payload = {"error": "APITimeoutError"}
+        return json.dumps(payload).encode()
+
+    channel.recv_bytes.side_effect = response
+
+    def remaining():
+        if state.expired:
+            raise InterruptedError("offline preemption")
+        return 5
+
+    if outcome == "late":
+        with pytest.raises(InterruptedError), device_io_budget(remaining):
+            ranking.rank_activity_entries_with_agent("1-7", {}, CANDIDATES * 2)
+    else:
+        with device_io_budget(remaining):
+            result = ranking.rank_activity_entries_with_agent("1-7", {}, CANDIDATES * 2)
+        assert result == ([1, 0] if outcome == "success" else [0, 1])
+    factory.assert_called_once()
+    process.close.assert_called_once()
+    channel.close.assert_called_once()
+
+
+def test_failed_worker_cleanup_blocks_replacement_until_reaped(monkeypatch):
+    monkeypatch.setattr(config, "conf", Conf())
+    monkeypatch.setattr(config, "stop_mower", threading.Event())
+    process = MagicMock(pid=123)
+    process.is_alive.return_value = True
+    channel = MagicMock()
+    monkeypatch.setattr(worker, "_unreaped", [])
+    with pytest.raises(RuntimeError, match="工作进程"):
+        worker._close_worker(process, channel, worker.os.getpid())
+    factory = MagicMock()
+    monkeypatch.setattr(worker, "_start_worker", factory)
+    with pytest.raises(RuntimeError, match="工作进程"):
+        worker.invoke_navigation_model("offline-test-key", [])
+    factory.assert_not_called()
+    assert len(worker._unreaped) == 1
+    process.is_alive.return_value = False
+    completed = MagicMock(pid=456)
+    completed.is_alive.return_value = False
+    result_channel = MagicMock()
+    result_channel.recv_bytes.return_value = b'{"text":"ok"}'
+    factory.return_value = (completed, result_channel)
+    assert worker.invoke_navigation_model("offline-test-key", []).content == "ok"
+    assert worker._unreaped == []
+
+
+def test_failed_start_closes_both_pipe_ends(monkeypatch):
+    process = MagicMock(pid=None)
+    process.start.side_effect = OSError("offline spawn failure")
+    parent, child = MagicMock(), MagicMock()
+    context = SimpleNamespace(
+        Pipe=MagicMock(return_value=(parent, child)),
+        Process=MagicMock(return_value=process),
+    )
+    monkeypatch.setattr(
+        worker.multiprocessing, "get_context", MagicMock(return_value=context)
+    )
+    with pytest.raises(OSError, match="spawn failure"):
+        worker._start_worker({}, "offline-test-key", [], 1)
+    process.close.assert_called_once()
+    parent.close.assert_called_once()
+    child.close.assert_called_once()
