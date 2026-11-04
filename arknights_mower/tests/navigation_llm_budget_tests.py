@@ -12,7 +12,7 @@ from arknights_mower.agent import navigation_process as worker
 from arknights_mower.solvers import base_schedule, manual_tasks
 from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.tests import maa_copilot_tests as helpers
-from arknights_mower.utils import config
+from arknights_mower.utils import config, path
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.csleep import MowerExit
 
@@ -143,6 +143,7 @@ def test_model_worker_closes_client_and_disables_retries(monkeypatch, outcome):
         "transport-test-key",
         [{"role": "user", "content": "rank"}],
         5,
+        {name: getattr(path, name) for name in worker._PATH_FIELDS},
     )
     response = json.loads(channel.send_bytes.call_args.args[0])
     assert ("text" in response) is (outcome == "success")
@@ -242,6 +243,7 @@ def test_failed_worker_cleanup_blocks_replacement_until_reaped(monkeypatch):
     monkeypatch.setattr(worker, "_unreaped", [])
     with pytest.raises(RuntimeError, match="工作进程"):
         worker._close_worker(process, channel, worker.os.getpid())
+    channel.close.assert_not_called()
     factory = MagicMock()
     monkeypatch.setattr(worker, "_start_worker", factory)
     with pytest.raises(RuntimeError, match="工作进程"):
@@ -258,12 +260,13 @@ def test_failed_worker_cleanup_blocks_replacement_until_reaped(monkeypatch):
     assert worker._unreaped == []
 
 
-def test_failed_start_closes_both_pipe_ends(monkeypatch):
+def test_failed_start_releases_shared_reply(monkeypatch):
     process = MagicMock(pid=None)
     process.start.side_effect = OSError("offline spawn failure")
-    parent, child = MagicMock(), MagicMock()
+    reply = MagicMock()
+    monkeypatch.setattr(worker, "_ReplySlot", MagicMock(return_value=reply))
     context = SimpleNamespace(
-        Pipe=MagicMock(return_value=(parent, child)),
+        RawArray=MagicMock(return_value=bytearray(4004)),
         Process=MagicMock(return_value=process),
     )
     monkeypatch.setattr(
@@ -272,5 +275,40 @@ def test_failed_start_closes_both_pipe_ends(monkeypatch):
     with pytest.raises(OSError, match="spawn failure"):
         worker._start_worker({}, "offline-test-key", [], 1)
     process.close.assert_called_once()
-    parent.close.assert_called_once()
-    child.close.assert_called_once()
+    reply.close.assert_called_once()
+
+
+@pytest.mark.parametrize("size", [1, 512, 4000])
+def test_shared_reply_accepts_bounded_payload_without_pipe_backpressure(size):
+    reply = worker._ReplySlot(worker.multiprocessing.RawArray("B", 4004))
+    payload = b"x" * size
+    reply.send_bytes(payload)
+    assert reply.recv_bytes(4000) == payload
+    reply.close()
+    assert reply.closed
+
+
+def test_unfinished_shared_reply_is_not_returned():
+    buffer = worker.multiprocessing.RawArray("B", 4004)
+    buffer[4:7] = b"bad"
+    reply = worker._ReplySlot(buffer)
+    with pytest.raises(EOFError):
+        reply.recv_bytes(4000)
+    reply.close()
+
+
+def test_oversized_shared_reply_does_not_publish_length():
+    reply = worker._ReplySlot(worker.multiprocessing.RawArray("B", 4004))
+    with pytest.raises(ValueError):
+        reply.send_bytes(b"x" * 4001)
+    with pytest.raises(EOFError):
+        reply.recv_bytes(4000)
+    reply.close()
+
+
+def test_closed_worker_releases_its_retained_reply():
+    process = worker.multiprocessing.get_context("spawn").Process()
+    process.close()
+    reply = worker._ReplySlot(worker.multiprocessing.RawArray("B", 4004))
+    worker._close_worker(process, reply, worker.os.getpid())
+    assert reply.closed

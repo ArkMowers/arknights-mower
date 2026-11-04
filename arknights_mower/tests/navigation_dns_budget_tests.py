@@ -10,7 +10,7 @@ import pytest
 from arknights_mower.agent import agent, navigation_process
 from arknights_mower.agent import rank_activity_entries as ranking
 from arknights_mower.tests.fixtures.navigation.dns_worker import slow_dns
-from arknights_mower.utils import config
+from arknights_mower.utils import config, path
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.io_budget import device_io_budget
 
@@ -79,11 +79,20 @@ def test_slow_dns_does_not_extend_model_deadline_or_stop(
         parent.close()
 
 
-def test_spawned_production_worker_returns_bounded_error_without_network(monkeypatch):
+def test_spawned_production_worker_returns_bounded_error_without_network(
+    monkeypatch, tmp_path
+):
     from arknights_mower.utils.config.conf import Conf
 
     monkeypatch.setattr(config, "conf", Conf())
     monkeypatch.setattr(config, "stop_mower", threading.Event())
+    monkeypatch.setattr(path, "_data_dir", tmp_path)
+    monkeypatch.setattr(path, "global_space", "worker")
+    current = tmp_path / "worker/config"
+    current.mkdir(parents=True)
+    (current / "conf.yml").write_text("{}", encoding="utf-8")
+    for name in ("plan.json", "rescue_plan.json"):
+        (current / name).write_text('{"plan1": {}}', encoding="utf-8")
     original = {p.pid for p in multiprocessing.active_children()}
     start = time.monotonic()
 

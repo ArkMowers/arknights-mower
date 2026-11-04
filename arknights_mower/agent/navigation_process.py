@@ -10,10 +10,41 @@ from arknights_mower.utils.device.owned import close_process
 
 MAX_REPLY_BYTES = 4000
 CLEANUP_TIMEOUT = 0.03
+_PATH_FIELDS = ("_data_dir", "_internal_dir", "_install_dir", "global_space")
 _unreaped = []
 
 
+class _ReplySlot:
+    def __init__(self, buffer):
+        self._buffer = buffer
+
+    @property
+    def closed(self):
+        return self._buffer is None
+
+    def send_bytes(self, payload):
+        if not 0 < len(payload) <= MAX_REPLY_BYTES:
+            raise ValueError("导航模型回复长度无效")
+        self._buffer[4 : 4 + len(payload)] = payload
+        self._buffer[:4] = len(payload).to_bytes(4, "big")
+
+    def recv_bytes(self, maximum):
+        size = int.from_bytes(bytes(self._buffer[:4]), "big")
+        if not 0 < size <= min(maximum, MAX_REPLY_BYTES):
+            raise EOFError("导航模型工作进程未返回完整回复")
+        return bytes(self._buffer[4 : 4 + size])
+
+    def close(self):
+        self._buffer = None
+
+
 def _close_worker(process, channel, owner_pid, *, join_timeout=CLEANUP_TIMEOUT):
+    if owner_pid == os.getpid():
+        try:
+            process.pid
+        except ValueError:
+            channel.close()
+            return
     try:
         if owner_pid == os.getpid() and process.pid is not None and process.is_alive():
             process.kill()
@@ -23,12 +54,16 @@ def _close_worker(process, channel, owner_pid, *, join_timeout=CLEANUP_TIMEOUT):
         if entry not in _unreaped:
             _unreaped.append(entry)
         raise
-    finally:
+    else:
         channel.close()
 
 
-def _model_worker(channel, settings, api_key, messages, timeout):
+def _model_worker(channel, settings, api_key, messages, timeout, paths):
     try:
+        from arknights_mower.utils import path
+
+        for name in _PATH_FIELDS:
+            setattr(path, name, paths[name])
         from arknights_mower.agent.agent import build_llm
         from arknights_mower.utils import config
 
@@ -51,25 +86,26 @@ def _model_worker(channel, settings, api_key, messages, timeout):
 
 
 def _start_worker(settings, api_key, messages, timeout):
+    from arknights_mower.utils import path
+
+    paths = {name: getattr(path, name) for name in _PATH_FIELDS}
     context = multiprocessing.get_context("spawn")
-    parent, child = context.Pipe(duplex=False)
+    reply = _ReplySlot(context.RawArray("B", MAX_REPLY_BYTES + 4))
     process = None
     try:
         process = context.Process(
             target=_model_worker,
-            args=(child, settings, api_key, messages, timeout),
+            args=(reply, settings, api_key, messages, timeout, paths),
             daemon=True,
         )
         process.start()
     except BaseException:
         if process is None:
-            parent.close()
+            reply.close()
         else:
-            _close_worker(process, parent, os.getpid())
+            _close_worker(process, reply, os.getpid())
         raise
-    finally:
-        child.close()
-    return process, parent
+    return process, reply
 
 
 def invoke_navigation_model(api_key, messages):
@@ -112,7 +148,7 @@ def invoke_navigation_model(api_key, messages):
         while process.is_alive():
             process.join(timeout=min(0.05, remaining()))
         remaining()
-        # Read only after exit: even a partial pipe reply then ends in EOF.
+        # Worker exit precedes reading the completed shared reply.
         response = json.loads(channel.recv_bytes(MAX_REPLY_BYTES))
         remaining()
         if "error" in response:
