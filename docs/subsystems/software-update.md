@@ -1,6 +1,5 @@
 # Software Update Contract
 
-<a id="github-file-download-fallback"></a>
 ## GitHub Token
 
 The shared `config/network.json` stores an optional `github_token` beside the global network proxy and GitHub download proxy. Network settings in the instance page and manager edit the same value. Existing callers that omit the token preserve its saved value; submitting an empty string clears it. The file uses the existing atomic private-file writer. Reading or changing these settings and testing their connection require the current Web UI token; writes and tests retain their settings-header and same-origin checks.
@@ -9,6 +8,7 @@ With a token, GitHub version checks and file downloads use official HTTPS addres
 
 The settings password field links to [GitHub token creation](https://github.com/settings/personal-access-tokens/new). For public downloads, users choose a name and expiration, select Public repositories and add no extra permissions; a classic token without scopes is also sufficient. The connection test checks both the file route and GitHub API authentication, reports invalid or expired tokens, and omits credentials from its result messages. Clearing the token restores the following download-station policy. Focused offline verification is in [`network_settings_tests.py`](../../arknights_mower/tests/network_settings_tests.py) and [`NetworkSettings.test.js`](../../ui/src/components/NetworkSettings.test.js).
 
+<a id="github-file-download-fallback"></a>
 ## GitHub File Download Fallback
 
 The shared `github_download.request_download` path tries direct GitHub first when the download proxy setting is empty, followed by `https://ghfast.top/`, `https://gh-proxy.com/`, `https://gh-proxy.org/` and `https://edgeone.gh-proxy.org/` in that order. The existing ghfast station remains first. The additional stations use the [GH-Proxy service](https://gh-proxy.com/docs/github-accelerator); the maintained [XIU2 download-source list](https://github.com/XIU2/UserScript/blob/7e93aceb592a613d499ed21b3e9886377e31fba0/GithubEnhanced-High-Speed-Download.user.js) attributes both alternate domains to gh-proxy.com. Connection failures, timeouts and HTTP 403, 429 or 5xx responses advance to the next candidate; other HTTP failures stop immediately. Each candidate is attempted at most once. Failed HTTP responses close before advancing, and the caller owns the successful response. Body-read failures remain the caller's responsibility.
