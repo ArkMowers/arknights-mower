@@ -443,7 +443,7 @@ onUnmounted(() => {
         </div>
       </div>
       <section v-if="comparison" class="model-note">
-        <h3>普通池和额外池各产一次（默认假设）</h3>
+        <h3>回收站理论收益</h3>
         <div v-if="comparison.calculator" class="calculator-results">
           <div>
             <span>100%效率理论日产</span
@@ -463,69 +463,62 @@ onUnmounted(() => {
             ><strong>{{ percent(comparison.calculator.manufacturing_equivalent) }}</strong>
           </div>
           <div>
-            <span>旅骨精零 / 精二等效制造站</span
-            ><strong
-              >{{ percent(comparison.calculator.elite0_equivalent) }} /
-              {{ percent(comparison.calculator.elite2_equivalent) }}</strong
-            >
+            <span>10%回收站效率等效制造站</span>
+            <strong>{{ percent(comparison.calculator.ten_percent_equivalent) }}</strong>
           </div>
         </div>
-        <template v-if="comparison.calculator?.replacement">
-          <h3>额外池顶替普通池（对照假设）</h3>
-          <div class="calculator-results">
-            <div>
-              <span>100%效率理论日产</span>
-              <strong
-                >{{ number(comparison.calculator.replacement.daily_sanity, 3)
-                }}<small> 理智/天</small></strong
-              >
-            </div>
-            <div>
-              <span>设定效率理论日产</span>
-              <strong
-                >{{ number(comparison.calculator.replacement.configured_daily_sanity, 3)
-                }}<small> 理智/天</small></strong
-              >
-            </div>
-            <div>
-              <span>等效制造站效率</span>
-              <strong>{{
-                percent(comparison.calculator.replacement.manufacturing_equivalent)
-              }}</strong>
-            </div>
-            <div>
-              <span>旅骨精零 / 精二等效制造站</span>
-              <strong
-                >{{ percent(comparison.calculator.replacement.elite0_equivalent) }} /
-                {{ percent(comparison.calculator.replacement.elite2_equivalent) }}</strong
-              >
-            </div>
-          </div>
-        </template>
-        <p>
-          回收站实际机制尚未确认，以上展示两种假设。100%回收站效率每两天完成一次生产周期，100%制造站每日产出8000经验。旅骨精零/精二分别按20%/30%回收站效率换算。
+        <p class="model-summary">
+          100%回收站效率每两天完成一次生产周期，100%制造站效率每日产出8000经验。设定效率用于换算理论日产与等效制造站效率；10%回收站效率的换算不随设定效率变化。
         </p>
         <n-collapse
-          ><n-collapse-item title="计算口径与概率来源" name="model"
-            ><p>
-              实际理智收益 = 各材料数量 × 当前材料理智价值。理论期望 = 材料总数 ×
-              {{ number(comparison.per_material, 4) }} 理智/件。
-            </p>
-            <p>
-              普通池与额外池分别按权重计算，长期平均每次普通抽取产生
-              {{ number(comparison.extra_rate, 6) }}
-              次额外抽取；双池收益除以双池材料总数，得到同材料量的理论基准。顶替假设下，额外池占生产周期的比例为
-              r / (1 + r)，r
-              为上述额外抽取率。两种假设的单件期望与品质比例相同，理论日产量不同。进驻干员供回溯分析；此比较不推算干员生产效率、收取次数对应的抽数或每日产能，也不保证短期结果。
-            </p>
-            <p>
-              来源：{{ comparison.source.source }} · {{ comparison.source.sheet }}
-              {{ comparison.source.ranges.join('、') }}。材料价值：{{
-                comparison.valuation?.source || '材料价值未读取'
-              }}，使用本地保存的快照，不自动更新。
-            </p></n-collapse-item
-          ></n-collapse
+          class="model-collapse"
+          :theme-overrides="{
+            titleTextColor: 'var(--ink)',
+            textColor: 'var(--muted)',
+            arrowColor: 'var(--muted)',
+            dividerColor: 'var(--line)',
+            titleFontSize: '13px',
+            fontSize: '12px'
+          }"
         >
+          <n-collapse-item title="计算口径与概率来源" name="model">
+            <div class="model-details">
+              <section>
+                <h4>收益计算</h4>
+                <p>实际理智收益 = 各材料数量 × 当前材料理智价值，再求和。</p>
+                <p>
+                  理论期望 = 材料总数 × {{ number(comparison.per_material, 4) }} 理智/件。
+                  单件期望与品质比例按普通池和额外池的权重及长期抽取比例计算，额外抽取率为
+                  {{ number(comparison.extra_rate, 6) }}。
+                </p>
+                <p>
+                  进驻干员仅供回溯分析；收取次数不用于推算抽数或实际日产量，短期结果可能偏离期望。
+                </p>
+              </section>
+              <section>
+                <h4>生产换算</h4>
+                <p>100%效率理论日产 = 单件材料期望 ÷ 2；设定效率理论日产再乘以设定的回收站效率。</p>
+                <p>
+                  等效制造站效率 = 理论日产理智 ÷ 龙门币理智价值 ×（赤金价值比例 + 订单价值比例）÷
+                  经验书价值比例 ÷ 8000。
+                </p>
+                <p>10%回收站效率的换算固定使用0.1作为效率，采用当前产物价值比例与材料价格。</p>
+              </section>
+              <section class="model-sources">
+                <h4>数据来源</h4>
+                <p>概率：{{ comparison.source.source }} · {{ comparison.source.sheet }}</p>
+                <p v-if="comparison.source.ranges.length">
+                  来源范围：{{ comparison.source.ranges.join('、') }}
+                </p>
+                <p>
+                  材料价值：{{
+                    comparison.valuation?.source || '材料价值未读取'
+                  }}，使用本地保存的快照，不自动更新。
+                </p>
+              </section>
+            </div>
+          </n-collapse-item>
+        </n-collapse>
       </section>
     </n-spin>
   </div>
@@ -565,6 +558,7 @@ onUnmounted(() => {
 }
 .calculator-results strong {
   font-size: 19px;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 .calculator-results small {
@@ -950,9 +944,57 @@ time .n-icon {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+.model-note h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
 .model-note p {
   line-height: 1.8;
   text-wrap: pretty;
+}
+.model-summary {
+  margin: 0 0 16px;
+}
+.model-collapse {
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.model-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 28px;
+  padding: 18px;
+  background: var(--soft);
+  border-radius: 12px;
+}
+.model-details section {
+  min-width: 0;
+}
+.model-details h4 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.model-details p {
+  margin: 0 0 8px;
+}
+.model-details p:last-child {
+  margin-bottom: 0;
+}
+.model-sources {
+  grid-column: 1 / -1;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 600px) {
+  .model-details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    padding: 16px;
+  }
 }
 .empty-state {
   padding: 110px 0;

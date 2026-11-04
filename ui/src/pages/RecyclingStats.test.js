@@ -77,7 +77,7 @@ async function render(calculator, { records = [], client = {}, act } = {}) {
   return renderToString(app)
 }
 
-describe('回收站两种机制对照', () => {
+describe('回收站理论收益换算', () => {
   beforeEach(() => {
     state.theme = ref('light')
     const listeners = new Set()
@@ -95,11 +95,10 @@ describe('回收站两种机制对照', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   const calculator = {
-    daily_sanity: 11.972960143201481,
-    configured_daily_sanity: 11.972960143201481,
-    manufacturing_equivalent: 0.4344981007003046,
-    elite0_equivalent: 0.08689962014006092,
-    elite2_equivalent: 0.13034943021009138
+    daily_sanity: 11.374512896194027,
+    configured_daily_sanity: 11.374512896194027,
+    manufacturing_equivalent: 0.4127804812407833,
+    ten_percent_equivalent: 0.04127804812407833
   }
   it('页面和环图跟随系统主题变化且保留主题偏好', async () => {
     state.theme.value = 'system'
@@ -118,29 +117,27 @@ describe('回收站两种机制对照', () => {
     expect(state.page.chart.value.series[0].itemStyle.borderColor).toBe('#ffffff')
     expect(state.theme.value).toBe('light')
   })
-  it('渲染默认和顶替假设各自的日产与旅骨效率', async () => {
-    const html = await render({
-      ...calculator,
-      replacement: {
-        daily_sanity: 11.374512896194027,
-        configured_daily_sanity: 11.374512896194027,
-        manufacturing_equivalent: 0.4127804812407833,
-        elite0_equivalent: 0.08255609624815666,
-        elite2_equivalent: 0.123834144372235
-      }
-    })
-    expect(html).toContain('普通池和额外池各产一次（默认假设）')
-    expect(html).toContain('额外池顶替普通池（对照假设）')
-    for (const value of ['11.973', '11.375', '8.69%', '13.03%', '8.26%', '12.38%']) {
+  it('展示统一的理论日产和每10%回收站效率的制造站换算', async () => {
+    const html = await render(calculator)
+    expect(html).toContain('回收站理论收益')
+    expect(html).toContain('10%回收站效率等效制造站')
+    for (const value of ['11.375', '41.28%', '4.13%']) {
       expect(html).toContain(value)
     }
-    expect(html).toContain('实际机制尚未确认')
+    expect(html).not.toContain('旅骨')
+    expect(html).not.toContain('假设')
+    expect(html).not.toContain('顶替')
+    expect(html).toContain('收益计算')
+    expect(html).toContain('生产换算')
+    expect(html).toContain('数据来源')
+    expect(html).toContain('不随设定效率变化')
     expect(html).toContain('href="/settings?token=session-token#task-accounts"')
   })
-  it('旧接口没有对照数据时保留默认结果并隐藏对照区域', async () => {
-    const html = await render(calculator)
-    expect(html).toContain('11.973')
-    expect(html).not.toContain('额外池顶替普通池（对照假设）')
+  it('缺少计算器结果时保留材料比较说明', async () => {
+    const html = await render(undefined)
+    expect(html).toContain('收益计算')
+    expect(html).toContain('22.7490')
+    expect(html).not.toContain('10%回收站效率等效制造站')
   })
 })
 
