@@ -16490,7 +16490,12 @@ class BaseSchedulerSolver(
                 if self.scene() in self.waiting_scene:
                     if not self.waiting_solver():
                         return
-                self._complete_room_arrangement(new_plan, room, plan)
+                self._complete_room_arrangement(
+                    new_plan,
+                    room,
+                    plan,
+                    settle_entry=choose_error == 0 and not selection_attempted,
+                )
                 if selection_attempted or choose_error > 0:
                     self.record_selection_success()
                 finished = True
@@ -16588,7 +16593,7 @@ class BaseSchedulerSolver(
                 continue
         return new_plan
 
-    def _complete_room_arrangement(self, new_plan, room, plan):
+    def _complete_room_arrangement(self, new_plan, room, plan, *, settle_entry=False):
         # 收尾返回仍属本轮安排；超时交回房间恢复，实读复核后再提交完成。
         keep_workshop = room == "factory" and (
             getattr(self, "_workshop_room_handoff", False) is True
@@ -16596,8 +16601,15 @@ class BaseSchedulerSolver(
         if not keep_workshop and (
             len(new_plan) != 1 or config.conf.run_order_buffer_time <= 0
         ):
-            self.back(0.5)
-            self._wait_for_room_exit()
+            if settle_entry and (room == "central" or room.startswith("room_")):
+                # 返回前复核当前房间，和退出确认共用一次预算。
+                deadline = monotonic() + self.performance_profile.transition_timeout
+                if self._wait_for_room_entry_before_exit(room, deadline=deadline):
+                    self.back(0.5)
+                    self._wait_for_room_exit(deadline=deadline)
+            else:
+                self.back(0.5)
+                self._wait_for_room_exit()
         if room in getattr(self.task, "dorm_recovery_restore", []):
             self.task.dorm_recovery_restore.remove(room)
         if getattr(self.task, "arrangement_retry_room", None) == room:
@@ -16605,10 +16617,30 @@ class BaseSchedulerSolver(
             del self.task.arrangement_retry_count
         del plan[room]
 
-    def _wait_for_room_exit(self):
+    def _wait_for_room_entry_before_exit(self, room, *, deadline):
+        """跳过换人时，一次新帧确认目标房间即可返回。"""
+        poll_interval = self.performance_profile.screenshot_interval / 1000
+        while True:
+            self.recog.update()
+            scene = self.scene()
+            if scene == Scene.INFRA_MAIN:
+                return False
+            confirmed = (
+                scene in (Scene.INFRA_DETAILS, Scene.CTRLCENTER_ASSISTANT)
+                and self.detect_room() == room
+            )
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise RecognizeError("返回前未确认目标房间，保留本房间安排")
+            if confirmed:
+                return True
+            self.sleep(min(poll_interval, remaining))
+
+    def _wait_for_room_exit(self, *, deadline=None):
         """确认已发送的返回键生效，再把地图交给下一次房间操作。"""
         profile = self.performance_profile
-        deadline = monotonic() + profile.transition_timeout
+        if deadline is None:
+            deadline = monotonic() + profile.transition_timeout
         poll_interval = profile.screenshot_interval / 1000
         while True:
             self.recog.update()
