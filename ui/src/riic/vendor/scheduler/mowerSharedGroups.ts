@@ -22,7 +22,9 @@ export function mowerRestingBindingGroups(data:MowerSchedulingData,op:MowerOpera
 export function mowerSharedReplacements(op:MowerOperatorState,groups:string[]):string[]{
  return groups.length?op.replacementsForGroup(groups[0]!).filter(name=>groups.slice(1).every(group=>op.replacementsForGroup(group).includes(name))):[...op.replacement]
 }
-export function mowerSameGroupPrimaryReplacement(data:MowerSchedulingData,op:MowerOperatorState,name:string,group=op.group):boolean {
+export function mowerSameGroupPrimaryReplacement(data:MowerSchedulingData,op:MowerOperatorState,name:string,group?:string):boolean {
+ if(group===undefined&&op.multiGroup){const bindings=mowerRestingBindingGroups(data,op);if(bindings.length)return bindings.some(binding=>mowerSameGroupPrimaryReplacement(data,op,name,binding))}
+ group??=op.group
  const cover=data.operators[name]
  return !!group&&op.name!==name&&op.isHigh()&&!!cover?.isHigh()&&(cover.multiGroup?cover.groupBindings.some(binding=>binding.group===group):cover.group===group)&&op.replacementsForGroup(group).includes(name)
 }

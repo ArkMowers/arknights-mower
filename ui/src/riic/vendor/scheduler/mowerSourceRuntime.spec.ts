@@ -4,7 +4,10 @@ import {getMowerSourceRuntime,makeMowerSchedulingData} from './mowerSourceRuntim
 import {mowerUpdateDetail,projectMowerArrangements} from './mowerObservations'
 import {mowerSchedulingMoodObservation} from './mowerSchedulingMood'
 import {alphaRestingTier} from './mowerAlphaDorm'
-import {MowerTask,MOWER_TASK_TYPES as T} from './mowerTaskQueue'
+import {mowerReplacementCandidates,hasRestingMood,restingMood} from './mowerOperatorState'
+import {planMowerAlphaDormFill} from './mowerAlphaCandidates'
+import {planMowerCorrection,mowerOffDutyFullRecoveryMembers,mowerCorrectionPlan} from './mowerCorrection'
+import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {evaluateBackupExpression} from './backupPlans'
 import {retainMowerFailedTask} from './mowerTaskFailure'
 const rates={workRate:()=>1,recoveryRate:()=>4}
@@ -224,6 +227,7 @@ describe('integrated Mower source scheduler',()=>{
  it('establishes recovery before an exact dorm no-op and preserves the final list',()=>{
   const c=fixture(),s=createRosterRuntime(c);settleRoster(s,rates)
   const source=getMowerSourceRuntime(s),data=source.data
+  data.priorityReplacement=['R']
   data.operators.K1!.singleRecoveryManager=true
   data.operators.R!.mood=10;s.morale.R=10
   const list=['K1','K2','K3','K4','R'],task=new MowerTask({plan:{dormitory_1:list}})
@@ -455,4 +459,198 @@ it('starts an exhausted shift before observed morale reaches zero',()=>{
  expect(source.data.operators.A!.isResting()).toBe(true)
  expect(state.morale.A).toBeGreaterThan(0)
  expect(state.occupants.room_1_1_0).toBe('R')
+})
+
+function calculatedMoodFixture(enabled=true,observedResident=true){
+ const config=fixture();config.mowerAlpha=true;config.mowerPolicy!.predictiveMoodControl=enabled
+ config.idleOperators=['S'];config.initialMorale={...config.initialMorale,S:5}
+ const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data
+ source.initial=false;source.firstInit=false
+ mowerUpdateDetail(data,'A',10,'room_1_1',0,true)
+ mowerUpdateDetail(data,'R',10,'dormitory_1',4,observedResident)
+ mowerUpdateDetail(data,'S',5,'',-1,true)
+ data.dorms[0]!.name='R'
+ state.bedOccupants.dormitory_1_4='R';state.morale.A=10;state.morale.R=24;state.time=1
+ return {state,data}
+}
+
+describe('calculated scheduling mood remains separate from observations',()=>{
+ it('keeps the cached fallback when both model source and caller clock are absent',()=>{
+  const {data}=calculatedMoodFixture(false),op=data.operators.R!
+  expect(op.calculatedMoodSnapshot).toBeUndefined()
+  expect(op.currentMood(undefined as unknown as number)).toBe(10)
+ })
+ it.each([false,true])('uses the saved mood mode in the actual source-to-bed-planning call, enabled=%s',enabled=>{
+  const {state,data}=calculatedMoodFixture(enabled),resident=data.operators.R!,before={mood:resident.mood,time:resident.timeStampMicros,prediction:resident.moodIsPrediction}
+  getMowerSourceRuntime(state)
+  expect(mowerSchedulingMoodObservation(data,'R')).toEqual(enabled?[24,toMowerMicros(1)]:[10,0])
+  const fill=planMowerAlphaDormFill(data,new MowerTaskQueue())
+  expect(fill?.plan.dormitory_1?.[4]).toBe(enabled?'S':undefined)
+  expect({mood:resident.mood,time:resident.timeStampMicros,prediction:resident.moodIsPrediction}).toEqual(before)
+ })
+ it.each(['missing','future','invalid','prediction','invalid model'] as const)('does not supply a model baseline from a %s observation',kind=>{
+  const {state,data}=calculatedMoodFixture(true,false),op=data.operators.R!
+  if(kind==='future'){data.nowMicros=toMowerMicros(2);mowerUpdateDetail(data,'R',10,'dormitory_1',4,true)}
+  if(kind==='invalid')mowerUpdateDetail(data,'R',-1,'dormitory_1',4,true)
+  if(kind==='prediction'){op.mood=24;op.timeStampMicros=0;op.moodIsPrediction=true}
+  if(kind==='invalid model'){mowerUpdateDetail(data,'R',10,'dormitory_1',4,true);state.morale.R=NaN}
+  getMowerSourceRuntime(state)
+  expect(mowerSchedulingMoodObservation(data,'R')).toBeUndefined()
+  expect(op.currentMood(data.nowMicros)).toBe(-1)
+  expect(planMowerAlphaDormFill(data,new MowerTaskQueue())).toBeUndefined()
+ })
+ it('retains its actual model baseline through ordinary countdown predictions and changed bed metadata',()=>{
+  const {state,data}=calculatedMoodFixture(),op=data.operators.R!
+  op.mood=24;op.moodIsPrediction=true;op.dormRecoveryObservation=['dormitory_1',4,0,toMowerMicros(1)]
+  getMowerSourceRuntime(state)
+  expect(mowerSchedulingMoodObservation(data,'R')).toEqual([24,toMowerMicros(1)])
+  expect(planMowerAlphaDormFill(data,new MowerTaskQueue())?.plan.dormitory_1?.[4]).toBe('S')
+  expect(op.moodIsPrediction).toBe(true)
+  op.dormRecoveryObservation=['dormitory_1',3,0,toMowerMicros(1)]
+  getMowerSourceRuntime(state)
+  expect(mowerSchedulingMoodObservation(data,'R')).toEqual([24,toMowerMicros(1)])
+ })
+ it('isolates instantaneous projections and never carries a current model value into a future clock',()=>{
+  const {state,data}=calculatedMoodFixture();getMowerSourceRuntime(state)
+  const projected=projectMowerArrangements(data,[])
+  expect(mowerSchedulingMoodObservation(projected,'R')).toEqual([24,toMowerMicros(1)])
+  projected.calculatedMoodSnapshot={timeMicros:projected.nowMicros,values:{...projected.calculatedMoodSnapshot!.values,R:7}}
+  expect(mowerSchedulingMoodObservation(data,'R')).toEqual([24,toMowerMicros(1)])
+  projected.nowMicros+=toMowerMicros(1)
+  expect(mowerSchedulingMoodObservation(projected,'R')).toBeUndefined()
+  expect(data.nowMicros).toBe(toMowerMicros(1))
+ })
+ it.each([false,true])('uses the same model source for actual backup mood conditions, enabled=%s',enabled=>{
+  const config=fixture(),actor='char_237_gravel';config.mowerAlpha=true;config.mowerPolicy!.predictiveMoodControl=enabled
+  config.positions[0]!.primary=actor;config.mowerSourcePlan!.room_1_1![0]!.agent=actor;config.initialMorale={[actor]:19,R:24}
+  const state=createRosterRuntime(config),data=getMowerSourceRuntime(state).data
+  mowerUpdateDetail(data,actor,19,'room_1_1',0,true)
+  state.time=1;state.morale[actor]=10;getMowerSourceRuntime(state)
+  expect(evaluateBackupExpression("op_data.operators['砾'].current_mood() < 11",state)).toBe(enabled)
+  expect(evaluateBackupExpression("op_data.operators['砾'].mood == 19",state)).toBe(true)
+  expect(data.operators[actor]!.timeStampMicros).toBe(0)
+ })
+ it('refreshes the same known baseline across model clock changes without borrowing future snapshot values',()=>{
+  const {state,data}=calculatedMoodFixture();getMowerSourceRuntime(state)
+  const op=data.operators.R!
+  expect(op.currentMood(data.nowMicros)).toBe(24)
+  expect(Object.isFrozen(op.calculatedMoodSnapshot!.values)).toBe(true)
+  state.time=2;state.morale.R=20;getMowerSourceRuntime(state)
+  expect(op.currentMood(data.nowMicros)).toBe(20)
+  expect(op.currentMood(data.nowMicros+toMowerMicros(1))).toBe(10)
+  op.currentRoom='train';op.currentIndex=0
+  expect(op.currentMood(data.nowMicros)).toBe(10)
+  expect(op.mood).toBe(10);expect(op.timeStampMicros).toBe(0)
+ })
+ it('drops the model source when an effective configuration rebuild disables the saved mood mode',()=>{
+  const {state,data}=calculatedMoodFixture();getMowerSourceRuntime(state)
+  expect(data.operators.R!.currentMood(data.nowMicros)).toBe(24)
+  state.config={...state.config,mowerPolicy:{...state.config.mowerPolicy!,predictiveMoodControl:false}}
+  const next=makeMowerSchedulingData(state,{data})
+  expect(next.calculatedMoodSnapshot).toBeUndefined()
+  expect(next.operators.R!.currentMood(next.nowMicros)).toBe(10)
+  expect(data.operators.R!.currentMood(data.nowMicros)).toBe(24)
+ })
+ it.each([false,true])('uses current calculated completion in ordinary correction, enabled=%s',enabled=>{
+  const {state,data}=calculatedMoodFixture(enabled)
+  mowerUpdateDetail(data,'R',20,'room_1_1',0,true)
+  mowerUpdateDetail(data,'A',10,'dormitory_1',4,true)
+  state.occupants.room_1_1_0='R';state.bedOccupants.dormitory_1_4='A';state.morale.A=24;state.morale.R=20
+  const observed={mood:data.operators.A!.mood,time:data.operators.A!.timeStampMicros}
+  getMowerSourceRuntime(state)
+  const correction=planMowerCorrection(data,new MowerTaskQueue())
+  expect(correction?.plan.room_1_1?.[0]).toBe(enabled?'A':undefined)
+  expect({mood:data.operators.A!.mood,time:data.operators.A!.timeStampMicros}).toEqual(observed)
+ })
+})
+
+
+describe('calculated mood observations survive scheduling cache invalidation',()=>{
+ it('readmits a partially recovered full-rest primary after actual departure invalidates its raw timestamp',()=>{
+  const {state,data}=calculatedMoodFixture()
+  data.operators.A!.restInFull=true;data.operators.A!.exhaustRequire=true
+  mowerUpdateDetail(data,'R',24,'room_1_1',0,true)
+  mowerUpdateDetail(data,'A',23.475943578706268,'dormitory_1',4,true)
+  state.occupants.room_1_1_0='R';state.bedOccupants.dormitory_1_4='A';state.morale.A=23.475943578706268;state.morale.R=24
+  data.dorms[0]!.name='A';getMowerSourceRuntime(state)
+  const source=getMowerSourceRuntime(state),departure=new MowerTask({time:state.time,type:T.RE_ORDER,plan:{dormitory_1:['Current','Current','Current','Current','S']}})
+  departure.backupShiftActive=true;source.queue.tasks=[departure]
+  for(let n=0;n<6&&source.queue.tasks.includes(departure);n++){settleRoster(state,rates);advanceRoster(state,.5/3600,rates)}
+  const op=data.operators.A!
+  expect(op.currentRoom).toBe('');expect(op.timeStampMicros).toBeUndefined()
+  getMowerSourceRuntime(state)
+  expect(mowerSchedulingMoodObservation(data,'A')?.[0]).toBeLessThan(24)
+  expect(mowerOffDutyFullRecoveryMembers(data).has('A')).toBe(true)
+  expect(Object.entries(mowerCorrectionPlan(data)).filter(([room])=>room.startsWith('dorm')).flatMap(([,row])=>row)).toContain('A')
+ })
+ it('retains an actual observation after its exhaust timestamp is cleared and a configuration projection is rebuilt',()=>{
+  const {state,data}=calculatedMoodFixture()
+  getMowerSourceRuntime(state);data.operators.A!.timeStampMicros=undefined
+  state.config={...state.config};state.morale.A=7;state.time=2
+  const next=getMowerSourceRuntime(state).data
+  expect(next.operators.A!.timeStampMicros).toBeUndefined()
+  expect(mowerSchedulingMoodObservation(next,'A')).toEqual([7,toMowerMicros(2)])
+  const projected=projectMowerArrangements(next,[])
+  const observed=next.calculatedMoodObservations.R
+  mowerUpdateDetail(projected,'R',24,'dormitory_1',4,true)
+  expect(projected.calculatedMoodObservations.R).toBe(toMowerMicros(2))
+  expect(next.calculatedMoodObservations.R).toBe(observed)
+  expect(next.operators.R!.timeStampMicros).toBe(0)
+ })
+})
+
+it('keeps actual model observations across disabling and reopening while unread operators remain unknown',()=>{
+ const {state,data}=calculatedMoodFixture(),observed=data.calculatedMoodObservations.A
+ getMowerSourceRuntime(state)
+ state.config={...state.config,mowerPolicy:{...state.config.mowerPolicy!,predictiveMoodControl:false}}
+ const disabled=getMowerSourceRuntime(state).data
+ expect(disabled.calculatedMoodSnapshot).toBeUndefined()
+ expect(disabled.calculatedMoodObservations.A).toBe(observed)
+ delete disabled.calculatedMoodObservations.S
+ mowerUpdateDetail(disabled,'S',5,'',-1,true)
+ state.time=2;state.morale.A=7
+ state.config={...state.config,mowerPolicy:{...state.config.mowerPolicy!,predictiveMoodControl:true}}
+ const reopened=getMowerSourceRuntime(state).data
+ expect(mowerSchedulingMoodObservation(reopened,'A')).toEqual([7,toMowerMicros(2)])
+ expect(mowerSchedulingMoodObservation(reopened,'S')).toBeUndefined()
+ expect(reopened.operators.S!.mood).toBe(5)
+})
+
+it('keeps the measured model baseline when actual refresh-drained movement invalidates the exhausted-shift cache',()=>{
+ const {state,data}=calculatedMoodFixture(),source=getMowerSourceRuntime(state)
+ state.config.mowerSourceRules!.refreshDrained=['S'];data.operators.A!.exhaustRequire=true
+ const task=new MowerTask({time:state.time,type:T.RE_ORDER,plan:{dormitory_1:['Current','Current','Current','Current','S']}})
+ task.backupShiftActive=true;source.queue.tasks=[task]
+ for(let n=0;n<6&&source.queue.tasks.includes(task);n++){settleRoster(state,rates);advanceRoster(state,.5/3600,rates)}
+ expect(data.operators.A!.currentRoom).toBe('room_1_1')
+ expect(data.operators.A!.timeStampMicros).toBeUndefined()
+ getMowerSourceRuntime(state)
+ expect(mowerSchedulingMoodObservation(data,'A')).toEqual([state.morale.A,data.nowMicros])
+ expect(data.operators.A!.mood).toBe(10)
+})
+
+it('uses an independently observed full dorm filler after its raw observation cache is invalidated',()=>{
+ const {state,data}=calculatedMoodFixture(),op=data.operators.R!
+ getMowerSourceRuntime(state);op.timeStampMicros=undefined
+ getMowerSourceRuntime(state)
+ expect(hasRestingMood(op,data.nowMicros)).toBe(true)
+ expect(planMowerAlphaDormFill(data,new MowerTaskQueue())?.plan.dormitory_1?.[4]).toBe('S')
+ expect(op.timeStampMicros).toBeUndefined();expect(op.mood).toBe(10)
+})
+it('orders actual replacement candidates by known calculated mood after raw observation invalidation',()=>{
+ const {state,data}=calculatedMoodFixture(),owner=data.operators.A!,full=data.operators.R!
+ owner.replacement=['R','S'];state.morale.R=0
+ getMowerSourceRuntime(state);full.timeStampMicros=undefined
+ getMowerSourceRuntime(state)
+ expect(mowerReplacementCandidates(owner,data.operators,data.policy,data.nowMicros)).toEqual(['S','R'])
+ full.currentRoom='train'
+ expect(hasRestingMood(full,data.nowMicros)).toBe(false)
+ expect(restingMood(full,data.nowMicros)).toBe(24)
+})
+it('keeps unread calculated dorm mood unknown through the shared resting helpers',()=>{
+ const {state,data}=calculatedMoodFixture(true,false),op=data.operators.R!
+ getMowerSourceRuntime(state)
+ expect(hasRestingMood(op,data.nowMicros)).toBe(false)
+ expect(restingMood(op,data.nowMicros)).toBe(-1)
+ expect(planMowerAlphaDormFill(data,new MowerTaskQueue())).toBeUndefined()
 })

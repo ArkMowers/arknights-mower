@@ -49,6 +49,64 @@ def transition(solver, path):
     assert task.plan == before
 
 
+@pytest.mark.parametrize(
+    "kind", ["full", "recovering", "prediction", "unknown", "reserved", "product"]
+)
+@pytest.mark.parametrize("path", ["cached", "shift"])
+def test_retention_uses_only_eligible_completed_residents(solver, kind, path):
+    data = solver.op_data
+    data.backup_plans[0].config.dorm_order = data.config.dorm_order.copy()
+    retain(solver)
+    now = datetime.now()
+    for op in data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+    data.add(Operator("夕", ""))
+    data.operators["夕"].mood, data.operators["夕"].time_stamp = 24, now
+    names = ["红", "安赛尔", "安德切尔", "翎羽", "芙蓉", "史都华德"]
+    for name, bed in zip(names, data.dorm):
+        data.add(Operator(name, ""))
+        op = data.operators[name]
+        op._current_room, op.current_index = bed.position
+        op.mood = 5 if kind == "recovering" else 24
+        op.time_stamp = None if kind == "unknown" else now
+        op.mood_is_prediction = kind == "prediction"
+        bed.name, bed.time = name, now + timedelta(hours=2)
+        if kind == "product":
+            data.reserved_product_beds[bed.position] = name
+    if kind == "reserved":
+        held = SchedulerTask(
+            task_type=TaskTypes.RE_ORDER,
+            task_plan={
+                room: ["Current", "Current"]
+                + [
+                    next(bed.name for bed in data.dorm if bed.position == (room, i))
+                    for i in range(2, 5)
+                ]
+                for room in ("dormitory_1", "dormitory_2")
+            },
+        )
+        held.backup_shift_active = True
+        solver.tasks = [held]
+    before = [(bed.name, bed.time) for bed in data.dorm]
+    if kind == "full" or path == "cached":
+        transition(solver, path)
+    else:
+        task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+        solver.tasks, solver.task = [task, *solver.tasks], task
+        try:
+            solver._prepare_shift_cycle(task)
+        except GroupShiftBlocked:
+            pass
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
+    if kind == "full":
+        final = final_data(solver)
+        assert final.operators["夕"].is_resting()
+        assert sum(final.operators[name].is_resting() for name in names) <= 5
+    else:
+        assert solver.op_data.plan_condition == [False]
+        assert not solver.op_data.operators["夕"].current_room
+
+
 @pytest.mark.parametrize("path", ["cached", "shift", "product"])
 def test_backup_admits_a_retention_only_idle_operator_without_inventing_mood(
     solver, path

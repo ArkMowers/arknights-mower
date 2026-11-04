@@ -1,12 +1,12 @@
-import {alphaPosition} from './mowerAlphaDorm'
+import {alphaFullDormFiller,alphaPosition} from './mowerAlphaDorm'
 import {mowerDormTaskReservations} from './mowerAlphaCandidates'
 import {mowerAssignDormGroup} from './mowerDormAssignment'
-import {MowerShiftPreviewError} from './mowerNativeErrors'
+import {MowerResourceWaitError} from './mowerNativeErrors'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan} from './mowerTaskQueue'
 
-export class MowerBackupRetentionBlocked extends MowerShiftPreviewError {
+export class MowerBackupRetentionBlocked extends MowerResourceWaitError {
  constructor(readonly names:string[],readonly rooms:string[]){super('副表宿舍保留安排尚无可用床位，保留原任务')}
 }
 
@@ -62,7 +62,7 @@ export function recordMowerBackupRetention(previous:MowerSchedulingData,next:Mow
  task.backupRetentionAdmissions=[...new Set([...task.backupRetentionAdmissions,...next.freeRoomExclusions.filter(name=>next.freeRoomExcluded(name)&&!next.operators[name]?.room&&!previous.operators[name]?.currentRoom&&named.has(name)&&!explicitNames.has(name))])]
 }
 
-/** Reconcile final retention policy in a copy; existing residents never yield beds to policy-only admissions. */
+/** Reconcile final retention policy in a copy, preserving unfinished recovery and named arrangements. */
 export function reconcileMowerBackupRetention(previous:MowerSchedulingData,next:MowerSchedulingData,plan:MowerTaskPlan,pending:readonly MowerTask[]=[],explicitNames:ReadonlySet<string>=new Set()):MowerTaskPlan {
  const result=structuredClone(plan),projected=projectMowerArrangements(next,[result])
  const reserved=mowerDormTaskReservations(projected,mowerBackupRetentionPending(next,pending).filter(task=>task.type!==T.SHIFT_ON||task.retainsExecution||task.backupShiftActive||task.productShiftLocked||task.dormRecoveryRestore.length))
@@ -85,7 +85,10 @@ export function reconcileMowerBackupRetention(previous:MowerSchedulingData,next:
  if(!required.length)return result
  if(required.some(name=>reserved.names.has(name)))fail(required)
  const locked=new Set([...reserved.slots,...released.reservedProductBeds.keys()])
- for(const bed of released.dorms)if(bed.name||released.currentOperator(...bed.position))locked.add(alphaPosition(...bed.position))
+ for(const bed of released.dorms){
+  const resident=released.currentOperator(...bed.position)
+  if(bed.name&&resident?.name!==bed.name||resident&&(reserved.names.has(resident.name)||!alphaFullDormFiller(released,resident.name)))locked.add(alphaPosition(...bed.position))
+ }
  for(const [room,row] of Object.entries(plan))if(room.startsWith('dorm'))row.forEach((name,index)=>{if(name!=='Current'&&name!=='Free')locked.add(alphaPosition(room,index))})
  const admissions=mowerAssignDormGroup(released,required,undefined,undefined,{},locked)
  if(!admissions||admissions.length!==required.length)fail(required)

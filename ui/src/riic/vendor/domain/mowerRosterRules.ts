@@ -40,6 +40,7 @@ export function validateMowerRosterRules(workspace: RosterWorkspace): MowerRoste
     if (entry.slot.groupId || entry.slot.groupBindings?.length) add(entry, 'Free 不能配置绑组。')
   }
   for (const [name, entry] of primaries) for (const binding of bindings(entry.slot)) if (binding.groupId) {const members = groups.get(binding.groupId) ?? []; if (!members.includes(name)) members.push(name); groups.set(binding.groupId, members)}
+  const normalGroups = new Map([...primaries].map(([name, entry]) => [name, bindings(entry.slot).filter(binding => !binding.groupId || ![...primaries].some(([owner, other]) => owner !== name && !other.dorm && bindings(other.slot).some(column => column.groupId === binding.groupId && column.replacements.some(candidate => resolve(candidate) === name)))).map(binding => binding.groupId ?? '')]))
   for (const [name, entry] of primaries) {
     const {slot, dorm, trading} = entry, fiammetta = OPERATOR_MAP.get(name)?.name === '菲亚梅塔'
     const columns = bindings(slot)
@@ -48,6 +49,7 @@ export function validateMowerRosterRules(workspace: RosterWorkspace): MowerRoste
       const groupNames = columns.map(binding => binding.groupId?.trim() ?? '')
       if (new Set(groupNames).size !== groupNames.length) add(entry, '多绑组的组名不能重复，空组名最多一列。')
       if (dorm && groupNames.some(group => !group)) add(entry, '宿舍多绑组不能配置个人空组名列；个人轮休仅适用于非宿舍工作主班。')
+      if (!dorm && !workaholic.has(name) && !normalGroups.get(name)!.length) add(entry, `${OPERATOR_MAP.get(name)?.name ?? name}的多绑组至少需要一个正常下班组（可使用空绑组）`)
     }
     for (const binding of columns) {
       const seen = new Set<string>()
@@ -68,8 +70,8 @@ export function validateMowerRosterRules(workspace: RosterWorkspace): MowerRoste
   for (const [group, members] of groups) {
     const workers = members.filter(name => !primaries.get(name)!.dorm)
     const needsAnchor = !workers.length || workers.some(name => !workaholic.has(name))
-    const anchored = workers.some(name => !primaries.get(name)!.slot.groupBindings?.length && !workaholic.has(name) && !isStandby(name))
-    if (needsAnchor && !anchored) add(primaries.get(members[0]!)!, `${group} 缺少决定上下班的工作主班：需要非宿舍、非零心情工作、非多绑组且非候补的主班。`)
+    const anchored = workers.some(name => (!primaries.get(name)!.slot.groupBindings?.length || normalGroups.get(name)!.length === 1 && normalGroups.get(name)![0] === group) && !workaholic.has(name) && !isStandby(name))
+    if (needsAnchor && !anchored) add(primaries.get(members[0]!)!, `${group} 缺少决定上下班的工作主班：至少需要一名非宿舍、非零心情工作、非候补且只有一个正常下班组的主班。`)
     const zeroMood = members.every(name => workaholic.has(name)) && members.every(name => !primaries.get(name)!.dorm)
     const options = Object.fromEntries(members.flatMap(name => {
       const entry = primaries.get(name)!, candidates = bindings(entry.slot).find(binding => binding.groupId === group)!.replacements.map(resolve).filter(candidate => !isTradeRunOrderOperator(candidate))

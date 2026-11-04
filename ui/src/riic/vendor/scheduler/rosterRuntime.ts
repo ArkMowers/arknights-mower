@@ -41,6 +41,7 @@ export interface RuntimeConfig {
   mowerRecycleBuilt?: boolean
   /** Disable order tasks only for the old no-wake comparison. */
   mowerRunOrderEnabled?: boolean
+  mowerJayeElite0?: boolean
   mowerDroneCountLimit?: number
   /** Source device back(0.5); absent for pure, frozen-clock decision fixtures. */
   mowerDeviceTiming?: {roomReturnMicros:number}

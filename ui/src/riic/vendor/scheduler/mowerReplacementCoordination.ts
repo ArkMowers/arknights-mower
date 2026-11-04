@@ -111,10 +111,12 @@ export function mowerRecallMoodAdmissible(data:MowerSchedulingData,recalled:Read
  })
 }
 function materializeCoordinationMoods(original:MowerSchedulingData,shadow:MowerSchedulingData,knownMoods?:Readonly<Record<string,number>>):boolean {
+ shadow.calculatedMoodSnapshot=undefined
  for(const op of Object.values(shadow.operators)){
   const source=original.operators[op.name]
   const mood=knownMoods?.[op.name]??(source?mowerDormCandidateMood(original,source.name):undefined)
   if(op.currentRoom&&(mood===undefined||!Number.isFinite(mood)||mood<0||mood>24))return false
+  op.calculatedMoodSnapshot=undefined
   op.mood=mood??op.mood;op.timeStampMicros=shadow.nowMicros;op.depletionRate=0
  }
  return true

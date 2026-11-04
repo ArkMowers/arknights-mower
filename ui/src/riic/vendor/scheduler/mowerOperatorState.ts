@@ -2,7 +2,9 @@
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import {toMowerMicros,fromMowerMicros} from './mowerTaskQueue'
 export interface MowerGroupBinding {group:string;replacement:string[]}
+export interface MowerCalculatedMoodSnapshot {readonly timeMicros:number;readonly values:Readonly<Record<string,number>>}
 export interface MowerOperatorOptions {
+ calculatedMoodSnapshot?:MowerCalculatedMoodSnapshot
  projectedMoodResting?:boolean
  groupBindings?:MowerGroupBinding[]
  alpha?:boolean;temporaryDormFill?:boolean;dormMoodFallback?:string;restMoodReleaseLimit?:number;moodIsPrediction?:boolean
@@ -16,6 +18,7 @@ export interface MowerOperatorOptions {
 }
 export type MowerRecoveryManager=[name:string,index:number,positionVersion:number]
 export class MowerOperatorState {
+ calculatedMoodSnapshot:MowerCalculatedMoodSnapshot|undefined
  /** Position-only projections retain the room context of the source mood. */
  projectedMoodResting:boolean|undefined
  temporaryDormFill=false;dormMoodFallback='';restMoodReleaseLimit:number|undefined;moodIsPrediction=false
@@ -33,6 +36,7 @@ export class MowerOperatorState {
  refreshOrderRooms:[boolean,string[]]=[false,[]]
  lowerLimit:number;upperLimit:number;workaholic:boolean;exhaustRequire:boolean;restInFull:boolean;restMoodLimit:boolean;workshop:boolean
  constructor(o:MowerOperatorOptions){
+  this.calculatedMoodSnapshot=o.calculatedMoodSnapshot
   let currentRoom:string|undefined,currentIndex=-1
   this.projectedMoodResting=o.projectedMoodResting
   this.alpha=o.alpha??false
@@ -52,7 +56,11 @@ export class MowerOperatorState {
  isHigh(){return this.operatorType==='high'}
  isResting(){return this.currentRoom.startsWith('dorm')}
  /** Source returns the saved observation if an extrapolation is outside 0..24. */
- currentMood(nowMicros:number):number {const prediction=this.timeStampMicros===undefined?this.mood:this.mood-this.depletionRate*fromMowerMicros(nowMicros-this.timeStampMicros);return prediction>=0&&prediction<=24?prediction:this.mood}
+ currentMood(nowMicros:number):number {
+  const snapshot=this.calculatedMoodSnapshot
+  if(snapshot&&snapshot.timeMicros===nowMicros&&this.currentRoom!=='train')return snapshot.values[this.name]??-1
+  const prediction=this.timeStampMicros===undefined?this.mood:this.mood-this.depletionRate*fromMowerMicros(nowMicros-this.timeStampMicros);return prediction>=0&&prediction<=24?prediction:this.mood
+ }
  predictExhaust(nowMicros:number):number {
   if(this.workaholic||this.exhaustRequire||['factory','train'].includes(this.room))return nowMicros+toMowerMicros(24)
   const remaining=this.mood-this.lowerLimit
@@ -63,8 +71,11 @@ export class MowerOperatorState {
 }
 /** Ordinary dorm release shares this saved full-mood evidence with task planning. */
 export function hasObservedFullMood(op:MowerOperatorState|undefined):boolean {return !!op&&op.timeStampMicros!==undefined&&op.mood>=0&&op.mood<=24&&op.mood>=op.upperLimit}
-export function hasRestingMood(op:MowerOperatorState|undefined,nowMicros:number):boolean {return !!op&&op.timeStampMicros!==undefined&&op.mood>=0&&op.mood<=24&&op.currentMood(nowMicros)>=0&&op.currentMood(nowMicros)<=24}
-export const restingMood=(op:MowerOperatorState|undefined,nowMicros:number)=>op&&hasRestingMood(op,nowMicros)?op.currentMood(nowMicros):24
+export function hasRestingMood(op:MowerOperatorState|undefined,nowMicros:number):boolean {
+ if(op?.calculatedMoodSnapshot&&op.calculatedMoodSnapshot.timeMicros===nowMicros&&op.currentRoom!=='train'){const mood=op.currentMood(nowMicros);return Number.isFinite(mood)&&mood>=0&&mood<=24}
+ return !!op&&op.timeStampMicros!==undefined&&op.mood>=0&&op.mood<=24&&op.currentMood(nowMicros)>=0&&op.currentMood(nowMicros)<=24
+}
+export const restingMood=(op:MowerOperatorState|undefined,nowMicros:number)=>op?.calculatedMoodSnapshot&&op.calculatedMoodSnapshot.timeMicros===nowMicros&&op.currentRoom!=='train'?op.currentMood(nowMicros):op&&hasRestingMood(op,nowMicros)?op.currentMood(nowMicros):24
 export interface MowerMoodPolicy {predictiveMoodControl?:boolean;restingThreshold:number;groupRestingThresholds?:Record<string,number>;rescueThreshold:number;experimentalDormLogic?:boolean;alpha?:boolean}
 export const restingThresholdFor=(op:{group?:string;multiGroup?:boolean;shiftGroup?:string},policy:Pick<MowerMoodPolicy,'restingThreshold'|'groupRestingThresholds'>)=>op.group&&(!op.multiGroup||op.shiftGroup)&&policy.groupRestingThresholds&&Object.hasOwn(policy.groupRestingThresholds,op.group)?policy.groupRestingThresholds[op.group]!:policy.restingThreshold
 export const rescueMoodThreshold=(op:MowerOperatorState,policy:MowerMoodPolicy)=>op.lowerLimit+(op.upperLimit-op.lowerLimit)*restingThresholdFor(op,policy)*policy.rescueThreshold
@@ -73,7 +84,7 @@ export function mowerReplacementCandidates(op:MowerOperatorState,operators:Recor
  const candidates=op.replacement.filter(name=>name!=='Free'&&!(op.room.startsWith('dorm')&&complete(name)))
  const known=(candidate:MowerOperatorState|undefined):candidate is MowerOperatorState=>!!candidate&&candidate.timeStampMicros!==undefined&&candidate.mood>=0&&candidate.mood<=24
  if(!op.room.startsWith('dorm')&&op.nativeName!=='菲亚梅塔'){
-  if(policy.alpha)return candidates.sort((a,b)=>Number(known(operators[a])&&operators[a]!.currentMood(nowMicros)<=operators[a]!.lowerLimit)-Number(known(operators[b])&&operators[b]!.currentMood(nowMicros)<=operators[b]!.lowerLimit))
+  if(policy.alpha)return candidates.sort((a,b)=>Number(hasRestingMood(operators[a],nowMicros)&&operators[a]!.currentMood(nowMicros)<=operators[a]!.lowerLimit)-Number(hasRestingMood(operators[b],nowMicros)&&operators[b]!.currentMood(nowMicros)<=operators[b]!.lowerLimit))
   const rank=(name:string):[number,number]=>{const candidate=operators[name];if(!known(candidate))return [0,0];const mood=candidate.currentMood(nowMicros),below=mood<rescueMoodThreshold(candidate,policy);return [Number(below),below&&policy.experimentalDormLogic?-mood:0]}
   return candidates.sort((a,b)=>{const ra=rank(a),rb=rank(b);return ra[0]-rb[0]||ra[1]-rb[1]})
  }

@@ -146,3 +146,158 @@ describe('failed incidental dorm moves release normal recovered-group returns',(
   expect(state.events.some(event=>event.type==='shift-on'&&event.operators.includes('B'))).toBe(true)
  })
 })
+
+function occupiedAdmissionBed(){
+ const rows:NonNullable<RuntimeConfig['mowerSourcePlan']>={room_1_1:[{agent:'A',group:'a',replacement:['X']}],room_1_2:[{agent:'B',group:'',replacement:['Y']}],room_1_3:[{agent:'C',group:'',replacement:['D']}],dormitory_1:['K0','K1','Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]}))}
+ const config:RuntimeConfig={mowerAlpha:true,positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((p,index)=>p.agent==='Free'?[]:[{id:room+'_'+index,roomId:room,primary:p.agent,candidates:p.replacement,group:p.group,dormitory:room.startsWith('dorm'),permanent:room.startsWith('dorm')}])),beds:[2,3,4].map(index=>({id:'dormitory_1_'+index,roomId:'dormitory_1',vip:index===2})),mowerSourcePlan:rows,mowerSourceRules:{workaholic:[],exhaustRequire:[],restInFull:[],lowPriority:[],refreshDrained:[],lingMode:0},mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},initialMorale:{A:0,B:24,C:24},idleOperators:['I0','I1','I2'],mowerRunLoopClock:{minimumClockStepMicros:1,notificationSleepMicros:1_000_000}}
+ const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data,queue=source.queue
+ source.initial=false
+ Object.assign(data.operators.B!,{currentRoom:'dormitory_1',currentIndex:2,mood:24,timeStampMicros:0,depletionRate:0})
+ Object.assign(data.operators.Y!,{currentRoom:'room_1_2',currentIndex:0,mood:24,timeStampMicros:0})
+ state.occupants.room_1_2_0='Y';state.bedOccupants.dormitory_1_2='B'
+ data.dorms[0]!.name='B';data.dorms[0]!.timeMicros=0
+ const task=new MowerTask({time:-1,type:T.SHIFT_OFF,plan:{room_1_1:['X'],dormitory_1:['Current','Current','A','Current','Current']}})
+ queue.tasks=[task];retainMowerFailedTask(state,data,task,'waiting for an occupied admission bed')
+ return {state,source,data,queue,task}
+}
+describe('normal individual returns release occupied admission beds',()=>{
+ it('retains the waiting departure while admitting the occupant’s normal return',()=>{
+  const {state,data,queue,task}=occupiedAdmissionBed(),plan=structuredClone(task.plan),time=task.timeMicros
+  for(let attempt=0;attempt<3;attempt++){
+   planMowerMetadata(data,queue)
+   expect(queue.tasks.find(t=>t.type===T.SHIFT_ON)?.plan.room_1_2).toEqual(['B'])
+   expect(resumeMowerFailedTasks(state,data,queue)).toBe(false)
+   expect(queue.tasks.filter(t=>t===task)).toHaveLength(1)
+   expect(task.plan).toEqual(plan);expect(task.timeMicros).toBe(time)
+   expect(data.operators.B!.currentRoom).toBe('dormitory_1')
+  }
+ })
+ it('keeps a future recovery deadline rather than immediately recalling the bed occupant',()=>{
+  const {state,data,queue,task}=occupiedAdmissionBed()
+  state.morale.B=8;data.operators.B!.mood=8;data.dorms[0]!.timeMicros=toMowerMicros(4)
+  for(let attempt=0;attempt<3;attempt++){
+   planMowerMetadata(data,queue)
+   expect(queue.tasks.find(t=>t.type===T.SHIFT_ON)?.timeMicros).toBe(toMowerMicros(4-8/60))
+   expect(task.timeMicros).toBe(toMowerMicros(-1))
+  }
+ })
+ it.each(['started','backup','product','restore','own-work','own-work-empty','named-rest','resumed'] as const)('retains %s obligations',kind=>{
+  const {data,queue,task}=occupiedAdmissionBed()
+  if(kind==='started')task.arrangementStarted=true
+  if(kind==='backup')task.backupShiftActive=true
+  if(kind==='product')task.productShiftLocked=true
+  if(kind==='restore')task.dormRecoveryRestore=['dormitory_1']
+  if(kind==='own-work')task.plan.room_1_2=['Y']
+  if(kind==='own-work-empty')task.plan.room_1_2=['']
+  if(kind==='named-rest')task.plan.dormitory_1![2]='B'
+  if(kind==='resumed'){delete task.executionFailure;task.executionRetained=true}
+  planMowerMetadata(data,queue)
+  expect(queue.tasks.some(t=>t.type===T.SHIFT_ON&&t.plan.room_1_2?.includes('B'))).toBe(false)
+ })
+ it('does not bypass another task’s actual reservation of the returning work slot',()=>{
+  const {data,queue,state}=occupiedAdmissionBed(),other=new MowerTask({type:T.SELF_CORRECTION,plan:{room_1_2:['Y']}})
+  retainMowerFailedTask(state,data,other,'a real work-slot reservation');queue.tasks.push(other)
+  planMowerMetadata(data,queue)
+  expect(queue.tasks.some(t=>t.type===T.SHIFT_ON&&t.plan.room_1_2?.includes('B'))).toBe(false)
+ })
+ it('dispatches independent work, returns the occupant and resumes the original departure',()=>{
+  const {state,data,queue,task}=occupiedAdmissionBed(),time=task.timeMicros
+  const independent=new MowerTask({type:T.SELF_CORRECTION,plan:{room_1_3:['D']}});queue.tasks.push(independent)
+  const rates={workRate:()=>1,recoveryRate:()=>4}
+  const complete=()=>state.occupants.room_1_2_0==='B'&&Object.values(state.bedOccupants).includes('A')&&!queue.tasks.includes(independent)
+  for(let attempt=0;attempt<80&&!complete();attempt++){
+   settleRoster(state,rates)
+   if(!complete())advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  expect(complete(),JSON.stringify({time:state.time,queue:queue.tasks.map(t=>({type:t.type.key,plan:t.plan,reason:t.executionFailure?.reason})),occupants:state.occupants,beds:state.bedOccupants})).toBe(true)
+  expect(state.time).toBeLessThan(1/30)
+  expect(task.timeMicros).toBe(time)
+  expect(data.operators.B!.currentRoom).toBe('room_1_2')
+ })
+})
+
+describe('completed ordinary off-duty requests stop reserving incidental moves',()=>{
+ it('keeps a distinct started arrangement with the same time and plan',()=>{
+  const {state,data,queue,task}=occupiedAdmissionBed()
+  task.ordinaryCoordination=true;task.coordinationRequestNames=['B']
+  const started=new MowerTask({type:task.type,time:task.time,plan:structuredClone(task.plan)})
+  started.ordinaryCoordination=true;started.coordinationRequestNames=['B'];started.arrangementStarted=true
+  retainMowerFailedTask(state,data,started,'unfinished arrangement confirmation');queue.tasks.unshift(started)
+  resumeMowerFailedTasks(state,data,queue)
+  expect(queue.tasks.some(t=>t===started)).toBe(true)
+  expect(queue.tasks.some(t=>t===task)).toBe(false)
+ })
+ it.each(['complete','started','support','explicit','working'] as const)('requires actual completed rest, case=%s',kind=>{
+  const {state,data,queue,task}=occupiedAdmissionBed(),time=task.timeMicros,plan=structuredClone(task.plan)
+  task.ordinaryCoordination=true;task.coordinationRequestNames=['B']
+  if(kind==='started')task.arrangementStarted=true
+  if(kind==='support')task.exhaustSupport=true
+  if(kind==='explicit')task.backupExplicitSlots.add('dormitory_1\0'+2)
+  if(kind==='working'){data.operators.B!.currentRoom='room_1_2';data.operators.B!.currentIndex=0}
+  const independent=new MowerTask({time:1});queue.tasks.push(independent)
+  for(let attempt=0;attempt<3;attempt++){
+   resumeMowerFailedTasks(state,data,queue)
+   expect(queue.tasks.includes(task)).toBe(kind!=='complete')
+   expect(queue.tasks).toContain(independent)
+   expect(task.plan).toEqual(plan);expect(task.timeMicros).toBe(time)
+  }
+ })
+})
+
+describe('completed ordinary requests use their actual recovery members',()=>{
+ it.each([false,true])('does not expand a shared working binding; unfinished=%s',unfinished=>{
+  const {state,data,queue,task}=fixture('primary'),follower=data.operators.S!
+  follower.group='a';follower.shiftGroup='a'
+  follower.groupBindings=[{group:'a',replacement:['Z']},{group:'b',replacement:['B']}]
+  follower.currentRoom='room_1_2';follower.currentIndex=1
+  data.operators.B!.replacement=['S']
+  delete state.bedOccupants.dormitory_1_3;data.dorms[1]!.name=''
+  state.occupants.room_1_2_1='S'
+  if(unfinished){data.operators.B!.currentRoom='room_1_2';data.operators.B!.currentIndex=0;state.occupants.room_1_2_0='B';delete state.bedOccupants.dormitory_1_2;data.dorms[0]!.name=''}
+  task.ordinaryCoordination=true;task.coordinationRequestNames=['B','S']
+  expect(data.shiftRequestGroups(task.coordinationRequestNames)).toEqual(['b'])
+  retainMowerFailedTask(state,data,task,'waiting for recovery admission')
+  const independent=new MowerTask({time:1}),plan=structuredClone(task.plan),time=task.timeMicros
+  queue.tasks.push(independent)
+  for(let attempt=0;attempt<3;attempt++){
+   resumeMowerFailedTasks(state,data,queue)
+   expect(queue.tasks.includes(task)).toBe(unfinished)
+   expect(queue.tasks).toContain(independent)
+   expect(task.plan).toEqual(plan);expect(task.timeMicros).toBe(time)
+   expect(follower.currentRoom).toBe('room_1_2')
+  }
+ })
+ it.each(['optional','exhausted','full'] as const)('permits an idle optional standby, case=%s',kind=>{
+  const {state,data,queue,task}=fixture(),standby=data.operators.S!
+  standby.currentRoom='';standby.currentIndex=-1
+  delete state.bedOccupants.dormitory_1_3;data.dorms[1]!.name=''
+  if(kind==='exhausted')standby.exhaustRequire=true
+  if(kind==='full')standby.restInFull=true
+  task.ordinaryCoordination=true;task.coordinationRequestNames=['B']
+  retainMowerFailedTask(state,data,task,'waiting for recovery admission')
+  const independent=new MowerTask({time:1}),plan=structuredClone(task.plan),time=task.timeMicros
+  queue.tasks.push(independent)
+  for(let attempt=0;attempt<3;attempt++){
+   resumeMowerFailedTasks(state,data,queue)
+   expect(queue.tasks.includes(task)).toBe(kind!=='optional')
+   expect(queue.tasks).toContain(independent)
+   expect(task.plan).toEqual(plan);expect(task.timeMicros).toBe(time)
+  }
+ })
+})
+
+
+describe('completed independent rest requests',()=>{
+ it.each([false,true])('still requires its own admission, working=%s',working=>{
+  const {state,data,queue,task}=occupiedAdmissionBed(),op=data.operators.B!
+  op.groupBindings=[{group:'',replacement:['Y']},{group:'a',replacement:['X']}]
+  expect(op.independentRest).toBe(true)
+  if(working){op.currentRoom='room_1_2';op.currentIndex=0;state.occupants.room_1_2_0='B';delete state.bedOccupants.dormitory_1_2;data.dorms[0]!.name=''}
+  task.ordinaryCoordination=true;task.coordinationRequestNames=['B']
+  retainMowerFailedTask(state,data,task,'waiting for individual recovery admission')
+  for(let attempt=0;attempt<3;attempt++){
+   resumeMowerFailedTasks(state,data,queue)
+   expect(queue.tasks.includes(task)).toBe(working)
+  }
+ })
+})

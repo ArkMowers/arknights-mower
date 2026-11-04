@@ -65,7 +65,7 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
   const members=op.group?data.shiftGroupMembers(op.group).filter(name=>!data.operators[name]!.independentRest):[op.name]
   if(groups.has(op.group)||members.some(n=>returning.has(n)||names.has(n)||data.busyRestingNames.has(n)))continue
   const workers=members.map(n=>data.operators[n]!).filter(o=>data.isGroupShiftAnchor(o,op.group))
-  if(!strict&&!workers.every(o=>!o.currentRoom&&(data.canStandby(o)||hasRestingMood(o,now)&&o.currentMood(now)>=o.upperLimit)))continue
+  if(!strict&&!workers.every(o=>!o.currentRoom&&(data.canStandby(o)||data.restMoodComplete(o.name)||hasRestingMood(o,now)&&o.currentMood(now)>=o.upperLimit)))continue
   const plan:MowerTaskPlan={}
   for(const name of members){const member=data.operators[name]!;if(member.room&&data.plan[member.room]){const row=plan[member.room]??=Array(data.plan[member.room]!.length).fill('Current');if(['Current',name].includes(row[member.index]!))row[member.index]=name}}
   if(!normalizeMowerSharedArrangement(data,plan))continue

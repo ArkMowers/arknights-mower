@@ -47,7 +47,7 @@ export function* acceptMowerTradeOrders(state:MowerAcceptOrderState,seam:MowerAc
   yield* observed(seam,{kind:'sleep',seconds:0.5})
   wait+=1
  }
- let notTake=true
+ let notTake=!state.task?.runOrderCollectOnly
  while((yield* observed(seam,{kind:'find-order-ready',name:'order_ready',scope:[[450,675],[600,750]]}))!==null){
   if(notTake){
    let scores=yield* observed(seam,{kind:'read-buff-scores'})

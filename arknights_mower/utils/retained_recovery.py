@@ -1,6 +1,60 @@
 """失败任务的附带宿舍移动与其他组的正常回班分开处理。"""
 
 
+def _unstarted_failed_task(task):
+    return bool(getattr(task, "execution_failure", None)) and not any(
+        getattr(task, flag, False)
+        for flag in (
+            "backup_shift_active",
+            "group_shift_expected",
+            "mood_physical_started",
+            "derived_correction_started",
+            "product_shift_locked",
+            "dorm_recovery_restore",
+        )
+    )
+
+
+def completed_ordinary_rest_request(op_data, task):
+    """实际入住已完成的普通下班请求不再占有未执行的附带安排。"""
+    if (
+        not _unstarted_failed_task(task)
+        or not getattr(task, "ordinary_coordination", False)
+        or getattr(task, "exhaust_support", False)
+        or getattr(task, "backup_explicit_slots", ())
+        or getattr(task, "backup_group_request", None)
+        or getattr(getattr(task, "type", None), "name", "")
+        not in ("SHIFT_OFF", "EXHAUST_OFF")
+    ):
+        return False
+    requested = getattr(task, "coordination_request_names", ())
+    if not requested or any(name not in op_data.operators for name in requested):
+        return False
+    groups = set(op_data.shift_request_groups(requested))
+    members = {
+        member for group in groups for member in op_data.shift_group_members(group)
+    } | {name for name in requested if not op_data.operators[name].group}
+    required = [
+        op_data.operators[name]
+        for name in members
+        if op_data.operators[name].is_high()
+        and not op_data.operators[name].room.startswith("dorm")
+        and not op_data.operators[name].workaholic
+        and not op_data._can_standby(op_data.operators[name])
+        and (
+            not op_data.operators[name].multi_group
+            or op_data.operators[name].shift_group in groups
+            or len(requested) == 1
+            and op_data.operators[name].independent_rest
+        )
+    ]
+    return bool(required) and all(
+        op.is_resting()
+        and op_data.get_current_operator(op.current_room, op.current_index) is op
+        for op in required
+    )
+
+
 def retained_recovery_may_return(op_data, task, group):
     """只释放失败预演的附带宿舍动作，明确任务和进行中的安排继续保留。"""
     if (
@@ -47,6 +101,39 @@ def retained_recovery_may_return(op_data, task, group):
             current = op_data.get_current_operator(room, index)
             if explicit and current is not None and current.name in members:
                 return False
+    return True
+
+
+def retained_bed_allows_return(op_data, task, name):
+    """未执行的入住任务允许当前住客正常回班腾床，保留原入住目标。"""
+    if not _unstarted_failed_task(task):
+        return False
+    op = op_data.operators.get(name)
+    if (
+        op is None
+        or not op.is_high()
+        or op.group
+        or not op.room
+        or op.room.startswith("dorm")
+        or not op.is_resting()
+        or op.multi_group
+        and op_data.resting_binding_groups(op)
+        or name in task.release_dorm_targets()
+    ):
+        return False
+    bed = op_data.get_dorm_by_name(name)
+    if bed is None or bed[1].position != (op.current_room, op.current_index):
+        return False
+    target = task.plan.get(op.current_room, ())[op.current_index : op.current_index + 1]
+    if not target or target[0] not in op_data.operators or target[0] == name:
+        return False
+    intent = getattr(task, "backup_shift_intent", None) or task.plan
+    for plan in (intent, task.plan):
+        if any(name in row for row in plan.values()):
+            return False
+        own_target = plan.get(op.room, ())[op.index : op.index + 1]
+        if own_target and own_target[0] != "Current":
+            return False
     return True
 
 

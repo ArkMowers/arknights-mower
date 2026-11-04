@@ -30,7 +30,7 @@ function estimateDorm(room:string,execution:number,options:MowerTaskSchedulingOp
 function adjustMaintenance(tasks:MowerTask[],delay:number,window:MowerTaskSchedulingOptions['maintenance']):void {
  if(!window)return
  const gap=minutes(Math.max(delay*2,10)),start=window[0]-gap,end=window[1]+gap
- const near=tasks.filter(task=>task.type===T.RUN_ORDER&&start<task.timeMicros&&task.timeMicros<end)
+ const near=tasks.filter(task=>task.type===T.RUN_ORDER&&!task.runOrderCollectOnly&&start<task.timeMicros&&task.timeMicros<end)
  sort(near)
  near.forEach((task,index)=>{task.timeMicros=start-(index+1)*1_000_000;task.adjusted=true})
 }

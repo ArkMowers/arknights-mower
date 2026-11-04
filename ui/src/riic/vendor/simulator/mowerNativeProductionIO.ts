@@ -142,6 +142,10 @@ export function createMowerProductionIO(state:RuntimeState,production:Controller
    }
   }),
   mowerRunOrderIO:request=>{
+   if(request.kind==='accept-order')return (function*(){
+    yield* accept(request.room)
+    return {observedAtMicros:now()}
+   })()
    return {
     delayMicros:request.kind==='return-main'?state.config.mowerDeviceTiming?.roomReturnMicros??0:0,
     observe:()=>{

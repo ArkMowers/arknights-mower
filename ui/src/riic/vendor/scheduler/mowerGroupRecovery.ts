@@ -63,6 +63,25 @@ export function mowerGroupRecoveryDeadline(data:MowerSchedulingData,group:string
  return {requiredNames,timeMicros:deadlines.length?Math.max(data.nowMicros,...deadlines):undefined}
 }
 
+/** Restored primary membership uses the final group's existing recovery policy and observed deadlines. */
+export function mowerRestoredGroupRecoveryDeadline(actual:MowerSchedulingData,effective:MowerSchedulingData,groups:Iterable<string>,delayedGroups?:Set<string>):number|undefined {
+ const deadlines:number[]=[]
+ for(const group of groups){
+  const restored=mowerGroupRecoveryWorkers(effective,group).filter(op=>{
+   const previous=actual.operators[op.name]
+   return previous&&(previous.isResting()||!previous.currentRoom)&&!actual.isGroupShiftAnchor(previous,group)
+  })
+  if(!restored.length)continue
+  const recovery=mowerGroupRecoveryDeadline(effective,group)
+  if(!recovery.requiredNames.length||recovery.timeMicros===undefined||recovery.timeMicros<=actual.nowMicros)continue
+  if(effective.groupRecoveryFullMembers[group])actual.groupRecoveryFullMembers[group]=[...effective.groupRecoveryFullMembers[group]!]
+  if(effective.groupRecoveryReturnMicros[group]!==undefined)actual.groupRecoveryReturnMicros[group]=effective.groupRecoveryReturnMicros[group]!
+  delayedGroups?.add(group)
+  deadlines.push(recovery.timeMicros)
+ }
+ return deadlines.length?Math.max(...deadlines):undefined
+}
+
 /** Actual recovery may finish within the existing room-operation allowance. */
 export function mowerRecoveryReady(data:MowerSchedulingData,op:MowerOperatorState|undefined,options:MowerTaskSchedulingOptions={}):boolean {
  if(!op)return false
@@ -76,27 +95,32 @@ export function mowerRecoveryReady(data:MowerSchedulingData,op:MowerOperatorStat
  return due!==undefined&&due>data.nowMicros&&due-data.nowMicros<=toMowerMicros(alphaDormMinutes(op.currentRoom,options)/60)
 }
 
-/** Split only untouched ordinary rooms with no shared occupants or group dependencies. */
-export function splitMowerRecoveryTask(data:MowerSchedulingData,task:MowerTask,pending:MowerTask[],unfinished:Iterable<string>):void {
+/** Split untouched ordinary rooms or slots by their shared occupants and group dependencies. */
+export function splitMowerRecoveryTask(data:MowerSchedulingData,task:MowerTask,pending:MowerTask[],unfinished:Iterable<string>,splitBySlot=false):void {
  if(![T.SHIFT_ON,T.SELF_CORRECTION,T.RE_ORDER].includes(task.type)||task.metadata||task.arrangementStarted||task.backupShiftActive||task.backupExplicitSlots.size||task.backupRefreshRules||task.productShiftLocked||task.exhaustSupport||task.ordinaryCoordination||task.preferredReplacementRestore||task.dormRecoveryRestore.length||task.arrangementRetryRoom||task.backupShiftIntent!==undefined||task.backupShiftConditions!==undefined)return
  const resources=(names:Iterable<string>)=>{
   const result=new Set<string>()
-  for(const name of names){const op=data.operators[name];if(!op)continue;result.add('operator:'+name);for(const group of op.multiGroup?op.groupBindings.map(binding=>binding.group):[op.group])if(group)result.add('group:'+group)}
+  for(const name of names){const op=data.operators[name];if(!op)continue;result.add('operator:'+name);for(const group of splitBySlot&&op.isHigh()&&!op.room.startsWith('dorm')?data.shiftRequestGroups([name]):op.multiGroup?op.groupBindings.map(binding=>binding.group):[op.group])if(group)result.add('group:'+group)}
   return result
  }
- const involved=new Map<string,Set<string>>()
- for(const [room,row] of Object.entries(task.plan)){
-  const names=new Set<string>()
-  row.forEach((name,index)=>{if(name==='Current')return;names.add(name);const occupant=data.currentOperator(room,index);if(occupant)names.add(occupant.name);const owner=data.plan[room]?.[index];if(owner)names.add(owner)})
-  involved.set(room,resources(names))
- }
+ const involved=new Map<string,Set<string>>(),keyFor=(room:string,index:number)=>splitBySlot?room+'\0'+index:room
+ for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{
+  if(name==='Current')return
+  const names=new Set([name]),occupant=data.currentOperator(room,index),owner=data.plan[room]?.[index]
+  if(occupant)names.add(occupant.name)
+  if(owner)names.add(owner)
+  const key=keyFor(room,index),related=involved.get(key)??new Set<string>()
+  for(const resource of resources(names))related.add(resource)
+  involved.set(key,related)
+ })
  const blocked=new Set<string>(),related=resources(unfinished)
- for(;;){const connected=[...involved].filter(([room,names])=>!blocked.has(room)&&[...names].some(name=>related.has(name)));if(!connected.length)break;for(const [room,names] of connected){blocked.add(room);for(const name of names)related.add(name)}}
+ for(;;){const connected=[...involved].filter(([key,names])=>!blocked.has(key)&&[...names].some(name=>related.has(name)));if(!connected.length)break;for(const [key,names] of connected){blocked.add(key);for(const name of names)related.add(name)}}
  if(!blocked.size)return
- const independent=Object.fromEntries(Object.entries(task.plan).filter(([room])=>!blocked.has(room)).map(([room,row])=>[room,[...row]]))
+ const part=(waiting:boolean)=>Object.fromEntries(Object.entries(task.plan).map(([room,row])=>[room,row.map((name,index)=>blocked.has(keyFor(room,index))===waiting?name:'Current')] as [string,string[]]).filter(([,row])=>row.some(name=>name!=='Current')))
+ const independent=part(false)
  if(!Object.keys(independent).length)return
  const sibling=new MowerTask({time:task.time,type:task.type,plan:independent});sibling.derivedCorrection=task.derivedCorrection;sibling.correctionSkipDorm=task.correctionSkipDorm
- task.plan=Object.fromEntries(Object.entries(task.plan).filter(([room])=>blocked.has(room)))
+ task.plan=part(true)
  task.groupShiftTransitions=mowerArrangementGroupTransitions(data,task.plan)
  pending.push(sibling)
 }

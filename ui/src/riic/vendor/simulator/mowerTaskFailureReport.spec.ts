@@ -2,7 +2,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest'
 import {createDefaultWorkspace} from '../workbench/defaults'
 import {compileRosterSchedule} from '../scheduler/compileRosterSchedule'
 import * as shiftCycle from '../scheduler/mowerShiftCycle'
-import {MowerShiftPreviewError} from '../scheduler/mowerNativeErrors'
+import {MowerResourceWaitError,MowerShiftPreviewError} from '../scheduler/mowerNativeErrors'
 import * as rosterRuntime from '../scheduler/rosterRuntime'
 import {getMowerSourceRuntime} from '../scheduler/mowerSourceRuntime'
 import {simulateSchedule} from './scheduleSimulation'
@@ -40,6 +40,39 @@ describe('unresolved native task failures in the final income report',()=>{
   expect(report.success,JSON.stringify(report.diagnostics)).toBe(true)
   expect(getMowerSourceRuntime(runtime!).queue.tasks.some(task=>task.coordinationDependencyWait&&task.executionFailure)).toBe(true)
   expect(report.diagnostics.some(d=>d.code==='MOWER_PENDING_TASK_FAILURE')).toBe(false)
+ })
+ it('completes actual production with a warning while preserving an expected resource wait',()=>{
+  const create=rosterRuntime.createRosterRuntime
+  let runtime:rosterRuntime.RuntimeState|undefined
+  vi.spyOn(rosterRuntime,'createRosterRuntime').mockImplementation(config=>runtime=create(config))
+  let retained:Parameters<typeof shiftCycle.prepareMowerShiftCycle>[1]|undefined
+  let originalPlan:unknown,originalTime:number|undefined,calls=0
+  vi.spyOn(shiftCycle,'prepareMowerShiftCycle').mockImplementation((_data,task)=>{
+   calls++;retained=task;originalPlan=structuredClone(task.plan);originalTime=task.timeMicros
+   throw new MowerResourceWaitError('shared replacement remains occupied')
+  })
+  const report=simulateSchedule(schedule(),{schedulingModel:'mower-alpha',warmupHours:0,sampleHours:4,maxEvents:2000,consumptionOverrides:{char_123_fang:5},production:{outputMode:'potential',droneTarget:'none',seed:42}})
+  expect(report.elapsedHours).toBe(4)
+  expect(report.observedHours).toBeCloseTo(4,7)
+  expect(report.success).toBe(true)
+  expect(report.production?.success).toBe(true)
+  expect(report.production!.sample.completed.gold).toBeGreaterThan(0)
+  expect(calls).toBe(1)
+  expect(getMowerSourceRuntime(runtime!).queue.tasks).toContain(retained)
+  expect(retained!.timeMicros).toBe(originalTime)
+  expect(retained!.plan).toEqual(originalPlan)
+  expect(retained!.executionFailure?.kind).toBe('resource-wait')
+  expect(runtime!.occupants.room_1_1_0).toBe('char_123_fang')
+  expect(report.diagnostics).toContainEqual(expect.objectContaining({code:'MOWER_PENDING_RESOURCE_WAIT',message:expect.stringContaining('收益按实际在岗情况计算')}))
+  expect(report.diagnostics.some(d=>d.code==='MOWER_PENDING_TASK_FAILURE')).toBe(false)
+ })
+ it('does not turn an exhausted event allowance into a complete result for a resource wait',()=>{
+  vi.spyOn(shiftCycle,'prepareMowerShiftCycle').mockImplementation(()=>{throw new MowerResourceWaitError('shared replacement remains occupied')})
+  const report=simulateSchedule(schedule(),{schedulingModel:'mower-alpha',warmupHours:0,sampleHours:4,maxEvents:1,production:{outputMode:'potential',droneTarget:'none',seed:42}})
+  expect(report.elapsedHours).toBeLessThan(4)
+  expect(report.success).toBe(false)
+  expect(report.production?.success).toBe(false)
+  expect(report.diagnostics.some(d=>d.code==='SIMULATION_EVENT_LIMIT')).toBe(true)
  })
  it('continues the full production clock while reporting a retained unresolved task as incomplete',()=>{
   vi.spyOn(shiftCycle,'prepareMowerShiftCycle').mockImplementation(()=>{throw new MowerShiftPreviewError('test exhausted preview')})

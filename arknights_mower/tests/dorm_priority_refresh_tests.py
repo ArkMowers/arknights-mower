@@ -187,10 +187,10 @@ def test_saved_state_restores_values_without_overriding_regenerated_order(saved)
     saved.assert_not_called()
 
 
-def test_invalid_plan_still_rejected(saved):
+def test_invalid_agent_still_rejected(saved):
     op = operators("obsolete")
-    op.plan["dormitory_1"][0] = Room("Free", "", [])
-    assert op.init_and_validate() == "Free必须连续且安排在宿管后"
+    op.plan["dormitory_1"][0] = Room("不存在的干员", "", [])
+    assert "干员名输入错误" in op.init_and_validate()
     saved.assert_not_called()
 
 
@@ -384,19 +384,34 @@ def test_failed_plan_save_restores_plan_dorm_order(monkeypatch, tmp_path):
     assert config.plan.conf.dorm_order == ",".join(reversed(DEFAULT))
 
 
-@pytest.mark.parametrize("fixed", [0, 1, 2, 3, 4])
-def test_dorm_capacity_uses_actual_free_slots(saved, fixed):
+@pytest.mark.parametrize(
+    "free_positions",
+    [
+        (0, 1, 2, 3, 4),
+        (1, 2, 3, 4),
+        (2, 3, 4),
+        (3, 4),
+        (4,),
+        (),
+        (0,),
+        (0, 2),
+        (1, 3),
+        (0, 2, 4),
+        (0, 3, 4),
+        (0, 1, 3),
+    ],
+)
+def test_dorm_capacity_uses_actual_free_slots(saved, free_positions):
     from arknights_mower.utils.operators import Operator
 
-    names = ["杜林", "琴柳", "红", "陈"][:fixed]
+    names = [
+        "Free" if index in free_positions else name
+        for index, name in enumerate(["杜林", "琴柳", "红", "陈", "星源"])
+    ]
     data = Operators(
         {
             "default_plan": Plan(
-                {
-                    "dormitory_1": [
-                        Room(name, "", []) for name in names + ["Free"] * (5 - fixed)
-                    ]
-                },
+                {"dormitory_1": [Room(name, "", []) for name in names]},
                 PlanConfig("", "", ""),
             ),
             "backup_plans": [],
@@ -404,12 +419,12 @@ def test_dorm_capacity_uses_actual_free_slots(saved, fixed):
     )
     assert data.init_and_validate() is None
     assert [bed.position for bed in data.dorm] == [
-        ("dormitory_1", index) for index in range(fixed, 5)
+        ("dormitory_1", index) for index in free_positions
     ]
-    assert data.available_free("high") == 1
-    assert data.available_free("low") == 4 - fixed
+    assert data.available_free("high") == int(bool(free_positions))
+    assert data.available_free("low") == max(0, len(free_positions) - 1)
     assigned = set()
-    for name in ["银灰", "黑角", "芬", "翎羽", "米格鲁"][: 5 - fixed]:
+    for name in ["银灰", "黑角", "芬", "翎羽", "米格鲁"][: len(free_positions)]:
         data.add(Operator(name, ""))
         bed = data.assign_dorm(name)
         assert bed is not None
@@ -420,12 +435,15 @@ def test_dorm_capacity_uses_actual_free_slots(saved, fixed):
     assert data.assign_dorm("斑点") is None
 
 
-def test_dorm_without_free_slot_still_rejected(saved):
+def test_dorm_without_free_slot_has_no_ordinary_recovery_capacity(saved):
     data = operators()
     data.plan["dormitory_1"] = [
         Room(name, "", []) for name in ["冰酿", "闪灵", "至简", "红", "陈"]
     ]
-    assert data.init_and_validate() == "宿舍必须安排至少一个Free"
+    assert data.init_and_validate() is None
+    assert [bed.position for bed in data.dorm] == [
+        ("dormitory_2", index) for index in (2, 3, 4)
+    ]
 
 
 def test_backup_can_change_between_zero_one_and_three_managers(saved):

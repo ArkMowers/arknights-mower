@@ -442,3 +442,26 @@ def test_excluded_group_still_waits_for_explicit_full_recovery(resting):
     assert returns(data)[0].time == now + timedelta(hours=5)
     data.get_dorm_by_name("讯使")[1].time = None
     assert returns(data)[0].time == now + timedelta(minutes=52)
+
+
+@pytest.mark.parametrize("marker", [None, 24, 12])
+def test_idle_group_return_honors_matching_personal_limit_release(resting, marker):
+    solver, now = resting
+    data = solver.op_data
+    for name in ("伊内丝", "银灰", "讯使"):
+        op = data.operators[name]
+        data.get_dorm_by_name(name)[1].reset()
+        op.current_room, op.current_index = "", -1
+        op.mood, op.time_stamp, op.depletion_rate = op.upper_limit, now, 0
+        op.mood_is_prediction = False
+    limited = data.operators["讯使"]
+    data.config.operator_mood_limits[limited.name] = {"lower": 0, "upper": 12}
+    limited.upper_limit, limited.mood = 12, 11.925
+    limited.rest_mood_release_limit = marker
+    planned = returns(data)
+    assert bool(planned) is (marker == 12)
+    if planned:
+        assert {"伊内丝", "银灰", "讯使"} <= {
+            name for task in planned for row in task.plan.values() for name in row
+        }
+    assert limited.mood == 11.925

@@ -1,4 +1,4 @@
-import {mowerRetainedRecoveryMayReturn} from './mowerRetainedRecovery'
+import {mowerRetainedBedAllowsReturn,mowerRetainedRecoveryMayReturn} from './mowerRetainedRecovery'
 // Metadata may rebuild ordinary tasks, but retained physical work owns its remaining resources.
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask} from './mowerTaskQueue'
@@ -29,7 +29,7 @@ export function admitMowerDerivedTasks(data:MowerSchedulingData,pending:readonly
   }
   Object.keys(task.releaseDormTargets()).forEach(remember)
   for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{
-   if(name==='Current'||name==='')return
+   if(name==='Current'||name===''&&room.startsWith('dorm'))return
    slots.add(alphaPosition(room,index));remember(name)
    remember(data.plan[room]?.[index]);remember(data.currentOperator(room,index)?.name)
   })
@@ -56,6 +56,8 @@ export function admitMowerDerivedTasks(data:MowerSchedulingData,pending:readonly
     const conflict=claims.some(({task:retained,names,slots,groups})=>{
      if(!(slots.has(slot)||current!==undefined&&names.has(current)||actor!==undefined&&(names.has(actor)||!!data.operators[actor]?.group&&groups.has(data.operators[actor]!.group))))return false
      if(releasedDependencies.has(retained))return false
+     const returning=actor&&data.operators[actor]
+     if(task.type===T.SHIFT_ON&&returning&&name===actor&&room===returning.room&&index===returning.index&&mowerRetainedBedAllowsReturn(data,retained,actor))return false
      return !(actor!==undefined&&memberGroups.get(actor)?.some(group=>mowerRetainedRecoveryMayReturn(data,retained,group)))
     })
     if(conflict){row[index]='Current';for(const group of memberGroups.get(actor??'')??[])blockedGroups.add(group)}

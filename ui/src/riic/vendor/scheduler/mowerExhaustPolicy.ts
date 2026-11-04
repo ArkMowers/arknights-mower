@@ -34,3 +34,18 @@ export function mowerOrdinaryCoordinationNeeded(data:MowerSchedulingData,names:r
 export function mowerPendingExhaust(tasks:readonly MowerTask[],name:string):MowerTask|undefined {
  return tasks.find(task=>task.type===T.EXHAUST_OFF&&task.metadata.split(',').includes(name))
 }
+
+/** A concrete departure owns a request only when it covers every recovery-requiring member. */
+export function mowerPendingExhaustDeparture(data:MowerSchedulingData,tasks:readonly MowerTask[],candidates:readonly string[]):MowerTask|undefined {
+ const requestGroups=new Set(data.shiftRequestGroups(candidates)),members=candidates.map(name=>data.operators[name]!).filter(op=>!op.room.startsWith('dorm')&&!op.workaholic&&(!op.multiGroup||requestGroups.has(op.shiftGroup??'')||candidates.length===1&&op.independentRest))
+ if(!members.length)return
+ return tasks.find(task=>{
+  if(task.type!==T.SHIFT_OFF)return false
+  const resting=new Set(Object.entries(task.plan).flatMap(([room,row])=>room.startsWith('dorm')?row.filter(name=>!['','Current','Free'].includes(name)):[])),working=new Set(Object.entries(task.plan).flatMap(([room,row])=>room.startsWith('dorm')?[]:row))
+  for(const member of members)if(member.isResting()){
+   const target=task.plan[member.currentRoom]
+   if(target===undefined||member.currentIndex>=0&&['Current',member.name].includes(target[member.currentIndex]??''))resting.add(member.name)
+  }
+  return members.every(member=>resting.has(member.name)&&!working.has(member.name))
+ })
+}

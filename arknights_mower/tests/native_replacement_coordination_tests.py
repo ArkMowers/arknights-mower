@@ -1,6 +1,7 @@
 """本体离线回放共享替班的交接、恢复和等待释放。"""
 
 from datetime import datetime, timedelta
+from logging.handlers import QueueHandler
 from unittest.mock import MagicMock, call
 
 import pytest
@@ -12,6 +13,7 @@ from arknights_mower.tests import (
     multi_group_shift_tests,
 )
 from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
@@ -25,6 +27,20 @@ solver = exhaust_replacement_tests.solver
 base = exhaust_replacement_tests.base_schedule
 backup_solver = backup_rest_schedule_tests.solver
 shared_solver = multi_group_shift_tests.solver
+
+
+@pytest.fixture(autouse=True)
+def isolate_live_log_delivery(monkeypatch):
+    """离线调度不向未启动的界面日志消费者投递，仍核对调度警告。"""
+    monkeypatch.setattr(
+        logger,
+        "handlers",
+        [
+            handler
+            for handler in logger.handlers
+            if not isinstance(handler, QueueHandler)
+        ],
+    )
 
 
 def test_handoff_retains_request_then_restores_first_cover(solver, caplog):

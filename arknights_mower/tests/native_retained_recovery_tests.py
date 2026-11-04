@@ -271,3 +271,250 @@ def test_scheduler_resume_prunes_a_returned_primary_without_replacing_task(
     assert task.time is time
     assert task.plan[ROOM][4] == "Current"
     assert task.plan["meeting"] == ["红"]
+
+
+@pytest.fixture
+def occupied_admission_bed(op_data):
+    data = op_data
+    now = datetime.now()
+    primary = data.operators["银灰"]
+    primary.current_room, primary.current_index = ROOM, 4
+    primary.mood, primary.time_stamp, primary.depletion_rate = 24, now, 0
+    primary.mood_is_prediction = False
+    data.operators["空爆"].current_room = ""
+    data.operators["空爆"].current_index = -1
+    data.operators["红"].current_room, data.operators["红"].current_index = "meeting", 0
+    data.dorm[0].name = primary.name
+    data.dorm[0].time = now - timedelta(minutes=1)
+    failed = SchedulerTask(
+        time=now - timedelta(hours=1),
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={ROOM: ["Current"] * 4 + ["空爆"]},
+    )
+    failed.execution_failure = {"reason": "等待床位", "snapshot": {}}
+    return data, failed, now
+
+
+def individual_returns(tasks):
+    return [
+        task
+        for task in tasks
+        if task.type == TaskTypes.SHIFT_ON and task.plan.get("meeting") == ["银灰"]
+    ]
+
+
+def test_completed_request_does_not_consume_an_equal_started_arrangement(
+    native_solver, occupied_admission_bed
+):
+    data, completed, _ = occupied_admission_bed
+    completed.ordinary_coordination = True
+    completed.coordination_request_names = ["银灰"]
+    started = copy.deepcopy(completed)
+    started.group_shift_expected = {(ROOM, 4): "空爆"}
+    assert started == completed
+    native_solver.op_data = data
+    native_solver.tasks = [started, completed]
+    native_solver._retain_failed_task(started, "未完成的进驻确认", [ROOM])
+    native_solver._retain_failed_task(completed, "等待床位", [ROOM])
+    native_solver._resume_failed_tasks()
+    assert any(task is started for task in native_solver.tasks)
+    assert not any(task is completed for task in native_solver.tasks)
+
+
+def test_ungrouped_recovered_primary_returns_before_a_waiting_bed_admission(
+    occupied_admission_bed,
+):
+    from arknights_mower.utils.scheduler_task import plan_metadata
+
+    data, failed, now = occupied_admission_bed
+    original_plan, original_time = copy.deepcopy(failed.plan), failed.time
+    for _ in range(3):
+        planned = plan_metadata(data, [failed], now=now)
+        assert individual_returns(planned)
+        assert any(t is failed for t in planned)
+        assert failed.plan == original_plan
+        assert failed.time == original_time
+        assert data.operators["银灰"].current_room == ROOM
+
+
+@pytest.mark.parametrize(
+    "protection",
+    [
+        "started",
+        "backup",
+        "product",
+        "restore",
+        "own-work",
+        "own-work-empty",
+        "named-rest",
+        "resumed",
+    ],
+)
+def test_individual_return_keeps_real_retained_obligations(
+    occupied_admission_bed, protection
+):
+    from arknights_mower.utils.scheduler_task import plan_metadata
+
+    data, failed, now = occupied_admission_bed
+    if protection == "started":
+        failed.group_shift_expected = {(ROOM, 4): "空爆"}
+    elif protection == "backup":
+        failed.backup_shift_active = True
+    elif protection == "product":
+        failed.product_shift_locked = True
+    elif protection == "restore":
+        failed.dorm_recovery_restore = [ROOM]
+    elif protection == "own-work":
+        failed.plan["meeting"] = ["红"]
+    elif protection == "own-work-empty":
+        failed.plan["meeting"] = [""]
+    elif protection == "named-rest":
+        failed.plan[ROOM][4] = "银灰"
+    else:
+        del failed.execution_failure
+        failed.execution_retained = True
+    planned = plan_metadata(data, [failed], now=now)
+    assert not individual_returns(planned)
+    assert any(task is failed for task in planned)
+
+
+def test_waiting_bed_does_not_change_the_individual_recovery_deadline(
+    occupied_admission_bed,
+):
+    from arknights_mower.utils.scheduler_task import plan_metadata
+
+    data, failed, now = occupied_admission_bed
+    data.operators["银灰"].mood = 8
+    due = data.dorm[0].time = now + timedelta(hours=4)
+    for _ in range(3):
+        planned = plan_metadata(data, [failed], now=now)
+        assert individual_returns(planned)[0].time == due - timedelta(minutes=8)
+        assert data.operators["银灰"].current_room == ROOM
+
+
+def test_individual_bed_return_respects_another_tasks_working_slot(
+    occupied_admission_bed,
+):
+    from arknights_mower.utils.scheduler_task import plan_metadata
+
+    data, failed, now = occupied_admission_bed
+    other = SchedulerTask(
+        time=now, task_type=TaskTypes.SHIFT_OFF, task_plan={"meeting": ["红"]}
+    )
+    other.execution_failure = {"reason": "实际岗位预约", "snapshot": {}}
+    assert not individual_returns(plan_metadata(data, [failed, other], now=now))
+
+
+@pytest.mark.parametrize(
+    "guard", [None, "started", "support", "explicit", "not-resting"]
+)
+def test_completed_ordinary_request_releases_only_observed_finished_work(
+    native_solver, occupied_admission_bed, guard
+):
+    data, failed, now = occupied_admission_bed
+    solver = native_solver
+    solver.op_data = data
+    failed.ordinary_coordination = True
+    failed.coordination_request_names = ["银灰"]
+    if guard == "started":
+        failed.group_shift_expected = {(ROOM, 4): "空爆"}
+    elif guard == "support":
+        failed.exhaust_support = True
+    elif guard == "explicit":
+        failed.backup_explicit_slots = {(ROOM, 4)}
+    elif guard == "not-resting":
+        data.operators["银灰"].current_room = "meeting"
+        data.operators["银灰"].current_index = 0
+    other = SchedulerTask(time=now, task_type=TaskTypes.SKILL_UPGRADE)
+    solver.tasks = [failed, other]
+    solver._retain_failed_task(failed, "等待床位", [ROOM])
+    original_plan, original_time = copy.deepcopy(failed.plan), failed.time
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert any(task is failed for task in solver.tasks) is (guard is not None)
+        assert any(task is other for task in solver.tasks)
+        assert failed.plan == original_plan
+        assert failed.time == original_time
+
+
+@pytest.mark.parametrize("unfinished", [False, True])
+def test_completed_request_uses_requested_group_not_shared_working_binding(
+    native_solver, retained, unfinished
+):
+    data, failed = retained
+    follower = data.operators["讯使"]
+    follower.resting_priority = "high"
+    follower.group, follower.shift_group = "甲组", "甲组"
+    follower.group_bindings = [
+        {"group": "甲组", "replacement": ["黑角"]},
+        {"group": "乙组", "replacement": ["伊内丝"]},
+    ]
+    follower.current_room, follower.current_index = "contact", 1
+    observed_return(data, "银灰")
+    data.operators["伊内丝"].replacement = ["讯使"]
+    if unfinished:
+        observed_return(data, "伊内丝")
+    failed.ordinary_coordination = True
+    failed.coordination_request_names = ["伊内丝", "讯使"]
+    assert data.shift_request_groups(failed.coordination_request_names) == ["乙组"]
+    solver = native_solver
+    solver.op_data, solver.tasks = data, [failed]
+    other = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE)
+    solver.tasks.append(other)
+    solver._retain_failed_task(failed, "等待床位", [ROOM])
+    plan, time = copy.deepcopy(failed.plan), failed.time
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert any(task is failed for task in solver.tasks) is unfinished
+        assert any(task is other for task in solver.tasks)
+        assert failed.plan == plan and failed.time == time
+        assert follower.current_room == "contact"
+
+
+@pytest.mark.parametrize("forced", [None, "exhausted", "full"])
+def test_completed_request_allows_optional_idle_standby(
+    native_solver, retained, forced
+):
+    data, failed = retained
+    standby = data.operators["讯使"]
+    standby.current_room, standby.current_index = "", -1
+    if forced == "exhausted":
+        standby.exhaust_require = True
+    elif forced == "full":
+        data.config.rest_in_full.append(standby.name)
+    failed.ordinary_coordination = True
+    failed.coordination_request_names = ["伊内丝"]
+    solver = native_solver
+    solver.op_data, solver.tasks = data, [failed]
+    other = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE)
+    solver.tasks.append(other)
+    solver._retain_failed_task(failed, "等待床位", [ROOM])
+    plan, time = copy.deepcopy(failed.plan), failed.time
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert any(task is failed for task in solver.tasks) is (forced is not None)
+        assert any(task is other for task in solver.tasks)
+        assert failed.plan == plan and failed.time == time
+
+
+@pytest.mark.parametrize("working", [False, True])
+def test_completed_independent_request_still_requires_its_own_admission(
+    native_solver, occupied_admission_bed, working
+):
+    data, failed, _ = occupied_admission_bed
+    op = data.operators["银灰"]
+    op.group_bindings = [
+        {"group": "", "replacement": ["红"]},
+        {"group": "甲组", "replacement": ["空爆"]},
+    ]
+    assert op.independent_rest
+    if working:
+        observed_return(data, op.name)
+    failed.ordinary_coordination = True
+    failed.coordination_request_names = [op.name]
+    solver = native_solver
+    solver.op_data, solver.tasks = data, [failed]
+    solver._retain_failed_task(failed, "等待床位", [ROOM])
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert any(task is failed for task in solver.tasks) is working

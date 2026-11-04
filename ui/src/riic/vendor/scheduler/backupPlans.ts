@@ -210,7 +210,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     const ruleErrors=validateMowerRosterRules(workspace);if(ruleErrors.length)fail(ruleErrors.map(error=>error.message).join('；'))
     const compiled=compileRosterSchedule(workspace,{...base.assumptions,dormOrder:''});compiled.assumptions.defaultsApplied=[...base.assumptions.defaultsApplied]
     if(compiled.diagnostics.some(d=>d.severity==='error'||d.code==='UNKNOWN_OPERATOR'))fail(compiled.diagnostics.map(d=>d.message).join('；'))
-    const config=compiledScheduleToRuntimeConfig(compiled);config.mowerAlpha=true;config.mowerDormOrder=roomOrder;config.availableIdleOperators=state.config.availableIdleOperators;config.mowerSingleRecoverySkillNames=state.config.mowerSingleRecoverySkillNames
+    const config=compiledScheduleToRuntimeConfig(compiled);config.mowerAlpha=true;config.mowerDormOrder=roomOrder;config.availableIdleOperators=state.config.availableIdleOperators;config.mowerSingleRecoverySkillNames=state.config.mowerSingleRecoverySkillNames;config.mowerJayeElite0=state.config.mowerJayeElite0
     for(const key of ['adjustForRunOrders','maintenance','maintenanceEndMicros','firstDailyResetMicros'] as const){
       const value=state.config.mowerTaskScheduling?.[key]
       if(value!==undefined)config.mowerTaskScheduling={...config.mowerTaskScheduling,[key]:value}
@@ -247,10 +247,13 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         if(oldName===name&&old?.group===op?.group&&JSON.stringify(old?.replacement??[])===JSON.stringify(op?.replacement??[])&&JSON.stringify(old?.groupBindings??[])===JSON.stringify(op?.groupBindings??[])&&!(restored.has(alphaPosition(room,index))&&op&&(!op.currentRoom||op.isResting())))return
         if(op&&mowerPrimaryJoinsRestingGroup(previous,next,op,protectedTraining)){replacementPositions.push([room,index]);joiningResting.add(name);return}
         const previousOwner=previous.operators[name]
-        if(op&&previousOwner?.isHigh()&&(oldName===name||!op.currentRoom||op.isResting())&&(oldName===name||!room.startsWith('dorm'))&&(next.currentOperator(room,index)||op.currentRoom||op.timeStampMicros!==undefined)&&previousOwner.group===op.group&&previousOwner.room===op.room&&JSON.stringify(previousOwner.groupBindings.map(b=>b.group))===JSON.stringify(op.groupBindings.map(b=>b.group))){replacementPositions.push([room,index]);return}
+        const previousFacility=previousOwner&&base.sourceWorkspace.mainPlan.facilities[previousOwner.room as MowerRoomId]
+        const sameFacility=previousOwner?.room===room||!!previousFacility&&previousFacility.type===base.sourceWorkspace.mainPlan.facilities[room as MowerRoomId]?.type
+        if(op&&previousOwner?.isHigh()&&(oldName===name||!op.currentRoom||op.isResting())&&(oldName===name||!room.startsWith('dorm'))&&(next.currentOperator(room,index)||op.currentRoom||op.timeStampMicros!==undefined)&&previousOwner.group===op.group&&sameFacility&&JSON.stringify(previousOwner.groupBindings.map(b=>b.group))===JSON.stringify(op.groupBindings.map(b=>b.group))){replacementPositions.push([room,index]);return}
         if(room.startsWith('dorm')&&op?.group){groupPositions.add(alphaPosition(room,index));return}
         const actual=next.currentOperator(room,index)
-        if(actual&&(actual.name===name||op?.replacement.includes(actual.name)&&!next.excludedCandidates.has(actual.name)))return
+        const relocatingWorker=previousOwner?.isHigh()&&!!op?.currentRoom&&!op.isResting()&&(previousOwner.room!==room||previousOwner.index!==index)&&!protectedTraining.has(name)
+        if(actual&&(actual.name===name||!relocatingWorker&&op?.replacement.includes(actual.name)&&!next.excludedCandidates.has(actual.name)))return
         ;(transition[room]??=Array(names.length).fill('Current'))[index]=name
       })
       plans.forEach((p,i)=>{if(!original[i]||conditions[i])return;for(const [room,names] of Object.entries(p.task))names.forEach((name,index)=>{if(name!=='Current'&&next.plan[room]?.[index]!==undefined&&!replacementPositions.some(([r,i])=>r===room&&i===index))(transition[room]??=Array(next.plan[room]!.length).fill('Current'))[index]=next.plan[room]![index]!})})
@@ -390,6 +393,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     }
     config.availableIdleOperators = state.config.availableIdleOperators
     config.mowerSingleRecoverySkillNames = state.config.mowerSingleRecoverySkillNames
+    config.mowerJayeElite0 = state.config.mowerJayeElite0
     // Default alpha init_and_validate(update=True) keeps the original recovery pool.
     // Newly exposed Free slots remain real idle positions, without a group timer.
     for (const bed of config.beds) {

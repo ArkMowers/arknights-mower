@@ -1108,6 +1108,17 @@ class BaseSchedulerSolver(
                 # 实读完成或任务本身是读取前置时，不保留旧门控的观察挂起。
                 task.__dict__.pop("startup_observation_pending", None)
             failure = getattr(task, "execution_failure", None)
+            if failure:
+                from arknights_mower.utils.retained_recovery import (
+                    completed_ordinary_rest_request,
+                )
+
+                if completed_ordinary_rest_request(self.op_data, task):
+                    self.tasks = [
+                        pending for pending in self.tasks if pending is not task
+                    ]
+                    logger.debug("普通下班目标已实际入住，完成原请求：%s", task)
+                    continue
             if failure and (waiting := getattr(task, "mastery_mood_wait", None)):
                 from arknights_mower.utils.mastery_mood import (
                     support_mood_context,
@@ -3370,6 +3381,11 @@ class BaseSchedulerSolver(
                         self._prepare_correction_recovery(self.task)
                         self._prepare_group_shift(self.task)
                         self._prepare_shift_cycle(self.task)
+                        if self.task.time > datetime.now():
+                            self.tasks.sort(key=lambda pending: pending.time)
+                            self.task = None
+                            self.skip()
+                            return True
                         self._defer_conflicting_product_shift_slots(self.task)
                         if (
                             getattr(self.task, "initial_staffing", False)
@@ -6491,6 +6507,11 @@ class BaseSchedulerSolver(
                 continue
             # 忽略掉心情值没低于上限的的
             if mood > self.op_data.resting_mood_threshold(op):
+                continue
+            members = (
+                self.op_data.shift_group_members(op.group) if op.group else [op.name]
+            )
+            if self._has_pending_exhausted_shift(members):
                 continue
             previous_plan = copy.deepcopy(_plan)
             if op.group != "":
@@ -9731,6 +9752,96 @@ class BaseSchedulerSolver(
                         ):
                             continue
                     raise ValueError("原下班目标未完成，保留原任务并等待岗位释放")
+            if (
+                task.type == TaskTypes.SHIFT_ON
+                and not getattr(task, "initial_staffing", False)
+                and not task.retains_execution
+                and not getattr(task, "group_shift_expected", {})
+                and not getattr(task, "backup_shift_active", False)
+                and not getattr(task, "product_shift_locked", False)
+                and not explicit_slots
+                and not getattr(task, "exhaust_support", False)
+                and not getattr(task, "dorm_recovery_restore", ())
+            ):
+                from arknights_mower.utils.group_recovery import (
+                    restored_group_recovery_deadline,
+                    split_recovery_return,
+                )
+
+                effective = self.op_data.project_arrangements([])
+                if error := effective.swap_plan(
+                    conditions,
+                    refresh=True,
+                    backup_group=simulation.op_data.backup_group,
+                ):
+                    raise ValueError(error)
+                delayed_groups = set()
+                deadline = restored_group_recovery_deadline(
+                    self.op_data,
+                    effective,
+                    returning_groups,
+                    now=projection_now,
+                    delayed_groups=delayed_groups,
+                )
+                if deadline is not None:
+                    # 附带宿舍重排分别重算，不能把无关组的回班也连成恢复依赖。
+                    split = SchedulerTask(
+                        task.time,
+                        {
+                            room: list(row)
+                            for room, row in intent.items()
+                            if not room.startswith("dorm")
+                        },
+                        task.type,
+                    )
+                    independent = []
+                    split_recovery_return(
+                        self.op_data,
+                        split,
+                        independent,
+                        [
+                            name
+                            for group in delayed_groups
+                            for name in effective.shift_group_members(group)
+                        ],
+                    )
+                    if independent:
+                        for sibling in independent:
+                            source_times = []
+                            for source in (task, *coalesced):
+                                if source is not task and id(source) not in consumed:
+                                    continue
+                                source_intent = getattr(
+                                    source, "backup_shift_intent", source.plan
+                                )
+                                if any(
+                                    name != "Current"
+                                    and source_intent.get(room, [])[index : index + 1]
+                                    == [name]
+                                    for room, row in sibling.plan.items()
+                                    for index, name in enumerate(row)
+                                ):
+                                    source_times.append(source.time)
+                            sibling.time = min(source_times, default=task.time)
+                        trial_solver = copy.copy(self)
+                        trial = copy.deepcopy(task)
+                        trial.plan = split.plan
+                        trial.group_shift_transitions = {}
+                        trial.__dict__.pop("backup_shift_intent", None)
+                        trial.__dict__.pop("backup_shift_conditions", None)
+                        trial.time = max(task.time, deadline)
+                        trial_solver.tasks, trial_solver.task = [*pending, trial], trial
+                        for sibling in independent:
+                            trial_solver.tasks.append(sibling)
+                            trial_solver.task = sibling
+                            trial_solver._prepare_shift_cycle(sibling)
+                        task.__dict__.update(trial.__dict__)
+                        self.tasks[:] = [
+                            task if queued is trial else queued
+                            for queued in trial_solver.tasks
+                        ]
+                        return
+                    task.time = max(task.time, deadline)
             task.group_shift_transitions = {
                 group: resting
                 for group, resting in simulation.op_data.group_shift_state.items()

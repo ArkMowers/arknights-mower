@@ -24,6 +24,24 @@ function fixture(beds=2){
  return {data,model,task,queue}
 }
 describe('backup departure recovery completion',()=>{
+ it.each([true,false])('keeps a retained resident housed when its shared fixed manager returns (vacancy=%s)',vacancy=>{
+  const operators={
+   A:new MowerOperatorState({name:'A',room:'room_1_1',index:0,group:'g',replacement:['R'],operatorType:'high',currentRoom:'dormitory_1',currentIndex:0,mood:24,timeStampMicros:0}),
+   R:new MowerOperatorState({name:'R',currentRoom:'room_1_1',currentIndex:0,mood:24,timeStampMicros:0}),
+   M:new MowerOperatorState({name:'M',room:'dormitory_1',index:0,group:'a',replacement:['Free'],groupBindings:[{group:'a',replacement:['Free']},{group:'b',replacement:['Free']}],operatorType:'high',mood:24,timeStampMicros:0}),
+  }
+  const data=new MowerSchedulingData({alpha:true,operators,plan:{room_1_1:['A'],dormitory_1:['M',...(vacancy?['Free']:[])]},dorms:[new MowerDormState(['dormitory_1',0],'A',undefined,true),...(vacancy?[new MowerDormState(['dormitory_1',1])]:[])],freeRoomExclusions:['A'],groupShiftState:{a:false,b:false,g:true}})
+  const plan={dormitory_1:['M',...(vacancy?['Current']:[])]},before=structuredClone(plan)
+  if(vacancy){
+   const completed=completeMowerBackupDepartureRecovery(data,plan,new Set(),new Set(),[],false,true)!
+   const projected=projectMowerArrangements(data,[completed])
+   expect(projected.currentOperator('dormitory_1',0)?.name).toBe('M')
+   expect(projected.currentOperator('dormitory_1',1)?.name).toBe('A')
+  }else expect(()=>completeMowerBackupDepartureRecovery(data,plan,new Set(),new Set(),[],false,true)).toThrow(MowerBackupRecoveryBlocked)
+  expect(plan).toEqual(before)
+  expect(data.currentOperator('dormitory_1',0)?.name).toBe('A')
+ })
+
  it('completes a self-deactivating explicit departure with a bed without departing the untouched peer',()=>{
   const {data,model,task,queue}=fixture()
   prepareMowerShiftCycle(data,task,queue,model)
@@ -312,4 +330,64 @@ describe('independent standby recovery anchors',()=>{
   if(kind==='full')anchor.mood=24
   expect([...mowerStandbyCandidates(data,['A'])]).toEqual(kind==='same'?['A']:[])
  })
+})
+
+it('keeps multiple original bed-blocked departures parked until an actual dependency changes',()=>{
+ const {data,task,queue}=fixture(1),resident=data.operators.B!
+ resident.currentRoom='dormitory_1';resident.currentIndex=1;resident.mood=2;resident.restingPriority='high'
+ data.dorms[0]!.name='B';data.dorms[0]!.timeMicros=3_600_000_000
+ let failure:MowerBackupRecoveryBlocked|undefined
+ try{completeMowerBackupDepartureRecovery(data,{central:['R']},new Set(['central\0'+0]),new Set(),[],false,true)}catch(error){if(error instanceof MowerBackupRecoveryBlocked)failure=error;else throw error}
+ expect(failure).toBeInstanceOf(MowerBackupRecoveryBlocked)
+ const requests=[task,...[1,2].map(time=>new MowerTask({time,type:T.SHIFT_OFF,plan:{central:['R'],dormitory_1:['Current','A']}}))]
+ const independent=new MowerTask({time:0,type:T.RE_ORDER,plan:{room_1_3:['Independent']}}),source={data,queue}
+ queue.tasks=[...requests,independent]
+ const times=requests.map(request=>request.timeMicros)
+ for(const request of requests)expect(parkMowerBackupDepartureRecovery(source,request,failure!)).toBe(true)
+ for(let attempt=0;attempt<3;attempt++){
+  expect(resumeMowerPreviewRecovery(source)).toBe(false)
+  expect(queue.tasks).toEqual([independent])
+  expect(requests.map(request=>request.timeMicros)).toEqual(times)
+ }
+ queue.consume(independent)
+ expect(resumeMowerPreviewRecovery(source)).toBe(false)
+ resident.timeStampMicros=1;resident.mood=3
+ expect(resumeMowerPreviewRecovery(source)).toBe(true)
+ expect(queue.tasks).toEqual(requests)
+ expect(requests.map(request=>request.timeMicros)).toEqual(times)
+})
+
+it('keeps parked departures stable through real next-action queries and completes independent work before recovery releases them',()=>{
+ const {state,source,data,task}=blockedRuntime(),rates={workRate:()=>1,recoveryRate:()=>4}
+ const requests=[task,...[1,2].map(time=>new MowerTask({time:time/3600,type:T.SELF_CORRECTION,plan:{central:['A']}}))]
+ requests.forEach(request=>{request.executionRetained=true;request.timeMicros=0})
+ state.config.positions.push({id:'room_1_3_0',roomId:'room_1_3',primary:'W',candidates:[]})
+ state.config.mowerSourcePlan!.room_1_3=[{agent:'W',group:'',replacement:[]}]
+ data.plan.room_1_3=['W'];data.operators.W=new MowerOperatorState({name:'W',room:'room_1_3',index:0,operatorType:'high',mood:24,timeStampMicros:0});state.morale.W=24
+ const independent=new MowerTask({time:0,type:T.RE_ORDER,plan:{room_1_3:['W']}});independent.backupShiftActive=true
+ source.queue.tasks=[...requests,independent]
+ for(let step=0;step<20&&source.queue.tasks.includes(independent);step++){
+  settleRoster(state,rates)
+  const next=nextRosterActionHours(state,rates)
+  if(next>0&&source.queue.tasks.includes(independent))advanceRoster(state,next,rates)
+ }
+ expect(state.occupants.room_1_3_0).toBe('W')
+ expect(source.queue.tasks).not.toContain(independent)
+ expect(source.waitingRecovery?.map(wait=>wait.task)).toEqual(requests)
+ for(let attempt=0;attempt<3;attempt++){
+  settleRoster(state,rates)
+  expect(nextRosterActionHours(state,rates)).toBeGreaterThan(0)
+  expect(source.waitingRecovery?.map(wait=>wait.task)).toEqual(requests)
+  expect(requests.map(request=>request.timeMicros)).toEqual([0,0,0])
+ }
+ state.morale.B=24
+ const recovery=new MowerTask({time:state.time,type:T.RE_ORDER,plan:{meeting:['B']}});recovery.backupShiftActive=true;source.queue.tasks.push(recovery)
+ for(let step=0;step<40&&!task.arrangementStarted;step++){
+  settleRoster(state,rates)
+  if(task.arrangementStarted)break
+  const next=nextRosterActionHours(state,rates);if(next>0)advanceRoster(state,next,rates)
+ }
+ expect(state.occupants.meeting_0).toBe('B')
+ expect(task.arrangementStarted).toBe(true)
+ expect(task.timeMicros).toBe(0)
 })

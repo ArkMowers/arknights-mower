@@ -789,8 +789,9 @@ def test_backup_slot_copy_preserves_source_bindings_and_config(room):
     assert "能天使" not in data.config.workaholic
 
 
-def test_main_dorm_layout_uses_initial_validation_rules():
+def test_main_dorm_layout_allows_interleaved_free_positions():
     plan = two_backups()
+    plan["backup_plans"] = plan["backup_plans"][:1]
     plan["default_plan"].plan["dormitory_1"] = [
         Room("杜林", "", []),
         Room("桃金娘", "", []),
@@ -799,8 +800,7 @@ def test_main_dorm_layout_uses_initial_validation_rules():
         Room("Free", "", []),
     ]
     result = Operators(plan).validate_backup_plans()
-    assert not result["success"]
-    assert "Free必须连续且安排在宿管后" in result["message"]
+    assert result["success"], result
 
 
 def test_large_combination_space_never_reports_partial_validation_as_success(

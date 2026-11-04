@@ -30,6 +30,7 @@ export function mowerUpdateDetail(data:MowerSchedulingData,name:string,mood:numb
  const returned=data.alpha&&(op.currentRoom!==op.room||op.currentIndex!==op.index)&&room===op.room&&index===op.index
  const working=!!op.currentRoom&&!op.isResting()
  if(updateTime){
+  if(data.alpha&&data.policy.predictiveMoodControl&&Number.isFinite(data.nowMicros)&&Number.isFinite(mood)&&mood>=0&&mood<=24&&data.nowMicros>=(data.calculatedMoodObservations[name]??-Infinity))data.calculatedMoodObservations[name]=data.nowMicros
   // Integration round-off below the simulator morale tolerance is not an observed decline.
   if(op.timeStampMicros!==undefined&&op.mood-mood>1e-8){
    const elapsed=data.nowMicros-op.timeStampMicros

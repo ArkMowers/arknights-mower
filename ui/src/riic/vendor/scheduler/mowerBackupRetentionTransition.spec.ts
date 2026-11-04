@@ -43,6 +43,28 @@ function resident(f:ReturnType<typeof fixture>,mood=5){
 const planned=(f:ReturnType<typeof fixture>)=>projectMowerArrangements(f.source.data,(f.state.mowerBackupGenerated??[]).map(task=>task.plan))
 
 describe('backup dorm retention transitions',()=>{
+ it.each(['full','recovering','prediction','unknown','reserved','product','retained'] as const)('uses ordinary completed-resident admission without displacing %s recovery',kind=>{
+  const names=['香草','空爆','安德切尔'].map(name=>id(name)),f=fixture(kind==='retained'?{free_room_exclusions:[actor,...names]}:{}),data=f.source.data
+  data.operators[actor]=new MowerOperatorState({name:actor,mood:24,timeStampMicros:0})
+  for(const [i,bed] of data.dorms.entries()){
+   const name=names[i]!,[room,index]=bed.position
+   data.operators[name]=new MowerOperatorState({name,mood:kind==='recovering'?5:24,currentRoom:room,currentIndex:index,...(kind==='unknown'?{}:{timeStampMicros:0})})
+   data.operators[name]!.moodIsPrediction=kind==='prediction';bed.name=name
+   if(kind==='reserved'){
+    const held=new MowerTask({type:T.RE_ORDER,plan:{[room]:Array.from({length:5},(_,i)=>i===index?name:'Current')}})
+    held.backupShiftActive=true;f.source.queue.tasks.push(held)
+   }
+   if(kind==='product')data.reservedProductBeds.set(alphaPosition(room,index),name)
+  }
+  const before=data.dorms.map(b=>b.name);enter(f)
+  expect(f.controller.active).toEqual([kind==='full'])
+  expect(data.dorms.map(b=>b.name)).toEqual(before)
+  if(kind==='full'){
+   const next=planned(f)
+   expect(next.operators[actor]!.currentRoom).toBe(dorm)
+   expect(names.filter(name=>next.operators[name]!.isResting())).toHaveLength(2)
+  }
+ })
  it('registers retention-only actors without fabricating an observation and admits them at full mood',()=>{
   const f=fixture();expect(f.source.data.operators[actor]).toBeUndefined();enter(f)
   expect(f.controller.active).toEqual([true]);expect(planned(f).operators[actor]!.currentRoom).toBe(dorm)

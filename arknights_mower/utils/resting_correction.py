@@ -12,6 +12,7 @@ from arknights_mower.utils.group_recovery import (
 )
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
+from arknights_mower.utils.resting_priority import is_full_dorm_filler
 
 PLACEHOLDERS = {"", "Current", "Free"}
 
@@ -63,12 +64,22 @@ def reconcile_backup_dorm_retention(
     if set(missing) & reserved_names:
         return None
     occupied = reserved_slots | set(explicit_slots)
-    occupied.update(
-        bed.position
-        for bed in projected.dorm
-        if bed.name or projected.get_current_operator(*bed.position) is not None
-    )
-    # 保留身份占用空余 Free 床，不以切表安置之名挤走其他恢复住客。
+    for bed in projected.dorm:
+        resident = projected.get_current_operator(*bed.position)
+        room, index = bed.position
+        named_target = result.get(room, [])[index : index + 1]
+        if (
+            bed.name
+            and (resident is None or resident.name != bed.name)
+            or resident is not None
+            and (
+                resident.name in reserved_names
+                or named_target not in ([], ["Current"], ["Free"])
+                or not is_full_dorm_filler(projected, resident.name)
+            )
+        ):
+            occupied.add(bed.position)
+    # 沿用普通准入让已完成恢复的动态住客腾床，未完成恢复和明确安排继续保护。
     beds = projected.assign_dorm_group(missing, reserved_slots=occupied)
     if beds is None:
         return None
