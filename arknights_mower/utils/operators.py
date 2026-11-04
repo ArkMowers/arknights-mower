@@ -766,9 +766,6 @@ class Operators:
         for dorm in dorm_names:
             free_found = False
             for _idx, _dorm in enumerate(bed_plan[dorm]):
-                # The merged backup may replace individual Free beds.
-                if _dorm.agent != "Free" and free_found and not (update):
-                    return "Free必须连续且安排在宿管后"
                 if (
                     _dorm.agent == "Free"
                     and not free_found
