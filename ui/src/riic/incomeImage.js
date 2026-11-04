@@ -246,12 +246,9 @@ export async function renderIncomeImage(
     const originium = pick(['fragment', 'orundum'])
     const costs = pick(['lmdCost', 'orirockCost', 'deviceCost'])
     const bottomHasRoom = !(withIcons.has('orirockCost') && withIcons.has('deviceCost'))
-    const productsHaveRoom = products.length < 3
-    const keepPairOnTop = originium.length === 2 && !(bottomHasRoom && productsHaveRoom)
-    if (!keepPairOnTop) {
-      if (originium[0]?.key === 'fragment' && bottomHasRoom) costs.unshift(originium.shift())
-      if (originium.length && productsHaveRoom) products.push(originium.pop())
-    }
+    if (originium[0]?.key === 'fragment' && bottomHasRoom) costs.unshift(originium.shift())
+    const productVacancies = 3 - products.length
+    products.push(...originium.splice(-productVacancies, productVacancies))
     const rows = [originium, products, pick(['clue', 'recruitment', 'recycle']), costs]
     rows
       .flatMap((metrics, row) =>
@@ -317,9 +314,9 @@ export async function renderIncomeImage(
           const center =
             baseline - (digits.actualBoundingBoxAscent - digits.actualBoundingBoxDescent) / 2
           ctx.fillRect(valueX, center - 0.5 * scale, 6 * scale, scale)
-          valueX += 10 * scale
+          valueX += 8 * scale
         }
-        ctx.fillText(value, valueX, baseline, (negative ? 79 : 89) * scale)
+        ctx.fillText(value, valueX, baseline, (negative ? 81 : 89) * scale)
       })
     annotationLines.forEach((line, index) => {
       write(line, 28, annotationTop + 16 + index * 16, 10, muted)
