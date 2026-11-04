@@ -84,6 +84,21 @@ def run_long_task_if_dorm_pending(scheduler):
         scheduler, now + timedelta(hours=24)
     ) - now < timedelta(minutes=9):
         return False
+    # 清退可以延期，但上一单结束后缺少的订单读取必须先完成。
+    if not scheduler._queue_missing_run_order_reads():
+        return False
+    scheduler._read_pending_order_times()
+    if any(
+        task.type == TaskTypes.REFRESH_TIME
+        and task.meta_data in scheduler.op_data.run_order_rooms
+        for task in scheduler.tasks
+    ):
+        return False
+    now = datetime.now()
+    if long_task_deadline(scheduler, now + timedelta(hours=24)) - now < timedelta(
+        minutes=9
+    ):
+        return False
     scheduler.maa_plan_solver([])
     return True
 
