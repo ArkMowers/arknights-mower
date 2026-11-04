@@ -973,6 +973,8 @@ class Recognizer:
             return None
 
         template_matching = {
+            # 空槽有固定图标；头像特征误匹配不能确认空槽或清除实际驻员。
+            "infra_no_operator": scope or ((0, 0), (1920, 1080)),
             "sss/main": ((1450, 180), (1920, 370)),
             "sss/action_preparation": (1080, 652),
             "sss/deploy_button": ((1450, 850), (1920, 1080)),
