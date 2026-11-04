@@ -14345,6 +14345,18 @@ class BaseSchedulerSolver(
         start_time, finish_time = datetime.now(), datetime.now()
         observation = None
         previous_page = None
+
+        def uses_tail_search(name):
+            return (
+                not self.low_frame_rate_mode
+                and fast_mode
+                and is_dorm
+                and name != "阿米娅"
+                and name in self.op_data.operators
+                and self.op_data.operators[name].is_resting()
+                and name not in self.choose_error
+            )
+
         while len(agent) > 0:
             if retry_count > 1:
                 raise Exception("到达最大尝试次数 1次")
@@ -14372,6 +14384,16 @@ class BaseSchedulerSolver(
                     if len(agent) == 0:
                         break
                     index_change = True
+
+            if uses_tail_search(agent[0]):
+                # 同职业先顺路找普通目标，再跳末页；原名单仍用于最终槽位重排。
+                profession = agent_profession.get(agent[0])
+                for index, name in enumerate(agent[1:], 1):
+                    if agent_profession.get(
+                        name
+                    ) == profession and not uses_tail_search(name):
+                        agent.insert(0, agent.pop(index))
+                        break
 
             # 如果选中了人，则可能需要重新排序
             if index_change or first_time:
@@ -14437,15 +14459,7 @@ class BaseSchedulerSolver(
                     self.profession_filter("ALL")
                     right_swipe = 0
                     last_special_filter = "ALL"
-                if (
-                    not self.low_frame_rate_mode
-                    and agent[0] in self.op_data.operators
-                    and self.op_data.operators[agent[0]].is_resting()
-                    and fast_mode
-                    and is_dorm
-                    and agent[0] != "阿米娅"
-                    and agent[0] not in self.choose_error
-                ):
+                if uses_tail_search(agent[0]):
                     # 普通设备保留休息干员的末页快路；低帧率设备逐页确认。
                     tail_search_target = agent[0]
                     swipe_map = [20, 3, 5, 3, 3, 3, 3, 3, 3]
