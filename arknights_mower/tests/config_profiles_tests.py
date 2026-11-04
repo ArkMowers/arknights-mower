@@ -760,6 +760,20 @@ def test_conf_fields_have_one_group_and_no_unmapped_current_fields():
 
 
 @pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("inherit", [[], ["recruit"], ["daily"]])
+def test_robot_automation_follows_recruit_profile_group(storage, enabled, inherit):
+    config.conf.recruit_auto_robot = enabled
+    config.save_conf()
+
+    _create("支援机械配置", inherit)
+
+    expected = enabled if "recruit" in inherit else False
+    assert config.conf.recruit_auto_robot is expected
+    saved = config.Conf(**yaml.safe_load(config.conf_path.read_text(encoding="utf-8")))
+    assert saved.recruit_auto_robot is expected
+
+
+@pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("inherit", [[], ["daily"], ["credit"]])
 def test_event_sign_in_follows_daily_profile_group(storage, enabled, inherit):
     config.conf.event_sign_in_enable = enabled

@@ -177,6 +177,7 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_enable = ref(true)
   const recruitment_permit = ref(30)
   const recruit_robot = ref(true)
+  const recruit_auto_robot = ref(false)
   const recruit_auto_only5 = ref(true)
   const run_order_grandet_mode = ref({})
   const product_switching = ref({})
@@ -656,6 +657,7 @@ export const useConfigStore = defineStore('config', () => {
       recruit_enable.value = response.data.recruit_enable
       recruitment_permit.value = response.data.recruitment_permit
       recruit_robot.value = response.data.recruit_robot
+      recruit_auto_robot.value = response.data.recruit_auto_robot ?? false
       recruit_auto_only5.value = response.data.recruit_auto_only5
       run_order_grandet_mode.value = {
         enable: false,
@@ -867,6 +869,7 @@ export const useConfigStore = defineStore('config', () => {
       recruit_enable: recruit_enable.value,
       recruitment_permit: recruitment_permit.value,
       recruit_robot: recruit_robot.value,
+      recruit_auto_robot: recruit_auto_robot.value,
       recruit_auto_only5: recruit_auto_only5.value,
       run_order_grandet_mode: run_order_grandet_mode.value,
       product_switching: product_switching.value,
@@ -1238,6 +1241,7 @@ export const useConfigStore = defineStore('config', () => {
     recruit_enable,
     recruitment_permit,
     recruit_robot,
+    recruit_auto_robot,
     recruit_auto_only5,
     skland_enable,
     ai_type,

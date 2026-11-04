@@ -89,7 +89,8 @@ function matchingTasks(query) {
 describe('task search before conditional controls render', () => {
   it.each([
     [Clue, { maa_mall_mode: 'mower' }, { task: 'shop', showEnable: false }, '按需领取信用'],
-    [Recruit, { recruit_auto_5: 2 }, { showEnable: false }, '五星词条组合唯一时自动选择']
+    [Recruit, { recruit_auto_5: 2 }, { showEnable: false }, '五星词条组合唯一时自动选择'],
+    [Recruit, { recruit_auto_robot: false }, { showEnable: false }, '自动招募未满潜支援机械']
   ])(
     'renders an available conditional label from the real component',
     async (Component, values, props, label) => {

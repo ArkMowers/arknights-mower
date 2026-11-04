@@ -6,7 +6,14 @@
 
 ## 2. Selection Policy
 
-`recruit_auto_5 = 1` selects five-star results automatically. `recruit_auto_5 = 2` leaves them for manual selection unless `recruit_auto_only5` is enabled and exactly one calculated choice remains. Existing equivalent-result collapsing occurs before this check. Manual handling sends the rare-tag notification, advances the recruitment slot and returns without queuing selection. Six-star and support robot handling, lower rarities and recruitment permit thresholds retain their existing rules.
+`recruit_auto_5 = 1` selects five-star results automatically. `recruit_auto_5 = 2` leaves them for manual selection unless `recruit_auto_only5` is enabled and exactly one calculated choice remains. Existing equivalent-result collapsing occurs before this check. Manual handling sends the rare-tag notification, advances the recruitment slot and returns without queuing selection.
+
+<a id="unfinished-support-robots"></a>
+### Unfinished support robots
+
+`recruit_auto_robot` (自动招募未满潜支援机械) defaults to false. When enabled, the available tags must include 支援机械, and the highest guaranteed ordinary rarity must be three stars, with no four-, five- or six-star combination. A combination containing 支援机械 qualifies only when every one-star candidate is present in the local Skland roster cache with an integer `potentialRank` from zero through four; five means full potential. Missing operators or missing, invalid or unreadable cache data do not confirm unfinished potential. Recruitment reads the shared cache without requesting a remote refresh or writing progression.
+
+The solver automatically selects a qualifying combination, preferring fewer candidate operators and then fewer tags, and uses 3 hours 50 minutes. This selection takes precedence over 保留支援机械标签 (`recruit_robot`) and the three-star permit threshold (`recruitment_permit`), but still requires at least one permit. It does not refresh these tags. When the switch is off or no combination qualifies, existing rarity selection, manual handling and permit rules apply, including the saved support robot policy when higher-rarity combinations are available.
 
 ## 3. Subsystem Invariants
 
@@ -21,6 +28,8 @@ The result handler taps only after recording the name, or when that integer slot
 Repeatedly unreadable profession icons exhaust the five result attempts and return partial results under the existing solver behavior. This does not establish that the slot was recognized: the daily scheduler can still record the recruitment run time, and subsequent scene navigation can leave the display. Name-template confidence rules and daily scheduling completion semantics are outside this repair.
 
 ## 4. Verification
+
+[Support robot tests](../../arknights_mower/tests/recruit_robot_tests.py) cover the default-off switch, saved configuration, both support robot preservation modes, valid and invalid cached potential, unavailable caches, mixed candidate pools, higher rarities and missing robot tags. Offline scene transitions verify tag selection, adjustment to 3 hours 50 minutes, starting below the permit threshold and refusing to start without a permit. Cache files use temporary directories; device input and notifications use substitutes.
 
 [Offline policy tests](../../arknights_mower/tests/recruit_policy_tests.py) cover both modes, both exception states, single and multiple choices, equivalent results and other rarities. Device initialization and notification delivery are replaced with offline substitutes. The [decision](../../.agents/notes/implemented/simplification/2026-10-11-recruit-manual-selection.md) records the condition correction.
 

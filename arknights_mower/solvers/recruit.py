@@ -16,6 +16,7 @@ from arknights_mower.utils.email import recruit_rarity, recruit_template, send_m
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_recommendation import get_cultivate_characters
 from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
@@ -362,16 +363,30 @@ class RecruitSolver(SceneGraphSolver):
 
     def recruit_tags(self, tags):
         tem_res = self.recruit_cal(sorted(tags))
+        robot_choice = None
+        if (
+            config.conf.recruit_auto_robot
+            and "支援机械" in tags
+            and tem_res[3]
+            and not any(tem_res[level] for level in (4, 5, 6))
+        ):
+            robot_choice = self.unfinished_robot_choice(tem_res[1])
         recruit_cal_result = None
         recruit_result_level = -1
 
-        for index in self.recruit_order:
-            if tem_res[index]:
-                recruit_result_level = index
-                break
+        if robot_choice is not None:
+            recruit_result_level = 1
+            recruit_cal_result = [robot_choice]
+        else:
+            for index in self.recruit_order:
+                if tem_res[index]:
+                    recruit_result_level = index
+                    break
         if recruit_result_level == -1:
             logger.error("筛选结果为 {}".format(tem_res))
             raise ValueError("筛选tag失败")
+        elif robot_choice is not None:
+            logger.info("支援机械候选均未满潜，自动招募")
         elif recruit_result_level != 3 and self.all_same_res(
             tem_res, recruit_result_level
         ):
@@ -390,7 +405,9 @@ class RecruitSolver(SceneGraphSolver):
                 "出稀有标签辣",
                 "WARNING",
             )
-            if recruit_result_level == 6 or recruit_result_level == 1:
+            if recruit_result_level == 6 or (
+                recruit_result_level == 1 and robot_choice is None
+            ):
                 logger.debug(f"{recruit_result_level}星稀有tag  ,不选")
                 self.recruit_index = self.recruit_index + 1
                 self.back()
@@ -425,6 +442,28 @@ class RecruitSolver(SceneGraphSolver):
         }
 
         return
+
+    def unfinished_robot_choice(self, choices):
+        characters = get_cultivate_characters()
+        if not characters:
+            return None
+        unfinished = {
+            char_id
+            for char_id, char in characters.items()
+            if type(char.get("potentialRank")) is int and 0 <= char["potentialRank"] < 5
+        }
+        eligible = [
+            choice
+            for choice in choices
+            if "支援机械" in choice["tag"]
+            and choice["result"]
+            and all(agent["id"] in unfinished for agent in choice["result"])
+        ]
+        return min(
+            eligible,
+            key=lambda choice: (len(choice["result"]), len(choice["tag"])),
+            default=None,
+        )
 
     def all_same_res(self, recruit_cal_res, index):
         tmp_list = recruit_cal_res[index]
