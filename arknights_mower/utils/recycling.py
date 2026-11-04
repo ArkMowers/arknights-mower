@@ -328,7 +328,7 @@ def recycling_expectation(materials, unknown_collections=0, valuation=None):
     unmodeled = [item["name"] for item in materials if item["name"] not in modeled]
     expected = count * per_material
     ratios = valuation["ratios"]
-    daily = (normal_ev + extra_rate * extra_ev) / 2
+    daily = per_material / 2
     manufacture = (
         daily
         / valuation["lmd_sanity"]
@@ -340,8 +340,7 @@ def recycling_expectation(materials, unknown_collections=0, valuation=None):
         "daily_sanity": daily,
         "configured_daily_sanity": daily * ratios["efficiency"],
         "manufacturing_equivalent": manufacture * ratios["efficiency"],
-        "elite0_equivalent": manufacture * 0.2,
-        "elite2_equivalent": manufacture * 0.3,
+        "ten_percent_equivalent": manufacture * 0.1,
     }
     return {
         "actual_sanity": actual if complete else None,
@@ -365,10 +364,5 @@ def recycling_expectation(materials, unknown_collections=0, valuation=None):
         ],
         "source": {key: model[key] for key in ("source", "sheet", "ranges")},
         "valuation": valuation,
-        "calculator": {
-            **calculator,
-            "replacement": {
-                key: value / (1 + extra_rate) for key, value in calculator.items()
-            },
-        },
+        "calculator": calculator,
     }

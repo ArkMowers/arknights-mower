@@ -173,23 +173,23 @@ def test_saved_import_revalues_history_and_export_using_same_snapshot(db):
     result = report["comparison"]
     assert result["actual_sanity"] == pytest.approx(20)
     assert result["expected_sanity"] == pytest.approx(20)
-    assert result["calculator"]["daily_sanity"] == pytest.approx(5.263065)
-    assert result["calculator"]["configured_daily_sanity"] == pytest.approx(7.8945975)
-    assert result["calculator"]["manufacturing_equivalent"] == pytest.approx(
-        0.049341234375
-    )
-    replacement = result["calculator"]["replacement"]
-    assert replacement["daily_sanity"] == pytest.approx(5)
-    assert replacement["configured_daily_sanity"] == pytest.approx(7.5)
-    assert replacement["manufacturing_equivalent"] == pytest.approx(0.046875)
+    assert result["calculator"]["daily_sanity"] == pytest.approx(5)
+    assert result["calculator"]["configured_daily_sanity"] == pytest.approx(7.5)
+    assert result["calculator"]["manufacturing_equivalent"] == pytest.approx(0.046875)
+    assert result["calculator"]["ten_percent_equivalent"] == pytest.approx(0.003125)
+    assert "replacement" not in result["calculator"]
+    assert "elite0_equivalent" not in result["calculator"]
+    assert "elite2_equivalent" not in result["calculator"]
     with record.export_recycling_history("2026-10-10", "2026-10-10") as workbook:
         _, _, overview = workbook_rows(workbook, 1)
         values = {row[0]: row[1] for row in overview[1:]}
         assert float(values["总理智收益"]) == 20
         assert float(values["理论期望收益"]) == 20
-        assert float(values["顶替机制：100%回收站理论日产理智"]) == pytest.approx(5)
-        assert float(values["顶替机制：设定效率下理论日产理智"]) == pytest.approx(7.5)
-        assert float(values["顶替机制：等效制造站效率"]) == pytest.approx(0.046875)
+        assert float(values["100%回收站理论日产理智"]) == pytest.approx(5)
+        assert float(values["设定效率下理论日产理智"]) == pytest.approx(7.5)
+        assert float(values["等效制造站效率"]) == pytest.approx(0.046875)
+        assert float(values["10%回收站效率等效制造站效率"]) == pytest.approx(0.003125)
+        assert not any("旅骨" in key or "顶替" in key for key in values)
         _, _, inputs = workbook_rows(workbook, 5)
         values = {row[0]: row[1] for row in inputs[1:]}
         assert values["装置"] == "10.0"
@@ -436,7 +436,7 @@ def test_default_assumptions_use_ce6_ls6_and_lmd_normalized_algorithm(db):
     assert price_catalog()["items"]["2003"]["value"] == pytest.approx(3.44448)
 
 
-def test_default_prices_and_both_mechanisms_match_supplied_calculator(db):
+def test_default_prices_and_production_conversion(db):
     import xml.etree.ElementTree as ET
 
     from arknights_mower.utils.growth_value import price_catalog
@@ -471,23 +471,37 @@ def test_default_prices_and_both_mechanisms_match_supplied_calculator(db):
     assert result["ordinary_sanity"] == pytest.approx(19.822108878663865)
     assert result["extra_sanity"] == pytest.approx(78.38008491701859)
     assert result["per_material"] == pytest.approx(22.749025792388053)
-    for key, daily, elite0, elite2 in [
-        (None, 11.972960143201481, 0.08689962014006092, 0.13034943021009138),
-        ("replacement", 11.374512896194027, 0.08255609624815666, 0.123834144372235),
-    ]:
-        calculator = result["calculator"][key] if key else result["calculator"]
-        assert calculator["daily_sanity"] == pytest.approx(daily)
-        assert calculator["elite0_equivalent"] == pytest.approx(elite0)
-        assert calculator["elite2_equivalent"] == pytest.approx(elite2)
+    assert result["source"]["source"] == "回收站收益计算器"
+    calculator = result["calculator"]
+    assert calculator["daily_sanity"] == pytest.approx(11.374512896194027)
+    assert calculator["manufacturing_equivalent"] == pytest.approx(0.4127804812407833)
+    assert calculator["ten_percent_equivalent"] == pytest.approx(0.04127804812407833)
     with record.export_recycling_history("2026-10-10", "2026-10-10") as workbook:
         _, _, rows = workbook_rows(workbook, 1)
         values = {row[0]: row[1] for row in rows[1:]}
         assert float(values["100%回收站理论日产理智"]) == pytest.approx(
-            11.972960143201481
-        )
-        assert float(values["顶替机制：100%回收站理论日产理智"]) == pytest.approx(
             11.374512896194027
         )
+        assert float(values["10%回收站效率等效制造站效率"]) == pytest.approx(
+            0.04127804812407833
+        )
+
+
+@pytest.mark.parametrize("efficiency", [0, 0.1, 2])
+def test_ten_percent_conversion_is_independent_of_configured_efficiency(db, efficiency):
+    record.update_recycling_valuation(
+        ratios={**DEFAULT_RATIOS, "efficiency": efficiency}
+    )
+    calculator = record.get_recycling_history("2026-10-10", "2026-10-10")["comparison"][
+        "calculator"
+    ]
+    assert calculator["configured_daily_sanity"] == pytest.approx(
+        11.374512896194027 * efficiency
+    )
+    assert calculator["manufacturing_equivalent"] == pytest.approx(
+        0.4127804812407833 * efficiency
+    )
+    assert calculator["ten_percent_equivalent"] == pytest.approx(0.04127804812407833)
 
 
 @pytest.mark.parametrize("imported", [False, True])
