@@ -252,7 +252,8 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         if(op&&previousOwner?.isHigh()&&(oldName===name||!op.currentRoom||op.isResting())&&(oldName===name||!room.startsWith('dorm'))&&(next.currentOperator(room,index)||op.currentRoom||op.timeStampMicros!==undefined)&&previousOwner.group===op.group&&sameFacility&&JSON.stringify(previousOwner.groupBindings.map(b=>b.group))===JSON.stringify(op.groupBindings.map(b=>b.group))){replacementPositions.push([room,index]);return}
         if(room.startsWith('dorm')&&op?.group){groupPositions.add(alphaPosition(room,index));return}
         const actual=next.currentOperator(room,index)
-        if(actual&&(actual.name===name||oldName===name&&op?.replacement.includes(actual.name)&&!next.excludedCandidates.has(actual.name)))return
+        const relocatingWorker=previousOwner?.isHigh()&&!!op?.currentRoom&&!op.isResting()&&(previousOwner.room!==room||previousOwner.index!==index)&&!protectedTraining.has(name)
+        if(actual&&(actual.name===name||!relocatingWorker&&op?.replacement.includes(actual.name)&&!next.excludedCandidates.has(actual.name)))return
         ;(transition[room]??=Array(names.length).fill('Current'))[index]=name
       })
       plans.forEach((p,i)=>{if(!original[i]||conditions[i])return;for(const [room,names] of Object.entries(p.task))names.forEach((name,index)=>{if(name!=='Current'&&next.plan[room]?.[index]!==undefined&&!replacementPositions.some(([r,i])=>r===room&&i===index))(transition[room]??=Array(next.plan[room]!.length).fill('Current'))[index]=next.plan[room]![index]!})})
