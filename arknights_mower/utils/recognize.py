@@ -30,6 +30,22 @@ class RecognizeError(Exception):
     pass
 
 
+def captcha_panel_scope(gray: tp.GrayImage) -> tp.Scope | None:
+    """白色面板须容纳现有验证码裁剪范围，零散亮点不能提供面板范围。"""
+    ys, xs = np.nonzero(gray == 255)
+    if not ys.size:
+        return None
+    x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+    height, width = y1 - y0, x1 - x0
+    if (
+        int(height * 0.0056) < 1
+        or width < int(height * 0.94)
+        or ys.size < width * height * 0.1
+    ):
+        return None
+    return (x0, y0), (x1, y1)
+
+
 @dataclass
 class NetworkWaitGuard:
     deadline: float
@@ -448,9 +464,8 @@ class Recognizer:
             self.scene = Scene.LOGIN_BILIBILI
         elif self.find("login_bilibili_privacy"):
             self.scene = Scene.LOGIN_BILIBILI_PRIVACY
-        # 启动画面的 Logo 偶尔误命中验证码特征；滑动求解器依赖
-        # 纯白验证码面板定位，缺少该面板时不应进入验证码场景。
-        elif np.any(self.gray == 255) and self.find("login_captcha"):
+        # 启动背景的亮点与图案不能代替可用于裁剪的白色验证码面板。
+        elif captcha_panel_scope(self.gray) is not None and self.find("login_captcha"):
             self.scene = Scene.LOGIN_CAPTCHA
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD

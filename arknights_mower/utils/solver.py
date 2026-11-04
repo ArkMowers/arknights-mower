@@ -16,7 +16,7 @@ from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.const import KeyCode
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.email import send_message
-from arknights_mower.utils.image import cropimg, thres2
+from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.network_adaptation import (
     ADAPTIVE_WAIT_SCENES,
@@ -29,6 +29,7 @@ from arknights_mower.utils.recognize import (
     RecognizeError,
     Recognizer,
     Scene,
+    captcha_panel_scope,
 )
 from arknights_mower.utils.swipe import noinertia_path
 from arknights_mower.utils.traceback import caller_info
@@ -471,15 +472,20 @@ class BaseSolver:
         )
 
     def solve_captcha(self, refresh=False):
-        th = thres2(self.recog.gray, 254)
-        pos = np.nonzero(th)
-        if pos[0].size == 0:
-            # 启动页的图案偶尔误命中验证码特征；此时没有白色验证码面板。
-            logger.info("验证码画面已消失，等待场景重新识别")
+        img_scope = captcha_panel_scope(self.recog.gray)
+        if img_scope is None:
+            logger.info("未确认验证码面板，等待场景重新识别")
             return
-        offset_x = pos[1].min()
-        offset_y = pos[0].min()
-        img_scope = ((offset_x, offset_y), (pos[1].max(), pos[0].max()))
+        if refresh:
+            logger.info("刷新验证码")
+            (x0, y0), (_, y1) = img_scope
+            height = y1 - y0
+            self.tap((x0 + int(height * 0.189), y0 + int(height * 0.916)), interval=3)
+            img_scope = captcha_panel_scope(self.recog.gray)
+            if img_scope is None:
+                logger.info("刷新后未确认验证码面板，等待场景重新识别")
+                return
+        offset_x, offset_y = img_scope[0]
         img = cropimg(self.recog.img, img_scope)
         h = img.shape[0]
 
@@ -488,11 +494,6 @@ class BaseSolver:
 
         def _p(ratio_x, ratio_y):
             return _t(ratio_x), _t(ratio_y)
-
-        if refresh:
-            logger.info("刷新验证码")
-            self.tap((offset_x + _t(0.189), offset_y + _t(0.916)), interval=3)
-            img = cropimg(self.recog.img, img_scope)
 
         left_part = cropimg(img, (_p(0.032, 0.032), _p(0.202, 0.591)))
         hsv = cv2.cvtColor(left_part, cv2.COLOR_RGB2HSV)
@@ -625,7 +626,7 @@ class BaseSolver:
                         while captcha_times > 0:
                             self.solve_captcha(captcha_times < 3)
                             self.sleep(5)
-                            if self.find("login_captcha"):
+                            if self.scene() == Scene.LOGIN_CAPTCHA:
                                 captcha_times -= 1
                             else:
                                 break

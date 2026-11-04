@@ -2,6 +2,14 @@
 
 Recognition consumes standard canvas frames and their crops. [Device Control](device-control.md#4-capture-frame-contract--storage) owns acquisition and screenshot storage; this subsystem owns model input preparation and OCR execution.
 
+## Login Captcha Panel
+
+Captcha scene recognition and the existing solver share the same white-panel bounds. The bounds must contain the solver's complete crop regions and a nonzero template border; pure-white pixels must occupy at least ten percent of their bounding rectangle. Sparse startup-background highlights do not confirm a captcha panel, even when the generic captcha feature matches. Missing or invalid bounds prevent template matching and captcha input. Refreshing a confirmed panel requires new bounds before matching the refreshed image. Cancellation and device exceptions propagate through the existing recovery boundary.
+
+[Captcha regressions](../../arknights_mower/tests/captcha_scene_tests.py) reject the archived startup background and invalid geometries before input, and retain the existing matching path with a constructed panel. A real supported captcha panel has not been verified in this change.
+
+The login retry loop counts a failed slide only while full scene recognition still confirms the captcha panel. A disappeared panel returns to ordinary login dispatch; a lingering feature match alone cannot exhaust the slide limit or exit the instance. A continuously confirmed captcha retains its existing failure limit.
+
 <a id="clue-access-records"></a>
 ## Clue Access Records
 
