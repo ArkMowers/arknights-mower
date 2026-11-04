@@ -1,4 +1,4 @@
-"""救急和普通分床共用前四级保床与后三级让床规则。"""
+"""救急和普通分床共用受保护层级与高优替班让床规则。"""
 
 from copy import deepcopy
 from datetime import timedelta
@@ -60,7 +60,8 @@ def test_takeover_preserves_protected_tiers_in_both_modes(
     before = deepcopy(vars(bed))
     assert data._slot_takable(bed, requester=incoming) is (
         incoming_tier < resident_tier
-        and resident_tier > RestingTier.PRIORITY_REPLACEMENT
+        and resident_tier
+        not in (RestingTier.PRIORITY, RestingTier.MAIN, RestingTier.LOW_MAIN)
     )
     assert vars(bed) == before
 
