@@ -641,6 +641,7 @@ def _rg_conf(
         maa_rg_sleep_min="12:00",
         maa_rg_sleep_max="12:00",
         maa_rg_theme=theme,
+        maa_restore_theme_enable=False,
         rogue=SimpleNamespace(
             squad=squad,
             roles="",
@@ -715,6 +716,7 @@ class MaaRoguelikeTests(unittest.TestCase):
             patch.object(base_schedule, "save_exception"),
         ):
             solver.maa_plan_solver()
+        maa.start.assert_called_once_with()
         idle.assert_called_once()
         self.assertFalse(active.is_set())
 
