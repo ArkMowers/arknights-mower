@@ -17,29 +17,39 @@ scheduler = helpers.scheduler
 
 @pytest.mark.parametrize("kind", ["rogue", "copilot"])
 @pytest.mark.parametrize("manual", [False, True])
-def test_large_task_returns_home_then_delegates_navigation_to_maa(
-    scheduler, kind, manual
-):
+def test_large_task_enters_terminal_before_maa_submission(scheduler, kind, manual):
     base_schedule.config.conf.maa_long_task_type = kind
     scheduler.task = SimpleNamespace(type=None)
     scheduler.scene_graph_navigation = MagicMock()
-    scheduler.scene = MagicMock(return_value=Scene.TERMINAL_MAIN)
+    scheduler.scene = MagicMock(
+        return_value=Scene.OPERATOR_CHOOSE_LEVEL
+        if kind == "copilot"
+        else Scene.TERMINAL_MAIN
+    )
     order = MagicMock()
     order.attach_mock(scheduler.back_to_index, "home")
     order.attach_mock(scheduler.scene_graph_navigation, "navigate")
+    if kind == "copilot":
+        order.attach_mock(base_schedule.NavigationSolver.return_value.run, "map")
     order.attach_mock(scheduler.MAA.append_task, "append")
     order.attach_mock(scheduler.MAA.start, "start")
 
     scheduler.maa_plan_solver([], manual=manual, long_task=kind)
 
-    scheduler.scene_graph_navigation.assert_not_called()
-    scheduler.scene.assert_not_called()
-    assert order.mock_calls[0] == call.home()
+    assert order.mock_calls[:2] == [call.home(), call.navigate(Scene.TERMINAL_MAIN)]
+    if kind == "copilot":
+        assert order.mock_calls[2:4] == [
+            call.map("1-7"),
+            call.navigate(Scene.OPERATOR_CHOOSE_LEVEL),
+        ]
+        append_index = 4
+    else:
+        append_index = 2
     assert (
-        order.mock_calls[1].args[0]
+        order.mock_calls[append_index].args[0]
         == {"rogue": "Roguelike", "copilot": "Copilot"}[kind]
     )
-    assert order.mock_calls[2] == call.start()
+    assert order.mock_calls[append_index + 1] == call.start()
 
 
 def test_reclamation_keeps_its_theme_navigation(scheduler):

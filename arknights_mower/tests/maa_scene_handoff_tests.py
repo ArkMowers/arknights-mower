@@ -114,6 +114,8 @@ def test_blackflow_starts_without_closing_game_and_returns_fresh_state(
         solver.device.exit.assert_not_called()
 
     solver.back_to_index = MagicMock(side_effect=home)
+    solver.scene_graph_navigation = MagicMock()
+    solver.scene = MagicMock(return_value=Scene.TERMINAL_MAIN)
     daily_results = [False] if daily else []
     if long_result in {"schedule_stop", "stop_requested"}:
         maa.running.side_effect = daily_results + [True]

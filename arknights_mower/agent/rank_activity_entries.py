@@ -5,7 +5,19 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from arknights_mower.agent.tools.pick_activity_entry import pick_activity_entry
 from arknights_mower.utils import config
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
+
+
+def _invoke_with_budget(api_key, messages):
+    from arknights_mower.agent.navigation_process import invoke_navigation_model
+
+    payload = [
+        {"role": "user" if msg.type == "human" else msg.type, "content": msg.content}
+        for msg in messages
+    ]
+    return invoke_navigation_model(api_key, payload)
 
 
 def _normalize_indices(indices, max_len):
@@ -91,10 +103,7 @@ def rank_activity_entries_with_agent(
     ]
     logger.info("rank_activity_entries_with_agent: invoke single-shot")
     try:
-        from arknights_mower.agent.agent import build_llm
-
-        llm = build_llm(api_key, with_tools=False)
-        response = llm.invoke(messages)
+        response = _invoke_with_budget(api_key, messages)
         text = response.content if isinstance(response.content, str) else ""
         parsed = json.loads(text)
         indices = parsed.get("indices", [])
@@ -108,7 +117,12 @@ def rank_activity_entries_with_agent(
             f"rank_activity_entries_with_agent: empty indices, use fallback, elapsed={time.perf_counter() - start:.2f}s"
         )
         return fallback_indices
+    except (MowerExit, InterruptedError):
+        raise
     except Exception:
+        if config.stop_mower.is_set():
+            raise MowerExit
+        io_timeout(0)
         logger.info(
             f"rank_activity_entries_with_agent: response is not strict JSON, use fallback, elapsed={time.perf_counter() - start:.2f}s"
         )

@@ -10,6 +10,8 @@ from arknights_mower import __rootdir__
 from arknights_mower.data import stage_data_full
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.utils import config, rapidocr
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import loadres, thres2
 from arknights_mower.utils.log import logger
@@ -900,7 +902,10 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 ocr_items=candidates,
                 api_key=config.conf.resolved_ai_key,
             )
+        except (MowerExit, InterruptedError):
+            raise
         except Exception as e:
+            io_timeout(0)
             logger.debug(f"LLM 入口排序不可用，回退规则打分: {e}")
         if llm_ranked_indices:
             llm_texts = [

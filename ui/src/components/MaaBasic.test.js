@@ -116,7 +116,7 @@ describe('MAA connection and theme settings', () => {
       state.config.maa_restore_theme_enable.value = true
       await nextTick()
       const html = await renderToString(createSSRApp(Component))
-      expect(html).toContain('任务结束后恢复主题')
+      expect(html).toContain('日常任务结束后恢复主题')
       expect(html).toContain('目标主题')
       for (const label of ['MAA目录', '连接配置', '触控模式', '测试连接', 'CDK', '更新 MAA']) {
         expect(html).not.toContain(label)
@@ -125,7 +125,7 @@ describe('MAA connection and theme settings', () => {
       expect(html).not.toContain('/mowersettings#software-update')
       state.config.maa_restore_theme_enable.value = false
       const disabled = await renderToString(createSSRApp(Component))
-      expect(disabled).toContain('任务结束后恢复主题')
+      expect(disabled).toContain('日常任务结束后恢复主题')
       expect(disabled).not.toContain('目标主题')
     }
   )
@@ -133,7 +133,7 @@ describe('MAA connection and theme settings', () => {
   it('keeps connection controls for independently launched instances', async () => {
     state.config.runtime_platform.value = 'windows'
     const html = await renderToString(createSSRApp(Component))
-    for (const label of ['MAA目录', '连接配置', '触控模式', '测试连接', '任务结束后恢复主题']) {
+    for (const label of ['MAA目录', '连接配置', '触控模式', '测试连接', '日常任务结束后恢复主题']) {
       expect(html).toContain(label)
     }
   })

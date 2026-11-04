@@ -141,6 +141,12 @@ async function restart_queue() {
 
 <template>
   <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
+    <n-form-item v-if="!paradox" :show-label="false">
+      <n-alert type="warning" :show-icon="false">
+        请先在“AI 助手与模型服务”中配置 Mower AI 使用的模型服务，再使用普通作业的自动地图导航。Mower
+        会先进入目标关卡地图，导航失败时不启动 MAA。
+      </n-alert>
+    </n-form-item>
     <n-form-item label="目前状态">
       <MaaTaskStatus :kind="paradox ? 'paradox' : 'copilot'" :settings="copilot" />
     </n-form-item>
@@ -204,7 +210,7 @@ async function restart_queue() {
             <n-input
               v-if="!paradox"
               v-model:value="item.nav_name_override"
-              placeholder="导航关卡名（留空由作业确定）"
+              placeholder="导航关卡名，例如 1-7（留空由作业确定）"
             />
             <n-checkbox v-if="!paradox" v-model:checked="item.is_raid">突袭模式</n-checkbox>
             <n-flex>
@@ -217,8 +223,8 @@ async function restart_queue() {
           </n-flex>
         </n-card>
         <n-text v-if="!paradox" depth="3"
-          >按队列顺序执行，最多 32 项。关卡导航由 MAA
-          完成；请确认作业与关卡、难度及干员练度相符。中断后从未完成项重新执行，已完成项会保存并跳过；整轮完成后停止。清缓存启动保留进度。修改执行队列会开启新一轮，调整编队或理智药设置保留已完成项。</n-text
+          >按队列顺序执行，最多 32 项。Mower 先进入每份作业对应的关卡地图，MAA
+          再定位关卡并执行作业；无法识别作业内部关卡标识时，请填写导航关卡名。请确认作业与关卡、难度及干员练度相符。中断后从未完成项重新执行，已完成项会保存并跳过；整轮完成后停止。清缓存启动保留进度。修改执行队列会开启新一轮，调整编队或理智药设置保留已完成项。</n-text
         >
         <n-text v-else depth="3">
           导入 mem_ 开头关卡的悖论模拟作业，最多 32 项。MAA 自动寻找对应干员并选择作业技能；Mower
