@@ -94,6 +94,53 @@ def test_other_collection_types_keep_one_tap_each(solver):
     ]
 
 
+@pytest.mark.parametrize("last", [None, NOW - timedelta(minutes=15)])
+def test_order_delivery_prompt_collects_once(solver, last):
+    solver.recog = recognizer("order_todo.png")
+    solver.last_execution["todo"] = last
+    position = solver.recog.find("infra_collect_bill")
+    assert position is not None
+    assert 490 <= position[0][0] <= 500
+    assert 980 <= position[0][1] <= 1000
+    solver.todo_list()
+    assert solver.tap.call_args_list[0] == call(position)
+    assert solver.tap.call_args_list.count(call(position)) == 1
+    assert solver.last_execution["todo"] == NOW
+    assert not solver.todo_task
+
+
+@pytest.mark.parametrize(
+    "name", ["base_main.png", "recycle_todo.png", "recycle_reward.png"]
+)
+def test_missing_order_delivery_prompt_does_not_match(name):
+    assert recognizer(name).find("infra_collect_bill") is None
+
+
+def test_order_delivery_quantity_change_keeps_prompt_recognition():
+    result = recognizer("order_todo.png")
+    result._img[982:1013, 544:570] = (39, 166, 210)
+    cv2.putText(
+        result._img,
+        "23",
+        (544, 1009),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2,
+    )
+    result._gray = cv2.cvtColor(result._img, cv2.COLOR_RGB2GRAY)
+    assert result.find("infra_collect_bill") is not None
+
+
+def test_order_delivery_prompt_moves_with_other_footer_entries():
+    result = recognizer("order_todo.png")
+    result._gray[980:1080, 800:1030] = result.gray[980:1080, 490:720].copy()
+    result._gray[980:1080, 490:720] = 44
+    position = result.find("infra_collect_bill")
+    assert position is not None
+    assert 800 <= position[0][0] <= 810
+
+
 def test_changed_quantity_keeps_prompt_recognition():
     result = recognizer("recycle_todo.png")
     result._img[986:1010, 292:315] = (39, 166, 210)
