@@ -11,21 +11,21 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 
 
-def result_frame(state):
-    # 日志调度-20261002-065219.zip 的错误截图，保留职业、姓名与信物区域。
-    # animation: 1790895139359432800.jpg; ready: 1790895140736340800.jpg。
-    path = Path(__file__).parent / f"fixtures/recruit_result_lava_{state}_20261002.png"
+def result_frame(name, left=750):
+    path = Path(__file__).parent / f"fixtures/recruit_result_{name}.png"
     crop = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     assert crop is not None
     frame = np.zeros((1080, 1920), dtype=np.uint8)
-    frame[730:860, 750:1920] = crop
+    frame[730:860, left : left + crop.shape[1]] = crop
     return frame
 
 
 def make_solver(state="animation"):
     device = Mock()
     recog = Recognizer(device)
-    recog._gray = result_frame(state)
+    # 日志调度-20261002-065219.zip：职业、姓名与信物区域。
+    # animation: 1790895139359432800.jpg; ready: 1790895140736340800.jpg。
+    recog._gray = result_frame(f"lava_{state}_20261002")
     solver = recruit.RecruitSolver(device, recog)
     solver.scene = Mock(return_value=Scene.RECRUIT_AGENT)
     solver.tap = Mock()
@@ -58,6 +58,78 @@ def test_ready_result_is_recorded_before_one_dismissal():
     assert records_at_tap == [{1: "炎熔"}]
     solver.tap.assert_called_once_with((500, 500))
     solver.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("fixture", "expected", "date", "left"),
+    [
+        ("mayer", "梅尔", "20261104", 750),
+        ("pinecone", "松果", "20261104", 750),
+        ("adnachiel", "安德切尔", "20261104", 750),
+        ("ansel", "安赛尔", "20261104", 750),
+        ("beanstalk", "豆苗", "20260926", 890),
+        ("jessica", "杰西卡", "20260926", 890),
+    ],
+)
+def test_screenshot_results_are_recorded_before_dismissal(
+    fixture, expected, date, left
+):
+    # 2026-11-04 公招日志截图及已有 2026-09-26 样本。
+    solver = make_solver()
+    solver.recog._gray = result_frame(f"{fixture}_{date}", left)
+    if left == 890:
+        # 旧样本仅保留姓名区域，职业图标位置由外部替身提供。
+        solver.find = Mock(return_value=((790, 749), (890, 849)))
+    solver.sleep = Mock()
+    records_at_tap = []
+    solver.tap.side_effect = lambda *_: records_at_tap.append(dict(solver.result_agent))
+
+    solver.transition()
+
+    assert solver.result_agent == {1: expected}
+    assert records_at_tap == [{1: expected}]
+    solver.tap.assert_called_once_with((500, 500))
+    solver.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "expected",
+    [
+        "梅",
+        "梅尔",
+        "红",
+        "红云",
+        "红豆",
+        "黑",
+        "黑角",
+        "阿",
+        "阿消",
+        "山",
+        "远山",
+        "Lancet-2",
+        "Castle-3",
+        "THRM-EX",
+        "CONFESS-47",
+    ],
+)
+def test_complete_name_wins_over_contained_name(expected):
+    solver = make_solver()
+    frame = np.zeros((1080, 1920), dtype=np.uint8)
+    operator_id = next(
+        key for key, value in recruit.recruit_agent.items() if value["name"] == expected
+    )
+    template = recruit.recruit_res_template[operator_id]
+    height, width = template.shape
+    # 所有文字共用底线，保留矮字形在裁剪区域内较大的纵向偏移。
+    frame[853 - height : 853, 902 : 902 + width] = template
+    solver.recog._gray = frame
+    # 职业图标位置固定，姓名仍由生产模板匹配。
+    solver.find = Mock(return_value=((790, 749), (890, 849)))
+
+    solver.transition()
+
+    assert solver.result_agent == {1: expected}
+    solver.tap.assert_called_once_with((500, 500))
 
 
 def test_recorded_integer_slot_is_not_recognized_again():
@@ -136,7 +208,7 @@ def test_run_retries_animation_then_records_ready_frame(monkeypatch, ready_attem
 
     def refresh_frame():
         if wait.call_count == ready_attempt - 1:
-            solver.recog._gray = result_frame("ready")
+            solver.recog._gray = result_frame("lava_ready_20261002")
 
     solver.recog.update.side_effect = refresh_frame
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, ref } from 'vue'
+import { createSSRApp, effectScope, ref } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import Component from './MaaCopilot.vue'
 
 const state = vi.hoisted(() => ({
@@ -19,10 +20,36 @@ vi.mock('@/stores/config', () => ({
   useConfigStore: () => ({ ...state.config, flush_config_saves: state.flush })
 }))
 vi.mock('pinia', () => ({ storeToRefs: (store) => store }))
-vi.mock('naive-ui', async (original) => ({
-  ...(await original()),
-  useMessage: () => ({ error: state.error, success: state.success })
-}))
+vi.mock('./MaaTaskStatus.vue', () => ({ default: { render: () => null } }))
+vi.mock('naive-ui', async () => {
+  const { h } = await import('vue')
+  const wrapper = {
+    inheritAttrs: false,
+    setup:
+      (_, { slots }) =>
+      () =>
+        h('div', slots.default?.())
+  }
+  return {
+    ...Object.fromEntries(
+      [
+        'NAlert',
+        'NButton',
+        'NCard',
+        'NCheckbox',
+        'NEmpty',
+        'NFlex',
+        'NForm',
+        'NFormItem',
+        'NInput',
+        'NSelect',
+        'NText',
+        'NUpload'
+      ].map((name) => [name, wrapper])
+    ),
+    useMessage: () => ({ error: state.error, success: state.success })
+  }
+})
 let scope
 let component
 const first = { id: 'a'.repeat(64), stage_name: '1-7', title: '作业一' }
@@ -44,6 +71,14 @@ afterEach(() => {
 })
 
 describe('ordinary Copilot library and queue', () => {
+  it('shows the Mower AI setup requirement for ordinary map navigation only', async () => {
+    state.config.paradox = ref({ scripts: [], run_id: '' })
+    const ordinary = await renderToString(createSSRApp(Component))
+    expect(ordinary).toContain('请先在“AI 助手与模型服务”中配置 Mower AI 使用的模型服务')
+    expect(ordinary).toContain('导航失败时不启动 MAA')
+    const paradox = await renderToString(createSSRApp(Component, { paradox: true }))
+    expect(paradox).not.toContain('请先在“AI 助手与模型服务”中配置 Mower AI 使用的模型服务')
+  })
   it.each([
     'prts://123',
     '  prts://123  ',

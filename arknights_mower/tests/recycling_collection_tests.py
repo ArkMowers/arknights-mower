@@ -1036,7 +1036,17 @@ def test_material_route_validates_and_requires_token(db, monkeypatch):
 
     monkeypatch.setattr(server.app, "token", "recycling-test", raising=False)
     client = server.app.test_client()
-    assert client.get("/report/recycling_history").status_code == 403
+    with monkeypatch.context() as auth:
+        read = Mock(side_effect=AssertionError("unauthorized history read"))
+        auth.setattr(record, "get_recycling_history", read)
+        for headers in ({}, {"token": "invalid"}):
+            assert (
+                client.get(
+                    "/report/recycling_history?page=invalid", headers=headers
+                ).status_code
+                == 403
+            )
+        read.assert_not_called()
     for query in [
         "page=x",
         "pageSize=201",
@@ -1055,6 +1065,12 @@ def test_material_route_validates_and_requires_token(db, monkeypatch):
     )
     assert response.status_code == 200
     assert response.json["total"] == 0
+    assert response.json["comparison"]["calculator"]["daily_sanity"] == pytest.approx(
+        11.374512896194027
+    )
+    assert response.json["comparison"]["calculator"][
+        "ten_percent_equivalent"
+    ] == pytest.approx(0.04127804812407833)
 
 
 def workbook_rows(workbook, sheet):
@@ -1140,7 +1156,14 @@ def test_excel_download_route_authentication_dates_and_attachment(db, monkeypatc
     monkeypatch.setattr(server.app, "token", "recycling-test", raising=False)
     client = server.app.test_client()
     route = "/report/recycling_history/export"
-    assert client.get(route).status_code == 403
+    with monkeypatch.context() as auth:
+        export = Mock(side_effect=AssertionError("unauthorized workbook export"))
+        auth.setattr(record, "export_recycling_history", export)
+        for headers in ({}, {"token": "invalid"}):
+            assert (
+                client.get(route + "?startDate=bad", headers=headers).status_code == 403
+            )
+        export.assert_not_called()
     for query in ("startDate=bad", "startDate=2026-10-11&endDate=2026-10-10"):
         assert (
             client.get(

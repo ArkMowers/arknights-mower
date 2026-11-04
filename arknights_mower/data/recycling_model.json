@@ -1,5 +1,6 @@
 {
-  "source": "回收站收益计算器（额外池和普通池各给1次材料ver).xlsx",
+  "source": "回收站收益计算器",
+  "source_file": "回收站收益计算器（额外池和普通池各给1次材料ver).xlsx",
   "sheet": "计算表",
   "ranges": [
     "B3:F46",

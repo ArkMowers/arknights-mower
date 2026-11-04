@@ -168,6 +168,26 @@ def build_copilot_params(conf):
     return params
 
 
+def copilot_navigation_target(item):
+    from arknights_mower.data import stage_data_full
+
+    target = item.nav_name_override.strip()
+    if not target:
+        with script_path(item.id).open("rb") as stream:
+            target = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))[
+                "stage_name"
+            ].strip()
+    for stage in stage_data_full:
+        if target in (stage.get("id"), stage.get("name")):
+            return stage["id"]
+    main = re.fullmatch(r"main_(\d+)-(\d+)", target, re.IGNORECASE)
+    if main:
+        return f"{int(main[1])}-{int(main[2])}"
+    if re.fullmatch(r"[A-Z0-9]+(?:-[A-Z0-9]+)+", target.upper()):
+        return target.upper()
+    raise ValueError("无法确定作业关卡，请填写导航关卡名，例如 1-7 或活动关卡编号")
+
+
 def build_paradox_params(item, index):
     path = script_path(item.id, paradox=True)
     with path.open("rb") as stream:
