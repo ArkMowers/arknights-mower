@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from arknights_mower.utils.github_download import normalize_proxy, normalize_token
 from arknights_mower.utils.path import get_path
-from arknights_mower.utils.update_runtime import write_json
+from arknights_mower.utils.update_runtime import scrub_update_job_tokens, write_json
 
 _PROXY_ENV_KEYS = (
     "http_proxy",
@@ -88,6 +88,7 @@ def save_settings(data):
     with _environment_lock:
         apply_http_proxy()
         write_json(settings_path(), settings)
+        scrub_update_job_tokens(settings_path())
         apply_http_proxy()
     return settings
 
@@ -166,6 +167,12 @@ def start_proxy_sync():
         apply_http_proxy()
         if _sync_thread is not None and _sync_thread.is_alive():
             return
+        try:
+            scrub_update_job_tokens(settings_path())
+        except (OSError, ValueError):
+            from arknights_mower.utils.log import logger
+
+            logger.exception("清理历史更新任务中的 GitHub Token 失败，请检查更新缓存")
         _sync_stop.clear()
 
         def sync():

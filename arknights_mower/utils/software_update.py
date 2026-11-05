@@ -1327,11 +1327,12 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
             "background": bool(background),
             "force": force,
             "github_proxy": github_download.get_proxy(),
-            "github_token": github_download.get_token(),
+            "network_settings_path": str(network_settings.settings_path()),
             "proxy": network_settings.get_effective_settings()["http_proxy"],
         }
         if uploaded:
             shutil.move(str(uploaded), work / plan["asset"]["name"])
+        job.pop("github_token", None)
         job_path = work / "job.json"
         runtime.write_json(job_path, job)
         settings = {**get_settings(), **{k: job[k] for k in ("channel", "background")}}

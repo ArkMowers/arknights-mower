@@ -1,10 +1,12 @@
 """Shared GitHub credentials and file-download routing; no global session changes.
 
-The detached updater passes an explicit proxy, so URL rewriting stays stdlib-only
-and does not load the application's configuration or GUI in that process.
+The detached updater passes an explicit proxy and settings path. URL rewriting
+and credential lookup stay stdlib-only, without importing the app runtime or GUI.
 """
 
 import base64
+import json
+from pathlib import Path
 from urllib.parse import urlsplit
 
 DOWNLOAD_HOSTS = {
@@ -66,6 +68,17 @@ def get_token():
     from arknights_mower.utils.network_settings import get_effective_settings
 
     return get_effective_settings().get("github_token", "")
+
+
+def read_token_file(path):
+    """Read the current setting without importing the detached app runtime."""
+    if not path:
+        return ""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return normalize_token(data.get("github_token", ""))
+    except (OSError, ValueError, AttributeError):
+        return ""
 
 
 def is_github_url(url):
