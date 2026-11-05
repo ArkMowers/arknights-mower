@@ -133,11 +133,11 @@ class WorkshopSelection:
         assigned = set()
         for category in ASSIGNMENT_ORDER:
             entries = self.category_entries(category, assigned, curated=curated)
-            # Only operators with exactly 80% bonuses may cross categories.
+            # Only operators with bonuses above 80% stay in one category.
             assigned.update(
                 name
                 for name, entry in entries.items()
-                if not curated and set(entry["bonuses"].values()) != {80}
+                if not curated and max(entry["bonuses"].values()) > 80
             )
             selected[category] = sorted(
                 entries.values(), key=lambda entry: self.priority(entry, category)
