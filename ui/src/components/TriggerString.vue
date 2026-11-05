@@ -212,6 +212,8 @@ function update_facility(room) {
   const supportsMastery = room == 'train'
   const status =
     (op_data.value.status == 'product' && !supportsProduct) ||
+    (op_data.value.status == 'crafting_plan' && room != 'factory') ||
+    (op_data.value.status == 'type' && room == 'factory') ||
     (['mastery_plan', 'training', 'protected'].includes(op_data.value.status) && !supportsMastery)
       ? 'operator_count'
       : op_data.value.status
@@ -309,8 +311,12 @@ const facility_product_summary = computed(() =>
 )
 
 const facility_select_options = computed(() =>
-  [...left_side_facility, { label: '训练室', value: 'train' }].map((option) => {
-    if (option.value == 'train') return option
+  [
+    ...left_side_facility,
+    { label: '加工站', value: 'factory' },
+    { label: '训练室', value: 'train' }
+  ].map((option) => {
+    if (['factory', 'train'].includes(option.value)) return option
     if (!product_switching_enabled.value) return option
     const facilityName =
       (facilityLoaded.value && !facilityLoadError.value
@@ -334,6 +340,12 @@ const facility_select_options = computed(() =>
 )
 
 const facility_status_options = computed(() => {
+  if (op_data.value.room == 'factory') {
+    return [
+      { label: '是否存在合成计划（当前可合成）', value: 'crafting_plan' },
+      { label: '当前干员数量', value: 'operator_count' }
+    ]
+  }
   if (op_data.value.room == 'train') {
     const planCount = planSummaryError.value
       ? '读取失败'

@@ -52,6 +52,16 @@ describe('设施状态副表表达式', () => {
     })
   })
 
+  it('生成并解析加工站合成计划表达式', () => {
+    expect(facility_expression('factory', 'crafting_plan')).toBe(
+      "op_data.facility_has_crafting_plan('factory')"
+    )
+    expect(parse_facility_expression("op_data.facility_has_crafting_plan('factory')")).toEqual({
+      room: 'factory',
+      status: 'crafting_plan'
+    })
+  })
+
   it('生成并解析训练室专精状态表达式', () => {
     expect(facility_expression('train', 'mastery_plan')).toBe(
       "op_data.facility_has_mastery_plan('train')"
