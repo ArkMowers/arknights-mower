@@ -44,7 +44,7 @@ def restore_cached_inventory():
     import math
 
     from arknights_mower.solvers.record import restore_cached_inventory_counts
-    from arknights_mower.utils.workshop_data import parse_roster
+    from arknights_mower.utils.workshop_data import parse_roster, valid_inventory_items
 
     now = datetime.now().timestamp()
 
@@ -73,12 +73,7 @@ def restore_cached_inventory():
             payload = json.load(stream)
         parse_roster(payload)
         items = payload["data"].get("items")
-        if not isinstance(items, list) or any(
-            not isinstance(item, dict)
-            or not isinstance(item.get("id"), str)
-            or not str(item.get("count", "")).isdigit()
-            for item in items
-        ):
+        if not valid_inventory_items(items):
             raise ValueError("缓存库存格式无效")
         counts, timestamp = cloud_inventory_snapshot(payload)
         remember(timestamp, counts)

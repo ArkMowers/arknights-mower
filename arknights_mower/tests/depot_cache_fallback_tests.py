@@ -84,6 +84,80 @@ def test_failed_sync_skips_scan_and_restores_missing_counts_from_existing_files(
     assert observed["龙门币"] == 90
 
 
+@pytest.mark.parametrize("count", [-123, "-123"])
+@pytest.mark.parametrize("failure", ["no_binding", "exception"])
+def test_synced_negative_furniture_cache_restores_missing_materials(
+    cached, monkeypatch, count, failure
+):
+    from arknights_mower.solvers import cultivate_depot
+
+    cached.payload["data"]["items"].append({"id": "3401", "count": count})
+    with monkeypatch.context() as refresh:
+        refresh.setattr(cultivate_depot, "time", lambda: 100)
+        refresh.setattr(
+            cultivate_depot,
+            "get_binding_list",
+            lambda _: [{"gameId": 1, "isOfficial": True, "uid": "test"}],
+        )
+        response = MagicMock()
+        response.json.return_value = cached.payload
+        refresh.setattr(
+            cultivate_depot, "request_with_retry", lambda *a, **kw: response
+        )
+        assert cached.syncer.start(force_inventory=True)
+    original = cached.syncer.record_path.read_bytes()
+    assert json.loads(original)["data"]["items"][-1]["count"] == count
+
+    with cached.db._conn() as conn:
+        conn.execute("DELETE FROM inventory")
+        conn.execute("DELETE FROM workshop_inventory_updates")
+        conn.execute("DELETE FROM workshop_inventory_pending")
+    assert cached.db.get_inventory_counts() == {}
+    if failure == "exception":
+        monkeypatch.setattr(
+            cached.syncer, "start", MagicMock(side_effect=RuntimeError("offline"))
+        )
+    for _ in range(2):
+        assert cached.module.BaseSchedulerSolver.仓库扫描(cached.solver) is False
+        stock = cached.db.get_inventory_counts()
+        assert stock["技巧概要·卷3"] == 70
+        assert "家具零件" not in stock
+    with cached.db._conn() as conn:
+        assert conn.execute(
+            "SELECT observed_at FROM workshop_inventory_updates WHERE item_name = ?",
+            ("技巧概要·卷3",),
+        ).fetchone() == (100,)
+    assert cached.syncer.record_path.read_bytes() == original
+    cached.scan.assert_not_called()
+    cached.solver._auto_schedule_mastery_after_scan.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        {"id": "3303", "count": -1},
+        {"id": "3303", "count": "-1"},
+        *[
+            {"id": "3401", "count": count}
+            for count in ("--1", "-", "-1.5", -1.5, None, True)
+        ],
+        {"id": 3401, "count": "-1"},
+        None,
+    ],
+)
+def test_invalid_cached_inventory_keeps_missing_materials_unknown(cached, item):
+    cached.db.save_inventory_counts({"龙门币": 400})
+    cached.payload["data"]["items"].append(item)
+    cached.syncer.record_path.write_text(json.dumps(cached.payload), encoding="utf-8")
+    original = cached.syncer.record_path.read_bytes()
+
+    assert cached.module.BaseSchedulerSolver.仓库扫描(cached.solver) is False
+
+    assert cached.db.get_inventory_counts() == {"龙门币": 400}
+    assert cached.syncer.record_path.read_bytes() == original
+    cached.scan.assert_not_called()
+
+
 def test_repeated_failure_keeps_confirmed_consumption_and_invalidated_counts(cached):
     cached.db.save_inventory_counts({"技巧概要·卷3": 70, "糖组": 9})
     cached.db.apply_workshop_inventory({"技巧概要·卷3": -8})

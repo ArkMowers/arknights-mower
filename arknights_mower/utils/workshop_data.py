@@ -1,6 +1,7 @@
 """Validate cached/synchronized BOX data and read unlocked workshop skills."""
 
 import json
+import re
 from functools import lru_cache
 
 from arknights_mower.utils.plan import all_replacements
@@ -21,6 +22,20 @@ def parse_roster(payload):
     if not all(_valid_character(char) for char in roster):
         raise ValueError("干员数据格式不完整，请重新同步干员数据")
     return roster
+
+
+def valid_inventory_items(items):
+    """Use the same quantity rules for synchronized and cached inventory."""
+    return isinstance(items, list) and all(
+        isinstance(item, dict)
+        and isinstance(item.get("id"), str)
+        # Skland can report furniture parts (3401) as a debt.
+        and re.fullmatch(
+            r"-?[0-9]+" if item["id"] == "3401" else r"[0-9]+",
+            str(item.get("count", "")),
+        )
+        for item in items
+    )
 
 
 def _valid_character(char):
