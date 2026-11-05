@@ -126,7 +126,8 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  schedule.sourceWorkspace.droneCapacity=droneCapacity
  options={...options,efficiencyResources:{...options.efficiencyResources,droneCapacity}}
  schedule.assumptions.runOrderSimulationMode='ideal'
- schedule.assumptions.idealRunOrderWakeOnly=!options.experimentalDisableIdealWake
+ schedule.assumptions.theoreticalMode=options.production?.expectationMode===true&&options.production.theoreticalMode===true
+ schedule.assumptions.idealRunOrderWakeOnly=!schedule.assumptions.theoreticalMode&&!options.experimentalDisableIdealWake
  if(options.production){
   const target=options.production.droneTarget??'gold'
   schedule.assumptions.droneRoom=target==='none'?null:options.production.droneRoomId??(target==='trading'?options.production.droneTradingRoomId??schedule.rooms.find(room=>room.type==='trading')?.roomId:schedule.rooms.find(room=>room.type==='manufacture'&&room.product===target)?.roomId)??null
@@ -176,7 +177,8 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    : schedule.assumptions.idleOperators??OPERATORS.map(op=>op.charId)
   if(runtimeConfig.fiammetta&&!hasOperatorSkill({operatorRecords},runtimeConfig.fiammetta.operatorId,'dorm_exchangeAp[000]'))runtimeConfig.fiammetta=undefined
   state=createRosterRuntime(runtimeConfig)
-  if(runtimeConfig.mowerDeviceTiming)diagnostic('MOWER_IO_CLOCK_MODEL','Mower 每房返回 0.5 秒及无临近任务时的通知检查 1 秒已纳入时间线；识别与其他点击耗时按 0 处理。已完成 run 后仍有同刻任务时，外层单调时钟推进 1 微秒；该适配步长不改任务时刻。')
+  if(runtimeConfig.mowerTheoreticalMode)diagnostic('THEORETICAL_EVENT_MODEL','理论期望模式按换班、心情、技能、生产和材料事件推进；安排即时完成，产物及时收取，无人机生成后连续加速所选设施，不模拟读房、页面等待及待办轮询。')
+  else if(runtimeConfig.mowerDeviceTiming)diagnostic('MOWER_IO_CLOCK_MODEL','Mower 每房返回 0.5 秒及无临近任务时的通知检查 1 秒已纳入时间线；识别与其他点击耗时按 0 处理。已完成 run 后仍有同刻任务时，外层单调时钟推进 1 微秒；该适配步长不改任务时刻。')
   if(runtimeConfig.mowerAlpha)diagnostic('MOWER_CONTINUOUS_MOOD_MODEL','本地心情及读取值使用连续数值，未复现游戏心情条像素与识别误差。关闭菲亚梅塔防呆时，接近满心情的微小缺额可能产生密集充能；模拟保留该策略，不添加额外冷却。')
   backups=createBackupPlanController(schedule,state,{canUseFiammetta:id=>hasOperatorSkill({operatorRecords},id,'dorm_exchangeAp[000]')})
   for(const d of backups.diagnostics)diagnostic(d.code,d.message)
@@ -425,10 +427,10 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   ...Object.fromEntries(Object.entries(frame.evaluations).map(([id,r])=>[id,r.efficiencyPercent])),
   ...(frame.config.facilities.recycle?{recycle:evaluateRecycleEfficiency(frame.config,{activeIds:frame.active}).efficiencyPercent}:{}),
  })
- production=options.production?createProductionTimeline(schedule,state,options.production,warmupHours,diagnostic,!!state.config.mowerSourcePlan):undefined
+ production=options.production?createProductionTimeline(schedule,state,options.production,warmupHours,diagnostic,!!state.config.mowerSourcePlan&&!state.config.mowerTheoreticalMode):undefined
  // Real facilities exist before native scheduling first reads a countdown.
  production?.settle(()=>frameAt(0))
- if(production&&state.config.mowerSourcePlan){
+ if(production&&state.config.mowerSourcePlan&&!state.config.mowerTheoreticalMode){
   Object.assign(rates,createMowerClueIO(state))
   diagnostic('MOWER_CLUE_OBSERVATION_MODEL','线索交流固定关闭，Party Time 为空，不执行线索待办及交流任务。')
   Object.assign(rates,createMowerProductionIO(state,production,()=>frameAt(0)))

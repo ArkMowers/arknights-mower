@@ -68,7 +68,7 @@ export function incomeRequest(plan, settings) {
     }
   }
   const requestedExpectation = settings.expectationMode ?? settings.seed === undefined
-  if (typeof requestedExpectation !== 'boolean') throw new Error('数学期望模式必须为开启或关闭')
+  if (typeof requestedExpectation !== 'boolean') throw new Error('理论期望模式必须为开启或关闭')
   const workspace = incomeWorkspace(plan)
   const target = droneFacilities(workspace).find((f) => f.roomId === settings.droneRoom)
   if (settings.droneRoom && !target) throw new Error('无人机目标不在本次排班中')
@@ -133,6 +133,7 @@ export function incomeRequest(plan, settings) {
           dailyExternalResources: normalizeDailyExternalResources(settings.dailyExternalResources),
           runOrderMode: 'ideal',
           expectationMode,
+          theoreticalMode: expectationMode,
           ...(expectationMode ? {} : { seed }),
           droneTarget: target?.target ?? 'none',
           droneRoomId: target?.roomId,

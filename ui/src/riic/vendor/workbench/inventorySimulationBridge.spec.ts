@@ -78,6 +78,7 @@ describe('inventory state across the workbench simulation bridge', () => {
     const ws = workspace("op_data.inventory_count('源石碎片') < 0")
     ws.mainPlan.facilities.room_1_1.level = 0
     ws.mainPlan.facilities.room_3_1.level = 3
+    ws.mainPlan.facilities.room_3_1.slots = [{ occupant: { kind: 'operator', operatorId: 'char_212_ansel' }, groupId: null, replacements: [] }]
     ws.mainPlan.facilities.room_3_1.product = 'orundum'
     const result = runScheduleSimulationBridge(ws, {
       sampleHours: 8, production: { droneTarget: 'none' }, productionWeights: { exp: 1, gold: 1, orders: 1, fragments: 1, orundum: 1 },
@@ -94,6 +95,7 @@ describe('inventory state across the workbench simulation bridge', () => {
       const ws = workspace("op_data.inventory_count('源石碎片') < 0")
       ws.mainPlan.facilities.room_1_1.level = 0
       ws.mainPlan.facilities.room_3_1.level = 3
+      ws.mainPlan.facilities.room_3_1.slots = [{ occupant: { kind: 'operator', operatorId: 'char_212_ansel' }, groupId: null, replacements: [] }]
       ws.mainPlan.facilities.room_3_1.product = product
       const result = runCalculationBridge(ws, {
         engine: 'simulation', simulationAssumptions: { idleOperators: [] }, simulationOptions: {

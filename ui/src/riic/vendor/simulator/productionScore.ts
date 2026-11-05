@@ -17,7 +17,11 @@ export function simulationOutputAmounts(report:ScheduleSimulationReport):Complet
  const virtualGold=orders.reduce((n,order)=>n+virtualGoldEquivalent(order),0)
  if(p.assumptions.outputMode!=='potential') {
   const received=p.sample.inflows,excluded=p.sample.warmupReceipts??{}
-  const amount=(kind:'exp'|'gold'|'lmd'|'fragment'|'orundum')=>(received[kind]??0)-(excluded[kind]??0)-(p.sample.external?.[kind]??0)
+  const amount=(kind:'exp'|'gold'|'lmd'|'fragment'|'orundum')=>{
+   const value=(received[kind]??0)-(excluded[kind]??0)-(p.sample.external?.[kind]??0)
+   // Subtracting independently accumulated receipts can introduce roundoff at zero.
+   return Math.abs(value)<1e-8?0:value
+  }
   return {exp:amount('exp'),gold:amount('gold'),orderLmd:amount('lmd'),
    fragments:amount('fragment'),orundum:amount('orundum'),virtualGold}
  }

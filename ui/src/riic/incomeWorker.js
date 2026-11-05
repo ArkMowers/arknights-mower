@@ -70,6 +70,7 @@ export function calculateIncome(plan, settings, onProgress) {
     stability: incomeStability(simulation),
     initialConditions: { fiammettaMorale: MOWER_FIAMMETTA_INITIAL_MORALE },
     modelProvenance: {
+      timingModel: production.assumptions.timingModel,
       calculatorBaseRevision: revision,
       calculatorSyncRevision: schedulingSync.calculatorRevision,
       mowerBaseReference: mowerReference,

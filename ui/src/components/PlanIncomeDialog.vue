@@ -554,7 +554,7 @@ onBeforeUnmount(() => {
                 v-model:value="settings.droneRoom"
                 :options="[{ label: '不使用无人机', value: '' }, ...targets]"
             /></n-form-item>
-            <n-form-item label="数学期望模式">
+            <n-form-item label="理论期望模式">
               <n-switch
                 :value="settings.expectationMode && !hasTailor"
                 :disabled="hasTailor"
@@ -574,7 +574,7 @@ onBeforeUnmount(() => {
                 hasTailor
                   ? '按当前概率随机抽单，使用指定种子复现。'
                   : settings.expectationMode
-                    ? '按有效工作时间累计订单、制造、材料消耗及其他产出的小数期望；无人机按生成的加速能力折算。换班与库存阈值耦合下为近似期望。'
+                    ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按生成能力连续加速。初始心情和轮换阶段仍会影响结果。'
                     : '按概率随机抽单，每次演算自动生成随机种子；结果保留本次种子以供复现。'
               }}
             </p>
@@ -786,9 +786,11 @@ onBeforeUnmount(() => {
               {{ state.input.settings.sampleDays }} 天，
               {{
                 state.result.simulationReport?.production?.assumptions.expectationMode
-                  ? state.result.simulationReport?.production?.expected
-                    ? '数学期望模式（连续产出）'
-                    : '数学期望模式（平均订单模型）'
+                  ? state.result.modelProvenance?.timingModel === 'theoretical-events-v1'
+                    ? '理论期望模式'
+                    : state.result.simulationReport?.production?.expected
+                      ? '数学期望模式（连续产出）'
+                      : '数学期望模式（平均订单模型）'
                   : '随机抽单模式'
               }}。 修改参数后需重新演算；再次导出使用本次结果。
             </p>

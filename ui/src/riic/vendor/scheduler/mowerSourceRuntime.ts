@@ -662,6 +662,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
  // Recovery reads can release a retained dependency in this same run.
  // Admit it before dispatch so a next-action query cannot reveal overdue work.
  if(!source.execution&&!source.phaseExecution&&resumeMowerFailedTasks(s,source.data,queue))delete source.runReturn
+ const theoretical=s.config.mowerTheoreticalMode===true
  const clock=s.config.mowerRunLoopClock
  if(clock&&(!Number.isSafeInteger(clock.minimumClockStepMicros)||clock.minimumClockStepMicros<1||!Number.isSafeInteger(clock.notificationSleepMicros)||clock.notificationSleepMicros<0))throw new Error('Invalid Mower outer clock')
  if(source.runReturn){
@@ -911,7 +912,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      return next
     }
     let next=resume()
-    const boundaryDelay=()=>next.done?0:next.value.nativeRunOrderIO?next.value.delayMicros:s.config.mowerDeviceTiming?.roomReturnMicros??0
+    const boundaryDelay=()=>next.done||theoretical?0:next.value.nativeRunOrderIO?next.value.delayMicros:s.config.mowerDeviceTiming?.roomReturnMicros??0
     let delay=boundaryDelay()
     if(!Number.isSafeInteger(delay)||delay<0)throw new Error('Invalid Mower device clock')
     while(!next.done&&delay===0){next=resume();delay=boundaryDelay()}
@@ -1000,7 +1001,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
       const [state,seam]=mowerRunOrderContext(s)
       const result=yield* bridgeMowerNativeIO(runDefaultTradeSegment(state,seam),request=>rates.mowerRunOrderIO!(request,s))
       tailShouldRun=result.tailShouldRun
-     }else if(Object.keys(getMowerSourceRuntime(s).data.runOrderRooms).length&&!s.diagnostics.some(d=>d.code==='mower-run-order-io-unavailable')){
+     }else if(!theoretical&&Object.keys(getMowerSourceRuntime(s).data.runOrderRooms).length&&!s.diagnostics.some(d=>d.code==='mower-run-order-io-unavailable')){
       s.diagnostics.push({code:'mower-run-order-io-unavailable',message:'Native run-order lifecycle observations are absent; full Mower parity is unavailable'})
      }
      if(tailShouldRun)scheduleFiaAndExhaust(s,rates)
@@ -1020,6 +1021,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     }
     source.runFlags!.planned=true
    }
+   if(theoretical){source.runFlags!.todoTask=true;source.runFlags!.collectNotification=true;return}
    yield* returnToInfraMain()
    let retryTimes=3
    while(!source.runFlags!.todoTask){
@@ -1106,6 +1108,11 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
    delete source.baseRunAborted
    source.runReturn={wakeMicros:toMowerMicros(s.time)+(clock?.minimumClockStepMicros??1),finishFallback:false}
    break
+  }
+  if(theoretical){
+   // Only retained tasks and measured mood/resource dependencies wake the next run.
+   source.runFlags={planned:false,todoTask:false,collectNotification:false}
+   continue
   }
   if(clock){
    // Source notification branch with no notification detected advances one second.

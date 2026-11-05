@@ -39,8 +39,9 @@ export interface RuntimeConfig {
   mowerInitialMorale?: { fromUpperLimit: boolean; explicitOperators: string[] }
   mowerSourcePlan?: Record<string,{agent:string;group:string;replacement:string[];groupBindings?:{group:string;replacement:string[]}[]}[]>
   mowerRecycleBuilt?: boolean
-  /** Disable order tasks only for the old no-wake comparison. */
+  /** Theoretical timing and explicit no-wake comparisons can disable native order tasks. */
   mowerRunOrderEnabled?: boolean
+  mowerTheoreticalMode?: boolean
   mowerJayeElite0?: boolean
   mowerDroneCountLimit?: number
   /** Source device back(0.5); absent for pure, frozen-clock decision fixtures. */

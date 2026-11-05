@@ -68,7 +68,10 @@ it('reports only sampling drone generation and overflow without emptying the clo
 it.each([0, 1])(
   'keeps drone conservation and ledger agreement with %s warmup days and manufacturing acceleration',
   (warmupDays) => {
-    const result = calculateIncome(plan, { ...settings(), warmupDays, droneRoom: 'room_1_1' })
+    const staffed = structuredClone(plan)
+    staffed.conf.workaholic = '芬'
+    staffed.plan1.room_1_1.plans = [{ agent: '芬', replacement: [] }]
+    const result = calculateIncome(staffed, { ...settings(), warmupDays, droneRoom: 'room_1_1' })
     expect(result.success).toBe(true)
     const drones = result.stability.drones
     expect(drones.consumed).toBeGreaterThan(0)

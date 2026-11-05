@@ -4,6 +4,7 @@ import { compileRosterSchedule } from './vendor/scheduler/compileRosterSchedule'
 import { compiledScheduleToRuntimeConfig } from './vendor/scheduler/scheduleAdapter'
 import { createRosterRuntime } from './vendor/scheduler/rosterRuntime'
 import { projectScheduleState } from './vendor/simulator/scheduleSimulation'
+import { evaluateRecycleEfficiency } from './vendor/engine/supportFacilitySkills'
 import { evaluateOperators } from './vendor/engine/operatorRules'
 import { createProductionTimeline } from './vendor/simulator/productionTimeline'
 import {
@@ -22,6 +23,7 @@ function fixture(
   product,
   {
     warmup = 0,
+    theoretical = false,
     stock = 0,
     drone = false,
     staffed = true,
@@ -57,7 +59,11 @@ function fixture(
   const state = createRosterRuntime(compiledScheduleToRuntimeConfig(schedule))
   const frame = () => {
     const config = projectScheduleState(schedule, state),
-      active = new Set(Object.keys(state.morale)),
+      active = new Set(
+        Object.entries(state.morale)
+          .filter(([, mood]) => mood > 0)
+          .map(([id]) => id)
+      ),
       morale = new Map(Object.entries(state.morale))
     return {
       time: state.time,
@@ -77,6 +83,7 @@ function fixture(
     state,
     {
       expectationMode: expected,
+      theoreticalMode: theoretical,
       allowMaterialDebt: debt,
       dailyExternalResources: external,
       fragmentFormulaByRoom: { [roomId]: formula },
@@ -94,7 +101,7 @@ function fixture(
     },
     warmup,
     () => {},
-    true
+    !theoretical
   )
   production.settle(frame)
   function advance(hours) {
@@ -122,7 +129,7 @@ function fixture(
       inputs: { options: {} }
     }
   }
-  return { advance, report, production, roomId, frame }
+  return { advance, report, production, roomId, frame, state }
 }
 
 it.each([
@@ -381,3 +388,132 @@ it('integrates Device recipe costs with fractional shard production', () => {
   })
   expect(report.production.expected.costs.orirock ?? 0).toBe(0)
 })
+
+it('keeps zero received production at zero after excluding fractional external inflows', () => {
+  const test = fixture('exp', { finite: true, expected: false, staffed: false })
+  test.advance(0.5)
+  const report = test.report()
+  let total = 10000
+  let external = 0
+  for (let n = 0; n < 1000; n++) {
+    total += 0.3
+    external += 0.3
+  }
+  report.production.sample.inflows.lmd = total - 10000
+  report.production.sample.external.lmd = external
+  expect(simulationOutputAmounts(report).orderLmd).toBe(0)
+  expect(scoreSimulationProduction(report).total).toBe(0)
+})
+
+it.each([
+  ['exp', 'exp', 1000 / 3],
+  ['gold', 'gold', 60 / 72],
+  ['money', 'orderLmd', (60 / 203.4) * 1450]
+])(
+  'keeps the theoretical %s rate exact across production boundaries with continuous drones',
+  (product, key, naturalRate) => {
+    const test = fixture(product, { theoretical: true, drone: true, stock: 250, warmup: 0.7 })
+    test.advance(5.4)
+    const report = test.report(),
+      sampledHours = 4.7
+    // Base charging is ten drones/hour, each supplying three base minutes.
+    expect(simulationOutputAmounts(report)[key]).toBeCloseTo(naturalRate * 1.5 * sampledHours, 7)
+    expect(report.production.assumptions.timingModel).toBe('theoretical-events-v1')
+    expect(report.production.sampleDrones.generated).toBeCloseTo(10 * sampledHours, 8)
+    expect(report.production.sampleDrones.consumed).toBeCloseTo(10 * sampledHours, 8)
+    expect(report.production.sampleDrones.closing).toBeCloseTo(250, 8)
+    expect(report.production.sampleDrones.overflow).toBeCloseTo(0, 8)
+  }
+)
+
+it.each([false, true])(
+  'stops physical production in empty work facilities while retaining base charging (theoretical=%s)',
+  (theoretical) => {
+    for (const product of ['exp', 'money']) {
+      const test = fixture(product, {
+        theoretical,
+        expected: theoretical,
+        staffed: false,
+        drone: true
+      })
+      test.advance(6)
+      const report = test.report()
+      expect(simulationOutputAmounts(report)).toMatchObject({ exp: 0, orderLmd: 0 })
+      expect(report.production.sampleDrones.generated).toBeCloseTo(60, 9)
+      if (theoretical) expect(report.production.expected.droneAllocated).toBe(0)
+      expect(report.production.sample.completed.exp).toBe(0)
+      expect(report.production.sample.completed.orderLmd).toBe(0)
+    }
+  }
+)
+
+it('resumes theoretical finite production at its external material deadline without valuing the supply', () => {
+  const test = fixture('fragment', {
+    theoretical: true,
+    finite: true,
+    external: { lmd: 38400, orirock: 48 }
+  })
+  test.advance(2.5)
+  const report = test.report()
+  expect(simulationOutputAmounts(report).fragments).toBeCloseTo(1.5, 8)
+  expect(simulationOutputAmounts(report).orderLmd).toBe(0)
+  expect(report.production.sample.external.lmd).toBeCloseTo(4000, 8)
+})
+
+it.each([false, true])(
+  'pauses and resumes existing manufacture and trade work when staffing changes (theoretical=%s)',
+  (theoretical) => {
+    for (const product of ['exp', 'money']) {
+      const test = fixture(product, { theoretical, expected: theoretical })
+      test.advance(0.5)
+      const row = () =>
+        product === 'exp'
+          ? test.report().production.manufacturing[0]
+          : test.report().production.trading[0]
+      const remaining = row().remainingBaseMinutes
+      const slot = test.roomId + '_0',
+        operator = test.state.occupants[slot]
+      delete test.state.occupants[slot]
+      test.production.settle(test.frame)
+      test.advance(3)
+      expect(row().remainingBaseMinutes).toBeCloseTo(remaining, 9)
+      test.state.occupants[slot] = operator
+      test.production.settle(test.frame)
+      test.advance(remaining / 60)
+      expect(product === 'exp' ? row().completedItems : row().completedOrders).toBe(1)
+    }
+  }
+)
+
+it('keeps an empty level-three recycler at 120% and adds one percentage point per awake occupant', () => {
+  const config = createDefaultConfig()
+  config.facilities.recycle = 3
+  config.facilityOperatorIds.recycle = []
+  expect(evaluateRecycleEfficiency(config).efficiencyPercent).toBe(120)
+  config.facilityOperatorIds.recycle = ['char_501_durin']
+  expect(evaluateRecycleEfficiency(config).efficiencyPercent).toBe(121)
+  const test = fixture('exp', { theoretical: true, staffed: false, recycle: true })
+  test.advance(1)
+  expect(test.report().production.expected.recycleCount).toBeCloseTo(1.2 / 48, 9)
+})
+
+it.each([false, true])(
+  'retains base manufacture and trade work for staffed zero-mood operators (theoretical=%s)',
+  (theoretical) => {
+    for (const [product, key, hourly] of [
+      ['exp', 'exp', 1000 / 3],
+      ['money', 'orderLmd', (1450 * 60) / 203.4]
+    ]) {
+      const test = fixture(product, { theoretical })
+      for (const id of Object.keys(test.state.morale)) test.state.morale[id] = 0
+      test.production.settle(test.frame)
+      const frame = test.frame(),
+        room = frame.config.rooms.find((room) => room.id === test.roomId)
+      expect(
+        evaluateOperators(room, frame.config, frame.active, frame.morale).efficiencyPercent
+      ).toBe(100)
+      test.advance(0.5)
+      expect(simulationOutputAmounts(test.report())[key]).toBeCloseTo(hourly / 2, 8)
+    }
+  }
+)

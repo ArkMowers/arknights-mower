@@ -14,6 +14,7 @@ function workspace(product:'exp'|'gold'|'fragment'|'money'|'orundum',tequila=fal
  const ws=createDefaultWorkspace()
  for(const room of Object.values(ws.mainPlan.facilities)){room.level=0;room.slots=[]}
  const room=ws.mainPlan.facilities[product==='money'||product==='orundum'?'room_3_1':'room_1_1']
+ room.slots=[{occupant:{kind:'operator',operatorId:'char_501_durin'},groupId:null,replacements:[]}]
  room.level=product==='money'&&!tequila?1:3;room.product=product
  if(tequila)room.slots=[{occupant:{kind:'operator',operatorId:'char_486_takila'},groupId:null,replacements:[]}]
  return ws

@@ -179,7 +179,14 @@ it('defaults new requests and Worker results to expectation mode and keeps old s
   expect(result.simulationReport.production.assumptions.expectationMode).toBe(true)
   expect(result.orderDistribution.expected).toBe(true)
   const lines = incomeReportLines(result, settings(), plan(), '排班').join('\n')
-  expect(lines).toContain('数学期望模式（连续产出）')
+  expect(lines).toContain('理论期望模式')
+  expect(result.modelProvenance.timingModel).toBe('theoretical-events-v1')
+  const historical = structuredClone(result)
+  delete historical.modelProvenance.timingModel
+  delete historical.simulationReport.production.assumptions.timingModel
+  expect(incomeReportLines(historical, settings(), plan(), '旧排班').join('\n')).toContain(
+    '数学期望模式（连续产出）'
+  )
   expect(lines).not.toContain('随机种子')
   const oldResult = structuredClone(result)
   delete oldResult.simulationReport.production.assumptions.expectationMode

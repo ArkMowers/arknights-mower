@@ -144,3 +144,58 @@ it(
   },
   benchmark ? 180000 : 60000
 )
+
+it('shares position accessors while keeping positions and the extracted projection setter independent', () => {
+  const a = new MowerOperatorState({ name: 'A', currentRoom: 'room_1_1', currentIndex: 0 })
+  const b = new MowerOperatorState({ name: 'B', currentRoom: 'room_2_1', currentIndex: 1 })
+  for (const key of ['currentRoom', 'currentIndex']) {
+    expect(Object.keys(a)).toContain(key)
+    expect(Object.getOwnPropertyDescriptor(a, key).get).toBe(
+      Object.getOwnPropertyDescriptor(b, key).get
+    )
+    expect(Object.getOwnPropertyDescriptor(a, key).set).toBe(
+      Object.getOwnPropertyDescriptor(b, key).set
+    )
+  }
+  const project = a.setProjectedPosition
+  project('dormitory_1', 2)
+  expect(a.currentRoom).toBe('dormitory_1')
+  expect(a.currentIndex).toBe(2)
+  expect(b.currentRoom).toBe('room_2_1')
+  expect(b.currentIndex).toBe(1)
+})
+
+const timingBenchmark = process.env.MOWER_INCOME_TIMING_BENCHMARK === '1'
+it.skipIf(!timingBenchmark)(
+  'compares native and theoretical timing with the same supplied plan and horizon',
+  () => {
+    for (const mode of ['native', 'theoretical', 'theoretical', 'native']) {
+      const request = incomeRequest(plan, {
+        ...defaultIncomeSettings(),
+        operatorMode: 'maximum',
+        inventorySource: 'manual',
+        finiteInventory: false,
+        weightMode: 'custom',
+        warmupDays: 0,
+        sampleDays: 1,
+        droneRoom: 'room_3_3'
+      })
+      request.options.simulationOptions.production.theoreticalMode = mode === 'theoretical'
+      const start = performance.now()
+      const result = runCalculationBridge(request.workspace, request.options)
+      const milliseconds = performance.now() - start
+      expect(result.success, result.error).toBe(true)
+      const report = result.simulationReport
+      expect(report.observedHours).toBeCloseTo(24, 8)
+      expect(report.production.assumptions.timingModel).toBe(
+        mode === 'theoretical' ? 'theoretical-events-v1' : 'native-io-v1'
+      )
+      if (process.env.MOWER_INCOME_BENCHMARK_LOG)
+        appendFileSync(
+          process.env.MOWER_INCOME_BENCHMARK_LOG,
+          JSON.stringify({ mode, hours: 24, milliseconds, summary: result.report.summary }) + '\n'
+        )
+    }
+  },
+  180000
+)
