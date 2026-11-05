@@ -153,49 +153,6 @@ def write_json(path, value, *, indent=None, sync=False):
         Path(temporary).unlink(missing_ok=True)
 
 
-def scrub_job_token(path):
-    """Remove the retired credential field without discarding job metadata."""
-    path = Path(path)
-    if path.is_symlink():
-        raise ValueError("更新任务记录不能是符号链接")
-    try:
-        job = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return False
-    if not isinstance(job, dict):
-        raise ValueError("历史更新任务记录格式不正确")
-    if "github_token" not in job:
-        return False
-    del job["github_token"]
-    write_json(path, job)
-    return True
-
-
-def scrub_update_job_tokens(settings_file):
-    """Clean owned job records across installations in the shared data root."""
-    cache = Path(settings_file).parent.parent / "tmp" / "updates"
-    if cache.is_symlink() or not cache.is_dir():
-        return 0
-    count = 0
-    failed = False
-    for installation in cache.iterdir():
-        if installation.is_symlink() or not installation.is_dir():
-            continue
-        jobs = installation / "jobs"
-        if jobs.is_symlink() or not jobs.is_dir():
-            continue
-        for work in jobs.iterdir():
-            if work.is_symlink() or not work.is_dir():
-                continue
-            try:
-                count += scrub_job_token(work / "job.json")
-            except (OSError, ValueError):
-                failed = True
-    if failed:
-        raise OSError("无法清理历史更新任务中的 GitHub Token，请检查更新缓存")
-    return count
-
-
 def replace_with_retry(source, destination):
     """Atomically replace ``destination``, tolerating transient Windows locks.
 

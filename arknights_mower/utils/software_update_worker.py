@@ -36,7 +36,6 @@ if __package__:
         process_alive,
         read_json,
         registration_key,
-        scrub_job_token,
         submission_lock,
         task_stop_requested,
         utf8_output,
@@ -55,7 +54,6 @@ else:
         process_alive,
         read_json,
         registration_key,
-        scrub_job_token,
         submission_lock,
         task_stop_requested,
         utf8_output,
@@ -653,7 +651,6 @@ def apply_ota_archive(
 class Worker:
     def __init__(self, job_path):
         self.job_path = Path(job_path)
-        scrub_job_token(self.job_path)
         self.job = read_json(self.job_path)
         self.work = self.job_path.parent
         self.state = Path(self.job["state_dir"])
