@@ -90,6 +90,47 @@ function mount(provide, data, onUpdate) {
 }
 
 describe('副表绑组心情选择', () => {
+  it.each([false, true])('加工站合成计划条件可编辑和保存（救急=%s）', async (rescue) => {
+    const { provide } = setup(rescue)
+    const update = vi.fn()
+    const expression = "op_data.facility_has_crafting_plan('factory')"
+    const state = mount(provide, expression, update)
+    expect(state.op_type).toBe('facility')
+    expect(state.facility_select_options).toContainEqual({ label: '加工站', value: 'factory' })
+    expect(state.facility_status_options).toContainEqual({
+      label: '是否存在合成计划（当前可合成）',
+      value: 'crafting_plan'
+    })
+    expect(state.op_data.status).toBe('crafting_plan')
+    state.update_facility('central')
+    await nextTick()
+    expect(update).toHaveBeenLastCalledWith("op_data.facility_operator_count('central')")
+    expect(state.facility_status_options.some(({ value }) => value === 'crafting_plan')).toBe(false)
+    state.update_facility('factory')
+    await nextTick()
+    state.update_facility_status('crafting_plan')
+    await nextTick()
+    expect(state.data).toBe(expression)
+    const fresh = mount(provide, 'True', update)
+    fresh.set_op_type('facility')
+    await nextTick()
+    fresh.update_facility('factory')
+    await nextTick()
+    fresh.update_facility_status('crafting_plan')
+    await nextTick()
+    expect(update).toHaveBeenLastCalledWith(expression)
+    const html = await renderToString(provide(createSSRApp(TriggerString, { data: expression })))
+    expect(html).toContain('是否存在合成计划（当前可合成）')
+  })
+
+  it('切换到加工站时清除其他设施专用状态', async () => {
+    const { provide } = setup()
+    const state = mount(provide, "op_data.facility_has_mastery_plan('train')")
+    state.update_facility('factory')
+    await nextTick()
+    expect(state.data).toBe("op_data.facility_operator_count('factory')")
+  })
+
   it('训练室保护条件可选择并在切换到其他设施时恢复合法选项', async () => {
     const { provide } = setup()
     const state = mount(provide, "op_data.facility_is_protected('train')")

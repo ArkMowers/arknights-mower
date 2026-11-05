@@ -432,6 +432,7 @@ class Operators:
                 "facility_product_count",
                 "facility_product_type_count",
                 "facility_has_mastery_plan",
+                "facility_has_crafting_plan",
                 "facility_is_training",
                 "facility_is_protected",
                 "major_maintenance_remaining_hours",
@@ -1906,6 +1907,14 @@ class Operators:
         from arknights_mower.utils.mastery_db import get_reconcile_plans
 
         return bool(get_reconcile_plans())
+
+    def facility_has_crafting_plan(self, room: str) -> bool:
+        """复用本地养成规划，判断加工站是否有当前可合成的内容。"""
+        if room != "factory":
+            raise ValueError(f"不支持的加工站位置：{room}")
+        from arknights_mower.utils.workshop_automation import calculate_workshop_plan
+
+        return calculate_workshop_plan(config.conf).recipe is not None
 
     def facility_is_training(self, room: str) -> bool:
         """复用专精计划状态，判断训练室是否正在训练。"""

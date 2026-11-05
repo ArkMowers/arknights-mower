@@ -61,6 +61,7 @@ interface BackupPlan {
   usesMajorMaintenance:boolean
   ownMajorMaintenance:boolean
   maintenanceGroups:string[]
+  usesCraftingPlan:boolean
   usesMasteryPlan:boolean
   usesInventory:boolean
   usesFacilityProduct:boolean
@@ -88,6 +89,7 @@ function parsePlans(workspace: RosterWorkspace, participants: Set<string>, diagn
         observedOperatorDependenciesOnly: ownCondition.observedOperatorDependenciesOnly && groupConditionsForPlan.every(condition=>condition.observedOperatorDependenciesOnly),
         usesCurrentMood: ownCondition.usesCurrentMood || groupConditionsForPlan.some(condition=>condition.usesCurrentMood),
         usesMajorMaintenance: ownCondition.usesMajorMaintenance || groupConditionsForPlan.some(condition=>condition.usesMajorMaintenance),
+        usesCraftingPlan: ownCondition.usesCraftingPlan || groupConditionsForPlan.some(condition=>condition.usesCraftingPlan),
         usesMasteryPlan: ownCondition.usesMasteryPlan || groupConditionsForPlan.some(condition=>condition.usesMasteryPlan),
         usesInventory: ownCondition.usesInventory || groupConditionsForPlan.some(condition=>condition.usesInventory),
         usesFacilityProduct: ownCondition.usesFacilityProduct || groupConditionsForPlan.some(condition=>condition.usesFacilityProduct),
@@ -99,12 +101,13 @@ function parsePlans(workspace: RosterWorkspace, participants: Set<string>, diagn
       const maintenanceGroups = groupIds.filter(id=>groupConditions.get(id)?.usesMajorMaintenance)
       const usesCurrentMood = compiledCondition.usesCurrentMood
       const usesMajorMaintenance = compiledCondition.usesMajorMaintenance
+      const usesCraftingPlan = compiledCondition.usesCraftingPlan
       const usesMasteryPlan = compiledCondition.usesMasteryPlan
       const usesInventory = compiledCondition.usesInventory
       const usesFacilityProduct = compiledCondition.usesFacilityProduct
       if (compiledCondition.skipped) {
         diagnostics.push({ code: 'BACKUP_EXTERNAL_CONDITION_SKIPPED', message: `副表 ${name}（#${index + 1}）：跳过依赖 ${compiledCondition.skipped} 的整张副表；未执行其岗位、策略与任务` })
-        return { ...selectionFields, name, timing: 'AFTER_PLANNING' as const, exitTiming: 'AFTER_PLANNING' as const, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, ownMajorMaintenance, maintenanceGroups, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms: {}, slots: [], products: {}, task: {},groupTasks:[],conf:{} }
+        return { ...selectionFields, name, timing: 'AFTER_PLANNING' as const, exitTiming: 'AFTER_PLANNING' as const, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, ownMajorMaintenance, maintenanceGroups, usesCraftingPlan, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms: {}, slots: [], products: {}, task: {},groupTasks:[],conf:{} }
       }
       const timing = typeof raw.trigger_timing === 'string' ? raw.trigger_timing.toUpperCase() : ''
       const slots: BackupPlan['slots'] = [], task: BackupPlan['task'] = {}, products: BackupPlan['products'] = {}, rooms: BackupPlan['rooms'] = {}
@@ -141,7 +144,7 @@ function parsePlans(workspace: RosterWorkspace, participants: Set<string>, diagn
       }
       const entry = timing in BACKUP_TIMINGS ? timing as BackupTiming : 'AFTER_PLANNING'
       const exit = typeof raw.exit_trigger_timing === 'string' && raw.exit_trigger_timing ? raw.exit_trigger_timing.toUpperCase() : undefined
-      return { ...selectionFields, name, timing: entry, exitTiming: exit ? exit in BACKUP_TIMINGS ? exit as BackupTiming : 'AFTER_PLANNING' : entry, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, ownMajorMaintenance, maintenanceGroups, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms, slots, products, task,groupTasks:readMowerBackupGroupTasks(raw.group_tasks),conf:record(raw.conf)?raw.conf:{} }
+      return { ...selectionFields, name, timing: entry, exitTiming: exit ? exit in BACKUP_TIMINGS ? exit as BackupTiming : 'AFTER_PLANNING' : entry, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, ownMajorMaintenance, maintenanceGroups, usesCraftingPlan, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms, slots, products, task,groupTasks:readMowerBackupGroupTasks(raw.group_tasks),conf:record(raw.conf)?raw.conf:{} }
     } catch (error) { return fail(`${name}：${error instanceof Error ? error.message : String(error)}`) }
   })
 }
@@ -157,6 +160,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   const participants = new Set<string>(), plans = parsePlans(base.sourceWorkspace, participants, diagnostics)
   if(plans.some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours===undefined)diagnostics.push({code:'MOWER_MAINTENANCE_ASSUMPTION',message:'未提供维护时间，本次模拟没有停服窗口'})
   if(plans.some(plan=>plan.usesMasteryPlan))diagnostics.push({code:'MOWER_MASTERY_PLAN_ASSUMPTION',message:'本次模拟固定为无未完成的训练计划且未在训练、训练室不受保护，不模拟训练进度、保护变化或计划完成时刻'})
+  if(plans.some(plan=>plan.usesCraftingPlan))diagnostics.push({code:'MOWER_CRAFTING_PLAN_ASSUMPTION',message:'本次模拟固定为无自动养成合成计划，不模拟合成内容或材料准备进度'})
   const groups = readBackupGroups(base.sourceWorkspace).filter(group=>group.id!=='default').map(group=>{const names=new Set<string>(),compiled=compileBackupExpression(group.trigger,names);names.forEach(name=>participants.add(name));return {...group,...compiled,conditionNames:[...names]}})
   const groupCatalog = readBackupGroups(base.sourceWorkspace)
   let activeGroup:BackupGroupState = 'default'
