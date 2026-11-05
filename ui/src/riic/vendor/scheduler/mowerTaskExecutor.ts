@@ -5,6 +5,7 @@ import {MowerRoomArrangementDeferred} from './mowerNativeErrors'
 import {MOWER_TASK_TYPES as T,MowerTask,isMowerRunOrderTask,type MowerTaskQueue,type MowerTaskPlan} from './mowerTaskQueue'
 export interface MowerBackupResult {changed:boolean;generated:MowerTask[]}
 export interface MowerTaskExecutionHooks {
+ currentRoom?:(name:string)=>string|undefined
  /** Enable the alpha complete-arrangement boundary in the application adapter. */
  protectShift?:boolean
  alpha?:boolean
@@ -47,6 +48,18 @@ function enterPhase(phase:'BEFORE_WORK'|'BEFORE_DORM',task:MowerTask,queue:Mower
 }
 /** Returns false only for a deferred original task. Its identity and remaining plan survive. */
 export interface MowerRoomReturn {room:string;delayMicros:number;nativeRunOrderIO?:true;returnsInfraMain?:true}
+/** Refill pending source workplaces before transferring their occupants. */
+export function mowerArrangementRoomOrder(plan:MowerTaskPlan,currentRoom:(name:string)=>string|undefined):string[]{
+ const work=Object.keys(plan).filter(room=>!room.startsWith('dormitory_'))
+ const dependencies=new Map(work.map(room=>[room,new Set(plan[room]!.map(currentRoom).filter((source):source is string=>!!source&&source!==room&&work.includes(source))) ]))
+ const pending=[...work],ordered:string[]=[]
+ while(pending.length){
+  const index=pending.findIndex(room=>!pending.some(source=>dependencies.get(room)!.has(source)))
+  if(index<0){ordered.push(...pending);break}
+  ordered.push(pending.splice(index,1)[0]!)
+ }
+ return [...ordered,...Object.keys(plan).filter(room=>room.startsWith('dormitory_')).sort((a,b)=>Number(a.split('_')[1])-Number(b.split('_')[1]))]
+}
 /** Device back(0.5) is a source I/O boundary, including an exact Current no-op. */
 export function* executeMowerTaskArrangementSteps(task:MowerTask,queue:MowerTaskQueue,hooks:MowerTaskExecutionHooks):Generator<MowerRoomReturn,boolean,void> {
  if(task.type===T.RUN_ORDER)throw new Error('理想跑单任务仅用于唤醒，不支持实体换人')
@@ -59,7 +72,7 @@ export function* executeMowerTaskArrangementSteps(task:MowerTask,queue:MowerTask
  try {
  let getTime=task.type===T.SHIFT_OFF||protectedShift&&(hooks.alpha||Object.keys(task.plan).some(room=>room.startsWith('dormitory_')))||!!hooks.alpha&&[T.SELF_CORRECTION,T.RE_ORDER,T.FILL_DORM,T.NOT_SPECIFIC].includes(task.type)
  if(task.type===T.RELEASE_DORM){if(!hooks.prepareRelease)throw new Error('Mower release requires the identity and mood-limit validation adapter');getTime=hooks.prepareRelease(task)}
- const rooms=Object.keys(task.plan).sort((a,b)=>Number(a.startsWith('dormitory_'))-Number(b.startsWith('dormitory_'))||(a.startsWith('dormitory_')&&b.startsWith('dormitory_')?Number(a.split('_')[1])-Number(b.split('_')[1]):0))
+ const rooms=mowerArrangementRoomOrder(task.plan,hooks.currentRoom??(()=>undefined))
  let beforeWork=false,beforeDorm=false;const restoration:MowerTaskPlan={}
  for(const room of rooms){
   if(!room.startsWith('dormitory_')&&!beforeWork){beforeWork=true;if(enterPhase('BEFORE_WORK',task,queue,hooks)){if(!Object.keys(task.plan).length)queue.consume(task);return false}}

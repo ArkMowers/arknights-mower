@@ -309,6 +309,35 @@ def _merge_plan_overlay(plan: dict, overlay: dict, op_data: Operators) -> None:
                 target[index] = name
 
 
+def _arrangement_room_order(plan: dict, op_data: Operators) -> list[str]:
+    """Refill pending source workplaces before transferring their occupants."""
+    work = [room for room in plan if not room.startswith("dormitory_")]
+    dependencies = {room: set() for room in work}
+    for room in work:
+        for name in plan[room]:
+            operator = op_data.operators.get(name)
+            source = operator.current_room if operator is not None else ""
+            if source != room and source in dependencies:
+                dependencies[room].add(source)
+    pending = list(work)
+    ordered = []
+    while pending:
+        ready = next(
+            (room for room in pending if not dependencies[room].intersection(pending)),
+            None,
+        )
+        if ready is None:
+            # Cyclic exchanges still complete in the original stable order.
+            ordered.extend(pending)
+            break
+        pending.remove(ready)
+        ordered.append(ready)
+    return ordered + sorted(
+        (room for room in plan if room.startswith("dormitory_")),
+        key=lambda room: int(room.split("_")[1]),
+    )
+
+
 def _assigned_operator_names(plan: dict) -> set[str]:
     return {
         name
@@ -16966,7 +16995,7 @@ class BaseSchedulerSolver(
             for dorm_room in list(plan):
                 if dorm_room.startswith("dorm"):
                     self.preserve_resting_crafters(plan[dorm_room], dorm_room)
-        rooms = list(plan.keys())
+        rooms = _arrangement_room_order(plan, self.op_data)
         # 救急跑单失败沿用换入意图；普通跑单由实测原班补偿接续。
         original_plan = (
             copy.deepcopy(plan)
@@ -16974,13 +17003,6 @@ class BaseSchedulerSolver(
             else None
         )
         new_plan = {}
-        # 优先替换工作站再替换宿舍
-        rooms.sort(
-            key=lambda x: (
-                x.startswith("dormitory_"),
-                int(x.split("_")[1]) if x.startswith("dormitory_") else 0,
-            )
-        )
         from arknights_mower.solvers.mastery_support_runtime import (
             central_training_occupants,
             refresh_after_central_change,

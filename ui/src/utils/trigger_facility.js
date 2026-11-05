@@ -7,6 +7,7 @@ const facilityStatusMethods = {
   product: 'facility_product',
   operator_count: 'facility_operator_count',
   mastery_plan: 'facility_has_mastery_plan',
+  crafting_plan: 'facility_has_crafting_plan',
   training: 'facility_is_training',
   protected: 'facility_is_protected'
 }
@@ -29,7 +30,7 @@ export function facility_expression(room, status = 'product') {
 
 export function parse_facility_expression(value) {
   const match = value.match(
-    /^op_data\.(facility_type|facility_product|facility_operator_count|facility_has_mastery_plan|facility_is_training|facility_is_protected)\('(.+)'\)$/
+    /^op_data\.(facility_type|facility_product|facility_operator_count|facility_has_mastery_plan|facility_has_crafting_plan|facility_is_training|facility_is_protected)\('(.+)'\)$/
   )
   if (!match) return undefined
   return {

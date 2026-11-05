@@ -191,7 +191,7 @@ def test_saved_function_arithmetic_selects_group_and_backup(
     assert selected.conditions == [True]
 
 
-def test_runtime_retains_group_and_exclusive_then_falls_back(monkeypatch):
+def test_runtime_uses_group_priority_retains_exclusive_then_falls_back(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     data = Operators(build_global_plan(plan_model=model()))
     selected = data.evaluate_backup_selection()
@@ -201,7 +201,7 @@ def test_runtime_retains_group_and_exclusive_then_falls_back(monkeypatch):
     data.swap_plan([False, False, True, False, True, False], backup_group="a")
     assert data.evaluate_backup_selection().conditions[4]
     data.swap_plan([False, False, False, False, False, True], backup_group="b")
-    assert data.evaluate_backup_selection().group_id == "b"
+    assert data.evaluate_backup_selection().group_id == "a"
     data.backup_groups[-1]["trigger"] = condition("False")
     assert data.evaluate_backup_selection().group_id == "a"
     data.backup_groups[1]["trigger"] = condition("False")
@@ -216,7 +216,7 @@ def test_empty_active_group_is_not_inferred_from_backup_flags(monkeypatch):
     saved.backup_plans = []
     data = Operators(build_global_plan(plan_model=saved))
     data.swap_plan([], backup_group="b")
-    assert data.evaluate_backup_selection().group_id == "b"
+    assert data.evaluate_backup_selection().group_id == "a"
     projected = data.project_arrangements([])
     projected.backup_group = "a"
     assert data.backup_group == "b"
@@ -231,7 +231,6 @@ def test_validation_includes_retained_exclusive_without_default_globals(monkeypa
     assert set(states) == {
         (False, False, True, True, False, False),
         (False, False, True, False, True, False),
-        (False, False, False, False, False, True),
     }
 
 

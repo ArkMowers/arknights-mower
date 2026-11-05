@@ -342,7 +342,7 @@ describe('depot derived item trends', () => {
     }
   })
 
-  it('settles experience and lmd in the page overview, and keeps exp-only in the detail', async () => {
+  it('settles experience and lmd in the page overview and shows the exp cost in the detail', async () => {
     prepareDerivedItems()
     state.depot.report.depot[0]['B 作战记录']['全部经验（计算）'] = { number: 2811086, sort: 100 }
     state.depot.report.depot[0]['A 常用资源']['龙门币'] = { number: 3000000, sort: 1 }
@@ -368,6 +368,9 @@ describe('depot derived item trends', () => {
     expect(drawer.props.title).toBe('全部经验（计算）')
     const detailText = content(drawer)
     expect(detailText).toContain('预计可培养（仅按经验）')
+    // 详情页右上角同样给预计消耗，而不是库存里的经验总量。
+    expect(detailText).toContain('预计消耗 2,420,000经验')
+    expect(detailText).not.toContain('2,811,086 经验')
     expect(detailText).toContain('四星')
     expect(detailText).not.toContain('预计可培养（仅按龙门币）')
     expect(detailText).toContain('统计时间跨度')
@@ -400,6 +403,11 @@ describe('depot derived item trends', () => {
     expect(content(overview)).toContain('精二 40')
     expect(content(overview)).not.toContain('精二 90')
     expect(content(overview)).toContain('预计消耗 2,672,296经验/2,909,566龙门币')
+
+    // 详情页的预计消耗同样跟随切换后的目标。
+    node('div', (item) => item.props.class?.includes('asset-card-exp')).props.onClick()
+    await settle()
+    expect(content(node('drawer-content'))).toContain('预计消耗 2,731,127经验')
   })
 
   it('shows an lmd-only capacity list in the lmd detail', async () => {
@@ -418,6 +426,9 @@ describe('depot derived item trends', () => {
     expect(drawer.props.title).toBe('龙门币')
     const text = content(drawer)
     expect(text).toContain('预计可培养（仅按龙门币）')
+    // 详情页右上角同样给预计消耗，而不是库存里的龙门币总量。
+    expect(text).toContain('预计消耗 2,892,018龙门币')
+    expect(text).not.toContain('3,000,000 龙门币')
     expect(text).toContain('3,000,000')
     expect(text).toContain('六星')
     expect(text).not.toContain('预计可培养（仅按经验）')
@@ -442,6 +453,7 @@ describe('depot derived item trends', () => {
     )
     // 数量为 0 时显示 0，消耗也随之为 0。
     expect(overviewText).toContain('预计消耗 0经验/0龙门币')
+    expect(content(node('drawer-content'))).toContain('预计消耗 0经验')
   })
 
   it('shows exhausted experience as zero and omits an unrelated partial scan', async () => {

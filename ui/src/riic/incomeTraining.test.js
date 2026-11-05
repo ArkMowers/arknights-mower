@@ -4,6 +4,18 @@ import { defaultIncomeSettings } from './income'
 import { calculateIncome } from './incomeWorker'
 import { compileBackupExpression } from './vendor/scheduler/backupExpression'
 
+it.each([
+  ["op_data.facility_has_crafting_plan('factory') == True", false],
+  ["op_data.facility_has_crafting_plan('factory') == False", true],
+  ["not op_data.facility_has_crafting_plan('factory')", true],
+  ["op_data.facility_has_crafting_plan('factory') or True", true],
+  ["op_data.facility_has_crafting_plan('factory') and True", false]
+])('keeps the no-crafting simulation assumption in %s', (source, expected) => {
+  const compiled = compileBackupExpression(source, new Set())
+  expect(compiled.usesCraftingPlan).toBe(true)
+  expect(compiled.evaluate({})).toBe(expected)
+})
+
 it('calculates the imported no-training schedule and retains its training-room staffing', () => {
   const original = structuredClone(plan)
   const result = calculateIncome(plan, {
@@ -32,6 +44,11 @@ it('calculates the imported no-training schedule and retains its training-room s
 }, 30000)
 
 it.each([
+  "op_data.facility_has_crafting_plan('train')",
+  "op_data.facility_has_crafting_plan('room_1_1')",
+  'op_data.facility_has_crafting_plan()',
+  'op_data.facility_has_crafting_plan(1)',
+  "op_data.facility_has_crafting_plan('factory', 'factory')",
   "op_data.facility_is_protected('room_1_1')",
   'op_data.facility_is_protected()',
   'op_data.facility_is_protected(1)',
@@ -48,6 +65,33 @@ it.each([
 ])('rejects invalid training query %s', (source) => {
   expect(() => compileBackupExpression(source, new Set())).toThrow('副表：')
 })
+
+it('calculates a backup with no automatic growth crafting and reports the assumption', () => {
+  const source = structuredClone(plan)
+  const backup = source.backup_plans.find((entry) => entry.name === '无训练计划')
+  backup.trigger = {
+    left: "op_data.facility_has_crafting_plan('factory')",
+    operator: '==',
+    right: 'False'
+  }
+  const result = calculateIncome(source, {
+    ...defaultIncomeSettings(),
+    operatorMode: 'maximum',
+    inventorySource: 'manual',
+    weightMode: 'custom',
+    warmupDays: 0,
+    sampleDays: 1
+  })
+  expect(result.success, result.error).toBe(true)
+  expect(
+    result.eventLog.entries.some(
+      (event) => event.type === '副表切换' && event.detail === '无训练计划（启用）'
+    )
+  ).toBe(true)
+  expect(
+    result.diagnostics.find((item) => item.code === 'MOWER_CRAFTING_PLAN_ASSUMPTION')?.message
+  ).toContain('无自动养成合成计划')
+}, 30000)
 
 it('calculates idle training staffing with the protection condition', () => {
   const source = structuredClone(plan)
