@@ -136,3 +136,26 @@ it('defaults to material debt and migrates explicit old choices without changing
   expect(loadIncomePreferences().settings.dailyExternalResources).not.toHaveProperty('exp')
   expect(loadIncomePreferences().settings.dailyExternalResources).not.toHaveProperty('device')
 })
+
+it('stores a shared optional fixed seed and migrates the old tailor value without overriding a cleared input', () => {
+  expect(defaultIncomeSettings().fixedSeed).toBeNull()
+  saveIncomePreferences({ ...defaultIncomeSettings(), fixedSeed: 0 }, {})
+  expect(loadIncomePreferences().settings.fixedSeed).toBe(0)
+  saveIncomePreferences({ ...defaultIncomeSettings(), fixedSeed: null }, {})
+  expect(loadIncomePreferences().settings.fixedSeed).toBeNull()
+  localStorage.setItem(
+    INCOME_PREFERENCES_KEY,
+    JSON.stringify({ version: 1, settings: { tailorSeed: 77 } })
+  )
+  expect(loadIncomePreferences().settings.fixedSeed).toBe(77)
+  localStorage.setItem(
+    INCOME_PREFERENCES_KEY,
+    JSON.stringify({ version: 1, settings: { fixedSeed: null, tailorSeed: 77 } })
+  )
+  expect(loadIncomePreferences().settings.fixedSeed).toBeNull()
+  for (const fixedSeed of [-1, 1.5, 2 ** 32, '42', false]) {
+    saveIncomePreferences({ ...defaultIncomeSettings(), fixedSeed }, {})
+    expect(loadIncomePreferences().settings).not.toHaveProperty('fixedSeed')
+  }
+  expect(loadIncomePreferences().settings).not.toHaveProperty('tailorSeed')
+})

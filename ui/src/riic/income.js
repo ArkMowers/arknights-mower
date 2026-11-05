@@ -23,7 +23,7 @@ export function defaultIncomeSettings() {
     warmupDays: 3,
     sampleDays: 28,
     expectationMode: true,
-    tailorSeed: 42,
+    fixedSeed: null,
     droneRoom: '',
     finiteInventory: true,
     inventorySource: 'cache',
@@ -54,6 +54,18 @@ export function incomeFacilities(plan) {
 }
 export function inventoryRequired(plan) {
   return workspaceUsesInventoryConditions(incomeWorkspace(plan))
+}
+export function incomeSeed(settings) {
+  const fixedSeed = Object.hasOwn(settings, 'fixedSeed') ? settings.fixedSeed : settings.tailorSeed
+  const seed =
+    settings.seed !== undefined
+      ? settings.seed
+      : fixedSeed == null
+        ? crypto.getRandomValues(new Uint32Array(1))[0]
+        : fixedSeed
+  if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff)
+    throw new Error('随机种子必须为 0–4294967295 的整数')
+  return seed
 }
 export function incomeRequest(plan, settings) {
   for (const [key, minimum, maximum] of [
@@ -95,9 +107,7 @@ export function incomeRequest(plan, settings) {
   } else if (settings.operatorMode !== 'maximum') throw new Error('干员练度选项无效')
   const tailor = incomeHasTailor(plan, settings)
   const expectationMode = requestedExpectation && !tailor
-  const seed = settings.seed ?? (tailor ? (settings.tailorSeed ?? 42) : 1)
-  if (!expectationMode && (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff))
-    throw new Error('随机种子必须为 0–4294967295 的整数')
+  const seed = expectationMode ? undefined : incomeSeed(settings)
   return {
     workspace,
     options: {

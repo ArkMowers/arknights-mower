@@ -3,7 +3,7 @@ import { MOWER_INVENTORY_ITEMS, MOWER_RAW_MATERIALS } from './vendor/domain/simu
 
 export const INCOME_PREFERENCES_KEY = 'mower-income-preferences-v1'
 
-const numericFields = { warmupDays: [0, 30], sampleDays: [1, 90], tailorSeed: [0, 0xffffffff] }
+const numericFields = { warmupDays: [0, 30], sampleDays: [1, 90], fixedSeed: [0, 0xffffffff] }
 const enumFields = {
   inventorySource: ['cache', 'manual'],
   operatorMode: ['cache', 'maximum', 'custom'],
@@ -35,6 +35,14 @@ function sanitize(value) {
     )
       settings[key] = value.settings[key]
   }
+  if (value?.settings?.fixedSeed === null) settings.fixedSeed = null
+  else if (
+    value?.settings?.fixedSeed === undefined &&
+    Number.isSafeInteger(value?.settings?.tailorSeed) &&
+    value.settings.tailorSeed >= 0 &&
+    value.settings.tailorSeed <= 0xffffffff
+  )
+    settings.fixedSeed = value.settings.tailorSeed
   for (const [key, options] of Object.entries(enumFields)) {
     if (options.includes(value?.settings?.[key])) settings[key] = value.settings[key]
   }

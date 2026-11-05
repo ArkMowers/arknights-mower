@@ -313,7 +313,7 @@ it('reads cached ownership and stock without writing configuration', async () =>
   expect(page.settings.mowerWeights).toMatchObject({ exp: 0.9568, gold: 0.76544, orders: 0.23456 })
   expect(io.client.put).not.toHaveBeenCalled()
 })
-it('disables expectation mode and restores the fixed seed input for a trade tailor', async () => {
+it('uses the shared optional seed input when a trade tailor disables expectation mode', async () => {
   page.settings.operatorMode = 'maximum'
   props.snapshot.plan.plan1.room_1_1 = {
     name: '贸易站',
@@ -322,11 +322,11 @@ it('disables expectation mode and restores the fixed seed input for a trade tail
   }
   await nextTick()
   expect(page.hasTailor.value).toBe(true)
-  expect(page.settings.tailorSeed).toBe(42)
-  page.settings.tailorSeed = 77
+  expect(page.settings.fixedSeed).toBeNull()
+  page.settings.fixedSeed = 77
   reopenDialog()
   expect(page.hasTailor.value).toBe(true)
-  expect(page.settings.tailorSeed).toBe(77)
+  expect(page.settings.fixedSeed).toBe(77)
 })
 it('saves the selected shared algorithm and preserves recycling efficiency', async () => {
   await page.readWeights()
@@ -681,4 +681,44 @@ it('does not start on network failure or a validation response received after cl
   finishValidation({ data: { success: true, status: 'passed' } })
   await start
   expect(workers).toHaveLength(0)
+})
+
+it.each([
+  [false, null],
+  [false, 0],
+  [false, 77],
+  [true, null],
+  [true, 0],
+  [true, 77]
+])('freezes one shared seed before validation (tailor=%s, fixed=%s)', async (tailor, fixedSeed) => {
+  page.settings.operatorMode = 'maximum'
+  page.settings.inventorySource = 'manual'
+  page.settings.finiteInventory = false
+  page.settings.weightMode = 'custom'
+  page.settings.expectationMode = tailor
+  page.settings.fixedSeed = fixedSeed
+  if (tailor)
+    props.snapshot.plan.plan1.room_1_1 = {
+      name: '贸易站',
+      product: 'lmd',
+      plans: [{ agent: '柏喙' }]
+    }
+  const random = vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+    array[0] = 123
+    return array
+  })
+  try {
+    await page.start()
+    expect(workers).toHaveLength(1)
+    const input = workers[0].postMessage.mock.calls[0][0]
+    expect(input.settings).toMatchObject({
+      expectationMode: false,
+      fixedSeed,
+      seed: fixedSeed ?? 123
+    })
+    expect(page.settings).not.toHaveProperty('seed')
+    expect(random).toHaveBeenCalledTimes(fixedSeed === null ? 1 : 0)
+  } finally {
+    random.mockRestore()
+  }
 })

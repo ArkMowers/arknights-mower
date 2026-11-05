@@ -25,7 +25,7 @@ const settings = () => ({
 })
 
 it.each(['primary', 'replacement', 'group', 'backup', 'task'])(
-  'uses the fixed tailor seed for a trade %s candidate',
+  'disables theoretical mode while using the shared random policy for a trade %s candidate',
   (kind) => {
     const source = plan()
     const slot = source.plan1.room_1_1.plans[0]
@@ -48,7 +48,7 @@ it.each(['primary', 'replacement', 'group', 'backup', 'task'])(
     expect(incomeHasTailor(source, settings())).toBe(true)
     expect(incomeRequest(source, settings()).options.simulationOptions.production).toMatchObject({
       expectationMode: false,
-      seed: 42
+      seed: expect.any(Number)
     })
     expect(source).toEqual(original)
   }
@@ -75,35 +75,45 @@ it('checks unlocked skills and ignores tailor operators outside trade rosters', 
   expect(incomeHasTailor(source, settings())).toBe(false)
 })
 
-it('freezes the selected tailor seed and never generates an automatic seed', () => {
-  const source = plan()
-  source.plan1.room_1_1.plans[0].agent = '柏喙'
-  const worker = { postMessage: vi.fn(), terminate: vi.fn() }
-  const session = createIncomeSession({ createWorker: () => worker, update: vi.fn() })
-  const random = vi.spyOn(crypto, 'getRandomValues')
-  try {
-    session.start(source, settings())
-    expect(worker.postMessage.mock.calls[0][0].settings).toMatchObject({
-      expectationMode: false,
-      seed: 42
+it.each([false, true])(
+  'uses the same random and fixed seed choices with a tailor candidate=%s',
+  (tailor) => {
+    const source = plan()
+    if (tailor) source.plan1.room_1_1.plans[0].agent = '柏喙'
+    const worker = { postMessage: vi.fn(), terminate: vi.fn() }
+    const session = createIncomeSession({ createWorker: () => worker, update: vi.fn() })
+    let next = 100
+    const random = vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+      array[0] = ++next
+      return array
     })
-    session.cancel()
-    session.start(source, { ...settings(), tailorSeed: 77 })
-    expect(worker.postMessage.mock.calls[1][0].settings).toMatchObject({
-      expectationMode: false,
-      seed: 77
-    })
-    expect(random).not.toHaveBeenCalled()
-  } finally {
-    session.dispose()
-    random.mockRestore()
+    try {
+      const editable = { ...settings(), expectationMode: false }
+      for (const seed of [101, 102]) {
+        session.start(source, editable)
+        const frozen = worker.postMessage.mock.calls.at(-1)[0].settings
+        expect(frozen).toMatchObject({ expectationMode: false, seed })
+        expect(incomeRequest(source, frozen).options.simulationOptions.production.seed).toBe(seed)
+        session.cancel()
+      }
+      session.start(source, { ...editable, fixedSeed: 77 })
+      expect(worker.postMessage.mock.calls.at(-1)[0].settings).toMatchObject({
+        expectationMode: false,
+        seed: 77
+      })
+      expect(random).toHaveBeenCalledTimes(2)
+      expect(editable).not.toHaveProperty('seed')
+    } finally {
+      session.dispose()
+      random.mockRestore()
+    }
   }
-})
+)
 
 it('keeps the real Worker calculation on the sampled path for a tailor roster', () => {
   const source = plan()
   source.plan1.room_1_1.plans[0].agent = '柏喙'
-  const result = calculateIncome(source, settings())
+  const result = calculateIncome(source, { ...settings(), fixedSeed: 42 })
   expect(result.success, result.error).toBe(true)
   expect(result.simulationReport.production.assumptions).toMatchObject({
     expectationMode: false,

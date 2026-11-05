@@ -379,7 +379,10 @@ async function start() {
     const { image, ...snapshot } = props.snapshot
     const captured = { ...JSON.parse(JSON.stringify(snapshot)), image }
     const runSettings = JSON.parse(JSON.stringify(settings))
-    incomeRequest(captured.plan, runSettings)
+    const production = incomeRequest(captured.plan, runSettings).options.simulationOptions
+      .production
+    runSettings.expectationMode = production.expectationMode
+    if (!production.expectationMode) runSettings.seed = production.seed
     validating.value = true
     const { data: validation } = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/validate-plan`,
@@ -561,9 +564,11 @@ onBeforeUnmount(() => {
                 @update:value="settings.expectationMode = $event"
               />
             </n-form-item>
-            <n-form-item v-if="hasTailor" label="随机种子">
+            <n-form-item v-if="!settings.expectationMode || hasTailor" label="固定种子">
               <n-input-number
-                v-model:value="settings.tailorSeed"
+                v-model:value="settings.fixedSeed"
+                placeholder="留空时每次随机生成"
+                clearable
                 :min="0"
                 :max="4294967295"
                 :precision="0"
@@ -571,11 +576,9 @@ onBeforeUnmount(() => {
             </n-form-item>
             <p>
               {{
-                hasTailor
-                  ? '按当前概率随机抽单，使用指定种子复现。'
-                  : settings.expectationMode
-                    ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按生成能力连续加速。初始心情和轮换阶段仍会影响结果。'
-                    : '按概率随机抽单，每次演算自动生成随机种子；结果保留本次种子以供复现。'
+                settings.expectationMode && !hasTailor
+                  ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按生成能力连续加速。初始心情和轮换阶段仍会影响结果。'
+                  : '按概率随机抽单；固定种子留空时每次随机生成，填写后使用指定种子。结果保留本次种子以供复现。'
               }}
             </p>
             <n-form-item label="干员练度"
