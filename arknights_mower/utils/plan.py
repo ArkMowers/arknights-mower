@@ -302,7 +302,12 @@ class Plan:
 
     def condition_source(self, group_id=None):
         groups = getattr(self, "group_triggers", {})
-        triggers = groups.values() if group_id is None else [groups.get(group_id)]
+        if group_id is None:
+            triggers = groups.values()
+        else:
+            from arknights_mower.utils.backup_groups import selected_group_ids
+
+            triggers = [groups.get(key) for key in selected_group_ids(group_id)]
         return " or ".join(f"({trigger})" for trigger in [self.trigger, *triggers])
 
     @property

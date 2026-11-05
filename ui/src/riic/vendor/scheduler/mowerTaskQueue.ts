@@ -1,3 +1,4 @@
+import type {BackupGroupState} from './backupGroups'
 import type {MowerTaskFailureSnapshot} from './mowerTaskFailure'
 import type {MowerBackupGroupRequest} from './mowerBackupGroupTasks'
 // Port of ArkMowers/arknights-mower scheduler_task.py and base_schedule.py handle_error.
@@ -67,7 +68,7 @@ export class MowerTask {
  /** Old rules remain available only while this physical backup arrangement is unfinished. */
  backupRefreshRules?:Record<string,MowerBackupRefreshRule>
  backupExplicitSlots:Set<string>=new Set()
- backupGroup?:string;backupShiftIntent?:MowerTaskPlan;backupShiftConditions?:boolean[];dormFillPlan:MowerTaskPlan={};simpleDormFill=false;arrangementRetryDueMicros?:number
+ backupGroup?:BackupGroupState;backupShiftIntent?:MowerTaskPlan;backupShiftConditions?:boolean[];dormFillPlan:MowerTaskPlan={};simpleDormFill=false;arrangementRetryDueMicros?:number
  dormRecoveryRestore:string[]=[]
  arrangementRetryRoom?:string;arrangementRetryCount?:number
  dormMoodResidents:string[]=[];idleDormSearchNames:Record<string,string[]>={};idleDormShiftGroups?:Record<string,string[]>

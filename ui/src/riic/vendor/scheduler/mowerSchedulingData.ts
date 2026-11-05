@@ -1,3 +1,4 @@
+import type {BackupGroupState} from './backupGroups'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import type {MowerBackupGroupTask} from './mowerBackupGroupTasks'
 import {isTradeRunOrderOperator} from '../domain/shiftRunPolicy'
@@ -20,7 +21,7 @@ export interface MowerSchedulingDataOptions {
  dormIsolation?:string[][]
  alpha?:boolean;priorityReplacement?:string[];freeRoomExclusions?:string[];dormOrder?:string[];standbyNames?:string[];lowPriorityNames?:string[]
  plan:Record<string,string[]>;operators:Record<string,MowerOperatorState>;dorms:MowerDormState[];nowMicros:number;partyTime?:MowerDateTimeValue|boolean|null;runOrderRooms?:Record<string,Record<string,never>>
- policy?:Partial<MowerMoodPolicy>;freeRoom?:boolean;powerPlantCount?:number;planConditions?:boolean[];backupGroup?:string
+ policy?:Partial<MowerMoodPolicy>;freeRoom?:boolean;powerPlantCount?:number;planConditions?:boolean[];backupGroup?:BackupGroupState
  urgentRecoverySupporters?:Record<string,string[]>
  groupRecoveryFullMembers?:Record<string,string[]>
  groupRecoveryReturnMicros?:Record<string,number>
@@ -45,7 +46,7 @@ export class MowerSchedulingData {
  standbyNames:string[];lowPriorityNames:string[]
  plan:Record<string,string[]>;operators:Record<string,MowerOperatorState>;dorms:MowerDormState[];nowMicros:number;partyTime?:MowerDateTimeValue|boolean|null;runOrderRooms:Record<string,Record<string,never>>
  recoveryOrderVersion=0
- policy:MowerMoodPolicy;freeRoom:boolean;powerPlantCount:number;planConditions:boolean[];backupGroup:string
+ policy:MowerMoodPolicy;freeRoom:boolean;powerPlantCount:number;planConditions:boolean[];backupGroup:BackupGroupState
  urgentRecoverySupporters:Record<string,string[]>
  groupRecoveryFullMembers:Record<string,string[]>
  groupRecoveryReturnMicros:Record<string,number>

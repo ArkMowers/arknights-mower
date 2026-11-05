@@ -545,3 +545,48 @@ def test_full_shift_emits_one_timing_for_nested_backup_rounds(solver, monkeypatc
     assert records[0].args[4] == "已收敛"
     assert task.backup_shift_conditions == [True]
     assert base._backup_timing_runtime.current is None
+
+
+def test_concurrent_group_state_survives_complete_shift_and_saved_task(solver):
+    first = solver.op_data.backup_plans[0]
+    first.group_ids = ["rest"]
+    first.backup_type = "exclusive"
+    other = Plan(
+        {},
+        PlanConfig("", "", ""),
+        trigger=LogicExpression("True", "==", "True"),
+        group_ids=["parallel"],
+        backup_type="exclusive",
+    )
+    solver.op_data.backup_plans.append(other)
+    solver.op_data.plan_condition.append(False)
+    solver.op_data.backup_groups = [
+        {
+            "id": "rest",
+            "name": "休息",
+            "trigger": {"left": "op_data.operators['薇薇安娜'].is_resting()"},
+            "exclusive_with": [],
+        },
+        {
+            "id": "parallel",
+            "name": "并行",
+            "trigger": {"left": "True"},
+            "exclusive_with": [],
+        },
+    ]
+    task = downshift(solver)
+    solver._prepare_shift_backup(task)
+    assert task.backup_shift_conditions == [True, True]
+    assert task.backup_group == ("rest", "parallel")
+    assert solver.op_data.backup_group == "default"
+    task = pickle.loads(pickle.dumps(task))
+    solver._activate_shift_backup(task)
+    assert solver.op_data.backup_group == ("rest", "parallel")
+    assert solver.op_data.plan_condition == [True, True]
+    before = (
+        list(task.backup_shift_conditions),
+        task.backup_group,
+        copy.deepcopy(task.plan),
+    )
+    solver._prepare_shift_backup(task)
+    assert (task.backup_shift_conditions, task.backup_group, task.plan) == before

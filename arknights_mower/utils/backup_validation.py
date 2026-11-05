@@ -150,16 +150,18 @@ def _returns_boolean(node, known_operators):
 def possible_backup_conditions(
     backups, combination_limit, *, known_operators=None, deadline=None, groups=()
 ):
-    """Analyze only combinations admitted by the selected group and backup types."""
+    """Analyze compatible groups and every retained exclusive-plan selection."""
     from types import SimpleNamespace
 
-    from arknights_mower.utils.backup_groups import backup_group_ids
+    from arknights_mower.utils.backup_groups import (
+        backup_group_ids,
+        normalize_backup_groups,
+    )
     from arknights_mower.utils.logic_expression import get_logic_exp
 
-    if not any(group["id"] != "default" for group in groups) and all(
-        getattr(backup, "backup_type", "global") == "global"
-        and backup_group_ids(backup) == ["default"]
-        for backup in backups
+    groups = normalize_backup_groups(groups)
+    if len(groups) == 1 and all(
+        getattr(backup, "backup_type", "global") == "global" for backup in backups
     ):
         return _ungrouped_backup_conditions(
             backups,
@@ -167,41 +169,115 @@ def possible_backup_conditions(
             known_operators=known_operators,
             deadline=deadline,
         )
-    custom = {
-        group["id"]: str(get_logic_exp(copy.deepcopy(group["trigger"])))
-        for group in groups
-        if group["id"] != "default"
-    }
-    branches = {
-        "default": "not (" + " or ".join(custom.values()) + ")" if custom else "True",
-        **custom,
-    }
-    combinations = set()
-    for group_id, group_trigger in branches.items():
+    visited = 0
+
+    def feasible(terms):
+        nonlocal visited
         check_validation_deadline(deadline)
-        globals_ = [
+        visited += 1
+        if visited > MAX_CONDITION_STATES:
+            raise BackupValidationLimitExceeded(
+                "验证未完成：分组与互斥副表选择数量超过分析上限"
+            )
+        return bool(
+            _ungrouped_backup_conditions(
+                [SimpleNamespace(trigger=term) for term in terms],
+                1,
+                known_operators=known_operators,
+                deadline=deadline,
+                required={index: True for index in range(len(terms))},
+            )
+        )
+
+    custom = [group for group in groups if group["id"] != "default"]
+
+    def group_branches(index, selected, terms):
+        if index == len(custom):
+            yield selected or ("default",), terms
+            return
+        group = custom[index]
+        if set(group["exclusive_with"]).intersection(selected):
+            yield from group_branches(index + 1, selected, terms)
+            return
+        trigger = str(get_logic_exp(copy.deepcopy(group["trigger"])))
+        for enabled in (True, False):
+            next_terms = [*terms, trigger if enabled else f"not ({trigger})"]
+            if feasible(next_terms):
+                yield from group_branches(
+                    index + 1,
+                    (*selected, group["id"]) if enabled else selected,
+                    next_terms,
+                )
+
+    combinations = set()
+    for selected_groups, group_terms in group_branches(0, (), []):
+        active_groups = set(selected_groups)
+        eligible = [
             index
             for index, backup in enumerate(backups)
-            if getattr(backup, "backup_type", "global") == "global"
-            and group_id in backup_group_ids(backup)
+            if active_groups.intersection(backup_group_ids(backup))
+        ]
+        globals_ = [
+            index
+            for index in eligible
+            if getattr(backups[index], "backup_type", "global") == "global"
         ]
         exclusives = [
             index
-            for index, backup in enumerate(backups)
-            if getattr(backup, "backup_type", "global") == "exclusive"
-            and group_id in backup_group_ids(backup)
+            for index in eligible
+            if getattr(backups[index], "backup_type", "global") == "exclusive"
         ]
-        for selected in [None, *exclusives]:
-            indexes = globals_ + ([] if selected is None else [selected])
-            gate = group_trigger
-            if selected is None and exclusives:
-                gate = (
-                    f"({gate}) and not ("
-                    + " or ".join(str(backups[index].trigger) for index in exclusives)
-                    + ")"
+        memberships = {
+            index: active_groups.intersection(backup_group_ids(backups[index]))
+            for index in exclusives
+        }
+
+        def exclusive_branches(position, selected, occupied, skipped, terms, forced):
+            # A skipped candidate must be false once no remaining choice can block it.
+            remaining = [
+                index
+                for index in exclusives[position:]
+                if not memberships[index].intersection(occupied)
+            ]
+            next_terms = list(terms)
+            forced = set(forced)
+            for index in skipped:
+                if (
+                    index not in forced
+                    and not memberships[index].intersection(occupied)
+                    and not any(
+                        memberships[index].intersection(memberships[other])
+                        for other in remaining
+                    )
+                ):
+                    next_terms.append(f"not ({backups[index].trigger})")
+                    forced.add(index)
+            if not feasible(next_terms):
+                return
+            if position == len(exclusives):
+                yield selected, next_terms
+                return
+            index = exclusives[position]
+            if memberships[index].intersection(occupied):
+                yield from exclusive_branches(
+                    position + 1, selected, occupied, skipped, next_terms, forced
                 )
-            candidates = [backups[index] for index in indexes] + [
-                SimpleNamespace(trigger=gate)
+                return
+            yield from exclusive_branches(
+                position + 1,
+                (*selected, index),
+                occupied | memberships[index],
+                skipped,
+                [*next_terms, str(backups[index].trigger)],
+                forced,
+            )
+            yield from exclusive_branches(
+                position + 1, selected, occupied, (*skipped, index), next_terms, forced
+            )
+
+        for selected, terms in exclusive_branches(0, (), set(), (), group_terms, set()):
+            candidates = [backups[index] for index in globals_] + [
+                SimpleNamespace(trigger=term) for term in terms
             ]
             states = _ungrouped_backup_conditions(
                 candidates,
@@ -209,16 +285,15 @@ def possible_backup_conditions(
                 known_operators=known_operators,
                 deadline=deadline,
                 required={
-                    len(candidates) - 1: True,
-                    **({len(candidates) - 2: True} if selected is not None else {}),
+                    index: True for index in range(len(globals_), len(candidates))
                 },
             )
             for state in states:
-                if not state[-1] or selected is not None and not state[-2]:
-                    continue
                 flags = [False] * len(backups)
-                for index, active in zip(indexes, state):
-                    flags[index] = active
+                for index, enabled in zip(globals_, state):
+                    flags[index] = enabled
+                for index in selected:
+                    flags[index] = True
                 combinations.add(tuple(flags))
                 if len(combinations) > combination_limit:
                     raise BackupValidationLimitExceeded(
