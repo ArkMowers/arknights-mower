@@ -14,6 +14,7 @@ import {
   buildFavoriteHighlights,
   buildHighlights,
   buildItemHistory,
+  buildTrainingCost,
   buildTrainingForecast,
   computeDrawCount,
   countByTier,
@@ -1335,5 +1336,30 @@ describe('training forecast', () => {
       expect(forecast.lmd).toBeNull()
       expect(forecast.rows.every((row) => row.expCount === 0)).toBe(true)
     }
+  })
+})
+
+describe('training cost', () => {
+  it('sizes the cost by the count basis used by the page', () => {
+    // 总览按两项都够的数量算，消耗取各档数量 × 单价的最大值。
+    expect(buildTrainingCost(buildTrainingForecast(2811086, 3000000))).toEqual({
+      exp: 2420000,
+      lmd: 2669592
+    })
+    // 经验详情只看经验；龙门币数量不参与口径，但仍然算在消耗里。
+    expect(buildTrainingCost(buildTrainingForecast(2811086), 'exp')).toEqual({
+      exp: 2420000,
+      lmd: 2669592
+    })
+    // 龙门币详情只看龙门币；经验数量不参与口径。
+    expect(buildTrainingCost(buildTrainingForecast(null, 3000000), 'lmd')).toEqual({
+      exp: 2904000,
+      lmd: 2892018
+    })
+  })
+
+  it('reports no cost when the count basis has no reading', () => {
+    expect(buildTrainingCost(buildTrainingForecast(2811086), 'joint')).toBeNull()
+    expect(buildTrainingCost(null)).toBeNull()
   })
 })

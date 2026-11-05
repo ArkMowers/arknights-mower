@@ -846,7 +846,7 @@
         <div v-if="expDetailForecast" class="exp-training-strip exp-training-bottom">
           <div class="exp-training-head">
             <span class="exp-training-title">预计可培养（仅按经验）</span>
-            <span class="exp-training-total">{{ formatNumber(expDetailForecast.exp) }} 经验</span>
+            <span class="exp-training-total">{{ expDetailCostText }}</span>
           </div>
           <div class="exp-training-list">
             <div v-for="tier in expDetailForecast.rows" :key="tier.key" class="exp-training-item">
@@ -861,9 +861,7 @@
         <div v-if="lmdDetailForecast" class="exp-training-strip exp-training-bottom">
           <div class="exp-training-head">
             <span class="exp-training-title">预计可培养（仅按龙门币）</span>
-            <span class="exp-training-total">
-              {{ formatNumber(lmdDetailForecast.lmd) }} 龙门币
-            </span>
+            <span class="exp-training-total">{{ lmdDetailCostText }}</span>
           </div>
           <div class="exp-training-list">
             <div v-for="tier in lmdDetailForecast.rows" :key="tier.key" class="exp-training-item">
@@ -1098,6 +1096,7 @@ import {
   buildFavoriteHighlights,
   buildHighlights,
   buildItemHistory,
+  buildTrainingCost,
   buildTrainingForecast,
   computeDrawCount,
   countByTier,
@@ -1309,12 +1308,9 @@ const expForecast = computed(() => {
 
 // 右上角按算出来的数量反过来标出预计消耗：取各档"能养几个 × 单价"里最大的那个。
 const targetCostText = computed(() => {
-  const forecast = expForecast.value
-  if (!forecast) return ''
-  if (forecast.rows.some((row) => row.joint === null)) return '预计消耗 —经验/—龙门币'
-  const maxExp = Math.max(...forecast.rows.map((row) => row.joint * row.exp))
-  const maxLmd = Math.max(...forecast.rows.map((row) => row.joint * row.lmd))
-  return `预计消耗 ${formatNumber(maxExp)}经验/${formatNumber(maxLmd)}龙门币`
+  const cost = buildTrainingCost(expForecast.value, 'joint')
+  if (!cost) return expForecast.value ? '预计消耗 —经验/—龙门币' : ''
+  return `预计消耗 ${formatNumber(cost.exp)}经验/${formatNumber(cost.lmd)}龙门币`
 })
 
 // 详情里只按经验算一份，方便对照单个目标消耗。
@@ -1327,6 +1323,17 @@ const expDetailForecast = computed(() => {
 const lmdDetailForecast = computed(() => {
   if (detailItem.value?.name !== '龙门币') return null
   return buildTrainingForecast(null, detailItem.value.number, trainingTargets.value)
+})
+
+// 详情页右上角同样按该页的数量口径给出预计消耗，不再只显示库存总量。
+const expDetailCostText = computed(() => {
+  const cost = buildTrainingCost(expDetailForecast.value, 'exp')
+  return cost ? `预计消耗 ${formatNumber(cost.exp)}经验` : ''
+})
+
+const lmdDetailCostText = computed(() => {
+  const cost = buildTrainingCost(lmdDetailForecast.value, 'lmd')
+  return cost ? `预计消耗 ${formatNumber(cost.lmd)}龙门币` : ''
 })
 
 // 关注高亮看板与分页
