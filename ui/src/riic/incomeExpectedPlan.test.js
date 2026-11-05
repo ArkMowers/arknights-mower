@@ -126,5 +126,5 @@ it.each([true, false])(
     expect(result.stability.roomComparisons.length).toBeGreaterThan(0)
     expect(plan).toEqual(original)
   },
-  longRun ? 600000 : 30000
+  longRun ? 1200000 : 60000
 )

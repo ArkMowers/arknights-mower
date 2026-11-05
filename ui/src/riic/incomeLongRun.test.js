@@ -14,6 +14,8 @@ it('completes ninety sampled days without resetting stock at the warmup boundary
   }
   const result = calculateIncome(plan, {
     ...defaultIncomeSettings(),
+    expectationMode: false,
+    seed: 42,
     operatorMode: 'maximum',
     inventorySource: 'manual',
     weightMode: 'custom',

@@ -210,7 +210,13 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   let production:ReturnType<typeof createProductionTimeline>|undefined
   let actualProductSignature=''
   const currentProducts=()=>production?.actualProducts()??{}
-  const refreshProductRevision=()=>{const signature=JSON.stringify(currentProducts());if(signature!==actualProductSignature){actualProductSignature=signature;rateRevision++;occupancyRevision++}}
+  let lastProductVersion=-1
+  const refreshProductRevision=()=>{
+   const version=production?.productVersion()??0
+   if(version===lastProductVersion)return
+   lastProductVersion=version
+   const signature=JSON.stringify(currentProducts());if(signature!==actualProductSignature){actualProductSignature=signature;rateRevision++;occupancyRevision++}
+  }
   const automaticRecoveryTargets=new Map<string,{room:string;target:string;providerPosition:string;targetPosition:string}>()
   let cachedRecoveryOrderVersion=-1
   let rateRevision=0,cachedRevision=-1,occupancyRevision=0

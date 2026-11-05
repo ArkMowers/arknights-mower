@@ -47,3 +47,6 @@ AI 知识与试排修改执行 `arknights_mower/tests/riic_assistant_tests.py`�
 无人机标记只使用成功演算保存的单个加速目标，不因切换产物等其他用机事件增加标记；选择不使用时不显示标记。标记保留原图设施位置，使用无底色的浅黄或浅蓝图标。
 
 设施等级在排班编辑器保存为 `facility_levels`，主副表共用；无需在收益窗口再次配置。右侧会客室、加工站、办公室、训练室和回收站未设置时默认三级，空房也计入建筑耗电，显式等级优先。维护时遵循[设施等级与电量规则](../../../../docs/subsystems/plan-editor.md#saved-facility-levels)，核对自动保存、未驻员建筑耗电、主副表容量、二维码往返及采样区间中的实际心情恢复速率。宿舍按当前等级满氛围，不能用任意速率覆盖掩盖等级传递问题。
+
+
+性能改动使用 `ui/src/riic/incomePerformance.test.js` 核对预演复制隔离、收益、库存和完整调度轨迹与基线一致。需要计时对照时，从 `ui/` 执行 `MOWER_INCOME_BENCHMARK=1 MOWER_INCOME_BENCHMARK_LOG=/tmp/mower-income-speed.jsonl npm test -- src/riic/incomePerformance.test.js --maxWorkers=1`；同一给定排班按基线、优化、优化、基线顺序计算 24 小时，以完整结果摘要核验等价，计时不含摘要生成。计时受主机负载影响，不作为收益正确性的替代。显式完整周期回归允许 20 分钟测试时限，生产演算的区间上限保持原设置。

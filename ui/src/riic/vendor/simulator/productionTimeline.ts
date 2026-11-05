@@ -157,7 +157,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    if(room.type==='manufacture'){
     let m=manufactures.get(room.id)
     if(!m){const formula:ManufacturingFormulaId=room.product==='exp'?'exp-medium':room.product==='fragment'?(options.fragmentFormulaByRoom?.[room.id]??(schedule.sourceWorkspace.compatibility.facilityMetadata?.[room.id]?.rawProduct==='orirock_device'?'fragment-device':'fragment-orirock')):'gold'
-     m={completedByProduct:{},roomId:room.id,state:startManufacturing({formula,capacityWeight:0,paymentAuthorized:false}),blockedHours:0,blockedMaterialHours:0,collectedItems:0};manufactures.set(room.id,m)}
+     m={completedByProduct:{},roomId:room.id,state:startManufacturing({formula,capacityWeight:0,paymentAuthorized:false}),blockedHours:0,blockedMaterialHours:0,collectedItems:0};manufactures.set(room.id,m);productVersion++}
     // The same efficiency snapshot has stable staffing and capacity-relevant mood boundaries.
     let capacities=capacityByEvaluation.get(frame.evaluations)
     if(!capacities){capacities=new Map();capacityByEvaluation.set(frame.evaluations,capacities)}
@@ -169,7 +169,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
     m.state=updateManufacturingCapacity(m.state,Math.max(0,capacity))
    }else if(room.type==='trading'){
     let t=trades.get(room.id)
-    if(!t){let hash=0;if(!expectationMode){hash=seed;for(const c of room.id)hash=Math.imul(hash^c.charCodeAt(0),16777619)>>>0}t={product:room.strategy==='orundum'?'orundum':'lmd',roomId:room.id,active:null,pending:[],completedOrders:0,collectedOrders:0,blockedHours:0,limit:0,disabled:false,rng:hash};trades.set(room.id,t)}
+    if(!t){let hash=0;if(!expectationMode){hash=seed;for(const c of room.id)hash=Math.imul(hash^c.charCodeAt(0),16777619)>>>0}t={product:room.strategy==='orundum'?'orundum':'lmd',roomId:room.id,active:null,pending:[],completedOrders:0,collectedOrders:0,blockedHours:0,limit:0,disabled:false,rng:hash};trades.set(room.id,t);productVersion++}
     const capacity=evaluateTradeOrderCapacity(room,frame.config,frame.active,evaluation);t.limit=capacity.limit
     if(capacity.limit===null)unsupported('UNQUANTIFIED_ORDER_CAPACITY',`${room.id}：${capacity.unquantified.join('；')}，停止新单获取`)
    }
@@ -183,7 +183,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   collect(m.roomId,false,true)
   const previous=m.state
   m.state={...startManufacturing({formula,capacityWeight:previous.capacityWeight,paymentAuthorized:false}),lifetimeItems:previous.lifetimeItems,lifetimeBatches:previous.lifetimeBatches}
-  delete m.pendingSwitch
+  delete m.pendingSwitch;productVersion++
   record('product-switched',{roomId:m.roomId,fromProduct,toProduct:target})
  }
  const synchronizeProducts=(frame:ProductionFrame)=>{
@@ -221,10 +221,11 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    if(target===t.product)continue
    const room=frame.config.rooms.find(r=>r.id===t.roomId)!
    if(!['lmd','orundum'].includes(target)||room.level<3){reject(t.roomId,target,'贸易订单类型切换需要三级设施及有效订单类型');continue}
-   const previous=t.product;t.product=target
+   const previous=t.product;t.product=target;productVersion++
    record('product-switched',{roomId:t.roomId,fromProduct:previous,toProduct:target})
   }
  }
+ let productVersion=0
  const actualProducts=()=>Object.fromEntries([...manufactures.values()].map(m=>[m.roomId,manufacturingProductId(m.state.formula.id)]).concat([...trades.values()].map(t=>[t.roomId,t.product])))
  const orderCapture=(t:TradeRoom,frame:ProductionFrame,recordRunners=false):SpecialCapture=>{
   const a=t.active!,c=capture(frame,t.roomId)
@@ -515,7 +516,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    finish(frame);openWork(frame)
   }
   const nativeAcceptOrder=(room:string,frame:ProductionFrame)=>{finish(frame);const trade=trades.get(room);if(!trade)throw new Error('Native trade facility is unavailable: '+room);const before=trade.collectedOrders;collect(room,true,false,1);openWork(frame);return trade.collectedOrders>before}
-  return {settle,finalize,nextStep,advance,report,actualProducts,
+  return {settle,finalize,nextStep,advance,report,actualProducts,productVersion:()=>productVersion,
    nativePendingRecycleItems:()=>recycle?.report().pendingItems??0,
    nativeCollectRecycleItems:()=>{const collected=recycle?.collect()??0;if(collected)record('recycle-collected',{roomId:'recycle',amount:collected})},
    nativeHasTrade:(room:string)=>trades.has(room),nativeHasManufacture:(room:string)=>manufactures.has(room),nativeManufactureDroneMaximum,nativeSpendManufacturingDrones,

@@ -52,6 +52,26 @@ export class MowerOperatorState {
  this.name=o.name;this.nativeName=o.nativeName??o.name;this.room=o.room??'';this.index=o.index??-1;this.group=o.group??'';this.replacement=o.replacement??[];this.operatorType=o.operatorType??'low';this.restingPriority=o.restingPriority??'low';this.currentRoom=o.currentRoom??'';this.currentIndex=o.currentIndex??-1;this.mood=o.mood??24;this.timeStampMicros=o.timeStampMicros;this.depletionRate=o.depletionRate??0;this.exhaustTimeMicros=o.exhaustTimeMicros;this.lowerLimit=o.lowerLimit??0;this.upperLimit=o.upperLimit??24;this.workaholic=o.workaholic??false;this.exhaustRequire=o.exhaustRequire??false;this.restInFull=o.restInFull??false;this.restMoodLimit=o.restMoodLimit??false;this.workshop=o.workshop??false;this.dormPositionVersion=o.dormPositionVersion??this.dormPositionVersion;this.dormRecoveryRoom=o.dormRecoveryRoom??'';this.dormRecoveryIndex=o.dormRecoveryIndex??-1;this.dormRecoveryFixed=o.dormRecoveryFixed?.map(m=>[...m])??[];this.dormRecoveryObservation=o.dormRecoveryObservation?[...o.dormRecoveryObservation]:undefined;this.singleRecoveryManager=o.singleRecoveryManager??false;this.restingFromTrain=o.restingFromTrain??false;this.idleRestCheck=o.idleRestCheck
  if(this.independentRest){this.group='';this.replacement=[...this.replacementsForGroup('')]}
  }
+ /** Copy constructor inputs without enumerating every accessor on a live observation. */
+ copyForProjection():MowerOperatorState {
+  return new MowerOperatorState({
+   name:this.name,nativeName:this.nativeName,room:this.room,index:this.index,group:this.group,
+   replacement:[...this.replacement],groupBindings:this.groupBindings,
+   operatorType:this.operatorType,restingPriority:this.restingPriority,
+   alpha:this.alpha,projectedMoodResting:this.projectedMoodResting??this.isResting(),
+   currentRoom:this.currentRoom,currentIndex:this.currentIndex,mood:this.mood,
+   calculatedMoodSnapshot:this.calculatedMoodSnapshot,
+   timeStampMicros:this.timeStampMicros,depletionRate:this.depletionRate,exhaustTimeMicros:this.exhaustTimeMicros,
+   temporaryDormFill:this.temporaryDormFill,dormMoodFallback:this.dormMoodFallback,
+   restMoodReleaseLimit:this.restMoodReleaseLimit,moodIsPrediction:this.moodIsPrediction,
+   customMoodLimit:this.customMoodLimit,dormMoodPeers:this.dormMoodPeers,
+   dormRecoveryObservation:this.dormRecoveryObservation,dormPositionVersion:this.dormPositionVersion,
+   dormRecoveryRoom:this.dormRecoveryRoom,dormRecoveryIndex:this.dormRecoveryIndex,dormRecoveryFixed:this.dormRecoveryFixed,
+   singleRecoveryManager:this.singleRecoveryManager,restingFromTrain:this.restingFromTrain,idleRestCheck:this.idleRestCheck,
+   lowerLimit:this.lowerLimit,upperLimit:this.upperLimit,workaholic:this.workaholic,
+   exhaustRequire:this.exhaustRequire,restInFull:this.restInFull,restMoodLimit:this.restMoodLimit,workshop:this.workshop,
+  })
+ }
  clearDormRecovery(){this.dormRecoveryObservation=undefined;this.dormRecoveryRoom='';this.dormRecoveryIndex=-1;this.dormRecoveryFixed=[]}
  isHigh(){return this.operatorType==='high'}
  isResting(){return this.currentRoom.startsWith('dorm')}
