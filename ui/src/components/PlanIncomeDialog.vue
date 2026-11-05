@@ -19,6 +19,7 @@ import { incomeAlgorithms, incomeAlgorithmLabel, incomeSettingsUrl } from '@/uti
 import { createIncomeSession } from '@/riic/incomeSession'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
+import { incomeHasTailor } from '@/riic/incomeTailor'
 import IncomeTimeline from './IncomeTimeline.vue'
 import IncomeActivity from './IncomeActivity.vue'
 import IncomeDiagnostics from './IncomeDiagnostics.vue'
@@ -30,6 +31,9 @@ const props = defineProps({ snapshot: Object, preparing: Boolean, prepareError: 
 const emit = defineEmits(['close'])
 const preferences = loadIncomePreferences()
 const settings = reactive({ ...defaultIncomeSettings(), ...preferences.settings })
+const hasTailor = computed(() =>
+  props.snapshot ? incomeHasTailor(props.snapshot.plan, settings) : false
+)
 const preferencesError = ref('')
 let cachedInventoryOverrides = preferences.cachedInventoryOverrides
 let cachedInventoryBaseline = null
@@ -547,13 +551,30 @@ onBeforeUnmount(() => {
                 v-model:value="settings.droneRoom"
                 :options="[{ label: '不使用无人机', value: '' }, ...targets]"
             /></n-form-item>
-            <n-form-item label="随机种子"
-              ><n-input-number
-                v-model:value="settings.seed"
+            <n-form-item label="数学期望模式">
+              <n-switch
+                :value="settings.expectationMode && !hasTailor"
+                :disabled="hasTailor"
+                @update:value="settings.expectationMode = $event"
+              />
+            </n-form-item>
+            <n-form-item v-if="hasTailor" label="随机种子">
+              <n-input-number
+                v-model:value="settings.tailorSeed"
                 :min="0"
                 :max="4294967295"
                 :precision="0"
-            /></n-form-item>
+              />
+            </n-form-item>
+            <p>
+              {{
+                hasTailor
+                  ? '按当前概率随机抽单，使用指定种子复现。'
+                  : settings.expectationMode
+                    ? '按订单概率平均耗时，并逐档计算特殊订单奖励和材料消耗；无抽单波动。换班与库存阈值耦合下为近似期望。'
+                    : '按概率随机抽单，每次演算自动生成随机种子；结果保留本次种子以供复现。'
+              }}
+            </p>
             <n-form-item label="干员练度"
               ><n-select
                 v-model:value="settings.operatorMode"
@@ -739,7 +760,12 @@ onBeforeUnmount(() => {
             </p>
             <p>
               本次结果：预热 {{ state.input.settings.warmupDays }} 天、统计
-              {{ state.input.settings.sampleDays }} 天。修改参数后需重新演算；再次导出使用本次结果。
+              {{ state.input.settings.sampleDays }} 天，
+              {{
+                state.result.simulationReport?.production?.assumptions.expectationMode
+                  ? '数学期望模式（平均订单模型）'
+                  : '随机抽单模式'
+              }}。 修改参数后需重新演算；再次导出使用本次结果。
             </p>
             <p v-if="state.result.inventoryMode === 'finite'">
               赤金余额：初始 {{ format(state.result.goldInventory.initial) }}，统计开始
@@ -776,6 +802,44 @@ onBeforeUnmount(() => {
             >
             <p v-if="exported" role="status">收益图片已生成并发起下载。</p>
             <n-collapse class="notice">
+              <n-collapse-item
+                v-if="state.result.stability"
+                title="轮换与无人机边界观察"
+                name="stability"
+              >
+                <p>
+                  将统计期等分为两个 {{ format(state.result.stability.halfHours) }} 小时区间比较。
+                  干员驻岗占比最大相差
+                  {{ format(state.result.stability.maxWorkFractionDifference * 100) }} 个百分点。
+                  初始满心情及轮换阶段的影响不能直接从收益扣除；前后半段接近也不证明已达到稳态。
+                  可调整预热和统计天数比较，有限库存耗尽时可能不存在稳定产出。
+                </p>
+                <n-table size="small">
+                  <thead>
+                    <tr>
+                      <th>设施</th>
+                      <th>前半段平均效率</th>
+                      <th>后半段平均效率</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="room in state.result.stability.roomComparisons" :key="room.roomId">
+                      <td>{{ room.roomId }}</td>
+                      <td>{{ format(room.firstEfficiency) }}%</td>
+                      <td>{{ format(room.secondEfficiency) }}%</td>
+                    </tr>
+                  </tbody>
+                </n-table>
+                <p v-if="state.result.stability.drones">
+                  无人机期初 {{ format(state.result.stability.drones.opening) }}，期末
+                  {{ format(state.result.stability.drones.closing) }}， 差额
+                  {{ format(state.result.stability.drones.change) }}；期间生成
+                  {{ format(state.result.stability.drones.generated) }}、 消耗
+                  {{ format(state.result.stability.drones.consumed) }}、溢出
+                  {{ format(state.result.stability.drones.overflow) }} 架。
+                  差额保留为库存，不强行使用或按固定价格计入收益；其生产价值取决于加速目标、材料和停工条件。
+                </p>
+              </n-collapse-item>
               <n-collapse-item title="设施数据" name="rooms">
                 <n-table size="small"
                   ><thead>

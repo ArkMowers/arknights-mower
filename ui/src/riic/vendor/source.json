@@ -267,8 +267,8 @@
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
-      "sha256": "2e3fb21a594309ccbdc513fe084a30f91b811e82ab649de843d9c13a81aa77e7",
-      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances. Capture warmup-adjusted quality probabilities only at new-order acquisition. Finalize successful sampling by collecting completed manufacturing output, payable trade orders and recycling counts without opening new work or spending drones. Attribute delayed warmup receipts separately without altering physical inventory. Assume manufacturing recipes are already unlocked for initial production and product switching, independently of current facility levels; preserve unknown switch-target rejection and each room's own storage capacity. Track completed fragments by product across formula switches and exclude warmup completions from sampled output."
+      "sha256": "0deb61a6faddfe66afa838e5cc11c4ccb66bdfe6d6899fc14b293f3856fb8e54",
+      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances. Capture warmup-adjusted quality probabilities only at new-order acquisition. Finalize successful sampling by collecting completed manufacturing output, payable trade orders and recycling counts without opening new work or spending drones. Attribute delayed warmup receipts separately without altering physical inventory. Assume manufacturing recipes are already unlocked for initial production and product switching, independently of current facility levels; preserve unknown switch-target rejection and each room's own storage capacity. Track completed fragments by product across formula switches and exclude warmup completions from sampled output. Support seed-free expected orders without changing the legacy sampled path. Report sampling-only drone opening and closing stocks, gross generation, consumption and overflow; preserve endpoint spending policy and tolerate fractional expected-cost roundoff at zero."
     },
     "simulator/scheduleSimulation.ts": {
       "sha256": "1d6d87b55468227a25b9d85d3cb135ab6cf606324ef10c5d7025ddd3798986fa",
@@ -567,8 +567,8 @@
       "sha256": "99d8e86ae1e4ecb8cdaeb62686dfcfeb04c01a3cf9c1b13396225d5ca02e71f1"
     },
     "rules/orderRules.ts": {
-      "reason": "Interpolate new-order probabilities between the normal room-level distribution and the existing quality peak.",
-      "sha256": "0fcf309fa7c184f3975dfe4231b763c375b03ebd0fc9c6ce72d742c90a2f5c30"
+      "reason": "Interpolate new-order probabilities between the normal room-level distribution and the existing quality peak. Compute mean acquisition workload while retaining original probability components; apply nonlinear completion conversions per tier before averaging rewards and costs.",
+      "sha256": "6e3c500c5031b81127d7016687fd6083b76097823131415a85c91219d628435c"
     },
     "scheduler/backupInventory.ts": {
       "sha256": "72f50f920461c158ba38fbd7c02de8020c2a0ee91d3e691fe939cd4c17f19e44",

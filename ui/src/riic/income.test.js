@@ -100,7 +100,7 @@ describe('income export calculation', () => {
     ['sampleDays', 0],
     ['sampleDays', null],
     ['sampleDays', 1.5],
-    ['seed', NaN]
+    ['expectationMode', 'yes']
   ])('rejects invalid %s=%s', (field, value) => {
     expect(() => incomeRequest(plan(), { ...modelSettings(), [field]: value })).toThrow()
   })

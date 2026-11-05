@@ -17,6 +17,19 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
+it('remembers expectation mode while dropping legacy seeds from editable preferences', () => {
+  saveIncomePreferences({ ...defaultIncomeSettings(), expectationMode: false, seed: 42 }, {})
+  expect(loadIncomePreferences().settings.expectationMode).toBe(false)
+  expect(loadIncomePreferences().settings).not.toHaveProperty('seed')
+  localStorage.setItem(
+    INCOME_PREFERENCES_KEY,
+    JSON.stringify({ version: 1, settings: { seed: 42 } })
+  )
+  const restored = { ...defaultIncomeSettings(), ...loadIncomePreferences().settings }
+  expect(restored.expectationMode).toBe(true)
+  expect(restored).not.toHaveProperty('seed')
+})
+
 it('stores editable parameters and inventory overrides without freezing fetched cache data', () => {
   const settings = defaultIncomeSettings()
   Object.assign(settings, {

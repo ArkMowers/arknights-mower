@@ -3,13 +3,13 @@ import { MOWER_INVENTORY_ITEMS } from './vendor/domain/simulationInventory'
 
 export const INCOME_PREFERENCES_KEY = 'mower-income-preferences-v1'
 
-const numericFields = { warmupDays: [0, 30], sampleDays: [1, 90], seed: [0, 0xffffffff] }
+const numericFields = { warmupDays: [0, 30], sampleDays: [1, 90], tailorSeed: [0, 0xffffffff] }
 const enumFields = {
   inventorySource: ['cache', 'manual'],
   operatorMode: ['cache', 'maximum', 'custom'],
   weightMode: ['mower', 'custom']
 }
-const booleanFields = ['finiteInventory', 'allowGoldDebt', 'jayeElite0']
+const booleanFields = ['finiteInventory', 'allowGoldDebt', 'jayeElite0', 'expectationMode']
 
 function quantities(value, keys, integer = true) {
   return Object.fromEntries(

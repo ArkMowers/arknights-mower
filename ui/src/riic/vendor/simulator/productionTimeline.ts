@@ -9,7 +9,7 @@ import {evaluateManufacturingCapacity,type OperatorEfficiencyResult} from '../en
 import {evaluateTradeOrderCapacity} from '../engine/orderCapacity'
 import type {CompiledSchedule} from '../scheduler/types'
 import type {RuntimeState} from '../scheduler/rosterRuntime'
-import {getOrderDistribution,selectBaseOrder,type SpecialCapture,type OrderMode} from '../rules/orderRules'
+import {getOrderDistribution,selectBaseOrder,expectedBaseOrder,type SpecialCapture,type OrderMode} from '../rules/orderRules'
 import {startOrder,advanceOrder,finishOrder,type ActiveOrder} from './orderTimeline'
 import {createLedger,type ResourceAmounts,type ResourceKind} from './resourceLedger'
 import {createDroneState,generateDrones,spendDrones} from './droneTimeline'
@@ -24,6 +24,7 @@ export function assertRunOrderMode(mode: unknown): void {
 }
 
 export interface ProductionOptions {
+ expectationMode?:boolean
  outputMode?:'settled'|'potential'
  inventoryMode?:'unlimited'|'finite'
  allowGoldDebt?:boolean
@@ -44,7 +45,8 @@ export interface ProductionReport {
  drones:ReturnType<typeof createDroneState>
  manufacturing:{roomId:string;product:string;completedItems:number;sampleCompletedItems:number;pendingItems:number;remainingBaseMinutes:number;blockedHours:number;blockedMaterialHours:number}[]
  trading:{roomId:string;completedOrders:number;collectedOrders:number;pendingOrders:CompletedOrder[];remainingBaseMinutes:number|null;blockedHours:number}[]
- events:ProductionEvent[];assumptions:{outputMode:'settled'|'potential';inventoryMode:'unlimited'|'finite';allowGoldDebt:boolean;seed:number;runOrderMode:'ideal';droneTarget:'gold'|'exp'|'none'|'trading';droneRoomId?:string;droneReserve:number;collectionIntervalHours:number;orderSnapshotPolicy:string}
+ sampleDrones?:{opening:number;closing:number;generated:number;consumed:number;overflow:number}
+ events:ProductionEvent[];assumptions:{expectationMode?:boolean;outputMode:'settled'|'potential';inventoryMode:'unlimited'|'finite';allowGoldDebt:boolean;seed?:number;runOrderMode:'ideal';droneTarget:'gold'|'exp'|'none'|'trading';droneRoomId?:string;droneReserve:number;collectionIntervalHours:number;orderSnapshotPolicy:string}
 }
 const EPS=1e-8
 const resources:ResourceKind[]=['gold','lmd','exp','fragment','orundum','drone','orirock','device']
@@ -66,13 +68,15 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
  if(!['unlimited','finite'].includes(inventoryMode))throw new Error('Invalid inventory mode')
  if(!['settled','potential'].includes(outputMode))throw new Error('Invalid output mode')
  const seed=options.seed??1,target=options.droneTarget??'gold',reserve=options.droneReserve??0,interval=potential?0:options.collectionIntervalHours??schedule.assumptions.collectionIntervalHours
- if(!Number.isSafeInteger(seed)||seed<0||seed>0xffffffff||!['gold','exp','none','trading'].includes(target))throw new Error('Invalid production strategy/seed')
+ const expectationMode=options.expectationMode??false
+ if(typeof expectationMode!=='boolean'||(!expectationMode&&(!Number.isSafeInteger(seed)||seed<0||seed>0xffffffff))||!['gold','exp','none','trading'].includes(target))throw new Error('Invalid production strategy/seed')
  const droneCapacity=resolveDroneCapacity(schedule.sourceWorkspace)
  if(![reserve,interval].every(x=>Number.isFinite(x)&&x>=0)||!Number.isInteger(reserve)||(droneCapacity>0?reserve>=droneCapacity:reserve>0))throw new Error('Invalid production timing/reserve')
  const initial={gold:schedule.assumptions.initialGold,fragment:schedule.assumptions.initialFragments,drone:schedule.assumptions.initialDrones,...options.initialResources,...(potential?{gold:0,fragment:0,lmd:0,exp:0,orundum:0,orirock:0,device:0}:{})}
  for(const k of Object.keys(initial))if(!resources.includes(k as ResourceKind))throw new Error(`Unknown initial resource ${k}`)
  const ledger=createLedger(initial),materialsConsumed:ResourceAmounts={}
  let drones=createDroneState(initial.drone??0,droneCapacity),serial=0,valid=true,nextCollection=interval||Infinity
+ let openingDrones={...drones}
  const events:ProductionEvent[]=[],manufactures=new Map<string,ManufactureRoom>(),trades=new Map<string,TradeRoom>()
  // Capture the original main plan once; a speculative backup must not change its own predicate.
  const baseProducts=Object.fromEntries(Object.values(schedule.sourceWorkspace.mainPlan.facilities).map(room=>{
@@ -91,8 +95,8 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
  // Append-only, local ownership: avoid cloning the complete ledger for every manufactured item.
  const transact=(delta:ResourceAmounts,reason:string,time=state.time)=>{
   for(const [key,n] of Object.entries(delta))if(!resources.includes(key as ResourceKind)||!Number.isFinite(n))throw new Error('Invalid production transaction')
-  for(const [key,n] of Object.entries(delta))if((ledger.balances[key as ResourceKind]??0)+n<0&&!(key==='gold'&&options.allowGoldDebt===true))return false
-  for(const [key,n] of Object.entries(delta)){const k=key as ResourceKind;ledger.balances[k]=(ledger.balances[k]??0)+n;const totals=n>=0?ledger.inflows:ledger.outflows;totals[k]=(totals[k]??0)+Math.abs(n)}
+  for(const [key,n] of Object.entries(delta))if((ledger.balances[key as ResourceKind]??0)+n<-(expectationMode?EPS:0)&&!(key==='gold'&&options.allowGoldDebt===true))return false
+  for(const [key,n] of Object.entries(delta)){const k=key as ResourceKind,next=(ledger.balances[k]??0)+n;ledger.balances[k]=expectationMode&&next<0&&next>=-EPS?0:next;const totals=n>=0?ledger.inflows:ledger.outflows;totals[k]=(totals[k]??0)+Math.abs(n)}
   const id=`${++serial}:${reason}`;ledger.entries.push({reason:id,delta:{...delta}});ledger.appliedReasons.push(id);record(reason,{delta},time);return true
  }
  const completedTotals=()=>({exp:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.exp??0)*1000,0),gold:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.gold??0),0),fragments:[...manufactures.values()].reduce((n,m)=>n+(m.completedByProduct.fragment??0),0),orderLmd:events.filter(e=>e.type==='order-completed').reduce((n,e)=>n+(e.order?.lmdReward??0),0)})
@@ -105,6 +109,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   if(!opening){opening={...ledger.balances};openingIn={...ledger.inflows};openingOut={...ledger.outflows};openingCompleted=completedTotals();openingManufactured=new Map([...manufactures].map(([id,m])=>[id,m.state.lifetimeItems]));recycle?.markObservation()}
   for(const m of manufactures.values())if(m.state.pendingItems)openingPendingManufacture.set(m.roomId,{product:m.state.formula.product,quantity:m.state.pendingItems})
   observationMarked=true
+  if(warmupHours>0)openingDrones={...drones}
  }
  const cost=(m:ManufacturingState):ResourceAmounts=>Object.fromEntries(m.formula.costs.map(c=>[c.id==='4001'?'lmd':c.id==='30012'?'orirock':'device',-c.count]))
  const advanceManufacture=(m:ManufactureRoom,work:number)=>{
@@ -147,7 +152,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
     m.state=updateManufacturingCapacity(m.state,Math.max(0,capacity))
    }else if(room.type==='trading'){
     let t=trades.get(room.id)
-    if(!t){let hash=seed;for(const c of room.id)hash=Math.imul(hash^c.charCodeAt(0),16777619)>>>0;t={product:room.strategy==='orundum'?'orundum':'lmd',roomId:room.id,active:null,pending:[],completedOrders:0,collectedOrders:0,blockedHours:0,limit:0,disabled:false,rng:hash};trades.set(room.id,t)}
+    if(!t){let hash=0;if(!expectationMode){hash=seed;for(const c of room.id)hash=Math.imul(hash^c.charCodeAt(0),16777619)>>>0}t={product:room.strategy==='orundum'?'orundum':'lmd',roomId:room.id,active:null,pending:[],completedOrders:0,collectedOrders:0,blockedHours:0,limit:0,disabled:false,rng:hash};trades.set(room.id,t)}
     const capacity=evaluateTradeOrderCapacity(room,frame.config,frame.active,evaluation);t.limit=capacity.limit
     if(capacity.limit===null)unsupported('UNQUANTIFIED_ORDER_CAPACITY',`${room.id}：${capacity.unquantified.join('；')}，停止新单获取`)
    }
@@ -238,7 +243,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    }
    const orderMode:OrderMode=t.product==='orundum'?'orundum':c.pepe?'pepe':c.closure?'closure':'gold'
    if(orderMode==='pepe'&&target==='trading')diagnostic('PEPE_DRONE_UNVERIFIED',`${t.roomId}：佩佩订单无人机加速未核实；保留无人机库存，不计加速`)
-   try{const base=selectBaseOrder(getOrderDistribution(room.level,frame.evaluations[t.roomId]!.quality,orderMode,frame.evaluations[t.roomId]!.qualityWarmup),rng(t));t.active=startOrder({id:`${t.roomId}:${t.completedOrders+1}`,startedAt:state.time,base});record('order-started',{roomId:t.roomId,orderId:t.active.id})}
+   try{const distribution=getOrderDistribution(room.level,frame.evaluations[t.roomId]!.quality,orderMode,frame.evaluations[t.roomId]!.qualityWarmup),base=expectationMode?expectedBaseOrder(distribution):selectBaseOrder(distribution,rng(t));t.active=startOrder({id:`${t.roomId}:${t.completedOrders+1}`,startedAt:state.time,base});record('order-started',{roomId:t.roomId,orderId:t.active.id})}
    catch(error){t.disabled=true;unsupported('ORDER_DISTRIBUTION_UNSUPPORTED',`${t.roomId}：${String(error)}`)}
   }
  }
@@ -351,13 +356,15 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   }
   const report=():ProductionReport=>({success:valid,ledger,sample:{completed:completedSample(),warmupReceipts:{...warmupReceipts},opening:opening??{...ledger.balances},closing:{...ledger.balances},inflows:difference(ledger.inflows,openingIn),outflows:difference(ledger.outflows,openingOut),net:difference(ledger.balances,opening??ledger.balances)},materialsConsumed:{...materialsConsumed},drones,events,
    ...(recycle?{recycle:recycle.report()}:{}),
-   assumptions:{outputMode,inventoryMode,allowGoldDebt:options.allowGoldDebt===true,seed,runOrderMode:'ideal',droneTarget:target,droneRoomId:options.droneRoomId,droneReserve:reserve,collectionIntervalHours:interval,orderSnapshotPolicy:'acquisition-start-v1: base draw and Pepe/Closure workload at start; U-Official/Proviso/Tequila conversion at completion; payment at collection; simultaneous facilities use schedule order'},
+   sampleDrones:{opening:openingDrones.stock,closing:drones.stock,generated:drones.generated-openingDrones.generated,consumed:drones.consumed-openingDrones.consumed,overflow:drones.overflow-openingDrones.overflow},
+   assumptions:{expectationMode,outputMode,inventoryMode,allowGoldDebt:options.allowGoldDebt===true,...(expectationMode?{}:{seed}),runOrderMode:'ideal',droneTarget:target,droneRoomId:options.droneRoomId,droneReserve:reserve,collectionIntervalHours:interval,orderSnapshotPolicy:'acquisition-start-v1: base distribution and Pepe/Closure workload at start; U-Official/Proviso/Tequila conversion at completion; payment at collection; simultaneous facilities use schedule order'},
    manufacturing:[...manufactures.values()].map(m=>({roomId:m.roomId,product:m.state.formula.product,completedItems:m.state.lifetimeItems,sampleCompletedItems:m.state.lifetimeItems-(openingManufactured.get(m.roomId)??0),pendingItems:m.state.pendingItems,remainingBaseMinutes:m.state.remainingBaseMinutes,blockedHours:m.blockedHours,blockedMaterialHours:m.blockedMaterialHours})),
    trading:[...trades.values()].map(t=>({roomId:t.roomId,completedOrders:t.completedOrders,collectedOrders:t.collectedOrders,pendingOrders:t.pending,remainingBaseMinutes:t.active?.remainingBaseMinutes??null,blockedHours:t.blockedHours}))})
   if(switchSettings.enable)diagnostic('PRODUCT_SWITCH_SIMULATION_MODEL','切产物按当前份基础工作量、共享无人机库存及配置的损耗和等待规则推进；旧产物先收取，已有贸易订单保留。确认缓冲按暂停开工建模，未模拟设备识别、页面操作及换班前批量切换的驻场等待。')
   if(switchSettings.enable&&switchSettings.direct_when_drones_insufficient)diagnostic('PRODUCT_SWITCH_CANCEL_COST_MODEL','直接取消当前制造份时不计完成产物，保留已发生的开工扣料；游戏取消时的材料返还规则未实测。')
   if(potential)diagnostic('POTENTIAL_OUTPUT_MODEL','直观产出模式：忽略材料库存不足，设施容量与收取按 Mower 排班执行，完成即计产出；账本为测算辅助，不代表实际到账。无人机仍按所选策略及实际生成量使用。')
   diagnostic('MANUFACTURING_RECIPES_UNLOCKED','制造配方默认已解锁，不根据当前制造站等级推断历史解锁状态。')
+  if(expectationMode)diagnostic('EXPECTED_ORDER_MODEL','数学期望模式：订单开始时保存概率分布，按概率平均获取耗时；完成时逐档应用特殊订单效果，再平均奖励与材料消耗，不使用随机种子。固定效率与概率下，长期收益率为期望奖励除以期望耗时；换班、暖机、缺料、容量和库存阈值耦合下，总收益为平均订单模型的近似期望。裁缝暖机概率沿用未经实测核验的近似曲线。')
   diagnostic('IDEAL_RUN_ORDER_ASSUMPTIONS','理想跑单按已解锁的佩佩/可露希尔候选决定新单模式，在普通订单完成时应用 U-Official/但书/龙舌兰效果；保留 Mower 任务读取、排序与唤醒，不临时换人、不等待、不消耗跑单干员心情或无人机。常规排班和无人机目标策略仍执行。')
   diagnostic('DRONE_ALLOCATION_POLICY',nativeScheduler?`无人机由 Mower 的任务阶段使用：每 ${schedule.assumptions.droneIntervalHours ?? 3} 小时待办检查、${schedule.assumptions.droneCountLimit ?? 100} 架判断门槛；按所选设施加速，不额外消耗跑单无人机。`:`无人机采用满仓及每日彻底清空加速${options.droneRoomId&&target!=='none'?`设施(${options.droneRoomId})`:target==='gold'?'赤金':target==='exp'?'作战记录':target==='trading'?`贸易站(${options.droneTradingRoomId??'默认'})`:'关闭'}、保留 ${reserve} 架策略，以保证计算稳定。`)
 

@@ -1,4 +1,5 @@
 import { createCalculationBottleneckTracker } from './vendor/workbench/calculationBottlenecks'
+import { incomeHasTailor } from './incomeTailor'
 
 // A run owns its worker and observations; completed results keep their input snapshot.
 export function createIncomeSession({ createWorker, update, now = () => performance.now() }) {
@@ -29,6 +30,11 @@ export function createIncomeSession({ createWorker, update, now = () => performa
       if (worker) return false
       input = JSON.parse(JSON.stringify({ plan, settings }))
       delete input.settings.masteryPlanPresent
+      if (incomeHasTailor(input.plan, input.settings)) {
+        input.settings.expectationMode = false
+        input.settings.seed ??= input.settings.tailorSeed ?? 42
+      } else if (input.settings.expectationMode === false && input.settings.seed === undefined)
+        input.settings.seed = crypto.getRandomValues(new Uint32Array(1))[0]
       tracker = createCalculationBottleneckTracker()
       started = now()
       update({ running: true, result: null, error: null, bottleneck: null, progress: null, input })

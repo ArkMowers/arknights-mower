@@ -13,17 +13,22 @@ export function incomeOrderDistribution(report) {
   const counts = { 2: 0, 3: 0, 4: 0 }
   let total = 0
   let other = 0
+  let expected = false
   for (const event of report.production.events) {
     if (event.type !== 'order-completed' || !(event.time > start && event.time <= end)) continue
     total++
-    const gold =
-      event.order?.mode === 'gold' ? goldByWorkload.get(event.order.baseMinutes) : undefined
-    if (gold === undefined) other++
-    else counts[gold]++
+    const components = event.order?.expectationComponents
+    expected ||= !!components
+    for (const order of components ?? [{ ...event.order, probability: 1 }]) {
+      const gold = order.mode === 'gold' ? goldByWorkload.get(order.baseMinutes) : undefined
+      if (gold === undefined) other += order.probability
+      else counts[gold] += order.probability
+    }
   }
   return {
     total,
     other,
+    ...(expected ? { expected: true } : {}),
     rows: [2, 3, 4].map((gold) => ({
       gold,
       count: counts[gold],

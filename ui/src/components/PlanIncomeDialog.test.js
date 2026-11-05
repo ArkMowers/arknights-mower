@@ -98,7 +98,7 @@ it('remembers edited parameters across dialog recreation before any calculation'
   Object.assign(page.settings, {
     warmupDays: 1,
     sampleDays: 7,
-    seed: 99,
+    expectationMode: false,
     droneRoom: '',
     operatorMode: 'custom',
     operatorText: '阿米娅,2,80',
@@ -113,7 +113,7 @@ it('remembers edited parameters across dialog recreation before any calculation'
   expect(page.settings).toMatchObject({
     warmupDays: 1,
     sampleDays: 7,
-    seed: 99,
+    expectationMode: false,
     droneRoom: '',
     operatorMode: 'custom',
     operatorText: '阿米娅,2,80',
@@ -170,7 +170,7 @@ it('restores defaults without changing shared settings or the retained result', 
   expect(page.settings).toMatchObject({
     warmupDays: 3,
     sampleDays: 28,
-    seed: 42,
+    expectationMode: true,
     droneRoom: 'room_1_1',
     operatorMode: 'cache',
     inventorySource: 'cache',
@@ -302,12 +302,29 @@ it('does not save the empty target while the snapshot watcher is still queued', 
   expect(JSON.parse(localStorage.getItem(INCOME_PREFERENCES_KEY)).settings.droneRoom).not.toBe('')
 })
 it('reads cached ownership and stock without writing configuration', async () => {
+  expect(page.settings.expectationMode).toBe(true)
+  expect(page.settings).not.toHaveProperty('seed')
   await page.readCache()
   await page.readWeights()
   expect(page.settings.cachedOperators).toEqual([{ operator: '阿米娅', elitePhase: 2, level: 80 }])
   expect(page.settings.cachedInventory.gold).toBe(10)
   expect(page.settings.mowerWeights).toMatchObject({ exp: 0.9568, gold: 0.76544, orders: 0.23456 })
   expect(io.client.put).not.toHaveBeenCalled()
+})
+it('disables expectation mode and restores the fixed seed input for a trade tailor', async () => {
+  page.settings.operatorMode = 'maximum'
+  props.snapshot.plan.plan1.room_1_1 = {
+    name: '贸易站',
+    product: 'lmd',
+    plans: [{ agent: '柏喙' }]
+  }
+  await nextTick()
+  expect(page.hasTailor.value).toBe(true)
+  expect(page.settings.tailorSeed).toBe(42)
+  page.settings.tailorSeed = 77
+  reopenDialog()
+  expect(page.hasTailor.value).toBe(true)
+  expect(page.settings.tailorSeed).toBe(77)
 })
 it('saves the selected shared algorithm and preserves recycling efficiency', async () => {
   await page.readWeights()

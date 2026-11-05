@@ -9,6 +9,7 @@ import { workspaceUsesInventoryConditions } from './vendor/scheduler/backupInven
 import { normalizeSimulationInventory } from './vendor/domain/simulationInventory'
 import { normalizeProductionWeights } from './vendor/domain/productionWeights'
 import { incomeInitialInventory } from './incomeCache'
+import { incomeHasTailor } from './incomeTailor'
 import { parseOperatorInventory, compileOperatorInventory } from './vendor/domain/operatorInventory'
 
 export const CALCULATOR_REVISION = '5529403'
@@ -17,7 +18,8 @@ export function defaultIncomeSettings() {
   return {
     warmupDays: 3,
     sampleDays: 28,
-    seed: 42,
+    expectationMode: true,
+    tailorSeed: 42,
     droneRoom: '',
     finiteInventory: true,
     inventorySource: 'cache',
@@ -58,9 +60,8 @@ export function incomeRequest(plan, settings) {
       )
     }
   }
-  if (!Number.isSafeInteger(settings.seed) || settings.seed < 0 || settings.seed > 0xffffffff) {
-    throw new Error('随机种子必须为 0–4294967295 的整数')
-  }
+  const requestedExpectation = settings.expectationMode ?? settings.seed === undefined
+  if (typeof requestedExpectation !== 'boolean') throw new Error('数学期望模式必须为开启或关闭')
   const workspace = incomeWorkspace(plan)
   const target = droneFacilities(workspace).find((f) => f.roomId === settings.droneRoom)
   if (settings.droneRoom && !target) throw new Error('无人机目标不在本次排班中')
@@ -85,6 +86,11 @@ export function incomeRequest(plan, settings) {
       throw new Error(parsed.diagnostics.map((d) => d.message).join('；') || '请填写干员和练度')
     operators = parsed.entries
   } else if (settings.operatorMode !== 'maximum') throw new Error('干员练度选项无效')
+  const tailor = incomeHasTailor(plan, settings)
+  const expectationMode = requestedExpectation && !tailor
+  const seed = settings.seed ?? (tailor ? (settings.tailorSeed ?? 42) : 1)
+  if (!expectationMode && (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff))
+    throw new Error('随机种子必须为 0–4294967295 的整数')
   return {
     workspace,
     options: {
@@ -115,7 +121,8 @@ export function incomeRequest(plan, settings) {
               }),
           allowGoldDebt: settings.allowGoldDebt,
           runOrderMode: 'ideal',
-          seed: settings.seed,
+          expectationMode,
+          ...(expectationMode ? {} : { seed }),
           droneTarget: target?.target ?? 'none',
           droneRoomId: target?.roomId,
           droneTradingRoomId: target?.target === 'trading' ? target.roomId : undefined

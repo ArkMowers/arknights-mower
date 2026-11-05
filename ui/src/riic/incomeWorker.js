@@ -6,6 +6,7 @@ import { incomeFailureMessage } from './incomeDiagnostics'
 import { incomeOrderDistribution } from './incomeOrders'
 import { createRecruitmentObservation } from './incomeRecruitment'
 import { createClueObservation } from './incomeClues'
+import { incomeStability } from './incomeStability'
 import { buildTimelineData } from './vendor/workbench/timeline/timelineModel'
 import { MOWER_FIAMMETTA_INITIAL_MORALE } from './vendor/scheduler/mowerInitialMorale'
 import {
@@ -65,6 +66,7 @@ export function calculateIncome(plan, settings, onProgress) {
       : (production.sample.net.lmd ?? 0) / days
   return {
     success: true,
+    stability: incomeStability(simulation),
     initialConditions: { fiammettaMorale: MOWER_FIAMMETTA_INITIAL_MORALE },
     modelProvenance: {
       calculatorBaseRevision: revision,
