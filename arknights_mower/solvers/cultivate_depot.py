@@ -1,5 +1,4 @@
 import json
-import re
 from threading import Lock
 from time import time
 from urllib.parse import urlencode
@@ -17,7 +16,7 @@ from arknights_mower.utils.skland import (
     player_info_url,
     request_with_retry,
 )
-from arknights_mower.utils.workshop_data import parse_roster
+from arknights_mower.utils.workshop_data import parse_roster, valid_inventory_items
 
 _refresh_lock = Lock()
 
@@ -88,16 +87,7 @@ class cultivate:
                     }
                 items = resp.get("data", {}).get("items")
                 if items is not None:
-                    if not isinstance(items, list) or any(
-                        not isinstance(entry, dict)
-                        or not isinstance(entry.get("id"), str)
-                        # Skland can report furniture parts (3401) as a debt.
-                        or not re.fullmatch(
-                            r"-?[0-9]+" if entry["id"] == "3401" else r"[0-9]+",
-                            str(entry.get("count", "")),
-                        )
-                        for entry in items
-                    ):
+                    if not valid_inventory_items(items):
                         raise ValueError("森空岛返回的库存数据无效")
                     # Use request start, not completion: a concurrent craft must win.
                     resp = {**resp, "_mower_inventory_observed_at": observed_at}
