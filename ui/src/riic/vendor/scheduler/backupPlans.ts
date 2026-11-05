@@ -1,6 +1,6 @@
 import {mowerInitialMorale} from './mowerInitialMorale'
 import {mowerExhaustTaskSignatures,invalidateMowerExhaustTasks} from './mowerExhaustReservations'
-import {readBackupGroups,readBackupMembership,selectBackupPlans} from './backupGroups'
+import {readBackupGroups,readBackupMembership,selectBackupPlans,sameBackupGroups,type BackupGroupState} from './backupGroups'
 import {mowerPrimaryJoinsRestingGroup,preserveMowerBackupRestingJoins} from './mowerBackupRestingJoin'
 import {validateMowerRosterRules} from '../domain/mowerRosterRules'
 import {assertMowerBackupRoomOwners, assertMowerBackupTaskRooms, mowerBackupRoomCapacity, prepareMowerBackupRoom} from '../domain/mowerBackupFacilities'
@@ -158,9 +158,10 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   if(plans.some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours===undefined)diagnostics.push({code:'MOWER_MAINTENANCE_ASSUMPTION',message:'未提供维护时间，本次模拟没有停服窗口'})
   if(plans.some(plan=>plan.usesMasteryPlan))diagnostics.push({code:'MOWER_MASTERY_PLAN_ASSUMPTION',message:'本次模拟固定为无未完成的训练计划且未在训练、训练室不受保护，不模拟训练进度、保护变化或计划完成时刻'})
   const groups = readBackupGroups(base.sourceWorkspace).filter(group=>group.id!=='default').map(group=>{const names=new Set<string>(),compiled=compileBackupExpression(group.trigger,names);names.forEach(name=>participants.add(name));return {...group,...compiled,conditionNames:[...names]}})
-  let activeGroup = 'default'
-  function selectionFor(currentState:RuntimeState,groupId:string,current:boolean[]){
-    return selectBackupPlans(plans,groups.filter(group=>group.evaluate(currentState)).map(group=>group.id),index=>Boolean(plans[index]!.condition(currentState)),groupId,current)
+  const groupCatalog = readBackupGroups(base.sourceWorkspace)
+  let activeGroup:BackupGroupState = 'default'
+  function selectionFor(currentState:RuntimeState,groupId:BackupGroupState,current:boolean[]){
+    return selectBackupPlans(plans,groups.filter(group=>group.evaluate(currentState)).map(group=>group.id),index=>Boolean(plans[index]!.condition(currentState)),groupId,current,groupCatalog)
   }
   const observedPlans = [...plans,...groups.map(group=>({...group,condition:group.evaluate}))].filter(plan=>plan.usesInventory||plan.usesFacilityProduct)
   let observedConditions: string | undefined
@@ -282,7 +283,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         const plan=alphaRebalanceDorms(migration,recovery.dorms,reserved,slots,orderChanged);next.dorms=migration.dorms;mergeMowerShiftTransition(transition,plan,next)
       }
       for(const [room,names] of Object.entries(transition))if(room.startsWith('dorm'))names.forEach((name,index)=>{if(!['Current','Free',''].includes(name)&&next.restMoodComplete(name)&&!next.freeRoomExcluded(name)&&next.currentOperator(room,index)?.name!==name)names[index]='Current'})
-      const changed=original.some((value,index)=>value!==conditions[index])||previous.backupGroup!==next.backupGroup
+      const changed=original.some((value,index)=>value!==conditions[index])||!sameBackupGroups(previous.backupGroup,next.backupGroup)
       const reconciled=changed?reconcileMowerBackupRetention(previous,next,transition,pendingTasks??getMowerSourceRuntime(state).queue.tasks.filter(task=>task!==getMowerSourceRuntime(state).activeTask),retentionExplicitNames):transition
       return stripMowerCurrent(orderChanged||changed?planMowerDormIsolation(next,reconciled,slots,reserved,orderChanged?new Set(recovery.dorms.map(b=>b.name).filter(Boolean)):new Set()):reconciled)
     },
@@ -310,8 +311,8 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       retentionFailure=undefined
     }
     for(let pass=0;pass<64;pass++){
-      if(conditions.every((v,i)=>v===current.planConditions[i])&&selection.groupId===current.backupGroup){
-        if(conditions.every((v,i)=>v===original[i])&&data.backupGroup===selection.groupId)return false
+      if(conditions.every((v,i)=>v===current.planConditions[i])&&sameBackupGroups(selection.groupId,current.backupGroup)){
+        if(conditions.every((v,i)=>v===original[i])&&sameBackupGroups(data.backupGroup,selection.groupId))return false
         let transition:Record<string,string[]>
         try{transition=alphaModel.transition(data,current,original,conditions)}catch(error){if(!(error instanceof MowerShiftPreviewError))throw error;if(error instanceof MowerBackupRetentionBlocked)retentionFailure={names:error.names,fingerprint:mowerBackupRetentionFingerprint(data,queue.tasks.filter(task=>task!==source.activeTask),error.names,alphaModel.select!(data))};state.diagnostics.push({code:'mower-backup-deferred',message:error.message});return false}
         const pending=mowerBackupRetentionPending(current,queue.tasks)
@@ -362,7 +363,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       if(grouped)return enabled
       return BACKUP_TIMINGS[enabled ? p.timing : p.exitTiming] <= BACKUP_TIMINGS[timing] ? enabled : active[i]!
     })
-    if (next.every((value, i) => value === active[i]) && activeGroup===selected.groupId) return false
+    if (next.every((value, i) => value === active[i]) && sameBackupGroups(activeGroup,selected.groupId)) return false
     const workspace = structuredClone(base.sourceWorkspace)
     workspace.compatibility.backupPlans = []
     next.forEach((enabled, i) => {

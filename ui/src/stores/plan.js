@@ -1,3 +1,4 @@
+import { normalizeBackupGroups } from '@/riic/vendor/scheduler/backupGroups'
 import { planBindings, planReplacements } from '@/utils/plan_bindings'
 import { OPERATOR_CONF_FIELDS } from '@/utils/plan_edit'
 import { defineStore } from 'pinia'
@@ -34,7 +35,9 @@ const createPlanStore = (id, endpoint, rescue = false) =>
     const facility_levels = ref({})
 
     const backup_plans = ref([])
-    const backup_groups = ref([{ id: 'default', name: '默认分组', trigger: {} }])
+    const backup_groups = ref([
+      { id: 'default', name: '默认分组', trigger: {}, exclusive_with: [] }
+    ])
 
     const operators = ref([])
 
@@ -214,11 +217,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       facility_levels.value = deepcopy(response.data.facility_levels ?? {})
       plan.value = fill_empty(response.data.plan1)
 
-      backup_groups.value = deepcopy(response.data.backup_groups ?? [])
-      if (!backup_groups.value.some((group) => group.id === 'default')) {
-        backup_groups.value.unshift({ id: 'default', name: '默认分组', trigger: {} })
-      }
-      backup_groups.value.sort((a, b) => Number(b.id === 'default') - Number(a.id === 'default'))
+      backup_groups.value = normalizeBackupGroups(deepcopy(response.data.backup_groups ?? []))
       backup_plans.value = response.data.backup_plans ?? []
       for (let b of backup_plans.value) {
         b.group_ids ??= ['default']

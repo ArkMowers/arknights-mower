@@ -97,7 +97,7 @@ it.each([
   const group = store.backup_groups[1]
   expect(group).toMatchObject({
     name: '夜间',
-    trigger: { left: '', operator: '', right: '' }
+    trigger: { left: 'True', operator: '', right: '' }
   })
   expect(group.id).toBeTruthy()
   expect(store.backup_plans[0].group_ids).toEqual(['default', group.id])
@@ -152,11 +152,11 @@ it('shows both group hints only inside expanded group management', async () => {
     { id: 'pine', name: '红松', trigger: {} }
   )
   const collapsed = await renderToString(createSSRApp(TriggerDialog))
-  expect(collapsed).not.toContain('自定义分组同时只生效一个')
+  expect(collapsed).not.toContain('分组默认可同时生效')
   expect(collapsed).not.toContain('请为分组添加生效条件')
   state.groupsExpanded = true
   const html = await renderToString(createSSRApp(TriggerDialog))
-  expect(html).toContain('自定义分组同时只生效一个')
+  expect(html).toContain('分组默认可同时生效')
   expect(html).toContain('请为分组添加生效条件')
   expect(html).toContain('深海、红松')
   expect(html).toContain('不会生效')
@@ -168,10 +168,47 @@ it('clears the empty-group hint when a condition is set and preserves configured
   component.new_group_name.value = '夜间'
   component.create_group()
   await nextTick()
+  expect(component.selected_group.value.trigger).toEqual({ left: 'True', operator: '', right: '' })
+  expect(component.groups_without_condition.value).toEqual([])
+  component.update_group_trigger({ left: '', operator: '', right: '' })
   expect(component.groups_without_condition.value.map((group) => group.name)).toEqual(['夜间'])
   component.update_group_trigger({ left: 'False', operator: '', right: '' })
   expect(component.groups_without_condition.value).toEqual([])
   const html = await renderToString(createSSRApp(TriggerDialog))
   expect(html).not.toContain('请为分组添加生效条件')
-  expect(html).toContain('自定义分组同时只生效一个')
+  expect(html).toContain('分组默认可同时生效')
+})
+
+it('edits symmetric group exclusions, clears them and protects locked/default groups', () => {
+  store.backup_groups.push(
+    { id: 'a', name: '贸易', exclusive_with: [] },
+    { id: 'b', name: '制造', exclusive_with: [] },
+    { id: 'c', name: '维护', exclusive_with: [] }
+  )
+  component.editing_group.value = 'a'
+  expect(component.exclusion_options.value.map((option) => option.value)).toEqual(['b', 'c'])
+  component.update_group_exclusions(['b', 'b', 'a', 'default', 'missing'])
+  expect(store.backup_groups[1].exclusive_with).toEqual(['b'])
+  expect(store.backup_groups[2].exclusive_with).toEqual(['a'])
+  component.update_group_exclusions([])
+  expect(store.backup_groups[2].exclusive_with).toEqual([])
+  state.injections.planEditLocked.value = true
+  component.update_group_exclusions(['c'])
+  expect(store.backup_groups[3].exclusive_with).toEqual([])
+  state.injections.planEditLocked.value = false
+  component.editing_group.value = 'default'
+  component.update_group_exclusions(['a'])
+  expect(store.backup_groups[1].exclusive_with).toEqual([])
+})
+
+it('removes exclusions and restores fallback memberships when deleting a group', () => {
+  store.backup_groups.push(
+    { id: 'a', name: '贸易', exclusive_with: ['b'] },
+    { id: 'b', name: '制造', exclusive_with: ['a'] }
+  )
+  store.backup_plans[0].group_ids = ['a']
+  component.remove_group('a')
+  expect(store.backup_groups.map((group) => group.id)).toEqual(['default', 'b'])
+  expect(store.backup_groups[1].exclusive_with).toEqual([])
+  expect(store.backup_plans[0].group_ids).toEqual(['default'])
 })

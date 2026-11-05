@@ -1013,3 +1013,30 @@ def test_valid_plan_passes_within_the_startup_budget(monkeypatch):
         "status": "passed",
         "message": "验证成功，共验证 3 次",
     }
+
+
+@pytest.mark.parametrize("excluded", [False, True])
+def test_parallel_group_validation_checks_full_cross_group_roster(excluded):
+    plan = two_backups()
+    plan["backup_groups"] = [
+        {
+            "id": "a",
+            "name": "A",
+            "trigger": {"left": "True"},
+            "exclusive_with": ["b"] if excluded else [],
+        },
+        {"id": "b", "name": "B", "trigger": {"left": "True"}, "exclusive_with": []},
+    ]
+    for backup, group in zip(plan["backup_plans"], ["a", "b"]):
+        backup.group_ids = [group]
+        backup.backup_type = "exclusive"
+        backup.trigger = LogicExpression("True", "==", "True")
+    data = initialize(plan)
+    previous = repr(data.plan), list(data.plan_condition), data.backup_group
+    result = data.validate_backup_plans(check_owned=False)
+    assert result["success"] is excluded
+    if not excluded:
+        assert "主力变更" in result["message"]
+        assert "替班变更" in result["message"]
+        assert "替换组不可用高效组干员" in result["message"]
+    assert (repr(data.plan), data.plan_condition, data.backup_group) == previous

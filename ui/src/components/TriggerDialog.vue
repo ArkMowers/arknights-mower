@@ -49,7 +49,8 @@ function create_group() {
   const group = {
     id: `group-${number}`,
     name: new_group_name.value.trim(),
-    trigger: { left: '', operator: '', right: '' }
+    exclusive_with: [],
+    trigger: { left: 'True', operator: '', right: '' }
   }
   backup_groups.value.push(group)
   current_backup.value.group_ids = [
@@ -66,6 +67,9 @@ function remove_group(id) {
   }
   if (editing_group.value === id) editing_group.value = 'default'
   backup_groups.value = backup_groups.value.filter((group) => group.id !== id)
+  for (const group of backup_groups.value) {
+    group.exclusive_with = (group.exclusive_with ?? []).filter((other) => other !== id)
+  }
 }
 function move_group(id, offset) {
   if (edit_locked.value) return
@@ -77,6 +81,24 @@ function move_group(id, offset) {
 }
 function update_memberships(ids) {
   if (!edit_locked.value) current_backup.value.group_ids = ids.length ? ids : ['default']
+}
+const exclusion_options = computed(() =>
+  backup_groups.value
+    .filter((group) => group.id !== 'default' && group.id !== editing_group.value)
+    .map((group) => ({ label: group.name, value: group.id }))
+)
+function update_group_exclusions(ids) {
+  const selected = selected_group.value
+  if (edit_locked.value || !selected || selected.id === 'default') return
+  const allowed = new Set(exclusion_options.value.map((option) => option.value))
+  selected.exclusive_with = [...new Set(ids)].filter((id) => allowed.has(id))
+  for (const group of backup_groups.value) {
+    if (group.id === selected.id) continue
+    const others = (group.exclusive_with ?? []).filter((id) => id !== selected.id)
+    group.exclusive_with = selected.exclusive_with.includes(group.id)
+      ? [...others, selected.id]
+      : others
+  }
 }
 function update_group_trigger(data) {
   if (!edit_locked.value && selected_group.value?.id !== 'default')
@@ -107,7 +129,7 @@ function update_trigger(data) {
     title="副表条件"
     :auto-focus="false"
     transform-origin="center"
-    style="width: auto; max-width: 90vw"
+    style="width: 760px; max-width: 90vw"
   >
     <div v-if="current_backup" style="margin-top: 5px">
       <n-form
@@ -134,14 +156,15 @@ function update_trigger(data) {
       <n-text depth="3" style="display: block; margin-bottom: 12px">
         {{
           current_backup.type === 'exclusive'
-            ? '当前分组在所选分组中时参与选择；最多生效一张互斥副表，当前项失效后按顺序选择。'
-            : '当前分组在所选分组中时检查自身条件，可与该组的其他副表叠加。'
+            ? '至少一个归属分组生效时参与选择；每个生效分组最多一张互斥副表。跨组副表占用全部生效归属分组的名额，当前项仍符合条件时优先保留。'
+            : '至少一个归属分组生效时检查自身条件，可与其他副表叠加；跨组归属只应用一次。'
         }}
       </n-text>
       <n-collapse style="margin-bottom: 16px">
         <n-collapse-item title="分组条件与管理" name="groups">
           <n-alert :show-icon="false" type="info" style="margin-bottom: 12px">
-            自定义分组同时只生效一个。当前分组仍满足条件时保持生效，否则按列表顺序选择满足条件的分组；均不满足时使用默认分组。
+            分组默认可同时生效，新建分组的条件为
+            True。有互斥关系时，按下方列表从上到下选择；被排除的分组不影响其他组。没有自定义分组生效时使用默认分组。旧配置已保留原有互斥关系，可在下方调整。
           </n-alert>
           <n-alert
             v-if="groups_without_condition.length"
@@ -195,8 +218,24 @@ function update_trigger(data) {
               placeholder="选择要编辑条件的分组"
             />
             <template v-if="selected_group && selected_group.id !== 'default'">
+              <n-form-item label="互斥分组" :show-feedback="false">
+                <n-select
+                  :value="selected_group.exclusive_with ?? []"
+                  :options="exclusion_options"
+                  multiple
+                  clearable
+                  placeholder="不选则允许与其他组同时生效"
+                  :disabled="edit_locked"
+                  @update:value="update_group_exclusions"
+                />
+              </n-form-item>
+              <n-text depth="3"
+                >互斥关系双向同步。排在前面的分组优先生效；全局副表也受分组归属限制。</n-text
+              >
               <n-text>{{ selected_group.name }}的生效条件</n-text>
-              <trigger-editor :data="selected_group.trigger" @update="update_group_trigger" />
+              <n-scrollbar x-scrollable>
+                <trigger-editor :data="selected_group.trigger" @update="update_group_trigger" />
+              </n-scrollbar>
             </template>
             <n-text v-else depth="3">默认分组作为兜底，不需要设置分组条件。</n-text>
           </n-space>

@@ -63,3 +63,29 @@ it('roundtrips backup groups and normalizes legacy backup types', async () => {
   saved.backup_groups[1].name = 'changed'
   expect(store.backup_groups[1].name).toBe('休息')
 })
+
+it('preserves legacy exclusions and roundtrips explicit parallel and symmetric groups', async () => {
+  const app = createApp({})
+  app.use(createPinia())
+  app.provide('loaded', ref(false))
+  store = app.runWithContext(() => usePlanStore())
+  store.plan = store.fill_empty({})
+  const original = store.build_plan()
+  original.backup_groups = [
+    { id: 'a', name: '贸易', trigger: {} },
+    { id: 'b', name: '制造', trigger: {} }
+  ]
+  axios.get.mockResolvedValue({ data: original })
+  axios.post.mockResolvedValue({ data: {} })
+  await store.load_plan()
+  expect(store.backup_groups.map((group) => group.exclusive_with)).toEqual([[], ['b'], ['a']])
+  store.backup_groups[1].exclusive_with = []
+  store.backup_groups[2].exclusive_with = []
+  await store.save_plan()
+  const saved = axios.post.mock.lastCall[1]
+  axios.get.mockResolvedValue({ data: saved })
+  await store.load_plan()
+  expect(store.backup_groups.map((group) => group.exclusive_with)).toEqual([[], [], []])
+  saved.backup_groups[1].exclusive_with.push('b')
+  expect(store.backup_groups[1].exclusive_with).toEqual([])
+})

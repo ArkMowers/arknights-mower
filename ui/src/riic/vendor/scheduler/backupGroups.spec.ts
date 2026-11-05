@@ -1,3 +1,4 @@
+import {normalizeBackupGroups,sameBackupGroups} from './backupGroups'
 import {describe,expect,it} from 'vitest'
 import {createDefaultWorkspace} from '../workbench/defaults'
 import {importMowerJson,exportMowerJson} from '../workbench/compat/mowerJson'
@@ -52,16 +53,16 @@ describe('backup group runtime',()=>{
   const f=fixture(workspace=>{workspace.compatibility.unrecognizedFields.backup_groups=[{id:'a',name:'A',trigger:"op_data.inventory_count('赤金') > 0"},{id:'b',name:'B',trigger:'False'}]})
   expect(f.state.mowerBackupObservationWakeMicros).toBeTypeOf('function')
  })
- it('retains a selected group without enabled backups and excludes default globals',()=>{
+ it('uses group priority without inferring selection from enabled backups',()=>{
   const f=fixture(),data=f.source.data,op=data.operators.char_123_fang!
   op.currentRoom='';op.currentIndex=-1
   f.controller.evaluate('END')
   expect(f.controller.active).toEqual([false,false,false,false,false,false])
   expect(f.source.data.backupGroup).toBe('b')
-  op.currentRoom='room_1_1';op.currentIndex=0
+  f.source.data.operators.char_123_fang!.currentRoom='room_1_1';f.source.data.operators.char_123_fang!.currentIndex=0
   f.controller.evaluate('END')
-  expect(f.source.data.backupGroup).toBe('b')
-  expect(f.controller.active).toEqual([false,false,false,false,false,false])
+  expect(f.source.data.backupGroup).toBe('a')
+  expect(f.controller.active).toEqual([false,false,true,true,false,false])
  })
  it('keeps the active exclusive even when an earlier one is eligible',()=>{
   const f=fixture(),data=f.source.data
@@ -86,5 +87,85 @@ describe('backup group runtime',()=>{
   const imported=importMowerJson(json)
   expect(imported.compatibility.unrecognizedFields.backup_groups).toEqual(f.workspace.compatibility.unrecognizedFields.backup_groups)
   expect(imported.compatibility.backupPlans).toEqual(f.workspace.compatibility.backupPlans)
+ })
+})
+
+
+describe('concurrent groups and exclusions',()=>{
+ const concurrent=(workspace:ReturnType<typeof createDefaultWorkspace>)=>{
+  workspace.compatibility.unrecognizedFields.backup_groups=[
+   {id:'a',name:'A',trigger:'True',exclusive_with:[]},
+   {id:'b',name:'B',trigger:'True',exclusive_with:[]},
+  ]
+  const last=workspace.compatibility.backupPlans[5] as Record<string,unknown>
+  last.type='exclusive';last.trigger='True'
+ }
+ it('selects independent exclusive backups and converges unchanged observations',()=>{
+  const f=fixture(concurrent)
+  f.controller.evaluate('END')
+  expect(f.source.data.backupGroup).toEqual(['a','b'])
+  expect(f.controller.active).toEqual([false,false,true,true,false,true])
+  expect(f.controller.evaluate('END')).toBe(false)
+  expect(f.controller.evaluate('END')).toBe(false)
+ })
+ it('preserves shared exclusive slots and retained independent choices',()=>{
+  const f=fixture(workspace=>{
+   concurrent(workspace)
+   const shared=workspace.compatibility.backupPlans[3] as Record<string,unknown>
+   shared.group_ids=['a','b']
+  })
+  const model=f.state.mowerShiftModel!,data=f.source.data
+  expect(model.select!(data).conditions).toEqual([false,false,true,true,false,false])
+  data.planConditions=[false,false,true,false,true,true]
+  expect(model.select!(data).conditions).toEqual([false,false,true,false,true,true])
+ })
+ it('keeps concurrent group projection isolated until activation',()=>{
+  const f=fixture(concurrent),task=new MowerTask({type:T.SELF_CORRECTION,plan:{room_1_1:['char_123_fang']}})
+  f.source.data.operators.char_123_fang!.currentRoom='room_1_1'
+  f.source.data.operators.char_123_fang!.currentIndex=0
+  prepareMowerShiftBackup(f.source.data,task,f.state.mowerShiftModel!)
+  expect(task.backupGroup).toEqual(['a','b'])
+  expect(f.source.data.backupGroup).toBe('default')
+  f.state.mowerShiftModel!.activate(task.backupShiftConditions!,task)
+  expect(f.source.data.backupGroup).toEqual(['a','b'])
+  expect(f.controller.evaluate('END')).toBe(false)
+ })
+ it('normalizes exclusions symmetrically without changing the imported source',()=>{
+  const source=[{id:'a',name:'A',exclusive_with:['b']},{id:'b',name:'B',exclusive_with:[]},{id:'c',name:'C',exclusive_with:[]}]
+  const before=structuredClone(source),normalized=normalizeBackupGroups(source)
+  expect(source).toEqual(before)
+  expect(normalized.map(group=>group.exclusive_with)).toEqual([[],['b'],['a'],[]])
+  expect(normalizeBackupGroups(normalized)).toEqual(normalized)
+  expect(sameBackupGroups(['a','b'],['a','b'])).toBe(true)
+ })
+ it('uses only accepted groups to block later groups and respects priority',()=>{
+  const f=fixture(workspace=>{
+   concurrent(workspace)
+   workspace.compatibility.unrecognizedFields.backup_groups=[
+    {id:'a',name:'A',trigger:'True',exclusive_with:['b']},
+    {id:'b',name:'B',trigger:'True',exclusive_with:['c']},
+    {id:'c',name:'C',trigger:'True',exclusive_with:[]},
+   ]
+   workspace.compatibility.backupPlans.push({group_ids:['c'],type:'exclusive',trigger:'True'})
+  })
+  f.controller.evaluate('END')
+  expect(f.source.data.backupGroup).toEqual(['a','c'])
+  expect(f.controller.active).toEqual([false,false,true,true,false,false,true])
+ })
+ it.each([
+  {groups:[{id:'a',name:'A',exclusive_with:['missing']}]},
+  {groups:[{id:'a',name:'A',exclusive_with:['a']}]},
+  {groups:[{id:'a',name:'A',exclusive_with:null}]},
+  {groups:[{id:'a',name:'A',exclusive_with:['default']},{id:'default',name:'Default',exclusive_with:[]}]},
+ ])('rejects invalid saved exclusions %#',({groups})=>{
+  expect(()=>normalizeBackupGroups(groups)).toThrow()
+ })
+ it('defaults new groups to true while preserving legacy and explicitly empty conditions',()=>{
+  const groups=normalizeBackupGroups([
+   {id:'new',name:'New',exclusive_with:[]},
+   {id:'legacy',name:'Legacy'},
+   {id:'empty',name:'Empty',exclusive_with:[],trigger:{}},
+  ])
+  expect(groups.map(group=>group.trigger)).toEqual([{},{left:'True',operator:'',right:''},{},{}])
  })
 })
