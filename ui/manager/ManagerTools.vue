@@ -8,7 +8,7 @@ const tab = ref('network')
 const busy = ref(false)
 const error = ref('')
 const notice = ref('')
-const network = ref({ http_proxy: '', github_proxy: '' })
+const network = ref({ http_proxy: '', github_proxy: '', github_token: '' })
 const originalNetwork = ref(null)
 const groups = ref([])
 const groupErrors = ref([])
@@ -179,6 +179,30 @@ onUnmounted(() => {
               :disabled="busy"
             />
           </n-form-item>
+          <n-form-item label="GitHub Token">
+            <n-input
+              v-model:value="network.github_token"
+              type="password"
+              show-password-on="click"
+              :input-props="{
+                'aria-label': 'GitHub Token',
+                autocomplete: 'off',
+                spellcheck: false
+              }"
+              placeholder="可选，填写后直接访问 GitHub 官方地址"
+              :disabled="busy"
+              clearable
+            />
+          </n-form-item>
+          <p class="hint">
+            <a
+              href="https://github.com/settings/personal-access-tokens/new"
+              target="_blank"
+              rel="noopener noreferrer"
+              >创建 GitHub Token</a
+            >： 设置名称和有效期，选择 Public repositories，不添加额外权限。填写后 GitHub
+            检查与下载绕过下载代理站点，全局网络代理仍生效。
+          </p>
         </n-form>
         <div class="actions">
           <n-button :disabled="busy" @click="loadNetwork">重新加载</n-button>

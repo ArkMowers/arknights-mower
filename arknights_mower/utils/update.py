@@ -7,7 +7,7 @@ import requests
 from arknights_mower.utils.log import logger
 
 from .. import __version__
-from .github_download import request_download
+from .github_download import request_download, request_github
 from .update_runtime import hidden_console_options
 
 
@@ -77,8 +77,11 @@ def update_version():
 
 
 def __get_newest_version():
-    response = requests.get(
-        "https://api.github.com/repos/ArkMowers/arknights-mower/releases/latest"
+    response = request_github(
+        requests,
+        "get",
+        "https://api.github.com/repos/ArkMowers/arknights-mower/releases/latest",
+        timeout=30,
     )
     return response.json()["tag_name"]
 

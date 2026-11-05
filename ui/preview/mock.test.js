@@ -516,7 +516,8 @@ describe('offline preview', () => {
     expect((await client.get('/network/settings')).data).toEqual({
       ok: true,
       http_proxy: '',
-      github_proxy: ''
+      github_proxy: '',
+      github_token: ''
     })
     const saved = (
       await client.post(
@@ -528,7 +529,8 @@ describe('offline preview', () => {
     expect(saved).toEqual({
       ok: true,
       http_proxy: 'socks5h://127.0.0.1:7897',
-      github_proxy: 'https://proxy.example/'
+      github_proxy: 'https://proxy.example/',
+      github_token: ''
     })
     expect((await client.get('/network/settings')).data).toEqual(saved)
     expect(data).toEqual(original)
@@ -536,9 +538,23 @@ describe('offline preview', () => {
     expect((await reset.get('/network/settings')).data).toEqual({
       ok: true,
       http_proxy: '',
-      github_proxy: ''
+      github_proxy: '',
+      github_token: ''
     })
+    await client.post(
+      '/network/settings',
+      { http_proxy: '', github_proxy: '', github_token: 'github_pat_test' },
+      options
+    )
+    expect((await client.get('/network/settings')).data.github_token).toBe('github_pat_test')
     await client.post('/network/settings', { http_proxy: '', github_proxy: '' }, options)
+    expect((await client.get('/network/settings')).data.github_token).toBe('github_pat_test')
+    await client.post(
+      '/network/settings',
+      { http_proxy: '', github_proxy: '', github_token: '' },
+      options
+    )
+    expect((await client.get('/network/settings')).data.github_token).toBe('')
     expect((await client.get('/network/settings')).data.http_proxy).toBe('')
   })
 
@@ -552,7 +568,8 @@ describe('offline preview', () => {
       expect((await client.get('/network/settings')).data).toEqual({
         ok: true,
         http_proxy: '',
-        github_proxy: ''
+        github_proxy: '',
+        github_token: ''
       })
     }
   )
@@ -569,7 +586,8 @@ describe('offline preview', () => {
     expect((await client.get('/network/settings')).data).toEqual({
       ok: true,
       http_proxy: '',
-      github_proxy: ''
+      github_proxy: '',
+      github_token: ''
     })
   })
 
@@ -588,7 +606,8 @@ describe('offline preview', () => {
       ok: true,
       settings: {
         http_proxy: 'http://127.0.0.1:7897',
-        github_proxy: 'https://proxy.example/'
+        github_proxy: 'https://proxy.example/',
+        github_token: ''
       },
       results: [
         {

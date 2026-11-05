@@ -25,7 +25,7 @@ from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 
 if __package__:
-    from .github_download import request_download
+    from .github_download import git_environment, read_token_file, request_download
     from .update_runtime import (
         InstanceScanError,
         LockBusyError,
@@ -43,7 +43,7 @@ if __package__:
         write_json,
     )
 else:
-    from github_download import request_download
+    from github_download import git_environment, read_token_file, request_download
     from update_runtime import (
         InstanceScanError,
         LockBusyError,
@@ -730,9 +730,28 @@ class Worker:
                     raise
                 time.sleep(0.05)
 
-    def run_command(self, args, cwd=None, timeout=1800, env=None, cancellable=True):
+    def github_token(self):
+        return read_token_file(self.job.get("network_settings_path"))
+
+    def run_command(
+        self,
+        args,
+        cwd=None,
+        timeout=1800,
+        env=None,
+        cancellable=True,
+        github_auth=False,
+    ):
         if cancellable:
             self.check_cancelled()
+        environment = self.env if env is None else env
+        if github_auth:
+            command = list(map(str, args))
+            if command[0] != self.job.get("git") or not (
+                command[1:2] == ["fetch"] or command[1:3] == ["lfs", "fetch"]
+            ):
+                raise ValueError("GitHub 认证仅用于 Git fetch 和 Git LFS fetch")
+            environment = git_environment(environment, self.github_token())
         # Commands and arguments are fixed by the installer. Never use shell=True.
         print("执行：" + " ".join(map(str, args)), flush=True)
         with ExitStack() as cleanup:
@@ -745,7 +764,7 @@ class Worker:
             process = subprocess.Popen(
                 list(map(str, args)),
                 cwd=cwd or self.root,
-                env=self.env if env is None else env,
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 **options,
             )
@@ -863,7 +882,8 @@ class Worker:
                         if self.job.get("source_pr")
                         else [self.job["commit"]]
                     ),
-                ]
+                ],
+                github_auth=True,
             )
             if self.stage_attempted:
                 self.run_command(
@@ -878,7 +898,8 @@ class Worker:
                 "--no-tags",
                 self.job.get("source_url", "origin"),
                 ref,
-            ]
+            ],
+            github_auth=True,
         )
         if self.git_output("rev-parse", "FETCH_HEAD^{commit}") != expected:
             raise ValueError("远端版本已改变，请重新检查更新")
@@ -1183,6 +1204,7 @@ class Worker:
                     "get",
                     asset["url"],
                     proxy=self.job.get("github_proxy", ""),
+                    token=self.github_token(),
                     headers={"User-Agent": "Mower-Software-Update"},
                     proxies={"http": proxy, "https": proxy} if proxy else None,
                     stream=True,
@@ -1268,6 +1290,7 @@ class Worker:
                     "get",
                     asset["url"],
                     proxy=self.job.get("github_proxy", ""),
+                    token=self.github_token(),
                     headers={"User-Agent": "Mower-Software-Update"},
                     proxies={"http": proxy, "https": proxy} if proxy else None,
                     stream=True,

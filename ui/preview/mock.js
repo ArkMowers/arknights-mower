@@ -310,7 +310,7 @@ function unavailableDevicePreview() {
 }
 
 export function createPreviewAdapter(data, requests = []) {
-  const networkSettings = { http_proxy: '', github_proxy: '' }
+  const networkSettings = { http_proxy: '', github_proxy: '', github_token: '' }
   const softwareVersion = '4.1.6-preview'
   const softwareChannels = [
     { value: 'stable', label: '正式版', description: '跟随正式 Release，适合日常使用。' },
@@ -769,6 +769,10 @@ export function createPreviewAdapter(data, requests = []) {
     } else if (method === 'POST' && path === '/network/settings') {
       if (!body || typeof body.http_proxy !== 'string' || typeof body.github_proxy !== 'string')
         fail(config, '请提供完整的网络代理设置')
+      if ('github_token' in body) {
+        if (typeof body.github_token !== 'string') fail(config, 'GitHub Token 必须是字符串')
+        networkSettings.github_token = body.github_token.trim()
+      }
       networkSettings.http_proxy = body.http_proxy.trim().replace(/\/+$/, '')
       const githubProxy = body.github_proxy.trim().replace(/\/+$/, '')
       networkSettings.github_proxy = githubProxy ? `${githubProxy}/` : ''

@@ -1,11 +1,14 @@
 """Shared proxy settings for subsequent requests and newly launched children."""
 
+import errno
 import json
 import os
 import threading
+import time
+from contextlib import contextmanager
 from urllib.parse import urlsplit
 
-from arknights_mower.utils.github_download import normalize_proxy
+from arknights_mower.utils.github_download import normalize_proxy, normalize_token
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.update_runtime import write_json
 
@@ -65,23 +68,75 @@ def normalize_http_proxy(value):
     return value.rstrip("/")
 
 
-def get_settings():
+@contextmanager
+def _settings_file_lock(timeout=3.0):
+    path = settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with path.with_suffix(path.suffix + ".lock").open("a+b") as stream:
+        if os.name == "nt" and os.fstat(stream.fileno()).st_size == 0:
+            stream.write(b"\0")
+            stream.flush()
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    stream.seek(0)
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("网络配置正在保存，请稍后重试") from exc
+                time.sleep(min(0.02, remaining))
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def get_settings(*, strict=False):
     try:
-        data = json.loads(settings_path().read_text(encoding="utf-8"))
+        try:
+            data = json.loads(settings_path().read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            data = {}
+        if not isinstance(data, dict):
+            raise ValueError("网络配置格式不正确")
         return {
             "http_proxy": normalize_http_proxy(data.get("http_proxy", "")),
             "github_proxy": normalize_proxy(data.get("github_proxy", "")),
+            "github_token": normalize_token(data.get("github_token", "")),
         }
     except (OSError, ValueError, AttributeError):
-        return {"http_proxy": "", "github_proxy": ""}
+        if strict:
+            raise
+        return {"http_proxy": "", "github_proxy": "", "github_token": ""}
 
 
-def save_settings(data):
+def save_settings(data, *, original=None):
     settings = {
         "http_proxy": normalize_http_proxy(data["http_proxy"]),
         "github_proxy": normalize_proxy(data["github_proxy"]),
     }
-    with _environment_lock:
+    if "github_token" in data:
+        settings["github_token"] = normalize_token(data["github_token"])
+    with _environment_lock, _settings_file_lock():
+        current = get_settings(strict=True) if original is not None else get_settings()
+        if original is not None and current != original:
+            raise ValueError("网络配置已变化，请重新加载")
+        settings.setdefault("github_token", current["github_token"])
         apply_http_proxy()
         write_json(settings_path(), settings)
         apply_http_proxy()

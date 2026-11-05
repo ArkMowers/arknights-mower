@@ -61,6 +61,48 @@ describe('manager maintenance tools', () => {
     expect(component.error.value).toBe('changed')
     expect(component.notice.value).toBe('')
   })
+  it('disables the Token input while saving so a response cannot discard an edit', async () => {
+    let finishSave
+    api.save_network_settings.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSave = resolve
+      })
+    )
+    component.network.value.github_token = 'synthetic_token'
+    const saving = component.saveNetwork()
+    const { descriptor } = parse(
+      readFileSync(new URL('./ManagerTools.vue', import.meta.url), 'utf8')
+    )
+    const tokenInput = descriptor.template.content
+      .match(/<n-input\b[\s\S]*?\/>/g)
+      .find((input) => input.includes('network.github_token'))
+    async function inputDisabled() {
+      let disabled
+      await renderToString(
+        createSSRApp({
+          setup: () => ({ ...component }),
+          render: compile(tokenInput),
+          components: {
+            NInput: {
+              setup(_props, { attrs }) {
+                disabled = attrs.disabled
+                return () => null
+              }
+            }
+          }
+        })
+      )
+      return disabled
+    }
+    try {
+      expect(await inputDisabled()).toBe(true)
+    } finally {
+      finishSave({ ...component.network.value })
+      await saving
+    }
+    expect(await inputDisabled()).toBe(false)
+    expect(component.network.value.github_token).toBe('synthetic_token')
+  })
   it('keeps the current tab during a network read and loads MAA after the read finishes', async () => {
     let finishRead
     api.get_network_settings.mockReturnValueOnce(
