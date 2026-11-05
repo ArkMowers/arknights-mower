@@ -202,7 +202,43 @@ def test_craft_during_sync_is_not_overwritten(syncer, stock_db, monkeypatch):
     assert stock_db.get_inventory_counts()["固源岩组"] == 276
 
 
-@pytest.mark.parametrize("items", [{}, [None], [{"id": "30013", "count": "bad"}]])
+@pytest.mark.parametrize("force_inventory", [False, True])
+@pytest.mark.parametrize("count", [-123, "-123", 0, "0", 123, "123"])
+def test_furniture_parts_debt_does_not_block_sync(
+    syncer, stock_db, count, force_inventory
+):
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [
+                {"id": "3401", "count": count},
+                {"id": "30013", "count": "280"},
+            ],
+        },
+    }
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = payload
+        assert syncer.start(force_inventory=force_inventory) is True
+    cached = json.loads(syncer.record_path.read_text())
+    assert cached["data"] == payload["data"]
+    assert stock_db.get_inventory_counts()["固源岩组"] == 280
+
+
+@pytest.mark.parametrize(
+    "items",
+    [
+        {},
+        [None],
+        [{"id": "30013", "count": "bad"}],
+        [{"id": "30013", "count": -1}],
+        [{"id": "30013", "count": "-1"}],
+        *[
+            [{"id": "3401", "count": count}]
+            for count in ("--1", "-", "-1.5", -1.5, None, True)
+        ],
+    ],
+)
 def test_invalid_stock_does_not_replace_cache_or_database(syncer, stock_db, items):
     stock_db.save_inventory_counts({"固源岩组": 276})
     syncer.record_path.write_text('{"previous": true}')
