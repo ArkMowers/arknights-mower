@@ -25,3 +25,16 @@ export function normalizeSimulationInventory(value: unknown): Record<SimulationI
     return [item.resource, amount]
   })) as Record<SimulationInventoryResource, number>
 }
+
+/** Inputs to manufacture and trade; external supplies never count as production. */
+export const MOWER_RAW_MATERIALS = MOWER_INVENTORY_ITEMS.filter(item => item.resource !== 'exp')
+export function normalizeDailyExternalResources(value: unknown): Partial<Record<SimulationInventoryResource, number>> {
+ if(value===undefined)return {}
+ if(value===null||typeof value!=='object'||Array.isArray(value))throw new Error('日均外源材料必须为物品数量对象')
+ const input=value as Record<string,unknown>
+ for(const [key,amount] of Object.entries(input)){
+  if(!MOWER_RAW_MATERIALS.some(item=>item.resource===key))throw new Error(`不支持的外源材料：${key}`)
+  if(typeof amount!=='number'||!Number.isFinite(amount)||amount<0||amount>Number.MAX_SAFE_INTEGER)throw new Error('日均外源材料数量必须为不小于 0 的有限数值')
+ }
+ return {...input} as Partial<Record<SimulationInventoryResource,number>>
+}

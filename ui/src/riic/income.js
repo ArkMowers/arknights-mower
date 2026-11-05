@@ -6,7 +6,11 @@ import { importMowerJson } from './vendor/workbench/compat/mowerJson'
 import { droneFacilities } from './vendor/workbench/droneTargets'
 import { mowerAdvancedAssumptions } from './vendor/scheduler/mowerAdvancedSettings'
 import { workspaceUsesInventoryConditions } from './vendor/scheduler/backupInventory'
-import { normalizeSimulationInventory } from './vendor/domain/simulationInventory'
+import {
+  normalizeSimulationInventory,
+  normalizeDailyExternalResources,
+  MOWER_RAW_MATERIALS
+} from './vendor/domain/simulationInventory'
 import { normalizeProductionWeights } from './vendor/domain/productionWeights'
 import { incomeInitialInventory } from './incomeCache'
 import { incomeHasTailor } from './incomeTailor'
@@ -26,7 +30,10 @@ export function defaultIncomeSettings() {
     cachedInventory: null,
     cachedOperators: null,
     cacheObservedAt: null,
-    allowGoldDebt: true,
+    allowMaterialDebt: true,
+    dailyExternalResources: Object.fromEntries(
+      MOWER_RAW_MATERIALS.map(({ resource }) => [resource, 0])
+    ),
     weightMode: 'mower',
     mowerWeights: null,
     mowerAlgorithm: null,
@@ -119,7 +126,11 @@ export function incomeRequest(plan, settings) {
                 inventoryMode: 'finite',
                 initialResources: inventory
               }),
-          allowGoldDebt: settings.allowGoldDebt,
+          allowMaterialDebt: settings.allowMaterialDebt ?? settings.allowGoldDebt === undefined,
+          ...(typeof settings.allowGoldDebt === 'boolean'
+            ? { allowGoldDebt: settings.allowGoldDebt }
+            : {}),
+          dailyExternalResources: normalizeDailyExternalResources(settings.dailyExternalResources),
           runOrderMode: 'ideal',
           expectationMode,
           ...(expectationMode ? {} : { seed }),

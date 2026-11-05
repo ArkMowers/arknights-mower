@@ -25,7 +25,10 @@ import IncomeActivity from './IncomeActivity.vue'
 import IncomeDiagnostics from './IncomeDiagnostics.vue'
 import { validateRosterWorkspace } from '@/riic/vendor/workbench/validate'
 import { renderIncomeImage, downloadIncomeImage, incomeImageFilename } from '@/riic/incomeImage'
-import { MOWER_INVENTORY_ITEMS } from '@/riic/vendor/domain/simulationInventory'
+import {
+  MOWER_INVENTORY_ITEMS,
+  MOWER_RAW_MATERIALS
+} from '@/riic/vendor/domain/simulationInventory'
 
 const props = defineProps({ snapshot: Object, preparing: Boolean, prepareError: String })
 const emit = defineEmits(['close'])
@@ -571,7 +574,7 @@ onBeforeUnmount(() => {
                 hasTailor
                   ? '按当前概率随机抽单，使用指定种子复现。'
                   : settings.expectationMode
-                    ? '按订单概率平均耗时，并逐档计算特殊订单奖励和材料消耗；无抽单波动。换班与库存阈值耦合下为近似期望。'
+                    ? '按有效工作时间累计订单、制造、材料消耗及其他产出的小数期望；无人机按生成的加速能力折算。换班与库存阈值耦合下为近似期望。'
                     : '按概率随机抽单，每次演算自动生成随机种子；结果保留本次种子以供复现。'
               }}
             </p>
@@ -637,16 +640,16 @@ onBeforeUnmount(() => {
                     : ''
                 }}
               </p>
-              <n-form-item label="允许赤金透支"
-                ><n-switch v-model:value="settings.allowGoldDebt"
+              <n-form-item label="允许原材料亏空"
+                ><n-switch v-model:value="settings.allowMaterialDebt"
               /></n-form-item>
             </template>
             <p v-if="required || settings.finiteInventory">
               {{
                 required ? '副表含库存条件，必须预设库存。' : ''
-              }}不添加外源收入，预热与统计连续记账。{{
-                settings.allowGoldDebt
-                  ? '赤金可因交付扣为负数，负数表示缺口；其他材料不足时停产或暂停交付。'
+              }}预热与统计连续记账，外源材料按日均设置持续补入且不计收益。{{
+                settings.allowMaterialDebt
+                  ? '原材料可扣为负数，负数表示缺口；制造与交付不因缺料停止。'
                   : '材料不足时停产或暂停交付。'
               }}回收站仅计产出次数，不计随机材料或材料价值。
             </p>
@@ -665,6 +668,26 @@ onBeforeUnmount(() => {
                   @update:value="stock[item.resource] = $event"
               /></n-form-item>
             </div>
+            <n-collapse v-if="required || settings.finiteInventory">
+              <n-collapse-item title="日均外源材料" name="external-materials">
+                <p>按每天的数量均匀补入，预热与统计均生效；外源补入不计产出和加权收益。</p>
+                <div class="two-columns">
+                  <n-form-item
+                    v-for="item in MOWER_RAW_MATERIALS"
+                    :key="item.resource"
+                    :label="`${item.label} / 天`"
+                  >
+                    <n-input-number
+                      :value="settings.dailyExternalResources[item.resource] ?? 0"
+                      :min="0"
+                      :max="Number.MAX_SAFE_INTEGER"
+                      :precision="4"
+                      @update:value="settings.dailyExternalResources[item.resource] = $event ?? 0"
+                    />
+                  </n-form-item>
+                </div>
+              </n-collapse-item>
+            </n-collapse>
             <n-collapse
               ><n-collapse-item title="产出权重" name="weights">
                 <n-form-item label="权重来源"
@@ -763,7 +786,9 @@ onBeforeUnmount(() => {
               {{ state.input.settings.sampleDays }} 天，
               {{
                 state.result.simulationReport?.production?.assumptions.expectationMode
-                  ? '数学期望模式（平均订单模型）'
+                  ? state.result.simulationReport?.production?.expected
+                    ? '数学期望模式（连续产出）'
+                    : '数学期望模式（平均订单模型）'
                   : '随机抽单模式'
               }}。 修改参数后需重新演算；再次导出使用本次结果。
             </p>
@@ -837,7 +862,14 @@ onBeforeUnmount(() => {
                   {{ format(state.result.stability.drones.generated) }}、 消耗
                   {{ format(state.result.stability.drones.consumed) }}、溢出
                   {{ format(state.result.stability.drones.overflow) }} 架。
-                  差额保留为库存，不强行使用或按固定价格计入收益；其生产价值取决于加速目标、材料和停工条件。
+                  <template v-if="state.result.simulationReport?.production?.expected">
+                    收益按统计期生成的加速能力计入所选设施，已折算
+                    {{ format(state.result.simulationReport.production.expected.droneAllocated) }}
+                    架；期初库存与实际使用不重复计入收益。上表仅用于观察调度库存。
+                  </template>
+                  <template v-else>
+                    差额保留为库存，不强行使用或按固定价格计入收益；其生产价值取决于加速目标、材料和停工条件。
+                  </template>
                 </p>
               </n-collapse-item>
               <n-collapse-item title="设施数据" name="rooms">
@@ -860,7 +892,11 @@ onBeforeUnmount(() => {
               </n-collapse-item>
               <n-collapse-item
                 v-if="state.result.inventoryMode === 'finite'"
-                title="统计期库存收支"
+                :title="
+                  state.result.simulationReport?.production?.expected
+                    ? '统计期调度库存收支（用于资源约束）'
+                    : '统计期库存收支'
+                "
                 name="stock"
               >
                 <n-table size="small"
@@ -869,6 +905,7 @@ onBeforeUnmount(() => {
                       <th>资源</th>
                       <th>开始</th>
                       <th>收入</th>
+                      <th v-if="state.result.resources?.external">其中外源补入</th>
                       <th>支出</th>
                       <th>期末</th>
                     </tr>
@@ -878,6 +915,9 @@ onBeforeUnmount(() => {
                       <td>{{ item.label }}</td>
                       <td>{{ format(state.result.resources?.opening[item.resource] ?? 0) }}</td>
                       <td>{{ format(state.result.resources?.inflows[item.resource] ?? 0) }}</td>
+                      <td v-if="state.result.resources?.external">
+                        {{ format(state.result.resources.external[item.resource] ?? 0) }}
+                      </td>
                       <td>{{ format(state.result.resources?.outflows[item.resource] ?? 0) }}</td>
                       <td>{{ format(state.result.resources?.closing[item.resource] ?? 0) }}</td>
                     </tr>

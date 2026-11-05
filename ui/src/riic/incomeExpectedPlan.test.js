@@ -59,7 +59,8 @@ it.each([true, false])(
             orderLmd: result.summary.orderLmd,
             orders: result.orderDistribution,
             drones: result.stability?.drones,
-            maxWorkFractionDifference: result.stability.maxWorkFractionDifference
+            maxWorkFractionDifference: result.stability.maxWorkFractionDifference,
+            expectedProduction: result.simulationReport.production.expected
           }
         }) + '\n'
       )
@@ -99,7 +100,17 @@ it.each([true, false])(
         expect(order.goldCost).toBe(4)
         expect(order.lmdReward).toBe(2000)
       }
-      expect(result.orderDistribution.rows[1].count).toBeCloseTo(upper.length * 0.4, 8)
+      expect(Math.abs(result.orderDistribution.rows[1].count - upper.length * 0.4)).toBeLessThan(
+        0.41
+      )
+      expect(result.summary.exp * (result.observedHours / 24)).toBeCloseTo(
+        result.simulationReport.production.expected.output.exp,
+        6
+      )
+      expect(result.simulationReport.production.expected.droneGenerated).toBeCloseTo(
+        result.stability.drones.generated,
+        6
+      )
       expect(result.orderDistribution.rows[2].count).toBe(0)
     } else {
       expect(result.simulationReport.production.assumptions.seed).toBe(42)

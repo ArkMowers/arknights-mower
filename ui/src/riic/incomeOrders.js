@@ -6,6 +6,9 @@ const goldByWorkload = new Map(
 )
 
 export function incomeOrderDistribution(report) {
+  const continuous = report?.production?.expected
+  if (report?.production?.assumptions?.expectationMode && continuous)
+    return structuredClone(continuous.orders)
   if (!Array.isArray(report?.production?.events)) return null
   const start = report.assumptions?.warmupHours
   const end = report.elapsedHours

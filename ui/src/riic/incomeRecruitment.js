@@ -64,17 +64,24 @@ export function recruitmentEfficiency(config) {
 export function createRecruitmentObservation(warmupHours) {
   let progress = 0
   let warmupCompleted = 0
+  let warmupProgress = 0
   const completed = () => Math.floor(progress + 1e-9)
   return {
     observe(config, start, end) {
       const speed = recruitmentEfficiency(config) / 12
       const warmupDuration = Math.max(0, Math.min(end, warmupHours) - start)
       progress += speed * warmupDuration
-      if (start < warmupHours) warmupCompleted = completed()
+      if (start < warmupHours) {
+        warmupCompleted = completed()
+        warmupProgress = progress
+      }
       progress += speed * (end - start - warmupDuration)
     },
-    result() {
-      return { completed: completed() - warmupCompleted, progress: progress - completed() }
+    result(expectationMode = false) {
+      return {
+        completed: expectationMode ? progress - warmupProgress : completed() - warmupCompleted,
+        progress: progress - completed()
+      }
     }
   }
 }

@@ -54,8 +54,9 @@ export function simulationReportToCalculationReport(
   const goldValue = goldCount * 500
   const orderLmd = output.orderLmd / days
 
+  const expected=simReport.production?.assumptions.expectationMode?simReport.production.expected:undefined
   const ordersGoldCost = simulationOutputOrders(simReport).reduce((n, order) => n + order.goldCost, 0) / days
-  const goldConsumed = potential && !(outflows?.gold ?? 0) ? ordersGoldCost : (outflows?.gold ?? 0) / days
+  const goldConsumed = expected ? (expected.costs.gold??0)/days : potential && !(outflows?.gold ?? 0) ? ordersGoldCost : (outflows?.gold ?? 0) / days
   const netGoldCount = goldCount - goldConsumed
 
   // A report equivalent, not a physical gold inflow. Closure and Pepe also have premiums.
@@ -68,7 +69,7 @@ export function simulationReportToCalculationReport(
 
   const fragments = (output.fragments ?? 0) / days
   const orundum = (output.orundum ?? 0) / days
-  const drones = (inflows?.drone ?? 0) / days
+  const drones = (expected?.droneGenerated ?? inflows?.drone ?? 0) / days
 
   const compiledConfig = compileMainPlanToAppConfig(workspace.mainPlan, workspace, baseConfig)
   compiledConfig.productionWeights = normalizeProductionWeights(simReport.inputs.options.productionWeights)
@@ -86,7 +87,7 @@ export function simulationReportToCalculationReport(
     fragments,
     orundum,
     goldConsumed,
-    fragmentsConsumed: potential ? 0 : (outflows?.fragment ?? 0) / days,
+    fragmentsConsumed: expected ? (expected.costs.fragment??0)/days : potential ? 0 : (outflows?.fragment ?? 0) / days,
     netGoldCount,
     netGoldValue: netGoldCount * 500,
     totalScore82,

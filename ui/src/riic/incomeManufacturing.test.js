@@ -97,6 +97,7 @@ describe('manufacturing formulas assumed already unlocked', () => {
     const result = calculateIncome(plan('orirock', 2, 1), {
       ...settings,
       finiteInventory: true,
+      allowMaterialDebt: false,
       initialInventory: { orirock: 2, lmd: 1600 }
     })
     expect(result.success, JSON.stringify(result.diagnostics)).toBe(true)

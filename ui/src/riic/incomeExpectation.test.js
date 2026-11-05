@@ -79,7 +79,11 @@ it('settles an expected order at its exact mean duration with fractional finite 
     room.level = 0
     room.slots = []
   }
-  Object.assign(workspace.mainPlan.facilities.room_3_1, { level: 3, product: 'money' })
+  Object.assign(workspace.mainPlan.facilities.room_3_1, {
+    level: 3,
+    product: 'money',
+    slots: [{ occupant: { kind: 'operator', operatorId: '芬' }, groupId: null, replacements: [] }]
+  })
   const schedule = compileRosterSchedule(workspace, { idleOperators: [] })
   const run = (seed, gold = 10, sampleHours = 3.39) =>
     simulateSchedule(schedule, {
@@ -101,13 +105,17 @@ it('settles an expected order at its exact mean duration with fractional finite 
   expect(report.production.sample.outflows.gold).toBeCloseTo(2.9, 10)
   expect(report.production.sample.closing.gold).toBeCloseTo(7.1, 10)
   expect(report.production.trading[0].completedOrders).toBe(1)
+  const orderCount =
+    (report.rooms.find((room) => room.roomId === 'room_3_1').efficiencyPercentHours * 60) /
+    100 /
+    203.4
   expect(incomeOrderDistribution(report)).toMatchObject({
     expected: true,
-    total: 1,
+    total: expect.closeTo(orderCount, 8),
     rows: [
-      { gold: 2, count: 0.3 },
-      { gold: 3, count: 0.5 },
-      { gold: 4, count: 0.2 }
+      { gold: 2, count: expect.closeTo(orderCount * 0.3, 8) },
+      { gold: 3, count: expect.closeTo(orderCount * 0.5, 8) },
+      { gold: 4, count: expect.closeTo(orderCount * 0.2, 8) }
     ]
   })
   const exhausted = run(1, 29, 33.9)
@@ -171,7 +179,7 @@ it('defaults new requests and Worker results to expectation mode and keeps old s
   expect(result.simulationReport.production.assumptions.expectationMode).toBe(true)
   expect(result.orderDistribution.expected).toBe(true)
   const lines = incomeReportLines(result, settings(), plan(), '排班').join('\n')
-  expect(lines).toContain('数学期望模式（平均订单模型）')
+  expect(lines).toContain('数学期望模式（连续产出）')
   expect(lines).not.toContain('随机种子')
   const oldResult = structuredClone(result)
   delete oldResult.simulationReport.production.assumptions.expectationMode

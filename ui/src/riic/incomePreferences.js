@@ -1,5 +1,5 @@
 import { defaultIncomeSettings } from './income'
-import { MOWER_INVENTORY_ITEMS } from './vendor/domain/simulationInventory'
+import { MOWER_INVENTORY_ITEMS, MOWER_RAW_MATERIALS } from './vendor/domain/simulationInventory'
 
 export const INCOME_PREFERENCES_KEY = 'mower-income-preferences-v1'
 
@@ -9,7 +9,7 @@ const enumFields = {
   operatorMode: ['cache', 'maximum', 'custom'],
   weightMode: ['mower', 'custom']
 }
-const booleanFields = ['finiteInventory', 'allowGoldDebt', 'jayeElite0', 'expectationMode']
+const booleanFields = ['finiteInventory', 'allowMaterialDebt', 'jayeElite0', 'expectationMode']
 
 function quantities(value, keys, integer = true) {
   return Object.fromEntries(
@@ -41,6 +41,16 @@ function sanitize(value) {
   for (const key of booleanFields) {
     if (typeof value?.settings?.[key] === 'boolean') settings[key] = value.settings[key]
   }
+  if (
+    settings.allowMaterialDebt === undefined &&
+    typeof value?.settings?.allowGoldDebt === 'boolean'
+  )
+    settings.allowMaterialDebt = value.settings.allowGoldDebt
+  settings.dailyExternalResources = quantities(
+    value?.settings?.dailyExternalResources,
+    MOWER_RAW_MATERIALS.map((item) => item.resource),
+    false
+  )
   for (const key of ['droneRoom', 'operatorText']) {
     if (typeof value?.settings?.[key] === 'string') settings[key] = value.settings[key]
   }

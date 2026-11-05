@@ -129,14 +129,14 @@ it('reports clue counts through the Worker without changing income, inventory or
   }
   const result = calculateIncome(plan, settings)
   expect(result.success, result.error).toBe(true)
-  expect(result.summary.clueCount).toBeCloseTo(1)
+  expect(result.summary.clueCount).toBeCloseTo((24 * 1.47) / 20)
   const days = result.observedHours / 24
   for (const metric of [
     incomeImageMetrics(result.summary, days).find((row) => row.key === 'clue'),
     incomeMetrics(result.summary, days).find((row) => row.label === '会客室线索')
   ]) {
-    expect(metric.daily).toBeCloseTo(1)
-    expect(metric.total).toBeCloseTo(1)
+    expect(metric.daily).toBeCloseTo((24 * 1.47) / 20)
+    expect(metric.total).toBeCloseTo((24 * 1.47) / 20)
     expect(metric.unit).toBe('个')
   }
   const request = incomeRequest(plan, settings)
@@ -171,6 +171,6 @@ it('applies exchange speed in a complete income calculation', () => {
     sampleDays: 1
   })
   expect(result.success, result.error).toBe(true)
-  expect(result.summary.clueCount).toBeCloseTo(2)
+  expect(result.summary.clueCount).toBeCloseTo((24 * 1.74) / 20)
   expect(result.clueExchangeMode).toBe('always-on')
 })

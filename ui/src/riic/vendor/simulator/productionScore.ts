@@ -12,11 +12,12 @@ export function simulationOutputOrders(report:ScheduleSimulationReport) {
 export function simulationOutputAmounts(report:ScheduleSimulationReport):CompletedProduction {
  const p=report.production
  if(!p?.success||!report.success||report.observedHours<=0)throw new Error('模拟未完成，无法评分')
+ if(p.assumptions.expectationMode&&p.expected)return {...p.expected.output}
  const orders=simulationOutputOrders(report)
  const virtualGold=orders.reduce((n,order)=>n+virtualGoldEquivalent(order),0)
  if(p.assumptions.outputMode!=='potential') {
   const received=p.sample.inflows,excluded=p.sample.warmupReceipts??{}
-  const amount=(kind:'exp'|'gold'|'lmd'|'fragment'|'orundum')=>(received[kind]??0)-(excluded[kind]??0)
+  const amount=(kind:'exp'|'gold'|'lmd'|'fragment'|'orundum')=>(received[kind]??0)-(excluded[kind]??0)-(p.sample.external?.[kind]??0)
   return {exp:amount('exp'),gold:amount('gold'),orderLmd:amount('lmd'),
    fragments:amount('fragment'),orundum:amount('orundum'),virtualGold}
  }

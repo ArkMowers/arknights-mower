@@ -112,3 +112,27 @@ it('clears stored choices and tolerates unavailable browser storage', () => {
   expect(saveIncomePreferences(defaultIncomeSettings(), {})).toBe(false)
   expect(clearIncomePreferences()).toBe(false)
 })
+
+it('defaults to material debt and migrates explicit old choices without changing saved results', () => {
+  expect(defaultIncomeSettings().allowMaterialDebt).toBe(true)
+  expect(defaultIncomeSettings()).not.toHaveProperty('allowGoldDebt')
+  localStorage.setItem(
+    INCOME_PREFERENCES_KEY,
+    JSON.stringify({ version: 1, settings: { allowGoldDebt: false } })
+  )
+  expect(loadIncomePreferences().settings.allowMaterialDebt).toBe(false)
+  saveIncomePreferences(
+    {
+      ...defaultIncomeSettings(),
+      allowMaterialDebt: false,
+      dailyExternalResources: { gold: 12.5, orirock: 3, exp: 1000, device: -1 }
+    },
+    {}
+  )
+  expect(loadIncomePreferences().settings).toMatchObject({
+    allowMaterialDebt: false,
+    dailyExternalResources: { gold: 12.5, orirock: 3 }
+  })
+  expect(loadIncomePreferences().settings.dailyExternalResources).not.toHaveProperty('exp')
+  expect(loadIncomePreferences().settings.dailyExternalResources).not.toHaveProperty('device')
+})

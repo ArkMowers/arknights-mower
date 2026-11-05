@@ -20,7 +20,9 @@ const modelSettings = () => ({
   inventorySource: 'manual',
   finiteInventory: false,
   weightMode: 'custom',
-  allowGoldDebt: false
+  expectationMode: false,
+  seed: 42,
+  allowMaterialDebt: false
 })
 import { calculateIncome } from './incomeWorker'
 import { runCalculationBridge } from './vendor/workbench/calculationBridge'
@@ -228,13 +230,13 @@ describe('income export calculation', () => {
   }, 30000)
 })
 
-it('defaults to cached growth, cached finite stock, Mower weights and gold debt', () => {
+it('defaults to cached growth, cached finite stock, Mower weights and material debt', () => {
   expect(defaultIncomeSettings()).toMatchObject({
     operatorMode: 'cache',
     inventorySource: 'cache',
     finiteInventory: true,
     weightMode: 'mower',
-    allowGoldDebt: true,
+    allowMaterialDebt: true,
     warmupDays: 3,
     sampleDays: 28
   })

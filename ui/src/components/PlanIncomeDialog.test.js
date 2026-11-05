@@ -103,7 +103,8 @@ it('remembers edited parameters across dialog recreation before any calculation'
     operatorMode: 'custom',
     operatorText: '阿米娅,2,80',
     inventorySource: 'manual',
-    allowGoldDebt: false,
+    allowMaterialDebt: false,
+    dailyExternalResources: { gold: 12.5, orirock: 3 },
     jayeElite0: true,
     weightMode: 'custom'
   })
@@ -120,7 +121,8 @@ it('remembers edited parameters across dialog recreation before any calculation'
     inventorySource: 'manual',
     initialInventory: { gold: 123 },
     productionWeights: { exp: 2 },
-    allowGoldDebt: false,
+    allowMaterialDebt: false,
+    dailyExternalResources: { gold: 12.5, orirock: 3 },
     jayeElite0: true,
     weightMode: 'custom'
   })

@@ -7,6 +7,7 @@ import {
   incomeWeights
 } from './income'
 
+import { MOWER_RAW_MATERIALS } from './vendor/domain/simulationInventory'
 import { incomeInitialInventory } from './incomeCache'
 import { incomeOrderDistribution } from './incomeOrders'
 import { incomeAlgorithmLabel } from '@/utils/incomeSettings'
@@ -23,6 +24,7 @@ export function incomeReportLines(result, settings, plan, label) {
     result.simulationReport?.production?.assumptions.expectationMode ??
     settings.expectationMode ??
     false
+  const continuous = expected && result.simulationReport?.production?.expected
   const seed = result.simulationReport?.production?.assumptions.seed ?? settings.seed
   const target = incomeFacilities(plan).find((f) => f.roomId === settings.droneRoom)
   const levels = Object.values(incomeWorkspace(plan).mainPlan.facilities)
@@ -31,16 +33,29 @@ export function incomeReportLines(result, settings, plan, label) {
     .join('；')
   return [
     `原图：${label}；二维码包含完整主副表和高级设置，可在 Mower「导入排班」中读取。`,
-    `预热 ${settings.warmupDays} 天，不计入收益；统计 ${number(result.observedHours / 24)} 天，共 ${settings.warmupDays + settings.sampleDays} 天；${expected ? '数学期望模式（平均订单模型）' : `随机种子 ${seed}`}。`,
+    `预热 ${settings.warmupDays} 天，不计入收益；统计 ${number(result.observedHours / 24)} 天，共 ${settings.warmupDays + settings.sampleDays} 天；${expected ? (continuous ? '数学期望模式（连续产出）' : '数学期望模式（平均订单模型）') : `随机种子 ${seed}`}。`,
     ...(expected
       ? [
-          '数学期望模式按开始时的订单分布平均获取耗时，完成时逐档应用特殊效果后平均奖励与消耗。固定效率与概率下，长期收益率为期望奖励除以期望耗时；换班、缺料及库存阈值耦合下为近似期望。裁缝暖机概率沿用未经实测核验的近似曲线。'
+          continuous
+            ? '数学期望模式按有效工作时间和即时效率累计经验、赤金、源石碎片、订单及材料消耗的小数数量；公招、线索和回收次数同样保留小数。无人机按统计期生成的加速能力折算到所选设施，不计期初库存，也不重复计入实际使用的加速收益。排班、缺料和库存阈值耦合下仍为近似期望。'
+            : '数学期望模式按开始时的订单分布平均获取耗时，完成时逐档应用特殊效果后平均奖励与消耗。固定效率与概率下，长期收益率为期望奖励除以期望耗时；换班、缺料及库存阈值耦合下为近似期望。裁缝暖机概率沿用未经实测核验的近似曲线。'
         ]
       : []),
-    `无人机：${target?.label ?? '不使用'}；${finite ? `有限库存：无外源收入，连续记账；${settings.allowGoldDebt ? '赤金可透支，其他材料缺料停产或暂停交付' : '缺料停产或暂停交付'}。` : '潜在产出：不受初始库存限制，不能视为可交付收入。'}`,
+    `无人机：${target?.label ?? '不使用'}；${finite ? `有限库存：连续记账；${settings.allowMaterialDebt ? '允许原材料亏空，负数表示缺口' : settings.allowGoldDebt ? '允许赤金透支，其他材料缺料停产或暂停交付' : '缺料停产或暂停交付'}。` : '潜在产出：不受初始库存限制，不能视为可交付收入。'}`,
+    ...(Object.values(settings.dailyExternalResources ?? {}).some((value) => value > 0)
+      ? [
+          `日均外源材料：${MOWER_RAW_MATERIALS.filter(
+            (item) => settings.dailyExternalResources[item.resource] > 0
+          )
+            .map(
+              (item) => `${item.label} ${number(settings.dailyExternalResources[item.resource])}`
+            )
+            .join('；')}。按时间补入库存，外源补入不计产出或加权收益。`
+        ]
+      : []),
     ...(result.stability?.drones
       ? [
-          `统计期无人机：期初 ${number(result.stability.drones.opening)}，期末 ${number(result.stability.drones.closing)}，差额 ${number(result.stability.drones.change)}；生成 ${number(result.stability.drones.generated)}，消耗 ${number(result.stability.drones.consumed)}，溢出 ${number(result.stability.drones.overflow)}。差额未折算收益。`,
+          `统计期无人机：期初 ${number(result.stability.drones.opening)}，期末 ${number(result.stability.drones.closing)}，差额 ${number(result.stability.drones.change)}；生成 ${number(result.stability.drones.generated)}，消耗 ${number(result.stability.drones.consumed)}，溢出 ${number(result.stability.drones.overflow)}。${continuous ? `收益另按生成的加速能力计算，本次可折算 ${number(continuous.droneAllocated)} 架；该表为调度库存观察。` : '差额未折算收益。'}`,
           '初始心情与轮换阶段的影响未自动消除；前后半段效率和驻岗占比仅供比较，不构成达到稳态的证明。'
         ]
       : []),
