@@ -208,6 +208,25 @@ export function buildTrainingForecast(totalExp, totalLmd, targets = TRAINING_TAR
 }
 
 /**
+ * 按估算出的可培养数量反推预计消耗：取各档「能养几个 × 单价」里最大的那个。
+ *
+ * 数量口径随页面而定：总览用 `joint`（经验与龙门币都够），只按单一资源估算的
+ * 详情页分别用 `expCount` / `lmdCount`。选中的数量口径不可得时（例如总览缺龙门币
+ * 读数）返回 null，由页面继续显示占位符，而不是把缺读数当成 0 消耗。
+ */
+export function buildTrainingCost(forecast, resource = 'joint') {
+  const key = resource === 'exp' ? 'expCount' : resource === 'lmd' ? 'lmdCount' : 'joint'
+  const rows = forecast?.rows
+  if (!Array.isArray(rows) || !rows.length) return null
+  const counts = rows.map((row) => row[key])
+  if (counts.some((count) => !Number.isFinite(count))) return null
+  return {
+    exp: Math.max(...rows.map((row, index) => counts[index] * row.exp)),
+    lmd: Math.max(...rows.map((row, index) => counts[index] * row.lmd))
+  }
+}
+
+/**
  * 单条快照的抽数：优先读后端写入的派生项。
  *
  * 后端 读取仓库 与 读取仓库历史 都按同一份公式（depot.py 折算抽数）填好这四个键，
