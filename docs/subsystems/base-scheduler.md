@@ -707,6 +707,13 @@ Only one custom group is selected. Keep the selected custom group while eligible
 Native scheduling and income simulation apply this selection to ordinary shifts, direct backup transitions and product previews. Preview selection remains isolated and is committed with an accepted final arrangement; failed or cyclic previews preserve the previous selection and arrangement. Selection after a reset starts from current observations and the configured order. Static validation analyzes each eligible group and its member backups separately and includes every exclusive backup that could remain selected. It never forms cross-group or multiple-exclusive combinations merely to reject them later.
 
 
+<a id="source-workplace-first"></a>
+### Source Workplace First
+
+Before a batch arrangement, native scheduling and income simulation use the current observed operator locations to order work facilities. A room receiving an operator from another pending work room depends on that source room completing its own arrangement first. Rooms receiving operators from dormitories or idle state can run immediately; dependency chains refill source workplaces before taking their occupants. Among currently executable work rooms, the existing order determines priority; numbered dormitories remain after work facilities. `Current`, `Free`, unknown current locations and source rooms outside the current task create no new room task or observation requirement.
+
+Cyclic exchanges retain stable execution order for the unresolved rooms and continue without creating waits, retries or additional operators; zero vacancy cannot be guaranteed for those exchanges. The task timestamp, remaining arrangement and ordinary failure handling remain unchanged. Focused offline checks use `arknights_mower/tests/arrangement_room_order_tests.py`, the real `agent_arrange` caller and `ui/src/riic/incomeRoomOrder.test.js`; the given income-plan regression also checks continuous room occupancy.
+
 ## 3. Subsystem Invariants
 
 - <a id="backup-refresh-continuity"></a>**Backup Refresh Continuity**: A physical arrangement that activates or deactivates a backup retains the previous exhaustion and trade-order refresh rules for that arrangement. Confirmed operator moves apply the union of previous and effective rules; room-qualified trade refreshes retain their named targets, and an unrestricted rule covers all eligible trade rooms. Projection and unchanged positions do not refresh deadlines. Deferred arrangements retain these rules with the task until completion; subsequent moves use only the effective configuration. The [backup deadline decision](../../.agents/notes/implemented/bug-fix/2026-10-04-backup-exhaust-task-invalidation.md) records the rationale and focused verification.
