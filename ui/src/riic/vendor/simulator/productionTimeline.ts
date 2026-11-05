@@ -323,6 +323,19 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    expectedBalances={...ledger.balances}
    // Open manufacturing batches were paid up front; restore their unused material share.
    for(const m of manufactures.values())if(!m.state.awaitingPayment)for(const [resource,value] of Object.entries(cost(m.state)))expectedBalances[resource as ResourceKind]=(expectedBalances[resource as ResourceKind]??0)-value*m.state.remainingBaseMinutes/m.state.formula.baseMinutes
+   if(warmupHours>0)for(const t of trades.values()){
+    // Completed warmup orders and the worked share of a crossing order already used these inputs.
+    const reserve=(gold:number,fragment:number,fraction=1)=>{
+     expectedBalances!.gold=(expectedBalances!.gold??0)-gold*fraction
+     expectedBalances!.fragment=(expectedBalances!.fragment??0)-fragment*fraction
+    }
+    for(const order of t.pending)if(order.completedAt<=warmupHours)reserve(order.goldCost,order.fragmentCost)
+    if(t.active&&t.active.startedAt<warmupHours){
+     const snapshot=captureOrder(t.active.base,orderCapture(t,frame),frame.time)
+     const fraction=Math.max(0,Math.min(1,1-t.active.remainingBaseMinutes/t.active.base.baseMinutes))
+     reserve(snapshot.goldCost,snapshot.fragmentCost,fraction)
+    }
+   }
   }
   for(const [resource,amount] of externalRates)receivedExpected(resource as ResourceKind,amount*sampled/24)
   for(const m of manufactures.values())if(staffed(frame,m.roomId)&&!m.state.awaitingPayment&&!m.state.blockedByStorage)
@@ -416,20 +429,31 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    return chargeRate(frame)*3
   }
   const workRate=(frame:ProductionFrame,roomId:string,natural:number)=>!staffed(frame,roomId)?0:natural+droneWorkRate(frame,roomId)
+  const externalFundingHours=(required:ResourceAmounts)=>{
+   let wait=0
+   for(const [resource,amount] of Object.entries(required)){
+    if(debtAllowed(resource))continue
+    const gap=amount-(ledger.balances[resource as ResourceKind]??0)
+    if(gap<=EPS)continue
+    const rate=(dailyExternal[resource as keyof typeof dailyExternal]??0)/24
+    if(rate<=0)return Infinity
+    wait=Math.max(wait,gap/rate)
+   }
+   return wait>EPS?wait:Infinity
+  }
   const nextStep=(maximum:number,getFrame:(offset:number)=>ProductionFrame)=>{
    let dt=Math.min(maximum,nativeScheduler?Infinity:nextCollection-state.time)
    for(const m of manufactures.values())if(m.pendingSwitch){
     if(m.pendingSwitch.readyAt!==undefined)dt=Math.min(dt,Math.max(0,m.pendingSwitch.readyAt-state.time))
     else if(!m.pendingSwitch.accelerated&&staffedRooms.has(m.roomId))dt=Math.min(dt,1/60)
    }
-   if(!unlimitedMaterials&&options.allowMaterialDebt!==true)for(const m of manufactures.values())if(m.state.awaitingPayment&&!m.state.blockedByStorage){
-    let wait=0,possible=true
-    for(const [resource,delta] of Object.entries(cost(m.state))){
-     if(debtAllowed(resource))continue
-     const gap=-delta-(ledger.balances[resource as ResourceKind]??0)
-     if(gap>EPS){const rate=(dailyExternal[resource as keyof typeof dailyExternal]??0)/24;if(rate<=0){possible=false;break}wait=Math.max(wait,gap/rate)}
+   if(!unlimitedMaterials&&options.allowMaterialDebt!==true){
+    for(const m of manufactures.values())if(m.state.awaitingPayment&&!m.state.blockedByStorage)
+     dt=Math.min(dt,externalFundingHours(Object.fromEntries(Object.entries(cost(m.state)).map(([resource,delta])=>[resource,-delta]))))
+    if(!nativeScheduler&&interval===0)for(const t of trades.values()){
+     const order=t.pending[0]
+     if(order)dt=Math.min(dt,externalFundingHours({gold:order.goldCost,fragment:order.fragmentCost}))
     }
-    if(possible&&wait>EPS)dt=Math.min(dt,wait)
    }
    const zero=getFrame(0)
    if(recycle)dt=Math.min(dt,recycle.nextEventHours(evaluateRecycleEfficiency(zero.config,{activeIds:zero.active}).efficiencyPercent))

@@ -17,10 +17,27 @@ export function simulationOutputAmounts(report:ScheduleSimulationReport):Complet
  const virtualGold=orders.reduce((n,order)=>n+virtualGoldEquivalent(order),0)
  if(p.assumptions.outputMode!=='potential') {
   const received=p.sample.inflows,excluded=p.sample.warmupReceipts??{}
+  const receipts:Record<string,number>={},receiptCounts:Record<string,number>={}
+  const externalKinds=new Set<string>(),openingReceipts=new Set<string>()
+  for(const event of p.events??[]){
+   if(event.time<report.assumptions.warmupHours||event.time>report.elapsedHours)continue
+   for(const [kind,value] of Object.entries(event.delta??{}))if(value>0){
+    if(event.type==='external-material'){if(event.time>report.assumptions.warmupHours)externalKinds.add(kind)}
+    else if(event.time===report.assumptions.warmupHours)openingReceipts.add(kind)
+    else {receipts[kind]=(receipts[kind]??0)+value;receiptCounts[kind]=(receiptCounts[kind]??0)+1}
+   }
+  }
+  const operations=Math.max(1,p.events?.length??0,p.ledger?.entries.length??0)
   const amount=(kind:'exp'|'gold'|'lmd'|'fragment'|'orundum')=>{
-   const value=(received[kind]??0)-(excluded[kind]??0)-(p.sample.external?.[kind]??0)
-   // Subtracting independently accumulated receipts can introduce roundoff at zero.
-   return Math.abs(value)<1e-8?0:value
+   // Opening-clock transactions require the saved snapshot's ordering, not timestamp inference.
+   const direct=externalKinds.has(kind)&&!openingReceipts.has(kind)
+   const incoming=direct?receipts[kind]??0:received[kind]??0,warmup=excluded[kind]??0,external=direct?0:p.sample.external?.[kind]??0
+   const value=incoming-warmup-external
+   // Keep external flows out of the receipt sum; legacy counters retain scale-aware negative roundoff only.
+   const scale=Math.max(Math.abs(incoming),Math.abs(warmup),Math.abs(external))
+   const accumulationError=4*Number.EPSILON*Math.max(1,direct?receiptCounts[kind]??0:operations)*scale
+   const error=direct?accumulationError:Math.max(accumulationError,1e-8*Math.min(1,scale))
+   return value<0&&-value<=error?0:value
   }
   return {exp:amount('exp'),gold:amount('gold'),orderLmd:amount('lmd'),
    fragments:amount('fragment'),orundum:amount('orundum'),virtualGold}
