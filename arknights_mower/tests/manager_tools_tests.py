@@ -226,6 +226,29 @@ def test_proxy_entry_reuses_shared_file_and_rejects_stale_and_corrupt_data(
     assert path.read_text() == "not json"
 
 
+def test_network_snapshot_is_checked_atomically_with_save(
+    manager, tmp_path, monkeypatch
+):
+    path = tmp_path / "network.json"
+    monkeypatch.setattr(network, "settings_path", lambda: path)
+    monkeypatch.setattr(network, "apply_http_proxy", Mock())
+    initial = {"http_proxy": "", "github_proxy": "", "github_token": "synthetic_token"}
+    network.save_settings(initial)
+    original = manager.get_network_settings()
+    save = network.save_settings
+
+    def clear_before_save(values, **kwargs):
+        save({**initial, "github_token": ""})
+        return save(values, **kwargs)
+
+    monkeypatch.setattr(network, "save_settings", clear_before_save)
+    with pytest.raises(ValueError, match="已变化"):
+        manager.save_network_settings(
+            {**initial, "http_proxy": "http://127.0.0.1:7897"}, original
+        )
+    assert json.loads(path.read_text())["github_token"] == ""
+
+
 def test_storage_reports_aliases_without_double_counting_and_does_not_follow_links(
     manager, tmp_path
 ):

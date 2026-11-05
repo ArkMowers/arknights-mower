@@ -1,7 +1,6 @@
 """Local manager maintenance and read-only configuration previews."""
 
 import copy
-import json
 import os
 import stat
 import threading
@@ -118,25 +117,7 @@ class ManagerTools:
     def get_network_settings(self):
         from . import network_settings
 
-        try:
-            raw = json.loads(
-                network_settings.settings_path().read_text(encoding="utf-8")
-            )
-        except FileNotFoundError:
-            raw = {}
-        if not isinstance(raw, dict):
-            raise ValueError("网络配置格式不正确")
-        return {
-            "http_proxy": network_settings.normalize_http_proxy(
-                raw.get("http_proxy", "")
-            ),
-            "github_proxy": network_settings.normalize_proxy(
-                raw.get("github_proxy", "")
-            ),
-            "github_token": network_settings.normalize_token(
-                raw.get("github_token", "")
-            ),
-        }
+        return network_settings.get_settings(strict=True)
 
     def save_network_settings(self, values, original):
         from . import network_settings
@@ -150,9 +131,9 @@ class ManagerTools:
         ):
             raise ValueError("网络配置格式不正确")
         with self._operation():
-            if self.get_network_settings() != original:
+            if not isinstance(original, dict):
                 raise ValueError("网络配置已变化，请重新加载")
-            return network_settings.save_settings(values)
+            return network_settings.save_settings(values, original=original)
 
     def preview_common_settings(self, values, targets):
         from .config import Conf

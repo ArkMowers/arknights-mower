@@ -85,10 +85,12 @@ async function save() {
   if (!dirty.value) return true
   const submittedRevision = revision
   const submitted = values()
+  const payload = { ...submitted }
+  if (submitted.github_token === savedSettings.value.github_token) delete payload.github_token
   saving.value = true
   saveRequest = (async () => {
     try {
-      const { data } = await axios.post(`${base}/settings`, submitted, { headers })
+      const { data } = await axios.post(`${base}/settings`, payload, { headers })
       if (!data.ok) throw new Error(data.message)
       savedSettings.value = {
         http_proxy: data.http_proxy,
@@ -100,6 +102,8 @@ async function save() {
         apply(data)
         saved.value = true
         error.value = ''
+      } else if (githubToken.value === submitted.github_token) {
+        githubToken.value = savedSettings.value.github_token
       }
       return true
     } catch (err) {

@@ -190,6 +190,7 @@ onUnmounted(() => {
                 spellcheck: false
               }"
               placeholder="可选，填写后直接访问 GitHub 官方地址"
+              :disabled="busy"
               clearable
             />
           </n-form-item>

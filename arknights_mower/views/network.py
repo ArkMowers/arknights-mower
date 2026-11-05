@@ -42,6 +42,8 @@ def settings():
         settings = network_settings.save_settings(data)
     except ValueError as exc:
         return {"ok": False, "message": str(exc)}, 400
+    except TimeoutError:
+        return {"ok": False, "message": "网络配置正在保存，请稍后重试"}, 409
     except OSError:
         return {"ok": False, "message": "代理设置保存失败，请检查配置目录权限"}, 500
     return {"ok": True, **settings}

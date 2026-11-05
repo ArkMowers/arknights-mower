@@ -86,6 +86,65 @@ describe('GitHub Token settings', () => {
     expect(component.results.value).toEqual([])
     expect(component.error.value).toContain('其他实例修改')
   })
+
+  it('does not resubmit an unchanged Token when another instance cleared it', async () => {
+    const settings = { http_proxy: '', github_proxy: '', github_token: 'synthetic_token' }
+    state.client = {
+      get: vi.fn(async () => ({ data: { ok: true, ...settings } })),
+      post: vi.fn(async (_url, values) => ({
+        data: { ok: true, ...values, github_token: '' }
+      }))
+    }
+    const component = Component.setup({}, { expose: () => {} })
+    await state.mounted[0]()
+    component.httpProxy.value = 'http://127.0.0.1:7897'
+    component.changed()
+    await component.save()
+    expect(state.client.post.mock.calls[0][1]).not.toHaveProperty('github_token')
+    expect(component.githubToken.value).toBe('')
+    expect(component.dirty.value).toBe(false)
+  })
+
+  it.each([false, true])(
+    'preserves pending edits while adopting the current saved Token (Token edited: %s)',
+    async (editToken) => {
+      const settings = { http_proxy: '', github_proxy: '', github_token: 'synthetic_token' }
+      let finishSave
+      state.client = {
+        get: vi.fn(async () => ({ data: { ok: true, ...settings } })),
+        post: vi
+          .fn()
+          .mockImplementationOnce(
+            () =>
+              new Promise((resolve) => {
+                finishSave = resolve
+              })
+          )
+          .mockImplementation(async (_url, values) => ({
+            data: { ok: true, github_token: '', ...values }
+          }))
+      }
+      const component = Component.setup({}, { expose: () => {} })
+      await state.mounted[0]()
+      component.httpProxy.value = 'http://127.0.0.1:7897'
+      component.changed()
+      const pending = component.save()
+      if (editToken) component.githubToken.value = 'replacement_token'
+      else component.httpProxy.value = 'http://127.0.0.1:7898'
+      component.changed()
+      finishSave({ data: { ok: true, ...settings, github_token: '' } })
+      await pending
+      const payload = state.client.post.mock.calls[1][1]
+      if (editToken) {
+        expect(payload.github_token).toBe('replacement_token')
+        expect(component.githubToken.value).toBe('replacement_token')
+      } else {
+        expect(payload).not.toHaveProperty('github_token')
+        expect(payload.http_proxy).toBe('http://127.0.0.1:7898')
+        expect(component.githubToken.value).toBe('')
+      }
+    }
+  )
 })
 
 describe('GitHub Token input', () => {
