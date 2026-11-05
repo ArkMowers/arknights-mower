@@ -206,7 +206,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
     if(state.time>=m.pendingSwitch.readyAt-EPS)switchProduct(m,target)
    }
   }
-  const pending=[...manufactures.values()].filter(m=>m.pendingSwitch&&!m.pendingSwitch.accelerated&&!m.state.awaitingPayment)
+  const pending=[...manufactures.values()].filter(m=>staffedRooms.has(m.roomId)&&m.pendingSwitch&&!m.pendingSwitch.accelerated&&!m.state.awaitingPayment)
   const plans=pending.map(m=>({m,...planMowerProductSwitchDrones(m.state.remainingBaseMinutes*60,switchSettings,manufacturingProductId(m.state.formula.id),m.pendingSwitch!.target)}))
   const required=plans.reduce((sum,p)=>sum+p.drones,0),insufficient=required>Math.floor(drones.stock+EPS)
   for(const plan of plans){
@@ -420,7 +420,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    let dt=Math.min(maximum,nativeScheduler?Infinity:nextCollection-state.time)
    for(const m of manufactures.values())if(m.pendingSwitch){
     if(m.pendingSwitch.readyAt!==undefined)dt=Math.min(dt,Math.max(0,m.pendingSwitch.readyAt-state.time))
-    else if(!m.pendingSwitch.accelerated)dt=Math.min(dt,1/60)
+    else if(!m.pendingSwitch.accelerated&&staffedRooms.has(m.roomId))dt=Math.min(dt,1/60)
    }
    if(!unlimitedMaterials&&options.allowMaterialDebt!==true)for(const m of manufactures.values())if(m.state.awaitingPayment&&!m.state.blockedByStorage){
     let wait=0,possible=true
