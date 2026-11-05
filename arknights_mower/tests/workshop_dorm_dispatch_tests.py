@@ -81,8 +81,8 @@ def test_invalid_crafting_never_moves_dorm_operators(crafting, reason, caplog):
     else:
         instance.tasks.append(
             SchedulerTask(
-                task_type=TaskTypes.SHIFT_OFF,
-                task_plan={"dormitory_1": ["Current"] * 4 + ["谬因"]},
+                task_type=TaskTypes.SHIFT_ON,
+                task_plan={"meeting": ["谬因"]},
             )
         )
     restoration = {}
@@ -100,7 +100,7 @@ def test_invalid_crafting_never_moves_dorm_operators(crafting, reason, caplog):
         "disabled": "加工站任务被禁用",
         "protected": "正在集中恢复",
         "mood": "心情不足（当前 0.0，需大于 0）",
-        "reserved": "已被下班任务预约",
+        "reserved": "已被上班任务预约",
     }
     assert expected[reason] in caplog.text
     assert "请检查合成数量" not in caplog.text
