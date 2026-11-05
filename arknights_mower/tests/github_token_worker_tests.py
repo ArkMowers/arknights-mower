@@ -28,13 +28,16 @@ def settings(tmp_path, monkeypatch):
     monkeypatch.setattr(network, "_base_environment", None)
     monkeypatch.setattr(network, "_effective_settings", None)
     # Child-process evidence must never capture unrelated credentials from the host.
-    for key in tuple(os.environ):
-        if key.upper() not in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR"}:
-            monkeypatch.delenv(key, raising=False)
-    runtime.write_json(
-        path, {"http_proxy": "", "github_proxy": "", "github_token": TOKEN}
-    )
-    return path
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR"}
+    }
+    with patch.dict(os.environ, environment, clear=True):
+        runtime.write_json(
+            path, {"http_proxy": "", "github_proxy": "", "github_token": TOKEN}
+        )
+        yield path
 
 
 def make_worker(tmp_path, settings, **changes):
