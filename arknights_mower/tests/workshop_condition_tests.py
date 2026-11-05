@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from arknights_mower.tests.workshop_plan_cache_tests import planning as planning
@@ -75,6 +77,81 @@ def test_projection_uses_latest_local_stock_without_saving(condition_data, plann
     planning.stock["技巧概要·卷3"] = 12
     assert projected.evaluate_backup_selection().conditions == [False]
     assert condition_data.plan_condition == [False]
+
+
+@pytest.mark.parametrize("source", ["mastery", "growth"])
+@pytest.mark.parametrize("failure", ["missing", "unreadable", "invalid_json"])
+def test_unavailable_local_data_keeps_boolean_conditions_and_recovers(
+    condition_data, next_skill, planning, monkeypatch, source, failure
+):
+    from pathlib import Path
+
+    from arknights_mower.utils import operators
+
+    if source == "growth":
+        from arknights_mower.utils import mastery_recommendation as rec
+
+        next_skill.plans.clear()
+        skills = dict(rec.get_skill_data())
+        skills["growth"] = {
+            "characters": {
+                "char_a": {
+                    "modules": [
+                        {
+                            "id": "module_a",
+                            "elite": 2,
+                            "level": 1,
+                            "materials": [{"id": "3303", "count": 2}],
+                        }
+                    ]
+                }
+            }
+        }
+        monkeypatch.setattr(rec, "get_skill_data", lambda: skills)
+        planning.goals.append({"char_id": "char_a", "module_id": "module_a"})
+    path = next_skill.cultivate
+    original = path.read_bytes()
+    error_log = MagicMock()
+    monkeypatch.setattr(operators.logger, "exception", error_log)
+    query = "op_data.facility_has_crafting_plan('factory')"
+    assert condition_data.evaluate_expression(query) is True
+    checks = [
+        (f"{query} == True", False),
+        (f"{query} == False", True),
+        (f"not {query}", True),
+        (f"{query} or True", True),
+        (f"{query} and True", False),
+        (f"any([{query}, True])", True),
+        (f"all([not {query}, True])", True),
+    ]
+    condition_data.backup_plans = [
+        Plan({}, PlanConfig("", "", ""), expression) for expression, _ in checks
+    ]
+    condition_data.plan_condition = [False] * len(checks)
+    with monkeypatch.context() as unavailable:
+        if failure == "missing":
+            path.unlink()
+        elif failure == "invalid_json":
+            path.write_text("{", encoding="utf-8")
+        else:
+            read_bytes = Path.read_bytes
+
+            def read(target):
+                if target == path:
+                    raise PermissionError("local growth data unavailable")
+                return read_bytes(target)
+
+            unavailable.setattr(Path, "read_bytes", read)
+        for _ in range(3):
+            for expression, expected in checks:
+                assert condition_data.evaluate_expression(expression) is expected
+            assert condition_data.evaluate_backup_selection().conditions == [
+                expected for _, expected in checks
+            ]
+        error_log.assert_not_called()
+        config.save_conf.assert_not_called()
+    path.write_bytes(original)
+    assert condition_data.evaluate_expression(query) is True
 
 
 @pytest.mark.parametrize("room", ["train", "central", "room_1_1", ""])

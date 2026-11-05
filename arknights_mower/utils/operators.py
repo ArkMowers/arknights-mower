@@ -1914,7 +1914,10 @@ class Operators:
             raise ValueError(f"不支持的加工站位置：{room}")
         from arknights_mower.utils.workshop_automation import calculate_workshop_plan
 
-        return calculate_workshop_plan(config.conf).recipe is not None
+        try:
+            return calculate_workshop_plan(config.conf).recipe is not None
+        except (OSError, ValueError):
+            return False
 
     def facility_is_training(self, room: str) -> bool:
         """复用专精计划状态，判断训练室是否正在训练。"""

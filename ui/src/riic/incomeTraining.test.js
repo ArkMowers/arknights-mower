@@ -4,6 +4,18 @@ import { defaultIncomeSettings } from './income'
 import { calculateIncome } from './incomeWorker'
 import { compileBackupExpression } from './vendor/scheduler/backupExpression'
 
+it.each([
+  ["op_data.facility_has_crafting_plan('factory') == True", false],
+  ["op_data.facility_has_crafting_plan('factory') == False", true],
+  ["not op_data.facility_has_crafting_plan('factory')", true],
+  ["op_data.facility_has_crafting_plan('factory') or True", true],
+  ["op_data.facility_has_crafting_plan('factory') and True", false]
+])('keeps the no-crafting simulation assumption in %s', (source, expected) => {
+  const compiled = compileBackupExpression(source, new Set())
+  expect(compiled.usesCraftingPlan).toBe(true)
+  expect(compiled.evaluate({})).toBe(expected)
+})
+
 it('calculates the imported no-training schedule and retains its training-room staffing', () => {
   const original = structuredClone(plan)
   const result = calculateIncome(plan, {
