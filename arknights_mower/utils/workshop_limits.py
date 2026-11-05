@@ -350,8 +350,15 @@ def workshop_operator_block_reason(
             task is not current_task
             and getattr(task.type, "name", "") != "WORKSHOP"
             and (
-                any(operator in names for names in task.plan.values())
-                or operator in dorm_task_reservations(op_data, [task])[0]
+                any(
+                    operator in names
+                    for room, names in task.plan.items()
+                    if not room.startswith("dorm")
+                )
+                or operator
+                in dorm_task_reservations(op_data, [task], reserve_dorm_targets=False)[
+                    0
+                ]
             )
         ):
             if operator in getattr(task, "emergency_staffing_members", ()):
