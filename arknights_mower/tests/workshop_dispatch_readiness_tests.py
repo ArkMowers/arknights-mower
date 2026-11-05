@@ -1,4 +1,4 @@
-"""加工入队核验心情和任务预约，避免宿舍换班前借走干员。"""
+"""加工入队核验心情和工作预约，普通入宿安排允许借用干员。"""
 
 from datetime import datetime
 from types import SimpleNamespace
@@ -65,7 +65,7 @@ def test_calculated_workshop_mood_does_not_fall_back_to_stale_operator_or_card()
     assert workshop_candidate_mood(data, "演算干员") is None
 
 
-def test_dorm_admission_reservation_blocks_workshop_borrowing(queue):
+def test_dorm_admission_keeps_workshop_borrowing_available(queue):
     data, tasks = queue
     admission = SchedulerTask(
         datetime.now(), {"dormitory_1": ["年"]}, TaskTypes.FILL_DORM
@@ -75,8 +75,10 @@ def test_dorm_admission_reservation_blocks_workshop_borrowing(queue):
     scheduler_task.try_workshop_tasks(data, tasks)
 
     assert tasks[0] is admission
+    assert admission.plan == {"dormitory_1": ["年"]}
     assert [task.meta_data for task in tasks if task.type == TaskTypes.WORKSHOP] == [
-        "泥岩"
+        "年",
+        "泥岩",
     ]
 
 

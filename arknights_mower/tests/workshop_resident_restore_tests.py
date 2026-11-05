@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import MethodType, SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -13,6 +13,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 BaseSchedulerSolver = base_scheduler_tests.BaseSchedulerSolver
 
@@ -165,8 +166,9 @@ def test_room_completion_retains_workshop_only_for_crafting_handoff(keep, monkey
     assert solver._wait_for_room_exit.call_count == (0 if keep else 1)
 
 
+@pytest.mark.parametrize("future_shift", [None, "dorm", "mixed"])
 def test_crafting_restores_borrowed_operator_through_real_room_arrangement(
-    batch, monkeypatch
+    batch, monkeypatch, future_shift
 ):
     solver = batch.solver
     task = solver.task
@@ -178,11 +180,13 @@ def test_crafting_restores_borrowed_operator_through_real_room_arrangement(
         dorm: ["杜林", "琴柳", "年", "空爆", "蜜莓"],
     }
     physical = deepcopy(original)
+    monkeypatch.setattr(Operators, "current_room_changed_callback", None)
     solver.op_data = Operators(
         {
             "default_plan": Plan(
                 {
                     "factory": [Room("特克诺", "", ["蜜莓"])],
+                    "room_3_3": [Room("年", "", ["空爆"])],
                     dorm: [
                         Room("杜林", "", []),
                         Room("琴柳", "", []),
@@ -195,7 +199,6 @@ def test_crafting_restores_borrowed_operator_through_real_room_arrangement(
         }
     )
     assert solver.op_data.init_and_validate() is None
-    solver.op_data.current_room_changed_callback = None
     for room, names in original.items():
         for index, name in enumerate(names):
             solver.op_data.add(Operator(name, ""))
@@ -205,6 +208,21 @@ def test_crafting_restores_borrowed_operator_through_real_room_arrangement(
             operator.time_stamp = batch.clock.now()
     for bed in solver.op_data.all_dorms():
         bed.name = original[dorm][bed.position[1]]
+
+    callback = MagicMock(wraps=solver.current_room_changed)
+    monkeypatch.setattr(Operators, "current_room_changed_callback", callback)
+    migration = None
+    if future_shift:
+        plan = {dorm: ["Current"] * 3 + ["蜜莓", "Free"]}
+        if future_shift == "mixed":
+            plan["room_3_3"] = ["年"]
+        migration = SchedulerTask(
+            time=batch.clock.now() + timedelta(hours=2),
+            task_type=TaskTypes.SHIFT_ON,
+            task_plan=plan,
+        )
+        original_migration = deepcopy(migration.__dict__)
+        solver.tasks.append(migration)
 
     solver.agent_arrange = MethodType(BaseSchedulerSolver.agent_arrange, solver)
     solver.get_agent_from_room = MethodType(
@@ -286,6 +304,9 @@ def test_crafting_restores_borrowed_operator_through_real_room_arrangement(
         0,
     )
     assert task.plan == {}
-    assert solver.tasks == []
+    callback.assert_any_call(borrowed, started_working=True)
+    assert solver.tasks == ([migration] if migration is not None else [])
+    if migration is not None:
+        assert migration.__dict__ == original_migration
     solver._plan_dorm_recovery.assert_called_once_with(scan_moods=False)
     batch.errors.assert_not_called()

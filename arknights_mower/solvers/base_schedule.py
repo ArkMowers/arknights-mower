@@ -15548,7 +15548,7 @@ class BaseSchedulerSolver(
         return round((execute_time - datetime.now()).total_seconds(), 1)
 
     def _cancel_pending_shift_on(self, name):
-        """实际重新上岗后，撤销本人的旧回班预约，保留同批其他人的动作。"""
+        """实际上岗只撤销本人的旧工作目标，保留宿舍迁移和其他人的动作。"""
         locks_changed = False
         for task in task_view(self.tasks, TaskScope.REPLAN):
             if (
@@ -15558,7 +15558,8 @@ class BaseSchedulerSolver(
                 or not any(
                     name in names
                     for plan in (task.plan, getattr(task, "backup_shift_intent", {}))
-                    for names in plan.values()
+                    for room, names in plan.items()
+                    if not room.startswith("dorm")
                 )
             ):
                 continue
@@ -15569,9 +15570,12 @@ class BaseSchedulerSolver(
                 del task.backup_shift_intent
                 del task.backup_shift_conditions
             task.plan = {
-                room: ["Current" if agent == name else agent for agent in names]
+                room: names
+                if room.startswith("dorm")
+                else ["Current" if agent == name else agent for agent in names]
                 for room, names in task.plan.items()
-                if any(agent not in (name, "Current") for agent in names)
+                if room.startswith("dorm")
+                or any(agent not in (name, "Current") for agent in names)
             }
             locked = getattr(task, "product_shift_locked", False)
             locks_changed |= locked
