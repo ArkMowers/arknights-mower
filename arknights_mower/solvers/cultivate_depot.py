@@ -1,4 +1,5 @@
 import json
+import re
 from threading import Lock
 from time import time
 from urllib.parse import urlencode
@@ -90,7 +91,11 @@ class cultivate:
                     if not isinstance(items, list) or any(
                         not isinstance(entry, dict)
                         or not isinstance(entry.get("id"), str)
-                        or not str(entry.get("count", "")).isdigit()
+                        # Skland can report furniture parts (3401) as a debt.
+                        or not re.fullmatch(
+                            r"-?[0-9]+" if entry["id"] == "3401" else r"[0-9]+",
+                            str(entry.get("count", "")),
+                        )
                         for entry in items
                     ):
                         raise ValueError("森空岛返回的库存数据无效")
