@@ -18,6 +18,13 @@ export interface MowerOperatorOptions {
 }
 export type MowerRecoveryManager=[name:string,index:number,positionVersion:number]
 export class MowerOperatorState {
+ #observedRoom:string|undefined
+ #observedIndex=-1
+ private static readonly positionProperties:PropertyDescriptorMap={
+   currentRoom:{enumerable:true,get(this:MowerOperatorState){return this.#observedRoom},set(this:MowerOperatorState,value:string){if(this.#observedRoom!==value){this.dormPositionVersion++;this.idleRestCheck=undefined;this.clearDormRecovery();this.#observedRoom=value;if(this.alpha){if(value!==this.dormMoodFallback){this.dormMoodFallback='';this.dormMoodPeers={}}if(!value||!value.startsWith('dorm'))this.temporaryDormFill=false;if(value)this.restMoodReleaseLimit=undefined}}}},
+   currentIndex:{enumerable:true,get(this:MowerOperatorState){return this.#observedIndex},set(this:MowerOperatorState,value:number){if(this.#observedIndex!==value){this.dormPositionVersion++;this.clearDormRecovery()}this.#observedIndex=value}}
+ }
+
  calculatedMoodSnapshot:MowerCalculatedMoodSnapshot|undefined
  /** Position-only projections retain the room context of the source mood. */
  projectedMoodResting:boolean|undefined
@@ -32,25 +39,41 @@ export class MowerOperatorState {
  alpha=false
  setProjectedPosition:(room:string,index:number)=>void
  name:string;nativeName:string;room:string;index:number;group:string;replacement:string[];operatorType:'high'|'low';restingPriority:'high'|'low'|'standby'
- dormRecoveryObservation:[string,number,number,number]|undefined;currentRoom!:string;currentIndex!:number;mood:number;dormPositionVersion=0;dormRecoveryRoom='';dormRecoveryIndex=-1;dormRecoveryFixed:MowerRecoveryManager[]=[];singleRecoveryManager=false;restingFromTrain=false;idleRestCheck:[number,number,number|undefined]|undefined;timeStampMicros:number|undefined;depletionRate:number;exhaustTimeMicros:number|undefined
+ dormRecoveryObservation:[string,number,number,number]|undefined;declare currentRoom:string;declare currentIndex:number;mood:number;dormPositionVersion=0;dormRecoveryRoom='';dormRecoveryIndex=-1;dormRecoveryFixed:MowerRecoveryManager[]=[];singleRecoveryManager=false;restingFromTrain=false;idleRestCheck:[number,number,number|undefined]|undefined;timeStampMicros:number|undefined;depletionRate:number;exhaustTimeMicros:number|undefined
  refreshOrderRooms:[boolean,string[]]=[false,[]]
  lowerLimit:number;upperLimit:number;workaholic:boolean;exhaustRequire:boolean;restInFull:boolean;restMoodLimit:boolean;workshop:boolean
  constructor(o:MowerOperatorOptions){
   this.calculatedMoodSnapshot=o.calculatedMoodSnapshot
-  let currentRoom:string|undefined,currentIndex=-1
   this.projectedMoodResting=o.projectedMoodResting
   this.alpha=o.alpha??false
   this.groupBindings=(o.groupBindings??[]).map(binding=>({group:binding.group,replacement:[...binding.replacement]}))
-  this.setProjectedPosition=(room,index)=>{currentRoom=room;this.currentIndex=index}
+  this.setProjectedPosition=(room,index)=>{this.#observedRoom=room;this.currentIndex=index}
   this.temporaryDormFill=o.temporaryDormFill??false;this.dormMoodFallback=o.dormMoodFallback??'';this.restMoodReleaseLimit=o.restMoodReleaseLimit;this.moodIsPrediction=o.moodIsPrediction??false
   this.customMoodLimit=o.customMoodLimit??false
   this.dormMoodPeers={...o.dormMoodPeers}
-  Object.defineProperties(this,{
-   currentRoom:{enumerable:true,get:()=>currentRoom,set:(value:string)=>{if(currentRoom!==value){this.dormPositionVersion++;this.idleRestCheck=undefined;this.clearDormRecovery();currentRoom=value;if(this.alpha){if(value!==this.dormMoodFallback){this.dormMoodFallback='';this.dormMoodPeers={}}if(!value||!value.startsWith('dorm'))this.temporaryDormFill=false;if(value)this.restMoodReleaseLimit=undefined}}}},
-   currentIndex:{enumerable:true,get:()=>currentIndex,set:(value:number)=>{if(currentIndex!==value){this.dormPositionVersion++;this.clearDormRecovery()}currentIndex=value}}
-  })
+  Object.defineProperties(this,MowerOperatorState.positionProperties)
  this.name=o.name;this.nativeName=o.nativeName??o.name;this.room=o.room??'';this.index=o.index??-1;this.group=o.group??'';this.replacement=o.replacement??[];this.operatorType=o.operatorType??'low';this.restingPriority=o.restingPriority??'low';this.currentRoom=o.currentRoom??'';this.currentIndex=o.currentIndex??-1;this.mood=o.mood??24;this.timeStampMicros=o.timeStampMicros;this.depletionRate=o.depletionRate??0;this.exhaustTimeMicros=o.exhaustTimeMicros;this.lowerLimit=o.lowerLimit??0;this.upperLimit=o.upperLimit??24;this.workaholic=o.workaholic??false;this.exhaustRequire=o.exhaustRequire??false;this.restInFull=o.restInFull??false;this.restMoodLimit=o.restMoodLimit??false;this.workshop=o.workshop??false;this.dormPositionVersion=o.dormPositionVersion??this.dormPositionVersion;this.dormRecoveryRoom=o.dormRecoveryRoom??'';this.dormRecoveryIndex=o.dormRecoveryIndex??-1;this.dormRecoveryFixed=o.dormRecoveryFixed?.map(m=>[...m])??[];this.dormRecoveryObservation=o.dormRecoveryObservation?[...o.dormRecoveryObservation]:undefined;this.singleRecoveryManager=o.singleRecoveryManager??false;this.restingFromTrain=o.restingFromTrain??false;this.idleRestCheck=o.idleRestCheck
  if(this.independentRest){this.group='';this.replacement=[...this.replacementsForGroup('')]}
+ }
+ /** Copy constructor inputs without enumerating every accessor on a live observation. */
+ copyForProjection():MowerOperatorState {
+  return new MowerOperatorState({
+   name:this.name,nativeName:this.nativeName,room:this.room,index:this.index,group:this.group,
+   replacement:[...this.replacement],groupBindings:this.groupBindings,
+   operatorType:this.operatorType,restingPriority:this.restingPriority,
+   alpha:this.alpha,projectedMoodResting:this.projectedMoodResting??this.isResting(),
+   currentRoom:this.currentRoom,currentIndex:this.currentIndex,mood:this.mood,
+   calculatedMoodSnapshot:this.calculatedMoodSnapshot,
+   timeStampMicros:this.timeStampMicros,depletionRate:this.depletionRate,exhaustTimeMicros:this.exhaustTimeMicros,
+   temporaryDormFill:this.temporaryDormFill,dormMoodFallback:this.dormMoodFallback,
+   restMoodReleaseLimit:this.restMoodReleaseLimit,moodIsPrediction:this.moodIsPrediction,
+   customMoodLimit:this.customMoodLimit,dormMoodPeers:this.dormMoodPeers,
+   dormRecoveryObservation:this.dormRecoveryObservation,dormPositionVersion:this.dormPositionVersion,
+   dormRecoveryRoom:this.dormRecoveryRoom,dormRecoveryIndex:this.dormRecoveryIndex,dormRecoveryFixed:this.dormRecoveryFixed,
+   singleRecoveryManager:this.singleRecoveryManager,restingFromTrain:this.restingFromTrain,idleRestCheck:this.idleRestCheck,
+   lowerLimit:this.lowerLimit,upperLimit:this.upperLimit,workaholic:this.workaholic,
+   exhaustRequire:this.exhaustRequire,restInFull:this.restInFull,restMoodLimit:this.restMoodLimit,workshop:this.workshop,
+  })
  }
  clearDormRecovery(){this.dormRecoveryObservation=undefined;this.dormRecoveryRoom='';this.dormRecoveryIndex=-1;this.dormRecoveryFixed=[]}
  isHigh(){return this.operatorType==='high'}

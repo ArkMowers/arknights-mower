@@ -16,12 +16,12 @@ afterEach(() => vi.restoreAllMocks())
 function plan(product, level = 1, otherLevel = 3) {
   return {
     default: 'plan1',
-    conf: {},
+    conf: { workaholic: '杜林,安赛尔' },
     backup_plans: [],
     facility_levels: { room_1_1: otherLevel, room_3_3: level, room_1_3: 3, room_2_3: 3 },
     plan1: {
       room_1_1: { name: '制造站', product: 'gold', plans: [] },
-      room_3_3: { name: '制造站', product, plans: [] },
+      room_3_3: { name: '制造站', product, plans: [{ agent: '杜林', replacement: [] }] },
       room_1_3: { name: '发电站', plans: [] },
       room_2_3: { name: '发电站', plans: [] }
     }
@@ -42,7 +42,11 @@ describe('manufacturing formulas assumed already unlocked', () => {
     'requires the selling trading post itself to be level three (level %s)',
     (level) => {
       const source = plan('gold', 1)
-      source.plan1.room_2_1 = { name: '贸易站', product: 'orundum', plans: [] }
+      source.plan1.room_2_1 = {
+        name: '贸易站',
+        product: 'orundum',
+        plans: [{ agent: '安赛尔', replacement: [] }]
+      }
       source.plan1.room_2_2 = { name: '贸易站', product: 'lmd', plans: [] }
       source.facility_levels.room_2_1 = level
       source.facility_levels.room_2_2 = 3
@@ -97,6 +101,7 @@ describe('manufacturing formulas assumed already unlocked', () => {
     const result = calculateIncome(plan('orirock', 2, 1), {
       ...settings,
       finiteInventory: true,
+      allowMaterialDebt: false,
       initialInventory: { orirock: 2, lmd: 1600 }
     })
     expect(result.success, JSON.stringify(result.diagnostics)).toBe(true)
@@ -115,7 +120,18 @@ describe('manufacturing formulas assumed already unlocked', () => {
       room.slots = []
     }
     Object.assign(workspace.mainPlan.facilities.room_1_1, { level: 3, product: 'gold' })
-    Object.assign(workspace.mainPlan.facilities.room_1_2, { level, product: 'fragment' })
+    Object.assign(workspace.mainPlan.facilities.room_1_2, {
+      level,
+      product: 'fragment',
+      slots: [
+        {
+          occupant: { kind: 'operator', operatorId: 'char_501_durin' },
+          groupId: null,
+          replacements: []
+        }
+      ]
+    })
+    workspace.mainPlan.conf.workaholic = '杜林'
     const create = vi.mocked(createProductionTimeline).getMockImplementation()
     vi.mocked(createProductionTimeline).mockImplementationOnce((...args) => {
       const controller = create(...args)
@@ -147,7 +163,7 @@ describe('manufacturing formulas assumed already unlocked', () => {
         {
           name: '切换配方',
           trigger: "op_data.facility_product('room_3_3') != None",
-          plan: { room_3_3: { product, plans: [] } }
+          plan: { room_3_3: { product, plans: [{ agent: '杜林', replacement: [] }] } }
         }
       ]
       const result = calculateIncome(source, settings)

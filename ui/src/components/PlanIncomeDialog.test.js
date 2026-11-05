@@ -98,12 +98,13 @@ it('remembers edited parameters across dialog recreation before any calculation'
   Object.assign(page.settings, {
     warmupDays: 1,
     sampleDays: 7,
-    seed: 99,
+    expectationMode: false,
     droneRoom: '',
     operatorMode: 'custom',
     operatorText: '阿米娅,2,80',
     inventorySource: 'manual',
-    allowGoldDebt: false,
+    allowMaterialDebt: false,
+    dailyExternalResources: { gold: 12.5, orirock: 3 },
     jayeElite0: true,
     weightMode: 'custom'
   })
@@ -113,14 +114,15 @@ it('remembers edited parameters across dialog recreation before any calculation'
   expect(page.settings).toMatchObject({
     warmupDays: 1,
     sampleDays: 7,
-    seed: 99,
+    expectationMode: false,
     droneRoom: '',
     operatorMode: 'custom',
     operatorText: '阿米娅,2,80',
     inventorySource: 'manual',
     initialInventory: { gold: 123 },
     productionWeights: { exp: 2 },
-    allowGoldDebt: false,
+    allowMaterialDebt: false,
+    dailyExternalResources: { gold: 12.5, orirock: 3 },
     jayeElite0: true,
     weightMode: 'custom'
   })
@@ -170,7 +172,7 @@ it('restores defaults without changing shared settings or the retained result', 
   expect(page.settings).toMatchObject({
     warmupDays: 3,
     sampleDays: 28,
-    seed: 42,
+    expectationMode: true,
     droneRoom: 'room_1_1',
     operatorMode: 'cache',
     inventorySource: 'cache',
@@ -302,12 +304,29 @@ it('does not save the empty target while the snapshot watcher is still queued', 
   expect(JSON.parse(localStorage.getItem(INCOME_PREFERENCES_KEY)).settings.droneRoom).not.toBe('')
 })
 it('reads cached ownership and stock without writing configuration', async () => {
+  expect(page.settings.expectationMode).toBe(true)
+  expect(page.settings).not.toHaveProperty('seed')
   await page.readCache()
   await page.readWeights()
   expect(page.settings.cachedOperators).toEqual([{ operator: '阿米娅', elitePhase: 2, level: 80 }])
   expect(page.settings.cachedInventory.gold).toBe(10)
   expect(page.settings.mowerWeights).toMatchObject({ exp: 0.9568, gold: 0.76544, orders: 0.23456 })
   expect(io.client.put).not.toHaveBeenCalled()
+})
+it('uses the shared optional seed input when a trade tailor disables expectation mode', async () => {
+  page.settings.operatorMode = 'maximum'
+  props.snapshot.plan.plan1.room_1_1 = {
+    name: '贸易站',
+    product: 'lmd',
+    plans: [{ agent: '柏喙' }]
+  }
+  await nextTick()
+  expect(page.hasTailor.value).toBe(true)
+  expect(page.settings.fixedSeed).toBeNull()
+  page.settings.fixedSeed = 77
+  reopenDialog()
+  expect(page.hasTailor.value).toBe(true)
+  expect(page.settings.fixedSeed).toBe(77)
 })
 it('saves the selected shared algorithm and preserves recycling efficiency', async () => {
   await page.readWeights()
@@ -662,4 +681,44 @@ it('does not start on network failure or a validation response received after cl
   finishValidation({ data: { success: true, status: 'passed' } })
   await start
   expect(workers).toHaveLength(0)
+})
+
+it.each([
+  [false, null],
+  [false, 0],
+  [false, 77],
+  [true, null],
+  [true, 0],
+  [true, 77]
+])('freezes one shared seed before validation (tailor=%s, fixed=%s)', async (tailor, fixedSeed) => {
+  page.settings.operatorMode = 'maximum'
+  page.settings.inventorySource = 'manual'
+  page.settings.finiteInventory = false
+  page.settings.weightMode = 'custom'
+  page.settings.expectationMode = tailor
+  page.settings.fixedSeed = fixedSeed
+  if (tailor)
+    props.snapshot.plan.plan1.room_1_1 = {
+      name: '贸易站',
+      product: 'lmd',
+      plans: [{ agent: '柏喙' }]
+    }
+  const random = vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+    array[0] = 123
+    return array
+  })
+  try {
+    await page.start()
+    expect(workers).toHaveLength(1)
+    const input = workers[0].postMessage.mock.calls[0][0]
+    expect(input.settings).toMatchObject({
+      expectationMode: false,
+      fixedSeed,
+      seed: fixedSeed ?? 123
+    })
+    expect(page.settings).not.toHaveProperty('seed')
+    expect(random).toHaveBeenCalledTimes(fixedSeed === null ? 1 : 0)
+  } finally {
+    random.mockRestore()
+  }
 })

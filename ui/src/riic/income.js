@@ -6,9 +6,14 @@ import { importMowerJson } from './vendor/workbench/compat/mowerJson'
 import { droneFacilities } from './vendor/workbench/droneTargets'
 import { mowerAdvancedAssumptions } from './vendor/scheduler/mowerAdvancedSettings'
 import { workspaceUsesInventoryConditions } from './vendor/scheduler/backupInventory'
-import { normalizeSimulationInventory } from './vendor/domain/simulationInventory'
+import {
+  normalizeSimulationInventory,
+  normalizeDailyExternalResources,
+  MOWER_RAW_MATERIALS
+} from './vendor/domain/simulationInventory'
 import { normalizeProductionWeights } from './vendor/domain/productionWeights'
 import { incomeInitialInventory } from './incomeCache'
+import { incomeHasTailor } from './incomeTailor'
 import { parseOperatorInventory, compileOperatorInventory } from './vendor/domain/operatorInventory'
 
 export const CALCULATOR_REVISION = '5529403'
@@ -17,14 +22,18 @@ export function defaultIncomeSettings() {
   return {
     warmupDays: 3,
     sampleDays: 28,
-    seed: 42,
+    expectationMode: true,
+    fixedSeed: null,
     droneRoom: '',
     finiteInventory: true,
     inventorySource: 'cache',
     cachedInventory: null,
     cachedOperators: null,
     cacheObservedAt: null,
-    allowGoldDebt: true,
+    allowMaterialDebt: true,
+    dailyExternalResources: Object.fromEntries(
+      MOWER_RAW_MATERIALS.map(({ resource }) => [resource, 0])
+    ),
     weightMode: 'mower',
     mowerWeights: null,
     mowerAlgorithm: null,
@@ -46,6 +55,18 @@ export function incomeFacilities(plan) {
 export function inventoryRequired(plan) {
   return workspaceUsesInventoryConditions(incomeWorkspace(plan))
 }
+export function incomeSeed(settings) {
+  const fixedSeed = Object.hasOwn(settings, 'fixedSeed') ? settings.fixedSeed : settings.tailorSeed
+  const seed =
+    settings.seed !== undefined
+      ? settings.seed
+      : fixedSeed == null
+        ? crypto.getRandomValues(new Uint32Array(1))[0]
+        : fixedSeed
+  if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff)
+    throw new Error('随机种子必须为 0–4294967295 的整数')
+  return seed
+}
 export function incomeRequest(plan, settings) {
   for (const [key, minimum, maximum] of [
     ['warmupDays', 0, 30],
@@ -58,9 +79,8 @@ export function incomeRequest(plan, settings) {
       )
     }
   }
-  if (!Number.isSafeInteger(settings.seed) || settings.seed < 0 || settings.seed > 0xffffffff) {
-    throw new Error('随机种子必须为 0–4294967295 的整数')
-  }
+  const requestedExpectation = settings.expectationMode ?? settings.seed === undefined
+  if (typeof requestedExpectation !== 'boolean') throw new Error('理论期望模式必须为开启或关闭')
   const workspace = incomeWorkspace(plan)
   const target = droneFacilities(workspace).find((f) => f.roomId === settings.droneRoom)
   if (settings.droneRoom && !target) throw new Error('无人机目标不在本次排班中')
@@ -85,6 +105,9 @@ export function incomeRequest(plan, settings) {
       throw new Error(parsed.diagnostics.map((d) => d.message).join('；') || '请填写干员和练度')
     operators = parsed.entries
   } else if (settings.operatorMode !== 'maximum') throw new Error('干员练度选项无效')
+  const tailor = incomeHasTailor(plan, settings)
+  const expectationMode = requestedExpectation && !tailor
+  const seed = expectationMode ? undefined : incomeSeed(settings)
   return {
     workspace,
     options: {
@@ -113,9 +136,15 @@ export function incomeRequest(plan, settings) {
                 inventoryMode: 'finite',
                 initialResources: inventory
               }),
-          allowGoldDebt: settings.allowGoldDebt,
+          allowMaterialDebt: settings.allowMaterialDebt ?? settings.allowGoldDebt === undefined,
+          ...(typeof settings.allowGoldDebt === 'boolean'
+            ? { allowGoldDebt: settings.allowGoldDebt }
+            : {}),
+          dailyExternalResources: normalizeDailyExternalResources(settings.dailyExternalResources),
           runOrderMode: 'ideal',
-          seed: settings.seed,
+          expectationMode,
+          theoreticalMode: expectationMode,
+          ...(expectationMode ? {} : { seed }),
           droneTarget: target?.target ?? 'none',
           droneRoomId: target?.roomId,
           droneTradingRoomId: target?.target === 'trading' ? target.roomId : undefined

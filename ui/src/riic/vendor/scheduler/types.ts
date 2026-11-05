@@ -38,8 +38,9 @@ export interface SimulationAssumptions {
   maaGapHours?: number
   /** Simulation-only choice; preserved when backup plans recompile the runtime. */
   runOrderSimulationMode?: 'ideal'
-  /** Ideal mode retains order task scheduling; false reproduces the old no-wake comparison. */
+  /** Ideal mode can retain order tasks; theoretical timing omits their native wakes. */
   idealRunOrderWakeOnly?: boolean
+  theoreticalMode?: boolean
   idleOperators?: string[]
   fiammettaFool?: boolean
   fiammettaThreshold?: number

@@ -80,7 +80,7 @@ it('carries partial warmup progress, excluding warmup completions and empty shif
   expect(observer.result().progress).toBeCloseTo(0)
 })
 
-it('reports actual office interval production through the complete Worker calculation', () => {
+it('reports fractional expected office production through the complete Worker calculation', () => {
   const plan = {
     default: 'plan1',
     conf: { workaholic: ['梓兰'] },
@@ -102,19 +102,19 @@ it('reports actual office interval production through the complete Worker calcul
   const original = structuredClone(plan)
   const result = calculateIncome(plan, settings)
   expect(result.success, JSON.stringify(result)).toBe(true)
-  // 24 h at 145% produces 2 complete refreshes, with partial progress retained.
-  expect(result.summary.recruitmentCount).toBeCloseTo(2, 8)
-  expect(result.summary.goldCount).toBeGreaterThan(0)
+  // Expected production includes the entire 24 h at 145%, including unfinished refreshes.
+  expect(result.summary.recruitmentCount).toBeCloseTo(2.9, 8)
+  expect(result.summary.goldCount).toBe(0)
   expect(result.summary.totalScore82).toBeCloseTo(result.summary.goldCount * 400)
   expect(
     incomeMetrics(result.summary, result.observedHours / 24).find((row) => row.label === '公招刷新')
       .total
-  ).toBeCloseTo(2, 8)
+  ).toBeCloseTo(2.9, 8)
   const badge = incomeImageMetrics(result.summary, result.observedHours / 24).find(
     (row) => row.key === 'recruitment'
   )
-  expect(badge.daily).toBeCloseTo(2, 8)
-  expect(badge.total).toBeCloseTo(2, 8)
+  expect(badge.daily).toBeCloseTo(2.9, 8)
+  expect(badge.total).toBeCloseTo(2.9, 8)
   expect(badge.unit).toBe('次')
   expect(plan).toEqual(original)
   const request = incomeRequest(plan, settings)

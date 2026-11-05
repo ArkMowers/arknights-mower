@@ -126,7 +126,8 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  schedule.sourceWorkspace.droneCapacity=droneCapacity
  options={...options,efficiencyResources:{...options.efficiencyResources,droneCapacity}}
  schedule.assumptions.runOrderSimulationMode='ideal'
- schedule.assumptions.idealRunOrderWakeOnly=!options.experimentalDisableIdealWake
+ schedule.assumptions.theoreticalMode=options.production?.expectationMode===true&&options.production.theoreticalMode===true
+ schedule.assumptions.idealRunOrderWakeOnly=!schedule.assumptions.theoreticalMode&&!options.experimentalDisableIdealWake
  if(options.production){
   const target=options.production.droneTarget??'gold'
   schedule.assumptions.droneRoom=target==='none'?null:options.production.droneRoomId??(target==='trading'?options.production.droneTradingRoomId??schedule.rooms.find(room=>room.type==='trading')?.roomId:schedule.rooms.find(room=>room.type==='manufacture'&&room.product===target)?.roomId)??null
@@ -142,7 +143,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   assumptions:{moodControlStrategyVersion:'ordinary-threshold-v1',predictiveMoodControl:schedule.assumptions.predictiveMoodControl??false,schedulingModel,sampleHours,warmupHours,maxStepHours,warmupModel,restingThreshold:schedule.assumptions.restingThreshold??.65,operationDurationHours:0,dormAtmosphere:'各宿舍默认等级上限；可逐室覆盖',singleRecoveryTarget:'先检查单回资格；禁止自身和菲亚梅塔，单回技能持有者仅在唯一待恢复候选时合格；有效普通目标保持至失效，重选按最低心情和槽位顺序'},
   inputs:{schedule:structuredClone(schedule),options:structuredClone({...options,observeInterval:undefined})},operators:[],rooms:[],events:[],segments:[],diagnostics:[]}
  const diagnostic=(code:string,message:string)=>{if(!report.diagnostics.some(d=>d.code===code&&d.message===message))report.diagnostics.push({code,message})}
- if(options.production?.inventoryMode==='finite')diagnostic('FINITE_INVENTORY_MODEL','使用预设初始库存；从预热开始连续扣料、收取和交付，采样时不重置。无外源收入或自动补货；缺料停止相应生产或交付。回收站随机材料未计入物品库存。')
+ if(options.production?.inventoryMode==='finite')diagnostic('FINITE_INVENTORY_MODEL','使用预设初始库存；从预热开始连续扣料、收取和交付，采样时不重置。日均外源材料按时间补入且不计收益；是否允许材料负余额由本次亏空设置决定。回收站随机材料未计入物品库存。')
  for(const d of schedule.diagnostics)diagnostic(d.code,d.message)
  diagnostic('MOWER_SCHEDULING_MODEL',schedulingModel==='mower-default'?'使用 Mower 默认兼容换班策略；按六阶段评估副表，保留完整任务保护':'使用 Mower alpha 排班模型（80c97ee60 增量适配）：副表收敛、共享绑组与宿舍隔离')
  if(schedule.diagnostics.some(d=>d.severity==='error'||d.code==='UNKNOWN_OPERATOR'))return report
@@ -176,7 +177,8 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    : schedule.assumptions.idleOperators??OPERATORS.map(op=>op.charId)
   if(runtimeConfig.fiammetta&&!hasOperatorSkill({operatorRecords},runtimeConfig.fiammetta.operatorId,'dorm_exchangeAp[000]'))runtimeConfig.fiammetta=undefined
   state=createRosterRuntime(runtimeConfig)
-  if(runtimeConfig.mowerDeviceTiming)diagnostic('MOWER_IO_CLOCK_MODEL','Mower 每房返回 0.5 秒及无临近任务时的通知检查 1 秒已纳入时间线；识别与其他点击耗时按 0 处理。已完成 run 后仍有同刻任务时，外层单调时钟推进 1 微秒；该适配步长不改任务时刻。')
+  if(runtimeConfig.mowerTheoreticalMode)diagnostic('THEORETICAL_EVENT_MODEL','理论期望模式按换班、心情、技能、生产和材料事件推进；安排即时完成，产物及时收取，无人机生成后连续加速所选设施，不模拟读房、页面等待及待办轮询。')
+  else if(runtimeConfig.mowerDeviceTiming)diagnostic('MOWER_IO_CLOCK_MODEL','Mower 每房返回 0.5 秒及无临近任务时的通知检查 1 秒已纳入时间线；识别与其他点击耗时按 0 处理。已完成 run 后仍有同刻任务时，外层单调时钟推进 1 微秒；该适配步长不改任务时刻。')
   if(runtimeConfig.mowerAlpha)diagnostic('MOWER_CONTINUOUS_MOOD_MODEL','本地心情及读取值使用连续数值，未复现游戏心情条像素与识别误差。关闭菲亚梅塔防呆时，接近满心情的微小缺额可能产生密集充能；模拟保留该策略，不添加额外冷却。')
   backups=createBackupPlanController(schedule,state,{canUseFiammetta:id=>hasOperatorSkill({operatorRecords},id,'dorm_exchangeAp[000]')})
   for(const d of backups.diagnostics)diagnostic(d.code,d.message)
@@ -210,7 +212,13 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   let production:ReturnType<typeof createProductionTimeline>|undefined
   let actualProductSignature=''
   const currentProducts=()=>production?.actualProducts()??{}
-  const refreshProductRevision=()=>{const signature=JSON.stringify(currentProducts());if(signature!==actualProductSignature){actualProductSignature=signature;rateRevision++;occupancyRevision++}}
+  let lastProductVersion=-1
+  const refreshProductRevision=()=>{
+   const version=production?.productVersion()??0
+   if(version===lastProductVersion)return
+   lastProductVersion=version
+   const signature=JSON.stringify(currentProducts());if(signature!==actualProductSignature){actualProductSignature=signature;rateRevision++;occupancyRevision++}
+  }
   const automaticRecoveryTargets=new Map<string,{room:string;target:string;providerPosition:string;targetPosition:string}>()
   let cachedRecoveryOrderVersion=-1
   let rateRevision=0,cachedRevision=-1,occupancyRevision=0
@@ -419,10 +427,10 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   ...Object.fromEntries(Object.entries(frame.evaluations).map(([id,r])=>[id,r.efficiencyPercent])),
   ...(frame.config.facilities.recycle?{recycle:evaluateRecycleEfficiency(frame.config,{activeIds:frame.active}).efficiencyPercent}:{}),
  })
- production=options.production?createProductionTimeline(schedule,state,options.production,warmupHours,diagnostic,!!state.config.mowerSourcePlan):undefined
+ production=options.production?createProductionTimeline(schedule,state,options.production,warmupHours,diagnostic,!!state.config.mowerSourcePlan&&!state.config.mowerTheoreticalMode):undefined
  // Real facilities exist before native scheduling first reads a countdown.
  production?.settle(()=>frameAt(0))
- if(production&&state.config.mowerSourcePlan){
+ if(production&&state.config.mowerSourcePlan&&!state.config.mowerTheoreticalMode){
   Object.assign(rates,createMowerClueIO(state))
   diagnostic('MOWER_CLUE_OBSERVATION_MODEL','线索交流固定关闭，Party Time 为空，不执行线索待办及交流任务。')
   Object.assign(rates,createMowerProductionIO(state,production,()=>frameAt(0)))

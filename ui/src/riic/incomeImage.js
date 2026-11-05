@@ -7,6 +7,7 @@ import {
   incomeWeights
 } from './income'
 
+import { MOWER_RAW_MATERIALS } from './vendor/domain/simulationInventory'
 import { incomeInitialInventory } from './incomeCache'
 import { incomeOrderDistribution } from './incomeOrders'
 import { incomeAlgorithmLabel } from '@/utils/incomeSettings'
@@ -19,6 +20,13 @@ export function incomeReportLines(result, settings, plan, label) {
       ? '初始心情 24（受个人上限约束）'
       : `菲亚梅塔初始心情 ${result.initialConditions.fiammettaMorale}；其他干员从个人心情上限开始（未设置时为 24）`
   const provenance = result.modelProvenance
+  const expected =
+    result.simulationReport?.production?.assumptions.expectationMode ??
+    settings.expectationMode ??
+    false
+  const theoretical = provenance?.timingModel === 'theoretical-events-v1'
+  const continuous = expected && result.simulationReport?.production?.expected
+  const seed = result.simulationReport?.production?.assumptions.seed ?? settings.seed
   const target = incomeFacilities(plan).find((f) => f.roomId === settings.droneRoom)
   const levels = Object.values(incomeWorkspace(plan).mainPlan.facilities)
     .filter((f) => f.level > 0)
@@ -26,8 +34,34 @@ export function incomeReportLines(result, settings, plan, label) {
     .join('；')
   return [
     `原图：${label}；二维码包含完整主副表和高级设置，可在 Mower「导入排班」中读取。`,
-    `预热 ${settings.warmupDays} 天，不计入收益；统计 ${number(result.observedHours / 24)} 天，共 ${settings.warmupDays + settings.sampleDays} 天；随机种子 ${settings.seed}。`,
-    `无人机：${target?.label ?? '不使用'}；${finite ? `有限库存：无外源收入，连续记账；${settings.allowGoldDebt ? '赤金可透支，其他材料缺料停产或暂停交付' : '缺料停产或暂停交付'}。` : '潜在产出：不受初始库存限制，不能视为可交付收入。'}`,
+    `预热 ${settings.warmupDays} 天，不计入收益；统计 ${number(result.observedHours / 24)} 天，共 ${settings.warmupDays + settings.sampleDays} 天；${expected ? (theoretical ? '理论期望模式' : continuous ? '数学期望模式（连续产出）' : '数学期望模式（平均订单模型）') : `随机种子 ${seed}`}。`,
+    ...(expected
+      ? [
+          theoretical
+            ? '理论期望模式按换班、心情、技能、生产及材料事件推进，安排即时完成、产物及时收取，不模拟页面操作和待办轮询。各项产出和材料成本按有效工作时间累计小数数量，无人机按新生成能力连续加速目标设施。调度与库存阈值耦合下仍为近似期望，不代表已达到稳态。'
+            : continuous
+              ? '数学期望模式按有效工作时间和即时效率累计经验、赤金、源石碎片、订单及材料消耗的小数数量；公招、线索和回收次数同样保留小数。无人机按统计期生成的加速能力折算到所选设施，不计期初库存，也不重复计入实际使用的加速收益。排班、缺料和库存阈值耦合下仍为近似期望。'
+              : '数学期望模式按开始时的订单分布平均获取耗时，完成时逐档应用特殊效果后平均奖励与消耗。固定效率与概率下，长期收益率为期望奖励除以期望耗时；换班、缺料及库存阈值耦合下为近似期望。裁缝暖机概率沿用未经实测核验的近似曲线。'
+        ]
+      : []),
+    `无人机：${target?.label ?? '不使用'}；${finite ? `有限库存：连续记账；${settings.allowMaterialDebt ? '允许原材料亏空，负数表示缺口' : settings.allowGoldDebt ? '允许赤金透支，其他材料缺料停产或暂停交付' : '缺料停产或暂停交付'}。` : '潜在产出：不受初始库存限制，不能视为可交付收入。'}`,
+    ...(Object.values(settings.dailyExternalResources ?? {}).some((value) => value > 0)
+      ? [
+          `日均外源材料：${MOWER_RAW_MATERIALS.filter(
+            (item) => settings.dailyExternalResources[item.resource] > 0
+          )
+            .map(
+              (item) => `${item.label} ${number(settings.dailyExternalResources[item.resource])}`
+            )
+            .join('；')}。按时间补入库存，外源补入不计产出或加权收益。`
+        ]
+      : []),
+    ...(result.stability?.drones
+      ? [
+          `统计期无人机：期初 ${number(result.stability.drones.opening)}，期末 ${number(result.stability.drones.closing)}，差额 ${number(result.stability.drones.change)}；生成 ${number(result.stability.drones.generated)}，消耗 ${number(result.stability.drones.consumed)}，溢出 ${number(result.stability.drones.overflow)}。${continuous ? `收益另按生成的加速能力计算，本次可折算 ${number(continuous.droneAllocated)} 架；该表为调度库存观察。` : '差额未折算收益。'}`,
+          '初始心情与轮换阶段的影响未自动消除；前后半段效率和驻岗占比仅供比较，不构成达到稳态的证明。'
+        ]
+      : []),
     ...(finite
       ? [
           `初始库存（${settings.inventorySource === 'cache' ? '森空岛缓存，可手动补充修改' : '手动设定'}）：${
@@ -53,13 +87,17 @@ export function incomeReportLines(result, settings, plan, label) {
       : `历史演算的未完成训练计划：${settings.masteryPlanPresent ? '有' : '无'}，整段演算保持此条件，不模拟训练完成。`,
     '赤金等价龙门币为制造赤金 × 500 加特殊订单溢价，不扣除交付消耗的赤金；该项不是实际龙门币入账。',
     '制造配方默认已解锁，当前制造站等级不限制配方；各站容量及材料库存仍按本次配置计算。',
-    '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期实际开工批次计算，包含尚未完成的批次，预热期已支付的材料不重复计入。',
+    continuous
+      ? '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期有效工作量分摊，保留小数，排除预热部分。'
+      : '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期实际开工批次计算，包含尚未完成的批次，预热期已支付的材料不重复计入。',
     `收益权重（${settings.weightMode === 'mower' ? incomeAlgorithmLabel(settings.mowerAlgorithm) : '本次自定义'}）：${Object.entries(
       incomeWeights(settings)
     )
       .map(([key, value]) => `${key}=${value}`)
       .join('；')}。加权产出不是龙门币结算额。`,
-    `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
+    theoretical
+      ? '模型假设：理想跑单；按关键事件推进，忽略页面操作耗时；宿舍氛围按等级上限。'
+      : '模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。',
     provenance?.moodControlStrategyVersion
       ? provenance.moodControlStrategyVersion === 'ordinary-threshold-v1'
         ? `轮班策略 ${provenance.moodControlStrategyVersion}；实时心情计算调控${provenance.predictiveMoodControl ? '开启' : '关闭'}。两种模式均模拟心情变化，按正常下班阈值轮休，不为避免替班断档而提前下班；普通救急召回须能坚持到对应主班回满。`
@@ -195,7 +233,7 @@ export async function renderIncomeImage(
 
     const stampColor = dark ? '#88cbb1' : '#35896c'
     const muted = dark ? '#a5b3ad' : '#687a70'
-    write('订单分布 · 原始档位', 302, 24, 12, muted)
+    write(orders?.expected ? '订单期望分布 · 原始档位' : '订单分布 · 原始档位', 302, 24, 12, muted)
     ctx.textAlign = 'right'
     write(orders ? `共 ${number(orders.total)} 单` : '暂无统计', 536, 24, 12, foreground, 'bold')
     ctx.textAlign = 'center'

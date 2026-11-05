@@ -2,6 +2,8 @@ import type { QualityRule } from '../domain/types'
 
 export type OrderMode = 'gold' | 'orundum' | 'closure' | 'pepe'
 export interface BaseOrderChoice {
+  /** Original acquisition distribution retained for nonlinear completion conversions. */
+  expectationComponents?: BaseOrderChoice[]
   probability: number
   baseMinutes: number
   goldCost: number
@@ -19,7 +21,7 @@ export interface SpecialCapture {
   pepe?: boolean
 }
 export interface OrderSnapshot extends BaseOrderChoice {
-  kind: 'gold' | 'proviso' | 'tequila' | 'uOfficial' | 'closure' | 'pepe' | 'orundum'
+  kind: 'gold' | 'proviso' | 'tequila' | 'uOfficial' | 'closure' | 'pepe' | 'orundum' | 'expected'
   completedAt: number
 }
 
@@ -59,12 +61,35 @@ export function selectBaseOrder(distribution: BaseOrderChoice[], choice: number)
   throw new Error('Order distribution does not cover choice')
 }
 
+/** Mean workload per order, not the mean of per-order reward rates. */
+export function expectedBaseOrder(distribution: BaseOrderChoice[]): BaseOrderChoice {
+  const first = distribution[0]
+  const total = distribution.reduce((n, item) => n + item.probability, 0)
+  if (!first || !Number.isFinite(total) || Math.abs(total - 1) > 1e-9 || distribution.some(item =>
+    !Number.isFinite(item.probability) || item.probability < 0 || item.mode !== first.mode ||
+    item.efficiencyAffected !== first.efficiencyAffected || item.expectationComponents))
+    throw new Error('Invalid expected order distribution')
+  const mean = (key: 'baseMinutes' | 'goldCost' | 'lmdReward' | 'fragmentCost' | 'orundumReward') =>
+    distribution.reduce((n, item) => n + item.probability * item[key], 0)
+  return { ...first, probability: 1, baseMinutes: mean('baseMinutes'), goldCost: mean('goldCost'),
+    lmdReward: mean('lmdReward'), fragmentCost: mean('fragmentCost'), orundumReward: mean('orundumReward'),
+    expectationComponents: structuredClone(distribution) }
+}
+
 export function captureOrder(base: BaseOrderChoice, capture: SpecialCapture, completedAt: number): Readonly<OrderSnapshot> {
   if (!Number.isFinite(completedAt) || completedAt < 0) throw new Error('Invalid completion time')
   if (base.mode === 'pepe' && !capture.pepe) throw new Error('Pepe acquisition mode must be fixed at start')
   if (base.mode !== 'pepe' && capture.pepe) throw new Error('Pepe mode must be fixed at acquisition start')
   if (base.mode === 'closure' && !capture.closure) throw new Error('Closure acquisition mode must be fixed at start')
   if (base.mode !== 'closure' && base.mode !== 'pepe' && capture.closure) throw new Error('Closure mode must be fixed at acquisition start')
+  if (base.expectationComponents) {
+    const snapshots = base.expectationComponents.map(item => captureOrder(item, capture, completedAt))
+    const mean = (key: 'goldCost' | 'lmdReward' | 'fragmentCost' | 'orundumReward') =>
+      snapshots.reduce((n, item) => n + item.probability * item[key], 0)
+    return Object.freeze({ ...structuredClone(base), completedAt, kind: 'expected',
+      goldCost: mean('goldCost'), lmdReward: mean('lmdReward'),
+      fragmentCost: mean('fragmentCost'), orundumReward: mean('orundumReward') })
+  }
   let result: OrderSnapshot = { ...base, completedAt, kind: base.mode === 'orundum' ? 'orundum' : base.mode === 'pepe' ? 'pepe' : base.mode === 'closure' ? 'closure' : 'gold' }
   if (base.mode !== 'gold') return Object.freeze(result)
   if (capture.uOfficial) result = { ...result, kind: 'uOfficial', goldCost: 2, lmdReward: 1000 }

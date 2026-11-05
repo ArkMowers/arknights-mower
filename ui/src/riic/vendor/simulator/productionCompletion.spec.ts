@@ -15,14 +15,16 @@ function fixture(product:'gold'|'exp'|'fragment'|'money'|'orundum'='gold',manufa
  const workspace=createDefaultWorkspace()
  for(const room of Object.values(workspace.mainPlan.facilities)){room.level=0;room.slots=[]}
  const room=workspace.mainPlan.facilities[product==='money'||product==='orundum'?'room_3_1':'room_1_1']
+ room.slots=[{occupant:{kind:'operator',operatorId:'char_501_durin'},groupId:null,replacements:[]}]
  room.level=product==='money'?1:3;room.product=product
- if(manufacture){workspace.mainPlan.facilities.room_1_1.level=3;workspace.mainPlan.facilities.room_1_1.product='gold'}
+ if(manufacture){workspace.mainPlan.facilities.room_1_1.level=3;workspace.mainPlan.facilities.room_1_1.product='gold';workspace.mainPlan.facilities.room_1_1.slots=[{occupant:{kind:'operator',operatorId:'char_212_ansel'},groupId:null,replacements:[]}]}
+ workspace.mainPlan.conf.workaholic=['杜林','安赛尔']
  return workspace
 }
 const production={outputMode:'settled' as const,inventoryMode:'finite' as const,allowGoldDebt:false,droneTarget:'none' as const,initialResources:{gold:0,fragment:0,lmd:0,exp:0,orundum:0,orirock:0,device:0,drone:0}}
 function run(product:Parameters<typeof fixture>[0],options:ScheduleSimulationOptions={},manufacture=false){
  const workspace=fixture(product,manufacture)
- return {workspace,report:simulateSchedule(compileRosterSchedule(workspace,{idleOperators:[]}),{sampleHours:2.4,recordSegments:true,...options,production:{...production,...options.production}})}
+ return {workspace,report:simulateSchedule(compileRosterSchedule(workspace,{idleOperators:[],operatorMorale:{char_501_durin:0,char_212_ansel:0}}),{sampleHours:2.4,recordSegments:true,...options,production:{...production,...options.production}})}
 }
 function captureController(){
  const create=productionTimeline.createProductionTimeline
@@ -165,7 +167,7 @@ describe('sample endpoint production collection',()=>{
    source.queue.tasks=[task]
    return state
   })
-  const schedule=compileRosterSchedule(workspace,{idleOperators:[]})
+  const schedule=compileRosterSchedule(workspace,{idleOperators:[],operatorMorale:{char_501_durin:0,char_212_ansel:0}})
   const report=simulateSchedule(schedule,{sampleHours:2.4,production})
   expect(report.success).toBe(true)
   expect(state!.time).toBe(2.4)
@@ -189,7 +191,7 @@ describe('sample endpoint production collection',()=>{
   workspace.mainPlan.conf.workaholic=['char_123_fang','char_240_wyvern']
   workspace.compatibility.backupPlans=[{name:'forced correction',trigger:'True',plan:{room_1_1:{plans:[{agent:'香草',group:'',replacement:['芬']}]}}}]
   vi.spyOn(shiftCycle,'prepareMowerShiftCycle').mockImplementation(()=>{throw new MowerShiftPreviewError('terminal collection failure fixture')})
-  const report=simulateSchedule(compileRosterSchedule(workspace,{idleOperators:[]}),{schedulingModel:'mower-alpha',sampleHours:4,production,consumptionOverrides:{char_123_fang:5}})
+  const report=simulateSchedule(compileRosterSchedule(workspace,{idleOperators:[],operatorMorale:{char_501_durin:0,char_212_ansel:0}}),{schedulingModel:'mower-alpha',sampleHours:4,production,consumptionOverrides:{char_123_fang:5}})
   expect(report.elapsedHours).toBe(4)
   expect(report.success).toBe(false)
   expect(report.diagnostics.some(d=>d.code==='MOWER_PENDING_TASK_FAILURE')).toBe(true)
@@ -207,7 +209,7 @@ describe('sample endpoint production collection',()=>{
  })
  it('collects recycling counts at the endpoint without creating material value',()=>{
   const workspace=fixture('gold');workspace.mainPlan.facilities.room_1_1.level=0;workspace.mainPlan.facilities.recycle.level=1
-  const report=simulateSchedule(compileRosterSchedule(workspace,{idleOperators:[]}),{sampleHours:48,production})
+  const report=simulateSchedule(compileRosterSchedule(workspace,{idleOperators:[],operatorMorale:{char_501_durin:0,char_212_ansel:0}}),{sampleHours:48,production})
   expect(report.success).toBe(true)
   expect(report.production!.recycle).toMatchObject({completedItems:1,sampleCompletedItems:1,collectedItems:1,pendingItems:0})
   expect(report.production!.events.filter(e=>e.type==='recycle-collected')).toEqual([{time:48,type:'recycle-collected',roomId:'recycle',amount:1}])

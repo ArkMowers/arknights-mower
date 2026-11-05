@@ -135,6 +135,7 @@ export function createClueObservation(warmupHours, inventory = fullCatalogIdleIn
   let positions = new Map()
   let progress = 0
   let warmupCompleted = 0
+  let warmupProgress = 0
   const completed = () => Math.floor(progress + 1e-9)
   function advance(config, start, end) {
     if (end <= start) return
@@ -169,11 +170,15 @@ export function createClueObservation(warmupHours, inventory = fullCatalogIdleIn
       if (start < warmupHours) {
         advance(config, start, split)
         warmupCompleted = completed()
+        warmupProgress = progress
       }
       advance(config, Math.max(start, warmupHours), end)
     },
-    result() {
-      return { completed: completed() - warmupCompleted, progress: progress - completed() }
+    result(expectationMode = false) {
+      return {
+        completed: expectationMode ? progress - warmupProgress : completed() - warmupCompleted,
+        progress: progress - completed()
+      }
     }
   }
 }

@@ -20,7 +20,9 @@ const modelSettings = () => ({
   inventorySource: 'manual',
   finiteInventory: false,
   weightMode: 'custom',
-  allowGoldDebt: false
+  expectationMode: false,
+  seed: 42,
+  allowMaterialDebt: false
 })
 import { calculateIncome } from './incomeWorker'
 import { runCalculationBridge } from './vendor/workbench/calculationBridge'
@@ -28,10 +30,10 @@ import { incomeReportLines } from './incomeImage'
 import { buildTimelineData } from './vendor/workbench/timeline/timelineModel'
 const plan = () => ({
   default: 'plan1',
-  conf: {},
+  conf: { workaholic: '杜林,安赛尔' },
   backup_plans: [],
   plan1: {
-    room_1_1: { name: '制造站', product: 'gold', plans: [] },
+    room_1_1: { name: '制造站', product: 'gold', plans: [{ agent: '杜林', replacement: [] }] },
     room_1_3: { name: '发电站', plans: [] }
   }
 })
@@ -100,7 +102,7 @@ describe('income export calculation', () => {
     ['sampleDays', 0],
     ['sampleDays', null],
     ['sampleDays', 1.5],
-    ['seed', NaN]
+    ['expectationMode', 'yes']
   ])('rejects invalid %s=%s', (field, value) => {
     expect(() => incomeRequest(plan(), { ...modelSettings(), [field]: value })).toThrow()
   })
@@ -138,7 +140,7 @@ describe('income export calculation', () => {
       }).options.simulationOptions.operatorInventory
     ).toEqual([{ operator: '阿米娅', elitePhase: 2, level: 80 }])
   })
-  it('calculates all 3 + 28 days against known unstaffed factory output', () => {
+  it('calculates all 3 + 28 days against known staffed factory output', () => {
     const source = plan(),
       original = structuredClone(source),
       settings = modelSettings(),
@@ -146,7 +148,7 @@ describe('income export calculation', () => {
     const result = calculateIncome(source, settings, (p) => progress.push(p))
     expect(result.success, result.error).toBe(true)
     expect(result.observedHours).toBeCloseTo(672, 8)
-    // Unstaffed gold factory: 72 minutes per bar, twenty bars daily.
+    // Durin remains staffed at zero mood after warmup: 72 minutes per bar.
     expect(result.summary.goldCount).toBeCloseTo(20, 8)
     expect(result.summary.totalScore82).toBeCloseTo(8000, 7)
     expect(result.orderDistribution).toMatchObject({ total: 0, other: 0 })
@@ -206,7 +208,11 @@ describe('income export calculation', () => {
   it('excludes initial resources from income and cannot pay unfunded orders', () => {
     const source = plan()
     delete source.plan1.room_1_1
-    source.plan1.room_2_1 = { name: '贸易站', product: 'lmd', plans: [] }
+    source.plan1.room_2_1 = {
+      name: '贸易站',
+      product: 'lmd',
+      plans: [{ agent: '安赛尔', replacement: [] }]
+    }
     const settings = {
       ...modelSettings(),
       warmupDays: 0,
@@ -228,13 +234,13 @@ describe('income export calculation', () => {
   }, 30000)
 })
 
-it('defaults to cached growth, cached finite stock, Mower weights and gold debt', () => {
+it('defaults to cached growth, cached finite stock, Mower weights and material debt', () => {
   expect(defaultIncomeSettings()).toMatchObject({
     operatorMode: 'cache',
     inventorySource: 'cache',
     finiteInventory: true,
     weightMode: 'mower',
-    allowGoldDebt: true,
+    allowMaterialDebt: true,
     warmupDays: 3,
     sampleDays: 28
   })
@@ -243,7 +249,11 @@ it('defaults to cached growth, cached finite stock, Mower weights and gold debt'
 it('keeps gold delivery debt across warmup and measures only sampled receipts', () => {
   const source = plan()
   delete source.plan1.room_1_1
-  source.plan1.room_2_1 = { name: '贸易站', product: 'lmd', plans: [] }
+  source.plan1.room_2_1 = {
+    name: '贸易站',
+    product: 'lmd',
+    plans: [{ agent: '安赛尔', replacement: [] }]
+  }
   const result = calculateIncome(source, {
     ...modelSettings(),
     warmupDays: 3,
@@ -265,7 +275,11 @@ it('keeps gold delivery debt across warmup and measures only sampled receipts', 
 it('gold debt does not allow unfunded orundum delivery', () => {
   const source = plan()
   delete source.plan1.room_1_1
-  source.plan1.room_2_1 = { name: '贸易站', product: 'orundum', plans: [] }
+  source.plan1.room_2_1 = {
+    name: '贸易站',
+    product: 'orundum',
+    plans: [{ agent: '安赛尔', replacement: [] }]
+  }
   const result = calculateIncome(source, {
     ...modelSettings(),
     warmupDays: 0,
@@ -510,6 +524,7 @@ it('reports saved initial conditions and source versions without relabeling hist
   expect(result.success, result.error).toBe(true)
   expect(result.initialConditions).toEqual({ fiammettaMorale: 16 })
   expect(result.modelProvenance).toEqual({
+    timingModel: 'native-io-v1',
     calculatorBaseRevision: '55294037d208bf1c416af386236ac0b12f321f66',
     calculatorSyncRevision: '6ddbeece6264e1881b7bf34f9b346bbf03704fff',
     mowerBaseReference: '80c97ee604375af144090656ef84b083acd6dc7f',
@@ -550,7 +565,11 @@ it('reports saved initial conditions and source versions without relabeling hist
 it('does not count ordinary gold delivery as gold income or deduct it from manufacturing', () => {
   const source = plan()
   source.plan1.room_2_3 = { name: '发电站', plans: [] }
-  source.plan1.room_2_1 = { name: '贸易站', product: 'lmd', plans: [] }
+  source.plan1.room_2_1 = {
+    name: '贸易站',
+    product: 'lmd',
+    plans: [{ agent: '安赛尔', replacement: [] }]
+  }
   const result = calculateIncome(source, {
     ...modelSettings(),
     finiteInventory: true,
@@ -820,7 +839,7 @@ it.each([
   ['orirock', 38400, 48, 0],
   ['orirock_device', 24000, 0, 24]
 ])(
-  'reports manufacturing resource costs for an unstaffed %s factory',
+  'reports manufacturing resource costs for a staffed %s factory',
   (product, lmdConsumed, orirockConsumed, deviceConsumed) => {
     const source = plan()
     source.plan1.room_1_1.product = product
@@ -829,17 +848,25 @@ it.each([
       const result = calculateIncome(source, {
         ...modelSettings(),
         finiteInventory,
-        warmupDays: 0,
+        warmupDays: 1,
         sampleDays: 1,
         initialInventory: { lmd: 1000000, orirock: 1000, device: 1000 }
       })
       expect(result.success, result.error).toBe(true)
-      expect(result.summary).toMatchObject({ lmdConsumed, orirockConsumed, deviceConsumed })
+      expect(result.summary.lmdConsumed).toBeCloseTo(lmdConsumed, 7)
+      expect(result.summary.orirockConsumed).toBeCloseTo(orirockConsumed, 7)
+      expect(result.summary.deviceConsumed).toBeCloseTo(deviceConsumed, 7)
       const metrics = incomeMetrics(result.summary, 1)
       expect(metrics.find((row) => row.label === '龙门币产出').daily).toBe(0)
-      expect(metrics.find((row) => row.label === '制造源石碎片消耗龙门币').daily).toBe(lmdConsumed)
-      expect(metrics.find((row) => row.label === '消耗固源岩').daily).toBe(orirockConsumed)
-      expect(metrics.find((row) => row.label === '消耗装置').daily).toBe(deviceConsumed)
+      expect(metrics.find((row) => row.label === '制造源石碎片消耗龙门币').daily).toBeCloseTo(
+        lmdConsumed,
+        7
+      )
+      expect(metrics.find((row) => row.label === '消耗固源岩').daily).toBeCloseTo(
+        orirockConsumed,
+        7
+      )
+      expect(metrics.find((row) => row.label === '消耗装置').daily).toBeCloseTo(deviceConsumed, 7)
     }
   }
 )

@@ -3,7 +3,9 @@ export function incomeManufacturingCosts(simulation) {
   const days = simulation?.observedHours / 24
   if (!production || !(days > 0) || !Number.isFinite(days)) return null
   let costs
-  if (production.assumptions?.outputMode === 'potential') {
+  if (production.assumptions?.expectationMode && production.expected) {
+    costs = production.expected.costs
+  } else if (production.assumptions?.outputMode === 'potential') {
     const start = simulation.assumptions?.warmupHours
     const end = simulation.elapsedHours
     if (!Array.isArray(production.events) || !Number.isFinite(start) || !Number.isFinite(end))

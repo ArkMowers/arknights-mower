@@ -1,7 +1,7 @@
 import {mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 // Port of default update_detail, refresh_dorm_time, correct_dorm and project_arrangements.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
-import {hasRestingMood,MowerOperatorState} from './mowerOperatorState'
+import {hasRestingMood,type MowerOperatorState} from './mowerOperatorState'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {toMowerMicros,fromMowerMicros,roundMowerMicros,MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 /** A confirmed ordinary departure preserves a saved observation at the personal limit.
@@ -82,7 +82,7 @@ export function mowerCorrectDorm(data:MowerSchedulingData):void {
  }
 }
 export function projectMowerArrangements(data:MowerSchedulingData,plans:MowerTaskPlan[]):MowerSchedulingData {
- const projected=new MowerSchedulingData({...data,pendingGroupTransitions:{},groupDorms:data.groupDorms.map(b=>new MowerDormState([...b.position],b.name,b.timeMicros)),operators:Object.fromEntries(Object.entries(data.operators).map(([n,o])=>[n,new MowerOperatorState({...o,projectedMoodResting:o.projectedMoodResting??o.isResting(),replacement:[...o.replacement]})])),dorms:data.dorms.map(b=>new MowerDormState([...b.position],b.name,b.timeMicros,b.autoFree))})
+ const projected=new MowerSchedulingData({...data,pendingGroupTransitions:{},groupDorms:data.groupDorms.map(b=>new MowerDormState([...b.position],b.name,b.timeMicros)),operators:Object.fromEntries(Object.entries(data.operators).map(([n,o])=>[n,o.copyForProjection()])),dorms:data.dorms.map(b=>new MowerDormState([...b.position],b.name,b.timeMicros,b.autoFree))})
  for(const plan of plans){
   const groupTransitions=mowerArrangementGroupTransitions(projected,plan)
   const changed=new Set(Object.entries(plan).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[room+'\0'+index]:[])))

@@ -19,17 +19,24 @@ import { incomeAlgorithms, incomeAlgorithmLabel, incomeSettingsUrl } from '@/uti
 import { createIncomeSession } from '@/riic/incomeSession'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
+import { incomeHasTailor } from '@/riic/incomeTailor'
 import IncomeTimeline from './IncomeTimeline.vue'
 import IncomeActivity from './IncomeActivity.vue'
 import IncomeDiagnostics from './IncomeDiagnostics.vue'
 import { validateRosterWorkspace } from '@/riic/vendor/workbench/validate'
 import { renderIncomeImage, downloadIncomeImage, incomeImageFilename } from '@/riic/incomeImage'
-import { MOWER_INVENTORY_ITEMS } from '@/riic/vendor/domain/simulationInventory'
+import {
+  MOWER_INVENTORY_ITEMS,
+  MOWER_RAW_MATERIALS
+} from '@/riic/vendor/domain/simulationInventory'
 
 const props = defineProps({ snapshot: Object, preparing: Boolean, prepareError: String })
 const emit = defineEmits(['close'])
 const preferences = loadIncomePreferences()
 const settings = reactive({ ...defaultIncomeSettings(), ...preferences.settings })
+const hasTailor = computed(() =>
+  props.snapshot ? incomeHasTailor(props.snapshot.plan, settings) : false
+)
 const preferencesError = ref('')
 let cachedInventoryOverrides = preferences.cachedInventoryOverrides
 let cachedInventoryBaseline = null
@@ -372,7 +379,10 @@ async function start() {
     const { image, ...snapshot } = props.snapshot
     const captured = { ...JSON.parse(JSON.stringify(snapshot)), image }
     const runSettings = JSON.parse(JSON.stringify(settings))
-    incomeRequest(captured.plan, runSettings)
+    const production = incomeRequest(captured.plan, runSettings).options.simulationOptions
+      .production
+    runSettings.expectationMode = production.expectationMode
+    if (!production.expectationMode) runSettings.seed = production.seed
     validating.value = true
     const { data: validation } = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/validate-plan`,
@@ -547,13 +557,30 @@ onBeforeUnmount(() => {
                 v-model:value="settings.droneRoom"
                 :options="[{ label: '不使用无人机', value: '' }, ...targets]"
             /></n-form-item>
-            <n-form-item label="随机种子"
-              ><n-input-number
-                v-model:value="settings.seed"
+            <n-form-item label="理论期望模式">
+              <n-switch
+                :value="settings.expectationMode && !hasTailor"
+                :disabled="hasTailor"
+                @update:value="settings.expectationMode = $event"
+              />
+            </n-form-item>
+            <n-form-item v-if="!settings.expectationMode || hasTailor" label="固定种子">
+              <n-input-number
+                v-model:value="settings.fixedSeed"
+                placeholder="留空时每次随机生成"
+                clearable
                 :min="0"
                 :max="4294967295"
                 :precision="0"
-            /></n-form-item>
+              />
+            </n-form-item>
+            <p>
+              {{
+                settings.expectationMode && !hasTailor
+                  ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按生成能力连续加速。初始心情和轮换阶段仍会影响结果。'
+                  : '按概率随机抽单；固定种子留空时每次随机生成，填写后使用指定种子。结果保留本次种子以供复现。'
+              }}
+            </p>
             <n-form-item label="干员练度"
               ><n-select
                 v-model:value="settings.operatorMode"
@@ -616,16 +643,16 @@ onBeforeUnmount(() => {
                     : ''
                 }}
               </p>
-              <n-form-item label="允许赤金透支"
-                ><n-switch v-model:value="settings.allowGoldDebt"
+              <n-form-item label="允许原材料亏空"
+                ><n-switch v-model:value="settings.allowMaterialDebt"
               /></n-form-item>
             </template>
             <p v-if="required || settings.finiteInventory">
               {{
                 required ? '副表含库存条件，必须预设库存。' : ''
-              }}不添加外源收入，预热与统计连续记账。{{
-                settings.allowGoldDebt
-                  ? '赤金可因交付扣为负数，负数表示缺口；其他材料不足时停产或暂停交付。'
+              }}预热与统计连续记账，外源材料按日均设置持续补入且不计收益。{{
+                settings.allowMaterialDebt
+                  ? '原材料可扣为负数，负数表示缺口；制造与交付不因缺料停止。'
                   : '材料不足时停产或暂停交付。'
               }}回收站仅计产出次数，不计随机材料或材料价值。
             </p>
@@ -644,6 +671,26 @@ onBeforeUnmount(() => {
                   @update:value="stock[item.resource] = $event"
               /></n-form-item>
             </div>
+            <n-collapse v-if="required || settings.finiteInventory">
+              <n-collapse-item title="日均外源材料" name="external-materials">
+                <p>按每天的数量均匀补入，预热与统计均生效；外源补入不计产出和加权收益。</p>
+                <div class="two-columns">
+                  <n-form-item
+                    v-for="item in MOWER_RAW_MATERIALS"
+                    :key="item.resource"
+                    :label="`${item.label} / 天`"
+                  >
+                    <n-input-number
+                      :value="settings.dailyExternalResources[item.resource] ?? 0"
+                      :min="0"
+                      :max="Number.MAX_SAFE_INTEGER"
+                      :precision="4"
+                      @update:value="settings.dailyExternalResources[item.resource] = $event ?? 0"
+                    />
+                  </n-form-item>
+                </div>
+              </n-collapse-item>
+            </n-collapse>
             <n-collapse
               ><n-collapse-item title="产出权重" name="weights">
                 <n-form-item label="权重来源"
@@ -739,7 +786,16 @@ onBeforeUnmount(() => {
             </p>
             <p>
               本次结果：预热 {{ state.input.settings.warmupDays }} 天、统计
-              {{ state.input.settings.sampleDays }} 天。修改参数后需重新演算；再次导出使用本次结果。
+              {{ state.input.settings.sampleDays }} 天，
+              {{
+                state.result.simulationReport?.production?.assumptions.expectationMode
+                  ? state.result.modelProvenance?.timingModel === 'theoretical-events-v1'
+                    ? '理论期望模式'
+                    : state.result.simulationReport?.production?.expected
+                      ? '数学期望模式（连续产出）'
+                      : '数学期望模式（平均订单模型）'
+                  : '随机抽单模式'
+              }}。 修改参数后需重新演算；再次导出使用本次结果。
             </p>
             <p v-if="state.result.inventoryMode === 'finite'">
               赤金余额：初始 {{ format(state.result.goldInventory.initial) }}，统计开始
@@ -776,6 +832,51 @@ onBeforeUnmount(() => {
             >
             <p v-if="exported" role="status">收益图片已生成并发起下载。</p>
             <n-collapse class="notice">
+              <n-collapse-item
+                v-if="state.result.stability"
+                title="轮换与无人机边界观察"
+                name="stability"
+              >
+                <p>
+                  将统计期等分为两个 {{ format(state.result.stability.halfHours) }} 小时区间比较。
+                  干员驻岗占比最大相差
+                  {{ format(state.result.stability.maxWorkFractionDifference * 100) }} 个百分点。
+                  初始满心情及轮换阶段的影响不能直接从收益扣除；前后半段接近也不证明已达到稳态。
+                  可调整预热和统计天数比较，有限库存耗尽时可能不存在稳定产出。
+                </p>
+                <n-table size="small">
+                  <thead>
+                    <tr>
+                      <th>设施</th>
+                      <th>前半段平均效率</th>
+                      <th>后半段平均效率</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="room in state.result.stability.roomComparisons" :key="room.roomId">
+                      <td>{{ room.roomId }}</td>
+                      <td>{{ format(room.firstEfficiency) }}%</td>
+                      <td>{{ format(room.secondEfficiency) }}%</td>
+                    </tr>
+                  </tbody>
+                </n-table>
+                <p v-if="state.result.stability.drones">
+                  无人机期初 {{ format(state.result.stability.drones.opening) }}，期末
+                  {{ format(state.result.stability.drones.closing) }}， 差额
+                  {{ format(state.result.stability.drones.change) }}；期间生成
+                  {{ format(state.result.stability.drones.generated) }}、 消耗
+                  {{ format(state.result.stability.drones.consumed) }}、溢出
+                  {{ format(state.result.stability.drones.overflow) }} 架。
+                  <template v-if="state.result.simulationReport?.production?.expected">
+                    收益按统计期生成的加速能力计入所选设施，已折算
+                    {{ format(state.result.simulationReport.production.expected.droneAllocated) }}
+                    架；期初库存与实际使用不重复计入收益。上表仅用于观察调度库存。
+                  </template>
+                  <template v-else>
+                    差额保留为库存，不强行使用或按固定价格计入收益；其生产价值取决于加速目标、材料和停工条件。
+                  </template>
+                </p>
+              </n-collapse-item>
               <n-collapse-item title="设施数据" name="rooms">
                 <n-table size="small"
                   ><thead>
@@ -796,7 +897,11 @@ onBeforeUnmount(() => {
               </n-collapse-item>
               <n-collapse-item
                 v-if="state.result.inventoryMode === 'finite'"
-                title="统计期库存收支"
+                :title="
+                  state.result.simulationReport?.production?.expected
+                    ? '统计期调度库存收支（用于资源约束）'
+                    : '统计期库存收支'
+                "
                 name="stock"
               >
                 <n-table size="small"
@@ -805,6 +910,7 @@ onBeforeUnmount(() => {
                       <th>资源</th>
                       <th>开始</th>
                       <th>收入</th>
+                      <th v-if="state.result.resources?.external">其中外源补入</th>
                       <th>支出</th>
                       <th>期末</th>
                     </tr>
@@ -814,6 +920,9 @@ onBeforeUnmount(() => {
                       <td>{{ item.label }}</td>
                       <td>{{ format(state.result.resources?.opening[item.resource] ?? 0) }}</td>
                       <td>{{ format(state.result.resources?.inflows[item.resource] ?? 0) }}</td>
+                      <td v-if="state.result.resources?.external">
+                        {{ format(state.result.resources.external[item.resource] ?? 0) }}
+                      </td>
                       <td>{{ format(state.result.resources?.outflows[item.resource] ?? 0) }}</td>
                       <td>{{ format(state.result.resources?.closing[item.resource] ?? 0) }}</td>
                     </tr>

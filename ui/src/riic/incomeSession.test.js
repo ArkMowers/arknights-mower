@@ -24,6 +24,31 @@ function setup() {
     }
   }
 }
+it('freezes an automatic random seed only when expectation mode is disabled', () => {
+  const { session, state, workers } = setup()
+  let generated = 100
+  const random = vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+    array[0] = ++generated
+    return array
+  })
+  const settings = { expectationMode: false }
+  session.start({}, settings)
+  const seed = state.input.settings.seed
+  expect(Number.isSafeInteger(seed)).toBe(true)
+  expect(seed).toBeGreaterThanOrEqual(0)
+  expect(seed).toBeLessThanOrEqual(0xffffffff)
+  expect(workers[0].postMessage.mock.calls[0][0].settings.seed).toBe(seed)
+  expect(settings).not.toHaveProperty('seed')
+  session.cancel()
+  session.start({}, settings)
+  expect(state.input.settings.seed).toBe(102)
+  expect(workers[0].postMessage.mock.calls[0][0].settings.seed).toBe(101)
+  session.cancel()
+  session.start({}, { expectationMode: true })
+  expect(state.input.settings).toEqual({ expectationMode: true })
+  expect(random).toHaveBeenCalledTimes(2)
+  random.mockRestore()
+})
 it('cancels, retains observations and ignores late messages across runs', () => {
   const { workers, state, session, time } = setup(),
     source = { plan1: {} },

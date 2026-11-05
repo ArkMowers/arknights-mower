@@ -6,6 +6,7 @@ import { incomeFailureMessage } from './incomeDiagnostics'
 import { incomeOrderDistribution } from './incomeOrders'
 import { createRecruitmentObservation } from './incomeRecruitment'
 import { createClueObservation } from './incomeClues'
+import { incomeStability } from './incomeStability'
 import { buildTimelineData } from './vendor/workbench/timeline/timelineModel'
 import { MOWER_FIAMMETTA_INITIAL_MORALE } from './vendor/scheduler/mowerInitialMorale'
 import {
@@ -46,8 +47,8 @@ export function calculateIncome(plan, settings, onProgress) {
         (d.code === 'MOWER_CLUE_OBSERVATION_MODEL'
           ? '线索产量按交流固定开启计算；调度侧 Party Time 仍为空，不执行线索待办及交流任务。'
           : d.message) +
-        (d.code === 'FINITE_INVENTORY_MODEL' && settings.allowGoldDebt
-          ? ' 本次允许赤金透支，赤金不足不阻止交付；其他材料仍受库存约束。'
+        (d.code === 'FINITE_INVENTORY_MODEL' && settings.allowMaterialDebt
+          ? ' 本次允许原材料亏空，负数表示材料缺口；外源补入不计收益。'
           : '')
     }))
   if (!result.success || !result.report)
@@ -59,14 +60,17 @@ export function calculateIncome(plan, settings, onProgress) {
   const days = simulation.observedHours / 24
   const production = simulation.production
   const manufacturingCosts = incomeManufacturingCosts(simulation)
+  const expected = production.assumptions.expectationMode && production.expected
   const netLmd =
-    production.assumptions.outputMode === 'potential'
+    expected || production.assumptions.outputMode === 'potential'
       ? result.report.summary.orderLmd - manufacturingCosts.lmdConsumed
-      : (production.sample.net.lmd ?? 0) / days
+      : ((production.sample.net.lmd ?? 0) - (production.sample.external?.lmd ?? 0)) / days
   return {
     success: true,
+    stability: incomeStability(simulation),
     initialConditions: { fiammettaMorale: MOWER_FIAMMETTA_INITIAL_MORALE },
     modelProvenance: {
+      timingModel: production.assumptions.timingModel,
       calculatorBaseRevision: revision,
       calculatorSyncRevision: schedulingSync.calculatorRevision,
       mowerBaseReference: mowerReference,
@@ -90,11 +94,11 @@ export function calculateIncome(plan, settings, onProgress) {
     summary: {
       ...result.report.summary,
       netLmd,
-      recruitmentCount: recruitment.result().completed / days,
-      clueCount: clues.result().completed / days,
+      recruitmentCount: recruitment.result(!!expected).completed / days,
+      clueCount: clues.result(!!expected).completed / days,
       ...manufacturingCosts,
       recycleCount:
-        (simulation.production?.recycle?.sampleCompletedItems ?? 0) /
+        (expected?.recycleCount ?? simulation.production?.recycle?.sampleCompletedItems ?? 0) /
         (simulation.observedHours / 24)
     },
     diagnostics,
