@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest'
 import {createRosterRuntime,settleRoster,advanceRoster,nextRosterActionHours,type RuntimeConfig,type RuntimeState} from './rosterRuntime'
 import {getMowerSourceRuntime,makeMowerSchedulingData} from './mowerSourceRuntime'
+import {mowerResting} from './mowerOrdinaryPlanning'
 import {mowerUpdateDetail,projectMowerArrangements} from './mowerObservations'
 import {mowerSchedulingMoodObservation} from './mowerSchedulingMood'
 import {alphaRestingTier} from './mowerAlphaDorm'
@@ -727,7 +728,7 @@ describe('forced on-duty backup dispatch',()=>{
 })
 
 
-it('retains a stale forced-group departure across unchanged dispatch while unrelated work runs, then resumes on exit',()=>{
+it('retains a nonordinary forced-group departure across unchanged dispatch while unrelated work runs, then resumes on exit',()=>{
  const config=fixture();config.mowerAlpha=true
  config.positions[0]!.group='g';config.mowerSourcePlan!.room_1_1![0]!.group='g'
  config.initialMorale={A:0,R:24}
@@ -752,4 +753,36 @@ it('retains a stale forced-group departure across unchanged dispatch while unrel
  expect(state.occupants.room_1_1_0).toBe('R')
  expect(Object.values(state.bedOccupants)).toContain('A')
  expect(source.queue.tasks).not.toContain(task)
+})
+
+
+it.each([0,24])('cancels a generated ordinary departure and replans from exit mood %s',exitMood=>{
+ const config=fixture();config.mowerAlpha=true
+ config.positions[0]!.group='g';config.mowerSourcePlan!.room_1_1![0]!.group='g'
+ config.initialMorale={A:0,R:24}
+ const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data
+ source.initial=false;source.firstInit=false
+ Object.assign(data.operators.A!,{currentRoom:'room_1_1',currentIndex:0,mood:0,timeStampMicros:0})
+ mowerResting(data,source.queue)
+ const original=source.queue.tasks.find(task=>task.type===T.SHIFT_OFF)!
+ expect(original).toBeDefined();expect(original.ordinaryCoordination).toBe(true)
+ expect(original.coordinationRequestNames).toEqual(['A']);expect(original.plan.room_1_1).toEqual(['R'])
+ const groupTasks=[[{group:'g',action:'on' as const,mode:'forced' as const}]]
+ state.mowerShiftModel={count:1,groupTasks,evaluate:d=>d.planConditions,swap:d=>d,transition:()=>({}),activate:()=>{}}
+ data.planConditions=[true];data.backupGroupTasks=groupTasks;data.groupShiftState.g=false
+ settleRoster(state,rates)
+ expect(source.queue.tasks).not.toContain(original);expect(original.executionFailure).toBeUndefined()
+ const unrelated=new MowerTask();source.queue.tasks.push(unrelated)
+ for(let n=0;n<6;n++)settleRoster(state,rates)
+ expect(source.queue.tasks).not.toContain(unrelated)
+ expect(source.queue.tasks.filter(task=>task.type===T.SHIFT_OFF)).toEqual([])
+ expect(state.occupants.room_1_1_0).toBe('A')
+ source.data.planConditions=[false]
+ state.morale.A=exitMood;Object.assign(source.data.operators.A!,{mood:exitMood,timeStampMicros:source.data.nowMicros})
+ mowerResting(source.data,source.queue)
+ const regenerated=source.queue.tasks.filter(task=>task.type===T.SHIFT_OFF)
+ expect(regenerated).toHaveLength(exitMood===0?1:0)
+ if(regenerated.length){expect(regenerated[0]).not.toBe(original);settleRoster(state,rates);expect(state.occupants.room_1_1_0).toBe('R');expect(Object.values(state.bedOccupants)).toContain('A')}
+ else expect(state.occupants.room_1_1_0).toBe('A')
+ expect(source.queue.tasks).not.toContain(original)
 })
