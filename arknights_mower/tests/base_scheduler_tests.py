@@ -348,6 +348,30 @@ class TestMoodInitialization(unittest.TestCase):
         warning.assert_called_once()
         self.assertIn("允许启动", warning.call_args.args[0])
 
+    def test_roster_warnings_do_not_open_ui_log_notify_or_stop(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = None
+        warnings = ["未持有干员；训练位条件不足，可能会导致 Mower 无法正常运行"]
+        scheduler.op_data.validate_backup_plans.return_value = {
+            "success": True,
+            "status": "passed",
+            "warnings": warnings,
+        }
+        scheduler.run.side_effect = base_schedule.MowerExit
+        self.initialize.return_value = scheduler
+        with (
+            patch("arknights_mower.utils.log_stream.LogStream.broadcast") as broadcast,
+            patch.object(self.main.logger, "warning") as warning,
+            patch.object(self.main.logger, "error") as error,
+            patch.object(base_schedule, "send_message") as send_message,
+        ):
+            self.main.simulate(None)
+        scheduler.run.assert_called_once_with()
+        broadcast.assert_not_called()
+        warning.assert_not_called()
+        error.assert_not_called()
+        send_message.assert_not_called()
+
     def test_failed_and_legacy_failed_validation_block_scheduler(self):
         for status in ("failed", None):
             with self.subTest(status=status):
@@ -2925,6 +2949,7 @@ class TestDroneAccelerate(unittest.TestCase):
         solver.recog.h = 1080
         solver.recog.gray = "gray"
         solver.op_data = MagicMock()
+        solver.op_data.config = SimpleNamespace(drone_room=None, drone_count_limit=None)
         solver.op_data.run_order_rooms = []
         solver.op_data.is_orundum_trade_room.return_value = False
         solver.digit_reader = MagicMock()
@@ -3486,7 +3511,13 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                 solver.choose_agent.assert_not_called()
                 solver.tap_confirm.assert_not_called()
                 solver.reset_room_time.assert_called_once_with(room)
-                notify.assert_called_once_with("检测到漏单！", level="WARNING")
+                notify.assert_called_once_with(
+                    "检测到漏单：B101。",
+                    subject="贸易站漏单提醒",
+                    level="WARNING",
+                    archive_screenshots=True,
+                    screenshot_source=getattr(solver, "device", None),
+                )
 
     def test_adjusted_order_can_continue_with_out_of_range_countdown(self):
         solver, room, events = self.make_solver()
@@ -3776,7 +3807,13 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
 
         error.assert_called_once()
         save_exception.assert_called_once()
-        send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+        send_message.assert_called_once_with(
+            "检测到漏单：B101。",
+            subject="贸易站漏单提醒",
+            level="WARNING",
+            archive_screenshots=True,
+            screenshot_source=getattr(solver, "device", None),
+        )
         solver.accept_order.assert_called_once_with()
         self.assertEqual(solver.agent_arrange_room.call_count, 2)
 

@@ -50,6 +50,15 @@ export function mergeMowerBackupConfig(base: Record<string, unknown>, backup: Re
     base.dorm_order = typeof backup.dorm_order === 'string' ? backup.dorm_order : ''
     base.dorm_order_override = true
   }
+  if (backup.drone_room != null) {
+    if (typeof backup.drone_room !== 'string') throw new Error('无人机使用房间必须为字符串')
+    base.drone_room = backup.drone_room
+  }
+  if (backup.drone_count_limit != null) {
+    const limit = Number(backup.drone_count_limit)
+    if (!Number.isInteger(limit)) throw new Error('无人机使用阈值必须为整数')
+    base.drone_count_limit = Math.max(20, limit)
+  }
   if (record(backup.mood_limits)) base.mood_limits = structuredClone(backup.mood_limits)
   if (record(backup.operator_mood_limits)) {
     base.operator_mood_limits = Object.fromEntries([

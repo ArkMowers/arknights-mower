@@ -130,6 +130,27 @@ describe('partial configuration saves', () => {
     }
   )
 
+  it.each([undefined, false, true])(
+    'loads error-mail screenshots %s with a disabled default and saves only the explicit change',
+    async (saved) => {
+      const context = await setup({
+        custom_smtp_server: { enable: false },
+        ...(saved === undefined ? {} : { mail_attach_error_screenshot: saved })
+      })
+      const enabled = saved ?? false
+      expect(store.mail_attach_error_screenshot).toBe(enabled)
+      expect(store.build_config().mail_attach_error_screenshot).toBe(enabled)
+      expect(await renderSettings(Email, context)).toContain('异常邮件附带截图')
+      expect(axios.patch).not.toHaveBeenCalled()
+      store.mail_attach_error_screenshot = !enabled
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        mail_attach_error_screenshot: !enabled
+      })
+    }
+  )
+
   it.each([
     ['load_shop', 'shop_list'],
     ['load_item', 'item_list']
@@ -159,11 +180,11 @@ describe('partial configuration saves', () => {
   )
 
   it.each([
-    ['INFO', 'INFO - 基建任务、刷理智、公招汇总、基报、活动签到等'],
-    ['WARNING', 'WARNING - 版本过旧、组内心情差过大、漏单、公招稀有标签等'],
-    ['ERROR', 'ERROR - 无法排班、专精失败、MAA调用出错、森空岛签到失败、活动签到超时、OF-1失败等']
+    ['INFO', 'INFO - 接收正常通知、警告和错误'],
+    ['WARNING', 'WARNING - 仅接收警告和错误'],
+    ['ERROR', 'ERROR - 仅接收错误']
   ])(
-    'shows the original complete notification label for %s without changing its value',
+    'shows the notification threshold for %s without changing its saved value',
     async (level, label) => {
       const context = await setup({
         custom_smtp_server: { enable: false },

@@ -14,7 +14,28 @@ export function mowerArrangementGroupTransitions(data:MowerSchedulingData,plan:M
   if(name===op.name){if(!op.multiGroup||data.groupIsResting(op.group))transitions[op.group]=false}
   else if(op.replacement.includes(name))transitions[op.group]??=true
  })
+ // Port of all-zero-mood group confirmation, Mower 8a4ce07e (MIT).
+ for(const [group,resting] of Object.entries(data.groupShiftState)){
+  if(!resting||!data.isWorkaholicGroup(group))continue
+  const members=data.shiftGroupMembers(group).map(name=>data.operators[name]!).filter(op=>!op.multiGroup)
+  const returning=members.some(op=>!op.room.startsWith('dorm')&&plan[op.room]?.[op.index]===op.name)
+  if(returning&&members.every(op=>{
+   const target=plan[op.room]?.[op.index]
+   return target===op.name||(target===undefined||target==='Current')&&op.currentRoom===op.room&&op.currentIndex===op.index
+  }))transitions[group]=false
+ }
  return transitions
+}
+/** Complete fixed group returns before preview; shared members retain their other bindings. */
+export function completeMowerWorkaholicGroupReturn(data:MowerSchedulingData,plan:MowerTaskPlan):void {
+ const groups=new Set(Object.entries(plan).flatMap(([room,row])=>room.startsWith('dorm')?[]:row.flatMap((name,index)=>{
+  const op=data.operators[name]
+  return op&&!op.multiGroup&&op.room===room&&op.index===index&&data.groupIsResting(op.group)&&data.isWorkaholicGroup(op.group)?[op.group]:[]
+ })))
+ for(const group of groups)for(const name of data.shiftGroupMembers(group)){
+  const op=data.operators[name]!,target=plan[op.room]?.[op.index]
+  if(!op.multiGroup&&(target===undefined||target==='Current')&&(op.currentRoom!==op.room||op.currentIndex!==op.index))(plan[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=name
+ }
 }
 export function mowerRestingBindingGroups(data:MowerSchedulingData,op:MowerOperatorState,transitions:MowerGroupTransitions={}):string[]{
  return op.groupBindings.filter(binding=>binding.group&&(transitions[binding.group]??data.groupIsResting(binding.group))).map(binding=>binding.group)

@@ -56,6 +56,10 @@ class Screenshot:
     queued_at: float
     preview: bool
     important: bool
+    capture_owner: object | None = field(default=None, repr=False)
+    configuration_ref: object | None = field(default=None, repr=False)
+    capture_started_at: float | None = field(default=None, repr=False)
+    capture_wall_ns: int | None = field(default=None, repr=False)
     _encoding: bool = field(default=False, init=False, repr=False)
     _encode_error: str | None = field(default=None, init=False, repr=False)
     _pending_bytes: int | None = field(default=None, init=False, repr=False)
@@ -329,7 +333,17 @@ class ScreenshotStore:
             raise ValueError("JPEG 截图超过单帧上限")
         return self._submit(bytes(img), sub_folder)
 
-    def submit_frame(self, img, sub_folder=None, *, capture_ms=None) -> str:
+    def submit_frame(
+        self,
+        img,
+        sub_folder=None,
+        *,
+        capture_ms=None,
+        capture_owner=None,
+        configuration_ref=None,
+        capture_started_at=None,
+        capture_wall_ns=None,
+    ) -> str:
         """Copy a bounded RGB/gray snapshot; never run encoding or disk I/O here."""
         if (
             not isinstance(img, np.ndarray)
@@ -339,9 +353,27 @@ class ScreenshotStore:
             or not 0 < img.nbytes <= 1920 * 1080 * 3
         ):
             raise ValueError("截图必须是最多 1920×1080 像素的 uint8 RGB 或灰度帧")
-        return self._submit(img, sub_folder, capture_ms=capture_ms)
+        return self._submit(
+            img,
+            sub_folder,
+            capture_ms=capture_ms,
+            capture_owner=capture_owner,
+            configuration_ref=configuration_ref,
+            capture_started_at=capture_started_at,
+            capture_wall_ns=capture_wall_ns,
+        )
 
-    def _submit(self, data, sub_folder, *, capture_ms=None):
+    def _submit(
+        self,
+        data,
+        sub_folder,
+        *,
+        capture_ms=None,
+        capture_owner=None,
+        configuration_ref=None,
+        capture_started_at=None,
+        capture_wall_ns=None,
+    ):
         if sub_folder and (
             Path(sub_folder).name != sub_folder
             or sub_folder in {".", ".."}
@@ -371,6 +403,10 @@ class ScreenshotStore:
                 self._clock(),
                 not sub_folder,
                 sub_folder in IMPORTANT_FOLDERS,
+                capture_owner,
+                configuration_ref,
+                capture_started_at,
+                capture_wall_ns,
             )
             if frame.preview:
                 if isinstance(data, bytes):

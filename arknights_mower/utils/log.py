@@ -427,13 +427,30 @@ def save_screenshot(img: bytes, sub_folder=None) -> None:
     logger.debug(filename)
 
 
-def save_screenshot_frame(img, sub_folder=None, *, capture_ms=None) -> None:
+def save_screenshot_frame(
+    img,
+    sub_folder=None,
+    *,
+    capture_ms=None,
+    capture_owner=None,
+    configuration_ref=None,
+    capture_started_at=None,
+    capture_wall_ns=None,
+) -> None:
     """Submit RGB without waiting for the background encoder or filesystem."""
     store = _store()
     if store is None:
         return
     try:
-        filename = store.submit_frame(img, sub_folder, capture_ms=capture_ms)
+        filename = store.submit_frame(
+            img,
+            sub_folder,
+            capture_ms=capture_ms,
+            capture_owner=capture_owner,
+            configuration_ref=configuration_ref,
+            capture_started_at=capture_started_at,
+            capture_wall_ns=capture_wall_ns,
+        )
     except MemoryError as exc:
         store._report_error("截图快照内存不足，本帧不保存", str(exc))
         return

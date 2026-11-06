@@ -365,7 +365,7 @@ describe('production task checklist interactions', () => {
     expect(nodes(navigation).some((node) => node.text.trim() === '自动')).toBe(false)
     for (const button of nodes(navigation).filter((node) => node.tag === 'button'))
       expect(text(button).trim() || button.props['aria-label']).toBeTruthy()
-    for (const id of ['base', 'runorder', 'drone', 'workshop']) expect(checkbox(id)).toBeUndefined()
+    for (const id of ['base', 'runorder', 'workshop']) expect(checkbox(id)).toBeUndefined()
     expect(checkbox('training')).toBeTruthy()
     expect(checkbox('rewards')).toBeTruthy()
   })
@@ -866,10 +866,10 @@ describe('production task checklist interactions', () => {
 
   it('omits the queue shortcut while selecting task parameters without changing configuration', async () => {
     await mount()
-    await click(task('drone'))
+    await click(task('runorder'))
     const before = JSON.stringify(state.config)
     expect(text(root)).not.toContain('查看待执行任务')
-    expect(selected()).toBe('drone')
+    expect(selected()).toBe('runorder')
     expect(JSON.stringify(state.config)).toBe(before)
   })
 })

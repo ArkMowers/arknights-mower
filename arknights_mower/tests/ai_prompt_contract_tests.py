@@ -159,11 +159,27 @@ class AIPromptContractTests(unittest.TestCase):
             match = re.search(r"e.g. '([^']+)'", properties[key]["description"])
             self.assertIsNotNone(match)
             values[key] = match.group(1)
+
+        def collect(logs, screenshots, start, end, output, screenshot_times):
+            path = output / "sample.log"
+            path.write_text("离线示例日志", encoding="utf-8")
+            return [path]
+
         with (
             patch.object(
                 submit_issue,
                 "collect_evidence",
-                return_value=["sample.log", "evidence.json"],
+                side_effect=collect,
+            ),
+            patch.object(
+                submit_issue,
+                "collect_feedback_records",
+                return_value=([], {"tables": {}}),
+            ),
+            patch.object(
+                submit_issue,
+                "collect_feedback_state",
+                return_value=([], {"tables": {}}),
             ),
             patch.object(submit_issue, "Email") as email,
         ):

@@ -181,6 +181,7 @@ class ReportSolver(SceneGraphSolver):
                 "基建报告",
                 "INFO",
                 attach_image=self.recog.img,
+                body_is_html=True,
             )
         except (MowerExit, DeviceRecoveryError):
             raise

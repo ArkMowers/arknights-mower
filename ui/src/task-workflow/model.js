@@ -19,11 +19,6 @@ const editorDefinitions = [
   ['maa', 'MAA 核心', '设置 MAA 安装目录、连接方式和游戏主题恢复。'],
   ['base', '自动救急', '设置自动救急，驻员、跑单和菲亚梅塔充能由排班表管理。'],
   ['runorder', '跑单', '设置跑单提前量、葛朗台跑单和返回主界面选项。'],
-  [
-    'drone',
-    '无人机加速',
-    '选择加速房间和无人机使用阈值；未指定房间时仍按排班加速符合条件的贸易站。'
-  ],
   ['clue', '线索搜集与交流', '设置线索收集、交流与多余线索赠送。'],
   ['workshop', '加工站合成', '管理加工干员、材料与成品库存条件，每条加工配置分别启用。'],
   ['training', '技能专精', '前往养成规划管理专精计划与全自动专精设置。'],
@@ -56,7 +51,6 @@ const editorDefinitions = [
 const taskDefinitions = [
   ['base', 'base'],
   ['runorder', 'base'],
-  ['drone', 'base'],
   ['clue', 'base'],
   ['workshop', 'base'],
   ['training', 'base'],
@@ -101,7 +95,6 @@ const editorKeywords = {
   maa: 'MAA目录 连接配置 触控模式 恢复主题 目标主题',
   base: '换班 排班 轮班 自动救急 救急排班',
   runorder: '跑单前置延时 葛朗台跑单 葛朗台缓冲时间 跑单前返回主界面 跑单网络自适应',
-  drone: '无人机使用房间 无人机使用阈值 无人机加速间隔 制造站 贸易站',
   clue: '线索 收集 交流 赠送 雷锋模式',
   workshop: '加工 合成 材料 成品 无缝合成',
   training: '全自动专精 养成规划 训练室',

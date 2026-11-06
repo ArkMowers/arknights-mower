@@ -5,6 +5,7 @@ from arknights_mower.utils.config.conf import Conf, validate_drone_count_limit
 ADVANCED_SETTING_KEYS = (
     "test_mood_calculation",
     "product_switching",
+    "drone_room",
     "drone_count_limit",
     "drone_interval",
     "resting_threshold",

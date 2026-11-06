@@ -1242,10 +1242,24 @@ def test_plan_entry_keeps_runtime_plan_on_write_failure(
     assert config.plan_path.read_bytes() == previous_bytes
 
 
+DRONE_PRODUCT_SETTINGS = {
+    "enable": True,
+    "grandet_mode": False,
+    "max_drones_per_switch": 17,
+    "use_drones_when_leaving_orirock": False,
+    "direct_when_drones_insufficient": False,
+    "drone_loss_seconds": 45,
+    "waiting_seconds": 7,
+}
+
+
 @pytest.mark.parametrize("gap_threshold", [None, 60, 75, 90])
-def test_plan_advanced_settings_round_trip_without_drone_room(
-    plan_client, populated_plan, gap_threshold
+@pytest.mark.parametrize("drone_room", [None, "", "room_2_2"])
+@pytest.mark.parametrize("switching_enabled", [False, True])
+def test_plan_advanced_settings_round_trip_with_drone_room(
+    plan_client, populated_plan, gap_threshold, drone_room, switching_enabled
 ):
+    product_settings = {**DRONE_PRODUCT_SETTINGS, "enable": switching_enabled}
     config.conf.drone_room = "room_1_1"
     config.conf.resting_threshold = 0.65
     config.save_conf()
@@ -1254,24 +1268,29 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
         "resting_threshold": 0.75,
         "group_resting_thresholds": {"主表组": 0.35, "副表组": 0.65},
         "drone_count_limit": 140,
-        "product_switching": {"waiting_seconds": 5},
+        "drone_interval": 2.5,
+        "product_switching": product_settings,
         "experimental_dorm_logic": True,
         "group_rest_in_full_on_mood_gap": False,
         "group_mood_gap_threshold_minutes": gap_threshold,
         "group_mood_gap_max_extra_wait_hours": 1.5,
         "group_mood_gap_exclusions": ["主表组", "副表组"],
     }
+    if drone_room is not None:
+        value["advanced_settings"]["drone_room"] = drone_room
+    expected_room = "room_1_1" if drone_room is None else drone_room
     result = post_plan_file(plan_client, value)
     assert result.get_data(as_text=True) == "排班已加载"
     assert config.conf.resting_threshold == 0.75
     assert config.conf.group_resting_thresholds == {"主表组": 0.35, "副表组": 0.65}
     assert config.conf.drone_count_limit == 140
-    assert config.conf.product_switching.waiting_seconds == 5
+    assert config.conf.drone_interval == 2.5
+    assert config.conf.product_switching.model_dump() == product_settings
     assert config.conf.group_rest_in_full_on_mood_gap is False
     assert config.conf.group_mood_gap_threshold_minutes == gap_threshold
     assert config.conf.group_mood_gap_max_extra_wait_hours == 1.5
     assert config.conf.group_mood_gap_exclusions == ["主表组", "副表组"]
-    assert config.conf.drone_room == "room_1_1"
+    assert config.conf.drone_room == expected_room
 
     exported = plan_client.get("/export-json", headers={"token": "test-token"}).json
     assert exported["advanced_settings"]["resting_threshold"] == 0.75
@@ -1279,7 +1298,8 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
         "主表组": 0.35,
         "副表组": 0.65,
     }
-    assert exported["advanced_settings"]["product_switching"]["waiting_seconds"] == 5
+    assert exported["advanced_settings"]["drone_interval"] == 2.5
+    assert exported["advanced_settings"]["product_switching"] == product_settings
     assert exported["advanced_settings"]["group_rest_in_full_on_mood_gap"] is False
     assert (
         exported["advanced_settings"]["group_mood_gap_threshold_minutes"]
@@ -1290,14 +1310,15 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
         "主表组",
         "副表组",
     ]
-    assert "drone_room" not in exported["advanced_settings"]
+    assert exported["advanced_settings"]["drone_room"] == expected_room
     assert "reload_room" not in exported["advanced_settings"]
 
 
 @pytest.mark.parametrize("rescue", [False, True])
 @pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("switching_enabled", [False, True])
 def test_recycling_plan_json_and_image_round_trip(
-    plan_client, populated_plan, rescue, theme
+    plan_client, populated_plan, rescue, theme, switching_enabled
 ):
     from PIL import Image
 
@@ -1323,6 +1344,14 @@ def test_recycling_plan_json_and_image_round_trip(
         "plans": [{"agent": "阿米娅"}, {"agent": "杜宾"}]
     }
     value["backup_plans"][0]["task"]["recycle"] = ["阿米娅", "杜宾"]
+    value["backup_plans"][0]["conf"].update(
+        drone_room="room_2_2", drone_count_limit=160
+    )
+    product_settings = {**DRONE_PRODUCT_SETTINGS, "enable": switching_enabled}
+    config.conf.drone_room = "room_3_3"
+    config.conf.drone_count_limit = 130
+    config.conf.drone_interval = 2.5
+    config.conf.product_switching = config.conf.ProductSwitchingConf(**product_settings)
     schedule = config.PlanModel.model_validate(value)
     config.conf.theme = theme
     config.conf.right_side_room_order = ["recycle", "train", "contact"]
@@ -1374,6 +1403,13 @@ def test_recycling_plan_json_and_image_round_trip(
     assert (
         restored.backup_plans[0].task.recycle == schedule.backup_plans[0].task.recycle
     )
+    assert restored.backup_plans[0].conf.drone_room == "room_2_2"
+    assert restored.backup_plans[0].conf.drone_count_limit == 160
+    if not rescue:
+        assert restored.advanced_settings["drone_room"] == "room_3_3"
+        assert restored.advanced_settings["drone_count_limit"] == 130
+        assert restored.advanced_settings["drone_interval"] == 2.5
+        assert restored.advanced_settings["product_switching"] == product_settings
     assert config.conf.right_side_room_order == ["recycle", "train", "contact"]
 
 

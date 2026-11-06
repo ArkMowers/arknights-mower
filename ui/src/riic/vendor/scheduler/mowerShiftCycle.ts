@@ -8,7 +8,7 @@ import {mowerExhaustGroups} from './mowerExhaustPolicy'
 import {mowerRestoredGroupRecoveryDeadline,splitMowerRecoveryTask} from './mowerGroupRecovery'
 import {planMowerDormIsolation} from './mowerDormIsolation'
 import {inheritMowerBackupRefreshRules} from './mowerBackupRefresh'
-import {normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts,mowerSameGroupPrimaryReplacement} from './mowerSharedGroups'
+import {normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts,mowerSameGroupPrimaryReplacement,completeMowerWorkaholicGroupReturn} from './mowerSharedGroups'
 // Complete in-memory arrangement replay, Mower alpha b2d9ac8 (MIT).
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MowerResourceWaitError,MowerShiftPreviewError} from './mowerNativeErrors'
@@ -223,7 +223,9 @@ function unfinishedRequiredDepartures(data:MowerSchedulingData,names:string[],ex
 }
 export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,queue:MowerTaskQueue,model:MowerShiftModel,options:MowerRestingOptions={}):void{
  delete task.previewReturnVeto
- if(task.backupShiftActive||task.arrangementStarted||task.fiaReturnTarget)return
+ if(task.backupShiftActive||task.arrangementStarted)return
+ completeMowerWorkaholicGroupReturn(data,task.backupShiftIntent??task.plan)
+ if(task.fiaReturnTarget)return
  if(task.exhaustSupport){prepareMowerShiftBackup(data,task,model,queue.tasks.filter(t=>t!==task));return}
  const probe=new MowerTask({time:data.nowMicros/3_600_000_000,type:T.FILL_DORM});simplifyMowerAlphaDormFill(probe,queue.tasks,data.nowMicros,options.priorityScheduling)
  if(probe.simpleDormFill||task.productShiftLocked||queue.tasks.some(t=>t!==task&&(t.type===T.FIAMMETTA&&t.timeMicros<=data.nowMicros||t.backupShiftActive||t.productShiftLocked))){

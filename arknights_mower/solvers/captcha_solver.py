@@ -106,7 +106,13 @@ class CaptchaClickSolver(BaseSolver):
         # 2. 超过最大次数 → 发邮件放弃
         if self._attempt_count >= self.MAX_ATTEMPTS:
             logger.error(f"点选验证码已连续失败 {self.MAX_ATTEMPTS} 次，放弃求解")
-            send_message("点选验证码自动求解失败，请手动处理", level="ERROR")
+            send_message(
+                "点选验证码自动求解失败，请手动处理",
+                subject="点选验证码自动求解失败",
+                level="ERROR",
+                archive_screenshots=True,
+                screenshot_source=getattr(self, "device", None),
+            )
             return True
 
         # 3. 根据不同阶段执行
@@ -286,7 +292,13 @@ class CaptchaClickSolver(BaseSolver):
         self._attempt_count += 1
         if self._attempt_count >= self.MAX_ATTEMPTS:
             logger.error(f"已达最大尝试次数 {self.MAX_ATTEMPTS}，放弃")
-            send_message("点选验证码自动求解失败，请手动处理", level="ERROR")
+            send_message(
+                "点选验证码自动求解失败，请手动处理",
+                subject="点选验证码自动求解失败",
+                level="ERROR",
+                archive_screenshots=True,
+                screenshot_source=getattr(self, "device", None),
+            )
             return True
 
         logger.info(f"刷新验证码（第 {self._attempt_count}/{self.MAX_ATTEMPTS} 次）")

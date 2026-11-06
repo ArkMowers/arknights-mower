@@ -96,9 +96,9 @@ class CreditFight(SceneGraphSolver):
         elif scene == Scene.OPERATOR_FINISH:
             return True
         elif scene == Scene.OPERATOR_FAILED:
-            msg = "OF-1失败，请检查干员，*今天*不会继续进行信用作战"
+            msg = "OF-1 作战失败，请检查干员；今天不会继续进行信用作战。"
             logger.info(msg)
-            send_message(msg, level="ERROR")
+            send_message(msg, subject="OF-1 信用作战失败", level="ERROR")
             return True
         elif scene in self.waiting_scene:
             self.waiting_solver()

@@ -235,10 +235,11 @@ export function alphaPrioritizeRecovery(data:MowerSchedulingData,plan:MowerTaskP
  return result
 }
 export function alphaCorrectGroupDorms(data:MowerSchedulingData,plan:MowerTaskPlan,positions?:Set<string>):void{
+ const transitions=mowerArrangementGroupTransitions(data,plan)
  for(const group of new Set(Object.values(data.operators).map(op=>op.group).filter(Boolean))){
   const members=data.group(group),residents=members.map(n=>data.operators[n]!).filter(op=>!op.multiGroup&&op.room.startsWith('dorm')&&(!positions||positions.has(alphaPosition(op.room,op.index))))
   if(!residents.length)continue
-  const recalling=members.some(n=>{const op=data.operators[n]!;return !op.room.startsWith('dorm')&&!op.workaholic&&plan[op.room]?.[op.index]===n}),resting=data.groupIsResting(group)&&!recalling,changes=new Map<string,string>()
+  const recalling=members.some(n=>{const op=data.operators[n]!;return !op.room.startsWith('dorm')&&!op.workaholic&&plan[op.room]?.[op.index]===n}),resting=(transitions[group]??data.groupIsResting(group))&&!recalling,changes=new Map<string,string>()
   for(const op of residents){
    const actual=data.currentOperator(op.room,op.index);let desired=op.name
    if(resting){

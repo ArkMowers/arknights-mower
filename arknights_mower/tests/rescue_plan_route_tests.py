@@ -11,7 +11,12 @@ from arknights_mower.utils import config
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
+    from arknights_mower.utils import schedule_roster
+
+    monkeypatch.setattr(
+        schedule_roster, "get_path", lambda _: tmp_path / "cultivate.json"
+    )
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "plan", config.PlanModel())
     monkeypatch.setattr(config, "rescue_plan", config.PlanModel())
@@ -100,7 +105,7 @@ def test_validation_defers_conditional_plans_and_rejects_product_mismatch(
         backup_plans=[object()] if backup_source == "normal" else [],
         init_and_validate=lambda: None,
     )
-    monkeypatch.setattr(server, "build_global_plan", lambda: {})
+    monkeypatch.setattr(server, "build_global_plan", lambda **kwargs: {})
     monkeypatch.setattr(server, "Operators", lambda plan: normal)
     config.rescue_plan = config.PlanModel(
         plan1={
@@ -162,7 +167,7 @@ def test_rescue_validation_checks_own_roster_before_conditional_deferral(
         backup_plans=[object()] if conditional else [],
         init_and_validate=lambda: None,
     )
-    monkeypatch.setattr(server, "build_global_plan", lambda: {})
+    monkeypatch.setattr(server, "build_global_plan", lambda **kwargs: {})
     monkeypatch.setattr(server, "Operators", lambda plan: normal)
     payload = {
         "plan1": {
@@ -224,7 +229,7 @@ def test_rescue_validation_preserves_working_and_specialized_room_rules(
         backup_plans=[object()] if conditional else [],
         init_and_validate=lambda: None,
     )
-    monkeypatch.setattr(server, "build_global_plan", lambda: {})
+    monkeypatch.setattr(server, "build_global_plan", lambda **kwargs: {})
     monkeypatch.setattr(server, "Operators", lambda plan: normal)
     payload = {
         "room_1_1": {"name": "制造站", "plans": [{"agent": "香草"}]},
@@ -244,3 +249,39 @@ def test_rescue_validation_preserves_working_and_specialized_room_rules(
         assert room in response["message"]
     config.save_conf.assert_not_called()
     config.save_plan.assert_not_called()
+
+
+@pytest.mark.parametrize("conditional", [False, True])
+def test_editor_validation_reports_rescue_roster_and_training_warnings(
+    client, monkeypatch, conditional
+):
+    from arknights_mower.tests.schedule_roster_tests import write_training_roster
+    from arknights_mower.utils import schedule_roster
+
+    path = schedule_roster.get_path("@app/tmp/cultivate.json")
+    write_training_roster(path, level=6)
+    monkeypatch.setattr(schedule_roster, "_refresh_roster", lambda: False)
+    config.plan = config.PlanModel(
+        plan1={"central": {"plans": [{"agent": "能天使", "replacement": ["芬"]}]}}
+    )
+    config.rescue_plan = config.PlanModel(
+        plan1={
+            "central": {"plans": [{"agent": "清流"}]},
+            "train": {"plans": [{"agent": "年"}, {"agent": "能天使"}]},
+        },
+        backup_plans=[{"name": "条件副表", "plan": {}, "trigger": {}}]
+        if conditional
+        else [],
+    )
+    response = client.post("/rescue-plan/validate", headers={"token": "rescue-route"})
+    assert response.status_code == 200
+    result = response.json
+    assert result["success"], result
+    assert "未持有以下排班干员：清流" in result["warnings"][0]
+    assert "基础技能仅 6 级" in result["warnings"][0]
+    assert "可能会导致 Mower 无法正常运行" in result["warnings"][0]
+    if conditional:
+        assert result["status"] == "incomplete"
+    config.save_plan.assert_not_called()
+    config.save_conf.assert_not_called()
+    config.save_rescue_plan.assert_not_called()

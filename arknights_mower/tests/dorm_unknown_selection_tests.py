@@ -118,6 +118,8 @@ def test_execution_and_planning_share_standby_and_room_reservations(
     instance, _ = solver
     data = instance.op_data
     data.operators["银灰"].mood = 8
+    data.operators["银灰"]._current_room = ""
+    data.operators["银灰"].current_index = -1
     monkeypatch.setattr(data, "is_standby", lambda name: name == "银灰")
     pending = SchedulerTask(
         task_plan={"meeting": ["银灰", "红"], ROOM: ["Current"] * 4 + ["Free"]},

@@ -42,6 +42,8 @@ def test_five_star_selection_policy(monkeypatch, mode, only_unique, combination_
     solver.recruit_tags({"输出": (0, 0), "控场": (1, 1)})
 
     notify.assert_called_once()
+    assert notify.call_args.kwargs["body_is_html"] is True
+    assert "预计干员名单" in notify.call_args.args[0]
     if mode == 1 or (only_unique and combination_count == 1):
         assert solver.recruit_index == 1
         solver.back.assert_not_called()

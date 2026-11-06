@@ -15,6 +15,7 @@ const test_error = ref(false)
 
 const {
   mail_enable,
+  mail_attach_error_screenshot,
   account,
   pass_code,
   recipient,
@@ -43,12 +44,9 @@ async function test_email() {
 }
 
 const levels = [
-  { label: 'INFO - 基建任务、刷理智、公招汇总、基报、活动签到等', value: 'INFO' },
-  { label: 'WARNING - 版本过旧、组内心情差过大、漏单、公招稀有标签等', value: 'WARNING' },
-  {
-    label: 'ERROR - 无法排班、专精失败、MAA调用出错、森空岛签到失败、活动签到超时、OF-1失败等',
-    value: 'ERROR'
-  }
+  { label: 'INFO - 接收正常通知、警告和错误', value: 'INFO' },
+  { label: 'WARNING - 仅接收警告和错误', value: 'WARNING' },
+  { label: 'ERROR - 仅接收错误', value: 'ERROR' }
 ]
 const selectMenuProps = { class: 'settings-select-menu' }
 
@@ -159,6 +157,18 @@ const mailboxType = computed({
               :consistent-menu-width="false"
               aria-label="通知等级"
             />
+          </n-form-item>
+          <n-form-item label="异常邮件附带截图" class="email-field-wide">
+            <div class="email-screenshot-setting">
+              <n-switch
+                v-model:value="mail_attach_error_screenshot"
+                :disabled="!mail_enable"
+                aria-label="异常邮件附带截图"
+              />
+              <span class="email-field-description">
+                画面相关的异常可附带近期截图；基报和专三完成截图不受此设置影响。
+              </span>
+            </div>
           </n-form-item>
           <n-form-item label="标题前缀">
             <n-input
@@ -279,6 +289,13 @@ const mailboxType = computed({
 
 .email-field-wide {
   grid-column: 1 / -1;
+}
+
+.email-screenshot-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
 }
 
 .email-field-label {

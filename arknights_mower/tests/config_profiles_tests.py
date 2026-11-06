@@ -438,14 +438,17 @@ def test_activation_retains_selected_current_groups_and_updates_target_snapshot(
     with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn, conn:
         conn.execute("UPDATE inventory SET count=29")
     config.conf.account = "kept"
+    config.conf.mail_attach_error_screenshot = True
     config.save_conf()
     _activate(original, ["inventory", "notifications"])
     assert config.conf.account == "kept"
+    assert config.conf.mail_attach_error_screenshot is True
     assert _read_table(storage, "inventory") == [("iron", 29)]
     assert _read_table(storage, "future_history") == [("original",)]
     _activate(second["active_id"])
     _activate(original)
     assert config.conf.account == "kept"
+    assert config.conf.mail_attach_error_screenshot is True
     assert _read_table(storage, "inventory") == [("iron", 29)]
 
 
