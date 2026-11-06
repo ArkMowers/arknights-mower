@@ -277,6 +277,7 @@ def retained_task_reservations(
 
 def dorm_task_reservations(op_data, tasks, excluded=(), *, reserve_dorm_targets=True):
     """共享任务预约；加工可忽略普通入宿目标，未完成执行仍受保护。"""
+    now = getattr(op_data, "_projection_now", None) or datetime.now()
     tasks = [task for task in tasks if not unstarted_product_wait(task)]
     recovering_tasks = [
         (task, recovering)
@@ -332,9 +333,25 @@ def dorm_task_reservations(op_data, tasks, excluded=(), *, reserve_dorm_targets=
         )
         task_type = getattr(getattr(task, "type", None), "name", "")
         if (
+            task_type == "RUN_ORDER"
+            and task.meta_data
+            and task.time > now
+            and not task.retains_execution
+            and not any(
+                getattr(task, field, False)
+                for field in (
+                    "run_order_original_roster",
+                    "run_order_restore_pending",
+                    "run_order_confirmation_pending",
+                    "emergency_original_roster",
+                )
+            )
+        ):
+            # 远期换入前允许空闲恢复；到期、已开始换人及原班恢复仍保留预约。
+            continue
+        if (
             task_type == "RELEASE_DORM"
-            and task.time
-            > (getattr(op_data, "_projection_now", None) or datetime.now())
+            and task.time > now
             and not task.retains_execution
             and not getattr(task, "strict_mood_limit", False)
             and not getattr(task, "product_shift_locked", False)
