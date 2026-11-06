@@ -1,3 +1,4 @@
+import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
 import {mowerExhaustTaskSignatures,invalidateMowerExhaustTasks,type MowerExhaustRoomContext} from './mowerExhaustReservations'
 import {sameBackupGroups,type BackupSelection,type BackupGroupState} from './backupGroups'
 import type {MowerBackupGroupTask} from './mowerBackupGroupTasks'
@@ -132,6 +133,7 @@ export function prepareMowerShiftBackup(data:MowerSchedulingData,task:MowerTask,
  const selected=selectionFor(model,data),effectiveRules=model.swap(projectMowerArrangements(data,[]),selected.conditions,selected.groupId)
  const cleaned=mowerBackupRetentionTaskPlan(effectiveRules,task,task.backupShiftIntent??task.plan,true)
  const intent=cleaned,original=[...data.planConditions],entrySlots=new Set(task.backupExplicitSlots)
+ if(!task.arrangementStarted&&Object.entries(mowerArrangementGroupTransitions(data,intent)).some(([group,resting])=>resting&&mowerForcedWorkGroups(data).has(group)))throw new MowerShiftPreviewError('副表要求整组强制上班，等待副表退出')
  let transitions=task.productShiftLocked?{...task.groupShiftTransitions}:mowerArrangementGroupTransitions(data,intent)
  const returning=new Set(Object.entries(transitions).filter(([group,resting])=>!resting&&data.groupIsResting(group)).map(([group])=>group))
  let seed=projectMowerArrangements(data,[intent])

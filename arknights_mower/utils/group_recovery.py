@@ -158,7 +158,11 @@ def restored_group_recovery_deadline(
     """副表退出重新纳入的恢复主班沿用最终组的恢复规则和原期限。"""
     now = now or getattr(data, "_projection_now", None) or datetime.now()
     deadlines = []
+    from arknights_mower.utils.backup_group_tasks import forced_work_groups
+
     for group in groups:
+        if group in forced_work_groups(effective):
+            continue
         workers = group_recovery_workers(effective, group)
         restored = [
             op

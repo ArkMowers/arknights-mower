@@ -92,12 +92,22 @@ const groupModeOptions = [
   { label: '生效期间保持，允许协调回班', value: 'while_active' },
   { label: '生效期间强制保持，禁止协调回班', value: 'forced' }
 ]
+const groupOnModeOptions = [
+  { label: '生效时执行一次', value: 'once' },
+  { label: '生效期间强制保持上班', value: 'forced' }
+]
 function new_group_task() {
   return { group: '', action: 'off', mode: 'once' }
 }
 function update_group_task(index, changes) {
   group_task_list.value = group_task_list.value.map((row, i) =>
-    i === index ? { ...row, ...changes, ...(changes.action === 'on' ? { mode: 'once' } : {}) } : row
+    i === index
+      ? {
+          ...row,
+          ...changes,
+          ...(changes.action === 'on' && row.mode === 'while_active' ? { mode: 'once' } : {})
+        }
+      : row
   )
 }
 const task_time = ref(new Date().getTime())
@@ -456,7 +466,7 @@ const level_list = [
               <n-select
                 :value="value.mode"
                 @update:value="(mode) => update_group_task(index, { mode })"
-                :options="value.action === 'off' ? groupModeOptions : groupModeOptions.slice(0, 1)"
+                :options="value.action === 'off' ? groupModeOptions : groupOnModeOptions"
                 :disabled="edit_locked"
                 style="width: 310px"
                 :consistent-menu-width="false"
@@ -465,7 +475,7 @@ const level_list = [
           </template>
         </n-dynamic-input>
         <n-text depth="3" style="display: block; margin: 8px 0">
-          下班任务使用整组替班和恢复床位。允许协调时，其他组可按需召回；强制保持时，其他组须另找替班，否则保留任务等待。副表退出后恢复正常回班条件。上班任务执行一次，仍遵守恢复和任务保护。
+          下班任务使用整组替班和恢复床位。允许协调时，其他组可按需召回；强制保持时，其他组须另找替班，否则保留任务等待。副表退出后恢复正常回班条件。上班任务可执行一次或在生效期间强制保持上班。强制上班忽略本组心情和回满要求，不触发本组轮休；多绑组成员仍跟随其他在休组，任务预约和训练保护继续生效。退出后恢复正常下班。
         </n-text>
         <n-divider>房间任务</n-divider>
       </template>

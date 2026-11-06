@@ -60,7 +60,7 @@ The [shared color decision](../../.agents/notes/implemented/simplification/2026-
 
 ### Backup Group Task Editor
 
-The backup task dialog edits room assignments and group requests separately. Group names come from all main and backup operator bindings. The writer chooses a complete-group on-duty or off-duty request. On-duty requests execute once; off-duty requests offer one execution, a coordinated hold, or a forced hold throughout activation. The dialog explains dependency coordination and ordinary return after deactivation. JSON import and export preserve `group_tasks` without changing advanced settings. Runtime behavior follows [Backup Group Tasks](base-scheduler.md#backup-group-tasks).
+The backup task dialog edits room assignments and group requests separately. Group names come from all main and backup operator bindings. The writer chooses a complete-group on-duty or off-duty request. On-duty requests offer one execution or a forced on-duty hold throughout activation; off-duty requests offer one execution, a coordinated hold, or a forced hold throughout activation. The dialog explains dependency coordination and ordinary return after deactivation. JSON import and export preserve `group_tasks` without changing advanced settings. Runtime behavior follows [Backup Group Tasks](base-scheduler.md#backup-group-tasks).
 
 ## 6. Backup Facility Import
 

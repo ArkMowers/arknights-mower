@@ -1,4 +1,4 @@
-import {mowerHeldRestGroups} from './mowerBackupGroupTasks'
+import {mowerHeldRestGroups,mowerForcedWorkGroups,mowerForcedWorkReturn} from './mowerBackupGroupTasks'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
 import {generateMowerDormTasks} from './mowerDormTasks'
 import {mowerDormCandidateMood,mowerSchedulingMoodObservation} from './mowerSchedulingMood'
@@ -67,6 +67,7 @@ export function mowerGroupRecoveryDeadline(data:MowerSchedulingData,group:string
 export function mowerRestoredGroupRecoveryDeadline(actual:MowerSchedulingData,effective:MowerSchedulingData,groups:Iterable<string>,delayedGroups?:Set<string>):number|undefined {
  const deadlines:number[]=[]
  for(const group of groups){
+  if(mowerForcedWorkGroups(effective).has(group))continue
   const restored=mowerGroupRecoveryWorkers(effective,group).filter(op=>{
    const previous=actual.operators[op.name]
    return previous&&(previous.isResting()||!previous.currentRoom)&&!actual.isGroupShiftAnchor(previous,group)
@@ -128,7 +129,7 @@ export function splitMowerRecoveryTask(data:MowerSchedulingData,task:MowerTask,p
 export function mowerUnfinishedReturnMembers(data:MowerSchedulingData,task:MowerTask,options:MowerTaskSchedulingOptions={}):Set<string>{
  const required=new Set<string>()
  for(const [room,row] of Object.entries(task.plan))if(!room.startsWith('dorm'))row.forEach((name,index)=>{
-  if(task.backupExplicitSlots.has(room+'\0'+index))return
+  if(task.backupExplicitSlots.has(room+'\0'+index)||mowerForcedWorkReturn(data,name))return
   const op=data.operators[name];if(!op||op.room!==room||op.index!==index||op.currentRoom!==''&&!op.isResting())return
   if(op.restInFull&&!op.workaholic)required.add(name)
   if(op.group)for(const member of mowerGroupRecoveryDeadline(data,op.group).requiredNames)required.add(member)

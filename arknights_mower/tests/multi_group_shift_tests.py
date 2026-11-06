@@ -1110,3 +1110,58 @@ def test_zero_mood_shared_primary_uses_no_bed_and_still_obeys_compatibility(
         )[0]
         apply(solver, second.plan)
     assert solver.op_data.get_current_operator("contact", 0).name == SHARED
+
+
+def test_forced_work_group_keeps_other_shared_binding_free_to_rest(solver):
+    from arknights_mower.utils.backup_group_tasks import sync_group_tasks
+
+    s = solver
+    data = s.op_data
+    data.backup_plans = [
+        Plan(
+            {},
+            PlanConfig("", "", ""),
+            group_tasks=[{"group": "甲", "action": "on", "mode": "forced"}],
+        )
+    ]
+    data.plan_condition = [True]
+    s._emergency_frozen = lambda: False
+    s.total_agent = list(data.operators.values())
+    data.operators[A].mood = data.operators[B].mood = 0
+    plan = s.resting()
+    assert plan["meeting"] == ["Current", "初雪"]
+    assert plan["contact"] == ["黑角"]
+    assert data.arrangement_group_transitions(plan) == {"乙": True}
+    apply(s, plan)
+    sync_group_tasks(s)
+    assert not any(getattr(task, "backup_group_request", None) for task in s.tasks)
+    assert not s.op_data.group_is_resting("甲")
+    assert s.op_data.group_is_resting("乙")
+    assert s.op_data.operators[SHARED].workaholic is False
+
+
+def test_forced_return_retains_shared_cover_for_another_resting_group(solver):
+    from arknights_mower.utils.backup_group_tasks import sync_group_tasks
+
+    s = solver
+    s.op_data.operators[SHARED].group_bindings[1]["replacement"] = ["红"]
+    assert shift_off(s, "甲")[0]
+    assert shift_off(s, "乙")[0]
+    data = s.op_data
+    data.backup_plans = [
+        Plan(
+            {},
+            PlanConfig("", "", ""),
+            group_tasks=[{"group": "甲", "action": "on", "mode": "forced"}],
+        )
+    ]
+    data.plan_condition = [True]
+    s._emergency_frozen = lambda: False
+    sync_group_tasks(s)
+    task = next(t for t in s.tasks if getattr(t, "backup_group_request", None))
+    s._prepare_group_shift(task)
+    apply(s, task.plan)
+    assert s.op_data.get_current_room("contact", True) == ["红"]
+    assert not s.op_data.group_is_resting("甲")
+    assert s.op_data.group_is_resting("乙")
+    assert s.op_data.operators[SHARED].current_room.startswith("dorm")

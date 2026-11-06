@@ -13,7 +13,7 @@ export function readMowerBackupGroupTasks(value:unknown):MowerBackupGroupTask[] 
  return value.map(raw=>{
   if(!raw||typeof raw!=='object'||typeof raw.group!=='string'||!raw.group.trim()||raw.group!==raw.group.trim()||!['on','off'].includes(raw.action??'off')||!['once','while_active','forced'].includes(raw.mode??'once'))throw new Error('绑组任务的组名、上下班或执行方式无效')
   const task:MowerBackupGroupTask={group:raw.group,action:raw.action??'off',mode:raw.mode??'once'}
-  if(task.action==='on'&&task.mode!=='once')throw new Error('上班任务只执行一次，后续沿用正常轮换')
+  if(task.action==='on'&&task.mode==='while_active')throw new Error('上班任务仅支持执行一次或强制保持上班')
   if(groups.has(task.group))throw new Error('同一副表不能重复安排同一绑组')
   groups.add(task.group);return task
  })
@@ -21,6 +21,14 @@ export function readMowerBackupGroupTasks(value:unknown):MowerBackupGroupTask[] 
 
 export function mowerHeldRestGroups(data:MowerSchedulingData,forcedOnly=false):Set<string> {
  return new Set(data.backupGroupTasks.flatMap((tasks,i)=>data.planConditions[i]?tasks.filter(t=>t.action==='off'&&(t.mode==='forced'||!forcedOnly&&t.mode==='while_active')).map(t=>t.group):[]))
+}
+
+export function mowerForcedWorkGroups(data:MowerSchedulingData):Set<string> {
+ return new Set(data.backupGroupTasks.flatMap((tasks,i)=>data.planConditions[i]?tasks.filter(t=>t.action==='on'&&t.mode==='forced').map(t=>t.group):[]))
+}
+export function mowerForcedWorkReturn(data:MowerSchedulingData,name:string):boolean {
+ const op=data.operators[name],groups=mowerForcedWorkGroups(data)
+ return !!op&&!op.room.startsWith('dorm')&&[...groups].some(group=>data.shiftGroupMembers(group).includes(name))&&(!op.multiGroup||op.groupBindings.every(binding=>!binding.group||groups.has(binding.group)||!data.groupIsResting(binding.group)))
 }
 
 export function mowerForcedGroupCoverReservations(data:MowerSchedulingData):{names:Set<string>;slots:Set<string>} {
@@ -50,6 +58,8 @@ export function syncMowerBackupGroupTasks(data:MowerSchedulingData,queue:MowerTa
   if(directions.has(request.group)&&directions.get(request.group)!==request.action)throw new Error('生效副表对同一绑组安排了相反的上下班任务：'+request.group)
   directions.set(request.group,request.action)
  }
+ const working=mowerForcedWorkGroups(data)
+ queue.tasks=queue.tasks.filter(task=>!(task.type===T.EXHAUST_OFF&&!Object.keys(task.plan).length&&!task.retainsExecution&&!task.backupGroupRequest&&!task.arrangementStarted&&task.metadata.split(',').some(name=>working.has(data.operators[name]?.group??''))))
  const keep=(task:MowerTask)=>!task.backupGroupRequest||active.has(key(task.backupGroupRequest))||task.arrangementStarted||task.backupShiftActive
  queue.tasks=queue.tasks.filter(keep)
  parked.splice(0,parked.length,...parked.filter(keep))

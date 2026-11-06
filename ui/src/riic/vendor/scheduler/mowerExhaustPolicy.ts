@@ -1,3 +1,4 @@
+import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
 import {restingThresholdFor} from './mowerOperatorState'
 // Preserve native group exhaustion admission (Mower e6c06a5b1, MIT).
 import type {MowerSchedulingData} from './mowerSchedulingData'
@@ -12,7 +13,7 @@ export function mowerExhaustGroups(data:MowerSchedulingData):Set<string> {
 
 /** Revalidate an ordinary request after a backup change or an observed charge. */
 export function mowerOrdinaryCoordinationNeeded(data:MowerSchedulingData,names:readonly string[]):boolean {
- const exhausted=mowerExhaustGroups(data)
+ const exhausted=new Set([...mowerExhaustGroups(data),...mowerForcedWorkGroups(data)])
  const eligible=(name:string)=>{
   const op=data.operators[name]
   if(!op||!op.isHigh()||op.multiGroup&&!op.independentRest&&!op.shiftGroup||op.group&&!data.isGroupShiftAnchor(op)||op.isResting()||data.isStandby(name)||['factory','train'].includes(op.room)||['factory','train'].includes(op.currentRoom)||data.busyRestingNames.has(name)||data.reservedProductReplacements.has(name)||op.exhaustRequire||exhausted.has(op.group)||alphaRestingTier(data,name)===7)return false
