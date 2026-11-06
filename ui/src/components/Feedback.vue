@@ -145,7 +145,8 @@ function copy_descrioption() {
           打开 Mower 反馈表
         </n-a>
         <n-text depth="3"
-          >此处提交通过已配置邮箱发送给开发组；反馈表可单独查阅，填写需相应编辑权限。</n-text
+          >此处提交通过已配置邮箱发送给开发组，并自动携带当前 Mower
+          版本；反馈表可单独查阅，填写需相应编辑权限。</n-text
         >
         <n-text v-if="showTimeFields" depth="3">
           Bug 邮件会附一个 ZIP，包含所选区间日志、关键截图、版本与平台信息。<br />

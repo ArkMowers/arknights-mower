@@ -64,10 +64,23 @@ def _feedback_archive_name(start, description):
     return f"feedback-{start:%Y%m%d-%H%M%S}-{summary}.zip"
 
 
+def _required_version():
+    version = __version__.strip() if isinstance(__version__, str) else ""
+    if (
+        not version
+        or len(version) > 128
+        or version.casefold() in {"unknown", "未知", "none", "null", "n/a"}
+        or any(unicodedata.category(char).startswith("C") for char in version)
+    ):
+        raise ValueError("未取得有效 Mower 版本，反馈尚未发送；请确认安装版本后重试。")
+    return version
+
+
 def _package_evidence(attachments, output, start, end, description, extra_members=None):
     """按日志调度导出布局打包，区间日志直接展开到同一压缩包内。"""
     destination = output / _feedback_archive_name(start, description)
     files = {Path(path).name: Path(path) for path in attachments}
+    context = json.loads(files["context.json"].read_text(encoding="utf-8"))
     manifest = files.get("evidence.json")
     evidence = json.loads(manifest.read_text(encoding="utf-8")) if manifest else {}
     screenshots = {row["file"]: row for row in evidence.get("screenshots", [])}
@@ -135,6 +148,8 @@ def _package_evidence(attachments, output, start, end, description, extra_member
         bundle.writestr(
             README_FILENAME,
             f"日志调度导出\n问题：{description}\n"
+            f"Mower 版本（反馈生成时）：{context['mower_version']}\n"
+            f"提交号：{context['revision']}\n"
             f"时间范围：{start:%Y-%m-%d %H:%M:%S} 至 {end:%Y-%m-%d %H:%M:%S}\n"
             f"日志：{archive.get('record_count', 0)} 条\n截图：{count} 张\n"
             f"包含截图：{'是' if count else '否'}\n"
@@ -151,8 +166,8 @@ def _package_evidence(attachments, output, start, end, description, extra_member
 def _feedback_context(start, end, output):
     generated = datetime.now().astimezone()
     context = {
-        "mower_version": __version__,
-        "revision": revision_info(),
+        "mower_version": _required_version(),
+        "revision": revision_info() or "unknown",
         "platform": {
             "system": platform.system(),
             "release": platform.release(),
@@ -240,6 +255,7 @@ def _collect_bug_bundle(
     focus_terms=None,
 ):
     """检查与发送共用采集路径，不缓存跨请求的用户材料。"""
+    _required_version()
     start, end = parse_interval(start_time, end_time)
     validate_feedback_windows(evidence_windows, start, end)
     logs = Path(get_path("@app/log"))
@@ -360,9 +376,10 @@ def submit_issue(
 ):
     """上报问题，附带原始材料、来源引用和单列的 AI 推断。"""
     try:
+        version = _required_version()
         with TemporaryDirectory(prefix="mower-feedback-") as temporary:
             attachments = None
-            body = escape(description)
+            body = f"<p>Mower 版本（反馈生成时）：{escape(version)}</p><p>{escape(description)}</p>"
             if issue_type == "Bug":
                 if not (start_time and end_time):
                     return "请提供问题发生的起止时间（本地时间 YYYY-MM-DD HH:MM:SS），以便附加日志和关键截图。"
@@ -401,7 +418,9 @@ def submit_issue(
                 interval = context["requested_interval"]
                 body = (
                     f"<p>所选问题时间区间：{escape(interval['start'])} 至 {escape(interval['end'])}</p>"
-                    f"<p>反馈者报告（未自动验证）：{body}</p>"
+                    f"<p>Mower 版本（反馈生成时）：{escape(context['mower_version'])}；"
+                    f"提交号：{escape(str(context['revision']))}。提交号 unknown 表示未取得。</p>"
+                    f"<p>反馈者报告（未自动验证）：{escape(description)}</p>"
                     f"<p>诊断附件：{escape(bundle.name)}。区间日志见 runtime.log，附加时段见 windows 目录。</p>"
                     f"<p>{details['coverage']}</p><p>附带 {details['screenshot_count']} 张关键截图，"
                     "截图按时间关联，未判断画面内容；筛选依据及省略说明见 evidence.json。</p>"
@@ -455,6 +474,7 @@ submit_issue_tool_def = {
             "不传时按不同错误、警告首次有可用截图的时间自动筛选；传空列表表示不附截图。"
             "截图来自日志调度，按时间关联而非画面内容判断；重复或超过单张512 KiB的截图会省略，总计不超过2 MiB。"
             "Bug 自动附带版本、平台、Python与带UTC偏移的时间信息，以及当前保存的主副排班和白名单高级设置；"
+            "Mower版本是所有反馈必带项，缺失或unknown时不发送；Bug正文、context.json和readme.txt写明反馈生成时版本及可取得的提交号。"
             "配置属于反馈生成时刻，不是故障发生时的历史快照；成功发送时必须包含当前排班表。"
             "正文披露所选区间、压缩日志实际记录首尾及截断情况，实际记录不保证连续覆盖所有时刻。"
             "自动只读导出区间内任务日志与干员历史，保留任务、心情、位置和关联字段，读取限制与缺失写入清单；不导出全库。"

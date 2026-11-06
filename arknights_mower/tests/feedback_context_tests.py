@@ -124,6 +124,10 @@ def test_bug_context_has_only_selected_settings_and_current_plan(feedback_contex
     }
     assert context["mower_version"] == "4.1.6-alpha.13+abcdef0"
     assert context["revision"] == "abcdef0123456789"
+    assert context["mower_version"] in body
+    assert context["revision"] in body
+    readme = files["readme.txt"].decode()
+    assert context["mower_version"] in readme and context["revision"] in readme
     assert context["platform"]["android"] is True
     assert set(context["platform"]) == {
         "system",
@@ -272,4 +276,54 @@ def test_feature_keeps_existing_attachment_and_date_behavior(
     files, body = mail_parts(feedback_context[0])
     assert files == {}
     assert "Date" not in feedback_context[0]
-    assert body == "增加提示"
+    assert "增加提示" in body
+    assert "4.1.6-alpha.13+abcdef0" in body
+
+
+@pytest.mark.parametrize(
+    "version", [None, "", "  ", "unknown", "UNKNOWN", "未知", "n/a", "4.1.6\nother"]
+)
+@pytest.mark.parametrize("issue_type", ["Bug", "Feature"])
+def test_missing_version_rejects_before_collection_or_email(
+    feedback_context, monkeypatch, version, issue_type
+):
+    from unittest.mock import Mock
+
+    forbidden = Mock(side_effect=AssertionError("缺版本不得读取材料或发送"))
+    monkeypatch.setattr(submit_issue, "__version__", version)
+    monkeypatch.setattr(submit_issue, "collect_evidence", forbidden)
+    monkeypatch.setattr(submit_issue, "collect_feedback_records", forbidden)
+    monkeypatch.setattr(submit_issue, "collect_feedback_state", forbidden)
+    monkeypatch.setattr(submit_issue, "Email", forbidden)
+    result = submit_issue.submit_issue(
+        "问题", issue_type=issue_type, start_time=START, end_time=END
+    )
+    assert "版本" in result and "尚未发送" in result
+    forbidden.assert_not_called()
+    assert not feedback_context
+
+
+def test_unavailable_revision_is_distinct_from_required_version(
+    feedback_context, monkeypatch
+):
+    monkeypatch.setattr(submit_issue, "revision_info", lambda: None)
+    assert send_bug() == "邮件发送成功！"
+    files, body = mail_parts(feedback_context[0])
+    context = json.loads(files["context.json"])
+    assert context["mower_version"] == "4.1.6-alpha.13+abcdef0"
+    assert context["revision"] == "unknown"
+    assert "提交号 unknown 表示未取得" in body
+
+
+def test_inspection_requires_version_before_reading_records(
+    feedback_context, monkeypatch
+):
+    from unittest.mock import Mock
+
+    forbidden = Mock(side_effect=AssertionError("缺版本不得读取材料"))
+    monkeypatch.setattr(submit_issue, "__version__", "unknown")
+    monkeypatch.setattr(submit_issue, "collect_evidence", forbidden)
+    result = json.loads(submit_issue.inspect_feedback(START, END))
+    assert "版本" in result["error"] and result["sent"] is False
+    forbidden.assert_not_called()
+    assert not feedback_context
