@@ -739,7 +739,8 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      }
     }
     if(!running&&data.alpha&&task.exhaustSupport&&!task.arrangementStarted&&!task.backupShiftActive&&!task.productShiftLocked){
-     const names=task.coordinationRequestNames.filter(name=>data.operators[name])
+     // Ordinary requests name their trigger; handoffs must cover every current group member.
+     const names=[...new Set(task.coordinationRequestNames.flatMap(name=>{const op=data.operators[name];return !op?[]:task.ordinaryCoordination&&op.group?data.shiftGroupMembers(op.group):[name]}))]
      task.plan=names.length?planMowerExhaustSupport(data,names,options())??{}:{}
      if(task.backupShiftIntent)task.backupShiftIntent=structuredClone(task.plan)
      task.groupShiftTransitions=mowerArrangementGroupTransitions(data,task.plan)

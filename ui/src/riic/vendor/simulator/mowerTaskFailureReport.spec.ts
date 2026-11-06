@@ -20,7 +20,7 @@ function schedule(){
 afterEach(()=>vi.restoreAllMocks())
 
 describe('unresolved native task failures in the final income report',()=>{
- it('reports expected replacement dependency waits without calling completed production incomplete',()=>{
+ it('completes ordinary replacement contention without creating a failed placeholder task',()=>{
   const id=(name:string)=>OPERATORS.find(op=>op.name===name)!.charId
   const workspace=createDefaultWorkspace()
   for(const room of Object.values(workspace.mainPlan.facilities)){room.level=0;room.slots=[]}
@@ -38,7 +38,11 @@ describe('unresolved native task failures in the final income report',()=>{
   const report=simulateSchedule(input,{schedulingModel:'mower-alpha',warmupHours:0,sampleHours:2,maxEvents:2000,consumptionOverrides:{[id('芬')]:10,[id('香草')]:5,[id('克洛丝')]:1},recoveryOverrides:{[id('芬')]:1,[id('香草')]:1},production:{outputMode:'potential',droneTarget:'none',seed:42}})
   expect(report.elapsedHours).toBe(2)
   expect(report.success,JSON.stringify(report.diagnostics)).toBe(true)
-  expect(getMowerSourceRuntime(runtime!).queue.tasks.some(task=>task.coordinationDependencyWait&&task.executionFailure)).toBe(true)
+  expect(report.production?.success).toBe(true)
+  expect(report.production!.sample.completed.gold).toBeGreaterThan(0)
+  expect(runtime!.occupants.room_1_2_0).toBe(id('香草'))
+  expect(getMowerSourceRuntime(runtime!).queue.tasks.some(task=>task.type.key==='EXHAUST_OFF'&&task.ordinaryCoordination)).toBe(false)
+  expect(getMowerSourceRuntime(runtime!).queue.tasks.some(task=>task.executionFailure)).toBe(false)
   expect(report.diagnostics.some(d=>d.code==='MOWER_PENDING_TASK_FAILURE')).toBe(false)
  })
  it('completes actual production with a warning while preserving an expected resource wait',()=>{
