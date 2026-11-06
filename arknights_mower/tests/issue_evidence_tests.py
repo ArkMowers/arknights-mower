@@ -2,6 +2,8 @@
 
 import json
 from datetime import datetime
+from io import BytesIO
+from zipfile import ZipFile
 
 import pytest
 
@@ -217,10 +219,148 @@ def test_log_excerpt_bounds_and_truncation_are_disclosed(feedback):
     )
     assert submit() == "邮件发送成功！"
     attachments = parts(sent)
-    assert len(attachments["runtime.txt"].decode().splitlines()) == 1000
+    assert len(attachments["runtime.txt"]) <= issue_evidence.MAX_EXCERPT_BYTES
+    assert len(attachments["runtime.txt"].decode().splitlines()) <= 1000
     manifest = json.loads(attachments["evidence.json"])
     assert manifest["log_rows_truncated"] is True
     assert manifest["log_messages_truncated"] is True
+    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
+        contents = bundle.read("runtime.txt").decode()
+    assert len(contents.splitlines()) == 1002
+    assert "行0" + "长" * 1500 in contents
+    assert "行1001" + "长" * 1500 in contents
+    assert manifest["log_archive"]["truncated"] is False
+
+
+def test_compressed_logs_keep_interval_start_across_hour_and_duplicate_records(
+    feedback,
+):
+    logs, _, sent = feedback
+    first = "2026-10-20 11:59:05 solver.py:1 ERROR 最初失败\n"
+    (logs / "runtime.log.2026-10-20_11").write_text(first * 2, encoding="utf-8")
+    write_logs(logs, [(20, "DEBUG", f"后续读图{index}") for index in range(1200)])
+    assert (
+        submit_issue.submit_issue(
+            "问题发生后不断读图", start_time="2026-10-20 11:59:00", end_time=END
+        )
+        == "邮件发送成功！"
+    )
+    attachments = parts(sent)
+    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
+        contents = bundle.read("runtime.txt").decode()
+    assert contents.startswith(first * 2)
+    assert "后续读图1199" in contents
+    manifest = json.loads(attachments["evidence.json"])
+    assert manifest["log_archive"]["record_count"] == 1202
+    assert manifest["log_archive"]["first_time"] == "2026-10-20 11:59:05"
+    assert manifest["log_archive"]["last_time"] == "2026-10-20 12:00:20"
+    assert manifest["log_archive"]["scan_complete"] is True
+    assert manifest["excerpt"]["first_time"] == "2026-10-20 12:00:20"
+
+
+def test_compressed_logs_preserve_long_rosters_and_multiline_stack(feedback):
+    logs, _, sent = feedback
+    roster = "全部驻员" * 40000
+    stack = "\n".join(f"  File solver.py, line {index}" for index in range(500))
+    original = (
+        "2026-10-20 11:59:59 solver.py:1 INFO 范围外隐私\n"
+        f"2026-10-20 12:00:10 solver.py:1 ERROR {roster}\n{stack}\n"
+        "RuntimeError: 真正失败原因\n"
+        "2026-10-20 12:01:01 solver.py:1 INFO 范围外尾部\n"
+    )
+    (logs / "runtime.log").write_text(original, encoding="utf-8")
+    assert submit() == "邮件发送成功！"
+    with ZipFile(BytesIO(parts(sent)["runtime.zip"])) as bundle:
+        contents = bundle.read("runtime.txt").decode()
+    assert roster in contents and stack in contents
+    assert "RuntimeError: 真正失败原因" in contents
+    assert "范围外" not in contents
+
+
+def test_archive_byte_budget_is_reported_without_claiming_complete_logs(
+    feedback, monkeypatch
+):
+    logs, _, sent = feedback
+    write_logs(logs, [(second, "INFO", "内容" * 80) for second in range(20)])
+    monkeypatch.setattr(issue_evidence, "MAX_LOG_UNCOMPRESSED_BYTES", 1100)
+    assert submit() == "邮件发送成功！"
+    attachments = parts(sent)
+    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
+        contents = bundle.read("runtime.txt")
+    metadata = json.loads(attachments["evidence.json"])["log_archive"]
+    assert len(contents) <= 1100
+    assert metadata["uncompressed_bytes"] == len(contents)
+    assert metadata["truncated"] is True
+    assert metadata["scan_complete"] is False
+    assert metadata["first_time"] == "2026-10-20 12:00:00"
+    assert metadata["last_time"] == "2026-10-20 12:00:01"
+
+
+def test_archive_fallback_is_marked_as_a_limited_source(feedback):
+    _, images, sent = feedback
+    folder = images / "errors" / "123"
+    folder.mkdir(parents=True)
+    (folder / "logs.json").write_text(
+        json.dumps([{"time": START, "message": f"{START} solver.py:1 ERROR 归档故障"}]),
+        encoding="utf-8",
+    )
+    assert submit() == "邮件发送成功！"
+    metadata = json.loads(parts(sent)["evidence.json"])["log_archive"]
+    assert metadata["source"] == "error_archive_excerpt"
+    assert metadata["archive_source_limited"] is True
+    assert metadata["record_count"] == 1
+
+
+def test_compressed_byte_budget_produces_a_readable_bounded_zip(feedback, monkeypatch):
+    import base64
+    import random
+
+    logs, _, sent = feedback
+    generator = random.Random(42)
+    write_logs(
+        logs,
+        [
+            (second, "DEBUG", base64.b64encode(generator.randbytes(64 * 1024)).decode())
+            for second in range(8)
+        ],
+    )
+    monkeypatch.setattr(issue_evidence, "MAX_LOG_ARCHIVE_BYTES", 256 * 1024)
+    assert submit() == "邮件发送成功！"
+    attachments = parts(sent)
+    assert len(attachments["runtime.zip"]) <= 256 * 1024
+    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
+        assert bundle.testzip() is None
+        assert b"2026-10-20 12:00:00" in bundle.read("runtime.txt")
+    metadata = json.loads(attachments["evidence.json"])["log_archive"]
+    assert metadata["truncated"] is True
+    assert metadata["scan_complete"] is False
+
+
+def test_unwritten_error_archive_is_not_claimed_as_a_compressed_log_source(
+    feedback, monkeypatch
+):
+    logs, images, sent = feedback
+    write_logs(logs, [(second, "INFO", "内容" * 80) for second in range(20)])
+    folder = images / "errors" / "123"
+    folder.mkdir(parents=True)
+    (folder / "logs.json").write_text(
+        json.dumps([{"time": START, "message": f"{START} solver.py:1 ERROR 归档故障"}]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(issue_evidence, "MAX_LOG_UNCOMPRESSED_BYTES", 1100)
+    assert submit() == "邮件发送成功！"
+    attachments = parts(sent)
+    metadata = json.loads(attachments["evidence.json"])["log_archive"]
+    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
+        assert "归档故障" not in bundle.read("runtime.txt").decode()
+    assert metadata["source"] == "runtime_files"
+    assert metadata["archive_source_limited"] is False
+    body = next(
+        part.get_payload(decode=True).decode()
+        for part in sent[0][0].walk()
+        if part.get_content_type() == "text/html"
+    )
+    assert "包含异常归档" not in body
 
 
 def test_final_encoded_mail_limit_prevents_send(feedback, monkeypatch):

@@ -1,15 +1,98 @@
+import json
+import os
+import platform
+from datetime import datetime
+from email.utils import format_datetime
 from html import escape
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from arknights_mower import __version__
 from arknights_mower.agent.tools.issue_evidence import (
     MAX_MAIL_BYTES,
     collect_evidence,
     parse_interval,
 )
+from arknights_mower.utils import config
+from arknights_mower.utils.config.plan_advanced import export_advanced_settings
 from arknights_mower.utils.email import Email
+from arknights_mower.utils.git_rev import revision_info
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
+
+MAX_PLAN_BYTES = 256 * 1024
+
+
+def _feedback_context(start, end, output):
+    generated = datetime.now().astimezone()
+    context = {
+        "mower_version": __version__,
+        "revision": revision_info(),
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+            "python": platform.python_version(),
+            "android": os.environ.get("MOWER_ANDROID") == "1",
+        },
+        "generated_at": generated.isoformat(timespec="seconds"),
+        "requested_interval": {
+            "start": start.astimezone().isoformat(timespec="seconds"),
+            "end": end.astimezone().isoformat(timespec="seconds"),
+        },
+        "settings": {"right_side_room_order": config.conf.right_side_room_order},
+        "configuration_note": "排班及设置为反馈生成时当前保存的配置，不是问题发生时的历史快照。",
+    }
+    plan = config.plan.model_dump(exclude_none=True)
+    plan["advanced_settings"] = export_advanced_settings(config.conf)
+    data = json.dumps(plan, ensure_ascii=False, indent=2).encode("utf-8")
+    attachments = []
+    context["plan"] = {"file": "plan.json", "bytes": len(data)}
+    if len(data) <= MAX_PLAN_BYTES:
+        path = output / "plan.json"
+        path.write_bytes(data)
+        attachments.append(path)
+        context["plan"]["status"] = "attached"
+    else:
+        context["plan"].update(
+            status="omitted", reason="排班 JSON 超过256 KiB，未附加。"
+        )
+    path = output / "context.json"
+    path.write_text(json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8")
+    return [path, *attachments], context, generated
+
+
+def _log_coverage(attachments):
+    manifest = next(
+        (Path(path) for path in attachments if Path(path).name == "evidence.json"),
+        None,
+    )
+    try:
+        evidence = json.loads(manifest.read_text(encoding="utf-8")) if manifest else {}
+    except (OSError, ValueError):
+        evidence = {}
+    archive = evidence.get("log_archive") or {}
+    if not archive:
+        return "未提供压缩日志的实际覆盖信息，请查看 evidence.json 和已附日志。"
+    first, last = archive.get("first_time"), archive.get("last_time")
+    if not archive.get("file"):
+        summary = "压缩日志未附加，无法提供其实际覆盖范围；请查看已附文字摘要。"
+    elif first and last:
+        summary = (
+            f"压缩日志中实际记录首尾：{escape(str(first))} 至 {escape(str(last))}，"
+            f"共 {escape(str(archive.get('record_count', 0)))} 条。"
+        )
+    else:
+        summary = "压缩日志中没有可附加的记录。"
+    if archive.get("truncated"):
+        summary += "日志达到附件字节上限，部分内容已省略。"
+    if not archive.get("scan_complete", True):
+        summary += "日志来源未全部读取，原因及省略说明见 evidence.json。"
+    if archive.get("unreadable_files"):
+        summary += "部分日志文件读取失败。"
+    if archive.get("archive_source_limited"):
+        summary += "包含异常归档中的日志片段，归档来源本身可能已有截断。"
+    return summary + "实际记录不代表整个区间内每个时刻都有日志。"
 
 
 def submit_issue(
@@ -38,13 +121,30 @@ def submit_issue(
                     Path(temporary),
                     screenshot_times,
                 )
-                count = len(attachments) - 2
+                count = sum(
+                    Path(path).suffix.lower() in {".jpg", ".jpeg", ".png"}
+                    for path in attachments
+                )
+                coverage = _log_coverage(attachments)
+                context_files, context, generated = _feedback_context(
+                    start, end, Path(temporary)
+                )
+                attachments = [*attachments, *context_files]
+                interval = context["requested_interval"]
+                plan_note = context["plan"].get(
+                    "reason", "附带当前保存的排班 plan.json。"
+                )
                 body = (
-                    f"<p>Bug 发生时间区间:{start}--{end}</p><p>{body}</p>"
-                    f"<p>附带 {count} 张关键截图，筛选依据及省略说明见 evidence.json。"
-                    "完整记录可从日志调度导出。</p>"
+                    f"<p>所选问题时间区间：{escape(interval['start'])} 至 "
+                    f"{escape(interval['end'])}</p><p>{body}</p>"
+                    f"<p>{coverage}</p><p>附带 {count} 张关键截图，"
+                    "截图按时间关联，未判断画面内容；筛选依据及省略说明见 evidence.json。</p>"
+                    f"<p>{plan_note}{context['configuration_note']}"
+                    "版本、平台与时区信息见 context.json。</p>"
                 )
             email = Email(body, "Mower " + issue_type, None, attach_files=attachments)
+            if issue_type == "Bug":
+                email.msg["Date"] = format_datetime(generated)
             if len(email.msg.as_bytes()) > MAX_MAIL_BYTES:
                 return (
                     "反馈邮件超过8 MiB，尚未发送。请缩小问题时间范围或精简描述后重试。"
@@ -72,6 +172,9 @@ submit_issue_tool_def = {
             "已从日志或用户描述确定关键时刻时，用 screenshot_times 指定至多4个本地时间；不得编造时间。"
             "不传时按不同错误、警告首次有可用截图的时间自动筛选；传空列表表示不附截图。"
             "截图来自日志调度，按时间关联而非画面内容判断；重复或超过单张512 KiB的截图会省略，总计不超过2 MiB。"
+            "Bug 自动附带版本、平台、Python与带UTC偏移的时间信息，以及当前保存的主副排班和白名单高级设置；"
+            "配置属于反馈生成时刻，不是故障发生时的历史快照。排班JSON超过256 KiB时省略并说明。"
+            "正文披露所选区间、压缩日志实际记录首尾及截断情况，实际记录不保证连续覆盖所有时刻。"
             "邮件编码后上限8 MiB；没有相关截图仍可附日志发送，按实际结果说明。"
             "功能建议不要求时间范围。按工具实际返回说明成功或失败，不把缺日志或发送失败说成已上报。"
         ),

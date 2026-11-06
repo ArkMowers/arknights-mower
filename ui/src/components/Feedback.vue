@@ -147,6 +147,10 @@ function copy_descrioption() {
         <n-text depth="3"
           >此处提交通过已配置邮箱发送给开发组；反馈表可单独查阅，填写需相应编辑权限。</n-text
         >
+        <n-text v-if="showTimeFields" depth="3">
+          Bug 邮件会附所选区间日志、关键截图、版本与平台信息。<br />
+          同时附当前主副表及排班高级设置；这些配置不是故障时的历史快照。
+        </n-text>
       </n-space>
       <n-form-item path="acknowledged1" class="checkbox-wrapper">
         <n-checkbox v-model:checked="feedbackData.acknowledged1">
