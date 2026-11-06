@@ -372,23 +372,26 @@ def test_training_without_roster_retains_existing_compatibility(roster_path, pay
 
 
 @pytest.mark.parametrize(
-    "name,cid,phase,level,warning",
+    "name,cid,phase,level,facility,warning",
     [
-        ("巡林者", "char_503_rang", 0, 29, "精0 30级"),
-        ("巡林者", "char_503_rang", 0, 30, None),
-        ("芬", "char_123_fang", 0, 55, "精1 1级"),
-        ("芬", "char_123_fang", 1, 1, None),
-        ("能天使", "char_103_angel", 1, 80, "精2 1级"),
-        ("能天使", "char_103_angel", 2, 1, None),
-        ("孑", "char_272_strong", 0, 1, None),
+        ("夜刀", "char_502_nblade", 0, 29, "制造站", "精0 30级"),
+        ("夜刀", "char_502_nblade", 0, 30, "制造站", None),
+        ("芬", "char_123_fang", 0, 1, "制造站", None),
+        ("能天使", "char_103_angel", 0, 1, "制造站", None),
+        ("芬", "char_123_fang", 0, 55, "贸易站", "精1 1级"),
+        ("芬", "char_123_fang", 1, 1, "贸易站", None),
+        ("能天使", "char_103_angel", 1, 80, "贸易站", "精2 1级"),
+        ("能天使", "char_103_angel", 2, 1, "贸易站", None),
+        ("孑", "char_272_strong", 0, 1, "贸易站", None),
     ],
 )
 def test_building_skills_use_catalog_unlock_thresholds(
-    roster_path, name, cid, phase, level, warning, bundled_mastery_skills
+    roster_path, name, cid, phase, level, facility, warning, bundled_mastery_skills
 ):
     plan = {
         "default_plan": Plan(
-            {"central": [Room(name, "", [])]}, PlanConfig("", "", "", workaholic=name)
+            {"room_1_1": [Room(name, "", [], facility)]},
+            PlanConfig("", "", "", workaholic=name),
         ),
         "backup_plans": [],
     }
@@ -498,3 +501,148 @@ def test_unavailable_skill_catalog_remains_advisory(roster_path, monkeypatch):
     result = Operators(plan).validate_backup_plans(refresh_roster=False)
     assert result["success"]
     assert "更新资源包" in result["warnings"][0]
+
+
+@pytest.mark.parametrize("source", ["main", "backup", "replacement", "binding", "task"])
+@pytest.mark.parametrize("facility,expected", [("制造站", False), ("贸易站", True)])
+def test_only_assigned_facility_skills_warn_for_every_roster_source(
+    roster_path, bundled_mastery_skills, source, facility, expected
+):
+    conf = PlanConfig("", "", "")
+    main = Plan({"room_1_1": [Room("Current", "", [], facility)]}, conf)
+    backup = Plan({}, conf)
+    slot = Room("芬", "", [], facility)
+    if source == "main":
+        main.plan["room_1_1"] = [slot]
+    elif source == "backup":
+        # Backup facility metadata may be omitted and inherited from the main plan.
+        slot.facility = ""
+        backup.plan["room_1_1"] = [slot]
+    elif source == "replacement":
+        main.plan["room_1_1"][0].replacement = ["芬"]
+    elif source == "binding":
+        main.plan["room_1_1"][0].group_bindings = [
+            {"group": "甲", "replacement": ["芬"]}
+        ]
+    else:
+        backup.task = {"room_1_1": ["芬"]}
+    plan = {"default_plan": main, "backup_plans": [backup]}
+    roster_path.write_text(
+        json.dumps(
+            {
+                "data": {
+                    "characters": [
+                        {"id": "char_123_fang", "evolvePhase": 0, "level": 1}
+                    ]
+                }
+            }
+        )
+    )
+    warning = schedule_roster.validate_owned_operators(plan, refresh=False)
+    if expected:
+        assert "进驻设施（贸易站）" in warning
+        assert "精1 1级" in warning
+    else:
+        assert warning is None
+
+
+@pytest.mark.parametrize(
+    "room,name,cid,phase,level",
+    [
+        ("contact", "巡林者", "char_503_rang", 0, 1),
+        ("central", "阿米娅", "char_002_amiya", 0, 1),
+        ("factory", "九色鹿", "char_4019_ncdeer", 0, 1),
+        ("train", "艾丽妮", "char_4009_irene", 0, 1),
+    ],
+)
+def test_unrelated_workshop_training_and_dorm_skills_do_not_warn(
+    roster_path, bundled_mastery_skills, monkeypatch, room, name, cid, phase, level
+):
+    refresh = MagicMock(
+        side_effect=AssertionError("unrelated skill triggered a refresh")
+    )
+    monkeypatch.setattr(schedule_roster, "_refresh_roster", refresh)
+    plan = {
+        "default_plan": Plan({room: [Room(name, "", [])]}, PlanConfig("", "", "")),
+        "backup_plans": [],
+    }
+    roster_path.write_text(
+        json.dumps(
+            {
+                "data": {
+                    "characters": [{"id": cid, "evolvePhase": phase, "level": level}]
+                }
+            }
+        )
+    )
+    assert schedule_roster.validate_owned_operators(plan) is None
+    refresh.assert_not_called()
+
+
+def test_operator_with_multiple_assignments_reports_only_the_locked_facility(
+    roster_path, bundled_mastery_skills
+):
+    plan = {
+        "default_plan": Plan(
+            {
+                "room_1_1": [Room("芬", "", [], "制造站")],
+            },
+            PlanConfig("", "", ""),
+        ),
+        "backup_plans": [Plan({}, PlanConfig("", "", ""), task={"room_1_2": ["芬"]})],
+    }
+    plan["default_plan"].plan["room_1_2"] = [Room("Current", "", [], "贸易站")]
+    roster_path.write_text(
+        json.dumps(
+            {
+                "data": {
+                    "characters": [
+                        {"id": "char_123_fang", "evolvePhase": 0, "level": 1}
+                    ]
+                }
+            }
+        )
+    )
+    warning = schedule_roster.validate_owned_operators(plan, refresh=False)
+    assert "进驻设施（贸易站）" in warning
+    assert "制造站" not in warning
+
+
+def test_explicit_dorm_assignment_checks_dorm_skills(
+    roster_path, bundled_mastery_skills
+):
+    plan = {
+        "default_plan": Plan(
+            {"dormitory_3": [Room("阿米娅", "", [])]}, PlanConfig("", "", "")
+        ),
+        "backup_plans": [],
+    }
+    roster_path.write_text(
+        json.dumps(
+            {
+                "data": {
+                    "characters": [
+                        {"id": "char_002_amiya", "evolvePhase": 0, "level": 1}
+                    ]
+                }
+            }
+        )
+    )
+    warning = schedule_roster.validate_owned_operators(plan, refresh=False)
+    assert "进驻设施（宿舍）" in warning
+    assert "精2 1级" in warning
+
+
+@pytest.mark.parametrize(
+    "room,name,cid",
+    [("factory", "九色鹿", "char_4019_ncdeer"), ("train", "艾丽妮", "char_4009_irene")],
+)
+def test_excluded_facilities_do_not_request_growth_data(
+    roster_path, bundled_mastery_skills, room, name, cid
+):
+    plan = {
+        "default_plan": Plan({room: [Room(name, "", [])]}, PlanConfig("", "", "")),
+        "backup_plans": [],
+    }
+    roster_path.write_text(json.dumps({"data": {"characters": [{"id": cid}]}}))
+    assert schedule_roster.validate_owned_operators(plan, refresh=False) is None
