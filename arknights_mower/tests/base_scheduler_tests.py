@@ -348,6 +348,32 @@ class TestMoodInitialization(unittest.TestCase):
         warning.assert_called_once()
         self.assertIn("允许启动", warning.call_args.args[0])
 
+    def test_roster_warnings_reach_ui_without_logging_or_stopping(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = None
+        warnings = ["未持有干员；训练位条件不足，可能会导致 Mower 无法正常运行"]
+        scheduler.op_data.validate_backup_plans.return_value = {
+            "success": True,
+            "status": "passed",
+            "warnings": warnings,
+        }
+        scheduler.run.side_effect = base_schedule.MowerExit
+        self.initialize.return_value = scheduler
+        with (
+            patch.object(self.main.log_stream, "broadcast") as broadcast,
+            patch.object(self.main.logger, "warning") as warning,
+            patch.object(self.main.logger, "error") as error,
+            patch.object(base_schedule, "send_message") as send_message,
+        ):
+            self.main.simulate(None)
+        scheduler.run.assert_called_once_with()
+        broadcast.assert_called_once_with(
+            {"type": "plan_warnings", "warnings": warnings}
+        )
+        warning.assert_not_called()
+        error.assert_not_called()
+        send_message.assert_not_called()
+
     def test_failed_and_legacy_failed_validation_block_scheduler(self):
         for status in ("failed", None):
             with self.subTest(status=status):

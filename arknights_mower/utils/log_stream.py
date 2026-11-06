@@ -80,3 +80,6 @@ class LogStream:
                 ws.close()
             except (ConnectionClosed, OSError):
                 pass
+
+
+log_stream = LogStream()

@@ -6,6 +6,7 @@ import axios from 'axios'
 
 export const useMowerStore = defineStore('mower', () => {
   const log_lines = ref([])
+  const plan_warnings = ref([])
 
   const log = computed(() => {
     return log_lines.value.join('\n')
@@ -70,6 +71,8 @@ export const useMowerStore = defineStore('mower', () => {
       const data = JSON.parse(event.data)
       if (data.type === 'log') {
         log_lines.value = log_lines.value.concat(data.data.split('\n')).slice(-100) // 追加日志
+      } else if (data.type === 'plan_warnings') {
+        plan_warnings.value = data.warnings
       } else if (data.type === 'resource_updated') {
         // 资源包在别处被更新（安装/共享资源/手动上传）时，让标题栏的资源版本实时刷新
         import('@/stores/resourceVersion')
@@ -203,6 +206,7 @@ export const useMowerStore = defineStore('mower', () => {
     log,
     log_mobile,
     log_lines,
+    plan_warnings,
     ws,
     running,
     status,

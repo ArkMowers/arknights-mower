@@ -45,6 +45,26 @@ function setup(rescue) {
 }
 
 describe('manual schedule validation', () => {
+  it.each([true, false])(
+    'shows persistent warnings alongside the validation result (success=%s)',
+    async (success) => {
+      const { validate, message } = setup(false)
+      axios.post.mockResolvedValueOnce({ data: {} }).mockResolvedValueOnce({
+        data: {
+          success,
+          message: '校验结果',
+          warnings: ['未持有干员，可能会导致 Mower 无法正常运行']
+        }
+      })
+      await validate()
+      expect(message.warning).toHaveBeenCalledWith('未持有干员，可能会导致 Mower 无法正常运行', {
+        duration: 0,
+        closable: true
+      })
+      expect(success ? message.success : message.error).toHaveBeenCalledWith('校验结果')
+    }
+  )
+
   it('waits for edits made while the validation save is already in flight', async () => {
     const { validate, message, loaded } = setup(false)
     let finishSave

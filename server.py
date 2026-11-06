@@ -47,7 +47,7 @@ from arknights_mower.utils.diagnostics import (
 )
 from arknights_mower.utils.lifecycle import shutdown
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.log_stream import LogStream
+from arknights_mower.utils.log_stream import log_stream
 from arknights_mower.utils.maa_check import (
     MAA_CHECK_TIMEOUT,
     maa_check_command,
@@ -109,7 +109,6 @@ if token := config.conf.webview.token:
 mower_thread = None
 chat_active_requests = 0
 configuration_test_active_requests = 0
-log_stream = LogStream()
 scheduled_start_lock = RLock()
 scheduled_start_timer = None
 scheduled_start_at = None

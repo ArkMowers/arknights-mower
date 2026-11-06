@@ -462,6 +462,9 @@ async function validate_plan() {
         headers: { token: token }
       }
     )
+    for (const warning of data.warnings || []) {
+      message.warning(warning, { duration: 0, closable: true })
+    }
     if (data.status === 'incomplete') {
       message.warning(data.message, { duration: 10000 })
     } else if (data.success) {

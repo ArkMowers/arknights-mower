@@ -208,8 +208,8 @@ def test_ownership_validation_includes_additional_bindings(
     if owned_extra:
         assert result is None
     else:
-        assert result.startswith("森空岛中未持有以下排班干员：黑角")
-        assert "获取干员后" in result
+        assert result.startswith("森空岛缓存中未持有以下排班干员：黑角")
+        assert "请确认已持有" in result
         assert "「养成规划」页面手动点击「刷新」" in result
     assert refresh.call_count == (0 if owned_extra else 1)
 

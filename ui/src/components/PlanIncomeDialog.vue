@@ -1,4 +1,5 @@
 <script setup>
+import { useMessage } from 'naive-ui'
 import { computed, inject, nextTick, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   defaultIncomeSettings,
@@ -30,6 +31,7 @@ import {
   MOWER_RAW_MATERIALS
 } from '@/riic/vendor/domain/simulationInventory'
 
+const message = useMessage()
 const props = defineProps({ snapshot: Object, preparing: Boolean, prepareError: String })
 const emit = defineEmits(['close'])
 const preferences = loadIncomePreferences()
@@ -391,6 +393,9 @@ async function start() {
     )
     validating.value = false
     if (!alive) return
+    for (const warning of validation.warnings || []) {
+      message.warning(warning, { duration: 0, closable: true })
+    }
     if (validation.success !== true)
       throw new Error(validation.message || '排班校验未通过，尚未开始演算')
     exportGeneration++

@@ -233,3 +233,17 @@ class LogStreamIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_plan_warnings_are_live_only_without_replay():
+    stream = LogStream()
+    current = stream.subscribe()
+    current.messages.get_nowait()
+    payload = {"type": "plan_warnings", "warnings": ["未持有干员"]}
+    stream.broadcast(payload)
+    assert json.loads(current.messages.get_nowait()) == payload
+    later = stream.subscribe()
+    assert json.loads(later.messages.get_nowait()) == {"type": "log", "data": ""}
+    assert later.messages.empty()
+    stream.unsubscribe(current)
+    stream.unsubscribe(later)

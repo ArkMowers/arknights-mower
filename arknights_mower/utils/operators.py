@@ -3523,6 +3523,7 @@ class Operators:
         )
         from arknights_mower.utils.schedule_roster import validate_owned_operators
 
+        warnings = []
         if error := validate_backup_facilities(
             self.global_plan["default_plan"],
             self.backup_plans,
@@ -3532,20 +3533,26 @@ class Operators:
                 False,
             ),
         ):
-            return {"success": False, "status": "failed", "message": error}
+            return {
+                "warnings": warnings,
+                "success": False,
+                "status": "failed",
+                "message": error,
+            }
         if check_owned:
-            error = (
+            warning = (
                 validate_owned_operators(self.global_plan)
                 if refresh_roster
                 else validate_owned_operators(self.global_plan, refresh=False)
             )
-            if error:
-                return {"success": False, "status": "failed", "message": error}
+            if warning:
+                warnings.append(warning + "\n上述情况可能会导致 Mower 无法正常运行。")
 
         baseline = Operators(self.global_plan, runtime_conf=self.runtime_conf)
         validated = {baseline._schedule_validation_key()}
         if error := baseline.init_and_validate():
             return {
+                "warnings": warnings,
                 "success": False,
                 "status": "failed",
                 "message": f"基础验证失败：{error}",
@@ -3593,10 +3600,16 @@ class Operators:
                         else f"基础验证失败：{error}"
                     )
                     logger.info(message)
-                    return {"success": False, "status": "failed", "message": message}
+                    return {
+                        "warnings": warnings,
+                        "success": False,
+                        "status": "failed",
+                        "message": message,
+                    }
                 check_validation_deadline(deadline)
         except BackupValidationLimitExceeded as error:
             return {
+                "warnings": warnings,
                 "success": False,
                 "status": "incomplete",
                 "reason": str(error),
@@ -3604,11 +3617,13 @@ class Operators:
             }
         if backup_count == 0:
             return {
+                "warnings": warnings,
                 "success": True,
                 "status": "passed",
                 "message": "没有备用计划，基础验证通过",
             }
         return {
+            "warnings": warnings,
             "success": True,
             "status": "passed",
             "message": f"验证成功，共验证 {tested_count} 次",

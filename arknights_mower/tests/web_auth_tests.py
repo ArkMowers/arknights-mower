@@ -333,3 +333,40 @@ def test_development_preflight_requires_an_authenticated_local_session(
     assert response.status_code == 403
     access.assert_not_called()
     generation.assert_not_called()
+
+
+@pytest.mark.parametrize("token", [None, "another-instance", "current-instance"])
+@pytest.mark.parametrize("snapshot", [False, True])
+def test_plan_validation_roster_warnings_keep_token_boundary(
+    monkeypatch, token, snapshot
+):
+    import server
+    from arknights_mower.utils import schedule_roster
+    from arknights_mower.utils.plan import Plan, PlanConfig, Room
+
+    monkeypatch.setattr(server.app, "token", "current-instance", raising=False)
+    roster_check = Mock(return_value="未持有干员")
+    monkeypatch.setattr(schedule_roster, "validate_owned_operators", roster_check)
+    global_plan = {
+        "default_plan": Plan(
+            {"central": [Room("能天使", "", [])]},
+            PlanConfig("", "", "", workaholic="能天使"),
+        ),
+        "backup_plans": [],
+    }
+    build = Mock(return_value=global_plan)
+    monkeypatch.setattr(server, "build_global_plan", build)
+    headers = {"token": token} if token else {}
+    body = {"plan": {"plan1": {}}, "operatorMode": "cache"} if snapshot else {}
+    response = server.app.test_client().post(
+        "/validate-plan", json=body, headers=headers
+    )
+    if token == "current-instance":
+        assert response.status_code == 200
+        assert response.json["success"]
+        assert "未持有干员" in response.json["warnings"][0]
+        roster_check.assert_called_once()
+    else:
+        assert response.status_code == 403
+        build.assert_not_called()
+        roster_check.assert_not_called()
