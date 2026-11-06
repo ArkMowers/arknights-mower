@@ -967,13 +967,25 @@ class Recognizer:
                 pos_list = color[res]
                 if not isinstance(pos_list[0], tuple):
                     pos_list = [color[res]]
+                if res == "hypergryph":
+                    # 登录页厂商标识可能有像素级位置差异；先匹配原位置，再搜索邻域。
+                    x, y = pos_list[0]
+                    frame_h, frame_w = self.img.shape[:2]
+                    pos_list += [
+                        (x + dx, y + dy)
+                        for dy in range(-2, 3)
+                        for dx in range(-2, 3)
+                        if (dx or dy)
+                        and 0 <= x + dx <= frame_w - w
+                        and 0 <= y + dy <= frame_h - h
+                    ]
                 for pos in pos_list:
                     scope = pos, va(pos, (w, h))
                     img = cropimg(self.img, scope)
                     if cmatch(img, res_img, draw=draw):
                         gray = cropimg(self.gray, scope)
-                        res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
-                        ssim = vision_np.ssim(gray, res_img)
+                        gray_res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
+                        ssim = vision_np.ssim(gray, gray_res_img)
                         threshold = 0.9
                         if res in template_matching_score:
                             threshold = template_matching_score[res]
