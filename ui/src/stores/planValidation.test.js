@@ -61,7 +61,10 @@ describe('manual schedule validation', () => {
         duration: 0,
         closable: true
       })
-      expect(success ? message.success : message.error).toHaveBeenCalledWith('校验结果')
+      expect(success ? message.success : message.error).toHaveBeenCalledWith('校验结果', {
+        duration: 0,
+        closable: true
+      })
     }
   )
 
@@ -97,7 +100,7 @@ describe('manual schedule validation', () => {
     finishLatestSave({ data: {} })
     await validation
     expect(axios.post.mock.lastCall[0]).toBe(`${import.meta.env.VITE_HTTP_URL}/validate-plan`)
-    expect(message.success).toHaveBeenCalledWith('验证通过')
+    expect(message.success).toHaveBeenCalledWith('验证通过', { duration: 0, closable: true })
   })
 
   it.each([false, true])(
@@ -133,7 +136,7 @@ describe('manual schedule validation', () => {
         {},
         { headers: { token: 'fixture-token' } }
       ])
-      expect(message.success).toHaveBeenCalledWith('验证通过')
+      expect(message.success).toHaveBeenCalledWith('验证通过', { duration: 0, closable: true })
     }
   )
 
@@ -145,13 +148,16 @@ describe('manual schedule validation', () => {
 
     expect(axios.post).toHaveBeenCalledTimes(1)
     expect(axios.post.mock.calls[0][0]).toBe(`${import.meta.env.VITE_HTTP_URL}/plan`)
-    expect(message.error).toHaveBeenCalledWith('验证失败: 保存失败')
+    expect(message.error).toHaveBeenCalledWith('验证失败: 保存失败', {
+      duration: 0,
+      closable: true
+    })
     expect(message.success).not.toHaveBeenCalled()
     expect(validating_plan.value).toBe(false)
 
     axios.post.mockResolvedValue({ data: { success: true, message: '验证通过' } })
     await validate()
-    expect(message.success).toHaveBeenCalledWith('验证通过')
+    expect(message.success).toHaveBeenCalledWith('验证通过', { duration: 0, closable: true })
   })
 
   it.each([false, true])(
@@ -198,12 +204,35 @@ describe('manual schedule validation', () => {
     axios.post.mockResolvedValueOnce({ data: {} }).mockRejectedValueOnce(new Error('请求失败'))
 
     await validate()
-    expect(message.error).toHaveBeenCalledWith('验证失败: 请求失败')
+    expect(message.error).toHaveBeenCalledWith('验证失败: 请求失败', {
+      duration: 0,
+      closable: true
+    })
     expect(validating_plan.value).toBe(false)
 
     axios.post.mockResolvedValue({ data: { success: true, message: '验证通过' } })
     await validate()
     expect(axios.post).toHaveBeenCalledTimes(4)
-    expect(message.success).toHaveBeenCalledWith('验证通过')
+    expect(message.success).toHaveBeenCalledWith('验证通过', { duration: 0, closable: true })
   })
 })
+
+it.each([
+  [false, { success: true, status: 'passed' }, 'success'],
+  [true, { success: true, status: 'passed' }, 'success'],
+  [false, { success: false, status: 'failed' }, 'error'],
+  [true, { success: false, status: 'failed' }, 'error'],
+  [false, { success: false, status: 'incomplete' }, 'warning'],
+  [true, { success: true, status: 'incomplete' }, 'warning']
+])(
+  'keeps every editor validation banner until closed (rescue=%s, result=%j)',
+  async (rescue, result, type) => {
+    const { validate, message } = setup(rescue)
+    axios.post.mockResolvedValueOnce({ data: {} }).mockResolvedValueOnce({
+      data: { ...result, message: '排班校验结果', warnings: ['练度不足'] }
+    })
+    await validate()
+    expect(message.warning).toHaveBeenCalledWith('练度不足', { duration: 0, closable: true })
+    expect(message[type]).toHaveBeenCalledWith('排班校验结果', { duration: 0, closable: true })
+  }
+)

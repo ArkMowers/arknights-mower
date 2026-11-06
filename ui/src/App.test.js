@@ -315,7 +315,6 @@ describe('desktop page startup', () => {
       ws: null,
       running: false,
       log_lines: ['existing log'],
-      plan_warnings: [],
       auto_start_handled: false,
       desktop_startup_handled: false,
       updates_enabled: true,

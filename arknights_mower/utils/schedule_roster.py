@@ -244,3 +244,12 @@ def validate_owned_operators(global_plan, *, refresh=True) -> str | None:
             return None
         warnings = warnings_from(characters)
     return "\n".join(warnings) if warnings else None
+
+
+def collect_roster_warnings(global_plan, *, refresh=True):
+    warning = (
+        validate_owned_operators(global_plan)
+        if refresh
+        else validate_owned_operators(global_plan, refresh=False)
+    )
+    return [warning + "\n上述情况可能会导致 Mower 无法正常运行。"] if warning else []

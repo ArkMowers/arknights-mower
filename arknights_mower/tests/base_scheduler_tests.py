@@ -348,7 +348,7 @@ class TestMoodInitialization(unittest.TestCase):
         warning.assert_called_once()
         self.assertIn("允许启动", warning.call_args.args[0])
 
-    def test_roster_warnings_reach_ui_without_logging_or_stopping(self):
+    def test_roster_warnings_do_not_open_ui_log_notify_or_stop(self):
         scheduler = MagicMock()
         scheduler.initialize_operators.return_value = None
         warnings = ["未持有干员；训练位条件不足，可能会导致 Mower 无法正常运行"]
@@ -360,16 +360,14 @@ class TestMoodInitialization(unittest.TestCase):
         scheduler.run.side_effect = base_schedule.MowerExit
         self.initialize.return_value = scheduler
         with (
-            patch.object(self.main.log_stream, "broadcast") as broadcast,
+            patch("arknights_mower.utils.log_stream.LogStream.broadcast") as broadcast,
             patch.object(self.main.logger, "warning") as warning,
             patch.object(self.main.logger, "error") as error,
             patch.object(base_schedule, "send_message") as send_message,
         ):
             self.main.simulate(None)
         scheduler.run.assert_called_once_with()
-        broadcast.assert_called_once_with(
-            {"type": "plan_warnings", "warnings": warnings}
-        )
+        broadcast.assert_not_called()
         warning.assert_not_called()
         error.assert_not_called()
         send_message.assert_not_called()

@@ -59,7 +59,6 @@
       :container-style="windowShellActive ? { top: '48px' } : undefined"
     >
       <n-message-provider>
-        <PlanWarnings />
         <n-modal
           v-model:show="closeModal"
           preset="card"
@@ -277,7 +276,6 @@
 
 <script setup>
 import { storeToRefs } from 'pinia'
-import PlanWarnings from '@/components/PlanWarnings.vue'
 import {
   computed,
   defineAsyncComponent,

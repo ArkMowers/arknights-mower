@@ -19,7 +19,6 @@ from arknights_mower.utils.device.application import (
 from arknights_mower.utils.device.recovery import wait_for_recovery
 from arknights_mower.utils.device.touch_backend import TouchFailure
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.log_stream import log_stream
 from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
@@ -721,8 +720,6 @@ def simulate(saved):
         logger.error(validation_msg)
         return
     validation_msg = base_scheduler.op_data.validate_backup_plans(max_seconds=5)
-    if warnings := validation_msg.get("warnings"):
-        log_stream.broadcast({"type": "plan_warnings", "warnings": warnings})
     if validation_msg.get("status") == "incomplete":
         logger.warning(f"排班校验未完成: {validation_msg['message']}")
     elif not validation_msg["success"]:

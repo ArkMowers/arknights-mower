@@ -47,7 +47,7 @@ from arknights_mower.utils.diagnostics import (
 )
 from arknights_mower.utils.lifecycle import shutdown
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.log_stream import log_stream
+from arknights_mower.utils.log_stream import LogStream
 from arknights_mower.utils.maa_check import (
     MAA_CHECK_TIMEOUT,
     maa_check_command,
@@ -109,6 +109,7 @@ if token := config.conf.webview.token:
 mower_thread = None
 chat_active_requests = 0
 configuration_test_active_requests = 0
+log_stream = LogStream()
 scheduled_start_lock = RLock()
 scheduled_start_timer = None
 scheduled_start_at = None
@@ -1673,23 +1674,29 @@ def validate_rescue_plan_route():
         effective_rescue_plan,
         validate_rescue_schedule,
     )
+    from arknights_mower.utils.schedule_roster import collect_roster_warnings
 
+    warnings = []
     try:
+        warnings = collect_roster_warnings(
+            build_global_plan(plan_model=config.rescue_plan)
+        )
         data = Operators(build_global_plan())
         error = data.init_and_validate()
         if error:
-            return {"success": False, "message": str(error)}
+            return {"success": False, "message": str(error), "warnings": warnings}
         validate_rescue_schedule(data, config.rescue_plan)
         if data.backup_plans or config.rescue_plan.backup_plans:
             return {
                 "success": True,
+                "warnings": warnings,
                 "status": "incomplete",
                 "message": "救急表自身校验通过；排班含副表条件，设施类型、等级及产物仍需在初始化实测后按双方生效排班核验。",
             }
         effective_rescue_plan(data, config.rescue_plan)
     except (ValueError, TypeError) as exc:
-        return {"success": False, "message": str(exc)}
-    return {"success": True, "message": "救急排班验证通过"}
+        return {"success": False, "message": str(exc), "warnings": warnings}
+    return {"success": True, "message": "救急排班验证通过", "warnings": warnings}
 
 
 @app.route("/plan/restore-running", methods=["POST"])

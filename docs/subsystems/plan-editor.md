@@ -1,5 +1,7 @@
 # Scheduling Plan Editor
 
+The normal and rescue editors share the existing 验证排班 result banners. Ownership and progression findings, success, structural errors, incomplete validation and request failures all require clicking the close button and never expire automatically. Startup and runtime checks do not open these banners. [Schedule Roster Warnings](base-scheduler.md#schedule-roster-warnings) owns the advisory roster checks and their display boundary.
+
 ## 1. Facility Display
 
 `PlanEditor` displays office, training and recycling cards in the local `right_side_room_order`. Dragging any of these cards onto another swaps their positions. The default order is office, training, recycling; the legacy office/training switch migrates to the equivalent three-room order. Main, backup and rescue editors share this setting and retain their facility identities and assignments. The running-plan edit lock also prevents dragging. Recycling provides two operator rows.

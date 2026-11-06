@@ -3521,7 +3521,7 @@ class Operators:
             possible_backup_conditions,
             validate_backup_facilities,
         )
-        from arknights_mower.utils.schedule_roster import validate_owned_operators
+        from arknights_mower.utils.schedule_roster import collect_roster_warnings
 
         warnings = []
         if error := validate_backup_facilities(
@@ -3540,13 +3540,7 @@ class Operators:
                 "message": error,
             }
         if check_owned:
-            warning = (
-                validate_owned_operators(self.global_plan)
-                if refresh_roster
-                else validate_owned_operators(self.global_plan, refresh=False)
-            )
-            if warning:
-                warnings.append(warning + "\n上述情况可能会导致 Mower 无法正常运行。")
+            warnings = collect_roster_warnings(self.global_plan, refresh=refresh_roster)
 
         baseline = Operators(self.global_plan, runtime_conf=self.runtime_conf)
         validated = {baseline._schedule_validation_key()}

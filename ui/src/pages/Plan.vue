@@ -451,6 +451,7 @@ const validating_plan = ref(false)
 async function validate_plan() {
   if (validating_plan.value) return
   validating_plan.value = true
+  const feedback = { duration: 0, closable: true }
   try {
     await nextTick()
     await plan_store.save_plan()
@@ -463,17 +464,17 @@ async function validate_plan() {
       }
     )
     for (const warning of data.warnings || []) {
-      message.warning(warning, { duration: 0, closable: true })
+      message.warning(warning, feedback)
     }
     if (data.status === 'incomplete') {
-      message.warning(data.message, { duration: 10000 })
+      message.warning(data.message, feedback)
     } else if (data.success) {
-      message.success(data.message)
+      message.success(data.message, feedback)
     } else {
-      message.error(data.message)
+      message.error(data.message, feedback)
     }
   } catch (error) {
-    message.error('验证失败: ' + error.message)
+    message.error('验证失败: ' + error.message, feedback)
   } finally {
     validating_plan.value = false
   }

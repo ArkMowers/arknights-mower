@@ -442,20 +442,6 @@ describe('worker status', () => {
 })
 
 describe('log WebSocket access', () => {
-  it('delivers startup warnings without adding a log entry', () => {
-    vi.stubGlobal('window', { location: { search: '' } })
-    vi.stubGlobal('location', { origin: 'http://127.0.0.1:58000' })
-    setActivePinia(createPinia())
-    const store = useMowerStore()
-    store.listen_ws()
-    store.ws.onmessage({
-      data: JSON.stringify({ type: 'plan_warnings', warnings: ['未持有干员'] })
-    })
-    expect(store.plan_warnings).toEqual(['未持有干员'])
-    expect(store.log_lines).toEqual([])
-    store.$dispose()
-  })
-
   it('appends log text when a message carries obsolete screenshot metadata', () => {
     vi.stubGlobal('window', { location: { search: '' } })
     vi.stubGlobal('location', { origin: 'http://127.0.0.1:58000' })
