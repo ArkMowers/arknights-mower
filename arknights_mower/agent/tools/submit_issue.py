@@ -12,6 +12,7 @@ from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 from arknights_mower import __version__
+from arknights_mower.agent.tools.feedback_records import collect_feedback_records
 from arknights_mower.agent.tools.issue_evidence import (
     MAX_LOG_UNCOMPRESSED_BYTES,
     MAX_MAIL_BYTES,
@@ -108,6 +109,7 @@ def _package_evidence(attachments, output, start, end, description):
             f"日志：{archive.get('record_count', 0)} 条\n截图：{count} 张\n"
             f"包含截图：{'是' if count else '否'}\n"
             "排班表为导出时当前保存的配置，不代表日志发生时的排班。\n"
+            "任务及干员历史按所选区间只读导出，结果与不可用原因见 evidence.json。\n"
             "日志及截图的实际范围与省略原因见 evidence.json；日志摘要不代替区间日志。\n",
         )
     return destination
@@ -179,6 +181,22 @@ def _log_coverage(attachments):
     return summary + "实际记录不代表整个区间内每个时刻都有日志。"
 
 
+def _database_coverage(metadata):
+    sections = []
+    for table, label in (("log", "任务历史"), ("agent_action", "干员历史")):
+        result = metadata.get("tables", {}).get(table, {})
+        if result.get("status") in {"exported", "empty", "partial"}:
+            section = f"{label}：{result.get('row_count', 0)} 条"
+        else:
+            section = f"{label}不可用"
+        if result.get("truncated"):
+            section += "，导出不完整"
+        if result.get("missing_columns"):
+            section += "，部分旧版字段不存在"
+        sections.append(section)
+    return "；".join(sections) + "。实际范围、缺失和读取失败原因见 evidence.json。"
+
+
 def submit_issue(
     description: str,
     issue_type: str = "Bug",
@@ -205,6 +223,22 @@ def submit_issue(
                     Path(temporary),
                     screenshot_times,
                 )
+                record_files, record_info = collect_feedback_records(
+                    Path(get_path("@app/tmp/data.db")), start, end, Path(temporary)
+                )
+                manifest = Path(temporary) / "evidence.json"
+                evidence = (
+                    json.loads(manifest.read_text(encoding="utf-8"))
+                    if manifest.is_file()
+                    else {}
+                )
+                evidence["database_records"] = record_info
+                manifest.write_text(
+                    json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+                if manifest not in [Path(path) for path in attachments]:
+                    attachments.append(manifest)
+                attachments.extend(record_files)
                 count = sum(
                     Path(path).suffix.lower() in {".jpg", ".jpeg", ".png"}
                     for path in attachments
@@ -224,6 +258,7 @@ def submit_issue(
                     "截图按时间关联，未判断画面内容；筛选依据及省略说明见 evidence.json。</p>"
                     f"<p>包内附带当前排班 plan.json。{context['configuration_note']}"
                     "版本、平台与时区信息见 context.json。</p>"
+                    f"<p>{_database_coverage(record_info)}</p>"
                 )
                 attachments = [
                     _package_evidence(
@@ -253,7 +288,9 @@ submit_issue_tool_def = {
         "description": (
             "通过已配置的邮箱向开发组发送问题描述，Bug 反馈附带该时间范围内的日志和至多4张关键截图。"
             "仅在用户明确要求发送反馈时调用，单纯排查或整理描述不发送。"
-            "描述包含实际问题和期望行为，不补造用户未提供的事实。"
+            "完整保留用户报告的现象，描述按用户观察、期望行为、复现条件、已查证据及时间、AI推断、未确认事项分段。"
+            "缺失内容注明未知，不补造事实，也不因缺少可选信息反复要求确认。"
+            "任务名称、队列快照或计划创建不代表实际执行完成；缺少后续记录不代表没有执行。"
             "Bug 必须有本地起止时间，格式 YYYY-MM-DD HH:MM:SS，不是 Unix 时间戳或毫秒值。"
             "调用前核对结束时间晚于开始时间，间隔不超过15分钟；范围过长时请用户缩小。"
             "只有一个时间点时可建议后续10分钟作为范围，确认后发送；自然语言时间有歧义时确认具体日期和时区。"
@@ -263,6 +300,7 @@ submit_issue_tool_def = {
             "Bug 自动附带版本、平台、Python与带UTC偏移的时间信息，以及当前保存的主副排班和白名单高级设置；"
             "配置属于反馈生成时刻，不是故障发生时的历史快照；成功发送时必须包含当前排班表。"
             "正文披露所选区间、压缩日志实际记录首尾及截断情况，实际记录不保证连续覆盖所有时刻。"
+            "自动只读导出区间内任务日志与干员历史，保留任务、心情、位置和关联字段，读取限制与缺失写入清单；不导出全库。"
             "附件按 feedback-时间-问题简述.zip 命名，采用日志调度导出的 runtime.log、screenshots、plan.json 和 readme.txt 布局，不嵌套日志ZIP。"
             "邮件编码后上限8 MiB；没有相关截图仍可附日志发送，按实际结果说明。"
             "功能建议不要求时间范围。按工具实际返回说明成功或失败，不把缺日志或发送失败说成已上报。"
@@ -272,7 +310,7 @@ submit_issue_tool_def = {
             "properties": {
                 "description": {
                     "type": "string",
-                    "description": "用户要求发送的问题或功能建议，包含实际现象与期望行为。",
+                    "description": "用户要求发送的问题或功能建议。Bug需保留用户观察及期望，分列复现条件、已查证据及时间、AI推断和未确认事项，未知项如实说明。",
                     "default": "",
                 },
                 "issue_type": {

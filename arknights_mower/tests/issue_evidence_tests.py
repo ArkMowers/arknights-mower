@@ -1,6 +1,8 @@
 """反馈邮件的离线证据筛选与附件限制。"""
 
 import json
+import sqlite3
+from contextlib import closing
 from datetime import datetime
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -9,6 +11,9 @@ from zipfile import ZipFile
 import pytest
 
 from arknights_mower.agent.tools import issue_evidence, submit_issue
+from arknights_mower.tests import feedback_records_tests
+
+feedback_database = feedback_records_tests.database
 
 START = "2026-10-20 12:00:00"
 END = "2026-10-20 12:01:00"
@@ -93,6 +98,134 @@ def test_real_mail_selects_distinct_errors_and_deduplicates_bytes(feedback):
     assert "ERROR" in manifest["screenshots"][0]["reason"]
     assert sent[0][1] == ["354013233@qq.com", "1273725854@qq.com"]
     assert len(sent[0][0].as_bytes()) < issue_evidence.MAX_MAIL_BYTES
+
+
+def test_ai_feedback_tool_sends_database_evidence_with_original_fields(
+    feedback, feedback_database, monkeypatch
+):
+    from unittest.mock import patch
+
+    from langchain_core.messages import AIMessage
+
+    from arknights_mower.agent import agent
+
+    logs, _, sent = feedback
+    write_logs(logs, [(10, "ERROR", "换班未完成")])
+    get_path = submit_issue.get_path
+    monkeypatch.setattr(
+        submit_issue,
+        "get_path",
+        lambda name: (
+            feedback_database if name == "@app/tmp/data.db" else get_path(name)
+        ),
+    )
+    with closing(sqlite3.connect(feedback_database)) as connection, connection:
+        connection.execute(
+            "INSERT INTO log VALUES (?, ?, ?, ?)",
+            (
+                datetime.fromisoformat(START).timestamp(),
+                "待执行任务",
+                "ERROR",
+                "首行\n详情",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO agent_action (name,current_time,mood,current_room,related_operator,context_key,current_index) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                "歌蕾蒂娅",
+                "2026-10-20 12:00:10.125",
+                15.25,
+                "dormitory_1",
+                "菲亚梅塔",
+                "normal",
+                4,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO saved_state VALUES ('private', ?)", (b"private-blob",)
+        )
+    description = (
+        "用户观察：换班未完成。\n期望行为：完成进驻。\n复现条件：未知。\n"
+        "已查证据：12:00:10 的换班错误。\nAI推断：原因未定位。\n未确认事项：替班是否可用。"
+    )
+    call = {
+        "name": "submit_issue",
+        "args": {"description": description, "start_time": START, "end_time": END},
+        "id": "bug-evidence",
+    }
+    with patch.object(agent, "build_llm") as build:
+        build.return_value.invoke.side_effect = [
+            AIMessage(content="", tool_calls=[call]),
+            AIMessage(content="反馈已发送"),
+        ]
+        result = agent._run_manual_tool_loop(
+            agent._build_messages("请反馈换班问题"), "offline-key"
+        )
+    assert result[-1] == "反馈已发送"
+    attachments = parts(sent)
+    tasks = [
+        json.loads(line) for line in attachments["task_history.jsonl"].splitlines()
+    ]
+    operators = [
+        json.loads(line) for line in attachments["operator_history.jsonl"].splitlines()
+    ]
+    assert tasks[0]["task"] == "待执行任务"
+    assert tasks[0]["message"] == "首行\n详情"
+    assert operators[0]["mood"] == 15.25
+    assert operators[0]["current_time"] == "2026-10-20 12:00:10.125"
+    assert operators[0]["current_room"] == "dormitory_1"
+    assert operators[0]["related_operator"] == "菲亚梅塔"
+    assert operators[0]["current_index"] == 4
+    assert operators[0]["context_key"] == "normal"
+    assert "AI推断：原因未定位" in attachments["readme.txt"].decode()
+    assert all(b"private-blob" not in data for data in attachments.values())
+    manifest = json.loads(attachments["evidence.json"])
+    assert manifest["database_records"]["tables"]["log"]["row_count"] == 1
+    assert manifest["database_records"]["tables"]["agent_action"]["row_count"] == 1
+
+
+def test_missing_database_is_disclosed_without_creating_it(
+    feedback, tmp_path, monkeypatch
+):
+    logs, _, sent = feedback
+    write_logs(logs, [(10, "ERROR", "可用的运行日志")])
+    database = tmp_path / "missing" / "data.db"
+    get_path = submit_issue.get_path
+    monkeypatch.setattr(
+        submit_issue,
+        "get_path",
+        lambda name: database if name == "@app/tmp/data.db" else get_path(name),
+    )
+    assert submit() == "邮件发送成功！"
+    attachments = parts(sent)
+    assert "task_history.jsonl" not in attachments
+    assert "operator_history.jsonl" not in attachments
+    assert "runtime.log" in attachments
+    metadata = json.loads(attachments["evidence.json"])["database_records"]
+    assert all(
+        row["reason"] == "missing_database" for row in metadata["tables"].values()
+    )
+    assert not database.exists() and not database.parent.exists()
+
+
+def test_automatic_screenshot_keeps_early_error_outside_tail_preview(feedback):
+    logs, images, sent = feedback
+    image(images, 10, b"earliest relevant error")
+    write_logs(
+        logs,
+        [
+            (10, "ERROR", "最初进房失败"),
+            *[(20, "DEBUG", f"后续帧{index}") for index in range(1200)],
+        ],
+    )
+    assert submit() == "邮件发送成功！"
+    attachments = parts(sent)
+    metadata = json.loads(attachments["evidence.json"])
+    selected = metadata["screenshots"][0]
+    assert attachments[selected["file"]] == b"earliest relevant error"
+    assert selected["anchor_time"] == "2026-10-20 12:00:10"
+    assert "最初进房失败" not in attachments["runtime.txt"].decode()
 
 
 def test_bug_sends_one_zip_matching_log_export_layout(feedback):
@@ -533,6 +666,7 @@ def test_feature_feedback_does_not_collect_logs(feedback, monkeypatch):
         raise AssertionError("功能建议不读取日志")
 
     monkeypatch.setattr(submit_issue, "collect_evidence", forbidden)
+    monkeypatch.setattr(submit_issue, "collect_feedback_records", forbidden)
     assert submit(issue_type="Feature") == "邮件发送成功！"
     assert parts(sent) == {}
 

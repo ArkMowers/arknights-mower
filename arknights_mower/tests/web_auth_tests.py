@@ -65,6 +65,7 @@ def protected_server(monkeypatch):
         ("GET", "/instances", "json"),
         ("HEAD", "/instances", "json"),
         ("POST", "/instances/actions", "json"),
+        ("POST", "/submit_feedback", "json"),
         ("GET", "/resource-version", "json"),
         ("HEAD", "/resource-version", "json"),
         ("GET", "/resource-version?local=1", "json"),
@@ -88,6 +89,32 @@ def test_missing_and_invalid_tokens_precede_parsing_and_instance_access(
     response = client.open(path, method=method, headers=headers, **arguments)
     assert response.status_code == 403
     forbidden.assert_not_called()
+
+
+def test_current_token_reaches_feedback_without_real_collection_or_mail(monkeypatch):
+    import server
+    from arknights_mower.agent.tools import submit_issue
+    from arknights_mower.utils import config_profiles
+
+    monkeypatch.setattr(server.app, "token", "current-instance", raising=False)
+    monkeypatch.setattr(config_profiles, "check_generation", lambda generation: None)
+    submit = Mock(return_value="邮件发送成功！")
+    monkeypatch.setattr(submit_issue, "submit_issue", submit)
+    response = server.app.test_client().post(
+        "/submit_feedback",
+        headers={"token": "current-instance"},
+        json={
+            "description": "反馈原始现象和期望",
+            "type": "Bug",
+            "startTime": "2026-10-20 12:00:00",
+            "endTime": "2026-10-20 12:15:00",
+        },
+    )
+    assert response.status_code == 200
+    assert response.get_data(as_text=True) == "邮件发送成功！"
+    submit.assert_called_once_with(
+        "反馈原始现象和期望", "Bug", "2026-10-20 12:00:00", "2026-10-20 12:15:00"
+    )
 
 
 @pytest.mark.parametrize("local_only", [False, True])

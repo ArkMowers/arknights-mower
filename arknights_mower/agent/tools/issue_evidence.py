@@ -18,10 +18,24 @@ MAX_LOG_ROWS = 1000
 MAX_EXCERPT_BYTES = 256 * 1024
 MAX_LOG_ARCHIVE_BYTES = 3 * 1024**2
 MAX_LOG_UNCOMPRESSED_BYTES = 64 * 1024**2
+MAX_SCREENSHOT_ANCHORS = 256
 _LOG_START = re.compile(rb"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 
 
-def _write_log_archive(log_folder, start, end, output, archived):
+def _error_anchor(when, message):
+    match = re.match(
+        r"^.{19}(?:,\d+)? \S+ (CRITICAL|ERROR|WARNING)(?: (.*))?$", message, re.S
+    )
+    if match is None:
+        return None
+    signature = (
+        match[1],
+        re.sub(r"\d+", "N", (match[2] or "").partition("\n")[0][:500]),
+    )
+    return when, message[:500], signature
+
+
+def _write_log_archive(log_folder, start, end, output, archived, anchors=None):
     """按原始顺序流式保存区间日志，单次读取与附件总量均有上限。"""
     path = output / "runtime.zip"
     metadata = {
@@ -44,6 +58,7 @@ def _write_log_archive(log_folder, start, end, output, archived):
     }
     # 为最后一个压缩块和 ZIP 目录保留空间；每次最多写入 64 KiB。
     threshold = MAX_LOG_ARCHIVE_BYTES - 128 * 1024
+    anchor_counts = {}
     with ZipFile(path, "w", compression=ZIP_DEFLATED) as bundle:
         with bundle.open("runtime.txt", "w") as destination:
 
@@ -69,6 +84,20 @@ def _write_log_archive(log_folder, start, end, output, archived):
                     metadata["record_count"] += 1
                     metadata["first_time"] = min(metadata["first_time"] or stamp, stamp)
                     metadata["last_time"] = max(metadata["last_time"] or stamp, stamp)
+                    if anchors is not None and len(anchors) < MAX_SCREENSHOT_ANCHORS:
+                        anchor = _error_anchor(
+                            when, data[:4096].decode("utf-8", errors="replace")
+                        )
+                        if anchor:
+                            signature = anchor[2]
+                            if (
+                                signature in anchor_counts
+                                or len(anchor_counts) < MAX_SCREENSHOT_ANCHORS // 2
+                            ) and anchor_counts.get(signature, 0) < 2:
+                                anchors.append(anchor)
+                                anchor_counts[signature] = (
+                                    anchor_counts.get(signature, 0) + 1
+                                )
                 return True
 
             for source in _log_files(log_folder, start, end):
@@ -213,28 +242,26 @@ def collect_evidence(
     rows = rows[-MAX_LOG_ROWS:]
     if not rows:
         raise ValueError("未找到对应时间的日志记录，无法上报。")
+    archive_anchors = []
     log_archive, archive_info = _write_log_archive(
-        log_folder, start, end, output, archived
+        log_folder, start, end, output, archived, anchors=archive_anchors
     )
     # 优先保留不同错误首次可读取的画面，再考虑警告。
     errors, warnings = [], []
     for row in rows:
-        match = re.match(
-            r"^.{19}(?:,\d+)? \S+ (CRITICAL|ERROR|WARNING)(?: (.*))?$",
-            row["message"],
-            re.S,
-        )
-        if match is None:
+        anchor = _error_anchor(datetime.fromisoformat(row["time"]), row["message"])
+        if anchor is None:
             continue
-        signature = (match[1], re.sub(r"\d+", "N", (match[2] or "").partition("\n")[0]))
-        target = warnings if match[1] == "WARNING" else errors
-        target.append(
-            (datetime.fromisoformat(row["time"]), row["message"][:500], signature)
-        )
+        target = warnings if anchor[2][0] == "WARNING" else errors
+        target.append(anchor)
+    automatic_anchors = sorted(
+        [*archive_anchors, *errors, *warnings],
+        key=lambda anchor: (anchor[2][0] == "WARNING", anchor[0]),
+    )
     anchors = (
         [(when, reason, str(when)) for when, reason in requested]
         if screenshot_times is not None
-        else errors + warnings
+        else automatic_anchors
     )
     stamps = [stamp for stamp, _ in images]
     candidates = []

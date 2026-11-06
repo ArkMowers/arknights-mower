@@ -171,6 +171,11 @@ class AIPromptContractTests(unittest.TestCase):
                 "collect_evidence",
                 side_effect=collect,
             ),
+            patch.object(
+                submit_issue,
+                "collect_feedback_records",
+                return_value=([], {"tables": {}}),
+            ),
             patch.object(submit_issue, "Email") as email,
         ):
             result = submit_issue.submit_issue("实际无法启动，期望正常启动", **values)

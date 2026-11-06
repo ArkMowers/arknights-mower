@@ -18,7 +18,7 @@ END = "2026-10-20 12:15:00"
 
 
 @pytest.fixture
-def feedback_context(monkeypatch):
+def feedback_context(monkeypatch, tmp_path):
     conf = Conf()
     conf.account = "private-account@example.test"
     conf.pass_code = "private-smtp-password"
@@ -35,6 +35,9 @@ def feedback_context(monkeypatch):
     monkeypatch.setattr(submit_issue, "revision_info", lambda: "abcdef0123456789")
     monkeypatch.setenv("PRIVATE_FEEDBACK_TEST", "private-environment-secret")
     monkeypatch.setenv("MOWER_ANDROID", "1")
+    monkeypatch.setattr(
+        submit_issue, "get_path", lambda name: tmp_path / name.removeprefix("@app/")
+    )
     sent = []
     monkeypatch.setattr(
         submit_issue.Email, "send", lambda email, recipients: sent.append(email.msg)
