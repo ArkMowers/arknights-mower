@@ -245,7 +245,7 @@ def test_training_slot_warns_for_unselectable_operators(
     assert result["success"]
     assert result["status"] == "passed"
     message = "\n".join(result["warnings"])
-    assert "可能会导致 Mower 无法正常运行" in message
+    assert "上述情况可能会导致 Mower 无法正常运行。" not in message
     assert "训练位" in message
     assert "能天使" in message
     assert reason in message
@@ -408,7 +408,7 @@ def test_building_skills_use_catalog_unlock_thresholds(
     assert result["success"], result
     if warning:
         assert warning in result["warnings"][0]
-        assert "可能会导致 Mower 无法正常运行" in result["warnings"][0]
+        assert "上述情况可能会导致 Mower 无法正常运行。" not in result["warnings"][0]
     else:
         assert result["warnings"] == []
 

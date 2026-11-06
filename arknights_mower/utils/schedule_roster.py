@@ -300,4 +300,4 @@ def collect_roster_warnings(global_plan, *, refresh=True):
         if refresh
         else validate_owned_operators(global_plan, refresh=False)
     )
-    return [warning + "\n上述情况可能会导致 Mower 无法正常运行。"] if warning else []
+    return [warning] if warning else []
