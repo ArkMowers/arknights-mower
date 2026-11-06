@@ -11,13 +11,14 @@ from arknights_mower.tests.automatic_rescue_tests import offline as offline
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
 from arknights_mower.tests.run_order_restoration_tests import prepare_order
+from arknights_mower.utils import resting_priority
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskScope,
     TaskTypes,
-    blocked_run_order_ids,
     task_view,
+    try_add_release_dorm,
 )
 
 DORM = "dormitory_1"
@@ -28,7 +29,6 @@ TRADE = "room_1_1"
 def orders(solver, monkeypatch):
     first, _ = prepare_order(solver, monkeypatch)
     data = solver.op_data
-    data.plan[TRADE][0].replacement.append("但书")
     for name in ("龙舌兰", "红", "空爆"):
         data.add(Operator(name, "", mood=10, time_stamp=NOW))
     dorm_row = ["冰酿", "闪灵", "但书", "龙舌兰", COVERS[2]]
@@ -60,15 +60,8 @@ def orders(solver, monkeypatch):
     return solver, first, second, events
 
 
-@pytest.mark.parametrize("shared", [False, True])
-@pytest.mark.parametrize("mood", [5, 21])
-def test_consecutive_orders_replace_each_dorm_occupant_before_insertion(
-    orders, shared, mood
-):
+def test_consecutive_orders_replace_each_dorm_occupant_before_insertion(orders):
     solver, first, second, events = orders
-    solver.op_data.operators["但书"].mood = mood
-    if shared:
-        second.plan["room_1_2"] = ["但书"]
     original_times = first.time, second.time
 
     solver.agent_arrange(first.plan)
@@ -81,24 +74,16 @@ def test_consecutive_orders_replace_each_dorm_occupant_before_insertion(
     ]
     assert first.plan == {}
     assert all(solver.op_data.get_current_room(DORM, True))
-    assert events[4] == (DORM, ["冰酿", "闪灵", "但书", "龙舌兰", COVERS[2]])
-    assert solver.op_data.operators["但书"].current_room == DORM
     solver.tasks.remove(first)
     solver.task = second
 
     solver.agent_arrange(second.plan)
 
-    assert events[5:] == [
-        (
-            DORM,
-            ["冰酿", "闪灵", "空爆", "龙舌兰", COVERS[2]]
-            if shared
-            else ["冰酿", "闪灵", "但书", "空爆", COVERS[2]],
-        ),
-        ("room_1_2", ["但书" if shared else "龙舌兰"]),
+    assert events[4:] == [
+        (DORM, ["冰酿", "闪灵", "红", "空爆", COVERS[2]]),
+        ("room_1_2", ["龙舌兰"]),
         ("order", []),
         ("room_1_2", [PRIMARY[1]]),
-        (DORM, ["冰酿", "闪灵", "但书", "龙舌兰", COVERS[2]]),
     ]
     assert all(solver.op_data.get_current_room(DORM, True))
     assert (first.time, second.time) == original_times
@@ -107,46 +92,65 @@ def test_consecutive_orders_replace_each_dorm_occupant_before_insertion(
     assert not hasattr(second, "run_order_original_roster")
 
 
-@pytest.mark.parametrize("source", ["release", "keep", "missing"])
-def test_dorm_return_requires_its_working_source_to_be_released(orders, source):
-    solver, first, _, _ = orders
-    solver.op_data = solver.op_data.project_arrangements([{TRADE: ["但书", COVERS[1]]}])
-    first.run_order_original_roster = {
-        DORM: ["Current"] * 2 + ["但书"] + ["Current"] * 2
-    }
-    first.run_order_restore_pending = True
-    first.prepare_run_order_restoration()
-    if source != "missing":
-        first.plan[TRADE] = [COVERS[0] if source == "release" else "Current", "Current"]
-    assert (id(first) in blocked_run_order_ids(solver.tasks, solver.op_data)) == (
-        source != "release"
+@pytest.mark.parametrize(
+    "upper,mood,resident_mood,allowed",
+    [
+        (24, 21, 10, False),
+        (24, 19.3, 10, False),
+        (24, 19.2, 10, True),
+        (24, 5, 10, True),
+        (12, 9.7, 10, False),
+        (12, 9.6, 10, True),
+        (24, 21, 24, True),
+        (24, 21, None, True),
+    ],
+)
+def test_completed_order_keeps_normal_replacement_takeover_threshold(
+    orders, monkeypatch, upper, mood, resident_mood, allowed
+):
+    solver, first, _, events = orders
+    solver.op_data.plan[TRADE][0].replacement.append("但书")
+
+    solver.agent_arrange(first.plan)
+
+    assert len(events) == 4
+    assert solver.op_data.get_current_room(DORM, True)[2] == "红"
+    assert solver.op_data.operators["但书"].current_room == ""
+    data = solver.op_data
+    if resident_mood is None:
+        row = data.get_current_room(DORM, True)
+        row[2] = ""
+        data = data.project_arrangements([{DORM: row}])
+    else:
+        data.operators["红"].mood = resident_mood
+        data.operators["红"].time_stamp = NOW
+        data.operators["红"].mood_is_prediction = False
+    data._projection_now = NOW
+    operator = data.operators["但书"]
+    operator.upper_limit, operator.mood, operator.time_stamp = upper, mood, NOW
+    operator.mood_is_prediction = False
+    monkeypatch.setattr(resting_priority, "agent_list", list(data.operators))
+    future = SchedulerTask(
+        time=NOW + timedelta(hours=1),
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={TRADE: ["但书", "Current"]},
+        meta_data=TRADE,
+    )
+    tasks = [future]
+    try_add_release_dorm(
+        {},
+        None,
+        data,
+        tasks,
+        reserved_slots={bed.position for bed in data.dorm if bed.position != (DORM, 2)},
     )
 
-
-def test_failed_dorm_return_restores_original_bed_without_repeating_order(orders):
-    solver, first, _, events = orders
-    choose = solver.choose_agent.side_effect
-
-    def fail_return(row, room, **kwargs):
-        if room == DORM and "但书" in row:
-            raise base_schedule.AgentSelectionNotReady("归床确认失败")
-        return choose(row, room, **kwargs)
-
-    solver.choose_agent.side_effect = fail_return
-    with pytest.raises(base_schedule.AgentSelectionNotReady):
-        solver.agent_arrange(first.plan)
-    assert first.run_order_restore_pending
-    assert solver.op_data.get_current_room(DORM, True)[2] == "红"
-    restored = pickle.loads(pickle.dumps(first))
-    solver.task, solver.tasks[0] = restored, restored
-    solver.choose_agent.side_effect = choose
-
-    solver.agent_arrange(restored.plan)
-
-    assert solver.op_data.get_current_room(DORM, True)[2] == "但书"
-    assert sum(room == "order" for room, _ in events) == 1
-    assert restored.plan == {}
-    assert not getattr(restored, "run_order_restore_pending", False)
+    assert any("但书" in task.plan.get(DORM, ()) for task in tasks) == allowed
+    assert data.get_current_room(DORM, True)[2] == (
+        "" if resident_mood is None else "红"
+    )
+    assert operator.current_room == ""
+    assert not hasattr(first, "run_order_dorm_original")
 
 
 def test_dorm_preparation_failure_preserves_order_and_resumes_after_restart(orders):

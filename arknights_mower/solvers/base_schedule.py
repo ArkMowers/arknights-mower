@@ -3538,16 +3538,7 @@ class BaseSchedulerSolver(
                     self.backup_plan_solver()
             except RunOrderMissed as e:
                 # 漏单结束本次插拔；新订单使用正常读单流程，不保留失效时间。
-                dorm_original = getattr(self.task, "run_order_dorm_original", {})
-                if dorm_original:
-                    self.task.run_order_original_roster = copy.deepcopy(dorm_original)
-                    self.task.run_order_restore_pending = True
-                    self.task.prepare_run_order_restoration()
-                    self.task.execution_retained = True
-                else:
-                    self.tasks[:] = [
-                        task for task in self.tasks if task is not self.task
-                    ]
+                self.tasks[:] = [task for task in self.tasks if task is not self.task]
                 self._queue_order_refresh(e.room)
                 self.skip()
                 self.back_to_infrastructure()
@@ -16455,11 +16446,6 @@ class BaseSchedulerSolver(
                             self.task.run_order_original_roster = copy.deepcopy(
                                 new_plan
                             )
-                            self.task.run_order_original_roster.update(
-                                copy.deepcopy(
-                                    getattr(self.task, "run_order_dorm_original", {})
-                                )
-                            )
                             self.task.run_order_restore_pending = True
                         selection_attempted = True
                         if recovery_ordered:
@@ -16838,14 +16824,6 @@ class BaseSchedulerSolver(
                     index for index, name in enumerate(actual) if name in targets
                 )
                 task.run_order_dorm_slots = pending
-                originals = getattr(task, "run_order_dorm_original", {})
-                for index, name in enumerate(actual):
-                    if name in targets:
-                        originals.setdefault(room, ["Current"] * len(actual))[index] = (
-                            name
-                        )
-                if originals:
-                    task.run_order_dorm_original = originals
                 departing = [
                     index
                     for index in slots
@@ -16871,7 +16849,6 @@ class BaseSchedulerSolver(
                 ):
                     raise AgentSelectionNotReady("跑单前未确认宿舍床位已由其他干员补齐")
                 pending.pop(room)
-                task.execution_retained = True
             except (
                 MowerExit,
                 DeviceRecoveryError,
@@ -17153,7 +17130,6 @@ class BaseSchedulerSolver(
         if restoring_order:
             del self.task.run_order_original_roster
             del self.task.run_order_restore_pending
-            self.task.__dict__.pop("run_order_dorm_original", None)
             finish_run_order_network(self.task, getattr(self, "recog", None))
             if getattr(self.task, "maintenance_replacement_run", False):
                 self.maintenance_entry_pending = True
@@ -17243,9 +17219,6 @@ class BaseSchedulerSolver(
                     self.task, "emergency_original_roster"
                 ):
                     new_plan = copy.deepcopy(self.task.emergency_original_roster)
-                new_plan.update(
-                    copy.deepcopy(getattr(self.task, "run_order_dorm_original", {}))
-                )
                 if config.conf.run_order_buffer_time > 0 and (
                     not self._emergency_frozen()
                     or self._emergency_compensation_available(new_plan)
@@ -17253,17 +17226,9 @@ class BaseSchedulerSolver(
                     restoring_order = getattr(
                         self.task, "run_order_restore_pending", False
                     )
-                    if len(new_plan) > 1:
-                        self.task.run_order_original_roster = copy.deepcopy(new_plan)
-                        self.task.run_order_restore_pending = True
-                        self.task.prepare_run_order_restoration()
-                        restored = self.agent_arrange(self.task.plan, get_time=get_time)
-                        if getattr(self.task, "run_order_restore_pending", False):
-                            return False
-                    else:
-                        restored = self.agent_arrange_room(
-                            {}, run_order_room, new_plan, skip_enter=True
-                        )
+                    restored = self.agent_arrange_room(
+                        {}, run_order_room, new_plan, skip_enter=True
+                    )
                     if getattr(self.task, "run_order_restore_pending", False):
                         if restored is False or restored is None:
                             return self._retain_run_order_restoration(

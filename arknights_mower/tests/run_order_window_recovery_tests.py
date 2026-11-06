@@ -76,26 +76,6 @@ def test_pre_swap_miss_retires_stale_order_and_plans_next_order(window, remainin
     assert not getattr(next_order, "execution_failure", None)
 
 
-def test_missed_order_keeps_prepared_dormitory_return(window):
-    solver, _, order = window
-    order.run_order_dorm_original = {
-        "dormitory_1": ["Current", "Current", "但书", "Current", "Current"]
-    }
-    order.execution_retained = True
-    original_time = order.time
-    solver.get_order_remaining_time.return_value = 0
-
-    solver.infra_main()
-
-    assert order in solver.tasks and order.time == original_time
-    assert order.run_order_restore_pending
-    assert order.plan == order.run_order_dorm_original
-    assert order.meta_data == ""
-    assert solver.op_data.get_current_room(ROOM, True) == ["鸿雪"]
-    solver.choose_agent.assert_not_called()
-    solver.accept_order.assert_not_called()
-
-
 @pytest.mark.parametrize("remaining", [0, -1, 60, 900])
 def test_post_swap_miss_notifies_and_restores_without_completed_order_evidence(
     window, remaining

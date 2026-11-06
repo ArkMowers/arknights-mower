@@ -753,13 +753,6 @@ def blocked_run_order_ids(tasks, op_data=None):
                 (op := op_data.operators.get(name)) is not None
                 and op.is_working()
                 and op.current_room != room
-                and not (
-                    room.startswith("dorm")
-                    and 0
-                    <= op.current_index
-                    < len(source := task.plan.get(op.current_room, ()))
-                    and source[op.current_index] not in ("Current", name)
-                )
                 for room, row in task.run_order_original_roster.items()
                 for name in row
                 if name not in ("", "Free", "Current")
