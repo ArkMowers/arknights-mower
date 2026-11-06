@@ -1,6 +1,6 @@
 # Scheduling Plan Editor
 
-The normal and rescue editors share the existing 验证排班 result banners. Ownership and progression findings, success, structural errors, incomplete validation and request failures all require clicking the close button and never expire automatically. Startup and runtime checks do not open these banners. [Schedule Roster Warnings](base-scheduler.md#schedule-roster-warnings) owns the advisory roster checks and their display boundary.
+The normal and rescue editors share the existing 验证排班 result banners. Success banners close automatically after three seconds and can also be closed manually. Ownership and progression findings, structural errors, incomplete validation and request failures require clicking the close button and never expire automatically. Startup and runtime checks do not open these banners. [Schedule Roster Warnings](base-scheduler.md#schedule-roster-warnings) owns the advisory roster checks and their display boundary.
 
 ## 1. Facility Display
 
@@ -148,6 +148,8 @@ With calculated mood enabled, current threshold checks, backup mood conditions, 
 The exported `test_mood_calculation` setting retains its saved name and the “实时心情计算调控” label. Native scheduling uses it to select the [calculated mood source](base-scheduler.md#calculated-mood-test). The income simulator calculates mood with the shared skill formulas in both modes and follows [ordinary threshold rules](base-scheduler.md#predictive-mood-control), including personal limits, complete replacement matching, recovery requirements and existing support rules. It does not enumerate future continuity candidates or choose an earlier ordinary departure to avoid a later gap. Calculated mood still supplies normal threshold and recovery deadlines and mood-dependent backup conditions. [`mowerAdvancedSettings.ts`](../../ui/src/riic/vendor/scheduler/mowerAdvancedSettings.ts) retains the compatibility mapping, and [`mowerOrdinaryPlanning.ts`](../../ui/src/riic/vendor/scheduler/mowerOrdinaryPlanning.ts) owns ordinary planning.
 
 The policy version identifies the compiler, in-memory planning cache and successful report provenance. New calculations use the ordinary-threshold policy version. Saved historical results remain available with their recorded policy; older reports without this field are identified as having no saved policy information. Shared formulas and equal final income do not establish real-device feasibility.
+
+Ordinary contention follows the [runtime task failure rules](base-scheduler.md#211-runtime-task-failure). A blocked ordinary departure creates no empty exhaustion task. A complete feasible handoff creates a concrete support arrangement and, after confirmation, its requesting group's departure; confirmed recall reservations pass to that departure. Support previews keep their bed allocations isolated from the current planning pass. The supplied shared-group plan in [`income-shared-ordinary-contention.json`](../../ui/src/riic/fixtures/income-shared-ordinary-contention.json) has a focused regression in [`incomeOrdinaryContention.test.js`](../../ui/src/riic/incomeOrdinaryContention.test.js), using three warmup days and four measured days by default, or twenty-eight measured days with `MOWER_INCOME_LONG_TEST=1`.
 
 ### Replacement coordination in income simulation
 
