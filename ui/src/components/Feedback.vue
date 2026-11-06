@@ -149,7 +149,8 @@ function copy_descrioption() {
         >
         <n-text v-if="showTimeFields" depth="3">
           Bug 邮件会附一个 ZIP，包含所选区间日志、关键截图、版本与平台信息。<br />
-          同时附任务与干员历史、当前主副表及排班高级设置；当前配置不是故障时的历史快照。
+          同时附任务与干员历史、当前主副表、排班高级设置及专精状态，并按日志位置尝试附带相关代码片段。
+          当前配置和代码不代表故障时的历史状态；缺失和截断情况会写入附件清单。
         </n-text>
       </n-space>
       <n-form-item path="acknowledged1" class="checkbox-wrapper">

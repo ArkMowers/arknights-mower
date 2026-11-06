@@ -151,7 +151,16 @@ def test_ai_feedback_tool_sends_database_evidence_with_original_fields(
     )
     call = {
         "name": "submit_issue",
-        "args": {"description": description, "start_time": START, "end_time": END},
+        "args": {
+            "description": description,
+            "start_time": START,
+            "end_time": END,
+            "analysis": {
+                "status": "unknown",
+                "claims": [],
+                "unknowns": ["替班是否可用尚未确认。"],
+            },
+        },
         "id": "bug-evidence",
     }
     with patch.object(agent, "build_llm") as build:
