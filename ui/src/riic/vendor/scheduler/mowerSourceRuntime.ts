@@ -742,7 +742,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      task.plan=planMowerPreferredReplacementRestore(data,reservations.reservedNames,reservations.reservedSlots)
      if(!Object.keys(task.plan).length){queue.consume(task);delete source.activeTask;continue}
     }
-    if(!running&&task.fiaReturnTarget){
+    if(!running&&task.type===T.SHIFT_ON&&task.fiaReturnTarget){
      prepareMowerFiaReturn(data,task)
      if(task.timeMicros>data.nowMicros){queue.sort();delete source.activeTask;continue}
     }

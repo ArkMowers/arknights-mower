@@ -61,6 +61,7 @@ export function queueMowerFiaReturn(data:MowerSchedulingData,queue:MowerTaskQueu
 
 /** Explicit full recovery and a latched group wait remain binding on a charging return. */
 export function prepareMowerFiaReturn(data:MowerSchedulingData,task:MowerTask):void {
+ if(task.type!==T.SHIFT_ON)return
  const op=task.fiaReturnTarget?data.operators[task.fiaReturnTarget]:undefined
  if(!op||task.arrangementStarted||task.fiaReturnMicros===undefined)return
  const recovery=op.group?mowerGroupRecoveryDeadline(data,op.group):{requiredNames:op.restInFull?[op.name]:[],timeMicros:undefined}

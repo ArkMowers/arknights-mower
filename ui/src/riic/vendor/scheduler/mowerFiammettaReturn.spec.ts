@@ -21,6 +21,16 @@ function fixture(){
 }
 
 describe('Fiammetta return after confirmed charge and restoration',()=>{
+ it.each([false,true])('does not apply return recovery to charging or restoration, confirmed=%s',confirmed=>{
+  const {data,charge}=fixture();charge.fiaChargeConfirmed=confirmed
+  data.operators.A!.restInFull=true
+  const original=charge.timeMicros
+  prepareMowerFiaReturn(data,charge)
+  expect(charge.timeMicros).toBe(original)
+  data.dorms[0]!.timeMicros=undefined
+  expect(()=>prepareMowerFiaReturn(data,charge)).not.toThrow()
+  expect(charge.timeMicros).toBe(original)
+ })
  it('carries the request through restoration and keeps one independent group return across rebuilds',()=>{
   const {data,queue,charge}=fixture()
   executeMowerTaskArrangement(charge,queue,{

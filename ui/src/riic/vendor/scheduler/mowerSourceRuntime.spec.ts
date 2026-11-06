@@ -657,7 +657,7 @@ it('keeps unread calculated dorm mood unknown through the shared resting helpers
 
 
 describe('confirmed charging group return in source dispatch',()=>{
- it.each([true,false])('returns the group after charging its low-priority member, existing batch=%s',existing=>{
+ it.each([true,false].flatMap(existing=>['none','target','member'].map(full=>({existing,full}))))('charges before recovery-gated return, existing batch=$existing, full=$full',({existing,full})=>{
   const config=fixture(),fia='char_300_phenxi';config.mowerAlpha=true
   config.positions=config.positions.filter(p=>p.id!=='dormitory_1_3')
   config.positions[0]!.group='G';config.positions[1]!.primary=fia
@@ -669,6 +669,7 @@ describe('confirmed charging group return in source dispatch',()=>{
   config.mowerPolicy={...config.mowerPolicy!,opeRestingPriority:['A'],groupRestInFullOnMoodGap:false}
   config.fiammetta={operatorId:fia,orderedTargets:['B'],fool:false,threshold:21.6}
   config.initialMorale={A:12,B:12,R:24,S:24,[fia]:24}
+  config.mowerSourceRules!.restInFull=full==='none'?[]:[full==='target'?'B':'A']
   const state=createRosterRuntime(config),source=getMowerSourceRuntime(state);source.initial=false;source.firstInit=false;source.initialStaffingPending=false
   state.morale[fia]=24;Object.assign(source.data.operators[fia]!,{mood:24,timeStampMicros:0})
   Object.assign(state.occupants,{room_1_1_0:'R',room_1_2_0:'S',dormitory_1_3:'A',dormitory_1_4:'B'})
@@ -679,7 +680,16 @@ describe('confirmed charging group return in source dispatch',()=>{
   settleRoster(state,rates)
   for(let i=0;i<8;i++){advanceRoster(state,1/3600,rates);settleRoster(state,rates)}
   expect(state.events.some(e=>e.type==='fiammetta'&&e.operators[1]==='B'),JSON.stringify({morale:state.morale,trace:source.trace,queue:source.queue.tasks.map(t=>[t.type.key,t.time,t.metadata,t.executionFailure]),diagnostics:state.diagnostics})).toBe(true)
-  expect(source.trace.some(t=>t.type==='SHIFT_ON'&&t.timeMicros<toMowerMicros(1/60)&&t.plan.room_1_1?.includes('A')&&t.plan.room_1_2?.includes('B'))).toBe(true)
+  const returned=()=>source.trace.some(t=>t.type==='SHIFT_ON'&&t.plan.room_1_1?.includes('A')&&t.plan.room_1_2?.includes('B'))
+  if(full==='member'){
+   expect(returned()).toBe(false)
+   const pending=source.queue.tasks.find(t=>t.type===T.SHIFT_ON&&t.fiaReturnTarget==='B')!
+   expect(pending).toBeDefined();expect(pending.timeMicros).toBeGreaterThan(source.data.nowMicros)
+   expect(source.queue.tasks.some(t=>t.type===T.FIAMMETTA&&t.fiaReturnTarget)).toBe(false)
+  }else{
+   expect(returned()).toBe(true)
+   expect(source.trace.find(t=>t.type==='SHIFT_ON'&&t.plan.room_1_1?.includes('A')&&t.plan.room_1_2?.includes('B'))!.timeMicros).toBeLessThan(toMowerMicros(1/60))
+  }
   expect(state.diagnostics.filter(d=>d.code==='mower-task-exception')).toEqual([])
  })
 })
