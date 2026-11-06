@@ -856,7 +856,15 @@ def test_room_entry_stops_at_first_frame_after_deadline_with_slow_capture(
     monkeypatch.setattr(
         device_module, "datetime", SimpleNamespace(now=lambda: clock.now)
     )
-    monkeypatch.setattr(device_module, "time", SimpleNamespace(sleep=advance))
+    monkeypatch.setattr(
+        device_module,
+        "time",
+        SimpleNamespace(
+            sleep=advance,
+            monotonic=lambda: (clock.now - started).total_seconds(),
+            time_ns=lambda: int(clock.now.timestamp() * 1_000_000_000),
+        ),
+    )
     monkeypatch.setattr(device_module, "save_screenshot_frame", lambda *_, **__: None)
     monkeypatch.setattr(solver_module, "csleep", advance)
     monkeypatch.setattr(
