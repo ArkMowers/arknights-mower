@@ -18,6 +18,9 @@ from arknights_mower.utils.screenshot import (
 _LOG_START = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 _LINE_END = re.compile(b"\r\n|\r|\n")
 _WINDOW = timedelta(minutes=5)
+LOG_FILENAME = "runtime.log"
+SCREENSHOT_DIRECTORY = "screenshots"
+README_FILENAME = "readme.txt"
 
 
 def screenshots_between(folder: Path, start: datetime, end: datetime):
@@ -294,7 +297,7 @@ def export_bundle(
     try:
         with ZipFile(output, "w", compression=ZIP_STORED) as bundle:
             count = 0
-            log_info = ZipInfo("日志.txt")
+            log_info = ZipInfo(LOG_FILENAME)
             log_info.compress_type = (
                 ZIP_STORED if archive_id is not None else ZIP_DEFLATED
             )
@@ -316,13 +319,13 @@ def export_bundle(
             image_count = 0
             for _, (image, relative) in sorted(images.items()):
                 try:
-                    bundle.write(image, f"截图/{relative}")
+                    bundle.write(image, f"{SCREENSHOT_DIRECTORY}/{relative}")
                     image_count += 1
                 except FileNotFoundError:
                     # 清理线程可能在打包期间删除普通截图。
                     continue
             bundle.writestr(
-                "说明.txt",
+                README_FILENAME,
                 f"日志调度导出\n时间范围：{start:%Y-%m-%d %H:%M:%S} 至 "
                 f"{end:%Y-%m-%d %H:%M:%S}\n"
                 f"日志：{count} 条\n截图：{image_count} 张\n"

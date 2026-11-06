@@ -322,7 +322,7 @@ async function exportWindow() {
     })
     const date = new Date(center)
     const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`
-    downloadBundle(response.data, `日志调度-${stamp}.zip`)
+    downloadBundle(response.data, event ? `error-archive-${event.id}.zip` : `logs-${stamp}.zip`)
     showExportDialog.value = false
   } catch {
     exportError.value = '导出失败，请稍后重试'
@@ -362,6 +362,15 @@ async function exportSelected(withScreenshots = true) {
   exportError.value = ''
   let writer
   try {
+    if (targets.length === 1) {
+      const event = targets[0]
+      const response = await axios.get(
+        `${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}/export`,
+        { params: { screenshots: withScreenshots ? '1' : '0' }, responseType: 'blob' }
+      )
+      downloadBundle(response.data, `error-archive-${event.id}.zip`)
+      return
+    }
     const { BlobReader, BlobWriter, ZipWriter } = await import('@zip.js/zip.js')
     writer = new ZipWriter(new BlobWriter('application/zip'), { useWebWorkers: false })
     for (const event of targets) {
@@ -369,11 +378,11 @@ async function exportSelected(withScreenshots = true) {
         `${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}/export`,
         { params: { screenshots: withScreenshots ? '1' : '0' }, responseType: 'blob' }
       )
-      await writer.add(`异常归档-${event.id}.zip`, new BlobReader(response.data), { level: 0 })
+      await writer.add(`error-archive-${event.id}.zip`, new BlobReader(response.data), { level: 0 })
     }
     const blob = await writer.close()
     writer = null
-    downloadBundle(blob, `异常归档-选中${targets.length}条.zip`)
+    downloadBundle(blob, `error-archives-${targets.length}.zip`)
   } catch {
     exportError.value = '选中归档导出失败，未下载文件，请刷新归档后重试'
   } finally {

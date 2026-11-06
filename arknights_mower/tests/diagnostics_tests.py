@@ -161,16 +161,16 @@ class DiagnosticTimelineTests(unittest.TestCase):
                         )
                         self.assertEqual(response.status_code, 200)
                         with ZipFile(BytesIO(response.data)) as bundle:
-                            text = bundle.read("日志.txt").decode("utf-8")
+                            text = bundle.read("runtime.log").decode("utf-8")
                             self.assertIn("开始\n" + detail, text)
                             self.assertEqual(text.count("中间"), 1100)
                             self.assertIn("结束", text)
                             self.assertNotIn("范围外", text)
-                            manifest = bundle.read("说明.txt").decode("utf-8")
+                            manifest = bundle.read("readme.txt").decode("utf-8")
                             self.assertIn("08:30:00 至 2026-10-20 14:35:00", manifest)
                             self.assertIn("日志：1102 条", manifest)
                             self.assertEqual(
-                                f"截图/{image.relative_to(shots).as_posix()}"
+                                f"screenshots/{image.relative_to(shots).as_posix()}"
                                 in bundle.namelist(),
                                 screenshots == "1",
                             )
@@ -229,7 +229,7 @@ class DiagnosticTimelineTests(unittest.TestCase):
                     self.assertLess(peak, 4 * 1024**2)
                     with ZipFile(data) as bundle:
                         self.assertIn(
-                            "日志：10000 条", bundle.read("说明.txt").decode("utf-8")
+                            "日志：10000 条", bundle.read("readme.txt").decode("utf-8")
                         )
             finally:
                 tracemalloc.stop()
@@ -485,10 +485,10 @@ class DiagnosticTimelineTests(unittest.TestCase):
             self.assertEqual(end, last + timedelta(minutes=5))
             with export_bundle(logs, shots, first, archive_id) as data:
                 with ZipFile(data) as bundle:
-                    text = bundle.read("日志.txt").decode("utf-8")
+                    text = bundle.read("runtime.log").decode("utf-8")
                     self.assertIn("首次失败", text)
                     self.assertIn("再次失败", text)
-                    self.assertIn("14:12:00", bundle.read("说明.txt").decode("utf-8"))
+                    self.assertIn("14:12:00", bundle.read("readme.txt").decode("utf-8"))
 
             import server
 
@@ -669,8 +669,12 @@ class DiagnosticTimelineTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.mimetype, "application/zip")
                 self.assertEqual(response.headers["Cache-Control"], "no-store")
+                self.assertIn(
+                    f"logs-{center:%Y%m%d-%H%M%S}.zip",
+                    response.headers["Content-Disposition"],
+                )
                 with ZipFile(BytesIO(response.data)) as bundle:
-                    self.assertIn("日志.txt", bundle.namelist())
+                    self.assertIn("runtime.log", bundle.namelist())
                     self.assertNotIn("日志.json", bundle.namelist())
                 response.close()
 
@@ -759,19 +763,23 @@ class DiagnosticTimelineTests(unittest.TestCase):
                             names = bundle.namelist()
                             self.assertEqual(
                                 len(
-                                    [name for name in names if name.startswith("截图/")]
+                                    [
+                                        name
+                                        for name in names
+                                        if name.startswith("screenshots/")
+                                    ]
                                 ),
                                 2,
                             )
                             self.assertIn(
-                                f"截图/errors/{archive_id}/{int(before.timestamp() * 10**9)}.jpg",
+                                f"screenshots/errors/{archive_id}/{int(before.timestamp() * 10**9)}.jpg",
                                 names,
                             )
                             self.assertNotIn(
-                                f"截图/errors/{archive_id}/{int(outside.timestamp() * 10**9)}.jpg",
+                                f"screenshots/errors/{archive_id}/{int(outside.timestamp() * 10**9)}.jpg",
                                 names,
                             )
-                            exported_log = bundle.read("日志.txt").decode("utf-8")
+                            exported_log = bundle.read("runtime.log").decode("utf-8")
                             self.assertIn(expected_log, exported_log)
                             self.assertNotIn("窗口外", exported_log)
 
@@ -827,7 +835,7 @@ def test_export_contents_include_current_plan(
         assert response.status_code == 200
         with ZipFile(BytesIO(response.data)) as bundle:
             assert (
-                bundle.read("日志.txt").decode()
+                bundle.read("runtime.log").decode()
                 == (saved_message if archived else message) + "\n"
             )
             exported_plan = json.loads(bundle.read("plan.json"))
@@ -836,9 +844,11 @@ def test_export_contents_include_current_plan(
             assert exported_plan["backup_plans"][0]["name"] == "测试副表"
             assert exported_plan["advanced_settings"]["resting_threshold"] == 0.6
             assert "private-token" not in bundle.read("plan.json").decode()
-            images = [name for name in bundle.namelist() if name.startswith("截图/")]
+            images = [
+                name for name in bundle.namelist() if name.startswith("screenshots/")
+            ]
             assert len(images) == (0 if screenshots == "0" else (1 if archived else 2))
-            assert "当前保存" in bundle.read("说明.txt").decode()
+            assert "当前保存" in bundle.read("readme.txt").decode()
 
 
 def test_text_export_skips_screenshot_enumeration(tmp_path):
@@ -853,4 +863,4 @@ def test_text_export_skips_screenshot_enumeration(tmp_path):
             include_screenshots=False,
         ) as data:
             with ZipFile(data) as bundle:
-                assert bundle.read("日志.txt") == b""
+                assert bundle.read("runtime.log") == b""

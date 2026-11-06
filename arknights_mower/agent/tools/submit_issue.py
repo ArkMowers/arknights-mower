@@ -1,6 +1,9 @@
 import json
 import os
 import platform
+import re
+import shutil
+import unicodedata
 from datetime import datetime
 from email.utils import format_datetime
 from html import escape
@@ -10,32 +13,103 @@ from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 from arknights_mower import __version__
 from arknights_mower.agent.tools.issue_evidence import (
+    MAX_LOG_UNCOMPRESSED_BYTES,
     MAX_MAIL_BYTES,
     collect_evidence,
     parse_interval,
 )
 from arknights_mower.utils import config
 from arknights_mower.utils.config.plan_advanced import export_advanced_settings
+from arknights_mower.utils.diagnostics import (
+    LOG_FILENAME,
+    README_FILENAME,
+    SCREENSHOT_DIRECTORY,
+)
 from arknights_mower.utils.email import Email
 from arknights_mower.utils.git_rev import revision_info
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
-MAX_PLAN_BYTES = 256 * 1024
 
-
-def _package_evidence(attachments, output):
-    """将诊断文件集中为一个附件，已有压缩内容直接存入。"""
-    destination = output / "feedback.zip"
-    with ZipFile(destination, "w", compression=ZIP_DEFLATED) as bundle:
-        for attachment in attachments:
-            path = Path(attachment)
-            compression = (
-                ZIP_STORED
-                if path.suffix.lower() in {".zip", ".jpg", ".jpeg", ".png"}
-                else ZIP_DEFLATED
+def _feedback_archive_name(start, description):
+    """沿用日志调度的时间格式，用首个问题行补充可辨认的文件名。"""
+    lines = [line.strip() for line in description.splitlines() if line.strip()]
+    line = next(
+        (
+            line
+            for line in lines
+            if not re.match(
+                r"^(?:版本|Mower\s*版本|平台|时间|Bug\s*发生时间区间|version|platform)\s*[:：]",
+                line,
+                re.IGNORECASE,
             )
-            bundle.write(path, arcname=path.name, compress_type=compression)
+        ),
+        "问题反馈",
+    )
+    line = "".join(
+        " " if unicodedata.category(char).startswith("C") else char for char in line
+    )
+    summary = " ".join(re.sub(r'[<>:"/\\|?*]', " ", line).split())
+    summary = summary[:40].strip(" .") or "问题反馈"
+    return f"feedback-{start:%Y%m%d-%H%M%S}-{summary}.zip"
+
+
+def _package_evidence(attachments, output, start, end, description):
+    """按日志调度导出布局打包，区间日志直接展开到同一压缩包内。"""
+    destination = output / _feedback_archive_name(start, description)
+    files = {Path(path).name: Path(path) for path in attachments}
+    manifest = files.get("evidence.json")
+    evidence = json.loads(manifest.read_text(encoding="utf-8")) if manifest else {}
+    screenshots = {row["file"]: row for row in evidence.get("screenshots", [])}
+    with ZipFile(destination, "w", compression=ZIP_DEFLATED) as bundle:
+        for name, path in files.items():
+            if name == "evidence.json":
+                continue
+            if name == "runtime.zip":
+                with ZipFile(path) as logs:
+                    info = logs.getinfo("runtime.txt")
+                    if info.file_size > MAX_LOG_UNCOMPRESSED_BYTES:
+                        raise ValueError("区间日志超过解压大小上限，尚未发送。")
+                    with (
+                        logs.open(info) as source,
+                        bundle.open(LOG_FILENAME, "w") as target,
+                    ):
+                        shutil.copyfileobj(source, target, length=64 * 1024)
+                info = bundle.getinfo(LOG_FILENAME)
+                evidence.setdefault("log_archive", {}).update(
+                    file=LOG_FILENAME,
+                    bytes=info.compress_size,
+                    uncompressed_bytes=info.file_size,
+                )
+            elif name == "runtime.txt":
+                bundle.write(path, "runtime.txt")
+                evidence.setdefault("excerpt", {})["file"] = "runtime.txt"
+            elif path.suffix.lower() in {".jpg", ".jpeg", ".png"}:
+                row = screenshots.get(name)
+                relative = row["source"] if row else name
+                arcname = f"{SCREENSHOT_DIRECTORY}/{relative}"
+                bundle.write(path, arcname, compress_type=ZIP_STORED)
+                if row is not None:
+                    row["file"] = arcname
+            else:
+                bundle.write(path, name)
+        if manifest:
+            bundle.writestr(
+                "evidence.json", json.dumps(evidence, ensure_ascii=False, indent=2)
+            )
+        archive = evidence.get("log_archive", {})
+        count = sum(
+            path.suffix.lower() in {".jpg", ".jpeg", ".png"} for path in files.values()
+        )
+        bundle.writestr(
+            README_FILENAME,
+            f"日志调度导出\n问题：{description}\n"
+            f"时间范围：{start:%Y-%m-%d %H:%M:%S} 至 {end:%Y-%m-%d %H:%M:%S}\n"
+            f"日志：{archive.get('record_count', 0)} 条\n截图：{count} 张\n"
+            f"包含截图：{'是' if count else '否'}\n"
+            "排班表为导出时当前保存的配置，不代表日志发生时的排班。\n"
+            "日志及截图的实际范围与省略原因见 evidence.json；日志摘要不代替区间日志。\n",
+        )
     return destination
 
 
@@ -63,16 +137,10 @@ def _feedback_context(start, end, output):
     plan["advanced_settings"] = export_advanced_settings(config.conf)
     data = json.dumps(plan, ensure_ascii=False, indent=2).encode("utf-8")
     attachments = []
-    context["plan"] = {"file": "plan.json", "bytes": len(data)}
-    if len(data) <= MAX_PLAN_BYTES:
-        path = output / "plan.json"
-        path.write_bytes(data)
-        attachments.append(path)
-        context["plan"]["status"] = "attached"
-    else:
-        context["plan"].update(
-            status="omitted", reason="排班 JSON 超过256 KiB，未附加。"
-        )
+    context["plan"] = {"file": "plan.json", "bytes": len(data), "status": "attached"}
+    path = output / "plan.json"
+    path.write_bytes(data)
+    attachments.append(path)
     path = output / "context.json"
     path.write_text(json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8")
     return [path, *attachments], context, generated
@@ -147,19 +215,21 @@ def submit_issue(
                 )
                 attachments = [*attachments, *context_files]
                 interval = context["requested_interval"]
-                plan_note = context["plan"].get(
-                    "reason", "附带当前保存的排班 plan.json。"
-                )
+                filename = _feedback_archive_name(start, description)
                 body = (
                     f"<p>所选问题时间区间：{escape(interval['start'])} 至 "
                     f"{escape(interval['end'])}</p><p>{body}</p>"
-                    "<p>诊断附件统一打包为 feedback.zip，解压后查看下列文件。</p>"
+                    f"<p>诊断附件：{escape(filename)}。解压后直接查看 runtime.log、screenshots 目录和排班表。</p>"
                     f"<p>{coverage}</p><p>附带 {count} 张关键截图，"
                     "截图按时间关联，未判断画面内容；筛选依据及省略说明见 evidence.json。</p>"
-                    f"<p>{plan_note}{context['configuration_note']}"
+                    f"<p>包内附带当前排班 plan.json。{context['configuration_note']}"
                     "版本、平台与时区信息见 context.json。</p>"
                 )
-                attachments = [_package_evidence(attachments, Path(temporary))]
+                attachments = [
+                    _package_evidence(
+                        attachments, Path(temporary), start, end, description
+                    )
+                ]
             email = Email(body, "Mower " + issue_type, None, attach_files=attachments)
             if issue_type == "Bug":
                 email.msg["Date"] = format_datetime(generated)
@@ -191,9 +261,9 @@ submit_issue_tool_def = {
             "不传时按不同错误、警告首次有可用截图的时间自动筛选；传空列表表示不附截图。"
             "截图来自日志调度，按时间关联而非画面内容判断；重复或超过单张512 KiB的截图会省略，总计不超过2 MiB。"
             "Bug 自动附带版本、平台、Python与带UTC偏移的时间信息，以及当前保存的主副排班和白名单高级设置；"
-            "配置属于反馈生成时刻，不是故障发生时的历史快照。排班JSON超过256 KiB时省略并说明。"
+            "配置属于反馈生成时刻，不是故障发生时的历史快照；成功发送时必须包含当前排班表。"
             "正文披露所选区间、压缩日志实际记录首尾及截断情况，实际记录不保证连续覆盖所有时刻。"
-            "所有诊断文件统一放入一个feedback.zip附件；解压后可查看日志、截图和配置。"
+            "附件按 feedback-时间-问题简述.zip 命名，采用日志调度导出的 runtime.log、screenshots、plan.json 和 readme.txt 布局，不嵌套日志ZIP。"
             "邮件编码后上限8 MiB；没有相关截图仍可附日志发送，按实际结果说明。"
             "功能建议不要求时间范围。按工具实际返回说明成功或失败，不把缺日志或发送失败说成已上报。"
         ),

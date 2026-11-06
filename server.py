@@ -2533,7 +2533,7 @@ def _send_diagnostic_bundle(center, archive_id=None, **options):
         bundle,
         mimetype="application/zip",
         as_attachment=True,
-        download_name=f"日志调度-{center:%Y%m%d-%H%M%S}.zip",
+        download_name=f"logs-{center:%Y%m%d-%H%M%S}.zip",
         max_age=0,
     )
     response.headers["Cache-Control"] = "no-store"

@@ -44,16 +44,26 @@ def feedback_context(monkeypatch):
         files = []
         for name, data in (
             ("runtime.txt", b"excerpt"),
-            ("runtime.zip", b"archive"),
             ("screenshot-1.jpg", b"image"),
         ):
             path = output / name
             path.write_bytes(data)
             files.append(path)
+        log_archive = output / "runtime.zip"
+        with ZipFile(log_archive, "w") as archive:
+            archive.writestr("runtime.txt", "完整日志\n")
+        files.append(log_archive)
         manifest = output / "evidence.json"
         manifest.write_text(
             json.dumps(
                 {
+                    "screenshots": [
+                        {
+                            "file": "screenshot-1.jpg",
+                            "source": "20261020-12/fixture.jpg",
+                            "reason": "故障附近画面",
+                        }
+                    ],
                     "log_archive": {
                         "file": "runtime.zip",
                         "record_count": 2000,
@@ -61,7 +71,7 @@ def feedback_context(monkeypatch):
                         "last_time": "2026-10-20 12:14:59",
                         "truncated": False,
                         "scan_complete": True,
-                    }
+                    },
                 }
             ),
             encoding="utf-8",
@@ -78,8 +88,8 @@ def mail_parts(message):
         for part in message.walk()
         if part.get_filename()
     }
-    if "feedback.zip" in files:
-        with ZipFile(BytesIO(files["feedback.zip"])) as bundle:
+    if len(files) == 1 and next(iter(files)).endswith(".zip"):
+        with ZipFile(BytesIO(next(iter(files.values())))) as bundle:
             files = {name: bundle.read(name) for name in bundle.namelist()}
     body = next(
         part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8")
@@ -160,18 +170,23 @@ def test_date_and_interval_use_their_own_local_utc_offsets(
             time.tzset()
 
 
-def test_oversized_plan_is_disclosed_without_blocking_feedback(
+def test_large_plan_is_attached_completely_with_allowlisted_settings(
     feedback_context, monkeypatch
 ):
     plan = PlanModel.model_validate({"backup_plans": [{"name": "长" * 90000}]})
     monkeypatch.setattr(submit_issue.config, "plan", plan)
     assert send_bug() == "邮件发送成功！"
     files, body = mail_parts(feedback_context[0])
-    assert "plan.json" not in files
+    assert "plan.json" in files
+    attached_plan = json.loads(files["plan.json"])
+    assert attached_plan["backup_plans"][0]["name"] == "长" * 90000
+    assert attached_plan["advanced_settings"]["resting_threshold"] == 0.6
+    assert b"private-" not in files["plan.json"]
     context = json.loads(files["context.json"])
-    assert context["plan"]["status"] == "omitted"
-    assert context["plan"]["bytes"] > 256 * 1024
-    assert "超过256 KiB" in body
+    assert context["plan"]["status"] == "attached"
+    assert context["plan"]["bytes"] == len(files["plan.json"]) > 256 * 1024
+    assert "当前保存" in body
+    assert "省略" not in context["plan"].get("reason", "")
 
 
 @pytest.mark.parametrize("truncated,complete", [(True, True), (False, False)])
@@ -218,6 +233,7 @@ def test_missing_archive_and_limited_sources_are_disclosed(
     monkeypatch.setattr(submit_issue, "collect_evidence", collect)
     assert send_bug() == "邮件发送成功！"
     files, body = mail_parts(feedback_context[0])
+    assert "runtime.log" not in files
     assert "runtime.zip" not in files
     assert "压缩日志未附加" in body
     assert "部分日志文件读取失败" in body

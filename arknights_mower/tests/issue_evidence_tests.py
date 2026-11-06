@@ -3,6 +3,7 @@
 import json
 from datetime import datetime
 from io import BytesIO
+from pathlib import PurePosixPath
 from zipfile import ZipFile
 
 import pytest
@@ -54,9 +55,9 @@ def parts(sent):
         for part in sent[0][0].walk()
         if part.get_filename()
     }
-    if "feedback.zip" not in attachments:
+    if len(attachments) != 1 or not next(iter(attachments), "").endswith(".zip"):
         return attachments
-    with ZipFile(BytesIO(attachments["feedback.zip"])) as bundle:
+    with ZipFile(BytesIO(next(iter(attachments.values())))) as bundle:
         return {name: bundle.read(name) for name in bundle.namelist()}
 
 
@@ -94,30 +95,115 @@ def test_real_mail_selects_distinct_errors_and_deduplicates_bytes(feedback):
     assert len(sent[0][0].as_bytes()) < issue_evidence.MAX_MAIL_BYTES
 
 
-def test_bug_sends_one_zip_containing_all_diagnostic_files(feedback):
+def test_bug_sends_one_zip_matching_log_export_layout(feedback):
+    from arknights_mower.utils.diagnostics import export_bundle
+
     logs, images, sent = feedback
     image(images, 10, b"selected original image")
     write_logs(logs, [(10, "ERROR", "进驻失败")])
     assert submit() == "邮件发送成功！"
     attachments = [part for part in sent[0][0].walk() if part.get_filename()]
-    assert [part.get_filename() for part in attachments] == ["feedback.zip"]
+    assert len(attachments) == 1
+    assert attachments[0].get_filename() == (
+        "feedback-20261020-120000-选人失败，期望正常进驻.zip"
+    )
     with ZipFile(BytesIO(attachments[0].get_payload(decode=True))) as bundle:
         assert bundle.testzip() is None
         names = set(bundle.namelist())
         assert {
+            "runtime.log",
             "runtime.txt",
-            "runtime.zip",
+            "readme.txt",
             "context.json",
             "plan.json",
             "evidence.json",
         } <= names
+        assert not any(name.endswith(".zip") for name in names)
         metadata = json.loads(bundle.read("evidence.json"))
-        selected = metadata["screenshots"][0]["file"]
-        assert bundle.read(selected) == b"selected original image"
-        assert bundle.getinfo(selected).compress_type == 0
-        assert bundle.getinfo("runtime.zip").compress_type == 0
-        with ZipFile(BytesIO(bundle.read("runtime.zip"))) as logs_bundle:
-            assert "进驻失败" in logs_bundle.read("runtime.txt").decode()
+        selected = metadata["screenshots"][0]
+        assert selected["file"] == f"screenshots/{selected['source']}"
+        assert bundle.read(selected["file"]) == b"selected original image"
+        assert bundle.getinfo(selected["file"]).compress_type == 0
+        info = bundle.getinfo("runtime.log")
+        assert info.compress_type == 8
+        assert metadata["log_archive"]["file"] == "runtime.log"
+        assert metadata["log_archive"]["bytes"] == info.compress_size
+        assert metadata["log_archive"]["uncompressed_bytes"] == info.file_size
+        plan = json.loads(bundle.read("plan.json"))
+        with export_bundle(
+            logs,
+            images,
+            datetime.fromisoformat(START),
+            start=datetime.fromisoformat(START),
+            end=datetime.fromisoformat(END),
+            scheduling_plan=plan,
+        ) as exported:
+            with ZipFile(exported) as ordinary:
+                assert {
+                    "runtime.log",
+                    "readme.txt",
+                    "plan.json",
+                    selected["file"],
+                } <= set(ordinary.namelist())
+                assert (
+                    bundle.read("runtime.log").splitlines()
+                    == ordinary.read("runtime.log").splitlines()
+                )
+                assert bundle.read(selected["file"]) == ordinary.read(selected["file"])
+                assert bundle.read("plan.json") == ordinary.read("plan.json")
+                for archive in (bundle, ordinary):
+                    explanation = archive.read("readme.txt").decode()
+                    assert START in explanation and END in explanation
+                    assert "当前保存" in explanation
+
+
+@pytest.mark.parametrize(
+    "description,expected_problem",
+    [
+        (
+            "\n版本：4.1.6\n平台：Android\n\n宿舍选人失败，无法进驻\n第二行细节",
+            "宿舍选人失败，无法进驻",
+        ),
+        ("Version: 4.1.6\nPlatform: Windows\n\n办公室异常\n期望正常进入", "办公室异常"),
+    ],
+)
+def test_bundle_name_uses_problem_line_after_version_and_platform(
+    feedback, description, expected_problem
+):
+    logs, _, sent = feedback
+    write_logs(logs, [(10, "ERROR", "故障")])
+    assert (
+        submit_issue.submit_issue(description, start_time=START, end_time=END)
+        == "邮件发送成功！"
+    )
+    attachments = [part for part in sent[0][0].walk() if part.get_filename()]
+    assert [part.get_filename() for part in attachments] == [
+        f"feedback-20261020-120000-{expected_problem}.zip"
+    ]
+
+
+def test_bundle_problem_name_removes_unsafe_characters_and_limits_length(feedback):
+    import unicodedata
+
+    logs, _, sent = feedback
+    write_logs(logs, [(10, "ERROR", "故障")])
+    description = '../选人失败\\:*?"<>|\x00\x01' + "无法进驻" * 30
+    assert (
+        submit_issue.submit_issue(description, start_time=START, end_time=END)
+        == "邮件发送成功！"
+    )
+    attachments = [part for part in sent[0][0].walk() if part.get_filename()]
+    assert len(attachments) == 1
+    name = attachments[0].get_filename()
+    assert name.startswith("feedback-20261020-120000-") and name.endswith(".zip")
+    problem = name.removeprefix("feedback-20261020-120000-").removesuffix(".zip")
+    assert "选人失败" in problem
+    assert 0 < len(problem) <= 40
+    assert not any(character in problem for character in '/\\:*?"<>|')
+    assert not any(
+        unicodedata.category(character).startswith("C") for character in problem
+    )
+    assert PurePosixPath(name).name == name
 
 
 def test_explicit_key_times_override_unrelated_errors_and_allow_no_images(feedback):
@@ -254,8 +340,7 @@ def test_log_excerpt_bounds_and_truncation_are_disclosed(feedback):
     manifest = json.loads(attachments["evidence.json"])
     assert manifest["log_rows_truncated"] is True
     assert manifest["log_messages_truncated"] is True
-    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
-        contents = bundle.read("runtime.txt").decode()
+    contents = attachments["runtime.log"].decode()
     assert len(contents.splitlines()) == 1002
     assert "行0" + "长" * 1500 in contents
     assert "行1001" + "长" * 1500 in contents
@@ -276,8 +361,7 @@ def test_compressed_logs_keep_interval_start_across_hour_and_duplicate_records(
         == "邮件发送成功！"
     )
     attachments = parts(sent)
-    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
-        contents = bundle.read("runtime.txt").decode()
+    contents = attachments["runtime.log"].decode()
     assert contents.startswith(first * 2)
     assert "后续读图1199" in contents
     manifest = json.loads(attachments["evidence.json"])
@@ -300,8 +384,7 @@ def test_compressed_logs_preserve_long_rosters_and_multiline_stack(feedback):
     )
     (logs / "runtime.log").write_text(original, encoding="utf-8")
     assert submit() == "邮件发送成功！"
-    with ZipFile(BytesIO(parts(sent)["runtime.zip"])) as bundle:
-        contents = bundle.read("runtime.txt").decode()
+    contents = parts(sent)["runtime.log"].decode()
     assert roster in contents and stack in contents
     assert "RuntimeError: 真正失败原因" in contents
     assert "范围外" not in contents
@@ -315,8 +398,7 @@ def test_archive_byte_budget_is_reported_without_claiming_complete_logs(
     monkeypatch.setattr(issue_evidence, "MAX_LOG_UNCOMPRESSED_BYTES", 1100)
     assert submit() == "邮件发送成功！"
     attachments = parts(sent)
-    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
-        contents = bundle.read("runtime.txt")
+    contents = attachments["runtime.log"]
     metadata = json.loads(attachments["evidence.json"])["log_archive"]
     assert len(contents) <= 1100
     assert metadata["uncompressed_bytes"] == len(contents)
@@ -357,11 +439,12 @@ def test_compressed_byte_budget_produces_a_readable_bounded_zip(feedback, monkey
     monkeypatch.setattr(issue_evidence, "MAX_LOG_ARCHIVE_BYTES", 256 * 1024)
     assert submit() == "邮件发送成功！"
     attachments = parts(sent)
-    assert len(attachments["runtime.zip"]) <= 256 * 1024
-    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
+    message_files = [part for part in sent[0][0].walk() if part.get_filename()]
+    with ZipFile(BytesIO(message_files[0].get_payload(decode=True))) as bundle:
         assert bundle.testzip() is None
-        assert b"2026-10-20 12:00:00" in bundle.read("runtime.txt")
+        assert b"2026-10-20 12:00:00" in bundle.read("runtime.log")
     metadata = json.loads(attachments["evidence.json"])["log_archive"]
+    assert metadata["bytes"] <= 256 * 1024
     assert metadata["truncated"] is True
     assert metadata["scan_complete"] is False
 
@@ -381,8 +464,7 @@ def test_unwritten_error_archive_is_not_claimed_as_a_compressed_log_source(
     assert submit() == "邮件发送成功！"
     attachments = parts(sent)
     metadata = json.loads(attachments["evidence.json"])["log_archive"]
-    with ZipFile(BytesIO(attachments["runtime.zip"])) as bundle:
-        assert "归档故障" not in bundle.read("runtime.txt").decode()
+    assert "归档故障" not in attachments["runtime.log"].decode()
     assert metadata["source"] == "runtime_files"
     assert metadata["archive_source_limited"] is False
     body = next(
