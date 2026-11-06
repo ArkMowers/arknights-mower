@@ -32,10 +32,11 @@ export function recordMowerUrgentSupport(data:MowerSchedulingData,task:MowerTask
  if(!task.exhaustSupport||!task.coordinationRequestNames.length)return
  const supporters=Object.values(data.operators).filter(op=>(data.isGroupShiftAnchor(op)||op.independentRest&&!data.canStandby(op))&&!op.room.startsWith('dorm')&&positions[op.name]?.[0].startsWith('dorm')&&op.currentRoom===op.room&&op.currentIndex===op.index).map(op=>op.name)
  if(!supporters.length)return
- const owner=pending.find(request=>mowerSupportRequestMatches(request,task))
+ const owner=pending.find(request=>mowerSupportRequestMatches(request,task))??(task.ordinaryCoordination?task:undefined)
  if(!owner)return
- const explicit=new Set([...owner.metadata.split(','),...owner.urgentRecoveryRequestNames])
- owner.urgentRecoveryRequestNames=task.coordinationRequestNames.filter(name=>{const op=data.operators[name];return !!op&&(data.isGroupShiftAnchor(op)||op.independentRest&&explicit.has(name))})
+ const explicit=new Set([...owner.metadata.split(','),...owner.urgentRecoveryRequestNames,...(owner===task?task.coordinationRequestNames:[])])
+ const requests=task.ordinaryCoordination?[...new Set(task.coordinationRequestNames.flatMap(name=>{const op=data.operators[name];return op?.group?data.shiftGroupMembers(op.group):op?[name]:[]}))]:task.coordinationRequestNames
+ owner.urgentRecoveryRequestNames=requests.filter(name=>{const op=data.operators[name];return !!op&&(data.isGroupShiftAnchor(op)||op.independentRest&&explicit.has(name))})
  task.urgentRecoveryRequestNames=[...owner.urgentRecoveryRequestNames]
  owner.urgentRecoverySupportNames=[...new Set([...owner.urgentRecoverySupportNames,...supporters])]
  owner.urgentRecoveryReservedNames=[...new Set([...owner.urgentRecoveryReservedNames,...Object.values(data.operators).filter(op=>{

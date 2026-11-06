@@ -227,22 +227,24 @@ describe('replacement coordination through source runtime',()=>{
   dispatchUntil(state,()=>state.occupants.room_1_3_0==='C'&&state.occupants.room_1_1_0==='Y'&&state.occupants.room_1_2_0==='X'&&Object.values(state.bedOccupants).includes('B'))
   expect(source.queue.tasks).not.toContain(original)
  })
- it('retains an ordinary blocked group until a reservation releases, then restores its preferred cover',()=>{
+ it('leaves ordinary contention in planning until a reservation releases, then restores its preferred cover',()=>{
   const {state,source}=fixture()
   state.config.mowerSourceRules!.exhaustRequire=[];source.data.operators.B!.exhaustRequire=false
   source.queue.tasks=[new MowerTask({type:T.NOT_SPECIFIC})]
   source.data.busyRestingNames.add('Y')
-  dispatchUntil(state,()=>source.queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&task.metadata==='B'&&!!task.executionFailure))
-  const original=source.queue.tasks.find(task=>task.type===T.EXHAUST_OFF&&task.metadata==='B')!
-  expect(original.executionFailure).toBeDefined()
-  expect(original.coordinationDependencyWait).toBe(true)
+  for(let attempt=0;attempt<3;attempt++)settleMowerSource(state,rates)
+  expect(source.queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&task.metadata==='B')).toBe(false)
+  expect(source.queue.tasks.some(task=>task.executionFailure)).toBe(false)
+  expect(state.occupants.room_1_2_0).toBe('B')
+  expect(Object.values(state.bedOccupants)).toContain('A')
   expect(source.data.operators.B!.exhaustRequire).toBe(false)
   expect(source.queue.tasks.some(task=>task.exhaustSupport)).toBe(false)
   const timestamp=source.data.operators.Y!.timeStampMicros
   source.data.busyRestingNames.delete('Y')
+  source.queue.tasks.push(new MowerTask({time:state.time}))
   dispatchUntil(state,()=>state.occupants.room_1_1_0==='Y'&&state.occupants.room_1_2_0==='X'&&Object.values(state.bedOccupants).includes('B'))
   expect(timestamp).toBe(0)
-  expect(source.queue.tasks).not.toContain(original)
+  expect(source.queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&task.metadata==='B')).toBe(false)
   dispatchUntil(state,()=>state.occupants.room_1_2_0==='B'&&state.occupants.room_1_1_0==='X',100)
   expect(Object.values(state.bedOccupants)).toContain('A')
   expect(state.time).toBeLessThan(20)

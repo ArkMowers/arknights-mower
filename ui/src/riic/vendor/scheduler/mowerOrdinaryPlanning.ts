@@ -3,6 +3,7 @@ import {projectMowerArrangements} from './mowerObservations'
 import type {MowerDependencyReturnAdmission} from './mowerTaskDerivation'
 import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
 import {mowerExhaustGroups,mowerPendingExhaustDeparture} from './mowerExhaustPolicy'
+import {planMowerExhaustSupport} from './mowerExhaustPlanning'
 import {mowerWorkingReplacementAssignments,mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 // Port of default plan_solver/resting/_get_resting_plan_legacy/try_reorder.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
@@ -140,6 +141,14 @@ function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:st
 export function mowerResting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRestingOptions={}):MowerTaskPlan {
  return resting(data,queue,options,false)
 }
+/** A confirmed ordinary handoff continues with the requesting group's concrete departure. */
+export function planMowerOrdinarySupportAdmission(data:MowerSchedulingData,names:readonly string[],options:MowerRestingOptions={}):MowerTaskPlan|undefined {
+ const projected=projectMowerArrangements(data,[]),plan:MowerTaskPlan={}
+ const members=[...new Set(names.flatMap(name=>{const op=projected.operators[name];return op?.group?projected.shiftGroupMembers(op.group):op?[name]:[]}))]
+ if(!members.length||!mowerGetRestingPlan(projected,members,[],plan,{...options,dormAdmissions:new Map(),onBlocked:undefined}))return
+ const reorder=mowerTryReorder(projected,plan);if(reorder)Object.assign(plan,reorder)
+ return Object.keys(plan).length?plan:undefined
+}
 function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRestingOptions,metadataPrepared:boolean):MowerTaskPlan {
  options={...options,dormAdmissions:new Map()}
  if(data.policy.experimentalDormLogic)throw new Error('Experimental ordinary resting requires its source port')
@@ -173,8 +182,13 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
   if(mowerPendingExhaustDeparture(data,[...new Set([...queue.tasks,...options.tasks??[]])],members))continue
   if(!mowerGetRestingPlan(data,[...members],replacements,plan,{...options,tasks:queue.tasks})){
    options.onBlocked?.(members)
-   if(data.alpha&&!queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&members.some(name=>task.metadata.split(',').includes(name)))){
-    const task=new MowerTask({type:T.EXHAUST_OFF,metadata:members.join(',')});task.ordinaryCoordination=true;task.coordinationRequestNames=[...members];task.timeMicros=data.nowMicros;queue.tasks.push(task)
+   if(data.alpha&&!queue.tasks.some(task=>task.exhaustSupport&&task.coordinationRequestNames.some(name=>members.includes(name)))){
+    const support=planMowerExhaustSupport(data,[...members],{...options,urgentExhaust:false,dormAdmissions:undefined,
+     reservedNames:new Set([...options.reservedNames??[],...replacements,...options.dormAdmissions?.values()??[]]),
+     reservedSlots:new Set([...options.reservedSlots??[],...options.dormAdmissions?.keys()??[]])})
+    if(support&&Object.keys(support).length){
+     const task=new MowerTask({type:T.SELF_CORRECTION,plan:support});task.exhaustSupport=true;task.ordinaryCoordination=true;task.coordinationRequestNames=[op.name];task.timeMicros=data.nowMicros;queue.tasks.push(task)
+    }
    }
   }else ordinaryRequests.push(op.name)
  }

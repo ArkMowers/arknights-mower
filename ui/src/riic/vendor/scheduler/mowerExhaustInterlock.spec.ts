@@ -54,21 +54,19 @@ function expectGroupWorking(state:RuntimeState){
 }
 
 describe('ordinary coordination and use-up group interlock',()=>{
- it('rechecks a retained ordinary request after a peer enables use-up, releases other groups, and replans when disabled',()=>{
+ it('keeps ordinary contention in planning after a peer enables use-up while other groups proceed',()=>{
   const {state,source}=fixture()
   source.data.busyRestingNames.add('Y')
-  dispatchUntil(state,()=>source.queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&task.metadata.split(',').includes('B')&&!!task.executionFailure))
-  const obsolete=source.queue.tasks.find(task=>task.type===T.EXHAUST_OFF&&task.metadata.split(',').includes('B'))!
-  expect(obsolete.plan).toEqual({})
-  expect(obsolete.arrangementStarted).toBe(false)
+  for(let attempt=0;attempt<3;attempt++)settleMowerSource(state,rates)
+  expect(source.queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&task.metadata.split(',').includes('B'))).toBe(false)
+  expect(source.queue.tasks.some(task=>task.executionFailure)).toBe(false)
   const traceStart=source.trace.length
   useUp(state,true)
   source.data.busyRestingNames.delete('Y')
   setMood(state,'C',4)
   source.queue.tasks.push(new MowerTask({time:state.time}))
   dispatchUntil(state,()=>Object.values(state.bedOccupants).includes('C'))
-  expect(source.queue.tasks).not.toContain(obsolete)
-  expect(obsolete.timeMicros).toBe(0)
+  expect(source.queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&task.metadata.split(',').includes('B'))).toBe(false)
   for(let attempt=0;attempt<12;attempt++)step(state)
   expect(source.trace.slice(traceStart).filter(task=>task.type==='EXHAUST_OFF'&&task.metadata==='B,B2')).toHaveLength(0)
   expectGroupWorking(state)
@@ -91,6 +89,25 @@ describe('ordinary coordination and use-up group interlock',()=>{
   expect(state.occupants.room_1_1_0).toBe('X')
   expect(Object.values(state.bedOccupants)).toContain('A')
   expect(state.events.filter(event=>event.type==='shift-on'&&event.operators.includes('A'))).toEqual([])
+ })
+
+ it('passes confirmed ordinary recall ownership to every recovering group member',()=>{
+  const {state,source}=fixture(true)
+  dispatchUntil(state,()=>Object.values(state.bedOccupants).includes('B')&&Object.values(state.bedOccupants).includes('B2'))
+  expect(state.occupants.room_1_1_0).toBe('A')
+  expect(source.queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&task.ordinaryCoordination)).toBe(false)
+  expect(source.data.urgentRecoverySupporters.B).toEqual(['A'])
+  expect(source.data.urgentRecoverySupporters.B2).toEqual(['A'])
+  setMood(state,'C',4)
+  source.queue.tasks.push(new MowerTask({time:state.time}))
+  dispatchUntil(state,()=>Object.values(state.bedOccupants).includes('C'))
+  expect(state.occupants.room_1_1_0).toBe('A')
+  for(const name of ['B','B2'])setMood(state,name,24)
+  source.queue.tasks.push(new MowerTask({time:state.time,type:T.SHIFT_ON,plan:{room_1_2:['B','B2']}}))
+  dispatchUntil(state,()=>state.occupants.room_1_2_0==='B'&&state.occupants.room_1_2_1==='B2')
+  settleMowerSource(state,rates)
+  expect(source.data.urgentRecoverySupporters.B).toBeUndefined()
+  expect(source.data.urgentRecoverySupporters.B2).toBeUndefined()
  })
 
  it('executes a genuine use-up request for the whole group despite the ordinary interlock',()=>{
