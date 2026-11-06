@@ -129,21 +129,59 @@ def _training_slot_errors(global_plan, characters, name_to_ids):
     return errors
 
 
+def _scheduled_skill_facilities(global_plan):
+    primary = global_plan["default_plan"].plan
+    fixed = {
+        "central": "中枢",
+        "meeting": "会客室",
+        "contact": "人力办公室",
+        "recycle": "回收站",
+    }
+    facilities = {}
+    for plan in [global_plan["default_plan"], *global_plan["backup_plans"]]:
+        for room in plan.plan.keys() | (plan.task or {}).keys():
+            if room in {"train", "factory"}:
+                continue
+            slots = plan.plan.get(room, [])
+            facility = (
+                "宿舍" if room.startswith("dormitory_") else fixed.get(room)
+            ) or next(
+                (
+                    slot.facility
+                    for slot in [*slots, *primary.get(room, [])]
+                    if slot.facility
+                ),
+                None,
+            )
+            if not facility or facility in {"训练室", "加工站"}:
+                continue
+            names = {
+                name for slot in slots for name in (slot.agent, *slot.all_replacements)
+            }
+            names.update((plan.task or {}).get(room, []))
+            for name in names - IGNORED_NAMES:
+                facilities.setdefault(name, set()).add(facility)
+    return facilities
+
+
 def _progression_warnings(global_plan, characters, name_to_ids, scheduled):
     from arknights_mower.utils.building_skills import _requirement, skill_index
     from arknights_mower.utils.mastery_recommendation import get_skill_data
 
     owned = {char["id"]: char for char in characters}
-    meeting = set()
-    for plan in [global_plan["default_plan"], *global_plan["backup_plans"]]:
-        for slot in plan.plan.get("meeting", []):
-            meeting.update((slot.agent, *slot.all_replacements))
-        meeting.update((plan.task or {}).get("meeting", []))
+    facilities = _scheduled_skill_facilities(global_plan)
     metadata = get_skill_data()["characters"]
-    catalog = skill_index() if scheduled - {"孑"} else {}
+    catalog = skill_index() if facilities.keys() - {"孑"} else {}
     warnings = []
     for name in sorted(scheduled):
-        if name == "孑" and name not in meeting:
+        assigned = facilities.get(name, set())
+        meeting = "会客室" in assigned
+        skills = [
+            skill
+            for skill in catalog.get(name, ())
+            if name != "孑" and skill.get("roomType") in assigned
+        ]
+        if not skills and not meeting:
             continue
         candidates = [owned[cid] for cid in name_to_ids[name] if cid in owned]
         if not candidates:
@@ -162,25 +200,35 @@ def _progression_warnings(global_plan, characters, name_to_ids, scheduled):
             )
             continue
         current = max(progress)
-        if name != "孑":
-            requirements = [_requirement(skill) for skill in catalog.get(name, ())]
-            if not requirements or None in requirements:
-                warnings.append(
-                    f"无法确认排班干员 {name} 的基建技能解锁条件，请更新资源包"
-                )
-            elif current < max(requirements):
-                phase, level = max(requirements)
-                warnings.append(
-                    f"排班干员 {name} 尚未完整解锁基建技能，需达到精{phase} {level}级"
-                )
-        if (
-            name in meeting
+        reception_needs_promotion = (
+            meeting
             and current[0] < 2
             and any(
                 metadata.get(cid, {}).get("rarity") in (4, 5, 6)
                 for cid in name_to_ids[name]
             )
-        ):
+        )
+        if reception_needs_promotion:
+            skills = [skill for skill in skills if skill["roomType"] != "会客室"]
+        if skills:
+            requirements = [_requirement(skill) for skill in skills]
+            if None in requirements:
+                warnings.append(
+                    f"无法确认排班干员 {name} 在已配置设施中的基建技能解锁条件，请更新资源包"
+                )
+            elif current < max(requirements):
+                phase, level = max(requirements)
+                locked_facilities = sorted(
+                    {
+                        skill["roomType"]
+                        for skill, required in zip(skills, requirements)
+                        if current < required
+                    }
+                )
+                warnings.append(
+                    f"排班干员 {name} 尚未完整解锁进驻设施（{'、'.join(locked_facilities)}）相关基建技能，需达到精{phase} {level}级"
+                )
+        if reception_needs_promotion:
             warnings.append(
                 f"会客室干员 {name} 尚未精二，四至六星会客室干员建议达到精二"
             )
