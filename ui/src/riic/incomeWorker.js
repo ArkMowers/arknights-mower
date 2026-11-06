@@ -71,6 +71,9 @@ export function calculateIncome(plan, settings, onProgress) {
     initialConditions: { fiammettaMorale: MOWER_FIAMMETTA_INITIAL_MORALE },
     modelProvenance: {
       timingModel: production.assumptions.timingModel,
+      ...(production.assumptions.droneAllocationModel
+        ? { droneAllocationModel: production.assumptions.droneAllocationModel }
+        : {}),
       calculatorBaseRevision: revision,
       calculatorSyncRevision: schedulingSync.calculatorRevision,
       mowerBaseReference: mowerReference,
