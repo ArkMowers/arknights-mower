@@ -129,7 +129,7 @@ function update_trigger(data) {
     title="副表条件"
     :auto-focus="false"
     transform-origin="center"
-    style="width: 760px; max-width: 90vw"
+    style="width: auto; max-width: 90vw"
   >
     <div v-if="current_backup" style="margin-top: 5px">
       <n-form
