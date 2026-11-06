@@ -190,3 +190,22 @@ def test_order_execution_and_compensation_release_only_after_completion(recovery
 
     instance.tasks.remove(order)
     assert "但书" in instance.get_dorm_candidates().recovering
+
+
+def test_due_order_free_resolution_replaces_resting_order_operator(recovery):
+    instance, _ = recovery
+    order = add_order(instance)
+    data = instance.op_data
+    order.time = data._projection_now
+    data.operators["空爆"].current_room = "meeting"
+    data.operators["但书"].current_room, data.operators["但书"].current_index = ROOM, 4
+    data.dorm[0].name = "但书"
+    data.operators["红"].current_room = ""
+    data.operators["红"].mood = 10
+    order.plan[ROOM] = ["Current"] * 4 + ["Free"]
+    instance.task = order
+
+    instance.prepare_dorm_selection(order.plan[ROOM], ROOM)
+
+    assert order.plan[ROOM][-1] == "红"
+    assert order.plan["room_1_1"] == ["Current", "但书", "Current"]

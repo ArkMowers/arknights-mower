@@ -13094,6 +13094,8 @@ class BaseSchedulerSolver(
             return False, ["技能", "false"]
 
     def _prepare_run_order_confirmation(self, room, target):
+        if room.startswith("dorm"):
+            return
         if getattr(self.task, "run_order_confirmation_pending", None):
             raise RunOrderConfirmationUnresolved(room)
         allowance = run_order_network_allowance(self.task, config.conf)
@@ -16792,6 +16794,73 @@ class BaseSchedulerSolver(
             self.tasks.append(self.task)
         return False
 
+    def _prepare_run_order_dorm_departures(self, plan):
+        """跑单先替换宿舍中的换入者，避免连续跑单长期留下空床。"""
+        task = self.task
+        if (
+            task.type != TaskTypes.RUN_ORDER
+            or not task.meta_data
+            or getattr(task, "run_order_restore_pending", False)
+        ):
+            return True
+        targets = set(plan.get(task.meta_data, ())) & set(TRADE_ORDER_AGENTS)
+        rooms = {
+            op.current_room
+            for name in targets
+            if (op := self.op_data.operators.get(name)) is not None
+            and op.current_room.startswith("dorm")
+        }
+        pending = getattr(task, "run_order_dorm_slots", {})
+        rooms.update(pending)
+        for room in sorted(rooms):
+            try:
+                self.enter_room(room)
+                self.turn_on_room_detail(room)
+                actual = [item["agent"] for item in self.get_agent_from_room(room)]
+                if len(actual) != len(self.op_data.plan[room]):
+                    raise RecognizeError("跑单前宿舍实际驻员未读完整")
+                slots = pending.setdefault(room, set())
+                slots.update(
+                    index for index, name in enumerate(actual) if name in targets
+                )
+                task.run_order_dorm_slots = pending
+                departing = [
+                    index
+                    for index in slots
+                    if index < len(actual) and actual[index] in targets | {""}
+                ]
+                if not departing:
+                    pending.pop(room)
+                    self.back()
+                    self._wait_for_room_exit()
+                    continue
+                row = ["Current"] * len(actual)
+                for index in departing:
+                    row[index] = "Free"
+                dorm_plan = {room: row}
+                logger.info("跑单前先补位 %s 的宿舍床位", room)
+                result = self.agent_arrange_room({}, room, dorm_plan, skip_enter=True)
+                if result is False or result is None:
+                    return False
+                current = self.op_data.get_current_room(room, True)
+                if any(
+                    index >= len(current) or current[index] in targets | {""}
+                    for index in departing
+                ):
+                    raise AgentSelectionNotReady("跑单前未确认宿舍床位已由其他干员补齐")
+                pending.pop(room)
+            except (
+                MowerExit,
+                DeviceRecoveryError,
+                SharedADBError,
+                RoomArrangementDeferred,
+            ):
+                raise
+            except Exception as exc:
+                raise RoomArrangementDeferred(room, exc) from exc
+        task.__dict__.pop("run_order_dorm_slots", None)
+        return True
+
     @with_run_order_network
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
         if (
@@ -16995,6 +17064,8 @@ class BaseSchedulerSolver(
             for dorm_room in list(plan):
                 if dorm_room.startswith("dorm"):
                     self.preserve_resting_crafters(plan[dorm_room], dorm_room)
+        if not self._prepare_run_order_dorm_departures(plan):
+            return False
         rooms = _arrangement_room_order(plan, self.op_data)
         # 救急跑单失败沿用换入意图；普通跑单由实测原班补偿接续。
         original_plan = (
