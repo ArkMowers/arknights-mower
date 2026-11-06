@@ -9,6 +9,9 @@ from pathlib import Path
 from tempfile import SpooledTemporaryFile
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
+from arknights_mower import __version__
+from arknights_mower.utils.diagnostic_version import require_mower_version
+from arknights_mower.utils.git_rev import revision_info
 from arknights_mower.utils.screenshot import (
     ARCHIVE_METADATA_RESERVE,
     MAX_ARCHIVE_BYTES,
@@ -220,6 +223,21 @@ def export_bundle(
     scheduling_plan=None,
 ):
     """打包时间窗口内的完整日志和仍可读取的截图。调用方负责关闭返回的文件。"""
+    version = require_mower_version(__version__)
+    try:
+        revision = revision_info() or "unknown"
+    except OSError:
+        revision = "unknown"
+    version_info = {
+        "mower_version": version,
+        "revision": revision,
+        "exported_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "version_scope": "export_time",
+        "version_note": "版本信息属于导出时的程序，不代表日志发生时的版本。",
+    }
+    version_contents = json.dumps(version_info, ensure_ascii=False, indent=2).encode(
+        "utf-8"
+    )
     archive_root = screenshot_folder / "errors"
     start, end = (
         archive_window(archive_root / archive_id, center)
@@ -265,7 +283,7 @@ def export_bundle(
         else None
     )
     truncated = False
-    payload_bytes = len(plan_contents or b"")
+    payload_bytes = len(plan_contents or b"") + len(version_contents)
     if archive_id is not None:
         selected = {}
         for timestamp, (image, relative) in sorted(images.items()):
@@ -316,6 +334,7 @@ def export_bundle(
                     count += 1
             if plan_contents is not None:
                 bundle.writestr("plan.json", plan_contents)
+            bundle.writestr("version.json", version_contents)
             image_count = 0
             for _, (image, relative) in sorted(images.items()):
                 try:
@@ -326,7 +345,10 @@ def export_bundle(
                     continue
             bundle.writestr(
                 README_FILENAME,
-                f"日志调度导出\n时间范围：{start:%Y-%m-%d %H:%M:%S} 至 "
+                f"日志调度导出\nMower 版本（导出时）：{version}\n提交号：{revision}\n"
+                f"导出时间：{version_info['exported_at']}\n"
+                f"{version_info['version_note']}提交号 unknown 表示未取得。\n"
+                f"时间范围：{start:%Y-%m-%d %H:%M:%S} 至 "
                 f"{end:%Y-%m-%d %H:%M:%S}\n"
                 f"日志：{count} 条\n截图：{image_count} 张\n"
                 f"包含截图：{'是' if include_screenshots else '否'}\n"

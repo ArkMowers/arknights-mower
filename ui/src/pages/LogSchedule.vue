@@ -576,7 +576,9 @@ onMounted(() => {
         </n-button>
       </div>
     </section>
-    <p class="export-hint">所有日志导出均附带当前保存的排班表 JSON。</p>
+    <p class="export-hint">
+      所有日志导出均附带当前保存的排班表 JSON，以及导出时的 Mower 版本信息。
+    </p>
     <p v-if="exportError && !showExportDialog" class="export-error" role="alert">
       {{ exportError }}
     </p>

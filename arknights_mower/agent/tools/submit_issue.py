@@ -30,6 +30,7 @@ from arknights_mower.agent.tools.issue_evidence import (
 )
 from arknights_mower.utils import config
 from arknights_mower.utils.config.plan_advanced import export_advanced_settings
+from arknights_mower.utils.diagnostic_version import require_mower_version
 from arknights_mower.utils.diagnostics import (
     LOG_FILENAME,
     README_FILENAME,
@@ -65,15 +66,10 @@ def _feedback_archive_name(start, description):
 
 
 def _required_version():
-    version = __version__.strip() if isinstance(__version__, str) else ""
-    if (
-        not version
-        or len(version) > 128
-        or version.casefold() in {"unknown", "未知", "none", "null", "n/a"}
-        or any(unicodedata.category(char).startswith("C") for char in version)
-    ):
-        raise ValueError("未取得有效 Mower 版本，反馈尚未发送；请确认安装版本后重试。")
-    return version
+    try:
+        return require_mower_version(__version__)
+    except ValueError as exc:
+        raise ValueError(f"{exc}，反馈尚未发送；请确认安装版本后重试。") from exc
 
 
 def _package_evidence(attachments, output, start, end, description, extra_members=None):
