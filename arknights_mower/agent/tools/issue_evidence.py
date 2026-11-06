@@ -5,8 +5,9 @@ import json
 import re
 from bisect import bisect_right
 from datetime import datetime
+from zipfile import ZIP_DEFLATED, ZipFile
 
-from arknights_mower.utils.diagnostics import screenshots_between, timeline
+from arknights_mower.utils.diagnostics import _log_files, screenshots_between, timeline
 from arknights_mower.utils.screenshot_cleanup import screenshot_timestamp
 
 MAX_SCREENSHOTS = 4
@@ -14,6 +15,136 @@ MAX_IMAGE_BYTES = 512 * 1024
 MAX_SCREENSHOT_BYTES = 2 * 1024**2
 MAX_MAIL_BYTES = 8 * 1024**2
 MAX_LOG_ROWS = 1000
+MAX_EXCERPT_BYTES = 256 * 1024
+MAX_LOG_ARCHIVE_BYTES = 3 * 1024**2
+MAX_LOG_UNCOMPRESSED_BYTES = 64 * 1024**2
+MAX_SCREENSHOT_ANCHORS = 256
+_LOG_START = re.compile(rb"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+
+
+def _error_anchor(when, message):
+    match = re.match(
+        r"^.{19}(?:,\d+)? \S+ (CRITICAL|ERROR|WARNING)(?: (.*))?$", message, re.S
+    )
+    if match is None:
+        return None
+    signature = (
+        match[1],
+        re.sub(r"\d+", "N", (match[2] or "").partition("\n")[0][:500]),
+    )
+    return when, message[:500], signature
+
+
+def _write_log_archive(log_folder, start, end, output, archived, anchors=None):
+    """按原始顺序流式保存区间日志，单次读取与附件总量均有上限。"""
+    path = output / "runtime.zip"
+    metadata = {
+        "file": None,
+        "record_count": 0,
+        "bytes": 0,
+        "uncompressed_bytes": 0,
+        "first_time": None,
+        "last_time": None,
+        "truncated": False,
+        "scan_complete": True,
+        "source": "runtime_files",
+        "archive_source_limited": False,
+        "unreadable_files": [],
+        "limits": {
+            "compressed_bytes": MAX_LOG_ARCHIVE_BYTES,
+            "uncompressed_bytes": MAX_LOG_UNCOMPRESSED_BYTES,
+        },
+        "stop_reason": None,
+    }
+    # 为最后一个压缩块和 ZIP 目录保留空间；每次最多写入 64 KiB。
+    threshold = MAX_LOG_ARCHIVE_BYTES - 128 * 1024
+    anchor_counts = {}
+    with ZipFile(path, "w", compression=ZIP_DEFLATED) as bundle:
+        with bundle.open("runtime.txt", "w") as destination:
+
+            def write(data, when=None):
+                if (
+                    metadata["uncompressed_bytes"] + len(data)
+                    > MAX_LOG_UNCOMPRESSED_BYTES
+                    or bundle.fp.tell() >= threshold
+                ):
+                    metadata["truncated"] = True
+                    metadata["scan_complete"] = False
+                    metadata["stop_reason"] = (
+                        "uncompressed_byte_limit"
+                        if metadata["uncompressed_bytes"] + len(data)
+                        > MAX_LOG_UNCOMPRESSED_BYTES
+                        else "compressed_byte_limit"
+                    )
+                    return False
+                destination.write(data)
+                metadata["uncompressed_bytes"] += len(data)
+                if when is not None:
+                    stamp = str(when)
+                    metadata["record_count"] += 1
+                    metadata["first_time"] = min(metadata["first_time"] or stamp, stamp)
+                    metadata["last_time"] = max(metadata["last_time"] or stamp, stamp)
+                    if anchors is not None and len(anchors) < MAX_SCREENSHOT_ANCHORS:
+                        anchor = _error_anchor(
+                            when, data[:4096].decode("utf-8", errors="replace")
+                        )
+                        if anchor:
+                            signature = anchor[2]
+                            if (
+                                signature in anchor_counts
+                                or len(anchor_counts) < MAX_SCREENSHOT_ANCHORS // 2
+                            ) and anchor_counts.get(signature, 0) < 2:
+                                anchors.append(anchor)
+                                anchor_counts[signature] = (
+                                    anchor_counts.get(signature, 0) + 1
+                                )
+                return True
+
+            for source in _log_files(log_folder, start, end):
+                if not metadata["scan_complete"]:
+                    break
+                try:
+                    with source.open("rb") as stream:
+                        selected = False
+                        line_start = True
+                        while chunk := stream.readline(64 * 1024):
+                            when = None
+                            if line_start and _LOG_START.match(chunk):
+                                try:
+                                    when = datetime.strptime(
+                                        chunk[:19].decode("ascii"), "%Y-%m-%d %H:%M:%S"
+                                    )
+                                except ValueError:
+                                    selected = False
+                                else:
+                                    selected = start <= when <= end
+                            if selected and not write(chunk, when):
+                                break
+                            line_start = chunk.endswith(b"\n")
+                except OSError:
+                    metadata["unreadable_files"].append(source.name)
+            # 归档保留片段可能与普通日志重复，不能把它当作完整历史。
+            if archived and metadata["scan_complete"]:
+                has_runtime = bool(metadata["record_count"])
+                for row in archived:
+                    data = (row["message"] + "\n").encode("utf-8")
+                    if not write(data, datetime.fromisoformat(row["time"])):
+                        break
+                    metadata["archive_source_limited"] = True
+                    metadata["source"] = (
+                        "runtime_files_and_error_archive_excerpt"
+                        if has_runtime
+                        else "error_archive_excerpt"
+                    )
+    metadata["scan_complete"] &= not bool(metadata["unreadable_files"])
+    metadata["bytes"] = path.stat().st_size
+    if not metadata["record_count"] or metadata["bytes"] > MAX_LOG_ARCHIVE_BYTES:
+        metadata["truncated"] |= metadata["bytes"] > MAX_LOG_ARCHIVE_BYTES
+        metadata["scan_complete"] = False
+        path.unlink()
+        return None, metadata
+    metadata["file"] = path.name
+    return path, metadata
 
 
 def parse_interval(start_time, end_time):
@@ -111,25 +242,26 @@ def collect_evidence(
     rows = rows[-MAX_LOG_ROWS:]
     if not rows:
         raise ValueError("未找到对应时间的日志记录，无法上报。")
+    archive_anchors = []
+    log_archive, archive_info = _write_log_archive(
+        log_folder, start, end, output, archived, anchors=archive_anchors
+    )
     # 优先保留不同错误首次可读取的画面，再考虑警告。
     errors, warnings = [], []
     for row in rows:
-        match = re.match(
-            r"^.{19}(?:,\d+)? \S+ (CRITICAL|ERROR|WARNING)(?: (.*))?$",
-            row["message"],
-            re.S,
-        )
-        if match is None:
+        anchor = _error_anchor(datetime.fromisoformat(row["time"]), row["message"])
+        if anchor is None:
             continue
-        signature = (match[1], re.sub(r"\d+", "N", (match[2] or "").partition("\n")[0]))
-        target = warnings if match[1] == "WARNING" else errors
-        target.append(
-            (datetime.fromisoformat(row["time"]), row["message"][:500], signature)
-        )
+        target = warnings if anchor[2][0] == "WARNING" else errors
+        target.append(anchor)
+    automatic_anchors = sorted(
+        [*archive_anchors, *errors, *warnings],
+        key=lambda anchor: (anchor[2][0] == "WARNING", anchor[0]),
+    )
     anchors = (
         [(when, reason, str(when)) for when, reason in requested]
         if screenshot_times is not None
-        else errors + warnings
+        else automatic_anchors
     )
     stamps = [stamp for stamp, _ in images]
     candidates = []
@@ -138,12 +270,14 @@ def collect_evidence(
         at = int(when.timestamp() * 10**9) + 10**9 - 1
         index = bisect_right(stamps, at) - 1
         if index >= 0 and at - stamps[index] <= 30 * 10**9:
-            candidates.append((images[index][1], reason, signature))
+            candidates.append(
+                (images[index][1], reason, signature, when, stamps[index])
+            )
 
     attachments, selected, digests, seen_paths = [], [], set(), set()
     selected_errors = set()
     total = 0
-    for relative, reason, signature in candidates:
+    for relative, reason, signature, anchor_time, capture_ns in candidates:
         if len(selected) >= MAX_SCREENSHOTS:
             break
         if relative in seen_paths or signature in selected_errors:
@@ -171,14 +305,32 @@ def collect_evidence(
         destination.write_bytes(data)
         attachments.append(destination)
         selected.append(
-            {"file": destination.name, "source": relative, "reason": reason}
+            {
+                "file": destination.name,
+                "source": relative,
+                "reason": reason,
+                "anchor_time": str(anchor_time),
+                "captured_at": datetime.fromtimestamp(capture_ns / 10**9)
+                .astimezone()
+                .isoformat(),
+                "offset_seconds": capture_ns / 10**9 - anchor_time.timestamp(),
+            }
         )
 
     log_path = output / "runtime.txt"
-    # 最多1000条，每条最多1000字符，避免文字日志占满邮件。
-    log_path.write_text(
-        "\n".join(row["message"][:1000] for row in rows), encoding="utf-8"
-    )
+    # 纯文本只供快速浏览；压缩附件按所选区间独立收集。
+    excerpt, excerpt_bytes = [], 0
+    for row in reversed(rows):
+        text = row["message"][:1000]
+        size = len((text + "\n").encode("utf-8"))
+        if excerpt_bytes + size > MAX_EXCERPT_BYTES:
+            truncated = True
+            break
+        excerpt.append({**row, "text": text})
+        excerpt_bytes += size
+    excerpt.reverse()
+    truncated |= archive_info["record_count"] > len(excerpt)
+    log_path.write_text("\n".join(row["text"] for row in excerpt), encoding="utf-8")
     manifest = output / "evidence.json"
     manifest.write_text(
         json.dumps(
@@ -186,6 +338,12 @@ def collect_evidence(
                 "start": str(start),
                 "end": str(end),
                 "screenshots": selected,
+                "log_archive": archive_info,
+                "excerpt": {
+                    "first_time": min((row["time"] for row in excerpt), default=None),
+                    "last_time": max((row["time"] for row in excerpt), default=None),
+                    "record_count": len(excerpt),
+                },
                 "log_rows_truncated": truncated,
                 "log_messages_truncated": any(
                     len(row["message"]) > 1000 for row in rows
@@ -197,4 +355,4 @@ def collect_evidence(
         ),
         encoding="utf-8",
     )
-    return [log_path, manifest, *attachments]
+    return [log_path, manifest, *([log_archive] if log_archive else []), *attachments]

@@ -38,6 +38,7 @@ from arknights_mower.utils.config.plan_advanced import (
 from arknights_mower.utils.config_backup import MAX_BACKUP_BYTES, backup_lock
 from arknights_mower.utils.csv_utils import EmptyDataError, parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
+from arknights_mower.utils.diagnostic_version import MissingMowerVersionError
 from arknights_mower.utils.diagnostics import (
     archive_window,
     error_events,
@@ -2521,19 +2522,22 @@ def diagnostic_errors():
 def _send_diagnostic_bundle(center, archive_id=None, **options):
     plan_data = config.plan.model_dump(exclude_none=True)
     plan_data["advanced_settings"] = export_advanced_settings(config.conf)
-    bundle = export_bundle(
-        get_path("@app/log"),
-        get_path("@app/screenshot"),
-        center,
-        archive_id,
-        scheduling_plan=plan_data,
-        **options,
-    )
+    try:
+        bundle = export_bundle(
+            get_path("@app/log"),
+            get_path("@app/screenshot"),
+            center,
+            archive_id,
+            scheduling_plan=plan_data,
+            **options,
+        )
+    except MissingMowerVersionError as exc:
+        return {"error": f"{exc}，诊断包尚未导出。"}, 503
     response = send_file(
         bundle,
         mimetype="application/zip",
         as_attachment=True,
-        download_name=f"日志调度-{center:%Y%m%d-%H%M%S}.zip",
+        download_name=f"logs-{center:%Y%m%d-%H%M%S}.zip",
         max_age=0,
     )
     response.headers["Cache-Control"] = "no-store"
