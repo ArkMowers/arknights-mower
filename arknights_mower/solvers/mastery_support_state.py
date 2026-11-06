@@ -41,7 +41,11 @@ def notify_support_failure(plan, level, message):
     stage = f"专{level}" if level is not None else "专精阶段未知"
     key = level if level is not None else "unknown"
     if should_notify("support_swap", f"{plan['id']}:{key}"):
-        send_message(f"{plan.get('char_name', '')} {stage}：{message}", level="WARNING")
+        send_message(
+            f"{plan.get('char_name', '')} {stage}：{message}",
+            subject="训练室协助位换人提醒",
+            level="WARNING",
+        )
 
 
 def record_work(plan, level, name, until=None):

@@ -69,6 +69,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_rg_enable = ref(0)
   const maa_long_task_type = ref('rogue')
   const mail_enable = ref(false)
+  const mail_attach_error_screenshot = ref(false)
   const account = ref('')
   const pass_code = ref('')
   const recipient = ref('')
@@ -581,6 +582,7 @@ export const useConfigStore = defineStore('config', () => {
         ratio_rules: response.data.maa_stage_ratio_rules
       })
       mail_enable.value = response.data.mail_enable != 0
+      mail_attach_error_screenshot.value = response.data.mail_attach_error_screenshot ?? false
       account.value = response.data.account
       pass_code.value = response.data.pass_code
       recipient.value = response.data.recipient
@@ -796,6 +798,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_stage_limit_rules: normalizeStageLimitRules(maa_stage_limit_rules.value),
       maa_stage_ratio_rules: normalizeStageRatioRules(maa_stage_ratio_rules.value),
       mail_enable: mail_enable.value ? 1 : 0,
+      mail_attach_error_screenshot: mail_attach_error_screenshot.value,
       package_type: package_type.value == 'official' ? 1 : 2,
       pass_code: pass_code.value,
       recipient: recipient.value,
@@ -1165,6 +1168,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_stage_limit_rules,
     maa_stage_ratio_rules,
     mail_enable,
+    mail_attach_error_screenshot,
     account,
     pass_code,
     recipient,

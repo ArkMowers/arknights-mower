@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope } from 'vue'
+import {
+  BlobReader,
+  BlobWriter,
+  TextReader,
+  TextWriter,
+  ZipReader,
+  ZipWriter
+} from '@zip.js/zip.js'
 
 import LogSchedule from './LogSchedule.vue'
 
@@ -30,6 +38,15 @@ const deferred = () => {
     reject = no
   })
   return { promise, resolve, reject }
+}
+
+async function archiveBundle(message, withScreenshots = true) {
+  const writer = new ZipWriter(new BlobWriter('application/zip'), { useWebWorkers: false })
+  await writer.add('runtime.log', new TextReader(message))
+  if (withScreenshots) await writer.add('screenshots/frame.jpg', new TextReader('frame'))
+  await writer.add('readme.txt', new TextReader('Diagnostic logs and current saved plan'))
+  await writer.add('plan.json', new TextReader('{"plan1":{}}'))
+  return writer.close()
 }
 
 describe('log schedule browsing', () => {
@@ -122,6 +139,7 @@ describe('log schedule browsing', () => {
       }
     ])
     expect(link.click).toHaveBeenCalledOnce()
+    expect(link.download).toMatch(/^logs-\d{8}-\d{6}\.zip$/)
     expect(page.showExportDialog.value).toBe(false)
   })
 
@@ -183,6 +201,7 @@ describe('log schedule browsing', () => {
     ])
     expect(page.showExportDialog.value).toBe(false)
     expect(link.click).toHaveBeenCalledOnce()
+    expect(link.download).toBe('error-archive-123.zip')
   })
 
   it('opens the text export with screenshots off and resets the choice for a full export', async () => {
@@ -208,19 +227,54 @@ describe('log schedule browsing', () => {
     expect(page.includeScreenshots.value).toBe(true)
   })
 
-  it('exports only checked archive logs without screenshots', async () => {
-    page.events.value = [event, { ...event, id: '456' }]
-    page.toggleEvent('123', true)
-    state.client.get.mockResolvedValue({ data: new Blob(['text archive']) })
-    const link = { click: vi.fn(), remove: vi.fn() }
-    vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
-    vi.stubGlobal('URL', { createObjectURL: () => 'blob:test', revokeObjectURL: vi.fn() })
-    await page.exportSelected(false)
-    expect(state.client.get.mock.calls).toEqual([
-      ['/diagnostics/errors/123/export', { params: { screenshots: '0' }, responseType: 'blob' }]
-    ])
-    expect(link.click).toHaveBeenCalledOnce()
-  })
+  it.each([true, false])(
+    'downloads one checked archive directly with screenshots=%s',
+    async (withScreenshots) => {
+      page.events.value = [event, { ...event, id: '456' }]
+      page.toggleEvent('123', true)
+      const bundle = await archiveBundle('archive 123', withScreenshots)
+      const pending = deferred()
+      state.client.get.mockReturnValueOnce(pending.promise)
+      const link = { click: vi.fn(), remove: vi.fn() }
+      const createUrl = vi.fn(() => 'blob:test')
+      vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
+      vi.stubGlobal('URL', { createObjectURL: createUrl, revokeObjectURL: vi.fn() })
+      const exporting = page.exportSelected(withScreenshots)
+      await page.exportSelected(withScreenshots)
+      page.toggleEvent('456', true)
+      page.confirmDeleteSelected()
+      expect(page.pendingDeleteEvents.value).toBe(null)
+      expect(page.selectedEventIds.value).toEqual(['123'])
+      pending.resolve({ data: bundle })
+      await exporting
+      expect(state.client.get.mock.calls).toEqual([
+        [
+          '/diagnostics/errors/123/export',
+          { params: { screenshots: withScreenshots ? '1' : '0' }, responseType: 'blob' }
+        ]
+      ])
+      expect(link.click).toHaveBeenCalledOnce()
+      expect(createUrl.mock.calls[0][0]).toBe(bundle)
+      expect(link.download).toBe('error-archive-123.zip')
+      const reader = new ZipReader(new BlobReader(createUrl.mock.calls[0][0]), {
+        useWebWorkers: false
+      })
+      try {
+        const entries = await reader.getEntries()
+        expect(entries.map((entry) => entry.filename)).toEqual([
+          'runtime.log',
+          ...(withScreenshots ? ['screenshots/frame.jpg'] : []),
+          'readme.txt',
+          'plan.json'
+        ])
+        expect(await entries[0].getData(new TextWriter())).toBe('archive 123')
+        expect(await entries.at(-1).getData(new TextWriter())).toBe('{"plan1":{}}')
+      } finally {
+        await reader.close()
+      }
+      expect(page.exporting.value).toBe(false)
+    }
+  )
 
   it('ignores a superseded archive response and its loading state', async () => {
     const archiveRequest = deferred(),
@@ -406,14 +460,15 @@ describe('log schedule browsing', () => {
   })
 
   it('exports only the checked snapshot in one ZIP with original archive contents', async () => {
-    const { ZipReader, BlobReader, TextWriter } = await import('@zip.js/zip.js')
     page.events.value = [event, { ...event, id: '456' }, { ...event, id: '789' }]
     page.toggleEvent('123', true)
     page.toggleEvent('789', true)
+    const firstBundle = await archiveBundle('archive 123')
+    const lastBundle = await archiveBundle('archive 789')
     const pending = deferred()
     state.client.get
       .mockReturnValueOnce(pending.promise)
-      .mockResolvedValueOnce({ data: new Blob(['archive 789']) })
+      .mockResolvedValueOnce({ data: lastBundle })
     const link = { click: vi.fn(), remove: vi.fn() }
     let downloaded
     vi.stubGlobal('document', { createElement: () => link, body: { appendChild: vi.fn() } })
@@ -429,22 +484,39 @@ describe('log schedule browsing', () => {
     page.toggleAllEvents(false)
     page.confirmDeleteSelected()
     expect(page.pendingDeleteEvents.value).toBe(null)
-    pending.resolve({ data: new Blob(['archive 123']) })
+    pending.resolve({ data: firstBundle })
     await exporting
     expect(state.client.get.mock.calls).toEqual([
       ['/diagnostics/errors/123/export', { params: { screenshots: '1' }, responseType: 'blob' }],
       ['/diagnostics/errors/789/export', { params: { screenshots: '1' }, responseType: 'blob' }]
     ])
     expect(link.click).toHaveBeenCalledOnce()
+    expect(link.download).toBe('error-archives-2.zip')
     const reader = new ZipReader(new BlobReader(downloaded), { useWebWorkers: false })
     try {
       const entries = await reader.getEntries()
       expect(entries.map((entry) => entry.filename)).toEqual([
-        '异常归档-123.zip',
-        '异常归档-789.zip'
+        'error-archive-123.zip',
+        'error-archive-789.zip'
       ])
-      expect(await entries[0].getData(new TextWriter())).toBe('archive 123')
-      expect(await entries[1].getData(new TextWriter())).toBe('archive 789')
+      for (const [index, original] of [firstBundle, lastBundle].entries()) {
+        const bundle = await entries[index].getData(new BlobWriter('application/zip'))
+        expect(await bundle.arrayBuffer()).toEqual(await original.arrayBuffer())
+        const archive = new ZipReader(new BlobReader(bundle), { useWebWorkers: false })
+        try {
+          const files = await archive.getEntries()
+          expect(files.map((entry) => entry.filename)).toEqual([
+            'runtime.log',
+            'screenshots/frame.jpg',
+            'readme.txt',
+            'plan.json'
+          ])
+          expect(await files[0].getData(new TextWriter())).toBe(`archive ${index ? '789' : '123'}`)
+          expect(await files.at(-1).getData(new TextWriter())).toBe('{"plan1":{}}')
+        } finally {
+          await archive.close()
+        }
+      }
     } finally {
       await reader.close()
     }

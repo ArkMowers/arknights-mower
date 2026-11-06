@@ -177,7 +177,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    : schedule.assumptions.idleOperators??OPERATORS.map(op=>op.charId)
   if(runtimeConfig.fiammetta&&!hasOperatorSkill({operatorRecords},runtimeConfig.fiammetta.operatorId,'dorm_exchangeAp[000]'))runtimeConfig.fiammetta=undefined
   state=createRosterRuntime(runtimeConfig)
-  if(runtimeConfig.mowerTheoreticalMode)diagnostic('THEORETICAL_EVENT_MODEL','理论期望模式按换班、心情、技能、生产和材料事件推进；安排即时完成，产物及时收取，无人机生成后连续加速所选设施，不模拟读房、页面等待及待办轮询。')
+  if(runtimeConfig.mowerTheoreticalMode)diagnostic('THEORETICAL_EVENT_MODEL','理论期望模式按换班、心情、技能、生产和材料事件推进；安排即时完成，产物及时收取，无人机按配置间隔和阈值使用，不模拟读房和页面等待。')
   else if(runtimeConfig.mowerDeviceTiming)diagnostic('MOWER_IO_CLOCK_MODEL','Mower 每房返回 0.5 秒及无临近任务时的通知检查 1 秒已纳入时间线；识别与其他点击耗时按 0 处理。已完成 run 后仍有同刻任务时，外层单调时钟推进 1 微秒；该适配步长不改任务时刻。')
   if(runtimeConfig.mowerAlpha)diagnostic('MOWER_CONTINUOUS_MOOD_MODEL','本地心情及读取值使用连续数值，未复现游戏心情条像素与识别误差。关闭菲亚梅塔防呆时，接近满心情的微小缺额可能产生密集充能；模拟保留该策略，不添加额外冷却。')
   backups=createBackupPlanController(schedule,state,{canUseFiammetta:id=>hasOperatorSkill({operatorRecords},id,'dorm_exchangeAp[000]')})
@@ -430,11 +430,15 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  production=options.production?createProductionTimeline(schedule,state,options.production,warmupHours,diagnostic,!!state.config.mowerSourcePlan&&!state.config.mowerTheoreticalMode):undefined
  // Real facilities exist before native scheduling first reads a countdown.
  production?.settle(()=>frameAt(0))
- if(production&&state.config.mowerSourcePlan&&!state.config.mowerTheoreticalMode){
-  Object.assign(rates,createMowerClueIO(state))
-  diagnostic('MOWER_CLUE_OBSERVATION_MODEL','线索交流固定关闭，Party Time 为空，不执行线索待办及交流任务。')
-  Object.assign(rates,createMowerProductionIO(state,production,()=>frameAt(0)))
-  diagnostic('MOWER_ORDER_OBSERVATION_MODEL','理想跑单在新单开始时锁定佩佩/可露希尔模式，在普通订单完成时转换但书/龙舌兰收益；保留 Mower 订单读取、任务排序与唤醒，不执行临时换人；常规换班、收取及无人机任务仍按 Mower 时间线执行。')
+ if(production&&state.config.mowerSourcePlan){
+  const productionIO=createMowerProductionIO(state,production,()=>frameAt(0))
+  if(state.config.mowerTheoreticalMode)rates.mowerTodoTaskIO=productionIO.mowerTodoTaskIO
+  else{
+   Object.assign(rates,productionIO)
+   Object.assign(rates,createMowerClueIO(state))
+   diagnostic('MOWER_CLUE_OBSERVATION_MODEL','线索交流固定关闭，Party Time 为空，不执行线索待办及交流任务。')
+   diagnostic('MOWER_ORDER_OBSERVATION_MODEL','理想跑单在新单开始时锁定佩佩/可露希尔模式，在普通订单完成时转换但书/龙舌兰收益；保留 Mower 订单读取、任务排序与唤醒，不执行临时换人；常规换班、收取及无人机任务仍按 Mower 时间线执行。')
+  }
  }
  let steps=0,lastProgress=-1,lastPhase=''
  const activityMonitor=onProgress?createSimulationActivityMonitor():undefined

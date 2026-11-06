@@ -33,6 +33,7 @@ class PackagingMetadataTests(unittest.TestCase):
             "arknights_mower/utils/__init__.py",
             "arknights_mower/utils/git_rev.py",
             "arknights_mower/templates/version.html",
+            "arknights_mower/templates/notification.html",
             "arknights_mower/models/rapidocr/PP-OCRv6_det_tiny.onnx",
             "arknights_mower/models/rapidocr/PP-OCRv6_rec_tiny.onnx",
             "arknights_mower/models/rapidocr/README.md",
@@ -175,8 +176,15 @@ class PackagingMetadataTests(unittest.TestCase):
                             "arknights_mower/__main__.py",
                             "arknights_mower/utils/git_rev.py",
                             "arknights_mower/templates/version.html",
+                            "arknights_mower/templates/notification.html",
                         }
                         <= set(wheel.namelist())
+                    )
+                    self.assertEqual(
+                        wheel.read("arknights_mower/templates/notification.html"),
+                        (
+                            REPO_ROOT / "arknights_mower/templates/notification.html"
+                        ).read_bytes(),
                     )
                     entry_points = next(
                         name

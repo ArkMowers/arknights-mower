@@ -134,11 +134,17 @@ def test_archive_export_bounds_legacy_images_and_log_and_reports_omission(
         data.seek(0)
         with ZipFile(data) as bundle:
             assert len([n for n in bundle.namelist() if n.endswith(".jpg")]) == (
-                2 if plan is None else 1
+                1 if plan is None else 0
             )
+            version = json.loads(bundle.read("version.json"))
+            assert version["mower_version"]
+            assert version["version_scope"] == "export_time"
             if plan is not None:
                 assert json.loads(bundle.read("plan.json")) == plan
-            assert "部分截图或日志已省略" in bundle.read("说明.txt").decode()
+            assert (
+                "部分截图或日志已省略"
+                in bundle.read(diagnostics.README_FILENAME).decode()
+            )
 
 
 def test_log_snapshot_truncation_preserves_valid_json_and_manifest(

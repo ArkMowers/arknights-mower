@@ -52,7 +52,12 @@ from arknights_mower.agent.tools.riic import (
     try_riic_plan,
     try_riic_plan_tool_def,
 )
-from arknights_mower.agent.tools.submit_issue import submit_issue, submit_issue_tool_def
+from arknights_mower.agent.tools.submit_issue import (
+    inspect_feedback,
+    inspect_feedback_tool_def,
+    submit_issue_ai,
+    submit_issue_tool_def,
+)
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 
@@ -66,6 +71,7 @@ def get_tools():
     return [
         faq_tool_def,
         submit_issue_tool_def,
+        inspect_feedback_tool_def,
         call_db_tool_def,
         extract_stack_paths_tool_def,
         get_source_snippet_tool_def,
@@ -83,7 +89,8 @@ def get_tools():
 
 tool_func_map = {
     "get_faq": get_faq,
-    "submit_issue": submit_issue,
+    "submit_issue": submit_issue_ai,
+    "inspect_feedback": inspect_feedback,
     "call_db": call_db,
     "extract_stack_paths": extract_stack_paths,
     "get_source_snippet": get_source_snippet,
@@ -100,6 +107,7 @@ tool_func_map = {
 tool_message_map = {
     "get_faq": "查询相关常见问题",
     "submit_issue": "向开发组发送问题反馈",
+    "inspect_feedback": "核对反馈原始证据和相关代码",
     "call_db": "查询本地数据库记录",
     "extract_stack_paths": "提取错误堆栈中的文件路径和行号",
     "get_source_snippet": "读取报错位置的源代码片段",
@@ -289,6 +297,12 @@ def _build_ai_intro():
         "retry_plan_tool 会重置全部失败计划，不能按传入干员和技能筛选；"
         "用户仅要求重试单个计划时，说明实际范围并取得批量重试确认后再调用。\n"
         "submit_issue 会发送邮件给开发组；只在用户明确要求发送反馈且内容与必要时间已明确时调用。"
+        "Bug先用inspect_feedback检查原始记录及相关源码；focus_terms选用户涉及对象，必要时用evidence_windows补充前因和后续。"
+        "description仅保留用户原始现象、期望和复现条件；AI解释逐条放analysis，引用inspect返回的原文ID。"
+        "分析代码时同时引用记录和源码ID，说明代码如何解释现象以及尚缺哪一步实测，不能将当前源码当历史版本。"
+        "只有引用均存在才能发送；证据不足时analysis使用unknown并说明缺项，不为凑齐引用编造结论。"
+        "缺项注明未知，不把任务名称、队列快照或计划创建当成实际完成，也不把缺少后续记录写成未执行。"
+        "反馈区间应覆盖已知触发过程及后续处理；查询只返回有限记录时说明缺口，不用聊天查询摘要代替自动附加的原始证据。"
         "发送 Bug 反馈时，已从日志或用户描述找到关键时刻则用 screenshot_times 指定，"
         "否则由工具按错误和警告筛选少量截图；不要声称已理解截图内容。"
         "用户只要求排查或整理问题描述时，先提供分析或草稿。"

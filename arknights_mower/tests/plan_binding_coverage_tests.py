@@ -177,6 +177,7 @@ def test_manual_training_stop_uses_additional_replacements(
         with pytest.raises(base_schedule.MowerExit):
             base_schedule._stop_if_scheduled_trainee(solver, "异客", room)
         save.assert_called_once()
+        assert base_schedule.send_message.call_args.kwargs["level"] == "ERROR"
     else:
         base_schedule._stop_if_scheduled_trainee(solver, "异客", room)
         save.assert_not_called()
@@ -208,8 +209,8 @@ def test_ownership_validation_includes_additional_bindings(
     if owned_extra:
         assert result is None
     else:
-        assert result.startswith("森空岛中未持有以下排班干员：黑角")
-        assert "获取干员后" in result
+        assert result.startswith("森空岛缓存中未持有以下排班干员：黑角")
+        assert "请确认已持有" in result
         assert "「养成规划」页面手动点击「刷新」" in result
     assert refresh.call_count == (0 if owned_extra else 1)
 

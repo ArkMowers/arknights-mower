@@ -38,6 +38,7 @@ from arknights_mower.utils.config.plan_advanced import (
 from arknights_mower.utils.config_backup import MAX_BACKUP_BYTES, backup_lock
 from arknights_mower.utils.csv_utils import EmptyDataError, parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
+from arknights_mower.utils.diagnostic_version import MissingMowerVersionError
 from arknights_mower.utils.diagnostics import (
     archive_window,
     error_events,
@@ -1674,23 +1675,29 @@ def validate_rescue_plan_route():
         effective_rescue_plan,
         validate_rescue_schedule,
     )
+    from arknights_mower.utils.schedule_roster import collect_roster_warnings
 
+    warnings = []
     try:
+        warnings = collect_roster_warnings(
+            build_global_plan(plan_model=config.rescue_plan)
+        )
         data = Operators(build_global_plan())
         error = data.init_and_validate()
         if error:
-            return {"success": False, "message": str(error)}
+            return {"success": False, "message": str(error), "warnings": warnings}
         validate_rescue_schedule(data, config.rescue_plan)
         if data.backup_plans or config.rescue_plan.backup_plans:
             return {
                 "success": True,
+                "warnings": warnings,
                 "status": "incomplete",
                 "message": "救急表自身校验通过；排班含副表条件，设施类型、等级及产物仍需在初始化实测后按双方生效排班核验。",
             }
         effective_rescue_plan(data, config.rescue_plan)
     except (ValueError, TypeError) as exc:
-        return {"success": False, "message": str(exc)}
-    return {"success": True, "message": "救急排班验证通过"}
+        return {"success": False, "message": str(exc), "warnings": warnings}
+    return {"success": True, "message": "救急排班验证通过", "warnings": warnings}
 
 
 @app.route("/plan/restore-running", methods=["POST"])
@@ -2521,19 +2528,22 @@ def diagnostic_errors():
 def _send_diagnostic_bundle(center, archive_id=None, **options):
     plan_data = config.plan.model_dump(exclude_none=True)
     plan_data["advanced_settings"] = export_advanced_settings(config.conf)
-    bundle = export_bundle(
-        get_path("@app/log"),
-        get_path("@app/screenshot"),
-        center,
-        archive_id,
-        scheduling_plan=plan_data,
-        **options,
-    )
+    try:
+        bundle = export_bundle(
+            get_path("@app/log"),
+            get_path("@app/screenshot"),
+            center,
+            archive_id,
+            scheduling_plan=plan_data,
+            **options,
+        )
+    except MissingMowerVersionError as exc:
+        return {"error": f"{exc}，诊断包尚未导出。"}, 503
     response = send_file(
         bundle,
         mimetype="application/zip",
         as_attachment=True,
-        download_name=f"日志调度-{center:%Y%m%d-%H%M%S}.zip",
+        download_name=f"logs-{center:%Y%m%d-%H%M%S}.zip",
         max_age=0,
     )
     response.headers["Cache-Control"] = "no-store"
@@ -4171,9 +4181,10 @@ def configuration_test_request():
 @app.route("/test-email")
 @require_token
 def test_email():
-    from arknights_mower.utils.email import Email
+    from arknights_mower.utils.email import Email, render_notification
 
-    email = Email("mower测试邮件", config.conf.mail_subject + "测试邮件", None)
+    body = render_notification("mower测试邮件", "测试邮件")
+    email = Email(body, config.conf.mail_subject + "测试邮件", None)
     try:
         email.send()
     except Exception as e:

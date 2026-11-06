@@ -177,7 +177,7 @@ it('counts fractional orders, rewards and costs without completing or collecting
   )
 })
 
-it.each(['exp', 'gold', 'fragment', 'money', 'orundum'])(
+it.each(['exp', 'gold', 'fragment', 'money'])(
   'values generated drones for %s independent of stock and spending',
   (product) => {
     const empty = fixture(product, { drone: true }),
@@ -410,19 +410,19 @@ it.each([
   ['gold', 'gold', 60 / 72],
   ['money', 'orderLmd', (60 / 203.4) * 1450]
 ])(
-  'keeps the theoretical %s rate exact across production boundaries with continuous drones',
+  'keeps the theoretical %s rate exact without valuing drones outside a service task',
   (product, key, naturalRate) => {
     const test = fixture(product, { theoretical: true, drone: true, stock: 250, warmup: 0.7 })
     test.advance(5.4)
     const report = test.report(),
       sampledHours = 4.7
-    // Base charging is ten drones/hour, each supplying three base minutes.
-    expect(simulationOutputAmounts(report)[key]).toBeCloseTo(naturalRate * 1.5 * sampledHours, 7)
+    expect(simulationOutputAmounts(report)[key]).toBeCloseTo(naturalRate * sampledHours, 7)
     expect(report.production.assumptions.timingModel).toBe('theoretical-events-v1')
     expect(report.production.sampleDrones.generated).toBeCloseTo(10 * sampledHours, 8)
-    expect(report.production.sampleDrones.consumed).toBeCloseTo(10 * sampledHours, 8)
+    expect(report.production.sampleDrones.consumed).toBe(0)
     expect(report.production.sampleDrones.closing).toBeCloseTo(250, 8)
-    expect(report.production.sampleDrones.overflow).toBeCloseTo(0, 8)
+    expect(report.production.sampleDrones.overflow).toBeCloseTo(10 * sampledHours, 8)
+    expect(report.production.expected.droneAllocated).toBe(0)
   }
 )
 

@@ -372,7 +372,7 @@ def _stop_if_scheduled_trainee(
     )
     logger.warning(message)
     try:
-        send_message(message, level="WARNING")
+        send_message(message, subject="训练室排班冲突，Mower 已停止", level="ERROR")
     except Exception as exc:
         logger.warning(f"训练室排班冲突通知发送失败: {exc}")
     # 通用心情读取停在进驻详情浮窗；先关浮窗，再退出训练室。
@@ -5140,7 +5140,7 @@ class BaseSchedulerSolver(
                 "如需更换训练位干员，请先确认放弃减半效果，再手动清空训练室协助位的减半干员；"
                 "mower 下次进入训练室确认保护解除后恢复换人。"
             )
-            send_message(msg, level="WARNING")
+            send_message(msg, subject="训练室受保护，已跳过排班纠错", level="WARNING")
 
     def generate_product(self, agent: str, *, task=None, snapshot=None):
         """
@@ -5511,6 +5511,7 @@ class BaseSchedulerSolver(
                                 send_message(
                                     f"{agent}加工{current_name}后未能确认加工完成，"
                                     "已暂停相关材料的加工，请重新读取仓库。",
+                                    subject="材料加工结果未确认",
                                     level="WARNING",
                                 )
                             raise
@@ -5778,7 +5779,14 @@ class BaseSchedulerSolver(
             extra={"archive_screenshots": True},
         )
         save_exception(Exception("检测到漏单"))
-        send_message("检测到漏单！", level="WARNING")
+        room_label = self.translate_room(room) if room in base_room_list else str(room)
+        send_message(
+            f"检测到漏单：{room_label}。",
+            subject="贸易站漏单提醒",
+            level="WARNING",
+            archive_screenshots=True,
+            screenshot_source=getattr(self, "device", None),
+        )
         self.reset_room_time(room)
 
     def _queue_missing_run_order_reads(self):
@@ -12951,7 +12959,7 @@ class BaseSchedulerSolver(
                     if not self.waiting_solver():
                         return
                 self.recog.update()
-                self.accept_order()
+                self.accept_order(room=room)
                 if not (
                     self.drone_room is None
                     or (
@@ -16684,10 +16692,12 @@ class BaseSchedulerSolver(
                 raise RecognizeError("换人后未确认返回基建全局视角")
             self.sleep(min(poll_interval, remaining))
 
-    def accept_order(self):
+    def accept_order(self, *, room=None):
         task = getattr(self, "task", None)
         if task is not None and task.type == TaskTypes.RUN_ORDER and task.meta_data:
             self._cache_facility_state_from_current_page(task.meta_data, "trade")
+            if room is None:
+                room = task.meta_data
         wait = 0
         # 等待订单完成
         while self.find("order_ready", scope=((450, 675), (600, 750))) is None:
@@ -16713,7 +16723,19 @@ class BaseSchedulerSolver(
                         scores = new_scores
 
                 self.recog.save_screencap("run_order")
-                self.order_reader.save(self.recog.img)
+                if room:
+                    room_label = (
+                        self.translate_room(room)
+                        if room in base_room_list
+                        else str(room)
+                    )
+                    self.order_reader.save(
+                        self.recog.img,
+                        room=room_label,
+                        screenshot_source=getattr(self, "device", None),
+                    )
+                else:
+                    self.order_reader.save(self.recog.img)
                 not_take = False
             self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
 
@@ -17974,7 +17996,8 @@ class BaseSchedulerSolver(
         if stage_drop["details"] and not self.drop_send:
             send_message(
                 maa_template.render(stage_drop=stage_drop),
-                "MAA停止",
+                "MAA 作战掉落汇总",
+                body_is_html=True,
             )
             self.drop_send = True
 
@@ -18142,7 +18165,7 @@ class BaseSchedulerSolver(
             elif not tasks or tasks == "All" and not self.has_maa_daily_tasks():
                 logger.info("没有启用的 MAA 日常任务，跳过日常")
             else:
-                send_message("启动MAA")
+                send_message("启动MAA", subject="准备启动 MAA")
                 self.back_to_index()
                 # 任务及参数请参考 docs/集成文档.md
                 self.initialize_maa()
@@ -18214,7 +18237,7 @@ class BaseSchedulerSolver(
                 if hard_stop:
                     hard_stop_msg = "MAA任务未完成，等待3分钟后按空闲设置处理"
                     logger.info(hard_stop_msg)
-                    send_message(hard_stop_msg)
+                    send_message(hard_stop_msg, subject="MAA 任务未完成")
                     self.sleep(180)
                     next_task = self.find_next_task()
                     remaining_time = (
@@ -18240,7 +18263,7 @@ class BaseSchedulerSolver(
                     if "Mall" in tasks and self._maa_daily_done("credit_fight"):
                         self.maa_stop(False)
                 elif not manual:
-                    send_message("MAA单次任务停止")
+                    send_message("MAA单次任务停止", subject="MAA 单次任务停止")
                     if (
                         self.find_next_task(datetime.now() + timedelta(minutes=15))
                         is None
@@ -18316,7 +18339,7 @@ class BaseSchedulerSolver(
                 )
             ) and (manual or not rg_sleep):
                 logger.info("准备开始 MAA 大型任务")
-                send_message("启动 MAA 大型任务")
+                send_message("启动 MAA 大型任务", subject="准备启动 MAA 大型任务")
                 while True:
                     if config.stop_mower.is_set():
                         raise MowerExit
@@ -18801,7 +18824,7 @@ class BaseSchedulerSolver(
                     logger.exception("MAA 异常后的任务清理失败，保留原始调用错误")
             self.release_maa()
             battle_inventory_active.clear()
-            send_message(str(e), "MAA调用出错！", level="ERROR")
+            send_message(str(e), "MAA 调用出错", level="ERROR")
             if manual:
                 raise
             if large_task_started:
@@ -18839,7 +18862,7 @@ class BaseSchedulerSolver(
             )
             save_log(message, level="ERROR")
             logger.error(message, extra={"archive_screenshots": False})
-            send_message(message, level="ERROR")
+            send_message(message, subject="森空岛签到失败", level="ERROR")
         # 仅尝试一次 不再尝试
         return (datetime.now() - timedelta(hours=4)).date()
 
@@ -19403,7 +19426,7 @@ class BaseSchedulerSolver(
             save_exception(e)
             logger.exception(e)
             self.device.exit()
-            send_message(str(e), "mower local operation error", level="ERROR")
+            send_message(str(e), "本地作战任务出错", level="ERROR")
             if manual:
                 raise
             self.check_current_focus()
@@ -19610,7 +19633,13 @@ class BaseSchedulerSolver(
         message = "本轮任务结束，已按要求停止"
         logger.info(message)
         try:
-            send_message(body or message, message)
+            if body:
+                stopped_body = (
+                    f"<p>以下是停止前尚未执行的任务，重新启动前不会自动执行。</p>{body}"
+                )
+                send_message(stopped_body, message, body_is_html=True)
+            else:
+                send_message(message, message)
         except Exception:
             logger.exception("发送本轮结束停止通知失败")
         raise MowerExit
@@ -19773,6 +19802,7 @@ class BaseSchedulerSolver(
         send_message(
             body,
             f"休息 {format_time(remaining_time)}，到{first.format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
+            body_is_html=True,
         )
         if remaining_time > 0:
             self._idle_sleep(remaining_time, round_end=True)

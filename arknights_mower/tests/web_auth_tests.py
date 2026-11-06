@@ -65,6 +65,7 @@ def protected_server(monkeypatch):
         ("GET", "/instances", "json"),
         ("HEAD", "/instances", "json"),
         ("POST", "/instances/actions", "json"),
+        ("POST", "/submit_feedback", "json"),
         ("GET", "/resource-version", "json"),
         ("HEAD", "/resource-version", "json"),
         ("GET", "/resource-version?local=1", "json"),
@@ -88,6 +89,32 @@ def test_missing_and_invalid_tokens_precede_parsing_and_instance_access(
     response = client.open(path, method=method, headers=headers, **arguments)
     assert response.status_code == 403
     forbidden.assert_not_called()
+
+
+def test_current_token_reaches_feedback_without_real_collection_or_mail(monkeypatch):
+    import server
+    from arknights_mower.agent.tools import submit_issue
+    from arknights_mower.utils import config_profiles
+
+    monkeypatch.setattr(server.app, "token", "current-instance", raising=False)
+    monkeypatch.setattr(config_profiles, "check_generation", lambda generation: None)
+    submit = Mock(return_value="邮件发送成功！")
+    monkeypatch.setattr(submit_issue, "submit_issue", submit)
+    response = server.app.test_client().post(
+        "/submit_feedback",
+        headers={"token": "current-instance"},
+        json={
+            "description": "反馈原始现象和期望",
+            "type": "Bug",
+            "startTime": "2026-10-20 12:00:00",
+            "endTime": "2026-10-20 12:15:00",
+        },
+    )
+    assert response.status_code == 200
+    assert response.get_data(as_text=True) == "邮件发送成功！"
+    submit.assert_called_once_with(
+        "反馈原始现象和期望", "Bug", "2026-10-20 12:00:00", "2026-10-20 12:15:00"
+    )
 
 
 @pytest.mark.parametrize("local_only", [False, True])
@@ -333,3 +360,40 @@ def test_development_preflight_requires_an_authenticated_local_session(
     assert response.status_code == 403
     access.assert_not_called()
     generation.assert_not_called()
+
+
+@pytest.mark.parametrize("token", [None, "another-instance", "current-instance"])
+@pytest.mark.parametrize("snapshot", [False, True])
+def test_plan_validation_roster_warnings_keep_token_boundary(
+    monkeypatch, token, snapshot
+):
+    import server
+    from arknights_mower.utils import schedule_roster
+    from arknights_mower.utils.plan import Plan, PlanConfig, Room
+
+    monkeypatch.setattr(server.app, "token", "current-instance", raising=False)
+    roster_check = Mock(return_value="未持有干员")
+    monkeypatch.setattr(schedule_roster, "validate_owned_operators", roster_check)
+    global_plan = {
+        "default_plan": Plan(
+            {"central": [Room("能天使", "", [])]},
+            PlanConfig("", "", "", workaholic="能天使"),
+        ),
+        "backup_plans": [],
+    }
+    build = Mock(return_value=global_plan)
+    monkeypatch.setattr(server, "build_global_plan", build)
+    headers = {"token": token} if token else {}
+    body = {"plan": {"plan1": {}}, "operatorMode": "cache"} if snapshot else {}
+    response = server.app.test_client().post(
+        "/validate-plan", json=body, headers=headers
+    )
+    if token == "current-instance":
+        assert response.status_code == 200
+        assert response.json["success"]
+        assert "未持有干员" in response.json["warnings"][0]
+        roster_check.assert_called_once()
+    else:
+        assert response.status_code == 403
+        build.assert_not_called()
+        roster_check.assert_not_called()

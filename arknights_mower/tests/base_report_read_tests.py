@@ -443,6 +443,11 @@ def test_fully_read_order_fields_are_stored(recording_solver):
     row = read_dicts(solver.record_path, encoding="gbk")[0]
     for key, expected in solver.report_res.items():
         assert parse_cell_num(row[key]) == expected
+    assert "44500" in report_module.send_message.call_args.args[0]
+    assert report_module.send_message.call_args.kwargs["body_is_html"] is True
+    assert (
+        report_module.send_message.call_args.kwargs["attach_image"] is solver.recog.img
+    )
 
 
 def test_partial_report_stores_zero_and_unread_independently(recording_solver):
