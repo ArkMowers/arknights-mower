@@ -4,6 +4,8 @@ import json
 import sqlite3
 from contextlib import closing
 from datetime import datetime
+from email import policy
+from email.parser import BytesParser
 from io import BytesIO
 from pathlib import PurePosixPath
 from zipfile import ZipFile
@@ -297,6 +299,43 @@ def test_bug_sends_one_zip_matching_log_export_layout(feedback):
                     explanation = archive.read("readme.txt").decode()
                     assert START in explanation and END in explanation
                     assert "当前保存" in explanation
+
+
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "办公室进房失败",
+        "room selection failed",
+        "办公室 room selection failed",
+        "room; failed",
+        "failure",
+    ],
+)
+@pytest.mark.parametrize(
+    "wire_policy", [policy.compat32, policy.SMTP], ids=["message-default", "smtp"]
+)
+def test_feedback_zip_filename_survives_mime_serialization(
+    feedback, problem, wire_policy
+):
+    logs, _, sent = feedback
+    write_logs(logs, [(10, "ERROR", "故障原始记录")])
+    assert (
+        submit_issue.submit_issue(problem, start_time=START, end_time=END)
+        == "邮件发送成功！"
+    )
+    original = sent[0][0]
+    parsed = BytesParser(policy=policy.default).parsebytes(
+        original.as_bytes(policy=wire_policy)
+    )
+    attachments = list(parsed.iter_attachments())
+    assert len(attachments) == 1
+    attachment = attachments[0]
+    assert attachment.get_content_disposition() == "attachment"
+    assert attachment.get_filename() == f"feedback-20261020-120000-{problem}.zip"
+    assert not attachment["Content-Disposition"].defects
+    with ZipFile(BytesIO(attachment.get_payload(decode=True))) as bundle:
+        assert bundle.testzip() is None
+        assert "故障原始记录" in bundle.read("runtime.log").decode()
 
 
 @pytest.mark.parametrize(

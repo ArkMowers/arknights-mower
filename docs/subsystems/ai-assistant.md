@@ -74,6 +74,8 @@ Every feedback message requires a nonempty current Mower version, excluding `unk
 
 Bug feedback also includes `context.json` containing the operating system, architecture, Python version, Android marker, timezone-aware generation and problem times, and the right-side room order. `plan.json` uses the existing Scheduling Plan export and its allowlisted advanced settings. A successful Bug email always includes the complete current plan, including one exceeding 256 KiB; if the complete encoded email exceeds its size limit, sending fails instead of dropping the plan. These are the current configuration when feedback is generated, not a historical or effective-backup snapshot. No full general configuration, credentials, hostname, username or device paths are collected for these context attachments. The Bug message supplies a timezone-aware `Date` header. Feature feedback attaches no diagnostic files.
 
+File attachments use the standard MIME filename parameter: ASCII names are quoted when needed, and non-ASCII names use RFC 2231 encoding. Serialization and parsing preserve the complete diagnostic ZIP filename, including spaces and its `.zip` suffix.
+
 The complete MIME message must fit within 8 MiB, including attachment encoding and the description; an oversized message returns an explicit unsent result. SMTP providers may impose lower limits. Temporary attachments are removed after success or failure; existing history remains available under its normal retention policy. The successful response remains `邮件发送成功！` for the feedback form.
 
 #### Feedback Inspection and Cited Analysis
