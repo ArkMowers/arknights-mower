@@ -145,16 +145,11 @@ function attribute(node, name) {
 }
 
 describe('settings page ownership', () => {
-  it.each([0, 19, 20, 100])('无人机输入框传递最小值 20 和当前值 %s', async (limit) => {
+  it.each([0, 19, 20, 100])('全部设置移除无人机控件并保留当前阈值 %s', async (limit) => {
     const html = await renderToString(setup(TaskSettingsPanels, { drone_count_limit: limit }))
-    const forms = elements(parseHtml(html)).filter(
-      (node) => attribute(node, 'data-control') === 'NFormItem'
-    )
-    const field = forms.find((node) => node.loc.source.includes('无人机使用阈值'))
-    expect(field).toBeDefined()
-    const input = elements(field).find((node) => node.tag === 'input')
-    expect(attribute(input, 'min')).toBe('20')
-    expect(attribute(input, 'value')).toBe(String(limit))
+    for (const label of ['无人机使用房间', '无人机使用阈值', '无人机加速间隔']) {
+      expect(html).not.toContain(label)
+    }
     expect(store.drone_count_limit).toBe(limit)
   })
 
@@ -240,8 +235,6 @@ describe('settings page ownership', () => {
       '启动命令',
       '截图最短间隔',
       '跑单前置延时',
-      '无人机使用阈值',
-      '无人机加速间隔',
       '公开招募',
       '森空岛签到',
       '仓库物品混合读取',
@@ -403,13 +396,7 @@ describe('settings page layouts', () => {
     expect(intervals.content).not.toContain('data-control="NSwitch"')
     expect(intervals.content).not.toContain('data-control="NCheckbox"')
     expect([...sections.keys()].some((id) => id.startsWith('category:'))).toBe(false)
-    const droneInterval = elements(parseHtml(sections.get('drone').content)).find(
-      (node) =>
-        attribute(node, 'data-control') === 'NFormItem' &&
-        elements(node).some((child) => child.type === 2 && child.content === '无人机加速间隔')
-    )
-    expect(droneInterval).toBeDefined()
-    expect(attribute(droneInterval, 'style') || '').not.toMatch(/display:\s*none/)
+    expect(sections.has('drone')).toBe(false)
     expect(sections.get('recruit').content).toContain('启动间隔')
     expect(sections.get('trust').content).toContain('检查间隔')
     expect(axios.post).not.toHaveBeenCalled()
@@ -439,7 +426,6 @@ describe('settings page layouts', () => {
       'idle',
       'base',
       'runorder',
-      'drone',
       'clue',
       'workshop',
       'training',
@@ -479,8 +465,8 @@ describe('settings page layouts', () => {
       expect(content('recruit')).toContain(label)
     expect(content('recruit')).toContain('data-control="NCheckbox"')
     expect(content('recruit')).toContain('value="9"')
-    expect(content('drone')).toContain('无人机加速间隔')
-    expect(content('drone')).toContain('value="13"')
+    expect(sections.has('drone')).toBe(false)
+    expect(store.drone_interval).toBe(13)
     expect(content('trust')).toContain('检查间隔')
     expect(content('trust')).toContain('value="27"')
     expect(content('maa')).toContain('MAA 核心')
@@ -496,7 +482,6 @@ describe('settings page layouts', () => {
       'idle',
       'base',
       'runorder',
-      'drone',
       'clue',
       'workshop',
       'training',

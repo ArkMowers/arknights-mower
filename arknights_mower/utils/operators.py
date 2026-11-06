@@ -325,6 +325,8 @@ def build_global_plan(
             refresh_drained=i["conf"]["refresh_drained"],
             free_room=conf.free_room,
             removed_operators=i["conf"].get("removed_operators", {}),
+            drone_room=i["conf"].get("drone_room"),
+            drone_count_limit=i["conf"].get("drone_count_limit"),
         )
         backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
         backup_task = i.get("task")

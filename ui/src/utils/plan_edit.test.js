@@ -302,3 +302,34 @@ describe('复用自 PlanEditor 的换位工具', () => {
     expect(backups[1].trigger.left).toContain("'room_1_1'")
   })
 })
+
+it.each(['main', 0, '0'])(
+  '设施换位同步全部显式无人机目标，保留继承和任意贸易站，当前表 %s',
+  (active) => {
+    const main = { room_1_1: { name: 'A' }, room_1_2: { name: 'B' } }
+    const mainSettings = { drone_room: 'room_1_2', drone_count_limit: 130, drone_interval: 2.5 }
+    const rooms = ['room_1_1', 'room_1_2', 'room_3_3', '', null, undefined]
+    const backups = rooms.map((room) => ({
+      plan: structuredClone(main),
+      conf: room === undefined ? {} : { drone_room: room, drone_count_limit: 150 },
+      task: {},
+      trigger: {}
+    }))
+    swapPlanFacilities(main, backups, active, 'room_1_1', 'room_1_2', mainSettings)
+    expect(mainSettings).toEqual({
+      drone_room: 'room_1_1',
+      drone_count_limit: 130,
+      drone_interval: 2.5
+    })
+    expect(backups.map((backup) => backup.conf.drone_room)).toEqual([
+      'room_1_2',
+      'room_1_1',
+      'room_3_3',
+      '',
+      null,
+      undefined
+    ])
+    expect(backups.at(-1).conf).not.toHaveProperty('drone_room')
+    expect(backups.slice(0, -1).every((backup) => backup.conf.drone_count_limit === 150)).toBe(true)
+  }
+)

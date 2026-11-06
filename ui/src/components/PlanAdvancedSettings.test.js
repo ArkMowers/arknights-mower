@@ -3,10 +3,14 @@ import { createSSRApp, h, ref } from 'vue'
 import { createPinia } from 'pinia'
 import { afterEach, expect, it, vi } from 'vitest'
 import PlanAdvancedSettings from './PlanAdvancedSettings.vue'
+import axios from 'axios'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
+
 let selectProps, updateSelection
+const droneControls = {}
 const sliderProps = []
 vi.mock('naive-ui', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -18,9 +22,20 @@ vi.mock('naive-ui', async (importOriginal) => ({
     }
   },
   NSelect: {
-    props: { value: Array, options: Array, multiple: Boolean, filterable: Boolean, tag: Boolean },
+    props: {
+      value: [Array, String],
+      options: Array,
+      multiple: Boolean,
+      filterable: Boolean,
+      tag: Boolean
+    },
     emits: ['update:value'],
-    setup(props, { emit }) {
+    setup(props, { emit, attrs }) {
+      if (attrs['aria-label'])
+        droneControls[attrs['aria-label']] = {
+          props,
+          update: (value) => emit('update:value', value)
+        }
       selectProps = props
       updateSelection = (value) => emit('update:value', value)
       return () => h('select')
@@ -30,7 +45,15 @@ vi.mock('naive-ui', async (importOriginal) => ({
 vi.mock('./MowerInputNumber.vue', () => ({
   default: {
     props: ['value', 'min'],
-    setup: (props) => () => h('input', { value: props.value, min: props.min })
+    emits: ['update:value'],
+    setup(props, { attrs, emit }) {
+      if (attrs['aria-label'])
+        droneControls[attrs['aria-label']] = {
+          props,
+          update: (value) => emit('update:value', value)
+        }
+      return () => h('input', { value: props.value, min: props.min })
+    }
   }
 }))
 vi.mock('./SlickOperatorSelect.vue', () => ({ default: { render: () => h('select') } }))
@@ -93,4 +116,59 @@ it('从主副表及多绑组提供多选，保留已保存的组名并绑定配�
   expect(config.build_advanced_settings().group_mood_gap_exclusions).toEqual(['主表组', '副表组'])
   updateSelection([])
   expect(config.group_mood_gap_exclusions).toEqual([])
+})
+
+it('无人机设置随编辑表切换，副表独立保存且清空后继承', async () => {
+  const app = createSSRApp(PlanAdvancedSettings)
+  app.use(createPinia())
+  app.provide('loaded', ref(false))
+  app.provide('mobile', ref(false))
+  const config = app.runWithContext(() => useConfigStore())
+  const plan = app.runWithContext(() => usePlanStore())
+  stores.push(config, plan)
+  config.drone_room = 'room_3_3'
+  config.drone_count_limit = 130
+  axios.get.mockResolvedValue({
+    data: {
+      plan1: {},
+      conf: {},
+      backup_plans: [
+        { plan: {}, conf: {} },
+        { plan: {}, conf: { drone_room: 'room_1_2', drone_count_limit: 80 } }
+      ]
+    }
+  })
+  await plan.load_plan()
+  await renderToString(app)
+  expect(droneControls['无人机使用房间'].props.value).toBe('room_3_3')
+  expect(config.build_advanced_settings()).toMatchObject({
+    drone_room: 'room_3_3',
+    drone_count_limit: 130
+  })
+  plan.sub_plan = 0
+  await renderToString(app)
+  expect(droneControls['无人机使用房间'].props.value).toBeNull()
+  expect(droneControls['无人机使用阈值'].props.value).toBeNull()
+  droneControls['无人机使用房间'].update('')
+  droneControls['无人机使用阈值'].update(150)
+  expect(plan.build_plan().backup_plans[0].conf).toMatchObject({
+    drone_room: '',
+    drone_count_limit: 150
+  })
+  expect(config.drone_room).toBe('room_3_3')
+  expect(config.drone_count_limit).toBe(130)
+  plan.sub_plan = 1
+  await renderToString(app)
+  expect(droneControls['无人机使用房间'].props.value).toBe('room_1_2')
+  expect(droneControls['无人机使用阈值'].props.value).toBe(80)
+  droneControls['无人机使用房间'].update(null)
+  droneControls['无人机使用阈值'].update(null)
+  expect(plan.build_plan().backup_plans[1].conf).toMatchObject({
+    drone_room: null,
+    drone_count_limit: null
+  })
+  plan.sub_plan = 'main'
+  await renderToString(app)
+  expect(droneControls['无人机使用房间'].props.value).toBe('room_3_3')
+  expect(droneControls['无人机使用阈值'].props.value).toBe(130)
 })

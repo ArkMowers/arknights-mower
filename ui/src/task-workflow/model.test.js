@@ -181,7 +181,7 @@ describe('task configuration checklist', () => {
       ['mower', '界面与维护']
     ])
     const expectedGroups = {
-      base: ['base', 'runorder', 'drone', 'clue', 'workshop', 'training'],
+      base: ['base', 'runorder', 'clue', 'workshop', 'training'],
       daily: [
         'trust',
         'skland',
@@ -343,10 +343,12 @@ describe('task configuration checklist', () => {
     ).toEqual(['visit', 'credit-fight', 'shop'])
   })
 
-  it('keeps automatic trade acceleration available without a selected drone room', () => {
-    const workflow = createTaskWorkflow({ drone_room: '' })
-    expect(workflow.statuses.drone).toBe(true)
-    expect(workflow.tasks.find(({ id }) => id === 'drone').mode).toBe('automatic')
+  it('无人机设置移至排班后，全部设置不再提供独立面板且保留配置', () => {
+    const config = freeze({ drone_room: '', drone_interval: 4, drone_count_limit: 130 })
+    const workflow = createTaskWorkflow(config)
+    expect(workflow.editors.some(({ id }) => id === 'drone')).toBe(false)
+    expect(workflow.tasks.some(({ id }) => id === 'drone')).toBe(false)
+    expect(config).toEqual({ drone_room: '', drone_interval: 4, drone_count_limit: 130 })
   })
 
   it.each([

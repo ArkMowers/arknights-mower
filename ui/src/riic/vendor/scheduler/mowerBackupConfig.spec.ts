@@ -257,3 +257,24 @@ describe('Mower alpha backup config layering', () => {
     }
   })
 })
+
+it('layers drone settings through activation and restores the main selection on exit', () => {
+  const {state, base, activate} = setup({drone_room: 'room_3_3', drone_count_limit: 130}, [
+    {drone_room: 'room_1_1', drone_count_limit: 150},
+    {drone_room: '', drone_count_limit: 80},
+    {drone_room: null, drone_count_limit: null},
+  ])
+  for (const [flags, room, limit] of [
+    [[false,false,false], 'room_3_3', 130],
+    [[true,false,true], 'room_1_1', 150],
+    [[true,true,true], null, 80],
+    [[true,false,false], 'room_1_1', 150],
+    [[false,false,true], 'room_3_3', 130],
+  ] as const) {
+    activate([...flags])
+    expect(state.config.mowerDroneRoom).toBe(room)
+    expect(state.config.mowerDroneCountLimit).toBe(limit)
+  }
+  expect(base.rawConf.drone_room).toBe('room_3_3')
+  expect(base.rawConf.drone_count_limit).toBe(130)
+})

@@ -600,6 +600,24 @@ class BaseSchedulerSolver(
         workshop_inventory_changed.set()
         self._register_network_wait_observer()
 
+    @property
+    def drone_room(self):
+        effective = getattr(getattr(self, "op_data", None), "config", None)
+        room = getattr(effective, "drone_room", None)
+        if room is not None:
+            return room or None
+        return getattr(self, "_drone_room", None)
+
+    @drone_room.setter
+    def drone_room(self, room):
+        self._drone_room = room
+
+    @property
+    def drone_count_limit(self):
+        effective = getattr(getattr(self, "op_data", None), "config", None)
+        limit = getattr(effective, "drone_count_limit", None)
+        return config.conf.drone_count_limit if limit is None else limit
+
     def _register_network_wait_observer(self):
         owner = getattr(self, "recog", None)
         if owner is None:
@@ -12927,11 +12945,11 @@ class BaseSchedulerSolver(
             self._cache_facility_state_from_current_page(room, "manufacture")
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
-            if drone_count < config.conf.drone_count_limit or (
-                retain_reserve and drone_count == config.conf.drone_count_limit
+            if drone_count < self.drone_count_limit or (
+                retain_reserve and drone_count == self.drone_count_limit
             ):
                 logger.info(
-                    f"无人机数量{drone_count}未满足加速条件，阈值为{config.conf.drone_count_limit}->停止"
+                    f"无人机数量{drone_count}未满足加速条件，阈值为{self.drone_count_limit}->停止"
                 )
                 return
             logger.info("制造站加速")
@@ -12939,7 +12957,7 @@ class BaseSchedulerSolver(
                 "manufacture_accelerate", "all_in"
             )
             if retain_reserve:
-                self._confirm_drone_count(drone_count - config.conf.drone_count_limit)
+                self._confirm_drone_count(drone_count - self.drone_count_limit)
             else:
                 self.tap(all_in_scope)
                 self.tap(accelerate, y_rate=1)
@@ -12971,13 +12989,8 @@ class BaseSchedulerSolver(
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f"当前无人机数量为：{drone_count}")
                     # 200 为识别错误
-                    if (
-                        drone_count < config.conf.drone_count_limit
-                        or drone_count == 201
-                    ):
-                        logger.info(
-                            f"无人机数量小于{config.conf.drone_count_limit}->停止"
-                        )
+                    if drone_count < self.drone_count_limit or drone_count == 201:
+                        logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
                         break
                 accelerate = self.find("bill_accelerate")
             if adjust_time:
@@ -17140,7 +17153,7 @@ class BaseSchedulerSolver(
                     ):
                         drone_count = self.digit_reader.get_drone(self.recog.gray)
                         logger.info(f"当前无人机数量为：{drone_count}")
-                        if drone_count >= config.conf.drone_count_limit:
+                        if drone_count >= self.drone_count_limit:
                             self.drone(
                                 room,
                                 not_return=True,

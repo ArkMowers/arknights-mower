@@ -1,6 +1,6 @@
 import { normalizeBackupGroups } from '@/riic/vendor/scheduler/backupGroups'
 import { planBindings, planReplacements } from '@/utils/plan_bindings'
-import { OPERATOR_CONF_FIELDS } from '@/utils/plan_edit'
+import { OPERATOR_CONF_FIELDS, swapPlanFacilities } from '@/utils/plan_edit'
 import { defineStore } from 'pinia'
 import { ref, watch, computed, inject } from 'vue'
 import axios from 'axios'
@@ -450,6 +450,17 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       }
     })
 
+    function swap_facilities(source, target, mainSettings) {
+      swapPlanFacilities(
+        plan.value,
+        backup_plans.value,
+        sub_plan.value,
+        source,
+        target,
+        rescue ? null : mainSettings
+      )
+    }
+
     function import_main_facility(facility) {
       if (sub_plan.value === 'main' || !plan.value[facility]) return
       current_plan.value[facility] = deepcopy(plan.value[facility])
@@ -457,6 +468,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
 
     return {
       import_main_facility,
+      swap_facilities,
       autosave_paused,
       wait_for_plan_save,
       save_plan,

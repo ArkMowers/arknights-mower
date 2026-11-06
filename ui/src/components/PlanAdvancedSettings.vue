@@ -11,7 +11,8 @@ const configStore = useConfigStore()
 const planStore = inject('planStore', null) || usePlanStore()
 const {
   product_switching,
-  drone_count_limit,
+  drone_room: main_drone_room,
+  drone_count_limit: main_drone_count_limit,
   drone_interval,
   resting_threshold,
   group_resting_thresholds,
@@ -31,6 +32,32 @@ const {
   rescue_threshold,
   favorite
 } = storeToRefs(configStore)
+
+const currentBackup = computed(() =>
+  planStore.sub_plan === 'main' ? null : planStore.backup_plans[planStore.sub_plan]
+)
+const drone_room = computed({
+  get: () =>
+    currentBackup.value ? (currentBackup.value.conf.drone_room ?? null) : main_drone_room.value,
+  set: (value) => {
+    if (currentBackup.value) currentBackup.value.conf.drone_room = value
+    else main_drone_room.value = value
+  }
+})
+const drone_count_limit = computed({
+  get: () =>
+    currentBackup.value
+      ? (currentBackup.value.conf.drone_count_limit ?? null)
+      : main_drone_count_limit.value,
+  set: (value) => {
+    if (currentBackup.value) currentBackup.value.conf.drone_count_limit = value
+    else if (value != null) main_drone_count_limit.value = value
+  }
+})
+const droneRoomOptions = computed(() => [
+  { label: '（加速任意贸易站）', value: '' },
+  ...planStore.left_side_facility
+])
 
 const excludedGroupOptions = computed(() =>
   [...new Set([...planStore.all_groups, ...group_mood_gap_exclusions.value])].map((group) => ({
@@ -58,108 +85,139 @@ const excludedGroupOptions = computed(() =>
           >
         </n-checkbox>
       </n-form-item>
-      <n-form-item :show-label="false">
-        <n-checkbox v-model:checked="product_switching.enable">
-          自动切换产物与订单
-          <help-text>
-            开启后根据副表切换制造产物或贸易站订单类型，同时会读取设施类型、产物与订单类型，并显示对应的副表条件选项。
-            开启后推荐提高无人机使用阈值。
-          </help-text>
-        </n-checkbox>
-      </n-form-item>
-      <template v-if="product_switching.enable">
-        <n-form-item :show-label="false">
-          <n-checkbox v-model:checked="product_switching.grandet_mode">
-            葛朗台切产物
+      <section aria-label="无人机与产物切换">
+        <n-divider title-placement="left">无人机与产物切换</n-divider>
+        <n-form-item>
+          <template #label>
+            <span>无人机使用房间</span>
             <help-text>
-              开启时按损耗容限节省无人机，并等待当前一份自然完成；关闭时直接使用足量无人机完成当前一份后切换。
+              <div>为指定制造站或贸易站加速；“加速任意贸易站”仅加速配置了跑单替班的贸易站。</div>
+              <div>这两项设置随当前编辑的主表或副表保存。副表未设置时继承此前生效的配置。</div>
             </help-text>
-          </n-checkbox>
+          </template>
+          <n-select
+            v-model:value="drone_room"
+            :options="droneRoomOptions"
+            :clearable="!!currentBackup"
+            :placeholder="currentBackup ? '继承此前生效的设置' : ''"
+            :consistent-menu-width="false"
+            aria-label="无人机使用房间"
+          />
         </n-form-item>
         <n-form-item>
           <template #label>
-            <span>切产物单次无人机上限</span>
-            <help-text>0 表示不限制；达到上限后等待当前一份自然完成，再确认切换。</help-text>
+            <span>无人机使用阈值</span>
+            <help-text>
+              <div>最低为 20，旧配置中小于 20 的值自动调整为 20。</div>
+              <div>普通制造站加速仅使用超过阈值的无人机，与跑单房间和自动切产物开关无关。</div>
+              <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
+              <div>如加速制造，推荐大于 贸易站数*10</div>
+            </help-text>
           </template>
           <mower-input-number
-            v-model:value="product_switching.max_drones_per_switch"
-            :min="0"
-            :max="200"
-          >
-            <template #suffix>架</template>
-          </mower-input-number>
+            v-model:value="drone_count_limit"
+            :min="20"
+            :clearable="!!currentBackup"
+            :placeholder="currentBackup ? '继承此前生效的设置' : ''"
+            aria-label="无人机使用阈值"
+          />
         </n-form-item>
-        <n-form-item v-if="product_switching.grandet_mode" :show-label="false">
-          <n-checkbox v-model:checked="product_switching.use_drones_when_leaving_orirock">
-            切出源石碎片时使用无人机
+        <n-form-item>
+          <template #label>
+            <span>无人机加速间隔</span>
             <help-text>
-              关闭后会等当前一份源石碎片自然完成，再切换至其他产物；若这次切换属于换班，将等切换完成后再换人。
+              <div>可填小数，主表与副表共用此间隔。</div>
             </help-text>
-          </n-checkbox>
+          </template>
+          <mower-input-number v-model:value="drone_interval">
+            <template #suffix>小时</template>
+          </mower-input-number>
         </n-form-item>
         <n-form-item :show-label="false">
-          <n-checkbox v-model:checked="product_switching.direct_when_drones_insufficient">
-            允许无人机不足时直接切换产物
+          <n-checkbox v-model:checked="product_switching.enable">
+            自动切换产物与订单
             <help-text>
-              开启时会取消制造站当前一份的进度；关闭时若换班需要切产物，将保留原班，并按制造进度和无人机恢复情况预计可切时间，届时复核后换班。
+              开启后根据副表切换制造产物或贸易站订单类型，同时会读取设施类型、产物与订单类型，并显示对应的副表条件选项。
+              开启后推荐提高无人机使用阈值。
             </help-text>
           </n-checkbox>
         </n-form-item>
-        <n-form-item v-if="product_switching.grandet_mode">
-          <template #label>
-            <span class="label-with-help">
-              <span>葛朗台无人机损耗容限</span>
+        <template v-if="product_switching.enable">
+          <n-form-item :show-label="false">
+            <n-checkbox v-model:checked="product_switching.grandet_mode">
+              葛朗台切产物
               <help-text>
-                允许最后一架无人机浪费的加速时间。默认 30 秒，即当前一份余下至少 2 分 30
-                秒时使用无人机完成，否则等待自然完成。
+                开启时按损耗容限节省无人机，并等待当前一份自然完成；关闭时直接使用足量无人机完成当前一份后切换。
               </help-text>
-            </span>
-          </template>
-          <mower-input-number
-            v-model:value="product_switching.drone_loss_seconds"
-            :min="0"
-            :max="180"
-          >
-            <template #suffix>秒</template>
-          </mower-input-number>
-        </n-form-item>
-        <n-form-item v-if="product_switching.grandet_mode">
-          <template #label>
-            <span class="label-with-help">
-              <span>葛朗台切产物缓冲时间</span>
+            </n-checkbox>
+          </n-form-item>
+          <n-form-item>
+            <template #label>
+              <span>切产物单次无人机上限</span>
+              <help-text>0 表示不限制；达到上限后等待当前一份自然完成，再确认切换。</help-text>
+            </template>
+            <mower-input-number
+              v-model:value="product_switching.max_drones_per_switch"
+              :min="0"
+              :max="200"
+            >
+              <template #suffix>架</template>
+            </mower-input-number>
+          </n-form-item>
+          <n-form-item v-if="product_switching.grandet_mode" :show-label="false">
+            <n-checkbox v-model:checked="product_switching.use_drones_when_leaving_orirock">
+              切出源石碎片时使用无人机
               <help-text>
-                当前一份完成后，在制造计划取消确认页等待这段时间再确认。默认 2 秒。
+                关闭后会等当前一份源石碎片自然完成，再切换至其他产物；若这次切换属于换班，将等切换完成后再换人。
               </help-text>
-            </span>
-          </template>
-          <mower-input-number v-model:value="product_switching.waiting_seconds" :min="0" :max="60">
-            <template #suffix>秒</template>
-          </mower-input-number>
-        </n-form-item>
-      </template>
-      <n-form-item>
-        <template #label>
-          <span>无人机使用阈值</span>
-          <help-text>
-            <div>最低为 20，旧配置中小于 20 的值自动调整为 20。</div>
-            <div>普通制造站加速仅使用超过阈值的无人机，与跑单房间和自动切产物开关无关。</div>
-            <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
-            <div>如加速制造，推荐大于 贸易站数*10</div>
-          </help-text>
+            </n-checkbox>
+          </n-form-item>
+          <n-form-item :show-label="false">
+            <n-checkbox v-model:checked="product_switching.direct_when_drones_insufficient">
+              允许无人机不足时直接切换产物
+              <help-text>
+                开启时会取消制造站当前一份的进度；关闭时若换班需要切产物，将保留原班，并按制造进度和无人机恢复情况预计可切时间，届时复核后换班。
+              </help-text>
+            </n-checkbox>
+          </n-form-item>
+          <n-form-item v-if="product_switching.grandet_mode">
+            <template #label>
+              <span class="label-with-help">
+                <span>葛朗台无人机损耗容限</span>
+                <help-text>
+                  允许最后一架无人机浪费的加速时间。默认 30 秒，即当前一份余下至少 2 分 30
+                  秒时使用无人机完成，否则等待自然完成。
+                </help-text>
+              </span>
+            </template>
+            <mower-input-number
+              v-model:value="product_switching.drone_loss_seconds"
+              :min="0"
+              :max="180"
+            >
+              <template #suffix>秒</template>
+            </mower-input-number>
+          </n-form-item>
+          <n-form-item v-if="product_switching.grandet_mode">
+            <template #label>
+              <span class="label-with-help">
+                <span>葛朗台切产物缓冲时间</span>
+                <help-text>
+                  当前一份完成后，在制造计划取消确认页等待这段时间再确认。默认 2 秒。
+                </help-text>
+              </span>
+            </template>
+            <mower-input-number
+              v-model:value="product_switching.waiting_seconds"
+              :min="0"
+              :max="60"
+            >
+              <template #suffix>秒</template>
+            </mower-input-number>
+          </n-form-item>
         </template>
-        <mower-input-number v-model:value="drone_count_limit" :min="20" />
-      </n-form-item>
-      <n-form-item>
-        <template #label>
-          <span>无人机加速间隔</span>
-          <help-text>
-            <div>可填小数</div>
-          </help-text>
-        </template>
-        <mower-input-number v-model:value="drone_interval">
-          <template #suffix>小时</template>
-        </mower-input-number>
-      </n-form-item>
+      </section>
+      <n-divider title-placement="left">轮班与休息</n-divider>
       <n-form-item>
         <template #label>
           <span>心情阈值</span>

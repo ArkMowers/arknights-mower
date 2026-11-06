@@ -2949,6 +2949,7 @@ class TestDroneAccelerate(unittest.TestCase):
         solver.recog.h = 1080
         solver.recog.gray = "gray"
         solver.op_data = MagicMock()
+        solver.op_data.config = SimpleNamespace(drone_room=None, drone_count_limit=None)
         solver.op_data.run_order_rooms = []
         solver.op_data.is_orundum_trade_room.return_value = False
         solver.digit_reader = MagicMock()
