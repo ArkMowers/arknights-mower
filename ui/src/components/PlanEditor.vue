@@ -10,14 +10,12 @@ import {
   removePlanBinding,
   bindingColorStyle
 } from '@/utils/plan_bindings'
-import { swapPlanFacilities } from '@/utils/plan_edit'
 import { plan_facility_type_options } from '@/utils/base_facilities'
 import { createDragPreview } from '@/utils/dragPreview'
 import { ref, computed, h, watch, inject, onBeforeUnmount } from 'vue'
 const config_store = useConfigStore()
 const plan_store = inject('planStore', null) || usePlanStore()
-const { operators, group_colors, current_plan, plan, workaholic, sub_plan, backup_plans } =
-  storeToRefs(plan_store)
+const { operators, group_colors, current_plan, workaholic, sub_plan } = storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 const { theme: themePreference, right_side_room_order } = storeToRefs(config_store)
 const theme = useResolvedTheme(themePreference)
@@ -178,7 +176,7 @@ function drop_facility(target, event) {
     const source = event.dataTransfer.getData('text/plain')
     if (!/^room_[1-3]_[1-3]$/.test(source)) return
 
-    swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
+    plan_store.swap_facilities(source, target, config_store)
   } finally {
     finish_drag()
   }

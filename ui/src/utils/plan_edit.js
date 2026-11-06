@@ -64,7 +64,7 @@ function updateTrigger(trigger, source, target) {
   }
 }
 
-function swapPlanFacilities(mainPlan, backupPlans, activePlan, source, target) {
+function swapPlanFacilities(mainPlan, backupPlans, activePlan, source, target, mainSettings) {
   if (activePlan === 'main') {
     swap(source, target, mainPlan)
   } else {
@@ -76,6 +76,10 @@ function swapPlanFacilities(mainPlan, backupPlans, activePlan, source, target) {
     if (String(index) !== String(activePlan)) swap(source, target, backup.plan)
     swapTask(backup.task, source, target)
     updateTrigger(backup.trigger, source, target)
+  }
+  for (const settings of [mainSettings, ...backupPlans.map((backup) => backup.conf)]) {
+    if (settings?.drone_room === source) settings.drone_room = target
+    else if (settings?.drone_room === target) settings.drone_room = source
   }
 }
 

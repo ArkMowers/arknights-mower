@@ -162,15 +162,25 @@ describe('configuration restore autosave coordination', () => {
     plan.set_advanced_settings_source(() => config.build_advanced_settings())
     config.drone_room = 'room_1_1'
     config.drone_count_limit = 140
+    config.drone_interval = 2.5
     config.resting_threshold = 75
     config.group_resting_thresholds = { 主表组: 0.35, 副表组: 0.65 }
-    config.product_switching = { waiting_seconds: 5 }
+    config.product_switching = {
+      enable: true,
+      grandet_mode: false,
+      max_drones_per_switch: 17,
+      use_drones_when_leaving_orirock: false,
+      direct_when_drones_insufficient: false,
+      drone_loss_seconds: 45,
+      waiting_seconds: 7
+    }
     await plan.save_plan()
     const saved = axios.post.mock.lastCall[1].advanced_settings
     expect(saved.drone_count_limit).toBe(140)
     expect(saved.resting_threshold).toBe(0.75)
     expect(saved.group_resting_thresholds).toEqual({ 主表组: 0.35, 副表组: 0.65 })
-    expect(saved.product_switching.waiting_seconds).toBe(5)
+    expect(saved.drone_interval).toBe(2.5)
+    expect(saved.product_switching).toEqual(config.product_switching)
     expect(saved.drone_room).toBe('room_1_1')
   })
 
