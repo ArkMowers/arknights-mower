@@ -454,6 +454,8 @@ def test_reception_checks_all_assignments_and_only_four_to_six_stars(
     assert ("会客室干员" in warning) is expected
     if expected:
         assert name in warning
+        assert "尚未精二" in warning
+        assert "基建技能" not in warning
 
 
 def test_unknown_progression_is_advisory_and_same_name_forms_share_progress(
@@ -646,3 +648,55 @@ def test_excluded_facilities_do_not_request_growth_data(
     }
     roster_path.write_text(json.dumps({"data": {"characters": [{"id": cid}]}}))
     assert schedule_roster.validate_owned_operators(plan, refresh=False) is None
+
+
+def test_reception_promotion_warning_does_not_duplicate_skill_warning(
+    roster_path, bundled_mastery_skills
+):
+    plan = {
+        "default_plan": Plan(
+            {"meeting": [Room("极境", "", [])]},
+            PlanConfig("", "", "", workaholic="极境"),
+        ),
+        "backup_plans": [],
+    }
+    roster_path.write_text(
+        json.dumps(
+            {
+                "data": {
+                    "characters": [
+                        {"id": "char_401_elysm", "evolvePhase": 1, "level": 1}
+                    ]
+                }
+            }
+        )
+    )
+    result = Operators(plan).validate_backup_plans(refresh_roster=False)
+    assert result["success"], result
+    assert "会客室干员 极境 尚未精二" in result["warnings"][0]
+    assert "基建技能" not in result["warnings"][0]
+
+
+def test_reception_promotion_warning_preserves_other_facility_skill_checks(
+    roster_path, bundled_mastery_skills
+):
+    conf = PlanConfig("", "", "")
+    plan = {
+        "default_plan": Plan({"meeting": [Room("行箸", "", [])]}, conf),
+        "backup_plans": [Plan({"contact": [Room("行箸", "", [])]}, conf)],
+    }
+    roster_path.write_text(
+        json.dumps(
+            {
+                "data": {
+                    "characters": [
+                        {"id": "char_4172_xingzh", "evolvePhase": 1, "level": 1}
+                    ]
+                }
+            }
+        )
+    )
+    warning = schedule_roster.validate_owned_operators(plan, refresh=False)
+    assert "会客室干员 行箸 尚未精二" in warning
+    assert "进驻设施（人力办公室）" in warning
+    assert "进驻设施（会客室）" not in warning

@@ -200,6 +200,16 @@ def _progression_warnings(global_plan, characters, name_to_ids, scheduled):
             )
             continue
         current = max(progress)
+        reception_needs_promotion = (
+            meeting
+            and current[0] < 2
+            and any(
+                metadata.get(cid, {}).get("rarity") in (4, 5, 6)
+                for cid in name_to_ids[name]
+            )
+        )
+        if reception_needs_promotion:
+            skills = [skill for skill in skills if skill["roomType"] != "会客室"]
         if skills:
             requirements = [_requirement(skill) for skill in skills]
             if None in requirements:
@@ -218,14 +228,7 @@ def _progression_warnings(global_plan, characters, name_to_ids, scheduled):
                 warnings.append(
                     f"排班干员 {name} 尚未完整解锁进驻设施（{'、'.join(locked_facilities)}）相关基建技能，需达到精{phase} {level}级"
                 )
-        if (
-            meeting
-            and current[0] < 2
-            and any(
-                metadata.get(cid, {}).get("rarity") in (4, 5, 6)
-                for cid in name_to_ids[name]
-            )
-        ):
+        if reception_needs_promotion:
             warnings.append(
                 f"会客室干员 {name} 尚未精二，四至六星会客室干员建议达到精二"
             )
