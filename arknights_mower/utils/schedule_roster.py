@@ -8,6 +8,7 @@ from arknights_mower.utils.workshop_data import parse_roster
 
 CACHE_ERROR = "森空岛干员数据缓存无效，请前往「养成规划」页面手动点击「刷新」后验证排班"
 RESOURCE_ERROR = "当前资源缺少排班干员的森空岛 ID，请更新资源包后验证排班"
+RUNTIME_RISK_WARNING = "上述情况可能会导致 Mower 无法正常运行。"
 
 
 def _read_roster(path):
@@ -77,7 +78,8 @@ def _training_requirement_error(char):
     if level < 7:
         return (
             f"基础技能仅 {level} 级，须达到 7 级才能进驻训练位；升至 7 级后，"
-            "请前往「养成规划」页面手动点击「刷新」后重新验证排班"
+            "请前往「养成规划」页面手动点击「刷新」后重新验证排班。"
+            f"{RUNTIME_RISK_WARNING}"
         )
     skills = char.get("skills")
     if (
@@ -97,7 +99,8 @@ def _training_requirement_error(char):
     if all(skill["level"] == 3 for skill in skills):
         return (
             "所有技能均已专三，无法进驻训练位；更换干员后，"
-            "请前往「养成规划」页面手动点击「刷新」后重新验证排班"
+            "请前往「养成规划」页面手动点击「刷新」后重新验证排班。"
+            f"{RUNTIME_RISK_WARNING}"
         )
     return None
 
@@ -269,7 +272,8 @@ def validate_owned_operators(global_plan, *, refresh=True) -> str | None:
         if missing:
             warnings.append(
                 f"森空岛缓存中未持有以下排班干员：{'、'.join(missing)}；"
-                "请确认已持有这些干员，并前往「养成规划」页面手动点击「刷新」后重新验证排班"
+                "请确认已持有这些干员，并前往「养成规划」页面手动点击「刷新」后重新验证排班。"
+                f"{RUNTIME_RISK_WARNING}"
             )
         try:
             warnings.extend(

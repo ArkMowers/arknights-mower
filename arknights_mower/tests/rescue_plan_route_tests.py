@@ -279,7 +279,7 @@ def test_editor_validation_reports_rescue_roster_and_training_warnings(
     assert result["success"], result
     assert "未持有以下排班干员：清流" in result["warnings"][0]
     assert "基础技能仅 6 级" in result["warnings"][0]
-    assert "上述情况可能会导致 Mower 无法正常运行。" not in result["warnings"][0]
+    assert "上述情况可能会导致 Mower 无法正常运行。" in result["warnings"][0]
     if conditional:
         assert result["status"] == "incomplete"
     config.save_plan.assert_not_called()

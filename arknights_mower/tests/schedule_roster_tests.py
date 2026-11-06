@@ -60,6 +60,7 @@ def test_reports_main_backup_replacements_and_backup_tasks(roster_path, monkeypa
     assert "「养成规划」页面手动点击「刷新」后重新验证排班" in message
     assert "Current" not in message
     assert "Free" not in message
+    assert "上述情况可能会导致 Mower 无法正常运行。" in message
 
 
 def test_owned_operators_pass_including_low_rarity_names(roster_path):
@@ -245,7 +246,7 @@ def test_training_slot_warns_for_unselectable_operators(
     assert result["success"]
     assert result["status"] == "passed"
     message = "\n".join(result["warnings"])
-    assert "上述情况可能会导致 Mower 无法正常运行。" not in message
+    assert "上述情况可能会导致 Mower 无法正常运行。" in message
     assert "训练位" in message
     assert "能天使" in message
     assert reason in message
@@ -271,6 +272,7 @@ def test_training_slot_unknown_skill_data_requests_sync(
     monkeypatch.setattr(schedule_roster, "_refresh_roster", lambda: False)
     message = schedule_roster.validate_owned_operators(training_plan())
     assert "无法确认" in message
+    assert "可能会导致 Mower 无法正常运行" not in message
     assert "同步干员数据" in message
     assert "「养成规划」页面手动点击「刷新」" in message
 
@@ -452,6 +454,7 @@ def test_reception_checks_all_assignments_and_only_four_to_six_stars(
     )
     warning = schedule_roster.validate_owned_operators(plan, refresh=False) or ""
     assert ("会客室干员" in warning) is expected
+    assert "可能会导致 Mower 无法正常运行" not in warning
     if expected:
         assert name in warning
         assert "尚未精二" in warning
