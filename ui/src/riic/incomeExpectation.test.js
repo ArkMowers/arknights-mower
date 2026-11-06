@@ -181,6 +181,15 @@ it('defaults new requests and Worker results to expectation mode and keeps old s
   const lines = incomeReportLines(result, settings(), plan(), '排班').join('\n')
   expect(lines).toContain('理论期望模式')
   expect(result.modelProvenance.timingModel).toBe('theoretical-events-v1')
+  expect(result.modelProvenance.droneAllocationModel).toBe('threshold-v1')
+  expect(lines).toContain('无人机沿用配置的检查间隔、制造保留阈值和贸易加速规则')
+  expect(lines).not.toContain('无人机按新生成能力连续加速')
+  const previousDroneModel = structuredClone(result)
+  delete previousDroneModel.simulationReport.production.assumptions.droneAllocationModel
+  delete previousDroneModel.modelProvenance.droneAllocationModel
+  expect(incomeReportLines(previousDroneModel, settings(), plan(), '旧排班').join('\n')).toContain(
+    '无人机按新生成能力连续加速目标设施'
+  )
   const historical = structuredClone(result)
   delete historical.modelProvenance.timingModel
   delete historical.simulationReport.production.assumptions.timingModel

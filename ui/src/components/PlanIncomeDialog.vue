@@ -577,7 +577,7 @@ onBeforeUnmount(() => {
             <p>
               {{
                 settings.expectationMode && !hasTailor
-                  ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按生成能力连续加速。初始心情和轮换阶段仍会影响结果。'
+                  ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按配置间隔和阈值使用。初始心情和轮换阶段仍会影响结果。'
                   : '按概率随机抽单；固定种子留空时每次随机生成，填写后使用指定种子。结果保留本次种子以供复现。'
               }}
             </p>
@@ -867,7 +867,17 @@ onBeforeUnmount(() => {
                   {{ format(state.result.stability.drones.generated) }}、 消耗
                   {{ format(state.result.stability.drones.consumed) }}、溢出
                   {{ format(state.result.stability.drones.overflow) }} 架。
-                  <template v-if="state.result.simulationReport?.production?.expected">
+                  <template
+                    v-if="
+                      state.result.simulationReport?.production?.assumptions
+                        .droneAllocationModel === 'threshold-v1'
+                    "
+                  >
+                    无人机按配置间隔和阈值使用，本次计入收益的有效加速为
+                    {{ format(state.result.simulationReport.production.expected.droneAllocated) }}
+                    架；先消耗期初库存且不计其收益，采样期新生成部分在使用时计入当时产物，未使用部分保留库存。
+                  </template>
+                  <template v-else-if="state.result.simulationReport?.production?.expected">
                     收益按统计期生成的加速能力计入所选设施，已折算
                     {{ format(state.result.simulationReport.production.expected.droneAllocated) }}
                     架；期初库存与实际使用不重复计入收益。上表仅用于观察调度库存。

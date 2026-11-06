@@ -90,7 +90,7 @@ export function createMowerProductionIO(state:RuntimeState,production:Controller
       if(request.action==='detail')detailPage=true
       if(request.action==='all-in'&&production.nativeHasManufacture(room))selectedQuantity=production.nativeManufactureDroneMaximum(room)
       if(request.action==='minus-reserve')selectedQuantity=Math.max(0,selectedQuantity-1)
-      if(request.action==='confirm-manufacture'){production.nativeSpendManufacturingDrones(room,selectedQuantity);panelOpen=false}
+      if(request.action==='confirm-manufacture'){production.nativeSpendManufacturingDrones(room,selectedQuantity,frame());panelOpen=false}
       if(request.action==='confirm-all'){
        panelOpen=false
        const count=Math.min(production.nativeDroneCount(),production.nativeTradeRequiredDrones(room))
