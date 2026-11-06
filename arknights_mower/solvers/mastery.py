@@ -522,6 +522,7 @@ def _exit_failed(solver, plan, reason, step_level=None):
     label = _plan_fail_label(plan, step_level)
     send_message(
         f"{label} {reason}",
+        subject="专精训练安排失败",
         level="ERROR",
         archive_screenshots=True,
         screenshot_source=getattr(solver, "device", None),
@@ -555,6 +556,7 @@ def _exit_arranging_timeout(solver, plan, stats, stuck_scene, step_level=None):
     send_message(
         f"{label}：开始训练超时，最后持续停留在『{scene_name}』页面，未能确认训练是否开始，"
         "已暂停，将在下次仓库扫描后重试",
+        subject="专精训练开始超时",
         level="ERROR",
         archive_screenshots=True,
         screenshot_source=getattr(solver, "device", None),
@@ -598,6 +600,7 @@ def _fail_arranging(solver, plan, exc, step_level=None):
         if should_notify("arrange_error", str(plan["id"])):
             send_message(
                 f"{_plan_fail_label(plan, step_level)} 安排训练时出错：{exc}",
+                subject="专精训练安排出错",
                 level="ERROR",
             )
     except Exception as notify_exc:
@@ -639,6 +642,7 @@ def _notify_collect_unscheduled(plan, step_level, reason):
             send_message(
                 f"{_plan_fail_label(plan, step_level)}：到点收取任务没能排上"
                 f"（{reason}），稍后进训练室时会顺路收取",
+                subject="专精收取任务未安排",
                 level="WARNING",
             )
     except Exception as notify_exc:
@@ -668,7 +672,11 @@ def _warn_training_room_group(plan):
         from arknights_mower.utils.mastery_db import should_notify
 
         if should_notify("training_group_warning", str(plan["id"])):
-            send_message(f"{_plan_fail_label(plan)} {message}", level="WARNING")
+            send_message(
+                f"{_plan_fail_label(plan)} {message}",
+                subject="训练室协助位排班提醒",
+                level="WARNING",
+            )
     except Exception as notify_exc:
         # 警告本身不得反过来阻断开训或换人。
         logger.warning(f"[mastery] 训练室绑组通知发送失败: {notify_exc}")
@@ -816,7 +824,9 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
 
             if should_notify("trainee_schedule_conflict", str(plan["id"])):
                 send_message(
-                    f"{_plan_fail_label(plan)}：{schedule_conflict}", level="WARNING"
+                    f"{_plan_fail_label(plan)}：{schedule_conflict}",
+                    subject="专精训练与排班冲突",
+                    level="WARNING",
                 )
         except Exception as notify_exc:
             logger.warning(f"[mastery] 排班冲突通知发送失败: {notify_exc}")
@@ -1103,7 +1113,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
             update_plan_status(plan["id"], "failed", failed_reason="材料不足")
             from arknights_mower.utils.email import send_message
 
-            send_message(msg, level="ERROR")
+            send_message(msg, subject="专精训练材料不足", level="ERROR")
             solver.back()
             return
         else:
@@ -1180,6 +1190,7 @@ def _notify_amiya_form_wait(plan, available, holding, *, screenshot_source=None)
         if should_notify("amiya_form", f"{plan['id']}:{reason}:{int(holding)}"):
             send_message(
                 message,
+                subject="阿米娅升变形态待确认",
                 level="ERROR" if holding and available is False else "WARNING",
                 archive_screenshots=True,
                 screenshot_source=screenshot_source,
@@ -1445,7 +1456,7 @@ def _confirm_training_started(
                     # 收尾哪几件没做成，如实写在末尾——训练确实开始了，级别仍是 INFO。
                     msg = f"{msg}；{'；'.join(notes)}"
                 logger.info(msg)
-                send_message(msg, level="INFO")
+                send_message(msg, subject="专精训练已开始", level="INFO")
                 if swap_time is None and not support_pending:
                     collect_error = _schedule_collect_checked(
                         solver, plan, fresh_execute_time, step_level
@@ -1458,7 +1469,7 @@ def _confirm_training_started(
             _log_transition(plan, "failed", "材料不足")
             update_plan_status(plan["id"], "failed", failed_reason="材料不足")
             logger.warning(msg)
-            send_message(msg, level="ERROR")
+            send_message(msg, subject="专精训练材料不足", level="ERROR")
             solver.back()
             return "failed"
         solver.sleep(1)
@@ -2054,7 +2065,7 @@ def _notify_swap_correction_failed(
             f"{label} 协助位 {support_slot or '空'} 补位/纠错失败（未能换入 {operator}），"
             "已保留换人任务，等待相关新实测后重试"
         )
-    send_message(msg, level="WARNING")
+    send_message(msg, subject="训练室协助位调整未完成", level="WARNING")
 
 
 def _retry_swap_in_place(solver, plan, route, swap_target, step_level=None) -> bool:
@@ -2083,7 +2094,7 @@ def _notify_swap_giveup(solver, plan):
         return
     label = _plan_fail_label(plan)
     msg = f"{label} 本次换人未完成，已保留任务，等待相关新实测后重试"
-    send_message(msg, level="WARNING")
+    send_message(msg, subject="训练室换人未完成", level="WARNING")
 
 
 def _swap_worthwhileness(remaining_minutes, route) -> bool:

@@ -407,7 +407,7 @@ class RecruitSolver(SceneGraphSolver):
                     recruit_results=recruit_cal_result,
                     title_text="稀有tag通知",
                 ),
-                "出稀有标签辣",
+                "公招出现稀有标签",
                 "WARNING",
                 body_is_html=True,
             )

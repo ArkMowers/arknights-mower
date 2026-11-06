@@ -236,7 +236,9 @@ def test_previous_order_miss_keeps_db_record_and_warning_without_archive():
 
     error.assert_not_called()
     save_log.assert_called_once_with("检测到上一个订单漏单！", level="ERROR")
-    send_message.assert_called_once_with("检测到上一个订单漏单！", level="WARNING")
+    send_message.assert_called_once_with(
+        "检测到上一个订单漏单！", subject="贸易站漏单提醒", level="WARNING"
+    )
 
 
 def test_previous_order_miss_includes_known_room_and_visual_source():
@@ -255,6 +257,7 @@ def test_previous_order_miss_includes_known_room_and_visual_source():
 
     notify.assert_called_once_with(
         "检测到上一个订单漏单：B101。",
+        subject="贸易站漏单提醒",
         level="WARNING",
         archive_screenshots=True,
         screenshot_source=source,

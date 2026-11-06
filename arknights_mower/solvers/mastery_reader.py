@@ -1440,7 +1440,7 @@ def _reset_fake(solver, plan, room):
             f"专精计划 {_plan_label(plan)} 与训练室实际状态不符，"
             f"已重置为待执行（截图：{room.panel.operator_name or '空房'}）"
         )
-        send_message(msg, level="WARNING")
+        send_message(msg, subject="专精计划状态已重置", level="WARNING")
 
 
 def _update_expiry(solver, plan, room):
@@ -1858,7 +1858,7 @@ def _notify_blocked(solver, room):
             f"训练室被计划外训练占用{tail}（{op}（{skill}）{tier_text}），"
             "mower 会在其完成后帮忙收取，期间队列保持待执行"
         )
-        send_message(msg, level="WARNING")
+        send_message(msg, subject="训练室被计划外训练占用", level="WARNING")
 
 
 def _notify_help_collect(solver, room):
@@ -1873,9 +1873,9 @@ def _notify_help_collect(solver, room):
         tier_text = f"专{tier}" if tier else "专精等级未知"
         msg = (
             f"训练室 {op}（{room.panel.skill_name or '技能未知'}）{tier_text} 训练完成，"
-            "不在专精计划中，mower 已帮忙收取"
+            "不在专精计划中，Mower 将尝试收取"
         )
-        send_message(msg, level="INFO")
+        send_message(msg, subject="计划外训练待收取", level="INFO")
 
 
 def _notify_protected(solver, room):
@@ -1892,7 +1892,7 @@ def _notify_protected(solver, room):
             "如需更换训练位干员，请先确认放弃减半效果，再手动清空训练室协助位的减半干员；"
             "mower 下次进入训练室确认保护解除后恢复换人。"
         )
-        send_message(msg, level="WARNING")
+        send_message(msg, subject="训练室受保护", level="WARNING")
 
 
 def _notify_at_target(solver, plan, tier):
@@ -1902,7 +1902,7 @@ def _notify_at_target(solver, plan, tier):
 
     if should_notify("at_target", str(plan["id"])):
         msg = f"{_plan_label(plan)} 已到目标档位（专{tier}），无需训练，已标记完成"
-        send_message(msg, level="INFO")
+        send_message(msg, subject="专精目标已达成", level="INFO")
 
 
 def _promote_plan(solver, plan):
@@ -2030,10 +2030,15 @@ def collect_flow(solver, plan, panel: RoomPanel):
             from arknights_mower.solvers.mastery import _plan_char_label
 
             body = (
-                f"{_plan_label(plan)} 专精三级完成收取\n"
+                f"{_plan_label(plan)} 专精三级训练完成\n"
                 f"干员：{_plan_char_label(plan)}｜技能：{plan['skill_name']}｜档位：专{tier}"
             )
-            send_message(body, level="INFO", attach_image=screenshot)
+            send_message(
+                body,
+                subject="专精三级训练完成",
+                level="INFO",
+                attach_image=screenshot,
+            )
     return screenshot
 
 

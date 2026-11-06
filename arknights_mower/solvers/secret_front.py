@@ -384,7 +384,9 @@ class SecretFront(BaseSolver):
 
             if scene == Scene.SF_END:
                 send_message(
-                    f"隐秘战线成功完成{config.conf.secret_front.target}", level="INFO"
+                    f"隐秘战线成功完成{config.conf.secret_front.target}",
+                    subject="隐秘战线任务已完成",
+                    level="INFO",
                 )
 
         # 关闭说明

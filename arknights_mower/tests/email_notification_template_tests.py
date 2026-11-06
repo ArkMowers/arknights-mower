@@ -90,6 +90,108 @@ def test_plain_notification_uses_template_and_preserves_subject_and_text(notific
     assert "cid:mower-screenshot" not in body
 
 
+def test_mastery_collect_warning_uses_a_short_title_and_keeps_details(
+    monkeypatch, notification
+):
+    from arknights_mower.solvers import mastery
+    from arknights_mower.utils import mastery_db
+
+    monkeypatch.setattr(mastery_db, "should_notify", lambda *_: True)
+    plan = {"id": 1, "char_name": "测试干员", "skill_name": "测试技能"}
+
+    mastery._notify_collect_unscheduled(plan, 2, "时间冲突")
+
+    message = notification.thread.call_args.kwargs["args"][0].msg
+    title = str(message["Subject"])
+    assert title == "[测试实例]专精收取任务未安排"
+    assert "测试干员 测试技能 专2" in html_body(message)
+    assert "时间冲突" in html_body(message)
+    assert "稍后进训练室时会顺路收取" in html_body(message)
+
+
+def test_mastery_target_notification_distinguishes_title_from_details(
+    monkeypatch, notification
+):
+    from arknights_mower.solvers import mastery_reader
+    from arknights_mower.utils import mastery_db
+
+    monkeypatch.setattr(mastery_db, "should_notify", lambda *_: True)
+    plan = {"id": 2, "char_name": "测试干员", "skill_name": "测试技能"}
+
+    mastery_reader._notify_at_target(None, plan, 2)
+
+    message = notification.thread.call_args.kwargs["args"][0].msg
+    assert str(message["Subject"]) == "[测试实例]专精目标已达成"
+    assert "测试干员 测试技能" in html_body(message)
+    assert "无需训练，已标记完成" in html_body(message)
+
+
+def test_unplanned_training_email_does_not_claim_collection_before_it_succeeds(
+    monkeypatch, notification
+):
+    from arknights_mower.solvers import mastery_reader
+    from arknights_mower.utils import mastery_db
+
+    monkeypatch.setattr(mastery_db, "should_notify", lambda *_: True)
+    monkeypatch.setattr(
+        mastery_reader, "collect_flow", MagicMock(side_effect=RuntimeError("收取失败"))
+    )
+    room = mastery_reader.RoomState(
+        "waiting_collect",
+        panel=mastery_reader.RoomPanel(
+            operator_name="测试干员", skill_name="测试技能", mastery_tier=2
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="收取失败"):
+        mastery_reader._collect_silent(MagicMock(), room)
+
+    message = notification.thread.call_args.kwargs["args"][0].msg
+    assert str(message["Subject"]) == "[测试实例]计划外训练待收取"
+    assert "将尝试收取" in html_body(message)
+    assert "测试干员" in html_body(message)
+
+
+def test_mastery_completion_email_does_not_claim_final_confirmation(
+    monkeypatch, notification
+):
+    from arknights_mower.solvers import mastery_reader
+    from arknights_mower.utils import mastery_db
+
+    monkeypatch.setattr(mastery_db, "should_notify", lambda *_: True)
+    monkeypatch.setattr(mastery_reader, "_tap_finish_mark", MagicMock())
+    monkeypatch.setattr(mastery_reader, "_wait_collect_button", lambda _: None)
+    monkeypatch.setattr(mastery_reader, "_save_collect_screenshot", MagicMock())
+    solver = MagicMock()
+    solver.recog.img = np.zeros((2, 2, 3), dtype=np.uint8)
+    plan = {"id": 3, "char_name": "测试干员", "skill_name": "测试技能"}
+    panel = mastery_reader.RoomPanel(mastery_tier=3)
+
+    mastery_reader.collect_flow(solver, plan, panel)
+
+    message = notification.thread.call_args.kwargs["args"][0].msg
+    assert str(message["Subject"]) == "[测试实例]专精三级训练完成"
+    assert "测试干员" in html_body(message)
+    assert "完成收取" not in html_body(message)
+    assert len(image_parts(message)) == 1
+
+
+def test_click_captcha_failure_keeps_manual_action_in_email_body(
+    monkeypatch, notification
+):
+    from arknights_mower.solvers import captcha_solver
+
+    solver = object.__new__(captcha_solver.CaptchaClickSolver)
+    solver._attempt_count = solver.MAX_ATTEMPTS - 1
+    monkeypatch.setattr(captcha_solver, "logger", MagicMock())
+
+    assert solver._fail_retry() is True
+
+    message = notification.thread.call_args.kwargs["args"][0].msg
+    assert str(message["Subject"]) == "[测试实例]点选验证码自动求解失败"
+    assert "请手动处理" in html_body(message)
+
+
 def test_error_screenshot_is_opt_in_by_default():
     assert EmailPart().mail_attach_error_screenshot is False
 
@@ -429,7 +531,7 @@ def test_maa_stop_sends_the_real_drop_table_through_the_shared_template(
 
     message = notification.thread.call_args.kwargs["args"][0].msg
     body = html_body(message)
-    assert message["Subject"] == "[测试实例]MAA停止"
+    assert message["Subject"] == "[测试实例]MAA 作战掉落汇总"
     assert body.count("<html") == 1
     assert "源岩" in body and "合计" in body
     assert "&lt;table" not in body

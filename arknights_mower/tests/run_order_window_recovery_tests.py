@@ -48,6 +48,7 @@ def test_pre_swap_miss_retires_stale_order_and_plans_next_order(window, remainin
 
     base.send_message.assert_called_once_with(
         "检测到漏单：B101。",
+        subject="贸易站漏单提醒",
         level="WARNING",
         archive_screenshots=True,
         screenshot_source=solver.device,
@@ -93,6 +94,7 @@ def test_post_swap_miss_notifies_and_restores_without_completed_order_evidence(
 
     base.send_message.assert_called_once_with(
         "检测到漏单：B101。",
+        subject="贸易站漏单提醒",
         level="WARNING",
         archive_screenshots=True,
         screenshot_source=solver.device,
@@ -283,6 +285,7 @@ def test_post_swap_miss_keeps_failed_restoration_until_actual_roster_is_restored
     assert not any(task.type == TaskTypes.REFRESH_TIME for task in solver.tasks)
     base.send_message.assert_called_once_with(
         "检测到漏单：B101。",
+        subject="贸易站漏单提醒",
         level="WARNING",
         archive_screenshots=True,
         screenshot_source=solver.device,

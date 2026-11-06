@@ -96,12 +96,13 @@ class TradingOrder:
                     if screenshot_source is not None:
                         send_message(
                             message,
+                            subject="贸易站漏单提醒",
                             level="WARNING",
                             archive_screenshots=True,
                             screenshot_source=screenshot_source,
                         )
                     else:
-                        send_message(message, level="WARNING")
+                        send_message(message, subject="贸易站漏单提醒", level="WARNING")
                 return self
         except Exception as e:
             logger.exception(e)

@@ -108,6 +108,7 @@ class CaptchaClickSolver(BaseSolver):
             logger.error(f"点选验证码已连续失败 {self.MAX_ATTEMPTS} 次，放弃求解")
             send_message(
                 "点选验证码自动求解失败，请手动处理",
+                subject="点选验证码自动求解失败",
                 level="ERROR",
                 archive_screenshots=True,
                 screenshot_source=getattr(self, "device", None),
@@ -293,6 +294,7 @@ class CaptchaClickSolver(BaseSolver):
             logger.error(f"已达最大尝试次数 {self.MAX_ATTEMPTS}，放弃")
             send_message(
                 "点选验证码自动求解失败，请手动处理",
+                subject="点选验证码自动求解失败",
                 level="ERROR",
                 archive_screenshots=True,
                 screenshot_source=getattr(self, "device", None),

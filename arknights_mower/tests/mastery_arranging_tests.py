@@ -3413,7 +3413,9 @@ class TestArrangeFailureExit(unittest.TestCase):
             plan["id"], "failed", failed_reason="安排训练时出错：未成功进入房间"
         )
         send.assert_called_once_with(
-            "测试干员 测试技能 安排训练时出错：未成功进入房间", level="ERROR"
+            "测试干员 测试技能 安排训练时出错：未成功进入房间",
+            subject="专精训练安排出错",
+            level="ERROR",
         )
 
     def test_step_level_lands_in_notification_label(self):
@@ -3438,7 +3440,9 @@ class TestArrangeFailureExit(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 self._dispatch(solver, plan, RuntimeError("未成功进入房间"))
         send.assert_called_once_with(
-            "测试干员 测试技能 专2 安排训练时出错：未成功进入房间", level="ERROR"
+            "测试干员 测试技能 专2 安排训练时出错：未成功进入房间",
+            subject="专精训练安排出错",
+            level="ERROR",
         )
 
     def test_same_plan_failing_twice_notifies_once(self):

@@ -3488,6 +3488,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                 solver.reset_room_time.assert_called_once_with(room)
                 notify.assert_called_once_with(
                     "检测到漏单：B101。",
+                    subject="贸易站漏单提醒",
                     level="WARNING",
                     archive_screenshots=True,
                     screenshot_source=getattr(solver, "device", None),
@@ -3783,6 +3784,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         save_exception.assert_called_once()
         send_message.assert_called_once_with(
             "检测到漏单：B101。",
+            subject="贸易站漏单提醒",
             level="WARNING",
             archive_screenshots=True,
             screenshot_source=getattr(solver, "device", None),
