@@ -20,6 +20,7 @@ ROOM = "room_1_1"
 @pytest.fixture
 def window(replay, monkeypatch):
     solver, clock = replay
+    solver.device = MagicMock()
     place = selection_harness(solver, monkeypatch, primary="鸿雪", add_slot=False)
     place(["鸿雪"])
     config.conf.run_order_delay = 1
@@ -45,7 +46,12 @@ def test_pre_swap_miss_retires_stale_order_and_plans_next_order(window, remainin
 
     solver.infra_main()
 
-    base.send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+    base.send_message.assert_called_once_with(
+        "检测到漏单：B101。",
+        level="WARNING",
+        archive_screenshots=True,
+        screenshot_source=solver.device,
+    )
     assert order not in solver.tasks
     assert order.time == original_time
     assert solver.op_data.operators["鸿雪"].time_stamp is None
@@ -85,7 +91,12 @@ def test_post_swap_miss_notifies_and_restores_without_completed_order_evidence(
 
     solver.infra_main()
 
-    base.send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+    base.send_message.assert_called_once_with(
+        "检测到漏单：B101。",
+        level="WARNING",
+        archive_screenshots=True,
+        screenshot_source=solver.device,
+    )
     assert solver.op_data.get_current_room(ROOM, True) == ["鸿雪"]
     assert order not in solver.tasks
     assert not getattr(order, "run_order_restore_pending", False)
@@ -270,7 +281,12 @@ def test_post_swap_miss_keeps_failed_restoration_until_actual_roster_is_restored
     assert order.run_order_original_roster == {ROOM: ["鸿雪"]}
     assert solver.op_data.get_current_room(ROOM, True) == ["但书"]
     assert not any(task.type == TaskTypes.REFRESH_TIME for task in solver.tasks)
-    base.send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+    base.send_message.assert_called_once_with(
+        "检测到漏单：B101。",
+        level="WARNING",
+        archive_screenshots=True,
+        screenshot_source=solver.device,
+    )
 
     solver.choose_agent.side_effect = choose
     original_time = order.time

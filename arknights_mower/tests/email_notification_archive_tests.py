@@ -79,9 +79,11 @@ def test_error_notification_always_logs_and_only_visual_failure_archives(
     assert record.archive_screenshots is visual
     assert "白面鸮：训练室面板与计划不符" in notification.live_log.call_args.args[0]
     if mail_enable:
-        notification.transport.assert_called_once_with(
-            "训练室面板与计划不符", "通知：白面鸮", None
-        )
+        notification.transport.assert_called_once()
+        body, subject, attachment = notification.transport.call_args.args
+        assert "训练室面板与计划不符" in body
+        assert subject == "通知：白面鸮"
+        assert attachment is None
         notification.thread.return_value.start.assert_called_once()
     else:
         notification.transport.assert_not_called()

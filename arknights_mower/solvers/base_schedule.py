@@ -372,7 +372,7 @@ def _stop_if_scheduled_trainee(
     )
     logger.warning(message)
     try:
-        send_message(message, level="WARNING")
+        send_message(message, level="ERROR")
     except Exception as exc:
         logger.warning(f"训练室排班冲突通知发送失败: {exc}")
     # 通用心情读取停在进驻详情浮窗；先关浮窗，再退出训练室。
@@ -5778,7 +5778,13 @@ class BaseSchedulerSolver(
             extra={"archive_screenshots": True},
         )
         save_exception(Exception("检测到漏单"))
-        send_message("检测到漏单！", level="WARNING")
+        room_label = self.translate_room(room) if room in base_room_list else str(room)
+        send_message(
+            f"检测到漏单：{room_label}。",
+            level="WARNING",
+            archive_screenshots=True,
+            screenshot_source=getattr(self, "device", None),
+        )
         self.reset_room_time(room)
 
     def _queue_missing_run_order_reads(self):
@@ -12951,7 +12957,7 @@ class BaseSchedulerSolver(
                     if not self.waiting_solver():
                         return
                 self.recog.update()
-                self.accept_order()
+                self.accept_order(room=room)
                 if not (
                     self.drone_room is None
                     or (
@@ -16684,10 +16690,12 @@ class BaseSchedulerSolver(
                 raise RecognizeError("换人后未确认返回基建全局视角")
             self.sleep(min(poll_interval, remaining))
 
-    def accept_order(self):
+    def accept_order(self, *, room=None):
         task = getattr(self, "task", None)
         if task is not None and task.type == TaskTypes.RUN_ORDER and task.meta_data:
             self._cache_facility_state_from_current_page(task.meta_data, "trade")
+            if room is None:
+                room = task.meta_data
         wait = 0
         # 等待订单完成
         while self.find("order_ready", scope=((450, 675), (600, 750))) is None:
@@ -16713,7 +16721,19 @@ class BaseSchedulerSolver(
                         scores = new_scores
 
                 self.recog.save_screencap("run_order")
-                self.order_reader.save(self.recog.img)
+                if room:
+                    room_label = (
+                        self.translate_room(room)
+                        if room in base_room_list
+                        else str(room)
+                    )
+                    self.order_reader.save(
+                        self.recog.img,
+                        room=room_label,
+                        screenshot_source=getattr(self, "device", None),
+                    )
+                else:
+                    self.order_reader.save(self.recog.img)
                 not_take = False
             self.tap((self.recog.w * 0.25, self.recog.h * 0.25), interval=0.5)
 
@@ -17975,6 +17995,7 @@ class BaseSchedulerSolver(
             send_message(
                 maa_template.render(stage_drop=stage_drop),
                 "MAA停止",
+                body_is_html=True,
             )
             self.drop_send = True
 
@@ -19610,7 +19631,13 @@ class BaseSchedulerSolver(
         message = "本轮任务结束，已按要求停止"
         logger.info(message)
         try:
-            send_message(body or message, message)
+            if body:
+                stopped_body = (
+                    f"<p>以下是停止前尚未执行的任务，重新启动前不会自动执行。</p>{body}"
+                )
+                send_message(stopped_body, message, body_is_html=True)
+            else:
+                send_message(message, message)
         except Exception:
             logger.exception("发送本轮结束停止通知失败")
         raise MowerExit
@@ -19773,6 +19800,7 @@ class BaseSchedulerSolver(
         send_message(
             body,
             f"休息 {format_time(remaining_time)}，到{first.format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
+            body_is_html=True,
         )
         if remaining_time > 0:
             self._idle_sleep(remaining_time, round_end=True)

@@ -528,7 +528,12 @@ def _check_pending_amiya_form(solver, room):
         if available is not True:
             from arknights_mower.solvers.mastery import _notify_amiya_form_wait
 
-            _notify_amiya_form_wait(plan, available, holding=True)
+            _notify_amiya_form_wait(
+                plan,
+                available,
+                holding=True,
+                screenshot_source=getattr(solver, "device", None),
+            )
         room.amiya_form_waiting = True
     elif _plan_matches_room(plan, room):
         solver.amiya_pending_plan_id = None

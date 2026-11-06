@@ -79,6 +79,7 @@ class JpegCodecTests(unittest.TestCase):
         rgb = np.full((32, 48, 3), (220, 30, 10), np.uint8)
         conf = SimpleNamespace(
             account="sender@example.invalid",
+            pass_code="test-password",
             recipient=["recipient@example.invalid"],
             custom_smtp_server=SimpleNamespace(enable=False),
         )

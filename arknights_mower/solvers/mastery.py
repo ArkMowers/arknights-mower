@@ -520,7 +520,12 @@ def _exit_failed(solver, plan, reason, step_level=None):
 
     update_plan_status(plan["id"], "failed", failed_reason=reason)
     label = _plan_fail_label(plan, step_level)
-    send_message(f"{label} {reason}", level="ERROR", archive_screenshots=True)
+    send_message(
+        f"{label} {reason}",
+        level="ERROR",
+        archive_screenshots=True,
+        screenshot_source=getattr(solver, "device", None),
+    )
     solver.back()
 
 
@@ -552,6 +557,7 @@ def _exit_arranging_timeout(solver, plan, stats, stuck_scene, step_level=None):
         "已暂停，将在下次仓库扫描后重试",
         level="ERROR",
         archive_screenshots=True,
+        screenshot_source=getattr(solver, "device", None),
     )
     solver.back()
 
@@ -1147,11 +1153,13 @@ def _defer_amiya_form(solver, plan, room, available):
             room.amiya_form_waiting = True
     update_plan_status(plan["id"], "idle", failed_reason=AMIYA_FORM_WAIT_REASON)
     _schedule_amiya_form_recheck(solver, plan)
-    _notify_amiya_form_wait(plan, available, holding)
+    _notify_amiya_form_wait(
+        plan, available, holding, screenshot_source=getattr(solver, "device", None)
+    )
     solver.back_to_infrastructure()
 
 
-def _notify_amiya_form_wait(plan, available, holding):
+def _notify_amiya_form_wait(plan, available, holding, *, screenshot_source=None):
     from arknights_mower.utils.csleep import MowerExit
     from arknights_mower.utils.device.recovery import DeviceRecoveryError
     from arknights_mower.utils.email import send_message
@@ -1174,6 +1182,7 @@ def _notify_amiya_form_wait(plan, available, holding):
                 message,
                 level="ERROR" if holding and available is False else "WARNING",
                 archive_screenshots=True,
+                screenshot_source=screenshot_source,
             )
     except (MowerExit, DeviceRecoveryError):
         raise

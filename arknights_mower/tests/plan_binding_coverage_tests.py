@@ -177,6 +177,7 @@ def test_manual_training_stop_uses_additional_replacements(
         with pytest.raises(base_schedule.MowerExit):
             base_schedule._stop_if_scheduled_trainee(solver, "异客", room)
         save.assert_called_once()
+        assert base_schedule.send_message.call_args.kwargs["level"] == "ERROR"
     else:
         base_schedule._stop_if_scheduled_trainee(solver, "异客", room)
         save.assert_not_called()

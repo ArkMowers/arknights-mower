@@ -60,7 +60,7 @@ class TradingOrder:
         )
 
     @save_trading_info
-    def save(self, img, time=None):
+    def save(self, img, time=None, *, room=None, screenshot_source=None):
         try:
             self.price = None
             # 手动加入时间为载入历史数据
@@ -87,8 +87,21 @@ class TradingOrder:
                     logger.debug(f"Best match score:{match_results}")
                     self.price = best_match
                 if self.buff == "漏单" and not time:
-                    save_log("检测到上一个订单漏单！", level="ERROR")
-                    send_message("检测到上一个订单漏单！", level="WARNING")
+                    message = (
+                        f"检测到上一个订单漏单：{room}。"
+                        if room
+                        else "检测到上一个订单漏单！"
+                    )
+                    save_log(message, level="ERROR")
+                    if screenshot_source is not None:
+                        send_message(
+                            message,
+                            level="WARNING",
+                            archive_screenshots=True,
+                            screenshot_source=screenshot_source,
+                        )
+                    else:
+                        send_message(message, level="WARNING")
                 return self
         except Exception as e:
             logger.exception(e)

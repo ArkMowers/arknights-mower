@@ -3486,7 +3486,12 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                 solver.choose_agent.assert_not_called()
                 solver.tap_confirm.assert_not_called()
                 solver.reset_room_time.assert_called_once_with(room)
-                notify.assert_called_once_with("检测到漏单！", level="WARNING")
+                notify.assert_called_once_with(
+                    "检测到漏单：B101。",
+                    level="WARNING",
+                    archive_screenshots=True,
+                    screenshot_source=getattr(solver, "device", None),
+                )
 
     def test_adjusted_order_can_continue_with_out_of_range_countdown(self):
         solver, room, events = self.make_solver()
@@ -3776,7 +3781,12 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
 
         error.assert_called_once()
         save_exception.assert_called_once()
-        send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+        send_message.assert_called_once_with(
+            "检测到漏单：B101。",
+            level="WARNING",
+            archive_screenshots=True,
+            screenshot_source=getattr(solver, "device", None),
+        )
         solver.accept_order.assert_called_once_with()
         self.assertEqual(solver.agent_arrange_room.call_count, 2)
 

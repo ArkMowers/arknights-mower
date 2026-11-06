@@ -1,9 +1,12 @@
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from arknights_mower.solvers import base_schedule as base
+from arknights_mower.utils.scheduler_task import TaskTypes
 from arknights_mower.utils.trading_order import TradingOrder
 
 
@@ -67,6 +70,68 @@ def test_accept_order_debounce_when_initial_frame_has_buff():
     solver.recog.save_screencap.assert_called_once_with("run_order")
     solver.order_reader.save.assert_called_once_with(solver.recog.img)
     solver.tap.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("room", "label"), [("room_1_1", "B101"), ("room_bad", "room_bad")]
+)
+def test_accept_order_passes_known_room_and_device_to_order_recognition(room, label):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.task = SimpleNamespace(type=TaskTypes.RUN_ORDER, meta_data=room)
+    solver.device = object()
+    solver._cache_facility_state_from_current_page = MagicMock()
+    solver.order_reader = TradingOrder()
+    solver.order_reader.get_buff_scores = MagicMock(return_value={"佩佩": 85.0})
+    solver.order_reader.save = MagicMock()
+    solver.recog = MagicMock(w=1920, h=1080)
+    solver.sleep = MagicMock()
+    solver.tap = MagicMock()
+    solver.find = MagicMock(side_effect=[(500, 700), (500, 700), None])
+
+    solver.accept_order()
+
+    solver.order_reader.save.assert_called_once_with(
+        solver.recog.img, room=label, screenshot_source=solver.device
+    )
+
+
+def test_accept_order_accepts_drone_room_without_run_order_task():
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.task = None
+    solver.device = object()
+    solver.order_reader = TradingOrder()
+    solver.order_reader.get_buff_scores = MagicMock(return_value={"佩佩": 85.0})
+    solver.order_reader.save = MagicMock()
+    solver.recog = MagicMock(w=1920, h=1080)
+    solver.sleep = MagicMock()
+    solver.tap = MagicMock()
+    solver.find = MagicMock(side_effect=[(500, 700), (500, 700), None])
+
+    solver.accept_order(room="room_2_1")
+
+    solver.order_reader.save.assert_called_once_with(
+        solver.recog.img, room="B201", screenshot_source=solver.device
+    )
+
+
+def test_drone_passes_its_trade_room_to_order_collection():
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = MagicMock()
+    solver.op_data.is_orundum_trade_room.return_value = False
+    solver.recog = MagicMock(w=1920, h=1080)
+    solver.tap = MagicMock()
+    solver._wait_drone_interface = MagicMock()
+    solver._read_trade_product_card = MagicMock(return_value=("lmd", True))
+    solver.find = MagicMock(side_effect=[None, (500, 500)])
+    solver._tap_drone_accelerate = MagicMock(return_value=(500, 500))
+    solver.scene = MagicMock(return_value=None)
+    solver.waiting_scene = []
+    solver.accept_order = MagicMock()
+    solver.drone_room = "room_1_1"
+
+    solver.drone("room_2_1", not_return=True, skip_enter=True)
+
+    solver.accept_order.assert_called_once_with(room="room_2_1")
 
 
 def test_accept_order_debounce_when_scores_stabilize():
@@ -172,3 +237,25 @@ def test_previous_order_miss_keeps_db_record_and_warning_without_archive():
     error.assert_not_called()
     save_log.assert_called_once_with("检测到上一个订单漏单！", level="ERROR")
     send_message.assert_called_once_with("检测到上一个订单漏单！", level="WARNING")
+
+
+def test_previous_order_miss_includes_known_room_and_visual_source():
+    order = TradingOrder()
+    order.get_buff_scores = MagicMock(return_value={"佩佩": 1.0, "但书": 0.0})
+    order.templates = {1000: np.zeros((5, 5), dtype=np.uint8)}
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    source = object()
+
+    with (
+        patch("arknights_mower.solvers.record._conn"),
+        patch("arknights_mower.utils.trading_order.save_log"),
+        patch("arknights_mower.utils.trading_order.send_message") as notify,
+    ):
+        order.save(image, room="B101", screenshot_source=source)
+
+    notify.assert_called_once_with(
+        "检测到上一个订单漏单：B101。",
+        level="WARNING",
+        archive_screenshots=True,
+        screenshot_source=source,
+    )

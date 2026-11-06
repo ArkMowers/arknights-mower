@@ -634,6 +634,8 @@ class BaseSolver:
                             send_message(
                                 "验证码自动滑动失败，退出游戏，停止运行mower",
                                 level="ERROR",
+                                archive_screenshots=True,
+                                screenshot_source=getattr(self, "device", None),
                             )
                             self.device.exit()
                             sys.exit()
