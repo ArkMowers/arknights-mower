@@ -61,6 +61,10 @@ def plan_exhaust_support(
     excluded_names=(),
 ):
     """先保留既有换替班方案，再联合召回实际阻塞的休息组。"""
+    from arknights_mower.utils.backup_group_tasks import forced_work_groups
+
+    if set(op_data.shift_request_groups(candidates)) & forced_work_groups(op_data):
+        return None
     pending, visited = deque([()]), {()}
     while pending:
         seeds, dependencies = pending.popleft(), set()

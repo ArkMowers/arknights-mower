@@ -1,4 +1,4 @@
-"""副表按绑组请求换班，并按执行方式约束回班。"""
+"""副表按绑组请求换班，并按执行方式约束上下班。"""
 
 from datetime import datetime
 
@@ -31,6 +31,26 @@ def held_rest_groups(data, *, forced_only=False):
         and task.get("mode")
         in (("forced",) if forced_only else ("while_active", "forced"))
     }
+
+
+def forced_work_groups(data):
+    return {
+        task["group"]
+        for task in active_group_tasks(data).values()
+        if task["action"] == "on" and task.get("mode") == "forced"
+    }
+
+
+def forced_work_return(data, name):
+    """强制上班仅免除本组恢复要求，共享成员仍遵守其他在休绑组。"""
+    op = data.operators.get(name)
+    groups = forced_work_groups(data)
+    return bool(
+        op is not None
+        and not op.room.startswith("dorm")
+        and any(name in data.shift_group_members(group) for group in groups)
+        and (not op.multi_group or not set(data.resting_binding_groups(op)) - groups)
+    )
 
 
 def validate_group_tasks(data):
@@ -69,6 +89,23 @@ def sync_group_tasks(solver, *, now=None):
     ):
         return
     active = active_group_tasks(data)
+    working = forced_work_groups(data)
+    solver.tasks[:] = [
+        task
+        for task in solver.tasks
+        if not (
+            task.type == TaskTypes.EXHAUST_OFF
+            and not task.plan
+            and not task.retains_execution
+            and not getattr(task, "backup_group_request", None)
+            and not getattr(task, "mood_physical_started", False)
+            and any(
+                data.operators[name].group in working
+                for name in task.meta_data.split(",")
+                if name in data.operators
+            )
+        )
+    ]
     state = getattr(solver, "backup_group_task_issued", set())
     solver.backup_group_task_issued = state = set(state).intersection(active)
     queues = [solver.tasks, getattr(solver, "waiting_group_shifts", [])]

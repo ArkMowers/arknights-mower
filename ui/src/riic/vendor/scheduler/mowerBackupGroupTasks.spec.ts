@@ -1,4 +1,7 @@
 import {describe,expect,it} from 'vitest'
+import {mowerResting,mowerGetRestingPlan} from './mowerOrdinaryPlanning'
+import {normalizeMowerSharedArrangement} from './mowerSharedGroups'
+import {mowerUnfinishedReturnMembers} from './mowerGroupRecovery'
 import {MowerOperatorState} from './mowerOperatorState'
 import {MowerDormState,MowerSchedulingData} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
@@ -111,7 +114,47 @@ describe('backup group task lifetime',()=>{
   data.backupGroupTasks=[[{group:'g',action:'off',mode:'forced'}],[{group:'g',action:'on',mode:'once'}]];data.planConditions=[true,true]
   expect(()=>validateMowerGroupTasks(data)).toThrow('相反')
  })
- it.each([[{group:'g',action:'on',mode:'forced'}],[{group:'g',action:'off'},{group:'g',action:'off'}],[{group:' g',action:'off'}]].map(entry=>[entry]))('rejects invalid schema %j',entry=>{
+ it.each([[{group:'g',action:'on',mode:'while_active'}],[{group:'g',action:'off'},{group:'g',action:'off'}],[{group:' g',action:'off'}]].map(entry=>[entry]))('rejects invalid schema %j',entry=>{
   expect(()=>readMowerBackupGroupTasks(entry)).toThrow()
+ })
+})
+
+
+describe('forced on-duty group tasks',()=>{
+ it('accepts forced on-duty tasks and round-trips them through schedule transfer',()=>{
+  const source=JSON.parse(exportMowerJson(createDefaultWorkspace()))
+  source.backup_plans=[{name:'上班',plan:{contact:{plans:[{agent:'絮雨',group:'g'}]}},group_tasks:[{group:'g',action:'on',mode:'forced'}]}]
+  expect(readMowerBackupGroupTasks(source.backup_plans[0].group_tasks)).toEqual([{group:'g',action:'on',mode:'forced'}])
+  expect(JSON.parse(exportMowerJson(importMowerJson(JSON.stringify(source)))).backup_plans).toEqual(source.backup_plans)
+ })
+ it('suppresses zero-mood departures while active and restores ordinary admission on exit',()=>{
+  const {data:original,queue,state}=fixture('forced','on')
+  syncMowerBackupGroupTasks(original,queue,state)
+  const request=queue.tasks[0]!,data=projectMowerArrangements(original,[request.plan]);queue.tasks=[]
+  data.groupShiftState.g=false
+  for(const name of ['A','C']){data.operators[name]!.mood=0;data.operators[name]!.restInFull=true}
+  for(const name of ['B','D'])data.operators[name]!.mood=24
+  expect(mowerResting(data,queue)).toEqual({room_1_1:['F']})
+  const departure={}
+  expect(mowerGetRestingPlan(data,['A','C'],[],departure)).toBe(false)
+  expect(departure).toEqual({})
+  data.planConditions=[false]
+  expect(mowerGetRestingPlan(data,['A','C'],[],departure)).toBe(true)
+  expect(departure).toMatchObject({central:['B'],contact:['D']})
+ })
+ it('ignores full-recovery admission only for forced members and retains other shared rest',()=>{
+  const {data,queue,state}=fixture('forced','on')
+  data.operators.C!.groupBindings=[{group:'g',replacement:['D']},{group:'h',replacement:['D']}]
+  data.groupShiftState.h=true
+  for(const name of ['A','C']){data.operators[name]!.mood=0;data.operators[name]!.restInFull=true}
+  syncMowerBackupGroupTasks(data,queue,state)
+  const request=queue.tasks[0]!
+  expect(normalizeMowerSharedArrangement(data,request.plan)).toBe(true)
+  expect(request.plan).toEqual({central:['A']})
+  expect(projectMowerArrangements(data,[request.plan]).currentOperator('contact',0)?.name).toBe('D')
+  expect([...mowerUnfinishedReturnMembers(data,request)]).toEqual([])
+  const other=new MowerTask({type:T.SHIFT_ON,plan:{contact:['C']}})
+  expect([...mowerUnfinishedReturnMembers(data,other)]).toContain('C')
+  expect(data.groupShiftState).toEqual({g:true,h:true})
  })
 })

@@ -534,3 +534,88 @@ def test_fia_return_preserves_existing_staffing_protection(resting, protection):
     scheduler._prepare_group_shift(task)
     scheduler._defer_conflicting_product_shift_slots(task)
     assert task.plan == expected
+
+
+def test_forced_group_return_dispatches_at_zero_mood_without_waiting_for_full_recovery(
+    resting, monkeypatch
+):
+    from arknights_mower.utils.backup_group_tasks import sync_group_tasks
+    from arknights_mower.utils.plan import Plan, PlanConfig
+
+    scheduler, _ = resting
+    data = scheduler.op_data
+    backup = Plan(
+        {},
+        PlanConfig("", "", ""),
+        group_tasks=[{"group": "联动", "action": "on", "mode": "forced"}],
+    )
+    data.backup_plans = scheduler.global_plan["backup_plans"] = [backup]
+    data.plan_condition = [True]
+    for name in ("伊内丝", "银灰", "讯使"):
+        data.operators[name].mood = 0
+        data.operators[name].rest_in_full = True
+    sync_group_tasks(scheduler)
+    scheduler.task = next(
+        t for t in scheduler.tasks if getattr(t, "backup_group_request", None)
+    )
+    prepare_dispatch(scheduler, monkeypatch)
+    scheduler.infra_main()
+    scheduler.agent_arrange.assert_called_once()
+    assert not scheduler.op_data.group_is_resting("联动")
+    for name in ("伊内丝", "银灰", "讯使"):
+        assert scheduler.op_data.operators[name].is_working()
+        assert scheduler.op_data.operators[name].workaholic is False
+
+
+def test_forced_work_retains_stale_departure_and_releases_it_after_deactivation(
+    resting, monkeypatch
+):
+    from arknights_mower.utils.plan import Plan, PlanConfig
+    from arknights_mower.utils.scheduler_task import try_reorder
+
+    scheduler, _ = resting
+    apply_plan(scheduler, returning_task().plan)
+    data = scheduler.op_data
+    data.commit_group_shifts({"联动": False})
+    for name in ("伊内丝", "银灰", "讯使"):
+        data.operators[name].mood = 0
+    plan = {}
+    assert scheduler.get_resting_plan(["伊内丝", "银灰", "讯使"], [], plan, 0)
+    plan.update(try_reorder(data, plan) or {})
+    backup = Plan(
+        {},
+        PlanConfig("", "", ""),
+        group_tasks=[{"group": "联动", "action": "on", "mode": "forced"}],
+    )
+    data.backup_plans = scheduler.global_plan["backup_plans"] = [backup]
+    data.plan_condition = [True]
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=plan)
+    at, original = task.time, deepcopy(plan)
+    scheduler.tasks, scheduler.task = [task], task
+    prepare_dispatch(scheduler, monkeypatch)
+    scheduler.infra_main()
+    assert task.execution_failure
+    for _ in range(3):
+        scheduler._resume_failed_tasks()
+        assert task.execution_failure
+        assert task.time == at and task.plan == original
+    name, room = "芬", "room_1_1"
+    data.operators[name] = Operator(name, room, index=0, mood=24, operator_type="high")
+    data.plan[room] = [Room(name, "", ["年"])]
+    scheduler.global_plan["default_plan"].plan[room] = data.plan[room]
+    unrelated = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={room: [name]}
+    )
+    scheduler.tasks.append(unrelated)
+    scheduler.task = unrelated
+    scheduler.infra_main()
+    assert data.operators[name].current_room == room
+    assert unrelated not in scheduler.tasks
+    assert task in scheduler.tasks and task.time == at
+    data.plan_condition = [False]
+    scheduler._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
+    scheduler.task = task
+    scheduler.infra_main()
+    assert data.group_is_resting("联动")
+    assert task not in scheduler.tasks

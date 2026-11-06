@@ -1,5 +1,5 @@
 // Mower alpha b2d9ac8 exhaust_replacement.plan_exhaust_support (MIT).
-import {mowerForcedGroupCoverReservations,mowerHeldRestGroups} from './mowerBackupGroupTasks'
+import {mowerForcedWorkGroups,mowerForcedGroupCoverReservations,mowerHeldRestGroups} from './mowerBackupGroupTasks'
 import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
 import {planMowerReplacementHandoff,mowerRecallCanSustain,mowerRecallMoodAdmissible,mowerCoordinationPrimaryReplacement} from './mowerReplacementCoordination'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
@@ -13,6 +13,7 @@ import {mowerArrangementGroupTransitions,mowerRestingBindingGroups,mowerSharedRe
 
 /** Search only dependencies encountered by failed admission, with fewest returned units first. */
 export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candidates:string[],options:MowerRestingOptions={}):MowerTaskPlan|undefined {
+ if(original.shiftRequestGroups(candidates).some(group=>mowerForcedWorkGroups(original).has(group)))return
  const pending:string[][]=[[]],visited=new Set([''])
  for(let cursor=0;cursor<pending.length;cursor++){
   const seeds=pending[cursor]!,dependencies=new Set<string>()

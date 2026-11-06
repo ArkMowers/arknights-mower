@@ -157,7 +157,7 @@ def test_exit_cancels_unstarted_request_and_keeps_started_work(solver):
 @pytest.mark.parametrize(
     "entries",
     [
-        [{"group": "感知", "action": "on", "mode": "forced"}],
+        [{"group": "感知", "action": "on", "mode": "while_active"}],
         [{"group": "感知"}, {"group": "感知"}],
         [{"group": " 感知"}],
     ],
@@ -249,3 +249,92 @@ def test_combination_validation_checks_group_requests_with_identical_room_plans(
     result = solver.op_data.validate_backup_plans(check_owned=False)
     assert result["success"] is False
     assert "相反" in result["message"]
+
+
+@pytest.mark.parametrize("mode", ["once", "forced"])
+def test_on_modes_round_trip(mode):
+    backup = BackupPlan(group_tasks=[{"group": "感知", "action": "on", "mode": mode}])
+    assert (
+        BackupPlan.model_validate_json(backup.model_dump_json()).group_tasks[0].mode
+        == mode
+    )
+
+
+def test_forced_on_blocks_zero_mood_departure_and_releases_on_exit(solver):
+    enable(solver, "forced", "on")
+    sync_group_tasks(solver)
+    request = solver.tasks[0]
+    solver._prepare_group_shift(request)
+    solver.op_data = solver.op_data.project_arrangements([request.plan])
+    solver.tasks.clear()
+    data = solver.op_data
+    for name in ("苍苔", "絮雨"):
+        data.operators[name].mood = 0
+    solver.total_agent = list(data.operators.values())
+    assert not data.group_is_resting("感知")
+    assert solver.resting().get("contact") is None
+    assert not solver._ordinary_coordination_needed(["苍苔", "絮雨"])
+    plan = {}
+    assert not solver.get_resting_plan(["苍苔", "絮雨"], [], plan, 0)
+    assert plan == {}
+    solver.tasks.clear()
+    exhausted = data.exhaust_agent
+    data.exhaust_agent = ["苍苔"]
+    solver.run_order_solver()
+    data.exhaust_agent = exhausted
+    assert not any(
+        t.type == TaskTypes.EXHAUST_OFF and "苍苔" in t.meta_data for t in solver.tasks
+    )
+    data.plan_condition = [False]
+    assert solver._ordinary_coordination_needed(["苍苔", "絮雨"])
+    assert solver.get_resting_plan(["苍苔", "絮雨"], [], plan, 0)
+    assert plan["contact"] == ["斥罪"]
+
+
+def test_forced_on_ignores_stale_exhaustion_and_preserves_pending_identity(solver):
+    enable(solver, "forced", "on")
+    stale = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF, meta_data="苍苔")
+    unrelated = SchedulerTask(task_type=TaskTypes.CLUE)
+    solver.tasks = [stale, unrelated]
+    sync_group_tasks(solver)
+    request = next(t for t in solver.tasks if getattr(t, "backup_group_request", None))
+    at = request.time
+    request.execution_failure = {"reason": "reserved"}
+    for _ in range(6):
+        sync_group_tasks(solver)
+    assert solver.tasks == [unrelated, request]
+    assert request.time == at
+    solver.op_data.plan_condition = [False]
+    sync_group_tasks(solver)
+    assert solver.tasks == [unrelated]
+
+
+@pytest.mark.parametrize("mode", ["once", "forced"])
+def test_calculated_return_keeps_full_recovery_unless_explicitly_forced(
+    solver, monkeypatch, mode
+):
+    from arknights_mower.solvers.base_schedule import MoodArrangementChanged
+    from arknights_mower.utils import calculated_mood, config
+
+    enable(solver, mode, "on")
+    sync_group_tasks(solver)
+    solver.task = solver.tasks[0]
+    solver.op_data.operators["苍苔"].rest_in_full = True
+    config.conf.test_mood_calculation = True
+    monkeypatch.setattr(calculated_mood, "sync_model", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        solver.op_data,
+        "calculated_mood",
+        lambda name, *_: solver.op_data.operators[name].mood,
+    )
+    monkeypatch.setattr(
+        solver.op_data, "calculated_mood_deadline", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        solver.op_data, "replacement_exhausted", lambda *args, **kwargs: False
+    )
+    if mode == "once":
+        with pytest.raises(MoodArrangementChanged):
+            solver._validate_calculated_arrangement()
+    else:
+        solver._validate_calculated_arrangement()

@@ -302,8 +302,8 @@ class GroupTask(BaseModel):
     def validate_mode(self):
         if not self.group.strip() or self.group != self.group.strip():
             raise ValueError("绑组任务须填写有效组名")
-        if self.action == "on" and self.mode != "once":
-            raise ValueError("上班任务只执行一次，后续沿用正常轮换")
+        if self.action == "on" and self.mode == "while_active":
+            raise ValueError("上班任务仅支持执行一次或强制保持上班")
         return self
 
 

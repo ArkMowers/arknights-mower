@@ -1969,6 +1969,9 @@ class BaseSchedulerSolver(
             self.tasks.append(SchedulerTask())
 
     def _ordinary_coordination_needed(self, names):
+        from arknights_mower.utils.backup_group_tasks import forced_work_groups
+
+        working = forced_work_groups(self.op_data)
         protected = self._protected_facility_names()
         for name in names:
             op = self.op_data.operators.get(name)
@@ -1988,6 +1991,7 @@ class BaseSchedulerSolver(
                 or name in self.op_data.reserved_product_replacements
                 or name in self.op_data.exhaust_agent
                 or op.group in self.op_data.exhaust_group
+                or op.group in working
                 or self._resting_tier(op) == RestingTier.EXCLUDED
             ):
                 continue
@@ -2048,6 +2052,7 @@ class BaseSchedulerSolver(
             or getattr(task, "run_order_restore_pending", False)
         ):
             return
+        from arknights_mower.utils.backup_group_tasks import forced_work_return
         from arknights_mower.utils.calculated_mood import sync_model
         from arknights_mower.utils.group_recovery import group_recovery_deadline
 
@@ -2088,6 +2093,10 @@ class BaseSchedulerSolver(
             for index, name in enumerate(names):
                 op = self.op_data.operators.get(name)
                 if op is None or (op.current_room, op.current_index) == (room, index):
+                    continue
+                if (op.room, op.index) == (room, index) and forced_work_return(
+                    self.op_data, name
+                ):
                     continue
                 required = (
                     {name}
@@ -6359,8 +6368,13 @@ class BaseSchedulerSolver(
                     )
         if self._emergency_frozen():
             return
+        from arknights_mower.utils.backup_group_tasks import forced_work_groups
+
+        working = forced_work_groups(self.op_data)
         for name in self.op_data.exhaust_agent:
             op = self.op_data.operators[name]
+            if op.group in working:
+                continue
             # skip operator_protected check (TrainingStateMachine removed)
             if (
                 op.is_resting()
@@ -6618,6 +6632,9 @@ class BaseSchedulerSolver(
             self.backup_plan_solver()
 
     def resting(self, *, returning=(), returning_groups=()):
+        from arknights_mower.utils.backup_group_tasks import forced_work_groups
+
+        working = forced_work_groups(self.op_data)
         self._refresh_deferred_product_reservations()
         reserved_names = self.op_data.reserved_product_replacements
         now = getattr(self.op_data, "_projection_now", None) or datetime.now()
@@ -6667,6 +6684,8 @@ class BaseSchedulerSolver(
         ordinary_requests = []
         # 工作组先取得床位预约，空闲干员随后由统一补床入口安排。
         for op in shift_candidates:
+            if op.group in working:
+                continue
             if op.independent_rest and self.op_data.resting_binding_groups(
                 op, self.op_data.arrangement_group_transitions(_plan)
             ):
@@ -8061,6 +8080,10 @@ class BaseSchedulerSolver(
         if excluded:
             agents = [name for name in agents if name not in excluded]
         groups = self.op_data.shift_request_groups(agents)
+        from arknights_mower.utils.backup_group_tasks import forced_work_groups
+
+        if set(groups) & forced_work_groups(self.op_data):
+            return False
         followers = {
             name
             for group in groups
@@ -8717,7 +8740,10 @@ class BaseSchedulerSolver(
             )
         transitions = dict(getattr(task, "group_shift_transitions", {}))
         transitions.update(complete_returns)
-        from arknights_mower.utils.backup_group_tasks import held_rest_groups
+        from arknights_mower.utils.backup_group_tasks import (
+            forced_work_groups,
+            held_rest_groups,
+        )
 
         predecessors = self._group_shift_predecessors(task, proposed, transitions)
         if predecessors:
@@ -8782,6 +8808,16 @@ class BaseSchedulerSolver(
         ):
             raise ProductSwitchDeferred(
                 "副表要求整组强制下班，等待副表退出", rooms=tuple(proposed)
+            )
+        if any(
+            resting and group in forced_work_groups(self.op_data)
+            for group, resting in transitions.items()
+        ) and not (
+            getattr(task, "mood_physical_started", False)
+            or getattr(task, "group_shift_expected", {})
+        ):
+            raise ProductSwitchDeferred(
+                "副表要求整组强制上班，等待副表退出", rooms=tuple(proposed)
             )
         task.plan = proposed
         task.group_shift_transitions = transitions

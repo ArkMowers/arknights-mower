@@ -1,6 +1,7 @@
 import {restingThresholdFor} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerDependencyReturnAdmission} from './mowerTaskDerivation'
+import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
 import {mowerExhaustGroups,mowerPendingExhaustDeparture} from './mowerExhaustPolicy'
 import {mowerWorkingReplacementAssignments,mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 // Port of default plan_solver/resting/_get_resting_plan_legacy/try_reorder.
@@ -73,6 +74,7 @@ export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],exis
  return true
 }
 function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:string[],plan:MowerTaskPlan,options:MowerRestingOptions):boolean{
+ if(data.shiftRequestGroups(names).some(group=>mowerForcedWorkGroups(data).has(group)))return false
  if(names.some(name=>data.reservedProductReplacements.has(name)||options.reservedNames?.has(name))||mowerWorkingReplacementBlocked(data,names,plan))return false
  const transitions={...mowerArrangementGroupTransitions(data,plan),...Object.fromEntries(data.shiftRequestGroups(names).map(group=>[group,true]))}
  const shared=Object.values(data.operators).filter(op=>op.multiGroup),previousState=data.groupShiftState
@@ -148,8 +150,9 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
  const current=mowerActiveHighRestingCount(data),effective=data.dorms.filter(b=>data.effectiveFreeSlot(b)).length
  const ideal=mowerAverageMood(data)>data.policy.restingThreshold*data.policy.rescueThreshold?Math.min(4,effective):effective
  const ordinaryRequests:string[]=[],replacements:string[]=[],plan:MowerTaskPlan={},used=new Set<number>(),attempted=new Set<string>();let highDone=false
- const exhaustGroups=mowerExhaustGroups(data)
+ const exhaustGroups=mowerExhaustGroups(data),working=mowerForcedWorkGroups(data)
  for(const op of [...total.filter(op=>op.isHigh()),...total.filter(op=>!op.isHigh())]){
+  if(working.has(op.group))continue
   if(data.alpha&&(moods.get(op.name)===undefined||data.reservedProductReplacements.has(op.name)||options.returning?.has(op.name)||options.returningGroups?.has(op.group)||op.group&&data.group(op.group).some(n=>options.returning?.has(n))||replacements.includes(op.name)||alphaRestingTier(data,op.name)===7))continue
   if(op.isHigh()&&!op.workshop){
    const standby=mowerStandbyCandidates(data,op.group?data.group(op.group):[op.name])

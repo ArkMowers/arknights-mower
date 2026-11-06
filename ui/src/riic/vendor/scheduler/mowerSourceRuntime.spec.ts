@@ -693,3 +693,63 @@ describe('confirmed charging group return in source dispatch',()=>{
   expect(state.diagnostics.filter(d=>d.code==='mower-task-exception')).toEqual([])
  })
 })
+
+
+describe('forced on-duty backup dispatch',()=>{
+ it.each([false,true])('returns zero-mood full-recovery primaries and releases ordinary rotation after exit, predictive=%s',predictive=>{
+  const config=fixture();config.mowerAlpha=true
+  config.mowerPolicy={...config.mowerPolicy!,predictiveMoodControl:predictive,groupRestInFullOnMoodGap:true}
+  config.positions[0]!.group='g';config.mowerSourcePlan!.room_1_1![0]!.group='g'
+  config.mowerSourceRules!.restInFull=['A'];config.mowerSourceRules!.exhaustRequire=['A']
+  config.initialMorale={A:0,R:24}
+  const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data
+  source.initial=false;source.firstInit=false
+  const groupTasks=[[{group:'g',action:'on' as const,mode:'forced' as const}]]
+  state.mowerShiftModel={count:1,groupTasks,evaluate:d=>d.planConditions,swap:d=>d,transition:()=>({}),activate:()=>{}}
+  data.planConditions=[true];data.backupGroupTasks=groupTasks;data.groupShiftState.g=true
+  state.occupants.room_1_1_0='R';state.bedOccupants.dormitory_1_4='A'
+  Object.assign(data.operators.A!,{currentRoom:'dormitory_1',currentIndex:4,mood:0,timeStampMicros:0})
+  Object.assign(data.operators.R!,{currentRoom:'room_1_1',currentIndex:0,mood:24,timeStampMicros:0})
+  data.dorms[0]!.name='A';data.dorms[0]!.timeMicros=toMowerMicros(6)
+  const forecast={...rates,forecastRates:(runtime:RuntimeState)=>({work:Object.fromEntries(Object.keys(runtime.morale).map(n=>[n,1])),recovery:Object.fromEntries(Object.keys(runtime.morale).map(n=>[n,4]))})}
+  for(let n=0;n<10&&state.occupants.room_1_1_0!=='A';n++)settleRoster(state,forecast)
+  expect(state.occupants.room_1_1_0).toBe('A')
+  for(let n=0;n<6;n++){source.queue.tasks.push(new MowerTask());settleRoster(state,forecast)}
+  expect(state.occupants.room_1_1_0).toBe('A')
+  expect(source.queue.tasks.some(task=>task.type===T.EXHAUST_OFF)).toBe(false)
+  expect(source.data.operators.A!.workaholic).toBe(false)
+  source.data.planConditions=[false]
+  source.queue.tasks.push(new MowerTask());settleRoster(state,forecast)
+  expect(state.occupants.room_1_1_0).toBe('R')
+  expect(Object.values(state.bedOccupants)).toContain('A')
+  expect(state.diagnostics.filter(d=>d.code==='mower-plan-solver-exception')).toEqual([])
+ })
+})
+
+
+it('retains a stale forced-group departure across unchanged dispatch while unrelated work runs, then resumes on exit',()=>{
+ const config=fixture();config.mowerAlpha=true
+ config.positions[0]!.group='g';config.mowerSourcePlan!.room_1_1![0]!.group='g'
+ config.initialMorale={A:0,R:24}
+ const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data
+ source.initial=false;source.firstInit=false
+ const groupTasks=[[{group:'g',action:'on' as const,mode:'forced' as const}]]
+ state.mowerShiftModel={count:1,groupTasks,evaluate:d=>d.planConditions,swap:d=>d,transition:()=>({}),activate:()=>{}}
+ data.planConditions=[true];data.backupGroupTasks=groupTasks;data.groupShiftState.g=false
+ Object.assign(data.operators.A!,{currentRoom:'room_1_1',currentIndex:0,mood:0,timeStampMicros:0})
+ const task=new MowerTask({type:T.SHIFT_OFF,plan:{room_1_1:['R'],dormitory_1:['K1','K2','K3','K4','A']}}),at=task.timeMicros
+ source.queue.tasks=[task]
+ settleRoster(state,rates)
+ expect(task.executionFailure).toBeDefined()
+ const original=structuredClone(task.plan),unrelated=new MowerTask()
+ source.queue.tasks.push(unrelated)
+ for(let n=0;n<6;n++)settleRoster(state,rates)
+ expect(source.queue.tasks).toContain(task);expect(source.queue.tasks).not.toContain(unrelated)
+ expect(task.plan).toEqual(original);expect(task.timeMicros).toBe(at)
+ expect(state.occupants.room_1_1_0).toBe('A')
+ source.data.planConditions=[false]
+ settleRoster(state,rates)
+ expect(state.occupants.room_1_1_0).toBe('R')
+ expect(Object.values(state.bedOccupants)).toContain('A')
+ expect(source.queue.tasks).not.toContain(task)
+})

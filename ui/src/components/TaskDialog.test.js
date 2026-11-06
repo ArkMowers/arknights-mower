@@ -173,13 +173,17 @@ describe('manual task dialog', () => {
     await nextTick()
     expect(state.plan.refs.backup_plans.value[0].group_tasks[0].mode).toBe('forced')
     expect(state.plan.refs.backup_plans.value[0].task).toEqual({ contact: ['Current'] })
+    expect(component.groupOnModeOptions.map((option) => option.value)).toEqual(['once', 'forced'])
     component.update_group_task(0, { action: 'on' })
     await nextTick()
     expect(state.plan.refs.backup_plans.value[0].group_tasks[0]).toEqual({
       group: '红松',
       action: 'on',
-      mode: 'once'
+      mode: 'forced'
     })
+    component.update_group_task(0, { action: 'off', mode: 'while_active' })
+    component.update_group_task(0, { action: 'on' })
+    expect(state.plan.refs.backup_plans.value[0].group_tasks[0].mode).toBe('once')
   })
 
   it('synchronizes externally replaced group tasks and edits only the selected backup', async () => {
