@@ -511,14 +511,21 @@ class ProductSwitchPriorityDeferred(Exception):
 
 
 class GroupShiftBlocked(ProductSwitchDeferred):
-    def __init__(self, groups=(), *, predecessors=(), recovery_names=()):
+    def __init__(
+        self,
+        groups=(),
+        *,
+        predecessors=(),
+        recovery_names=(),
+        recovery_reason="离岗成员的恢复床位",
+    ):
         self.groups = set(groups)
         self.predecessors = tuple(predecessors)
         self.recovery_names = tuple(recovery_names)
         waiting = (
             "前置换班确认"
             if self.predecessors
-            else "离岗成员的恢复床位"
+            else recovery_reason
             if self.recovery_names
             else "、".join(sorted(groups)) + "回班"
             if groups
@@ -2339,6 +2346,9 @@ class BaseSchedulerSolver(
         return True
 
     def plan_fia(self):
+        if getattr(self.task, "fia_return_queued", False):
+            self.skip()
+            return
         fia_plan, fia_room = self.check_fia()
         if fia_room is None or fia_plan is None:
             return
@@ -2422,12 +2432,26 @@ class BaseSchedulerSolver(
                 )
             )
             self.tasks[-1].emergency_fia_fallback = fallback is not None
+            charge = self.tasks[-1]
+            operator = self.op_data.operators[target]
+            if (
+                not self._emergency_frozen()
+                and operator.is_high()
+                and not operator.room.startswith("dorm")
+                and (operator.is_resting() or not operator.current_room)
+            ):
+                charge.fia_return_target = target
+                charge.fia_return_time = self.task.time + timedelta(seconds=1)
             # 充能结束后整组立即上班
             for task in task_view(self.tasks, TaskScope.REPLAN):
                 if task.type == TaskTypes.SHIFT_ON:
                     for room, operators in task.plan.items():
                         if target in operators:
-                            task.time = self.task.time + timedelta(seconds=1)
+                            charge.fia_return_target = target
+                            charge.fia_return_time = self.task.time + timedelta(
+                                seconds=1
+                            )
+                            task.time = charge.fia_return_time
                             self.tasks.sort(
                                 key=lambda task: (
                                     bool(getattr(task, "execution_failure", None)),
@@ -2449,6 +2473,96 @@ class BaseSchedulerSolver(
                     task.time,
                 )
             )
+
+    def _queue_fia_return(self):
+        """原班恢复后独立保留已确认充能所要求的回班。"""
+        target = getattr(self.task, "fia_return_target", None)
+        if (
+            not target
+            or not getattr(self.task, "fia_charge_confirmed", False)
+            or getattr(self.task, "fia_return_queued", False)
+        ):
+            return
+        from arknights_mower.utils.scheduler_task import (
+            _native_return,
+            rebalance_closing_dorm_slots,
+        )
+
+        operator = self.op_data.operators.get(target)
+        if operator is None:
+            return
+        members = (
+            self.op_data.shift_group_members(operator.group)
+            if operator.group
+            else [target]
+        )
+        plan = {}
+        projected = self.op_data.project_arrangements([])
+        _native_return(projected, plan, members)
+        projected.commit_group_shifts(projected.arrangement_group_transitions(plan))
+        rebalance_closing_dorm_slots(projected, plan, members)
+        if not plan:
+            return
+        task = SchedulerTask(
+            time=self.task.fia_return_time,
+            task_plan=plan,
+            task_type=TaskTypes.SHIFT_ON,
+        )
+        task.fia_return_target = target
+        task.fia_return_time = task.time
+        task.execution_retained = True
+        self.tasks.append(task)
+        self.task.fia_return_queued = True
+        logger.info("肥鸭充能及原班恢复完成，保留回班安排：%s", plan)
+
+    def _prepare_fia_return(self, task):
+        """充能回班不再等待普通恢复计时，明确回满要求仍须满足。"""
+        target = getattr(task, "fia_return_target", None)
+        if (
+            not target
+            or getattr(task, "mood_physical_started", False)
+            or getattr(task, "group_shift_expected", {})
+        ):
+            return
+        from arknights_mower.utils.group_recovery import (
+            group_recovery_deadline,
+            observed_recovery_deadline,
+            recovery_mood_complete,
+        )
+
+        operator = self.op_data.operators.get(target)
+        if operator is None:
+            return
+        now = datetime.now()
+        required, deadline = (
+            group_recovery_deadline(self.op_data, operator.group, now=now)
+            if operator.group
+            else ([target] if operator.rest_in_full else [], None)
+        )
+        conf = self.op_data.runtime_conf or config.conf
+        capped = (
+            operator.group in self.op_data.group_recovery_return_time
+            and conf.group_mood_gap_max_extra_wait_hours > 0
+        )
+        unknown = [
+            name
+            for name in required
+            if not recovery_mood_complete(
+                self.op_data, self.op_data.operators[name], now
+            )
+            and observed_recovery_deadline(self.op_data, name, now) is None
+            and (self.op_data.operators[name].rest_in_full or not capped)
+        ]
+        if unknown:
+            raise GroupShiftBlocked(
+                recovery_names=unknown, recovery_reason="充能回班成员的有效恢复观测"
+            )
+        task.time = max(
+            task.fia_return_time,
+            deadline
+            if deadline is not None and deadline > now
+            else task.fia_return_time,
+        )
 
     def _fia_targets_all_full(self, names):
         return bool(names) and all(
@@ -8507,6 +8621,7 @@ class BaseSchedulerSolver(
 
     def _prepare_group_shift(self, task, *, remember_targets=False):
         """Complete group targets and admit only independent unconfirmed shifts."""
+        self._prepare_fia_return(task)
         self._prepare_group_shift_execution_targets(task)
         self.op_data.commit_group_shifts({})
         proposed = copy.deepcopy(task.plan)
@@ -15411,6 +15526,8 @@ class BaseSchedulerSolver(
             and "before" in swap_moods
             and "after" in swap_moods
         ):
+            if swap_moods["after"] == 24:
+                self.task.fia_charge_confirmed = True
             save_agent_action(
                 swap_target,
                 swap_target_snapshot["agent_current_room"],
@@ -17204,17 +17321,25 @@ class BaseSchedulerSolver(
                         )
                     )
                 raise
-        elif new_plan and self.task.type == TaskTypes.FIAMMETTA:
-            self.tasks.append(
-                SchedulerTask(
+        elif self.task.type == TaskTypes.FIAMMETTA:
+            if new_plan:
+                restoration = SchedulerTask(
                     time=self.tasks[0].time,
                     task_plan=new_plan,
                     task_type=TaskTypes.FIAMMETTA,
                     initial_fia=getattr(self.task, "initial_fia", False),
                 )
-            )
-            # 急速换班
-            self.skip()
+                for attribute in (
+                    "fia_return_target",
+                    "fia_return_time",
+                    "fia_charge_confirmed",
+                ):
+                    if hasattr(self.task, attribute):
+                        setattr(restoration, attribute, getattr(self.task, attribute))
+                self.tasks.append(restoration)
+                self.skip()
+            else:
+                self._queue_fia_return()
         refresh_after_central_change(self, central_before)
         if getattr(self, "_workshop_room_handoff", False) is not True:
             logger.info("返回基建主界面")
