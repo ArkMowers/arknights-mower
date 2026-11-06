@@ -7,7 +7,11 @@ date: 2026-10-04
 
 # Ungrouped Standby Return
 
-## Contract
+## Current Scope
+
+The batch fallback remains applicable to unfinished idle standby primaries. The [Ungrouped Standby Return rule in the Arknights Mower Base Scheduling subsystem description](../../../../docs/subsystems/base-scheduler.md#ungrouped-standby-return) now gives recovering ungrouped working primaries their own deadlines and returns already recovered idle primaries independently. The original batch-only choice below explains the fallback, including its former full-mood limitation; it no longer governs recovered primaries.
+
+## Original Decision
 
 [INV-SCHED-19] binds an ungrouped standby primary to the earliest eligible ordinary shift-on batch. The primary has no current room, its native slot contains a configured replacement, and a required primary provides a recovery anchor. Full mood does not require a personal mood-limit setting for this return. Grouped standby primaries retain group-owned return timing.
 
@@ -19,4 +23,4 @@ The existing `plan_metadata` rebuild, `is_standby` predicate and native-slot ass
 
 ## Verification
 
-`group_resting_capacity_tests.py` covers measured-full and partially recovered standby primaries with both exhausted and non-exhausted covers, repeat queue rebuilding, release-only batches, missing return deadlines and reservations. Existing group and replacement-correction tests preserve their behavior. All tests run without device or network I/O.
+`group_resting_capacity_tests.py` covers individual resident deadlines across priorities, independent recovered idle returns, unfinished standby batch fallback, valid mood selection, repeat queue rebuilding, release-only batches, missing return deadlines and reservation release. Existing group and replacement-correction tests preserve their behavior. All tests run without device or network I/O.
