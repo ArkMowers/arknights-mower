@@ -740,6 +740,24 @@ class BaseSchedulerSolver(
                 )
             )
         reserved, slots = coordination_reservations(data, self.tasks, task)
+        dorm_plan = getattr(task, "run_order_dorm_plan", {})
+        dorm_slots = getattr(task, "run_order_dorm_slots", {})
+        if dorm_plan or dorm_slots:
+            rooms = tuple(dict.fromkeys([*rooms, *dorm_plan, *dorm_slots]))
+            names.update(name for row in dorm_plan.values() for name in row)
+            if not dorm_plan or any(
+                name in ("", "Free") for row in dorm_plan.values() for name in row
+            ):
+                # 空闲候选的释放及实测可解除缺人；忙碌者读数和预测计时不触发重试。
+                names.update(
+                    name
+                    for name, op in data.operators.items()
+                    if not op.current_room
+                    and (not op.is_high() or data.is_standby(name))
+                    and name not in reserved
+                    and name not in data.config.free_blacklist
+                    and not op.workaholic
+                )
         correction_groups = set()
         if getattr(task, "derived_correction", False):
             owners = names | {
@@ -790,6 +808,8 @@ class BaseSchedulerSolver(
                 room: getattr(data, "room_observations", {}).get(room) for room in rooms
             },
         }
+        if dorm_plan or dorm_slots:
+            snapshot["run_order_dorm_plan"] = dorm_plan
         if (
             task.type == TaskTypes.EXHAUST_OFF
             and not task.plan
@@ -16804,20 +16824,26 @@ class BaseSchedulerSolver(
         ):
             return True
         targets = set(plan.get(task.meta_data, ())) & set(TRADE_ORDER_AGENTS)
-        rooms = {
-            op.current_room
-            for name in targets
-            if (op := self.op_data.operators.get(name)) is not None
-            and op.current_room.startswith("dorm")
-        }
         pending = getattr(task, "run_order_dorm_slots", {})
-        rooms.update(pending)
+        for name in targets:
+            op = self.op_data.operators.get(name)
+            if op is not None and op.current_room.startswith("dorm"):
+                positions = pending.setdefault(op.current_room, set())
+                if op.current_index >= 0:
+                    positions.add(op.current_index)
+        saved_plan = getattr(task, "run_order_dorm_plan", {})
+        rooms = set(pending) | set(saved_plan)
+        if rooms:
+            task.run_order_dorm_slots = pending
         for room in sorted(rooms):
             try:
                 self.enter_room(room)
                 self.turn_on_room_detail(room)
-                actual = [item["agent"] for item in self.get_agent_from_room(room)]
-                if len(actual) != len(self.op_data.plan[room]):
+                observed = self.get_agent_from_room(room, strict_observation=True)
+                actual = [item["agent"] for item in observed]
+                if len(actual) != len(self.op_data.plan[room]) or any(
+                    not item.get("observed", True) for item in observed
+                ):
                     raise RecognizeError("跑单前宿舍实际驻员未读完整")
                 slots = pending.setdefault(room, set())
                 slots.update(
@@ -16827,28 +16853,49 @@ class BaseSchedulerSolver(
                 departing = [
                     index
                     for index in slots
-                    if index < len(actual) and actual[index] in targets | {""}
+                    if 0 <= index < len(actual) and actual[index] in targets | {""}
                 ]
-                if not departing:
+                if not departing and room not in saved_plan:
                     pending.pop(room)
                     self.back()
                     self._wait_for_room_exit()
                     continue
-                row = ["Current"] * len(actual)
-                for index in departing:
-                    row[index] = "Free"
+                if room not in saved_plan:
+                    row = actual.copy()
+                    for index in departing:
+                        row[index] = "Free"
+                    saved_plan[room] = row
+                row = saved_plan[room]
+                task.run_order_dorm_plan = saved_plan
+                task.execution_retained = True
                 dorm_plan = {room: row}
                 logger.info("跑单前先补位 %s 的宿舍床位", room)
                 result = self.agent_arrange_room({}, room, dorm_plan, skip_enter=True)
                 if result is False or result is None:
                     return False
-                current = self.op_data.get_current_room(room, True)
+                observed = self.get_agent_from_room(
+                    room, strict_observation=True, expected_agents=row
+                )
+                current = [item["agent"] for item in observed]
+                if len(current) != len(row) or any(
+                    not item.get("observed", True) for item in observed
+                ):
+                    raise RecognizeError("跑单前宿舍最终驻员未核实")
+                if any(
+                    name != "Current"
+                    and (
+                        not current[index] if name == "Free" else current[index] != name
+                    )
+                    for index, name in enumerate(row)
+                ):
+                    raise AgentSelectionNotReady("跑单前宿舍完整恢复阵容未确认")
                 if any(
                     index >= len(current) or current[index] in targets | {""}
                     for index in departing
                 ):
                     raise AgentSelectionNotReady("跑单前未确认宿舍床位已由其他干员补齐")
                 pending.pop(room)
+                saved_plan.pop(room)
             except (
                 MowerExit,
                 DeviceRecoveryError,
@@ -16859,6 +16906,7 @@ class BaseSchedulerSolver(
             except Exception as exc:
                 raise RoomArrangementDeferred(room, exc) from exc
         task.__dict__.pop("run_order_dorm_slots", None)
+        task.__dict__.pop("run_order_dorm_plan", None)
         return True
 
     @with_run_order_network

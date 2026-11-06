@@ -7,11 +7,13 @@ from datetime import timedelta
 import pytest
 
 from arknights_mower.solvers import base_schedule
+from arknights_mower.tests import dorm_recovery_tests
 from arknights_mower.tests.automatic_rescue_tests import offline as offline
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
 from arknights_mower.tests.run_order_restoration_tests import prepare_order
 from arknights_mower.utils import resting_priority
+from arknights_mower.utils.dorm_candidates import retained_task_reservations
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
@@ -23,6 +25,7 @@ from arknights_mower.utils.scheduler_task import (
 
 DORM = "dormitory_1"
 TRADE = "room_1_1"
+reordering_solver = dorm_recovery_tests.solver
 
 
 @pytest.fixture
@@ -249,7 +252,9 @@ def test_incomplete_source_observation_preserves_order_without_insertion(orders)
         solver.agent_arrange(first.plan)
 
     assert events == []
-    assert first.__dict__ == original
+    assert first.plan == original["plan"]
+    assert first.time == original["time"]
+    assert first.run_order_dorm_slots == {DORM: {2}}
 
 
 def test_preparation_does_not_create_trade_confirmation_for_dormitory(orders):
@@ -260,3 +265,213 @@ def test_preparation_does_not_create_trade_confirmation_for_dormitory(orders):
     solver._prepare_run_order_confirmation(DORM, ["红"])
 
     assert first.run_order_confirmation_pending == before
+
+
+@pytest.mark.parametrize("unknown_index", [0, 2])
+def test_unknown_source_ocr_cannot_confirm_preparation_or_release_order(
+    orders, unknown_index
+):
+    solver, first, _, events = orders
+    read = solver.get_agent_from_room.side_effect
+
+    def unknown(room, *args, **kwargs):
+        rows = read(room, *args, **kwargs)
+        if room == DORM:
+            rows[unknown_index] = {"agent": "", "observed": False}
+        return rows
+
+    solver.get_agent_from_room.side_effect = unknown
+    original_time = first.time
+    with pytest.raises(base_schedule.RoomArrangementDeferred):
+        solver.agent_arrange(first.plan)
+
+    assert events == []
+    assert first.time == original_time
+    assert first.plan == {TRADE: ["但书", COVERS[1]]}
+    assert solver.op_data.get_current_room(DORM, True)[2] == "但书"
+
+
+def test_unconfirmed_final_ocr_keeps_roster_until_confirmed_without_reselection(orders):
+    solver, first, _, events = orders
+    read = solver.get_agent_from_room.side_effect
+    reads = 0
+
+    def unknown_final(room, *args, **kwargs):
+        nonlocal reads
+        rows = read(room, *args, **kwargs)
+        if room == DORM:
+            reads += 1
+            if reads >= 3:
+                rows[2] = {"agent": "", "observed": False}
+        return rows
+
+    solver.get_agent_from_room.side_effect = unknown_final
+    with pytest.raises(base_schedule.RoomArrangementDeferred):
+        solver.agent_arrange(first.plan)
+    assert len(events) == 1 and events[0][0] == DORM
+    assert first.run_order_dorm_plan[DORM][2] == "红"
+    solver.get_agent_from_room.side_effect = read
+
+    solver.agent_arrange(first.plan)
+
+    assert sum(room == DORM for room, _ in events) == 1
+    assert events[1][0] == TRADE
+    assert not getattr(first, "run_order_dorm_plan", {})
+
+
+def test_confirmed_vacancy_at_cached_source_position_still_requires_filling(orders):
+    solver, first, _, events = orders
+    read = solver.get_agent_from_room.side_effect
+    observed = False
+
+    def vacancy(room, *args, **kwargs):
+        nonlocal observed
+        if room == DORM and not observed:
+            observed = True
+            row = solver.op_data.get_current_room(DORM, True)
+            row[2] = ""
+            solver.op_data = solver.op_data.project_arrangements([{DORM: row}])
+        return read(room, *args, **kwargs)
+
+    solver.get_agent_from_room.side_effect = vacancy
+    solver.agent_arrange(first.plan)
+
+    assert events[0][0] == DORM and events[0][1][2] == "红"
+    assert events[1][0] == TRADE
+
+
+def test_partial_reordering_keeps_full_roster_through_saved_retry(orders):
+    solver, first, _, events = orders
+    original_time = first.time
+    final = ["冰酿", "闪灵", "红", COVERS[2], "龙舌兰"]
+    cleared = ["冰酿", "闪灵", "红", "", ""]
+    attempted = False
+
+    def reorder(room, agents, **kwargs):
+        nonlocal attempted
+        if room != DORM or attempted:
+            return False
+        attempted = True
+        agents[:] = final
+        solver.task.dorm_recovery_restore = [DORM]
+        solver.op_data = solver.op_data.project_arrangements([{DORM: cleared}])
+        events.append(("temporary_clear", cleared))
+        raise base_schedule.RoomArrangementDeferred(
+            DORM, base_schedule.AgentSelectionNotReady("补回其余恢复住客失败")
+        )
+
+    solver.ensure_dorm_recovery_order.side_effect = reorder
+    with pytest.raises(base_schedule.RoomArrangementDeferred):
+        solver.agent_arrange(first.plan)
+    names, slots = retained_task_reservations(solver.op_data, [first])
+    assert {COVERS[2], "龙舌兰"} <= names
+    assert {(DORM, 3), (DORM, 4)} <= slots
+    restored = pickle.loads(pickle.dumps(first))
+    solver.task, solver.tasks[0] = restored, restored
+
+    solver.agent_arrange(restored.plan)
+
+    assert events[1] == (DORM, final)
+    assert events[2][0] == TRADE
+    assert solver.op_data.get_current_room(DORM, True) == final
+    assert restored.time == original_time and restored.plan == {}
+    assert not getattr(restored, "dorm_recovery_restore", ())
+
+
+def test_released_candidate_observation_resumes_same_failed_preparation(orders):
+    solver, first, _, events = orders
+    data = solver.op_data
+    for name in ("红", "空爆"):
+        data.operators[name].current_room = "room_9_9"
+    choose = solver.choose_agent.side_effect
+
+    def unavailable(*args, **kwargs):
+        raise base_schedule.AgentSelectionNotReady("没有空闲补位候选")
+
+    solver.choose_agent.side_effect = unavailable
+    with pytest.raises(base_schedule.RoomArrangementDeferred) as failure:
+        solver.agent_arrange(first.plan)
+    solver._retain_failed_task(first, str(failure.value), [DORM])
+    original_time = first.time
+    source_revision = copy.deepcopy(data.room_observations)
+    unrelated = SchedulerTask(time=NOW, task_type=TaskTypes.DEPOT)
+    solver.tasks.append(unrelated)
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert first not in task_view(solver.tasks, TaskScope.DISPATCH, data)
+        assert unrelated in task_view(solver.tasks, TaskScope.DISPATCH, data)
+    data.operators["空爆"].time_stamp = NOW + timedelta(seconds=1)
+    solver._resume_failed_tasks()
+    assert first.execution_failure
+    data.operators["红"].current_room = ""
+    data.operators["红"].current_index = -1
+    data.operators["红"].time_stamp = NOW + timedelta(seconds=1)
+    assert data.room_observations == source_revision
+
+    solver._resume_failed_tasks()
+
+    assert not getattr(first, "execution_failure", None)
+    assert first in task_view(solver.tasks, TaskScope.DISPATCH, data)
+    solver.choose_agent.side_effect = choose
+    solver.agent_arrange(first.plan)
+    assert events[0][0] == DORM and events[1][0] == TRADE
+    assert first.time == original_time and first.plan == {}
+
+
+def test_real_single_recovery_clear_resumes_full_preparation_roster(
+    reordering_solver, monkeypatch
+):
+    solver = reordering_solver
+    final = ["杜林", "琴柳", "红", "银灰", "陈"]
+    solver.op_data.add(Operator("但书", "", mood=5))
+    solver.physical = ["杜林", "琴柳", "红", "但书", "银灰"]
+    read = solver.get_agent_from_room.side_effect
+
+    def observe(room=DORM, *args, **kwargs):
+        kwargs.pop("strict_observation", None)
+        return read(room, *args, **kwargs)
+
+    solver.get_agent_from_room.side_effect = observe
+    solver.get_agent_from_room(DORM)
+    task = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER, task_plan={TRADE: ["但书"]}, meta_data=TRADE
+    )
+    solver.task, solver.tasks = task, [task]
+
+    def prepared(agents, room, **kwargs):
+        # 给定合法最终阵容，保留生产单回排序、清房与补回流程。
+        agents[:] = final
+        return []
+
+    monkeypatch.setattr(solver, "prepare_dorm_selection", prepared)
+    confirm = solver.tap_confirm.side_effect
+    failed = False
+
+    def fail_after_clear(room, new_plan):
+        nonlocal failed
+        if solver.confirms and not failed:
+            failed = True
+            raise base_schedule.RoomArrangementDeferred(
+                DORM, RuntimeError("最终补回失败")
+            )
+        confirm(room, new_plan)
+
+    solver.tap_confirm.side_effect = fail_after_clear
+    with pytest.raises(base_schedule.RoomArrangementDeferred):
+        solver._prepare_run_order_dorm_departures(task.plan)
+
+    assert len(solver.confirms) == 1 and solver.physical[-1] == ""
+    assert task.run_order_dorm_plan == {DORM: final}
+    names, _ = retained_task_reservations(solver.op_data, [task])
+    assert {"红", "陈"} <= names
+    restored = pickle.loads(pickle.dumps(task))
+    solver.task, solver.tasks = restored, [restored]
+
+    assert solver._prepare_run_order_dorm_departures(restored.plan)
+
+    assert solver.physical == final
+    assert len(solver.confirms) == 2
+    assert not getattr(restored, "run_order_dorm_plan", {})
+    assert not getattr(restored, "dorm_recovery_restore", ())
+    assert restored.plan == {TRADE: ["但书"]}
+    assert restored.time == task.time

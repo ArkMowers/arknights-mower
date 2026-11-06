@@ -195,7 +195,10 @@ def retained_task_reservations(
             or not getattr(task, "retains_execution", False)
         ):
             continue
-        for room, row in task.plan.items():
+        for room, row in (
+            *task.plan.items(),
+            *getattr(task, "run_order_dorm_plan", {}).items(),
+        ):
             for index, name in enumerate(row):
                 if name != "Current":
                     slots.add((room, index))
