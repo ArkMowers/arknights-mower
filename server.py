@@ -1675,23 +1675,29 @@ def validate_rescue_plan_route():
         effective_rescue_plan,
         validate_rescue_schedule,
     )
+    from arknights_mower.utils.schedule_roster import collect_roster_warnings
 
+    warnings = []
     try:
+        warnings = collect_roster_warnings(
+            build_global_plan(plan_model=config.rescue_plan)
+        )
         data = Operators(build_global_plan())
         error = data.init_and_validate()
         if error:
-            return {"success": False, "message": str(error)}
+            return {"success": False, "message": str(error), "warnings": warnings}
         validate_rescue_schedule(data, config.rescue_plan)
         if data.backup_plans or config.rescue_plan.backup_plans:
             return {
                 "success": True,
+                "warnings": warnings,
                 "status": "incomplete",
                 "message": "救急表自身校验通过；排班含副表条件，设施类型、等级及产物仍需在初始化实测后按双方生效排班核验。",
             }
         effective_rescue_plan(data, config.rescue_plan)
     except (ValueError, TypeError) as exc:
-        return {"success": False, "message": str(exc)}
-    return {"success": True, "message": "救急排班验证通过"}
+        return {"success": False, "message": str(exc), "warnings": warnings}
+    return {"success": True, "message": "救急排班验证通过", "warnings": warnings}
 
 
 @app.route("/plan/restore-running", methods=["POST"])

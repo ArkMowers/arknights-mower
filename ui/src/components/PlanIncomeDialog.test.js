@@ -16,7 +16,8 @@ vi.mock('@/riic/incomeImage', async (original) => ({
   renderIncomeImage: vi.fn(async () => new Blob(['image'])),
   downloadIncomeImage: vi.fn()
 }))
-const io = vi.hoisted(() => ({ client: null, cleanup: null }))
+const io = vi.hoisted(() => ({ client: null, cleanup: null, warning: vi.fn() }))
+vi.mock('naive-ui', () => ({ useMessage: () => ({ warning: io.warning }) }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
@@ -721,4 +722,13 @@ it.each([
   } finally {
     random.mockRestore()
   }
+})
+
+it('shows roster warnings without blocking or archiving them', async () => {
+  await page.readCache()
+  io.client.post.mockResolvedValueOnce({ data: { success: true, warnings: ['未持有干员'] } })
+  await page.start()
+  expect(io.warning).toHaveBeenCalledWith('未持有干员', { duration: 0, closable: true })
+  expect(workers).toHaveLength(1)
+  expect(saveIncomeArchive).not.toHaveBeenCalled()
 })

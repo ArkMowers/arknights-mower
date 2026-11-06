@@ -75,7 +75,7 @@ def test_explicit_roster_modes_skip_skland_and_preserve_live_configuration(
     assert (snapshot, config.plan.model_dump(), config.conf.model_dump()) == before
 
 
-def test_cached_roster_validation_is_read_only_and_blocks_worker_admission(
+def test_cached_roster_validation_is_read_only_and_warns_without_blocking(
     client, monkeypatch
 ):
     owned = MagicMock(return_value="缓存名单校验失败")
@@ -83,8 +83,8 @@ def test_cached_roster_validation_is_read_only_and_blocks_worker_admission(
     result = client.post(
         "/validate-plan", json={"plan": simple_plan(), "operatorMode": "cache"}
     ).json
-    assert not result["success"]
-    assert result["message"] == "缓存名单校验失败"
+    assert result["success"]
+    assert "缓存名单校验失败" in result["warnings"][0]
     assert owned.call_args.kwargs == {"refresh": False}
 
 
