@@ -6839,13 +6839,12 @@ class BaseSchedulerSolver(
                 previous_room, previous = previous_owners.get(slot.agent, (None, None))
                 relocated = old is None or old.agent != slot.agent
                 if (
-                    (previous is None or previous.group != slot.group)
-                    and self.op_data.is_group_shift_anchor(owner)
+                    self.op_data.is_group_shift_anchor(owner)
                     and self.op_data.group_is_resting(slot.group)
                     and (not owner.current_room or owner.is_resting())
                     and owner.name not in self._protected_facility_names()
                 ):
-                    # 切表恢复的离岗成员跟随组内休息，不能以新岗位召回整组。
+                    # 切表后的离岗工作主班跟随组内休息，不因原岗位或组名跳过。
                     replacement_positions.add((room, index))
                     joining_resting.add(owner.name)
                     continue
