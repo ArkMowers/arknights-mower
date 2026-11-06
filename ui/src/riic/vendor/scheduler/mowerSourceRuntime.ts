@@ -50,7 +50,7 @@ import {mowerReplacementDependencyNames,mowerReplacementReservations,planMowerPr
 import {reconcileMowerUrgentRecovery,mowerSupportRequestMatches,mowerUrgentPendingSupporters,recordMowerUrgentSupport,recordMowerUrgentRecovery,inheritMowerUrgentRecovery} from './mowerUrgentRecovery'
 import {validateMowerCoordinationSupport} from './mowerAlphaExhaustSupport'
 import {planMowerExhaustSupport} from './mowerExhaustPlanning'
-import {selectMowerFiaTarget,mowerFiaReadyMicros,mowerFiaTargetsFull} from './mowerFiammetta'
+import {selectMowerFiaTarget,mowerFiaReadyMicros,mowerFiaTargetsFull,queueMowerFiaReturn,prepareMowerFiaReturn} from './mowerFiammetta'
 import {prepareMowerDormSelection,mowerArrangementReadIndexes} from './mowerSelection'
 import {cloneMowerShiftTask,prepareMowerShiftCycle,recordMowerDormAdmissions,type MowerShiftModel} from './mowerShiftCycle'
 import {prepareMowerRunEntry,nextMowerRunRecoveryMicros} from './mowerRunLifecycle'
@@ -509,6 +509,7 @@ function* arrangeRoom(s:RuntimeState,rates:RuntimeRates,room:string,names:string
  confirmPhysicalRoom(s,room,resolved)
 
  observeRoom(s,rates,room,task,data.alpha&&room.startsWith('dorm')&&!fiaArrangement?refreshDormIndexes():readTimes,undefined,undefined,observedWorkDepartures)
+ if(fiammettaCharge&&data.operators[task.metadata]?.mood===24)task.fiaChargeConfirmed=true
  return restoration
 }
 /** Actual agent_arrange_room: four attempts, three back(0.5) retry boundaries. */
@@ -749,6 +750,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      task.plan=planMowerPreferredReplacementRestore(data,reservations.reservedNames,reservations.reservedSlots)
      if(!Object.keys(task.plan).length){queue.consume(task);delete source.activeTask;continue}
     }
+    if(!running&&task.type===T.SHIFT_ON&&task.fiaReturnTarget){
+     prepareMowerFiaReturn(data,task)
+     if(task.timeMicros>data.nowMicros){queue.sort();delete source.activeTask;continue}
+    }
     if(!running&&data.alpha&&[T.SHIFT_ON,T.SHIFT_OFF,T.EXHAUST_OFF,T.SELF_CORRECTION,T.RE_ORDER].includes(task.type)&&Object.keys(task.plan).length){
      const model:MowerShiftModel=s.mowerShiftModel??{count:0,evaluate:d=>d.planConditions,swap:d=>d,transition:()=>({}),activate:()=>{}}
      const independentTasks:MowerTask[]=[]
@@ -848,7 +853,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
    }else if(!running&&task.type===T.FIAMMETTA&&!Object.keys(task.plan).length){
     const fia=s.config.fiammetta,target=fia?selectMowerFiaTarget(data,fia.orderedTargets,fia.fool??true,(fia.threshold??21.6)/24):undefined
     if(target&&fia){
-     queue.tasks.push(new MowerTask({time:task.time,type:T.FIAMMETTA,plan:{[data.operators[fia.operatorId]!.room]:[target,fia.operatorId]},metadata:target}));for(const old of queue.tasks)if(old.type===T.SHIFT_ON&&Object.values(old.plan).flat().includes(target)){old.time=task.time+1/3600;queue.sort();break}
+     const charge=new MowerTask({time:task.time,type:T.FIAMMETTA,plan:{[data.operators[fia.operatorId]!.room]:[target,fia.operatorId]},metadata:target})
+     const operator=data.operators[target]!
+     if(operator.isHigh()&&!operator.room.startsWith('dorm')&&(operator.isResting()||!operator.currentRoom)){charge.fiaReturnTarget=target;charge.fiaReturnMicros=task.timeMicros+1_000_000}
+     queue.tasks.push(charge);for(const old of queue.tasks)if(old.type===T.SHIFT_ON&&Object.values(old.plan).flat().includes(target)){charge.fiaReturnTarget=target;charge.fiaReturnMicros=task.timeMicros+1_000_000;old.timeMicros=charge.fiaReturnMicros;queue.sort();break}
     }else if(fia&&!mowerFiaTargetsFull(data,fia.orderedTargets))queue.tasks.push(new MowerTask({time:task.time+(24-(fia.threshold??21.6))/2,type:T.FIAMMETTA}))
     queue.consume(task)
    }else if(!running&&task.type===T.EXHAUST_OFF&&!Object.keys(task.plan).length){
@@ -887,6 +895,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
       currentRoom:name=>getMowerSourceRuntime(s).data.operators[name]?.currentRoom,
      backup,
      arrangeRoom:(room,names,getTime,current,restoration)=>arrangeRoomSteps(s,rates,room,names,getTime,current,restoration),
+     completeFia:current=>queueMowerFiaReturn(getMowerSourceRuntime(s).data,queue,current),
      completeGroupShift:()=>{const actual=getMowerSourceRuntime(s).data;if(actual.alpha)commitMowerGroupShifts(actual,{...mowerArrangementGroupTransitions(actual,intent),...task.groupShiftTransitions})},
      metadata:()=>{planMowerMetadata(getMowerSourceRuntime(s).data,queue,dependencyReturn)},
      corrections:()=>{readAgentMood(s,rates);const correction=planMowerCorrection(getMowerSourceRuntime(s).data,queue,true,task,false,skip,s.config.mowerTaskScheduling);return correction?[correction]:[]},

@@ -459,6 +459,7 @@ def test_fiammetta_swap_writes_both_operators_one_second_apart(
         for group in record.get_mood_ratios()
         for dataset in group["moodData"]["datasets"]
     }
+    assert getattr(solver.task, "fia_charge_confirmed", False) is (phase == "charge")
     if phase != "charge":
         save_history.assert_not_called()
         assert len(curves.get("菲亚梅塔", [])) == int(before_mood > 0)

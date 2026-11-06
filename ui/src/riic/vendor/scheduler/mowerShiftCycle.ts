@@ -225,6 +225,7 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
  delete task.previewReturnVeto
  if(task.backupShiftActive||task.arrangementStarted)return
  completeMowerWorkaholicGroupReturn(data,task.backupShiftIntent??task.plan)
+ if(task.fiaReturnTarget)return
  if(task.exhaustSupport){prepareMowerShiftBackup(data,task,model,queue.tasks.filter(t=>t!==task));return}
  const probe=new MowerTask({time:data.nowMicros/3_600_000_000,type:T.FILL_DORM});simplifyMowerAlphaDormFill(probe,queue.tasks,data.nowMicros,options.priorityScheduling)
  if(probe.simpleDormFill||task.productShiftLocked||queue.tasks.some(t=>t!==task&&(t.type===T.FIAMMETTA&&t.timeMicros<=data.nowMicros||t.backupShiftActive||t.productShiftLocked))){

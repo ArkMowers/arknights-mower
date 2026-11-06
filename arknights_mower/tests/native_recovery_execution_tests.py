@@ -446,3 +446,91 @@ def test_partial_dorm_read_only_updates_tasks_from_confirmed_slots(resting, conf
     assert getattr(scheduler, "_recovery_plan_dirty", False) is confirmed
     assert "dormitory_1" not in getattr(scheduler.op_data, "room_observations", {})
     assert scheduler.op_data.operators["讯使"].is_resting()
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_fia_return_keeps_explicit_recovery_and_releases_dispatch(
+    resting, monkeypatch, unknown
+):
+    scheduler, now = resting
+    data = scheduler.op_data
+    task = returning_task()
+    task.time = now - timedelta(minutes=1)
+    task.fia_return_time = task.time
+    task.fia_return_target = "伊内丝"
+    task.execution_retained = True
+    data.operators["伊内丝"].mood = 24
+    member = data.operators["讯使"]
+    member.rest_in_full = True
+    if unknown:
+        data.get_dorm_by_name(member.name)[1].time = None
+    other = SchedulerTask(time=now, task_type=TaskTypes.WORKSHOP)
+    scheduler.tasks, scheduler.task = [task, other], task
+    monkeypatch.setattr(scheduler, "craft_material", Mock())
+    prepare_dispatch(scheduler, monkeypatch)
+    scheduler.infra_main()
+    scheduler.agent_arrange.assert_not_called()
+    if unknown:
+        assert any(waiting is task for waiting in scheduler.waiting_group_shifts)
+    else:
+        assert task.time == now + timedelta(hours=5)
+    scheduler.task = other
+    scheduler.infra_main()
+    scheduler.craft_material.assert_called_once()
+    assert all(pending is not other for pending in scheduler.tasks)
+    previous = task.time
+    for _ in range(3):
+        scheduler._resume_waiting_group_shifts()
+        assert task.time == previous
+        assert task.plan["contact"] == ["讯使"]
+    member.mood, member.time_stamp = 24, datetime.now()
+    data.operators["银灰"].mood = 24
+    scheduler._resume_waiting_group_shifts()
+    scheduler._prepare_fia_return(task)
+    assert task.time == task.fia_return_time
+    scheduler.tasks = [task]
+    scheduler.task = task
+    scheduler.infra_main()
+    scheduler.agent_arrange.assert_called_once()
+    assert member.current_room == "contact"
+    assert all(pending is not task for pending in scheduler.tasks)
+
+
+@pytest.mark.parametrize("protection", ["product", "forced_off"])
+def test_fia_return_preserves_existing_staffing_protection(resting, protection):
+    from types import SimpleNamespace
+
+    from arknights_mower.solvers.base_schedule import ProductSwitchDeferred
+
+    scheduler, now = resting
+    data = scheduler.op_data
+    task = returning_task()
+    task.fia_return_target, task.fia_return_time = "伊内丝", now
+    task.execution_retained = True
+    if protection == "product":
+        lock = SchedulerTask(task_plan={"contact": ["讯使"]})
+        lock.product_shift_locked = True
+        lock.product_lock_names = {"讯使"}
+        lock.product_lock_slots = {("contact", 0)}
+        scheduler.tasks = [task, lock]
+    else:
+        data.plan_condition = [True]
+        data.backup_plans = [
+            SimpleNamespace(
+                group_tasks=[{"group": "联动", "action": "off", "mode": "forced"}]
+            )
+        ]
+        scheduler.tasks = [task]
+    expected = deepcopy(task.plan)
+    for _ in range(2):
+        with pytest.raises(ProductSwitchDeferred):
+            scheduler._prepare_group_shift(task)
+            scheduler._defer_conflicting_product_shift_slots(task)
+        assert task.plan == expected
+        assert task.time == now
+        assert data.operators["伊内丝"].is_resting()
+    scheduler.tasks = [task]
+    data.plan_condition = [False] if protection == "forced_off" else data.plan_condition
+    scheduler._prepare_group_shift(task)
+    scheduler._defer_conflicting_product_shift_slots(task)
+    assert task.plan == expected

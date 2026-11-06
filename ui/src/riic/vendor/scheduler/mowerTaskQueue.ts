@@ -35,6 +35,7 @@ export class MowerTask {
  runOrderCollectOnly=false
  executionFailure?:{kind?:'resource-wait';reason:string;rooms:string[];snapshot:MowerTaskFailureSnapshot}
  executionRetained=false
+ fiaReturnTarget?:string;fiaReturnMicros?:number;fiaChargeConfirmed=false;fiaReturnQueued=false
  /** Only observation-derived corrections may be rebuilt before physical execution. */
  derivedCorrection=false
  initialStaffing=false

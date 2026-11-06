@@ -42,6 +42,19 @@ function fixture(explicitDeparture=false){
 }
 
 describe('group return survives a backup workaholic override',()=>{
+ it('completes fixed targets on a retained charging return without ordinary replanning',()=>{
+  const {data,task,model,queue}=fixture()
+  data.operators.A!.workaholic=true
+  task.plan={central:['A']};task.fiaReturnTarget='A';task.executionRetained=true
+  const originalTime=task.timeMicros
+  model.evaluate=()=>{throw new Error('charging return must keep its existing arrangement')}
+  prepareMowerShiftCycle(data,task,queue,model)
+  expect(task.plan).toEqual({central:['A'],dormitory_1:['D','Current','Current']})
+  expect(task.timeMicros).toBe(originalTime)
+  expect(queue.tasks).toEqual([task])
+  expect(data.groupIsResting('g')).toBe(true)
+  expect(data.operators.R!.currentRoom).toBe('dormitory_1')
+ })
  it('returns the fixed dorm member when the backup enabled zero-mood work before dispatch',()=>{
   const {data,task,model,queue}=fixture()
   data.operators.A!.workaholic=true;data.planConditions=[true]

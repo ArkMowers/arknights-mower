@@ -20,6 +20,7 @@ export interface MowerTaskExecutionHooks {
  deferRoom?:(room:string,task:MowerTask)=>boolean
  /** Commit the confirmed group arrangement before evaluating post-shift backups. */
  completeGroupShift?:()=>void
+ completeFia?:(task:MowerTask)=>void
  metadata:()=>void
  corrections?:()=>MowerTask[]
  skip?:()=>void
@@ -87,9 +88,12 @@ export function* executeMowerTaskArrangementSteps(task:MowerTask,queue:MowerTask
   delete task.plan[room];task.dormRecoveryRestore=task.dormRecoveryRestore.filter(r=>r!==room);yield {room,delayMicros:500_000}
  }
  const restoreRooms=Object.keys(restoration)
- if(restoreRooms.length>1){
-  queue.tasks.push(new MowerTask({time:rosterHead(queue,hooks)?.time??task.time,plan:restoration,type:T.FIAMMETTA}))
-  hooks.skip?.()
+ if(task.type===T.FIAMMETTA){
+  if(restoreRooms.length){
+   const restore=new MowerTask({time:rosterHead(queue,hooks)?.time??task.time,plan:restoration,type:T.FIAMMETTA})
+   restore.fiaReturnTarget=task.fiaReturnTarget;restore.fiaReturnMicros=task.fiaReturnMicros;restore.fiaChargeConfirmed=task.fiaChargeConfirmed
+   queue.tasks.push(restore);hooks.skip?.()
+  }else hooks.completeFia?.(task)
  }
  task.backupShiftActive=false
  hooks.completeGroupShift?.()
