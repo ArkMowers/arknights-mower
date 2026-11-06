@@ -49,11 +49,15 @@ def write_logs(folder, lines):
 
 
 def parts(sent):
-    return {
+    attachments = {
         part.get_filename(): part.get_payload(decode=True)
         for part in sent[0][0].walk()
         if part.get_filename()
     }
+    if "feedback.zip" not in attachments:
+        return attachments
+    with ZipFile(BytesIO(attachments["feedback.zip"])) as bundle:
+        return {name: bundle.read(name) for name in bundle.namelist()}
 
 
 def submit(**kwargs):
@@ -88,6 +92,32 @@ def test_real_mail_selects_distinct_errors_and_deduplicates_bytes(feedback):
     assert "ERROR" in manifest["screenshots"][0]["reason"]
     assert sent[0][1] == ["354013233@qq.com", "1273725854@qq.com"]
     assert len(sent[0][0].as_bytes()) < issue_evidence.MAX_MAIL_BYTES
+
+
+def test_bug_sends_one_zip_containing_all_diagnostic_files(feedback):
+    logs, images, sent = feedback
+    image(images, 10, b"selected original image")
+    write_logs(logs, [(10, "ERROR", "进驻失败")])
+    assert submit() == "邮件发送成功！"
+    attachments = [part for part in sent[0][0].walk() if part.get_filename()]
+    assert [part.get_filename() for part in attachments] == ["feedback.zip"]
+    with ZipFile(BytesIO(attachments[0].get_payload(decode=True))) as bundle:
+        assert bundle.testzip() is None
+        names = set(bundle.namelist())
+        assert {
+            "runtime.txt",
+            "runtime.zip",
+            "context.json",
+            "plan.json",
+            "evidence.json",
+        } <= names
+        metadata = json.loads(bundle.read("evidence.json"))
+        selected = metadata["screenshots"][0]["file"]
+        assert bundle.read(selected) == b"selected original image"
+        assert bundle.getinfo(selected).compress_type == 0
+        assert bundle.getinfo("runtime.zip").compress_type == 0
+        with ZipFile(BytesIO(bundle.read("runtime.zip"))) as logs_bundle:
+            assert "进驻失败" in logs_bundle.read("runtime.txt").decode()
 
 
 def test_explicit_key_times_override_unrelated_errors_and_allow_no_images(feedback):
@@ -390,6 +420,28 @@ def test_temporary_evidence_is_removed_after_smtp_failure(feedback, monkeypatch)
     monkeypatch.setattr(submit_issue.Email, "send", failure)
     assert "反馈发送失败" in submit()
     assert evidence_paths and all(not path.exists() for path in evidence_paths)
+
+
+def test_packaging_failure_never_sends_and_removes_partial_bundle(
+    feedback, monkeypatch
+):
+    from pathlib import Path
+
+    logs, _, sent = feedback
+    write_logs(logs, [(10, "ERROR", "故障")])
+    partial = []
+    original = ZipFile.write
+
+    def fail_on_context(bundle, filename, arcname=None, **kwargs):
+        if arcname == "context.json":
+            partial.append(Path(bundle.filename))
+            raise OSError("offline bundle write failure")
+        return original(bundle, filename, arcname=arcname, **kwargs)
+
+    monkeypatch.setattr(ZipFile, "write", fail_on_context)
+    assert "反馈发送失败" in submit()
+    assert sent == []
+    assert partial and all(not path.exists() for path in partial)
 
 
 def test_feature_feedback_does_not_collect_logs(feedback, monkeypatch):

@@ -6,6 +6,7 @@ from email.utils import format_datetime
 from html import escape
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 from arknights_mower import __version__
 from arknights_mower.agent.tools.issue_evidence import (
@@ -21,6 +22,21 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 MAX_PLAN_BYTES = 256 * 1024
+
+
+def _package_evidence(attachments, output):
+    """将诊断文件集中为一个附件，已有压缩内容直接存入。"""
+    destination = output / "feedback.zip"
+    with ZipFile(destination, "w", compression=ZIP_DEFLATED) as bundle:
+        for attachment in attachments:
+            path = Path(attachment)
+            compression = (
+                ZIP_STORED
+                if path.suffix.lower() in {".zip", ".jpg", ".jpeg", ".png"}
+                else ZIP_DEFLATED
+            )
+            bundle.write(path, arcname=path.name, compress_type=compression)
+    return destination
 
 
 def _feedback_context(start, end, output):
@@ -137,11 +153,13 @@ def submit_issue(
                 body = (
                     f"<p>所选问题时间区间：{escape(interval['start'])} 至 "
                     f"{escape(interval['end'])}</p><p>{body}</p>"
+                    "<p>诊断附件统一打包为 feedback.zip，解压后查看下列文件。</p>"
                     f"<p>{coverage}</p><p>附带 {count} 张关键截图，"
                     "截图按时间关联，未判断画面内容；筛选依据及省略说明见 evidence.json。</p>"
                     f"<p>{plan_note}{context['configuration_note']}"
                     "版本、平台与时区信息见 context.json。</p>"
                 )
+                attachments = [_package_evidence(attachments, Path(temporary))]
             email = Email(body, "Mower " + issue_type, None, attach_files=attachments)
             if issue_type == "Bug":
                 email.msg["Date"] = format_datetime(generated)
@@ -175,6 +193,7 @@ submit_issue_tool_def = {
             "Bug 自动附带版本、平台、Python与带UTC偏移的时间信息，以及当前保存的主副排班和白名单高级设置；"
             "配置属于反馈生成时刻，不是故障发生时的历史快照。排班JSON超过256 KiB时省略并说明。"
             "正文披露所选区间、压缩日志实际记录首尾及截断情况，实际记录不保证连续覆盖所有时刻。"
+            "所有诊断文件统一放入一个feedback.zip附件；解压后可查看日志、截图和配置。"
             "邮件编码后上限8 MiB；没有相关截图仍可附日志发送，按实际结果说明。"
             "功能建议不要求时间范围。按工具实际返回说明成功或失败，不把缺日志或发送失败说成已上报。"
         ),

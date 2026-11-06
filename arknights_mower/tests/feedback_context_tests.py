@@ -4,6 +4,8 @@ import json
 import time
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from io import BytesIO
+from zipfile import ZipFile
 
 import pytest
 
@@ -76,6 +78,9 @@ def mail_parts(message):
         for part in message.walk()
         if part.get_filename()
     }
+    if "feedback.zip" in files:
+        with ZipFile(BytesIO(files["feedback.zip"])) as bundle:
+            files = {name: bundle.read(name) for name in bundle.namelist()}
     body = next(
         part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8")
         for part in message.walk()
@@ -222,9 +227,12 @@ def test_missing_archive_and_limited_sources_are_disclosed(
 def test_missing_manifest_is_compatible_with_existing_tool_mocks(
     feedback_context, monkeypatch
 ):
-    monkeypatch.setattr(
-        submit_issue, "collect_evidence", lambda *args: ["sample.log", "evidence.json"]
-    )
+    def collect(logs, screenshots, start, end, output, screenshot_times):
+        path = output / "sample.log"
+        path.write_text("可用日志", encoding="utf-8")
+        return [path]
+
+    monkeypatch.setattr(submit_issue, "collect_evidence", collect)
     assert send_bug() == "邮件发送成功！"
     _, body = mail_parts(feedback_context[0])
     assert "未提供压缩日志的实际覆盖信息" in body
