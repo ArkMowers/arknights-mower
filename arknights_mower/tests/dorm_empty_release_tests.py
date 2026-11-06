@@ -34,6 +34,9 @@ def solver(op_data, monkeypatch):
         data.operators[name].current_index = index
     for op in data.operators.values():
         op.mood, op.depletion_rate, op.time_stamp = 24, 0, datetime.now()
+    # 宿舍兜底场景中工作主班已在岗，不附带回满待命主班的回班需求。
+    primary = data.operators["银灰"]
+    primary._current_room, primary.current_index = primary.room, primary.index
     instance, selected = selection_solver(monkeypatch, residents=residents)
     instance._scan_card_moods = MagicMock()
     instance.op_data = data
@@ -64,6 +67,31 @@ def test_all_full_release_keeps_resident_without_another_release(solver, caplog)
     assert tasks == []
     correction = instance.agent_get_mood(read_rooms=False, return_plan=True)
     assert ROOM not in correction
+
+
+@pytest.mark.parametrize("idle_primary", [False, True])
+def test_full_resident_retention_allows_independent_primary_return(
+    solver, idle_primary
+):
+    instance, _ = solver
+    data = instance.op_data
+    primary = data.operators["银灰"]
+    data.operators["空爆"].dorm_mood_fallback = ROOM
+    if idle_primary:
+        primary._current_room, primary.current_index = "", -1
+        cover = data.operators["红"]
+        cover._current_room, cover.current_index = "meeting", 0
+    tasks = []
+    for _ in range(3):
+        tasks = plan_metadata(data, tasks)
+        try_add_release_dorm({}, None, data, tasks)
+        assert [task.plan for task in tasks] == (
+            [{"meeting": [primary.name]}] if idle_primary else []
+        )
+        assert all(task.type == TaskTypes.SHIFT_ON for task in tasks)
+        assert primary.current_room == ("" if idle_primary else "meeting")
+        assert data.operators["空爆"].current_room == ROOM
+        assert data.dorm[0].name == "空爆"
 
 
 def test_release_uses_cached_unfinished_replacement(solver):
