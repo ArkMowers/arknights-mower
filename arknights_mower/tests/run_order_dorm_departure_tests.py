@@ -4,6 +4,7 @@ import copy
 import pickle
 from datetime import timedelta
 
+import numpy as np
 import pytest
 
 from arknights_mower.solvers import base_schedule
@@ -15,6 +16,7 @@ from arknights_mower.tests.run_order_restoration_tests import prepare_order
 from arknights_mower.utils import resting_priority
 from arknights_mower.utils.dorm_candidates import retained_task_reservations
 from arknights_mower.utils.operators import Operator
+from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskScope,
@@ -378,8 +380,12 @@ def test_partial_reordering_keeps_full_roster_through_saved_retry(orders):
     assert not getattr(restored, "dorm_recovery_restore", ())
 
 
-def test_released_candidate_observation_resumes_same_failed_preparation(orders):
+@pytest.mark.parametrize("stale_staffing_wait", [False, True])
+def test_released_candidate_observation_resumes_same_failed_preparation(
+    orders, stale_staffing_wait
+):
     solver, first, _, events = orders
+    first.run_order_staffing_wait = stale_staffing_wait
     data = solver.op_data
     for name in ("红", "空爆"):
         data.operators[name].current_room = "room_9_9"
@@ -391,6 +397,7 @@ def test_released_candidate_observation_resumes_same_failed_preparation(orders):
     solver.choose_agent.side_effect = unavailable
     with pytest.raises(base_schedule.RoomArrangementDeferred) as failure:
         solver.agent_arrange(first.plan)
+    assert not getattr(first, "run_order_staffing_wait", False)
     solver._retain_failed_task(first, str(failure.value), [DORM])
     original_time = first.time
     source_revision = copy.deepcopy(data.room_observations)
@@ -416,6 +423,109 @@ def test_released_candidate_observation_resumes_same_failed_preparation(orders):
     solver.agent_arrange(first.plan)
     assert events[0][0] == DORM and events[1][0] == TRADE
     assert first.time == original_time and first.plan == {}
+
+
+def test_final_preparation_read_enters_dorm_before_room_detail_wait(orders):
+    solver, first, _, events = orders
+    page = {"room": None}
+    waits = []
+    read = solver.get_agent_from_room.side_effect
+    find = solver.find.side_effect
+    detail = base_schedule.BaseSchedulerSolver.turn_on_room_detail.__get__(solver)
+
+    def observe(room, *args, **kwargs):
+        detail(room)
+        assert page["room"] == room
+        return read(room, *args, **kwargs)
+
+    def locate(name, *args, **kwargs):
+        if name == "room_detail":
+            return bool(page["room"])
+        if name == "control_central":
+            return not page["room"]
+        if name in ("connecting", "arrange_check_in", "arrange_check_in_small"):
+            return None
+        return find(name, *args, **kwargs)
+
+    solver.enter_room.side_effect = lambda room: page.update(room=room)
+    solver.back.side_effect = lambda *args: page.update(room=None)
+    solver.scene.side_effect = lambda: (
+        Scene.INFRA_DETAILS if page["room"] else Scene.INFRA_MAIN
+    )
+    solver.find.side_effect = locate
+    solver.get_color = lambda *args: np.array([255, 255, 255])
+    solver.sleep.side_effect = lambda interval=1: waits.append(interval)
+    solver.get_agent_from_room.side_effect = observe
+
+    assert solver._prepare_run_order_dorm_departures(first.plan)
+
+    assert events == [(DORM, ["冰酿", "闪灵", "红", "龙舌兰", COVERS[2]])]
+    assert waits == []
+    assert page["room"] is None
+    assert not getattr(first, "run_order_dorm_plan", {})
+
+
+@pytest.mark.parametrize("returning", [False, True])
+def test_saved_preparation_ignores_stale_trade_staffing_wait(orders, returning):
+    solver, first, _, events = orders
+    data = solver.op_data
+    choose = solver.choose_agent.side_effect
+    for name in ("红", "空爆"):
+        data.operators[name].current_room = "room_9_9"
+
+    def unavailable(*args, **kwargs):
+        raise base_schedule.AgentSelectionNotReady("没有空闲补位候选")
+
+    solver.choose_agent.side_effect = unavailable
+    with pytest.raises(base_schedule.RoomArrangementDeferred):
+        solver.agent_arrange(first.plan)
+    # 兼容旧版保存的未完成补床和残留贸易缺员标志。
+    first.run_order_staffing_wait = True
+    solver._retain_failed_task(first, "预补床缺少候选", [DORM])
+    restored = pickle.loads(pickle.dumps(first))
+    solver.task, solver.tasks[0] = restored, restored
+    original_time = restored.time
+    reservation_args = {"returning_names": ("红",)} if returning else {}
+    names, slots = retained_task_reservations(data, [restored], **reservation_args)
+    assert {"龙舌兰", COVERS[2]} <= names
+    assert {(DORM, 3), (DORM, 4)} <= slots
+    unrelated = SchedulerTask(time=NOW, task_type=TaskTypes.DEPOT)
+    solver.tasks.append(unrelated)
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        ready = task_view(solver.tasks, TaskScope.DISPATCH, data)
+        assert restored not in ready and unrelated in ready
+    source_observations = copy.deepcopy(data.room_observations)
+    data.operators["红"].current_room = ""
+    data.operators["红"].current_index = -1
+    data.operators["红"].time_stamp = NOW + timedelta(seconds=1)
+
+    solver._resume_failed_tasks()
+
+    assert data.room_observations == source_observations
+    assert not getattr(restored, "execution_failure", None)
+    assert restored in task_view(solver.tasks, TaskScope.DISPATCH, data)
+    assert solver.task is restored and restored.time == original_time
+    solver.choose_agent.side_effect = choose
+    solver.agent_arrange(restored.plan)
+    assert events[0][0] == DORM and events[1][0] == TRADE
+    assert restored.plan == {} and restored.time == original_time
+    assert not getattr(restored, "run_order_staffing_wait", False)
+
+
+def test_stale_trade_staffing_wait_cannot_discard_unfinished_dorm_preparation(
+    orders, monkeypatch
+):
+    solver, first, _, _ = orders
+    first.run_order_staffing_wait = True
+    first.run_order_dorm_plan = {DORM: ["冰酿", "闪灵", "Free", "龙舌兰", COVERS[2]]}
+    first.execution_retained = True
+    solver.op_data.run_order_rooms = {}
+    monkeypatch.setattr(solver.op_data, "refresh_run_order_rooms", lambda: None)
+
+    solver._sync_run_order_tasks()
+
+    assert first in solver.tasks
 
 
 def test_real_single_recovery_clear_resumes_full_preparation_roster(

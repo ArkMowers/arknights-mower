@@ -100,6 +100,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_task_reservations,
     product_wait_resting_replacements,
     retained_task_reservations,
+    run_order_waits_for_staffing,
     scheduling_mood_reaches,
     unstarted_product_wait,
     vacant_dorm_slots,
@@ -890,7 +891,7 @@ class BaseSchedulerSolver(
             }
         if getattr(task, "replacement_check", None):
             snapshot["replacement_check"] = replacement_check_snapshot(self, task)
-        if getattr(task, "run_order_staffing_wait", False):
+        if run_order_waits_for_staffing(task):
             # 缺员订单等待实际驻员或安排变化，同一空房的新读数不重启读取。
             snapshot["reservations"] = ([], [])
             snapshot["observations"] = {}
@@ -5688,7 +5689,7 @@ class BaseSchedulerSolver(
             task
             for task in self.tasks
             if not (
-                getattr(task, "run_order_staffing_wait", False)
+                run_order_waits_for_staffing(task)
                 and task.meta_data not in op_data.run_order_rooms
             )
         ]
@@ -16835,6 +16836,7 @@ class BaseSchedulerSolver(
         rooms = set(pending) | set(saved_plan)
         if rooms:
             task.run_order_dorm_slots = pending
+            task.__dict__.pop("run_order_staffing_wait", None)
         for room in sorted(rooms):
             try:
                 self.enter_room(room)
@@ -16873,6 +16875,7 @@ class BaseSchedulerSolver(
                 result = self.agent_arrange_room({}, room, dorm_plan, skip_enter=True)
                 if result is False or result is None:
                     return False
+                self.enter_room(room)
                 observed = self.get_agent_from_room(
                     room, strict_observation=True, expected_agents=row
                 )
@@ -16894,6 +16897,8 @@ class BaseSchedulerSolver(
                     for index in departing
                 ):
                     raise AgentSelectionNotReady("跑单前未确认宿舍床位已由其他干员补齐")
+                self.back(0.5)
+                self._wait_for_room_exit()
                 pending.pop(room)
                 saved_plan.pop(room)
             except (

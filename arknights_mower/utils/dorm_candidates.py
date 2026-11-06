@@ -141,6 +141,18 @@ def product_wait_resting_replacements(op_data, task):
     }
 
 
+def run_order_waits_for_staffing(task):
+    """贸易缺员等待不覆盖未完成的宿舍补床或原班恢复。"""
+    return bool(getattr(task, "run_order_staffing_wait", False)) and not any(
+        getattr(task, field, None)
+        for field in (
+            "run_order_dorm_slots",
+            "run_order_dorm_plan",
+            "run_order_restore_pending",
+        )
+    )
+
+
 def retained_task_reservations(
     op_data, tasks, *, current_task=None, returning_groups=(), returning_names=()
 ):
@@ -157,7 +169,7 @@ def retained_task_reservations(
             if (
                 task is None
                 or task is current_task
-                or getattr(task, "run_order_staffing_wait", False)
+                or run_order_waits_for_staffing(task)
                 or not getattr(task, "retains_execution", False)
             ):
                 continue
@@ -191,7 +203,7 @@ def retained_task_reservations(
         if (
             task is None
             or task is current_task
-            or getattr(task, "run_order_staffing_wait", False)
+            or run_order_waits_for_staffing(task)
             or not getattr(task, "retains_execution", False)
         ):
             continue
@@ -314,7 +326,7 @@ def dorm_task_reservations(op_data, tasks, excluded=(), *, reserve_dorm_targets=
     names.update(getattr(op_data, "emergency_reserved_agents", ()))
     slots = {slot for slot in retained_slots if slot[0].startswith("dorm")}
     for task in tasks:
-        if task is None or getattr(task, "run_order_staffing_wait", False):
+        if task is None or run_order_waits_for_staffing(task):
             continue
         if not (
             getattr(task, "emergency_staffing", False)
