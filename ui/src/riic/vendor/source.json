@@ -487,8 +487,8 @@
       "sha256": "4bfc7b07eb6182a1f9555af0f777afad7d845b51fbca8271f893853f198eb2c5"
     },
     "scheduler/scheduleAdapter.ts": {
-      "reason": "Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. 将显式总停止时长假设传给演算运行配置。 Apply saved per-group resting thresholds to ordinary shifts, rescue lines and planning wakes; retain the global fallback for ungrouped and shared primaries and isolate policy mappings. Preserve the theoretical timing choice through backup recompilation; omit native outer clocks and room delays only for this choice.",
-      "sha256": "c927583a1bc2868b71e4c6dd28d74100488497fac3a6b8eee54e6fd93c2922ff"
+      "reason": "Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. 将显式总停止时长假设传给演算运行配置。 Apply saved per-group resting thresholds to ordinary shifts, rescue lines and planning wakes; retain the global fallback for ungrouped and shared primaries and isolate policy mappings. Preserve the theoretical timing choice through backup recompilation; omit native outer clocks and room delays only for this choice. Read effective backup drone room and count-limit overrides after recompilation and restore the base simulation selection on exit.",
+      "sha256": "cee9b497af3cda485a444628d1d667c08bdc79ec044d981b7b916b20beddb186"
     },
     "scheduler/types.ts": {
       "reason": "Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. 声明可选总停止时长假设；缺省或零时长不满足时长筛选。 Apply saved per-group resting thresholds to ordinary shifts, rescue lines and planning wakes; retain the global fallback for ungrouped and shared primaries and isolate policy mappings. Restore automatic recovery spread thresholds to 90 minutes with two power plants and 60 minutes otherwise; preserve explicit saved thresholds and verify compile-to-runtime defaults and recovery boundaries. Carry the theoretical timing choice as a simulation assumption across backup recompilation.",
@@ -815,8 +815,8 @@
       "reason": "Count shared working primaries with exactly one normal resting binding in that group while preserving working swaps and empty-binding individual recovery. Scope rescue and completion to requested normal groups, require anchored working-cover handoff, and retain legal follower-only fixtures."
     },
     "scheduler/mowerBackupConfig.spec.ts": {
-      "sha256": "581d54e555bcd06be39b76d8e3872644d5120578e385a173f815af238d5ea5dc",
-      "reason": "Verify same-type recovery preservation, cross-type changes and working-primary relocation when both owners share an ordinary cover. Verify effective low-priority replacement classification through backup entry, exit and isolated occupancy projections."
+      "sha256": "0acaeb9b4fff1b376aa1e320dc2e14ea08d39521e04dfa9be5a793dd330b5896",
+      "reason": "Verify same-type recovery preservation, cross-type changes and working-primary relocation when both owners share an ordinary cover. Verify effective low-priority replacement classification through backup entry, exit and isolated occupancy projections. Verify effective drone room and count-limit activation, layering, null inheritance, empty-room selection and restoration without mutating the base."
     },
     "scheduler/mowerNativeErrors.ts": {
       "reason": "Distinguish expected cover and recovery-bed resource waits from other preview failures for completed income windows.",
@@ -873,6 +873,10 @@
     "scheduler/mowerBackupGroupReturn.spec.ts": {
       "sha256": "a9736df32a06bd589d8a408742556529a395570c6c49f57c03ecfe239be3ddae",
       "reason": "Verify zero-mood rules active before dispatch, fixed dormitory returns, replacement release, incomplete confirmation and independent shared resting bindings."
+    },
+    "scheduler/mowerBackupConfig.ts": {
+      "sha256": "209617dd0e014e3f7554f1f7be9e8f5e15acd138c1cb905784b9336bfe1ae54c",
+      "reason": "Apply independently optional backup drone room and count-limit overrides in activation order; null inherits and an empty room selects eligible run-order trading rooms."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

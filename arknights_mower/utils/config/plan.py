@@ -136,6 +136,18 @@ class PlanConf(BaseModel):
 
 
 class BackupPlanConf(PlanConf):
+    drone_room: Optional[str] = None
+    "无人机使用房间；空值继承，空字符串表示加速任意跑单贸易站"
+    drone_count_limit: Optional[int] = None
+    "无人机使用阈值；空值继承"
+
+    @field_validator("drone_count_limit", mode="before")
+    @classmethod
+    def normalize_drone_limit(cls, value):
+        from arknights_mower.utils.config.conf import validate_drone_count_limit
+
+        return None if value is None else validate_drone_count_limit(value)
+
     removed_operators: dict[
         Literal[
             "rest_in_full",

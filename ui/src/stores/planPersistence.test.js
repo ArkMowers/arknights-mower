@@ -77,6 +77,38 @@ describe('schedule save coalescing', () => {
     )
   })
 
+  it('保存并重载各副表无人机设置，区分任意贸易站与继承', async () => {
+    const { normal, loaded } = setup()
+    axios.get.mockResolvedValue({
+      data: {
+        conf: {},
+        plan1: {},
+        backup_plans: [
+          { conf: {}, plan: {} },
+          { conf: { drone_room: 'room_1_1', drone_count_limit: 80 }, plan: {} }
+        ]
+      }
+    })
+    await normal.load_plan()
+    loaded.value = true
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledOnce())
+    Object.assign(normal.backup_plans[0].conf, { drone_room: '', drone_count_limit: 150 })
+    Object.assign(normal.backup_plans[1].conf, { drone_room: null, drone_count_limit: null })
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
+    const payload = axios.post.mock.lastCall[1]
+    expect(payload.backup_plans[0].conf).toMatchObject({ drone_room: '', drone_count_limit: 150 })
+    expect(payload.backup_plans[1].conf).toMatchObject({
+      drone_room: null,
+      drone_count_limit: null
+    })
+    loaded.value = false
+    axios.get.mockResolvedValue({ data: structuredClone(payload) })
+    await normal.load_plan()
+    expect(normal.build_plan().backup_plans.map((backup) => backup.conf)).toEqual(
+      payload.backup_plans.map((backup) => backup.conf)
+    )
+  })
+
   it('serializes and sends only the first and latest of eight edits while a request is pending', async () => {
     const { normal, loaded } = setup()
     const first = deferred()

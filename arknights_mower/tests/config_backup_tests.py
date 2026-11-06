@@ -1243,8 +1243,9 @@ def test_plan_entry_keeps_runtime_plan_on_write_failure(
 
 
 @pytest.mark.parametrize("gap_threshold", [None, 60, 75, 90])
-def test_plan_advanced_settings_round_trip_without_drone_room(
-    plan_client, populated_plan, gap_threshold
+@pytest.mark.parametrize("drone_room", [None, "", "room_2_2"])
+def test_plan_advanced_settings_round_trip_with_drone_room(
+    plan_client, populated_plan, gap_threshold, drone_room
 ):
     config.conf.drone_room = "room_1_1"
     config.conf.resting_threshold = 0.65
@@ -1261,6 +1262,9 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
         "group_mood_gap_max_extra_wait_hours": 1.5,
         "group_mood_gap_exclusions": ["主表组", "副表组"],
     }
+    if drone_room is not None:
+        value["advanced_settings"]["drone_room"] = drone_room
+    expected_room = "room_1_1" if drone_room is None else drone_room
     result = post_plan_file(plan_client, value)
     assert result.get_data(as_text=True) == "排班已加载"
     assert config.conf.resting_threshold == 0.75
@@ -1271,7 +1275,7 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
     assert config.conf.group_mood_gap_threshold_minutes == gap_threshold
     assert config.conf.group_mood_gap_max_extra_wait_hours == 1.5
     assert config.conf.group_mood_gap_exclusions == ["主表组", "副表组"]
-    assert config.conf.drone_room == "room_1_1"
+    assert config.conf.drone_room == expected_room
 
     exported = plan_client.get("/export-json", headers={"token": "test-token"}).json
     assert exported["advanced_settings"]["resting_threshold"] == 0.75
@@ -1290,7 +1294,7 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
         "主表组",
         "副表组",
     ]
-    assert "drone_room" not in exported["advanced_settings"]
+    assert exported["advanced_settings"]["drone_room"] == expected_room
     assert "reload_room" not in exported["advanced_settings"]
 
 
@@ -1323,6 +1327,10 @@ def test_recycling_plan_json_and_image_round_trip(
         "plans": [{"agent": "阿米娅"}, {"agent": "杜宾"}]
     }
     value["backup_plans"][0]["task"]["recycle"] = ["阿米娅", "杜宾"]
+    value["backup_plans"][0]["conf"].update(
+        drone_room="room_2_2", drone_count_limit=160
+    )
+    config.conf.drone_room = "room_3_3"
     schedule = config.PlanModel.model_validate(value)
     config.conf.theme = theme
     config.conf.right_side_room_order = ["recycle", "train", "contact"]
@@ -1374,6 +1382,10 @@ def test_recycling_plan_json_and_image_round_trip(
     assert (
         restored.backup_plans[0].task.recycle == schedule.backup_plans[0].task.recycle
     )
+    assert restored.backup_plans[0].conf.drone_room == "room_2_2"
+    assert restored.backup_plans[0].conf.drone_count_limit == 160
+    if not rescue:
+        assert restored.advanced_settings["drone_room"] == "room_3_3"
     assert config.conf.right_side_room_order == ["recycle", "train", "contact"]
 
 

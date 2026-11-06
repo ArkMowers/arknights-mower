@@ -11,7 +11,8 @@ const configStore = useConfigStore()
 const planStore = inject('planStore', null) || usePlanStore()
 const {
   product_switching,
-  drone_count_limit,
+  drone_room: main_drone_room,
+  drone_count_limit: main_drone_count_limit,
   drone_interval,
   resting_threshold,
   group_resting_thresholds,
@@ -31,6 +32,32 @@ const {
   rescue_threshold,
   favorite
 } = storeToRefs(configStore)
+
+const currentBackup = computed(() =>
+  planStore.sub_plan === 'main' ? null : planStore.backup_plans[planStore.sub_plan]
+)
+const drone_room = computed({
+  get: () =>
+    currentBackup.value ? (currentBackup.value.conf.drone_room ?? null) : main_drone_room.value,
+  set: (value) => {
+    if (currentBackup.value) currentBackup.value.conf.drone_room = value
+    else main_drone_room.value = value
+  }
+})
+const drone_count_limit = computed({
+  get: () =>
+    currentBackup.value
+      ? (currentBackup.value.conf.drone_count_limit ?? null)
+      : main_drone_count_limit.value,
+  set: (value) => {
+    if (currentBackup.value) currentBackup.value.conf.drone_count_limit = value
+    else if (value != null) main_drone_count_limit.value = value
+  }
+})
+const droneRoomOptions = computed(() => [
+  { label: '（加速任意贸易站）', value: '' },
+  ...planStore.left_side_facility
+])
 
 const excludedGroupOptions = computed(() =>
   [...new Set([...planStore.all_groups, ...group_mood_gap_exclusions.value])].map((group) => ({
@@ -139,6 +166,23 @@ const excludedGroupOptions = computed(() =>
       </template>
       <n-form-item>
         <template #label>
+          <span>无人机使用房间</span>
+          <help-text>
+            <div>为指定制造站或贸易站加速；“加速任意贸易站”仅加速配置了跑单替班的贸易站。</div>
+            <div>这两项设置随当前编辑的主表或副表保存。副表未设置时继承此前生效的配置。</div>
+          </help-text>
+        </template>
+        <n-select
+          v-model:value="drone_room"
+          :options="droneRoomOptions"
+          :clearable="!!currentBackup"
+          :placeholder="currentBackup ? '继承此前生效的设置' : ''"
+          :consistent-menu-width="false"
+          aria-label="无人机使用房间"
+        />
+      </n-form-item>
+      <n-form-item>
+        <template #label>
           <span>无人机使用阈值</span>
           <help-text>
             <div>最低为 20，旧配置中小于 20 的值自动调整为 20。</div>
@@ -147,7 +191,13 @@ const excludedGroupOptions = computed(() =>
             <div>如加速制造，推荐大于 贸易站数*10</div>
           </help-text>
         </template>
-        <mower-input-number v-model:value="drone_count_limit" :min="20" />
+        <mower-input-number
+          v-model:value="drone_count_limit"
+          :min="20"
+          :clearable="!!currentBackup"
+          :placeholder="currentBackup ? '继承此前生效的设置' : ''"
+          aria-label="无人机使用阈值"
+        />
       </n-form-item>
       <n-form-item>
         <template #label>

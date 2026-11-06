@@ -947,6 +947,7 @@ export const useConfigStore = defineStore('config', () => {
   function build_advanced_settings() {
     return {
       product_switching: product_switching.value,
+      drone_room: drone_room.value,
       drone_count_limit: drone_count_limit.value,
       drone_interval: drone_interval.value,
       resting_threshold: resting_threshold.value / 100,

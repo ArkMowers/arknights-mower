@@ -85,6 +85,8 @@ class PlanConfig:
         free_room_exclusions: str = "",
         removed_operators: Optional[dict[str, str]] = None,
         group_resting_thresholds: Optional[dict[str, float]] = None,
+        drone_room: Optional[str] = None,
+        drone_count_limit: Optional[int] = None,
     ):
         """排班的设置
 
@@ -126,6 +128,8 @@ class PlanConfig:
             name: MoodLimits.model_validate(limits).model_dump()
             for name, limits in (operator_mood_limits or {}).items()
         }
+        self.drone_room = drone_room
+        self.drone_count_limit = drone_count_limit
         self.resting_threshold = resting_threshold
         self.group_resting_thresholds = dict(group_resting_thresholds or {})
         self.resting_threshold_override = None
@@ -220,6 +224,10 @@ class PlanConfig:
         if target.mood_limits is not None:
             n.mood_limits = copy.deepcopy(target.mood_limits)
         n.operator_mood_limits.update(copy.deepcopy(target.operator_mood_limits))
+        for field in ("drone_room", "drone_count_limit"):
+            value = getattr(target, field)
+            if value is not None:
+                setattr(n, field, value)
         return n
 
 

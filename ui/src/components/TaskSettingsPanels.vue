@@ -177,8 +177,6 @@ const {
   run_order_network_adaptive,
   selection_poll_interval,
   selection_transition_timeout,
-  drone_room,
-  drone_count_limit,
   drone_interval,
   automatic_rescue_enable,
   start_automatically,
@@ -204,12 +202,6 @@ const {
 } = storeToRefs(config_store)
 
 const { operators } = storeToRefs(plan_store)
-
-const { left_side_facility } = plan_store
-
-const facility_with_empty = computed(() => {
-  return [{ label: '（加速任意贸易站）', value: '' }].concat(left_side_facility)
-})
 
 const launch_options = [
   { label: '使用adb命令启动', value: 'adb' },
@@ -562,34 +554,9 @@ const idleOptions = computed(() => [
             label-width="140"
             label-align="left"
           >
-            <n-form-item>
-              <template #label>
-                <span>无人机使用房间</span>
-                <help-text>
-                  <div>加速制造站为指定制造站加速</div>
-                  <div>（加速任意贸易站）只会加速有跑单人员作备班的站</div>
-                  <div>例：没填龙舌兰但书的卖玉站 （加速任意贸易站） 不会被加速</div>
-                  <div>如需要加速特定某个贸易站请指定对应房间</div>
-                </help-text>
-              </template>
-              <n-select
-                :options="facility_with_empty"
-                v-model:value="drone_room"
-                :consistent-menu-width="false"
-                aria-label="无人机使用房间"
-              />
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无人机使用阈值</span>
-                <help-text>
-                  <div>最低为 20，旧配置中小于 20 的值自动调整为 20。</div>
-                  <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
-                  <div>如加速制造，推荐大于 贸易站数*10</div>
-                </help-text>
-              </template>
-              <mower-input-number v-model:value="drone_count_limit" :min="20" />
-            </n-form-item>
+            <n-alert type="info" :show-icon="false">
+              无人机使用房间和使用阈值请在排班编辑的高级设置中配置，可随副表切换。
+            </n-alert>
             <n-form-item>
               <template #label>
                 <span>无人机加速间隔</span>

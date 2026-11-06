@@ -108,6 +108,7 @@ def test_restore_running_plan_uses_startup_snapshot(client, monkeypatch):
         ],
         advanced_settings=export_advanced_settings(
             config.Conf(
+                drone_room="room_1_1",
                 drone_count_limit=150,
                 drone_interval=2,
                 free_room=True,
@@ -141,7 +142,7 @@ def test_restore_running_plan_uses_startup_snapshot(client, monkeypatch):
     assert config.conf.free_room is True
     assert config.conf.test_mood_calculation is True
     assert config.conf.account == "current account"
-    assert config.conf.drone_room == "room_3_3"
+    assert config.conf.drone_room == "room_1_1"
     assert safe_load(config.conf_path.read_text())["drone_count_limit"] == 150
     assert safe_load(config.conf_path.read_text())["test_mood_calculation"] is True
     assert (
