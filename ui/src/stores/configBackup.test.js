@@ -157,7 +157,7 @@ describe('configuration restore autosave coordination', () => {
     }
   )
 
-  it('includes current advanced settings in saved plans without the drone room', async () => {
+  it('includes current advanced settings and drone room in saved plans', async () => {
     const { config, plan } = setup()
     plan.set_advanced_settings_source(() => config.build_advanced_settings())
     config.drone_room = 'room_1_1'
@@ -171,7 +171,7 @@ describe('configuration restore autosave coordination', () => {
     expect(saved.resting_threshold).toBe(0.75)
     expect(saved.group_resting_thresholds).toEqual({ 主表组: 0.35, 副表组: 0.65 })
     expect(saved.product_switching.waiting_seconds).toBe(5)
-    expect(saved).not.toHaveProperty('drone_room')
+    expect(saved.drone_room).toBe('room_1_1')
   })
 
   it('saves and reloads dorm order as part of the plan', async () => {

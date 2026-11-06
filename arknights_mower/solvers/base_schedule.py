@@ -12989,13 +12989,8 @@ class BaseSchedulerSolver(
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f"当前无人机数量为：{drone_count}")
                     # 200 为识别错误
-                    if (
-                        drone_count < self.drone_count_limit
-                        or drone_count == 201
-                    ):
-                        logger.info(
-                            f"无人机数量小于{self.drone_count_limit}->停止"
-                        )
+                    if drone_count < self.drone_count_limit or drone_count == 201:
+                        logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
                         break
                 accelerate = self.find("bill_accelerate")
             if adjust_time:

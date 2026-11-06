@@ -177,7 +177,6 @@ const {
   run_order_network_adaptive,
   selection_poll_interval,
   selection_transition_timeout,
-  drone_interval,
   automatic_rescue_enable,
   start_automatically,
   package_type,
@@ -538,35 +537,6 @@ const idleOptions = computed(() => [
               <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
                 跑单前返回主界面以保持登录状态
               </n-checkbox>
-            </n-form-item>
-          </n-form>
-        </n-card>
-      </div>
-    </section>
-
-    <section data-task-editor="drone">
-      <div class="settings-card-grid">
-        <n-card title="无人机加速">
-          <n-form
-            class="task-panel-form"
-            :label-placement="mobile ? 'top' : 'left'"
-            :show-feedback="false"
-            label-width="140"
-            label-align="left"
-          >
-            <n-alert type="info" :show-icon="false">
-              无人机使用房间和使用阈值请在排班编辑的高级设置中配置，可随副表切换。
-            </n-alert>
-            <n-form-item>
-              <template #label>
-                <span>无人机加速间隔</span>
-                <help-text>
-                  <div>可填小数</div>
-                </help-text>
-              </template>
-              <mower-input-number v-model:value="drone_interval">
-                <template #suffix>小时</template>
-              </mower-input-number>
             </n-form-item>
           </n-form>
         </n-card>
