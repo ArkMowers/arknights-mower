@@ -477,14 +477,135 @@ def ungrouped_standby(solver):
     return solver, primary, cover, anchor, bed
 
 
-@pytest.mark.parametrize("primary_mood", [10, 24])
-@pytest.mark.parametrize("cover_mood", [0, 10])
-def test_ungrouped_standby_joins_next_return_batch(
-    ungrouped_standby, primary_mood, cover_mood
+@pytest.mark.parametrize("priority", ["high", "low", "standby"])
+@pytest.mark.parametrize("free_room", [False, True])
+def test_ungrouped_resident_keeps_own_return_deadline(
+    ungrouped_standby, priority, free_room
+):
+    solver, primary, _, anchor, anchor_bed = ungrouped_standby
+    data = solver.op_data
+    now = primary.time_stamp
+    data.config.free_room = free_room
+    primary.resting_priority = priority
+    anchor.resting_priority = "high"
+    bed = data.dorm[1]
+    bed.name, bed.time = primary.name, now + timedelta(minutes=30)
+    primary.current_room, primary.current_index = bed.position
+    primary.mood = 20
+    before = [(item.position, item.name, item.time) for item in data.dorm]
+    tasks = []
+    for _ in range(2):
+        tasks = plan_metadata(data, tasks, now=now)
+        returns = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
+        own = [task for task in returns if primary.name in task.plan[primary.room]]
+        assert len(own) == 1
+        assert own[0].time == bed.time - timedelta(minutes=8)
+        assert anchor.name not in own[0].plan[anchor.room]
+        assert any(
+            task.time == anchor_bed.time - timedelta(minutes=8) for task in returns
+        )
+        assert [(item.position, item.name, item.time) for item in data.dorm] == before
+        assert primary.current_room == bed.position[0]
+
+
+@pytest.mark.parametrize("countdown", [None, 30])
+@pytest.mark.parametrize("require_full", [False, True])
+@pytest.mark.parametrize("free_room", [False, True])
+def test_full_ungrouped_resident_returns_from_valid_mood(
+    ungrouped_standby, countdown, require_full, free_room
+):
+    solver, primary, _, anchor, _ = ungrouped_standby
+    data = solver.op_data
+    now = primary.time_stamp
+    data.config.free_room = free_room
+    primary.rest_in_full = require_full
+    bed = data.dorm[1]
+    bed.name = primary.name
+    bed.time = now + timedelta(minutes=countdown) if countdown is not None else None
+    previous_time = bed.time
+    primary.current_room, primary.current_index = bed.position
+    tasks = plan_metadata(data, [], now=now)
+    own = [
+        task
+        for task in tasks
+        if task.type == TaskTypes.SHIFT_ON
+        and primary.name in task.plan.get(primary.room, [])
+    ]
+    assert len(own) == 1
+    assert now - timedelta(seconds=1) <= own[0].time <= now
+    assert own[0].plan[primary.room][anchor.index] == "Current"
+    assert primary.current_room == bed.position[0]
+    assert bed.name == primary.name
+    assert bed.time == previous_time
+
+
+@pytest.mark.parametrize("priority", ["low", "standby"])
+@pytest.mark.parametrize("free_room", [False, True])
+def test_full_idle_ungrouped_primary_returns_without_waiting_for_other_batch(
+    ungrouped_standby, priority, free_room
 ):
     solver, primary, cover, anchor, bed = ungrouped_standby
     data = solver.op_data
-    primary.mood, cover.mood = primary_mood, cover_mood
+    now = primary.time_stamp
+    data.config.free_room = free_room
+    primary.resting_priority = priority
+    tasks = []
+    for _ in range(2):
+        tasks = plan_metadata(data, tasks, now=now)
+        own = [
+            task
+            for task in tasks
+            if task.type == TaskTypes.SHIFT_ON
+            and primary.name in task.plan.get(primary.room, [])
+        ]
+        assert len(own) == 1
+        assert own[0].time == now
+        assert own[0].plan[primary.room][anchor.index] == "Current"
+        assert primary.current_room == ""
+        assert cover.current_room == primary.room
+        assert bed.name == anchor.name
+
+
+@pytest.mark.parametrize("priority", ["low", "standby"])
+@pytest.mark.parametrize(
+    "observation",
+    ["full", "partial", "unknown", "prediction", "newer_low_card", "full_card"],
+)
+def test_idle_ungrouped_return_without_another_deadline(
+    ungrouped_standby, priority, observation
+):
+    solver, primary, _, _, bed = ungrouped_standby
+    data = solver.op_data
+    now = primary.time_stamp + timedelta(seconds=1)
+    primary.resting_priority = priority
+    data.config.free_room = False
+    bed.time = None
+    if observation == "partial":
+        primary.mood = 10
+    elif observation == "unknown":
+        primary.time_stamp = None
+    elif observation == "prediction":
+        primary.mood_is_prediction = True
+    elif observation in ("newer_low_card", "full_card"):
+        primary.mood = 24 if observation == "newer_low_card" else 10
+        data.dorm_mood_estimates = {
+            primary.name: (10 if observation == "newer_low_card" else 24, now)
+        }
+    tasks = plan_metadata(data, [], now=now)
+    returns = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
+    if observation in ("full", "full_card"):
+        assert len(returns) == 1
+        assert returns[0].time == now
+        assert returns[0].plan[primary.room][primary.index] == primary.name
+    else:
+        assert returns == []
+
+
+@pytest.mark.parametrize("cover_mood", [0, 10])
+def test_ungrouped_standby_joins_next_return_batch(ungrouped_standby, cover_mood):
+    solver, primary, cover, anchor, bed = ungrouped_standby
+    data = solver.op_data
+    primary.mood, cover.mood = 10, cover_mood
     original_beds = [(item.position, item.name, item.time) for item in data.dorm]
     assert data.is_standby(primary.name)
     assert not data.rest_mood_complete(primary.name)
@@ -504,6 +625,7 @@ def test_ungrouped_standby_joins_next_return_batch(
 
 def test_ungrouped_standby_does_not_create_independent_return(ungrouped_standby):
     solver, primary, _, _, bed = ungrouped_standby
+    primary.mood = 10
     bed.time = None
     solver.op_data.config.free_room = False
     assert solver.op_data.is_standby(primary.name)
@@ -512,6 +634,7 @@ def test_ungrouped_standby_does_not_create_independent_return(ungrouped_standby)
 
 def test_ungrouped_standby_does_not_join_release_only_batch(ungrouped_standby):
     solver, primary, _, anchor, bed = ungrouped_standby
+    primary.mood = 10
     anchor.operator_type = "low"
     other_bed = solver.op_data.dorm[3]
     primary_anchor = solver.op_data.operators[DEEP[0]]
@@ -559,12 +682,26 @@ def test_reserved_ungrouped_standby_keeps_waiting(
         for names in task.plan.values()
     )
 
+    monkeypatch.setattr(
+        "arknights_mower.utils.scheduler_task.busy_resting_names", lambda: set()
+    )
+    released = plan_metadata(solver.op_data, [], now=primary.time_stamp)
+    own = [
+        task
+        for task in released
+        if task.type == TaskTypes.SHIFT_ON
+        and primary.name in task.plan.get(primary.room, [])
+    ]
+    assert len(own) == 1
+    assert own[0].time == primary.time_stamp
+
 
 @pytest.mark.parametrize("later_batch", [False, True])
 def test_ungrouped_standby_respects_pending_native_slot_arrangement(
     ungrouped_standby, later_batch
 ):
     solver, primary, cover, anchor, bed = ungrouped_standby
+    primary.mood = 10
     pending = SchedulerTask(
         time=bed.time + timedelta(hours=1),
         task_plan={primary.room: [cover.name, "Current", "Current"]},

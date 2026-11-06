@@ -40,7 +40,7 @@ def screen_only(instance, owned):
 def empty_bed(instance, selected):
     data = instance.op_data
     # 现有空闲替班都在工作，只能从游戏页面补床。
-    data.update_detail("空爆", 24, "meeting", 0, True)
+    data.update_detail("空爆", 24, "room_1_2", 0, True)
     data.operators["红"].current_room = "room_1_1"
     selected.pop()
 
@@ -447,7 +447,7 @@ def test_simple_fill_keeps_full_resident_and_only_fills_empty_slot(solver):
     data = instance.op_data
     data.plan[ROOM][3] = Room("Free", "", [])
     data.dorm.insert(0, Dormitory((ROOM, 3), "桃金娘"))
-    data.update_detail("空爆", 24, "meeting", 0, True)
+    data.update_detail("空爆", 24, "room_1_2", 0, True)
     selected.pop()
     data.operators["红"].mood = 10
     instance.task = SchedulerTask(

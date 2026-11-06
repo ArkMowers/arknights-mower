@@ -269,7 +269,10 @@ def test_personal_exhaustion_recognizes_pending_rest(individual):
     assert s._has_pending_exhausted_shift([SHARED])
 
 
-def test_named_group_does_not_restart_personal_return_window(individual, monkeypatch):
+@pytest.mark.parametrize("recovered", [False, True])
+def test_named_group_preserves_personal_recovery_and_full_return(
+    individual, monkeypatch, recovered
+):
     from arknights_mower.utils import scheduler_task
 
     s = individual
@@ -290,9 +293,15 @@ def test_named_group_does_not_restart_personal_return_window(individual, monkeyp
     )
     data = s.op_data
     data.operators[A].mood = 0
+    data.operators[SHARED].mood = 24 if recovered else 10
     data.get_dorm_by_name(SHARED)[1].time = now + timedelta(hours=4)
     first = plan_metadata(data, [])
     deadline = next(task.time for task in first if task.plan.get("contact") == [SHARED])
+    assert deadline == (
+        now - timedelta(seconds=1)
+        if recovered
+        else data.get_dorm_by_name(SHARED)[1].time - timedelta(minutes=8)
+    )
     now += timedelta(minutes=10)
     data.commit_group_shifts({"甲": True})
     blocked = plan_metadata(data, first)
@@ -300,10 +309,9 @@ def test_named_group_does_not_restart_personal_return_window(individual, monkeyp
     now += timedelta(minutes=5)
     data.commit_group_shifts({"甲": False})
     resumed = plan_metadata(data, blocked)
-    assert (
-        next(task.time for task in resumed if task.plan.get("contact") == [SHARED])
-        == deadline
-    )
+    assert next(
+        task.time for task in resumed if task.plan.get("contact") == [SHARED]
+    ) == (now - timedelta(seconds=1) if recovered else deadline)
 
 
 @pytest.mark.parametrize("group_resting", [False, True])

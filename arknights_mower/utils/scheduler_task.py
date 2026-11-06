@@ -2489,26 +2489,20 @@ def plan_metadata(
         logger.debug(f"开始计算:{group_name}")
         logger.debug(f"开始计算:{dorms}")
         task_time = datetime.max
-        # 高优先宿舍
-        _high_dorms = [
-            dorm
-            for dorm in dorms
-            if op_data.operators[dorm.name].is_high()
-            and op_data.operators[dorm.name].resting_priority == "high"
-        ]
-        if len(_high_dorms) == 0:
-            high_dorms = [
+        # 未绑组主班各自计时，恢复层级只在绑组内选择回班依据。
+        high_dorms = [dorm for dorm in dorms if op_data.operators[dorm.name].is_high()]
+        if group_name:
+            priority = [
                 dorm
-                for dorm in dorms
-                if op_data.operators[dorm.name].is_high()
-                and op_data.operators[dorm.name].resting_priority != "standby"
+                for dorm in high_dorms
+                if op_data.operators[dorm.name].resting_priority == "high"
             ]
-            if not high_dorms:
-                high_dorms = [
-                    dorm for dorm in dorms if op_data.operators[dorm.name].is_high()
-                ]
-        else:
-            high_dorms = _high_dorms
+            ordinary = [
+                dorm
+                for dorm in high_dorms
+                if op_data.operators[dorm.name].resting_priority != "standby"
+            ]
+            high_dorms = priority or ordinary or high_dorms
         if high_dorms and group_name:
             required, deadline = group_recovery_deadline(op_data, group_name, now=now)
             previous = [
@@ -2552,13 +2546,18 @@ def plan_metadata(
             # 单独添加，最后合并
             # high_droms 如果触发急救模式，后面的移送到急救前
             for room in high_dorms:
+                operator = op_data.operators[room.name]
+                completed = recovery_mood_complete(op_data, operator, now)
                 if room.name and (
-                    observed_recovery_deadline(op_data, room.name, now) is not None
+                    completed
+                    or observed_recovery_deadline(op_data, room.name, now) is not None
                     or previous_return_time(room.name) is not None
                 ):
-                    rest_in_full = op_data.operators[room.name].rest_in_full
+                    rest_in_full = operator.rest_in_full
                     task_time = (
-                        normal_return_time([room])
+                        now
+                        if completed
+                        else normal_return_time([room])
                         if not rest_in_full
                         else observed_recovery_deadline(op_data, room.name, now)
                         or previous_return_time(room.name)
@@ -2637,6 +2636,8 @@ def plan_metadata(
         )
         if not (
             op_data.rest_mood_complete(op.name)
+            or not op.group
+            and recovery_mood_complete(op_data, op, now)
             or op.independent_rest
             and observed_full_mood(op)
             or op.group
@@ -2686,6 +2687,8 @@ def plan_metadata(
                 not worker.current_room
                 and (
                     op_data._can_standby(worker)
+                    or not worker.group
+                    and recovery_mood_complete(op_data, worker, now)
                     or op_data.rest_mood_complete(worker.name)
                     or (
                         has_resting_mood(worker)
