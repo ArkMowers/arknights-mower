@@ -469,7 +469,7 @@ async function validate_plan() {
     if (data.status === 'incomplete') {
       message.warning(data.message, feedback)
     } else if (data.success) {
-      message.success(data.message, feedback)
+      message.success(data.message, { duration: 3000, closable: true })
     } else {
       message.error(data.message, feedback)
     }

@@ -55,6 +55,51 @@ function generatedSupport(recall=false,holdMode?:'while_active'|'forced',request
 }
 
 afterEach(()=>vi.restoreAllMocks())
+
+it.each([false,true])('completes both occupied-cover handoffs for one ordinary group (theoretical=%s)',theoretical=>{
+ const rows={
+  room_1_1:[{agent:'A',group:'request',replacement:['X']},{agent:'A2',group:'request',replacement:['X2']}],
+  room_1_2:[{agent:'B',group:'b',replacement:['X','Y']}],
+  room_1_3:[{agent:'C',group:'c',replacement:['X2','Y2']}],
+  dormitory_1:['K1','K2','Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]})),
+  dormitory_2:['K3','K4','Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]})),
+ }
+ const config:RuntimeConfig={mowerAlpha:true,mowerTheoreticalMode:theoretical,mowerRunOrderEnabled:false,mowerTaskScheduling:{adjustForRunOrders:false},mowerSourcePlan:rows,
+  positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((slot,index)=>slot.agent==='Free'?[]:[{id:`${room}_${index}`,roomId:room,primary:slot.agent,candidates:slot.replacement,group:slot.group,permanent:room.startsWith('dorm'),dormitory:room.startsWith('dorm')}])),
+  beds:['dormitory_1','dormitory_2'].flatMap(room=>[2,3,4].map(index=>({id:`${room}_${index}`,roomId:room,vip:index===2}))),
+  initialMorale:{A:4,A2:12,B:8,C:8,X:24,X2:24,Y:24,Y2:24},idleOperators:['Idle1','Idle2','Idle3','Idle4','Idle5','Idle6'],
+  mowerPolicy:{restingThreshold:.6,powerPlantCount:2,opeRestingPriority:[]},
+  mowerSourceRules:{workaholic:[],exhaustRequire:[],restInFull:['B','C'],lowPriority:[],refreshDrained:[],lingMode:0},
+  mowerRunLoopClock:{minimumClockStepMicros:1,notificationSleepMicros:1_000_000}}
+ const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data
+ source.initial=false;source.firstInit=false
+ state.occupants.room_1_2_0='X';state.occupants.room_1_3_0='X2'
+ state.bedOccupants={dormitory_1_2:'B',dormitory_1_3:'C'}
+ for(const op of Object.values(data.operators)){
+  const position=Object.entries({...state.occupants,...state.bedOccupants}).find(([,name])=>name===op.name)?.[0],split=position?.lastIndexOf('_')??-1
+  Object.assign(op,{currentRoom:position?.slice(0,split)??'',currentIndex:position?Number(position.slice(split+1)):-1,mood:state.morale[op.name]??24,timeStampMicros:0})
+ }
+ data.dorms=config.beds.map(bed=>new MowerDormState([bed.roomId,Number(bed.id.slice(-1))],state.bedOccupants[bed.id],state.bedOccupants[bed.id]?toMowerMicros(4):undefined))
+ data.groupShiftState={request:false,b:true,c:true}
+ source.queue.tasks=[new MowerTask()]
+ const complete=()=>Object.values(state.bedOccupants).includes('A')&&Object.values(state.bedOccupants).includes('A2')
+ for(let run=0;run<60&&!complete()&&state.time<1;run++){
+  settleMowerSource(state,rates)
+  if(!complete()){
+   const next=nextRosterActionHours(state,rates)
+   expect(Number.isFinite(next),JSON.stringify(state.diagnostics)).toBe(true)
+   advanceRoster(state,Math.min(1-state.time,Math.max(next,1/3_600_000_000)),rates)
+  }
+ }
+ expect(complete(),JSON.stringify(state.diagnostics)).toBe(true)
+ expect(state.occupants.room_1_1_0).toBe('X');expect(state.occupants.room_1_1_1).toBe('X2')
+ expect(state.occupants.room_1_2_0).toBe('Y');expect(state.occupants.room_1_3_0).toBe('Y2')
+ expect(Object.values(state.bedOccupants)).toEqual(expect.arrayContaining(['B','C']))
+ expect(data.groupShiftState.request).toBe(true)
+ expect(source.trace.some(task=>task.type==='SELF_CORRECTION'&&task.plan.room_1_2?.[0]==='Y'&&task.plan.room_1_3?.[0]==='Y2')).toBe(true)
+ expect(state.diagnostics.filter(d=>/exception/.test(d.code))).toEqual([])
+})
+
 describe('exhaust support dispatch preserves native recovery capacity',()=>{
  it('keeps an existing shared-follower cover while releasing another cover',()=>{
   const {state,source,data,support}=generatedSupport(false,undefined,false,true)

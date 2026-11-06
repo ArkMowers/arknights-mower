@@ -44,7 +44,7 @@ import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,fromMowerMi
 import {executeMowerTaskArrangementSteps,type MowerRoomReturn,type MowerBackupResult} from './mowerTaskExecutor'
 import {projectMowerArrangements,invalidateMowerDormTime,mowerUpdateDetail,mowerRefreshDormTime,mowerCorrectDorm,mowerRoomReadIndexes,shouldMowerReadMood,mowerHasMeasuredDormDeparture} from './mowerObservations'
 import {mowerIsDormReplacement,planMowerCorrection,prepareMowerCorrectionRecovery} from './mowerCorrection'
-import {planMowerOrdinary,mowerGetRestingPlan,mowerTryReorder,mowerPlanningHasNearTask} from './mowerOrdinaryPlanning'
+import {planMowerOrdinary,planMowerOrdinarySupportAdmission,mowerGetRestingPlan,mowerTryReorder,mowerPlanningHasNearTask} from './mowerOrdinaryPlanning'
 import {planMowerMetadata,mowerRestUnitKey} from './mowerMetadata'
 import {mowerReplacementDependencyNames,mowerReplacementReservations,planMowerPreferredReplacementRestore,mowerCoordinationRequestFulfilled} from './mowerReplacementCoordination'
 import {reconcileMowerUrgentRecovery,mowerSupportRequestMatches,mowerUrgentPendingSupporters,recordMowerUrgentSupport,recordMowerUrgentRecovery,inheritMowerUrgentRecovery} from './mowerUrgentRecovery'
@@ -611,7 +611,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
  if(!source.initial&&!source.execution&&!source.phaseExecution)syncMowerWorkingReplacementChecks(s,source.data,queue)
  reconcileMowerUrgentRecovery(source.data)
  for(const task of [...queue.tasks])if(task!==source.execution?.task&&task.type===T.EXHAUST_OFF&&mowerCoordinationRequestFulfilled(source.data,task.metadata.split(',')))queue.consume(task)
- for(const task of [...queue.tasks])if(task!==source.execution?.task&&task.exhaustSupport&&task.coordinationRequestNames.length&&!queue.tasks.some(request=>mowerSupportRequestMatches(request,task)))queue.consume(task)
+ for(const task of [...queue.tasks])if(task!==source.execution?.task&&task.exhaustSupport&&!task.ordinaryCoordination&&task.coordinationRequestNames.length&&!queue.tasks.some(request=>mowerSupportRequestMatches(request,task)))queue.consume(task)
  if(resumeMowerFailedTasks(s,source.data,queue)&&!source.execution&&!source.phaseExecution)delete source.runReturn
  if(!source.execution&&!source.phaseExecution&&!source.runReturn&&source.planningWake&&source.planningWake.timeMicros<=source.data.nowMicros){
   source.planningMoodRefreshNames=[...new Set([...(source.planningMoodRefreshNames??[]),...source.planningWake.names])]
@@ -739,7 +739,8 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      }
     }
     if(!running&&data.alpha&&task.exhaustSupport&&!task.arrangementStarted&&!task.backupShiftActive&&!task.productShiftLocked){
-     const names=task.coordinationRequestNames.filter(name=>data.operators[name])
+     // Ordinary requests name their trigger; handoffs must cover every current group member.
+     const names=[...new Set(task.coordinationRequestNames.flatMap(name=>{const op=data.operators[name];return !op?[]:task.ordinaryCoordination&&op.group?data.shiftGroupMembers(op.group):[name]}))]
      task.plan=names.length?planMowerExhaustSupport(data,names,options())??{}:{}
      if(task.backupShiftIntent)task.backupShiftIntent=structuredClone(task.plan)
      task.groupShiftTransitions=mowerArrangementGroupTransitions(data,task.plan)
@@ -784,7 +785,9 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      }
      if(task.exhaustSupport&&task.coordinationRequestNames.length){
       const effective=task.backupShiftConditions?model.swap(projectMowerArrangements(data,[]),task.backupShiftConditions,task.backupGroup):data
-      if(!validateMowerCoordinationSupport(effective,task.plan,task.coordinationRequestNames,options()))throw new MowerShiftPreviewError('替班交接条件已变化，保留原任务等待依赖释放')
+      const members=task.ordinaryCoordination?[...new Set(task.coordinationRequestNames.flatMap(name=>{const op=effective.operators[name];return op?.group?effective.shiftGroupMembers(op.group):op?[name]:[]}))]:task.coordinationRequestNames
+      if(!validateMowerCoordinationSupport(effective,task.plan,members,options()))throw new MowerShiftPreviewError('替班交接条件已变化，保留原任务等待依赖释放')
+      if(task.ordinaryCoordination)task.coordinationAdmissionPlan=planMowerOrdinarySupportAdmission(projectMowerArrangements(effective,[task.plan]),task.coordinationRequestNames,options())
      }
      if(task.preferredReplacementRestore&&task.backupShiftConditions){
       const effective=model.swap(projectMowerArrangements(data,[]),task.backupShiftConditions,task.backupGroup),reserved=mowerReplacementReservations(effective,queue.tasks.filter(other=>other!==task)),current=planMowerPreferredReplacementRestore(effective,reserved.reservedNames,reserved.reservedSlots)
@@ -897,7 +900,17 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      backup,
      arrangeRoom:(room,names,getTime,current,restoration)=>arrangeRoomSteps(s,rates,room,names,getTime,current,restoration),
      completeFia:current=>queueMowerFiaReturn(getMowerSourceRuntime(s).data,queue,current),
-     completeGroupShift:()=>{const actual=getMowerSourceRuntime(s).data;if(actual.alpha)commitMowerGroupShifts(actual,{...mowerArrangementGroupTransitions(actual,intent),...task.groupShiftTransitions})},
+     completeGroupShift:()=>{
+      const actual=getMowerSourceRuntime(s).data
+      if(actual.alpha)commitMowerGroupShifts(actual,{...mowerArrangementGroupTransitions(actual,intent),...task.groupShiftTransitions})
+      if(task.exhaustSupport&&task.ordinaryCoordination&&task.coordinationAdmissionPlan&&!queue.tasks.some(request=>mowerSupportRequestMatches(request,task))){
+       const plan=planMowerOrdinarySupportAdmission(actual,task.coordinationRequestNames,options())??task.coordinationAdmissionPlan
+       const departure=new MowerTask({time:task.time,type:T.SHIFT_OFF,plan})
+       departure.ordinaryCoordination=true;departure.coordinationRequestNames=[...task.coordinationRequestNames]
+       inheritMowerUrgentRecovery(departure,task);queue.tasks.push(departure)
+      }
+      delete task.coordinationAdmissionPlan
+     },
      metadata:()=>{planMowerMetadata(getMowerSourceRuntime(s).data,queue,dependencyReturn)},
      corrections:()=>{readAgentMood(s,rates);const correction=planMowerCorrection(getMowerSourceRuntime(s).data,queue,true,task,false,skip,s.config.mowerTaskScheduling);return correction?[correction]:[]},
      prepareRelease:current=>{
