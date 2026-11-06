@@ -30,3 +30,10 @@ establishes a 280-pixel grid afterward. It exercises both scroll directions
 and rejects a page whose overlapping reward has been replaced by a different
 card or whose candidate crops cannot contain the comparison region. This verifies
 paging confirmation offline, without device input or reward collection.
+
+## Costume presentation
+
+`costume_without_wear_20261106.jpg` is a 1920 × 1080 frame from the 2026-11-06
+day-six sign-in archive. It shows the Alanna costume presentation after `SKIP`,
+with the `BRAND` label and `FLOT` logo visible and no 穿戴 button. The two
+recognition templates use crops from an earlier frame in the same archive.

@@ -214,6 +214,7 @@ def activity(monkeypatch):
     )
     solver = object.__new__(sign_in.EventSignInSolver)
     recog = SimpleNamespace(img=np.zeros((1080, 1920, 3), dtype=np.uint8))
+    recog.template_match = Mock(return_value=(0.0, None))
     patterns = {
         day: np.random.default_rng(day).integers(40, 220, (8, 8), dtype=np.uint8)
         for day in range(1, 16)
@@ -1548,6 +1549,63 @@ def test_costume_skip_can_be_followed_by_a_separate_static_presentation(activity
         ((1875, 152), "panel"),
     ]
     assert "skip" not in state.finds
+
+
+def test_archived_costume_without_wear_allows_day_six_to_complete(
+    activity, local_ocr, monkeypatch
+):
+    solver, state, _ = activity
+    state.states = [*("claimed",) * 5, "available", *("locked",) * 4]
+    state.presentation_sequence = ["costume_animation", "costume"]
+    state.presentation_stay = 2
+    frame = fixture_image("costume_without_wear_20261106.jpg")
+    recognizer = Recognizer(Mock())
+    recognizer._gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    update = solver.recog.update.side_effect
+    engine = sign_in.rapidocr.engine
+
+    def update_with_archived_costume():
+        update()
+        if state.presentation == "costume" and state.phase in (
+            "presentation",
+            "presentation_dismissal",
+        ):
+            solver.recog.img = frame
+
+    def read_frame(image, **options):
+        if solver.recog.img is frame:
+            return local_ocr(image, **options)
+        return engine(image, **options)
+
+    def match_frame(*args):
+        if solver.recog.img is frame:
+            return recognizer.template_match(*args)
+        return 0.0, None
+
+    solver.recog.update.side_effect = update_with_archived_costume
+    solver.recog.template_match.side_effect = match_frame
+    monkeypatch.setattr(sign_in.rapidocr, "engine", read_frame)
+
+    assert solver.run() is True
+
+    assert state.presentations_handled == [(6, "costume_animation"), (6, "costume")]
+    assert state.claimed == [6]
+    assert state.receipt_observations[-2:] == [True, True]
+
+
+@pytest.mark.parametrize("area", [np.s_[372:414, 140:270], np.s_[526:589, 1195:1385]])
+def test_one_costume_marker_cannot_identify_the_presentation(area):
+    frame = fixture_image("costume_without_wear_20261106.jpg")
+    frame[area] = 0
+    recognizer = Recognizer(Mock())
+    recognizer._img = frame
+    recognizer._gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    solver = object.__new__(sign_in.EventSignInSolver)
+    solver.recog = recognizer
+    solver.find = Mock(return_value=None)
+    solver._ocr = Mock(return_value=[])
+
+    assert solver._reward_presentation() is None
 
 
 @pytest.mark.parametrize(
