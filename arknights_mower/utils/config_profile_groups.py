@@ -31,7 +31,7 @@ CONF_GROUPS = {
     ),
     "accounts": {"skland_info"},
     "notifications": set(
-        "account custom_smtp_server mail_enable mail_subject notification_level pass_code recipient timezone_offset".split()
+        "account custom_smtp_server mail_attach_error_screenshot mail_enable mail_subject notification_level pass_code recipient timezone_offset".split()
     ),
     "assistant": set(
         "ai_base_url ai_custom_key ai_deepseek_model ai_key ai_model ai_type".split()

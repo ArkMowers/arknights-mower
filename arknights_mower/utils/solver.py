@@ -633,7 +633,10 @@ class BaseSolver:
                         if captcha_times <= 0:
                             send_message(
                                 "验证码自动滑动失败，退出游戏，停止运行mower",
+                                subject="滑动验证码自动求解失败",
                                 level="ERROR",
+                                archive_screenshots=True,
+                                screenshot_source=getattr(self, "device", None),
                             )
                             self.device.exit()
                             sys.exit()
@@ -927,7 +930,10 @@ class BaseSolver:
                         logger.info("生息演算导航完成（ra/start_button）")
                         return
                     logger.info("匹配到 continue_button（非当前模式预期）")
-                    send_message("生息演算（MAA）导航失败：未正确选择模式")
+                    send_message(
+                        "生息演算（MAA）导航失败：未正确选择模式",
+                        subject="生息演算导航失败",
+                    )
                     raise Exception("生息演算（MAA）导航失败：未正确选择模式")
                 self.sleep(1)
             else:

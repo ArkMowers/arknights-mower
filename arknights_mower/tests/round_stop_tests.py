@@ -130,6 +130,9 @@ def test_normal_round_saves_then_stops_without_a_future_start_notice(
     production_idle_scheduler, stop_state
 ):
     solver = production_idle_scheduler.solver
+    base.task_template.render.return_value = (
+        "<table><tr><td>待执行任务</td></tr></table>"
+    )
     tasks = [(task, task.time, dict(task.plan)) for task in solver.tasks]
     round_stop.request_stop()
 
@@ -152,6 +155,9 @@ def test_normal_round_saves_then_stops_without_a_future_start_notice(
     assert [(task, task.time, dict(task.plan)) for task in solver.tasks] == tasks
     assert solver.task_count == 1
     assert base.send_message.call_args.args[1] == "本轮任务结束，已按要求停止"
+    assert "停止前尚未执行的任务" in base.send_message.call_args.args[0]
+    assert "不会自动执行" in base.send_message.call_args.args[0]
+    assert base.send_message.call_args.kwargs["body_is_html"] is True
     assert base.send_message.call_count == 1
     solver.device.reconnect.assert_not_called()
     solver.device.check_current_focus.assert_not_called()

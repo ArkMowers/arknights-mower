@@ -67,3 +67,34 @@ def test_send_selects_recipients_without_changing_configuration(
     transport.send_message.assert_called_once_with(message.msg, conf.account, expected)
     transport.quit.assert_called_once_with()
     assert conf.recipient == original
+
+
+def test_queued_message_keeps_its_original_sender_and_recipients(monkeypatch):
+    original = SimpleNamespace(
+        account="first-sender@example.invalid",
+        pass_code="first-password",
+        recipient=["first-recipient@example.invalid"],
+        custom_smtp_server=SimpleNamespace(enable=False),
+    )
+    later = SimpleNamespace(
+        account="second-sender@example.invalid",
+        pass_code="second-password",
+        recipient=["second-recipient@example.invalid"],
+        custom_smtp_server=SimpleNamespace(enable=False),
+    )
+    monkeypatch.setattr(email.config, "conf", original)
+    smtp = MagicMock()
+    monkeypatch.setattr(email.smtplib, "SMTP_SSL", smtp)
+    message = email.Email("test body", "test subject", None)
+    original.recipient.append("late-recipient@example.invalid")
+    monkeypatch.setattr(email.config, "conf", later)
+
+    message.send()
+
+    transport = smtp.return_value
+    transport.login.assert_called_once_with(
+        "first-sender@example.invalid", "first-password"
+    )
+    transport.send_message.assert_called_once_with(
+        message.msg, "first-sender@example.invalid", ["first-recipient@example.invalid"]
+    )

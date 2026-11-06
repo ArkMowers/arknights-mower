@@ -205,6 +205,25 @@ def test_login_retains_failure_limit_for_a_present_captcha_panel():
     assert solver.tap.call_count == 2
     solver.device.exit.assert_called_once()
     notify.assert_called_once()
+    assert notify.call_args.kwargs["archive_screenshots"] is True
+
+
+@pytest.mark.parametrize("entry", ["transition", "_fail_retry"])
+def test_click_captcha_failure_marks_the_visual_context(monkeypatch, entry):
+    from arknights_mower.solvers import captcha_solver as click_captcha
+
+    solver = object.__new__(click_captcha.CaptchaClickSolver)
+    solver._attempt_count = solver.MAX_ATTEMPTS - int(entry == "_fail_retry")
+    solver._phase = "detect"
+    solver.wait_for_scene_stable = Mock()
+    solver.scene = Mock(return_value=Scene.LOGIN_CAPTCHA)
+    notify = Mock()
+    monkeypatch.setattr(click_captcha, "send_message", notify)
+    monkeypatch.setattr(click_captcha, "logger", Mock())
+
+    assert getattr(solver, entry)() is True
+    assert notify.call_args.kwargs["level"] == "ERROR"
+    assert notify.call_args.kwargs["archive_screenshots"] is True
 
 
 @pytest.mark.parametrize("error", [MowerExit(), DeviceRecoveryError("captcha failed")])

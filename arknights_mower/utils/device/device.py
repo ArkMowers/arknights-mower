@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import time
+import weakref
 from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta
 from math import isfinite
@@ -280,6 +281,7 @@ class Device:
         self.client = None
         self.control = None
         self.owner_pid = os.getpid()
+        self._screenshot_owner = object()
         self._resource_lock = RLock()
         self._interrupted = Event()
         self._close_error = None
@@ -822,6 +824,13 @@ class Device:
                 budget_sleep(delta)
             start_time = min_time
 
+        capture_owner = getattr(self, "_screenshot_owner", None)
+        try:
+            configuration_ref = weakref.ref(config.conf)
+        except TypeError:
+            configuration_ref = None
+        capture_started_at = time.monotonic()
+        capture_wall_ns = time.time_ns()
         if not recover:
             # 手指仍按下时只读当前后端一次，禁止恢复或重建输入资源。
             budget_sleep(0)
@@ -865,7 +874,14 @@ class Device:
                 f"截图用时{interval:.0f}ms 平均用时{config.screenshot_avg:.0f}ms"
             )
 
-        save_screenshot_frame(img, capture_ms=interval)
+        save_screenshot_frame(
+            img,
+            capture_ms=interval,
+            capture_owner=capture_owner,
+            configuration_ref=configuration_ref,
+            capture_started_at=capture_started_at,
+            capture_wall_ns=capture_wall_ns,
+        )
         return None, img, gray
 
     def current_focus(self) -> str:
@@ -1160,6 +1176,7 @@ class Device:
         if getattr(self, "owner_pid", None) != os.getpid():
             return
         with self._resource_lock:
+            self._screenshot_owner = object()
             self._adb_capture = None
             resources = (
                 *getattr(self, "_pending_cleanup", ()),

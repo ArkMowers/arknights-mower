@@ -131,6 +131,7 @@ class RecruitSolver(SceneGraphSolver):
                 ),
                 "公招汇总通知",
                 "INFO",
+                body_is_html=True,
             )
         return recruit_results, self.result_agent
 
@@ -406,8 +407,9 @@ class RecruitSolver(SceneGraphSolver):
                     recruit_results=recruit_cal_result,
                     title_text="稀有tag通知",
                 ),
-                "出稀有标签辣",
+                "公招出现稀有标签",
                 "WARNING",
+                body_is_html=True,
             )
             if recruit_result_level == 6 or (
                 recruit_result_level == 1 and robot_choice is None

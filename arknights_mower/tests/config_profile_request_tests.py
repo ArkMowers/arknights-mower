@@ -96,6 +96,49 @@ def test_current_generation_reaches_read_only_validation(guarded_server):
     assert response.json["error"] == "invalid_configuration"
 
 
+def test_email_screenshot_setting_requires_token_and_round_trips(storage, monkeypatch):
+    import arknights_mower.__main__ as main
+    import server
+    from arknights_mower.utils import config
+    from arknights_mower.utils.config import weekly_plan_loader
+
+    monkeypatch.setattr(
+        main,
+        "device_control",
+        SimpleNamespace(active=False, configuration_lock=RLock()),
+    )
+    monkeypatch.setattr(server.app, "token", "profile-test-token", raising=False)
+    monkeypatch.setitem(server.app.config, "UPDATES_ENABLED", True)
+    monkeypatch.setattr(server, "_performance_test_status", lambda: {"status": "idle"})
+    monkeypatch.setattr(server, "mower_thread", None)
+    monkeypatch.setattr(weekly_plan_loader, "_weekly_plan_manager", None)
+    client = server.app.test_client()
+    before = config.conf_path.read_bytes()
+
+    for headers in ({}, {"token": "wrong"}):
+        assert client.get("/conf", headers=headers).status_code == 403
+        assert (
+            client.patch(
+                "/conf", headers=headers, json={"mail_attach_error_screenshot": True}
+            ).status_code
+            == 403
+        )
+    assert config.conf.mail_attach_error_screenshot is False
+    assert config.conf_path.read_bytes() == before
+
+    headers = {"token": "profile-test-token", "X-Mower-Config-Generation": "0"}
+    response = client.patch(
+        "/conf", headers=headers, json={"mail_attach_error_screenshot": True}
+    )
+    assert response.status_code == 200
+    assert response.json["mail_attach_error_screenshot"] is True
+    assert config.conf.mail_attach_error_screenshot is True
+    assert (
+        client.get("/conf", headers=headers).json["mail_attach_error_screenshot"]
+        is True
+    )
+
+
 @pytest.mark.parametrize("path", ["/task", "/mastery-plan"])
 @pytest.mark.parametrize(
     "generation", [None, "previous-generation", "active-generation", "legacy"]

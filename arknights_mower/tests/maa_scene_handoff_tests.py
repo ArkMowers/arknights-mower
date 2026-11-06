@@ -260,7 +260,7 @@ def test_failed_daily_run_follows_idle_settings(
 
     archive.assert_called_once_with(failure)
     base_schedule.send_message.assert_any_call(
-        str(failure), "MAA调用出错！", level="ERROR"
+        str(failure), "MAA 调用出错", level="ERROR"
     )
     daily_handoff.engine.close.assert_called_once()
     assert solver.MAA is None
@@ -354,7 +354,7 @@ def test_wake_failure_after_maa_error_propagates_without_second_error_report(
         if call.kwargs.get("level") == "ERROR"
     ]
     assert len(errors) == 1
-    assert errors[0].args == (str(failure), "MAA调用出错！")
+    assert errors[0].args == (str(failure), "MAA 调用出错")
     daily_handoff.engine.close.assert_called_once()
 
 

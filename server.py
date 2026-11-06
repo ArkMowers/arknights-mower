@@ -4175,9 +4175,10 @@ def configuration_test_request():
 @app.route("/test-email")
 @require_token
 def test_email():
-    from arknights_mower.utils.email import Email
+    from arknights_mower.utils.email import Email, render_notification
 
-    email = Email("mower测试邮件", config.conf.mail_subject + "测试邮件", None)
+    body = render_notification("mower测试邮件", "测试邮件")
+    email = Email(body, config.conf.mail_subject + "测试邮件", None)
     try:
         email.send()
     except Exception as e:

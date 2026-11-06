@@ -135,6 +135,8 @@ class EmailPart(ConfModel):
     "标题前缀"
     notification_level: str = "INFO"
     "邮件通知等级"
+    mail_attach_error_screenshot: bool = False
+    "画面相关的异常邮件附带截图"
     timezone_offset: int = 0
     "时差修正"
 

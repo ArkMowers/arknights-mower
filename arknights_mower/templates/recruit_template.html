@@ -1,20 +1,4 @@
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
-    <title>{{ title_text }}</title>
-    <style>
-      table,
-      th,
-      td {
-        border: 1px solid black;
-        border-collapse: collapse;
-      }
-    </style>
-  </head>
-  <body>
-    <table style="text-align: center">
+    <table border="1" cellpadding="6" cellspacing="0" style="width: 100%; border-collapse: collapse; text-align: center;">
       {% if recruit_results|length > 0 %}
       <tr>
         <th>位置</th>
@@ -49,5 +33,3 @@
         {% endif %}
       </tr>
     </table>
-  </body>
-</html>
