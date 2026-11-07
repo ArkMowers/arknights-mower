@@ -23,6 +23,8 @@ from arknights_mower.utils.swipe import NOINERTIA_OFFSET
 ENTRY_SCOPE = ((90, 100), (270, 347))
 EXPAND_SCOPE = ((20, 265), (115, 410))
 COSTUME_SCOPE = ((1500, 840), (1920, 1035))
+COSTUME_BRAND_SCOPE = ((140, 372), (270, 414))
+COSTUME_FLOT_SCOPE = ((1195, 526), (1385, 589))
 PRESENTATION_SKIP_SCOPE = ((1680, 0), (1920, 180))
 MAX_DAYS = 15
 
@@ -556,6 +558,13 @@ class EventSignInSolver(SceneGraphSolver):
                 points = np.asarray(box)
                 x, y = (points.min(axis=0) + points.max(axis=0)) / 2
                 return "时装动画", (int(x + 1680), int(y))
+        if (
+            self.template_match("event_sign_in/costume_brand", COSTUME_BRAND_SCOPE)[0]
+            >= 0.9
+            and self.template_match("event_sign_in/costume_flot", COSTUME_FLOT_SCOPE)[0]
+            >= 0.9
+        ):
+            return "时装", (450, 300)
         for _, text, score in self._ocr(COSTUME_SCOPE) or []:
             if score >= 0.9 and "穿戴" in "".join(text.split()):
                 return "时装", (450, 300)
