@@ -17,6 +17,22 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
+it.each(['room_3_3', ''])(
+  'drops the legacy drone target %s from browser preferences',
+  (droneRoom) => {
+    localStorage.setItem(
+      INCOME_PREFERENCES_KEY,
+      JSON.stringify({ version: 1, settings: { droneRoom, sampleDays: 7 } })
+    )
+    expect(loadIncomePreferences().settings).not.toHaveProperty('droneRoom')
+    expect(loadIncomePreferences().settings.sampleDays).toBe(7)
+    saveIncomePreferences({ ...defaultIncomeSettings(), droneRoom, sampleDays: 7 }, {})
+    expect(JSON.parse(localStorage.getItem(INCOME_PREFERENCES_KEY)).settings).not.toHaveProperty(
+      'droneRoom'
+    )
+  }
+)
+
 it('remembers expectation mode while dropping legacy seeds from editable preferences', () => {
   saveIncomePreferences({ ...defaultIncomeSettings(), expectationMode: false, seed: 42 }, {})
   expect(loadIncomePreferences().settings.expectationMode).toBe(false)

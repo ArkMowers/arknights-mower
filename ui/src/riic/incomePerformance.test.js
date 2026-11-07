@@ -3,11 +3,16 @@ import { createHash } from 'node:crypto'
 import { appendFileSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
 import process from 'node:process'
-import plan from './fixtures/income-21trade-3proviso.json'
+import originalPlan from './fixtures/income-21trade-3proviso.json'
 import { defaultIncomeSettings, incomeRequest } from './income'
 import { MowerOperatorState } from './vendor/scheduler/mowerOperatorState'
 import * as productionModule from './vendor/simulator/productionTimeline'
 import { runCalculationBridge } from './vendor/workbench/calculationBridge'
+
+const plan = {
+  ...originalPlan,
+  advanced_settings: { ...originalPlan.advanced_settings, drone_room: 'room_3_3' }
+}
 
 const originalCopy = MowerOperatorState.prototype.copyForProjection
 let controllerSpy
@@ -121,8 +126,7 @@ it(
         finiteInventory: false,
         weightMode: 'custom',
         warmupDays: 0,
-        sampleDays: 1,
-        droneRoom: 'room_3_3'
+        sampleDays: 1
       }
       const request = incomeRequest(plan, settings)
       const start = performance.now()
@@ -177,8 +181,7 @@ it.skipIf(!timingBenchmark)(
         finiteInventory: false,
         weightMode: 'custom',
         warmupDays: 0,
-        sampleDays: 1,
-        droneRoom: 'room_3_3'
+        sampleDays: 1
       })
       request.options.simulationOptions.production.theoreticalMode = mode === 'theoretical'
       const start = performance.now()

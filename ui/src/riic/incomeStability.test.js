@@ -72,7 +72,8 @@ it.each([0, 1])(
     const staffed = structuredClone(plan)
     staffed.conf.workaholic = '芬'
     staffed.plan1.room_1_1.plans = [{ agent: '芬', replacement: [] }]
-    const result = calculateIncome(staffed, { ...settings(), warmupDays, droneRoom: 'room_1_1' })
+    staffed.advanced_settings = { drone_room: 'room_1_1' }
+    const result = calculateIncome(staffed, { ...settings(), warmupDays })
     expect(result.success).toBe(true)
     const drones = result.stability.drones
     expect(drones.consumed).toBeGreaterThan(0)
