@@ -493,7 +493,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
 def emergency_dorm_plan(
     data, state, tasks=(), *, members=None, reallocate=False, recovery_order=None
 ):
-    """救急优先连续安排同组恢复；余床沿用共享候选和预约。"""
+    """救急按正常运行交接需要连续恢复同组；余床沿用共享候选和预约。"""
     from arknights_mower.utils.dorm_candidates import (
         dorm_candidate_mood,
         dorm_candidates,
@@ -616,13 +616,12 @@ def emergency_dorm_plan(
     for name in sorted(
         need,
         key=lambda name: (
-            resting_tier(data, name),
             recovery_order.get(name, (2, float("inf"))),
-            resting_key(data, name),
+            resting_mood(data.operators[name]),
             name,
         ),
     ):
-        group = (resting_tier(data, name), data.operators[name].group or name)
+        group = data.operators[name].group or name
         groups.setdefault(group, []).append(name)
     ordered = [name for members in groups.values() for name in members]
     ordinary.discard("菲亚梅塔")
@@ -646,6 +645,7 @@ def emergency_dorm_plan(
             active_groups=active_groups,
             plan=plan,
             isolation=not reallocate,
+            use_configured_order=name in need,
         )
         if index is None:
             if name in retained:

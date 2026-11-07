@@ -123,18 +123,36 @@ def test_blacklist_and_zero_mood_work_are_excluded_but_actual_zero_mood_is_not(o
     assert op_data.assign_dorm("红") is not None
 
 
-def test_equal_upper_limit_ignores_lower_limit_and_priority_list_order(op_data):
+def test_explicit_priority_uses_saved_order_before_mood(op_data):
     set_tier(op_data, "银灰", RestingTier.PRIORITY, 15)
     set_tier(op_data, "红", RestingTier.PRIORITY, 10)
     op_data.operators["银灰"].lower_limit = 12
+    assert sorted(["红", "银灰"], key=lambda n: resting_key(op_data, n)) == [
+        "银灰",
+        "红",
+    ]
+    op_data.config.ope_resting_priority.reverse()
     assert sorted(["银灰", "红"], key=lambda n: resting_key(op_data, n)) == [
         "红",
         "银灰",
     ]
     op_data.operators["红"].time_stamp = None
-    assert sorted(["红", "银灰"], key=lambda n: resting_key(op_data, n)) == [
-        "银灰",
+    assert sorted(["银灰", "红"], key=lambda n: resting_key(op_data, n)) == [
         "红",
+        "银灰",
+    ]
+
+
+def test_priority_group_beds_follow_saved_order(op_data):
+    for name, mood in [("银灰", 20), ("红", 1)]:
+        set_tier(op_data, name, RestingTier.PRIORITY, mood)
+    op_data.operators["空爆"].current_room = ""
+    op_data.plan[ROOM][3] = Room("Free", "", [])
+    op_data.dorm = [Dormitory((ROOM, 3)), Dormitory((ROOM, 4))]
+    beds = op_data.assign_dorm_group(["红", "银灰"])
+    assert [(bed.name, bed.position) for bed in beds] == [
+        ("银灰", (ROOM, 3)),
+        ("红", (ROOM, 4)),
     ]
 
 
@@ -148,7 +166,7 @@ def test_equal_upper_limit_ignores_lower_limit_and_priority_list_order(op_data):
 )
 def test_same_tier_prefers_larger_recovery_gap(op_data, first, second):
     for name, (mood, lower, upper) in zip(("银灰", "红"), (first, second)):
-        op = set_tier(op_data, name, RestingTier.PRIORITY, mood)
+        op = set_tier(op_data, name, RestingTier.MAIN, mood)
         op.lower_limit, op.upper_limit = lower, upper
     assert sorted(["银灰", "红"], key=lambda n: resting_key(op_data, n)) == [
         "红",
@@ -174,7 +192,7 @@ def test_unknown_mood_remains_full_and_priority_still_precedes_gap(op_data):
     first.upper_limit = 12
     first.time_stamp = None
     set_tier(op_data, "红", RestingTier.PRIORITY, 23)
-    assert resting_key(op_data, "红") < resting_key(op_data, "银灰")
+    assert resting_key(op_data, "银灰") < resting_key(op_data, "红")
     op_data.config.ope_resting_priority.remove("红")
     assert resting_key(op_data, "银灰") < resting_key(op_data, "红")
 
@@ -449,3 +467,19 @@ def test_unknown_mood_defaults_to_twenty_four_without_fabricating_reading(
     op.mood, op.time_stamp = 8, datetime.now()
     assert resting_mood(op) == 8
     assert has_resting_mood(op)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_vacancy_fill_uses_priority_list_order(op_data, reverse):
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+
+    for name, mood in [("红", 20), ("空爆", 1)]:
+        op = op_data.operators[name]
+        op.current_room = ""
+        op.current_index = -1
+        op.mood = mood
+    op_data.dorm[0].reset()
+    op_data.config.ope_resting_priority = ["空爆", "红"] if reverse else ["红", "空爆"]
+    tasks = []
+    try_add_release_dorm({}, None, op_data, tasks)
+    assert tasks[0].plan[ROOM][-1] == op_data.config.ope_resting_priority[0]

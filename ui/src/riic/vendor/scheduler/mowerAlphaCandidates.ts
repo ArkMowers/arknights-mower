@@ -5,7 +5,7 @@ import {mowerDormIsolationCost,planMowerDormIsolation} from './mowerDormIsolatio
 // Shared dorm candidates and observed-card estimates, Mower alpha b2d9ac8 (MIT).
 import {orderMowerAlphaDormIndices} from './mowerDormOrder'
 import {hasRestingMood} from './mowerOperatorState'
-import {alphaRestingTier,alphaFullDynamicCandidate,alphaFullDormFiller,alphaBedTakeoverAllowed,compareAlphaKeys,alphaPosition,alphaSlotTakable,alphaPrioritizeRecovery} from './mowerAlphaDorm'
+import {alphaRestingTier,alphaFullDynamicCandidate,alphaFullDormFiller,alphaBedTakeoverAllowed,alphaRestingKey,compareAlphaKeys,alphaPosition,alphaSlotTakable,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue} from './mowerTaskQueue'
 import {simplifyMowerAlphaDormFill} from './mowerAlphaTaskProtection'
@@ -24,9 +24,9 @@ export function mowerAlphaDormCandidates(data:MowerSchedulingData,excluded=new S
   else if(!op.isHigh()&&!op.restMoodLimit)full.push(op.name)
  }
  unknown.push(...data.unregisteredIdleNames.filter(n=>!data.operators[n]&&!excluded.has(n)&&!data.freeBlacklist.includes(n)&&!data.busyRestingNames.has(n)))
- const estimates=new Map<string,[number,number]>(),recoveryKeys=new Map<string,[number,number]>()
+ const estimates=new Map<string,[number,number]>(),recoveryKeys=new Map<string,[number,number,number]>()
  const estimateKey=(name:string):[number,number]=>{let key=estimates.get(name);if(!key){key=[mowerDormCandidateMood(data,name)??24,tier(name)];estimates.set(name,key)}return key}
- const recoveryKey=(name:string):[number,number]=>{let key=recoveryKeys.get(name);if(!key){key=[tier(name),(mowerDormCandidateMood(data,name)??24)-(data.operators[name]?.upperLimit??24)];recoveryKeys.set(name,key)}return key}
+ const recoveryKey=(name:string):[number,number,number]=>{let key=recoveryKeys.get(name);if(!key){key=alphaRestingKey(data,name,tier(name));recoveryKeys.set(name,key)}return key}
  const compare=(a:string,b:string)=>Number(alphaFullDynamicCandidate(data,a))-Number(alphaFullDynamicCandidate(data,b))||compareAlphaKeys(estimateKey(a),estimateKey(b))
  recovering.sort((a,b)=>compareAlphaKeys(recoveryKey(a),recoveryKey(b)));full.sort(compare);unknown.sort(compare)
  const filling=[...recovering,...full,...unknown].sort(compare),searchUnknown=unknown.filter(n=>(mowerDormCandidateMood(data,n)??0)<24)
@@ -67,7 +67,7 @@ function alphaFill(data:MowerSchedulingData,pending:MowerTask[],emptyOnly:boolea
  const priorityOnly=emptyOnly&&!vacancies.size,c=mowerAlphaDormCandidates(data,reserved.names)
  const recovering=[...new Set([...c.recovering,...c.estimatedRecovering.filter(name=>data.operators[name])])]
   .filter(name=>!priorityOnly||alphaRestingTier(data,name)<=3)
-  .sort((a,b)=>compareAlphaKeys([alphaRestingTier(data,a),(mowerDormCandidateMood(data,a)??24)-data.operators[a]!.upperLimit],[alphaRestingTier(data,b),(mowerDormCandidateMood(data,b)??24)-data.operators[b]!.upperLimit]))
+  .sort((a,b)=>compareAlphaKeys(alphaRestingKey(data,a),alphaRestingKey(data,b)))
  const recoveryNames=new Set(recovering),full=c.filling.filter(n=>!c.recovering.includes(n)&&!c.unknown.includes(n)),unknown=!!c.unknown.length&&!priorityOnly
  if(priorityOnly&&!recovering.length)return {plan,residents,vacancies}
  if(!recovering.length&&!c.filling.length)return {plan,residents,vacancies}

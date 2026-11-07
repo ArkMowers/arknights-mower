@@ -71,7 +71,10 @@ def test_disabled_crafting_retains_mood_order(crafting, monkeypatch, switch):
 def test_crafting_does_not_override_other_identity(crafting, tier):
     set_tier(crafting, "九色鹿", tier, 23)
     set_tier(crafting, "芬", tier, 1)
-    assert resting_key(crafting, "芬") < resting_key(crafting, "九色鹿")
+    if tier == RestingTier.PRIORITY:
+        assert resting_key(crafting, "九色鹿") < resting_key(crafting, "芬")
+    else:
+        assert resting_key(crafting, "芬") < resting_key(crafting, "九色鹿")
     assert resting_key(crafting, "九色鹿") < resting_key(crafting, "年")
 
 

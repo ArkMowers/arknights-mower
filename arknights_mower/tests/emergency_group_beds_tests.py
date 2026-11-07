@@ -59,7 +59,9 @@ def test_members_from_multiple_groups_share_capacity(solver):
     assert admissions(emergency_dorm_plan(data, state)) == set(PRIMARY)
 
 
-def test_capacity_shortage_preserves_other_individual_priority(solver):
+def test_capacity_shortage_follows_recovery_order_instead_of_individual_priority(
+    solver,
+):
     rejected = PRIMARY[:3]
     admitted = PRIMARY[3]
     data, state = prepare(solver, [rejected], capacity=2)
@@ -67,7 +69,9 @@ def test_capacity_shortage_preserves_other_individual_priority(solver):
     data.operators[admitted].mood = 8
 
     data.config.ope_resting_priority = [admitted]
-    names = admissions(emergency_dorm_plan(data, state))
+    order = {name: (1, 24) for name in rejected}
+    order[admitted] = (0, 8)
+    names = admissions(emergency_dorm_plan(data, state, recovery_order=order))
     assert len(names) == 2
     assert len(set(rejected) & names) == 1
     assert admitted in names

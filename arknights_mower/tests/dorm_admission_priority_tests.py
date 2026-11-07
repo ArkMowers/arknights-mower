@@ -503,3 +503,140 @@ def test_custom_order_preemption_keeps_displaced_resident_in_preferred_low_bed(
     assert projected.get_current_operator("dormitory_2", 0) is None
     assert data.operators["银灰"].current_index == 3
     assert plan == {"dormitory_2": ["红"]}
+
+
+@pytest.mark.parametrize("newcomer_first", [False, True])
+def test_priority_list_order_controls_single_target_admission(
+    residents, newcomer_first
+):
+    data = residents
+    set_tier(data, "银灰", RestingTier.PRIORITY, 1)
+    set_tier(data, "红", RestingTier.PRIORITY, 20)
+    if newcomer_first:
+        data.config.ope_resting_priority.reverse()
+    assert data.assign_dorm_group(["红"]) is not None
+    plan = try_reorder(data, {})
+    assert plan[ROOM][3:] == (["红", "银灰"] if newcomer_first else ["Current", "红"])
+    projected = data.project_arrangements([plan])
+    assert {bed.name for bed in projected.dorm} == {"银灰", "红"}
+    assert try_reorder(projected, {}) == {}
+
+
+def test_priority_list_reorder_reallocates_existing_single_target(residents):
+    data = residents
+    set_tier(data, "银灰", RestingTier.PRIORITY, 1)
+    other = set_tier(data, "红", RestingTier.PRIORITY, 20)
+    other.current_room, other.current_index = ROOM, 4
+    data.dorm[1].name = "红"
+    data.config.ope_resting_priority.reverse()
+    plan = prioritize_new_dorm_recovery(data, {}, configuration_changed=True)
+    assert plan[ROOM][3:] == ["红", "银灰"]
+    projected = data.project_arrangements([plan])
+    assert prioritize_new_dorm_recovery(projected, {}, configuration_changed=True) == {}
+
+
+@pytest.fixture
+def high_priority_skill_residents(op_data):
+    data = op_data
+    data.plan["meeting"] = [Room(name, "", []) for name in ("闪灵", "银灰", "能天使")]
+    data.plan[ROOM] = [
+        Room(name, "", []) for name in ("杜林", "蜜莓", "爱丽丝", "Free", "Free")
+    ]
+    second = "dormitory_2"
+    data.plan[second] = [
+        Room(name, "", []) for name in ("安赛尔", "嘉维尔", "桃金娘", "流明", "Free")
+    ]
+    for room in (ROOM, second):
+        for index, slot in enumerate(data.plan[room]):
+            if slot.agent == "Free":
+                continue
+            op = set_tier(data, slot.agent, RestingTier.MAIN, 24)
+            op.room, op.index = room, index
+            op.current_room, op.current_index = room, index
+    for index, name in enumerate(("闪灵", "银灰", "能天使")):
+        op = set_tier(data, name, RestingTier.PRIORITY, 5 + index)
+        op.room, op.index = "meeting", index
+        op.current_room, op.current_index = "meeting", index
+    data.config.ope_resting_priority = ["闪灵", "银灰", "能天使"]
+    data.dorm = [Dormitory((ROOM, 3)), Dormitory((ROOM, 4)), Dormitory((second, 4))]
+    return data
+
+
+@pytest.mark.parametrize("ordinary_first", [False, True])
+def test_high_priority_skill_swap_ignores_list_rank(
+    high_priority_skill_residents, ordinary_first
+):
+    from arknights_mower.utils.dorm_recovery import recovery_order_target
+
+    data = high_priority_skill_residents
+    second = "dormitory_2"
+    if ordinary_first:
+        data.config.dorm_order = [ROOM, ROOM + "_low", second]
+    plan = {
+        "meeting": ["Free"] * 3,
+        ROOM: ["Current"] * 3 + ["闪灵", "能天使"],
+        second: ["Current"] * 4 + ["银灰"],
+    }
+    before = [(bed.name, bed.time) for bed in data.dorm]
+    result = prioritize_new_dorm_recovery(data, plan)
+    projected = data.project_arrangements([result])
+    assert projected.get_current_operator(ROOM, 3).name == "银灰"
+    assert (
+        projected.operators["闪灵"].current_room,
+        projected.operators["闪灵"].current_index,
+    ) == ((ROOM, 4) if ordinary_first else (second, 4))
+    assert (
+        recovery_order_target(
+            projected, ROOM, projected.get_current_room(ROOM, True)
+        ).name
+        == "银灰"
+    )
+    assert {bed.name for bed in projected.dorm} == {"闪灵", "银灰", "能天使"}
+    assert prioritize_new_dorm_recovery(projected, {}) == {}
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
+
+
+def test_high_priority_skill_keeps_sole_free_room(high_priority_skill_residents):
+    data = high_priority_skill_residents
+    second = "dormitory_2"
+    provider = data.operators["闪灵"]
+    provider.current_room, provider.current_index = second, 4
+    data.dorm[2].name = provider.name
+    plan = {
+        "meeting": ["Free"] * 3,
+        ROOM: ["Current"] * 3 + ["银灰", "能天使"],
+        second: ["Current"] * 4 + ["闪灵"],
+    }
+    result = prioritize_new_dorm_recovery(data, plan)
+    assert result == plan
+    projected = data.project_arrangements([result])
+    assert projected.get_current_operator(second, 4).name == "闪灵"
+    assert projected.get_current_operator(ROOM, 3).name == "银灰"
+
+
+def test_skill_swap_does_not_cross_recovery_tiers(high_priority_skill_residents):
+    data = high_priority_skill_residents
+    data.config.ope_resting_priority = ["闪灵"]
+    plan = {
+        "meeting": ["Free"] * 3,
+        ROOM: ["Current"] * 3 + ["闪灵", "能天使"],
+        "dormitory_2": ["Current"] * 4 + ["银灰"],
+    }
+    result = prioritize_new_dorm_recovery(data, plan)
+    final = data.project_arrangements([result])
+    assert final.get_current_operator(ROOM, 3).name == "闪灵"
+
+
+def test_skill_swap_keeps_reserved_sole_free_target(high_priority_skill_residents):
+    data = high_priority_skill_residents
+    second = "dormitory_2"
+    plan = {
+        "meeting": ["Free"] * 3,
+        ROOM: ["Current"] * 3 + ["闪灵", "能天使"],
+        second: ["Current"] * 4 + ["银灰"],
+    }
+    result = prioritize_new_dorm_recovery(data, plan, {(second, 4)})
+    final = data.project_arrangements([result])
+    assert final.get_current_operator(second, 4).name == "银灰"
+    assert final.get_current_operator(ROOM, 3).name == "能天使"
+    assert final.get_current_operator(ROOM, 4).name == "闪灵"

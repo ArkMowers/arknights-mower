@@ -141,3 +141,30 @@ def test_changed_dorm_order_keeps_isolated_residents_apart(solver, path):
     assert final.operators["芬"].current_room == "dormitory_2"
     assert final.operators["香草"].current_room == "dormitory_1"
     assert final.operators["香草"].current_index == 2
+
+
+@pytest.mark.parametrize("reserved", [False, True])
+def test_backup_high_priority_list_orders_existing_single_targets(solver, reserved):
+    data = solver.op_data
+    data.backup_plans[0].config.dorm_order = data.config.dorm_order.copy()
+    data.backup_plans[0].config.ope_resting_priority = ["香草", "芬"]
+    if reserved:
+        solver.tasks.append(
+            SchedulerTask(
+                time=datetime.now() + timedelta(hours=1),
+                task_type=TaskTypes.RE_ORDER,
+                task_plan={
+                    "dormitory_1": ["Current", "Current", "芬", "Current", "Current"]
+                },
+            )
+        )
+    solver.backup_plan_solver()
+    final = data.project_arrangements([task.plan for task in solver.tasks])
+    assert data.config.ope_resting_priority == ["香草", "芬"]
+    assert final.operators["香草"].current_room == (
+        "dormitory_2" if reserved else "dormitory_1"
+    )
+    assert final.operators["芬"].current_room == (
+        "dormitory_1" if reserved else "dormitory_2"
+    )
+    assert data.operators["芬"].current_room == "dormitory_1"
