@@ -787,7 +787,7 @@ def test_backup_reorder_preserves_and_consumes_invalidated_order_read(
     solver.get_run_order_time.assert_called_once_with("room_1_1")
 
 
-def test_switch_preserves_shift_on_target_when_backup_modifies_room_plan(solver):
+def test_switch_preserves_rest_and_return_target_when_backup_modifies_room_plan(solver):
     solver.plan_metadata()
     old_task = return_task(solver)
     assert old_task.plan["contact"][0] == "黑键"
@@ -806,11 +806,16 @@ def test_switch_preserves_shift_on_target_when_backup_modifies_room_plan(solver)
     # 副表已生效且修改了 contact 和 central 的计划
     assert solver.op_data.plan["contact"][0].agent == "陈"
     assert solver.op_data.plan["central"][0].agent == "黑键"
-    # The final correction now includes the returning operator directly.
-    merged = [task for task in solver.tasks if task.plan]
-    assert len(merged) == 1
-    assert merged[0].plan == {"central": ["黑键"], "contact": ["陈"]}
-    assert not any(task.type == TaskTypes.SHIFT_ON for task in solver.tasks)
+    transition = next(
+        task for task in solver.tasks if task.plan and task.type != TaskTypes.SHIFT_ON
+    )
+    assert transition.plan == {"central": ["红"], "contact": ["陈"]}
+    assert return_task(solver).plan["contact"] == ["黑键"]
+    assert return_task(solver).time == old_task.time
+    assert solver.op_data.operators["黑键"].is_resting()
+    assert solver.op_data.get_dorm_by_name("黑键")[1].time == datetime(
+        2026, 9, 11, 17, 13, 3
+    )
 
 
 def test_deactivation_restores_main_plan_targets_preventing_stickiness(solver):
@@ -826,14 +831,23 @@ def test_deactivation_restores_main_plan_targets_preventing_stickiness(solver):
     assert solver.op_data.plan_condition == [True]
 
     # Complete the pending arrangement before evaluating the next real state.
-    transition = next(task.plan for task in solver.tasks if task.plan)
+    transition = next(
+        task.plan
+        for task in solver.tasks
+        if task.plan and task.type != TaskTypes.SHIFT_ON
+    )
+    assert transition["central"] == ["红"]
     solver.op_data = solver.op_data.project_arrangements([transition])
+    assert solver.op_data.operators["黑键"].is_resting()
+    # 实际回班后条件才退出；单纯迁移岗位不能提前结束休息。
+    solver.op_data = solver.op_data.project_arrangements([return_task(solver).plan])
     solver.tasks.clear()
     solver.backup_plan_solver()
     assert solver.op_data.plan_condition == [False]
     merged = [task for task in solver.tasks if task.plan]
     assert len(merged) == 1
-    assert merged[0].plan["contact"] == ["黑键"]
+    assert merged[0].plan["central"] == ["歌蕾蒂娅"]
+    assert solver.op_data.operators["黑键"].current_room == "contact"
     assert "黑键" not in merged[0].plan.get("central", [])
 
 

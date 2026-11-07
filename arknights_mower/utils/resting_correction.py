@@ -475,9 +475,12 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
                 actual = op_data.get_current_operator(op.room, op.index)
                 if op_data.is_auto_free_dorm_operator(op):
                     # 该位置已经转为普通动态床位；保留现有休息者，空床则
-                    # 明确留空，绝不把替班名单中的同组姓名固定塞进来。
+                    # 明确留空；同轮已分配的新住客优先于尚未换人的实读位置。
+                    requested = _requested(fix_plan, op.room, op.index)
                     desired = (
-                        actual.name
+                        requested
+                        if requested not in PLACEHOLDERS and requested != op.name
+                        else actual.name
                         if actual is not None and actual.name != op.name
                         else "Free"
                     )

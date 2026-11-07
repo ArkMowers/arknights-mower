@@ -9,6 +9,7 @@ import pytest
 from arknights_mower.tests import multi_group_shift_tests as shared
 from arknights_mower.utils import config
 from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes, try_reorder
 
@@ -101,6 +102,169 @@ def test_downshift_relocation_does_not_cancel_its_trigger(solver):
     assert solver.op_data.operators["清流"].is_resting()
     assert solver.op_data.operators["结城理"].current_room == "room_1_2"
     assert solver.op_data.operators["乌尔比安"].current_room == "room_1_1"
+
+
+@pytest.fixture
+def dorm_training_solver(solver):
+    s = solver
+    plan = s.global_plan["default_plan"].plan
+    plan["dormitory_1"][2] = Room("桃金娘", "甲", ["Free"])
+    plan["dormitory_2"][2] = Room("褐果", "甲", ["Free"])
+    plan["dormitory_2"][3] = Room("岳羽由加莉", "乙", ["Free"])
+    dorm = deepcopy(plan["dormitory_2"])
+    dorm[2] = Room("Free", "", [])
+    dorm[3] = Room(
+        "岳羽由加莉",
+        "乙",
+        ["Free"],
+        group_bindings=[{"group": "甲", "replacement": ["Free"]}],
+    )
+    s.global_plan["backup_plans"] = [
+        Plan(
+            {
+                "train": [
+                    Room("桃金娘", "甲", ["岳羽由加莉"]),
+                    Room("褐果", "甲", ["白面鸮"]),
+                ],
+                "dormitory_1": [
+                    Room("Current", "", []),
+                    Room("Current", "", []),
+                    Room("刺玫", "", []),
+                    Room("Current", "", []),
+                    Room("Current", "", []),
+                ],
+                "dormitory_2": dorm,
+            },
+            PlanConfig("", "", ""),
+            trigger=LogicExpression("True", "==", "True"),
+        )
+    ]
+    assert s.initialize_operators() is None
+    s.op_data.add(Operator("白面鸮", ""))
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    s.op_data = s.op_data.project_arrangements(
+        [
+            {
+                "central": ["夕", "Current"],
+                "room_1_1": ["结城理"],
+                "dormitory_1": ["Current", "Current", "Free", "森蚺", "清流"],
+                "dormitory_2": [
+                    "Current",
+                    "Current",
+                    "Free",
+                    "Free",
+                    "Current",
+                ],
+            }
+        ]
+    )
+    for bed in s.op_data.all_dorms():
+        if bed.name:
+            bed.time = datetime.now() + timedelta(hours=4)
+            s.op_data.operators[bed.name].mood = 12
+    for name in ("桃金娘", "褐果"):
+        s.op_data.operators[name].time_stamp = None
+    # 训练室尚未配置排班时，仍可能已有实际驻员。
+    for index, name in enumerate(("岳羽由加莉", "白面鸮")):
+        op = s.op_data.operators[name]
+        op._current_room, op.current_index = "train", index
+    assert s.op_data.group_is_resting("甲")
+    return s
+
+
+@pytest.mark.parametrize("path", ["cached", "projection", "full"])
+@pytest.mark.parametrize("observation", ["unknown", "low", "full"])
+def test_dorm_primaries_follow_resting_group_when_moved_to_training(
+    dorm_training_solver, path, observation
+):
+    s = dorm_training_solver
+    if observation != "unknown":
+        for name in ("桃金娘", "褐果"):
+            op = s.op_data.operators[name]
+            op.mood = 12 if observation == "low" else 24
+            op.time_stamp = datetime.now()
+    before = recovery(s)
+    if path == "cached":
+        generated = []
+        s.backup_plan_solver(generated_tasks=generated)
+        task = next(task for task in generated if task.plan)
+    elif path == "projection":
+        task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+        s._prepare_shift_backup(task)
+    else:
+        task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+        s._prepare_shift_cycle(task)
+    assert all(
+        target in ("Current", cover)
+        for target, cover in zip(
+            task.plan.get("train", ["Current", "Current"]),
+            ("岳羽由加莉", "白面鸮"),
+            strict=True,
+        )
+    )
+    if path != "cached":
+        assert s.op_data.swap_plan(task.backup_shift_conditions, refresh=True) is None
+    projected = s.op_data.project_arrangements([task.plan])
+    assert projected.group_is_resting("甲")
+    assert projected.get_current_room("train", True) == ["岳羽由加莉", "白面鸮"]
+    for name in ("桃金娘", "褐果"):
+        assert s.op_data.operators[name].current_room == ""
+        assert projected.operators[name].current_room != "train"
+        if observation == "low":
+            assert projected.operators[name].is_resting()
+            assert projected.get_dorm_by_name(name)[1] is not None
+    for name, (position, _) in before.items():
+        bed = projected.get_dorm_by_name(name)[1]
+        assert bed is not None
+        if path != "full":
+            assert bed.position == position
+
+
+def test_dorm_primaries_move_to_training_when_group_is_working(dorm_training_solver):
+    s = dorm_training_solver
+    s.op_data = s.op_data.project_arrangements(
+        [
+            {
+                "central": ["森蚺", "Current"],
+                "room_1_1": ["清流"],
+                "dormitory_1": ["Current", "Current", "桃金娘", "Free", "Free"],
+                "dormitory_2": ["Current", "Current", "褐果", "Current", "Current"],
+            }
+        ]
+    )
+    assert not s.op_data.group_is_resting("甲")
+    generated = []
+    assert s.backup_plan_solver(generated_tasks=generated)
+    task = next(task for task in generated if task.plan)
+    assert task.plan["train"] == ["桃金娘", "褐果"]
+
+
+def test_explicit_training_entry_can_override_resting_dorm_primaries(
+    dorm_training_solver,
+):
+    s = dorm_training_solver
+    s.op_data.backup_plans[0].task = {"train": ["桃金娘", "褐果"]}
+    generated = []
+    assert s.backup_plan_solver(generated_tasks=generated)
+    task = next(task for task in generated if task.plan)
+    assert task.plan["train"] == ["桃金娘", "褐果"]
+
+
+def test_protected_training_keeps_occupants_on_dorm_primary_relocation(
+    dorm_training_solver, monkeypatch
+):
+    s = dorm_training_solver
+    config.conf.enable_mastery = True
+    config.conf.assistant_follows_schedule = False
+    monkeypatch.setattr(s, "_train_mastery_active", lambda: True)
+    generated = []
+    assert s.backup_plan_solver(generated_tasks=generated)
+    task = next(task for task in generated if task.plan)
+    assert "train" not in task.plan
+    projected = s.op_data.project_arrangements([task.plan])
+    assert projected.get_current_room("train", True) == ["岳羽由加莉", "白面鸮"]
 
 
 @pytest.fixture
