@@ -214,6 +214,49 @@ def test_outgoing_edits_are_saved_and_each_configuration_round_trips(storage):
         ).fetchone()
 
 
+def test_inventory_scan_observations_follow_the_inventory_profile(storage):
+    with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn, conn:
+        conn.execute(
+            "CREATE TABLE inventory_scan_observations ("
+            "item_name TEXT PRIMARY KEY, count INTEGER, observed_at REAL NOT NULL, "
+            "invalidated_at REAL NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO inventory_scan_observations VALUES ('iron',17,100.5,0)"
+        )
+        conn.execute(
+            "CREATE TABLE inventory_cloud_observations ("
+            "item_name TEXT PRIMARY KEY, count INTEGER NOT NULL, "
+            "observed_at REAL NOT NULL, explicit INTEGER NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO inventory_cloud_observations VALUES ('iron',18,99.5,1)"
+        )
+    original = profiles.list_profiles()["active_id"]
+    new = _create("第二套", ["inventory"])
+    with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn, conn:
+        conn.execute(
+            "UPDATE inventory_scan_observations SET count=42, observed_at=200.5"
+        )
+        conn.execute(
+            "UPDATE inventory_cloud_observations SET count=43, observed_at=199.5"
+        )
+    _activate(original)
+    assert _read_table(storage, "inventory_scan_observations") == [
+        ("iron", 17, 100.5, 0)
+    ]
+    assert _read_table(storage, "inventory_cloud_observations") == [
+        ("iron", 18, 99.5, 1)
+    ]
+    _activate(new["active_id"])
+    assert _read_table(storage, "inventory_scan_observations") == [
+        ("iron", 42, 200.5, 0)
+    ]
+    assert _read_table(storage, "inventory_cloud_observations") == [
+        ("iron", 43, 199.5, 1)
+    ]
+
+
 @pytest.mark.parametrize(
     "name,group,content",
     [

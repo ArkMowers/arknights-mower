@@ -27,6 +27,8 @@ TABLE_GROUPS = {
     "maa_paradox_progress": "long",
     "maa_sss_progress": "long",
     "inventory": "inventory",
+    "inventory_scan_observations": "inventory",
+    "inventory_cloud_observations": "inventory",
     "workshop_inventory_updates": "inventory",
     "workshop_inventory_pending": "inventory",
     "mastery_inventory_consumption": "inventory",

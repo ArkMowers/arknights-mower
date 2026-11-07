@@ -1,10 +1,15 @@
 import csv
 import json
+import math
 import os
 from datetime import datetime
 
 from arknights_mower.data import key_mapping, workshop_formula
-from arknights_mower.solvers.record import get_inventory_counts, save_inventory_counts
+from arknights_mower.solvers.record import (
+    INVENTORY_COMPARISON_WINDOW,
+    get_inventory_counts,
+    save_inventory_counts,
+)
 from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.csv_utils import (
     EmptyDataError,
@@ -44,10 +49,20 @@ def cloud_inventory_snapshot(payload):
     return counts, observed_at
 
 
+def cloud_explicit_inventory_names(payload):
+    items = payload.get("data", {}).get("items")
+    if not isinstance(items, list):
+        return set()
+    return {
+        entry[2]
+        for item in items
+        if isinstance(item, dict)
+        if (entry := key_mapping.get(item.get("id"))) is not None
+    }
+
+
 def restore_cached_inventory():
     """Reuse timestamped local files after sync failure without claiming a fresh scan."""
-    import math
-
     from arknights_mower.solvers.record import restore_cached_inventory_counts
     from arknights_mower.utils.workshop_data import parse_roster, valid_inventory_items
 
@@ -61,16 +76,18 @@ def restore_cached_inventory():
         )
 
     latest = {}
+    merged_latest = {}
 
-    def remember(timestamp, counts):
+    def remember(timestamp, counts, *, merged=False):
         if not usable_time(timestamp):
             return
+        target = merged_latest if merged else latest
         for name, count in counts.items():
             if name not in key_mapping or type(count) is not int or count < 0:
                 continue
             name = key_mapping[name][2]
-            if name not in latest or timestamp > latest[name][0]:
-                latest[name] = (timestamp, count)
+            if name not in target or timestamp > target[name][0]:
+                target[name] = (timestamp, count)
 
     path = get_path("@app/tmp/cultivate.json")
     try:
@@ -86,17 +103,30 @@ def restore_cached_inventory():
         pass
     except (OSError, ValueError, TypeError, KeyError):
         logger.warning("仓库扫描: 森空岛本地缓存不可用，保留现有库存")
-    for filename in ("depotresult.csv", "depotmerged.csv"):
-        for timestamp, counts, _ in _读取历史行(get_path(f"@app/tmp/{filename}")):
-            remember(timestamp, counts)
+    try:
+        rows = _读取快照行(get_path("@app/tmp/depotresult.csv"))
+    except (EmptyDataError, OSError, UnicodeDecodeError, csv.Error):
+        rows = []
+    for row in rows:
+        parsed = _解析快照行(row)
+        if parsed is not None:
+            timestamp, counts = parsed
+            remember(_扫描开始时刻(row, timestamp), counts)
+    for timestamp, counts, _ in _读取历史行(get_path("@app/tmp/depotmerged.csv")):
+        remember(timestamp, counts, merged=True)
     snapshots = [
         (timestamp, {name: count}) for name, (timestamp, count) in latest.items()
     ]
-    restored = restore_cached_inventory_counts(snapshots)
-    if snapshots:
-        cached_at = datetime.fromtimestamp(max(at for at, _ in snapshots)).isoformat(
-            timespec="seconds"
-        )
+    merged_snapshots = [
+        (timestamp, {name: count}) for name, (timestamp, count) in merged_latest.items()
+    ]
+    restored = restore_cached_inventory_counts(
+        snapshots, ambiguous_snapshots=merged_snapshots
+    )
+    if snapshots or merged_snapshots:
+        cached_at = datetime.fromtimestamp(
+            max(at for at, _ in snapshots + merged_snapshots)
+        ).isoformat(timespec="seconds")
         logger.warning(
             "仓库扫描: 沿用本地库存，缓存记录时间 %s，补充 %s 项缺失读数",
             cached_at,
@@ -279,12 +309,15 @@ def 记录合并快照(at, 物品):
             counts[name] = number
     # 表头与列序沿用两份历史文件共用的 Timestamp,Data,json；追加与首次写表头交给
     # csv_utils，别再手抄一遍"文件不存在就写表头"。
+    metadata = {"完整": True}
+    if at != int(at):
+        metadata["_mower_scan_observed_at"] = at
     append_dict_rows(
         path,
         {
             "Timestamp": int(at),
             "Data": json.dumps(counts, ensure_ascii=False),
-            "json": json.dumps({"完整": True}, ensure_ascii=False),
+            "json": json.dumps(metadata, ensure_ascii=False),
         },
         fieldnames=["Timestamp", "Data", "json"],
     )
@@ -300,8 +333,9 @@ def _读取快照行(path):
     global _快照行缓存
     stat = os.stat(path)
     key = (path, stat.st_mtime_ns, stat.st_size)
-    if _快照行缓存 is not None and _快照行缓存[0] == key:
-        return _快照行缓存[1]
+    cached = _快照行缓存
+    if cached is not None and cached[0] == key:
+        return cached[1]
     _, rows = read_csv_rows(path)
     _快照行缓存 = (key, rows)
     return rows
@@ -316,14 +350,53 @@ def _解析快照行(row):
     if len(row) < 2:
         return None
     try:
-        at = int(float(row[0]))
+        at = float(row[0])
         payload = json.loads(row[1])
     except (TypeError, ValueError, OverflowError):
-        # OverflowError 也要收：int(float("inf")) 会抛它，而 json.loads 也接受 Infinity。
         return None
-    if not isinstance(payload, dict) or "还未开始过扫描" in payload:
+    if (
+        not math.isfinite(at)
+        or not isinstance(payload, dict)
+        or "还未开始过扫描" in payload
+    ):
         return None
+    if len(row) > 2:
+        try:
+            metadata = json.loads(row[2])
+            precise_at = metadata.get("_mower_scan_observed_at")
+            if (
+                type(precise_at) in (int, float)
+                and math.isfinite(precise_at)
+                and int(precise_at) == int(at)
+            ):
+                at = precise_at
+        except (TypeError, ValueError, AttributeError, OverflowError):
+            pass
     return at, payload
+
+
+def _扫描开始时刻(row, completed_at):
+    if len(row) > 2:
+        try:
+            started_at = json.loads(row[2]).get("_mower_scan_started_at")
+            if (
+                type(started_at) in (int, float)
+                and math.isfinite(started_at)
+                and 0 < started_at <= completed_at
+            ):
+                return started_at
+        except (TypeError, ValueError, AttributeError):
+            pass
+    return completed_at
+
+
+def _最后有效扫描(rows):
+    for row in reversed(rows or []):
+        parsed = _解析快照行(row)
+        if parsed is not None:
+            at, items = parsed
+            return at, items, _扫描开始时刻(row, at)
+    return None, None, 0
 
 
 def 最后有效快照(rows):
@@ -333,12 +406,41 @@ def 最后有效快照(rows):
     depotinfo[-1]，一行坏数据就能让 /depot/readdepot 整个 500，而这页其实只需要一条
     能用的记录。找不到时返回 (None, None)，调用方按"还没有历史"处理。
     """
-    for row in reversed(rows or []):
+    at, items, _ = _最后有效扫描(rows)
+    return at, items
+
+
+def _扫描物品观测(rows, cloud_at, *, invalidation_scope=()):
+    if cloud_at <= 0:
+        return {}
+    observations = {}
+    for row in rows:
         parsed = _解析快照行(row)
         if parsed is None:
             continue
-        return parsed
-    return None, None
+        completed_at, items = parsed
+        observed_at = _扫描开始时刻(row, completed_at)
+        if observed_at <= 0:
+            continue
+        nearby = abs(observed_at - cloud_at) <= INVENTORY_COMPARISON_WINDOW
+        for name, count in items.items():
+            if name not in key_mapping or type(count) is not int or count < 0:
+                continue
+            name = key_mapping[name][2]
+            if not nearby and name not in invalidation_scope:
+                continue
+            if name not in observations or observed_at > observations[name][1]:
+                observations[name] = (count, observed_at)
+    return observations
+
+
+def latest_scanned_inventory(cloud_at, *, invalidation_scope=()):
+    path = get_path("@app/tmp/depotresult.csv")
+    try:
+        rows = _读取快照行(path)
+    except (EmptyDataError, OSError, UnicodeDecodeError, csv.Error):
+        return {}
+    return _扫描物品观测(rows, cloud_at, invalidation_scope=invalidation_scope)
 
 
 def 读取仓库(记录快照时刻=None):
@@ -353,6 +455,7 @@ def 读取仓库(记录快照时刻=None):
     with open(path, "r", encoding="utf-8") as f:
         depotinfo = json.load(f)
     cloud_counts, cloud_at = cloud_inventory_snapshot(depotinfo)
+    cloud_explicit_names = cloud_explicit_inventory_names(depotinfo)
     物品数量 = depotinfo["data"]["items"]
     新物品1 = {}
     for item in 物品数量:
@@ -380,7 +483,7 @@ def 读取仓库(记录快照时刻=None):
         depotinfo = []
 
     # 取出最后一条可用记录中的物品信息并进行合并
-    最后一行时刻, 最后一行物品 = 最后有效快照(depotinfo)
+    最后一行时刻, 最后一行物品, 扫描开始时刻 = _最后有效扫描(depotinfo)
     if 最后一行物品 is None:
         logger.warning("仓库扫描: 没有可用的历史快照，仅使用本次扫描结果")
         最后一行时刻 = int(datetime.now().timestamp())
@@ -408,9 +511,11 @@ def 读取仓库(记录快照时刻=None):
     db_dict = save_inventory_counts(
         db_dict,
         scanned_counts=scanned_counts,
-        scanned_at=float(最后一行时刻),
+        scanned_at=扫描开始时刻,
+        scanned_observations=_扫描物品观测(depotinfo, cloud_at),
         cloud_counts=cloud_counts,
         cloud_at=cloud_at,
+        cloud_explicit_names=cloud_explicit_names,
     )
     快照物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
     新物品 = {
