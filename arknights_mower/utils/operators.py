@@ -1383,23 +1383,12 @@ class Operators:
         )
 
     def shift_request_groups(self, names):
-        """工作换位成员跟随本次请求，不额外发起自己的正常下班。"""
-        members = [self.operators[name] for name in names]
+        """只解析原始请求者的正常下班组，不从展开后的换位成员推断请求。"""
         return list(
             dict.fromkeys(
                 op.group
-                for op in members
-                if op.group
-                and self.is_group_shift_anchor(op)
-                and not (
-                    op.multi_group
-                    and any(
-                        other.group != op.group
-                        and self.is_group_shift_anchor(other)
-                        and self.is_same_group_primary_replacement(other, op.name)
-                        for other in members
-                    )
-                )
+                for name in names
+                if (op := self.operators[name]).group and self.is_group_shift_anchor(op)
             )
         )
 
@@ -1572,10 +1561,14 @@ class Operators:
                 assignments[owner.name] = name
         return assignments
 
-    def working_replacement_blockers(self, names, plan=None):
+    def working_replacement_blockers(self, names, plan=None, *, request_groups=None):
         """共享成员保留工作替班岗位；实际离岗仍须完成交接。"""
         names = list(names)
-        request_groups = set(self.shift_request_groups(names))
+        request_groups = set(
+            self.shift_request_groups(names)
+            if request_groups is None
+            else request_groups
+        )
         plan = plan or {}
         return {
             self.operators[owner].group
@@ -1624,7 +1617,11 @@ class Operators:
             for name in self.shift_group_members(group)
             if name not in excluded_names
         }
-        if self.working_replacement_blockers(shifting, plan):
+        if self.working_replacement_blockers(
+            shifting,
+            plan,
+            request_groups=[group for group, resting in transitions.items() if resting],
+        ):
             return False
         followers = [
             op

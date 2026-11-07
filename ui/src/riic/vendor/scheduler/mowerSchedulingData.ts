@@ -137,9 +137,9 @@ export class MowerSchedulingData {
   const workers=this.shiftGroupMembers(group).map(name=>this.operators[name]!).filter(op=>!op.room.startsWith('dorm')&&(!op.multiGroup||op.shiftGroup===group))
   return workers.length>0&&workers.every(op=>op.workaholic)
  }
+ /** Request sources retain their normal group; followers are expanded separately. */
  shiftRequestGroups(names:readonly string[]):string[]{
-  const members=names.map(name=>this.operators[name]!)
-  return [...new Set(members.filter(op=>op.group&&this.isGroupShiftAnchor(op)&&!(op.multiGroup&&members.some(other=>other.group!==op.group&&this.isGroupShiftAnchor(other)&&mowerSameGroupPrimaryReplacement(this,other,op.name)))).map(op=>op.group))]
+  return [...new Set(names.map(name=>this.operators[name]).filter((op):op is MowerOperatorState=>!!op&&!!op.group&&this.isGroupShiftAnchor(op)).map(op=>op.group))]
  }
  shiftGroupMembers(group:string):string[]{return Object.values(this.operators).filter(op=>op.multiGroup?op.groupBindings.some(binding=>binding.group===group):op.group===group).map(op=>op.name)}
  groupIsResting(group:string):boolean{return this.groupShiftState[group]??this.group(group).some(name=>{const op=this.operators[name]!;return this.isGroupShiftAnchor(op)&&op.isResting()})}

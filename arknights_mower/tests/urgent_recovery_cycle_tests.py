@@ -12,14 +12,14 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.urgent_recovery import active_urgent_recovery
 
 
-def start_handoff(solver):
+def start_handoff(solver, peers=()):
     data = solver.op_data
-    data.operators["机械师"].group = "用尽组"
-    data.operators["机械师"].group_bindings = [
-        {"group": "用尽组", "replacement": ["槐琥"]}
-    ]
-    data.plan["room_3_3"][0].group = "用尽组"
-    data.groups["用尽组"] = ["机械师"]
+    for name in ["机械师", *peers]:
+        op = data.operators[name]
+        op.group = "用尽组"
+        op.group_bindings = [{"group": "用尽组", "replacement": list(op.replacement)}]
+        data.plan[op.room][op.index].group = "用尽组"
+    data.groups["用尽组"] = ["机械师", *peers]
     data.group_shift_state["用尽组"] = False
     data.operators["苍苔"].replacement = ["槐琥"]
     data.plan["room_2_2"][0].replacement = ["槐琥"]
@@ -77,6 +77,29 @@ def test_low_mood_supporters_cannot_reverse_or_chain_recall(solver):
         ["苍苔", "絮雨"], [], plan, solver.op_data.active_high_resting_count()
     )
     assert plan["room_2_2"] == ["槐琥"]
+
+
+def test_confirmed_support_protects_all_recovering_anchors_without_expanding_sources(
+    solver,
+):
+    request, support = start_handoff(solver, peers=["能天使"])
+    assert support.coordination_request_names == ["机械师"]
+    assert set(support.urgent_recovery_request_names) == {"机械师", "能天使"}
+    confirm_arrangement(solver, support)
+    assert request.coordination_request_names == ["机械师"]
+    assert set(request.urgent_recovery_request_names) == {"机械师", "能天使"}
+    solver.task = request
+    solver.overtake_room()
+    departure = next(task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF)
+    assert set(departure.urgent_recovery_request_names) == {"机械师", "能天使"}
+    confirm_arrangement(solver, departure)
+    assert solver.op_data.operators["机械师"].is_resting()
+    assert solver.op_data.operators["能天使"].is_resting()
+    assert solver.op_data.urgent_recovery_supporters == {
+        "机械师": ["苍苔", "絮雨"],
+        "能天使": ["苍苔", "絮雨"],
+    }
+    assert request.coordination_request_names == ["机械师"]
 
 
 def test_pending_handoff_reserves_freed_resources_for_original_request(solver):
@@ -195,13 +218,18 @@ def test_urgent_recall_releases_fixed_dorm_cover_through_its_own_group(solver):
 def test_urgent_recall_resolves_disjoint_shared_bindings(solver):
     s = dependency_solver(solver, shared=True)
     candidates = ["机械师", "能天使"]
-    assert s._plan_exhaust_support(candidates, urgent=False) is None
-    plan = s._plan_exhaust_support(candidates, urgent=True)
+    assert (
+        s._plan_exhaust_support(candidates, urgent=False, request_names=["机械师"])
+        is None
+    )
+    plan = s._plan_exhaust_support(candidates, urgent=True, request_names=["机械师"])
     assert plan is not None
     assert plan["room_2_2"] == ["苍苔"]
     assert plan["contact"] == ["絮雨"]
     assert (
-        s._coordination_admission(s.op_data.project_arrangements([plan]), candidates)
+        s._coordination_admission(
+            s.op_data.project_arrangements([plan]), candidates, request_names=["机械师"]
+        )
         is not None
     )
     assert s.op_data.group_is_resting("感知")
@@ -210,14 +238,17 @@ def test_urgent_recall_resolves_disjoint_shared_bindings(solver):
 def test_urgent_recall_combines_two_blocking_groups_before_committing(solver):
     s = dependency_solver(solver, shared=True, second_group=True)
     candidates = ["机械师", "能天使"]
-    plan = s._plan_exhaust_support(candidates, urgent=True)
+    plan = s._plan_exhaust_support(candidates, urgent=True, request_names=["机械师"])
     assert plan is not None
     assert plan["room_2_2"] == ["苍苔"]
     assert plan["room_1_1"] == ["德克萨斯"]
     assert s.op_data.group_is_resting("感知")
     assert s.op_data.group_is_resting("其他")
     s.op_data.operators["德克萨斯"].rest_in_full = True
-    assert s._plan_exhaust_support(candidates, urgent=True) is None
+    assert (
+        s._plan_exhaust_support(candidates, urgent=True, request_names=["机械师"])
+        is None
+    )
     assert s.op_data.get_current_operator("room_1_1", 0).name == "结城理"
 
 

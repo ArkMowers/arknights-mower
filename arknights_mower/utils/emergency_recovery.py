@@ -292,9 +292,10 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 and mood <= data.resting_mood_threshold(op)
             ):
                 groups[op.group or name] = (
-                    data.shift_group_members(op.group) if op.group else [name]
+                    name,
+                    data.shift_group_members(op.group) if op.group else [name],
                 )
-        for members in groups.values():
+        for source, members in groups.values():
             candidate = copy.copy(trial)
             candidate.op_data = copy.deepcopy(
                 data, {id(data.eval_model): data.eval_model}
@@ -307,13 +308,16 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     [],
                     plan,
                     candidate.op_data.active_high_resting_count(),
+                    request_names=[source],
                 )
                 if (
                     not plan
                     and current_only
                     and any(data.operators[name].exhaust_require for name in members)
                 ):
-                    support = candidate._plan_exhaust_support(list(members))
+                    support = candidate._plan_exhaust_support(
+                        list(members), request_names=[source]
+                    )
                     if support:
                         coordinated = data.project_arrangements([support])
                         queue.append((coordinated, when, used, served))

@@ -675,7 +675,10 @@ def test_exhaust_simulation_clones_mutable_state_without_copying_eval_capsule(
     before_mood = source.operators["机械师"].mood
     before_bed = source.dorm[0].name
 
-    def check_simulated_rest(instance, _names, _replacement, plan, _count):
+    def check_simulated_rest(
+        instance, _names, _replacement, plan, _count, *, request_names
+    ):
+        assert request_names == ["机械师"]
         assert instance is not solver
         assert instance.op_data is not source
         assert instance.op_data.eval_model is source.eval_model
@@ -717,9 +720,11 @@ def test_partially_resting_exhaust_group_retains_planning(solver):
     original = run_retained(solver)
 
     assert solver.tasks == [original]
-    solver.get_resting_plan.assert_called_once_with(["苍苔", "机械师"], [], {}, 2)
+    solver.get_resting_plan.assert_called_once_with(
+        ["苍苔", "机械师"], [], {}, 2, request_names=["苍苔"]
+    )
     solver._plan_exhaust_support.assert_called_once_with(
-        ["苍苔", "机械师"], urgent=True
+        ["苍苔", "机械师"], urgent=True, request_names=["苍苔"]
     )
     assert solver.planned
     base_schedule.send_message.assert_not_called()

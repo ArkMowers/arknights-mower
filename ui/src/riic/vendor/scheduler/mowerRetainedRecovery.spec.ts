@@ -254,7 +254,7 @@ describe('completed ordinary requests use their actual recovery members',()=>{
   delete state.bedOccupants.dormitory_1_3;data.dorms[1]!.name=''
   state.occupants.room_1_2_1='S'
   if(unfinished){data.operators.B!.currentRoom='room_1_2';data.operators.B!.currentIndex=0;state.occupants.room_1_2_0='B';delete state.bedOccupants.dormitory_1_2;data.dorms[0]!.name=''}
-  task.ordinaryCoordination=true;task.coordinationRequestNames=['B','S']
+  task.ordinaryCoordination=true;task.coordinationRequestNames=['B']
   expect(data.shiftRequestGroups(task.coordinationRequestNames)).toEqual(['b'])
   retainMowerFailedTask(state,data,task,'waiting for recovery admission')
   const independent=new MowerTask({time:1}),plan=structuredClone(task.plan),time=task.timeMicros

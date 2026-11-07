@@ -32,7 +32,7 @@ export function preserveMowerBackupRestingJoins(data:MowerSchedulingData,plan:Mo
  if(missing.some(name=>reserved.names.has(name)||reserved.slots.has(alphaPosition(simulation.operators[name]!.room,simulation.operators[name]!.index))))return false
  if(missing.length){
   const assigned=Object.values(pending).flat().filter(name=>!['','Current','Free'].includes(name))
-  if(!mowerGetRestingPlan(simulation,missing,assigned,pending,{isMasteryBusy:name=>protectedNames.has(name)||simulation.busyRestingNames.has(name),reservedSlots:reserved.slots}))return false
+  if(!mowerGetRestingPlan(simulation,missing,assigned,pending,{requestNames:[],isMasteryBusy:name=>protectedNames.has(name)||simulation.busyRestingNames.has(name),reservedSlots:reserved.slots}))return false
   for(const bed of simulation.allDorms())if(missing.includes(bed.name))(pending[bed.position[0]]??=Array(data.plan[bed.position[0]]!.length).fill('Current'))[bed.position[1]]=bed.name
  }
  for(const room of Object.keys(plan))delete plan[room]

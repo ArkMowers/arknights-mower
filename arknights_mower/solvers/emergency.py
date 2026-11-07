@@ -1813,7 +1813,7 @@ class EmergencyRecoveryMixin:
                 )
             )
             if mood < target:
-                groups[op.group or name] = data.groups.get(op.group, [name])
+                groups[op.group or name] = (name, data.groups.get(op.group, [name]))
         if not groups:
             return plan
         from arknights_mower.utils.emergency_plan import RESCUE_ROOMS
@@ -1833,10 +1833,14 @@ class EmergencyRecoveryMixin:
         resting = {}
         replacements = []
         members = list(
-            dict.fromkeys(name for group in groups.values() for name in group)
+            dict.fromkeys(name for _, group in groups.values() for name in group)
         )
         probe.get_resting_plan(
-            members, replacements, resting, probe.op_data.active_high_resting_count()
+            members,
+            replacements,
+            resting,
+            probe.op_data.active_high_resting_count(),
+            request_names=[source for source, _ in groups.values()],
         )
         if not replacements:
             return None

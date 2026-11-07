@@ -1558,16 +1558,25 @@ class BaseSchedulerSolver(
             logger.debug("重设上次房间为空")
 
     def overtake_room(self):
-        candidates = self.task.meta_data.split(",")
-        if len(candidates) == 0:
+        request_names = list(
+            getattr(self.task, "coordination_request_names", ())
+            or self.task.meta_data.split(",")
+        )
+        if not request_names:
             return
-        if self.op_data.operators[candidates[0]].group != "":
-            candidates = self.op_data.groups[
-                self.op_data.operators[candidates[0]].group
-            ]
+        candidates = list(
+            dict.fromkeys(
+                member
+                for name in request_names
+                for op in [self.op_data.operators[name]]
+                for member in (
+                    self.op_data.shift_group_members(op.group) if op.group else [name]
+                )
+            )
+        )
         if getattr(
             self.task, "ordinary_coordination", False
-        ) and not self._ordinary_coordination_needed(candidates):
+        ) and not self._ordinary_coordination_needed(request_names):
             return
         logger.debug(f"更新下班小组信息为{candidates}")
         resting_members = [
@@ -1578,15 +1587,15 @@ class BaseSchedulerSolver(
             and (
                 not self.op_data.operators[name].multi_group
                 or self.op_data.operators[name].shift_group
-                in self.op_data.shift_request_groups(candidates)
-                or len(candidates) == 1
+                in self.op_data.shift_request_groups(request_names)
+                or name in request_names
                 and self.op_data.operators[name].independent_rest
             )
         ]
         if resting_members and all(op.is_resting() for op in resting_members):
             logger.info(f"{self.task.meta_data} 已完成用尽下班，继续正常规划")
             return
-        if self._has_pending_exhausted_shift(candidates):
+        if self._has_pending_exhausted_shift(candidates, request_names=request_names):
             logger.debug("用尽下班已有完整待执行恢复安排：%s", candidates)
             return
         support = next(
@@ -1603,7 +1612,7 @@ class BaseSchedulerSolver(
         if support is not None:
             if not any(queued is self.task for queued in self.tasks):
                 self.tasks.append(self.task)
-            self.task.coordination_request_names = list(candidates)
+            self.task.coordination_request_names = list(request_names)
             self._retain_failed_task(
                 self.task, "等待已排定的替班交接", list(support.plan), dependency=True
             )
@@ -1614,7 +1623,9 @@ class BaseSchedulerSolver(
         # 不能在这里阻止整个大组尝试下班。
         current_resting = self.op_data.active_high_resting_count()
         plan = {}
-        self.get_resting_plan(candidates, [], plan, current_resting)
+        self.get_resting_plan(
+            candidates, [], plan, current_resting, request_names=request_names
+        )
         if len(plan.items()) > 0:
             re_order_dorm_plan = try_reorder(self.op_data, plan, tasks=self.tasks)
             if re_order_dorm_plan:
@@ -1625,13 +1636,7 @@ class BaseSchedulerSolver(
             )
             if getattr(self.task, "ordinary_coordination", False):
                 task.ordinary_coordination = True
-                task.coordination_request_names = [
-                    name
-                    for name in candidates
-                    if self.op_data.is_group_shift_anchor(self.op_data.operators[name])
-                    or len(candidates) == 1
-                    and self.op_data.operators[name].independent_rest
-                ]
+                task.coordination_request_names = list(request_names)
             from arknights_mower.utils.urgent_recovery import PENDING_FIELDS
 
             for field in PENDING_FIELDS:
@@ -1644,6 +1649,7 @@ class BaseSchedulerSolver(
             support = self._plan_exhaust_support(
                 candidates,
                 urgent=not getattr(self.task, "ordinary_coordination", False),
+                request_names=request_names,
             )
             if support:
                 logger.info(f"用尽下班优先协调替班和床位：{support}")
@@ -1657,33 +1663,36 @@ class BaseSchedulerSolver(
                     self.task, "ordinary_coordination", False
                 )
                 self.tasks.append(support_task)
-                support_task.coordination_request_names = list(candidates)
+                support_task.coordination_request_names = list(request_names)
                 if not support_task.ordinary_coordination:
                     from arknights_mower.utils.urgent_recovery import (
                         prepare_urgent_support,
                     )
 
-                    prepare_urgent_support(self.op_data, support_task, candidates)
+                    prepare_urgent_support(self.op_data, support_task, request_names)
                     if hasattr(support_task, "urgent_recovery_request_names"):
-                        self.task.urgent_recovery_request_names = list(candidates)
+                        self.task.urgent_recovery_request_names = list(
+                            support_task.urgent_recovery_request_names
+                        )
                 # 前置安排完成后才释放原请求，不重建其任务时刻。
                 if not any(queued is self.task for queued in self.tasks):
                     self.tasks.append(self.task)
-                self.task.coordination_request_names = list(candidates)
+                self.task.coordination_request_names = list(request_names)
                 self._retain_failed_task(
                     self.task, "等待替班交接完成", list(support), dependency=True
                 )
             else:
                 msg = f"无法完成 {self.task.meta_data} 的排班：没有同时满足替班和床位的方案"
                 logger.warning(msg)
-                self.task.coordination_request_names = list(candidates)
+                self.task.coordination_request_names = list(request_names)
                 if not any(queued is self.task for queued in self.tasks):
                     self.tasks.append(self.task)
                 self._retain_failed_task(self.task, msg, [])
             self.skip()
 
-    def _has_pending_exhausted_shift(self, candidates):
+    def _has_pending_exhausted_shift(self, candidates, *, request_names=None):
         """A concrete off-shift task covers every recovery-requiring member."""
+        request_names = candidates if request_names is None else request_names
         members = [
             self.op_data.operators[name]
             for name in candidates
@@ -1692,8 +1701,8 @@ class BaseSchedulerSolver(
             and (
                 not self.op_data.operators[name].multi_group
                 or self.op_data.operators[name].shift_group
-                in self.op_data.shift_request_groups(candidates)
-                or len(candidates) == 1
+                in self.op_data.shift_request_groups(request_names)
+                or name in request_names
                 and self.op_data.operators[name].independent_rest
             )
         ]
@@ -1730,7 +1739,20 @@ class BaseSchedulerSolver(
                 return True
         return False
 
-    def _coordination_admission_plan(self, data, candidates):
+    def _coordination_admission_plan(self, data, candidates, *, request_names=None):
+        request_names = list(candidates if request_names is None else request_names)
+        candidates = list(
+            dict.fromkeys(
+                [
+                    *candidates,
+                    *(
+                        name
+                        for group in data.shift_request_groups(request_names)
+                        for name in data.shift_group_members(group)
+                    ),
+                ]
+            )
+        )
         simulation = copy.copy(self)
         simulation.op_data = data.project_arrangements([])
         simulation._coordination_projection = True
@@ -1741,7 +1763,11 @@ class BaseSchedulerSolver(
         ]
         result = {}
         simulation.get_resting_plan(
-            list(candidates), [], result, data.active_high_resting_count()
+            list(candidates),
+            [],
+            result,
+            data.active_high_resting_count(),
+            request_names=request_names,
         )
         if not result:
             return None
@@ -1750,8 +1776,10 @@ class BaseSchedulerSolver(
             _merge_dorm_arrangement(result, reorder)
         return result
 
-    def _coordination_admission(self, data, candidates):
-        result = self._coordination_admission_plan(data, candidates)
+    def _coordination_admission(self, data, candidates, *, request_names=None):
+        result = self._coordination_admission_plan(
+            data, candidates, request_names=request_names
+        )
         return data.project_arrangements([result]) if result else None
 
     def _queue_ordinary_coordination_admission(self, task):
@@ -1760,6 +1788,7 @@ class BaseSchedulerSolver(
         if not saved or not getattr(task, "ordinary_coordination", False):
             return
         names = list(getattr(task, "urgent_recovery_request_names", ()))
+        request_names = list(getattr(task, "coordination_request_names", ()) or names)
         if not names or not getattr(task, "urgent_recovery_support_names", ()):
             task.__dict__.pop("coordination_admission_plan", None)
             return
@@ -1770,12 +1799,17 @@ class BaseSchedulerSolver(
         ):
             task.__dict__.pop("coordination_admission_plan", None)
             return
-        plan = self._coordination_admission_plan(self.op_data, names) or saved
+        plan = (
+            self._coordination_admission_plan(
+                self.op_data, names, request_names=request_names
+            )
+            or saved
+        )
         departure = SchedulerTask(
             time=task.time, task_plan=plan, task_type=TaskTypes.SHIFT_OFF
         )
         departure.ordinary_coordination = True
-        departure.coordination_request_names = names
+        departure.coordination_request_names = request_names
         from arknights_mower.utils.urgent_recovery import PENDING_FIELDS
 
         for field in PENDING_FIELDS:
@@ -1784,13 +1818,14 @@ class BaseSchedulerSolver(
         self.tasks.append(departure)
         task.__dict__.pop("coordination_admission_plan", None)
 
-    def _coordination_support_valid(self, plan, candidates):
+    def _coordination_support_valid(self, plan, candidates, *, request_names=None):
         from arknights_mower.utils.replacement_coordination import (
             coordination_reservations,
             recall_can_sustain,
         )
 
         data = self.op_data
+        request_names = list(candidates if request_names is None else request_names)
         conditions = getattr(self.task, "backup_shift_conditions", None)
         if conditions is not None and list(conditions) != data.plan_condition:
             data = data.project_arrangements([])
@@ -1822,7 +1857,9 @@ class BaseSchedulerSolver(
         ):
             return False
         supported = data.project_arrangements([plan])
-        admitted = self._coordination_admission(supported, candidates)
+        admitted = self._coordination_admission(
+            supported, candidates, request_names=request_names
+        )
         if admitted is None:
             return False
         if any(
@@ -1855,9 +1892,10 @@ class BaseSchedulerSolver(
             candidates,
             urgent=urgent,
             now=now,
+            request_names=request_names,
         )
 
-    def _plan_exhaust_support(self, candidates, *, urgent=False):
+    def _plan_exhaust_support(self, candidates, *, urgent=False, request_names=None):
         from arknights_mower.utils.exhaust_replacement import plan_exhaust_support
         from arknights_mower.utils.replacement_coordination import (
             coordination_reservations,
@@ -1865,13 +1903,29 @@ class BaseSchedulerSolver(
         from arknights_mower.utils.urgent_recovery import urgent_support_blocked
 
         excluded = self._protected_facility_names()
-        candidates = [name for name in candidates if name not in excluded]
+        request_names = list(candidates if request_names is None else request_names)
+        request_names = [name for name in request_names if name not in excluded]
+        candidates = list(
+            dict.fromkeys(
+                [
+                    *(name for name in candidates if name not in excluded),
+                    *(
+                        name
+                        for group in self.op_data.shift_request_groups(request_names)
+                        for name in self.op_data.shift_group_members(group)
+                        if name not in excluded
+                    ),
+                ]
+            )
+        )
         recall_blocked = urgent_support_blocked(
             self.op_data, candidates, self.tasks, getattr(self, "task", None)
         )
 
         def can_rest(data):
-            admitted = self._coordination_admission(data, candidates)
+            admitted = self._coordination_admission(
+                data, candidates, request_names=request_names
+            )
             if admitted is None:
                 return None
             from arknights_mower.utils.replacement_coordination import (
@@ -1896,6 +1950,7 @@ class BaseSchedulerSolver(
                 candidates,
                 urgent=urgent,
                 now=now,
+                request_names=request_names,
             )
 
         protected, slots = coordination_reservations(
@@ -1915,6 +1970,7 @@ class BaseSchedulerSolver(
             recall_blocked=recall_blocked,
             recall_viability=can_rest,
             excluded_names=excluded,
+            request_names=request_names,
         )
 
     def _schedule_group_coordination(self, candidates):
@@ -1928,7 +1984,7 @@ class BaseSchedulerSolver(
             for task in self.tasks
         ):
             return
-        support = self._plan_exhaust_support(names)
+        support = self._plan_exhaust_support(names, request_names=names)
         if not support:
             return
         task = SchedulerTask(task_plan=support, task_type=TaskTypes.SELF_CORRECTION)
@@ -1982,6 +2038,19 @@ class BaseSchedulerSolver(
 
         working = forced_work_groups(self.op_data)
         protected = self._protected_facility_names()
+        request_groups = set(self.op_data.shift_request_groups(names))
+        names = list(
+            dict.fromkeys(
+                [
+                    *names,
+                    *(
+                        name
+                        for group in request_groups
+                        for name in self.op_data.shift_group_members(group)
+                    ),
+                ]
+            )
+        )
         for name in names:
             op = self.op_data.operators.get(name)
             if (
@@ -1992,6 +2061,8 @@ class BaseSchedulerSolver(
                 and not op.shift_group
                 or op.group
                 and not self.op_data.is_group_shift_anchor(op)
+                or op.group
+                and op.group not in request_groups
                 or op.is_resting()
                 or self.op_data.is_standby(name)
                 or op.current_room in ("factory", "train")
@@ -2260,7 +2331,9 @@ class BaseSchedulerSolver(
             # 岗位及配置已经改变时，旧前置安排不再拥有独立的换班请求。
             task.plan = (
                 self._plan_exhaust_support(
-                    names, urgent=not getattr(task, "ordinary_coordination", False)
+                    names,
+                    urgent=not getattr(task, "ordinary_coordination", False),
+                    request_names=names,
                 )
                 or {}
             )
@@ -6759,7 +6832,7 @@ class BaseSchedulerSolver(
             members = (
                 self.op_data.shift_group_members(op.group) if op.group else [op.name]
             )
-            if self._has_pending_exhausted_shift(members):
+            if self._has_pending_exhausted_shift(members, request_names=[op.name]):
                 continue
             previous_plan = copy.deepcopy(_plan)
             if op.group != "":
@@ -6776,6 +6849,7 @@ class BaseSchedulerSolver(
                     _plan,
                     current_resting,
                     dorm_admissions=dorm_admissions,
+                    request_names=[op.name],
                 )
             else:
                 self.get_resting_plan(
@@ -6784,13 +6858,10 @@ class BaseSchedulerSolver(
                     _plan,
                     current_resting,
                     dorm_admissions=dorm_admissions,
+                    request_names=[op.name],
                 )
             if _plan == previous_plan:
-                self._schedule_group_coordination(
-                    self.op_data.shift_group_members(op.group)
-                    if op.group
-                    else [op.name]
-                )
+                self._schedule_group_coordination([op.name])
             else:
                 ordinary_requests.append(op.name)
         if len(_plan.keys()) > 0:
@@ -7190,6 +7261,7 @@ class BaseSchedulerSolver(
                     excluded_names=reserved_names,
                     reserved_slots=reserved_slots | explicit_dorm_slots,
                     failure_reasons=failure_reasons,
+                    request_names=[],
                 ):
                     return None
                 for (room, index), name in admissions.items():
@@ -8083,11 +8155,14 @@ class BaseSchedulerSolver(
         current_resting,
         *,
         dorm_admissions=None,
+        request_names=None,
     ):
         excluded = self._protected_facility_names()
         if excluded:
             agents = [name for name in agents if name not in excluded]
-        groups = self.op_data.shift_request_groups(agents)
+        request_names = list(agents if request_names is None else request_names)
+        request_names = [name for name in request_names if name not in excluded]
+        groups = self.op_data.shift_request_groups(request_names)
         from arknights_mower.utils.backup_group_tasks import forced_work_groups
 
         if set(groups) & forced_work_groups(self.op_data):
@@ -8105,6 +8180,7 @@ class BaseSchedulerSolver(
                 plan,
                 current_resting,
                 dorm_admissions=dorm_admissions,
+                request_names=request_names,
             )
         transitions = self.op_data.arrangement_group_transitions(plan)
         transitions.update({group: True for group in groups})
@@ -8165,6 +8241,7 @@ class BaseSchedulerSolver(
                 plan,
                 current_resting,
                 dorm_admissions=dorm_admissions,
+                request_names=request_names,
             )
         finally:
             self.op_data.group_shift_state = previous_state
@@ -8186,10 +8263,14 @@ class BaseSchedulerSolver(
         excluded_names=(),
         reserved_slots=(),
         failure_reasons=None,
+        request_names=None,
     ):
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
         excluded = self._protected_facility_names()
+        request_names = list(agents if request_names is None else request_names)
+        request_names = [name for name in request_names if name not in excluded]
+        request_groups = self.op_data.shift_request_groups(request_names)
         if excluded:
             agents = [name for name in agents if name not in excluded]
         protected_training = self._protected_facility_names(include_configured=False)
@@ -8239,9 +8320,9 @@ class BaseSchedulerSolver(
             for name in [*agents, *dorm_agents]
             if self.op_data.operators[name].group
             and not self.op_data.operators[name].shift_group
-        } | set(self.op_data.shift_request_groups([*agents, *dorm_agents]))
+        } | set(request_groups)
         if blockers := self.op_data.working_replacement_blockers(
-            [*agents, *dorm_agents], plan
+            [*agents, *dorm_agents], plan, request_groups=request_groups
         ):
             if failure_reasons is not None:
                 failure_reasons.append(
@@ -9013,6 +9094,7 @@ class BaseSchedulerSolver(
                 plan,
                 self.op_data.active_high_resting_count(),
                 dorm_admissions=admissions,
+                request_names=[],
             ):
                 raise GroupShiftBlocked(self._shared_shift_blockers(task, transitions))
             for (room, index), name in admissions.items():
@@ -9124,6 +9206,7 @@ class BaseSchedulerSolver(
                 if name not in protected_training
             },
             task.plan,
+            request_groups=[group for group, resting in transitions.items() if resting],
         )
         if (
             any(transitions.values())
