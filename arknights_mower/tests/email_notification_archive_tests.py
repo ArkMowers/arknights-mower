@@ -68,16 +68,19 @@ def test_error_notification_always_logs_and_only_visual_failure_archives(
             in notification.store.mark_error.call_args.args[1]
         )
         assert (
-            "记录编号 notification-archive" in notification.live_log.call_args.args[0]
+            "记录编号 notification-archive"
+            in notification.live_log.call_args.args[0]["msg"]
         )
     else:
         notification.store.mark_error.assert_not_called()
-        assert "记录编号" not in notification.live_log.call_args.args[0]
+        assert "记录编号" not in notification.live_log.call_args.args[0]["msg"]
     assert len(notification.records) == 1
     record = notification.records[0]
     assert Path(record.pathname).as_posix().endswith("utils/email.py")
     assert record.archive_screenshots is visual
-    assert "白面鸮：训练室面板与计划不符" in notification.live_log.call_args.args[0]
+    assert (
+        "白面鸮：训练室面板与计划不符" in notification.live_log.call_args.args[0]["msg"]
+    )
     if mail_enable:
         notification.transport.assert_called_once()
         body, subject, attachment = notification.transport.call_args.args

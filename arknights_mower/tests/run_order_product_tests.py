@@ -533,7 +533,8 @@ def test_orundum_room_still_gets_normal_mood_scan(solver, monkeypatch):
 
     # 常规巡检还会检查训练室；这里约束卖玉房间仍被正常扫描一次。
     assert solver.enter_room.call_args_list.count(call("room_1_1")) == 1
-    assert solver.get_agent_from_room.call_args_list.count(call("room_1_1", None)) == 1
+    read_args = [entry.args for entry in solver.get_agent_from_room.call_args_list]
+    assert read_args.count(("room_1_1", None)) == 1
 
 
 def use_order_pages(solver, order_states):
@@ -582,7 +583,7 @@ def use_order_pages(solver, order_states):
     solver.sleep = MagicMock()
     solver.find = MagicMock(side_effect=find)
     solver.scene_graph_navigation = MagicMock(side_effect=return_to_base)
-    solver._cache_facility_state_from_current_page = MagicMock()
+    solver._cache_facility_state_from_current_page = MagicMock(return_value=None)
     solver._product_ocr_text = MagicMock(
         side_effect=lambda scope: (
             "订单暂停获取中"
@@ -921,9 +922,10 @@ def test_paused_order_with_observed_staff_does_not_force_an_empty_room_correctio
 
     assert solver.tasks == []
     assert solver.op_data.get_current_room("room_1_1", True) == ["鸿雪"]
-    solver.get_agent_from_room.assert_called_once_with(
-        "room_1_1", None, force_mood=True
-    )
+    solver.get_agent_from_room.assert_called_once()
+    read = solver.get_agent_from_room.call_args
+    assert read.args == ("room_1_1", None)
+    assert read.kwargs["force_mood"] is True
     assert solver.scene_graph_navigation.call_args_list == [
         call(Scene.INFRA_DETAILS),
         call(Scene.INFRA_MAIN),

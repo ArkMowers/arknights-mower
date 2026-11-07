@@ -33,6 +33,40 @@ class LogStreamTests(unittest.TestCase):
     def setUp(self):
         self.stream = LogStream()
 
+    def test_task_forecast_is_frozen_for_live_delivery_and_history(self):
+        task = {
+            "header": "休息至 19:42:00",
+            "title": "甲组下班",
+            "rooms": [
+                {
+                    "id": "room_2_1",
+                    "label": "贸易站 B201",
+                    "agents": ["Current", "但书", "龙舌兰"],
+                }
+            ],
+            "backups": [{"name": "夜班", "active": True}],
+            "targets": [],
+        }
+        record = {
+            "t": "2026-11-04 18:30:02",
+            "level": "INFO",
+            "msg": "任务预告",
+            "task": task,
+        }
+        subscription = self.stream.subscribe()
+        subscription.messages.get_nowait()
+        self.stream.publish(record)
+        live = json.loads(subscription.messages.get_nowait())
+        task["rooms"][0]["agents"][1] = "后续名单"
+        task["backups"][0]["name"] = "后续副表"
+        history = json.loads(self.stream.subscribe().messages.get_nowait())
+        self.assertEqual(history["records"], live["records"])
+        self.assertEqual(history["data"], "2026-11-04 18:30:02 INFO 任务预告")
+        self.assertEqual(
+            history["records"][0]["task"]["rooms"][0]["agents"],
+            ["Current", "但书", "龙舌兰"],
+        )
+
     def serve(self, ws):
         thread = Thread(target=self.stream.serve, args=(ws,), daemon=True)
         thread.start()
@@ -57,8 +91,8 @@ class LogStreamTests(unittest.TestCase):
                 broken.close.assert_called_once()
                 self.stream.publish("after disconnect")
                 self.assertEqual(
-                    healthy.sent.get(timeout=2),
-                    {"type": "log", "data": "after disconnect"},
+                    healthy.sent.get(timeout=2)["data"],
+                    "after disconnect",
                 )
         self.assertEqual(len(self.stream._subscriptions), 1)
 
@@ -179,22 +213,73 @@ class LogStreamTests(unittest.TestCase):
         self.stream.broadcast({"type": "resource_updated"})
         self.stream.publish("after")
         messages = [json.loads(subscription.messages.get_nowait()) for _ in range(3)]
+        stream_id = messages[0]["stream_id"]
         self.assertEqual(
             messages,
             [
-                {"type": "log", "data": "before"},
+                {
+                    "type": "log",
+                    "data": "before",
+                    "stream_id": stream_id,
+                    "snapshot": False,
+                    "records": [{"msg": "before", "seq": 1}],
+                    "evicted": [],
+                },
                 {"type": "resource_updated"},
-                {"type": "log", "data": "after"},
+                {
+                    "type": "log",
+                    "data": "after",
+                    "stream_id": stream_id,
+                    "snapshot": False,
+                    "records": [{"msg": "after", "seq": 2}],
+                    "evicted": [],
+                },
             ],
         )
         snapshot = self.stream.subscribe().messages.get_nowait()
         self.assertEqual(json.loads(snapshot)["data"], "before\nafter")
+
+    def test_structured_records_reach_live_and_snapshot_payloads(self):
+        record = {
+            "t": "2026-11-01 00:27:12,700",
+            "level": "INFO",
+            "msg": "fixture",
+            "room": "room_1_1",
+        }
+        subscription = self.stream.subscribe()
+        subscription.messages.get_nowait()
+        self.stream.publish(record)
+        live = json.loads(subscription.messages.get_nowait())
+        self.assertEqual(
+            live,
+            {
+                "type": "log",
+                "stream_id": live["stream_id"],
+                "snapshot": False,
+                "evicted": [],
+                "data": "2026-11-01 00:27:12,700 INFO fixture",
+                "records": [{**record, "seq": 1}],
+            },
+        )
+        self.stream.publish("legacy")
+        snapshot = json.loads(self.stream.subscribe().messages.get_nowait())
+        self.assertEqual(
+            snapshot["data"], "2026-11-01 00:27:12,700 INFO fixture\nlegacy"
+        )
+        self.assertEqual(
+            snapshot["records"], [{**record, "seq": 1}, {"msg": "legacy", "seq": 2}]
+        )
+        self.assertEqual(snapshot["stream_id"], live["stream_id"])
+        self.assertTrue(snapshot["snapshot"])
 
     def test_clear_resets_history_and_preserves_live_subscriptions(self):
         self.stream.publish("old")
         subscription = self.stream.subscribe()
         subscription.messages.get_nowait()
         self.stream.clear()
+        cleared = json.loads(subscription.messages.get_nowait())
+        self.assertTrue(cleared["snapshot"])
+        self.assertEqual(cleared["records"], [])
         self.stream.publish("new")
         self.assertEqual(json.loads(subscription.messages.get_nowait())["data"], "new")
         snapshot = self.stream.subscribe().messages.get_nowait()

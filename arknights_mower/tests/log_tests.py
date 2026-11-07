@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import shutil
@@ -12,6 +13,7 @@ from unittest.mock import Mock, patch
 
 from arknights_mower.utils import config, log, path
 from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
+from arknights_mower.utils.log_stream import LogStream
 
 
 class MultiProcessLogTestBase(unittest.TestCase):
@@ -154,7 +156,7 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
             log.whlr.emit(self.record("utils/resource_pkg.py"))
         store.mark_error.assert_not_called()
         put.assert_called_once()
-        self.assertIn("运行失败", put.call_args.args[0])
+        self.assertIn("运行失败", put.call_args.args[0]["msg"])
 
     def test_visual_error_is_archived_and_linked_in_live_log(self):
         store = Mock()
@@ -165,7 +167,7 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
         ):
             log.whlr.emit(self.record("solvers/base_schedule.py"))
         store.mark_error.assert_called_once()
-        self.assertIn("记录编号 123", put.call_args.args[0])
+        self.assertIn("记录编号 123", put.call_args.args[0]["msg"])
 
     def test_visual_warning_is_archived_with_severity_in_summary(self):
         store = Mock()
@@ -181,7 +183,7 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
         ):
             log.whlr.emit(record)
         self.assertEqual(store.mark_error.call_args.args[1], "警告：运行失败")
-        self.assertIn("记录编号 456", put.call_args.args[0])
+        self.assertIn("记录编号 456", put.call_args.args[0]["msg"])
 
 
 class ScreenshotStoreStartupTest(MultiProcessLogTestBase):
@@ -281,17 +283,18 @@ class LiveLogTruncationTest(MultiProcessLogTestBase):
             patch.object(log, "frontend_log_queue", queue),
         ):
             log.whlr.emit(record)
-        message = queue.get_nowait()
+        item = queue.get_nowait()
         queue.task_done()
-        return message
+        # 返回结构化记录的 msg 字段，与旧测试对文本行的断言保持相同的比较对象。
+        return item["msg"]
 
     def test_archive_notice_survives_merged_line_truncation(self):
         record = self._record(
             "solvers/base_schedule.py", "长" * (2 * log.LIVE_LOG_MESSAGE_LIMIT)
         )
         message = self._emit(record)
+        # msg 只含消息正文；asctime 与 levelname 在结构化记录的 t/level 字段。
         self.assertLessEqual(len(message), log.LIVE_LOG_MESSAGE_LIMIT)
-        self.assertTrue(message.startswith("2026-10-17 12:00:00 ERROR "))
         # 截断标记与归档编号都必须留在行尾；编号被尾部切掉时这条断言失败。
         self.assertTrue(
             message.endswith(
@@ -328,9 +331,10 @@ class LiveLogTruncationTest(MultiProcessLogTestBase):
             archive_screenshots=True,
         )
         message = self._emit(record)
+        # msg 只含消息正文与归档说明；asctime 和 level 在结构化记录的 t/level 字段。
         self.assertEqual(
             message,
-            "2026-10-17 12:00:00 WARNING 运行失败（已保存前后截图，记录编号 123）",
+            "运行失败（已保存前后截图，记录编号 123）",
         )
 
 
@@ -342,6 +346,145 @@ class RuntimeLogRetentionTest(MultiProcessLogTestBase):
         log.fhlr.flush()
         runtime_log = path.get_path("@app/log") / "runtime.log"
         self.assertIn(full, runtime_log.read_text(encoding="utf-8"))
+
+
+class LiveRecordFieldsTest(MultiProcessLogTestBase):
+    def test_record_time_survives_delivery_independently_of_formatted_timezone(self):
+        for timestamp in ("2023-11-14 22:13:20,123", "2023-11-15 06:13:20,123"):
+            with self.subTest(timestamp=timestamp):
+                source = logging.LogRecord(
+                    "test", logging.INFO, __file__, 1, "正在等待场景变化", (), None
+                )
+                source.created = 1_700_000_000.123
+                source.asctime = timestamp
+                prepared = log.LiveQueueHandler(Queue()).prepare(source)
+                frontend = Queue()
+                with patch.object(log, "frontend_log_queue", frontend):
+                    log.whlr.emit(prepared)
+                delivered = frontend.get_nowait()
+                self.assertEqual(delivered["at"], 1_700_000_000_123)
+                self.assertEqual(delivered["t"], timestamp)
+
+                stream = LogStream()
+                subscription = stream.subscribe()
+                subscription.messages.get_nowait()
+                stream.publish(delivered)
+                live = json.loads(subscription.messages.get_nowait())
+                history = json.loads(stream.subscribe().messages.get_nowait())
+                self.assertEqual(history["records"], live["records"])
+                self.assertEqual(history["records"][0]["at"], 1_700_000_000_123)
+                self.assertEqual(history["data"], f"{timestamp} INFO 正在等待场景变化")
+
+    @staticmethod
+    def task_snapshot():
+        return {
+            "header": "休息至 19:42:00，随后执行甲组下班、乙组上班",
+            "title": "甲组下班、乙组上班",
+            "rooms": [
+                {
+                    "id": "room_2_1",
+                    "label": "贸易站 B201",
+                    "agents": ["Current", "但书", "龙舌兰"],
+                }
+            ],
+            "backups": [{"name": "夜班", "active": True}],
+            "targets": [],
+        }
+
+    def test_task_snapshot_is_detached_before_the_async_consumer(self):
+        live_queue = log.LatestLogQueue(maxsize=4, drop_warning_interval=None)
+        frontend = log.LatestLogQueue(maxsize=4, drop_warning_interval=None)
+        source = logging.getLogger("arknights_mower.tests.task_snapshot")
+        previous_level, previous_propagate = source.level, source.propagate
+        source.propagate = False
+        source.setLevel(logging.INFO)
+        handler = log.LiveQueueHandler(live_queue)
+        source.addHandler(handler)
+        task = self.task_snapshot()
+        original = self.task_snapshot()
+        try:
+            source.info("任务预告", extra={"log_task": task})
+            task["rooms"][0]["agents"][1] = "错误的后续名单"
+            task["backups"][0]["name"] = "后续改名"
+            listener = QueueListener(
+                live_queue, log.dhlr, log.whlr, respect_handler_level=True
+            )
+            with patch.object(log, "frontend_log_queue", frontend):
+                listener.start()
+                try:
+                    record = frontend.get(timeout=2)
+                finally:
+                    listener.stop()
+        finally:
+            source.removeHandler(handler)
+            source.setLevel(previous_level)
+            source.propagate = previous_propagate
+        self.assertEqual(record["task"], original)
+        self.assertEqual(record["msg"], "任务预告")
+
+    def test_task_snapshot_obeys_message_budget_without_clipping_positions(self):
+        for value in (
+            {"rooms": "长" * log.LIVE_LOG_MESSAGE_LIMIT},
+            {"rooms": object()},
+            {"rooms": float("nan")},
+        ):
+            with self.subTest(value_type=type(value["rooms"]).__name__):
+                record = logging.LogRecord(
+                    "test", logging.INFO, __file__, 1, "完整计划见文件", (), None
+                )
+                record.log_task = value
+                prepared = log.LiveQueueHandler(Queue()).prepare(record)
+                self.assertNotIn("log_task", prepared.__dict__.keys())
+                record.asctime = "2026-11-04 18:30:02"
+                delivered = log._build_log_record(record, record.getMessage())
+                self.assertNotIn("task", delivered)
+                self.assertEqual(delivered["msg"], "完整计划见文件")
+                self.assertIs(record.log_task, value)
+
+    def test_task_snapshot_shares_the_existing_live_message_budget(self):
+        record = logging.LogRecord(
+            "test",
+            logging.INFO,
+            __file__,
+            1,
+            "正文" * (log.LIVE_LOG_MESSAGE_LIMIT // 2),
+            (),
+            None,
+        )
+        record.log_task = self.task_snapshot()
+        prepared = log.LiveQueueHandler(Queue()).prepare(record)
+        self.assertNotIn("log_task", prepared.__dict__.keys())
+        self.assertLessEqual(len(prepared.getMessage()), log.LIVE_LOG_MESSAGE_LIMIT)
+
+    def test_extra_fields_reach_frontend_record_through_live_queue(self):
+        # 与模块级管道相同：logger → LiveQueueHandler → QueueListener(dhlr, whlr)。
+        live_queue = log.LatestLogQueue(maxsize=4, drop_warning_interval=None)
+        frontend = log.LatestLogQueue(maxsize=4, drop_warning_interval=None)
+        source = logging.getLogger("arknights_mower.tests.live_record_fields")
+        source.propagate = False
+        source.setLevel(logging.DEBUG)
+        handler = log.LiveQueueHandler(live_queue)
+        source.addHandler(handler)
+        listener = QueueListener(
+            live_queue, log.dhlr, log.whlr, respect_handler_level=True
+        )
+        listener.start()
+        try:
+            with patch.object(log, "frontend_log_queue", frontend):
+                source.info(
+                    "安排干员：但书 → B101",
+                    extra={"log_room": "room_1_1", "log_agents": ["但书"]},
+                )
+                record = frontend.get(timeout=2)
+        finally:
+            listener.stop()
+            source.removeHandler(handler)
+        self.assertEqual(record["level"], "INFO")
+        self.assertEqual(record["msg"], "安排干员：但书 → B101")
+        self.assertEqual(record["room"], "room_1_1")
+        self.assertEqual(record["agents"], ["但书"])
+        self.assertTrue(record["t"])
+        self.assertNotIn("group", record)
 
 
 class LatestLogQueueTest(MultiProcessLogTestBase):

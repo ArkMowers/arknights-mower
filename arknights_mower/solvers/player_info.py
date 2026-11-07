@@ -81,7 +81,7 @@ class PlayerInfoClient:
             ).json()
         except Exception as exc:
             if retry_on_failure:
-                logger.info(
+                logger.debug(
                     "player info request retry after refresh | account=%s | method=%s | endpoint=%s | error_type=%s",
                     _masked_identity(item.account),
                     method.upper(),
@@ -98,7 +98,7 @@ class PlayerInfoClient:
                 )
             raise
         if response.get("code") != 0 and retry_on_failure:
-            logger.info(
+            logger.debug(
                 "player info response retry after refresh | account=%s | code=%s",
                 _masked_identity(item.account),
                 response.get("code"),
@@ -120,7 +120,7 @@ class PlayerInfoClient:
             if bindings:
                 return bindings
         except Exception as exc:
-            logger.info(
+            logger.debug(
                 "player info binding retry | account=%s | error_type=%s",
                 _masked_identity(item.account),
                 type(exc).__name__,
@@ -191,7 +191,7 @@ class PlayerInfoClient:
             if abs(normalized_raw_current - computed_ap) <= 1:
                 current_ap = normalized_raw_current
             else:
-                logger.warning(
+                logger.debug(
                     "player info ap mismatch, fallback to computed ap | account=%s | uid=%s | raw_current=%s | computed_ap=%s | completeRecoveryTime=%s",
                     _masked_identity(item.account),
                     _masked_identity(uid),
@@ -212,14 +212,14 @@ class PlayerInfoClient:
             raw_ap=ap,
             building_training=building_training,
         )
-        logger.info(
+        logger.debug(
             "player_info building_training_present: %s", building_training is not None
         )
         if building_training is None:
             building_full = resp.get("data", {}).get("building", {})
-            logger.info("player_info building_node_present: %s", bool(building_full))
+            logger.debug("player_info building_node_present: %s", bool(building_full))
             if not building_full:
-                logger.info(
+                logger.debug(
                     f"player_info building keys: {list(resp.get('data', {}).keys())}"
                 )
         cache_key = f"{snapshot.account}:{snapshot.uid}"
@@ -228,7 +228,18 @@ class PlayerInfoClient:
         return snapshot
 
     def log_snapshot(self, snapshot: PlayerInfoSnapshot):
+        if snapshot.full_recovery_time <= snapshot.fetched_at:
+            recovery = "已经回满"
+        else:
+            local_time = snapshot.full_recovery_time.astimezone()
+            recovery = f"预计 {local_time:%m-%d %H:%M} 回满"
         logger.info(
+            "从森空岛读取到角色 %s 的理智为 %s，%s",
+            _masked_identity(snapshot.nickname or snapshot.uid),
+            snapshot.current_ap,
+            recovery,
+        )
+        logger.debug(
             "森空岛理智状态 | 账号=%s | uid=%s | 角色=%s | 渠道=%s | current=%s | full_recovery_local=%s | raw_ap=%s",
             _masked_identity(snapshot.account),
             _masked_identity(snapshot.uid),
@@ -250,6 +261,11 @@ class PlayerInfoClient:
                     yield self.fetch_snapshot(item, binding)
                 except Exception as exc:
                     logger.error(
+                        "读取角色 %s 的信息失败（%s），跳过这个角色",
+                        _masked_identity(binding.get("nickName") or binding.get("uid")),
+                        type(exc).__name__,
+                    )
+                    logger.debug(
                         "fetch player info failed | account=%s | uid=%s | error_type=%s",
                         _masked_identity(item.account),
                         _masked_identity(binding.get("uid")),
@@ -257,16 +273,16 @@ class PlayerInfoClient:
                     )
 
     def get_first_available_snapshot(self) -> PlayerInfoSnapshot | None:
-        logger.info("start fetching first available skland player snapshot")
+        logger.debug("start fetching first available skland player snapshot")
         for snapshot in self.iter_account_snapshots():
-            logger.info(
+            logger.debug(
                 "selected skland player snapshot | account=%s | uid=%s | current_ap=%s",
                 _masked_identity(snapshot.account),
                 _masked_identity(snapshot.uid),
                 snapshot.current_ap,
             )
             return snapshot
-        logger.warning("no available skland player snapshot was found")
+        logger.debug("no available skland player snapshot was found")
         return None
 
     def log_selected_accounts_ap_status(self):

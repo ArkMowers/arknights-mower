@@ -657,3 +657,30 @@ def test_unconfirmed_initial_residents_use_full_selection(monkeypatch, mode):
     solver.choose_agent(target.copy(), "dormitory_1")
     assert selected == target
     assert solver.tap.call_args_list[0].args[0] == (729.6, 1026.0)
+
+
+def test_arrangement_log_names_operators_and_room(monkeypatch, caplog):
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    with caplog.at_level("DEBUG", logger="arknights_mower.utils.log"):
+        solver.choose_agent(["伊芙利特"], "dormitory_1")
+    assert selected == ["伊芙利特"]
+    lines = [r for r in caplog.records if r.getMessage().startswith("安排干员")]
+    assert [(r.levelname, r.getMessage()) for r in lines] == [
+        ("INFO", "安排干员：伊芙利特 → 1层宿舍")
+    ]
+    # 前端按结构化字段识别房间和干员，不再从正文里猜。
+    assert lines[0].log_room == "dormitory_1"
+    assert lines[0].log_agents == ["伊芙利特"]
+
+
+def test_reorder_without_new_operators_logs_at_debug(monkeypatch, caplog):
+    solver, selected = selection_solver(monkeypatch, residents=["伊芙利特"] + RESIDENTS)
+    with caplog.at_level("DEBUG", logger="arknights_mower.utils.log"):
+        solver.choose_agent(RESIDENTS + ["伊芙利特"], "dormitory_1")
+    assert selected == RESIDENTS + ["伊芙利特"]
+    assert not [r for r in caplog.records if r.getMessage().startswith("安排干员")]
+    assert [
+        r.levelname
+        for r in caplog.records
+        if r.getMessage() == "1层宿舍 没有需要新安排的干员"
+    ] == ["DEBUG"]

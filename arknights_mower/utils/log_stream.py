@@ -1,11 +1,14 @@
 """Keep WebSocket I/O out of the shared log consumer."""
 
 import json
-from collections import deque
+from copy import deepcopy
 from queue import Empty, Full, Queue
 from threading import Event, Lock
+from uuid import uuid4
 
 from simple_websocket import ConnectionClosed
+
+from arknights_mower.utils.log_history import LogHistory, record_text
 
 
 class Subscription:
@@ -15,21 +18,58 @@ class Subscription:
 
 
 class LogStream:
-    def __init__(self, history_limit=100, pending_limit=100):
-        self._history = deque(maxlen=history_limit)
+    def __init__(
+        self,
+        history_limit=100,
+        pending_limit=100,
+        *,
+        detail_limit=50,
+        source_limit=2000,
+        history_bytes=4 * 1024 * 1024,
+    ):
+        self._history_limits = (
+            history_limit,
+            detail_limit,
+            source_limit,
+            history_bytes,
+        )
         self._pending_limit = pending_limit
         self._subscriptions = set()
         self._lock = Lock()
+        self._reset_history()
+
+    def _reset_history(self):
+        self._stream_id = uuid4().hex
+        self._next_seq = 1
+        envelope_bytes = len(
+            json.dumps(self._message([], snapshot=True)).encode("utf-8")
+        )
+        self._history = LogHistory(*self._history_limits, envelope_bytes)
+
+    def _message(self, records, *, snapshot=False, evicted=None):
+        message = {
+            "type": "log",
+            "stream_id": self._stream_id,
+            "snapshot": snapshot,
+            "data": "\n".join(record_text(record) for record in records),
+            "records": records,
+        }
+        if not snapshot:
+            message["evicted"] = evicted or []
+        return message
 
     def clear(self):
         with self._lock:
-            self._history.clear()
+            self._reset_history()
+            self._broadcast(self._message([], snapshot=True))
 
     def subscribe(self):
         with self._lock:
             subscription = Subscription(self._pending_limit)
             subscription.messages.put_nowait(
-                json.dumps({"type": "log", "data": "\n".join(self._history)})
+                json.dumps(
+                    self._message(list(self._history.records.values()), snapshot=True)
+                )
             )
             self._subscriptions.add(subscription)
             return subscription
@@ -39,10 +79,14 @@ class LogStream:
             self._subscriptions.discard(subscription)
             subscription.closed.set()
 
-    def publish(self, message):
+    def publish(self, record):
+        """Publish one log record (dict) or legacy text string."""
+        record = deepcopy(record) if isinstance(record, dict) else {"msg": record}
         with self._lock:
-            self._history.append(message)
-            self._broadcast({"type": "log", "data": message})
+            record["seq"] = self._next_seq
+            self._next_seq += 1
+            evicted = self._history.append(record)
+            self._broadcast(self._message([record], evicted=evicted))
 
     def broadcast(self, message):
         with self._lock:

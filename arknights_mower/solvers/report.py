@@ -101,7 +101,7 @@ class ReportSolver(SceneGraphSolver):
         try:
             if self.find("riic/manufacture"):
                 self.crop_report()
-                logger.info(self.report_res)
+                logger.debug("基报识别读数：%s", self.report_res)
                 return self.record_report()
             logger.info("未加载出基报")
             self.sleep(1)
@@ -153,7 +153,7 @@ class ReportSolver(SceneGraphSolver):
         if all(value is None for value in self.report_res.values()):
             logger.warning(f"{self.date}的基建报告没有读到任何数据，不记录")
             return False
-        logger.info(f"存入{self.date}的数据{self.report_res}")
+        logger.debug("准备记录%s基报：%s", self.date, self.report_res)
         try:
             from arknights_mower.utils.csv_utils import append_dated_row
 
@@ -170,6 +170,34 @@ class ReportSolver(SceneGraphSolver):
             logger.exception(f"存入数据失败：{e}")
             return False
         self._stored = True
+        fields = {
+            "作战录像": ("作战录像", "经验", "中级作战记录"),
+            "赤金": ("赤金制造价值", "龙门币", "赤金"),
+            "龙门币订单": ("龙门币订单金额", "龙门币", "龙门币"),
+            "龙门币订单数": ("龙门币订单数", "笔", "龙门币"),
+            "合成玉": ("合成玉", "个", "合成玉"),
+            "合成玉订单数量": ("合成玉订单数", "笔", "合成玉"),
+        }
+        items = []
+        for name, value in self.report_res.items():
+            label, unit, item = fields.get(name, (name, "", name))
+            items.append({"name": label, "value": value, "unit": unit, "item": item})
+        logger.info(
+            f"已保存 {self.date} 的基报：\n"
+            + "\n".join(
+                f"{item['name']}："
+                + (
+                    "未读出"
+                    if item["value"] is None
+                    else f"{item['value']}"
+                    + (f" {item['unit']}" if item["unit"] else "")
+                )
+                for item in items
+            ),
+            extra={
+                "log_event": {"type": "base-report", "date": self.date, "items": items}
+            },
+        )
         # Expand the report to show the last three days before the email capture.
         self.tap((1253, 81), interval=2)
         try:

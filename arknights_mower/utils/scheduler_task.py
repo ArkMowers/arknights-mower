@@ -684,24 +684,25 @@ def _is_dorm_only_task(task):
 def blocked_run_order_ids(tasks, op_data=None):
     """根据实际驻员判断等待中的普通跑单；保留任务，但不占用关键窗口。"""
     restorations = [
-        task
+        (task, roster)
         for task in tasks
         if task.type == TaskTypes.RUN_ORDER
         and getattr(task, "run_order_restore_pending", False)
+        and (roster := getattr(task, "run_order_original_roster", None)) is not None
     ]
     if not restorations:
         return set()
-    rooms = {room for task in restorations for room in task.run_order_original_roster}
+    rooms = {room for _, roster in restorations for room in roster}
     reserved = {
         name
-        for task in restorations
-        for row in task.run_order_original_roster.values()
+        for _, roster in restorations
+        for row in roster.values()
         for name in row
         if name not in ("", "Free", "Current")
     }
     reserved.update(
         name
-        for task in restorations
+        for task, _ in restorations
         if (pending := getattr(task, "run_order_confirmation_pending", None))
         and pending["submitted"]
         for name in pending["target"]
@@ -709,13 +710,14 @@ def blocked_run_order_ids(tasks, op_data=None):
     )
     conflicting_rooms = set(rooms)
     if op_data is not None:
+        operators = op_data.operators.copy()
         conflicting_rooms.update(
             op.current_room
             for name in reserved
-            if (op := op_data.operators.get(name)) is not None and op.is_working()
+            if (op := operators.get(name)) is not None and op.is_working()
         )
         reserved.update(
-            name for name, op in op_data.operators.items() if op.current_room in rooms
+            name for name, op in operators.items() if op.current_room in rooms
         )
         # 首次选人可能尚未确认；配置中的实际换入人选仍归这次补偿占用。
         reserved.update(
@@ -729,8 +731,7 @@ def blocked_run_order_ids(tasks, op_data=None):
     blocked = {
         id(task)
         for task in tasks
-        if restorations
-        and task.type == TaskTypes.RUN_ORDER
+        if task.type == TaskTypes.RUN_ORDER
         and task.meta_data
         and not getattr(task, "run_order_restore_pending", False)
         and (
@@ -738,7 +739,7 @@ def blocked_run_order_ids(tasks, op_data=None):
             or conflicting_rooms.intersection(task.plan)
             or any(
                 name in reserved
-                for row in task.plan.values()
+                for row in task.plan.copy().values()
                 for name in row
                 if name not in ("", "Free", "Current")
             )
@@ -747,12 +748,12 @@ def blocked_run_order_ids(tasks, op_data=None):
     if op_data is not None:
         blocked.update(
             id(task)
-            for task in restorations
+            for task, roster in restorations
             if any(
-                (op := op_data.operators.get(name)) is not None
+                (op := operators.get(name)) is not None
                 and op.is_working()
                 and op.current_room != room
-                for room, row in task.run_order_original_roster.items()
+                for room, row in roster.items()
                 for name in row
                 if name not in ("", "Free", "Current")
             )
@@ -1134,7 +1135,7 @@ def _find_run_order_conflict(tasks, run_order_delay=5, time_now=None, op_data=No
             and now < previous_order.time
             and not task.adjusted
         ):
-            logger.info("检测到跑单任务过于接近，准备修正跑单时间")
+            logger.debug("检测到跑单任务过于接近，准备修正跑单时间")
             return previous_order, task
         previous_order = task
 
@@ -1905,7 +1906,7 @@ def rebalance_plan_swap_dorms(
     for bed in op_data.dorm:
         if bed.position not in destinations and bed.position not in locked_positions:
             bed.reset()
-    logger.info(
+    logger.debug(
         "副表切换后重排宿舍：保留%s，离开%s",
         sorted(assigned),
         sorted(set(unique) - assigned),
@@ -3671,14 +3672,20 @@ def try_add_release_dorm(
             }
         task.plan = isolated
         tasks.append(task)
+        from arknights_mower.utils.task_presentation import (
+            build_task_presentation,
+            format_task_log_message,
+        )
+
+        snapshot = build_task_presentation(task, op_data)
+        if not filling_vacancies and not priority_only:
+            header = f"当前没有可用空床，已生成宿舍调整任务「{snapshot['title']}」，执行时间 {task.time}"
+        else:
+            purpose = "宿舍补位" if filling_vacancies else "高优恢复"
+            header = f"已添加{purpose}任务「{snapshot['title']}」，执行时间 {task.time}"
+        snapshot["header"] = header
         logger.info(
-            "添加%s任务完成：%s",
-            "宿舍补位"
-            if filling_vacancies
-            else "高优恢复"
-            if priority_only
-            else "宿舍恢复接管",
-            task.plan,
+            format_task_log_message(snapshot, header), extra={"log_task": snapshot}
         )
     except Exception as ex:
         logger.exception(ex)

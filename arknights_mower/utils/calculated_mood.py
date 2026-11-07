@@ -11,13 +11,68 @@ from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 from time import perf_counter
+from uuid import uuid4
 
 _runtime = threading.local()
 _DATA = Path(__file__).parents[1] / "data" / "mood"
+_MOOD_INPUTS = "更新设施和基建技能资料"
+MOOD_ESTIMATE = "推算心情和变化速度"
+MOOD_DEADLINE = "推算达到目标心情的时间"
 
 
 def _rules_hash():
     return json.loads((_DATA / "source.json").read_text("utf-8"))["rules_sha256"]
+
+
+def _log_mood_timing(timing, phase, status):
+    from arknights_mower.utils.log import logger
+
+    message = f"{timing['label']}：{status}"
+    parent = timing["parent"]
+    logger.info(
+        message,
+        extra={
+            "log_parent": parent,
+            "log_event": {
+                **parent,
+                "label": timing["label"],
+                "phase": phase,
+                "anchor": phase == "started",
+                "summary": message,
+            },
+        },
+    )
+
+
+def _finish_mood_timing(timing, *, failed=False):
+    elapsed = timing["elapsed"]
+    if not elapsed or timing["measuring"]:
+        return
+    from arknights_mower.utils.log import logger
+
+    if len(elapsed) > 1:
+        logger.info(
+            "分项耗时：%s",
+            "、".join(
+                f"{work} {duration:.3f} 秒" for work, duration in elapsed.items()
+            ),
+            extra={"log_parent": timing["parent"]},
+        )
+    result = "中断" if failed else "完成"
+    _log_mood_timing(
+        timing,
+        "failed" if failed else "completed",
+        f"心情推算{result}，耗时 {sum(elapsed.values()):.3f} 秒",
+    )
+    elapsed.clear()
+    timing["parent"] = None
+    timing["last_work"] = None
+
+
+def finish_mood_calculation():
+    """进入独立的设备操作前结束当前心情推算。"""
+    if (timing := getattr(_runtime, "timing", None)) is not None:
+        _finish_mood_timing(timing)
 
 
 def log_mood_calculation(label):
@@ -33,48 +88,69 @@ def log_mood_calculation(label):
                 or getattr(_runtime, "timing", None) is not None
             ):
                 return function(self, *args, **kwargs)
-            timing = {"elapsed": 0.0, "calls": 0, "measuring": False}
+            timing = {
+                "parent": None,
+                "label": label,
+                "elapsed": {},
+                "last_work": None,
+                "measuring": False,
+            }
             _runtime.timing = timing
-            result = "完成"
             try:
                 return function(self, *args, **kwargs)
-            except BaseException:
-                result = "中断"
-                raise
             finally:
                 _runtime.timing = None
-                if timing["calls"]:
-                    from arknights_mower.utils.log import logger
-
-                    logger.info(
-                        "实时心情计算耗时：%s，模型同步与预测累计 %.3f 秒，计算调用 %d 次，%s",
-                        label,
-                        timing["elapsed"],
-                        timing["calls"],
-                        result,
-                    )
+                _finish_mood_timing(timing)
 
         return wrapped
 
     return decorate
 
 
-def measure_mood_calculation(function):
-    @wraps(function)
-    def wrapped(*args, **kwargs):
-        timing = getattr(_runtime, "timing", None)
-        if timing is None or timing["measuring"]:
-            return function(*args, **kwargs)
-        timing["measuring"] = True
-        started = perf_counter()
-        try:
-            return function(*args, **kwargs)
-        finally:
-            timing["elapsed"] += perf_counter() - started
-            timing["calls"] += 1
-            timing["measuring"] = False
+def measure_mood_calculation(work):
+    def decorate(function):
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            timing = getattr(_runtime, "timing", None)
+            if timing is None or timing["measuring"]:
+                return function(*args, **kwargs)
+            from arknights_mower.utils.log import log_parent_context, logger
 
-    return wrapped
+            timing["measuring"] = True
+            elapsed = timing["elapsed"]
+            failed = False
+            try:
+                first = timing["parent"] is None
+                if first:
+                    timing["parent"] = {"type": "mood-calculation", "id": uuid4().hex}
+                    _log_mood_timing(
+                        timing, "started", "正在推算干员工作或休息时的心情变化"
+                    )
+                with log_parent_context(timing["parent"]):
+                    if work != timing["last_work"]:
+                        timing["last_work"] = work
+                        logger.info(
+                            "%s%s",
+                            work,
+                            "（推算从已有心情读数开始）" if first else "",
+                        )
+                    elapsed.setdefault(work, 0.0)
+                    started = perf_counter()
+                    try:
+                        return function(*args, **kwargs)
+                    except BaseException:
+                        failed = True
+                        raise
+                    finally:
+                        elapsed[work] += perf_counter() - started
+            finally:
+                timing["measuring"] = False
+                if failed:
+                    _finish_mood_timing(timing, failed=True)
+
+        return wrapped
+
+    return decorate
 
 
 def _shared_runtime():
@@ -252,7 +328,7 @@ class CalculatedMood:
         self._cached_rates = result["rates"]
         return result["rates"]
 
-    @measure_mood_calculation
+    @measure_mood_calculation(MOOD_ESTIMATE)
     def advance(self, now=None):
         now = now or datetime.now()
         if self.at is None:
@@ -322,7 +398,7 @@ class CalculatedMood:
         projected.advance(future)
         return cls._deadline_node(projected)
 
-    @measure_mood_calculation
+    @measure_mood_calculation(MOOD_ESTIMATE)
     def value(self, name, now=None):
         if name not in self.moods:
             return None
@@ -450,7 +526,7 @@ class CalculatedMood:
                 self.moods.pop(name, None)
         return self
 
-    @measure_mood_calculation
+    @measure_mood_calculation(MOOD_DEADLINE)
     def deadline(self, name, target, now=None, max_hours=240):
         now = now or datetime.now()
         if name not in self.moods:
@@ -537,7 +613,7 @@ class CalculatedMood:
         return None
 
 
-@measure_mood_calculation
+@measure_mood_calculation(_MOOD_INPUTS)
 def sync_model(owner, now=None, *, advance_clock=True):
     from arknights_mower.utils import config
 

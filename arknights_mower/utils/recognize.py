@@ -56,6 +56,10 @@ class NetworkWaitGuard:
 # 已警告过尺寸不符的颜色匹配模板；元素来自 find 中固定的模板名，数量有上限。
 _mismatched_templates: set[str] = set()
 
+# 场景识别日志的静默期（秒）：同一场景在静默期内重复识别只记 DEBUG，
+# 场景变化或超过静默期才记 INFO，避免重复场景占满实时日志。
+SCENE_LOG_QUIET_PERIOD = 60.0
+
 
 class Recognizer:
     def __init__(self, device: Device, screencap: bytes = None) -> None:
@@ -228,6 +232,20 @@ class Recognizer:
                 self.device.exit()
                 # 退出后旧场景已失效，导航必须重新获取画面。
                 self.clear()
+
+    def _log_scene(self, message: str) -> None:
+        """记录场景识别结果；静默期从上次按 INFO 报告该场景时算起。"""
+        now = time.monotonic()
+        if (
+            getattr(self, "_logged_scene", None) == self.scene
+            and now - self._logged_scene_at < SCENE_LOG_QUIET_PERIOD
+        ):
+            # stacklevel 让 runtime.log 仍记录识别函数名和行号。
+            logger.debug(message, stacklevel=2)
+            return
+        self._logged_scene = self.scene
+        self._logged_scene_at = now
+        logger.info(message, stacklevel=2)
 
     def get_scene(self) -> int:
         """get the current scene in the game"""
@@ -490,7 +508,7 @@ class Recognizer:
             self.scene = Scene.UNKNOWN
             self.check_current_focus()
 
-        logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
+        self._log_scene(f"Scene {self.scene}: {SceneComment[self.scene]}")
         self.check_freeze(current_time)
         return self.scene
 
@@ -607,7 +625,7 @@ class Recognizer:
         if self.scene == Scene.UNKNOWN:
             logger.debug(log_msg)
         else:
-            logger.info(log_msg)
+            self._log_scene(log_msg)
 
         self.check_loading_time()
 
@@ -668,7 +686,7 @@ class Recognizer:
         if self.scene == Scene.UNKNOWN:
             logger.debug(log_msg)
         else:
-            logger.info(log_msg)
+            self._log_scene(log_msg)
 
         self.check_loading_time()
 
