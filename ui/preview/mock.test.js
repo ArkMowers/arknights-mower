@@ -19,6 +19,18 @@ afterEach(() => {
 })
 
 describe('offline preview', () => {
+  it('supplies a single task forecast and readable refresh target without inferring group shifts', () => {
+    const data = createPreviewData({})
+    const forecast = data.logs.find((entry) => entry.task)
+    expect(forecast.task).toMatchObject({
+      title: '安排干员',
+      rooms: [{ id: 'room_2_1', label: '贸易站 B201', agents: ['Current', '但书', '龙舌兰'] }],
+      backups: []
+    })
+    expect(data.tasks.find((task) => task.meta_data === 'room_2_1').presentation.targets).toEqual([
+      { id: 'room_2_1', label: '贸易站 B201' }
+    ])
+  })
   it('loads the new shop and copilot forms without device or resource access', async () => {
     const client = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
     expect((await client.get('/maa-event-shop')).data).toEqual({ shops: [] })
@@ -129,7 +141,8 @@ describe('offline preview', () => {
       watermark_visible: true,
       task_settings_layout: 'checklist',
       base_report_mode: 'standard',
-      halloween_mode: 'auto'
+      halloween_mode: 'auto',
+      task_queue_display: 'portraits'
     })
     await client.put('/gui/appearance', { task_settings_layout: 'waterfall' })
     await client.put('/gui/appearance', { software_version_display: 'channel' })
@@ -148,7 +161,8 @@ describe('offline preview', () => {
       watermark_visible: false,
       task_settings_layout: 'waterfall',
       base_report_mode: 'standard',
-      halloween_mode: 'auto'
+      halloween_mode: 'auto',
+      task_queue_display: 'portraits'
     })
     expect(data.config).toEqual(originalConfig)
     expect(data.appearance).not.toHaveProperty('watermark_confirmation')
@@ -158,7 +172,8 @@ describe('offline preview', () => {
       watermark_visible: true,
       task_settings_layout: 'checklist',
       base_report_mode: 'standard',
-      halloween_mode: 'auto'
+      halloween_mode: 'auto',
+      task_queue_display: 'portraits'
     })
     expect(data.appearance).toEqual({
       software_version_display: 'version',
@@ -166,7 +181,8 @@ describe('offline preview', () => {
       watermark_visible: true,
       task_settings_layout: 'checklist',
       base_report_mode: 'standard',
-      halloween_mode: 'auto'
+      halloween_mode: 'auto',
+      task_queue_display: 'portraits'
     })
   })
 
@@ -620,6 +636,33 @@ describe('offline preview', () => {
     })
   })
 
+  it('serves sample daily records for the current game day in every record state', async () => {
+    const data = createPreviewData({ theme: 'light' })
+    const client = axios.create({ adapter: createPreviewAdapter(data) })
+    const { data: daily } = await client.get('/daily-status')
+    expect(daily.game_day).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(daily.source).toBe('live')
+    expect(new Set(Object.values(daily.records))).toEqual(new Set(['done', 'attempted', 'pending']))
+    expect(daily.activities.recruit).toMatchObject({
+      last_checked_at: expect.stringMatching(/T09:30:00\+08:00$/u),
+      next_eligible_at: expect.stringMatching(/T10:30:00\+08:00$/u)
+    })
+    expect(daily.activities['stage-plan']).toMatchObject({
+      last_observation: { runner: 'mower', outcome: 'completed', executed_runs: 3 }
+    })
+    expect(daily.activities.long.progress).toEqual({
+      completed: 1,
+      total: 3,
+      failed: false,
+      rounds: 2,
+      round_total: 5
+    })
+    daily.activities.recruit.last_checked_at = 'changed-response'
+    expect(data.activities.recruit.last_checked_at).not.toBe('changed-response')
+    data.status = 'stopped'
+    expect((await client.get('/daily-status')).data.source).toBe('saved')
+  })
+
   it('shows update controls and saves software settings without changing the input configuration', async () => {
     const data = createPreviewData({ theme: 'light' })
     const original = structuredClone(data.config)
@@ -830,8 +873,12 @@ describe('offline preview', () => {
     const data = createPreviewData({ theme: 'light' })
     const client = axios.create({ adapter: createPreviewAdapter(data) })
     expect(data.logs.length).toBeGreaterThanOrEqual(50)
+    const logText = (line) =>
+      typeof line === 'string' ? line : [line.t, line.level, line.msg].filter(Boolean).join(' ')
     for (const level of ['INFO', 'WARNING', 'ERROR'])
-      expect(data.logs.some((line) => line.includes(level))).toBe(true)
+      expect(data.logs.some((line) => logText(line).includes(level))).toBe(true)
+    expect(data.logs.some((line) => line.group === 'recognition')).toBe(true)
+    expect(data.logs.some((line) => line.room === 'room_1_1')).toBe(true)
     const { data: tasks } = await client.get('http://real-backend.invalid/task')
     expect(tasks).toHaveLength(5)
     expect(
@@ -940,6 +987,28 @@ describe('offline preview', () => {
       type: 'log',
       data: 'INFO preview\nERROR preview'
     })
+    socket.close()
+    expect(socket.readyState).toBe(Socket.CLOSED)
+  })
+
+  it('delivers structured records when the fixture uses log objects', () => {
+    vi.useFakeTimers()
+    const records = [
+      {
+        t: '2026-11-02 18:00:00,000',
+        level: 'INFO',
+        msg: 'Scene 9998: 场景跳转时的等待界面',
+        group: 'recognition'
+      }
+    ]
+    const Socket = previewWebSocket(records)
+    const socket = new Socket('ws://real-backend.invalid/log')
+    const listener = vi.fn()
+    socket.addEventListener('message', listener)
+    vi.runAllTimers()
+    const payload = JSON.parse(listener.mock.calls[0][0].data)
+    expect(payload.data).toBe('2026-11-02 18:00:00,000 INFO Scene 9998: 场景跳转时的等待界面')
+    expect(payload.records).toEqual(records)
     socket.close()
     expect(socket.readyState).toBe(Socket.CLOSED)
   })

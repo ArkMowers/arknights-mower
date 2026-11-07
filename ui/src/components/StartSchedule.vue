@@ -3,9 +3,8 @@ import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import AlarmOutline from '@vicons/ionicons5/es/AlarmOutline'
-import PlayIcon from '@vicons/ionicons5/es/Play'
+import PlayIcon from '@vicons/ionicons5/es/PlayOutline'
 import { useMowerStore } from '@/stores/mower'
-import HalloweenDecor from '@/components/HalloweenDecor.vue'
 import { useHalloweenSeason } from '@/composables/halloween'
 
 const halloweenActive = useHalloweenSeason()
@@ -35,7 +34,8 @@ const halloweenButtonTheme = computed(() =>
 const props = defineProps({
   start: { type: Function, required: true },
   startOptions: { type: Array, required: true },
-  waiting: { type: Boolean, default: false }
+  waiting: { type: Boolean, default: false },
+  glassMenu: { type: Boolean, default: false }
 })
 
 const axios = inject('axios')
@@ -147,6 +147,7 @@ function select(key) {
       :options="scheduled_start_at ? scheduledOptions : startOptions"
       type="primary"
       :up="true"
+      :glass-menu="glassMenu"
       :class="{ 'halloween-start': halloweenActive }"
     >
       <n-button
@@ -173,8 +174,7 @@ function select(key) {
         aria-label="开始执行"
       >
         <template #icon
-          ><HalloweenDecor v-if="halloweenActive" kind="lantern" /><n-icon v-else
-            ><play-icon /></n-icon
+          ><n-icon><play-icon /></n-icon
         ></template>
         <span class="start-label">开始执行</span>
       </n-button>
@@ -210,26 +210,6 @@ function select(key) {
   box-shadow:
     inset 0 1px 0 #ffe5b680,
     0 2px 8px #c58b2926;
-}
-.halloween-start__button :deep(.n-button__icon) {
-  width: 26px;
-  height: 26px;
-  margin-right: 7px;
-}
-.halloween-start__button :deep(.n-icon-slot) {
-  width: 26px;
-  height: 26px;
-}
-.halloween-start__button :deep(.halloween-lantern) {
-  transition: transform 180ms ease;
-}
-.halloween-start__button:enabled:hover :deep(.halloween-lantern) {
-  transform: rotate(-9deg);
-}
-@media (prefers-reduced-motion: reduce) {
-  .halloween-start__button :deep(.halloween-lantern) {
-    transition: none;
-  }
 }
 @container main-content (max-width: 500px) {
   .start-label {

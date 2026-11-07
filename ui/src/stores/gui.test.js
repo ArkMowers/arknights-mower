@@ -34,6 +34,32 @@ afterEach(() => {
 })
 
 describe('shared GUI appearance preferences', () => {
+  it('saves only the task list display choice and restores it on a later load', async () => {
+    const { store } = createStore()
+    expect(store.taskQueueDisplay).toBe('portraits')
+    expect(await store.setTaskQueueDisplay('names')).toBe(false)
+    await store.load()
+
+    axios.put.mockRejectedValueOnce(new Error('save failed'))
+    expect(await store.setTaskQueueDisplay('names')).toBe(false)
+    expect(store.taskQueueDisplay).toBe('portraits')
+    expect(store.taskQueueDisplayError).toContain('已恢复原来的显示')
+
+    expect(await store.retryTaskQueueDisplay()).toBe(true)
+    expect(store.taskQueueDisplay).toBe('names')
+    expect(axios.put).toHaveBeenLastCalledWith(
+      expect.stringMatching(/\/gui\/appearance$/),
+      { task_queue_display: 'names' },
+      { timeout: 5000 }
+    )
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', task_queue_display: 'names' }
+    })
+    const { store: reloaded } = createStore()
+    expect(await reloaded.load()).toBe(true)
+    expect(reloaded.taskQueueDisplay).toBe('names')
+  })
+
   it('shares one version-default store and disables editing before the initial read', async () => {
     const { pinia, store } = createStore()
     expect(useGuiStore(pinia)).toBe(store)

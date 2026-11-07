@@ -320,6 +320,7 @@ describe('desktop page startup', () => {
       updates_enabled: true,
       deployment: null,
       listen_ws: vi.fn(),
+      clear_legacy_logs: vi.fn(),
       get_running: vi.fn(async () => {
         state.mower.auto_start_handled = true
         state.mower.desktop_startup_handled = true
@@ -356,7 +357,10 @@ describe('desktop page startup', () => {
     })
     const rootClasses = new Set()
     vi.stubGlobal('document', {
+      hidden: false,
       location: { search: '' },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
       getAnimations: vi.fn(() => []),
       documentElement: {
         clientWidth: 1000,
@@ -629,6 +633,9 @@ describe('desktop page startup', () => {
     if (initial) await router.push(initial)
     state.router = router
     state.route = reactive({
+      get name() {
+        return router.currentRoute.value.name
+      },
       get meta() {
         return router.currentRoute.value.meta
       },
@@ -638,6 +645,72 @@ describe('desktop page startup', () => {
     })
     return router
   }
+
+  it.each(['/record/depot', '/mowersettings'])(
+    'refreshes an open log subscription when returning from %s',
+    async (otherPage) => {
+      const router = await useSettingsRouter('/')
+      await mount()
+      const reconnect = vi.fn()
+      state.mower.ws = { readyState: WebSocket.OPEN, reconnect }
+
+      await router.push('/#task-queue')
+      await router.push(otherPage)
+      expect(reconnect).not.toHaveBeenCalled()
+
+      await router.push('/')
+      expect(reconnect).toHaveBeenCalledOnce()
+      expect(state.mower.listen_ws).toHaveBeenCalledOnce()
+
+      state.mower.ws.readyState = WebSocket.CONNECTING
+      await router.push(otherPage)
+      await router.push('/')
+      expect(reconnect).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('refreshes the log subscription when the document becomes visible again', async () => {
+    const router = await useSettingsRouter('/')
+    const events = new EventTarget()
+    document.addEventListener = events.addEventListener.bind(events)
+    document.removeEventListener = events.removeEventListener.bind(events)
+    const setHidden = (hidden) => {
+      document.hidden = hidden
+      events.dispatchEvent(new Event('visibilitychange'))
+    }
+    await mount()
+    const reconnect = vi.fn(() => {
+      state.mower.ws.readyState = WebSocket.CONNECTING
+    })
+    state.mower.ws = { readyState: WebSocket.OPEN, reconnect }
+
+    setHidden(true)
+    expect(reconnect).not.toHaveBeenCalled()
+    setHidden(false)
+    expect(reconnect).toHaveBeenCalledOnce()
+
+    setHidden(true)
+    setHidden(false)
+    expect(reconnect).toHaveBeenCalledOnce()
+
+    state.mower.ws.readyState = WebSocket.OPEN
+    await router.push('/record/depot')
+    setHidden(true)
+    setHidden(false)
+    expect(reconnect).toHaveBeenCalledOnce()
+
+    setHidden(true)
+    await router.push('/')
+    expect(reconnect).toHaveBeenCalledOnce()
+    setHidden(false)
+    expect(reconnect).toHaveBeenCalledTimes(2)
+
+    state.mower.ws.readyState = WebSocket.OPEN
+    unmount()
+    setHidden(true)
+    setHidden(false)
+    expect(reconnect).toHaveBeenCalledTimes(2)
+  })
 
   it('installs the configuration generation before loading stores and page data', async () => {
     state.config.load_config.mockImplementation(async () => {
@@ -874,6 +947,61 @@ describe('desktop page startup', () => {
     expect(html.match(/data-menu-active="true"/g)).toHaveLength(1)
     expect(html).toContain('data-menu-mode="brand"')
   })
+
+  it.each(['log', 'doc', 'plan', 'settings', 'report'])(
+    'uses the same browser header on the mobile %s page',
+    async (routeName) => {
+      state.route.name = routeName
+      state.gui.halloweenMode = 'on'
+      window.innerWidth = 390
+      document.documentElement.clientWidth = 390
+      const component = await mount()
+      const html = await renderShell(component)
+      expect(html).toMatch(/<header[^>]*class="app-menu-header"[^>]*>/)
+      expect(html).toContain('--halloween-header-height:36px')
+      expect(html).toContain('halloween-backdrop__canopy')
+      expect(html.match(/data-menu-active="true"/g)).toHaveLength(1)
+      expect(html.indexOf('class="app-menu-header"')).toBeLessThan(
+        html.indexOf('class="outer-layout"')
+      )
+    }
+  )
+
+  it('opens and closes the mobile drawer from the Mower menu', async () => {
+    state.gui.halloweenMode = 'on'
+    window.innerWidth = 390
+    document.documentElement.clientWidth = 390
+    const component = await mount()
+    component.handleViewAction('toggle-sidebar')
+    expect(component.mobileMenuOpen.value).toBe(true)
+    component.handleViewAction('toggle-sidebar')
+    expect(component.mobileMenuOpen.value).toBe(false)
+    expect(state.mower.running).toBe(false)
+  })
+
+  it.each([
+    [750, 1, false, true],
+    [600, 1.5, false, false],
+    [1000, 1, false, true],
+    [390, 1, true, false]
+  ])(
+    'adapts the header at width=%s, zoom=%s, native=%s, sidebar hidden=%s',
+    async (width, zoom, nativeShell, hidden) => {
+      state.gui.halloweenMode = 'on'
+      state.config.webview.scale = zoom
+      state.shellActive = nativeShell
+      window.innerWidth = width
+      document.documentElement.clientWidth = width
+      const component = await mount()
+      component.sidebarHidden.value = hidden
+      const html = await renderShell(component)
+      expect(component.mobileBrowser.value).toBe(!nativeShell && width / zoom < 850)
+      expect(html.includes('provider--mobile-browser')).toBe(!nativeShell && width / zoom < 850)
+      expect(html.includes('class="app-menu-header"')).toBe(!nativeShell)
+      expect(html.includes('data-app-menus')).toBe(!nativeShell)
+      expect(html).toContain('--halloween-header-height:36px')
+    }
+  )
 
   it('keeps instance management out of instance windows even with a native bridge', async () => {
     const getInstances = vi.fn()
@@ -1158,6 +1286,7 @@ describe('desktop page startup', () => {
   it('retains the page startup fallback for hosts without desktop startup ownership', async () => {
     state.mower.get_running.mockImplementation(async () => {})
     await mount()
+    expect(state.mower.clear_legacy_logs).toHaveBeenCalledOnce()
     expect(state.client.get).toHaveBeenCalledWith(expect.stringContaining('/start/0'))
     expect(state.resource.installResource).toHaveBeenCalledOnce()
   })
