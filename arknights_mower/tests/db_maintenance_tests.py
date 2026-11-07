@@ -63,7 +63,14 @@ def test_compaction_restores_export_without_deleting_retained_data(
     rejected = client.get("/config-backup/export", headers=HEADERS)
     assert rejected.status_code == 409
     assert "16 MiB" in rejected.json["message"]
-    compacted = client.post("/db-admin/compact", headers=HEADERS)
+    compacted = client.post(
+        "/db-admin/compact",
+        headers={
+            **HEADERS,
+            "Host": "127.0.0.1:58000",
+            "Origin": "https://mower.example:8443",
+        },
+    )
     assert compacted.status_code == 200
     assert compacted.json["before_bytes"] == before["database_bytes"]
     assert compacted.json["after_bytes"] < 100000
@@ -112,7 +119,7 @@ def test_authentication_precedes_database_and_settings_access(
 @pytest.mark.parametrize(
     "path,method", [("/db-admin/compact", "POST"), ("/db-admin/backup-limit", "PUT")]
 )
-def test_busy_maintenance_and_cross_origin_requests_do_not_change_storage(
+def test_busy_maintenance_and_invalid_credentials_preserve_storage(
     client, monkeypatch, path, method
 ):
     compact = Mock(side_effect=AssertionError("busy compaction"))
@@ -134,7 +141,23 @@ def test_busy_maintenance_and_cross_origin_requests_do_not_change_storage(
         client.open(
             path,
             method=method,
-            headers={**HEADERS, "Origin": "https://unrelated.example"},
+            headers={
+                **HEADERS,
+                "Host": "127.0.0.1:58000",
+                "Origin": "https://mower.example:8443",
+            },
+        ).status_code
+        == 409
+    )
+    assert (
+        client.open(
+            path,
+            method=method,
+            headers={
+                **HEADERS,
+                "token": "wrong",
+                "Origin": "https://mower.example:8443",
+            },
         ).status_code
         == 403
     )
@@ -162,7 +185,13 @@ def test_configured_limit_applies_to_export_full_import_and_profile_import(
     assert client.get("/config-backup/export", headers=HEADERS).status_code == 409
     config.gui_path.write_text("window_ratio: 0.8\n", encoding="utf-8")
     response = client.put(
-        "/db-admin/backup-limit", headers=HEADERS, json={"backup_limit_mib": 32}
+        "/db-admin/backup-limit",
+        headers={
+            **HEADERS,
+            "Host": "127.0.0.1:58000",
+            "Origin": "https://mower.example:8443",
+        },
+        json={"backup_limit_mib": 32},
     )
     assert response.status_code == 200
     assert response.json["backup_limit_mib"] == 32

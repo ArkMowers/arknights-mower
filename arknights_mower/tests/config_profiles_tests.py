@@ -1157,7 +1157,7 @@ def _headers(generation="0", **extra):
     }
 
 
-def test_http_auth_settings_origin_and_generation_guards(client):
+def test_http_auth_settings_and_generation_guards_after_forwarding(client):
     assert client.get("/config-profiles").status_code == 403
     assert (
         client.get("/config-profiles", headers={"token": "secret"}).status_code == 200
@@ -1171,7 +1171,9 @@ def test_http_auth_settings_origin_and_generation_guards(client):
     )
     assert (
         client.post(
-            "/config-profiles", json=body, headers=_headers(Origin="https://other.test")
+            "/config-profiles",
+            json=body,
+            headers=_headers(token="wrong", Origin="https://mower.example:8443"),
         ).status_code
         == 403
     )
@@ -1183,7 +1185,11 @@ def test_http_auth_settings_origin_and_generation_guards(client):
         ).json["code"]
         == "configuration_changed"
     )
-    result = client.post("/config-profiles", json=body, headers=_headers())
+    result = client.post(
+        "/config-profiles",
+        json=body,
+        headers=_headers(Host="127.0.0.1:58000", Origin="https://mower.example:8443"),
+    )
     assert result.status_code == 200
     assert result.json["generation"] != "0"
     assert (
