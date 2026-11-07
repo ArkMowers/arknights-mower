@@ -121,10 +121,14 @@ class cultivate:
                 if force_inventory and items is None:
                     if calibrate:
                         from arknights_mower.solvers.record import save_inventory_counts
+                        from arknights_mower.utils.depot import latest_scanned_inventory
 
                         save_inventory_counts(
                             {},
                             scanned_counts={},
+                            scanned_observations=latest_scanned_inventory(
+                                observed_at, invalidation_scope=invalidation_scope
+                            ),
                             cloud_counts={},
                             cloud_at=observed_at,
                             force_cloud=True,
@@ -149,14 +153,24 @@ class cultivate:
                     logger.exception("养成统计缓存保存失败")
                 if calibrate or items is not None:
                     from arknights_mower.solvers.record import save_inventory_counts
-                    from arknights_mower.utils.depot import cloud_inventory_snapshot
+                    from arknights_mower.utils.depot import (
+                        cloud_explicit_inventory_names,
+                        cloud_inventory_snapshot,
+                        latest_scanned_inventory,
+                    )
 
                     counts, timestamp = cloud_inventory_snapshot(resp)
+                    inventory_at = observed_at if calibrate else timestamp
+                    scanned_observations = latest_scanned_inventory(
+                        inventory_at, invalidation_scope=invalidation_scope or ()
+                    )
                     save_inventory_counts(
                         counts,
                         scanned_counts={},
+                        scanned_observations=scanned_observations,
                         cloud_counts=counts,
-                        cloud_at=observed_at if calibrate else timestamp,
+                        cloud_at=inventory_at,
+                        cloud_explicit_names=cloud_explicit_inventory_names(resp),
                         force_cloud=force_inventory or calibrate,
                         invalidate_missing=calibrate,
                         invalidation_scope=invalidation_scope,

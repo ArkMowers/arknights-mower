@@ -287,6 +287,26 @@ def test_scan_and_merged_rows_merge_into_one_complete_snapshot(depot_lines):
     assert 快照["items"]["额外+碎片"] == 0.9
 
 
+def test_fractional_scan_timestamps_keep_their_precision_in_history(depot_lines):
+    at = 1789895956.75
+    scan = [
+        int(at),
+        json.dumps({"龙门币": 200}),
+        json.dumps({"_mower_scan_observed_at": at}),
+    ]
+    write_rows(depot_lines["@app/tmp/depotresult.csv"], [scan])
+    module.记录合并快照(at, {"龙门币": 200, "固源岩": 3})
+    history = module.读取仓库历史()
+    assert len(history) == 1
+    assert history[0]["at"] == at
+    assert history[0]["items"]["固源岩"] == 3
+
+
+@pytest.mark.parametrize("timestamp", ["nan", "inf", "-inf"])
+def test_nonfinite_snapshot_timestamp_is_rejected(timestamp):
+    assert module._解析快照行([timestamp, "{}"]) is None
+
+
 def test_partial_scan_rows_are_not_marked_complete(depot_lines):
     """只有扫描行时不能被当成完整库存：缺的名字是"没扫到"，不是 0。"""
     write_rows(

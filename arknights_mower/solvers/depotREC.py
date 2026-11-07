@@ -291,11 +291,16 @@ class depotREC(SceneGraphSolver):
                 logger.warning("仓库扫描: 未确认任何物品数量，本次扫描失败")
                 return False
             logger.info(f"仓库扫描: {self.结果字典}")
-            扫描时刻 = int(datetime.now().timestamp())
+            扫描时刻 = datetime.now().timestamp()
             result = [
-                扫描时刻,
+                int(扫描时刻),
                 json.dumps(self.结果字典, ensure_ascii=False),
-                {"森空岛输出仅占位": ""},
+                json.dumps(
+                    {
+                        "_mower_scan_started_at": starttime.timestamp(),
+                        "_mower_scan_observed_at": 扫描时刻,
+                    }
+                ),
             ]
             import csv
 

@@ -14,7 +14,7 @@ from arknights_mower.solvers import cultivate_depot as module  # noqa: E402
 
 @pytest.fixture
 def syncer(tmp_path, monkeypatch):
-    from arknights_mower.utils import growth, mastery_db
+    from arknights_mower.utils import depot, growth, mastery_db
 
     monkeypatch.setattr(mastery_db, "_tables_created", set())
     monkeypatch.setattr(
@@ -27,6 +27,10 @@ def syncer(tmp_path, monkeypatch):
         growth, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
     )
     monkeypatch.setattr(module, "get_path", lambda _: tmp_path / "cultivate.json")
+    monkeypatch.setattr(
+        depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(depot, "_快照行缓存", None)
     monkeypatch.setattr(
         module.config.conf,
         "skland_info",
@@ -42,6 +46,180 @@ def syncer(tmp_path, monkeypatch):
         lambda _: [{"gameId": 1, "isOfficial": True, "uid": "test"}],
     )
     return module.cultivate()
+
+
+@pytest.mark.parametrize("order", ["scan_first", "cloud_first"])
+@pytest.mark.parametrize(("scanned", "expected"), [(110, 110), (200, 100)])
+def test_real_sync_and_warehouse_read_reconcile_in_both_orders(
+    syncer, stock_db, monkeypatch, tmp_path, order, scanned, expected
+):
+    import csv
+
+    from arknights_mower.utils import depot
+
+    monkeypatch.setattr(module, "time", lambda: 201.2)
+    monkeypatch.setattr(
+        depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(depot, "_快照行缓存", None)
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [{"id": "4001", "count": "100"}],
+        },
+    }
+
+    def respond(*args, **kwargs):
+        if order == "scan_first" and "/cultivate/player" in str(args[1]):
+            scan = {"龙门币": scanned}
+            stock_db.save_inventory_counts(scan, scanned_counts=scan, scanned_at=201.9)
+        return SimpleNamespace(json=lambda: payload)
+
+    monkeypatch.setattr(module, "request_with_retry", respond)
+    assert syncer.start(force_inventory=True)
+    if order == "cloud_first":
+        with (tmp_path / "depotresult.csv").open(
+            "w", encoding="utf-8", newline=""
+        ) as f:
+            csv.writer(f).writerows(
+                [
+                    ["Timestamp", "Data", "json"],
+                    [
+                        201,
+                        json.dumps({"龙门币": scanned}),
+                        json.dumps({"_mower_scan_observed_at": 201.9}),
+                    ],
+                ]
+            )
+        depot.读取仓库()
+    assert stock_db.get_inventory_counts()["龙门币"] == expected
+
+
+def test_sync_uses_recent_scan_file_even_before_the_warehouse_page_is_opened(
+    syncer, stock_db, monkeypatch, tmp_path
+):
+    import csv
+
+    from arknights_mower.utils import depot
+
+    monkeypatch.setattr(module, "time", lambda: 201.2)
+    monkeypatch.setattr(
+        depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(depot, "_快照行缓存", None)
+    with (tmp_path / "depotresult.csv").open("w", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerows(
+            [
+                ["Timestamp", "Data", "json"],
+                [
+                    201,
+                    json.dumps({"龙门币": 110}),
+                    json.dumps({"_mower_scan_observed_at": 201.9}),
+                ],
+            ]
+        )
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [{"id": "4001", "count": "100"}],
+        },
+    }
+    monkeypatch.setattr(
+        module,
+        "request_with_retry",
+        lambda *args, **kwargs: SimpleNamespace(json=lambda: payload),
+    )
+
+    assert syncer.start(force_inventory=True)
+    assert stock_db.get_inventory_counts()["龙门币"] == 110
+
+
+def test_sync_uses_each_items_latest_scan_across_partial_scan_files(
+    syncer, stock_db, monkeypatch, tmp_path
+):
+    import csv
+
+    from arknights_mower.utils import depot
+
+    monkeypatch.setattr(module, "time", lambda: 201)
+    monkeypatch.setattr(depot, "_快照行缓存", None)
+    with (tmp_path / "depotresult.csv").open("w", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerows(
+            [
+                ["Timestamp", "Data", "json"],
+                [199, json.dumps({"龙门币": 100}), "{}"],
+                [200, json.dumps({"赤金": 5}), "{}"],
+            ]
+        )
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [{"id": "4001", "count": "110"}],
+        },
+    }
+    monkeypatch.setattr(
+        module,
+        "request_with_retry",
+        lambda *args, **kwargs: SimpleNamespace(json=lambda: payload),
+    )
+    assert syncer.start(force_inventory=True)
+    assert stock_db.get_inventory_counts()["龙门币"] == 100
+
+
+@pytest.mark.parametrize("mutation", ["consume", "invalidate"])
+def test_change_during_scan_is_not_overwritten_by_the_scan_or_delayed_sync(
+    syncer, stock_db, monkeypatch, tmp_path, mutation
+):
+    import csv
+
+    from arknights_mower.utils import depot
+
+    stock_db.save_inventory_counts({"龙门币": 100})
+    with patch.object(stock_db, "datetime") as clock:
+        clock.now.return_value.timestamp.return_value = 101
+        if mutation == "consume":
+            stock_db.apply_workshop_inventory({"龙门币": -5})
+        else:
+            stock_db.invalidate_workshop_inventory(["龙门币"])
+    with (tmp_path / "depotresult.csv").open("w", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerows(
+            [
+                ["Timestamp", "Data", "json"],
+                [
+                    102,
+                    json.dumps({"龙门币": 100}),
+                    json.dumps(
+                        {
+                            "_mower_scan_started_at": 100,
+                            "_mower_scan_observed_at": 102.5,
+                        }
+                    ),
+                ],
+            ]
+        )
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [{"id": "4001", "count": "100"}],
+        },
+    }
+    monkeypatch.setattr(module, "time", lambda: 100.5)
+    monkeypatch.setattr(
+        module,
+        "request_with_retry",
+        lambda *args, **kwargs: SimpleNamespace(json=lambda: payload),
+    )
+    assert syncer.start(force_inventory=True)
+    depot.读取仓库()
+    actual = stock_db.get_inventory_counts()
+    if mutation == "consume":
+        assert actual["龙门币"] == 95
+    else:
+        assert "龙门币" not in actual
 
 
 def test_no_account_or_matching_binding_does_not_report_success(syncer, monkeypatch):
@@ -947,6 +1125,106 @@ def test_completion_without_inventory_never_keeps_old_counts_as_confirmed(
             assert syncer.start()
             assert growth.load_goals() == []
     assert stock_db.get_inventory_counts() == {"合成玉": 1200}
+
+
+@pytest.mark.parametrize("force_inventory", [False, True])
+@pytest.mark.parametrize(
+    "sync_at,scan_at,expected", [(200, 100, None), (5000, 100, None), (200, 201, 100)]
+)
+def test_completion_without_items_fences_old_scan_without_a_database_baseline(
+    syncer,
+    stock_db,
+    completed_manual_goal,
+    tmp_path,
+    monkeypatch,
+    force_inventory,
+    sync_at,
+    scan_at,
+    expected,
+):
+    import csv
+
+    from arknights_mower.utils import depot
+
+    del completed_manual_goal["data"]["items"]
+    monkeypatch.setattr(module, "time", lambda: sync_at)
+    with (tmp_path / "depotresult.csv").open("w", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerows(
+            [
+                ["Timestamp", "Data", "json"],
+                [scan_at, json.dumps({"龙门币": 100}), "{}"],
+            ]
+        )
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = completed_manual_goal
+        if force_inventory:
+            with pytest.raises(ValueError, match="未返回库存"):
+                syncer.start(force_inventory=True)
+        else:
+            assert syncer.start()
+    depot.restore_cached_inventory()
+    assert stock_db.get_inventory_counts().get("龙门币") == expected
+
+
+def test_completion_fences_an_old_unreported_scan_outside_the_comparison_window(
+    syncer, stock_db, completed_manual_goal, tmp_path, monkeypatch
+):
+    import csv
+
+    from arknights_mower.utils import depot
+
+    monkeypatch.setattr(module, "time", lambda: 5000)
+    with (tmp_path / "depotresult.csv").open("w", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerows(
+            [["Timestamp", "Data", "json"], [100, json.dumps({"龙门币": 100}), "{}"]]
+        )
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = completed_manual_goal
+        assert syncer.start(force_inventory=True)
+    depot.restore_cached_inventory()
+    assert "龙门币" not in stock_db.get_inventory_counts()
+
+
+@pytest.mark.parametrize("existing", [None, 80])
+@pytest.mark.parametrize("scan_at,restored", [(100, None), (201, 100)])
+def test_completion_during_battle_cannot_restore_an_unknown_old_scan(
+    syncer,
+    stock_db,
+    completed_manual_goal,
+    tmp_path,
+    monkeypatch,
+    existing,
+    scan_at,
+    restored,
+):
+    import csv
+    from threading import Event
+
+    from arknights_mower.utils import depot
+
+    battle = Event()
+    battle.set()
+    monkeypatch.setattr(stock_db, "battle_inventory_active", battle)
+    if existing is not None:
+        stock_db.save_inventory_counts({"龙门币": existing})
+    del completed_manual_goal["data"]["items"]
+    with (tmp_path / "depotresult.csv").open("w", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerows(
+            [
+                ["Timestamp", "Data", "json"],
+                [scan_at, json.dumps({"龙门币": 100}), "{}"],
+            ]
+        )
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = completed_manual_goal
+        with pytest.raises(ValueError, match="未返回库存"):
+            syncer.start(force_inventory=True)
+    assert stock_db.get_inventory_counts().get("龙门币") == existing
+    battle.clear()
+    depot.restore_cached_inventory()
+    assert stock_db.get_inventory_counts().get("龙门币") == (
+        existing if existing is not None else restored
+    )
 
 
 def test_previously_invalidated_scan_only_stock_requires_a_new_scan(

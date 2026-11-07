@@ -1229,6 +1229,7 @@ describe('formatting helpers', () => {
     const now = (at + 7200) * 1000
     expect(formatRelative(at, now)).toBe('2 小时前')
     expect(formatRelative(at, (at + 30) * 1000)).toBe('30 秒前')
+    expect(formatRelative(at + 0.75, (at + 30) * 1000)).toBe('29 秒前')
     expect(formatRelative(null)).toBe('')
   })
 
