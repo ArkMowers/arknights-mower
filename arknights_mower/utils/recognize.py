@@ -855,7 +855,7 @@ class Recognizer:
         force_feature_match = "navigation/stage/" in normalized_res
 
         color = {
-            "1800": (158, 958),
+            "1800": (163, 980),
             "12cadpa": (1810, 21),
             "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),

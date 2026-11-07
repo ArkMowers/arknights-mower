@@ -109,14 +109,14 @@ class TestRecognizerVisionNpWiring(unittest.TestCase):
         ):
             scope = recognizer.find("1800")
 
-        self.assertEqual(scope, ((158, 958), (178, 968)))
+        self.assertEqual(scope, ((163, 980), (183, 990)))
         self.assertEqual(ssim.call_count, 1)
 
     def test_color_match_treats_template_past_frame_edge_as_missing(self):
         recognizer = Recognizer.__new__(Recognizer)
         recognizer._img = np.zeros((1080, 1920, 3), dtype=np.uint8)
         recognizer._gray = np.zeros((1080, 1920), dtype=np.uint8)
-        # 与 1800.png 同尺寸：放在 (158, 958) 时下边缘超出画面 175 像素。
+        # 模板高 297 像素：放在 1800 的 (163, 980) 时下边缘超出画面 197 像素。
         resource = np.zeros((297, 554, 3), dtype=np.uint8)
 
         with (
