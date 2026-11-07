@@ -1,11 +1,11 @@
 """Authenticated desktop software-update API."""
 
 from functools import wraps
-from urllib.parse import urlparse
 
 from flask import Blueprint, Response, abort, current_app, request
 
 from arknights_mower.utils import software_update as updater
+from arknights_mower.utils.web_auth import check_request_origin, require_token
 
 software_update_bp = Blueprint(
     "software_update", __name__, url_prefix="/software-update"
@@ -16,17 +16,15 @@ software_update_bp = Blueprint(
 def authorize():
     if request.endpoint == "software_update.progress":
         return  # Public static shell; status and cancellation still require auth.
-    if (
-        hasattr(current_app, "token")
-        and request.headers.get("token", "") != current_app.token
-    ):
-        abort(403)
+    return authorize_operation()
+
+
+@require_token
+def authorize_operation():
     if request.method == "POST":
         if request.headers.get("X-Mower-Update") != "1":
             abort(403)
-        origin = request.headers.get("Origin")
-        if origin and urlparse(origin).netloc != request.host:
-            abort(403)
+        check_request_origin()
 
 
 def get_updater():

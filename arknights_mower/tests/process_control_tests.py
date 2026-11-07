@@ -141,7 +141,7 @@ class ProcessControlTests(unittest.TestCase):
                 {},
                 {"token": app.token},
                 {
-                    "token": app.token,
+                    "token": "wrong",
                     "X-Mower-Control": "1",
                     "Origin": "https://other.invalid",
                 },
@@ -158,7 +158,11 @@ class ProcessControlTests(unittest.TestCase):
             response = client.post(
                 "/process-control/action",
                 json={"action": "restart"},
-                headers={"token": app.token, "X-Mower-Control": "1"},
+                headers={
+                    "token": app.token,
+                    "X-Mower-Control": "1",
+                    "Origin": "https://mower.example:8443",
+                },
             )
             self.assertTrue(response.get_json()["ok"])
             action.assert_called_once_with("restart")

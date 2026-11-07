@@ -2,7 +2,7 @@
 
 ## GitHub Token
 
-The shared `config/network.json` stores an optional `github_token` beside the global network proxy and GitHub download proxy. Network settings in the instance page and manager edit the same value. Existing callers that omit the token preserve its saved value; submitting an empty string clears it. The file uses the existing atomic private-file writer. Reading or changing these settings and testing their connection require the current Web UI token; writes and tests retain their settings-header and same-origin checks.
+The shared `config/network.json` stores an optional `github_token` beside the global network proxy and GitHub download proxy. Network settings in the instance page and manager edit the same value. Existing callers that omit the token preserve its saved value; submitting an empty string clears it. The file uses the existing atomic private-file writer. Reading or changing these settings and testing their connection require the current Web UI token; writes and tests retain their settings header and follow [Credentialed Web Forwarding](web-access.md#credentialed-web-forwarding).
 
 Network saves serialize the current-value read, optional manager opening-snapshot check and atomic write under one cross-process file lock. An omitted token preserves the latest value read under that lock. Lock acquisition waits at most three seconds; timeout leaves the settings unchanged and the HTTP save reports 409 with a retry message. The instance page submits the token only when it changed, adopts the server's current token when no later local token edit exists, and preserves later edits. The manager disables all network inputs while loading or saving.
 
@@ -11,6 +11,7 @@ With a token, GitHub version checks and file downloads use official HTTPS addres
 The settings password field links to [GitHub token creation](https://github.com/settings/personal-access-tokens/new). For public downloads, users choose a name and expiration, select Public repositories and add no extra permissions; a classic token without scopes is also sufficient. The connection test checks both the file route and GitHub API authentication, reports invalid or expired tokens, and omits credentials from its result messages. Clearing the token restores the following download-station policy. Focused offline verification is in [`network_settings_tests.py`](../../arknights_mower/tests/network_settings_tests.py) and [`NetworkSettings.test.js`](../../ui/src/components/NetworkSettings.test.js).
 
 <a id="github-file-download-fallback"></a>
+
 ## GitHub File Download Fallback
 
 The shared `github_download.request_download` path tries direct GitHub first when the download proxy setting is empty, followed by `https://ghfast.top/`, `https://gh-proxy.com/`, `https://gh-proxy.org/` and `https://edgeone.gh-proxy.org/` in that order. The existing ghfast station remains first. The additional stations use the [GH-Proxy service](https://gh-proxy.com/docs/github-accelerator); the maintained [XIU2 download-source list](https://github.com/XIU2/UserScript/blob/7e93aceb592a613d499ed21b3e9886377e31fba0/GithubEnhanced-High-Speed-Download.user.js) attributes both alternate domains to gh-proxy.com. Connection failures, timeouts and HTTP 403, 429 or 5xx responses advance to the next candidate; other HTTP failures stop immediately. Each candidate is attempted at most once. Failed HTTP responses close before advancing, and the caller owns the successful response. Body-read failures remain the caller's responsibility.
@@ -22,6 +23,7 @@ An explicit download proxy uses only that station. GitHub API calls and hosts ou
 `Worker.run_command` executes fixed argument lists without a shell. Each command has a monotonic deadline and respects preparation cancellation. POSIX commands own a process group; Windows commands enter a dedicated Job before execution and keep their descendants inside that Job. The installer uses the standard library.
 
 <a id="managed-update-authorization"></a>
+
 ### Managed Update Authorization
 
 The manager's per-instance 更新与维护 switch stores one strict boolean, `extra_settings_visible`, in `config/conf.yml`. Managed launches (`MOWER_MANAGED=1`) default to disabled: the switch controls both the instance page's maintenance groups and its update permission. Enabling it at the next launch exposes the groups and permits their operations under the existing token and operation-specific checks. Standalone launches retain their full maintenance and update access regardless of the saved manager choice. AI assistant chat authorization remains independent. Effective update permission is captured once at startup and exposed as `updates_enabled` through `/status` and runtime registrations; this response field is derived, not another saved choice, and remains effective after manager termination.
@@ -34,7 +36,7 @@ Disabled instances hide software, resource and MAA update controls and the globa
 
 During a shared software update, the temporary progress service preserves each instance's permission: unauthorized instances can read progress but cannot cancel the update, and their cancellation control is hidden. Authorization controls who can initiate or cancel maintenance from an instance page, not which version an instance uses. The standalone manager's own Mower and MAA maintenance remains available regardless of these per-instance choices, subject to its existing installation validation, stopped-instance requirements and maintenance locks. A manager update or an authorized instance update can replace shared files used by a disabled instance. This boundary does not restrict users who can directly edit host files or launch a separate standalone process.
 
-The native manager also offers online software-update checks, version/restart confirmation, installation status and preparation cancellation through its local bridge. Update admission accepts a registered desktop instance in the current process or a registered manager in its parent process; an unrelated manager does not authorize direct server deployment. Instance Web software updates remain available when 更新与维护 is enabled. Disabled managed instances reject update checks, installation, cancellation, remote selection and package submission; local version reads remain available. Token and origin checks still apply. With 更新与维护 enabled, managed instances can also check and install MAA core/resource updates and save their update policies; MAA location and connection settings remain manager-owned. Both entry points reuse the same detached installer and restart behavior. The installer can shut down and restore a manager-only launch without a running instance; empty and OCR-only registrations remain rejected. All installation submissions acquire the shared nonblocking manager-maintenance lease, so a manager MAA job and Mower installation cannot terminate each other. An admitted software operation also rejects a new manager MAA job; callers retry explicitly after completion.
+The native manager also offers online software-update checks, version/restart confirmation, installation status and preparation cancellation through its local bridge. Update admission accepts a registered desktop instance in the current process or a registered manager in its parent process; an unrelated manager does not authorize direct server deployment. Instance Web software updates remain available when 更新与维护 is enabled. Disabled managed instances reject update checks, installation, cancellation, remote selection and package submission; local version reads remain available. The [credentialed forwarding boundary](web-access.md#credentialed-web-forwarding) still applies. With 更新与维护 enabled, managed instances can also check and install MAA core/resource updates and save their update policies; MAA location and connection settings remain manager-owned. Both entry points reuse the same detached installer and restart behavior. The installer can shut down and restore a manager-only launch without a running instance; empty and OCR-only registrations remain rejected. All installation submissions acquire the shared nonblocking manager-maintenance lease, so a manager MAA job and Mower installation cannot terminate each other. An admitted software operation also rejects a new manager MAA job; callers retry explicitly after completion.
 
 ## 2. Global Update Drop
 
@@ -77,18 +79,20 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 [Command tree cleanup](../../.agents/notes/implemented/bug-fix/2026-10-02-update-command-tree-cleanup.md) records implementation and focused verification.
 
 <a id="source-dependency-environments"></a>
+
 ### Source Dependency Environments
 
 Source updates retain and rebuild an owned project virtual environment with pip when dependency changes require it. Other environments receive in-place dependency installation, which adds or updates target requirements without removing retired distributions. Its rollback reinstalls the original requirements and does not restore the complete shared environment. Source jobs run the detached installer copied from the initiating version; changes in the target checkout do not replace that running installer. The [OCR dependency migration procedure](../cookbook/source-dependency-migration.md) covers replacement environments, conflicting OpenCV distributions and recovery when adopting RapidOCR 3.10 and PP-OCRv6 tiny.
 
 <a id="6-nightly-version-direction"></a>
+
 ## 6. Online Channel Targets
 
 Ordinary online checks compare the installed version with the selected channel target for equality only. A different target displays “可更新” with a “下载并安装” action, even when its semantic version is lower or Nightly publication history is absent. Source deployments compare the installed commit with the selected target commit. Neither path classifies update direction or requests a GitHub commit comparison. The `downgrade` response field remains `false` for compatibility.
 
 Automatic updates follow the same target when enabled and do not reinstall an identical version. Channel selection and newer public-release admission remain governed by [cross-channel upgrades](#11-cross-channel-upgrades); this change removes only the installed-to-target direction check. OTA selection still requires an asset from the exact installed version to the chosen target, with the existing full-package fallback.
 
-Explicit historical Release selection and offline package inspection retain their rollback confirmation. Offline Nightly packages with unknown SHA ordering remain network-free and require confirmation. The authenticated update endpoints retain their token and POST origin checks.
+Explicit historical Release selection and offline package inspection retain their rollback confirmation. Offline Nightly packages with unknown SHA ordering remain network-free and require confirmation. The authenticated update endpoints retain their token and update-header checks under [Credentialed Web Forwarding](web-access.md#credentialed-web-forwarding).
 
 The [archived Nightly direction decision](../../.agents/notes/archived/bug-fix/2026-10-07-nightly-direction-evidence.md) preserves the superseded publication-time and commit-ancestry approach.
 
@@ -146,9 +150,10 @@ OTA starting-file reads follow the [bundled reconstruction contract](resource-up
 
 ## 13. Temporary Update Progress Service
 
-`ProgressServers` reuses registered instance ports and credentials while the application is replaced. Its POST handler reads supported request bodies within the existing 1024-byte limit and five-second socket timeout before returning a rejection, preventing unread POST data from aborting the response on Windows. Invalid credentials, update headers or origins retain HTTP 403 precedence; an authenticated unknown path returns HTTP 404. Only an authorized cancellation request with a valid body reaches `cancel_update`; body-reading failures retain the applicable rejection or return HTTP 400. Closing the service releases its registered ports for the restarted application.
+`ProgressServers` reuses registered instance ports and credentials while the application is replaced. Its POST handler reads supported request bodies within the existing 1024-byte limit and five-second socket timeout before returning a rejection, preventing unread POST data from aborting the response on Windows. Invalid credentials, missing update permission or invalid update headers retain HTTP 403 precedence; an authenticated unknown path returns HTTP 404. Only an authorized cancellation request with a valid body reaches `cancel_update`; body-reading failures retain the applicable rejection or return HTTP 400. Closing the service releases its registered ports for the restarted application.
 
 <a id="14-windows-desktop-elevation"></a>
+
 ## 14. Windows Desktop Launch Permissions
 
 The Windows package embeds `asInvoker` with `uiAccess=false` in both `mower.exe` and `多开管理器.exe`. A standard Windows account can launch either executable without administrator credentials or a UAC elevation request. The manager starts instances through ordinary `Popen`, so they inherit its token. Desktop children, maintenance workers and restarts retain their parent's permissions. A user can explicitly choose Run as administrator when needed and authorized; Mower does not automatically request elevation on failure.

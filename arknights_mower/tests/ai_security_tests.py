@@ -51,12 +51,12 @@ class WebSocketSecurityTests(unittest.TestCase):
             allowed = server._authorize_websocket(ws)
         return allowed, ws
 
-    def test_missing_invalid_and_cross_origin_credentials_are_rejected(self):
+    def test_missing_and_invalid_credentials_are_rejected(self):
         for frames, origin in (
             ([json.dumps({"message": "hello"})], "http://localhost"),
             ([json.dumps({"token": "wrong"})], "http://localhost"),
-            ([json.dumps({"token": "test-secret"})], "https://attacker.example"),
-            ([json.dumps({"token": "test-secret"})], None),
+            ([json.dumps({"token": "wrong"})], "https://attacker.example"),
+            ([json.dumps({"token": "wrong"})], None),
         ):
             with self.subTest(frames=frames, origin=origin):
                 allowed, ws = self._authorize(frames, origin)
@@ -64,12 +64,12 @@ class WebSocketSecurityTests(unittest.TestCase):
                 self.assertTrue(ws.closed)
                 self.assertEqual(ws.close_reason, 4401)
 
-    def test_configured_dev_port_is_explicit_and_loopback_only(self):
+    def test_valid_credentials_are_independent_of_browser_origin(self):
         with patch.dict("os.environ", {"MOWER_DEV_PORT": "5174"}):
             for origin, expected in (
                 ("http://127.0.0.1:5174", True),
-                ("http://127.0.0.1:5173", False),
-                ("http://attacker.example:5174", False),
+                ("http://127.0.0.1:5173", True),
+                ("https://mower.example:8443", True),
             ):
                 allowed, _ = self._authorize(
                     [json.dumps({"token": "test-secret"})], origin
@@ -92,8 +92,8 @@ class WebSocketSecurityTests(unittest.TestCase):
         self.addCleanup(thread.join, 3)
         self.addCleanup(service.shutdown)
         url = f"ws://127.0.0.1:{service.server_port}/ws/chat"
-        # simple_websocket.Client omits the nondefault port from its Host header.
-        origin = "http://127.0.0.1"
+        # Model TLS termination and a rewritten Host on the real upgrade path.
+        origin = "https://mower.example:8443"
         with patch(
             "arknights_mower.agent.agent.ask_llm", return_value=iter(["reply"])
         ) as ask:

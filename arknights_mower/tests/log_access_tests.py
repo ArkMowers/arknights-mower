@@ -134,11 +134,11 @@ class LocalLogAccessTests(unittest.TestCase):
                     self.assertTrue(socket.closed)
                     self.assertEqual(socket.close_reason, 4401)
 
-    def test_log_forwarding_does_not_relax_other_origin_checks(self):
+    def test_authenticated_ai_forwarding_preserves_local_origin_checks(self):
         with self.context(origin="https://mower.example:8443", host="127.0.0.1:58000"):
             socket = FakeSocket(json.dumps({"token": "runtime-secret"}))
-            self.assertFalse(server._authorize_websocket(socket))
-            self.assertTrue(socket.closed)
+            self.assertTrue(server._authorize_websocket(socket))
+            self.assertFalse(socket.closed)
             self.assertFalse(
                 server._diagnostic_delete_origin_allowed("https://mower.example:8443")
             )

@@ -1,8 +1,7 @@
-from urllib.parse import urlparse
-
-from flask import Blueprint, abort, current_app, request
+from flask import Blueprint, abort, request
 
 from arknights_mower.utils import config, managed_device, process_control
+from arknights_mower.utils.web_auth import check_request_origin, require_token
 from arknights_mower.views.software_update import result
 
 process_control_bp = Blueprint(
@@ -11,18 +10,12 @@ process_control_bp = Blueprint(
 
 
 @process_control_bp.before_request
+@require_token
 def authorize():
-    if (
-        hasattr(current_app, "token")
-        and request.headers.get("token", "") != current_app.token
-    ):
-        abort(403)
     if request.method == "POST":
         if request.headers.get("X-Mower-Control") != "1":
             abort(403)
-        origin = request.headers.get("Origin")
-        if origin and urlparse(origin).netloc != request.host:
-            abort(403)
+        check_request_origin()
 
 
 @process_control_bp.get("/info")

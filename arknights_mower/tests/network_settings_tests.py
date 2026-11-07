@@ -412,7 +412,7 @@ class ProxySettingsTests(ProxySettingsBase):
             client.post(
                 "/network/settings",
                 json=data,
-                headers={**headers, "Origin": "https://example.test"},
+                headers={**headers, "token": "wrong", "Origin": "https://example.test"},
             ).status_code,
             403,
         )
@@ -654,7 +654,8 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         headers = {"token": app.token, "X-Mower-Settings": "1"}
         self.assertEqual(
             client.post(
-                "/network/test", headers={**headers, "Origin": "https://other.test"}
+                "/network/test",
+                headers={**headers, "token": "wrong", "Origin": "https://other.test"},
             ).status_code,
             403,
         )

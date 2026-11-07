@@ -29,7 +29,8 @@ class FakeSocket {
   close = vi.fn(() => {
     this.readyState = 3
   })
-  constructor() {
+  constructor(url) {
+    this.url = url
     FakeSocket.instances.push(this)
   }
   open() {
@@ -74,6 +75,7 @@ afterEach(() => {
   scope.stop()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 function send(text = '检查日志') {
   component.userInput.value = text
@@ -82,6 +84,25 @@ function send(text = '检查日志') {
 }
 
 describe('AI chat interactions', () => {
+  it.each([
+    ['http://mower.example:18000', 'ws://mower.example:18000/ws/chat'],
+    ['https://mower.example', 'wss://mower.example/ws/chat'],
+    ['https://mower.example:8443', 'wss://mower.example:8443/ws/chat'],
+    ['https://[2001:db8::1]:8443', 'wss://[2001:db8::1]:8443/ws/chat']
+  ])('uses the public origin %s and sends credentials before the message', (origin, url) => {
+    vi.stubEnv('DEV', false)
+    vi.stubGlobal('location', { origin })
+    window.location.search = '?token=test%2Bsecret%26value'
+    const socket = send('hello')
+    expect(socket.url).toBe(url)
+    socket.open()
+    expect(JSON.parse(socket.send.mock.calls[0][0])).toEqual({ token: 'test+secret&value' })
+    expect(JSON.parse(socket.send.mock.calls[1][0])).toEqual({
+      message: 'hello',
+      generation: 'page-generation'
+    })
+  })
+
   it.each(['/', '/mowersettings', '/mowersettings#mower-data'])(
     'closes the assistant before settings navigation from %s and keeps its conversation',
     async (path) => {

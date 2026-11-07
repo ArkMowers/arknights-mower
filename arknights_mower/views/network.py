@@ -12,7 +12,7 @@ from arknights_mower.utils.github_download import (
     request_download,
     request_github,
 )
-from arknights_mower.utils.web_auth import check_token
+from arknights_mower.utils.web_auth import check_request_origin, require_token
 
 network_bp = Blueprint("network", __name__, url_prefix="/network")
 FILE_TEST_URL = (
@@ -21,14 +21,12 @@ FILE_TEST_URL = (
 
 
 @network_bp.before_request
+@require_token
 def authorize():
-    check_token()
     if request.method == "POST":
         if request.headers.get("X-Mower-Settings") != "1":
             abort(403)
-        origin = request.headers.get("Origin")
-        if origin and urlparse(origin).netloc != request.host:
-            abort(403)
+        check_request_origin()
 
 
 @network_bp.route("/settings", methods=["GET", "POST"])

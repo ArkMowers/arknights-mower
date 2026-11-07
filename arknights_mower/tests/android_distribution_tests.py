@@ -47,18 +47,39 @@ class AndroidDistributionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.desktop.save_settings.assert_not_called()
 
-    def test_provider_cannot_bypass_authentication_or_same_origin(self):
+    def test_provider_requires_token_and_header_for_forwarded_requests(self):
         provider = Mock()
+        provider.check.return_value = {"ok": True, "available": True}
         self.app.extensions["software_update_provider"] = provider
         self.assertEqual(self.client.get("/software-update/info").status_code, 403)
+        forwarded = {
+            "Host": "127.0.0.1:58000",
+            "Origin": "https://mower.example:8443",
+        }
+        for headers in (
+            {"X-Mower-Update": "1"},
+            {"token": "wrong", "X-Mower-Update": "1"},
+            {"token": "test-token"},
+        ):
+            with self.subTest(headers=headers):
+                response = self.client.post(
+                    "/software-update/check",
+                    data="{",
+                    content_type="application/json",
+                    headers={**forwarded, **headers},
+                )
+                self.assertEqual(response.status_code, 403)
+        provider.info.assert_not_called()
+        provider.check.assert_not_called()
         response = self.client.post(
             "/software-update/check",
             json={"channel": "beta"},
-            headers={**self.headers, "Origin": "https://example.invalid"},
+            headers={**forwarded, **self.headers},
         )
-        self.assertEqual(response.status_code, 403)
-        provider.info.assert_not_called()
-        provider.check.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["available"])
+        provider.check.assert_called_once_with("beta")
+        self.desktop.check.assert_not_called()
 
     def test_desktop_keeps_original_update_route(self):
         self.desktop.info.return_value = {"ok": True, "deployment": "source"}

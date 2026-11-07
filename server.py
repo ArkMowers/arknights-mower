@@ -61,7 +61,11 @@ from arknights_mower.utils.path import get_path, resolve_config_path
 from arknights_mower.utils.resource_pkg import register_resource_reload
 from arknights_mower.utils.resource_update_job import ResourceUpdateJob
 from arknights_mower.utils.update_runtime import active_job
-from arknights_mower.utils.web_auth import check_token, require_token
+from arknights_mower.utils.web_auth import (
+    check_request_origin,
+    check_token,
+    require_token,
+)
 from arknights_mower.views.config_backup import config_backup_bp
 from arknights_mower.views.config_profiles import config_profiles_bp
 from arknights_mower.views.db_admin import db_admin_bp
@@ -781,13 +785,9 @@ def _authorize_websocket(ws, allow_local_log=False):
         return False
 
     expected = getattr(app, "token", "")
-    origin = request.headers.get("Origin", "")
     if allow_local_log and _local_log_request_allowed(require_origin=True):
         return True
-    if not expected or (
-        not allow_local_log
-        and (not origin or not _diagnostic_delete_origin_allowed(origin))
-    ):
+    if not expected:
         return reject()
     try:
         first = ws.receive(timeout=5)
@@ -2619,8 +2619,7 @@ def diagnostic_error_logs(archive_id):
 def diagnostic_error_analyze(archive_id):
     if request.headers.get("X-Mower-Diagnostics") != "1":
         abort(403)
-    if not _diagnostic_delete_origin_allowed(request.headers.get("Origin")):
-        abort(403)
+    check_request_origin()
     if not archive_id.isascii() or not archive_id.isdigit() or len(archive_id) > 20:
         abort(404)
     folder = get_path("@app/screenshot") / "errors" / archive_id
@@ -2666,9 +2665,7 @@ def diagnostic_error_export(archive_id):
 def diagnostic_error_delete(archive_id):
     if request.headers.get("X-Mower-Diagnostics") != "1":
         abort(403)
-    origin = request.headers.get("Origin")
-    if not _diagnostic_delete_origin_allowed(origin):
-        abort(403)
+    check_request_origin()
     if not archive_id.isascii() or not archive_id.isdigit() or len(archive_id) > 20:
         abort(404)
     screenshot_root = get_path("@app/screenshot")

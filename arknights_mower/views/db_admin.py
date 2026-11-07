@@ -15,7 +15,7 @@ from arknights_mower.solvers import record
 from arknights_mower.utils import config_backup as backup
 from arknights_mower.utils.config import gui
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.web_auth import origin_allowed, require_token
+from arknights_mower.utils.web_auth import check_request_origin, require_token
 from arknights_mower.views.mastery import _purge_plan_tasks
 
 db_admin_bp = Blueprint("db_admin", __name__)
@@ -162,9 +162,7 @@ def _maintenance(action=None):
     if action is not None:
         if request.headers.get("X-Mower-Settings") != "1":
             abort(403)
-        origin = request.headers.get("Origin")
-        if origin and not origin_allowed(origin):
-            abort(403)
+        check_request_origin()
     factory = current_app.config.get("CONFIG_PROFILES_LOCKS")
     locks = (
         factory()

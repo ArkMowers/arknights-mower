@@ -18,7 +18,7 @@ from arknights_mower.utils.config_backup import (
 )
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.web_auth import (
-    origin_allowed,
+    check_request_origin,
     preflight_allowed,
     require_token,
 )
@@ -50,9 +50,7 @@ def authorize_operation():
     if request.method in {"POST", "PATCH"}:
         if request.headers.get("X-Mower-Settings") != "1":
             abort(403)
-        origin = request.headers.get("Origin")
-        if origin and not origin_allowed(origin):
-            abort(403)
+        check_request_origin()
         limit = get_backup_limit_bytes() + (
             65536 if request.mimetype == "multipart/form-data" else 0
         )

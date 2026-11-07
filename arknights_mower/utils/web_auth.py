@@ -25,6 +25,16 @@ def require_token(f):
     return decorated_function
 
 
+def check_request_origin():
+    """Explicit credentials authorize operations through rewritten proxy hosts."""
+    check_token()
+    if getattr(current_app, "token", ""):
+        return
+    origin = request.headers.get("Origin")
+    if origin and not origin_allowed(origin):
+        abort(403)
+
+
 def origin_allowed(origin):
     try:
         source = urlparse(origin)

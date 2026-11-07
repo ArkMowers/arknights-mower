@@ -205,7 +205,7 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
             self.assertFalse(update.request_auto_check()["scheduled"])
         thread.assert_not_called()
 
-    def test_auto_check_route_requires_token_and_same_origin_update_header(self):
+    def test_auto_check_route_requires_token_and_update_header_after_forwarding(self):
         app = Flask(__name__)
         app.token = "test-token"
         app.register_blueprint(software_update_bp)
@@ -217,7 +217,7 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
             for denied in (
                 {},
                 {"token": "test-token"},
-                {**headers, "Origin": "https://other.test"},
+                {**headers, "token": "wrong", "Origin": "https://mower.example:8443"},
             ):
                 self.assertEqual(
                     client.post(
@@ -227,7 +227,13 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
                 )
             schedule.assert_not_called()
             response = client.post(
-                "/software-update/auto-check", json={}, headers=headers
+                "/software-update/auto-check",
+                json={},
+                headers={
+                    **headers,
+                    "Host": "127.0.0.1:58000",
+                    "Origin": "https://mower.example:8443",
+                },
             )
             self.assertTrue(response.json["scheduled"])
             schedule.assert_called_once()
