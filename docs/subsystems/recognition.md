@@ -2,6 +2,12 @@
 
 Recognition consumes standard canvas frames and their crops. [Device Control](device-control.md#4-capture-frame-contract--storage) owns acquisition and screenshot storage; this subsystem owns model input preparation and OCR execution.
 
+## Windows OpenCV Runtime
+
+On Windows, [package startup](../../arknights_mower/__init__.py) sets `OPENCV_OPENCL_RUNTIME=disabled` before importing OpenCV when the environment variable is absent. OpenCV uses its CPU paths by default, avoiding OpenCL driver cleanup that can block process exit after application resources have closed. Spawned instances and helpers inherit this setting. An explicitly supplied value, including an empty string, is retained; other platforms keep their existing OpenCV runtime selection.
+
+The [OpenCV runtime tests](../../arknights_mower/tests/opencv_runtime_tests.py) cover source and frozen startup, explicit values and platform isolation. Windows native checks exercise image operations, a background thread and a spawned helper, and verify that they exit without enabling OpenCL.
+
 ## Login Captcha Panel
 
 Captcha scene recognition and the existing solver share the same white-panel bounds. The bounds must contain the solver's complete crop regions and a nonzero template border; pure-white pixels must occupy at least ten percent of their bounding rectangle. Sparse startup-background highlights do not confirm a captcha panel, even when the generic captcha feature matches. Missing or invalid bounds prevent template matching and captcha input. Refreshing a confirmed panel requires new bounds before matching the refreshed image. Cancellation and device exceptions propagate through the existing recovery boundary.
