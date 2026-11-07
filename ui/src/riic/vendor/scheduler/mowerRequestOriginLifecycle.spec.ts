@@ -168,3 +168,84 @@ describe('resumed mixed requests retain unfinished individual departures',()=>{
   expect(source.queue.tasks).not.toContain(request)
  })
 })
+
+describe('completed request sources remain complete after ordinary returns',()=>{
+ for(const personal of ['ungrouped','shared'] as const)for(const origins of [['A','C'],['C','A']])it(`retains the original individual request after the completed group returns (${personal}, ${origins.join(',')})`,()=>{
+  const slowRates={...rates,recoveryRate:(name:string)=>name==='B'?.1:4,forecastRates:(state:RuntimeState)=>({work:Object.fromEntries(Object.keys(state.morale).map(name=>[name,1])),recovery:Object.fromEntries(Object.keys(state.morale).map(name=>[name,name==='B'?.1:4]))})}
+  const {state,source,request}=fixture(true,origins,personal),time=request.timeMicros
+  source.data.busyRestingNames.add('B')
+  source.data.dorms.find(bed=>bed.name==='B')!.timeMicros=toMowerMicros(40)
+  retainMowerFailedTask(state,source.data,request,'等待替班岗位释放',['room_1_1','room_1_2','dormitory_1'])
+  source.queue.tasks.push(new MowerTask({time:state.time}))
+  const settled=(done:()=>boolean)=>{
+   for(let attempt=0;attempt<200&&!done();attempt++){
+    settleMowerSource(state,slowRates)
+    if(!done())advanceRoster(state,.05,slowRates)
+   }
+   expect(done(),JSON.stringify({time:state.time,beds:state.bedOccupants,tasks:source.queue.tasks.map(task=>({type:task.type.key,origins:task.coordinationRequestNames,plan:task.plan,reason:task.executionFailure?.reason}))})).toBe(true)
+  }
+  const departures=(name:string)=>state.events.filter(event=>event.type==='shift-off'&&event.operators.includes(name))
+  settled(()=>['C','C2'].every(name=>Object.values(state.bedOccupants).includes(name)))
+  expect(source.queue.tasks).toContain(request)
+  expect(request.timeMicros).toBe(time)
+  for(const name of ['C','C2'])expect(departures(name)).toHaveLength(1)
+  expect(source.queue.tasks.some(task=>task.type===T.SHIFT_ON&&task.plan.room_1_3?.includes('C'))).toBe(true)
+  settled(()=>['C','C2'].every((name,index)=>state.occupants['room_1_3_'+index]===name))
+  expect(state.time).toBeGreaterThan(4)
+  expect(state.morale.C).toBeGreaterThan(20)
+  expect(state.events.some(event=>event.type==='shift-on'&&['C','C2'].every(name=>event.operators.includes(name)))).toBe(true)
+  advanceRoster(state,.05,slowRates)
+  for(let attempt=0;attempt<3;attempt++){
+   settleMowerSource(state,slowRates)
+   expect(source.queue.tasks).toContain(request)
+   expect(request.coordinationRequestNames).toEqual(origins)
+   expect(request.timeMicros).toBe(time)
+   expect(state.occupants.room_1_1_0).toBe('A')
+   expect(state.occupants.room_1_2_0).toBe('X')
+   expect(Object.values(state.bedOccupants)).toContain('B')
+   expect(Object.values(state.bedOccupants)).not.toContain('A')
+  }
+  source.data.busyRestingNames.delete('B')
+  settled(()=>Object.values(state.bedOccupants).includes('A'))
+  expect(request.timeMicros).toBe(time)
+  expect(source.queue.tasks).not.toContain(request)
+  for(const name of ['A','C','C2'])expect(departures(name)).toHaveLength(1)
+  expect(state.diagnostics.filter(diagnostic=>/exception/.test(diagnostic.code))).toEqual([])
+ })
+})
+
+describe('completed sources retain unfinished physical arrangements',()=>{
+ it.each(['arrangementStarted','backupShiftActive','productShiftLocked'] as const)('keeps the original failure until a relevant observation changes with %s',flag=>{
+  const {state,source,request}=fixture(true,['A','C'],'ungrouped'),data=source.data,time=request.timeMicros
+  for(const name of ['C','C2']){state.morale[name]=24;data.operators[name]!.mood=24}
+  const bed=data.dorms.find(value=>value.name==='B')!
+  bed.name='A';bed.timeMicros=toMowerMicros(5);state.bedOccupants.dormitory_1_2='A'
+  Object.assign(data.operators.B!,{currentRoom:'room_1_2',currentIndex:0});state.occupants.room_1_2_0='B'
+  Object.assign(data.operators.X!,{currentRoom:'room_1_1',currentIndex:0});state.occupants.room_1_1_0='X'
+  Object.assign(data.operators.A!,{currentRoom:'dormitory_1',currentIndex:2})
+  request.coordinationCompletedRequestNames=['C']
+  request.plan={dormitory_1:['Current','Current','A','I1','Current']}
+  request[flag]=true
+  retainMowerFailedTask(state,data,request,'等待剩余宿舍安排确认',['dormitory_1'])
+  const failure=request.executionFailure!,snapshot=structuredClone(failure.snapshot)
+  for(let attempt=0;attempt<3;attempt++){
+   settleMowerSource(state,rates)
+   expect(source.queue.tasks).toContain(request)
+   expect(request.executionFailure).toBe(failure)
+   expect(request.executionFailure!.snapshot).toEqual(snapshot)
+   expect(request.coordinationRequestNames).toEqual(['A','C'])
+   expect(request.timeMicros).toBe(time)
+   expect(state.bedOccupants.dormitory_1_2).toBe('A')
+   expect(state.bedOccupants.dormitory_1_3).toBeUndefined()
+  }
+  advanceRoster(state,1/3600,rates)
+  source.data.operators.I1!.timeStampMicros=source.data.nowMicros
+  until(state,()=>!source.queue.tasks.includes(request))
+  expect(request.timeMicros).toBe(time)
+  expect(state.bedOccupants.dormitory_1_2).toBe('A')
+  expect(state.bedOccupants.dormitory_1_3).toBe('I1')
+  expect(request.executionFailure).toBeUndefined()
+  expect(state.events.filter(event=>event.type==='shift-off'&&event.operators.some(name=>['A','C','C2'].includes(name)))).toEqual([])
+  expect(state.diagnostics.filter(diagnostic=>/exception/.test(diagnostic.code))).toEqual([])
+ })
+})

@@ -58,6 +58,7 @@ export class MowerTask {
  ordinaryCoordination=false
  exhaustSupport=false
  coordinationRequestNames:string[]=[]
+ coordinationCompletedRequestNames:string[]=[]
  coordinationAdmissionPlan?:MowerTaskPlan
  urgentRecoveryRequestNames:string[]=[]
  urgentRecoverySupportNames:string[]=[]

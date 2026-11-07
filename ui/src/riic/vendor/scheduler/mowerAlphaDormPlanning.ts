@@ -14,7 +14,10 @@ export function fillMowerAlphaEmptyDorms(data:MowerSchedulingData,queue:MowerTas
   if(!fills.length&&!vacant(mowerDormTaskReservations(data,queue.tasks).slots))return false
   let superseded=false
   try {
-   planMowerOrdinary(data,queue,options)
+   const reserved=mowerDormTaskReservations(data,queue.tasks)
+   planMowerOrdinary(data,queue,{...options,
+    reservedNames:new Set([...options.reservedNames??[],...reserved.names]),
+    reservedSlots:new Set([...options.reservedSlots??[],...reserved.slots])})
    if(queue.tasks.some(t=>!t.executionFailure&&t.timeMicros<=data.nowMicros&&([T.SHIFT_ON,T.SHIFT_OFF].includes(t.type)||Object.keys(t.plan).some(r=>r.startsWith('dorm'))))){superseded=true;return false}
   }finally{if(!superseded)queue.tasks.push(...fills.filter(t=>!queue.tasks.includes(t)))}
   if(fills.length)return false
