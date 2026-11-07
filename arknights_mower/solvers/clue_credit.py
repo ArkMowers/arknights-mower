@@ -192,10 +192,23 @@ class ClueCreditMixin:
             if attempt:
                 logger.info("仍在会客室，重新唤出信息板入口后补救一次")
             # 入口可能处于进房动画或即将消失，不能仅凭可见就直接点击。
-            self.tap((680, 1000))
-            if self.scene() != Scene.INFRA_DETAILS or self.find("materiel_ico"):
-                return False
-            if board_pos := self.find("clue/message_board"):
+            self.tap((680, 1000), interval=0)
+            board_pos = None
+            for observation in range(4):
+                # 提示显示时间短，先取新帧；未出现时才等待下一帧动画。
+                if observation:
+                    self.sleep(0.1)
+                else:
+                    self.recog.update()
+                if (
+                    self.scene() != Scene.INFRA_DETAILS
+                    or self.find("materiel_ico")
+                    or self._clue_access_record_visible()
+                ):
+                    return False
+                if board_pos := self.find("clue/message_board"):
+                    break
+            if board_pos:
                 # 家具交互提示只短暂显示，使用当前帧的位置及时点击。
                 logger.info("点击会客室信息板入口")
                 self.tap(board_pos)

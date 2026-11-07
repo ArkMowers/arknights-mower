@@ -1245,7 +1245,7 @@ def board_navigation(shopping, monkeypatch):
             return (800, 800)
         return None
 
-    def tap(position):
+    def tap(position, **_kwargs):
         if position == (500, 500):
             ui.events.append("open")
             ui.entry_actions.append("open")
@@ -1331,7 +1331,7 @@ def test_legacy_workflow_uses_real_board_open_and_preserves_claim_policy(
     ui.open_failures = failures
     original_tap = scheduler.tap.side_effect
 
-    def tap(position):
+    def tap(position, **_kwargs):
         if position == (330, 1000):
             # 进入后续线索整理前结束观测，信息板打开与领取均走真实调用路径。
             raise MowerExit
@@ -1377,7 +1377,7 @@ def test_clue_workflow_resumes_from_access_record(
     scheduler.enter_room = MagicMock(side_effect=enter_room)
     original_tap = scheduler.tap.side_effect
 
-    def tap(position):
+    def tap(position, **_kwargs):
         if position == (330, 1000):
             if stuck:
                 pytest.fail("An unchanged access record must stop the clue workflow")
@@ -1535,6 +1535,55 @@ def test_failed_board_click_is_recovered_after_fresh_activation(board_navigation
     assert state.current == 300
 
 
+def test_short_lived_board_entry_is_clicked_before_it_expires(board_navigation):
+    scheduler, _, _, ui, _ = board_navigation
+    original_tap = scheduler.tap.side_effect
+    original_find = scheduler.find
+    clock = SimpleNamespace(now=0.0, activated_at=None)
+
+    def tap(position, interval=1):
+        if position == (680, 1000):
+            clock.activated_at = clock.now
+        elif position == (500, 500):
+            assert clock.now - clock.activated_at < 0.8
+        original_tap(position)
+        clock.now += interval
+
+    def find(name):
+        clock.now += 0.02
+        if name == "clue/message_board" and clock.activated_at is not None:
+            ui.entry_visible = clock.now - clock.activated_at < 0.8
+        return original_find(name)
+
+    scheduler.tap.side_effect = tap
+    scheduler.find = find
+    scheduler.recog.update.side_effect = lambda: setattr(clock, "now", clock.now + 0.1)
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is True
+    assert ui.entry_actions == ["activate", "open"]
+    assert ui.events == ["open", "back"]
+
+
+def test_board_entry_animation_is_observed_before_clicking(board_navigation):
+    scheduler, _, _, ui, _ = board_navigation
+    original_find = scheduler.find
+    observations = []
+
+    def find(name):
+        if name == "clue/message_board" and ui.activation_count:
+            observations.append(name)
+            if len(observations) < 3:
+                return None
+        return original_find(name)
+
+    ui.entry_visible = False
+    scheduler.find = find
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is True
+    assert len(observations) == 3
+    assert ui.entry_actions == ["activate", "open"]
+
+
 def test_recovery_relocates_the_entry_instead_of_reusing_old_coordinates(
     board_navigation,
 ):
@@ -1548,7 +1597,7 @@ def test_recovery_relocates_the_entry_instead_of_reusing_old_coordinates(
             return (600, 500) if ui.activation_count >= 2 else (500, 500)
         return original_find(name)
 
-    def tap(position):
+    def tap(position, **_kwargs):
         if position == (500, 500) and ui.activation_count >= 2:
             pytest.fail("Recovery reused the stale entry coordinates")
         original_tap((500, 500) if position == (600, 500) else position)
@@ -1581,7 +1630,7 @@ def test_expired_visible_entry_is_reactivated_before_opening(board_navigation):
     scheduler, _, _, ui, _ = board_navigation
     original_tap = scheduler.tap.side_effect
 
-    def tap(position):
+    def tap(position, **_kwargs):
         original_tap(position)
         if position == (680, 1000) and ui.activation_count == 1:
             ui.entry_visible = False
@@ -1630,7 +1679,7 @@ def test_residence_panel_closes_before_furniture_activation(
             return panels[ui.residents].find(name)
         return original_find(name)
 
-    def tap(position):
+    def tap(position, **_kwargs):
         if position == (680, 1000) and ui.residents:
             ui.entry_actions.append("close_residents")
             if not stuck:
@@ -1684,7 +1733,7 @@ def test_board_open_input_error_propagates_without_recovery(board_navigation, er
     scheduler, _, _, ui, _ = board_navigation
     original_tap = scheduler.tap.side_effect
 
-    def tap(position):
+    def tap(position, **_kwargs):
         original_tap(position)
         raise error
 
