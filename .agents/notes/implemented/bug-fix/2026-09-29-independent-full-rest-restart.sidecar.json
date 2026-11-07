@@ -1,0 +1,18 @@
+{
+  "title": "Independent full rest after restart",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [],
+  "code_symbols": [
+    "arknights_mower.utils.resting_correction.prefer_resting_replacements",
+    "arknights_mower.utils.scheduler_task.plan_metadata"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/rest_full_restart_tests.py",
+    "arknights_mower/tests/resting_correction_tests.py"
+  ]
+}

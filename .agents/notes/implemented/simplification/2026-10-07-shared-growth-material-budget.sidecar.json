@@ -1,0 +1,18 @@
+{
+  "title": "Shared growth material budget",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-GROWTH-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.growth.material_entries"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/growth_planning_tests.py"
+  ]
+}

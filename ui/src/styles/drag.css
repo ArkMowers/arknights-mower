@@ -1,0 +1,83 @@
+html[data-mower-theme='dark'],
+html[data-window-shell-theme='dark'] {
+  --mower-drag-surface: #2b2b30;
+  --mower-drag-border: rgba(255, 255, 255, 0.16);
+  --mower-drag-accent: #63e2b7;
+  --mower-drag-text: rgba(255, 255, 255, 0.9);
+}
+
+.mower-drag-chosen {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.mower-drag-ghost {
+  opacity: 0.3 !important;
+  outline: 1px dashed var(--mower-drag-accent, var(--mower-primary, #18a058));
+  outline-offset: -1px;
+  border-radius: var(--mower-drag-radius, 10px);
+  background: color-mix(
+    in srgb,
+    var(--mower-drag-accent, var(--mower-primary, #18a058)) 12%,
+    transparent
+  ) !important;
+}
+
+.mower-drag-fallback,
+.mower-drag-preview {
+  box-sizing: border-box !important;
+  overflow: hidden;
+  border: 1px solid var(--mower-drag-border, var(--mower-border, rgba(0, 0, 0, 0.1))) !important;
+  border-radius: var(--mower-drag-radius, 10px) !important;
+  color: var(--mower-drag-text, var(--mower-text, #333639)) !important;
+  background: var(--mower-drag-surface, var(--mower-surface, #fff)) !important;
+  outline: 1px solid var(--mower-drag-accent, var(--mower-primary, #18a058)) !important;
+  outline-offset: -1px;
+  box-shadow:
+    0 10px 28px -6px rgba(0, 0, 0, 0.2),
+    0 2px 6px rgba(0, 0, 0, 0.08) !important;
+  opacity: 0.98 !important;
+  cursor: grabbing !important;
+  user-select: none !important;
+  pointer-events: none !important;
+}
+
+.mower-drag-fallback {
+  z-index: 4000 !important;
+}
+
+.mower-drag-fallback *,
+.mower-drag-preview * {
+  user-select: none !important;
+  -webkit-user-drag: none;
+}
+
+tr.mower-drag-fallback {
+  display: table !important;
+  table-layout: fixed;
+  border: 0 !important;
+  border-spacing: 0;
+}
+
+.mower-drag-tag {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.mower-drag-tag img {
+  -webkit-user-drag: none;
+}
+
+.mower-drag-tag[style*='visibility: hidden'] {
+  visibility: visible !important;
+  opacity: 0.3 !important;
+  outline: 1px dashed var(--mower-drag-accent, var(--mower-primary, #18a058));
+  outline-offset: -1px;
+  border-radius: var(--mower-drag-radius, 6px);
+}
+
+.mower-drag-tag.mower-drag-fallback {
+  display: inline-flex !important;
+  align-items: center;
+  --mower-drag-radius: 6px;
+}

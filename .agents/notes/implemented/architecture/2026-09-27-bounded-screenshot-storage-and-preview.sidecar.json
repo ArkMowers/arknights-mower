@@ -1,0 +1,23 @@
+{
+  "title": "Bounded Screenshot Storage, History & Real-Time Preview",
+  "status": "implemented",
+  "category": "architecture",
+  "date": "2026-09-27",
+  "authors": [
+    "Antigravity"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-02]",
+    "[INV-03]",
+    "[INV-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.screenshot",
+    "arknights_mower.utils.screenshot_storage"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/screenshot_tests.py",
+    "ui/src/utils/screenshotPreview.test.js"
+  ]
+}

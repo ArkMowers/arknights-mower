@@ -1,0 +1,21 @@
+{
+  "title": "Scheduler Replanning Boundaries",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-32]",
+    "[INV-SCHED-33]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.plan_metadata",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_group_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py"
+  ]
+}

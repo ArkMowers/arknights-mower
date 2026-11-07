@@ -6,7 +6,8 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import typealias as tp
-from arknights_mower.utils.log import logger, save_screenshot
+from arknights_mower.utils.jpeg_codec import encode_jpeg
+from arknights_mower.utils.log import save_screenshot_frame
 from arknights_mower.utils.path import get_path
 
 
@@ -21,20 +22,13 @@ def bytes2img(data: bytes, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
         )
 
 
-def img2bytes(img: tp.Image) -> bytes:
-    """image -> bytes"""
-    return cv2.imencode(
-        ".jpg",
-        cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
-        [int(cv2.IMWRITE_JPEG_QUALITY), 75],
-    )[1]
+def img2bytes(img: tp.Image) -> np.ndarray:
+    """Encode RGB as JPEG; retain ndarray attachment compatibility."""
+    return np.frombuffer(encode_jpeg(img), dtype=np.uint8)
 
 
 def loadres(res: tp.Res, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
-    if res.startswith("@hot"):
-        res_name = res.replace("@hot", "@install/tmp/hot_update", 1)
-    else:
-        res_name = f"{__rootdir__}/resources/{res}"
+    res_name = f"{__rootdir__}/resources/{res}"
     if not res.endswith(".jpg"):
         res_name += ".png"
     filename = get_path(res_name, "")
@@ -44,7 +38,6 @@ def loadres(res: tp.Res, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
 @lru_cache(maxsize=128)
 def loadimg(filename: str, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
     """load image from file"""
-    logger.debug(filename)
     img_data = np.fromfile(filename, dtype=np.uint8)
     if gray:
         return cv2.imdecode(img_data, cv2.IMREAD_GRAYSCALE)
@@ -100,7 +93,7 @@ def cropimg(img: tp.Image, scope: tp.Scope) -> tp.Image:
 
 def saveimg(img: tp.Image, folder):
     del folder  # 兼容2024.05旧版接口
-    save_screenshot(img2bytes(img))
+    save_screenshot_frame(img)
 
 
 def cmatch(
@@ -112,7 +105,6 @@ def cmatch(
     cb = cv2.mean(img2)[:3]
     diff = np.array(ca).astype(int) - np.array(cb).astype(int)
     diff = np.max(np.maximum(diff, 0)) - np.min(np.minimum(diff, 0))
-    logger.debug(f"{ca=} {cb=} {diff=}")
 
     if draw:
         board = np.zeros([h + 5, w * 2, 3], dtype=np.uint8)

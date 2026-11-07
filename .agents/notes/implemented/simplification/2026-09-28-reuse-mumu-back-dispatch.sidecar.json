@@ -1,0 +1,22 @@
+{
+  "title": "Reuse the Existing MuMu Back Entry Point",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-28",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-03]",
+    "[INV-04]",
+    "[INV-DEV-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.device.Device.send_keyevent",
+    "arknights_mower.utils.device.mumu12ipc.input.MuMuInputSession.back"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_touch_tests.py",
+    "arknights_mower/tests/device_mumu_input_tests.py"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Intelligent Rescue Target Evaluation Isolation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_update_targets",
+    "arknights_mower.utils.emergency_recovery.native_opportunity"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "arknights_mower/tests/shift_cycle_convergence_tests.py",
+    "arknights_mower/tests/mass_mood_recovery_tests.py"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "title": "Ordered growth crafting",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-GROWTH-01]",
+    "[INV-GROWTH-03]",
+    "[INV-SCHED-29]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.growth_order.crafting_projects",
+    "arknights_mower.utils.growth_order.prepare_project_materials",
+    "arknights_mower.utils.growth_order.validate_order",
+    "arknights_mower.utils.growth_workshop.growth_workshop_config"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/growth_crafting_order_tests.py",
+    "arknights_mower/tests/workshop_continuation_tests.py",
+    "ui/src/components/GrowthCraftingOrder.test.js"
+  ]
+}

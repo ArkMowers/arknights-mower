@@ -1,0 +1,25 @@
+{
+  "title": "Rescue Observation and Dispatch Ownership",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-15]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_tick",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_reconcile_staffing",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._read_initial_card_mood"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_group_staffing_tests.py",
+    "arknights_mower/tests/emergency_observation_budget_tests.py",
+    "ui/src/pages/Log.test.js",
+    "ui/src/stores/mower.test.js"
+  ]
+}

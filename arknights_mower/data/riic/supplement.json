@@ -1,0 +1,100 @@
+[
+  {
+    "name": "德·托莱多",
+    "id": "char_393_toledo",
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "拉拢听众",
+        "roomType": "人力办公室",
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+20%</>，心情每小时消耗<@cc.vup>-0.25</>",
+        "skillIcon": "bskill_hire_spd&cost4",
+        "buffCategory": "FUNCTION"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "聚众宣讲",
+        "roomType": "人力办公室",
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+30%</>，心情每小时消耗<@cc.vup>-0.25</>",
+        "skillIcon": "bskill_hire_spd&cost6",
+        "buffCategory": "FUNCTION"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "忠实拥趸",
+        "roomType": "宿舍",
+        "des": "进驻宿舍时，该宿舍内所有干员心情每小时恢复<@cc.vup>+0.1</>，同时每个招募位（不包含初始招募位）额外<@cc.vup>+0.05</>恢复效果（叠加后的最终值同种效果取最高）",
+        "skillIcon": "bskill_dorm_hireToRecAll2",
+        "buffCategory": "RECOVERY"
+      }
+    ]
+  },
+  {
+    "name": "克莱门莎",
+    "id": "char_4231_clemnt",
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "谈判技巧",
+        "roomType": "会客室",
+        "des": "进驻会客室时，线索搜集速度提升<@cc.vup>20%</>，心情每小时消耗<@cc.vdown>+1</>",
+        "skillIcon": "bskill_meet_spd&cost_clms",
+        "buffCategory": "FUNCTION"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "合作原则",
+        "roomType": "会客室",
+        "des": "与其他干员进驻会客室一起工作时，线索搜集速度提升<@cc.vup>15%</>，心情每小时消耗<@cc.vdown>+1</>",
+        "skillIcon": "bskill_meet_spd&cost_char",
+        "buffCategory": "FUNCTION"
+      }
+    ]
+  },
+  {
+    "name": "旅骨",
+    "id": "char_4232_hbound",
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "拾荒者",
+        "roomType": "回收站",
+        "des": "进驻回收站时，材料转化效率<@cc.vup>+20%</>",
+        "skillIcon": "bskill_recycle_spd&cost1",
+        "buffCategory": "FUNCTION"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "捡海人",
+        "roomType": "回收站",
+        "des": "进驻回收站时，材料转化效率<@cc.vup>+30%</>",
+        "skillIcon": "bskill_recycle_spd&cost2",
+        "buffCategory": "FUNCTION"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "指尖的光",
+        "roomType": "加工站",
+        "des": "进驻加工站加工<@cc.kw>手性屈光体</>或<@cc.kw>重相位对映体</>时，副产物的产出概率提升<@cc.vup>90%</>",
+        "skillIcon": "bskill_ws_Refractor",
+        "buffCategory": "FUNCTION"
+      }
+    ]
+  }
+]

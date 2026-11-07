@@ -1,0 +1,24 @@
+{
+  "title": "Intelligent Rescue Specialized Boundaries",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.plan_metadata",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_tick",
+    "arknights_mower.utils.scheduler_task.plan_mood_limit_releases",
+    "arknights_mower.utils.emergency_recovery.emergency_dorm_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "arknights_mower/tests/emergency_compensation_tests.py"
+  ]
+}

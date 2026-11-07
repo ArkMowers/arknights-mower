@@ -1,0 +1,21 @@
+{
+  "title": "Homebound T5 Workshop Scope",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-WORKSHOP-02]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.workshop_rules.compile_workshop_buff",
+    "arknights_mower.utils.workshop_recipes.operator_recipe_allowed",
+    "arknights_mower.utils.workshop_recipes.rule_matches",
+    "arknights_mower.utils.workshop_allocation.scope_setting"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/workshop_traveler_tests.py"
+  ]
+}

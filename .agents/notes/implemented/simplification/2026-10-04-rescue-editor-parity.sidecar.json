@@ -1,0 +1,20 @@
+{
+  "title": "Rescue Editor Parity",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.emergency_plan.effective_rescue_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_plan_tests.py",
+    "ui/src/stores/rescuePlan.test.js",
+    "ui/src/stores/config.test.js"
+  ]
+}

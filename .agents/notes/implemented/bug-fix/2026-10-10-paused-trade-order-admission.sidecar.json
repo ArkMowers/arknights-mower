@@ -1,0 +1,27 @@
+{
+  "title": "Paused Trade Order Admission",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-04]",
+    "[INV-SCHED-05]",
+    "[INV-SCHED-27]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_run_order_time",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.plan_run_order",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._read_room_mood",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/run_order_product_tests.py",
+    "arknights_mower/tests/run_order_restoration_tests.py",
+    "arknights_mower/tests/maintenance_run_order_tests.py",
+    "arknights_mower/tests/run_order_planning_wakeup_tests.py",
+    "arknights_mower/tests/priority_admission_tests.py"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "title": "Archive Observation Cohesion",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DIAG-07]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.screenshot.ScreenshotStore._archiver"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/screenshot_tests.py",
+    "arknights_mower/tests/screenshot_cleanup_tests.py",
+    "arknights_mower/tests/verify_governance_tests.py"
+  ]
+}

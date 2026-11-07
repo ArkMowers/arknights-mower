@@ -1,0 +1,30 @@
+{
+  "title": "Session Configuration and Recovery Review Repairs",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-03]",
+    "[INV-04]",
+    "[INV-UI-01]",
+    "[INV-DEV-03]",
+    "[INV-DEV-07]",
+    "[INV-REC-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.application.DeviceControl",
+    "arknights_mower.utils.graph.SceneGraphSolver"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_application_tests.py",
+    "arknights_mower/tests/device_screenshot_backend_tests.py",
+    "arknights_mower/tests/device_endpoint_budget_tests.py",
+    "arknights_mower/tests/scene_graph_recovery_tests.py",
+    "arknights_mower/tests/simulator_tests.py",
+    "ui/src/components/DeviceSettings.test.js"
+  ]
+}

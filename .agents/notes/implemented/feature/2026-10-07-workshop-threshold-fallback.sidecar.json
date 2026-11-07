@@ -1,0 +1,24 @@
+{
+  "title": "Workshop Threshold Fallback",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UI-11]"
+  ],
+  "code_symbols": [
+    "ui/src/utils/workshopOperators.js:syncWorkshopOperators",
+    "ui/src/pages/MasteryRecommendation.vue:readWorkshopDefaults",
+    "arknights_mower.utils.workshop_recommendation.recommend_workshop_operators",
+    "arknights_mower.utils.workshop_selection.WorkshopSelection.category_entries",
+    "arknights_mower.views.mastery.WorkshopOperatorRecommendationsView.get"
+  ],
+  "test_suites": [
+    "ui/src/utils/workshopOperators.test.js",
+    "arknights_mower/tests/workshop_recommendation_tests.py",
+    "arknights_mower/tests/workshop_allocation_tests.py"
+  ]
+}

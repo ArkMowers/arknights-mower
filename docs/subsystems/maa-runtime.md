@@ -1,0 +1,35 @@
+# MAA Runtime Core Contract
+
+## 1. Initialization
+
+`load_maa_process` serializes desktop core validation and instance construction with the existing update transaction. Every initialization launches a fresh `MaaProcess` worker on Windows, macOS and Linux. The worker imports the configured Python SDK and loads base and incremental resources; the scheduler never imports that SDK or opens its native core. Before acquiring a device connection, the loader compares the worker's version with `read_installed_version(fresh=True)` and checks the core identity again. Identity includes the configured path, resolved target path, and target file's device, inode, size and modification time. Replacements with unchanged version strings still invalidate that identity.
+
+The fresh disk probe runs in the existing MAA check child process with a thirty-second timeout. Its version-only mode loads no SDK resources and acquires no device connection. Source and packaged launchers use the same version-result protocol; native images and Objective-C registrations stay outside the parent process.
+
+The scheduler retains `VerifiedAsst`, task admission, callback interpretation and inventory accounting. A token-authenticated loopback socket forwards instance operations and callbacks. Each request has a monotonic deadline; response frames and callback buffers have explicit size limits. Callbacks drain in order before the call returns, including callbacks that change task parameters. Worker startup, resource loading, communication failure, timeout or callback overflow fails the current operation and releases the worker. Accepted tasks are never replayed automatically. Resource-load failures retain installation diagnostics; other worker exceptions become `MaaProcessError` with code `maa_worker_failed` and the reported detail.
+
+## 2. Reload and Failure Boundary
+
+`stop()` cancels tasks while allowing the same worker to perform the configured theme restoration. `release_maa` then closes the worker on normal completion and exceptional exits, including failed cancellation. Closing has a shorter deadline than normal operations and reaps an unresponsive worker. Garbage collection and application exit also register process cleanup; inherited-pipe EOF makes the worker exit when its parent disappears. Retaining a Python proxy after worker closure does not retain a native instance or block updates.
+
+Workers hold shared installation leases, allowing multiple processes to read the same installation. Core and resource replacement close the current process's idle workers and require an exclusive lease before changing files. Another Mower instance using the same installation prevents replacement until it releases its worker. Optional navigation refresh follows the [activity navigation rules](maa-integration.md#6-desktop-activity-navigation): occupancy skips refreshing and initialization continues with existing resources. The stable lock files live beside the installation so directory replacement does not replace them. Update temporary workspaces retain the [software update storage contract](software-update.md#15-update-cache-storage).
+
+Before core/resource replacement and backup retirement, Windows also acquires the official client's `MAA_` installation mutexes for configured and resolved installation and backup paths. An occupied mutex rejects the operation before changing files and ownership is released on every exit. On macOS, a bounded `lsof` check rejects mapped cores in the installation, internal `.old` or legacy sibling backup; an unavailable or failed scan preserves files. These checks include standalone clients and older Mower processes, but macOS scanning cannot prevent an uncoordinated client from starting after the check. Linux retains participating-Mower leases. Client occupancy does not reject normal initialization; optional navigation refresh uses existing resources when these checks do not admit a write. None of these checks stops another process automatically.
+
+Successful task verification retains the existing backup ownership checks. Backup retirement waits until its worker releases the shared lease and requires an exclusive lease and client occupancy admission, so another instance preserves the backup. Backup identities continue to use `lstat` semantics. Backup locations and package validation follow the [MAA update boundary](software-update.md#17-maa-package-validation-and-backups).
+
+Process exit releases the native core, including macOS Objective-C registrations and libraries that remain mapped after native close. The next initialization imports both the replacement SDK and its instance-option definitions in a new worker. A failed worker can be replaced without restarting Mower. The compatibility `load_verified_maa` path retains its native ownership and confirmed-unload checks; an already-loaded in-process macOS core still requires one Mower restart to enter the isolated implementation. Removing its restart guard does not establish safe native unloading.
+
+Android retains its host-managed core lifecycle. Configuration schemas, Scheduling Plans and device transport retain their existing contracts.
+
+## 3. Explicit Update Completion
+
+`server._run_maa_resource_update` installs resources only while no MAA task is active and the desktop installation lease is exclusive. The next initialization loads the resources in a fresh worker. Android still packs the managed component and reports its service-restart requirement. A no-update result preserves the current installation and loaded worker.
+
+`server._run_maa_update` separates committed installation from runtime activation. Isolated desktop workers close before installation, releasing Windows native file locks; the next run loads the installed core without restarting Mower. A post-install compatibility cleanup failure retains a successful job, its installed files and backup, and sets `result.restart_required` with process-restart guidance. A failed post-install disk-version probe retains the installation result, reports an unknown `installed_version` and asks the user to check the installation. Initialization still enforces validation before connection. Installation failures, including an unavailable exclusive lease, remain errors.
+
+## 4. Subsystem Invariants
+
+- <a id="maa-core-generation"></a>**MAA Core Generation**: Desktop initialization verifies a fresh worker's core against an independent disk version and resolved target identity before connection. Replacement uses a new worker after old workers release their native handles; failed validation never connects or replays tasks. Android retains its host-managed activation and service restart boundary.
+
+[Desktop process isolation](../../.agents/notes/implemented/architecture/2026-10-17-maa-process-isolation.md) records the activation choice and verification. [Core generation validation](../../.agents/notes/implemented/bug-fix/2026-10-05-maa-core-generation.md) retains validation rationale and the compatibility native-unload boundary.

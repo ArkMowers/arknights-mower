@@ -1,9 +1,14 @@
 import os
+import subprocess
 import zipfile
 
 import requests
 
+from arknights_mower.utils.log import logger
+
 from .. import __version__
+from .github_download import request_download, request_github
+from .update_runtime import hidden_console_options
 
 
 # 编写bat脚本，删除旧程序，运行新程序
@@ -31,8 +36,13 @@ def __write_restart_cmd(new_name, old_name):
     TempList += "exit"
     b.write(TempList)
     b.close()
-    # subprocess.Popen("upgrade.bat") #不显示cmd窗口
-    os.system("start upgrade.bat")  # 显示cmd窗口
+    subprocess.Popen(
+        ["cmd.exe", "/c", "upgrade.bat"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        **hidden_console_options(),
+    )
     os._exit(0)
 
 
@@ -67,8 +77,11 @@ def update_version():
 
 
 def __get_newest_version():
-    response = requests.get(
-        "https://api.github.com/repos/ArkMowers/arknights-mower/releases/latest"
+    response = request_github(
+        requests,
+        "get",
+        "https://api.github.com/repos/ArkMowers/arknights-mower/releases/latest",
+        timeout=30,
     )
     return response.json()["tag_name"]
 
@@ -76,13 +89,12 @@ def __get_newest_version():
 def download_version(version):
     if not os.path.isdir("./tmp"):
         os.makedirs("./tmp")
-    r = requests.get(
+    r, _ = request_download(
+        requests,
+        "get",
         f"https://github.com/ArkMowers/arknights-mower/releases/download/{version}/mower.zip",
         stream=True,
     )
-    # r = requests.get(
-    #     f"https://github.com/ArkMowers/arknights-mower/releases/download/{version}/arknights-mower-3.0.4.zip",
-    #     stream=True)
     total = int(r.headers.get("content-length", 0))
     index = 0
     with open("./tmp/mower.zip", "wb") as f:
@@ -90,7 +102,9 @@ def download_version(version):
             if chunk:
                 f.write(chunk)
                 index += len(chunk)
-                print(f"更新进度：{'%.2f%%' % (index * 100 / total)}({index}/{total})")
+                logger.info(
+                    "更新进度：%.2f%% (%s/%s)", index * 100 / total, index, total
+                )
     zip_file = zipfile.ZipFile("./tmp/mower.zip")
     zip_list = zip_file.namelist()
 

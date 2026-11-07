@@ -5,7 +5,6 @@ from itertools import combinations
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
 from arknights_mower.data import (
     agent_with_tags,
     recruit_agent,
@@ -17,14 +16,43 @@ from arknights_mower.utils.email import recruit_rarity, recruit_template, send_m
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
 from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 from arknights_mower.utils.vector import va
 
 number = riic_base_digits
-with lzma.open(f"{__rootdir__}/models/recruit_result.pkl", "rb") as f:
-    recruit_res_template = pickle.load(f)
-with lzma.open(f"{__rootdir__}/models/recruit.pkl", "rb") as f:
-    tag_template = pickle.load(f)
+
+
+def _load_recruit_models():
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/recruit_result.pkl")), "rb"
+    ) as f:
+        result = pickle.load(f)
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/recruit.pkl")), "rb"
+    ) as f:
+        tags = pickle.load(f)
+    if not isinstance(result, dict) or not isinstance(tags, dict):
+        raise ValueError("公开招募识别模型格式错误")
+    return result, tags
+
+
+recruit_res_template, tag_template = _load_recruit_models()
+
+
+@register_resource_reload
+def reload_resource_models() -> None:
+    result, tags = _load_recruit_models()
+    recruit_res_template.clear()
+    recruit_res_template.update(result)
+    tag_template.clear()
+    tag_template.update(tags)
+
+
 job_list = [
     "recruit/riic_res/CASTER",
     "recruit/riic_res/MEDIC",
@@ -103,6 +131,7 @@ class RecruitSolver(SceneGraphSolver):
                 ),
                 "公招汇总通知",
                 "INFO",
+                body_is_html=True,
             )
         return recruit_results, self.result_agent
 
@@ -250,6 +279,10 @@ class RecruitSolver(SceneGraphSolver):
                     self.get_recruit_time("minute"),
                 ]
 
+                if recruit_time[1] and now_time[0] != recruit_time[0]:
+                    self.choose_time(now_time[0], recruit_time[0], mode="hour")
+                    return
+
                 if now_time[1] != recruit_time[1]:
                     self.choose_time(now_time[1], recruit_time[1], mode="minute")
                     return
@@ -298,47 +331,67 @@ class RecruitSolver(SceneGraphSolver):
             self.scene_graph_navigation(Scene.RECRUIT_MAIN)
 
     def recruit_result(self):
-        try:
-            # 存在读完一次没退完再读一次
-            if str(self.recruit_index) in self.result_agent.keys():
-                self.tap((950, 150))
-                return
+        if self.recruit_index in self.result_agent:
+            self.tap((950, 150))
+            return
 
+        for attempt in range(5):
             job_pt = None
             for i in job_list:
                 if job_pt := self.find(i):
                     break
+            if job_pt is not None:
+                break
+            if attempt < 4:
+                self.sleep(1)
+        else:
+            logger.warning("公招干员职业图标连续5次未识别，结束本次公招")
+            self.recog.update()
+            return True
 
-            img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
-            img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
+        img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
+        img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
 
-            score = {}
-            for id in recruit_res_template:
-                res = recruit_res_template[id]
-                result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
-                _, max_val, _, _ = cv2.minMaxLoc(result)
-                score[id] = max_val
-            self.result_agent[self.recruit_index] = recruit_agent[
-                max(score, key=score.get)
-            ]["name"]
-
-        except Exception as e:
-            logger.exception(f"公招开包异常:{e}")
-        finally:
-            self.tap((500, 500))
+        # 统一姓名模板宽度，让短姓名的评分也包含右侧文字，避免只匹配长姓名的一部分。
+        width = max(res.shape[1] for res in recruit_res_template.values())
+        score = {}
+        for id in recruit_res_template:
+            res = recruit_res_template[id]
+            res = np.pad(res, ((0, 0), (0, width - res.shape[1])))
+            result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(result)
+            score[id] = max_val
+        self.result_agent[self.recruit_index] = recruit_agent[
+            max(score, key=score.get)
+        ]["name"]
+        self.tap((500, 500))
 
     def recruit_tags(self, tags):
         tem_res = self.recruit_cal(sorted(tags))
+        robot_choice = None
+        if (
+            config.conf.recruit_auto_robot
+            and "支援机械" in tags
+            and tem_res[3]
+            and not any(tem_res[level] for level in (4, 5, 6))
+        ):
+            robot_choice = self.unfinished_robot_choice(tem_res[1])
         recruit_cal_result = None
         recruit_result_level = -1
 
-        for index in self.recruit_order:
-            if tem_res[index]:
-                recruit_result_level = index
-                break
+        if robot_choice is not None:
+            recruit_result_level = 1
+            recruit_cal_result = [robot_choice]
+        else:
+            for index in self.recruit_order:
+                if tem_res[index]:
+                    recruit_result_level = index
+                    break
         if recruit_result_level == -1:
             logger.error("筛选结果为 {}".format(tem_res))
             raise ValueError("筛选tag失败")
+        elif robot_choice is not None:
+            logger.info("支援机械候选均未满潜，自动招募")
         elif recruit_result_level != 3 and self.all_same_res(
             tem_res, recruit_result_level
         ):
@@ -354,17 +407,23 @@ class RecruitSolver(SceneGraphSolver):
                     recruit_results=recruit_cal_result,
                     title_text="稀有tag通知",
                 ),
-                "出稀有标签辣",
+                "公招出现稀有标签",
                 "WARNING",
+                body_is_html=True,
             )
-            if recruit_result_level == 6 or recruit_result_level == 1:
+            if recruit_result_level == 6 or (
+                recruit_result_level == 1 and robot_choice is None
+            ):
                 logger.debug(f"{recruit_result_level}星稀有tag  ,不选")
                 self.recruit_index = self.recruit_index + 1
                 self.back()
                 return
             elif recruit_result_level == 5:
                 if config.conf.recruit_auto_5 == 2:
-                    if config.conf.recruit_auto_only5 and len(recruit_cal_result) > 1:
+                    if (
+                        not config.conf.recruit_auto_only5
+                        or len(recruit_cal_result) > 1
+                    ):
                         logger.debug(
                             f"{recruit_result_level}星稀有tag,但不止一个或纯手动选择"
                         )
@@ -389,6 +448,50 @@ class RecruitSolver(SceneGraphSolver):
         }
 
         return
+
+    def unfinished_robot_choice(self, choices):
+        snapshot = get_cultivate_snapshot()
+        if not snapshot:
+            return None
+        characters = {char["id"]: char for char in snapshot["data"]["characters"]}
+        items = snapshot["data"].get("items")
+        if not isinstance(items, list) or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("id"), str)
+            or not str(item.get("count", "")).isdigit()
+            for item in items
+        ):
+            return None
+        tokens = {item["id"]: int(item["count"]) for item in items}
+        if len(tokens) != len(items):
+            return None
+        reserved = {}
+        for choice in self.agent_choose.values():
+            if choice["level"] == 1 and choice["choosed"]:
+                for agent in choice["result"]:
+                    reserved[agent["id"]] = reserved.get(agent["id"], 0) + 1
+        unfinished = {
+            char_id
+            for char_id, char in characters.items()
+            if type(char.get("potentialRank")) is int
+            and 0 <= char["potentialRank"] < 5
+            and char["potentialRank"]
+            + tokens.get(f"p_{char_id}", 0)
+            + reserved.get(char_id, 0)
+            < 5
+        }
+        eligible = [
+            choice
+            for choice in choices
+            if "支援机械" in choice["tag"]
+            and choice["result"]
+            and all(agent["id"] in unfinished for agent in choice["result"])
+        ]
+        return min(
+            eligible,
+            key=lambda choice: (len(choice["result"]), len(choice["tag"])),
+            default=None,
+        )
 
     def all_same_res(self, recruit_cal_res, index):
         tmp_list = recruit_cal_res[index]
@@ -564,8 +667,11 @@ class RecruitSolver(SceneGraphSolver):
                     continue
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
                 min_val, _, _, _ = cv2.minMaxLoc(result)
-                score.append(min_val)
-            value = value * 10 + score.index(min(score))
+                score.append((min_val, i))
+            # 阈值化可能把一个数字分成两块；无法匹配模板的碎片不是一位数字。
+            if not score:
+                continue
+            value = value * 10 + min(score)[1]
         return value
 
     def add_recruit_param(self):
@@ -619,35 +725,11 @@ class RecruitSolver(SceneGraphSolver):
 
         return value
 
-    def choose_time(self, now_time: int, to_time: int, mode="hour" or "minute"):
-        subtract_time = now_time - to_time
-
-        click_time = 0
-        max_click = 0
-        tap_pos = 0
+    def choose_time(self, now_time: int, to_time: int, mode="hour"):
         if mode == "minute":
-            click_time = int(abs(subtract_time) / 10)
-            tap_pos = 0.5
-            [self.tap_element("one_hour", tap_pos, 0.8, 0.1) for _ in range(click_time)]
-            return
-
-        if mode == "hour":
-            click_time = abs(subtract_time)
-            max_click = 9
-            tap_pos = 0.2
-
-        if abs(subtract_time) > (max_click / 2):
-            if subtract_time > 0:
-                [self.tap_element("one_hour", 0.2, 0.2, 0.1) for _ in range(click_time)]
-            else:
-                [
-                    self.tap_element("one_hour", 0.2, 0.8, 0.1)
-                    for _ in range(max_click - click_time)
-                ]
+            step, tap_pos = 10, 0.5
         else:
-            if subtract_time < 0:
-                [self.tap_element("one_hour", 0.2, 0.2, 0.1) for _ in range(click_time)]
-            else:
-                [self.tap_element("one_hour", 0.2, 0.8, 0.1) for _ in range(click_time)]
-
-        return
+            step, tap_pos = 1, 0.2
+        direction = 0.2 if to_time > now_time else 0.8
+        for _ in range(abs(to_time - now_time) // step):
+            self.tap_element("one_hour", tap_pos, direction, 0.1)

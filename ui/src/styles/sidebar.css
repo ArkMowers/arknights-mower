@@ -1,0 +1,22 @@
+.sidebar-scroll-fade {
+  --sidebar-fade-top: 0px;
+  --sidebar-fade-bottom: 0px;
+}
+
+.sidebar-scroll-fade.sidebar-scroll--up {
+  --sidebar-fade-top: 12px;
+}
+
+.sidebar-scroll-fade.sidebar-scroll--down {
+  --sidebar-fade-bottom: 12px;
+}
+
+.sidebar-scroll-fade .n-scrollbar-container {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--sidebar-fade-top),
+    #000 calc(100% - var(--sidebar-fade-bottom)),
+    transparent
+  );
+}

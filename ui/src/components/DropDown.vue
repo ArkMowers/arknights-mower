@@ -3,36 +3,68 @@ defineProps({
   select: { type: Function },
   options: { type: Array },
   type: { default: 'default' },
-  up: { default: false, type: Boolean }
+  up: { default: false, type: Boolean },
+  menuLabel: { type: String, default: '选择操作' },
+  disabled: { type: Boolean, default: false }
 })
 
-import DropUpIcon from '@vicons/ionicons4/MdArrowDropup'
-import DropDownIcon from '@vicons/ionicons4/MdArrowDropdown'
+import DropUpIcon from '@vicons/ionicons4/es/MdArrowDropup'
+import DropDownIcon from '@vicons/ionicons4/es/MdArrowDropdown'
 
-import { inject, computed } from 'vue'
+import { inject, ref } from 'vue'
 
-const mobile = inject('mobile')
-
-const btn_pad = computed(() => {
-  if (mobile.value) {
-    return '12px'
-  } else {
-    return '6px'
-  }
-})
+const mobile = inject('mobile', ref(false))
+const menuOpen = ref(false)
 </script>
 
 <template>
+  <n-button-group v-if="mobile" class="split-dropdown split-dropdown--touch">
+    <slot />
+    <n-dropdown
+      v-model:show="menuOpen"
+      trigger="click"
+      :options="options"
+      :disabled="disabled"
+      @select="select"
+      :placement="up ? 'top' : 'bottom'"
+    >
+      <n-button
+        class="dropdown"
+        :type="type"
+        :disabled="disabled"
+        :aria-label="menuLabel"
+        :title="menuLabel"
+        aria-haspopup="menu"
+        :aria-expanded="menuOpen"
+        ghost
+      >
+        <template #icon>
+          <n-icon><drop-up-icon v-if="up" /><drop-down-icon v-else /></n-icon>
+        </template>
+      </n-button>
+    </n-dropdown>
+  </n-button-group>
   <n-dropdown
+    v-else
+    v-model:show="menuOpen"
     trigger="hover"
-    width="trigger"
     :options="options"
+    :disabled="disabled"
     @select="select"
     :placement="up ? 'top' : 'bottom'"
   >
-    <n-button-group>
+    <n-button-group class="split-dropdown">
       <slot />
-      <n-button class="dropdown" :type="type" ghost>
+      <n-button
+        class="dropdown"
+        :type="type"
+        :disabled="disabled"
+        :aria-label="menuLabel"
+        :title="menuLabel"
+        aria-haspopup="menu"
+        :aria-expanded="menuOpen"
+        ghost
+      >
         <template #icon>
           <n-icon><drop-up-icon v-if="up" /><drop-down-icon v-else /></n-icon>
         </template>
@@ -43,7 +75,11 @@ const btn_pad = computed(() => {
 
 <style scoped>
 .dropdown {
-  padding-left: v-bind(btn_pad);
-  padding-right: v-bind(btn_pad);
+  padding-inline: 6px;
+}
+.split-dropdown--touch .dropdown {
+  width: 44px;
+  min-height: 44px;
+  padding-inline: 10px;
 }
 </style>

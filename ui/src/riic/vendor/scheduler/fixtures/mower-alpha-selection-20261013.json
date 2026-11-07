@@ -1,0 +1,245 @@
+{
+  "revision": "ab0a4e5bec23f6f8d7c37b0648f05dda28f31866",
+  "scope": "Replay pinned alpha dorm admission cancellation with synthetic observations. Native cancellation, priority and mood methods; explicit synthetic dynamic bed. Also native group recovery timing block and normal_return_time with synthetic recovery deadlines. No capacity, Free-card resolution, task-generation lead time, complete scheduler or device equivalence claim.",
+  "sourceSha256": {
+    "arknights_mower/solvers/base_schedule.py": "5987139c8f32a09b4b678ee316b5c353ceebdaeed2469a7dcbae6229b01d1d5c",
+    "arknights_mower/utils/operators.py": "3cea0b585418154621f82958a47677f58cd1d30dfa2572530fff2eb647aa2982",
+    "arknights_mower/utils/resting_priority.py": "aa317803cf62bed8583cb6167a2ebd9cff018e6a4be5f03a73f3b2c45d6a5d18",
+    "arknights_mower/utils/scheduler_task.py": "d7ba1eeec8516c960779fc9d5a4873ed49b44d8e1770090f3708f0f89eecc385"
+  },
+  "methods": {
+    "RestingTier": {
+      "path": "arknights_mower/utils/resting_priority.py",
+      "line": 23
+    },
+    "_replacement_tier": {
+      "path": "arknights_mower/utils/resting_priority.py",
+      "line": 34
+    },
+    "resting_tier": {
+      "path": "arknights_mower/utils/resting_priority.py",
+      "line": 40
+    },
+    "has_resting_mood": {
+      "path": "arknights_mower/utils/resting_priority.py",
+      "line": 89
+    },
+    "resting_mood": {
+      "path": "arknights_mower/utils/resting_priority.py",
+      "line": 99
+    },
+    "current_mood": {
+      "path": "arknights_mower/utils/operators.py",
+      "line": 3096
+    },
+    "is_high": {
+      "path": "arknights_mower/utils/operators.py",
+      "line": 3052
+    },
+    "rest_mood_complete": {
+      "path": "arknights_mower/utils/operators.py",
+      "line": 787
+    },
+    "_cancel_dorm_recovery_targets": {
+      "path": "arknights_mower/solvers/base_schedule.py",
+      "line": 8188
+    },
+    "normal_return_time": {
+      "path": "arknights_mower/utils/scheduler_task.py",
+      "line": 1899
+    },
+    "group_recovery_timing_block": {
+      "path": "arknights_mower/utils/scheduler_task.py",
+      "line": 1990
+    }
+  },
+  "cases": [
+    {
+      "name": "cached full priority target has depleted since observation",
+      "input": {
+        "mood": 24,
+        "depletionRate": 3.05,
+        "elapsedHours": 0.25,
+        "limit": null,
+        "priority": true,
+        "excluded": ""
+      },
+      "predictedBefore": 23.2375,
+      "tier": 0,
+      "output": [
+        "Current",
+        "Current",
+        "Current",
+        "N",
+        "Current"
+      ],
+      "depletionRateAfter": 3.05,
+      "predictionAfter": 23.2375,
+      "expectedTargetRetained": true
+    },
+    {
+      "name": "currently full priority target remains explicitly admitted",
+      "input": {
+        "mood": 24,
+        "depletionRate": 0,
+        "elapsedHours": 0,
+        "limit": null,
+        "priority": true,
+        "excluded": ""
+      },
+      "predictedBefore": 24.0,
+      "tier": 0,
+      "output": [
+        "Current",
+        "Current",
+        "Current",
+        "N",
+        "Current"
+      ],
+      "depletionRateAfter": 0,
+      "predictionAfter": 24.0,
+      "expectedTargetRetained": true
+    },
+    {
+      "name": "completed personal recovery limit cancels admission",
+      "input": {
+        "mood": 20,
+        "depletionRate": 1,
+        "elapsedHours": 0,
+        "limit": 20,
+        "priority": true,
+        "excluded": ""
+      },
+      "predictedBefore": 20.0,
+      "tier": 0,
+      "output": [
+        "Current",
+        "Current",
+        "Current",
+        "Free",
+        "Current"
+      ],
+      "depletionRateAfter": 0,
+      "predictionAfter": 20.0,
+      "expectedTargetRetained": false
+    },
+    {
+      "name": "blacklisted target cancels admission without clearing consumption",
+      "input": {
+        "mood": 10,
+        "depletionRate": 1,
+        "elapsedHours": 0,
+        "limit": null,
+        "priority": true,
+        "excluded": "blacklist"
+      },
+      "predictedBefore": 10.0,
+      "tier": 7,
+      "output": [
+        "Current",
+        "Current",
+        "Current",
+        "Free",
+        "Current"
+      ],
+      "depletionRateAfter": 1,
+      "predictionAfter": 10.0,
+      "expectedTargetRetained": false
+    },
+    {
+      "name": "workaholic target cancels admission without clearing consumption",
+      "input": {
+        "mood": 10,
+        "depletionRate": 1,
+        "elapsedHours": 0,
+        "limit": null,
+        "priority": true,
+        "excluded": "workaholic"
+      },
+      "predictedBefore": 10.0,
+      "tier": 7,
+      "output": [
+        "Current",
+        "Current",
+        "Current",
+        "Free",
+        "Current"
+      ],
+      "depletionRateAfter": 1,
+      "predictionAfter": 10.0,
+      "expectedTargetRetained": false
+    }
+  ],
+  "groupRecoveryGaps": [
+    {
+      "name": "earliest bed first",
+      "input": {
+        "times": [
+          1,
+          5
+        ],
+        "enabled": true,
+        "thresholdMinutes": 60,
+        "maxWaitHours": 0
+      },
+      "batchTimeHours": 4.986666666666666,
+      "restInFull": false
+    },
+    {
+      "name": "latest bed first",
+      "input": {
+        "times": [
+          5,
+          1
+        ],
+        "enabled": true,
+        "thresholdMinutes": 60,
+        "maxWaitHours": 0
+      },
+      "batchTimeHours": 4.986666666666666,
+      "restInFull": false
+    },
+    {
+      "name": "gap option disabled",
+      "input": {
+        "times": [
+          1,
+          5
+        ],
+        "enabled": false,
+        "thresholdMinutes": 60,
+        "maxWaitHours": 0
+      },
+      "batchTimeHours": 1.0,
+      "restInFull": false
+    },
+    {
+      "name": "gap equals threshold",
+      "input": {
+        "times": [
+          1,
+          2
+        ],
+        "enabled": true,
+        "thresholdMinutes": 60,
+        "maxWaitHours": 0
+      },
+      "batchTimeHours": 1.0,
+      "restInFull": false
+    },
+    {
+      "name": "positive extra wait limit",
+      "input": {
+        "times": [
+          1,
+          5
+        ],
+        "enabled": true,
+        "thresholdMinutes": 60,
+        "maxWaitHours": 1
+      },
+      "batchTimeHours": 2.0,
+      "restInFull": false
+    }
+  ]
+}

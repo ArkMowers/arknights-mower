@@ -1,0 +1,19 @@
+{
+  "title": "Mastery Material Candidate Selection",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-29]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.mastery_recommendation.compute_workshop_config"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/workshop_readiness_tests.py",
+    "arknights_mower/tests/workshop_auto_plan_tests.py"
+  ]
+}

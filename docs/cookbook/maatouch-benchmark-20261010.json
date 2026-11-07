@@ -1,0 +1,119 @@
+{
+  "baseline": "5812213101395ae1740672b15e22b7ea4cb46ea8",
+  "source_hash_format": "SHA-256 of UTF-8 source with LF newlines",
+  "harness_sha256": "51c8b7df5bbbfb8fc07d16ad01a88942364a0f7550004f4f7002e96ba9ce640c",
+  "source_hashes": {
+    "before": {
+      "arknights_mower/utils/device/maatouch/session.py": "f3bc9c35c77f9de49e62e65dc48602a981ba92149b4768851a680040b5fac0b1",
+      "arknights_mower/utils/device/adb_client/server.py": "8bc28e28ab97622beb3851e4bb8c57bf2a069721f3a5e52273b98ee7bd4a3d8a",
+      "arknights_mower/utils/device/maatouch/core.py": "35c637c33935010126e5fded7d9ec2b6cfe018f91bc114ae9838f373752bbe49",
+      "arknights_mower/utils/device/maatouch/command.py": "88bf6dc1172ca985a3baabf3825e078a6c087d9eeeffa53d5bf195b34d84c4dc",
+      "arknights_mower/utils/device/manager_io.py": "39e637d905de678fa054fdf6633105b611e3625e14975718e4f68a7a7d9d5d9c",
+      "arknights_mower/utils/device/io_budget.py": "437d3ae1fcdff37e3297fe36e92379e5862be7b351b36ce4b9be1aa92ac82a05"
+    },
+    "after": {
+      "arknights_mower/utils/device/maatouch/session.py": "d0f7d48205632d1e6f0f762c62398768522205ede819bf8dd22e6b3e51ef02c5",
+      "arknights_mower/utils/device/adb_client/server.py": "e9f62956f8837a39b23402e1b9c357b71da5a113565744fca5c2eaa053dd0716",
+      "arknights_mower/utils/device/maatouch/core.py": "35c637c33935010126e5fded7d9ec2b6cfe018f91bc114ae9838f373752bbe49",
+      "arknights_mower/utils/device/maatouch/command.py": "88bf6dc1172ca985a3baabf3825e078a6c087d9eeeffa53d5bf195b34d84c4dc",
+      "arknights_mower/utils/device/manager_io.py": "39e637d905de678fa054fdf6633105b611e3625e14975718e4f68a7a7d9d5d9c",
+      "arknights_mower/utils/device/io_budget.py": "437d3ae1fcdff37e3297fe36e92379e5862be7b351b36ce4b9be1aa92ac82a05"
+    }
+  },
+  "python": "3.12.10",
+  "platform": "win32",
+  "scope": "Fake process/pipes/ADB probe; real gesture waits. Optional local version only.",
+  "sampling_order": [
+    "before",
+    "after"
+  ],
+  "warmup_samples": 0,
+  "pipes": {
+    "before": {
+      "handshake_send_close": {
+        "n": 40,
+        "median_ms": 21.347,
+        "p95_ms": 22.328,
+        "min_ms": 20.796,
+        "max_ms": 23.663
+      },
+      "tap": {
+        "n": 40,
+        "median_ms": 72.107,
+        "p95_ms": 74.385,
+        "min_ms": 70.888,
+        "max_ms": 77.32
+      },
+      "swipe_100ms": {
+        "n": 40,
+        "median_ms": 296.01,
+        "p95_ms": 297.606,
+        "min_ms": 293.538,
+        "max_ms": 299.726
+      },
+      "counts": {
+        "processes": 120,
+        "guards": 120
+      },
+      "pipe_delay_ms": 1.0
+    },
+    "after": {
+      "handshake_send_close": {
+        "n": 40,
+        "median_ms": 4.448,
+        "p95_ms": 5.126,
+        "min_ms": 3.772,
+        "max_ms": 6.242
+      },
+      "tap": {
+        "n": 40,
+        "median_ms": 55.199,
+        "p95_ms": 55.94,
+        "min_ms": 53.914,
+        "max_ms": 56.852
+      },
+      "swipe_100ms": {
+        "n": 40,
+        "median_ms": 260.259,
+        "p95_ms": 262.183,
+        "min_ms": 258.925,
+        "max_ms": 262.586
+      },
+      "counts": {
+        "processes": 120,
+        "guards": 120
+      },
+      "pipe_delay_ms": 1.0
+    }
+  },
+  "adb_executable": {
+    "name": "adb.exe",
+    "size_bytes": 2583552,
+    "protocol": 41,
+    "sha256": "f1f654df0a74b171da34750b4ff34f15a49b75d45aed54123b72998aef619968"
+  },
+  "local_version": {
+    "before": {
+      "first_ms": 64.422,
+      "subsequent": {
+        "n": 40,
+        "median_ms": 66.655,
+        "p95_ms": 77.892,
+        "min_ms": 58.121,
+        "max_ms": 95.073
+      },
+      "version_processes": 41
+    },
+    "after": {
+      "first_ms": 78.629,
+      "subsequent": {
+        "n": 40,
+        "median_ms": 7.617,
+        "p95_ms": 8.415,
+        "min_ms": 6.821,
+        "max_ms": 9.63
+      },
+      "version_processes": 1
+    }
+  }
+}

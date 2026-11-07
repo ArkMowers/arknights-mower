@@ -1,0 +1,28 @@
+{
+  "title": "Upstream Behavior Preservation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-04]",
+    "[INV-DIAG-01]",
+    "[INV-DIAG-02]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.session.DeviceSession",
+    "arknights_mower.utils.device.application.DeviceControl",
+    "arknights_mower.utils.screenshot.ScreenshotStore"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_session_tests.py",
+    "arknights_mower/tests/device_start_bound_tests.py",
+    "arknights_mower/tests/screenshot_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/software_update_tests.py",
+    "arknights_mower/tests/config_backup_tests.py",
+    "arknights_mower/tests/workshop_manual_config_tests.py"
+  ]
+}

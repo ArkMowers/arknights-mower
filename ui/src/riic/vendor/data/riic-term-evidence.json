@@ -1,0 +1,466 @@
+{
+  "sourcePath": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/17759cc8cdf37388414145d16262a3a06f3ab25e/zh_CN/gamedata/excel/gamedata_const.json",
+  "dataVersion": "78.0.0",
+  "sourceSha256": "f0d9f0d4146c3a7adeedb57c114d9a1a9ea0eed6453aabbd05355115a441971c",
+  "sourceCommit": "17759cc8cdf37388414145d16262a3a06f3ab25e",
+  "terms": {
+    "cc.bd_A_1": {
+      "termId": "cc.bd_A_1",
+      "termName": "念力",
+      "description": "拥有该基建技能的干员\n迷迭香"
+    },
+    "cc.bd_A_2": {
+      "termId": "cc.bd_A_2",
+      "termName": "意识实体",
+      "description": "拥有该基建技能的干员\n迷迭香"
+    },
+    "cc.bd_B_1": {
+      "termId": "cc.bd_B_1",
+      "termName": "徘徊旋律",
+      "description": "拥有该基建技能的干员\n黑键"
+    },
+    "cc.bd_B_2": {
+      "termId": "cc.bd_B_2",
+      "termName": "怅惘和声",
+      "description": "拥有该基建技能的干员\n黑键"
+    },
+    "cc.bd_B_3": {
+      "termId": "cc.bd_B_3",
+      "termName": "无词颂歌",
+      "description": "拥有该基建技能的干员\n塑心"
+    },
+    "cc.bd_A": {
+      "termId": "cc.bd_A",
+      "termName": "思维链环",
+      "description": "可影响<$cc.bd_A_1><@cc.rem>念力</></>、<$cc.bd_A_2><@cc.rem>意识实体</></>相关技能\n由以下干员的基建技能提供\n迷迭香"
+    },
+    "cc.bd_B": {
+      "termId": "cc.bd_B",
+      "termName": "无声共鸣",
+      "description": "可影响<$cc.bd_B_1><@cc.rem>徘徊旋律</></>、<$cc.bd_B_2><@cc.rem>怅惘和声</></>、<$cc.bd_B_3><@cc.rem>无词颂歌</></>相关技能\n由以下干员的基建技能提供\n黑键、塑心、深律"
+    },
+    "cc.bd_C": {
+      "termId": "cc.bd_C",
+      "termName": "巫术结晶",
+      "description": "拥有该基建技能的干员\n截云"
+    },
+    "cc.bd_a1": {
+      "termId": "cc.bd_a1",
+      "termName": "感知信息",
+      "description": "可影响<$cc.bd_A><@cc.rem>思维链环</></>、<$cc.bd_B><@cc.rem>无声共鸣</></>相关变量\n由以下干员的基建技能提供\n迷迭香、黑键、夕、令、絮雨、爱丽丝、车尔尼"
+    },
+    "cc.bd_b1": {
+      "termId": "cc.bd_b1",
+      "termName": "人间烟火",
+      "description": "可影响<$cc.bd_C><@cc.rem>巫术结晶</></>相关技能\n由以下干员的基建技能提供\n夕、令、重岳、乌有、桑葚"
+    },
+    "cc.bd_ash": {
+      "termId": "cc.bd_ash",
+      "termName": "情报储备",
+      "description": "由以下干员的基建技能提供\n灰烬"
+    },
+    "cc.bd_tachanka": {
+      "termId": "cc.bd_tachanka",
+      "termName": "乌萨斯特饮",
+      "description": "由以下干员的基建技能提供\n战车"
+    },
+    "cc.bd_malist": {
+      "termId": "cc.bd_malist",
+      "termName": "工程机器人",
+      "description": "由以下干员的基建技能提供\n至简"
+    },
+    "cc.bd_a1_a1": {
+      "termId": "cc.bd_a1_a1",
+      "termName": "记忆碎片",
+      "description": "可影响<$cc.bd_a1><@cc.rem>感知信息</></>相关变量\n由以下干员的基建技能提供\n絮雨"
+    },
+    "cc.bd_a1_a2": {
+      "termId": "cc.bd_a1_a2",
+      "termName": "梦境",
+      "description": "可影响<$cc.bd_a1><@cc.rem>感知信息</></>相关变量\n由以下干员的基建技能提供\n爱丽丝"
+    },
+    "cc.bd_a1_a3": {
+      "termId": "cc.bd_a1_a3",
+      "termName": "小节",
+      "description": "可影响<$cc.bd_a1><@cc.rem>感知信息</></>相关变量\n由以下干员的基建技能提供\n车尔尼"
+    },
+    "cc.bd.costdrop": {
+      "termId": "cc.bd.costdrop",
+      "termName": "心情落差",
+      "description": "干员自身心情上限与当前心情值的差值"
+    },
+    "cc.bd_felyne": {
+      "termId": "cc.bd_felyne",
+      "termName": "木天蓼",
+      "description": "可影响<$cc.bd_felyne_1><@cc.rem>可爱的艾露猫</></>、<$cc.bd_felyne_2><@cc.rem>可靠的随从们</></>相关技能\n由以下干员的基建技能提供\n火龙S黑角、麒麟R夜刀"
+    },
+    "cc.bd_felyne_1": {
+      "termId": "cc.bd_felyne_1",
+      "termName": "可爱的艾露猫",
+      "description": "拥有该基建技能的干员\n泰拉大陆调查团"
+    },
+    "cc.bd_felyne_2": {
+      "termId": "cc.bd_felyne_2",
+      "termName": "可靠的随从们",
+      "description": "拥有该基建技能的干员\n泰拉大陆调查团"
+    },
+    "cc.bd_dungeon": {
+      "termId": "cc.bd_dungeon",
+      "termName": "魔物料理",
+      "description": "由以下干员的基建技能提供\n森西"
+    },
+    "cc.m.var1": {
+      "termId": "cc.m.var1",
+      "termName": "回收利用",
+      "description": "拥有该基建技能的干员\n红云"
+    },
+    "cc.m.var2": {
+      "termId": "cc.m.var2",
+      "termName": "配合意识",
+      "description": "拥有该基建技能的干员\n槐琥"
+    },
+    "cc.t.snsant1": {
+      "termId": "cc.t.snsant1",
+      "termName": "天道酬勤·α",
+      "description": "拥有该基建技能的干员\n雪雉"
+    },
+    "cc.t.snsant2": {
+      "termId": "cc.t.snsant2",
+      "termName": "天道酬勤·β",
+      "description": "拥有该基建技能的干员\n雪雉"
+    },
+    "cc.g.lgd": {
+      "termId": "cc.g.lgd",
+      "termName": "龙门近卫局",
+      "description": "包含以下干员\n陈、星熊、诗怀雅"
+    },
+    "cc.g.lda": {
+      "termId": "cc.g.lda",
+      "termName": "鲤氏侦探事务所",
+      "description": "包含以下干员\n老鲤、阿、吽、槐琥"
+    },
+    "cc.g.ussg": {
+      "termId": "cc.g.ussg",
+      "termName": "乌萨斯学生自治团",
+      "description": "包含以下干员\n早露、凛冬、真理、古米、烈夏、苦艾"
+    },
+    "cc.g.A1": {
+      "termId": "cc.g.A1",
+      "termName": "A1小队",
+      "description": "包含以下干员\n芙蓉、炎熔、米格鲁、芬、克洛丝"
+    },
+    "cc.g.R6": {
+      "termId": "cc.g.R6",
+      "termName": "彩虹小队",
+      "description": "包含以下干员\n灰烬、战车、闪击、霜华、艾拉、医生、双月、导火索"
+    },
+    "cc.g.Attack": {
+      "termId": "cc.g.Attack",
+      "termName": "进攻方",
+      "description": "包含以下干员\n灰烬、闪击、双月、导火索"
+    },
+    "cc.g.Defence": {
+      "termId": "cc.g.Defence",
+      "termName": "防守方",
+      "description": "包含以下干员\n战车、霜华、艾拉、医生"
+    },
+    "cc.g.sp": {
+      "termId": "cc.g.sp",
+      "termName": "异格",
+      "description": "包含所有异格干员"
+    },
+    "cc.g.abyssal": {
+      "termId": "cc.g.abyssal",
+      "termName": "深海猎人",
+      "description": "包含以下干员\n歌蕾蒂娅、斯卡蒂、幽灵鲨、安哲拉、乌尔比安"
+    },
+    "cc.g.psk": {
+      "termId": "cc.g.psk",
+      "termName": "红松骑士团",
+      "description": "包含以下干员\n焰尾、远牙、灰毫、野鬃、正义骑士号"
+    },
+    "cc.g.karlan": {
+      "termId": "cc.g.karlan",
+      "termName": "谢拉格",
+      "description": "包含以下干员\n银灰、灵知、初雪、崖心、角峰、讯使、耶拉、极光、锏、雪猎"
+    },
+    "cc.g.sui": {
+      "termId": "cc.g.sui",
+      "termName": "岁",
+      "description": "包含以下干员\n年、夕、令、重岳、黍、余、望"
+    },
+    "cc.g.glasgow": {
+      "termId": "cc.g.glasgow",
+      "termName": "格拉斯哥帮",
+      "description": "包含以下干员\n推进之王、摩根、达格达、因陀罗"
+    },
+    "cc.g.rh": {
+      "termId": "cc.g.rh",
+      "termName": "莱茵生命",
+      "description": "包含以下干员\n赫默、伊芙利特、塞雷娅、白面鸮、梅尔、麦哲伦、多萝西、星源、缪尔赛思、娜斯提"
+    },
+    "cc.g.sm": {
+      "termId": "cc.g.sm",
+      "termName": "萨米",
+      "description": "包含以下干员\n远山、柏喙、雪绒、提丰、寒檀、凛视"
+    },
+    "cc.g.bs": {
+      "termId": "cc.g.bs",
+      "termName": "黑钢国际",
+      "description": "包含以下干员\n雷蛇、芙兰卡、杰西卡、香草、杏仁、寻澜"
+    },
+    "cc.g.siracusa": {
+      "termId": "cc.g.siracusa",
+      "termName": "叙拉古",
+      "description": "包含以下干员\n安洁莉娜、拉普兰德、普罗旺斯、红云、布洛卡、巫恋、铃兰、贾维、奥斯塔、斥罪、子月、伺夜、阿罗玛、忍冬、裁度、荒芜拉普兰德、贝洛内、复奏"
+    },
+    "cc.g.laterano": {
+      "termId": "cc.g.laterano",
+      "termName": "拉特兰",
+      "description": "包含以下干员\n翎羽、安德切尔、送葬人、莫斯提马、安比尔、芳汀、空弦、菲亚梅塔、见行者、空构、隐现、塑心、蕾缪安、信仰搅拌机、CONFESS-47"
+    },
+    "cc.g.minos": {
+      "termId": "cc.g.minos",
+      "termName": "米诺斯",
+      "description": "包含以下干员\n埃拉托、帕拉斯、铸铁、断罪者、火神、摆渡人"
+    },
+    "cc.g.sargon": {
+      "termId": "cc.g.sargon",
+      "termName": "萨尔贡",
+      "description": "包含以下干员\n钼铅、菲莱、佩佩、娜仁图亚、衡沙、莎草、红隼、铅踝、图耶、泡泡、森蚺、燧石、特米米、蜜蜡、稀音、慑砂、狮蝎、异客、艾丝黛尔、至简、哈蒂娅、缇缇"
+    },
+    "cc.g.elite": {
+      "termId": "cc.g.elite",
+      "termName": "精英干员",
+      "description": "包含以下干员\n迷迭香、煌、逻各斯、烛煌、电弧、真言、机械师"
+    },
+    "cc.c.abyssal2_1": {
+      "termId": "cc.c.abyssal2_1",
+      "termName": "特殊加成",
+      "description": "每有1个<$cc.g.abyssal><@cc.kw>深海猎人</></>干员进驻制造站，则控制中枢给每个进驻<$cc.g.abyssal><@cc.kw>深海猎人</></>的制造站提供<@cc.vup>5%</>生产力，最多给单个制造站提供<@cc.vup>45%</>生产力"
+    },
+    "cc.c.abyssal2_2": {
+      "termId": "cc.c.abyssal2_2",
+      "termName": "特殊加成",
+      "description": "每有1个<$cc.g.abyssal><@cc.kw>深海猎人</></>干员进驻制造站，则控制中枢给每个进驻<$cc.g.abyssal><@cc.kw>深海猎人</></>的制造站提供<@cc.vup>10%</>生产力，最多给单个制造站提供<@cc.vup>90%</>生产力"
+    },
+    "cc.c.abyssal2_3": {
+      "termId": "cc.c.abyssal2_3",
+      "termName": "特殊叠加规则",
+      "description": "无法与<$cc.m.var2><@cc.rem>配合意识</></>进行叠加，且优先生效\n无法与<$cc.m.pow1><@cc.rem>自动化·α</></>、<$cc.m.pow2><@cc.rem>自动化·β</></>、<$cc.m.pow3><@cc.rem>仿生海龙</></>进行叠加，且清零效果优先生效"
+    },
+    "cc.c.room1": {
+      "termId": "cc.c.room1",
+      "termName": "部分设施",
+      "description": "包含以下设施\n发电站、人力办公室、会客室"
+    },
+    "cc.c.room2": {
+      "termId": "cc.c.room2",
+      "termName": "其他设施",
+      "description": "包含以下设施\n发电站、制造站、贸易站、人力办公室、会客室"
+    },
+    "cc.c.room3": {
+      "termId": "cc.c.room3",
+      "termName": "工作场所",
+      "description": "包含以下设施\n发电站、制造站、贸易站、人力办公室、会客室、控制中枢、训练室"
+    },
+    "cc.c.skill": {
+      "termId": "cc.c.skill",
+      "termName": "部分技能",
+      "description": "包含以下技能\n左膀右臂、S.W.E.E.P.、零食网络、清理协议、替身、必要责任、护卫、小小的领袖、独善其身、笑靥如春、金盏花诗会、捍卫之道、博识生手、点滴关照、总工程师"
+    },
+    "cc.t.strong2": {
+      "termId": "cc.t.strong2",
+      "termName": "特殊叠加规则",
+      "description": "无法单独与<$cc.t.snsant1><@cc.rem>天道酬勤·α</></>、<$cc.t.snsant2><@cc.rem>天道酬勤·β</></>进行叠加，且优先生效\n当<$cc.t.snsant1><@cc.rem>天道酬勤·α</></>、<$cc.t.snsant2><@cc.rem>天道酬勤·β</></>与其他技能进行叠加时，该技能会对此叠加效果进行叠加"
+    },
+    "cc.c.sui2_1": {
+      "termId": "cc.c.sui2_1",
+      "termName": "特殊比较规则",
+      "description": "在<@cc.kw>公事公办</>，<@cc.kw>孤光共照</>，<@cc.kw>巴别塔之帜</>提供的<$cc.c.room2><@cc.kw>其他设施</></>每小时心情恢复值中取最高生效"
+    },
+    "cc.m.pow1": {
+      "termId": "cc.m.pow1",
+      "termName": "自动化·α",
+      "description": "由以下干员提供\n温蒂、森蚺、异客"
+    },
+    "cc.m.pow2": {
+      "termId": "cc.m.pow2",
+      "termName": "自动化·β",
+      "description": "由以下干员提供\n森蚺"
+    },
+    "cc.m.pow3": {
+      "termId": "cc.m.pow3",
+      "termName": "仿生海龙",
+      "description": "由以下干员提供\n温蒂"
+    },
+    "cc.t.flow_gold": {
+      "termId": "cc.t.flow_gold",
+      "termName": "赤金生产线",
+      "description": "每有<@cc.kw>1</>间<@cc.kw>制造站</>生产<@cc.kw>赤金</>，则赤金生产线<@cc.kw>+1</>"
+    },
+    "cc.w.ncdeer1": {
+      "termId": "cc.w.ncdeer1",
+      "termName": "因果",
+      "description": "每当加工心情消耗<@cc.kw>4</>以下的配方未产出副产品时，所消耗的每<@cc.kw>1</>点心情转化为<@cc.kw>1</>点<@cc.kw>因果</>"
+    },
+    "cc.w.ncdeer2": {
+      "termId": "cc.w.ncdeer2",
+      "termName": "业报",
+      "description": "每当加工心情消耗<@cc.kw>8</>的配方未产出副产品时，所消耗的每<@cc.kw>1</>点心情转化为<@cc.kw>1</>点<@cc.kw>业报</>"
+    },
+    "cc.t.accmuguard1": {
+      "termId": "cc.t.accmuguard1",
+      "termName": "武道",
+      "description": "协助专精训练至1级时累计<@cc.kw>1</>点、2级时累计<@cc.kw>2</>点、3级时累计<@cc.kw>3</>点，累计上限为<@cc.kw>3</>点（协助者心情为0时，无法累计或消耗）"
+    },
+    "cc.sk.manu1": {
+      "termId": "cc.sk.manu1",
+      "termName": "标准化类技能",
+      "description": "包含以下技能\n标准化·α、标准化·β"
+    },
+    "cc.sk.manu2": {
+      "termId": "cc.sk.manu2",
+      "termName": "莱茵科技类技能",
+      "description": "包含以下技能\n莱茵科技·α、莱茵科技·β、莱茵科技·γ"
+    },
+    "cc.sk.manu3": {
+      "termId": "cc.sk.manu3",
+      "termName": "红松骑士团类技能",
+      "description": "包含以下技能\n红松骑士团·α、红松骑士团·β"
+    },
+    "cc.sk.manu4": {
+      "termId": "cc.sk.manu4",
+      "termName": "金属工艺类技能",
+      "description": "包含以下技能\n金属工艺·α、金属工艺·β"
+    },
+    "cc.tag.op": {
+      "termId": "cc.tag.op",
+      "termName": "作业平台",
+      "description": "包含以下干员\nLancet-2、Castle-3、THRM-EX、正义骑士号、Friston-3、PhonoR-0、CONFESS-47、GALLUS²"
+    },
+    "cc.tag.knight": {
+      "termId": "cc.tag.knight",
+      "termName": "骑士",
+      "description": "包含以下干员\n耀骑士临光、临光、瑕光、鞭刃、焰尾、远牙、灰毫、野鬃、正义骑士号、砾、薇薇安娜"
+    },
+    "cc.tag.durin": {
+      "termId": "cc.tag.durin",
+      "termName": "杜林族",
+      "description": "包含以下干员\n至简、桃金娘、褐果、杜林、特克诺"
+    },
+    "cc.tag.mh": {
+      "termId": "cc.tag.mh",
+      "termName": "怪物猎人小队",
+      "description": "包含以下干员\n火龙S黑角、麒麟R夜刀、泰拉大陆调查团"
+    },
+    "cc.tag.dungeon": {
+      "termId": "cc.tag.dungeon",
+      "termName": "莱欧斯小队",
+      "description": "包含以下干员\n玛露西尔、莱欧斯、齐尔查克、森西"
+    },
+    "cc.tag.mh2": {
+      "termId": "cc.tag.mh2",
+      "termName": "泡影国狩猎小队",
+      "description": "包含以下干员\n焰狐龙梓兰、雷狼龙S空爆、罗德岛隐秘队"
+    },
+    "cc.gvial": {
+      "termId": "cc.gvial",
+      "termName": "嘉维尔",
+      "description": "包含以下干员\n百炼嘉维尔、嘉维尔"
+    },
+    "cc.angel": {
+      "termId": "cc.angel",
+      "termName": "能天使",
+      "description": "包含以下干员\n新约能天使、能天使"
+    },
+    "cc.tra.pepe": {
+      "termId": "cc.tra.pepe",
+      "termName": "特别独占订单",
+      "description": "由佩佩提供的特殊贵金属订单，该订单的获取时长固定，收益恒定，所需赤金交付数为0"
+    },
+    "cc.tra.closure": {
+      "termId": "cc.tra.closure",
+      "termName": "可露希尔特别订单",
+      "description": "由可露希尔提供的特殊贵金属订单，该订单的收益恒定，所需赤金交付数为2"
+    },
+    "cc.bd_mujica": {
+      "termId": "cc.bd_mujica",
+      "termName": "热情值",
+      "description": "可影响<$cc.bd_mujica_1><@cc.rem>丰富工作经验</></>、<$cc.bd_mujica_2><@cc.rem>演技的怪物</></>相关技能\n由以下干员的基建技能提供\n八幡海铃、三角初华、祐天寺若麦、若叶睦"
+    },
+    "cc.bd_mujica_1": {
+      "termId": "cc.bd_mujica_1",
+      "termName": "丰富工作经验",
+      "description": "拥有该基建技能的干员\n丰川祥子"
+    },
+    "cc.bd_mujica_2": {
+      "termId": "cc.bd_mujica_2",
+      "termName": "演技的怪物",
+      "description": "拥有该基建技能的干员\n若叶睦"
+    },
+    "cc.bd_wang_1": {
+      "termId": "cc.bd_wang_1",
+      "termName": "外势",
+      "description": "由以下干员的基建技能提供\n望\n每有一间贸易站、发电站，外势+1"
+    },
+    "cc.bd_wang_2": {
+      "termId": "cc.bd_wang_2",
+      "termName": "实地",
+      "description": "由以下干员的基建技能提供\n望\n每有一间制造站，实地+1"
+    },
+    "cc.tag.sees": {
+      "termId": "cc.tag.sees",
+      "termName": "S.E.E.S.",
+      "description": "包含以下干员\n结城理、埃癸斯、岳羽由加莉、虎狼丸"
+    }
+  },
+  "crossCheckSource": {
+    "schemaVersion": 1,
+    "provider": "arkntools",
+    "route": "https://arkntools.app/#/riic",
+    "retrievedAt": "2026-10-12T13:13:34.682Z",
+    "checkUrl": "https://data.arkntools.app/check.json",
+    "check": {
+      "mapMd5": "c6c33034",
+      "timestamp": 1791703003281,
+      "version": "2.5.0"
+    },
+    "mapUrl": "https://data.arkntools.app/map.c6c33034.json",
+    "mapSha256": "05a50869d93a2502ee5cd9058ea9cae6f4275aa49bef7f38e350c937bcf59013",
+    "resources": {
+      "building": {
+        "url": "https://data.arkntools.app/data/building.3db77af1.json",
+        "filename": "building.3db77af1.json",
+        "sha256": "16fc38f1ac5c90daf4ca597457b5341d8788088e3314ea6dda8b8af089811fb4"
+      },
+      "character": {
+        "url": "https://data.arkntools.app/data/character.2ffaa90c.json",
+        "filename": "character.2ffaa90c.json",
+        "sha256": "e629c262d6b9336b3bf082f25722ada778524e6d066ad0782c3a47bde93be211"
+      },
+      "cnBuilding": {
+        "url": "https://data.arkntools.app/locales/cn/building.8a955245.json",
+        "filename": "building.8a955245.json",
+        "sha256": "dd2514d81be4b1821f75b3f57218ee99a3fb1ad374d32c088cf066bbd6043f15"
+      },
+      "cnCharacter": {
+        "url": "https://data.arkntools.app/locales/cn/character.7d402757.json",
+        "filename": "character.7d402757.json",
+        "sha256": "07c4cfc447fbde5991fd6f0cf9ae71f725cff67a0899c5627098d34fcc240476"
+      },
+      "cnTerm": {
+        "url": "https://data.arkntools.app/locales/cn/term.3ed0dfee.json",
+        "filename": "term.3ed0dfee.json",
+        "sha256": "7001712ee09aefe8cf8fbeac61a2fbf3d483d982378ca779e44ba7f4fba1bf5b"
+      }
+    },
+    "verification": {
+      "operators": 432,
+      "skillStageEntries": 929,
+      "skillTagLabels": 763,
+      "terms": 82,
+      "comparison": "All obtainable operator stages match GameData skill IDs, unlocks, facility types, names, raw descriptions and icons."
+    }
+  }
+}

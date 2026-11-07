@@ -1,0 +1,30 @@
+{
+  "title": "Read-Only Startup Card Mood",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-13]",
+    "[INV-SCHED-15]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._read_initial_card_mood",
+    "arknights_mower.utils.dorm_candidates.dorm_candidate_mood",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._scan_card_moods"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/initial_dorm_mood_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/dorm_fill_exclusion_tests.py",
+    "arknights_mower/tests/dorm_search_cycle_tests.py",
+    "arknights_mower/tests/selection_card_mood_tests.py",
+    "arknights_mower/tests/workshop_batch_tests.py",
+    "arknights_mower/tests/workshop_recovery_event_tests.py",
+    "arknights_mower/tests/exhausted_working_timer_tests.py",
+    "arknights_mower/tests/mastery_choose_train_tests.py",
+    "arknights_mower/tests/dorm_recovery_tests.py"
+  ]
+}

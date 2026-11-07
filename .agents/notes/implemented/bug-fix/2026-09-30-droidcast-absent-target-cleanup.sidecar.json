@@ -1,0 +1,19 @@
+{
+  "title": "DroidCast Absent Target Cleanup",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-16]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/droidcast.py"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_droidcast_tests.py",
+    "arknights_mower/tests/device_preflight_io_tests.py"
+  ]
+}

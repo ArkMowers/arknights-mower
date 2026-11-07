@@ -1,0 +1,25 @@
+{
+  "title": "Intelligent Rescue Measured Handoff",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.is_planned_operator",
+    "arknights_mower.utils.operators.Operators.correct_dorm",
+    "arknights_mower.utils.operators.Operators.update_detail",
+    "arknights_mower.utils.emergency_recovery.emergency_dorm_plan",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_ready",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_restore"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Local Operation Inventory",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-STOCK-02]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.operation.OperationSolver",
+    "arknights_mower.utils.maa_stage_inventory.stage_limit_status",
+    "arknights_mower.utils.operation_drops.read_operation_drops"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/local_operation_inventory_scheduler_tests.py",
+    "arknights_mower/tests/local_operation_inventory_tests.py",
+    "arknights_mower/tests/operation_drops_tests.py"
+  ]
+}

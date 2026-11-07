@@ -1,0 +1,22 @@
+{
+  "title": "Shared Intelligent Rescue Planning",
+  "status": "archived",
+  "category": "simplification",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-14]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_worker_options",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_update_targets"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_group_staffing_tests.py",
+    "arknights_mower/tests/emergency_staffing_replan_tests.py"
+  ]
+}

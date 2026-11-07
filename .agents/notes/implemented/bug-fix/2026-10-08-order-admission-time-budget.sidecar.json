@@ -1,0 +1,23 @@
+{
+  "title": "Trade Order Admission Time Budget",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-36]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.scheduling",
+    "arknights_mower.utils.scheduler_task.protect_priority_tasks",
+    "arknights_mower.utils.scheduler_task._future_dorm_deferrals",
+    "arknights_mower.utils.scheduler_task._schedule_priority_tasks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/order_admission_tests.py",
+    "arknights_mower/tests/priority_admission_tests.py",
+    "arknights_mower/tests/workshop_queue_tests.py"
+  ]
+}

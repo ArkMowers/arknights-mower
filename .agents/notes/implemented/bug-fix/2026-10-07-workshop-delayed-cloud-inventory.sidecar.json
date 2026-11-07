@@ -1,0 +1,19 @@
+{
+  "title": "Workshop delayed cloud inventory",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-STOCK-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.record.save_inventory_counts",
+    "arknights_mower.solvers.record.apply_workshop_inventory"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/cultivate_depot_tests.py"
+  ]
+}

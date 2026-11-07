@@ -1,0 +1,21 @@
+{
+  "title": "Rescue recovery queue merging",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_replan_releases",
+    "arknights_mower.utils.scheduler_task.merge_release_dorm"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_rotation_tests.py",
+    "arknights_mower/tests/dorm_batch_release_tests.py"
+  ]
+}

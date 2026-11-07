@@ -1,0 +1,22 @@
+{
+  "title": "Rescue CI Fixture Contracts",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-08]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_ready"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "arknights_mower/tests/mastery_restart_tests.py",
+    "arknights_mower/tests/resting_priority_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py"
+  ]
+}

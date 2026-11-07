@@ -1,0 +1,20 @@
+{
+  "title": "Crafting Idle Rest Priority",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-07]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.resting_priority.crafting_rest_order",
+    "arknights_mower.utils.resting_priority.crafting_rest_candidates"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/workshop_rest_priority_tests.py",
+    "arknights_mower/tests/resting_priority_tests.py"
+  ]
+}

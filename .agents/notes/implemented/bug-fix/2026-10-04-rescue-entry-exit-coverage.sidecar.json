@@ -1,0 +1,21 @@
+{
+  "title": "Rescue Entry and Exit Coverage",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-14]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_startup",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_ready"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/custom_mood_limits_tests.py"
+  ]
+}

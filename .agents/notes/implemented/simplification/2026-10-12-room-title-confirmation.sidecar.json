@@ -1,0 +1,19 @@
+{
+  "title": "Room Title Confirmation",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-12",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-REC-11]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_mixin.BaseMixin.detect_room",
+    "arknights_mower.solvers.base_mixin.BaseMixin.detect_room_type"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/room_map_relocation_tests.py"
+  ]
+}

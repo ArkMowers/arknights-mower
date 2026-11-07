@@ -1,8 +1,17 @@
+import os
 import platform
 import sys
 from pathlib import Path
 
-__version__ = "4.1.5.8"
+if sys.platform == "win32":
+    # Configure before importing cv2; native OpenCL cleanup can hang on Windows
+    # after application resources have already closed. Helpers inherit this.
+    os.environ.setdefault("OPENCV_OPENCL_RUNTIME", "disabled")
+
+__version__ = "4.1.6-alpha.14"
+__release_system__ = ""
+__release_arch__ = ""
+__release_archive__ = ""
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     __rootdir__ = Path(sys._MEIPASS).joinpath("arknights_mower").resolve()

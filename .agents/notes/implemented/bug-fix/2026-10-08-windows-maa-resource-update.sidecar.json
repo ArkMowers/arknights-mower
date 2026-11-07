@@ -1,0 +1,22 @@
+{
+  "title": "Windows MAA Resource Updates",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UPD-04]"
+  ],
+  "code_symbols": [
+    "server.get_maa_resource_update_info",
+    "server.check_maa_resource_update",
+    "server.start_maa_resource_update",
+    "arknights_mower.utils.maa_resource_update.install_maa_resource_update"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_resource_update_tests.py",
+    "arknights_mower/tests/maa_update_route_tests.py"
+  ]
+}
