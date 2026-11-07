@@ -101,7 +101,8 @@ function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:st
   }))
   for(const name of agents){
    const op=data.operators[name]!
-   if(!data.plan[op.room]||!op.multiGroup&&data.getDormByName(name))return false
+   if(!data.plan[op.room])return false
+   if(!op.multiGroup&&data.getDormByName(name))continue
    const candidates=op.multiGroup?Object.assign(new MowerOperatorState(op),{replacement:mowerSharedReplacements(op,mowerRestingBindingGroups(data,op,transitions))}):op
    if(op.room.startsWith('dorm')&&op.group&&candidates.replacement.includes('Free')){const resident=op.multiGroup?data.dorms.find(b=>b.position[0]===op.room&&b.position[1]===op.index)?.name:undefined;(next[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=resident&&resident!==op.name?resident:'Free';continue}
    choices[name]=mowerReplacementCandidates(candidates,data.operators,data.policy,data.nowMicros).filter(n=>{

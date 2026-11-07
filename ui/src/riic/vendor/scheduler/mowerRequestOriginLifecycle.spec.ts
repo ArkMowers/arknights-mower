@@ -8,7 +8,7 @@ import {retainMowerFailedTask,resumeMowerFailedTasks} from './mowerTaskFailure'
 import * as supportPlanning from './mowerExhaustPlanning'
 
 const rates={workRate:()=>1,recoveryRate:()=>4,forecastRates:(state:RuntimeState)=>({work:Object.fromEntries(Object.keys(state.morale).map(name=>[name,1])),recovery:Object.fromEntries(Object.keys(state.morale).map(name=>[name,4]))})}
-function fixture(ordinary:boolean,origins=['A','C']){
+function fixture(ordinary:boolean,origins=['A','C'],personal?:'ungrouped'|'shared'){
  const rows:NonNullable<RuntimeConfig['mowerSourcePlan']>={
   room_1_1:[{agent:'A',group:'a',replacement:['X']},{agent:'A2',group:'a',replacement:['R']}],
   room_1_2:[{agent:'B',group:'b',replacement:['X']}],
@@ -16,10 +16,11 @@ function fixture(ordinary:boolean,origins=['A','C']){
   dormitory_1:['K1','K2','Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]})),
   dormitory_2:['K3','K4','Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]})),
  }
+ if(personal){rows.room_1_1![0]!.group='';if(personal==='shared'){rows.room_1_1![0]!.groupBindings=[{group:'',replacement:['X']},{group:'a',replacement:['R']}];rows.room_1_1![1]!.replacement=['A']}}
  const config:RuntimeConfig={mowerAlpha:true,mowerRunOrderEnabled:false,mowerTaskScheduling:{adjustForRunOrders:false},mowerSourcePlan:rows,
   positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((slot,index)=>slot.agent==='Free'?[]:[{id:room+'_'+index,roomId:room,primary:slot.agent,candidates:slot.replacement,group:slot.group,permanent:room.startsWith('dorm'),dormitory:room.startsWith('dorm')}])),
   beds:['dormitory_1','dormitory_2'].flatMap(room=>[2,3,4].map(index=>({id:room+'_'+index,roomId:room,vip:index===2}))),
-  initialMorale:{A:ordinary?4:0,A2:4,B:20,C:ordinary?4:0,C2:4,X:24,R:24,Z:24,W:24},idleOperators:['I1','I2','I3','I4','I5','I6'],
+  initialMorale:{A:ordinary?4:0,A2:personal?24:4,B:20,C:ordinary?4:0,C2:4,X:24,R:24,Z:24,W:24},idleOperators:['I1','I2','I3','I4','I5','I6'],
   mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},
   mowerSourceRules:{workaholic:[],exhaustRequire:ordinary?[]:origins,restInFull:[],lowPriority:[],refreshDrained:[],lingMode:0},
   mowerRunLoopClock:{minimumClockStepMicros:1,notificationSleepMicros:1_000_000},
@@ -95,7 +96,7 @@ describe('coordination request origins through the source lifecycle',()=>{
   retainMowerFailedTask(state,data,request,'等待个人恢复床位')
   for(let attempt=0;attempt<3;attempt++){
    resumeMowerFailedTasks(state,data,source.queue)
-   expect(source.queue.tasks).toContain(request)
+   expect(source.queue.tasks,JSON.stringify({tasks:source.queue.tasks.map(t=>({type:t.type.key,origins:t.coordinationRequestNames,plan:t.plan,reason:t.executionFailure?.reason})),beds:state.bedOccupants,diagnostics:state.diagnostics})).toContain(request)
    expect(request.timeMicros).toBe(time)
   }
   Object.assign(data.operators.A!,{currentRoom:'dormitory_1',currentIndex:3})
@@ -128,5 +129,42 @@ describe('coordination request origins through the source lifecycle',()=>{
   expect(source.queue.tasks).not.toContain(request)
   expect(support.coordinationRequestNames).toEqual(['A'])
   expect(request.timeMicros).toBe(time)
+ })
+})
+
+
+describe('resumed mixed requests retain unfinished individual departures',()=>{
+ for(const personal of ['ungrouped','shared'] as const)for(const origins of [['A','C'],['C','A']])it(`keeps the individual after the named group rests (${personal}, ${origins.join(',')})`,()=>{
+  const {state,source}=fixture(true,origins,personal),data=source.data
+  for(const [index,name] of ['C','C2'].entries()){
+   const cover=index===0?'Z':'W',bed='dormitory_2_'+(index+2)
+   state.occupants['room_1_3_'+index]=cover;state.bedOccupants[bed]=name
+   Object.assign(data.operators[name]!,{currentRoom:'dormitory_2',currentIndex:index+2,depletionRate:0})
+   Object.assign(data.operators[cover]!,{currentRoom:'room_1_3',currentIndex:index,depletionRate:1})
+   const slot=data.dorms.find(b=>b.position[0]==='dormitory_2'&&b.position[1]===index+2)!
+   slot.name=name;slot.timeMicros=toMowerMicros(10)
+  }
+  data.groupShiftState.c=true
+  const request=new MowerTask({time:-1,type:T.EXHAUST_OFF,metadata:origins.join(',')})
+  request.ordinaryCoordination=true;request.coordinationRequestNames=[...origins]
+  source.queue.tasks=[request];data.busyRestingNames.add('B')
+  retainMowerFailedTask(state,data,request,'等待替班岗位释放',['room_1_1','room_1_2','dormitory_1'])
+  const time=request.timeMicros
+  advanceRoster(state,1/3600,rates)
+  data.operators.A!.timeStampMicros=toMowerMicros(state.time)
+  resumeMowerFailedTasks(state,data,source.queue)
+  expect(request.executionFailure).toBeUndefined()
+  for(let attempt=0;attempt<3;attempt++){
+   settleMowerSource(state,rates)
+   expect(source.queue.tasks,JSON.stringify({tasks:source.queue.tasks.map(t=>({type:t.type.key,origins:t.coordinationRequestNames,plan:t.plan,reason:t.executionFailure?.reason})),beds:state.bedOccupants,diagnostics:state.diagnostics})).toContain(request)
+   expect(request.timeMicros).toBe(time)
+   expect(Object.values(state.bedOccupants)).not.toContain('A')
+   expect(state.bedOccupants.dormitory_2_2).toBe('C')
+   expect(state.bedOccupants.dormitory_2_3).toBe('C2')
+  }
+  data.busyRestingNames.delete('B')
+  until(state,()=>Object.values(state.bedOccupants).includes('A'))
+  expect(request.timeMicros).toBe(time)
+  expect(source.queue.tasks).not.toContain(request)
  })
 })

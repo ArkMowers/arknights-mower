@@ -94,9 +94,19 @@ def repeated_exhaust(clock, monkeypatch, *, retain_deadline=False):
 
     solver.back = back
     arrangement = {"central": ["备用干员"], "dormitory_1": [name]}
-    solver.get_resting_plan = lambda candidates, replacements, plan, count: plan.update(
-        deepcopy(arrangement)
-    )
+
+    def get_resting_plan(
+        candidates,
+        replacements,
+        plan,
+        count,
+        *,
+        dorm_admissions=None,
+        request_names=None,
+    ):
+        plan.update(deepcopy(arrangement))
+
+    solver.get_resting_plan = MagicMock(side_effect=get_resting_plan)
     monkeypatch.setattr(base, "try_reorder", lambda data, plan, **kwargs: {})
     order = SchedulerTask(
         time=clock.now() + timedelta(minutes=2),
@@ -127,6 +137,9 @@ def repeated_exhaust(clock, monkeypatch, *, retain_deadline=False):
             solver.task = pending
             solver.infra_main()
         scheduling(solver.tasks, time_now=clock.now())
+    solver.get_resting_plan.assert_called_once_with(
+        [name], [], arrangement, 0, request_names=[name]
+    )
     return [task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF]
 
 
