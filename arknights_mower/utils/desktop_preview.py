@@ -161,6 +161,11 @@ def run_preview(build_directory: Path | None = None) -> int:
                 shadow=True,
                 background_color=window_background_color("light"),
             )
+            from arknights_mower.utils.webview_response import (
+                configure_response_observation,
+            )
+
+            configure_response_observation(window)
             if shell_enabled:
                 bridge = attach_window_shell(
                     window, initial_size=size, tray_enabled=False
