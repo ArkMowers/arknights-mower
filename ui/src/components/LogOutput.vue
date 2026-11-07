@@ -2937,38 +2937,45 @@ html[data-window-shell-theme='dark'] .log-token--item {
   position: relative;
   top: -1px;
   display: inline-block;
-  box-sizing: border-box;
-  width: 9px;
-  height: 9px;
+  width: 16px;
+  height: 16px;
   margin-inline-start: 8px;
-  border: 1px solid color-mix(in srgb, currentColor 60%, transparent);
-  border-radius: 2px;
-  background: color-mix(in srgb, currentColor 8%, transparent);
+  background: transparent;
   color: var(--log-detail-ink);
-  transform: rotate(45deg);
   vertical-align: middle;
   user-select: none;
 }
+.log-wait-loader::before,
 .log-wait-loader::after {
   content: '';
   position: absolute;
-  inset: -1px;
-  border: 1px solid transparent;
-  border-color: currentColor currentColor transparent transparent;
-  border-radius: inherit;
-  animation: log-wait-pulse 1.5s ease-in-out infinite;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border: 1px solid currentColor;
+  background: transparent;
+  transform: translate(-50%, -50%) rotate(45deg);
 }
-@keyframes log-wait-pulse {
-  0%,
-  100% {
-    opacity: 0.42;
+.log-wait-loader::after {
+  animation: log-wait-ripple 1.2s ease-out infinite;
+}
+@keyframes log-wait-ripple {
+  from {
+    width: 8px;
+    height: 8px;
+    opacity: 0.8;
   }
-  50% {
-    opacity: 1;
+  to {
+    width: 14px;
+    height: 14px;
+    opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .log-wait-loader::after {
+    display: none;
     animation: none;
   }
 }
