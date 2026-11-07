@@ -51,7 +51,9 @@ def long_task_deadline(scheduler, limit):
                 TaskScope.DISPATCH,
                 getattr(scheduler, "op_data", None),
             )
-            if task is not current and not deferrable_dorm_release(task)
+            if task is not current
+            and not deferrable_dorm_release(task)
+            and task.meta_data != "maa_daily_refresh"
         ),
         key=lambda task: task.time,
         default=None,
@@ -109,7 +111,11 @@ def manual_task_deadline(scheduler):
     if scheduler.task.type in LONG_TASKS:
         return long_task_deadline(scheduler, scheduler.task.manual_deadline)
     pending = find_next_task(
-        [task for task in scheduler.tasks if task is not scheduler.task],
+        [
+            task
+            for task in scheduler.tasks
+            if task is not scheduler.task and task.meta_data != "maa_daily_refresh"
+        ],
         compare_time=datetime.max,
         op_data=getattr(scheduler, "op_data", None),
     )
@@ -121,10 +127,14 @@ def manual_task_deadline(scheduler):
 
 
 def manual_task_snapshot(scheduler, task):
-    """只有原先阻塞本任务的依赖变化才能释放等待；时间流逝不算变化。"""
+    """由原先阻塞任务的依赖变化或确定的每日刷新边界释放等待。"""
     dependencies = getattr(task, "manual_dependencies", ())
+    refresh = getattr(task, "maa_refresh_until", None)
     return copy.deepcopy(
         {
+            "maa_refresh_until": refresh
+            if refresh is not None and datetime.now() < refresh
+            else None,
             "observations": {},
             "room_observations": {},
             "reservations": ([], []),
@@ -146,15 +156,25 @@ def manual_task_snapshot(scheduler, task):
 
 
 def _wait_for_tasks(scheduler, task):
+    refresh = getattr(task, "maa_refresh_until", None)
+    if refresh is not None and datetime.now() >= refresh:
+        del task.maa_refresh_until
+        task.__dict__.pop("manual_deadline", None)
+        return False
     task.manual_dependencies = [
         (pending.type, pending.time)
         for pending in scheduler.tasks
-        if pending is not task and pending.time <= datetime.now() + timedelta(minutes=5)
+        if pending is not task
+        and pending.meta_data != "maa_daily_refresh"
+        and pending.time <= datetime.now() + timedelta(minutes=5)
     ]
     task.__dict__.pop("manual_deadline", None)
-    scheduler._retain_failed_task(
-        task, "为其他排队任务预留执行时间", [], dependency=True
+    reason = (
+        "等待每日刷新后执行 MAA"
+        if refresh is not None and datetime.now() < refresh
+        else "为其他排队任务预留执行时间"
     )
+    scheduler._retain_failed_task(task, reason, [], dependency=True)
     return False
 
 
