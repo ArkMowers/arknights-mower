@@ -253,10 +253,14 @@ def test_insertion_and_restoration_confirm_their_own_target_rosters(confirmation
 
 
 @pytest.mark.parametrize("restoration_succeeds", [True, False])
+@pytest.mark.parametrize("real_sleep", [False, True])
 def test_observed_failed_restoration_reselects_same_target_with_one_allowance(
-    confirmation, restoration_succeeds
+    confirmation, monkeypatch, restoration_succeeds, real_sleep
 ):
     ui = confirmation
+    if real_sleep:
+        monkeypatch.setattr(solver_utils, "csleep", ui.solver.sleep.side_effect)
+        ui.solver.sleep = solver_utils.BaseSolver.sleep.__get__(ui.solver)
     original_time = ui.task.time
     inserted = ui.task.plan[ROOM].copy()
     shared = scheduler_task.SchedulerTask(
@@ -420,6 +424,51 @@ def test_interrupted_restoration_observation_discards_earlier_complete_roster(
     assert ui.task.plan == {ROOM: ORIGINAL}
     assert ui.task.execution_failure
     ui.solver.accept_order.assert_not_called()
+
+
+def test_refresh_at_deadline_requires_new_complete_roster_before_reselection(
+    confirmation, monkeypatch
+):
+    ui = confirmation
+    ui.physical = ui.task.plan[ROOM].copy()
+    ui.task.run_order_original_roster = {ROOM: ORIGINAL.copy()}
+    ui.task.run_order_restore_pending = True
+    ui.task.prepare_run_order_restoration()
+    original_time = ui.task.time
+    ui.apply_after = 100
+    observations = []
+    expired_refresh = []
+    update = ui.solver.recog.update.side_effect
+
+    def read(rows):
+        observations.append(bool(expired_refresh))
+        return [{**row, "observed": False} for row in rows] if expired_refresh else rows
+
+    def refresh():
+        update()
+        deadline = ui.solver.__dict__.get("_observation_deadline")
+        if observations and deadline is not None and ui.clock.seconds >= deadline:
+            expired_refresh.append(ui.clock.seconds)
+
+    ui.read_transform = read
+    ui.solver.recog.update.side_effect = refresh
+    monkeypatch.setattr(solver_utils, "csleep", ui.solver.sleep.side_effect)
+    ui.solver.sleep = solver_utils.BaseSolver.sleep.__get__(ui.solver)
+
+    with pytest.raises(base_schedule.RunOrderConfirmationUnresolved):
+        ui.solver.agent_arrange(ui.task.plan)
+
+    assert observations[0] is False and observations[-1] is True
+    assert expired_refresh
+    assert ui.solver.choose_agent.call_count == 1
+    assert len(ui.clicks) == 4
+    assert ui.task.time == original_time
+    assert ui.task.plan == {ROOM: ORIGINAL}
+    assert ui.task.run_order_restore_pending
+    assert ui.task.run_order_confirmation_pending["exhausted"]
+    assert ui.task.execution_failure
+    ui.solver.accept_order.assert_not_called()
+    ui.solver.drone.assert_not_called()
 
 
 def test_normal_confirmed_target_does_not_wait_out_allowance(confirmation):
