@@ -3271,7 +3271,14 @@ class Operators:
         return sorted(self.dorm, key=key)
 
     def _find_dorm_slot(
-        self, name, used, *, active_groups=None, plan=None, isolation=True
+        self,
+        name,
+        used,
+        *,
+        active_groups=None,
+        plan=None,
+        isolation=True,
+        use_configured_order=False,
     ):
         from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
         from arknights_mower.utils.dorm_skills import is_single_recovery_manager
@@ -3288,7 +3295,7 @@ class Operators:
             for bed in self.ordered_dorms(active_groups=active_groups)
         ]
         explicit_order = any(item.endswith("_low") for item in self.config.dorm_order)
-        if not is_high and not explicit_order:
+        if not is_high and not explicit_order and not use_configured_order:
             order = order[max_count:] + order[:max_count]
         candidates = [
             i
@@ -3326,7 +3333,7 @@ class Operators:
                     if isolation
                     else 0,
                 )
-            tier, recovery_order = resting_key(self, bed.name, now)
+            tier, _, recovery_order = resting_key(self, bed.name, now)
             # 先使用空位和已回满补位者，再按层级接管未完成恢复者。
             return (
                 1 if is_full_dorm_filler(self, bed.name, now) else 2,

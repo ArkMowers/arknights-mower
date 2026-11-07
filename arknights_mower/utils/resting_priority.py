@@ -200,7 +200,14 @@ def resting_key(op_data, name, now=None, *, replacement_names=None):
     mood = 24 if mood is None else mood
     # 同级按尚需恢复的心情点数降序；恢复速度不按个人上下限成比例。
     mood -= op.upper_limit if op is not None else 24
-    return resting_tier(op_data, name, now, replacement_names=replacement_names), mood
+    tier = resting_tier(op_data, name, now, replacement_names=replacement_names)
+    # 显式高优名单内部按用户顺序，其余层级继续比较心情缺口。
+    order = (
+        op_data.config.ope_resting_priority.index(name)
+        if tier == RestingTier.PRIORITY
+        else 0
+    )
+    return tier, order, mood
 
 
 def _crafting_rest_names(op_data):

@@ -98,3 +98,58 @@ def test_same_group_admitted_before_other_group_and_spare_fillers(solver):
     data.groups["同组"] = [PRIMARY[0], PRIMARY[3]]
     data.dorm = data.dorm[:2]
     assert admissions(emergency_dorm_plan(data, episode())) == {PRIMARY[0], PRIMARY[3]}
+
+
+def test_rescue_exit_order_precedes_high_priority_list_and_mood(solver):
+    data = solver.op_data
+    first, second = PRIMARY[:2]
+    for name, mood in [(first, 1), (second, 12)]:
+        op = data.operators[name]
+        op._current_room, op.current_index = "", -1
+        op.mood = mood
+    data.config.ope_resting_priority = [first, second]
+    data.dorm = data.dorm[:1]
+    plan = emergency_dorm_plan(
+        data,
+        {"targets": {first: 16, second: 16}},
+        members=[first, second],
+        recovery_order={first: (1, 10), second: (0, 1)},
+    )
+    assert admissions(plan) == {second}
+    assert data.operators[second].current_room == ""
+    assert data.dorm[0].name == ""
+
+
+def test_rescue_group_continuity_ignores_resting_tiers(solver):
+    data = solver.op_data
+    first, second, third = PRIMARY[:3]
+    for name, mood in [(first, 1), (second, 2), (third, 3)]:
+        op = data.operators[name]
+        op._current_room, op.current_index = "", -1
+        op.mood = mood
+    data.operators[first].group = data.operators[third].group = "同组"
+    data.groups["同组"] = [first, third]
+    data.config.ope_resting_priority = [first]
+    data.dorm = data.dorm[:2]
+    order = {first: (0, 3), third: (0, 3), second: (1, 1)}
+    plan = emergency_dorm_plan(
+        data, episode(), members=[first, second, third], recovery_order=order
+    )
+    assert admissions(plan) == {first, third}
+
+
+def test_rescue_exit_order_gets_fast_bed_despite_low_resting_priority(solver):
+    data = solver.op_data
+    first, second = PRIMARY[:2]
+    for name in (first, second):
+        op = data.operators[name]
+        op._current_room, op.current_index = "", -1
+        op.mood = 8
+    data.config.resting_priority = [first]
+    data.operators[first].resting_priority = "low"
+    data.config.ope_resting_priority = [second]
+    order = {first: (0, 1), second: (1, 10)}
+    plan = emergency_dorm_plan(
+        data, episode(), members=[first, second], recovery_order=order
+    )
+    assert plan["dormitory_1"][2:4] == [first, second]

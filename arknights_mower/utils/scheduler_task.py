@@ -8,7 +8,6 @@ from arknights_mower.solvers.record import get_inventory_counts
 from arknights_mower.utils import config
 from arknights_mower.utils.datetime import the_same_time
 from arknights_mower.utils.dorm_candidates import (
-    dorm_candidate_mood,
     dorm_candidates,
     dorm_task_reservations,
     retained_task_reservations,
@@ -1778,7 +1777,7 @@ def dorm_rebalance_signature(op_data):
                 slot_type,
                 op_data.is_effective_free_slot(bed),
                 bed.name,
-                resting_tier(op_data, bed.name) if bed.name else None,
+                resting_key(op_data, bed.name)[:2] if bed.name else None,
             )
         )
     return tuple(op_data.config.dorm_order), tuple(beds)
@@ -2983,7 +2982,7 @@ def prioritize_new_dorm_recovery(
             groups.append([bed])
     now = datetime.now()
     # 满心情垫位者与空床同级，不能仅为填满前方空床而搬动满心情住客。
-    filler_tier = int(RestingTier.EXCLUDED) + 1
+    filler_tier = (int(RestingTier.EXCLUDED) + 1, 0)
 
     def tier(name):
         if not name:
@@ -2995,7 +2994,8 @@ def prioritize_new_dorm_recovery(
             and resting_mood(op, now) >= op.upper_limit
         ):
             return filler_tier
-        return resting_tier(projected, name)
+        # 高优名单内的先后也决定单回配额，不能被已有单回位保位覆盖。
+        return resting_key(projected, name, now)[:2]
 
     names = [bed.name for bed in beds if bed.name]
     names.sort(key=lambda name: resting_key(projected, name, now))
@@ -3064,7 +3064,8 @@ def prioritize_new_dorm_recovery(
         allocations[groups[index][0].position] != previous[groups[index][0].position]
         for index in targets
     ):
-        # 单回归属改变时，同级恢复者重新按缺口分配；满心情垫位保留兼容原位。
+        # 单回归属改变时，高优恢复者按名单顺序，其余同级按缺口重新分配。
+        # 满心情垫位保留兼容原位。
         remaining = [
             bed.name for bed in beds if bed.name and tier(bed.name) != filler_tier
         ]
@@ -3504,11 +3505,7 @@ def try_add_release_dorm(
                 for name in candidates.estimated_recovering
                 if name in op_data.operators
             ],
-            key=lambda name: (
-                resting_tier(op_data, name),
-                dorm_candidate_mood(op_data, name, now)
-                - op_data.operators[name].upper_limit,
-            ),
+            key=lambda name: resting_key(op_data, name, now),
         )
         recovery_names = crafting_rest_order(op_data, recovery_names)
         if priority_only:

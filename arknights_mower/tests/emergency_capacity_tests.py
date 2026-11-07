@@ -81,12 +81,12 @@ def test_excluded_and_unknown_peers_do_not_block_available_individual(solver):
     ) == {PRIMARY[0]}
 
 
-def test_shared_priority_is_per_person_not_per_group(solver):
+def test_high_priority_does_not_override_rescue_recovery_need(solver):
     data = solver.op_data
     state = recovery(data, capacity=1)
     data.config.ope_resting_priority = [PRIMARY[-1]]
 
-    assert admissions(emergency_dorm_plan(data, state)) == {PRIMARY[-1]}
+    assert admissions(emergency_dorm_plan(data, state)) == {PRIMARY[0]}
 
 
 def test_ready_member_does_not_reenter_from_need_or_ordinary_fill(solver):
@@ -114,7 +114,7 @@ def test_predictions_do_not_confirm_recovery_completion(solver):
     op.mood, op.mood_is_prediction = 20, True
     data.config.ope_resting_priority = [op.name]
 
-    assert admissions(emergency_dorm_plan(data, state)) == {op.name}
+    assert admissions(emergency_dorm_plan(data, state, members=[op.name])) == {op.name}
 
 
 def test_unready_individual_keeps_bed_against_higher_priority_primary(solver):
@@ -191,7 +191,7 @@ def test_normal_plan_swap_clears_opened_manager_identity(solver):
     assert [slot.agent for slot in data.plan["dormitory_1"][:2]] == ["冰酿", "闪灵"]
 
 
-def test_exit_order_breaks_ties_but_preserves_explicit_priority(solver):
+def test_exit_order_overrides_explicit_priority(solver):
     data = solver.op_data
     state = recovery(data, capacity=1)
     order = {name: (1, 20) for name in PRIMARY}
@@ -201,5 +201,5 @@ def test_exit_order_breaks_ties_but_preserves_explicit_priority(solver):
     }
     data.config.ope_resting_priority = [PRIMARY[0]]
     assert admissions(emergency_dorm_plan(data, state, recovery_order=order)) == {
-        PRIMARY[0]
+        PRIMARY[-1]
     }

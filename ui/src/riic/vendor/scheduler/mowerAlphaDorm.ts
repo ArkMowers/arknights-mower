@@ -47,8 +47,8 @@ export function alphaBedTakeoverAllowed(data:MowerSchedulingData,requester:strin
  if(!(requesterTier<residentTier&&residentTier<7))return false
  return requesterTier<=3||!!incoming&&mood!==undefined&&(retained||mood<=incoming.upperLimit*.8)
 }
-export function alphaRestingKey(data:MowerSchedulingData,name:string):[number,number]{return [alphaRestingTier(data,name),(mowerDormCandidateMood(data,name)??24)-(data.operators[name]?.upperLimit??24)]}
-export const compareAlphaKeys=(a:readonly number[],b:readonly number[])=>a[0]!-b[0]!||a[1]!-b[1]!
+export function alphaRestingKey(data:MowerSchedulingData,name:string,tier=alphaRestingTier(data,name)):[number,number,number]{return [tier,tier===0?data.restingPriorityNames.indexOf(name):0,(mowerDormCandidateMood(data,name)??24)-(data.operators[name]?.upperLimit??24)]}
+export const compareAlphaKeys=(a:readonly number[],b:readonly number[])=>a[0]!-b[0]!||a[1]!-b[1]!||(a[2]??0)-(b[2]??0)
 
 /** Native augmenting-path matching retains feasible earlier preferences. */
 export function mowerMatchReplacements(options:Record<string,string[]>,allowPartial=false):Record<string,string>|undefined{
@@ -132,7 +132,7 @@ export function alphaFindDormSlot(data:MowerSchedulingData,name:string,used:Set<
  const order=alphaRestingTier(data,name)<=1||data.dormOrder.some(value=>value.endsWith('_low'))?indices:[...indices.slice(vip),...indices.slice(0,vip)]
  const candidates=order.filter(i=>!used.has(i)&&!reservedSlots.has(alphaPosition(...data.dorms[i]!.position))&&alphaSlotTakable(data,data.dorms[i]!,name,activeGroups,plan))
  const compatibleBeds=indices.map(i=>data.dorms[i]!).filter(b=>alphaSlotEffective(data,b,activeGroups))
- const cost=(i:number)=>{const bed=data.dorms[i]!,isolation=mowerDormIsolationCost(data,name,...bed.position,plan),single=data.operators[name]?.singleRecoveryManager?singleRecoveryBedCost(bed,compatibleBeds):0;if(!bed.name)return [0,0,single,0,isolation];const [tier,mood]=alphaRestingKey(data,bed.name);return [alphaFullDormFiller(data,bed.name)?1:2,-tier,single,isolation,-mood]}
+ const cost=(i:number)=>{const bed=data.dorms[i]!,isolation=mowerDormIsolationCost(data,name,...bed.position,plan),single=data.operators[name]?.singleRecoveryManager?singleRecoveryBedCost(bed,compatibleBeds):0;if(!bed.name)return [0,0,single,0,isolation];const [tier,,mood]=alphaRestingKey(data,bed.name);return [alphaFullDormFiller(data,bed.name)?1:2,-tier,single,isolation,-mood]}
  candidates.sort((a,b)=>{const x=cost(a),y=cost(b);return x[0]!-y[0]!||x[1]!-y[1]!||x[2]!-y[2]!||x[3]!-y[3]!||x[4]!-y[4]!})
  return candidates[0]
 }
@@ -157,11 +157,14 @@ export function alphaPrioritizeRecovery(data:MowerSchedulingData,plan:MowerTaskP
   if(previous&&!isFirst(bed)&&previous[0]!.position[0]===bed.position[0]&&!isFirst(previous[0]!))previous.push(bed)
   else groups.push([bed])
  }
- const fillerTier=8
+ // Each saved high-priority rank gets its own quota; other tiers retain residents.
+ const priorityCount=projected.restingPriorityNames.length,fillerTier=priorityCount+8
  const tier=(name:string)=>{
   if(!name)return fillerTier
   const op=projected.operators[name]!
-  return !projected.freeRoomExcluded(name)&&hasRestingMood(op,projected.nowMicros)&&restingMood(op,projected.nowMicros)>=op.upperLimit?fillerTier:alphaRestingTier(projected,name)
+  if(!projected.freeRoomExcluded(name)&&hasRestingMood(op,projected.nowMicros)&&restingMood(op,projected.nowMicros)>=op.upperLimit)return fillerTier
+  const [level,order]=alphaRestingKey(projected,name)
+  return level===0?order:priorityCount+level
  }
  const names=beds.map(b=>b.name).filter(Boolean).sort((a,b)=>compareAlphaKeys(alphaRestingKey(projected,a),alphaRestingKey(projected,b)))
  const desired=beds.map(b=>tier(b.name)).sort((a,b)=>a-b),allocations=new Map<string,string>()

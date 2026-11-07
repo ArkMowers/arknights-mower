@@ -11,6 +11,7 @@ import {
 import { MowerTask, MowerTaskQueue, MOWER_TASK_TYPES as T, type MowerTaskPlan } from './mowerTaskQueue'
 import { planMowerAlphaDormFill } from './mowerAlphaCandidates'
 import { projectMowerArrangements } from './mowerObservations'
+import { mowerAssignDormGroup } from './mowerDormAssignment'
 
 function fixture() {
   const op = (name:string, room:string, index:number, group = '', replacement:string[] = [], mood = 5) =>
@@ -329,4 +330,42 @@ it('keeps beds and observations unchanged when departing covers cannot fit the e
   expect(plan).toEqual({})
   expect(covers).toEqual([])
   expect(JSON.stringify({ operators: data.operators, dorms: data.dorms })).toEqual(before)
+})
+
+
+function priorityFixture() {
+  return new MowerSchedulingData({
+    alpha: true, nowMicros: 0,
+    operators: Object.fromEntries(['A', 'B'].map((name, index) => [name, new MowerOperatorState({
+      name, room: 'room_1_1', index, operatorType: 'high', restingPriority: 'high',
+      mood: 5, timeStampMicros: 0
+    })])),
+    plan: { room_1_1: ['A', 'B'], dormitory_1: ['Free', 'Free'] },
+    dorms: [new MowerDormState(['dormitory_1', 0]), new MowerDormState(['dormitory_1', 1])]
+  })
+}
+
+it.each([false, true])('assigns priority group beds in saved order (reversed=%s)', reversed => {
+  const data = priorityFixture()
+  data.operators.A!.mood = 20
+  data.operators.B!.mood = 1
+  data.restingPriorityNames = reversed ? ['B', 'A'] : ['A', 'B']
+  expect(mowerAssignDormGroup(data, ['B', 'A'])?.map(bed => bed.name)).toEqual(data.restingPriorityNames)
+  expect(data.dorms[0]!.name).toBe(data.restingPriorityNames[0])
+})
+
+it.each([false, true])('uses saved priority order when a resident competes with a newcomer (newcomerFirst=%s)', newcomerFirst => {
+  const data = priorityFixture(), room = 'dormitory_1'
+  data.operators.A!.currentRoom = room
+  data.operators.A!.currentIndex = 0
+  data.operators.A!.mood = 1
+  data.operators.B!.mood = 20
+  data.dorms[0]!.name = 'A'
+  data.restingPriorityNames = newcomerFirst ? ['B', 'A'] : ['A', 'B']
+  const plan = { [room]: ['Current', 'B'] }
+  const reorder = mowerTryReorder(data, plan)
+  const projected = projectMowerArrangements(data, [plan, reorder ?? {}])
+  expect(projected.currentOperator(room, 0)?.name).toBe(newcomerFirst ? 'B' : 'A')
+  expect(projected.currentOperator(room, 1)?.name).toBe(newcomerFirst ? 'A' : 'B')
+  expect(mowerTryReorder(projected, {})).toEqual({})
 })

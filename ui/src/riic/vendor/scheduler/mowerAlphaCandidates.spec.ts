@@ -249,3 +249,18 @@ describe('future releases and recovery priority', () => {
     expect(fill?.plan.dormitory_2).toBeUndefined()
   })
 })
+
+
+it.each([false, true])('fills a vacancy in saved priority order (reversed=%s)', reversed => {
+  const data = new MowerSchedulingData({
+    alpha: true, nowMicros: 0,
+    operators: {
+      A: new MowerOperatorState({name: 'A', mood: 20, timeStampMicros: 0}),
+      B: new MowerOperatorState({name: 'B', mood: 1, timeStampMicros: 0})
+    },
+    plan: {dormitory_1: ['Free']}, dorms: [new MowerDormState(['dormitory_1', 0])],
+    restingPriorityNames: reversed ? ['B', 'A'] : ['A', 'B']
+  })
+  expect(mowerAlphaDormCandidates(data).recovering).toEqual(data.restingPriorityNames)
+  expect(mowerAlphaFillPlan(data, []).dormitory_1).toEqual([data.restingPriorityNames[0]])
+})

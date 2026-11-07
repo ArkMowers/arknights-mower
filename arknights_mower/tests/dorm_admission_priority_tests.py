@@ -503,3 +503,33 @@ def test_custom_order_preemption_keeps_displaced_resident_in_preferred_low_bed(
     assert projected.get_current_operator("dormitory_2", 0) is None
     assert data.operators["银灰"].current_index == 3
     assert plan == {"dormitory_2": ["红"]}
+
+
+@pytest.mark.parametrize("newcomer_first", [False, True])
+def test_priority_list_order_controls_single_target_admission(
+    residents, newcomer_first
+):
+    data = residents
+    set_tier(data, "银灰", RestingTier.PRIORITY, 1)
+    set_tier(data, "红", RestingTier.PRIORITY, 20)
+    if newcomer_first:
+        data.config.ope_resting_priority.reverse()
+    assert data.assign_dorm_group(["红"]) is not None
+    plan = try_reorder(data, {})
+    assert plan[ROOM][3:] == (["红", "银灰"] if newcomer_first else ["Current", "红"])
+    projected = data.project_arrangements([plan])
+    assert {bed.name for bed in projected.dorm} == {"银灰", "红"}
+    assert try_reorder(projected, {}) == {}
+
+
+def test_priority_list_reorder_reallocates_existing_single_target(residents):
+    data = residents
+    set_tier(data, "银灰", RestingTier.PRIORITY, 1)
+    other = set_tier(data, "红", RestingTier.PRIORITY, 20)
+    other.current_room, other.current_index = ROOM, 4
+    data.dorm[1].name = "红"
+    data.config.ope_resting_priority.reverse()
+    plan = prioritize_new_dorm_recovery(data, {}, configuration_changed=True)
+    assert plan[ROOM][3:] == ["红", "银灰"]
+    projected = data.project_arrangements([plan])
+    assert prioritize_new_dorm_recovery(projected, {}, configuration_changed=True) == {}
