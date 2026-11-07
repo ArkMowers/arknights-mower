@@ -6,7 +6,7 @@ from threading import Event, Lock, Timer
 from typing import TYPE_CHECKING
 
 from arknights_mower.data import base_room_list
-from arknights_mower.utils import config, path, rapidocr
+from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.activity_observations import restore_observations
 from arknights_mower.utils.crash_recovery import is_memory_error
 from arknights_mower.utils.csleep import MowerExit, cancellation_scope, csleep
@@ -642,7 +642,7 @@ def simulate(saved):
     """
     具体调用方法可见各个函数的参数说明
     """
-    logger.info(f"正在使用全局配置空间: {path.global_space}")
+    logger.info("已载入全局配置空间")
     tasks = (
         [
             task

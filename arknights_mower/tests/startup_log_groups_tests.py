@@ -33,7 +33,7 @@ def test_startup_records_have_no_base_group_before_device_preparation(
     records = [r for r in caplog.records if r.pathname == main.__file__]
     assert [r.getMessage() for r in records] == [
         "开始运行Mower",
-        f"正在使用全局配置空间: {main.path.global_space}",
+        "已载入全局配置空间",
     ]
     for record in records:
         logging.Formatter("%(asctime)s").format(record)

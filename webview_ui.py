@@ -745,11 +745,21 @@ def run_desktop():
 def start_http_server(app, host, port):
     from threading import Thread
 
-    from werkzeug.serving import make_server
+    from werkzeug.serving import WSGIRequestHandler, make_server
 
     from arknights_mower.utils.lifecycle import Phase, shutdown
+    from arknights_mower.utils.log import logger
 
-    http = make_server(host, port, app, threaded=True)
+    class RequestHandler(WSGIRequestHandler):
+        def log_request(self, code="-", size="-"):
+            # 启动 URL 含会话凭据；正常和非法请求都不记录原始请求行。
+            logger.debug("HTTP 请求完成，状态码 %s", code)
+
+        def log(self, kind, message, *args):
+            # 协议错误的参数也可能带原始 URL，不交给独立的 stderr 日志。
+            logger.debug("HTTP 请求处理事件：%s", kind)
+
+    http = make_server(host, port, app, threaded=True, request_handler=RequestHandler)
     worker = Thread(
         target=http.serve_forever, kwargs={"poll_interval": 0.2}, daemon=True
     )
