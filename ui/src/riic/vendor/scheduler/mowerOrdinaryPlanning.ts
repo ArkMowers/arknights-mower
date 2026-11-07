@@ -145,7 +145,8 @@ export function mowerResting(data:MowerSchedulingData,queue:MowerTaskQueue,optio
 export function planMowerOrdinarySupportAdmission(data:MowerSchedulingData,names:readonly string[],options:MowerRestingOptions={}):MowerTaskPlan|undefined {
  const projected=projectMowerArrangements(data,[]),plan:MowerTaskPlan={}
  const members=[...new Set(names.flatMap(name=>{const op=projected.operators[name];return op?.group?projected.shiftGroupMembers(op.group):op?[name]:[]}))]
- if(!members.length||!mowerGetRestingPlan(projected,members,[],plan,{...options,dormAdmissions:new Map(),onBlocked:undefined}))return
+ // The support projection can release a cover still recorded in an actual dormitory.
+ if(!members.length||!mowerGetRestingPlan(projected,members,[],plan,{...options,dormAdmissions:new Map(),onBlocked:undefined,isDormReplacement:name=>{const op=projected.operators[name];return !!op&&op.currentRoom.startsWith('dorm')&&projected.dormReplacementForSlot(name,op.currentRoom,op.currentIndex)}}))return
  const reorder=mowerTryReorder(projected,plan);if(reorder)Object.assign(plan,reorder)
  return Object.keys(plan).length?plan:undefined
 }

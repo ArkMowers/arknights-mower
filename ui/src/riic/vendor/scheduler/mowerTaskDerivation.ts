@@ -11,10 +11,23 @@ export function admitMowerDerivedTasks(data:MowerSchedulingData,pending:readonly
  const waitingGroups=new Set([...data.waitingRecoveryNames].map(name=>data.operators[name]?.group).filter(Boolean))
  candidates=candidates.filter(task=>{
   if(task.type!==T.SHIFT_ON)return true
+  const removed=new Set<string>()
   for(const [room,row] of Object.entries(task.plan)){
-   row.forEach((name,index)=>{const actor=name==='Free'?data.currentOperator(room,index)?.name:name;if(actor&&(data.waitingRecoveryNames.has(actor)||waitingGroups.has(data.operators[actor]?.group)))row[index]='Current'})
-   if(row.every(name=>name==='Current'||name===''))delete task.plan[room]
+   row.forEach((name,index)=>{
+    const actor=name==='Free'?data.currentOperator(room,index)?.name:name
+    if(actor&&(data.waitingRecoveryNames.has(actor)||waitingGroups.has(data.operators[actor]?.group))){row[index]='Current';removed.add(actor)}
+   })
   }
+  let changed=true
+  while(changed){
+   changed=false
+   for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{
+    if(['Current','Free',''].includes(name))return
+    const op=data.operators[name],sourceOwner=op?.currentRoom&&!op.currentRoom.startsWith('dorm')&&(op.currentRoom!==room||op.currentIndex!==index)?data.plan[op.currentRoom]?.[op.currentIndex]:undefined
+    if(sourceOwner&&removed.has(sourceOwner)){row[index]='Current';removed.add(name);changed=true}
+   })
+  }
+  for(const [room,row] of Object.entries(task.plan))if(row.every(name=>name==='Current'||name===''))delete task.plan[room]
   return Object.keys(task.plan).length>0
  })
  const retained=pending.filter(task=>task.retainsExecution)
