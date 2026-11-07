@@ -178,7 +178,7 @@ def test_expanded_swap_members_do_not_request_their_normal_rest_group(
     if same_cover:
         s.op_data.operators[SHARED].group_bindings[0]["replacement"] = ["黑角"]
     plan = {}
-    assert s.get_resting_plan([A, SHARED], [], plan, 0)
+    assert s.get_resting_plan([A, SHARED], [], plan, 0, request_names=[A])
     assert plan["meeting"][0] == SHARED
     assert s.op_data.arrangement_group_transitions(plan) == {"甲": True}
 
@@ -315,10 +315,12 @@ def test_ordinary_recall_uses_only_the_requested_normal_group_mood(single):
     data.config.resting_threshold = 0.65
     data.operators[A].mood = 15
     data.operators[SHARED].mood = 10
-    assert data.shift_request_groups([A, SHARED]) == ["甲"]
-    assert not ordinary_recall_mood_admissible(data, {B}, [A, SHARED])
+    assert data.shift_request_groups([A]) == ["甲"]
+    assert not ordinary_recall_mood_admissible(
+        data, {B}, [A, SHARED], request_names=[A]
+    )
     data.operators[A].mood = 7
-    assert ordinary_recall_mood_admissible(data, {B}, [A, SHARED])
+    assert ordinary_recall_mood_admissible(data, {B}, [A, SHARED], request_names=[A])
 
 
 def test_unique_normal_departure_waits_for_working_cover_handoff(single):
@@ -350,3 +352,253 @@ def test_unique_normal_departure_waits_for_working_cover_handoff(single):
     assert plan["contact"] == ["黑角"]
     assert s.op_data.arrangement_group_transitions(plan) == {"乙": True}
     assert s.tasks == [original] and original.time == at
+
+
+@pytest.mark.parametrize("role", ["ordinary", "low", "standby", "workaholic"])
+@pytest.mark.parametrize("same_cover", [False, True])
+def test_working_swap_request_ignores_covered_primary_recovery_role(
+    single, role, same_cover
+):
+    s = single
+    plans = s.global_plan["default_plan"].plan
+    from arknights_mower.tests.multi_group_shift_tests import B
+    from arknights_mower.utils.plan import Room
+    from arknights_mower.utils.replacement_coordination import (
+        ordinary_recall_mood_admissible,
+        plan_replacement_handoff,
+        replacements,
+    )
+
+    plans["meeting"][1].group = "甲"
+    plans["room_1_1"] = [
+        Room(
+            "芬",
+            "乙",
+            ["香草"],
+            group_bindings=[{"group": "丙", "replacement": ["翎羽"]}],
+        )
+    ]
+    plans["recycle"] = [Room("清道夫", "丙", ["红豆"])]
+    if role == "standby":
+        s.global_plan["default_plan"].config.resting_standby = [A]
+    elif role == "workaholic":
+        s.global_plan["default_plan"].config.workaholic = [A]
+    elif role == "low":
+        s.global_plan["default_plan"].config.resting_priority = [A]
+    if same_cover:
+        plans["contact"][0].replacement = ["黑角"]
+    assert s.initialize_operators() is None
+    Operators.current_room_changed_callback = None
+    s._refresh_deferred_product_reservations = lambda: None
+    s.check_fia = lambda: (None, None)
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    s.total_agent = list(s.op_data.operators.values())
+    s.op_data.operators[B].mood = 0
+    data = s.op_data
+    members = data.shift_group_members("甲")
+    assert data.shift_request_groups([B]) == ["甲"]
+    assert replacements(data, data.operators[SHARED], request_names=[B]) == (
+        ["黑角"] if same_cover else ["红"]
+    )
+    assert (
+        plan_replacement_handoff(data, members, lambda _: False, request_names=[B])
+        == {}
+    )
+    data.operators[B].mood, data.operators[SHARED].mood = 24, 0
+    assert not ordinary_recall_mood_admissible(data, set(), members, request_names=[B])
+    data.operators[B].mood, data.operators[SHARED].mood = 0, 24
+    plan = s.resting()
+    assert plan["meeting"] == [SHARED, "初雪"]
+    assert plan["contact"] == (["黑角"] if same_cover else ["红"])
+    assert "room_1_1" not in plan and "recycle" not in plan
+    assert not data.group_is_resting("甲") and not data.group_is_resting("乙")
+    apply(s, plan)
+    assert s.op_data.operators[SHARED].current_room == "meeting"
+    assert s.op_data.operators["芬"].current_room == "room_1_1"
+    assert s.op_data.group_is_resting("甲") and not s.op_data.group_is_resting("乙")
+
+
+def test_nested_working_swaps_use_requested_binding_instead_of_effective_group(single):
+    from arknights_mower.tests.multi_group_shift_tests import B
+    from arknights_mower.utils.replacement_coordination import replacements
+
+    s = single
+    plans = s.global_plan["default_plan"].plan
+    plans["meeting"][0].replacement = [B]
+    plans["meeting"][1].group = "甲"
+    plans["meeting"][1].replacement = [SHARED]
+    plans["meeting"][1].group_bindings = [{"group": "丙", "replacement": ["初雪"]}]
+    assert s.initialize_operators() is None
+    Operators.current_room_changed_callback = None
+    s._refresh_deferred_product_reservations = lambda: None
+    s.check_fia = lambda: (None, None)
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    s.total_agent = list(s.op_data.operators.values())
+    data = s.op_data
+    data.operators[A].mood = 0
+    assert data.operators[B].group == "丙"
+    assert data.operators[SHARED].group == "乙"
+    assert data.shift_request_groups([A]) == ["甲"]
+    assert replacements(data, data.operators[SHARED], request_names=[A]) == ["红"]
+    plan = s.resting()
+    assert plan["meeting"] == [B, SHARED]
+    assert plan["contact"] == ["红"]
+    apply(s, plan)
+    assert s.op_data.group_is_resting("甲")
+    assert not s.op_data.group_is_resting("乙")
+    assert not s.op_data.group_is_resting("丙")
+
+
+def test_independent_source_survives_an_unrequested_intermediate_binding(single):
+    from arknights_mower.tests.multi_group_shift_tests import B
+    from arknights_mower.utils.plan import Room
+    from arknights_mower.utils.replacement_coordination import plan_replacement_handoff
+    from arknights_mower.utils.retained_recovery import completed_ordinary_rest_request
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    s = single
+    plans = s.global_plan["default_plan"].plan
+    plans["contact"][0].group_bindings = [{"group": "乙", "replacement": [B]}]
+    plans["meeting"][1] = Room(
+        B, "乙", ["初雪"], group_bindings=[{"group": "丙", "replacement": ["黑角"]}]
+    )
+    plans["room_1_1"] = [
+        Room(
+            "芬",
+            "丙",
+            ["香草"],
+            group_bindings=[{"group": "丁", "replacement": ["翎羽"]}],
+        )
+    ]
+    plans["recycle"] = [Room("清道夫", "丁", ["红豆"])]
+    assert s.initialize_operators() is None
+    Operators.current_room_changed_callback = None
+    s._refresh_deferred_product_reservations = lambda: None
+    s.check_fia = lambda: (None, None)
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    data = s.op_data
+    sources = [A, B]
+    members = [*data.shift_group_members("甲"), B]
+    assert data.operators[SHARED].group == "乙"
+    assert data.operators[B].group == "丙"
+    assert data.shift_request_groups(sources) == ["甲", "丙"]
+    assert (
+        plan_replacement_handoff(
+            data, members + ["芬"], lambda _: False, request_names=sources
+        )
+        == {}
+    )
+
+    plan = s._coordination_admission_plan(data, members, request_names=sources)
+    assert plan is not None
+    assert plan["meeting"] == [SHARED, "黑角"]
+    assert plan["contact"] == ["红"]
+    assert plan["room_1_1"] == ["香草"]
+    assert "recycle" not in plan
+    assert not data.group_is_resting("甲") and not data.group_is_resting("丙")
+
+    apply(s, plan)
+    assert s.op_data.group_is_resting("甲") and s.op_data.group_is_resting("丙")
+    assert not s.op_data.group_is_resting("乙") and not s.op_data.group_is_resting("丁")
+    assert s.op_data.operators[SHARED].current_room == "meeting"
+    assert s.op_data.operators["芬"].is_resting()
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+    task.ordinary_coordination = True
+    task.coordination_request_names = sources
+    task.execution_failure = {"reason": "等待床位"}
+    assert completed_ordinary_rest_request(s.op_data, task)
+
+
+def test_individual_request_remains_required_alongside_a_named_group(single):
+    from arknights_mower.tests.multi_group_shift_tests import B
+    from arknights_mower.utils import config
+    from arknights_mower.utils.replacement_coordination import (
+        ordinary_recall_mood_admissible,
+    )
+    from arknights_mower.utils.retained_recovery import completed_ordinary_rest_request
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    s = single
+    plans = s.global_plan["default_plan"].plan
+    plans["contact"][0].group_bindings = [{"group": "", "replacement": ["黑角"]}]
+    assert s.initialize_operators() is None
+    Operators.current_room_changed_callback = None
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    data = s.op_data
+    data.runtime_conf = config.Conf(rescue_threshold=0.75)
+    data.operators[SHARED].mood = 0
+    sources = [SHARED, B]
+    assert data.operators[SHARED].independent_rest
+    assert ordinary_recall_mood_admissible(data, set(), sources, request_names=sources)
+
+    apply(
+        s, {"meeting": [A, "初雪"], "dormitory_1": ["塑心", "冰酿", B, "Free", "Free"]}
+    )
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+    task.ordinary_coordination = True
+    task.coordination_request_names = sources
+    task.execution_failure = {"reason": "等待床位"}
+    assert not completed_ordinary_rest_request(s.op_data, task)
+    assert not s._has_pending_exhausted_shift(sources, request_names=sources)
+    apply(s, {"contact": ["黑角"], "dormitory_1": ["塑心", "冰酿", B, SHARED, "Free"]})
+    assert completed_ordinary_rest_request(s.op_data, task)
+
+
+def test_nested_support_rebuild_preserves_original_requester(single):
+    from arknights_mower.tests.multi_group_shift_tests import B
+    from arknights_mower.utils.plan import Room
+
+    s = single
+    plans = s.global_plan["default_plan"].plan
+    plans["meeting"][0].replacement = [B]
+    plans["meeting"][1] = Room(
+        B, "甲", [SHARED], group_bindings=[{"group": "丙", "replacement": ["初雪"]}]
+    )
+    plans["recycle"] = [Room("清道夫", "", ["红", "香草"])]
+    assert s.initialize_operators() is None
+    Operators.current_room_changed_callback = None
+    s._refresh_deferred_product_reservations = lambda: None
+    s.check_fia = lambda: (None, None)
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    apply(
+        s,
+        {
+            "recycle": ["红"],
+            "dormitory_1": ["塑心", "冰酿", "清道夫", "Free", "Free"],
+        },
+    )
+    s.op_data.operators[A].mood = 0
+    s.op_data.operators["清道夫"].mood = 12
+    s.task = None
+    s._schedule_group_coordination([A])
+    (support,) = s.tasks
+    assert support.plan == {"recycle": ["香草"]}
+    assert support.coordination_request_names == [A]
+    original_time = support.time
+    s.task = support
+    for _ in range(2):
+        s._refresh_coordination_support(support)
+        assert support.plan == {"recycle": ["香草"]}
+        assert support.coordination_request_names == [A]
+        assert support.time == original_time
+        assert s._coordination_support_valid(support.plan, [A])
+    apply(s, support.plan)
+    s.tasks = []
+    s.task = None
+    admission = s._coordination_admission_plan(s.op_data, [A])
+    assert admission is not None
+    assert admission["meeting"] == [B, SHARED]
+    assert admission["contact"] == ["红"]
+    apply(s, admission)
+    assert s.op_data.group_is_resting("甲")
+    assert not s.op_data.group_is_resting("乙") and not s.op_data.group_is_resting("丙")

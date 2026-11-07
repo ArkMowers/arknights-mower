@@ -20,12 +20,25 @@ def replacement_dependencies(data, names):
             return names
 
 
-def replacements(data, op, required=()):
-    transitions = dict.fromkeys(data.shift_request_groups(required), True)
+def replacements(data, op, required=(), *, request_names=None):
+    sources = required if request_names is None else request_names
+    transitions = dict.fromkeys(data.shift_request_groups(sources), True)
     return (
         data.shared_replacements(op, data.resting_binding_groups(op, transitions))
         if op.multi_group
         else op.replacement
+    )
+
+
+def coordination_primary_replacement(data, owner, name, request_names=()):
+    transitions = dict.fromkeys(data.shift_request_groups(request_names), True)
+    groups = (
+        data.resting_binding_groups(owner, transitions)
+        if owner.multi_group
+        else [owner.group]
+    )
+    return any(
+        data.is_same_group_primary_replacement(owner, name, group) for group in groups
     )
 
 
@@ -59,12 +72,14 @@ def coordination_reservations(data, tasks, current=None):
     return names, slots
 
 
-def _eligible(data, owner, name, protected, slots, is_busy, required=()):
+def _eligible(
+    data, owner, name, protected, slots, is_busy, required=(), *, request_names=()
+):
     from arknights_mower.utils.backup_group_tasks import forced_group_cover_reservations
 
     op = data.operators.get(name)
     forced, _ = forced_group_cover_reservations(data)
-    same_group = data.is_same_group_primary_replacement(owner, name)
+    same_group = coordination_primary_replacement(data, owner, name, request_names)
     return (
         op is not None
         and (
@@ -82,10 +97,13 @@ def _eligible(data, owner, name, protected, slots, is_busy, required=()):
     )
 
 
-def plan_replacement_handoff(data, candidates, is_busy, protected=(), slots=()):
+def plan_replacement_handoff(
+    data, candidates, is_busy, protected=(), slots=(), *, request_names=None
+):
     from arknights_mower.utils.exhaust_replacement import match_replacements
 
     required, protected, slots = set(candidates), set(protected), set(slots)
+    request_names = list(candidates if request_names is None else request_names)
     owners, choices = {}, {}
 
     def visit(name):
@@ -100,19 +118,28 @@ def plan_replacement_handoff(data, candidates, is_busy, protected=(), slots=()):
         ):
             return
         owners[name] = owner
-        raw = replacements(data, owner, required)
+        raw = replacements(data, owner, request_names=request_names)
         choices[name] = []
         if owner.room.startswith("dorm") and "Free" in raw:
             return
         for cover in raw:
-            if not _eligible(data, owner, cover, protected, slots, is_busy, required):
+            if not _eligible(
+                data,
+                owner,
+                cover,
+                protected,
+                slots,
+                is_busy,
+                required,
+                request_names=request_names,
+            ):
                 continue
             op = data.operators[cover]
             if (
                 not op.current_room
                 or op.is_resting()
                 or cover in required
-                and data.is_same_group_primary_replacement(owner, cover)
+                and coordination_primary_replacement(data, owner, cover, request_names)
                 and (op.current_room, op.current_index) == (op.room, op.index)
             ):
                 choices[name].append(cover)
@@ -130,7 +157,8 @@ def plan_replacement_handoff(data, candidates, is_busy, protected=(), slots=()):
                 or occupied.name == cover
                 or occupied.is_working()
                 or (occupied.room, occupied.index) in slots
-                or cover not in replacements(data, occupied, required)
+                or cover
+                not in replacements(data, occupied, request_names=request_names)
             ):
                 continue
             visit(occupied.name)
@@ -146,7 +174,7 @@ def plan_replacement_handoff(data, candidates, is_busy, protected=(), slots=()):
         for name in sorted(owners, key=lambda n: n in required)
         if not (
             owners[name].room.startswith("dorm")
-            and "Free" in replacements(data, owners[name], required)
+            and "Free" in replacements(data, owners[name], request_names=request_names)
         )
     }
     matching = match_replacements(ordered)
@@ -222,13 +250,16 @@ def preferred_replacement_restore(data, is_busy, protected=(), slots=()):
             return plan
 
 
-def ordinary_recall_mood_admissible(data, recalled, candidates, *, now=None):
+def ordinary_recall_mood_admissible(
+    data, recalled, candidates, *, now=None, request_names=None
+):
     """普通请求到急救线后才评估召回，双方必须有有效心情读数。"""
     now = now or getattr(data, "_projection_now", None) or datetime.now()
+    request_names = list(candidates if request_names is None else request_names)
 
     def anchor(op):
         return data.is_group_shift_anchor(op) or (
-            len(candidates) == 1
+            op.name in request_names
             and op.is_high()
             and op.independent_rest
             and not op.workaholic
@@ -241,10 +272,19 @@ def ordinary_recall_mood_admissible(data, recalled, candidates, *, now=None):
     def mood(op):
         return dorm_candidate_mood(data, op.name, now)
 
-    request_groups = set(data.shift_request_groups(candidates))
+    request_groups = set(data.shift_request_groups(request_names))
     request_moods = [
         (op, value)
-        for name in candidates
+        for name in dict.fromkeys(
+            [
+                *request_names,
+                *(
+                    name
+                    for group in request_groups
+                    for name in data.shift_group_members(group)
+                ),
+            ]
+        )
         if (op := data.operators.get(name)) is not None
         and anchor(op)
         and (not op.group or op.group in request_groups)
@@ -266,7 +306,15 @@ def ordinary_recall_mood_admissible(data, recalled, candidates, *, now=None):
 
 
 def recall_can_sustain(
-    original, admitted, recalled, candidates, *, rates=None, now=None, urgent=False
+    original,
+    admitted,
+    recalled,
+    candidates,
+    *,
+    rates=None,
+    now=None,
+    urgent=False,
+    request_names=None,
 ):
     """普通召回检查续航，用尽交接仅保留明确恢复要求。"""
     from arknights_mower.utils.group_recovery import group_recovery_deadline
@@ -312,7 +360,9 @@ def recall_can_sustain(
     if urgent:
         # 用尽急救不能被普通回班等待和未来续航预测阻挡。
         return True
-    if not ordinary_recall_mood_admissible(original, recalled, candidates, now=now):
+    if not ordinary_recall_mood_admissible(
+        original, recalled, candidates, now=now, request_names=request_names
+    ):
         return False
     from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 

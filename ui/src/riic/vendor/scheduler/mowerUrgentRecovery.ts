@@ -5,8 +5,9 @@ import {MOWER_TASK_TYPES as T,type MowerTask} from './mowerTaskQueue'
 /** A prepared departure retains the recovery request that released its covers. */
 export function mowerSupportRequestMatches(request:MowerTask,support:MowerTask):boolean {
  if(request===support||request.ordinaryCoordination!==support.ordinaryCoordination)return false
- return request.type===T.EXHAUST_OFF&&request.metadata.split(',').some(name=>support.coordinationRequestNames.includes(name))
-  ||request.type===T.SHIFT_OFF&&request.urgentRecoveryRequestNames.length>0&&request.urgentRecoveryRequestNames.every(name=>support.coordinationRequestNames.includes(name))
+ const origins=request.coordinationRequestNames.length?request.coordinationRequestNames:request.type===T.EXHAUST_OFF?request.metadata.split(','):request.urgentRecoveryRequestNames
+ return request.type===T.EXHAUST_OFF&&origins.some(name=>support.coordinationRequestNames.includes(name))
+  ||request.type===T.SHIFT_OFF&&origins.length>0&&origins.every(name=>support.coordinationRequestNames.includes(name))
 }
 
 /** Observed returns and completed recovery release this round's recall dependency. */
@@ -35,8 +36,9 @@ export function recordMowerUrgentSupport(data:MowerSchedulingData,task:MowerTask
  const owner=pending.find(request=>mowerSupportRequestMatches(request,task))??(task.ordinaryCoordination?task:undefined)
  if(!owner)return
  const explicit=new Set([...owner.metadata.split(','),...owner.urgentRecoveryRequestNames,...(owner===task?task.coordinationRequestNames:[])])
- const requests=task.ordinaryCoordination?[...new Set(task.coordinationRequestNames.flatMap(name=>{const op=data.operators[name];return op?.group?data.shiftGroupMembers(op.group):op?[name]:[]}))]:task.coordinationRequestNames
- owner.urgentRecoveryRequestNames=requests.filter(name=>{const op=data.operators[name];return !!op&&(data.isGroupShiftAnchor(op)||op.independentRest&&explicit.has(name))})
+ const requestGroups=new Set(data.shiftRequestGroups(task.coordinationRequestNames))
+ const requests=[...new Set(task.coordinationRequestNames.flatMap(name=>{const op=data.operators[name];return op?.group?data.shiftGroupMembers(op.group):op?[name]:[]}))]
+ owner.urgentRecoveryRequestNames=requests.filter(name=>{const op=data.operators[name];return !!op&&(data.isGroupShiftAnchor(op)&&(!op.group||requestGroups.has(op.group))||op.independentRest&&explicit.has(name))})
  task.urgentRecoveryRequestNames=[...owner.urgentRecoveryRequestNames]
  owner.urgentRecoverySupportNames=[...new Set([...owner.urgentRecoverySupportNames,...supporters])]
  owner.urgentRecoveryReservedNames=[...new Set([...owner.urgentRecoveryReservedNames,...Object.values(data.operators).filter(op=>{

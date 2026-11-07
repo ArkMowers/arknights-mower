@@ -201,7 +201,7 @@ describe('ordinary recall rescue admission',()=>{
   expect(allowed(original,admit(),fixed)).toBe(false)
   request.groupBindings.push({group:'',replacement:['X']})
   expect(allowed(original,admit(),fixed)).toBe(true)
-  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B','X'],{coordinationRates:fixed})).toBe(false)
+  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B','X'],{coordinationRates:fixed,requestNames:['B']})).toBe(true)
  })
  it('checks all working primary members of the recalled group',()=>{
   const {original}=fixture(),target=original.operators.A!
@@ -286,11 +286,11 @@ it('does not borrow a working follower normal group mood to authorize another gr
  original.plan.room_2_1=['C'];original.operators.C=new MowerOperatorState({name:'C',room:'room_2_1',index:0,currentRoom:'room_2_1',currentIndex:0,group:'b',replacement:['Z'],operatorType:'high',mood:24,timeStampMicros:0});original.operators.Z=new MowerOperatorState({name:'Z'})
  original.operators.F=new MowerOperatorState({name:'F',room:'room_1_3',index:0,currentRoom:'room_1_3',currentIndex:0,operatorType:'high',group:'b',replacement:['Y'],groupBindings:[{group:'b',replacement:['Y']},{group:'a',replacement:['Y']}],mood:10,timeStampMicros:0})
  const data=new MowerSchedulingData({...original})
- expect(data.shiftRequestGroups(['B','F'])).toEqual(['a'])
- expect(mowerRecallMoodAdmissible(data,new Set(['A']),['B','F'])).toBe(false)
+ expect(data.shiftRequestGroups(['B'])).toEqual(['a'])
+ expect(mowerRecallMoodAdmissible(data,new Set(['A']),['B','F'],['B'])).toBe(false)
  data.operators.B!.mood=7
- expect(mowerRecallMoodAdmissible(data,new Set(['A']),['B','F'])).toBe(true)
+ expect(mowerRecallMoodAdmissible(data,new Set(['A']),['B','F'],['B'])).toBe(true)
  const completed=projectMowerArrangements(data,[{room_1_2:['F'],room_1_3:['Y'],dormitory_1:['A','B','Free']}])
  expect(completed.operators.C!.isResting()).toBe(false)
- expect(mowerCoordinationRequestFulfilled(completed,['B','F'])).toBe(true)
+ expect(mowerCoordinationRequestFulfilled(completed,['B'])).toBe(true)
 })

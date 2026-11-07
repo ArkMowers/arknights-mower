@@ -11,7 +11,7 @@ export function mowerCompletedOrdinaryRestRequest(data:MowerSchedulingData,task:
  if(!requested.length||requested.some(name=>!data.operators[name]))return false
  const groups=new Set(data.shiftRequestGroups(requested))
  const names=new Set([...groups].flatMap(group=>data.shiftGroupMembers(group)).concat(requested.filter(name=>!data.operators[name]!.group)))
- const required=[...names].map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.canStandby(op)&&(!op.multiGroup||!!op.shiftGroup&&groups.has(op.shiftGroup)||requested.length===1&&op.independentRest))
+ const required=[...names].map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.canStandby(op)&&(!op.multiGroup||!!op.shiftGroup&&groups.has(op.shiftGroup)||requested.includes(op.name)&&op.independentRest))
  return required.length>0&&required.every(op=>op.isResting()&&data.currentOperator(op.currentRoom,op.currentIndex)===op)
 }
 

@@ -44,7 +44,7 @@ def completed_ordinary_rest_request(op_data, task):
         and (
             not op_data.operators[name].multi_group
             or op_data.operators[name].shift_group in groups
-            or len(requested) == 1
+            or name in requested
             and op_data.operators[name].independent_rest
         )
     ]

@@ -17,6 +17,7 @@ import {mowerDormCandidateMood} from './mowerAlphaCandidates'
 import {alphaPosition,alphaRestingTier,alphaSlotTakable,mowerMatchReplacements,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue,fromMowerMicros,toMowerMicros} from './mowerTaskQueue'
 export interface MowerRestingOptions {
+ requestNames?:readonly string[]
  urgentExhaust?:boolean
  urgentRecoveryPendingSupporters?:ReadonlySet<string>
  dependencyReturn?:MowerDependencyReturnAdmission
@@ -29,7 +30,11 @@ export interface MowerRestingOptions {
  dormAdmissions?:Map<string,string>
 }
 export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],existingReplacements:string[],plan:MowerTaskPlan,options:MowerRestingOptions={}):boolean {
- if(data.alpha)return alphaGetRestingPlan(data,names,existingReplacements,plan,options)
+ if(data.alpha){
+  const groups=data.shiftRequestGroups(options.requestNames??names)
+  const members=options.requestNames?[...new Set([...names,...groups.flatMap(group=>data.shiftGroupMembers(group))])]:names
+  return alphaGetRestingPlan(data,members,existingReplacements,plan,options,groups)
+ }
  const dormAgents=names.filter(name=>data.operators[name]!.room.startsWith('dorm'))
  const agents=names.filter(name=>!dormAgents.includes(name)),fia=options.fiaTargets??[]
  agents.sort((a,b)=>{
@@ -74,10 +79,10 @@ export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],exis
  }
  return true
 }
-function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:string[],plan:MowerTaskPlan,options:MowerRestingOptions):boolean{
- if(data.shiftRequestGroups(names).some(group=>mowerForcedWorkGroups(data).has(group)))return false
- if(names.some(name=>data.reservedProductReplacements.has(name)||options.reservedNames?.has(name))||mowerWorkingReplacementBlocked(data,names,plan))return false
- const transitions={...mowerArrangementGroupTransitions(data,plan),...Object.fromEntries(data.shiftRequestGroups(names).map(group=>[group,true]))}
+function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:string[],plan:MowerTaskPlan,options:MowerRestingOptions,groups:readonly string[]):boolean{
+ if(groups.some(group=>mowerForcedWorkGroups(data).has(group)))return false
+ if(names.some(name=>data.reservedProductReplacements.has(name)||options.reservedNames?.has(name))||mowerWorkingReplacementBlocked(data,names,plan,groups))return false
+ const transitions={...mowerArrangementGroupTransitions(data,plan),...Object.fromEntries(groups.map(group=>[group,true]))}
  const shared=Object.values(data.operators).filter(op=>op.multiGroup),previousState=data.groupShiftState
  const previousBindings=shared.map(op=>({op,group:op.group,replacement:op.replacement}))
  try {
@@ -146,7 +151,7 @@ export function planMowerOrdinarySupportAdmission(data:MowerSchedulingData,names
  const projected=projectMowerArrangements(data,[]),plan:MowerTaskPlan={}
  const members=[...new Set(names.flatMap(name=>{const op=projected.operators[name];return op?.group?projected.shiftGroupMembers(op.group):op?[name]:[]}))]
  // The support projection can release a cover still recorded in an actual dormitory.
- if(!members.length||!mowerGetRestingPlan(projected,members,[],plan,{...options,dormAdmissions:new Map(),onBlocked:undefined,isDormReplacement:name=>{const op=projected.operators[name];return !!op&&op.currentRoom.startsWith('dorm')&&projected.dormReplacementForSlot(name,op.currentRoom,op.currentIndex)}}))return
+ if(!members.length||!mowerGetRestingPlan(projected,members,[],plan,{...options,requestNames:options.requestNames??names,dormAdmissions:new Map(),onBlocked:undefined,isDormReplacement:name=>{const op=projected.operators[name];return !!op&&op.currentRoom.startsWith('dorm')&&projected.dormReplacementForSlot(name,op.currentRoom,op.currentIndex)}}))return
  const reorder=mowerTryReorder(projected,plan);if(reorder)Object.assign(plan,reorder)
  return Object.keys(plan).length?plan:undefined
 }
@@ -180,11 +185,11 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
   if(op.group&&exhaustGroups.has(op.group))continue
   if((data.alpha||data.adjustForRunOrders===false)&&op.group){if(attempted.has(op.group))continue;attempted.add(op.group)}
   const members=op.group?data.shiftGroupMembers(op.group):[op.name]
-  if(mowerPendingExhaustDeparture(data,[...new Set([...queue.tasks,...options.tasks??[]])],members))continue
-  if(!mowerGetRestingPlan(data,[...members],replacements,plan,{...options,tasks:queue.tasks})){
+  if(mowerPendingExhaustDeparture(data,[...new Set([...queue.tasks,...options.tasks??[]])],members,[op.name]))continue
+  if(!(data.alpha?alphaGetRestingPlan(data,[...members],replacements,plan,{...options,requestNames:[op.name],tasks:queue.tasks},data.shiftRequestGroups([op.name])):mowerGetRestingPlan(data,[...members],replacements,plan,{...options,tasks:queue.tasks}))){
    options.onBlocked?.(members)
    if(data.alpha&&!queue.tasks.some(task=>task.exhaustSupport&&task.coordinationRequestNames.some(name=>members.includes(name)))){
-    const support=planMowerExhaustSupport(data,[...members],{...options,urgentExhaust:false,dormAdmissions:undefined,
+    const support=planMowerExhaustSupport(data,[...members],{...options,requestNames:[op.name],urgentExhaust:false,dormAdmissions:undefined,
      reservedNames:new Set([...options.reservedNames??[],...replacements,...options.dormAdmissions?.values()??[]]),
      reservedSlots:new Set([...options.reservedSlots??[],...options.dormAdmissions?.keys()??[]])})
     if(support&&Object.keys(support).length){

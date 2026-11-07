@@ -213,7 +213,9 @@ def test_urgent_recall_shared_follower_overlap_does_not_block_fixed_workers(
     solver, third_group
 ):
     s = shared_recall_solver(solver, third_group=third_group)
-    support = s._plan_exhaust_support(["机械师", "撷英调香师"], urgent=True)
+    support = s._plan_exhaust_support(
+        ["机械师", "撷英调香师"], urgent=True, request_names=["机械师"]
+    )
     assert support is not None
     assert support["room_2_2"] == ["苍苔"]
     assert support["contact"] == ["絮雨"]

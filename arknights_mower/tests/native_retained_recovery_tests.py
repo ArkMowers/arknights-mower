@@ -455,7 +455,7 @@ def test_completed_request_uses_requested_group_not_shared_working_binding(
     if unfinished:
         observed_return(data, "伊内丝")
     failed.ordinary_coordination = True
-    failed.coordination_request_names = ["伊内丝", "讯使"]
+    failed.coordination_request_names = ["伊内丝"]
     assert data.shift_request_groups(failed.coordination_request_names) == ["乙组"]
     solver = native_solver
     solver.op_data, solver.tasks = data, [failed]

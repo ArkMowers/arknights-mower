@@ -59,11 +59,13 @@ def plan_exhaust_support(
     recall_blocked=False,
     recall_viability=None,
     excluded_names=(),
+    request_names=None,
 ):
     """先保留既有换替班方案，再联合召回实际阻塞的休息组。"""
     from arknights_mower.utils.backup_group_tasks import forced_work_groups
 
-    if set(op_data.shift_request_groups(candidates)) & forced_work_groups(op_data):
+    request_names = list(candidates if request_names is None else request_names)
+    if set(op_data.shift_request_groups(request_names)) & forced_work_groups(op_data):
         return None
     pending, visited = deque([()]), {()}
     while pending:
@@ -82,6 +84,7 @@ def plan_exhaust_support(
             seeds=seeds,
             dependency=dependencies.add,
             excluded_names=excluded_names,
+            request_names=request_names,
         )
         if result is not None:
             return result
@@ -112,6 +115,7 @@ def _plan_exhaust_support_attempt(
     seeds=(),
     dependency=lambda name: None,
     excluded_names=(),
+    request_names=None,
 ):
     """返回能让用尽组取得替班和床位的前置安排；失败不改变真实状态。"""
     from arknights_mower.utils.backup_group_tasks import forced_group_cover_reservations
@@ -119,25 +123,37 @@ def _plan_exhaust_support_attempt(
     forced, _ = forced_group_cover_reservations(op_data)
     protected = set(protected) | set(op_data.reserved_product_replacements)
     required = set(candidates)
+    request_names = list(candidates if request_names is None else request_names)
+    request_groups = op_data.shift_request_groups(request_names)
+    transitions = dict.fromkeys(request_groups, True)
+    from arknights_mower.utils.replacement_coordination import (
+        coordination_primary_replacement,
+        plan_replacement_handoff,
+        replacements,
+    )
+
     cover_names = {
         name
         for name in candidates
-        for name in op_data.operators[name].replacement
+        for name in replacements(
+            op_data, op_data.operators[name], request_names=request_names
+        )
         if name != "Free"
     }
-    from arknights_mower.utils.replacement_coordination import plan_replacement_handoff
 
     plan = (
         plan_replacement_handoff(
-            op_data, candidates, is_busy, protected, reserved_slots
+            op_data,
+            candidates,
+            is_busy,
+            protected,
+            reserved_slots,
+            request_names=request_names,
         )
         or {}
     )
     selected = set()
     data = op_data.project_arrangements([plan])
-
-    request_groups = op_data.shift_request_groups(candidates)
-    transitions = dict.fromkeys(request_groups, True)
 
     def covers(state, worker):
         replacement = (
@@ -221,13 +237,13 @@ def _plan_exhaust_support_attempt(
             )
             and (
                 not op.is_high()
-                or state.is_same_group_primary_replacement(target, name)
+                or coordination_primary_replacement(state, target, name, request_names)
             )
             and (op.current_room, op.current_index) not in reserved_slots
             and name not in protected | selected | set(TRADE_ORDER_AGENTS)
             and (
                 name not in required
-                or state.is_same_group_primary_replacement(target, name)
+                or coordination_primary_replacement(state, target, name, request_names)
             )
             and (
                 not state.is_dorm_replacement(name)
@@ -243,7 +259,7 @@ def _plan_exhaust_support_attempt(
             not op.current_room
             or op.is_resting()
             or (op.current_room, op.current_index) == (target.room, target.index)
-            or state.is_same_group_primary_replacement(target, name)
+            or coordination_primary_replacement(state, target, name, request_names)
             and name in required
             and (op.current_room, op.current_index) == (op.room, op.index)
         )
@@ -311,19 +327,17 @@ def _plan_exhaust_support_attempt(
             member
             for member in required
             if not (
-                state.operators[member].multi_group
+                (worker := state.operators[member]).multi_group
                 and (
-                    not state.operators[member].independent_rest
-                    or state._can_standby(state.operators[member])
-                    and not state.operators[member].current_room
+                    not worker.independent_rest
+                    or state._can_standby(worker)
+                    and not worker.current_room
                 )
+                and member not in request_names
+                and worker.shift_group not in request_groups
                 and any(
-                    state.is_group_shift_anchor(state.operators[other])
-                    and any(
-                        binding["group"] == state.operators[other].group
-                        for binding in state.operators[member].group_bindings
-                    )
-                    for other in required - {member}
+                    binding["group"] in request_groups
+                    for binding in worker.group_bindings
                 )
             )
         }
@@ -393,7 +407,9 @@ def _plan_exhaust_support_attempt(
                 ordinary_recall_mood_admissible,
             )
 
-            if not ordinary_recall_mood_admissible(op_data, recalled, candidates):
+            if not ordinary_recall_mood_admissible(
+                op_data, recalled, candidates, request_names=request_names
+            ):
                 return None
         moved = {
             member

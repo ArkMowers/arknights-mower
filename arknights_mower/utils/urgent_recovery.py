@@ -15,8 +15,7 @@ PENDING_FIELDS = (
 
 def recovery_owner(data, op, requested):
     return data.is_group_shift_anchor(op) or (
-        len(requested) == 1
-        and op.name in requested
+        op.name in requested
         and op.independent_rest
         and not op.workaholic
         and not data._can_standby(op)
@@ -106,7 +105,24 @@ def prepare_urgent_support(data, task, candidates):
     ]
     if not supporters:
         return
-    task.urgent_recovery_request_names = list(candidates)
+    request_groups = set(data.shift_request_groups(candidates))
+    requested = dict.fromkeys(
+        [
+            *candidates,
+            *(
+                name
+                for group in request_groups
+                for name in data.shift_group_members(group)
+            ),
+        ]
+    )
+    task.urgent_recovery_request_names = [
+        name
+        for name in requested
+        if (op := data.operators.get(name)) is not None
+        and recovery_owner(data, op, candidates)
+        and (not op.group or op.group in request_groups)
+    ]
     task.urgent_recovery_support_names = supporters
     task.urgent_recovery_freed_names = [
         op.name
@@ -125,6 +141,7 @@ def complete_urgent_recovery(data, task, tasks):
     """只在实际目标确认后传递交接资源或登记本轮受援恢复。"""
     active = active_urgent_recovery(data)
     requested = set(getattr(task, "urgent_recovery_request_names", ()))
+    sources = set(getattr(task, "coordination_request_names", ()) or requested)
     supporters = list(getattr(task, "urgent_recovery_support_names", ()))
     if requested and supporters:
         if getattr(task, "exhaust_support", False):
@@ -135,7 +152,7 @@ def complete_urgent_recovery(data, task, tasks):
                     not in ("EXHAUST_OFF", "SHIFT_OFF")
                     or bool(getattr(pending, "ordinary_coordination", False))
                     != bool(getattr(task, "ordinary_coordination", False))
-                    or requested
+                    or sources
                     != set(getattr(pending, "coordination_request_names", ()))
                 ):
                     continue
