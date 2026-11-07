@@ -78,7 +78,7 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
   })
 
   it('builds direct tabs and section pickers from the shared navigation definition', () => {
-    expect(mobileTabs).toHaveLength(5)
+    expect(mobileTabs).toHaveLength(6)
     for (const tab of mobileTabs) {
       expect([...internalItems, ...navigationSections], tab.key).toContain(tab)
       expect(tab.shortLabel, tab.key).toBeTruthy()
@@ -88,7 +88,8 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
       '排班',
       '养成',
       '日志',
-      '报表'
+      '报表',
+      '基建技能'
     ])
     expect(mobileTabs.find((tab) => tab.key === 'task-settings')).toMatchObject({
       label: '全部设置',

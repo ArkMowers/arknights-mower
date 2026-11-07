@@ -60,10 +60,7 @@
         v-else
         :to="item.to"
         class="mobile-tab-bar__item"
-        :class="{
-          'mobile-tab-bar__item--primary': item.key === 'log',
-          'is-active': activeTab === item.key
-        }"
+        :class="{ 'is-active': activeTab === item.key }"
         exact-active-class="is-active"
         :aria-label="item.label"
         :title="item.label"
@@ -112,8 +109,7 @@ const themeVars = useThemeVars()
 const palette = computed(() => ({
   '--tab-text': themeVars.value.textColor2,
   '--tab-active-text': themeVars.value.primaryColorPressed,
-  '--tab-focus': themeVars.value.primaryColor,
-  '--tab-primary-icon': themeVars.value.bodyColor
+  '--tab-focus': themeVars.value.primaryColor
 }))
 
 const tabRecords = new Map(
@@ -195,7 +191,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  width: min(44px, 100%);
   height: 26px;
   border-radius: 13px;
   font-size: 21px;
@@ -213,29 +209,6 @@ watch(
 
 .mobile-tab-bar__item.is-active .mobile-tab-bar__icon {
   background: var(--mower-primary-block, color-mix(in srgb, var(--tab-focus) 14%, transparent));
-}
-
-.mobile-tab-bar__item--primary {
-  padding: 0;
-  color: var(--tab-active-text);
-  font-weight: 600;
-}
-
-.mobile-tab-bar__item--primary .mobile-tab-bar__icon {
-  width: 38px;
-  height: 32px;
-  border-radius: 11px;
-  background: var(--tab-focus);
-  color: var(--tab-primary-icon);
-  font-size: 23px;
-}
-
-.mobile-tab-bar__item--primary.is-active .mobile-tab-bar__icon {
-  background: var(--tab-active-text);
-}
-
-.mobile-tab-bar__item--primary:active .mobile-tab-bar__icon {
-  background: var(--tab-active-text);
 }
 
 .mobile-tab-bar__label {
