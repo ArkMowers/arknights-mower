@@ -11,7 +11,8 @@
     :class="{
       'provider--dark': theme === 'dark',
       'provider--halloween': halloweenActive,
-      'provider--window-shell': windowShellActive
+      'provider--window-shell': windowShellActive,
+      'provider--mobile-browser': mobileBrowser
     }"
   >
     <HalloweenBackdrop
@@ -449,14 +450,15 @@ async function openDeviceConnection(action) {
   if (failure && !isNavigationFailure(failure, NavigationFailureType.duplicated)) return
   deviceConnectionNavigation.open(action)
 }
-const removeSettingsHook = router.afterEach((to, from, failure) => {
+const removeRouteHook = router.afterEach((to, from, failure) => {
   if (failure) return
   if (to.meta.settings && !from.meta.settings && from.matched.length) {
     settingsReturnTo.value = from.fullPath
     settingsBackgroundRoute.value = from
   }
+  if (to.name === 'log' && from.name !== 'log' && from.matched.length) refreshLogSubscription()
 })
-onBeforeUnmount(removeSettingsHook)
+onBeforeUnmount(removeRouteHook)
 function leaveSettings() {
   void router.push(settingsReturnTo.value)
 }
@@ -555,16 +557,20 @@ const { operators } = storeToRefs(plan_store)
 const { load_plan, load_operators } = plan_store
 
 const mower_store = useMowerStore()
-const {
-  ws,
-  running,
-  log_lines,
-  auto_start_handled,
-  desktop_startup_handled,
-  updates_enabled,
-  deployment
-} = storeToRefs(mower_store)
-const { get_running, listen_ws } = mower_store
+const { ws, running, auto_start_handled, desktop_startup_handled, updates_enabled, deployment } =
+  storeToRefs(mower_store)
+const { get_running, listen_ws, clear_legacy_logs } = mower_store
+
+function refreshLogSubscription() {
+  // 浏览器可能仍将失效的连接标为已打开，重新订阅可取回当前日志快照。
+  const socket = ws.value
+  if (!document.hidden && socket?.readyState === WebSocket.OPEN) socket.reconnect()
+}
+
+function handleLogVisibilityChange() {
+  if (route.name === 'log') refreshLogSubscription()
+}
+
 const guiStore = useGuiStore()
 const { softwareVersionDisplay, watermarkVisible, halloweenMode } = storeToRefs(guiStore)
 const halloweenActive = provideHalloweenSeason(halloweenMode)
@@ -752,7 +758,7 @@ async function handleWindowControl(action) {
 }
 function start() {
   running.value = true
-  log_lines.value = []
+  clear_legacy_logs()
   axios.get(`${import.meta.env.VITE_HTTP_URL}/start/0`)
 }
 
@@ -767,6 +773,7 @@ function apply_zoom(scale) {
 const isMobileNav = ref(false)
 const mobile = ref(false)
 provide('mobile', mobile)
+const mobileBrowser = computed(() => mobile.value && !windowShellActive.value)
 const allSettingsOpen = computed(() => route.name === 'settings')
 let sidebarBeforeSettings = null
 let settingsSidebarManuallyToggled = false
@@ -874,6 +881,7 @@ onMounted(async () => {
   void windowShell.initialize()
   disposeModalDrag = installModalDragging()
   actions_on_resize()
+  document.addEventListener('visibilitychange', handleLogVisibilityChange)
   window.addEventListener('resize', () => {
     actions_on_resize()
   })
@@ -1004,6 +1012,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearTimeout(closePollTimer)
+  document.removeEventListener('visibilitychange', handleLogVisibilityChange)
   disposeModalDrag?.()
   windowShell.dispose()
   document.documentElement.classList.remove('mower-theme-changing')
@@ -1058,6 +1067,23 @@ watch(
   flex: 1 1 auto;
   min-height: 0;
   height: auto;
+}
+
+.provider.provider--mobile-browser {
+  --mobile-safe-area-top: calc(env(safe-area-inset-top, 0px) / var(--mower-zoom, 1));
+  --mobile-safe-area-left: calc(env(safe-area-inset-left, 0px) / var(--mower-zoom, 1));
+  --mobile-safe-area-right: calc(env(safe-area-inset-right, 0px) / var(--mower-zoom, 1));
+  box-sizing: border-box;
+  min-height: 0;
+  padding-top: var(--mobile-safe-area-top);
+  padding-left: var(--mobile-safe-area-left);
+  padding-right: var(--mobile-safe-area-right);
+}
+
+@supports (height: 100dvh) {
+  .provider.provider--mobile-browser {
+    height: calc(100dvh / var(--mower-zoom, 1));
+  }
 }
 
 .app-menu-header {
@@ -1155,6 +1181,10 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
 .navigation-footer {
   flex: none;
   z-index: 10;
+}
+
+.provider--mobile-browser .navigation-footer .mobile-tab-bar {
+  padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px) / var(--mower-zoom, 1));
 }
 
 .provider--window-shell .layout-content-container {

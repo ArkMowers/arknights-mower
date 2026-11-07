@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
-import { clampScreenshotHeight, clampTaskHeight, RESIZER_HEIGHT } from './logLayout.js'
+import {
+  clampScreenshotHeight,
+  clampTaskHeight,
+  fitRailLayout,
+  RESIZER_HEIGHT
+} from './logLayout.js'
 
 describe('log layout clamping', () => {
+  it('derives screenshot height from the saved rail width and actual frame aspect', () => {
+    expect(fitRailLayout(640, 180, 1400, 900, 16 / 9)).toEqual({ width: 640, height: 360 })
+    expect(fitRailLayout(640, 180, 1400, 900, 4 / 3)).toEqual({ width: 640, height: 480 })
+    expect(fitRailLayout(320, 500, 1400, 900, 16 / 9)).toEqual({ width: 320, height: 180 })
+  })
+
+  it('keeps task space when a full-width screenshot would exceed the available height', () => {
+    expect(fitRailLayout(720, 180, 1500, 400, 16 / 9)).toEqual({ width: 720, height: 259 })
+  })
+
   it('shrinks restored large panes so log and actions remain available', () => {
     const containerHeight = 500
     const bottomReserve = 180

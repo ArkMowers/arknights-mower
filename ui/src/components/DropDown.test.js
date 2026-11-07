@@ -24,7 +24,15 @@ vi.mock('naive-ui', async () => {
     }),
     NIcon: defineComponent({ setup: () => () => h('span') }),
     NDropdown: defineComponent({
-      props: { trigger: String, show: Boolean, disabled: Boolean, options: Array },
+      props: {
+        trigger: String,
+        show: Boolean,
+        disabled: Boolean,
+        options: Array,
+        menuProps: Function,
+        width: Number,
+        placement: String
+      },
       emits: ['update:show', 'select'],
       setup(props, { emit, slots }) {
         return () =>
@@ -44,7 +52,12 @@ vi.mock('naive-ui', async () => {
               props.show &&
                 h(
                   'div',
-                  { role: 'menu' },
+                  {
+                    ...props.menuProps?.(),
+                    role: 'menu',
+                    style: props.width ? { width: `${props.width}px` } : undefined,
+                    'data-placement': props.placement
+                  },
                   props.options.map((option) =>
                     h(
                       'button',
@@ -161,6 +174,45 @@ afterEach(() => {
 })
 
 describe('split action dropdown', () => {
+  it.each([true, false])(
+    'fits glass menus to the complete button group on mobile=%s',
+    async (mobile) => {
+      const page = mount(mobile, { glassMenu: true, up: true })
+      const group = page.nodes().find((element) => element.props.class?.includes('split-dropdown'))
+      group.getBoundingClientRect = () => ({ width: 184 })
+      page.arrow().getBoundingClientRect = () => ({ width: 44 })
+      const open = () =>
+        dispatch(mobile ? page.arrow() : page.main(), mobile ? 'onClick' : 'onMouseenter')
+      open()
+      await nextTick()
+      let menu = page.nodes().find((element) => element.props.role === 'menu')
+      expect(menu.props.style.width).toBe('184px')
+      expect(menu.props['data-placement']).toBe('top-end')
+      dispatch(page.option(), 'onClick')
+      await nextTick()
+      group.getBoundingClientRect = () => ({ width: 212 })
+      open()
+      await nextTick()
+      menu = page.nodes().find((element) => element.props.role === 'menu')
+      expect(menu.props.style.width).toBe('212px')
+    }
+  )
+
+  it.each([true, false])('applies glass only when requested on mobile=%s', async (mobile) => {
+    for (const glassMenu of [false, true]) {
+      const page = mount(mobile, { glassMenu })
+      dispatch(mobile ? page.arrow() : page.main(), mobile ? 'onClick' : 'onMouseenter')
+      await nextTick()
+      const menu = page.nodes().find((element) => element.props.role === 'menu')
+      expect(menu).toBeTruthy()
+      expect(menu.props.class).toBe(glassMenu ? 'mower-log-glass-menu' : undefined)
+      if (!glassMenu) {
+        expect(menu.props.style).toBeUndefined()
+        expect(menu.props['data-placement']).toBe('bottom')
+      }
+    }
+  })
+
   it('keeps the mobile primary action independent and opens the menu only from its arrow', async () => {
     const page = mount()
     expect(page.dropdown().props['data-dropdown-trigger']).toBe('click')

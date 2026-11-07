@@ -1,6 +1,7 @@
 <script setup>
 import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
+import { useGuiStore } from '@/stores/gui'
 import { storeToRefs } from 'pinia'
 import { computed, inject, onMounted, onUnmounted, provide, ref } from 'vue'
 import ChatBotSetting from '@/components/ChatBotSetting.vue'
@@ -58,6 +59,13 @@ const sections = [
 const section = Object.fromEntries(sections.map((item) => [item.id, item]))
 
 const config_store = useConfigStore()
+const gui = useGuiStore()
+const { taskQueueDisplay, taskQueueDisplaySaving, taskQueueDisplayError, displayDisabled } =
+  storeToRefs(gui)
+const taskQueueOptions = [
+  { value: 'portraits', label: '头像' },
+  { value: 'names', label: '干员名' }
+]
 const inheritsFromManager = (key) =>
   config_store.manager_owned_device && config_store.manager_inherited_settings?.includes(key)
 const showExtraSettings = computed(
@@ -166,6 +174,7 @@ async function changeLaunchMode(value) {
 onMounted(() => {
   window.addEventListener('pywebviewready', loadDesktopPreferences)
   void loadDesktopPreferences()
+  void gui.load()
 })
 onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPreferences))
 </script>
@@ -235,6 +244,27 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
           <HalloweenPreference />
           <SoftwareVersionPreference />
           <VersionWatermarkPreference />
+          <n-form-item label="任务列表显示" class="settings-row-wide settings-appearance-row">
+            <div class="task-queue-display-controls">
+              <SettingsSegmented
+                :value="taskQueueDisplay"
+                :options="taskQueueOptions"
+                :disabled="displayDisabled"
+                :busy="taskQueueDisplaySaving"
+                label="任务列表显示"
+                @update:value="gui.setTaskQueueDisplay"
+              />
+              <n-alert v-if="taskQueueDisplayError" type="error" :show-icon="false" role="alert">
+                {{ taskQueueDisplayError }}
+                <n-button
+                  text
+                  :disabled="gui.loading || (gui.loaded && displayDisabled)"
+                  @click="gui.retryTaskQueueDisplay"
+                  >重试</n-button
+                >
+              </n-alert>
+            </div>
+          </n-form-item>
           <LogBackgroundPreference />
         </n-form>
       </n-card>
@@ -431,6 +461,13 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
 </template>
 
 <style scoped lang="scss">
+.task-queue-display-controls {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
 .mower-settings-panels {
   display: grid;
   gap: 28px;

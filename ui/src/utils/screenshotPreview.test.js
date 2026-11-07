@@ -82,6 +82,64 @@ describe('memory screenshot preview', () => {
     expect(fetchSnapshot).toHaveBeenCalledTimes(3)
   })
 
+  it('publishes the first frame with its decoded aspect and leaves later frames on the normal path', async () => {
+    let completeDecode
+    const getFirstFrameAspect = vi.fn(() => new Promise((resolve) => (completeDecode = resolve)))
+    preview = createScreenshotPreview({ fetchSnapshot, onChange, getFirstFrameAspect })
+    preview.start()
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1)
+    expect(onChange).not.toHaveBeenCalled()
+
+    completeDecode(4 / 3)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onChange).toHaveBeenLastCalledWith('blob:frame', 4 / 3)
+
+    createUrl.mockReturnValue('blob:next')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(onChange).toHaveBeenLastCalledWith('blob:next')
+    expect(getFirstFrameAspect).toHaveBeenCalledExactlyOnceWith('blob:frame')
+  })
+
+  it('releases a pending first frame on stop without publishing a stale decode', async () => {
+    let completeDecode
+    const getFirstFrameAspect = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((resolve) => (completeDecode = resolve)))
+      .mockResolvedValueOnce(16 / 9)
+    preview = createScreenshotPreview({ fetchSnapshot, onChange, getFirstFrameAspect })
+    preview.start()
+    await vi.advanceTimersByTimeAsync(0)
+    preview.stop()
+    expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:frame')
+
+    createUrl.mockReturnValue('blob:next')
+    preview.start()
+    await vi.advanceTimersByTimeAsync(0)
+    completeDecode(4 / 3)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onChange.mock.calls).toEqual([[''], ['blob:next', 16 / 9]])
+    expect(revokeUrl).toHaveBeenCalledTimes(1)
+  })
+
+  it('discards an invalid first frame and retries without its etag', async () => {
+    vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const getFirstFrameAspect = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('invalid image'))
+      .mockResolvedValueOnce(4 / 3)
+    preview = createScreenshotPreview({ fetchSnapshot, onChange, getFirstFrameAspect })
+    preview.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:frame')
+    expect(onChange).not.toHaveBeenCalled()
+
+    createUrl.mockReturnValue('blob:next')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(fetchSnapshot.mock.calls[1][0].headers).toEqual({})
+    expect(onChange).toHaveBeenLastCalledWith('blob:next', 4 / 3)
+  })
+
   it('keeps the last image on a network failure and retries', async () => {
     vi.spyOn(console, 'debug').mockImplementation(() => {})
     preview.start()

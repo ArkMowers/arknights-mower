@@ -1,5 +1,10 @@
 // 完成一次请求后才安排下一次；关闭或卸载时取消请求并释放 Blob URL。
-export function createScreenshotPreview({ fetchSnapshot, onChange, interval = 1000 }) {
+export function createScreenshotPreview({
+  fetchSnapshot,
+  onChange,
+  getFirstFrameAspect,
+  interval = 1000
+}) {
   let active = false
   let generation = 0
   let timer = null
@@ -16,6 +21,11 @@ export function createScreenshotPreview({ fetchSnapshot, onChange, interval = 10
   async function poll(currentGeneration) {
     const requestController = new AbortController()
     controller = requestController
+    let pendingUrl = ''
+    const releasePending = () => {
+      if (pendingUrl) URL.revokeObjectURL(pendingUrl)
+      pendingUrl = ''
+    }
     try {
       const response = await fetchSnapshot({
         signal: requestController.signal,
@@ -26,11 +36,19 @@ export function createScreenshotPreview({ fetchSnapshot, onChange, interval = 10
       })
       if (!active || generation !== currentGeneration) return
       if (response.status === 200) {
-        const nextUrl = URL.createObjectURL(response.data)
+        pendingUrl = URL.createObjectURL(response.data)
+        let aspect
+        if (getFirstFrameAspect && !imageUrl) {
+          requestController.signal.addEventListener('abort', releasePending, { once: true })
+          aspect = await getFirstFrameAspect(pendingUrl)
+          if (!active || generation !== currentGeneration) return
+        }
         if (imageUrl) URL.revokeObjectURL(imageUrl)
-        imageUrl = nextUrl
+        imageUrl = pendingUrl
+        pendingUrl = ''
         etag = response.headers.etag || ''
-        onChange(imageUrl)
+        if (aspect) onChange(imageUrl, aspect)
+        else onChange(imageUrl)
       } else if (response.status === 204) {
         etag = ''
         clearImage()
@@ -39,6 +57,8 @@ export function createScreenshotPreview({ fetchSnapshot, onChange, interval = 10
       // 网络瞬断时保留上一帧，下次请求恢复；取消请求后也不再回写组件。
       if (!requestController.signal.aborted) console.debug('获取最新截图失败:', error)
     } finally {
+      releasePending()
+      requestController.signal.removeEventListener('abort', releasePending)
       if (active && generation === currentGeneration) {
         controller = null
         timer = setTimeout(() => poll(currentGeneration), interval)
