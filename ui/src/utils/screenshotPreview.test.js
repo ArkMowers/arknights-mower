@@ -51,6 +51,49 @@ describe('memory screenshot preview', () => {
     expect(signal.aborted).toBe(true)
   })
 
+  it('restores a cached frame before its refresh reply and releases only component URLs on stop', async () => {
+    let snapshot = { blob: new Blob(['cached']), etag: 'cached-etag', aspect: 4 / 3 }
+    fetchSnapshot.mockImplementation(() => new Promise(() => {}))
+    preview = createScreenshotPreview({
+      fetchSnapshot,
+      onChange,
+      getCachedSnapshot: () => snapshot,
+      cacheSnapshot: (value) => (snapshot = value)
+    })
+    expect(onChange).toHaveBeenLastCalledWith('blob:frame', 4 / 3)
+    preview.start()
+    expect(fetchSnapshot.mock.calls[0][0].headers).toEqual({ 'If-None-Match': 'cached-etag' })
+    preview.stop()
+    expect(fetchSnapshot.mock.calls[0][0].signal.aborted).toBe(true)
+    expect(revokeUrl).toHaveBeenCalledWith('blob:frame')
+    expect(snapshot.blob.size).toBe(6)
+    createUrl.mockReturnValue('blob:restored')
+    preview.start()
+    expect(onChange).toHaveBeenLastCalledWith('blob:restored', 4 / 3)
+  })
+
+  it('forgets a cached frame after an empty response and keeps only the most recent image', async () => {
+    let snapshot = { blob: new Blob(['old']), etag: 'old', aspect: 4 / 3 }
+    preview = createScreenshotPreview({
+      fetchSnapshot,
+      onChange,
+      getCachedSnapshot: () => snapshot,
+      cacheSnapshot: (value) => (snapshot = value)
+    })
+    preview.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(snapshot).toEqual({ blob: expect.any(Blob), etag: '"frame-1"', aspect: 4 / 3 })
+    expect(await snapshot.blob.text()).toBe('jpeg')
+    fetchSnapshot.mockResolvedValue({ status: 204, headers: {} })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(snapshot).toBeNull()
+    expect(onChange).toHaveBeenLastCalledWith('')
+    preview.stop()
+    createUrl.mockClear()
+    preview.start()
+    expect(createUrl).not.toHaveBeenCalled()
+  })
+
   it('releases replaced images and cancels polling when closed', async () => {
     preview.start()
     await vi.advanceTimersByTimeAsync(0)

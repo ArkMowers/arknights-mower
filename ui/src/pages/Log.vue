@@ -20,6 +20,7 @@ import { routeLocationKey, routerKey } from 'vue-router'
 import { useMowerStore } from '@/stores/mower'
 import { useGuiStore } from '@/stores/gui'
 import { useLogBackgroundStore } from '@/stores/logBackground'
+import { useLogWorkspaceStore } from '@/stores/logWorkspace'
 import { useConfigStore } from '@/stores/config'
 import {
   clampScreenshotHeight,
@@ -50,6 +51,8 @@ import { getDailyStatusItems, hasDailyStatusTasks } from '@/task-workflow/model'
 const mower_store = useMowerStore()
 const config_store = useConfigStore()
 const logBackground = useLogBackgroundStore()
+const workspace = useLogWorkspaceStore()
+const startup_reveal = !workspace.visited
 const { taskQueueDisplay } = storeToRefs(useGuiStore())
 const { operators, plan } = storeToRefs(usePlanStore())
 const operator_names = computed(() => operators.value.map((operator) => operator.value))
@@ -110,6 +113,7 @@ async function cancel_pause() {
   }
 }
 const mobile = inject('mobile')
+const resizer_height = computed(() => (mobile.value ? 24 : RESIZER_HEIGHT))
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
 
@@ -148,21 +152,17 @@ function show_operator_hint(name, event) {
   }
 }
 const task_queue = ref(null)
-const layout_preference = {
-  screenshot_height: null,
-  task_height: null,
-  rail_width: null
-}
+const layout_preference = { ...workspace.layout }
 let layoutObserver
 let restoring_log_layout = false
 let cancel_layout_resize
-let screenshot_aspect = 16 / 9
-let mobile_screenshot_height = null
+let screenshot_aspect = workspace.screenshot?.aspect || 16 / 9
+let mobile_screenshot_height = workspace.mobileScreenshotHeight
 let railWidthReveal
 const STARTUP_REVEAL = { duration: 240, easing: 'ease' }
 const startupReveal = `${STARTUP_REVEAL.duration}ms ${STARTUP_REVEAL.easing}`
 // 桌面宽屏仿照游戏主界面：截图和任务列表在右栏，日志占左侧。
-const rail_layout = ref(false)
+const rail_layout = ref(workspace.wideLayout && !mobile.value)
 const rail_active = computed(() => has_screenshot.value || task_table_visible.value)
 const rail_mode = computed(() => rail_layout.value && rail_active.value && !mobile.value)
 
@@ -200,7 +200,7 @@ function apply_log_layout() {
   const zoom = logLayoutZoom(container)
   const paneHeight = bounds.height / zoom
   const logHeight = logMinHeight(paneHeight)
-  const bottomReserve = logHeight + RESIZER_HEIGHT
+  const bottomReserve = logHeight + resizer_height.value
   const conditionHeight = plan_condition_height(container, zoom)
   container.style.setProperty('--log-min-h', `${logHeight}px`)
   let screenshotTrack = 0
@@ -216,9 +216,10 @@ function apply_log_layout() {
           preferred,
           paneHeight,
           bottomReserve + conditionHeight,
-          fit || Infinity
+          fit || Infinity,
+          resizer_height.value
         )
-    screenshotTrack = height + RESIZER_HEIGHT
+    screenshotTrack = height + resizer_height.value
     container.style.setProperty('--log-sc-h', `${height}px`)
     container.style.setProperty('--log-sc-aspect', String(screenshot_aspect))
   } else {
@@ -252,8 +253,11 @@ function apply_log_layout() {
 
 function screenshot_loaded(event) {
   const image = event.target
-  if (image?.naturalWidth > 0 && image?.naturalHeight > 0)
+  if (image?.naturalWidth > 0 && image?.naturalHeight > 0) {
     screenshot_aspect = image.naturalWidth / image.naturalHeight
+    if (workspace.screenshot)
+      workspace.screenshot = { ...workspace.screenshot, aspect: screenshot_aspect }
+  }
   apply_log_layout()
 }
 
@@ -304,7 +308,7 @@ function resize_log_pane(event, pane) {
     const bounds = container.getBoundingClientRect()
     const zoom = logLayoutZoom(container)
     const paneHeight = bounds.height / zoom
-    const bottomReserve = logMinHeight(paneHeight) + RESIZER_HEIGHT
+    const bottomReserve = logMinHeight(paneHeight) + resizer_height.value
     let size
     if (pane === 'screenshot') {
       const screenshotTop =
@@ -328,7 +332,8 @@ function resize_log_pane(event, pane) {
           dragged,
           paneHeight,
           bottomReserve + plan_condition_height(container, zoom),
-          stacked_screenshot_fit(container) || Infinity
+          stacked_screenshot_fit(container) || Infinity,
+          resizer_height.value
         )
       }
     } else {
@@ -386,6 +391,10 @@ function resize_rail_column(event) {
 }
 
 const screenshotPreview = createScreenshotPreview({
+  getCachedSnapshot: () => workspace.screenshot,
+  cacheSnapshot: (snapshot) => {
+    workspace.screenshot = snapshot
+  },
   fetchSnapshot: (options) =>
     axios.get(`${import.meta.env.VITE_HTTP_URL}/screenshot/latest`, options),
   getFirstFrameAspect: async (url) => {
@@ -407,6 +416,7 @@ function updateScreenshotPreview() {
 
 watch(sc_preview, (enabled) => {
   localStorage.setItem('sc_preview', JSON.stringify(enabled))
+  if (!enabled) workspace.screenshot = null
   updateScreenshotPreview()
   nextTick(apply_log_layout)
 })
@@ -415,7 +425,7 @@ watch(sc_blob, (url, previous) => {
   if (!url) railWidthReveal?.cancel()
   const container = log_layout.value
   const oldWidth =
-    url && !previous && rail_mode.value && container?.animate
+    startup_reveal && url && !previous && rail_mode.value && container?.animate
       ? globalThis.getComputedStyle?.(container).getPropertyValue('--log-rail-track').trim()
       : null
   nextTick(() => {
@@ -463,6 +473,7 @@ watch(
       if (task_queue.value !== table) return
       apply_log_layout()
       if (
+        !startup_reveal ||
         mobile.value ||
         !table.animate ||
         rail_mode.value ||
@@ -484,9 +495,9 @@ watch(mobile, () => {
   nextTick(apply_log_layout)
 })
 
-const daily_status = ref(null)
+const daily_status = ref(workspace.restoreDailyStatus())
 const daily_status_loading = ref(false)
-const daily_view_selected = ref(false)
+const daily_view_selected = ref(workspace.dailyView)
 const daily_status_always_visible = computed(() => rail_layout.value && !mobile.value)
 const daily_toggle_available = computed(
   () => running.value && !daily_status_always_visible.value && hasDailyStatusTasks(config_store)
@@ -527,9 +538,15 @@ async function refresh_daily_status() {
       signal: controller.signal,
       timeout: 10000
     })
-    if (!controller.signal.aborted) daily_status.value = data
+    if (!controller.signal.aborted) {
+      daily_status.value = data
+      workspace.dailyStatus = data?.source === 'live' ? data : null
+    }
   } catch {
-    if (!controller.signal.aborted) daily_status.value = null
+    if (!controller.signal.aborted) {
+      daily_status.value = null
+      workspace.dailyStatus = null
+    }
   } finally {
     if (dailyStatusController === controller) {
       dailyStatusController = undefined
@@ -551,7 +568,10 @@ function schedule_daily_status() {
   dailyStatusTimer = setInterval(refresh_daily_status, 30000)
 }
 watch(daily_status_enabled, (enabled) => {
-  if (!enabled) daily_status.value = null
+  if (!enabled) {
+    daily_status.value = null
+    workspace.dailyStatus = null
+  }
   schedule_daily_status()
 })
 watch(worker_status, () => void refresh_daily_status())
@@ -579,6 +599,7 @@ function updatePageVisibility() {
 }
 
 onMounted(() => {
+  workspace.visited = true
   void logBackground.load()
   const savedPreviewState = localStorage.getItem('sc_preview')
   if (savedPreviewState !== null) {
@@ -586,6 +607,7 @@ onMounted(() => {
   }
   document.addEventListener('visibilitychange', updatePageVisibility)
   updatePageVisibility()
+  apply_log_layout()
   layoutObserver = new ResizeObserver(apply_log_layout)
   if (log_layout.value) layoutObserver.observe(log_layout.value)
   if (action_bar.value) layoutObserver.observe(action_bar.value)
@@ -594,6 +616,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  workspace.layout = { ...layout_preference }
+  workspace.wideLayout = rail_layout.value
+  workspace.mobileScreenshotHeight = mobile_screenshot_height
+  workspace.dailyView = daily_view_selected.value
   task_dialog_active = false
   cancel_layout_resize?.()
   railWidthReveal?.cancel()
@@ -947,7 +973,7 @@ async function db_delete(keys) {
         'with-screenshot': has_screenshot,
         'has-tasks': task_table_visible,
         'log-pane--rail': rail_mode,
-        'log-pane--reveal': !mobile
+        'log-pane--reveal': startup_reveal && !mobile
       }"
       aria-label="运行日志"
       @animationend.self="apply_log_layout"
@@ -1687,6 +1713,7 @@ async function db_delete(keys) {
 
 .log-pane {
   --log-startup-reveal: v-bind(startupReveal);
+  --log-resizer-size: 8px;
   --log-screenshot-tracks: 0px 0px;
   --log-task-row: 0px;
   --log-task-handle: 0px;
@@ -1704,7 +1731,7 @@ async function db_delete(keys) {
 
   &.with-screenshot {
     --log-screenshot-tracks: calc(var(--log-sc-h, 270px) * var(--log-screenshot-entry, 1))
-      calc(8px * var(--log-screenshot-entry, 1));
+      calc(var(--log-resizer-size) * var(--log-screenshot-entry, 1));
   }
 
   &.has-tasks {
@@ -1835,7 +1862,7 @@ async function db_delete(keys) {
 
 .log-resizer {
   width: 100%;
-  height: 8px;
+  height: var(--log-resizer-size);
   cursor: row-resize;
   position: relative;
   z-index: 25;
@@ -1957,16 +1984,19 @@ async function db_delete(keys) {
   }
 
   .task-time-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+    position: relative;
+    display: inline-block;
 
     &::before {
       content: '';
+      position: absolute;
+      inset-inline-start: -7px;
+      top: 50%;
       width: 3px;
       height: 0.9em;
       border-radius: 1px;
       background: var(--lg-primary);
+      transform: translateY(-50%);
     }
   }
 
@@ -1983,7 +2013,7 @@ async function db_delete(keys) {
 
 .task-table:not(.task-table--names) .task-time {
   width: 64px;
-  text-align: center;
+  text-align: start;
   vertical-align: top;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -2534,6 +2564,10 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   padding: 0 16px 12px;
   box-sizing: border-box;
 
+  .log-pane {
+    --log-resizer-size: 24px;
+  }
+
   .task-table :is(th, td) {
     padding-inline-start: var(--log-row-inset);
   }
@@ -2550,11 +2584,6 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
     overflow-wrap: anywhere;
   }
 
-  .task-table:not(.task-table--names) .task-time-label {
-    gap: 5px;
-    margin-inline-start: -8px;
-  }
-
   .task-time :is(time, .task-date-trigger) {
     font-family: var(--log-mono-font);
     font-size: 11px;
@@ -2564,18 +2593,11 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
     border-inline-width: 0;
   }
 
-  .log-resizer-task {
-    background-image:
-      linear-gradient(to right, transparent, var(--log-rule)),
-      linear-gradient(to left, transparent, var(--log-rule));
-    background-position:
-      left center,
-      right center;
-    background-size: calc(50% - 22px) 1px;
-    background-repeat: no-repeat;
+  .log-resizer {
+    color: var(--mower-text-muted, #8a9099);
 
     &::after {
-      content: none;
+      background: var(--log-rule);
     }
 
     &::before {
@@ -2584,10 +2606,10 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
       z-index: 1;
       top: 50%;
       left: 50%;
-      width: 30px;
-      height: 6px;
-      color: var(--mower-text-muted, #8a9099);
-      background: radial-gradient(circle, currentColor 1px, transparent 1.2px) center / 6px 6px;
+      width: 28px;
+      height: 3px;
+      border-radius: 2px;
+      background: currentColor;
       transform: translate(-50%, -50%);
     }
 

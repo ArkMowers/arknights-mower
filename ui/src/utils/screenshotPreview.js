@@ -3,6 +3,8 @@ export function createScreenshotPreview({
   fetchSnapshot,
   onChange,
   getFirstFrameAspect,
+  getCachedSnapshot = () => null,
+  cacheSnapshot = () => {},
   interval = 1000
 }) {
   let active = false
@@ -11,6 +13,16 @@ export function createScreenshotPreview({
   let controller = null
   let etag = ''
   let imageUrl = ''
+
+  function restoreImage() {
+    const cached = getCachedSnapshot()
+    if (imageUrl || !cached?.blob) return
+    imageUrl = URL.createObjectURL(cached.blob)
+    etag = cached.etag || ''
+    onChange(imageUrl, cached.aspect)
+  }
+
+  restoreImage()
 
   function clearImage() {
     if (imageUrl) URL.revokeObjectURL(imageUrl)
@@ -47,10 +59,16 @@ export function createScreenshotPreview({
         imageUrl = pendingUrl
         pendingUrl = ''
         etag = response.headers.etag || ''
+        cacheSnapshot({
+          blob: response.data,
+          etag,
+          aspect: aspect || getCachedSnapshot()?.aspect
+        })
         if (aspect) onChange(imageUrl, aspect)
         else onChange(imageUrl)
       } else if (response.status === 204) {
         etag = ''
+        cacheSnapshot(null)
         clearImage()
       }
     } catch (error) {
@@ -70,6 +88,7 @@ export function createScreenshotPreview({
     start() {
       if (active) return
       active = true
+      restoreImage()
       poll(++generation)
     },
     stop() {
