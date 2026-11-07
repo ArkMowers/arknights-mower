@@ -1,9 +1,14 @@
 import { expect, it } from 'vitest'
 import process from 'node:process'
 import { appendFileSync } from 'node:fs'
-import plan from './fixtures/income-drone-feedback.json'
+import originalPlan from './fixtures/income-drone-feedback.json'
 import { defaultIncomeSettings } from './income'
 import { calculateIncome } from './incomeWorker'
+
+const plan = {
+  ...originalPlan,
+  advanced_settings: { ...originalPlan.advanced_settings, drone_room: 'room_1_2' }
+}
 
 const longRun = process.env.MOWER_DRONE_LONG_TEST === '1'
 
@@ -20,8 +25,7 @@ it(
       operatorMode: 'maximum',
       inventorySource: 'manual',
       finiteInventory: false,
-      weightMode: 'custom',
-      droneRoom: 'room_1_2'
+      weightMode: 'custom'
     })
     expect(result.success, result.error).toBe(true)
     expect(result.observedHours).toBeCloseTo(days * 24, 6)

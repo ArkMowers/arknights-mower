@@ -59,9 +59,8 @@ function sanitize(value) {
     MOWER_RAW_MATERIALS.map((item) => item.resource),
     false
   )
-  for (const key of ['droneRoom', 'operatorText']) {
-    if (typeof value?.settings?.[key] === 'string') settings[key] = value.settings[key]
-  }
+  if (typeof value?.settings?.operatorText === 'string')
+    settings.operatorText = value.settings.operatorText
   const inventoryKeys = MOWER_INVENTORY_ITEMS.map(({ resource }) => resource)
   settings.initialInventory = quantities(value?.settings?.initialInventory, inventoryKeys)
   settings.productionWeights = {

@@ -110,8 +110,7 @@ it('finishes the supplied shared-group plan beyond the former theoretical-clock 
     sampleDays,
     operatorMode: 'maximum',
     inventorySource: 'manual',
-    weightMode: 'custom',
-    droneRoom: 'room_1_2'
+    weightMode: 'custom'
   })
   expect(result.success, result.error).toBe(true)
   expect(result.observedHours).toBeCloseTo(sampleDays * 24, 6)
