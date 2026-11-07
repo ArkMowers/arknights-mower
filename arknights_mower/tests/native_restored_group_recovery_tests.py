@@ -120,6 +120,7 @@ def test_final_members_keep_the_absolute_existing_gap_cap(restored_group):
         "separate",
         "same-room",
         "shared-cover",
+        "working-source-cover",
         "ungrouped-prerequisite",
         "later-coalesced",
         "ungrouped-only",
@@ -207,7 +208,7 @@ def test_merged_independent_return_keeps_its_own_date(restored_group, kind):
                 now + timedelta(hours=2), {room: ["银灰"]}, TaskTypes.SHIFT_ON
             )
         )
-    if kind == "shared-cover":
+    if kind in {"shared-cover", "working-source-cover"}:
         data.operators["红"]._current_room, data.operators["红"].current_index = "", -1
         data.operators["银灰"]._current_room, data.operators["银灰"].current_index = (
             "central",
@@ -224,6 +225,10 @@ def test_merged_independent_return_keeps_its_own_date(restored_group, kind):
         data.operators["银灰"].shift_group = "H"
         row[0].group_bindings = bindings[:1]
         bed.reset()
+        if kind == "working-source-cover":
+            data.commit_group_shifts({"H": False})
+            assert data.group_is_resting("H") is False
+            assert data.operators["银灰"].group == "H"
     if kind.startswith("ungrouped-"):
         data.backup_plans[0].trigger = LogicExpression(
             "op_data.operators['银灰'].is_working()", "!=", "True"
@@ -242,11 +247,17 @@ def test_merged_independent_return_keeps_its_own_date(restored_group, kind):
         ]
         assert len(returning) == 1
         assert returning[0].time == now + timedelta(
-            hours=3 if kind == "shared-cover" else 2 if kind == "later-coalesced" else 0
+            hours=3
+            if kind in {"shared-cover", "working-source-cover"}
+            else 2
+            if kind == "later-coalesced"
+            else 0
         )
         assert task.time == now + timedelta(hours=0 if kind == "ungrouped-only" else 3)
         assert data.operators["银灰"].current_room == (
-            "central" if kind == "shared-cover" else "dormitory_1"
+            "central"
+            if kind in {"shared-cover", "working-source-cover"}
+            else "dormitory_1"
         )
 
     if kind == "ungrouped-prerequisite":

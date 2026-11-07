@@ -110,6 +110,8 @@ export function splitMowerRecoveryTask(data:MowerSchedulingData,task:MowerTask,p
   const names=new Set([name]),occupant=data.currentOperator(room,index),owner=data.plan[room]?.[index]
   if(occupant)names.add(occupant.name)
   if(owner)names.add(owner)
+  const moving=data.operators[name],sourceOwner=moving?.currentRoom&&!moving.currentRoom.startsWith('dorm')?data.plan[moving.currentRoom]?.[moving.currentIndex]:undefined
+  if(sourceOwner)names.add(sourceOwner)
   const key=keyFor(room,index),related=involved.get(key)??new Set<string>()
   for(const resource of resources(names))related.add(resource)
   involved.set(key,related)
