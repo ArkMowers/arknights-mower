@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # base_schedule 的导入链会初始化森空岛模块；回调转译测试不依赖网络。
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
@@ -870,7 +872,10 @@ class MaaSchedulerLoggingTests(unittest.TestCase):
 
 class MaaInitializeCallbackTests(unittest.TestCase):
     def test_initialize_maa_starts_a_fresh_callback_log_and_routes_events(self):
-        with tempfile.TemporaryDirectory() as maa_path:
+        with (
+            tempfile.TemporaryDirectory() as maa_path,
+            pytest.MonkeyPatch.context() as modules,
+        ):
             solver = BaseSchedulerSolver.__new__(BaseSchedulerSolver)
             solver.device = SimpleNamespace(
                 client=SimpleNamespace(adb_bin="sdk-adb", device_id="USB-123")
@@ -887,20 +892,17 @@ class MaaInitializeCallbackTests(unittest.TestCase):
                 maa_touch_option="maatouch",
                 maa_conn_preset="General",
             )
+            modules.setitem(sys.modules, "asst", MagicMock())
+            modules.setitem(sys.modules, "asst.asst", SimpleNamespace(Asst=asst))
+            modules.setitem(
+                sys.modules,
+                "asst.utils",
+                SimpleNamespace(InstanceOptionType=SimpleNamespace(touch_type=2)),
+            )
             with (
                 patch.object(base_schedule.config, "conf", conf),
                 patch.dict(base_schedule.os.environ, {"MOWER_ANDROID": "0"}),
                 patch.object(sys, "path", list(sys.path)),
-                patch.dict(
-                    sys.modules,
-                    {
-                        "asst": MagicMock(),
-                        "asst.asst": SimpleNamespace(Asst=asst),
-                        "asst.utils": SimpleNamespace(
-                            InstanceOptionType=SimpleNamespace(touch_type=2)
-                        ),
-                    },
-                ),
                 patch.object(base_schedule.requests, "get", return_value=response),
                 # initialize_maa 在连接前会确认共享 ADB 服务；本用例只验证回调装配。
                 patch.object(base_schedule, "guard_adb"),

@@ -159,6 +159,7 @@ def _wait_for_tasks(scheduler, task):
     refresh = getattr(task, "maa_refresh_until", None)
     if refresh is not None and datetime.now() >= refresh:
         del task.maa_refresh_until
+        task.__dict__.pop("execution_failure", None)
         task.__dict__.pop("manual_deadline", None)
         return False
     task.manual_dependencies = [
@@ -219,6 +220,17 @@ def run_manual_task(scheduler, task):
         if kind == "maa_daily":
             if scheduler.maa_plan_solver(manual=True) is False:
                 return _wait_for_tasks(scheduler, task)
+        elif kind == "maa_event_shop":
+            if (
+                scheduler.run_maa_event_shop(
+                    lambda: manual_task_deadline(scheduler), manual=True
+                )
+                is False
+            ):
+                return _wait_for_tasks(scheduler, task)
+            if getattr(task, "maa_daily_completion_pending", False):
+                scheduler.last_execution["maa"] = datetime.now()
+                del task.maa_daily_completion_pending
         else:
             if (
                 _run_single(

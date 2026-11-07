@@ -300,3 +300,124 @@ def test_shop_preparation_rechecks_start_window(
     run.solver.run_maa_event_shop(lambda: datetime(2026, 11, 7, 6))
     target.assert_called_once()
     assert run.solver.MAA.start.call_count == int(allowed)
+
+
+@pytest.mark.parametrize("manual", [False, True])
+@pytest.mark.parametrize("restore", [False, True])
+def test_deferred_shop_resumes_saved_step_without_daily_gap(
+    run, monkeypatch, income_db, manual, restore
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.solvers.event_shop import EventShopNavigation
+    from arknights_mower.utils import maa_event_shop
+    from arknights_mower.utils.config import weekly_plan_loader
+
+    solver = run.solver
+    run.module.config.conf.maa_event_shop.enable = True
+    run.module.config.conf.maa_gap = 24
+    monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", MagicMock())
+    monkeypatch.setattr(maa_event_shop, "weekly_plan_uses_activity", lambda *a: True)
+    monkeypatch.setattr(maa_event_shop, "select_shop", lambda *a: {})
+    monkeypatch.setattr(EventShopNavigation, "run", MagicMock(return_value=True))
+    solver.skland_plan_solver = MagicMock(return_value=True)
+
+    def daily_completed():
+        run.clock.current = datetime(2026, 11, 7, 3, 45)
+        return False
+
+    solver.MAA.running.side_effect = daily_completed
+    if manual:
+        original = SchedulerTask(run.clock.now(), task_type=TaskTypes.DAILY)
+        original.manual_steps = ["maa_daily", TaskTypes.SKLAND.display_value]
+        solver.task = original
+        solver.tasks.insert(0, original)
+        assert manual_tasks.run_manual_task(solver, original) is False
+    else:
+        assert solver.maa_plan_solver() is False
+        original = next(task for task in solver.tasks if task.type == TaskTypes.DAILY)
+    original_time = original.time
+    assert original.manual_steps[0] == "maa_event_shop"
+    assert solver.last_execution["maa"] is None
+    assert original.maa_refresh_until == datetime(2026, 11, 7, 4)
+    daily_submissions = solver.append_maa_task.call_count
+
+    if restore:
+        assert record.save_state_to_db({"tasks": solver.tasks})
+        solver.tasks = record.load_state()["tasks"]
+        original = next(task for task in solver.tasks if task.type == TaskTypes.DAILY)
+    for minute in (46, 50, 59):
+        run.clock.current = datetime(2026, 11, 7, 3, minute)
+        solver._resume_failed_tasks()
+        assert original.execution_failure
+        assert original.manual_steps[0] == "maa_event_shop"
+    assert (
+        len([task for task in solver.tasks if task.meta_data == "maa_daily_refresh"])
+        == 1
+    )
+
+    run.clock.current = datetime(2026, 11, 7, 4)
+    solver._resume_failed_tasks()
+    solver.task = original
+    solver.MAA.running.side_effect = None
+    solver.last_execution["maa"] = datetime(2026, 11, 7, 3, 45)
+    assert manual_tasks.run_manual_task(solver, original)
+    solver.MAA.append_task.assert_called_once()
+    assert solver.MAA.append_task.call_args.args[0] == "Custom"
+    assert solver.append_maa_task.call_count == daily_submissions
+    assert solver.MAA.start.call_count == 2
+    assert solver.last_execution["maa"] == datetime(2026, 11, 7, 4)
+    assert original.manual_steps == []
+    assert original.time == original_time
+    assert solver.skland_plan_solver.call_count == int(manual)
+    run.io.assert_not_called()
+
+
+@pytest.mark.parametrize("kind", ["daily", "long", "shop"])
+def test_refresh_deferral_crossing_four_uses_original_refresh(run, monkeypatch, kind):
+    from arknights_mower.utils.news_checker import NewsChecker
+
+    solver = run.solver
+    run.clock.current = datetime(2026, 11, 7, 3, 59, 59, 999999)
+    configure(run, kind, manual=True)
+    if kind in ("daily", "shop"):
+        solver.task.type = TaskTypes.DAILY
+        solver.task.manual_steps = ["maa_event_shop" if kind == "shop" else "maa_daily"]
+    original = solver.task
+    original_time = original.time
+    calculate = NewsChecker.get_daily_reset
+
+    def crossing(cls, now=None):
+        refresh = calculate(now)
+        run.clock.current = datetime(2026, 11, 7, 4)
+        return refresh
+
+    monkeypatch.setattr(NewsChecker, "get_daily_reset", classmethod(crossing))
+    assert manual_tasks.run_manual_task(solver, original) is False
+    assert not getattr(original, "execution_failure", None)
+    assert all(task.time <= datetime(2026, 11, 7, 6) for task in solver.tasks)
+    assert manual_tasks.run_manual_task(solver, original)
+    assert solver.MAA.start.call_count == int(kind != "shop")
+    assert original.manual_steps == []
+    assert original.time == original_time
+
+
+def test_refresh_releases_wait_recorded_while_clock_crosses_deadline(run, monkeypatch):
+    solver = run.solver
+    run.clock.current = datetime(2026, 11, 7, 3, 59, 59, 999999)
+    configure(run, "daily", manual=True)
+    original = solver.task
+    original.type = TaskTypes.DAILY
+    original.manual_steps = ["maa_daily"]
+    snapshot = manual_tasks.manual_task_snapshot
+
+    def crossing(scheduler, task):
+        run.clock.current = datetime(2026, 11, 7, 4)
+        return snapshot(scheduler, task)
+
+    monkeypatch.setattr(manual_tasks, "manual_task_snapshot", crossing)
+    assert manual_tasks.run_manual_task(solver, original) is False
+    solver._resume_failed_tasks()
+    assert not getattr(original, "execution_failure", None)
+    assert manual_tasks.run_manual_task(solver, original)
+    solver.MAA.start.assert_called_once()
+    assert original.manual_steps == []
