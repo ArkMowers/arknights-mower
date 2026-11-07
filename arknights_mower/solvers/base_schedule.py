@@ -580,6 +580,7 @@ class BaseSchedulerSolver(
         self._idle_observation_pending = False
         self.operators = {}
         self.last_execution = {"maa": None, "recruit": None, "todo": None}
+        self.annihilation_lock_mail_day = None
         self.order_reader = TradingOrder()
         self.sign_in = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_report = (datetime.now() - timedelta(days=1, hours=4)).date()
@@ -19532,6 +19533,27 @@ class BaseSchedulerSolver(
             )
         return ap_cost, target_total_runs, projection
 
+    def report_annihilation_agency_locked(self):
+        subject = "剿灭代理指挥未解锁"
+        body = (
+            "本次刷理智跳过了剿灭，继续后面的关卡。"
+            "请检查是否已在不使用助战干员的情况下手动通关当期剿灭并达到 400 击杀；"
+            "解锁代理指挥后，下次刷理智会自动代理剿灭。"
+        )
+        today = get_server_time().date()
+        if self.annihilation_lock_mail_day == today:
+            # 同一游戏日只发一封邮件、归档一次截图，之后每次跳过只写日志。
+            logger.error("%s：%s", subject, body, extra={"archive_screenshots": False})
+            return
+        self.annihilation_lock_mail_day = today
+        send_message(
+            body,
+            subject,
+            level="ERROR",
+            archive_screenshots=True,
+            screenshot_source=getattr(self, "device", None),
+        )
+
     def run_local_operation_stage(
         self,
         stage: str,
@@ -19615,6 +19637,18 @@ class BaseSchedulerSolver(
                     "executed_any": executed_any,
                     "should_break": True,
                     "inventory_unconfirmed": True,
+                }
+            locked = result.get("annihilation_agency_locked", False)
+            if locked or result.get("annihilation_reward_full", False):
+                # A full weekly reward or locked Proxy Command ends only this stage,
+                # before any battle, so later stages in this dispatch can still run.
+                if locked:
+                    self.report_annihilation_agency_locked()
+                return {
+                    "simulated_current_ap": simulated_current_ap,
+                    "executed_any": executed_any,
+                    "should_break": False,
+                    "annihilation_skipped": True,
                 }
             if result["sanity_drain"] or result["stopped_by_deadline"]:
                 logger.info(
@@ -19725,6 +19759,7 @@ class BaseSchedulerSolver(
 
                 executed_any = False
                 inventory_unconfirmed = False
+                skipped_stages = set()
                 threshold_control_failed = False
                 threshold_control_reason = ""
                 next_threshold_time = None
@@ -19895,10 +19930,16 @@ class BaseSchedulerSolver(
                         if stage_run_result.get("inventory_unconfirmed", False):
                             inventory_unconfirmed = True
                             self.clear_local_operation_followups()
+                        if stage_run_result.get("annihilation_skipped", False):
+                            skipped_stages.add(stage)
                         if stage_run_result["should_break"]:
                             break
 
-                    remaining_stages = self.mower_stage_plan()
+                    # A skipped Annihilation stage gets no follow-up from this
+                    # dispatch; the next dispatch checks it again.
+                    remaining_stages = self.mower_stage_plan(
+                        excluded_stages=skipped_stages
+                    )
                     if not remaining_stages:
                         self.clear_local_operation_followups()
                     if (
@@ -19938,7 +19979,9 @@ class BaseSchedulerSolver(
 
                 logger.info("run mission solver after local operation")
                 MissionSolver(self.device, self.recog).run()
-                if executed_any or inventory_unconfirmed:
+                # A skipped Annihilation stage counts as a local run, so the next
+                # check waits for maa_gap instead of the next main-loop pass.
+                if executed_any or inventory_unconfirmed or skipped_stages:
                     self.last_execution["maa"] = datetime.now()
                     logger.info(
                         f"record local task execution time: {self.last_execution['maa']}"

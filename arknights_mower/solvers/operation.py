@@ -56,6 +56,8 @@ class OperationSolver(SceneGraphSolver):
             self.ap_cost = ap_cost
             self.sanity_threshold = sanity_threshold
             self.sanity_drain = False
+            self.annihilation_reward_full = False
+            self.annihilation_agency_locked = False
             self.stopped_by_deadline = False
             self.stopped_by_inventory = False
             self.inventory_unconfirmed = False
@@ -206,6 +208,8 @@ class OperationSolver(SceneGraphSolver):
             result = {
                 "executed_runs": self.executed_runs,
                 "sanity_drain": self.sanity_drain,
+                "annihilation_reward_full": self.annihilation_reward_full,
+                "annihilation_agency_locked": self.annihilation_agency_locked,
                 "next_threshold_time": next_threshold_time,
                 "stopped_by_deadline": self.stopped_by_deadline,
                 "stopped_by_inventory": self.stopped_by_inventory,
@@ -514,15 +518,24 @@ class OperationSolver(SceneGraphSolver):
                 self.current_batch_repeat_count,
             )
             if self.find("ope_agency_lock"):
-                logger.error("无法代理当期剿灭")
-                self.sanity_drain = True
+                # 与本周已满相同，只结束剿灭这一关；调度负责提示用户和发邮件。
+                self.annihilation_agency_locked = True
                 self._finish_batch(False)
                 return True
-            if self.find("1800"):
-                logger.info("本周剿灭已完成")
-                self.sanity_drain = True
-                self._finish_batch(False)
-                return True
+            # 模板按四位数字整体评分，只差一位时仍可能命中；读出 1800 才算本周已满。
+            if scope := self.find("1800"):
+                reward = self.number(scope, 43)
+                if reward == 1800:
+                    logger.info("本周剿灭已完成")
+                    # 只结束剿灭这一关；理智没有消耗，调度继续后面的关卡。
+                    self.annihilation_reward_full = True
+                    self._finish_batch(False)
+                    return True
+                logger.debug(
+                    "annihilation weekly reward reading | stage_id=%s | reward=%s",
+                    self.stage_id,
+                    reward,
+                )
             if pos := self.find("ope_elimi_agency"):
                 logger.info("found ope_elimi_agency button | pos=%s", pos)
                 self.tap(pos, interval=0.5)
