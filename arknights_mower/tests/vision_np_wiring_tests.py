@@ -112,6 +112,57 @@ class TestRecognizerVisionNpWiring(unittest.TestCase):
         self.assertEqual(scope, ((158, 958), (178, 968)))
         self.assertEqual(ssim.call_count, 1)
 
+    def test_color_match_treats_template_past_frame_edge_as_missing(self):
+        recognizer = Recognizer.__new__(Recognizer)
+        recognizer._img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        recognizer._gray = np.zeros((1080, 1920), dtype=np.uint8)
+        # 与 1800.png 同尺寸：放在 (158, 958) 时下边缘超出画面 175 像素。
+        resource = np.zeros((297, 554, 3), dtype=np.uint8)
+
+        with (
+            patch("arknights_mower.utils.recognize.loadres", return_value=resource),
+            patch("arknights_mower.utils.recognize.cmatch", return_value=True),
+            patch("arknights_mower.utils.recognize._mismatched_templates", set()),
+            self.assertLogs("arknights_mower.utils.log", level="WARNING") as logs,
+        ):
+            first = recognizer.find("1800")
+            second = recognizer.find("1800")
+            clue = recognizer.find("clue")
+
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        self.assertIsNone(clue)
+        messages = [record.getMessage() for record in logs.records]
+        self.assertEqual(len(messages), 3)
+        self.assertEqual(sum("1800" in message for message in messages), 1)
+        self.assertEqual(sum("clue/fast_place" in message for message in messages), 1)
+        self.assertEqual(sum("clue" in message for message in messages), 2)
+
+    def test_color_match_keeps_color_template_for_each_position(self):
+        recognizer = Recognizer.__new__(Recognizer)
+        recognizer._img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        recognizer._gray = np.zeros((1080, 1920), dtype=np.uint8)
+        resource = np.zeros((10, 20, 3), dtype=np.uint8)
+        template_channels = []
+
+        def matches(img, template, draw=False):
+            template_channels.append(template.ndim)
+            return True
+
+        # 第一个位置 ssim 未达阈值后，第二个位置仍用彩色模板比较平均色。
+        with (
+            patch("arknights_mower.utils.recognize.loadres", return_value=resource),
+            patch("arknights_mower.utils.recognize.cmatch", side_effect=matches),
+            patch(
+                "arknights_mower.utils.recognize.vision_np.ssim", return_value=0.0
+            ) as ssim,
+        ):
+            scope = recognizer.find("ope_agency_lock")
+
+        self.assertIsNone(scope)
+        self.assertEqual(template_channels, [3, 3])
+        self.assertEqual([call.args[1].ndim for call in ssim.call_args_list], [2, 2])
+
 
 if __name__ == "__main__":
     unittest.main()
