@@ -269,6 +269,7 @@ class depotREC(SceneGraphSolver):
                 return False
             logger.info("已进入游戏内仓库")
 
+            扫描开始时刻 = datetime.now().timestamp()
             任务组 = [
                 (1063, self.knn模型_CONSUME, "消耗物品"),
                 (1298, self.knn模型_NORMAL, "基础物品"),
@@ -298,11 +299,16 @@ class depotREC(SceneGraphSolver):
             logger.debug("仓库扫描结果：%s", self.结果字典)
             if report_progress is not None:
                 report_progress("正在保存库存")
-            扫描时刻 = int(datetime.now().timestamp())
+            扫描时刻 = datetime.now().timestamp()
             result = [
-                扫描时刻,
+                int(扫描时刻),
                 json.dumps(self.结果字典, ensure_ascii=False),
-                {"森空岛输出仅占位": ""},
+                json.dumps(
+                    {
+                        "_mower_scan_started_at": 扫描开始时刻,
+                        "_mower_scan_observed_at": 扫描时刻,
+                    }
+                ),
             ]
             import csv
 

@@ -211,8 +211,34 @@ def test_latest_explicit_snapshot_count_wins_without_inventing_missing_zero(cach
     assert cached.db.get_inventory_counts() == {"龙门币": 1000, "赤金": 3}
 
 
+def test_partial_scan_cannot_make_an_older_item_survive_invalidation(
+    cached, monkeypatch
+):
+    cached.syncer.record_path.write_text(
+        json.dumps({"data": {"items": [], "characters": [{"id": "char_test"}]}}),
+        encoding="utf-8",
+    )
+    old = {"龙门币": 999}
+    cached.db.save_inventory_counts(
+        old, scanned_counts={}, cloud_counts=old, cloud_at=99
+    )
+    cached.db.save_inventory_counts(old, scanned_counts=old, scanned_at=100)
+    write_snapshot(cached.path / "depotresult.csv", 250, {"碳": 10})
+    depot.读取仓库(记录快照时刻=250)
+    with monkeypatch.context() as clock:
+        clock.setattr(
+            cached.db,
+            "datetime",
+            SimpleNamespace(now=lambda: SimpleNamespace(timestamp=lambda: 200)),
+        )
+        cached.db.invalidate_workshop_inventory(["龙门币"])
+
+    depot.restore_cached_inventory()
+    assert "龙门币" not in cached.db.get_inventory_counts()
+
+
 @pytest.mark.parametrize("invalidated", [False, True])
-def test_unordered_csv_uses_each_items_latest_time_even_across_invalidation(
+def test_unordered_merged_csv_cannot_override_an_invalidation(
     cached, monkeypatch, invalidated
 ):
     cached.syncer.record_path.unlink()
@@ -237,14 +263,32 @@ def test_unordered_csv_uses_each_items_latest_time_even_across_invalidation(
         ]:
             writer.writerow([at, json.dumps(counts), "{}"])
     assert cached.module.BaseSchedulerSolver.仓库扫描(cached.solver) is False
-    assert cached.db.get_inventory_counts() == {"龙门币": 600, "赤金": 5}
+    expected = {"赤金": 5} if invalidated else {"龙门币": 600, "赤金": 5}
+    assert cached.db.get_inventory_counts() == expected
     with cached.db._conn() as conn:
         observed = dict(
             conn.execute(
                 "SELECT item_name, observed_at FROM workshop_inventory_updates"
             )
         )
-    assert observed == {"龙门币": 300, "赤金": 250}
+    assert observed == {"龙门币": 200 if invalidated else 300, "赤金": 250}
+
+
+def test_new_raw_scan_can_restore_an_invalidated_item(cached, monkeypatch):
+    cached.syncer.record_path.unlink()
+    cached.db.save_inventory_counts({"龙门币": 800})
+    with monkeypatch.context() as clock:
+        clock.setattr(
+            cached.db,
+            "datetime",
+            SimpleNamespace(now=lambda: SimpleNamespace(timestamp=lambda: 200)),
+        )
+        cached.db.invalidate_workshop_inventory(["龙门币"])
+    write_snapshot(cached.path / "depotmerged.csv", 300, {"龙门币": 600}, True)
+    write_snapshot(cached.path / "depotresult.csv", 250, {"龙门币": 750})
+
+    depot.restore_cached_inventory()
+    assert cached.db.get_inventory_counts()["龙门币"] == 750
 
 
 def test_active_battle_does_not_seed_a_baseline_from_an_old_cache(cached, monkeypatch):

@@ -66,6 +66,12 @@ _DB_TABLE_STMTS = (
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_updates ("
     "item_name TEXT PRIMARY KEY, observed_at REAL NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS inventory_scan_observations ("
+    "item_name TEXT PRIMARY KEY, count INTEGER, observed_at REAL NOT NULL DEFAULT 0,"
+    "invalidated_at REAL NOT NULL DEFAULT 0)",
+    "CREATE TABLE IF NOT EXISTS inventory_cloud_observations ("
+    "item_name TEXT PRIMARY KEY, count INTEGER NOT NULL, observed_at REAL NOT NULL,"
+    "explicit INTEGER NOT NULL)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_pending ("
     "item_name TEXT PRIMARY KEY, baseline INTEGER NOT NULL, directions INTEGER NOT NULL DEFAULT 3)",
     "CREATE TABLE IF NOT EXISTS log (time INTEGER,task TEXT,level TEXT,message TEXT)",
@@ -1134,13 +1140,18 @@ def export_recycling_history(start_date, end_date):
         )
 
 
+INVENTORY_COMPARISON_WINDOW = 30 * 60
+
+
 def save_inventory_counts(
     inventorys: dict[str, int],
     *,
     scanned_counts=None,
     scanned_at=0,
+    scanned_observations=None,
     cloud_counts=None,
     cloud_at=0,
+    cloud_explicit_names=None,
     force_cloud=False,
     invalidate_missing=False,
     invalidation_scope=None,
@@ -1160,14 +1171,75 @@ def save_inventory_counts(
                 "SELECT item_name, baseline, directions FROM workshop_inventory_pending"
             )
         }
+        # Existing pending changes and invalidations also fence old scan files.
+        for name in pending.keys() | (protected.keys() - current.keys()):
+            _invalidate_inventory_scans(conn, [name], protected.get(name, 0))
+        scan_values = dict(scanned_observations or {})
+        if scanned_counts is not None and scanned_at > 0:
+            for name, count in scanned_counts.items():
+                if name not in scan_values or scanned_at > scan_values[name][1]:
+                    scan_values[name] = (count, scanned_at)
+        if scan_values:
+            conn.executemany(
+                "INSERT INTO inventory_scan_observations (item_name, count, observed_at) "
+                "VALUES (?, ?, ?) ON CONFLICT(item_name) DO UPDATE SET "
+                "count = excluded.count, observed_at = excluded.observed_at "
+                "WHERE excluded.observed_at > inventory_scan_observations.observed_at "
+                "AND excluded.observed_at > inventory_scan_observations.invalidated_at",
+                [
+                    (name, count, timestamp)
+                    for name, (count, timestamp) in scan_values.items()
+                    if type(count) is int and count >= 0 and timestamp > 0
+                ],
+            )
+        scans = {
+            name: (count, timestamp, invalidated_at)
+            for name, count, timestamp, invalidated_at in conn.execute(
+                "SELECT item_name, count, observed_at, invalidated_at "
+                "FROM inventory_scan_observations"
+            )
+            if count is not None and timestamp > invalidated_at
+        }
+        explicit_cloud = (
+            set(cloud_counts or {})
+            if cloud_explicit_names is None
+            else set(cloud_explicit_names)
+        )
+        if cloud_at > 0:
+            conn.executemany(
+                "INSERT INTO inventory_cloud_observations "
+                "(item_name, count, observed_at, explicit) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(item_name) DO UPDATE SET count = excluded.count, "
+                "observed_at = excluded.observed_at, explicit = excluded.explicit "
+                "WHERE excluded.observed_at > inventory_cloud_observations.observed_at",
+                [
+                    (name, count, cloud_at, name in explicit_cloud)
+                    for name, count in (cloud_counts or {}).items()
+                    if type(count) is int and count >= 0
+                ],
+            )
+        clouds = {
+            name: (count, timestamp, bool(explicit))
+            for name, count, timestamp, explicit in conn.execute(
+                "SELECT item_name, count, observed_at, explicit "
+                "FROM inventory_cloud_observations"
+            )
+        }
         invalidated = set()
-        if invalidate_missing and cloud_at > 0 and not battle_inventory_active.is_set():
-            missing = current.keys() - (cloud_counts or {}).keys()
+        if invalidate_missing and cloud_at > 0:
+            missing = (
+                current.keys() | (scanned_counts or {}).keys() | scans.keys()
+            ) - (cloud_counts or {}).keys()
             if invalidation_scope is not None:
                 missing &= set(invalidation_scope)
             invalidated = {
-                name for name in missing if protected.get(name, 0) < cloud_at
+                name
+                for name in missing
+                if protected.get(name, 0) < cloud_at
+                and not (name in scans and scans[name][1] > cloud_at)
             }
+            if battle_inventory_active.is_set():
+                invalidated -= current.keys()
             conn.executemany(
                 "DELETE FROM inventory WHERE item_name = ?",
                 [(name,) for name in invalidated],
@@ -1184,30 +1256,72 @@ def save_inventory_counts(
             for name in invalidated:
                 effective.pop(name, None)
                 current.pop(name, None)
+                protected[name] = cloud_at
+            _invalidate_inventory_scans(conn, invalidated, cloud_at)
         if scanned_counts is not None:
-            for name in protected.keys() | (cloud_counts or {}).keys():
+            names = (
+                protected.keys() | (cloud_counts or {}).keys() | scanned_counts.keys()
+            )
+            if battle_inventory_active.is_set():
+                names |= effective.keys()
+            for name in names:
                 observed_at = protected.get(name, 0)
-                # Depot scans cover only some categories. An absent item is not
-                # an observed zero and must not advance its freshness marker.
-                scanned = scanned_counts.get(name)
-                source_at = scanned_at
-                from_cloud = False
-                if (
-                    cloud_counts is not None
-                    and name in cloud_counts
-                    and (scanned is None or cloud_at >= scanned_at)
-                ):
-                    scanned = cloud_counts[name]
-                    source_at = cloud_at
-                    from_cloud = True
-                if from_cloud and battle_inventory_active.is_set():
-                    # Cloud can already include drops whose settlement receipt is pending.
-                    # Keep the run's local baseline until all drop receipts are consumed.
+                if battle_inventory_active.is_set():
                     if name in current:
                         effective[name] = current[name]
                     else:
                         effective.pop(name, None)
                     continue
+                # Depot scans cover only some categories. An absent item is not
+                # an observed zero and must not advance its freshness marker.
+                scanned = scanned_counts.get(name)
+                source_at = scanned_at
+                from_cloud = False
+                cloud_observation = (
+                    clouds.get(name) if name in (cloud_counts or {}) else None
+                )
+                cloud, cloud_time, cloud_is_explicit = cloud_observation or (
+                    (cloud_counts or {}).get(name),
+                    cloud_at,
+                    name in explicit_cloud,
+                )
+                if (
+                    cloud_counts is not None
+                    and name in cloud_counts
+                    and (scanned is None or cloud_time >= scanned_at)
+                ):
+                    scanned = cloud
+                    source_at = cloud_time
+                    from_cloud = True
+                comparison = False
+                scan = scans.get(name)
+                if (
+                    scan is not None
+                    and name in (cloud_counts or {})
+                    and not cloud_is_explicit
+                    and observed_at <= scan[1]
+                ):
+                    scanned = scan[0]
+                    source_at = scan[1]
+                    from_cloud = False
+                    comparison = True
+                if (
+                    scan is not None
+                    and cloud_is_explicit
+                    and type(cloud) is int
+                    and cloud >= 0
+                    and cloud_time > 0
+                    and cloud_time > scan[2]
+                    and abs(scan[1] - cloud_time) <= INVENTORY_COMPARISON_WINDOW
+                    and observed_at <= max(scan[1], cloud_time)
+                ):
+                    difference = abs(scan[0] - cloud)
+                    from_cloud = difference >= 10 and difference * 2 >= max(
+                        scan[0], cloud
+                    )
+                    scanned = cloud if from_cloud else scan[0]
+                    source_at = max(scan[1], cloud_time)
+                    comparison = True
                 # Request time does not prove Skland inventory freshness. Keep
                 # confirmed batch changes until the cloud reaches the predicted
                 # count in its net direction; an actual game read can reconcile.
@@ -1233,7 +1347,10 @@ def save_inventory_counts(
                         effective[name] = expected
                         continue
                 if (
-                    source_at > observed_at
+                    (
+                        source_at > observed_at
+                        or (comparison and source_at == observed_at)
+                    )
                     and isinstance(scanned, int)
                     and scanned >= 0
                 ):
@@ -1247,7 +1364,7 @@ def save_inventory_counts(
                     conn.execute(
                         "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
                         "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
-                        (name, source_at),
+                        (name, max(source_at, observed_at)),
                     )
                 elif name in current:
                     effective[name] = current[name]
@@ -1266,6 +1383,11 @@ def save_inventory_counts(
                     if name in protected
                 ],
             )
+            _invalidate_inventory_scans(
+                conn,
+                (name for name in effective if name in protected),
+                datetime.now().timestamp(),
+            )
         cursor = conn.cursor()
         cursor.executemany(
             "INSERT INTO inventory (item_name, count) VALUES (?, ?) "
@@ -1280,17 +1402,15 @@ def save_inventory_counts(
         observed = {}
         if scanned_counts is None:
             observed = dict.fromkeys(effective, datetime.now().timestamp())
-        else:
-            for counts, timestamp in (
-                (scanned_counts, scanned_at),
-                (
-                    {} if battle_inventory_active.is_set() else cloud_counts or {},
-                    cloud_at,
-                ),
-            ):
-                for name, count in counts.items():
-                    if name in effective and effective[name] == count:
-                        observed[name] = max(timestamp, observed.get(name, 0))
+        elif not battle_inventory_active.is_set():
+            for name, (count, timestamp, _) in scans.items():
+                if name in effective and effective[name] == count:
+                    observed[name] = max(timestamp, observed.get(name, 0))
+            for name in cloud_counts or {}:
+                if (cloud := clouds.get(name)) is not None and effective.get(
+                    name
+                ) == cloud[0]:
+                    observed[name] = max(cloud[1], observed.get(name, 0))
         clear_workshop_recipe_rejections(observed)
         if (
             invalidated
@@ -1304,7 +1424,7 @@ def save_inventory_counts(
         return effective
 
 
-def restore_cached_inventory_counts(snapshots):
+def restore_cached_inventory_counts(snapshots, *, ambiguous_snapshots=()):
     """Seed missing baselines without rebasing current stock or renewing observations."""
     restored = {}
     with _conn() as conn:
@@ -1317,13 +1437,16 @@ def restore_cached_inventory_counts(snapshots):
                 "SELECT item_name, observed_at FROM workshop_inventory_updates"
             )
         )
-        for timestamp, counts in sorted(
-            snapshots, key=lambda entry: entry[0], reverse=True
+        candidates = [(at, counts, False) for at, counts in snapshots]
+        candidates.extend((at, counts, True) for at, counts in ambiguous_snapshots)
+        for timestamp, counts, ambiguous in sorted(
+            candidates, key=lambda entry: entry[0], reverse=True
         ):
             for name, count in counts.items():
                 if (
                     name in current
                     or name in restored
+                    or (ambiguous and name in protected)
                     or timestamp <= protected.get(name, 0)
                 ):
                     continue
@@ -1442,12 +1565,24 @@ def invalidate_workshop_inventory(names):
         workshop_inventory_changed.set()
 
 
+def _invalidate_inventory_scans(conn, names, timestamp):
+    conn.executemany(
+        "INSERT INTO inventory_scan_observations (item_name, invalidated_at) VALUES (?, ?) "
+        "ON CONFLICT(item_name) DO UPDATE SET invalidated_at = "
+        "MAX(inventory_scan_observations.invalidated_at, excluded.invalidated_at)",
+        [(name, timestamp) for name in names],
+    )
+
+
 def _mark_workshop_inventory(conn, names):
+    names = list(names)
+    timestamp = datetime.now().timestamp()
     conn.executemany(
         "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
         "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
-        [(name, datetime.now().timestamp()) for name in names],
+        [(name, timestamp) for name in names],
     )
+    _invalidate_inventory_scans(conn, names, timestamp)
 
 
 def save_log(message: str, task: str = "{}", level: str = "INFO"):

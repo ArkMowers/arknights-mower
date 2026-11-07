@@ -526,11 +526,20 @@ def test_partial_scan_preserves_stock_and_observation_time(inventory, scanned):
     with inventory._conn() as conn:
         before = list(conn.execute("SELECT * FROM workshop_inventory_updates"))
     for _ in range(2):
-        assert inventory.save_inventory_counts(
-            old, scanned_counts=scanned, scanned_at=10_000_000_000
-        ) == {"固源岩组": 276, "提纯源岩": 4}
+        expected = {"固源岩组": 276, "提纯源岩": 4}
+        if "龙门币" in scanned:
+            expected["龙门币"] = scanned["龙门币"]
+        assert (
+            inventory.save_inventory_counts(
+                old, scanned_counts=scanned, scanned_at=10_000_000_000
+            )
+            == expected
+        )
     with inventory._conn() as conn:
-        assert list(conn.execute("SELECT * FROM workshop_inventory_updates")) == before
+        after = dict(conn.execute("SELECT * FROM workshop_inventory_updates"))
+    assert {name: after[name] for name, _ in before} == dict(before)
+    if "龙门币" in scanned:
+        assert after["龙门币"] == 10_000_000_000
 
 
 def test_explicit_zero_reconciles_only_observed_material(inventory):

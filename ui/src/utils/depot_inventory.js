@@ -1165,7 +1165,7 @@ export function formatTimestamp(at) {
 export function formatRelative(at, now = Date.now()) {
   const seconds = typeof at === 'number' ? at : null
   if (seconds == null) return ''
-  const diff = Math.floor(now / 1000) - seconds
+  const diff = Math.floor(now / 1000 - seconds)
   if (diff < 0) return '刚刚'
   if (diff < 60) return `${diff} 秒前`
   if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`

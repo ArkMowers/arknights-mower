@@ -255,8 +255,8 @@ def test_game_restart_completes_login_and_rescans_both_categories_once(
         rows = list(csv.reader(stream))
     assert len(rows) == 3
     assert json.loads(rows[-1][1]) == {"应急理智顶液": 1, "龙门币": 50}
-    completed_at = int(scan.clock.now().timestamp())
-    assert int(rows[-1][0]) == completed_at
+    completed_at = scan.clock.now().timestamp()
+    assert int(rows[-1][0]) == int(completed_at)
     scan.merge.assert_called_once_with(记录快照时刻=completed_at)
     scan.cleanup.assert_called_once_with()
     scheduler.solver._auto_schedule_mastery_after_scan.assert_called_once_with()
@@ -404,9 +404,7 @@ def test_graph_restart_and_scene_wait_share_one_restart_budget(
             "consume",
             "normal",
         ]
-        scan.merge.assert_called_once_with(
-            记录快照时刻=int(scan.clock.now().timestamp())
-        )
+        scan.merge.assert_called_once_with(记录快照时刻=scan.clock.now().timestamp())
         scan.cleanup.assert_called_once_with()
     else:
         assert_preserved(scan)
@@ -562,9 +560,9 @@ def test_success_commits_both_categories_once_with_actual_completion_time(scan, 
         rows = list(csv.reader(stream))
     assert len(rows) == 3
     assert json.loads(rows[-1][1]) == {"应急理智顶液": 3, "龙门币": 100000000}
-    completed_at = int(scan.clock.now().timestamp())
+    completed_at = scan.clock.now().timestamp()
     assert completed_at > started_at
-    assert int(rows[-1][0]) == completed_at
+    assert int(rows[-1][0]) == int(completed_at)
     scan.merge.assert_called_once_with(记录快照时刻=completed_at)
     scan.cleanup.assert_called_once_with()
     assert result is True
@@ -648,6 +646,34 @@ def test_scheduler_reports_scan_progress_and_confirms_results_after_saving(
         assert getattr(mastery, "log_parent", None) is None
 
 
+def test_success_keeps_subsecond_time_without_changing_the_integer_csv_column(scan):
+    scan.clock.current += timedelta(microseconds=750000)
+    assert scan.solver.run() is True
+    with scan.path.open(encoding="utf-8", newline="") as stream:
+        row = list(csv.reader(stream))[-1]
+    completed_at = scan.clock.now().timestamp()
+    assert int(row[0]) == int(completed_at)
+    assert json.loads(row[2])["_mower_scan_observed_at"] == completed_at
+    scan.merge.assert_called_once_with(记录快照时刻=completed_at)
+
+
+def test_scan_records_start_time_before_any_item_is_read(scan):
+    observed = []
+    original = scan.solver.匹配物品一次.side_effect
+
+    def read_item(*args):
+        observed.append(scan.clock.now().timestamp())
+        return original(*args)
+
+    scan.solver.匹配物品一次.side_effect = read_item
+    assert scan.solver.run() is True
+    with scan.path.open(encoding="utf-8", newline="") as stream:
+        row = list(csv.reader(stream))[-1]
+    metadata = json.loads(row[2])
+    assert metadata["_mower_scan_started_at"] <= min(observed)
+    assert metadata["_mower_scan_started_at"] < metadata["_mower_scan_observed_at"]
+
+
 def test_explicitly_empty_category_is_accepted_without_recognizing_items(scan):
     scan.state.empty_tabs = {1}
 
@@ -671,7 +697,7 @@ def test_both_explicitly_empty_categories_are_valid_observations(scan):
     assert len(rows) == 3
     assert json.loads(rows[-1][1]) == {}
     scan.solver.匹配物品一次.assert_not_called()
-    scan.merge.assert_called_once_with(记录快照时刻=int(scan.clock.now().timestamp()))
+    scan.merge.assert_called_once_with(记录快照时刻=scan.clock.now().timestamp())
     assert result is True
 
 
