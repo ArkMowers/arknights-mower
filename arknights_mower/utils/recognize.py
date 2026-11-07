@@ -53,6 +53,14 @@ class NetworkWaitGuard:
     allowance_remaining: float = 0
 
 
+# 已警告过尺寸不符的颜色匹配模板；元素来自 find 中固定的模板名，数量有上限。
+_mismatched_templates: set[str] = set()
+
+# 场景识别日志的静默期（秒）：同一场景在静默期内重复识别只记 DEBUG，
+# 场景变化或超过静默期才记 INFO，避免重复场景占满实时日志。
+SCENE_LOG_QUIET_PERIOD = 60.0
+
+
 class Recognizer:
     def __init__(self, device: Device, screencap: bytes = None) -> None:
         self.device = device
@@ -224,6 +232,20 @@ class Recognizer:
                 self.device.exit()
                 # 退出后旧场景已失效，导航必须重新获取画面。
                 self.clear()
+
+    def _log_scene(self, message: str) -> None:
+        """记录场景识别结果；静默期从上次按 INFO 报告该场景时算起。"""
+        now = time.monotonic()
+        if (
+            getattr(self, "_logged_scene", None) == self.scene
+            and now - self._logged_scene_at < SCENE_LOG_QUIET_PERIOD
+        ):
+            # stacklevel 让 runtime.log 仍记录识别函数名和行号。
+            logger.debug(message, stacklevel=2)
+            return
+        self._logged_scene = self.scene
+        self._logged_scene_at = now
+        logger.info(message, stacklevel=2)
 
     def get_scene(self) -> int:
         """get the current scene in the game"""
@@ -486,7 +508,7 @@ class Recognizer:
             self.scene = Scene.UNKNOWN
             self.check_current_focus()
 
-        logger.info(f"Scene {self.scene}: {SceneComment[self.scene]}")
+        self._log_scene(f"Scene {self.scene}: {SceneComment[self.scene]}")
         self.check_freeze(current_time)
         return self.scene
 
@@ -603,7 +625,7 @@ class Recognizer:
         if self.scene == Scene.UNKNOWN:
             logger.debug(log_msg)
         else:
-            logger.info(log_msg)
+            self._log_scene(log_msg)
 
         self.check_loading_time()
 
@@ -664,7 +686,7 @@ class Recognizer:
         if self.scene == Scene.UNKNOWN:
             logger.debug(log_msg)
         else:
-            logger.info(log_msg)
+            self._log_scene(log_msg)
 
         self.check_loading_time()
 
@@ -851,7 +873,7 @@ class Recognizer:
         force_feature_match = "navigation/stage/" in normalized_res
 
         color = {
-            "1800": (158, 958),
+            "1800": (163, 980),
             "12cadpa": (1810, 21),
             "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
@@ -954,11 +976,11 @@ class Recognizer:
         }
 
         if not force_feature_match and res in color:
-            templates = [loadres(res)]
+            templates = [(res, loadres(res))]
             if res == "clue":
                 # 灰色按钮替换旧图标，橙色按钮复用已有模板；均避开数量角标。
-                templates.append(loadres("clue/fast_place"))
-            for res_img in templates:
+                templates.append(("clue/fast_place", loadres("clue/fast_place")))
+            for name, res_img in templates:
                 if res == "depot":
                     # 限时物品标签会遮住旧模板上沿，只匹配下方固定背景，兼容现有资源包。
                     res_img = res_img[45:]
@@ -982,6 +1004,15 @@ class Recognizer:
                 for pos in pos_list:
                     scope = pos, va(pos, (w, h))
                     img = cropimg(self.img, scope)
+                    # 画面边缘会截断裁剪区域，尺寸不符时 ssim 无法比较，按未找到处理。
+                    if img.shape != res_img.shape:
+                        if name not in _mismatched_templates:
+                            _mismatched_templates.add(name)
+                            logger.warning(
+                                f"颜色匹配模板 {name} 的识别位置超出画面：裁剪为 "
+                                f"{img.shape[1]}×{img.shape[0]}，模板为 {w}×{h}，按未找到处理"
+                            )
+                        continue
                     if cmatch(img, res_img, draw=draw):
                         gray = cropimg(self.gray, scope)
                         gray_res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)

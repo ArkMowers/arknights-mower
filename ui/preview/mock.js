@@ -206,24 +206,192 @@ function previewOrderCandles(data, { startDate, endDate, period = '4h' }) {
   }
 }
 
+function previewLogTime(milliseconds) {
+  const value = new Date(milliseconds)
+  const pad = (part, length = 2) => String(part).padStart(length, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(
+    value.getHours()
+  )}:${pad(value.getMinutes())}:${pad(value.getSeconds())},${pad(value.getMilliseconds(), 3)}`
+}
+
+// 生成一段带结构化 group/room/agents 的示例日志：
+// 末尾保留一次已完成的场景等待（显示时长徽标）和一次进行中的等待（显示流末状态行）。
+function createPreviewLogs() {
+  const now = Date.now()
+  const blocks = [
+    [
+      ['base-scheduler', 'INFO', '安排干员：但书 → 贸易站 B101'],
+      [
+        'base-scheduler',
+        'INFO',
+        "房间 贸易站  ['干员: 但书, 心情: 18.2', '干员: 龙舌兰, 心情: 20.1']"
+      ],
+      ['base-scheduler', 'INFO', '等待动画'],
+      ['base-scheduler', 'INFO', '进驻设施完成', { room: 'room_1_1', agents: ['但书'] }],
+      ['base-scheduler', 'INFO', '检查宿舍空床与恢复接管'],
+      ['base-scheduler', 'INFO', '添加宿舍恢复接管任务完成'],
+      ['base-scheduler', 'INFO', '实时心情计算耗时：基建调度累计 0.006 秒']
+    ],
+    [
+      ['recognition', 'INFO', 'Scene 201: 基建全局视角'],
+      ['recognition', 'INFO', 'Scene 202: 基建待办事项'],
+      ['recognition', 'INFO', 'Scene 201: 基建全局视角']
+    ],
+    [
+      ['base-scheduler', 'INFO', '安排干员：龙舌兰 → 制造站 B202'],
+      ['base-scheduler', 'INFO', '无人机加速完成，制造站剩余 2 次'],
+      ['base-scheduler', 'INFO', '下一次任务：需要安排 3 名干员回班']
+    ],
+    [
+      ['recruitment', 'INFO', '1号招募位：招募获得：史都华德', { agents: ['史都华德'] }],
+      [
+        'recruitment',
+        'INFO',
+        '1号招募位：识别标签：重装干员、辅助干员、治疗、费用回复、输出',
+        {
+          recruitment: {
+            event: 'tags',
+            tags: ['重装干员', '辅助干员', '治疗', '费用回复', '输出'],
+            rarity: null
+          }
+        }
+      ],
+      [
+        'recruitment',
+        'INFO',
+        '1号招募位：开始招募，选择标签：治疗、费用回复，时长：9小时',
+        { recruitment: { event: 'start', tags: ['治疗', '费用回复'], rarity: 4 } }
+      ],
+      [
+        'recruitment',
+        'INFO',
+        '2号招募位：识别标签：重装干员、先锋干员、近战位、防护、费用回复',
+        {
+          recruitment: {
+            event: 'tags',
+            tags: ['重装干员', '先锋干员', '近战位', '防护', '费用回复'],
+            rarity: null
+          }
+        }
+      ],
+      ['recruitment', 'INFO', '2号招募位：开始招募，不选标签，时长：9小时'],
+      [
+        'recruitment',
+        'INFO',
+        '3号招募位：发现稀有标签：先锋干员＋支援；近战位＋控场',
+        {
+          recruitment: {
+            event: 'rare',
+            rarity: 5,
+            combinations: [
+              { tags: ['先锋干员', '支援'], rarity: 5 },
+              { tags: ['近战位', '控场'], rarity: 5 }
+            ]
+          }
+        }
+      ],
+      ['recruitment', 'INFO', '3号招募位：保留标签，等待手动选择'],
+      [
+        'recruitment',
+        'INFO',
+        '4号招募位：发现稀有标签：高级资深干员',
+        {
+          recruitment: {
+            event: 'rare',
+            rarity: 6,
+            combinations: [{ tags: ['高级资深干员'], rarity: 6 }]
+          }
+        }
+      ],
+      ['recruitment', 'INFO', '4号招募位：保留标签，等待手动选择']
+    ],
+    [
+      ['base-scheduler', 'INFO', '收取贸易站订单，预计获得 1200 龙门币'],
+      ['base-scheduler', 'INFO', '收取制造站产物：聚酸酯组'],
+      ['base-scheduler', 'INFO', '检查干员心情：菲亚梅塔 12.4'],
+      ['base-scheduler', 'INFO', '安排干员：菲亚梅塔 → 训练室'],
+      ['base-scheduler', 'INFO', '第 8 次任务结束']
+    ],
+    [
+      ['depot-recognition', 'INFO', '仓库扫描: 从主界面点击仓库界面'],
+      ['depot-recognition', 'INFO', '仓库扫描完成，识别到 42 种材料'],
+      ['depot-recognition', 'INFO', '仓库扫描: 删除一次空物品'],
+      ['depot-recognition', 'INFO', '仓库扫描: 回到桌面']
+    ],
+    [
+      ['device-control', 'INFO', '游戏不在前台，正在把游戏调到前台...'],
+      ['device-control', 'ERROR', '截图识别结果需要复核，当前界面保留上一帧'],
+      ['device-control', 'INFO', '设备初始化完成：127.0.0.1:16384']
+    ],
+    [
+      ['base-scheduler', 'INFO', '线索交流时间已更新'],
+      ['base-scheduler', 'INFO', '检查线索：已有 4 条线索'],
+      ['base-scheduler', 'INFO', '赠送线索给好友'],
+      ['base-scheduler', 'INFO', '开始比较跑单任务'],
+      ['base-scheduler', 'INFO', '休息 45 分钟，到 18:46:08 开始工作']
+    ],
+    [
+      ['local-operation', 'INFO', '开始刷理智：1-7'],
+      ['local-operation', 'INFO', '1-7 本轮完成 6 次作战，还剩 12 次'],
+      ['local-operation', 'WARNING', '1-7 代理作战失败，结束本次刷关'],
+      ['local-operation', 'INFO', '离下一个任务开始不到 5 分钟，结束本次刷关']
+    ]
+  ]
+  const logs = []
+  for (const block of blocks) {
+    for (const [group, level, msg, extra] of block) {
+      const at = now - 120000 + logs.length * 1900
+      logs.push({ t: previewLogTime(at), level, msg, group, ...(extra ?? {}) })
+    }
+  }
+  const tail = [
+    ['base-scheduler', 'INFO', '安排干员：但书 → 贸易站 B101'],
+    ['base-scheduler', 'INFO', '房间 贸易站 心情已读取'],
+    ['recognition', 'INFO', 'Scene 9998: 场景跳转时的等待界面'],
+    [
+      'recognition',
+      'INFO',
+      '本次【场景跳转时的等待界面】使用联网等待补偿，等待上限由90秒延长至120秒。'
+    ],
+    ['recognition', 'INFO', 'Scene 201: 基建全局视角'],
+    ['local-operation', 'INFO', '开始刷理智：1-7'],
+    ['local-operation', 'INFO', '1-7 本轮完成 6 次作战，还剩 12 次'],
+    ['local-operation', 'WARNING', '1-7 代理作战失败，结束本次刷关'],
+    ['device-control', 'INFO', '游戏不在前台，正在把游戏调到前台...'],
+    ['device-control', 'INFO', '设备初始化完成：127.0.0.1:16384'],
+    ['base-scheduler', 'INFO', '检查宿舍空床与恢复接管'],
+    [
+      'base-scheduler',
+      'INFO',
+      '休息至 18:46:08，随后执行安排干员；贸易站 B201：Current、但书、龙舌兰',
+      {
+        task: {
+          header: '休息至 18:46:08，随后执行安排干员',
+          title: '安排干员',
+          rooms: [{ id: 'room_2_1', label: '贸易站 B201', agents: ['Current', '但书', '龙舌兰'] }],
+          backups: [],
+          targets: []
+        }
+      }
+    ],
+    ['recognition', 'INFO', 'Scene 9998: 场景跳转时的等待界面'],
+    [
+      'recognition',
+      'INFO',
+      '本次【场景跳转时的等待界面】使用联网等待补偿，等待上限由90秒延长至120秒。'
+    ]
+  ]
+  let at = now - 28000
+  for (const [group, level, msg, extra] of tail) {
+    logs.push({ t: previewLogTime(at), level, msg, group, ...(extra ?? {}) })
+    at += 1900
+  }
+  return logs
+}
+
 export function createPreviewData(config) {
   const date = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })
-  const messages = [
-    "room_1_1：读取 '能天使'、'德克萨斯'、'拉普兰德' 的当前心情",
-    '宿舍恢复计划已更新，保留已安排的休息位置',
-    '已收取制造站产物，下一次检查安排在 08:45:00',
-    '截图识别结果需要复核，当前界面保留上一帧',
-    'Scene 201: 基建总览，准备读取订单与无人机数量',
-    '示例识别失败：文字区域不完整，未提交任何设备操作',
-    '任务队列已更新，等待下一项计划任务',
-    '预览数据已载入；日志、任务和截图均为离线示例'
-  ]
-  const logs = Array.from({ length: 64 }, (_, index) => {
-    const level = index % 16 === 5 ? 'ERROR' : index % 8 === 3 ? 'WARNING' : 'INFO'
-    const minute = String(Math.floor(index / 12)).padStart(2, '0')
-    const second = String((index % 12) * 5).padStart(2, '0')
-    return `${date} 08:${minute}:${second}.000 ${level} [离线预览] ${messages[index % messages.length]}`
-  })
+  const logs = createPreviewLogs()
   const tasks = [
     {
       time: `${date}T08:45:00.000`,
@@ -236,8 +404,14 @@ export function createPreviewData(config) {
     {
       time: `${date}T09:00:00.000`,
       plan: {},
-      type: { display_value: '收取订单' },
-      meta_data: '贸易站 B101 · 示例'
+      type: { display_value: '刷新跑单时间' },
+      meta_data: 'room_2_1',
+      presentation: {
+        title: '刷新跑单时间',
+        rooms: [],
+        backups: [],
+        targets: [{ id: 'room_2_1', label: '贸易站 B201' }]
+      }
     },
     {
       time: `${date}T09:15:00.000`,
@@ -261,6 +435,37 @@ export function createPreviewData(config) {
     config: clone(config),
     logs,
     tasks,
+    // 离线示例使用与只读状态接口相同的事实字段，不代表真实设备执行结果。
+    activities: {
+      recruit: {
+        last_checked_at: `${date}T09:30:00+08:00`,
+        next_eligible_at: `${date}T10:30:00+08:00`
+      },
+      depot: { last_checked_at: `${date}T09:15:00+08:00` },
+      clue: { exchange_ends_at: `${date}T18:00:00+08:00` },
+      drone: { last_checked_at: `${date}T09:10:00+08:00` },
+      reload: { last_checked_at: `${date}T08:30:00+08:00` },
+      'stage-plan': {
+        last_observation: {
+          at: `${date}T09:35:00+08:00`,
+          runner: 'mower',
+          outcome: 'completed',
+          stage: '1-7',
+          executed_runs: 3
+        }
+      },
+      annihilation: {},
+      mission: {},
+      base: { scheduled_count: 2, next_task_at: `${date}T10:00:00+08:00` },
+      runorder: { scheduled_count: 1, next_task_at: `${date}T10:15:00+08:00` },
+      dorm: { blocked_count: 1 },
+      workshop: {},
+      training: {},
+      shop: {},
+      trust: {},
+      fiammetta: { scheduled_count: 1, next_task_at: `${date}T11:00:00+08:00` },
+      long: { progress: { completed: 1, total: 3, failed: false, rounds: 2, round_total: 5 } }
+    },
     status: 'running',
     baseReport: previewBaseReport(date),
     incomeSettings: {
@@ -269,7 +474,7 @@ export function createPreviewData(config) {
       ratios: { experience: 0.9568, gold: 0.76544, order: 0.23456, efficiency: 1 }
     },
     plan: { conf: { ling_xi: 1 }, plan1: {}, backup_plans: [], facility_levels: {} },
-    layout: { screenshot_height: 180, task_height: 132 },
+    layout: { screenshot_height: 180, task_height: 132, rail_width: null },
     sidebar: null,
     depotPreferences: null,
     appearance: {
@@ -278,7 +483,8 @@ export function createPreviewData(config) {
       watermark_visible: true,
       task_settings_layout: 'checklist',
       base_report_mode: previewReportMode(),
-      halloween_mode: 'auto'
+      halloween_mode: 'auto',
+      task_queue_display: 'portraits'
     }
   }
 }
@@ -569,6 +775,25 @@ export function createPreviewAdapter(data, requests = []) {
         updates_enabled: true,
         plan_condition: []
       }),
+      // 游戏日按 UTC+4 计算，即北京时间凌晨 4 点开始新的一天；示例覆盖三种记录状态。
+      '/daily-status': () => ({
+        game_day: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Dubai' }),
+        source: data.status === 'running' ? 'live' : 'saved',
+        activities: clone(data.activities),
+        records: {
+          skland: 'pending',
+          mail: 'done',
+          event_sign_in: 'pending',
+          report: 'done',
+          visit_friend: 'attempted',
+          maa_credit_fight: 'pending',
+          maa_recruit: 'done',
+          maa_orundum: 'done',
+          maa_mining: 'pending',
+          maa_specialaccess: 'pending',
+          maa_signinevent: 'pending'
+        }
+      }),
       '/software-update/info': () => ({
         ok: true,
         version: softwareVersion,
@@ -749,7 +974,8 @@ export function createPreviewAdapter(data, requests = []) {
         watermark_visible: [true, false],
         task_settings_layout: ['checklist', 'waterfall'],
         base_report_mode: ['standard', 'stock'],
-        halloween_mode: ['auto', 'on', 'off']
+        halloween_mode: ['auto', 'on', 'off'],
+        task_queue_display: ['portraits', 'names']
       }
       if (!body || typeof body !== 'object' || Array.isArray(body)) fail(config, '外观配置无效')
       const changes = { ...body }
@@ -833,6 +1059,9 @@ export function createPreviewAdapter(data, requests = []) {
 }
 
 export function previewWebSocket(logs) {
+  const entries = Array.isArray(logs) ? logs : []
+  const textOf = (entry) =>
+    typeof entry === 'string' ? entry : [entry.t, entry.level, entry.msg].filter(Boolean).join(' ')
   return class PreviewWebSocket extends EventTarget {
     static CONNECTING = 0
     static OPEN = 1
@@ -849,8 +1078,11 @@ export function previewWebSocket(logs) {
         this.dispatchEvent(open)
         this.onopen?.(open)
         if (new URL(url, 'ws://mower-preview.invalid').pathname === '/log') {
+          const payload = { type: 'log', data: entries.map(textOf).join('\n') }
+          const records = entries.filter((entry) => entry && typeof entry === 'object')
+          if (records.length) payload.records = records
           const message = new MessageEvent('message', {
-            data: JSON.stringify({ type: 'log', data: logs.join('\n') })
+            data: JSON.stringify(payload)
           })
           this.dispatchEvent(message)
           this.onmessage?.(message)

@@ -72,6 +72,8 @@ class SKLand:
                                 "nickName": item.account,
                                 "game": "明日方舟{}".format(i.get("channelName")),
                                 "reward": resp.get("message"),
+                                "status": "failure",
+                                "code": resp["code"],
                             }
                         )
                         logger.info(
@@ -94,6 +96,8 @@ class SKLand:
                                 "reward": "{}×{}".format(
                                     res["name"], j.get("count") or 1
                                 ),
+                                "status": "success",
+                                "code": resp["code"],
                             }
                         )
                         logger.info(
@@ -146,6 +150,8 @@ class SKLand:
                                     "nickname": item.account,
                                     "game": "终末地{}".format(i.get("channelName")),
                                     "reward": resp.get("message"),
+                                    "status": "failure",
+                                    "code": resp["code"],
                                 }
                             )
                             logger.info(
@@ -172,6 +178,8 @@ class SKLand:
                                     "reward": "{}×{}".format(
                                         res["name"], res.get("count") or 1
                                     ),
+                                    "status": "success",
+                                    "code": resp["code"],
                                 }
                             )
                             logger.info(
@@ -205,10 +213,15 @@ class SKLand:
             entry.get("nickname") or entry.get("nickName") for entry in self.reward
         }
         safe_reward = [
-            {key: redact_signing_text(value, *secrets) for key, value in entry.items()}
+            {
+                key: value
+                if key == "code" and isinstance(value, int)
+                else redact_signing_text(value, *secrets)
+                for key, value in entry.items()
+            }
             for entry in self.reward
         ]
-        logger.info("存入%s的森空岛签到数据%s", date_str, safe_reward)
+        logger.debug("%s的森空岛签到结果：%s", date_str, safe_reward)
         try:
             from arknights_mower.utils.csv_utils import append_dated_row
 
@@ -223,6 +236,29 @@ class SKLand:
         except Exception as e:
             self.test_writecsv = False
             logger.error("森空岛签到记录写入失败（%s）", type(e).__name__)
+        lines = [
+            f"已保存 {date_str} 的森空岛签到记录，共 {len(self.reward)} 条："
+            if self.test_writecsv
+            else f"{date_str} 的森空岛签到记录保存失败，本次签到结果如下："
+        ]
+        accounts = {}
+        for original, safe in zip(self.reward, safe_reward):
+            account = original.get("nickname") or original.get("nickName")
+            accounts.setdefault(account, []).append(safe)
+        for results in accounts.values():
+            account = results[0].get("nickname") or results[0].get("nickName")
+            lines.append(f"    账号 {account or '未标明账号'}：")
+            for result in results:
+                game = result.get("game", "未标明游戏")
+                reward = result.get("reward") or "未返回结果"
+                if result.get("status") == "success" and result.get("code") == 0:
+                    outcome = f"签到成功，{reward}"
+                elif result.get("status") == "failure":
+                    outcome = f"签到失败，{reward}"
+                else:
+                    outcome = f"签到结果，{reward}"
+                lines.append(f"        {game}：{outcome}")
+        logger.info("%s", "\n".join(lines))
         return True
 
     def has_record(self, phone: str):

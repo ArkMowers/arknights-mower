@@ -43,6 +43,7 @@ import {
 } from '@/utils/incomeSettings'
 import {
   CLOSURE_GOLD,
+  BASE_PRODUCT_COLORS,
   ORUNDUM_PER_PULL,
   ORDER_COLORS,
   ORDER_PRICES,
@@ -315,12 +316,7 @@ const unknownOrderTotal = computed(() => {
 const palette = computed(() =>
   isDark.value
     ? {
-        gold: '#f5744f',
-        special: '#b69cf5',
-        order: '#6bb4f0',
-        experience: '#f3e28f',
-        orundum: '#f07f9a',
-        income: '#63e2b7',
+        ...BASE_PRODUCT_COLORS.dark,
         grid: 'rgba(255, 255, 255, 0.07)',
         axis: 'rgba(255, 255, 255, 0.45)',
         tooltip: 'rgba(36, 38, 44, 0.96)',
@@ -328,12 +324,7 @@ const palette = computed(() =>
         text: 'rgba(255, 255, 255, 0.88)'
       }
     : {
-        gold: '#f5744f',
-        special: '#8b63de',
-        order: '#2f87d6',
-        experience: '#f3e28f',
-        orundum: '#d64b6f',
-        income: '#18a058',
+        ...BASE_PRODUCT_COLORS.light,
         grid: 'rgba(31, 34, 37, 0.07)',
         axis: 'rgba(31, 34, 37, 0.5)',
         tooltip: 'rgba(255, 255, 255, 0.98)',

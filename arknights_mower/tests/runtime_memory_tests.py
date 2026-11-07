@@ -43,7 +43,7 @@ def test_frontend_log_without_consumer_keeps_only_recent_messages(monkeypatch):
         log.whlr.emit(record)
     assert queue.qsize() <= 256
     messages = [queue.get_nowait() for _ in range(queue.qsize())]
-    assert messages[-1].endswith("message 1023")
+    assert messages[-1]["msg"].endswith("message 1023")
 
 
 def test_slow_archive_cannot_retain_a_recent_cache_per_error(tmp_path):
@@ -181,11 +181,13 @@ def test_truncated_live_log_line_keeps_screenshot_archive_id(monkeypatch):
     log.whlr.emit(prepared)
     assert store.mark_error.call_count == 1
     line = queue.get_nowait()
-    assert len(line) <= 16_384
-    assert line.startswith("2026-10-17 12:00:00 ERROR ")
-    assert "记录编号 456" in line
-    assert line.count(log.LIVE_LOG_TRUNCATION_SUFFIX) == 1
-    assert line.endswith("（已保存前后截图，记录编号 456）")
+    assert isinstance(line, dict)
+    assert line["t"] == "2026-10-17 12:00:00"
+    assert line["level"] == "ERROR"
+    assert len(line["msg"]) <= 16_384
+    assert "记录编号 456" in line["msg"]
+    assert line["msg"].count(log.LIVE_LOG_TRUNCATION_SUFFIX) == 1
+    assert line["msg"].endswith("（已保存前后截图，记录编号 456）")
 
 
 def test_live_log_drop_warning_is_rate_limited_and_observable(monkeypatch):

@@ -51,6 +51,7 @@ class GuiAppearanceTests(unittest.TestCase):
                 "software_version_display": "version",
                 "software_version_language": "en",
                 "task_settings_layout": "checklist",
+                "task_queue_display": "portraits",
                 "base_report_mode": "standard",
                 "halloween_mode": "auto",
                 "watermark_visible": True,
@@ -74,6 +75,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         **response.json,
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
+                        "task_queue_display": "portraits",
                         "base_report_mode": "standard",
                         "halloween_mode": "auto",
                         "watermark_visible": True,
@@ -95,6 +97,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         "software_version_display": "version",
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
+                        "task_queue_display": "portraits",
                         "base_report_mode": "standard",
                         "halloween_mode": "auto",
                         "watermark_visible": True,
@@ -167,10 +170,15 @@ class GuiAppearanceTests(unittest.TestCase):
                 self.assertEqual(
                     self.client.get("/gui/appearance", headers=headers).status_code, 403
                 )
+                self.assertEqual(
+                    self.client.head("/gui/appearance", headers=headers).status_code,
+                    403,
+                )
                 for payload in (
                     {"software_version_display": "channel"},
                     {"base_report_mode": "stock"},
                     {"halloween_mode": "off"},
+                    {"task_queue_display": "names"},
                 ):
                     self.assertEqual(
                         self.client.put(
@@ -182,6 +190,33 @@ class GuiAppearanceTests(unittest.TestCase):
                 update.assert_not_called()
                 parse.assert_not_called()
         self.assertFalse(self.path.exists())
+
+    def test_task_queue_display_is_validated_and_saved_independently(self):
+        gui._update_gui_data(task_queue_display=[], private_setting={"kept": True})
+        before = self.path.read_bytes()
+        self.assertEqual(self.read().json["task_queue_display"], "portraits")
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(
+            self.client.head("/gui/appearance", headers=self.headers).status_code, 200
+        )
+        for value in ("names", "portraits"):
+            response = self.client.put(
+                "/gui/appearance",
+                json={"task_queue_display": value},
+                headers=self.headers,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json, {"task_queue_display": value})
+            self.assertEqual(self.read().json["task_queue_display"], value)
+            self.assertEqual(gui.read_gui_data()["private_setting"], {"kept": True})
+        before = self.path.read_bytes()
+        response = self.client.put(
+            "/gui/appearance",
+            json={"task_queue_display": "unsupported", "halloween_mode": "on"},
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.path.read_bytes(), before)
 
     def test_saving_preserves_sidebar_window_and_unknown_fields_in_both_directions(
         self,
@@ -489,6 +524,7 @@ class GuiAppearanceTests(unittest.TestCase):
             {
                 **response.json,
                 "software_version_language": "en",
+                "task_queue_display": "portraits",
                 "base_report_mode": "standard",
                 "halloween_mode": "auto",
                 "watermark_visible": True,

@@ -36,6 +36,18 @@ CATEGORY_TABLES = {
     "saved_state": "saved_state",  # 运行缓存（重启续传书签）
 }
 
+_CATEGORY_LABELS = {
+    "mastery_plan": "专精计划",
+    "mastery_route": "专精路线配置",
+    "mastery_notify": "专精通知记录",
+    "log": "错误日志",
+    "agent_action": "干员心情记录",
+    "operation_history": "刷图记录",
+    "trading_history": "跑单记录",
+    "inventory": "仓库库存",
+    "saved_state": "运行缓存",
+}
+
 # 「正在练」的专精计划状态集（与 mastery_db 的 active 集合一致：is_operator_busy / get_active_plan）
 _ACTIVE_PLAN_STATUSES = ("arranging", "training", "waiting_collect")
 
@@ -113,7 +125,12 @@ def delete():
         return {"error": str(e)}, 500
     for pid in plan_ids:
         _purge_plan_tasks(pid)
-    logger.info(f"[db-admin] 删除 {len(keys)} 类数据 {deleted}")
+    logger.info(
+        "数据库清理完成：%s",
+        "、".join(
+            f"{_CATEGORY_LABELS[key]} {count} 条" for key, count in deleted.items()
+        ),
+    )
     return {"deleted": deleted}
 
 

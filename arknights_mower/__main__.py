@@ -6,7 +6,8 @@ from threading import Event, Lock, Timer
 from typing import TYPE_CHECKING
 
 from arknights_mower.data import base_room_list
-from arknights_mower.utils import config, path, rapidocr
+from arknights_mower.utils import config, rapidocr
+from arknights_mower.utils.activity_observations import restore_observations
 from arknights_mower.utils.crash_recovery import is_memory_error
 from arknights_mower.utils.csleep import MowerExit, cancellation_scope, csleep
 from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
@@ -281,7 +282,10 @@ def _arm_maintenance_timer(
         action_name = (
             "启用版本维护心情阈值" if action == "threshold" else "响应服务器维护"
         )
-        logger.info(f"已安排在 {target:%Y-%m-%d %H:%M} {action_name}")
+        logger.info(
+            f"已安排在 {target:%Y-%m-%d %H:%M} {action_name}",
+            extra={"log_group": "base-scheduler"} if action == "threshold" else None,
+        )
 
 
 def _apply_version_update_resting_threshold(info, scheduler, now=None):
@@ -326,7 +330,10 @@ def _apply_version_update_resting_threshold(info, scheduler, now=None):
             changed = True
     if changed:
         label = "版本维护" if active else "日常"
-        logger.info(f"已即时应用{label}心情阈值：{desired:.0%}")
+        logger.info(
+            f"已即时应用{label}心情阈值：{desired:.0%}",
+            extra={"log_group": "base-scheduler"},
+        )
     return changed
 
 
@@ -635,7 +642,7 @@ def simulate(saved):
     """
     具体调用方法可见各个函数的参数说明
     """
-    logger.info(f"正在使用全局配置空间: {path.global_space}")
+    logger.info("已载入全局配置空间")
     tasks = (
         [
             task
@@ -717,13 +724,19 @@ def simulate(saved):
     # base_scheduler.仓库扫描() #别删了 方便我找
     validation_msg = base_scheduler.initialize_operators()
     if validation_msg is not None:
-        logger.error(validation_msg)
+        logger.error(validation_msg, extra={"log_group": "base-scheduler"})
         return
     validation_msg = base_scheduler.op_data.validate_backup_plans(max_seconds=5)
     if validation_msg.get("status") == "incomplete":
-        logger.warning(f"排班校验未完成: {validation_msg['message']}")
+        logger.warning(
+            f"排班校验未完成: {validation_msg['message']}",
+            extra={"log_group": "base-scheduler"},
+        )
     elif not validation_msg["success"]:
-        logger.error(f"排班验证失败: {validation_msg['message']}")
+        logger.error(
+            f"排班验证失败: {validation_msg['message']}",
+            extra={"log_group": "base-scheduler"},
+        )
         return
     _apply_version_update_resting_threshold(
         NewsChecker.get_major_maintenance(), base_scheduler
@@ -879,6 +892,10 @@ def simulate(saved):
             base_scheduler.maa_daily_completed = dict(
                 saved.get("maa_daily_completed", {})
             )
+            base_scheduler.annihilation_lock_mail_day = saved.get(
+                "annihilation_lock_mail_day"
+            )
+            restore_observations(base_scheduler, saved.get("display_observations", {}))
             base_scheduler.daily_visit_friend_attempt = saved.get(
                 "daily_visit_friend_attempt"
             )
@@ -1047,14 +1064,20 @@ def simulate(saved):
                             timestamp = _read_depot_scan_timestamp(path)
                             if timestamp is not None:
                                 return timestamp
-                            logger.warning(f"{path} 没有有效仓库记录，重新初始化")
+                            logger.warning(
+                                f"{path} 没有有效仓库记录，重新初始化",
+                                extra={"log_group": "depot-recognition"},
+                            )
                             创建csv()
                             return (
                                 int(datetime.now().timestamp())
                                 - config.conf.maa_gap * 3600
                             )
                         else:
-                            logger.info(f"{path} 不存在,新建一个存储仓库物品的csv")
+                            logger.info(
+                                f"{path} 不存在,新建一个存储仓库物品的csv",
+                                extra={"log_group": "depot-recognition"},
+                            )
                             now_time = (
                                 int(datetime.now().timestamp())
                                 - config.conf.maa_gap * 3600
@@ -1069,7 +1092,8 @@ def simulate(saved):
                             base_scheduler.仓库扫描()
                         else:
                             logger.info(
-                                f"仓库扫描未到时间，将在 {config.conf.maa_gap - dt // 3600}小时之内开始扫描"
+                                f"仓库扫描未到时间，将在 {config.conf.maa_gap - dt // 3600}小时之内开始扫描",
+                                extra={"log_group": "depot-recognition"},
                             )
 
                     from arknights_mower.utils.scheduler_task import (
@@ -1080,7 +1104,10 @@ def simulate(saved):
                         task_type=_TaskTypes.SKILL_UPGRADE
                     )
                     if next_upgrade is not None and next_upgrade.time <= datetime.now():
-                        logger.info("仓库扫描后有专精任务待执行，立即运行后继续日常")
+                        logger.info(
+                            "仓库扫描后有专精任务待执行，立即运行后继续日常",
+                            extra={"log_group": "growth-planning"},
+                        )
                         base_scheduler.run()
                         from arknights_mower.utils.scheduler_task import scheduling
 
@@ -1122,10 +1149,6 @@ def simulate(saved):
                         remaining_time = 0
 
                     if remaining_time >= 540 and base_scheduler.has_maa_tasks():
-                        subject = f"下次任务在{find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data).time.strftime('%H:%M:%S')}"
-                        context = f"下一次任务:{find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data).plan}"
-                        logger.info(context)
-                        logger.info(subject)
                         base_scheduler.maa_plan_solver()
 
                 if (

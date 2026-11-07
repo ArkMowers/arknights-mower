@@ -147,6 +147,29 @@ def test_archive_export_bounds_legacy_images_and_log_and_reports_omission(
             )
 
 
+def test_archive_limit_warning_uses_600s_interval_constant(tmp_path, monkeypatch):
+    """报错归档已满的 WARNING 每 600 秒至多一条，间隔由模块常量给出。"""
+    assert screenshot.ARCHIVE_LIMIT_WARNING_INTERVAL == 600
+    clock = [0.0]
+    monkeypatch.setattr(screenshot.time, "monotonic", lambda: clock[0])
+    store = screenshot.ScreenshotStore(tmp_path, lambda: 0, logger=Mock())
+    store._last_archive_limit_log = float("-inf")
+
+    store._archive_limit_warning()
+    store.logger.warning.assert_called_once()
+    store.logger.reset_mock()
+
+    # 599 秒后，不再发出第二条 WARNING。
+    clock[0] = 599.0
+    store._archive_limit_warning()
+    store.logger.warning.assert_not_called()
+
+    # 恰好到达 600 秒，再次允许。
+    clock[0] = 600.0
+    store._archive_limit_warning()
+    store.logger.warning.assert_called_once()
+
+
 def test_log_snapshot_truncation_preserves_valid_json_and_manifest(
     tmp_path, monkeypatch
 ):

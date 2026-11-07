@@ -10,6 +10,63 @@ from arknights_mower.utils.config import gui
 
 
 class UiStateTests(unittest.TestCase):
+    def test_log_layout_authorization_precedes_reading_or_writing_preferences(self):
+        from flask import Flask, Request
+
+        from arknights_mower.views.ui_state import ui_state_bp
+
+        app = Flask(__name__)
+        app.token = "offline-layout-test"
+        app.register_blueprint(ui_state_bp)
+        client = app.test_client()
+        with (
+            patch.object(ui_state, "get_log_layout") as read,
+            patch.object(ui_state, "save_log_layout") as save,
+            patch.object(
+                Request, "get_json", side_effect=AssertionError("认证前不得解析请求")
+            ) as parse,
+        ):
+            for method in ("GET", "HEAD", "POST"):
+                for headers in ({}, {"token": "invalid"}):
+                    with self.subTest(method=method, headers=headers):
+                        response = client.open(
+                            "/ui-state/log-layout",
+                            method=method,
+                            headers=headers,
+                            data="invalid json",
+                            content_type="application/json",
+                        )
+                        self.assertEqual(response.status_code, 403)
+            read.assert_not_called()
+            save.assert_not_called()
+            parse.assert_not_called()
+
+    def test_authenticated_log_layout_round_trip_includes_rail_width(self):
+        from flask import Flask
+
+        from arknights_mower.views.ui_state import ui_state_bp
+
+        app = Flask(__name__)
+        app.token = "offline-layout-test"
+        app.register_blueprint(ui_state_bp)
+        client = app.test_client()
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(gui, "gui_path", Path(folder) / "config/gui.yml"),
+        ):
+            headers = {"token": app.token}
+            saved = client.post(
+                "/ui-state/log-layout", headers=headers, json={"rail_width": 480}
+            )
+            self.assertEqual(saved.status_code, 200)
+            self.assertEqual(saved.json["rail_width"], 480)
+            read = client.get("/ui-state/log-layout", headers=headers)
+            self.assertEqual(read.status_code, 200)
+            self.assertEqual(read.json, saved.json)
+            head = client.head("/ui-state/log-layout", headers=headers)
+            self.assertEqual(head.status_code, 200)
+            self.assertEqual(head.data, b"")
+
     def test_log_layout_round_trip_and_clamp(self):
         with (
             tempfile.TemporaryDirectory() as folder,
@@ -17,12 +74,15 @@ class UiStateTests(unittest.TestCase):
         ):
             self.assertEqual(
                 ui_state.get_log_layout(),
-                {"screenshot_height": None, "task_height": None},
+                {"screenshot_height": None, "task_height": None, "rail_width": None},
             )
             saved = ui_state.save_log_layout(
-                {"screenshot_height": 260.4, "task_height": 999}
+                {"screenshot_height": 260.4, "task_height": 999, "rail_width": 999}
             )
-            self.assertEqual(saved, {"screenshot_height": 260, "task_height": 600})
+            self.assertEqual(
+                saved,
+                {"screenshot_height": 260, "task_height": 600, "rail_width": 720},
+            )
             self.assertEqual(ui_state.get_log_layout(), saved)
 
     def test_log_layout_rejects_non_numeric_value(self):
@@ -58,7 +118,8 @@ class MoodBoardStateTests(unittest.TestCase):
         expected = {**self.preferences, "hiddenGroups": []}
         self.assertEqual(ui_state.get_mood_board()["preferences"], expected)
         self.assertEqual(
-            ui_state.get_log_layout(), {"task_height": 320, "screenshot_height": 200}
+            ui_state.get_log_layout(),
+            {"task_height": 320, "screenshot_height": 200, "rail_width": None},
         )
         self.assertEqual(
             yaml.safe_load(self.path.read_text(encoding="utf-8"))["mood_board"],

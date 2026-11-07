@@ -74,3 +74,18 @@ AI primary staffing follows [Owned Read-Only Staffing](docs/subsystems/ai-assist
 - **Fault Detection**: Choose assertions that would fail for a plausible violation of the tested contract. Check the relevant result, state, persistence, exception or side effect; a presence check is sufficient when presence itself is the guarantee. For reproducible defects, observed failure before the repair and success after it provide direct evidence when readily available.
 
 Apply these principles during test design and review without requiring a per-test record, a fixed case count or a mutation-testing run. Coverage and passing tests provide evidence, not proof of correctness.
+
+## 6. Application Logging
+
+Python modules that emit application logs use `logger` from `arknights_mower.utils.log` under the [shared logger rule](.agents/skills/mower-code-review/SKILL.md#shared-logger), which also lists its exceptions.
+
+Assign a level to each log call by what the line records and who reads it. The rule follows the MAA Integration Subsystem convention in the [Arknights Mower System Architecture](docs/architecture.md): task-chain transitions and whitelisted milestones reach the runtime log; recurring telemetry stays at DEBUG.
+
+| Level | Records | Reader |
+| --- | --- | --- |
+| DEBUG | Recurring telemetry, repeated identical scenes, procedural steps, parameters and internal identifiers. | Developers, in runtime.log. |
+| INFO | Progress and outcomes the user cares about, in Chinese prose: a task starts or ends, the schedule really advances, the scene changes. | Users, in the WebUI live log; also runtime.log. |
+| WARNING | An abnormal situation that the program recovers from or skips, and that the user should notice. Identical repeats are rate-limited. A call site can opt into screenshot archiving. | Users and developers. |
+| ERROR | A task or flow failed. On a visual path the record archives screenshots before and after the failure. | Users and developers. |
+
+A message that only a developer can act on never logs above DEBUG, even when it is in Chinese. When the frontend needs the room or the operator list, the call passes them in `extra` (`log_room`, `log_agents`), delivered as `room` and `agents`, rather than leaving the frontend to parse them from `msg`. The message text may still name the operators and the room's display name for readers, for example `安排干员：但书 → B101`. The [Web Access subsystem description](docs/subsystems/web-access.md#live-log-records) defines the record fields.

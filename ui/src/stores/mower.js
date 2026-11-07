@@ -1,24 +1,58 @@
 import { defineStore } from 'pinia'
 import ReconnectingWebSocket from 'reconnecting-websocket'
-import { computed, onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, toRaw, watch } from 'vue'
 
 import axios from 'axios'
 
+// 旧后端未提供绝对时间时，继续从 asctime 文本读取日志时间。
+function parseLogTime(value) {
+  if (typeof value !== 'string' || !value) return null
+  const parsed = Date.parse(value.replace(',', '.').replace(' ', 'T'))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const LEGACY_LOG_SOURCE_LIMIT = 2000
+const LEGACY_LOG_BYTE_LIMIT = 4 * 1024 ** 2
+const logEncoder = new TextEncoder()
+const legacyLogLineBytes = new WeakMap()
+
+function boundLegacyLogLines(lines) {
+  let first = lines.length
+  let bytes = 2
+  while (first > 0 && lines.length - first < LEGACY_LOG_SOURCE_LIMIT) {
+    const line = toRaw(lines[first - 1])
+    let size = legacyLogLineBytes.get(line)
+    if (size === undefined) {
+      size = logEncoder.encode(JSON.stringify(line)).byteLength
+      if (line && typeof line === 'object') legacyLogLineBytes.set(line, size)
+    }
+    const separator = first < lines.length ? 1 : 0
+    if (bytes + size + separator > LEGACY_LOG_BYTE_LIMIT) break
+    bytes += size + separator
+    first -= 1
+  }
+  return lines.slice(first)
+}
+
 export const useMowerStore = defineStore('mower', () => {
   const log_lines = ref([])
+  let nextLogId = 0
+  let logStreamId = null
+  let lastLogSequence = 0
 
   const log = computed(() => {
-    return log_lines.value.join('\n')
+    return log_lines.value.map((line) => (typeof line === 'string' ? line : line.text)).join('\n')
   })
 
   const num_reg = /^[0-9].*/
   const log_mobile = computed(() => {
     const result = []
-    for (const i of log_lines.value) {
-      if (i.match(num_reg)) {
-        result.push(i.substring(24))
+    for (const line of log_lines.value) {
+      const text = typeof line === 'string' ? line : line.text
+      if (text.match(num_reg)) {
+        result.push(text.substring(24))
       } else {
-        result.push(i)
+        result.push(text)
       }
     }
     return result.join('\n')
@@ -53,6 +87,11 @@ export const useMowerStore = defineStore('mower', () => {
   let statusRequest = null
   let runningRevision = 0
   const speed_msg = ref([])
+
+  function clear_legacy_logs() {
+    if (logStreamId === null) log_lines.value = []
+  }
+
   function listen_ws() {
     const token = new URLSearchParams(window.location.search).get('token')
     let backend_url
@@ -63,13 +102,107 @@ export const useMowerStore = defineStore('mower', () => {
     }
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
     ws.value = new ReconnectingWebSocket(ws_url)
+    let awaitingHistory = true
     ws.value.onopen = () => {
+      awaitingHistory = true
       if (token) ws.value.send(JSON.stringify({ token }))
     }
     ws.value.onmessage = (event) => {
       const data = JSON.parse(event.data)
       if (data.type === 'log') {
-        log_lines.value = log_lines.value.concat(data.data.split('\n')).slice(-100) // 追加日志
+        const firstMessage = awaitingHistory
+        awaitingHistory = false
+        const synchronized =
+          typeof data.stream_id === 'string' &&
+          data.stream_id.length > 0 &&
+          typeof data.snapshot === 'boolean' &&
+          Array.isArray(data.records)
+        const streamChanged = synchronized && data.stream_id !== logStreamId
+        if (streamChanged) {
+          logStreamId = data.stream_id
+          lastLogSequence = 0
+        }
+        const seen = new Set()
+        const records = synchronized
+          ? data.records.filter((record) => {
+              const seq = record?.seq
+              if (
+                !Number.isSafeInteger(seq) ||
+                seq <= 0 ||
+                seen.has(seq) ||
+                (!data.snapshot && seq <= lastLogSequence)
+              )
+                return false
+              seen.add(seq)
+              return true
+            })
+          : data.records
+        // 结构化记录：每条记录的 msg 字段组合为文本行；旧式 data.data 文本作回退。
+        let lines
+        if (Array.isArray(records) && (synchronized || records.length > 0)) {
+          lines = records.map((r) => {
+            const t = r.t ?? ''
+            const level = r.level ?? ''
+            const msg = r.msg ?? ''
+            const text = t && level ? `${t} ${level} ${msg}` : msg
+            // 附加结构化字段：group, room 和 agents（都是可选的）；
+            // id 与 at 让日志行的 key 和等待时长在缓冲区淘汰后仍然稳定。
+            return {
+              id: synchronized ? `${logStreamId}:${r.seq}` : ++nextLogId,
+              ...(synchronized ? { seq: r.seq } : {}),
+              at: Number.isFinite(r.at) ? r.at : parseLogTime(t),
+              text,
+              group: r.group ?? null,
+              room: r.room ?? null,
+              agents: r.agents ?? null,
+              ...(r.task && typeof r.task === 'object' && !Array.isArray(r.task)
+                ? { task: r.task }
+                : {}),
+              ...(r.recruitment &&
+              typeof r.recruitment === 'object' &&
+              !Array.isArray(r.recruitment)
+                ? { recruitment: r.recruitment }
+                : {}),
+              ...(Array.isArray(r.backups) ? { backups: r.backups } : {}),
+              ...(r.inventory && typeof r.inventory === 'object' && !Array.isArray(r.inventory)
+                ? { inventory: r.inventory }
+                : {}),
+              ...(r.event && typeof r.event === 'object' && !Array.isArray(r.event)
+                ? { event: r.event }
+                : {}),
+              ...(r.parent && typeof r.parent === 'object' && !Array.isArray(r.parent)
+                ? { parent: r.parent }
+                : {})
+            }
+          })
+        } else if (typeof data.data === 'string' && (data.data || !firstMessage)) {
+          lines = data.data.split('\n').map((text) => ({
+            id: ++nextLogId,
+            at: null,
+            text,
+            group: null,
+            room: null,
+            agents: null
+          }))
+        } else {
+          lines = []
+        }
+        if (synchronized) {
+          // 后端统一保留操作摘要和明细；重连快照替换缓存，序号稳定并阻止旧更新复活。
+          const evicted = new Set(Array.isArray(data.evicted) ? data.evicted : [])
+          const retained = data.snapshot || streamChanged ? [] : log_lines.value
+          log_lines.value = retained.concat(lines).filter((line) => !evicted.has(line.seq))
+          lastLogSequence = records.reduce(
+            (latest, record) => Math.max(latest, record.seq),
+            lastLogSequence
+          )
+        } else {
+          // 旧后端在每次连接时先发送历史记录。
+          const retained = firstMessage ? [] : log_lines.value
+          logStreamId = null
+          lastLogSequence = 0
+          log_lines.value = boundLegacyLogLines(retained.concat(lines))
+        }
       } else if (data.type === 'resource_updated') {
         // 资源包在别处被更新（安装/共享资源/手动上传）时，让标题栏的资源版本实时刷新
         import('@/stores/resourceVersion')
@@ -220,6 +353,7 @@ export const useMowerStore = defineStore('mower', () => {
     plan_condition,
     waiting,
     listen_ws,
+    clear_legacy_logs,
     get_running,
     first_load,
     task_list,

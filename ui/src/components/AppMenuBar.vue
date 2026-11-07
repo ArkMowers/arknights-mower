@@ -450,10 +450,16 @@ watch(
   appearance: none;
 }
 
-.window-titlebar__menu-trigger:hover,
 .window-titlebar__menu-trigger.is-open {
   color: var(--window-titlebar-text);
   background: var(--window-titlebar-hover);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .window-titlebar__menu-trigger:hover {
+    color: var(--window-titlebar-text);
+    background: var(--window-titlebar-hover);
+  }
 }
 
 .window-titlebar__menu-trigger:active {
@@ -501,9 +507,18 @@ watch(
   stroke-linejoin: round;
 }
 
-.app-menu-bar__brand-trigger:hover,
 .app-menu-bar__brand-trigger.is-open {
   background: var(--window-titlebar-hover);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .app-menu-bar__brand-trigger:hover {
+    background: var(--window-titlebar-hover);
+  }
+}
+
+.app-menu-bar__brand-trigger:active {
+  background: var(--window-titlebar-pressed);
 }
 
 .app-menu-bar__brand-trigger:focus-visible {

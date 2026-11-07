@@ -1,11 +1,28 @@
 // 完成一次请求后才安排下一次；关闭或卸载时取消请求并释放 Blob URL。
-export function createScreenshotPreview({ fetchSnapshot, onChange, interval = 1000 }) {
+export function createScreenshotPreview({
+  fetchSnapshot,
+  onChange,
+  getFirstFrameAspect,
+  getCachedSnapshot = () => null,
+  cacheSnapshot = () => {},
+  interval = 1000
+}) {
   let active = false
   let generation = 0
   let timer = null
   let controller = null
   let etag = ''
   let imageUrl = ''
+
+  function restoreImage() {
+    const cached = getCachedSnapshot()
+    if (imageUrl || !cached?.blob) return
+    imageUrl = URL.createObjectURL(cached.blob)
+    etag = cached.etag || ''
+    onChange(imageUrl, cached.aspect)
+  }
+
+  restoreImage()
 
   function clearImage() {
     if (imageUrl) URL.revokeObjectURL(imageUrl)
@@ -16,6 +33,11 @@ export function createScreenshotPreview({ fetchSnapshot, onChange, interval = 10
   async function poll(currentGeneration) {
     const requestController = new AbortController()
     controller = requestController
+    let pendingUrl = ''
+    const releasePending = () => {
+      if (pendingUrl) URL.revokeObjectURL(pendingUrl)
+      pendingUrl = ''
+    }
     try {
       const response = await fetchSnapshot({
         signal: requestController.signal,
@@ -26,19 +48,35 @@ export function createScreenshotPreview({ fetchSnapshot, onChange, interval = 10
       })
       if (!active || generation !== currentGeneration) return
       if (response.status === 200) {
-        const nextUrl = URL.createObjectURL(response.data)
+        pendingUrl = URL.createObjectURL(response.data)
+        let aspect
+        if (getFirstFrameAspect && !imageUrl) {
+          requestController.signal.addEventListener('abort', releasePending, { once: true })
+          aspect = await getFirstFrameAspect(pendingUrl)
+          if (!active || generation !== currentGeneration) return
+        }
         if (imageUrl) URL.revokeObjectURL(imageUrl)
-        imageUrl = nextUrl
+        imageUrl = pendingUrl
+        pendingUrl = ''
         etag = response.headers.etag || ''
-        onChange(imageUrl)
+        cacheSnapshot({
+          blob: response.data,
+          etag,
+          aspect: aspect || getCachedSnapshot()?.aspect
+        })
+        if (aspect) onChange(imageUrl, aspect)
+        else onChange(imageUrl)
       } else if (response.status === 204) {
         etag = ''
+        cacheSnapshot(null)
         clearImage()
       }
     } catch (error) {
       // 网络瞬断时保留上一帧，下次请求恢复；取消请求后也不再回写组件。
       if (!requestController.signal.aborted) console.debug('获取最新截图失败:', error)
     } finally {
+      releasePending()
+      requestController.signal.removeEventListener('abort', releasePending)
       if (active && generation === currentGeneration) {
         controller = null
         timer = setTimeout(() => poll(currentGeneration), interval)
@@ -50,6 +88,7 @@ export function createScreenshotPreview({ fetchSnapshot, onChange, interval = 10
     start() {
       if (active) return
       active = true
+      restoreImage()
       poll(++generation)
     },
     stop() {

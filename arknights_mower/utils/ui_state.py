@@ -41,6 +41,7 @@ def get_log_layout():
     return {
         "screenshot_height": layout.get("screenshot_height"),
         "task_height": layout.get("task_height"),
+        "rail_width": layout.get("rail_width"),
     }
 
 
@@ -59,6 +60,7 @@ def _update_log_layout(state, data):
     limits = {
         "screenshot_height": (90, 500),
         "task_height": (90, 600),
+        "rail_width": (320, 720),
     }
     for key, (minimum, maximum) in limits.items():
         if key not in data:
@@ -74,6 +76,7 @@ def _update_log_layout(state, data):
     return {
         "screenshot_height": layout.get("screenshot_height"),
         "task_height": layout.get("task_height"),
+        "rail_width": layout.get("rail_width"),
     }
 
 

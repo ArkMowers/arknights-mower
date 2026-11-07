@@ -132,7 +132,7 @@ class ClueCreditMixin:
             and not self._clue_access_record_cleared()
         ):
             return False
-        self.enter_room("meeting")
+        self.enter_room("meeting", log_group="clue")
         completed = self._collect_clue_message_board(collect_current=collect_current)
         if (
             getattr(self, "_clue_access_record_exhausted", False)
@@ -144,7 +144,7 @@ class ClueCreditMixin:
         return completed
 
     def _prepare_clue_room(self):
-        self.wait_product_complete()
+        self.wait_product_complete(log_group="clue")
         # 线索交流提示占住右上角一小块，会挡住会客室界面，先点掉
         if self.find("clue/title_party"):
             self.tap_element("clue/title_party")

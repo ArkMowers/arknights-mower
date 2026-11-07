@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 
 const axios = inject('axios')
@@ -24,6 +24,7 @@ const activeEventId = ref('')
 const screenshots = ref([])
 const imageIndex = ref(0)
 const imageFailed = ref(false)
+const imageUrl = ref('')
 const searchText = ref('')
 const levelFilter = ref('all')
 const exporting = ref(false)
@@ -81,9 +82,6 @@ const windowLabel = computed(() => {
   const format = (value) => new Date(value).toLocaleString('zh-CN', { hour12: false })
   return `${format(first - 300000)} — ${format(last + 300000)}`
 })
-const imageUrl = computed(() =>
-  imagePath.value ? `${import.meta.env.VITE_HTTP_URL}/screenshots/${imagePath.value}` : ''
-)
 const visibleLogs = computed(() => {
   const search = searchText.value.trim().toLocaleLowerCase()
   return logs.value
@@ -472,6 +470,33 @@ onUnmounted(() => {
 })
 
 onMounted(() => {
+  watch(
+    imagePath,
+    async (path, _, onCleanup) => {
+      imageUrl.value = ''
+      imageFailed.value = false
+      if (!path) return
+      const controller = new AbortController()
+      let url = ''
+      onCleanup(() => {
+        controller.abort()
+        if (url) URL.revokeObjectURL(url)
+      })
+      try {
+        const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/screenshots/${path}`, {
+          responseType: 'blob',
+          signal: controller.signal,
+          timeout: 10000
+        })
+        if (controller.signal.aborted) return
+        url = URL.createObjectURL(response.data)
+        imageUrl.value = url
+      } catch {
+        if (!controller.signal.aborted) imageFailed.value = true
+      }
+    },
+    { immediate: true }
+  )
   loadEvents()
   loadWindow()
 })
@@ -578,6 +603,7 @@ onMounted(() => {
     </section>
     <p class="export-hint">
       所有日志导出均附带当前保存的排班表 JSON，以及导出时的 Mower 版本信息。
+      导出的截图是原始画面，未经脱敏，分享前请检查账号等信息。
     </p>
     <p v-if="exportError && !showExportDialog" class="export-error" role="alert">
       {{ exportError }}
@@ -795,6 +821,7 @@ onMounted(() => {
             <span>普通截图可能已过期清理，异常归档单独保留。</span>
           </div>
           <div v-else-if="imageFailed" class="image-empty">截图文件暂时无法读取</div>
+          <div v-else-if="!imageUrl" class="image-empty">正在读取画面…</div>
           <img
             v-else
             :key="imagePath"
@@ -823,7 +850,7 @@ onMounted(() => {
           </n-button>
         </div>
         <a
-          v-if="imagePath"
+          v-if="imageUrl"
           class="open-image"
           :href="imageUrl"
           target="_blank"
