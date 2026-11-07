@@ -142,14 +142,49 @@ def test_only_skipped_annihilation_waits_for_maa_gap_without_followup(local):
     local.solver.device.exit.assert_not_called()
 
 
+def test_skipped_annihilation_waits_for_maa_gap_after_mission_failure(local):
+    local.plan("Annihilation")
+    base_schedule.MissionSolver.return_value.run.side_effect = RuntimeError(
+        "mission failure"
+    )
+
+    local.solver.mower_plan_solver()
+    recorded_at = local.solver.last_execution["maa"]
+    local.solver.mower_plan_solver()
+
+    assert local.navigated() == ["Annihilation"]
+    assert recorded_at is not None
+    assert local.solver.last_execution["maa"] == recorded_at
+    assert local.solver.local_operation_followup_time is None
+
+
+@pytest.mark.parametrize("local", ["annihilation_agency_locked"], indirect=True)
+def test_failed_reminder_snapshot_propagates_memory_error(local, monkeypatch):
+    local.plan("Annihilation")
+    solver = local.solver
+    del solver.report_annihilation_agency_locked
+    solver.annihilation_lock_mail_day = None
+    save = MagicMock(side_effect=MemoryError("snapshot allocation failed"))
+    monkeypatch.setattr(base_schedule, "save_current_state", save)
+
+    with pytest.raises(MemoryError, match="snapshot allocation failed"):
+        solver.mower_plan_solver()
+
+    save.assert_called_once_with()
+    solver.device.exit.assert_not_called()
+    base_schedule.save_exception.assert_not_called()
+
+
 def test_locked_proxy_command_mails_once_per_game_day(monkeypatch):
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.annihilation_lock_mail_day = None
     solver.device = object()
     mail = MagicMock()
     log = MagicMock()
+    save = MagicMock()
     monkeypatch.setattr(base_schedule, "send_message", mail)
     monkeypatch.setattr(base_schedule, "logger", log)
+    monkeypatch.setattr(base_schedule, "save_current_state", save)
     day = datetime(2026, 11, 2, 9)
     monkeypatch.setattr(base_schedule, "get_server_time", lambda: day)
 
@@ -157,6 +192,7 @@ def test_locked_proxy_command_mails_once_per_game_day(monkeypatch):
     solver.report_annihilation_agency_locked()
 
     mail.assert_called_once()
+    save.assert_called_once_with()
     body, subject = mail.call_args.args
     assert subject == "剿灭代理指挥未解锁"
     assert "不使用助战干员" in body
@@ -167,13 +203,18 @@ def test_locked_proxy_command_mails_once_per_game_day(monkeypatch):
     }
     # The repeat on the same game day only logs, without another archive.
     log.error.assert_called_once()
-    assert log.error.call_args.kwargs == {"extra": {"archive_screenshots": False}}
+    assert log.error.call_args.kwargs == {
+        "extra": {"log_group": "local-operation", "archive_screenshots": False}
+    }
 
     next_day = day + timedelta(days=1)
     monkeypatch.setattr(base_schedule, "get_server_time", lambda: next_day)
+    save.side_effect = OSError("snapshot unavailable")
+    solver.report_annihilation_agency_locked()
     solver.report_annihilation_agency_locked()
 
     assert mail.call_count == 2
+    assert save.call_count == 2
 
 
 @pytest.mark.parametrize("attach_screenshot", [False, True])

@@ -293,7 +293,7 @@ def prepare_stuck_access_record_dispatch(scheduler, state, monkeypatch):
         side_effect=lambda _: setattr(popup, "in_room", False)
     )
     scheduler.enter_room = MagicMock(
-        side_effect=lambda _: setattr(popup, "in_room", True)
+        side_effect=lambda _, **kwargs: setattr(popup, "in_room", True)
     )
     scheduler._run_clue_shop = MagicMock()
     scheduler.skip = MagicMock()
@@ -340,7 +340,7 @@ def test_stuck_access_record_retains_dispatched_clue_task(shopping, monkeypatch,
         assert scheduler.tap.call_count == 1
     assert scheduler.clue_new() is False
     assert scheduler.tap.call_count == 1
-    scheduler.enter_room.assert_called_once_with("meeting")
+    scheduler.enter_room.assert_called_once_with("meeting", log_group="clue")
 
     popup.visible = False
     popup.in_room = False
@@ -476,7 +476,7 @@ def test_periodic_stuck_access_record_preserves_interval_and_other_work(
         assert scheduler.party_time == party_end
         assert scheduler.tasks == []
         assert scheduler.tap.call_count == 1
-    scheduler.enter_room.assert_called_once_with("meeting")
+    scheduler.enter_room.assert_called_once_with("meeting", log_group="clue")
 
     popup.visible = False
     popup.in_room = False
@@ -629,7 +629,7 @@ def test_started_clue_workflow_continues_into_exclusion_interval(shopping, monke
     clock = prepare_clue_dispatch(scheduler, state, monkeypatch)
     prepare_empty_clue_workflow(scheduler)
     # 在实际房间导航期间跨过 03:45，线索整理及购物仍继续完成。
-    scheduler.enter_room.side_effect = lambda *_: setattr(
+    scheduler.enter_room.side_effect = lambda *_, **kwargs: setattr(
         state, "now", datetime.fromisoformat("2026-10-14T03:50:00+08:00")
     )
     scheduler.find.side_effect = lambda name, **_: (
@@ -731,6 +731,7 @@ def main_runtime(monkeypatch):
     runtime.daily_visit_friend_attempt = None
     runtime.maa_copilot_progress = {}
     runtime.maa_daily_completed = {}
+    runtime.annihilation_lock_mail_day = None
     runtime.find_next_task.return_value = None
     runtime.has_maa_tasks.return_value = False
     runtime.rest_until_next_task.side_effect = MowerExit
@@ -1221,7 +1222,7 @@ def board_navigation(shopping, monkeypatch):
 
     scheduler.scene_graph_navigation = MagicMock(side_effect=navigate)
     shop.scene_graph_navigation = navigate
-    scheduler.enter_room = MagicMock(side_effect=lambda _: show("room"))
+    scheduler.enter_room = MagicMock(side_effect=lambda _, **kwargs: show("room"))
     scheduler.scene = lambda: state.scene
     scheduler.wait_product_complete = MagicMock()
     scheduler.sleep = MagicMock(
@@ -1368,7 +1369,8 @@ def test_clue_workflow_resumes_from_access_record(
     ui.record_stuck = stuck
     state.current = 60
 
-    def enter_room(_room):
+    def enter_room(_room, *, log_group=None):
+        assert log_group == "clue"
         if scheduler.enter_room.call_count > 1:
             pytest.fail("Recognized access record must not restart room navigation")
         ui.panel = "record"
@@ -1400,7 +1402,7 @@ def test_clue_workflow_resumes_from_access_record(
     )
     assert ui.entry_actions == ([] if stuck or defer_credit else ["activate", "open"])
     assert state.current == (60 if stuck or defer_credit else 0)
-    scheduler.enter_room.assert_called_once_with("meeting")
+    scheduler.enter_room.assert_called_once_with("meeting", log_group="clue")
 
 
 @pytest.mark.parametrize("entry", ["clue_new", "visit_message_board"])
@@ -1454,10 +1456,10 @@ def test_opened_settlement_failure_retains_dispatched_clue_task(
     )
     original_enter = scheduler.enter_room.side_effect
 
-    def enter_room(room):
+    def enter_room(room, *, log_group=None):
         if ui.panel == "record":
             raise RuntimeError("Room entry cannot cross an unchanged settlement")
-        original_enter(room)
+        original_enter(room, log_group=log_group)
 
     scheduler.enter_room.side_effect = enter_room
 
@@ -1478,7 +1480,8 @@ def test_opened_settlement_failure_retains_dispatched_clue_task(
     ui.access_record = ui.record_stuck = True
     if appears_during_preparation:
 
-        def show_record():
+        def show_record(*, log_group=None):
+            assert log_group == "clue"
             ui.panel = "record"
             state.scene = Scene.CLUE_ACCESS_RECORD
 
@@ -1504,7 +1507,7 @@ def test_opened_settlement_failure_retains_dispatched_clue_task(
         "dismiss_record"
     ]
     assert state.current == 300
-    scheduler.enter_room.assert_called_once_with("meeting")
+    scheduler.enter_room.assert_called_once_with("meeting", log_group="clue")
     scheduler._run_clue_shop.assert_not_called()
     scheduler.skip.assert_not_called()
     assert scheduler.scene_graph_navigation.call_count == (

@@ -156,7 +156,12 @@ class CaptchaClickSolver(BaseSolver):
                 extra={"archive_screenshots": False},
             )
             return self._fail_retry()
-        logger.info(f"检测到 {len(items)} 个汉字, 结果如下：{str(items)}")
+        logger.debug("验证码候选汉字与坐标：%s", items)
+        logger.info(
+            "识别到%s个候选汉字：%s",
+            len(items),
+            "、".join(item["word"] for item in items),
+        )
         for i, it in enumerate(items):
             logger.debug(f"  [{i}] '{it['word']}' {it['coords']}")
         self._click_items = items
@@ -185,7 +190,11 @@ class CaptchaClickSolver(BaseSolver):
             return self._fail_retry()
 
         self._click_order = valid
-        logger.info(f"点击顺序：{self._click_order}")
+        logger.debug("验证码准备点击的索引：%s", self._click_order)
+        logger.info(
+            "准备按顺序点击：%s",
+            " → ".join(items[index]["word"] for index in self._click_order),
+        )
 
         # 4) debug 模式：在截图上标注顺序，保存到 solve_captcha/
         if self.debug:
@@ -214,9 +223,15 @@ class CaptchaClickSolver(BaseSolver):
         item = self._click_items[idx]
         cx = (item["coords"][0] + item["coords"][2]) // 2
         cy = (item["coords"][1] + item["coords"][3]) // 2
-        logger.info(
+        logger.debug(
             f"点击 [{idx}] '{item['word']}'  ({cx},{cy})  "
             f"[{self._click_idx + 1}/{len(self._click_order)}]"
+        )
+        logger.info(
+            "点击汉字：%s（%s/%s）",
+            item["word"],
+            self._click_idx + 1,
+            len(self._click_order),
         )
         self.tap((cx, cy), interval=0.3)
         self._click_idx += 1

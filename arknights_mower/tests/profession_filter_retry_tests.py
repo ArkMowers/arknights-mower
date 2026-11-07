@@ -1,5 +1,6 @@
 """职业筛选在丢失输入后恢复，等待过程保留有限预算与停止语义。"""
 
+import logging
 import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -288,3 +289,25 @@ def test_stop_before_input_or_during_retry_prevents_further_input(
     assert panel.opened is opened
     assert len(panel.panel_taps) == (0 if stop_at == 0 else 1)
     assert all(tapped_at < stop_at for tapped_at in panel.panel_taps)
+
+
+def test_profession_filter_logs_at_debug(monkeypatch, caplog):
+    """打开和关闭职业筛选的日志记录在 DEBUG，不进入 INFO。"""
+    solver = BaseMixin()
+    # 只关心日志级别；跳过实际触摸和颜色读取。
+    solver._set_profession_filter_open = MagicMock()
+    solver.get_color = MagicMock(return_value=(0, 0, 255))  # ALL 已高亮，无需点击
+    solver._wait_for_profession_filter = MagicMock()
+    solver._close_profession_filter = MagicMock()
+    solver.tap = MagicMock()
+    monkeypatch.setattr(config, "stop_mower", SimpleNamespace(is_set=lambda: False))
+
+    with caplog.at_level(logging.DEBUG, logger="arknights_mower.utils.log"):
+        solver.profession_filter("MEDIC")
+        solver.profession_filter()
+
+    levels = {}
+    for record in caplog.records:
+        levels.setdefault(record.getMessage(), set()).add(record.levelname)
+    assert levels.get("打开 MEDIC 筛选") == {"DEBUG"}, levels
+    assert levels.get("关闭职业筛选") == {"DEBUG"}, levels

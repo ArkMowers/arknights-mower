@@ -69,7 +69,7 @@ def rank_activity_entries_with_agent(
         fallback_indices = _normalize_indices(
             [x.get("index") for x in tool_obj.get("ranked", [])], len(ocr_items or [])
         )
-        logger.info(
+        logger.debug(
             f"rank_activity_entries_with_agent: fallback indices={fallback_indices[:5]}"
         )
     except Exception as e:
@@ -109,7 +109,7 @@ def rank_activity_entries_with_agent(
         indices = parsed.get("indices", [])
         parsed_indices = _normalize_indices(indices, len(ocr_items or []))
         if parsed_indices:
-            logger.info(
+            logger.debug(
                 f"rank_activity_entries_with_agent: parsed indices={parsed_indices[:5]}, elapsed={time.perf_counter() - start:.2f}s"
             )
             return parsed_indices

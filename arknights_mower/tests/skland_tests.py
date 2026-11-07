@@ -449,6 +449,12 @@ class TestSignLogPrivacy(unittest.TestCase):
                 if response["code"]:
                     self.assertIn("1000", logged)
                     self.assertIn("今日已签到", logged)
+                self.assertTrue(solver.reward)
+                self.assertEqual(solver.reward[0]["code"], response["code"])
+                self.assertEqual(
+                    solver.reward[0]["status"],
+                    "failure" if response["code"] else "success",
+                )
 
     def test_record_log_omits_reward_account_data(self):
         solver = sign_module.SKLand()
@@ -465,7 +471,9 @@ class TestSignLogPrivacy(unittest.TestCase):
         self.assertNotIn("13800138000", logged)
         self.assertIn("138****8000", logged)
         self.assertIn("私密奖励", logged)
-        self.assertIn("森空岛签到数据%s", logged)
+        self.assertIn("    账号 138****8000：", logged)
+        self.assertIn("        明日方舟官服：签到结果，私密奖励", logged)
+        self.assertIn("的森空岛签到记录，共 1 条：", logged)
 
     def test_redaction_preserves_text_and_hides_known_secrets(self):
         conf = SimpleNamespace(

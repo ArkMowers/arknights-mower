@@ -5,6 +5,8 @@ import hashlib
 from datetime import datetime, timedelta
 
 from arknights_mower.utils import config
+from arknights_mower.utils.activity_observations import activity_observation
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.scheduler_task import (
     TaskScope,
@@ -300,7 +302,10 @@ def _run_single(scheduler, kind):
             task.__dict__.pop("credit_shop_pending", None)
             task.__dict__.pop("credit_shop_continuation", None)
     elif kind == TaskTypes.MISSION:
-        MissionSolver(scheduler.device, scheduler.recog).run()
+        with activity_observation(
+            scheduler, "mission", "mower", stopped_exceptions=(MowerExit,)
+        ):
+            MissionSolver(scheduler.device, scheduler.recog).run()
     elif kind == TaskTypes.STAGE_PLAN:
         if conf.stage_plan_runner == "maa":
             return scheduler.maa_plan_solver(["Fight", "Award"], manual=True)

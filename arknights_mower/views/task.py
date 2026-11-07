@@ -7,11 +7,11 @@
 """
 
 import json
+from copy import copy
 from datetime import datetime
-from functools import wraps
 
 import pytz
-from flask import Blueprint, abort, current_app, request
+from flask import Blueprint, request
 from tzlocal import get_localzone
 
 from arknights_mower.utils.log import logger
@@ -22,6 +22,7 @@ from arknights_mower.utils.scheduler_task import (
     TaskTypes,
     next_workshop_task_time,
 )
+from arknights_mower.utils.web_auth import require_token
 
 task_bp = Blueprint("task", __name__)
 
@@ -34,19 +35,26 @@ def set_mower_thread(thread):
     mower_thread = thread
 
 
-def _require_token(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        token = getattr(current_app, "token", None)
-        if token and request.headers.get("token", "") != token:
-            abort(403)
-        return f(*args, **kwargs)
+def _task_response(task, op_data):
+    from jsonpickle import encode
 
-    return wrapper
+    from arknights_mower.utils.task_presentation import build_task_presentation
+
+    response = json.loads(encode(task, unpicklable=False))
+    response["display_name"] = task.display_name
+    plan = response.get("plan")
+    if isinstance(plan, dict) and all(
+        isinstance(agents, list) and all(isinstance(agent, str) for agent in agents)
+        for agents in plan.values()
+    ):
+        snapshot = copy(task)
+        snapshot.plan = plan
+        response["presentation"] = build_task_presentation(snapshot, op_data)
+    return response
 
 
 @task_bp.route("/task", methods=["GET", "POST"])
-@_require_token
+@require_token
 def add_task():
     from arknights_mower.__main__ import base_scheduler
 
@@ -152,14 +160,20 @@ def add_task():
             return str(e)
     else:
         if base_scheduler and mower_thread and mower_thread.is_alive():
-            from jsonpickle import encode
-
+            op_data = copy(getattr(base_scheduler, "op_data", None))
+            if op_data is not None:
+                for name in ("operators", "group_shift_state"):
+                    if (values := getattr(op_data, name, None)) is not None:
+                        setattr(op_data, name, values.copy())
+                if (groups := getattr(op_data, "groups", None)) is not None:
+                    # 工作线程可在两次读取之间登记干员，只引用本次已读取的成员。
+                    operators = op_data.operators
+                    op_data.groups = {
+                        group: [name for name in members if name in operators]
+                        for group, members in groups.copy().items()
+                    }
             return [
-                {
-                    **json.loads(encode(i, unpicklable=False)),
-                    "display_name": i.display_name,
-                }
-                for i in base_scheduler.tasks
+                _task_response(task, op_data) for task in list(base_scheduler.tasks)
             ]
         else:
             return []

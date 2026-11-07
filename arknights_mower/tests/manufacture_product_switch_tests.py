@@ -2477,6 +2477,7 @@ def test_completed_product_confirmation_keeps_absolute_buffer_after_restart(
         with pytest.raises(base.ProductSwitchDeferred) as deferred:
             solver._change_manufacture_product(observation)
         assert deferred.value.ready_at == expected
+        assert deferred.value.log_reason == "confirmation"
     now[0] = expected
     solver._change_manufacture_product(observation)
 

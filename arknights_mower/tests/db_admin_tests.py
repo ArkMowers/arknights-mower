@@ -158,10 +158,38 @@ class TestDbAdminDelete(unittest.TestCase):
     def tearDown(self):
         os.unlink(self.db_path)
 
+    def test_delete_rejects_credentials_before_parsing_or_accessing_state(self):
+        app = _make_app()
+        app.token = "delete-instance-token"
+        client = app.test_client()
+        for headers in ({}, {"token": "wrong-instance-token"}):
+            with (
+                self.subTest(headers=headers),
+                patch.object(app.request_class, "get_json") as parse_request,
+                patch.object(record, "_conn") as connect,
+                patch(
+                    "arknights_mower.views.db_admin._purge_plan_tasks"
+                ) as purge_tasks,
+            ):
+                response = client.post(
+                    "/db-admin/delete",
+                    headers=headers,
+                    data="invalid json",
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 403)
+                parse_request.assert_not_called()
+                connect.assert_not_called()
+                purge_tasks.assert_not_called()
+
     def test_delete_rows(self):
+        self.client.application.token = "delete-instance-token"
+        headers = {"token": self.client.application.token}
         with _patch_conn(self.db_path):
             resp = self.client.post(
-                "/db-admin/delete", json={"categories": ["mastery_plan", "log"]}
+                "/db-admin/delete",
+                json={"categories": ["mastery_plan", "log"]},
+                headers=headers,
             )
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -169,7 +197,7 @@ class TestDbAdminDelete(unittest.TestCase):
         self.assertEqual(data["deleted"]["log"], 1)
         # 未选的类不受影响
         with _patch_conn(self.db_path):
-            resp2 = self.client.get("/db-admin/stats")
+            resp2 = self.client.get("/db-admin/stats", headers=headers)
         counts = resp2.get_json()
         self.assertEqual(counts["mastery_plan"], 0)
         self.assertEqual(counts["log"], 0)
@@ -250,10 +278,13 @@ class TestDbAdminDelete(unittest.TestCase):
         t3.plan_key = "9"
         sched.tasks = [t1, t2, t3]
         fake.base_scheduler = sched
+        self.client.application.token = "delete-instance-token"
         with _patch_conn(self.db_path):
             with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
                 resp = self.client.post(
-                    "/db-admin/delete", json={"categories": ["mastery_plan"]}
+                    "/db-admin/delete",
+                    json={"categories": ["mastery_plan"]},
+                    headers={"token": self.client.application.token},
                 )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json()["deleted"]["mastery_plan"], 2)

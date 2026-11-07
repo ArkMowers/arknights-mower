@@ -10,7 +10,7 @@ import pytest
 
 from arknights_mower.tests import mass_mood_recovery_tests as native
 from arknights_mower.tests import scheduler_recovery_preservation_tests as recovery
-from arknights_mower.utils.operators import Operators
+from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
@@ -53,15 +53,16 @@ def test_recovery_depot_completion_does_not_schedule_unchanged_stock_retry(
 
 
 @pytest.fixture
-def failed_arrangement(scheduler):
+def failed_arrangement(scheduler, monkeypatch):
     solver = scheduler.solver
     now = scheduler.clock.now()
     solver.op_data.plan = {ROOM: [Room("陈", "", [])]}
     solver.op_data.products = {}
     solver.op_data.facility_states = {}
     solver.op_data.run_order_rooms = {}
+    monkeypatch.setattr(Operators, "current_room_changed_callback", None)
     solver.op_data.operators = {
-        "陈": SimpleNamespace(current_room=ROOM, current_index=0, time_stamp=now)
+        "陈": Operator("陈", "", current_room=ROOM, current_index=0, time_stamp=now)
     }
     for method in (
         "_prepare_shift_cycle",

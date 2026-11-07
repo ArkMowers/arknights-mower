@@ -1,6 +1,7 @@
 import csv
 import importlib
 import json
+import logging
 import socket
 import subprocess
 from datetime import datetime, timedelta
@@ -140,6 +141,14 @@ def assert_preserved(scan):
     scan.cleanup.assert_not_called()
 
 
+def scan_status_records(caplog):
+    return [
+        record
+        for record in caplog.records
+        if getattr(record, "log_event", {}).get("type") == "depot-scan"
+    ]
+
+
 @pytest.fixture
 def restarting_scan(scan, monkeypatch):
     scene = scan.module.Scene
@@ -225,7 +234,7 @@ def restarting_scan(scan, monkeypatch):
 
 @pytest.mark.parametrize("interruption", ["entry", "second_category"])
 def test_game_restart_completes_login_and_rescans_both_categories_once(
-    restarting_scan, scheduler, monkeypatch, interruption
+    restarting_scan, scheduler, monkeypatch, caplog, interruption
 ):
     scan = restarting_scan
     scan.state.interruption = interruption
@@ -274,6 +283,14 @@ def test_game_restart_completes_login_and_rescans_both_categories_once(
         if interruption == "entry"
         else ["consume", "consume", "normal"]
     )
+    events = [record.log_event for record in scan_status_records(caplog)]
+    assert {event["id"] for event in events} == {events[0]["id"]}
+    assert sum(event["anchor"] for event in events) == 1
+    assert (
+        sum(event["summary"] == "仓库扫描 · 正在重新进入游戏内仓库" for event in events)
+        == 1
+    )
+    assert events[-1]["phase"] == "completed"
 
 
 @pytest.mark.parametrize(
@@ -399,7 +416,7 @@ def test_graph_restart_and_scene_wait_share_one_restart_budget(
 @pytest.mark.parametrize("error_type", [MowerExit, DeviceRecoveryError, SharedADBError])
 @pytest.mark.parametrize("entry_point", ["scan", "scheduler", "dispatch"])
 def test_recovery_login_preserves_cancellation_and_device_errors(
-    restarting_scan, scheduler, monkeypatch, error_type, entry_point
+    restarting_scan, scheduler, monkeypatch, caplog, error_type, entry_point
 ):
     scan = restarting_scan
     error = error_type("offline recovery interrupted")
@@ -439,6 +456,12 @@ def test_recovery_login_preserves_cancellation_and_device_errors(
     assert scheduler.solver.tasks[0] is scheduler.solver.task is task
     assert task.time == scheduled_at
     assert scheduler.solver.error is False
+    if entry_point != "scan":
+        events = [record.log_event for record in scan_status_records(caplog)]
+        assert events[-1]["phase"] == (
+            "stopped" if error_type is MowerExit else "failed"
+        )
+        assert not any(event["phase"] == "completed" for event in events)
 
 
 def test_waiting_timeout_without_restart_returns_failure_without_exiting(scan):
@@ -518,10 +541,22 @@ def test_pixel_stability_cannot_replace_final_depot_scene_confirmation(
     assert scan.solver.匹配物品一次.call_count == max(0, lost_after - 1)
 
 
-def test_success_commits_both_categories_once_with_actual_completion_time(scan):
+def test_success_commits_both_categories_once_with_actual_completion_time(scan, caplog):
     started_at = int(scan.clock.now().timestamp())
 
     result = scan.solver.run()
+
+    observation = next(
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("仓库扫描：已识别2种物品")
+    )
+    assert observation.log_inventory == {
+        "items": [
+            {"name": "应急理智顶液", "count": 3},
+            {"name": "龙门币", "count": 100000000},
+        ]
+    }
 
     with scan.path.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.reader(stream))
@@ -533,6 +568,84 @@ def test_success_commits_both_categories_once_with_actual_completion_time(scan):
     scan.merge.assert_called_once_with(记录快照时刻=completed_at)
     scan.cleanup.assert_called_once_with()
     assert result is True
+
+
+@pytest.mark.parametrize("merge_fails", [False, True])
+def test_scheduler_reports_scan_progress_and_confirms_results_after_saving(
+    scan, scheduler, monkeypatch, caplog, merge_fails
+):
+    from arknights_mower.utils import mastery_db
+
+    module, solver = scheduler.module, scheduler.solver
+    inventory_sync = Mock()
+    inventory_sync.start.return_value = True
+    monkeypatch.setattr(module, "cultivateDepotSolver", lambda: inventory_sync)
+    monkeypatch.setattr(module, "DepotSolver", lambda *args: scan.solver)
+    monkeypatch.setattr(module, "save_exception", Mock())
+    auto_schedule_mastery = solver._auto_schedule_mastery_after_scan
+    mastery_error = OSError("无法读取专精计划")
+    monkeypatch.setattr(
+        mastery_db, "retry_failed_plans", Mock(side_effect=mastery_error)
+    )
+
+    def schedule_mastery():
+        assert scan_status_records(caplog)[-1].log_event["phase"] == "completed"
+        auto_schedule_mastery()
+
+    solver._auto_schedule_mastery_after_scan = Mock(side_effect=schedule_mastery)
+
+    def merge(**_):
+        assert (
+            scan_status_records(caplog)[-1].log_event["summary"]
+            == "仓库扫描 · 正在保存库存"
+        )
+        assert not any(hasattr(record, "log_inventory") for record in caplog.records)
+        if merge_fails:
+            raise OSError("无法写入合并库存")
+
+    scan.merge.side_effect = merge
+    assert solver.仓库扫描() is (not merge_fails)
+    status_records = scan_status_records(caplog)
+    events = [record.log_event for record in status_records]
+    assert [(event["phase"], event["summary"]) for event in events] == [
+        ("started", "仓库扫描 · 正在同步森空岛库存"),
+        ("updated", "仓库扫描 · 正在进入游戏内仓库"),
+        ("updated", "仓库扫描 · 正在识别消耗物品"),
+        ("updated", "仓库扫描 · 正在识别基础物品"),
+        ("updated", "仓库扫描 · 正在保存库存"),
+        (
+            ("failed", "仓库扫描 · 扫描未完成")
+            if merge_fails
+            else ("completed", "仓库扫描 · 已更新库存，识别 2 种物品")
+        ),
+    ]
+    assert {event["id"] for event in events} == {events[0]["id"]}
+    assert [event["anchor"] for event in events] == [
+        True,
+        False,
+        False,
+        False,
+        False,
+        False,
+    ]
+
+    records = [record for record in caplog.records if hasattr(record, "log_inventory")]
+    if merge_fails:
+        assert records == []
+        solver._auto_schedule_mastery_after_scan.assert_not_called()
+    else:
+        (inventory,) = records
+        assert inventory.log_parent == {"type": "depot-scan", "id": events[0]["id"]}
+        assert caplog.records.index(inventory) < caplog.records.index(
+            status_records[-1]
+        )
+        (mastery,) = [
+            record
+            for record in caplog.records
+            if record.exc_info and record.exc_info[1] is mastery_error
+        ]
+        assert mastery.log_group == "growth-planning"
+        assert getattr(mastery, "log_parent", None) is None
 
 
 def test_explicitly_empty_category_is_accepted_without_recognizing_items(scan):
@@ -578,17 +691,40 @@ def test_reusing_solver_does_not_accumulate_the_previous_scan(scan):
 
 
 def test_nonempty_categories_with_no_confirmed_quantity_do_not_write_empty_success(
-    scan,
+    scan, scheduler, monkeypatch, caplog
 ):
+    module, solver = scheduler.module, scheduler.solver
     scan.state.quantities = {
         "consume": ("应急理智顶液", None),
         "normal": ("龙门币", None),
     }
+    inventory_sync = Mock()
+    inventory_sync.start.return_value = True
+    monkeypatch.setattr(module, "cultivateDepotSolver", lambda: inventory_sync)
+    monkeypatch.setattr(module, "DepotSolver", lambda *args: scan.solver)
+    solver._auto_schedule_mastery_after_scan = Mock()
 
-    result = scan.solver.run()
+    result = solver.仓库扫描()
 
     assert_preserved(scan)
     assert result is False
+    solver._auto_schedule_mastery_after_scan.assert_not_called()
+    terminal = scan_status_records(caplog)[-1]
+    assert terminal.log_event["phase"] == "failed"
+    warnings = [
+        record for record in caplog.records if record.levelno == logging.WARNING
+    ]
+    assert [record.getMessage() for record in warnings] == [
+        "仓库扫描: 无法识别 应急理智顶液 的数量，跳过",
+        "仓库扫描: 无法识别 龙门币 的数量，跳过",
+        "仓库扫描: 未确认任何物品数量，本次扫描失败",
+    ]
+    assert all(
+        record.log_parent == {"type": "depot-scan", "id": terminal.log_event["id"]}
+        and not hasattr(record, "log_event")
+        for record in warnings
+    )
+    assert caplog.records.index(warnings[-1]) < caplog.records.index(terminal)
 
 
 def test_category_recognition_uses_the_frame_that_passed_depot_confirmation(scan):
@@ -612,6 +748,7 @@ def test_scheduler_admits_mastery_only_after_successful_depot_scan(
     inventory_sync.start.return_value = True
     depot_solver = Mock()
     depot_solver.run.return_value = scan_result
+    depot_solver.结果字典 = {}
     monkeypatch.setattr(
         module, "cultivateDepotSolver", Mock(return_value=inventory_sync)
     )
@@ -622,7 +759,7 @@ def test_scheduler_admits_mastery_only_after_successful_depot_scan(
 
     assert result is scan_result
     inventory_sync.start.assert_called_once_with(force_inventory=True)
-    depot_solver.run.assert_called_once_with()
+    depot_solver.run.assert_called_once()
     if scan_result:
         solver._auto_schedule_mastery_after_scan.assert_called_once_with()
     else:

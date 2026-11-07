@@ -175,14 +175,15 @@ class LocalLogAccessTests(unittest.TestCase):
                 )
                 try:
                     connection.send(json.dumps({"token": "runtime-secret"}))
+                    # 订阅快照含 records 字段；这里只验证日志文本到达客户端。
                     self.assertEqual(
-                        json.loads(connection.receive(timeout=2)),
-                        {"type": "log", "data": "forwarded-log-fixture"},
+                        json.loads(connection.receive(timeout=2))["data"],
+                        "forwarded-log-fixture",
                     )
                     stream.publish("next-forwarded-log")
                     self.assertEqual(
-                        json.loads(connection.receive(timeout=2)),
-                        {"type": "log", "data": "next-forwarded-log"},
+                        json.loads(connection.receive(timeout=2))["data"],
+                        "next-forwarded-log",
                     )
                 finally:
                     connection.close()
@@ -209,9 +210,8 @@ class LocalLogAccessTests(unittest.TestCase):
                 )
                 try:
                     payload = json.loads(connection.receive(timeout=2))
-                    self.assertEqual(
-                        payload, {"type": "log", "data": "local-log-fixture"}
-                    )
+                    # 订阅快照含 records 字段；这里只验证日志文本到达客户端。
+                    self.assertEqual(payload["data"], "local-log-fixture")
                 finally:
                     connection.close()
             finally:

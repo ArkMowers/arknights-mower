@@ -3385,26 +3385,39 @@ class TestTrainSlotHasMastery(unittest.TestCase):
 
 
 class TestLogJudgment(unittest.TestCase):
-    """验证重构后的判定日志格式：WebUI 高亮、空槽规范（'' 与 -1）、slots_reliable 区分。"""
+    """训练室日志保留干员标记、空位和读取可靠性。"""
 
     def setUp(self):
         self.solver = MagicMock()
 
-    def test_remaining_time_does_not_wrap_at_midnight(self):
-        self.assertEqual(
-            reader._format_remaining_time(
-                NOW + timedelta(hours=27, minutes=4, seconds=5), NOW
-            ),
-            "27:04:05",
+    @patch.object(reader.logger, "info")
+    def test_log_training_without_slot_read(self, mock_info):
+        panel = make_panel(
+            operator_name="泡泡",
+            skill_name="挨打",
+            mastery_tier=1,
+            countdown=NOW + timedelta(hours=5, minutes=12, seconds=5),
+            countdown_state="active",
         )
+        with patch.object(reader, "datetime") as clock:
+            clock.now.return_value = NOW
+            reader._log_judgment(
+                self.solver, reader.RoomState("training", panel), "training"
+            )
+
         self.assertEqual(
-            reader._format_remaining_time(NOW - timedelta(seconds=1), NOW), "00:00:00"
+            mock_info.call_args.args[0].splitlines(),
+            [
+                "训练室：训练中",
+                "训练位　[[operator:泡泡]]的「挨打」正在专精一，剩余 5 小时 12 分 5 秒，心情未读取",
+                "协助位　未读取进驻详情",
+            ],
         )
 
     @patch.object(reader.logger, "info")
     def test_log_training_consistent_with_mood(self, mock_info):
         # 正常训练中：协助位年，训练位泡泡，带心情与倒计时
-        countdown = NOW + timedelta(hours=4, minutes=12, seconds=30)
+        countdown = NOW + timedelta(hours=27, minutes=4, seconds=5)
         panel = make_panel(
             operator_name="泡泡",
             skill_name="挨打",
@@ -3418,7 +3431,7 @@ class TestLogJudgment(unittest.TestCase):
             support_slot="年",
             train_slot="泡泡",
             support_mood=24.0,
-            train_mood=18.5,
+            train_mood=0,
             slots_read=True,
             slots_reliable=True,
         )
@@ -3429,12 +3442,18 @@ class TestLogJudgment(unittest.TestCase):
             )
         mock_info.assert_called_once()
         msg = mock_info.call_args[0][0]
-        self.assertIn("房间 训练室[训练中]：", msg)
-        self.assertIn("\"协助位干员：'年'，心情：24.0\"", msg)
-        self.assertIn(
-            "\"训练位干员：'泡泡'「挨打」专精一 剩余 04:12:30，心情：18.5\"", msg
+        self.assertEqual(
+            msg.splitlines(),
+            [
+                "训练室：训练中",
+                "训练位　[[operator:泡泡]]的「挨打」正在专精一，剩余 27 小时 4 分 5 秒，心情 0.0",
+                "协助位　[[operator:年]]，心情 24.0",
+                "更新专精完成的收取时间",
+            ],
         )
-        self.assertIn("更新专精完成的收取时间", msg)
+        self.assertEqual(
+            mock_info.call_args.kwargs["extra"]["log_agents"], ["泡泡", "年"]
+        )
 
     @patch.object(reader.logger, "info")
     def test_log_unreliable_slots(self, mock_info):
@@ -3462,9 +3481,13 @@ class TestLogJudgment(unittest.TestCase):
             )
         mock_info.assert_called_once()
         msg = mock_info.call_args[0][0]
-        self.assertIn("房间 训练室[训练中]：", msg)
-        self.assertIn('"进驻浮窗读取不可靠"', msg)
-        self.assertIn("\"训练位干员：'泡泡'「挨打」专精一 剩余 04:12:30\"", msg)
+        self.assertIn("训练室：训练中\n", msg)
+        self.assertIn("协助位　未能确认进驻干员和心情", msg)
+        self.assertIn(
+            "训练位　[[operator:泡泡]]的「挨打」正在专精一，剩余 4 小时 12 分 30 秒",
+            msg,
+        )
+        self.assertEqual(mock_info.call_args.kwargs["extra"]["log_agents"], ["泡泡"])
 
     @patch.object(reader.logger, "info")
     def test_log_ocr_fail_slots_unread(self, mock_info):
@@ -3491,13 +3514,14 @@ class TestLogJudgment(unittest.TestCase):
             )
         mock_info.assert_called_once()
         msg = mock_info.call_args[0][0]
-        self.assertIn("房间 训练室[识别异常]：", msg)
-        self.assertIn('"未展开进驻详情"', msg)
-        self.assertIn("\"面板识别：'[泡泡“挨打”' 剩余 02:30:15\"", msg)
+        self.assertIn("训练室：本次未能确认训练状态\n", msg)
+        self.assertIn("协助位　未读取进驻详情", msg)
+        self.assertIn("训练位　读到「[泡泡“挨打”」，剩余 2 小时 30 分 15 秒", msg)
+        self.assertEqual(mock_info.call_args.kwargs["extra"]["log_agents"], [])
 
     @patch.object(reader.logger, "info")
     def test_log_empty_room(self, mock_info):
-        # 空闲房间：槽位均为空（格式化为 '' 与 -1），命中空闲标记
+        # 空闲房间：槽位均为空，命中空闲标记，不把空位写成心情数值。
         panel = make_panel(idle_marker=True)
         room = reader.RoomState(
             state="empty",
@@ -3510,11 +3534,12 @@ class TestLogJudgment(unittest.TestCase):
         reader._log_judgment(self.solver, room, "empty", "准备开始训练", 计划=101)
         mock_info.assert_called_once()
         msg = mock_info.call_args[0][0]
-        self.assertIn("房间 训练室[空闲]：", msg)
-        self.assertIn("\"协助位干员：''，心情：-1\"", msg)
-        self.assertIn("\"训练位干员：''，心情：-1\"", msg)
-        self.assertIn('"面板：空闲中"', msg)
-        self.assertIn("计划 #101", msg)
+        self.assertIn("训练室：空闲\n", msg)
+        self.assertIn("协助位　空位", msg)
+        self.assertIn("训练位　空位", msg)
+        self.assertNotIn("101", msg)
+        self.assertNotIn("-1", msg)
+        self.assertEqual(mock_info.call_args.kwargs["extra"]["log_room"], "train")
 
     @patch.object(reader.logger, "info")
     def test_log_waiting_collect_tier3(self, mock_info):
@@ -3538,9 +3563,12 @@ class TestLogJudgment(unittest.TestCase):
         reader._log_judgment(self.solver, room, "waiting_collect", "专三完成，正常收取")
         mock_info.assert_called_once()
         msg = mock_info.call_args[0][0]
-        self.assertIn("房间 训练室[待收取]：", msg)
-        self.assertIn("\"协助位干员：'逻各斯'，心情：24.0\"", msg)
-        self.assertIn("\"训练位干员：'能天使'「过载运转」专精三 已完成\"", msg)
+        self.assertIn("训练室：待收取\n", msg)
+        self.assertIn("协助位　[[operator:逻各斯]]，心情 24.0", msg)
+        self.assertIn(
+            "训练位　[[operator:能天使]]的「过载运转」已完成专精三，心情 12.0",
+            msg,
+        )
         self.assertIn("专三完成，正常收取", msg)
 
 

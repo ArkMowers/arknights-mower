@@ -14,6 +14,7 @@ from tzlocal import get_localzone
 
 from arknights_mower.solvers.mood_history_query import mood_curve_filter
 from arknights_mower.utils import config
+from arknights_mower.utils.activity_observations import snapshot_observations
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
@@ -328,6 +329,10 @@ def current_state():
         ),
         "daily_visit_friend": base_scheduler.daily_visit_friend,
         "maa_daily_completed": getattr(base_scheduler, "maa_daily_completed", {}),
+        "annihilation_lock_mail_day": getattr(
+            base_scheduler, "annihilation_lock_mail_day", None
+        ),
+        "display_observations": snapshot_observations(base_scheduler),
         "daily_visit_friend_attempt": getattr(
             base_scheduler, "daily_visit_friend_attempt", None
         ),

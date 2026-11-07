@@ -2,6 +2,7 @@
 
 import copy
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 from arknights_mower.data import base_room_list
 from arknights_mower.solvers.record import emergency_mood_history, save_current_state
@@ -37,6 +38,7 @@ from arknights_mower.utils.emergency_staffing import worker_block_reason
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Dormitory, Operator
+from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils.resting_correction import suppress_completed_dorm_returns
 from arknights_mower.utils.resting_priority import (
@@ -54,6 +56,10 @@ from arknights_mower.utils.scheduler_task import (
     protect_priority_tasks,
     task_view,
     try_workshop_tasks,
+)
+from arknights_mower.utils.task_presentation import (
+    build_task_presentation,
+    format_task_log_message,
 )
 
 RESUME_META = "自动救急继续安排"
@@ -535,7 +541,9 @@ class EmergencyRecoveryMixin:
             )
         names = [name for name in names if name not in shared]
         logger.info(
-            "多组主班心情低于救急线且当前原生轮休无法安排，启动自动救急：%s", required
+            "多组主班心情低于救急线且当前原生轮休无法安排，启动自动救急：%s",
+            "、".join(f"[[operator:{name}]]" for name in required),
+            extra={"log_agents": list(required)},
         )
         state = {
             **resolved,
@@ -740,6 +748,344 @@ class EmergencyRecoveryMixin:
                     ):
                         queued.plan[room] = list(updated)
 
+    def _rescue_staffing_log_entry(self, task):
+        return next(
+            (
+                entry
+                for entry in getattr(self, "_rescue_staffing_logs", {}).values()
+                if entry["owner"] is task
+            ),
+            None,
+        )
+
+    def _rescue_staffing_log_matches(self, room, targets):
+        actual = self.op_data.get_current_room(room, True)
+        return (
+            actual is not None
+            and len(actual) >= len(targets)
+            and all(
+                target == "Current"
+                or target not in ("Free", "_")
+                and target == actual[index]
+                for index, target in enumerate(targets)
+            )
+        )
+
+    @staticmethod
+    def _rescue_staffing_log_still_planned(entry, item):
+        current = entry["owner"].plan.get(item["room"], ())
+        return all(
+            target in ("Current", "Free", "_")
+            or index < len(current)
+            and current[index] == target
+            for index, target in enumerate(item["agents"])
+        )
+
+    def _refresh_rescue_staffing_log_status(self, entry):
+        scope = getattr(self, "_active_rescue_facility_scope", None)
+        active = getattr(self, "_active_facility_log", None)
+        for item in entry["rooms"]:
+            room = item["room"]
+            active_room = bool(
+                scope
+                and scope["id"] == entry["id"]
+                and scope["room"] == room
+                and active
+                and active["id"] == scope["attempt"]
+                and active["phase"] == "started"
+            )
+            if room in entry["adjusted"]:
+                item["status"] = "unconfirmed"
+                continue
+            if room in entry["confirmed"] and self._rescue_staffing_log_matches(
+                room, item["agents"]
+            ):
+                item["status"] = (
+                    "active"
+                    if active_room
+                    else "unconfirmed"
+                    if room in entry["unsettled"]
+                    else "completed"
+                )
+            else:
+                entry["confirmed"].pop(room, None)
+                item["status"] = (
+                    "active"
+                    if active_room
+                    else "unconfirmed"
+                    if room in entry["touched"]
+                    else "pending"
+                )
+
+    def _emit_rescue_staffing_log(self, entry, phase, detail=None):
+        if entry["phase"] == "completed":
+            return
+        if phase == "failed":
+            for room in entry["rooms"]:
+                if (
+                    room["status"] != "completed"
+                    and room["room"] in entry["touched"] | entry["adjusted"]
+                ):
+                    room["status"] = "unconfirmed"
+        reason = (str(detail).strip() or "操作已中断") if detail is not None else None
+        signature = (phase, tuple(room["status"] for room in entry["rooms"]), reason)
+        if signature == entry.get("emitted"):
+            return
+        event = {
+            "type": "rescue-staffing",
+            "id": entry["id"],
+            "phase": phase,
+            "anchor": phase == "queued",
+            "rooms": copy.deepcopy(entry["rooms"]),
+        }
+        if phase == "failed" and reason is not None:
+            event["detail"] = reason[:2048]
+        header = {
+            "queued": "已生成救急换班任务，等待执行：",
+            "started": "正在执行救急换班任务：",
+            "completed": "救急换班任务已完成：",
+            "failed": "救急换班任务尚未完成：",
+        }[phase]
+        extra = {"log_event": event, "log_parent": None}
+        if phase == "queued":
+            presentation = {**entry["presentation"], "header": header}
+            extra["log_task"] = presentation
+            message = format_task_log_message(presentation, header)
+        else:
+            message = header + ("\n" + reason if reason is not None else "")
+        logger.info(message, extra=extra)
+        entry["phase"], entry["emitted"] = phase, signature
+
+    def _queue_rescue_staffing_log(self, task):
+        new_id = None
+        try:
+            self._prune_rescue_staffing_logs()
+            registry = getattr(self, "_rescue_staffing_logs", {})
+            self._rescue_staffing_logs = registry
+            if len(registry) >= 32 or not 1 <= len(task.plan) <= 32:
+                return False
+            presentation = build_task_presentation(task, self.op_data)
+            rooms = [
+                {
+                    "room": item["id"],
+                    "label": item["label"],
+                    "agents": list(item["agents"]),
+                    "status": "pending",
+                }
+                for item in presentation["rooms"]
+            ]
+            if any(
+                any(
+                    not isinstance(item[key], str)
+                    or not item[key].strip()
+                    or len(item[key]) > 128
+                    for key in ("room", "label")
+                )
+                or len(item["agents"]) > 5
+                or any(
+                    not isinstance(name, str) or len(name) > 256
+                    for name in item["agents"]
+                )
+                for item in rooms
+            ):
+                return False
+            entry = {
+                "id": uuid4().hex,
+                "owner": task,
+                "rooms": rooms,
+                "presentation": presentation,
+                "baseline": {
+                    item["room"]: getattr(self.op_data, "room_observations", {}).get(
+                        item["room"], 0
+                    )
+                    for item in rooms
+                },
+                "confirmed": {},
+                "adjusted": set(),
+                "unsettled": {},
+                "settled": set(),
+                "touched": set(),
+                "phase": None,
+            }
+            registry[entry["id"]] = entry
+            new_id = entry["id"]
+            self._emit_rescue_staffing_log(entry, "queued")
+            return True
+        except Exception:
+            getattr(self, "_rescue_staffing_logs", {}).pop(new_id, None)
+            logger.debug("救急换班生成日志未能更新", exc_info=True)
+            return False
+
+    def _rescue_staffing_log_parent(self, task, room=None, plan=None, attempt=None):
+        try:
+            self._prune_rescue_staffing_logs()
+            entry = self._rescue_staffing_log_entry(task)
+            if entry is None:
+                return None
+            parent = {"type": "rescue-staffing", "id": entry["id"]}
+            if room is not None:
+                if plan is not task.plan or not any(
+                    item["room"] == room for item in entry["rooms"]
+                ):
+                    return None
+                parent.update(room=room, attempt=attempt)
+            return parent
+        except Exception:
+            return None
+
+    def _start_rescue_staffing_log(self, task, room, attempt):
+        try:
+            scope = getattr(self, "_active_rescue_facility_scope", None)
+            entry = self._rescue_staffing_log_entry(task)
+            if (
+                not scope
+                or entry is None
+                or scope
+                != {
+                    "type": "rescue-staffing",
+                    "id": entry["id"],
+                    "room": room,
+                    "attempt": attempt,
+                }
+            ):
+                return
+            entry["unsettled"][room] = attempt
+            entry["touched"].add(room)
+            self._refresh_rescue_staffing_log_status(entry)
+            self._emit_rescue_staffing_log(entry, "started")
+        except Exception:
+            logger.debug("救急换班开始日志未能更新", exc_info=True)
+
+    def _finish_rescue_staffing_room_log(self, task, room, attempt):
+        try:
+            entry = self._rescue_staffing_log_entry(task)
+            if entry is not None:
+                if getattr(self, "_active_rescue_facility_scope", None) != {
+                    "type": "rescue-staffing",
+                    "id": entry["id"],
+                    "room": room,
+                    "attempt": attempt,
+                }:
+                    return
+                if entry["unsettled"].get(room) == attempt:
+                    entry["unsettled"].pop(room)
+                    entry["settled"].add(room)
+                self._refresh_rescue_staffing_log_status(entry)
+                if not entry["unsettled"] and all(
+                    item["status"] == "completed" for item in entry["rooms"]
+                ):
+                    self._emit_rescue_staffing_log(entry, "completed")
+                elif entry["phase"] == "started":
+                    self._emit_rescue_staffing_log(entry, "started")
+        except Exception:
+            logger.debug("救急换班确认日志未能更新", exc_info=True)
+
+    def _observe_rescue_staffing_log(self, room, observed):
+        try:
+            self._prune_rescue_staffing_logs()
+            capacity = RIGHT_SIDE_ROOM_CAPACITY.get(
+                room, len(self.op_data.plan.get(room, ()))
+            )
+            if room == "recycle":
+                capacity = getattr(self.op_data, "recycle_capacity", capacity)
+            if (
+                not capacity
+                or len(observed) != capacity
+                or any(
+                    item.get("observed", True) is not True
+                    or not isinstance(item.get("agent"), str)
+                    or item["agent"] in ("Current", "Free", "_")
+                    for item in observed
+                )
+            ):
+                return
+            names = [item["agent"] for item in observed]
+            present = [name for name in names if name]
+            if len(present) != len(set(present)):
+                return
+            revision = getattr(self.op_data, "room_observations", {}).get(room, 0)
+            for entry in tuple(getattr(self, "_rescue_staffing_logs", {}).values()):
+                target = next(
+                    (item for item in entry["rooms"] if item["room"] == room), None
+                )
+                if target is None or revision <= entry["baseline"][room]:
+                    continue
+                if room in entry["adjusted"]:
+                    if not self._rescue_staffing_log_still_planned(entry, target):
+                        continue
+                    entry["adjusted"].remove(room)
+                if len(names) >= len(target["agents"]) and all(
+                    agent == "Current"
+                    or agent not in ("Free", "_")
+                    and names[index] == agent
+                    for index, agent in enumerate(target["agents"])
+                ):
+                    entry["confirmed"][room] = revision
+                else:
+                    entry["confirmed"].pop(room, None)
+                self._refresh_rescue_staffing_log_status(entry)
+                if not entry["unsettled"] and all(
+                    item["status"] == "completed" for item in entry["rooms"]
+                ):
+                    self._emit_rescue_staffing_log(entry, "completed")
+                elif entry["phase"] == "started":
+                    self._emit_rescue_staffing_log(entry, "started")
+        except Exception:
+            logger.debug("救急换班实读日志未能更新", exc_info=True)
+
+    def _fail_rescue_staffing_log(self, task, detail=None):
+        try:
+            entry = self._rescue_staffing_log_entry(task)
+            if entry is not None and entry["phase"] != "failed":
+                self._refresh_rescue_staffing_log_status(entry)
+                self._emit_rescue_staffing_log(entry, "failed", detail)
+        except Exception:
+            logger.debug("救急换班未完成日志未能更新", exc_info=True)
+
+    def _prune_rescue_staffing_logs(self):
+        try:
+            registry = getattr(self, "_rescue_staffing_logs", {})
+            for key, entry in tuple(registry.items()):
+                if entry["phase"] == "completed":
+                    registry.pop(key, None)
+                    continue
+                self._refresh_rescue_staffing_log_status(entry)
+                owner = entry["owner"]
+                reason = None
+                if not self._emergency_active():
+                    reason = "救急阶段已结束，原目标尚未全部确认"
+                elif not any(owner is task for task in self.tasks):
+                    reason = "本次任务已结束，原目标尚未全部确认"
+                else:
+                    adjusted = {
+                        item["room"]
+                        for item in entry["rooms"]
+                        if item["status"] != "completed"
+                        and not self._rescue_staffing_log_still_planned(entry, item)
+                        and not (
+                            item["room"] in entry["settled"]
+                            and item["room"] not in owner.plan
+                            and item["room"] not in entry["adjusted"]
+                        )
+                    }
+                    entry["adjusted"].update(adjusted)
+                    if adjusted:
+                        self._refresh_rescue_staffing_log_status(entry)
+                        self._emit_rescue_staffing_log(
+                            entry, "failed", "救急换班安排已调整，原目标尚未全部确认"
+                        )
+                    elif not owner.plan and any(
+                        item["status"] != "completed" for item in entry["rooms"]
+                    ):
+                        self._emit_rescue_staffing_log(
+                            entry, "failed", "原目标尚未全部实读确认"
+                        )
+                if reason is not None:
+                    self._emit_rescue_staffing_log(entry, "failed", reason)
+                    registry.pop(key, None)
+        except Exception:
+            logger.debug("救急换班展示清理未能完成", exc_info=True)
+
     def _emergency_schedule_staffing(self):
         """救急表立即接管全部已配置工作岗位，实际驻员核验完成状态。"""
         state, data = self.emergency_state, self.op_data
@@ -831,11 +1177,17 @@ class EmergencyRecoveryMixin:
         task.emergency_staffing_members = list(state["targets"])
         self._emergency_save()
         self.tasks.append(task)
-        logger.info(
-            "自动救急：%s工作岗位：%s",
-            "立即接管" if task.emergency_takeover else "轮换",
-            pending,
-        )
+        logger.debug("自动救急工作岗位安排：%s", pending)
+        if not self._queue_rescue_staffing_log(task):
+            try:
+                presentation = build_task_presentation(task, data)
+                header = "已生成救急换班任务，等待执行："
+                logger.info(
+                    format_task_log_message(presentation, header),
+                    extra={"log_task": {**presentation, "header": header}},
+                )
+            except Exception:
+                logger.debug("救急换班生成说明未能显示", exc_info=True)
         return True
 
     def _open_emergency_beds(self):
@@ -2046,6 +2398,7 @@ class EmergencyRecoveryMixin:
             return False
         self.op_data.commit_group_shifts(transitions)
         self.emergency_state = None
+        self._prune_rescue_staffing_logs()
         self.tasks[:] = [
             task
             for task in self.tasks

@@ -91,40 +91,15 @@ def replacement_solver(clock, monkeypatch):
     data.dorm = [
         Dormitory(("dormitory_1", 2), primary.name, clock.now() + timedelta(hours=7))
     ]
-    solver = SimpleNamespace(
-        op_data=data,
-        tasks=[],
-        task=None,
-        enter_room=Mock(),
-        back=Mock(),
-        _protected_training_names=lambda: set(),
-        _initial_mood_read_pending=lambda: False,
-        _emergency_frozen=lambda: False,
-    )
-    solver._task_failure_snapshot = MethodType(
-        base.BaseSchedulerSolver._task_failure_snapshot, solver
-    )
-    solver._retain_failed_task = MethodType(
-        base.BaseSchedulerSolver._retain_failed_task, solver
-    )
-    solver._resume_failed_tasks = MethodType(
-        base.BaseSchedulerSolver._resume_failed_tasks, solver
-    )
-    solver._is_startup_priority_task = MethodType(
-        base.BaseSchedulerSolver._is_startup_priority_task, solver
-    )
-    solver._discard_legacy_ordinary_requests = MethodType(
-        base.BaseSchedulerSolver._discard_legacy_ordinary_requests, solver
-    )
-    solver._discard_legacy_recovery_checks = MethodType(
-        base.BaseSchedulerSolver._discard_legacy_recovery_checks, solver
-    )
-    solver._discard_legacy_run_order_waits = MethodType(
-        base.BaseSchedulerSolver._discard_legacy_run_order_waits, solver
-    )
-    solver._refresh_derived_correction = MethodType(
-        base.BaseSchedulerSolver._refresh_derived_correction, solver
-    )
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = data
+    solver.tasks = []
+    solver.task = None
+    solver.enter_room = Mock()
+    solver.back = Mock()
+    solver._protected_training_names = lambda: set()
+    solver._initial_mood_read_pending = lambda: False
+    solver._emergency_frozen = lambda: False
     solver.reading = {
         "agent": cover.name,
         "mood": 24,
