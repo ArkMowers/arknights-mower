@@ -101,12 +101,15 @@ it.each([false, true])(
     state.occupants[roomId + '_0'] = operatorId
     production.settle(frame)
     const resumed = production.report()
-    expect(resumed.drones.consumed).toBe(15)
+    expect(resumed.drones.consumed).toBe(theoretical ? 0 : 15)
+    if (theoretical) expect(resumed.expected.pendingSwitchDrones).toBe(15)
     expect(resumed.manufacturing[0]).toMatchObject({ product: 'gold', completedItems: 1 })
     expect(resumed.materialsConsumed).toMatchObject({ lmd: 1600, orirock: 2 })
     expect(
       resumed.events.filter(
-        (event) => event.type === 'product-switch-drone' && event.roomId === roomId
+        (event) =>
+          event.type === (theoretical ? 'generated-switch-reserved' : 'product-switch-drone') &&
+          event.roomId === roomId
       )
     ).toEqual([expect.objectContaining({ roomId, amount: 15, time: 0.75 })])
     expect(resumed.events.filter((event) => event.type === 'product-switched')).toEqual([

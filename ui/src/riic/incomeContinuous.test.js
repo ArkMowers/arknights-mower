@@ -410,19 +410,17 @@ it.each([
   ['gold', 'gold', 60 / 72],
   ['money', 'orderLmd', (60 / 203.4) * 1450]
 ])(
-  'keeps the theoretical %s rate exact without valuing drones outside a service task',
+  'keeps the theoretical %s rate exact with generated acceleration across boundaries',
   (product, key, naturalRate) => {
     const test = fixture(product, { theoretical: true, drone: true, stock: 250, warmup: 0.7 })
     test.advance(5.4)
     const report = test.report(),
       sampledHours = 4.7
-    expect(simulationOutputAmounts(report)[key]).toBeCloseTo(naturalRate * sampledHours, 7)
+    expect(simulationOutputAmounts(report)[key]).toBeCloseTo(naturalRate * 1.5 * sampledHours, 7)
     expect(report.production.assumptions.timingModel).toBe('theoretical-events-v1')
-    expect(report.production.sampleDrones.generated).toBeCloseTo(10 * sampledHours, 8)
-    expect(report.production.sampleDrones.consumed).toBe(0)
-    expect(report.production.sampleDrones.closing).toBeCloseTo(250, 8)
-    expect(report.production.sampleDrones.overflow).toBeCloseTo(10 * sampledHours, 8)
-    expect(report.production.expected.droneAllocated).toBe(0)
+    expect(report.production.sampleDrones).toBeUndefined()
+    expect(report.production.expected.droneGenerated).toBeCloseTo(10 * sampledHours, 8)
+    expect(report.production.expected.droneAllocated).toBeCloseTo(10 * sampledHours, 8)
   }
 )
 
@@ -439,7 +437,11 @@ it.each([false, true])(
       test.advance(6)
       const report = test.report()
       expect(simulationOutputAmounts(report)).toMatchObject({ exp: 0, orderLmd: 0 })
-      expect(report.production.sampleDrones.generated).toBeCloseTo(60, 9)
+      expect(
+        theoretical
+          ? report.production.expected.droneGenerated
+          : report.production.sampleDrones.generated
+      ).toBeCloseTo(60, 9)
       if (theoretical) expect(report.production.expected.droneAllocated).toBe(0)
       expect(report.production.sample.completed.exp).toBe(0)
       expect(report.production.sample.completed.orderLmd).toBe(0)

@@ -43,6 +43,7 @@ const plan = {
 }
 const settings = () => ({
   ...defaultIncomeSettings(),
+  expectationMode: false,
   operatorMode: 'maximum',
   inventorySource: 'manual',
   finiteInventory: false,
