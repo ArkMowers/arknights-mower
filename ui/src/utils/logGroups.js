@@ -1,5 +1,5 @@
 // group 取值来自后端结构化日志（Web 访问子系统说明的 Live Log Records）：
-// 默认对应子系统说明文件名；clue、credit-shop 是基建内的线索与信用商店业务组。
+// 默认对应子系统说明文件名；clue、credit-shop 属于基建，runtime-log 属于日志传输。
 export const LOG_GROUPS = {
   'base-scheduler': '基建排班',
   clue: '线索',
@@ -14,6 +14,7 @@ export const LOG_GROUPS = {
   'maa-runtime': 'MAA 运行',
   'maa-integration': 'MAA日常',
   'web-access': 'Web 访问',
+  'runtime-log': '日志显示',
   'ai-assistant': 'AI 助手',
   'config-backup': '配置备份',
   'config-profiles': '配置档案',

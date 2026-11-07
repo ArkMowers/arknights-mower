@@ -14,7 +14,11 @@ log._build_log_record 用 group_for_pathname() 按 record.pathname 集中派生�
 from __future__ import annotations
 
 # 业务展示分组的规则仍由现有子系统说明负责。
-BUSINESS_GROUP_OWNERS = {"clue": "base-scheduler", "credit-shop": "base-scheduler"}
+BUSINESS_GROUP_OWNERS = {
+    "clue": "base-scheduler",
+    "credit-shop": "base-scheduler",
+    "runtime-log": "web-access",
+}
 
 # 有序映射表：包内相对路径前缀 -> 日志业务分组。
 # 仓库根目录的入口模块（server.py、webview_ui.py）不在 arknights_mower 包内，

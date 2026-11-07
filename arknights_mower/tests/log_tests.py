@@ -490,6 +490,36 @@ class LiveRecordFieldsTest(MultiProcessLogTestBase):
 class LatestLogQueueTest(MultiProcessLogTestBase):
     """非阻塞淘汰语义、可读 dropped 状态与限频告警。"""
 
+    def test_backlog_warning_identifies_display_loss_and_preserves_file_records(self):
+        records = []
+        capture = logging.Handler()
+        capture.emit = records.append
+        queue = log.LatestLogQueue(maxsize=1)
+        queued = log.LiveQueueHandler(queue)
+        destination = Path(self._tmp) / "runtime.log"
+        output = logging.FileHandler(destination, encoding="utf-8")
+        try:
+            output.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+            with patch.object(log.logger, "handlers", [queued, capture, output]):
+                log.logger.info("第一条原始记录")
+                log.logger.info("第二条原始记录")
+        finally:
+            output.close()
+        warnings = [record for record in records if record.levelno == logging.WARNING]
+        self.assertEqual(len(warnings), 1)
+        warning = warnings[0]
+        self.assertEqual(
+            log._build_log_record(warning, warning.getMessage())["group"], "runtime-log"
+        )
+        self.assertIn("实时日志积压", warning.getMessage())
+        self.assertIn("累计跳过 1 条", warning.getMessage())
+        self.assertIn("本次新增 1 条", warning.getMessage())
+        self.assertNotIn("消费", warning.getMessage())
+        saved = destination.read_text(encoding="utf-8")
+        self.assertIn("第一条原始记录", saved)
+        self.assertIn("第二条原始记录", saved)
+        self.assertIn(warning.getMessage(), saved)
+
     def test_put_has_no_ignored_block_or_timeout_arguments(self):
         queue = log.LatestLogQueue(maxsize=1, drop_warning_interval=None)
         with self.assertRaises(TypeError):
