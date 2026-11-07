@@ -13294,10 +13294,25 @@ class BaseSchedulerSolver(
         else:
             return False, ["技能", "false"]
 
+    def _same_run_order_restoration(self, room, target):
+        pending = getattr(self.task, "run_order_confirmation_pending", None)
+        return bool(
+            pending
+            and pending["room"] == room
+            and pending["restoring"]
+            and getattr(self.task, "run_order_restore_pending", False)
+            and pending["target"]
+            == target
+            == getattr(self.task, "run_order_original_roster", {}).get(room)
+        )
+
     def _prepare_run_order_confirmation(self, room, target):
         if room.startswith("dorm"):
             return
-        if getattr(self.task, "run_order_confirmation_pending", None):
+        if pending := getattr(self.task, "run_order_confirmation_pending", None):
+            if pending["exhausted"] and self._same_run_order_restoration(room, target):
+                # 相同原班沿用已耗尽的提交期限；重选不增加观察时间。
+                return
             raise RunOrderConfirmationUnresolved(room)
         allowance = run_order_network_allowance(self.task, config.conf)
         if (
@@ -13397,7 +13412,7 @@ class BaseSchedulerSolver(
                 min(self.performance_profile.screenshot_interval / 1000, remaining)
             )
 
-    def _verify_run_order_confirmation(self, room, current):
+    def _verify_run_order_confirmation(self, room, current, target):
         pending = getattr(self.task, "run_order_confirmation_pending", None)
         if not pending or pending["room"] != room:
             return current
@@ -13413,21 +13428,40 @@ class BaseSchedulerSolver(
             )
 
         if not confirmed(current):
-            with self._run_order_confirmation_observation() as deadline:
-                while not confirmed(current):
-                    remaining = deadline - monotonic()
-                    if remaining <= 0:
-                        raise ObservationTimeout("干员确认观察已超时")
-                    self.sleep(
-                        min(
-                            self.performance_profile.screenshot_interval / 1000,
-                            remaining,
+            try:
+                with self._run_order_confirmation_observation() as deadline:
+                    while not confirmed(current):
+                        remaining = deadline - monotonic()
+                        if remaining <= 0:
+                            raise ObservationTimeout("干员确认观察已超时")
+                        self.sleep(
+                            min(
+                                self.performance_profile.screenshot_interval / 1000,
+                                remaining,
+                            )
                         )
-                    )
-                    if self.find("connecting"):
-                        if not self.waiting_solver(restart_on_timeout=False):
-                            raise ObservationTimeout("干员确认联网观察已超时")
-                    current = self.get_agent_from_room(room)
+                        # 后续联网或实读中断时，不能用上一帧的完整名单授权重选。
+                        current = []
+                        if self.find("connecting"):
+                            if not self.waiting_solver(restart_on_timeout=False):
+                                raise ObservationTimeout("干员确认联网观察已超时")
+                        current = self.get_agent_from_room(room)
+            except RunOrderConfirmationUnresolved:
+                names = [row.get("agent") for row in current]
+                named = [name for name in names if name]
+                if (
+                    self._same_run_order_restoration(room, target)
+                    and len(current) == len(target)
+                    and all(row.get("observed", True) for row in current)
+                    and all(isinstance(name, str) for name in names)
+                    and not any(name in ("Free", "Current") for name in named)
+                    and len(named) == len(set(named))
+                    and self.find("room_detail")
+                ):
+                    # 完整实读已知未恢复时，交回房间原有的有限重选。
+                    # 同一原班的迟到提交不改变目标；旧换入和未知读数仍等待。
+                    return current
+                raise
         self.task.__dict__.pop("run_order_confirmation_pending", None)
         self.__dict__.pop("_run_order_confirmation_clock", None)
         logger.info("%s 已实读确认提交的目标驻员", room)
@@ -16306,7 +16340,7 @@ class BaseSchedulerSolver(
                 ):
                     # 旧换入的目标独立于恢复计划；旧原班不能证明换入已取消。
                     actual = self.get_agent_from_room(room)
-                    self._verify_run_order_confirmation(room, actual)
+                    self._verify_run_order_confirmation(room, actual, plan[room])
                 if reconcile_after_confirmation:
                     refresh_indexes = []
                     if (
@@ -16694,7 +16728,9 @@ class BaseSchedulerSolver(
                             current = self.get_agent_from_room(
                                 room, read_time_index, **observation_context
                             )
-                    current = self._verify_run_order_confirmation(room, current)
+                    current = self._verify_run_order_confirmation(
+                        room, current, plan[room]
+                    )
                     for idx, name in enumerate(plan[room]):
                         if current[idx]["agent"] != name and name not in (
                             "Free",

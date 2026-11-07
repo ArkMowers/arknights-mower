@@ -252,6 +252,225 @@ def test_insertion_and_restoration_confirm_their_own_target_rosters(confirmation
     ui.solver.drone.assert_not_called()
 
 
+@pytest.mark.parametrize("restoration_succeeds", [True, False])
+@pytest.mark.parametrize("real_sleep", [False, True])
+def test_observed_failed_restoration_reselects_same_target_with_one_allowance(
+    confirmation, monkeypatch, restoration_succeeds, real_sleep
+):
+    ui = confirmation
+    if real_sleep:
+        monkeypatch.setattr(solver_utils, "csleep", ui.solver.sleep.side_effect)
+        ui.solver.sleep = solver_utils.BaseSolver.sleep.__get__(ui.solver)
+    original_time = ui.task.time
+    inserted = ui.task.plan[ROOM].copy()
+    shared = scheduler_task.SchedulerTask(
+        time=ui.clock.now(),
+        task_plan={"room_2_1": ["Current", "但书", "龙舌兰"]},
+        task_type=scheduler_task.TaskTypes.RUN_ORDER,
+        meta_data="room_2_1",
+    )
+    independent = scheduler_task.SchedulerTask(
+        time=ui.clock.now(), task_type=scheduler_task.TaskTypes.DEPOT
+    )
+    ui.solver.tasks.extend([shared, independent])
+    select = ui.solver.choose_agent.side_effect
+    tap = ui.solver.tap.side_effect
+    restoration_attempts = []
+
+    def choose(names, room, **kwargs):
+        select(names, room, **kwargs)
+        if names == ORIGINAL:
+            restoration_attempts.append(kwargs["choose_error"])
+        ui.apply_after = 0
+        ui.close_on_apply = True
+
+    def submit(position, *args, **kwargs):
+        lost_restore = (
+            ui.page == "selection"
+            and ui.selected == ORIGINAL
+            and (not restoration_succeeds or len(restoration_attempts) == 1)
+        )
+        if lost_restore:
+            ui.apply_after = 100
+            ui.close_on_apply = False
+        tap(position, *args, **kwargs)
+        if lost_restore:
+            # 首次恢复点击未生效，退回设施后仍能完整读到跑单驻员。
+            ui.pending_target = ui.apply_at = None
+
+    ui.solver.choose_agent.side_effect = choose
+    ui.solver.tap.side_effect = submit
+
+    if restoration_succeeds:
+        ui.solver.agent_arrange(ui.task.plan)
+        assert ui.physical == ORIGINAL
+        assert ui.task.plan == {}
+        assert not getattr(ui.task, "run_order_restore_pending", False)
+        assert not getattr(ui.task, "run_order_confirmation_pending", None)
+        assert restoration_attempts == [0, 1]
+        assert ui.solver.find_next_task(meta_data="room_2_1") is shared
+    else:
+        with pytest.raises(Exception, match="检测到安排干员未成功"):
+            ui.solver.agent_arrange(ui.task.plan)
+        assert restoration_attempts == [0, 1, 2, 3]
+        assert ui.physical == inserted
+        assert ui.task.plan == {ROOM: ORIGINAL}
+        assert ui.task.run_order_restore_pending
+        attempts = ui.solver.choose_agent.call_count
+        for persisted in (False, True):
+            if persisted:
+                ui.solver.tasks = pickle.loads(pickle.dumps(ui.solver.tasks))
+                ui.task, shared, independent = ui.solver.tasks
+            failure = copy.deepcopy(ui.task.execution_failure)
+            for _ in range(3):
+                ui.clock.seconds += 60
+                ui.solver._resume_failed_tasks()
+                assert ui.task.execution_failure == failure
+                assert ui.solver.find_next_task() is independent
+            assert id(shared) in scheduler_task.blocked_run_order_ids(
+                ui.solver.tasks, ui.solver.op_data
+            )
+        assert ui.solver.choose_agent.call_count == attempts
+    assert ui.task.time == original_time
+    assert sum(row == inserted for _, row in ui.clicks) == 1
+    assert any(row == inserted for _, row in ui.reads)
+    restore_deadlines = {
+        pending["expires_at"]
+        for pending in [*ui.saved_states, *ui.click_states]
+        if pending and pending["restoring"] and pending["expires_at"] is not None
+    }
+    assert len(restore_deadlines) == 1
+    ui.solver.accept_order.assert_called_once_with()
+    ui.solver.drone.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "observation", ["short", "unobserved", "duplicate", "missing", "placeholder"]
+)
+def test_incomplete_restoration_read_cannot_authorize_reselection(
+    confirmation, observation
+):
+    ui = confirmation
+    ui.physical = ui.task.plan[ROOM].copy()
+    ui.task.run_order_original_roster = {ROOM: ORIGINAL.copy()}
+    ui.task.run_order_restore_pending = True
+    ui.task.prepare_run_order_restoration()
+    ui.apply_after = 100
+
+    def incomplete(rows):
+        if observation == "short":
+            return rows[:-1]
+        if observation == "unobserved":
+            return [{**row, "observed": False} for row in rows]
+        if observation == "duplicate":
+            return [rows[0], rows[0]]
+        if observation == "missing":
+            return [{"agent": None}, rows[1]]
+        return [{"agent": "Current"}, rows[1]]
+
+    ui.read_transform = incomplete
+
+    with pytest.raises(base_schedule.RunOrderConfirmationUnresolved):
+        ui.solver.agent_arrange(ui.task.plan)
+
+    assert ui.solver.choose_agent.call_count == 1
+    assert len(ui.clicks) == 4
+    assert ui.task.run_order_confirmation_pending["target"] == ORIGINAL
+    assert ui.task.run_order_confirmation_pending["exhausted"]
+    assert ui.task.plan == {ROOM: ORIGINAL}
+    assert ui.task.run_order_restore_pending
+    assert ui.task.execution_failure
+    ui.solver.accept_order.assert_not_called()
+
+
+@pytest.mark.parametrize("interrupted", ["read", "network"])
+def test_interrupted_restoration_observation_discards_earlier_complete_roster(
+    confirmation, interrupted
+):
+    ui = confirmation
+    ui.physical = ui.task.plan[ROOM].copy()
+    ui.task.run_order_original_roster = {ROOM: ORIGINAL.copy()}
+    ui.task.run_order_restore_pending = True
+    ui.task.prepare_run_order_restoration()
+    ui.apply_after = 100
+    observed = []
+
+    def read(rows):
+        observed.append(rows)
+        if len(observed) > 1 and interrupted == "read":
+            raise solver_utils.ObservationTimeout("本次驻员实读中断")
+        return rows
+
+    find = ui.solver.find.side_effect
+
+    def page(name, *args, **kwargs):
+        if name == "connecting" and observed and interrupted == "network":
+            return True
+        return find(name, *args, **kwargs)
+
+    ui.read_transform = read
+    ui.solver.find.side_effect = page
+    ui.solver.waiting_solver = MagicMock(
+        side_effect=solver_utils.ObservationTimeout("联网观察中断")
+    )
+
+    with pytest.raises(base_schedule.RunOrderConfirmationUnresolved):
+        ui.solver.agent_arrange(ui.task.plan)
+
+    assert observed[0] == [{"agent": name} for name in ui.physical]
+    assert ui.solver.choose_agent.call_count == 1
+    assert len(ui.clicks) == 4
+    assert ui.task.run_order_confirmation_pending["exhausted"]
+    assert ui.task.plan == {ROOM: ORIGINAL}
+    assert ui.task.execution_failure
+    ui.solver.accept_order.assert_not_called()
+
+
+def test_refresh_at_deadline_requires_new_complete_roster_before_reselection(
+    confirmation, monkeypatch
+):
+    ui = confirmation
+    ui.physical = ui.task.plan[ROOM].copy()
+    ui.task.run_order_original_roster = {ROOM: ORIGINAL.copy()}
+    ui.task.run_order_restore_pending = True
+    ui.task.prepare_run_order_restoration()
+    original_time = ui.task.time
+    ui.apply_after = 100
+    observations = []
+    expired_refresh = []
+    update = ui.solver.recog.update.side_effect
+
+    def read(rows):
+        observations.append(bool(expired_refresh))
+        return [{**row, "observed": False} for row in rows] if expired_refresh else rows
+
+    def refresh():
+        update()
+        deadline = ui.solver.__dict__.get("_observation_deadline")
+        if observations and deadline is not None and ui.clock.seconds >= deadline:
+            expired_refresh.append(ui.clock.seconds)
+
+    ui.read_transform = read
+    ui.solver.recog.update.side_effect = refresh
+    monkeypatch.setattr(solver_utils, "csleep", ui.solver.sleep.side_effect)
+    ui.solver.sleep = solver_utils.BaseSolver.sleep.__get__(ui.solver)
+
+    with pytest.raises(base_schedule.RunOrderConfirmationUnresolved):
+        ui.solver.agent_arrange(ui.task.plan)
+
+    assert observations[0] is False and observations[-1] is True
+    assert expired_refresh
+    assert ui.solver.choose_agent.call_count == 1
+    assert len(ui.clicks) == 4
+    assert ui.task.time == original_time
+    assert ui.task.plan == {ROOM: ORIGINAL}
+    assert ui.task.run_order_restore_pending
+    assert ui.task.run_order_confirmation_pending["exhausted"]
+    assert ui.task.execution_failure
+    ui.solver.accept_order.assert_not_called()
+    ui.solver.drone.assert_not_called()
+
+
 def test_normal_confirmed_target_does_not_wait_out_allowance(confirmation):
     ui = confirmation
     ui.apply_after = 0

@@ -3923,6 +3923,12 @@ class SchedulerTask:
 
     @property
     def display_name(self):
+        if (
+            self.type == TaskTypes.RUN_ORDER
+            and getattr(self, "run_order_restore_pending", False)
+            and not self.meta_data
+        ):
+            return "恢复原班"
         if self.type in MAINTENANCE_TASK_TYPES:
             mode = "提前准备" if self.maintenance_info.prepare else "直接暂停"
             if self.type == TaskTypes.SERVER_UPDATE:
