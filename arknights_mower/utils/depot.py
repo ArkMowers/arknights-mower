@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from arknights_mower.data import key_mapping, workshop_formula
-from arknights_mower.solvers.record import save_inventory_counts
+from arknights_mower.solvers.record import get_inventory_counts, save_inventory_counts
 from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.csv_utils import (
     EmptyDataError,
@@ -13,6 +13,15 @@ from arknights_mower.utils.csv_utils import (
 )
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
+
+
+def cloud_material_names():
+    """Return local material names initialized by a Skland snapshot."""
+    return tuple(
+        name
+        for name, entry in key_mapping.items()
+        if name == entry[2] and entry[3] == "MATERIAL"
+    )
 
 
 def cloud_inventory_snapshot(payload):
@@ -27,11 +36,7 @@ def cloud_inventory_snapshot(payload):
         return {}, 0
     # Skland supplies material inventory; basic/consumable categories are scanned
     # in-game. Never synthesize zero counts for those unreported categories.
-    counts = {
-        name: 0
-        for name, entry in key_mapping.items()
-        if name == entry[2] and entry[3] == "MATERIAL"
-    }
+    counts = dict.fromkeys(cloud_material_names(), 0)
     for item in items:
         entry = key_mapping.get(item["id"])
         if entry is not None:
@@ -407,7 +412,12 @@ def 读取仓库(记录快照时刻=None):
         cloud_counts=cloud_counts,
         cloud_at=cloud_at,
     )
-    新物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
+    快照物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
+    新物品 = {
+        name: count
+        for name, count in get_inventory_counts().items()
+        if name in key_mapping
+    }
     新物品json = {key_mapping[name][0]: count for name, count in 新物品.items()}
     sort = {
         "A常用": [
@@ -568,7 +578,7 @@ def 读取仓库(记录快照时刻=None):
 
     # 合并库存包含信物，不包含页面派生条目。
     if 记录快照时刻 is not None:
-        记录合并快照(记录快照时刻, 新物品)
+        记录合并快照(记录快照时刻, 快照物品)
 
     return [
         classified_data,

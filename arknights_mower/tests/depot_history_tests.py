@@ -47,7 +47,14 @@ def test_common_resources_include_gold_and_orundum_shards(tmp_path, monkeypatch)
         "@app/tmp/depotresult.csv": tmp_path / "depotresult.csv",
     }
     monkeypatch.setattr(module, "get_path", lambda key: paths[key])
-    monkeypatch.setattr(module, "save_inventory_counts", lambda counts, **_: counts)
+    inventory = {}
+
+    def save(counts, **_):
+        inventory.update(counts)
+        return counts
+
+    monkeypatch.setattr(module, "save_inventory_counts", save)
+    monkeypatch.setattr(module, "get_inventory_counts", lambda: inventory.copy())
     paths["@app/tmp/cultivate.json"].write_text(
         '{"data": {"items": []}}', encoding="utf-8"
     )

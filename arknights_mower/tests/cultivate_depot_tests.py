@@ -807,6 +807,86 @@ def completed_manual_goal(syncer, monkeypatch):
     }
 
 
+@pytest.mark.parametrize("completion", ["manual", "mastery", "unfinished"])
+@pytest.mark.parametrize("partial_scan", [False, True])
+def test_growth_sync_preserves_scan_only_items_in_warehouse(
+    syncer,
+    stock_db,
+    completed_manual_goal,
+    monkeypatch,
+    tmp_path,
+    completion,
+    partial_scan,
+):
+    import csv
+    from threading import Event
+
+    from arknights_mower.utils import config, depot, growth, mastery_db
+
+    monkeypatch.setattr(
+        depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(depot, "_快照行缓存", None)
+    monkeypatch.setattr(stock_db, "workshop_inventory_changed", Event())
+    monkeypatch.setattr(config, "wake_scheduler", Event())
+    scanned = {
+        "至纯源石": 17,
+        "合成玉": 1200,
+        "高级凭证": 25,
+        "资质凭证": 85,
+        "招聘许可": 33,
+        "十连寻访凭证": 2,
+        "寻访凭证": 5,
+    }
+    stock_db.save_inventory_counts({**scanned, "龙门币": 999})
+    with (tmp_path / "depotresult.csv").open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp", "Data", "json"])
+        writer.writerow([100, json.dumps(scanned, ensure_ascii=False), "{}"])
+    syncer.record_path.write_text(
+        json.dumps({"data": {"items": [{"id": "30064", "count": "9"}]}}),
+        encoding="utf-8",
+    )
+    before = depot.读取仓库()[0]
+    assert {name: before["A常用"][name]["number"] for name in scanned} == scanned
+    assert before["D稀有度4"]["改量装置"]["number"] == 9
+    if partial_scan:
+        with (tmp_path / "depotresult.csv").open(
+            "a", encoding="utf-8", newline=""
+        ) as f:
+            csv.writer(f).writerow([150, json.dumps({"至纯源石": 17}), "{}"])
+
+    if completion == "mastery":
+        growth.get_path("@app/config/growth_plan.json").write_text(
+            "[]", encoding="utf-8"
+        )
+        plan_id = mastery_db.insert_plan("char_test", 0, 3)
+        mastery_db.update_plan_status(plan_id, "training")
+        completed_manual_goal["data"]["characters"][0]["skills"] = [{"level": 3}]
+    elif completion == "unfinished":
+        completed_manual_goal["data"]["characters"][0]["mainSkillLevel"] = 6
+    completed_manual_goal["data"]["items"].append({"id": "30064", "count": "0"})
+
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = completed_manual_goal
+        assert syncer.start(force_inventory=True)
+
+    current = stock_db.get_inventory_counts()
+    assert {name: current.get(name) for name in scanned} == scanned
+    after = depot.读取仓库()[0]
+    assert {name: after["A常用"][name]["number"] for name in scanned} == scanned
+    assert after["D稀有度4"]["改量装置"]["number"] == 0
+    assert current["技巧概要·卷3"] == 7
+    if completion != "unfinished":
+        assert "龙门币" not in current
+    if completion == "mastery":
+        assert mastery_db.get_plan_by_id(plan_id)["status"] == "completed"
+    elif completion == "unfinished":
+        assert growth.load_goals() == [{"char_id": "char_test", "module_id": "skill7"}]
+    else:
+        assert growth.load_goals() == []
+
+
 def test_completed_manual_goal_calibrates_old_stock_and_invalidates_unreported_counts(
     syncer, stock_db, completed_manual_goal
 ):
@@ -829,6 +909,22 @@ def test_completed_manual_goal_calibrates_old_stock_and_invalidates_unreported_c
     assert "龙门币" not in stock_db.get_inventory_counts()
 
 
+def test_completed_goal_sync_keeps_explicit_zero_for_reported_currencies(
+    syncer, stock_db, completed_manual_goal
+):
+    stock_db.save_inventory_counts({"龙门币": 999, "采购凭证": 90, "合成玉": 1200})
+    completed_manual_goal["data"]["items"].extend(
+        [{"id": "4001", "count": "0"}, {"id": "4006", "count": "0"}]
+    )
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = completed_manual_goal
+        assert syncer.start(force_inventory=True)
+    current = stock_db.get_inventory_counts()
+    assert current["龙门币"] == 0
+    assert current["采购凭证"] == 0
+    assert current["合成玉"] == 1200
+
+
 @pytest.mark.parametrize("force_inventory", [False, True])
 def test_completion_without_inventory_never_keeps_old_counts_as_confirmed(
     syncer, stock_db, completed_manual_goal, force_inventory
@@ -836,7 +932,7 @@ def test_completion_without_inventory_never_keeps_old_counts_as_confirmed(
     from arknights_mower.utils import growth
 
     del completed_manual_goal["data"]["items"]
-    stock_db.save_inventory_counts({"技巧概要·卷3": 70, "龙门币": 999})
+    stock_db.save_inventory_counts({"技巧概要·卷3": 70, "龙门币": 999, "合成玉": 1200})
     syncer.record_path.write_text('{"previous": true}')
     with patch.object(module, "request_with_retry") as get:
         get.return_value.json.return_value = completed_manual_goal
@@ -850,7 +946,76 @@ def test_completion_without_inventory_never_keeps_old_counts_as_confirmed(
         else:
             assert syncer.start()
             assert growth.load_goals() == []
-    assert stock_db.get_inventory_counts() == {}
+    assert stock_db.get_inventory_counts() == {"合成玉": 1200}
+
+
+def test_previously_invalidated_scan_only_stock_requires_a_new_scan(
+    syncer, stock_db, completed_manual_goal, monkeypatch, tmp_path
+):
+    import csv
+
+    from arknights_mower.utils import depot
+
+    monkeypatch.setattr(
+        depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(depot, "_快照行缓存", None)
+    with stock_db._conn() as conn:
+        conn.execute(
+            "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?)",
+            ("合成玉", 150),
+        )
+        conn.commit()
+    path = tmp_path / "depotresult.csv"
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp", "Data", "json"])
+        writer.writerow([100, json.dumps({"合成玉": 1200}), "{}"])
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = completed_manual_goal
+        assert syncer.start(force_inventory=True)
+
+    depot.读取仓库()
+    assert "合成玉" not in stock_db.get_inventory_counts()
+    with path.open("a", encoding="utf-8", newline="") as f:
+        csv.writer(f).writerow([300, json.dumps({"合成玉": 1300}), "{}"])
+    after = depot.读取仓库()[0]
+    assert after["A常用"]["合成玉"]["number"] == 1300
+    assert stock_db.get_inventory_counts()["合成玉"] == 1300
+
+
+def test_partial_scan_does_not_record_unmarked_stock_as_new_history(
+    syncer, stock_db, completed_manual_goal, monkeypatch, tmp_path
+):
+    import csv
+
+    from arknights_mower.utils import depot
+
+    monkeypatch.setattr(
+        depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(depot, "_快照行缓存", None)
+    stock_db.save_inventory_counts({"龙门币": 999})
+    syncer.record_path.write_text(
+        json.dumps({"data": {"items": [], "characters": [{"id": "char_test"}]}}),
+        encoding="utf-8",
+    )
+    with (tmp_path / "depotresult.csv").open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp", "Data", "json"])
+        writer.writerow([250, json.dumps({"碳": 10}), "{}"])
+
+    def respond(*args, **kwargs):
+        if "/cultivate/player" in args[1]:
+            view = depot.读取仓库(记录快照时刻=250)[0]
+            assert view["A常用"]["龙门币"]["number"] == 999
+        return SimpleNamespace(json=lambda: completed_manual_goal)
+
+    monkeypatch.setattr(module, "request_with_retry", respond)
+    assert syncer.start(force_inventory=True)
+    assert "龙门币" not in stock_db.get_inventory_counts()
+    depot.restore_cached_inventory()
+    assert "龙门币" not in stock_db.get_inventory_counts()
 
 
 def test_completion_calibration_preserves_changes_confirmed_during_request(

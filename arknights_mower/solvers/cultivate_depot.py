@@ -109,6 +109,15 @@ class cultivate:
                 calibrate = bool(completed) or has_synced_mastery_completion(
                     resp["data"]
                 )
+                invalidation_scope = None
+                if calibrate:
+                    from arknights_mower.utils.depot import cloud_material_names
+
+                    # 养成可能消耗龙门币或采购凭证，它们不属于 MATERIAL。
+                    invalidation_scope = set(cloud_material_names()) | {
+                        "龙门币",
+                        "采购凭证",
+                    }
                 if force_inventory and items is None:
                     if calibrate:
                         from arknights_mower.solvers.record import save_inventory_counts
@@ -120,6 +129,7 @@ class cultivate:
                             cloud_at=observed_at,
                             force_cloud=True,
                             invalidate_missing=True,
+                            invalidation_scope=invalidation_scope,
                         )
                     raise ValueError("森空岛未返回库存，无法完成库存同步")
 
@@ -149,6 +159,7 @@ class cultivate:
                         cloud_at=observed_at if calibrate else timestamp,
                         force_cloud=force_inventory or calibrate,
                         invalidate_missing=calibrate,
+                        invalidation_scope=invalidation_scope,
                     )
                 if completed:
                     remove_completed_goals(resp["data"], skills)
