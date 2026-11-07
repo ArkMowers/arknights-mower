@@ -62,6 +62,8 @@ const state = vi.hoisted(() => ({
   router: null,
   mobile: null,
   preview: null,
+  previewOptions: null,
+  realPreview: false,
   configurationMounts: 0
 }))
 
@@ -105,9 +107,15 @@ vi.mock('@/task-workflow/TaskConfiguration.vue', () => ({
     }
   })
 }))
-vi.mock('@/utils/screenshotPreview', () => ({
-  createScreenshotPreview: () => state.preview
-}))
+vi.mock('@/utils/screenshotPreview', async (original) => {
+  const actual = await original()
+  return {
+    createScreenshotPreview: (options) => {
+      state.previewOptions = options
+      return state.realPreview ? actual.createScreenshotPreview(options) : state.preview
+    }
+  }
+})
 
 describe('log page', () => {
   let scope
@@ -159,6 +167,7 @@ describe('log page', () => {
     state.router = { push: vi.fn(), replace: vi.fn() }
     state.mobile = ref(false)
     state.preview = { start: vi.fn(), stop: vi.fn() }
+    state.realPreview = false
     vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) })
     const documentTarget = Object.assign(new EventTarget(), {
       hidden: false,
@@ -2411,6 +2420,70 @@ describe('log page', () => {
     }))
   }
 
+  it.each([false, true])(
+    'restores the whole log workspace before refresh replies after a route return (mobile=%s)',
+    async (mobile) => {
+      vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
+      state.realPreview = true
+      state.mobile.value = mobile
+      state.mower.refs.running.value = true
+      state.config.report_enable = true
+      state.mower.refs.task_list.value = [{ time: '2026-11-08T14:20:00', plan: {}, type: '跑单' }]
+      vi.stubGlobal(
+        'Image',
+        class {
+          naturalWidth = 4
+          naturalHeight = 3
+          decode() {
+            return Promise.resolve()
+          }
+        }
+      )
+      const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:first-frame')
+      const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+      state.client.get.mockImplementation(async (url) =>
+        url.endsWith('/screenshot/latest')
+          ? { status: 200, data: new Blob(['frame']), headers: { etag: 'first' } }
+          : {
+              data: url.endsWith('/daily-status')
+                ? { game_day: '2026-11-08', source: 'live', records: { report: 'done' } }
+                : {}
+            }
+      )
+      const first = mountWidePane(mobile ? 390 : 1290)
+      onMounted.mock.lastCall[0]()
+      first.page.apply_log_layout()
+      if (mobile) first.page.daily_view_selected = true
+      await vi.advanceTimersByTimeAsync(0)
+      expect(dailyStrip(first).items()).toEqual([['读取基报', 'done']])
+      expect(callsTo('/screenshot/latest')).toHaveLength(1)
+      expect(first.page.sc_blob).toBe('blob:first-frame')
+      onUnmounted.mock.lastCall[0]()
+      app.unmount()
+      expect(revokeUrl).toHaveBeenCalledWith('blob:first-frame')
+      state.client.get.mockImplementation(() => new Promise(() => {}))
+
+      const returned = mountWidePane(mobile ? 390 : 1290)
+      onMounted.mock.lastCall[0]()
+      returned.page.apply_log_layout()
+      await nextTick()
+
+      expect(returned.all().some((target) => target.props.src === 'blob:first-frame')).toBe(true)
+      expect(returned.all().some((target) => target.props.class === 'task-table-scroll')).toBe(true)
+      expect(dailyStrip(returned).items()).toEqual([['读取基报', 'done']])
+      expect(returned.classes(returned.pane)).not.toContain('log-pane--reveal')
+      expect(state.mower.start_task_polling).toHaveBeenCalledTimes(2)
+      expect(state.mower.stop_task_polling).toHaveBeenCalledOnce()
+      returned.page.sc_preview = false
+      await nextTick()
+      expect(returned.page.workspace.screenshot).toBeNull()
+      expect(returned.all().some((target) => target.props.class === 'log-screenshot')).toBe(false)
+      onUnmounted.mock.lastCall[0]()
+      createUrl.mockRestore()
+      revokeUrl.mockRestore()
+    }
+  )
+
   function dailyStrip(workspace) {
     const strip = () =>
       workspace
@@ -2426,6 +2499,82 @@ describe('log page', () => {
         ])
     return { strip, items }
   }
+
+  it.each(['stop and restart', 'new game day', 'failed refresh', 'saved response'])(
+    'invalidates restored daily status after %s',
+    async (reason) => {
+      vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
+      state.mower.refs.running.value = true
+      state.config.report_enable = true
+      mockDailyStatus(() => ({
+        game_day: '2026-11-08',
+        source: 'live',
+        records: { report: 'done' }
+      }))
+      const first = mountWidePane()
+      onMounted.mock.lastCall[0]()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(dailyStrip(first).items()).toEqual([['读取基报', 'done']])
+      onUnmounted.mock.lastCall[0]()
+      app.unmount()
+      if (reason === 'stop and restart') {
+        state.mower.refs.running.value = false
+        state.mower.refs.running.value = true
+      } else if (reason === 'new game day') {
+        vi.setSystemTime(new Date('2026-11-08T20:00:00Z'))
+      }
+      let resolveDaily, rejectDaily
+      state.client.get.mockImplementation((url) =>
+        url.endsWith('/daily-status')
+          ? new Promise((resolve, reject) => {
+              resolveDaily = resolve
+              rejectDaily = reject
+            })
+          : Promise.resolve({ data: {} })
+      )
+      const returned = mountWidePane()
+      onMounted.mock.lastCall[0]()
+      await nextTick()
+      if (['stop and restart', 'new game day'].includes(reason)) {
+        expect(dailyStrip(returned).strip()).toBeUndefined()
+      } else {
+        expect(dailyStrip(returned).items()).toEqual([['读取基报', 'done']])
+        if (reason === 'failed refresh') rejectDaily(new Error('synthetic failure'))
+        else resolveDaily({ data: { source: 'saved', records: { report: 'done' } } })
+        await vi.advanceTimersByTimeAsync(0)
+        expect(dailyStrip(returned).strip()).toBeUndefined()
+      }
+      onUnmounted.mock.lastCall[0]()
+    }
+  )
+
+  it('returns to the running log when the worker stops while its mobile daily view is away', async () => {
+    vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
+    state.mobile.value = true
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    mockDailyStatus(() => ({
+      game_day: '2026-11-08',
+      source: 'live',
+      records: { report: 'done' }
+    }))
+    const first = mountWidePane(390)
+    onMounted.mock.lastCall[0]()
+    first.page.daily_view_selected = true
+    await vi.advanceTimersByTimeAsync(0)
+    expect(first.page.daily_view_visible).toBe(true)
+    onUnmounted.mock.lastCall[0]()
+    app.unmount()
+    state.mower.refs.running.value = false
+    state.mower.refs.running.value = true
+    const returned = mountWidePane(390)
+    onMounted.mock.lastCall[0]()
+    await nextTick()
+    expect(returned.page.daily_view_selected).toBe(false)
+    expect(returned.page.daily_view_visible).toBe(false)
+    expect(returned.page.daily_status).toBeNull()
+    onUnmounted.mock.lastCall[0]()
+  })
 
   it('hides the entire checklist without an enabled task that has a daily record', async () => {
     state.mower.refs.running.value = true

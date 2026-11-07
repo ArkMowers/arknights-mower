@@ -30,6 +30,17 @@ describe('log layout clamping', () => {
     expect(task).toBeLessThan(600)
   })
 
+  it('reserves the taller mobile handles without covering screenshot, tasks or log', () => {
+    const paneHeight = 400
+    const handleHeight = 24
+    const logHeight = 134
+    const bottomReserve = logHeight + handleHeight
+    const screenshot = clampScreenshotHeight(500, paneHeight, bottomReserve, 500, handleHeight)
+    const task = clampTaskHeight(500, paneHeight - screenshot - handleHeight, bottomReserve)
+    expect(screenshot + task + logHeight + 2 * handleHeight).toBeLessThanOrEqual(paneHeight)
+    expect(task).toBeGreaterThanOrEqual(90)
+  })
+
   it('reclamps saved sizes when a previously large container becomes smaller', () => {
     const bottomReserve = 180
     const largeScreenshot = clampScreenshotHeight(500, 1200, bottomReserve)

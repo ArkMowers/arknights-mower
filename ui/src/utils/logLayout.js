@@ -21,12 +21,18 @@ function clamp(value, minimum, maximum) {
   return Math.round(Math.max(min, Math.min(max, Number(value) || 0)))
 }
 
-export function clampScreenshotHeight(value, containerHeight, bottomReserve, stackedFit) {
+export function clampScreenshotHeight(
+  value,
+  containerHeight,
+  bottomReserve,
+  stackedFit,
+  resizerHeight = RESIZER_HEIGHT
+) {
   const widthFit = Number.isFinite(stackedFit) ? stackedFit : Infinity
   const maximum = Math.min(
     SCREENSHOT_MAX_HEIGHT,
     containerHeight * 0.55,
-    containerHeight - bottomReserve - PANE_MIN_HEIGHT - RESIZER_HEIGHT,
+    containerHeight - bottomReserve - PANE_MIN_HEIGHT - resizerHeight,
     widthFit
   )
   return clamp(value, PANE_MIN_HEIGHT, maximum)
