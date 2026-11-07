@@ -1,6 +1,12 @@
+import os
 import platform
 import sys
 from pathlib import Path
+
+if sys.platform == "win32":
+    # Configure before importing cv2; native OpenCL cleanup can hang on Windows
+    # after application resources have already closed. Helpers inherit this.
+    os.environ.setdefault("OPENCV_OPENCL_RUNTIME", "disabled")
 
 __version__ = "4.1.6-alpha.14"
 __release_system__ = ""
