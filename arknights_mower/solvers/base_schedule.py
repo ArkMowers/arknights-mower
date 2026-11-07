@@ -1183,6 +1183,15 @@ class BaseSchedulerSolver(
                 # 实读完成或任务本身是读取前置时，不保留旧门控的观察挂起。
                 task.__dict__.pop("startup_observation_pending", None)
             failure = getattr(task, "execution_failure", None)
+            if (
+                failure
+                and (refresh := getattr(task, "maa_refresh_until", None)) is not None
+                and datetime.now() >= refresh
+            ):
+                del task.execution_failure
+                del task.maa_refresh_until
+                task.execution_retained = True
+                continue
             if failure:
                 from arknights_mower.utils.retained_recovery import (
                     completed_ordinary_rest_request,
@@ -17670,7 +17679,7 @@ class BaseSchedulerSolver(
         elif msg == 10002:
             task.update(completed=True, finished=True)
 
-    def run_maa_event_shop(self, deadline):
+    def run_maa_event_shop(self, deadline, *, manual=False):
         from time import monotonic
 
         from arknights_mower.solvers.event_shop import EventShopNavigation
@@ -17688,6 +17697,15 @@ class BaseSchedulerSolver(
 
         if config.stop_mower.is_set():
             raise MowerExit
+
+        def defer_for_refresh():
+            if (refresh := self._maa_refresh_deadline()) is not None:
+                self._defer_maa_event_shop_for_refresh(refresh, manual=manual)
+                return True
+            return False
+
+        if defer_for_refresh():
+            return False
         if (
             config.stop_maa.is_set()
             or (deadline() - datetime.now()).total_seconds() <= 300
@@ -17742,6 +17760,8 @@ class BaseSchedulerSolver(
             raise MowerExit
         if config.stop_maa.is_set():
             return
+        if defer_for_refresh():
+            return False
         with backup_lock:
             if manager.get_active_plan_revision() != task[
                 "revision"
@@ -17750,10 +17770,14 @@ class BaseSchedulerSolver(
                 return
         try:
             self.initialize_maa()
+            if defer_for_refresh():
+                return False
             task["id"] = self.MAA.append_task("Custom", shop_params(settings))
             if not task["id"]:
                 raise ValueError("MAA 未接受活动商店任务，请检查核心与资源版本")
             self.maa_event_shop_task = task
+            if defer_for_refresh():
+                return False
             if not self.MAA.start():
                 raise ValueError("MAA 活动商店任务启动失败")
             while self.MAA.running():
@@ -18388,6 +18412,68 @@ class BaseSchedulerSolver(
             or getattr(conf, "PARADOX", False)
         )
 
+    def _maa_refresh_deadline(self):
+        """用同一次观测判断禁启时段并返回其结束时间。"""
+        from arknights_mower.utils.news_checker import NewsChecker
+
+        now = datetime.now()
+        refresh = NewsChecker.get_daily_reset(now).start
+        return refresh if now >= refresh - timedelta(minutes=15) else None
+
+    def _defer_maa_event_shop_for_refresh(self, refresh, *, manual=False):
+        """将商店保留为独立剩余步骤，不重复执行已完成日常。"""
+        if manual:
+            pending = self.task
+            steps = getattr(pending, "manual_steps", ["maa_event_shop"])
+            if steps and steps[0] == "maa_daily":
+                steps[0] = "maa_event_shop"
+            pending.manual_steps = steps
+        else:
+            pending = next(
+                (
+                    task
+                    for task in self.tasks
+                    if task.type == TaskTypes.DAILY
+                    and task.meta_data == "maa_event_shop_refresh"
+                ),
+                None,
+            )
+            if pending is None:
+                pending = SchedulerTask(
+                    time=datetime.now(),
+                    task_type=TaskTypes.DAILY,
+                    meta_data="maa_event_shop_refresh",
+                )
+                pending.manual_steps = ["maa_event_shop"]
+                self.tasks.append(pending)
+        pending.maa_daily_completion_pending = True
+        pending.maa_refresh_until = refresh
+        self._defer_maa_for_refresh(refresh)
+        self._retain_failed_task(
+            pending, "等待每日刷新后兑换活动商店", [], dependency=True
+        )
+
+    def _defer_maa_for_refresh(self, refresh, *, manual=False):
+        """按每日刷新的确定时间恢复 MAA，不改变原任务时间。"""
+        if manual:
+            self.task.maa_refresh_until = refresh
+        if refresh > datetime.now() and not any(
+            getattr(task, "meta_data", "") == "maa_daily_refresh"
+            and task.time == refresh
+            for task in self.tasks
+        ):
+            self.tasks.append(
+                SchedulerTask(time=refresh, meta_data="maa_daily_refresh")
+            )
+            self.tasks.sort(
+                key=lambda task: (
+                    bool(getattr(task, "execution_failure", None)),
+                    task.time,
+                )
+            )
+        logger.info("每日刷新前 15 分钟不启动 MAA，刷新后继续")
+        return False
+
     def maa_plan_solver(
         self,
         tasks="All",
@@ -18416,6 +18502,13 @@ class BaseSchedulerSolver(
             running_long_task = False
             long_limit = datetime.now() + timedelta(hours=24)
 
+            refresh_deferred = False
+
+            def defer_refresh(refresh):
+                nonlocal refresh_deferred
+                refresh_deferred = True
+                return self._defer_maa_for_refresh(refresh, manual=manual)
+
             def deadline():
                 if manual:
                     return manual_task_deadline(self)
@@ -18426,10 +18519,16 @@ class BaseSchedulerSolver(
             def large_task_start_allowed():
                 if config.stop_mower.is_set():
                     raise MowerExit
+                if (refresh := self._maa_refresh_deadline()) is not None:
+                    defer_refresh(refresh)
+                    return False
                 return (
                     not config.stop_maa.is_set()
                     and (deadline() - datetime.now()).total_seconds() > 30
                 )
+
+            if (refresh := self._maa_refresh_deadline()) is not None:
+                return defer_refresh(refresh)
 
             record_execution = not one_time and (
                 not manual or tasks == "All" or "Fight" in tasks
@@ -18496,6 +18595,9 @@ class BaseSchedulerSolver(
                     else:
                         self.append_maa_task(maa_task)
                 self.append_maa_theme_task()
+                if (refresh := self._maa_refresh_deadline()) is not None:
+                    self.maa_stop()
+                    return defer_refresh(refresh)
                 self.MAA.start()
                 stop_time = None
                 if one_time:
@@ -18553,7 +18655,8 @@ class BaseSchedulerSolver(
                         getattr(config.conf, "maa_event_shop", None), "enable", False
                     ):
                         shop_started = True
-                        self.run_maa_event_shop(deadline)
+                        if self.run_maa_event_shop(deadline, manual=manual) is False:
+                            return False
                     logger.info("记录MAA 本次执行时间")
                     self.last_execution["maa"] = datetime.now()
                     logger.info(self.last_execution["maa"])
@@ -18591,6 +18694,8 @@ class BaseSchedulerSolver(
                 )
             )
             running_long_task = True
+            if selected_long and (refresh := self._maa_refresh_deadline()) is not None:
+                return defer_refresh(refresh)
             if selected_long and deadline() - datetime.now() < timedelta(seconds=30):
                 selected_long = None
             now_time = datetime.now().time()
@@ -18642,6 +18747,8 @@ class BaseSchedulerSolver(
                         raise MowerExit
                     if config.stop_maa.is_set():
                         break
+                    if (refresh := self._maa_refresh_deadline()) is not None:
+                        return defer_refresh(refresh)
                     self.release_maa()
                     if not paradox:
                         self.initialize_maa()
@@ -19051,6 +19158,9 @@ class BaseSchedulerSolver(
                         continue
                     break
 
+                if refresh_deferred:
+                    return False
+
             elif manual or not rg_sleep:
                 if selected_long == "ra":
                     self.back_to_index()
@@ -19067,6 +19177,8 @@ class BaseSchedulerSolver(
                     finally:
                         resume_dorm_releases(self)
 
+            if not manual and (refresh := self._maa_refresh_deadline()) is not None:
+                defer_refresh(refresh)
             self.release_maa()
         except MowerExit:
             try:
