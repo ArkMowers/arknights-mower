@@ -107,22 +107,22 @@ it.each([true, false])(
         result.simulationReport.production.expected.output.exp,
         6
       )
-      expect(result.simulationReport.production.expected.droneGenerated).toBeCloseTo(
-        result.stability.drones.generated,
-        6
-      )
+      expect(result.simulationReport.production.expected.droneGenerated).toBeGreaterThan(0)
+      expect(result.stability.drones).toBeUndefined()
       expect(result.orderDistribution.rows[2].count).toBe(0)
     } else {
       expect(result.simulationReport.production.assumptions.seed).toBe(42)
       expect(sampled.every((event) => !event.order.expectationComponents)).toBe(true)
     }
-    const drones = result.stability.drones
-    expect(drones.consumed).toBeGreaterThan(0)
-    expect(drones.closing).toBeCloseTo(
-      drones.opening + drones.generated - drones.overflow - drones.consumed,
-      6
-    )
-    expect(drones.consumed).toBeCloseTo(result.resources.outflows.drone, 6)
+    if (!expectationMode) {
+      const drones = result.stability.drones
+      expect(drones.consumed).toBeGreaterThan(0)
+      expect(drones.closing).toBeCloseTo(
+        drones.opening + drones.generated - drones.overflow - drones.consumed,
+        6
+      )
+      expect(drones.consumed).toBeCloseTo(result.resources.outflows.drone, 6)
+    }
     expect(result.stability.roomComparisons.length).toBeGreaterThan(0)
     expect(plan).toEqual(original)
   },

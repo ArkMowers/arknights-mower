@@ -8,7 +8,7 @@ import { calculateIncome } from './incomeWorker'
 const longRun = process.env.MOWER_DRONE_LONG_TEST === '1'
 
 it(
-  'calculates the supplied drone-feedback plan with a shared threshold-controlled drone stock',
+  'calculates the supplied drone-feedback plan with a shared generated acceleration budget',
   () => {
     const original = structuredClone(plan)
     const days = longRun ? 90 : 1
@@ -26,21 +26,19 @@ it(
     expect(result.success, result.error).toBe(true)
     expect(result.observedHours).toBeCloseTo(days * 24, 6)
     const production = result.simulationReport.production
-    expect(production.assumptions.droneAllocationModel).toBe('threshold-v1')
+    expect(production.assumptions.droneAllocationModel).toBe('generated-capacity-v1')
     const spends = production.events.filter(
       (event) => event.type === 'native-manufacture-drone' && event.amount > 0
     )
-    expect(spends.length).toBeGreaterThan(0)
-    expect(spends.every((event) => event.roomId === 'room_1_2')).toBe(true)
-    expect(spends.every((event) => Number.isInteger(event.amount))).toBe(true)
+    expect(spends).toEqual([])
     expect(production.events.some((event) => event.type === 'theoretical-drone')).toBe(false)
-    const drones = production.sampleDrones
-    expect(drones.closing).toBeGreaterThanOrEqual(150)
-    expect(drones.closing).toBeCloseTo(
-      drones.opening + drones.generated - drones.overflow - drones.consumed,
+    expect(production.sampleDrones).toBeUndefined()
+    const drones = production.expected
+    expect(drones.droneGenerated).toBeGreaterThan(0)
+    expect(drones.droneGenerated).toBeCloseTo(
+      drones.droneAllocated + drones.droneUnallocated + drones.droneLost,
       6
     )
-    expect(production.expected.droneAllocated).toBeLessThanOrEqual(drones.consumed)
     expect(result.summary.totalScore82).toBeCloseTo(
       result.summary.exp +
         0.8 * (result.summary.goldValue + result.summary.virtualGoldValue) +

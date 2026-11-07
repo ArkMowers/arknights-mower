@@ -77,14 +77,6 @@ export interface MowerSourceRuntime {
  lastTrainMoodReadMicros?:number;lastWakeMicros?:number;trace:{timeMicros:number;type:string;plan:MowerTaskPlan;metadata:string}[]
 }
 const slotIndex=(id:string)=>Number(id.slice(id.lastIndexOf('_')+1))
-function nextTheoreticalDroneCheckMicros(s:RuntimeState,source:MowerSourceRuntime,rates?:RuntimeRates):number{
- if(!s.config.mowerTheoreticalMode||!s.config.mowerDroneRoom||!rates?.mowerTodoTaskIO||source.execution||source.phaseExecution)return Infinity
- const interval=s.config.mowerServices?.droneIntervalHours??3,now=source.data.nowMicros
- // A zero interval relies on new production observations, not a microsecond polling loop.
- if(interval===0&&source.droneTimeMicros===now)return Infinity
- const due=source.droneTimeMicros==null||interval===0?now:source.droneTimeMicros+toMowerMicros(interval)+1
- return due<=now&&source.queue.find({time:s.time+2/60})?Infinity:due
-}
 const isConfiguredTradeRoom=(config:RuntimeConfig,room:string)=>config.runOrderPolicies?.some(policy=>policy.roomId===room)??false
 function configuredRunOrderRoom(config:RuntimeConfig,room:string):boolean{
  return config.mowerRunOrderEnabled!==false&&room.startsWith('room')&&(config.mowerSourcePlan?.[room]??[]).some(slot=>[...slot.replacement,...(slot.groupBindings??[]).flatMap(binding=>binding.replacement)].some(id=>isTradeRunOrderOperator(id)&&((OPERATOR_MAP.get(id)?.name??id)!=='U-Official'||isConfiguredTradeRoom(config,room))))
@@ -1168,19 +1160,6 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
   else queue.ensureFallback(s.time,s.config.mowerTaskScheduling)
  }
  if(pass===256)throw new Error('Mower source task chain did not converge '+JSON.stringify({queue:queue.tasks.slice(0,4).map(t=>({type:t.type.key,plan:t.plan,time:t.time})),trace:source.trace.slice(-5)}))
- // A due drone service changes production only; it must not replan ordinary shifts.
- if(nextTheoreticalDroneCheckMicros(s,source,rates)<=source.data.nowMicros){
-  const todoState:MowerTodoTaskState={
-   queue,flags:source.runFlags!,enableParty:false,lastClueMicros:null,
-   droneRoom:s.config.mowerDroneRoom??null,runOrderRooms:[],
-   get droneTimeMicros(){return source.droneTimeMicros??null},set droneTimeMicros(value){source.droneTimeMicros=value},
-   droneIntervalHours:s.config.mowerServices?.droneIntervalHours??3,
-   reloadRooms:null,reloadTimeMicros:null,maaGapHours:3,
-  }
-  const steps=bridgeMowerNativeIO(executeMowerTodoTask(todoState,{nowMicros:()=>toMowerMicros(s.time)}),request=>rates.mowerTodoTaskIO!(request,s))
-  // Theoretical services preserve native decisions and observations at one clock.
-  while(!steps.next().done){}
- }
  queue.sort();projectPublicState(s);source.lastWakeMicros=toMowerMicros(s.time)
 }
 export function nextMowerSourceActionHours(s:RuntimeState,rates?:RuntimeRates):number {
@@ -1200,8 +1179,7 @@ export function nextMowerSourceActionHours(s:RuntimeState,rates?:RuntimeRates):n
  // New ledger or product observations may wake an idle/sleeping outer run, never an in-flight room operation.
  const observationWake=!source.execution&&!source.phaseExecution?s.mowerBackupObservationWakeMicros?.():undefined
  if(observationWake!==undefined)source.conditionWakeMicros=Math.min(source.conditionWakeMicros??Infinity,observationWake)
- const droneWake=nextTheoreticalDroneCheckMicros(s,source,rates)
- const dispatch=running??Math.min(source.queue.find()?.timeMicros??Infinity,source.planningWake?.timeMicros??Infinity,source.conditionWakeMicros??Infinity,droneWake)
+ const dispatch=running??Math.min(source.queue.find()?.timeMicros??Infinity,source.planningWake?.timeMicros??Infinity,source.conditionWakeMicros??Infinity)
  const next=Math.min(dispatch,observationWake??Infinity,!source.execution&&!source.phaseExecution?nextMowerPreviewRecoveryObservation(source):Infinity)
  return Math.max(0,(next-source.data.nowMicros)/3_600_000_000)
 }

@@ -582,7 +582,7 @@ onBeforeUnmount(() => {
             <p>
               {{
                 settings.expectationMode && !hasTailor
-                  ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按配置间隔和阈值使用。初始心情和轮换阶段仍会影响结果。'
+                  ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按生成能力和当前目标分段计算，不受无人机库存、阈值及检查间隔限制。初始心情和轮换阶段仍会影响结果。'
                   : '按概率随机抽单；固定种子留空时每次随机生成，填写后使用指定种子。结果保留本次种子以供复现。'
               }}
             </p>
@@ -865,7 +865,40 @@ onBeforeUnmount(() => {
                     </tr>
                   </tbody>
                 </n-table>
-                <p v-if="state.result.stability.drones">
+                <p
+                  v-if="
+                    state.result.simulationReport?.production?.assumptions.droneAllocationModel ===
+                    'generated-capacity-v1'
+                  "
+                >
+                  统计期无人机能力：生成
+                  {{
+                    format(state.result.simulationReport.production.expected.droneGenerated)
+                  }}，有效分配
+                  {{
+                    format(state.result.simulationReport.production.expected.droneAllocated)
+                  }}，其中切产物
+                  {{
+                    format(
+                      state.result.simulationReport.production.expected.droneSwitchAllocated ?? 0
+                    )
+                  }}；损耗
+                  {{
+                    format(state.result.simulationReport.production.expected.droneLost ?? 0)
+                  }}，未利用
+                  {{
+                    format(state.result.simulationReport.production.expected.droneUnallocated ?? 0)
+                  }}；期末待结算切产物份额
+                  {{
+                    format(
+                      state.result.simulationReport.production.expected.pendingSwitchDrones ?? 0
+                    )
+                  }}
+                  架。以上是无人机等效数量，不代表实物库存。
+                  按当前主副表生效的目标分段分配；切产物提前使用的加速份额由后续生成能力优先结算，未结算部分不计收入。
+                  原材料、驻员和有效工作继续约束产出。
+                </p>
+                <p v-else-if="state.result.stability.drones">
                   无人机期初 {{ format(state.result.stability.drones.opening) }}，期末
                   {{ format(state.result.stability.drones.closing) }}， 差额
                   {{ format(state.result.stability.drones.change) }}；期间生成
