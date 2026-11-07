@@ -34,8 +34,8 @@ LIVE_LOG_RECRUITMENT_LIMIT = 4096
 LIVE_LOG_TRUNCATION_SUFFIX = "\n[实时日志已截断，完整内容见 runtime.log]"
 LIVE_LOG_DROP_WARNING_INTERVAL = 60.0
 LIVE_LOG_DROP_WARNING_FORMAT = (
-    "实时日志队列淘汰了 %d 条记录（自上次告警以来 %d 条），"
-    "消费停滞时只保留最新记录，完整内容仍写入 runtime.log"
+    "实时日志积压，累计跳过 %d 条较早记录（本次新增 %d 条）。"
+    "原始日志可在 runtime.log 中查看。"
 )
 
 
@@ -748,7 +748,12 @@ class LatestLogQueue(Queue):
             self.dropped_since_warning = 0
             self._last_drop_warning = now
             total = self.dropped
-        logger.warning(LIVE_LOG_DROP_WARNING_FORMAT, total, since_last)
+        logger.warning(
+            LIVE_LOG_DROP_WARNING_FORMAT,
+            total,
+            since_last,
+            extra={"log_group": "runtime-log"},
+        )
 
 
 class LiveQueueHandler(QueueHandler):

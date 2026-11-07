@@ -4194,6 +4194,75 @@ const logLine = (id, text, group = null, at = null) => ({
 
 describe('log grouping, folding and scene waits', () => {
   it.each([false, true])(
+    'keeps uninterrupted technical sections across an incidental device observation, compact=%s',
+    async (compact) => {
+      const sources = ['recognition', 'recognition', 'device-control', 'recognition', 'recognition']
+      const messages = [
+        'Scene -1: 未知',
+        'Scene 9998: 场景跳转时的等待界面',
+        '游戏不在前台，正在把游戏调到前台...',
+        'Scene -1: 未知',
+        'Scene 105: 启动'
+      ]
+      const lines = sources.map((group, index) =>
+        logLine(index, `2026-11-08 00:37:3${index} INFO ${messages[index]}`, group)
+      )
+      const page = mount({ lines: [], compact })
+      for (const line of lines) {
+        page.props.lines.push(line)
+        await nextTick()
+      }
+      const replay = mount({ lines, compact })
+      for (const view of [page, replay]) {
+        expect(
+          view
+            .all()
+            .filter((entry) => hasClass(entry, 'log-group'))
+            .map(text)
+        ).toEqual(['场景识别'])
+        expect(view.rows().map((row) => row.props['data-log-source'])).toEqual(
+          lines.map((line) => line.text)
+        )
+        expect(view.props.lines.map((line) => line.group)).toEqual(sources)
+      }
+    }
+  )
+
+  it.each(['WARNING', 'ERROR'])('keeps a one-line technical %s as a visible boundary', (level) => {
+    const lines = [
+      logLine(1, 'INFO Scene -1: 未知', 'recognition'),
+      logLine(2, 'INFO Scene 9998: 等待', 'recognition'),
+      logLine(3, `${level} 设备连接已断开`, 'device-control'),
+      logLine(4, 'INFO Scene 105: 启动', 'recognition'),
+      logLine(5, 'INFO Scene 103: 登录', 'recognition')
+    ]
+    const page = mount({ lines })
+    expect(
+      page
+        .all()
+        .filter((entry) => hasClass(entry, 'log-group'))
+        .map(text)
+    ).toEqual(['场景识别', '设备连接', '场景识别'])
+    expect(page.rows()[2].props['data-log-level']).toBe(level)
+  })
+
+  it('labels log delivery warnings independently of an earlier web-service section', () => {
+    const page = mount({
+      lines: [
+        logLine(1, 'INFO 服务启动', 'web-access'),
+        logLine(2, 'INFO 客户端已连接', 'web-access'),
+        logLine(3, 'WARNING 实时日志积压', 'runtime-log')
+      ]
+    })
+    expect(
+      page
+        .all()
+        .filter((entry) => hasClass(entry, 'log-group'))
+        .map(text)
+    ).toEqual(['Web 访问', '日志显示'])
+  })
+
+  it.each([false, true])(
     'does not group startup configuration with the preceding OCR observation, concise=%s',
     (concise) => {
       const records = [

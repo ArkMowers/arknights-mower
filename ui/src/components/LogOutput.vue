@@ -1105,6 +1105,8 @@ const items = computed(() => {
   const result = []
   const dateRuns = new Map()
   let currentDate = null
+  let sectionGroup = null
+  let sectionDate = null
   let cursor = 0
   while (cursor < rows.length) {
     let end = cursor + 1
@@ -1124,7 +1126,7 @@ const items = computed(() => {
       effectiveGroups[cursor - 1] !== group
     const framed =
       group !== null &&
-      (end - cursor >= MIN_GROUP_LINES || businessSwitch) &&
+      (end - cursor >= MIN_GROUP_LINES || businessSwitch || !isOrdinary(rows[cursor])) &&
       rows
         .slice(cursor, end)
         .some(
@@ -1135,13 +1137,21 @@ const items = computed(() => {
               (facilityOwner(entry.index) === undefined || !isOrdinary(entry)) &&
               !hiddenDetail(entry))
         )
-    if (framed) {
+    if (sectionDate !== rowDates[cursor]) sectionGroup = null
+    if (framed && sectionGroup !== group) {
       // 分组用一条淡淡的隔断线标出，线上只写业务或技术来源名。
       result.push({
         key: `group:${group}:${rows[cursor].key}`,
         groupBar: group,
         meta: groupMeta(group)
       })
+    }
+    if (framed) {
+      sectionGroup = group
+      sectionDate = rowDates[cursor]
+    } else if (rows.slice(cursor, end).some((entry) => !isTechnicalObservation(entry))) {
+      // 无标题的普通技术观察不重复隔开同一段；未知来源和实际业务仍保留边界。
+      sectionGroup = null
     }
     for (let index = cursor; index < end; index += 1) {
       const entry = rows[index]
