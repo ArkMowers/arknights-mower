@@ -1118,6 +1118,7 @@ def test_operator_only_selection_can_be_read_by_real_depot_reader(storage, monke
     _create("operators only", ["operators"])
     monkeypatch.setattr(depot, "get_path", storage)
     monkeypatch.setattr(depot, "save_inventory_counts", lambda counts, **_: counts)
+    monkeypatch.setattr(depot, "get_inventory_counts", lambda: {})
     result = depot.读取仓库()
     assert isinstance(result[0], dict)
     assert json.loads(snapshot.read_text(encoding="utf-8"))["data"]["items"] == []
