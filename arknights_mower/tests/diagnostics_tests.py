@@ -576,7 +576,11 @@ class DiagnosticTimelineTests(unittest.TestCase):
                 self.assertEqual(
                     client.delete(
                         "/diagnostics/errors/123",
-                        headers={**headers, "Origin": "https://elsewhere.example"},
+                        headers={
+                            **headers,
+                            "token": "wrong",
+                            "Origin": "https://elsewhere.example",
+                        },
                     ).status_code,
                     403,
                 )
@@ -589,7 +593,7 @@ class DiagnosticTimelineTests(unittest.TestCase):
                     self.assertEqual(
                         client.delete(
                             "/diagnostics/errors/123",
-                            headers={**headers, "Origin": origin},
+                            headers={**headers, "token": "wrong", "Origin": origin},
                             base_url=base_url,
                         ).status_code,
                         403,
@@ -608,7 +612,8 @@ class DiagnosticTimelineTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     client.delete(
-                        "/diagnostics/errors/123", headers=headers
+                        "/diagnostics/errors/123",
+                        headers={**headers, "Origin": "https://mower.example:8443"},
                     ).status_code,
                     204,
                 )

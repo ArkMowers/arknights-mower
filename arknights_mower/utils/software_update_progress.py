@@ -199,13 +199,11 @@ class ProgressServers:
                 self.reply(200, result)
 
             def do_POST(self):
-                origin = self.headers.get("Origin")
                 rejection = None
                 if (
                     not self.authorized()
                     or not updates_enabled
                     or self.headers.get("X-Mower-Update") != "1"
-                    or (origin and urlparse(origin).netloc != self.headers.get("Host"))
                 ):
                     rejection = 403
                 elif self.path != "/software-update/cancel":

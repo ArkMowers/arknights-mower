@@ -1065,7 +1065,7 @@ def test_routes_validate_auth_busy_format_and_download(client):
         client.post(
             "/config-backup/import",
             data=raw,
-            headers={**headers, "Origin": "https://other.example"},
+            headers={**headers, "token": "wrong", "Origin": "https://other.example"},
         ).status_code
         == 403
     )

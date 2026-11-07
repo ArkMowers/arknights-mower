@@ -3,7 +3,6 @@
 import sqlite3
 from datetime import datetime
 from io import BytesIO
-from urllib.parse import urlparse
 
 import yaml
 from flask import Blueprint, abort, current_app, request, send_file
@@ -18,7 +17,7 @@ from arknights_mower.utils.config_backup import (
     get_backup_limit_bytes,
 )
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.web_auth import require_token
+from arknights_mower.utils.web_auth import check_request_origin, require_token
 
 config_backup_bp = Blueprint("config_backup", __name__, url_prefix="/config-backup")
 
@@ -37,9 +36,7 @@ def authorize():
     if request.method == "POST":
         if request.headers.get("X-Mower-Settings") != "1":
             abort(403)
-        origin = request.headers.get("Origin")
-        if origin and urlparse(origin).netloc != request.host:
-            abort(403)
+        check_request_origin()
         limit = get_backup_limit_bytes() + (
             65536 if request.mimetype == "multipart/form-data" else 0
         )

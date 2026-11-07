@@ -373,17 +373,29 @@ class ProgressTests(unittest.TestCase):
         }
         with get("/software-update/status", headers=headers) as response:
             self.assertEqual(json.load(response)["log"], "安装日志")
-        for path, origin, status in (
-            ("/software-update/cancel", "http://elsewhere.invalid", 403),
-            ("/unexpected", url, 404),
+        for path, token_value, status in (
+            ("/software-update/cancel", "wrong", 403),
+            ("/unexpected", token, 404),
         ):
             with self.assertRaises(HTTPError) as error:
-                get(path, headers={**headers, "Origin": origin}, data=b"{}")
+                get(
+                    path,
+                    headers={
+                        **headers,
+                        "token": token_value,
+                        "Origin": "https://mower.example:8443",
+                    },
+                    data=b"{}",
+                )
             with error.exception:
                 self.assertEqual(error.exception.code, status)
             self.assertFalse((self.state / "active/cancel.json").exists())
         data = json.dumps({"id": self.job["id"]}).encode()
-        with get("/software-update/cancel", headers=headers, data=data) as response:
+        with get(
+            "/software-update/cancel",
+            headers={**headers, "Origin": "https://mower.example:8443"},
+            data=data,
+        ) as response:
             self.assertTrue(json.load(response)["ok"])
         servers.close()
         # A replacement HTTP server can bind the exact original port immediately.
@@ -400,7 +412,11 @@ class ProgressTests(unittest.TestCase):
         for changed, path, status in (
             ({"token": "wrong"}, "/software-update/cancel", 403),
             ({"X-Mower-Update": "0"}, "/software-update/cancel", 403),
-            ({"Origin": "http://elsewhere.invalid"}, "/software-update/cancel", 403),
+            (
+                {"token": "", "Origin": "https://mower.example:8443"},
+                "/software-update/cancel",
+                403,
+            ),
             ({}, "/unexpected", 404),
         ):
             with self.subTest(changed=changed, path=path):
@@ -506,7 +522,7 @@ class ProgressTests(unittest.TestCase):
         servers.start()
         self.assertFalse(servers.servers)
 
-    def test_flask_progress_shell_is_public_but_cancel_requires_auth_and_origin(self):
+    def test_flask_progress_shell_is_public_but_cancel_requires_auth_and_header(self):
         app = Flask(__name__)
         app.token = "fixture"
         app.register_blueprint(software_update_bp)
@@ -521,9 +537,9 @@ class ProgressTests(unittest.TestCase):
                 {},
                 {"token": "fixture"},
                 {
-                    "token": "fixture",
+                    "token": "wrong",
                     "X-Mower-Update": "1",
-                    "Origin": "http://elsewhere.invalid",
+                    "Origin": "https://mower.example:8443",
                 },
             ):
                 self.assertEqual(
@@ -537,7 +553,11 @@ class ProgressTests(unittest.TestCase):
             result = client.post(
                 "/software-update/cancel",
                 json={"id": self.job["id"]},
-                headers={"token": "fixture", "X-Mower-Update": "1"},
+                headers={
+                    "token": "fixture",
+                    "X-Mower-Update": "1",
+                    "Origin": "https://mower.example:8443",
+                },
             )
             self.assertEqual(result.status_code, 200)
             self.assertTrue(result.json["ok"])
