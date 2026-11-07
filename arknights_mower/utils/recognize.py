@@ -53,6 +53,10 @@ class NetworkWaitGuard:
     allowance_remaining: float = 0
 
 
+# 已警告过尺寸不符的颜色匹配模板；元素来自 find 中固定的模板名，数量有上限。
+_mismatched_templates: set[str] = set()
+
+
 class Recognizer:
     def __init__(self, device: Device, screencap: bytes = None) -> None:
         self.device = device
@@ -954,11 +958,11 @@ class Recognizer:
         }
 
         if not force_feature_match and res in color:
-            templates = [loadres(res)]
+            templates = [(res, loadres(res))]
             if res == "clue":
                 # 灰色按钮替换旧图标，橙色按钮复用已有模板；均避开数量角标。
-                templates.append(loadres("clue/fast_place"))
-            for res_img in templates:
+                templates.append(("clue/fast_place", loadres("clue/fast_place")))
+            for name, res_img in templates:
                 if res == "depot":
                     # 限时物品标签会遮住旧模板上沿，只匹配下方固定背景，兼容现有资源包。
                     res_img = res_img[45:]
@@ -982,6 +986,15 @@ class Recognizer:
                 for pos in pos_list:
                     scope = pos, va(pos, (w, h))
                     img = cropimg(self.img, scope)
+                    # 画面边缘会截断裁剪区域，尺寸不符时 ssim 无法比较，按未找到处理。
+                    if img.shape != res_img.shape:
+                        if name not in _mismatched_templates:
+                            _mismatched_templates.add(name)
+                            logger.warning(
+                                f"颜色匹配模板 {name} 的识别位置超出画面：裁剪为 "
+                                f"{img.shape[1]}×{img.shape[0]}，模板为 {w}×{h}，按未找到处理"
+                            )
+                        continue
                     if cmatch(img, res_img, draw=draw):
                         gray = cropimg(self.gray, scope)
                         gray_res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
