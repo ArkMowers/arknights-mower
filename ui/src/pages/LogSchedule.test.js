@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { effectScope, nextTick, onMounted } from 'vue'
+import axios from 'axios'
 import {
   BlobReader,
   BlobWriter,
@@ -39,6 +40,81 @@ const deferred = () => {
   })
   return { promise, resolve, reject }
 }
+
+describe('authenticated diagnostic screenshots', () => {
+  let scope, page, requests, fetchImage, createUrl, revokeUrl
+
+  beforeEach(() => {
+    requests = []
+    fetchImage = vi.fn().mockResolvedValue(new Blob(['synthetic image'], { type: 'image/jpeg' }))
+    state.client = axios.create({
+      headers: { token: 'image-fixture-token' },
+      adapter: async (request) => {
+        requests.push(request)
+        const data = request.url.startsWith('/screenshots/')
+          ? await fetchImage(request)
+          : request.url.endsWith('/diagnostics/errors')
+            ? { events: [] }
+            : { logs: [], screenshots: ['first.jpg', 'second.jpg'] }
+        return { data, status: 200, headers: {}, config: request }
+      }
+    })
+    createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:first')
+    revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    scope = effectScope()
+    page = scope.run(() => LogSchedule.setup({}, { expose: vi.fn() }))
+  })
+
+  afterEach(() => {
+    scope.stop()
+    vi.restoreAllMocks()
+  })
+
+  it('loads image blobs with the instance token and releases them after navigation and unmount', async () => {
+    scope.run(() => onMounted.mock.calls.at(-1)[0]())
+    await vi.waitFor(() => expect(page.imageUrl.value).toBe('blob:first'))
+    const first = requests.find((request) => request.url === '/screenshots/first.jpg')
+    expect(first.headers.get('token')).toBe('image-fixture-token')
+    expect(first.responseType).toBe('blob')
+    expect(first.timeout).toBe(10000)
+    createUrl.mockReturnValue('blob:second')
+    page.moveImage(1)
+    await vi.waitFor(() => expect(page.imageUrl.value).toBe('blob:second'))
+    expect(first.signal.aborted).toBe(true)
+    expect(revokeUrl).toHaveBeenCalledWith('blob:first')
+    const second = requests.find((request) => request.url === '/screenshots/second.jpg')
+    expect(second.headers.get('token')).toBe('image-fixture-token')
+    scope.stop()
+    expect(second.signal.aborted).toBe(true)
+    expect(revokeUrl).toHaveBeenCalledWith('blob:second')
+  })
+
+  it('does not display a response for a screenshot that has already been replaced', async () => {
+    const pending = deferred()
+    fetchImage.mockReturnValueOnce(pending.promise)
+    scope.run(() => onMounted.mock.calls.at(-1)[0]())
+    await vi.waitFor(() => expect(fetchImage).toHaveBeenCalledOnce())
+    const first = requests.find((request) => request.url === '/screenshots/first.jpg')
+    createUrl.mockReturnValue('blob:second')
+    page.moveImage(1)
+    await vi.waitFor(() => expect(page.imageUrl.value).toBe('blob:second'))
+    expect(first.signal.aborted).toBe(true)
+    pending.resolve(new Blob(['old image']))
+    await nextTick()
+    await Promise.resolve()
+    expect(page.imageUrl.value).toBe('blob:second')
+    expect(createUrl).toHaveBeenCalledOnce()
+    expect(page.imageFailed.value).toBe(false)
+  })
+
+  it('shows the existing failure state when the authenticated image request fails', async () => {
+    fetchImage.mockRejectedValueOnce(new Error('synthetic request failure'))
+    scope.run(() => onMounted.mock.calls.at(-1)[0]())
+    await vi.waitFor(() => expect(page.imageFailed.value).toBe(true))
+    expect(page.imageUrl.value).toBe('')
+    expect(createUrl).not.toHaveBeenCalled()
+  })
+})
 
 async function archiveBundle(message, withScreenshots = true) {
   const writer = new ZipWriter(new BlobWriter('application/zip'), { useWebWorkers: false })

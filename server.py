@@ -2624,6 +2624,7 @@ def log(ws):
 
 
 @app.route("/screenshots/<path:filename>")
+@require_token
 def serve_screenshot(filename):
     """
     提供截图文件的访问
@@ -2839,6 +2840,7 @@ def get_screenshot_stats():
 
 
 @app.route("/latest-screenshot")
+@require_token
 def get_latest_screenshot():
     """
     返回最新截图的路径

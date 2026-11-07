@@ -256,7 +256,29 @@ def send_message(
                 email.send()
                 break
             except Exception as e:
-                logger.exception("邮件发送失败：" + str(e))
+                code = getattr(e, "smtp_code", None)
+                if type(code) is not int:
+                    code = getattr(e, "errno", None)
+                codes = {code} if type(code) is int else set()
+                if isinstance(e, smtplib.SMTPRecipientsRefused):
+                    codes.update(
+                        result[0]
+                        for result in e.recipients.values()
+                        if isinstance(result, (tuple, list))
+                        and result
+                        and type(result[0]) is int
+                    )
+                detail = (
+                    "，错误码 " + "、".join(str(code) for code in sorted(codes))
+                    if codes
+                    else ""
+                )
+                logger.error(
+                    "邮件发送失败：%s%s，第 %d/3 次尝试",
+                    type(e).__name__,
+                    detail,
+                    i + 1,
+                )
                 sleep(2**i)
 
     Thread(target=send_message_sync, args=(email,)).start()
