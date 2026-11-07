@@ -110,11 +110,15 @@ def test_refresh_start_window(run, kind, manual, instant, allowed):
 
 @pytest.mark.parametrize("kind", ["daily", "long", "single"])
 @pytest.mark.parametrize("phase", ["initialize", "append"])
-def test_preparation_crossing_window_does_not_start(run, kind, phase):
+@pytest.mark.parametrize(
+    "instant,allowed",
+    [(datetime(2026, 11, 7, 3, 45), False), (datetime(2026, 11, 7, 4), True)],
+)
+def test_preparation_rechecks_current_window(run, kind, phase, instant, allowed):
     kwargs = configure(run, kind)
 
     def advance(*args):
-        run.clock.current = datetime(2026, 11, 7, 3, 45)
+        run.clock.current = instant
         return 1
 
     target = (
@@ -126,42 +130,57 @@ def test_preparation_crossing_window_does_not_start(run, kind, phase):
     )
     target.side_effect = advance
     run.solver.maa_plan_solver(**kwargs)
-    run.solver.MAA.start.assert_not_called()
-    assert run.solver.last_execution["maa"] is None
+    assert run.solver.MAA.start.call_count == int(allowed)
+    if not allowed:
+        assert run.solver.last_execution["maa"] is None
 
 
 @pytest.mark.parametrize("kind", ["daily", "long"])
-def test_running_work_stops_before_captured_refresh(run, monkeypatch, kind):
-    kwargs = configure(run, kind, manual=True)
-    stop_at = datetime(
-        2026, 11, 7, 3, 55 if kind == "daily" else 59, 0 if kind == "daily" else 31
-    )
+@pytest.mark.parametrize("manual", [False, True])
+@pytest.mark.parametrize(
+    "observed",
+    [
+        datetime(2026, 11, 7, 3, 45),
+        datetime(2026, 11, 7, 3, 55),
+        datetime(2026, 11, 7, 3, 59, 45),
+        datetime(2026, 11, 7, 4, 0, 1),
+    ],
+)
+def test_running_work_is_not_interrupted_by_refresh(
+    run, monkeypatch, kind, manual, observed
+):
+    kwargs = configure(run, kind, manual=manual)
     running = iter([True, False])
 
     def tick():
-        run.clock.current = stop_at
+        run.clock.current = observed
         return next(running)
 
     run.solver.MAA.running.side_effect = tick
     monkeypatch.setattr(run.module, "csleep", lambda _: None)
-    assert run.solver.maa_plan_solver(**kwargs) is False
+    assert run.solver.maa_plan_solver(**kwargs)
     run.solver.MAA.start.assert_called_once()
+    run.solver.maa_stop.assert_not_called()
+    if kind == "daily":
+        assert run.solver.last_execution["maa"] == observed
+    run.io.assert_not_called()
+
+
+@pytest.mark.parametrize("kind", ["daily", "long", "single"])
+def test_original_task_deadlines_still_interrupt_running_work(run, monkeypatch, kind):
+    kwargs = configure(run, kind, manual=True)
+    running = iter([True, False])
+
+    def tick():
+        run.clock.current = datetime(2026, 11, 7, 3, 55)
+        return next(running)
+
+    run.solver.tasks[-1].time = datetime(2026, 11, 7, 3, 55, 20)
+    run.solver.MAA.running.side_effect = tick
+    monkeypatch.setattr(run.module, "csleep", lambda _: None)
+    run.solver.maa_plan_solver(**kwargs)
     run.solver.maa_stop.assert_called_once()
     assert run.solver.last_execution["maa"] is None
-    assert run.solver.task.maa_refresh_until == datetime(2026, 11, 7, 4)
-
-
-def test_run_cannot_roll_deadline_forward_after_refresh(run, monkeypatch):
-    kwargs = configure(run, "long", manual=True)
-    run.solver.MAA.running.side_effect = lambda: True
-
-    def tick(_):
-        run.clock.current = datetime(2026, 11, 7, 4, 0, 1)
-
-    monkeypatch.setattr(run.module, "csleep", tick)
-    assert run.solver.maa_plan_solver(**kwargs) is False
-    run.solver.maa_stop.assert_called_once()
-    assert not any(task.meta_data == "maa_daily_refresh" for task in run.solver.tasks)
 
 
 def test_window_uses_server_timezone(run, monkeypatch):
@@ -177,25 +196,6 @@ def test_window_uses_server_timezone(run, monkeypatch):
             for task in run.solver.tasks
         )
     time.tzset()
-
-
-def test_manual_interruption_observed_after_refresh_can_resume(run, monkeypatch):
-    configure(run, "long", manual=True)
-    solver = run.solver
-    pending = solver.task
-    solver.MAA.running.return_value = True
-
-    def tick(_):
-        run.clock.current = datetime(2026, 11, 7, 4, 0, 1)
-
-    monkeypatch.setattr(run.module, "csleep", tick)
-    assert manual_tasks.run_manual_task(solver, pending) is False
-    assert not getattr(pending, "execution_failure", None)
-    assert pending.manual_steps
-    solver.MAA.running.return_value = False
-    assert manual_tasks.run_manual_task(solver, pending)
-    assert pending.manual_steps == []
-    assert solver.MAA.start.call_count == 2
 
 
 @pytest.mark.parametrize("restore", [False, True])
@@ -270,7 +270,13 @@ def test_shop_is_not_prepared_inside_window(run):
 
 
 @pytest.mark.parametrize("phase", ["navigation", "initialize", "append"])
-def test_shop_preparation_rechecks_start_window(run, monkeypatch, phase):
+@pytest.mark.parametrize(
+    "instant,allowed",
+    [(datetime(2026, 11, 7, 3, 45), False), (datetime(2026, 11, 7, 4), True)],
+)
+def test_shop_preparation_rechecks_start_window(
+    run, monkeypatch, phase, instant, allowed
+):
     from arknights_mower.solvers.event_shop import EventShopNavigation
     from arknights_mower.utils import maa_event_shop
     from arknights_mower.utils.config import weekly_plan_loader
@@ -282,7 +288,7 @@ def test_shop_preparation_rechecks_start_window(run, monkeypatch, phase):
     monkeypatch.setattr(EventShopNavigation, "run", MagicMock(return_value=True))
 
     def advance(*args):
-        run.clock.current = datetime(2026, 11, 7, 3, 45)
+        run.clock.current = instant
         return 1
 
     target = {
@@ -291,6 +297,6 @@ def test_shop_preparation_rechecks_start_window(run, monkeypatch, phase):
         "append": run.solver.MAA.append_task,
     }[phase]
     target.side_effect = advance
-    run.solver.run_maa_event_shop(lambda: datetime(2026, 11, 7, 4))
+    run.solver.run_maa_event_shop(lambda: datetime(2026, 11, 7, 6))
     target.assert_called_once()
-    run.solver.MAA.start.assert_not_called()
+    assert run.solver.MAA.start.call_count == int(allowed)
