@@ -225,7 +225,7 @@ export function alphaPrioritizeRecovery(data:MowerSchedulingData,plan:MowerTaskP
   const source=beds.find(b=>allocations.get(alphaPosition(...b.position))===name)!
   const destination=beds.find(b=>{
    const occupant=allocations.get(alphaPosition(...b.position))??''
-   return !placed.has(occupant)&&singleRecoveryBedCost(b,allBeds)<singleRecoveryBedCost(source,allBeds)&&(!occupant||tier(occupant)===tier(name))
+   return !placed.has(occupant)&&singleRecoveryBedCost(b,allBeds)<singleRecoveryBedCost(source,allBeds)&&(!occupant||alphaRestingTier(projected,occupant)===alphaRestingTier(projected,name))
   })
   if(destination){const sourceKey=alphaPosition(...source.position),targetKey=alphaPosition(...destination.position);allocations.set(sourceKey,allocations.get(targetKey)??'');allocations.set(targetKey,name)}
   placed.add(name)

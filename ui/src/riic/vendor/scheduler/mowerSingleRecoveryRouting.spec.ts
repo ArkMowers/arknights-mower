@@ -113,3 +113,43 @@ describe('active single-recovery skill classification survives scheduler adaptat
   expect(state.config.mowerSingleRecoverySkillNames).toEqual([id('流明')])
  })
 })
+
+function highPrioritySkillFixture(ordinaryFirst=false){
+ const data=fixture(ordinaryFirst)
+ data.plan.dormitory_1![2]='Fixed'
+ data.dorms=data.dorms.filter(b=>b.position[0]!=='dormitory_1'||b.position[1]>=3)
+ data.operators.OtherWorker=new MowerOperatorState({name:'OtherWorker',room:'room_1_1',index:2,currentRoom:'room_1_1',currentIndex:2,operatorType:'high',restingPriority:'high',mood:8,timeStampMicros:0})
+ data.plan.room_1_1!.push('OtherWorker')
+ data.restingPriorityNames=['Provider','Worker','OtherWorker']
+ return data
+}
+it.each([false,true])('moves a high-priority provider to a compatible bed despite list ranks (ordinaryFirst=%s)',ordinaryFirst=>{
+ const data=highPrioritySkillFixture(ordinaryFirst)
+ const plan:MowerTaskPlan={room_1_1:['Free','Free','Free'],dormitory_1:['Current','Current','Current','Provider','OtherWorker'],dormitory_2:['Current','Current','Current','Current','Worker']}
+ const result=alphaPrioritizeRecovery(data,plan),final=projectMowerArrangements(data,[result])
+ expect([final.operators.Provider!.currentRoom,final.operators.Provider!.currentIndex]).toEqual(ordinaryFirst?['dormitory_1',4]:['dormitory_2',4])
+ expect([final.operators.Worker!.currentRoom,final.operators.Worker!.currentIndex]).toEqual(['dormitory_1',3])
+ expect(new Set(final.dorms.map(b=>b.name))).toEqual(new Set(['Provider','Worker','OtherWorker']))
+ expect(alphaPrioritizeRecovery(final,result)).toEqual(result)
+})
+it('keeps a high-priority provider in its sole-Free room',()=>{
+ const data=highPrioritySkillFixture()
+ data.operators.Provider!.currentRoom='dormitory_2';data.operators.Provider!.currentIndex=4
+ data.dorms.find(b=>b.position[0]==='dormitory_2')!.name='Provider'
+ const plan:MowerTaskPlan={room_1_1:['Free','Free','Free'],dormitory_1:['Current','Current','Current','Worker','OtherWorker'],dormitory_2:['Current','Current','Current','Current','Provider']}
+ expect(alphaPrioritizeRecovery(data,plan)).toEqual(plan)
+})
+it('does not cross recovery tiers to move a high-priority provider',()=>{
+ const data=highPrioritySkillFixture();data.restingPriorityNames=['Provider']
+ const plan:MowerTaskPlan={room_1_1:['Free','Free','Free'],dormitory_1:['Current','Current','Current','Provider','OtherWorker'],dormitory_2:['Current','Current','Current','Current','Worker']}
+ const final=projectMowerArrangements(data,[alphaPrioritizeRecovery(data,plan)])
+ expect([final.operators.Provider!.currentRoom,final.operators.Provider!.currentIndex]).toEqual(['dormitory_1',3])
+})
+it('retains a reserved sole-Free target during high-priority skill swaps',()=>{
+ const data=highPrioritySkillFixture()
+ const plan:MowerTaskPlan={room_1_1:['Free','Free','Free'],dormitory_1:['Current','Current','Current','Provider','OtherWorker'],dormitory_2:['Current','Current','Current','Current','Worker']}
+ const final=projectMowerArrangements(data,[alphaPrioritizeRecovery(data,plan,{},new Set([alphaPosition('dormitory_2',4)]))])
+ expect([final.operators.Worker!.currentRoom,final.operators.Worker!.currentIndex]).toEqual(['dormitory_2',4])
+ expect([final.operators.Provider!.currentRoom,final.operators.Provider!.currentIndex]).toEqual(['dormitory_1',4])
+ expect([final.operators.OtherWorker!.currentRoom,final.operators.OtherWorker!.currentIndex]).toEqual(['dormitory_1',3])
+})

@@ -3113,7 +3113,8 @@ def prioritize_new_dorm_recovery(
                 < single_recovery_bed_cost(source, all_beds)
                 and (
                     not allocations[bed.position]
-                    or tier(allocations[bed.position]) == tier(name)
+                    or resting_tier(projected, allocations[bed.position])
+                    == resting_tier(projected, name)
                 )
             ),
             None,
