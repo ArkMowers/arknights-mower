@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { appendFileSync } from 'node:fs'
 import process from 'node:process'
-import plan from './fixtures/income-21trade-3proviso.json'
+import originalPlan from './fixtures/income-21trade-3proviso.json'
 import { calculateIncome } from './incomeWorker'
 import { defaultIncomeSettings } from './income'
 import {
@@ -67,6 +67,11 @@ it('refills the source through the real room executor before transferring its on
   expect(queue.tasks).toEqual([other])
 })
 
+const plan = {
+  ...originalPlan,
+  advanced_settings: { ...originalPlan.advanced_settings, drone_room: 'room_3_3' }
+}
+
 const longRun = process.env.MOWER_ROOM_ORDER_LONG_TEST === '1'
 it(
   'keeps the supplied plan staffed through complete cross-room handoffs',
@@ -80,8 +85,7 @@ it(
       weightMode: 'custom',
       seed: 42,
       warmupDays: longRun ? 3 : 0,
-      sampleDays: longRun ? 28 : 1,
-      droneRoom: 'room_3_3'
+      sampleDays: longRun ? 28 : 1
     })
     expect(result.success, result.error).toBe(true)
     expect(result.observedHours).toBeCloseTo(longRun ? 672 : 24, 6)

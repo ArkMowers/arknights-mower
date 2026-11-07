@@ -1,9 +1,14 @@
 import { appendFileSync } from 'node:fs'
 import process from 'node:process'
 import { expect, it } from 'vitest'
-import plan from './fixtures/income-21trade-3proviso.json'
+import originalPlan from './fixtures/income-21trade-3proviso.json'
 import { defaultIncomeSettings } from './income'
 import { calculateIncome } from './incomeWorker'
+
+const plan = {
+  ...originalPlan,
+  advanced_settings: { ...originalPlan.advanced_settings, drone_room: 'room_3_3' }
+}
 
 const longRun = process.env.MOWER_INCOME_LONG_TEST === '1'
 const warmupDays = longRun ? 3 : 0
@@ -26,8 +31,7 @@ it.each([true, false])(
         operatorMode: 'maximum',
         inventorySource: 'manual',
         finiteInventory: false,
-        weightMode: 'custom',
-        droneRoom: 'room_3_3'
+        weightMode: 'custom'
       },
       (progress) => {
         const percent = Math.floor(progress.fraction * 100)

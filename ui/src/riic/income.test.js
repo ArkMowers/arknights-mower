@@ -38,6 +38,28 @@ const plan = () => ({
   }
 })
 describe('income export calculation', () => {
+  it.each(['room_1_1', '', undefined])(
+    'uses the advanced drone target %s instead of legacy calculation parameters',
+    (droneRoom) => {
+      const source = plan()
+      source.advanced_settings = {
+        drone_room: droneRoom,
+        drone_interval: 2,
+        drone_count_limit: 150
+      }
+      const original = structuredClone(source)
+      const { options } = incomeRequest(source, { ...modelSettings(), droneRoom: 'room_3_3' })
+      expect(options.simulationOptions.production).toMatchObject({
+        droneTarget: droneRoom ? 'gold' : 'none',
+        droneRoomId: droneRoom || undefined
+      })
+      expect(options.simulationAssumptions).toMatchObject({
+        droneIntervalHours: 2,
+        droneCountLimit: 150
+      })
+      expect(source).toEqual(original)
+    }
+  )
   it('converts the default horizon and isolates inputs', () => {
     const source = plan(),
       settings = modelSettings()
@@ -124,7 +146,9 @@ describe('income export calculation', () => {
     ).toThrow()
   })
   it('validates the target and explicit operator growth', () => {
-    expect(() => incomeRequest(plan(), { ...modelSettings(), droneRoom: 'room_3_3' })).toThrow()
+    const source = plan()
+    source.advanced_settings = { drone_room: 'room_3_3' }
+    expect(() => incomeRequest(source, modelSettings())).toThrow('无人机目标不在本次排班中')
     expect(() =>
       incomeRequest(plan(), {
         ...modelSettings(),
@@ -376,22 +400,81 @@ it.each([
   expect(result.summary.orirockConsumed).toBeCloseTo(funded.summary.orirockConsumed, 6)
   expect(result.summary.deviceConsumed).toBeCloseTo(funded.summary.deviceConsumed, 6)
 })
-it('reports actual sample LMD balance changes and drone rooms with event logs', () => {
-  const source = plan()
-  const result = calculateIncome(source, {
-    ...modelSettings(),
-    finiteInventory: true,
-    warmupDays: 0,
-    sampleDays: 1,
-    droneRoom: 'room_1_1'
-  })
-  expect(result.success, result.error).toBe(true)
-  expect(result.summary.netLmd).toBe(
-    (result.resources.closing.lmd ?? 0) - (result.resources.opening.lmd ?? 0)
-  )
-  expect(result.droneRooms).toEqual(['room_1_1'])
-  expect(result.eventLog.entries.some((event) => event.type === '制造加速')).toBe(true)
-})
+it.each([false, true])(
+  'reports advanced-setting acceleration with expectation mode %s',
+  (expectationMode) => {
+    const source = plan()
+    source.advanced_settings = { drone_room: 'room_1_1' }
+    const result = calculateIncome(source, {
+      ...modelSettings(),
+      expectationMode,
+      finiteInventory: true,
+      warmupDays: 0,
+      sampleDays: 1
+    })
+    expect(result.success, result.error).toBe(true)
+    expect(result.summary.netLmd).toBe(
+      (result.resources.closing.lmd ?? 0) - (result.resources.opening.lmd ?? 0)
+    )
+    if (expectationMode) {
+      const baseline = calculateIncome(
+        { ...source, advanced_settings: { drone_room: '' } },
+        { ...modelSettings(), expectationMode, finiteInventory: true, warmupDays: 0, sampleDays: 1 }
+      )
+      expect(baseline.success, baseline.error).toBe(true)
+      // Base charging supplies 240 drones per day; each saves three of 72 gold minutes.
+      expect(result.summary.goldValue - baseline.summary.goldValue).toBeCloseTo(10 * 500, 6)
+    } else {
+      expect(result.droneRooms).toEqual(['room_1_1'])
+      expect(result.eventLog.entries.some((event) => event.type === '制造加速')).toBe(true)
+    }
+  }
+)
+
+it.each([false, true])(
+  'follows backup drone overrides with expectation mode %s',
+  (expectationMode) => {
+    const source = plan()
+    source.plan1.room_1_2 = {
+      name: '制造站',
+      product: 'exp',
+      plans: [{ agent: '芬', replacement: [] }]
+    }
+    source.plan1.room_2_3 = { name: '发电站', plans: [] }
+    source.conf.workaholic += ',芬'
+    source.advanced_settings = { drone_room: 'room_1_1', drone_count_limit: 250 }
+    source.backup_plans = [
+      {
+        name: '无人机副表',
+        trigger: 'True',
+        plan: {},
+        conf: { drone_room: 'room_1_2', drone_count_limit: 100 }
+      }
+    ]
+    const original = structuredClone(source)
+    const result = calculateIncome(source, {
+      ...modelSettings(),
+      expectationMode,
+      warmupDays: 0,
+      sampleDays: 1
+    })
+    expect(result.success, JSON.stringify(result.diagnostics)).toBe(true)
+    if (expectationMode) {
+      const baseline = calculateIncome(
+        { ...source, backup_plans: [{ ...source.backup_plans[0], conf: { drone_room: '' } }] },
+        { ...modelSettings(), expectationMode, warmupDays: 0, sampleDays: 1 }
+      )
+      expect(baseline.success, baseline.error).toBe(true)
+      // Base charging supplies 240 drones per day: 240 * 3 / 180 * 1000 experience.
+      expect(result.summary.exp - baseline.summary.exp).toBeCloseTo(4000, 6)
+      expect(result.summary.goldValue).toBeCloseTo(baseline.summary.goldValue, 6)
+    } else {
+      expect(result.droneRooms).toEqual(['room_1_2'])
+      expect(result.resources.outflows.drone).toBeGreaterThan(0)
+    }
+    expect(source).toEqual(original)
+  }
+)
 
 it('uses the source Gantt timeline without changing production or staffing', () => {
   const source = plan()

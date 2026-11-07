@@ -24,7 +24,6 @@ export function defaultIncomeSettings() {
     sampleDays: 28,
     expectationMode: true,
     fixedSeed: null,
-    droneRoom: '',
     finiteInventory: true,
     inventorySource: 'cache',
     cachedInventory: null,
@@ -82,8 +81,9 @@ export function incomeRequest(plan, settings) {
   const requestedExpectation = settings.expectationMode ?? settings.seed === undefined
   if (typeof requestedExpectation !== 'boolean') throw new Error('理论期望模式必须为开启或关闭')
   const workspace = incomeWorkspace(plan)
-  const target = droneFacilities(workspace).find((f) => f.roomId === settings.droneRoom)
-  if (settings.droneRoom && !target) throw new Error('无人机目标不在本次排班中')
+  const droneRoom = plan.advanced_settings?.drone_room
+  const target = droneFacilities(workspace).find((f) => f.roomId === droneRoom)
+  if (droneRoom && !target) throw new Error('无人机目标不在本次排班中')
   const inventory = normalizeSimulationInventory(
     settings.finiteInventory || workspaceUsesInventoryConditions(workspace)
       ? incomeInitialInventory(settings)

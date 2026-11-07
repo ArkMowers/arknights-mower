@@ -68,7 +68,6 @@ beforeEach(async () => {
   scope = effectScope()
   props = reactive({
     snapshot: {
-      droneRoom: 'room_1_1',
       image: new Blob(['original']),
       theme: 'light',
       roomBounds: { room_1_1: { x: 42 } },
@@ -76,6 +75,7 @@ beforeEach(async () => {
       plan: {
         default: 'plan1',
         conf: {},
+        advanced_settings: { drone_room: 'room_1_1' },
         backup_plans: [],
         plan1: { room_1_1: { name: '制造站', product: 'gold', plans: [] } }
       }
@@ -100,7 +100,6 @@ it('remembers edited parameters across dialog recreation before any calculation'
     warmupDays: 1,
     sampleDays: 7,
     expectationMode: false,
-    droneRoom: '',
     operatorMode: 'custom',
     operatorText: '阿米娅,2,80',
     inventorySource: 'manual',
@@ -116,7 +115,6 @@ it('remembers edited parameters across dialog recreation before any calculation'
     warmupDays: 1,
     sampleDays: 7,
     expectationMode: false,
-    droneRoom: '',
     operatorMode: 'custom',
     operatorText: '阿米娅,2,80',
     inventorySource: 'manual',
@@ -174,7 +172,6 @@ it('restores defaults without changing shared settings or the retained result', 
     warmupDays: 3,
     sampleDays: 28,
     expectationMode: true,
-    droneRoom: 'room_1_1',
     operatorMode: 'cache',
     inventorySource: 'cache',
     weightMode: 'mower',
@@ -220,90 +217,43 @@ it('does not reset a calculation while it is running', () => {
   page.resetSettings()
   expect(page.settings.sampleDays).toBe(7)
 })
-it('falls back to the captured default when the remembered drone room is absent', () => {
+it.each(['room_3_3', ''])('ignores the remembered drone target %s', async (droneRoom) => {
+  props.snapshot.plan.plan1.room_3_3 = { name: '制造站', product: 'exp', plans: [] }
   localStorage.setItem(
     INCOME_PREFERENCES_KEY,
-    JSON.stringify({ version: 1, settings: { droneRoom: 'room_3_3', sampleDays: 7 } })
+    JSON.stringify({ version: 1, settings: { droneRoom, sampleDays: 7 } })
   )
   reopenDialog()
-  expect(page.settings.droneRoom).toBe('room_1_1')
+  expect(page.settings).not.toHaveProperty('droneRoom')
   expect(page.settings.sampleDays).toBe(7)
-})
-it.each([
-  ['cache first', false, undefined, 'room_1_1'],
-  ['snapshot first', true, undefined, 'room_1_1'],
-  ['cache first with explicit disable', false, '', ''],
-  ['snapshot first with explicit disable', true, '', '']
-])(
-  'preserves the drone choice when loading %s',
-  async (_, snapshotFirst, savedTarget, expected) => {
-    const snapshot = props.snapshot
-    props.snapshot = null
-    if (savedTarget !== undefined)
-      localStorage.setItem(
-        INCOME_PREFERENCES_KEY,
-        JSON.stringify({ version: 1, settings: { droneRoom: savedTarget } })
-      )
-    reopenDialog()
-    let resolveCache
-    io.client.get.mockReturnValueOnce(new Promise((resolve) => (resolveCache = resolve)))
-    const loading = page.readCache({ preserveOverrides: true })
-    if (snapshotFirst) {
-      props.snapshot = snapshot
-      await nextTick()
-    }
-    resolveCache({ data: cache() })
-    await loading
-    await page.readWeights()
-    const pending = JSON.parse(localStorage.getItem(INCOME_PREFERENCES_KEY)).settings
-    if (!snapshotFirst && savedTarget === undefined) expect(pending).not.toHaveProperty('droneRoom')
-    else expect(pending.droneRoom).toBe(expected)
-    if (!snapshotFirst) {
-      props.snapshot = snapshot
-      await nextTick()
-    }
-    expect(page.settings.droneRoom).toBe(expected)
-    await page.restoreResult()
-    await page.start()
-    expect(workers[0].postMessage.mock.calls[0][0].settings.droneRoom).toBe(expected)
-    page.session.cancel()
-    props.snapshot = null
-    reopenDialog()
-    await page.readCache({ preserveOverrides: true })
-    props.snapshot = snapshot
-    await nextTick()
-    expect(page.settings.droneRoom).toBe(expected)
-  }
-)
-it('does not remember an uninitialized drone target when other parameters change', async () => {
-  const snapshot = props.snapshot
-  props.snapshot = null
-  reopenDialog()
-  page.settings.sampleDays = 7
+  await page.readCache()
+  await page.restoreResult()
+  await page.start()
+  const input = workers[0].postMessage.mock.calls[0][0]
+  expect(input.settings.droneRoom).toBe('room_1_1')
+  expect(input.plan.advanced_settings.drone_room).toBe('room_1_1')
   expect(JSON.parse(localStorage.getItem(INCOME_PREFERENCES_KEY)).settings).not.toHaveProperty(
     'droneRoom'
   )
-  reopenDialog()
-  props.snapshot = snapshot
-  await nextTick()
-  expect(page.settings.sampleDays).toBe(7)
-  expect(page.settings.droneRoom).toBe('room_1_1')
 })
-it('does not save the empty target while the snapshot watcher is still queued', async () => {
-  const snapshot = props.snapshot
-  props.snapshot = null
-  reopenDialog()
-  await nextTick()
-  let resolveCache
-  io.client.get.mockReturnValueOnce(new Promise((resolve) => (resolveCache = resolve)))
-  const loading = page.readCache({ preserveOverrides: true })
-  resolveCache({ data: cache() })
-  props.snapshot = snapshot
-  await loading
-  await nextTick()
-  expect(page.settings.droneRoom).toBe('room_1_1')
-  expect(JSON.parse(localStorage.getItem(INCOME_PREFERENCES_KEY)).settings.droneRoom).not.toBe('')
-})
+it.each([false, true])(
+  'uses advanced settings when snapshot capture finishes, cache first: %s',
+  async (cacheFirst) => {
+    const snapshot = props.snapshot
+    props.snapshot = null
+    reopenDialog()
+    page.settings.sampleDays = 7
+    if (cacheFirst) await page.readCache({ preserveOverrides: true })
+    props.snapshot = snapshot
+    await nextTick()
+    if (!cacheFirst) await page.readCache({ preserveOverrides: true })
+    await page.restoreResult()
+    await page.start()
+    expect(workers[0].postMessage.mock.calls[0][0].settings.droneRoom).toBe('room_1_1')
+    expect(page.settings.sampleDays).toBe(7)
+    expect(page.settings).not.toHaveProperty('droneRoom')
+  }
+)
 it('reads cached ownership and stock without writing configuration', async () => {
   expect(page.settings.expectationMode).toBe(true)
   expect(page.settings).not.toHaveProperty('seed')
@@ -408,12 +358,15 @@ it('keeps successful results on screen and exports only on request with frozen i
   expect(page.activeTab.value).toBe('results')
   expect(renderIncomeImage).not.toHaveBeenCalled()
   expect(downloadIncomeImage).not.toHaveBeenCalled()
-  page.settings.droneRoom = 'room_3_3'
+  props.snapshot = {
+    ...props.snapshot,
+    plan: { ...props.snapshot.plan, advanced_settings: { drone_room: '' } }
+  }
   page.exportName.value = '我的排班'
   await page.exportImage()
   expect(renderIncomeImage).toHaveBeenCalledOnce()
   expect(renderIncomeImage.mock.calls[0][2].droneRoom).toBe('room_1_1')
-  expect(renderIncomeImage.mock.calls[0][3]).toEqual(props.snapshot.plan)
+  expect(renderIncomeImage.mock.calls[0][3].advanced_settings.drone_room).toBe('room_1_1')
   expect(downloadIncomeImage).toHaveBeenCalledOnce()
   expect(downloadIncomeImage.mock.calls[0][1]).toBe('我的排班_日均收益103475_28天.jpg')
 })
@@ -432,26 +385,18 @@ it('retains bounded progress logs without triggering image rendering', async () 
   expect(renderIncomeImage).not.toHaveBeenCalled()
 })
 
-it('uses the captured Mower drone target without saving temporary changes', async () => {
-  expect(page.settings.droneRoom).toBe('room_1_1')
-  page.settings.droneRoom = ''
-  await page.readCache()
-  await page.start()
-  expect(workers[0].postMessage.mock.calls[0][0].settings.droneRoom).toBe('')
-  expect(props.snapshot.droneRoom).toBe('room_1_1')
-  expect(io.client.put).not.toHaveBeenCalled()
-})
-it('applies the default after asynchronous capture and rejects unavailable facilities', async () => {
-  const snapshot = structuredClone(JSON.parse(JSON.stringify(props.snapshot)))
-  props.snapshot = null
-  await nextTick()
-  props.snapshot = { ...snapshot, droneRoom: 'room_3_3' }
-  await nextTick()
-  expect(page.settings.droneRoom).toBe('')
-  props.snapshot = snapshot
-  await nextTick()
-  expect(page.settings.droneRoom).toBe('room_1_1')
-})
+it.each(['room_1_1', ''])(
+  'follows the advanced drone target %s without writing configuration',
+  async (droneRoom) => {
+    props.snapshot.plan.advanced_settings.drone_room = droneRoom
+    page.resetSettings()
+    await page.readCache()
+    await page.start()
+    expect(workers[0].postMessage.mock.calls[0][0].settings.droneRoom).toBe(droneRoom)
+    expect(props.snapshot.plan.advanced_settings.drone_room).toBe(droneRoom)
+    expect(io.client.put).not.toHaveBeenCalled()
+  }
+)
 
 const success = () => ({
   success: true,
