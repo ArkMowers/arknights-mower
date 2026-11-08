@@ -1724,7 +1724,7 @@ class BaseSchedulerSolver(
             if due_fills:
                 return False
         had_tasks = len(self.tasks)
-        reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
+        _, _, reserved_names, reserved_slots = self._dorm_recovery_reservations(
             self.tasks
         )
         try_add_release_dorm(
@@ -3400,7 +3400,10 @@ class BaseSchedulerSolver(
     def _dorm_recovery_reservations(
         self, tasks, *, op_data=None, returning_groups=(), current_task=None
     ):
-        """返回合并预约及等待队列预约，保留各规划阶段的释放边界。"""
+        """返回合并预约及等待队列预约，保留各规划阶段的释放边界。
+
+        普通补床调用仅取后两项作为额外保护，由补床器自行读取主队列。
+        """
         data = self.op_data if op_data is None else op_data
         names, slots = dorm_task_reservations(data, tasks)
         view = self
@@ -7243,7 +7246,7 @@ class BaseSchedulerSolver(
             return False
         self._plan_preferred_replacements()
         self._fill_empty_dorms(primary_planned=True)
-        reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
+        _, _, reserved_names, reserved_slots = self._dorm_recovery_reservations(
             self.tasks
         )
         try_add_release_dorm(
@@ -19311,7 +19314,7 @@ class BaseSchedulerSolver(
             )
             existing = {id(task): task for task in pending}
             projected = self.op_data.project_arrangements([{}])
-            reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
+            _, _, reserved_names, reserved_slots = self._dorm_recovery_reservations(
                 pending, op_data=projected, current_task=self.task
             )
             try_add_release_dorm(

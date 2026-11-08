@@ -1,5 +1,6 @@
 """深海一高优、六候补：显式启用待命，原低优保持原有行为。"""
 
+import pickle
 import sys
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
@@ -758,7 +759,20 @@ def test_full_standby_does_not_refill_vacant_bed(solver):
     assert DEEP[1] not in solver.get_free_list([], include_full=True)
 
 
-def test_grouped_candidate_fills_vacancy_without_changing_return_time(solver):
+@pytest.mark.parametrize(
+    ("waiting_target", "vacant_target"),
+    [
+        (None, False),
+        ("plan", False),
+        ("expected", False),
+        ("plan", True),
+        ("expected", True),
+    ],
+)
+@pytest.mark.parametrize("revalidate", [False, True])
+def test_grouped_candidate_fills_vacancy_without_changing_return_time(
+    solver, waiting_target, vacant_target, revalidate
+):
     occupy_beds(solver, "high")
     shift_off(solver)
     data = solver.op_data
@@ -779,6 +793,28 @@ def test_grouped_candidate_fills_vacancy_without_changing_return_time(solver):
     occupant.current_room, occupant.current_index = "", -1
     bed.reset()
 
+    protected = None
+    if waiting_target is not None:
+        reserved_bed = data.dorm[-1]
+        assert reserved_bed is not bed
+        room, index = reserved_bed.position
+        if vacant_target:
+            occupant = data.get_current_operator(room, index)
+            occupant.current_room, occupant.current_index = "", -1
+            reserved_bed.reset()
+        row = ["Current"] * len(data.plan[room])
+        if waiting_target == "plan":
+            row[index] = COVERS[-1]
+        protected = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan={room: row})
+        protected.group_shift_waiting = {"深海"}
+        protected.group_shift_predecessors = ()
+        if waiting_target == "expected":
+            protected.group_shift_expected = {reserved_bed.position: COVERS[-1]}
+        protected = pickle.loads(pickle.dumps(protected))
+        solver.waiting_group_shifts = [protected]
+        protected_before = pickle.dumps(protected)
+        reserved_occupant = reserved_bed.name
+
     tasks = plan_metadata(data, [])
     return_tasks = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
     assert return_tasks
@@ -795,6 +831,19 @@ def test_grouped_candidate_fills_vacancy_without_changing_return_time(solver):
         and candidate in {agent for agents in task.plan.values() for agent in agents}
     ]
     assert fill_tasks
+    if revalidate:
+        solver.task = fill_tasks[0]
+        solver._track_idle_dorm_shift = MagicMock()
+        solver._finish_idle_dorm_shift = MagicMock()
+        solver.preserve_resting_crafters = MagicMock()
+
+        class SelectedRoom(Exception):
+            pass
+
+        # 执行重验保持真实，停在设备房间操作前。
+        solver.agent_arrange_room = MagicMock(side_effect=SelectedRoom)
+        with pytest.raises(SelectedRoom):
+            solver.agent_arrange(solver.task.plan)
     room, index = bed.position
     projected = data.project_arrangements([fill_tasks[0].plan])
     assert projected.operators[candidate].is_resting()
@@ -805,6 +854,12 @@ def test_grouped_candidate_fills_vacancy_without_changing_return_time(solver):
     assert abs(
         min(task.time for task in return_tasks) - baseline_return_time
     ) < timedelta(seconds=1)
+    if protected is not None:
+        assert pickle.dumps(protected) == protected_before
+        for observed in (projected, data):
+            occupant = observed.get_current_operator(*reserved_bed.position)
+            assert (occupant.name if occupant is not None else "") == reserved_occupant
+    solver.enter_room.assert_not_called()
 
 
 @pytest.mark.parametrize("mood", [0, 8.9, 20, 24])
