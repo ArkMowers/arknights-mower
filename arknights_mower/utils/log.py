@@ -34,8 +34,8 @@ LIVE_LOG_RECRUITMENT_LIMIT = 4096
 LIVE_LOG_TRUNCATION_SUFFIX = "\n[实时日志已截断，完整内容见 runtime.log]"
 LIVE_LOG_DROP_WARNING_INTERVAL = 60.0
 LIVE_LOG_DROP_WARNING_FORMAT = (
-    "实时日志积压，累计跳过 %d 条较早记录（本次新增 %d 条）。"
-    "原始日志可在 runtime.log 中查看。"
+    "部分日志未能及时显示，已跳过较早记录以显示最新内容。"
+    "需要查看这些记录时，请打开 runtime.log。"
 )
 
 
@@ -691,9 +691,9 @@ class LatestLogQueue(Queue):
 
     ``put(item)`` 没有 ``block``/``timeout`` 参数：队列满时先淘汰最旧一条再入队，
     不会抛 ``queue.Full``。淘汰条数累计在 ``dropped``，“自上次告警以来的条数”见
-    ``dropped_since_warning``；两者都是线程安全的可读状态。每次淘汰按
-    ``drop_warning_interval`` 限频输出一条警告（同一间隔最多一条），让现场能判断
-    实时日志缺失；传入 ``None`` 可关闭警告（测试用）。
+    ``dropped_since_warning``；两者都是线程安全的可读状态。淘汰用户可见的普通
+    记录时，按 ``drop_warning_interval`` 限频提示日志显示不完整。调试记录、
+    退出标记及此提示本身不触发警告；传入 ``None`` 可关闭警告（测试用）。
     """
 
     def __init__(
@@ -716,27 +716,41 @@ class LatestLogQueue(Queue):
         if isinstance(item, str):
             item = _live_message(item)
         dropped = False
+        previous = None
         with self.not_full:
             if self._qsize() >= self.maxsize:
-                self._get()
+                previous = self._get()
                 self.unfinished_tasks -= 1
                 dropped = True
             self._put(item)
             self.unfinished_tasks += 1
             self.not_empty.notify()
         if dropped:
-            self._report_dropped()
+            self._report_dropped(previous, notify=item is not None)
 
     def put_nowait(self, item):
         """QueueHandler 与 QueueListener 使用的非阻塞入口。"""
         self.put(item)
 
-    def _report_dropped(self):
+    @staticmethod
+    def _needs_warning(item):
+        if isinstance(item, logging.LogRecord):
+            return item.levelno >= logging.INFO and not getattr(
+                item, "log_drop_notice", False
+            )
+        if isinstance(item, dict):
+            return item.get("level", "INFO") not in ("DEBUG", "NOTSET") and not (
+                item.get("group") == "runtime-log"
+                and item.get("msg") == LIVE_LOG_DROP_WARNING_FORMAT
+            )
+        return isinstance(item, str) and item != LIVE_LOG_DROP_WARNING_FORMAT
+
+    def _report_dropped(self, item, *, notify=True):
         with self._drop_lock:
             self.dropped += 1
             self.dropped_since_warning += 1
             interval = self._drop_warning_interval
-            if interval is None:
+            if interval is None or not notify or not self._needs_warning(item):
                 return
             now = monotonic()
             if (
@@ -744,15 +758,11 @@ class LatestLogQueue(Queue):
                 and now - self._last_drop_warning < interval
             ):
                 return
-            since_last = self.dropped_since_warning
             self.dropped_since_warning = 0
             self._last_drop_warning = now
-            total = self.dropped
         logger.warning(
             LIVE_LOG_DROP_WARNING_FORMAT,
-            total,
-            since_last,
-            extra={"log_group": "runtime-log"},
+            extra={"log_group": "runtime-log", "log_drop_notice": True},
         )
 
 

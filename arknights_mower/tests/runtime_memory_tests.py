@@ -201,7 +201,7 @@ def test_live_log_drop_warning_is_rate_limited_and_observable(monkeypatch):
         queue.put(str(index))
     assert queue.dropped == 1
     assert warning.call_count == 1
-    assert warning.call_args.args[1:] == (1, 1)
+    assert warning.call_args.args == (log.LIVE_LOG_DROP_WARNING_FORMAT,)
     # 告警发出后“自上次告警以来”清零，累计条数继续增长。
     assert queue.dropped_since_warning == 0
     now[0] += 30
@@ -213,7 +213,7 @@ def test_live_log_drop_warning_is_rate_limited_and_observable(monkeypatch):
     now[0] += 31
     queue.put("last")
     assert warning.call_count == 2
-    assert warning.call_args.args[1:] == (12, 11)
+    assert warning.call_args.args == (log.LIVE_LOG_DROP_WARNING_FORMAT,)
     assert queue.dropped_since_warning == 0
 
 

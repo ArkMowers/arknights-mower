@@ -511,14 +511,76 @@ class LatestLogQueueTest(MultiProcessLogTestBase):
         self.assertEqual(
             log._build_log_record(warning, warning.getMessage())["group"], "runtime-log"
         )
-        self.assertIn("实时日志积压", warning.getMessage())
-        self.assertIn("累计跳过 1 条", warning.getMessage())
-        self.assertIn("本次新增 1 条", warning.getMessage())
+        self.assertEqual(
+            warning.getMessage(),
+            "部分日志未能及时显示，已跳过较早记录以显示最新内容。"
+            "需要查看这些记录时，请打开 runtime.log。",
+        )
         self.assertNotIn("消费", warning.getMessage())
+        self.assertNotIn("累计", warning.getMessage())
         saved = destination.read_text(encoding="utf-8")
         self.assertIn("第一条原始记录", saved)
         self.assertIn("第二条原始记录", saved)
         self.assertIn(warning.getMessage(), saved)
+
+    def test_debug_loss_does_not_claim_user_visible_records_are_missing(self):
+        records = []
+        capture = logging.Handler()
+        capture.emit = records.append
+        queue = log.LatestLogQueue(maxsize=1)
+        queued = log.LiveQueueHandler(queue)
+        with patch.object(log.logger, "handlers", [queued, capture]):
+            for index in range(3):
+                log.logger.debug("调试记录 %d", index)
+            log.logger.info("第一条界面记录")
+            self.assertEqual(queue.dropped, 3)
+            self.assertFalse(
+                any(record.levelno == logging.WARNING for record in records)
+            )
+            log.logger.info("第二条界面记录")
+        warnings = [record for record in records if record.levelno == logging.WARNING]
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0].getMessage(), log.LIVE_LOG_DROP_WARNING_FORMAT)
+
+    def test_notice_loss_does_not_generate_another_notice_or_delay_a_real_warning(self):
+        notice = logging.LogRecord(
+            log.logger.name,
+            logging.WARNING,
+            __file__,
+            1,
+            log.LIVE_LOG_DROP_WARNING_FORMAT,
+            (),
+            None,
+        )
+        notice.log_drop_notice = True
+        notice.log_group = "runtime-log"
+        notice.asctime = "2026-11-08 12:00:00"
+        representations = (notice, log._build_log_record(notice, notice.getMessage()))
+        for item in representations:
+            with self.subTest(representation=type(item).__name__):
+                queue = log.LatestLogQueue(maxsize=1)
+                with patch.object(log.logger, "warning") as warning:
+                    queue.put(item)
+                    queue.put("新的界面记录")
+                    warning.assert_not_called()
+                    self.assertEqual(queue.dropped, 1)
+                    queue.put("下一条界面记录")
+                    warning.assert_called_once()
+
+    def test_shutdown_sentinel_is_not_displaced_by_its_own_drop_warning(self):
+        records = []
+        capture = logging.Handler()
+        capture.emit = records.append
+        queue = log.LatestLogQueue(maxsize=1)
+        queued = log.LiveQueueHandler(queue)
+        with patch.object(log.logger, "handlers", [queued, capture]):
+            log.logger.info("退出前的记录")
+            listener = QueueListener(queue)
+            listener.enqueue_sentinel()
+        self.assertIs(queue.get_nowait(), listener._sentinel)
+        queue.task_done()
+        self.assertEqual(queue.dropped, 1)
+        self.assertFalse(any(record.levelno == logging.WARNING for record in records))
 
     def test_put_has_no_ignored_block_or_timeout_arguments(self):
         queue = log.LatestLogQueue(maxsize=1, drop_warning_interval=None)
@@ -572,8 +634,7 @@ class LatestLogQueueTest(MultiProcessLogTestBase):
             self.assertEqual(
                 warning.call_args.args[0], log.LIVE_LOG_DROP_WARNING_FORMAT
             )
-            # 第一次告警：自上次告警以来 1 条，累计 1 条。
-            self.assertEqual(warning.call_args.args[1:], (1, 1))
+            self.assertEqual(warning.call_args.args[1:], ())
             now[0] += log.LIVE_LOG_DROP_WARNING_INTERVAL / 2
             for index in range(100):
                 queue.put(str(index))
@@ -584,7 +645,6 @@ class LatestLogQueueTest(MultiProcessLogTestBase):
             now[0] += log.LIVE_LOG_DROP_WARNING_INTERVAL
             queue.put("last")
             self.assertEqual(warning.call_count, 2)
-            # 第二次告警：自上次告警以来 101 条，累计 102 条。
-            self.assertEqual(warning.call_args.args[1:], (102, 101))
+            self.assertEqual(warning.call_args.args[1:], ())
         self.assertEqual(queue.dropped, 102)
         self.assertEqual(queue.dropped_since_warning, 0)

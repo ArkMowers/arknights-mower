@@ -39,7 +39,7 @@ The process-local logging relay and frontend relay each retain at most 256 waiti
 
 ### Live Log Records
 
-A full live queue reports a rate-limited WARNING with group `runtime-log`, displayed as 日志显示. It reports cumulative skipped records and the increase since the previous warning, and directs the reader to `runtime.log`. This group belongs to this subsystem; it does not inherit a neighbouring HTTP or business heading. The file handler remains independent of the live queues.
+A full live queue reports a rate-limited WARNING with group `runtime-log`, displayed as 日志显示, when it discards an ordinary INFO-or-higher record. The message explains that some earlier records were skipped to display the latest content and directs the reader to `runtime.log`. Discarding DEBUG or NOTSET records, shutdown sentinels or this notice itself does not produce a user warning. Inserting a shutdown sentinel also suppresses the warning so that a new notice cannot displace the sentinel. Queue eviction counters remain available for diagnostics; the message does not present them as a count of missing business records. This group belongs to this subsystem; it does not inherit a neighbouring HTTP or business heading. The file handler remains independent of the live queues.
 
 The run entry has no file-wide business fallback: startup and configuration-space notices have no business group, while actual scheduling notices set `base-scheduler` explicitly. OCR initialization uses `recognition`. [Startup checks](../../arknights_mower/tests/startup_log_groups_tests.py) exercise the entry path without preparing a device. The WebUI displays `maa-integration` as MAA日常; the transport value stays unchanged.
 
