@@ -657,8 +657,7 @@ const level_list = [
       </div>
       <div class="task_row button_row">
         <div style="margin-right: auto">
-          <label v-if="error" style="color: red">{{ msg }}</label>
-          <label v-if="!error" style="color: green">{{ msg }}</label>
+          <n-text :type="error ? 'error' : 'success'">{{ msg }}</n-text>
         </div>
         <div style="display: flex; gap: 12px; margin-top: 16px">
           <n-button type="primary" :loading="saving" @click="saveTasks">

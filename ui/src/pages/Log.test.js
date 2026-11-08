@@ -10,6 +10,7 @@ import {
   effectScope,
   h,
   nextTick,
+  onBeforeUnmount,
   onMounted,
   onUnmounted,
   reactive,
@@ -83,6 +84,7 @@ vi.mock('vue', async (original) => ({
     if (key === 'mobile') return state.mobile
     return ref(false)
   },
+  onBeforeUnmount: vi.fn(),
   onMounted: vi.fn(),
   onUnmounted: vi.fn(),
   provide: vi.fn((key, value) => {
@@ -124,6 +126,7 @@ describe('log page', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.useFakeTimers()
+    onBeforeUnmount.mockClear()
     onMounted.mockClear()
     onUnmounted.mockClear()
     state.client = { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }
@@ -492,6 +495,13 @@ describe('log page', () => {
     const panel = find((target) => target.props.id === trigger.props['aria-controls'])
     expect(panel.props.role).toBe('dialog')
     return trigger
+  }
+
+  function viewControl(find, label) {
+    return find(
+      (target) =>
+        target.props['aria-label'] === label && typeof target.props['aria-pressed'] === 'boolean'
+    )
   }
 
   it('updates the mounted background immediately when shared settings change', async () => {
@@ -1327,29 +1337,33 @@ describe('log page', () => {
     expect(state.mower.get_tasks).not.toHaveBeenCalled()
   })
 
-  it('reveals a collapsed mobile task table when navigating to its queue hash', async () => {
-    state.mobile.value = true
-    state.mower.refs.task_list.value = [
-      { time: '2026-10-20T11:30:00.000', plan: {}, type: { display_value: '跑单' } }
-    ]
-    const { find } = mountWorkspace()
-    await openViewOptions(find)
-    const collapse = find((target) => target.props.class === 'toggle-table-collapse-btn')
-    const queue = find((target) => target.props.class === 'task-table-scroll')
-    collapse.props.onClick()
-    await nextTick()
-    expect(queue.style.display).toBe('none')
+  it.each([false, true])(
+    'reveals a hidden task list through its queue hash (mobile=%s)',
+    async (mobile) => {
+      state.mobile.value = mobile
+      state.mower.refs.task_list.value = [
+        { time: '2026-10-20T11:30:00.000', plan: {}, type: { display_value: '跑单' } }
+      ]
+      const { find } = mountWorkspace()
+      if (mobile) await openViewOptions(find)
+      const toggle = viewControl(find, '任务列表')
+      const queue = find((target) => target.props.class === 'task-table-scroll')
+      toggle.props.onClick()
+      await nextTick()
+      expect(queue.style.display).toBe('none')
 
-    state.route.hash = '#task-queue'
-    await nextTick()
-    await nextTick()
+      state.route.hash = '#task-queue'
+      await nextTick()
+      await nextTick()
 
-    expect(queue.style.display).not.toBe('none')
-    expect(collapse.props['aria-expanded']).toBe(true)
-    expect(queue.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' })
-    expect(state.client.post).not.toHaveBeenCalled()
-    expect(state.mower.get_tasks).not.toHaveBeenCalled()
-  })
+      expect(queue.style.display).not.toBe('none')
+      expect(toggle.props['aria-pressed']).toBe(true)
+      expect(queue.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' })
+      expect(localStorage.setItem).toHaveBeenCalledExactlyOnceWith('log_show_task_table', 'false')
+      expect(state.client.post).not.toHaveBeenCalled()
+      expect(state.mower.get_tasks).not.toHaveBeenCalled()
+    }
+  )
   it.each(['启动中', '等待设备恢复'])(
     'keeps Stop available during %s until the worker confirms exit',
     async (label) => {
@@ -1466,18 +1480,23 @@ describe('log page', () => {
       await nextTick()
       if (mobile) {
         expect(all().some((target) => target.props['aria-label'] === '预览截图')).toBe(false)
-        expect(all().some((target) => target.props['aria-label'] === '自动滚动')).toBe(false)
+        expect(all().some((target) => target.props['aria-label'] === '跟随最新日志')).toBe(false)
         await openViewOptions(find)
       } else {
         expect(all().some((target) => target.props.class === 'view-options-trigger')).toBe(false)
       }
       const preview = find((target) => target.props['aria-label'] === '预览截图')
-      const scrolling = find((target) => target.props['aria-label'] === '自动滚动')
+      const scrolling = viewControl(find, '跟随最新日志')
       const controls = find(
         (target) => target.props.role === 'group' && target.props['aria-label'] === '日志显示选项'
       )
       expect(all(controls)).toContain(preview)
       expect(all(controls)).toContain(scrolling)
+      expect(
+        all(controls)
+          .filter((target) => typeof target.props['aria-pressed'] === 'boolean')
+          .map((target) => target.props['aria-label'])
+      ).toEqual(['简洁日志', '任务列表', '今日任务', '预览截图', '跟随最新日志'])
       expect(preview.props['aria-pressed']).toBe(true)
       expect(scrolling.props['aria-pressed']).toBe(true)
       expect(all().some((target) => target.props.class === 'log-screenshot')).toBe(true)
@@ -2107,84 +2126,127 @@ describe('log page', () => {
     expect(state.client.post).not.toHaveBeenCalled()
   })
 
-  it('collapses the complete mobile queue and resizer inside the log pane without losing their state', async () => {
-    state.mobile.value = true
-    state.mower.refs.task_list.value = [
-      {
-        time: '2026-10-20T11:30:00.000',
-        plan: {},
-        type: { display_value: '跑单' }
+  it.each([false, true])(
+    'hides the queue, backup banner and resizer without losing the queue or layout (mobile=%s)',
+    async (mobile) => {
+      state.mobile.value = mobile
+      state.mower.refs.plan_condition.value = ['副表一']
+      const task = { time: '2026-10-20T11:30:00.000', plan: {}, type: { display_value: '跑单' } }
+      state.mower.refs.task_list.value = [task]
+      const { find, all, pane, page, classes } = mountWidePane(mobile ? 390 : 800)
+      if (mobile) await openViewOptions(find)
+      const toggle = viewControl(find, '任务列表')
+      const daily = viewControl(find, '今日任务')
+      const queue = find((target) => target.props.class === 'task-table-scroll')
+      const resizer = find((target) => target.props.class === 'log-resizer log-resizer-task')
+      const log = find((target) => target.props['data-log-content'])
+      page.layout_preference.task_height = 132
+      expect(toggle.props['aria-pressed']).toBe(true)
+      expect(toggle.props['aria-controls']).toBe(queue.props.id)
+      expect(queue.props.id).toBeTruthy()
+
+      toggle.props.onClick()
+      await nextTick()
+      expect(toggle.props['aria-pressed']).toBe(false)
+      expect(toggle.props.title).toBe('显示任务列表')
+      expect(queue.style.display).toBe('none')
+      expect(resizer.style.display).toBe('none')
+      expect(classes(pane)).not.toContain('has-tasks')
+      expect(all().some((target) => target.props.class === 'plan-condition')).toBe(false)
+      expect(find((target) => target.props['data-log-content'])).toBe(log)
+      expect(daily.props['aria-pressed']).toBe(true)
+      expect(localStorage.setItem).toHaveBeenLastCalledWith('log_show_task_table', 'false')
+      expect(state.mower.refs.task_list.value).toEqual([task])
+
+      toggle.props.onClick()
+      await nextTick()
+      expect(toggle.props['aria-pressed']).toBe(true)
+      expect(queue.style.display).not.toBe('none')
+      expect(resizer.style.display).not.toBe('none')
+      expect(classes(pane)).toContain('has-tasks')
+      expect(find((target) => target.props.class === 'plan-condition')).toBeTruthy()
+      expect(page.layout_preference.task_height).toBe(132)
+      expect(localStorage.setItem).toHaveBeenLastCalledWith('log_show_task_table', 'true')
+      expect(state.client.get).not.toHaveBeenCalled()
+      expect(state.client.post).not.toHaveBeenCalled()
+
+      state.mower.refs.task_list.value = []
+      await nextTick()
+      expect(viewControl(find, '任务列表')).toBe(toggle)
+    }
+  )
+
+  function deferViewTransitions() {
+    vi.stubGlobal('CSS', { supports: () => true })
+    const skipTransition = vi.fn()
+    const callbacks = []
+    document.startViewTransition = vi.fn(({ update }) => {
+      const completion = Promise.withResolvers()
+      callbacks.push(async () => {
+        await update()
+        completion.resolve()
+      })
+      return {
+        ready: Promise.resolve(),
+        updateCallbackDone: completion.promise,
+        finished: completion.promise,
+        skipTransition
       }
-    ]
-    const { find, all } = mountWorkspace()
-    expect(all().some((target) => target.props.class === 'toggle-table-collapse-btn')).toBe(false)
-    await openViewOptions(find)
-    const collapseBtn = find((target) => target.props.class === 'toggle-table-collapse-btn')
-    const queue = find((target) => target.props.class === 'task-table-scroll')
-    const resizer = find((target) => target.props.class === 'log-resizer log-resizer-task')
-    const log = find((target) => target.props['data-log-content'])
-    const pane = queue.parent
-    const page = app._instance.setupState
-    expect(page.show_task_table).toBe(true)
-    expect(collapseBtn.parent.props.class).toBe('log-view-actions')
-    expect(collapseBtn.props['aria-expanded']).toBe(true)
-    expect(collapseBtn.props['aria-label']).toBe('收起任务列表')
-    expect(collapseBtn.props['aria-controls']).toBe(queue.props.id)
-    expect(queue.props.id).toBeTruthy()
-    page.layout_preference.task_height = 132
+    })
+    return { callbacks, skipTransition }
+  }
 
-    collapseBtn.props.onClick()
-    await nextTick()
-    expect(page.show_task_table).toBe(false)
-    expect(queue.style.display).toBe('none')
-    expect(resizer.style.display).toBe('none')
-    expect(pane.props.class.split(' ')).not.toContain('has-tasks')
-    expect(collapseBtn.props['aria-expanded']).toBe(false)
-    expect(collapseBtn.props['aria-label']).toBe('展开任务列表')
-    expect(all().filter((target) => target.props.class === 'task-table-scroll')).toEqual([queue])
-    expect(find((target) => target.props['data-log-content'])).toBe(log)
+  it('keeps the latest task visibility when a transition is interrupted', async () => {
+    state.mower.refs.task_list.value = [{ time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }]
+    const { callbacks, skipTransition } = deferViewTransitions()
+    const { find } = mountWidePane()
+    const toggle = viewControl(find, '任务列表')
+    toggle.props.onClick()
+    toggle.props.onClick()
+    await callbacks[1]()
+    await callbacks[0]()
+    expect(skipTransition).toHaveBeenCalledOnce()
+    expect(toggle.props['aria-pressed']).toBe(true)
+    expect(localStorage.setItem).toHaveBeenLastCalledWith('log_show_task_table', 'true')
 
-    collapseBtn.props.onClick()
-    await nextTick()
-    expect(page.show_task_table).toBe(true)
-    expect(queue.style.display).not.toBe('none')
-    expect(resizer.style.display).not.toBe('none')
-    expect(pane.props.class.split(' ')).toContain('has-tasks')
-    expect(page.layout_preference.task_height).toBe(132)
-    expect(state.client.get).not.toHaveBeenCalled()
-    expect(state.client.post).not.toHaveBeenCalled()
-
-    state.mower.refs.task_list.value = []
-    await nextTick()
-    expect(all().some((target) => target.props.class === 'toggle-table-collapse-btn')).toBe(false)
+    toggle.props.onClick()
+    onBeforeUnmount.mock.lastCall[0]()
+    expect(localStorage.setItem).toHaveBeenLastCalledWith('log_show_task_table', 'false')
+    await callbacks[2]()
+    expect(skipTransition).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps the desktop queue visible and omits mobile folding even after the mobile table was hidden', async () => {
-    state.mower.refs.task_list.value = [
-      { time: '2026-10-20T11:30:00.000', plan: {}, type: { display_value: '跑单' } }
-    ]
-    const { find, all } = mountWorkspace()
-    const queue = find((target) => target.props.class === 'task-table-scroll')
-    const page = app._instance.setupState
-    page.show_task_table = false
-    await nextTick()
-    expect(queue.style.display).not.toBe('none')
-    expect(queue.parent.props.class.split(' ')).toContain('has-tasks')
-    expect(all().some((target) => target.props.class === 'toggle-table-collapse-btn')).toBe(false)
-    state.mobile.value = true
-    await nextTick()
-    expect(queue.style.display).toBe('none')
-    expect(all().some((target) => target.props.class === 'toggle-table-collapse-btn')).toBe(false)
-    await openViewOptions(find)
-    expect(
-      find((target) => target.props.class === 'toggle-table-collapse-btn').props['aria-expanded']
-    ).toBe(false)
-    state.mobile.value = false
-    await nextTick()
-    expect(page.show_view_controls).toBe(false)
-    expect(queue.style.display).not.toBe('none')
-    expect(all().some((target) => target.props.class === 'toggle-table-collapse-btn')).toBe(false)
-  })
+  it.each([
+    ['log_show_task_table', false, true],
+    ['log_show_daily_tasks', true, false]
+  ])(
+    'restores the saved %s setting independently across desktop and mobile',
+    async (hiddenKey, taskVisible, dailyVisible) => {
+      localStorage.getItem.mockImplementation((key) => (key === hiddenKey ? 'false' : null))
+      state.mower.refs.task_list.value = [
+        { time: '2026-10-20T11:30:00.000', plan: {}, type: { display_value: '跑单' } }
+      ]
+      const { find, all } = mountWorkspace()
+      const queue = find((target) => target.props.class === 'task-table-scroll')
+      const expectVisibility = () => {
+        expect(queue.style.display !== 'none').toBe(taskVisible)
+        expect(viewControl(find, '任务列表').props['aria-pressed']).toBe(taskVisible)
+        expect(viewControl(find, '今日任务').props['aria-pressed']).toBe(dailyVisible)
+      }
+      expectVisibility()
+
+      state.mobile.value = true
+      await nextTick()
+      await openViewOptions(find)
+      expectVisibility()
+
+      state.mobile.value = false
+      await nextTick()
+      expect(all().some((target) => target.props.class === 'log-view-actions')).toBe(false)
+      expectVisibility()
+      expect(localStorage.setItem).not.toHaveBeenCalled()
+    }
+  )
 
   function mountWidePane(width = 1290) {
     const workspace = mountWorkspace()
@@ -2389,13 +2451,22 @@ describe('log page', () => {
     state.mower.refs.task_list.value = [
       { time: '2026-10-31T14:20:00.000', plan: {}, type: { display_value: '跑单' } }
     ]
-    const { page, pane, classes } = mountWidePane()
+    const { find, page, pane, classes } = mountWidePane()
     page.apply_log_layout()
     await nextTick()
     expect(classes(pane)).toContain('log-pane--rail')
     expect(classes(pane)).toContain('log-pane--reveal')
     expect(pane.style.setProperty).toHaveBeenCalledWith('--log-rail-w', '480px')
     expect(pane.style.removeProperty).toHaveBeenCalledWith('--log-sc-h')
+
+    const toggle = viewControl(find, '任务列表')
+    toggle.props.onClick()
+    await nextTick()
+    expect(classes(pane)).not.toContain('log-pane--rail')
+    expect(state.mower.refs.task_list.value).toHaveLength(1)
+    toggle.props.onClick()
+    await nextTick()
+    expect(classes(pane)).toContain('log-pane--rail')
 
     state.mobile.value = true
     await nextTick()
@@ -2488,7 +2559,11 @@ describe('log page', () => {
     const strip = () =>
       workspace
         .all()
-        .find((target) => ['任务状态', '今日任务'].includes(target.props['aria-label']))
+        .find(
+          (target) =>
+            target.props['aria-label'] === '任务状态' ||
+            (target.props['aria-label'] === '今日任务' && target.props.role === 'region')
+        )
     const items = () =>
       workspace
         .all(strip())
@@ -2499,6 +2574,117 @@ describe('log page', () => {
         ])
     return { strip, items }
   }
+
+  it.each([false, true])(
+    'clears cached daily status when leaving during a hide transition (mobile=%s)',
+    async (mobile) => {
+      vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
+      state.mobile.value = mobile
+      state.mower.refs.running.value = true
+      state.config.report_enable = true
+      mockDailyStatus(() => ({
+        game_day: '2026-11-08',
+        source: 'live',
+        records: { report: 'done' }
+      }))
+      const first = mountWidePane(mobile ? 390 : 1290)
+      const { find, page } = first
+      onMounted.mock.lastCall[0]()
+      const control = mobile
+        ? find((target) => target.props.class === 'log-daily-toggle')
+        : viewControl(find, '今日任务')
+      if (mobile) control.props.onClick()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(dailyStrip(first).items()).toEqual([['读取基报', 'done']])
+
+      const { callbacks, skipTransition } = deferViewTransitions()
+      control.props.onClick()
+      expect(callbacks).toHaveLength(1)
+      onBeforeUnmount.mock.lastCall[0]()
+      app.unmount()
+      app = null
+      onUnmounted.mock.lastCall[0]()
+
+      expect(skipTransition).toHaveBeenCalledOnce()
+      expect(page.workspace.dailyStatus).toBeNull()
+      await callbacks[0]()
+      expect(page.workspace.dailyStatus).toBeNull()
+    }
+  )
+
+  it.each([false, true])(
+    'hides daily status and cancels its refresh independently of the task list (mobile=%s)',
+    async (mobile) => {
+      vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
+      state.mobile.value = mobile
+      state.mower.refs.running.value = true
+      state.mower.refs.task_list.value = [
+        { time: '2026-11-01T14:20:00.000', plan: {}, type: { display_value: '跑单' } }
+      ]
+      state.config.report_enable = true
+      const replies = []
+      state.client.get.mockImplementation((url) =>
+        url.endsWith('/daily-status')
+          ? new Promise((resolve) => replies.push(resolve))
+          : Promise.resolve({ data: {} })
+      )
+      const response = (report) => ({
+        data: { game_day: '2026-11-01', source: 'live', records: { report } }
+      })
+      const workspace = mountWidePane(mobile ? 390 : 1290)
+      const { find, all, page } = workspace
+      const { strip, items } = dailyStrip(workspace)
+      const titleToggle = () => all().find((target) => target.props.class === 'log-daily-toggle')
+      const log = find((target) => target.props['data-log-content'])
+      const queue = find((target) => target.props.class === 'task-table-scroll')
+      onMounted.mock.lastCall[0]()
+      page.apply_log_layout()
+      await nextTick()
+      if (mobile) {
+        await openViewOptions(find)
+        titleToggle().props.onClick()
+      }
+      const daily = viewControl(find, '今日任务')
+      const tasks = viewControl(find, '任务列表')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(callsTo('/daily-status')).toHaveLength(1)
+      replies[0](response('done'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(items()).toEqual([['读取基报', 'done']])
+
+      await vi.advanceTimersByTimeAsync(30000)
+      const { signal } = callsTo('/daily-status')[1][1]
+      expect(signal.aborted).toBe(false)
+      daily.props.onClick()
+      await nextTick()
+      expect(daily.props['aria-pressed']).toBe(false)
+      expect(localStorage.setItem).toHaveBeenCalledWith('log_show_daily_tasks', 'false')
+      expect(strip()).toBeUndefined()
+      expect(titleToggle()).toBeUndefined()
+      expect(log.props.showAlternateView).toBe(false)
+      expect(tasks.props['aria-pressed']).toBe(true)
+      expect(queue.style.display).not.toBe('none')
+      expect(signal.aborted).toBe(true)
+
+      replies[1](response('pending'))
+      await vi.advanceTimersByTimeAsync(60000)
+      expect(callsTo('/daily-status')).toHaveLength(2)
+      expect(strip()).toBeUndefined()
+
+      daily.props.onClick()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(daily.props['aria-pressed']).toBe(true)
+      expect(localStorage.setItem).toHaveBeenCalledWith('log_show_daily_tasks', 'true')
+      expect(log.props.showAlternateView).toBe(false)
+      if (mobile) {
+        expect(titleToggle().props['aria-label']).toBe('运行日志，切换到今日任务')
+        expect(callsTo('/daily-status')).toHaveLength(2)
+      } else {
+        expect(callsTo('/daily-status')).toHaveLength(3)
+      }
+      onUnmounted.mock.lastCall[0]()
+    }
+  )
 
   it.each(['stop and restart', 'new game day', 'failed refresh', 'saved response'])(
     'invalidates restored daily status after %s',
