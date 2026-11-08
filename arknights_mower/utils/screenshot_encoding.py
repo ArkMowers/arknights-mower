@@ -1,4 +1,4 @@
-"""Shared JPEG encoding with an idle-reclaimed auxiliary preview process."""
+"""Shared JPEG encoding with idle worker reclamation."""
 
 import mmap
 import os
@@ -25,6 +25,7 @@ from arknights_mower.utils.jpeg_worker import (
 
 ENCODE_TIMEOUT = 5
 REAP_TIMEOUT = 0.2
+PRIMARY_IDLE_TIMEOUT = 300
 AUXILIARY_IDLE_TIMEOUT = 30
 
 
@@ -232,6 +233,8 @@ class _EncodingSlot:
         if (
             self.owner_pid != os.getpid()
             or self._closed.is_set()
+            or self._process is None
+            or time.monotonic() - self._last_used < idle_timeout
             or not self._lock.acquire(blocking=False)
         ):
             return
@@ -272,16 +275,17 @@ class ScreenshotEncoding:
         self,
         *,
         timeout=ENCODE_TIMEOUT,
+        primary_idle_timeout=PRIMARY_IDLE_TIMEOUT,
         auxiliary_idle_timeout=AUXILIARY_IDLE_TIMEOUT,
         process_factory=launch_jpeg_process,
         command_factory=worker_command,
     ):
-        if timeout <= 0 or auxiliary_idle_timeout <= 0:
+        if min(timeout, primary_idle_timeout, auxiliary_idle_timeout) <= 0:
             raise ValueError("截图编码和空闲回收预算必须大于 0")
         self._slots = [
             _EncodingSlot(process_factory, command_factory, timeout) for _ in range(2)
         ]
-        self._auxiliary_idle_timeout = auxiliary_idle_timeout
+        self._idle_timeouts = (primary_idle_timeout, auxiliary_idle_timeout)
         self._closing = Event()
         self._reaper_lock = Lock()
         self._reaper = None
@@ -292,6 +296,21 @@ class ScreenshotEncoding:
         primary = self._slots[0]
         expires = time.monotonic() + primary.timeout
         deadline = expires if deadline is None else min(expires, deadline)
+        if self._reaper is None:
+            if not self._reaper_lock.acquire(timeout=primary._remaining(deadline)):
+                raise TimeoutError("等待截图编码空闲回收线程启动超时")
+            try:
+                if self._closing.is_set():
+                    raise RuntimeError("截图编码进程已关闭")
+                if self._reaper is None:
+                    reaper = Thread(
+                        target=self._reap_idle, name="jpeg-idle-reaper", daemon=True
+                    )
+                    reaper.start()
+                    self._reaper = reaper
+            finally:
+                self._reaper_lock.release()
+
         data = primary.encode(
             rgb,
             deadline=deadline,
@@ -302,29 +321,23 @@ class ScreenshotEncoding:
         if data is not None:
             return data
         # A busy history frame never holds newer previews behind its deadline.
-        with self._reaper_lock:
-            if self._closing.is_set():
-                raise RuntimeError("截图编码进程已关闭")
-            if self._reaper is None:
-                reaper = Thread(
-                    target=self._reap_auxiliary, name="jpeg-idle-reaper", daemon=True
-                )
-                reaper.start()
-                self._reaper = reaper
+        if self._closing.is_set():
+            raise RuntimeError("截图编码进程已关闭")
         return self._slots[1].encode(
             rgb, deadline=deadline, lossless=lossless, with_preview=with_preview
         )
 
-    def _reap_auxiliary(self):
-        interval = min(1.0, self._auxiliary_idle_timeout)
+    def _reap_idle(self):
+        interval = min(1.0, *self._idle_timeouts)
         while not self._closing.wait(interval):
-            try:
-                self._slots[1].reap_idle(self._auxiliary_idle_timeout)
-            except Exception:
-                # Logging imports this module through ScreenshotStore.
-                from arknights_mower.utils.log import logger
+            for slot, idle_timeout in zip(self._slots, self._idle_timeouts):
+                try:
+                    slot.reap_idle(idle_timeout)
+                except Exception:
+                    # Logging imports this module through ScreenshotStore.
+                    from arknights_mower.utils.log import logger
 
-                logger.exception("空闲截图编码进程清理失败，保留所有权等待重试")
+                    logger.exception("空闲截图编码进程清理失败，保留所有权等待重试")
 
     def remaining_workers(self):
         processes = [
@@ -348,10 +361,17 @@ class ScreenshotEncoding:
                 slot.close(deadline)
             except Exception as exc:
                 errors.append(exc)
-        if self._reaper is not None:
-            self._reaper.join(max(0, deadline - time.monotonic()))
-            if self._reaper.is_alive():
-                errors.append(TimeoutError("截图编码空闲回收线程未在退出预算内结束"))
+        if self._reaper_lock.acquire(timeout=max(0, deadline - time.monotonic())):
+            reaper = self._reaper
+            self._reaper_lock.release()
+            if reaper is not None:
+                reaper.join(max(0, deadline - time.monotonic()))
+                if reaper.is_alive():
+                    errors.append(
+                        TimeoutError("截图编码空闲回收线程未在退出预算内结束")
+                    )
+        else:
+            errors.append(TimeoutError("截图编码空闲回收线程未在退出预算内登记"))
         if errors:
             for error in errors[1:]:
                 errors[0].add_note(str(error))

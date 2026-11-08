@@ -79,11 +79,15 @@ class Recognizer:
 
     def clear(self):
         self.capture_started_at = None
+        self.release_frame()
+        self.scene = Scene.UNDEFINED
+
+    def release_frame(self):
+        """释放当前标准画面帧和匹配结果，保留场景及观测计时。"""
         self._screencap = None
         self._img = None
         self._gray = None
         self._matcher = None
-        self.scene = Scene.UNDEFINED
 
     @property
     def screencap(self):

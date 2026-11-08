@@ -58,6 +58,8 @@ Tiny prioritizes inference speed and model size. Fixed screenshot checks retain 
 
 Concurrent initialization publishes one engine per instance; failed construction leaves initialization retryable. The in-process engine constructs the model in the calling instance through the same factory with the library's default session threads. The shared service constructs the model in its worker through the same factory, with two intra-operation threads and one inter-operation thread per ONNX session, and an OpenCV thread limit of two. The shared path bounds each library's parallel work rather than reserving particular CPU cores. The input limit reduces inference allocations; it does not establish an application-wide resident-memory limit.
 
+At the [scheduler's long-wait boundary](base-scheduler.md#idle-observation-boundary), the in-process engine releases its model sessions if no inference holds its lock. The engine retains its configured recognition threshold and reloads the models at the next valid OCR call or explicit initialization. A failed reload reports the error to the caller and leaves the models eligible for loading on a later call. The shared OCR service manages its own idle lifetime.
+
 <a id="independent-shared-ocr"></a>
 ## Independent Shared OCR
 

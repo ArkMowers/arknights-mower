@@ -233,6 +233,7 @@ from arknights_mower.utils.workshop_ui import (
 )
 
 _backup_timing_runtime = threading.local()
+_LONG_IDLE_SECONDS = 300
 
 
 class _BackupCalculationTiming:
@@ -22478,6 +22479,7 @@ class BaseSchedulerSolver(
         """等待任务并统一维护 `sleeping` 与连续场景观测边界。
 
         普通等待响应调度器唤醒；维护等待响应停止或当前暂停的明确取消。
+        长时间等待开始前释放缓存画面和本地 OCR 模型。
         成功恢复时清理标准画面帧、场景和计时；设备恢复失败时保留待完成的识别复位。
         主循环成功恢复设备后完成复位；取消与错误始终复位 `sleeping`。
         """
@@ -22491,6 +22493,7 @@ class BaseSchedulerSolver(
             if allow_wakeup and remaining_time > 0
             else None
         )
+        release_idle_memory = remaining_time > _LONG_IDLE_SECONDS
         self.sleeping = True
         try:
             end_time = datetime.now() + timedelta(seconds=remaining_time)
@@ -22503,6 +22506,10 @@ class BaseSchedulerSolver(
                 if allow_wakeup and config.wake_scheduler.is_set():
                     config.wake_scheduler.clear()
                     break
+                if release_idle_memory and not config.stop_mower.is_set():
+                    self.recog.release_frame()
+                    rapidocr.release_idle_local_model()
+                    release_idle_memory = False
                 csleep(min(1, (end_time - datetime.now()).total_seconds()))
             if config.stop_mower.is_set():
                 raise MowerExit
@@ -22672,9 +22679,12 @@ class BaseSchedulerSolver(
             self.check_current_focus()
 
     def _get_idle_action(self, remaining_time=0):
-        if config.conf.close_simulator_when_idle and remaining_time > 300:
+        if (
+            config.conf.close_simulator_when_idle
+            and remaining_time > _LONG_IDLE_SECONDS
+        ):
             return "close"
-        if config.conf.exit_game_when_idle and remaining_time > 300:
+        if config.conf.exit_game_when_idle and remaining_time > _LONG_IDLE_SECONDS:
             return "exit"
         if config.conf.return_home_when_idle:
             return "home"

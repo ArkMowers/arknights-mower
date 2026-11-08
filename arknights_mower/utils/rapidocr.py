@@ -208,10 +208,9 @@ class _RapidOCRAdapter:
 class _LocalOCREngine:
     """进程内 OCR 引擎，调用约定与 SharedOCREngine 一致。
 
-    构造时通过 create_engine(score) 加载模型；调用参数接受与共享客户端相同的
-    use_det/use_cls/use_rec 与 text_score/box_thresh/unclip_ratio，并在每次调用
-    重置阈值，避免上一次调用的阈值影响下一次。实例内调用串行，对应
-    SharedOCREngine 的实例内串行约定；生产调用点只传三个布尔开关。
+    构造时通过 create_engine(score) 加载模型。休眠释放模型后，任务初始化或下一次
+    有效调用会使用原置信度阈值重建模型。调用参数与共享客户端一致，每次调用都重置
+    阈值。实例内调用串行，生产调用点只传三个布尔开关。
     """
 
     def __init__(self, score=DEFAULT_TEXT_SCORE):
@@ -219,6 +218,23 @@ class _LocalOCREngine:
         self.score = score
         self._engine = create_engine(score)
         self._lock = Lock()
+
+    def _loaded_model(self):
+        if self._engine is None:
+            self._engine = create_engine(self.score)
+        return self._engine
+
+    def ensure_model_loaded(self):
+        if self._engine is None:
+            with self._lock:
+                self._loaded_model()
+
+    def release_idle_model(self):
+        if self._lock.acquire(blocking=False):
+            try:
+                self._engine = None
+            finally:
+                self._lock.release()
 
     def __call__(self, image, use_det=None, use_cls=None, use_rec=None, **kwargs):
         options = _checked_call_options(
@@ -231,7 +247,8 @@ class _LocalOCREngine:
             }
         )
         with self._lock:
-            return self._engine(
+            model = self._loaded_model()
+            return model(
                 image,
                 use_det=options["use_det"],
                 use_cls=options["use_cls"],
@@ -240,6 +257,12 @@ class _LocalOCREngine:
                 box_thresh=options["box_thresh"],
                 unclip_ratio=options["unclip_ratio"],
             )
+
+
+def release_idle_local_model():
+    current = engine
+    if isinstance(current, _LocalOCREngine):
+        current.release_idle_model()
 
 
 def _default_data_root():
@@ -373,6 +396,8 @@ def initialize_ocr(score=DEFAULT_TEXT_SCORE):
     with _initialize_lock:
         previous_mode = _engine_mode(engine)
         if engine is not None and previous_mode == mode:
+            if isinstance(engine, _LocalOCREngine):
+                engine.ensure_model_loaded()
             return
         previous = engine
         built = _build_engine(mode, score)
