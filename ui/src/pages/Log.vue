@@ -1210,7 +1210,6 @@ async function db_delete(keys) {
                 heading,
                 mastery,
                 actions,
-                chargingTarget,
                 roomEntries,
                 roomId,
                 roomAgents,
@@ -1290,6 +1289,7 @@ async function db_delete(keys) {
                       v-if="!actions.length && token.type === 'operator'"
                       type="button"
                       class="task-operator-button"
+                      :class="{ 'task-operator-button--named': token.showName }"
                       :aria-label="token.name"
                       :title="token.name"
                       @click="show_operator_hint(token.name, $event)"
@@ -1297,7 +1297,12 @@ async function db_delete(keys) {
                       @blur="operator_hint = null"
                       @keydown.esc="operator_hint = null"
                     >
-                      <log-operator :name="token.name" :size="24" :tabindex="-1" />
+                      <log-operator
+                        :name="token.name"
+                        :show-name="token.showName"
+                        :size="24"
+                        :tabindex="-1"
+                      />
                     </button>
                     <span
                       v-else-if="!actions.length && token.type === 'group'"
@@ -1310,9 +1315,6 @@ async function db_delete(keys) {
                 <div v-if="task.emergency_recovery_release" class="task-flag">自动救急</div>
                 <div v-else-if="task.emergency_staffing" class="task-flag">自动救急换班</div>
                 <div v-else-if="task.emergency_dorm" class="task-flag">自动救急宿舍安排</div>
-                <div v-if="chargingTarget" class="task-charging-target">
-                  充能对象 {{ chargingTarget }}
-                </div>
                 <div v-if="mastery" class="task-facilities">
                   <div v-if="mastery.room" class="task-room-label" :title="mastery.room">
                     {{ mastery.label }}
@@ -2185,14 +2187,13 @@ async function db_delete(keys) {
   padding-inline: 2px;
 }
 
-.task-charging-target {
-  color: var(--mower-text-muted, #8a9099);
-  font-size: 13px;
-  line-height: 18px;
-}
-
 .task-heading .task-operator-button {
   vertical-align: middle;
+}
+
+.task-heading .task-operator-button--named {
+  margin-inline-start: 4px;
+  border-radius: 4px;
 }
 
 .task-subject {

@@ -432,8 +432,10 @@ def test_facility_idle_discards_invalid_agents_but_keeps_original_message(agents
 @pytest.mark.parametrize(
     "event",
     [
+        {"type": "workshop-material", "name": "家具零件_碳", "item": "家具零件"},
         {
             "type": "workshop-result",
+            "product": {"name": "切削原液", "item": "切削原液"},
             "changes": [
                 {"name": "切削原液", "delta": 3},
                 {"name": "龙门币", "delta": -900},

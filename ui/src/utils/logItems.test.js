@@ -1,6 +1,23 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { logItemMatches } from './logItems.js'
 import { BASE_PRODUCT_COLORS, ORDER_COLORS } from './baseReport.js'
+
+const workshopRecipes = JSON.parse(
+  readFileSync(
+    new URL('../../../arknights_mower/data/workshop_formula.json', import.meta.url),
+    'utf8'
+  )
+)
+const aliasedWorkshopRecipes = Object.entries(workshopRecipes).filter(
+  ([name, recipe]) => name !== recipe.output_name
+)
+const icon = (name) => `/depot/${encodeURIComponent(name)}.webp`
+const recipeDisplay = (ingredient, product) => [
+  { type: 'item', text: ingredient, icon: icon(ingredient) },
+  { type: 'text', text: ' → ' },
+  { type: 'item', text: product, icon: icon(product) }
+]
 
 describe('log item presentation', () => {
   it('keeps current base-report fields complete with spaced units, zero and unread values', () => {
@@ -65,6 +82,73 @@ describe('log item presentation', () => {
       )
     ).toEqual([])
   })
+  it.each([
+    '检测到家具零件_碳满足条件，开始加工',
+    '检测到家具零件_碳不满足条件，跳过',
+    '[[operator:凯尔希·思衡托]]加工家具零件_碳：库存12，上限20，本批最多3次'
+  ])('records the source recipe and displays its ingredients in %s', (text) => {
+    const event = { type: 'workshop-material', name: '家具零件_碳', item: '家具零件' }
+    const [material] = logItemMatches(text, event)
+    expect(material).toMatchObject({
+      type: 'item',
+      text: event.name,
+      displayTokens: recipeDisplay('碳', event.item)
+    })
+    expect(text.slice(material.start, material.end)).toBe(event.name)
+    expect(logItemMatches(text)).toEqual([])
+    expect(logItemMatches(text, { ...event, name: '家具零件' })).toEqual([])
+    expect(logItemMatches(text, { ...event, item: '' })).toEqual([])
+  })
+
+  it.each(aliasedWorkshopRecipes)('uses the bundled recipe direction for %s', (name, recipe) => {
+    const [ingredient] = Object.keys(recipe.costs)
+    const text = `检测到${name}满足条件，开始加工`
+    const [material] = logItemMatches(text, {
+      type: 'workshop-material',
+      name,
+      item: recipe.output_name
+    })
+    expect(material.displayTokens).toEqual(recipeDisplay(ingredient, recipe.output_name))
+    expect(text.slice(material.start, material.end)).toBe(name)
+  })
+
+  it('keeps the usual single item icon for a workshop recipe named after its product', () => {
+    const name = '切削原液'
+    expect(
+      logItemMatches(`检测到${name}满足条件，开始加工`, {
+        type: 'workshop-material',
+        name,
+        item: name
+      })
+    ).toEqual([{ start: 3, end: 3 + name.length, type: 'item', text: name, icon: icon(name) }])
+  })
+
+  it.each([true, false])(
+    'displays a workshop recipe direction with product metadata=%s',
+    (withProduct) => {
+      const text =
+        '[[operator:蜜莓]]加工家具零件_碳完成3次，库存变化：碳-3、家具零件+12、龙门币-600'
+      const event = {
+        type: 'workshop-result',
+        ...(withProduct ? { product: { name: '家具零件_碳', item: '家具零件' } } : {}),
+        changes: [
+          { name: '碳', delta: -3 },
+          { name: '家具零件', delta: 12 },
+          { name: '龙门币', delta: -600 }
+        ]
+      }
+      const matches = logItemMatches(text, event)
+      expect(matches.map((entry) => entry.text)).toEqual([
+        '家具零件_碳',
+        '碳-3',
+        '家具零件+12',
+        '龙门币-600'
+      ])
+      expect(matches[0].displayTokens).toEqual(recipeDisplay('碳', '家具零件'))
+      expect(matches.every((entry) => text.slice(entry.start, entry.end) === entry.text)).toBe(true)
+    }
+  )
+
   it('uses report colors and existing item icons while retaining complete recipe names', () => {
     const text = '制造站 B202：当前产物为源石碎片（装置）；使用3架无人机'
     const matches = logItemMatches(text)

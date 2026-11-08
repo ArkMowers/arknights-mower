@@ -6,6 +6,7 @@ const DATE = String.raw`\d{4}-\d{2}-\d{2}`
 const TIME = String.raw`\d{2}:\d{2}:\d{2}(?:[,.]\d{1,6})?`
 const LEVEL = 'CRITICAL|ERROR|WARNING|WARN|INFO|DEBUG'
 const IDENTIFIER = String.raw`[\p{L}\p{N}_]`
+const SUBJECT_IDENTIFIER = String.raw`[\p{L}\p{N}_·]`
 const ROOM = String.raw`(?:room_\d+_\d+|(?:dormitory|gaming)_\d+)(?:_[A-Za-z0-9]+)*|central|meeting|factory|contact|train|recycle`
 const LEVEL_PRIORITY = { DEBUG: 10, INFO: 20, WARNING: 30, ERROR: 40, CRITICAL: 50 }
 const LOG_HEADER = new RegExp(
@@ -24,17 +25,17 @@ const OPERATIONS = new RegExp(
   'u'
 )
 
-function bounded(pattern) {
-  return String.raw`(?<!${IDENTIFIER})(?:${pattern})(?!${IDENTIFIER})`
+function bounded(pattern, identifier = IDENTIFIER) {
+  return String.raw`(?<!${identifier})(?:${pattern})(?!${identifier})`
 }
 
 function shiftSubject(pattern) {
-  return String.raw`(?<!${IDENTIFIER})(?:${pattern})(?=上班|下班|休息|转为空闲)`
+  return String.raw`(?<!${SUBJECT_IDENTIFIER})(?:${pattern})(?=上班|下班|休息|转为空闲)`
 }
 
 function operatorPattern(names) {
   const pattern = names.map(escapePattern).join('|')
-  return `${bounded(pattern)}|${shiftSubject(pattern)}`
+  return `${bounded(pattern, SUBJECT_IDENTIFIER)}|${shiftSubject(pattern)}`
 }
 
 function escapePattern(text) {
@@ -241,7 +242,7 @@ export function createLogPresenter(
     String.raw`(?<time>(?<!\d)${TIME}(?!\d|[,.]\d))`,
     `(?<level>${bounded(LEVEL)})`,
     String.raw`(?<room>(?<![A-Za-z0-9_])(?:${ROOM})(?![A-Za-z0-9_]))`,
-    `(?<group>${groups.length ? `${structuredGroups ? `${bounded(groupPattern)}|` : ''}${shiftSubject(groupPattern)}` : '(?!)'})`,
+    `(?<group>${groups.length ? `${structuredGroups ? `${bounded(groupPattern, SUBJECT_IDENTIFIER)}|` : ''}${shiftSubject(groupPattern)}` : '(?!)'})`,
     `(?<operator>${operatorPattern(names)})`
   ]
   const matcher = new RegExp(patterns.join('|'), 'gu')

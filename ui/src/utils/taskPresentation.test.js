@@ -485,7 +485,7 @@ describe('task presentation', () => {
     ])
   })
 
-  it('keeps the charging action in the heading and the confirmed target in its details', () => {
+  it('adds the confirmed charging target to the heading tokens with its full name', () => {
     const task = {
       display_name: '肥鸭',
       meta_data: '伊内丝',
@@ -497,13 +497,17 @@ describe('task presentation', () => {
     }
 
     expect(queueTaskText(task)).toBe('菲亚梅塔充能')
-    expect(queueTaskTokens(task, ['菲亚梅塔', '伊内丝'])).toEqual([
-      { type: 'text', text: '菲亚梅塔充能' }
-    ])
-    expect(queueTaskRows([task])[0].chargingTarget).toBe('伊内丝')
-    expect(
-      queueTaskRows([{ ...task, presentation: { title: '肥鸭' } }])[0].chargingTarget
-    ).toBeNull()
+    const heading = [
+      { type: 'text', text: '菲亚梅塔充能' },
+      { type: 'operator', text: '伊内丝', name: '伊内丝', showName: true }
+    ]
+    expect(queueTaskTokens(task, ['菲亚梅塔', '伊内丝'])).toEqual(heading)
+    expect(queueTaskRows([task])[0].heading).toEqual(heading)
+    for (const title of ['肥鸭', '肥鸭 充 砾']) {
+      expect(queueTaskRows([{ ...task, presentation: { title } }])[0].heading).toEqual([
+        { type: 'text', text: '菲亚梅塔充能' }
+      ])
+    }
   })
 
   it('uses clear queue names for legacy charging and clue exchange tasks', () => {

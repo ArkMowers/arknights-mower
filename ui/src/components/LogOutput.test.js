@@ -1841,6 +1841,175 @@ describe('explicit grouped observations', () => {
     expect(entries.every((entry) => all(entry).some((child) => child.tag === 'img'))).toBe(true)
     expect(page.rows()[0].props['data-log-source']).toBe(source)
   })
+
+  it.each([
+    ['：库存12，上限20，本批最多3次', { type: 'workshop-material' }],
+    ['完成3次，库存变化：碳-3、家具零件+12、龙门币-600', { type: 'workshop-result' }]
+  ])(
+    'renders the workshop recipe from ingredient to product with both icons for %s',
+    (detail, event) => {
+      const document = { addEventListener: vi.fn(), removeEventListener: vi.fn() }
+      vi.stubGlobal('document', document)
+      const operator = '凯尔希·思衡托'
+      const product = { name: '家具零件_碳', item: '家具零件' }
+      const source = `2026-11-05 14:00:00 INFO [[operator:${operator}]]加工${product.name}${detail}`
+      const nextSource = '2026-11-05 14:00:01 INFO 确认库存'
+      const metadata =
+        event.type === 'workshop-material'
+          ? { ...event, ...product }
+          : {
+              ...event,
+              product,
+              changes: [
+                { name: '碳', delta: -3 },
+                { name: '家具零件', delta: 12 },
+                { name: '龙门币', delta: -600 }
+              ]
+            }
+      const page = mount({
+        lines: [{ text: source, room: 'factory', agents: [operator], event: metadata }, nextSource]
+      })
+      const [row, nextRow] = page.rows()
+      const recipeItems = all(row).filter(
+        (entry) =>
+          hasClass(entry, 'log-token--item') && !hasClass(entry, 'log-token--inventory-change')
+      )
+
+      expect(portraits(row).map((entry) => entry.props['data-operator-name'])).toEqual([operator])
+      expect(recipeItems.map(text)).toEqual(['碳', product.item])
+      expect(
+        recipeItems.map((entry) => all(entry).find((child) => child.tag === 'img')?.props.src)
+      ).toEqual(['碳', product.item].map((name) => `/depot/${encodeURIComponent(name)}.webp`))
+      expect(visibleText(row)).toContain(`加工碳 → 家具零件${detail}`)
+      expect(visibleText(row)).not.toContain(product.name)
+      expect(row.props['data-log-source']).toBe(source)
+
+      const stamp = all(row).find((entry) => hasClass(entry, 'log-stamp__time'))
+      const domRow = {
+        nodeType: 1,
+        textContent: text(row),
+        getAttribute: (name) => row.props[name] ?? null,
+        querySelector: (selector) => (selector === '.log-stamp__time' ? stamp : null),
+        closest: (selector) =>
+          selector.split(', ').some((part) => {
+            const attributes = [...part.matchAll(/\[([^\]]+)\]/gu)]
+            return (
+              part.startsWith('.log-line[') &&
+              attributes.every(([, name]) => row.props[name] != null)
+            )
+          })
+            ? domRow
+            : null
+      }
+      const textFromStamp = domRow.textContent.slice(domRow.textContent.indexOf(text(stamp)))
+      const bounds = {
+        selectNodeContents: vi.fn(),
+        setStart: vi.fn(),
+        toString: () => textFromStamp
+      }
+      document.createRange = () => bounds
+      const root = page.all().find((entry) => hasClass(entry, 'log-output'))
+      root.contains = (candidate) => candidate === domRow
+      let selectedText = domRow.textContent
+      vi.stubGlobal('getSelection', () => ({
+        rangeCount: 1,
+        isCollapsed: false,
+        toString: () => selectedText,
+        getRangeAt: () => ({
+          commonAncestorContainer: domRow,
+          compareBoundaryPoints: () => -1,
+          cloneContents: () => ({
+            nodeType: 11,
+            childNodes: [{ nodeType: 3, textContent: selectedText }],
+            querySelector: () => (selectedText === domRow.textContent ? {} : null)
+          })
+        })
+      }))
+      const copy = document.addEventListener.mock.calls.find(([name]) => name === 'copy')[1]
+      const eventCopy = { clipboardData: { setData: vi.fn() }, preventDefault: vi.fn() }
+      copy(eventCopy)
+      expect(eventCopy.clipboardData.setData).toHaveBeenCalledExactlyOnceWith('text/plain', source)
+      expect(eventCopy.preventDefault).toHaveBeenCalledOnce()
+
+      selectedText = textFromStamp
+      eventCopy.clipboardData.setData.mockClear()
+      eventCopy.preventDefault.mockClear()
+      copy(eventCopy)
+      expect(bounds.setStart).toHaveBeenCalledExactlyOnceWith(stamp, 0)
+      expect(eventCopy.clipboardData.setData).toHaveBeenCalledExactlyOnceWith('text/plain', source)
+      expect(eventCopy.preventDefault).toHaveBeenCalledOnce()
+
+      selectedText = '碳 → 家具零件'
+      eventCopy.clipboardData.setData.mockClear()
+      eventCopy.preventDefault.mockClear()
+      copy(eventCopy)
+      expect(eventCopy.clipboardData.setData).not.toHaveBeenCalled()
+      expect(eventCopy.preventDefault).not.toHaveBeenCalled()
+
+      const container = { nodeType: 1, closest: () => null }
+      const nextDomRow = {
+        nodeType: 1,
+        textContent: text(nextRow),
+        getAttribute: (name) => nextRow.props[name] ?? null
+      }
+      root.contains = (candidate) => candidate === container
+      root.querySelectorAll = () => [domRow, nextDomRow]
+      vi.stubGlobal('getSelection', () => ({
+        rangeCount: 1,
+        isCollapsed: false,
+        toString: () => `${selectedText}\n${nextDomRow.textContent}`,
+        getRangeAt: () => ({
+          commonAncestorContainer: container,
+          cloneContents: () => ({
+            nodeType: 11,
+            querySelector: () => ({}),
+            childNodes: [
+              {
+                ...domRow,
+                textContent: selectedText,
+                childNodes: [{ nodeType: 3, textContent: selectedText }],
+                classList: { contains: (name) => name === 'log-line' }
+              },
+              nextDomRow
+            ]
+          })
+        })
+      }))
+      copy(eventCopy)
+      expect(eventCopy.clipboardData.setData).toHaveBeenCalledExactlyOnceWith(
+        'text/plain',
+        `碳 → 家具零件\n${nextSource}`
+      )
+
+      selectedText = textFromStamp
+      eventCopy.clipboardData.setData.mockClear()
+      copy(eventCopy)
+      expect(eventCopy.clipboardData.setData).toHaveBeenCalledExactlyOnceWith(
+        'text/plain',
+        `${source}\n${nextSource}`
+      )
+    }
+  )
+
+  it('keeps dotted operator names whole when the operator catalog changes', async () => {
+    const name = '凯尔希·思衡托'
+    const source = `2026-11-05 14:00:00 INFO ${name}上班`
+    const page = mount({ lines: [source], operatorNames: ['凯尔希'] })
+
+    expect(portraits(page.rows()[0]).map((entry) => entry.props['data-operator-name'])).toEqual([])
+    expect(visibleText(page.rows()[0])).toContain(name)
+
+    page.props.operatorNames = ['凯尔希', name]
+    await nextTick()
+    const rendered = portraits(page.rows()[0])
+    expect(rendered.map((entry) => entry.props['data-operator-name'])).toEqual([name])
+    const [portrait] = rendered
+    expect(all(portrait).find((entry) => entry.tag === 'img').props.src).toBe(
+      `/avatar/${encodeURIComponent(name)}.webp`
+    )
+    expect(page.rows()[0].props['data-log-source']).toBe(source)
+  })
+
   it('renders the explicit operator target of an unplanned exhaustion forecast in place', () => {
     const header = '休息 28分55秒，至 12:31:33，随后执行「用尽下班」，目标干员：[[operator:陈]]'
     const page = mount({

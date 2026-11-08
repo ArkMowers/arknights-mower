@@ -459,8 +459,13 @@ describe('log page', () => {
           ])
     })
     app.component('LogOperator', {
-      props: ['name'],
-      setup: (props) => () => h('span', { 'data-operator-name': props.name }, props.name)
+      props: ['name', 'showName'],
+      setup: (props) => () =>
+        h(
+          'span',
+          { 'data-operator-name': props.name, 'data-show-name': props.showName },
+          props.name
+        )
     })
     app.component('TaskActionSubjects', {
       props: ['actions', 'facilityPlan', 'size'],
@@ -1118,6 +1123,52 @@ describe('log page', () => {
     )
     expect(state.client.post).not.toHaveBeenCalled()
   })
+
+  it.each([false, true])(
+    'shows the charging target portrait and name in the heading (mobile=%s)',
+    (mobile) => {
+      state.mobile.value = mobile
+      const task = {
+        time: '2026-10-31T14:02:37.000',
+        display_name: '肥鸭',
+        meta_data: '砾',
+        plan: { dormitory_1: ['砾', '菲亚梅塔'] }
+      }
+      state.mower.refs.task_list.value = [
+        { ...task, presentation: { title: '肥鸭 充 砾' } },
+        { ...task, presentation: { title: '肥鸭' } }
+      ]
+      const { find, all } = mountWorkspace()
+      const queue = find((target) => target.props.class === 'task-table-scroll')
+      const [charging, fallback] = all(queue).filter(
+        (target) => target.props.class === 'task-heading'
+      )
+      const content = (target) =>
+        all(target)
+          .filter((entry) => entry.tag !== '#comment')
+          .map((entry) => entry.text)
+          .join('')
+          .replace(/\s+/g, '')
+      expect(content(charging)).toBe('菲亚梅塔充能砾')
+      const portrait = all(charging).find((target) => target.props['data-operator-name'] === '砾')
+      expect(portrait.props['data-show-name']).toBe(true)
+      expect(portrait.parent.props['aria-label']).toBe('砾')
+      expect(content(fallback)).toBe('菲亚梅塔充能')
+      expect(content(queue)).not.toContain('充能对象')
+      expect(
+        all(queue)
+          .filter((target) => target.props.class === 'task-facilities')
+          .map((facility) =>
+            all(facility)
+              .map((target) => target.props['data-operator-name'])
+              .filter(Boolean)
+          )
+      ).toEqual([
+        ['砾', '菲亚梅塔'],
+        ['砾', '菲亚梅塔']
+      ])
+    }
+  )
 
   it('shares one task portrait hint across touch and keyboard without replacing the queue or log', async () => {
     state.mobile.value = true
