@@ -8,6 +8,12 @@ On Windows, [package startup](../../arknights_mower/__init__.py) sets `OPENCV_OP
 
 The [OpenCV runtime tests](../../arknights_mower/tests/opencv_runtime_tests.py) cover source and frozen startup, explicit values and platform isolation. Windows native checks exercise image operations, a background thread and a spawned helper, and verify that they exit without enabling OpenCL.
 
+## Windows OpenBLAS Thread Default
+
+On Windows, [package startup](../../arknights_mower/__init__.py) sets `OPENBLAS_NUM_THREADS=1` before NumPy loads to reduce private memory committed for OpenBLAS threads. It supplies this default only when `OPENBLAS_NUM_THREADS`, `OPENBLAS_DEFAULT_NUM_THREADS`, `GOTO_NUM_THREADS` and `OMP_NUM_THREADS` are all absent. Spawned processes inherit the setting. Other platforms keep their library defaults. ONNX Runtime and OpenCV use their own thread settings.
+
+[Native runtime tests](../../arknights_mower/tests/opencv_runtime_tests.py) cover startup before NumPy loads, including source and frozen startup paths, explicit overrides and other platforms.
+
 ## Login Captcha Panel
 
 Captcha scene recognition and the existing solver share the same white-panel bounds. The bounds must contain the solver's complete crop regions and a nonzero template border; pure-white pixels must occupy at least ten percent of their bounding rectangle. Sparse startup-background highlights do not confirm a captcha panel, even when the generic captcha feature matches. Missing or invalid bounds prevent template matching and captcha input. Refreshing a confirmed panel requires new bounds before matching the refreshed image. Cancellation and device exceptions propagate through the existing recovery boundary.
