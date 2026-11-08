@@ -9,7 +9,6 @@ import uuid
 from pathlib import Path
 from threading import Event, RLock
 
-import cv2
 import numpy as np
 import requests
 from urllib3.exceptions import HTTPError, ReadTimeoutError
@@ -330,6 +329,9 @@ class DroidCastSession:
             raise DroidCastError("closed", "DroidCast 会话已关闭或所有权不匹配")
         if self.process is None or self.http is None:
             raise DroidCastError("start_failed", "DroidCast helper 尚未启动")
+
+        import cv2
+
         deadline = time.monotonic() + io_timeout(START_TIMEOUT)
         self._verify_owned_mapping()
         while True:

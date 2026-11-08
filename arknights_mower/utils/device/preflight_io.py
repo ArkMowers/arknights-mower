@@ -14,7 +14,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 from arknights_mower.utils.config.device_profile import capture_compatibility_error
@@ -39,6 +38,8 @@ COMMAND_TIMEOUT = 10
 
 
 def decode_image(data: bytes) -> np.ndarray:
+    import cv2
+
     decoded = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if decoded is None:
         raise ValueError("截图后端未返回可解码图像")
