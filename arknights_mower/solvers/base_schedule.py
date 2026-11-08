@@ -17630,7 +17630,7 @@ class BaseSchedulerSolver(
         )
 
     def _confirm_facility_arrangement_log(
-        self, room, agents, observed=None, *, cache_only=False
+        self, room, agents, observed=None, *, unconfirmed=None
     ):
         event = getattr(self, "_active_facility_log", None)
         if (
@@ -17639,16 +17639,16 @@ class BaseSchedulerSolver(
             and event["phase"] == "started"
             and event["anchor"]
         ):
-            event["phase"] = "failed" if cache_only else "completed"
+            event["phase"] = "failed" if unconfirmed else "completed"
             event["anchor"] = False
             event["agents"] = [
                 name for name in agents if name not in ("", "_", "Current", "Free")
             ]
             task = getattr(self, "task", None)
             target = self._fiammetta_charge_target(task, room, agents)
-            if cache_only:
+            if unconfirmed:
                 event.pop("run_order_agents", None)
-                event["summary"] = f"{event['label']}：缓存名单与安排一致，跳过选人"
+                event["summary"] = f"{event['label']}：{unconfirmed}"
             elif (
                 target is not None
                 and observed is not None
@@ -18423,8 +18423,26 @@ class BaseSchedulerSolver(
         if getattr(self.task, "arrangement_retry_room", None) == room:
             del self.task.arrangement_retry_room
             del self.task.arrangement_retry_count
+        targets = plan[room]
+        unconfirmed = None
+        if cache_only:
+            unconfirmed = "缓存名单与安排一致，跳过选人"
+        elif settle_entry and observed is not None:
+            if (
+                not observed
+                or len(observed) < len(targets)
+                or any(
+                    not item.get("observed", True) for item in observed[: len(targets)]
+                )
+            ):
+                unconfirmed = "驻员名单未读全，尚未确认安排"
+            elif any(
+                name not in ("Current", "Free") and item["agent"] != name
+                for name, item in zip(targets, observed)
+            ):
+                unconfirmed = "实际驻员与安排不同，尚未确认安排"
         self._confirm_facility_arrangement_log(
-            room, plan[room], observed, cache_only=cache_only
+            room, targets, observed, unconfirmed=unconfirmed
         )
         del plan[room]
 

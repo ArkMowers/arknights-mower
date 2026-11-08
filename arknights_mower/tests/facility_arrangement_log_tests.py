@@ -77,6 +77,42 @@ def test_matching_cached_roster_skips_selection_without_confirming_the_room(
     assert progress[1]["summary"] == "会客室：缓存名单与安排一致，跳过选人"
 
 
+@pytest.mark.parametrize(
+    ("readback", "summary"),
+    [
+        ("partial", "宿舍1：驻员名单未读全，尚未确认安排"),
+        ("different", "宿舍1：实际驻员与安排不同，尚未确认安排"),
+        ("matching", None),
+    ],
+)
+def test_cached_dorm_roster_uses_fresh_readback_for_completion(
+    solver, caplog, monkeypatch, readback, summary
+):
+    capture(caplog, monkeypatch)
+    solver.task.plan = {ROOM: solver.physical.copy()}
+    observed = [{"agent": name} for name in solver.physical]
+    if readback == "partial":
+        observed[-1] = {"agent": "", "observed": False}
+    elif readback == "different":
+        observed[-1] = {"agent": "黑角"}
+    solver.get_agent_from_room.side_effect = None
+    solver.get_agent_from_room.return_value = observed
+
+    solver.agent_arrange_room({}, ROOM, solver.task.plan, get_time=True)
+
+    solver.get_agent_from_room.assert_called_once()
+    solver.choose_agent.assert_not_called()
+    assert not solver.task.plan
+    progress = events(caplog)
+    assert progress[1]["id"] == progress[0]["id"]
+    assert [event["phase"] for event in progress] == [
+        "started",
+        "failed" if summary else "completed",
+    ]
+    if summary:
+        assert progress[1]["summary"] == summary
+
+
 def test_retained_recycling_resident_updates_progress_before_confirmation(
     solver, caplog, monkeypatch
 ):
