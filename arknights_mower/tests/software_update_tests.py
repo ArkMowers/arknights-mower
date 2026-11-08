@@ -16,6 +16,7 @@ import zipfile
 from contextlib import ExitStack
 from itertools import product
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from flask import Flask
@@ -23,6 +24,7 @@ from werkzeug.datastructures import FileStorage
 
 from arknights_mower.tests.software_package_tests import make_release_package
 from arknights_mower.utils import software_update as update
+from arknights_mower.utils import software_update_worker as updater
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.software_update_worker import Worker, extract_archive
 from arknights_mower.views.software_update import software_update_bp
@@ -1164,6 +1166,78 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(
             runtime.read_json(self.state / "status.json")["status"], "succeeded"
         )
+
+    def test_failed_shutdown_restores_only_released_instances(self):
+        self._assert_failed_shutdown_restores_released_instances(child_lock=False)
+
+    def test_failed_shutdown_skips_instances_with_a_surviving_child_lock(self):
+        self._assert_failed_shutdown_restores_released_instances(child_lock=True)
+
+    def _assert_failed_shutdown_restores_released_instances(self, *, child_lock):
+        self.job.update(deployment="release")
+        worker = self.worker()
+        held, released = records = [
+            {
+                "id": name,
+                "pid": 123 + index,
+                "kind": "instance",
+                "space": name,
+                "name": name,
+                "port": 58100 + index,
+                "running": True,
+                "supervision_directory": str(self.work / name),
+            }
+            for index, name in enumerate(("held", "released"))
+        ]
+        ready = {**released, "ready": True, "restart_job": self.job["id"]}
+        launched = []
+        now = 0
+
+        def advance(seconds):
+            nonlocal now
+            now += 120 if seconds == 1 else seconds
+
+        def scan(directory, *, timeout=5):
+            self.assertEqual(directory, self.state)
+            if timeout == 0:
+                return [ready] if "released" in launched else []
+            return [] if launched else records
+
+        def launch(command, **kwargs):
+            launched.append(command[-1])
+            return Mock(poll=Mock(return_value=0))
+
+        def check_guardian(record, deadline):
+            runtime.wait_for_supervisor_release(record, time.monotonic())
+
+        with (
+            runtime.supervision_lock(
+                held["supervision_directory"], timeout=0, child=child_lock
+            ),
+            patch.object(worker, "prepare_package"),
+            patch.object(worker, "install_package") as install,
+            patch.object(worker, "start_progress_servers") as progress,
+            patch.object(updater, "instances", side_effect=scan),
+            patch.object(updater, "process_alive", return_value=False),
+            patch.object(updater, "wait_for_supervisor_release", check_guardian),
+            patch.object(
+                updater,
+                "time",
+                SimpleNamespace(time=time.time, monotonic=lambda: now, sleep=advance),
+            ),
+            patch.object(subprocess, "Popen", side_effect=launch) as start,
+        ):
+            worker.execute()
+
+        self.assertEqual(launched, ["released"])
+        install.assert_not_called()
+        progress.assert_not_called()
+        status = runtime.read_json(self.state / "status.json")
+        self.assertEqual(status["status"], "failed")
+        self.assertIn("1 个实例", status["message"])
+        self.assertFalse((self.state / "active").exists())
+        self.assertEqual(list((self.state / "shutdown").glob("*.json")), [])
+        self.assertEqual(start.call_args.kwargs["env"]["MOWER_RESUME_RUN"], "1")
 
     def test_manager_only_update_stops_registered_services_and_restores_manager(self):
         manager = {

@@ -85,7 +85,11 @@ def wait_for_supervisor_release(record, deadline):
     directory = record.get("supervision_directory")
     if directory:
         with supervision_lock(directory, timeout=max(0, deadline - time.monotonic())):
-            pass
+            if record.get("kind") == "instance":
+                with supervision_lock(
+                    directory, timeout=max(0, deadline - time.monotonic()), child=True
+                ):
+                    pass
 
 
 def recovery_failure_details(previous, *, reason, message, exit_code=None):
