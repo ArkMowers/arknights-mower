@@ -6,6 +6,7 @@ import { NPopover, NScrollbar } from 'naive-ui'
 import DetailChevron from '@vicons/ionicons5/es/ChevronDownOutline'
 import LogOperator from './LogOperator.vue'
 import LogInventory from './LogInventory.vue'
+import LogItemToken from './LogItemToken.vue'
 import LogStage from './LogStage.vue'
 import LogOutput from './LogOutput.vue'
 import TaskActionSubjects from './TaskActionSubjects.vue'
@@ -75,6 +76,16 @@ const clientOutput = {
     DetailChevron,
     LogOperator,
     TaskActionSubjects: clientSubjects,
+    LogItemToken: {
+      ...LogItemToken,
+      components: { LogOperator },
+      ssrRender: undefined,
+      render: compile(
+        parse(readFileSync(new URL('./LogItemToken.vue', import.meta.url), 'utf8')).descriptor
+          .template.content
+      ),
+      setup: (props, context) => ({ ...LogItemToken.setup(props, context) })
+    },
     LogStage: {
       ...LogStage,
       components: { NPopover },
@@ -965,7 +976,7 @@ describe('explicit grouped observations', () => {
       lines.map((entry) => entry.text)
     )
   })
-  it('copies lifecycle sources once in order and keeps a partial cross-row summary selection partial', () => {
+  it('copies lifecycle sources once in order and preserves partial rows around their summary', () => {
     const document = { addEventListener: vi.fn(), removeEventListener: vi.fn() }
     vi.stubGlobal('document', document)
     const event = {
@@ -978,26 +989,30 @@ describe('explicit grouped observations', () => {
       agents: ['克莱门莎']
     }
     const lines = [
+      { id: 949, text: '2026-11-05 17:47:20,123 INFO 选中的开头' },
       { id: 950, event, text: '2026-11-05 17:47:22 INFO 会客室' },
       { id: 951, text: '2026-11-05 17:47:23 INFO 确认选择名单' },
       {
         id: 952,
         event: { ...event, phase: 'completed', anchor: false },
         text: '2026-11-05 17:48:07 INFO 已安排 克莱门莎 进驻 会客室'
-      }
+      },
+      { id: 953, text: '2026-11-05 17:48:08,456 INFO 最后一行正文' }
     ]
-    const page = mount({ running: true, lines })
+    const page = mount({ running: true, concise: true, lines })
     const root = page.all().find((entry) => hasClass(entry, 'log-output'))
     const container = page.all().find((entry) => entry.props['aria-label'] === '实时日志')
     root.contains = (entry) => entry === container
-    root.querySelectorAll = () =>
-      page
-        .all()
-        .filter((entry) => entry.props['data-log-source'])
-        .map((entry) => ({
-          textContent: text(entry),
-          getAttribute: (name) => entry.props[name] ?? null
-        }))
+    root.querySelectorAll = (selector) =>
+      selector === '[data-log-key][data-log-source]'
+        ? page
+            .all()
+            .filter((entry) => entry.props['data-log-key'] && entry.props['data-log-source'])
+            .map((entry) => ({
+              textContent: text(entry),
+              getAttribute: (name) => entry.props[name] ?? null
+            }))
+        : []
     Object.assign(container, { nodeType: 1, closest: () => null })
     const dom = (entry) => ({
       nodeType: entry.tag === '#text' ? 3 : 1,
@@ -1010,13 +1025,21 @@ describe('explicit grouped observations', () => {
       ]
     })
     let selected = container.children.map(dom)
+    const hasFacilityCopy = (node) =>
+      node.getAttribute?.('data-facility-copy') != null || node.childNodes?.some(hasFacilityCopy)
     vi.stubGlobal('getSelection', () => ({
       rangeCount: 1,
       isCollapsed: false,
       toString: () => '',
       getRangeAt: () => ({
         commonAncestorContainer: container,
-        cloneContents: () => ({ nodeType: 11, childNodes: selected, querySelector: () => ({}) })
+        cloneContents: () => ({
+          nodeType: 11,
+          childNodes: selected,
+          querySelector: (selector) =>
+            selector.includes('[data-facility-copy]') ? selected.find(hasFacilityCopy) : null,
+          querySelectorAll: () => []
+        })
       })
     }))
     const copy = () => {
@@ -1025,11 +1048,34 @@ describe('explicit grouped observations', () => {
       return result.clipboardData.setData.mock.calls[0][1]
     }
     expect(copy()).toBe(lines.map((entry) => entry.text).join('\n'))
-    const partial = dom(page.rows()[0])
+    const copyRow = (id) => dom(page.rows().find((row) => row.props['data-log-key'] === `id:${id}`))
+    const partial = copyRow(950)
     partial.textContent = '安排克莱门莎'
     partial.childNodes = [{ nodeType: 3, textContent: partial.textContent }]
-    selected = [partial, dom(page.rows()[1])]
-    expect(copy()).toBe('安排克莱门莎\n' + lines[1].text)
+    selected = [partial, copyRow(951)]
+    expect(copy()).toBe('安排克莱门莎\n' + lines[2].text)
+
+    const first = copyRow(949)
+    const stamp = first.childNodes.find((node) => node.classList?.contains('log-stamp'))
+    const time = stamp.childNodes.find((node) => node.classList?.contains('log-stamp__time'))
+    time.textContent = '47:20'
+    time.childNodes = [{ nodeType: 3, textContent: time.textContent }]
+    stamp.childNodes = stamp.childNodes.slice(stamp.childNodes.indexOf(time))
+    stamp.textContent = stamp.childNodes.map((node) => node.textContent).join('')
+    first.textContent = first.childNodes.map((node) => node.textContent).join('')
+    const last = copyRow(953)
+    const message = last.childNodes.find((node) => node.classList?.contains('log-message'))
+    message.textContent = '最后一'
+    message.childNodes = [{ nodeType: 3, textContent: message.textContent }]
+    last.textContent = last.childNodes.map((node) => node.textContent).join('')
+    selected = [first, copyRow(950), copyRow(951), copyRow(952), last]
+    expect(copy()).toBe(
+      [
+        '47:20 选中的开头',
+        ...lines.slice(1, -1).map((entry) => entry.text),
+        '17:48:08 最后一'
+      ].join('\n')
+    )
   })
   it('updates a typed production switch at the original parent and nests its latest wait detail immediately below', async () => {
     const event = {
@@ -3295,14 +3341,17 @@ describe('running log output', () => {
       addEventListener() {},
       removeEventListener() {},
       querySelectorAll: (selector) =>
-        selector.includes('log-line')
-          ? page.rows().map((row, index) => ({
-              getAttribute: (key) => row.props[key],
-              getBoundingClientRect: () => ({
-                top: index * 20 - position,
-                bottom: (index + 1) * 20 - position
-              })
-            }))
+        selector === '[data-log-anchor]'
+          ? page
+              .rows()
+              .filter((row) => row.props['data-log-anchor'])
+              .map((row, index) => ({
+                getAttribute: (key) => row.props[key],
+                getBoundingClientRect: () => ({
+                  top: index * 20 - position,
+                  bottom: (index + 1) * 20 - position
+                })
+              }))
           : []
     }
     page.all().find((entry) => hasClass(entry, 'log-output')).querySelector = () => container
@@ -3353,15 +3402,7 @@ describe('running log output', () => {
         ]
       })
       const layoutRows = () =>
-        page
-          .all()
-          .filter(
-            (row) =>
-              hasClass(row, 'log-live-detail') ||
-              (row.props['data-log-key'] &&
-                (hasClass(row, 'log-line') || hasClass(row, 'log-facility-heading')) &&
-                !hasClass(row, 'log-line--source-only'))
-          )
+        page.all().filter((row) => row.props['data-log-anchor'] || hasClass(row, 'log-live-detail'))
       let position = 65
       const container = {
         clientHeight: 40,
@@ -3378,9 +3419,9 @@ describe('running log output', () => {
         addEventListener() {},
         removeEventListener() {},
         querySelectorAll: (selector) =>
-          selector.includes('log-line')
+          selector === '[data-log-anchor]'
             ? layoutRows().flatMap((row, index) =>
-                hasClass(row, 'log-live-detail')
+                !row.props['data-log-anchor']
                   ? []
                   : [
                       {
@@ -3481,14 +3522,17 @@ describe('running log output', () => {
         },
         removeEventListener() {},
         querySelectorAll: (selector) =>
-          selector.includes('log-line')
-            ? page.rows().map((row, index) => ({
-                getAttribute: (key) => row.props[key],
-                getBoundingClientRect: () => ({
-                  top: index * lineHeight - position,
-                  bottom: (index + 1) * lineHeight - position
-                })
-              }))
+          selector === '[data-log-anchor]'
+            ? page
+                .rows()
+                .filter((row) => row.props['data-log-anchor'])
+                .map((row, index) => ({
+                  getAttribute: (key) => row.props[key],
+                  getBoundingClientRect: () => ({
+                    top: index * lineHeight - position,
+                    bottom: (index + 1) * lineHeight - position
+                  })
+                }))
             : []
       }
       const root = page.all().find((entry) => hasClass(entry, 'log-output'))
@@ -3968,6 +4012,23 @@ describe('running log output', () => {
     expect(visibleText(original)).toBe('')
   })
 
+  it('shows the compact log title only while running', async () => {
+    const page = mount({ compact: true, lines: ['INFO 已保留的日志'] })
+    const sticky = () => page.all().find((element) => hasClass(element, 'log-sticky'))
+    const region = page.all().find((element) => element.props['aria-label'] === '实时日志')
+
+    expect(sticky()).toBeUndefined()
+    page.props.running = true
+    await nextTick()
+    expect(visibleText(sticky())).toBe('运行日志')
+
+    page.props.running = false
+    await nextTick()
+    expect(sticky()).toBeUndefined()
+    expect(page.all()).toContain(region)
+    expect(visibleText(region)).toContain('已保留的日志')
+  })
+
   it('places an optional header above the scrolling log region and outside it', () => {
     const page = mount({}, { header: () => h('div', { 'data-log-header': true }, '今日') })
     const root = page.all().find((element) => hasClass(element, 'log-output'))
@@ -4227,18 +4288,41 @@ describe('running log output', () => {
     expect(page.rows().map(text)).toEqual(lines)
   })
 
-  it('copies a selection across a date marker as the original source lines', () => {
+  const crossDateSelections = [
+    'complete rows',
+    'partial facility label',
+    'visible timestamp',
+    'visible timestamp on linked detail',
+    'partial final message'
+  ]
+  it.each(crossDateSelections)('copies %s across a date marker', async (selection) => {
     const document = { addEventListener: vi.fn(), removeEventListener: vi.fn() }
     vi.stubGlobal('document', document)
+    const linked = selection === 'visible timestamp on linked detail'
     const lines = [
-      '2026-10-30 23:59:59,450 WARNING room_1_1 待命',
+      `2026-10-30 23:59:59,450 ${linked ? 'INFO' : 'WARNING'} room_1_1 待命`,
       '2026-10-31 00:00:01,002 INFO 巫恋 开始任务'
     ]
+    const parent = { type: 'facility-arrangement', id: 'meeting-copy', room: 'meeting' }
     const page = mount({
-      lines,
+      lines: linked
+        ? [
+            {
+              text: '2026-10-30 23:59:58,100 INFO 会客室',
+              event: { ...parent, phase: 'started', anchor: true, label: '会客室', agents: [] }
+            },
+            { text: lines[0], parent },
+            lines[1]
+          ]
+        : lines,
       operatorNames: ['巫恋'],
       facilityPlan: { room_1_1: { name: '贸易站' } }
     })
+    if (linked)
+      await page
+        .all()
+        .find((entry) => hasClass(entry, 'log-detail-toggle'))
+        .props.onClick()
     const root = page.all().find((element) => hasClass(element, 'log-output'))
     const container = page.all().find((element) => element.props['aria-label'] === '实时日志')
     root.contains = (candidate) => all(root).includes(candidate)
@@ -4248,6 +4332,7 @@ describe('running log output', () => {
         ? { nodeType: 3, textContent: element.text }
         : {
             nodeType: element.tag === '#comment' ? 8 : 1,
+            textContent: text(element),
             classList: { contains: (name) => hasClass(element, name) },
             getAttribute: (name) => element.props[name] ?? null,
             childNodes: [
@@ -4261,11 +4346,53 @@ describe('running log output', () => {
         if (attribute) return element.props[attribute] !== undefined
         return hasClass(element, part.trim().slice(1))
       })
+    const sourceRows = page.rows().filter((row) => lines.includes(row.props['data-log-source']))
+    const [first, second] = sourceRows
+    const liveRows = sourceRows.map((row) => ({
+      ...domNode(row),
+      querySelector: (selector) =>
+        selector === '.log-stamp__time'
+          ? all(row).find((entry) => hasClass(entry, 'log-stamp__time'))
+          : null
+    }))
+    root.querySelectorAll = () => liveRows
+    const firstClone = domNode(first)
+    const secondClone = domNode(second)
+    let expected = lines.join('\n')
+    if (selection === 'partial facility label') {
+      const label = all(first).find((entry) => entry.props['data-room-id'])
+      firstClone.textContent = '01 待命'
+      firstClone.childNodes = [
+        {
+          ...domNode(label),
+          textContent: '01',
+          childNodes: [{ nodeType: 3, textContent: '01' }]
+        },
+        { nodeType: 3, textContent: ' 待命' }
+      ]
+      expected = `01 待命\n${lines[1]}`
+    } else if (selection === 'visible timestamp' || linked) {
+      const date = '2026-10-30 '
+      firstClone.textContent = firstClone.textContent.slice(date.length)
+      firstClone.childNodes = [{ nodeType: 3, textContent: firstClone.textContent }]
+      document.createRange = () => ({
+        selectNodeContents: vi.fn(),
+        setStart: vi.fn(),
+        toString: () => liveRows[0].textContent.slice(date.length)
+      })
+    } else if (selection === 'partial final message') {
+      const message = secondClone.childNodes.find((node) => node.classList?.contains('log-message'))
+      message.textContent = '巫恋 开始'
+      message.childNodes = [{ nodeType: 3, textContent: message.textContent }]
+      secondClone.textContent = secondClone.childNodes.map((node) => node.textContent).join('')
+      expected = `${lines[0]}\n00:00:01 巫恋 开始`
+    }
+    const dateMarkers = all(container).filter((entry) => hasClass(entry, 'log-date'))
     const range = {
       commonAncestorContainer: container,
       cloneContents: () => ({
         nodeType: 11,
-        childNodes: container.children.map(domNode),
+        childNodes: [firstClone, domNode(dateMarkers.at(-1)), secondClone],
         querySelector: (selector) =>
           all(container)
             .slice(1)
@@ -4282,10 +4409,7 @@ describe('running log output', () => {
 
     document.addEventListener.mock.calls[0][1](event)
 
-    expect(event.clipboardData.setData).toHaveBeenCalledExactlyOnceWith(
-      'text/plain',
-      lines.join('\n')
-    )
+    expect(event.clipboardData.setData).toHaveBeenCalledExactlyOnceWith('text/plain', expected)
     expect(event.preventDefault).toHaveBeenCalledOnce()
   })
 

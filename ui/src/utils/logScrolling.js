@@ -1,12 +1,7 @@
 import { logLayoutZoom } from './logLayout'
 
-const rowsOf = (container) =>
-  Array.from(
-    container?.querySelectorAll?.(
-      '.log-line[data-log-key]:not(.log-line--source-only), .log-facility-heading[data-log-key], .log-recruit-slot[data-log-key]'
-    ) ?? []
-  )
-const keyOf = (row) => row.getAttribute('data-log-key')
+const rowsOf = (container) => Array.from(container?.querySelectorAll?.('[data-log-anchor]') ?? [])
+const keyOf = (row) => row.getAttribute('data-log-anchor')
 
 export function captureLogScroll(container) {
   if (!container) return null
@@ -17,7 +12,6 @@ export function captureLogScroll(container) {
   return {
     scrollTop: container.scrollTop,
     atBottom: container.scrollHeight - container.clientHeight - container.scrollTop <= 3,
-    lastKey: rows.length ? keyOf(rows.at(-1)) : null,
     anchors: rows.slice(first).map((row) => ({
       key: keyOf(row),
       offset: row.getBoundingClientRect().top - top
@@ -33,12 +27,11 @@ export function scrollLogToBottom(container) {
 
 export function restoreLogScroll(container, snapshot, autoScroll = true) {
   if (!container || !snapshot) return
-  const rows = rowsOf(container)
   if (autoScroll && snapshot.atBottom) {
     scrollLogToBottom(container)
     return
   }
-  const byKey = new Map(rows.map((row) => [keyOf(row), row]))
+  const byKey = new Map(rowsOf(container).map((row) => [keyOf(row), row]))
   const anchor = snapshot.anchors.find((entry) => byKey.has(entry.key))
   const top = container.getBoundingClientRect().top
   const target = anchor

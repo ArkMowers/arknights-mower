@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createLogPresenter } from './logPresentation.js'
+import { normalizeLogSource } from './logSource.js'
 
 const presentLine = createLogPresenter([
   '但书',
@@ -820,6 +821,34 @@ describe('leading log stamps', () => {
       gap: ' '
     })
     expect(rebuild(text) + text.slice(32)).toBe(text)
+  })
+
+  it('preserves a structured message and updates the parsed header when the record changes', () => {
+    const record = {
+      id: 16,
+      at: 9000,
+      t: '2026-10-31 16:05:10,879',
+      level: 'INFO',
+      msg: '  用户配置的名称为「ERROR」',
+      text: '2026-10-31 16:05:10,879 INFO   用户配置的名称为「ERROR」'
+    }
+    const line = normalizeLogSource(record)
+    expect(line).toMatchObject({ id: 16, at: 9000, msg: '  用户配置的名称为「ERROR」' })
+    const row = presentLine(line)
+    expect(row).toMatchObject({
+      text: record.text,
+      level: 'INFO',
+      stamp: { date: '2026-10-31', time: '16:05:10', fraction: ',879', gap: '   ' }
+    })
+    expect(row.message.map((token) => token.text).join('')).toBe('用户配置的名称为「ERROR」')
+
+    record.t = '2026-11-01 00:00:00,001'
+    record.text = '2026-11-01 00:00:00,001 INFO   用户配置的名称为「ERROR」'
+    expect(normalizeLogSource(record).stamp).toMatchObject({
+      date: '2026-11-01',
+      time: '00:00:00',
+      fraction: ',001'
+    })
   })
 
   it.each([

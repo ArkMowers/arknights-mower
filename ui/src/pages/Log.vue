@@ -36,6 +36,7 @@ import {
   RAIL_MIN_WIDTH,
   RESIZER_HEIGHT
 } from '@/utils/logLayout'
+import { latestLogDate } from '@/utils/logSource'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
 import StartSchedule from '@/components/StartSchedule.vue'
 import LogOutput from '@/components/LogOutput.vue'
@@ -604,15 +605,7 @@ const daily_items = computed(() =>
     : []
 )
 // 日志上方的日期取最新一条日志行的日期，而不是游戏日。
-const log_date = computed(() => {
-  for (let index = log_lines.value.length - 1; index >= 0; index -= 1) {
-    const line = log_lines.value[index]
-    const text = typeof line === 'string' ? line : line?.text
-    const match = /^(\d{4}-\d{2}-\d{2})/u.exec(String(text ?? ''))
-    if (match) return match[1]
-  }
-  return ''
-})
+const log_date = computed(() => latestLogDate(log_lines.value))
 let dailyStatusTimer
 let dailyStatusExpiryTimer
 let dailyStatusController
