@@ -129,7 +129,6 @@ onBeforeUnmount(cancelClose)
   max-width: min(320px, calc(100vw - 48px));
   max-height: min(360px, calc(100vh - 48px));
   overflow-y: auto;
-  color: var(--mower-text, #333639);
   font-size: 13px;
 }
 .log-stage__title {

@@ -6,6 +6,7 @@ import {
   computed,
   inject,
   nextTick,
+  onBeforeUnmount,
   onMounted,
   onUnmounted,
   provide,
@@ -52,7 +53,7 @@ const mower_store = useMowerStore()
 const config_store = useConfigStore()
 const logBackground = useLogBackgroundStore()
 const workspace = useLogWorkspaceStore()
-const startup_reveal = !workspace.visited
+const startup_reveal = ref(!workspace.visited)
 const { taskQueueDisplay } = storeToRefs(useGuiStore())
 const { operators, plan } = storeToRefs(usePlanStore())
 const operator_names = computed(() => operators.value.map((operator) => operator.value))
@@ -125,10 +126,16 @@ watch(log_concise, (enabled) => {
 const sc_preview = ref(true)
 const sc_blob = ref('')
 const has_screenshot = computed(() => sc_preview.value && Boolean(sc_blob.value))
-const show_task_table = ref(true)
-const task_table_visible = computed(
-  () => task_list.value.length > 0 && (!mobile.value || show_task_table.value)
+const show_task_table = ref(localStorage.getItem('log_show_task_table') !== 'false')
+const show_daily_tasks = ref(localStorage.getItem('log_show_daily_tasks') !== 'false')
+watch(
+  show_daily_tasks,
+  (visible) => localStorage.setItem('log_show_daily_tasks', String(visible)),
+  {
+    flush: 'sync'
+  }
 )
+const task_table_visible = computed(() => show_task_table.value && task_list.value.length > 0)
 const log_layout = ref(null)
 const action_bar = ref(null)
 const show_view_controls = ref(false)
@@ -161,6 +168,55 @@ let mobile_screenshot_height = workspace.mobileScreenshotHeight
 let railWidthReveal
 const STARTUP_REVEAL = { duration: 240, easing: 'ease' }
 const startupReveal = `${STARTUP_REVEAL.duration}ms ${STARTUP_REVEAL.easing}`
+let log_view_transition
+let animate_next_screenshot = false
+let animate_next_daily_status = false
+
+function finish_log_view_transition() {
+  if (!log_view_transition) return
+  const { transition, commit } = log_view_transition
+  log_view_transition = undefined
+  transition.skipTransition()
+  void commit()
+}
+
+function transition_log_view(update) {
+  finish_log_view_transition()
+  const pane = log_layout.value
+  const target = pane?.startViewTransition ? pane : document
+  if (
+    !pane ||
+    !target.startViewTransition ||
+    document.hidden ||
+    globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ||
+    !globalThis.CSS?.supports('selector(:active-view-transition-type(mower-log))')
+  ) {
+    update()
+    return
+  }
+
+  let committed = false
+  function commit() {
+    if (committed || log_layout.value !== pane) return
+    committed = true
+    update()
+    return nextTick(apply_log_layout)
+  }
+
+  try {
+    const transition = target.startViewTransition({ update: commit, types: ['mower-log'] })
+    log_view_transition = { transition, commit }
+    void transition.ready.catch(() => {})
+    const release = () => {
+      if (log_view_transition?.transition === transition) log_view_transition = undefined
+    }
+    void transition.finished.then(release, release)
+    return transition.updateCallbackDone.catch(() => {})
+  } catch {
+    return commit()
+  }
+}
+
 // 桌面宽屏仿照游戏主界面：截图和任务列表在右栏，日志占左侧。
 const rail_layout = ref(workspace.wideLayout && !mobile.value)
 const rail_active = computed(() => has_screenshot.value || task_table_visible.value)
@@ -390,6 +446,7 @@ function resize_rail_column(event) {
   })
 }
 
+let latest_screenshot_url = ''
 const screenshotPreview = createScreenshotPreview({
   getCachedSnapshot: () => workspace.screenshot,
   cacheSnapshot: (snapshot) => {
@@ -405,7 +462,16 @@ const screenshotPreview = createScreenshotPreview({
   },
   onChange: (url, aspect) => {
     if (aspect) screenshot_aspect = aspect
-    sc_blob.value = url
+    latest_screenshot_url = url
+    if (url && animate_next_screenshot) {
+      animate_next_screenshot = false
+      transition_log_view(() => {
+        if (sc_preview.value && !document.hidden && latest_screenshot_url === url)
+          sc_blob.value = url
+      })
+    } else {
+      sc_blob.value = url
+    }
   }
 })
 
@@ -414,18 +480,22 @@ function updateScreenshotPreview() {
   else screenshotPreview.stop()
 }
 
-watch(sc_preview, (enabled) => {
-  localStorage.setItem('sc_preview', JSON.stringify(enabled))
-  if (!enabled) workspace.screenshot = null
-  updateScreenshotPreview()
-  nextTick(apply_log_layout)
-})
+watch(
+  sc_preview,
+  (enabled) => {
+    localStorage.setItem('sc_preview', JSON.stringify(enabled))
+    if (!enabled) workspace.screenshot = null
+    updateScreenshotPreview()
+    nextTick(apply_log_layout)
+  },
+  { flush: 'sync' }
+)
 
 watch(sc_blob, (url, previous) => {
   if (!url) railWidthReveal?.cancel()
   const container = log_layout.value
   const oldWidth =
-    startup_reveal && url && !previous && rail_mode.value && container?.animate
+    startup_reveal.value && url && !previous && rail_mode.value && container?.animate
       ? globalThis.getComputedStyle?.(container).getPropertyValue('--log-rail-track').trim()
       : null
   nextTick(() => {
@@ -463,7 +533,17 @@ watch(
   },
   { deep: true }
 )
-watch(show_task_table, () => nextTick(apply_log_layout))
+watch(
+  show_task_table,
+  (visible) => {
+    if (!visible) {
+      operator_hint.value = null
+      task_date_hint.value = null
+    }
+    nextTick(apply_log_layout)
+  },
+  { flush: 'sync' }
+)
 watch(rail_active, () => nextTick(apply_log_layout))
 watch(
   task_queue,
@@ -473,7 +553,7 @@ watch(
       if (task_queue.value !== table) return
       apply_log_layout()
       if (
-        !startup_reveal ||
+        !startup_reveal.value ||
         mobile.value ||
         !table.animate ||
         rail_mode.value ||
@@ -501,12 +581,19 @@ const daily_status_loading = ref(false)
 const daily_view_selected = ref(workspace.dailyView)
 const daily_status_always_visible = computed(() => rail_layout.value && !mobile.value)
 const daily_toggle_available = computed(
-  () => running.value && !daily_status_always_visible.value && hasDailyStatusTasks(config_store)
+  () =>
+    show_daily_tasks.value &&
+    running.value &&
+    !daily_status_always_visible.value &&
+    hasDailyStatusTasks(config_store)
 )
 const daily_view_visible = computed(() => daily_toggle_available.value && daily_view_selected.value)
 const daily_slot = computed(() => (daily_view_visible.value ? 'alternate' : 'header'))
 const daily_status_enabled = computed(
-  () => running.value && (daily_status_always_visible.value || daily_view_visible.value)
+  () =>
+    show_daily_tasks.value &&
+    running.value &&
+    (daily_status_always_visible.value || daily_view_visible.value)
 )
 watch(daily_toggle_available, (available) => {
   if (!available) daily_view_selected.value = false
@@ -551,8 +638,17 @@ async function refresh_daily_status() {
       signal: controller.signal,
       timeout: 10000
     })
-    if (!controller.signal.aborted)
-      daily_status.value = dailyStatusExpiry(data) === null ? null : data
+    if (controller.signal.aborted) return
+    const status = dailyStatusExpiry(data) === null ? null : data
+    if (animate_next_daily_status && status?.source === 'live') {
+      animate_next_daily_status = false
+      await transition_log_view(() => {
+        if (!controller.signal.aborted && daily_status_enabled.value && !document.hidden)
+          daily_status.value = dailyStatusExpiry(status) === null ? null : status
+      })
+    } else {
+      daily_status.value = status
+    }
   } catch {
     if (!controller.signal.aborted) daily_status.value = null
   } finally {
@@ -622,11 +718,13 @@ onMounted(() => {
   db_load_stats()
 })
 
+onBeforeUnmount(finish_log_view_transition)
 onUnmounted(() => {
   workspace.layout = { ...layout_preference }
   workspace.wideLayout = rail_layout.value
   workspace.mobileScreenshotHeight = mobile_screenshot_height
-  workspace.dailyView = daily_view_selected.value
+  workspace.dailyView = daily_view_visible.value
+  if (!daily_status_enabled.value) daily_status.value = null
   task_dialog_active = false
   cancel_layout_resize?.()
   railWidthReveal?.cancel()
@@ -660,17 +758,93 @@ import StopIcon from '@vicons/ionicons5/es/StopCircleOutline'
 import PlayIcon from '@vicons/ionicons5/es/PlayOutline'
 import AddIcon from '@vicons/ionicons5/es/AddCircleOutline'
 import LayersOutlineIcon from '@vicons/ionicons5/es/LayersOutline'
-import ImageOutlineIcon from '@vicons/ionicons5/es/ImageOutline'
-import FollowBottomIcon from '@vicons/tabler/es/ArrowAutofitDown'
+import ScreenshotIcon from '@vicons/tabler/es/Photo'
+import FollowLogIcon from '@/components/FollowLogIcon.vue'
 import DetailedLogIcon from '@vicons/tabler/es/ListDetails'
 import ConciseLogIcon from '@vicons/tabler/es/List'
-import MoreIcon from '@vicons/ionicons5/es/EllipsisHorizontal'
-import CollapseIcon from '@vicons/fluent/es/PanelTopContract20Regular'
-import ExpandIcon from '@vicons/fluent/es/PanelTopExpand20Regular'
+import TaskListIcon from '@vicons/tabler/es/ListNumbers'
+import DailyTasksIcon from '@vicons/tabler/es/ListCheck'
+import MoreIcon from '@vicons/tabler/es/Dots'
 import DailyDoneIcon from '@vicons/ionicons5/es/CheckmarkCircle'
 import DailyAttemptedIcon from '@vicons/ionicons5/es/AlertCircleOutline'
 import DailyPendingIcon from '@vicons/ionicons5/es/EllipseOutline'
 import DailyViewSwitchIcon from '@vicons/ionicons5/es/SwapHorizontalOutline'
+
+const log_view_options = [
+  {
+    className: 'log-detail-mode-toggle',
+    label: '简洁日志',
+    state: log_concise,
+    icon: DetailedLogIcon,
+    activeIcon: ConciseLogIcon,
+    enableTitle: '切换到简洁日志',
+    disableTitle: '切换到详细日志'
+  },
+  {
+    className: 'task-table-toggle',
+    label: '任务列表',
+    state: show_task_table,
+    icon: TaskListIcon,
+    enableTitle: '显示任务列表',
+    disableTitle: '隐藏任务列表'
+  },
+  {
+    className: 'daily-tasks-toggle',
+    label: '今日任务',
+    state: show_daily_tasks,
+    icon: DailyTasksIcon,
+    enableTitle: '显示今日任务',
+    disableTitle: '隐藏今日任务'
+  },
+  {
+    className: 'screenshot-toggle',
+    label: '预览截图',
+    state: sc_preview,
+    icon: ScreenshotIcon,
+    enableTitle: '显示截图预览',
+    disableTitle: '隐藏截图预览'
+  },
+  {
+    className: 'scroll-toggle',
+    label: '跟随最新日志',
+    state: auto_scroll,
+    icon: FollowLogIcon,
+    enableTitle: '跟随最新日志',
+    disableTitle: '停止跟随最新日志'
+  }
+]
+
+function toggle_log_view({ className, state }) {
+  finish_log_view_transition()
+  const enabled = !state.value
+  const update = () => {
+    if (className === 'screenshot-toggle' || className === 'task-table-toggle')
+      startup_reveal.value = false
+    state.value = enabled
+    if (className === 'task-table-toggle')
+      localStorage.setItem('log_show_task_table', String(enabled))
+  }
+  if (className === 'screenshot-toggle') {
+    animate_next_screenshot = enabled
+    if (!enabled && has_screenshot.value) transition_log_view(update)
+    else update()
+  } else if (
+    className === 'task-table-toggle' &&
+    (task_list.value.length || plan_condition.value.length)
+  ) {
+    transition_log_view(update)
+  } else if (className === 'daily-tasks-toggle') {
+    const wide = daily_status_always_visible.value
+    const available = running.value && hasDailyStatusTasks(config_store)
+    animate_next_daily_status = enabled && wide && available
+    if (daily_items.value.length || (!wide && available)) transition_log_view(update)
+    else update()
+  } else update()
+}
+
+function toggle_daily_view() {
+  transition_log_view(() => (daily_view_selected.value = !daily_view_selected.value))
+}
 
 const daily_states = {
   done: { icon: DailyDoneIcon, label: '今日已处理（按调度记录）', summary: '已处理' },
@@ -710,6 +884,7 @@ provide('add_task', add_task)
 const { theme: themePreference } = storeToRefs(config_store)
 const theme = useResolvedTheme(themePreference)
 function revealTaskQueue() {
+  finish_log_view_transition()
   show_task_table.value = true
   nextTick(() => {
     apply_log_layout()
@@ -998,7 +1173,7 @@ async function db_delete(keys) {
         @pointerdown="(event) => resize_log_pane(event, 'screenshot')"
       ></div>
 
-      <div v-if="plan_condition.length > 0" class="plan-condition">
+      <div v-if="show_task_table && plan_condition.length > 0" class="plan-condition">
         <span class="plan-condition-label">当前激活的副表为： </span>
         <span v-for="(x, index) in plan_condition" :key="index" class="plan-condition-name">
           {{ x }}
@@ -1241,7 +1416,7 @@ async function db_delete(keys) {
             :aria-label="
               daily_view_visible ? '今日任务，切换到运行日志' : '运行日志，切换到今日任务'
             "
-            @click="daily_view_selected = !daily_view_selected"
+            @click="toggle_daily_view"
           >
             {{ daily_view_visible ? '今日任务' : '运行日志' }}
             <DailyViewSwitchIcon aria-hidden="true" />
@@ -1407,42 +1582,24 @@ async function db_delete(keys) {
       <div class="log-view-controls" role="group" aria-label="日志显示选项">
         <div v-if="!mobile" class="view-toggle-island">
           <n-button
+            v-for="option in log_view_options"
+            :key="option.className"
             text
-            class="view-toggle log-detail-mode-toggle"
-            aria-label="简洁日志"
-            :aria-pressed="log_concise"
-            :title="log_concise ? '切换到详细日志' : '切换到简洁日志'"
-            @click="log_concise = !log_concise"
+            class="view-toggle"
+            :class="option.className"
+            :aria-label="option.label"
+            :aria-pressed="option.state.value"
+            :aria-controls="
+              option.className === 'task-table-toggle' && task_list.length
+                ? `${toolbar_id}-queue`
+                : undefined
+            "
+            :title="option.state.value ? option.disableTitle : option.enableTitle"
+            @click="toggle_log_view(option)"
           >
             <template #icon>
-              <n-icon :component="log_concise ? ConciseLogIcon : DetailedLogIcon" />
-            </template>
-          </n-button>
-          <n-button
-            text
-            class="view-toggle screenshot-toggle"
-            aria-label="预览截图"
-            :aria-pressed="sc_preview"
-            :title="sc_preview ? '隐藏截图预览' : '显示截图预览'"
-            @click="sc_preview = !sc_preview"
-          >
-            <template #icon>
-              <span class="view-toggle-icon">
-                <n-icon :component="ImageOutlineIcon" />
-              </span>
-            </template>
-          </n-button>
-          <n-button
-            text
-            class="view-toggle scroll-toggle"
-            aria-label="自动滚动"
-            :aria-pressed="auto_scroll"
-            :title="auto_scroll ? '暂停跟随日志底部' : '自动跟随日志底部'"
-            @click="auto_scroll = !auto_scroll"
-          >
-            <template #icon>
-              <span class="view-toggle-icon">
-                <n-icon :component="FollowBottomIcon" />
+              <span :class="{ 'view-toggle-icon': !option.activeIcon }">
+                <n-icon :component="(option.state.value && option.activeIcon) || option.icon" />
               </span>
             </template>
           </n-button>
@@ -1484,59 +1641,24 @@ async function db_delete(keys) {
             aria-label="日志显示选项"
           >
             <n-button
+              v-for="option in log_view_options"
+              :key="option.className"
               text
-              class="view-toggle log-detail-mode-toggle"
-              aria-label="简洁日志"
-              :aria-pressed="log_concise"
-              :title="log_concise ? '切换到详细日志' : '切换到简洁日志'"
-              @click="log_concise = !log_concise"
+              class="view-toggle"
+              :class="option.className"
+              :aria-label="option.label"
+              :aria-pressed="option.state.value"
+              :aria-controls="
+                option.className === 'task-table-toggle' && task_list.length
+                  ? `${toolbar_id}-queue`
+                  : undefined
+              "
+              :title="option.state.value ? option.disableTitle : option.enableTitle"
+              @click="toggle_log_view(option)"
             >
               <template #icon>
-                <n-icon :component="log_concise ? ConciseLogIcon : DetailedLogIcon" />
-              </template>
-            </n-button>
-            <n-button
-              v-if="task_list.length > 0"
-              text
-              class="toggle-table-collapse-btn"
-              :aria-label="show_task_table ? '收起任务列表' : '展开任务列表'"
-              :aria-expanded="show_task_table"
-              :aria-controls="`${toolbar_id}-queue`"
-              :title="show_task_table ? '收起任务列表' : '展开任务列表'"
-              @click="show_task_table = !show_task_table"
-            >
-              <template #icon>
-                <n-icon>
-                  <collapse-icon v-if="show_task_table" />
-                  <expand-icon v-else />
-                </n-icon>
-              </template>
-            </n-button>
-            <n-button
-              text
-              class="view-toggle screenshot-toggle"
-              aria-label="预览截图"
-              :aria-pressed="sc_preview"
-              :title="sc_preview ? '隐藏截图预览' : '显示截图预览'"
-              @click="sc_preview = !sc_preview"
-            >
-              <template #icon>
-                <span class="view-toggle-icon">
-                  <n-icon :component="ImageOutlineIcon" />
-                </span>
-              </template>
-            </n-button>
-            <n-button
-              text
-              class="view-toggle scroll-toggle"
-              aria-label="自动滚动"
-              :aria-pressed="auto_scroll"
-              :title="auto_scroll ? '暂停跟随日志底部' : '自动跟随日志底部'"
-              @click="auto_scroll = !auto_scroll"
-            >
-              <template #icon>
-                <span class="view-toggle-icon">
-                  <n-icon :component="FollowBottomIcon" />
+                <span :class="{ 'view-toggle-icon': !option.activeIcon }">
+                  <n-icon :component="(option.state.value && option.activeIcon) || option.icon" />
                 </span>
               </template>
             </n-button>
@@ -1883,18 +2005,18 @@ async function db_delete(keys) {
     right: 0;
     top: 50%;
     height: 1px;
-    background: rgb(24 160 88 / 0%);
+    background: transparent;
     transition: background-color 0.15s ease;
   }
 
   &:active::after {
-    background: rgb(24 160 88 / 45%);
+    background: color-mix(in srgb, var(--lg-focus) 45%, transparent);
   }
 }
 
 @media (hover: hover) and (pointer: fine) {
   .log-resizer:hover::after {
-    background: rgb(24 160 88 / 45%);
+    background: color-mix(in srgb, var(--lg-focus) 45%, transparent);
   }
 }
 
@@ -2475,11 +2597,14 @@ async function db_delete(keys) {
 
 .log-view-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+  max-width: calc(100vw - 32px);
 }
 
 .log-view-actions :deep(.n-button) {
+  flex: 0 0 44px;
   min-width: 44px;
   min-height: 44px;
 }
@@ -3116,15 +3241,46 @@ html[data-window-shell-theme='dark'] .home-container {
 .action-container :deep(.n-button--loading:is(.add-task-action, .database-action)) {
   cursor: wait;
 }
-
-.toggle-table-collapse-btn {
-  width: 44px;
-  height: 44px;
-  padding: 0;
-}
 </style>
 
 <style>
+html:active-view-transition-type(mower-log) {
+  view-transition-name: none;
+}
+
+.log-pane:active-view-transition-type(mower-log),
+html:active-view-transition-type(mower-log) .log-pane {
+  view-transition-name: mower-log-pane;
+}
+
+:is(html, .log-pane):active-view-transition-type(mower-log)::view-transition {
+  pointer-events: none;
+}
+
+:is(html, .log-pane):active-view-transition-type(mower-log)::view-transition-group(mower-log-pane) {
+  animation-name: none;
+  animation-duration: 240ms;
+  animation-timing-function: ease;
+}
+
+html:active-view-transition-type(mower-log) .n-popover:has(.log-view-actions) {
+  view-transition-name: mower-log-actions;
+}
+
+html:active-view-transition-type(mower-log)::view-transition-group(mower-log-actions) {
+  z-index: 1;
+  animation: none;
+}
+
+html:active-view-transition-type(mower-log)::view-transition-old(mower-log-actions) {
+  display: none;
+}
+
+html:active-view-transition-type(mower-log)::view-transition-new(mower-log-actions) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
 .hljs-date {
   color: #f0a020 !important;
   font-weight: bold;

@@ -2469,7 +2469,9 @@ function lineClasses(row) {
                     </template></span
                   >
                   <!-- 等待结束后把时长贴回开启等待的那条场景行；纯文本，不打徽章。 -->
-                  <span v-if="item.sceneWaiting" class="log-wait-loader" aria-hidden="true" />
+                  <span v-if="item.sceneWaiting" class="log-wait-loader" aria-hidden="true">
+                    <span class="log-wait-loader__paint" />
+                  </span>
                   <span
                     v-else-if="item.waitMs !== null"
                     class="log-wait-duration"
@@ -2969,8 +2971,18 @@ html[data-window-shell-theme='dark'] .log-token--item {
   vertical-align: middle;
   user-select: none;
 }
-.log-wait-loader::before,
-.log-wait-loader::after {
+.log-wait-loader__paint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.log-wait-loader__paint::before,
+.log-wait-loader__paint::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -2979,26 +2991,25 @@ html[data-window-shell-theme='dark'] .log-token--item {
   width: 8px;
   height: 8px;
   border: 1px solid currentColor;
-  background: transparent;
   transform: translate(-50%, -50%) rotate(45deg);
 }
-.log-wait-loader::after {
+.log-wait-loader__paint::after {
+  width: 24px;
+  height: 24px;
   animation: log-wait-ripple 1.2s ease-out infinite;
 }
 @keyframes log-wait-ripple {
   from {
-    width: 8px;
-    height: 8px;
     opacity: 0.8;
+    transform: translate(-50%, -50%) rotate(45deg) scale(0.3333);
   }
   to {
-    width: 24px;
-    height: 24px;
     opacity: 0;
+    transform: translate(-50%, -50%) rotate(45deg) scale(1);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .log-wait-loader::after {
+  .log-wait-loader__paint::after {
     display: none;
     animation: none;
   }
