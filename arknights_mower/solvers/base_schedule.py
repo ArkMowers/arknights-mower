@@ -5851,11 +5851,19 @@ class BaseSchedulerSolver(
                             )
                         produce_btn = (self.recog.w * 0.88, self.recog.h * 0.88)
                         batch_count = int(batch_count)
+                        output, _, costs = recipe_quantities(
+                            current_name, current_material
+                        )
+                        product = {"name": current_name, "item": output}
                         logger.info(
-                            f"{agent}加工{current_name}：库存"
-                            f"{inventory_data[recipe_quantities(current_name, current_material)[0]]}，"
+                            f"[[operator:{agent}]]加工{current_name}：库存{inventory_data[output]}，"
                             f"上限{group[material_tab][current_name].self_upper_limit}，"
-                            f"本批最多{batch_count}次"
+                            f"本批最多{batch_count}次",
+                            extra={
+                                "log_room": "factory",
+                                "log_agents": [agent],
+                                "log_event": {"type": "workshop-material", **product},
+                            },
                         )
                         # The selected formula starts at one, as in the deer logic.
                         # Never use MAX: mood can allow more than the stock deficit.
@@ -5887,9 +5895,6 @@ class BaseSchedulerSolver(
                         batches = batch_count
                         mood_event_id = str(uuid4())
                         mood_delta = {agent: -batches * per_craft_mood}
-                        output, _, costs = recipe_quantities(
-                            current_name, current_material
-                        )
                         submission_attempted = False
                         try:
                             # Only submission holds the config lock; result reads don't.
@@ -5976,6 +5981,7 @@ class BaseSchedulerSolver(
                                 "log_agents": [agent],
                                 "log_event": {
                                     "type": "workshop-result",
+                                    "product": product,
                                     "changes": [
                                         {"name": name, "delta": change}
                                         for name, change in delta.items()
@@ -6042,13 +6048,27 @@ class BaseSchedulerSolver(
                             last_scaned = current_scan
                             for item, pos, valid in scanned_items:
                                 if item in item_list:
+                                    recipe = workshop_formula[item]
+                                    quantities = recipe_quantities(item, recipe)
+                                    produced_item = (
+                                        quantities[0] if quantities else item
+                                    )
+                                    log_extra = {
+                                        "log_room": "factory",
+                                        "log_event": {
+                                            "type": "workshop-material",
+                                            "name": item,
+                                            "item": produced_item,
+                                        },
+                                    }
                                     good_to_go = True
                                     if is_9colored:
-                                        good_to_go = deer_recipe_ready(
-                                            workshop_formula[item], gap
-                                        )
+                                        good_to_go = deer_recipe_ready(recipe, gap)
                                     if valid and good_to_go:
-                                        logger.info(f"检测到{item}满足条件，开始加工")
+                                        logger.info(
+                                            f"检测到{item}满足条件，开始加工",
+                                            extra=log_extra,
+                                        )
                                         self.tap(
                                             (
                                                 (pos[0][0] + pos[1][0]) / 2,
@@ -6056,7 +6076,7 @@ class BaseSchedulerSolver(
                                             ),
                                             interval=0.5,
                                         )
-                                        current_material = workshop_formula[item]
+                                        current_material = recipe
                                         current_name = item
                                         item_list = []
                                         del tasks[0]
@@ -6065,7 +6085,10 @@ class BaseSchedulerSolver(
                                         if not valid:
                                             reject_workshop_recipe(item, inventory_data)
                                             blocked_materials.add(item)
-                                        logger.info(f"检测到{item}不满足条件，跳过")
+                                        logger.info(
+                                            f"检测到{item}不满足条件，跳过",
+                                            extra=log_extra,
+                                        )
                                         item_list.remove(item)
                             scan_round += 1
                             self.swipe_noinertia(

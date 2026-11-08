@@ -262,6 +262,14 @@ def _display_snapshots(record, message, *existing):
     def count_field(value):
         return type(value) is int and 0 <= value <= 9_007_199_254_740_991
 
+    def workshop_material(value):
+        if (
+            isinstance(value, dict)
+            and text_field(value.get("name"))
+            and text_field(value.get("item"))
+        ):
+            return {"name": value["name"], "item": value["item"]}
+
     if isinstance(event, dict) and event.get("type") == "operator-reset-idle":
         include("event", {"type": "operator-reset-idle"})
     elif isinstance(event, dict) and event.get("type") == "recruitment-slot":
@@ -295,6 +303,9 @@ def _display_snapshots(record, message, *existing):
                     "agents": list(agents),
                 },
             )
+    elif isinstance(event, dict) and event.get("type") == "workshop-material":
+        if (material := workshop_material(event)) is not None:
+            include("event", {"type": "workshop-material", **material})
     elif isinstance(event, dict) and event.get("type") == "workshop-result":
         changes = event.get("changes")
         if (
@@ -310,16 +321,15 @@ def _display_snapshots(record, message, *existing):
                 for item in changes
             )
         ):
-            include(
-                "event",
-                {
-                    "type": "workshop-result",
-                    "changes": [
-                        {"name": item["name"], "delta": item["delta"]}
-                        for item in changes
-                    ],
-                },
-            )
+            workshop_result = {
+                "type": "workshop-result",
+                "changes": [
+                    {"name": item["name"], "delta": item["delta"]} for item in changes
+                ],
+            }
+            if (product := workshop_material(event.get("product"))) is not None:
+                workshop_result["product"] = product
+            include("event", workshop_result)
     elif isinstance(event, dict) and event.get("type") == "rescue-staffing":
         rooms = event.get("rooms")
         phase = event.get("phase")

@@ -174,7 +174,19 @@ export function queueTaskText(task, plan) {
 
 export function queueTaskTokens(task, operatorNames = [], plan = {}) {
   const title = queueTaskTitle(task)
-  if (masteryTaskTitle(task) || title === FIAMMETTA_TITLE) return [{ type: 'text', text: title }]
+  if (masteryTaskTitle(task)) return [{ type: 'text', text: title }]
+  if (title === FIAMMETTA_TITLE) {
+    const tokens = [{ type: 'text', text: title }]
+    const name = task.meta_data
+    if (
+      typeof name === 'string' &&
+      name &&
+      taskPresentation(task.presentation)?.title === FIAMMETTA_TARGET_PREFIX + name
+    ) {
+      tokens.push({ type: 'operator', text: name, name, showName: true })
+    }
+    return tokens
+  }
   const text = Object.keys(task.plan ?? {}).length ? title : queueTaskText(task, plan)
   return taskTextTokens(text, task, operatorNames)
 }
@@ -262,12 +274,6 @@ export function queueTaskRows(tasks, operatorNames = [], plan = {}, showNames = 
       continue
     }
     const presentation = taskPresentation(task.presentation)
-    const chargingTarget =
-      typeof task.meta_data === 'string' &&
-      task.meta_data &&
-      presentation?.title === FIAMMETTA_TARGET_PREFIX + task.meta_data
-        ? task.meta_data
-        : null
     const row = {
       task,
       tasks: [task],
@@ -275,7 +281,6 @@ export function queueTaskRows(tasks, operatorNames = [], plan = {}, showNames = 
         compareFacilityIds(left, right)
       ),
       actions: presentation?.actions ?? [],
-      chargingTarget,
       heading: target
         ? [{ type: 'text', text: '刷新跑单时间' }]
         : queueTaskTokens(task, operatorNames, plan),

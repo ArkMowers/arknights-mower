@@ -567,6 +567,31 @@ describe('log presentation tokens', () => {
     ])
   })
 
+  it('keeps complete operator names with middle dots and leaves unknown dotted names intact', () => {
+    const present = createLogPresenter([
+      '凯尔希',
+      '凯尔希·思衡托',
+      '维娜·维多利亚',
+      '德·托莱多',
+      '陈'
+    ])
+    const source =
+      'INFO 凯尔希·思衡托上班；德·托莱多休息；安排干员：凯尔希、维娜·维多利亚、凯尔希·未知、凯尔希·思衡托·未知、未知·陈休息'
+    const row = present(source)
+    expect(
+      row.tokens.filter((token) => token.type === 'operator').map((token) => token.name)
+    ).toEqual(['凯尔希·思衡托', '德·托莱多', '凯尔希', '维娜·维多利亚'])
+    expect(row.tokens.map((token) => token.text).join('')).toBe(source)
+
+    const forecast = createLogPresenter(['凯尔希·思衡托'], {}, ['凯尔希'], {
+      structuredGroups: true
+    })
+    expect(forecast('凯尔希·思衡托上班').tokens).toEqual([
+      { type: 'operator', name: '凯尔希·思衡托', text: '凯尔希·思衡托' },
+      { type: 'text', text: '上班' }
+    ])
+  })
+
   it('excludes underscores, common character substrings and unknown longer names from avatars', () => {
     const text = 'Current, Free, _, 今年下令, 山间, 未知德克萨斯, 德克萨斯X, WXYZ, 令、年、山、W'
     expect(tokensOf(text, 'operator')).toEqual(['Current', 'Free', '令', '年', '山', 'W'])

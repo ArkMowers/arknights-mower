@@ -562,6 +562,18 @@ def test_confirmed_workshop_delta_keeps_every_signed_change(
 
     module.save_exception.assert_not_called()
     assert state.crafts == [("切削原液", 3)]
+    (selected,) = info(caplog, "满足条件，开始加工")
+    (batch,) = info(caplog, "本批最多")
+    assert selected.getMessage() == "检测到切削原液满足条件，开始加工"
+    assert batch.getMessage().startswith("[[operator:蜜莓]]加工切削原液：库存")
+    assert batch.log_agents == ["蜜莓"]
+    for record in (selected, batch):
+        assert record.log_room == "factory"
+        assert record.log_event == {
+            "type": "workshop-material",
+            "name": "切削原液",
+            "item": "切削原液",
+        }
     after = inventory.get_inventory_counts()
     records = info(caplog, "库存变化")
     assert len(records) == 1
@@ -576,6 +588,7 @@ def test_confirmed_workshop_delta_keeps_every_signed_change(
     assert records[0].log_agents == ["蜜莓"]
     assert records[0].log_event == {
         "type": "workshop-result",
+        "product": {"name": "切削原液", "item": "切削原液"},
         "changes": [
             {"name": "化合切削液", "delta": -3},
             {"name": "晶体元件", "delta": -3},

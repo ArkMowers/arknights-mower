@@ -599,14 +599,20 @@ function copySourceText(event) {
   const ancestor = range.commonAncestorContainer
   const element = ancestor.nodeType === 1 ? ancestor : ancestor.parentElement
   const complete = element?.closest?.(
-    '.log-inventory, .log-line--inventory, .log-reset-group, .log-arrangement, .log-forecast[data-log-source], .log-facility-heading[data-log-source], [data-recruit-copy], [data-log-detail-source]'
+    '.log-inventory, .log-line--inventory, .log-reset-group, .log-arrangement, .log-forecast[data-log-source], .log-facility-heading[data-log-source], [data-recruit-copy], [data-log-detail-source], .log-line[data-log-display-substitution][data-log-source]'
   )
   let coversComplete = complete && selection.toString() === complete.textContent
   if (complete && !coversComplete && range.compareBoundaryPoints && document.createRange) {
     const bounds = document.createRange()
     bounds.selectNodeContents(complete)
+    const time =
+      complete.getAttribute('data-log-display-substitution') != null
+        ? complete.querySelector('.log-stamp__time')
+        : null
+    if (time) bounds.setStart(time, 0)
     coversComplete =
-      range.compareBoundaryPoints(0, bounds) <= 0 && range.compareBoundaryPoints(2, bounds) >= 0
+      (time && selection.toString() === bounds.toString()) ||
+      (range.compareBoundaryPoints(0, bounds) <= 0 && range.compareBoundaryPoints(2, bounds) >= 0)
   }
   if (coversComplete) {
     const indices = facilityCopyIndices(complete) ?? recruitmentCopyIndices(complete)
@@ -1299,6 +1305,8 @@ const items = computed(() => {
         ? facilityPrefix(forecastTokens ?? tokens, facilityRoom)
         : null
       const hiddenPrefix = recruitGroup?.prefixes.get(index) ?? roomPrefix
+      const sourceTokens = hiddenPrefix ? skipTokenText(tokens, hiddenPrefix.length) : tokens
+      const displayTokens = expandDisplayTokens(sourceTokens)
       result.push({
         key: entry.key,
         row: entry.row,
@@ -1313,7 +1321,8 @@ const items = computed(() => {
         nested:
           Boolean(trainingPositions(entry.line.event)) ||
           Boolean(facilityRoom || recruitGroup || scopedDetails.members.has(index)),
-        displayTokens: hiddenPrefix ? skipTokenText(tokens, hiddenPrefix.length) : tokens,
+        displayTokens,
+        displaySubstituted: displayTokens !== sourceTokens,
         forecastTokens:
           roomPrefix && forecastTokens
             ? skipTokenText(forecastTokens, roomPrefix.length)
@@ -1372,7 +1381,7 @@ const blocks = computed(() => {
       sourceIndex: index,
       parts,
       inventory: inventoryItems(normalizedLines.value[index], item.row),
-      displayTokens: parts ? item.row.message : item.row.tokens,
+      displayTokens: expandDisplayTokens(parts ? item.row.message : item.row.tokens),
       forecastTokens: item.row.forecast?.actionPrefix ?? item.row.forecast?.tokens,
       waitMs: sceneWaits.value.durations.get(index) ?? null,
       sceneWaiting: showWait.value && activeWait.value?.index === index
@@ -1618,6 +1627,12 @@ function skipTokenText(tokens, length) {
   return result
 }
 
+function expandDisplayTokens(tokens) {
+  return tokens.some((token) => token.displayTokens)
+    ? tokens.flatMap((token) => token.displayTokens ?? [token])
+    : tokens
+}
+
 function facilityPrefix(tokens, room) {
   return tokens[0]?.type === 'room' &&
     (tokens[0].roomId ?? tokens[0].text) === room &&
@@ -1657,7 +1672,9 @@ function previewLog(entry, prefix = () => null) {
     key: entry.key,
     row: entry.row,
     parts: stampParts(entry.row),
-    tokens: hiddenPrefix ? skipTokenText(firstLine, hiddenPrefix.length) : firstLine,
+    tokens: expandDisplayTokens(
+      hiddenPrefix ? skipTokenText(firstLine, hiddenPrefix.length) : firstLine
+    ),
     preview: true
   }
 }
@@ -2169,6 +2186,9 @@ function lineClasses(row) {
                   :data-log-rescue-mirror="item.mirror ? item.sourceKey : undefined"
                   :data-log-source-index="item.sourceIndex"
                   :data-log-detail-owner="item.detailOwner"
+                  :data-log-display-substitution="
+                    item.displaySubstituted && !item.mirror && !item.detailOwner ? true : undefined
+                  "
                 >
                   <template v-if="item.parts">
                     <span class="log-stamp" :title="stampTitle(item.row.stamp)"

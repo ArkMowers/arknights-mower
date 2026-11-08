@@ -39,7 +39,42 @@ const itemPattern = new RegExp(items.map((item) => escapePattern(item.text)).joi
 const orderPattern =
   /当前为 (?<kind>但书(?:_\d+)?|龙舌兰|佩佩|可露希尔|漏单(?:_\d+)?|未知) 订单[，,]\s*订单价值为[：:]?\s*(?<price>\d+)/gu
 
+function validWorkshopMaterial(material) {
+  return [material?.name, material?.item].every(
+    (value) => typeof value === 'string' && value.trim() && value.length <= 256
+  )
+}
+
+function workshopIngredient(name, item) {
+  const prefix = `${item}_`
+  return name.startsWith(prefix) ? name.slice(prefix.length) : ''
+}
+
+function workshopMaterialMatch(start, { name, item }) {
+  const match = { start, end: start + name.length, type: 'item', text: name, icon: icon(item) }
+  const ingredient = workshopIngredient(name, item)
+  if (ingredient.trim()) {
+    match.displayTokens = [
+      { type: 'item', text: ingredient, icon: icon(ingredient) },
+      { type: 'text', text: ' → ' },
+      { type: 'item', text: item, icon: match.icon }
+    ]
+  }
+  return match
+}
+
 function workshopItems(text, event) {
+  if (event?.type === 'workshop-material') {
+    if (!validWorkshopMaterial(event)) return []
+    const name = escapePattern(event.name)
+    const selection = new RegExp(`检测到${name}(?:满足条件，开始加工|不满足条件，跳过)$`, 'u')
+    const batch = new RegExp(String.raw`加工${name}：库存-?\d+，上限\d+，本批最多\d+次$`, 'u')
+    const selected = selection.exec(text)
+    if (selected) return [workshopMaterialMatch(selected.index + '检测到'.length, event)]
+    const processing = batch.exec(text)
+    return processing ? [workshopMaterialMatch(processing.index + '加工'.length, event)] : []
+  }
+
   if (event?.type !== 'workshop-result') return []
   const changes = event.changes
   if (
@@ -78,6 +113,28 @@ function workshopItems(text, event) {
     cursor += value.length + 1
   }
   const prefix = text.slice(0, text.length - suffix.length - label.length)
+  if (validWorkshopMaterial(event.product)) {
+    const name = escapePattern(event.product.name)
+    const result = new RegExp(String.raw`加工${name}完成\d+次，$`, 'u').exec(prefix)
+    if (result) {
+      matches.push(workshopMaterialMatch(result.index + '加工'.length, event.product))
+      return matches
+    }
+  }
+  const legacyRecipe = /加工([^，\r\n]+)完成\d+次，$/u.exec(prefix)
+  if (legacyRecipe) {
+    const name = legacyRecipe[1]
+    const ingredients = new Set(changes.filter(({ delta }) => delta < 0).map((item) => item.name))
+    const product = changes.find(
+      (item) => item.delta > 0 && ingredients.has(workshopIngredient(name, item.name))
+    )
+    if (product) {
+      matches.push(
+        workshopMaterialMatch(legacyRecipe.index + '加工'.length, { name, item: product.name })
+      )
+      return matches
+    }
+  }
   const names = [...new Set(changes.map((item) => item.name))].sort((a, b) => b.length - a.length)
   for (const match of prefix.matchAll(new RegExp(names.map(escapePattern).join('|'), 'gu'))) {
     matches.push({
