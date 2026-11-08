@@ -163,6 +163,33 @@ def test_normal_round_saves_then_stops_without_a_future_start_notice(
     solver.device.check_current_focus.assert_not_called()
 
 
+@pytest.mark.parametrize("due_work", [False, True])
+def test_maintenance_recheck_preserves_round_stop_boundary_without_device_access(
+    production_idle_scheduler, monkeypatch, stop_state, due_work
+):
+    solver, clock = production_idle_scheduler.solver, production_idle_scheduler.clock
+    solver._simulator_closed_for_idle = True
+    config.maintenance_recheck.set()
+    if due_work:
+        solver.tasks[0].time = clock.now()
+    tasks = [(task, task.time) for task in solver.tasks]
+    restart = Mock()
+    monkeypatch.setattr(base, "restart_simulator", restart)
+    round_stop.request_stop()
+    if due_work:
+        solver.rest_until_next_task()
+        stop_state.save.assert_not_called()
+        assert round_stop.pending()
+    else:
+        with pytest.raises(MowerExit):
+            solver.rest_until_next_task()
+        stop_state.save.assert_called_once_with()
+        assert config.stop_mower.is_set()
+    assert [(task, task.time) for task in solver.tasks] == tasks
+    restart.assert_not_called()
+    solver.device.check_current_focus.assert_not_called()
+
+
 def test_request_during_normal_rest_stops_before_device_wakeup(
     production_idle_scheduler, monkeypatch, stop_state
 ):

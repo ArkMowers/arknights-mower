@@ -388,7 +388,7 @@ def _handle_maintenance(
 
     flash_probe_at = min(info.end, info.start + timedelta(minutes=2))
     flash_probe_pending = False
-    if not info.manual and info.is_flash_update:
+    if not info.manual and info.is_flash_update and not info.allows_early_login:
         if info.announcement_id in _flash_probe_ids:
             return False
         probe_reference = max(now, flash_probe_at)
@@ -440,6 +440,7 @@ def _wait_before_early_login_retry(now=None):
     if (
         info is not None
         and info.is_flash_update
+        and not info.allows_early_login
         and info.announcement_id in _flash_probe_ids
         and now < info.end
     ):
@@ -602,6 +603,7 @@ def _resume_device_dispatch(scheduler=None, failure=None):
         device = device_control.recover().unwrap()
         if scheduler is not None:
             scheduler.device = device
+            scheduler._simulator_closed_for_idle = False
             scheduler.recog.device = device
             if uncertain or getattr(scheduler, "_idle_observation_pending", False):
                 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
@@ -1021,6 +1023,8 @@ def simulate(saved):
     task_failures = 0
     while True:
         try:
+            if config.maintenance_recheck.is_set():
+                config.wake_scheduler.clear()
             config.maintenance_recheck.clear()
             refresh_resource_at_boundary()
             from arknights_mower.utils.scheduler_task import MAINTENANCE_TASK_TYPES
@@ -1051,6 +1055,12 @@ def simulate(saved):
                         for task in base_scheduler.tasks
                     )
                 ):
+                    continue
+            if config.maintenance_recheck.is_set():
+                continue
+            if getattr(base_scheduler, "_idle_observation_pending", False) is True:
+                base_scheduler._idle_sleep(0)
+                if config.maintenance_recheck.is_set():
                     continue
             if _next_scheduler_task() is not None:
                 # 维护避让先于日常任务和等待预算，包含从存档恢复的专精换人。
@@ -1318,6 +1328,7 @@ def simulate(saved):
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
+                task_failures = 0
                 continue
             try:
                 _resume_device_dispatch(base_scheduler, e)
@@ -1338,6 +1349,7 @@ def simulate(saved):
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
+                task_failures = 0
                 continue
             try:
                 _resume_device_dispatch(base_scheduler, e)
@@ -1357,6 +1369,7 @@ def simulate(saved):
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
+                task_failures = 0
                 continue
             try:
                 base_scheduler.recog.update()

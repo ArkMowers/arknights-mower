@@ -2,6 +2,7 @@
 
 import pickle
 import sys
+from dataclasses import replace
 from datetime import datetime, timedelta
 from threading import Event
 from types import SimpleNamespace
@@ -91,6 +92,66 @@ def test_complete_announced_interval_includes_final_half_hour(maintenance):
     swap = handoff(maintenance.info.end - timedelta(minutes=15))
     scheduler.protect_priority_tasks([swap])
     assert swap.time < maintenance.info.start
+
+
+@pytest.mark.parametrize(
+    "title, update_type, hours",
+    [
+        ("服务器停机维护公告", "hot", 1),
+        ("闪断更新公告", "hot", 1),
+        ("版本更新停机维护公告", "major", 6),
+    ],
+)
+def test_full_announced_interval_advances_orders_and_handoffs(
+    maintenance, monkeypatch, title, update_type, hours
+):
+    info = replace(
+        maintenance.info,
+        title=title,
+        update_type=update_type,
+        end=maintenance.info.start + timedelta(hours=hours),
+    )
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: info)
+    original = info.end - timedelta(minutes=15)
+    order = SchedulerTask(
+        original,
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={"room_1_1": ["但书"]},
+        meta_data="room_1_1",
+    )
+    swap = handoff(original)
+    tasks = [order, swap]
+
+    scheduler.scheduling(tasks, time_now=maintenance.clock.now())
+
+    assert order.time < info.start - timedelta(minutes=10)
+    assert order.adjusted
+    assert order.maintenance_start == info.start
+    assert swap.time + timedelta(minutes=1) < info.start - timedelta(minutes=10)
+    assert swap.advance_support_swap
+    first_times = order.time, swap.time
+    scheduler.scheduling(tasks, time_now=maintenance.clock.now())
+    assert (order.time, swap.time) == first_times
+    assert order.plan == {"room_1_1": ["但书"]}
+    assert swap.plan_key == "1"
+
+
+def test_early_entry_keeps_new_order_and_handoff_times(maintenance):
+    maintenance.clock.current = maintenance.info.resume_at
+    original = maintenance.info.end - timedelta(minutes=15)
+    order = SchedulerTask(
+        original,
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={"room_1_1": ["但书"]},
+        meta_data="room_1_1",
+    )
+    swap = handoff(original + timedelta(minutes=10))
+    tasks = [order, swap]
+    scheduler.scheduling(tasks, time_now=maintenance.clock.now())
+    assert order.time == original
+    assert not order.adjusted
+    assert swap.time == original + timedelta(minutes=10)
+    assert not getattr(swap, "advance_support_swap", False)
 
 
 def test_before_buffer_and_after_maintenance_keep_their_times(maintenance):
