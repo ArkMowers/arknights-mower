@@ -1853,6 +1853,13 @@ def rebalance_plan_swap_dorms(
     """
     reserved_names = reserved_names or set()
     locked_positions = set(reserved_slots)
+    # 仍在固定宿舍岗位接替宿管的同组主班不参与动态床位迁移。
+    locked_positions.update(
+        bed.position
+        for bed in getattr(op_data, "group_dorm", ())
+        if (current := op_data.get_current_operator(*bed.position)) is not None
+        and op_data.is_recovery_dorm(bed, current.name)
+    )
     if reorder:
         locked_positions.update(bed.position for bed in op_data.group_dorm)
         locked_positions.update(op_data.reserved_product_beds)

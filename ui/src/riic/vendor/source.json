@@ -266,7 +266,15 @@
     "workbench/timeline/timelineModel.spec.ts": "a3e2104f69ccf38fbb6f519f13ed4fab6e996601b55b45b85c6de22fcb9703fe",
     "workbench/timeline/timelineModel.ts": "2f34633f54a07ea962f4c687ba16574bef7fd35ca1bbfdd17c2a2d8b9038e0d4",
     "workbench/validate.ts": "403fbb46a1b24096897f4b244e01511d7fd3a5bab179b4ba2f1dbaaef7e708d9",
-    "workbench/validateBackupPlans.ts": "49b48c206a06825efa08db9670fae0c723c7d471590dfcec99f8051d35e1b0d4"
+    "workbench/validateBackupPlans.ts": "49b48c206a06825efa08db9670fae0c723c7d471590dfcec99f8051d35e1b0d4",
+    "scheduler/mowerFixedCoverMigration.spec.ts": "ad79e5300aef22c44a2b193867bd4374d35d8dd1e34b3d3a9ea96a4201f962e2",
+    "scheduler/mowerDormFiller.spec.ts": "4f2e9fb4351442d0d2ada9513681993578d41f1e8092b39f0c209bf2945ba46f",
+    "scheduler/mowerCoordinationReturn.ts": "25d638d93456bf2b06f445b0560f1f8cc9f3c11df126a6fbec90c846d5a708b8",
+    "scheduler/mowerRecallTimePrecision.spec.ts": "c2f9f1018a2ed3beac8ba1e1ae688f1eebf80ec89241409d38ec87129e8a9276",
+    "scheduler/mowerRecallReturnDispatch.spec.ts": "70fdaf2f11335205de484025170e71f086833288246e5955e993db356f09b494",
+    "scheduler/mowerWorkingPrimaryRecall.spec.ts": "9409428901557c242f0a037cdb8532a3a37045be720fc18bedcb2f3e5e1f7969",
+    "scheduler/mowerDormFiller.ts": "fbb697a58966ad039003d3aaa5d2418c159cff6833c697271c3985b2aede324b",
+    "scheduler/mowerAlphaRecovery.ts": "b43b8b11e88c5eb91d836adee7147e42c97db28ddb60e915f83cd63ba43efa1d"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -634,8 +642,8 @@
       "reason": "Reuse only dispatchable default-state ordinary planning wakes without changing existing deadlines or specialized tasks; restore planning after completed arrangements and exclude the currently consumed task. Verify backup convergence and actual completion entry points."
     },
     "scheduler/mowerAlphaDorm.ts": {
-      "sha256": "5a76c56ea7a9d46e0cdcb4a114ce6e74aae384cf6e581137fbb93cda05d576b8",
-      "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points. Reallocate movable dormitory residents when effective bed order changes, including backup activation and deactivation, without preserving previous single-target beds. Preserve fixed staffing and real task or product reservations; apply bounded isolation after allocation, allowing unreserved vacant first beds. Verify actual transition and complete shift-preview entry points, unchanged-order stability and repeated-preview convergence. Apply dormitory retention to full-mood and 80% applicant gates while preserving configured takeover tiers, protected residents and reservations. Count shared working primaries with exactly one normal resting binding in that group while preserving working swaps and empty-binding individual recovery. Let priority replacements yield occupied beds to higher tiers and apply protected low priority to explicitly listed replacements and idle operators without changing staffing identity. Honor complete zero-mood group returns when correcting fixed dormitory staffing, following Mower 8a4ce07e. Restore saved user order within the explicit high-priority operator list for recovery admission and single-target allocation. Compare recovery tiers without saved high-priority list ranks for skill-compatible swaps; preserve ordinary and sole-Free routing, reservations and cross-tier protection."
+      "sha256": "00b6d6b4c710f0af7d7f5788834b67f72e78b07cef709dea2783d43c29fff3a3",
+      "reason": "Keep dormitory-retained operators housed or legally working after automatic arrangements, while allowing eligible bed and room changes. Preserve configured recovery priority and completed-rest semantics at personal or Ling/Xi limits; cancel only their idle release actions and preserve unrelated work. Synchronize native policy and verify actual scheduling entry points. Reallocate movable dormitory residents when effective bed order changes, including backup activation and deactivation, without preserving previous single-target beds. Preserve fixed staffing and real task or product reservations; apply bounded isolation after allocation, allowing unreserved vacant first beds. Verify actual transition and complete shift-preview entry points, unchanged-order stability and repeated-preview convergence. Apply dormitory retention to full-mood and 80% applicant gates while preserving configured takeover tiers, protected residents and reservations. Count shared working primaries with exactly one normal resting binding in that group while preserving working swaps and empty-binding individual recovery. Let priority replacements yield occupied beds to higher tiers and apply protected low priority to explicitly listed replacements and idle operators without changing staffing identity. Honor complete zero-mood group returns when correcting fixed dormitory staffing, following Mower 8a4ce07e. Restore saved user order within the explicit high-priority operator list for recovery admission and single-target allocation. Compare recovery tiers without saved high-priority list ranks for skill-compatible swaps; preserve ordinary and sole-Free routing, reservations and cross-tier protection. Preserve actual occupants who still perform a configured fixed dormitory replacement role during ordinary backup migration, independently of cached bed names. Keep their recovery deadlines; allow former or ineligible covers to migrate after configuration changes or explicit departures."
     },
     "scheduler/mowerBackupDepartureRecovery.ts": {
       "sha256": "909440c15d276aa069d52e41abc4c7493e8371dbbf4c0233b9ea7bda68eb24f3",
@@ -940,6 +948,10 @@
     "scheduler/mowerRecallTimePrecision.spec.ts": {
       "sha256": "c2f9f1018a2ed3beac8ba1e1ae688f1eebf80ec89241409d38ec87129e8a9276",
       "reason": "Verify fractional-rate ordinary recalls through real planning and dispatch at relative and UNIX microsecond clocks, personal targets 12 and 24, consistent mood/time integration, changing global rates, strict work-floor safety, and unavailable recovery evidence."
+    },
+    "scheduler/mowerFixedCoverMigration.spec.ts": {
+      "sha256": "ad79e5300aef22c44a2b193867bd4374d35d8dd1e34b3d3a9ea96a4201f962e2",
+      "reason": "Verify ordinary dorm migration preserves actual eligible fixed covers and their recovery deadlines at low and full mood, follows observed occupants instead of stale caches, migrates former or ineligible covers, preserves explicit returns and keeps shared fixed coverage through a real backup-controller transition."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
@@ -1081,6 +1093,7 @@
       "scheduler/mowerExhaustReservations.spec.ts",
       "scheduler/mowerExhaustReservations.ts",
       "scheduler/mowerFiammettaRetainedObservation.spec.ts",
+      "scheduler/mowerFixedCoverMigration.spec.ts",
       "scheduler/mowerFixedSlotRecovery.spec.ts",
       "scheduler/mowerFullDormFiller.spec.ts",
       "scheduler/mowerGroupRecovery.ts",

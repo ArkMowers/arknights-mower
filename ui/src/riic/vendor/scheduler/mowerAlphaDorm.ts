@@ -284,6 +284,7 @@ function alphaRecoveryAssignments(data:MowerSchedulingData,beds:MowerDormState[]
 /** 生效床序变化时重排住客，其余切表保留有效原床位。 */
 export function alphaRebalanceDorms(data:MowerSchedulingData,previous:MowerDormState[],reserved=new Set<string>(),reservedSlots:ReadonlySet<string>=new Set(),reorder=false):MowerTaskPlan {
  const locked=new Set(reservedSlots)
+ for(const bed of data.groupDorms){const actual=data.currentOperator(...bed.position);if(actual&&data.recoveryDorm(bed,actual.name))locked.add(alphaPosition(...bed.position))}
  if(reorder){for(const bed of data.groupDorms)locked.add(alphaPosition(...bed.position));for(const slot of data.reservedProductBeds.keys())locked.add(slot);for(const bed of data.dorms)if(reserved.has(bed.name))locked.add(alphaPosition(...bed.position))}
  const lockedResidents=new Set([...locked].map(position=>{const [room,index]=position.split('\0');return data.currentOperator(room!,Number(index))?.name}).filter(Boolean))
  const unique=new Map<string,MigrationCandidate>()
