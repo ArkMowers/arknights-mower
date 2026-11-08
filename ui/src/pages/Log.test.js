@@ -2548,6 +2548,68 @@ describe('log page', () => {
     }
   )
 
+  it('expires the visible checklist at game-day rollover and discards an in-flight old response', async () => {
+    vi.setSystemTime(new Date('2026-11-08T19:59:20Z'))
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    const replies = []
+    state.client.get.mockImplementation((url) =>
+      url.endsWith('/daily-status')
+        ? new Promise((resolve) => replies.push(resolve))
+        : Promise.resolve({ data: {} })
+    )
+    const response = (game_day, report) => ({
+      data: { game_day, source: 'live', records: { report } }
+    })
+    const workspace = mountWidePane()
+    onMounted.mock.lastCall[0]()
+    const { strip, items } = dailyStrip(workspace)
+    await nextTick()
+    replies[0](response('2026-11-08', 'done'))
+    await vi.advanceTimersByTimeAsync(39999)
+    expect(items()).toEqual([['读取基报', 'done']])
+    expect(replies).toHaveLength(2)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(strip()).toBeUndefined()
+    expect(replies).toHaveLength(2)
+    replies[1](response('2026-11-08', 'done'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(strip()).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(20000)
+    replies[2](response('2026-11-09', 'pending'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(items()).toEqual([['读取基报', 'pending']])
+    onUnmounted.mock.lastCall[0]()
+  })
+
+  it('drops the previous game-day checklist before refreshing a visible page', async () => {
+    vi.setSystemTime(new Date('2026-11-08T19:59:59Z'))
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    mockDailyStatus(() => ({
+      game_day: '2026-11-08',
+      source: 'live',
+      records: { report: 'done' }
+    }))
+    const workspace = mountWidePane()
+    onMounted.mock.lastCall[0]()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(dailyStrip(workspace).items()).toEqual([['读取基报', 'done']])
+
+    setHidden(true)
+    vi.setSystemTime(new Date('2026-11-08T20:00:00Z'))
+    state.client.get.mockImplementation((url) =>
+      url.endsWith('/daily-status') ? new Promise(() => {}) : Promise.resolve({ data: {} })
+    )
+    setHidden(false)
+    await nextTick()
+    expect(dailyStrip(workspace).strip()).toBeUndefined()
+    expect(callsTo('/daily-status')).toHaveLength(2)
+    onUnmounted.mock.lastCall[0]()
+  })
+
   it('returns to the running log when the worker stops while its mobile daily view is away', async () => {
     vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
     state.mobile.value = true
@@ -2628,6 +2690,7 @@ describe('log page', () => {
   })
 
   it('keeps the latest completion state when daily-status replies arrive out of order', async () => {
+    vi.setSystemTime(new Date('2026-11-05T05:00:00Z'))
     state.mower.refs.running.value = true
     state.config.report_enable = true
     const replies = []
@@ -2688,6 +2751,7 @@ describe('log page', () => {
   })
 
   it('shows the enabled daily tasks in a non-expandable checklist above the wide desktop log', async () => {
+    vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
     state.mower.refs.running.value = true
     Object.assign(state.config, {
       skland_enable: true,
@@ -2774,6 +2838,7 @@ describe('log page', () => {
   })
 
   it('shows task status only after live records arrive and hides it across stop and restart', async () => {
+    vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
     Object.assign(state.config, { report_enable: true, recruit_enable: true })
     let response = {
       game_day: '2026-11-01',
@@ -2864,6 +2929,7 @@ describe('log page', () => {
     ['a narrow pane', 880, false],
     ['mobile', 1290, true]
   ])('switches between the log and live daily task views on %s', async (_, width, mobile) => {
+    vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
     state.mower.refs.running.value = true
     state.mobile.value = mobile
     Object.assign(state.config, { report_enable: true, recruit_enable: true })
@@ -2945,7 +3011,7 @@ describe('log page', () => {
     expect(items()).toEqual([['读取基报', 'pending']])
 
     await vi.advanceTimersByTimeAsync(30000)
-    replies[3]({ data: { source: 'live', records: {} } })
+    replies[3]({ data: { game_day: '2026-11-01', source: 'live', records: {} } })
     await vi.advanceTimersByTimeAsync(0)
     expect(log.props.showAlternateView).toBe(true)
     expect(items()).toEqual([])
@@ -2955,6 +3021,7 @@ describe('log page', () => {
   })
 
   it('only offers the compact checklist while running with a recordable daily task enabled', async () => {
+    vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
     state.mobile.value = true
     Object.assign(state.config, { maa_mail: true, recruit_enable: true })
     mockDailyStatus(() => ({

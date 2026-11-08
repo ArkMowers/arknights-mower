@@ -20,7 +20,7 @@ import { routeLocationKey, routerKey } from 'vue-router'
 import { useMowerStore } from '@/stores/mower'
 import { useGuiStore } from '@/stores/gui'
 import { useLogBackgroundStore } from '@/stores/logBackground'
-import { useLogWorkspaceStore } from '@/stores/logWorkspace'
+import { dailyStatusExpiry, useLogWorkspaceStore } from '@/stores/logWorkspace'
 import { useConfigStore } from '@/stores/config'
 import {
   clampScreenshotHeight,
@@ -495,7 +495,8 @@ watch(mobile, () => {
   nextTick(apply_log_layout)
 })
 
-const daily_status = ref(workspace.restoreDailyStatus())
+workspace.restoreDailyStatus()
+const { dailyStatus: daily_status } = storeToRefs(workspace)
 const daily_status_loading = ref(false)
 const daily_view_selected = ref(workspace.dailyView)
 const daily_status_always_visible = computed(() => rail_layout.value && !mobile.value)
@@ -526,9 +527,21 @@ const log_date = computed(() => {
   return ''
 })
 let dailyStatusTimer
+let dailyStatusExpiryTimer
 let dailyStatusController
+function schedule_daily_status_expiry() {
+  clearTimeout(dailyStatusExpiryTimer)
+  const now = Date.now()
+  const expiry = dailyStatusExpiry(daily_status.value, now)
+  if (expiry === null) {
+    daily_status.value = null
+    return
+  }
+  dailyStatusExpiryTimer = setTimeout(schedule_daily_status_expiry, expiry - now)
+}
 async function refresh_daily_status() {
   if (!daily_status_enabled.value || document.hidden) return
+  schedule_daily_status_expiry()
   dailyStatusController?.abort()
   const controller = new AbortController()
   dailyStatusController = controller
@@ -538,17 +551,13 @@ async function refresh_daily_status() {
       signal: controller.signal,
       timeout: 10000
     })
-    if (!controller.signal.aborted) {
-      daily_status.value = data
-      workspace.dailyStatus = data?.source === 'live' ? data : null
-    }
+    if (!controller.signal.aborted)
+      daily_status.value = dailyStatusExpiry(data) === null ? null : data
   } catch {
-    if (!controller.signal.aborted) {
-      daily_status.value = null
-      workspace.dailyStatus = null
-    }
+    if (!controller.signal.aborted) daily_status.value = null
   } finally {
     if (dailyStatusController === controller) {
+      schedule_daily_status_expiry()
       dailyStatusController = undefined
       daily_status_loading.value = false
     }
@@ -556,6 +565,7 @@ async function refresh_daily_status() {
 }
 function stop_daily_status() {
   clearInterval(dailyStatusTimer)
+  clearTimeout(dailyStatusExpiryTimer)
   dailyStatusTimer = undefined
   dailyStatusController?.abort()
   dailyStatusController = undefined
@@ -568,10 +578,7 @@ function schedule_daily_status() {
   dailyStatusTimer = setInterval(refresh_daily_status, 30000)
 }
 watch(daily_status_enabled, (enabled) => {
-  if (!enabled) {
-    daily_status.value = null
-    workspace.dailyStatus = null
-  }
+  if (!enabled) daily_status.value = null
   schedule_daily_status()
 })
 watch(worker_status, () => void refresh_daily_status())
