@@ -55,6 +55,28 @@ def test_room_summary_is_completed_only_after_real_arrangement(
     assert "_active_facility_log" not in solver.__dict__
 
 
+def test_matching_cached_roster_skips_selection_without_confirming_the_room(
+    solver, caplog, monkeypatch
+):
+    capture(caplog, monkeypatch)
+    room = "meeting"
+    agents = ["银灰", "陈"]
+    for index, name in enumerate(agents):
+        operator = solver.op_data.operators[name]
+        operator._current_room, operator.current_index = room, index
+    solver.task.plan = {room: agents}
+
+    solver.agent_arrange_room({}, room, solver.task.plan)
+
+    solver.choose_agent.assert_not_called()
+    solver.get_agent_from_room.assert_not_called()
+    assert not solver.task.plan
+    progress = events(caplog)
+    assert [event["phase"] for event in progress] == ["started", "failed"]
+    assert progress[1]["id"] == progress[0]["id"]
+    assert progress[1]["summary"] == "会客室：缓存名单与安排一致，跳过选人"
+
+
 def test_retained_recycling_resident_updates_progress_before_confirmation(
     solver, caplog, monkeypatch
 ):

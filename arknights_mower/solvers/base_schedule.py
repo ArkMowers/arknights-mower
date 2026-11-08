@@ -17629,7 +17629,9 @@ class BaseSchedulerSolver(
             },
         )
 
-    def _confirm_facility_arrangement_log(self, room, agents, observed=None):
+    def _confirm_facility_arrangement_log(
+        self, room, agents, observed=None, *, cache_only=False
+    ):
         event = getattr(self, "_active_facility_log", None)
         if (
             event is not None
@@ -17637,14 +17639,17 @@ class BaseSchedulerSolver(
             and event["phase"] == "started"
             and event["anchor"]
         ):
-            event["phase"] = "completed"
+            event["phase"] = "failed" if cache_only else "completed"
             event["anchor"] = False
             event["agents"] = [
                 name for name in agents if name not in ("", "_", "Current", "Free")
             ]
             task = getattr(self, "task", None)
             target = self._fiammetta_charge_target(task, room, agents)
-            if (
+            if cache_only:
+                event.pop("run_order_agents", None)
+                event["summary"] = f"{event['label']}：缓存名单与安排一致，跳过选人"
+            elif (
                 target is not None
                 and observed is not None
                 and len(observed) >= len(agents)
@@ -17702,6 +17707,7 @@ class BaseSchedulerSolver(
             confirmation_pending = False
             selection_attempted = False
             final_observation = None
+            room_revision = getattr(self.op_data, "room_observations", {}).get(room, 0)
             try:
                 error_count = 0
                 if not skip_enter:
@@ -17815,7 +17821,7 @@ class BaseSchedulerSolver(
                 self.turn_on_room_detail(room)
                 self._start_facility_arrangement_log(room, plan[room])
                 if room == "recycle":
-                    self.get_agent_from_room(room)
+                    final_observation = self.get_agent_from_room(room)
                     self._suppress_facility_arrangement(plan)
                     self._prepare_group_shift_execution_targets(self.task)
                     if room not in plan:
@@ -18285,6 +18291,9 @@ class BaseSchedulerSolver(
                     plan,
                     settle_entry=choose_error == 0 and not selection_attempted,
                     observed=final_observation,
+                    cache_only=final_observation is None
+                    and getattr(self.op_data, "room_observations", {}).get(room, 0)
+                    == room_revision,
                 )
                 if selection_attempted or choose_error > 0:
                     self.record_selection_success()
@@ -18384,7 +18393,14 @@ class BaseSchedulerSolver(
         return new_plan
 
     def _complete_room_arrangement(
-        self, new_plan, room, plan, *, settle_entry=False, observed=None
+        self,
+        new_plan,
+        room,
+        plan,
+        *,
+        settle_entry=False,
+        observed=None,
+        cache_only=False,
     ):
         # 收尾返回仍属本轮安排；超时交回房间恢复，实读复核后再提交完成。
         keep_workshop = room == "factory" and (
@@ -18407,7 +18423,9 @@ class BaseSchedulerSolver(
         if getattr(self.task, "arrangement_retry_room", None) == room:
             del self.task.arrangement_retry_room
             del self.task.arrangement_retry_count
-        self._confirm_facility_arrangement_log(room, plan[room], observed)
+        self._confirm_facility_arrangement_log(
+            room, plan[room], observed, cache_only=cache_only
+        )
         del plan[room]
 
     def _wait_for_room_entry_before_exit(self, room, *, deadline):
