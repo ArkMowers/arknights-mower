@@ -11,6 +11,9 @@ from arknights_mower.utils.resource_pkg import resource_pkg_path
 
 class ShopNavigation(BaseModel):
     activity: str = Field(min_length=1, max_length=256)
+    entry_names: list[Annotated[str, Field(min_length=1, max_length=256)]] = Field(
+        default_factory=list, max_length=16
+    )
     start_ts: StrictInt = Field(ge=1)
     end_ts: StrictInt = Field(ge=1)
     x: StrictInt = Field(ge=0, lt=1920)
@@ -35,7 +38,7 @@ def activity_shops(now):
         if item.start_ts <= now < item.end_ts:
             if item.activity in result:
                 raise ValueError("活动商店资源存在重叠时段")
-            result[item.activity] = item.model_dump()
+            result[item.activity] = item.model_dump(exclude_unset=True)
     for stage in stage_data_full:
         window = stage.get("endTs")
         name = stage.get("zoneNameSecond")

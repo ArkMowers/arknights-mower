@@ -13,10 +13,11 @@ class EventShopNavigation(NavigationSolver):
         result, _ = rapidocr.engine(
             self.recog.img, use_det=True, use_cls=False, use_rec=True
         )
+        names = self.activity_entry_names() if zone_name == self.name else {zone_name}
         matches = [
             item
             for item in result or []
-            if str(item[1]).strip() == zone_name and float(item[2]) >= 0.8
+            if str(item[1]).strip() in names and float(item[2]) >= 0.8
         ]
         if len(matches) != 1:
             return None
@@ -31,7 +32,10 @@ class EventShopNavigation(NavigationSolver):
         if rapidocr.engine is None:
             rapidocr.initialize_ocr()
         self.name = shop["activity"]
-        self.stage_meta = {"zoneNameSecond": self.name}
+        self.stage_meta = {
+            "zoneNameSecond": self.name,
+            "entryNames": shop.get("entry_names", []),
+        }
         self.stageType = "ACTIVITY"
         self.nav_steps = []
         self._suppress_nav_recording = True

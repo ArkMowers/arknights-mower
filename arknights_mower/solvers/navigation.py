@@ -295,12 +295,32 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         logger.debug("在线构建失败，终止本次导航")
         return False
 
+    def activity_entry_names(self) -> set[str]:
+        meta = self.stage_meta or {}
+        zone = meta.get("zoneNameSecond")
+        if not zone:
+            return set()
+        names = {zone, *meta.get("entryNames", [])}
+        names.update(
+            stage.get("subTitle")
+            for stage in stage_data_full
+            if stage.get("stageType") == "ACTIVITY"
+            and stage.get("zoneNameSecond") == zone
+        )
+        return {re.sub(r"\s+", "", name) for name in names if name}
+
     def enter_activity_from_terminal(self) -> bool:
-        """用活动名称识别终端左侧横幅，只进入唯一且可信的当前活动。"""
+        """用活动或章节名称识别终端左侧唯一且可信的活动横幅。"""
         zone = (self.stage_meta or {}).get("zoneNameSecond")
         if not zone or self.scene() != Scene.TERMINAL_MAIN:
             return False
-        pattern = rf"[<＜《〈]?{re.escape(zone)}[>＞》〉]?(?:活动已开放[。.]?)?"
+        names = "|".join(
+            re.escape(name) for name in sorted(self.activity_entry_names())
+        )
+        pattern = (
+            rf"[<＜《〈]?(?:{names})[>＞》〉]?"
+            r"(?:(?:活动|(?:EX|S)?关卡)已开放[。.]?)?"
+        )
         matches = [
             candidate
             for candidate in self.collect_terminal_ocr_candidates()

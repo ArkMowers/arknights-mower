@@ -47,11 +47,25 @@ def test_generated_package_selects_shop_through_reward_window(tmp_path, monkeypa
     result = runtime.select_shop(conf, during_rewards)
     assert (result["x"], result["y"]) == (1461, 255)
     assert result["confirm_text"] == "炮火所掩埋的"
+    assert result["entry_names"] == ["残照终尽", "长冬初青", "世纪之春"]
     assert result["end_ts"] == 1795895999
     assert runtime.select_shop(conf, 1793487599) is None
     assert runtime.select_shop(conf, 1795895999) is None
     assert is_package_file("arknights_mower/data/event_shop.json")
     assert not is_package_file("arknights_mower/data/event_shop_layouts.json")
+
+
+def test_legacy_shop_adaptation_has_no_additional_entry_names(layouts):
+    del layouts["act55side"]["entry_names"]
+    shop = generation.compile_activity_shops(ACTIVITY, layouts)[0]
+    assert runtime.ShopNavigation.model_validate(shop).entry_names == []
+
+
+@pytest.mark.parametrize("names", ["长冬初青", [""], [None], ["a"] * 17])
+def test_invalid_entry_names_are_rejected_during_generation(layouts, names):
+    layouts["act55side"]["entry_names"] = names
+    with pytest.raises(ValueError, match="活动入口名称无效"):
+        generation.compile_activity_shops(ACTIVITY, layouts)
 
 
 def test_generated_entry_reaches_navigation_click_and_title_confirmation(

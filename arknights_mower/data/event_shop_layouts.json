@@ -2,7 +2,13 @@
   "act55side": {
     "shop_id": "shop_act55side",
     "confirm_text": "炮火所掩埋的",
+    "entry_names": [
+      "残照终尽",
+      "长冬初青",
+      "世纪之春"
+    ],
     "source": {
+      "entry_names": "https://github.com/Kengxxiao/ArknightsGameData/blob/bffe31bf66739842f99b457327066c695e2af389/zh_CN/gamedata/excel/zone_table.json",
       "url": "https://ak.hycdn.cn/assetbundle/official/Android/assets/26-10-29-15-36-11-33649006/activity_[uc]act55side.dat",
       "manifest": {
         "name": "activity/[uc]act55side.ab",

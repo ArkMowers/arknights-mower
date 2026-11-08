@@ -8,6 +8,7 @@ from arknights_mower.utils.scene import Scene
 
 SHOP = {
     "activity": "时间啊，向前！",
+    "entry_names": ["残照终尽", "长冬初青", "世纪之春"],
     "x": 1461,
     "y": 255,
     "confirm_text": "炮火所掩埋的",
@@ -63,6 +64,108 @@ def test_shop_clicks_named_banner_and_confirms_title_without_ai(navigation):
     solver.find_target_stage_after_entry.assert_not_called()
     solver.rank_activity_candidates.assert_not_called()
     assert solver.nav_steps == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "<时间啊，向前！>活动已开放",
+        "《残照终尽》关卡已开放",
+        "<长冬初青>EX关卡已开放",
+        "＜世纪之春＞S关卡已开放",
+        "长冬初青",
+    ],
+)
+def test_shop_accepts_activity_and_chapter_banners(navigation, text):
+    solver, banners = navigation
+    banners[:] = [[BANNER[0], text, 0.99]]
+    assert solver.run(SHOP)
+    solver.tap_and_detect_page_move.assert_called_once_with(
+        (270, 820), text, record_step=False
+    )
+    solver.tap.assert_called_once_with((1461, 255))
+    solver.open_activity_overview_until_ready.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "text,score",
+    [
+        ("<其他活动>关卡已开放", 0.99),
+        ("<长冬初青复刻>关卡已开放", 0.99),
+        ("<长冬初青>关卡已开放", 0.79),
+        ("EX关卡已开放", 0.99),
+    ],
+)
+def test_shop_rejects_unconfirmed_chapter_banners(navigation, text, score):
+    solver, banners = navigation
+    banners[:] = [[BANNER[0], text, score]]
+    assert not solver.run(SHOP)
+    solver.tap_and_detect_page_move.assert_not_called()
+    solver.tap.assert_called_once_with((490, 1014), interval=0.2)
+
+
+def test_duplicate_chapter_banners_do_not_click_shop(navigation):
+    solver, banners = navigation
+    banners[:] = [[BANNER[0], "<长冬初青>关卡已开放", 0.99]] * 2
+    assert not solver.run(SHOP)
+    solver.tap_and_detect_page_move.assert_not_called()
+    solver.tap.assert_called_once_with((490, 1014), interval=0.2)
+
+
+def test_chapter_banner_still_requires_matching_shop_title(navigation):
+    solver, banners = navigation
+    banners[:] = [[BANNER[0], "<长冬初青>关卡已开放", 0.99]]
+    assert not solver.run({**SHOP, "confirm_text": "其他兑换处"})
+    solver.tap_and_detect_page_move.assert_called_once()
+    assert solver.recog.update.call_count == 3
+
+
+def test_activity_list_recognizes_chapter_title(navigation, monkeypatch):
+    solver, _ = navigation
+    solver.name = SHOP["activity"]
+    solver.stage_meta = {
+        "zoneNameSecond": SHOP["activity"],
+        "entryNames": SHOP["entry_names"],
+    }
+    monkeypatch.setattr(
+        event_shop.NavigationSolver, "find_stage_banner", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        event_shop.rapidocr,
+        "engine",
+        lambda *a, **k: ([[BANNER[0], "长冬初青", 0.99]], None),
+    )
+    assert solver.find_stage_banner(SHOP["activity"]) == ((270, 70), (270, 70))
+
+
+def test_activity_navigation_uses_only_its_own_chapter_names(navigation, monkeypatch):
+    from arknights_mower.solvers import navigation as stage_navigation
+
+    solver, banners = navigation
+    solver.name = "TL-7"
+    solver.stage_meta = {"zoneNameSecond": SHOP["activity"]}
+    monkeypatch.setattr(
+        stage_navigation,
+        "stage_data_full",
+        [
+            {
+                "stageType": "ACTIVITY",
+                "zoneNameSecond": SHOP["activity"],
+                "subTitle": "长冬初青",
+            },
+            {
+                "stageType": "ACTIVITY",
+                "zoneNameSecond": "其他活动",
+                "subTitle": "其他章节",
+            },
+        ],
+    )
+    banners[:] = [[BANNER[0], "<长冬初青>关卡已开放", 0.99]]
+    assert solver.enter_activity_from_terminal()
+    solver.tap_and_detect_page_move.reset_mock()
+    banners[:] = [[BANNER[0], "<其他章节>关卡已开放", 0.99]]
+    assert not solver.enter_activity_from_terminal()
+    solver.tap_and_detect_page_move.assert_not_called()
 
 
 @pytest.mark.parametrize(

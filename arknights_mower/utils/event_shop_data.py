@@ -65,14 +65,25 @@ def compile_activity_shops(activity_table, layouts):
             raise ValueError(f"活动商店多套布局位置不一致：{activity_id}")
         left, top, right, bottom = rects[0]
         title = layout["confirm_text"]
+        entry_names = layout.get("entry_names", [])
         start, end = info["startTime"], info["rewardEndTime"]
         if not isinstance(title, str) or not title.strip() or len(title) > 128:
             raise ValueError(f"活动商店标题无效：{activity_id}")
+        if (
+            not isinstance(entry_names, list)
+            or len(entry_names) > 16
+            or any(
+                not isinstance(name, str) or not name.strip() or len(name) > 256
+                for name in entry_names
+            )
+        ):
+            raise ValueError(f"活动入口名称无效：{activity_id}")
         if type(start) is not int or type(end) is not int or not 0 < start < end:
             raise ValueError(f"活动商店开放时间无效：{activity_id}")
         result.append(
             {
                 "activity": info["name"],
+                "entry_names": entry_names,
                 "start_ts": start,
                 "end_ts": end,
                 "x": math.floor((left + right) / 2 + 0.5),
