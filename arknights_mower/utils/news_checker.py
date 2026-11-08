@@ -5,7 +5,6 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 import requests
-from bs4 import BeautifulSoup
 
 from arknights_mower.utils.log import logger
 
@@ -203,6 +202,9 @@ class NewsChecker:
         url = f"{NEWS_HOST}/news/{announcement_id}"
         response = requests.get(url, timeout=30)
         response.raise_for_status()
+
+        from bs4 import BeautifulSoup
+
         return BeautifulSoup(response.text, "lxml").get_text(" ", strip=True)
 
     @classmethod

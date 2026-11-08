@@ -1,4 +1,4 @@
-"""Desktop startup retains its owners without loading unused runtime solvers."""
+"""Desktop startup retains its owners without loading unused runtime dependencies."""
 
 import os
 import subprocess
@@ -32,16 +32,20 @@ def test_initial_requests_and_shutdown_retain_the_existing_device_owner(tmp_path
         import sys
         from unittest.mock import patch
 
-        class RejectSolverImports(importlib.abc.MetaPathFinder):
+        class RejectUnusedImports(importlib.abc.MetaPathFinder):
             def find_spec(self, fullname, path=None, target=None):
                 if fullname in {
+                    "PIL.Image",
                     "arknights_mower.solvers.base_schedule",
                     "arknights_mower.solvers.reclamation_algorithm",
                     "arknights_mower.solvers.secret_front",
+                    "bs4",
+                    "cv2",
+                    "lxml",
                 }:
-                    raise AssertionError(f"Unused startup solver: {fullname}")
+                    raise AssertionError(f"Unused startup dependency: {fullname}")
 
-        sys.meta_path.insert(0, RejectSolverImports())
+        sys.meta_path.insert(0, RejectUnusedImports())
         import server
         from arknights_mower import __main__ as mower
         from arknights_mower.utils import log
@@ -52,16 +56,19 @@ def test_initial_requests_and_shutdown_retain_the_existing_device_owner(tmp_path
         assert log.get_screenshot_store() is None
         server.app.token = "startup-test-token"
         client = server.app.test_client()
+        headers = {"token": server.app.token}
         with patch.object(
             application, "create_device_control",
             side_effect=AssertionError("Device owner must not be replaced"),
         ):
-            response = client.get("/conf", headers={"token": server.app.token})
+            response = client.get("/conf", headers=headers)
             assert response.status_code == 200
             assert response.json["device"]
-            response = client.get("/status", headers={"token": server.app.token})
+            response = client.get("/status", headers=headers)
             assert response.status_code == 200
             assert response.json["status"] == "stopped"
+            assert client.get("/task", headers=headers).status_code == 200
+            assert client.get("/gui/log-background", headers=headers).status_code == 204
             assert mower.device_control is control
             server.shutdown.close("startup-test")
             assert control.shutdown_requested

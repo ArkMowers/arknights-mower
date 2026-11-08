@@ -3,8 +3,6 @@
 import warnings
 from io import BytesIO
 
-from PIL import Image, ImageOps, UnidentifiedImageError
-
 from arknights_mower.utils.config import gui
 from arknights_mower.utils.config_backup import backup_lock
 
@@ -19,6 +17,8 @@ def _path():
 
 
 def _encode(content):
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
