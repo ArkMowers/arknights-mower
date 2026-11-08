@@ -500,7 +500,12 @@ class LatestLogQueueTest(MultiProcessLogTestBase):
         output = logging.FileHandler(destination, encoding="utf-8")
         try:
             output.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
-            with patch.object(log.logger, "handlers", [queued, capture, output]):
+            with (
+                patch.object(log.logger, "handlers", [queued, capture, output]),
+                log.log_parent_context(
+                    {"type": "mood-calculation", "id": "calculation"}
+                ),
+            ):
                 log.logger.info("第一条原始记录")
                 log.logger.info("第二条原始记录")
         finally:
@@ -508,9 +513,9 @@ class LatestLogQueueTest(MultiProcessLogTestBase):
         warnings = [record for record in records if record.levelno == logging.WARNING]
         self.assertEqual(len(warnings), 1)
         warning = warnings[0]
-        self.assertEqual(
-            log._build_log_record(warning, warning.getMessage())["group"], "runtime-log"
-        )
+        delivered = log._build_log_record(warning, warning.getMessage())
+        self.assertEqual(delivered["group"], "runtime-log")
+        self.assertNotIn("parent", delivered)
         self.assertEqual(
             warning.getMessage(),
             "部分日志未能及时显示，已跳过较早记录以显示最新内容。"

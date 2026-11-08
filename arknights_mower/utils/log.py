@@ -762,7 +762,11 @@ class LatestLogQueue(Queue):
             self._last_drop_warning = now
         logger.warning(
             LIVE_LOG_DROP_WARNING_FORMAT,
-            extra={"log_group": "runtime-log", "log_drop_notice": True},
+            extra={
+                "log_group": "runtime-log",
+                "log_drop_notice": True,
+                "log_parent": None,
+            },
         )
 
 
