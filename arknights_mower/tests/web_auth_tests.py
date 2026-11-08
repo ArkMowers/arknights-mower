@@ -176,13 +176,16 @@ def test_supervisor_accepts_protected_status_without_reading_operational_state(
     client = server.app.test_client()
     content = BytesIO()
 
-    def open_status(url, timeout):
-        assert url == "http://127.0.0.1:58000/status"
+    def open_status(probe, timeout):
+        assert probe.full_url == "http://127.0.0.1:58000/status"
+        assert probe.get_method() == "GET"
+        headers = dict(probe.header_items())
+        assert headers == {"User-agent": instance_supervisor.HTTP_PROBE_USER_AGENT}
         assert timeout == 3
-        response = client.get("/status")
+        response = client.get(probe.selector, headers=headers)
         assert response.status_code == 403
         raise HTTPError(
-            url, response.status_code, "Forbidden", response.headers, content
+            probe.full_url, response.status_code, "Forbidden", response.headers, content
         )
 
     opener = Mock()

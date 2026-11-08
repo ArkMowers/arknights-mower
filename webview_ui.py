@@ -747,6 +747,10 @@ def start_http_server(app, host, port):
 
     from werkzeug.serving import WSGIRequestHandler, make_server
 
+    from arknights_mower.utils.instance_supervisor import (
+        HTTP_PROBE_PATH,
+        HTTP_PROBE_USER_AGENT,
+    )
     from arknights_mower.utils.lifecycle import Phase, shutdown
     from arknights_mower.utils.log import logger
 
@@ -756,6 +760,15 @@ def start_http_server(app, host, port):
             try:
                 status = int(code)
             except (TypeError, ValueError):
+                return
+            if (
+                status == 403
+                and self.client_address[0] == "127.0.0.1"
+                and self.command == "GET"
+                and self.path == HTTP_PROBE_PATH
+                and self.headers.get("User-Agent") == HTTP_PROBE_USER_AGENT
+                and "token" not in self.headers
+            ):
                 return
             if 400 <= status < 600:
                 logger.debug("HTTP 请求完成，状态码 %s", status)

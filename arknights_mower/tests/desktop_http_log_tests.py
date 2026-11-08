@@ -10,7 +10,7 @@ from flask import Flask, request
 from werkzeug import serving
 
 import webview_ui
-from arknights_mower.utils import lifecycle, log
+from arknights_mower.utils import instance_supervisor, lifecycle, log
 
 
 @pytest.mark.parametrize(
@@ -21,7 +21,8 @@ from arknights_mower.utils import lifecycle, log
         (302, False, []),
         (304, False, []),
         (401, False, ["HTTP 请求完成，状态码 401"]),
-        (500, False, ["HTTP 请求完成，状态码 500"]),
+        (403, False, ["HTTP 请求完成，状态码 403"]),
+        (500, False, ["HTTP 请求完成，状态码 500"] * 2),
         (400, True, ["HTTP 请求完成，状态码 400"]),
     ],
 )
@@ -30,12 +31,12 @@ def test_desktop_http_keeps_request_credentials_out_of_logs(
 ):
     token = "synthetic-session-secret-84"
     encoded = quote("synthetic/encoded+secret", safe="")
-    target = f"/?token={token}&token={encoded}"
+    target = f"/status?token={token}&token={encoded}"
     app = Flask(__name__)
     received = []
 
-    @app.get("/")
-    def index():
+    @app.get("/status")
+    def status_route():
         received.append(request.args.getlist("token"))
         return "ready", status
 
@@ -75,7 +76,13 @@ def test_desktop_http_keeps_request_credentials_out_of_logs(
                 assert response.read() == (b"" if status in (204, 304) else b"ready")
             finally:
                 client.close()
-            assert received == [[token, "synthetic/encoded+secret"]]
+            expected_queries = [[token, "synthetic/encoded+secret"]]
+            if status in (403, 500):
+                assert instance_supervisor.http_probe(port, timeout=2) is (
+                    status == 403
+                )
+                expected_queries.append([])
+            assert received == expected_queries
     finally:
         shutdown.close("test")
 
