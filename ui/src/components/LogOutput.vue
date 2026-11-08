@@ -2548,7 +2548,7 @@ function lineClasses(row) {
   --log-error-tint: rgb(208 48 80 / 11%);
   --log-hover-tint: rgb(128 128 128 / 7%);
   --log-ink: var(--mower-text, #333639);
-  --log-sheen-opacity: 0.68;
+  --log-sheen-opacity: 0.22;
   display: flex;
   flex-direction: column;
   height: 100%;
