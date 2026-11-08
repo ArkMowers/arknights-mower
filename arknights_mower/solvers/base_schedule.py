@@ -1870,13 +1870,18 @@ class BaseSchedulerSolver(
         self.tasks.append(departure)
         task.__dict__.pop("coordination_admission_plan", None)
 
-    def _coordination_support_valid(self, plan, candidates, *, request_names=None):
+    def _coordination_support_valid(
+        self, plan, candidates, *, request_names=None, now=None
+    ):
         from arknights_mower.utils.replacement_coordination import (
             coordination_reservations,
             recall_can_sustain,
         )
 
         data = self.op_data
+        if now is not None:
+            # 当前实际阵容先推进到提交时点，之后才投影前置交接和受援入宿。
+            data = data.project_arrangements([], now=now)
         request_names = list(candidates if request_names is None else request_names)
         conditions = getattr(self.task, "backup_shift_conditions", None)
         if conditions is not None and list(conditions) != data.plan_condition:
@@ -2191,6 +2196,51 @@ class BaseSchedulerSolver(
             self._ordinary_coordination_needed(names) for names in requests.values()
         )
 
+    def _coordination_commit_started(self, task):
+        """仅提交标记或初始位置到已确认原岗的变化证明支援已经开始。"""
+        if getattr(task, "mood_physical_started", False) or getattr(
+            task, "urgent_recovery_started", False
+        ):
+            return True
+        initial = getattr(task, "urgent_recovery_initial_positions", {})
+        return any(
+            name in initial
+            and (op := self.op_data.operators.get(name)) is not None
+            and initial[name] != (op.current_room, op.current_index)
+            and (op.current_room, op.current_index) == (op.room, op.index)
+            for name in getattr(task, "urgent_recovery_support_names", ())
+        )
+
+    def _validate_coordination_commit(self):
+        """首次提交前复核完整支援；已确认的部分交接继续按原剩余安排恢复。"""
+        task = self.task
+        coordination = task is not None and getattr(task, "exhaust_support", False)
+        if coordination and self._coordination_commit_started(task):
+            return
+        if coordination:
+            names = getattr(task, "coordination_request_names", ())
+            if not names or not self._coordination_support_valid(
+                task.plan, names, now=datetime.now()
+            ):
+                task.coordination_commit_pending = True
+                raise ProductSwitchDeferred(
+                    "首次提交前替班交接条件已经变化", rooms=tuple(task.plan)
+                )
+        validator = self
+        if coordination and task.retains_execution:
+            # 失败保留不证明已经提交；只读副本重查原有进房心情门槛。
+            validator = copy.copy(self)
+            validator.task = copy.copy(task)
+            validator.task.execution_retained = False
+            validator.task.__dict__.pop("execution_failure", None)
+        try:
+            validator._validate_calculated_arrangement()
+        except MoodArrangementChanged as error:
+            if not coordination:
+                raise
+            task.coordination_commit_pending = True
+            raise ProductSwitchDeferred(str(error), rooms=tuple(task.plan)) from error
+
     def _validate_calculated_arrangement(self):
         """首次提交前用正常进房读数复核本次计算心情派生的条件。"""
         task = self.task
@@ -2377,10 +2427,27 @@ class BaseSchedulerSolver(
         return True
 
     def _refresh_coordination_support(self, task):
+        refresh_unsubmitted = (
+            getattr(task, "coordination_commit_pending", False)
+            and not getattr(task, "execution_failure", None)
+            and not self._coordination_commit_started(task)
+            and not any(
+                getattr(task, flag, False)
+                for flag in (
+                    "backup_shift_active",
+                    "backup_explicit_slots",
+                    "product_shift_locked",
+                    "product_switched_before_arrangement",
+                )
+            )
+        )
         if (
             not getattr(task, "exhaust_support", False)
+            or getattr(task, "coordination_commit_pending", False)
+            and not refresh_unsubmitted
             or getattr(task, "backup_shift_active", False)
             or getattr(task, "group_shift_expected", {})
+            and not refresh_unsubmitted
         ):
             return
         names = [
@@ -2388,22 +2455,38 @@ class BaseSchedulerSolver(
             for name in task.coordination_request_names
             if name in self.op_data.operators
         ]
+        planner = self
+        if refresh_unsubmitted:
+            planner = copy.copy(self)
+            planner.task = task
+            planner.op_data = self.op_data.project_arrangements([], now=datetime.now())
         if (
             not names
             or getattr(task, "ordinary_coordination", False)
-            and not self._ordinary_coordination_needed(names)
+            and not planner._ordinary_coordination_needed(names)
         ):
             task.plan = {}
         else:
-            # 岗位及配置已经改变时，旧前置安排不再拥有独立的换班请求。
-            task.plan = (
-                self._plan_exhaust_support(
-                    names,
-                    urgent=not getattr(task, "ordinary_coordination", False),
-                    request_names=names,
-                )
-                or {}
+            # 只有尚未提交的支援可重建；已执行及显式承诺保留剩余安排。
+            plan = planner._plan_exhaust_support(
+                names,
+                urgent=not getattr(task, "ordinary_coordination", False),
+                request_names=names,
             )
+            if refresh_unsubmitted and not plan:
+                raise ProductSwitchDeferred(
+                    "尚无完整可执行的替班交接", rooms=tuple(task.plan)
+                )
+            task.plan = plan or {}
+        if refresh_unsubmitted:
+            for field in (
+                "group_shift_expected",
+                "group_shift_transitions",
+                "coordination_admission_plan",
+                "coordination_commit_pending",
+            ):
+                task.__dict__.pop(field, None)
+            task.execution_retained = False
         from arknights_mower.utils.urgent_recovery import prepare_urgent_support
 
         prepare_urgent_support(self.op_data, task, names)
@@ -14591,7 +14674,7 @@ class BaseSchedulerSolver(
         if new_plan is None:
             new_plan = {}
         self.recog.update()
-        self._validate_calculated_arrangement()
+        self._validate_coordination_commit()
         finish_mood_calculation()
         if (
             self.task.type == TaskTypes.RUN_ORDER
@@ -14680,17 +14763,22 @@ class BaseSchedulerSolver(
                     else pos
                 )
                 # tap 自己完成一次等待及缓存失效，不再叠加 sleep(0.5)。
-                if getattr(
-                    self.op_data, "mood_calculation_enabled", False
+                if (
+                    getattr(self.op_data, "mood_calculation_enabled", False)
+                    or getattr(self.task, "exhaust_support", False)
                 ) and not getattr(self.task, "mood_physical_started", False):
-                    self._validate_calculated_arrangement()
+                    self._validate_coordination_commit()
                     finish_mood_calculation()
+                    retained = getattr(self.task, "execution_retained", False)
                     self.task.mood_physical_started = True
                     self.task.execution_retained = True
-                    if save_current_state() is False:
+                    try:
+                        if save_current_state() is False:
+                            raise RecognizeError("无法保存换班执行状态，取消首次提交")
+                    except BaseException:
                         self.task.mood_physical_started = False
-                        self.task.execution_retained = False
-                        raise RecognizeError("无法保存换班执行状态，取消首次提交")
+                        self.task.execution_retained = retained
+                        raise
                 pending = getattr(self.task, "run_order_confirmation_pending", None)
                 if pending and not pending["submitted"]:
                     pending["submitted"] = True
@@ -18319,6 +18407,7 @@ class BaseSchedulerSolver(
                 SharedADBError,
                 RoomArrangementDeferred,
                 MoodArrangementChanged,
+                ProductSwitchDeferred,
                 RunOrderMissed,
                 RunOrderConfirmationUnresolved,
                 WorkshopSelectionBlocked,
