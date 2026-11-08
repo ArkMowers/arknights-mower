@@ -32,6 +32,7 @@ from arknights_mower.utils.scheduler_task import (
     find_next_task,
     merge_restored_waiting_shifts,
     protect_priority_tasks,
+    retain_mastery_backup_tasks,
 )
 
 if TYPE_CHECKING:
@@ -803,8 +804,10 @@ def simulate(saved):
             base_scheduler.backup_group_task_issued = set(
                 saved.get("backup_group_task_issued", ())
             )
+            restored_predecessors = {}
             base_scheduler.waiting_group_shifts = merge_restored_waiting_shifts(
-                saved.get("waiting_group_shifts", [])
+                saved.get("waiting_group_shifts", []),
+                replacements=restored_predecessors,
             )
             from arknights_mower.utils.config.plan import migrate_backup_tasks
 
@@ -816,37 +819,82 @@ def simulate(saved):
                     - {backup.name for backup in base_scheduler.op_data.backup_plans}
                 )
             )
-            restored_tasks, restored_predecessors, restored_pairs = [], {}, []
-            for task in tasks:
-                migrated = migrate_backup_tasks(
+
+            def migrate_task(task):
+                return migrate_backup_tasks(
                     [task],
                     saved.get("backup_plan_names", []),
                     [backup.name for backup in base_scheduler.op_data.backup_plans],
                     config.retired_backup_indices,
                     retired=retired_backups,
                 )
+
+            waiting = []
+            for task in base_scheduler.waiting_group_shifts:
+                migrated = migrate_task(task)
+                if not migrated:
+                    for identity, owner in restored_predecessors.items():
+                        if owner is task:
+                            restored_predecessors[identity] = None
+                    continue
+                if hasattr(task, "backup_shift_conditions"):
+                    task.backup_shift_conditions = migrated[0].backup_shift_conditions
+                waiting.append(task)
+            base_scheduler.waiting_group_shifts = waiting
+            restored_tasks, restored_pairs = [], []
+            for task in tasks:
+                if id(task) in restored_predecessors and hasattr(
+                    task, "group_shift_waiting"
+                ):
+                    continue
+                migrated = migrate_task(task)
+                restored_predecessors[id(task)] = migrated[0] if migrated else None
                 if migrated:
-                    restored_predecessors[id(task)] = migrated[0]
                     restored_pairs.append((task, migrated[0]))
                     restored_tasks.extend(migrated)
             base_scheduler.tasks = restored_tasks
             restored_pairs.extend(
                 (task, task) for task in base_scheduler.waiting_group_shifts
             )
+            # 仅由专精引用的前置也经过相同迁移，退役判定不能因离开队列而丢失。
+            pending = [
+                previous
+                for original, _ in restored_pairs
+                for previous in getattr(original, "mastery_backup_predecessors", ())
+            ]
+            while pending:
+                original = pending.pop()
+                if id(original) in restored_predecessors:
+                    continue
+                migrated = migrate_task(original)
+                restored_predecessors[id(original)] = migrated[0] if migrated else None
+                if migrated:
+                    restored_pairs.append((original, migrated[0]))
+                    pending.extend(getattr(original, "mastery_backup_predecessors", ()))
             for original, task in restored_pairs:
                 for attribute in (
                     "group_shift_predecessors",
                     "product_shift_predecessors",
+                    "mastery_backup_predecessors",
                 ):
                     if hasattr(original, attribute):
                         setattr(
                             task,
                             attribute,
                             tuple(
-                                restored_predecessors.get(id(previous), previous)
+                                restored
                                 for previous in getattr(original, attribute)
+                                if (
+                                    restored := restored_predecessors.get(
+                                        id(previous), previous
+                                    )
+                                )
+                                is not None
                             ),
                         )
+            retain_mastery_backup_tasks(
+                base_scheduler.tasks, base_scheduler.waiting_group_shifts
+            )
             base_scheduler.op_data.restore_dorm_state(
                 saved["dorm"],
                 group_transitions=base_scheduler._pending_group_transitions(),

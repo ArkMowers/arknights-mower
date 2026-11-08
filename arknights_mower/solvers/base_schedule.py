@@ -201,6 +201,8 @@ from arknights_mower.utils.scheduler_task import (
     prioritize_new_dorm_recovery,
     protect_priority_tasks,
     rebalance_plan_swap_dorms,
+    resolve_mastery_backup_tasks,
+    retain_mastery_backup_tasks,
     scheduling,
     simplify_dorm_fill,
     task_view,
@@ -1399,6 +1401,45 @@ class BaseSchedulerSolver(
             task.maintenance_preparation_pending = bool(pending)
         return not pending
 
+    def _defer_mastery_start_for_backup(self):
+        """待开始的专精保留原任务，等待副表实际换人完成。"""
+        task = self.task
+        if (
+            not config.conf.enable_mastery
+            or task is None
+            or task.type != TaskTypes.SKILL_UPGRADE
+            or getattr(task, "plan_key", None) is None
+        ):
+            return
+        predecessors = tuple(
+            pending
+            for pending in [*self.tasks, *getattr(self, "waiting_group_shifts", ())]
+            if pending.meta_data == "副表内存收敛" and pending.plan
+        )
+        if not predecessors:
+            return
+        from arknights_mower.utils.mastery_db import get_plan_by_id
+
+        try:
+            plan = get_plan_by_id(int(task.plan_key))
+        except (TypeError, ValueError):
+            return
+        if plan is None or plan["status"] != "idle":
+            return
+        task.mastery_backup_predecessors = tuple(
+            {
+                id(previous): previous
+                for previous in (
+                    *getattr(task, "mastery_backup_predecessors", ()),
+                    *predecessors,
+                )
+            }.values()
+        )
+        scheduling(self.tasks, op_data=self.op_data)
+        self.task = self.find_next_task()
+        if self.task is not None and self.task.time > datetime.now():
+            self.task = None
+
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
@@ -1489,6 +1530,7 @@ class BaseSchedulerSolver(
             # 首次启动先随心情读取刷新实际产物；恢复缓存后也以实际状态为准。
             if not self._emergency_frozen():
                 self.queue_product_switches()
+        self._defer_mastery_start_for_backup()
         logMsg = "||".join([str(t) for t in self.tasks])
         logger.debug("当前任务: " + logMsg)
         save_log(logMsg, "{}" if not self.task else str(self.task), level="INFO")
@@ -2443,6 +2485,9 @@ class BaseSchedulerSolver(
                 self.check_current_focus()
         if self.error or force:
             now = datetime.now()
+            mastery_predecessors = retain_mastery_backup_tasks(
+                self.tasks, self.__dict__.setdefault("waiting_group_shifts", [])
+            )
             for task in self.tasks:
                 if getattr(task, "run_order_restore_pending", False):
                     task.prepare_run_order_restoration()
@@ -2487,6 +2532,7 @@ class BaseSchedulerSolver(
             if any(
                 t.time < now - timedelta(minutes=15)
                 and t.type not in preserved
+                and id(t) not in mastery_predecessors
                 and not getattr(t, "strict_mood_limit", False)
                 and not hasattr(t, "emergency_original_roster")
                 and not getattr(t, "run_order_restore_pending", False)
@@ -2506,6 +2552,7 @@ class BaseSchedulerSolver(
                     t
                     for t in self.tasks
                     if t.type in preserved
+                    or id(t) in mastery_predecessors
                     or getattr(t, "strict_mood_limit", False)
                     or (t.type in future_preserved and t.time > now)
                     or hasattr(t, "emergency_original_roster")
@@ -3833,6 +3880,7 @@ class BaseSchedulerSolver(
                     remove_current_task = False
                 if remove_current_task:
                     completed_task = self.task
+                    resolve_mastery_backup_tasks(self.tasks, (completed_task,))
                     self.tasks[:] = [t for t in self.tasks if t is not self.task]
                     self._refresh_deferred_product_reservations()
                     self._prune_order_read_log_cohorts()
@@ -5361,9 +5409,9 @@ class BaseSchedulerSolver(
                 return True
         except Exception:
             pass
-        return (
-            self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE) is not None
-            or self.find_next_task(task_type=TaskTypes.SWAP_SUPPORT) is not None
+        return any(
+            task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+            for task in self.tasks
         )
 
     def _train_protected(self) -> bool:
@@ -8338,6 +8386,7 @@ class BaseSchedulerSolver(
                     )
                 # 完整最终任务先入队，再撤销旧任务，避免丢失同批有效动作。
                 self.tasks.append(generated)
+                resolve_mastery_backup_tasks(self.tasks, superseded, generated)
                 superseded_ids = {id(task) for task in superseded}
                 self.tasks[:] = [
                     task for task in self.tasks if id(task) not in superseded_ids
@@ -10457,6 +10506,12 @@ class BaseSchedulerSolver(
                             trial_solver.task = sibling
                             trial_solver._prepare_shift_cycle(sibling)
                         task.__dict__.update(trial.__dict__)
+                        resolve_mastery_backup_tasks(trial_solver.tasks, (trial,), task)
+                        resolve_mastery_backup_tasks(
+                            trial_solver.tasks,
+                            [queued for queued in self.tasks if id(queued) in consumed],
+                            task,
+                        )
                         self.tasks[:] = [
                             task if queued is trial else queued
                             for queued in trial_solver.tasks
@@ -10498,6 +10553,11 @@ class BaseSchedulerSolver(
                     self._capture_shift_refresh_rules(
                         task, getattr(pending, "backup_refresh_rules", {})
                     )
+            resolve_mastery_backup_tasks(
+                self.tasks,
+                [pending for pending in self.tasks if id(pending) in consumed],
+                task,
+            )
             self.tasks[:] = [t for t in self.tasks if id(t) not in consumed]
             # 满心情兜底入住标记跟随最终名单，不提交预演中的其他状态。
             for room, names in final.items():
