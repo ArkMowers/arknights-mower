@@ -1927,9 +1927,18 @@ class BaseSchedulerSolver(
             op.name
             for op in data.operators.values()
             if op.is_high()
-            and op.is_resting()
             and not op.room.startswith("dorm")
             and admitted.operators[op.name].is_working()
+            and (
+                op.is_resting()
+                or op.is_working()
+                and (op.current_room, op.current_index) != (op.room, op.index)
+                and (
+                    admitted.operators[op.name].current_room,
+                    admitted.operators[op.name].current_index,
+                )
+                == (op.room, op.index)
+            )
         }
         if not recalled:
             return True
@@ -1990,9 +1999,18 @@ class BaseSchedulerSolver(
                 op.name
                 for op in self.op_data.operators.values()
                 if op.is_high()
-                and op.is_resting()
                 and not op.room.startswith("dorm")
                 and admitted.operators[op.name].is_working()
+                and (
+                    op.is_resting()
+                    or op.is_working()
+                    and (op.current_room, op.current_index) != (op.room, op.index)
+                    and (
+                        admitted.operators[op.name].current_room,
+                        admitted.operators[op.name].current_index,
+                    )
+                    == (op.room, op.index)
+                )
             }
             if not recalled:
                 return True

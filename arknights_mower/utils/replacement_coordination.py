@@ -72,6 +72,53 @@ def coordination_reservations(data, tasks, current=None):
     return names, slots
 
 
+def occupied_recovery_owner(
+    data, name, *, protected=(), slots=(), is_busy=lambda name: False
+):
+    """沿实际且合法的主班工作换位找到可完整回班的阻塞主班。"""
+    seen = set()
+    while name not in seen:
+        seen.add(name)
+        cover = data.operators.get(name)
+        if (
+            cover is None
+            or not cover.is_working()
+            or cover.current_room == "train"
+            or name in protected
+            or is_busy(name)
+            or (cover.current_room, cover.current_index) in slots
+        ):
+            return None
+        row = data.plan.get(cover.current_room, [])
+        owner = (
+            data.operators.get(row[cover.current_index].agent)
+            if 0 <= cover.current_index < len(row)
+            else None
+        )
+        if (
+            owner is None
+            or owner.name == name
+            or owner.name in protected
+            or is_busy(owner.name)
+            or name not in replacements(data, owner)
+        ):
+            return None
+        if not owner.is_working():
+            return owner
+        row = data.plan.get(owner.current_room, [])
+        displaced = (
+            data.operators.get(row[owner.current_index].agent)
+            if 0 <= owner.current_index < len(row)
+            else None
+        )
+        if displaced is None or not data.is_same_group_primary_replacement(
+            displaced, owner.name
+        ):
+            return None
+        name = owner.name
+    return None
+
+
 def _eligible(
     data, owner, name, protected, slots, is_busy, required=(), *, request_names=()
 ):
@@ -486,7 +533,9 @@ def recall_can_sustain(
     now = now or datetime.now()
     for name in recalled:
         op = original.operators[name]
-        if op.rest_in_full and not recovery_ready_for_arrangement(
+        if (
+            op.rest_in_full or op.is_working() and original.has_rest_mood_limit(name)
+        ) and not recovery_ready_for_arrangement(
             original, name, sampled_after=None, now=now
         ):
             return False

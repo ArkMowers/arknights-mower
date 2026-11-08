@@ -31,6 +31,25 @@ function coveredOwner(data:MowerSchedulingData,name:string):MowerOperatorState|u
  const owner=data.operators[data.plan[cover.currentRoom]?.[cover.currentIndex]??'']
  if(owner&&owner.name!==name&&(!owner.currentRoom||owner.isResting())&&!data.busyRestingNames.has(owner.name))return owner
 }
+/** Find the resting owner that can release a cover through confirmed primary swaps.
+ * A working primary is never recalled by this lookup: its occupied source slot
+ * must belong to a configured same-group replacement, and that dependency is
+ * followed until a resting/idle owner can complete the existing group return. */
+export function mowerReplacementRecallOwner(data:MowerSchedulingData,name:string,options:MowerRestingOptions={}):MowerOperatorState|undefined {
+ const visited=new Set<string>(),protectedNames=new Set([...data.busyRestingNames,...data.reservedProductReplacements,...options.reservedNames??[]])
+ const slots=new Set([...data.reservedProductBeds.keys(),...options.reservedSlots??[]])
+ let cover=data.operators[name]
+ while(cover?.currentRoom&&!cover.isResting()&&cover.currentRoom!=='train'){
+  if(visited.has(cover.name)||protectedNames.has(cover.name)||options.isMasteryBusy?.(cover.name)||slots.has(alphaPosition(cover.currentRoom,cover.currentIndex)))return
+  visited.add(cover.name)
+  const owner=data.operators[data.plan[cover.currentRoom]?.[cover.currentIndex]??'']
+  if(!owner||owner.name===cover.name||protectedNames.has(owner.name)||options.isMasteryBusy?.(owner.name)||!replacements(data,owner).includes(cover.name))return
+  if(!owner.currentRoom||owner.isResting())return owner
+  const sourceOwner=data.operators[data.plan[owner.currentRoom]?.[owner.currentIndex]??'']
+  if(!sourceOwner||!mowerSameGroupPrimaryReplacement(data,sourceOwner,owner.name))return
+  cover=owner
+ }
+}
 /** Include every resting owner reached through a shared cover, not only the first conflict. */
 export function planMowerReplacementHandoff(data:MowerSchedulingData,candidates:string[],options:MowerRestingOptions={}):MowerTaskPlan|undefined {
  const required=new Set(candidates),owners=new Map<string,MowerOperatorState>(),choices:Record<string,string[]>={}
@@ -126,9 +145,10 @@ function materializeCoordinationMoods(original:MowerSchedulingData,shadow:MowerS
 export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[],options:MowerRestingOptions):boolean {
  if(recalled.size&&(mowerUrgentRecallBlocked(original,candidates,options.urgentRecoveryPendingSupporters)||[...recalled].some(name=>name in original.urgentRecoverySupporters)))return false
  for(const name of recalled){
-  const op=original.operators[name];if(!op||!op.isResting())continue
+  const op=original.operators[name]
+  if(op&&(op.restInFull||op.restMoodLimit&&!!op.currentRoom&&!op.isResting())&&!mowerRecoveryReady(original,op,options.priorityScheduling))return false
+  if(!op||!op.isResting())continue
   if(mowerHeldRestGroups(original,true).has(op.group))return false
-  if(op.restInFull&&!mowerRecoveryReady(original,op,options.priorityScheduling))return false
   if(op.group){const recovery=mowerGroupRecoveryDeadline(projectMowerArrangements(original,[]),op.group);if(recovery.requiredNames.length&&(recovery.requiredNames.some(member=>original.operators[member]!.restInFull&&!mowerRecoveryReady(original,original.operators[member],options.priorityScheduling))))return false}
  }
  if(options.urgentExhaust)return true

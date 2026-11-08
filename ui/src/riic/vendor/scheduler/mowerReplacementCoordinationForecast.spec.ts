@@ -400,3 +400,12 @@ it('does not materialize retained task release targets on the actual queue durin
  expect(JSON.stringify(retained)).toBe(before)
  expect(retained.releaseTargets).toBeUndefined()
 })
+
+it.each(['ordinary','explicit','gap'] as const)('handles an observed zero-recovery low-priority peer under %s return rules',rule=>{
+ const {original,admit}=requestingGroup()
+ original.operators.A!.mood=8
+ Object.assign(original.operators.C!,{mood:12,restingPriority:'low',restInFull:rule==='explicit'})
+ if(rule==='gap'){original.groupRecoveryFullMembers.request=['B','C'];original.groupMoodGapMaxExtraWaitHours=0}
+ const rates=(data:MowerSchedulingData)=>({...fixed(data),recovery:{...fixed(data).recovery,C:0}})
+ expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B','C'],{coordinationRates:rates,requestNames:['B']})).toBe(rule==='ordinary')
+})

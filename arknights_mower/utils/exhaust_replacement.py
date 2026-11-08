@@ -128,6 +128,7 @@ def _plan_exhaust_support_attempt(
     transitions = dict.fromkeys(request_groups, True)
     from arknights_mower.utils.replacement_coordination import (
         coordination_primary_replacement,
+        occupied_recovery_owner,
         plan_replacement_handoff,
         replacements,
     )
@@ -220,11 +221,24 @@ def _plan_exhaust_support_attempt(
             cover = state.operators.get(name)
             if cover is None or not cover.current_room:
                 continue
-            slots = state.plan.get(cover.current_room, [])
-            if not 0 <= cover.current_index < len(slots):
-                continue
-            owner = state.operators.get(slots[cover.current_index].agent)
+            row = state.plan.get(cover.current_room, [])
+            owner = (
+                state.operators.get(row[cover.current_index].agent)
+                if 0 <= cover.current_index < len(row)
+                else None
+            )
+            # 既有空闲／休息主班依赖只依据实际槽位；备用排班可能已改替班名单。
             if owner is not None and owner.name != name and not owner.is_working():
+                depend_on(state, owner)
+                continue
+            owner = occupied_recovery_owner(
+                state,
+                name,
+                protected=protected,
+                slots=reserved_slots,
+                is_busy=is_busy,
+            )
+            if owner is not None:
                 depend_on(state, owner)
 
     def eligible(state, name, target):
@@ -275,6 +289,11 @@ def _plan_exhaust_support_attempt(
         )
 
         op = state.operators[name]
+        if op.is_working() and (op.rest_in_full or state.has_rest_mood_limit(name)):
+            now = getattr(state, "_projection_now", None) or datetime.now()
+            return not recovery_ready_for_arrangement(
+                state, name, sampled_after=None, now=now
+            )
         if not op.is_resting():
             return False
         from arknights_mower.utils.backup_group_tasks import held_rest_groups
@@ -490,24 +509,21 @@ def _plan_exhaust_support_attempt(
         for cover in worker_covers:
             if not eligible(data, cover, worker):
                 continue
-            op = data.operators[cover]
-            if not op.is_working() or op.current_room == "train":
-                continue
-            slots = data.plan.get(op.current_room, [])
-            if not 0 <= op.current_index < len(slots):
-                continue
-            slot = slots[op.current_index]
-            owner = data.operators.get(slot.agent)
-            if (
-                owner is not None
-                and owner.name not in required | protected
-                and not owner.is_working()
-                and cover in owner.replacement
-            ):
+            owner = occupied_recovery_owner(
+                data,
+                cover,
+                protected=protected,
+                slots=reserved_slots,
+                is_busy=is_busy,
+            )
+            if owner is not None and owner.name not in required:
                 occupied.append((cover, owner))
         resolved = False
         # 所有可换替班的方案优先于叫回任一休息组。
         for cover, owner in occupied:
+            actual = data.get_current_operator(owner.room, owner.index)
+            if actual is None or actual.name != cover:
+                continue
             alternate = next(
                 (
                     other
