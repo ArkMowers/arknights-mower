@@ -2216,6 +2216,25 @@ describe('log page', () => {
     expect(skipTransition).toHaveBeenCalledTimes(2)
   })
 
+  it('reveals the linked task list after a pending hide without changing the saved preference', async () => {
+    state.mower.refs.task_list.value = [{ time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }]
+    const { callbacks } = deferViewTransitions()
+    const { find } = mountWidePane()
+    const toggle = viewControl(find, '任务列表')
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+
+    toggle.props.onClick()
+    state.route.hash = '#task-queue'
+    await nextTick()
+    await callbacks[0]()
+    await nextTick()
+
+    expect(queue.style.display).not.toBe('none')
+    expect(toggle.props['aria-pressed']).toBe(true)
+    expect(queue.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' })
+    expect(localStorage.setItem).toHaveBeenCalledExactlyOnceWith('log_show_task_table', 'false')
+  })
+
   it.each([
     ['log_show_task_table', false, true],
     ['log_show_daily_tasks', true, false]

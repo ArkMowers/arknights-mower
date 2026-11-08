@@ -884,6 +884,7 @@ provide('add_task', add_task)
 const { theme: themePreference } = storeToRefs(config_store)
 const theme = useResolvedTheme(themePreference)
 function revealTaskQueue() {
+  finish_log_view_transition()
   show_task_table.value = true
   nextTick(() => {
     apply_log_layout()
