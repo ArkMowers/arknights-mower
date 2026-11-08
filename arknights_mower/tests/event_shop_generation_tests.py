@@ -102,7 +102,7 @@ def test_generated_package_is_readable_and_respects_current_ss_window(
     monkeypatch.setattr(
         runtime,
         "weekly_plan_uses_activity",
-        lambda manager, activity: activity == "时间啊，向前！",
+        lambda manager, activity, **kwargs: activity == "时间啊，向前！",
     )
     selected = runtime.select_shop(object(), START + 1)
     assert selected["token_ids"] == ["act55side_token_record"]

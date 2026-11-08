@@ -56,6 +56,8 @@ python -m pytest arknights_mower/tests/res_version_tests.py arknights_mower/test
 npm --prefix ui test -- src/components/MaaEventShop.test.js src/stores/maaProtocolSync.test.js
 ```
 
+关卡导航和周计划商店准入共用 `utils/activity_stage.py` 的活动归属解析。验证周计划只有 EX 或 S 关卡、关卡表只有同活动普通关卡时，仍能用当期章节资源通过准入；缺少章节或编号前缀有歧义时应跳过。商店准入使用已经选中的当期活动数据，不能改用另一个时间点或资源版本判断归属。
+
 覆盖没有 SS、尚未开始、已经结束、只有其他类型活动、当前 SS 不在周计划、多个同期开启候选、代币位置与缩放变化、空白文本、错误地图和旧配置兼容。没有当期 SS 时断言不启动导航和 MAA 商店任务。
 
 用户要求实机验证时，先确认目标实例及自动任务状态。固定 ADB 目标，仅验证活动首页、已开放章节和商店的进入结果，不因验证导航而购买商品或开始作战。未开放的 S 章记录为未进入，并用离线测试验证其正常分支。区分实际设备画面、离线识别和未验证的购买流程；不能把一次活动的成功扩大为所有活动均已实测。

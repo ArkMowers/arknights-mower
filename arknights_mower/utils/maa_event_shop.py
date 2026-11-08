@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, StrictInt, model_validator
 
 from arknights_mower.data import stage_data_full
+from arknights_mower.utils.activity_stage import resolve_activity_stage
 from arknights_mower.utils.resource_pkg import resource_pkg_path
 
 
@@ -94,20 +95,34 @@ def select_shop(manager, now):
     latest = max(shop["start_ts"] for shop in shops)
     current = [shop for shop in shops if shop["start_ts"] == latest]
     if len(current) != 1 or not weekly_plan_uses_activity(
-        manager, current[0]["activity"]
+        manager, current[0]["activity"], shop=current[0]
     ):
         return None
     return current[0]
 
 
-def weekly_plan_uses_activity(manager, activity):
+def weekly_plan_uses_activity(manager, activity, *, shop=None):
     source = manager.get_active_plan_key()
     selected = set(manager._plan_stage_ids(manager.get_plan(source)))
+
+    def shop_for_activity(name):
+        if name != activity:
+            return {}
+        if shop is not None:
+            return shop
+        return next(
+            (
+                item
+                for item in activity_shops(manager._current_server_timestamp())
+                if item["activity"] == name
+            ),
+            {},
+        )
+
     return any(
-        stage.get("stageType") == "ACTIVITY"
-        and stage.get("zoneNameSecond") == activity
-        and (stage.get("id") or stage.get("code")) in selected
-        for stage in stage_data_full
+        stage.get("stageType") == "ACTIVITY" and stage.get("zoneNameSecond") == activity
+        for code in selected
+        if (stage := resolve_activity_stage(code, stage_data_full, shop_for_activity))
     )
 
 
