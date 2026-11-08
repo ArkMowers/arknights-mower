@@ -1092,6 +1092,21 @@ class DroidCastTests(unittest.TestCase):
         self.assertTrue(url.endswith("/screenshot"), url)
         self.assertNotIn("format=png", url)
 
+    def test_capture_keeps_rgb_channel_order_after_rotation(self):
+        self.conf.droidcast.rotate = True
+        bgr = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        bgr[0, 0] = (17, 101, 231)
+        bgr[-1, -1] = (197, 83, 29)
+        self.http.data = cv2.imencode(".png", bgr)[1].tobytes()
+
+        result = self.control.capture()
+
+        self.assertTrue(result.ok, result.error)
+        expected = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        expected[0, 0] = (29, 83, 197)
+        expected[-1, -1] = (231, 101, 17)
+        self.assertTrue(np.array_equal(result.value, expected))
+
     def test_frame_request_payload_stays_inside_the_vendored_protocol_note(self):
         # The vendored helper's README is the source of truth for this
         # interface: a query parameter it documents that this module also sends

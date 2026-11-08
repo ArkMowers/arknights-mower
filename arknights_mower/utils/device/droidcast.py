@@ -378,12 +378,15 @@ class DroidCastSession:
                         raise DroidCastError(
                             "http_failed", "DroidCast 图像超过 16 MiB 上限"
                         )
-                frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+                frame = cv2.imdecode(
+                    np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR_RGB
+                )
                 if frame is None:
                     raise DroidCastError("frame_failed", "DroidCast 未返回可解码图像")
                 self.starting = False
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                return cv2.rotate(frame, cv2.ROTATE_180) if self.rotate else frame
+                if self.rotate:
+                    cv2.flip(frame, -1, dst=frame)
+                return frame
             except (requests.Timeout, ReadTimeoutError, TimeoutError) as exc:
                 raise DroidCastError(
                     "http_timeout",
