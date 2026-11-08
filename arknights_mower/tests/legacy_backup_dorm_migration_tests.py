@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from arknights_mower.tests import group_dorm_migration_tests as roles
-from arknights_mower.utils.plan import Plan, PlanConfig, Room
+from arknights_mower.utils.plan import LogicExpression, Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 solver = roles.solver
@@ -134,11 +134,7 @@ def test_cycle_refresh_keeps_an_unrelated_started_waiting_batch(waiting_migratio
     assert actual_state(scheduler.op_data) == physical
 
 
-@pytest.mark.parametrize("target_source", ["plan", "expected"])
-@pytest.mark.parametrize("restore", [False, True])
-def test_waiting_destination_stays_reserved_before_its_operator_leaves_work(
-    waiting_migration, target_source, restore
-):
+def prepare_waiting_destination(waiting_migration, target_source, restore):
     scheduler, original = waiting_migration
     data = scheduler.op_data
     data.global_plan["default_plan"].plan["dormitory_2"] = [
@@ -157,6 +153,7 @@ def test_waiting_destination_stays_reserved_before_its_operator_leaves_work(
                 "dormitory_2": [Room("Free", "", []) for _ in range(5)],
             },
             PlanConfig("", "", ""),
+            trigger=LogicExpression("True", "==", "True"),
         )
     )
     assert data.swap_plan([True], refresh=True) is None
@@ -184,6 +181,17 @@ def test_waiting_destination_stays_reserved_before_its_operator_leaves_work(
             pickle.dumps((scheduler.tasks, scheduler.waiting_group_shifts))
         )
         protected, original = scheduler.waiting_group_shifts
+    return scheduler, data, original, protected, target
+
+
+@pytest.mark.parametrize("target_source", ["plan", "expected"])
+@pytest.mark.parametrize("restore", [False, True])
+def test_waiting_destination_stays_reserved_before_its_operator_leaves_work(
+    waiting_migration, target_source, restore
+):
+    scheduler, data, original, protected, target = prepare_waiting_destination(
+        waiting_migration, target_source, restore
+    )
     before, physical = pickle.dumps(protected), actual_state(data)
     at = original.time
 

@@ -1237,10 +1237,7 @@ class BaseSchedulerSolver(
             )
         )
         data = simulation.op_data
-        names, slots = dorm_task_reservations(data, simulation.tasks)
-        waiting_names, waiting_slots = simulation._waiting_shift_reservations()
-        names.update(waiting_names)
-        slots.update(waiting_slots)
+        names, slots, _, _ = simulation._dorm_recovery_reservations(simulation.tasks)
         sources = [
             copy.deepcopy(bed)
             for bed in [*data.all_dorms(), *getattr(data, "displaced_dorms", ())]
@@ -3385,6 +3382,30 @@ class BaseSchedulerSolver(
         )
         return names, slots
 
+    def _dorm_recovery_reservations(self, tasks, *, op_data=None, returning_groups=()):
+        """返回合并预约及等待队列预约，保留各规划阶段的释放边界。"""
+        data = self.op_data if op_data is None else op_data
+        names, slots = dorm_task_reservations(data, tasks)
+        view = self
+        if data is not self.op_data:
+            view = copy.copy(self)
+            view.op_data = data
+        waiting_names, waiting_slots = view._waiting_shift_reservations(
+            returning_groups=returning_groups
+        )
+        names.update(waiting_names)
+        slots.update(waiting_slots)
+        return names, slots, waiting_names, waiting_slots
+
+    def _returning_groups_releasing_waits(self, task):
+        return {
+            group
+            for group, resting in getattr(task, "group_shift_transitions", {}).items()
+            if not getattr(task, "initial_staffing", False)
+            and not resting
+            and self.op_data.group_is_resting(group)
+        }
+
     def plan_metadata(self):
         if self._emergency_frozen():
             self._emergency_filter_tasks()
@@ -3602,8 +3623,7 @@ class BaseSchedulerSolver(
                 if (completed or room not in task.plan)
                 and names != self.op_data.get_current_room(room, True)
             }
-            reserved_names, reserved_slots = dorm_task_reservations(
-                self.op_data,
+            reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
                 [
                     pending
                     for pending in self.tasks
@@ -7704,17 +7724,21 @@ class BaseSchedulerSolver(
             not in explicit_names
             and transition_plan.get(room, [])[index : index + 1] in ([], ["Current"])
         }
-        reserved_names, reserved_slots = dorm_task_reservations(
-            self.op_data,
-            [
-                task
-                for task in self.tasks
-                if task is not getattr(self, "task", None)
-                and (
-                    task.type != TaskTypes.SHIFT_ON
-                    or getattr(task, "product_shift_locked", False)
-                )
-            ],
+        reserved_names, reserved_slots, waiting_names, waiting_slots = (
+            self._dorm_recovery_reservations(
+                [
+                    task
+                    for task in self.tasks
+                    if task is not getattr(self, "task", None)
+                    and (
+                        task.type != TaskTypes.SHIFT_ON
+                        or getattr(task, "product_shift_locked", False)
+                    )
+                ],
+                returning_groups=self._returning_groups_releasing_waits(
+                    getattr(self, "task", None)
+                ),
+            )
         )
         if not preserve_backup_replacements(
             self.op_data,
@@ -7805,7 +7829,7 @@ class BaseSchedulerSolver(
                 migration_data,
                 previous_dorms,
                 reserved_names=_assigned_operator_names(transition_plan)
-                | (reserved_names if priority_changed else set()),
+                | (reserved_names if priority_changed else waiting_names),
                 # 生效床序变化时重新分配，已有单回位置不覆盖用户的新顺序。
                 reorder=priority_changed,
                 reserved_slots=(
@@ -7817,7 +7841,7 @@ class BaseSchedulerSolver(
                         if name != "Current"
                     }
                     if priority_changed
-                    else ()
+                    else waiting_slots
                 ),
             )
             _merge_shift_transition(transition_plan, dorm_migration, self.op_data)
@@ -10113,8 +10137,7 @@ class BaseSchedulerSolver(
                 dorm_rebalance_signature(self.op_data)[0]
                 != dorm_rebalance_signature(recovery_data)[0]
             )
-            reserved_names, reserved_slots = dorm_task_reservations(
-                recovery_data,
+            reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
                 [
                     pending
                     for pending in self.tasks
@@ -10123,6 +10146,8 @@ class BaseSchedulerSolver(
                         pending.type != TaskTypes.SHIFT_ON or pending.retains_execution
                     )
                 ],
+                op_data=recovery_data,
+                returning_groups=self._returning_groups_releasing_waits(task),
             )
             task.plan = prioritize_new_dorm_recovery(
                 recovery_data,
@@ -10301,13 +10326,7 @@ class BaseSchedulerSolver(
         step.coordination_request_names = list(dict.fromkeys(ordinary_requests))
         step.dorm_fill_plan = copy.deepcopy(getattr(task, "dorm_fill_plan", {}))
         initial_correction = getattr(task, "initial_staffing", False)
-        returning_groups = {
-            group
-            for group, resting in getattr(task, "group_shift_transitions", {}).items()
-            if not initial_correction
-            and not resting
-            and self.op_data.group_is_resting(group)
-        }
+        returning_groups = self._returning_groups_releasing_waits(task)
         returning = set()
         seen = set()
         # Free 是执行时按游戏列表选人的占位符，预演不能把它当作已知干员。
@@ -10351,16 +10370,16 @@ class BaseSchedulerSolver(
                 pending_exhaust, tasks=pending
             ):
                 simulation.tasks = copy.deepcopy(pending)
-            reserved_names, reserved_slots = dorm_task_reservations(
-                simulation.op_data,
-                [
-                    pending
-                    for pending in simulation.tasks
-                    if pending.type != TaskTypes.SHIFT_ON or pending.retains_execution
-                ],
-            )
-            waiting_names, waiting_slots = simulation._waiting_shift_reservations(
-                returning_groups=returning_groups
+            reserved_names, reserved_slots, waiting_names, waiting_slots = (
+                simulation._dorm_recovery_reservations(
+                    [
+                        pending
+                        for pending in simulation.tasks
+                        if pending.type != TaskTypes.SHIFT_ON
+                        or pending.retains_execution
+                    ],
+                    returning_groups=returning_groups,
+                )
             )
             waiting_names.update(getattr(task, "backup_retention_releases", ()))
             # 本批退出保留的无主岗位住客清为空闲，不由后续普通补床立即吸回。
@@ -11570,12 +11589,27 @@ class BaseSchedulerSolver(
             projected = simulation.op_data.project_arrangements([early.plan])
             projected.commit_group_shifts(early.group_shift_transitions)
             simulation.op_data = projected
+            reserved_names, reserved_slots, _, _ = (
+                simulation._dorm_recovery_reservations(simulation.tasks)
+            )
             count = len(simulation.tasks)
-            try_add_release_dorm({}, None, projected, simulation.tasks, empty_only=True)
+            try_add_release_dorm(
+                {},
+                None,
+                projected,
+                simulation.tasks,
+                empty_only=True,
+                reserved_names=reserved_names,
+                reserved_slots=reserved_slots,
+            )
             for fill in simulation.tasks[count:]:
                 _merge_shift_transition(early.plan, fill.plan, projected)
-            early.plan = prioritize_new_dorm_recovery(projected, early.plan)
-            early.plan = plan_dorm_isolation(projected, early.plan)
+            early.plan = prioritize_new_dorm_recovery(
+                projected, early.plan, reserved_slots, reserved_names=reserved_names
+            )
+            early.plan = plan_dorm_isolation(
+                projected, early.plan, reserved_slots, reserved_names=reserved_names
+            )
             # 回班和补床也可能触发产物条件；这时两批均继续等待。
             products, _ = self._products_after_arrangement(early.plan)
             if products != baseline:
