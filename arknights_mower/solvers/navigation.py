@@ -8,6 +8,10 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.data import stage_data_full
+from arknights_mower.solvers.activity_navigation import (
+    ActivityNavigation,
+    resolve_activity_stage,
+)
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.csleep import MowerExit
@@ -63,14 +67,7 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         logger.debug("Start: 关卡导航")
         self.success = False
         self.name = name
-        self.stage_meta = next(
-            (
-                item
-                for item in stage_data_full
-                if item.get("id") == name or item.get("name") == name
-            ),
-            None,
-        )
+        self.stage_meta = resolve_activity_stage(name)
         self.stageType = (
             "UNKNOWN" if not self.stage_meta else self.stage_meta.get("stageType")
         )
@@ -87,6 +84,7 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         self._activity_entry_done = False
         self._activity_entry_failed = False
         self._builder_attempted = False
+        self._activity_stage_opened = False
         self.scene_graph_navigation(Scene.TERMINAL_MAIN)
         # rapid OCR: 如果右下角显示“上次作战”的关卡名与目标相同，直接点击进入
         if self.name == "Annihilation":
@@ -146,7 +144,10 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 if self.try_activity_entry():
                     # Entry-building success means same-pattern page is reached.
                     # Exact stage positioning (left/right swipe) is the final step.
-                    if self.is_stage_code(self.name):
+                    if (
+                        self.is_stage_code(self.name)
+                        and not self._activity_stage_opened
+                    ):
                         self.find_target_stage_after_entry(self.name, max_swipes=6)
                     return
             if self._activity_entry_failed:
@@ -296,45 +297,10 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         return False
 
     def activity_entry_names(self) -> set[str]:
-        meta = self.stage_meta or {}
-        zone = meta.get("zoneNameSecond")
-        if not zone:
-            return set()
-        names = {zone, *meta.get("entryNames", [])}
-        names.update(
-            stage.get("subTitle")
-            for stage in stage_data_full
-            if stage.get("stageType") == "ACTIVITY"
-            and stage.get("zoneNameSecond") == zone
-        )
-        return {re.sub(r"\s+", "", name) for name in names if name}
+        return ActivityNavigation(self).entry_names()
 
     def enter_activity_from_terminal(self) -> bool:
-        """用活动或章节名称识别终端左侧唯一且可信的活动横幅。"""
-        zone = (self.stage_meta or {}).get("zoneNameSecond")
-        if not zone or self.scene() != Scene.TERMINAL_MAIN:
-            return False
-        names = "|".join(
-            re.escape(name) for name in sorted(self.activity_entry_names())
-        )
-        pattern = (
-            rf"[<＜《〈]?(?:{names})[>＞》〉]?"
-            r"(?:(?:活动|(?:EX|S)?关卡)已开放[。.]?)?"
-        )
-        matches = [
-            candidate
-            for candidate in self.collect_terminal_ocr_candidates()
-            if candidate["score"] >= 0.8
-            and 0 <= candidate["center"][0] < 700
-            and 750 <= candidate["center"][1] < 950
-            and re.fullmatch(pattern, re.sub(r"\s+", "", candidate["text"]))
-        ]
-        if len(matches) != 1:
-            return False
-        candidate = matches[0]
-        return self.tap_and_detect_page_move(
-            candidate["center"], candidate["text"], record_step=False
-        )
+        return ActivityNavigation(self).enter_from_terminal()
 
     def try_quick_entry_from_main(self) -> bool:
         if self.scene() != Scene.TERMINAL_MAIN:
@@ -342,11 +308,11 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         prev_suppress = self._suppress_nav_recording
         self._suppress_nav_recording = True
         try:
-            if self.stageType == "ACTIVITY" and self.enter_activity_from_terminal():
-                self.click_subtitle_if_needed()
-                if self.is_stage_code(self.name):
-                    return self.find_target_stage_after_entry(self.name, max_swipes=3)
-                return True
+            if self.stageType == "ACTIVITY":
+                self._activity_stage_opened = ActivityNavigation(self).open_stage(
+                    self.name
+                )
+                return self._activity_stage_opened
             if self.should_use_llm_navigation():
                 logger.debug(
                     "skip quick entry and use llm navigation | target=%s | stageType=%s | endTs=%s",
@@ -562,6 +528,15 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         return False
 
     def find_stage_banner(self, zone_name: str, scope=None):
+        found = self.find_stage_banner_image(zone_name, scope=scope)
+        if found or self.stageType != "ACTIVITY":
+            return found
+        navigator = ActivityNavigation(self)
+        if zone_name != navigator.activity:
+            return None
+        return navigator.find_banner(scope)
+
+    def find_stage_banner_image(self, zone_name: str, scope=None):
         key = f"navigation/stage/{zone_name}"
         template_path = (
             Path(__rootdir__)

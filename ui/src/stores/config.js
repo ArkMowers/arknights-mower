@@ -235,11 +235,6 @@ export const useConfigStore = defineStore('config', () => {
   const maa_signinevent = ref(false)
   const eventShopDefaults = () => ({
     enable: false,
-    activity: '',
-    custom_entry: false,
-    x: 0,
-    y: 0,
-    confirm_text: '',
     blacklist: ['数据增补条', '数据增补仪', '家具零件'],
     switch_source: ''
   })

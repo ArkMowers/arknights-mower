@@ -1712,7 +1712,8 @@ def test_event_shop_settings_follow_daily_profile_group(storage, inherit):
     _create("商店配置", inherit)
     assert config.conf.maa_event_shop.enable is ("daily" in inherit)
     if "daily" in inherit:
-        assert config.conf.maa_event_shop.x == 900
+        assert "activity" not in config.conf.maa_event_shop.model_dump()
+        assert "custom_entry" not in config.conf.maa_event_shop.model_dump()
         assert config.conf.maa_event_shop.switch_source == "活动"
 
 

@@ -23,7 +23,6 @@ beforeEach(() => {
     load_item: vi.fn(async () => {}),
     maa_event_shop: ref({
       enable: false,
-      activity: '活动',
       switch_source: '活动方案',
       blacklist: []
     })
@@ -41,7 +40,7 @@ describe('activity shop configuration', () => {
     const scope = effectScope()
     const component = scope.run(() => Component.setup({}, { expose: () => {} }))
     await component.refresh()
-    expect(component.selected.value.x).toBe(100)
+    expect(state.client.get).not.toHaveBeenCalled()
     expect(component.blacklistOptions.value.map((item) => item.value)).toEqual([
       '数据增补条',
       '数据增补仪',

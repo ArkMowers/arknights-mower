@@ -19562,7 +19562,6 @@ class BaseSchedulerSolver(
             select_shop,
             shop_params,
             switch_after_shop,
-            weekly_plan_uses_activity,
         )
 
         if config.stop_mower.is_set():
@@ -19586,15 +19585,10 @@ class BaseSchedulerSolver(
             if not settings.enable:
                 return
             manager = get_weekly_plan_manager()
-            if not weekly_plan_uses_activity(manager, settings.activity):
-                logger.info(
-                    "当前理智周计划不含所选活动的关卡，跳过活动商店兑换",
-                    extra={"log_group": "maa-integration"},
-                )
-                return
-            shop = select_shop(settings, manager._current_server_timestamp())
+            shop = select_shop(manager, manager._current_server_timestamp())
             task = {
                 "settings": settings.model_dump(),
+                "activity": shop["activity"] if shop else None,
                 "source": manager.get_active_plan_key(),
                 "target": manager.get_activity_fallbacks().get(
                     manager.get_active_plan_key(), ""
@@ -19605,8 +19599,8 @@ class BaseSchedulerSolver(
                 "finished": False,
             }
         if shop is None:
-            logger.warning(
-                "活动商店尚未适配、已过期或缺少坐标与确认文字，跳过兑换",
+            logger.info(
+                "没有符合当前理智周计划的当期 SS 活动，跳过商店兑换",
                 extra={"log_group": "maa-integration"},
             )
             return
@@ -19644,9 +19638,12 @@ class BaseSchedulerSolver(
         if defer_for_refresh():
             return False
         with backup_lock:
-            if manager.get_active_plan_revision() != task[
-                "revision"
-            ] or not weekly_plan_uses_activity(manager, settings.activity):
+            current_shop = select_shop(manager, manager._current_server_timestamp())
+            if (
+                manager.get_active_plan_revision() != task["revision"]
+                or current_shop is None
+                or current_shop["activity"] != task["activity"]
+            ):
                 logger.info(
                     "理智周计划已更改，跳过本次活动商店兑换",
                     extra={"log_group": "maa-integration"},

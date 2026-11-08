@@ -1,48 +1,67 @@
-# 活动商店更新
+# 当期 SS 活动更新
 
-适用于从客户端布局获取商店入口、确认标题，并随资源包更新的版本维护。运行时行为见 [Arknights Mower MAA 集成子系统说明](../../../../docs/subsystems/maa-integration.md#12-activity-shop-redemption)，资源格式及独立加载规则见 [Arknights Mower 资源更新子系统说明](../../../../docs/subsystems/resource-update.md#activity-shop-resources)。本过程不执行兑换，也不修改用户的商店覆盖设置。
+适用于 SS 活动更替、章节开放和活动商店导航维护。运行行为见 [Arknights Mower MAA 集成子系统说明](../../../../docs/subsystems/maa-integration.md#12-activity-shop-redemption)，资源格式见 [Arknights Mower 资源更新子系统说明](../../../../docs/subsystems/resource-update.md#activity-shop-resources)。活动入口和商店入口均自动定位，不维护用户手填坐标、确认文字或活动选择。
 
 ## 固定输入
 
-1. 固定 [ArknightsGameData](https://github.com/Kengxxiao/ArknightsGameData) 的国服提交，读取 `activity_table.json` 及生成活动关卡所需的 `stage_table.json`、`zone_table.json`、`story_review_table.json`、`retro_table.json`。记录输入摘要。活动名称和商店开放窗口以 `basicInfo` 为准；商店关闭使用 `rewardEndTime`，不能用战斗关卡结束时间代替。
-2. 固定 [ArknightsAssets2](https://github.com/ArknightsAssets/ArknightsAssets2) 的 `cn` 提交，读取 `bundles/hot_update_list.json`。从官方 `network_config` 的 `hu` 字段取得下载根地址，按清单的 `versionId` 下载目标活动包。官方路径编码沿用上游 [资源下载脚本](https://github.com/ArknightsAssets/ArknightsAssets/blob/cn/scripts/download_bundles.sh)：包名的 `/` 改为 `_`、扩展名改为 `.dat`。
-3. `.dat` 是 ZIP。`totalSize` 对应下载文件大小；`abSize` 和 `md5` 对应其中解压后的 `.ab`，不能把两者混用。只处理清单声明的目标成员，不将任意归档路径解压进仓库。
-4. 从同一固定图片提交查看商店标题原图和入口图。核对 `confirm_text` 是进入商店后实际可见的完整标题，而非活动名称、英文副标题或商品名称。标题可能烘焙在图片中，不能假定存在可直接读取的字符串字段。
+从同一固定的 [ArknightsGameData](https://github.com/Kengxxiao/ArknightsGameData) 提交读取国服 `zh_CN/gamedata/excel/`，记录仓库、commit 及各输入文件的 SHA-256。
 
-本次已核对的入口是 `act55side` 的 `btn_shop`，位于 `dyn/activity/[uc]act55side/prefabs/act55side_activity_stage.prefab`。标题图片路径和来源清单保存在 [生成输入](../../../../arknights_mower/data/event_shop_layouts.json) 的 `source` 中；后续活动必须重新核对，不能沿用本次坐标或标题。
+| 输入 | 必需数据 | 用途 |
+| --- | --- | --- |
+| `activity_table.json` | `basicInfo` 的活动 ID、名称、`hasStage`、`templateShopId`、`startTime`、`endTime`、`rewardEndTime`；`zoneToActivity` | 识别当前开放且有商店的 SS，绑定章节，区分活动结束和奖励领取截止 |
+| `zone_table.json` | `zones` 中所属区域的 ID、名称和章节顺序 | 提供普通、EX、S 章节名称和活动入口关键词，不能只读取已经有作战关卡的区域 |
+| `stage_table.json` | `stages` 的 `code`、`zoneId`、`stageDropInfo.displayDetailRewards`；生成完整关卡数据时仍保留有效期和掉落 | 关联实际关卡与章节，提取 `ACTIVITY_ITEM` 代币 ID |
+| MAA 物品资源 | 与代币 ID 对应的 `resource/template/items/ID.png`，以及实际安装使用的增量资源 | 在终端和活动首页定位代币图标，不复制上一期的点击坐标 |
 
-## 导出和计算坐标
+SS ID 识别沿用生成器中的 `act数字side` 和复刻 `act数字sre`。同时要求存在关卡和商店。新活动改变这些约定时，修正生成器和测试，不能将小游戏、签到或其他类型商店当成 SS。
 
-该版本活动包采用自定义压缩，普通 UnityPy 解包失败。使用上游 ArknightsStudioCLI 导出字段及完整对象清单；它位于 ArknightsAssets 仓库的 `ArknightsStudioCLI` 目录。固定工具版本，并准备匹配的 .NET 运行时。命令示例在仓库根执行，输入与输出使用本次临时目录：
+活动开放期使用 `startTime <= now < endTime`。`rewardEndTime` 仅记录商店奖励领取截止；不能用仍开放的旧商店冒充当期 SS。没有开放的 SS 时，正常产物是 `[]`，兑换开关保留用户选择并在运行时跳过。输入表缺失、章节关联不全或代币 ID 缺失属于生成失败，不能伪装成没有活动。
 
-本次使用 [工具提交](https://github.com/ArknightsAssets/ArknightsAssets/tree/c0be4e4428f79c7e87c6889067a6906361ae979b/ArknightsStudioCLI)中的 `v1.2.1.0`，目标运行时为 .NET 6；本次在 .NET 9 下通过 `DOTNET_ROLL_FORWARD=LatestMajor` 执行。后续提取先核对工具的 `--help` 和实际包格式，不将兼容运行结果推定为所有版本均可用。
+## 生成导航数据
 
-```bash
-dotnet /tmp/studio/ArknightsStudioCLI.dll /tmp/shop/activity.ab -m dump -t all --load-all -o /tmp/shop/dump
-dotnet /tmp/studio/ArknightsStudioCLI.dll /tmp/shop/activity.ab -m info --load-all --export-asset-list xml -o /tmp/shop/list
+`auto_get_res_new.py` 将活动表、`zone_table.json` 的 `zones` 和 `stage_table.json` 的 `stages` 交给 `write_event_shop_data`，生成 `arknights_mower/data/event_shop.json`。局部生成可在仓库根运行：
+
+```python
+import json
+from pathlib import Path
+from arknights_mower.utils.event_shop_data import write_event_shop_data
+
+source = Path("/tmp/game")
+activity = json.loads((source / "activity_table.json").read_text("utf-8"))
+zones = json.loads((source / "zone_table.json").read_text("utf-8"))["zones"]
+stages = json.loads((source / "stage_table.json").read_text("utf-8"))["stages"]
+write_event_shop_data(activity, zones=zones, stages=stages)
 ```
 
-导出前确认真实按钮对象及其所属 prefab。GameObject 重名时，导出文件会带编号后缀；必须通过组件指针及父级关系识别，不能取第一个同名对象。`source-json` 按现有生成输入的 `source` 记录图片仓库及固定 `revision`、清单 `version` 和 `manifest`、官方包 URL、`prefab` 及标题图片路径。然后执行：
+核对产物中的 `activity_id`、`activity`、`start_ts`、`end_ts`、`reward_end_ts`、`entry_names`、`chapters` 和 `token_ids`，并同步活动关卡的导航名称。`chapters` 使用 `normal`、`ex`、`s`，不写专有活动名到导航源码。
+
+章节优先按实际关卡编号和区域关联分类。标准三区式 SS 的后续 EX、S 关卡可能尚未进入关卡表，但 `zone2`、`zone3` 的名称已经存在于区域表；生成器保留这两区的标题。逐期核对公告、区域表和实际菜单的对应关系。不同布局、同类多个区域或无法确认的分类不能靠名称猜测；完善解析后再以关卡编号前缀确认目标地图。
+
+活动名称、区域名称和 OCR 文本统一去除全部空白再比较，包括首尾、内部空格、制表符和全角空白。例如复刻名称中的空格或 OCR 插入的空格不应让图片匹配的备用路径失效。入口提示只检测所属活动或章节名称关键词，不依赖引号和“已开放”等整句文案。
+
+## 验证共用导航
+
+导航实现位于 [`activity_navigation.py`](../../../../arknights_mower/solvers/activity_navigation.py)。`NavigationSolver` 的活动关卡导航和 `EventShopNavigation` 的商店导航共用活动首页定位；大型任务自动作业继续通过 `NavigationSolver.run(关卡编号)` 调用同一路径。这是 Python 内部调用，不要求新增 HTTP 接口。
+
+- 终端左侧搜索目标活动代币图标，点击检测到的位置；缺图或未匹配时回退名称关键词。活动首页再搜索同一代币定位商店入口，位置和比例可以不同。核对 MAA 资源中实际存在对应图标及正确加载路径；缺图时更新 MAA 资源，不新增手填窗口。
+- 点击后确认目标活动页面。普通、EX、S 章节进入后须出现对应关卡编号前缀；未解锁章节或错误地图不能算成功，也不能仅凭画面变化开始作业。
+- 商店页面同时确认关闭或兑换截止信息及商品库存、售罄或已拥有标记。只见到活动首页、代币数量或专有标题不能证明已经进入可兑换页面。
+- MAA 的 `SS@Store@Begin` 负责标准当期活动商店的货架和支付流程，不能推定其他特殊商店也支持。Mower 仅在页面确认后提交该固定任务；黑名单与原有方案切换条件保持独立。
+
+在已有项目 Python 环境中运行针对性离线验证：
 
 ```bash
-python .agents/skills/mower-version-update/scripts/extract_shop_layout.py \
-  --dump /tmp/shop/dump --asset-list /tmp/shop/list/assets.xml \
-  --activity-table /tmp/game/activity_table.json --source-json /tmp/shop/source.json \
-  --downloaded-asset /tmp/shop/activity.dat --activity-id act55side \
-  --container 'dyn/activity/[uc]act55side/prefabs/act55side_activity_stage.prefab' \
-  --confirm-text '炮火所掩埋的'
+python -m pytest arknights_mower/tests/event_shop_generation_tests.py arknights_mower/tests/activity_navigation_tests.py arknights_mower/tests/activity_banner_navigation_tests.py arknights_mower/tests/maa_event_shop_tests.py arknights_mower/tests/maa_large_task_navigation_tests.py arknights_mower/tests/event_shop_defaults_tests.py
+python -m pytest arknights_mower/tests/res_version_tests.py arknights_mower/tests/resource_version_tests.py
+npm --prefix ui test -- src/components/MaaEventShop.test.js src/stores/maaProtocolSync.test.js
 ```
 
-脚本校验包大小和摘要，沿完整 RectTransform 父链记录锚点、尺寸、枢轴、偏移与缩放。它按标准 1920×1080 根画面计算按钮范围，将 Unity 向上的 Y 轴转换为屏幕向下的 Y 轴，取中心并四舍五入为点击整数。按钮范围保留在原始布局中，可用 `event_shop_data.button_rect` 重新计算。所有主视觉分支必须给出相同范围；未知旋转、越界、循环父链、缺失对象或分支位置不一致时停止生成，不能猜坐标。
+覆盖没有 SS、尚未开始、已经结束、只有其他类型活动、当前 SS 不在周计划、多个同期开启候选、代币位置与缩放变化、空白文本、错误地图和旧配置兼容。没有当期 SS 时断言不启动导航和 MAA 商店任务。
 
-该结果是静态布局在指定画面下的坐标。还需核对动画结束后的布局、画面适配和运行时脚本是否重排按钮；没有画面证据时不能声称经过实机校准。本次两套主视觉的范围均为约 `(1361.28, 205.08)` 至 `(1561.28, 305.08)`，中心为 `(1461.2812532, 255.0799474)`，点击位置为 `(1461, 255)`。
+用户要求实机验证时，先确认目标实例及自动任务状态。固定 ADB 目标，仅验证活动首页、已开放章节和商店的进入结果，不因验证导航而购买商品或开始作战。未开放的 S 章记录为未进入，并用离线测试验证其正常分支。区分实际设备画面、离线识别和未验证的购买流程；不能把一次活动的成功扩大为所有活动均已实测。
 
-## 生成、验证与交付
+## 打包与交付
 
-- `auto_get_res_new.py` 调用 `write_event_shop_data`，从已核对布局和本次活动表生成 `arknights_mower/data/event_shop.json`。活动表缺少已适配活动或商店 ID 不符时失败，不用空表覆盖有效条目。布局源是生成期输入，不进入资源归档；产物继续使用既有可选资源格式，旧资源缺文件时不借用内置数据。
-- 同步生成活动关卡，确认当前活动关卡的导航名称与商店 `activity` 一致，否则日常兑换的周计划准入不能识别该活动。保持用户自定义坐标、标题、黑名单和方案切换选择。
-- 在项目 Python 环境运行 `event_shop_generation_tests.py`、`maa_event_shop_tests.py` 和两组资源版本测试；从生成后的实际文件验证商店选择、战斗结束后的领取窗口、过期排除，以及导航点击和标题确认。测试只控制设备 I/O，不执行真实兑换。
-- 资源抓取和发布继续使用 MowerResource。核对其游戏表来源是否已包含本活动、图片是否齐全、生成器是否已取到本次代码。发布脚本须收集主仓声明的 `RES_PACKAGE_OPTIONAL_DATA`；实际打开完整 ZIP，确认商店条目可读取、布局源未混入归档，并用真实归档文件集复算内容摘要。仅检查生成目录不能证明已经打包。同步内置内容摘要；不另建定时发布流程。独立资源发布不会自动提交主仓库内置文件。
-- 若用户将“活动商店能够更新”作为本次 PR 的合并条件，先完成生成、实际归档读取及最新 head 的必要检查；空表、只写文档或未经核实的坐标均不满足该条件。合并和发布沿用用户的具体授权，不因 skill 自行扩大范围。
+沿用 MowerResource 的资源生成和发布流程，确认它使用包含本次生成器的版本。实际读取完整 ZIP，核对 `event_shop.json` 的活动、章节和代币数据，再用 `package_file_paths` 和 `content_hash` 复算归档摘要。局部更新主仓内置文件时同步 `data/version.json` 的内容摘要，保留日期前缀及其他来源字段。
 
-更新本 skill 后运行 `skill-creator` 的 `quick_validate.py`、项目结构检查及脚本实际提取验证。交付固定来源、按钮范围和整数坐标、标题、开放窗口、归档与导航验证结果，并区分静态布局验证、设备 I/O 测试和实际设备证据。
+交付固定输入版本与摘要、当前 SS 判定、章节和代币信息、实际归档检查、导航验证及未验证范围。仅请求更新技能不构成发布资源、部署软件或操作实例的授权；实际提交、发布和实机验证沿用用户当次要求。更新本技能后运行 `skill-creator` 的 `quick_validate.py` 和项目文档结构检查。
