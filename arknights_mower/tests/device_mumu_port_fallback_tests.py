@@ -222,6 +222,323 @@ class TimedMuMuManager:
         return subprocess.CompletedProcess(argv, 0, output, b"")
 
 
+class IdentityTimedMuMuManager(TimedMuMuManager):
+    def __init__(self, clock, timeout_phase, replacement_created):
+        super().__init__(clock, timeout_phase, failures=0)
+        self.created = None
+        self.replacement_created = replacement_created
+
+    def __call__(self, argv, **kwargs):
+        try:
+            result = super().__call__(argv, **kwargs)
+        except subprocess.TimeoutExpired:
+            self.created = self.replacement_created
+            raise
+        if argv[1] == "info":
+            result.stdout = json.dumps(
+                {
+                    "0": entry(
+                        created_timestamp=self.created,
+                        adb_port=0 if self.failures else 16384,
+                    )
+                }
+            ).encode()
+        return result
+
+
+@pytest.mark.parametrize("path", ["session", "preflight"])
+@pytest.mark.parametrize("replacement_created", [111, 222, None])
+def test_first_capture_keeps_identity_observed_before_fallback_timeout(
+    tmp_path, path, replacement_created
+):
+    manager = tmp_path / "MuMuManager.exe"
+    manager.touch()
+    clock, adb = Clock(), ADB()
+    serial = "127.0.0.1:16384"
+    adb.rows, adb.boot = [(serial, "device")], "1"
+    created, timed_out = None, False
+
+    def run(argv, **kwargs):
+        nonlocal created, timed_out
+        if argv[1] == "adb":
+            assert not timed_out
+            timed_out, created = True, replacement_created
+            clock.now += kwargs["timeout"]
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        assert argv[1] == "info"
+        if argv[-1] == "all" and not timed_out:
+            created = 111
+        output = json.dumps(
+            {
+                "0": entry(
+                    created_timestamp=created,
+                    adb_port=0 if created == 111 and not timed_out else 16384,
+                )
+            }
+        ).encode()
+        return subprocess.CompletedProcess(argv, 0, output, b"")
+
+    selected = profile(manager).model_copy(
+        update={"screenshot_backend": "mumu_ipc", "touch_backend": "mumu_ipc"}
+    )
+    conf = Conf(device=selected.model_dump())
+    before = conf.model_dump()
+    capture_adb = ProductionSessionADB(run=run, monotonic=clock.monotonic)
+    adb.bind = capture_adb.bind
+    session = DeviceSession(
+        adb,
+        ProductionSimulator(run=run, monotonic=clock.monotonic),
+        clock=clock,
+        policy=RecoveryPolicy(timeout=60, poll_interval=1),
+    )
+    io, capture_io = PreflightIO(), ProductionPreflightIO()
+    io.host, io.boot = "windows", "1"
+    io.installed.add(str(manager))
+    io.paths.add("verified-adb")
+    io.targets = [(serial, "device")]
+    io.installed_packages = ["com.hypergryph.arknights"]
+    io.capture_frame = lambda adb_path, target, current: capture_io._capture_mumu(
+        current, target
+    )
+    with (
+        patch.object(ProductionPreflightIO, "host_platform", return_value="windows"),
+        patch(
+            "arknights_mower.utils.device.preflight_io.resolve_mumu_paths",
+            return_value=("root", str(manager)),
+        ),
+        patch.object(
+            capture_io, "_run", side_effect=lambda argv: run(argv, timeout=10).stdout
+        ),
+        patch(
+            "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
+        ) as context,
+    ):
+        configure_mumu_capture(context.return_value)
+        if path == "session":
+            session.bind(selected)
+            if replacement_created == 111:
+                assert (
+                    session.ensure_ready(frame_probe=capture_adb.frame_size).serial
+                    == serial
+                )
+            else:
+                with pytest.raises(SessionFailure) as failure:
+                    session.ensure_ready(frame_probe=capture_adb.frame_size)
+                assert failure.value.observation.code == "binding_changed"
+        else:
+            control = DeviceControl(
+                lambda: conf, Adapter(), session=session, preflight=PreflightService(io)
+            )
+            result = control.start()
+            assert result.ok == (replacement_created == 111)
+            if not result.ok:
+                assert result.error.code == "binding_changed"
+        if replacement_created != 111:
+            context.return_value.Process.assert_not_called()
+    assert session.profile.mumu_created_timestamp == "111"
+    assert capture_adb._profile.mumu_created_timestamp == "111"
+    assert conf.model_dump() == before
+    assert session.actions == 0
+    assert adb.actions == []
+
+
+@pytest.mark.parametrize("creation_phase", ["inspection", "stop_confirmation"])
+def test_ui_restart_retains_permission_when_first_creation_time_is_added(
+    tmp_path, creation_phase
+):
+    manager = tmp_path / "MuMuManager.exe"
+    manager.touch()
+    clock, adb = Clock(), ADB()
+    serial = "127.0.0.1:16384"
+    adb.rows, adb.boot = [(serial, "device")], "1"
+    state = {"created": None, "running": True, "shutdowns": 0, "launches": 0}
+
+    def run(argv, **kwargs):
+        if argv[1] == "api":
+            starting = argv[-1] == "launch_player"
+            state["running"] = starting
+            state["launches" if starting else "shutdowns"] += 1
+            if creation_phase == "stop_confirmation":
+                state["created"] = 111
+            success = starting == (creation_phase == "inspection")
+            return subprocess.CompletedProcess(
+                argv, 0, b'{"code":0}' if success else b'{"code":1}', b""
+            )
+        data = entry(
+            created_timestamp=state["created"],
+            adb_port=16384,
+            is_process_started=state["running"],
+            is_android_started=state["running"],
+        )
+        return subprocess.CompletedProcess(
+            argv, 0, json.dumps({"0": data}).encode(), b""
+        )
+
+    session = DeviceSession(
+        adb,
+        ProductionSimulator(run=run, monotonic=clock.monotonic),
+        clock=clock,
+        policy=RecoveryPolicy(timeout=60, poll_interval=1),
+    )
+    session.bind(profile(manager))
+    session.ensure_ready()
+    failure = UIUnresponsiveError()
+    session.record_ui_failure(failure)
+    if creation_phase == "inspection":
+        state["created"] = 111
+    with pytest.raises(SessionFailure):
+        session.restart(failure, deadline=session.begin_budget())
+    assert failure.stop_requested
+    assert failure.start_requested == (creation_phase == "stop_confirmation")
+    ready = session.restart(failure, deadline=session.begin_budget())
+    assert ready.serial == serial
+    assert state["shutdowns"] == 1
+    assert state["launches"] == 1
+    assert session.profile.mumu_created_timestamp == "111"
+
+
+@pytest.mark.parametrize("timeout_phase", ["adb", "recheck"])
+def test_ui_restart_retains_identity_first_observed_during_timed_out_inspection(
+    tmp_path, timeout_phase
+):
+    manager = tmp_path / "MuMuManager.exe"
+    manager.touch()
+    clock, adb = Clock(), ADB()
+    serial = "127.0.0.1:16384"
+    adb.rows, adb.boot = [(serial, "device")], "1"
+    run = IdentityTimedMuMuManager(clock, timeout_phase, replacement_created=222)
+    session = DeviceSession(
+        adb,
+        ProductionSimulator(run=run, monotonic=clock.monotonic),
+        clock=clock,
+        policy=RecoveryPolicy(timeout=60, poll_interval=1),
+    )
+    selected = profile(manager)
+    session.bind(selected)
+    session.ensure_ready()
+    assert session.profile.mumu_created_timestamp == ""
+    run.created, run.failures = 111, 1
+    failure = UIUnresponsiveError()
+    session.record_ui_failure(failure)
+    with pytest.raises(SessionFailure) as rejected:
+        session.restart(failure, deadline=session.begin_budget())
+    assert rejected.value.observation.code == "binding_changed"
+    assert session.profile.mumu_created_timestamp == "111"
+    assert selected.mumu_created_timestamp == ""
+    assert not failure.stop_requested
+    assert not failure.start_requested
+    assert session.actions == 0
+    assert adb.actions == []
+    assert all(call[0] != "api" for call, _, _ in run.calls)
+
+
+@pytest.mark.parametrize("timeout_phase", ["adb", "recheck"])
+@pytest.mark.parametrize("operation", ["start", "start_bound"])
+@pytest.mark.parametrize("replacement_created", [111, 222])
+def test_runtime_preflight_retains_identity_first_observed_during_retry(
+    tmp_path, timeout_phase, operation, replacement_created
+):
+    manager = tmp_path / "MuMuManager.exe"
+    manager.touch()
+    clock, adb = Clock(), ADB()
+    serial = "127.0.0.1:16384"
+    adb.rows, adb.boot = [(serial, "device")], "1"
+    run = IdentityTimedMuMuManager(clock, timeout_phase, replacement_created)
+    io = PreflightIO()
+    io.host, io.boot = "windows", "1"
+    io.installed.add(str(manager))
+    io.paths.add("verified-adb")
+    io.targets = [(serial, "device")]
+    io.installed_packages = ["com.hypergryph.arknights"]
+    captures = []
+
+    def capture(adb_path, target, current):
+        captures.append(current.mumu_created_timestamp)
+        if len(captures) == 1:
+            run.created, run.failures = 111, 1
+            clock.now += 10
+            raise ManagerQueryTimeout("MuMu 管理程序查询超时")
+        return io.frame
+
+    io.capture_frame = Mock(side_effect=capture)
+    selected = profile(manager).model_copy(
+        update={"screenshot_backend": "mumu_ipc", "touch_backend": "mumu_ipc"}
+    )
+    conf = Conf(device=selected.model_dump())
+    before = conf.model_dump()
+    session = DeviceSession(
+        adb,
+        ProductionSimulator(run=run, monotonic=clock.monotonic),
+        clock=clock,
+        policy=RecoveryPolicy(timeout=60, poll_interval=1),
+    )
+    control = DeviceControl(
+        lambda: conf, Adapter(), session=session, preflight=PreflightService(io)
+    )
+    result = (
+        control.start_bound(conf) if operation == "start_bound" else control.start()
+    )
+    if replacement_created == 111:
+        assert result.ok, result.error
+        assert captures == ["", "111"]
+    else:
+        assert not result.ok
+        assert result.error.code == "binding_changed"
+        assert captures == [""]
+    assert session.profile.mumu_created_timestamp == "111"
+    assert conf.model_dump() == before
+    assert session.actions == 0
+    assert adb.actions == []
+    assert all(call[0] != "api" for call, _, _ in run.calls)
+
+
+@pytest.mark.parametrize("timeout_phase", ["adb", "recheck"])
+@pytest.mark.parametrize("replacement_created", [111, 222, None])
+def test_fallback_timeout_keeps_first_observed_identity_during_retry(
+    tmp_path, timeout_phase, replacement_created
+):
+    manager = tmp_path / "MuMuManager.exe"
+    manager.touch()
+    clock, adb = Clock(), ADB()
+    serial = "127.0.0.1:16384"
+    adb.rows, adb.boot = [(serial, "device")], "1"
+    run = IdentityTimedMuMuManager(clock, timeout_phase, replacement_created)
+    run.created, run.failures = 111, 1
+
+    selected = profile(manager)
+    before = selected.model_dump()
+    frame = Mock(return_value=(1920, 1080))
+    session = DeviceSession(
+        adb,
+        ProductionSimulator(run=run, monotonic=clock.monotonic),
+        clock=clock,
+        policy=RecoveryPolicy(timeout=60, poll_interval=1),
+    )
+    session.bind(selected)
+    with patch.object(
+        session, "_report_observation", wraps=session._report_observation
+    ) as report:
+        if replacement_created == 111:
+            assert session.ensure_ready(frame_probe=frame).serial == serial
+            frame.assert_called_once()
+        else:
+            with pytest.raises(SessionFailure) as failure:
+                session.ensure_ready(frame_probe=frame)
+            assert failure.value.observation.code == "binding_changed"
+            frame.assert_not_called()
+
+    first = report.call_args_list[0].args[0]
+    assert first.code == "manager_timeout"
+    assert first.serial == ""
+    assert first.mumu_created_timestamp == "111"
+    assert session.profile.mumu_created_timestamp == "111"
+    assert selected.model_dump() == before
+    assert 10 <= clock.now < 60
+    assert session.actions == 0
+    assert adb.actions == []
+    assert all(call[0] != "api" for call, _, _ in run.calls)
+
+
 @pytest.mark.parametrize("timeout_phase", ["adb", "recheck"])
 @pytest.mark.parametrize("manual_serial", ["", "127.0.0.1:16384"])
 def test_manager_fallback_timeout_retries_same_instance_within_recovery_budget(

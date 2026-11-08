@@ -10,7 +10,10 @@ import stat
 from collections import Counter
 from pathlib import Path
 
-from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
+from arknights_mower.utils.device.endpoint_identity import (
+    InstanceBindingError,
+    ManagerQueryTimeout,
+)
 from arknights_mower.utils.device.manager_io import (
     MAX_INSTANCES,
     run_manager_command,
@@ -129,6 +132,9 @@ def parse_mumu_instances(
                         manual_serial,
                         verify_conflicts=bool(expected_created),
                     )
+                except ManagerQueryTimeout as exc:
+                    exc.mumu_created_timestamp = created
+                    raise
                 except MuMuEndpointUnavailable as exc:
                     if selected_id is not None:
                         exc.mumu_created_timestamp = created

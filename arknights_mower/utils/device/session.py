@@ -308,11 +308,27 @@ class DeviceSession:
                 self.last, "无法确认界面故障原实例的完整重启权限，请手动恢复所选设备。"
             )
 
+        created_before = self.profile.mumu_created_timestamp
+        try:
+            return self._restart_bound(
+                failure,
+                deadline,
+                frame_probe=frame_probe,
+                prepare_target=prepare_target,
+            )
+        finally:
+            if not created_before and self.profile.mumu_created_timestamp:
+                # 补全创建时间仍指向原实例，同一故障的后续恢复沿用该身份。
+                failure.restart_binding = self._restart_binding()
+
+    def _restart_bound(
+        self, failure, deadline, *, frame_probe=None, prepare_target=None
+    ):
         if not failure.stop_requested:
             while True:
                 try:
                     with device_io_budget(lambda: self._remaining(deadline)):
-                        instance = self.simulator.inspect(
+                        instance = self.inspect_instance(
                             self.profile, self._remaining(deadline)
                         )
                     break
@@ -573,6 +589,33 @@ class DeviceSession:
         if human_text:
             logger.info(human_text)
 
+    def pin_mumu_creation_time(self, profile, created):
+        """仅在会话副本中固定已核验的首次创建时间。"""
+        if profile.preset_id != "windows.mumu12" or profile.mumu_created_timestamp:
+            return profile
+        created = self.profile.mumu_created_timestamp or created
+        if not created:
+            return profile
+        if not self.profile.mumu_created_timestamp:
+            self.profile = self.profile.model_copy(
+                update={"mumu_created_timestamp": created}
+            )
+            propagate = getattr(self.adb, "bind", None)
+            if propagate is not None:
+                propagate(self.profile)
+        return profile.model_copy(update={"mumu_created_timestamp": created})
+
+    def inspect_instance(self, profile, timeout):
+        try:
+            instance = self.simulator.inspect(profile, timeout)
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            self.pin_mumu_creation_time(
+                profile, getattr(exc, "mumu_created_timestamp", "")
+            )
+            raise
+        self.pin_mumu_creation_time(profile, instance.mumu_created_timestamp)
+        return instance
+
     def _observe(
         self, deadline: float | None = None, *, frame_probe=None, prepare_target=None
     ) -> ReadinessResult:
@@ -596,7 +639,7 @@ class DeviceSession:
                     return self.last
             profile = profile.model_copy(update={"adb_path": self.adb_path})
         try:
-            instance = self.simulator.inspect(profile, self._remaining(deadline))
+            instance = self.inspect_instance(profile, self._remaining(deadline))
         except (MowerExit, SessionFailure, SharedADBError):
             raise
         except InstanceEndpointPending as exc:
@@ -622,12 +665,14 @@ class DeviceSession:
             )
             return self.last
         except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            created = getattr(exc, "mumu_created_timestamp", "")
             self.last = ReadinessResult(
                 "offline",
                 "",
                 self.adb_path,
                 code="manager_timeout",
                 message=str(exc),
+                mumu_created_timestamp=created,
             )
             return self.last
         except Exception as exc:
@@ -635,18 +680,7 @@ class DeviceSession:
                 "offline", "", self.adb_path, code="binding_failed", message=str(exc)
             )
             return self.last
-        if (
-            profile.preset_id == "windows.mumu12"
-            and not profile.mumu_created_timestamp
-            and instance.mumu_created_timestamp
-        ):
-            self.profile = self.profile.model_copy(
-                update={"mumu_created_timestamp": instance.mumu_created_timestamp}
-            )
-            profile = self.profile
-            propagate = getattr(self.adb, "bind", None)
-            if propagate is not None:
-                propagate(self.profile)
+        profile = self.profile
         serial = (
             instance.serial or ""
             if instance.state != "unknown"
@@ -726,10 +760,17 @@ class DeviceSession:
         """
         self._observe_display(serial, deadline)
         ok, code, message = self._frame_ready(serial, deadline, frame_probe)
+        if self.profile.preset_id == "windows.mumu12":
+            mumu_created_timestamp = self.profile.mumu_created_timestamp
         if not ok:
             if code == "manager_timeout":
                 self.last = ReadinessResult(
-                    "offline", "", self.adb_path, code=code, message=message
+                    "offline",
+                    "",
+                    self.adb_path,
+                    code=code,
+                    message=message,
+                    mumu_created_timestamp=mumu_created_timestamp,
                 )
             else:
                 self.last = ReadinessResult(
@@ -780,6 +821,9 @@ class DeviceSession:
         except (MowerExit, SessionFailure):
             raise
         except ManagerQueryTimeout as exc:
+            self.pin_mumu_creation_time(
+                self.profile, getattr(exc, "mumu_created_timestamp", "")
+            )
             return False, "manager_timeout", str(exc)
         except InstanceBindingError as exc:
             self.last = ReadinessResult(
@@ -1036,7 +1080,7 @@ class DeviceSession:
         while True:
             self._remaining(deadline)
             try:
-                state = self.simulator.inspect(
+                state = self.inspect_instance(
                     self.profile, self._remaining(deadline)
                 ).state
             except (MowerExit, SessionFailure):

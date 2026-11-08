@@ -727,8 +727,8 @@ class DeviceControl(Generic[D]):
             verified = profile.model_copy(update=verified_fields)
             checked = self._retry_mumu_preflight(
                 verified,
-                lambda: self._preflight.check(
-                    verified,
+                lambda current: self._preflight.check(
+                    current,
                     confirmed_package=confirmed_package,
                     resolved_adb=adb_path,
                     prepare_capture=self._prepare_capture,
@@ -1164,7 +1164,7 @@ class DeviceControl(Generic[D]):
             if last_timeout is not None:
                 try:
                     with self._io_budget():
-                        instance = self._session.simulator.inspect(
+                        instance = self._session.inspect_instance(
                             profile, self._session.remaining()
                         )
                 except InstanceBindingError as exc:
@@ -1176,6 +1176,8 @@ class DeviceControl(Generic[D]):
                     if str(exc) != BUDGET_EXHAUSTED:
                         raise
                     fail_after_budget(last_timeout, exc)
+                finally:
+                    profile = self._session.pin_mumu_creation_time(profile, "")
                 if instance.state == "starting":
                     wait_after_timeout(last_timeout)
                     continue
@@ -1187,7 +1189,7 @@ class DeviceControl(Generic[D]):
                         "binding_changed", "MuMu 实例状态或连接地址已变化，请重新检测。"
                     )
             try:
-                result = check()
+                result = check(profile)
             except (SessionFailure, TimeoutError) as exc:
                 if last_timeout is None:
                     raise
@@ -1211,13 +1213,14 @@ class DeviceControl(Generic[D]):
                 or self._session is None
             ):
                 return result
+            profile = self._session.pin_mumu_creation_time(
+                profile, result.error.mumu_created_timestamp
+            )
             last_timeout = result
             wait_after_timeout(result)
 
     def _check_profile(self, profile):
-        return self._retry_mumu_preflight(
-            profile, lambda: self._check_profile_once(profile)
-        )
+        return self._retry_mumu_preflight(profile, self._check_profile_once)
 
     def _check_profile_once(self, profile):
         capture_options = {}

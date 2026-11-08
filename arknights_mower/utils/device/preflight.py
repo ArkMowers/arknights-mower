@@ -385,7 +385,10 @@ class PreflightService:
         except ManagerQueryTimeout as exc:
             result.serial = ""
             result.error = PreflightError(
-                "manager_timeout", str(exc), fields=["manager_path"]
+                "manager_timeout",
+                str(exc),
+                fields=["manager_path"],
+                mumu_created_timestamp=getattr(exc, "mumu_created_timestamp", ""),
             )
             return result
         except InstanceBindingError as exc:

@@ -358,7 +358,7 @@ class ProductionPreflightIO:
                 profile.instance_id,
                 profile.instance_name,
             )
-            verify_mumu_created_timestamp(
+            created = verify_mumu_created_timestamp(
                 entry, actual_instance_id, profile.mumu_created_timestamp
             )
         except ManagerQueryTimeout:
@@ -371,9 +371,13 @@ class ProductionPreflightIO:
             raise InstanceBindingError(
                 "binding_changed", str(exc), ["instance_id", "instance_name"]
             ) from exc
-        endpoint = mumu_endpoint_with_fallback(
-            entry, actual_instance_id, manager, self._run
-        )
+        try:
+            endpoint = mumu_endpoint_with_fallback(
+                entry, actual_instance_id, manager, self._run
+            )
+        except ManagerQueryTimeout as exc:
+            exc.mumu_created_timestamp = created
+            raise
         if normalize_mumu_endpoint(endpoint) != normalize_mumu_endpoint(serial):
             raise MuMuEndpointUnavailable(
                 actual_instance_id, "MuMu IPC 实例端点与已选择设备的连接地址不一致。"
