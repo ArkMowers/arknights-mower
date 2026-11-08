@@ -118,17 +118,23 @@ class TaskScope(Enum):
     REPLAN = "replan"
 
 
-def retain_mastery_backup_tasks(tasks):
-    """补回尚未解除的副表前置，返回过期清理须保留的原任务身份。"""
+def retain_mastery_backup_tasks(tasks, waiting):
+    """保留未解除的副表前置；等待区持有的任务不进入活动队列。"""
     predecessors = {
         id(previous): previous
-        for task in list(tasks)
+        for task in [*tasks, *waiting]
         for previous in getattr(task, "mastery_backup_predecessors", ())
     }
-    pending_ids = {id(task) for task in tasks}
-    tasks.extend(
-        previous for key, previous in predecessors.items() if key not in pending_ids
-    )
+    pending_ids = {id(task) for task in [*tasks, *waiting]}
+    waiting_ids = {id(task) for task in waiting}
+    for key, previous in predecessors.items():
+        if key in waiting_ids or hasattr(previous, "group_shift_waiting"):
+            if key not in waiting_ids:
+                waiting.append(previous)
+                waiting_ids.add(key)
+            tasks[:] = [task for task in tasks if task is not previous]
+        elif key not in pending_ids:
+            tasks.append(previous)
     return set(predecessors)
 
 
@@ -188,7 +194,10 @@ def replan_update_tasks(saved):
     )
     result = dict(saved)
     tasks = list(saved.get("tasks", ()))
-    retain_mastery_backup_tasks(tasks)
+    waiting = saved.get("waiting_group_shifts", [])
+    retain_mastery_backup_tasks(tasks, waiting)
+    if waiting:
+        result["waiting_group_shifts"] = waiting
     retained = [
         task
         for task in tasks
@@ -200,7 +209,7 @@ def replan_update_tasks(saved):
         or task.type == TaskTypes.NOT_SPECIFIC
         and (task.plan or task.meta_data)
     ]
-    dependencies = [*retained, *saved.get("waiting_group_shifts", ())]
+    dependencies = [*retained, *waiting]
     protected = set()
     while dependencies:
         task = dependencies.pop()
@@ -235,7 +244,7 @@ def task_view(tasks, scope, op_data=None):
     raise ValueError(f"未知任务查询用途：{scope}")
 
 
-def merge_restored_waiting_shifts(waiting):
+def merge_restored_waiting_shifts(waiting, *, replacements=None):
     """旧缓存中的重复派生上班保留最早原任务；未知执行状态保持原样。"""
     planning_fields = {
         "time",
@@ -251,7 +260,7 @@ def merge_restored_waiting_shifts(waiting):
         "group_shift_predecessors",
         "group_shift_transitions",
     }
-    result, buckets = [], defaultdict(list)
+    result, buckets, positions = [], defaultdict(list), {}
     for task in waiting:
         predecessors = getattr(task, "group_shift_predecessors", ())
         if (
@@ -272,6 +281,7 @@ def merge_restored_waiting_shifts(waiting):
             or not (predecessors or task.group_shift_waiting)
             or set(vars(task)) - planning_fields
         ):
+            positions[id(task)] = len(result)
             result.append(task)
             continue
         # 执行、补偿、副表或未知字段不在白名单内，即使数值相同也不合并。
@@ -304,10 +314,16 @@ def merge_restored_waiting_shifts(waiting):
                     for name in earlier_windows
                 ):
                     result[index] = earlier
+                    positions[id(task)] = index
                     break
         else:
             buckets[key].append((len(result), metadata))
+            positions[id(task)] = len(result)
             result.append(task)
+    if replacements is not None:
+        replacements.update(
+            (identity, result[index]) for identity, index in positions.items()
+        )
     removed = len(waiting) - len(result)
     if removed:
         logger.info("恢复等待换班时合并 %d 份重复安排，保留最早任务与原时间", removed)

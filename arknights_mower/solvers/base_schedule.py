@@ -1413,7 +1413,7 @@ class BaseSchedulerSolver(
             return
         predecessors = tuple(
             pending
-            for pending in self.tasks
+            for pending in [*self.tasks, *getattr(self, "waiting_group_shifts", ())]
             if pending.meta_data == "副表内存收敛" and pending.plan
         )
         if not predecessors:
@@ -2485,7 +2485,9 @@ class BaseSchedulerSolver(
                 self.check_current_focus()
         if self.error or force:
             now = datetime.now()
-            mastery_predecessors = retain_mastery_backup_tasks(self.tasks)
+            mastery_predecessors = retain_mastery_backup_tasks(
+                self.tasks, self.__dict__.setdefault("waiting_group_shifts", [])
+            )
             for task in self.tasks:
                 if getattr(task, "run_order_restore_pending", False):
                     task.prepare_run_order_restoration()
