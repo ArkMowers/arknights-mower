@@ -55,6 +55,7 @@ const config_store = useConfigStore()
 const logBackground = useLogBackgroundStore()
 const workspace = useLogWorkspaceStore()
 const startup_reveal = ref(!workspace.visited)
+const page_visible = ref(!document.hidden)
 const { taskQueueDisplay } = storeToRefs(useGuiStore())
 const { operators, plan } = storeToRefs(usePlanStore())
 const operator_names = computed(() => operators.value.map((operator) => operator.value))
@@ -137,6 +138,8 @@ watch(
   }
 )
 const task_table_visible = computed(() => show_task_table.value && task_list.value.length > 0)
+const screenshot_entry = use_panel_entry(has_screenshot)
+const queue_entry = use_panel_entry(task_table_visible)
 const log_layout = ref(null)
 const action_bar = ref(null)
 const show_view_controls = ref(false)
@@ -167,11 +170,41 @@ let cancel_layout_resize
 let screenshot_aspect = workspace.screenshot?.aspect || 16 / 9
 let mobile_screenshot_height = workspace.mobileScreenshotHeight
 let railWidthReveal
+let queueRevealAnimations = []
 const STARTUP_REVEAL = { duration: 240, easing: 'ease' }
 const startupReveal = `${STARTUP_REVEAL.duration}ms ${STARTUP_REVEAL.easing}`
 let log_view_transition
 let animate_next_screenshot = false
 let animate_next_daily_status = false
+
+function reduced_log_motion() {
+  return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+}
+
+function use_panel_entry(visible) {
+  const motion = ref('')
+  let shown = false
+  watch(
+    [visible, startup_reveal, page_visible],
+    ([present, firstVisit, active]) => {
+      if (!present || !firstVisit || !active) {
+        motion.value = ''
+      } else if (!shown) {
+        shown = true
+        motion.value = reduced_log_motion() ? 'fade' : mobile.value ? '' : 'expand'
+      }
+    },
+    { immediate: true, flush: 'sync' }
+  )
+  return motion
+}
+
+function cancel_log_entry_animations() {
+  railWidthReveal?.cancel()
+  railWidthReveal = undefined
+  for (const animation of queueRevealAnimations) animation?.cancel()
+  queueRevealAnimations = []
+}
 
 function finish_log_view_transition() {
   if (!log_view_transition) return
@@ -181,15 +214,16 @@ function finish_log_view_transition() {
   void commit()
 }
 
-function transition_log_view(update) {
+function transition_log_view(update, { panel } = {}) {
   finish_log_view_transition()
   const pane = log_layout.value
-  const target = pane?.startViewTransition ? pane : document
+  const target = !panel && pane?.startViewTransition ? pane : document
+  const reduced = reduced_log_motion()
   if (
     !pane ||
     !target.startViewTransition ||
     document.hidden ||
-    globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ||
+    (reduced && !panel) ||
     !globalThis.CSS?.supports('selector(:active-view-transition-type(mower-log))')
   ) {
     update()
@@ -205,7 +239,16 @@ function transition_log_view(update) {
   }
 
   try {
-    const transition = target.startViewTransition({ update: commit, types: ['mower-log'] })
+    const types = ['mower-log']
+    if (panel && !reduced) {
+      types.push('mower-log-layout')
+      const changesRail =
+        panel === 'screenshot'
+          ? !task_table_visible.value
+          : !has_screenshot.value && task_list.value.length > 0
+      if (rail_layout.value && changesRail) types.push('mower-log-rail')
+    }
+    const transition = target.startViewTransition({ update: commit, types })
     log_view_transition = { transition, commit }
     void transition.ready.catch(() => {})
     const release = () => {
@@ -222,6 +265,7 @@ function transition_log_view(update) {
 const rail_layout = ref(workspace.wideLayout && !mobile.value)
 const rail_active = computed(() => has_screenshot.value || task_table_visible.value)
 const rail_mode = computed(() => rail_layout.value && rail_active.value && !mobile.value)
+const rail_entry = use_panel_entry(rail_mode)
 
 function apply_rail_layout(container) {
   const { width, height } = fitRailLayout(
@@ -466,10 +510,13 @@ const screenshotPreview = createScreenshotPreview({
     latest_screenshot_url = url
     if (url && animate_next_screenshot) {
       animate_next_screenshot = false
-      transition_log_view(() => {
-        if (sc_preview.value && !document.hidden && latest_screenshot_url === url)
-          sc_blob.value = url
-      })
+      transition_log_view(
+        () => {
+          if (sc_preview.value && !document.hidden && latest_screenshot_url === url)
+            sc_blob.value = url
+        },
+        { panel: 'screenshot' }
+      )
     } else {
       sc_blob.value = url
     }
@@ -496,16 +543,17 @@ watch(sc_blob, (url, previous) => {
   if (!url) railWidthReveal?.cancel()
   const container = log_layout.value
   const oldWidth =
-    startup_reveal.value && url && !previous && rail_mode.value && container?.animate
+    screenshot_entry.value === 'expand' && url && !previous && rail_mode.value && container?.animate
       ? globalThis.getComputedStyle?.(container).getPropertyValue('--log-rail-track').trim()
       : null
   nextTick(() => {
     apply_log_layout()
     if (
       !oldWidth ||
+      log_layout.value !== container ||
+      screenshot_entry.value !== 'expand' ||
       !rail_mode.value ||
-      !container?.animate ||
-      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      reduced_log_motion()
     )
       return
     const width = container.style.getPropertyValue('--log-rail-w')
@@ -554,19 +602,20 @@ watch(
       if (task_queue.value !== table) return
       apply_log_layout()
       if (
-        !startup_reveal.value ||
+        queue_entry.value !== 'expand' ||
         mobile.value ||
         !table.animate ||
         rail_mode.value ||
-        globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        reduced_log_motion()
       )
         return
       const height = table.getBoundingClientRect().height / logLayoutZoom(table)
       if (!height) return
-      table.animate([{ height: '0px' }, { height: `${height}px` }], STARTUP_REVEAL)
-      log_layout.value
-        ?.querySelector('.log-resizer-task')
-        ?.animate?.([{ height: '0px' }, { height: `${RESIZER_HEIGHT}px` }], STARTUP_REVEAL)
+      const handle = log_layout.value?.querySelector('.log-resizer-task')
+      queueRevealAnimations = [
+        table.animate([{ height: '0px' }, { height: `${height}px` }], STARTUP_REVEAL),
+        handle?.animate?.([{ height: '0px' }, { height: `${RESIZER_HEIGHT}px` }], STARTUP_REVEAL)
+      ]
     })
   },
   { flush: 'post' }
@@ -680,7 +729,15 @@ function refresh_visible_status() {
   void get_running()
 }
 
-function updatePageVisibility() {
+function updatePageVisibility(event) {
+  if (event && document.hidden) {
+    startup_reveal.value = false
+    animate_next_screenshot = false
+    animate_next_daily_status = false
+    cancel_log_entry_animations()
+    finish_log_view_transition()
+  }
+  page_visible.value = !document.hidden
   updateScreenshotPreview()
   clearInterval(runningTimer)
   schedule_daily_status()
@@ -720,7 +777,7 @@ onUnmounted(() => {
   if (!daily_status_enabled.value) daily_status.value = null
   task_dialog_active = false
   cancel_layout_resize?.()
-  railWidthReveal?.cancel()
+  cancel_log_entry_animations()
   stop_task_polling()
   clearInterval(runningTimer)
   stop_daily_status()
@@ -819,13 +876,13 @@ function toggle_log_view({ className, state }) {
   }
   if (className === 'screenshot-toggle') {
     animate_next_screenshot = enabled
-    if (!enabled && has_screenshot.value) transition_log_view(update)
+    if (!enabled && has_screenshot.value) transition_log_view(update, { panel: 'screenshot' })
     else update()
   } else if (
     className === 'task-table-toggle' &&
     (task_list.value.length || plan_condition.value.length)
   ) {
-    transition_log_view(update)
+    transition_log_view(update, { panel: 'queue' })
   } else if (className === 'daily-tasks-toggle') {
     const wide = daily_status_always_visible.value
     const available = running.value && hasDailyStatusTasks(config_store)
@@ -1148,7 +1205,10 @@ async function db_delete(keys) {
         'with-screenshot': has_screenshot,
         'has-tasks': task_table_visible,
         'log-pane--rail': rail_mode,
-        'log-pane--reveal': startup_reveal && !mobile
+        'log-pane--reveal-screenshot': screenshot_entry,
+        'log-pane--expand-screenshot': screenshot_entry === 'expand',
+        'log-pane--reveal-queue': queue_entry,
+        'log-pane--expand-rail': rail_entry === 'expand'
       }"
       aria-label="运行日志"
       @animationend.self="apply_log_layout"
@@ -1862,32 +1922,27 @@ async function db_delete(keys) {
     --log-task-row: auto;
     --log-task-handle: auto;
   }
+  &.log-pane--expand-screenshot {
+    animation: reveal-log-screenshot var(--log-startup-reveal);
+  }
 
-  @media (prefers-reduced-motion: no-preference) {
-    &.log-pane--reveal.with-screenshot {
-      animation: reveal-log-screenshot var(--log-startup-reveal);
-    }
+  &.log-pane--expand-rail {
+    animation: reveal-log-rail var(--log-startup-reveal);
 
-    &.log-pane--reveal.log-pane--rail {
-      animation: reveal-log-rail var(--log-startup-reveal);
-
-      &.with-screenshot {
-        animation:
-          reveal-log-screenshot var(--log-startup-reveal),
-          reveal-log-rail var(--log-startup-reveal);
-      }
+    &.log-pane--expand-screenshot {
+      animation:
+        reveal-log-screenshot var(--log-startup-reveal),
+        reveal-log-rail var(--log-startup-reveal);
     }
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .log-pane--reveal .log-screenshot {
-    animation: reveal-log-preview var(--log-startup-reveal);
-  }
+.log-pane--reveal-screenshot .log-screenshot {
+  animation: reveal-log-preview var(--log-startup-reveal);
+}
 
-  .log-pane--reveal .task-table-scroll {
-    animation: reveal-log-queue var(--log-startup-reveal);
-  }
+.log-pane--reveal-queue .task-table-scroll {
+  animation: reveal-log-queue var(--log-startup-reveal);
 }
 
 /* 宽屏右栏：截图在上，任务列表铺满下方，日志占左侧整列。 */
@@ -3245,6 +3300,76 @@ html:active-view-transition-type(mower-log) {
 .log-pane:active-view-transition-type(mower-log),
 html:active-view-transition-type(mower-log) .log-pane {
   view-transition-name: mower-log-pane;
+}
+
+html:active-view-transition-type(mower-log-layout) .log-pane {
+  view-transition-name: none;
+
+  & .log {
+    view-transition-name: mower-log-content;
+  }
+
+  & .log-screenshot {
+    view-transition-name: mower-log-preview;
+  }
+
+  & .task-table-scroll {
+    view-transition-name: mower-log-queue;
+  }
+
+  & :is(.plan-condition, .log-resizer) {
+    view-transition-name: match-element;
+  }
+}
+
+html:active-view-transition-type(mower-log-layout) {
+  &::view-transition-group(*) {
+    animation-duration: 240ms;
+    animation-timing-function: ease;
+  }
+
+  &::view-transition-image-pair(*) {
+    overflow: clip;
+  }
+
+  &::view-transition-old(*) {
+    display: none;
+    animation: none;
+  }
+
+  &::view-transition-new(*) {
+    animation: none;
+    mix-blend-mode: normal;
+    height: 100%;
+    object-fit: none;
+    object-position: left top;
+  }
+
+  &::view-transition-new(*):only-child {
+    animation: mower-log-panel-open 240ms ease both;
+  }
+
+  &::view-transition-old(*):only-child {
+    display: block;
+    animation: mower-log-panel-open 240ms ease reverse both;
+  }
+}
+
+html:active-view-transition-type(mower-log-rail) {
+  &::view-transition-new(*),
+  &::view-transition-old(*) {
+    --log-panel-closed: inset(0 0 0 100%);
+  }
+}
+
+@keyframes mower-log-panel-open {
+  from {
+    clip-path: var(--log-panel-closed, inset(0 0 100% 0));
+  }
+
+  to {
+    clip-path: inset(0);
+  }
 }
 
 :is(html, .log-pane):active-view-transition-type(mower-log)::view-transition {

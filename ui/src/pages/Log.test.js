@@ -1255,36 +1255,58 @@ describe('log page', () => {
     'opens the first task queue at its saved height with mobile=%s',
     async (mobile) => {
       state.mobile.value = mobile
+      state.mower.refs.task_list.value = [
+        { time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }
+      ]
       const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
       const styles = new Map()
+      const queueReveal = { cancel: vi.fn() }
+      const handleReveal = { cancel: vi.fn() }
       const queue = {
-        animate: vi.fn(),
+        animate: vi.fn(() => queueReveal),
         getBoundingClientRect: () => ({
           top: 0,
           height: parseInt(styles.get('--log-task-h') ?? '240px', 10)
         })
       }
+      const handle = { animate: vi.fn(() => handleReveal) }
       component.log_layout.value = {
         clientWidth: 720,
         getBoundingClientRect: () => ({ top: 0, bottom: 720, height: 720 }),
-        querySelector: (selector) => (selector === '.task-table-scroll' ? queue : null),
+        querySelector: (selector) =>
+          ({ '.task-table-scroll': queue, '.log-resizer-task': handle })[selector] ?? null,
         style: {
           setProperty: (name, value) => styles.set(name, value),
           removeProperty: (name) => styles.delete(name)
         }
       }
+      state.client.get.mockResolvedValue({ data: {} })
+      onMounted.mock.lastCall[0]()
       component.layout_preference.task_height = 132
       component.task_queue.value = queue
       await nextTick()
       await nextTick()
 
       expect(styles.get('--log-task-h')).toBe('132px')
-      if (mobile) expect(queue.animate).not.toHaveBeenCalled()
-      else
+      if (mobile) {
+        expect(queue.animate).not.toHaveBeenCalled()
+        expect(handle.animate).not.toHaveBeenCalled()
+      } else {
         expect(queue.animate).toHaveBeenCalledExactlyOnceWith(
           [{ height: '0px' }, { height: '132px' }],
           expect.objectContaining({ duration: expect.any(Number) })
         )
+        expect(handle.animate).toHaveBeenCalledOnce()
+
+        setHidden(true)
+        setHidden(false)
+        await nextTick()
+        expect(queueReveal.cancel).toHaveBeenCalledOnce()
+        expect(handleReveal.cancel).toHaveBeenCalledOnce()
+        expect(queue.animate).toHaveBeenCalledOnce()
+        expect(handle.animate).toHaveBeenCalledOnce()
+      }
+      onUnmounted.mock.lastCall[0]()
     }
   )
 
@@ -2247,6 +2269,80 @@ describe('log page', () => {
     return { callbacks, skipTransition }
   }
 
+  it.each([
+    [false, ['mower-log', 'mower-log-layout', 'mower-log-rail']],
+    [true, ['mower-log']]
+  ])(
+    'uses the selected motion for task and screenshot controls (reduced=%s)',
+    async (reduced, types) => {
+      vi.stubGlobal('matchMedia', () => ({ matches: reduced }))
+      state.realPreview = true
+      state.mower.refs.task_list.value = [
+        { time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }
+      ]
+      localStorage.getItem.mockImplementation((key) => (key === 'sc_preview' ? 'false' : null))
+      const decoding = Promise.withResolvers()
+      vi.stubGlobal(
+        'Image',
+        class {
+          naturalWidth = 4
+          naturalHeight = 3
+          decode() {
+            return decoding.promise
+          }
+        }
+      )
+      state.client.get.mockImplementation(async (url) =>
+        url.endsWith('/screenshot/latest')
+          ? { status: 200, data: new Blob(['frame']), headers: {} }
+          : { data: {} }
+      )
+      const { callbacks } = deferViewTransitions()
+      const { find, page } = mountWidePane()
+      onMounted.mock.lastCall[0]()
+
+      const task = viewControl(find, '任务列表')
+      task.props.onClick()
+      expect(document.startViewTransition).toHaveBeenLastCalledWith({
+        update: expect.any(Function),
+        types
+      })
+      await callbacks[0]()
+      expect(task.props['aria-pressed']).toBe(false)
+
+      const screenshot = viewControl(find, '预览截图')
+      screenshot.props.onClick()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(document.startViewTransition).toHaveBeenCalledTimes(1)
+      expect(page.sc_blob).toBe('')
+      decoding.resolve()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(document.startViewTransition).toHaveBeenLastCalledWith({
+        update: expect.any(Function),
+        types
+      })
+      await callbacks[1]()
+      expect(page.sc_blob).toMatch(/^blob:/)
+
+      screenshot.props.onClick()
+      expect(document.startViewTransition).toHaveBeenCalledTimes(3)
+      expect(document.startViewTransition).toHaveBeenLastCalledWith({
+        update: expect.any(Function),
+        types
+      })
+      await callbacks[2]()
+      expect(page.sc_blob).toBe('')
+
+      screenshot.props.onClick()
+      setHidden(true)
+      setHidden(false)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(page.sc_blob).toMatch(/^blob:/)
+      expect(document.startViewTransition).toHaveBeenCalledTimes(3)
+      onUnmounted.mock.lastCall[0]()
+    }
+  )
+
   it('keeps the latest task visibility when a transition is interrupted', async () => {
     state.mower.refs.task_list.value = [{ time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }]
     const { callbacks, skipTransition } = deferViewTransitions()
@@ -2525,7 +2621,7 @@ describe('log page', () => {
     page.apply_log_layout()
     await nextTick()
     expect(classes(pane)).toContain('log-pane--rail')
-    expect(classes(pane)).toContain('log-pane--reveal')
+    expect(classes(pane)).toContain('log-pane--reveal-queue')
     expect(pane.style.setProperty).toHaveBeenCalledWith('--log-rail-w', '480px')
     expect(pane.style.removeProperty).toHaveBeenCalledWith('--log-sc-h')
 
@@ -2544,7 +2640,7 @@ describe('log page', () => {
     await nextTick()
     expect(classes(pane)).not.toContain('log-pane--rail')
     expect(classes(pane.parent)).toContain('home-container--mobile')
-    expect(classes(pane)).not.toContain('log-pane--reveal')
+    expect(classes(pane)).not.toContain('log-pane--reveal-queue')
 
     state.mobile.value = false
     state.mower.refs.task_list.value = []
@@ -2560,6 +2656,66 @@ describe('log page', () => {
       data: url.endsWith('/daily-status') ? response() : {}
     }))
   }
+
+  it('reveals each panel only on its first appearance in the initial visit', async () => {
+    state.mobile.value = true
+    let reduced = false
+    vi.stubGlobal('matchMedia', () => ({ matches: reduced }))
+    const { classes, pane, page } = mountWidePane(390)
+    page.sc_blob = 'blob:preview'
+    await nextTick()
+    expect(classes(pane)).not.toContain('log-pane--reveal-screenshot')
+
+    reduced = true
+    const task = { time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }
+    state.mower.refs.task_list.value = [task]
+    await nextTick()
+    expect(classes(pane)).toContain('log-pane--reveal-queue')
+    expect(classes(pane)).not.toContain('log-pane--reveal-screenshot')
+
+    page.sc_blob = ''
+    state.mower.refs.task_list.value = []
+    await nextTick()
+    page.sc_blob = 'blob:next-frame'
+    state.mower.refs.task_list.value = [task]
+    await nextTick()
+    expect(classes(pane)).not.toContain('log-pane--reveal-queue')
+    expect(classes(pane)).not.toContain('log-pane--reveal-screenshot')
+  })
+
+  it('animates the first visible visit but restores a screenshot without replay after hiding', async () => {
+    state.realPreview = true
+    document.hidden = true
+    vi.stubGlobal(
+      'Image',
+      class {
+        naturalWidth = 4
+        naturalHeight = 3
+        async decode() {}
+      }
+    )
+    state.client.get.mockImplementation(async (url) =>
+      url.endsWith('/screenshot/latest')
+        ? { status: 200, data: new Blob(['frame']), headers: {} }
+        : { data: {} }
+    )
+    const { classes, pane, page } = mountWidePane()
+    onMounted.mock.lastCall[0]()
+    expect(page.sc_blob).toBe('')
+
+    setHidden(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(page.sc_blob).toMatch(/^blob:/)
+    expect(classes(pane)).toContain('log-pane--reveal-screenshot')
+
+    setHidden(true)
+    expect(page.sc_blob).toBe('')
+    setHidden(false)
+    expect(page.sc_blob).toMatch(/^blob:/)
+    await nextTick()
+    expect(classes(pane)).not.toContain('log-pane--reveal-screenshot')
+    onUnmounted.mock.lastCall[0]()
+  })
 
   it.each([false, true])(
     'restores the whole log workspace before refresh replies after a route return (mobile=%s)',
@@ -2612,7 +2768,8 @@ describe('log page', () => {
       expect(returned.all().some((target) => target.props.src === 'blob:first-frame')).toBe(true)
       expect(returned.all().some((target) => target.props.class === 'task-table-scroll')).toBe(true)
       expect(dailyStrip(returned).items()).toEqual([['读取基报', 'done']])
-      expect(returned.classes(returned.pane)).not.toContain('log-pane--reveal')
+      expect(returned.classes(returned.pane)).not.toContain('log-pane--reveal-screenshot')
+      expect(returned.classes(returned.pane)).not.toContain('log-pane--reveal-queue')
       expect(state.mower.start_task_polling).toHaveBeenCalledTimes(2)
       expect(state.mower.stop_task_polling).toHaveBeenCalledOnce()
       returned.page.sc_preview = false
@@ -2644,6 +2801,40 @@ describe('log page', () => {
         ])
     return { strip, items }
   }
+
+  it('applies a daily status reply without replaying the interrupted reveal after tab return', async () => {
+    vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    localStorage.getItem.mockImplementation((key) =>
+      key === 'log_show_daily_tasks' ? 'false' : null
+    )
+    const replies = []
+    state.client.get.mockImplementation((url, options) => {
+      if (!url.endsWith('/daily-status')) return Promise.resolve({ data: {} })
+      const reply = Promise.withResolvers()
+      replies.push({ ...reply, signal: options.signal })
+      return reply.promise
+    })
+    deferViewTransitions()
+    const workspace = mountWidePane()
+    onMounted.mock.lastCall[0]()
+    viewControl(workspace.find, '今日任务').props.onClick()
+    await nextTick()
+    expect(replies).toHaveLength(1)
+
+    setHidden(true)
+    expect(replies[0].signal.aborted).toBe(true)
+    setHidden(false)
+    expect(replies).toHaveLength(2)
+    replies[1].resolve({
+      data: { game_day: '2026-11-08', source: 'live', records: { report: 'done' } }
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(dailyStrip(workspace).items()).toEqual([['读取基报', 'done']])
+    expect(document.startViewTransition).not.toHaveBeenCalled()
+    onUnmounted.mock.lastCall[0]()
+  })
 
   it.each([false, true])(
     'clears cached daily status when leaving during a hide transition (mobile=%s)',
