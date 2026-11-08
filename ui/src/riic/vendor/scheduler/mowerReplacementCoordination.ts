@@ -1,3 +1,4 @@
+import {mowerCoordinationReturn} from './mowerCoordinationReturn'
 import {mowerForcedGroupCoverReservations,mowerHeldRestGroups} from './mowerBackupGroupTasks'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
@@ -121,7 +122,7 @@ function materializeCoordinationMoods(original:MowerSchedulingData,shadow:MowerS
  }
  return true
 }
-/** 连接组中的在岗干员须始终高于个人下限，直到入宿主班全部恢复至个人上限。 */
+/** Keep dependent workers above their floors until the requesting units can legally return. */
 export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[],options:MowerRestingOptions):boolean {
  if(recalled.size&&(mowerUrgentRecallBlocked(original,candidates,options.urgentRecoveryPendingSupporters)||[...recalled].some(name=>name in original.urgentRecoverySupporters)))return false
  for(const name of recalled){
@@ -133,38 +134,51 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
  if(options.urgentExhaust)return true
  if(!mowerRecallMoodAdmissible(original,recalled,candidates,options.requestNames))return false
  if(!options.coordinationRates)return false
- let connected=mowerReplacementDependencyNames(original,[...candidates,...recalled])
- // Beds are shared resources too; do not assume an unrelated resident releases a bed early.
- for(const bed of admitted.allDorms())if(bed.name&&admitted.operators[bed.name]?.isHigh())connected.add(bed.name)
- connected=mowerReplacementDependencyNames(original,connected)
- const shadow=projectMowerArrangements(admitted,[])
+ const connected=mowerReplacementDependencyNames(original,[...candidates,...recalled])
+ let shadow=projectMowerArrangements(admitted,[])
  if(!materializeCoordinationMoods(original,shadow,options.coordinationMoods))return false
- const waiting=[...connected].map(name=>shadow.operators[name]).filter((op):op is MowerOperatorState=>!!op?.isHigh()&&op.isResting()&&!op.workaholic&&!op.room.startsWith('dorm'))
- if(!waiting.length)return false
- // Fixed staffing is deliberately conservative: no hypothetical future rescue is credited.
- // Every physical actor participates in mood boundaries because global skills affect rates.
- const actors=Object.values(shadow.operators).filter(op=>op.currentRoom)
- const working=actors.filter(op=>connected.has(op.name)&&!op.isResting()&&!op.workaholic)
+ const requestNames=options.requestNames??candidates,groups=original.shiftRequestGroups(requestNames)
+ const units: string[][]=groups.map(group=>original.shiftGroupMembers(group).filter(name=>original.isGroupShiftAnchor(original.operators[name]!,group)))
+ for(const name of requestNames){const op=original.operators[name];if(op?.isHigh()&&!op.workaholic&&!op.room.startsWith('dorm')&&!original.canStandby(op)&&(!op.group||op.independentRest)&&!units.some(unit=>unit.includes(name)))units.push([name])}
+ if(!units.length||units.some(names=>!names.length||names.some(name=>!shadow.operators[name]?.isResting())))return false
+ const remaining=new Set(units.map((_,index)=>index))
  const boundaries=(op:MowerOperatorState)=>[0,4,8,12,16,18,20,24,op.lowerLimit,op.upperLimit]
- for(let step=0;step<actors.length*16+1;step++){
+ // Each completed unit changes staffing at most once. Between returns every
+ // actor traverses the same finite mood boundaries as the fixed-staffing forecast.
+ const maximumSteps=(units.length+1)*(Object.keys(shadow.operators).length*16+1)+units.length
+ for(let step=0;step<maximumSteps;step++){
+  // All physical actors still contribute global skill and recovery boundaries.
+  const actors=Object.values(shadow.operators).filter(op=>op.currentRoom)
+  const working=actors.filter(op=>connected.has(op.name)&&!op.isResting()&&!op.workaholic)
   if(working.some(op=>op.mood<=op.lowerLimit+1e-8))return false
-  const recovered=waiting.every(op=>op.mood>=op.upperLimit-1e-8)
-  if(recovered)return true
   const rates=options.coordinationRates(shadow);if(!rates)return false
-  let hours=Infinity
   const velocities=new Map<string,number>()
   for(const op of actors){
    const rate=op.isResting()?rates.recovery[op.name]:rates.work[op.name]
    if(rate===undefined||!Number.isFinite(rate)||op.isResting()&&rate<0)return false
-   const velocity=op.isResting()?rate:-rate;velocities.set(op.name,velocity)
+   velocities.set(op.name,op.isResting()?rate:-rate)
+  }
+  const activeIndices=[...remaining],activeUnits=activeIndices.map(index=>units[index]!)
+  const returning=mowerCoordinationReturn(shadow,activeUnits,rates,options)
+  if(returning&&returning.task.timeMicros<=shadow.nowMicros){
+   const next=projectMowerArrangements(shadow,[returning.task.plan])
+   if(Object.values(next.operators).some(op=>connected.has(op.name)&&op.currentRoom&&!op.isResting()&&!op.workaholic&&op.mood<=op.lowerLimit+1e-8))return false
+   for(const index of returning.units)remaining.delete(activeIndices[index]!)
+   if(!remaining.size)return true
+   shadow=next
+   continue
+  }
+  let hours=returning?(returning.task.timeMicros-shadow.nowMicros)/3_600_000_000:Infinity
+  for(const op of actors){
+   const velocity=velocities.get(op.name)!
    if(velocity===0)continue
-   const next=boundaries(op).filter(value=>velocity>0?value>op.mood+1e-8:value<op.mood-1e-8)
-   for(const value of next)hours=Math.min(hours,(value-op.mood)/velocity)
+   for(const value of boundaries(op).filter(value=>velocity>0?value>op.mood+1e-8:value<op.mood-1e-8))hours=Math.min(hours,(value-op.mood)/velocity)
   }
   if(!Number.isFinite(hours)||hours<=0)return false
   for(const op of actors){op.mood=Math.max(0,Math.min(24,op.mood+velocities.get(op.name)!*hours));op.timeStampMicros=shadow.nowMicros+toMowerMicros(hours)}
   shadow.nowMicros+=toMowerMicros(hours)
  }
+
  return false
 }
 

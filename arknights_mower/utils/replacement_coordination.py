@@ -1,7 +1,7 @@
 """共享替班的完整交接、首选恢复及保守召回检查。"""
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import isfinite
 
 from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
@@ -305,6 +305,150 @@ def ordinary_recall_mood_admissible(
     return True
 
 
+def ordinary_return_ready_time(forecast, task, *, now, recovery_rates=None):
+    """把回班节点推进到真实恢复准入时点，未知要求不能由任务存在代替。"""
+    from arknights_mower.utils.backup_group_tasks import forced_work_return
+    from arknights_mower.utils.group_recovery import (
+        group_recovery_deadline,
+        observed_recovery_deadline,
+    )
+    from arknights_mower.utils.operation_timing import estimate_dorm_minutes
+    from arknights_mower.utils.recovery_execution import (
+        arrangement_recovery_required_members,
+        recovery_ready_for_arrangement,
+    )
+
+    calculated = getattr(forecast, "mood_calculation_enabled", False)
+    at = max(now, task.time)
+    while True:
+        preview = deepcopy(forecast, {id(forecast.eval_model): forecast.eval_model})
+        if not calculated:
+            for name, rate in (recovery_rates or {}).items():
+                op = preview.operators.get(name)
+                if (
+                    op is not None
+                    and op.is_resting()
+                    and rate is not None
+                    and isfinite(rate)
+                    and rate >= 0
+                ):
+                    op.mood = min(
+                        op.upper_limit,
+                        op.mood + rate * (at - now).total_seconds() / 3600,
+                    )
+                    op.time_stamp = at
+        required = set()
+        for room, row in task.plan.items():
+            if room.startswith("dorm"):
+                continue
+            for index, name in enumerate(row):
+                op = preview.operators.get(name)
+                if op is None or (op.current_room, op.current_index) == (room, index):
+                    continue
+                if (op.room, op.index) == (room, index) and forced_work_return(
+                    preview, name
+                ):
+                    continue
+                required.update(
+                    arrangement_recovery_required_members(
+                        preview,
+                        name,
+                        now=at,
+                        require_mood_limit=getattr(task, "mood_limit_return_name", None)
+                        != name,
+                    )
+                )
+        next_times = []
+        for name in required:
+            op = preview.operators[name]
+            ready = (
+                (mood := preview.calculated_mood(name, at)) is not None
+                and mood >= op.upper_limit
+                if calculated
+                else recovery_ready_for_arrangement(
+                    preview, name, sampled_after=None, now=at
+                )
+            )
+            if ready:
+                continue
+            due = observed_recovery_deadline(forecast, name, now)
+            if due is not None and not calculated:
+                due -= timedelta(minutes=estimate_dorm_minutes(op.current_room, 1.5))
+            explicit = op.rest_in_full or preview.has_rest_mood_limit(name)
+            if not explicit and op.group:
+                _, group_due = group_recovery_deadline(preview, op.group, now=at)
+                if group_due is not None and group_due > at:
+                    due = min(due, group_due) if due is not None else group_due
+            if due is None or due <= at:
+                return None
+            next_times.append(due)
+        if not next_times:
+            return at
+        at = min(next_times)
+
+
+def ordinary_recall_return_task(
+    forecast,
+    requested,
+    targets,
+    *,
+    now,
+    reserved_names=(),
+    reserved_slots=(),
+    recovery_rates=None,
+):
+    """用真实回班规划验证本轮请求的完整交接，不借用无关离宿事件。"""
+    from arknights_mower.utils.scheduler_task import TaskTypes, plan_metadata
+
+    tasks = plan_metadata(
+        forecast,
+        [],
+        excluded_names=set(forecast.operators) - set(requested),
+        now=now,
+    )
+    complete = []
+    for task in tasks:
+        if task.type != TaskTypes.SHIFT_ON:
+            continue
+        returning = {
+            name
+            for room, row in task.plan.items()
+            for index, name in enumerate(row)
+            if name in targets
+            and (room, index)
+            == (forecast.operators[name].room, forecast.operators[name].index)
+        }
+        if not returning:
+            continue
+        if any(
+            name != "Current"
+            and (name in reserved_names or (room, index) in reserved_slots)
+            for room, row in task.plan.items()
+            for index, name in enumerate(row)
+        ):
+            continue
+        units = [
+            {
+                member
+                for member in targets
+                if member == name
+                or not forecast.operators[name].independent_rest
+                and forecast.operators[name].group
+                and not forecast.operators[member].independent_rest
+                and forecast.operators[member].group == forecast.operators[name].group
+            }
+            for name in returning
+        ]
+        if all(unit <= returning for unit in units):
+            ready = ordinary_return_ready_time(
+                forecast, task, now=now, recovery_rates=recovery_rates
+            )
+            if ready is not None:
+                task.time = ready
+                complete.append((task, returning))
+    return min(complete, key=lambda item: item[0].time) if complete else None
+
+
 def recall_can_sustain(
     original,
     admitted,
@@ -315,6 +459,8 @@ def recall_can_sustain(
     now=None,
     urgent=False,
     request_names=None,
+    reserved_names=(),
+    reserved_slots=(),
 ):
     """普通召回检查续航，用尽交接仅保留明确恢复要求。"""
     from arknights_mower.utils.group_recovery import group_recovery_deadline
@@ -368,93 +514,122 @@ def recall_can_sustain(
     def mood_at_check(op):
         return dorm_candidate_mood(original, op.name, now)
 
-    connected = replacement_dependencies(
-        original,
-        [
-            *candidates,
-            *recalled,
-            *(bed.name for bed in admitted.all_dorms() if bed.name),
-        ],
-    )
-    if getattr(original, "mood_calculation_enabled", False):
-        forecast = deepcopy(admitted, {id(admitted.eval_model): admitted.eval_model})
-        horizon = now
-        working = []
-        for name in connected:
+    requested = set(candidates if request_names is None else request_names)
+    for group in admitted.shift_request_groups(requested):
+        requested.update(admitted.shift_group_members(group))
+    targets = {
+        name
+        for name in requested
+        if (op := admitted.operators.get(name)) is not None
+        and op.is_high()
+        and not op.room.startswith("dorm")
+        and not op.workaholic
+        and not admitted._can_standby(op)
+        and (not op.group or op.independent_rest or admitted.is_group_shift_anchor(op))
+    }
+    if not targets:
+        return False
+    connected = replacement_dependencies(original, [*candidates, *recalled])
+    forecast = deepcopy(admitted, {id(admitted.eval_model): admitted.eval_model})
+    calculated = getattr(original, "mood_calculation_enabled", False)
+    if not calculated:
+        if rates is None:
+            from arknights_mower.utils.recall_estimates import estimated_recall_rates
+
+            rates = estimated_recall_rates(original, admitted, now=now)
+        work, recovery = rates
+        for name in connected | requested:
             op = forecast.operators.get(name)
+            observed = original.operators.get(name)
             if op is None or not op.current_room:
                 continue
-            mood = forecast.calculated_mood(name, now)
+            mood = mood_at_check(observed) if observed is not None else None
             if mood is None:
                 return False
-            if (
-                op.is_resting()
-                and op.is_high()
-                and not op.workaholic
-                and not op.room.startswith("dorm")
-                and mood < op.upper_limit
-            ):
-                deadline = forecast.calculated_mood_deadline(name, op.upper_limit, now)
-                if deadline is None:
+            op.mood, op.time_stamp = mood, now
+            if op.is_working() and not op.workaholic:
+                rate = work.get(name)
+                if rate is None or not isfinite(rate) or rate < 0:
                     return False
-                horizon = max(horizon, deadline)
-            elif op.is_working() and not op.workaholic:
-                rate = forecast.calculated_mood_rate(name, now)
-                if rate is None or mood <= op.lower_limit:
+                op.depletion_rate = rate
+    pending = set(targets)
+    at = now
+    while pending:
+        if not calculated:
+            for bed in forecast.all_dorms():
+                if bed.name not in requested:
+                    continue
+                op = forecast.operators[bed.name]
+                rate = recovery.get(bed.name)
+                if op.mood >= op.upper_limit:
+                    bed.time = at
+                elif op.workaholic or forecast._can_standby(op):
+                    bed.time = None
+                elif rate is None or not isfinite(rate) or rate < 0:
                     return False
-                working.append((name, op.lower_limit))
-        for name, lower in working:
-            exhausted = forecast.calculated_mood_deadline(
-                name,
-                lower,
-                now,
-                max_hours=max(0, (horizon - now).total_seconds() / 3600),
-            )
-            if exhausted is not None and exhausted <= horizon:
-                return False
-        for name, lower in working:
-            mood = forecast.calculated_mood(name, horizon)
-            if mood is None or mood <= lower:
-                return False
-        return True
-    if rates is None:
-        from arknights_mower.utils.recall_estimates import estimated_recall_rates
-
-        rates = estimated_recall_rates(original, admitted, now=now)
-    work, recovery = rates
-    horizon = 0.0
-    for name in connected:
-        op = admitted.operators.get(name)
-        observed = original.operators.get(name)
-        if op is None or not op.current_room:
-            continue
-        if observed is None or mood_at_check(observed) is None:
+                elif rate == 0:
+                    bed.time = None
+                else:
+                    bed.time = at + timedelta(
+                        hours=max(0, op.upper_limit - op.mood) / rate
+                    )
+        result = ordinary_recall_return_task(
+            forecast,
+            requested,
+            pending,
+            now=at,
+            reserved_names=reserved_names,
+            reserved_slots=reserved_slots,
+            recovery_rates=None if calculated else recovery,
+        )
+        if result is None:
             return False
-        if (
-            op.is_resting()
-            and op.is_high()
-            and not op.workaholic
-            and not op.room.startswith("dorm")
-        ):
-            rate = recovery.get(name)
-            if rate is None or not isfinite(rate) or rate <= 0:
+        task, returning = result
+        horizon = max(at, task.time)
+        hours = (horizon - at).total_seconds() / 3600
+        for name in connected:
+            op = forecast.operators.get(name)
+            if op is None or not op.is_working() or op.workaholic:
+                continue
+            if calculated:
+                mood = forecast.calculated_mood(name, at)
+                rate = forecast.calculated_mood_rate(name, at)
+                if mood is None or rate is None or mood <= op.lower_limit:
+                    return False
+                exhausted = forecast.calculated_mood_deadline(
+                    name, op.lower_limit, at, max_hours=hours
+                )
+                if exhausted is not None and exhausted <= horizon:
+                    return False
+                mood = forecast.calculated_mood(name, horizon)
+            else:
+                rate = work.get(name)
+                if rate is None or not isfinite(rate) or rate < 0:
+                    return False
+                mood = op.mood - rate * hours
+            if mood is None or mood <= op.lower_limit:
                 return False
-            horizon = max(
-                horizon, max(0, op.upper_limit - mood_at_check(observed)) / rate
-            )
-    if horizon <= 0:
-        return True
-    for name in connected:
-        op = admitted.operators.get(name)
-        if op is None or not op.is_working() or op.workaholic:
-            continue
-        rate = work.get(name)
-        if (
-            rate is None
-            or not isfinite(rate)
-            or rate < 0
-            or mood_at_check(original.operators[name]) - rate * horizon
-            <= op.lower_limit
-        ):
-            return False
+        if not calculated:
+            for name in connected | requested:
+                op = forecast.operators.get(name)
+                if op is None or not op.current_room:
+                    continue
+                rate = recovery.get(name) if op.is_resting() else work.get(name)
+                if rate is not None and isfinite(rate):
+                    op.mood = min(
+                        op.upper_limit,
+                        op.mood + (rate if op.is_resting() else -rate) * hours,
+                    )
+                    op.time_stamp = horizon
+        # 到达真实完整回班节点后再改变驻员，后续单位按新驻员继续预演。
+        forecast = forecast.project_arrangements([task.plan], now=horizon)
+        for name in connected | requested:
+            op = forecast.operators.get(name)
+            if op is None or not op.is_working() or op.workaholic:
+                continue
+            mood = forecast.calculated_mood(name, horizon) if calculated else op.mood
+            if mood is None or mood <= op.lower_limit:
+                return False
+        pending.difference_update(returning)
+        at = horizon
     return True

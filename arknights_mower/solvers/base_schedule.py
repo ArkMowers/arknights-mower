@@ -1945,6 +1945,8 @@ class BaseSchedulerSolver(
             urgent=urgent,
             now=now,
             request_names=request_names,
+            reserved_names=reserved,
+            reserved_slots=slots,
         )
 
     def _plan_exhaust_support(self, candidates, *, urgent=False, request_names=None):
@@ -2003,6 +2005,8 @@ class BaseSchedulerSolver(
                 urgent=urgent,
                 now=now,
                 request_names=request_names,
+                reserved_names=protected,
+                reserved_slots=slots,
             )
 
         protected, slots = coordination_reservations(
@@ -2186,7 +2190,9 @@ class BaseSchedulerSolver(
             return
         from arknights_mower.utils.backup_group_tasks import forced_work_return
         from arknights_mower.utils.calculated_mood import sync_model
-        from arknights_mower.utils.group_recovery import group_recovery_deadline
+        from arknights_mower.utils.recovery_execution import (
+            arrangement_recovery_required_members,
+        )
 
         now = datetime.now()
         sync_model(self.op_data, now)
@@ -2230,26 +2236,15 @@ class BaseSchedulerSolver(
                     self.op_data, name
                 ):
                     continue
-                required = (
-                    {name}
-                    if op.rest_in_full
-                    or self.op_data.has_rest_mood_limit(name)
-                    and getattr(task, "mood_limit_return_name", None) != name
-                    else set()
+                required = arrangement_recovery_required_members(
+                    self.op_data,
+                    name,
+                    now=now,
+                    require_mood_limit=getattr(task, "mood_limit_return_name", None)
+                    != name,
+                    bypass_automatic_wait=task.type == TaskTypes.EXHAUST_OFF
+                    or getattr(task, "exhaust_support", False),
                 )
-                if op.group:
-                    group_required, _ = group_recovery_deadline(
-                        self.op_data, op.group, now=now
-                    )
-                    if task.type == TaskTypes.EXHAUST_OFF or getattr(
-                        task, "exhaust_support", False
-                    ):
-                        group_required = [
-                            member
-                            for member in group_required
-                            if self.op_data.operators[member].rest_in_full
-                        ]
-                    required.update(group_required)
                 if any(
                     (mood := self.op_data.calculated_mood(member, now)) is None
                     or mood < self.op_data.operators[member].upper_limit
