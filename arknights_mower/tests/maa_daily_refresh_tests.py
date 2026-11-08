@@ -284,7 +284,9 @@ def test_shop_preparation_rechecks_start_window(
     run.module.config.conf.maa_event_shop.enable = True
     monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", MagicMock())
     monkeypatch.setattr(maa_event_shop, "weekly_plan_uses_activity", lambda *a: True)
-    monkeypatch.setattr(maa_event_shop, "select_shop", lambda *a: {})
+    monkeypatch.setattr(
+        maa_event_shop, "select_shop", lambda *a: {"activity": "测试 SS"}
+    )
     monkeypatch.setattr(EventShopNavigation, "run", MagicMock(return_value=True))
 
     def advance(*args):
@@ -317,7 +319,9 @@ def test_deferred_shop_resumes_saved_step_without_daily_gap(
     run.module.config.conf.maa_gap = 24
     monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", MagicMock())
     monkeypatch.setattr(maa_event_shop, "weekly_plan_uses_activity", lambda *a: True)
-    monkeypatch.setattr(maa_event_shop, "select_shop", lambda *a: {})
+    monkeypatch.setattr(
+        maa_event_shop, "select_shop", lambda *a: {"activity": "测试 SS"}
+    )
     monkeypatch.setattr(EventShopNavigation, "run", MagicMock(return_value=True))
     solver.skland_plan_solver = MagicMock(return_value=True)
 

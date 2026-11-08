@@ -1,8 +1,10 @@
-"""Compile verified activity UI layouts into resource-only shop navigation data."""
+"""Compile current SS identity, chapter names and currency IDs from game tables."""
 
 import json
 import math
+import re
 from pathlib import Path
+from time import time
 
 FRAME = (1920, 1080)
 LAYOUTS = Path(__file__).resolve().parents[1] / "data/event_shop_layouts.json"
@@ -48,46 +50,111 @@ def button_rect(chain):
     return left, top, right, bottom
 
 
-def compile_activity_shops(activity_table, layouts):
+def compile_activity_shops(activity_table, *, zones, stages, now=None):
+    """从活动和关卡表生成当前开放的 SS 导航信息。"""
+    basic = activity_table.get("basicInfo")
+    if (
+        not isinstance(basic, dict)
+        or not isinstance(zones, dict)
+        or not isinstance(stages, dict)
+    ):
+        raise ValueError("SS 活动生成输入不完整")
+    now = time() if now is None else now
     result = []
-    if not isinstance(layouts, dict) or len(layouts) > 128:
-        raise ValueError("活动商店布局格式无效")
-    for activity_id, layout in layouts.items():
-        info = activity_table.get("basicInfo", {}).get(activity_id)
-        if not info:
-            raise ValueError(f"活动表缺少已适配活动：{activity_id}")
-        if info.get("templateShopId") != layout["shop_id"]:
-            raise ValueError(f"活动商店身份不匹配：{activity_id}")
-        rects = [button_rect(chain) for chain in layout["chains"]]
-        if not rects or any(
-            any(abs(a - b) > 1e-3 for a, b in zip(rects[0], rect)) for rect in rects[1:]
+    zone_to_activity = activity_table.get("zoneToActivity", {})
+    for activity_id, info in basic.items():
+        if not re.fullmatch(r"act\d+(?:side|sre)", activity_id):
+            continue
+        if not info.get("hasStage") or not info.get("templateShopId"):
+            continue
+        start, end, reward_end = (
+            info["startTime"],
+            info["endTime"],
+            info["rewardEndTime"],
+        )
+        if (
+            any(type(value) is not int for value in (start, end, reward_end))
+            or not 0 < start < end <= reward_end
         ):
-            raise ValueError(f"活动商店多套布局位置不一致：{activity_id}")
-        left, top, right, bottom = rects[0]
-        title = layout["confirm_text"]
-        start, end = info["startTime"], info["rewardEndTime"]
-        if not isinstance(title, str) or not title.strip() or len(title) > 128:
-            raise ValueError(f"活动商店标题无效：{activity_id}")
-        if type(start) is not int or type(end) is not int or not 0 < start < end:
-            raise ValueError(f"活动商店开放时间无效：{activity_id}")
+            raise ValueError(f"SS 活动开放时间无效：{activity_id}")
+        if not start <= now < end:
+            continue
+        zone_ids = {
+            key for key, value in zone_to_activity.items() if value == activity_id
+        }
+        if not zone_ids or any(zone not in zones for zone in zone_ids):
+            raise ValueError(f"SS 活动缺少章节信息：{activity_id}")
+        related = [
+            stage for stage in stages.values() if stage.get("zoneId") in zone_ids
+        ]
+        if not related:
+            raise ValueError(f"SS 活动缺少关卡信息：{activity_id}")
+        names, chapters, tokens = set(), {}, set()
+        titles = {}
+        for zone_id in sorted(zone_ids):
+            zone = zones[zone_id]
+            title = next(
+                (
+                    zone.get(key)
+                    for key in ("zoneNameSecond", "zoneNameFirst", "zoneNameThird")
+                    if zone.get(key)
+                ),
+                None,
+            )
+            if not title:
+                raise ValueError(f"SS 活动章节名称为空：{activity_id}")
+            titles[zone_id] = title
+            names.add(title)
+        for stage in related:
+            title = titles[stage["zoneId"]]
+            code = stage.get("code") or ""
+            kind = "ex" if "-EX-" in code else "s" if "-S-" in code else "normal"
+            chapters.setdefault(kind, set()).add(title)
+            tokens.update(
+                item["id"]
+                for item in (stage.get("stageDropInfo") or {}).get(
+                    "displayDetailRewards"
+                )
+                or []
+                if item.get("type") == "ACTIVITY_ITEM"
+                and re.fullmatch(r"[A-Za-z0-9_]+", item.get("id", ""))
+            )
+        for zone_id in sorted(zone_ids - {stage["zoneId"] for stage in related}):
+            # 三区式 SS 的后续关卡可能尚未进入关卡表，章节标题已在区域表中。
+            suffix = re.fullmatch(re.escape(activity_id) + r"_zone([123])", zone_id)
+            if suffix:
+                kind = {"1": "normal", "2": "ex", "3": "s"}[suffix[1]]
+                chapters.setdefault(kind, set()).add(titles[zone_id])
+        if not tokens:
+            raise ValueError(f"SS 活动缺少代币信息：{activity_id}")
         result.append(
             {
-                "activity": info["name"],
+                "activity": info["name"].replace("·复刻", "").strip(),
+                "activity_id": activity_id,
                 "start_ts": start,
                 "end_ts": end,
-                "x": math.floor((left + right) / 2 + 0.5),
-                "y": math.floor((top + bottom) / 2 + 0.5),
-                "confirm_text": title,
+                "reward_end_ts": reward_end,
+                "entry_names": sorted(names),
+                "chapters": {
+                    key: next(iter(chapters[key]))
+                    for key in ("normal", "ex", "s")
+                    if key in chapters and len(chapters[key]) == 1
+                },
+                "token_ids": sorted(tokens),
             }
         )
     return sorted(result, key=lambda shop: (shop["start_ts"], shop["activity"]))
 
 
 def write_event_shop_data(
-    activity_table, output="arknights_mower/data/event_shop.json"
+    activity_table,
+    output="arknights_mower/data/event_shop.json",
+    *,
+    zones,
+    stages,
+    now=None,
 ):
-    layouts = json.loads(LAYOUTS.read_text("utf-8"))
-    shops = compile_activity_shops(activity_table, layouts)
+    shops = compile_activity_shops(activity_table, zones=zones, stages=stages, now=now)
     Path(output).write_text(
         json.dumps(shops, ensure_ascii=False, indent=2) + "\n", "utf-8"
     )

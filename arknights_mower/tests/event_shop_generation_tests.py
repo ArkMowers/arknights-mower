@@ -1,29 +1,115 @@
-"""Verified client layouts generate usable resource-package shop entries."""
+"""Current SS metadata is generated without activity-specific click coordinates."""
 
 import importlib.util
 import json
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import MagicMock, call
 
 import pytest
 
 from arknights_mower.utils import event_shop_data as generation
 from arknights_mower.utils import maa_event_shop as runtime
-from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.res_version import is_package_file
 
+START = 1793487600
+END = 1795291199
+REWARD_END = 1795895999
 ACTIVITY = {
     "basicInfo": {
         "act55side": {
             "name": "时间啊，向前！",
             "templateShopId": "shop_act55side",
-            "startTime": 1793487600,
-            "endTime": 1795291199,
-            "rewardEndTime": 1795895999,
+            "hasStage": True,
+            "startTime": START,
+            "endTime": END,
+            "rewardEndTime": REWARD_END,
         }
-    }
+    },
+    "zoneToActivity": {f"act55side_zone{i}": "act55side" for i in (1, 2, 3)},
 }
+ZONES = {
+    f"act55side_zone{i}": {"zoneNameSecond": name}
+    for i, name in enumerate(("残照终尽", "长冬初青", "世纪之春"), 1)
+}
+STAGES = {
+    code: {
+        "code": code,
+        "zoneId": f"act55side_zone{i}",
+        "stageDropInfo": {
+            "displayDetailRewards": [
+                {"type": "ACTIVITY_ITEM", "id": "act55side_token_record"}
+            ]
+        },
+    }
+    for i, code in enumerate(("TL-1", "TL-EX-1", "TL-S-1"), 1)
+}
+
+
+def generate(activity=None, zones=None, stages=None, now=START + 1):
+    return generation.compile_activity_shops(
+        activity or ACTIVITY,
+        zones=ZONES if zones is None else zones,
+        stages=STAGES if stages is None else stages,
+        now=now,
+    )
+
+
+def test_current_ss_contains_navigation_metadata_and_no_coordinates():
+    shop = generate()[0]
+    assert shop["activity_id"] == "act55side"
+    assert shop["chapters"] == {"normal": "残照终尽", "ex": "长冬初青", "s": "世纪之春"}
+    assert set(shop["entry_names"]) == {"残照终尽", "长冬初青", "世纪之春"}
+    assert shop["token_ids"] == ["act55side_token_record"]
+    assert {"x", "y", "confirm_text"}.isdisjoint(shop)
+    assert shop["end_ts"] == END
+    assert shop["reward_end_ts"] == REWARD_END
+
+
+@pytest.mark.parametrize("now", [START - 1, END, REWARD_END - 1])
+def test_no_current_ss_after_battle_period_even_if_shop_rewards_remain(now):
+    assert generate(now=now) == []
+
+
+def test_special_event_and_activity_without_shop_are_not_ss_candidates():
+    d = deepcopy(ACTIVITY)
+    d["basicInfo"]["act55side"]["templateShopId"] = ""
+    d["basicInfo"]["act999mini"] = dict(ACTIVITY["basicInfo"]["act55side"])
+    assert generate(activity=d) == []
+
+
+@pytest.mark.parametrize("missing", ["zones", "stages", "token"])
+def test_incomplete_inputs_do_not_publish_empty_adaptation(missing):
+    zones, stages = deepcopy(ZONES), deepcopy(STAGES)
+    if missing == "zones":
+        zones.clear()
+    elif missing == "stages":
+        stages.clear()
+    else:
+        for stage in stages.values():
+            stage["stageDropInfo"]["displayDetailRewards"] = []
+    with pytest.raises(ValueError):
+        generate(zones=zones, stages=stages)
+
+
+def test_generated_package_is_readable_and_respects_current_ss_window(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "event_shop.json"
+    generation.write_event_shop_data(
+        ACTIVITY, output, zones=ZONES, stages=STAGES, now=START + 1
+    )
+    monkeypatch.setattr(runtime, "resource_pkg_path", lambda _: output)
+    monkeypatch.setattr(
+        runtime,
+        "weekly_plan_uses_activity",
+        lambda manager, activity: activity == "时间啊，向前！",
+    )
+    selected = runtime.select_shop(object(), START + 1)
+    assert selected["token_ids"] == ["act55side_token_record"]
+    assert selected["chapters"]["ex"] == "长冬初青"
+    assert runtime.select_shop(object(), END) is None
+    assert is_package_file("arknights_mower/data/event_shop.json")
+    assert not is_package_file("arknights_mower/data/event_shop_layouts.json")
 
 
 @pytest.fixture
@@ -31,63 +117,11 @@ def layouts():
     return json.loads(generation.LAYOUTS.read_text("utf-8"))
 
 
-def test_real_client_layout_gives_same_exact_rect_for_both_visuals(layouts):
+def test_legacy_client_geometry_helper_remains_readable(layouts):
     for chain in layouts["act55side"]["chains"]:
         assert generation.button_rect(chain) == pytest.approx(
             (1361.2812532, 205.0799474, 1561.2812532, 305.0799474)
         )
-
-
-def test_generated_package_selects_shop_through_reward_window(tmp_path, monkeypatch):
-    output = tmp_path / "event_shop.json"
-    generation.write_event_shop_data(ACTIVITY, output)
-    monkeypatch.setattr(runtime, "resource_pkg_path", lambda _: output)
-    conf = Conf(maa_event_shop={"activity": "时间啊，向前！"}).maa_event_shop
-    during_rewards = ACTIVITY["basicInfo"]["act55side"]["endTime"] + 1
-    result = runtime.select_shop(conf, during_rewards)
-    assert (result["x"], result["y"]) == (1461, 255)
-    assert result["confirm_text"] == "炮火所掩埋的"
-    assert result["end_ts"] == 1795895999
-    assert runtime.select_shop(conf, 1793487599) is None
-    assert runtime.select_shop(conf, 1795895999) is None
-    assert is_package_file("arknights_mower/data/event_shop.json")
-    assert not is_package_file("arknights_mower/data/event_shop_layouts.json")
-
-
-def test_generated_entry_reaches_navigation_click_and_title_confirmation(
-    tmp_path, monkeypatch
-):
-    from arknights_mower.solvers import event_shop
-
-    output = tmp_path / "event_shop.json"
-    generation.write_event_shop_data(ACTIVITY, output)
-    monkeypatch.setattr(runtime, "resource_pkg_path", lambda _: output)
-    conf = Conf(maa_event_shop={"activity": "时间啊，向前！"}).maa_event_shop
-    selected = runtime.select_shop(conf, 1793487601)
-    solver = object.__new__(event_shop.EventShopNavigation)
-    solver.recog = MagicMock()
-    monkeypatch.setattr(solver, "enter_activity_from_terminal", lambda: False)
-    for method in (
-        "scene_graph_navigation",
-        "open_activity_overview_until_ready",
-        "find_stage_image_and_enter",
-        "tap",
-        "wait_for_scene_stable",
-    ):
-        monkeypatch.setattr(solver, method, MagicMock(return_value=True))
-    monkeypatch.setattr(
-        event_shop.rapidocr,
-        "engine",
-        MagicMock(return_value=([[[], "炮火所掩埋的", 0.99]], None)),
-    )
-    assert solver.run(selected)
-    solver.find_stage_image_and_enter.assert_called_once_with(
-        "时间啊，向前！", max_swipes=10
-    )
-    assert solver.tap.call_args_list == [
-        call((490, 1014), interval=0.2),
-        call((1461, 255)),
-    ]
 
 
 def test_real_studio_dump_regenerates_the_button_layout(tmp_path):
@@ -126,31 +160,8 @@ def test_parent_translation_and_scale_affect_click_rect(layouts):
     )
 
 
-@pytest.mark.parametrize("fault", ["rotation", "outside", "nan", "different_visual"])
-def test_unresolved_geometry_is_rejected(layouts, fault):
-    chain = layouts["act55side"]["chains"][0]
-    if fault == "rotation":
-        chain[-1]["m_LocalRotation"]["z"] = 0.5
-    elif fault == "outside":
-        chain[-1]["m_AnchoredPosition"]["x"] = 1920
-    elif fault == "nan":
-        chain[-1]["m_AnchoredPosition"]["x"] = float("nan")
-    else:
-        chain[-1]["m_AnchoredPosition"]["x"] += 10
-    with pytest.raises(ValueError):
-        generation.compile_activity_shops(ACTIVITY, layouts)
-
-
-@pytest.mark.parametrize("fault", ["missing", "shop_id", "window", "title"])
-def test_missing_activity_and_unverified_identity_do_not_publish(layouts, fault):
-    activity = deepcopy(ACTIVITY)
-    if fault == "missing":
-        activity["basicInfo"].clear()
-    elif fault == "shop_id":
-        activity["basicInfo"]["act55side"]["templateShopId"] = "other_shop"
-    elif fault == "window":
-        activity["basicInfo"]["act55side"]["rewardEndTime"] = 1
-    else:
-        layouts["act55side"]["confirm_text"] = ""
-    with pytest.raises(ValueError):
-        generation.compile_activity_shops(activity, layouts)
+def test_later_chapter_titles_survive_before_stage_rows_are_available():
+    stages = {"TL-1": STAGES["TL-1"]}
+    shop = generate(stages=stages)[0]
+    assert shop["chapters"]["ex"] == "长冬初青"
+    assert shop["chapters"]["s"] == "世纪之春"

@@ -1265,7 +1265,13 @@ if __name__ == "__main__":
 
     数据处理器.读取活动关卡()
 
-    write_event_shop_data(数据处理器.活动表)
+    write_event_shop_data(
+        数据处理器.活动表,
+        zones=数据处理器.加载json(
+            "./ArknightsGameResource/gamedata/excel/zone_table.json"
+        )["zones"],
+        stages=数据处理器.关卡表["stages"],
+    )
 
     # 和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置
     数据处理器.批量训练并保存扫仓库模型()

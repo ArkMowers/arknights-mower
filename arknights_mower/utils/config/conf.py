@@ -424,11 +424,6 @@ class LongTaskPart(ConfModel):
 class MaaPart(ConfModel):
     class EventShopConf(ConfModel):
         enable: bool = False
-        activity: str = Field(default="", max_length=256)
-        custom_entry: bool = False
-        x: int = Field(default=0, ge=0, lt=1920, strict=True)
-        y: int = Field(default=0, ge=0, lt=1080, strict=True)
-        confirm_text: str = Field(default="", max_length=128)
         blacklist: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
             default_factory=lambda: ["数据增补条", "数据增补仪", "家具零件"],
             max_length=64,

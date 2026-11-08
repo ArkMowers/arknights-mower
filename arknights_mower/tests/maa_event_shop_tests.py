@@ -17,11 +17,9 @@ scheduler = helpers.scheduler
 
 ENTRY = {
     "activity": "测试活动",
+    "activity_id": "act999side",
     "start_ts": 100,
     "end_ts": 200,
-    "x": 1200,
-    "y": 500,
-    "confirm_text": "测试兑换处",
 }
 
 
@@ -41,21 +39,27 @@ def navigation(monkeypatch, tmp_path):
     return path
 
 
-def test_resource_time_coordinate_override_and_missing_old_resource(navigation):
-    conf = Conf(maa_event_shop={"activity": "测试活动"}).maa_event_shop
-    assert shop.select_shop(conf, 100) == ENTRY
-    assert shop.select_shop(conf, 200) is None
-    conf.custom_entry = True
-    conf.x, conf.y, conf.confirm_text = 100, 200, "自选兑换处"
-    assert shop.select_shop(conf, 150)["confirm_text"] == "自选兑换处"
-    conf.confirm_text = ""
-    assert shop.select_shop(conf, 150) is None
+def test_automatic_plan_selection_and_legacy_settings(navigation, manager):
+    assert shop.select_shop(manager, 100) == ENTRY
+    assert shop.select_shop(manager, 200) is None
+    legacy = Conf(
+        maa_event_shop={
+            "activity": "测试活动",
+            "custom_entry": True,
+            "x": 1,
+            "y": 2,
+            "confirm_text": "旧设置",
+        }
+    ).maa_event_shop
+    assert "custom_entry" not in legacy.model_dump()
+    assert "activity" not in legacy.model_dump()
+    assert shop.select_shop(manager, 150) == ENTRY
     navigation.unlink()
     assert shop.activity_shops(150) == []
 
 
 @pytest.mark.parametrize(
-    "update", [{"end_ts": 99}, {"x": 1920}, {"y": True}, {"confirm_text": ""}]
+    "update", [{"end_ts": 99}, {"start_ts": "100"}, {"activity_id": "minigame"}]
 )
 def test_invalid_resource_is_rejected(navigation, update):
     navigation.write_text(json.dumps([{**ENTRY, **update}]))
@@ -309,12 +313,15 @@ def test_authorized_shop_route_reads_selected_resources(
     assert response.get_json() == {"shops": [ENTRY]}
 
 
-@pytest.mark.parametrize("title,ready", [("测试兑换处", True), ("活动首页", False)])
+@pytest.mark.parametrize("title,ready", [("关闭时间", True), ("活动首页", False)])
 def test_navigation_confirms_shop_title_after_entering_selected_activity(
     monkeypatch, title, ready
 ):
-    from arknights_mower.solvers import event_shop
+    from arknights_mower.solvers import activity_navigation, event_shop
 
+    monkeypatch.setattr(
+        activity_navigation.ActivityNavigation, "shop_entry", lambda _: (1200, 500)
+    )
     solver = object.__new__(EventShopNavigation)
     solver.recog = MagicMock()
     monkeypatch.setattr(solver, "sleep", MagicMock())
@@ -337,7 +344,10 @@ def test_navigation_confirms_shop_title_after_entering_selected_activity(
     monkeypatch.setattr(
         event_shop.rapidocr,
         "engine",
-        MagicMock(return_value=([[[], title, 0.99]], None)),
+        MagicMock(
+            side_effect=[([[[], "测试活动", 0.99]], None)]
+            + [([[[], title, 0.99], [[], "剩余10", 0.99]], None)] * 3
+        ),
     )
     assert solver.run(ENTRY) is ready
     assert order[2] == ("tap", ((490, 1014),))
@@ -413,3 +423,94 @@ def test_matching_activity_on_another_weekday_qualifies(navigation, manager):
     manager.WEEKLY_PLANS_FILE.write_text(yaml.safe_dump(data, allow_unicode=True))
     assert shop.weekly_plan_uses_activity(manager, "测试活动")
     assert not shop.weekly_plan_uses_activity(manager, "其他活动")
+
+
+def test_no_current_ss_does_not_start_navigation_or_maa(
+    navigation, manager, scheduler, monkeypatch
+):
+    setup_shop(scheduler)
+    navigation.write_text("[]")
+    navigate = MagicMock()
+    monkeypatch.setattr(EventShopNavigation, "run", navigate)
+    scheduler.run_maa_event_shop(lambda: datetime.now() + timedelta(hours=2))
+    navigate.assert_not_called()
+    scheduler.MAA.append_task.assert_not_called()
+
+
+def test_current_ss_is_selected_before_weekly_plan_filtering(navigation, manager):
+    newer = {
+        **ENTRY,
+        "activity": "新活动",
+        "activity_id": "act1000side",
+        "start_ts": 120,
+    }
+    navigation.write_text(json.dumps([ENTRY, newer]))
+    assert shop.select_shop(manager, 150) is None
+
+
+def test_simultaneous_current_ss_candidates_are_not_guessed(navigation, manager):
+    other = {**ENTRY, "activity": "其他活动", "activity_id": "act1000side"}
+    navigation.write_text(json.dumps([ENTRY, other]))
+    assert shop.select_shop(manager, 150) is None
+
+
+def test_legacy_shop_is_classified_only_from_matching_selected_stage_data(
+    navigation, monkeypatch
+):
+    legacy = {key: value for key, value in ENTRY.items() if key != "activity_id"}
+    navigation.write_text(json.dumps([legacy]))
+    monkeypatch.setattr(
+        shop,
+        "stage_data_full",
+        [
+            {
+                "id": "ACT-1",
+                "stageType": "ACTIVITY",
+                "zoneNameSecond": "测试活动",
+                "zoneId": "act999side_zone1",
+                "endTs": {"startTs": 100, "endTs": 180},
+            }
+        ],
+    )
+    item = shop.activity_shops(150)[0]
+    assert item["activity_id"] == "act999side"
+    assert item["end_ts"] == 180
+    assert item["reward_end_ts"] == 200
+    assert shop.activity_shops(190) == []
+    legacy["start_ts"] = 90
+    navigation.write_text(json.dumps([legacy]))
+    assert shop.activity_shops(150) == []
+
+
+@pytest.mark.parametrize("code", ["TL-EX-1", "TL-S-1"])
+def test_unrecorded_chapter_plan_does_not_start_shop(
+    navigation, manager, scheduler, monkeypatch, code
+):
+    from pathlib import Path
+
+    current = json.loads(
+        (Path(__file__).parents[1] / "data/event_shop.json").read_text("utf-8")
+    )[0]
+    current = {**current, "start_ts": 100, "end_ts": 200}
+    navigation.write_text(json.dumps([current]))
+    monkeypatch.setattr(
+        shop,
+        "stage_data_full",
+        [
+            {
+                "id": "TL-1",
+                "stageType": "ACTIVITY",
+                "zoneNameSecond": current["activity"],
+            }
+        ],
+    )
+    data = yaml.safe_load(manager.WEEKLY_PLANS_FILE.read_text())
+    data["plans"]["活动"] = [{"weekday": "周一", "stage": [code]}]
+    manager.WEEKLY_PLANS_FILE.write_text(yaml.safe_dump(data, allow_unicode=True))
+    assert shop.select_shop(manager, 150) is None
+    setup_shop(scheduler)
+    navigate = MagicMock(return_value=True)
+    monkeypatch.setattr(EventShopNavigation, "run", navigate)
+    scheduler.run_maa_event_shop(lambda: datetime.now() + timedelta(hours=1))
+    navigate.assert_not_called()
+    scheduler.MAA.append_task.assert_not_called()

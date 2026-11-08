@@ -1,7 +1,8 @@
-"""Select activity-specific shop coordinates and preserve plan-switch ownership."""
+"""Select the current SS activity and preserve plan-switch ownership."""
 
 import json
-from typing import Annotated
+import re
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StrictInt, model_validator
 
@@ -11,16 +12,27 @@ from arknights_mower.utils.resource_pkg import resource_pkg_path
 
 class ShopNavigation(BaseModel):
     activity: str = Field(min_length=1, max_length=256)
+    activity_id: str = Field(pattern=r"^act\d+(?:side|sre)$")
+    entry_names: list[Annotated[str, Field(min_length=1, max_length=256)]] = Field(
+        default_factory=list, max_length=16
+    )
+    chapters: dict[
+        Literal["normal", "ex", "s"],
+        Annotated[str, Field(min_length=1, max_length=256)],
+    ] = Field(default_factory=dict)
     start_ts: StrictInt = Field(ge=1)
     end_ts: StrictInt = Field(ge=1)
-    x: StrictInt = Field(ge=0, lt=1920)
-    y: StrictInt = Field(ge=0, lt=1080)
-    confirm_text: Annotated[str, Field(min_length=1, max_length=128)]
+    reward_end_ts: StrictInt | None = None
+    token_ids: list[Annotated[str, Field(pattern=r"^[A-Za-z0-9_]+$")]] = Field(
+        default_factory=list, max_length=16
+    )
 
     @model_validator(mode="after")
     def validate_window(self):
         if self.start_ts >= self.end_ts:
             raise ValueError("活动商店结束时间必须晚于开始时间")
+        if self.reward_end_ts is not None and self.reward_end_ts < self.end_ts:
+            raise ValueError("商店领取截止时间不能早于活动结束时间")
         return self
 
 
@@ -29,51 +41,63 @@ def activity_shops(now):
     resources = json.loads(path.read_text("utf-8")) if path.is_file() else []
     if not isinstance(resources, list) or len(resources) > 128:
         raise ValueError("活动商店资源格式无效")
-    entries = [ShopNavigation.model_validate(item) for item in resources]
+    entries = []
+    for raw in resources:
+        if not isinstance(raw, dict):
+            raise ValueError("SS 活动信息格式无效")
+        if "activity_id" not in raw:
+            legacy = set()
+            for stage in stage_data_full:
+                window = stage.get("endTs")
+                match = re.fullmatch(
+                    r"(act\d+(?:side|sre))_zone\d+", stage.get("zoneId") or ""
+                )
+                if (
+                    stage.get("zoneNameSecond") == raw.get("activity")
+                    and stage.get("stageType") == "ACTIVITY"
+                    and match
+                    and isinstance(window, dict)
+                    and type(window.get("startTs")) is int
+                    and type(window.get("endTs")) is int
+                ):
+                    legacy.add((match[1], window["startTs"], window["endTs"]))
+            if len(legacy) != 1:
+                continue
+            activity_id, start, end = next(iter(legacy))
+            if (
+                raw.get("start_ts") != start
+                or type(raw.get("end_ts")) is not int
+                or raw["end_ts"] < end
+            ):
+                continue
+            raw = {
+                **raw,
+                "activity_id": activity_id,
+                "start_ts": start,
+                "end_ts": end,
+                "reward_end_ts": raw.get("end_ts"),
+            }
+        entries.append(ShopNavigation.model_validate(raw))
     result = {}
     for item in entries:
         if item.start_ts <= now < item.end_ts:
             if item.activity in result:
                 raise ValueError("活动商店资源存在重叠时段")
-            result[item.activity] = item.model_dump()
-    for stage in stage_data_full:
-        window = stage.get("endTs")
-        name = stage.get("zoneNameSecond")
-        if (
-            stage.get("stageType") == "ACTIVITY"
-            and isinstance(name, str)
-            and name
-            and isinstance(window, dict)
-            and isinstance(window.get("startTs"), (int, float))
-            and isinstance(window.get("endTs"), (int, float))
-            and window["startTs"] <= now < window["endTs"]
-            and name not in result
-        ):
-            result[name] = {
-                "activity": name,
-                "start_ts": window["startTs"],
-                "end_ts": window["endTs"],
-                "x": None,
-                "y": None,
-                "confirm_text": "",
-            }
+            result[item.activity] = item.model_dump(exclude_unset=True)
     return list(result.values())
 
 
-def select_shop(conf, now):
-    item = next(
-        (item for item in activity_shops(now) if item["activity"] == conf.activity),
-        None,
-    )
-    if item is None:
+def select_shop(manager, now):
+    shops = activity_shops(now)
+    if not shops:
         return None
-    if conf.custom_entry:
-        item.update(x=conf.x, y=conf.y, confirm_text=conf.confirm_text)
-    return (
-        item
-        if item["x"] is not None and item["y"] is not None and item["confirm_text"]
-        else None
-    )
+    latest = max(shop["start_ts"] for shop in shops)
+    current = [shop for shop in shops if shop["start_ts"] == latest]
+    if len(current) != 1 or not weekly_plan_uses_activity(
+        manager, current[0]["activity"]
+    ):
+        return None
+    return current[0]
 
 
 def weekly_plan_uses_activity(manager, activity):

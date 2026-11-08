@@ -52,11 +52,6 @@ describe('MAA reward and long task config', () => {
     store.paradox = { scripts: [{ id: 'a'.repeat(64) }], run_id: 'new-round' }
     store.maa_event_shop = {
       enable: true,
-      activity: '测试活动',
-      custom_entry: true,
-      x: 900,
-      y: 400,
-      confirm_text: '兑换处',
       blacklist: ['家具'],
       switch_source: '活动方案'
     }

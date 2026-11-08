@@ -1,4 +1,4 @@
-"""Extract verified shop-button RectTransforms from ArknightsStudio dumps."""
+"""Audit legacy shop-button geometry; current SS navigation uses token icons."""
 
 import argparse
 import hashlib
@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from arknights_mower.utils.event_shop_data import (  # noqa: E402
     LAYOUTS,
-    compile_activity_shops,
+    button_rect,
 )
 
 
@@ -147,11 +147,18 @@ def main():
             args.dump, args.asset_list, args.container, args.button_name
         ),
     }
-    shops = compile_activity_shops(activity, layouts)
+    # Preserve this layout-audit tool without feeding coordinates to SS navigation.
+    rectangles = [button_rect(chain) for chain in layouts[args.activity_id]["chains"]]
     args.output.write_text(
         json.dumps(layouts, ensure_ascii=False, indent=2) + "\n", "utf-8"
     )
-    print(json.dumps(shops, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {"activity_id": args.activity_id, "button_rectangles": rectangles},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
