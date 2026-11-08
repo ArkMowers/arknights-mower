@@ -30,7 +30,7 @@ describe('backup departure recovery completion',()=>{
    R:new MowerOperatorState({name:'R',currentRoom:'room_1_1',currentIndex:0,mood:24,timeStampMicros:0}),
    M:new MowerOperatorState({name:'M',room:'dormitory_1',index:0,group:'a',replacement:['Free'],groupBindings:[{group:'a',replacement:['Free']},{group:'b',replacement:['Free']}],operatorType:'high',mood:24,timeStampMicros:0}),
   }
-  const data=new MowerSchedulingData({alpha:true,operators,plan:{room_1_1:['A'],dormitory_1:['M',...(vacancy?['Free']:[])]},dorms:[new MowerDormState(['dormitory_1',0],'A',undefined,true),...(vacancy?[new MowerDormState(['dormitory_1',1])]:[])],freeRoomExclusions:['A'],groupShiftState:{a:false,b:false,g:true}})
+  const data=new MowerSchedulingData({alpha:true,operators,plan:{room_1_1:['A'],dormitory_1:['M',...(vacancy?['Free']:[])]},dorms:[new MowerDormState(['dormitory_1',0],'A',undefined,true),...(vacancy?[new MowerDormState(['dormitory_1',1])]:[])],freeRoomExclusions:['A'],groupShiftState:{a:false,b:false,g:true},nowMicros:0})
   const plan={dormitory_1:['M',...(vacancy?['Current']:[])]},before=structuredClone(plan)
   if(vacancy){
    const completed=completeMowerBackupDepartureRecovery(data,plan,new Set(),new Set(),[],false,true)!
@@ -40,6 +40,30 @@ describe('backup departure recovery completion',()=>{
   }else expect(()=>completeMowerBackupDepartureRecovery(data,plan,new Set(),new Set(),[],false,true)).toThrow(MowerBackupRecoveryBlocked)
   expect(plan).toEqual(before)
   expect(data.currentOperator('dormitory_1',0)?.name).toBe('A')
+ })
+
+ it.each([true,false])('preserves unfinished retained-return recovery through a shared-bed closing preview (vacancy=%s)',vacancy=>{
+  const operators={
+   A:new MowerOperatorState({name:'A',room:'room_1_1',index:0,group:'g',replacement:['R'],operatorType:'high',currentRoom:'dormitory_1',currentIndex:0,mood:5,timeStampMicros:0,restInFull:true}),
+   R:new MowerOperatorState({name:'R',currentRoom:'room_1_1',currentIndex:0,mood:24,timeStampMicros:0}),
+   M:new MowerOperatorState({name:'M',room:'dormitory_1',index:0,group:'a',replacement:['Free'],groupBindings:[{group:'a',replacement:['Free']},{group:'b',replacement:['Free']}],operatorType:'high',mood:24,timeStampMicros:0}),
+  }
+  const data=new MowerSchedulingData({alpha:true,operators,plan:{room_1_1:['A'],dormitory_1:['M',...(vacancy?['Free']:[])]},dorms:[new MowerDormState(['dormitory_1',0],'A',undefined,true),...(vacancy?[new MowerDormState(['dormitory_1',1])]:[])],groupShiftState:{a:false,b:false,g:true},nowMicros:0})
+  const pending=new MowerTask({type:T.SHIFT_ON,time:-1,plan:{room_1_1:['A']}})
+  pending.executionRetained=true;pending.fiaReturnTarget='A';pending.fiaReturnMicros=0
+  const task=new MowerTask({type:T.SELF_CORRECTION,plan:{dormitory_1:['M',...(vacancy?['Current']:[])]}}),queue=new MowerTaskQueue()
+  queue.tasks=[pending,task]
+  const model:MowerShiftModel={count:0,evaluate:d=>d.planConditions,swap:d=>d,transition:()=>({}),activate:()=>{}}
+  const time=pending.timeMicros,intent=structuredClone(pending.plan)
+  if(vacancy){
+   prepareMowerShiftCycle(data,task,queue,model)
+   const after=projectMowerArrangements(data,[task.plan])
+   expect(after.currentOperator('dormitory_1',0)?.name).toBe('M')
+   expect(after.currentOperator('dormitory_1',1)?.name).toBe('A')
+   expect(after.currentOperator('room_1_1',0)?.name).toBe('R')
+  }else expect(()=>prepareMowerShiftCycle(data,task,queue,model)).toThrow(MowerBackupRecoveryBlocked)
+  expect(data.currentOperator('dormitory_1',0)?.name).toBe('A')
+  expect(pending.plan).toEqual(intent);expect(pending.timeMicros).toBe(time);expect(queue.tasks).toContain(pending)
  })
 
  it('completes a self-deactivating explicit departure with a bed without departing the untouched peer',()=>{

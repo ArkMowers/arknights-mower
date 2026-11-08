@@ -622,7 +622,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
  const dependencyReturn=(data:MowerSchedulingData,retained:MowerTask,candidate:MowerTask,pending:readonly MowerTask[])=>!!s.mowerShiftModel&&mowerVerifiedRecoveryDependencyReturn(data,retained,candidate,pending,s.mowerShiftModel)
  // Older retained departures carry their request through urgent recovery ownership.
  const requestNames=(task:MowerTask|undefined)=>task?.ordinaryCoordination&&(task.coordinationRequestNames.length||task.type===T.EXHAUST_OFF)?mowerRemainingCoordinationRequests(task):task?.coordinationRequestNames.length?task.coordinationRequestNames:task?.type===T.EXHAUST_OFF?task.metadata.split(','):task?.type===T.SHIFT_OFF&&task.urgentRecoveryRequestNames.length?task.urgentRecoveryRequestNames:undefined
- const options=()=>({requestNames:requestNames(source.activeTask),coordinationMoods:rates.forecastMoods?.(s),tasks:[...new Set([...queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)])].filter(task=>task!==source.activeTask),dependencyReturn,urgentRecoveryPendingSupporters:mowerUrgentPendingSupporters(queue.tasks),urgentExhaust:!!source.activeTask&&!source.activeTask.ordinaryCoordination&&(source.activeTask.type===T.EXHAUST_OFF||source.activeTask.exhaustSupport),...mowerReplacementReservations(getMowerSourceRuntime(s).data,queue.tasks.filter(task=>task!==source.activeTask),source.activeTask?.urgentRecoveryRequestNames),coordinationRates:(projected:MowerSchedulingData)=>{
+ const options=()=>({retainedTasks:queue.tasks.filter(task=>task!==source.activeTask&&task.retainsExecution),requestNames:requestNames(source.activeTask),coordinationMoods:rates.forecastMoods?.(s),tasks:[...new Set([...queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)])].filter(task=>task!==source.activeTask),dependencyReturn,urgentRecoveryPendingSupporters:mowerUrgentPendingSupporters(queue.tasks),urgentExhaust:!!source.activeTask&&!source.activeTask.ordinaryCoordination&&(source.activeTask.type===T.EXHAUST_OFF||source.activeTask.exhaustSupport),...mowerReplacementReservations(getMowerSourceRuntime(s).data,queue.tasks.filter(task=>task!==source.activeTask),source.activeTask?.urgentRecoveryRequestNames),coordinationRates:(projected:MowerSchedulingData)=>{
   if(!rates.forecastRates)return undefined
   const occupants:Record<string,string>={},bedOccupants:Record<string,string>={},bedSlots=new Set(projected.allDorms().map(bed=>bed.position[0]+'_'+bed.position[1]))
   for(const op of Object.values(projected.operators))if(op.currentRoom)(bedSlots.has(op.currentRoom+'_'+op.currentIndex)?bedOccupants:occupants)[op.currentRoom+'_'+op.currentIndex]=op.name
@@ -876,7 +876,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     }
     mowerGetRestingPlan(data,[...members],[],plan,options())
     if(Object.keys(plan).length){
-     const reorder=mowerTryReorder(data,plan);if(reorder)Object.assign(plan,reorder)
+     const reorder=mowerTryReorder(data,plan,options());if(reorder)Object.assign(plan,reorder)
      const departure=new MowerTask({time:s.time,type:T.SHIFT_OFF,plan});inheritMowerUrgentRecovery(departure,task);departure.backupGroupRequest=task.backupGroupRequest;departure.ordinaryCoordination=task.ordinaryCoordination;departure.coordinationRequestNames=[...origins];queue.tasks.push(departure)
     }else{
      const support=planMowerExhaustSupport(data,members,options())

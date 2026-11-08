@@ -8,6 +8,7 @@ import {createRosterRuntime,settleRoster,type RuntimeConfig} from './rosterRunti
 import {getMowerSourceRuntime} from './mowerSourceRuntime'
 import {retainMowerFailedTask} from './mowerTaskFailure'
 import {mowerDormTaskReservations} from './mowerAlphaCandidates'
+import {planMowerOrdinary} from './mowerOrdinaryPlanning'
 
 function fixture(){
  const data=new MowerSchedulingData({alpha:true,nowMicros:0,priorityReplacement:['R'],
@@ -136,4 +137,26 @@ describe('empty-bed planning with retained failures',()=>{
   expect(queue.tasks[0]).toBe(pending)
   expect(pending.timeMicros).toBe(toMowerMicros(1))
  })
+})
+
+
+it('preserves a retained return recovery bed while an independent departure is reordered',()=>{
+ const data=new MowerSchedulingData({alpha:true,nowMicros:0,restingPriorityNames:['A'],
+  plan:{room_1_1:['A'],room_1_2:['U'],dormitory_1:['Free'],dormitory_2:['Free']},
+  operators:{
+   A:new MowerOperatorState({name:'A',room:'room_1_1',index:0,currentRoom:'room_1_1',currentIndex:0,operatorType:'high',replacement:['X'],mood:5,timeStampMicros:0}),
+   U:new MowerOperatorState({name:'U',room:'room_1_2',index:0,currentRoom:'dormitory_1',currentIndex:0,operatorType:'high',replacement:['Y'],restInFull:true,mood:5,timeStampMicros:0}),
+   X:new MowerOperatorState({name:'X',mood:24,timeStampMicros:0}),
+   Y:new MowerOperatorState({name:'Y',currentRoom:'room_1_2',currentIndex:0,mood:24,timeStampMicros:0}),
+  },dorms:[new MowerDormState(['dormitory_1',0],'U',toMowerMicros(5)),new MowerDormState(['dormitory_2',0])],
+ })
+ const queue=new MowerTaskQueue(),pending=new MowerTask({type:T.SHIFT_ON,time:-1,plan:{room_1_2:['U']}})
+ pending.executionRetained=true;pending.fiaReturnTarget='U';pending.fiaReturnMicros=0;queue.tasks=[pending]
+ const reserved=mowerDormTaskReservations(data,queue.tasks),time=pending.timeMicros,intent=structuredClone(pending.plan)
+ const plan=planMowerOrdinary(data,queue,{reservedNames:reserved.names,reservedSlots:reserved.slots})!
+ const after=projectMowerArrangements(data,[plan])
+ expect(after.currentOperator('room_1_1',0)?.name).toBe('X')
+ expect(after.currentOperator('dormitory_1',0)?.name).toBe('U')
+ expect(after.currentOperator('dormitory_2',0)?.name).toBe('A')
+ expect(queue.tasks).toContain(pending);expect(pending.plan).toEqual(intent);expect(pending.timeMicros).toBe(time)
 })

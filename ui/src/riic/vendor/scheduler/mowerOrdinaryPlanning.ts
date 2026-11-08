@@ -13,10 +13,12 @@ import {MowerOperatorState,mowerReplacementCandidates} from './mowerOperatorStat
 import {MowerDormState,type MowerSchedulingData} from './mowerSchedulingData'
 import {mowerActiveHighRestingCount,mowerAvailableFree,mowerAssignDorm,mowerAssignDormGroup,mowerAverageMood,mowerStandbyCandidates} from './mowerDormAssignment'
 import {planMowerMetadata} from './mowerMetadata'
-import {mowerDormCandidateMood} from './mowerAlphaCandidates'
+import {mowerDormCandidateMood,mowerDormTaskReservations} from './mowerAlphaCandidates'
 import {alphaPosition,alphaRestingTier,alphaSlotTakable,mowerMatchReplacements,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue,fromMowerMicros,toMowerMicros} from './mowerTaskQueue'
 export interface MowerRestingOptions {
+ /** Execution queue owners; parked recovery intents retain identity without reservations. */
+ retainedTasks?:readonly MowerTask[]
  requestNames?:readonly string[]
  urgentExhaust?:boolean
  urgentRecoveryPendingSupporters?:ReadonlySet<string>
@@ -80,6 +82,8 @@ export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],exis
  return true
 }
 function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:string[],plan:MowerTaskPlan,options:MowerRestingOptions,groups:readonly string[]):boolean{
+ const retained=mowerDormTaskReservations(data,[...options.retainedTasks??options.tasks??[]].filter(task=>task.retainsExecution))
+ options={...options,reservedNames:new Set([...retained.names,...options.reservedNames??[]]),reservedSlots:new Set([...retained.slots,...options.reservedSlots??[]])}
  if(groups.some(group=>mowerForcedWorkGroups(data).has(group)))return false
  if(names.some(name=>data.reservedProductReplacements.has(name)||options.reservedNames?.has(name))||mowerWorkingReplacementBlocked(data,names,plan,groups))return false
  const transitions={...mowerArrangementGroupTransitions(data,plan),...Object.fromEntries(groups.map(group=>[group,true]))}
@@ -153,7 +157,7 @@ export function planMowerOrdinarySupportAdmission(data:MowerSchedulingData,names
  const members=[...new Set(names.flatMap(name=>{const op=projected.operators[name];return op?.group?projected.shiftGroupMembers(op.group):op?[name]:[]}))]
  // The support projection can release a cover still recorded in an actual dormitory.
  if(!members.length||!mowerGetRestingPlan(projected,members,[],plan,{...options,requestNames:options.requestNames??names,dormAdmissions:new Map(),onBlocked:undefined,isDormReplacement:name=>{const op=projected.operators[name];return !!op&&op.currentRoom.startsWith('dorm')&&projected.dormReplacementForSlot(name,op.currentRoom,op.currentIndex)}}))return
- const reorder=mowerTryReorder(projected,plan);if(reorder)Object.assign(plan,reorder)
+ const reorder=mowerTryReorder(projected,plan,options);if(reorder)Object.assign(plan,reorder)
  return Object.keys(plan).length?plan:undefined
 }
 function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRestingOptions,metadataPrepared:boolean):MowerTaskPlan {
@@ -202,23 +206,26 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
  if(Object.keys(plan).length){const task=new MowerTask({plan,type:T.SHIFT_OFF});task.ordinaryCoordination=ordinaryRequests.length>0;task.coordinationRequestNames=ordinaryRequests;task.timeMicros=data.nowMicros;queue.tasks.push(task)}
  return plan
 }
-export function mowerTryReorder(data:MowerSchedulingData,newPlan:MowerTaskPlan):MowerTaskPlan|undefined {
+export function mowerTryReorder(data:MowerSchedulingData,newPlan:MowerTaskPlan,options:Pick<MowerRestingOptions,'tasks'|'retainedTasks'|'reservedNames'|'reservedSlots'>={}):MowerTaskPlan|undefined {
+ const retained=mowerDormTaskReservations(data,[...options.retainedTasks??options.tasks??[]].filter(task=>task.retainsExecution))
+ const names=new Set([...retained.names,...options.reservedNames??[]]),slots=new Set([...retained.slots,...options.reservedSlots??[]])
+ const protectedBed=(bed:MowerDormState)=>names.has(bed.name)||slots.has(alphaPosition(...bed.position))
  if(data.alpha){
-  const assigned=new Set(Object.values(newPlan).flat());for(const bed of data.dorms)if(assigned.has(bed.name))bed.reset()
+  const assigned=new Set(Object.values(newPlan).flat());for(const bed of data.dorms)if(assigned.has(bed.name)&&!protectedBed(bed))bed.reset()
   const transitions=mowerArrangementGroupTransitions(data,newPlan),active=new Set(Object.keys(transitions).filter(group=>transitions[group])),inactive=new Set(Object.keys(transitions).filter(group=>!transitions[group]))
   const destinations=new Set(data.dorms.filter(b=>data.effectiveFreeSlot(b,inactive,active)&&b.name).map(b=>b.position[0]+'\0'+b.position[1])),result:MowerTaskPlan={}
-  for(const bed of data.dorms)if(data.effectiveFreeSlot(bed,inactive,active)&&bed.name){const op=data.operators[bed.name]!,[room,index]=bed.position;if(op.currentRoom!==room||op.currentIndex!==index){(result[room]??=Array(data.plan[room]!.length).fill('Current'))[index]=bed.name;if(data.dynamicDormPosition(op.currentRoom,op.currentIndex)&&!destinations.has(op.currentRoom+'\0'+op.currentIndex))(result[op.currentRoom]??=Array(data.plan[op.currentRoom]!.length).fill('Current'))[op.currentIndex]='Free'}}
-  return alphaPrioritizeRecovery(data,result,newPlan)
+  for(const bed of data.dorms)if(data.effectiveFreeSlot(bed,inactive,active)&&bed.name&&!protectedBed(bed)){const op=data.operators[bed.name]!,[room,index]=bed.position;if(op.currentRoom!==room||op.currentIndex!==index){(result[room]??=Array(data.plan[room]!.length).fill('Current'))[index]=bed.name;if(data.dynamicDormPosition(op.currentRoom,op.currentIndex)&&!destinations.has(op.currentRoom+'\0'+op.currentIndex))(result[op.currentRoom]??=Array(data.plan[op.currentRoom]!.length).fill('Current'))[op.currentIndex]='Free'}}
+  return alphaPrioritizeRecovery(data,result,newPlan,slots,names)
  }
  if(data.policy.experimentalDormLogic)throw new Error('Experimental recovery prioritization requires its source port')
  const assigned=new Set(Object.values(newPlan).flat())
- for(const bed of data.dorms)if(assigned.has(bed.name))bed.reset()
+ for(const bed of data.dorms)if(assigned.has(bed.name)&&!protectedBed(bed))bed.reset()
  const dorms=data.dorms.map(b=>new MowerDormState([...b.position],b.name,b.timeMicros,b.autoFree))
  // The room picker converts full-mood non-residents to Free, so moving one by name cannot settle.
- for(const bed of dorms){const op=data.operators[bed.name];if(op&&op.mood>=op.upperLimit&&!op.room.startsWith('dorm'))bed.reset()}
+ for(const bed of dorms){const op=data.operators[bed.name];if(op&&op.mood>=op.upperLimit&&!op.room.startsWith('dorm')&&!protectedBed(bed))bed.reset()}
  const vip=Object.keys(data.plan).filter(room=>room.startsWith('dorm')).length;if(!vip)return undefined
- const effective=dorms.map((bed,index)=>({bed,index})).filter(({bed})=>data.effectiveFreeSlot(bed)).map(({index})=>index)
- for(const [index,bed] of dorms.entries())if(!effective.includes(index))bed.reset()
+ const effective=dorms.map((bed,index)=>({bed,index})).filter(({bed})=>data.effectiveFreeSlot(bed)&&!protectedBed(bed)).map(({index})=>index)
+ for(const [index,bed] of dorms.entries())if(!effective.includes(index)&&!protectedBed(bed))bed.reset()
  const ranking=(name:string)=>{
   const op=data.operators[name];return op?.isHigh()?op.restingPriority==='high'?'high':op.restingPriority==='standby'?'standby':'normal':'low'
  }
@@ -230,7 +237,7 @@ export function mowerTryReorder(data:MowerSchedulingData,newPlan:MowerTaskPlan):
  })
  effective.forEach((index,i)=>{dorms[index]!.name=info[i]!.name;dorms[index]!.timeMicros=info[i]!.time})
  const result:MowerTaskPlan={}
- for(const bed of dorms)if(bed.name){
+ for(const bed of dorms)if(bed.name&&!protectedBed(bed)){
   const op=data.operators[bed.name]!,[room,index]=bed.position
   if(op.currentRoom!==room||op.currentIndex!==index)(result[room]??=Array(5).fill('Current'))[index]=bed.name
  }
@@ -247,7 +254,7 @@ export function planMowerOrdinary(data:MowerSchedulingData,queue:MowerTaskQueue,
   if(error instanceof MowerExitError)throw error
   options.onException?.(error)
  }
- const reorder=mowerTryReorder(data,plan)
+ const reorder=mowerTryReorder(data,plan,{...options,retainedTasks:queue.tasks.filter(task=>task.retainsExecution)})
  if(reorder&&Object.keys(reorder).length){
   if(Object.keys(plan).length)for(const [room,names] of Object.entries(reorder)){
    if(!plan[room])plan[room]=names
