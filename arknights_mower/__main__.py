@@ -602,6 +602,7 @@ def _resume_device_dispatch(scheduler=None, failure=None):
         device = device_control.recover().unwrap()
         if scheduler is not None:
             scheduler.device = device
+            scheduler._simulator_closed_for_idle = False
             scheduler.recog.device = device
             if uncertain or getattr(scheduler, "_idle_observation_pending", False):
                 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver

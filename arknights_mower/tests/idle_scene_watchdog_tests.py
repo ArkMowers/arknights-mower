@@ -35,7 +35,7 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noq
 
 
 @pytest.fixture
-def idle_scheduler(monkeypatch):
+def idle_scheduler(monkeypatch, offline_maintenance):
     class Clock(datetime):
         current = datetime(2026, 10, 8, 10, 55, 38, 643000)
 
@@ -527,7 +527,7 @@ def test_failed_idle_resume_restarts_observation_after_main_recovery(
     started = clock.now()
     old_frame = solver.recog._img
     config.conf.close_simulator_when_idle = True
-    restart = MagicMock(side_effect=[True, failure != "start"])
+    restart = MagicMock(side_effect=[True, failure != "start", True])
     monkeypatch.setattr(base, "restart_simulator", restart)
     if failure == "reconnect":
         solver.device.reconnect.side_effect = ConnectionError("offline")
@@ -564,6 +564,7 @@ def test_failed_idle_resume_restarts_observation_after_main_recovery(
         main._resume_device_dispatch(solver, ConnectionError("offline"))
         is solver.device
     )
+    recovered_closed = solver._simulator_closed_for_idle
     assert solver.recog.scene == Scene.UNDEFINED
     solver.run()
     solver.device.exit.assert_not_called()
@@ -573,6 +574,59 @@ def test_failed_idle_resume_restarts_observation_after_main_recovery(
     assert solver.recog.loading_time == 0
     assert restart.call_count == 2
     assert_active_watchdog(solver, clock)
+    solver.handle_idle_action(600)
+    assert restart.call_args_list == [
+        call(start=False),
+        call(stop=False, start=True),
+        call(start=False),
+    ]
+    assert not recovered_closed
+    assert solver._simulator_closed_for_idle
+
+
+def test_recovered_device_can_close_even_if_observation_reset_fails(
+    production_idle_scheduler, monkeypatch
+):
+    solver = production_idle_scheduler.solver
+    config.conf.close_simulator_when_idle = True
+    solver._simulator_closed_for_idle = True
+    solver._idle_observation_pending = True
+    monkeypatch.setattr(
+        solver.recog,
+        "reset_after_external_control",
+        MagicMock(side_effect=RuntimeError("observation reset failed")),
+    )
+    with pytest.raises(RuntimeError, match="observation reset failed"):
+        main._resume_device_dispatch(solver, ConnectionError("offline"))
+    recovered_closed = solver._simulator_closed_for_idle
+    assert solver._idle_observation_pending
+    restart = MagicMock(return_value=True)
+    monkeypatch.setattr(base, "restart_simulator", restart)
+    solver.handle_idle_action(600)
+    restart.assert_called_once_with(start=False)
+    assert not recovered_closed
+    assert solver._simulator_closed_for_idle
+
+
+def test_cancelled_device_recovery_preserves_closed_idle_marker(
+    production_idle_scheduler, monkeypatch
+):
+    solver = production_idle_scheduler.solver
+    solver._simulator_closed_for_idle = True
+    solver._idle_observation_pending = True
+    frame = solver.recog._img
+    production_idle_scheduler.control.recover.return_value.unwrap.side_effect = (
+        MowerExit
+    )
+    with pytest.raises(MowerExit):
+        main._resume_device_dispatch(solver, ConnectionError("offline"))
+    assert solver._simulator_closed_for_idle
+    assert solver._idle_observation_pending
+    assert solver.recog._img is frame
+    restart = MagicMock()
+    monkeypatch.setattr(base, "restart_simulator", restart)
+    solver.handle_idle_action(600)
+    restart.assert_not_called()
 
 
 def test_active_device_recovery_preserves_scene_watchdog(production_idle_scheduler):
