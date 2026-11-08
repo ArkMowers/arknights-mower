@@ -687,7 +687,8 @@ function refresh_visible_status() {
   void get_running()
 }
 
-function updatePageVisibility() {
+function updatePageVisibility(event) {
+  if (event && document.hidden) startup_reveal.value = false
   updateScreenshotPreview()
   clearInterval(runningTimer)
   schedule_daily_status()

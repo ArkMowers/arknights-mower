@@ -2561,6 +2561,40 @@ describe('log page', () => {
     }))
   }
 
+  it('animates the first visible visit but restores a screenshot without replay after hiding', async () => {
+    state.realPreview = true
+    document.hidden = true
+    vi.stubGlobal(
+      'Image',
+      class {
+        naturalWidth = 4
+        naturalHeight = 3
+        async decode() {}
+      }
+    )
+    state.client.get.mockImplementation(async (url) =>
+      url.endsWith('/screenshot/latest')
+        ? { status: 200, data: new Blob(['frame']), headers: {} }
+        : { data: {} }
+    )
+    const { classes, pane, page } = mountWidePane()
+    onMounted.mock.lastCall[0]()
+    expect(page.sc_blob).toBe('')
+
+    setHidden(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(page.sc_blob).toMatch(/^blob:/)
+    expect(classes(pane)).toContain('log-pane--reveal')
+
+    setHidden(true)
+    expect(page.sc_blob).toBe('')
+    setHidden(false)
+    expect(page.sc_blob).toMatch(/^blob:/)
+    await nextTick()
+    expect(classes(pane)).not.toContain('log-pane--reveal')
+    onUnmounted.mock.lastCall[0]()
+  })
+
   it.each([false, true])(
     'restores the whole log workspace before refresh replies after a route return (mobile=%s)',
     async (mobile) => {
