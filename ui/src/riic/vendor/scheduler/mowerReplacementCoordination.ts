@@ -128,7 +128,7 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
   const op=original.operators[name];if(!op||!op.isResting())continue
   if(mowerHeldRestGroups(original,true).has(op.group))return false
   if(op.restInFull&&!mowerRecoveryReady(original,op,options.priorityScheduling))return false
-  if(op.group){const recovery=mowerGroupRecoveryDeadline(projectMowerArrangements(original,[]),op.group);if(recovery.requiredNames.length&&(recovery.requiredNames.some(member=>(!options.urgentExhaust||original.operators[member]!.restInFull)&&!mowerRecoveryReady(original,original.operators[member],options.priorityScheduling))))return false}
+  if(op.group){const recovery=mowerGroupRecoveryDeadline(projectMowerArrangements(original,[]),op.group);if(recovery.requiredNames.length&&(recovery.requiredNames.some(member=>original.operators[member]!.restInFull&&!mowerRecoveryReady(original,original.operators[member],options.priorityScheduling))))return false}
  }
  if(options.urgentExhaust)return true
  if(!mowerRecallMoodAdmissible(original,recalled,candidates,options.requestNames))return false

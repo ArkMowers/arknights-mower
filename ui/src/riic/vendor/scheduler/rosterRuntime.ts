@@ -53,6 +53,8 @@ export interface RuntimeConfig {
   idleOperators?: string[]
   /** Game-owned Free card pool; omitted only by direct source-oracle fixtures. */
   availableIdleOperators?: string[]
+  /** Income-only neutral padding for unused dormitory beds. */
+  mowerDormFillers?: boolean
   freeBlacklist?: string[]
   mowerDroneRoom?:string|null
   mowerDeviceObservations?:{initialManufactureDroneSelection:number|'max'}

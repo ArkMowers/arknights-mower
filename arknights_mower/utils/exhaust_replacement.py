@@ -288,12 +288,11 @@ def _plan_exhaust_support_attempt(
             return True
         if op.group:
             required, _ = group_recovery_deadline(state, op.group, now=now)
-            if urgent:
-                required = [
-                    member
-                    for member in required
-                    if state.operators[member].rest_in_full
-                ]
+            # 自动整组等待可由救急召回打断；明确回满仍受保护。
+            # 普通召回稍后仍需通过救急线与完整续航检查。
+            required = [
+                member for member in required if state.operators[member].rest_in_full
+            ]
             return any(
                 not recovery_ready_for_arrangement(
                     state, member, sampled_after=None, now=now

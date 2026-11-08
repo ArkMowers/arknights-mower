@@ -31,6 +31,10 @@ export interface MowerRestingOptions {
  reservedNames?:ReadonlySet<string>;reservedSlots?:ReadonlySet<string>;priorityScheduling?:MowerTaskSchedulingOptions
  dormAdmissions?:Map<string,string>
 }
+/** Unstarted departures retain their intent, not every future recovery destination. */
+function retainedRecoveryTasks(options:Pick<MowerRestingOptions,'retainedTasks'|'tasks'>):MowerTask[]{
+ return [...options.retainedTasks??options.tasks??[]].filter(task=>task.retainsExecution&&(task.type===T.SHIFT_ON||task.dormRecoveryRestore.length>0||task.arrangementStarted||task.backupShiftActive||task.productShiftLocked))
+}
 export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],existingReplacements:string[],plan:MowerTaskPlan,options:MowerRestingOptions={}):boolean {
  if(data.alpha){
   const groups=data.shiftRequestGroups(options.requestNames??names)
@@ -82,7 +86,7 @@ export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],exis
  return true
 }
 function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:string[],plan:MowerTaskPlan,options:MowerRestingOptions,groups:readonly string[]):boolean{
- const retained=mowerDormTaskReservations(data,[...options.retainedTasks??options.tasks??[]].filter(task=>task.retainsExecution))
+ const retained=mowerDormTaskReservations(data,retainedRecoveryTasks(options))
  options={...options,reservedNames:new Set([...retained.names,...options.reservedNames??[]]),reservedSlots:new Set([...retained.slots,...options.reservedSlots??[]])}
  if(groups.some(group=>mowerForcedWorkGroups(data).has(group)))return false
  if(names.some(name=>data.reservedProductReplacements.has(name)||options.reservedNames?.has(name))||mowerWorkingReplacementBlocked(data,names,plan,groups))return false
@@ -207,7 +211,7 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
  return plan
 }
 export function mowerTryReorder(data:MowerSchedulingData,newPlan:MowerTaskPlan,options:Pick<MowerRestingOptions,'tasks'|'retainedTasks'|'reservedNames'|'reservedSlots'>={}):MowerTaskPlan|undefined {
- const retained=mowerDormTaskReservations(data,[...options.retainedTasks??options.tasks??[]].filter(task=>task.retainsExecution))
+ const retained=mowerDormTaskReservations(data,retainedRecoveryTasks(options))
  const names=new Set([...retained.names,...options.reservedNames??[]]),slots=new Set([...retained.slots,...options.reservedSlots??[]])
  const protectedBed=(bed:MowerDormState)=>names.has(bed.name)||slots.has(alphaPosition(...bed.position))
  if(data.alpha){

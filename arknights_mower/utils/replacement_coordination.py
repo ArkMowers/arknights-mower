@@ -346,10 +346,9 @@ def recall_can_sustain(
             return False
         if op.group:
             required, _ = group_recovery_deadline(original, op.group, now=now)
-            if urgent:
-                required = [
-                    name for name in required if original.operators[name].rest_in_full
-                ]
+            required = [
+                name for name in required if original.operators[name].rest_in_full
+            ]
             if any(
                 not recovery_ready_for_arrangement(
                     original, member, sampled_after=None, now=now

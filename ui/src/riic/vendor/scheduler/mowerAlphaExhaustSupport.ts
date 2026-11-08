@@ -76,7 +76,7 @@ function planMowerAlphaExhaustAttempt(original:MowerSchedulingData,candidates:st
   if(name in state.urgentRecoverySupporters)return true
   if(op.restInFull&&!mowerRecoveryReady(state,op,options.priorityScheduling))return true
   const recovery=op.group?mowerGroupRecoveryDeadline(projectMowerArrangements(state,[]),op.group):undefined
-  return !!recovery?.requiredNames.length&&(recovery.requiredNames.some(member=>(!options.urgentExhaust||state.operators[member]!.restInFull)&&!mowerRecoveryReady(state,state.operators[member],options.priorityScheduling)))
+  return !!recovery?.requiredNames.length&&(recovery.requiredNames.some(member=>state.operators[member]!.restInFull&&!mowerRecoveryReady(state,state.operators[member],options.priorityScheduling)))
  }
  const recall=(state:MowerSchedulingData,previous:MowerTaskPlan,names:string[]):[MowerTaskPlan,MowerSchedulingData]|undefined=>{
   if(mowerUrgentRecallBlocked(original,candidates,options.urgentRecoveryPendingSupporters))return

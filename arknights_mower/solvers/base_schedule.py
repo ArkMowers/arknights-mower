@@ -2241,7 +2241,9 @@ class BaseSchedulerSolver(
                     group_required, _ = group_recovery_deadline(
                         self.op_data, op.group, now=now
                     )
-                    if task.type == TaskTypes.EXHAUST_OFF:
+                    if task.type == TaskTypes.EXHAUST_OFF or getattr(
+                        task, "exhaust_support", False
+                    ):
                         group_required = [
                             member
                             for member in group_required

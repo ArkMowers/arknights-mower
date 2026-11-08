@@ -886,7 +886,7 @@ def test_recall_requires_each_selected_member_within_operation_window(
     if group_wait:
         data.group_recovery_full_members["感知"] = ["苍苔", "絮雨"]
     support = solver._plan_exhaust_support(["机械师"])
-    if remaining == 60:
+    if group_wait or remaining == 60:
         assert support is not None
         assert support["room_2_2"] == ["苍苔"]
         assert support["contact"] == ["絮雨"]

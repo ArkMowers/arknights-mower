@@ -9,6 +9,7 @@ import pytest
 from arknights_mower.tests import exhaust_replacement_tests
 from arknights_mower.tests.mood_calculation_projection_consumers_tests import enable
 from arknights_mower.utils import (
+    config,
     recall_estimates,
     replacement_coordination,
 )
@@ -159,9 +160,34 @@ def test_full_recovery_guards_recalled_explicit_completion(recall):
     assert solver._plan_exhaust_support(["机械师"])
     solver.op_data.operators["絮雨"].rest_in_full = True
     assert solver._plan_exhaust_support(["机械师"]) is None
-    solver.op_data.operators["絮雨"].rest_in_full = False
-    solver.op_data.group_recovery_full_members["感知"] = ["苍苔", "絮雨"]
-    assert solver._plan_exhaust_support(["机械师"]) is None
+
+
+@pytest.mark.parametrize("mood, allowed", [(1, False), (12, True)])
+@pytest.mark.parametrize("wait_cap", [0, 0.5])
+def test_ordinary_rescue_bypasses_automatic_group_wait_only_with_endurance(
+    recall, mood, allowed, wait_cap, monkeypatch
+):
+    solver, _, calculated = recall
+    data = solver.op_data
+    set_recalled_mood(solver, mood, calculated=calculated)
+    data.group_recovery_full_members["感知"] = ["苍苔", "絮雨"]
+    conf = getattr(data, "runtime_conf", None) or config.conf
+    monkeypatch.setattr(conf, "group_mood_gap_max_extra_wait_hours", wait_cap)
+    solver.tasks = [event()]
+    positions = {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    }
+    task_time = solver.tasks[0].time
+    support = solver._plan_exhaust_support(["机械师"])
+    assert (support is not None) is allowed
+    assert {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    } == positions
+    assert solver.tasks[0].time == task_time
+    assert {"苍苔", "絮雨"}.issubset(data.group_recovery_full_members["感知"])
+    if allowed:
+        data.operators["絮雨"].rest_in_full = True
+        assert solver._plan_exhaust_support(["机械师"]) is None
 
 
 def test_exhausted_handoff_keeps_independent_endurance_exemption(recall):
@@ -202,3 +228,34 @@ def test_working_mood_stays_strictly_above_floor_until_full_recovery(
         )
         is allowed
     )
+
+
+def test_calculated_rescue_dispatch_bypasses_auto_wait_but_preserves_explicit_full(
+    recall, monkeypatch
+):
+    from arknights_mower.solvers import base_schedule
+
+    solver, _, calculated = recall
+    if not calculated:
+        pytest.skip("仅计算心情路径有提交前心情复核")
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = NOW
+    monkeypatch.setattr(base_schedule, "datetime", clock)
+    set_recalled_mood(solver, 12, calculated=True)
+    data = solver.op_data
+    data.group_recovery_full_members["感知"] = ["苍苔", "絮雨"]
+    plan = solver._plan_exhaust_support(["机械师"])
+    assert plan
+    task = SchedulerTask(task_plan=plan, task_type=TaskTypes.SELF_CORRECTION)
+    task.exhaust_support = task.ordinary_coordination = True
+    task.coordination_request_names = ["机械师"]
+    solver.task = task
+    assert solver._coordination_support_valid(plan, ["机械师"])
+    solver._validate_calculated_arrangement()
+    data.operators["絮雨"].rest_in_full = True
+    with pytest.raises(base_schedule.MoodArrangementChanged):
+        solver._validate_calculated_arrangement()
+    data.operators["絮雨"].rest_in_full = False
+    task.exhaust_support = False
+    with pytest.raises(base_schedule.MoodArrangementChanged):
+        solver._validate_calculated_arrangement()

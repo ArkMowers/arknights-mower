@@ -95,22 +95,21 @@ describe('replacement recall forecast covers the connected recovery cycle',()=>{
   expect(visited).toContain(24)
   expect(allowed(original,admitted,fixed)).toBe(true)
  })
- it('does not recall a group protected by explicit full recovery or a triggered group wait',()=>{
+ it('preserves explicit full recovery while an automatic group wait yields to sustainable rescue',()=>{
   const {original,admit}=fixture()
   original.operators.A!.restInFull=true
   expect(allowed(original,admit(),fixed)).toBe(false)
   original.operators.A!.restInFull=false;original.operators.A!.group='g';original.groupRecoveryFullMembers.g=['A']
-  expect(allowed(original,admit(),fixed)).toBe(false)
+  expect(allowed(original,admit(),fixed)).toBe(true)
  })
 })
 
 
 describe('recall uses the recovering room operation allowance',()=>{
- it.each(['personal','group'] as const)('passes room timing to both recall guards for %s recovery',mode=>{
+ it('passes room timing to both explicit full-recovery recall guards',()=>{
   const {original,admit}=fixture(23.9)
   original.dorms[0]!.timeMicros=toMowerMicros(120/3600)
-  if(mode==='personal')original.operators.A!.restInFull=true
-  else {original.operators.A!.group='g';original.groupRecoveryFullMembers.g=['A']}
+  original.operators.A!.restInFull=true
   const options={coordinationRates:fixed,priorityScheduling:{dormDurations:{dormitory_1:[100]}}}
   const before=JSON.stringify(original)
   expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],{coordinationRates:fixed})).toBe(false)
@@ -293,4 +292,35 @@ it('does not borrow a working follower normal group mood to authorize another gr
  const completed=projectMowerArrangements(data,[{room_1_2:['F'],room_1_3:['Y'],dormitory_1:['A','B','Free']}])
  expect(completed.operators.C!.isResting()).toBe(false)
  expect(mowerCoordinationRequestFulfilled(completed,['B'])).toBe(true)
+})
+
+
+it.each([0,.5].flatMap(waitCap=>[4,20].map(target=>({waitCap,target}))))('ordinary rescue bypasses only automatic group wait with safe full-recovery endurance (cap=$waitCap, target=$target)',({waitCap,target})=>{
+ const {original}=fixture(target)
+ original.policy.rescueThreshold=.5;original.operators.B!.mood=7
+ original.operators.A!.group='recovering'
+ original.groupShiftState.recovering=true
+ original.groupRecoveryFullMembers.recovering=['A']
+ original.groupMoodGapMaxExtraWaitHours=waitCap
+ const before=JSON.stringify(original)
+ const plan=planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})
+ if(target===20)expect(plan).toEqual({room_1_1:['A']})
+ else expect(plan).toBeUndefined()
+ expect(JSON.stringify(original)).toBe(before)
+ if(target===20){
+  original.operators.A!.restInFull=true
+  expect(planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})).toBeUndefined()
+ }
+})
+
+
+it('leaves the ordinary automatic group wait policy in place after an isolated rescue preview',()=>{
+ const {original}=fixture(20)
+ original.policy.rescueThreshold=.5;original.operators.B!.mood=7
+ original.operators.A!.group='recovering';original.groupShiftState.recovering=true
+ original.groupRecoveryFullMembers.recovering=['A']
+ const plan=planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})
+ expect(plan).toEqual({room_1_1:['A']})
+ expect(original.operators.A!.isResting()).toBe(true)
+ expect(original.groupRecoveryFullMembers.recovering).toEqual(['A'])
 })
