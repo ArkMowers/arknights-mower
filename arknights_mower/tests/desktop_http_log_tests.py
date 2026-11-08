@@ -13,9 +13,20 @@ import webview_ui
 from arknights_mower.utils import lifecycle, log
 
 
-@pytest.mark.parametrize("malformed", [False, True])
+@pytest.mark.parametrize(
+    ("status", "malformed", "expected_access_log"),
+    [
+        (200, False, []),
+        (204, False, []),
+        (302, False, []),
+        (304, False, []),
+        (401, False, ["HTTP 请求完成，状态码 401"]),
+        (500, False, ["HTTP 请求完成，状态码 500"]),
+        (400, True, ["HTTP 请求完成，状态码 400"]),
+    ],
+)
 def test_desktop_http_keeps_request_credentials_out_of_logs(
-    monkeypatch, caplog, capsys, malformed
+    monkeypatch, caplog, capsys, status, malformed, expected_access_log
 ):
     token = "synthetic-session-secret-84"
     encoded = quote("synthetic/encoded+secret", safe="")
@@ -26,7 +37,7 @@ def test_desktop_http_keeps_request_credentials_out_of_logs(
     @app.get("/")
     def index():
         received.append(request.args.getlist("token"))
-        return "ready"
+        return "ready", status
 
     shutdown = lifecycle.Shutdown()
     monkeypatch.setattr(lifecycle, "shutdown", shutdown)
@@ -60,8 +71,8 @@ def test_desktop_http_keeps_request_credentials_out_of_logs(
             try:
                 client.request("GET", target)
                 response = client.getresponse()
-                assert response.status == 200
-                assert response.read() == b"ready"
+                assert response.status == status
+                assert response.read() == (b"" if status in (204, 304) else b"ready")
             finally:
                 client.close()
             assert received == [[token, "synthetic/encoded+secret"]]
@@ -72,9 +83,12 @@ def test_desktop_http_keeps_request_credentials_out_of_logs(
     output = caplog.text + capsys.readouterr().err
     for secret in (token, encoded, "synthetic/encoded+secret"):
         assert secret not in output
-    assert any(
-        record.name == log.logger.name
-        and record.levelno == logging.DEBUG
-        and ("400" if malformed else "200") in record.getMessage()
+    request_records = [
+        record
         for record in caplog.records
-    )
+        if record.name == log.logger.name and record.funcName == "log_request"
+    ]
+    assert [record.getMessage() for record in request_records] == expected_access_log
+    assert all(record.levelno == logging.DEBUG for record in request_records)
+    if malformed:
+        assert "HTTP 请求处理事件：error" in output
