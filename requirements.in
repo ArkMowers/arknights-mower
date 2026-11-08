@@ -29,9 +29,6 @@ pydantic==2.8.2
 # 日志
 colorlog==6.8.2
 
-# 场景图
-networkx==3.3
-
 # 副表条件
 evalidate==2.0.2
 

@@ -189,13 +189,14 @@ def _shared_runtime():
 
 def shared_rates(payload):
     _shared_runtime()
-    key = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    request = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    key = request.encode("utf-8", errors="surrogatepass")
     cached = _runtime.rate_results
     if key in cached:
         cached.move_to_end(key)
         return json.loads(cached[key])
     _runtime.context.set_time_limit(2)
-    result = _runtime.calculate(key)
+    result = _runtime.calculate(request)
     cached[key] = result
     if len(cached) > 256:
         cached.popitem(last=False)

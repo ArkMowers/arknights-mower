@@ -1,6 +1,6 @@
 import functools
-
-import networkx as nx
+from heapq import heappop, heappush
+from itertools import count
 
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.server import SharedADBError
@@ -16,7 +16,71 @@ from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.solver import BaseSolver
 
-DG = nx.DiGraph()
+
+class _SceneGraph:
+    def __init__(self):
+        self._outgoing = {}
+        self._incoming = {}
+
+    def __contains__(self, scene):
+        return scene in self._outgoing
+
+    def add_edge(self, source, target, *, weight, transition):
+        if weight < 0:
+            raise ValueError("场景转移权重不能为负数")
+        edge = weight, transition
+        self._outgoing.setdefault(source, {})[target] = edge
+        self._outgoing.setdefault(target, {})
+        self._incoming.setdefault(target, {})[source] = edge
+        self._incoming.setdefault(source, {})
+
+    def transition(self, source, target):
+        return self._outgoing[source][target][1]
+
+    def shortest_path(self, source, target):
+        if source == target:
+            return [source]
+
+        sequence = count()
+        ends = source, target
+        queues = tuple([(0, next(sequence), scene)] for scene in ends)
+        routes = tuple({scene: (0, [scene])} for scene in ends)
+        settled = set(), set()
+        neighbors = self._outgoing, self._incoming
+        best_cost = float("inf")
+        best_path = None
+        direction, reverse = 1, 0
+
+        # Alternate search directions and keep the first equally short path.
+        while queues[0] and queues[1]:
+            direction, reverse = reverse, direction
+            cost, _, scene = heappop(queues[direction])
+            if scene in settled[direction]:
+                continue
+            if scene in settled[reverse]:
+                return best_path
+            settled[direction].add(scene)
+
+            for neighbor, (weight, _) in neighbors[direction][scene].items():
+                next_cost = cost + weight
+                previous = routes[direction].get(neighbor)
+                if previous is not None and previous[0] <= next_cost:
+                    continue
+                trail = routes[direction][scene][1] + [neighbor]
+                routes[direction][neighbor] = next_cost, trail
+                heappush(queues[direction], (next_cost, next(sequence), neighbor))
+
+                match = routes[reverse].get(neighbor)
+                if match is not None and next_cost + match[0] < best_cost:
+                    best_cost = next_cost + match[0]
+                    forward_path = routes[0][neighbor][1]
+                    backward_path = routes[1][neighbor][1]
+                    best_path = forward_path + list(reversed(backward_path[:-1]))
+
+        raise ValueError(f"No path between {source} and {target}.")
+
+
+DG = _SceneGraph()
 SCENE_RECONCILABLE_TRANSITIONS = frozenset(
     {
         "back_to_index",
@@ -460,7 +524,7 @@ def network_check_cancel(solver: BaseSolver):
 
 class SceneGraphSolver(BaseSolver):
     def scene_graph_navigation(self, scene: int):
-        if scene not in DG.nodes:
+        if scene not in DG:
             logger.error(f"{SceneComment[scene]}不在场景图中")
             return
 
@@ -493,7 +557,7 @@ class SceneGraphSolver(BaseSolver):
                 self.waiting_solver()
                 continue
 
-            if current not in DG.nodes:
+            if current not in DG:
                 logger.debug(f"{SceneComment[current]}不在场景图中")
                 unknown_count += 1
                 if unknown_count <= 3:
@@ -512,7 +576,7 @@ class SceneGraphSolver(BaseSolver):
                 continue
 
             try:
-                sp = nx.shortest_path(DG, current, scene, weight="weight")
+                sp = DG.shortest_path(current, scene)
             except Exception as e:
                 # 纯图计算错误（如无路径），与设备无关：不重启模拟器，放弃本次导航
                 logger.exception(f"场景图路径计算异常：{e}")
@@ -521,7 +585,7 @@ class SceneGraphSolver(BaseSolver):
             logger.debug(sp)
 
             next_scene = sp[1]
-            transition = DG.edges[current, next_scene]["transition"]
+            transition = DG.transition(current, next_scene)
 
             try:
                 mode = (

@@ -4,7 +4,6 @@ from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import networkx as nx
 import pytest
 
 from arknights_mower.utils import config, graph
@@ -28,7 +27,7 @@ def navigation(monkeypatch):
     solver.check_current_focus = Mock()
     solver.recog = SimpleNamespace(update=Mock())
     solver.device = SimpleNamespace(reconnect=Mock(), exit=Mock(), launch=Mock())
-    routes = nx.DiGraph()
+    routes = graph._SceneGraph()
     transition = Mock()
     routes.add_edge(Scene.INFRA_MAIN, Scene.INDEX, transition=transition, weight=1)
     monkeypatch.setattr(graph, "DG", routes)
@@ -45,6 +44,48 @@ def navigation(monkeypatch):
 
     transition.side_effect = fail
     return solver, state, transition
+
+
+def test_equal_length_scene_paths_keep_existing_first_transitions():
+    assert graph.DG.shortest_path(Scene.INDEX, Scene.NAVIGATION_BAR) == [
+        Scene.INDEX,
+        Scene.HEADHUNTING,
+        Scene.NAVIGATION_BAR,
+    ]
+    assert graph.DG.shortest_path(Scene.CTRLCENTER_ASSISTANT, Scene.INDEX) == [
+        Scene.CTRLCENTER_ASSISTANT,
+        Scene.INFRA_MAIN,
+        Scene.INDEX,
+    ]
+
+
+def test_navigation_follows_the_lowest_total_weight(navigation):
+    solver, state, transition = navigation
+    first = Mock(side_effect=lambda _: state.update(scene=Scene.NAVIGATION_BAR))
+    second = Mock(side_effect=lambda _: state.update(scene=Scene.INDEX))
+    graph.DG.add_edge(Scene.INFRA_MAIN, Scene.INDEX, weight=3, transition=transition)
+    graph.DG.add_edge(
+        Scene.INFRA_MAIN, Scene.NAVIGATION_BAR, weight=1, transition=first
+    )
+    graph.DG.add_edge(Scene.NAVIGATION_BAR, Scene.INDEX, weight=1, transition=second)
+
+    solver.scene_graph_navigation(Scene.INDEX)
+
+    transition.assert_not_called()
+    first.assert_called_once_with(solver)
+    second.assert_called_once_with(solver)
+
+
+def test_unreachable_scene_ends_navigation_without_game_recovery(navigation):
+    solver, state, transition = navigation
+    state["scene"] = Scene.INDEX
+
+    solver.scene_graph_navigation(Scene.INFRA_MAIN)
+
+    transition.assert_not_called()
+    solver.device.reconnect.assert_not_called()
+    solver.device.launch.assert_not_called()
+    graph.logger.exception.assert_called_once()
 
 
 def test_healthy_transport_still_restarts_a_stuck_game(navigation):
