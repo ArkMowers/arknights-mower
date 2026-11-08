@@ -75,11 +75,12 @@ class MaintenanceInfo:
 
     @property
     def resume_at(self) -> datetime:
-        """停机维护提前一小时试登录，开始后至少等待两分钟。"""
+        """停机维护提前总时长的一半试登录，提前量最多一小时。"""
         if self.allows_early_login:
+            advance = min(timedelta(hours=1), (self.end - self.start) / 2)
             return min(
                 self.end,
-                max(self.start + timedelta(minutes=2), self.end - timedelta(hours=1)),
+                max(self.start + timedelta(minutes=2), self.end - advance),
             )
         return self.end
 

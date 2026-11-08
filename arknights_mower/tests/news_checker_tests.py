@@ -148,11 +148,34 @@ class NewsCheckerTests(unittest.TestCase):
             announcement_id="1",
         )
 
-        self.assertEqual(info.resume_at, datetime(2026, 9, 4, 11, 32))
+        self.assertEqual(info.resume_at, datetime(2026, 9, 4, 11, 45))
+
+    def test_maintenance_entry_uses_half_duration_capped_at_one_hour(self):
+        start = datetime(2026, 11, 8, 16)
+        for minutes, elapsed in (
+            (2, 120),
+            (4, 120),
+            (10, 300),
+            (30, 900),
+            (60, 1800),
+            (90, 2700),
+            (120, 3600),
+            (360, 18000),
+        ):
+            with self.subTest(minutes=minutes):
+                info = MaintenanceInfo(
+                    start,
+                    start + timedelta(minutes=minutes),
+                    "hot",
+                    "服务器停机维护公告",
+                    "",
+                    "entry-window",
+                )
+                self.assertEqual(info.resume_at, start + timedelta(seconds=elapsed))
 
     def test_flash_duration_selects_wait_and_retry_policy_without_client_stop(self):
         start = datetime(2026, 11, 8, 16)
-        for minutes, wait in ((9, 540), (10, 120), (60, 120), (360, 18000)):
+        for minutes, wait in ((9, 540), (10, 300), (60, 1800), (360, 18000)):
             with self.subTest(minutes=minutes):
                 info = MaintenanceInfo(
                     start,
@@ -187,7 +210,7 @@ class NewsCheckerTests(unittest.TestCase):
 
     def test_repeated_maintenance_entry_failures_preserve_task_until_success(self):
         class Clock(datetime):
-            current = datetime(2026, 11, 8, 16, 2)
+            current = datetime(2026, 11, 8, 16, 30)
 
             @classmethod
             def now(cls, tz=None):
@@ -200,7 +223,7 @@ class NewsCheckerTests(unittest.TestCase):
             (RuntimeError, False),
         ):
             with self.subTest(exception=exception.__name__, succeeds=succeeds):
-                Clock.current = datetime(2026, 11, 8, 16, 2 if succeeds else 56)
+                Clock.current = datetime(2026, 11, 8, 16, 30 if succeeds else 56)
                 info = MaintenanceInfo(
                     datetime(2026, 11, 8, 16),
                     datetime(2026, 11, 8, 17),
