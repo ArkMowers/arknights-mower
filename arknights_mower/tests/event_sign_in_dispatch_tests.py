@@ -188,6 +188,7 @@ def main_runtime(monkeypatch, scheduler):
     runtime.daily_visit_friend_attempt = None
     runtime.maa_copilot_progress = {}
     runtime.maa_daily_completed = {}
+    runtime.annihilation_lock_mail_day = None
     runtime.daily_event_sign_in = scheduler.daily_event_sign_in
     runtime.daily_event_sign_in_attempt = scheduler.daily_event_sign_in_attempt
     runtime.find_next_task.return_value = None

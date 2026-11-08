@@ -51,7 +51,7 @@ os.replace = concurrent_move
 importlib.import_module('arknights_mower.utils.' + sys.argv[1])
 from arknights_mower.utils import config, log
 assert config.conf.theme == 'dark'
-assert '配置已由另一进程迁移' in config.log_queue.get(timeout=3)
+assert '配置已由另一进程迁移' in config.log_queue.get(timeout=3)['msg']
 assert log.fhlr is None
 assert log.get_screenshot_store() is None
 log.close_logging()
@@ -100,7 +100,7 @@ with patch.object(os, 'replace', concurrent_move), patch.object(
 
 (root / 'config/conf.yml').write_text('theme: dark\n')
 from arknights_mower.utils import config
-messages = [config.log_queue.get(timeout=3) for _ in range(2)]
+messages = [config.log_queue.get(timeout=3)['msg'] for _ in range(2)]
 assert any('配置已由另一进程迁移' in message for message in messages), messages
 assert any('config-load-failure-probe' in message for message in messages), messages
 assert config.conf.theme == 'dark'
@@ -155,7 +155,7 @@ with patch.object(os, 'replace', concurrent_move):
     assert not errors, errors
 
 from arknights_mower.utils import config
-messages = [config.log_queue.get(timeout=3) for _ in range(2)]
+messages = [config.log_queue.get(timeout=3)['msg'] for _ in range(2)]
 assert any('concurrent-config-probe' in message for message in messages), messages
 assert any('配置已由另一进程迁移' in message for message in messages), messages
 assert config.conf.theme == 'dark'
@@ -353,7 +353,7 @@ assert store.stats()['failed'] == 1
 log.logger.info('routing-probe-finished')
 messages = []
 while True:
-    message = config.log_queue.get(timeout=3)
+    message = config.log_queue.get(timeout=3)['msg']
     messages.append(message)
     if 'routing-probe-finished' in message:
         break

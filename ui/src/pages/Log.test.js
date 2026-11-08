@@ -13,13 +13,15 @@ import {
   onMounted,
   onUnmounted,
   reactive,
-  ref
+  ref,
+  shallowReactive
 } from 'vue'
 import { routeLocationKey, routerKey } from 'vue-router'
 
 import LogPage from './Log.vue'
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
 import { useLogBackgroundStore } from '@/stores/logBackground'
+import { useGuiStore } from '@/stores/gui'
 
 const { descriptor } = parse(readFileSync(new URL('./Log.vue', import.meta.url), 'utf8'))
 const script = compileScript(descriptor, { id: 'task-dialog-loading-test' })
@@ -51,6 +53,7 @@ function taskDialogHandler(component, loadTaskDialog, message) {
 const state = vi.hoisted(() => ({
   client: null,
   mower: null,
+  plan: null,
   config: null,
   warning: null,
   error: null,
@@ -58,6 +61,9 @@ const state = vi.hoisted(() => ({
   route: null,
   router: null,
   mobile: null,
+  preview: null,
+  previewOptions: null,
+  realPreview: false,
   configurationMounts: 0
 }))
 
@@ -88,6 +94,7 @@ vi.mock('naive-ui', () => ({
   useMessage: () => ({ error: state.error, success: vi.fn() })
 }))
 vi.mock('@/stores/mower', () => ({ useMowerStore: () => state.mower }))
+vi.mock('@/stores/plan', () => ({ usePlanStore: () => state.plan }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/components/TaskDialog.vue', () => ({
   default: { name: 'TaskDialog', render: () => h('div', { 'data-task-form': true }) }
@@ -100,9 +107,15 @@ vi.mock('@/task-workflow/TaskConfiguration.vue', () => ({
     }
   })
 }))
-vi.mock('@/utils/screenshotPreview', () => ({
-  createScreenshotPreview: () => ({ start: vi.fn(), stop: vi.fn() })
-}))
+vi.mock('@/utils/screenshotPreview', async (original) => {
+  const actual = await original()
+  return {
+    createScreenshotPreview: (options) => {
+      state.previewOptions = options
+      return state.realPreview ? actual.createScreenshotPreview(options) : state.preview
+    }
+  }
+})
 
 describe('log page', () => {
   let scope
@@ -124,6 +137,7 @@ describe('log page', () => {
         log: ref(''),
         log_mobile: ref(''),
         running: ref(false),
+        status: ref('stopped'),
         stop_after_round: ref(false),
         maintenance_pause: ref(null),
         status_label: ref('已停止'),
@@ -132,6 +146,7 @@ describe('log page', () => {
         task_list: ref([]),
         waiting: ref(false)
       },
+      clear_legacy_logs: vi.fn(),
       get_tasks: vi.fn(),
       get_running: vi.fn(),
       set_stop_after_round: vi.fn(),
@@ -139,12 +154,20 @@ describe('log page', () => {
       start_task_polling: vi.fn(),
       stop_task_polling: vi.fn()
     }
-    state.config = { refs: { theme: ref('light') } }
+    state.config = shallowReactive({ refs: { theme: ref('light') } })
+    state.plan = {
+      refs: {
+        operators: ref([{ value: '阿米娅' }, { value: '芬' }]),
+        plan: ref({ room_1_1: { name: '贸易站' } })
+      }
+    }
     state.configurationMounts = 0
     state.taskVisibility = null
     state.route = reactive({ hash: '', query: {}, redirectedFrom: null })
     state.router = { push: vi.fn(), replace: vi.fn() }
     state.mobile = ref(false)
+    state.preview = { start: vi.fn(), stop: vi.fn() }
+    state.realPreview = false
     vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) })
     const documentTarget = Object.assign(new EventTarget(), {
       hidden: false,
@@ -184,6 +207,7 @@ describe('log page', () => {
     expect(vi.getTimerCount()).toBe(1)
 
     component.start()
+    expect(state.mower.clear_legacy_logs).toHaveBeenCalledOnce()
     expect(state.mower.get_tasks).toHaveBeenCalledOnce()
     onUnmounted.mock.lastCall[0]()
     expect(state.mower.stop_task_polling).toHaveBeenCalledOnce()
@@ -387,7 +411,6 @@ describe('log page', () => {
       'NButton',
       'NIcon',
       'NText',
-      'NSwitch',
       'NModal',
       'NCheckbox',
       'DropDown',
@@ -396,8 +419,9 @@ describe('log page', () => {
       'TaskDialog',
       'HelpText',
       'StopIcon',
+      'PlayIcon',
       'AddIcon',
-      'ServerOutlineIcon',
+      'LayersOutlineIcon',
       'CollapseIcon',
       'ExpandIcon'
     ])
@@ -413,7 +437,37 @@ describe('log page', () => {
             props.show ? slots.default?.() : null
           ])
     })
-    app.component('NLog', { render: () => h('pre', { 'data-log-content': true }) })
+    app.component('LogOutput', {
+      props: [
+        'lines',
+        'operatorNames',
+        'facilityPlan',
+        'compact',
+        'concise',
+        'autoScroll',
+        'showAlternateView'
+      ],
+      setup:
+        (props, { slots }) =>
+        () =>
+          h('pre', { 'data-log-content': true, ...props }, [
+            slots.title?.(),
+            props.showAlternateView ? slots.alternate?.() : slots.header?.()
+          ])
+    })
+    app.component('LogOperator', {
+      props: ['name'],
+      setup: (props) => () => h('span', { 'data-operator-name': props.name }, props.name)
+    })
+    app.component('TaskActionSubjects', {
+      props: ['actions', 'facilityPlan', 'size'],
+      setup: (props) => () =>
+        h(
+          'span',
+          { 'data-task-action-subjects': true, ...props },
+          props.actions.map((action) => action.subject + action.action).join('；')
+        )
+    })
     app.component('TaskConfiguration', TaskConfiguration)
     const root = node('root')
     app.mount(root)
@@ -424,6 +478,20 @@ describe('log page', () => {
       return target
     }
     return { root, find, all }
+  }
+
+  async function openViewOptions(find) {
+    const trigger = find((target) => target.props.class === 'view-options-trigger')
+    expect(trigger.props['aria-expanded']).toBe(false)
+    let triggerHost = trigger.parent
+    while (triggerHost && !triggerHost.props.onClick) triggerHost = triggerHost.parent
+    expect(triggerHost).toBeTruthy()
+    triggerHost.props.onClick()
+    await nextTick()
+    expect(trigger.props['aria-expanded']).toBe(true)
+    const panel = find((target) => target.props.id === trigger.props['aria-controls'])
+    expect(panel.props.role).toBe('dialog')
+    return trigger
   }
 
   it('updates the mounted background immediately when shared settings change', async () => {
@@ -478,6 +546,8 @@ describe('log page', () => {
     page.sc_blob = 'blob:http://latest'
     await nextTick()
     const image = find((target) => target.props.src === 'blob:http://latest')
+    const screenshot = find((target) => target.props.class === 'log-screenshot')
+    pane.querySelector = (selector) => (selector === '.log-screenshot' ? screenshot : null)
     image.props.onLoad({ target: { naturalWidth: 1920, naturalHeight: 1080 } })
     await nextTick()
     const screenshotHeight = () =>
@@ -488,6 +558,11 @@ describe('log page', () => {
     page.apply_log_layout()
     expect(screenshotHeight()).toBe('360px')
 
+    screenshot.clientWidth = 240
+    page.apply_log_layout()
+    expect(screenshotHeight()).toBe('135px')
+
+    screenshot.clientWidth = 0
     pane.clientWidth = 360
     image.props.onLoad({ target: { naturalWidth: 1080, naturalHeight: 1920 } })
     await nextTick()
@@ -537,7 +612,7 @@ describe('log page', () => {
     })
   })
 
-  it('restores grouped room rows and keeps backend order, task names and execution times', async () => {
+  it('keeps each task in one row with an independent time cell and ordered facilities', async () => {
     state.mower.refs.task_list.value = [
       {
         time: '2026-10-20T11:30:00.000',
@@ -567,11 +642,14 @@ describe('log page', () => {
     expect(queue.parent).toBe(log.parent)
     expect(rows().map(text)).toEqual([
       '时间 任务',
-      '11:30:00 自动救急换班 room_1_1 阿米娅, _',
-      'dormitory_1 芬',
+      '11:30:00 换班 自动救急换班 宿舍1 芬 贸易站 B101 阿米娅 _',
       '10:00:00 扫描仓库 全部物品'
     ])
-    expect(rows()[1].children.find((target) => target.tag === 'td').props.rowspan).toBe(2)
+    const timeCell = rows()[1].children.find((target) => target.tag === 'td')
+    expect(text(timeCell)).toBe('11:30:00')
+    expect(all(rows()[1]).filter((target) => target.props.class === 'task-facility')).toHaveLength(
+      2
+    )
     expect(state.configurationMounts).toBe(0)
 
     state.mower.refs.task_list.value = [state.mower.refs.task_list.value[1]]
@@ -581,6 +659,518 @@ describe('log page', () => {
     await nextTick()
     expect(all().some((target) => target.props.class === 'task-table-scroll')).toBe(false)
     expect(find((target) => target.props['data-log-content'])).toBe(log)
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('shows readable target rooms and backend action titles without splitting a task', () => {
+    state.plan.refs.plan.value.room_2_1 = { name: '贸易站' }
+    state.mower.refs.task_list.value = [
+      {
+        time: '2026-11-04T16:05:19',
+        plan: {},
+        display_name: '刷新跑单时间',
+        meta_data: 'room_2_1'
+      },
+      {
+        time: '2026-11-04T18:11:29',
+        plan: { room_3_3: ['Current', '阿米娅'], dormitory_2: ['芬'] },
+        type: { display_value: '下班' },
+        presentation: {
+          title: '甲组上班、乙组下班',
+          rooms: [
+            { id: 'room_3_3', label: '发电站 B303', agents: ['Current', '阿米娅'] },
+            { id: 'dormitory_2', label: '宿舍2', agents: ['芬'] }
+          ],
+          targets: [],
+          backups: []
+        }
+      }
+    ]
+    const { find, all } = mountWorkspace()
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    const text = (target) =>
+      all(target)
+        .filter((entry) => entry.tag !== '#comment')
+        .map((entry) => entry.text)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    expect(text(queue)).toContain('刷新跑单时间 贸易站 B201')
+    const refreshHeading = all(queue).find((entry) => entry.props.class === 'task-heading')
+    expect(text(refreshHeading)).toBe('刷新跑单时间')
+    const refreshTargets = all(queue).find((entry) => entry.props.class === 'task-refresh-targets')
+    expect(text(refreshTargets)).toBe('贸易站 B201')
+    expect(text(queue)).not.toContain('room_2_1')
+    expect(text(queue)).toContain('甲组上班、乙组下班')
+    expect(text(queue)).toContain('发电站 B303')
+    const rows = all(queue).filter((entry) => entry.tag === 'tr')
+    expect(rows).toHaveLength(3)
+    const cells = all(queue).filter((entry) => entry.tag === 'td')
+    expect(cells.filter((entry) => entry.props.class === 'task-time').map(text)).toEqual([
+      '16:05:19',
+      '18:11:29'
+    ])
+    expect(
+      all(rows[2])
+        .filter((entry) => entry.props.class === 'task-room-label')
+        .map(text)
+    ).toEqual(['宿舍2', '发电站 B303'])
+  })
+
+  it('shows full dates from non-today times on desktop hover or touch', async () => {
+    vi.setSystemTime(new Date(2026, 10, 6, 20))
+    state.mower.refs.task_list.value = [
+      { time: '2026-11-06T17:38:57', plan: {}, type: { display_value: '上班' } },
+      { time: '2026-11-07T13:26:26', plan: {}, type: { display_value: '线索交流' } },
+      { time: '2026-11-07T16:00:00', plan: {}, type: { display_value: '安排干员' } },
+      { time: '2026-11-06T20:07:41', plan: {}, type: { display_value: '刷新跑单时间' } }
+    ]
+    const { root, all } = mountWorkspace()
+    const pageText = () =>
+      all(root)
+        .map((entry) => entry.text)
+        .join('')
+    const times = all().filter((entry) => entry.tag === 'time')
+    expect(times.map((entry) => entry.text)).toEqual([
+      '17:38:57',
+      '13:26:26',
+      '16:00:00',
+      '20:07:41'
+    ])
+    const triggers = all().filter((entry) => entry.props.class === 'task-date-trigger')
+    expect(triggers.map((entry) => entry.props['aria-label'])).toEqual([
+      '2026-11-07 13:26:26',
+      '2026-11-07 16:00:00'
+    ])
+    expect(times[1].props.datetime).toBe('2026-11-07T13:26:26')
+    expect(pageText()).not.toContain('2026-11-07')
+
+    triggers[0].props.onPointerenter({ pointerType: 'mouse' })
+    await nextTick()
+    expect(pageText()).toContain('2026-11-07 13:26:26')
+    triggers[0].props.onPointerleave({ pointerType: 'mouse' })
+    await nextTick()
+    expect(pageText()).not.toContain('2026-11-07 13:26:26')
+
+    triggers[1].props.onPointerenter({ pointerType: 'touch' })
+    await nextTick()
+    expect(triggers[1].props['aria-expanded']).toBe(false)
+    triggers[1].parent.props.onClick()
+    await nextTick()
+    expect(triggers[1].props['aria-expanded']).toBe(true)
+    expect(pageText()).toContain('2026-11-07 16:00:00')
+    triggers[1].props.onKeydown({ key: 'Escape', stopPropagation: vi.fn() })
+    await nextTick()
+    expect(pageText()).not.toContain('2026-11-07 16:00:00')
+
+    triggers[1].parent.props.onClick()
+    await nextTick()
+    const tasks = state.mower.refs.task_list.value
+    state.mower.refs.task_list.value = tasks.filter((_, index) => index !== 2)
+    await nextTick()
+    state.mower.refs.task_list.value = tasks
+    await nextTick()
+    expect(pageText()).not.toContain('2026-11-07 16:00:00')
+  })
+
+  it('switches the task list to the alpha text columns and retains date and backup display', async () => {
+    vi.setSystemTime(new Date(2026, 10, 6, 20))
+    state.mower.refs.plan_condition.value = ['停服更新']
+    state.mower.refs.task_list.value = [
+      {
+        time: '2026-11-07T13:26:26',
+        plan: { room_3_3: ['Current', '阿米娅', ''], dormitory_2: ['芬'] },
+        type: { display_value: '下班' },
+        emergency_staffing: true
+      },
+      {
+        time: '2026-11-06T20:07:41',
+        plan: {},
+        display_name: '刷新跑单时间',
+        meta_data: 'room_2_1'
+      }
+    ]
+    const { all, find } = mountWorkspace()
+    const gui = useGuiStore()
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    const backup = find((target) => target.props.class === 'plan-condition')
+    const rows = () => all(queue).filter((target) => target.tag === 'tr')
+    const cells = (row) => row.children.filter((target) => target.tag === 'td')
+    const text = (target) =>
+      all(target)
+        .filter((entry) => entry.tag !== '#comment')
+        .map((entry) => entry.text)
+        .join('')
+        .trim()
+    expect(rows()).toHaveLength(3)
+    expect(all(queue).some((target) => target.props['data-operator-name'] === '阿米娅')).toBe(true)
+
+    gui.taskQueueDisplay = 'names'
+    await nextTick()
+    expect(rows()).toHaveLength(4)
+    expect(cells(rows()[1]).map(text)).toEqual([
+      '13:26:26自动救急换班',
+      'room_3_3',
+      'Current, 阿米娅, _'
+    ])
+    expect(cells(rows()[1])[0].props.rowspan).toBe(2)
+    expect(cells(rows()[2]).map(text)).toEqual(['dormitory_2', '芬'])
+    expect(cells(rows()[3]).map(text)).toEqual(['20:07:41', '刷新跑单时间 room_2_1'])
+    expect(cells(rows()[3])[1].props.colspan).toBe('2')
+    expect(all(queue).some((target) => target.props['data-operator-name'])).toBe(false)
+    expect(
+      all(queue).find((target) => target.props.class === 'task-date-trigger').props['aria-label']
+    ).toBe('2026-11-07 13:26:26')
+    expect(all().indexOf(backup)).toBeLessThan(all().indexOf(queue))
+    expect(text(backup)).toContain('停服更新')
+
+    gui.taskQueueDisplay = 'portraits'
+    await nextTick()
+    expect(rows()).toHaveLength(3)
+  })
+
+  it('refreshes the non-today indication after local midnight while the log stays open', async () => {
+    vi.setSystemTime(new Date(2026, 10, 6, 23, 59, 59))
+    state.client.get.mockResolvedValue({ data: {} })
+    state.mower.refs.task_list.value = [
+      { time: '2026-11-06T23:59:59', plan: {}, type: { display_value: '上班' } },
+      { time: '2026-11-07T13:26:26', plan: {}, type: { display_value: '线索交流' } }
+    ]
+    const { all } = mountWorkspace()
+    onMounted.mock.lastCall[0]()
+    const markedTimes = () =>
+      all()
+        .filter((entry) => entry.props.class === 'task-date-trigger')
+        .map((entry) => entry.props['aria-label'])
+    expect(markedTimes()).toEqual(['2026-11-07 13:26:26'])
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(markedTimes()).toEqual(['2026-11-06 23:59:59'])
+    onUnmounted.mock.lastCall[0]()
+  })
+
+  it('places same-instant refresh facilities below one heading without changing the backend tasks', () => {
+    state.plan.refs.plan.value.room_2_1 = { name: '贸易站' }
+    const tasks = Object.freeze([
+      Object.freeze({
+        time: '2026-11-05T16:05:19.000',
+        plan: {},
+        display_name: '刷新跑单时间',
+        meta_data: 'room_2_1'
+      }),
+      Object.freeze({
+        time: '2026-11-05T16:05:19.000',
+        plan: {},
+        display_name: '刷新跑单时间',
+        meta_data: 'room_1_1'
+      })
+    ])
+    state.mower.refs.task_list.value = tasks
+    const { find, all } = mountWorkspace()
+    const queue = find((entry) => entry.props.class === 'task-table-scroll')
+    const content = (entry) =>
+      all(entry)
+        .filter((item) => item.tag !== '#comment')
+        .map((item) => item.text)
+        .join('')
+        .trim()
+    expect(all(queue).filter((entry) => entry.tag === 'tr')).toHaveLength(2)
+    const heading = all(queue).find((entry) => entry.props.class === 'task-heading')
+    const facilities = all(queue).find((entry) => entry.props.class === 'task-refresh-targets')
+    expect(content(heading)).toBe('刷新跑单时间')
+    expect(
+      all(facilities)
+        .filter((entry) => entry.props.class === 'task-room-label')
+        .map(content)
+    ).toEqual(['贸易站 B201', '贸易站 B101'])
+    expect(heading.parent.children.indexOf(heading)).toBeLessThan(
+      heading.parent.children.indexOf(facilities)
+    )
+    expect(
+      all(queue)
+        .filter((entry) => entry.tag === 'time')
+        .map(content)
+    ).toEqual(['16:05:19'])
+    expect(all(heading.parent).filter((entry) => entry.tag === 'button')).toHaveLength(0)
+    expect(state.mower.refs.task_list.value).toBe(tasks)
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('retains separate refresh rows when fractional timestamps differ', () => {
+    state.plan.refs.plan.value.room_2_1 = { name: '贸易站' }
+    state.mower.refs.task_list.value = [
+      {
+        time: '2026-11-05T16:05:19.001',
+        plan: {},
+        display_name: '刷新跑单时间',
+        meta_data: 'room_1_1'
+      },
+      {
+        time: '2026-11-05T16:05:19.002',
+        plan: {},
+        display_name: '刷新跑单时间',
+        meta_data: 'room_2_1'
+      }
+    ]
+    const { find, all } = mountWorkspace()
+    const queue = find((entry) => entry.props.class === 'task-table-scroll')
+    expect(all(queue).filter((entry) => entry.tag === 'tr')).toHaveLength(3)
+    expect(
+      all(queue)
+        .filter((entry) => entry.tag === 'time')
+        .map((entry) => entry.props.datetime)
+    ).toEqual(['2026-11-05T16:05:19.001', '2026-11-05T16:05:19.002'])
+    expect(all(queue).filter((entry) => entry.props.class === 'task-refresh-targets')).toHaveLength(
+      2
+    )
+  })
+
+  it('reuses the correct task row across equivalent polls and insertions while changing real content keys', async () => {
+    const task = {
+      time: '2026-11-05T18:11:29.000',
+      plan: { room_1_1: ['Current', '阿米娅', 'Free'], dormitory_1: ['芬'] },
+      type: { display_value: '上班' }
+    }
+    state.mower.refs.task_list.value = [task]
+    const { find, all } = mountWorkspace()
+    const taskRow = () => {
+      let entry = find((node) => node.tag === 'time' && node.props.datetime === task.time)
+      while (entry.tag !== 'tr') entry = entry.parent
+      return entry
+    }
+    const original = taskRow()
+    const portraitNames = (row) =>
+      all(row)
+        .filter((entry) => entry.props['data-operator-name'])
+        .map((entry) => entry.props['data-operator-name'])
+    expect(portraitNames(original)).toEqual(['芬', 'Current', '阿米娅', 'Free'])
+    state.mower.refs.task_list.value = [JSON.parse(JSON.stringify(task))]
+    await nextTick()
+    expect(taskRow()).toBe(original)
+    state.mower.refs.task_list.value = [
+      { time: '2026-11-05T17:00:00.000', plan: {}, display_name: '扫描仓库' },
+      JSON.parse(JSON.stringify(task))
+    ]
+    await nextTick()
+    expect(taskRow()).toBe(original)
+    expect(portraitNames(taskRow())).toEqual(['芬', 'Current', '阿米娅', 'Free'])
+    state.mower.refs.task_list.value[1].plan.room_1_1[0] = '芬'
+    await nextTick()
+    expect(taskRow()).not.toBe(original)
+    expect(portraitNames(taskRow())).toEqual(['芬', '芬', '阿米娅', 'Free'])
+  })
+
+  it('keeps the automatic mastery heading separate from the training row with existing mastery icons', () => {
+    state.plan.refs.operators.value = [{ value: '焰狐龙梓兰' }, { value: '逻各斯' }]
+    state.mower.refs.task_list.value = [
+      {
+        time: '2026-11-04T19:42:00',
+        plan: {},
+        type: { display_value: '换协助位' },
+        meta_data: '焰狐龙梓兰 二技能·飞翔瞪射 专二 → 专三 换入逻各斯'
+      },
+      {
+        time: '2026-11-04T19:43:00',
+        plan: {},
+        type: { display_value: '空任务' },
+        presentation: { title: '', rooms: [], targets: [], backups: [] }
+      },
+      {
+        time: '2026-11-04T19:44:00',
+        plan: {},
+        display_name: '替班心情检查：白面鸮',
+        meta_data: '替班心情检查：白面鸮'
+      }
+    ]
+    const { find, all } = mountWorkspace()
+    const queue = find((entry) => entry.props.class === 'task-table-scroll')
+    const text = all(queue)
+      .map((entry) => entry.text)
+      .join(' ')
+    expect(text).toContain('二技能·飞翔瞪射')
+    expect(text).toContain('训练室')
+    expect(text).toContain('换入')
+    expect(text).toContain('空任务')
+    expect(text.match(/替班心情检查：白面鸮/gu)).toHaveLength(1)
+    expect(
+      all(queue)
+        .filter((entry) => entry.props['data-operator-name'])
+        .map((entry) => entry.props['data-operator-name'])
+    ).toEqual(['焰狐龙梓兰', '逻各斯'])
+    expect(
+      all(queue)
+        .filter((entry) => entry.props.class === 'task-mastery')
+        .map((entry) => entry.props['aria-label'])
+    ).toEqual(['专二 → 专三'])
+    const headings = all(queue).filter((entry) => entry.props.class === 'task-heading')
+    expect(
+      all(headings[0])
+        .filter((entry) => entry.tag !== '#comment')
+        .map((entry) => entry.text)
+        .join('')
+    ).toBe('自动专精换协助位')
+    expect(
+      all(queue)
+        .filter((entry) => entry.tag === 'img' && /mastery-[0-3]\.png/u.test(entry.props.src ?? ''))
+        .map((entry) => entry.props.src.match(/mastery-([0-3])\.png/u)[1])
+    ).toEqual(['2', '3'])
+  })
+
+  it.each(['下班', '转为空闲'])('passes %s actions once with their full identities', (action) => {
+    const actions = [
+      ...(action === '转为空闲'
+        ? [{ kind: 'operator', subject: '桑葚', action: '休息' }]
+        : [{ kind: 'group', subject: '感知', action: '上班', members: ['阿米娅', '凯尔希'] }]),
+      ...['芬', '红', '陈', '赫默'].map((subject) => ({
+        kind: 'operator',
+        subject,
+        action
+      }))
+    ]
+    state.mower.refs.task_list.value = [
+      {
+        time: '2026-11-04T19:42:00',
+        plan: {},
+        presentation: {
+          title: `${action === '转为空闲' ? '桑葚休息' : '感知上班'}；芬、红、陈、赫默${action}`,
+          actions
+        }
+      }
+    ]
+    const { find, all } = mountWorkspace()
+    const subjects = find((entry) => entry.props['data-task-action-subjects'])
+    expect(subjects.props.actions).toEqual(actions)
+    expect(subjects.props.size).toBe(24)
+    const heading = all().find((entry) => entry.props.class === 'task-heading')
+    expect(all(heading).filter((entry) => entry.props['data-operator-name'])).toHaveLength(0)
+    expect(all(heading).filter((entry) => entry.props['data-task-action-subjects'])).toHaveLength(1)
+  })
+
+  it('passes original logs, known operators and the main facility plan across compact layout changes', async () => {
+    const rawLines = Object.freeze([
+      '2026-10-31 14:12:03,456 INFO 阿米娅进入 room_1_1',
+      '  File "scheduler.py", line 72, in arrange\nValueError: 芬仍在训练室'
+    ])
+    state.mower.refs.log_lines.value = rawLines
+    state.mower.refs.log.value = '<span>legacy desktop formatting</span>'
+    state.mower.refs.log_mobile.value = 'legacy compact formatting'
+    const taskPlan = Object.freeze({
+      room_1_1: Object.freeze(['阿米娅']),
+      room_1_2: Object.freeze(['芬']),
+      unknown_room: Object.freeze(['Free'])
+    })
+    state.mower.refs.task_list.value = [
+      { time: '2026-10-31T14:20:00.000', plan: taskPlan, type: { display_value: '换班' } }
+    ]
+    const facilityPlan = state.plan.refs.plan.value
+    const { find, all } = mountWorkspace()
+    const output = find((target) => target.props['data-log-content'])
+    const roomLabel = (room) => {
+      const cell = find(
+        (target) => target.props.class === 'task-room-label' && target.props.title === room
+      )
+      return all(cell)
+        .filter((target) => target.tag !== '#comment')
+        .map((target) => target.text)
+        .join('')
+        .trim()
+    }
+    expect(all().filter((target) => target.props['data-log-content'])).toHaveLength(1)
+    expect(output.props.lines).toBe(rawLines)
+    expect(output.props.operatorNames).toEqual(['阿米娅', '芬'])
+    expect(output.props.facilityPlan).toBe(facilityPlan)
+    expect(output.props.compact).toBe(false)
+    expect(roomLabel('room_1_1')).toBe('贸易站 B101')
+    expect(roomLabel('room_1_2')).toBe('B102')
+    expect(roomLabel('unknown_room')).toBe('unknown_room')
+
+    state.mobile.value = true
+    state.plan.refs.operators.value = [{ value: '阿米娅' }, { value: '芬' }, { value: '令' }]
+    facilityPlan.room_1_1.name = '制造站'
+    facilityPlan.room_1_2 = { name: '未知设施' }
+    facilityPlan.unknown_room = { name: '贸易站' }
+    await nextTick()
+    expect(find((target) => target.props['data-log-content'])).toBe(output)
+    expect(output.props.compact).toBe(true)
+    expect(output.props.lines).toBe(rawLines)
+    expect(output.props.operatorNames).toEqual(['阿米娅', '芬', '令'])
+    expect(output.props.facilityPlan).toBe(facilityPlan)
+    expect(roomLabel('room_1_1')).toBe('制造站 B101')
+    expect(roomLabel('room_1_2')).toBe('B102')
+    expect(roomLabel('unknown_room')).toBe('unknown_room')
+    expect(state.mower.refs.task_list.value[0].plan).toBe(taskPlan)
+    expect(Object.keys(taskPlan)).toEqual(['room_1_1', 'room_1_2', 'unknown_room'])
+    expect(state.mower.refs.log_lines.value).toBe(rawLines)
+    expect(state.mower.refs.log_lines.value[0]).toBe(
+      '2026-10-31 14:12:03,456 INFO 阿米娅进入 room_1_1'
+    )
+    expect(state.mower.refs.log_lines.value[1]).toBe(
+      '  File "scheduler.py", line 72, in arrange\nValueError: 芬仍在训练室'
+    )
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('shares one task portrait hint across touch and keyboard without replacing the queue or log', async () => {
+    state.mobile.value = true
+    const originalPlan = { room_1_1: ['阿米娅', '芬', ''] }
+    state.mower.refs.task_list.value = [
+      { time: '2026-10-31T14:20:00.000', plan: originalPlan, type: { display_value: '换班' } }
+    ]
+    const { find, all } = mountWorkspace()
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    const output = find((target) => target.props['data-log-content'])
+    const buttons = all(queue).filter((target) => target.props.class === 'task-operator-button')
+    const hints = () => all().filter((target) => target.props.trigger === 'manual')
+    const content = (target) =>
+      all(target)
+        .filter((element) => element.tag !== '#comment')
+        .map((element) => element.text)
+        .join('')
+        .trim()
+    const eventFor = (button, left) => {
+      button.getBoundingClientRect = () => ({ left, right: left + 28, top: 80 })
+      return { currentTarget: button }
+    }
+    expect(buttons).toHaveLength(3)
+    expect(hints()).toHaveLength(0)
+    expect(queue.parent).toBe(output.parent)
+
+    buttons[0].props.onClick(eventFor(buttons[0], 100))
+    await nextTick()
+    const hint = hints()[0]
+    expect(hints()).toHaveLength(1)
+    expect(content(hint)).toBe('阿米娅')
+    expect(hint.props.x).toBe(114)
+    expect(hint.props.y).toBe(76)
+
+    buttons[1].props.onFocus(eventFor(buttons[1], 140))
+    await nextTick()
+    expect(hints()).toHaveLength(1)
+    expect(hints()[0]).toBe(hint)
+    expect(content(hint)).toBe('芬')
+    expect(hint.props.x).toBe(154)
+    buttons[1].props.onBlur()
+    await nextTick()
+    expect(hints()).toHaveLength(0)
+
+    buttons[0].props.onFocus(eventFor(buttons[0], 100))
+    await nextTick()
+    expect(hints()).toHaveLength(1)
+    buttons[0].props.onKeydown({ key: 'Escape' })
+    await nextTick()
+    expect(hints()).toHaveLength(0)
+
+    buttons[2].props.onClick(eventFor(buttons[2], 180))
+    await nextTick()
+    expect(hints()).toHaveLength(1)
+    expect(content(hints()[0])).toBe('Empty（留空）')
+    state.mower.refs.task_list.value[0].time = '2026-10-31T14:25:00.000'
+    await nextTick()
+    expect(hints()).toHaveLength(0)
+    expect(find((target) => target.props.class === 'task-table-scroll')).toBe(queue)
+    expect(find((target) => target.props['data-log-content'])).toBe(output)
+    expect(queue.parent).toBe(output.parent)
+    expect(state.mower.refs.task_list.value[0].plan).toEqual({ room_1_1: ['阿米娅', '芬', ''] })
+    expect(originalPlan).toEqual({ room_1_1: ['阿米娅', '芬', ''] })
     expect(state.client.post).not.toHaveBeenCalled()
   })
 
@@ -599,6 +1189,43 @@ describe('log page', () => {
     const { all } = mountWorkspace()
     expect(all().some((target) => target.text === label)).toBe(true)
   })
+
+  it.each([false, true])(
+    'opens the first task queue at its saved height with mobile=%s',
+    async (mobile) => {
+      state.mobile.value = mobile
+      const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+      const styles = new Map()
+      const queue = {
+        animate: vi.fn(),
+        getBoundingClientRect: () => ({
+          top: 0,
+          height: parseInt(styles.get('--log-task-h') ?? '240px', 10)
+        })
+      }
+      component.log_layout.value = {
+        clientWidth: 720,
+        getBoundingClientRect: () => ({ top: 0, bottom: 720, height: 720 }),
+        querySelector: (selector) => (selector === '.task-table-scroll' ? queue : null),
+        style: {
+          setProperty: (name, value) => styles.set(name, value),
+          removeProperty: (name) => styles.delete(name)
+        }
+      }
+      component.layout_preference.task_height = 132
+      component.task_queue.value = queue
+      await nextTick()
+      await nextTick()
+
+      expect(styles.get('--log-task-h')).toBe('132px')
+      if (mobile) expect(queue.animate).not.toHaveBeenCalled()
+      else
+        expect(queue.animate).toHaveBeenCalledExactlyOnceWith(
+          [{ height: '0px' }, { height: '132px' }],
+          expect.objectContaining({ duration: expect.any(Number) })
+        )
+    }
+  )
 
   it('keeps the saved task height and persists manual resizing', async () => {
     state.mower.refs.task_list.value = [
@@ -706,6 +1333,7 @@ describe('log page', () => {
       { time: '2026-10-20T11:30:00.000', plan: {}, type: { display_value: '跑单' } }
     ]
     const { find } = mountWorkspace()
+    await openViewOptions(find)
     const collapse = find((target) => target.props.class === 'toggle-table-collapse-btn')
     const queue = find((target) => target.props.class === 'task-table-scroll')
     collapse.props.onClick()
@@ -749,7 +1377,7 @@ describe('log page', () => {
   )
 
   it('opens task creation and database management directly from colored toolbar buttons', async () => {
-    const { find } = mountWorkspace()
+    const { find, all } = mountWorkspace()
     const addTask = find((target) => target.props.type === 'warning')
     const database = find((target) => target.props.type === 'info')
     const databaseModal = find(
@@ -767,7 +1395,7 @@ describe('log page', () => {
     expect(databaseModal.props.show).toBe(true)
     expect(state.client.get).toHaveBeenCalledWith('/db-admin/stats')
     expect(state.client.get).toHaveBeenCalledWith('/db-admin/maintenance')
-    expect(find((target) => target.props.label === '新增任务说明').parent).toBe(addTask.parent)
+    expect(all().some((target) => target.props.label === '新增任务说明')).toBe(false)
   })
 
   it('refreshes database size after compaction and saves the selected backup limit', async () => {
@@ -828,48 +1456,149 @@ describe('log page', () => {
     expect(page.db_result.value).toBe('')
   })
 
-  it('opens mobile controls from More, changes display options and closes More before database management', async () => {
+  it.each([false, true])(
+    'toggles screenshot preview and log following from desktop controls or mobile options (mobile=%s)',
+    async (mobile) => {
+      state.mobile.value = mobile
+      const { find, all } = mountWorkspace()
+      const page = app._instance.setupState
+      page.sc_blob = 'blob:preview'
+      await nextTick()
+      if (mobile) {
+        expect(all().some((target) => target.props['aria-label'] === '预览截图')).toBe(false)
+        expect(all().some((target) => target.props['aria-label'] === '自动滚动')).toBe(false)
+        await openViewOptions(find)
+      } else {
+        expect(all().some((target) => target.props.class === 'view-options-trigger')).toBe(false)
+      }
+      const preview = find((target) => target.props['aria-label'] === '预览截图')
+      const scrolling = find((target) => target.props['aria-label'] === '自动滚动')
+      const controls = find(
+        (target) => target.props.role === 'group' && target.props['aria-label'] === '日志显示选项'
+      )
+      expect(all(controls)).toContain(preview)
+      expect(all(controls)).toContain(scrolling)
+      expect(preview.props['aria-pressed']).toBe(true)
+      expect(scrolling.props['aria-pressed']).toBe(true)
+      expect(all().some((target) => target.props.class === 'log-screenshot')).toBe(true)
+
+      preview.props.onClick()
+      await nextTick()
+      expect(preview.props['aria-pressed']).toBe(false)
+      expect(preview.props.title).toBe('显示截图预览')
+      expect(state.preview.stop).toHaveBeenCalledOnce()
+      expect(localStorage.setItem).toHaveBeenLastCalledWith('sc_preview', 'false')
+      expect(all().some((target) => target.props.class === 'log-screenshot')).toBe(false)
+      expect(scrolling.props['aria-pressed']).toBe(true)
+
+      const output = find((target) => target.props['data-log-content'])
+      expect(output.props.autoScroll).toBe(true)
+      scrolling.props.onClick()
+      await nextTick()
+      expect(scrolling.props['aria-pressed']).toBe(false)
+      expect(output.props.autoScroll).toBe(false)
+      state.mower.refs.log_lines.value = ['line while following is disabled']
+      await nextTick()
+      expect(document.querySelector).not.toHaveBeenCalledWith('.log .n-scrollbar-container')
+
+      preview.props.onClick()
+      scrolling.props.onClick()
+      await nextTick()
+      state.mower.refs.log_lines.value = ['line while following is enabled']
+      await nextTick()
+      expect(output.props.autoScroll).toBe(true)
+      expect(output.props.lines).toEqual(['line while following is enabled'])
+      expect(document.querySelector).not.toHaveBeenCalledWith('.log .n-scrollbar-container')
+      expect(preview.props['aria-pressed']).toBe(true)
+      expect(scrolling.props['aria-pressed']).toBe(true)
+      expect(state.preview.start).toHaveBeenCalledOnce()
+      expect(localStorage.setItem).toHaveBeenLastCalledWith('sc_preview', 'true')
+      expect(all().some((target) => target.props.class === 'log-screenshot')).toBe(true)
+      expect(state.client.post).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([false, true])(
+    'restores and switches the log display mode (mobile=%s)',
+    async (mobile) => {
+      state.mobile.value = mobile
+      localStorage.getItem.mockImplementation((key) =>
+        key === 'log_detail_mode' ? 'concise' : null
+      )
+      const { find } = mountWorkspace()
+      if (mobile) await openViewOptions(find)
+      const toggle = find((entry) => entry.props['aria-label'] === '简洁日志')
+      const output = find((entry) => entry.props['data-log-content'])
+      expect(toggle.props['aria-pressed']).toBe(true)
+      expect(output.props.concise).toBe(true)
+
+      toggle.props.onClick()
+      await nextTick()
+      expect(toggle.props['aria-pressed']).toBe(false)
+      expect(output.props.concise).toBe(false)
+      expect(output.props.compact).toBe(mobile)
+      expect(localStorage.setItem).toHaveBeenCalledWith('log_detail_mode', 'detailed')
+      expect(state.client.post).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['touchend', 'mouseup'])(
+    'dismisses mobile view options on %s and consumes only the closing touch',
+    async (type) => {
+      state.mobile.value = true
+      const { find, all } = mountWorkspace()
+      const trigger = await openViewOptions(find)
+      const outside = find((target) => typeof target.props.onClickoutside === 'function')
+      const event = { type, preventDefault: vi.fn() }
+      outside.props.onClickoutside(event)
+      await nextTick()
+      expect(trigger.props['aria-expanded']).toBe(false)
+      expect(all().some((target) => target.props.class === 'log-view-actions')).toBe(false)
+      expect(event.preventDefault).toHaveBeenCalledTimes(type === 'touchend' ? 1 : 0)
+    }
+  )
+
+  it('keeps narrow database access direct, then restores the wide label', async () => {
     state.mobile.value = true
     const { find, all } = mountWorkspace()
-    const trigger = find((target) => target.props.class === 'display-options-trigger')
     const page = app._instance.setupState
-    expect(trigger.props['aria-label']).toBe('日志更多操作')
-    expect(trigger.props['aria-haspopup']).toBe('dialog')
-    expect(trigger.props['aria-expanded']).toBe(false)
-    expect(all().some((target) => target.props.role === 'dialog')).toBe(false)
+    const database = find((target) => target.props.class === 'database-action')
+    expect(database.props['aria-label']).toBe('数据库管理')
+    expect(database.props.title).toBe('数据库管理')
+    expect(all(database).some((target) => target.text === '数据库管理')).toBe(false)
+    expect(all().some((target) => target.props.label === '新增任务说明')).toBe(false)
+    expect(all().some((target) => target.props.class === 'display-options-trigger')).toBe(false)
+    await openViewOptions(find)
+    expect(page.show_view_controls).toBe(true)
 
-    trigger.parent.props.onClick()
-    await nextTick()
-    const panel = find((target) => target.props.role === 'dialog')
-    expect(panel.props['aria-label']).toBe('日志更多操作')
-    expect(panel.props.id).toBe(trigger.props['aria-controls'])
-    expect(trigger.props['aria-expanded']).toBe(true)
-    expect(all(panel).some((target) => target.tag === 'details')).toBe(true)
-    expect(
-      all(panel).some((target) => target.tag === 'summary' && target.text === '新增任务说明')
-    ).toBe(true)
-    const previewSwitch = all(panel).find((target) => target.props['aria-label'] === '预览截图')
-    previewSwitch.props['onUpdate:value'](false)
-    const scrollingSwitch = all(panel).find((target) => target.props['aria-label'] === '自动滚动')
-    scrollingSwitch.props['onUpdate:value'](false)
-    await nextTick()
-    expect(page.sc_preview).toBe(false)
-    expect(page.auto_scroll).toBe(false)
-    expect(localStorage.setItem).toHaveBeenCalledWith('sc_preview', 'false')
-
-    const desktopDatabase = find((target) => target.props.class === 'database-action')
-    const mobileDatabase = find((target) => target.props.class === 'database-menu-action')
-    expect(mobileDatabase).not.toBe(desktopDatabase)
     state.client.get.mockResolvedValueOnce({ data: {} })
-    mobileDatabase.props.onClick()
+    database.props.onClick()
     await nextTick()
-    expect(page.show_display_options).toBe(false)
     expect(page.show_db_admin).toBe(true)
-    expect(trigger.props['aria-expanded']).toBe(false)
-    expect(all().some((target) => target.props.role === 'dialog')).toBe(false)
+    expect(page.show_view_controls).toBe(false)
+    expect(
+      all().some(
+        (target) => target.props.role === 'dialog' && target.props['aria-label'] === '日志显示选项'
+      )
+    ).toBe(false)
     expect(state.client.get).toHaveBeenCalledWith('/db-admin/stats')
     expect(state.client.get).toHaveBeenCalledWith('/db-admin/maintenance')
     expect(state.client.post).not.toHaveBeenCalled()
+
+    page.show_db_admin = false
+    await openViewOptions(find)
+    expect(page.show_view_controls).toBe(true)
+    state.mobile.value = false
+    await nextTick()
+    expect(page.show_view_controls).toBe(false)
+    expect(
+      all().some(
+        (target) => target.props.role === 'dialog' && target.props['aria-label'] === '日志显示选项'
+      )
+    ).toBe(false)
+    expect(find((target) => target.props.class === 'database-action')).toBe(database)
+    expect(all(database).some((target) => target.text === '数据库管理')).toBe(true)
+    expect(all().some((target) => target.props.label === '新增任务说明')).toBe(false)
   })
 
   it.each(['已停止', '启动中', '运行中', '等待设备恢复'])(
@@ -1128,7 +1857,7 @@ describe('log page', () => {
           return { getBoundingClientRect: () => ({ height: 52 }) }
         }
         if (selector === '.task-table-scroll') {
-          return { getBoundingClientRect: () => ({ top: 258 }) }
+          return { getBoundingClientRect: () => ({ top: 258 + conditionHeight }) }
         }
         return null
       },
@@ -1149,7 +1878,8 @@ describe('log page', () => {
     await nextTick()
 
     expect(setProperty.mock.calls.length).toBeGreaterThan(2)
-    expect(setProperty.mock.calls.at(-1)).toEqual(['--log-task-h', '194px'])
+    // 620 高的日志区给日志留 207（三分之一），再扣分隔条和 40 高的副表说明。
+    expect(setProperty.mock.calls.at(-1)).toEqual(['--log-task-h', '107px'])
     expect(setProperty.mock.calls.at(-1)[1]).not.toBe(initialTaskHeight)
   })
 
@@ -1185,51 +1915,122 @@ describe('log page', () => {
 
     const screenshotHeight = parseInt(sizes.get('--log-sc-h'), 10)
     const taskHeight = parseInt(sizes.get('--log-task-h'), 10)
-    expect(screenshotHeight).toBe(495)
-    expect(taskHeight).toBe(269)
-    expect(screenshotHeight + 8 + taskHeight + 8 + 120).toBeLessThanOrEqual(900)
+    expect(sizes.get('--log-min-h')).toBe('300px')
+    expect(screenshotHeight).toBe(494)
+    expect(taskHeight).toBe(90)
+    expect(screenshotHeight + 8 + taskHeight + 8 + 300).toBeLessThanOrEqual(900)
   })
 
-  it('measures screenshot dragging from the screenshot top and saves only its height', () => {
-    const setProperty = vi.fn()
-    const listeners = new Map()
-    document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
-    state.client.post.mockResolvedValue({})
+  it('stops the stacked screenshot row at the frame height and gives the rest to the task table', () => {
+    const sizes = new Map()
     const container = {
-      getBoundingClientRect: () => ({ top: 80, bottom: 1080, height: 1000 }),
+      clientWidth: 866,
+      getBoundingClientRect: () => ({ top: 100, bottom: 1000, height: 900 }),
       querySelector: (selector) => {
         if (selector === '.log-screenshot') {
-          return { getBoundingClientRect: () => ({ top: 320 }) }
+          return { clientWidth: 480, getBoundingClientRect: () => ({ top: 100 }) }
         }
-        if (selector === '.action-container') {
-          return { getBoundingClientRect: () => ({ height: 52 }) }
+        if (selector === '.task-table-scroll') {
+          return {
+            getBoundingClientRect: () => ({
+              top: 100 + parseInt(sizes.get('--log-sc-h'), 10) + 8
+            })
+          }
         }
         return null
       },
-      style: { setProperty, removeProperty: vi.fn() }
+      style: {
+        setProperty: (key, value) => sizes.set(key, value),
+        removeProperty: (key) => sizes.delete(key)
+      }
     }
     const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
     component.log_layout.value = container
-    const event = { preventDefault: vi.fn() }
+    component.sc_blob.value = 'blob:http://latest'
+    component.layout_preference.screenshot_height = 500
+    component.layout_preference.task_height = 600
 
-    component.resize_log_pane(event, 'screenshot')
-    listeners.get('pointermove')({ clientY: 510 })
+    component.apply_log_layout()
+
+    expect(sizes.get('--log-sc-h')).toBe('270px')
+    expect(sizes.get('--log-task-h')).toBe('314px')
+    expect(component.layout_preference.screenshot_height).toBe(500)
+  })
+
+  it.each([1, 0.8, 1.25])(
+    'saves the screenshot drag height in layout pixels at zoom %s',
+    (zoom) => {
+      const setProperty = vi.fn()
+      const listeners = new Map()
+      document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
+      state.client.post.mockResolvedValue({})
+      const container = {
+        ownerDocument: { documentElement: { style: { zoom } } },
+        getBoundingClientRect: () => ({ top: 80 * zoom, bottom: 1080 * zoom, height: 1000 * zoom }),
+        querySelector: (selector) => {
+          if (selector === '.log-screenshot') {
+            return { getBoundingClientRect: () => ({ top: 320 * zoom }) }
+          }
+          if (selector === '.action-container') {
+            return { getBoundingClientRect: () => ({ height: 52 }) }
+          }
+          return null
+        },
+        style: { setProperty, removeProperty: vi.fn() }
+      }
+      const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+      component.log_layout.value = container
+      const event = { preventDefault: vi.fn() }
+
+      component.resize_log_pane(event, 'screenshot')
+      listeners.get('pointermove')({ clientY: 510 * zoom })
+      listeners.get('pointerup')()
+
+      expect(event.preventDefault).toHaveBeenCalledOnce()
+      expect(setProperty).toHaveBeenLastCalledWith('--log-sc-h', '190px')
+      expect(component.layout_preference.screenshot_height).toBe(190)
+      expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
+        screenshot_height: 190
+      })
+      expect(document.removeEventListener).toHaveBeenCalledWith(
+        'pointermove',
+        listeners.get('pointermove')
+      )
+      expect(document.removeEventListener).toHaveBeenCalledWith(
+        'pointerup',
+        listeners.get('pointerup')
+      )
+    }
+  )
+
+  it('applies the stacked log height constraints and saves task dragging at 80% zoom', () => {
+    const sizes = new Map()
+    const listeners = new Map()
+    document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
+    state.client.post.mockResolvedValue({})
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    component.log_layout.value = {
+      ownerDocument: { documentElement: { style: { zoom: 0.8 } } },
+      clientWidth: 800,
+      getBoundingClientRect: () => ({ top: 0, bottom: 576, height: 576 }),
+      querySelector: (selector) =>
+        selector === '.task-table-scroll' ? { getBoundingClientRect: () => ({ top: 80 }) } : null,
+      style: { setProperty: (key, value) => sizes.set(key, value), removeProperty: vi.fn() }
+    }
+    component.layout_preference.task_height = 600
+    component.apply_log_layout()
+
+    expect(sizes.get('--log-min-h')).toBe('240px')
+    expect(sizes.get('--log-task-h')).toBe('372px')
+
+    component.resize_log_pane({ preventDefault: vi.fn() }, 'task')
+    listeners.get('pointermove')({ clientY: 280 })
     listeners.get('pointerup')()
 
-    expect(event.preventDefault).toHaveBeenCalledOnce()
-    expect(setProperty).toHaveBeenLastCalledWith('--log-sc-h', '190px')
-    expect(component.layout_preference.screenshot_height).toBe(190)
+    expect(sizes.get('--log-task-h')).toBe('250px')
     expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
-      screenshot_height: 190
+      task_height: 250
     })
-    expect(document.removeEventListener).toHaveBeenCalledWith(
-      'pointermove',
-      listeners.get('pointermove')
-    )
-    expect(document.removeEventListener).toHaveBeenCalledWith(
-      'pointerup',
-      listeners.get('pointerup')
-    )
   })
 
   it('uses the natural table height until the user saves a resized height', async () => {
@@ -1262,9 +2063,47 @@ describe('log page', () => {
     expect(setProperty.mock.calls.some(([key]) => key === '--log-task-h')).toBe(false)
     component.layout_preference.task_height = 600
     component.apply_log_layout()
-    expect(setProperty).toHaveBeenCalledWith('--log-task-h', '122px')
-    expect(122 + 120 + 8).toBeLessThanOrEqual(620 - 370)
+    expect(setProperty).toHaveBeenCalledWith('--log-task-h', '35px')
+    // 620 高的日志区给日志留 207（三分之一）和一条分隔条。
+    expect(35 + 207 + 8).toBeLessThanOrEqual(620 - 370)
     expect(component.layout_preference.task_height).toBe(600)
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['screenshot', 'pointercancel'],
+    ['task', 'pointercancel'],
+    ['rail', 'pointercancel'],
+    ['screenshot', 'unmount'],
+    ['task', 'unmount'],
+    ['rail', 'unmount']
+  ])('ends %s dragging after %s without saving or changing detached layout', (pane, ending) => {
+    const setProperty = vi.fn()
+    state.client.post.mockResolvedValue({})
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    component.log_layout.value = {
+      clientWidth: 1290,
+      getBoundingClientRect: () => ({ top: 0, bottom: 800, height: 800, width: 1290, right: 1290 }),
+      querySelector: (selector) =>
+        ['.log-screenshot', '.task-table-scroll'].includes(selector)
+          ? { getBoundingClientRect: () => ({ top: 0 }) }
+          : null,
+      style: { setProperty, removeProperty: vi.fn() }
+    }
+    const pointer = (type, x, y) =>
+      document.dispatchEvent(Object.assign(new Event(type), { clientX: x, clientY: y }))
+    if (pane === 'rail') component.resize_rail_column({ preventDefault: vi.fn() })
+    else component.resize_log_pane({ preventDefault: vi.fn() }, pane)
+    pointer('pointermove', 800, 180)
+    expect(setProperty).toHaveBeenCalled()
+    setProperty.mockClear()
+
+    if (ending === 'unmount') onUnmounted.mock.lastCall[0]()
+    else pointer('pointercancel')
+    pointer('pointermove', 700, 240)
+    pointer('pointerup')
+
+    expect(setProperty).not.toHaveBeenCalled()
     expect(state.client.post).not.toHaveBeenCalled()
   })
 
@@ -1278,6 +2117,8 @@ describe('log page', () => {
       }
     ]
     const { find, all } = mountWorkspace()
+    expect(all().some((target) => target.props.class === 'toggle-table-collapse-btn')).toBe(false)
+    await openViewOptions(find)
     const collapseBtn = find((target) => target.props.class === 'toggle-table-collapse-btn')
     const queue = find((target) => target.props.class === 'task-table-scroll')
     const resizer = find((target) => target.props.class === 'log-resizer log-resizer-task')
@@ -1285,7 +2126,7 @@ describe('log page', () => {
     const pane = queue.parent
     const page = app._instance.setupState
     expect(page.show_task_table).toBe(true)
-    expect(collapseBtn.parent).toBe(pane)
+    expect(collapseBtn.parent.props.class).toBe('log-view-actions')
     expect(collapseBtn.props['aria-expanded']).toBe(true)
     expect(collapseBtn.props['aria-label']).toBe('收起任务列表')
     expect(collapseBtn.props['aria-controls']).toBe(queue.props.id)
@@ -1333,12 +2174,888 @@ describe('log page', () => {
     state.mobile.value = true
     await nextTick()
     expect(queue.style.display).toBe('none')
+    expect(all().some((target) => target.props.class === 'toggle-table-collapse-btn')).toBe(false)
+    await openViewOptions(find)
     expect(
       find((target) => target.props.class === 'toggle-table-collapse-btn').props['aria-expanded']
     ).toBe(false)
     state.mobile.value = false
     await nextTick()
+    expect(page.show_view_controls).toBe(false)
     expect(queue.style.display).not.toBe('none')
     expect(all().some((target) => target.props.class === 'toggle-table-collapse-btn')).toBe(false)
+  })
+
+  function mountWidePane(width = 1290) {
+    const workspace = mountWorkspace()
+    const pane = workspace.find((target) => target.props['aria-label'] === '运行日志')
+    pane.clientWidth = width
+    pane.getBoundingClientRect = () => ({ top: 0, bottom: 800, height: 800 })
+    const sizes = () => Object.fromEntries(pane.style.setProperty.mock.calls)
+    const classes = (target) => target.props.class.split(' ')
+    return { ...workspace, page: app._instance.setupState, pane, sizes, classes }
+  }
+
+  it.each([
+    { width: 1290, mobile: false, rail: true },
+    { width: 800, mobile: false, rail: false },
+    { width: 390, mobile: true, rail: false }
+  ])('places the active backup above the queue at $width px', async ({ width, mobile, rail }) => {
+    state.mobile.value = mobile
+    state.mower.refs.plan_condition.value = ['副表一']
+    state.mower.refs.task_list.value = [{ time: '2026-10-31T14:20:00', plan: {}, type: '跑单' }]
+    const { find, page, pane, classes } = mountWidePane(width)
+    page.sc_blob = 'blob:http://latest'
+    page.apply_log_layout()
+    await nextTick()
+
+    expect(classes(pane).includes('log-pane--rail')).toBe(rail)
+    const screenshot = find((target) => target.props.src === 'blob:http://latest')
+    const condition = find((target) => target.props.class === 'plan-condition')
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    expect(condition.parent).toBe(pane)
+    expect(pane.children.indexOf(screenshot)).toBeLessThan(pane.children.indexOf(condition))
+    expect(pane.children.indexOf(condition)).toBeLessThan(pane.children.indexOf(queue))
+  })
+
+  it('places the screenshot above the task list in a right column on a wide desktop pane', async () => {
+    state.mower.refs.task_list.value = [
+      {
+        time: '2026-10-31T14:20:00.000',
+        plan: { room_1_1: ['阿米娅'] },
+        type: { display_value: '换班' }
+      }
+    ]
+    const { find, page, pane, sizes, classes } = mountWidePane()
+    page.sc_blob = 'blob:http://latest'
+    await nextTick()
+    page.apply_log_layout()
+    await nextTick()
+
+    expect(classes(pane)).toContain('log-pane--rail')
+    expect(classes(pane.parent)).toContain('home-container--rail')
+    expect(find((target) => target.props.class === 'task-table-scroll').parent).toBe(pane)
+    expect(sizes()['--log-rail-w']).toBe('480px')
+    expect(sizes()['--log-sc-h']).toBe('270px')
+    expect(pane.style.removeProperty).toHaveBeenCalledWith('--log-task-h')
+
+    find((target) => target.props.src === 'blob:http://latest').props.onLoad({
+      target: { naturalWidth: 1600, naturalHeight: 1200 }
+    })
+    expect(sizes()['--log-rail-w']).toBe('360px')
+    expect(sizes()['--log-sc-h']).toBe('270px')
+
+    pane.clientWidth = 880
+    page.apply_log_layout()
+    await nextTick()
+    expect(classes(pane)).not.toContain('log-pane--rail')
+    expect(classes(pane.parent)).not.toContain('home-container--rail')
+    expect(pane.style.removeProperty).toHaveBeenCalledWith('--log-rail-w')
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])(
+    'keeps the resized right-column screenshot with pending restore %s',
+    async (pending) => {
+      const { page, pane, sizes } = mountWidePane()
+      pane.querySelector = (selector) =>
+        selector === '.log-screenshot' ? { getBoundingClientRect: () => ({ top: 0 }) } : null
+      page.sc_blob = 'blob:http://latest'
+      await nextTick()
+      page.apply_log_layout()
+      await nextTick()
+      const listeners = new Map()
+      document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
+      state.client.post.mockResolvedValue({})
+      let restoreLayout
+      let resolveLayout
+      if (pending) {
+        state.client.get.mockImplementationOnce(
+          () => new Promise((resolve) => (resolveLayout = resolve))
+        )
+        restoreLayout = page.restore_log_layout()
+      }
+
+      page.resize_log_pane({ preventDefault: vi.fn() }, 'screenshot')
+      listeners.get('pointermove')({ clientY: 360 })
+      listeners.get('pointerup')()
+
+      if (pending) {
+        resolveLayout({ data: { rail_width: 360, task_height: 100 } })
+        await restoreLayout
+        expect(page.layout_preference.task_height).toBe(100)
+      }
+      expect(sizes()['--log-rail-w']).toBe('640px')
+      expect(sizes()['--log-sc-h']).toBe('360px')
+      expect(page.layout_preference.screenshot_height).toBe(360)
+      expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
+        screenshot_height: 360,
+        ...(pending ? { rail_width: 640 } : {})
+      })
+    }
+  )
+
+  it.each([
+    { pending: false, zoom: 1 },
+    { pending: true, zoom: 1 },
+    { pending: false, zoom: 0.9 }
+  ])(
+    'saves the new right-column width at zoom $zoom with pending restore $pending',
+    async ({ pending, zoom }) => {
+      const { page, pane, sizes } = mountWidePane()
+      pane.getBoundingClientRect = () => ({
+        top: 0,
+        bottom: 800,
+        height: 800,
+        width: 1290 * zoom,
+        right: 1290 * zoom,
+        left: 0
+      })
+      page.sc_blob = 'blob:http://latest'
+      await nextTick()
+      page.apply_log_layout()
+      await nextTick()
+      const listeners = new Map()
+      document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
+      state.client.post.mockResolvedValue({})
+      let restoreLayout
+      let resolveLayout
+      if (pending) {
+        state.client.get.mockImplementationOnce(
+          () => new Promise((resolve) => (resolveLayout = resolve))
+        )
+        restoreLayout = page.restore_log_layout()
+      }
+
+      page.resize_rail_column({ preventDefault: vi.fn() })
+      listeners.get('pointermove')({ clientX: 800 * zoom })
+      listeners.get('pointerup')()
+
+      if (pending) {
+        resolveLayout({ data: { rail_width: 360, task_height: 100 } })
+        await restoreLayout
+        expect(page.layout_preference.task_height).toBe(100)
+      }
+      expect(sizes()['--log-rail-w']).toBe('478px')
+      expect(page.layout_preference.rail_width).toBe(478)
+      expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
+        rail_width: 478
+      })
+    }
+  )
+
+  it('grows a widened screenshot vertically with its actual aspect and contains the full frame', async () => {
+    const { find, page, sizes } = mountWidePane()
+    page.sc_blob = 'blob:http://latest'
+    page.layout_preference.rail_width = 640
+    page.layout_preference.screenshot_height = 180
+    await nextTick()
+
+    page.apply_log_layout()
+    expect(sizes()['--log-rail-w']).toBe('640px')
+    expect(sizes()['--log-sc-h']).toBe('360px')
+    const screenshot = find((target) => target.props.src === 'blob:http://latest')
+    expect(screenshot.props['object-fit']).toBe('contain')
+
+    screenshot.props.onLoad({ target: { naturalWidth: 1600, naturalHeight: 1200 } })
+    expect(sizes()['--log-sc-h']).toBe('480px')
+  })
+
+  it('keeps screenshot dragging proportional after a saved rail-width adjustment', async () => {
+    const { page, pane, sizes } = mountWidePane()
+    pane.querySelector = (selector) =>
+      selector === '.log-screenshot' ? { getBoundingClientRect: () => ({ top: 0 }) } : null
+    page.sc_blob = 'blob:http://latest'
+    page.layout_preference.rail_width = 640
+    await nextTick()
+    page.apply_log_layout()
+    const listeners = new Map()
+    document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
+    state.client.post.mockResolvedValue({})
+
+    page.resize_log_pane({ preventDefault: vi.fn() }, 'screenshot')
+    listeners.get('pointermove')({ clientY: 180 })
+    listeners.get('pointerup')()
+
+    expect(sizes()['--log-rail-w']).toBe('320px')
+    expect(sizes()['--log-sc-h']).toBe('180px')
+    expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
+      screenshot_height: 180,
+      rail_width: 320
+    })
+  })
+
+  it('keeps the task list in the right column without a screenshot and stacks on mobile', async () => {
+    state.mower.refs.task_list.value = [
+      { time: '2026-10-31T14:20:00.000', plan: {}, type: { display_value: '跑单' } }
+    ]
+    const { page, pane, classes } = mountWidePane()
+    page.apply_log_layout()
+    await nextTick()
+    expect(classes(pane)).toContain('log-pane--rail')
+    expect(classes(pane)).toContain('log-pane--reveal')
+    expect(pane.style.setProperty).toHaveBeenCalledWith('--log-rail-w', '480px')
+    expect(pane.style.removeProperty).toHaveBeenCalledWith('--log-sc-h')
+
+    state.mobile.value = true
+    await nextTick()
+    page.apply_log_layout()
+    await nextTick()
+    expect(classes(pane)).not.toContain('log-pane--rail')
+    expect(classes(pane.parent)).toContain('home-container--mobile')
+    expect(classes(pane)).not.toContain('log-pane--reveal')
+
+    state.mobile.value = false
+    state.mower.refs.task_list.value = []
+    await nextTick()
+    page.apply_log_layout()
+    await nextTick()
+    expect(classes(pane)).not.toContain('log-pane--rail')
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  function mockDailyStatus(response) {
+    state.client.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/daily-status') ? response() : {}
+    }))
+  }
+
+  it.each([false, true])(
+    'restores the whole log workspace before refresh replies after a route return (mobile=%s)',
+    async (mobile) => {
+      vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
+      state.realPreview = true
+      state.mobile.value = mobile
+      state.mower.refs.running.value = true
+      state.config.report_enable = true
+      state.mower.refs.task_list.value = [{ time: '2026-11-08T14:20:00', plan: {}, type: '跑单' }]
+      vi.stubGlobal(
+        'Image',
+        class {
+          naturalWidth = 4
+          naturalHeight = 3
+          decode() {
+            return Promise.resolve()
+          }
+        }
+      )
+      const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:first-frame')
+      const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+      state.client.get.mockImplementation(async (url) =>
+        url.endsWith('/screenshot/latest')
+          ? { status: 200, data: new Blob(['frame']), headers: { etag: 'first' } }
+          : {
+              data: url.endsWith('/daily-status')
+                ? { game_day: '2026-11-08', source: 'live', records: { report: 'done' } }
+                : {}
+            }
+      )
+      const first = mountWidePane(mobile ? 390 : 1290)
+      onMounted.mock.lastCall[0]()
+      first.page.apply_log_layout()
+      if (mobile) first.page.daily_view_selected = true
+      await vi.advanceTimersByTimeAsync(0)
+      expect(dailyStrip(first).items()).toEqual([['读取基报', 'done']])
+      expect(callsTo('/screenshot/latest')).toHaveLength(1)
+      expect(first.page.sc_blob).toBe('blob:first-frame')
+      onUnmounted.mock.lastCall[0]()
+      app.unmount()
+      expect(revokeUrl).toHaveBeenCalledWith('blob:first-frame')
+      state.client.get.mockImplementation(() => new Promise(() => {}))
+
+      const returned = mountWidePane(mobile ? 390 : 1290)
+      onMounted.mock.lastCall[0]()
+      returned.page.apply_log_layout()
+      await nextTick()
+
+      expect(returned.all().some((target) => target.props.src === 'blob:first-frame')).toBe(true)
+      expect(returned.all().some((target) => target.props.class === 'task-table-scroll')).toBe(true)
+      expect(dailyStrip(returned).items()).toEqual([['读取基报', 'done']])
+      expect(returned.classes(returned.pane)).not.toContain('log-pane--reveal')
+      expect(state.mower.start_task_polling).toHaveBeenCalledTimes(2)
+      expect(state.mower.stop_task_polling).toHaveBeenCalledOnce()
+      returned.page.sc_preview = false
+      await nextTick()
+      expect(returned.page.workspace.screenshot).toBeNull()
+      expect(returned.all().some((target) => target.props.class === 'log-screenshot')).toBe(false)
+      onUnmounted.mock.lastCall[0]()
+      createUrl.mockRestore()
+      revokeUrl.mockRestore()
+    }
+  )
+
+  function dailyStrip(workspace) {
+    const strip = () =>
+      workspace
+        .all()
+        .find((target) => ['任务状态', '今日任务'].includes(target.props['aria-label']))
+    const items = () =>
+      workspace
+        .all(strip())
+        .filter((target) => target.tag === 'li')
+        .map((target) => [
+          target.props.title.split('：')[0],
+          target.props.class.split(' ')[1].replace('daily-status__item--', '')
+        ])
+    return { strip, items }
+  }
+
+  it.each(['stop and restart', 'new game day', 'failed refresh', 'saved response'])(
+    'invalidates restored daily status after %s',
+    async (reason) => {
+      vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
+      state.mower.refs.running.value = true
+      state.config.report_enable = true
+      mockDailyStatus(() => ({
+        game_day: '2026-11-08',
+        source: 'live',
+        records: { report: 'done' }
+      }))
+      const first = mountWidePane()
+      onMounted.mock.lastCall[0]()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(dailyStrip(first).items()).toEqual([['读取基报', 'done']])
+      onUnmounted.mock.lastCall[0]()
+      app.unmount()
+      if (reason === 'stop and restart') {
+        state.mower.refs.running.value = false
+        state.mower.refs.running.value = true
+      } else if (reason === 'new game day') {
+        vi.setSystemTime(new Date('2026-11-08T20:00:00Z'))
+      }
+      let resolveDaily, rejectDaily
+      state.client.get.mockImplementation((url) =>
+        url.endsWith('/daily-status')
+          ? new Promise((resolve, reject) => {
+              resolveDaily = resolve
+              rejectDaily = reject
+            })
+          : Promise.resolve({ data: {} })
+      )
+      const returned = mountWidePane()
+      onMounted.mock.lastCall[0]()
+      await nextTick()
+      if (['stop and restart', 'new game day'].includes(reason)) {
+        expect(dailyStrip(returned).strip()).toBeUndefined()
+      } else {
+        expect(dailyStrip(returned).items()).toEqual([['读取基报', 'done']])
+        if (reason === 'failed refresh') rejectDaily(new Error('synthetic failure'))
+        else resolveDaily({ data: { source: 'saved', records: { report: 'done' } } })
+        await vi.advanceTimersByTimeAsync(0)
+        expect(dailyStrip(returned).strip()).toBeUndefined()
+      }
+      onUnmounted.mock.lastCall[0]()
+    }
+  )
+
+  it('expires the visible checklist at game-day rollover and discards an in-flight old response', async () => {
+    vi.setSystemTime(new Date('2026-11-08T19:59:20Z'))
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    const replies = []
+    state.client.get.mockImplementation((url) =>
+      url.endsWith('/daily-status')
+        ? new Promise((resolve) => replies.push(resolve))
+        : Promise.resolve({ data: {} })
+    )
+    const response = (game_day, report) => ({
+      data: { game_day, source: 'live', records: { report } }
+    })
+    const workspace = mountWidePane()
+    onMounted.mock.lastCall[0]()
+    const { strip, items } = dailyStrip(workspace)
+    await nextTick()
+    replies[0](response('2026-11-08', 'done'))
+    await vi.advanceTimersByTimeAsync(39999)
+    expect(items()).toEqual([['读取基报', 'done']])
+    expect(replies).toHaveLength(2)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(strip()).toBeUndefined()
+    expect(replies).toHaveLength(2)
+    replies[1](response('2026-11-08', 'done'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(strip()).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(20000)
+    replies[2](response('2026-11-09', 'pending'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(items()).toEqual([['读取基报', 'pending']])
+    onUnmounted.mock.lastCall[0]()
+  })
+
+  it('drops the previous game-day checklist before refreshing a visible page', async () => {
+    vi.setSystemTime(new Date('2026-11-08T19:59:59Z'))
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    mockDailyStatus(() => ({
+      game_day: '2026-11-08',
+      source: 'live',
+      records: { report: 'done' }
+    }))
+    const workspace = mountWidePane()
+    onMounted.mock.lastCall[0]()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(dailyStrip(workspace).items()).toEqual([['读取基报', 'done']])
+
+    setHidden(true)
+    vi.setSystemTime(new Date('2026-11-08T20:00:00Z'))
+    state.client.get.mockImplementation((url) =>
+      url.endsWith('/daily-status') ? new Promise(() => {}) : Promise.resolve({ data: {} })
+    )
+    setHidden(false)
+    await nextTick()
+    expect(dailyStrip(workspace).strip()).toBeUndefined()
+    expect(callsTo('/daily-status')).toHaveLength(2)
+    onUnmounted.mock.lastCall[0]()
+  })
+
+  it('returns to the running log when the worker stops while its mobile daily view is away', async () => {
+    vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
+    state.mobile.value = true
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    mockDailyStatus(() => ({
+      game_day: '2026-11-08',
+      source: 'live',
+      records: { report: 'done' }
+    }))
+    const first = mountWidePane(390)
+    onMounted.mock.lastCall[0]()
+    first.page.daily_view_selected = true
+    await vi.advanceTimersByTimeAsync(0)
+    expect(first.page.daily_view_visible).toBe(true)
+    onUnmounted.mock.lastCall[0]()
+    app.unmount()
+    state.mower.refs.running.value = false
+    state.mower.refs.running.value = true
+    const returned = mountWidePane(390)
+    onMounted.mock.lastCall[0]()
+    await nextTick()
+    expect(returned.page.daily_view_selected).toBe(false)
+    expect(returned.page.daily_view_visible).toBe(false)
+    expect(returned.page.daily_status).toBeNull()
+    onUnmounted.mock.lastCall[0]()
+  })
+
+  it('hides the entire checklist without an enabled task that has a daily record', async () => {
+    state.mower.refs.running.value = true
+    Object.assign(state.config, {
+      recruit_enable: true,
+      stage_plan_enable: true,
+      report_enable: true
+    })
+    mockDailyStatus(() => ({
+      game_day: '2026-11-05',
+      source: 'live',
+      records: { mail: 'done' },
+      activities: {
+        recruit: {
+          last_checked_at: '2026-11-05T09:30:00+08:00',
+          next_eligible_at: '2026-11-05T10:00:00+08:00'
+        },
+        'stage-plan': {
+          last_observation: { at: '2026-11-05T09:32:00+08:00', runner: 'mower', outcome: 'running' }
+        }
+      }
+    }))
+    const workspace = mountWidePane()
+    workspace.page.apply_log_layout()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(dailyStrip(workspace).strip()).toBeUndefined()
+    expect(callsTo('/daily-status')).toHaveLength(1)
+  })
+
+  it('hides saved daily records while the worker starts', async () => {
+    state.mower.refs.running.value = true
+    Object.assign(state.config, { report_enable: true, recruit_enable: true })
+    mockDailyStatus(() => ({
+      game_day: '2026-11-05',
+      source: 'saved',
+      records: { report: 'done' },
+      activities: {
+        recruit: {
+          last_observation: {
+            at: '2026-11-05T09:30:00+08:00',
+            outcome: 'running'
+          }
+        }
+      }
+    }))
+    const workspace = mountWidePane()
+    workspace.page.apply_log_layout()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(dailyStrip(workspace).strip()).toBeUndefined()
+    expect(workspace.page.daily_items).toEqual([])
+  })
+
+  it('keeps the latest completion state when daily-status replies arrive out of order', async () => {
+    vi.setSystemTime(new Date('2026-11-05T05:00:00Z'))
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    const replies = []
+    state.client.get.mockImplementation((url) =>
+      url.endsWith('/daily-status')
+        ? new Promise((resolve) => replies.push(resolve))
+        : Promise.resolve({ data: {} })
+    )
+    const workspace = mountWidePane()
+    workspace.page.apply_log_layout()
+    await vi.advanceTimersByTimeAsync(0)
+    state.mower.refs.status.value = 'working'
+    await vi.advanceTimersByTimeAsync(0)
+    expect(callsTo('/daily-status')[0][1].signal.aborted).toBe(true)
+    expect(callsTo('/daily-status')[1][1].signal.aborted).toBe(false)
+    const response = (status) => ({
+      data: {
+        source: 'live',
+        game_day: '2026-11-05',
+        records: { report: status }
+      }
+    })
+    const { items } = dailyStrip(workspace)
+    replies[1](response('done'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(items()).toEqual([['读取基报', 'done']])
+    replies[0](response('pending'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(items()).toEqual([['读取基报', 'done']])
+  })
+
+  it.each(['hide', 'unmount', 'stop'])('cancels a pending daily request on %s', async (action) => {
+    state.mower.refs.running.value = true
+    let reply
+    state.client.get.mockImplementation((url) =>
+      url.endsWith('/daily-status')
+        ? new Promise((resolve) => (reply = resolve))
+        : Promise.resolve({ data: {} })
+    )
+    const { page } = mountWidePane()
+    onMounted.mock.lastCall[0]()
+    page.apply_log_layout()
+    await vi.advanceTimersByTimeAsync(0)
+    const { signal, timeout } = callsTo('/daily-status')[0][1]
+    expect(timeout).toBe(10000)
+    expect(signal.aborted).toBe(false)
+
+    if (action === 'hide') setHidden(true)
+    else if (action === 'unmount') onUnmounted.mock.lastCall[0]()
+    else state.mower.refs.running.value = false
+    await nextTick()
+    expect(signal.aborted).toBe(true)
+    reply({ data: { source: 'live', records: { report: 'done' } } })
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(page.daily_status).toBe(null)
+    expect(callsTo('/daily-status')).toHaveLength(1)
+    if (action !== 'unmount') onUnmounted.mock.lastCall[0]()
+  })
+
+  it('shows the enabled daily tasks in a non-expandable checklist above the wide desktop log', async () => {
+    vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
+    state.mower.refs.running.value = true
+    Object.assign(state.config, {
+      skland_enable: true,
+      check_mail_enable: true,
+      event_sign_in_enable: true,
+      report_enable: true,
+      visit_friend_enable: true,
+      maa_credit_fight: true,
+      maa_mail: true,
+      maa_recruit: true,
+      maa_orundum: true,
+      recruit_enable: true
+    })
+    mockDailyStatus(() => ({
+      game_day: '2026-11-01',
+      source: 'live',
+      records: {
+        skland: 'done',
+        mail: 'pending',
+        event_sign_in: 'done',
+        report: 'done',
+        visit_friend: 'attempted',
+        maa_credit_fight: 'done',
+        maa_recruit: 'done',
+        maa_orundum: 'pending',
+        maa_mining: 'done'
+      },
+      activities: { recruit: { last_checked_at: '2026-11-01T09:30:00+08:00' } }
+    }))
+    const workspace = mountWidePane()
+    const { strip, items } = dailyStrip(workspace)
+    workspace.page.apply_log_layout()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(callsTo('/daily-status')).toHaveLength(1)
+    expect(strip().parent.props['data-log-content']).toBe(true)
+    expect(strip().props.class).toBe('daily-status')
+    expect(workspace.all(strip().parent).some((target) => target.tag === 'button')).toBe(false)
+    state.mower.refs.log_lines.value = [
+      {
+        id: 1,
+        at: Date.now(),
+        text: '2026-11-02 20:00:00,000 INFO 测试日志',
+        group: null,
+        room: null,
+        agents: null
+      }
+    ]
+    await nextTick()
+    const date = workspace.all().find((target) => target.props.class === 'daily-status__date')
+    expect(date).toBeDefined()
+    const dateText = workspace
+      .all(date)
+      .map((node) => node.text)
+      .join('')
+    expect(dateText).toBe('2026-11-02')
+    expect(items()).toEqual([
+      ['森空岛签到', 'done'],
+      ['领取邮件', 'pending'],
+      ['活动签到', 'done'],
+      ['读取基报', 'done'],
+      ['访问好友', 'attempted'],
+      ['信用作战', 'done'],
+      ['MAA 领取奖励', 'pending']
+    ])
+
+    state.config.maa_orundum = false
+    await nextTick()
+    expect(items().at(-1)).toEqual(['MAA 领取奖励', 'done'])
+    state.config.maa_recruit = false
+    await nextTick()
+    expect(items().some(([title]) => title === 'MAA 领取奖励')).toBe(false)
+    Object.assign(state.config, {
+      skland_enable: false,
+      check_mail_enable: false,
+      event_sign_in_enable: false,
+      report_enable: false,
+      visit_friend_enable: false,
+      maa_credit_fight: false
+    })
+    await nextTick()
+    expect(strip()).toBeUndefined()
+    expect(callsTo('/daily-status')).toHaveLength(1)
+  })
+
+  it('shows task status only after live records arrive and hides it across stop and restart', async () => {
+    vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
+    Object.assign(state.config, { report_enable: true, recruit_enable: true })
+    let response = {
+      game_day: '2026-11-01',
+      source: 'saved',
+      records: { report: 'done' },
+      activities: { recruit: { last_checked_at: '2026-11-01T09:30:00+08:00' } }
+    }
+    mockDailyStatus(() => response)
+    const workspace = mountWidePane()
+    const { strip, items } = dailyStrip(workspace)
+    workspace.page.apply_log_layout()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(strip()).toBeUndefined()
+    expect(callsTo('/daily-status')).toHaveLength(0)
+
+    response = { game_day: '2026-11-01', source: 'none', records: {}, activities: {} }
+    state.mower.refs.running.value = true
+    await vi.advanceTimersByTimeAsync(0)
+    expect(strip()).toBeUndefined()
+    expect(callsTo('/daily-status')).toHaveLength(1)
+
+    response = {
+      game_day: '2026-11-01',
+      source: 'live',
+      records: { report: 'done' },
+      activities: { recruit: { last_checked_at: '2026-11-01T09:30:00+08:00' } }
+    }
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(strip().props.class).toBe('daily-status')
+    expect(items()).toEqual([['读取基报', 'done']])
+
+    state.mower.refs.running.value = false
+    await nextTick()
+    expect(strip()).toBeUndefined()
+    expect(workspace.page.daily_status).toBe(null)
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(callsTo('/daily-status')).toHaveLength(2)
+
+    response = { game_day: '2026-11-01', source: 'none', records: {}, activities: {} }
+    state.mower.refs.running.value = true
+    await nextTick()
+    expect(strip()).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(workspace.page.daily_items).toEqual([])
+    expect(callsTo('/daily-status')).toHaveLength(3)
+  })
+
+  it('refreshes daily records on load, every 30 seconds, on return and on worker status changes', async () => {
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    mockDailyStatus(() => ({
+      game_day: '2026-11-01',
+      source: 'live',
+      records: { report: 'pending' }
+    }))
+    const { page, pane } = mountWidePane()
+    onMounted.mock.lastCall[0]()
+    page.apply_log_layout()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(callsTo('/daily-status')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(callsTo('/daily-status')).toHaveLength(2)
+
+    setHidden(true)
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(callsTo('/daily-status')).toHaveLength(2)
+    setHidden(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(callsTo('/daily-status')).toHaveLength(3)
+
+    state.mower.refs.status.value = 'working'
+    await vi.advanceTimersByTimeAsync(0)
+    expect(callsTo('/daily-status')).toHaveLength(4)
+
+    pane.clientWidth = 880
+    page.apply_log_layout()
+    await vi.advanceTimersByTimeAsync(30000)
+    state.mower.refs.status.value = 'sleeping'
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(callsTo('/daily-status')).toHaveLength(4)
+    expect(page.daily_items).toEqual([])
+
+    onUnmounted.mock.lastCall[0]()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each([
+    ['a narrow pane', 880, false],
+    ['mobile', 1290, true]
+  ])('switches between the log and live daily task views on %s', async (_, width, mobile) => {
+    vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
+    state.mower.refs.running.value = true
+    state.mobile.value = mobile
+    Object.assign(state.config, { report_enable: true, recruit_enable: true })
+    const replies = []
+    state.client.get.mockImplementation((url) =>
+      url.endsWith('/daily-status')
+        ? new Promise((resolve) => replies.push(resolve))
+        : Promise.resolve({ data: {} })
+    )
+    const response = (status) => ({
+      data: {
+        game_day: '2026-11-01',
+        source: 'live',
+        records: { report: status },
+        activities: { recruit: { last_checked_at: '2026-11-01T09:30:00+08:00' } }
+      }
+    })
+    const workspace = mountWidePane(width)
+    const { strip, items } = dailyStrip(workspace)
+    const findLog = () => workspace.find((target) => target.props['data-log-content'])
+    workspace.page.apply_log_layout()
+    state.mower.refs.status.value = 'working'
+    await vi.advanceTimersByTimeAsync(60000)
+    const log = findLog()
+    const toggle = workspace.find((target) => target.props.class === 'log-daily-toggle')
+    const title = () =>
+      workspace
+        .all(toggle)
+        .filter((node) => node.tag !== '#comment')
+        .map((node) => node.text)
+        .join('')
+        .trim()
+    expect(toggle.tag).toBe('button')
+    expect(toggle.props['aria-expanded']).toBeUndefined()
+    expect(toggle.props['aria-label']).toBe('运行日志，切换到今日任务')
+    expect(title()).toBe('运行日志')
+    expect(log.props.showAlternateView).toBe(false)
+    expect(callsTo('/daily-status')).toHaveLength(0)
+    expect(strip()).toBeUndefined()
+
+    toggle.props.onClick()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(toggle.props['aria-label']).toBe('今日任务，切换到运行日志')
+    expect(title()).toBe('今日任务')
+    expect(log.props.showAlternateView).toBe(true)
+    expect(callsTo('/daily-status')).toHaveLength(1)
+    expect(strip().props.role).toBe('region')
+    expect(items()).toEqual([])
+    expect(workspace.all(strip()).some((node) => node.text.trim() === '正在读取今日任务…')).toBe(
+      true
+    )
+    replies[0](response('done'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(items()).toEqual([['读取基报', 'done']])
+    expect(findLog()).toBe(log)
+
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(callsTo('/daily-status')).toHaveLength(2)
+    const { signal } = callsTo('/daily-status')[1][1]
+    expect(signal.aborted).toBe(false)
+    toggle.props.onClick()
+    await nextTick()
+    expect(title()).toBe('运行日志')
+    expect(log.props.showAlternateView).toBe(false)
+    expect(signal.aborted).toBe(true)
+    expect(strip()).toBeUndefined()
+    replies[1](response('pending'))
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(callsTo('/daily-status')).toHaveLength(2)
+    expect(strip()).toBeUndefined()
+    expect(findLog()).toBe(log)
+
+    toggle.props.onClick()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(callsTo('/daily-status')).toHaveLength(3)
+    expect(items()).toEqual([])
+    replies[2](response('pending'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(items()).toEqual([['读取基报', 'pending']])
+
+    await vi.advanceTimersByTimeAsync(30000)
+    replies[3]({ data: { game_day: '2026-11-01', source: 'live', records: {} } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(log.props.showAlternateView).toBe(true)
+    expect(items()).toEqual([])
+    expect(workspace.all(strip()).some((node) => node.text.trim() === '暂无今日任务状态')).toBe(
+      true
+    )
+  })
+
+  it('only offers the compact checklist while running with a recordable daily task enabled', async () => {
+    vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
+    state.mobile.value = true
+    Object.assign(state.config, { maa_mail: true, recruit_enable: true })
+    mockDailyStatus(() => ({
+      game_day: '2026-11-01',
+      source: 'live',
+      records: { maa_recruit: 'done' }
+    }))
+    const workspace = mountWidePane(390)
+    const titleToggle = () =>
+      workspace.all().find((target) => target.props.class === 'log-daily-toggle')
+    workspace.page.apply_log_layout()
+    state.mower.refs.running.value = true
+    await nextTick()
+    expect(titleToggle()).toBeUndefined()
+
+    state.config.maa_recruit = true
+    await nextTick()
+    expect(titleToggle().props['aria-label']).toBe('运行日志，切换到今日任务')
+    expect(callsTo('/daily-status')).toHaveLength(0)
+    titleToggle().props.onClick()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(dailyStrip(workspace).items()).toEqual([['MAA 领取奖励', 'done']])
+
+    state.config.maa_recruit = false
+    await nextTick()
+    expect(titleToggle()).toBeUndefined()
+    expect(dailyStrip(workspace).strip()).toBeUndefined()
+    state.config.maa_recruit = true
+    await nextTick()
+    expect(titleToggle().props['aria-label']).toBe('运行日志，切换到今日任务')
+    expect(callsTo('/daily-status')).toHaveLength(1)
+
+    state.mower.refs.running.value = false
+    await nextTick()
+    expect(titleToggle()).toBeUndefined()
   })
 })

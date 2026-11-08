@@ -1,7 +1,10 @@
 import atexit
+import json
 import logging
 import sys
 import traceback
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
 from pathlib import Path
@@ -12,26 +15,27 @@ from typing import TYPE_CHECKING
 
 import colorlog
 
+from arknights_mower.utils.log_groups import group_for_pathname
+from arknights_mower.utils.log_history import ID_ONLY_LOG_PARENT_TYPES
 from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 from arknights_mower.utils.path import get_path
 
 if TYPE_CHECKING:
     from arknights_mower.utils.screenshot import ScreenshotStore
 
-BASIC_FORMAT = (
-    "%(asctime)s %(relativepath)s:%(lineno)d %(levelname)s %(funcName)s: %(message)s"
-)
+BASIC_FORMAT = "%(asctime)s %(log_group_prefix)s%(relativepath)s:%(lineno)d %(levelname)s %(funcName)s: %(message)s"
 COLOR_FORMAT = f"%(log_color)s{BASIC_FORMAT}"
 DATE_FORMAT = None
 basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
 color_formatter = colorlog.ColoredFormatter(COLOR_FORMAT, DATE_FORMAT)
 LIVE_LOG_CAPACITY = 256
 LIVE_LOG_MESSAGE_LIMIT = 16 * 1024
+LIVE_LOG_RECRUITMENT_LIMIT = 4096
 LIVE_LOG_TRUNCATION_SUFFIX = "\n[实时日志已截断，完整内容见 runtime.log]"
 LIVE_LOG_DROP_WARNING_INTERVAL = 60.0
 LIVE_LOG_DROP_WARNING_FORMAT = (
-    "实时日志队列淘汰了 %d 条记录（自上次告警以来 %d 条），"
-    "消费停滞时只保留最新记录，完整内容仍写入 runtime.log"
+    "部分日志未能及时显示，已跳过较早记录以显示最新内容。"
+    "需要查看这些记录时，请打开 runtime.log。"
 )
 
 
@@ -51,14 +55,645 @@ def _live_message(message, keep_tail=""):
     return message[:budget] + suffix
 
 
+def _task_snapshot(value, message):
+    """任务预告与正文共用实时长度预算；无效或超限时退回完整文本的既有处理。"""
+    if not isinstance(value, dict):
+        return None
+    try:
+        encoded = json.dumps(
+            value, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+        )
+        if len(message) + len(encoded) > LIVE_LOG_MESSAGE_LIMIT:
+            return None
+        return json.loads(encoded)
+    except (TypeError, ValueError, OverflowError, RecursionError, RuntimeError):
+        return None
+
+
+def _recruitment_snapshot(value, message, task=None):
+    """公招标签独立快照，并与正文、任务预告共用实时长度预算。"""
+    if not isinstance(value, dict):
+        return None
+    event = value.get("event")
+    rarity = value.get("rarity")
+    if not isinstance(event, str) or event not in ("tags", "start", "rare"):
+        return None
+    if rarity is not None and (type(rarity) is not int or not 1 <= rarity <= 6):
+        return None
+    if "combinations" in value:
+        if event != "rare" or "tags" in value or rarity is None:
+            return None
+        combinations = value["combinations"]
+        if not isinstance(combinations, list) or not 1 <= len(combinations) <= 25:
+            return None
+        groups = []
+        for combination in combinations:
+            if not isinstance(combination, dict):
+                return None
+            tags = combination.get("tags")
+            level = combination.get("rarity")
+            if not isinstance(tags, list) or not 1 <= len(tags) <= 3:
+                return None
+            if any(
+                not isinstance(tag, str) or not tag.strip() or len(tag) > 32
+                for tag in tags
+            ):
+                return None
+            if type(level) is not int or not 1 <= level <= 6:
+                return None
+            groups.append({"tags": list(tags), "rarity": level})
+        snapshot = {"event": event, "rarity": rarity, "combinations": groups}
+    else:
+        tags = value.get("tags")
+        if not isinstance(tags, list) or not 1 <= len(tags) <= 5:
+            return None
+        if any(
+            not isinstance(tag, str) or not tag.strip() or len(tag) > 32 for tag in tags
+        ):
+            return None
+        snapshot = {"event": event, "tags": list(tags), "rarity": rarity}
+    encoded = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded) > LIVE_LOG_RECRUITMENT_LIMIT:
+        return None
+    task_size = (
+        len(json.dumps(task, ensure_ascii=False, separators=(",", ":")))
+        if task is not None
+        else 0
+    )
+    if len(message) + task_size + len(encoded) > LIVE_LOG_MESSAGE_LIMIT:
+        return None
+    return snapshot
+
+
+def _backups_snapshot(value, message, task=None, recruitment=None):
+    """保存副表完整名称，与其他实时字段共用长度预算。"""
+    if not isinstance(value, list) or not 1 <= len(value) <= 128:
+        return None
+    result = []
+    for item in value:
+        if not isinstance(item, dict):
+            return None
+        name = item.get("name")
+        active = item.get("active")
+        if (
+            not isinstance(name, str)
+            or not name.strip()
+            or len(name) > 128
+            or type(active) is not bool
+        ):
+            return None
+        result.append({"name": name, "active": active})
+    size = len(message)
+    for snapshot in (task, recruitment, result):
+        if snapshot is not None:
+            size += len(json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")))
+    return result if size <= LIVE_LOG_MESSAGE_LIMIT else None
+
+
+def _training_positions(value):
+    if (
+        not isinstance(value, list)
+        or not 1 <= len(value) <= 2
+        or any(
+            not isinstance(item, dict)
+            or type(item.get("index")) is not int
+            or item["index"] not in (0, 1)
+            or not isinstance(item.get("agent"), str)
+            or not item["agent"].strip()
+            or len(item["agent"]) > 256
+            for item in value
+        )
+        or len({item["index"] for item in value}) != len(value)
+    ):
+        return None
+    return [{"agent": item["agent"], "index": item["index"]} for item in value]
+
+
+def _parent_snapshot(value):
+    """保留日志记录明确关联的任务。"""
+    if not isinstance(value, dict):
+        return None
+
+    def identifier(key):
+        item = value.get(key)
+        return isinstance(item, str) and bool(item.strip()) and len(item) <= 128
+
+    if not identifier("id"):
+        return None
+    if value.get("type") in ID_ONLY_LOG_PARENT_TYPES:
+        return {key: value[key] for key in ("type", "id")}
+    if value.get("type") == "recruitment-slot":
+        slot = value.get("slot")
+        if type(slot) is not int or not 1 <= slot <= 4:
+            return None
+        return {key: value[key] for key in ("type", "id", "slot")}
+    if value.get("type") == "facility-arrangement":
+        if not identifier("room"):
+            return None
+        return {key: value[key] for key in ("type", "id", "room")}
+    if value.get("type") != "rescue-staffing":
+        return None
+    scoped = "room" in value or "attempt" in value
+    if scoped and not (identifier("room") and identifier("attempt")):
+        return None
+    keys = ("type", "id", "room", "attempt") if scoped else ("type", "id")
+    return {key: value[key] for key in keys}
+
+
+_parent_log_scope = ContextVar("mower_parent_log_scope", default=None)
+
+
+@contextmanager
+def log_parent_context(parent):
+    """在来源上下文绑定任务明细，退出或中断时恢复先前归属。"""
+    token = _parent_log_scope.set(_parent_snapshot(parent))
+    try:
+        yield
+    finally:
+        _parent_log_scope.reset(token)
+
+
+def _display_snapshots(record, message, *existing):
+    """库存和动作提示保留独立快照，与既有字段共用实时长度预算。"""
+    remaining = (
+        LIVE_LOG_MESSAGE_LIMIT
+        - len(message)
+        - sum(
+            len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+            for value in existing
+            if value is not None
+        )
+    )
+    result = {}
+
+    def include(key, value):
+        nonlocal remaining
+        size = len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+        if size <= remaining:
+            result[key] = value
+            remaining -= size
+
+    inventory = getattr(record, "log_inventory", None)
+    items = inventory.get("items") if isinstance(inventory, dict) else None
+    if isinstance(items, list) and 1 <= len(items) <= 512:
+        valid = all(
+            isinstance(item, dict)
+            and isinstance(item.get("name"), str)
+            and bool(item["name"].strip())
+            and len(item["name"]) <= 256
+            and type(item.get("count")) is int
+            and 0 <= item["count"] <= 9_007_199_254_740_991
+            for item in items
+        )
+        if valid:
+            include(
+                "inventory",
+                {
+                    "items": [
+                        {"name": item["name"], "count": item["count"]} for item in items
+                    ]
+                },
+            )
+    event = getattr(record, "log_event", None)
+
+    def text_field(value, limit=256):
+        return isinstance(value, str) and bool(value.strip()) and len(value) <= limit
+
+    def count_field(value):
+        return type(value) is int and 0 <= value <= 9_007_199_254_740_991
+
+    if isinstance(event, dict) and event.get("type") == "operator-reset-idle":
+        include("event", {"type": "operator-reset-idle"})
+    elif isinstance(event, dict) and event.get("type") == "recruitment-slot":
+        phase = event.get("phase")
+        if (slot := _parent_snapshot(event)) is not None and (
+            "phase" not in event
+            or phase in ("started", "completed", "failed", "stopped")
+        ):
+            if "phase" in event:
+                slot["phase"] = phase
+            include("event", slot)
+    elif isinstance(event, dict) and event.get("type") == "facility-idle":
+        agents = event.get("agents")
+        if (
+            text_field(event.get("id"), 128)
+            and text_field(event.get("room"), 128)
+            and isinstance(agents, list)
+            and 1 <= len(agents) <= 5
+            and all(
+                text_field(name) and name not in ("Current", "Free", "_")
+                for name in agents
+            )
+            and len(set(agents)) == len(agents)
+        ):
+            include(
+                "event",
+                {
+                    "type": "facility-idle",
+                    "id": event["id"],
+                    "room": event["room"],
+                    "agents": list(agents),
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "workshop-result":
+        changes = event.get("changes")
+        if (
+            isinstance(changes, list)
+            and 1 <= len(changes) <= 512
+            and all(
+                isinstance(item, dict)
+                and isinstance(item.get("name"), str)
+                and bool(item["name"].strip())
+                and len(item["name"]) <= 256
+                and type(item.get("delta")) is int
+                and 0 < abs(item["delta"]) <= 9_007_199_254_740_991
+                for item in changes
+            )
+        ):
+            include(
+                "event",
+                {
+                    "type": "workshop-result",
+                    "changes": [
+                        {"name": item["name"], "delta": item["delta"]}
+                        for item in changes
+                    ],
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "rescue-staffing":
+        rooms = event.get("rooms")
+        phase = event.get("phase")
+        if (
+            text_field(event.get("id"), 128)
+            and phase in ("queued", "started", "completed", "failed")
+            and type(event.get("anchor")) is bool
+            and event["anchor"] == (phase == "queued")
+            and isinstance(rooms, list)
+            and 1 <= len(rooms) <= 32
+            and all(
+                isinstance(item, dict)
+                and text_field(item.get("room"), 128)
+                and text_field(item.get("label"), 128)
+                and isinstance(item.get("agents"), list)
+                and len(item["agents"]) <= 5
+                and all(
+                    isinstance(name, str) and len(name) <= 256
+                    for name in item["agents"]
+                )
+                and item.get("status")
+                in ("pending", "active", "completed", "unconfirmed")
+                for item in rooms
+            )
+            and len({item["room"] for item in rooms}) == len(rooms)
+            and (
+                phase != "completed"
+                or all(item["status"] == "completed" for item in rooms)
+            )
+            and (
+                "detail" not in event
+                or (phase == "failed" and text_field(event["detail"], 2048))
+            )
+        ):
+            include(
+                "event",
+                {
+                    "type": "rescue-staffing",
+                    **{key: event[key] for key in ("id", "phase", "anchor")},
+                    "rooms": [
+                        {
+                            "room": item["room"],
+                            "label": item["label"],
+                            "agents": list(item["agents"]),
+                            "status": item["status"],
+                        }
+                        for item in rooms
+                    ],
+                    **({"detail": event["detail"]} if "detail" in event else {}),
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "facility-arrangement":
+        agents = event.get("agents")
+        positions = _training_positions(event.get("positions"))
+        summary = event.get("summary")
+        if (
+            all(
+                isinstance(event.get(key), str)
+                and bool(event[key].strip())
+                and len(event[key]) <= 128
+                for key in ("id", "room", "label")
+            )
+            and event.get("phase") in ("started", "updated", "completed", "failed")
+            and (event["phase"] != "updated" or event.get("anchor") is False)
+            and (
+                "anchor" not in event
+                or (
+                    type(event["anchor"]) is bool
+                    and event["anchor"] == (event["phase"] == "started")
+                )
+            )
+            and isinstance(agents, list)
+            and len(agents) <= 5
+            and all(
+                isinstance(name, str) and name.strip() and len(name) <= 256
+                for name in agents
+            )
+            and (
+                "positions" not in event
+                or (
+                    event["room"] == "train"
+                    and positions is not None
+                    and all(item["agent"] in agents for item in positions)
+                )
+            )
+        ):
+            include(
+                "event",
+                {
+                    "type": "facility-arrangement",
+                    **{key: event[key] for key in ("id", "phase", "room", "label")},
+                    "agents": list(agents),
+                    **({"anchor": event["anchor"]} if "anchor" in event else {}),
+                    **({"positions": positions} if positions is not None else {}),
+                    **(
+                        {"summary": summary}
+                        if summary == message
+                        and text_field(summary, 1024)
+                        and "\n" not in summary
+                        and "\r" not in summary
+                        else {}
+                    ),
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "facility-observation":
+        phase = event.get("phase")
+        summary = event.get("summary")
+        agents = event.get("agents")
+        if (
+            all(text_field(event.get(key), 128) for key in ("id", "room", "label"))
+            and phase in ("started", "completed", "failed")
+            and type(event.get("anchor")) is bool
+            and event["anchor"] == (phase == "started")
+            and text_field(summary, 1024)
+            and summary == message
+            and "\n" not in summary
+            and "\r" not in summary
+            and isinstance(agents, list)
+            and len(agents) <= 5
+            and all(text_field(name) for name in agents)
+        ):
+            include(
+                "event",
+                {
+                    **{
+                        key: event[key]
+                        for key in (
+                            "type",
+                            "id",
+                            "room",
+                            "label",
+                            "phase",
+                            "anchor",
+                            "summary",
+                        )
+                    },
+                    "agents": list(agents),
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") in (
+        "mood-calculation",
+        "depot-scan",
+    ):
+        mood = event["type"] == "mood-calculation"
+        phase = event.get("phase")
+        summary = event.get("summary")
+        if (
+            text_field(event.get("id"), 128)
+            and (not mood or text_field(event.get("label"), 128))
+            and (
+                phase in ("started", "updated", "completed", "failed")
+                or (not mood and phase == "stopped")
+            )
+            and type(event.get("anchor")) is bool
+            and event["anchor"] == (phase == "started")
+            and text_field(summary, 1024)
+            and summary == message
+            and "\n" not in summary
+            and "\r" not in summary
+        ):
+            include(
+                "event",
+                {
+                    **{
+                        key: event[key]
+                        for key in ("type", "id", "phase", "anchor", "summary")
+                    },
+                    **({"label": event["label"]} if mood else {}),
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "production-switch":
+        phase = event.get("phase")
+        if (
+            all(text_field(event.get(key), 128) for key in ("id", "room", "label"))
+            and text_field(event.get("product"))
+            and event.get("facility") in ("manufacture", "trade")
+            and phase in ("started", "waiting", "completed", "failed")
+            and type(event.get("anchor")) is bool
+            and event["anchor"] == (phase == "started")
+            and ("previous" not in event or text_field(event["previous"]))
+            and (
+                "detail" not in event
+                or (
+                    phase in ("waiting", "failed") and text_field(event["detail"], 2048)
+                )
+            )
+            and (phase != "waiting" or "detail" in event)
+        ):
+            include(
+                "event",
+                {
+                    "type": "production-switch",
+                    **{
+                        key: event[key]
+                        for key in (
+                            "id",
+                            "phase",
+                            "anchor",
+                            "room",
+                            "label",
+                            "facility",
+                            "product",
+                        )
+                    },
+                    **({"previous": event["previous"]} if "previous" in event else {}),
+                    **({"detail": event["detail"]} if "detail" in event else {}),
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "order-read":
+        rooms = event.get("rooms")
+        phase = event.get("phase")
+        if (
+            text_field(event.get("id"), 128)
+            and phase in ("started", "updated", "completed", "failed")
+            and type(event.get("anchor")) is bool
+            and event["anchor"] == (phase == "started")
+            and type(event.get("after_switch")) is bool
+            and isinstance(rooms, list)
+            and 1 <= len(rooms) <= 32
+            and all(
+                isinstance(item, dict)
+                and text_field(item.get("room"), 128)
+                and text_field(item.get("label"), 128)
+                and item.get("status") in ("pending", "read", "paused")
+                for item in rooms
+            )
+            and len({item["room"] for item in rooms}) == len(rooms)
+            and (
+                phase not in ("started", "updated")
+                or any(item["status"] == "pending" for item in rooms)
+            )
+            and (
+                phase != "completed"
+                or all(item["status"] != "pending" for item in rooms)
+            )
+            and (
+                "detail" not in event
+                or (phase == "failed" and text_field(event["detail"], 2048))
+            )
+        ):
+            include(
+                "event",
+                {
+                    "type": "order-read",
+                    **{
+                        key: event[key]
+                        for key in ("id", "phase", "anchor", "after_switch")
+                    },
+                    "rooms": [
+                        {key: item[key] for key in ("room", "label", "status")}
+                        for item in rooms
+                    ],
+                    **({"detail": event["detail"]} if "detail" in event else {}),
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "training-selection":
+        positions = _training_positions(event.get("positions"))
+        if positions is not None:
+            include("event", {"type": "training-selection", "positions": positions})
+    elif isinstance(event, dict) and event.get("type") in (
+        "stage-inventory-limit",
+        "stage-inventory-ratio",
+    ):
+        stage = event.get("stage")
+        if (
+            isinstance(stage, dict)
+            and text_field(stage.get("code"), 64)
+            and isinstance(stage.get("drops"), list)
+            and len(stage["drops"]) <= 64
+            and all(text_field(name) for name in stage["drops"])
+        ):
+            include(
+                "event",
+                {
+                    "type": event["type"],
+                    "stage": {"code": stage["code"], "drops": list(stage["drops"])},
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "stage-inventory-plan":
+        stages = event.get("stages")
+        aliases = {"Annihilation": "当期剿灭", "": "上次作战"}
+        if (
+            isinstance(stages, list)
+            and len(stages) <= 128
+            and all(
+                isinstance(item, dict)
+                and isinstance(item.get("code"), str)
+                and (item["code"] == "" or text_field(item["code"], 64))
+                and text_field(item.get("label"), 64)
+                and item["label"] == aliases.get(item["code"], item["code"])
+                and isinstance(item.get("drops"), list)
+                and len(item["drops"]) <= 64
+                and all(text_field(name) for name in item["drops"])
+                and (item["code"] not in aliases or not item["drops"])
+                for item in stages
+            )
+        ):
+            include(
+                "event",
+                {
+                    "type": "stage-inventory-plan",
+                    "stages": [
+                        {
+                            "code": item["code"],
+                            "label": item["label"],
+                            "drops": list(item["drops"]),
+                        }
+                        for item in stages
+                    ],
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "operation-drops":
+        items = event.get("items")
+        if (
+            isinstance(items, list)
+            and 1 <= len(items) <= 512
+            and all(
+                isinstance(item, dict)
+                and text_field(item.get("name"))
+                and count_field(item.get("count"))
+                and item["count"] > 0
+                for item in items
+            )
+        ):
+            include(
+                "event",
+                {
+                    "type": "operation-drops",
+                    "items": [
+                        {"name": item["name"], "count": item["count"]} for item in items
+                    ],
+                },
+            )
+    elif isinstance(event, dict) and event.get("type") == "base-report":
+        items = event.get("items")
+        if (
+            text_field(event.get("date"), 32)
+            and isinstance(items, list)
+            and 1 <= len(items) <= 64
+            and all(
+                isinstance(item, dict)
+                and text_field(item.get("name"))
+                and "value" in item
+                and (item.get("value") is None or count_field(item["value"]))
+                and text_field(item.get("unit"), 32)
+                and text_field(item.get("item"))
+                for item in items
+            )
+        ):
+            include(
+                "event",
+                {
+                    "type": "base-report",
+                    "date": event["date"],
+                    "items": [
+                        {key: item[key] for key in ("name", "value", "unit", "item")}
+                        for item in items
+                    ],
+                },
+            )
+    parent = _parent_snapshot(getattr(record, "log_parent", None))
+    if parent is not None:
+        include("parent", parent)
+    return result
+
+
 class LatestLogQueue(Queue):
     """消费停滞时淘汰最旧记录，生产者和退出标记不等待空位。
 
     ``put(item)`` 没有 ``block``/``timeout`` 参数：队列满时先淘汰最旧一条再入队，
     不会抛 ``queue.Full``。淘汰条数累计在 ``dropped``，“自上次告警以来的条数”见
-    ``dropped_since_warning``；两者都是线程安全的可读状态。每次淘汰按
-    ``drop_warning_interval`` 限频输出一条警告（同一间隔最多一条），让现场能判断
-    实时日志缺失；传入 ``None`` 可关闭警告（测试用）。
+    ``dropped_since_warning``；两者都是线程安全的可读状态。淘汰用户可见的普通
+    记录时，按 ``drop_warning_interval`` 限频提示日志显示不完整。调试记录、
+    退出标记及此提示本身不触发警告；传入 ``None`` 可关闭警告（测试用）。
     """
 
     def __init__(
@@ -81,27 +716,41 @@ class LatestLogQueue(Queue):
         if isinstance(item, str):
             item = _live_message(item)
         dropped = False
+        previous = None
         with self.not_full:
             if self._qsize() >= self.maxsize:
-                self._get()
+                previous = self._get()
                 self.unfinished_tasks -= 1
                 dropped = True
             self._put(item)
             self.unfinished_tasks += 1
             self.not_empty.notify()
         if dropped:
-            self._report_dropped()
+            self._report_dropped(previous, notify=item is not None)
 
     def put_nowait(self, item):
         """QueueHandler 与 QueueListener 使用的非阻塞入口。"""
         self.put(item)
 
-    def _report_dropped(self):
+    @staticmethod
+    def _needs_warning(item):
+        if isinstance(item, logging.LogRecord):
+            return item.levelno >= logging.INFO and not getattr(
+                item, "log_drop_notice", False
+            )
+        if isinstance(item, dict):
+            return item.get("level", "INFO") not in ("DEBUG", "NOTSET") and not (
+                item.get("group") == "runtime-log"
+                and item.get("msg") == LIVE_LOG_DROP_WARNING_FORMAT
+            )
+        return isinstance(item, str) and item != LIVE_LOG_DROP_WARNING_FORMAT
+
+    def _report_dropped(self, item, *, notify=True):
         with self._drop_lock:
             self.dropped += 1
             self.dropped_since_warning += 1
             interval = self._drop_warning_interval
-            if interval is None:
+            if interval is None or not notify or not self._needs_warning(item):
                 return
             now = monotonic()
             if (
@@ -109,11 +758,16 @@ class LatestLogQueue(Queue):
                 and now - self._last_drop_warning < interval
             ):
                 return
-            since_last = self.dropped_since_warning
             self.dropped_since_warning = 0
             self._last_drop_warning = now
-            total = self.dropped
-        logger.warning(LIVE_LOG_DROP_WARNING_FORMAT, total, since_last)
+        logger.warning(
+            LIVE_LOG_DROP_WARNING_FORMAT,
+            extra={
+                "log_group": "runtime-log",
+                "log_drop_notice": True,
+                "log_parent": None,
+            },
+        )
 
 
 class LiveQueueHandler(QueueHandler):
@@ -125,6 +779,34 @@ class LiveQueueHandler(QueueHandler):
         """
         prepared = super().prepare(record)
         prepared.msg = prepared.message = _live_message(prepared.message)
+        task = _task_snapshot(getattr(prepared, "log_task", None), prepared.message)
+        if task is None:
+            prepared.__dict__.pop("log_task", None)
+        else:
+            prepared.log_task = task
+        recruitment = _recruitment_snapshot(
+            getattr(prepared, "log_recruitment", None), prepared.message, task
+        )
+        if recruitment is None:
+            prepared.__dict__.pop("log_recruitment", None)
+        else:
+            prepared.log_recruitment = recruitment
+        backups = _backups_snapshot(
+            getattr(prepared, "log_backups", None), prepared.message, task, recruitment
+        )
+        if backups is None:
+            prepared.__dict__.pop("log_backups", None)
+        else:
+            prepared.log_backups = backups
+        display = _display_snapshots(
+            prepared, prepared.message, task, recruitment, backups
+        )
+        for key in ("inventory", "event", "parent"):
+            attr = f"log_{key}"
+            if key in display:
+                setattr(prepared, attr, display[key])
+            else:
+                prepared.__dict__.pop(attr, None)
         return prepared
 
 
@@ -136,13 +818,28 @@ class PackagePathFilter(logging.Filter):
         except ValueError:
             pass
         record.relativepath = relativepath
+        # 文件日志和终端输出携带 group 前缀，使 runtime.log 可按子系统 grep；
+        # group 缺失时跳过，不产生额外空格。这里只写独立的格式化属性，
+        # record.log_group 保持调用方原始值，结构化记录不受前缀空格影响。
+        group = getattr(record, "log_group", None)
+        record.log_group_prefix = f"{group} " if group else ""
         return True
 
 
 filter = PackagePathFilter()
 
+
+class _ParentContextFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        parent = _parent_log_scope.get()
+        if parent is not None and not hasattr(record, "log_parent"):
+            record.log_parent = dict(parent)
+        return True
+
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+logger.addFilter(_ParentContextFilter())
 
 # 只有画面能帮助定位的运行路径才自动归档；其他 ERROR 仍进入运行日志和实时日志。
 _VISUAL_ERROR_FILES = {
@@ -210,13 +907,65 @@ class Handler(logging.StreamHandler):
                     archive_notice = f"（已保存前后截图，记录编号 {archive_id}）"
             except Exception:
                 pass  # 日志输出不能因归档失败而中断。
-        msg = f"{record.asctime} {record.levelname} {summary}"
         if record.exc_info and record.levelno < logging.ERROR:
-            msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
-        # 归档说明先并入整行，再对合并结果做最终截断：截断标记和编号一起留在行尾，
-        # 实时日志页面看到的整行不会只保留被尾部切掉的编号。
-        msg = _live_message(msg + archive_notice, archive_notice)
-        frontend_log_queue.put(msg)
+            summary += "\n" + "".join(traceback.format_exception(*record.exc_info))
+        rec = _build_log_record(record, summary, archive_notice)
+        frontend_log_queue.put(rec)
+
+
+def _build_log_record(record, summary, archive_notice=""):
+    """把 LogRecord 组装成推送给前端的结构化记录字典。
+
+    必填字段：``t``（asctime 字符串）、``level``、``msg``。
+    ``at`` 保留记录产生时的 Unix 毫秒时间，供跨时区的客户端计算经过时长。
+    ``msg`` 由 ``summary`` 与 ``archive_notice`` 合并后按实时日志上限截断，
+    保留与原文本行相同的显示格式（截断标记和归档编号留在尾部）。
+    可选字段由调用方通过 ``logger.*(msg, extra={"log_group": ...})`` 注入：
+    ``group``、``room``、``agents``、``duration_ms``、``error_code``、``task``、
+    ``recruitment``、``backups``、``inventory``、``event``、``parent``。
+    ``group`` 在调用方未指定时按 ``record.pathname`` 从来源模块派生；显式值
+    与派生值都去掉首尾空白，两者都没有时记录不含 ``group`` 键。
+    """
+    full_msg = _live_message(summary + archive_notice, archive_notice)
+    rec = {
+        "t": record.asctime,
+        "at": round(record.created * 1000),
+        "level": record.levelname,
+        "msg": full_msg,
+    }
+    # 调用方显式取值优先；没有时按来源模块派生。过滤器只给文件日志写
+    # log_group_prefix，因此这里的原始值不带前缀空格，仍须去掉首尾空白。
+    group = getattr(record, "log_group", None)
+    if group is None:
+        group = group_for_pathname(record.pathname)
+    if group is not None:
+        group = str(group).strip()
+        if group:
+            rec["group"] = group
+    for attr, key in (
+        ("log_room", "room"),
+        ("log_agents", "agents"),
+        ("log_duration_ms", "duration_ms"),
+        ("log_error_code", "error_code"),
+    ):
+        value = getattr(record, attr, None)
+        if value is not None:
+            rec[key] = value
+    task = _task_snapshot(getattr(record, "log_task", None), full_msg)
+    if task is not None:
+        rec["task"] = task
+    recruitment = _recruitment_snapshot(
+        getattr(record, "log_recruitment", None), full_msg, task
+    )
+    if recruitment is not None:
+        rec["recruitment"] = recruitment
+    backups = _backups_snapshot(
+        getattr(record, "log_backups", None), full_msg, task, recruitment
+    )
+    if backups is not None:
+        rec["backups"] = backups
+    rec.update(_display_snapshots(record, full_msg, task, recruitment, backups))
+    return rec
 
 
 # w(ebsocket)hlr: WebSocket

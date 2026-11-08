@@ -181,6 +181,26 @@ export const ORDER_PRICES = {
 
 export const ORDER_TYPES = Object.keys(ORDER_PRICES)
 
+// 普通基建报表与日志共用产物色，订单分类使用下方独立色表。
+export const BASE_PRODUCT_COLORS = {
+  light: {
+    gold: '#f5744f',
+    special: '#8b63de',
+    order: '#2f87d6',
+    experience: '#f3e28f',
+    orundum: '#d64b6f',
+    income: '#18a058'
+  },
+  dark: {
+    gold: '#f5744f',
+    special: '#b69cf5',
+    order: '#6bb4f0',
+    experience: '#f3e28f',
+    orundum: '#f07f9a',
+    income: '#63e2b7'
+  }
+}
+
 /**
  * 订单分布图配色：标准模式明暗主题各一套，股票模式另按行情皮肤区分深色与亮色底。
  * 亮色行情用加深后的色阶，保证浅色图例和柱段在白色背景上可分辨。

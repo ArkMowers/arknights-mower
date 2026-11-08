@@ -1081,7 +1081,7 @@ class DeviceControl(Generic[D]):
         if not recovering:
             self._ui_unresponsive_failure = None
         self._state = "paused" if self._dispatch_pause is not None else "connected"
-        logger.info(f"设备初始化完成：{self._serial}")
+        logger.info("设备初始化完成")
         if self._dispatch_pause is not None:
             self._last_error = self._dispatch_pause.to_dict()
         return DeviceResult(

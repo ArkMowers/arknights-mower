@@ -92,7 +92,8 @@ def test_dispatch_removes_its_own_task_after_queue_reordering(clock):
     assert all(t is not swap for t in solver.tasks)
 
 
-def test_order_collision_still_reads_accelerated_time(clock):
+@pytest.mark.parametrize("depleted", [False, True])
+def test_order_collision_summarizes_confirmed_acceleration(clock, caplog, depleted):
     order, swap = pair()
     # Two order runs retain their existing Drone Acceleration collision handling.
     other = SchedulerTask(
@@ -103,13 +104,31 @@ def test_order_collision_still_reads_accelerated_time(clock):
     swap.time += timedelta(hours=1)
     at = swap.time
     solver = make_solver([order, other, swap])
-    solver.digit_reader.get_drone.return_value = 30
+    solver.op_data.facility_states = {"room_1_1": {"facility": "trade"}}
+    solver.digit_reader.get_drone.side_effect = [31, 20 if depleted else 30]
+    interim = order.time - timedelta(minutes=1)
     actual = order.time - timedelta(minutes=6)
-    solver.double_read_time.return_value = actual + timedelta(minutes=5)
+    solver.double_read_time.side_effect = [
+        interim + timedelta(minutes=5),
+        actual + timedelta(minutes=5),
+    ]
     with patch.object(scheduler.config.conf.run_order_grandet_mode, "enable", True):
-        assert solver.adjust_order_time((10, 20), "room_1_1") is None
-    assert solver.tap.call_count == 3
-    assert order.time == actual and swap.time == at
+        outcome = solver.adjust_order_time((10, 20), "room_1_1")
+
+    confirmed = 1 if depleted else 2
+    latest = interim if depleted else actual
+    assert outcome is (False if depleted else None)
+    assert solver.tap.call_count == 3 * confirmed
+    assert order.time == latest and swap.time == at
+    visible = [
+        record.getMessage() for record in caplog.records if record.levelname == "INFO"
+    ]
+    assert visible == [
+        "贸易站 B101：跑单时间过于接近，开始使用无人机加速",
+        f"贸易站 B101：无人机加速后已重读订单 {confirmed} 次，最新跑单开始时间为 {latest:%H:%M:%S}",
+    ]
+    if depleted:
+        assert "贸易站 B101：当前有 20 架无人机，需保留 20 架，停止加速" in caplog.text
 
 
 def test_drone_exception_preserves_order_collision_tasks(clock):

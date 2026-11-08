@@ -2,6 +2,7 @@
 import { computed, inject, ref, watch } from 'vue'
 const show = inject('show_task')
 const isLogPage = inject('add_task') || ref(false)
+const mobile = inject('mobile', ref(false))
 const edit_locked = inject('planEditLocked', ref(false))
 watch(edit_locked, (locked) => {
   if (locked && !isLogPage.value) show.value = false
@@ -124,6 +125,15 @@ const mastery_support_mode = ref('auto')
 const workshop_operator = ref('')
 const msg = ref('')
 const error = ref(false)
+const task_help = [
+  '只能增，不能删！！写错了可以【载入心情数据】启动',
+  '新增加工材料或分解家具任务会唤醒调度器，按任务时间执行',
+  '其他新增任务不会主动唤醒调度器，休眠期间添加的任务可能延后执行',
+  '添加完任务可以【载入心情任务】启动',
+  '空任务，请确保任务房间名字，干员数量正确（没有判定）',
+  '专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈',
+  '线索任务，到点跑一次完整的会客室流程（信息板、领线索、摆线索、送线索）'
+]
 const taskTypeOptions = [
   { label: '计划暂停', value: '计划暂停' },
   { label: '计划停止', value: '计划停止' },
@@ -375,6 +385,14 @@ const level_list = [
           class="dropdown-select"
           :style="{ width: task_type === '分解所有重复家具' ? '290px' : '190px' }"
         />
+        <help-text
+          :clickable="mobile"
+          :max-width="mobile ? 240 : 360"
+          label="新增任务说明"
+          style="box-sizing: border-box; max-height: min(280px, 45dvh); overflow: auto"
+        >
+          <div v-for="line in task_help" :key="line">{{ line }}</div>
+        </help-text>
         <n-select
           v-if="task_type === '日常任务'"
           v-model:value="daily_task"

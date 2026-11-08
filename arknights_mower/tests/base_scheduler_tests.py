@@ -759,16 +759,19 @@ class TestBaseScheduler(unittest.TestCase):
     def test_operator_time_read_failure_means_not_working_or_depleted(self):
         solver = BaseSchedulerSolver()
         solver.read_time = MagicMock(return_value=None)
+        room = "room_2_3"
+        solver.op_data = SimpleNamespace(facility_states={room: {"facility": "power"}})
         before = datetime.now()
 
         with patch.object(base_schedule.logger, "info") as log_info:
-            result = solver.read_operator_time("room_1_2", 1, ((1, 2), (3, 4)))
+            result = solver.read_operator_time(room, 0, ((1, 2), (3, 4)))
 
         self.assertGreaterEqual(result, before)
         self.assertLessEqual(result, datetime.now())
         solver.read_time.assert_called_once_with(((1, 2), (3, 4)), None)
         log_info.assert_called_once_with(
-            "B102 2号位未显示干员倒计时，按非工作状态或心情耗尽处理"
+            "发电站 B203 1号位未显示干员倒计时，按非工作状态或心情耗尽处理",
+            extra={"log_room": room},
         )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
@@ -4017,7 +4020,8 @@ class TestClueProductCompleteWait(unittest.TestCase):
 
         wait_calls = []
 
-        def mock_wait_product():
+        def mock_wait_product(*, log_group=None):
+            self.assertEqual(log_group, "clue")
             wait_calls.append("wait_product_complete")
             events.append("wait_product_complete")
             return True
@@ -4040,3 +4044,76 @@ class TestClueProductCompleteWait(unittest.TestCase):
             ],
         )
         solver._run_clue_shop.assert_called_once_with()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
+    def test_clue_new_logs_scene_identifiers_at_debug(self):
+        solver = BaseSchedulerSolver()
+        solver.tasks = []
+        solver.leifeng_mode = False
+        solver.clue_count = 0
+        solver.clue_count_limit = 0
+        solver._run_clue_shop = MagicMock()
+        solver.scene_graph_navigation = MagicMock()
+        solver.enter_room = MagicMock()
+        solver.recog = MagicMock()
+        solver.tap = MagicMock()
+        solver.ctap = MagicMock()
+        solver.back = MagicMock()
+        solver.sleep = MagicMock()
+        solver.waiting_solver = MagicMock()
+        solver.wait_product_complete = MagicMock(return_value=True)
+        solver.backup_plan_solver = MagicMock()
+        solver.set_detected_party_time = MagicMock()
+        solver.read_party_time = MagicMock(return_value=None)
+        solver._read_placed_clue_numbers = MagicMock(return_value=frozenset())
+        solver._give_one_placed_clue = MagicMock()
+        solver._open_clue_message_board = MagicMock(return_value=False)
+        solver._clue_credit_enabled = MagicMock(return_value=False)
+        visible = {"clue/icon_notification", "clue/check_party"}
+        solver.find = MagicMock(
+            side_effect=lambda name, **kwargs: (0, 0) if name in visible else None
+        )
+        # 依次经过每个只记录场景标识的分支，最后完成全部线索任务。
+        solver.scene = MagicMock(
+            side_effect=[
+                Scene.INFRA_DETAILS,  # 信息板未打开，完成信息板任务
+                Scene.CLUE_MESSAGE_BOARD,
+                Scene.CLUE_DAILY,  # 今日线索已领取，点 X 退出
+                Scene.CLUE_RECEIVE,  # 当前任务不是接收，退出
+                Scene.CLUE_PLACE,  # 没有可摆放的线索，完成摆放
+                Scene.CLUE_SUMMARY,
+                Scene.LOADING,
+                Scene.INFRA_DETAILS,
+                Scene.INFRA_CONFIDENTIAL,  # 没有新的每日线索
+                Scene.INFRA_CONFIDENTIAL,  # 没有新的好友线索
+                Scene.INFRA_CONFIDENTIAL,  # 读取板上编号后打开赠送页
+                Scene.CLUE_GIVE_AWAY,
+                Scene.INFRA_CONFIDENTIAL,
+                Scene.INFRA_DETAILS,  # 线索交流未开启
+            ]
+        )
+
+        with (
+            patch.object(base_schedule, "save_exception") as save_exception,
+            self.assertLogs(base_schedule.logger, "DEBUG") as captured,
+        ):
+            solver.clue_new()
+
+        save_exception.assert_not_called()
+        levels = {}
+        for record in captured.records:
+            levels.setdefault(record.getMessage(), set()).add(record.levelname)
+        for identifier in (
+            "INFRA_DETAILS",
+            "tap",
+            "CLUE_MESSAGE_BOARD",
+            "INFRA_CONFIDENTIAL",
+            "CLUE_DAILY",
+            "CLUE_RECEIVE",
+            "CLUE_PLACE",
+            "CLUE_SUMMARY",
+            "waiting_scene",
+        ):
+            self.assertEqual(levels.get(identifier), {"DEBUG"}, identifier)
+        for message in ("基建：线索", "线索交流未开启或已结束"):
+            self.assertEqual(levels[message], {"INFO"}, message)

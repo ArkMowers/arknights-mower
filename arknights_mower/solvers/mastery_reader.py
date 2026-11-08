@@ -50,6 +50,7 @@ from arknights_mower.utils.skill_label import (
     resolve_panel_skill_fuzzy,
     strip_panel_brackets,
 )
+from arknights_mower.utils.task_presentation import format_wait_duration
 
 # 主页面面板坐标（#61 已钉，#149 2026-08-19 实测校准：面板整体下移）
 PANEL_REGION = ((235, 930), (755, 972))  # `[干员名]技能名`
@@ -1306,119 +1307,100 @@ def _queue_has_mastery_task(solver):
         return False
 
 
-def _format_remaining_time(end_time: datetime, now: datetime) -> str:
-    """把结束时刻格式化为非负的剩余时长（小时不按 24 取模）。"""
-    seconds = max(0, int((end_time - now).total_seconds()))
-    hours, remainder = divmod(seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-
-def _log_judgment(solver, room, state, action, **extra):
-    """逐轮结构化判定日志：房间状态、进驻详情与执行动作。
-
-    对齐 Mower 原生房间日志格式并适配 WebUI 高亮：
-    - 干员名字带单引号（'泡泡'、'年'）以触发 WebUI 红色高亮；
-    - 时间带 HH:MM:SS 以触发 WebUI 蓝色高亮；
-    - 空槽位按照标准记为 '' 与 心情 -1（不输出汉字“空”）；
-    - 浮窗未读取显示「未展开进驻详情」，读取不可靠显示「进驻浮窗读取不可靠」。
-    """
+def _log_judgment(solver, room, state, action="", *, swaps=(), **extra):
+    """保留训练室观察、读取可靠性与下一步动作，内部计划字段留在 DEBUG。"""
     state_map = {
         "training": "训练中",
         "waiting_collect": "待收取",
         "empty": "空闲",
-        "ocr_fail": "识别异常",
+        "ocr_fail": "本次未能确认训练状态",
     }
     tier_map = {1: "专精一", 2: "专精二", 3: "专精三"}
-    status_cn = state_map.get(state, state)
-    items = []
+    items = [f"训练室：{state_map.get(state, state)}"]
+    agents = []
 
-    if not room.slots_read:
-        items.append('"未展开进驻详情"')
-    elif not room.slots_reliable:
-        items.append('"进驻浮窗读取不可靠"')
+    def operator(name):
+        if name not in agents:
+            agents.append(name)
+        return f"[[operator:{name}]]"
+
+    def slot_detail(name, mood):
+        if not room.slots_read:
+            return "未读取进驻详情"
+        if not room.slots_reliable:
+            return "未能确认进驻干员和心情"
+        if not name:
+            return "空位"
+        return operator(name) + (
+            f"，心情 {mood:.1f}" if mood is not None else "，心情未能确认"
+        )
+
+    if state == "empty":
+        training = slot_detail(room.train_slot, room.train_mood)
     else:
-        # 协助位（仅在浮窗可信时输出）
-        if room.support_slot:
-            mood_str = (
-                f"，心情：{round(room.support_mood, 1)}"
-                if room.support_mood is not None
-                else ""
-            )
-            items.append(f"\"协助位干员：'{room.support_slot}'{mood_str}\"")
+        panel = room.panel
+        observed_slots = room.slots_read and room.slots_reliable
+        trainee = panel.operator_name or (room.train_slot if observed_slots else "")
+        subject = operator(trainee) if trainee else ""
+        if panel.skill_name:
+            subject += ("的" if subject else "") + f"「{panel.skill_name}」"
+        tier = tier_map.get(panel.mastery_tier, "")
+        if state == "ocr_fail":
+            details = [f"读到{subject}" if subject else "未能确认训练干员和技能"]
+            if tier:
+                if panel.skill_name:
+                    details[0] += tier
+                else:
+                    details.append(f"读到专精档位为{tier}")
+        elif state == "waiting_collect":
+            details = [f"{subject}已完成{tier or '训练'}"]
         else:
-            items.append("\"协助位干员：''，心情：-1\"")
-
-    # 训练位 / 面板信息
-    if room.state == "training":
-        op = room.panel.operator_name or room.train_slot
-        op_str = f"'{op}'" if op else "''"
-        skill_str = f"「{room.panel.skill_name}」" if room.panel.skill_name else ""
-        tier_name = tier_map.get(room.panel.mastery_tier, "")
-        tier_str = tier_name if skill_str else (f" {tier_name}" if tier_name else "")
-        c = room.panel.countdown
-        countdown_str = (
-            f" 剩余 {_format_remaining_time(c, datetime.now())}"
-            if c
-            else (
-                f" 倒计时{room.panel.countdown_state}"
-                if room.panel.countdown_state != "none"
-                else ""
-            )
-        )
-        if room.slots_read and room.slots_reliable:
-            mood_str = (
-                f"，心情：{round(room.train_mood, 1)}"
-                if (room.train_mood is not None and op)
-                else ("，心情：-1" if not op else "")
-            )
+            details = [f"{subject}正在{tier or '训练'}"]
+        if state != "ocr_fail" and not subject:
+            details.append("未能确认训练干员和技能")
+        if state != "waiting_collect" and panel.countdown is not None:
+            remaining = (panel.countdown - datetime.now()).total_seconds()
+            details.append(f"剩余 {format_wait_duration(remaining)}")
+        elif state == "ocr_fail" and panel.countdown_state == "failed":
+            panel_read = panel.operator_name or panel.skill_name or tier
+            details.append("剩余时间读取失败" if panel_read else "剩余时间未确认")
+        if observed_slots and trainee and trainee == room.train_slot:
+            mood = room.train_mood
+            details.append(f"心情 {mood:.1f}" if mood is not None else "心情未能确认")
+        elif not room.slots_read and state == "training":
+            details.append("心情未读取")
+        training = "，".join(details)
+    items.append(f"训练位　{training}")
+    items.append(f"协助位　{slot_detail(room.support_slot, room.support_mood)}")
+    if action:
+        items.append(action)
+    for swap_task, original_time in swaps:
+        verify_only = getattr(swap_task, "mastery_swap_verify_only", False)
+        title = "协助位换人复核任务" if verify_only else "协助位换人任务"
+        task_time = swap_task.time.strftime("%Y-%m-%d %H:%M:%S")
+        if original_time is None:
+            decision = f"已安排{title}，定于 {task_time}"
+        elif original_time == swap_task.time:
+            decision = f"保留{title}，原定 {task_time}"
         else:
-            mood_str = ""
-        items.append(
-            f'"训练位干员：{op_str}{skill_str}{tier_str}{countdown_str}{mood_str}"'
-        )
-    elif room.state == "waiting_collect":
-        op = room.panel.operator_name or room.train_slot
-        op_str = f"'{op}'" if op else "''"
-        skill_str = f"「{room.panel.skill_name}」" if room.panel.skill_name else ""
-        tier_name = tier_map.get(room.panel.mastery_tier, "")
-        tier_str = tier_name if skill_str else (f" {tier_name}" if tier_name else "")
-        items.append(f'"训练位干员：{op_str}{skill_str}{tier_str} 已完成"')
-    elif room.state == "empty":
-        if room.slots_read and room.slots_reliable:
-            if room.train_slot:
-                mood_str = (
-                    f"，心情：{round(room.train_mood, 1)}"
-                    if room.train_mood is not None
-                    else ""
-                )
-                items.append(f"\"训练位干员：'{room.train_slot}'{mood_str}\"")
-            else:
-                items.append("\"训练位干员：''，心情：-1\"")
-
-    if room.panel.idle_marker:
-        items.append('"面板：空闲中"')
-    elif state == "ocr_fail":
-        c = room.panel.countdown
-        countdown_str = (
-            f" 剩余 {_format_remaining_time(c, datetime.now())}" if c else ""
-        )
-        panel_text = room.panel.skill_name or room.panel.operator_name or "异常"
-        items.append(f"\"面板识别：'{panel_text}'{countdown_str}\"")
-
-    items_str = "，".join(items)
-
-    extra_parts = []
-    for k, v in extra.items():
-        if k in ("协助位", "保护"):
-            continue
-        if k == "计划":
-            extra_parts.append(f"计划 #{v}")
+            original = original_time.strftime("%Y-%m-%d %H:%M:%S")
+            decision = f"调整{title}，原定 {original}，改为 {task_time}"
+        positions = swap_task.plan.get("train") or []
+        target = positions[0] if positions else ""
+        if verify_only:
+            items.append(f"{decision} 执行")
+        elif target and target not in ("Current", "Free", "_"):
+            items.append(f"{decision} 安排{operator(target)}进驻")
+        elif swap_task.meta_data:
+            items.append(f"{decision} 执行「{swap_task.meta_data}」")
         else:
-            extra_parts.append(f"{k}={v}")
-    tail = f" ({'，'.join(extra_parts)})" if extra_parts else ""
+            items.append(f"{decision} 执行，换入干员未确认")
 
-    logger.info(f"[mastery] 房间 训练室[{status_cn}]：[{items_str}] {action}{tail}")
+    logger.debug("训练室判定上下文：状态=%s，附加信息=%s", state, extra)
+    logger.info(
+        "\n".join(items),
+        extra={"log_room": "train", "log_agents": agents},
+    )
 
 
 def _reset_to_idle(solver, plan):
@@ -2231,8 +2213,18 @@ def _reconcile(
         active = None
 
     if room.read_failed:
+        queued_swaps = {
+            id(task): task.time
+            for task in solver.tasks
+            if task.type == TaskTypes.SWAP_SUPPORT
+        }
         _restore_unconfirmed_swap(solver, active)
-        _log_judgment(solver, room, "ocr_fail", "保留训练状态和待核验的换人任务")
+        swaps = [
+            (task, queued_swaps.get(id(task)))
+            for task in solver.tasks
+            if task.type == TaskTypes.SWAP_SUPPORT
+        ]
+        _log_judgment(solver, room, "ocr_fail", swaps=swaps)
         return None, True
 
     if room.state == "empty":
@@ -2291,8 +2283,17 @@ def _reconcile_training(solver, room, active, plans):
     hit = _match_plan(plans, room)
     if active is not None:
         if _can_adopt_expiry(active, room):
-            _log_judgment(solver, room, "training", "训练中×一致，静默更新到期时间")
+            plan_key = str(active["id"])
+            previous_swap = _find_swap_task(solver, plan_key)
+            original_time = previous_swap.time if previous_swap is not None else None
             _refresh_training_plan(solver, active, room)
+            swap = _find_swap_task(solver, plan_key)
+            swaps = (
+                ((swap, original_time if swap is previous_swap else None),)
+                if swap is not None
+                else ()
+            )
+            _log_judgment(solver, room, "training", "核对专精到期时间", swaps=swaps)
             return None, True
         if not _plan_matches_room(active, room):
             # 干员/技能可读但不匹配 → 假记录 → 重置 + 通知②

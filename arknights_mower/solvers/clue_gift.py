@@ -39,7 +39,7 @@ def clue_card_number(image):
 class ClueGiftMixin:
     def _read_placed_clue_numbers(self):
         """读取确实已摆放的编号；取帧后已离开线索板时返回 None。"""
-        self.wait_product_complete()
+        self.wait_product_complete(log_group="clue")
         self.recog.update()
         if self.scene() != Scene.INFRA_CONFIDENTIAL:
             return None
@@ -118,7 +118,7 @@ class ClueGiftMixin:
         """快速送出后按需补送一张；未知画面或结果不重发。"""
         if not placed:
             return False
-        self.wait_product_complete()
+        self.wait_product_complete(log_group="clue")
         self.recog.update()
         capacity = self._read_clue_gift_capacity()
         if capacity is not None:

@@ -3,9 +3,10 @@ import { createSSRApp, reactive } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import Settings from './Settings.vue'
 
-const state = vi.hoisted(() => ({ config: null, mower: null }))
+const state = vi.hoisted(() => ({ config: null, mower: null, gui: null }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/stores/mower', () => ({ useMowerStore: () => state.mower }))
+vi.mock('@/stores/gui', () => ({ useGuiStore: () => state.gui }))
 vi.mock('pinia', async () => ({ storeToRefs: (await import('vue')).toRefs }))
 vi.mock('naive-ui', async () => {
   const { h } = await import('vue')
@@ -69,6 +70,17 @@ beforeEach(() => {
     screenshot_archive_limit_mb: 5120
   })
   state.mower = reactive({ updates_enabled: true, running: false })
+  state.gui = reactive({
+    taskQueueDisplay: 'portraits',
+    taskQueueDisplaySaving: false,
+    taskQueueDisplayError: '',
+    displayDisabled: false,
+    loading: false,
+    loaded: true,
+    load: vi.fn(),
+    setTaskQueueDisplay: vi.fn(),
+    retryTaskQueueDisplay: vi.fn()
+  })
 })
 
 async function render() {

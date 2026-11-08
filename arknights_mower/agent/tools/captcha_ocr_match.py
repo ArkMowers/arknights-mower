@@ -71,7 +71,7 @@ def match_captcha_order(
         llm = build_llm(key, with_tools=False)
         resp = llm.invoke(messages)
         result = resp.content.strip()
-        logger.info(f"LLM 返回：{result}")
+        logger.debug(f"LLM 返回：{result}")
     except Exception as e:
         logger.error(f"LLM 调用失败：{e}")
         return []

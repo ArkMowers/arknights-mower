@@ -12,6 +12,7 @@ from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 from arknights_mower import __version__
 from arknights_mower.utils.diagnostic_version import require_mower_version
 from arknights_mower.utils.git_rev import revision_info
+from arknights_mower.utils.log_privacy import diagnostic_log_redactor
 from arknights_mower.utils.screenshot import (
     ARCHIVE_METADATA_RESERVE,
     MAX_ARCHIVE_BYTES,
@@ -222,7 +223,7 @@ def export_bundle(
     include_screenshots=True,
     scheduling_plan=None,
 ):
-    """打包时间窗口内的完整日志和仍可读取的截图。调用方负责关闭返回的文件。"""
+    """打包时间窗口内脱敏后的完整日志及所选原图。调用方负责关闭返回的文件。"""
     version = require_mower_version(__version__)
     try:
         revision = revision_info() or "unknown"
@@ -311,6 +312,7 @@ def export_bundle(
     else:
         rows = _log_rows(log_folder, start, end, [], detail_limit=None)
 
+    redact = diagnostic_log_redactor()
     output = SpooledTemporaryFile(max_size=16 * 1024**2, mode="w+b")
     try:
         with ZipFile(output, "w", compression=ZIP_STORED) as bundle:
@@ -322,7 +324,7 @@ def export_bundle(
             with bundle.open(log_info, "w", force_zip64=True) as stream:
                 log_bytes = 0
                 for row in rows:
-                    data = (row["message"] + "\n").encode("utf-8")
+                    data = (redact(row["message"]) + "\n").encode("utf-8")
                     if archive_id is not None and (
                         payload_bytes + log_bytes + len(data)
                         > MAX_ARCHIVE_BYTES - ARCHIVE_METADATA_RESERVE
@@ -352,6 +354,8 @@ def export_bundle(
                 f"{end:%Y-%m-%d %H:%M:%S}\n"
                 f"日志：{count} 条\n截图：{image_count} 张\n"
                 f"包含截图：{'是' if include_screenshots else '否'}\n"
+                "日志已隐藏可识别的地址、账号、用户目录和凭据，分享前仍请检查内容。\n"
+                "原始截图未经脱敏，可能包含昵称或 UID；不需画面时请选择仅导出日志。\n"
                 "排班表为导出时当前保存的配置，不代表日志发生时的排班。\n"
                 "截图按采集时间排序；已过期或尚未写入的文件无法导出。\n"
                 + ("归档达到上限，部分截图或日志已省略。\n" if truncated else ""),

@@ -6,6 +6,7 @@ const appearanceUrl = `${import.meta.env.VITE_HTTP_URL || ''}/gui/appearance`
 const validDisplay = (value) => value === 'version' || value === 'channel'
 const validLanguage = (value) => value === 'zh' || value === 'en'
 const validLayout = (value) => value === 'checklist' || value === 'waterfall'
+const validTaskQueueDisplay = (value) => value === 'portraits' || value === 'names'
 const validReportMode = (value) => value === 'standard' || value === 'stock'
 const validHalloweenMode = (value) => value === 'auto' || value === 'on' || value === 'off'
 
@@ -13,6 +14,7 @@ export const useGuiStore = defineStore('gui', () => {
   const softwareVersionDisplay = ref('version')
   const softwareVersionLanguage = ref('en')
   const taskSettingsLayout = ref('checklist')
+  const taskQueueDisplay = ref('portraits')
   const watermarkVisible = ref(true)
   const baseReportMode = ref('standard')
   const halloweenMode = ref('auto')
@@ -20,11 +22,13 @@ export const useGuiStore = defineStore('gui', () => {
   const loading = ref(false)
   const saving = ref(false)
   const layoutSaving = ref(false)
+  const taskQueueDisplaySaving = ref(false)
   const watermarkSaving = ref(false)
   const reportModeSaving = ref(false)
   const halloweenSaving = ref(false)
   const error = ref('')
   const layoutError = ref('')
+  const taskQueueDisplayError = ref('')
   const watermarkError = ref('')
   const reportModeError = ref('')
   const halloweenError = ref('')
@@ -34,6 +38,7 @@ export const useGuiStore = defineStore('gui', () => {
       loading.value ||
       saving.value ||
       layoutSaving.value ||
+      taskQueueDisplaySaving.value ||
       watermarkSaving.value ||
       reportModeSaving.value ||
       halloweenSaving.value
@@ -46,6 +51,7 @@ export const useGuiStore = defineStore('gui', () => {
   let failedDisplay = null
   let failedLanguage = null
   let failedLayout = null
+  let failedTaskQueueDisplay = null
   let failedWatermark = null
   let failedReportMode = null
   let failedHalloweenMode = null
@@ -56,6 +62,7 @@ export const useGuiStore = defineStore('gui', () => {
     loading.value = true
     error.value = ''
     layoutError.value = ''
+    taskQueueDisplayError.value = ''
     watermarkError.value = ''
     reportModeError.value = ''
     halloweenError.value = ''
@@ -70,6 +77,11 @@ export const useGuiStore = defineStore('gui', () => {
           throw new Error()
         if (data.task_settings_layout !== undefined && !validLayout(data.task_settings_layout))
           throw new Error()
+        if (
+          data.task_queue_display !== undefined &&
+          !validTaskQueueDisplay(data.task_queue_display)
+        )
+          throw new Error()
         if (data.watermark_visible !== undefined && typeof data.watermark_visible !== 'boolean')
           throw new Error()
         if (data.base_report_mode !== undefined && !validReportMode(data.base_report_mode))
@@ -79,6 +91,7 @@ export const useGuiStore = defineStore('gui', () => {
         softwareVersionDisplay.value = data.software_version_display
         softwareVersionLanguage.value = data.software_version_language ?? 'en'
         taskSettingsLayout.value = data.task_settings_layout ?? 'checklist'
+        taskQueueDisplay.value = data.task_queue_display ?? 'portraits'
         watermarkVisible.value = data.watermark_visible ?? true
         baseReportMode.value = data.base_report_mode ?? 'standard'
         halloweenMode.value = data.halloween_mode ?? 'auto'
@@ -87,6 +100,7 @@ export const useGuiStore = defineStore('gui', () => {
       } catch {
         error.value = '软件版本显示偏好读取失败，请重试。'
         layoutError.value = '全部设置显示偏好读取失败，请重试。'
+        taskQueueDisplayError.value = '任务列表显示方式读取失败，请重试。'
         watermarkError.value = '版本水印设置读取失败，请重试。'
         reportModeError.value = '基建报表显示偏好读取失败，请重试。'
         halloweenError.value = '万圣节装饰设置读取失败，请重试。'
@@ -191,6 +205,36 @@ export const useGuiStore = defineStore('gui', () => {
     return loaded.value ? setTaskSettingsLayout(failedLayout) : load()
   }
 
+  async function setTaskQueueDisplay(value) {
+    if (displayDisabled.value || !validTaskQueueDisplay(value)) return false
+    if (value === taskQueueDisplay.value) return true
+    const previous = taskQueueDisplay.value
+    taskQueueDisplay.value = value
+    taskQueueDisplaySaving.value = true
+    taskQueueDisplayError.value = ''
+    failedTaskQueueDisplay = null
+    try {
+      const { data } = await axios.put(
+        appearanceUrl,
+        { task_queue_display: value },
+        { timeout: 5000 }
+      )
+      if (data?.task_queue_display !== value) throw new Error()
+      return true
+    } catch {
+      taskQueueDisplay.value = previous
+      failedTaskQueueDisplay = value
+      taskQueueDisplayError.value = '任务列表显示方式保存失败，已恢复原来的显示。请重试。'
+      return false
+    } finally {
+      taskQueueDisplaySaving.value = false
+    }
+  }
+
+  function retryTaskQueueDisplay() {
+    return loaded.value ? setTaskQueueDisplay(failedTaskQueueDisplay) : load()
+  }
+
   async function setBaseReportMode(value) {
     if (reportModeDisabled.value || !validReportMode(value)) return false
     if (value === baseReportMode.value) return true
@@ -283,6 +327,7 @@ export const useGuiStore = defineStore('gui', () => {
     softwareVersionDisplay,
     softwareVersionLanguage,
     taskSettingsLayout,
+    taskQueueDisplay,
     watermarkVisible,
     baseReportMode,
     halloweenMode,
@@ -290,11 +335,13 @@ export const useGuiStore = defineStore('gui', () => {
     loading,
     saving,
     layoutSaving,
+    taskQueueDisplaySaving,
     watermarkSaving,
     reportModeSaving,
     halloweenSaving,
     error,
     layoutError,
+    taskQueueDisplayError,
     watermarkError,
     reportModeError,
     halloweenError,
@@ -307,11 +354,13 @@ export const useGuiStore = defineStore('gui', () => {
     setSoftwareVersionDisplay,
     setSoftwareVersionLanguage,
     setTaskSettingsLayout,
+    setTaskQueueDisplay,
     setBaseReportMode,
     setHalloweenMode,
     setWatermarkVisible,
     retry,
     retryTaskSettingsLayout,
+    retryTaskQueueDisplay,
     retryReportMode,
     retryHalloweenMode,
     retryWatermarkVisible

@@ -328,7 +328,7 @@ def log(account):
     r = resp.json()
     if r.get("status") != 0:
         raise Exception(f"获得token失败：{r['msg']}")
-    logger.info("森空岛登陆成功")
+    logger.debug("已获取森空岛登录令牌")
     return r["data"]["token"]
 
 

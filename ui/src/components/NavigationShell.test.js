@@ -105,6 +105,7 @@ it.each([
       '/settings',
       '/plan-editor',
       '/mastery-recommendation',
+      '/BasementSkill',
       '/record/line',
       '/record/pie',
       '/record/report',
@@ -304,7 +305,7 @@ describe('[INV-UI-04] MobileTabBar', () => {
 
   it('draws an svg for every icon', async () => {
     const bodies = iconBodies(await render(MobileTabBar))
-    expect(bodies).toHaveLength(7)
+    expect(bodies).toHaveLength(8)
     for (const body of bodies) expect(body).toMatch(/^<svg\b/)
   })
 
@@ -334,6 +335,25 @@ describe('[INV-UI-04] MobileTabBar', () => {
     expect(html).not.toContain('href="/maasettings"')
   })
 
+  it('links directly to base skills and uses the same inactive treatment for the log', async () => {
+    const html = await render(MobileTabBar, {}, '/BASEMENTSkill/')
+    const tabs = links(html)
+    const skills = tabs.find((link) => link.href === '/BasementSkill')
+    const log = tabs.find((link) => link.href === '/')
+    const plan = tabs.find((link) => link.href === '/plan-editor')
+    expect(skills.tag).toContain('aria-label="基建技能"')
+    expect(skills.tag).toContain('aria-current="page"')
+    expect(tabs.filter((link) => isActive(link.tag))).toEqual([skills])
+    expect(log.tag).not.toContain('aria-current=')
+    const tabClasses = (tag) =>
+      tag
+        .match(/\bclass="([^"]+)"/u)[1]
+        .split(' ')
+        .filter((name) => name !== 'router-link-active')
+    expect(tabClasses(log.tag)).toEqual(tabClasses(plan.tag))
+    expect(isActive(moreButton(html))).toBe(false)
+  })
+
   it('shows compact settings and report labels with complete accessible names', async () => {
     const html = await render(MobileTabBar, {}, '/settings')
     const task = links(html).find((link) => link.href === '/settings')
@@ -347,7 +367,7 @@ describe('[INV-UI-04] MobileTabBar', () => {
   // Highlighting follows router matching: case and a trailing slash still reach the page,
   // while a path that falls through to the catch-all highlights nothing.
   it.each([
-    ['/BASEMENTSkill/', true],
+    ['/doc/', true],
     ['/RECORD/depot/', false],
     ['/record/line//', false],
     ['/no-such-page', false]

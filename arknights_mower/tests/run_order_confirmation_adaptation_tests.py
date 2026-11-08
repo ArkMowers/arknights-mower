@@ -1,6 +1,7 @@
 """跑单确认沿用已绑定的联网补偿，迟到的进驻结果不触发重复提交。"""
 
 import copy
+import logging
 import pickle
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -218,10 +219,17 @@ def test_stuck_confirmation_reads_late_target_without_more_clicks(confirmation, 
     assert not getattr(ui.task, "run_order_confirmation_pending", None)
 
 
-def test_insertion_and_restoration_confirm_their_own_target_rosters(confirmation):
+def test_insertion_and_restoration_confirm_their_own_target_rosters(
+    confirmation, caplog, monkeypatch
+):
     ui = confirmation
     inserted = ui.task.plan[ROOM].copy()
     original_time = ui.task.time
+    ui.solver.op_data.update_facility_state(ROOM, "trade", "lmd")
+    monkeypatch.setattr(base_schedule.logger, "handlers", [caplog.handler])
+    monkeypatch.setattr(base_schedule.logger, "propagate", False)
+    monkeypatch.setattr(base_schedule.logger, "disabled", False)
+    caplog.set_level(logging.INFO, logger=base_schedule.logger.name)
 
     ui.solver.agent_arrange(ui.task.plan)
 
@@ -250,6 +258,15 @@ def test_insertion_and_restoration_confirm_their_own_target_rosters(confirmation
     assert dict(deadlines)[tuple(inserted)] < dict(deadlines)[tuple(ORIGINAL)]
     ui.solver.accept_order.assert_called_once_with()
     ui.solver.drone.assert_not_called()
+    confirmations = [
+        record for record in caplog.records if record.getMessage().startswith("已确认 ")
+    ]
+    assert [record.getMessage() for record in confirmations] == [
+        "已确认 [[operator:但书]]、[[operator:槐琥]] 进驻 贸易站 B101",
+        "已确认 [[operator:陈]]、[[operator:槐琥]] 进驻 贸易站 B101",
+    ]
+    assert [record.log_agents for record in confirmations] == [inserted, ORIGINAL]
+    assert all(record.log_room == ROOM for record in confirmations)
 
 
 @pytest.mark.parametrize("restoration_succeeds", [True, False])

@@ -101,6 +101,9 @@ def test_actual_workshop_arrangement_confirms_staff_without_plan_entry(
     solver.performance_profile = SimpleNamespace(
         transition_timeout=1, screenshot_interval=100
     )
+    solver._arrange_room.side_effect = MethodType(
+        BaseSchedulerSolver._arrange_room, solver
+    )
     solver._complete_room_arrangement.side_effect = MethodType(
         BaseSchedulerSolver._complete_room_arrangement, solver
     )

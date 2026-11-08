@@ -166,7 +166,8 @@ def test_real_incomplete_board_keeps_receiving_at_credit_cap(receive_workflow):
 def test_page_change_while_waiting_never_receives_on_another_page(receive_workflow):
     solver, state = receive_workflow
 
-    def wait():
+    def wait(*, log_group=None):
+        assert log_group == "clue"
         if state.scene == Scene.CLUE_RECEIVE:
             state.scene = Scene.INFRA_CONFIDENTIAL
 

@@ -53,7 +53,7 @@ def 识别空物品(物品灰):
     白像素比值 = int((白像素个数 / 所有像素个数) * 100)
 
     if 白像素比值 > 99:
-        logger.info("仓库扫描: 删除一次空物品")
+        logger.debug("仓库扫描：跳过空物品格")
 
         return False
     else:
@@ -90,7 +90,7 @@ class depotREC(SceneGraphSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
 
-        start_time = datetime.now()
+        start_time = monotonic()
 
         # sift = cv2.SIFT_create()
         orb = cv2.ORB_create()
@@ -112,7 +112,7 @@ class depotREC(SceneGraphSolver):
 
         self.结果字典 = {}
 
-        logger.info(f"仓库扫描: 吟唱用时{datetime.now() - start_time}")
+        logger.debug("仓库扫描：初始化识别模型用时 %.2f 秒", monotonic() - start_time)
 
     def 切图主程序(self, 拼接好的图片):
         横坐标 = [188 + 234 * i for i in range(0, 8)]
@@ -197,15 +197,16 @@ class depotREC(SceneGraphSolver):
         )
         return [predicted_label, 物品数字]
 
-    def run(self) -> bool:
-        logger.info("Start: 仓库扫描")
+    def run(self, *, report_progress=None) -> bool:
         self._game_restart_used = False
         self.check_current_focus()
         for _ in range(2):
             try:
-                return self.transition()
+                return self.transition(report_progress)
             except _DepotGameRestarted:
                 self.结果字典 = {}
+                if report_progress is not None:
+                    report_progress("正在重新进入游戏内仓库")
                 logger.info("仓库扫描: 游戏已重启，完成登录后重新进入仓库完整扫描")
             except _DepotRecoveryExhausted:
                 self.结果字典 = {}
@@ -257,18 +258,17 @@ class depotREC(SceneGraphSolver):
             return False
         return True
 
-    def transition(self) -> bool:
+    def transition(self, report_progress=None) -> bool:
         self.结果字典 = {}
-        logger.info("仓库扫描: 回到桌面")
+        logger.debug("仓库扫描：返回游戏首页")
         self.back_to_index()
         if self.scene() == Scene.INDEX:
             self.tap_index_element("warehouse")
-            logger.info("仓库扫描: 从主界面点击仓库界面")
 
             if not self._wait_for_depot_ready():
                 return False
+            logger.info("已进入游戏内仓库")
 
-            starttime = datetime.now()
             任务组 = [
                 (1063, self.knn模型_CONSUME, "消耗物品"),
                 (1298, self.knn模型_NORMAL, "基础物品"),
@@ -279,18 +279,25 @@ class depotREC(SceneGraphSolver):
                 self.tap((任务[0], 70))
                 if not self._wait_for_depot_ready():
                     return False
+                if report_progress is not None:
+                    report_progress(f"正在识别{任务[2]}")
                 if not self.find("depot_empty"):
                     有非空分类 = True
+                    start_time = monotonic()
                     self.分类扫描(任务[1])
-                    logger.info(
-                        f"仓库扫描: {任务[2]}识别，识别用时{datetime.now() - starttime}"
+                    logger.debug(
+                        "仓库扫描：识别%s用时 %.2f 秒",
+                        任务[2],
+                        monotonic() - start_time,
                     )
                 else:
-                    logger.info("仓库扫描: 这个分类下没有物品")
+                    logger.debug("仓库扫描：%s分类为空", 任务[2])
             if 有非空分类 and not self.结果字典:
                 logger.warning("仓库扫描: 未确认任何物品数量，本次扫描失败")
                 return False
-            logger.info(f"仓库扫描: {self.结果字典}")
+            logger.debug("仓库扫描结果：%s", self.结果字典)
+            if report_progress is not None:
+                report_progress("正在保存库存")
             扫描时刻 = int(datetime.now().timestamp())
             result = [
                 扫描时刻,
@@ -309,6 +316,23 @@ class depotREC(SceneGraphSolver):
         depot.读取仓库(记录快照时刻=扫描时刻)
         # 保留条数由设置决定（0 = 不清理）；放在这里是因为一次扫描才写一次文件。
         depot.清理历史()
+        if self.结果字典:
+            logger.info(
+                f"仓库扫描：已识别{len(self.结果字典)}种物品\n"
+                + "\n".join(
+                    f"{name}：{count}" for name, count in self.结果字典.items()
+                ),
+                extra={
+                    "log_inventory": {
+                        "items": [
+                            {"name": name, "count": count}
+                            for name, count in self.结果字典.items()
+                        ]
+                    }
+                },
+            )
+        else:
+            logger.info("仓库扫描：两个分类均为空，未发现物品")
         return True
 
     def 对比截图(self, image1, image2):
@@ -327,7 +351,7 @@ class depotREC(SceneGraphSolver):
         截图列表.append(旧的截图)
         拼接好的图片 = 截图列表[0]
         切图列表 = self.切图主程序(拼接好的图片)
-        logger.info(f"仓库扫描: 需要识别{len(切图列表)}个物品")
+        logger.debug("仓库扫描：待识别物品格 %s 个", len(切图列表))
 
         for [物品, 物品灰, id] in 切图列表:
             [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, knn模型)

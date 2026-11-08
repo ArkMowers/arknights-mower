@@ -1,4 +1,7 @@
+import logging
+from copy import deepcopy
 from datetime import datetime, timedelta
+from unittest.mock import Mock
 
 import pytest
 
@@ -7,6 +10,7 @@ from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.resting_priority import RestingTier, resting_tier
 from arknights_mower.utils.scheduler_task import try_add_release_dorm
+from arknights_mower.utils.task_presentation import build_task_presentation
 
 ROOM = "dormitory_4"
 
@@ -81,6 +85,62 @@ def test_full_fallback_yields_to_known_tired_idle(incident, free_room):
         repeated = []
         try_add_release_dorm({}, None, projected, repeated)
         assert repeated == []
+
+
+def test_full_fallback_log_explains_rest_then_idle_without_changing_residents(
+    incident, caplog, monkeypatch
+):
+    from arknights_mower.utils import scheduler_task
+
+    data = incident
+    data.operators["九色鹿"].current_room = ""
+    data.operators["九色鹿"].current_index = -1
+    data.operators["斑点"].current_room, data.operators["斑点"].current_index = ROOM, 3
+    data.dorm[0].name = "斑点"
+    now = datetime.now()
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls):
+            return now
+
+    monkeypatch.setattr(scheduler_task, "datetime", Clock)
+    monkeypatch.setattr(scheduler_task.logger, "handlers", [caplog.handler])
+    monkeypatch.setattr(scheduler_task.logger, "propagate", False)
+    monkeypatch.setattr(scheduler_task.logger, "disabled", False)
+    caplog.set_level(logging.INFO, logger=scheduler_task.logger.name)
+    positions = {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    }
+    beds = [(bed.position, bed.name, bed.time) for bed in data.dorm]
+    tasks = []
+
+    try_add_release_dorm({}, None, data, tasks)
+
+    assert len(tasks) == 1
+    task = tasks[0]
+    assert task.time == now and task.plan == {ROOM: ["Current"] * 4 + ["九色鹿"]}
+    record = next(record for record in caplog.records if hasattr(record, "log_task"))
+    header = f"当前没有可用空床，已生成宿舍调整任务「九色鹿休息；Mon3tr转为空闲」，执行时间 {now}"
+    assert (
+        record.getMessage()
+        == header + "\n宿舍4：Current、Current、Current、Current、九色鹿"
+    )
+    assert record.log_task["header"] == header
+    assert record.log_task["title"] == "九色鹿休息；Mon3tr转为空闲"
+    original = deepcopy(vars(task))
+    monkeypatch.setattr(
+        data,
+        "project_arrangements",
+        Mock(side_effect=AssertionError("任务展示不得投影驻员")),
+    )
+    assert build_task_presentation(task, data)["title"] == "九色鹿休息；Mon3tr转为空闲"
+    assert vars(task) == original and len(tasks) == 1 and tasks[0] is task
+    data.project_arrangements.assert_not_called()
+    assert {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    } == positions
+    assert [(bed.position, bed.name, bed.time) for bed in data.dorm] == beds
 
 
 def test_real_standby_is_above_ordinary_replacement(incident):

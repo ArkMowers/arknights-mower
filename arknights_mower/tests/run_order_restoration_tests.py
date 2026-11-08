@@ -12,6 +12,7 @@ from arknights_mower.tests.automatic_rescue_tests import offline as offline
 from arknights_mower.tests.emergency_compensation_tests import selection_harness
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
+from arknights_mower.tests.raw_schedule_log_tests import capture
 from arknights_mower.utils import config, scheduler_task
 from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
@@ -56,6 +57,56 @@ def assert_pending_restoration(task):
     assert task.plan == {ROOM: ORIGINAL}
     assert task.run_order_original_roster == {ROOM: ORIGINAL}
     assert task.run_order_restore_pending
+
+
+def test_run_order_staffing_and_restoration_have_separate_log_scopes(
+    solver, caplog, monkeypatch
+):
+    task, _ = prepare_order(solver, monkeypatch, adjusted=False)
+    solver.op_data.facility_states[ROOM] = {"facility": "trade"}
+    solver.accept_order.side_effect = lambda: base_schedule.logger.info(
+        "贸易站 B101：已收取订单", extra={"log_room": ROOM}
+    )
+    capture(caplog, monkeypatch)
+
+    solver.agent_arrange(task.plan)
+
+    arrangements = [
+        record
+        for record in caplog.records
+        if getattr(record, "log_event", {}).get("type") == "facility-arrangement"
+    ]
+    started, completed, restored_start, restored = arrangements
+    assert started.getMessage() == "正在 贸易站 B101 安排 [[operator:但书]] 跑单"
+    assert completed.getMessage() == "已在 贸易站 B101 安排 [[operator:但书]] 跑单"
+    parent = {
+        "type": "facility-arrangement",
+        "id": started.log_event["id"],
+        "room": ROOM,
+    }
+    assert started.log_parent == parent
+    assert completed.log_parent == parent
+    assert "summary" not in restored_start.log_event
+    assert "summary" not in restored.log_event
+    assert restored_start.log_event["id"] != started.log_event["id"]
+    restore_parent = {
+        "type": "facility-arrangement",
+        "id": restored_start.log_event["id"],
+        "room": ROOM,
+    }
+    assert restored_start.log_parent == restore_parent
+    assert restored.log_parent == restore_parent
+    selection, restore_selection = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("安排干员：")
+    ]
+    assert selection.log_parent == parent
+    assert restore_selection.log_parent == restore_parent
+    (collection,) = [
+        record for record in caplog.records if "已收取订单" in record.getMessage()
+    ]
+    assert not hasattr(collection, "log_parent")
 
 
 def test_late_secondary_prompt_cancels_before_restoring_original_staff(
@@ -468,7 +519,9 @@ def test_selection_uncertainty_cannot_erase_original_roster(solver, monkeypatch)
     solver.drone.assert_not_called()
 
 
-def test_nonbuffer_restore_reuses_task_without_order_room_metadata(solver, monkeypatch):
+def test_nonbuffer_restore_reuses_task_without_order_room_metadata(
+    solver, caplog, monkeypatch
+):
     task, _ = prepare_order(solver, monkeypatch, buffer=0)
 
     assert solver.agent_arrange(task.plan) is False
@@ -477,10 +530,27 @@ def test_nonbuffer_restore_reuses_task_without_order_room_metadata(solver, monke
     assert [t for t in solver.tasks if t.type == TaskTypes.RUN_ORDER] == [task]
     solver.drone.assert_called_once()
     solver.drone.reset_mock()
+    capture(caplog, monkeypatch)
     solver.agent_arrange(task.plan)
     assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
     assert task.plan == {}
     solver.drone.assert_not_called()
+    (anchor,) = [
+        record
+        for record in caplog.records
+        if getattr(record, "log_event", {}).get("type") == "facility-arrangement"
+        and record.log_event["anchor"]
+    ]
+    (selection,) = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("安排干员：")
+    ]
+    assert selection.log_parent == {
+        "type": "facility-arrangement",
+        "id": anchor.log_event["id"],
+        "room": ROOM,
+    }
 
 
 @pytest.mark.parametrize("stage", ["selection", "confirmation"])

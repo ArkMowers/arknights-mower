@@ -34,6 +34,8 @@ _LOG_RETENTION_NS = RUNTIME_LOG_RETENTION_HOURS * 3600 * 10**9
 MAX_ARCHIVE_BYTES = 512 * 1024**2
 ARCHIVE_METADATA_RESERVE = 128 * 1024
 MAX_ARCHIVE_LOG_BYTES = 8 * 1024**2
+# 报错归档已满时限频：这条 WARNING 仍要提醒用户，但每 10 分钟至多一条。
+ARCHIVE_LIMIT_WARNING_INTERVAL = 600
 _STATUS_FIELDS = (
     "pending_count",
     "pending_bytes",
@@ -900,7 +902,7 @@ class ScreenshotStore:
 
     def _archive_limit_warning(self):
         now = time.monotonic()
-        if now - self._last_archive_limit_log >= 30:
+        if now - self._last_archive_limit_log >= ARCHIVE_LIMIT_WARNING_INTERVAL:
             self._last_archive_limit_log = now
             self.logger.warning(
                 "报错归档达到单条容量或总容量上限，部分新截图或日志未保存"

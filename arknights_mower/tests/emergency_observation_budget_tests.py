@@ -822,7 +822,11 @@ def test_shared_initial_reader_logs_facilities_before_rescue_admission(
     monkeypatch.setattr(emergency.config.conf, "automatic_rescue_enable", True)
     events, logs = [], []
     monkeypatch.setattr(
-        base_schedule.logger, "info", lambda message, *args: logs.append(message)
+        base_schedule.logger,
+        "info",
+        lambda message, *args, **kwargs: logs.append(
+            (message, kwargs.get("extra", {}))
+        ),
     )
 
     def cards():
@@ -847,8 +851,11 @@ def test_shared_initial_reader_logs_facilities_before_rescue_admission(
     assert events == ["cards", "backup", "admission"]
     for room in episode.rooms:
         assert any(
-            f"房间 {solver.translate_room(room)}" in line and "心情:" in line
-            for line in logs
+            metadata.get("log_room") == room
+            and metadata.get("log_agents")
+            and "当前驻员" not in line
+            and "（心情" in line
+            for line, metadata in logs
         )
     assert not solver._emergency_startup_pending
     assert solver.emergency_state is None

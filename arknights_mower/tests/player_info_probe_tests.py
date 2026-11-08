@@ -129,7 +129,7 @@ class PlayerInfoProbeTests(unittest.TestCase):
             ),
             patch.object(player_info, "get_sign_header", return_value={}),
             patch.object(player_info.requests, "request", side_effect=error),
-            patch.object(player_info.logger, "info") as logged,
+            patch.object(player_info.logger, "debug") as logged,
         ):
             with self.assertRaisesRegex(RuntimeError, "stop"):
                 self.client._request_signed_json(self.account, "get", url)
@@ -153,6 +153,7 @@ class PlayerInfoProbeTests(unittest.TestCase):
             full_recovery_time=datetime.datetime(
                 2026, 9, 28, tzinfo=datetime.timezone.utc
             ),
+            fetched_at=datetime.datetime(2026, 9, 27, tzinfo=datetime.timezone.utc),
             raw_ap={"current": 92},
         )
         with patch.object(player_info.logger, "info") as logged:

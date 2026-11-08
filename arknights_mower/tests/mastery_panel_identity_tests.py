@@ -240,7 +240,7 @@ def test_terminal_failure_reaches_archive_before_notification_and_exit(
     assert events[:2] == ["archive", "notify"]
     assert "白面鸮 二技能·脑啡肽 专1" in store.mark_error.call_args.args[1]
     assert any(
-        "记录编号 mastery-archive" in call.args[0]
+        "记录编号 mastery-archive" in call.args[0]["msg"]
         for call in config.log_queue.put.call_args_list
     )
 

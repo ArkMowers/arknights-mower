@@ -1281,9 +1281,9 @@ class BaseMixin:
         if profession:
             if config.stop_mower.is_set():
                 raise MowerExit
-            logger.info(f"打开 {profession} 筛选")
+            logger.debug(f"打开 {profession} 筛选")
         else:
-            logger.info("关闭职业筛选")
+            logger.debug("关闭职业筛选")
             self.profession_filter("ALL")
             self._close_profession_filter()
             return
@@ -1505,7 +1505,7 @@ class BaseMixin:
         return None
 
     @timed_step("enter_room")
-    def enter_room(self, room, *, max_attempts=3):
+    def enter_room(self, room, *, max_attempts=3, log_group=None):
         """从基建首页进入房间"""
 
         profile = self.performance_profile
@@ -1517,7 +1517,11 @@ class BaseMixin:
                     self.sleep()
                 elif self.find("order_label"):
                     # 同一房间的订单页也不能作为房间进入完成，先恢复地图入口。
-                    logger.info("仍在贸易站订单列表，返回基建地图后进入 %s", room)
+                    logger.info(
+                        "仍在贸易站订单列表，返回基建地图后进入 %s",
+                        room,
+                        extra={"log_group": log_group},
+                    )
                     self.back_to_infrastructure()
                 elif pos := self.find("control_central"):
                     # 地图观测参与场景计时，避免跨房换班只累计房间结束页。
@@ -1566,7 +1570,11 @@ class BaseMixin:
                         Scene.CTRLCENTER_ASSISTANT,
                         Scene.ORDER_LIST,
                     ):
-                        logger.info("仍在其他房间，返回基建地图后进入 %s", room)
+                        logger.info(
+                            "仍在其他房间，返回基建地图后进入 %s",
+                            room,
+                            extra={"log_group": log_group},
+                        )
                         self.back_to_infrastructure()
                     elif self.scene() != Scene.INFRA_MAIN:
                         break
@@ -1577,7 +1585,11 @@ class BaseMixin:
                     Scene.CTRLCENTER_ASSISTANT,
                 ):
                     # 上一个房间的返回键可能没有生效，先回基建地图再点击。
-                    logger.info("仍在其他房间，返回基建地图后进入 %s", room)
+                    logger.info(
+                        "仍在其他房间，返回基建地图后进入 %s",
+                        room,
+                        extra={"log_group": log_group},
+                    )
                     self.back_to_infrastructure()
                 else:
                     self.sleep()
@@ -1585,7 +1597,8 @@ class BaseMixin:
                 # 仍停在全局视角时，原逻辑会一直点击同一位置；退出基建
                 # 再重新进入，重新定位房间。此处不重启或关闭游戏。
                 logger.warning(
-                    f"未确认进入房间 {room}，返回首页后重新定位（{enter_times + 1}/{max_attempts - 1}）"
+                    f"未确认进入房间 {room}，返回首页后重新定位（{enter_times + 1}/{max_attempts - 1}）",
+                    extra={"log_group": log_group},
                 )
                 self.back_to_index()
                 self.back_to_infrastructure()
@@ -1640,7 +1653,7 @@ class BaseMixin:
             ):
                 return pos
 
-    def wait_product_complete(self, max_retries: int = 5) -> bool:
+    def wait_product_complete(self, max_retries: int = 5, *, log_group=None) -> bool:
         """等待产物收取提示浮动动画结束并消失，避免遮挡后续 UI。
 
         :param max_retries: 最多等待轮数（每轮 1 秒），防止低阈值误判导致死循环。
@@ -1649,10 +1662,12 @@ class BaseMixin:
         for _ in range(max_retries):
             if not self.detect_product_complete():
                 return True
-            logger.info("检测到产物收取提示，等待消失")
+            logger.info("检测到产物收取提示，等待消失", extra={"log_group": log_group})
             self.sleep(1)
         if self.detect_product_complete():
-            logger.warning("产物收取提示等待超时，继续执行后续流程")
+            logger.warning(
+                "产物收取提示等待超时，继续执行后续流程", extra={"log_group": log_group}
+            )
             return False
         return True
 

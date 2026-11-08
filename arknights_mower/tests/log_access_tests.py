@@ -3,7 +3,7 @@
 import json
 import unittest
 from threading import Thread
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from simple_websocket import Client
@@ -175,14 +175,15 @@ class LocalLogAccessTests(unittest.TestCase):
                 )
                 try:
                     connection.send(json.dumps({"token": "runtime-secret"}))
+                    # 订阅快照含 records 字段；这里只验证日志文本到达客户端。
                     self.assertEqual(
-                        json.loads(connection.receive(timeout=2)),
-                        {"type": "log", "data": "forwarded-log-fixture"},
+                        json.loads(connection.receive(timeout=2))["data"],
+                        "forwarded-log-fixture",
                     )
                     stream.publish("next-forwarded-log")
                     self.assertEqual(
-                        json.loads(connection.receive(timeout=2)),
-                        {"type": "log", "data": "next-forwarded-log"},
+                        json.loads(connection.receive(timeout=2))["data"],
+                        "next-forwarded-log",
                     )
                 finally:
                     connection.close()
@@ -209,9 +210,8 @@ class LocalLogAccessTests(unittest.TestCase):
                 )
                 try:
                     payload = json.loads(connection.receive(timeout=2))
-                    self.assertEqual(
-                        payload, {"type": "log", "data": "local-log-fixture"}
-                    )
+                    # 订阅快照含 records 字段；这里只验证日志文本到达客户端。
+                    self.assertEqual(payload["data"], "local-log-fixture")
                 finally:
                     connection.close()
             finally:
@@ -401,3 +401,155 @@ def test_invalid_screenshot_option_rejected_before_packing(
             headers={"token": "runtime-secret"},
         )
         assert response.status_code == 400
+
+
+@pytest.fixture
+def media_access(tmp_path, monkeypatch):
+    from arknights_mower.utils import log
+
+    archive = tmp_path / "errors" / "123"
+    archive.mkdir(parents=True)
+    (tmp_path / "fixture.jpg").write_bytes(b"synthetic screenshot")
+    (archive / "event.json").write_text("{}", encoding="utf-8")
+    (archive / "logs.json").write_text(
+        '[{"message":"synthetic log"}]', encoding="utf-8"
+    )
+    paths = Mock(return_value=tmp_path)
+    store = Mock()
+    store.last_saved.return_value = "fixture.jpg"
+    monkeypatch.setattr(server, "get_path", paths)
+    monkeypatch.setattr(log, "get_screenshot_store", Mock(return_value=store))
+    monkeypatch.setattr(server.app, "token", "media-fixture-token", raising=False)
+    monkeypatch.setitem(server.app.config, "WEBVIEW_LOCAL_ONLY_NO_TOKEN", False)
+    return server.app.test_client(), paths, store
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+@pytest.mark.parametrize("remote", ["127.0.0.1", "192.0.2.1"])
+@pytest.mark.parametrize("accept", ["application/json", "text/html"])
+@pytest.mark.parametrize("token", [None, "wrong", "media-fixture-token"])
+@pytest.mark.parametrize(
+    "path,body",
+    [
+        ("/latest-screenshot", b"fixture.jpg"),
+        ("/screenshots/fixture.jpg", b"synthetic screenshot"),
+        ("/screenshots/errors/123/logs.json", b'[{"message":"synthetic log"}]'),
+        ("/diagnostics/errors/123/logs", b"synthetic log"),
+    ],
+)
+def test_media_reads_require_configured_token_before_access(
+    media_access, method, remote, accept, token, path, body
+):
+    client, paths, store = media_access
+    headers = {"Accept": accept}
+    if token is not None:
+        headers["token"] = token
+    with client.open(
+        path,
+        method=method,
+        headers={"Host": "127.0.0.1", **headers},
+        environ_base={"REMOTE_ADDR": remote},
+    ) as response:
+        if token == "media-fixture-token":
+            assert response.status_code == 200
+            assert body in response.data if method == "GET" else response.data == b""
+        else:
+            assert response.status_code == 403
+            paths.assert_not_called()
+            store.last_saved.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+def test_diagnostic_logs_keep_complete_local_log_boundary(
+    media_access, monkeypatch, method
+):
+    client, paths, _ = media_access
+    monkeypatch.setitem(server.app.config, "WEBVIEW_LOCAL_ONLY_NO_TOKEN", True)
+    local = {
+        "Host": "127.0.0.1:58000",
+        "Origin": "http://127.0.0.1:58000",
+        "Referer": "http://127.0.0.1:58000/log/schedule",
+        "Sec-Fetch-Site": "same-origin",
+    }
+    for overrides, remote, expected in (
+        ({}, "127.0.0.1", 200),
+        ({"Origin": "https://other.example"}, "127.0.0.1", 403),
+        ({"Host": "other.example"}, "127.0.0.1", 403),
+        ({"Referer": "https://other.example/page"}, "127.0.0.1", 403),
+        ({"Sec-Fetch-Site": "cross-site"}, "127.0.0.1", 403),
+        ({}, "192.0.2.1", 403),
+    ):
+        paths.reset_mock()
+        with client.open(
+            "/diagnostics/errors/123/logs",
+            method=method,
+            headers={**local, **overrides},
+            environ_base={"REMOTE_ADDR": remote},
+        ) as response:
+            assert response.status_code == expected
+            if expected == 403:
+                paths.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+@pytest.mark.parametrize("token", [None, "wrong", "media-fixture-token"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/latest-screenshot",
+        "/screenshots/fixture.jpg",
+        "/screenshots/errors/123/logs.json",
+    ],
+)
+def test_screenshot_files_and_path_have_no_local_log_exception(
+    media_access, monkeypatch, method, token, path
+):
+    client, paths, store = media_access
+    monkeypatch.setitem(server.app.config, "WEBVIEW_LOCAL_ONLY_NO_TOKEN", True)
+    with client.open(
+        path,
+        method=method,
+        headers={
+            "Host": "127.0.0.1",
+            "Origin": "http://127.0.0.1",
+            **({"token": token} if token is not None else {}),
+        },
+    ) as response:
+        assert response.status_code == (200 if token == "media-fixture-token" else 403)
+        if token != "media-fixture-token":
+            paths.assert_not_called()
+            store.last_saved.assert_not_called()
+
+
+def test_media_file_conditional_and_range_requests_keep_token_boundary(media_access):
+    client, paths, _ = media_access
+    path = "/screenshots/fixture.jpg"
+    authorized = {"token": "media-fixture-token"}
+    with client.get(path, headers=authorized) as response:
+        etag = response.headers["ETag"]
+    for extra, expected in (
+        ({"If-None-Match": etag}, 304),
+        ({"Range": "bytes=0-3"}, 206),
+    ):
+        for token in (None, "wrong", "media-fixture-token"):
+            paths.reset_mock()
+            headers = {**extra, **({"token": token} if token is not None else {})}
+            with client.get(path, headers=headers) as response:
+                assert response.status_code == (
+                    expected if token == "media-fixture-token" else 403
+                )
+                if token != "media-fixture-token":
+                    paths.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/latest-screenshot", "/screenshots/fixture.jpg", "/diagnostics/errors/123/logs"],
+)
+def test_media_options_does_not_read_files_or_runtime_state(media_access, path):
+    client, paths, store = media_access
+    with client.options(path) as response:
+        assert response.status_code == 200
+        assert response.data == b""
+        paths.assert_not_called()
+        store.last_saved.assert_not_called()

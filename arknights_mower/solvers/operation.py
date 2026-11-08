@@ -46,7 +46,7 @@ class OperationSolver(SceneGraphSolver):
         battle_inventory_active.set()
         try:
             logger.info("Start: 代理作战")
-            logger.info("start operation solver")
+            logger.debug("start operation solver")
             self.stage_id = stage_id
             self.next_task_time = next_task_time or stop_time
             self.target_total_runs = target_total_runs
@@ -56,6 +56,8 @@ class OperationSolver(SceneGraphSolver):
             self.ap_cost = ap_cost
             self.sanity_threshold = sanity_threshold
             self.sanity_drain = False
+            self.annihilation_reward_full = False
+            self.annihilation_agency_locked = False
             self.stopped_by_deadline = False
             self.stopped_by_inventory = False
             self.inventory_unconfirmed = False
@@ -102,6 +104,12 @@ class OperationSolver(SceneGraphSolver):
                 ):
                     self.sanity_drain = True
                     logger.info(
+                        "估算剩余理智为 %s，不够再打一次 %s（每次消耗 %s 理智），结束本次刷关",
+                        self.simulated_current_ap,
+                        self.stage_id,
+                        self.ap_cost,
+                    )
+                    logger.debug(
                         "stop operation loop because simulated ap is below stage cost | stage_id=%s | simulated_current_ap=%s | ap_cost=%s",
                         self.stage_id,
                         self.simulated_current_ap,
@@ -111,6 +119,10 @@ class OperationSolver(SceneGraphSolver):
                 if self._should_stop_for_deadline():
                     self.stopped_by_deadline = True
                     logger.info(
+                        "离下一个任务开始的时间不够再打一次 %s，结束本次刷关",
+                        self.stage_id,
+                    )
+                    logger.debug(
                         "stop operation loop because next task deadline is too close | stage_id=%s | now=%s | next_task_time=%s | estimated_stage_duration_seconds=%s",
                         self.stage_id,
                         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -122,7 +134,7 @@ class OperationSolver(SceneGraphSolver):
                     break
 
                 self._prepare_batch_state()
-                logger.info(
+                logger.debug(
                     "operation batch start | stage_id=%s | desired_repeat_times=%s | remaining_runs=%s | simulated_current_ap=%s",
                     self.stage_id,
                     self.desired_repeat_times,
@@ -163,7 +175,20 @@ class OperationSolver(SceneGraphSolver):
                             finished_at=self.current_batch_finished_at,
                             duration_seconds=self.current_batch_duration_seconds,
                         )
-                    logger.info(
+                    if self.remaining_runs is None:
+                        logger.info(
+                            "%s 本轮完成 %s 次作战",
+                            self.stage_id,
+                            self.current_batch_repeat_count,
+                        )
+                    else:
+                        logger.info(
+                            "%s 本轮完成 %s 次作战，还剩 %s 次",
+                            self.stage_id,
+                            self.current_batch_repeat_count,
+                            self.remaining_runs,
+                        )
+                    logger.debug(
                         "operation batch success | stage_id=%s | batch_repeat_count=%s | batch_duration_seconds=%.2f | executed_runs=%s | remaining_runs=%s | simulated_current_ap=%s",
                         self.stage_id,
                         self.current_batch_repeat_count,
@@ -173,7 +198,7 @@ class OperationSolver(SceneGraphSolver):
                         self.simulated_current_ap,
                     )
                 else:
-                    logger.info(
+                    logger.debug(
                         "operation batch ended without success | stage_id=%s | sanity_drain=%s | repeat_count=%s",
                         self.stage_id,
                         self.sanity_drain,
@@ -187,7 +212,7 @@ class OperationSolver(SceneGraphSolver):
                     self.stopped_by_inventory = True
                     break
                 if self.target_total_runs is None:
-                    logger.info(
+                    logger.debug(
                         "stop operation loop because target_total_runs is not limited | stage_id=%s",
                         self.stage_id,
                     )
@@ -206,6 +231,8 @@ class OperationSolver(SceneGraphSolver):
             result = {
                 "executed_runs": self.executed_runs,
                 "sanity_drain": self.sanity_drain,
+                "annihilation_reward_full": self.annihilation_reward_full,
+                "annihilation_agency_locked": self.annihilation_agency_locked,
                 "next_threshold_time": next_threshold_time,
                 "stopped_by_deadline": self.stopped_by_deadline,
                 "stopped_by_inventory": self.stopped_by_inventory,
@@ -214,7 +241,7 @@ class OperationSolver(SceneGraphSolver):
                 "simulated_current_ap": self.simulated_current_ap,
                 "remaining_runs": self.remaining_runs,
             }
-            logger.info(
+            logger.debug(
                 "operation finished | stage_id=%s | result=%s", self.stage_id, result
             )
             return result
@@ -257,7 +284,20 @@ class OperationSolver(SceneGraphSolver):
             unknown = confirmed.keys() - get_inventory_counts(list(confirmed)).keys()
             apply_workshop_inventory(confirmed)
             self.current_batch_inventory_recorded = True
-            logger.info("本地作战掉落入库: %s", confirmed)
+            logger.debug("本地作战确认掉落：%s", confirmed)
+            logger.info(
+                "本次Mower刷理智掉落结果已计入库存：%s",
+                "、".join(f"{name}×{count}" for name, count in confirmed.items()),
+                extra={
+                    "log_event": {
+                        "type": "operation-drops",
+                        "items": [
+                            {"name": name, "count": count}
+                            for name, count in confirmed.items()
+                        ],
+                    }
+                },
+            )
             if unknown:
                 logger.warning(
                     "掉落材料缺少库存基线，未估算总库存，请读取仓库: %s",
@@ -423,6 +463,11 @@ class OperationSolver(SceneGraphSolver):
                 if repeat > 1:
                     self.current_batch_repeat_count = repeat
                     logger.info(
+                        "选择连战次数：目标 %s，实际 %s",
+                        self.desired_repeat_times,
+                        repeat,
+                    )
+                    logger.debug(
                         "choose operation repeat by legacy detector | desired=%s | actual=%s",
                         self.desired_repeat_times,
                         repeat,
@@ -434,6 +479,10 @@ class OperationSolver(SceneGraphSolver):
                     return
                 self.current_batch_repeat_count = 1
                 logger.info(
+                    "没有找到连战次数选项，本轮只打 1 次（目标 %s 次）",
+                    self.desired_repeat_times,
+                )
+                logger.debug(
                     "fallback to single run because repeat selector is unavailable | desired=%s",
                     self.desired_repeat_times,
                 )
@@ -451,7 +500,7 @@ class OperationSolver(SceneGraphSolver):
                 return
             self._record_batch_drops()
             self._finish_batch(True)
-            logger.info(
+            logger.debug(
                 "operation scene finish | stage_id=%s | repeat_count=%s",
                 self.stage_id,
                 self.current_batch_repeat_count,
@@ -460,7 +509,8 @@ class OperationSolver(SceneGraphSolver):
             return True
         elif scene == Scene.OPERATOR_FAILED:
             self._finish_batch(False)
-            logger.warning(
+            logger.warning("%s 代理作战失败", self.stage_id)
+            logger.debug(
                 "operation scene failed | stage_id=%s | repeat_count=%s",
                 self.stage_id,
                 self.current_batch_repeat_count,
@@ -474,7 +524,8 @@ class OperationSolver(SceneGraphSolver):
                 self.sleep(10)
         elif scene == Scene.OPERATOR_GIVEUP:
             self._finish_batch(False)
-            logger.warning(
+            logger.warning("%s 放弃行动", self.stage_id)
+            logger.debug(
                 "operation scene giveup | stage_id=%s | repeat_count=%s",
                 self.stage_id,
                 self.current_batch_repeat_count,
@@ -494,7 +545,8 @@ class OperationSolver(SceneGraphSolver):
                 return
             self.sanity_drain = True
             self._finish_batch(False)
-            logger.info(
+            logger.info("理智不足，不使用理智药，结束本次刷关")
+            logger.debug(
                 "stop operation because sanity potion is not allowed | stage_id=%s",
                 self.stage_id,
             )
@@ -502,36 +554,46 @@ class OperationSolver(SceneGraphSolver):
         elif scene == Scene.OPERATOR_RECOVER_ORIGINITE:
             self.sanity_drain = True
             self._finish_batch(False)
-            logger.info(
+            logger.info("理智不足，不使用源石恢复理智，结束本次刷关")
+            logger.debug(
                 "stop operation because originite recovery dialog appeared | stage_id=%s",
                 self.stage_id,
             )
             return True
         elif scene == Scene.OPERATOR_ELIMINATE:
-            logger.info(
+            logger.debug(
                 "entered OPERATOR_ELIMINATE | stage_id=%s | repeat_count=%s",
                 self.stage_id,
                 self.current_batch_repeat_count,
             )
             if self.find("ope_agency_lock"):
-                logger.error("无法代理当期剿灭")
-                self.sanity_drain = True
+                # 与本周已满相同，只结束剿灭这一关；调度负责提示用户和发邮件。
+                self.annihilation_agency_locked = True
                 self._finish_batch(False)
                 return True
-            if self.find("1800"):
-                logger.info("本周剿灭已完成")
-                self.sanity_drain = True
-                self._finish_batch(False)
-                return True
+            # 模板按四位数字整体评分，只差一位时仍可能命中；读出 1800 才算本周已满。
+            if scope := self.find("1800"):
+                reward = self.number(scope, 43)
+                if reward == 1800:
+                    logger.info("本周剿灭已完成")
+                    # 只结束剿灭这一关；理智没有消耗，调度继续后面的关卡。
+                    self.annihilation_reward_full = True
+                    self._finish_batch(False)
+                    return True
+                logger.debug(
+                    "annihilation weekly reward reading | stage_id=%s | reward=%s",
+                    self.stage_id,
+                    reward,
+                )
             if pos := self.find("ope_elimi_agency"):
-                logger.info("found ope_elimi_agency button | pos=%s", pos)
+                logger.debug("found ope_elimi_agency button | pos=%s", pos)
                 self.tap(pos, interval=0.5)
                 return
-            logger.info("ope_elimi_agency button not found, fallback to ope_start")
+            logger.debug("ope_elimi_agency button not found, fallback to ope_start")
             self._mark_battle_started()
             self.tap_element("ope_start", interval=2)
         elif scene == Scene.OPERATOR_ELIMINATE_AGENCY:
-            logger.info(
+            logger.debug(
                 "entered OPERATOR_ELIMINATE_AGENCY | stage_id=%s | tap confirm",
                 self.stage_id,
             )
@@ -541,7 +603,8 @@ class OperationSolver(SceneGraphSolver):
             self.waiting_solver()
         else:
             self._finish_batch(False)
-            logger.warning(
+            logger.warning("代理作战时遇到无法处理的界面")
+            logger.debug(
                 "stop operation because scene is unexpected | stage_id=%s | scene=%s",
                 self.stage_id,
                 scene,

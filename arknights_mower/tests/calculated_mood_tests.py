@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import json
+import logging
 import os
 import pickle
 import shutil
@@ -1082,17 +1083,89 @@ def test_owner_query_advances_old_inputs_before_applying_changed_room_level(
     assert data.mood_model.rooms["dormitory_1"]["level"] == 1
 
 
+@pytest.mark.parametrize("source", ["observed", "cached"])
+def test_reused_deadline_does_not_report_a_prediction(
+    solver, monkeypatch, caplog, source
+):
+    data = enable(solver, monkeypatch)
+    name = "伊内丝"
+    deadline = NOW + timedelta(hours=1)
+    calculate = MagicMock()
+    monkeypatch.setattr(data.mood_model, "deadline", calculate)
+    caplog.set_level(logging.INFO, logger="arknights_mower.utils.log")
+    if source == "observed":
+        target = 0
+        operator = data.operators[name]
+        operator.current_room = "room_1_1"
+        operator.mood = 0
+        operator.time_stamp = NOW
+        operator.exhaust_time = deadline
+        operator.mood_is_prediction = False
+    else:
+        target = 24
+        data._projection_deadlines = {(name, target, 240, NOW): deadline}
+
+    @calculated_mood.log_mood_calculation("普通换班规划")
+    def read_deadline(solver):
+        return solver.op_data.calculated_mood_deadline(name, target, NOW)
+
+    assert read_deadline(solver) == deadline
+    calculate.assert_not_called()
+    details = [record.getMessage() for record in mood_timing_details(caplog)]
+    if source == "observed":
+        assert mood_timing_events(caplog) == []
+        assert details == []
+    else:
+        assert [event["phase"] for event in mood_timing_events(caplog)] == [
+            "started",
+            "completed",
+        ]
+        assert details == ["更新设施和基建技能资料（推算从已有心情读数开始）"]
+
+
+def mood_timing_events(caplog):
+    events = []
+    for record in caplog.records:
+        event = getattr(record, "log_event", None)
+        if isinstance(event, dict) and event.get("type") == "mood-calculation":
+            assert record.levelno == logging.INFO
+            assert event["summary"] == record.getMessage()
+            assert event["anchor"] == (event["phase"] == "started")
+            assert record.log_parent == {"type": "mood-calculation", "id": event["id"]}
+            events.append(event)
+    return events
+
+
+def mood_timing_details(caplog):
+    return [
+        record
+        for record in caplog.records
+        if getattr(record, "log_parent", {}).get("type") == "mood-calculation"
+        and not hasattr(record, "log_event")
+        and record.levelno == logging.INFO
+    ]
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "info_duration"),
+    [(0.0, "0.000"), (0.002, "0.002"), (8.754, "8.754")],
+)
 def test_infra_mood_timing_excludes_device_work_and_nested_model_calls(
-    solver, monkeypatch
+    solver, monkeypatch, caplog, elapsed, info_duration
 ):
     from arknights_mower.utils.log import logger
 
     enable(solver, monkeypatch)
-    ticks = iter([10.0, 10.125])
-    clock = MagicMock(side_effect=lambda: next(ticks))
+    ticks = iter([0.0, elapsed])
+
+    def measure_time():
+        assert [event["phase"] for event in mood_timing_events(caplog)] == ["started"]
+        assert len(mood_timing_details(caplog)) == 1
+        return next(ticks)
+
+    clock = MagicMock(side_effect=measure_time)
     monkeypatch.setattr(calculated_mood, "perf_counter", clock)
-    info = MagicMock()
-    monkeypatch.setattr(logger, "info", info)
+    caplog.set_level(logging.DEBUG, logger=logger.name)
     solver.find = MagicMock(return_value=None)
     solver.back = MagicMock()
 
@@ -1100,23 +1173,28 @@ def test_infra_mood_timing_excludes_device_work_and_nested_model_calls(
 
     solver.back.assert_called_once()
     assert clock.call_count == 2
-    info.assert_called_once_with(
-        "实时心情计算耗时：%s，模型同步与预测累计 %.3f 秒，计算调用 %d 次，%s",
-        "基建调度",
-        0.125,
-        1,
-        "完成",
-    )
+    start, completed = mood_timing_events(caplog)
+    assert start["phase"] == "started" and completed["phase"] == "completed"
+    assert start["id"] == completed["id"]
+    assert start["label"] == completed["label"] == "基建调度"
+    assert start["summary"] == "基建调度：正在推算干员工作或休息时的心情变化"
+    assert completed["summary"] == f"基建调度：心情推算完成，耗时 {info_duration} 秒"
+    (detail,) = mood_timing_details(caplog)
+    assert detail.getMessage() == "更新设施和基建技能资料（推算从已有心情读数开始）"
+    assert detail.log_parent == {"type": "mood-calculation", "id": start["id"]}
+    assert "实时心情计算耗时：" not in caplog.text
     assert calculated_mood._runtime.timing is None
 
 
-def test_disabled_mood_timing_does_not_sample_clock_or_sync_model(solver, monkeypatch):
+def test_disabled_mood_timing_does_not_sample_clock_or_sync_model(
+    solver, monkeypatch, caplog
+):
     from arknights_mower.utils.log import logger
 
-    clock, info, sync = MagicMock(), MagicMock(), MagicMock()
+    clock, sync = MagicMock(), MagicMock()
     monkeypatch.setattr(calculated_mood, "perf_counter", clock)
     monkeypatch.setattr(calculated_mood, "sync_model", sync)
-    monkeypatch.setattr(logger, "info", info)
+    caplog.set_level(logging.DEBUG, logger=logger.name)
     solver.find = MagicMock(return_value=None)
     solver.back = MagicMock()
 
@@ -1124,10 +1202,26 @@ def test_disabled_mood_timing_does_not_sample_clock_or_sync_model(solver, monkey
 
     clock.assert_not_called()
     sync.assert_not_called()
-    info.assert_not_called()
+    assert mood_timing_events(caplog) == []
 
 
-def test_mood_timing_reports_failure_and_releases_batch(solver, monkeypatch):
+def test_enabled_mood_timing_skips_batches_without_measurements(
+    solver, monkeypatch, caplog
+):
+    enable(solver, monkeypatch)
+    caplog.set_level(logging.INFO)
+    clock = MagicMock()
+    monkeypatch.setattr(calculated_mood, "perf_counter", clock)
+    solver._plan_dorm_recovery = MagicMock(return_value=False)
+
+    solver.plan_solver()
+
+    clock.assert_not_called()
+    assert mood_timing_events(caplog) == []
+    assert calculated_mood._runtime.timing is None
+
+
+def test_mood_timing_reports_failure_and_releases_batch(solver, monkeypatch, caplog):
     from arknights_mower.utils.log import logger
 
     enable(solver, monkeypatch)
@@ -1136,46 +1230,113 @@ def test_mood_timing_reports_failure_and_releases_batch(solver, monkeypatch):
         "arknights_mower.utils.mastery_recommendation.get_cultivate_snapshot",
         MagicMock(side_effect=failure),
     )
-    ticks = iter([20.0, 20.25])
+    ticks = iter([0.0, 0.002])
     monkeypatch.setattr(calculated_mood, "perf_counter", lambda: next(ticks))
-    info = MagicMock()
-    monkeypatch.setattr(logger, "info", info)
+    caplog.set_level(logging.DEBUG, logger=logger.name)
 
     with pytest.raises(RuntimeError) as raised:
         solver.infra_main()
 
     assert raised.value is failure
-    assert info.call_args.args[1:] == ("基建调度", 0.25, 1, "中断")
+    start, failed = mood_timing_events(caplog)
+    assert start["phase"] == "started" and failed["phase"] == "failed"
+    assert start["id"] == failed["id"]
+    assert failed["summary"] == "基建调度：心情推算中断，耗时 0.002 秒"
+    assert calculated_mood._runtime.timing is None
+
+
+def test_infra_mood_summary_finishes_before_scene_read_fails(
+    solver, monkeypatch, caplog
+):
+    from arknights_mower.utils.log import logger
+
+    enable(solver, monkeypatch)
+    ticks = iter([0.0, 0.5])
+    monkeypatch.setattr(calculated_mood, "perf_counter", lambda: next(ticks))
+    caplog.set_level(logging.INFO, logger=logger.name)
+    failure = ConnectionError("device read failed")
+
+    def find_scene(element):
+        assert element == "control_central"
+        start, completed = mood_timing_events(caplog)
+        assert [start["phase"], completed["phase"]] == ["started", "completed"]
+        assert start["id"] == completed["id"]
+        assert completed["summary"] == "基建调度：心情推算完成，耗时 0.500 秒"
+        raise failure
+
+    solver.find = find_scene
+    with pytest.raises(ConnectionError) as raised:
+        solver.infra_main()
+
+    assert raised.value is failure
+    assert [event["phase"] for event in mood_timing_events(caplog)] == [
+        "started",
+        "completed",
+    ]
     assert calculated_mood._runtime.timing is None
 
 
 def test_planning_timing_includes_projection_queries_without_between_call_work(
-    solver, monkeypatch
+    solver, monkeypatch, caplog
 ):
     from arknights_mower.utils.log import logger
 
     data = enable(solver, monkeypatch)
-    ticks = iter([10.0, 10.125, 20.0, 20.25])
-    clock = MagicMock(side_effect=lambda: next(ticks))
+    ticks = iter(
+        [10.0, 10.125, 20.0, 20.625, 30.0, 30.75, 40.0, 40.25, 50.0, 51.0, 60.0, 60.375]
+    )
+    expected_details = iter([1, 1, 2, 2, 2, 2, 3, 3, 4, 4, 5, 5])
+
+    def measure_time():
+        assert sum(
+            record.getMessage() != "当前模型计算"
+            for record in mood_timing_details(caplog)
+        ) == next(expected_details)
+        logger.info("当前模型计算")
+        return next(ticks)
+
+    clock = MagicMock(side_effect=measure_time)
     monkeypatch.setattr(calculated_mood, "perf_counter", clock)
-    info = MagicMock()
-    monkeypatch.setattr(logger, "info", info)
+    caplog.set_level(logging.DEBUG, logger=logger.name)
 
     def plan_recovery():
+        sync_model(data, NOW)
+        logger.info("继续换班规划")
         assert data.calculated_mood_rate("伊内丝", NOW + timedelta(hours=1)) > 0
         assert data.operators["伊内丝"].current_mood(NOW + timedelta(hours=1)) < 12
+        assert data.calculated_mood_deadline("伊内丝", 6, NOW) > NOW
+        assert data.calculated_mood_rate("伊内丝", NOW + timedelta(hours=1)) > 0
         return False
 
     solver._plan_dorm_recovery = plan_recovery
     solver.plan_solver()
 
-    assert clock.call_count == 4
-    info.assert_called_once_with(
-        "实时心情计算耗时：%s，模型同步与预测累计 %.3f 秒，计算调用 %d 次，%s",
-        "普通换班规划",
-        0.375,
-        2,
-        "完成",
-    )
+    assert clock.call_count == 12
+    events = mood_timing_events(caplog)
+    assert [event["phase"] for event in events] == ["started", "completed"]
+    assert len({event["id"] for event in events}) == 1
+    parent = {"type": "mood-calculation", "id": events[0]["id"]}
+    for record in caplog.records:
+        if record.getMessage() == "当前模型计算":
+            assert record.log_parent == parent
+        if record.getMessage() == "继续换班规划":
+            assert not hasattr(record, "log_parent")
+    assert all(event["label"] == "普通换班规划" for event in events)
+    assert events[-1]["summary"] == "普通换班规划：心情推算完成，耗时 3.125 秒"
+    details = [
+        record
+        for record in mood_timing_details(caplog)
+        if record.getMessage() != "当前模型计算"
+    ]
+    assert [record.getMessage() for record in details] == [
+        "更新设施和基建技能资料（推算从已有心情读数开始）",
+        "推算心情和变化速度",
+        "更新设施和基建技能资料",
+        "推算达到目标心情的时间",
+        "推算心情和变化速度",
+        "分项耗时：更新设施和基建技能资料 0.375 秒、推算心情和变化速度 1.750 秒、"
+        "推算达到目标心情的时间 1.000 秒",
+    ]
+    assert all(record.log_parent == parent for record in details)
     assert data.mood_model.at == NOW
     assert data.mood_model.moods["伊内丝"] == 12

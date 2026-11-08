@@ -98,7 +98,14 @@ export const navigationSections = [
     key: 'reference',
     title: '资料',
     items: [
-      { key: 'basement-skill', label: '基建技能', icon: FlashOutline, to: '/BasementSkill' },
+      {
+        key: 'basement-skill',
+        label: '基建技能',
+        shortLabel: '基建技能',
+        icon: FlashOutline,
+        to: '/BasementSkill',
+        tab: 6
+      },
       { key: 'doc', label: '帮助文档', icon: HelpCircleOutline, to: '/doc' },
       { key: 'readme', label: '其他资源', icon: LibraryOutline, to: '/readme' },
       {

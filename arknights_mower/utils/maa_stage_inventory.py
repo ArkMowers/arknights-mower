@@ -280,6 +280,38 @@ def stage_limit_status(
     return bound, False
 
 
+def reached_stage_limit_materials(
+    stage: str, limit_rules: Iterable, inventory: dict
+) -> list[str]:
+    """只读说明首个满足上限规则的材料，不改变关卡选择。"""
+    for rule in limit_rules or []:
+        if not stage_limit_status(stage, (rule,), inventory)[1]:
+            continue
+        names = []
+        for item in _value(rule, "items", []) or []:
+            limit = int(_value(item, "limit", 0) or 0)
+            item_id = str(_value(item, "item_id", "") or "").strip()
+            item_name = str(_value(item, "item_name", "") or "").strip()
+            if (
+                limit <= 0
+                or not (item_id or item_name)
+                or _rule_item_count(item, inventory) < limit
+            ):
+                continue
+            metadata = key_mapping.get(item_id) or key_mapping.get(item_name)
+            name = (
+                str(metadata[2])
+                if isinstance(metadata, list) and len(metadata) >= 3
+                else item_name
+            )
+            if not name:
+                return []
+            if name not in names:
+                names.append(name)
+        return names
+    return []
+
+
 def maa_fight_drop_targets(
     stage: str,
     limit_rules: Iterable,
