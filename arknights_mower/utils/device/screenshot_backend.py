@@ -9,7 +9,10 @@ from arknights_mower.utils.config.device_profile import capture_compatibility_er
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.droidcast import DroidCastError
-from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
+from arknights_mower.utils.device.endpoint_identity import (
+    InstanceBindingError,
+    ManagerQueryTimeout,
+)
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.log import logger
 
@@ -147,7 +150,13 @@ class ScreenshotSession:
         started = time.monotonic()
         try:
             frame = validate_frame(capture())
-        except (MowerExit, DeviceRecoveryError, InstanceBindingError, SharedADBError):
+        except (
+            MowerExit,
+            DeviceRecoveryError,
+            InstanceBindingError,
+            ManagerQueryTimeout,
+            SharedADBError,
+        ):
             raise
         except FrameSizeMismatch as exc:
             self._raise_failure(exc)
@@ -170,7 +179,12 @@ class ScreenshotSession:
             frame = validate_frame(capture())
         except MowerExit:
             raise
-        except (DeviceRecoveryError, InstanceBindingError, SharedADBError) as exc:
+        except (
+            DeviceRecoveryError,
+            InstanceBindingError,
+            ManagerQueryTimeout,
+            SharedADBError,
+        ) as exc:
             self._report_failure(stage, exc, started)
             raise
         except FrameSizeMismatch as exc:
@@ -207,7 +221,13 @@ class ScreenshotSession:
             self._raise_failure(cause or RuntimeError("无法降级到标准 ADB 截图"))
         try:
             frame = validate_frame(standard_adb())
-        except (MowerExit, DeviceRecoveryError, InstanceBindingError, SharedADBError):
+        except (
+            MowerExit,
+            DeviceRecoveryError,
+            InstanceBindingError,
+            ManagerQueryTimeout,
+            SharedADBError,
+        ):
             raise
         except Exception as exc:
             self._raise_failure(cause or exc, exc if cause is not None else None)

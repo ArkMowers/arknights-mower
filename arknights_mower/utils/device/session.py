@@ -14,6 +14,7 @@ from arknights_mower.utils.device.endpoint_identity import (
     VERIFIED_ENDPOINT_PRESETS,
     InstanceBindingError,
     InstanceEndpointPending,
+    ManagerQueryTimeout,
 )
 from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
 from arknights_mower.utils.device.preflight import parse_display_size
@@ -229,6 +230,7 @@ class DeviceSession:
                 "instance_name",
                 "instance_uuid",
                 "topology_fingerprint",
+                "mumu_created_timestamp",
             )
         )
 
@@ -307,22 +309,35 @@ class DeviceSession:
             )
 
         if not failure.stop_requested:
-            try:
-                with device_io_budget(lambda: self._remaining(deadline)):
-                    instance = self.simulator.inspect(
-                        self.profile, self._remaining(deadline)
+            while True:
+                try:
+                    with device_io_budget(lambda: self._remaining(deadline)):
+                        instance = self.simulator.inspect(
+                            self.profile, self._remaining(deadline)
+                        )
+                    break
+                except (MowerExit, DeviceRecoveryError):
+                    raise
+                except (TimeoutError, subprocess.TimeoutExpired) as exc:
+                    self.last = ReadinessResult(
+                        "offline",
+                        "",
+                        self.adb_path,
+                        code="manager_timeout",
+                        message=str(exc),
                     )
-            except (MowerExit, DeviceRecoveryError):
-                raise
-            except Exception as exc:
-                self.last = ReadinessResult(
-                    "offline",
-                    self.last.serial,
-                    self.adb_path,
-                    code=getattr(exc, "code", "manager_output"),
-                    message=str(exc),
-                )
-                raise SessionFailure(self.last, str(exc)) from exc
+                    self.clock.sleep(
+                        min(self.policy.poll_interval, self._remaining(deadline))
+                    )
+                except Exception as exc:
+                    self.last = ReadinessResult(
+                        "offline",
+                        self.last.serial,
+                        self.adb_path,
+                        code=getattr(exc, "code", "manager_output"),
+                        message=str(exc),
+                    )
+                    raise SessionFailure(self.last, str(exc)) from exc
             if instance.state not in {"running", "starting", "stopped"}:
                 raise SessionFailure(self.last, "无法确认原实例状态，已拒绝自动重启。")
 
@@ -620,6 +635,18 @@ class DeviceSession:
                 "offline", "", self.adb_path, code="binding_failed", message=str(exc)
             )
             return self.last
+        if (
+            profile.preset_id == "windows.mumu12"
+            and not profile.mumu_created_timestamp
+            and instance.mumu_created_timestamp
+        ):
+            self.profile = self.profile.model_copy(
+                update={"mumu_created_timestamp": instance.mumu_created_timestamp}
+            )
+            profile = self.profile
+            propagate = getattr(self.adb, "bind", None)
+            if propagate is not None:
+                propagate(self.profile)
         serial = (
             instance.serial or ""
             if instance.state != "unknown"
@@ -700,9 +727,14 @@ class DeviceSession:
         self._observe_display(serial, deadline)
         ok, code, message = self._frame_ready(serial, deadline, frame_probe)
         if not ok:
-            self.last = ReadinessResult(
-                "booting", serial, self.adb_path, instance_state, code, message
-            )
+            if code == "manager_timeout":
+                self.last = ReadinessResult(
+                    "offline", "", self.adb_path, code=code, message=message
+                )
+            else:
+                self.last = ReadinessResult(
+                    "booting", serial, self.adb_path, instance_state, code, message
+                )
             return self.last
         self.last = ReadinessResult(
             "ready",
@@ -747,6 +779,8 @@ class DeviceSession:
             size = probe(self.adb_path, serial, self._remaining(deadline))
         except (MowerExit, SessionFailure):
             raise
+        except ManagerQueryTimeout as exc:
+            return False, "manager_timeout", str(exc)
         except InstanceBindingError as exc:
             self.last = ReadinessResult(
                 "offline", "", self.adb_path, code=exc.code, message=str(exc)

@@ -330,9 +330,18 @@ per-command bound. Recovery and idle shutdown clamp commands to their remaining
 budgets.
 
 Read-only manager query timeouts produce the retryable `manager_timeout` verdict.
+This includes MuMu's per-instance ADB address query and inventory recheck, even
+when a MuMu IPC frame preflight invokes them. A one-shot connection test reports
+the timeout without retrying capture; invalid or conflicting addresses retain
+their distinct repair verdict.
 Initial readiness and local observation after reconnect continue polling the same
 Instance Binding within the Recovery Budget without spending additional action
-attempts. A later stopped verdict follows the existing startup policy. Binding
+attempts. Runtime preflight and the instance check before a UI-triggered restart
+also retry these timeouts within that budget. Before repeating runtime preflight,
+MuMu rechecks the selected instance and endpoint; its IPC preflight also checks
+the saved or session-observed creation time. A newly observed creation time stays
+in the session copy without updating user configuration. A later stopped verdict
+follows the existing startup policy. Binding
 changes, Shared ADB Guard failures and cancellation remain terminal. Idle shutdown
 timeouts return an unconfirmed stop and never record successful shutdown. The
 [shared idle recovery decision](../../.agents/notes/implemented/bug-fix/2026-10-01-shared-idle-recovery.md)

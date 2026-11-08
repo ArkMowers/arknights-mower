@@ -17,9 +17,9 @@ from arknights_mower.utils.device.manager_io import (
 )
 from arknights_mower.utils.device.mumu_info import (
     MuMuEndpointUnavailable,
-    mumu_created_timestamp,
     mumu_endpoint_with_fallback,
     mumu_entries,
+    verify_mumu_created_timestamp,
 )
 from arknights_mower.utils.device.mumu_layout import (
     installation_root,
@@ -111,13 +111,7 @@ def parse_mumu_instances(
             ):
                 raise ValueError(f"MuMu 实例 {key} 没有明确的运行状态。")
             name = _confirmed_name(entry, key, saved_name, not binding)
-            created = mumu_created_timestamp(entry)
-            if expected_created and created != expected_created:
-                raise InstanceBindingError(
-                    "binding_changed",
-                    f"MuMu 实例 {key} 的创建时间已变化或无法读取，请重新选择实例并确认地址。",
-                    ["instance_id", "instance_name"],
-                )
+            created = verify_mumu_created_timestamp(entry, key, expected_created)
             state = "stopped" if not process else "running" if android else "starting"
             serial = ""
             if (

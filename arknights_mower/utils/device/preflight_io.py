@@ -21,7 +21,10 @@ from arknights_mower.utils.config.device_profile import capture_compatibility_er
 from arknights_mower.utils.device.adb_client.core import is_tcp_serial
 from arknights_mower.utils.device.adb_client.server import run_adb
 from arknights_mower.utils.device.droidcast import DroidCastSession
-from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
+from arknights_mower.utils.device.endpoint_identity import (
+    InstanceBindingError,
+    ManagerQueryTimeout,
+)
 from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.ldplayer_capture import LDCaptureSession
 from arknights_mower.utils.device.manager_io import run_command
@@ -31,6 +34,7 @@ from arknights_mower.utils.device.mumu_info import (
     mumu_endpoint_with_fallback,
     normalize_mumu_endpoint,
     select_mumu_instance,
+    verify_mumu_created_timestamp,
 )
 from arknights_mower.utils.device.owned import close_process
 from arknights_mower.utils.device.screenshot import capture_adb_frame
@@ -354,6 +358,15 @@ class ProductionPreflightIO:
                 profile.instance_id,
                 profile.instance_name,
             )
+            verify_mumu_created_timestamp(
+                entry, actual_instance_id, profile.mumu_created_timestamp
+            )
+        except ManagerQueryTimeout:
+            raise
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            raise ManagerQueryTimeout("MuMu 管理程序查询超时，请稍后重试。") from exc
+        except InstanceBindingError:
+            raise
         except ValueError as exc:
             raise InstanceBindingError(
                 "binding_changed", str(exc), ["instance_id", "instance_name"]

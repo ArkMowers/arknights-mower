@@ -174,8 +174,16 @@ class ProductionSessionADB:
 
     def _preflight_io(self, timeout, *, frame=False):
         factory = _FrameProbeIO if frame else _DeadlinePreflightIO
+        manager_timeout = timeout
+        if (
+            frame
+            and self._profile is not None
+            and self._profile.preset_id == "windows.mumu12"
+            and self._profile.screenshot_backend == "mumu_ipc"
+        ):
+            manager_timeout = min(timeout, self._profile.manager_query_timeout)
         return factory(
-            self._manager_window(timeout),
+            self._manager_window(manager_timeout),
             self._adb_window(timeout),
             read_configuration=self._read_configuration,
         )

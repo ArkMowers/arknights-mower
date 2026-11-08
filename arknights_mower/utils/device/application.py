@@ -40,6 +40,7 @@ from arknights_mower.utils.device.screenshot_backend import (
     validate_frame,
 )
 from arknights_mower.utils.device.session import (
+    BUDGET_EXHAUSTED,
     DeviceSession,
     ReadinessResult,
     SessionFailure,
@@ -720,12 +721,18 @@ class DeviceControl(Generic[D]):
                 profile, resolved_adb=adb_path, startup_wait=startup_wait
             )
             ready = self._session.ensure_ready(deadline=deadline)
-            verified = profile.model_copy(update={"last_serial": ready.serial})
-            checked = self._preflight.check(
+            verified_fields = {"last_serial": ready.serial}
+            if profile.preset_id == "windows.mumu12" and ready.mumu_created_timestamp:
+                verified_fields["mumu_created_timestamp"] = ready.mumu_created_timestamp
+            verified = profile.model_copy(update=verified_fields)
+            checked = self._retry_mumu_preflight(
                 verified,
-                confirmed_package=confirmed_package,
-                resolved_adb=adb_path,
-                prepare_capture=self._prepare_capture,
+                lambda: self._preflight.check(
+                    verified,
+                    confirmed_package=confirmed_package,
+                    resolved_adb=adb_path,
+                    prepare_capture=self._prepare_capture,
+                ),
             )
             if (
                 checked.ok
@@ -1033,9 +1040,15 @@ class DeviceControl(Generic[D]):
                     ),
                 )
                 self._serial = ready.serial
-                profile = profile.model_copy(
-                    update={"last_serial": ready.serial, "adb_path": ready.adb_path}
-                )
+                ready_fields = {"last_serial": ready.serial, "adb_path": ready.adb_path}
+                if (
+                    profile.preset_id == "windows.mumu12"
+                    and ready.mumu_created_timestamp
+                ):
+                    ready_fields["mumu_created_timestamp"] = (
+                        ready.mumu_created_timestamp
+                    )
+                profile = profile.model_copy(update=ready_fields)
             if self._preflight is not None:
                 self._state = "starting"
                 logger.info("正在检查设备 ADB、游戏安装与截图...")
@@ -1115,7 +1128,98 @@ class DeviceControl(Generic[D]):
         )
         self._preparation.ensure(profile, authorization)
 
+    def _retry_mumu_preflight(self, profile, check):
+        last_timeout = None
+
+        def fail_after_budget(result, cause):
+            self._session.last = ReadinessResult(
+                "offline",
+                "",
+                self._session.adb_path,
+                code="manager_timeout",
+                message=result.error.message,
+            )
+            raise SessionFailure(self._session.last, result.error.message) from cause
+
+        def wait_after_timeout(result):
+            self._last_preflight = result
+            try:
+                remaining = self._session.remaining()
+                self._session.clock.sleep(
+                    min(self._session.policy.poll_interval, remaining)
+                )
+                self._session.remaining()
+            except SessionFailure as exc:
+                if str(exc) != BUDGET_EXHAUSTED:
+                    raise
+                fail_after_budget(result, exc)
+
+        def fail_binding(code, message, cause=None):
+            self._session.last = ReadinessResult(
+                "offline", "", self._session.adb_path, code=code, message=message
+            )
+            raise SessionFailure(self._session.last, message) from cause
+
+        while True:
+            if last_timeout is not None:
+                try:
+                    with self._io_budget():
+                        instance = self._session.simulator.inspect(
+                            profile, self._session.remaining()
+                        )
+                except InstanceBindingError as exc:
+                    fail_binding(exc.code, str(exc), exc)
+                except (TimeoutError, subprocess.TimeoutExpired):
+                    wait_after_timeout(last_timeout)
+                    continue
+                except SessionFailure as exc:
+                    if str(exc) != BUDGET_EXHAUSTED:
+                        raise
+                    fail_after_budget(last_timeout, exc)
+                if instance.state == "starting":
+                    wait_after_timeout(last_timeout)
+                    continue
+                if (
+                    instance.state != "running"
+                    or instance.serial != profile.last_serial
+                ):
+                    fail_binding(
+                        "binding_changed", "MuMu 实例状态或连接地址已变化，请重新检测。"
+                    )
+            try:
+                result = check()
+            except (SessionFailure, TimeoutError) as exc:
+                if last_timeout is None:
+                    raise
+                if isinstance(exc, SessionFailure) and (
+                    str(exc) != BUDGET_EXHAUSTED
+                    or exc.observation.code not in {"", "manager_timeout"}
+                ):
+                    raise
+                try:
+                    self._session.remaining()
+                except SessionFailure as expired:
+                    if str(expired) != BUDGET_EXHAUSTED:
+                        raise
+                    fail_after_budget(last_timeout, exc)
+                raise
+            if (
+                result.ok
+                or result.error is None
+                or result.error.code != "manager_timeout"
+                or profile.preset_id != "windows.mumu12"
+                or self._session is None
+            ):
+                return result
+            last_timeout = result
+            wait_after_timeout(result)
+
     def _check_profile(self, profile):
+        return self._retry_mumu_preflight(
+            profile, lambda: self._check_profile_once(profile)
+        )
+
+    def _check_profile_once(self, profile):
         capture_options = {}
         if (
             profile.screenshot_backend == "droidcast"

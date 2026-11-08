@@ -5,7 +5,10 @@ import json
 import re
 import subprocess
 
-from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
+from arknights_mower.utils.device.endpoint_identity import (
+    InstanceBindingError,
+    ManagerQueryTimeout,
+)
 from arknights_mower.utils.device.manager_io import MAX_INSTANCES, MAX_OUTPUT
 
 
@@ -105,6 +108,17 @@ def mumu_created_timestamp(entry):
     return str(int(value))
 
 
+def verify_mumu_created_timestamp(entry, instance_id, expected):
+    created = mumu_created_timestamp(entry)
+    if expected and created != expected:
+        raise InstanceBindingError(
+            "binding_changed",
+            f"MuMu 实例 {instance_id} 的创建时间已变化或无法读取，请重新选择实例并确认地址。",
+            ["instance_id", "instance_name"],
+        )
+    return created
+
+
 class MuMuEndpointUnavailable(InstanceBindingError):
     def __init__(self, instance_id, detail=""):
         super().__init__(
@@ -175,6 +189,10 @@ def mumu_endpoint_with_fallback(
             raise MuMuEndpointUnavailable(instance_id)
         try:
             endpoint = _parse_mumu_address(run([manager, "adb", "-v", instance_id]))
+        except ManagerQueryTimeout:
+            raise
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            raise ManagerQueryTimeout("MuMu 管理程序查询超时，请稍后重试。") from exc
         except (
             ValueError,
             UnicodeError,
@@ -234,6 +252,10 @@ def mumu_endpoint_with_fallback(
                 raise MuMuEndpointUnavailable(
                     instance_id, "该端口同时被其他运行中的实例报告。"
                 )
+    except ManagerQueryTimeout:
+        raise
+    except (TimeoutError, subprocess.TimeoutExpired) as exc:
+        raise ManagerQueryTimeout("MuMu 管理程序查询超时，请稍后重试。") from exc
     except InstanceBindingError:
         raise
     except (ValueError, TypeError) as exc:
