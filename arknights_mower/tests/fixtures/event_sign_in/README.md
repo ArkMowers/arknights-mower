@@ -1,6 +1,6 @@
 # Event sign-in reference images
 
-The `celebration_*.png` images come from the 2026-11-01 Thank-You Celebration
+The five original `celebration_*.png` images come from the 2026-11-01 Thank-You Celebration
 ten-day sign-in activity, captured on a MuMu device at 1920 × 1080. Each image is
 the unscaled rectangle from `(650, 205)` to `(1850, 920)` of the original frame.
 The recognition test restores that rectangle at its original position on a
@@ -15,6 +15,22 @@ The recognition test restores that rectangle at its original position on a
 
 All five images show one unlocked day. Future rewards, operator presentations
 and costume presentations have no device verification in these references.
+
+The `celebration_eight_claimed_*_20261108.png` images use the same rectangle
+from archived MuMu frames at 23:31:21 and 23:31:24 China time. The right page
+shows days seven through ten, with the first eight days already claimed. The
+middle page shows complete cards for days five through seven and cropped cards
+for days four and eight. The receipt mark on the cropped day-four card could
+be read as day one. The replay checks that the solver confirms the overlap on
+day seven and retains day five as the first complete card on the middle page.
+
+`overlap_claimed_ambiguous_middle_20261108.png` retains the rectangle from
+`(661, 348)` to `(1806, 898)` of a 22:37:41 China time archive from the same
+event. It shows complete cards for days four through seven. The overlap test
+pairs it with the right page above to verify that the solver distinguishes the
+day-seven card from a similar claimed reward. A second case duplicates the
+day-seven crop at the other candidate position and checks that the solver
+rejects the ambiguous overlap.
 
 The `overlap_claimed_*_20261106.png` images retain the rectangle from
 `(661, 714)` to `(1806, 898)` of two archived 1920 × 1080 frames recorded at

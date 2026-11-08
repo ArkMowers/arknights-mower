@@ -8,6 +8,8 @@ import numpy as np
 from arknights_mower.utils.image import cropimg, loadres
 
 Scope = tuple[tuple[int, int], tuple[int, int]]
+CARD_PITCH = 280
+CARD_HALF_WIDTH_RATIO = 0.46
 
 
 @dataclass(frozen=True)
@@ -299,10 +301,18 @@ def supplement_day_numbers(image, progress, result, recognize):
                 )
                 continue
         merged.append((x, y, width, height, light))
-    glyphs = merged
-    if len(glyphs) > progress.total_days:
+    day_left = progress.day_scope[0][0]
+    card_left, card_right = progress.card_scope[0][0], progress.card_scope[1][0]
+    half_card_width = CARD_PITCH * progress.scale * CARD_HALF_WIDTH_RATIO
+    complete_glyphs = []
+    for glyph in merged:
+        x, _, width, _, _ = glyph
+        center = day_left + x + width / 2
+        if card_left + half_card_width <= center <= card_right - half_card_width:
+            complete_glyphs.append(glyph)
+    if len(complete_glyphs) > progress.total_days:
         return None
-    for x, y, width, height, light in glyphs:
+    for x, y, width, height, light in complete_glyphs:
         overlaps = [
             row
             for row in accepted
@@ -413,7 +423,7 @@ def read_cards(image, progress, ocr_result):
     if not entries:
         return ()
     entries.sort()
-    expected_pitch = 280 * progress.scale
+    expected_pitch = CARD_PITCH * progress.scale
     gaps = np.diff([point[0] for point in entries])
     pitches = [gap / max(1, round(gap / expected_pitch)) for gap in gaps]
     pitch = float(np.median(pitches)) if pitches else expected_pitch
@@ -427,11 +437,12 @@ def read_cards(image, progress, ocr_result):
             aligned = anchor + round((x - anchor) / pitch) * pitch
             if day is None and claimed and abs(x - aligned) <= pitch * 0.15:
                 entries[index] = (aligned, y, day, claimed)
+    half_card_width = pitch * CARD_HALF_WIDTH_RATIO
     entries = [
         entry
         for entry in entries
-        if entry[0] - pitch * 0.46 >= progress.card_scope[0][0]
-        and entry[0] + pitch * 0.46 <= progress.card_scope[1][0]
+        if entry[0] - half_card_width >= progress.card_scope[0][0]
+        and entry[0] + half_card_width <= progress.card_scope[1][0]
     ]
     if not entries:
         return ()
@@ -443,9 +454,9 @@ def read_cards(image, progress, ocr_result):
             return ()
         slots[index] = entry
     lower, upper = min(slots), max(slots)
-    while origin + (lower - 1) * pitch - pitch * 0.46 >= progress.card_scope[0][0]:
+    while origin + (lower - 1) * pitch - half_card_width >= progress.card_scope[0][0]:
         lower -= 1
-    while origin + (upper + 1) * pitch + pitch * 0.46 <= progress.card_scope[1][0]:
+    while origin + (upper + 1) * pitch + half_card_width <= progress.card_scope[1][0]:
         upper += 1
     number_origins = {
         day - round((position[0] - origin) / pitch)
@@ -468,9 +479,9 @@ def read_cards(image, progress, ocr_result):
         if day is not None and not 1 <= day <= progress.total_days:
             return ()
         scope = _scope(
-            x - pitch * 0.46,
+            x - half_card_width,
             row_y + 100 * progress.scale,
-            x + pitch * 0.46,
+            x + half_card_width,
             row_y + 650 * progress.scale,
             image,
         )
