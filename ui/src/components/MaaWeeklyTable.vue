@@ -5,11 +5,11 @@ import draggable from 'vuedraggable'
 import '@/styles/drag.css'
 import { normalizeSortablePreview } from '@/utils/sortablePreview'
 import { useConfigStore } from '@/stores/config'
+import { useGameWeekdayIndex } from '@/composables/gameWeekday'
 import {
   WEEKDAYS,
   buildTableStageOptions,
   createStageOption,
-  getGameWeekdayIndex,
   isStageAvailableOnWeekday,
   mergeTableStageOrder,
   reorderWeeklyPlanStages,
@@ -57,7 +57,7 @@ const { maa_weekly_plan } = storeToRefs(store)
 const manuallyAddedOptions = ref([])
 const stageToAdd = ref(null)
 
-const currentWeekdayIndex = computed(() => getGameWeekdayIndex())
+const currentWeekdayIndex = useGameWeekdayIndex()
 
 const availableStageOptions = computed(() =>
   buildTableStageOptions(

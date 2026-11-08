@@ -6,13 +6,13 @@ import axios from 'axios'
 import { computed, h, inject, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
+import { useGameWeekdayIndex } from '@/composables/gameWeekday'
 import {
   CHIP_STAGES,
   WEEKDAYS,
   buildStageOptions,
   createStageOption,
   formatStageLabel,
-  getGameWeekdayIndex,
   isStageAvailableOnWeekday,
   promoteChipStageOrder,
   reorderWeeklyPlanStages,
@@ -113,7 +113,7 @@ watch(editorMode, (mode) => {
   }
 })
 
-const currentWeekdayIndex = computed(() => getGameWeekdayIndex())
+const currentWeekdayIndex = useGameWeekdayIndex()
 
 const stageOptions = computed(() => buildStageOptions(latestActivityOptions.value))
 
