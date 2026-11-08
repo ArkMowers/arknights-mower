@@ -3332,7 +3332,7 @@ class BaseSchedulerSolver(
 
     def _waiting_shift_reservations(self, *, returning_groups=(), returning_names=()):
         """等待任务保留目标，但不阻止其依赖组回班释放替班。"""
-        names = set()
+        names, slots = set(), set()
         for task in getattr(self, "waiting_group_shifts", ()):
             if set(returning_groups).intersection(
                 getattr(task, "group_shift_waiting", ())
@@ -3365,11 +3365,24 @@ class BaseSchedulerSolver(
                 for name in row
                 if name in self.op_data.operators and name not in released
             )
-        slots = {
+            # 尚未离岗的干员同样占有目标床位，不能仅预约其当前源岗位。
+            slots.update(
+                (room, index)
+                for room, row in task.plan.items()
+                if room.startswith("dorm")
+                for index, name in enumerate(row)
+                if name != "Current" and name not in released
+            )
+            for position, name in getattr(task, "group_shift_expected", {}).items():
+                if name != "Current" and name not in released:
+                    slots.add(position)
+                    if name in self.op_data.operators:
+                        names.add(name)
+        slots.update(
             (op.current_room, op.current_index)
             for name in names
             if (op := self.op_data.operators[name]).current_room
-        }
+        )
         return names, slots
 
     def plan_metadata(self):

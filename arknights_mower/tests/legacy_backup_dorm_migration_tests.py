@@ -134,6 +134,83 @@ def test_cycle_refresh_keeps_an_unrelated_started_waiting_batch(waiting_migratio
     assert actual_state(scheduler.op_data) == physical
 
 
+@pytest.mark.parametrize("target_source", ["plan", "expected"])
+@pytest.mark.parametrize("restore", [False, True])
+def test_waiting_destination_stays_reserved_before_its_operator_leaves_work(
+    waiting_migration, target_source, restore
+):
+    scheduler, original = waiting_migration
+    data = scheduler.op_data
+    data.global_plan["default_plan"].plan["dormitory_2"] = [
+        Room("Free", "", []) for _ in range(5)
+    ]
+    data.global_plan["backup_plans"].append(
+        Plan(
+            {
+                "dormitory_1": [
+                    Room("Current", "", []),
+                    Room("Current", "", []),
+                    Room("Current", "", []),
+                    Room("年", "", []),
+                    Room("Current", "", []),
+                ],
+                "dormitory_2": [Room("Free", "", []) for _ in range(5)],
+            },
+            PlanConfig("", "", ""),
+        )
+    )
+    assert data.swap_plan([True], refresh=True) is None
+    data.displaced_dorms = []
+    assert data.operators["陈"].current_room == "meeting"
+    target = ("dormitory_2", 0)
+    protected = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "dormitory_2": [
+                "陈" if target_source == "plan" else "Current",
+                "Current",
+                "Current",
+                "Current",
+                "Current",
+            ]
+        },
+    )
+    protected.group_shift_waiting = {"联动"}
+    if target_source == "expected":
+        protected.group_shift_expected = {target: "陈"}
+    scheduler.waiting_group_shifts.insert(0, protected)
+    if restore:
+        scheduler.tasks, scheduler.waiting_group_shifts = pickle.loads(
+            pickle.dumps((scheduler.tasks, scheduler.waiting_group_shifts))
+        )
+        protected, original = scheduler.waiting_group_shifts
+    before, physical = pickle.dumps(protected), actual_state(data)
+    at = original.time
+
+    scheduler._resume_waiting_group_shifts(refresh_migrations_only=True)
+
+    assert scheduler.waiting_group_shifts == [protected]
+    assert pickle.dumps(protected) == before
+    assert sum(task is original for task in scheduler.tasks) == 1
+    assert original.time == at
+    projected = data.project_arrangements([original.plan])
+    assert projected.get_current_operator(*target) is None
+    assert projected.get_current_operator("dormitory_2", 1).name == "讯使"
+    names, slots = scheduler._waiting_shift_reservations()
+    assert "陈" in names
+    assert target in slots
+    assert ("dormitory_2", 1) not in slots
+    conflicting = {"dormitory_2": ["泥岩", "Current", "Current", "Current", "Current"]}
+    scheduler._suppress_retained_arrangements(conflicting)
+    assert not conflicting
+    for _ in range(3):
+        scheduler._resume_waiting_group_shifts(refresh_migrations_only=True)
+        assert sum(task is original for task in scheduler.tasks) == 1
+        assert scheduler.waiting_group_shifts == [protected]
+        assert original.time == at
+        assert actual_state(data) == physical
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
