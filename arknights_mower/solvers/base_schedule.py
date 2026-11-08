@@ -1697,7 +1697,7 @@ class BaseSchedulerSolver(
             self.tasks[:] = [
                 task for task in self.tasks if id(task) not in due_fill_ids
             ]
-            _, reserved_slots = dorm_task_reservations(op_data, self.tasks)
+            _, reserved_slots, _, _ = self._dorm_recovery_reservations(self.tasks)
             if not due_fills and not vacant_dorm_slots(op_data, reserved_slots):
                 return False
             superseded = False
@@ -1724,7 +1724,18 @@ class BaseSchedulerSolver(
             if due_fills:
                 return False
         had_tasks = len(self.tasks)
-        try_add_release_dorm({}, None, op_data, self.tasks, empty_only=True)
+        reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
+            self.tasks
+        )
+        try_add_release_dorm(
+            {},
+            None,
+            op_data,
+            self.tasks,
+            empty_only=True,
+            reserved_names=reserved_names,
+            reserved_slots=reserved_slots,
+        )
         return len(self.tasks) > had_tasks
 
     def transition(self) -> None:
@@ -1819,7 +1830,7 @@ class BaseSchedulerSolver(
             candidates, [], plan, current_resting, request_names=request_names
         )
         if len(plan.items()) > 0:
-            re_order_dorm_plan = try_reorder(self.op_data, plan, tasks=self.tasks)
+            re_order_dorm_plan = self._reorder_dorm_recovery(plan)
             if re_order_dorm_plan:
                 logger.debug(f"合并宿舍任务{re_order_dorm_plan}")
                 _merge_dorm_arrangement(plan, re_order_dorm_plan)
@@ -1963,7 +1974,7 @@ class BaseSchedulerSolver(
         )
         if not result:
             return None
-        reorder = try_reorder(simulation.op_data, result, tasks=simulation.tasks)
+        reorder = simulation._reorder_dorm_recovery(result)
         if reorder:
             _merge_dorm_arrangement(result, reorder)
         return result
@@ -3327,10 +3338,14 @@ class BaseSchedulerSolver(
         self.plan_metadata()
         self._recovery_plan_dirty = False
 
-    def _waiting_shift_reservations(self, *, returning_groups=(), returning_names=()):
+    def _waiting_shift_reservations(
+        self, *, returning_groups=(), returning_names=(), current_task=None
+    ):
         """等待任务保留目标，但不阻止其依赖组回班释放替班。"""
         names, slots = set(), set()
         for task in getattr(self, "waiting_group_shifts", ()):
+            if task is current_task:
+                continue
             if set(returning_groups).intersection(
                 getattr(task, "group_shift_waiting", ())
             ):
@@ -3382,7 +3397,9 @@ class BaseSchedulerSolver(
         )
         return names, slots
 
-    def _dorm_recovery_reservations(self, tasks, *, op_data=None, returning_groups=()):
+    def _dorm_recovery_reservations(
+        self, tasks, *, op_data=None, returning_groups=(), current_task=None
+    ):
         """返回合并预约及等待队列预约，保留各规划阶段的释放边界。"""
         data = self.op_data if op_data is None else op_data
         names, slots = dorm_task_reservations(data, tasks)
@@ -3391,7 +3408,7 @@ class BaseSchedulerSolver(
             view = copy.copy(self)
             view.op_data = data
         waiting_names, waiting_slots = view._waiting_shift_reservations(
-            returning_groups=returning_groups
+            returning_groups=returning_groups, current_task=current_task
         )
         names.update(waiting_names)
         slots.update(waiting_slots)
@@ -3405,6 +3422,20 @@ class BaseSchedulerSolver(
             and not resting
             and self.op_data.group_is_resting(group)
         }
+
+    def _reorder_dorm_recovery(self, plan):
+        current = getattr(self, "task", None)
+        names, slots = self._waiting_shift_reservations(
+            returning_groups=self._returning_groups_releasing_waits(current),
+            current_task=current,
+        )
+        return try_reorder(
+            self.op_data,
+            plan,
+            tasks=self.tasks,
+            reserved_names=names,
+            reserved_slots=slots,
+        )
 
     def plan_metadata(self):
         if self._emergency_frozen():
@@ -7183,7 +7214,7 @@ class BaseSchedulerSolver(
             save_exception(e)
             logger.exception(e)
         # 更新宿舍任务
-        re_order_dorm_plan = try_reorder(self.op_data, new_plan, tasks=self.tasks)
+        re_order_dorm_plan = self._reorder_dorm_recovery(new_plan)
         if re_order_dorm_plan:
             if new_plan:
                 # resting() 已把 new_plan 原对象放入 SHIFT_OFF；直接合并可确保
@@ -7212,7 +7243,17 @@ class BaseSchedulerSolver(
             return False
         self._plan_preferred_replacements()
         self._fill_empty_dorms(primary_planned=True)
-        try_add_release_dorm({}, None, self.op_data, self.tasks)
+        reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
+            self.tasks
+        )
+        try_add_release_dorm(
+            {},
+            None,
+            self.op_data,
+            self.tasks,
+            reserved_names=reserved_names,
+            reserved_slots=reserved_slots,
+        )
         return True
 
     @log_mood_calculation("普通换班规划")
@@ -7556,9 +7597,13 @@ class BaseSchedulerSolver(
         ]
         if not missing:
             return True
-        reserved_names, occupied = dorm_task_reservations(
-            projected,
+        reserved_names, occupied, _, _ = self._dorm_recovery_reservations(
             [task for task in self.tasks if task is not getattr(self, "task", None)],
+            op_data=projected,
+            returning_groups=self._returning_groups_releasing_waits(
+                getattr(self, "task", None)
+            ),
+            current_task=getattr(self, "task", None),
         )
         if reserved := reserved_names.intersection(missing):
             if failure_reasons is not None:
@@ -8823,6 +8868,14 @@ class BaseSchedulerSolver(
         retained_names, retained_slots = retained_task_reservations(
             self.op_data, self.tasks, current_task=getattr(self, "task", None)
         )
+        waiting_names, waiting_slots = self._waiting_shift_reservations(
+            returning_groups=self._returning_groups_releasing_waits(
+                getattr(self, "task", None)
+            ),
+            current_task=getattr(self, "task", None),
+        )
+        retained_names.update(waiting_names)
+        retained_slots.update(waiting_slots)
         retained_slots |= set(reserved_slots)
         reserved_names = (
             self.op_data.reserved_product_replacements
@@ -9631,6 +9684,7 @@ class BaseSchedulerSolver(
             simulation.tasks = [
                 pending for pending in self.tasks if pending is not task
             ]
+            simulation.task = task
             replacements = list(_assigned_operator_names(plan))
             admissions = {}
             if not simulation._get_resting_plan(
@@ -9803,8 +9857,9 @@ class BaseSchedulerSolver(
         members.update(
             op.name for op in self.op_data.operators.values() if op.is_resting()
         )
-        reserved_names, reserved_slots = dorm_task_reservations(
-            self.op_data, [task for task in self.tasks if task is not current_task]
+        reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
+            [task for task in self.tasks if task is not current_task],
+            current_task=current_task,
         )
         return (
             tuple(self.op_data.plan_condition),
@@ -15264,6 +15319,10 @@ class BaseSchedulerSolver(
         excluded, _ = dorm_task_reservations(
             self.op_data, [self.task, *getattr(self, "tasks", [])], agents
         )
+        waiting_names, _ = self._waiting_shift_reservations(
+            current_task=getattr(self, "task", None)
+        )
+        excluded.update(waiting_names)
         # 当轮回班目标尚未落位时，宿舍补位不能把它当作候补占用。
         current_task = getattr(self, "task", None)
         if current_task is not None and current_task.type == TaskTypes.SHIFT_ON:
@@ -19252,7 +19311,17 @@ class BaseSchedulerSolver(
             )
             existing = {id(task): task for task in pending}
             projected = self.op_data.project_arrangements([{}])
-            try_add_release_dorm({}, None, projected, pending)
+            reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
+                pending, op_data=projected, current_task=self.task
+            )
+            try_add_release_dorm(
+                {},
+                None,
+                projected,
+                pending,
+                reserved_names=reserved_names,
+                reserved_slots=reserved_slots,
+            )
             updated = next((task for task in pending if id(task) not in existing), None)
             self.task.plan.clear()
             self.task.plan.update(updated.plan if updated is not None else {})
