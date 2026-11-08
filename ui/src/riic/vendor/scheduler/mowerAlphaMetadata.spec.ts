@@ -6,6 +6,101 @@ import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {planMowerMetadata} from './mowerMetadata'
 import {alphaRebalanceClosingDorms} from './mowerAlphaDorm'
+import {generateMowerDormTasks} from './mowerDormTasks'
+import {projectMowerArrangements} from './mowerObservations'
+import {splitMowerRecoveryTask} from './mowerGroupRecovery'
+import {admitMowerDerivedTasks} from './mowerTaskDerivation'
+
+describe('dorm migrations depend on their returning source owner',()=>{
+ function fixture(){
+  const operators={
+   A:new MowerOperatorState({name:'A',room:'meeting',index:0,group:'G',operatorType:'high',currentRoom:'dormitory_1',currentIndex:2,mood:12,timeStampMicros:0}),
+   M:new MowerOperatorState({name:'M',room:'dormitory_1',index:1,group:'G',replacement:['Free'],operatorType:'high'}),
+   L:new MowerOperatorState({name:'L',currentRoom:'dormitory_1',currentIndex:1,mood:24,timeStampMicros:0}),
+   I:new MowerOperatorState({name:'I',room:'contact',index:0,operatorType:'high',currentRoom:'dormitory_1',currentIndex:3,mood:24,timeStampMicros:0}),
+  }
+  const data=new MowerSchedulingData({alpha:true,operators,plan:{meeting:['A'],contact:['I'],dormitory_1:['Free','M','Free','Free','Free']},dorms:[new MowerDormState(['dormitory_1',1],'L',0,true),new MowerDormState(['dormitory_1',2],'A',toMowerMicros(1)),new MowerDormState(['dormitory_1',3],'I',0),new MowerDormState(['dormitory_1',4])],nowMicros:0,groupShiftState:{G:true}})
+  const task=new MowerTask({type:T.SHIFT_ON,plan:{meeting:['A'],contact:['I'],dormitory_1:['Current','M','Current','Current','L']}})
+  return {data,task}
+ }
+ it.each([true,false])('keeps the dorm cover with its recovering group when splitting by slot: %s',bySlot=>{
+  const {data,task}=fixture(),independent:MowerTask[]=[]
+  splitMowerRecoveryTask(data,task,independent,['A'],bySlot)
+  expect(independent.map(sibling=>sibling.plan)).toEqual([{contact:['I']}])
+  expect(task.plan).toEqual({meeting:['A'],dormitory_1:['Current','M','Current','Current','L']})
+  expect(task.timeMicros).toBe(0)
+  expect(data.operators.L!.currentRoom).toBe('dormitory_1')
+ })
+ it('removes a migration when the source owner return is waiting for recovery',()=>{
+  const {data,task}=fixture();data.waitingRecoveryNames=new Set(['A','M'])
+  const candidates=admitMowerDerivedTasks(data,[],[task])
+  expect(candidates.map(candidate=>candidate.plan)).toEqual([{contact:['I']}])
+  expect(data.operators.L!.currentIndex).toBe(1)
+ })
+ it('removes a migration when retained work prevents the source owner return',()=>{
+  const {data,task}=fixture(),retained=new MowerTask({type:T.SHIFT_OFF,plan:{meeting:['A']}})
+  retained.executionRetained=true
+  const candidates=admitMowerDerivedTasks(data,[retained],[task])
+  expect(candidates.map(candidate=>candidate.plan)).toEqual([{contact:['I']}])
+  expect(retained.plan).toEqual({meeting:['A']})
+  expect(data.operators.L!.currentIndex).toBe(1)
+ })
+ it.each(['waiting','retained'])('allows independent work to leave a temporary dorm bed under %s protection',barrier=>{
+  const {data,task}=fixture()
+  data.operators.L!.currentIndex=4;data.operators.I!.currentIndex=1
+  task.plan.dormitory_1=['Current','M','Current','Current','Current']
+  const retained=new MowerTask({type:T.SHIFT_OFF,plan:{meeting:['A']}});retained.executionRetained=true
+  if(barrier==='waiting')data.waitingRecoveryNames=new Set(['A','M'])
+  const candidates=admitMowerDerivedTasks(data,barrier==='retained'?[retained]:[],[task])
+  expect(candidates.map(candidate=>candidate.plan)).toEqual([{contact:['I']}])
+  expect(data.operators.I!.currentRoom).toBe('dormitory_1')
+ })
+})
+
+describe.each([true,false])('return snapshots distinguish work from incidental dorm moves (alpha: %s)',alpha=>{
+ function fixture(){
+  const operators={
+   A:new MowerOperatorState({name:'A',room:'meeting',index:0,replacement:['R'],operatorType:'high',currentRoom:'dormitory_1',currentIndex:2,mood:21,timeStampMicros:0}),
+   B:new MowerOperatorState({name:'B',room:'contact',index:0,replacement:['S'],operatorType:'high',currentRoom:'contact',currentIndex:0,mood:24,timeStampMicros:0}),
+   D:new MowerOperatorState({name:'D',room:'dormitory_1',index:0,operatorType:'high',currentRoom:'dormitory_1',currentIndex:0,mood:24,timeStampMicros:0}),
+   R:new MowerOperatorState({name:'R',currentRoom:'meeting',currentIndex:0,mood:24,timeStampMicros:0}),
+   S:new MowerOperatorState({name:'S',mood:24,timeStampMicros:0}),
+  }
+  const bed=new MowerDormState(['dormitory_1',2],'A',toMowerMicros(1))
+  const data=new MowerSchedulingData({alpha,operators,plan:{meeting:['A'],contact:['B'],dormitory_1:['D','Free','Free','Free','Free']},dorms:[bed,new MowerDormState(['dormitory_1',3]),new MowerDormState(['dormitory_1',4])],nowMicros:0,freeRoom:false,planConditions:[true]})
+  return {data,bed}
+ }
+ it.each(['dormitory_1','contact'])('validates a saved return target in %s',(room)=>{
+  const {data,bed}=fixture(),before=structuredClone(data.dorms)
+  const tasks=generateMowerDormTasks([{timeMicros:bed.timeMicros!,dorms:[bed],restInFull:false}],data,{A:[room,room.startsWith('dorm')?4:0]})
+  expect(tasks.map(task=>task.plan)).toEqual([{[room.startsWith('dorm')?'meeting':'contact']:['A']}])
+  expect(tasks[0]!.time).toBeCloseTo(1-8/60,8)
+  expect(data.dorms).toEqual(before)
+  expect(data.operators.A!.currentRoom).toBe('dormitory_1')
+ })
+ for(const workFirst of [true,false])for(const savedWork of [true,false])it(`rebuilds one working return across unchanged metadata (${workFirst}, ${savedWork})`,()=>{
+  const {data}=fixture(),queue=new MowerTaskQueue(),dorm={dormitory_1:['Current','Current','Current','Current','A']},work=savedWork?{contact:['A']}:{}
+  queue.tasks=[new MowerTask({type:T.SHIFT_ON,time:1,plan:workFirst?{...work,...dorm}:{...dorm,...work}})]
+  for(let pass=0;pass<3;pass++){
+   planMowerMetadata(data,queue)
+   const returns=queue.tasks.filter(task=>task.type===T.SHIFT_ON)
+   expect(returns.map(task=>task.plan)).toEqual([{[savedWork?'contact':'meeting']:['A']}])
+   expect(returns[0]!.time).toBeCloseTo(1-8/60,8)
+   expect(data.operators.A!.currentRoom).toBe('dormitory_1')
+   expect(data.getDormByName('A')?.[1].name).toBe('A')
+  }
+  const confirmed=projectMowerArrangements(data,queue.tasks.map(task=>task.plan))
+  expect(confirmed.operators.A!.currentRoom).toBe(savedWork?'contact':'meeting')
+  const rebuilt=new MowerTaskQueue();planMowerMetadata(confirmed,rebuilt)
+  expect(rebuilt.tasks.some(task=>Object.values(task.plan).some(row=>row.includes('A')))).toBe(false)
+ })
+ it('keeps a configured dormitory primary return',()=>{
+  const {data}=fixture(),bed=new MowerDormState(['dormitory_1',3],'D',toMowerMicros(1))
+  data.operators.D!.currentRoom='';data.operators.D!.currentIndex=-1
+  const tasks=generateMowerDormTasks([{timeMicros:bed.timeMicros!,dorms:[bed],restInFull:false}],data,{D:['dormitory_1',0]})
+  expect(tasks[0]!.plan.dormitory_1?.[0]).toBe('D')
+ })
+})
 
 describe('current alpha metadata with preserved October 3 inputs',()=>{
  for(const fixture of oracle.metadata)it(fixture.name,()=>{

@@ -36,7 +36,7 @@ export function generateMowerDormTasks(batches:MowerDormBatch[],data:MowerSchedu
     for(const agent of agents){
      const member=data.operators[agent]!;let room=member.room,index=member.index
      const old=existingTargets[agent]
-     if(old){const [oldRoom,oldIndex]=old;const slots=data.plan[oldRoom];if(slots&&oldIndex<slots.length&&(!plan[oldRoom]||['Current',agent].includes(plan[oldRoom]![oldIndex]!))){const native=slots[oldIndex];if(native===agent||!batch.dorms.some(d=>d.name===native)){room=oldRoom;index=oldIndex}}}
+     if(old){const [oldRoom,oldIndex]=old;const slots=data.plan[oldRoom];if((!oldRoom.startsWith('dorm')||member.room.startsWith('dorm'))&&slots&&oldIndex<slots.length&&(!plan[oldRoom]||['Current',agent].includes(plan[oldRoom]![oldIndex]!))){const native=slots[oldIndex];if(native===agent||!batch.dorms.some(d=>d.name===native)){room=oldRoom;index=oldIndex}}}
      const slots=plan[room]??=Array(data.plan[room]!.length).fill('Current')
      if(!['Current',agent].includes(slots[index]!)){room=member.room;index=member.index;plan[room]??=Array(data.plan[room]!.length).fill('Current')}
      plan[room]![index]=agent;planned.add(agent)
@@ -93,7 +93,7 @@ function generateAlphaDormTasks(batches:MowerDormBatch[],data:MowerSchedulingDat
     if(member.independentRest&&(name!==op.name||mowerRestingBindingGroups(shadow,member).length))continue
     let room=member.room,index=member.index
     const old=existing[name]
-    if(old){const [r,i]=old,native=shadow.plan[r]?.[i];if(native!==undefined&&(!plan[r]||['Current',name].includes(plan[r]![i]!))&&(native===name||!batch.dorms.some(d=>d.name===native))){room=r;index=i}}
+    if(old){const [r,i]=old,native=shadow.plan[r]?.[i];if((!r.startsWith('dorm')||member.room.startsWith('dorm'))&&native!==undefined&&(!plan[r]||['Current',name].includes(plan[r]![i]!))&&(native===name||!batch.dorms.some(d=>d.name===native))){room=r;index=i}}
     const row=plan[room]??=Array(shadow.plan[room]!.length).fill('Current')
     if(!['Current',name].includes(row[index]!)){room=member.room;index=member.index;plan[room]??=Array(shadow.plan[room]!.length).fill('Current')}
     plan[room]![index]=name;planned.add(name)
