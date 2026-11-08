@@ -753,7 +753,12 @@ def start_http_server(app, host, port):
     class RequestHandler(WSGIRequestHandler):
         def log_request(self, code="-", size="-"):
             # 启动 URL 含会话凭据；正常和非法请求都不记录原始请求行。
-            logger.debug("HTTP 请求完成，状态码 %s", code)
+            try:
+                status = int(code)
+            except (TypeError, ValueError):
+                return
+            if 400 <= status < 600:
+                logger.debug("HTTP 请求完成，状态码 %s", status)
 
         def log(self, kind, message, *args):
             # 协议错误的参数也可能带原始 URL，不交给独立的 stderr 日志。
