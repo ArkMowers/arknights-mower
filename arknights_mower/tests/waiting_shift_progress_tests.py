@@ -68,6 +68,10 @@ def test_due_agreed_return_dispatches_without_consuming_waiting_batch(
     scheduler.task = waiting
     scheduler.infra_main()
     assert not any(task is waiting for task in scheduler.tasks)
+    assert scheduler.op_data.get_current_operator("dormitory_1", 2) is None
+    admission = {"dormitory_1": ["Current", "Current", "泥岩", "Current", "Current"]}
+    scheduler._suppress_retained_arrangements(admission)
+    assert admission["dormitory_1"][2] == "泥岩"
     scheduler.plan_metadata()
     assert not any(task.type == TaskTypes.SHIFT_ON for task in scheduler.tasks)
     scheduler.enter_room.assert_not_called()
@@ -100,6 +104,81 @@ def test_different_destination_does_not_release_waiting_reservation(waiting_batc
     assert not scheduler._waiting_return_can_progress(returning)
     assert scheduler.op_data.operators["伊内丝"].is_resting()
     assert slots
+
+
+def test_matching_return_releases_only_its_own_resources(waiting_batch):
+    scheduler, waiting, returning = waiting_batch
+    waiting.plan = {
+        "meeting": ["伊内丝", "Current"],
+        "dormitory_1": ["Current", "Current", "Current", "Current", "红"],
+    }
+    returning.plan = {"meeting": ["伊内丝", "Current"]}
+    source = (
+        scheduler.op_data.operators["伊内丝"].current_room,
+        scheduler.op_data.operators["伊内丝"].current_index,
+    )
+    before = pickle.dumps(waiting)
+
+    names, slots = scheduler._waiting_shift_reservations(returning_names={"伊内丝"})
+
+    assert "伊内丝" not in names
+    assert source not in slots
+    assert "红" in names
+    assert ("dormitory_1", 4) in slots
+    assert scheduler._waiting_return_can_progress(returning)
+    assert pickle.dumps(waiting) == before
+
+
+@pytest.mark.parametrize("target_source", ["plan", "expected"])
+def test_dependency_return_releases_its_waiting_destination(
+    waiting_batch, target_source
+):
+    scheduler, waiting, _ = waiting_batch
+    waiting.plan = {
+        "dormitory_1": [
+            "Current",
+            "Current",
+            "Current",
+            "Current",
+            "红" if target_source == "plan" else "Current",
+        ]
+    }
+    waiting.group_shift_waiting = {"联动"}
+    if target_source == "expected":
+        waiting.group_shift_expected = {("dormitory_1", 4): "红"}
+    proposed = {"dormitory_1": ["Current", "Current", "Current", "Current", "泥岩"]}
+    held = deepcopy(proposed)
+    scheduler._suppress_retained_arrangements(held, returning_groups={"无关组"})
+    assert not held
+
+    scheduler._suppress_retained_arrangements(proposed, returning_groups={"联动"})
+
+    assert proposed["dormitory_1"][4] == "泥岩"
+    assert scheduler.waiting_group_shifts == [waiting]
+
+
+def test_replanned_wait_releases_only_the_old_destination(waiting_batch):
+    scheduler, waiting, _ = waiting_batch
+    waiting.plan = {"dormitory_1": ["Current", "Current", "Current", "Current", "红"]}
+    assert ("dormitory_1", 4) in scheduler._waiting_shift_reservations()[1]
+    waiting.plan["dormitory_1"][3:5] = ["红", "Current"]
+    proposed = {"dormitory_1": ["Current", "Current", "Current", "泥岩", "年"]}
+
+    scheduler._suppress_retained_arrangements(proposed)
+
+    assert proposed["dormitory_1"][3] == "Current"
+    assert proposed["dormitory_1"][4] == "年"
+
+
+def test_waiting_free_placeholder_reserves_only_its_requested_slot(waiting_batch):
+    scheduler, waiting, _ = waiting_batch
+    waiting.plan = {"dormitory_1": ["Current", "Current", "Current", "Current", "Free"]}
+    assert scheduler._waiting_shift_reservations() == (set(), {("dormitory_1", 4)})
+    proposed = {"dormitory_1": ["Current", "Current", "Current", "泥岩", "年"]}
+
+    scheduler._suppress_retained_arrangements(proposed)
+
+    assert proposed["dormitory_1"][3:] == ["泥岩", "Current"]
 
 
 def test_unrelated_ready_task_runs_with_waiting_batch(waiting_batch, monkeypatch):

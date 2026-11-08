@@ -151,6 +151,7 @@ from arknights_mower.utils.operation_timing import (
 )
 from arknights_mower.utils.operators import (
     TRADE_ORDER_AGENTS,
+    Dormitory,
     Operator,
     Operators,
 )
@@ -1174,8 +1175,104 @@ class BaseSchedulerSolver(
             for room in task.run_order_original_roster
         }
 
+    def _refresh_backup_dorm_migration(self, task):
+        """按实际住客重算仍试图迁走合法固定宿舍替班的旧副表安排。"""
+        if (
+            task.type != TaskTypes.RE_ORDER
+            or task.meta_data != "副表内存收敛"
+            or not task.plan
+            or not all(room.startswith("dormitory_") for room in task.plan)
+            or task.retains_execution
+            or task.adjusted
+            or task.strict_mood_limit
+            or task.mood_limit is not None
+            or any(
+                getattr(task, flag, False)
+                for flag in (
+                    "mood_physical_started",
+                    "derived_correction_started",
+                    "group_shift_expected",
+                    "backup_shift_active",
+                    "backup_explicit_slots",
+                    "product_shift_locked",
+                    "product_switched_before_arrangement",
+                    "backup_retention_started",
+                    "backup_retention_admissions",
+                    "backup_retention_releases",
+                    "backup_retention_empty_slots",
+                    "dorm_recovery_restore",
+                    "ordinary_coordination",
+                    "exhaust_support",
+                    "emergency_staffing",
+                    "arrangement_retry_room",
+                    "initial_fia",
+                    "departure_recovery_names",
+                )
+            )
+            or hasattr(task, "backup_shift_intent")
+            or hasattr(task, "backup_shift_conditions")
+        ):
+            return False
+        stale = any(
+            (current := self.op_data.get_current_operator(*bed.position)) is not None
+            and self.op_data.is_recovery_dorm(bed, current.name)
+            and task.plan.get(bed.position[0], [])[
+                bed.position[1] : bed.position[1] + 1
+            ]
+            == [self.op_data.plan[bed.position[0]][bed.position[1]].agent]
+            for bed in self.op_data.group_dorm
+        )
+        if not stale:
+            return False
+        simulation = copy.copy(self)
+        simulation.op_data = self.op_data.project_arrangements([{}])
+        simulation.tasks, simulation.waiting_group_shifts = copy.deepcopy(
+            (
+                [pending for pending in self.tasks if pending is not task],
+                [
+                    pending
+                    for pending in getattr(self, "waiting_group_shifts", ())
+                    if pending is not task
+                ],
+            )
+        )
+        data = simulation.op_data
+        names, slots, _, _ = simulation._dorm_recovery_reservations(simulation.tasks)
+        sources = [
+            copy.deepcopy(bed)
+            for bed in [*data.all_dorms(), *getattr(data, "displaced_dorms", ())]
+            if bed.name in data.operators
+            and (op := data.operators[bed.name]).is_resting()
+            and (op.current_room, op.current_index) == bed.position
+        ]
+        tracked = {bed.name for bed in sources}
+        proposed_names = {
+            name
+            for row in task.plan.values()
+            for name in row
+            if name not in ("", "Current", "Free")
+        }
+        for name in proposed_names - tracked:
+            op = data.operators.get(name)
+            if (
+                op is not None
+                and op.is_resting()
+                and not op.room.startswith("dorm")
+                and not data.is_dorm_replacement(name)
+            ):
+                sources.append(Dormitory((op.current_room, op.current_index), name))
+        task.plan = rebalance_plan_swap_dorms(
+            data, sources, reserved_names=names, reserved_slots=slots
+        )
+        for field in ("group_shift_transitions", "dorm_fill_plan"):
+            task.__dict__.pop(field, None)
+        logger.debug("固定宿舍替班仍有效，重算原副表宿舍迁移：%s", task.plan)
+        return True
+
     def _refresh_derived_correction(self, task):
-        """相关观测更新后，只重算尚未执行的普通派生纠错。"""
+        """重算未开始的普通派生纠错及来源明确、岗位职责已失效的宿舍迁移。"""
+        if task.type == TaskTypes.RE_ORDER:
+            return self._refresh_backup_dorm_migration(task)
         if (
             task.type != TaskTypes.SELF_CORRECTION
             or not getattr(task, "derived_correction", False)
@@ -1600,7 +1697,7 @@ class BaseSchedulerSolver(
             self.tasks[:] = [
                 task for task in self.tasks if id(task) not in due_fill_ids
             ]
-            _, reserved_slots = dorm_task_reservations(op_data, self.tasks)
+            _, reserved_slots, _, _ = self._dorm_recovery_reservations(self.tasks)
             if not due_fills and not vacant_dorm_slots(op_data, reserved_slots):
                 return False
             superseded = False
@@ -1627,7 +1724,18 @@ class BaseSchedulerSolver(
             if due_fills:
                 return False
         had_tasks = len(self.tasks)
-        try_add_release_dorm({}, None, op_data, self.tasks, empty_only=True)
+        _, _, reserved_names, reserved_slots = self._dorm_recovery_reservations(
+            self.tasks
+        )
+        try_add_release_dorm(
+            {},
+            None,
+            op_data,
+            self.tasks,
+            empty_only=True,
+            reserved_names=reserved_names,
+            reserved_slots=reserved_slots,
+        )
         return len(self.tasks) > had_tasks
 
     def transition(self) -> None:
@@ -1722,7 +1830,7 @@ class BaseSchedulerSolver(
             candidates, [], plan, current_resting, request_names=request_names
         )
         if len(plan.items()) > 0:
-            re_order_dorm_plan = try_reorder(self.op_data, plan, tasks=self.tasks)
+            re_order_dorm_plan = self._reorder_dorm_recovery(plan)
             if re_order_dorm_plan:
                 logger.debug(f"合并宿舍任务{re_order_dorm_plan}")
                 _merge_dorm_arrangement(plan, re_order_dorm_plan)
@@ -1866,7 +1974,7 @@ class BaseSchedulerSolver(
         )
         if not result:
             return None
-        reorder = try_reorder(simulation.op_data, result, tasks=simulation.tasks)
+        reorder = simulation._reorder_dorm_recovery(result)
         if reorder:
             _merge_dorm_arrangement(result, reorder)
         return result
@@ -3230,10 +3338,14 @@ class BaseSchedulerSolver(
         self.plan_metadata()
         self._recovery_plan_dirty = False
 
-    def _waiting_shift_reservations(self, *, returning_groups=(), returning_names=()):
+    def _waiting_shift_reservations(
+        self, *, returning_groups=(), returning_names=(), current_task=None
+    ):
         """等待任务保留目标，但不阻止其依赖组回班释放替班。"""
-        names = set()
+        names, slots = set(), set()
         for task in getattr(self, "waiting_group_shifts", ()):
+            if task is current_task:
+                continue
             if set(returning_groups).intersection(
                 getattr(task, "group_shift_waiting", ())
             ):
@@ -3265,12 +3377,68 @@ class BaseSchedulerSolver(
                 for name in row
                 if name in self.op_data.operators and name not in released
             )
-        slots = {
+            # 尚未离岗的干员同样占有目标床位，不能仅预约其当前源岗位。
+            slots.update(
+                (room, index)
+                for room, row in task.plan.items()
+                if room.startswith("dorm")
+                for index, name in enumerate(row)
+                if name != "Current" and name not in released
+            )
+            for position, name in getattr(task, "group_shift_expected", {}).items():
+                if name != "Current" and name not in released:
+                    slots.add(position)
+                    if name in self.op_data.operators:
+                        names.add(name)
+        slots.update(
             (op.current_room, op.current_index)
             for name in names
             if (op := self.op_data.operators[name]).current_room
-        }
+        )
         return names, slots
+
+    def _dorm_recovery_reservations(
+        self, tasks, *, op_data=None, returning_groups=(), current_task=None
+    ):
+        """返回合并预约及等待队列预约，保留各规划阶段的释放边界。
+
+        普通补床调用仅取后两项作为额外保护，由补床器自行读取主队列。
+        """
+        data = self.op_data if op_data is None else op_data
+        names, slots = dorm_task_reservations(data, tasks)
+        view = self
+        if data is not self.op_data:
+            view = copy.copy(self)
+            view.op_data = data
+        waiting_names, waiting_slots = view._waiting_shift_reservations(
+            returning_groups=returning_groups, current_task=current_task
+        )
+        names.update(waiting_names)
+        slots.update(waiting_slots)
+        return names, slots, waiting_names, waiting_slots
+
+    def _returning_groups_releasing_waits(self, task):
+        return {
+            group
+            for group, resting in getattr(task, "group_shift_transitions", {}).items()
+            if not getattr(task, "initial_staffing", False)
+            and not resting
+            and self.op_data.group_is_resting(group)
+        }
+
+    def _reorder_dorm_recovery(self, plan):
+        current = getattr(self, "task", None)
+        names, slots = self._waiting_shift_reservations(
+            returning_groups=self._returning_groups_releasing_waits(current),
+            current_task=current,
+        )
+        return try_reorder(
+            self.op_data,
+            plan,
+            tasks=self.tasks,
+            reserved_names=names,
+            reserved_slots=slots,
+        )
 
     def plan_metadata(self):
         if self._emergency_frozen():
@@ -3489,8 +3657,7 @@ class BaseSchedulerSolver(
                 if (completed or room not in task.plan)
                 and names != self.op_data.get_current_room(room, True)
             }
-            reserved_names, reserved_slots = dorm_task_reservations(
-                self.op_data,
+            reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
                 [
                     pending
                     for pending in self.tasks
@@ -7050,7 +7217,7 @@ class BaseSchedulerSolver(
             save_exception(e)
             logger.exception(e)
         # 更新宿舍任务
-        re_order_dorm_plan = try_reorder(self.op_data, new_plan, tasks=self.tasks)
+        re_order_dorm_plan = self._reorder_dorm_recovery(new_plan)
         if re_order_dorm_plan:
             if new_plan:
                 # resting() 已把 new_plan 原对象放入 SHIFT_OFF；直接合并可确保
@@ -7079,7 +7246,17 @@ class BaseSchedulerSolver(
             return False
         self._plan_preferred_replacements()
         self._fill_empty_dorms(primary_planned=True)
-        try_add_release_dorm({}, None, self.op_data, self.tasks)
+        _, _, reserved_names, reserved_slots = self._dorm_recovery_reservations(
+            self.tasks
+        )
+        try_add_release_dorm(
+            {},
+            None,
+            self.op_data,
+            self.tasks,
+            reserved_names=reserved_names,
+            reserved_slots=reserved_slots,
+        )
         return True
 
     @log_mood_calculation("普通换班规划")
@@ -7423,9 +7600,13 @@ class BaseSchedulerSolver(
         ]
         if not missing:
             return True
-        reserved_names, occupied = dorm_task_reservations(
-            projected,
+        reserved_names, occupied, _, _ = self._dorm_recovery_reservations(
             [task for task in self.tasks if task is not getattr(self, "task", None)],
+            op_data=projected,
+            returning_groups=self._returning_groups_releasing_waits(
+                getattr(self, "task", None)
+            ),
+            current_task=getattr(self, "task", None),
         )
         if reserved := reserved_names.intersection(missing):
             if failure_reasons is not None:
@@ -7591,17 +7772,21 @@ class BaseSchedulerSolver(
             not in explicit_names
             and transition_plan.get(room, [])[index : index + 1] in ([], ["Current"])
         }
-        reserved_names, reserved_slots = dorm_task_reservations(
-            self.op_data,
-            [
-                task
-                for task in self.tasks
-                if task is not getattr(self, "task", None)
-                and (
-                    task.type != TaskTypes.SHIFT_ON
-                    or getattr(task, "product_shift_locked", False)
-                )
-            ],
+        reserved_names, reserved_slots, waiting_names, waiting_slots = (
+            self._dorm_recovery_reservations(
+                [
+                    task
+                    for task in self.tasks
+                    if task is not getattr(self, "task", None)
+                    and (
+                        task.type != TaskTypes.SHIFT_ON
+                        or getattr(task, "product_shift_locked", False)
+                    )
+                ],
+                returning_groups=self._returning_groups_releasing_waits(
+                    getattr(self, "task", None)
+                ),
+            )
         )
         if not preserve_backup_replacements(
             self.op_data,
@@ -7692,7 +7877,7 @@ class BaseSchedulerSolver(
                 migration_data,
                 previous_dorms,
                 reserved_names=_assigned_operator_names(transition_plan)
-                | (reserved_names if priority_changed else set()),
+                | (reserved_names if priority_changed else waiting_names),
                 # 生效床序变化时重新分配，已有单回位置不覆盖用户的新顺序。
                 reorder=priority_changed,
                 reserved_slots=(
@@ -7704,7 +7889,7 @@ class BaseSchedulerSolver(
                         if name != "Current"
                     }
                     if priority_changed
-                    else ()
+                    else waiting_slots
                 ),
             )
             _merge_shift_transition(transition_plan, dorm_migration, self.op_data)
@@ -8686,6 +8871,14 @@ class BaseSchedulerSolver(
         retained_names, retained_slots = retained_task_reservations(
             self.op_data, self.tasks, current_task=getattr(self, "task", None)
         )
+        waiting_names, waiting_slots = self._waiting_shift_reservations(
+            returning_groups=self._returning_groups_releasing_waits(
+                getattr(self, "task", None)
+            ),
+            current_task=getattr(self, "task", None),
+        )
+        retained_names.update(waiting_names)
+        retained_slots.update(waiting_slots)
         retained_slots |= set(reserved_slots)
         reserved_names = (
             self.op_data.reserved_product_replacements
@@ -9494,6 +9687,7 @@ class BaseSchedulerSolver(
             simulation.tasks = [
                 pending for pending in self.tasks if pending is not task
             ]
+            simulation.task = task
             replacements = list(_assigned_operator_names(plan))
             admissions = {}
             if not simulation._get_resting_plan(
@@ -9666,8 +9860,9 @@ class BaseSchedulerSolver(
         members.update(
             op.name for op in self.op_data.operators.values() if op.is_resting()
         )
-        reserved_names, reserved_slots = dorm_task_reservations(
-            self.op_data, [task for task in self.tasks if task is not current_task]
+        reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
+            [task for task in self.tasks if task is not current_task],
+            current_task=current_task,
         )
         return (
             tuple(self.op_data.plan_condition),
@@ -9700,14 +9895,21 @@ class BaseSchedulerSolver(
         self._refresh_deferred_product_reservations()
         self.op_data.correct_dorm(group_transitions=self._pending_group_transitions())
 
-    def _resume_waiting_group_shifts(self):
+    def _resume_waiting_group_shifts(self, *, refresh_migrations_only=False):
         """Cached state changes release suspended work; no timer dispatch is used."""
-        self._discard_legacy_recovery_checks()
+        if not refresh_migrations_only:
+            self._discard_legacy_recovery_checks()
         if not getattr(self, "waiting_group_shifts", ()):
             return
         if self._initial_mood_read_pending() or self._emergency_frozen():
             return
         for task in list(getattr(self, "waiting_group_shifts", ())):
+            refreshed_migration = (
+                task.type == TaskTypes.RE_ORDER
+                and self._refresh_derived_correction(task)
+            )
+            if refresh_migrations_only and not refreshed_migration:
+                continue
             departure_names = getattr(task, "departure_recovery_names", ())
             if departure_names and getattr(
                 task, "departure_recovery_observation", None
@@ -9721,7 +9923,7 @@ class BaseSchedulerSolver(
                 for pending in getattr(task, "group_shift_predecessors", ())
             ):
                 continue
-            if any(
+            if not refreshed_migration and any(
                 self.op_data.group_is_resting(group)
                 for group in task.group_shift_waiting
             ):
@@ -9895,6 +10097,7 @@ class BaseSchedulerSolver(
     @_log_backup_calculation("完整换班")
     def _prepare_shift_cycle(self, task):
         """在副本中收敛换班、副表、后续轮休和补床，成功后一次提交最终安排。"""
+        self._resume_waiting_group_shifts(refresh_migrations_only=True)
         preceding = getattr(task, "product_wait_return_task", None)
         if preceding is not None and any(
             pending is preceding for pending in self.tasks
@@ -9992,8 +10195,7 @@ class BaseSchedulerSolver(
                 dorm_rebalance_signature(self.op_data)[0]
                 != dorm_rebalance_signature(recovery_data)[0]
             )
-            reserved_names, reserved_slots = dorm_task_reservations(
-                recovery_data,
+            reserved_names, reserved_slots, _, _ = self._dorm_recovery_reservations(
                 [
                     pending
                     for pending in self.tasks
@@ -10002,6 +10204,8 @@ class BaseSchedulerSolver(
                         pending.type != TaskTypes.SHIFT_ON or pending.retains_execution
                     )
                 ],
+                op_data=recovery_data,
+                returning_groups=self._returning_groups_releasing_waits(task),
             )
             task.plan = prioritize_new_dorm_recovery(
                 recovery_data,
@@ -10180,13 +10384,7 @@ class BaseSchedulerSolver(
         step.coordination_request_names = list(dict.fromkeys(ordinary_requests))
         step.dorm_fill_plan = copy.deepcopy(getattr(task, "dorm_fill_plan", {}))
         initial_correction = getattr(task, "initial_staffing", False)
-        returning_groups = {
-            group
-            for group, resting in getattr(task, "group_shift_transitions", {}).items()
-            if not initial_correction
-            and not resting
-            and self.op_data.group_is_resting(group)
-        }
+        returning_groups = self._returning_groups_releasing_waits(task)
         returning = set()
         seen = set()
         # Free 是执行时按游戏列表选人的占位符，预演不能把它当作已知干员。
@@ -10230,16 +10428,16 @@ class BaseSchedulerSolver(
                 pending_exhaust, tasks=pending
             ):
                 simulation.tasks = copy.deepcopy(pending)
-            reserved_names, reserved_slots = dorm_task_reservations(
-                simulation.op_data,
-                [
-                    pending
-                    for pending in simulation.tasks
-                    if pending.type != TaskTypes.SHIFT_ON or pending.retains_execution
-                ],
-            )
-            waiting_names, waiting_slots = simulation._waiting_shift_reservations(
-                returning_groups=returning_groups
+            reserved_names, reserved_slots, waiting_names, waiting_slots = (
+                simulation._dorm_recovery_reservations(
+                    [
+                        pending
+                        for pending in simulation.tasks
+                        if pending.type != TaskTypes.SHIFT_ON
+                        or pending.retains_execution
+                    ],
+                    returning_groups=returning_groups,
+                )
             )
             waiting_names.update(getattr(task, "backup_retention_releases", ()))
             # 本批退出保留的无主岗位住客清为空闲，不由后续普通补床立即吸回。
@@ -11449,12 +11647,27 @@ class BaseSchedulerSolver(
             projected = simulation.op_data.project_arrangements([early.plan])
             projected.commit_group_shifts(early.group_shift_transitions)
             simulation.op_data = projected
+            reserved_names, reserved_slots, _, _ = (
+                simulation._dorm_recovery_reservations(simulation.tasks)
+            )
             count = len(simulation.tasks)
-            try_add_release_dorm({}, None, projected, simulation.tasks, empty_only=True)
+            try_add_release_dorm(
+                {},
+                None,
+                projected,
+                simulation.tasks,
+                empty_only=True,
+                reserved_names=reserved_names,
+                reserved_slots=reserved_slots,
+            )
             for fill in simulation.tasks[count:]:
                 _merge_shift_transition(early.plan, fill.plan, projected)
-            early.plan = prioritize_new_dorm_recovery(projected, early.plan)
-            early.plan = plan_dorm_isolation(projected, early.plan)
+            early.plan = prioritize_new_dorm_recovery(
+                projected, early.plan, reserved_slots, reserved_names=reserved_names
+            )
+            early.plan = plan_dorm_isolation(
+                projected, early.plan, reserved_slots, reserved_names=reserved_names
+            )
             # 回班和补床也可能触发产物条件；这时两批均继续等待。
             products, _ = self._products_after_arrangement(early.plan)
             if products != baseline:
@@ -15109,6 +15322,10 @@ class BaseSchedulerSolver(
         excluded, _ = dorm_task_reservations(
             self.op_data, [self.task, *getattr(self, "tasks", [])], agents
         )
+        waiting_names, _ = self._waiting_shift_reservations(
+            current_task=getattr(self, "task", None)
+        )
+        excluded.update(waiting_names)
         # 当轮回班目标尚未落位时，宿舍补位不能把它当作候补占用。
         current_task = getattr(self, "task", None)
         if current_task is not None and current_task.type == TaskTypes.SHIFT_ON:
@@ -19097,7 +19314,17 @@ class BaseSchedulerSolver(
             )
             existing = {id(task): task for task in pending}
             projected = self.op_data.project_arrangements([{}])
-            try_add_release_dorm({}, None, projected, pending)
+            _, _, reserved_names, reserved_slots = self._dorm_recovery_reservations(
+                pending, op_data=projected, current_task=self.task
+            )
+            try_add_release_dorm(
+                {},
+                None,
+                projected,
+                pending,
+                reserved_names=reserved_names,
+                reserved_slots=reserved_slots,
+            )
             updated = next((task for task in pending if id(task) not in existing), None)
             self.task.plan.clear()
             self.task.plan.update(updated.plan if updated is not None else {})

@@ -1,6 +1,7 @@
 """长产物等待只提前执行不改变产物的独立回班。"""
 
 import copy
+import pickle
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -11,7 +12,7 @@ from arknights_mower.solvers import base_schedule as base
 from arknights_mower.tests import product_cover_dorm_tests as cover
 from arknights_mower.tests import product_shift_cycle_resume_tests as resume
 from arknights_mower.tests.shift_backup_convergence_tests import LogicExpression
-from arknights_mower.utils.scheduler_task import plan_metadata
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes, plan_metadata
 
 shared_product_cycle = resume.shared_product_cycle
 solver = resume.solver
@@ -75,6 +76,46 @@ def test_long_wait_boundary(long_cycle, monkeypatch, minutes, split):
             "room_1_2": "exp3"
         }
         assert "虎狼丸" in task.product_lock_names
+
+
+@pytest.mark.parametrize("target_source", ["plan", "expected"])
+def test_early_return_fill_preserves_waiting_bed_after_dependency_return(
+    long_cycle, target_source
+):
+    instance, task = long_cycle
+    target = ("dormitory_1", 2)
+    name = "信仰搅拌机"
+    assert instance.op_data.operators[name].is_working()
+    protected = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "dormitory_1": [
+                "Current",
+                "Current",
+                name if target_source == "plan" else "Current",
+                "Current",
+                "Current",
+            ]
+        },
+    )
+    protected.group_shift_waiting = {"感知"}
+    protected.group_shift_predecessors = ()
+    if target_source == "expected":
+        protected.group_shift_expected = {target: name}
+    instance.waiting_group_shifts = [protected]
+    before, at = pickle.dumps(protected), task.time
+
+    defer(instance, task, 20)
+
+    early = task.product_wait_return_task
+    final = instance.op_data.project_arrangements([early.plan])
+    assert final.get_current_operator(*target) is None
+    assert final.operators["年"].is_resting()
+    assert early.group_shift_transitions == {"感知": False}
+    assert task.time == at
+    assert instance.op_data.operators[name].is_working()
+    assert pickle.dumps(protected) == before
+    assert instance.waiting_group_shifts == [protected]
 
 
 def test_urgent_handoff_obligations_keep_original_batch(long_cycle):

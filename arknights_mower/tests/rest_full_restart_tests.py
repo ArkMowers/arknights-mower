@@ -133,7 +133,7 @@ def test_normal_planning_rebuilds_only_one_return_at_effective_limit(
     solver.backup_plan_solver = MagicMock()
     monkeypatch.setattr(base, "try_reorder", lambda *args, **kwargs: None)
     monkeypatch.setattr(base, "try_workshop_tasks", lambda *args: None)
-    monkeypatch.setattr(base, "try_add_release_dorm", lambda *args: None)
+    monkeypatch.setattr(base, "try_add_release_dorm", lambda *args, **kwargs: None)
     for _ in range(3):
         # 与正常规划入口一致：先纠错，再复用 plan_solver 重建派生任务。
         assert solver.agent_get_mood(skip_dorm=True) is None

@@ -2761,7 +2761,13 @@ class TestDormShiftOffMerge(unittest.TestCase):
         ):
             self.assertTrue(solver._fill_empty_dorms())
         fill.assert_called_once_with(
-            {}, None, solver.op_data, [order, fill_task], empty_only=True
+            {},
+            None,
+            solver.op_data,
+            [order, fill_task],
+            empty_only=True,
+            reserved_names=set(),
+            reserved_slots=set(),
         )
 
 

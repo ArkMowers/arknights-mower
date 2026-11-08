@@ -320,7 +320,9 @@ def test_plan_solver_runs_primary_phase_once_before_both_idle_stages(
         side_effect=lambda **kwargs: order.append("fill")
     )
     monkeypatch.setattr(
-        base_schedule, "try_add_release_dorm", lambda *args: order.append("replace")
+        base_schedule,
+        "try_add_release_dorm",
+        lambda *args, **kwargs: order.append("replace"),
     )
     monkeypatch.setattr(
         base_schedule, "try_workshop_tasks", lambda *args: order.append("workshop")
