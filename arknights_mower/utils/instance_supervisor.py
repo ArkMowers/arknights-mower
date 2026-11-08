@@ -20,6 +20,8 @@ STARTUP_TIMEOUT = 120.0
 LOCK_TIMEOUT = 15.0
 INTENTIONAL_EXIT_CODE = 73
 INTENTIONAL_REASONS = frozenset(("window", "tray", "ctrl_c", "runtime_request"))
+HTTP_PROBE_PATH = "/status"
+HTTP_PROBE_USER_AGENT = "Mower Instance Supervisor"
 _report_lock = threading.RLock()
 
 
@@ -160,12 +162,14 @@ def task_intent(running, *, automatic=False):
 def http_probe(port, timeout):
     """Check HTTP responsiveness independently of scheduler logs and sleeps."""
     from urllib.error import HTTPError
-    from urllib.request import ProxyHandler, build_opener
+    from urllib.request import ProxyHandler, Request, build_opener
 
     try:
-        with build_opener(ProxyHandler({})).open(
-            f"http://127.0.0.1:{int(port)}/status", timeout=timeout
-        ) as response:
+        probe = Request(
+            f"http://127.0.0.1:{int(port)}{HTTP_PROBE_PATH}",
+            headers={"User-Agent": HTTP_PROBE_USER_AGENT},
+        )
+        with build_opener(ProxyHandler({})).open(probe, timeout=timeout) as response:
             return response.status == 200
     except HTTPError as exc:
         with exc:
