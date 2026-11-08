@@ -96,7 +96,7 @@ const clientOutput = {
     }
   },
   ssrRender: undefined,
-  render: compile(descriptor.template.content),
+  render: compile(descriptor.template.content, { hoistStatic: false }),
   setup: (props, context) => ({ ...LogOutput.setup(props, context) })
 }
 const mounted = []

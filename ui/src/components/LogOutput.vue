@@ -7,7 +7,6 @@ import {
   onUpdated,
   ref,
   shallowRef,
-  useId,
   watch
 } from 'vue'
 import { NScrollbar } from 'naive-ui'
@@ -36,6 +35,7 @@ import { backupChangeText, taskPresentation } from '@/utils/taskPresentation'
 import { WAIT_DISPLAY_DELAY, formatWaitDuration, scanSceneWaits } from '@/utils/logScenes'
 import { captureLogScroll, restoreLogScroll, scrollLogToBottom } from '@/utils/logScrolling'
 import { logLayoutZoom } from '@/utils/logLayout'
+import { useLogSheen } from '@/composables/logSheen'
 
 const props = defineProps({
   lines: { type: Array, default: () => [] },
@@ -55,8 +55,7 @@ const MIN_GROUP_LINES = 2
 const MAX_BATCH_ANIMATION = 8
 
 const output = ref(null)
-const sheenFilterId = `log-sheen-${useId()}`
-const sheenFilter = `url(#${sheenFilterId})`
+const { filters: sheenFilters, refresh: refreshSheen } = useLogSheen(output)
 const nowMs = ref(Date.now())
 const stickyGroup = ref(null)
 const expandedDetails = ref(new Set())
@@ -771,6 +770,7 @@ watch(
 )
 onUpdated(() => {
   bindScrollContainer()
+  refreshSheen()
   if (scrollSnapshot) {
     restoreReadingPosition(scrollSnapshot)
     scrollSnapshot = null
@@ -1701,18 +1701,15 @@ function lineClasses(row) {
 </script>
 
 <template>
-  <div
-    ref="output"
-    class="log-output"
-    :class="{ 'log-output--compact': compact }"
-    :style="{ '--log-sheen-filter': sheenFilter }"
-  >
+  <div ref="output" class="log-output" :class="{ 'log-output--compact': compact }">
     <slot name="header" />
     <div class="log-output__body">
       <svg class="log-sheen-filter" width="0" height="0" aria-hidden="true" focusable="false">
         <defs>
           <filter
-            :id="sheenFilterId"
+            v-for="sheen in sheenFilters"
+            :id="sheen.id"
+            :key="sheen.id"
             x="0"
             y="0"
             width="1"
@@ -1722,25 +1719,50 @@ function lineClasses(row) {
             color-interpolation-filters="sRGB"
           >
             <feImage
+              v-for="(line, index) in sheen.lines"
+              :key="index"
               :href="logSheen"
-              x="-0.3"
-              y="0"
-              width="0.18"
-              height="1"
+              :x="line.from"
+              y="-2"
+              :width="line.width"
+              :height="line.height"
               preserveAspectRatio="none"
-              result="band"
+              :result="`band-${index}`"
             >
               <animate
                 v-if="running"
                 attributeName="x"
-                values="-0.3;1.1;1.1"
-                keyTimes="0;0.8;1"
+                :begin="sheen.begin"
+                :values="line.values"
+                :keyTimes="line.keyTimes"
+                dur="3.5s"
+                repeatCount="indefinite"
+              />
+              <animate
+                v-if="running"
+                attributeName="y"
+                :begin="sheen.begin"
+                :values="line.yValues"
+                :keyTimes="line.keyTimes"
+                calcMode="discrete"
                 dur="3.5s"
                 repeatCount="indefinite"
               />
             </feImage>
+            <feMerge result="band">
+              <feMergeNode v-for="(_, index) in sheen.lines" :key="index" :in="`band-${index}`" />
+            </feMerge>
+            <feGaussianBlur
+              in="band"
+              stdDeviation="0.015 0"
+              x="0"
+              y="0"
+              width="1"
+              height="1"
+              result="soft-band"
+            />
             <feFlood flood-color="white" style="flood-opacity: var(--log-sheen-opacity)" />
-            <feComposite in2="band" operator="in" />
+            <feComposite in2="soft-band" operator="in" />
             <feComposite in2="SourceAlpha" operator="in" />
             <feBlend in2="SourceGraphic" mode="screen" />
           </filter>
@@ -2526,7 +2548,7 @@ function lineClasses(row) {
   --log-error-tint: rgb(208 48 80 / 11%);
   --log-hover-tint: rgb(128 128 128 / 7%);
   --log-ink: var(--mower-text, #333639);
-  --log-sheen-opacity: 0.82;
+  --log-sheen-opacity: 0.68;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -2970,8 +2992,8 @@ html[data-window-shell-theme='dark'] .log-token--item {
     opacity: 0.8;
   }
   to {
-    width: 14px;
-    height: 14px;
+    width: 24px;
+    height: 24px;
     opacity: 0;
   }
 }
@@ -3198,7 +3220,7 @@ html[data-window-shell-theme='dark'] .log-token--item {
 }
 @media (prefers-reduced-motion: no-preference) {
   .log-lifecycle-active {
-    filter: var(--log-sheen-filter);
+    filter: var(--log-sheen-filter, none);
   }
 }
 .log-display-block {
@@ -3357,7 +3379,7 @@ html[data-window-shell-theme='dark'] .log-token--item {
 html[data-mower-theme='dark'] .log-output,
 html[data-window-shell-theme='dark'] .log-output {
   --log-ink: #e5e1d6;
-  --log-sheen-opacity: 0.9;
+  --log-sheen-opacity: 0.96;
   --log-muted-ink: #868d97;
   --log-detail-ink: #959ca6;
   --log-time-ink: #7cb8f2;
