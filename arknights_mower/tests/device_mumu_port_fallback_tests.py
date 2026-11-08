@@ -484,6 +484,7 @@ def test_production_mumu_frame_query_uses_the_configured_short_window(tmp_path):
     )
     session.bind(selected)
     with (
+        patch.object(ProductionPreflightIO, "host_platform", return_value="windows"),
         patch(
             "arknights_mower.utils.device.preflight_io.resolve_mumu_paths",
             return_value=("root", str(manager)),
