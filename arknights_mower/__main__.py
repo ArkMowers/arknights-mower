@@ -974,6 +974,8 @@ def simulate(saved):
     task_failures = 0
     while True:
         try:
+            if config.maintenance_recheck.is_set():
+                config.wake_scheduler.clear()
             config.maintenance_recheck.clear()
             refresh_resource_at_boundary()
             from arknights_mower.utils.scheduler_task import MAINTENANCE_TASK_TYPES
@@ -1004,6 +1006,12 @@ def simulate(saved):
                         for task in base_scheduler.tasks
                     )
                 ):
+                    continue
+            if config.maintenance_recheck.is_set():
+                continue
+            if getattr(base_scheduler, "_idle_observation_pending", False) is True:
+                base_scheduler._idle_sleep(0)
+                if config.maintenance_recheck.is_set():
                     continue
             if _next_scheduler_task() is not None:
                 # 维护避让先于日常任务和等待预算，包含从存档恢复的专精换人。

@@ -5,7 +5,7 @@ import sys
 from datetime import datetime, timedelta
 from threading import Event, RLock
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import numpy as np
 import pytest
@@ -312,6 +312,209 @@ def test_cancelled_idle_preserves_stop_and_does_not_resume_recognition(
     solver.device.exit.assert_not_called()
     solver.device.reconnect.assert_not_called()
     solver.device.screencap.assert_not_called()
+
+
+@pytest.mark.parametrize("entry", ["task_wait", "round_end"])
+@pytest.mark.parametrize("signal_at_deadline", [False, True])
+def test_maintenance_recheck_does_not_resume_closed_simulator(
+    production_idle_scheduler, monkeypatch, entry, signal_at_deadline
+):
+    solver, clock = production_idle_scheduler.solver, production_idle_scheduler.clock
+    started = clock.now()
+    duration = 600 if entry == "round_end" else 2
+    cached_frame = solver.recog._img
+    tasks = list(solver.tasks)
+    original_times = [task.time for task in tasks]
+    config.conf.close_simulator_when_idle = True
+    restart = MagicMock(return_value=True)
+    monkeypatch.setattr(base, "restart_simulator", restart)
+
+    def sleep(seconds):
+        clock.current += timedelta(seconds=seconds)
+        if not signal_at_deadline or clock.now() >= started + timedelta(
+            seconds=duration
+        ):
+            config.maintenance_recheck.set()
+            config.wake_scheduler.set()
+
+    monkeypatch.setattr(base, "csleep", sleep)
+    if entry == "round_end":
+        solver.rest_until_next_task()
+    else:
+        solver.handle_idle_action(600)
+        solver._idle_sleep(duration)
+
+    restart.assert_called_once_with(start=False)
+    assert solver._simulator_closed_for_idle
+    assert solver._idle_observation_pending
+    assert not solver.sleeping
+    assert config.maintenance_recheck.is_set()
+    assert not config.wake_scheduler.is_set()
+    assert solver.recog._img is cached_frame
+    assert solver.tasks == tasks
+    assert [task.time for task in tasks] == original_times
+    solver.device.reconnect.assert_not_called()
+    solver.device.check_current_focus.assert_not_called()
+    solver.device.screencap.assert_not_called()
+
+
+def test_maintenance_timer_defers_device_start_until_real_entry_time(
+    production_idle_scheduler, monkeypatch
+):
+    solver, clock = production_idle_scheduler.solver, production_idle_scheduler.clock
+    started = clock.now()
+    monkeypatch.setattr(main, "datetime", clock)
+    info = MaintenanceInfo(
+        started + timedelta(minutes=1),
+        started + timedelta(minutes=61),
+        "hot",
+        "服务器停机维护公告",
+        "",
+        "offline-maintenance-wake",
+    )
+    monkeypatch.setattr(main.NewsChecker, "get_maintenance", lambda: info)
+    config.conf.close_simulator_when_idle = True
+    restart = MagicMock(return_value=True)
+    monkeypatch.setattr(base, "restart_simulator", restart)
+    timer_class = MagicMock()
+    monkeypatch.setattr(main, "Timer", timer_class)
+    tasks = list(solver.tasks)
+    times = [task.time for task in tasks]
+    cached_frame = solver.recog._img
+    fired = False
+    failures, checkpoint = [object()], object()
+    monkeypatch.setattr(solver, "_run_order_restoration_failures", lambda: failures)
+    monkeypatch.setattr(
+        solver, "_emergency_continuation_checkpoint", lambda: checkpoint
+    )
+    restore = MagicMock()
+    emergency = MagicMock()
+    monkeypatch.setattr(solver, "_request_run_order_restoration_observations", restore)
+    monkeypatch.setattr(
+        solver, "_request_emergency_continuation_observation", emergency
+    )
+
+    def sleep(seconds):
+        nonlocal fired
+        clock.current += timedelta(seconds=seconds)
+        if not fired and clock.now() >= info.start:
+            fired = True
+            timer_class.call_args.args[1]()
+
+    monkeypatch.setattr(base, "csleep", sleep)
+    try:
+        main._arm_maintenance_timer(info, now=started)
+        solver.rest_until_next_task()
+        assert clock.now() == info.start
+        restart.assert_called_once_with(start=False)
+        assert solver._simulator_closed_for_idle
+        assert solver.recog._img is cached_frame
+        solver.device.check_current_focus.assert_not_called()
+        solver.device.reconnect.assert_not_called()
+        restore.assert_not_called()
+        emergency.assert_not_called()
+
+        assert main._handle_maintenance(info, solver, now=clock.now()) is False
+
+        assert clock.now() == started + timedelta(minutes=31)
+        assert restart.call_args_list == [
+            call(start=False),
+            call(stop=False, start=True),
+        ]
+        assert not solver._simulator_closed_for_idle
+        assert not solver._idle_observation_pending
+        assert solver.recog._img is None
+        assert solver.recog.last_scene_time == clock.now()
+        assert solver.recog.loading_time == 0
+        assert solver.tasks == tasks
+        assert [task.time for task in tasks] == times
+        solver.device.reconnect.assert_called_once_with()
+        solver.device.screencap.assert_not_called()
+        restore.assert_called_once_with(failures)
+        emergency.assert_called_once_with(checkpoint)
+    finally:
+        main._cancel_maintenance_timer()
+
+
+def test_main_resumes_deferred_idle_after_confirming_entry_is_permitted(
+    production_idle_scheduler, monkeypatch
+):
+    solver, clock = production_idle_scheduler.solver, production_idle_scheduler.clock
+    monkeypatch.setattr(main, "datetime", clock)
+    info = MaintenanceInfo(
+        clock.now() - timedelta(minutes=31),
+        clock.now() + timedelta(minutes=29),
+        "hot",
+        "服务器停机维护公告",
+        "",
+        "permitted-early-entry",
+    )
+    monkeypatch.setattr(main.NewsChecker, "get_maintenance", lambda: info)
+    monkeypatch.setattr(main, "base_scheduler", None)
+    monkeypatch.setattr(main, "initialize", lambda *args, **kwargs: solver)
+    monkeypatch.setattr(main, "refresh_resource_at_boundary", MagicMock())
+    monkeypatch.setattr(main, "_apply_version_update_resting_threshold", MagicMock())
+    monkeypatch.setattr(
+        "arknights_mower.utils.crash_recovery.checkpoint_start", MagicMock()
+    )
+    config.conf.automatic_rescue_enable = False
+    config.conf.enable_mastery = False
+    config.conf.close_simulator_when_idle = True
+    config.maintenance_recheck.set()
+    config.wake_scheduler.set()
+    solver._simulator_closed_for_idle = True
+    solver._idle_observation_pending = True
+    solver.emergency_state = None
+    solver.tasks[0].time = clock.now() - timedelta(seconds=1)
+    solver.initialize_operators = MagicMock(return_value=None)
+    solver.op_data.validate_backup_plans = MagicMock(return_value={"success": True})
+    restart = MagicMock(return_value=True)
+    monkeypatch.setattr(base, "restart_simulator", restart)
+
+    def dispatch():
+        assert not solver._simulator_closed_for_idle
+        assert not solver._idle_observation_pending
+        assert not config.wake_scheduler.is_set()
+        assert not config.maintenance_recheck.is_set()
+        assert solver.recog._img is None
+        raise MowerExit
+
+    solver.run = MagicMock(side_effect=dispatch)
+    main.simulate(None)
+    solver.run.assert_called_once_with()
+    restart.assert_called_once_with(stop=False, start=True)
+    solver.device.reconnect.assert_called_once_with()
+    solver.device.screencap.assert_not_called()
+
+
+def test_pending_maintenance_skips_round_end_device_access(
+    production_idle_scheduler, monkeypatch
+):
+    solver = production_idle_scheduler.solver
+    solver._simulator_closed_for_idle = True
+    config.maintenance_recheck.set()
+    refresh = MagicMock()
+    monkeypatch.setattr(solver, "_refresh_workshop_inventory", refresh)
+    restart = MagicMock()
+    monkeypatch.setattr(base, "restart_simulator", restart)
+    solver.rest_until_next_task()
+    refresh.assert_not_called()
+    restart.assert_not_called()
+    solver.device.check_current_focus.assert_not_called()
+
+
+def test_closed_simulator_skips_repeated_idle_actions(idle_scheduler, monkeypatch):
+    solver = idle_scheduler.solver
+    solver._simulator_closed_for_idle = True
+    config.conf.close_simulator_when_idle = False
+    config.conf.return_home_when_idle = True
+    restart = MagicMock()
+    monkeypatch.setattr(base, "restart_simulator", restart)
+    solver.handle_idle_action(1800)
+    restart.assert_not_called()
+    solver.device.return_home.assert_not_called()
+    solver.device.exit.assert_not_called()
+    assert solver._simulator_closed_for_idle
 
 
 @pytest.mark.parametrize("entry", ["rest", "maintenance"])

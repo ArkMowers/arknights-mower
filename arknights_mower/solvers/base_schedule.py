@@ -22327,6 +22327,10 @@ class BaseSchedulerSolver(
             if emergency_checkpoint is not None:
                 self._idle_emergency_checkpoint = emergency_checkpoint
             refresh_resource_at_boundary()
+            if allow_wakeup and config.maintenance_recheck.is_set():
+                # 先交回主循环检查维护，保留关闭标记和待恢复的观察责任。
+                config.wake_scheduler.clear()
+                return
             if (
                 config.conf.close_simulator_when_idle
                 and self._simulator_closed_for_idle
@@ -22392,6 +22396,11 @@ class BaseSchedulerSolver(
         一份几乎相同的实现，其中两份漏掉了 `sleeping`，正是 /status 卡在
         working 的根因。现在全部收口到这里，只有 `_idle_sleep` 一个状态写入点。
         """
+        if config.maintenance_recheck.is_set():
+            first = self.find_next_task()
+            if first is None or first.time > datetime.now():
+                self._stop_after_round()
+            return
         from arknights_mower.solvers.mastery_reader import (
             discard_completed_mastery_tasks,
         )
@@ -22471,6 +22480,8 @@ class BaseSchedulerSolver(
         )
         if remaining_time > 0:
             self._idle_sleep(remaining_time, round_end=True)
+            if config.maintenance_recheck.is_set():
+                return
             self.check_current_focus()
 
     def _get_idle_action(self, remaining_time=0):
@@ -22483,6 +22494,8 @@ class BaseSchedulerSolver(
         return "idle"
 
     def handle_idle_action(self, remaining_time=0):
+        if getattr(self, "_simulator_closed_for_idle", False):
+            return
         action = self._get_idle_action(remaining_time)
         if action == "close":
             if restart_simulator(start=False):

@@ -569,6 +569,39 @@ class NewsCheckerTests(unittest.TestCase):
         scheduler.handle_idle_action.assert_not_called()
         scheduler._idle_sleep.assert_not_called()
 
+    def test_main_consumes_control_wake_without_discarding_regular_wake(self):
+        for maintenance in (False, True):
+            with self.subTest(maintenance=maintenance):
+                wake, recheck = Event(), Event()
+                wake.set()
+                if maintenance:
+                    recheck.set()
+                scheduler = Mock(
+                    tasks=[SchedulerTask(time=datetime.now() - timedelta(seconds=1))]
+                )
+                scheduler.initialize_operators.return_value = None
+                scheduler.op_data.validate_backup_plans.return_value = {"success": True}
+                observed = []
+
+                def run():
+                    observed.append((wake.is_set(), recheck.is_set()))
+                    raise MowerExit
+
+                scheduler.run.side_effect = run
+                with (
+                    patch.object(config.conf, "automatic_rescue_enable", False),
+                    patch.object(config, "stop_mower", Event()),
+                    patch.object(config, "wake_scheduler", wake),
+                    patch.object(config, "maintenance_recheck", recheck),
+                    patch.object(mower_main, "base_scheduler", None),
+                    patch.object(mower_main, "initialize", return_value=scheduler),
+                    patch.object(mower_main, "refresh_resource_at_boundary"),
+                    patch.object(mower_main, "_apply_version_update_resting_threshold"),
+                    patch("arknights_mower.utils.crash_recovery.checkpoint_start"),
+                ):
+                    mower_main.simulate(None)
+                self.assertEqual(observed, [(not maintenance, False)])
+
     def test_version_update_settings_have_requested_defaults(self):
         conf = Conf()
 
