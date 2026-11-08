@@ -89,7 +89,7 @@ export function normalizeMowerSharedArrangement(data:MowerSchedulingData,plan:Mo
  const followers=Object.values(data.operators).filter(op=>op.multiGroup&&!explicitSlots.has(alphaPosition(op.room,op.index))&&(op.index<(plan[op.room]?.length??0)||op.groupBindings.some(binding=>binding.group in transitions)))
  if(!followers.length)return true
  const managed=new Set(followers.map(op=>op.room+'\0'+op.index))
- const reserved=new Set([...data.reservedProductReplacements,...data.excludedCandidates,...Object.entries(plan).flatMap(([room,row])=>row.filter((name,index)=>!managed.has(room+'\0'+index)&&!['','Current','Free'].includes(name)))])
+ const reserved=new Set([...data.reservedProductReplacements,...Object.entries(plan).flatMap(([room,row])=>row.filter((name,index)=>!managed.has(room+'\0'+index)&&!['','Current','Free'].includes(name)))])
  const departing=new Set(followers.filter(op=>op.currentRoom===op.room&&op.currentIndex===op.index&&mowerRestingBindingGroups(data,op,transitions).length).map(op=>op.name))
  const changes:Record<string,string>={},options:Record<string,string[]>={}
  for(const op of followers){
@@ -102,12 +102,12 @@ export function normalizeMowerSharedArrangement(data:MowerSchedulingData,plan:Mo
   if(candidates.includes('Free')&&op.room.startsWith('dorm')){
    let desired=target&&![op.name,'Current'].includes(target)?target:actual&&actual.name!==op.name?actual.name:'Free'
    if((!target||[op.name,'Current'].includes(target))&&actual&&Object.entries(plan).some(([room,row])=>row.some((name,index)=>name===actual.name&&(room!==op.room||index!==op.index))))desired='Free'
-   if(!['','Current','Free'].includes(desired))options[op.name]=reserved.has(desired)?[]:[desired]
+   if(!['','Current','Free'].includes(desired)){const resident=data.operators[desired];options[op.name]=reserved.has(desired)||data.excludedCandidates.has(desired)&&!!resident?.currentRoom&&!resident.isResting()?[]:[desired]}
    else changes[op.name]=desired
    continue
   }
   options[op.name]=[...new Set([actual?.name,target,...candidates])].filter((name):name is string=>!!name&&candidates.includes(name)).filter(name=>{
-   const cover=data.operators[name];if(reserved.has(name)||!cover)return false
+   const cover=data.operators[name];if(reserved.has(name)||data.excludedCandidates.has(name)||!cover)return false
    const released=plan[cover.currentRoom]?.[cover.currentIndex]
    return actual?.name===name||!cover.currentRoom||cover.isResting()&&!data.dormReplacementForSlot(name,cover.currentRoom,cover.currentIndex)||!!released&&!['Current',name].includes(released)||(departing.has(name)||Object.values(plan).some(row=>row.includes(name)))&&groups.some(group=>mowerSameGroupPrimaryReplacement(data,op,name,group))
   })

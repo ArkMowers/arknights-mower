@@ -8,7 +8,8 @@ import {mowerGetRestingPlan,mowerTryReorder} from './mowerOrdinaryPlanning'
 import {normalizeMowerRecoveryBeds} from './mowerRecoveryBeds'
 import {generateMowerDormTasks} from './mowerDormTasks'
 import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
-import {MowerTaskQueue,toMowerMicros,type MowerTaskPlan} from './mowerTaskQueue'
+import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,type MowerTaskPlan} from './mowerTaskQueue'
+import {prepareMowerShiftCycle,type MowerShiftModel} from './mowerShiftCycle'
 import {createRosterRuntime,settleRoster,advanceRoster,nextRosterActionHours,type RuntimeConfig} from './rosterRuntime'
 import {getMowerSourceRuntime} from './mowerSourceRuntime'
 import {prepareMowerDormSelection} from './mowerSelection'
@@ -24,6 +25,48 @@ function fixture(dorm=false){
  return new MowerSchedulingData({alpha:true,plan,operators,dorms:plan.dormitory_1.map((_,index)=>new MowerDormState(['dormitory_1',index],'',undefined,dorm&&index===0)),nowMicros:0})
 }
 function apply(data:MowerSchedulingData,plan:MowerTaskPlan){expect(normalizeMowerSharedArrangement(data,plan)).toBe(true);return projectMowerArrangements(data,[plan])}
+describe('ideal run-order exclusions and shared recovery occupancy',()=>{
+ it('completes an ordinary departure beside a full ideal runner through the full preview',()=>{
+  const data=fixture(true),queue=new MowerTaskQueue()
+  data.operators.B!.mood=24;data.excludedCandidates.add('C')
+  const task=new MowerTask({type:T.SHIFT_OFF,plan:{room_1_1:['X'],dormitory_1:['C','A','Current','Current','Current']}})
+  task.ordinaryCoordination=true;task.coordinationRequestNames=['A'];queue.tasks=[task]
+  const model:MowerShiftModel={count:0,evaluate:d=>d.planConditions,swap:d=>d,transition:()=>({}),activate:()=>{}}
+  prepareMowerShiftCycle(data,task,queue,model)
+  const after=projectMowerArrangements(data,[task.plan])
+  expect(after.operators.A!.isResting()).toBe(true)
+  expect(after.operators.C!.isResting()).toBe(true)
+  expect(after.operators.C!.mood).toBe(24)
+  expect(after.operators.C!.currentRoom.startsWith('room_')).toBe(false)
+  expect(after.currentOperator('room_1_1',0)?.name).toBe('X')
+  expect(data.operators.A!.currentRoom).toBe('room_1_1')
+ })
+ it.each(['idle','resting'])('allows an excluded working candidate to occupy a shared Free recovery bed while %s',position=>{
+  const data=fixture(true)
+  data.excludedCandidates.add('C')
+  if(position==='resting'){data.operators.C!.currentRoom='dormitory_1';data.operators.C!.currentIndex=2}
+  const plan:MowerTaskPlan={room_1_1:['X'],dormitory_1:['C','Current','Current','Current','Current']}
+  expect(normalizeMowerSharedArrangement(data,plan,{a:true})).toBe(true)
+  expect(plan.dormitory_1?.[0]).toBe('C')
+  expect(data.groupIsResting('a')).toBe(false)
+ })
+ it.each(['product','other-slot','working'])('preserves a real recovery-occupant reservation: %s',kind=>{
+  const data=fixture(true),plan:MowerTaskPlan={room_1_1:['X'],dormitory_1:['C','Current','Current','Current','Current']}
+  data.excludedCandidates.add('C')
+  if(kind==='product')data.reservedProductReplacements.add('C')
+  else if(kind==='other-slot')plan.room_1_2=['C']
+  else {data.operators.C!.currentRoom='room_1_2';data.operators.C!.currentIndex=0}
+  const before=structuredClone(plan)
+  expect(normalizeMowerSharedArrangement(data,plan,{a:true})).toBe(false)
+  expect(plan).toEqual(before)
+ })
+ it('keeps excluded operators unavailable as concrete working replacements',()=>{
+  const data=fixture(),plan:MowerTaskPlan={room_1_1:['X'],room_1_3:['C']}
+  data.operators.F!.groupBindings=[{group:'a',replacement:['C']},{group:'b',replacement:['C']}]
+  data.excludedCandidates.add('C')
+  expect(normalizeMowerSharedArrangement(data,plan,{a:true})).toBe(false)
+ })
+})
 describe('October 13 shared group bindings and fixed-primary swaps',()=>{
  it.each([false,true])('keeps a shared working cover while another compatible group rests, observed=%s',observed=>{
   let data=fixture();data.operators.A!.replacement=['F'];data.operators.F!.groupBindings[1]!.replacement=['C','D'];data.operators.F!.workaholic=true

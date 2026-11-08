@@ -70,3 +70,11 @@ it('keeps pending shared replacement warnings visible without classifying them a
   expect(groups.failures).toEqual([])
   expect(groups.records).toEqual([warning])
 })
+
+it('uses the neutral filler display name in captured task diagnostics', () => {
+  const message = incomeDiagnosticMessage({
+    code: 'task',
+    message: 'mower-dorm-filler:dormitory_1:3'
+  })
+  expect(message).toBe('填充干员')
+})

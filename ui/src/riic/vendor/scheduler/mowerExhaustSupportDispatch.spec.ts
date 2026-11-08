@@ -178,7 +178,7 @@ describe('urgent support backup dependencies',()=>{
   const {state,source,data,support,retry}=generatedSupport(true),time=retry.timeMicros
   support.ordinaryCoordination=ordinary;retry.ordinaryCoordination=ordinary
   if(ordinary){data.operators.A!.exhaustRequire=false;state.config.mowerSourceRules!.exhaustRequire=[]}
-  if(!ordinary)data.groupRecoveryFullMembers.resting=['B','D']
+  data.groupRecoveryFullMembers.resting=['B','D']
   data.planConditions=[false]
   const activations:boolean[][]=[]
   state.mowerShiftModel={...model,count:1,evaluate:d=>[d.operators.B!.currentRoom==='room_1_2'],swap:(d,conditions)=>{
@@ -409,4 +409,22 @@ describe('backup group requests in real dispatch',()=>{
   expect(Object.values(state.bedOccupants)).toContain('A')
   expect(source.data.groupIsResting('requested')).toBe(true)
  })
+})
+
+
+it('dispatches safe ordinary rescue through a latched automatic wait before either recalled worker is full',()=>{
+ const {state,source,data,support,retry}=generatedSupport(true)
+ support.ordinaryCoordination=retry.ordinaryCoordination=true
+ data.operators.A!.exhaustRequire=false;state.config.mowerSourceRules!.exhaustRequire=[]
+ data.groupShiftState.resting=true
+ data.groupRecoveryFullMembers.resting=['B','D']
+ for(let n=0;n<40&&!Object.values(state.bedOccupants).includes('A')&&state.time<.1;n++){
+  settleMowerSource(state,rates)
+  if(!Object.values(state.bedOccupants).includes('A'))advanceRoster(state,Math.min(.1-state.time,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000)),rates)
+ }
+ expect(Object.values(state.bedOccupants)).toContain('A')
+ expect(state.occupants.room_1_2_0).toBe('B')
+ expect(state.morale.B).toBeLessThan(24)
+ expect(state.morale.D).toBeLessThan(24)
+ expect(source.trace.some(task=>task.type==='SELF_CORRECTION'&&task.plan.room_1_2?.[0]==='B')).toBe(true)
 })

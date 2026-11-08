@@ -3,6 +3,7 @@ import {MowerResourceWaitError} from './mowerNativeErrors'
 import {mowerStandbyCandidates} from './mowerDormAssignment'
 import {mowerRestingBindingGroups,mowerSharedReplacements} from './mowerSharedGroups'
 import {mowerAssignDormGroup} from './mowerDormAssignment'
+import {mowerDormTaskReservations} from './mowerAlphaCandidates'
 import {hasRestingMood,restingMood,type MowerOperatorState} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerSchedulingData} from './mowerSchedulingData'
@@ -21,9 +22,11 @@ export function mowerCoveredRecoveryPending(data:MowerSchedulingData,op:MowerOpe
 }
 
 /** Complete only concrete primary-to-cover departures; transfers and untouched group members retain their own intent. */
-export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,plan:MowerTaskPlan,explicitSlots:ReadonlySet<string>=new Set(),reservedSlots:ReadonlySet<string>=new Set(),_pending:readonly MowerTask[]=[],repairIdle=false,blockOnMissingBed=false,displaced:readonly string[]=[]):MowerTaskPlan|undefined {
+export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,plan:MowerTaskPlan,explicitSlots:ReadonlySet<string>=new Set(),reservedSlots:ReadonlySet<string>=new Set(),pending:readonly MowerTask[]=[],repairIdle=false,blockOnMissingBed=false,displaced:readonly string[]=[]):MowerTaskPlan|undefined {
  if(!data.alpha)return structuredClone(plan)
  const projected=projectMowerArrangements(data,[plan]),required=new Set<string>()
+ const retained=mowerDormTaskReservations(data,pending.filter(task=>task.retainsExecution))
+ reservedSlots=new Set([...reservedSlots,...retained.slots])
  for(const slot of explicitSlots){
   const [room,indexText]=slot.split('\0'),index=Number(indexText)
   if(!room||room.startsWith('dorm'))continue
@@ -35,7 +38,7 @@ export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,pl
  for(const op of Object.values(data.operators)){
   if(!op.isResting()||!data.dynamicDormPosition(op.currentRoom,op.currentIndex,op.name)||projected.operators[op.name]?.currentRoom)continue
   const target=plan[op.currentRoom]?.[op.currentIndex]
-  if(target&&target!=='Current'&&target!==op.name&&data.freeRoomExcluded(op.name))required.add(op.name)
+  if(target&&target!=='Current'&&target!==op.name&&(data.freeRoomExcluded(op.name)||retained.names.has(op.name)&&op.isHigh()&&!data.restMoodComplete(op.name)&&(!hasRestingMood(op,data.nowMicros)||restingMood(op,data.nowMicros)<op.upperLimit)))required.add(op.name)
  }
  for(const name of displaced)if(!projected.operators[name]?.currentRoom)required.add(name)
  if(!required.size)return structuredClone(plan)

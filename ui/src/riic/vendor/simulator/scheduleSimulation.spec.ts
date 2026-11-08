@@ -1,3 +1,4 @@
+import {isMowerDormFiller} from '../scheduler/mowerDormFiller'
 import {describe,it,expect} from 'vitest'
 import {createDefaultWorkspace} from '../workbench/defaults'
 import {compileRosterSchedule} from '../scheduler/compileRosterSchedule'
@@ -72,7 +73,7 @@ describe('time-dependent Mower schedule simulation',()=>{
   const r=simulateSchedule(s,{sampleHours:27,consumptionOverrides:{[id('砾')]:1,[id('斑点')]:1},recoveryOverrides:{[id('砾')]:2,[id('斑点')]:2}})
   expect(r.success).toBe(true)
   const a=r.operators.find(x=>x.operatorId===id('砾'))!
-  // Full-catalog Free selection can change recovery and shift timing.
+  // A partial dorm row still supports repeated recovery with neutral padding.
   expect(a.mainWorkHours).toBeGreaterThan(0)
   expect(a.restHours).toBeGreaterThan(0)
   expect(a.workFraction).toBeCloseTo(a.workHours/27,6)
@@ -228,19 +229,20 @@ function idleCatalogScenario(bedCount=2) {
  return compileRosterSchedule(ws,{operatorMorale:{[id('砾')]:1}})
 }
 
-it('uses catalog idle cards when no operator library is imported',()=>{
+it('uses neutral padding when no operator library is imported',()=>{
  const result=simulateSchedule(idleCatalogScenario(),{sampleHours:.05,maxEvents:500,recordSegments:true})
  expect(result.success,JSON.stringify(result.diagnostics.slice(-8))).toBe(true)
- expect(result.segments.some(segment=>Object.values(segment.bedOccupants).some(name=>![id('砾'),id('斑点')].includes(name)))).toBe(true)
+ expect(result.segments.some(segment=>Object.values(segment.bedOccupants).some(isMowerDormFiller))).toBe(true)
+ expect(result.segments.every(segment=>Object.values(segment.bedOccupants).every(name=>isMowerDormFiller(name)||[id('砾'),id('斑点')].includes(name)))).toBe(true)
 })
 
-it('uses an imported idle-only library without rejecting on-duty roster operators absent from it',()=>{
+it('keeps neutral padding with an imported idle-only library without rejecting absent on-duty roster operators',()=>{
  const idleNames=['芬','杜林','安赛尔','史都华德','芙蓉','夜刀']
  const result=simulateSchedule(idleCatalogScenario(),{sampleHours:.05,maxEvents:500,recordSegments:true,operatorInventory:idleNames.map(operator=>({operator,elitePhase:0,level:1}))})
  expect(result.success,JSON.stringify(result.diagnostics.slice(-8))).toBe(true)
  expect(result.diagnostics.some(entry=>entry.code==='INVENTORY_OPERATOR_NOT_OWNED'||entry.code==='BACKUP_INVENTORY_MISSING')).toBe(false)
- expect(result.segments.some(segment=>Object.values(segment.bedOccupants).includes(id('芬'))),JSON.stringify(result.segments.slice(0,3).map(x=>x.bedOccupants))).toBe(true)
- expect(result.segments.every(segment=>Object.values(segment.bedOccupants).every(name=>[id('砾'),id('斑点'),...idleNames.map(id)].includes(name)))).toBe(true)
+ expect(result.segments.some(segment=>Object.values(segment.bedOccupants).some(isMowerDormFiller))).toBe(true)
+ expect(result.segments.every(segment=>Object.values(segment.bedOccupants).every(name=>isMowerDormFiller(name)||[id('砾'),id('斑点')].includes(name)))).toBe(true)
 })
 
 it.each([['刺玫',18],['撷英调香师',20]] as const)('integrates %s separate fatigue extra only until morale %s',(provider,threshold)=>{

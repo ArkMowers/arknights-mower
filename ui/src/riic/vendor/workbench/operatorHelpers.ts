@@ -5,6 +5,7 @@
  */
 
 import { match, pinyin } from 'pinyin-pro'
+import {isMowerDormFiller,MOWER_DORM_FILLER_NAME} from '../scheduler/mowerDormFiller'
 import { OPERATOR_MAP, OPERATORS, type OperatorRecord } from '../domain/operators'
 import { isTradeRunOrderOperator } from '../domain/shiftRunPolicy'
 import type { MowerFacilityType, MowerMainConf, MowerMainPlan, MowerRoomId } from '../domain/roster'
@@ -21,6 +22,7 @@ const OPERATOR_BY_APPELLATION = new Map(OPERATORS.map((op) => [op.appellation.to
 
 export function getOperatorName(identifier: string | null | undefined): string {
   if (!identifier) return ''
+  if (isMowerDormFiller(identifier)) return MOWER_DORM_FILLER_NAME
   if (identifier === 'Free' || identifier === 'free') return 'Free'
   if (identifier === 'Current' || identifier === 'current') return 'Current'
   const op =
@@ -133,7 +135,7 @@ export function searchOperators(
 
 export function getOperatorAvatarUrl(identifier: string): string {
   if (!identifier) return ''
-  if (identifier === 'Free') return resolveAssetUrl('avatar/Free.webp')
+  if (identifier === 'Free' || isMowerDormFiller(identifier)) return resolveAssetUrl('avatar/Free.webp')
   if (identifier === 'Current') return resolveAssetUrl('avatar/Current.webp')
   const op = OPERATOR_MAP.get(identifier)
   const name = op ? op.name : identifier

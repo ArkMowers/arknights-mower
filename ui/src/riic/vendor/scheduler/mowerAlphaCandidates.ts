@@ -1,10 +1,11 @@
+import {isMowerDormFiller,mowerDormFillerId} from './mowerDormFiller'
 import {mowerDormCapacityAllows} from './mowerDormCapacity'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
 export {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {mowerDormIsolationCost,planMowerDormIsolation} from './mowerDormIsolation'
 // Shared dorm candidates and observed-card estimates, Mower alpha b2d9ac8 (MIT).
 import {orderMowerAlphaDormIndices} from './mowerDormOrder'
-import {hasRestingMood} from './mowerOperatorState'
+import {hasRestingMood,type MowerOperatorState} from './mowerOperatorState'
 import {alphaRestingTier,alphaFullDynamicCandidate,alphaFullDormFiller,alphaBedTakeoverAllowed,alphaRestingKey,compareAlphaKeys,alphaPosition,alphaSlotTakable,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue} from './mowerTaskQueue'
@@ -15,9 +16,10 @@ export function mowerAlphaDormCandidates(data:MowerSchedulingData,excluded=new S
  const referenced=new Set(Object.values(data.operators).flatMap(op=>op.nativeName==='菲亚梅塔'?[]:op.replacement)),tiers=new Map<string,number>()
  const tier=(name:string):number=>{let value=tiers.get(name);if(value===undefined){value=alphaRestingTier(data,name,referenced);tiers.set(name,value)}return value}
  const support=data.currentOperator('train',0)?.name
- const eligible=Object.values(data.operators).filter(op=>!excluded.has(op.name)&&!data.busyRestingNames.has(op.name)&&op.name!==support&&(!op.isHigh()||data.isStandby(op.name))&&(!op.currentRoom||currentResidents.has(op.name)&&op.isResting())&&!data.restMoodComplete(op.name)&&tier(op.name)!==7)
+ const eligible=Object.values(data.operators).filter(op=>(!data.useDormFillers||isMowerDormFiller(op.name)||data.freeRoomExcluded(op.name)||!data.excludedCandidates.has(op.name)&&(mowerDormCandidateMood(data,op.name)??op.mood)<op.upperLimit)&&!excluded.has(op.name)&&!data.busyRestingNames.has(op.name)&&op.name!==support&&(!op.isHigh()||data.isStandby(op.name))&&(!op.currentRoom||currentResidents.has(op.name)&&op.isResting())&&!data.restMoodComplete(op.name)&&tier(op.name)!==7)
  const recovering:string[]=[],full:string[]=[],unknown:string[]=[]
  for(const op of eligible){
+  if(data.useDormFillers&&isMowerDormFiller(op.name)){full.push(op.name);continue}
   const mood=mowerDormCandidateMood(data,op.name)
   if(!hasRestingMood(op,data.nowMicros)){if(mood!==undefined&&mood<op.upperLimit||!op.isHigh()&&!op.restMoodLimit)unknown.push(op.name)}
   else if(!data.idleRestChecked(op.name)&&mood!==undefined&&mood<op.upperLimit)recovering.push(op.name)
@@ -62,7 +64,7 @@ export function mowerDormTaskReservations(data:MowerSchedulingData,pending:Mower
  return {names,slots}
 }
 function alphaFill(data:MowerSchedulingData,pending:MowerTask[],emptyOnly:boolean){
- const reserved=mowerDormTaskReservations(data,pending),vacancies=new Set(data.dorms.filter(b=>!b.name&&!reserved.slots.has(alphaPosition(...b.position))&&data.effectiveFreeSlot(b)&&!data.currentOperator(...b.position)).map(b=>alphaPosition(...b.position)))
+ const reserved=mowerDormTaskReservations(data,pending),vacancies=new Set(data.dorms.filter(b=>!b.name&&!reserved.slots.has(alphaPosition(...b.position))&&data.effectiveFreeSlot(b)&&(!data.currentOperator(...b.position)||data.useDormFillers&&isMowerDormFiller(data.currentOperator(...b.position)!.name))).map(b=>alphaPosition(...b.position)))
  const plan:MowerTaskPlan={},residents:string[]=[]
  const priorityOnly=emptyOnly&&!vacancies.size,c=mowerAlphaDormCandidates(data,reserved.names)
  const recovering=[...new Set([...c.recovering,...c.estimatedRecovering.filter(name=>data.operators[name])])]
@@ -75,7 +77,7 @@ function alphaFill(data:MowerSchedulingData,pending:MowerTask[],emptyOnly:boolea
  for(const bed of beds){
   if(plan[bed.position[0]]?.[bed.position[1]]!==undefined&&plan[bed.position[0]]![bed.position[1]]!=='Current')continue
   const position=alphaPosition(...bed.position);if(reserved.slots.has(position)||!data.effectiveFreeSlot(bed))continue
-  let occupant=data.operators[bed.name],incoming:string|undefined
+  let occupant:MowerOperatorState|undefined=data.operators[bed.name],incoming:string|undefined
   if(vacancies.size){if(!vacancies.has(position))continue;occupant=undefined}
   else {
    if(!occupant||occupant.currentRoom!==bed.position[0]||occupant.currentIndex!==bed.position[1]||data.freeRoomExcluded(occupant.name))continue
@@ -86,6 +88,7 @@ function alphaFill(data:MowerSchedulingData,pending:MowerTask[],emptyOnly:boolea
   else {incoming=recovering.find(name=>mowerDormCapacityAllows(data,name,bed.position,plan));if(incoming)recovering.splice(recovering.indexOf(incoming),1)}
   if(!incoming&&unknown){incoming='Free';if(occupant)residents.push(occupant.name)}
   if(!incoming){incoming=full.shift();if(!incoming)break;if(data.operators[incoming])data.operators[incoming]!.dormMoodFallback=bed.position[0];else incoming='Free'}
+  if(data.useDormFillers&&isMowerDormFiller(incoming)){incoming=mowerDormFillerId(...bed.position);if(data.currentOperator(...bed.position)?.name===incoming)continue}
   let selected=bed
   if(vacancies.size&&data.dormIsolation.length&&incoming!=='Free'){
    const available=data.dorms.filter(candidate=>vacancies.has(alphaPosition(...candidate.position))&&(plan[candidate.position[0]]?.[candidate.position[1]]??'Current')==='Current')

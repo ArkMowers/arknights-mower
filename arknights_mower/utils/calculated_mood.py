@@ -555,11 +555,10 @@ class CalculatedMood:
             return None
         recovering = initial_rate <= 0
         if (
-            abs(value - target) <= 1e-7
-            or recovering
+            recovering
             and value >= target
             or not recovering
-            and value <= target
+            and (value <= target or abs(value - target) <= 1e-7)
         ):
             return now
         if not 0 <= target <= 24:
@@ -578,12 +577,30 @@ class CalculatedMood:
             hours = min(target_hours, boundary_hours)
             if not math.isfinite(hours):
                 return None
-            future = projected.at + timedelta(hours=max(hours, 1e-8))
+            if recovering and target_hours <= boundary_hours:
+                # 恢复目标须落在可达的整数微秒，不能由最近舍入提前回满。
+                step = timedelta(
+                    microseconds=math.ceil(max(0, target_hours) * 3_600_000_000)
+                )
+            else:
+                step = timedelta(hours=max(hours, 1e-8))
+            future = projected.at + step
             if future > end:
                 return None
             # 本段速率已知；到达查询目标后无需再演算目标之后的技能。
             # 后续查询若需要越过此边界，仍从共享轨迹继续求值。
             if target_hours <= boundary_hours:
+                if recovering:
+                    actual = self.value(name, future)
+                    if actual is None:
+                        return None
+                    if actual < target:
+                        # 共享边界轨迹可能累计微秒舍入；从同一实际增量继续求解。
+                        corrected = copy.deepcopy(self)
+                        corrected.advance(future)
+                        node = self._deadline_node(corrected)
+                        shared = False
+                        continue
                 return future
             if shared and hours == boundary_hours:
                 if index + 1 == len(nodes):
@@ -603,12 +620,7 @@ class CalculatedMood:
                 node = self._next_deadline_node(node, future)
                 shared = False
             mood = node[0].moods[name]
-            if (
-                recovering
-                and mood >= target - 1e-7
-                or not recovering
-                and mood <= target + 1e-7
-            ):
+            if not recovering and mood <= target + 1e-7:
                 return future
         return None
 

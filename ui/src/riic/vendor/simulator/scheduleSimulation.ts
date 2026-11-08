@@ -1,3 +1,4 @@
+import {isMowerDormFiller,MOWER_DORM_FILLER_NAME} from '../scheduler/mowerDormFiller'
 import { eligibleSingleRecoveryTargets, hasSingleRecoverySkill } from '../engine/singleRecoveryEligibility'
 import {createSimulationActivityMonitor, type SimulationActivity} from './simulationActivity'
 import {mowerCoordinationRates} from './mowerCoordinationRates'
@@ -63,7 +64,7 @@ export interface ScheduleSegment {start:number;end:number;occupants:Record<strin
 export interface ScheduleSimulationReport {
  schemaVersion:1; engine:'mower-morale-v1'; success:boolean; elapsedHours:number; observedHours:number
  inputs:{schedule:CompiledSchedule;options:ScheduleSimulationOptions}
- assumptions:{moodControlStrategyVersion:string;predictiveMoodControl:boolean;schedulingModel?:'mower-default'|'mower-alpha';sampleHours:number;warmupHours:number;maxStepHours:number;warmupModel:'continuous'|'hourly';restingThreshold:number;operationDurationHours:0;dormAtmosphere:string;singleRecoveryTarget:string}
+ assumptions:{moodControlStrategyVersion:string;predictiveMoodControl:boolean;schedulingModel?:'mower-default'|'mower-alpha';sampleHours:number;warmupHours:number;maxStepHours:number;warmupModel:'continuous'|'hourly';restingThreshold:number;operationDurationHours:0;dormAtmosphere:string;singleRecoveryTarget:string;dormFreeFillModel?:'neutral-filler-v1'}
  production?:ProductionReport
  operators:SimulatedOperator[];rooms:SimulatedRoom[];events:RuntimeEvent[];segments:ScheduleSegment[]
  diagnostics:{code:string;message:string}[]
@@ -144,7 +145,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  const warmupModel=options.warmupModel??'continuous'
  if(!['continuous','hourly'].includes(warmupModel))throw new Error('Invalid warmup model')
  const report:ScheduleSimulationReport={schemaVersion:1,engine:'mower-morale-v1',success:false,elapsedHours:0,observedHours:0,
-  assumptions:{moodControlStrategyVersion:'ordinary-threshold-v1',predictiveMoodControl:schedule.assumptions.predictiveMoodControl??false,schedulingModel,sampleHours,warmupHours,maxStepHours,warmupModel,restingThreshold:schedule.assumptions.restingThreshold??.65,operationDurationHours:0,dormAtmosphere:'各宿舍默认等级上限；可逐室覆盖',singleRecoveryTarget:'先检查单回资格；禁止自身和菲亚梅塔，单回技能持有者仅在唯一待恢复候选时合格；有效普通目标保持至失效，重选按最低心情和槽位顺序'},
+  assumptions:{dormFreeFillModel:'neutral-filler-v1',moodControlStrategyVersion:'ordinary-threshold-v1',predictiveMoodControl:schedule.assumptions.predictiveMoodControl??false,schedulingModel,sampleHours,warmupHours,maxStepHours,warmupModel,restingThreshold:schedule.assumptions.restingThreshold??.65,operationDurationHours:0,dormAtmosphere:'各宿舍默认等级上限；可逐室覆盖',singleRecoveryTarget:'先检查单回资格；禁止自身和菲亚梅塔，单回技能持有者仅在唯一待恢复候选时合格；有效普通目标保持至失效，重选按最低心情和槽位顺序'},
   inputs:{schedule:structuredClone(schedule),options:structuredClone({...options,observeInterval:undefined})},operators:[],rooms:[],events:[],segments:[],diagnostics:[]}
  const diagnostic=(code:string,message:string)=>{if(!report.diagnostics.some(d=>d.code===code&&d.message===message))report.diagnostics.push({code,message})}
  if(options.production?.inventoryMode==='finite')diagnostic('FINITE_INVENTORY_MODEL','使用预设初始库存；从预热开始连续扣料、收取和交付，采样时不重置。日均外源材料按时间补入且不计收益；是否允许材料负余额由本次亏空设置决定。回收站随机材料未计入物品库存。')
@@ -163,12 +164,14 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  if(schedule.assumptions.operationDurationHours!==0){diagnostic('OPERATION_DURATION_UNSUPPORTED','当前模拟仅支持忽略换人操作耗时');return report}
  if(schedule.runOrderPolicies.length&&!options.production)diagnostic('ORDER_LIFECYCLE_NOT_SIMULATED','保留跑单配置；本报告统计日常班组效率，尚未模拟每单插入干员、收单与资源结算')
  diagnostic('TIME_INTEGRATION_MODEL',`使用${warmupModel==='hourly'?'整小时':'连续'}暖机，最大步长 ${maxStepHours} h；复制取整等非线性效率采用区间中点数值积分，可缩小步长检查敏感性`)
+ diagnostic('DORM_FREE_FILL_MODEL','真实待恢复干员优先使用 Free 床位，剩余空位使用无基建技能的填充干员；填充干员只占床位和人数，不参与工作替班、恢复计时或回班任务，理想跑单干员不作普通填床。')
  diagnostic('SINGLE_RECOVERY_TARGET_ASSUMPTION','单回始终排除自身和菲亚梅塔；单回技能持有者仅在唯一待恢复候选时合格，不主动锁单回；后续入住可使其资格失效，确认或显式指定不能绕过资格。普通有效目标保持至回满、离宿或宿管变化，重选按最低心情，同心情按槽位顺序')
  let state:RuntimeState
  let backups:ReturnType<typeof createBackupPlanController> | undefined
  try{
   const runtimeConfig=compiledScheduleToRuntimeConfig(schedule)
   // Supported run orders are ideal production events and reserve no roster time.
+  runtimeConfig.mowerDormFillers=true
   runtimeConfig.mowerTaskScheduling={...runtimeConfig.mowerTaskScheduling,adjustForRunOrders:false}
   runtimeConfig.mowerAlpha=schedulingModel==='mower-alpha'
   runtimeConfig.mowerJayeElite0=!!options.jayeElite0||inventory?.operators.some(op=>op.charId==='char_272_strong'&&op.elitePhase===0)===true
@@ -208,7 +211,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  }
  refreshSessions()
  if([...entered.keys()].some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0)||Object.keys(schedule.operators).some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0))diagnostic('TRADE_QUALITY_WARMUP_MODEL','裁缝类订单概率采用线性近似：α／β分别在原工位连续工作 3／5 小时达到峰值；移动工位或离岗后重新计时。同类效果不叠加，取当前四赤金概率最高者；中间曲线和叠加机制未经实测核验。')
- const stats=new Map(Object.keys(state.morale).map(id=>[id,{operatorId:id,operatorName:OPERATOR_MAP.get(id)?.name??id,mainWorkHours:0,substituteWorkHours:0,workHours:0,exhaustedHours:0,restHours:0,idleHours:0,permanentPrimaryOccupancyHours:0,workFraction:0,workRestRatio:null,initialMorale:initial[id]!,finalMorale:initial[id]!} as SimulatedOperator]))
+ const stats=new Map(Object.keys(state.morale).map(id=>[id,{operatorId:id,operatorName:isMowerDormFiller(id)?MOWER_DORM_FILLER_NAME:OPERATOR_MAP.get(id)?.name??id,mainWorkHours:0,substituteWorkHours:0,workHours:0,exhaustedHours:0,restHours:0,idleHours:0,permanentPrimaryOccupancyHours:0,workFraction:0,workRestRatio:null,initialMorale:initial[id]!,finalMorale:initial[id]!} as SimulatedOperator]))
  const roomStats=new Map(projectScheduleState(schedule,state).rooms.map(r=>[r.id,{roomId:r.id,roomType:r.type,averageEfficiencyPercent:0,efficiencyPercentHours:0,occupiedHours:0,teams:[]} as SimulatedRoom]))
  if(schedule.rooms.some(r=>r.type==='recycle'))roomStats.set('recycle',{roomId:'recycle',roomType:'recycle',averageEfficiencyPercent:0,efficiencyPercentHours:0,occupiedHours:0,teams:[]})
   // Rate formulas depend on physical occupancy and discrete morale thresholds.
@@ -518,7 +521,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   if(observed){
    for(const id of Object.keys(state.morale))if(!stats.has(id)){
     const initialMorale=initial[id]??state.config.initialMorale?.[id]??schedule.assumptions.initialMorale
-    stats.set(id,{operatorId:id,operatorName:OPERATOR_MAP.get(id)?.name??id,mainWorkHours:0,substituteWorkHours:0,workHours:0,exhaustedHours:0,restHours:0,idleHours:report.observedHours,permanentPrimaryOccupancyHours:0,workFraction:0,workRestRatio:null,initialMorale,finalMorale:state.morale[id]!})
+    stats.set(id,{operatorId:id,operatorName:isMowerDormFiller(id)?MOWER_DORM_FILLER_NAME:OPERATOR_MAP.get(id)?.name??id,mainWorkHours:0,substituteWorkHours:0,workHours:0,exhaustedHours:0,restHours:0,idleHours:report.observedHours,permanentPrimaryOccupancyHours:0,workFraction:0,workRestRatio:null,initialMorale,finalMorale:state.morale[id]!})
    }
    const eff=efficiencies(frame(dt/2))
    updateStatsIndex()

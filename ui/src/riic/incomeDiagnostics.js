@@ -34,6 +34,7 @@ export function incomeDiagnosticMessage({ code, message = '' }) {
     }
   )
   return text
+    .replace(/mower-dorm-filler:dormitory_\d+:\d+/g, getOperatorName)
     .replace(/\bchar_\d+_[a-zA-Z0-9_]+\b/g, getOperatorName)
     .replace(
       /\b(?:room_\d+_\d+|dormitory_\d+|factory|train|recycle|contact|meeting|central)\b/g,

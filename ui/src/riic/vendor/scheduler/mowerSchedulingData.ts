@@ -1,3 +1,4 @@
+import {isMowerDormFiller} from './mowerDormFiller'
 import type {BackupGroupState} from './backupGroups'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import type {MowerBackupGroupTask} from './mowerBackupGroupTasks'
@@ -17,6 +18,7 @@ export interface MowerSchedulingDataOptions {
  calculatedMoodObservations?:Readonly<Record<string,number>>
  backupGroupTasks?:readonly (readonly MowerBackupGroupTask[])[]
  backupExplicitTasks?:readonly MowerTaskPlan[]
+ useDormFillers?:boolean
  adjustForRunOrders?:boolean
  dormIsolation?:string[][]
  alpha?:boolean;priorityReplacement?:string[];freeRoomExclusions?:string[];dormOrder?:string[];standbyNames?:string[];lowPriorityNames?:string[]
@@ -39,6 +41,7 @@ export class MowerSchedulingData {
  calculatedMoodObservations:Record<string,number>
  backupGroupTasks:readonly (readonly MowerBackupGroupTask[])[]
  backupExplicitTasks:readonly MowerTaskPlan[]
+ useDormFillers:boolean
  adjustForRunOrders:boolean|undefined
  /** Runtime uses October 3 alpha; frozen September fixtures retain their source contract. */
  dormIsolation:string[][]
@@ -64,6 +67,7 @@ export class MowerSchedulingData {
   this.backupExplicitTasks=o.backupExplicitTasks??[]
   this.backupGroupTasks=o.backupGroupTasks??[]
   this.dormIsolation=(o.dormIsolation??[]).map(group=>[...group])
+  this.useDormFillers=o.useDormFillers??false
   this.adjustForRunOrders=o.adjustForRunOrders
   this.alpha=o.alpha??false;this.priorityReplacement=o.priorityReplacement??[];this.freeRoomExclusions=o.freeRoomExclusions??[];this.dormOrder=o.dormOrder??[]
   this.standbyNames=o.standbyNames??[];this.lowPriorityNames=[...(o.lowPriorityNames??[])];Object.values(o.operators).forEach(op=>{op.alpha=this.alpha})
@@ -153,7 +157,7 @@ export class MowerSchedulingData {
   return !!resident.group&&resident.replacement.includes('Free')&&!groups.some(group=>inactiveGroups.has(group))&&!!bed.name&&bed.name!==resident.name
  }
  allDorms():MowerDormState[]{return [...this.dorms,...this.groupDorms]}
- recoveryDorm(bed:MowerDormState,name:string):boolean {if(this.groupDorms.includes(bed)){const owner=this.operators[this.plan[bed.position[0]]?.[bed.position[1]]??''],cover=this.operators[name];if(!owner||!cover||cover.room.startsWith('dorm'))return false;const groups=owner.multiGroup?mowerRestingBindingGroups(this,owner,this.pendingGroupTransitions):[owner.group];if(owner.multiGroup&&!groups.length)groups.push(owner.group);return !mowerSharedReplacements(owner,groups).includes('Free')&&groups.some(group=>mowerSameGroupPrimaryReplacement(this,owner,name,group))}if(!this.dorms.includes(bed))return false;const [room,index]=bed.position,native=this.plan[room]?.[index];return native==='Free'||bed.autoFree&&name!==native&&(!this.operators[native??'']?.multiGroup||this.effectiveFreeSlot(bed))}
+ recoveryDorm(bed:MowerDormState,name:string):boolean {if(this.useDormFillers&&isMowerDormFiller(name))return false;if(this.groupDorms.includes(bed)){const owner=this.operators[this.plan[bed.position[0]]?.[bed.position[1]]??''],cover=this.operators[name];if(!owner||!cover||cover.room.startsWith('dorm'))return false;const groups=owner.multiGroup?mowerRestingBindingGroups(this,owner,this.pendingGroupTransitions):[owner.group];if(owner.multiGroup&&!groups.length)groups.push(owner.group);return !mowerSharedReplacements(owner,groups).includes('Free')&&groups.some(group=>mowerSameGroupPrimaryReplacement(this,owner,name,group))}if(!this.dorms.includes(bed))return false;const [room,index]=bed.position,native=this.plan[room]?.[index];return native==='Free'||bed.autoFree&&name!==native&&(!this.operators[native??'']?.multiGroup||this.effectiveFreeSlot(bed))}
  restMoodComplete(name:string):boolean {const op=this.operators[name],mood=mowerDormCandidateMood(this,name);return !!op&&op.restMoodLimit&&mood!==undefined&&(mood>=op.upperLimit||this.alpha&&!op.currentRoom&&op.restMoodReleaseLimit===op.upperLimit)}
  freeRoomExcluded(name:string):boolean {const op=this.operators[name];return this.alpha&&this.freeRoomExclusions.includes(name)&&!!op&&!op.workaholic&&!this.freeBlacklist.includes(name)}
  replacementExhausted(name:string,owner?:MowerOperatorState):boolean{
@@ -176,6 +180,7 @@ export class MowerSchedulingData {
   return true
  }
  skipIdleDormRelease(name:string):boolean {
+  if(this.useDormFillers&&isMowerDormFiller(name))return true
   if(this.alpha){const op=this.operators[name];return this.freeRoomExcluded(name)||!!(this.freeRoom&&op?.isResting()&&op.dormMoodFallback===op.currentRoom&&!this.freeBlacklist.includes(name)&&!op.workaholic&&hasRestingMood(op,this.nowMicros)&&restingMood(op,this.nowMicros)>=op.upperLimit&&!op.restMoodLimit)}
   if(this.policy.experimentalDormLogic)throw new Error('Experimental dorm exclusions are not yet ported');return false
  }

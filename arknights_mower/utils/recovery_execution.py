@@ -14,6 +14,28 @@ from arknights_mower.utils.group_recovery import (
 from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 
 
+def arrangement_recovery_required_members(
+    data, name, *, now, require_mood_limit=True, bypass_automatic_wait=False
+):
+    """普通进房和续航预演共用本轮明确回满及组内等待要求。"""
+    from arknights_mower.utils.group_recovery import group_recovery_deadline
+
+    op = data.operators[name]
+    required = (
+        {name}
+        if op.rest_in_full or require_mood_limit and data.has_rest_mood_limit(name)
+        else set()
+    )
+    if op.group:
+        members, _ = group_recovery_deadline(data, op.group, now=now)
+        required.update(
+            member
+            for member in members
+            if not bypass_automatic_wait or data.operators[member].rest_in_full
+        )
+    return required
+
+
 def recovery_ready_for_arrangement(data, name, *, sampled_after, now):
     """有效心情已满或实读期限落在操作提前量内，不改写实际心情。"""
     op = data.operators.get(name)

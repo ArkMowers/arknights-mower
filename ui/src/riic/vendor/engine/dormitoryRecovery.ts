@@ -13,6 +13,7 @@ export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,mora
  if(!level)return {rates,details,unquantified:['宿舍等级缺失']}
  if(atmosphere===undefined)unquantified.push('宿舍氛围未指定；当前仅计等级基础，不代表满氛围')
  const base=1.5+level*.1+Math.min(level*1000,Math.max(0,atmosphere??0))*.0004
+ const occupantCount=(config.facilityOperatorIds.dormitories[roomIndex]??[]).length
  const operators=(config.facilityOperatorIds.dormitories[roomIndex]??[]).map(id=>operatorFor(config, id)).filter(o=>o!==undefined)
  // Match runtime endpoint tolerance without moving directional skill thresholds (18/20).
  const mood=(id:string)=>{const value=moraleValues.get(id)??config.operatorMorale[id]??24;return value<=24&&value>=24-1e-8?24:value}
@@ -46,7 +47,7 @@ export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,mora
   if(b==='dorm_rec_all&bd[000]')dynamicAll=.2+.01*Math.floor(global.silentResonance.effective/5)
   if(b==='dorm_rec_all&group[000]')dynamicAll=.06*Math.min(4,global.presentOperators.filter(o=>matchesRiicFaction(o,'sui')).length)
   if(dynamicAll!==undefined){for(const t of operators)record(t.charId,dynamicAll,'all',label);continue}
-  if(b.startsWith('dorm_rec_oneself2[')){record(provider.charId,.7+.05*Math.max(0,operators.length-1),'self',label);continue}
+  if(b.startsWith('dorm_rec_oneself2[')){record(provider.charId,.7+.05*Math.max(0,occupantCount-1),'self',label);continue}
   if(b==='dorm_rec_all&tired[000]'||b==='dorm_rec_all&tired[100]'){
    const threshold=b==='dorm_rec_all&tired[000]'?18:20
    for(const target of operators){

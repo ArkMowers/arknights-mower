@@ -64,18 +64,18 @@ describe('replacement recall forecast covers the connected recovery cycle',()=>{
   const {original,admit}=fixture(4);original.nowMicros=toMowerMicros(10)
   expect(allowed(original,admit(),fixed)).toBe(false)
  })
- it('rejects reaching the work floor at the same instant recovery completes',()=>{
-  const {original,admit}=fixture(6)
+ it('rejects reaching the work floor at the same instant the ordinary return is due',()=>{
+  const {original,admit}=fixture(6-8/60)
   expect(allowed(original,admit(),fixed)).toBe(false)
  })
- it('includes a third resting group sharing replacements and beds',()=>{
+ it('does not require another resting group to finish before the requester can return',()=>{
   const {original}=fixture(10)
   original.plan.room_1_3=['C']
   original.operators.C=new MowerOperatorState({name:'C',room:'room_1_3',index:0,currentRoom:'dormitory_1',currentIndex:2,operatorType:'high',mood:0,timeStampMicros:0,replacement:['X','Y']})
   original.operators.Y=new MowerOperatorState({name:'Y',currentRoom:'room_1_3',currentIndex:0,mood:24,timeStampMicros:0,depletionRate:1})
   original.dorms[2]=new MowerDormState(['dormitory_1',2],'C',toMowerMicros(12))
   const admitted=projectMowerArrangements(original,[{room_1_1:['A'],room_1_2:['X'],dormitory_1:['Free','B','C']}])
-  expect(allowed(original,admitted,data=>{const rates=fixed(data);return {...rates,recovery:{...rates.recovery,C:2}}})).toBe(false)
+  expect(allowed(original,admitted,data=>{const rates=fixed(data);return {...rates,recovery:{...rates.recovery,C:2}}})).toBe(true)
   expect(allowed(original,admitted,fixed)).toBe(true)
  })
  it('recomputes rates when a global operator reaches zero mood',()=>{
@@ -95,22 +95,21 @@ describe('replacement recall forecast covers the connected recovery cycle',()=>{
   expect(visited).toContain(24)
   expect(allowed(original,admitted,fixed)).toBe(true)
  })
- it('does not recall a group protected by explicit full recovery or a triggered group wait',()=>{
+ it('preserves explicit full recovery while an automatic group wait yields to sustainable rescue',()=>{
   const {original,admit}=fixture()
   original.operators.A!.restInFull=true
   expect(allowed(original,admit(),fixed)).toBe(false)
   original.operators.A!.restInFull=false;original.operators.A!.group='g';original.groupRecoveryFullMembers.g=['A']
-  expect(allowed(original,admit(),fixed)).toBe(false)
+  expect(allowed(original,admit(),fixed)).toBe(true)
  })
 })
 
 
 describe('recall uses the recovering room operation allowance',()=>{
- it.each(['personal','group'] as const)('passes room timing to both recall guards for %s recovery',mode=>{
+ it('passes room timing to both explicit full-recovery recall guards',()=>{
   const {original,admit}=fixture(23.9)
   original.dorms[0]!.timeMicros=toMowerMicros(120/3600)
-  if(mode==='personal')original.operators.A!.restInFull=true
-  else {original.operators.A!.group='g';original.groupRecoveryFullMembers.g=['A']}
+  original.operators.A!.restInFull=true
   const options={coordinationRates:fixed,priorityScheduling:{dormDurations:{dormitory_1:[100]}}}
   const before=JSON.stringify(original)
   expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],{coordinationRates:fixed})).toBe(false)
@@ -293,4 +292,120 @@ it('does not borrow a working follower normal group mood to authorize another gr
  const completed=projectMowerArrangements(data,[{room_1_2:['F'],room_1_3:['Y'],dormitory_1:['A','B','Free']}])
  expect(completed.operators.C!.isResting()).toBe(false)
  expect(mowerCoordinationRequestFulfilled(completed,['B'])).toBe(true)
+})
+
+
+it.each([0,.5].flatMap(waitCap=>[4,20].map(target=>({waitCap,target}))))('ordinary rescue bypasses only automatic group wait with safe full-recovery endurance (cap=$waitCap, target=$target)',({waitCap,target})=>{
+ const {original}=fixture(target)
+ original.policy.rescueThreshold=.5;original.operators.B!.mood=7
+ original.operators.A!.group='recovering'
+ original.groupShiftState.recovering=true
+ original.groupRecoveryFullMembers.recovering=['A']
+ original.groupMoodGapMaxExtraWaitHours=waitCap
+ const before=JSON.stringify(original)
+ const plan=planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})
+ if(target===20)expect(plan).toEqual({room_1_1:['A']})
+ else expect(plan).toBeUndefined()
+ expect(JSON.stringify(original)).toBe(before)
+ if(target===20){
+  original.operators.A!.restInFull=true
+  expect(planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})).toBeUndefined()
+ }
+})
+
+
+it('leaves the ordinary automatic group wait policy in place after an isolated rescue preview',()=>{
+ const {original}=fixture(20)
+ original.policy.rescueThreshold=.5;original.operators.B!.mood=7
+ original.operators.A!.group='recovering';original.groupShiftState.recovering=true
+ original.groupRecoveryFullMembers.recovering=['A']
+ const plan=planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})
+ expect(plan).toEqual({room_1_1:['A']})
+ expect(original.operators.A!.isResting()).toBe(true)
+ expect(original.groupRecoveryFullMembers.recovering).toEqual(['A'])
+})
+
+
+function requestingGroup(){
+ const {original}=fixture(3)
+ original.operators.B!.group='request'
+ original.groupRestInFullOnMoodGap=false
+ original.plan.room_1_3=['C']
+ original.operators.C=new MowerOperatorState({name:'C',room:'room_1_3',index:0,currentRoom:'room_1_3',currentIndex:0,operatorType:'high',group:'request',mood:16,timeStampMicros:0,replacement:['Y']})
+ original.operators.Y=new MowerOperatorState({name:'Y',mood:24,timeStampMicros:0})
+ const admit=()=>projectMowerArrangements(original,[{room_1_1:['A'],room_1_2:['X'],room_1_3:['Y'],dormitory_1:['Free','B','C']}])
+ return {original,admit}
+}
+
+describe('ordinary recall waits for the executable requesting-unit return',()=>{
+ it('admits a complete group that returns normally before all its members are full',()=>{
+  const {original,admit}=requestingGroup(),before=JSON.stringify(original)
+  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B','C'],{coordinationRates:fixed,requestNames:['B']})).toBe(true)
+  expect(validateMowerCoordinationSupport(original,{room_1_1:['A']},['B','C'],{coordinationRates:fixed,requestNames:['B']})).toBe(true)
+  expect(JSON.stringify(original)).toBe(before)
+ })
+ it.each(['explicit','automatic-gap','forced-rest','reserved'] as const)('preserves the requesting group %s protection',kind=>{
+  const {original,admit}=requestingGroup(),options={coordinationRates:fixed,requestNames:['B'],reservedNames:new Set<string>()}
+  if(kind==='explicit')original.operators.B!.restInFull=true
+  if(kind==='automatic-gap'){original.groupRestInFullOnMoodGap=true;original.groupMoodGapThresholdMinutes=30}
+  if(kind==='forced-rest'){original.backupGroupTasks=[[{group:'request',action:'off',mode:'forced'}]];original.planConditions=[true]}
+  if(kind==='reserved')options.reservedNames.add('B')
+  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B','C'],options)).toBe(false)
+ })
+ it('does not credit a partial return which leaves one requested member in the dorm',()=>{
+  const {original,admit}=requestingGroup()
+  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B','C'],{coordinationRates:fixed,requestNames:['B'],reservedNames:new Set(['C'])})).toBe(false)
+ })
+ it.each(['unrelated','standby'] as const)('does not wait for a slow %s resident',kind=>{
+  const {original}=fixture(8)
+  original.plan.room_1_3=['C']
+  original.operators.C=new MowerOperatorState({name:'C',room:'room_1_3',index:0,currentRoom:'dormitory_1',currentIndex:2,operatorType:'high',group:kind==='standby'?'request':'other',restingPriority:kind==='standby'?'standby':'high',mood:0,timeStampMicros:0,replacement:['Y']})
+  original.operators.Y=new MowerOperatorState({name:'Y',currentRoom:'room_1_3',currentIndex:0,mood:24,timeStampMicros:0})
+  if(kind==='standby')original.operators.B!.group='request'
+  original.dorms[2]=new MowerDormState(['dormitory_1',2],'C',toMowerMicros(24))
+  const admitted=projectMowerArrangements(original,[{room_1_1:['A'],room_1_2:['X'],dormitory_1:['Free','B','C']}])
+  expect(mowerRecallCanSustain(original,admitted,new Set(['A']),['B'],{coordinationRates:data=>({...fixed(data),recovery:{...fixed(data).recovery,C:1}})})).toBe(true)
+ })
+ it('rejects the same group return when the recalled worker cannot reach its deadline',()=>{
+  const {original,admit}=requestingGroup()
+  original.operators.A!.mood=1
+  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B','C'],{coordinationRates:fixed,requestNames:['B']})).toBe(false)
+ })
+})
+
+it.each([0,8])('integrates complete requesting units with a second initial mood of %s',secondMood=>{
+ const {original}=fixture(8)
+ original.plan.room_1_3=['C'];original.plan.room_1_4=['D']
+ original.operators.C=new MowerOperatorState({name:'C',room:'room_1_3',index:0,currentRoom:'room_1_3',currentIndex:0,operatorType:'high',mood:secondMood,timeStampMicros:0,replacement:['Y']})
+ original.operators.D=new MowerOperatorState({name:'D',room:'room_1_4',index:0,currentRoom:'dormitory_1',currentIndex:2,operatorType:'high',mood:20,timeStampMicros:0,replacement:['Y']})
+ original.operators.Y=new MowerOperatorState({name:'Y',currentRoom:'room_1_4',currentIndex:0,mood:24,timeStampMicros:0})
+ original.plan.dormitory_1!.push('Free');original.dorms[2]=new MowerDormState(['dormitory_1',2],'D',toMowerMicros(1));original.dorms.push(new MowerDormState(['dormitory_1',3]))
+ const admitted=projectMowerArrangements(original,[{room_1_1:['A'],room_1_2:['X'],room_1_3:['Y'],room_1_4:['D'],dormitory_1:['Free','B','Free','C']}]),returned:string[]=[]
+ const dynamic=(data:MowerSchedulingData)=>{
+  if(data.operators.C!.currentRoom==='room_1_3')returned.push('C')
+  return {...fixed(data),work:{...fixed(data).work,A:data.operators.C!.currentRoom==='room_1_3'?2:1}}
+ }
+ expect(mowerRecallCanSustain(original,admitted,new Set(['A','D']),['B','C'],{coordinationRates:dynamic})).toBe(true)
+ if(secondMood===8)expect(returned).toContain('C')
+})
+
+
+it('does not materialize retained task release targets on the actual queue during a forecast',()=>{
+ const {original,admit}=fixture(20),retained=new MowerTask({time:10,type:T.RELEASE_DORM,plan:{dormitory_1:['Current','Current','Free']},metadata:'E'})
+ retained.executionRetained=true
+ original.operators.E=new MowerOperatorState({name:'E',currentRoom:'dormitory_1',currentIndex:2,mood:24,timeStampMicros:0})
+ original.dorms[2]=new MowerDormState(['dormitory_1',2],'E',0)
+ const before=JSON.stringify(retained)
+ mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],{coordinationRates:fixed,tasks:[retained]})
+ expect(JSON.stringify(retained)).toBe(before)
+ expect(retained.releaseTargets).toBeUndefined()
+})
+
+it.each(['ordinary','explicit','gap'] as const)('handles an observed zero-recovery low-priority peer under %s return rules',rule=>{
+ const {original,admit}=requestingGroup()
+ original.operators.A!.mood=8
+ Object.assign(original.operators.C!,{mood:12,restingPriority:'low',restInFull:rule==='explicit'})
+ if(rule==='gap'){original.groupRecoveryFullMembers.request=['B','C'];original.groupMoodGapMaxExtraWaitHours=0}
+ const rates=(data:MowerSchedulingData)=>({...fixed(data),recovery:{...fixed(data).recovery,C:0}})
+ expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B','C'],{coordinationRates:rates,requestNames:['B']})).toBe(rule==='ordinary')
 })

@@ -613,13 +613,21 @@ it('reports saved initial conditions and source versions without relabeling hist
     mowerBaseReference: '80c97ee604375af144090656ef84b083acd6dc7f',
     mowerCheckedRevision: 'bdd2efaa7c6f6217802bb065b940e90c381d128f',
     moodControlStrategyVersion: 'ordinary-threshold-v1',
-    predictiveMoodControl: false
+    predictiveMoodControl: false,
+    ordinaryRecallHorizon: 'ordinary-return-v1'
   })
   const saved = structuredClone(result)
   const report = incomeReportLines(saved, settings, source, '主表').join('\n')
   expect(report).toContain('菲亚梅塔初始心情 16')
   expect(report).toContain('按正常下班阈值轮休，不为避免替班断档而提前下班')
-  expect(report).toContain('普通救急召回须能坚持到对应主班回满')
+  expect(report).toContain('普通救急召回须能坚持到请求组按普通规则完成回班')
+  const savedFullRecovery = structuredClone(saved)
+  delete savedFullRecovery.modelProvenance.ordinaryRecallHorizon
+  const fullRecoveryReport = incomeReportLines(savedFullRecovery, settings, source, '主表').join(
+    '\n'
+  )
+  expect(fullRecoveryReport).toContain('普通救急召回须能坚持到对应主班回满')
+  expect(fullRecoveryReport).not.toContain('普通救急召回须能坚持到请求组按普通规则完成回班')
   const predictive = structuredClone(saved)
   predictive.modelProvenance.moodControlStrategyVersion = 'predictive-mood-control-v1'
   const predictiveReport = incomeReportLines(predictive, settings, source, '主表').join('\n')

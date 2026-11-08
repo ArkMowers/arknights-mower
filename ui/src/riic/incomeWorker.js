@@ -79,7 +79,8 @@ export function calculateIncome(plan, settings, onProgress) {
       mowerBaseReference: mowerReference,
       mowerCheckedRevision: mowerCheckedRevision,
       moodControlStrategyVersion: simulation.assumptions.moodControlStrategyVersion,
-      predictiveMoodControl: simulation.assumptions.predictiveMoodControl
+      predictiveMoodControl: simulation.assumptions.predictiveMoodControl,
+      ordinaryRecallHorizon: 'ordinary-return-v1'
     },
     eventLog: incomeEventLog(simulation),
     orderDistribution: incomeOrderDistribution(simulation),
