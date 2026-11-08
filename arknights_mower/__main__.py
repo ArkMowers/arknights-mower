@@ -387,7 +387,7 @@ def _handle_maintenance(
 
     flash_probe_at = min(info.end, info.start + timedelta(minutes=2))
     flash_probe_pending = False
-    if not info.manual and info.is_flash_update:
+    if not info.manual and info.is_flash_update and not info.allows_early_login:
         if info.announcement_id in _flash_probe_ids:
             return False
         probe_reference = max(now, flash_probe_at)
@@ -439,6 +439,7 @@ def _wait_before_early_login_retry(now=None):
     if (
         info is not None
         and info.is_flash_update
+        and not info.allows_early_login
         and info.announcement_id in _flash_probe_ids
         and now < info.end
     ):
@@ -1270,6 +1271,7 @@ def simulate(saved):
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
+                task_failures = 0
                 continue
             try:
                 _resume_device_dispatch(base_scheduler, e)
@@ -1290,6 +1292,7 @@ def simulate(saved):
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
+                task_failures = 0
                 continue
             try:
                 _resume_device_dispatch(base_scheduler, e)
@@ -1309,6 +1312,7 @@ def simulate(saved):
             if _wait_before_early_login_retry():
                 if config.stop_mower.is_set():
                     return
+                task_failures = 0
                 continue
             try:
                 base_scheduler.recog.update()

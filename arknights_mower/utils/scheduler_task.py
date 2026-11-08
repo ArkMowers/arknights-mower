@@ -1434,10 +1434,13 @@ def adjust_run_order_for_maintenance(
     :param advance_time: 维护副表要求更早执行时使用的截止时间
     :param now: 本轮调度时间，未提供时使用本地当前时间
     """
+    now = now or datetime.now()
     time_gap = max(run_order_delay * 2, 10)  # 确保最小间隔为10分钟操作时间
-    reset = NewsChecker.get_daily_reset(now or datetime.now())
+    reset = NewsChecker.get_daily_reset(now)
+    start, end = NewsChecker.get_update_time()
     windows = [
-        (*NewsChecker.get_update_time(), False),
+        # 提前登录后新生成的订单不再执行停服前的无人机加速。
+        *([(start, end, False)] if start is not None and now < start else []),
         (reset.start, reset.end, True),
         *[
             (task.maintenance_info.start, task.maintenance_info.end, False)

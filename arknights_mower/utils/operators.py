@@ -1304,7 +1304,7 @@ class Operators:
             if hasattr(self, "_projection_maintenance")
             else NewsChecker.get_major_maintenance(datetime.now())
         )
-        if info is None or info.update_type != "major" or info.is_flash_update:
+        if info is None or not info.is_server_maintenance:
             return float("inf")
         if duration_operator is not None:
             duration = (info.end - info.start).total_seconds() / 3600
@@ -1350,7 +1350,7 @@ class Operators:
         if not thresholds:
             return None
         info = NewsChecker.get_major_maintenance(now or datetime.now())
-        if info is None or info.update_type != "major" or info.is_flash_update:
+        if info is None or not info.is_server_maintenance:
             return None
         now = now or datetime.now()
         times = []

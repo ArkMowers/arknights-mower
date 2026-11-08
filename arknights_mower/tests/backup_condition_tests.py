@@ -1,6 +1,5 @@
 import sys
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,12 +24,15 @@ def operators():
     )
 
 
-def maintenance(*, hours=6, update_type="major", title="停机维护"):
-    return SimpleNamespace(
-        start=datetime.now() + timedelta(hours=hours),
-        update_type=update_type,
-        is_flash_update="闪断更新" in title,
-        manual=False,
+def maintenance(*, hours=6, update_type="major", title="停机维护", minutes=360):
+    start = datetime.now() + timedelta(hours=hours)
+    return MaintenanceInfo(
+        start,
+        start + timedelta(minutes=minutes),
+        update_type,
+        title,
+        "",
+        "condition-test",
     )
 
 
@@ -51,8 +53,7 @@ def test_major_maintenance_remaining_hours_and_expression(monkeypatch):
     "info",
     [
         None,
-        maintenance(update_type="hot"),
-        maintenance(title="闪断更新"),
+        maintenance(update_type="hot", title="闪断更新", minutes=9),
     ],
 )
 def test_non_major_or_flash_maintenance_does_not_trigger(monkeypatch, info):
@@ -64,6 +65,50 @@ def test_non_major_or_flash_maintenance_does_not_trigger(monkeypatch, info):
     assert op_data.major_maintenance_remaining_hours() == float("inf")
     assert not op_data.evaluate_expression(
         "op_data.major_maintenance_remaining_hours() <= 12"
+    )
+
+
+@pytest.mark.parametrize("title", ["闪断更新公告", "服务器停机维护公告"])
+@pytest.mark.parametrize("minutes", [10, 60, 360])
+def test_hot_downtime_uses_full_duration_and_schedules_backup_threshold(
+    monkeypatch, title, minutes
+):
+    now = datetime.now()
+    info = MaintenanceInfo(
+        now + timedelta(hours=1),
+        now + timedelta(hours=1, minutes=minutes),
+        "hot",
+        title,
+        "",
+        "hot-downtime",
+    )
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: info)
+    assert NewsChecker.get_major_maintenance(now) is info
+    data = operators()
+    data._projection_now = now
+    data.backup_plans = [
+        Plan(
+            {},
+            PlanConfig("", "", ""),
+            trigger=LogicExpression(
+                "op_data.major_maintenance_remaining_hours()", "<=", "0.5"
+            ),
+        )
+    ]
+    assert data.next_major_maintenance_check(now) == now + timedelta(minutes=30)
+    data._projection_now = now + timedelta(minutes=45)
+    assert data.evaluate_expression(
+        f"op_data.major_maintenance_remaining_hours('==', {minutes / 60}) <= 0.5"
+    )
+    assert data.evaluate_expression(
+        "op_data.major_maintenance_remaining_hours('>=', 1) <= 0.5"
+    ) is (minutes >= 60)
+    assert data.evaluate_expression(
+        "op_data.major_maintenance_remaining_hours('<', 1) <= 0.5"
+    ) is (minutes < 60)
+    data._projection_now = info.start
+    assert not data.evaluate_expression(
+        "op_data.major_maintenance_remaining_hours() <= 0.5"
     )
 
 
@@ -175,9 +220,11 @@ def test_duration_filter_never_activates_missing_flash_or_started_announcement(
     )
     info = MaintenanceInfo(
         start,
-        start + timedelta(hours=7),
+        start + timedelta(minutes=9)
+        if info_kind == "hot"
+        else start + timedelta(hours=7),
         "hot" if info_kind == "hot" else "major",
-        "停机维护",
+        "闪断更新" if info_kind == "hot" else "停机维护",
         "",
         "unavailable-window",
     )

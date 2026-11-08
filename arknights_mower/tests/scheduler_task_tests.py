@@ -156,7 +156,7 @@ class TestRunOrderRestorationScheduling(unittest.TestCase):
             return_value=(start, start + timedelta(hours=6)),
         ):
             adjusted = adjust_run_order_for_maintenance(
-                [restore, saved_insertion, legacy]
+                [restore, saved_insertion, legacy], now=self.now
             )
 
         self.assertEqual(adjusted, [legacy])

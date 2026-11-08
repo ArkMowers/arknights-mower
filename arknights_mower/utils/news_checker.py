@@ -52,10 +52,22 @@ class MaintenanceInfo:
     preparation_pending: bool = False
 
     @property
+    def is_server_maintenance(self) -> bool:
+        return (
+            self.update_type == "major"
+            or not self.manual
+            and (
+                "停机维护" in self.title
+                or self.is_flash_update
+                and self.end - self.start >= timedelta(minutes=10)
+            )
+        )
+
+    @property
     def allows_early_login(self) -> bool:
         if self.manual:
             return False
-        return self.update_type == "major" or "停机维护" in self.title
+        return self.is_server_maintenance
 
     @property
     def is_flash_update(self) -> bool:
@@ -63,9 +75,12 @@ class MaintenanceInfo:
 
     @property
     def resume_at(self) -> datetime:
-        """Try downtime maintenance one hour before the announced end."""
+        """停机维护提前一小时试登录，开始后至少等待两分钟。"""
         if self.allows_early_login:
-            return max(self.start, self.end - timedelta(hours=1))
+            return min(
+                self.end,
+                max(self.start + timedelta(minutes=2), self.end - timedelta(hours=1)),
+            )
         return self.end
 
     def active_at(self, now: datetime) -> bool:
@@ -130,8 +145,7 @@ class NewsChecker:
                 info
                 for info in candidates
                 if info is not None
-                and info.update_type == "major"
-                and not info.is_flash_update
+                and info.is_server_maintenance
                 and (now < info.start or info.manual and info.active_at(now))
             ),
             key=lambda info: info.start,
@@ -307,13 +321,8 @@ class NewsChecker:
 
     @classmethod
     def get_update_time(cls):
-        """Return the maintenance interval used by task scheduling.
-
-        Downtime maintenance deliberately ends one hour before the announced
-        time so Mower may attempt to enter an early-opened server. Flash updates
-        still use their full announced interval.
-        """
+        """任务避让使用完整公告区间，不随提前登录时刻缩短。"""
         info = cls.get_maintenance()
         if info is None or not info.prepare:
             return None, None
-        return info.start, info.resume_at
+        return info.start, info.end
