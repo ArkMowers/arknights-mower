@@ -90,6 +90,8 @@ def test_export_redacts_live_and_archived_logs_without_rewriting_sources(
     monkeypatch.setattr(config, "conf", conf)
     monkeypatch.setattr(path, "global_space", location)
     message = (
+        "2026-11-08 10:29:59 core.py:141 DEBUG "
+        "设备未就绪：['empty-target-usb-726154']，重新选择端口 \n"
         "2026-11-08 10:30:00 task.py:42 ERROR 连接失败，保留任务\n"
         f"  token={token}\n  收件人={sender}\n"
         f"  实际目标 {serial}\n  地址 {conf.adb}\n"
@@ -136,6 +138,7 @@ def test_export_redacts_live_and_archived_logs_without_rewriting_sources(
             "unrelated-usb-726154",
             "retry-usb-726154",
             "old-device-726154",
+            "empty-target-usb-726154",
             "192.0.2.41",
             "2001:db8::41",
             "2001:db8::42",
@@ -147,6 +150,7 @@ def test_export_redacts_live_and_archived_logs_without_rewriting_sources(
         assert "2026-11-08 10:30:00 task.py:42 ERROR 连接失败，保留任务" in output
         assert "ADB 可连接的设备：[已隐藏]" in output
         assert "设备未就绪：[已隐藏]，重新选择端口 [已隐藏]" in output
+        assert "DEBUG 设备未就绪：[已隐藏]，重新选择端口\n" in output
         assert "RuntimeError: 检查已结束，状态未改变" in output
         assert output.count("诊断续行保持完整") == 1000
         pictures = [name for name in bundle.namelist() if name.endswith(".jpg")]

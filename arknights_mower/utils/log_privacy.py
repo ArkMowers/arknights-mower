@@ -34,7 +34,7 @@ _IDENTITY_CONTEXT = re.compile(
     r"((?:设备初始化完成|正在使用全局配置空间|ADB ?可连接的设备)[ \t]*"
     r"[:：][ \t]*)[^\r\n]+"
 )
-_DEVICE_RETRY = re.compile(r"(设备未就绪：)[^\r\n]+?(，重新选择端口 )[^\r\n]+")
+_DEVICE_RETRY = re.compile(r"(设备未就绪：)[^\r\n]+?(，重新选择端口)[ \t]*([^\r\n]*)")
 
 
 def _hide_address(match):
@@ -79,7 +79,10 @@ class LogRedactor:
             text = self._known.sub(lambda _: REDACTED, text)
         text = _IDENTITY_CONTEXT.sub(lambda match: match[1] + REDACTED, text)
         text = _DEVICE_RETRY.sub(
-            lambda match: match[1] + REDACTED + match[2] + REDACTED, text
+            lambda match: (
+                match[1] + REDACTED + match[2] + (f" {REDACTED}" if match[3] else "")
+            ),
+            text,
         )
         text = _QUERY_SECRET.sub(lambda match: match[1] + REDACTED, text)
         # 与 AI 证据读取保持同一原则：有凭据字段的行不猜测嵌套值在哪里结束。
