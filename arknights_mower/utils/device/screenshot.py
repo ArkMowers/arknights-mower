@@ -3,6 +3,7 @@
 import re
 import socket
 import struct
+import sys
 import time
 import zlib
 
@@ -71,22 +72,23 @@ def decode_adb_frame(compressed: bytes, *, header_size: int) -> np.ndarray:
         raise ValueError("ADB 截图像素长度与帧头不一致")
     if header_size == 16 and struct.unpack_from("<I", raw, 12)[0] not in (0, 1, 2):
         raise ValueError("ADB 截图颜色空间无效")
-    if pixel_format == 4:
-        words = np.frombuffer(raw, "<u2", offset=header_size).reshape(height, width)
-        # Expand RGB565 with bit replication, including full white at 0xffff.
-        red, green, blue = (words >> 11) & 31, (words >> 5) & 63, words & 31
-        return np.stack(
-            (
-                (red << 3) | (red >> 2),
-                (green << 2) | (green >> 4),
-                (blue << 3) | (blue >> 2),
-            ),
-            axis=-1,
-        ).astype(np.uint8)
-    rgb = np.frombuffer(raw, np.uint8, offset=header_size).reshape(
+    pixels = np.frombuffer(raw, np.uint8, offset=header_size).reshape(
         height, width, channels
-    )[:, :, :3]
-    return (rgb[:, :, ::-1] if pixel_format == 5 else rgb).copy()
+    )
+    if pixel_format != 4:
+        rgb = pixels[:, :, :3]
+        return (rgb[:, :, ::-1] if pixel_format == 5 else rgb).copy()
+
+    import cv2
+
+    # OpenCV reads native-endian words from the little-endian RGB565 payload.
+    if sys.byteorder == "big":
+        pixels = pixels[:, :, ::-1]
+    rgb = cv2.cvtColor(pixels, cv2.COLOR_BGR5652RGB)
+    # Replicate the high bits to preserve the existing RGB565 expansion.
+    for channel, bits in zip(rgb.transpose(2, 0, 1), (5, 6, 5)):
+        channel |= channel >> bits
+    return rgb
 
 
 def _adb_output(serial, command, limit, remaining):

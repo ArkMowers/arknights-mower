@@ -37,8 +37,28 @@ class ADBFrameTests(unittest.TestCase):
             with self.subTest(pixel_format=name):
                 frame = decode_adb_frame(gzip_frame(raw), header_size=12)
                 expected = [255, 130, 0] if name == "rgb565" else [255, 128, 0]
+                self.assertEqual(frame.shape, (1080, 1920, 3))
+                self.assertEqual(frame.dtype, np.uint8)
+                self.assertTrue(frame.flags.c_contiguous)
+                self.assertTrue(frame.flags.writeable)
+                self.assertTrue(frame.flags.owndata)
                 self.assertEqual(frame[0, 0].tolist(), expected)
                 self.assertEqual(frame[-1, -1].tolist(), [0, 0, 0])
+
+    def test_rgb565_preserves_bit_replication_for_every_packed_value(self):
+        words = np.arange(65536, dtype="<u2")
+        header = bytes.fromhex("80070000 38040000 04000000 00000000")
+        raw = header + words.tobytes() + bytes(2 * (1920 * 1080 - words.size))
+        frame = decode_adb_frame(gzip_frame(raw), header_size=16)
+        red, green, blue = words >> 11, (words >> 5) & 63, words & 31
+        expected = np.column_stack(
+            (
+                (red << 3) | (red >> 2),
+                (green << 2) | (green >> 4),
+                (blue << 3) | (blue >> 2),
+            )
+        )
+        np.testing.assert_array_equal(frame.reshape(-1, 3)[: words.size], expected)
 
     def test_header_version_is_explicit_so_four_byte_truncation_is_rejected(self):
         for modern, size in ((False, 12), (True, 16)):
