@@ -20,6 +20,13 @@ export function getGameWeekdayIndex(date = new Date()) {
   return day === 0 ? 6 : day - 1
 }
 
+export function getNextGameDayStart(date = new Date()) {
+  const next = new Date(date)
+  next.setUTCHours((GAME_DAY_START_HOUR - GAME_TIMEZONE_OFFSET_HOURS + 24) % 24, 0, 0, 0)
+  if (next.getTime() <= date.getTime()) next.setUTCDate(next.getUTCDate() + 1)
+  return next
+}
+
 export const STAGE_DISPLAY_NAMES = {
   '': '上次作战',
   Annihilation: '当期剿灭',
