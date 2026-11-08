@@ -41,6 +41,49 @@ it('compares device values independently of property insertion order', () => {
 // repair reads them from there instead of the device-identity form.
 const connectionField = (state, key) => state.connectionFields.find((field) => field.key === key)
 
+it('offers an explicit manual connection when MuMu cannot determine the instance port', () => {
+  const bound = {
+    ...profile,
+    preset_id: 'windows.mumu12',
+    adb_path: 'C:/MuMu/adb.exe',
+    instance_id: '0',
+    last_serial: '127.0.0.1:16384',
+    screenshot_backend: 'mumu_ipc',
+    touch_backend: 'mumu_ipc'
+  }
+  const error = { code: 'mumu_endpoint_unavailable', message: '请检查 MuMu 的 ADB 端口。' }
+  const state = deviceSettingsState({
+    profile: bound,
+    metadata: { host_platform: 'windows' },
+    result: { ok: false, error }
+  })
+  expect(state.actions.manualFallback).toMatchObject({
+    visible: true,
+    preset: 'manual.other',
+    label: '手动填写连接地址'
+  })
+  expect(manualDeviceDraft(bound, state.actions.manualFallback.preset)).toMatchObject({
+    preset_id: 'manual.other',
+    adb_path: 'C:/MuMu/adb.exe',
+    instance_id: '',
+    last_serial: '',
+    screenshot_backend: 'droidcast',
+    touch_backend: 'scrcpy'
+  })
+  expect(
+    deviceSettingsState({
+      profile: bound,
+      metadata: { host_platform: 'windows', error }
+    }).actions.manualFallback.visible
+  ).toBe(true)
+  expect(
+    deviceSettingsState({
+      profile: { ...bound, preset_id: 'manual.other' },
+      metadata: { host_platform: 'windows', error }
+    }).actions.manualFallback.visible
+  ).toBe(false)
+})
+
 it.each([
   ['windows.mumu12', 'mumu_ipc'],
   ['windows.ldplayer9', 'ld_native'],

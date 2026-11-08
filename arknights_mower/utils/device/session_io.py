@@ -394,12 +394,24 @@ class _MuMuManager(_InstanceManager):
     def inspect(self):
         profile = self.profile
         query_timeout = getattr(profile, "manager_query_timeout", QUERY_TIMEOUT)
-        output = self.window.run(
-            [self.manager, "info", "-v", profile.instance_id], timeout=query_timeout
+        deadline = self.window._monotonic() + min(
+            query_timeout, self.window.remaining()
         )
+
+        def run(argv):
+            remaining = min(query_timeout, deadline - self.window._monotonic())
+            if remaining <= 0:
+                raise TimeoutError("MuMu 实例查询超时")
+            return self.window.run(argv, timeout=remaining)
+
+        output = run([self.manager, "info", "-v", profile.instance_id])
         try:
             instances, _ = parse_mumu_instances(
-                output, profile.instance_id, profile.instance_name
+                output,
+                profile.instance_id,
+                profile.instance_name,
+                manager=self.manager,
+                run=run,
             )
         except ValueError as exc:
             if isinstance(exc, InstanceBindingError):

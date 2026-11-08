@@ -679,6 +679,9 @@ export function deviceSettingsState({
     ? metadata.error
     : null
   const errors = [result?.error, ...(result?.errors || []), runtimeBackendError].filter(Boolean)
+  const mumuPortUnavailable =
+    errors.some((error) => error.code === 'mumu_endpoint_unavailable') ||
+    (profile.preset_id === 'windows.mumu12' && metadata.error?.code === 'mumu_endpoint_unavailable')
   const messages = [...new Set(errors.map((error) => error.message).filter(Boolean))]
   const preparationMessage =
     metadata.preparation?.last_error || (runtimeBackendError ? '' : metadata.error?.message) || ''
@@ -856,10 +859,11 @@ export function deviceSettingsState({
     actions: {
       manualFallback: {
         visible:
-          (mumuPro || redroid || genymotion) && errors.some((error) => error.action === 'manual'),
+          mumuPortUnavailable ||
+          ((mumuPro || redroid || genymotion) && errors.some((error) => error.action === 'manual')),
         disabled: locked,
         preset: mumuPro ? 'macos.mumu_pro' : 'manual.other',
-        label: mumuPro ? '手动填写连接地址' : '进入高级手动配置'
+        label: mumuPro || mumuPortUnavailable ? '手动填写连接地址' : '进入高级手动配置'
       },
       startBound: {
         visible: managedStart,

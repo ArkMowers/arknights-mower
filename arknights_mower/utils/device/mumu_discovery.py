@@ -4,18 +4,22 @@ The manager's documented ``info`` command is the instance authority. Registry
 and process paths are candidates only; no port is inferred from an index.
 """
 
-import ipaddress
 import os
 import re
 import stat
 from collections import Counter
 from pathlib import Path
 
+from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
 from arknights_mower.utils.device.manager_io import (
     MAX_INSTANCES,
     run_manager_command,
 )
-from arknights_mower.utils.device.mumu_info import mumu_entries
+from arknights_mower.utils.device.mumu_info import (
+    MuMuEndpointUnavailable,
+    mumu_endpoint_with_fallback,
+    mumu_entries,
+)
 from arknights_mower.utils.device.mumu_layout import (
     installation_root,
     manager_candidates,
@@ -53,7 +57,9 @@ def _confirmed_name(entry, key, saved_name, require_name):
     return name
 
 
-def parse_mumu_instances(output, selected_id=None, instance_name=None):
+def parse_mumu_instances(
+    output, selected_id=None, instance_name=None, *, manager="", run=None
+):
     """Return valid observations plus individual parse failures.
 
     Both keyed ``info -v all`` and the direct object from ``info -v N`` are
@@ -98,21 +104,8 @@ def parse_mumu_instances(output, selected_id=None, instance_name=None):
             name = _confirmed_name(entry, key, saved_name, not binding)
             state = "stopped" if not process else "running" if android else "starting"
             serial = ""
-            if process and entry.get("adb_port"):
-                port = entry["adb_port"]
-                if (
-                    isinstance(port, bool)
-                    or not str(port).isascii()
-                    or not str(port).isdigit()
-                    or not 0 < int(port) < 65536
-                ):
-                    raise ValueError(f"MuMu 实例 {key} 返回的 ADB 端口无效。")
-                host = str(
-                    ipaddress.ip_address(entry.get("adb_host_ip") or "127.0.0.1")
-                )
-                serial = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
-            if state == "running" and not serial:
-                raise ValueError(f"运行中的 MuMu 实例 {key} 没有有效 ADB 端点。")
+            if process and (entry.get("adb_port") or state == "running"):
+                serial = mumu_endpoint_with_fallback(entry, key, manager, run)
             instances.append(
                 {
                     "instance_id": key,
@@ -124,7 +117,19 @@ def parse_mumu_instances(output, selected_id=None, instance_name=None):
         except ValueError as exc:
             if selected_id is not None:
                 raise
-            errors.append(_error("manager_output", str(exc), ["manager_path"]))
+            if isinstance(exc, InstanceBindingError):
+                errors.append(
+                    PreflightError(
+                        exc.code,
+                        str(exc),
+                        action="manual"
+                        if isinstance(exc, MuMuEndpointUnavailable)
+                        else "retry",
+                        fields=exc.fields,
+                    )
+                )
+            else:
+                errors.append(_error("manager_output", str(exc), ["manager_path"]))
     return instances, errors
 
 
@@ -139,8 +144,16 @@ class MuMuDiscoveryIO(WindowsInstallationDiscovery):
     )
 
     def _instances(self, manager, timeout):
-        completed = self._command([str(manager), "info", "-v", "all"], timeout)
-        return parse_mumu_instances(completed.stdout)
+        deadline = self._monotonic() + timeout
+
+        def run(argv):
+            remaining = min(timeout, deadline - self._monotonic())
+            if remaining <= 0:
+                raise TimeoutError("MuMu 实例查询超时")
+            return self._command(argv, remaining).stdout
+
+        output = run([str(manager), "info", "-v", "all"])
+        return parse_mumu_instances(output, manager=str(manager), run=run)
 
     @staticmethod
     def _manager_candidate(candidate):

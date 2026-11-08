@@ -21,12 +21,14 @@ from arknights_mower.utils.config.device_profile import capture_compatibility_er
 from arknights_mower.utils.device.adb_client.core import is_tcp_serial
 from arknights_mower.utils.device.adb_client.server import run_adb
 from arknights_mower.utils.device.droidcast import DroidCastSession
+from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
 from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.ldplayer_capture import LDCaptureSession
 from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
 from arknights_mower.utils.device.mumu_info import (
-    mumu_endpoint,
+    MuMuEndpointUnavailable,
+    mumu_endpoint_with_fallback,
     normalize_mumu_endpoint,
     select_mumu_instance,
 )
@@ -346,14 +348,23 @@ class ProductionPreflightIO:
         root, manager = resolve_mumu_paths(
             profile.installation_path, profile.manager_path
         )
-        actual_instance_id, entry = select_mumu_instance(
-            self._run([manager, "info", "-v", "all"]),
-            profile.instance_id,
-            profile.instance_name,
+        try:
+            actual_instance_id, entry = select_mumu_instance(
+                self._run([manager, "info", "-v", "all"]),
+                profile.instance_id,
+                profile.instance_name,
+            )
+        except ValueError as exc:
+            raise InstanceBindingError(
+                "binding_changed", str(exc), ["instance_id", "instance_name"]
+            ) from exc
+        endpoint = mumu_endpoint_with_fallback(
+            entry, actual_instance_id, manager, self._run
         )
-        endpoint = mumu_endpoint(entry)
         if normalize_mumu_endpoint(endpoint) != normalize_mumu_endpoint(serial):
-            raise ValueError("MuMu IPC 实例端点与已选择设备 serial 不一致，请重新绑定")
+            raise MuMuEndpointUnavailable(
+                actual_instance_id, "MuMu IPC 实例端点与已选择设备的连接地址不一致。"
+            )
         context = multiprocessing.get_context("spawn")
         frame_buffer = context.RawArray(ctypes.c_ubyte, 1920 * 1080 * 3)
         succeeded = context.RawValue(ctypes.c_bool, False)

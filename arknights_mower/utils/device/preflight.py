@@ -12,6 +12,7 @@ from arknights_mower.utils.config.device_profile import (
     capture_compatibility_error,
 )
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
 from arknights_mower.utils.device.screenshot_backend import (
     ScreenshotFailure,
     ScreenshotSession,
@@ -376,6 +377,10 @@ class PreflightService:
             )
         except MowerExit:
             raise
+        except InstanceBindingError as exc:
+            result.serial = ""
+            result.error = PreflightError(exc.code, str(exc), fields=exc.fields)
+            return result
         except Exception as exc:
             failure = (
                 exc

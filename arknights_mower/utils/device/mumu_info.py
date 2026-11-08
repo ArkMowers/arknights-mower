@@ -3,7 +3,9 @@
 import ipaddress
 import json
 import re
+import subprocess
 
+from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
 from arknights_mower.utils.device.manager_io import MAX_INSTANCES, MAX_OUTPUT
 
 
@@ -86,3 +88,113 @@ def normalize_mumu_endpoint(serial):
     if host in {"localhost", "127.0.0.1", "::1"}:
         host = "127.0.0.1"
     return host, int(port)
+
+
+class MuMuEndpointUnavailable(InstanceBindingError):
+    def __init__(self, instance_id, detail=""):
+        super().__init__(
+            "mumu_endpoint_unavailable",
+            f"无法确认 MuMu 实例 {instance_id} 的 ADB 端口或连接地址。"
+            f"{detail}"
+            "请检查 MuMu 的 ADB 端口及管理程序配置后重新检测；"
+            "也可确认目标地址后手动连接。手动模式不支持自动启停及 MuMu IPC。",
+            ["manager_path", "last_serial"],
+        )
+
+
+def mumu_endpoint_with_fallback(entry, instance_id, manager, run):
+    """Use the manager's per-instance query only when info omitted its port."""
+    port = entry.get("adb_port")
+    missing = not isinstance(port, bool) and port in (None, "", 0, "0")
+    if not missing:
+        try:
+            return mumu_endpoint(entry)
+        except (ValueError, TypeError) as exc:
+            raise MuMuEndpointUnavailable(instance_id) from exc
+    if (
+        entry.get("is_process_started") is not True
+        or entry.get("is_android_started") is not True
+    ):
+        raise MuMuEndpointUnavailable(instance_id)
+    if run is None:
+        raise MuMuEndpointUnavailable(instance_id)
+    try:
+        output = run([manager, "adb", "-v", instance_id])
+        if isinstance(output, bytes):
+            output = output.decode("utf-8")
+        if len(output) > 512:
+            raise ValueError("MuMu ADB 地址输出过长")
+        match = re.fullmatch(r"(\[[^\]\r\n]+\]|[^:\s]+):([0-9]{1,5})", output.strip())
+        if not match:
+            raise ValueError("MuMu ADB 地址输出无效")
+        endpoint = mumu_endpoint(
+            {"adb_host_ip": match.group(1).strip("[]"), "adb_port": match.group(2)}
+        )
+    except (
+        ValueError,
+        UnicodeError,
+        subprocess.SubprocessError,
+        FileNotFoundError,
+        PermissionError,
+        RuntimeError,
+    ) as exc:
+        raise MuMuEndpointUnavailable(instance_id) from exc
+
+    # The index can be reused while the query runs. Re-read the inventory before
+    # trusting this address, and reject an address already reported by another VM.
+    try:
+        fresh_output = run([manager, "info", "-v", "all"])
+        _, fresh = select_mumu_instance(
+            fresh_output, instance_id, entry.get("name", "")
+        )
+        if (
+            any(
+                key in entry and fresh.get(key) != entry[key]
+                for key in ("name", "created_timestamp", "pid", "headless_pid")
+            )
+            or fresh.get("is_process_started") is not True
+            or fresh.get("is_android_started") is not True
+        ):
+            raise ValueError("实例身份或运行状态发生变化")
+        if fresh.get("adb_port"):
+            try:
+                fresh_endpoint = mumu_endpoint(fresh)
+            except (ValueError, TypeError) as exc:
+                raise MuMuEndpointUnavailable(
+                    instance_id, "管理器返回的端口无效。"
+                ) from exc
+            if normalize_mumu_endpoint(fresh_endpoint) != normalize_mumu_endpoint(
+                endpoint
+            ):
+                raise MuMuEndpointUnavailable(instance_id, "管理器返回了不同的端口。")
+        for key, other in mumu_entries(fresh_output):
+            if key == instance_id or not isinstance(other, dict):
+                continue
+            if other.get("is_process_started") is not True or not other.get("adb_port"):
+                continue
+            try:
+                other_endpoint = mumu_endpoint(other)
+            except (ValueError, TypeError):
+                continue
+            if normalize_mumu_endpoint(other_endpoint) == normalize_mumu_endpoint(
+                endpoint
+            ):
+                raise MuMuEndpointUnavailable(
+                    instance_id, "该端口同时被其他运行中的实例报告。"
+                )
+    except InstanceBindingError:
+        raise
+    except (ValueError, TypeError) as exc:
+        raise InstanceBindingError(
+            "binding_changed",
+            f"无法确认 MuMu 实例 {instance_id} 的身份或端口，请重新检测并选择实例：{exc}",
+            ["instance_id", "instance_name", "last_serial"],
+        ) from exc
+    except (
+        subprocess.SubprocessError,
+        FileNotFoundError,
+        PermissionError,
+        RuntimeError,
+    ) as exc:
+        raise MuMuEndpointUnavailable(instance_id) from exc
+    return endpoint

@@ -1908,6 +1908,7 @@ class DeviceControl(Generic[D]):
                 "target_ambiguous",
                 "binding_failed",
                 "binding_changed",
+                "mumu_endpoint_unavailable",
                 "topology_changed",
                 "manager_output",
                 "endpoint_unresolved",
