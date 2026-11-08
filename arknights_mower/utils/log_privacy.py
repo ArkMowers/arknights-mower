@@ -30,9 +30,11 @@ _QUERY_SECRET = re.compile(
     r"(?i)([?&#](?:token|key|password|secret|api_key)=)[^&\s\"'<>]+"
 )
 _API_KEY = re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b")
-_LEGACY_IDENTITY = re.compile(
-    r"(?m)((?:设备初始化完成|正在使用全局配置空间)\s*[:：]\s*)[^\r\n]+"
+_IDENTITY_CONTEXT = re.compile(
+    r"((?:设备初始化完成|正在使用全局配置空间|ADB ?可连接的设备)[ \t]*"
+    r"[:：][ \t]*)[^\r\n]+"
 )
+_DEVICE_RETRY = re.compile(r"(设备未就绪：)[^\r\n]+?(，重新选择端口 )[^\r\n]+")
 
 
 def _hide_address(match):
@@ -75,7 +77,10 @@ class LogRedactor:
         text = str(value)
         if self._known is not None:
             text = self._known.sub(lambda _: REDACTED, text)
-        text = _LEGACY_IDENTITY.sub(lambda match: match[1] + REDACTED, text)
+        text = _IDENTITY_CONTEXT.sub(lambda match: match[1] + REDACTED, text)
+        text = _DEVICE_RETRY.sub(
+            lambda match: match[1] + REDACTED + match[2] + REDACTED, text
+        )
         text = _QUERY_SECRET.sub(lambda match: match[1] + REDACTED, text)
         # 与 AI 证据读取保持同一原则：有凭据字段的行不猜测嵌套值在哪里结束。
         text = _SECRET_FIELD.sub(lambda match: match[1] + REDACTED, text)

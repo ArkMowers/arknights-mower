@@ -137,8 +137,7 @@ class Client:
         for _ in range(attempts):
             devices = self.__available_devices()
             if self.device_id in devices:
-                logger.info("ADB可连接的设备：%s", "、".join(devices))
-                return
+                break
             logger.debug(
                 f"设备未就绪：{devices}，重新选择端口 {self.device_id or config.conf.adb}"
             )
@@ -148,17 +147,18 @@ class Client:
             if target and is_tcp_serial(target):
                 Session().connect(target)
             csleep(2)
-        devices = self.__available_devices()
-        logger.info(
-            "ADB可连接的设备：" + "、".join(devices)
-            if devices
-            else "ADB未连接到任何设备"
-        )
+        else:
+            devices = self.__available_devices()
+        if devices:
+            logger.debug("ADB 可连接的设备：%s", "、".join(devices))
+        else:
+            logger.info("ADB 未连接到任何设备")
         if self.device_id not in devices:
             logger.error(
                 "未检测到相应设备。请运行 `adb devices` 确认列表中列出了目标模拟器或设备。"
             )
             raise ConnectionError("Device connection failure")
+        logger.info("ADB 已连接目标设备")
 
     def __connect_device(self) -> None:
         """选定 device_id 并建立到对应端点的连接（原 __init_device 的选中/连接逻辑）。"""

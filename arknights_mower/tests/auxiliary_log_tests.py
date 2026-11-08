@@ -21,15 +21,19 @@ def isolated_logger(monkeypatch, caplog):
 
 
 @pytest.mark.parametrize("waiting", [False, True])
-@pytest.mark.parametrize("online", [False, True])
-def test_adb_initialization_lists_all_online_endpoints_without_changing_waits(
-    monkeypatch, caplog, waiting, online
+@pytest.mark.parametrize("device_state", ["target", "other", "absent"])
+def test_adb_initialization_keeps_device_identifiers_in_debug(
+    monkeypatch, caplog, waiting, device_state
 ):
     from arknights_mower.utils.device.adb_client import core
 
     client = object.__new__(core.Client)
     client.device_id = "127.0.0.1:16928"
-    devices = [client.device_id, "USB-device"] if online else []
+    devices = {
+        "target": [client.device_id, "USB-device"],
+        "other": ["USB-device"],
+        "absent": [],
+    }[device_state]
     monkeypatch.setattr(
         core.config, "conf", SimpleNamespace(simulator=SimpleNamespace(wait_time=0))
     )
@@ -45,22 +49,34 @@ def test_adb_initialization_lists_all_online_endpoints_without_changing_waits(
     sleep = Mock()
     monkeypatch.setattr(core, "csleep", sleep)
 
-    if online:
+    if device_state == "target":
         client._Client__init_device(wait_for_device=waiting)
     else:
         with pytest.raises(ConnectionError, match="Device connection failure"):
             client._Client__init_device(wait_for_device=waiting)
 
     assert sleep.call_args_list == (
-        [call(1), call(2)] if waiting and not online else [call(1)]
+        [call(1), call(2)] if waiting and device_state != "target" else [call(1)]
     )
     assert client.device_id == "127.0.0.1:16928"
     visible = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
-    assert visible == [
-        "ADB可连接的设备：127.0.0.1:16928、USB-device"
-        if online
-        else "ADB未连接到任何设备"
-    ]
+    assert (
+        visible
+        == {
+            "target": ["ADB 已连接目标设备"],
+            "other": [],
+            "absent": ["ADB 未连接到任何设备"],
+        }[device_state]
+    )
+    if devices:
+        assert any(
+            record.levelno == logging.DEBUG
+            and record.getMessage() == f"ADB 可连接的设备：{'、'.join(devices)}"
+            for record in caplog.records
+        )
+    assert any(record.levelno == logging.ERROR for record in caplog.records) == (
+        device_state != "target"
+    )
 
 
 @pytest.fixture

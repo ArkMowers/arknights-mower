@@ -94,6 +94,9 @@ def test_export_redacts_live_and_archived_logs_without_rewriting_sources(
         f"  token={token}\n  收件人={sender}\n"
         f"  实际目标 {serial}\n  地址 {conf.adb}\n"
         "  设备初始化完成：legacy-device-726154\n"
+        "  ADB可连接的设备：legacy-usb-726154\n"
+        "  ADB 可连接的设备：unrelated-usb-726154\n"
+        "  设备未就绪：['retry-usb-726154']，重新选择端口 old-device-726154\n"
         f"  正在使用全局配置空间: {location}\n"
         "  对端 192.0.2.41:16416 [2001:db8::41]:16416\n"
         "  对端 2001:db8::42\n"
@@ -129,6 +132,10 @@ def test_export_redacts_live_and_archived_logs_without_rewriting_sources(
             location,
             conf.adb,
             "legacy-device-726154",
+            "legacy-usb-726154",
+            "unrelated-usb-726154",
+            "retry-usb-726154",
+            "old-device-726154",
             "192.0.2.41",
             "2001:db8::41",
             "2001:db8::42",
@@ -138,6 +145,8 @@ def test_export_redacts_live_and_archived_logs_without_rewriting_sources(
         ):
             assert sensitive not in output
         assert "2026-11-08 10:30:00 task.py:42 ERROR 连接失败，保留任务" in output
+        assert "ADB 可连接的设备：[已隐藏]" in output
+        assert "设备未就绪：[已隐藏]，重新选择端口 [已隐藏]" in output
         assert "RuntimeError: 检查已结束，状态未改变" in output
         assert output.count("诊断续行保持完整") == 1000
         pictures = [name for name in bundle.namelist() if name.endswith(".jpg")]
