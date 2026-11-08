@@ -176,6 +176,7 @@ def replan_update_tasks(saved):
         protected.add(id(task))
         dependencies.extend(getattr(task, "group_shift_predecessors", ()))
         dependencies.extend(getattr(task, "product_shift_predecessors", ()))
+        dependencies.extend(getattr(task, "mastery_backup_predecessors", ()))
     result["tasks"] = [task for task in tasks if id(task) in protected]
     result["tasks"].append(SchedulerTask())
     return result
@@ -187,12 +188,17 @@ def task_view(tasks, scope, op_data=None):
         return list(tasks)
     if scope == TaskScope.DISPATCH:
         blocked = blocked_run_order_ids(tasks, op_data)
+        pending_ids = {id(task) for task in tasks}
         return [
             task
             for task in tasks
             if not getattr(task, "execution_failure", None)
             and not getattr(task, "startup_observation_pending", False)
             and not getattr(task, "maintenance_preparation_pending", False)
+            and not any(
+                id(previous) in pending_ids
+                for previous in getattr(task, "mastery_backup_predecessors", ())
+            )
             and id(task) not in blocked
         ]
     if scope == TaskScope.REPLAN:

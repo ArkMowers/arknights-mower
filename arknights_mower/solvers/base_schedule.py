@@ -1399,6 +1399,37 @@ class BaseSchedulerSolver(
             task.maintenance_preparation_pending = bool(pending)
         return not pending
 
+    def _defer_mastery_start_for_backup(self):
+        """待开始的专精保留原任务，等待副表实际换人完成。"""
+        task = self.task
+        if (
+            not config.conf.enable_mastery
+            or task is None
+            or task.type != TaskTypes.SKILL_UPGRADE
+            or getattr(task, "plan_key", None) is None
+        ):
+            return
+        predecessors = tuple(
+            pending
+            for pending in self.tasks
+            if pending.meta_data == "副表内存收敛" and pending.plan
+        )
+        if not predecessors:
+            return
+        from arknights_mower.utils.mastery_db import get_plan_by_id
+
+        try:
+            plan = get_plan_by_id(int(task.plan_key))
+        except (TypeError, ValueError):
+            return
+        if plan is None or plan["status"] != "idle":
+            return
+        task.mastery_backup_predecessors = predecessors
+        scheduling(self.tasks, op_data=self.op_data)
+        self.task = self.find_next_task()
+        if self.task is not None and self.task.time > datetime.now():
+            self.task = None
+
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
@@ -1489,6 +1520,7 @@ class BaseSchedulerSolver(
             # 首次启动先随心情读取刷新实际产物；恢复缓存后也以实际状态为准。
             if not self._emergency_frozen():
                 self.queue_product_switches()
+        self._defer_mastery_start_for_backup()
         logMsg = "||".join([str(t) for t in self.tasks])
         logger.debug("当前任务: " + logMsg)
         save_log(logMsg, "{}" if not self.task else str(self.task), level="INFO")
@@ -5361,9 +5393,9 @@ class BaseSchedulerSolver(
                 return True
         except Exception:
             pass
-        return (
-            self.find_next_task(task_type=TaskTypes.SKILL_UPGRADE) is not None
-            or self.find_next_task(task_type=TaskTypes.SWAP_SUPPORT) is not None
+        return any(
+            task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+            for task in self.tasks
         )
 
     def _train_protected(self) -> bool:
